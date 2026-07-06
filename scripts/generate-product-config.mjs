@@ -186,6 +186,7 @@ function getTierLocaleKey(tierGroup) {
     free: 'free',
     pro: 'pro',
     api_starter: 'api',
+    api_business: 'apiBusiness',
     enterprise: 'enterprise',
   };
   const key = keys[tierGroup];

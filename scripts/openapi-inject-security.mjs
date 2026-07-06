@@ -583,6 +583,33 @@ function appendNoteToYamlScalar(scalar, appendFn) {
   return isQuoted ? `${quote}${nextInner}${quote}` : nextInner;
 }
 
+function lastYamlBlockContentIndex(lines, descIndex, exclusiveEnd) {
+  let contentIndex = exclusiveEnd - 1;
+  while (contentIndex > descIndex && lines[contentIndex].trim() === '') contentIndex--;
+  return contentIndex;
+}
+
+function appendNoteToYamlBlock(lines, descIndex, blockEnd, note) {
+  const contentIndex = lastYamlBlockContentIndex(lines, descIndex, blockEnd);
+  if (contentIndex === descIndex) {
+    lines.splice(blockEnd, 0, '                ' + note);
+    return;
+  }
+  lines[contentIndex] = lines[contentIndex].replace(/\s+$/, '') + ' ' + note;
+}
+
+function normalizeYamlBlockNoteLine(lines, descIndex, blockEnd, isNoteLine) {
+  const noteIndex = lines.findIndex((line, index) => (
+    index > descIndex && index < blockEnd && isNoteLine(line.trim())
+  ));
+  if (noteIndex === -1) return false;
+  const contentIndex = lastYamlBlockContentIndex(lines, descIndex, noteIndex);
+  if (contentIndex === descIndex) return false;
+  lines[contentIndex] = lines[contentIndex].replace(/\s+$/, '') + ' ' + lines[noteIndex].trim();
+  lines.splice(noteIndex, 1);
+  return true;
+}
+
 function ensureYamlEntitlementDescription(lines, path, method, requiredTier) {
   const op = findYamlOperationRangeForMethod(lines, path, method);
   if (!op) return false;
@@ -595,7 +622,7 @@ function ensureYamlEntitlementDescription(lines, path, method, requiredTier) {
       index > op.start && index < op.end && line.startsWith('            operationId:')
     ));
     const insertAt = operationIdIndex === -1 ? op.start + 1 : operationIdIndex;
-    lines.splice(insertAt, 0, `            description: ${entitlementNote(requiredTier)}`);
+    lines.splice(insertAt, 0, '            description: ' + entitlementNote(requiredTier));
     return true;
   }
 
@@ -608,8 +635,10 @@ function ensureYamlEntitlementDescription(lines, path, method, requiredTier) {
       blockEnd++;
     }
     const blockText = lines.slice(descIndex, blockEnd).join('\n');
+    const noteLine = new RegExp('^(?:PRO-gated\\. )?Requires entitlement tier >= ' + requiredTier + '\\.$', 'i');
+    if (normalizeYamlBlockNoteLine(lines, descIndex, blockEnd, (text) => noteLine.test(text))) return true;
     if (/Requires entitlement tier >= \d+/i.test(blockText)) return false;
-    lines.splice(blockEnd, 0, `                ${yamlBlockNote(blockText, requiredTier)}`);
+    appendNoteToYamlBlock(lines, descIndex, blockEnd, yamlBlockNote(blockText, requiredTier));
     return true;
   }
 
@@ -634,7 +663,7 @@ function ensureYamlGateDescription(lines, path, method, note) {
       index > op.start && index < op.end && line.startsWith('            operationId:')
     ));
     const insertAt = operationIdIndex === -1 ? op.start + 1 : operationIdIndex;
-    lines.splice(insertAt, 0, `            description: ${note}`);
+    lines.splice(insertAt, 0, '            description: ' + note);
     return true;
   }
 
@@ -647,8 +676,9 @@ function ensureYamlGateDescription(lines, path, method, note) {
       blockEnd++;
     }
     const blockText = lines.slice(descIndex, blockEnd).join('\n');
+    if (normalizeYamlBlockNoteLine(lines, descIndex, blockEnd, (text) => text === note)) return true;
     if (blockText.includes(note)) return false;
-    lines.splice(blockEnd, 0, `                ${note}`);
+    appendNoteToYamlBlock(lines, descIndex, blockEnd, note);
     return true;
   }
 

@@ -19,7 +19,8 @@ import { timingSafeEqualSecret } from '../api/_crypto.js';
 import { captureSilentError } from '../api/_sentry-edge.js';
 import { mapErrorToResponse } from './error-mapper';
 import { checkRateLimit, checkEndpointRateLimit, hasEndpointRatePolicy } from './_shared/rate-limit';
-import { drainResponseHeaders } from './_shared/response-headers';
+import { drainResponseHeaders, drainSuccessStatusOverride } from './_shared/response-headers';
+import { projectJsonResponse } from './_shared/response-projection';
 import { checkEntitlementDetailed, getRequiredTier, getEntitlements, type CachedEntitlements } from './_shared/entitlement-check';
 import { resolveClerkSession } from './_shared/auth-session';
 import {
@@ -36,12 +37,24 @@ import {
 import { buildUsageIdentity, hashKeySync, type UsageIdentityInput } from './_shared/usage-identity';
 import { runRedisPipeline } from './_shared/redis';
 import {
+  beginIdempotency,
+  peekIdempotency,
+  IDEMPOTENCY_HEADER,
+  IDEMPOTENT_REPLAYED_HEADER,
+  type IdempotencyOutcome,
+} from './_shared/idempotency';
+import {
   checkBurst,
   reserveDailyMeter,
   rateLimitHeaders,
   ENTERPRISE_API_RATE_LIMIT,
   CEILING_MULTIPLIER,
 } from './_shared/api-key-rate-limit';
+import {
+  DIRECT_LLM_DAILY_QUOTA_LIMIT,
+  DIRECT_LLM_GATEWAY_QUOTA_PATHS,
+  reserveDirectLlmQuota,
+} from './_shared/direct-llm-quota';
 import {
   deliverUsageEvents,
   buildRequestEvent,
@@ -536,6 +549,68 @@ function createGatewayAuthErrorResponse(
   });
 }
 
+const GATEWAY_DIRECT_LLM_QUOTA_METHODS: Record<string, string> = {
+  '/api/intelligence/v1/classify-event': 'GET',
+  '/api/intelligence/v1/deduct-situation': 'POST',
+  '/api/intelligence/v1/get-country-intel-brief': 'GET',
+  '/api/market/v1/analyze-stock': 'GET',
+  '/api/news/v1/summarize-article': 'POST',
+};
+
+async function shouldReserveGatewayDirectLlmQuota(request: Request, pathname: string): Promise<boolean> {
+  if (!DIRECT_LLM_GATEWAY_QUOTA_PATHS.has(pathname)) return false;
+  if (GATEWAY_DIRECT_LLM_QUOTA_METHODS[pathname] !== request.method) return false;
+  if (pathname !== '/api/news/v1/summarize-article') return true;
+
+  const contentLength = Number(request.headers.get('Content-Length') ?? '0');
+  if (Number.isFinite(contentLength) && contentLength >= POST_TO_GET_MAX_BODY_BYTES) {
+    return true;
+  }
+  try {
+    const body = await request.clone().json() as { mode?: unknown };
+    return body.mode !== 'translate';
+  } catch {
+    // Malformed summarize requests cannot reach provider spend; let the handler
+    // return the established validation error without charging quota.
+    return false;
+  }
+}
+
+function createDirectLlmQuotaFailureResponse(
+  reservation: Awaited<ReturnType<typeof reserveDirectLlmQuota>>,
+  corsHeaders: Record<string, string>,
+): Response {
+  if (reservation.ok) {
+    throw new Error('createDirectLlmQuotaFailureResponse called for successful reservation');
+  }
+
+  if (reservation.reason === 'cap-exceeded') {
+    return new Response(JSON.stringify({
+      error: 'Direct LLM daily quota exceeded',
+      limit: DIRECT_LLM_DAILY_QUOTA_LIMIT,
+      resetsAt: 'next UTC midnight',
+    }), {
+      status: 429,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
+        'Retry-After': String(reservation.retryAfterSec),
+        ...corsHeaders,
+      },
+    });
+  }
+
+  return new Response(JSON.stringify({ error: 'Direct LLM quota unavailable' }), {
+    status: 503,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+      'Retry-After': String(reservation.retryAfterSec),
+      ...corsHeaders,
+    },
+  });
+}
+
 function markAuthErrorNoStore(response: Response): Response {
   response.headers.set('Cache-Control', 'no-store');
   response.headers.delete('CDN-Cache-Control');
@@ -986,14 +1061,15 @@ export function createDomainGateway(
     const isPublicNoAuthRpc = PUBLIC_NO_AUTH_RPC_PATHS.has(pathname);
     const seedRefreshVerified = await isResilienceRankingSeedRefreshRequest(request, pathname);
     const relayWarmPingVerified = await isRelayWarmPingRequest(request, pathname);
+    const requiresDirectLlmQuota = !internalMcpVerified && await shouldReserveGatewayDirectLlmQuota(request, pathname);
     const isTierGated = !internalMcpVerified && !isPublicNoAuthRpc && !seedRefreshVerified && !relayWarmPingVerified && getRequiredTier(pathname) !== null;
     const needsLegacyProBearerGate = !internalMcpVerified && !isPublicNoAuthRpc && PREMIUM_RPC_PATHS.has(pathname) && !isTierGated;
 
     // Session resolution — extract userId from bearer token (Clerk JWT) if present.
-    // Only runs for tier-gated endpoints to avoid JWKS lookup on every request.
+    // Only runs for tier-gated or direct-LLM endpoints to avoid JWKS lookup on every request.
     let sessionUserId: string | null = null;
     let sessionRole: 'free' | 'pro' | null = null;
-    if (isTierGated) {
+    if (isTierGated || requiresDirectLlmQuota) {
       const session = await resolveClerkSession(request);
       sessionUserId = session?.userId ?? null;
       sessionRole = session?.role ?? null;
@@ -1059,7 +1135,7 @@ export function createDomainGateway(
     // validateApiKey is strict-no-trust-of-headers per #3541 and would 401 every
     // Clerk-authenticated user who hasn't also minted a wms_ session token.
     // Override: tier-gated routes with a resolved sessionUserId pass this layer.
-    if (isTierGated && sessionUserId && keyCheck.required && !keyCheck.valid) {
+    if ((isTierGated || requiresDirectLlmQuota) && sessionUserId && keyCheck.required && !keyCheck.valid) {
       keyCheck = { valid: true, required: false };
     }
 
@@ -1204,6 +1280,108 @@ export function createDomainGateway(
       }
     }
 
+    // Route matching — if POST doesn't match, convert to GET for stale clients
+    let matchedHandler = router.match(request);
+    if (!matchedHandler && request.method === 'POST') {
+      if (isPostToGetCompatibleBodySize(request.headers)) {
+        const url = new URL(request.url);
+        let oversizedKey: string | null = null;
+        try {
+          const bodyText = await request.clone().text();
+          if (new TextEncoder().encode(bodyText).byteLength >= POST_TO_GET_MAX_BODY_BYTES) {
+            emitRequest(400, 'malformed_request', null);
+            return new Response(JSON.stringify({ error: 'malformed_request' }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            });
+          }
+          const body = JSON.parse(bodyText);
+          const isScalar = (x: unknown): x is string | number | boolean =>
+            typeof x === 'string' || typeof x === 'number' || typeof x === 'boolean';
+          for (const [k, v] of Object.entries(body as Record<string, unknown>)) {
+            if (Array.isArray(v)) {
+              if (v.length > POST_TO_GET_MAX_ARRAY_VALUES_PER_KEY) {
+                oversizedKey = k;
+                break;
+              }
+              v.forEach((item) => { if (isScalar(item)) url.searchParams.append(k, String(item)); });
+            } else if (isScalar(v)) url.searchParams.set(k, String(v));
+          }
+        } catch { /* non-JSON body — preserve legacy POST→GET fallback */ }
+        if (oversizedKey !== null) {
+          emitRequest(400, 'malformed_request', null);
+          return new Response(JSON.stringify({
+            error: 'Too many values for POST compatibility parameter',
+            parameter: oversizedKey,
+            maxValues: POST_TO_GET_MAX_ARRAY_VALUES_PER_KEY,
+          }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          });
+        }
+        const getReq = new Request(url.toString(), { method: 'GET', headers: request.headers });
+        matchedHandler = router.match(getReq);
+        if (matchedHandler) request = getReq;
+      }
+    }
+    if (!matchedHandler) {
+      const allowed = router.allowedMethods(new URL(request.url).pathname);
+      if (allowed.length > 0) {
+        emitRequest(405, 'method_not_allowed', null);
+        return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+          status: 405,
+          headers: { 'Content-Type': 'application/json', Allow: allowed.join(', '), ...corsHeaders },
+        });
+      }
+      emitRequest(404, 'unknown_route', null);
+      return new Response(JSON.stringify({ error: 'Not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      });
+    }
+
+    const requiredBboxDiagnostic = getRequiredBboxDiagnostic(request, pathname);
+    const identityForScope = buildUsageIdentity(usage);
+
+    // ── Idempotency-Key support (mutation retry-safety) ──────────────────────
+    // Opt-in: only a POST carrying the header. POST→GET-converted batch reads
+    // (compat block above) are already GET here and are skipped. Scope by the
+    // resolved principal so a key can never replay another caller's response.
+    // Fail-open: any Redis issue proceeds without idempotency (see the module).
+    let idempotency: IdempotencyOutcome | null = null;
+    const hasIdempotencyKey = request.method === 'POST' && request.headers.has(IDEMPOTENCY_HEADER);
+    const idScope = identityForScope.principal_id ?? identityForScope.customer_id;
+    const idempotencyScope = idScope ? `${identityForScope.auth_kind}:${idScope}` : null;
+
+    // Look up an existing idempotency record before rate-limit/quota counters.
+    // This lets a retry of completed work replay without charging a duplicate
+    // unit. A miss does NOT claim the key; fresh executions still pass through
+    // the normal abuse controls before `beginIdempotency()` below.
+    if (hasIdempotencyKey) {
+      const peek = await peekIdempotency({
+        request,
+        pathname,
+        scope: idempotencyScope,
+        idempotencyKey: request.headers.get(IDEMPOTENCY_HEADER) ?? '',
+        corsHeaders,
+      });
+      switch (peek.kind) {
+        case 'invalid':
+          emitRequest(400, 'idempotency_invalid', null);
+          return peek.response;
+        case 'replay':
+          emitRequest(peek.response.status, 'idempotent_replay', null);
+          return peek.response;
+        case 'conflict':
+          emitRequest(409, 'idempotency_conflict', null);
+          return peek.response;
+        case 'mismatch':
+          emitRequest(422, 'idempotency_mismatch', null);
+          return peek.response;
+        // 'miss' proceeds to rate limiting; 'disabled' preserves fail-open behavior.
+      }
+    }
+
     // IP-based rate limiting — two-phase: endpoint-specific first, then global fallback.
     //
     // Internal-MCP verified path skips IP rate limiting: the MCP edge
@@ -1345,74 +1523,57 @@ export function createDomainGateway(
       }
     }
 
-    // Route matching — if POST doesn't match, convert to GET for stale clients
-    let matchedHandler = router.match(request);
-    if (!matchedHandler && request.method === 'POST') {
-      if (isPostToGetCompatibleBodySize(request.headers)) {
-        const url = new URL(request.url);
-        let oversizedKey: string | null = null;
-        try {
-          const bodyText = await request.clone().text();
-          if (new TextEncoder().encode(bodyText).byteLength >= POST_TO_GET_MAX_BODY_BYTES) {
-            emitRequest(400, 'malformed_request', null);
-            return new Response(JSON.stringify({ error: 'malformed_request' }), {
-              status: 400,
-              headers: { 'Content-Type': 'application/json', ...corsHeaders },
-            });
-          }
-          const body = JSON.parse(bodyText);
-          const isScalar = (x: unknown): x is string | number | boolean =>
-            typeof x === 'string' || typeof x === 'number' || typeof x === 'boolean';
-          for (const [k, v] of Object.entries(body as Record<string, unknown>)) {
-            if (Array.isArray(v)) {
-              if (v.length > POST_TO_GET_MAX_ARRAY_VALUES_PER_KEY) {
-                oversizedKey = k;
-                break;
-              }
-              v.forEach((item) => { if (isScalar(item)) url.searchParams.append(k, String(item)); });
-            } else if (isScalar(v)) url.searchParams.set(k, String(v));
-          }
-        } catch { /* non-JSON body — preserve legacy POST→GET fallback */ }
-        if (oversizedKey !== null) {
-          emitRequest(400, 'malformed_request', null);
-          return new Response(JSON.stringify({
-            error: 'Too many values for POST compatibility parameter',
-            parameter: oversizedKey,
-            maxValues: POST_TO_GET_MAX_ARRAY_VALUES_PER_KEY,
-          }), {
-            status: 400,
-            headers: { 'Content-Type': 'application/json', ...corsHeaders },
-          });
-        }
-        const getReq = new Request(url.toString(), { method: 'GET', headers: request.headers });
-        matchedHandler = router.match(getReq);
-        if (matchedHandler) request = getReq;
+    if (requiresDirectLlmQuota && !isEnterpriseAuth) {
+      if (!sessionUserId) {
+        emitRequest(401, 'auth_401', null);
+        return createGatewayAuthErrorResponse(401, 'Pro authentication required', corsHeaders);
       }
-    }
-    if (!matchedHandler) {
-      const allowed = router.allowedMethods(new URL(request.url).pathname);
-      if (allowed.length > 0) {
-        emitRequest(405, 'method_not_allowed', null);
-        return new Response(JSON.stringify({ error: 'Method not allowed' }), {
-          status: 405,
-          headers: { 'Content-Type': 'application/json', Allow: allowed.join(', '), ...corsHeaders },
-        });
-      }
-      emitRequest(404, 'unknown_route', null);
-      return new Response(JSON.stringify({ error: 'Not found' }), {
-        status: 404,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+
+      const reservation = await reserveDirectLlmQuota({
+        userId: sessionUserId,
+        pipeline: (cmds) => runRedisPipeline(cmds, true),
       });
+      if (!reservation.ok) {
+        const response = createDirectLlmQuotaFailureResponse(reservation, corsHeaders);
+        emitRequest(response.status, response.status === 429 ? 'rate_limit_429' : 'rate_limit_degraded', null);
+        return response;
+      }
     }
 
-    const requiredBboxDiagnostic = getRequiredBboxDiagnostic(request, pathname);
+    // Gate on presence (not truthiness) so a present-but-empty header is
+    // rejected as malformed rather than silently ignored.
+    if (hasIdempotencyKey) {
+      idempotency = await beginIdempotency({
+        request,
+        pathname,
+        // Tag the scope with the auth kind so value spaces (Clerk id vs hashed
+        // key vs customer ref) can never collide across authentication methods.
+        scope: idempotencyScope,
+        idempotencyKey: request.headers.get(IDEMPOTENCY_HEADER) ?? '',
+        corsHeaders,
+      });
+      switch (idempotency.kind) {
+        case 'invalid':
+          emitRequest(400, 'idempotency_invalid', null);
+          return idempotency.response;
+        case 'replay':
+          emitRequest(idempotency.response.status, 'idempotent_replay', null);
+          return idempotency.response;
+        case 'conflict':
+          emitRequest(409, 'idempotency_conflict', null);
+          return idempotency.response;
+        case 'mismatch':
+          emitRequest(422, 'idempotency_mismatch', null);
+          return idempotency.response;
+        // 'disabled' (fail-open) and 'proceed' fall through to execution.
+      }
+    }
 
     // Execute handler with top-level error boundary.
     // Wrap in runWithUsageScope so deep fetch helpers (fetchJson,
     // cachedFetchJsonWithMeta) can attribute upstream calls to this customer
     // without leaf handlers having to thread a usage hook through every call.
     let response: Response;
-    const identityForScope = buildUsageIdentity(usage);
     const handlerCall = matchedHandler;
     const requestForHandler = request;
     try {
@@ -1446,6 +1607,18 @@ export function createDomainGateway(
       }
     }
     attachRequiredBboxDiagnosticHeaders(mergedHeaders, pathname, requiredBboxDiagnostic);
+
+    // Handler side-channel status override (setSuccessStatusOverride): applied
+    // only when the handler actually produced a 200 on a POST — async-enqueue
+    // endpoints (run-scenario) upgrade their success to 202 Accepted, while
+    // thrown ApiError statuses always win. GET success flows are excluded:
+    // the ETag/304 + CDN-cache path below assumes 200. Always drained so a
+    // set-but-unapplied override can't leak state.
+    const statusOverride = drainSuccessStatusOverride(request);
+    const finalStatus =
+      statusOverride !== undefined && request.method === 'POST' && response.status === 200
+        ? statusOverride
+        : response.status;
 
     // For GET 200 responses: read body once for cache-header decisions + ETag
     let resolvedCacheTier: CacheTier | null = null;
@@ -1515,9 +1688,41 @@ export function createDomainGateway(
         mergedHeaders.delete('X-Cache-Tier');
       }
 
+      // Universal optional JMESPath projection (REST parity with the MCP
+      // server's `jmespath` tool argument). Applied to the JSON body BEFORE the
+      // ETag hash so the ETag reflects the projected payload; the ?jmespath=
+      // expression is part of the request URL, so Vercel's CDN keys each
+      // projection separately. GET-only: mutating POSTs are already fully typed
+      // via their requestBody and their responses are not cached/ETagged here.
+      // See server/_shared/response-projection.ts + /docs/mcp-jmespath.
+      let responseView = new Uint8Array(bodyBytes);
+      const jmespathExpr = new URL(request.url).searchParams.get('jmespath');
+      if (jmespathExpr && (mergedHeaders.get('Content-Type') ?? '').includes('application/json')) {
+        const projection = projectJsonResponse(bodyStr, jmespathExpr);
+        if (!projection.ok) {
+          const errorBody = JSON.stringify(projection.envelope);
+          emitRequest(400, 'malformed_request', null, errorBody.length);
+          maybeAttachDevHealthHeader(mergedHeaders);
+          return new Response(errorBody, {
+            status: 400,
+            headers: {
+              ...corsHeaders,
+              'Content-Type': 'application/json; charset=utf-8',
+              'X-Content-Type-Options': 'nosniff',
+              'Cache-Control': 'no-store',
+            },
+          });
+        }
+        responseView = new TextEncoder().encode(projection.body);
+        // The projected body has a different length than the handler's — drop any
+        // stale Content-Length so the runtime recomputes it (a leftover value
+        // would truncate the response).
+        mergedHeaders.delete('Content-Length');
+      }
+
       // FNV-1a inspired fast hash — good enough for cache validation
       let hash = 2166136261;
-      const view = new Uint8Array(bodyBytes);
+      const view = responseView;
       for (let i = 0; i < view.length; i++) {
         hash ^= view[i]!;
         hash = Math.imul(hash, 16777619);
@@ -1534,7 +1739,7 @@ export function createDomainGateway(
 
       emitRequest(response.status, 'ok', resolvedCacheTier, view.length);
       maybeAttachDevHealthHeader(mergedHeaders);
-      return new Response(bodyBytes, {
+      return new Response(responseView, {
         status: response.status,
         statusText: response.statusText,
         headers: mergedHeaders,
@@ -1548,14 +1753,36 @@ export function createDomainGateway(
       mergedHeaders.delete('X-No-Cache');
     }
 
+    // Idempotent POST (opt-in): buffer the body so it can be persisted for
+    // replay, then echo the key. Only reached when the client sent a valid
+    // Idempotency-Key on a first request; normal POSTs keep the streaming path
+    // below untouched.
+    if (idempotency?.kind === 'proceed') {
+      const bodyBytes = response.body ? await response.arrayBuffer() : new ArrayBuffer(0);
+      mergedHeaders.set(IDEMPOTENCY_HEADER, idempotency.key);
+      mergedHeaders.set(IDEMPOTENT_REPLAYED_HEADER, 'false');
+      // Awaited (not waitUntil'd) so a sub-second retry sees the completed
+      // record rather than a lingering 'processing' lock → 409. store() is
+      // best-effort/fail-open, so a Redis blip degrades to a re-executable
+      // retry, never a failed response.
+      await idempotency.store(finalStatus, bodyBytes, response.headers.get('content-type'));
+      emitRequest(finalStatus, 'ok', resolvedCacheTier, bodyBytes.byteLength);
+      maybeAttachDevHealthHeader(mergedHeaders);
+      return new Response(bodyBytes, {
+        status: finalStatus,
+        statusText: response.statusText,
+        headers: mergedHeaders,
+      });
+    }
+
     // Streaming/non-GET-200 responses: res_bytes is best-effort 0 (Content-Length
     // is often absent on chunked responses; teeing the stream would add latency).
     const finalContentLen = response.headers.get('content-length');
     const finalResBytes = finalContentLen ? Number(finalContentLen) || 0 : 0;
-    emitRequest(response.status, 'ok', resolvedCacheTier, finalResBytes);
+    emitRequest(finalStatus, 'ok', resolvedCacheTier, finalResBytes);
     maybeAttachDevHealthHeader(mergedHeaders);
     return new Response(response.body, {
-      status: response.status,
+      status: finalStatus,
       statusText: response.statusText,
       headers: mergedHeaders,
     });

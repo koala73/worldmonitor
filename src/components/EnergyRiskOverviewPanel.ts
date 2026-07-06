@@ -39,9 +39,13 @@ const BRENT_META = [{ symbol: BRENT_SYMBOL, name: 'Brent Crude', display: 'BRENT
 // via VITE_HORMUZ_CRISIS_START_DATE so the date can be re-pinned without a
 // redeploy when the editorial framing shifts.
 const DEFAULT_CRISIS_START_DATE = '2026-02-23';
-const CRISIS_START_DATE: string =
-  (import.meta.env?.VITE_HORMUZ_CRISIS_START_DATE as string | undefined) ||
-  DEFAULT_CRISIS_START_DATE;
+const CRISIS_START_DATE: string = (() => {
+  try {
+    return import.meta.env.VITE_HORMUZ_CRISIS_START_DATE || DEFAULT_CRISIS_START_DATE;
+  } catch {
+    return DEFAULT_CRISIS_START_DATE;
+  }
+})();
 const CRISIS_START_MS = Date.parse(`${CRISIS_START_DATE}T00:00:00Z`);
 
 // Map Hormuz status enum → severity color. Values come from

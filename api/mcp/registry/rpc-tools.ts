@@ -7,6 +7,7 @@ import { buildAuthHeaders } from '../auth';
 import { SUPPORTED_CONSUMER_PRICES_COUNTRIES } from '../constants';
 import { evaluateFreshness } from '../freshness';
 import type { FreshnessCheck, ToolDef } from '../types';
+import { COUNTRY_RISK_UI_URI } from '../ui/registry';
 import { buildPublicTool, TOOL_REGISTRY } from './index';
 
 type McpBriefSource = {
@@ -344,6 +345,11 @@ export const RPC_TOOLS: ToolDef[] = [
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    // MCP Apps (`io.modelcontextprotocol/ui`): buildPublicTool emits
+    // _meta.ui.resourceUri from this, linking the tool to its interactive
+    // ui:// app shell (rendered inline by an MCP-Apps host). Single source of
+    // truth — the ui:// resource is registered in ../ui/registry.ts.
+    _uiResourceUri: COUNTRY_RISK_UI_URI,
     _execute: async (params, base, context) => {
       const code = String(params.country_code ?? '').toUpperCase().slice(0, 2);
       const url = `${base}/api/intelligence/v1/get-country-risk?country_code=${encodeURIComponent(code)}`;
@@ -456,9 +462,9 @@ export const RPC_TOOLS: ToolDef[] = [
       // F6 contract parity with the cache-tool path (executeTool, ~line 1139):
       // if every data read is null/undefined, this is a degenerate-empty
       // response (Redis transient / stampede / pre-seed). Throw so
-      // dispatchToolsCall's catch fires proRollback — without this, the Pro
-      // user's daily MCP counter increments by 1 for a useless result while
-      // every other cache-tool refunds via the same code path.
+      // dispatchToolsCall reports a normal tool-execution failure. For Pro
+      // callers the already-reserved slot stays charged because the tool has
+      // executed.
       if (dataResults.every((v: unknown) => v === null || v === undefined)) {
         throw new Error('cache_all_null');
       }

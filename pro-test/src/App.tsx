@@ -869,6 +869,20 @@ const ApiSection = () => (
             <Database className="w-5 h-5 text-wm-muted shrink-0" aria-hidden="true" />
             <span className="text-sm">{t('apiSection.structured')}</span>
           </li>
+          <li className="flex items-start gap-3">
+            <Terminal className="w-5 h-5 text-wm-muted shrink-0" aria-hidden="true" />
+            <span className="text-sm">
+              {t('apiSection.cli')}{' — '}
+              <a
+                href="https://www.npmjs.com/package/worldmonitor"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono text-wm-green hover:underline"
+              >
+                npx worldmonitor
+              </a>
+            </span>
+          </li>
         </ul>
 
         <div className="grid grid-cols-2 gap-4 mb-8 p-4 bg-wm-card border border-wm-border rounded-sm">

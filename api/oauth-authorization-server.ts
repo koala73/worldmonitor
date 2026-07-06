@@ -26,6 +26,16 @@
  * not implement ID-JAG identity assertion endpoints, so only `anonymous` is
  * advertised. The `skill` field round-trips to the published /auth.md.
  *
+ * `claim_uri` completes the anonymous method: an anonymously-registered agent's
+ * credential is *claimed* (bound to a human owner) at authorization time — the
+ * interactive `/oauth/authorize` consent ties the issued token to whoever signs
+ * in. WM has no standalone claim endpoint, so the claim URI is the authorization
+ * endpoint (the actual claim ceremony). Agent-readiness scanners (isitagentready
+ * / ora.ai) require a `claim_uri` for the anonymous registration method; we
+ * advertise it both at the `agent_auth` top level (parallel to `register_uri`)
+ * and inside the `anonymous` method object so a validator that looks in either
+ * location resolves it. See public/auth.md "## Claim".
+ *
  * The Host is client-controlled, so the origin is derived through
  * `resolveMetadataOrigin` (apex + subdomain allowlist, apex fallback) so a
  * spoofed Host cannot be reflected into `issuer`/`token_endpoint`.
@@ -54,9 +64,11 @@ export default function handler(req: Request): Response {
     agent_auth: {
       skill: `${origin}/auth.md`,
       register_uri: `${origin}/oauth/register`,
+      claim_uri: `${origin}/oauth/authorize`,
       identity_types_supported: ['anonymous'],
       anonymous: {
         credential_types_supported: ['access_token'],
+        claim_uri: `${origin}/oauth/authorize`,
       },
     },
   });

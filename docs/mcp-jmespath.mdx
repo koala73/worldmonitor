@@ -20,6 +20,18 @@ This page is the practical reference: a quick orientation, then twelve worked ex
 
 The three response shapes used below are the captured fixtures under `tests/fixtures/jmespath-samples/` (re-captured periodically against the prod MCP endpoint). They were picked deliberately — fat (~100 KB with `limit: 0`), medium (~30 KB), and thin (~10 KB) — to span the size tiers you'll actually project against.
 
+## REST API (`?jmespath=`)
+
+The same projection is available on the REST API: every `GET` endpoint accepts an optional `jmespath` **query parameter** that the gateway applies to the JSON response server-side before returning it. Reuse the expressions you already know from MCP, with two differences:
+
+- **The expression root is the raw response body**, not an MCP `{ cached_at, stale, data }` envelope — so you project the payload directly (`compositeScore`, `keys(@)`) with no `data.` prefix.
+- **A bad, over-long, or over-expanding expression returns `HTTP 400`** with the same `{ _jmespath_error, original_keys }` body (the MCP transport soft-fails inside a 200 result instead). The ≤ 1024-byte expression limit and 256 KB projected-output cap are identical.
+
+```bash
+curl "https://api.worldmonitor.app/api/market/v1/get-fear-greed-index?jmespath=compositeScore" \
+  -H "X-WorldMonitor-Key: $WORLDMONITOR_API_KEY"
+```
+
 ## The twelve examples
 
 ### 1. Drill into a single nested object
@@ -504,5 +516,5 @@ When `tools/list` returns a compressed description that's ambiguous about a tool
 - [JMESPath specification](https://jmespath.org/specification.html) — the canonical grammar reference.
 - [MCP Quickstart](/mcp-quickstart) — five-minute zero-to-first-call onboarding.
 - [MCP Tools Reference](/mcp-tools-reference) — per-tool parameters, freshness budgets, and response shapes for every tool.
-- [MCP Server reference](/mcp-server) — auth, OAuth setup, plans, quotas, errors.
+- [MCP Server reference](/mcp-overview) — auth, OAuth setup, plans, quotas, errors.
 - [MCP Error Catalog](/mcp-error-catalog) — every JSON-RPC code, HTTP status, and soft envelope (including `_budget_exceeded` and the three `_jmespath_error` kinds).

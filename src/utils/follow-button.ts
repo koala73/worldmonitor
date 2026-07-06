@@ -119,17 +119,17 @@ let _upgradeTrigger: UpgradeTrigger = (source) => {
                 product as Parameters<typeof checkout.startCheckout>[0],
               );
             } else {
-              window.open('/pro#pricing', '_blank');
+              window.open('/pro#pricing', '_blank', 'noopener,noreferrer');
             }
           }),
         )
         .catch(() => {
-          window.open('/pro#pricing', '_blank');
+          window.open('/pro#pricing', '_blank', 'noopener,noreferrer');
         });
     });
   } catch {
     try {
-      window.open('/pro#pricing', '_blank');
+      window.open('/pro#pricing', '_blank', 'noopener,noreferrer');
     } catch {
       /* swallow — non-browser env */
     }
@@ -148,7 +148,7 @@ export function _setUpgradeTriggerForTests(fn: UpgradeTrigger | null): void {
   _upgradeTrigger = fn ?? ((source) => {
     void source;
     try {
-      window.open('/pro#pricing', '_blank');
+      window.open('/pro#pricing', '_blank', 'noopener,noreferrer');
     } catch {
       /* swallow */
     }

@@ -1275,7 +1275,10 @@
       "overall": "Geral: {{tone}}",
       "signalTypesEvents": "{{types}} tipos de sinal • {{events}} eventos",
       "newsSignals": "{{news}} notícias • {{signals}} sinais",
-      "sources_many": "{{count}} fontes"
+      "sources_many": "{{count}} fontes",
+      "provenanceTitle": "Proveniência de cobertura: quantas histórias ingeridas e fontes distintas foram selecionadas para este resumo",
+      "compiledFrom": "Compilado de {{stories}} histórias em {{sources}} fontes",
+      "briefFreshness": "Gerado há {{minutes}}m · fonte mais recente com {{hours}}h"
     },
     "techHubs": {
       "infoTooltip": "<strong>Atividade do Tech Hub</strong><br>Mostra os hubs de tecnologia com mais atividade de notícias.<br><br><em>Níveis de atividade:</em><br>• <span style=\"color: {{highColor}}\">Alto</span> — Notícias de última hora ou pontuação acima de 50<br>• <span style=\"color: {{elevatedColor}}\">Elevado</span> — Pontuação 20-49<br>• <span style=\"color: {{lowColor}}\">Baixo</span> — Pontuação abaixo de 20<br><br>Clique em um hub para ampliar sua localização."

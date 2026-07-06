@@ -30,11 +30,51 @@ import { loadEnvFile, getRedisCredentials } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { main as runSnapshots } from './seed-regional-snapshots.mjs';
 import { main as runBriefs } from './seed-regional-briefs.mjs';
+import { flushPendingLlmEvents } from './lib/llm-telemetry.cjs';
 
 loadEnvFile(import.meta.url);
 
 const BRIEF_COOLDOWN_MS = 6.5 * 24 * 60 * 60 * 1000; // 6.5 days
 const BRIEF_META_KEY = 'seed-meta:intelligence:regional-briefs';
+
+// Retry-budget cap on the coverage-fail bypass (#4896 item 2). Each failed
+// attempt refreshes the meta's fetchedAt, so the bypass alone re-ran ALL
+// region briefs on every 6h tick for as long as an outage lasted (~28 LLM
+// calls/day, timed exactly to provider incidents). The budget allows the
+// fast self-heal (#2989) for transients — first retry on the next tick,
+// one more after that — then pauses until the rolling 24h window expires.
+const BRIEF_RETRY_BUDGET_KEY = 'intelligence:brief-retry-budget:v1';
+const BRIEF_RETRY_BUDGET_PER_DAY = 2;
+const BRIEF_RETRY_BUDGET_WINDOW_SEC = 86_400;
+
+/**
+ * Consume one unit of the rolling 24h bypass budget. Fails OPEN (returns
+ * true) on any Redis error so a telemetry hiccup can never block the
+ * self-healing path — the cap only bites when Redis positively reports the
+ * budget as exhausted.
+ */
+async function consumeBriefRetryBudget(url, token) {
+  try {
+    const resp = await fetch(`${url}/pipeline`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify([
+        ['INCR', BRIEF_RETRY_BUDGET_KEY],
+        // NX: only stamp the TTL when INCR just created the key, so the
+        // window doesn't slide forward on every attempt.
+        ['EXPIRE', BRIEF_RETRY_BUDGET_KEY, String(BRIEF_RETRY_BUDGET_WINDOW_SEC), 'NX'],
+      ]),
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!resp.ok) return true;
+    const json = await resp.json();
+    const count = Number(json?.[0]?.result);
+    if (!Number.isFinite(count)) return true;
+    return count <= BRIEF_RETRY_BUDGET_PER_DAY;
+  } catch {
+    return true;
+  }
+}
 
 /**
  * Check if the weekly brief seeder should run by reading its seed-meta.
@@ -72,8 +112,14 @@ async function shouldRunBriefs() {
     }
     // Bypass the cooldown when the last run failed coverage so a transient
     // failure self-heals on the next 6h tick instead of staying a crit for
-    // the remainder of the cooldown window.
+    // the remainder of the cooldown window — bounded by the rolling 24h
+    // retry budget so a sustained outage can't burn the brief fleet on
+    // every tick until it ends.
     if (Number(meta?.recordCount ?? 0) === 0) {
+      if (!(await consumeBriefRetryBudget(url, token))) {
+        console.log(`[bundle] briefs: last run failed coverage but the retry budget (${BRIEF_RETRY_BUDGET_PER_DAY}/24h) is exhausted, skipping until it resets`);
+        return false;
+      }
       console.log(`[bundle] briefs: last run ${(age / 86_400_000).toFixed(1)} days ago but failed coverage (recordCount=0), bypassing cooldown to retry`);
       return true;
     }
@@ -129,6 +175,9 @@ async function main() {
   // detect broken runs. PR #3001 review H1.
   if (snapshotFailed) {
     console.error(`[bundle] Done in ${elapsed}s with ERRORS`);
+    // process.exit does not drain in-flight promises — flush fire-and-forget
+    // llm_call telemetry first (bounded by the 1.5s fetch timeout).
+    await flushPendingLlmEvents();
     process.exit(1);
   }
   console.log(`[bundle] Done in ${elapsed}s`);
@@ -136,8 +185,9 @@ async function main() {
 
 const isMain = import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
-  main().catch((err) => {
+  main().catch(async (err) => {
     console.error('[bundle] Fatal:', err);
+    await flushPendingLlmEvents();
     process.exit(1);
   });
 }

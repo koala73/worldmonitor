@@ -8,7 +8,7 @@
  */
 
 import { mlWorker } from './ml-worker';
-import { getRpcBaseUrl } from '@/services/rpc-client';
+import { getRpcBaseUrl, getRpcErrorStatusCode } from '@/services/rpc-client';
 import { SITE_VARIANT } from '@/config';
 import { BETA_MODE } from '@/config/beta';
 import { isFeatureAvailable, type RuntimeFeatureId } from './runtime-config';
@@ -19,6 +19,12 @@ import { createCircuitBreaker } from '@/utils';
 import { buildSummaryCacheKey } from '@/utils/summary-cache-key';
 import { NewsServiceClient } from '@/services/generated-rpc-clients';
 import { premiumFetch } from '@/services/premium-fetch';
+import {
+  canAttemptServerSummarization,
+  configureSummarizeGate,
+  suppressServerSummarization,
+} from '@/services/summarize-gate';
+import { hasPremiumAccess } from '@/services/panel-gating';
 
 export type SummarizationProvider = 'ollama' | 'groq' | 'openrouter' | 'browser' | 'cache';
 
@@ -49,6 +55,16 @@ const newsClient = new NewsServiceClient(getRpcBaseUrl(), { fetch: (...args) => 
 const premiumNewsClient = new NewsServiceClient(getRpcBaseUrl(), {
   fetch: (input, init) => premiumFetch(input, { ...init, forcePremium: true }),
 });
+
+// #4913: summarize-article LLM spend is premium-gated server-side (#4687).
+// Gate every API-provider dispatch on the client-side entitlement signal so
+// anon/free principals fall straight to the browser-T5 provider with ZERO
+// network attempts — before this gate, every summarize attempt fanned out up
+// to 3 doomed RPCs (ollama→openrouter→groq through the same gated endpoint).
+// panel-gating's hasPremiumAccess is the dual-signal source of truth.
+// translateText is deliberately NOT gated: it uses mode='translate' via the
+// plain newsClient, which the server allows for non-premium callers.
+configureSummarizeGate(() => hasPremiumAccess());
 const summaryBreaker = createCircuitBreaker<SummarizeArticleResponse>({ name: 'News Summarization', cacheTtlMs: 0 });
 
 const summaryResultBreaker = createCircuitBreaker<SummarizationResult | null>({
@@ -68,10 +84,13 @@ interface ApiProviderDef {
   label: string;
 }
 
+// Order matches the server's default chain since #4944: OpenRouter
+// (DeepSeek V4 Flash) ahead of Groq — the RPC honors the client-supplied
+// provider, so the client's try-order decides which model summarizes.
 const API_PROVIDERS: ApiProviderDef[] = [
   { featureId: 'aiOllama',      provider: 'ollama',     label: 'Ollama' },
-  { featureId: 'aiGroq',        provider: 'groq',       label: 'Groq AI' },
   { featureId: 'aiOpenRouter',  provider: 'openrouter', label: 'OpenRouter' },
+  { featureId: 'aiGroq',        provider: 'groq',       label: 'Groq AI' },
 ];
 
 let lastAttemptedProvider = 'none';
@@ -86,19 +105,35 @@ async function tryApiProvider(
   bodies?: string[],
 ): Promise<SummarizationResult | null> {
   if (!isFeatureAvailable(providerDef.featureId)) return null;
+  // Entitlement/suppression gate BEFORE any network dispatch (#4913) — a
+  // denial returns null so the chain falls through to browser T5.
+  if (!canAttemptServerSummarization()) return null;
   lastAttemptedProvider = providerDef.provider;
   try {
     const resp: SummarizeArticleResponse = await summaryBreaker.execute(async () => {
-      return premiumNewsClient.summarizeArticle({
-        provider: providerDef.provider,
-        headlines,
-        mode: 'brief',
-        geoContext: geoContext || '',
-        variant: SITE_VARIANT,
-        lang: lang || 'en',
-        systemAppend: '',
-        bodies: bodies ?? [],
-      });
+      try {
+        return await premiumNewsClient.summarizeArticle({
+          provider: providerDef.provider,
+          headlines,
+          mode: 'brief',
+          geoContext: geoContext || '',
+          variant: SITE_VARIANT,
+          lang: lang || 'en',
+          systemAppend: '',
+          bodies: bodies ?? [],
+        });
+      } catch (error) {
+        // Entitlement drift: probe said entitled, server said no. Suppress
+        // the whole provider chain for a window so drift can't recreate the
+        // flood at news-refresh rate; the breaker still counts the failure.
+        // Duck-typed via getRpcErrorStatusCode — a value import of the
+        // generated client's ApiError would pull the RPC client chunk into
+        // the main static graph (eager-chunk budget).
+        if (getRpcErrorStatusCode(error) === 403) {
+          suppressServerSummarization();
+        }
+        throw error;
+      }
     }, emptySummaryFallback);
 
     // Provider skipped (credentials missing) or signaled fallback

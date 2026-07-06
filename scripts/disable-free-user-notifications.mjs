@@ -54,8 +54,6 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { ConvexHttpClient } from "convex/browser";
-import { api } from "../convex/_generated/api.js";
 
 const CONVEX_URL = process.env.CONVEX_URL;
 const CONVEX_DEPLOY_KEY = process.env.CONVEX_DEPLOY_KEY;
@@ -78,13 +76,26 @@ console.log(
 );
 console.log("");
 
-const client = new ConvexHttpClient(CONVEX_URL);
-
+// `alertRules:getByEnabled` is an internalQuery (GHSA-r649-4cqj-w93h) —
+// unreachable via ConvexHttpClient — so fetch it through `npx convex run`,
+// which authenticates with CONVEX_DEPLOY_KEY (same path as the mutations below).
+const rulesResult = spawnSync(
+  "npx",
+  ["convex", "run", "alertRules:getByEnabled", '{"enabled":true}'],
+  { env: { ...process.env, CONVEX_URL, CONVEX_DEPLOY_KEY }, encoding: "utf-8", timeout: 30_000 },
+);
+if (rulesResult.status !== 0) {
+  console.error(`[disable-free-notif] getByEnabled failed (exit ${rulesResult.status}):`);
+  const tail = (rulesResult.stderr || rulesResult.stdout || "").trim().split("\n").slice(-3).join(" | ");
+  if (tail) console.error(`  ${tail}`);
+  process.exit(3);
+}
 let allEnabled;
 try {
-  allEnabled = await client.query(api.alertRules.getByEnabled, { enabled: true });
-} catch (err) {
-  console.error(`[disable-free-notif] getByEnabled failed: ${err.message}`);
+  allEnabled = JSON.parse(rulesResult.stdout);
+} catch {
+  console.error("[disable-free-notif] getByEnabled returned unparseable output:");
+  console.error(`  ${(rulesResult.stdout || "").trim().split("\n").slice(-5).join(" | ")}`);
   process.exit(3);
 }
 

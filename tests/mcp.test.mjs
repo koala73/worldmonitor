@@ -139,6 +139,121 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       'anonymous resources/list must expose a non-empty resource catalog (advertised `resources` capability)');
   });
 
+  it('resources/templates/list succeeds WITHOUT credentials (public discovery) and returns URI templates', async () => {
+    // The data-bearing URI templates (country risk, chokepoint, market quote)
+    // moved from resources/list to resources/templates/list — this metadata
+    // method is public so agents can still discover them without auth.
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 5, method: 'resources/templates/list', params: {} }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'unauthenticated resources/templates/list must be public');
+    const body = await res.json();
+    assert.ok(Array.isArray(body.result?.resourceTemplates) && body.result.resourceTemplates.length >= 1,
+      'anonymous resources/templates/list must expose the URI-template catalog');
+    assert.ok(body.result.resourceTemplates.every((r) => typeof r.uriTemplate === 'string'),
+      'each template entry must carry a uriTemplate field');
+  });
+
+  it('resources/read of a PUBLIC resource succeeds WITHOUT credentials + never touches quota (orank mcp-resource-quality)', async () => {
+    // orank reads every resources/list entry via resources/read anonymously.
+    // The concrete PUBLIC resources (freshness/health probes) return
+    // metadata-only content, so they read cleanly without auth or quota.
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 6, method: 'resources/read', params: { uri: 'worldmonitor://seed-meta/freshness' } }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'anonymous resources/read of a public resource must be 200');
+    const body = await res.json();
+    assert.equal(body.error, undefined, `must not error: ${JSON.stringify(body.error)}`);
+    const c = body.result?.contents?.[0];
+    assert.equal(c?.mimeType, 'application/json');
+    assert.ok(typeof c?.text === 'string' && c.text.length > 0, 'content must be non-empty');
+    assertNoStore(res, 'anonymous public resources/read');
+  });
+
+  // Every capability advertised on the ANONYMOUS initialize must be anonymously
+  // exercisable, or an unauthenticated MCP SDK client hangs: a gated method
+  // answers HTTP 401 with JSON-RPC id:null, the SDK transport cannot correlate
+  // a non-200/id:null response to the pending request, and the client times out
+  // 30s later and marks the server unstable (customer-reported via Claude
+  // Desktop + mcp-remote, issue #4937). prompts/* are static workflow templates
+  // and logging/setLevel is a no-op ack — metadata-class, no data, no quota.
+  // ping is a spec-mandated liveness check (SDK keepalives hang the same way).
+  it('prompts/list succeeds WITHOUT credentials and echoes the request id (#4937 — anon hang)', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'prompts/list', params: {} }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'unauthenticated prompts/list must be public — a 401 hangs SDK clients that saw the advertised prompts capability');
+    const body = await res.json();
+    assert.equal(body.id, 2, 'response id must echo the request id (id:null is uncorrelatable)');
+    assert.ok(Array.isArray(body.result?.prompts) && body.result.prompts.length > 0,
+      'anonymous prompts/list must expose the prompt catalog');
+    assertNoStore(res, 'anonymous prompts/list');
+  });
+
+  it('prompts/get succeeds WITHOUT credentials (static template, no data)', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 8, method: 'prompts/get', params: { name: 'country-briefing', arguments: { iso2: 'DE' } } }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'unauthenticated prompts/get must be public — it renders a static workflow template');
+    const body = await res.json();
+    assert.equal(body.id, 8);
+    assert.ok(Array.isArray(body.result?.messages) && body.result.messages.length > 0,
+      'anonymous prompts/get must render the template messages');
+    assertNoStore(res, 'anonymous prompts/get');
+  });
+
+  it('ping succeeds WITHOUT credentials (spec liveness check — SDK keepalives must not hang)', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'ping', params: {} }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'unauthenticated ping must answer — the MCP spec requires ping to be answerable');
+    const body = await res.json();
+    assert.equal(body.id, 9);
+    assert.deepEqual(body.result, {});
+    assertNoStore(res, 'anonymous ping');
+  });
+
+  it('logging/setLevel succeeds WITHOUT credentials (no-op ack for the advertised logging capability)', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 10, method: 'logging/setLevel', params: { level: 'info' } }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'unauthenticated logging/setLevel must be public — the logging capability is advertised anonymously');
+    const body = await res.json();
+    assert.equal(body.id, 10);
+    assert.deepEqual(body.result, {});
+    assertNoStore(res, 'anonymous logging/setLevel');
+  });
+
+  it('resources/read of a data-bearing TEMPLATE instantiation still requires credentials (no quota bypass)', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 7, method: 'resources/read', params: { uri: 'worldmonitor://countries/de/risk' } }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 401, 'resources/read of a data-bearing template is a data/quota method — must stay gated');
+    const body = await res.json();
+    assert.equal(body.error?.code, -32001);
+  });
+
   it('tools/call still requires credentials even though discovery is public', async () => {
     const req = new Request(BASE_URL, {
       method: 'POST',
@@ -357,10 +472,9 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
   it('tools/call with known tool returns -32603 when EVERY cache read is null (F6: cache_all_null)', async () => {
     // F6 review pass: degenerate-empty result (Redis transient/stampede)
-    // burns Pro quota silently if not surfaced. The env_key path doesn't
-    // have a quota counter, but the throw is uniform so dispatchToolsCall's
-    // catch can fire its DECR rollback when applicable. For env_key callers
-    // this surfaces as the same -32603 as any other tool-execution failure.
+    // must surface as a tool-execution failure instead of a misleading success.
+    // The env_key path doesn't have a quota counter; Pro callers keep the
+    // already-reserved slot charged after this post-execution failure.
     const res = await handler(makeReq('POST', {
       jsonrpc: '2.0', id: 4, method: 'tools/call',
       params: { name: 'get_market_data', arguments: {} },
@@ -597,8 +711,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
     // Force the cache-tool fetch path to throw — dispatchToolsCall's outer
-    // catch fires, latency_ms is captured BEFORE rollback, and one
-    // mcp.toolcall line with ok:false must land.
+    // catch fires and one mcp.toolcall line with ok:false must land.
     globalThis.fetch = async () => { throw new TypeError('fetch failed'); };
 
     const captured = [];
@@ -625,7 +738,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(ev.error_kind, 'server_error');
     assert.equal(ev.tool, 'get_market_data');
     assert.equal(typeof ev.latency_ms, 'number');
-    assert.ok(Number.isFinite(ev.latency_ms), 'latency_ms must be finite (captured before rollback)');
+    assert.ok(Number.isFinite(ev.latency_ms), 'latency_ms must be finite on the error path');
     assert.equal(typeof ev.user_id, 'string');
     assert.ok(ev.user_id.length > 0, 'user_id must be present on the error path too');
     assert.notEqual(ev.user_id, VALID_KEY, 'error-path env_key user_id MUST be hashed — the key-never-logged contract holds on the ok:false branch too');
@@ -706,8 +819,8 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     // Regression guard for the round-1 blocker fix at api/mcp.ts:3173-3184.
     // Without the inner try/catch, the telemetry `JSON.stringify(result)`
     // on a circular `result` throws, control jumps to the outer catch, the
-    // request becomes a 5xx + Pro-quota rollback — even though JMESPath
-    // successfully projected a clean subtree. The fix must:
+    // request becomes a 5xx tool error — even though JMESPath successfully
+    // projected a clean subtree. The fix must:
     //   (a) keep the response 200 / ok:true (telemetry must never bubble),
     //   (b) emit `bytes_pre_jmespath: -1` (sentinel: measurement unavailable),
     //   (c) emit `bytes_post_jmespath > 0` (projection succeeded).
@@ -1584,10 +1697,9 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
 
     // F6 contract parity with the cache-tool path: hybrid _execute mirrors the
-    // executeTool cache_all_null guard so the Pro quota counter is rolled back
-    // on degenerate-empty responses (Redis transient / pre-seed). Without this
-    // guard, every other cache-tool throws on all-null while this one would
-    // return success and silently burn a quota tick.
+    // executeTool cache_all_null guard so degenerate-empty responses surface as
+    // -32603 instead of success. Without this guard, every other cache-tool
+    // throws on all-null while this one would return a misleading success.
     globalThis.fetch = async () => new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
     const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
@@ -2154,8 +2266,8 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
 
-    // F6 contract: degenerate-empty result must surface as -32603 so
-    // dispatchToolsCall's catch fires the proRollback DECR (Pro path).
+    // F6 contract: degenerate-empty result must surface as -32603. For Pro
+    // callers this is a post-execution failure, so the slot remains charged.
     globalThis.fetch = async () => new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
     const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
@@ -2591,14 +2703,14 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     assert.equal(pipe.ops.length, 0, 'no pipeline ops for initialize/tools/list');
   });
 
-  it('edge: tools/call that throws (upstream non-2xx) for Pro at count=10 → counter back at 10', async () => {
+  it('edge: tools/call that throws (upstream non-2xx) for Pro at count=10 → slot stays charged at 11 (GHSA-hcq5, no post-execution refund)', async () => {
     const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 10 } });
     globalThis.fetch = async () => new Response('Service Unavailable', { status: 503 });
     const res = await mcpHandler(proReq('POST', callBody('get_country_risk', { country_code: 'US' })), deps);
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.error?.code, -32603);
-    assert.equal(pipe.count, 10, 'DECR rolled back to 10');
+    assert.equal(pipe.count, 11, 'GHSA-hcq5: the tool executed (incurred upstream cost) before erroring, so the daily slot stays charged — no post-execution refund');
   });
 
   it('edge: 100 concurrent tools/call from Pro user at count=49 → exactly 1 succeeds, 99 reject, final counter 50', async () => {
@@ -2714,9 +2826,10 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     assert.ok(pipe.count <= 51, `F4: counter must clamp back near limit; got ${pipe.count}`);
   });
 
-  it('F6: cache-only tool with all-null reads → DECR rollback fires', async () => {
+  it('F6: cache-only tool with all-null reads → slot stays charged (GHSA-hcq5, no post-execution refund)', async () => {
     // Pro path: starting at 5, every cache read returns null → executeTool
-    // throws cache_all_null → DECR rollback runs → counter returns to 5.
+    // throws cache_all_null AFTER running. Per GHSA-hcq5 the slot is NOT
+    // refunded (the cost is already incurred) → counter stays at 6.
     const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 5 } });
     // Stub Upstash with a result of null (genuine miss).
     process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
@@ -2726,7 +2839,7 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     assert.equal(res.status, 200, 'JSON-RPC error returns HTTP 200');
     const body = await res.json();
     assert.equal(body.error?.code, -32603, 'cache_all_null surfaces as -32603');
-    assert.equal(pipe.count, 5, 'F6: DECR rollback ran, counter back at 5');
+    assert.equal(pipe.count, 6, 'GHSA-hcq5: cache_all_null throws after execution, so the slot stays charged (no DECR refund)');
   });
 
   it('happy: Starter+ env_key bearer → unaffected by daily INCR path; only 60/min sliding limit applies', async () => {

@@ -207,6 +207,12 @@ export const PROMPT_REGISTRY: McpPromptDef[] = [
 // (so a typo'd token surfaces as a load-time error, not a silent passthrough).
 const TOKEN_RE = /\$\{([^}]*)\}/g;
 
+// prompts/get is anonymously servable (#4937), and one argument can be
+// substituted into several step templates, so an unbounded value would be a
+// public response-amplification vector. Real values are ISO2 codes and
+// region/commodity names; 200 chars is generous headroom.
+export const MAX_PROMPT_ARG_LENGTH = 200;
+
 function collectTokens(s: string): string[] {
   const out: string[] = [];
   let m: RegExpExecArray | null;
@@ -312,7 +318,15 @@ export function buildPromptResponse(
       values[arg.name] = '';
       continue;
     }
-    values[arg.name] = String(raw);
+    const value = String(raw);
+    if (value.length > MAX_PROMPT_ARG_LENGTH) {
+      return {
+        ok: false,
+        code: -32602,
+        message: `Argument "${arg.name}" for prompt "${promptName}" exceeds the ${MAX_PROMPT_ARG_LENGTH}-character limit`,
+      };
+    }
+    values[arg.name] = value;
   }
 
   const renderedIntro = substituteString(

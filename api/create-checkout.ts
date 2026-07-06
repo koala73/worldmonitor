@@ -15,6 +15,11 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders } from './_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from './_sentry-edge.js';
+import {
+  beginStandaloneIdempotency,
+  completeStandaloneIdempotency,
+  getIdempotencyKey,
+} from './_idempotency.js';
 import { validateBearerToken } from '../server/auth-session';
 
 const CONVEX_SITE_URL =
@@ -45,7 +50,7 @@ export default async function handler(
       headers: {
         ...cors,
         'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, Idempotency-Key',
       },
     });
   }
@@ -63,6 +68,8 @@ export default async function handler(
   if (!session.valid || !session.userId) {
     return json({ error: 'Unauthorized' }, 401, cors);
   }
+
+  const idempotencyRequest = req.clone();
 
   // Parse request body
   let body: {
@@ -82,8 +89,27 @@ export default async function handler(
     return json({ error: 'productId is required' }, 400, cors);
   }
 
+  const idempotencyKey = getIdempotencyKey(req);
+  const idempotency = idempotencyKey
+    ? await beginStandaloneIdempotency({
+      request: idempotencyRequest,
+      pathname: '/api/create-checkout',
+      scope: `user:${session.userId}`,
+      idempotencyKey,
+      corsHeaders: cors,
+      completedTtlSeconds: 10 * 60,
+    })
+    : null;
+  if (
+    idempotency &&
+    idempotency.kind !== 'proceed' &&
+    idempotency.kind !== 'disabled'
+  ) {
+    return idempotency.response;
+  }
+
   if (!CONVEX_SITE_URL || !RELAY_SHARED_SECRET) {
-    return json({ error: 'Service unavailable' }, 503, cors);
+    return completeStandaloneIdempotency(idempotency, json({ error: 'Service unavailable' }, 503, cors));
   }
 
   // Relay to Convex
@@ -118,20 +144,20 @@ export default async function handler(
         // to ACTIVE_SUBSCRIPTION_EXISTS would silently misroute a PAYMENT_IN_PROGRESS
         // (or any future) block to the wrong dialog — so fall back to a generic
         // code that the client classifies as a neutral block, not a duplicate sub.
-        return json({
+        return completeStandaloneIdempotency(idempotency, json({
           error: data?.error ?? 'CHECKOUT_BLOCKED',
           message: data?.message ?? 'This checkout could not be started.',
           subscription: data?.subscription,
           pendingPayment: data?.pendingPayment,
-        }, 409, cors);
+        }, 409, cors));
       }
-      return json({ error: data?.error || 'Checkout creation failed' }, 502, cors);
+      return completeStandaloneIdempotency(idempotency, json({ error: data?.error || 'Checkout creation failed' }, 502, cors));
     }
 
-    return json(data, 200, cors);
+    return completeStandaloneIdempotency(idempotency, json(data, 200, cors));
   } catch (err) {
     console.error('[create-checkout] Relay failed:', (err as Error).message);
     captureSilentError(err, { tags: { route: 'api/create-checkout', step: 'relay' }, ctx });
-    return json({ error: 'Checkout service unavailable' }, 502, cors);
+    return completeStandaloneIdempotency(idempotency, json({ error: 'Checkout service unavailable' }, 502, cors));
   }
 }

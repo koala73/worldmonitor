@@ -67,7 +67,7 @@ npx @openapitools/openapi-generator-cli generate \
   -i worldmonitor.openapi.yaml -g typescript-fetch -o ./client
 ```
 
-The bundled spec covers all 34 services in a single document, so one codegen pass produces typed clients for everything.
+The bundled spec covers all 35 services in a single document, so one codegen pass produces typed clients for everything. Prefer a maintained package over codegen? [Official SDKs](/sdks) exist for Python, Ruby, Go, and JavaScript.
 
 ### Connect an MCP client to live data
 
@@ -90,7 +90,7 @@ Or skip the manual flow entirely — most clients (Claude Desktop, claude.ai, Cu
 https://worldmonitor.app/mcp
 ```
 
-See [MCP Server](/mcp-server) for client-specific config snippets.
+See [MCP Server](/mcp-overview) for client-specific config snippets.
 
 ### Server-side with a direct API key
 
@@ -114,11 +114,11 @@ The point isn't novelty — RFCs 8414, 8288, 9727, 9728 are old. The point is th
 - Discover the API without reading our docs.
 - Authenticate without us telling it which OAuth flow we use.
 - Pick the right transport (REST vs MCP) based on its own preferences.
-- Stay current — when we ship a new service, the bundled `/openapi.yaml` and the api-catalog reflect it on the next deploy. No version pinning, no client SDK release cycle.
+- Stay current — when we ship a new service, the bundled `/openapi.yaml` and the api-catalog reflect it on the next deploy. No version pinning, no waiting on an SDK release cycle (though [official SDKs](/sdks) exist when a maintained package fits better).
 
 ## Related
 
-- [MCP Server](/mcp-server) — full client setup (Claude Desktop, Cursor, claude.ai, MCP Inspector, Claude Code)
+- [MCP Server](/mcp-overview) — full client setup (Claude Desktop, Cursor, claude.ai, MCP Inspector, Claude Code)
 - [API Reference](/api-reference) — human-readable service catalog and MCP→REST tool mapping
 - [Authentication](/usage-auth) — browser, API key, and OAuth modes
 - [Quickstart](/usage-quickstart) — first call in under a minute

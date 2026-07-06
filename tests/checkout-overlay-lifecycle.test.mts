@@ -158,6 +158,13 @@ const stubSources: Record<string, string> = {
     export const getClerkToken = async () => 'tok_test';
     export const openSignIn = () => {};
   `,
+  // Funnel analytics (#4931): checkout.ts fires trackCheckoutStart on entry.
+  // Stubbed so the real analytics module (which imports billing/clerk exports
+  // these stubs don't provide) stays out of the bundle; the facade's own
+  // behavior is covered by tests/secondary-startup.test.mts.
+  './analytics': `
+    export const trackCheckoutStart = () => {};
+  `,
   './auth-state': `
     export const subscribeAuthState = () => () => {};
   `,

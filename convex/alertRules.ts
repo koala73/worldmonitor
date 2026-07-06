@@ -662,7 +662,16 @@ export const getDigestRules = internalQuery({
   },
 });
 
-export const getByEnabled = query({
+// INTERNAL ONLY — GHSA-r649-4cqj-w93h. This scans the `by_enabled` index and
+// returns rows across EVERY user with no per-caller scope, so it must never be
+// a public `query()`: that surface is reachable by any anonymous client that
+// knows the (non-secret) deployment URL, leaking all users' watchlists +
+// Clerk subjects. Service consumers reach it via `ctx.runQuery` behind the
+// shared-secret `/relay/enabled-rules` HTTP action (convex/http.ts), or via a
+// deploy-key-authenticated `npx convex run` (the migration scripts). Sibling
+// `getAlertRules` may stay public because it gates on getUserIdentity() + the
+// `by_user` index; this one cannot.
+export const getByEnabled = internalQuery({
   args: { enabled: v.boolean() },
   handler: async (ctx, args) => {
     return await ctx.db

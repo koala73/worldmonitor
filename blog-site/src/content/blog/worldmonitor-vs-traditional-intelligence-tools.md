@@ -158,7 +158,7 @@ Every scoring algorithm is auditable. Every data source is documented. Every API
 
 - **Security teams** can verify there are no backdoors or data exfiltration
 - **Researchers** can reproduce and cite the scoring methodologies
-- **Developers** can build custom integrations using the 34 typed API services
+- **Developers** can build custom integrations using the 35 typed API services
 - **Organizations** can self-host for complete control. See the [Developer API and Open Source guide](/blog/posts/build-on-worldmonitor-developer-api-open-source/) for integration details.
 
 The AGPL-3.0 license ensures that improvements to the core platform benefit everyone. Forks must also be open source. The commons stays common.

@@ -10,14 +10,27 @@ servers:
 paths:
     /api/scenario/v1/run-scenario:
         post:
+            parameters:
+                - name: Idempotency-Key
+                  in: header
+                  description: Optional client-generated idempotency key. Retrying a POST with the same key and an identical request body replays the original response (only the status, body, and Content-Type are reproduced) instead of re-executing; reusing the key with a different body is rejected with 422. For mutations this avoids duplicating the side effect, while for batch-read POSTs it replays a cached snapshot that can be up to 24 hours stale. Keys are scoped per authenticated caller (falling back to the source IP for unauthenticated endpoints) and retained for 24 hours.
+                  required: false
+                  example: "4f8b9c2e-1a3d-4b6f-8e0a-2c5d7f9b1e34"
+                  schema:
+                    type: string
+                    minLength: 1
+                    maxLength: 255
+                    pattern: "^[\\x21-\\x7E]{1,255}$"
             tags:
                 - ScenarioService
             summary: RunScenario
             description: |-
                 RunScenario enqueues a scenario job on scenario-queue:pending. PRO-gated.
+                 Async job pattern: a successful enqueue returns HTTP 202 Accepted with a
+                 Location header pointing at GetScenarioStatus; poll it (or the statusUrl
+                 body field) with the returned jobId until status is "done" or "failed".
                  The scenario-worker (scripts/scenario-worker.mjs) pulls jobs off the
-                 queue via BLMOVE and writes results under scenario-result:{job_id}.
-                Requires entitlement tier >= 1.
+                 queue via BLMOVE and writes results under scenario-result:{job_id}. Requires entitlement tier >= 1.
             operationId: RunScenario
             security:
                 - WorldMonitorKey: []
@@ -33,22 +46,89 @@ paths:
                             $ref: '#/components/schemas/RunScenarioRequest'
                 required: true
             responses:
-                "200":
-                    description: Successful response
+                "202":
+                    description: Accepted — scenario job enqueued. The body carries the job id (jobId), the initial status (always pending) and a poll URL (statusUrl); the Location header points at the same GetScenarioStatus endpoint. Poll it until status is done or failed.
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key echoed from the request. Present only when the client opted into idempotency.
+                        Idempotent-Replayed:
+                            schema:
+                                type: boolean
+                            description: true when this response was replayed from an earlier request with the same key, false on the first (original) request. Present only when the client opted into idempotency.
+                        Location:
+                            schema:
+                                type: string
+                            description: Relative URL of the job-status poll endpoint for this job (same value as the statusUrl body field).
+                            example: "/api/scenario/v1/get-scenario-status?jobId=scenario%3A1717200000000%3Aabcd1234"
                     content:
                         application/json:
                             example:
                                 "jobId": "scenario:1717200000000:abcd1234"
-                                "status": "example"
-                                "statusUrl": "https://example.com/worldmonitor"
+                                "status": "pending"
+                                "statusUrl": "/api/scenario/v1/get-scenario-status?jobId=scenario%3A1717200000000%3Aabcd1234"
                             schema:
                                 $ref: '#/components/schemas/RunScenarioResponse'
                 "400":
-                    description: Validation error
+                    description: Validation error, invalid Idempotency-Key header, or malformed JSON request body
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - type: object
+                                      required:
+                                        - error
+                                        - message
+                                      properties:
+                                        error:
+                                            type: string
+                                        message:
+                                            type: string
+                                    - $ref: '#/components/schemas/InvalidRequestBodyError'
+                "409":
+                    description: A request with this Idempotency-Key is still being processed
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                        Retry-After:
+                            schema:
+                                type: string
+                            description: Seconds to wait before retrying the in-flight request.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
+                "422":
+                    description: The Idempotency-Key was already used with a different request body
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
                 "401":
                     description: Missing or invalid API key.
                     content:
@@ -61,12 +141,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/scenario/v1/get-scenario-status:
         get:
             tags:
@@ -75,8 +182,7 @@ paths:
             description: |-
                 GetScenarioStatus polls a single job's result. PRO-gated.
                  Returns status="pending" when no result key exists, mirroring the
-                 worker's lifecycle state once the key is written.
-                Requires entitlement tier >= 1.
+                 worker's lifecycle state once the key is written. Requires entitlement tier >= 1.
             operationId: GetScenarioStatus
             security:
                 - WorldMonitorKey: []
@@ -93,26 +199,33 @@ paths:
                   schema:
                     type: string
                     pattern: '^scenario:[0-9]{13}:[a-z0-9]{8}$'
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
                             example:
-                                "error": "example"
                                 "result":
                                     "affectedChokepointIds":
-                                        - "suez"
+                                        - "hormuz_strait"
                                     "template":
-                                        "costShockMultiplier": 75.25
-                                        "disruptionPct": 1
-                                        "durationDays": 7
-                                        "name": "WorldMonitor Analyst"
+                                        "costShockMultiplier": 2.1
+                                        "disruptionPct": 100
+                                        "durationDays": 14
+                                        "name": "hormuz_strait"
                                     "topImpactCountries":
-                                        - "impactPct": 1
+                                        - "impactPct": 100
                                           "iso2": "US"
-                                          "totalImpact": 1
-                                "status": "example"
+                                          "totalImpact": 42.5
+                                "status": "done"
                             schema:
                                 $ref: '#/components/schemas/GetScenarioStatusResponse'
                 "400":
@@ -120,7 +233,9 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
                 "401":
                     description: Missing or invalid API key.
                     content:
@@ -133,12 +248,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/scenario/v1/list-scenario-templates:
         get:
             tags:
@@ -148,6 +290,15 @@ paths:
                 ListScenarioTemplates returns the catalog of pre-defined scenarios.
                  Not PRO-gated — used by documented public API consumers.
             operationId: ListScenarioTemplates
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
@@ -169,7 +320,9 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
                 "401":
                     description: Missing or invalid API key.
                     content:
@@ -182,12 +335,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
 components:
     securitySchemes:
         WorldMonitorKey:
@@ -205,6 +385,21 @@ components:
             scheme: bearer
             description: 'Bearer token: a Clerk-issued JWT for browser session flows, passed as Authorization: Bearer <token>.'
     schemas:
+        JmespathProjectionError:
+            description: Returned when a REST jmespath projection is invalid or exceeds the expression/output byte limits.
+            properties:
+                _jmespath_error:
+                    description: Projection error discriminator and details.
+                    type: string
+                original_keys:
+                    description: Top-level keys or shape of the unprojected response.
+                    items:
+                        type: string
+                    type: array
+            required:
+                - _jmespath_error
+                - original_keys
+            type: object
         UnauthorizedError:
             type: object
             properties:
@@ -221,6 +416,36 @@ components:
                     type: string
                     description: Error message (e.g., 'user not found', 'database connection failed')
             description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        InvalidRequestBodyError:
+            type: object
+            description: Returned when a JSON POST request body is empty or malformed.
+            properties:
+                message:
+                    type: string
+                    description: Invalid request body
+            required:
+                - message
+        GatewayError:
+            type: object
+            description: Returned by gateway infrastructure errors before an RPC handler runs, such as origin, routing, method, authentication, or quota checks.
+            properties:
+                error:
+                    oneOf:
+                        - type: string
+                        - type: object
+                          additionalProperties: true
+                    description: Gateway error reason or structured gateway failure details.
+            required:
+                - error
+        RateLimitError:
+            type: object
+            description: Returned when a gateway or handler rate limit rejects the request.
+            properties:
+                error:
+                    type: string
+                    description: Human-readable rate-limit failure reason.
+            required:
+                - error
         ForbiddenError:
             type: object
             properties:
@@ -305,13 +530,14 @@ components:
                 RunScenarioResponse carries the enqueued job id. Clients poll
                  GetScenarioStatus with this id until status != "pending".
 
-                 NOTE: the legacy (pre-sebuf) endpoint returned HTTP 202 Accepted on
-                 enqueue; the sebuf-generated server emits 200 OK for all successful
-                 responses (no per-RPC status-code configuration is available in the
-                 current sebuf HTTP annotations). The 202 → 200 shift on a same-version
-                 (v1 → v1) migration is called out in docs/api-scenarios.mdx and the
-                 OpenAPI bundle; external consumers keying off `response.status === 202`
-                 need to branch on response body shape instead.
+                 NOTE: a successful enqueue returns HTTP 202 Accepted with a Location
+                 header pointing at GetScenarioStatus — the legacy (pre-sebuf) contract,
+                 restored. The sebuf-generated server still emits 200 for every success
+                 (no per-RPC status-code annotation exists), so the gateway upgrades the
+                 status via the setSuccessStatusOverride side-channel
+                 (server/_shared/response-headers.ts). Treat any 2xx as success; the
+                 interim guidance to branch on response body shape instead of the status
+                 code remains valid.
         GetScenarioStatusRequest:
             type: object
             properties:

@@ -32,6 +32,7 @@ const {
   postJsonWithPinnedAddress,
 } = require('./lib/notification-webhook-ssrf.cjs');
 const { callLLM } = require('./lib/llm-chain.cjs');
+const { flushPendingLlmEvents } = require('./lib/llm-telemetry.cjs');
 const { fetchUserPreferences, extractUserContext, formatUserProfile } = require('./lib/user-context.cjs');
 const { fetchFollowedCountries } = require('./lib/followed-countries-fetch.cjs');
 const { Resend } = require('resend');
@@ -69,6 +70,10 @@ import {
   leadGroundsAgainstStory,
 } from './lib/brief-llm.mjs';
 import { parseDigestOnlyUser } from './lib/digest-only-user.mjs';
+import {
+  resolveNonDueSynthesisReuse,
+  DEFAULT_NONDUE_SYNTHESIS_REUSE_MIN,
+} from './lib/brief-synthesis-reuse.mjs';
 import { assertBriefEnvelope } from '../server/_shared/brief-render.js';
 import { signBriefUrl, BriefUrlError } from './lib/brief-url-sign.mjs';
 import {
@@ -190,6 +195,15 @@ const BRIEF_SIGNING_SECRET_MISSING =
 // toggled independently (e.g. kill the brief LLM without silencing
 // the email's AI summary during a provider outage).
 const BRIEF_LLM_ENABLED = process.env.BRIEF_LLM_ENABLED !== '0';
+// #4917: freshness budget for reusing the prior envelope's prose on
+// non-due compose ticks (minutes; 0 disables reuse and restores the
+// pre-#4917 synthesize-every-tick behavior). Due ticks always
+// synthesize fresh regardless of this setting.
+const NONDUE_SYNTHESIS_REUSE_MS = (() => {
+  const raw = Number.parseInt(process.env.DIGEST_NONDUE_SYNTHESIS_REUSE_MIN ?? '', 10);
+  const minutes = Number.isFinite(raw) && raw >= 0 ? raw : DEFAULT_NONDUE_SYNTHESIS_REUSE_MIN;
+  return minutes * 60_000;
+})();
 
 // Free-tier follow limit (PR C / U10). Mirrors the UI cap at
 // `src/components/FollowCountryButton.ts` and the server-side mutation
@@ -319,6 +333,25 @@ const briefLlmDeps = {
 };
 
 // ── Redis helpers ──────────────────────────────────────────────────────────────
+
+/**
+ * #4917: read the user's most recent stored brief envelope via the
+ * latest-pointer. Returns null on any miss/parse failure — callers treat
+ * null as "no prior envelope" and pay a fresh synthesis.
+ */
+async function fetchLatestBriefEnvelope(userId) {
+  try {
+    const rawPtr = await upstashRest('GET', `brief:latest:${userId}`);
+    if (typeof rawPtr !== 'string' || rawPtr.length === 0) return null;
+    const ptr = JSON.parse(rawPtr);
+    if (!ptr || typeof ptr.issueSlot !== 'string' || ptr.issueSlot.length === 0) return null;
+    const rawEnv = await upstashRest('GET', `brief:${userId}:${ptr.issueSlot}`);
+    if (typeof rawEnv !== 'string' || rawEnv.length === 0) return null;
+    return JSON.parse(rawEnv);
+  } catch {
+    return null;
+  }
+}
 
 async function upstashRest(...args) {
   const res = await fetch(`${UPSTASH_URL}/${args.map(encodeURIComponent).join('/')}`, {
@@ -1804,8 +1837,8 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
   let synthesis = null;
   let publicLead = null;
   let synthesisLevel = 3;  // pessimistic default; bumped on success
+  let synthesisReused = false;
   if (BRIEF_LLM_ENABLED) {
-    const ctx = await buildSynthesisCtx(winner.rule, nowMs);
     // Synthesis-boundary adapter. `winnerStories` is the raw
     // buildDigest pool ({ title, severity, sources }); the synthesis
     // path (buildDigestPrompt / checkLeadGrounding / hashDigestInput)
@@ -1818,42 +1851,75 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
     // `winnerStories` (digestStoryToUpstreamTopStory expects the raw
     // shape). See plan 2026-05-14-001 F2 / Phase 2.
     const synthesisStories = winnerStories.map(digestStoryToSynthesisShape);
-    const result = await runSynthesisWithFallback(
-      userId,
-      synthesisStories,
-      sensitivity,
-      ctx,
-      briefLlmDeps,
-      (level, kind, err) => {
-        if (kind === 'throw') {
-          console.warn(
-            `[digest] brief: synthesis L${level} threw for ${userId} — falling to L${level + 1}:`,
-            err?.message,
-          );
-        } else if (kind === 'success' && level === 2) {
-          console.log(`[digest] synthesis level=2_degraded user=${userId}`);
-        } else if (kind === 'success' && level === 3) {
-          console.log(`[digest] synthesis level=3_stub user=${userId}`);
-        }
-      },
-    );
-    synthesis = result.synthesis;
-    synthesisLevel = result.level;
-    // Public synthesis — parallel call. Profile-stripped; cache-
-    // shared across all users for the same (date, sensitivity,
-    // story-pool). Captures the FULL prose object (lead + signals +
-    // threads) since each personalised counterpart in the envelope
-    // can carry profile bias and the public surface needs sibling
-    // safe-versions of all three. Failure is non-fatal — the
-    // renderer's public-mode fail-safes (omit pull-quote / omit
-    // signals page / category-derived threads stub) handle absence
-    // rather than leaking the personalised version. Same adapted
-    // pool as the personalised synthesis.
-    try {
-      const pub = await generateDigestProsePublic(synthesisStories, sensitivity, briefLlmDeps);
-      if (pub) publicLead = pub;  // { lead, threads, signals, rankedStoryHashes }
-    } catch (err) {
-      console.warn(`[digest] brief: publicLead generation failed for ${userId}:`, err?.message);
+
+    // #4917: on a non-due tick the compose only refreshes the dashboard
+    // preview — nothing is delivered — so a young prior envelope's prose
+    // can stand in for the paid synthesis + public-lead calls, provided
+    // it still grounds against the CURRENT pool (pool rotation or an L3
+    // stub lead fails the gate and pays a fresh generation). Due ticks
+    // never enter this branch: delivered digests are always fresh
+    // (`winner.due` is preferred by pickWinningCandidateWithPool, so a
+    // due candidate with stories is always the winner).
+    if (!winner.due && NONDUE_SYNTHESIS_REUSE_MS > 0) {
+      const prior = await fetchLatestBriefEnvelope(userId);
+      const decision = resolveNonDueSynthesisReuse(prior, {
+        nowMs,
+        maxAgeMs: NONDUE_SYNTHESIS_REUSE_MS,
+        currentStories: synthesisStories,
+      });
+      if (decision.reuse) {
+        synthesis = decision.synthesis;
+        publicLead = decision.publicLead;
+        synthesisLevel = 1;
+        synthesisReused = true;
+        console.log(
+          `[digest] synthesis reused user=${userId} ` +
+            `age_min=${Math.round(decision.ageMs / 60_000)} public=${publicLead ? 1 : 0}`,
+        );
+      } else if (decision.reason !== 'no_prior_envelope') {
+        console.log(`[digest] synthesis reuse declined user=${userId} reason=${decision.reason}`);
+      }
+    }
+
+    if (!synthesisReused) {
+      const ctx = await buildSynthesisCtx(winner.rule, nowMs);
+      const result = await runSynthesisWithFallback(
+        userId,
+        synthesisStories,
+        sensitivity,
+        ctx,
+        briefLlmDeps,
+        (level, kind, err) => {
+          if (kind === 'throw') {
+            console.warn(
+              `[digest] brief: synthesis L${level} threw for ${userId} — falling to L${level + 1}:`,
+              err?.message,
+            );
+          } else if (kind === 'success' && level === 2) {
+            console.log(`[digest] synthesis level=2_degraded user=${userId}`);
+          } else if (kind === 'success' && level === 3) {
+            console.log(`[digest] synthesis level=3_stub user=${userId}`);
+          }
+        },
+      );
+      synthesis = result.synthesis;
+      synthesisLevel = result.level;
+      // Public synthesis — parallel call. Profile-stripped; cache-
+      // shared across all users for the same (date, sensitivity,
+      // story-pool). Captures the FULL prose object (lead + signals +
+      // threads) since each personalised counterpart in the envelope
+      // can carry profile bias and the public surface needs sibling
+      // safe-versions of all three. Failure is non-fatal — the
+      // renderer's public-mode fail-safes (omit pull-quote / omit
+      // signals page / category-derived threads stub) handle absence
+      // rather than leaking the personalised version. Same adapted
+      // pool as the personalised synthesis.
+      try {
+        const pub = await generateDigestProsePublic(synthesisStories, sensitivity, briefLlmDeps);
+        if (pub) publicLead = pub;  // { lead, threads, signals, rankedStoryHashes }
+      } catch (err) {
+        console.warn(`[digest] brief: publicLead generation failed for ${userId}:`, err?.message);
+      }
     }
   }
 
@@ -2991,6 +3057,9 @@ async function main() {
       sentCount,
       errorReason: `brief_compose_failed:${composeFailed}:success:${composeSuccess}`,
     });
+    // process.exit does not drain in-flight promises — flush fire-and-forget
+    // llm_call telemetry first (bounded by the 1.5s fetch timeout).
+    await flushPendingLlmEvents();
     process.exit(1);
   }
 
@@ -3006,5 +3075,6 @@ main().catch(async (err) => {
     status: 'error',
     errorReason: `fatal:${err?.message ?? err}`,
   });
+  await flushPendingLlmEvents();
   process.exit(1);
 });

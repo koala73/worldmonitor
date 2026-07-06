@@ -33,6 +33,8 @@ export const PricingTeaser = () => (
           </ul>
           <a
             href={`${DASHBOARD_PATH}?ref=welcome-pricing-free`}
+            data-umami-event="welcome-cta"
+            data-umami-event-target="welcome-pricing-free"
             className="inline-flex items-center justify-center gap-2 bg-wm-green text-wm-bg px-5 py-2.5 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors"
           >
             {t('welcome.nav.launch')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
@@ -59,6 +61,8 @@ export const PricingTeaser = () => (
           </ul>
           <a
             href="/pro#pricing"
+            data-umami-event="welcome-cta"
+            data-umami-event-target="welcome-pricing-pro"
             className="inline-flex items-center justify-center gap-2 bg-wm-green text-wm-bg px-5 py-2.5 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors"
           >
             {t('welcome.pricing.cta')} <ArrowRight className="w-3 h-3" aria-hidden="true" />

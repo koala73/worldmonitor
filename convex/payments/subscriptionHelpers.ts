@@ -746,8 +746,21 @@ export async function handleSubscriptionOnHold(
 
   if (!isNewerEvent(existing.updatedAt, eventTimestamp)) return;
 
+  // Episode anchor (#4932): only the transition INTO on_hold opens a new
+  // dunning episode. Repeated on_hold webhooks (Dodo payment-retry failures,
+  // replays) keep the original anchor so the day-3/day-7 clock doesn't reset
+  // and the day-0 email isn't re-sent. For pre-#4932 rows already on_hold
+  // with no onHoldAt, the fallback MUST be the pre-patch updatedAt — that is
+  // exactly what runDunningScan uses as their episode key, so the ledger
+  // dedup stays consistent. Falling back to eventTimestamp would move the
+  // anchor on every repeat webhook and re-open the finished sequence
+  // (duplicate day-3/day-7 sends — PR #4935 review finding 1).
+  const enteringHold = existing.status !== "on_hold";
+  const onHoldAt = enteringHold ? eventTimestamp : (existing.onHoldAt ?? existing.updatedAt);
+
   await ctx.db.patch(existing._id, {
     status: "on_hold",
+    onHoldAt,
     dodoCustomerId: mergeDodoCustomerId(data, existing),
     rawPayload: data,
     updatedAt: eventTimestamp,
@@ -757,6 +770,22 @@ export async function handleSubscriptionOnHold(
     `[subscriptionHelpers] Subscription ${data.subscription_id} on hold -- payment failure`,
   );
   // Do NOT revoke entitlements -- they remain valid until currentPeriodEnd
+
+  // Day-0 dunning email (#4932), same non-blocking scheduler pattern as the
+  // welcome email. The action re-validates state (still on_hold, same
+  // episode, not suppressed, not already sent) before sending, so scheduling
+  // here is safe even if a recovery webhook lands in between.
+  if (enteringHold && process.env.RESEND_API_KEY) {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.payments.subscriptionEmails.sendDunningEmail,
+      {
+        dodoSubscriptionId: data.subscription_id,
+        step: "dunning_day0",
+        episodeAt: onHoldAt,
+      },
+    );
+  }
 }
 
 /**
@@ -785,9 +814,21 @@ export async function handleSubscriptionCancelled(
 
   if (!isNewerEvent(existing.updatedAt, eventTimestamp)) return;
 
-  const cancelledAt = data.cancelled_at
+  // Episode anchor (#4932, PR #4935 review round 4): only the transition
+  // INTO cancelled opens a new cancellation episode. Repeat cancellation-
+  // flavored events (`subscription.updated` with status="cancelled" routes
+  // here too, often WITHOUT a stable cancelled_at) must not move the
+  // anchor — the winback ledger is keyed on it, so a moved anchor reopens
+  // the one-shot winback and emails the same cancellation twice. A real
+  // new episode (cancelled → active → cancelled) passes through a
+  // non-cancelled status first, so enteringCancelled correctly re-anchors.
+  const enteringCancelled = existing.status !== "cancelled";
+  const eventCancelledAt = data.cancelled_at
     ? toEpochMs(data.cancelled_at, "cancelled_at", eventTimestamp)
     : eventTimestamp;
+  const cancelledAt = enteringCancelled
+    ? eventCancelledAt
+    : (existing.cancelledAt ?? eventCancelledAt);
 
   await ctx.db.patch(existing._id, {
     status: "cancelled",

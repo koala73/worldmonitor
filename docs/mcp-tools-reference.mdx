@@ -3,7 +3,7 @@ title: "MCP Tools Reference"
 description: "Per-tool reference for every MCP tool exposed by WorldMonitor — parameters, freshness, API endpoints, and example calls."
 ---
 
-Complete reference for every MCP tool. Use this alongside the [MCP Server overview](/mcp-server) (connection, auth, plans, errors).
+Complete reference for every MCP tool. Use this alongside the [MCP Server overview](/mcp-overview) (connection, auth, plans, errors).
 
 Every tool returns the standard MCP content-block format:
 
@@ -16,7 +16,7 @@ Cache-backed tools (the majority) include `cached_at` (ISO timestamp) and `stale
 The `curl` examples below all assume you've exported your API key:
 
 ```bash
-export WM_KEY="wm_0123456789abcdef0123456789abcdef01234567"  # or use the OAuth bearer token instead — see /mcp-server#authentication
+export WM_KEY="wm_0123456789abcdef0123456789abcdef01234567"  # or use the OAuth bearer token instead — see /mcp-overview#authentication
 ```
 
 If you've completed the OAuth flow instead, replace `-H "X-WorldMonitor-Key: $WM_KEY"` with `-H "Authorization: Bearer $TOKEN"` in each example.
@@ -27,7 +27,7 @@ If you've completed the OAuth flow instead, replace `-H "X-WorldMonitor-Key: $WM
 
 ## Discovering tools
 
-Before diving into the per-tool reference, two affordances make discovery cheaper than reading this page top-to-bottom. If you are starting from a REST route instead of a tool name, use the [API coverage table](/mcp-server#api-coverage); per-tool **API endpoints** lines mean exact `_apiPaths` declarations, while `none directly` means the tool returns data without claiming an equivalent REST route.
+Before diving into the per-tool reference, two affordances make discovery cheaper than reading this page top-to-bottom. If you are starting from a REST route instead of a tool name, use the [API coverage table](/mcp-overview#api-coverage); per-tool **API endpoints** lines mean exact `_apiPaths` declarations, while `none directly` means the tool returns data without claiming an equivalent REST route.
 
 ### `describe_tool` — full uncompressed definition on demand
 

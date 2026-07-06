@@ -307,6 +307,8 @@ function claims(s) {
     { file: 'README.md', re: /Protocol Buffers \((\d+)\s+protos/, value: s.protoFiles },
     { file: 'README.md', re: /(\d+)\s+services\)/, value: s.protoServices },
     { file: 'README.md', re: /(\d+)\s+languages/, value: s.locales },
+    { file: 'public/llms.txt', re: /(\d+)\s+languages with RTL support/, value: s.locales },
+    { file: 'public/llms-full.txt', re: /(\d+)\s+languages with RTL support/, value: s.locales },
     { file: 'README.md', re: /(\d+)\+\s+curated news feeds/, value: s.feedDefinitions, min: true },
     { file: 'README.md', re: /(\d+)\s+stock exchanges/, value: s.stockExchangeCount },
     { file: 'docs/overview.mdx', re: /(\d+)\+\s+curated news feeds/, value: s.feedDefinitions, min: true },
@@ -347,7 +349,7 @@ function claims(s) {
     { file: 'docs/features.mdx', re: /(\d+)\s+data layers/, value: s.layerDefinitions },
 
     { file: 'docs/agent-discovery.mdx', re: /all (\d+)\s+services/, value: s.protoServices },
-    { file: 'docs/api-reference.mdx', re: /all (\d+)\s+services/, value: s.protoServices },
+    { file: 'docs/api-reference.mdx', re: /all (\d+)\s+generated services/, value: s.protoServices },
 
     { file: 'docs/data-sources.mdx', re: /monitors (\d+)\s+data sources/, value: s.freshnessSources },
     { file: 'docs/data-sources.mdx', re: /across (\d+)\s+monitored airports/, value: s.airportCount },

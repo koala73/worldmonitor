@@ -31,6 +31,36 @@ describe('cors helper', () => {
     });
     const headers = getCorsHeaders(req);
     assert.equal(headers['Access-Control-Allow-Origin'], 'https://worldmonitor.app');
+    assert.match(
+      headers['Access-Control-Allow-Headers'],
+      /(?:^|,\s*)Idempotency-Key(?:,|$)/,
+      'browser clients must be allowed to send Idempotency-Key on POST preflights',
+    );
+    assert.match(
+      headers['Access-Control-Expose-Headers'],
+      /(?:^|,\s*)Idempotency-Key(?:,|$)/,
+      'browser clients must be able to read echoed Idempotency-Key',
+    );
+    assert.match(
+      headers['Access-Control-Expose-Headers'],
+      /(?:^|,\s*)Idempotent-Replayed(?:,|$)/,
+      'browser clients must be able to read idempotent replay status',
+    );
+    assert.match(
+      headers['Access-Control-Expose-Headers'],
+      /(?:^|,\s*)X-RateLimit-Limit(?:,|$)/,
+      'browser clients must be able to read rate-limit ceilings',
+    );
+    assert.match(
+      headers['Access-Control-Expose-Headers'],
+      /(?:^|,\s*)X-RateLimit-Remaining(?:,|$)/,
+      'browser clients must be able to read remaining rate-limit budget',
+    );
+    assert.match(
+      headers['Access-Control-Expose-Headers'],
+      /(?:^|,\s*)X-RateLimit-Reset(?:,|$)/,
+      'browser clients must be able to read rate-limit reset timestamps',
+    );
   });
 
   it('propagates exceptions (caller must wrap in fail-closed try/catch)', () => {

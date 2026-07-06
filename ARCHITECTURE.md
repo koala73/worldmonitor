@@ -69,6 +69,8 @@ World Monitor is a real-time global intelligence dashboard built as a TypeScript
 
 **Source files**: `vercel.json`, `docker/Dockerfile`, `scripts/ais-relay.cjs`, `consumer-prices-core/Dockerfile`, `workers/api-cors-preflight/wrangler.toml`, `convex/schema.ts`, `src-tauri/tauri.conf.json`
 
+**Cloudflare zone config (dashboard-managed, NOT in this repo):** the apex `worldmonitor.app` → `www` 301 is a Cloudflare Dynamic Redirect rule ("apex to www (exclude agent-discoverable paths)") whose exemption list is load-bearing: `/.well-known/*`, `/robots.txt`, `/security.txt`, `/mcp`, `/mcp/*`, and `/oauth/*` are served on the apex, never redirected. Dropping the `/mcp*` exemptions breaks every apex-URL MCP client; dropping `/oauth/*` re-breaks OAuth dynamic client registration — a redirected POST becomes a GET and dies with 405 (issue #4938). When editing the rule, mind expression precedence: `and` binds tighter than `or`, so a new exemption must be added as its own `or` term **inside** the `not (…)` group (appending `and not …` after the last term is a silent no-op). `mcp-live-smoke.yml` probes the MCP/OAuth members of this list (`/mcp`, `/.well-known/oauth-authorization-server`, and the OAuth endpoints it declares) every 6 hours and fails on the redirect fingerprint; the `robots.txt` / `security.txt` exemptions are crawler-facing and have no automated probe.
+
 ---
 
 ## 3. Frontend Architecture
@@ -364,6 +366,7 @@ Runs before every `git push`:
 | `proto-check.yml` | PR (proto changes) | Generated code matches committed output |
 | `pro-bundle-freshness.yml` | PR (pro bundle changes) | Committed pro data bundle artifacts are fresh |
 | `feed-validation.yml` | PR (feed changes), daily cron | RSS feed reachability and validation |
+| `mcp-live-smoke.yml` | 6-hourly cron, push to main (smoke paths), manual | Anonymous strict-client walk of the production MCP surface on apex + www (capability walk, auth wall, OAuth endpoint routing — #4937/#4938 regression net) |
 | `security-audit.yml` | PR, push to main, daily cron, manual | Production dependency audits for every tracked `package-lock.json` workspace, failing on unbaselined high/critical advisories |
 | `contributor-trust.yml` | PR | Gates untrusted first-time-contributor runs |
 | `deploy-gate.yml` | After Test/Typecheck/Security Audit complete | Aggregates required smoke-gate statuses onto the head SHA for branch protection |
@@ -371,6 +374,10 @@ Runs before every `git push`:
 | `deploy-worker.yml` | Push to main (worker paths), manual | Deploys the `api-cors-preflight` Cloudflare Worker |
 | `build-desktop.yml` | Release tag, push, manual | Multi-platform Tauri build, code signing (macOS), AppImage library stripping (Linux), smoke test |
 | `docker-publish.yml` | Release, manual | Multi-arch image (amd64, arm64) pushed to GHCR |
+| `publish-cli.yml` | `cli-v*` tag, manual | Tests and publishes the `worldmonitor` npm CLI (`cli/`) via OIDC trusted publishing (no token) with provenance |
+| `publish-python.yml` | `py-v*` tag, manual | Tests and publishes the `worldmonitor-sdk` PyPI package (`sdk/python/`) via OIDC trusted publishing (no token) with attestations |
+| `publish-ruby.yml` | `gem-v*` tag, manual | Tests and publishes the `worldmonitor` gem (`sdk/ruby/`) via RubyGems OIDC trusted publishing (no token) |
+| `publish-go.yml` | `sdk/go/v*` tag, manual | Vets/tests the Go SDK module (`sdk/go/`) at the tag and warms proxy.golang.org so the version is go-gettable and indexed on pkg.go.dev |
 | `test-linux-app.yml` | Manual | Linux AppImage build + headless smoke test with screenshot verification |
 
 **Source files**: `.github/workflows/`, `.husky/pre-push`. The workflow list is CI-checked against `.github/workflows/*.yml` by `npm run docs:check` — a new workflow file must be added to this table.
@@ -385,6 +392,7 @@ Runs before every `git push`:
 │   ├── _*.js               Shared helpers (CORS, rate-limit, API key, relay, Sentry, session)
 │   └── <domain>/           Domain endpoints (aviation/, climate/, conflict/, ...)
 ├── blog-site/              Static blog (built into public/blog/)
+├── cli/                    Official `worldmonitor` npm CLI (zero-dep ESM, MCP-first; published via cli-v* tag)
 ├── consumer-prices-core/   Consumer-price collection service (Playwright scrapers, per-country baskets; Railway/Docker)
 ├── convex/                 Convex backend (contact form, waitlist)
 ├── data/                   Static data (telegram channels, OREF threat translations, gamma irradiators)

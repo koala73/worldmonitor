@@ -30,7 +30,10 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readdir, readFile, stat } from 'node:fs/promises';
+import { dirname, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import * as ts from 'typescript';
 
 // Server-side secrets that MUST NOT cross into the browser bundle. Each
 // of these grants access to worldmonitor.app infrastructure. They are
@@ -52,15 +55,184 @@ const PLATFORM_ONLY_SECRETS = [
   'MCP_PRO_GRANT_HMAC_SECRET',
 ] as const;
 
+// Server/provider credentials that must never be made reachable from browser
+// bundles. The VITE_* aliases are deliberately listed because a client prefix
+// on a server credential is still a server credential exposure.
+const SERVER_OR_PROVIDER_SECRET_ENV_NAMES = [
+  ...PLATFORM_ONLY_SECRETS,
+  'AISSTREAM_API_KEY',
+  'VITE_AISSTREAM_API_KEY',
+  'CLOUDFLARE_API_TOKEN',
+  'VITE_CLOUDFLARE_API_TOKEN',
+  'CLOUDFLARE_R2_TOKEN',
+  'VITE_CLOUDFLARE_R2_TOKEN',
+  'CLOUDFLARE_R2_SECRET_ACCESS_KEY',
+  'VITE_CLOUDFLARE_R2_SECRET_ACCESS_KEY',
+  'CLOUDFLARE_R2_ACCESS_KEY_ID',
+  'VITE_CLOUDFLARE_R2_ACCESS_KEY_ID',
+  'RELAY_SHARED_SECRET',
+  'VITE_RELAY_SHARED_SECRET',
+  'UPSTASH_REDIS_REST_TOKEN',
+  'VITE_UPSTASH_REDIS_REST_TOKEN',
+  'DODO_API_KEY',
+  'VITE_DODO_API_KEY',
+] as const;
+
+// Client-readable env names currently used by browser source. This list is
+// intentionally explicit so a future VITE_* provider token must be reviewed
+// instead of quietly joining the bundle.
+const CLIENT_ENV_ALLOWLIST = new Set([
+  'VITE_CLERK_PUBLISHABLE_KEY',
+  'VITE_CLOUD_PREFS_ENABLED',
+  'VITE_CONVEX_URL',
+  'VITE_DESKTOP_RUNTIME',
+  'VITE_DIGEST_CRON_ENABLED',
+  'VITE_DODO_ENVIRONMENT',
+  'VITE_E2E',
+  'VITE_ENABLE_AIS',
+  'VITE_ENABLE_CYBER_LAYER',
+  'VITE_FOLLOW_COUNTRIES_ENABLED',
+  'VITE_HORMUZ_CRISIS_START_DATE',
+  'VITE_MAP_INTERACTION_MODE',
+  'VITE_OPENSKY_RELAY_URL',
+  'VITE_PMTILES_URL',
+  'VITE_PMTILES_URL_PUBLIC',
+  'VITE_QUIET_HOURS_BATCH_ENABLED',
+  'VITE_RELAY_GATES_READY',
+  'VITE_RSS_DIRECT_TO_RELAY',
+  'VITE_SENTRY_DSN',
+  'VITE_TAURI_API_BASE_URL',
+  'VITE_TAURI_REMOTE_API_BASE_URL',
+  'VITE_TELEGRAM_BOT_USERNAME',
+  'VITE_VAPID_PUBLIC_KEY',
+  'VITE_VARIANT',
+  'VITE_WS_API_URL',
+  'VITE_WS_RELAY_URL',
+]);
+
 // Safe envPrefix entries — anything else exposes unprefixed env vars to
 // the browser bundle. Keep this list narrow.
 const SAFE_ENV_PREFIXES = ['VITE_', 'PUBLIC_'];
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const repoRoot = resolve(__dirname, '..');
+const CLIENT_SOURCE_EXTENSIONS = new Set(['.ts', '.tsx', '.js', '.jsx', '.mts', '.mjs']);
+const BUILT_ASSET_EXTENSIONS = new Set(['.html', '.js', '.css', '.json', '.map']);
 
 async function readRepoFile(relPath: string): Promise<string> {
   return readFile(new URL(`../${relPath}`, import.meta.url), 'utf8');
 }
 
+async function listFiles(root: string, extensions: Set<string>): Promise<string[]> {
+  const entries = await readdir(root, { withFileTypes: true });
+  const files: string[] = [];
+  for (const entry of entries) {
+    if (entry.name === 'node_modules' || entry.name === '.git' || entry.name === 'dist') {
+      continue;
+    }
+    const fullPath = resolve(root, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...await listFiles(fullPath, extensions));
+      continue;
+    }
+    const dot = entry.name.lastIndexOf('.');
+    const ext = dot >= 0 ? entry.name.slice(dot) : '';
+    if (extensions.has(ext)) files.push(fullPath);
+  }
+  return files;
+}
+
+function extractViteEnvNames(source: string): string[] {
+  const keys = new Set<string>();
+  const sourceFile = ts.createSourceFile('client-source.ts', source, ts.ScriptTarget.Latest, true);
+
+  function isImportMetaEnvExpression(expression: ts.Expression): boolean {
+    if (!ts.isPropertyAccessExpression(expression) || expression.name.text !== 'env') {
+      return false;
+    }
+    const receiver = expression.expression;
+    return ts.isMetaProperty(receiver)
+      && receiver.keywordToken === ts.SyntaxKind.ImportKeyword
+      && receiver.name.text === 'meta';
+  }
+
+  function visit(node: ts.Node): void {
+    if (ts.isPropertyAccessExpression(node)) {
+      const envName = node.name.text;
+      if (/^VITE_[A-Z0-9_]+$/.test(envName) && isImportMetaEnvExpression(node.expression)) {
+        keys.add(envName);
+      }
+    }
+    ts.forEachChild(node, visit);
+  }
+
+  visit(sourceFile);
+  return [...keys].sort();
+}
+
 describe('browser bundle secret guard (#3704)', () => {
+  it('tracks Cloudflare and AISStream provider secret classes, including unsafe VITE aliases', () => {
+    for (const envName of [
+      'CLOUDFLARE_API_TOKEN',
+      'VITE_CLOUDFLARE_API_TOKEN',
+      'AISSTREAM_API_KEY',
+      'VITE_AISSTREAM_API_KEY',
+    ]) {
+      assert.ok(
+        SERVER_OR_PROVIDER_SECRET_ENV_NAMES.includes(envName as (typeof SERVER_OR_PROVIDER_SECRET_ENV_NAMES)[number]),
+        `${envName} must stay in the browser-bundle prohibited secret set`,
+      );
+    }
+  });
+
+  it('runtime env readers do not make the full Vite env object reachable', async () => {
+    for (const relPath of ['src/services/runtime.ts', 'src/services/runtime-config.ts']) {
+      const source = await readRepoFile(relPath);
+      assert.doesNotMatch(
+        source,
+        /return\s+import\.meta\.env\b/,
+        `${relPath} must not return import.meta.env wholesale`,
+      );
+      assert.doesNotMatch(
+        source,
+        /\b(?:const|let|var)\s+\w+\s*=\s*import\.meta\.env\b/,
+        `${relPath} must not snapshot import.meta.env into a local object`,
+      );
+      assert.doesNotMatch(
+        source,
+        /\.env\??\.\[[^\]]+\]/,
+        `${relPath} must not dynamically index import.meta.env`,
+      );
+    }
+  });
+
+  it('client source uses only reviewed VITE_* browser env names', async () => {
+    const sourceFiles = await listFiles(resolve(repoRoot, 'src'), CLIENT_SOURCE_EXTENSIONS);
+    const seen = new Map<string, string[]>();
+
+    for (const file of sourceFiles) {
+      const source = await readFile(file, 'utf8');
+      assert.doesNotMatch(
+        source,
+        /import\.meta\.env\?\./,
+        `${relative(repoRoot, file)} must not optional-chain import.meta.env; ` +
+          `Vite may preserve the full env object instead of inlining one key.`,
+      );
+      for (const key of extractViteEnvNames(source)) {
+        const relPath = relative(repoRoot, file);
+        seen.set(key, [...(seen.get(key) ?? []), relPath]);
+      }
+    }
+
+    for (const [key, paths] of seen) {
+      assert.ok(
+        CLIENT_ENV_ALLOWLIST.has(key),
+        `${key} is read by browser source but is not in the reviewed client env allowlist. ` +
+          `First seen in ${paths[0]}. Server/provider secrets must not use VITE_ aliases.`,
+      );
+    }
+  });
+
   it('runtime-config.ts does not list a platform-only secret as a required feature secret', async () => {
     const source = await readRepoFile('src/services/runtime-config.ts');
     // `requiredSecrets: [...]` literals are what seedSecretsFromEnvironment iterates.
@@ -93,12 +265,41 @@ describe('browser bundle secret guard (#3704)', () => {
     // guard. Only validate contents when the block is present.
     const defineMatch = source.match(/define:\s*\{[\s\S]{0,2000}?\n\s*\},/);
     if (!defineMatch) return;
-    for (const secret of PLATFORM_ONLY_SECRETS) {
+    for (const secret of SERVER_OR_PROVIDER_SECRET_ENV_NAMES) {
       assert.ok(
         !defineMatch[0].includes(secret),
         `${secret} appears inside the vite.config.ts define: block. ` +
           `That inlines the literal value into the browser bundle. See issue #3704.`,
       );
+    }
+  });
+
+  it('built browser assets do not contain configured server/provider secret values when dist exists', async () => {
+    const distDir = process.env.WM_BROWSER_BUNDLE_GUARD_DIST_DIR || resolve(repoRoot, 'dist');
+    try {
+      if (!(await stat(distDir)).isDirectory()) return;
+    } catch {
+      return;
+    }
+
+    const configuredSecrets = SERVER_OR_PROVIDER_SECRET_ENV_NAMES
+      .map((envName) => [envName, process.env[envName]] as const)
+      .filter((entry): entry is readonly [string, string] => (
+        typeof entry[1] === 'string' && entry[1].length >= 12
+      ));
+
+    if (configuredSecrets.length === 0) return;
+
+    const assetFiles = await listFiles(distDir, BUILT_ASSET_EXTENSIONS);
+    for (const file of assetFiles) {
+      const source = await readFile(file, 'utf8');
+      for (const [envName, value] of configuredSecrets) {
+        assert.ok(
+          !source.includes(value),
+          `${envName} value was found in built browser asset ${relative(repoRoot, file)}. ` +
+            `Rotate the credential and remove any client-prefixed copy from deployment env.`,
+        );
+      }
     }
   });
 

@@ -178,15 +178,15 @@
     "apiTier": "API RAZINA",
     "title": "Programabilna inteligencija",
     "subtitle": "Za developere, analitičare i timove koji grade na World Monitor podacima. Odvojeno od Pro plana — koristite oboje ili jedno.",
-    "restApi": "REST API kroz svih 30+ servisnih domena",
+    "restApi": "REST API kroz svih 30+ servisnih domena — službeni SDK-ovi za JavaScript, Python, Ruby, Go",
     "authenticated": "Autentificirano po ključu, ograničeno po razini",
     "structured": "Strukturirani JSON s cache zaglavljima i OpenAPI 3.1 dokumentacijom",
     "starter": "Starter",
     "starterReqs": "1.000 zahtjeva/dan",
     "starterWebhooks": "5 webhook pravila",
     "business": "Business",
-    "businessReqs": "50.000 zahtjeva/dan",
-    "businessWebhooks": "Neograničeni webhookovi + SLA",
+    "businessReqs": "10.000 zahtjeva/dan",
+    "businessWebhooks": "Priority support",
     "feedData": "Dovedite podatke u svoje nadzorne ploče, automatizirajte upozorenja preko Zapier/n8n/Makea i gradite vlastite modele bodovanja na podacima CII/rizika."
   },
   "enterpriseShowcase": {
@@ -374,14 +374,14 @@
           "Dnevni tržišni sažeci",
           "Vojno i geopolitičko praćenje",
           "Custom widget builder",
-          "MCP pristup za Claude Desktop i druge AI klijente (50 poziva/dan)",
+          "MCP + SDK pristup za Claude Desktop i druge AI klijente (50 poziva/dan)",
           "Prioritetno osvježavanje podataka"
         ]
       },
       "api": {
         "description": "Programski pristup obavještajnim podacima",
         "features": [
-          "REST API pristup",
+          "REST API + službeni SDK-ovi (npm, PyPI, RubyGems, Go)",
           "Tokovi podataka u stvarnom vremenu",
           "60 zahtjeva/minutu",
           "1.000 zahtjeva/dan uključeno",

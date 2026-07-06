@@ -1302,7 +1302,10 @@
       "tonePositive": "Θετικό",
       "overall": "Συνολικά: {{tone}}",
       "signalTypesEvents": "{{types}} τύποι σήματος • {{events}} συμβάντα",
-      "newsSignals": "{{news}} ειδήσεις • {{signals}} σήματα"
+      "newsSignals": "{{news}} ειδήσεις • {{signals}} σήματα",
+      "provenanceTitle": "Προέλευση κάλυψης: πόσες καταχωρημένες ιστορίες και διακριτές πηγές επιλέχθησαν για αυτή τη σύνοψη",
+      "compiledFrom": "Συντάχθηκε από {{stories}} ιστορίες σε {{sources}} πηγές",
+      "briefFreshness": "Δημιουργήθηκε πριν {{minutes}}λ · νεότερη πηγή {{hours}}ώ παλιά"
     },
     "settings": {
       "exportSettings": "Εξαγωγή ρυθμίσεων",

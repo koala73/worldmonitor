@@ -180,7 +180,24 @@ function shouldSuppressCspViolation(
   // surrounding signal filters.
   if (directive === 'frame-src') {
     try {
-      if (new URL(blockedURI).hostname === 'gateway.zscloud.net') return true;
+      const frameHost = new URL(blockedURI).hostname;
+      if (frameHost === 'gateway.zscloud.net') return true;
+      // Same class, other vendors (WORLDMONITOR-HT long tail): NetSTAR inSITE
+      // (gw-*.iss.netstar-inc.com), Techloq (filter.techloq.com — kosher
+      // content filter), Trend Micro password-manager/agent asset frames
+      // (pwm-image.trendmicro.com). All are filter/security agents framing
+      // their own vendor hosts into every page; we never frame any of them.
+      // Parsed-hostname suffix match with a leading `.` so lookalike
+      // registrable domains (netstar-inc.com.evil.com) do not match.
+      if (frameHost === 'netstar-inc.com' || frameHost.endsWith('.netstar-inc.com')) return true;
+      if (frameHost === 'techloq.com' || frameHost.endsWith('.techloq.com')) return true;
+      if (frameHost === 'trendmicro.com' || frameHost.endsWith('.trendmicro.com')) return true;
+      // Google-internal extension/API hosts (`*.clients6.google.com`, e.g.
+      // toolytics.pa.clients6.google.com) framed by Google-account browser
+      // surfaces and extensions. We never frame Google API hosts — but keep
+      // accounts.google.com / support.google.com SURFACED: a future first-party
+      // Google sign-in embed regression must not be masked.
+      if (frameHost.endsWith('.clients6.google.com')) return true;
     } catch { /* scheme-only values fall through */ }
   }
   // Browser extensions or injected scripts. `ms-browser-extension://` is Edge's
@@ -215,6 +232,13 @@ function shouldSuppressCspViolation(
       // third-party suppression, so an unexpected font injection from any other
       // host still surfaces (WORLDMONITOR-TR: 1065 events / 83 users).
       if (url.protocol === 'https:' && url.hostname === 'frontend-cdn.perplexity.ai' && /\.woff2?$/.test(url.pathname)) return true;
+      // ByteDance's Doubao AI-assistant browser/extension injects its overlay's
+      // KaTeX math fonts (lf-flow-web-cdn.doubao.com/obj/flow-doubao/...) into
+      // every page — .woff2/.woff/.ttf fallback chain, so all three extensions
+      // appear. We never load it; exact host + font-file path like the rules
+      // above, NOT a blanket third-party suppression (WORLDMONITOR-TR round 2:
+      // 310k events / 308 users in 11 days).
+      if (url.protocol === 'https:' && url.hostname === 'lf-flow-web-cdn.doubao.com' && /\.(?:woff2?|ttf)$/.test(url.pathname)) return true;
     } catch { /* scheme-only values fall through */ }
   }
   // YouTube live stream manifests.
@@ -231,6 +255,26 @@ function shouldSuppressCspViolation(
   // injection (WORLDMONITOR-J0 — antd@4 CSS injection, 270 events / 26
   // users on finance.worldmonitor.app).
   if (/^style-src(-elem)?$/.test(directive) && /^https:\/\/cdn\.jsdelivr\.net\//.test(blockedURI)) return true;
+  // Google Fonts CSS injected by extensions/user-style themes (DM Sans, Syne,
+  // Roboto… — families we never reference). The dashboard self-hosts all fonts
+  // and the deploy/config tests keep Google Fonts out of our source/CSP
+  // surfaces, so a style-src* block on fonts.googleapis.com/css* is by
+  // definition third-party injection — the stylesheet counterpart of the
+  // fonts.gstatic.com font-src rule above (WORLDMONITOR-J0 round 2). Exact
+  // host + /css path; Google Fonts under any other directive still surfaces.
+  if (/^style-src(-elem)?$/.test(directive)) {
+    try {
+      const url = new URL(blockedURI);
+      if (url.protocol === 'https:' && url.hostname === 'fonts.googleapis.com' && /^\/css2?$/.test(url.pathname)) return true;
+      // Chinese-market extension CDN injecting its overlay stylesheet
+      // (www.6ppn.com/ext/assets/style.<hash>.css — the /ext/ path is the
+      // extension's own asset root). Exact host + .css path (WORLDMONITOR-J0).
+      if (url.protocol === 'https:' && url.hostname === 'www.6ppn.com' && /\.css$/.test(url.pathname)) return true;
+    } catch { /* unparseable values fall through */ }
+    // Extension bug: a literal unsubstituted `[email]` template placeholder as
+    // the stylesheet URL. Not a parseable host; can never be first-party.
+    if (blockedURI === 'https://[email]') return true;
+  }
   // Inline script blocks from extensions/in-app browsers.
   if (blockedURI === 'inline' && directive === 'script-src-elem') return true;
   // Null blocked URI from in-app browsers.

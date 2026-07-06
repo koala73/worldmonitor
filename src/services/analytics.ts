@@ -9,10 +9,11 @@ import { scheduleAfterFirstPaint } from '@/utils/after-paint';
 import { subscribeAuthState, type AuthSession } from './auth-state';
 import { onSubscriptionChange, type SubscriptionInfo } from './billing';
 import { getClerkUserCreatedAt } from './clerk';
+import { DODO_PRODUCTS } from '@/config/products.generated';
 
 const UMAMI_SCRIPT_SRC = 'https://abacus.worldmonitor.app/script.js';
 const UMAMI_WEBSITE_ID = 'e8800335-c853-46a8-8497-c993ed2f58bc';
-// data-domains is temporarily reduced to worldmonitor.app + happy.worldmonitor.app
+// data-domains is temporarily reduced to the worldmonitor.app hosts + happy
 // while upstream Umami issue #4183 (https://github.com/umami-software/umami/issues/4183)
 // is open — v3.1.0 has a race in prisma.sessionData.updateMany() that returns HTTP 500
 // from /api/send for 4-8% of requests across all listed hosts. Self-hosted Umami has no
@@ -20,7 +21,12 @@ const UMAMI_WEBSITE_ID = 'e8800335-c853-46a8-8497-c993ed2f58bc';
 // tracker self-disables when the current hostname isn't in data-domains — the same
 // mechanism that keeps energy.worldmonitor.app silent. Restore tech, finance, and
 // commodity once #4183 ships in a tagged release.
-const UMAMI_DOMAINS = 'worldmonitor.app,happy.worldmonitor.app';
+//
+// www.worldmonitor.app MUST be listed alongside the apex (#4931): the apex 301s
+// to www in production, and the tracker's data-domains check is an EXACT
+// hostname match (`!domains.includes(hostname)` → disabled) — with only the
+// apex listed, every event from the canonical host was silently dropped.
+const UMAMI_DOMAINS = 'worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app';
 const UMAMI_QUEUE_LIMIT = 50;
 const UMAMI_LOAD_ATTEMPT_LIMIT = 2;
 const UMAMI_LOAD_RETRY_DELAY_MS = 5_000;
@@ -94,6 +100,12 @@ const EVENTS = {
   'sign-up': true,
   'sign-out': true,
   'gate-hit': true,
+  // Conversion funnel (#4931) — pageview → gate-hit → checkout-start →
+  // checkout-success is the end-to-end funnel; the /pro page fires its own
+  // checkout-start via the raw tracker (separate build, same event name).
+  'checkout-start': true,
+  'checkout-success': true,
+  'checkout-failed': true,
   // Brief — open-rate lift measurement for U10's followed-country bias
   // (followed-countries plan U11). Fired from the dashboard cover card
   // and from the hosted magazine source-link clicks. `followed` flags
@@ -120,6 +132,22 @@ function sendUmamiCall(call: QueuedUmamiCall): boolean {
       umami.track(call.event, call.data);
     } else {
       umami.identify(call.data);
+    }
+    // Durable-delivery contract for the terminal funnel event (#4934
+    // round-2 F2): the marker written by trackCheckoutSuccess is cleared
+    // only once the event actually reached the tracker, so a page reload
+    // that races the deferred queue replays instead of dropping it.
+    if (call.kind === 'track' && call.event === 'checkout-success') {
+      clearPendingCheckoutSuccessMarker();
+    }
+    // Same contract for /pro checkout-start replays (#4934 round-6): the
+    // handoff marker survives until a replayed event actually reaches the
+    // tracker — clearing at read time reopened the round-2 reload race.
+    // Only replayed events clear it (a live dashboard checkout-start
+    // delivering proves nothing about the queued replays). All replays
+    // flush in one synchronous loop, so first-delivery-clears is safe.
+    if (call.kind === 'track' && call.event === 'checkout-start' && call.data?.replayed === true) {
+      clearPendingProFunnelMarker();
     }
     return true;
   } catch {
@@ -402,6 +430,187 @@ export function resetAnalyticsForTesting(): void {
 
 export function trackGateHit(feature: string): void {
   track('gate-hit', { feature });
+}
+
+// ---------------------------------------------------------------------------
+// Conversion funnel (#4931)
+// ---------------------------------------------------------------------------
+
+/**
+ * Closed product-id vocabulary for analytics (#4934 round-4 F2): the
+ * dashboard resume path replays a productId that originally travelled
+ * through URL/sessionStorage, so a crafted value must not inject unbounded
+ * cardinality into Umami. Unknown ids collapse to 'unknown'; the checkout
+ * flow itself still passes the raw id through (backend validates).
+ * Auto-fresh: DODO_PRODUCTS is generated from the catalog.
+ */
+const KNOWN_PRODUCT_IDS: ReadonlySet<string> = new Set(Object.values(DODO_PRODUCTS));
+
+export function bucketProductIdForAnalytics(productId: string): string {
+  return KNOWN_PRODUCT_IDS.has(productId) ? productId : 'unknown';
+}
+
+/**
+ * Fired when a checkout is initiated from the dashboard (any locked-panel
+ * CTA, settings upgrade card, banner, etc. — all route through
+ * `startCheckout`). `authed: false` marks intent clicks from signed-out
+ * users that detour through sign-in before a Dodo session exists;
+ * `surface: 'dashboard-resume'` marks the post-sign-in auto-resume
+ * re-entry so a signed-out conversion (two events: dashboard/authed:false,
+ * then dashboard-resume/authed:true) isn't double-counted as two attempts.
+ * The /pro page mirrors this with 'pro-page' / 'pro-resume'.
+ */
+export function trackCheckoutStart(
+  productId: string,
+  authed: boolean,
+  surface: 'dashboard' | 'dashboard-resume' = 'dashboard',
+): void {
+  track('checkout-start', { productId: bucketProductIdForAnalytics(productId), surface, authed });
+}
+
+/**
+ * The one funnel event that races a reload: checkout-success is tracked on
+ * the post-checkout dashboard load, but the entitlement watcher reloads the
+ * page the moment Pro lands — often before the deferred Umami queue flushes
+ * (#4934 round-2 F2). A sessionStorage marker written at track time and
+ * cleared only on actual delivery (see sendUmamiCall) lets the next boot
+ * replay the event instead of dropping it. sessionStorage is per-tab, so
+ * the replay can't leak across tabs or users.
+ */
+const CHECKOUT_SUCCESS_PENDING_KEY = 'wm-checkout-success-pending';
+
+function clearPendingCheckoutSuccessMarker(): void {
+  try {
+    window.sessionStorage.removeItem(CHECKOUT_SUCCESS_PENDING_KEY);
+  } catch {
+    // Storage unavailable — replay just won't be possible, same as before.
+  }
+}
+
+/**
+ * Fired on the dashboard when a checkout return reconciles as success.
+ * `source` distinguishes the full-page return-URL path from the legacy
+ * overlay session-flag path (see panel-layout.ts checkout-return wiring).
+ */
+export function trackCheckoutSuccess(source: 'url-return' | 'overlay-flag'): void {
+  try {
+    window.sessionStorage.setItem(CHECKOUT_SUCCESS_PENDING_KEY, source);
+  } catch {
+    // Storage denied — fall back to fire-and-hope, matching every other event.
+  }
+  track('checkout-success', { source });
+}
+
+/**
+ * Re-queue a checkout-success whose delivery was cut off by the entitlement
+ * reload. Called on every non-checkout-return boot (panel-layout); a no-op
+ * unless the durable marker survived. Deliberately does NOT rewrite the
+ * marker: it stays until sendUmamiCall confirms delivery, so repeated
+ * reloads keep replaying rather than dropping.
+ */
+export function replayPendingCheckoutSuccess(): void {
+  let source: string | null = null;
+  try {
+    source = window.sessionStorage.getItem(CHECKOUT_SUCCESS_PENDING_KEY);
+  } catch {
+    return;
+  }
+  if (!source) return;
+  track('checkout-success', { source, replayed: true });
+}
+
+/**
+ * Replay /pro checkout-start events that died with the redirect (#4934
+ * round-5): the /pro page mirrors undelivered checkout-start events into
+ * sessionStorage (see pro-test/src/services/checkout.ts) because the fast
+ * signed-in/resume path top-level-redirects to Dodo before its flush poll
+ * runs. The buyer returns to the dashboard in the same tab, so this boot
+ * hook replays them here. Every field is re-validated against closed
+ * vocabularies — sessionStorage is tab-local but still client-writable,
+ * and replayed junk must not become analytics cardinality.
+ *
+ * Delivery contract (round-6): the marker is NOT cleared here. Replays
+ * enter the deferred queue, and the entitlement watcher can reload the
+ * page before it flushes — clearing at read time would drop the event
+ * permanently in exactly the race round-2 fixed for checkout-success.
+ * Instead the key is REWRITTEN with only the sanitized survivors (so
+ * junk can't loop forever) and removed in sendUmamiCall once a replayed
+ * event actually reaches the tracker.
+ */
+const PRO_FUNNEL_PENDING_KEY = 'wm-pro-funnel-pending';
+
+function clearPendingProFunnelMarker(): void {
+  try {
+    window.sessionStorage.removeItem(PRO_FUNNEL_PENDING_KEY);
+  } catch {
+    // Storage unavailable — worst case is a duplicate replayed:true event
+    // on the next boot, the side we deliberately err on.
+  }
+}
+
+export function replayPendingProFunnelEvents(): void {
+  let raw: string | null = null;
+  try {
+    raw = window.sessionStorage.getItem(PRO_FUNNEL_PENDING_KEY);
+  } catch {
+    return;
+  }
+  if (!raw) return;
+
+  const sanitized: Array<{ productId: string; surface: 'pro-page' | 'pro-resume'; authed: boolean }> = [];
+  try {
+    const items: unknown = JSON.parse(raw);
+    if (Array.isArray(items)) {
+      for (const item of items.slice(0, 10)) {
+        if (!item || typeof item !== 'object') continue;
+        const { event, data } = item as { event?: unknown; data?: unknown };
+        if (event !== 'checkout-start' || !data || typeof data !== 'object') continue;
+        const d = data as Record<string, unknown>;
+        sanitized.push({
+          productId: bucketProductIdForAnalytics(String(d.productId ?? '')),
+          surface: d.surface === 'pro-resume' ? 'pro-resume' : 'pro-page',
+          authed: Boolean(d.authed),
+        });
+      }
+    }
+  } catch {
+    // Malformed JSON — nothing replayable.
+  }
+
+  if (sanitized.length === 0) {
+    clearPendingProFunnelMarker();
+    return;
+  }
+
+  // Persist the sanitized survivors so a pre-delivery reload retries
+  // exactly these (bounded, closed-vocabulary), then queue the replays.
+  try {
+    window.sessionStorage.setItem(
+      PRO_FUNNEL_PENDING_KEY,
+      JSON.stringify(sanitized.map((data) => ({ event: 'checkout-start', data }))),
+    );
+  } catch {
+    // Rewrite failed — the original payload stays; sanitization re-runs
+    // on the next boot. Still safe to queue this boot's replays.
+  }
+  for (const data of sanitized) {
+    track('checkout-start', { ...data, replayed: true });
+  }
+}
+
+/**
+ * Closed status vocabulary for checkout-failed (#4934 round-2 F3). The raw
+ * value is URL-derived (Dodo return params — and checkout-return.ts:117
+ * forwards ANY unknown status when Dodo ID params are present), so a
+ * crafted or novel URL must not inject unbounded cardinality into
+ * analytics. Unknowns collapse to 'other'.
+ */
+const CHECKOUT_FAILED_STATUSES = new Set(['failed', 'declined', 'cancelled', 'canceled']);
+
+/** Fired when a checkout return reconciles as failed/declined/cancelled. */
+export function trackCheckoutFailed(rawStatus: string): void {
+  const status = CHECKOUT_FAILED_STATUSES.has(rawStatus) ? rawStatus : 'other';
+  track('checkout-failed', { status });
 }
 
 // ---------------------------------------------------------------------------

@@ -2066,14 +2066,16 @@ export class DataLoaderManager implements AppModule {
       // 60s budget for the actual LLM call.
       // `_collectSectorContext` is sync (reads only hydrated data) so it
       // needs no wrapping; allSettled accepts non-promises directly.
-      const [r0, r1, r2] = await Promise.allSettled([
+      const [r0, r1, r2, r3] = await Promise.allSettled([
         withTimeout(this._collectRegimeContext(), 8_000, 'daily-brief-regime-context'),
         withTimeout(this._collectYieldCurveContext(), 8_000, 'daily-brief-yield-context'),
         this._collectSectorContext(),
+        withTimeout(this._collectEarningsContext(), 8_000, 'daily-brief-earnings-context'),
       ]);
       const regimeContext = r0.status === 'fulfilled' ? r0.value : undefined;
       const yieldCurveContext = r1.status === 'fulfilled' ? r1.value : undefined;
       const sectorContext = r2.status === 'fulfilled' ? r2.value : undefined;
+      const earningsContext = r3.status === 'fulfilled' ? r3.value : undefined;
 
       // Wall-clock budget on the whole build. The inner summarizer has its
       // own 45s cap (SUMMARIZER_TIMEOUT_MS in daily-market-brief.ts) and
@@ -2090,6 +2092,7 @@ export class DataLoaderManager implements AppModule {
           regimeContext,
           yieldCurveContext,
           sectorContext,
+          earningsContext,
           frameworkAppend: getActiveFrameworkForPanel('daily-market-brief')?.systemPromptAppend,
           newsCategories: SITE_VARIANT === 'commodity'
             ? ['commodity-news', 'gold-silver', 'mining-news', 'energy', 'critical-minerals']
@@ -2235,6 +2238,30 @@ export class DataLoaderManager implements AppModule {
         countPositive,
         total: sorted.length,
       };
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** #4922 (c): recent earnings surprises + upcoming density for the brief.
+   * RPC-backed (earnings are not bootstrap-hydrated); failures degrade to
+   * undefined — the brief simply omits the earnings block. */
+  private async _collectEarningsContext(): Promise<import('@/services/daily-market-brief').EarningsBriefContext | undefined> {
+    try {
+      const { MarketServiceClient } = await import('@/generated/client/worldmonitor/market/v1/service_client');
+      const { getRpcBaseUrl } = await import('@/services/rpc-client');
+      const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
+      const today = new Date();
+      const past = new Date(today.getTime() - 7 * 86400_000);
+      const future = new Date(today.getTime() + 14 * 86400_000);
+      const resp = await client.listEarningsCalendar({
+        fromDate: past.toISOString().slice(0, 10),
+        toDate: future.toISOString().slice(0, 10),
+      });
+      const earnings = resp.earnings ?? [];
+      if (resp.unavailable || earnings.length === 0) return undefined;
+      const { buildEarningsBriefContext } = await import('@/services/daily-market-brief');
+      return buildEarningsBriefContext(earnings, today.toISOString().slice(0, 10));
     } catch {
       return undefined;
     }

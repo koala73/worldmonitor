@@ -118,6 +118,12 @@ interface WorldTopology extends Topology {
 export class MapComponent {
   private static readonly MOBILE_MIN_EARTHQUAKE_MAGNITUDE = 5;
   private static readonly MOBILE_MAX_IRAN_EVENTS = 50;
+  // #4669: how long markers pulse after a render before settling to static.
+  // Infinite opacity pulses hold a permanent compositing layer per marker
+  // (385 of 517 desktop layers; Layerize ~34% of the main thread scales with
+  // the count), so after the attention window the pulses are switched off via
+  // the .markers-settled class. Any overlay re-render re-arms the window.
+  private static readonly MARKER_SETTLE_MS = 6000;
   private static readonly LAYER_ZOOM_THRESHOLDS: Partial<
     Record<keyof MapLayers, { minZoom: number; showLabels?: number }>
   > = {
@@ -132,6 +138,7 @@ export class MapComponent {
   private svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
   private wrapper: HTMLElement;
   private overlays: HTMLElement;
+  private markerSettleTimer: ReturnType<typeof setTimeout> | null = null;
   private clusterCanvas: HTMLCanvasElement;
   private clusterGl: WebGLRenderingContext | null = null;
   private state: MapState;
@@ -348,6 +355,10 @@ export class MapComponent {
   public destroy(): void {
     this.destroyed = true;
     this.listenerAbort.abort();
+    if (this.markerSettleTimer !== null) {
+      clearTimeout(this.markerSettleTimer);
+      this.markerSettleTimer = null;
+    }
     window.removeEventListener('theme-changed', this.handleThemeChange);
     document.removeEventListener('visibilitychange', this.boundVisibilityHandler);
     if (this.resizeObserver) {
@@ -3129,7 +3140,21 @@ export class MapComponent {
     } finally {
       this.overlayAppendTarget = previousTarget;
       this.overlays.appendChild(fragment);
+      this.armMarkerSettle();
     }
+  }
+
+  // #4669: let freshly-rendered markers pulse for the attention window, then
+  // add .markers-settled on the wrapper so main.css stops the infinite pulses
+  // and their compositing layers are released while the map is idle.
+  private armMarkerSettle(): void {
+    this.wrapper.classList.remove('markers-settled');
+    if (this.markerSettleTimer !== null) clearTimeout(this.markerSettleTimer);
+    this.markerSettleTimer = setTimeout(() => {
+      this.markerSettleTimer = null;
+      if (this.destroyed) return;
+      this.wrapper.classList.add('markers-settled');
+    }, MapComponent.MARKER_SETTLE_MS);
   }
 
   private renderConflictEventMarkers(projection: d3.GeoProjection): void {

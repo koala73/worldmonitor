@@ -37,6 +37,8 @@ const CLIENT_ID = 'client_abc';
 const REDIRECT_URI = 'https://claude.ai/api/mcp/auth_callback';
 const USER_ID = 'user_pro_123';
 const MCP_TOKEN_ID = 'k57_mcp_token_id';
+const TOKEN_TTL_SECONDS = 3600;
+const REFRESH_TTL_SECONDS = 604800;
 
 // PKCE: known verifier → known challenge (BASE64URL of SHA-256).
 const CODE_VERIFIER = 'a'.repeat(64);
@@ -86,7 +88,15 @@ function makeRedis() {
     },
     redisGet: async (key) => {
       ops.push({ kind: 'get', key });
-      return store.get(key) ?? null;
+      const v = store.get(key);
+      if (v === undefined) return null;
+      // Mirror production rawRedisGet: values are stored as JSON strings and
+      // returned parsed. Pipeline-written values (e.g. the famptr) are JSON
+      // strings; objects a test pre-seeds directly pass through unchanged.
+      if (typeof v === 'string') {
+        try { return JSON.parse(v); } catch { return null; }
+      }
+      return v;
     },
     redisPipeline: async (commands) => {
       const results = [];
@@ -106,6 +116,19 @@ function makeRedis() {
       return results;
     },
   };
+}
+
+function findSetCommand(ops, key) {
+  return ops
+    .filter((op) => op.kind === 'pipeline')
+    .map((op) => op.cmd)
+    .find((cmd) => String(cmd[0]).toUpperCase() === 'SET' && cmd[1] === key);
+}
+
+function assertSetEx(ops, key, expectedValue, expectedTtl) {
+  const cmd = findSetCommand(ops, key);
+  assert.ok(cmd, `expected SET command for ${key}`);
+  assert.deepEqual(cmd, ['SET', key, expectedValue, 'EX', expectedTtl]);
 }
 
 let _uuidCounter = 0;
@@ -195,6 +218,8 @@ describe('U6 tokenHandler — authorization_code (Pro)', () => {
     assert.equal(refresh.mcpTokenId, MCP_TOKEN_ID);
     assert.equal(refresh.scope, 'mcp_pro');
     assert.equal(refresh.family_id, 'uuid_0003');
+    assertSetEx(redis.ops, 'oauth:tokenfam:uuid_0001', JSON.stringify('uuid_0003'), TOKEN_TTL_SECONDS);
+    assertSetEx(redis.ops, 'oauth:famptr:uuid_0002', JSON.stringify('uuid_0003'), REFRESH_TTL_SECONDS);
 
     // The auth code was consumed via GETDEL.
     assert.equal(redis.store.has('oauth:code:abc'), false);
@@ -328,6 +353,8 @@ describe('U6 tokenHandler — authorization_code (legacy)', () => {
     assert.equal(refresh.api_key_hash, ENV_KEY_HASH);
     assert.equal(refresh.scope, 'mcp');
     assert.equal(typeof refresh.family_id, 'string');
+    assertSetEx(redis.ops, 'oauth:tokenfam:uuid_0101', JSON.stringify(refresh.family_id), TOKEN_TTL_SECONDS);
+    assertSetEx(redis.ops, 'oauth:famptr:uuid_0102', JSON.stringify(refresh.family_id), REFRESH_TTL_SECONDS);
   });
 });
 
@@ -374,6 +401,9 @@ describe('U6 tokenHandler — refresh_token (Pro)', () => {
     assert.equal(refresh.mcpTokenId, MCP_TOKEN_ID);
     assert.equal(refresh.scope, 'mcp_pro');
     assert.equal(refresh.family_id, FAMILY); // PRESERVED across rotation
+    assertSetEx(redis.ops, 'oauth:famptr:rt-1', JSON.stringify(FAMILY), REFRESH_TTL_SECONDS);
+    assertSetEx(redis.ops, 'oauth:tokenfam:uuid_0201', JSON.stringify(FAMILY), TOKEN_TTL_SECONDS);
+    assertSetEx(redis.ops, 'oauth:famptr:uuid_0202', JSON.stringify(FAMILY), REFRESH_TTL_SECONDS);
 
     // Old refresh token consumed.
     assert.equal(redis.store.has('oauth:refresh:rt-1'), false);
@@ -433,6 +463,7 @@ describe('U6 tokenHandler — refresh_token (Pro)', () => {
     assert.equal(restoredObj.userId, USER_ID);
     assert.equal(restoredObj.mcpTokenId, MCP_TOKEN_ID);
     assert.equal(restoredObj.family_id, 'fam');
+    assertSetEx(redis.ops, 'oauth:famptr:rt-1', JSON.stringify('fam'), REFRESH_TTL_SECONDS);
   });
 
   it('Pro refresh rejects when client_id does not match', async () => {
@@ -522,6 +553,206 @@ describe('U6 tokenHandler — refresh_token (legacy)', () => {
     assert.equal(refresh.kind, undefined);
     assert.equal(refresh.api_key_hash, ENV_KEY_HASH);
     assert.equal(refresh.family_id, FAMILY);
+    assertSetEx(redis.ops, 'oauth:famptr:rt-old', JSON.stringify(FAMILY), REFRESH_TTL_SECONDS);
+    assertSetEx(redis.ops, 'oauth:tokenfam:uuid_0301', JSON.stringify(FAMILY), TOKEN_TTL_SECONDS);
+    assertSetEx(redis.ops, 'oauth:famptr:uuid_0302', JSON.stringify(FAMILY), REFRESH_TTL_SECONDS);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// refresh_token grant — reuse detection / family revocation (GHSA-f6gj)
+// ---------------------------------------------------------------------------
+
+describe('U6 tokenHandler — refresh-token reuse revokes the family (GHSA-f6gj)', () => {
+  it('reuse of a rotated refresh token revokes the family, killing the attacker\'s rotated token', async () => {
+    await ensureFixtures();
+    const { redis, deps } = makeDeps();
+    const FAMILY = 'fam_reuse_xyz';
+    // A valid refresh token + its persistent family pointer (as the writers now emit).
+    redis.store.set('oauth:refresh:rt-1', {
+      kind: 'pro',
+      client_id: CLIENT_ID,
+      userId: USER_ID,
+      mcpTokenId: MCP_TOKEN_ID,
+      scope: 'mcp_pro',
+      family_id: FAMILY,
+    });
+    redis.store.set('oauth:famptr:rt-1', JSON.stringify(FAMILY));
+    redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
+
+    _uuidCounter = 700;
+    // (1) First redemption rotates rt-1 → a new token (attacker holds it).
+    const r1 = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-1', client_id: CLIENT_ID }), deps);
+    assert.equal(r1.status, 200);
+    const rotated = (await r1.json()).refresh_token;
+    assert.equal(redis.store.has('oauth:refresh:rt-1'), false, 'rt-1 consumed by GETDEL');
+    assert.ok(redis.store.has('oauth:famptr:rt-1'), 'family pointer survives rotation (enables reuse detection)');
+    assert.ok(redis.store.has(`oauth:famptr:${rotated}`), 'rotated token also gets a family pointer');
+    assert.equal(redis.store.has(`oauth:famrev:${FAMILY}`), false, 'family not revoked yet');
+
+    // (2) Victim replays the now-stale rt-1 → GETDEL-miss → REUSE → revoke family.
+    const r2 = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-1', client_id: CLIENT_ID }), deps);
+    assert.equal(r2.status, 400);
+    assert.equal((await r2.json()).error, 'invalid_grant');
+    assert.ok(redis.store.has(`oauth:famrev:${FAMILY}`), 'reuse of a rotated token must revoke the whole family');
+
+    // (3) Attacker's rotated token is now rejected — family is revoked.
+    const r3 = await tokenHandler(makeReq('refresh_token', { refresh_token: rotated, client_id: CLIENT_ID }), deps);
+    assert.equal(r3.status, 400, 'a revoked family must not rotate — the attacker is contained');
+    assert.equal((await r3.json()).error, 'invalid_grant');
+  });
+
+  it('pre-patch Pro refresh token with no pointer still backfills pointer and revokes on replay', async () => {
+    await ensureFixtures();
+    const { redis, deps } = makeDeps();
+    const FAMILY = 'fam_prepatch_pro';
+    redis.store.set('oauth:refresh:rt-old', {
+      kind: 'pro',
+      client_id: CLIENT_ID,
+      userId: USER_ID,
+      mcpTokenId: MCP_TOKEN_ID,
+      scope: 'mcp_pro',
+      family_id: FAMILY,
+    });
+    redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
+
+    _uuidCounter = 800;
+    const r1 = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-old', client_id: CLIENT_ID }), deps);
+    assert.equal(r1.status, 200);
+    const rotated = (await r1.json()).refresh_token;
+    assertSetEx(redis.ops, 'oauth:famptr:rt-old', JSON.stringify(FAMILY), REFRESH_TTL_SECONDS);
+
+    const r2 = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-old', client_id: CLIENT_ID }), deps);
+    assert.equal(r2.status, 400);
+    assert.equal((await r2.json()).error, 'invalid_grant');
+    assert.ok(redis.store.has(`oauth:famrev:${FAMILY}`));
+
+    const r3 = await tokenHandler(makeReq('refresh_token', { refresh_token: rotated, client_id: CLIENT_ID }), deps);
+    assert.equal(r3.status, 400);
+    assert.equal((await r3.json()).error, 'invalid_grant');
+  });
+
+  it('legacy refresh-token reuse revokes the family too', async () => {
+    await ensureFixtures();
+    const { redis, deps } = makeDeps();
+    const FAMILY = 'fam_legacy_reuse';
+    redis.store.set('oauth:refresh:rt-legacy', {
+      client_id: CLIENT_ID,
+      api_key_hash: ENV_KEY_HASH,
+      scope: 'mcp',
+      family_id: FAMILY,
+    });
+    redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
+
+    _uuidCounter = 900;
+    const r1 = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-legacy', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(r1.status, 200);
+    const rotated = (await r1.json()).refresh_token;
+    assertSetEx(redis.ops, 'oauth:famptr:rt-legacy', JSON.stringify(FAMILY), REFRESH_TTL_SECONDS);
+
+    const r2 = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-legacy', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(r2.status, 400);
+    assert.equal((await r2.json()).error, 'invalid_grant');
+    assert.ok(redis.store.has(`oauth:famrev:${FAMILY}`));
+
+    const r3 = await tokenHandler(makeReq('refresh_token', { refresh_token: rotated, client_id: CLIENT_ID }), deps);
+    assert.equal(r3.status, 400);
+    assert.equal((await r3.json()).error, 'invalid_grant');
+  });
+
+  it('reuse detection returns retryable 503 when family revocation cannot be recorded', async () => {
+    await ensureFixtures();
+    const redis = makeRedis();
+    const originalPipeline = redis.redisPipeline;
+    redis.redisPipeline = async (commands) => {
+      if (commands.some((cmd) => String(cmd[1]).startsWith('oauth:famrev:'))) return null;
+      return originalPipeline(commands);
+    };
+    const { deps } = makeDeps({ redis });
+    redis.store.set('oauth:famptr:rt-used', JSON.stringify('fam_write_fail'));
+
+    const resp = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-used', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(resp.status, 503);
+    assert.equal((await resp.json()).error, 'server_error');
+  });
+
+  it('revocation-state read failure restores the consumed token and does not rotate', async () => {
+    await ensureFixtures();
+    const { redis, deps } = makeDeps();
+    const FAMILY = 'fam_read_fail';
+    redis.store.set('oauth:refresh:rt-live', {
+      kind: 'pro',
+      client_id: CLIENT_ID,
+      userId: USER_ID,
+      mcpTokenId: MCP_TOKEN_ID,
+      scope: 'mcp_pro',
+      family_id: FAMILY,
+    });
+    redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
+    const originalRedisGet = deps.redisGet;
+    deps.redisGet = async (key) => {
+      if (key === `oauth:famrev:${FAMILY}`) throw new Error('redis down');
+      return originalRedisGet(key);
+    };
+
+    _uuidCounter = 950;
+    const resp = await tokenHandler(makeReq('refresh_token', { refresh_token: 'rt-live', client_id: CLIENT_ID }), deps);
+    assert.equal(resp.status, 503);
+    assert.equal((await resp.json()).error, 'server_error');
+    const restored = redis.store.get('oauth:refresh:rt-live');
+    assert.ok(restored, 'refresh token is restored when revocation state is unknown');
+    assert.equal(redis.store.has('oauth:token:uuid_0951'), false, 'must not mint a new access token');
+    assertSetEx(redis.ops, 'oauth:famptr:rt-live', JSON.stringify(FAMILY), REFRESH_TTL_SECONDS);
+  });
+
+  it('transient Pro validation restores the refresh token and its family pointer together', async () => {
+    await ensureFixtures();
+    const { redis, deps } = makeDeps({ validateProMcpToken: async () => ({ ok: 'transient' }) });
+    const FAMILY = 'fam_transient_restore';
+    redis.store.set('oauth:refresh:rt-transient', {
+      kind: 'pro',
+      client_id: CLIENT_ID,
+      userId: USER_ID,
+      mcpTokenId: MCP_TOKEN_ID,
+      scope: 'mcp_pro',
+      family_id: FAMILY,
+    });
+    redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
+
+    const resp = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'rt-transient', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(resp.status, 503);
+    assert.ok(redis.store.has('oauth:refresh:rt-transient'));
+    assertSetEx(redis.ops, 'oauth:famptr:rt-transient', JSON.stringify(FAMILY), REFRESH_TTL_SECONDS);
+  });
+
+  it('a genuine expired/unknown refresh token (no family pointer) does NOT revoke anything', async () => {
+    await ensureFixtures();
+    const { redis, deps } = makeDeps();
+    redis.store.set(`oauth:client:${CLIENT_ID}`, CLIENT_RECORD);
+
+    // No oauth:refresh:* and no oauth:famptr:* for this token → plain miss.
+    const resp = await tokenHandler(
+      makeReq('refresh_token', { refresh_token: 'never-issued', client_id: CLIENT_ID }),
+      deps,
+    );
+    assert.equal(resp.status, 400);
+    assert.equal((await resp.json()).error, 'invalid_grant');
+    // No famrev marker created — a garbage token must not let an attacker
+    // revoke an unrelated family by guessing token strings.
+    const famrevKeys = [...redis.store.keys()].filter((k) => k.startsWith('oauth:famrev:'));
+    assert.deepEqual(famrevKeys, [], 'a miss with no family pointer must not create a revocation marker');
   });
 });
 
@@ -543,8 +774,11 @@ describe('resolveBearerToContext (U6 resolver)', () => {
     process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
     globalThis.fetch = async (url) => {
       const u = new URL(String(url));
-      if (decodeURIComponent(u.pathname).startsWith('/get/oauth:token:')) {
-        return new Response(JSON.stringify({ result: value === undefined ? null : value }), {
+      const decoded = decodeURIComponent(u.pathname);
+      const match = decoded.match(/^\/get\/(.+)$/);
+      if (match) {
+        const result = match[1].startsWith('oauth:token:') ? value : undefined;
+        return new Response(JSON.stringify({ result: result === undefined ? null : result }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         });
@@ -678,8 +912,11 @@ describe('resolveApiKeyFromBearer (legacy wrapper)', () => {
     process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
     globalThis.fetch = async (url) => {
       const u = new URL(String(url));
-      if (decodeURIComponent(u.pathname).startsWith('/get/oauth:token:')) {
-        return new Response(JSON.stringify({ result: value === undefined ? null : value }), {
+      const decoded = decodeURIComponent(u.pathname);
+      const match = decoded.match(/^\/get\/(.+)$/);
+      if (match) {
+        const result = match[1].startsWith('oauth:token:') ? value : undefined;
+        return new Response(JSON.stringify({ result: result === undefined ? null : result }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         });
@@ -786,6 +1023,9 @@ describe('U6 round-trip — tokenHandler → resolveBearerToContext', () => {
         userId: USER_ID,
         mcpTokenId: MCP_TOKEN_ID,
       });
+      const familyId = JSON.parse(redis.store.get(`oauth:tokenfam:${accessUuid}`));
+      redis.store.set(`oauth:famrev:${familyId}`, '1');
+      assert.equal(await resolveBearerToContext(accessUuid), null, 'famrev must invalidate issued Pro access token');
     } finally {
       globalThis.fetch = realFetch;
     }
@@ -841,6 +1081,9 @@ describe('U6 round-trip — tokenHandler → resolveBearerToContext', () => {
     try {
       const ctx = await resolveBearerToContext(accessUuid);
       assert.deepEqual(ctx, { kind: 'env_key', apiKey: ENV_KEY });
+      const familyId = JSON.parse(redis.store.get(`oauth:tokenfam:${accessUuid}`));
+      redis.store.set(`oauth:famrev:${familyId}`, '1');
+      assert.equal(await resolveBearerToContext(accessUuid), null, 'famrev must invalidate issued legacy access token');
     } finally {
       globalThis.fetch = realFetch;
     }

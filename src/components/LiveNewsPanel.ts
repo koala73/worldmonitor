@@ -1690,10 +1690,10 @@ export class LiveNewsPanel extends Panel {
         const { tryInvokeTauri } = await import('@/services/tauri-bridge');
         await tryInvokeTauri('open_youtube_login');
       } catch {
-        window.open(youtubeLoginUrl, '_blank');
+        window.open(youtubeLoginUrl, '_blank', 'noopener,noreferrer');
       }
     } else {
-      window.open(youtubeLoginUrl, '_blank');
+      window.open(youtubeLoginUrl, '_blank', 'noopener,noreferrer');
     }
   }
 

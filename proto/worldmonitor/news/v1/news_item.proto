@@ -36,7 +36,11 @@ message NewsItem {
   // corroborating source, capped at five sources. The final score can exceed
   // 100; with current boosts it is approximately capped at 138.
   int32 importance_score = 9;
-  // Number of distinct sources that reported the same story in this digest cycle.
+  // Number of distinct sources that reported the same story in this digest
+  // cycle. "Same story" is determined by edit-tolerant story-identity
+  // clustering (headlines describing one event with different wording,
+  // ordering, source suffixes, truncation, or morphology corroborate each
+  // other) — not exact-title matching. See shared/story-identity.js.
   int32 corroboration_count = 10;
   // Story lifecycle metadata derived from cross-cycle persistence data.
   StoryMeta story_meta = 11;
@@ -54,7 +58,10 @@ message StoryMeta {
   int64 first_seen = 1 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
   // Total number of digest cycles in which this story appeared.
   int32 mention_count = 2;
-  // Number of unique sources that reported this story (cached from Redis Set).
+  // Number of unique sources reporting this story in the CURRENT digest
+  // cycle (batch corroboration from fuzzy story clustering, #4919;
+  // defaults to 1 for unclustered items). The cross-cycle Redis source
+  // set (story:sources:v1) feeds importance scoring, not this field.
   int32 source_count = 3;
   // Story lifecycle phase derived from persistence data.
   StoryPhase phase = 4;

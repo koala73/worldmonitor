@@ -22,7 +22,10 @@ import { getRedisCredentials } from './_upstash-json.js';
  *     stored = { kind: 'pro', userId: 'user_abc', mcpTokenId: 'k57...' }
  *
  * Both shapes coexist forever — there is no migration. Resolver dispatches
- * on `typeof raw` then on `raw.kind`.
+ * on `typeof raw` then on `raw.kind`. Authorization-code / refresh-token
+ * issued access tokens also get `oauth:tokenfam:<uuid>`; when
+ * `oauth:famrev:<family_id>` exists, the resolver rejects that bearer so
+ * refresh-token reuse containment applies to already-issued access tokens too.
  *
  * Public surface:
  *   - `resolveBearerToContext(token)` — preferred. Returns the discriminated
@@ -34,11 +37,11 @@ import { getRedisCredentials } from './_upstash-json.js';
  *     U7's MCP edge will switch to `resolveBearerToContext` directly.
  */
 
-async function fetchOAuthToken(uuid) {
+async function fetchOAuthValue(key) {
   const creds = getRedisCredentials();
   if (!creds) return null;
 
-  const resp = await fetch(`${creds.url}/get/${encodeURIComponent(`oauth:token:${uuid}`)}`, {
+  const resp = await fetch(`${creds.url}/get/${encodeURIComponent(key)}`, {
     headers: { Authorization: `Bearer ${creds.token}` },
     signal: AbortSignal.timeout(3_000),
   });
@@ -48,6 +51,18 @@ async function fetchOAuthToken(uuid) {
   const data = await resp.json();
   if (!data.result) return null;
   try { return JSON.parse(data.result); } catch { return null; }
+}
+
+async function fetchOAuthToken(uuid) {
+  return fetchOAuthValue(`oauth:token:${uuid}`);
+}
+
+async function fetchAccessTokenFamily(uuid) {
+  return fetchOAuthValue(`oauth:tokenfam:${uuid}`);
+}
+
+async function isRefreshFamilyRevoked(familyId) {
+  return (await fetchOAuthValue(`oauth:famrev:${familyId}`)) != null;
 }
 
 // Legacy: 16-char fingerprint for client_credentials tokens (backward compat)
@@ -99,6 +114,11 @@ export async function resolveBearerToContext(token) {
   if (!token || typeof token !== 'string') return null;
   const raw = await fetchOAuthToken(token);
   if (raw == null) return null;
+
+  const familyId = await fetchAccessTokenFamily(token);
+  if (typeof familyId === 'string' && familyId && await isRefreshFamilyRevoked(familyId)) {
+    return null;
+  }
 
   // Legacy bare-string: env-key path.
   if (typeof raw === 'string') {

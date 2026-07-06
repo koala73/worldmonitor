@@ -35,6 +35,15 @@ vi.mock("../../api/_api-key.js", () => ({
   validateApiKey: (...a: unknown[]) => validateApiKey(...a),
 }));
 
+const reserveDirectLlmQuota = vi.fn();
+vi.mock("../_shared/direct-llm-quota", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../_shared/direct-llm-quota")>();
+  return {
+    ...actual,
+    reserveDirectLlmQuota: (...a: unknown[]) => reserveDirectLlmQuota(...a),
+  };
+});
+
 import { createDomainGateway } from "../gateway";
 import { ENDPOINT_RATE_POLICIES } from "../_shared/rate-limit";
 import { getRequiredTier } from "../_shared/entitlement-check";
@@ -92,6 +101,11 @@ beforeEach(() => {
     required: true,
     error: "API key required",
   });
+  reserveDirectLlmQuota.mockReset().mockResolvedValue({
+    ok: true,
+    newCount: 1,
+    rollback: async () => {},
+  });
 });
 
 afterEach(() => {
@@ -105,7 +119,7 @@ describe("summarize-article gateway spend controls", () => {
     expect(ENDPOINT_RATE_POLICIES[SUMMARIZE_PATH]).toEqual({ limit: 30, window: "60 s" });
   });
 
-  test("anonymous wms_ sessions still hit the scoped endpoint limiter before the summarize handler", async () => {
+  test("anonymous wms_ sessions cannot reach non-translate summarize handler spend", async () => {
     validateApiKey.mockResolvedValue({ valid: true, required: false, kind: "session" });
     const calls = { summarize: 0, cache: 0 };
 
@@ -114,13 +128,14 @@ describe("summarize-article gateway spend controls", () => {
       { waitUntil: () => {} },
     );
 
-    expect(res.status).toBe(200);
-    expect(calls.summarize).toBe(1);
+    expect(res.status).toBe(401);
+    expect(calls.summarize).toBe(0);
     expect(checkEndpointRateLimit).toHaveBeenCalledWith(
       expect.any(Request),
       SUMMARIZE_PATH,
       expect.any(Object),
     );
+    expect(reserveDirectLlmQuota).not.toHaveBeenCalled();
   });
 
   test("basic bearer sessions also pass through the scoped endpoint limiter", async () => {
@@ -141,10 +156,13 @@ describe("summarize-article gateway spend controls", () => {
       expect.any(Object),
     );
     expect(checkEntitlementDetailed).toHaveBeenCalledWith(
-      null,
+      "free_user",
       SUMMARIZE_PATH,
       expect.any(Object),
-      { clerkRole: null },
+      { clerkRole: "free" },
+    );
+    expect(reserveDirectLlmQuota).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "free_user" }),
     );
   });
 
@@ -165,7 +183,39 @@ describe("summarize-article gateway spend controls", () => {
       SUMMARIZE_PATH,
       expect.any(Object),
     );
+    expect(reserveDirectLlmQuota).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "pro_user" }),
+    );
     expect(calls.summarize).toBe(1);
+  });
+
+  test("translate mode remains public and quota-exempt", async () => {
+    validateApiKey.mockResolvedValue({ valid: true, required: false, kind: "session" });
+    const calls = { summarize: 0, cache: 0 };
+
+    const res = await makeGateway(calls)(
+      makeRequest(SUMMARIZE_PATH, { "X-WorldMonitor-Key": "wms_anonymous_session" }, "POST"),
+      { waitUntil: () => {} },
+    );
+
+    // makeRequest defaults to a brief body, so use a fresh request with the
+    // translate mode body for the actual assertion.
+    const translate = await makeGateway(calls)(
+      new Request(`https://www.worldmonitor.app${SUMMARIZE_PATH}`, {
+        method: "POST",
+        headers: {
+          "X-WorldMonitor-Key": "wms_anonymous_session",
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ provider: "groq", mode: "translate", headlines: ["hola"] }),
+      }),
+      { waitUntil: () => {} },
+    );
+
+    expect(res.status).toBe(401);
+    expect(translate.status).toBe(200);
+    expect(calls.summarize).toBe(1);
+    expect(reserveDirectLlmQuota).not.toHaveBeenCalled();
   });
 
   test("Redis-degraded endpoint rate limiting fails closed before the provider handler", async () => {

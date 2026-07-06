@@ -1442,7 +1442,10 @@
       "tonePositive": "सकारात्मक",
       "overall": "कुल मिलाकर: {{tone}}",
       "signalTypesEvents": "{{types}} संकेत प्रकार • {{events}} घटनाएं",
-      "newsSignals": "{{news}} खबरें • {{signals}} संकेत"
+      "newsSignals": "{{news}} खबरें • {{signals}} संकेत",
+      "provenanceTitle": "कवरेज प्रोवेनेंस: इस ब्रीफ को कितनी अंतर्ग्रहीत कहानियों और विशिष्ट स्रोतों से चुना गया था",
+      "compiledFrom": "{{stories}} कहानियों और {{sources}} स्रोतों से संकलित",
+      "briefFreshness": "{{minutes}}m पहले जनरेट किया गया · नवीनतम स्रोत {{hours}}h पुराना"
     },
     "settings": {
       "exportSettings": "सेटिंग्स निर्यात करें",

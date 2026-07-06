@@ -3,6 +3,8 @@ import { afterEach, describe, it } from 'node:test';
 
 import {
   forecastId,
+  forecastIdFromKey,
+  buildStateDerivedForecast,
   normalize,
   makePrediction,
   resolveCascades,
@@ -27,6 +29,7 @@ import {
   computeConfidence,
   computeHeadlineRelevance,
   computeMarketMatchScore,
+  getSearchTermsForRegion,
   sanitizeForPrompt,
   parseLLMScenarios,
   validateScenarios,
@@ -308,6 +311,278 @@ describe('calibrateWithMarkets', () => {
     calibrateWithMarkets([pred], markets);
     assert.equal(pred.calibration, null);
     assert.equal(pred.probability, 0.668);
+  });
+});
+
+describe('word-boundary term matching: no substring false positives (#4933)', () => {
+  it('calibrateWithMarkets: Mali forecast is not calibrated by a Somalia market', () => {
+    const pred = makePrediction('political', 'Mali', 'Political instability: Mali', 0.7, 0.6, '30d', []);
+    calibrateWithMarkets([pred], {
+      geopolitical: [{ title: "Will Somalia's government collapse in 2026?", yesPrice: 30, source: 'polymarket', volume: 50000 }],
+    });
+    assert.equal(pred.calibration, null);
+    assert.equal(pred.probability, 0.7);
+  });
+
+  it('calibrateWithMarkets: Niger forecast is not calibrated by a Nigeria market', () => {
+    const pred = makePrediction('political', 'Niger', 'Political instability: Niger', 0.7, 0.6, '30d', []);
+    calibrateWithMarkets([pred], {
+      geopolitical: [{ title: 'Will Nigeria hold peaceful elections in 2026?', yesPrice: 80, source: 'polymarket', volume: 50000 }],
+    });
+    assert.equal(pred.calibration, null);
+    assert.equal(pred.probability, 0.7);
+  });
+
+  it('detectInfraScenarios: Somalia cyber threat does not boost a Mali outage', () => {
+    const preds = detectInfraScenarios({
+      outages: [{ country: 'Mali', severity: 'major' }],
+      cyberThreats: [{ country: 'Somalia', type: 'ddos' }],
+      gpsJamming: [],
+    });
+    assert.equal(preds.length, 1);
+    assert.equal(preds[0].probability, 0.4);
+    assert.deepEqual(preds[0].signals.map(s => s.type), ['outage']);
+  });
+
+  it('detectInfraScenarios: same-country cyber threat still boosts (positive control)', () => {
+    const preds = detectInfraScenarios({
+      outages: [{ country: 'Mali', severity: 'major' }],
+      cyberThreats: [{ country: 'Mali', type: 'ddos' }],
+      gpsJamming: [],
+    });
+    assert.equal(preds[0].probability, 0.55);
+    assert.ok(preds[0].signals.some(s => s.type === 'cyber'));
+  });
+
+  it('detectInfraScenarios: possessive form still matches across the boundary', () => {
+    const preds = detectInfraScenarios({
+      outages: [{ country: 'Mali', severity: 'major' }],
+      cyberThreats: [{ target: "Mali's banking sector", type: 'ddos' }],
+      gpsJamming: [],
+    });
+    assert.ok(preds[0].signals.some(s => s.type === 'cyber'));
+  });
+
+  it('detectPoliticalScenarios: Nigeria protest anomaly does not boost a Niger forecast', () => {
+    const preds = detectPoliticalScenarios({
+      ciiScores: [{ code: 'NE', name: 'Niger', score: 70, level: 'high', trend: 'rising', components: { unrest: 60 } }],
+      unrestEvents: [],
+      temporalAnomalies: [{ type: 'protest', country: 'Nigeria', zScore: 3.2 }],
+    });
+    assert.equal(preds.length, 1);
+    assert.ok(!preds[0].signals.some(s => s.type === 'anomaly'));
+  });
+
+  it('detectPoliticalScenarios: same-country protest anomaly still boosts (positive control)', () => {
+    const preds = detectPoliticalScenarios({
+      ciiScores: [{ code: 'NE', name: 'Niger', score: 70, level: 'high', trend: 'rising', components: { unrest: 60 } }],
+      unrestEvents: [],
+      temporalAnomalies: [{ type: 'protest', country: 'Niger', zScore: 3.2 }],
+    });
+    assert.ok(preds[0].signals.some(s => s.type === 'anomaly'));
+  });
+
+  it('detectSupplyChainScenarios: route name nested in another word does not attach AIS signals', () => {
+    const preds = detectSupplyChainScenarios({
+      chokepoints: { routes: [{ route: 'Suez', riskScore: 80 }] },
+      temporalAnomalies: [{ type: 'ais_gaps', region: 'Suezmax anchorage zone' }],
+      gpsJamming: [],
+    });
+    assert.equal(preds.length, 1);
+    assert.ok(!preds[0].signals.some(s => s.type === 'ais_gap'));
+  });
+
+  it('detectSupplyChainScenarios: route name as a standalone word still matches (positive control)', () => {
+    const preds = detectSupplyChainScenarios({
+      chokepoints: { routes: [{ route: 'Suez', riskScore: 80 }] },
+      temporalAnomalies: [{ type: 'ais_gaps', region: 'Suez canal north entrance' }],
+      gpsJamming: [],
+    });
+    assert.ok(preds[0].signals.some(s => s.type === 'ais_gap'));
+  });
+
+  it('detectMilitaryScenarios: theater name nested in another word does not attach flight anomalies', () => {
+    const now = Date.now();
+    const preds = detectMilitaryScenarios({
+      militaryForecastInputs: {
+        fetchedAt: now,
+        theaters: [{ id: 'sahel-theater', name: 'Mali', postureLevel: 'elevated', assessedAt: now }],
+        surges: [],
+      },
+      temporalAnomalies: [{ type: 'military_flights', region: 'Somalia border strip', zScore: 3.0 }],
+    });
+    assert.equal(preds.length, 1);
+    assert.ok(!preds[0].signals.some(s => s.type === 'mil_flights'));
+  });
+
+  it('detectMilitaryScenarios: same-theater flight anomaly still attaches (positive control)', () => {
+    const now = Date.now();
+    const preds = detectMilitaryScenarios({
+      militaryForecastInputs: {
+        fetchedAt: now,
+        theaters: [{ id: 'sahel-theater', name: 'Mali', postureLevel: 'elevated', assessedAt: now }],
+        surges: [],
+      },
+      temporalAnomalies: [{ type: 'military_flights', region: 'Mali airspace', zScore: 3.0 }],
+    });
+    assert.ok(preds[0].signals.some(s => s.type === 'mil_flights'));
+  });
+
+  it('computeMarketMatchScore: "Iran" title token does not hit inside "Tirana"', () => {
+    const pred = makePrediction('conflict', 'Middle East', 'Escalation risk: Iran', 0.7, 0.6, '7d', []);
+    const score = computeMarketMatchScore(pred, 'Will Tirana host the 2027 summit?', ['middle east']);
+    assert.equal(score.titleHits, 0);
+  });
+
+  it('computeMarketMatchScore: exact "Iran" title token still hits (positive control)', () => {
+    const pred = makePrediction('conflict', 'Middle East', 'Escalation risk: Iran', 0.7, 0.6, '7d', []);
+    const score = computeMarketMatchScore(pred, 'Will Iran strike back in 2026?', ['middle east']);
+    assert.ok(score.titleHits >= 1);
+  });
+
+  it('computeMarketMatchScore: multi-word region term still matches across word boundaries', () => {
+    const pred = makePrediction('market', 'Middle East', 'Oil disruption', 0.6, 0.5, '7d', []);
+    const score = computeMarketMatchScore(pred, 'Will the Strait of Hormuz close in 2026?', ['strait of hormuz']);
+    assert.ok(score.regionHits >= 1);
+  });
+
+  it('getSearchTermsForRegion: Somalia does not inherit Mali terms via reverse substring lookup', () => {
+    const terms = getSearchTermsForRegion('Somalia').map(t => t.toLowerCase());
+    assert.ok(!terms.includes('bamako'), `Somalia terms leaked Mali keywords: ${terms.join(', ')}`);
+    assert.ok(!terms.some(t => t === 'mali'), `Somalia terms leaked Mali name: ${terms.join(', ')}`);
+    assert.ok(terms.includes('mogadishu'), `Somalia lost its own keywords to the substring break: ${terms.join(', ')}`);
+  });
+
+  it('getSearchTermsForRegion: Nigeria does not inherit Niger terms via reverse substring lookup', () => {
+    const terms = getSearchTermsForRegion('Nigeria').map(t => t.toLowerCase());
+    assert.ok(!terms.includes('niamey'), `Nigeria terms leaked Niger keywords: ${terms.join(', ')}`);
+    assert.ok(!terms.some(t => t === 'niger'), `Nigeria terms leaked Niger name: ${terms.join(', ')}`);
+  });
+
+  it('getSearchTermsForRegion: parenthetical suffix regions still resolve (positive control)', () => {
+    const terms = getSearchTermsForRegion('Myanmar (Burma)').map(t => t.toLowerCase());
+    assert.ok(terms.includes('myanmar'));
+  });
+
+  it('calibrateWithMarkets: Nigeria forecast is not calibrated by a Niger market (reverse-lookup poisoning)', () => {
+    const pred = makePrediction('political', 'Nigeria', 'Political instability: Nigeria', 0.7, 0.6, '30d', []);
+    calibrateWithMarkets([pred], {
+      geopolitical: [{ title: "Will Niger's junta lose power in 2026?", yesPrice: 30, source: 'polymarket', volume: 50000 }],
+    });
+    assert.equal(pred.calibration, null);
+    assert.equal(pred.probability, 0.7);
+  });
+
+  it('computeHeadlineRelevance: "war" hint does not hit inside "award", "iran" token not inside "Tirana"', () => {
+    const score = computeHeadlineRelevance('Award season kicks off in Tirana', [], 'conflict', {
+      titleTokens: ['iran'],
+      requireSemantic: true,
+    });
+    assert.equal(score, 0);
+  });
+
+  it('computeHeadlineRelevance: exact domain hint and title token still score (positive control)', () => {
+    const score = computeHeadlineRelevance('War fears grow as Iran mobilizes reservists', ['iran'], 'conflict', {
+      titleTokens: ['iran'],
+      requireSemantic: true,
+    });
+    assert.ok(score > 0);
+  });
+
+  it('computeHeadlineRelevance: plural form of a domain hint still scores (attacks vs attack)', () => {
+    const score = computeHeadlineRelevance('Missile attacks intensify near border', [], 'conflict', {
+      requireSemantic: true,
+    });
+    assert.ok(score > 0);
+  });
+
+  it('calibrateWithMarkets: plural domain hint still calibrates (elections vs election)', () => {
+    const pred = makePrediction('political', 'Nigeria', 'Political instability: Nigeria', 0.7, 0.6, '30d', []);
+    calibrateWithMarkets([pred], {
+      geopolitical: [{ title: 'Will Nigeria hold peaceful elections in 2026?', yesPrice: 80, source: 'polymarket', volume: 50000 }],
+    });
+    assert.ok(pred.calibration !== null);
+    assert.equal(pred.probability, +(0.4 * 0.8 + 0.6 * 0.7).toFixed(3));
+  });
+
+  it('getSearchTermsForRegion: DR Congo resolves to DR Congo, not Congo-Brazzaville', () => {
+    const terms = getSearchTermsForRegion('DR Congo').map(t => t.toLowerCase());
+    assert.ok(!terms.includes('brazzaville'), `DR Congo leaked Congo-Brazzaville terms: ${terms.join(', ')}`);
+    assert.ok(terms.includes('kinshasa'), `DR Congo lost its own keywords: ${terms.join(', ')}`);
+  });
+
+  it('getSearchTermsForRegion: Guinea-Bissau does not inherit Guinea/Conakry terms', () => {
+    const terms = getSearchTermsForRegion('Guinea-Bissau').map(t => t.toLowerCase());
+    assert.ok(!terms.includes('conakry'), `Guinea-Bissau leaked Guinea terms: ${terms.join(', ')}`);
+    assert.ok(terms.includes('guinea-bissau'));
+  });
+
+  it('getSearchTermsForRegion: Papua New Guinea does not inherit Guinea/Conakry terms', () => {
+    const terms = getSearchTermsForRegion('Papua New Guinea').map(t => t.toLowerCase());
+    assert.ok(!terms.includes('conakry'), `Papua New Guinea leaked Guinea terms: ${terms.join(', ')}`);
+  });
+
+  it('computeMarketMatchScore: "war" hint does not hit inside "wares" (es only after sibilants)', () => {
+    const pred = makePrediction('conflict', 'Middle East', 'Escalation risk: Iran', 0.7, 0.6, '7d', []);
+    const score = computeMarketMatchScore(pred, 'Will Iran export more wares in 2026?', ['iran', 'middle east']);
+    assert.equal(score.domainHits, 0);
+  });
+
+  it('calibrateWithMarkets: Iran conflict forecast not calibrated by an unrelated wares market', () => {
+    const pred = makePrediction('conflict', 'Middle East', 'Escalation risk: Iran', 0.7, 0.6, '7d', []);
+    calibrateWithMarkets([pred], {
+      geopolitical: [{ title: 'Will Iran export more wares in 2026?', yesPrice: 30, source: 'polymarket', volume: 50000 }],
+    });
+    assert.equal(pred.calibration, null);
+    assert.equal(pred.probability, 0.7);
+  });
+
+  it('computeMarketMatchScore: sibilant plural still matches ("gas" hint vs "gases")', () => {
+    const pred = makePrediction('market', 'Europe', 'Energy price shock: Europe', 0.6, 0.5, '7d', []);
+    const score = computeMarketMatchScore(pred, 'Will greenhouse gases regulation raise Europe energy prices?', ['europe']);
+    assert.ok(score.domainHits >= 1);
+  });
+});
+
+describe('non-finite probability guards (#4933)', () => {
+  it('makePrediction: NaN probability is coerced to a finite value, never serialized as null', () => {
+    const pred = makePrediction('conflict', 'Middle East', 'Test', NaN, 0.5, '7d', []);
+    assert.ok(Number.isFinite(pred.probability), `probability is ${pred.probability}`);
+    assert.equal(JSON.parse(JSON.stringify(pred)).probability, pred.probability);
+  });
+
+  it('makePrediction: undefined probability and NaN confidence are coerced to finite values', () => {
+    const pred = makePrediction('conflict', 'Middle East', 'Test', undefined, NaN, '7d', []);
+    assert.ok(Number.isFinite(pred.probability));
+    assert.ok(Number.isFinite(pred.confidence));
+  });
+
+  it('detectFromPredictionMarkets: non-numeric yesPrice row is skipped, not published with NaN', () => {
+    const preds = detectFromPredictionMarkets({
+      predictionMarkets: {
+        geopolitical: [{ title: 'Will Iran attack escalate in 2026?', yesPrice: 'oops', source: 'polymarket' }],
+      },
+    });
+    assert.equal(preds.length, 0);
+  });
+
+  it('detectFromPredictionMarkets: finite yesPrice in band still emits (positive control)', () => {
+    const preds = detectFromPredictionMarkets({
+      predictionMarkets: {
+        geopolitical: [{ title: 'Will Iran attack escalate in 2026?', yesPrice: 75, source: 'polymarket' }],
+      },
+    });
+    assert.equal(preds.length, 1);
+    assert.equal(preds[0].probability, 0.75);
+  });
+
+  it('calibrateWithMarkets: matching market with a non-finite price is skipped, not anchored at 50%', () => {
+    const pred = makePrediction('conflict', 'Middle East', 'Escalation', 0.7, 0.6, '7d', []);
+    calibrateWithMarkets([pred], {
+      geopolitical: [{ title: 'Will Iran conflict escalate in MENA?', source: 'polymarket', volume: 50000 }],
+    });
+    assert.equal(pred.calibration, null);
+    assert.equal(pred.probability, 0.7);
   });
 });
 
@@ -1180,11 +1455,86 @@ describe('forecast llm overrides', () => {
     const options = getForecastLlmCallOptions('combined');
     const providers = resolveForecastLlmProviders(options);
 
+    assert.deepEqual(options.providerOrder, ['openrouter', 'groq']);
+    assert.equal(providers[0]?.name, 'openrouter');
+    assert.equal(providers[0]?.model, 'deepseek/deepseek-v4-flash');
+    assert.equal(providers[1]?.name, 'groq');
+    assert.equal(providers[1]?.model, 'llama-3.3-70b-versatile');
+  });
+
+  it('pins critical_signals to the pre-#4944 chain (probability-coupled stage)', () => {
+    delete process.env.FORECAST_LLM_PROVIDER_ORDER;
+    delete process.env.FORECAST_LLM_CRITICAL_PROVIDER_ORDER;
+    delete process.env.FORECAST_LLM_MODEL_OPENROUTER;
+    delete process.env.FORECAST_LLM_CRITICAL_MODEL_OPENROUTER;
+
+    // critical_signals feeds LLM strength/confidence into state-derived
+    // forecast probabilities — the DeepSeek migration must not reach it
+    // before the #4930 resolver baseline exists.
+    const options = getForecastLlmCallOptions('critical_signals');
+    const providers = resolveForecastLlmProviders(options);
+
     assert.deepEqual(options.providerOrder, ['groq', 'openrouter']);
     assert.equal(providers[0]?.name, 'groq');
     assert.equal(providers[0]?.model, 'llama-3.1-8b-instant');
     assert.equal(providers[1]?.name, 'openrouter');
     assert.equal(providers[1]?.model, 'google/gemini-2.5-flash');
+    assert.equal(providers[1]?.extraBody, undefined, 'pinned openrouter entry must keep the legacy request body (no reasoning field)');
+  });
+
+  it('lets ONLY the stage-scoped env override unpin critical_signals', () => {
+    process.env.FORECAST_LLM_CRITICAL_PROVIDER_ORDER = 'openrouter';
+    process.env.FORECAST_LLM_CRITICAL_MODEL_OPENROUTER = 'deepseek/deepseek-v4-flash';
+
+    const options = getForecastLlmCallOptions('critical_signals');
+    const providers = resolveForecastLlmProviders(options);
+
+    assert.deepEqual(options.providerOrder, ['openrouter']);
+    assert.equal(providers[0]?.model, 'deepseek/deepseek-v4-flash');
+
+    delete process.env.FORECAST_LLM_CRITICAL_PROVIDER_ORDER;
+    delete process.env.FORECAST_LLM_CRITICAL_MODEL_OPENROUTER;
+  });
+
+  it('keeps critical_signals pinned even when a GLOBAL provider order is set', () => {
+    // A global order flip must not move the probability-coupled stage as a
+    // side effect (review finding on #4965) — only FORECAST_LLM_CRITICAL_*
+    // unpins deliberately.
+    process.env.FORECAST_LLM_PROVIDER_ORDER = 'openrouter';
+    delete process.env.FORECAST_LLM_CRITICAL_PROVIDER_ORDER;
+
+    const options = getForecastLlmCallOptions('critical_signals');
+    const providers = resolveForecastLlmProviders(options);
+
+    assert.deepEqual(options.providerOrder, ['groq', 'openrouter']);
+    assert.equal(providers[0]?.model, 'llama-3.1-8b-instant');
+    assert.equal(providers[1]?.model, 'google/gemini-2.5-flash');
+
+    delete process.env.FORECAST_LLM_PROVIDER_ORDER;
+  });
+
+  it('keeps the pinned critical_signals fallback model against a GLOBAL model override', () => {
+    // A global FORECAST_LLM_MODEL_OPENROUTER must not move the
+    // probability-coupled stage's fallback either (review finding on
+    // #4965) — only FORECAST_LLM_CRITICAL_MODEL_OPENROUTER may.
+    process.env.FORECAST_LLM_MODEL_OPENROUTER = 'deepseek/deepseek-v4-flash';
+    delete process.env.FORECAST_LLM_CRITICAL_PROVIDER_ORDER;
+    delete process.env.FORECAST_LLM_CRITICAL_MODEL_OPENROUTER;
+
+    const options = getForecastLlmCallOptions('critical_signals');
+    const providers = resolveForecastLlmProviders(options);
+
+    assert.equal(providers[0]?.model, 'llama-3.1-8b-instant');
+    assert.equal(providers[1]?.model, 'google/gemini-2.5-flash');
+    assert.equal(providers[1]?.extraBody, undefined);
+
+    // The stage-scoped model env DOES reach the pinned fallback slot.
+    process.env.FORECAST_LLM_CRITICAL_MODEL_OPENROUTER = 'google/gemini-2.5-pro';
+    const scoped = resolveForecastLlmProviders(getForecastLlmCallOptions('critical_signals'));
+    assert.equal(scoped[1]?.model, 'google/gemini-2.5-pro');
+
+    delete process.env.FORECAST_LLM_MODEL_OPENROUTER;
+    delete process.env.FORECAST_LLM_CRITICAL_MODEL_OPENROUTER;
   });
 
   it('supports a stronger combined-model override without changing scenario defaults', () => {
@@ -1201,9 +1551,10 @@ describe('forecast llm overrides', () => {
     assert.equal(combinedProviders[0]?.name, 'openrouter');
     assert.equal(combinedProviders[0]?.model, 'google/gemini-2.5-pro');
 
-    assert.deepEqual(scenarioOptions.providerOrder, ['groq', 'openrouter']);
-    assert.equal(scenarioProviders[0]?.name, 'groq');
-    assert.equal(scenarioProviders[1]?.model, 'google/gemini-2.5-flash');
+    assert.deepEqual(scenarioOptions.providerOrder, ['openrouter', 'groq']);
+    assert.equal(scenarioProviders[0]?.name, 'openrouter');
+    assert.equal(scenarioProviders[0]?.model, 'deepseek/deepseek-v4-flash');
+    assert.equal(scenarioProviders[1]?.model, 'llama-3.3-70b-versatile');
   });
 
   it('lets a global provider order and openrouter model apply to non-combined stages', () => {
@@ -1247,8 +1598,8 @@ describe('forecast llm overrides', () => {
             status: 200,
             headers: { get: () => null },
             json: async () => ({
-              model: 'llama-3.1-8b-instant',
-              choices: [{ message: { content: 'Groq retry succeeded with enough narrative content.' } }],
+              model: 'deepseek/deepseek-v4-flash',
+              choices: [{ message: { content: 'OpenRouter retry succeeded with enough narrative content.' } }],
             }),
           };
         },
@@ -1258,11 +1609,11 @@ describe('forecast llm overrides', () => {
 
       assert.deepEqual(waits, [2000, 2000]);
       assert.equal(calls.length, 3);
-      assert.ok(calls.every((url) => url.includes('api.groq.com')));
+      assert.ok(calls.every((url) => url.includes('openrouter.ai')));
       assert.deepEqual(result, {
-        text: 'Groq retry succeeded with enough narrative content.',
-        model: 'llama-3.1-8b-instant',
-        provider: 'groq',
+        text: 'OpenRouter retry succeeded with enough narrative content.',
+        model: 'deepseek/deepseek-v4-flash',
+        provider: 'openrouter',
       });
     } finally {
       globalThis.setTimeout = originalSetTimeout;
@@ -1297,8 +1648,8 @@ describe('forecast llm overrides', () => {
             status: 200,
             headers: { get: () => null },
             json: async () => ({
-              model: 'llama-3.1-8b-instant',
-              choices: [{ message: { content: 'Groq capped retry succeeded with enough narrative content.' } }],
+              model: 'deepseek/deepseek-v4-flash',
+              choices: [{ message: { content: 'Capped retry succeeded with enough narrative content.' } }],
             }),
           };
         },
@@ -1308,7 +1659,7 @@ describe('forecast llm overrides', () => {
 
       assert.deepEqual(waits, [10000]);
       assert.equal(calls, 2);
-      assert.equal(result?.provider, 'groq');
+      assert.equal(result?.provider, 'openrouter');
     } finally {
       globalThis.setTimeout = originalSetTimeout;
     }
@@ -1408,7 +1759,7 @@ describe('forecast llm overrides', () => {
     }
   });
 
-  it('falls back to openrouter after exhausting groq retries and preserves provider/model', async () => {
+  it('falls back to groq after exhausting openrouter retries and preserves provider/model', async () => {
     process.env.GROQ_API_KEY = 'groq-test-key';
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
     const providers = [];
@@ -1417,7 +1768,7 @@ describe('forecast llm overrides', () => {
       fetch: async (url) => {
         const href = String(url);
         providers.push(href.includes('api.groq.com') ? 'groq' : 'openrouter');
-        if (href.includes('api.groq.com')) {
+        if (href.includes('openrouter.ai')) {
           return {
             ok: false,
             status: 503,
@@ -1429,8 +1780,8 @@ describe('forecast llm overrides', () => {
           status: 200,
           headers: { get: () => null },
           json: async () => ({
-            model: 'openrouter/gemini-test',
-            choices: [{ message: { content: 'OpenRouter fallback succeeded with enough narrative content.' } }],
+            model: 'groq/llama-test',
+            choices: [{ message: { content: 'Groq fallback succeeded with enough narrative content.' } }],
           }),
         };
       },
@@ -1438,11 +1789,11 @@ describe('forecast llm overrides', () => {
 
     const result = await __callForecastLlmForTests('system', 'user', { stage: 'scenario', retryDelayMs: 0 });
 
-    assert.deepEqual(providers, ['groq', 'groq', 'groq', 'groq', 'openrouter']);
+    assert.deepEqual(providers, ['openrouter', 'openrouter', 'openrouter', 'openrouter', 'groq']);
     assert.deepEqual(result, {
-      text: 'OpenRouter fallback succeeded with enough narrative content.',
-      model: 'openrouter/gemini-test',
-      provider: 'openrouter',
+      text: 'Groq fallback succeeded with enough narrative content.',
+      model: 'groq/llama-test',
+      provider: 'groq',
     });
   });
 
@@ -1455,7 +1806,7 @@ describe('forecast llm overrides', () => {
       fetch: async (url) => {
         const href = String(url);
         providers.push(href.includes('api.groq.com') ? 'groq' : 'openrouter');
-        if (href.includes('api.groq.com')) {
+        if (href.includes('openrouter.ai')) {
           return {
             ok: false,
             status: 402,
@@ -1467,8 +1818,8 @@ describe('forecast llm overrides', () => {
           status: 200,
           headers: { get: () => null },
           json: async () => ({
-            model: 'openrouter/no-retry-test',
-            choices: [{ message: { content: 'OpenRouter fallback after non retryable status has enough content.' } }],
+            model: 'groq/no-retry-test',
+            choices: [{ message: { content: 'Groq fallback after non retryable status has enough content.' } }],
           }),
         };
       },
@@ -1476,11 +1827,11 @@ describe('forecast llm overrides', () => {
 
     const result = await __callForecastLlmForTests('system', 'user', { stage: 'scenario', retryDelayMs: 0 });
 
-    assert.deepEqual(providers, ['groq', 'openrouter']);
+    assert.deepEqual(providers, ['openrouter', 'groq']);
     assert.deepEqual(result, {
-      text: 'OpenRouter fallback after non retryable status has enough content.',
-      model: 'openrouter/no-retry-test',
-      provider: 'openrouter',
+      text: 'Groq fallback after non retryable status has enough content.',
+      model: 'groq/no-retry-test',
+      provider: 'groq',
     });
   });
 
@@ -2881,4 +3232,88 @@ describe('forecast quality gating', () => {
     assert.ok(worldState.situationClusters.every((cluster) => !/fc-[a-z]+-[0-9a-f]{8}/.test(cluster.label)));
   });
 
+});
+
+describe('stable forecast ids: semantic slots, not volatile titles (#4933)', () => {
+  const now = Date.now();
+  const milInputs = (country, type) => ({
+    militaryForecastInputs: {
+      fetchedAt: now,
+      theaters: [{ id: 'iran-theater', postureLevel: 'elevated', assessedAt: now }],
+      surges: [{
+        theaterId: 'iran-theater', surgeType: type, dominantCountry: country,
+        fighters: 5, strikeCapable: true, persistent: true, surgeMultiple: 4, assessedAt: now,
+      }],
+    },
+    temporalAnomalies: [],
+  });
+
+  it('military id is stable across surge-type and country changes in the same theater', () => {
+    const a = detectMilitaryScenarios(milInputs('US', 'fighter'));
+    const b = detectMilitaryScenarios(milInputs('Israel', 'airlift'));
+    assert.equal(a.length, 1);
+    assert.equal(b.length, 1);
+    assert.notEqual(a[0].title, b[0].title);
+    assert.equal(a[0].id, b[0].id);
+  });
+
+  it('military ids differ across theaters', () => {
+    const preds = detectMilitaryScenarios({
+      militaryForecastInputs: {
+        fetchedAt: now,
+        theaters: [
+          { id: 'iran-theater', postureLevel: 'elevated', assessedAt: now },
+          { id: 'taiwan-theater', postureLevel: 'elevated', assessedAt: now },
+        ],
+        surges: [],
+      },
+      temporalAnomalies: [],
+    });
+    assert.equal(preds.length, 2);
+    assert.notEqual(preds[0].id, preds[1].id);
+  });
+
+  it('trend continuity survives a military title change', () => {
+    const a = detectMilitaryScenarios(milInputs('US', 'fighter'));
+    const b = detectMilitaryScenarios(milInputs('Israel', 'airlift'));
+    const priorSnap = buildPriorForecastSnapshot({ ...a[0], probability: 0.1 });
+    computeTrends(b, { predictions: [priorSnap] });
+    assert.equal(b[0].trend, 'rising');
+    assert.equal(b[0].priorProbability, 0.1);
+  });
+
+  it('state-derived id keys on the stable state-unit identity, not the volatile cluster label', () => {
+    const mkUnit = (label) => ({
+      id: 'state-abc123', label, stateKind: 'market_stress',
+      dominantRegion: 'Middle East', regions: ['Middle East'],
+      avgProbability: 0.5, avgConfidence: 0.5,
+      situationCount: 2, forecastCount: 3,
+    });
+    const bucket = { id: 'energy', label: 'Energy', pressureScore: 0.6, confidence: 0.5 };
+    const candidate = { score: 0.6, criticalLift: 0, primarySignalType: 'energy_supply_shock', primaryChannel: 'energy' };
+    const a = buildStateDerivedForecast(mkUnit('Hormuz pressure complex'), 'market', bucket, candidate, null);
+    const b = buildStateDerivedForecast(mkUnit('Gulf energy stress cluster'), 'market', bucket, candidate, null);
+    assert.notEqual(a.title, b.title);
+    assert.equal(a.id, b.id);
+  });
+
+  it('two DISTINCT state units in the same region+bucket keep distinct ids (no slot collapse)', () => {
+    const mkUnit = (id, label) => ({
+      id, label, stateKind: 'market_stress',
+      dominantRegion: 'Middle East', regions: ['Middle East'],
+      avgProbability: 0.5, avgConfidence: 0.5,
+      situationCount: 2, forecastCount: 3,
+    });
+    const bucket = { id: 'energy', label: 'Energy', pressureScore: 0.6, confidence: 0.5 };
+    const candidate = { score: 0.6, criticalLift: 0, primarySignalType: 'energy_supply_shock', primaryChannel: 'energy' };
+    const a = buildStateDerivedForecast(mkUnit('state-hormuz1', 'Hormuz pressure complex'), 'market', bucket, candidate, null);
+    const b = buildStateDerivedForecast(mkUnit('state-redsea2', 'Red Sea freight stress'), 'market', bucket, candidate, null);
+    assert.notEqual(a.id, b.id);
+  });
+
+  it('forecastIdFromKey is deterministic, domain-scoped, and keeps the fc-<domain>-<8hex> format', () => {
+    assert.equal(forecastIdFromKey('military', 'theater:iran-theater'), forecastIdFromKey('military', 'theater:iran-theater'));
+    assert.notEqual(forecastIdFromKey('military', 'theater:iran-theater'), forecastIdFromKey('conflict', 'theater:iran-theater'));
+    assert.match(forecastIdFromKey('military', 'theater:iran-theater'), /^fc-military-[0-9a-f]{8}$/);
+  });
 });

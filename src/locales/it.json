@@ -1603,7 +1603,10 @@
       "overall": "Complessivo: {{tone}}",
       "signalTypesEvents": "{{types}} tipi di segnale • {{events}} eventi",
       "newsSignals": "{{news}} notizie • {{signals}} segnali",
-      "sources_many": "{{count}} fonti"
+      "sources_many": "{{count}} fonti",
+      "provenanceTitle": "Provenienza della copertura: quante storie acquisite e quante fonti distinte sono state utilizzate per selezionare questo briefing",
+      "compiledFrom": "Compilato da {{stories}} storie provenienti da {{sources}} fonti",
+      "briefFreshness": "Generato {{minutes}}m fa · fonte più recente {{hours}}h fa"
     },
     "etfFlows": {
       "unavailable": "Dati ETF temporaneamente non disponibili",

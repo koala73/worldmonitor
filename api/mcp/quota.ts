@@ -8,9 +8,9 @@ import type { PipelineFn, QuotaRejected, QuotaReserved } from './types';
 // ---------------------------------------------------------------------------
 // Daily quota helpers (Pro-only). INCR-first reservation runs synchronously
 // on the critical path BEFORE tool dispatch — never inside `waitUntil`.
-// On any post-INCR rejection (cap exceeded OR tool dispatch failure) we
-// best-effort DECR. A failed DECR overshoots the counter by 1, but never
-// undershoots — cost-protection > user-fairness.
+// On pre-dispatch cap rejection we best-effort DECR. Once dispatch begins,
+// callers keep the slot charged even if execution later errors or exceeds
+// budget.
 // ---------------------------------------------------------------------------
 
 export async function reserveQuota(

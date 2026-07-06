@@ -267,7 +267,7 @@ function initOverviewListeners(area: HTMLElement): void {
 
   area.querySelector('[data-wm-open-pro]')?.addEventListener('click', () => {
     const url = 'https://worldmonitor.app/pro';
-    void invokeTauri<void>('open_url', { url }).catch(() => window.open(url, '_blank'));
+    void invokeTauri<void>('open_url', { url }).catch(() => window.open(url, '_blank', 'noopener,noreferrer'));
   });
 
   area.querySelectorAll<HTMLButtonElement>('.settings-ov-cat[data-section]').forEach(btn => {
@@ -485,9 +485,9 @@ function initFeatureSectionListeners(area: HTMLElement): void {
       const url = link.dataset.signupUrl;
       if (!url) return;
       if (isDesktopRuntime()) {
-        void invokeTauri<void>('open_url', { url }).catch(() => window.open(url, '_blank'));
+        void invokeTauri<void>('open_url', { url }).catch(() => window.open(url, '_blank', 'noopener,noreferrer'));
       } else {
-        window.open(url, '_blank');
+        window.open(url, '_blank', 'noopener,noreferrer');
       }
     });
   });

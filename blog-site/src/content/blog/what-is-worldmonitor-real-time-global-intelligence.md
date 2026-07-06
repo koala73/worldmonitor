@@ -78,7 +78,7 @@ The dashboard serves a surprisingly wide audience:
 - **Journalists** who need instant context for breaking stories
 - **Supply chain managers** monitoring disruption risk at ports and commodity hubs
 - **Policy researchers** studying government spending and trade policy
-- **Developers** who want to build on top of open, typed APIs (276 proto files, 34 services). See the [Developer API and Open Source guide](/blog/posts/build-on-worldmonitor-developer-api-open-source/) for details.
+- **Developers** who want to build on top of open, typed APIs (278 proto files, 35 services). See the [Developer API and Open Source guide](/blog/posts/build-on-worldmonitor-developer-api-open-source/) for details.
 
 ## Available Everywhere
 

@@ -81,7 +81,7 @@ export function buildPublicTool(
     ? compressDescription(tool.description, TOOL_DESCRIPTION_MAX_BYTES)
     : tool.description;
 
-  return {
+  const publicTool: PublicToolShape = {
     name: tool.name,
     description,
     inputSchema: {
@@ -97,6 +97,21 @@ export function buildPublicTool(
     // matches the inputSchema.properties + outputSchema treatment above.
     annotations: structuredClone(tool.annotations),
   };
+
+  // MCP Apps (`io.modelcontextprotocol/ui`) — translate the tool's internal
+  // `_uiResourceUri` into the spec-reserved public `_meta`. Emit BOTH the
+  // nested `ui.resourceUri` (current form) and the flat `ui/resourceUri`
+  // (deprecated legacy alias) so hosts on either revision resolve the shell.
+  // Only tools with an interactive UI surface carry `_meta`; every other tool
+  // omits it entirely (no empty object on the wire).
+  if (tool._uiResourceUri) {
+    publicTool._meta = {
+      ui: { resourceUri: tool._uiResourceUri },
+      'ui/resourceUri': tool._uiResourceUri,
+    };
+  }
+
+  return publicTool;
 }
 
 export const TOOL_LIST_RESPONSE = TOOL_REGISTRY.map((tool) => buildPublicTool(tool, { compressDescriptions: true }));

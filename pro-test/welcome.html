@@ -71,7 +71,7 @@
           },
           {
             name: 'getWorldMonitorMcpEndpoint',
-            description: "Return connection details for World Monitor's remote MCP server so an agent can pull live geopolitical, market, maritime, aviation, cyber and economic intelligence directly. Includes the Streamable HTTP endpoint, the discovery server card, supported auth modes, and docs.",
+            description: "Return connection details for World Monitor's remote MCP server so an agent can pull live geopolitical, market, maritime, aviation, cyber and economic intelligence directly. Includes the Streamable HTTP endpoint, the discovery server card, and supported auth modes.",
             inputSchema: { type: 'object', properties: {}, additionalProperties: false },
             execute: function () {
               // No tool count here — the live server card is the source of truth
@@ -81,8 +81,7 @@
                 transport: 'streamableHttp',
                 serverCard: 'https://worldmonitor.app/.well-known/mcp/server-card.json',
                 auth: ['OAuth 2.1 bearer (Authorization: Bearer <token>)', 'API key (X-WorldMonitor-Key: wm_...)'],
-                publicDiscovery: 'initialize, tools/list and notifications/initialized are servable without credentials',
-                docs: 'https://worldmonitor.app/docs/mcp-server'
+                publicDiscovery: 'initialize, tools/list and notifications/initialized are servable without credentials'
               }, null, 2)));
             }
           }
@@ -116,6 +115,12 @@
         }
       })();
     </script>
+    <!-- Umami (#4931): the welcome landing had no analytics — pageviews plus
+         data-umami-event CTA clicks (see src/welcome/*) land in the same Umami
+         site as the dashboard so acquisition → dashboard → checkout joins.
+         data-domains must list www (exact-hostname match; apex 301s to www).
+         Static nonce satisfies the strict-dynamic CSP (deploy-config CSP). -->
+    <script async defer src="https://abacus.worldmonitor.app/script.js" data-website-id="e8800335-c853-46a8-8497-c993ed2f58bc" data-domains="worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app" nonce="wm-static-bootstrap"></script>
     <title>World Monitor — Free Real-Time Global Intelligence Dashboard</title>
     <meta name="description" content="By the time it's news, you already knew. Conflicts, shipping chokepoints, military flights, markets and cyber on one free live world map, with AI analysis. No signup." />
     <meta name="keywords" content="global intelligence dashboard, real-time world map, geopolitical monitoring, conflict tracking, OSINT dashboard, market monitoring, shipping chokepoints, satellite tracking, situational awareness, free intelligence platform, world news dashboard, AI news analysis" />
@@ -168,21 +173,35 @@
       "operatingSystem": "Web, Windows, macOS, Linux, Android TV",
       "url": "https://worldmonitor.app",
       "description": "Free real-time global intelligence dashboard. 500+ news feeds, conflict tracking, market data, shipping chokepoints, satellite passes and cyber signals fused into one live map of the world, with AI analysis layered on top.",
+      "sameAs": ["https://www.wikidata.org/wiki/Q140439514", "https://github.com/koala73/worldmonitor", "https://www.npmjs.com/package/worldmonitor"],
       "author": {
         "@type": "Person",
         "name": "Elie Habib",
         "url": "https://x.com/eliehabib",
         "jobTitle": "CEO",
-        "sameAs": ["https://x.com/eliehabib", "https://github.com/koala73"]
+        "sameAs": ["https://x.com/eliehabib", "https://github.com/koala73", "https://www.linkedin.com/in/elie-habib-7047b931", "https://www.wikidata.org/wiki/Q121365724", "https://www.crunchbase.com/person/elie-habib-2"]
       },
       "screenshot": "https://www.worldmonitor.app/favico/og-image.png",
-      "datePublished": "2024-10-01",
+      "datePublished": "2026-01",
       "offers": [
         { "@type": "Offer", "price": "0", "priceCurrency": "USD", "name": "Free", "description": "Full dashboard with 500+ news feeds, 65+ external data sources, 56 map layers, six monitor variants, BYOK AI — no signup required" },
         { "@type": "Offer", "price": "39.99", "priceCurrency": "USD", "name": "Pro Monthly", "description": "WM Analyst chat, Scenario Engine, Route Explorer, AI digest (daily/twice-daily/weekly), custom widget builder, MCP connectors, equity research, macro analytics — 30+ services under one key" },
         { "@type": "Offer", "price": "399.99", "priceCurrency": "USD", "name": "Pro Annual", "description": "Pro yearly plan — 2 months free vs monthly billing" }
       ],
       "featureList": "Real-time global map with 56 data layers, 500+ curated news feeds, Country Instability Index across 196 countries, live conflict tracking, market quotes and sector heatmaps, 13 shipping chokepoints with vessel transit intelligence, real-time satellite tracking, GPS jamming zones, submarine cable map, AI datacenter map, daily AI brief, Scenario Engine, custom monitors and alerts, 39-tool MCP server, desktop apps, Android TV app, 25 language support"
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      "@id": "https://www.worldmonitor.app/",
+      "url": "https://www.worldmonitor.app/",
+      "name": "World Monitor — By the time it's news, you already knew.",
+      "speakable": {
+        "@type": "SpeakableSpecification",
+        "cssSelector": ["h1", "h1 + p"]
+      }
     }
     </script>
     <script type="application/ld+json">

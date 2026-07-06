@@ -8,18 +8,18 @@ description: "Every error shape WorldMonitor's MCP server can emit — JSON-RPC 
   Every code/envelope in this page should resolve to a line below; every
   emission site below should appear in the page.
 
-  - JSON-RPC envelope helpers           api/mcp/rpc.ts:7-13
-  - Origin / method gates               api/mcp/handler.ts:35-49
-  - Top-level dispatch / -32600/-32601  api/mcp/handler.ts:66-164
-  - Auth -32001 / -32603 emitters       api/mcp/auth.ts:126-238
-  - Per-minute -32029                   api/mcp/auth.ts:243-260
-  - Pro daily-cap -32029 (HTTP 429)     api/mcp/dispatch.ts:130-144
-  - Tool exec -32603                    api/mcp/dispatch.ts:231-269
-  - _budget_exceeded envelope           api/mcp/dispatch.ts:183-229
-  - _jmespath_error envelope            api/mcp/jmespath.ts:46-94
-  - JMESPath caps                       api/mcp/constants.ts:232-233
-  - Prompts -32602                      api/mcp/prompts/index.ts:296-316
-  - Resources -32602 / -32603           api/mcp/resources/index.ts:198-289
+  - JSON-RPC envelope helpers           api/mcp/rpc.ts (rpcOk, rpcError)
+  - Method gate (405 + Allow)           api/mcp/handler.ts (mcpHandler method check)
+  - Top-level dispatch / -32600/-32601  api/mcp/handler.ts (POST body parse and dispatch switch)
+  - Auth -32001 / -32603 emitters       api/mcp/auth.ts (resolveAuthContext and entitlement checks)
+  - Per-minute -32029                   api/mcp/auth.ts (applyPerMinuteLimit, applyAnonDiscoveryLimit)
+  - Pro daily-cap -32029 (HTTP 429)     api/mcp/dispatch.ts (reserveDailyQuotaForRequest)
+  - Tool exec -32603                    api/mcp/dispatch.ts (dispatchToolsCall)
+  - _budget_exceeded envelope           api/mcp/dispatch.ts (budget cap handling)
+  - _jmespath_error envelope            api/mcp/jmespath.ts (applyJmespath)
+  - JMESPath caps                       api/mcp/constants.ts (JMESPATH_LIMITS)
+  - Prompts -32602                      api/mcp/prompts/index.ts (listPrompts, getPrompt)
+  - Resources -32602 / -32603           api/mcp/resources/index.ts (listResources, readResource)
 */}
 
 This page is the practical reference: a payload arrives, you look it up, and you know what to do next. The server signals failure on three independent layers — **HTTP status**, **JSON-RPC `error.code`**, and **soft-behavior envelopes inside `result.content[0].text`** — and a single failure can touch one, two, or all three. Triage from the outside in: HTTP status → JSON-RPC code → soft envelope.
@@ -31,7 +31,7 @@ For the projection grammar itself, see the [JMESPath guide](/mcp-jmespath). For 
 - **HTTP status** is the transport-layer answer. Most JSON-RPC replies — successes AND errors — come back as **HTTP 200**, per the JSON-RPC 2.0 convention. The handler only escalates the status when the failure is something a generic HTTP client must react to (auth, daily cap, service unavailable) and benefits from a `Retry-After` / `WWW-Authenticate` header.
 - **JSON-RPC `error.code`** is the application-layer answer. Six codes are in use: `-32001`, `-32029`, `-32600`, `-32601`, `-32602`, `-32603`. The handler never emits another code — if you see one, treat it as a wire bug and file an issue.
 - **Soft-behavior envelopes** are the high-volume failure mode. `tools/call` succeeds at the JSON-RPC layer (HTTP 200, no `error` field), but the JSON sitting inside `result.content[0].text` carries a `_budget_exceeded` or `_jmespath_error` discriminator. Clients that only inspect the JSON-RPC envelope will silently treat these as successes — parse `result.content[0].text` and check for a leading `_` key before consuming the payload as data.
-- **Quota rollback is automatic** for soft envelopes. `_budget_exceeded` and tool-execution errors (`-32603`) refund the Pro daily-quota slot — you do not pay for a response you cannot use. `_jmespath_error` does NOT refund, because the tool fetch succeeded; the user-supplied projection is what failed.
+- **Executed calls stay charged.** `_budget_exceeded`, `_jmespath_error`, and tool-execution errors (`-32603`) all happen after the tool has run, so they consume the Pro daily-quota slot. Only pre-dispatch failures such as daily-cap rejection or quota-reservation service failure avoid charging the slot.
 - **Both 401 paths set `WWW-Authenticate`** with `realm="worldmonitor"` and a `resource_metadata` pointer at `/.well-known/oauth-protected-resource`. RFC 9728-aware clients (Claude Desktop, MCP Inspector) bounce through the OAuth flow on this header without further intervention.
 
 ## JSON-RPC error codes
@@ -80,16 +80,17 @@ Content-Type: application/json
 
 ### `-32029` — Rate limited (per-minute OR daily)
 
-Two distinct triggers share this code; the HTTP status disambiguates.
+Per-minute and daily-cap triggers share this code; the HTTP status disambiguates.
 
-**Per-minute throttle — HTTP 200.** Sliding-window limiter at **60 requests / minute** keyed per API key (Starter+) or per Pro user (combined across all that user's tokens). The limiter runs in `api/mcp/handler.ts` **before** the method-dispatch switch, so **every** request that reaches it counts — `tools/call`, all metadata methods (`tools/list`, `describe_tool`, `prompts/list`, `resources/list`), AND the lifecycle methods (`initialize`, `notifications/initialized`, `ping`). There is no per-method exemption. (The Pro daily-cap exemption set is separate and narrower — see below.) Comes back as a JSON-RPC error inside HTTP 200 because the limiter is upstream of any per-id correlation. Fails OPEN on Upstash transient errors — single spikes in limiter-backend latency won't take the API down.
+**Per-minute throttle — HTTP 200.** Sliding-window limiter at **60 requests / minute** keyed per API key (Starter+), per Pro user (combined across all that user's tokens), or per IP for anonymous public discovery. Credentialed requests are limited after auth. Credential-less public discovery methods (`initialize`, `notifications/initialized`, `tools/list`, `resources/list`, `resources/templates/list`) and anonymous public-resource reads are served without auth but still pass through the anonymous discovery limiter. Credential-less data/quota methods, or metadata methods outside that public set, do **not** use anonymous discovery — they fail closed with `-32001` / HTTP 401. Comes back as a JSON-RPC error inside HTTP 200 because the limiter is upstream of any per-id correlation. Fails OPEN on Upstash transient errors — single spikes in limiter-backend latency won't take the API down.
 
-The `message` text identifies which limiter fired. Two distinct strings:
+The `message` text identifies which limiter fired. Three distinct strings:
 
-| Auth context           | `message`                                                        | Site                  |
-|------------------------|------------------------------------------------------------------|-----------------------|
-| `X-WorldMonitor-Key`   | `Rate limit exceeded. Max 60 requests per minute per API key.`   | `api/mcp/auth.ts:249` |
-| Pro OAuth bearer       | `Rate limit exceeded. Max 60 requests per minute per Pro user.`  | `api/mcp/auth.ts:257` |
+| Auth context                              | `message`                                                                           | Site                                                    |
+|-------------------------------------------|-------------------------------------------------------------------------------------|---------------------------------------------------------|
+| `X-WorldMonitor-Key`                      | `Rate limit exceeded. Max 60 requests per minute per API key.`                      | `api/mcp/auth.ts` `applyPerMinuteLimit` API-key branch  |
+| Pro OAuth bearer                          | `Rate limit exceeded. Max 60 requests per minute per Pro user.`                     | `api/mcp/auth.ts` `applyPerMinuteLimit` Pro branch      |
+| No credential on anonymous discovery path | `Rate limit exceeded. Max 60 unauthenticated discovery requests per minute per IP.` | `api/mcp/auth.ts` `applyAnonDiscoveryLimit`             |
 
 Example payload (Pro variant — env_key clients get the same envelope shape with the API-key message string):
 
@@ -104,7 +105,7 @@ Example payload (Pro variant — env_key clients get the same envelope shape wit
 }
 ```
 
-**Pro/OAuth daily cap — HTTP 429 + `Retry-After`.** Hard daily cap (default **50 quota-consuming calls / UTC day**) enforced by an atomic Redis reservation BEFORE the tool runs, so the exact call that crosses the boundary rejects. Only `tools/call` and `resources/read` (the auth-symmetric resources path) count. `wm_…` API-key MCP callers do not enter this MCP daily reservation path; they are protected here by the 60 requests/minute/key limiter, while broader REST/API plan allowances are enforced outside the MCP handler. **Exempt from the Pro/OAuth daily cap:** `describe_tool`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `logging/setLevel`, `initialize`, `notifications/initialized`, `ping`. (These methods still count toward the per-minute limit above — daily and per-minute exemption sets are different.)
+**Pro/OAuth daily cap — HTTP 429 + `Retry-After`.** Hard daily cap (default **50 quota-consuming calls / UTC day**) enforced by an atomic Redis reservation BEFORE the tool runs, so the exact call that crosses the boundary rejects. Only `tools/call` and `resources/read` of a data-bearing **URI-template instantiation** (the auth-symmetric resources path) count. `wm_…` API-key MCP callers do not enter this MCP daily reservation path; they are protected here by the 60 requests/minute/key limiter, while broader REST/API plan allowances are enforced outside the MCP handler. **Exempt from the Pro/OAuth daily cap:** `describe_tool`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `resources/templates/list`, `logging/setLevel`, `initialize`, `notifications/initialized`, `ping`, and `resources/read` of a **public** (concrete, metadata-only) resource such as `worldmonitor://seed-meta/freshness`. (These methods still count toward the per-minute limit above — daily and per-minute exemption sets are different.)
 
 ```json
 {
@@ -141,7 +142,7 @@ Fires when the request body either isn't valid JSON or is valid JSON without a s
 
 ### `-32601` — Method not found
 
-The `method` field was a string but didn't match any handler. Methods this server speaks: `initialize`, `notifications/initialized`, `ping`, `tools/list`, `tools/call`, `prompts/list`, `prompts/get`, `resources/list`, `resources/read`, `logging/setLevel`.
+The `method` field was a string but didn't match any handler. Methods this server speaks: `initialize`, `notifications/initialized`, `ping`, `tools/list`, `tools/call`, `prompts/list`, `prompts/get`, `resources/list`, `resources/templates/list`, `resources/read`, `logging/setLevel`.
 
 ```json
 {
@@ -159,12 +160,12 @@ The most common error code, shared across `tools/call`, `prompts/get`, `resource
 
 | Trigger                                                | Site                              | Example `message`                                                          |
 |--------------------------------------------------------|-----------------------------------|----------------------------------------------------------------------------|
-| `tools/call` with no/non-string `name`                 | `api/mcp/dispatch.ts:113`         | `Invalid params: missing tool name`                                        |
-| `tools/call` with `name` that isn't in the registry    | `api/mcp/dispatch.ts:117`         | `Unknown tool: get_foo`                                                    |
-| `prompts/get` with no/non-string `name`                | `api/mcp/handler.ts:133`          | `Invalid params: missing prompt name`                                      |
-| `prompts/get` with unknown name or missing required arg | `api/mcp/prompts/index.ts:302/310` | `Unknown prompt: …` / `Missing required argument "iso2" for prompt "country-briefing"` |
-| `resources/read` with no/unknown/malformed `uri`       | `api/mcp/resources/index.ts:200/223` | `Invalid params: missing resource uri` / `Unknown resource uri "..."` |
-| `logging/setLevel` with non-string or out-of-set level | `api/mcp/handler.ts:156`          | `Invalid params: level must be one of debug, info, notice, warning, error, critical, alert, emergency` |
+| `tools/call` with no/non-string `name`                 | `api/mcp/dispatch.ts` `dispatchToolsCall` param guard | `Invalid params: missing tool name`                         |
+| `tools/call` with `name` that isn't in the registry    | `api/mcp/dispatch.ts` `dispatchToolsCall` registry lookup | `Unknown tool: get_foo`                                  |
+| `prompts/get` with no/non-string `name`                | `api/mcp/handler.ts` `prompts/get` switch branch       | `Invalid params: missing prompt name`                        |
+| `prompts/get` with unknown name or missing required arg | `api/mcp/prompts/index.ts` `buildPromptResponse`       | `Unknown prompt: …` / `Missing required argument "iso2" for prompt "country-briefing"` |
+| `resources/read` with no/unknown/malformed `uri`       | `api/mcp/resources/index.ts` (`buildPublicResourceResponse` / `buildResourceResponse`) | `Invalid params: missing resource uri` / `Unknown resource uri "..."` |
+| `logging/setLevel` with non-string or out-of-set level | `api/mcp/handler.ts` `logging/setLevel` switch branch  | `Invalid params: level must be one of debug, info, notice, warning, error, critical, alert, emergency` |
 
 ```json
 {
@@ -174,13 +175,13 @@ The most common error code, shared across `tools/call`, `prompts/get`, `resource
 }
 ```
 
-**What to do.** Read the `message` — it always tells you what was missing or wrong. For tools, names are in `tools/list`. For prompts, names + argument schemas are in `prompts/list`. For resources, the four supported URI shapes are in `resources/list`. For `logging/setLevel`, valid levels are the [RFC 5424 subset](https://www.rfc-editor.org/rfc/rfc5424#section-6.2.1) listed above.
+**What to do.** Read the `message` — it always tells you what was missing or wrong. For tools, names are in `tools/list`. For prompts, names + argument schemas are in `prompts/list`. For resources, the concrete URIs are in `resources/list` and the parameterised URI templates are in `resources/templates/list`. For `logging/setLevel`, valid levels are the [RFC 5424 subset](https://www.rfc-editor.org/rfc/rfc5424#section-6.2.1) listed above.
 
 ### `-32603` — Internal error
 
 Three distinct conditions share this code; the HTTP status disambiguates whether retry is reasonable.
 
-**HTTP 200 — tool-execution failure.** A tool dispatcher threw. Most commonly: every Redis key the tool reads returned null (`cache_all_null` — transient Redis blip or a still-warming seeder), or a sibling internal fetch failed mid-call. Pro quota is rolled back automatically; you do not pay for this.
+**HTTP 200 — tool-execution failure.** A tool dispatcher threw. Most commonly: every Redis key the tool reads returned null (`cache_all_null` — transient Redis blip or a still-warming seeder), or a sibling internal fetch failed mid-call. Pro quota is not rolled back: the tool already executed, so retrying consumes another slot.
 
 ```json
 {
@@ -210,9 +211,9 @@ The `message` text identifies the trigger. Three sites emit a 503; two distinct 
 
 | Trigger                                         | `message`                                              | Site                              |
 |-------------------------------------------------|--------------------------------------------------------|-----------------------------------|
-| OAuth resolution service threw (Convex blip)    | `Auth service temporarily unavailable. Try again.`     | `api/mcp/auth.ts:142`             |
-| `MCP_INTERNAL_HMAC_SECRET` unset (Pro path)     | `Service temporarily unavailable, retry in a moment.`  | `api/mcp/auth.ts:204`             |
-| Pro quota-reservation Redis failure (non-cap)   | `Service temporarily unavailable, retry in a moment.`  | `api/mcp/dispatch.ts:141`         |
+| OAuth resolution service threw (Convex blip)    | `Auth service temporarily unavailable. Try again.`     | `api/mcp/auth.ts` `resolveAuthContext` bearer branch |
+| `MCP_INTERNAL_HMAC_SECRET` unset (Pro path)     | `Service temporarily unavailable, retry in a moment.`  | `api/mcp/auth.ts` `runProPreChecks` secret preflight |
+| Pro quota-reservation Redis failure (non-cap)   | `Service temporarily unavailable, retry in a moment.`  | `api/mcp/dispatch.ts` `dispatchToolsCall` quota reservation |
 
 Client recovery is identical for all three (honour `Retry-After: 5`); the message disambiguates only for log analysis.
 
@@ -230,15 +231,13 @@ Every status the MCP handler can return. Most JSON-RPC replies — including mos
 | **202** | empty                     | n/a              | `notifications/initialized` — JSON-RPC notifications take no response body, per spec |
 | **204** | empty                     | n/a              | `OPTIONS` preflight                                                  |
 | **401** | JSON-RPC envelope         | `-32001`         | Missing/invalid/expired credentials, revoked Pro MCP token, inactive subscription. `WWW-Authenticate` header set. |
-| **403** | plain `"Forbidden"`       | n/a (NOT JSON-RPC)| `Origin` header is present and is not `https://claude.ai` or `https://claude.com`. Server-to-server callers (no `Origin`) are exempt. |
-| **405** | empty                     | n/a              | Request method is not `POST`, `HEAD`, or `OPTIONS`. `Allow: POST, HEAD, OPTIONS` header set. |
+| **405** | empty                     | n/a              | Request method is not `POST`, `GET`, `HEAD`, or `OPTIONS` (or a bare `GET` with no `Last-Event-ID`). `Allow: POST, GET, HEAD, OPTIONS` header set. |
 | **429** | JSON-RPC envelope         | `-32029`         | **Pro daily cap exceeded only.** `Retry-After: <seconds-until-UTC-midnight>` set. (Per-minute throttle returns `-32029` inside HTTP 200 — see `-32029` above.) |
 | **503** | JSON-RPC envelope         | `-32603`         | Auth service unavailable, `MCP_INTERNAL_HMAC_SECRET` misconfigured, or quota-reservation Redis failure. `Retry-After: 5`. |
 
-Two HTTP statuses appear that aren't JSON-RPC errors:
+One HTTP status appears that isn't a JSON-RPC error:
 
-- **403 with a plain `Forbidden` body** comes from origin-validation BEFORE the JSON-RPC layer runs. Don't try to `JSON.parse` the body. This is only relevant to browser-origin clients; CLI clients, Claude Desktop, and `curl` send no `Origin` header and are exempt.
-- **405 with an empty body** comes from method-validation BEFORE JSON-RPC. The handler accepts `POST` (the JSON-RPC path), `HEAD` (a 200 ack with `Content-Type: application/json`, used by uptime probes), and `OPTIONS` (CORS preflight). Anything else gets 405 + `Allow: POST, HEAD, OPTIONS`.
+- **405 with an empty body** comes from method-validation BEFORE JSON-RPC. The handler accepts `POST` (the JSON-RPC path), `GET` (the standalone SSE stream / `Last-Event-ID` replay channel), `HEAD` (a 200 ack with `Content-Type: application/json`, used by uptime probes), and `OPTIONS` (CORS preflight). A bare `GET` with no `Last-Event-ID` also returns 405 (no standalone stream is offered). Anything else gets 405 + `Allow: POST, GET, HEAD, OPTIONS`. The endpoint enforces no `Origin` allowlist: it advertises wildcard CORS and authenticates by explicit `Authorization` / `X-WorldMonitor-Key` header, so browser-origin clients (any origin) are accepted.
 
 ## Soft-behavior envelopes
 
@@ -285,7 +284,7 @@ Fields:
 - `actual_bytes: number` — UTF-8 byte length of the serialised response after all narrowing.
 - `hint: string` — recovery advice. The text varies based on whether the caller already passed a `jmespath` argument; both phrasings tell you to narrow the result.
 
-**Quota.** The Pro daily-quota slot is rolled back automatically. You do not pay for a response you cannot use.
+**Quota.** The Pro daily-quota slot is not rolled back. The tool already executed before the server measured the serialized output size, so the slot stays charged even though the response is an error envelope.
 
 **Recovery.** Make the projection more selective, layer a tool-level filter (`country`, `since`, `limit`), or both. The [JMESPath guide](/mcp-jmespath) has worked examples for projection. The `summary: true` flag (every cache tool accepts it) returns a server-built counts-and-samples digest that is always under budget.
 
@@ -359,7 +358,7 @@ If you build a generic envelope detector, key off the leading underscore (`_budg
 
 ## See also
 
-- [MCP Server overview](/mcp-server) — endpoints, auth modes, OAuth setup, plans and quotas.
+- [MCP Server overview](/mcp-overview) — endpoints, auth modes, OAuth setup, plans and quotas.
 - [JMESPath Projection Guide](/mcp-jmespath) — projection grammar + 12 worked examples; the right place to learn how to fix `_jmespath_error` and recover from `_budget_exceeded`.
 - [MCP Tools Reference](/mcp-tools-reference) — per-tool parameters, response shapes, and per-tool soft envelopes (e.g. `describe_tool`).
 - [MCP Quickstart](/mcp-quickstart) — five-minute zero-to-first-call onboarding.

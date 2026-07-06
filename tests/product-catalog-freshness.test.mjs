@@ -89,8 +89,8 @@ describe('Product catalog freshness', () => {
       }
     }
 
-    const groupToName = { free: 'Free', pro: 'Pro', api_starter: 'API', enterprise: 'Enterprise' };
-    const groupToLocaleKey = { free: 'free', pro: 'pro', api_starter: 'api', enterprise: 'enterprise' };
+    const groupToName = { free: 'Free', pro: 'Pro', api_starter: 'API', api_business: 'API Business', enterprise: 'Enterprise' };
+    const groupToLocaleKey = { free: 'free', pro: 'pro', api_starter: 'api', api_business: 'apiBusiness', enterprise: 'enterprise' };
     const tiersByLocaleKey = new Map(tiersJson.map((tier) => [tier.localeKey, tier]));
 
     for (const group of visibleGroups) {
@@ -151,7 +151,7 @@ describe('Product catalog freshness', () => {
     const expectedFeature = tiersJson.find((tier) => tier.localeKey === 'pro')?.features?.find((f) => /\bMCP\b/.test(f));
     assert.equal(
       expectedFeature,
-      'MCP access for Claude Desktop & other AI clients (50 calls/day)',
+      'MCP + SDK access for Claude Desktop & other AI clients (50 calls/day)',
       'generated Pro MCP feature changed; update fallback catalog copy and this assertion together',
     );
 
@@ -159,6 +159,93 @@ describe('Product catalog freshness', () => {
       const src = readFileSync(join(ROOT, relPath), 'utf8');
       assert.ok(src.includes(expectedFeature), `${relPath} is missing the canonical Pro MCP feature`);
       assert.ok(!src.includes('MCP data connectors'), `${relPath} still contains stale Pro MCP feature copy`);
+    }
+  });
+
+  // PR #4946 P0 regression guard: the Railway seeder (scripts/ais-relay.cjs
+  // "DodoPrices" loop) writes the Redis payload that /api/product-catalog
+  // serves on every cache HIT — in steady state it WINS over the edge
+  // fallback. When #4945 published api_business, the seeder's hardcoded
+  // 4-tier mirror silently reverted the live /pro page to 4 cards the
+  // moment the fetch resolved. These parity checks make every priced,
+  // publicVisible catalog entry provably present in the seeder mirror.
+  it('ais-relay Dodo seeder mirrors every priced publicVisible catalog entry', () => {
+    const catalogSrc = readFileSync(join(ROOT, 'convex/config/productCatalog.ts'), 'utf8');
+    const relaySrc = readFileSync(join(ROOT, 'scripts/ais-relay.cjs'), 'utf8');
+
+    // Catalog truth: publicVisible entries with a Dodo product + real price.
+    const entries = [];
+    for (const block of catalogSrc.split(/\n\s*\w+:\s*\{/).slice(1)) {
+      if (!block.includes('publicVisible: true')) continue;
+      const id = block.match(/dodoProductId:\s*["']([^"']+)["']/)?.[1];
+      const group = block.match(/tierGroup:\s*["']([^"']+)["']/)?.[1];
+      const cents = block.match(/priceCents:\s*(\d+)/)?.[1];
+      if (id && group && cents && Number(cents) > 0) {
+        entries.push({ id, group, cents: Number(cents) });
+      }
+    }
+    assert.ok(entries.length >= 5, 'expected at least 5 priced publicVisible catalog entries');
+
+    const relayIds = [...relaySrc.matchAll(/'(pdt_[A-Za-z0-9]+)'/g)].map((m) => m[1]);
+    const publicGroupsMatch = relaySrc.match(/const publicGroups = \[([^\]]+)\]/);
+    assert.ok(publicGroupsMatch, 'ais-relay.cjs must declare publicGroups');
+    const relayGroups = [...publicGroupsMatch[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+
+    for (const { id, group, cents } of entries) {
+      assert.ok(relayIds.includes(id),
+        `ais-relay.cjs DODO_PRODUCT_IDS is missing ${id} (${group}) — the Redis-seeded catalog will drop this tier from the live /pro page`);
+      assert.ok(new RegExp(`'${id}':\\s*\\{\\s*tierGroup:\\s*'${group}'`).test(relaySrc),
+        `ais-relay.cjs DODO_PRODUCT_META is missing/mismatched for ${id} (${group})`);
+      assert.ok(new RegExp(`'${id}':\\s*${cents}\\b`).test(relaySrc),
+        `ais-relay.cjs DODO_FALLBACK_PRICES for ${id} must be ${cents} to match productCatalog.ts`);
+      assert.ok(relayGroups.includes(group),
+        `ais-relay.cjs publicGroups is missing '${group}' — tier will never render from the seeded payload`);
+    }
+
+    // Mirror↔mirror: the seeder and the edge fallback must agree on the
+    // public tier list (order included — it is the /pro card order).
+    const edgeSrc = readFileSync(join(ROOT, 'api/product-catalog.js'), 'utf8');
+    const edgeGroupsMatch = edgeSrc.match(/const PUBLIC_TIER_GROUPS = \[([^\]]+)\]/);
+    assert.ok(edgeGroupsMatch, 'api/product-catalog.js must declare PUBLIC_TIER_GROUPS');
+    const edgeGroups = [...edgeGroupsMatch[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+    assert.deepEqual(relayGroups, edgeGroups,
+      'ais-relay publicGroups and api/product-catalog PUBLIC_TIER_GROUPS have drifted apart');
+
+    // Feature-array parity (#4974): the XLSX phantom survived in copy
+    // because nothing compared the mirrors' features lists. Every tier's
+    // features must be IDENTICAL between the seeder and the edge fallback,
+    // and must match the generated tiers.json (catalog marketingFeatures)
+    // for the tiers it carries.
+    const extractFeatures = (src, label) => {
+      const map = {};
+      for (const m of src.matchAll(/(\w+):\s*\{[^{}]*?features:\s*\[([^\]]*)\]/g)) {
+        map[m[1]] = [...m[2].matchAll(/'((?:[^'\\]|\\.)*)'/g)].map((f) => f[1]);
+      }
+      assert.ok(Object.keys(map).length >= 5, label + ': expected ≥5 tier feature lists');
+      return map;
+    };
+    const relayFeatures = extractFeatures(relaySrc, 'ais-relay.cjs');
+    const edgeFeatures = extractFeatures(edgeSrc, 'api/product-catalog.js');
+    assert.deepEqual(relayFeatures, edgeFeatures,
+      'tier features have drifted between ais-relay.cjs and api/product-catalog.js');
+    const tiersByName = new Map(tiersJson.map((tier) => [tier.name, tier]));
+    for (const [group, features] of Object.entries(edgeFeatures)) {
+      const name = { free: 'Free', pro: 'Pro', api_starter: 'API', api_business: 'API Business', enterprise: 'Enterprise' }[group];
+      const generated = tiersByName.get(name);
+      if (!generated) continue;
+      assert.deepEqual(features, generated.features,
+        'features for ' + group + ' drifted between the mirrors and generated tiers.json (catalog marketingFeatures)');
+    }
+
+    // Both mirrors must carry the generated localeKey for every public tier
+    // so translations survive the live payload replacing static tiers.json
+    // (PricingSection falls back to name.toLowerCase(), which breaks for
+    // multi-word names like 'API Business').
+    for (const localeKey of ['free', 'pro', 'api', 'apiBusiness', 'enterprise']) {
+      for (const [label, src] of [['ais-relay.cjs', relaySrc], ['api/product-catalog.js', edgeSrc]]) {
+        assert.ok(src.includes(`localeKey: '${localeKey}'`),
+          `${label} TIER_CONFIG is missing localeKey '${localeKey}'`);
+      }
     }
   });
 
@@ -224,7 +311,7 @@ describe('Product catalog freshness', () => {
 
     // Each visible group should have a corresponding tier in the JSON
     // Map group names to expected display names
-    const groupToName = { free: 'Free', pro: 'Pro', api_starter: 'API', enterprise: 'Enterprise' };
+    const groupToName = { free: 'Free', pro: 'Pro', api_starter: 'API', api_business: 'API Business', enterprise: 'Enterprise' };
     for (const group of visibleGroups) {
       const expectedName = groupToName[group] || group;
       assert.ok(

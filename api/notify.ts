@@ -13,6 +13,11 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { jsonResponse } from './_json-response.js';
+import {
+  beginStandaloneIdempotency,
+  completeStandaloneIdempotency,
+  getIdempotencyKey,
+} from './_idempotency.js';
 import { validateBearerToken } from '../server/auth-session';
 import { getEntitlements } from '../server/_shared/entitlement-check';
 
@@ -44,6 +49,8 @@ export default async function handler(req: Request): Promise<Response> {
   if (!session.valid || !session.userId) {
     return jsonResponse({ error: 'UNAUTHENTICATED' }, 401, cors);
   }
+
+  const idempotencyRequest = req.clone();
 
   const ent = await getEntitlements(session.userId);
   if (!ent || ent.features.tier < 1) {
@@ -80,6 +87,24 @@ export default async function handler(req: Request): Promise<Response> {
     return jsonResponse({ error: 'Service unavailable' }, 503, cors);
   }
 
+  const idempotencyKey = getIdempotencyKey(req);
+  const idempotency = idempotencyKey
+    ? await beginStandaloneIdempotency({
+      request: idempotencyRequest,
+      pathname: '/api/notify',
+      scope: `user:${session.userId}`,
+      idempotencyKey,
+      corsHeaders: cors,
+    })
+    : null;
+  if (
+    idempotency &&
+    idempotency.kind !== 'proceed' &&
+    idempotency.kind !== 'disabled'
+  ) {
+    return idempotency.response;
+  }
+
   const { eventType } = body;
 
   // Strip relay-internal scoring fields from user-supplied payload. These are
@@ -109,8 +134,8 @@ export default async function handler(req: Request): Promise<Response> {
   );
 
   if (!res.ok) {
-    return jsonResponse({ error: 'Publish failed' }, 502, cors);
+    return completeStandaloneIdempotency(idempotency, jsonResponse({ error: 'Publish failed' }, 502, cors));
   }
 
-  return jsonResponse({ ok: true }, 200, cors);
+  return completeStandaloneIdempotency(idempotency, jsonResponse({ ok: true }, 200, cors));
 }

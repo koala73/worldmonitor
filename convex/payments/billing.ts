@@ -15,12 +15,9 @@ import { internal } from "../_generated/api";
 import { DodoPayments } from "dodopayments";
 import { resolveUserId, requireUserId } from "../lib/auth";
 import { getFeaturesForPlan } from "../lib/entitlements";
+import { ANON_ID_V4_REGEX, verifyAnonClaimToken } from "../lib/identitySigning";
 import { PRODUCT_CATALOG, resolveProductToPlan } from "../config/productCatalog";
 import { recomputeEntitlementFromAllSubs } from "./subscriptionHelpers";
-
-// UUID v4 regex matching values produced by crypto.randomUUID() in user-identity.ts.
-// Hoisted to module scope to avoid re-allocation on every claimSubscription call.
-const ANON_ID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 
 // ---------------------------------------------------------------------------
 // Shared SDK config (direct REST SDK, not the Convex component from lib/dodo.ts)
@@ -89,7 +86,7 @@ function getDodoClient(): DodoPayments {
  * came from this path throwing on a missing customers row when both
  * the rawPayload and a same-user customers row still held the answer.
  */
-async function createCustomerPortalUrlForUser(
+export async function createCustomerPortalUrlForUser(
   ctx: Pick<ActionCtx, "runQuery">,
   userId: string,
 ): Promise<{ portal_url: string }> {
@@ -754,13 +751,29 @@ export const getActiveSubscription = internalQuery({
 });
 
 /**
+ * Billing family for the duplicate-checkout guards. api_starter and
+ * api_business are DISTINCT pricing-page tiers but the SAME product line:
+ * an active Starter customer clicking "API Business" on /pro must hit the
+ * duplicate-subscription dialog and be routed to the billing portal (where
+ * the #4634 Dodo collection upgrade lives) — NOT be sold a second
+ * concurrent API subscription ($99.99 + $249.99 double-billing; PR #4946
+ * review). Pro ↔ API cross-line purchases remain deliberately allowed —
+ * they are complementary products.
+ */
+export function checkoutBillingFamily(tierGroup: string): string {
+  return tierGroup.startsWith("api_") ? "api" : tierGroup;
+}
+
+/**
  * Internal query used by checkout creation to prevent duplicate subscriptions.
  *
  * Blocks new checkout sessions when the user already has an active/on_hold
- * subscription in the same tier group, or a cancelled subscription that
- * still has time remaining in the current billing period. This is an app-side
- * guard only; Dodo's "Allow Multiple Subscriptions" setting is still the
- * provider-side backstop for races before webhook ingestion updates Convex.
+ * subscription in the same billing family (see checkoutBillingFamily —
+ * api_starter and api_business count as one family), or a cancelled
+ * subscription that still has time remaining in the current billing period.
+ * This is an app-side guard only; Dodo's "Allow Multiple Subscriptions"
+ * setting is still the provider-side backstop for races before webhook
+ * ingestion updates Convex.
  */
 export const getCheckoutBlockingSubscription = internalQuery({
   args: {
@@ -782,7 +795,10 @@ export const getCheckoutBlockingSubscription = internalQuery({
       .filter((sub) => {
         const existingCatalogEntry = PRODUCT_CATALOG[sub.planKey];
         if (!existingCatalogEntry) return false;
-        if (existingCatalogEntry.tierGroup !== targetCatalogEntry.tierGroup) return false;
+        if (
+          checkoutBillingFamily(existingCatalogEntry.tierGroup) !==
+          checkoutBillingFamily(targetCatalogEntry.tierGroup)
+        ) return false;
         if (sub.status === "active" || sub.status === "on_hold") return true;
         return sub.status === "cancelled" && sub.currentPeriodEnd > now;
       })
@@ -887,7 +903,13 @@ export const getBlockingPendingPayment = internalQuery({
         if (!ev.planKey) return false;
         const entry = PRODUCT_CATALOG[ev.planKey];
         if (!entry) return false;
-        return entry.tierGroup === targetCatalogEntry.tierGroup;
+        // Same family scoping as the subscription guard: a pending Starter
+        // payment blocks a Business checkout (and vice versa), while a
+        // pending Pro payment never blocks an API purchase.
+        return (
+          checkoutBillingFamily(entry.tierGroup) ===
+          checkoutBillingFamily(targetCatalogEntry.tierGroup)
+        );
       })
       .sort((a, b) => b.occurredAt - a.occurredAt)[0];
 
@@ -946,21 +968,27 @@ export const internalGetCustomerPortalUrl = internalAction({
  * creates a real account, there is no automatic way to link the purchase.
  *
  * This mutation provides the migration path: once authenticated, the client
- * calls claimSubscription(anonId) to reassign all payment records from the
- * anonymous ID to the real user ID.
+ * calls claimSubscription(anonId, claimToken) to reassign all payment records
+ * from the anonymous ID to the real user ID. The claim token is minted
+ * server-side during checkout creation; a leaked bare UUID is not sufficient
+ * ownership proof.
  *
  * @see https://github.com/koala73/worldmonitor/issues/2078
  */
 export const claimSubscription = mutation({
-  args: { anonId: v.string() },
+  args: { anonId: v.string(), claimToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const realUserId = await requireUserId(ctx);
 
     // Validate anonId is a UUID v4 (format produced by crypto.randomUUID() in user-identity.ts).
     // Rejects injected Clerk IDs ("user_xxx") which are structurally distinct from UUID v4,
     // preventing cross-user subscription theft via localStorage injection.
-    if (!ANON_ID_REGEX.test(args.anonId) || args.anonId === realUserId) {
+    if (!ANON_ID_V4_REGEX.test(args.anonId) || args.anonId === realUserId) {
       return { claimed: { subscriptions: 0, entitlements: 0, customers: 0, payments: 0 } };
+    }
+
+    if (args.claimToken !== undefined && !(await verifyAnonClaimToken(args.anonId, args.claimToken))) {
+      throw new ConvexError({ kind: "ANON_CLAIM_PROOF_REQUIRED" });
     }
 
     // Parallel reads for all anonId data — bounded to prevent runaway memory
@@ -970,6 +998,19 @@ export const claimSubscription = mutation({
       ctx.db.query("customers").withIndex("by_userId", (q) => q.eq("userId", args.anonId)).take(10),
       ctx.db.query("paymentEvents").withIndex("by_userId", (q) => q.eq("userId", args.anonId)).take(1000),
     ]);
+
+    const hasClaimableRows =
+      subs.length > 0 ||
+      anonEntitlement !== null ||
+      customers.length > 0 ||
+      payments.length > 0;
+    if (!hasClaimableRows) {
+      return { claimed: { subscriptions: 0, entitlements: 0, customers: 0, payments: 0 } };
+    }
+
+    if (args.claimToken === undefined) {
+      throw new ConvexError({ kind: "ANON_CLAIM_PROOF_REQUIRED" });
+    }
 
     // Reassign subscriptions
     for (const sub of subs) {

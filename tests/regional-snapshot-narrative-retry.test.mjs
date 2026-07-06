@@ -43,7 +43,7 @@ describe('narrative callLlmDefault retry/budget', () => {
           if (calls.length <= 2) {
             return { ok: false, status: 429, headers: { get: (n) => (n.toLowerCase() === 'retry-after' ? '2' : null) } };
           }
-          return okResponse('llama-3.3-70b-versatile', '{"situation":"ok"}');
+          return okResponse('deepseek/deepseek-v4-flash', '{"situation":"ok"}');
         },
       });
 
@@ -51,9 +51,9 @@ describe('narrative callLlmDefault retry/budget', () => {
 
       assert.deepEqual(waits, [2000, 2000]);
       assert.equal(calls.length, 3);
-      assert.ok(calls.every((u) => u.includes('api.groq.com')));
-      assert.equal(result?.provider, 'groq');
-      assert.equal(result?.model, 'llama-3.3-70b-versatile');
+      assert.ok(calls.every((u) => u.includes('openrouter.ai')));
+      assert.equal(result?.provider, 'openrouter');
+      assert.equal(result?.model, 'deepseek/deepseek-v4-flash');
     } finally {
       globalThis.setTimeout = originalSetTimeout;
     }
@@ -72,7 +72,7 @@ describe('narrative callLlmDefault retry/budget', () => {
         fetch: async () => {
           calls += 1;
           if (calls === 1) return { ok: false, status: 503, headers: { get: (n) => (n.toLowerCase() === 'retry-after' ? '30' : null) } };
-          return okResponse('llama-3.3-70b-versatile', '{"situation":"ok"}');
+          return okResponse('deepseek/deepseek-v4-flash', '{"situation":"ok"}');
         },
       });
 
@@ -80,7 +80,7 @@ describe('narrative callLlmDefault retry/budget', () => {
 
       assert.deepEqual(waits, [10000]);
       assert.equal(calls, 2);
-      assert.equal(result?.provider, 'groq');
+      assert.equal(result?.provider, 'openrouter');
     } finally {
       globalThis.setTimeout = originalSetTimeout;
     }
@@ -101,7 +101,7 @@ describe('narrative callLlmDefault retry/budget', () => {
       __setNarrativeTransportForTests({
         fetch: async (url) => {
           calls += 1;
-          assert.ok(String(url).includes('api.groq.com'), 'budget stop must not fall through to openrouter');
+          assert.ok(String(url).includes('openrouter.ai'), 'budget stop must not fall through to groq');
           return { ok: false, status: 429, headers: { get: (n) => (n.toLowerCase() === 'retry-after' ? '30' : null) } };
         },
       });
@@ -126,14 +126,14 @@ describe('narrative callLlmDefault retry/budget', () => {
       fetch: async (url) => {
         const href = String(url);
         providers.push(href.includes('api.groq.com') ? 'groq' : 'openrouter');
-        if (href.includes('api.groq.com')) return { ok: false, status: 402, headers: { get: () => null } };
-        return okResponse('openrouter/gemini', '{"situation":"ok"}');
+        if (href.includes('openrouter.ai')) return { ok: false, status: 402, headers: { get: () => null } };
+        return okResponse('llama-3.3-70b-versatile', '{"situation":"ok"}');
       },
     });
 
     const result = await callLlmDefault(PROMPT, { retryDelayMs: 0 });
 
-    assert.deepEqual(providers, ['groq', 'openrouter']);
-    assert.equal(result?.provider, 'openrouter');
+    assert.deepEqual(providers, ['openrouter', 'groq']);
+    assert.equal(result?.provider, 'groq');
   });
 });

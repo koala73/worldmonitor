@@ -178,15 +178,15 @@
     "apiTier": "API SZINT",
     "title": "Programozható intelligencia",
     "subtitle": "Fejlesztőknek, elemzőknek és csapatoknak, akik World Monitor adatokra építenek. Különálló a Pro csomagtól — használhatja mindkettőt vagy bármelyiket.",
-    "restApi": "REST API mind a 30+ szolgáltatási doménen át",
+    "restApi": "REST API mind a 30+ szolgáltatási doménen át — hivatalos SDK-k: JavaScript, Python, Ruby, Go",
     "authenticated": "Kulcsonként hitelesített, csomagonként rate-limitált",
     "structured": "Strukturált JSON cache fejlécekkel és OpenAPI 3.1 dokumentációval",
     "starter": "Starter",
     "starterReqs": "1 000 kérés/nap",
     "starterWebhooks": "5 webhook-szabály",
     "business": "Business",
-    "businessReqs": "50 000 kérés/nap",
-    "businessWebhooks": "Korlátlan webhook + SLA",
+    "businessReqs": "10 000 kérés/nap",
+    "businessWebhooks": "Priority support",
     "feedData": "Vezessen adatokat saját irányítópultjaiba, automatizálja a riasztásokat Zapier/n8n/Make segítségével, és építsen egyéni pontozási modelleket CII/kockázati adatokra."
   },
   "enterpriseShowcase": {
@@ -374,14 +374,14 @@
           "Napi piaci briefek",
           "Katonai és geopolitikai követés",
           "Custom widget builder",
-          "MCP-hozzáférés Claude Desktophoz és más AI-kliensekhez (50 hívás/nap)",
+          "MCP + SDK-hozzáférés Claude Desktophoz és más AI-kliensekhez (50 hívás/nap)",
           "Prioritásos adatfrissítés"
         ]
       },
       "api": {
         "description": "Programozott hozzáférés hírszerzési adatokhoz",
         "features": [
-          "REST API-hozzáférés",
+          "REST API + hivatalos SDK-k (npm, PyPI, RubyGems, Go)",
           "Valós idejű adatfolyamok",
           "60 kérés/perc",
           "1 000 kérés/nap benne foglalt",

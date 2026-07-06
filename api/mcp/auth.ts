@@ -16,6 +16,7 @@ import {
   signInternalMcpRequest,
 } from '../../server/_shared/mcp-internal-hmac';
 import { validateProMcpTokenOrNull } from '../../server/_shared/pro-mcp-token';
+import { validateUserApiKey } from '../../server/_shared/user-api-key';
 import { rpcError, withMcpNoStore } from './rpc';
 import type {
   AuthResolution,
@@ -101,7 +102,11 @@ export async function buildAuthHeaders(
   url: string,
   body: BodyInit | null | undefined,
 ): Promise<Record<string, string>> {
-  if (context.kind === 'env_key') {
+  if (context.kind === 'env_key' || context.kind === 'user_key') {
+    // user_key (#4859): the downstream REST gateway validates the raw key
+    // itself (Convex hash lookup + the #4611 apiAccess gate + per-account
+    // limits), so usage attributes to the key owner exactly like a direct
+    // REST call — no internal-HMAC identity smuggling needed.
     return { 'X-WorldMonitor-Key': context.apiKey };
   }
   // context.kind === 'pro'
@@ -131,6 +136,7 @@ export const PRODUCTION_DEPS: McpHandlerDeps = {
   // to distinguish revoked from transient (F3 of the U7+U8 review pass).
   validateProMcpToken: validateProMcpTokenOrNull,
   getEntitlements,
+  validateUserApiKey,
   redisPipeline: rawRedisPipeline,
 };
 
@@ -188,16 +194,44 @@ export async function resolveAuthContext(
     };
   }
   const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
-  if (!await timingSafeIncludes(candidateKey, validKeys)) {
-    return {
-      ok: false,
-      response: new Response(
-        JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Invalid API key' } }),
-        { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders }) },
-      ),
-    };
+  if (await timingSafeIncludes(candidateKey, validKeys)) {
+    return { ok: true, context: { kind: 'env_key', apiKey: candidateKey } };
   }
-  return { ok: true, context: { kind: 'env_key', apiKey: candidateKey } };
+
+  // #4859: customer-issued dashboard keys (Convex userApiKeys). The env
+  // allowlist above holds only legacy operator keys; every key a user mints
+  // in the dashboard lives in Convex — before this fallback, ALL of them got
+  // "Invalid API key" here while the same keys worked on the REST gateway.
+  // Identity resolution only: the owner's mcpAccess entitlement is enforced
+  // at the gated-method pre-check (runUserKeyPreChecks), symmetric with the
+  // pro path, so a lapsed owner can still list tools but never call them.
+  if (candidateKey.startsWith('wm_')) {
+    let userKey: { userId: string } | null = null;
+    try {
+      userKey = await deps.validateUserApiKey(candidateKey);
+    } catch {
+      // Production validateUserApiKey fail-softs to null; a throw means the
+      // auth backend itself is unreachable — 503 mirrors the bearer path.
+      return {
+        ok: false,
+        response: new Response(
+          JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32603, message: 'Auth service temporarily unavailable. Try again.' } }),
+          { status: 503, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders }) },
+        ),
+      };
+    }
+    if (userKey) {
+      return { ok: true, context: { kind: 'user_key', apiKey: candidateKey, userId: userKey.userId } };
+    }
+  }
+
+  return {
+    ok: false,
+    response: new Response(
+      JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Invalid API key' } }),
+      { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders }) },
+    ),
+  };
 }
 
 /**
@@ -227,7 +261,20 @@ export async function runProPreChecks(
     );
   }
 
-  const validation = await deps.validateProMcpToken(context.mcpTokenId);
+  // #4860: this await was the only unguarded step on the gated path — the
+  // wired helper never rejects today, but a rejection here previously escaped
+  // mcpHandler (no top-level catch) as a raw 500 with zero Sentry. Fail
+  // closed with the same retryable 503 shape as the bearer-resolve catch.
+  let validation: Awaited<ReturnType<typeof deps.validateProMcpToken>> = null;
+  try {
+    validation = await deps.validateProMcpToken(context.mcpTokenId);
+  } catch (err) {
+    captureSilentError(err, { tags: { route: 'api/mcp', step: 'pro-token-validate' }, ctx });
+    return new Response(
+      JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32603, message: 'Service temporarily unavailable, retry in a moment.' } }),
+      { status: 503, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders }) },
+    );
+  }
   if (!validation || validation.userId !== context.userId) {
     return new Response(
       JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'MCP authorization revoked. Re-authorize at https://worldmonitor.app/mcp-grant.' } }),
@@ -235,32 +282,90 @@ export async function runProPreChecks(
     );
   }
 
+  return checkMcpEntitlementGate(context.userId, deps, resourceMetadataUrl, corsHeaders, 'pro-entitlement-recheck', ctx);
+}
+
+/**
+ * Shared mcpAccess entitlement gate for identity-resolved contexts (pro AND
+ * user_key). Fail-closed per memory `entitlement-signal-server-outlier-sweep`.
+ * Returns null when the owner has an active tier>=1 + mcpAccess entitlement;
+ * a 401 Response otherwise.
+ */
+async function checkMcpEntitlementGate(
+  userId: string,
+  deps: McpHandlerDeps,
+  resourceMetadataUrl: string,
+  corsHeaders: Record<string, string>,
+  sentryStep: string,
+  ctx?: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<Response | null> {
+  const rejected = () => new Response(
+    JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Subscription not active.' } }),
+    { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders }) },
+  );
+
   let ent: Awaited<ReturnType<typeof deps.getEntitlements>> = null;
   try {
-    ent = await deps.getEntitlements(context.userId);
+    ent = await deps.getEntitlements(userId);
   } catch (err) {
-    // Fail-closed per memory `entitlement-signal-server-outlier-sweep`.
-    captureSilentError(err, { tags: { route: 'api/mcp', step: 'pro-entitlement-recheck' }, ctx });
-    return new Response(
-      JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Subscription not active.' } }),
-      { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders }) },
-    );
+    captureSilentError(err, { tags: { route: 'api/mcp', step: sentryStep }, ctx });
+    return rejected();
   }
   const tier = ent?.features?.tier ?? 0;
   const mcpAccess = ent?.features?.mcpAccess === true;
   const validUntil = ent?.validUntil ?? 0;
   if (!ent || tier < 1 || !mcpAccess || validUntil < Date.now()) {
-    return new Response(
-      JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Subscription not active.' } }),
-      { status: 401, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders }) },
-    );
+    return rejected();
+  }
+  return null;
+}
+
+/**
+ * user_key (#4859) pre-check: the key row proved identity at auth-resolution
+ * time; data methods must additionally verify the OWNER still has an active
+ * mcpAccess entitlement. Without this, a user_key context would be the one
+ * credential class that skips the entitlement gate (env_key is operator-owned
+ * and intentionally ungated; pro re-checks on every gated call).
+ */
+export async function runUserKeyPreChecks(
+  context: Extract<McpAuthContext, { kind: 'user_key' }>,
+  deps: McpHandlerDeps,
+  resourceMetadataUrl: string,
+  corsHeaders: Record<string, string>,
+  ctx?: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<Response | null> {
+  return checkMcpEntitlementGate(context.userId, deps, resourceMetadataUrl, corsHeaders, 'user-key-entitlement', ctx);
+}
+
+/**
+ * Kind-dispatched pre-checks for gated (data/quota) methods. env_key needs
+ * none; pro and user_key each run their own. Single entry point so a future
+ * context kind can't silently ship without deciding its gate (the tracer
+ * finding on #4859: mapping user keys onto env_key would have bypassed
+ * entitlements entirely).
+ */
+export async function runContextPreChecks(
+  context: McpAuthContext,
+  deps: McpHandlerDeps,
+  resourceMetadataUrl: string,
+  corsHeaders: Record<string, string>,
+  ctx?: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<Response | null> {
+  if (context.kind === 'pro') {
+    return runProPreChecks(context, deps, resourceMetadataUrl, corsHeaders, ctx);
+  }
+  if (context.kind === 'user_key') {
+    return runUserKeyPreChecks(context, deps, resourceMetadataUrl, corsHeaders, ctx);
   }
   return null;
 }
 
 /** Per-minute rate limit. Both paths fail-OPEN on Upstash error (graceful);
  *  the daily quota is the hard-cap fail-CLOSED gate. Returns null on success
- *  or pass-through, a Response on a real 60/min limit hit. */
+ *  or pass-through, a Response on a real 60/min limit hit.
+ *  user_key (#4859) shares the per-USER limiter with pro — the principal is
+ *  the key OWNER, so a user with an OAuth connection and a dashboard key gets
+ *  one combined 60/min budget instead of two stackable ones. */
 export async function applyPerMinuteLimit(context: McpAuthContext, headers: Record<string, string> = {}): Promise<Response | null> {
   if (context.kind === 'env_key') {
     const rl = getMcpRatelimit();
@@ -275,7 +380,7 @@ export async function applyPerMinuteLimit(context: McpAuthContext, headers: Reco
   if (!rl) return null;
   try {
     const { success } = await rl.limit(`pro-user:${context.userId}`);
-    if (!success) return rpcError(null, -32029, 'Rate limit exceeded. Max 60 requests per minute per Pro user.', headers);
+    if (!success) return rpcError(null, -32029, 'Rate limit exceeded. Max 60 requests per minute per user.', headers);
   } catch { /* graceful degradation */ }
   return null;
 }

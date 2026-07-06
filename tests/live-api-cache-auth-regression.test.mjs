@@ -192,6 +192,30 @@ describe(`live API cache/auth regression sweep (${LIVE ? 'ENABLED' : 'SKIPPED - 
       'anonymous resources/list must enumerate a non-empty resource catalog',
     );
 
+    // orank mcp-resource-quality: EVERY resources/list entry must resources/read
+    // cleanly for an anonymous caller. The catalog is now all concrete,
+    // metadata-only resources, so an anonymous resources/read of each must
+    // return a non-empty application/json content payload — not a 401.
+    for (const resource of resourceBody.result.resources) {
+      const read = await fetchText(`${WEB_BASE}/mcp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 4, method: 'resources/read', params: { uri: resource.uri } }),
+      });
+      assert.equal(read.resp.status, 200,
+        `anonymous resources/read ${resource.uri} must be public (orank mcp-resource-quality)`);
+      assertNoStore(read.resp, `MCP anonymous resources/read ${resource.uri}`);
+      const readBody = JSON.parse(read.bodyText);
+      assert.equal(readBody.error, undefined,
+        `anonymous resources/read ${resource.uri} must not error: ${JSON.stringify(readBody.error)}`);
+      const content = readBody.result?.contents?.[0];
+      assert.equal(content?.mimeType, 'application/json',
+        `resources/read ${resource.uri} must declare a valid mimeType`);
+      assert.ok(typeof content?.text === 'string' && content.text.length > 0,
+        `resources/read ${resource.uri} must return non-empty content`);
+      JSON.parse(content.text); // valid JSON for the declared mimeType
+    }
+
     // A DATA/quota method stays gated: unauthenticated `tools/call` must be a
     // no-store, dynamic 401 carrying the OAuth resource_metadata hint.
     const post = await fetchText(`${WEB_BASE}/mcp`, {

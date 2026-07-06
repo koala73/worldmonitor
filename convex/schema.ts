@@ -535,12 +535,55 @@ export default defineSchema({
     // may still rely on tiers 2-3 until
     // `backfillSubscriptionDodoCustomerId` lands their values here.
     dodoCustomerId: v.optional(v.string()),
+    // Epoch ms of the event that opened the CURRENT on_hold episode.
+    // Set by handleSubscriptionOnHold only on the active→on_hold
+    // transition (webhook replays while already on_hold keep the
+    // original anchor), and used as the dunning episode key (#4932):
+    // day-3/day-7 reminders compute their age from it, and the
+    // dunningEmails ledger scopes idempotency to it so a NEW payment
+    // failure months later starts a fresh email sequence. Optional —
+    // rows that entered on_hold before this field existed fall back
+    // to `updatedAt` in the dunning scan.
+    onHoldAt: v.optional(v.number()),
     rawPayload: v.any(),
     updatedAt: v.number(),
   })
     .index("by_userId", ["userId"])
     .index("by_dodoSubscriptionId", ["dodoSubscriptionId"])
-    .index("by_dodoCustomerId", ["dodoCustomerId"]),
+    .index("by_dodoCustomerId", ["dodoCustomerId"])
+    // Dunning scan (#4932): on_hold is a small TRANSIENT set (tens of rows),
+    // safe to collect() daily.
+    .index("by_status", ["status"])
+    // Winback scan (#4932): cancelled is an ACCUMULATING terminal status —
+    // it grows with lifetime churn, so a bare by_status collect() would
+    // eventually hit Convex's per-transaction read cap and kill the whole
+    // daily scan (PR #4935 review finding 2). This compound index lets the
+    // scan range-read only a bounded window. Keyed on currentPeriodEnd
+    // (ACCESS end), not cancelledAt: an annual subscriber who cancels
+    // months before expiry would otherwise be paid-through during the
+    // post-cancel window and outside it once access actually ends — never
+    // winback-eligible (review round 2, finding 3). The winback email says
+    // "your access ended ~a month ago", so access end is the right clock.
+    .index("by_status_currentPeriodEnd", ["status", "currentPeriodEnd"]),
+
+  // Dunning/winback send ledger (#4932): one row per email step actually
+  // delivered for a given subscription episode. `episodeAt` is the on_hold
+  // anchor (dunning steps) or `cancelledAt` (winback), so a later, separate
+  // payment-failure episode legitimately re-sends the sequence while webhook
+  // replays and overlapping cron ticks stay idempotent. Growth is bounded by
+  // real billing events (≤4 rows per episode), so no prune cron is needed.
+  dunningEmails: defineTable({
+    dodoSubscriptionId: v.string(),
+    step: v.union(
+      v.literal("dunning_day0"),
+      v.literal("dunning_day3"),
+      v.literal("dunning_day7"),
+      v.literal("winback_day30"),
+    ),
+    episodeAt: v.number(),
+    email: v.string(),
+    sentAt: v.number(),
+  }).index("by_sub_step_episode", ["dodoSubscriptionId", "step", "episodeAt"]),
 
   entitlements: defineTable({
     userId: v.string(),

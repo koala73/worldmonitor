@@ -44,11 +44,13 @@ import {
   type CheckoutSuccessBannerState,
 } from './checkout-banner-state';
 import { loadActiveReferral } from './referral-capture';
+import { trackCheckoutStart } from './analytics';
 import { showDuplicateSubscriptionDialog } from './checkout-duplicate-dialog';
 import { showCheckoutPendingDialog } from './checkout-pending-dialog';
 import { resolvePlanDisplayName } from './checkout-plan-names';
 import { createEntitlementWatchdog, type EntitlementWatchdog } from './entitlement-watchdog';
 import { buildDashboardCheckoutReturnUrl } from './checkout-return-url';
+import { saveAnonClaimToken } from './anonymous-identity-storage';
 
 export {
   EXTENDED_UNLOCK_TIMEOUT_MS,
@@ -676,7 +678,7 @@ export async function resumePendingCheckout(options?: {
       referralCode: intent.referralCode,
       discountCode: intent.discountCode,
     },
-    { fallbackToPricingPage: false },
+    { fallbackToPricingPage: false, analyticsSurface: 'dashboard-resume' },
   );
   if (success) clearPendingCheckoutIntent();
   return success;
@@ -742,12 +744,18 @@ let _checkoutInFlight = false;
 export async function startCheckout(
   productId: string,
   options?: { discountCode?: string; referralCode?: string; bypassPendingGuard?: boolean },
-  behavior?: { fallbackToPricingPage?: boolean },
+  behavior?: { fallbackToPricingPage?: boolean; analyticsSurface?: 'dashboard' | 'dashboard-resume' },
 ): Promise<boolean> {
   if (_checkoutInFlight) return false;
   const fallbackToPricingPage = behavior?.fallbackToPricingPage ?? true;
 
   const user = getCurrentClerkUser();
+  // Funnel (#4931): every dashboard upgrade CTA routes through here, so one
+  // call site covers them all. Fires before the no-user branch so signed-out
+  // intent clicks are counted (flagged authed:false). The post-sign-in
+  // auto-resume passes 'dashboard-resume' so a signed-out conversion isn't
+  // read as two independent attempts.
+  trackCheckoutStart(productId, Boolean(user), behavior?.analyticsSurface ?? 'dashboard');
   if (!user) {
     const intent = {
       productId,
@@ -919,6 +927,9 @@ export async function startCheckout(
     }
 
     const result = await resp.json();
+    if (typeof result?.anonymous_claim_token === 'string' && result.anonymous_claim_token.length > 0) {
+      saveAnonClaimToken(result.anonymous_claim_token);
+    }
     // #4449: navigate the top window to Dodo's HOSTED checkout instead of
     // opening the overlay iframe. The overlay cannot host Dodo's nested 3DS/
     // fraud stack (Hyperswitch → Airwallex → Sardine): our Permissions-Policy

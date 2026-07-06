@@ -43,6 +43,12 @@ function installSeedHealthPipelineMock(portwatchRecordCount, { missingPortwatchM
     const commands = JSON.parse(init.body);
     const results = commands.map((command) => {
       const [op, key] = command;
+      // #4927: activation-gated entries add EXISTS probes on their
+      // seed-activated:* markers; absent in this harness.
+      if (op === 'EXISTS') {
+        assert.match(String(key), /^seed-activated:/, 'EXISTS is only used for activation markers');
+        return { result: 0 };
+      }
       assert.equal(op, 'GET');
       if (key === PORTWATCH_META_KEY) {
         if (missingPortwatchMeta) return { result: null };

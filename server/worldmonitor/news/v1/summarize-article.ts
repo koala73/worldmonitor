@@ -16,6 +16,32 @@ import { isProviderAvailable } from '../../../_shared/llm-health';
 import { sanitizeHeadlinesLight, sanitizeHeadlines, sanitizeForPrompt } from '../../../_shared/llm-sanitize.js';
 import { isCallerPremium } from '../../../_shared/premium-check';
 import { stripThinkingTags } from '../../../_shared/llm';
+import { buildLlmCallEvent, deliverUsageEvents } from '../../../_shared/usage';
+
+// Best-effort llm_call telemetry (#4895). This handler bypasses callLlm (the
+// client picks the provider), so it emits its own events.
+async function emitSummarizeLlmEvent(p: {
+  provider: string; model: string; ok: boolean; durationMs: number;
+  promptChars: number; usage?: { total_tokens?: number; prompt_tokens?: number; completion_tokens?: number };
+  reason?: string;
+}): Promise<void> {
+  try {
+    await deliverUsageEvents([buildLlmCallEvent({
+      provider: p.provider,
+      model: p.model,
+      stage: 'summarize-article',
+      ok: p.ok,
+      durationMs: p.durationMs,
+      tokensTotal: p.usage?.total_tokens ?? 0,
+      tokensPrompt: p.usage?.prompt_tokens ?? 0,
+      tokensCompletion: p.usage?.completion_tokens ?? 0,
+      promptChars: p.promptChars,
+      maxTokens: 100,
+      fallbackIndex: 0,
+      reason: p.reason,
+    })]);
+  } catch { /* telemetry must never affect the summary */ }
+}
 
 // ======================================================================
 // Reasoning preamble detection
@@ -178,6 +204,8 @@ export async function summarizeArticle(
           ? `${systemPrompt}\n\n---\n\n${sanitizedAppend}`
           : systemPrompt;
 
+        const llmStartMs = Date.now();
+        const llmPromptChars = effectiveSystemPrompt.length + userPrompt.length;
         const response = await fetch(apiUrl, {
           method: 'POST',
           headers: { ...providerHeaders, 'User-Agent': CHROME_UA },
@@ -198,25 +226,30 @@ export async function summarizeArticle(
         if (!response.ok) {
           const errorText = await response.text();
           console.error(`[SummarizeArticle:${provider}] API error:`, response.status, errorText);
+          await emitSummarizeLlmEvent({ provider, model, ok: false, durationMs: Date.now() - llmStartMs, promptChars: llmPromptChars, reason: `http_${response.status}` });
           throw new Error(response.status === 429 ? 'Rate limited' : `${provider} API error`);
         }
 
         const data = await response.json() as any;
         const tokens = (data.usage?.total_tokens as number) || 0;
+        const usage = data.usage as { total_tokens?: number; prompt_tokens?: number; completion_tokens?: number } | undefined;
         const message = data.choices?.[0]?.message;
         const rawText = typeof message?.content === 'string' ? message.content.trim() : '';
         const rawContent = stripThinkingTags(rawText);
 
         if (['brief', 'analysis'].includes(mode) && rawContent.length < 20) {
           console.warn(`[SummarizeArticle:${provider}] Output too short after stripping (${rawContent.length} chars), rejecting`);
+          await emitSummarizeLlmEvent({ provider, model, ok: false, durationMs: Date.now() - llmStartMs, promptChars: llmPromptChars, usage, reason: 'stripped_empty' });
           return null;
         }
 
         if (['brief', 'analysis'].includes(mode) && hasReasoningPreamble(rawContent)) {
           console.warn(`[SummarizeArticle:${provider}] Reasoning preamble detected, rejecting`);
+          await emitSummarizeLlmEvent({ provider, model, ok: false, durationMs: Date.now() - llmStartMs, promptChars: llmPromptChars, usage, reason: 'validate_reject' });
           return null;
         }
 
+        await emitSummarizeLlmEvent({ provider, model, ok: Boolean(rawContent), durationMs: Date.now() - llmStartMs, promptChars: llmPromptChars, usage, reason: rawContent ? '' : 'empty' });
         return rawContent ? { summary: rawContent, model, tokens } : null;
       },
     );

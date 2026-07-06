@@ -1292,7 +1292,10 @@
       "signalTypesEvents": "{{types}} typů signálů • {{events}} událostí",
       "newsSignals": "{{news}} zpráv • {{signals}} signálů",
       "sources_few": "{{count}} zdroje",
-      "sources_many": "{{count}} zdrojů"
+      "sources_many": "{{count}} zdrojů",
+      "provenanceTitle": "Původ pokrytí: počet příjatých příběhů a odlišných zdrojů, ze kterých byl tento přehled vybrán",
+      "compiledFrom": "Sestaveno z {{stories}} příběhů z {{sources}} zdrojů",
+      "briefFreshness": "Vygenerováno před {{minutes}}m · nejnovější zdroj starý {{hours}}h"
     },
     "cascade": {
       "filters": {

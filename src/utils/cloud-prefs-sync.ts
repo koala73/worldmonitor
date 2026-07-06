@@ -20,6 +20,7 @@ import {
   applyMigrationChain,
   buildMigrations,
   mergeCloudWithLocalDirty,
+  parsePersistedDirtyKeys,
   settledDirtyKeys,
 } from './cloud-prefs-migrations';
 import {
@@ -45,6 +46,7 @@ const KEY_SYNC_VERSION = 'wm-cloud-sync-version';
 const KEY_LAST_SYNC_AT = 'wm-last-sync-at';
 const KEY_SYNC_STATE = 'wm-cloud-sync-state';
 const KEY_LAST_SIGNED_IN_AS = 'wm-last-signed-in-as';
+const KEY_DIRTY_KEYS = 'wm-cloud-prefs-dirty-keys';
 // Tracks the schema version of the LOCAL blob (i.e. what's in localStorage
 // right now). Distinct from the cloud row's schemaVersion. Required because
 // uploads can post local data without first fetching cloud (uploadNow,
@@ -92,6 +94,42 @@ let _cachedToken: string | null = null; // synchronous token cache for flush()
 // install() setItem/removeItem patch records them; a clean upload clears the
 // SETTLED ones. See resolveConflictWithMerge + mergeCloudWithLocalDirty.
 const _dirtyKeys = new Set<CloudSyncKey>();
+let _dirtyKeysUserId: string | null = null;
+
+function persistDirtyKeys(): void {
+  try {
+    if (_dirtyKeys.size === 0) {
+      Storage.prototype.removeItem.call(localStorage, KEY_DIRTY_KEYS);
+      return;
+    }
+    if (!_dirtyKeysUserId) return;
+    Storage.prototype.setItem.call(localStorage, KEY_DIRTY_KEYS, JSON.stringify({
+      userId: _dirtyKeysUserId,
+      keys: [..._dirtyKeys],
+    }));
+  } catch {
+    // localStorage unavailable: keep the in-memory guard for this page view.
+  }
+}
+
+function hydrateDirtyKeysFromStorage(userId: string): void {
+  try {
+    _dirtyKeys.clear();
+    _dirtyKeysUserId = userId;
+    const raw = localStorage.getItem(KEY_DIRTY_KEYS);
+    for (const key of parsePersistedDirtyKeys(raw, CLOUD_SYNC_KEYS, userId)) {
+      _dirtyKeys.add(key as CloudSyncKey);
+    }
+    if (raw !== null && _dirtyKeys.size === 0) persistDirtyKeys();
+  } catch {
+    // localStorage unavailable: the in-memory set remains the best effort.
+  }
+}
+
+function markDirtyKey(key: CloudSyncKey): void {
+  _dirtyKeys.add(key);
+  persistDirtyKeys();
+}
 
 /**
  * Clear dirty keys that a just-succeeded upload actually durably synced —
@@ -107,9 +145,11 @@ const _dirtyKeys = new Set<CloudSyncKey>();
  * current local value.
  */
 function clearSettledDirtyKeys(postedBlob: Record<string, string>): void {
+  let changed = false;
   for (const key of settledDirtyKeys(postedBlob, buildCloudBlob(), _dirtyKeys)) {
-    _dirtyKeys.delete(key as CloudSyncKey);
+    changed = _dirtyKeys.delete(key as CloudSyncKey) || changed;
   }
+  if (changed) persistDirtyKeys();
 }
 
 // ── 503 retry tracking ───────────────────────────────────────────────────────
@@ -368,7 +408,7 @@ async function postCloudPrefs(
  * the post body — silently discarding the edit the user had just made (e.g. a
  * watchlist typed seconds earlier, then lost on the debounced upload's 409).
  */
-async function resolveConflictWithMerge(token: string, variant: string): Promise<boolean> {
+async function resolveConflictWithMerge(token: string, variant: string, callerGeneration: number): Promise<boolean> {
   const fresh = await fetchCloudPrefs(token, variant);
   if (!fresh) {
     setState('error');
@@ -384,6 +424,11 @@ async function resolveConflictWithMerge(token: string, variant: string): Promise
     setState('conflict');
     return false;
   }
+  // Generation guard (same vector as uploadNow's success branch): if the
+  // signed-in user switched during the awaits above, do not clear/persist
+  // settled dirty keys — _dirtyKeys now belongs to another user and the
+  // write would durably corrupt their persisted dirty-key entry.
+  if (_authGeneration !== callerGeneration) return false;
   setSyncVersion(retry.syncVersion);
   clearSettledDirtyKeys(merged);
   Storage.prototype.setItem.call(localStorage, KEY_LAST_SYNC_AT, String(Date.now()));
@@ -401,6 +446,7 @@ export async function onSignIn(userId: string, variant: string): Promise<void> {
   clearRetryTimer();
   _authGeneration += 1;
   const myGeneration = _authGeneration;
+  hydrateDirtyKeysFromStorage(userId);
 
   _currentVariant = variant;
   setState('syncing');
@@ -456,7 +502,7 @@ export async function onSignIn(userId: string, variant: string): Promise<void> {
         // Merge instead of clobber — see resolveConflictWithMerge. The old
         // path here applied the cloud blob over localStorage and stopped,
         // discarding the local edits this branch was trying to upload.
-        await resolveConflictWithMerge(token, variant);
+        await resolveConflictWithMerge(token, variant, myGeneration);
       } else {
         setSyncVersion(result.syncVersion);
         clearSettledDirtyKeys(blob);
@@ -525,6 +571,8 @@ export function onSignOut(): void {
   // Dirty-key tracking is per-user session state — drop it so edits made by
   // the next signed-in user don't merge against the prior user's pending set.
   _dirtyKeys.clear();
+  persistDirtyKeys();
+  _dirtyKeysUserId = null;
 
   // Preserve prefs; only clear sync metadata
   localStorage.removeItem(KEY_SYNC_VERSION);
@@ -558,8 +606,15 @@ async function uploadNow(variant: string): Promise<void> {
       // of overwriting localStorage with cloud (the old path did
       // applyCloudBlob(cloud) then re-posted buildCloudBlob() — which by then
       // WAS the cloud blob, so the user's just-made edit was silently lost).
-      await resolveConflictWithMerge(token, variant);
+      await resolveConflictWithMerge(token, variant, myGeneration);
     } else {
+      // Generation guard: a sign-out / account-switch during the awaits above
+      // repoints _dirtyKeys and _dirtyKeysUserId to a different user. Clearing
+      // (and now persisting) settled keys here would durably corrupt that
+      // user's dirty-key entry using this upload's stale postedBlob. Match the
+      // 503 retry branch and the flush-success path — bail if the generation
+      // moved.
+      if (_authGeneration !== myGeneration) return;
       setSyncVersion(result.syncVersion);
       clearSettledDirtyKeys(postedBlob);
       Storage.prototype.setItem.call(localStorage, KEY_LAST_SYNC_AT, String(Date.now()));
@@ -638,7 +693,7 @@ export function install(variant: string): void {
   Storage.prototype.setItem = function setItem(key: string, value: string) {
     originalSetItem.call(this, key, value);
     if (this === localStorage && !_suppressPatch && CLOUD_SYNC_KEYS.includes(key as CloudSyncKey)) {
-      _dirtyKeys.add(key as CloudSyncKey);
+      markDirtyKey(key as CloudSyncKey);
       schedulePrefUpload(_currentVariant);
     }
   };
@@ -647,7 +702,7 @@ export function install(variant: string): void {
   Storage.prototype.removeItem = function removeItem(key: string) {
     originalRemoveItem.call(this, key);
     if (this === localStorage && !_suppressPatch && CLOUD_SYNC_KEYS.includes(key as CloudSyncKey)) {
-      _dirtyKeys.add(key as CloudSyncKey);
+      markDirtyKey(key as CloudSyncKey);
       schedulePrefUpload(_currentVariant);
     }
   };

@@ -1304,7 +1304,10 @@
       "signalTypesEvents": "{{types}} типов сигналов • {{events}} событий",
       "newsSignals": "{{news}} новостей • {{signals}} сигналов",
       "sources_few": "{{count}} источника",
-      "sources_many": "{{count}} источников"
+      "sources_many": "{{count}} источников",
+      "provenanceTitle": "Происхождение охвата: количество полученных историй и отдельных источников, из которых была выбрана эта сводка",
+      "compiledFrom": "Собрано из {{stories}} историй из {{sources}} источников",
+      "briefFreshness": "Сгенерировано {{minutes}}м назад · последний источник {{hours}}ч старый"
     },
     "settings": {
       "exportSettings": "Экспорт настроек",

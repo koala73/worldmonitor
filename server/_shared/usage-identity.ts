@@ -13,6 +13,10 @@ export type AuthKind =
   | 'user_api_key'
   | 'enterprise_api_key'
   | 'widget_key'
+  // #4866 — MCP OAuth bearer (the `kind: 'pro'` context on /mcp). Distinct
+  // from clerk_jwt so MCP-connector traffic never conflates with dashboard
+  // JWT traffic in Axiom; customer_id carries the same Clerk userId.
+  | 'mcp_oauth'
   | 'anon';
 
 export interface UsageIdentity {

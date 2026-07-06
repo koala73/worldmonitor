@@ -33,6 +33,7 @@ async function withMockedConvex(fn, options = {}) {
     'UPSTASH_REDIS_REST_TOKEN',
     'VERCEL_ENV',
     'VERCEL_GIT_COMMIT_SHA',
+    'CF_EDGE_PROOF_SECRET',
   ]);
   const originalFetch = globalThis.fetch;
   const calls = [];
@@ -409,8 +410,17 @@ test('rate limit accepts a request landing in the final sub-second of the window
 
 test('user-key validation rate limit uses IP-scoped keys and never raw API key material', async () => {
   await withMockedConvex(async (calls) => {
+    // getClientIp only trusts cf-connecting-ip when the request proves it
+    // transited Cloudflare (GHSA-c267): x-wm-edge-proof must match
+    // CF_EDGE_PROOF_SECRET. Simulate a genuine CF-proxied request so the bucket
+    // is IP-scoped rather than the shared `unknown` fallback.
+    process.env.CF_EDGE_PROOF_SECRET = 'edge-secret-xyz';
     const req = new Request('https://api.worldmonitor.app/api/bootstrap', {
-      headers: { 'cf-connecting-ip': '203.0.113.7', 'X-WorldMonitor-Key': USER_KEY },
+      headers: {
+        'cf-connecting-ip': '203.0.113.7',
+        'x-wm-edge-proof': 'edge-secret-xyz',
+        'X-WorldMonitor-Key': USER_KEY,
+      },
     });
     const result = await checkBootstrapUserApiKeyRateLimit(req);
 

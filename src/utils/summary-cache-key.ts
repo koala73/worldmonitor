@@ -4,13 +4,21 @@
 // or client/server cache keys will silently diverge.
 import { hashString } from './hash';
 
-// Bumped v5 → v6 on 2026-04-24 alongside the RSS-description-grounding fix.
-// Even callers that DON'T pass `bodies` see a forced cold-start here so the
-// pre-grounding headline-only rows age out cleanly on first tick after
-// deploy (they were produced from different prompts than what the handler
-// now builds when bodies are present). See
+// Bumped v7 → v8 on 2026-07-06 (#4944): the summarize provider chain moved
+// from groq llama-3.1-8b-instant-first to OpenRouter deepseek-v4-flash-first,
+// so v7 rows carry old-model voice — retire them cleanly at cutover instead
+// of serving mixed-model summaries for the TTL.
+//
+// v6 → v7 (2026-07-05, #4914): identical (headline, body) pairs now
+// dedup before the top-5 slice, so v6 rows keyed over a duplicate-bearing
+// composition would never be hit again anyway — the bump retires them
+// cleanly instead of leaving orphans to age out.
+//
+// v5 → v6 (2026-04-24): RSS-description-grounding fix. Even callers that
+// DON'T pass `bodies` saw a forced cold-start so the pre-grounding
+// headline-only rows aged out cleanly on first tick after deploy. See
 // docs/plans/2026-04-24-001-fix-rss-description-end-to-end-plan.md U6.
-export const CACHE_VERSION = 'v6';
+export const CACHE_VERSION = 'v8';
 
 const MAX_HEADLINE_LEN = 500;
 const MAX_HEADLINES_FOR_KEY = 5;
@@ -77,7 +85,21 @@ export function buildSummaryCacheKey(
     if (a.b > b.b) return 1;
     return 0;
   });
-  const topPairs = pairs.slice(0, MAX_HEADLINES_FOR_KEY);
+  // #4914: dedup identical (headline, body) pairs BEFORE the top-5 slice.
+  // The server prompt path (summarize-article.ts) dedups pairs AFTER this
+  // key is computed, so the same unique story set with a different
+  // duplicate composition minted distinct keys for an identical prompt —
+  // every composition variant was a paid cache miss. Exact-pair dedup only:
+  // a repeated headline with a different body stays distinct (the prompt
+  // keeps first-arrival bodies, so merging those keys could serve a summary
+  // generated from other body content). Pairs are sorted, so identical
+  // pairs are adjacent.
+  const dedupedPairs = pairs.filter((p, i) => {
+    if (i === 0) return true;
+    const prev = pairs[i - 1];
+    return prev === undefined || p.h !== prev.h || p.b !== prev.b;
+  });
+  const topPairs = dedupedPairs.slice(0, MAX_HEADLINES_FOR_KEY);
   const sortedHeadlines = topPairs.map(p => p.h).join('|');
 
   const anyBody = topPairs.some(p => p.b.length > 0);

@@ -30,7 +30,7 @@ afterEach(() => {
 });
 
 describe('callLlm', () => {
-  it('preserves the default provider order', async () => {
+  it('preserves the default provider order (openrouter-first since #4944)', async () => {
     process.env.GROQ_API_KEY = 'groq-test-key';
     process.env.OPENROUTER_API_KEY = 'or-test-key';
     delete process.env.OLLAMA_API_URL;
@@ -38,6 +38,7 @@ describe('callLlm', () => {
     delete process.env.LLM_API_KEY;
 
     const postUrls: string[] = [];
+    const postBodies: Array<Record<string, unknown>> = [];
 
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
@@ -47,6 +48,7 @@ describe('callLlm', () => {
       }
 
       postUrls.push(url);
+      postBodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>);
       if (url.includes('api.groq.com')) {
         return new Response(JSON.stringify({
           choices: [{ message: { content: 'groq response' } }],
@@ -65,11 +67,112 @@ describe('callLlm', () => {
     });
 
     assert.ok(result);
-    assert.equal(result.provider, 'groq');
-    assert.equal(result.model, 'llama-3.1-8b-instant');
+    assert.equal(result.provider, 'openrouter');
+    assert.equal(result.model, 'deepseek/deepseek-v4-flash');
     assert.deepEqual(postUrls.filter(url => url.includes('/chat/completions')), [
-      'https://api.groq.com/openai/v1/chat/completions',
+      'https://openrouter.ai/api/v1/chat/completions',
     ]);
+    // Utility calls must not pay reasoning tokens on hybrid-reasoning models.
+    assert.deepEqual(postBodies[0]?.reasoning, { enabled: false });
+  });
+
+  it('omits the reasoning-off body when the reasoning profile opts in', async () => {
+    process.env.OPENROUTER_API_KEY = 'or-test-key';
+    delete process.env.GROQ_API_KEY;
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    const postBodies: Array<Record<string, unknown>> = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if ((init?.method || 'GET') === 'GET') {
+        return new Response('', { status: 200 });
+      }
+      postBodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>);
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: 'reasoning-tier response' } }],
+        usage: { total_tokens: 7 },
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    const result = await callLlm({
+      messages: [{ role: 'user', content: 'Reason about the setup.' }],
+      enableReasoning: true,
+    });
+
+    assert.ok(result);
+    assert.equal(result.provider, 'openrouter');
+    assert.equal(postBodies.length, 1);
+    // Opt-in leaves the model's own reasoning default in effect.
+    assert.equal('reasoning' in (postBodies[0] ?? {}), false);
+  });
+
+  it('ignores DeepSeek reasoning message fields and serves content untouched', async () => {
+    process.env.OPENROUTER_API_KEY = 'or-test-key';
+    delete process.env.GROQ_API_KEY;
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if ((init?.method || 'GET') === 'GET') {
+        return new Response('', { status: 200 });
+      }
+      // Live-captured DeepSeek V4 shape (2026-07-06): reasoning arrives as
+      // separate message fields, never inline tags; content stays clean.
+      return new Response(JSON.stringify({
+        choices: [{ message: {
+          role: 'assistant',
+          content: 'Paris',
+          reasoning: 'We need to reply with exactly one word.',
+          reasoning_details: [{ type: 'reasoning.text', text: 'We need to reply.' }],
+        } }],
+        usage: { total_tokens: 30, prompt_tokens: 14, completion_tokens: 16 },
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    const result = await callLlm({
+      messages: [{ role: 'user', content: 'Capital of France, one word.' }],
+      enableReasoning: true,
+    });
+
+    assert.ok(result);
+    assert.equal(result.content, 'Paris');
+  });
+
+  it('falls through when a provider returns only reasoning with empty content', async () => {
+    process.env.OPENROUTER_API_KEY = 'or-test-key';
+    process.env.GROQ_API_KEY = 'groq-test-key';
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if ((init?.method || 'GET') === 'GET') {
+        return new Response('', { status: 200 });
+      }
+      if (url.includes('openrouter.ai')) {
+        // Degenerate case: model burned its budget on reasoning, empty content.
+        return new Response(JSON.stringify({
+          choices: [{ message: { role: 'assistant', content: '', reasoning: 'endless deliberation…' } }],
+          usage: { total_tokens: 60, prompt_tokens: 14, completion_tokens: 46 },
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: 'groq fallback answer' } }],
+        usage: { total_tokens: 20 },
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    const result = await callLlm({
+      messages: [{ role: 'user', content: 'Answer briefly.' }],
+    });
+
+    assert.ok(result);
+    assert.equal(result.provider, 'groq');
+    assert.equal(result.content, 'groq fallback answer');
   });
 
   it('supports explicitly bypassing groq with a stronger model override', async () => {
@@ -118,6 +221,99 @@ describe('callLlm', () => {
     assert.equal(postBodies.length, 1);
     assert.equal(postBodies[0]?.url, 'https://openrouter.ai/api/v1/chat/completions');
     assert.equal(postBodies[0]?.body.model, 'google/gemini-2.5-pro');
+    assert.deepEqual(postBodies[0]?.body.reasoning, { enabled: false });
+  });
+
+  it('logs a bounded error-body slice on non-stream provider failure', async () => {
+    process.env.OPENROUTER_API_KEY = 'or-test-key';
+    process.env.GROQ_API_KEY = 'groq-test-key';
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    const warns: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => { warns.push(args.map(String).join(' ')); };
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if ((init?.method || 'GET') === 'GET') {
+        return new Response('', { status: 200 });
+      }
+      if (url.includes('openrouter.ai')) {
+        return new Response(JSON.stringify({ error: { message: 'This model is not available in your region' } }), { status: 403 });
+      }
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: 'groq fallback' } }],
+        usage: { total_tokens: 5 },
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    try {
+      const result = await callLlm({ messages: [{ role: 'user', content: 'hi' }] });
+      assert.ok(result);
+      assert.equal(result.provider, 'groq');
+      const errLine = warns.find((w) => w.includes('HTTP 403'));
+      assert.ok(errLine, 'a 403 warn line must be emitted');
+      assert.ok(errLine.includes('not available in your region'), 'the error body must be visible in the log');
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
+  it('reads at most the cap from an oversized/never-ending error body before falling back', async () => {
+    process.env.OPENROUTER_API_KEY = 'or-test-key';
+    process.env.GROQ_API_KEY = 'groq-test-key';
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    const warns: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => { warns.push(args.map(String).join(' ')); };
+
+    let cancelled = false;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if ((init?.method || 'GET') === 'GET') {
+        return new Response('', { status: 200 });
+      }
+      if (url.includes('openrouter.ai')) {
+        // First chunk exceeds the cap; a second read would hang forever.
+        // The bounded reader must stop after chunk one and cancel — if it
+        // tried to consume the full body (resp.text()), this test hangs.
+        const enc = new TextEncoder();
+        const body = new ReadableStream<Uint8Array>({
+          pull(controller) {
+            if (!cancelled) {
+              controller.enqueue(enc.encode(`REGION_BLOCK ${'x'.repeat(4000)}`));
+            }
+            // Never close: subsequent pulls stall until cancel.
+            return new Promise(() => { /* hang */ });
+          },
+          cancel() { cancelled = true; },
+        });
+        return new Response(body, { status: 403 });
+      }
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: 'groq fallback' } }],
+        usage: { total_tokens: 5 },
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    try {
+      const result = await callLlm({ messages: [{ role: 'user', content: 'hi' }] });
+      assert.ok(result, 'fallback must complete despite the never-ending error body');
+      assert.equal(result.provider, 'groq');
+      const errLine = warns.find((w) => w.includes('HTTP 403'));
+      assert.ok(errLine, 'a 403 warn line must be emitted');
+      assert.ok(errLine.includes('REGION_BLOCK'), 'the leading body slice must be visible');
+      const bodyPart = errLine.slice(errLine.indexOf('body=') + 5);
+      assert.ok(bodyPart.length <= 300, `logged body must be capped at 300 chars, got ${bodyPart.length}`);
+      assert.ok(cancelled, 'the error-body stream must be cancelled after the bounded read');
+    } finally {
+      console.warn = originalWarn;
+    }
   });
 
   it('falls back within an explicit provider order when the upper model fails', async () => {
@@ -157,7 +353,7 @@ describe('callLlm', () => {
 
     assert.ok(result);
     assert.equal(result.provider, 'groq');
-    assert.equal(result.model, 'llama-3.1-8b-instant');
+    assert.equal(result.model, 'llama-3.3-70b-versatile');
     assert.deepEqual(postUrls.filter(url => url.includes('/chat/completions')), [
       'https://openrouter.ai/api/v1/chat/completions',
       'https://api.groq.com/openai/v1/chat/completions',

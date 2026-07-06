@@ -25,6 +25,9 @@ import { after, describe, it } from 'node:test';
 
 const TEST_KEY = 'wm-test-enterprise-key';
 
+const previousNodeTestContext = process.env.NODE_TEST_CONTEXT;
+delete process.env.NODE_TEST_CONTEXT;
+
 // Set before the dynamic import so parseDsn() wires up the envelope transport.
 process.env.VITE_SENTRY_DSN = 'https://testpublickey@sentry.test/12345';
 process.env.WORLDMONITOR_VALID_KEYS = TEST_KEY;
@@ -40,7 +43,11 @@ const ENVELOPE_URL_PREFIX = 'https://sentry.test/api/12345/envelope';
 const { default: handler } = await import('../api/symbol-search.ts');
 
 const originalFetch = globalThis.fetch;
-after(() => { globalThis.fetch = originalFetch; });
+after(() => {
+  globalThis.fetch = originalFetch;
+  if (previousNodeTestContext === undefined) delete process.env.NODE_TEST_CONTEXT;
+  else process.env.NODE_TEST_CONTEXT = previousNodeTestContext;
+});
 
 function makeReq(q = 'nvidia'): Request {
   return new Request(

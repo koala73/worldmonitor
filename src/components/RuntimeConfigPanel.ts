@@ -361,9 +361,9 @@ export class RuntimeConfigPanel extends Panel {
         const url = link.dataset.signupUrl;
         if (!url) return;
         if (isDesktopRuntime()) {
-          void invokeTauri<void>('open_url', { url }).catch(() => window.open(url, '_blank'));
+          void invokeTauri<void>('open_url', { url }).catch(() => window.open(url, '_blank', 'noopener,noreferrer'));
         } else {
-          window.open(url, '_blank');
+          window.open(url, '_blank', 'noopener,noreferrer');
         }
       });
     });
@@ -374,9 +374,9 @@ export class RuntimeConfigPanel extends Panel {
       this.content.querySelector<HTMLButtonElement>('[data-early-access]')?.addEventListener('click', () => {
         const url = 'https://www.worldmonitor.app/pro';
         if (isDesktopRuntime()) {
-          void invokeTauri<void>('open_url', { url }).catch(() => window.open(url, '_blank'));
+          void invokeTauri<void>('open_url', { url }).catch(() => window.open(url, '_blank', 'noopener,noreferrer'));
         } else {
-          window.open(url, '_blank');
+          window.open(url, '_blank', 'noopener,noreferrer');
         }
       });
       return;

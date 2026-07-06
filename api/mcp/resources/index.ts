@@ -1,11 +1,27 @@
-// MCP resources registry — four read-only addressable URIs surfaced via
-// resources/list + resources/read. Each entry routes through the SAME
-// dispatchToolsCall path the tools/call method uses, so auth, Pro daily
-// quota, telemetry, and per-tool budget gating are inherited unchanged —
-// asymmetric auth between resources and the equivalent tools/call is a
-// known MCP data-leak vector (a Pro user at the daily cap could otherwise
-// keep reading data through resources for free), so the symmetry is
-// load-bearing and proven by tests/mcp-resources.test.mjs.
+// MCP resources registry — split into two tiers by data sensitivity:
+//
+//   1. PUBLIC_RESOURCE_REGISTRY (surfaced via `resources/list`) — concrete,
+//      anonymously-readable, quota-exempt resources that return ONLY
+//      non-sensitive freshness / health metadata (never billable data). An
+//      anonymous agent (or an agent-readiness scanner) MUST be able to
+//      `resources/read` every entry `resources/list` advertises, so these
+//      are served without auth and without spending quota — the same public
+//      posture as `prompts/list` and `describe_tool`. Their `read()` runs a
+//      direct cache probe (no `dispatchToolsCall`, no Pro reservation).
+//
+//   2. TEMPLATE_RESOURCE_REGISTRY (surfaced via `resources/templates/list`) —
+//      data-bearing URI templates. A concrete instantiation `resources/read`
+//      routes through the SAME `dispatchToolsCall` path `tools/call` uses, so
+//      auth, Pro daily quota, telemetry, and per-tool budget gating are
+//      inherited unchanged. Asymmetric auth between resources and the
+//      equivalent `tools/call` is a known MCP data-leak / quota-bypass vector
+//      (a Pro user at the daily cap could otherwise keep reading data through
+//      resources for free), so the symmetry is load-bearing and proven by
+//      tests/mcp-resources.test.mjs. Templates live in
+//      `resources/templates/list` (NOT `resources/list`) because a literal
+//      `{iso2}` URI can never resolve to data — surfacing a template in
+//      `resources/list` would break an anonymous validator's `resources/read`
+//      probe of it.
 //
 // Stability contract:
 //   - URIs use canonical kebab-case slugs (CHOKEPOINT_SLUGS in ./slugs.ts)
@@ -15,23 +31,20 @@
 //   - Every resources/read response carries `cached_at` + `stale` in the
 //     content payload. Cache-tool-backed resources already have this from
 //     the cacheEnvelope shape; RPC-tool-backed resources (just country
-//     risk in v1) get the envelope explicitly wrapped here.
-//
-// Spec-shape note: resources/list returns the four template-shaped URIs
-// (e.g. `worldmonitor://countries/{iso2}/risk`) verbatim. Strict 2025-06-18
-// reading would route templates through resources/templates/list, but
-// surfacing them via resources/list is the pragmatic posture (Claude
-// Desktop / MCP Inspector both render the literal URI; the user / model
-// substitutes the placeholder before issuing resources/read). If a future
-// client complains, splitting out a templates/list method is a
-// non-breaking additive change.
+//     risk in v1) get the envelope explicitly wrapped here; the public
+//     seed-meta freshness resource IS the envelope.
 //
 // resources/read response shape (per MCP spec):
 //   { contents: [{ uri, mimeType, text }] }
 // where `text` is the JSON-stringified payload INCLUDING `cached_at` and
 // `stale`. mimeType is `application/json` for every resource here.
 
-import type { McpAuthContext, McpHandlerDeps, McpResourceDef } from '../types';
+import type {
+  McpAuthContext,
+  McpHandlerDeps,
+  PublicResourceDef,
+  TemplateResourceDef,
+} from '../types';
 import { dispatchToolsCall } from '../dispatch';
 import { evaluateFreshness } from '../freshness';
 import { rpcError, rpcOk, withMcpNoStore } from '../rpc';
@@ -40,16 +53,50 @@ import { readJsonFromUpstash } from '../../_upstash-json.js';
 import { CHOKEPOINT_SLUGS } from './slugs';
 
 // ---------------------------------------------------------------------------
-// Registry
+// Public resource freshness reader
 // ---------------------------------------------------------------------------
-// URI parsing is hand-rolled: four resources don't justify a URI-template
+// Market-data bootstrap freshness is a single seed-meta key at the same
+// 30-minute budget the get_market_data cache tool uses (api/mcp/registry/
+// cache-tools.ts `_seedMetaKey` / `_maxStaleMin`), so the envelope this
+// resource emits is identical to the freshness portion of a
+// get_market_data call — but computed WITHOUT dispatching the tool (no
+// data fetch, no Pro reservation), because the resource surfaces only the
+// envelope. Robust by construction: a missing/unreachable cache yields a
+// valid `{cached_at: null, stale: true}` envelope rather than an error,
+// so the anonymous read never surfaces empty content.
+const MARKET_FRESHNESS_CHECK = { key: 'seed-meta:market:stocks', maxStaleMin: 30 } as const;
+
+async function readMarketFreshness(): Promise<string> {
+  const meta = await readJsonFromUpstash(MARKET_FRESHNESS_CHECK.key).catch(() => null);
+  const { cached_at, stale } = evaluateFreshness([MARKET_FRESHNESS_CHECK], [meta]);
+  return JSON.stringify({ cached_at, stale });
+}
+
+// ---------------------------------------------------------------------------
+// Public (concrete, anon-readable, quota-exempt) resources → resources/list
+// ---------------------------------------------------------------------------
+export const PUBLIC_RESOURCE_REGISTRY: PublicResourceDef[] = [
+  {
+    uri: 'worldmonitor://seed-meta/freshness',
+    name: 'Seed-Meta Freshness',
+    description: 'Cache-freshness probe for the high-cadence market-data bootstrap pipeline. Returns ONLY the envelope (cached_at + stale) — no quote payload, no auth, no quota. Use this as a cheap health check to detect a stuck seeder. v1 covers market freshness only; an aggregate freshness resource spanning energy + maritime + risk feeds is a follow-up if customers ask.',
+    mimeType: 'application/json',
+    read: readMarketFreshness,
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Template (data-bearing, gated, quota-symmetric) resources
+//   → resources/templates/list
+// ---------------------------------------------------------------------------
+// URI parsing is hand-rolled: three templates don't justify a URI-template
 // library. Each paramExtractor returns null when the URI doesn't even start
 // with the right prefix (cheap reject), an {ok: false, reason} when the
 // shape matches but a component is invalid, or an {ok: true, args} when
 // the URI resolves cleanly to synthetic tools/call arguments.
-export const RESOURCE_REGISTRY: McpResourceDef[] = [
+export const TEMPLATE_RESOURCE_REGISTRY: TemplateResourceDef[] = [
   {
-    uri: 'worldmonitor://countries/{iso2}/risk',
+    uriTemplate: 'worldmonitor://countries/{iso2}/risk',
     name: 'Country Risk',
     description: 'Composite Instability Index (CII) score 0–100 with unrest/conflict/security/news components, travel-advisory level, and OFAC sanctions exposure for a single ISO 3166-1 alpha-2 country. URI param {iso2} is lowercase alpha-2 (e.g. "de", "us", "ir").',
     mimeType: 'application/json',
@@ -71,7 +118,7 @@ export const RESOURCE_REGISTRY: McpResourceDef[] = [
     },
   },
   {
-    uri: 'worldmonitor://chokepoints/{slug}/status',
+    uriTemplate: 'worldmonitor://chokepoints/{slug}/status',
     name: 'Chokepoint Status',
     description: 'Maritime chokepoint transit summary: today total / tanker / cargo counts, week-over-week change, risk level, incident count, disruption percentage, and risk narrative. URI param {slug} is one of the hand-curated kebab-case identifiers (suez, strait-of-malacca, strait-of-hormuz, bab-el-mandeb, panama-canal, taiwan-strait, cape-of-good-hope, strait-of-gibraltar, bosphorus, korea-strait, dover-strait, kerch-strait, lombok-strait).',
     mimeType: 'application/json',
@@ -99,27 +146,7 @@ export const RESOURCE_REGISTRY: McpResourceDef[] = [
     },
   },
   {
-    uri: 'worldmonitor://seed-meta/freshness',
-    name: 'Seed-Meta Freshness',
-    description: 'Cache-freshness audit for the high-cadence market-data bootstrap pipeline. Returns only the envelope (cached_at + stale) — no quote payload. Use this as a cheap probe to detect a stuck seeder. v1 covers market freshness only; an aggregate freshness resource spanning energy + maritime + risk feeds is a follow-up if customers ask.',
-    mimeType: 'application/json',
-    tool: 'get_market_data',
-    paramExtractor: (uri: string) => {
-      if (uri !== 'worldmonitor://seed-meta/freshness') {
-        if (uri.startsWith('worldmonitor://seed-meta/')) {
-          return { ok: false, reason: 'Expected worldmonitor://seed-meta/freshness (no further path segments).' };
-        }
-        return null;
-      }
-      // summary: true collapses the payload to counts + samples (cheap
-      // wire shape); the jmespath projection then strips data entirely and
-      // emits only the envelope. The dispatcher's per-budget gate runs
-      // against the projected size — well under 1 KB.
-      return { ok: true, args: { summary: true, jmespath: '{cached_at: cached_at, stale: stale}' } };
-    },
-  },
-  {
-    uri: 'worldmonitor://markets/{symbol}/quote',
+    uriTemplate: 'worldmonitor://markets/{symbol}/quote',
     name: 'Market Quote',
     description: 'Single-symbol quote slice from the market-data bootstrap cache. URI param {symbol} is the uppercase ticker (e.g. "AAPL", "GC=F", "BTC-USD"). Matches equity / commodity / crypto / Gulf / sector / ETF-flow tickers — same case-insensitive matcher as get_market_data({symbols: [...]}).',
     mimeType: 'application/json',
@@ -144,11 +171,12 @@ export const RESOURCE_REGISTRY: McpResourceDef[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// resources/list public shape
+// Public list shapes
 // ---------------------------------------------------------------------------
 // Per MCP spec, resources/list entries carry {uri, name, description,
-// mimeType}. Internal authoring fields (tool, paramExtractor,
-// freshnessWrap) stay internal.
+// mimeType} and resources/templates/list entries carry {uriTemplate, name,
+// description, mimeType}. Internal authoring fields (tool, paramExtractor,
+// freshnessWrap, read) stay internal.
 export interface PublicResourceShape {
   uri: string;
   name: string;
@@ -156,22 +184,88 @@ export interface PublicResourceShape {
   mimeType: string;
 }
 
-export const RESOURCE_LIST_RESPONSE: PublicResourceShape[] = RESOURCE_REGISTRY.map((r) => ({
+export interface ResourceTemplateShape {
+  uriTemplate: string;
+  name: string;
+  description: string;
+  mimeType: string;
+}
+
+export const RESOURCE_LIST_RESPONSE: PublicResourceShape[] = PUBLIC_RESOURCE_REGISTRY.map((r) => ({
   uri: r.uri,
   name: r.name,
   description: r.description,
   mimeType: r.mimeType,
 }));
 
+export const RESOURCE_TEMPLATE_LIST_RESPONSE: ResourceTemplateShape[] = TEMPLATE_RESOURCE_REGISTRY.map((r) => ({
+  uriTemplate: r.uriTemplate,
+  name: r.name,
+  description: r.description,
+  mimeType: r.mimeType,
+}));
+
+// Exact-match set of the concrete public URIs. The handler consults this to
+// decide whether a `resources/read` is anonymously servable — ONLY the exact
+// concrete URIs in PUBLIC_RESOURCE_REGISTRY qualify; a template
+// instantiation (country risk, chokepoint, market quote) never does, so the
+// data-leak / quota-bypass protection on those is untouched.
+const PUBLIC_RESOURCE_URIS: ReadonlySet<string> = new Set(PUBLIC_RESOURCE_REGISTRY.map((r) => r.uri));
+
+export function isPublicResourceUri(uri: unknown): boolean {
+  return typeof uri === 'string' && PUBLIC_RESOURCE_URIS.has(uri);
+}
+
 // ---------------------------------------------------------------------------
-// resources/read dispatcher
+// resources/read — public (anonymous, quota-exempt) dispatcher
 // ---------------------------------------------------------------------------
-// Resolves a URI to its content by synthesizing a tools/call body and
-// invoking dispatchToolsCall — that path runs the same Pro daily-quota
-// reservation, telemetry emission, and per-tool budget gate the tools/call
-// surface does, so auth + quota symmetry is structural rather than
-// duplicated. Resource-shape wrapping happens AFTER dispatch returns:
-//   1. Match the URI; -32602 on no-match or malformed component.
+// Serves a concrete PUBLIC_RESOURCE_REGISTRY entry via its direct `read()`.
+// No auth context, no dispatchToolsCall, no Pro reservation — the content is
+// metadata-only (a freshness envelope), so this is safe to serve to an
+// anonymous caller, mirroring `prompts/list` / `describe_tool`. The handler
+// only routes a request here when `isPublicResourceUri(uri)` is true, so the
+// `-32602` fallback below is a fail-explicit guard for a broken invariant.
+export async function buildPublicResourceResponse(
+  body: { id?: unknown; params?: unknown },
+  corsHeaders: Record<string, string>,
+): Promise<Response> {
+  const outerId = body.id ?? null;
+  const params = body.params as { uri?: unknown } | null;
+  if (!params || typeof params.uri !== 'string') {
+    return rpcError(outerId, -32602, 'Invalid params: missing resource uri', corsHeaders);
+  }
+  const def = PUBLIC_RESOURCE_REGISTRY.find((r) => r.uri === params.uri);
+  if (!def) {
+    return rpcError(outerId, -32602, `Unknown public resource uri "${params.uri}".`, corsHeaders);
+  }
+  // `read()` is documented "MUST be robust", but enforce it at the boundary so
+  // a future PUBLIC_RESOURCE_REGISTRY entry whose reader throws surfaces a clean
+  // -32603 (mirroring the sibling fail-explicit guards in buildResourceResponse)
+  // instead of bubbling an unhandled rejection through mcpHandler to the edge
+  // runtime. The current reader (readMarketFreshness) already catches internally.
+  let text: string;
+  try {
+    text = await def.read();
+  } catch {
+    return rpcError(outerId, -32603, 'Internal error: resource reader failed', corsHeaders);
+  }
+  return rpcOk(
+    outerId,
+    { contents: [{ uri: def.uri, mimeType: def.mimeType, text }] },
+    corsHeaders,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// resources/read — gated (auth + quota-symmetric) template dispatcher
+// ---------------------------------------------------------------------------
+// Resolves a concrete template instantiation to its content by synthesizing a
+// tools/call body and invoking dispatchToolsCall — that path runs the same
+// Pro daily-quota reservation, telemetry emission, and per-tool budget gate
+// the tools/call surface does, so auth + quota symmetry is structural rather
+// than duplicated. Resource-shape wrapping happens AFTER dispatch returns:
+//   1. Match the URI against a template; -32602 on no-match or malformed
+//      component.
 //   2. Synthesize a tools/call JSON-RPC body with the matched tool +
 //      extracted args.
 //   3. Await dispatchToolsCall — Response back is the standard JSON-RPC
@@ -183,7 +277,7 @@ export const RESOURCE_LIST_RESPONSE: PublicResourceShape[] = RESOURCE_REGISTRY.m
 //      `{cached_at, stale, data}`. For RPC-tool-backed resources (just
 //      country risk), read the configured seed-meta key and wrap with
 //      `{cached_at, stale, ...rawPayload}` so the freshness contract
-//      holds uniformly across all four resources.
+//      holds uniformly.
 //   5. Re-emit as resources/read shape: `{contents: [{uri, mimeType, text}]}`
 //      under the outer id, preserving the standard rpcOk envelope.
 export async function buildResourceResponse(
@@ -201,12 +295,12 @@ export async function buildResourceResponse(
   }
   const uri = params.uri;
 
-  // Find the first registry entry whose paramExtractor returns non-null.
+  // Find the first template entry whose paramExtractor returns non-null.
   // null = prefix mismatch (try next entry). ok:false = prefix matched but
   // component invalid (terminate with -32602). ok:true = resolved.
-  let matched: { def: McpResourceDef; args: Record<string, unknown> } | null = null;
+  let matched: { def: TemplateResourceDef; args: Record<string, unknown> } | null = null;
   let lastReason: string | null = null;
-  for (const def of RESOURCE_REGISTRY) {
+  for (const def of TEMPLATE_RESOURCE_REGISTRY) {
     const r = def.paramExtractor(uri);
     if (r === null) continue;
     if (!r.ok) {
@@ -221,7 +315,7 @@ export async function buildResourceResponse(
   }
   if (!matched) {
     const msg = lastReason
-      ?? `Unknown resource uri "${uri}". Issue resources/list to discover the four supported URI shapes.`;
+      ?? `Unknown resource uri "${uri}". Issue resources/list (concrete resources) and resources/templates/list (parameterised URI templates) to discover the supported URI shapes.`;
     return rpcError(outerId, -32602, msg, corsHeaders);
   }
 
@@ -233,8 +327,8 @@ export async function buildResourceResponse(
     params: { name: matched.def.tool, arguments: matched.args },
   };
 
-  // dispatchToolsCall handles auth-symmetric quota reservation + rollback
-  // + per-tool budget gate + telemetry emission. Returns a Response with
+  // dispatchToolsCall handles auth-symmetric quota reservation, per-tool
+  // budget gate, and telemetry emission. Returns a Response with
   // the standard JSON-RPC envelope. We parse, repackage, and re-emit
   // under the OUTER id.
   const dispatched = await dispatchToolsCall(req, context, deps, innerBody, corsHeaders, ctx);
