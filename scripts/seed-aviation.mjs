@@ -38,7 +38,10 @@ import {
   getRedisCredentials,
   readCanonicalValue,
 } from './_seed-utils.mjs';
+import notificationDedup from './shared/notification-dedup.cjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
+
+const { buildDedupMaterial } = notificationDedup;
 
 loadEnvFile(import.meta.url);
 
@@ -349,9 +352,7 @@ function notifyHash(str) {
 async function publishNotificationEvent({ eventType, payload, severity, variant, dedupTtl = 1800 }) {
   try {
     const variantSuffix = variant ? `:${variant}` : '';
-    const dedupMaterial = payload?.coalesceKey
-      ? `coalesce:${payload.coalesceKey}`
-      : `${eventType}:${payload.title ?? ''}`;
+    const dedupMaterial = buildDedupMaterial(eventType, payload?.title, payload?.coalesceKey);
     const dedupKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${notifyHash(dedupMaterial)}`;
     const isNew = await upstashSetNx(dedupKey, '1', dedupTtl);
     if (!isNew) {
@@ -791,14 +792,19 @@ async function dispatchAviationNotifications(alerts) {
   await upstashSet(AVIATION_PREV_ALERTED_KEY, [...currentIatas], PREV_STATE_TTL);
 
   for (const a of newAlerts.slice(0, 3)) {
+    const severity = a.severity === 'FLIGHT_DELAY_SEVERITY_SEVERE' ? 'critical' : 'high';
     await publishNotificationEvent({
       eventType: 'aviation_closure',
       payload: {
         title: `${a.iata}${a.city ? ` (${a.city})` : ''}: ${a.reason || 'Airport disruption'}`,
         source: 'AviationStack',
-        coalesceKey: `aviation:delay:${a.iata}`,
+        // Coalesce by airport + severity band: repeated same-band disruptions
+        // collapse, but a post-recovery MAJOR->SEVERE re-escalation still fires
+        // (mirrors marketAlertCoalesceKey's severity segment; prefix matches the
+        // aviation_closure eventType and the notam:closure sibling). PR #4985 #1/#3.
+        coalesceKey: `aviation:closure:${a.iata}:${severity}`,
       },
-      severity: a.severity === 'FLIGHT_DELAY_SEVERITY_SEVERE' ? 'critical' : 'high',
+      severity,
       variant: undefined,
       dedupTtl: 14_400, // 4h
     });

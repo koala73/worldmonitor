@@ -28,6 +28,7 @@ const v8 = require('v8');
 const { WebSocketServer, WebSocket } = require('ws');
 const { parseProxyConfig, resolveProxyString } = require('./_proxy-utils.cjs');
 const { countryNameToIso2 } = require('./shared/country-name-to-iso2.cjs');
+const { buildDedupMaterial } = require('./shared/notification-dedup.cjs');
 const parseProxyUrl = parseProxyConfig;
 
 const httpsKeepAliveAgent = new https.Agent({ keepAlive: true, maxSockets: 6, timeout: 60_000 });
@@ -613,9 +614,7 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
     // event collapse at the publisher (queue stays clean) instead of N times
     // per recipient at the relay.
     const variantSuffix = variant ? `:${variant}` : '';
-    const dedupMaterial = payload?.coalesceKey
-      ? `coalesce:${payload.coalesceKey}`
-      : `${eventType}:${payload.title ?? ''}`;
+    const dedupMaterial = buildDedupMaterial(eventType, payload?.title, payload?.coalesceKey);
     const dedupKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${notifySimpleHash(dedupMaterial)}`;
     const isNew = await upstashSetNx(dedupKey, '1', dedupTtl);
     if (!isNew) {

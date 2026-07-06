@@ -25,6 +25,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const relaySrc = readFileSync(resolve(__dirname, '..', 'scripts', 'notification-relay.cjs'), 'utf-8');
 const aisRelaySrc = readFileSync(resolve(__dirname, '..', 'scripts', 'ais-relay.cjs'), 'utf-8');
 const seedAviationSrc = readFileSync(resolve(__dirname, '..', 'scripts', 'seed-aviation.mjs'), 'utf-8');
+const notificationDedupSrc = readFileSync(resolve(__dirname, '..', 'scripts', 'shared', 'notification-dedup.cjs'), 'utf-8');
 
 describe('notification-relay checkDedup — Slot B coalesce key', () => {
   it('checkDedup signature accepts an optional coalesceKey parameter', () => {
@@ -39,8 +40,8 @@ describe('notification-relay checkDedup — Slot B coalesce key', () => {
     // Both branches must be present: coalesce-key path and title-hash path.
     assert.match(
       relaySrc,
-      /coalesceKey\s*\?\s*`coalesce:\$\{coalesceKey\}`\s*:\s*`\$\{eventType\}:\$\{title\}`/,
-      'checkDedup keyMaterial must use coalesceKey when set, else fall back to eventType:title',
+      /const keyMaterial = buildDedupMaterial\(eventType,\s*title,\s*coalesceKey\)/,
+      'checkDedup must derive keyMaterial via the shared buildDedupMaterial helper',
     );
   });
 
@@ -65,12 +66,36 @@ describe('notification-relay checkDedup — Slot B coalesce key', () => {
   });
 });
 
+describe('shared notification-dedup helper — buildDedupMaterial', () => {
+  it('keys on coalesceKey when set, else falls back to eventType:title', () => {
+    assert.match(
+      notificationDedupSrc,
+      /coalesceKey\s*\?\s*`coalesce:\$\{coalesceKey\}`\s*:\s*`\$\{eventType\}:\$\{title\s*\?\?\s*''\}`/,
+      'buildDedupMaterial must use coalesceKey when set, else eventType:title',
+    );
+  });
+
+  it('is exported for reuse by all publishers', () => {
+    assert.match(
+      notificationDedupSrc,
+      /module\.exports\s*=\s*\{\s*buildDedupMaterial\s*\}/,
+      'buildDedupMaterial must be exported',
+    );
+  });
+
+  it('all three publishers import/require the shared helper (no re-inlined copies)', () => {
+    assert.match(relaySrc, /require\('\.\/shared\/notification-dedup\.cjs'\)/, 'notification-relay.cjs must require the shared helper');
+    assert.match(aisRelaySrc, /require\('\.\/shared\/notification-dedup\.cjs'\)/, 'ais-relay.cjs must require the shared helper');
+    assert.match(seedAviationSrc, /from '\.\/shared\/notification-dedup\.cjs'/, 'seed-aviation.mjs must import the shared helper');
+  });
+});
+
 describe('ais-relay publishNotificationEvent — Slot B publisher dedup', () => {
   it('publisher dedup key uses coalesceKey when set, else falls back to title', () => {
     assert.match(
       aisRelaySrc,
-      /payload\?\.coalesceKey\s*\?\s*`coalesce:\$\{payload\.coalesceKey\}`\s*:\s*`\$\{eventType\}:\$\{payload\.title\s*\?\?\s*''\}`/,
-      'publishNotificationEvent dedupMaterial must use coalesceKey when set',
+      /const dedupMaterial = buildDedupMaterial\(eventType,\s*payload\?\.title,\s*payload\?\.coalesceKey\)/,
+      'publishNotificationEvent must derive dedupMaterial via the shared buildDedupMaterial helper',
     );
   });
 });
@@ -86,6 +111,15 @@ describe('market alert producer — asset-family coalesce key', () => {
       aisRelaySrc,
       /return `market:\$\{assetClass\}:\$\{stableIdentifier\}:\$\{direction\}:\$\{severity\}`/,
       'market coalesce key must separate asset class, instrument, direction, and severity band',
+    );
+    // Lock the normalization line itself so a source change (dropping the
+    // 'unknown' fallback or the trim/lowercase) is caught — the behavioral test
+    // below re-derives this logic inline, so without this assertion the two
+    // could drift together silently. PR #4985 review finding #4.
+    assert.match(
+      aisRelaySrc,
+      /const stableIdentifier = String\(identifier \|\| 'unknown'\)\.trim\(\)\.toLowerCase\(\)/,
+      'market coalesce key must normalize identifier: fallback to unknown, then trim + lowercase',
     );
   });
 
@@ -119,16 +153,16 @@ describe('seed-aviation publishNotificationEvent — Slot B publisher dedup', ()
   it('publisher dedup key uses coalesceKey when set, else falls back to title', () => {
     assert.match(
       seedAviationSrc,
-      /payload\?\.coalesceKey\s*\?\s*`coalesce:\$\{payload\.coalesceKey\}`\s*:\s*`\$\{eventType\}:\$\{payload\.title\s*\?\?\s*''\}`/,
-      'seed-aviation publishNotificationEvent must use coalesceKey when set',
+      /const dedupMaterial = buildDedupMaterial\(eventType,\s*payload\?\.title,\s*payload\?\.coalesceKey\)/,
+      'seed-aviation publishNotificationEvent must derive dedupMaterial via the shared buildDedupMaterial helper',
     );
   });
 
   it('aviation and NOTAM notification payloads include coalesceKey', () => {
     assert.match(
       seedAviationSrc,
-      /coalesceKey:\s*`aviation:delay:\$\{a\.iata\}`/,
-      'airport delay notifications must coalesce by airport family',
+      /coalesceKey:\s*`aviation:closure:\$\{a\.iata\}:\$\{severity\}`/,
+      'airport disruption notifications must coalesce by airport + severity band so a MAJOR->SEVERE escalation re-notifies',
     );
     assert.match(
       seedAviationSrc,
