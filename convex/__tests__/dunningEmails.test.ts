@@ -50,6 +50,7 @@ function resendSends(fetchMock: ReturnType<typeof mockResend>) {
       to: string[];
       subject: string;
       html: string;
+      attachments?: Array<{ filename: string; content: string; content_id: string }>;
     });
 }
 
@@ -141,6 +142,34 @@ describe("on_hold webhook → day-0 email", () => {
     );
     expect(sub2?.onHoldAt).toBe(eventTs);
     expect(resendSends(fetchMock)).toHaveLength(1);
+  });
+});
+
+describe("dunning email logo", () => {
+  test("embeds the logo as a cid attachment, not a WAF-blocked remote <img>", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    const anchor = Date.now() - 4 * DAY_MS;
+    await seedSub(t, { onHoldAt: anchor });
+
+    await t.action(internal.payments.subscriptionEmails.sendDunningEmail, {
+      dodoSubscriptionId: SUB_ID,
+      step: "dunning_day3",
+      episodeAt: anchor,
+    });
+
+    const [send] = resendSends(fetchMock);
+    // The logo must be a cid: reference — the /favico/* remote URL 403s for
+    // generic-UA fetches behind the WAF and never loads with remote images off.
+    expect(send!.html).toContain('src="cid:wmlogo"');
+    expect(send!.html).not.toContain("favico/android-chrome");
+    // ...backed by an inline attachment carrying the same content_id.
+    expect(send!.attachments).toHaveLength(1);
+    expect(send!.attachments![0]).toMatchObject({ content_id: "wmlogo" });
+    expect(send!.attachments![0].content.length).toBeGreaterThan(1000);
+    expect(send!.attachments![0].filename).toMatch(/\.png$/);
   });
 });
 

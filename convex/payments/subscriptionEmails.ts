@@ -10,6 +10,7 @@ import { internalAction, internalMutation, internalQuery } from "../_generated/s
 import { internal } from "../_generated/api";
 import { PRODUCT_CATALOG } from "../config/productCatalog";
 import { createCustomerPortalUrlForUser } from "./billing";
+import { EMAIL_LOGO_BASE64, EMAIL_LOGO_CID, EMAIL_LOGO_FILENAME } from "./_email-logo";
 
 const RESEND_URL = "https://api.resend.com/emails";
 const FROM = "World Monitor <noreply@worldmonitor.app>";
@@ -38,6 +39,7 @@ async function sendEmail(
   subject: string,
   html: string,
   replyTo?: string,
+  opts?: { embedLogo?: boolean },
 ): Promise<void> {
   // FROM is a noreply address, so the welcome email's "Reply to this email"
   // support copy only routes correctly when we explicitly set reply_to on the
@@ -45,6 +47,19 @@ async function sendEmail(
   // self-loop back to ADMIN_EMAIL.
   const payload: Record<string, unknown> = { from: FROM, to: [to], subject, html };
   if (replyTo) payload.reply_to = replyTo;
+  // Inline logo as a CID attachment for any template that references
+  // `cid:wmlogo` (welcome + dunning). Remote <img> from /favico/* breaks
+  // behind the WAF for generic-UA fetches and never loads with remote
+  // images disabled; the attachment renders with no remote fetch at all.
+  if (opts?.embedLogo) {
+    payload.attachments = [
+      {
+        filename: EMAIL_LOGO_FILENAME,
+        content: EMAIL_LOGO_BASE64,
+        content_id: EMAIL_LOGO_CID,
+      },
+    ];
+  }
   const res = await fetch(RESEND_URL, {
     method: "POST",
     headers: {
@@ -177,7 +192,7 @@ function userWelcomeHtml(planName: string, planKey: string): string {
     <table cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto 32px;">
       <tr>
         <td style="width: 40px; height: 40px; vertical-align: middle;">
-          <img src="https://www.worldmonitor.app/favico/android-chrome-192x192.png" width="40" height="40" alt="WorldMonitor" style="border-radius: 50%; display: block;" />
+          <img src="cid:wmlogo" width="40" height="40" alt="WorldMonitor" style="border-radius: 50%; display: block;" />
         </td>
         <td style="padding-left: 12px;">
           <div style="font-size: 16px; font-weight: 800; color: #fff; letter-spacing: -0.5px;">WORLD MONITOR</div>
@@ -322,6 +337,7 @@ export const sendSubscriptionEmails = internalAction({
       `Welcome to World Monitor ${planName}`,
       userWelcomeHtml(planName, args.planKey),
       ADMIN_EMAIL,
+      { embedLogo: true },
     );
     console.log(`[subscriptionEmails] Welcome email sent to ${args.userEmail}`);
 
@@ -506,7 +522,7 @@ function dunningEmailShell(headline: string, bodyHtml: string, ctaLabel: string,
     <table cellpadding="0" cellspacing="0" border="0" style="margin: 0 auto 32px;">
       <tr>
         <td style="width: 40px; height: 40px; vertical-align: middle;">
-          <img src="https://www.worldmonitor.app/favico/android-chrome-192x192.png" width="40" height="40" alt="WorldMonitor" style="border-radius: 50%; display: block;" />
+          <img src="cid:wmlogo" width="40" height="40" alt="WorldMonitor" style="border-radius: 50%; display: block;" />
         </td>
         <td style="padding-left: 12px;">
           <div style="font-size: 16px; font-weight: 800; color: #fff; letter-spacing: -0.5px;">WORLD MONITOR</div>
@@ -673,7 +689,7 @@ export const sendDunningEmail = internalAction({
 
     const planName = PLAN_DISPLAY[sub.planKey] ?? sub.planKey;
     const { subject, html } = buildDunningEmail(args.step, planName, ctaUrl);
-    await sendEmail(apiKey, sub.email, subject, html, ADMIN_EMAIL);
+    await sendEmail(apiKey, sub.email, subject, html, ADMIN_EMAIL, { embedLogo: true });
     // Ledger write AFTER the send: a Resend failure throws above, leaving no
     // row, so the next cron tick retries. The narrow crash window between
     // send and record risks one duplicate email — the right side to err on.
