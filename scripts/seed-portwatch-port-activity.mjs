@@ -867,6 +867,26 @@ async function redisMgetJson(keys) {
 // `progress` (optional) is mutated in-place so a SIGTERM handler in main()
 // can report which batch / country we died on.
 //
+// Orders the cold-fetch queue no-prior-cache-FIRST (shuffled within each group
+// for rotation fairness). Never-cached countries have no served-stale fallback,
+// so they must win cold-fetch slots ahead of cached-but-stale ones — otherwise
+// the random shuffle starves them out of the canonical (coverage frozen < 174).
+// Pure + exported for unit testing; rng is injectable for determinism. #4293.
+export function orderColdFetchQueue(needsFetch, rng = Math.random) {
+  const shuffle = (arr) => {
+    const a = [...arr];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(rng() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  };
+  const hasCache = (it) => Boolean(it && it.prevPayload && typeof it.prevPayload === 'object');
+  const noCache = needsFetch.filter((it) => !hasCache(it));
+  const cached = needsFetch.filter(hasCache);
+  return [...shuffle(noCache), ...shuffle(cached)];
+}
+
 // fetchAll is the orchestrator (refs → schema → preflight → cache-partition
 // → batched fetch → finalise); splitting it would move complexity into a
 // hidden seam and obscure the linear pipeline. Each stage is short and
@@ -988,14 +1008,16 @@ export async function fetchAll(progress, { signal } = {}) {
 
   if (needsFetch.length > MAX_COLD_FETCH_PER_RUN) {
     capTriggered = true;
-    // Deterministic-ish shuffle: Fisher-Yates with Math.random — fine here
-    // because we just need "different subset each run", not crypto strength.
-    const shuffled = [...needsFetch];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-    const deferred = shuffled.slice(MAX_COLD_FETCH_PER_RUN);
+    // Order the queue no-prior-cache-FIRST, shuffled within each group for
+    // rotation fairness. Never-cached countries have no served-stale fallback:
+    // if deferred past the cap they're dropped entirely (droppedNoCache),
+    // whereas cached-but-stale countries survive the deferral via served-stale.
+    // A plain random shuffle therefore repeatedly starved the same uncached
+    // countries (MY, IE, EC, …) out of the canonical, freezing coverage below
+    // the 174 target. Prioritising them guarantees each a fetch slot every run
+    // (uncached count << cap), so they get cached and then held over. See #4293.
+    const ordered = orderColdFetchQueue(needsFetch);
+    const deferred = ordered.slice(MAX_COLD_FETCH_PER_RUN);
     let servedStale = 0;
     let droppedTooOld = 0;
     let droppedNoCache = 0;
@@ -1024,7 +1046,7 @@ export async function fetchAll(progress, { signal } = {}) {
       countryData.set(item.iso2, { ...prev, staleAsof: true });
       servedStale++;
     }
-    needsFetch = shuffled.slice(0, MAX_COLD_FETCH_PER_RUN);
+    needsFetch = ordered.slice(0, MAX_COLD_FETCH_PER_RUN);
     // Rotation arithmetic uses MAX_COLD_FETCH_PER_RUN directly rather than
     // needsFetch.length — needsFetch was just reassigned to the cap-sized
     // slice, so the two are numerically equal here, but using the constant
