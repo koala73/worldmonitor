@@ -14197,7 +14197,10 @@ function getForecastLlmCallOptions(stage = 'default') {
       providerOrder: ['groq', 'openrouter'],
       modelOverrides: {
         groq: 'llama-3.1-8b-instant',
-        openrouter: openrouterModel || 'google/gemini-2.5-flash',
+        // ONLY the stage-scoped model env may change the pinned fallback —
+        // a global FORECAST_LLM_MODEL_OPENROUTER must not move the
+        // probability-coupled stage either (review finding on #4965).
+        openrouter: process.env.FORECAST_LLM_CRITICAL_MODEL_OPENROUTER || 'google/gemini-2.5-flash',
       },
       // Legacy request-body parity: the pinned models predate the
       // reasoning-off extraBody on the table's openrouter entry.

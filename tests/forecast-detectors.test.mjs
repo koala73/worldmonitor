@@ -1513,6 +1513,30 @@ describe('forecast llm overrides', () => {
     delete process.env.FORECAST_LLM_PROVIDER_ORDER;
   });
 
+  it('keeps the pinned critical_signals fallback model against a GLOBAL model override', () => {
+    // A global FORECAST_LLM_MODEL_OPENROUTER must not move the
+    // probability-coupled stage's fallback either (review finding on
+    // #4965) — only FORECAST_LLM_CRITICAL_MODEL_OPENROUTER may.
+    process.env.FORECAST_LLM_MODEL_OPENROUTER = 'deepseek/deepseek-v4-flash';
+    delete process.env.FORECAST_LLM_CRITICAL_PROVIDER_ORDER;
+    delete process.env.FORECAST_LLM_CRITICAL_MODEL_OPENROUTER;
+
+    const options = getForecastLlmCallOptions('critical_signals');
+    const providers = resolveForecastLlmProviders(options);
+
+    assert.equal(providers[0]?.model, 'llama-3.1-8b-instant');
+    assert.equal(providers[1]?.model, 'google/gemini-2.5-flash');
+    assert.equal(providers[1]?.extraBody, undefined);
+
+    // The stage-scoped model env DOES reach the pinned fallback slot.
+    process.env.FORECAST_LLM_CRITICAL_MODEL_OPENROUTER = 'google/gemini-2.5-pro';
+    const scoped = resolveForecastLlmProviders(getForecastLlmCallOptions('critical_signals'));
+    assert.equal(scoped[1]?.model, 'google/gemini-2.5-pro');
+
+    delete process.env.FORECAST_LLM_MODEL_OPENROUTER;
+    delete process.env.FORECAST_LLM_CRITICAL_MODEL_OPENROUTER;
+  });
+
   it('supports a stronger combined-model override without changing scenario defaults', () => {
     process.env.FORECAST_LLM_COMBINED_PROVIDER_ORDER = 'openrouter';
     process.env.FORECAST_LLM_COMBINED_MODEL_OPENROUTER = 'google/gemini-2.5-pro';
