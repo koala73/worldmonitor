@@ -126,9 +126,9 @@ interface GpsJammingPopupData {
   lat: number;
   lon: number;
   level: 'medium' | 'high';
-  npAvg: number;
-  sampleCount: number;
-  aircraftCount: number;
+  pct: number;
+  affectedAircraft: number;
+  totalAircraft: number;
 }
 
 interface IranEventPopupData {
@@ -3513,15 +3513,15 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
         <div class="popup-stats">
           <div class="popup-stat">
             <span class="stat-label">${t('popups.gpsJamming.navPerformance')}</span>
-            <span class="stat-value">${Number(data.npAvg).toFixed(2)}</span>
+            <span class="stat-value">${Number(data.pct).toFixed(1)}%</span>
           </div>
           <div class="popup-stat">
             <span class="stat-label">${t('popups.gpsJamming.samples')}</span>
-            <span class="stat-value">${data.sampleCount}</span>
+            <span class="stat-value">${data.affectedAircraft}</span>
           </div>
           <div class="popup-stat">
             <span class="stat-label">${t('popups.gpsJamming.aircraft')}</span>
-            <span class="stat-value">${data.aircraftCount}</span>
+            <span class="stat-value">${data.totalAircraft}</span>
           </div>
           <div class="popup-stat">
             <span class="stat-label">${t('popups.gpsJamming.h3Hex')}</span>

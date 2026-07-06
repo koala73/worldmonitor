@@ -212,7 +212,7 @@ interface GpsJamMarker extends BaseMarker {
   _kind: 'gpsjam';
   id: string;
   level: string;
-  npAvg: number;
+  pct: number;
 }
 interface TechMarker extends BaseMarker {
   _kind: 'tech';
@@ -1487,7 +1487,7 @@ export class GlobeMap {
       const gc = d.level === 'high' ? '#ff2020' : '#ff8800';
       html = `<span style="color:${gc};font-weight:bold;">📡 GPS Jamming</span>` +
              `<br><span style="opacity:.7;">Level: ${esc(d.level)}</span>` +
-             `<br><span style="opacity:.5;">Avg satellites visible: ${d.npAvg.toFixed(1)}</span>`;
+             `<br><span style="opacity:.5;">Aircraft affected: ${d.pct.toFixed(1)}%</span>`;
     } else if (d._kind === 'tech') {
       html = `<span style="color:#44aaff;font-weight:bold;">💻 ${esc(d.title.slice(0, 50))}</span>` +
              `<br><span style="opacity:.7;">${esc(d.country)}</span>` +
@@ -3287,7 +3287,7 @@ export class GlobeMap {
       _lng: h.lon,
       id: h.h3,
       level: h.level,
-      npAvg: h.npAvg ?? 0,
+      pct: h.pct ?? 0,
     }));
     this.flushMarkers();
   }
