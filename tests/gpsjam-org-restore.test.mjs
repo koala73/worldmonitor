@@ -88,6 +88,17 @@ describe('gpsjam.org CSV parser (_gpsjam-parse.mjs)', () => {
     assert.equal(typeof h.region, 'string');
   });
 
+  test('coalesces an invalid minAircraft (NaN) to the default so the low-sample filter stays active', () => {
+    const csv = [
+      CSV_HEADER,
+      `${VALID_H3},0,10`, // total 10 → high, kept
+      `${VALID_H3},1,1`,  // total 2 → would leak in if the threshold were NaN
+    ].join('\n');
+    const { results, skippedLowSample } = processHexes(csv, NaN);
+    assert.equal(skippedLowSample, 1, 'total-2 row must still be dropped under the default-3 threshold');
+    assert.equal(results.length, 1);
+  });
+
   test('drops <2% interference rows and rows below minAircraft', () => {
     const csv = [
       CSV_HEADER,

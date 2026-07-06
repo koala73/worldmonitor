@@ -34,7 +34,9 @@ function getArg(name, fallback) {
 }
 
 const requestedDate = getArg('date', null);
-const minAircraft = parseInt(getArg('min-aircraft', '3'), 10);
+const minAircraftRaw = parseInt(getArg('min-aircraft', '3'), 10);
+// Guard against a typo'd --min-aircraft (NaN) silently disabling the low-sample filter.
+const minAircraft = Number.isFinite(minAircraftRaw) && minAircraftRaw > 0 ? minAircraftRaw : 3;
 const outputPath = getArg('output', null);
 
 function maskToken(token) {

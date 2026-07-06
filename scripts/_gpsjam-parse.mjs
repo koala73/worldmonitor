@@ -24,6 +24,9 @@ export function classifyRegion(lat, lon) {
 
 // Daily H3 res-4 CSV → medium/high hexes in the v2 shape the consumers read.
 export function processHexes(csv, minAircraft = 3) {
+  // Coalesce an invalid threshold (e.g. NaN from a bad --min-aircraft) to 3.
+  // `total < NaN` is always false, which would silently disable the low-sample filter.
+  const minAir = Number.isFinite(minAircraft) && minAircraft > 0 ? minAircraft : 3;
   const lines = csv.trim().split('\n');
   const header = lines[0]; // hex,count_good_aircraft,count_bad_aircraft
   if (!header.includes('hex')) throw new Error(`Unexpected CSV header: ${header}`);
@@ -48,7 +51,7 @@ export function processHexes(csv, minAircraft = 3) {
     if (!Number.isFinite(good) || !Number.isFinite(bad)) continue;
     const total = good + bad;
 
-    if (total < minAircraft) { skippedLowSample++; continue; }
+    if (total < minAir) { skippedLowSample++; continue; }
 
     const pctRaw = (bad / total) * 100;
     let level;
