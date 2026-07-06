@@ -229,7 +229,9 @@ export const callLlmTool = (opts: Omit<LlmCallOptions, 'providerOrder' | 'modelO
 export const callLlmReasoning = (opts: Omit<LlmCallOptions, 'providerOrder' | 'modelOverrides'>) =>
   callLlmProfile({ ...opts, enableReasoning: true }, 'LLM_REASONING_PROVIDER', 'LLM_REASONING_MODEL', 'openrouter');
 
-export type LlmStreamOptions = Omit<LlmCallOptions, 'stripThinkingTags' | 'validate' | 'providerOrder' | 'modelOverrides' | 'provider'> & {
+// enableReasoning is omitted too: the reasoning stream hardcodes it on —
+// exposing the knob on the stream type would be a silent no-op for callers.
+export type LlmStreamOptions = Omit<LlmCallOptions, 'stripThinkingTags' | 'validate' | 'providerOrder' | 'modelOverrides' | 'provider' | 'enableReasoning'> & {
   /** When fired, aborts the active provider fetch and stops the stream. */
   signal?: AbortSignal;
 };
