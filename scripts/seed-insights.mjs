@@ -76,7 +76,7 @@ const CACHE_TTL = 10800; // 3h — 6x the 30 min cron interval. Shorter = key ex
                          // is gated at brief-selection time (see pickBriefCluster + briefSystemPrompt
                          // in _insights-brief.mjs), not by aging out fast.
 const MAX_HEADLINE_LEN = 500;
-const GROQ_MODEL = 'llama-3.1-8b-instant';
+const GROQ_MODEL = 'llama-3.3-70b-versatile';
 
 const TASK_NARRATION = /^(we need to|i need to|let me|i'll |i should|i will |the task is|the instructions|according to the rules|so we need to|okay[,.]\s*(i'll|let me|so|we need|the task|i should|i will)|sure[,.]\s*(i'll|let me|so|we need|the task|i should|i will|here)|first[, ]+(i|we|let)|to summarize (the headlines|the task|this)|my task (is|was|:)|step \d)/i;
 const PROMPT_ECHO = /^(summarize the top story|summarize the key|rules:|here are the rules|the top story is likely)/i;
@@ -201,7 +201,8 @@ async function readExistingInsights() {
 }
 
 // Provider config — mirrors server/_shared/llm.ts getProviderCredentials()
-// Order: ollama → groq → openrouter (canonical chain)
+// Order: ollama → openrouter → groq (canonical chain since #4944: DeepSeek
+// V4 Flash primary with reasoning disabled, groq 70B free-tier fallback)
 const LLM_PROVIDERS = [
   {
     name: 'ollama',
@@ -218,20 +219,21 @@ const LLM_PROVIDERS = [
     timeout: 25_000,
   },
   {
+    name: 'openrouter',
+    envKey: 'OPENROUTER_API_KEY',
+    apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
+    model: 'deepseek/deepseek-v4-flash',
+    headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': CHROME_UA }),
+    extraBody: { reasoning: { enabled: false } },
+    timeout: 20_000,
+  },
+  {
     name: 'groq',
     envKey: 'GROQ_API_KEY',
     apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
     model: GROQ_MODEL,
     headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA }),
     timeout: 15_000,
-  },
-  {
-    name: 'openrouter',
-    envKey: 'OPENROUTER_API_KEY',
-    apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
-    model: 'google/gemini-2.5-flash',
-    headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': CHROME_UA }),
-    timeout: 20_000,
   },
 ];
 

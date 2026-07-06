@@ -54,6 +54,21 @@ const MAX_WATCH_ITEMS = 3;
  */
 const DEFAULT_PROVIDERS = [
   {
+    name: 'openrouter',
+    envKey: 'OPENROUTER_API_KEY',
+    apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
+    model: 'deepseek/deepseek-v4-flash',
+    timeout: 30_000,
+    headers: (key) => ({
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://worldmonitor.app',
+      'X-Title': 'World Monitor',
+      'User-Agent': CHROME_UA,
+    }),
+    extraBody: { reasoning: { enabled: false } },
+  },
+  {
     name: 'groq',
     envKey: 'GROQ_API_KEY',
     apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
@@ -62,20 +77,6 @@ const DEFAULT_PROVIDERS = [
     headers: (key) => ({
       Authorization: `Bearer ${key}`,
       'Content-Type': 'application/json',
-      'User-Agent': CHROME_UA,
-    }),
-  },
-  {
-    name: 'openrouter',
-    envKey: 'OPENROUTER_API_KEY',
-    apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
-    model: 'google/gemini-2.5-flash',
-    timeout: 30_000,
-    headers: (key) => ({
-      Authorization: `Bearer ${key}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://worldmonitor.app',
-      'X-Title': 'World Monitor',
       'User-Agent': CHROME_UA,
     }),
   },
@@ -356,6 +357,7 @@ export async function callLlmDefault({ systemPrompt, userPrompt }, opts = {}) {
             max_tokens: NARRATIVE_MAX_TOKENS,
             temperature: NARRATIVE_TEMPERATURE,
             response_format: { type: 'json_object' },
+            ...(provider.extraBody || {}),
           }),
           signal: AbortSignal.timeout(Math.max(1, Math.min(provider.timeout, usable))),
         });

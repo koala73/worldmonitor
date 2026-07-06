@@ -14101,9 +14101,13 @@ function selectForecastsForEnrichment(predictions, options = {}) {
 }
 
 // ── Phase 2: LLM Scenario Enrichment ───────────────────────
+// openrouter-first since #4944 U6: forecast NARRATIVE (never probabilities —
+// detectors own those) runs DeepSeek V4 Flash with reasoning disabled; groq
+// llama-3.3-70b-versatile is the free-tier/outage fallback. Per-stage
+// FORECAST_LLM_*_PROVIDER_ORDER env still overrides.
 const FORECAST_LLM_PROVIDERS = [
-  { name: 'groq', envKey: 'GROQ_API_KEY', apiUrl: 'https://api.groq.com/openai/v1/chat/completions', model: 'llama-3.1-8b-instant', timeout: 20_000 },
-  { name: 'openrouter', envKey: 'OPENROUTER_API_KEY', apiUrl: 'https://openrouter.ai/api/v1/chat/completions', model: 'google/gemini-2.5-flash', timeout: 25_000 },
+  { name: 'openrouter', envKey: 'OPENROUTER_API_KEY', apiUrl: 'https://openrouter.ai/api/v1/chat/completions', model: 'deepseek/deepseek-v4-flash', timeout: 25_000, extraBody: { reasoning: { enabled: false } } },
+  { name: 'groq', envKey: 'GROQ_API_KEY', apiUrl: 'https://api.groq.com/openai/v1/chat/completions', model: 'llama-3.3-70b-versatile', timeout: 20_000 },
 ];
 const FORECAST_LLM_PROVIDER_NAMES = new Set(FORECAST_LLM_PROVIDERS.map(provider => provider.name));
 // 3 retries (=4 attempts/provider): during an OpenRouter slowdown 2 retries all timed
@@ -14177,6 +14181,26 @@ function getForecastLlmCallOptions(stage = 'default') {
         ? (process.env.FORECAST_LLM_MARKET_IMPLICATIONS_MODEL_OPENROUTER || process.env.FORECAST_LLM_MODEL_OPENROUTER)
       : process.env.FORECAST_LLM_MODEL_OPENROUTER;
 
+  // R13 pin (#4944 U6): critical_signals is NOT narrative-only — its LLM
+  // strength/confidence flow into state-derived (market/supply_chain)
+  // forecast probabilities and publish selection (frames → world signals →
+  // pressure/confirmation scores → buildStateDerivedForecast probability).
+  // Hold this stage on the pre-#4944 models so the DeepSeek narrative
+  // migration cannot move probabilities before the #4930 resolver baseline
+  // exists. Explicit env overrides still win.
+  if (stage === 'critical_signals' && !criticalProviderOrder && !globalProviderOrder) {
+    return {
+      providerOrder: ['groq', 'openrouter'],
+      modelOverrides: {
+        groq: 'llama-3.1-8b-instant',
+        openrouter: openrouterModel || 'google/gemini-2.5-flash',
+      },
+      // Legacy request-body parity: the pinned models predate the
+      // reasoning-off extraBody on the table's openrouter entry.
+      extraBodyOverrides: { openrouter: null },
+    };
+  }
+
   return {
     providerOrder,
     modelOverrides: openrouterModel ? { openrouter: openrouterModel } : {},
@@ -14198,6 +14222,11 @@ function resolveForecastLlmProviders(options = {}) {
     providers.push({
       ...provider,
       model: options.modelOverrides?.[provider.name] || provider.model,
+      // `null` explicitly clears the table entry's extraBody (R13 pin);
+      // undefined leaves it untouched.
+      extraBody: options.extraBodyOverrides?.[provider.name] !== undefined
+        ? (options.extraBodyOverrides[provider.name] || undefined)
+        : provider.extraBody,
     });
   }
   return providers.length > 0 ? providers : FORECAST_LLM_PROVIDERS;
@@ -14601,6 +14630,7 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
                 ],
                 max_tokens: options.maxTokens || 1500,
                 temperature: options.temperature ?? 0.3,
+                ...(provider.extraBody || {}),
               }),
               signal: AbortSignal.timeout(Math.max(1, Math.min(provider.timeout, usableBudgetMs))),
             });
@@ -15015,7 +15045,9 @@ async function enrichScenariosWithLLM(predictions) {
   // Call 1: Combined scenario + perspectives for top-2
   if (topWithPerspectives.length > 0) {
     const hash = buildNarrativeCacheHash(COMBINED_SYSTEM_PROMPT, buildUserPrompt(topWithPerspectives));
-    const cacheKey = `forecast:llm-combined:${hash}`;
+    // v2 (2026-07-06, #4944 U6): narrative moved to deepseek-v4-flash — the
+    // prompt hash is not model-sensitive, so retire old-model rows explicitly.
+    const cacheKey = `forecast:llm-combined:v2:${hash}`;
     console.log(`  [LLM:combined] start selected=${topWithPerspectives.length} cacheKey=${cacheKey}`);
     const cached = await redisGet(url, token, cacheKey);
 
@@ -15162,7 +15194,8 @@ async function enrichScenariosWithLLM(predictions) {
   // Call 2: Scenario-only for predictions 3-4
   if (scenarioOnly.length > 0) {
     const hash = buildNarrativeCacheHash(SCENARIO_SYSTEM_PROMPT, buildUserPrompt(scenarioOnly));
-    const cacheKey = `forecast:llm-scenarios:${hash}`;
+    // v2 (2026-07-06, #4944 U6): see the combined-stage bump note above.
+    const cacheKey = `forecast:llm-scenarios:v2:${hash}`;
     console.log(`  [LLM:scenario] start selected=${scenarioOnly.length} cacheKey=${cacheKey}`);
     const cached = await redisGet(url, token, cacheKey);
 
@@ -16319,7 +16352,9 @@ function validateMarketImplications(cards, allowedTickers = ALL_ALLOWED_TICKERS)
 
 const MARKET_IMPLICATIONS_META_KEY = 'seed-meta:intelligence:market-implications';
 const MARKET_IMPLICATIONS_META_TTL = 86400 * 7;
-const MARKET_IMPLICATIONS_STAGE_CACHE_PREFIX = 'forecast:llm-market-implications:';
+// v2 (2026-07-06, #4944 U6): narrative moved to deepseek-v4-flash — the
+// fingerprint is not model-sensitive, so retire old-model rows explicitly.
+const MARKET_IMPLICATIONS_STAGE_CACHE_PREFIX = 'forecast:llm-market-implications:v2:';
 
 // Input-hash guard for the market_implications LLM stage (#4894). This was
 // the only forecast stage with no pre-call cache — a 2,500-token completion

@@ -1455,11 +1455,45 @@ describe('forecast llm overrides', () => {
     const options = getForecastLlmCallOptions('combined');
     const providers = resolveForecastLlmProviders(options);
 
+    assert.deepEqual(options.providerOrder, ['openrouter', 'groq']);
+    assert.equal(providers[0]?.name, 'openrouter');
+    assert.equal(providers[0]?.model, 'deepseek/deepseek-v4-flash');
+    assert.equal(providers[1]?.name, 'groq');
+    assert.equal(providers[1]?.model, 'llama-3.3-70b-versatile');
+  });
+
+  it('pins critical_signals to the pre-#4944 chain (probability-coupled stage)', () => {
+    delete process.env.FORECAST_LLM_PROVIDER_ORDER;
+    delete process.env.FORECAST_LLM_CRITICAL_PROVIDER_ORDER;
+    delete process.env.FORECAST_LLM_MODEL_OPENROUTER;
+    delete process.env.FORECAST_LLM_CRITICAL_MODEL_OPENROUTER;
+
+    // critical_signals feeds LLM strength/confidence into state-derived
+    // forecast probabilities — the DeepSeek migration must not reach it
+    // before the #4930 resolver baseline exists.
+    const options = getForecastLlmCallOptions('critical_signals');
+    const providers = resolveForecastLlmProviders(options);
+
     assert.deepEqual(options.providerOrder, ['groq', 'openrouter']);
     assert.equal(providers[0]?.name, 'groq');
     assert.equal(providers[0]?.model, 'llama-3.1-8b-instant');
     assert.equal(providers[1]?.name, 'openrouter');
     assert.equal(providers[1]?.model, 'google/gemini-2.5-flash');
+    assert.equal(providers[1]?.extraBody, undefined, 'pinned openrouter entry must keep the legacy request body (no reasoning field)');
+  });
+
+  it('lets an explicit env override unpin critical_signals', () => {
+    process.env.FORECAST_LLM_CRITICAL_PROVIDER_ORDER = 'openrouter';
+    process.env.FORECAST_LLM_CRITICAL_MODEL_OPENROUTER = 'deepseek/deepseek-v4-flash';
+
+    const options = getForecastLlmCallOptions('critical_signals');
+    const providers = resolveForecastLlmProviders(options);
+
+    assert.deepEqual(options.providerOrder, ['openrouter']);
+    assert.equal(providers[0]?.model, 'deepseek/deepseek-v4-flash');
+
+    delete process.env.FORECAST_LLM_CRITICAL_PROVIDER_ORDER;
+    delete process.env.FORECAST_LLM_CRITICAL_MODEL_OPENROUTER;
   });
 
   it('supports a stronger combined-model override without changing scenario defaults', () => {
@@ -1476,9 +1510,10 @@ describe('forecast llm overrides', () => {
     assert.equal(combinedProviders[0]?.name, 'openrouter');
     assert.equal(combinedProviders[0]?.model, 'google/gemini-2.5-pro');
 
-    assert.deepEqual(scenarioOptions.providerOrder, ['groq', 'openrouter']);
-    assert.equal(scenarioProviders[0]?.name, 'groq');
-    assert.equal(scenarioProviders[1]?.model, 'google/gemini-2.5-flash');
+    assert.deepEqual(scenarioOptions.providerOrder, ['openrouter', 'groq']);
+    assert.equal(scenarioProviders[0]?.name, 'openrouter');
+    assert.equal(scenarioProviders[0]?.model, 'deepseek/deepseek-v4-flash');
+    assert.equal(scenarioProviders[1]?.model, 'llama-3.3-70b-versatile');
   });
 
   it('lets a global provider order and openrouter model apply to non-combined stages', () => {
@@ -1522,8 +1557,8 @@ describe('forecast llm overrides', () => {
             status: 200,
             headers: { get: () => null },
             json: async () => ({
-              model: 'llama-3.1-8b-instant',
-              choices: [{ message: { content: 'Groq retry succeeded with enough narrative content.' } }],
+              model: 'deepseek/deepseek-v4-flash',
+              choices: [{ message: { content: 'OpenRouter retry succeeded with enough narrative content.' } }],
             }),
           };
         },
@@ -1533,11 +1568,11 @@ describe('forecast llm overrides', () => {
 
       assert.deepEqual(waits, [2000, 2000]);
       assert.equal(calls.length, 3);
-      assert.ok(calls.every((url) => url.includes('api.groq.com')));
+      assert.ok(calls.every((url) => url.includes('openrouter.ai')));
       assert.deepEqual(result, {
-        text: 'Groq retry succeeded with enough narrative content.',
-        model: 'llama-3.1-8b-instant',
-        provider: 'groq',
+        text: 'OpenRouter retry succeeded with enough narrative content.',
+        model: 'deepseek/deepseek-v4-flash',
+        provider: 'openrouter',
       });
     } finally {
       globalThis.setTimeout = originalSetTimeout;
@@ -1572,8 +1607,8 @@ describe('forecast llm overrides', () => {
             status: 200,
             headers: { get: () => null },
             json: async () => ({
-              model: 'llama-3.1-8b-instant',
-              choices: [{ message: { content: 'Groq capped retry succeeded with enough narrative content.' } }],
+              model: 'deepseek/deepseek-v4-flash',
+              choices: [{ message: { content: 'Capped retry succeeded with enough narrative content.' } }],
             }),
           };
         },
@@ -1583,7 +1618,7 @@ describe('forecast llm overrides', () => {
 
       assert.deepEqual(waits, [10000]);
       assert.equal(calls, 2);
-      assert.equal(result?.provider, 'groq');
+      assert.equal(result?.provider, 'openrouter');
     } finally {
       globalThis.setTimeout = originalSetTimeout;
     }
@@ -1683,7 +1718,7 @@ describe('forecast llm overrides', () => {
     }
   });
 
-  it('falls back to openrouter after exhausting groq retries and preserves provider/model', async () => {
+  it('falls back to groq after exhausting openrouter retries and preserves provider/model', async () => {
     process.env.GROQ_API_KEY = 'groq-test-key';
     process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
     const providers = [];
@@ -1692,7 +1727,7 @@ describe('forecast llm overrides', () => {
       fetch: async (url) => {
         const href = String(url);
         providers.push(href.includes('api.groq.com') ? 'groq' : 'openrouter');
-        if (href.includes('api.groq.com')) {
+        if (href.includes('openrouter.ai')) {
           return {
             ok: false,
             status: 503,
@@ -1704,8 +1739,8 @@ describe('forecast llm overrides', () => {
           status: 200,
           headers: { get: () => null },
           json: async () => ({
-            model: 'openrouter/gemini-test',
-            choices: [{ message: { content: 'OpenRouter fallback succeeded with enough narrative content.' } }],
+            model: 'groq/llama-test',
+            choices: [{ message: { content: 'Groq fallback succeeded with enough narrative content.' } }],
           }),
         };
       },
@@ -1713,11 +1748,11 @@ describe('forecast llm overrides', () => {
 
     const result = await __callForecastLlmForTests('system', 'user', { stage: 'scenario', retryDelayMs: 0 });
 
-    assert.deepEqual(providers, ['groq', 'groq', 'groq', 'groq', 'openrouter']);
+    assert.deepEqual(providers, ['openrouter', 'openrouter', 'openrouter', 'openrouter', 'groq']);
     assert.deepEqual(result, {
-      text: 'OpenRouter fallback succeeded with enough narrative content.',
-      model: 'openrouter/gemini-test',
-      provider: 'openrouter',
+      text: 'Groq fallback succeeded with enough narrative content.',
+      model: 'groq/llama-test',
+      provider: 'groq',
     });
   });
 
@@ -1730,7 +1765,7 @@ describe('forecast llm overrides', () => {
       fetch: async (url) => {
         const href = String(url);
         providers.push(href.includes('api.groq.com') ? 'groq' : 'openrouter');
-        if (href.includes('api.groq.com')) {
+        if (href.includes('openrouter.ai')) {
           return {
             ok: false,
             status: 402,
@@ -1742,8 +1777,8 @@ describe('forecast llm overrides', () => {
           status: 200,
           headers: { get: () => null },
           json: async () => ({
-            model: 'openrouter/no-retry-test',
-            choices: [{ message: { content: 'OpenRouter fallback after non retryable status has enough content.' } }],
+            model: 'groq/no-retry-test',
+            choices: [{ message: { content: 'Groq fallback after non retryable status has enough content.' } }],
           }),
         };
       },
@@ -1751,11 +1786,11 @@ describe('forecast llm overrides', () => {
 
     const result = await __callForecastLlmForTests('system', 'user', { stage: 'scenario', retryDelayMs: 0 });
 
-    assert.deepEqual(providers, ['groq', 'openrouter']);
+    assert.deepEqual(providers, ['openrouter', 'groq']);
     assert.deepEqual(result, {
-      text: 'OpenRouter fallback after non retryable status has enough content.',
-      model: 'openrouter/no-retry-test',
-      provider: 'openrouter',
+      text: 'Groq fallback after non retryable status has enough content.',
+      model: 'groq/no-retry-test',
+      provider: 'groq',
     });
   });
 
