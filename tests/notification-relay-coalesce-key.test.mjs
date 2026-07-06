@@ -24,6 +24,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const relaySrc = readFileSync(resolve(__dirname, '..', 'scripts', 'notification-relay.cjs'), 'utf-8');
 const aisRelaySrc = readFileSync(resolve(__dirname, '..', 'scripts', 'ais-relay.cjs'), 'utf-8');
+const seedAviationSrc = readFileSync(resolve(__dirname, '..', 'scripts', 'seed-aviation.mjs'), 'utf-8');
 
 describe('notification-relay checkDedup — Slot B coalesce key', () => {
   it('checkDedup signature accepts an optional coalesceKey parameter', () => {
@@ -70,6 +71,69 @@ describe('ais-relay publishNotificationEvent — Slot B publisher dedup', () => 
       aisRelaySrc,
       /payload\?\.coalesceKey\s*\?\s*`coalesce:\$\{payload\.coalesceKey\}`\s*:\s*`\$\{eventType\}:\$\{payload\.title\s*\?\?\s*''\}`/,
       'publishNotificationEvent dedupMaterial must use coalesceKey when set',
+    );
+  });
+});
+
+describe('market alert producer — asset-family coalesce key', () => {
+  it('defines a stable market alert coalesce helper', () => {
+    assert.match(
+      aisRelaySrc,
+      /function marketAlertCoalesceKey\(assetClass,\s*identifier,\s*direction,\s*severity\)/,
+      'market alerts must build hidden family keys rather than deduping on the rounded subject',
+    );
+    assert.match(
+      aisRelaySrc,
+      /return `market:\$\{assetClass\}:\$\{stableIdentifier\}:\$\{direction\}:\$\{severity\}`/,
+      'market coalesce key must separate asset class, instrument, direction, and severity band',
+    );
+  });
+
+  it('all market_alert publishers pass coalesceKey through the payload', () => {
+    const marketBlocks = [...aisRelaySrc.matchAll(/eventType:\s*'market_alert'[\s\S]*?dedupTtl:\s*3600,/g)].map(m => m[0]);
+    assert.equal(marketBlocks.length, 3, 'expected equity, commodity, and crypto market_alert producers');
+    for (const block of marketBlocks) {
+      assert.match(
+        block,
+        /coalesceKey:\s*marketAlertCoalesceKey\(/,
+        `market_alert block must pass coalesceKey:\n${block}`,
+      );
+    }
+  });
+
+  it('rounded percent changes within the same critical commodity surge collapse to one family', () => {
+    const coalesce = (assetClass, identifier, direction, severity) =>
+      `market:${assetClass}:${String(identifier || 'unknown').trim().toLowerCase()}:${direction}:${severity}`;
+    const coffee11 = coalesce('commodity', 'KC=F', 'surge', 'critical');
+    const coffee13 = coalesce('commodity', 'KC=F', 'surge', 'critical');
+    assert.equal(coffee11, coffee13, 'Coffee +11% and +13% critical surge must share one dedup family');
+    assert.notEqual(
+      coffee11,
+      coalesce('commodity', 'KC=F', 'surge', 'high'),
+      'a high-to-critical threshold crossing may notify as a severity upgrade',
+    );
+  });
+});
+
+describe('seed-aviation publishNotificationEvent — Slot B publisher dedup', () => {
+  it('publisher dedup key uses coalesceKey when set, else falls back to title', () => {
+    assert.match(
+      seedAviationSrc,
+      /payload\?\.coalesceKey\s*\?\s*`coalesce:\$\{payload\.coalesceKey\}`\s*:\s*`\$\{eventType\}:\$\{payload\.title\s*\?\?\s*''\}`/,
+      'seed-aviation publishNotificationEvent must use coalesceKey when set',
+    );
+  });
+
+  it('aviation and NOTAM notification payloads include coalesceKey', () => {
+    assert.match(
+      seedAviationSrc,
+      /coalesceKey:\s*`aviation:delay:\$\{a\.iata\}`/,
+      'airport delay notifications must coalesce by airport family',
+    );
+    assert.match(
+      seedAviationSrc,
+      /coalesceKey:\s*`notam:closure:\$\{icao\}`/,
+      'NOTAM closure notifications must coalesce by ICAO closure family',
     );
   });
 });

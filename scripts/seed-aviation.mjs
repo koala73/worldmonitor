@@ -349,7 +349,10 @@ function notifyHash(str) {
 async function publishNotificationEvent({ eventType, payload, severity, variant, dedupTtl = 1800 }) {
   try {
     const variantSuffix = variant ? `:${variant}` : '';
-    const dedupKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${notifyHash(`${eventType}:${payload.title ?? ''}`)}`;
+    const dedupMaterial = payload?.coalesceKey
+      ? `coalesce:${payload.coalesceKey}`
+      : `${eventType}:${payload.title ?? ''}`;
+    const dedupKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${notifyHash(dedupMaterial)}`;
     const isNew = await upstashSetNx(dedupKey, '1', dedupTtl);
     if (!isNew) {
       console.log(`[Notify] Dedup hit — ${eventType}: ${String(payload.title ?? '').slice(0, 60)}`);
@@ -790,7 +793,11 @@ async function dispatchAviationNotifications(alerts) {
   for (const a of newAlerts.slice(0, 3)) {
     await publishNotificationEvent({
       eventType: 'aviation_closure',
-      payload: { title: `${a.iata}${a.city ? ` (${a.city})` : ''}: ${a.reason || 'Airport disruption'}`, source: 'AviationStack' },
+      payload: {
+        title: `${a.iata}${a.city ? ` (${a.city})` : ''}: ${a.reason || 'Airport disruption'}`,
+        source: 'AviationStack',
+        coalesceKey: `aviation:delay:${a.iata}`,
+      },
       severity: a.severity === 'FLIGHT_DELAY_SEVERITY_SEVERE' ? 'critical' : 'high',
       variant: undefined,
       dedupTtl: 14_400, // 4h
@@ -808,7 +815,11 @@ async function dispatchNotamNotifications(closedIcaos, reasons) {
   for (const icao of newClosures.slice(0, 3)) {
     await publishNotificationEvent({
       eventType: 'notam_closure',
-      payload: { title: `NOTAM: ${icao} — ${reasons[icao] || 'Airport closure'}`, source: 'ICAO NOTAM' },
+      payload: {
+        title: `NOTAM: ${icao} — ${reasons[icao] || 'Airport closure'}`,
+        source: 'ICAO NOTAM',
+        coalesceKey: `notam:closure:${icao}`,
+      },
       severity: 'high',
       variant: undefined,
       dedupTtl: 21_600, // 6h
