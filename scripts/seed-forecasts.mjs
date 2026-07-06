@@ -40,6 +40,11 @@ if (_isDirectRun) loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'forecast:predictions:v2';
 const PRIOR_KEY = 'forecast:predictions:prior:v2';
+// Iran-events domain sunset (war ended 2026-07). Default OFF: the strike feed
+// no longer seeds forecast inputs or critical signals (even while the canonical
+// key's 14d TTL still holds a stale snapshot). IRAN_EVENTS_ENABLED=true restores.
+// Read at call time so it's robust to loadEnvFile() ordering.
+const iranEventsEnabled = () => (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLowerCase() === 'true';
 const HISTORY_KEY = 'forecast:predictions:history:v1';
 const TTL_SECONDS = 21600; // 6h — 6x the 1h cron interval (was 1.75x; hourly miss → 15 min panel gap)
 const HISTORY_MAX_RUNS = 200;
@@ -787,7 +792,7 @@ async function readInputKeys() {
     militaryForecastInputs: parsedByKey['military:forecast-inputs:stale:v1'],
     predictionMarkets: parsedByKey['prediction:markets-bootstrap:v1'],
     chokepoints: normalizeChokepoints(parsedByKey['supply_chain:chokepoints:v4']),
-    iranEvents: parsedByKey['conflict:iran-events:v1'],
+    iranEvents: iranEventsEnabled() ? parsedByKey['conflict:iran-events:v1'] : [],
     ucdpEvents: parsedByKey['conflict:ucdp-events:v1'],
     unrestEvents: parsedByKey['unrest:events:v1'],
     outages: parsedByKey['infra:outages:v1'],

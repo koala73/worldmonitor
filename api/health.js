@@ -12,6 +12,11 @@ import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.js';
 
 export const config = { runtime: 'edge' };
 
+// Iran-events domain sunset (war ended 2026-07). Default OFF everywhere; set
+// IRAN_EVENTS_ENABLED=true to restore the whole domain. Mirrors the backend
+// *_ENABLED env idiom (server/worldmonitor/resilience/v1/_shared.ts).
+const IRAN_EVENTS_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLowerCase() === 'true';
+
 const BOOTSTRAP_KEYS = {
   earthquakes:       'seismology:earthquakes:v1',
   outages:           'infra:outages:v1',
@@ -459,6 +464,14 @@ const SEED_META = {
   powerLosses:             { key: 'seed-meta:resilience:power-losses',              maxStaleMin: 11520 },
   webcams:                 { key: 'seed-meta:webcam:cameras:geo',                   maxStaleMin: 1440 }, // seed-webcams writes 24h geo/meta keys plus a 30h active pointer; stale at 24h before the layer goes blank.
 };
+
+// Iran-events sunset: when disabled (default), drop it from all health
+// classification so the deliberately-dormant manual seed can't raise
+// STALE_SEED (present-but-stale) or EMPTY (absent). Re-enabling restores both.
+if (!IRAN_EVENTS_ENABLED) {
+  delete BOOTSTRAP_KEYS.iranEvents;
+  delete SEED_META.iranEvents;
+}
 
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).
 // Empty = WARN not CRIT since they only exist after first request.

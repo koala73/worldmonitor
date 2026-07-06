@@ -226,6 +226,9 @@ function protoItemToNewsItem(p: ProtoNewsItem): NewsItem {
 }
 
 const CYBER_LAYER_ENABLED = import.meta.env.VITE_ENABLE_CYBER_LAYER === 'true';
+// Iran-events domain sunset (war ended 2026-07). Default OFF: no fetch, even the
+// CII/risk-scoring path. Set VITE_ENABLE_IRAN_ATTACKS=true to restore. Mirrors CYBER_LAYER_ENABLED.
+const IRAN_ATTACKS_ENABLED = import.meta.env.VITE_ENABLE_IRAN_ATTACKS === 'true';
 
 export interface DataLoaderCallbacks {
   renderCriticalBanner: (postures: TheaterPostureSummary[]) => void;
@@ -877,7 +880,7 @@ export class DataLoaderManager implements AppModule {
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.cables) tasks.push({ name: 'cableHealth', task: () => runGuarded('cableHealth', () => this.loadCableHealth()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.flights) tasks.push({ name: 'flights', task: () => runGuarded('flights', () => this.loadFlightDelays()) });
     if (SITE_VARIANT !== 'happy' && CYBER_LAYER_ENABLED && this.ctx.mapLayers.cyberThreats) tasks.push({ name: 'cyberThreats', task: () => runGuarded('cyberThreats', () => this.loadCyberThreats()) });
-    if (SITE_VARIANT !== 'happy' && !isDesktopRuntime() && (this.ctx.mapLayers.iranAttacks || shouldLoadAny(['cii', 'strategic-risk', 'strategic-posture']))) tasks.push({ name: 'iranAttacks', task: () => runGuarded('iranAttacks', () => this.loadIranEvents()) });
+    if (IRAN_ATTACKS_ENABLED && SITE_VARIANT !== 'happy' && !isDesktopRuntime() && (this.ctx.mapLayers.iranAttacks || shouldLoadAny(['cii', 'strategic-risk', 'strategic-posture']))) tasks.push({ name: 'iranAttacks', task: () => runGuarded('iranAttacks', () => this.loadIranEvents()) });
     if (SITE_VARIANT !== 'happy' && (this.ctx.mapLayers.techEvents || SITE_VARIANT === 'tech')) tasks.push({ name: 'techEvents', task: () => runGuarded('techEvents', () => this.loadTechEvents()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.satellites && this.ctx.map?.isGlobeMode?.()) tasks.push({ name: 'satellites', task: () => runGuarded('satellites', () => this.loadSatellites()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.webcams) tasks.push({ name: 'webcams', task: () => runGuarded('webcams', () => this.loadWebcams()) });
@@ -2847,6 +2850,10 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadIranEvents(): Promise<void> {
+    if (!IRAN_ATTACKS_ENABLED) {
+      this.ctx.map?.setLayerReady('iranAttacks', false);
+      return;
+    }
     try {
       const events = await fetchIranEvents();
       this.ctx.intelligenceCache.iranEvents = events;
