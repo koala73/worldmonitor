@@ -504,7 +504,9 @@ export async function generateRegionalNarrative(region, snapshot, evidence, opts
 
 // ── Prompt-hash narrative cache plumbing (#4896 item 1) ────────────────────
 
-const NARRATIVE_CACHE_PREFIX = 'intelligence:narrative-cache:v1:';
+// v1 → v2 (2026-07-06, #4944 U6): narrative model moved to deepseek-v4-flash;
+// the prompt hash is not model-sensitive, so retire old-model rows explicitly.
+const NARRATIVE_CACHE_PREFIX = 'intelligence:narrative-cache:v2:';
 const NARRATIVE_CACHE_TTL_SEC = 86_400;
 
 function defaultNarrativeCache() {

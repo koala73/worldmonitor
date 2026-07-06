@@ -1482,7 +1482,7 @@ describe('forecast llm overrides', () => {
     assert.equal(providers[1]?.extraBody, undefined, 'pinned openrouter entry must keep the legacy request body (no reasoning field)');
   });
 
-  it('lets an explicit env override unpin critical_signals', () => {
+  it('lets ONLY the stage-scoped env override unpin critical_signals', () => {
     process.env.FORECAST_LLM_CRITICAL_PROVIDER_ORDER = 'openrouter';
     process.env.FORECAST_LLM_CRITICAL_MODEL_OPENROUTER = 'deepseek/deepseek-v4-flash';
 
@@ -1494,6 +1494,23 @@ describe('forecast llm overrides', () => {
 
     delete process.env.FORECAST_LLM_CRITICAL_PROVIDER_ORDER;
     delete process.env.FORECAST_LLM_CRITICAL_MODEL_OPENROUTER;
+  });
+
+  it('keeps critical_signals pinned even when a GLOBAL provider order is set', () => {
+    // A global order flip must not move the probability-coupled stage as a
+    // side effect (review finding on #4965) — only FORECAST_LLM_CRITICAL_*
+    // unpins deliberately.
+    process.env.FORECAST_LLM_PROVIDER_ORDER = 'openrouter';
+    delete process.env.FORECAST_LLM_CRITICAL_PROVIDER_ORDER;
+
+    const options = getForecastLlmCallOptions('critical_signals');
+    const providers = resolveForecastLlmProviders(options);
+
+    assert.deepEqual(options.providerOrder, ['groq', 'openrouter']);
+    assert.equal(providers[0]?.model, 'llama-3.1-8b-instant');
+    assert.equal(providers[1]?.model, 'google/gemini-2.5-flash');
+
+    delete process.env.FORECAST_LLM_PROVIDER_ORDER;
   });
 
   it('supports a stronger combined-model override without changing scenario defaults', () => {
