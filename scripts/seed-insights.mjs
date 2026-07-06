@@ -18,6 +18,7 @@ import {
   synthesisUserPrompt,
   composeSynthesizedBrief,
 } from './_insights-brief.mjs';
+import { buildLlmCallEvent, emitLlmEvents } from './lib/llm-telemetry.cjs';
 // Import from the scripts mirror (`scripts/shared/`) — NOT the repo-root
 // `shared/`. Railway services with nixpacks `rootDirectory=scripts` only
 // package files under scripts/; a `../shared/` import resolves to
@@ -268,12 +269,28 @@ async function callLLM(headline, options = {}) {
   const budgetStartedAtMs = Date.now();
   const usableBudgetMs = () => Math.max(0, budgetStartedAtMs + callBudgetMs - Date.now() - INSIGHTS_LLM_CALL_BUDGET_GUARD_MS);
 
+  // llm_call telemetry (#4944 U5): one event per provider OUTCOME (the
+  // withRetry duration covers in-provider retries), unified with the
+  // Vercel-side stream via scripts/lib/llm-telemetry.cjs.
+  const promptChars = (systemPrompt?.length ?? 0) + (userPrompt?.length ?? 0);
+  const events = [];
+  let attemptIndex = 0;
+
   for (const provider of LLM_PROVIDERS) {
     const envVal = process.env[provider.envKey];
     if (!envVal) continue;
 
     const apiUrl = provider.apiUrlFn ? provider.apiUrlFn(envVal) : provider.apiUrl;
     const model = typeof provider.model === 'function' ? provider.model() : provider.model;
+    const t0 = Date.now();
+    const record = (ok, extra = {}) => {
+      events.push(buildLlmCallEvent({
+        provider: provider.name, model, stage: 'seed-insights', ok,
+        durationMs: Date.now() - t0, promptChars, maxTokens: 300,
+        fallbackIndex: attemptIndex++,
+        ...extra,
+      }));
+    };
 
     try {
       const resp = await withRetry(async () => {
@@ -301,9 +318,15 @@ async function callLLM(headline, options = {}) {
       }, INSIGHTS_LLM_MAX_RETRIES, retryDelayMs);
 
       const json = await resp.json();
+      const usage = {
+        tokensTotal: json.usage?.total_tokens ?? 0,
+        tokensPrompt: json.usage?.prompt_tokens ?? 0,
+        tokensCompletion: json.usage?.completion_tokens ?? 0,
+      };
       const rawText = json.choices?.[0]?.message?.content?.trim();
       if (!rawText) {
         console.warn(`  ${provider.name}: empty response`);
+        record(false, { ...usage, reason: 'empty' });
         continue;
       }
 
@@ -315,17 +338,31 @@ async function callLLM(headline, options = {}) {
 
       if (text.length < 20) {
         console.warn(`  ${provider.name}: output too short (${text.length} chars)`);
+        record(false, { ...usage, reason: 'too_short' });
         continue;
       }
 
+      record(true, { ...usage, model: json.model || model });
+      await emitLlmEvents(events);
       return { text, model: json.model || model, provider: provider.name };
     } catch (err) {
       console.warn(`  ${provider.name} failed: ${err.message}`);
+      const httpMatch = /HTTP (\d{3})/.exec(err.message || '');
+      record(false, {
+        reason: isLlmBudgetError(err) ? 'budget_exhausted'
+          : err?.name === 'TimeoutError' || err?.name === 'AbortError' ? 'timeout'
+          : httpMatch ? `http_${httpMatch[1]}`
+          : 'fetch_error',
+      });
       // Budget spent — give up rather than burning the next provider's timeout.
-      if (isLlmBudgetError(err)) return null;
+      if (isLlmBudgetError(err)) {
+        await emitLlmEvents(events);
+        return null;
+      }
     }
   }
 
+  await emitLlmEvents(events);
   return null;
 }
 

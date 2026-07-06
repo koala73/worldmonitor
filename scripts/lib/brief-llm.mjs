@@ -216,6 +216,7 @@ export async function generateWhyMatters(story, deps) {
       temperature: 0.4,
       timeoutMs: 10_000,
       skipProviders: BRIEF_LLM_SKIP_PROVIDERS,
+      stage: 'brief-whymatters-cron',
     });
   } catch {
     return null;
@@ -347,6 +348,7 @@ export async function generateStoryDescription(story, deps) {
       temperature: 0.4,
       timeoutMs: 10_000,
       skipProviders: BRIEF_LLM_SKIP_PROVIDERS,
+      stage: 'brief-description-cron',
     });
   } catch {
     return null;
@@ -758,6 +760,7 @@ export async function generateDigestProse(userId, stories, sensitivity, deps, ct
       temperature: 0.4,
       timeoutMs: 15_000,
       skipProviders: BRIEF_LLM_SKIP_PROVIDERS,
+      stage: 'brief-digest-cron',
     });
   } catch (err) {
     // LLM-side failure (timeout, provider down, network). Distinct

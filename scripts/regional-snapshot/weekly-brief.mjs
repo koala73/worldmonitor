@@ -13,6 +13,7 @@
 // Same provider chain + injectable-callLlm pattern as narrative.mjs.
 
 import { extractFirstJsonObject, cleanJsonText } from '../_llm-json.mjs';
+import { buildLlmCallEvent, emitLlmEvents } from '../lib/llm-telemetry.cjs';
 
 const CHROME_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
@@ -212,9 +213,23 @@ export function parseBriefJson(text) {
  */
 async function callLlmDefault({ systemPrompt, userPrompt }, opts = {}) {
   const validate = opts.validate;
+  // llm_call telemetry (#4944 U5): one event per provider attempt, unified
+  // with the Vercel-side stream via scripts/lib/llm-telemetry.cjs.
+  const promptChars = (systemPrompt?.length ?? 0) + (userPrompt?.length ?? 0);
+  const events = [];
+  let attemptIndex = 0;
   for (const provider of DEFAULT_PROVIDERS) {
     const envVal = process.env[provider.envKey];
     if (!envVal) continue;
+    const t0 = Date.now();
+    const record = (ok, extra = {}) => {
+      events.push(buildLlmCallEvent({
+        provider: provider.name, model: provider.model, stage: 'regional-weekly-brief', ok,
+        durationMs: Date.now() - t0, promptChars, maxTokens: BRIEF_MAX_TOKENS,
+        fallbackIndex: attemptIndex++,
+        ...extra,
+      }));
+    };
     try {
       const resp = await fetch(provider.apiUrl, {
         method: 'POST',
@@ -233,28 +248,40 @@ async function callLlmDefault({ systemPrompt, userPrompt }, opts = {}) {
       });
       if (!resp.ok) {
         console.warn(`[weekly-brief] ${provider.name}: HTTP ${resp.status}`);
+        record(false, { reason: `http_${resp.status}` });
         continue;
       }
       const json = /** @type {any} */ (await resp.json());
+      const usage = {
+        tokensTotal: json?.usage?.total_tokens ?? 0,
+        tokensPrompt: json?.usage?.prompt_tokens ?? 0,
+        tokensCompletion: json?.usage?.completion_tokens ?? 0,
+      };
       const text = json?.choices?.[0]?.message?.content;
       if (typeof text !== 'string' || text.trim().length === 0) {
         console.warn(`[weekly-brief] ${provider.name}: empty response`);
+        record(false, { ...usage, reason: 'empty' });
         continue;
       }
       const trimmed = text.trim();
       if (validate && !validate(trimmed)) {
         console.warn(`[weekly-brief] ${provider.name}: response failed validation, trying next`);
+        record(false, { ...usage, reason: 'validate_reject' });
         continue;
       }
       const actualModel = typeof json?.model === 'string' && json.model.length > 0
         ? json.model
         : provider.model;
+      record(true, { ...usage, model: actualModel });
+      await emitLlmEvents(events);
       return { text: trimmed, provider: provider.name, model: actualModel };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       console.warn(`[weekly-brief] ${provider.name}: ${msg}`);
+      record(false, { reason: err?.name === 'TimeoutError' || err?.name === 'AbortError' ? 'timeout' : 'fetch_error' });
     }
   }
+  await emitLlmEvents(events);
   return null;
 }
 
