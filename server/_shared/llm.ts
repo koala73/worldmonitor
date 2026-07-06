@@ -511,7 +511,11 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
         });
 
         if (!resp.ok) {
-          console.warn(`[llm:${providerName}] HTTP ${resp.status}`);
+          // Log a bounded body slice (like the stream path already does) —
+          // region-403s and provider errors are undiagnosable from the
+          // status code alone (#4944 U7).
+          const errBody = await resp.text().catch(() => '');
+          console.warn(`[llm:${providerName}] HTTP ${resp.status} model=${creds.model} body=${errBody.slice(0, 300)}`);
           record(false, { reason: `http_${resp.status}` });
           if (forcedProvider) return null;
           continue;

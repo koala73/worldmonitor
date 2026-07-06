@@ -34,7 +34,10 @@
  * and does not apply here.
  */
 
-export const config = { runtime: 'edge' };
+// Regions pinned (#4944 U7): both whyMatters paths reach OpenRouter — LLM
+// calls from restricted-region edge nodes fail with geo-keyed 403s. Mirrors
+// api/news/v1/[rpc].ts and api/intelligence/v1/[rpc].ts.
+export const config = { runtime: 'edge', regions: ['iad1', 'lhr1', 'fra1', 'sfo1'] };
 
 import { authenticateInternalRequest } from '../../server/_shared/internal-auth';
 import { normalizeCountryToIso2 } from '../../server/_shared/country-normalize';
