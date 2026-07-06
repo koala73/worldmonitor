@@ -12,11 +12,11 @@
  * Run:  node scripts/fetch-gpsjam.mjs [--date YYYY-MM-DD] [--min-aircraft 3] [--output path.json]
  */
 
-import { cellToLatLng } from 'h3-js';
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import { extendExistingTtl } from './_seed-utils.mjs';
+import { processHexes } from './_gpsjam-parse.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = path.resolve(__dirname, 'data');
@@ -36,25 +36,6 @@ function getArg(name, fallback) {
 const requestedDate = getArg('date', null);
 const minAircraft = parseInt(getArg('min-aircraft', '3'), 10);
 const outputPath = getArg('output', null);
-
-function classifyRegion(lat, lon) {
-  if (lat >= 29 && lat <= 42 && lon >= 43 && lon <= 63) return 'iran-iraq';
-  if (lat >= 31 && lat <= 37 && lon >= 35 && lon <= 43) return 'levant';
-  if (lat >= 28 && lat <= 34 && lon >= 29 && lon <= 36) return 'israel-sinai';
-  if (lat >= 44 && lat <= 53 && lon >= 22 && lon <= 41) return 'ukraine-russia';
-  if (lat >= 54 && lat <= 70 && lon >= 27 && lon <= 60) return 'russia-north';
-  if (lat >= 36 && lat <= 42 && lon >= 26 && lon <= 45) return 'turkey-caucasus';
-  if (lat >= 32 && lat <= 38 && lon >= 63 && lon <= 75) return 'afghanistan-pakistan';
-  if (lat >= 10 && lat <= 20 && lon >= 42 && lon <= 55) return 'yemen-horn';
-  if (lat >= 0 && lat <= 12 && lon >= 32 && lon <= 48) return 'east-africa';
-  if (lat >= 15 && lat <= 24 && lon >= 25 && lon <= 40) return 'sudan-sahel';
-  if (lat >= 50 && lat <= 72 && lon >= -10 && lon <= 25) return 'northern-europe';
-  if (lat >= 35 && lat <= 50 && lon >= -10 && lon <= 25) return 'western-europe';
-  if (lat >= 1 && lat <= 8 && lon >= 95 && lon <= 108) return 'southeast-asia';
-  if (lat >= 20 && lat <= 45 && lon >= 100 && lon <= 145) return 'east-asia';
-  if (lat >= 25 && lat <= 50 && lon >= -125 && lon <= -65) return 'north-america';
-  return 'other';
-}
 
 function maskToken(token) {
   if (!token || token.length < 8) return '***';
@@ -78,79 +59,6 @@ async function getLatestDate() {
   const date = last.split(',')[0];
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error(`Unexpected manifest tail: ${last.slice(0, 80)}`);
   return date;
-}
-
-// Daily H3 res-4 CSV → medium/high hexes in the v2 shape the consumers read.
-function processHexes(csv) {
-  const lines = csv.trim().split('\n');
-  const header = lines[0]; // hex,count_good_aircraft,count_bad_aircraft
-  if (!header.includes('hex')) throw new Error(`Unexpected CSV header: ${header}`);
-
-  const results = [];
-  let skippedLowSample = 0;
-  let skippedLow = 0;
-  let h3Failures = 0;
-
-  for (let i = 1; i < lines.length; i++) {
-    const parts = lines[i].split(',');
-    if (parts.length < 3) continue;
-
-    const hex = parts[0];
-    const good = parseInt(parts[1], 10);
-    const bad = parseInt(parts[2], 10);
-    if (!Number.isFinite(good) || !Number.isFinite(bad)) continue;
-    const total = good + bad;
-
-    if (total < minAircraft) { skippedLowSample++; continue; }
-
-    const pctRaw = (bad / total) * 100;
-    let level;
-    if (pctRaw > 10) level = 'high';
-    else if (pctRaw >= 2) level = 'medium';
-    else { skippedLow++; continue; }
-
-    let lat, lon;
-    try {
-      const [lt, ln] = cellToLatLng(hex);
-      lat = Math.round(lt * 1e5) / 1e5;
-      lon = Math.round(ln * 1e5) / 1e5;
-    } catch {
-      h3Failures++;
-      continue;
-    }
-
-    const pct = Math.round(pctRaw * 10) / 10;
-    results.push({
-      h3: hex,
-      lat,
-      lon,
-      level,
-      region: classifyRegion(lat, lon),
-      // Web-UI fields (api/gpsjam.js → gps-interference.ts): the honest gpsjam.org metric.
-      pct,
-      affectedAircraft: bad,
-      totalAircraft: total,
-      // Public-API compat: list-gps-interference.ts + gps_jamming.proto still expose
-      // np_avg/sample_count/aircraft_count. Keep that contract stable (no proto regen)
-      // by carrying them here. np_avg has no gpsjam.org equivalent, so it's a pct-bucketed
-      // proxy — same mapping api/gpsjam.js already uses for the v1 fallback.
-      npAvg: pctRaw > 10 ? 0.3 : pctRaw >= 2 ? 0.8 : 1.5,
-      sampleCount: bad,
-      aircraftCount: total,
-    });
-  }
-
-  if (h3Failures > (lines.length - 1) * 0.5) {
-    throw new Error(`>50% of hexes failed h3 conversion (${h3Failures}/${lines.length - 1}) — aborting seed`);
-  }
-
-  // High first, then by interference % descending (worst first).
-  results.sort((a, b) => {
-    if (a.level !== b.level) return a.level === 'high' ? -1 : 1;
-    return b.pct - a.pct;
-  });
-
-  return { results, skippedLowSample, skippedLow, totalRows: lines.length - 1 };
 }
 
 async function seedRedis(output) {
@@ -240,7 +148,7 @@ async function main() {
   const url = `${BASE_URL}/${date}-h3_4.csv`;
   console.error(`[gpsjam] Fetching ${url}`);
   const csv = await fetchText(url);
-  const { results, skippedLowSample, skippedLow, totalRows } = processHexes(csv);
+  const { results, skippedLowSample, skippedLow, totalRows } = processHexes(csv, minAircraft);
 
   const highCount = results.filter(r => r.level === 'high').length;
   const mediumCount = results.filter(r => r.level === 'medium').length;
