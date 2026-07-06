@@ -46,7 +46,7 @@ import {
   buildAnalystWhyMattersPrompt,
   sanitizeStoryFields,
 } from '../../server/worldmonitor/intelligence/v1/brief-why-matters-prompt';
-import { callLlmReasoning } from '../../server/_shared/llm';
+import { callLlm } from '../../server/_shared/llm';
 // @ts-expect-error — JS module, no declaration file
 import { readRawJsonFromUpstash, setCachedData, redisPipeline } from '../_upstash-json.js';
 // @ts-expect-error — JS module, no declaration file
@@ -115,6 +115,15 @@ function readConfig(env: Record<string, string | undefined> = process.env as Rec
 // ── TTLs ──────────────────────────────────────────────────────────────
 const WHY_MATTERS_TTL_SEC = 6 * 60 * 60; // 6h
 const SHADOW_TTL_SEC = 7 * 24 * 60 * 60; // 7d
+
+// whyMatters is a 2–3 sentence editorial blurb — the fast utility model, not
+// the reasoning tier. Pinning it here DECOUPLES the stage from
+// LLM_REASONING_MODEL: the U3 flip to deepseek-v4-pro dragged this stage onto
+// a 6–10s reasoning model (#4983); flash serves it at ~1.6–2.4s. openrouter
+// primary, groq-70B fallback if openrouter is down. Reasoning stays off
+// (callLlm default). Both whyMatters paths share this route.
+const WHY_MATTERS_PROVIDER_ORDER = ['openrouter', 'groq'];
+const WHY_MATTERS_MODEL_OVERRIDES = { openrouter: 'deepseek/deepseek-v4-flash' } as const;
 
 // ── Validation ────────────────────────────────────────────────────────
 const VALID_THREAT_LEVELS = new Set(['critical', 'high', 'medium', 'low']);
@@ -230,7 +239,7 @@ async function runAnalystPath(story: StoryPayload, iso2: string | null): Promise
     console.log(
       `[brief-why-matters] analyst gate policy=${policyLabel} category="${story.category}" promptLen=${user.length}`,
     );
-    const result = await callLlmReasoning({
+    const result = await callLlm({
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: user },
@@ -238,21 +247,16 @@ async function runAnalystPath(story: StoryPayload, iso2: string | null): Promise
       // v2 prompt is 2–3 sentences / 40–70 words — roughly 3× v1's
       // single-sentence output, so bump maxTokens proportionally.
       maxTokens: 260,
-      // Reasoning OFF (#4983): a 2–3 sentence blurb needs no chain-of-thought,
-      // and an actual reasoning model (deepseek-v4-pro) would burn this whole
-      // 260-token budget on hidden reasoning and return empty content (~80%
-      // empty at the pre-fix budget). Off = full budget for the answer + no
-      // 6–9s reasoning latency × N stories. Uses the same LLM_REASONING_MODEL.
-      enableReasoning: false,
       temperature: 0.4,
       timeoutMs: 15_000,
       stage: 'brief-why-matters-analyst',
-      // Provider is pinned via LLM_REASONING_PROVIDER env var (already
-      // set to 'openrouter' in prod). `callLlmReasoning` routes through
-      // the resolveProviderChain based on that env.
+      // Fast utility model (deepseek-v4-flash), reasoning off — see the
+      // WHY_MATTERS_* constants above. Decoupled from LLM_REASONING_MODEL.
+      providerOrder: WHY_MATTERS_PROVIDER_ORDER,
+      modelOverrides: WHY_MATTERS_MODEL_OVERRIDES,
       // Note: no `validate` option. The post-call parseWhyMattersV2
       // check below handles rejection. Using validate inside
-      // callLlmReasoning would walk the provider chain on parse-reject,
+      // callLlm would walk the provider chain on parse-reject,
       // causing duplicate openrouter billings (see todo 245).
     });
     if (!result) return null;
@@ -276,21 +280,22 @@ async function runGeminiPath(story: StoryPayload): Promise<string | null> {
     // defense-in-depth against prompt injection even under a valid
     // RELAY_SHARED_SECRET caller (consistent with the analyst path).
     const { system, user } = buildWhyMattersUserPrompt(sanitizeStoryFields(story));
-    const result = await callLlmReasoning({
+    const result = await callLlm({
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: user },
       ],
       maxTokens: 120,
-      // Reasoning OFF (#4983) — see analyst path above. This path's 120-token
-      // budget is even tighter, so a reasoning model returns empty ~100%.
-      enableReasoning: false,
       temperature: 0.4,
       timeoutMs: 10_000,
       stage: 'brief-why-matters-gemini',
+      // Fast utility model (deepseek-v4-flash), reasoning off — see the
+      // WHY_MATTERS_* constants above. Decoupled from LLM_REASONING_MODEL.
+      providerOrder: WHY_MATTERS_PROVIDER_ORDER,
+      modelOverrides: WHY_MATTERS_MODEL_OVERRIDES,
       // Note: no `validate` option. The post-call parseWhyMatters check
       // below handles rejection by returning null. Using validate inside
-      // callLlmReasoning would walk the provider chain on parse-reject,
+      // callLlm would walk the provider chain on parse-reject,
       // causing duplicate openrouter billings when only one provider is
       // configured in prod. See todo 245.
     });
