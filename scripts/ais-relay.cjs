@@ -3547,7 +3547,7 @@ function matchCountryNamesInText(text) {
 // three sites.
 function classifyCacheKey(title) {
   const hash = crypto.createHash('sha256').update(title.toLowerCase()).digest('hex').slice(0, 16);
-  return `classify:sebuf:v5:${hash}`;
+  return `classify:sebuf:v6:${hash}`;
 }
 
 // LLM provider fallback chain — mirrors seed-insights.mjs LLM_PROVIDERS
