@@ -14524,9 +14524,8 @@ function getRemainingForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs) {
   const stageRemaining = budgetStartedAtMs + stageBudgetMs - Date.now();
   // The run deadline (when set) caps cumulative LLM time across all stages so
   // the seed can't outlive its 180s lock; whichever budget is tighter wins.
-  const runRemaining = forecastLlmRunDeadlineMs == null
-    ? Infinity
-    : forecastLlmRunDeadlineMs - Date.now();
+  // Single source of truth for run-remaining lives in getRemainingForecastLlmRunBudgetMs.
+  const runRemaining = getRemainingForecastLlmRunBudgetMs();
   return Math.max(0, Math.min(stageRemaining, runRemaining));
 }
 
@@ -14615,6 +14614,16 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
   const llmMaxTokens = options.maxTokens || 1500;
   const llmEvents = [];
   let llmAttemptIndex = 0;
+  // Failure-reason classification invariant (#4978): callForecastLLM returns
+  // FORECAST_LLM_FAILURE_BUDGET_EXHAUSTED (a benign starve — the market_implications
+  // caller preserves last-good and writes NO SEED_ERROR) ONLY when the sole cause
+  // was the shared run budget draining (a pre-call/pre-fetch budget pre-emption, or
+  // a budget-CAPPED timeout that never gave the provider its full window). Every
+  // GENUINE provider-failure branch below (HTTP error, invalid/empty response, fetch
+  // error, or a timeout that got the provider's full window) MUST set
+  // `sawProviderFailure = true` so the result is FORECAST_LLM_FAILURE_PROVIDER_FAILED
+  // and /api/health surfaces SEED_ERROR. A new provider-failure branch that forgets
+  // to set this flag would silently misreport a real outage as a benign starve.
   let sawProviderFailure = false;
   let sawBudgetCappedTimeout = false;
   const recordLlmAttempt = (providerName, model, ok, startedAtMs, extra = {}) => {
@@ -14688,6 +14697,14 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
               err.__llmAttemptRecorded = true;
               const name = err?.name;
               const timedOut = name === 'TimeoutError' || name === 'AbortError';
+              // Attribute a timeout to the run budget (not the provider) ONLY when
+              // this attempt's timeout was itself CAPPED below the provider's own
+              // timeout (attemptTimeoutMs < provider.timeout) AND the run budget is
+              // now exhausted — i.e. we never gave the provider its full window, so
+              // we cannot call this a provider failure. When the call gets the full
+              // provider.timeout (the MARKET_IMPLICATIONS_MIN_RUN_BUDGET_MS >= 30s
+              // guard guarantees this for admitted market_implications calls), a
+              // timeout is unambiguously a provider failure -> sawProviderFailure.
               const budgetCappedTimeout = timedOut
                 && attemptTimeoutMs < provider.timeout
                 && getUsableForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs) <= 0;
@@ -16415,12 +16432,18 @@ const MARKET_IMPLICATIONS_META_TTL = 86400 * 7;
 // fingerprint is not model-sensitive, so retire old-model rows explicitly.
 const MARKET_IMPLICATIONS_STAGE_CACHE_PREFIX = 'forecast:llm-market-implications:v2:';
 
-// A market_implications completion needs ~20s wall-clock (observed 2026-07-06).
-// When the shared run budget (#4978) is below this as the tail stage begins, the
-// call would be aborted by the budget-capped timeout and then misreported as a
-// SEED_ERROR — so skip gracefully and preserve last-good instead of attempting a
-// doomed call. Tunable: raise it if 20s calls still start and time out.
-const MARKET_IMPLICATIONS_MIN_RUN_BUDGET_MS = 20_000;
+// A market_implications completion needs ~20s wall-clock (observed 2026-07-06),
+// and the primary provider (openrouter deepseek-v4-flash) has a 25s call timeout.
+// Admit the tail stage only when the shared run budget (#4978) still covers the
+// FULL provider timeout PLUS the 5s stage guard that getUsableForecastLlmBudgetMs
+// subtracts (25_000 + 5_000 = 30_000). Below that, an admitted call is timeout-
+// CAPPED below the provider's own timeout, which is indistinguishable from a
+// genuinely hung provider — so it would either waste a doomed request (needs
+// ~20s, gets <20s) OR misreport a real provider timeout as a benign starve and
+// suppress a legitimate SEED_ERROR. Skipping instead preserves last-good honestly
+// (age-based STALE_SEED still escalates past 2h). Keep >= max(provider.timeout in
+// FORECAST_LLM_PROVIDERS) + FORECAST_LLM_STAGE_BUDGET_GUARD_MS.
+const MARKET_IMPLICATIONS_MIN_RUN_BUDGET_MS = 30_000;
 
 // Input-hash guard for the market_implications LLM stage (#4894). This was
 // the only forecast stage with no pre-call cache — a 2,500-token completion
