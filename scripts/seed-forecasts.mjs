@@ -3966,7 +3966,9 @@ async function extractImpactExpansionBundle({
   if (selectedCandidatePackets.length === 0) return bundle;
 
   const { url, token } = getRedisCredentials();
-  const cacheKey = `forecast:impact-expansion:llm:${buildImpactExpansionCandidateHash(selectedCandidatePackets, learnedSection)}`;
+  // v2 (2026-07-06, #4944 U6): impact stage moved to deepseek-v4-flash — the
+  // candidate hash is not model-sensitive, so retire old-model rows explicitly.
+  const cacheKey = `forecast:impact-expansion:llm:v2:${buildImpactExpansionCandidateHash(selectedCandidatePackets, learnedSection)}`;
   const cached = await redisGet(url, token, cacheKey);
   if (Array.isArray(cached?.candidates)) {
     const extractedCandidates = sanitizeImpactExpansionDrafts(cached.candidates, selectedCandidatePackets);
@@ -4003,7 +4005,7 @@ async function extractImpactExpansionBundle({
     const batch = selectedCandidatePackets.slice(i, i + IMPACT_EXPANSION_CONCURRENCY);
     const batchResults = await Promise.all(
       batch.map(async (packet) => {
-        const singleCacheKey = `forecast:impact-expansion:llm:${buildImpactExpansionCandidateHash([packet], learnedSection)}`;
+        const singleCacheKey = `forecast:impact-expansion:llm:v2:${buildImpactExpansionCandidateHash([packet], learnedSection)}`;
         const singleCached = await redisGet(url, token, singleCacheKey);
         if (Array.isArray(singleCached?.candidates)) {
           const hits = sanitizeImpactExpansionDrafts(singleCached.candidates, [packet]);
@@ -14187,8 +14189,10 @@ function getForecastLlmCallOptions(stage = 'default') {
   // pressure/confirmation scores → buildStateDerivedForecast probability).
   // Hold this stage on the pre-#4944 models so the DeepSeek narrative
   // migration cannot move probabilities before the #4930 resolver baseline
-  // exists. Explicit env overrides still win.
-  if (stage === 'critical_signals' && !criticalProviderOrder && !globalProviderOrder) {
+  // exists. ONLY the stage-scoped FORECAST_LLM_CRITICAL_PROVIDER_ORDER
+  // unpins it — a global FORECAST_LLM_PROVIDER_ORDER must not move a
+  // probability-coupled stage as a side effect (review finding on #4965).
+  if (stage === 'critical_signals' && !criticalProviderOrder) {
     return {
       providerOrder: ['groq', 'openrouter'],
       modelOverrides: {
