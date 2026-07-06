@@ -1182,6 +1182,16 @@ describe('agent readiness: api-catalog + openapi build', () => {
     }
   });
 
+  it('the docs MCP anchor describes itself with its server-card (service-desc parity with product MCP)', () => {
+    const docsAnchor = apiCatalog.linkset.find((e) => e.anchor === 'https://www.worldmonitor.app/docs/mcp');
+    assert.ok(docsAnchor, 'api-catalog must carry a context object anchored at the docs MCP endpoint');
+    const desc = docsAnchor['service-desc'] ?? [];
+    assert.ok(
+      desc.some((d) => d.href === 'https://www.worldmonitor.app/docs/.well-known/mcp/server-card.json'),
+      'docs MCP anchor must advertise its server-card as service-desc (parity with the product /mcp anchor)'
+    );
+  });
+
   it('the api host root has its own context object', () => {
     assert.ok(apiEntry, 'linkset must contain a context object anchored at https://api.worldmonitor.app/');
   });
@@ -1732,6 +1742,16 @@ describe('agent readiness: homepage Link headers', () => {
         'mcp-server-card rel must carry anchor="/mcp"'
       );
 
+      // The docs MCP server (#4958) is advertised in the Link header directly —
+      // header-first crawlers should not have to follow rel="api-catalog" to
+      // discover the second MCP surface. Same rel as the product card, but
+      // anchored to /docs/mcp (the card describes the docs endpoint).
+      assert.match(
+        linkHeader.value,
+        /<\/docs\/\.well-known\/mcp\/server-card\.json>[^,]*rel="mcp-server-card"[^,]*anchor="\/docs\/mcp"/,
+        'docs mcp-server-card rel must point at /docs/.well-known/mcp/server-card.json with anchor="/docs/mcp"'
+      );
+
       // `service-desc` is advertised twice — the JSON spec (/openapi.json,
       // parseable by JSON-only scanners like ora.ai/orank) first, then the
       // human-readable YAML (/openapi.yaml). Both must be present.
@@ -1747,13 +1767,15 @@ describe('agent readiness: homepage Link headers', () => {
       );
 
       // Target URIs must be root-relative (start with /, not http://).
-      // One target per required rel, plus the extra /openapi.json service-desc
-      // (service-desc is the only rel advertised with two targets).
+      // One target per required rel, plus two rels advertised with a second
+      // target: service-desc (/openapi.json + /openapi.yaml) and
+      // mcp-server-card (product /mcp card + docs /docs/mcp card) — hence +2.
+      const EXTRA_DOUBLE_ADVERTISED_RELS = 2;
       const targetMatches = [...linkHeader.value.matchAll(/<([^>]+)>/g)];
       assert.strictEqual(
         targetMatches.length,
-        requiredRels.length + 1,
-        `expected exactly ${requiredRels.length + 1} link targets, got ${targetMatches.length}`
+        requiredRels.length + EXTRA_DOUBLE_ADVERTISED_RELS,
+        `expected exactly ${requiredRels.length + EXTRA_DOUBLE_ADVERTISED_RELS} link targets, got ${targetMatches.length}`
       );
       for (const [, target] of targetMatches) {
         assert.ok(

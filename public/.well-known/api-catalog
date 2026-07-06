@@ -84,6 +84,12 @@
     },
     {
       "anchor": "https://www.worldmonitor.app/docs/mcp",
+      "service-desc": [
+        {
+          "href": "https://www.worldmonitor.app/docs/.well-known/mcp/server-card.json",
+          "type": "application/json"
+        }
+      ],
       "service-doc": [
         {
           "href": "https://www.worldmonitor.app/docs/documentation",
