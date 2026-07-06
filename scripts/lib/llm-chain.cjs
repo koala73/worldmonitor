@@ -130,7 +130,7 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
       const text = stripReasoningPreamble(rawText);
       console.log(`[llm-chain] ${provider.name} OK (${text.length} chars)`);
       record(true, usage);
-      await emitLlmEvents(events);
+      void emitLlmEvents(events); // fire-and-forget: telemetry never delays the return path
       return text;
     } catch (err) {
       console.warn(`[llm-chain] ${provider.name} failed: ${err.message}`);
@@ -139,7 +139,7 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
   }
 
   console.warn('[llm-chain] all providers failed');
-  await emitLlmEvents(events);
+  void emitLlmEvents(events); // fire-and-forget: telemetry never delays the return path
   return null;
 }
 

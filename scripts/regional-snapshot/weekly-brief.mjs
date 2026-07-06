@@ -273,7 +273,7 @@ async function callLlmDefault({ systemPrompt, userPrompt }, opts = {}) {
         ? json.model
         : provider.model;
       record(true, { ...usage, model: actualModel });
-      await emitLlmEvents(events);
+      void emitLlmEvents(events); // fire-and-forget: telemetry never delays the return path
       return { text: trimmed, provider: provider.name, model: actualModel };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -281,7 +281,7 @@ async function callLlmDefault({ systemPrompt, userPrompt }, opts = {}) {
       record(false, { reason: err?.name === 'TimeoutError' || err?.name === 'AbortError' ? 'timeout' : 'fetch_error' });
     }
   }
-  await emitLlmEvents(events);
+  void emitLlmEvents(events); // fire-and-forget: telemetry never delays the return path
   return null;
 }
 

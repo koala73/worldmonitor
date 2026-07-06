@@ -391,7 +391,7 @@ export async function callLlmDefault({ systemPrompt, userPrompt }, opts = {}) {
         : provider.model;
 
       record(true, { ...usage, model: actualModel });
-      await emitLlmEvents(events);
+      void emitLlmEvents(events); // fire-and-forget: telemetry never delays the return path
       return { text: trimmed, provider: provider.name, model: actualModel };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -405,12 +405,12 @@ export async function callLlmDefault({ systemPrompt, userPrompt }, opts = {}) {
       });
       // Budget spent — give up rather than burning the next provider's timeout.
       if (isLlmBudgetError(err)) {
-        await emitLlmEvents(events);
+        void emitLlmEvents(events); // fire-and-forget: telemetry never delays the return path
         return null;
       }
     }
   }
-  await emitLlmEvents(events);
+  void emitLlmEvents(events); // fire-and-forget: telemetry never delays the return path
   return null;
 }
 

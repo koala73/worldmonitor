@@ -43,6 +43,10 @@ function buildLlmCallEvent(p) {
 /**
  * Deliver events to the wm_api_usage dataset. No-op unless USAGE_TELEMETRY=1
  * and AXIOM_API_TOKEN are set. Never throws.
+ *
+ * Callers fire-and-forget (`void emitLlmEvents(events)`) so telemetry never
+ * adds latency to the LLM return path. Safe in Node seeders: a pending fetch
+ * keeps the event loop alive, and the 1.5s timeout bounds any exit delay.
  * @param {Array<Record<string, unknown>>} events
  */
 async function emitLlmEvents(events) {
@@ -52,7 +56,11 @@ async function emitLlmEvents(events) {
   try {
     await fetch(AXIOM_WM_API_USAGE_INGEST_URL, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'worldmonitor-seeder-telemetry/1.0',
+      },
       body: JSON.stringify(events),
       signal: AbortSignal.timeout(1_500),
     });

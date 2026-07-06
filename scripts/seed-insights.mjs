@@ -343,7 +343,7 @@ async function callLLM(headline, options = {}) {
       }
 
       record(true, { ...usage, model: json.model || model });
-      await emitLlmEvents(events);
+      void emitLlmEvents(events); // fire-and-forget: telemetry never delays the return path
       return { text, model: json.model || model, provider: provider.name };
     } catch (err) {
       console.warn(`  ${provider.name} failed: ${err.message}`);
@@ -356,13 +356,13 @@ async function callLLM(headline, options = {}) {
       });
       // Budget spent — give up rather than burning the next provider's timeout.
       if (isLlmBudgetError(err)) {
-        await emitLlmEvents(events);
+        void emitLlmEvents(events); // fire-and-forget: telemetry never delays the return path
         return null;
       }
     }
   }
 
-  await emitLlmEvents(events);
+  void emitLlmEvents(events); // fire-and-forget: telemetry never delays the return path
   return null;
 }
 
