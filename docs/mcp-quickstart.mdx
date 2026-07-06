@@ -51,7 +51,7 @@ Older Claude Desktop builds — and any stdio-only MCP client — connect throug
 
 Two things matter with this setup:
 
-- **Attach your credential explicitly.** The server completes the connection and all discovery (tools/prompts/resources listings) anonymously by design, so `mcp-remote` never sees a 401 challenge at connect time and does not start its OAuth flow on its own. Without the header, the connection looks healthy but every `tools/call` fails with `401`. Use the single-argument form `X-WorldMonitor-Key:wm_…` with **no space after the colon** — Claude Desktop splits config arguments on spaces.
+- **Attach your credential explicitly.** The server completes the connection and all discovery (tools/prompts/resources listings) anonymously by design, so `mcp-remote` never sees a 401 challenge at connect time and does not start its OAuth flow on its own. Without the header, the connection looks healthy but every `tools/call` fails with `401`. Use the single-argument form `X-WorldMonitor-Key:wm_…` with **no space after the colon** — it sidesteps client/`npx` argument-escaping bugs with spaces inside `args` (documented by `mcp-remote` for Cursor and Claude Desktop on Windows).
 - **Prefer OAuth?** Omit `--header`: your first tool call returns the 401 challenge that triggers `mcp-remote`'s browser consent flow (dynamic client registration works on both `worldmonitor.app` and `www.worldmonitor.app`). Older `mcp-remote` versions handle this mid-session flow less reliably than the connect-time one, so if the consent window never appears, the explicit key header above is the deterministic path.
 
 ## 3. Ask your first question
