@@ -60,7 +60,7 @@ const premiumNewsClient = new NewsServiceClient(getRpcBaseUrl(), {
 // Gate every API-provider dispatch on the client-side entitlement signal so
 // anon/free principals fall straight to the browser-T5 provider with ZERO
 // network attempts — before this gate, every summarize attempt fanned out up
-// to 3 doomed RPCs (ollama→groq→openrouter through the same gated endpoint).
+// to 3 doomed RPCs (ollama→openrouter→groq through the same gated endpoint).
 // panel-gating's hasPremiumAccess is the dual-signal source of truth.
 // translateText is deliberately NOT gated: it uses mode='translate' via the
 // plain newsClient, which the server allows for non-premium callers.
@@ -84,10 +84,13 @@ interface ApiProviderDef {
   label: string;
 }
 
+// Order matches the server's default chain since #4944: OpenRouter
+// (DeepSeek V4 Flash) ahead of Groq — the RPC honors the client-supplied
+// provider, so the client's try-order decides which model summarizes.
 const API_PROVIDERS: ApiProviderDef[] = [
   { featureId: 'aiOllama',      provider: 'ollama',     label: 'Ollama' },
-  { featureId: 'aiGroq',        provider: 'groq',       label: 'Groq AI' },
   { featureId: 'aiOpenRouter',  provider: 'openrouter', label: 'OpenRouter' },
+  { featureId: 'aiGroq',        provider: 'groq',       label: 'Groq AI' },
 ];
 
 let lastAttemptedProvider = 'none';
