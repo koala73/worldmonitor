@@ -1142,6 +1142,11 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
 
   const INTEL_TEST_ENV = {
     GROQ_API_KEY: 'test-key',
+    // The default chain is openrouter-first since #4944; clear these so the
+    // groq-only fetch mock deterministically sees groq as the first provider
+    // regardless of ambient shell env.
+    OPENROUTER_API_KEY: undefined,
+    OLLAMA_API_URL: undefined,
     UPSTASH_REDIS_REST_URL: 'https://redis.test',
     UPSTASH_REDIS_REST_TOKEN: 'token',
     VERCEL_ENV: undefined,
@@ -1176,7 +1181,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
 
       assert.equal(counters.groqCalls, 1, 'anon context variations must share one cache entry');
       assert.equal(setKeys.length, 1, 'one shared cache write');
-      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v4:IL:en:shared'), `anon key should use the shared v4 namespace, got ${setKeys[0]}`);
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v5:IL:en:shared'), `anon key should use the shared v5 namespace, got ${setKeys[0]}`);
       assert.equal(alpha.brief, 'brief-1');
       assert.equal(beta.brief, 'brief-1', 'second anon caller must be served from cache');
       assert.ok(!userPrompts[0]?.includes('alpha'), 'anon caller context must not reach the prompt');
@@ -1211,7 +1216,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       assert.equal(counters.groqCalls, 2, 'different premium contexts should not share one cache entry');
       assert.equal(setKeys.length, 2, 'one cache write per unique premium context');
       assert.notEqual(setKeys[0], setKeys[1], 'context hash should differentiate premium cache keys');
-      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v4:IL:'), 'cache key should use the v4 country-intel namespace');
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v5:IL:'), 'cache key should use the v5 country-intel namespace');
       assert.ok(!setKeys[0]?.includes(':shared'), 'premium keys must not use the shared namespace');
       assert.equal(alpha.brief, 'brief-1');
       assert.equal(beta.brief, 'brief-2');
@@ -1229,6 +1234,10 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     const { module, cleanup } = await importCountryIntelBrief();
     const restoreEnv = withEnv({
       GROQ_API_KEY: 'test-key',
+      // Deterministic groq-first for this groq-only mock (chain is
+      // openrouter-first since #4944).
+      OPENROUTER_API_KEY: undefined,
+      OLLAMA_API_URL: undefined,
       UPSTASH_REDIS_REST_URL: 'https://redis.test',
       UPSTASH_REDIS_REST_TOKEN: 'token',
       VERCEL_ENV: undefined,
@@ -1272,7 +1281,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
 
       assert.equal(groqCalls, 1, 'blank context should reuse the shared cache entry');
       assert.equal(setKeys.length, 1);
-      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v4:US:en:shared'), `anon callers land on the shared key, got ${setKeys[0]}`);
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v5:US:en:shared'), `anon callers land on the shared key, got ${setKeys[0]}`);
       assert.ok(!userPrompts[0]?.includes('Context snapshot:'), 'prompt should omit context block when digest grounding is unavailable');
       assert.equal(first.brief, 'base-brief');
       assert.equal(second.brief, 'base-brief');

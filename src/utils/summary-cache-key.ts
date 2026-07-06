@@ -4,7 +4,12 @@
 // or client/server cache keys will silently diverge.
 import { hashString } from './hash';
 
-// Bumped v6 → v7 on 2026-07-05 (#4914): identical (headline, body) pairs now
+// Bumped v7 → v8 on 2026-07-06 (#4944): the summarize provider chain moved
+// from groq llama-3.1-8b-instant-first to OpenRouter deepseek-v4-flash-first,
+// so v7 rows carry old-model voice — retire them cleanly at cutover instead
+// of serving mixed-model summaries for the TTL.
+//
+// v6 → v7 (2026-07-05, #4914): identical (headline, body) pairs now
 // dedup before the top-5 slice, so v6 rows keyed over a duplicate-bearing
 // composition would never be hit again anyway — the bump retires them
 // cleanly instead of leaving orphans to age out.
@@ -13,7 +18,7 @@ import { hashString } from './hash';
 // DON'T pass `bodies` saw a forced cold-start so the pre-grounding
 // headline-only rows aged out cleanly on first tick after deploy. See
 // docs/plans/2026-04-24-001-fix-rss-description-end-to-end-plan.md U6.
-export const CACHE_VERSION = 'v7';
+export const CACHE_VERSION = 'v8';
 
 const MAX_HEADLINE_LEN = 500;
 const MAX_HEADLINES_FOR_KEY = 5;

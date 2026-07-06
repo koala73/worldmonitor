@@ -47,15 +47,17 @@ export interface CountryIntelCacheKeyOpts {
 }
 
 export function deriveCountryIntelCacheKey(opts: CountryIntelCacheKeyOpts): string {
+  // v4 → v5 (2026-07-06, #4944): intel briefs moved to deepseek-v4-flash;
+  // v4 rows carry old-model prose and must age out at cutover.
   const energyTag = opts.energyYear ? `:e${opts.energyYear}` : '';
   if (!opts.isPremium) {
     // Anonymous tier: caller inputs must not reach the key, or the shared
     // cache degenerates back into a per-caller one (and one caller's
     // context could mint entries served to everyone).
-    return `ci-sebuf:v4:${opts.countryCode}:${opts.lang}:shared${energyTag}`;
+    return `ci-sebuf:v5:${opts.countryCode}:${opts.lang}:shared${energyTag}`;
   }
   const fw = opts.frameworkHash ? `:${opts.frameworkHash}` : '';
-  return `ci-sebuf:v4:${opts.countryCode}:${opts.lang}:${opts.contextHash}${fw}${energyTag}`;
+  return `ci-sebuf:v5:${opts.countryCode}:${opts.lang}:${opts.contextHash}${fw}${energyTag}`;
 }
 
 interface DigestItemForBrief {

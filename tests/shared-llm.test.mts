@@ -30,7 +30,7 @@ afterEach(() => {
 });
 
 describe('callLlm', () => {
-  it('preserves the default provider order', async () => {
+  it('preserves the default provider order (openrouter-first since #4944)', async () => {
     process.env.GROQ_API_KEY = 'groq-test-key';
     process.env.OPENROUTER_API_KEY = 'or-test-key';
     delete process.env.OLLAMA_API_URL;
@@ -38,6 +38,7 @@ describe('callLlm', () => {
     delete process.env.LLM_API_KEY;
 
     const postUrls: string[] = [];
+    const postBodies: Array<Record<string, unknown>> = [];
 
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
@@ -47,6 +48,7 @@ describe('callLlm', () => {
       }
 
       postUrls.push(url);
+      postBodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>);
       if (url.includes('api.groq.com')) {
         return new Response(JSON.stringify({
           choices: [{ message: { content: 'groq response' } }],
@@ -65,11 +67,45 @@ describe('callLlm', () => {
     });
 
     assert.ok(result);
-    assert.equal(result.provider, 'groq');
-    assert.equal(result.model, 'llama-3.1-8b-instant');
+    assert.equal(result.provider, 'openrouter');
+    assert.equal(result.model, 'deepseek/deepseek-v4-flash');
     assert.deepEqual(postUrls.filter(url => url.includes('/chat/completions')), [
-      'https://api.groq.com/openai/v1/chat/completions',
+      'https://openrouter.ai/api/v1/chat/completions',
     ]);
+    // Utility calls must not pay reasoning tokens on hybrid-reasoning models.
+    assert.deepEqual(postBodies[0]?.reasoning, { enabled: false });
+  });
+
+  it('omits the reasoning-off body when the reasoning profile opts in', async () => {
+    process.env.OPENROUTER_API_KEY = 'or-test-key';
+    delete process.env.GROQ_API_KEY;
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    const postBodies: Array<Record<string, unknown>> = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if ((init?.method || 'GET') === 'GET') {
+        return new Response('', { status: 200 });
+      }
+      postBodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>);
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: 'reasoning-tier response' } }],
+        usage: { total_tokens: 7 },
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    const result = await callLlm({
+      messages: [{ role: 'user', content: 'Reason about the setup.' }],
+      enableReasoning: true,
+    });
+
+    assert.ok(result);
+    assert.equal(result.provider, 'openrouter');
+    assert.equal(postBodies.length, 1);
+    // Opt-in leaves the model's own reasoning default in effect.
+    assert.equal('reasoning' in (postBodies[0] ?? {}), false);
   });
 
   it('supports explicitly bypassing groq with a stronger model override', async () => {
@@ -118,6 +154,7 @@ describe('callLlm', () => {
     assert.equal(postBodies.length, 1);
     assert.equal(postBodies[0]?.url, 'https://openrouter.ai/api/v1/chat/completions');
     assert.equal(postBodies[0]?.body.model, 'google/gemini-2.5-pro');
+    assert.deepEqual(postBodies[0]?.body.reasoning, { enabled: false });
   });
 
   it('falls back within an explicit provider order when the upper model fails', async () => {
@@ -157,7 +194,7 @@ describe('callLlm', () => {
 
     assert.ok(result);
     assert.equal(result.provider, 'groq');
-    assert.equal(result.model, 'llama-3.1-8b-instant');
+    assert.equal(result.model, 'llama-3.3-70b-versatile');
     assert.deepEqual(postUrls.filter(url => url.includes('/chat/completions')), [
       'https://openrouter.ai/api/v1/chat/completions',
       'https://api.groq.com/openai/v1/chat/completions',

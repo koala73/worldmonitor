@@ -29,6 +29,8 @@ export type LlmProviderName = 'ollama' | 'groq' | 'openrouter' | 'generic';
 
 export interface ProviderCredentialOverrides {
   model?: string;
+  /** OpenRouter only: let reasoning-capable models reason (reasoning profile). Default false — utility calls must not pay reasoning tokens. */
+  enableReasoning?: boolean;
 }
 
 const OLLAMA_HOST_ALLOWLIST = new Set([
@@ -77,7 +79,7 @@ export function getProviderCredentials(
     if (!apiKey) return null;
     return {
       apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
-      model: overrides.model || 'llama-3.1-8b-instant',
+      model: overrides.model || 'llama-3.3-70b-versatile',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
@@ -90,13 +92,18 @@ export function getProviderCredentials(
     if (!apiKey) return null;
     return {
       apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
-      model: overrides.model || 'google/gemini-2.5-flash',
+      model: overrides.model || 'deepseek/deepseek-v4-flash',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
         'HTTP-Referer': 'https://worldmonitor.app',
         'X-Title': 'World Monitor',
       },
+      // Hybrid-reasoning models (DeepSeek V4) reason by default via
+      // OpenRouter's normalized `reasoning` param; utility calls must not
+      // pay reasoning tokens. The reasoning profile opts back in, letting
+      // the model's own default apply.
+      extraBody: overrides.enableReasoning ? undefined : { reasoning: { enabled: false } },
     };
   }
 
@@ -140,7 +147,11 @@ export function stripThinkingTags(text: string): string {
 }
 
 
-const PROVIDER_CHAIN = ['ollama', 'groq', 'openrouter', 'generic'] as const;
+// openrouter ahead of groq since #4944: core surfaces run DeepSeek V4 Flash
+// via OpenRouter; groq (llama-3.3-70b-versatile) is the free-tier/outage
+// fallback. Ollama stays first so self-hosted deployments are untouched —
+// it is skipped in cloud where OLLAMA_API_URL is unset.
+const PROVIDER_CHAIN = ['ollama', 'openrouter', 'groq', 'generic'] as const;
 const PROVIDER_SET = new Set<string>(PROVIDER_CHAIN);
 
 export interface LlmCallOptions {
@@ -159,6 +170,8 @@ export interface LlmCallOptions {
   systemAppend?: string;
   /** Caller surface tag for llm_call usage telemetry (e.g. 'classify-event'). */
   stage?: string;
+  /** Let reasoning-capable OpenRouter models reason. Set by the reasoning profile; utility calls stay reasoning-off. */
+  enableReasoning?: boolean;
 }
 
 export interface LlmCallResult {
@@ -214,7 +227,7 @@ export const callLlmTool = (opts: Omit<LlmCallOptions, 'providerOrder' | 'modelO
 
 /** Powerful model for synthesis and reasoning tasks. Configurable via LLM_REASONING_PROVIDER / LLM_REASONING_MODEL. */
 export const callLlmReasoning = (opts: Omit<LlmCallOptions, 'providerOrder' | 'modelOverrides'>) =>
-  callLlmProfile(opts, 'LLM_REASONING_PROVIDER', 'LLM_REASONING_MODEL', 'openrouter');
+  callLlmProfile({ ...opts, enableReasoning: true }, 'LLM_REASONING_PROVIDER', 'LLM_REASONING_MODEL', 'openrouter');
 
 export type LlmStreamOptions = Omit<LlmCallOptions, 'stripThinkingTags' | 'validate' | 'providerOrder' | 'modelOverrides' | 'provider'> & {
   /** When fired, aborts the active provider fetch and stops the stream. */
@@ -289,6 +302,8 @@ export function callLlmReasoningStream(opts: LlmStreamOptions): ReadableStream<U
 
         const creds = getProviderCredentials(providerName, {
           model: modelOverrides?.[providerName as LlmProviderName],
+          // Streaming variant of callLlmReasoning — the reasoning profile opts in.
+          enableReasoning: true,
         });
         if (!creds) continue;
 
@@ -421,6 +436,7 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
     stripThinkingTags: shouldStrip = true,
     validate,
     systemAppend,
+    enableReasoning = false,
   } = opts;
 
   let messages = rawMessages;
@@ -445,6 +461,7 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
     for (const providerName of providers) {
       const creds = getProviderCredentials(providerName, {
         model: modelOverrides?.[providerName as LlmProviderName],
+        enableReasoning,
       });
       if (!creds) {
         if (forcedProvider) return null;

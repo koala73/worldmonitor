@@ -29,7 +29,7 @@ interface CapturedIngest {
 }
 
 function installFetchMock(opts: {
-  groqStatus?: number;
+  openrouterStatus?: number;
   captured: CapturedIngest;
 }) {
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -43,19 +43,19 @@ function installFetchMock(opts: {
       return new Response('{}', { status: 200 });
     }
     if (url.includes('api.groq.com')) {
-      if (opts.groqStatus && opts.groqStatus !== 200) {
-        return new Response('groq down', { status: opts.groqStatus });
-      }
       return new Response(JSON.stringify({
         choices: [{ message: { content: 'groq answer' } }],
-        model: 'llama-3.1-8b-instant',
+        model: 'llama-3.3-70b-versatile',
         usage: { prompt_tokens: 120, completion_tokens: 40, total_tokens: 160 },
       }), { status: 200 });
     }
     if (url.includes('openrouter.ai')) {
+      if (opts.openrouterStatus && opts.openrouterStatus !== 200) {
+        return new Response('openrouter down', { status: opts.openrouterStatus });
+      }
       return new Response(JSON.stringify({
         choices: [{ message: { content: 'openrouter answer' } }],
-        model: 'google/gemini-2.5-flash',
+        model: 'deepseek/deepseek-v4-flash',
         usage: { prompt_tokens: 130, completion_tokens: 55, total_tokens: 185 },
       }), { status: 200 });
     }
@@ -87,16 +87,16 @@ describe('llm usage telemetry', () => {
       stage: 'test-stage',
     });
 
-    assert.equal(result?.content, 'groq answer');
+    assert.equal(result?.content, 'openrouter answer');
     assert.equal(captured.events.length, 1, 'exactly one event for one attempt');
     const ev = captured.events[0];
     assert.equal(ev.event_type, 'llm_call');
-    assert.equal(ev.provider, 'groq');
+    assert.equal(ev.provider, 'openrouter');
     assert.equal(ev.stage, 'test-stage');
     assert.equal(ev.ok, true);
-    assert.equal(ev.tokens_total, 160);
-    assert.equal(ev.tokens_prompt, 120);
-    assert.equal(ev.tokens_completion, 40);
+    assert.equal(ev.tokens_total, 185);
+    assert.equal(ev.tokens_prompt, 130);
+    assert.equal(ev.tokens_completion, 55);
     assert.equal(ev.fallback_index, 0);
     assert.equal(typeof ev.duration_ms, 'number');
     assert.ok((ev.prompt_chars as number) > 0, 'prompt size must be recorded');
@@ -106,24 +106,24 @@ describe('llm usage telemetry', () => {
   it('records the failed attempt AND the fallback success', async () => {
     baseEnv();
     const captured: CapturedIngest = { events: [] };
-    installFetchMock({ groqStatus: 500, captured });
+    installFetchMock({ openrouterStatus: 500, captured });
 
     const result = await callLlm({
       messages: [{ role: 'user', content: 'user prompt' }],
       stage: 'test-stage',
     });
 
-    assert.equal(result?.content, 'openrouter answer');
+    assert.equal(result?.content, 'groq answer');
     assert.equal(captured.events.length, 2, 'failed attempt + fallback must both be visible');
     const [fail, ok] = captured.events;
-    assert.equal(fail.provider, 'groq');
+    assert.equal(fail.provider, 'openrouter');
     assert.equal(fail.ok, false);
     assert.equal(fail.reason, 'http_500');
     assert.equal(fail.fallback_index, 0);
-    assert.equal(ok.provider, 'openrouter');
+    assert.equal(ok.provider, 'groq');
     assert.equal(ok.ok, true);
     assert.equal(ok.fallback_index, 1);
-    assert.equal(ok.tokens_total, 185);
+    assert.equal(ok.tokens_total, 160);
   });
 
   it('emits nothing when USAGE_TELEMETRY is off', async () => {
@@ -137,7 +137,7 @@ describe('llm usage telemetry', () => {
       stage: 'test-stage',
     });
 
-    assert.equal(result?.content, 'groq answer');
+    assert.equal(result?.content, 'openrouter answer');
     assert.equal(captured.events.length, 0, 'telemetry must be opt-in');
   });
 

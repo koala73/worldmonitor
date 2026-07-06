@@ -1224,7 +1224,9 @@ export async function analyzeStock(
   const name = (req.name || symbol).trim().slice(0, 120) || symbol;
   const includeNews = req.includeNews === true;
   const nameSuffix = name !== symbol ? `:${name.replace(/[^a-zA-Z0-9]/g, '').slice(0, 30).toLowerCase()}` : '';
-  const cacheKey = `market:analyze-stock:v3:${symbol}:${includeNews ? 'news' : 'no-news'}${nameSuffix}`;
+  // v3 → v4 (2026-07-06, #4944): LLM analysis moved to deepseek-v4-flash;
+  // v3 rows carry old-model output and must age out at cutover.
+  const cacheKey = `market:analyze-stock:v4:${symbol}:${includeNews ? 'news' : 'no-news'}${nameSuffix}`;
 
   const cached = await cachedFetchJson<AnalyzeStockResponse>(cacheKey, CACHE_TTL_SECONDS, async () => {
     const [history, analystData] = await Promise.all([
