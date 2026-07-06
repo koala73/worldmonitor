@@ -108,6 +108,73 @@ describe('callLlm', () => {
     assert.equal('reasoning' in (postBodies[0] ?? {}), false);
   });
 
+  it('ignores DeepSeek reasoning message fields and serves content untouched', async () => {
+    process.env.OPENROUTER_API_KEY = 'or-test-key';
+    delete process.env.GROQ_API_KEY;
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if ((init?.method || 'GET') === 'GET') {
+        return new Response('', { status: 200 });
+      }
+      // Live-captured DeepSeek V4 shape (2026-07-06): reasoning arrives as
+      // separate message fields, never inline tags; content stays clean.
+      return new Response(JSON.stringify({
+        choices: [{ message: {
+          role: 'assistant',
+          content: 'Paris',
+          reasoning: 'We need to reply with exactly one word.',
+          reasoning_details: [{ type: 'reasoning.text', text: 'We need to reply.' }],
+        } }],
+        usage: { total_tokens: 30, prompt_tokens: 14, completion_tokens: 16 },
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    const result = await callLlm({
+      messages: [{ role: 'user', content: 'Capital of France, one word.' }],
+      enableReasoning: true,
+    });
+
+    assert.ok(result);
+    assert.equal(result.content, 'Paris');
+  });
+
+  it('falls through when a provider returns only reasoning with empty content', async () => {
+    process.env.OPENROUTER_API_KEY = 'or-test-key';
+    process.env.GROQ_API_KEY = 'groq-test-key';
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if ((init?.method || 'GET') === 'GET') {
+        return new Response('', { status: 200 });
+      }
+      if (url.includes('openrouter.ai')) {
+        // Degenerate case: model burned its budget on reasoning, empty content.
+        return new Response(JSON.stringify({
+          choices: [{ message: { role: 'assistant', content: '', reasoning: 'endless deliberation…' } }],
+          usage: { total_tokens: 60, prompt_tokens: 14, completion_tokens: 46 },
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: 'groq fallback answer' } }],
+        usage: { total_tokens: 20 },
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    const result = await callLlm({
+      messages: [{ role: 'user', content: 'Answer briefly.' }],
+    });
+
+    assert.ok(result);
+    assert.equal(result.provider, 'groq');
+    assert.equal(result.content, 'groq fallback answer');
+  });
+
   it('supports explicitly bypassing groq with a stronger model override', async () => {
     process.env.GROQ_API_KEY = 'groq-test-key';
     process.env.OPENROUTER_API_KEY = 'or-test-key';
