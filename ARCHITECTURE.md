@@ -69,6 +69,8 @@ World Monitor is a real-time global intelligence dashboard built as a TypeScript
 
 **Source files**: `vercel.json`, `docker/Dockerfile`, `scripts/ais-relay.cjs`, `consumer-prices-core/Dockerfile`, `workers/api-cors-preflight/wrangler.toml`, `convex/schema.ts`, `src-tauri/tauri.conf.json`
 
+**Cloudflare zone config (dashboard-managed, NOT in this repo):** the apex `worldmonitor.app` → `www` 301 is a Cloudflare Dynamic Redirect rule ("apex to www (exclude agent-discoverable paths)") whose exemption list is load-bearing: `/.well-known/*`, `/robots.txt`, `/security.txt`, `/mcp`, `/mcp/*`, and `/oauth/*` are served on the apex, never redirected. Dropping the `/mcp*` exemptions breaks every apex-URL MCP client; dropping `/oauth/*` re-breaks OAuth dynamic client registration — a redirected POST becomes a GET and dies with 405 (issue #4938). When editing the rule, mind expression precedence: `and` binds tighter than `or`, so a new exemption must be added as its own `or` term **inside** the `not (…)` group (appending `and not …` after the last term is a silent no-op). `mcp-live-smoke.yml` probes these paths every 6 hours and fails on the redirect fingerprint.
+
 ---
 
 ## 3. Frontend Architecture

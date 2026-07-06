@@ -34,6 +34,26 @@ Restart Claude Desktop. The first time you mention WorldMonitor in a chat, Claud
 Cursor, Claude web, and MCP Inspector use the same URL. See [client setup](/mcp-overview#client-setup) for the exact config field per client.
 </Tip>
 
+### Alternative: the `mcp-remote` bridge
+
+Older Claude Desktop builds — and any stdio-only MCP client — connect through the [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) bridge instead of the native `url` field:
+
+```json
+{
+  "mcpServers": {
+    "worldmonitor": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://worldmonitor.app/mcp", "--header", "X-WorldMonitor-Key:wm_YOUR_KEY"]
+    }
+  }
+}
+```
+
+Two things matter with this setup:
+
+- **Attach your credential explicitly.** The server completes the connection and all discovery (tools/prompts/resources listings) anonymously by design, so `mcp-remote` never sees a 401 challenge at connect time and does not start its OAuth flow on its own. Without the header, the connection looks healthy but every `tools/call` fails with `401`. Use the single-argument form `X-WorldMonitor-Key:wm_…` with **no space after the colon** — Claude Desktop splits config arguments on spaces.
+- **Prefer OAuth?** Omit `--header`: your first tool call returns the 401 challenge that triggers `mcp-remote`'s browser consent flow (dynamic client registration works on both `worldmonitor.app` and `www.worldmonitor.app`). Older `mcp-remote` versions handle this mid-session flow less reliably than the connect-time one, so if the consent window never appears, the explicit key header above is the deterministic path.
+
 ## 3. Ask your first question
 
 Open a new chat in Claude Desktop and try:
