@@ -69,6 +69,29 @@ describe('glossary data integrity', () => {
     }
   });
 
+  it('states the current CRI contract, not the stale April-snapshot figures (#4968 review)', () => {
+    // The first draft sourced from docs/snapshots/resilience-ranking-2026-04-21
+    // (a dated claim artifact) and shipped 19 dimensions + a 0.4 grey-out gate.
+    // The live contract (server/.../resilience/v1/_shared.ts + methodology doc)
+    // is 20 active dimensions, a 0.55 low-confidence coverage gate, and a
+    // pillar-combined penalized formula. Pin it so the stale figures can't
+    // return unnoticed.
+    const cov = GLOSSARY_TERMS.find((t) => t.slug === 'dimension-coverage');
+    const cri = GLOSSARY_TERMS.find((t) => t.slug === 'country-resilience-index');
+    assert.ok(cov && cri, 'CRI + dimension-coverage terms must exist');
+    const covBlob = [cov.short, ...cov.body].join(' ');
+    const criBlob = [cri.short, ...cri.body].join(' ');
+
+    assert.match(covBlob, /\b20\b/, 'dimension-coverage must state 20 active dimensions');
+    assert.match(covBlob, /0\.55/, 'dimension-coverage must state the 0.55 low-confidence gate');
+    assert.doesNotMatch(covBlob, /\b19 per-dimension/, 'stale 19-dimension figure must not return');
+    assert.doesNotMatch(covBlob, /falls below 0\.4\b/, 'stale 0.4 grey-out gate must not return');
+
+    assert.match(criBlob, /196/, 'CRI must state the 196-country rankable universe');
+    assert.doesNotMatch(criBlob, /aggregate of six domains/, 'CRI must describe the pillar-combined formula, not the retired flat aggregate as live');
+    assert.doesNotMatch(criBlob, /out of about 217/, 'stale "196 of 217" framing must not return');
+  });
+
   it('claims no forecast-calibration capability that does not exist (#4930)', () => {
     // No Brier/resolution/calibration scoring exists yet; the glossary must
     // not imply WorldMonitor computes it. "prediction market" is fine.

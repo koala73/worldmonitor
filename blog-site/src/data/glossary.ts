@@ -14,6 +14,15 @@ export interface GlossaryLink {
   href: string;
 }
 
+export const GLOSSARY_CATEGORIES = [
+  'Scoring & Indices',
+  'Signals & Detection',
+  'Maritime & Chokepoints',
+  'OSINT & Methodology',
+] as const;
+
+export type GlossaryCategory = (typeof GLOSSARY_CATEGORIES)[number];
+
 export interface GlossaryTerm {
   /** URL slug under /blog/glossary/<slug>. */
   slug: string;
@@ -21,8 +30,8 @@ export interface GlossaryTerm {
   term: string;
   /** Abbreviation, if the term is commonly cited by acronym. */
   abbr?: string;
-  /** Grouping key — must match one of GLOSSARY_CATEGORIES. */
-  category: string;
+  /** Grouping key — one of GLOSSARY_CATEGORIES (compile-time checked). */
+  category: GlossaryCategory;
   /**
    * One-sentence definition. Used verbatim as the DefinedTerm `description`,
    * the list-page blurb, and the meta description — so it must read as a
@@ -36,13 +45,6 @@ export interface GlossaryTerm {
   /** Authoritative "learn more" pointers (methodology docs, dashboard, blog). */
   learnMore?: GlossaryLink[];
 }
-
-export const GLOSSARY_CATEGORIES = [
-  'Scoring & Indices',
-  'Signals & Detection',
-  'Maritime & Chokepoints',
-  'OSINT & Methodology',
-] as const;
 
 export const GLOSSARY_TERMS: GlossaryTerm[] = [
   // ── Scoring & Indices ─────────────────────────────────────────────
@@ -69,16 +71,16 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     abbr: 'CRI',
     category: 'Scoring & Indices',
     short:
-      'The Country Resilience Index (CRI) is a composite 0–100 score of a country’s structural ability to absorb and recover from shocks, computed across six weighted domains for the rankable universe of roughly 196 countries.',
+      'The Country Resilience Index (CRI) is a composite 0–100 score of a country’s structural ability to absorb and recover from shocks, refreshed every six hours across six weighted domains and 20 active dimensions for a fixed 196-country rankable universe.',
     body: [
-      'The Country Resilience Index (CRI) is a composite 0–100 score of a country’s structural ability to absorb and recover from shocks. Where the CII measures short-term instability, the CRI measures durable capacity — economic, infrastructural, energy, social-governance, health-and-food, and recovery strength.',
-      'The overall score is a weighted aggregate of six domains: economic (0.17), infrastructure (0.15), energy (0.11), social-governance (0.19), health-food (0.13), and recovery (0.25). Recovery carries the highest single weight, which is the mechanical reason fiscally strong small states cluster near the top while fragile states separate toward the bottom.',
-      'CRI is published for the rankable universe of roughly 196 countries with sufficient data coverage (out of about 217 assessed); a country whose mean dimension coverage falls below 0.4 is greyed out rather than ranked. Scores are exposed through the get-resilience-score and get-resilience-ranking endpoints and the get_country_risk MCP tool.',
+      'The Country Resilience Index (CRI) is a composite 0–100 score of a country’s structural ability to absorb and recover from shocks. Where the CII measures short-term instability, the CRI measures durable capacity — economic, infrastructure, energy, social-governance, health-and-food, and recovery strength — refreshed every six hours from official sources with full coverage and imputation provenance.',
+      'The six domains carry design weights — economic 0.17, infrastructure 0.15, energy 0.11, social-governance 0.19, health-food 0.13, recovery 0.25 (sum 1.00) — and are regrouped into three pillars (structural readiness, live-shock exposure, recovery capacity) that combine into the headline score through a non-compensatory formula with a min-pillar penalty. Recovery carries the largest single-domain weight, which is the mechanical reason fiscally strong smaller states cluster near the top while fragile states separate cleanly at the bottom.',
+      'CRI covers a fixed 196-country public rankable universe (a committed UN-member and SAR whitelist); low-confidence or headline-ineligible countries are routed to a separate greyed-out list rather than dropped, and every response exposes per-dimension coverage plus a four-class imputation taxonomy so an analyst can see how much of a score is real data. Scores are served through the get-resilience-score and get-resilience-ranking endpoints and the get_country_risk MCP tool.',
     ],
     related: ['country-instability-index', 'dimension-coverage', 'strategic-risk'],
     learnMore: [
+      { label: 'CRI methodology (full reference)', href: 'https://www.worldmonitor.app/docs/methodology/country-resilience-index' },
       { label: 'CRI methodology explainer (blog)', href: 'https://www.worldmonitor.app/blog/posts/country-resilience-index-methodology-explained/' },
-      { label: 'Resilience score API', href: 'https://www.worldmonitor.app/docs/documentation' },
     ],
   },
   {
@@ -101,12 +103,15 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     term: 'Dimension Coverage',
     category: 'Scoring & Indices',
     short:
-      'Dimension coverage is the share of a country’s resilience dimensions backed by real underlying data — the mean of the per-dimension coverage values used to decide whether a CRI score is reliable enough to rank.',
+      'Dimension coverage is the share of a country’s resilience dimensions backed by real observed data rather than imputed — the mean of the 20 active per-dimension coverage values, used to gauge how much of a CRI score is real.',
     body: [
-      'Dimension coverage is the share of a country’s resilience dimensions that are backed by real underlying data, reported as the mean of the 19 per-dimension coverage values. It is deliberately labelled "dimension coverage" rather than "data coverage" to be precise about what is being measured.',
-      'Coverage acts as a confidence gate: when a country’s mean dimension coverage falls below 0.4, its Country Resilience Index score is greyed out rather than published in the ranking, so thin-data countries are never presented as if they were confidently scored.',
+      'Dimension coverage is the share of a country’s resilience dimensions that are backed by real observed data rather than imputed, reported as the mean of the 20 active per-dimension coverage values (structurally-retired dimensions are excluded from the average). It is deliberately labelled "dimension coverage" rather than "data coverage" to be precise about what is measured.',
+      'Coverage drives a confidence gate: when a country’s average dimension coverage falls below 0.55 — or too much of its score is imputed — the Country Resilience Index marks that score low-confidence, and countries that also fail the headline-eligibility thresholds are routed to a separate greyed-out list rather than the public ranking. Thin-data countries are never presented as if they were confidently scored.',
     ],
     related: ['country-resilience-index'],
+    learnMore: [
+      { label: 'CRI methodology (coverage & imputation)', href: 'https://www.worldmonitor.app/docs/methodology/country-resilience-index' },
+    ],
   },
   {
     slug: 'pentagon-pizza-index',
