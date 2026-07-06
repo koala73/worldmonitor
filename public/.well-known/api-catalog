@@ -12,6 +12,10 @@
           "title": "World Monitor MCP server"
         },
         {
+          "href": "https://www.worldmonitor.app/docs/mcp",
+          "title": "World Monitor docs MCP server (documentation search & retrieval)"
+        },
+        {
           "href": "https://worldmonitor.app/",
           "title": "World Monitor agent skills"
         }
@@ -75,6 +79,15 @@
         {
           "href": "https://worldmonitor.app/.well-known/mcp/server-card.json",
           "type": "application/json"
+        }
+      ]
+    },
+    {
+      "anchor": "https://www.worldmonitor.app/docs/mcp",
+      "service-doc": [
+        {
+          "href": "https://www.worldmonitor.app/docs/documentation",
+          "type": "text/html"
         }
       ]
     },

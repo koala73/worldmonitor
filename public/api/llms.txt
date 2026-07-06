@@ -9,6 +9,7 @@ This is the API-section companion to the site-wide briefing at https://worldmoni
 ## Endpoints
 
 - **MCP server (recommended):** `https://worldmonitor.app/mcp` — Streamable HTTP, JSON-RPC 2.0. Issue `tools/list` for the live tool inventory, `prompts/list` for pre-built workflow templates, `resources/list` for read-only resources. Server card: https://worldmonitor.app/.well-known/mcp/server-card.json
+- **Docs MCP server:** `https://www.worldmonitor.app/docs/mcp` — Streamable HTTP, public (no auth); search-and-retrieval tools over the developer documentation. Route "how do I…" questions here; route live-data calls to the product MCP above.
 - **REST API:** base `https://api.worldmonitor.app`. OpenAPI 3.1 spec at https://worldmonitor.app/openapi.yaml (JSON: https://worldmonitor.app/openapi.json). Machine-readable API catalog (RFC 9727): https://worldmonitor.app/.well-known/api-catalog
 - **CLI:** `npx worldmonitor tools` lists every tool with no key; `npm install -g worldmonitor` installs the `worldmonitor` command — a zero-dependency, MCP-first client for the tools and REST API above. https://www.npmjs.com/package/worldmonitor
 - **SDKs:** official zero-dependency client libraries mirroring the CLI — Python `pip install worldmonitor-sdk` (https://pypi.org/project/worldmonitor-sdk/), Ruby `gem install worldmonitor` (https://rubygems.org/gems/worldmonitor), Go `go get github.com/koala73/worldmonitor/sdk/go` (https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go), JavaScript (npm `worldmonitor`). Guide: https://www.worldmonitor.app/docs/sdks

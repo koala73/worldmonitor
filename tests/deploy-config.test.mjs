@@ -16,7 +16,7 @@ const middlewareSource = readFileSync(resolve(__dirname, '../middleware.ts'), 'u
 const dockerfileSource = readFileSync(resolve(__dirname, '../Dockerfile'), 'utf-8');
 const dockerNginxSource = readFileSync(resolve(__dirname, '../docker/nginx.conf'), 'utf-8');
 const frontendDockerfileSource = readFileSync(resolve(__dirname, '../docker/Dockerfile'), 'utf-8');
-const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|agents\\.md|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
+const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|agents\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
 const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html).*)';
 const APP_ROOT_HOST_PATTERN = '^(?:(?:www|tech|finance|commodity|happy|energy)\\.)?worldmonitor\\.app$';
 const GLOBAL_CSP_INLINE_SCRIPT_HTML_FILES = [
@@ -1164,6 +1164,22 @@ describe('agent readiness: api-catalog + openapi build', () => {
     const itemHrefs = catalogEntry.item.map((i) => i.href);
     assert.ok(itemHrefs.includes('https://api.worldmonitor.app/'), 'item list must enumerate the REST API host root');
     assert.ok(itemHrefs.includes('https://worldmonitor.app/mcp'), 'item list must enumerate the MCP server');
+    assert.ok(
+      itemHrefs.includes('https://www.worldmonitor.app/docs/mcp'),
+      'item list must enumerate the docs MCP server (#4958 — it ran unadvertised for weeks)'
+    );
+  });
+
+  // #4958 — Mintlify serves a working docs MCP server (search/retrieval over
+  // the documentation) at /docs/mcp; it existed for weeks with zero
+  // advertisement anywhere. Every agent-facing discovery surface must name it
+  // so multi-surface MCP coverage is discoverable.
+  it('advertises the docs MCP server on every discovery surface', () => {
+    const docsMcpUrl = 'https://www.worldmonitor.app/docs/mcp';
+    for (const surface of ['llms.txt', 'agents.md', 'api/llms.txt']) {
+      const content = readFileSync(resolve(__dirname, `../public/${surface}`), 'utf-8');
+      assert.ok(content.includes(docsMcpUrl), `public/${surface} must advertise the docs MCP server`);
+    }
   });
 
   it('the api host root has its own context object', () => {
@@ -1628,6 +1644,22 @@ describe('agent readiness: auth.md walkthrough', () => {
       );
     });
   }
+
+  // /agent.txt (#4958 follow-up): the when-to-use agent-instruction file
+  // (agent.txt convention; telnyx-parity). Same three-way pinning, but plain
+  // text rather than markdown.
+  it('serves /agent.txt as plain text and keeps it off the SPA catch-all', () => {
+    assert.equal(getHeaderValueForSource('/agent.txt', 'Content-Type'), 'text/plain; charset=utf-8');
+    assert.equal(getHeaderValueForSource('/agent.txt', 'Access-Control-Allow-Origin'), '*');
+    const catchAll = vercelConfig.rewrites.find((r) =>
+      r.destination === DASHBOARD_HTML_DESTINATION && r.source.startsWith('/((?!')
+    );
+    assert.ok(catchAll.source.includes('|agent\\.txt|'), 'SPA catch-all rewrite must exclude /agent.txt');
+    assert.ok(SPA_HTML_CACHE_SOURCE.includes('|agent\\.txt|'), 'HTML cache catch-all must exclude /agent.txt');
+    const agentTxt = readFileSync(resolve(__dirname, '../public/agent.txt'), 'utf-8');
+    assert.match(agentTxt, /When to use/i, 'agent.txt must carry when-to-use guidance');
+    assert.ok(agentTxt.includes('https://worldmonitor.app/mcp'), 'agent.txt must point at the MCP server');
+  });
 });
 
 // PR history: #3204 / #3206 forced the resvg linux-x64-gnu native
