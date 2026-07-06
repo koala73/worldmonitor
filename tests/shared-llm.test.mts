@@ -9,9 +9,17 @@ const originalOpenRouterApiKey = process.env.OPENROUTER_API_KEY;
 const originalOllamaApiUrl = process.env.OLLAMA_API_URL;
 const originalLlmApiUrl = process.env.LLM_API_URL;
 const originalLlmApiKey = process.env.LLM_API_KEY;
+const originalLlmReasoningProvider = process.env.LLM_REASONING_PROVIDER;
+const originalLlmReasoningModel = process.env.LLM_REASONING_MODEL;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+
+  if (originalLlmReasoningProvider === undefined) delete process.env.LLM_REASONING_PROVIDER;
+  else process.env.LLM_REASONING_PROVIDER = originalLlmReasoningProvider;
+
+  if (originalLlmReasoningModel === undefined) delete process.env.LLM_REASONING_MODEL;
+  else process.env.LLM_REASONING_MODEL = originalLlmReasoningModel;
 
   if (originalGroqApiKey === undefined) delete process.env.GROQ_API_KEY;
   else process.env.GROQ_API_KEY = originalGroqApiKey;
@@ -146,9 +154,8 @@ describe('callLlm', () => {
     });
     assert.ok(on);
     assert.equal('reasoning' in (bodies[0] ?? {}), false, 'default leaves reasoning on (no disable body)');
-
-    delete process.env.LLM_REASONING_PROVIDER;
-    delete process.env.LLM_REASONING_MODEL;
+    // LLM_REASONING_* are restored by the shared afterEach (snapshot-based),
+    // which runs even if an assertion above throws — no manual cleanup here.
   });
 
   it('ignores DeepSeek reasoning message fields and serves content untouched', async () => {
