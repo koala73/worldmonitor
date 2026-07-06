@@ -51,7 +51,7 @@ test('cache hit republishes cached cards without any LLM fetch', async () => {
   // Empty inputs make buildMarketImplicationsContext return this literal.
   const inputs = {};
   const fingerprint = buildMarketImplicationsFingerprint('No live world state available.');
-  store[`forecast:llm-market-implications:${fingerprint}`] = { cards, model: 'cached-model' };
+  store[`forecast:llm-market-implications:v2:${fingerprint}`] = { cards, model: 'cached-model' };
 
   let fetchCalls = 0;
   global.fetch = async (url) => {

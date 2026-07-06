@@ -75,7 +75,7 @@ test('llm-chain: fallback emits one event per attempt with the caller stage', as
 
   const text = await callLLM('system', 'user prompt', { stage: 'brief-digest-cron' });
   assert.equal(text, 'brief prose output');
-  assert.equal(captured.length, 2, 'failed groq attempt + openrouter success');
+  assert.equal(captured.length, 2, 'failed groq attempt + openrouter fallback success');
   const [fail, ok] = captured;
   assert.equal(fail.provider, 'groq');
   assert.equal(fail.ok, false);
@@ -156,12 +156,12 @@ test('narrative: validate_reject and success attempts both reach the ingest', as
     }
     throw new Error(`unexpected global fetch: ${raw}`);
   };
-  // Provider transport is injected: groq answers but fails validation,
-  // openrouter answers with the accepted payload.
+  // Provider transport is injected: openrouter (first since #4944 U6)
+  // answers but fails validation, groq answers with the accepted payload.
   __setNarrativeTransportForTests({
     fetch: async (url) => {
       const raw = String(url);
-      if (raw.includes('api.groq.com')) {
+      if (raw.includes('openrouter.ai')) {
         return { ok: true, json: async () => llmJson('not-json narrative') };
       }
       return { ok: true, json: async () => llmJson('{"ok":true}') };
@@ -173,12 +173,14 @@ test('narrative: validate_reject and success attempts both reach the ingest', as
     { validate: (text) => text.startsWith('{') },
   );
   assert.ok(res);
-  assert.equal(res.provider, 'openrouter');
+  assert.equal(res.provider, 'groq');
   assert.equal(captured.length, 2);
   assert.equal(captured[0].stage, 'regional-narrative');
+  assert.equal(captured[0].provider, 'openrouter');
   assert.equal(captured[0].ok, false);
   assert.equal(captured[0].reason, 'validate_reject');
   assert.equal(captured[0].fallback_index, 0);
+  assert.equal(captured[1].provider, 'groq');
   assert.equal(captured[1].ok, true);
   assert.equal(captured[1].fallback_index, 1);
 });

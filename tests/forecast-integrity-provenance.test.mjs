@@ -78,8 +78,8 @@ describe('forecast integrity and provenance surfaces', () => {
     assert.doesNotMatch(docs, /probability-calibrated/);
     assert.match(docs, /deterministic, rule-based signal detectors/);
     assert.match(docs, /LLM calls do not set the numeric probability/);
-    assert.match(docs, /Groq `llama-3\.1-8b-instant`/);
-    assert.match(docs, /OpenRouter `google\/gemini-2\.5-flash`/);
+    assert.match(docs, /OpenRouter `deepseek\/deepseek-v4-flash`/);
+    assert.match(docs, /Groq `llama-3\.3-70b-versatile`/);
     assert.match(docs, /market-calibrated only when/);
     assert.match(docs, /calibration: null/);
     assert.doesNotMatch(docs, /Conflict base detector probability ceiling \| 0\.90/);

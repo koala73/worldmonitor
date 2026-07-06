@@ -32,6 +32,11 @@ const LLM_PROVIDERS = [
     extraBody: { think: false },
     timeout: 25_000,
   },
+  // NOTE (#4944): this chain is the brief-prose transport (sole requirer:
+  // seed-digest-notifications → brief-llm, pinned to openrouter via
+  // skipProviders). Its model moves to DeepSeek in the U4 brief-voice
+  // cutover — gated on the U3 shadow evaluation — together with the
+  // brief cache-version bumps. Do not swap it in isolation.
   {
     name: 'groq',
     envKey: 'GROQ_API_KEY',
