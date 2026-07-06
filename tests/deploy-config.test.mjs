@@ -16,7 +16,7 @@ const middlewareSource = readFileSync(resolve(__dirname, '../middleware.ts'), 'u
 const dockerfileSource = readFileSync(resolve(__dirname, '../Dockerfile'), 'utf-8');
 const dockerNginxSource = readFileSync(resolve(__dirname, '../docker/nginx.conf'), 'utf-8');
 const frontendDockerfileSource = readFileSync(resolve(__dirname, '../docker/Dockerfile'), 'utf-8');
-const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
+const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|agents\\.md|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
 const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html).*)';
 const APP_ROOT_HOST_PATTERN = '^(?:(?:www|tech|finance|commodity|happy|energy)\\.)?worldmonitor\\.app$';
 const GLOBAL_CSP_INLINE_SCRIPT_HTML_FILES = [
@@ -1220,6 +1220,7 @@ describe('agent readiness: api-catalog + openapi build', () => {
       'service-meta must advertise the live product-catalog JSON endpoint'
     );
     assert.ok(hrefs.includes('https://worldmonitor.app/support.md'), 'service-meta must advertise support.md');
+    assert.ok(hrefs.includes('https://worldmonitor.app/agents.md'), 'service-meta must advertise agents.md (#4952)');
     // The Commerce spec lives outside the root openapi bundle (size budget,
     // #4853) — without this link no advertised descriptor reaches it
     // (post-#4867 review finding); Mintlify serves the raw YAML at this URL.
@@ -1606,11 +1607,12 @@ describe('agent readiness: auth.md walkthrough', () => {
   });
 
   // pricing.md and support.md are advertised in api-catalog service-meta and
-  // llms.txt (#4854/#4857), so they get the same three-way pinning as auth.md:
+  // llms.txt (#4854/#4857), agents.md is the agent-discovery entry point
+  // (#4952), so they get the same three-way pinning as auth.md:
   // explicit markdown Content-Type + CORS, catch-all exclusion (deleting or
   // renaming the static file must 404, not silently serve the dashboard HTML
   // misleading-200 the journey runs flagged), and this guard.
-  for (const mdPath of ['/pricing.md', '/support.md']) {
+  for (const mdPath of ['/pricing.md', '/support.md', '/agents.md']) {
     it(`serves ${mdPath} as markdown and keeps it off the SPA catch-all`, () => {
       assert.equal(getHeaderValueForSource(mdPath, 'Content-Type'), 'text/markdown; charset=utf-8');
       assert.equal(getHeaderValueForSource(mdPath, 'Access-Control-Allow-Origin'), '*');
@@ -1785,6 +1787,141 @@ describe('agent readiness: Content-Signal declarations', () => {
       headerValue(),
       'robots.txt Content-Signal must match the vercel.json header value'
     );
+  });
+
+  it('every Content-Signal line in robots.txt matches the header (multi-group)', () => {
+    // The AI-agent groups added in #4952 carry their own Content-Signal
+    // directive; none of the copies may drift from the origin-wide header.
+    const signalLines = robotsSource
+      .split('\n')
+      .filter((l) => l.startsWith('Content-Signal:'));
+    assert.ok(signalLines.length >= 1, 'robots.txt must declare Content-Signal');
+    for (const line of signalLines) {
+      assert.strictEqual(
+        line.slice('Content-Signal:'.length).trim(),
+        headerValue(),
+        'every robots.txt Content-Signal must match the vercel.json header value'
+      );
+    }
+  });
+});
+
+// #4952 — three-tier AI crawler policy. A named `User-agent` group REPLACES
+// the `*` group for that crawler (robots.txt groups do not inherit), so the
+// AI search/assistant allow-group must restate the full `*` rule set or those
+// crawlers would lose the /api/ protections. The training-only group must
+// stay a hard `Disallow: /`.
+describe('agent readiness: robots.txt AI crawler policy', () => {
+  const robotsSource = readFileSync(resolve(__dirname, '../public/robots.txt'), 'utf-8');
+
+  // Minimal robots.txt group parser: consecutive User-agent lines share one
+  // group; a blank line or a User-agent line following rules starts a new one;
+  // comments never end a group.
+  const parseGroups = (source) => {
+    const groups = [];
+    let current = null;
+    for (const raw of source.split('\n')) {
+      const line = raw.trim();
+      if (line === '') {
+        current = null;
+        continue;
+      }
+      if (line.startsWith('#')) continue;
+      const colon = line.indexOf(':');
+      if (colon === -1) continue;
+      const key = line.slice(0, colon).trim().toLowerCase();
+      const value = line.slice(colon + 1).trim();
+      if (key === 'user-agent') {
+        if (!current || current.rules.length > 0) {
+          current = { agents: [], rules: [] };
+          groups.push(current);
+        }
+        current.agents.push(value.toLowerCase());
+      } else if (current && (key === 'allow' || key === 'disallow')) {
+        current.rules.push(`${key}: ${value}`);
+      }
+    }
+    return groups;
+  };
+
+  const groups = parseGroups(robotsSource);
+  const starGroup = groups.find((g) => g.agents.includes('*'));
+  const aiAllowGroup = groups.find((g) => g.agents.includes('gptbot'));
+  const trainingBlockGroup = groups.find((g) => g.agents.includes('ccbot'));
+
+  // The agents AEO scanners score by name (search/assistant tier).
+  const REQUIRED_AI_SEARCH_AGENTS = [
+    'gptbot',
+    'claudebot',
+    'chatgpt-user',
+    'perplexitybot',
+    'google-extended',
+    'applebot-extended',
+  ];
+  const BLOCKED_TRAINING_AGENTS = ['ccbot', 'bytespider', 'anthropic-ai'];
+
+  it('explicitly allows the AI search/assistant agents in one named group', () => {
+    assert.ok(aiAllowGroup, 'robots.txt must have a named AI search/assistant group (GPTBot et al.)');
+    for (const agent of REQUIRED_AI_SEARCH_AGENTS) {
+      assert.ok(
+        aiAllowGroup.agents.includes(agent),
+        `AI search/assistant group must include User-agent: ${agent}`
+      );
+    }
+    assert.ok(
+      aiAllowGroup.rules.includes('allow: /'),
+      'AI search/assistant group must Allow: /'
+    );
+  });
+
+  it('keeps the AI allow-group rules in parity with the `*` group', () => {
+    assert.ok(starGroup, 'robots.txt must have a `User-agent: *` group');
+    assert.deepStrictEqual(
+      [...aiAllowGroup.rules].sort(),
+      [...starGroup.rules].sort(),
+      'the AI allow-group must restate the exact `*` rule set — named groups do not inherit, so a drift here silently opens /api/ (or blocks paths) for AI crawlers'
+    );
+  });
+
+  it('disallows the bulk training-only scrapers entirely', () => {
+    assert.ok(trainingBlockGroup, 'robots.txt must have a training-scraper block group (CCBot et al.)');
+    for (const agent of BLOCKED_TRAINING_AGENTS) {
+      assert.ok(
+        trainingBlockGroup.agents.includes(agent),
+        `training block group must include User-agent: ${agent}`
+      );
+    }
+    assert.deepStrictEqual(
+      trainingBlockGroup.rules,
+      ['disallow: /'],
+      'training-only scrapers must be blocked with exactly `Disallow: /`'
+    );
+  });
+
+  it('never lists an allowed AI agent in the blocked group (and vice versa)', () => {
+    for (const agent of REQUIRED_AI_SEARCH_AGENTS) {
+      assert.ok(
+        !trainingBlockGroup.agents.includes(agent),
+        `${agent} drives citations and must not be in the blocked group`
+      );
+    }
+    for (const agent of BLOCKED_TRAINING_AGENTS) {
+      assert.ok(
+        !aiAllowGroup.agents.includes(agent),
+        `${agent} is training-only and must not be in the allow group`
+      );
+    }
+  });
+
+  it('every crawl-permitting group keeps /api/ protected', () => {
+    for (const group of groups) {
+      if (group.rules.includes('allow: /')) {
+        assert.ok(
+          group.rules.includes('disallow: /api/'),
+          `group [${group.agents.join(', ')}] allows crawling but does not restate Disallow: /api/`
+        );
+      }
+    }
   });
 });
 

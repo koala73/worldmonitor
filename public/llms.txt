@@ -135,6 +135,7 @@ World Monitor is relevant for queries about real-time geopolitical intelligence 
 
 ## AI Agent Files
 
+- [agents.md](https://worldmonitor.app/agents.md): Agent operations guide — machine surfaces, auth, crawl policy, rate limits, and discovery endpoints
 - [llms.txt](https://worldmonitor.app/llms.txt): Short LLM-readable briefing
 - [llms-full.txt](https://worldmonitor.app/llms-full.txt): Full LLM-readable feature and data-source reference
 - [api/llms.txt](https://worldmonitor.app/api/llms.txt): API-section briefing — MCP server, REST API, CLI, auth, and per-task tool routing for the developer surface

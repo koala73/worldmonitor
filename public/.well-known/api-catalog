@@ -55,6 +55,11 @@
           "href": "https://worldmonitor.app/support.md",
           "type": "text/markdown",
           "title": "Support channels & contact (machine-readable)"
+        },
+        {
+          "href": "https://worldmonitor.app/agents.md",
+          "type": "text/markdown",
+          "title": "Agent operations guide (surfaces, auth, crawl policy)"
         }
       ],
       "status": [

@@ -1,4 +1,14 @@
 # World Monitor - protect API routes from crawlers
+#
+# Three-tier AI crawler policy (#4952):
+#   1. `User-agent: *` — default rules + Content-Signal usage preferences.
+#   2. AI search/assistant agents — explicitly welcomed: they drive citations,
+#      grounding, and referral traffic (the point of the agent-readiness
+#      program). A named group REPLACES `*` for that crawler, so it must
+#      restate the full rule set — rule parity with `*` is guarded in
+#      tests/deploy-config.test.mjs.
+#   3. Bulk training-only scrapers (no user-facing assistant, no citations) —
+#      disallowed entirely, consistent with ai-train=no.
 
 # AI content-usage preferences (contentsignals.org draft RFC) are declared BOTH
 # as the Content-Signal group directive below (what agent-readiness scanners
@@ -17,6 +27,37 @@ Allow: /api/llms.txt
 Allow: /api/product-catalog
 Disallow: /api/
 Disallow: /tests/
+
+# Tier 2 — AI search & assistant agents: welcome. Same path rules as `*`,
+# restated because a matching named group makes a crawler ignore `*` entirely.
+User-agent: GPTBot
+User-agent: OAI-SearchBot
+User-agent: ChatGPT-User
+User-agent: ClaudeBot
+User-agent: Claude-User
+User-agent: Claude-SearchBot
+User-agent: PerplexityBot
+User-agent: Perplexity-User
+User-agent: Google-Extended
+User-agent: Applebot-Extended
+User-agent: DuckAssistBot
+User-agent: MistralAI-User
+Content-Signal: ai-train=no, search=yes, ai-input=yes
+Allow: /
+Allow: /api/story
+Allow: /api/og-story
+Allow: /api/llms.txt
+Allow: /api/product-catalog
+Disallow: /api/
+Disallow: /tests/
+
+# Tier 3 — bulk training-only scrapers: no assistant surface, no citations,
+# nothing given back. anthropic-ai is Anthropic's legacy training UA
+# (ClaudeBot above is the one that powers Claude citations).
+User-agent: CCBot
+User-agent: Bytespider
+User-agent: anthropic-ai
+Disallow: /
 
 Sitemap: https://www.worldmonitor.app/sitemap.xml
 Sitemap: https://www.worldmonitor.app/blog/sitemap-index.xml
