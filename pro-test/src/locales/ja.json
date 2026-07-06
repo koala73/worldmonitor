@@ -186,7 +186,7 @@
     "starterWebhooks": "5 つの Webhook ルール",
     "business": "Business",
     "businessReqs": "10,000 req/日",
-    "businessWebhooks": "Priority support + XLSX exports",
+    "businessWebhooks": "Priority support",
     "feedData": "データをダッシュボードに流し込み、Zapier/n8n/Make でアラートを自動化、CII・リスクデータ上で独自のスコアリングモデルを構築。"
   },
   "enterpriseShowcase": {

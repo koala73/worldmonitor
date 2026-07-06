@@ -186,7 +186,7 @@
     "starterWebhooks": "5 webhook-regler",
     "business": "Business",
     "businessReqs": "10 000 req/dag",
-    "businessWebhooks": "Priority support + XLSX exports",
+    "businessWebhooks": "Priority support",
     "feedData": "Mata data i dina dashboards, automatisera larm via Zapier/n8n/Make, bygg egna scoring-modeller på CII/riskdata."
   },
   "enterpriseShowcase": {

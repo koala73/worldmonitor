@@ -71,7 +71,7 @@ const TIER_CONFIG = {
     name: 'API Business',
     localeKey: 'apiBusiness',
     description: 'High-volume API for teams',
-    features: ['Everything in API Starter', '300 requests/minute', '10,000 requests/day included', 'Priority support', 'XLSX exports'],
+    features: ['Everything in API Starter', '300 requests/minute', '10,000 requests/day included', 'Priority support'],
     highlighted: false,
   },
   enterprise: {

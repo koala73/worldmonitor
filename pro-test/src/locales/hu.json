@@ -186,7 +186,7 @@
     "starterWebhooks": "5 webhook-szabály",
     "business": "Business",
     "businessReqs": "10 000 kérés/nap",
-    "businessWebhooks": "Priority support + XLSX exports",
+    "businessWebhooks": "Priority support",
     "feedData": "Vezessen adatokat saját irányítópultjaiba, automatizálja a riasztásokat Zapier/n8n/Make segítségével, és építsen egyéni pontozási modelleket CII/kockázati adatokra."
   },
   "enterpriseShowcase": {

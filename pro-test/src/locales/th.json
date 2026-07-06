@@ -186,7 +186,7 @@
     "starterWebhooks": "5 กฎ webhook",
     "business": "Business",
     "businessReqs": "10,000 req/วัน",
-    "businessWebhooks": "Priority support + XLSX exports",
+    "businessWebhooks": "Priority support",
     "feedData": "ป้อนข้อมูลเข้าแดชบอร์ด อัตโนมัติการแจ้งเตือนผ่าน Zapier/n8n/Make สร้างโมเดลให้คะแนนบนข้อมูล CII/ความเสี่ยง"
   },
   "enterpriseShowcase": {

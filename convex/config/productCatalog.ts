@@ -238,7 +238,6 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
       "300 requests/minute",
       "10,000 requests/day included",
       "Priority support",
-      "XLSX exports",
     ],
     // Published + self-serve since #4945 (bet B4): the tier existed in the
     // billing system but was invisible on every pricing surface and had

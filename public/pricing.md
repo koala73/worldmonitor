@@ -38,7 +38,7 @@ Live tier/price/product-ID data (JSON): `GET https://www.worldmonitor.app/api/pr
 
 - Price: $249.99/month
 - Best for: Teams with high-volume programmatic workloads that outgrow the Starter quota
-- Includes: Everything in API Starter, priority support and XLSX exports
+- Includes: Everything in API Starter and priority support
 - Limits: 300 requests/minute, 10,000 requests/day
 - Upgrading from Starter: manage the switch from the billing portal (prorated immediately); new customers can subscribe directly at https://worldmonitor.app/pro
 
@@ -86,7 +86,7 @@ Live tier/price/product-ID data (JSON): `GET https://www.worldmonitor.app/api/pr
     {
       "name": "API Business",
       "price_usd_monthly": 249.99,
-      "features": ["Everything in API Starter", "300 requests/minute", "10,000 requests/day", "priority support", "XLSX exports"]
+      "features": ["Everything in API Starter", "300 requests/minute", "10,000 requests/day", "priority support"]
     },
     {
       "name": "Enterprise",

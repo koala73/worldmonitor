@@ -57,8 +57,7 @@
           "Everything in API Starter",
           "300 requests/minute",
           "10,000 requests/day included",
-          "Priority support",
-          "XLSX exports"
+          "Priority support"
         ]
       },
       "enterprise": {
@@ -272,7 +271,7 @@
     "starterWebhooks": "5 webhook rules",
     "business": "Business",
     "businessReqs": "10,000 req/day",
-    "businessWebhooks": "Priority support + XLSX exports",
+    "businessWebhooks": "Priority support",
     "feedData": "Feed data into your dashboards, automate alerting via Zapier/n8n/Make, build custom scoring models on CII/risk data."
   },
   "enterpriseShowcase": {

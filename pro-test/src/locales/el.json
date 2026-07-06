@@ -186,7 +186,7 @@
     "starterWebhooks": "5 κανόνες webhook",
     "business": "Business",
     "businessReqs": "10.000 req/ημέρα",
-    "businessWebhooks": "Priority support + XLSX exports",
+    "businessWebhooks": "Priority support",
     "feedData": "Τροφοδοτήστε δεδομένα στους πίνακές σας, αυτοματοποιήστε ειδοποιήσεις μέσω Zapier/n8n/Make, χτίστε προσαρμοσμένα μοντέλα scoring σε δεδομένα CII/κινδύνου."
   },
   "enterpriseShowcase": {

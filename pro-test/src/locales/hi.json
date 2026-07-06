@@ -186,7 +186,7 @@
     "starterWebhooks": "5 webhook rules",
     "business": "Business",
     "businessReqs": "10,000 req/day",
-    "businessWebhooks": "Priority support + XLSX exports",
+    "businessWebhooks": "Priority support",
     "feedData": "अपने dashboards में data feed करें, Zapier/n8n/Make से alerting automate करें, CII/risk data पर custom scoring models बनाएं।"
   },
   "enterpriseShowcase": {

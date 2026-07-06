@@ -186,7 +186,7 @@
     "starterWebhooks": "5 webhook pravidel",
     "business": "Business",
     "businessReqs": "10 000 req/den",
-    "businessWebhooks": "Priority support + XLSX exports",
+    "businessWebhooks": "Priority support",
     "feedData": "Napájejte data do dashboardů, automatizujte alerty přes Zapier/n8n/Make, stavte vlastní scoring modely na CII/rizikových datech."
   },
   "enterpriseShowcase": {

@@ -186,7 +186,7 @@
     "starterWebhooks": "5 règles webhook",
     "business": "Business",
     "businessReqs": "10 000 req/jour",
-    "businessWebhooks": "Priority support + XLSX exports",
+    "businessWebhooks": "Priority support",
     "feedData": "Injectez des données dans vos tableaux de bord, automatisez l'alerting via Zapier/n8n/Make, construisez des modèles de scoring personnalisés sur données CII/risque."
   },
   "enterpriseShowcase": {

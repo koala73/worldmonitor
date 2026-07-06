@@ -186,7 +186,7 @@
     "starterWebhooks": "5개 웹훅 규칙",
     "business": "Business",
     "businessReqs": "10,000 req/일",
-    "businessWebhooks": "Priority support + XLSX exports",
+    "businessWebhooks": "Priority support",
     "feedData": "데이터를 대시보드에 공급, Zapier/n8n/Make로 알림 자동화, CII/리스크 데이터 위에 맞춤형 점수 모델 구축."
   },
   "enterpriseShowcase": {

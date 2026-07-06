@@ -186,7 +186,7 @@
     "starterWebhooks": "5 webhook pravila",
     "business": "Business",
     "businessReqs": "10.000 zahtjeva/dan",
-    "businessWebhooks": "Priority support + XLSX exports",
+    "businessWebhooks": "Priority support",
     "feedData": "Dovedite podatke u svoje nadzorne ploče, automatizirajte upozorenja preko Zapier/n8n/Makea i gradite vlastite modele bodovanja na podacima CII/rizika."
   },
   "enterpriseShowcase": {

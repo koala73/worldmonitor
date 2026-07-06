@@ -186,7 +186,7 @@
     "starterWebhooks": "5 правила за webhook",
     "business": "Business",
     "businessReqs": "10 000 req/ден",
-    "businessWebhooks": "Priority support + XLSX exports",
+    "businessWebhooks": "Priority support",
     "feedData": "Подавайте данни в таблата си, автоматизирайте известия чрез Zapier/n8n/Make, стройте собствени модели за оценка върху CII/рискови данни."
   },
   "enterpriseShowcase": {

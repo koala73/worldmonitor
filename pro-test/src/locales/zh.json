@@ -186,7 +186,7 @@
     "starterWebhooks": "5 条 webhook 规则",
     "business": "Business",
     "businessReqs": "10,000 次/天",
-    "businessWebhooks": "Priority support + XLSX exports",
+    "businessWebhooks": "Priority support",
     "feedData": "将数据输入您的仪表板,通过 Zapier/n8n/Make 自动化告警,基于 CII/风险数据构建自定义评分模型。"
   },
   "enterpriseShowcase": {

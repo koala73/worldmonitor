@@ -186,7 +186,7 @@
     "starterWebhooks": "5 webhook kuralı",
     "business": "Business",
     "businessReqs": "10.000 req/gün",
-    "businessWebhooks": "Priority support + XLSX exports",
+    "businessWebhooks": "Priority support",
     "feedData": "Verileri kontrol panellerinize besleyin, Zapier/n8n/Make aracılığıyla uyarıları otomatikleştirin, CII/risk verileri üzerine özel puanlama modelleri kurun."
   },
   "enterpriseShowcase": {
