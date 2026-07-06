@@ -249,9 +249,17 @@ function callLlmProfile(
 export const callLlmTool = (opts: Omit<LlmCallOptions, 'providerOrder' | 'modelOverrides'>) =>
   callLlmProfile(opts, 'LLM_TOOL_PROVIDER', 'LLM_TOOL_MODEL', 'groq');
 
-/** Powerful model for synthesis and reasoning tasks. Configurable via LLM_REASONING_PROVIDER / LLM_REASONING_MODEL. */
+/**
+ * Powerful model for synthesis and reasoning tasks. Configurable via
+ * LLM_REASONING_PROVIDER / LLM_REASONING_MODEL. Reasoning is ON by default,
+ * but a caller may pass `enableReasoning: false` to use the same
+ * high-quality model with reasoning DISABLED — required for short-output
+ * stages (a 2–3 sentence brief blurb) where an actual reasoning model
+ * (e.g. deepseek-v4-pro) would otherwise spend its whole small max_tokens
+ * budget on hidden reasoning tokens and return empty content (#4983).
+ */
 export const callLlmReasoning = (opts: Omit<LlmCallOptions, 'providerOrder' | 'modelOverrides'>) =>
-  callLlmProfile({ ...opts, enableReasoning: true }, 'LLM_REASONING_PROVIDER', 'LLM_REASONING_MODEL', 'openrouter');
+  callLlmProfile({ enableReasoning: true, ...opts }, 'LLM_REASONING_PROVIDER', 'LLM_REASONING_MODEL', 'openrouter');
 
 // enableReasoning is omitted too: the reasoning stream hardcodes it on —
 // exposing the knob on the stream type would be a silent no-op for callers.

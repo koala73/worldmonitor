@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
-import { callLlm } from '../server/_shared/llm.ts';
+import { callLlm, callLlmReasoning } from '../server/_shared/llm.ts';
 
 const originalFetch = globalThis.fetch;
 const originalGroqApiKey = process.env.GROQ_API_KEY;
@@ -106,6 +106,49 @@ describe('callLlm', () => {
     assert.equal(postBodies.length, 1);
     // Opt-in leaves the model's own reasoning default in effect.
     assert.equal('reasoning' in (postBodies[0] ?? {}), false);
+  });
+
+  it('callLlmReasoning honors enableReasoning:false to disable reasoning on the reasoning-tier model (#4983)', async () => {
+    process.env.OPENROUTER_API_KEY = 'or-test-key';
+    process.env.LLM_REASONING_PROVIDER = 'openrouter';
+    process.env.LLM_REASONING_MODEL = 'deepseek/deepseek-v4-pro';
+    delete process.env.GROQ_API_KEY;
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    const bodies: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if ((init?.method || 'GET') === 'GET') return new Response('', { status: 200 });
+      bodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>);
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: 'Closure would choke a fifth of seaborne crude.' } }],
+        usage: { total_tokens: 30 },
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    // Short-stage caller opts OUT of reasoning: the tiny max_tokens budget
+    // must go to the answer, not hidden reasoning tokens (the #4983 bug).
+    const off = await callLlmReasoning({
+      messages: [{ role: 'user', content: 'Why does this matter?' }],
+      maxTokens: 260,
+      enableReasoning: false,
+    });
+    assert.ok(off);
+    assert.equal(off.model, 'deepseek/deepseek-v4-pro', 'still uses the reasoning-tier model');
+    assert.deepEqual(bodies[0]?.reasoning, { enabled: false }, 'reasoning must be disabled on the wire');
+
+    // Default (no override) keeps reasoning on for genuinely analytical stages.
+    bodies.length = 0;
+    const on = await callLlmReasoning({
+      messages: [{ role: 'user', content: 'Deduce the situation.' }],
+      maxTokens: 1500,
+    });
+    assert.ok(on);
+    assert.equal('reasoning' in (bodies[0] ?? {}), false, 'default leaves reasoning on (no disable body)');
+
+    delete process.env.LLM_REASONING_PROVIDER;
+    delete process.env.LLM_REASONING_MODEL;
   });
 
   it('ignores DeepSeek reasoning message fields and serves content untouched', async () => {

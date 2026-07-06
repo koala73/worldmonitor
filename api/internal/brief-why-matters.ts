@@ -238,6 +238,12 @@ async function runAnalystPath(story: StoryPayload, iso2: string | null): Promise
       // v2 prompt is 2–3 sentences / 40–70 words — roughly 3× v1's
       // single-sentence output, so bump maxTokens proportionally.
       maxTokens: 260,
+      // Reasoning OFF (#4983): a 2–3 sentence blurb needs no chain-of-thought,
+      // and an actual reasoning model (deepseek-v4-pro) would burn this whole
+      // 260-token budget on hidden reasoning and return empty content (~80%
+      // empty at the pre-fix budget). Off = full budget for the answer + no
+      // 6–9s reasoning latency × N stories. Uses the same LLM_REASONING_MODEL.
+      enableReasoning: false,
       temperature: 0.4,
       timeoutMs: 15_000,
       stage: 'brief-why-matters-analyst',
@@ -276,6 +282,9 @@ async function runGeminiPath(story: StoryPayload): Promise<string | null> {
         { role: 'user', content: user },
       ],
       maxTokens: 120,
+      // Reasoning OFF (#4983) — see analyst path above. This path's 120-token
+      // budget is even tighter, so a reasoning model returns empty ~100%.
+      enableReasoning: false,
       temperature: 0.4,
       timeoutMs: 10_000,
       stage: 'brief-why-matters-gemini',
