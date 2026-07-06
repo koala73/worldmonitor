@@ -28,6 +28,9 @@ RUN npm ci --prefix scripts --omit=dev --omit=optional --ignore-scripts
 COPY scripts/ais-relay.cjs ./scripts/ais-relay.cjs
 COPY scripts/_proxy-utils.cjs ./scripts/_proxy-utils.cjs
 COPY scripts/lib/usni-fleet-parser.cjs ./scripts/lib/usni-fleet-parser.cjs
+# llm-telemetry.cjs is transitively imported by _seed-utils.mjs (SIGTERM
+# telemetry flush, #4954) — missing it = silent startup crash in the image.
+COPY scripts/lib/llm-telemetry.cjs ./scripts/lib/llm-telemetry.cjs
 COPY scripts/shared/country-name-to-iso2.cjs ./scripts/shared/country-name-to-iso2.cjs
 COPY scripts/_seed-utils.mjs ./scripts/_seed-utils.mjs
 # _seed-envelope-source.mjs and _seed-contract.mjs are transitively imported
