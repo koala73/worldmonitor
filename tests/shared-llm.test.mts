@@ -261,6 +261,61 @@ describe('callLlm', () => {
     }
   });
 
+  it('reads at most the cap from an oversized/never-ending error body before falling back', async () => {
+    process.env.OPENROUTER_API_KEY = 'or-test-key';
+    process.env.GROQ_API_KEY = 'groq-test-key';
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    const warns: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => { warns.push(args.map(String).join(' ')); };
+
+    let cancelled = false;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if ((init?.method || 'GET') === 'GET') {
+        return new Response('', { status: 200 });
+      }
+      if (url.includes('openrouter.ai')) {
+        // First chunk exceeds the cap; a second read would hang forever.
+        // The bounded reader must stop after chunk one and cancel — if it
+        // tried to consume the full body (resp.text()), this test hangs.
+        const enc = new TextEncoder();
+        const body = new ReadableStream<Uint8Array>({
+          pull(controller) {
+            if (!cancelled) {
+              controller.enqueue(enc.encode(`REGION_BLOCK ${'x'.repeat(4000)}`));
+            }
+            // Never close: subsequent pulls stall until cancel.
+            return new Promise(() => { /* hang */ });
+          },
+          cancel() { cancelled = true; },
+        });
+        return new Response(body, { status: 403 });
+      }
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: 'groq fallback' } }],
+        usage: { total_tokens: 5 },
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    try {
+      const result = await callLlm({ messages: [{ role: 'user', content: 'hi' }] });
+      assert.ok(result, 'fallback must complete despite the never-ending error body');
+      assert.equal(result.provider, 'groq');
+      const errLine = warns.find((w) => w.includes('HTTP 403'));
+      assert.ok(errLine, 'a 403 warn line must be emitted');
+      assert.ok(errLine.includes('REGION_BLOCK'), 'the leading body slice must be visible');
+      const bodyPart = errLine.slice(errLine.indexOf('body=') + 5);
+      assert.ok(bodyPart.length <= 300, `logged body must be capped at 300 chars, got ${bodyPart.length}`);
+      assert.ok(cancelled, 'the error-body stream must be cancelled after the bounded read');
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
   it('falls back within an explicit provider order when the upper model fails', async () => {
     process.env.GROQ_API_KEY = 'groq-test-key';
     process.env.OPENROUTER_API_KEY = 'or-test-key';

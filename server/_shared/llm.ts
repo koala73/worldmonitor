@@ -125,6 +125,30 @@ export function getProviderCredentials(
   return null;
 }
 
+/**
+ * Read AT MOST ~`cap` characters of a provider error body, then cancel the
+ * stream — a large or slow error body must never delay the next-provider
+ * fallback (#4966 review). The request's own AbortSignal still bounds a
+ * pathological first-chunk stall.
+ */
+async function readBoundedErrorBody(resp: Response, cap: number): Promise<string> {
+  const body = resp.body;
+  if (!body) return '';
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let out = '';
+  try {
+    while (out.length < cap) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      out += decoder.decode(value, { stream: true });
+    }
+  } catch { /* best-effort diagnostics only */ } finally {
+    try { void reader.cancel(); } catch { /* already closed */ }
+  }
+  return out.slice(0, cap);
+}
+
 export function stripThinkingTags(text: string): string {
   let s = text
     .replace(/<think>[\s\S]*?<\/think>/gi, '')
@@ -513,9 +537,10 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
         if (!resp.ok) {
           // Log a bounded body slice (like the stream path already does) —
           // region-403s and provider errors are undiagnosable from the
-          // status code alone (#4944 U7).
-          const errBody = await resp.text().catch(() => '');
-          console.warn(`[llm:${providerName}] HTTP ${resp.status} model=${creds.model} body=${errBody.slice(0, 300)}`);
+          // status code alone (#4944 U7). Bounded READ, not just bounded
+          // log: never consume a huge/slow error body before falling back.
+          const errBody = await readBoundedErrorBody(resp, 300).catch(() => '');
+          console.warn(`[llm:${providerName}] HTTP ${resp.status} model=${creds.model} body=${errBody}`);
           record(false, { reason: `http_${resp.status}` });
           if (forcedProvider) return null;
           continue;
