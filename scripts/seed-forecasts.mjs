@@ -14534,6 +14534,15 @@ function getUsableForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs) {
   return Math.max(0, getRemainingForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs) - FORECAST_LLM_STAGE_BUDGET_GUARD_MS);
 }
 
+// Remaining RUN-level LLM budget in ms (Infinity when no run deadline is set —
+// tests and the deep-forecast worker, which have only the per-stage budget).
+// market_implications runs LAST in afterPublish, so this is the budget that
+// starves it when upstream stages are slow (e.g. deepseek-v4-flash 30s
+// timeouts drain the shared 150s run budget before the tail stage runs). #4978.
+function getRemainingForecastLlmRunBudgetMs() {
+  return forecastLlmRunDeadlineMs == null ? Infinity : forecastLlmRunDeadlineMs - Date.now();
+}
+
 function isForecastLlmBudgetError(err) {
   return Boolean(err?.forecastLlmBudgetExhausted);
 }
@@ -16373,6 +16382,13 @@ const MARKET_IMPLICATIONS_META_TTL = 86400 * 7;
 // fingerprint is not model-sensitive, so retire old-model rows explicitly.
 const MARKET_IMPLICATIONS_STAGE_CACHE_PREFIX = 'forecast:llm-market-implications:v2:';
 
+// A market_implications completion needs ~20s wall-clock (observed 2026-07-06).
+// When the shared run budget (#4978) is below this as the tail stage begins, the
+// call would be aborted by the budget-capped timeout and then misreported as a
+// SEED_ERROR — so skip gracefully and preserve last-good instead of attempting a
+// doomed call. Tunable: raise it if 20s calls still start and time out.
+const MARKET_IMPLICATIONS_MIN_RUN_BUDGET_MS = 20_000;
+
 // Input-hash guard for the market_implications LLM stage (#4894). This was
 // the only forecast stage with no pre-call cache — a 2,500-token completion
 // regenerated every hourly run (plus every triggered re-run) even when the
@@ -16420,6 +16436,24 @@ async function writeMarketImplicationsFailureMeta(reason) {
   }
 }
 
+// A budget-starve is NOT a producer failure — it's resource contention from
+// slow upstream stages consuming the shared 150s run budget before this tail
+// stage runs (#4978). Unlike writeMarketImplicationsFailureMeta, this leaves
+// seed-meta untouched so the last-good fetchedAt stays put: age-based
+// STALE_SEED (maxStaleMin=120) still escalates if the starve persists past 2h,
+// exactly like the gpsjam preserve-last-good design, while a single starved
+// tick stays green. EXPIRE-refresh both keys so the cards + meta outlive a run
+// of consecutive starves rather than TTLing out to EMPTY mid-contention.
+async function preserveMarketImplicationsLastGoodOnStarve() {
+  const { url, token } = getRedisCredentials();
+  try {
+    await redisCommand(url, token, ['EXPIRE', MARKET_IMPLICATIONS_KEY, String(MARKET_IMPLICATIONS_TTL)]);
+    await redisCommand(url, token, ['EXPIRE', MARKET_IMPLICATIONS_META_KEY, String(MARKET_IMPLICATIONS_META_TTL)]);
+  } catch (err) {
+    console.warn(`  [MarketImplications] last-good preserve refresh failed: ${err.message}`);
+  }
+}
+
 async function buildAndSeedMarketImplications(inputs) {
   const startMs = Date.now();
   console.log('  [MarketImplications] Building world-state context...');
@@ -16444,6 +16478,21 @@ async function buildAndSeedMarketImplications(inputs) {
     }
   } catch { /* guard is best-effort — fall through to live generation */ }
 
+  // Tail-stage budget guard (#4978): market_implications is the LAST forecast
+  // LLM stage under the shared 150s run budget. When upstream stages are slow
+  // (e.g. deepseek-v4-flash 30s timeouts) they drain that budget before this
+  // stage runs; callForecastLLM would then throw a budget error, return null,
+  // and we'd (mis)write a SEED_ERROR for benign, self-healing resource
+  // contention. Skip gracefully and preserve last-good instead.
+  const runBudgetRemainingMs = getRemainingForecastLlmRunBudgetMs();
+  if (runBudgetRemainingMs < MARKET_IMPLICATIONS_MIN_RUN_BUDGET_MS) {
+    const remaining = Math.max(0, Math.round(runBudgetRemainingMs));
+    console.warn(`  [MarketImplications] Skipped: shared LLM run budget exhausted (${remaining}ms left, need ${MARKET_IMPLICATIONS_MIN_RUN_BUDGET_MS}ms) — preserving last-good, no SEED_ERROR`);
+    console.log(JSON.stringify({ event: 'llm_market_implications', skipped: 'run_budget_exhausted', remainingMs: remaining }));
+    await preserveMarketImplicationsLastGoodOnStarve();
+    return;
+  }
+
   const userPrompt = `World state as of ${new Date().toISOString()}:\n\n${context}\n\nAllowed tickers: ${[...ALL_ALLOWED_TICKERS].join(', ')}`;
 
   const llmOptions = getForecastLlmCallOptions('market_implications');
@@ -16455,6 +16504,15 @@ async function buildAndSeedMarketImplications(inputs) {
   });
 
   if (!result?.text) {
+    // A null result with the run budget now exhausted is the same benign starve
+    // as the pre-call guard (budget hit zero mid-call) — preserve last-good
+    // rather than flip to SEED_ERROR. A null with budget remaining is a genuine
+    // provider failure and DOES warrant the error seed-meta. (#4978)
+    if (getRemainingForecastLlmRunBudgetMs() <= 0) {
+      console.warn('  [MarketImplications] LLM run budget exhausted mid-call — preserving last-good, no SEED_ERROR');
+      await preserveMarketImplicationsLastGoodOnStarve();
+      return;
+    }
     console.warn('  [MarketImplications] LLM returned no response — writing error seed-meta');
     await writeMarketImplicationsFailureMeta('llm_no_response');
     return;
@@ -16556,6 +16614,19 @@ if (_isDirectRun) {
       if (triggerContext.triggerRequest) {
         await clearForecastRefreshRequestIfUnchanged(triggerContext.triggerRequest);
       }
+
+      // market_implications is the last remaining LLM stage and shares the 150s
+      // run budget (#4978). Run it BEFORE the best-effort telemetry below
+      // (history + deep-forecast snapshots, ~20s R2 trace export) so their
+      // wall-clock can't push the tail stage past the run deadline and starve
+      // it into a (pre-fix) SEED_ERROR. Independent of that telemetry — it reads
+      // data.inputs and publishes to its own key.
+      try {
+        await buildAndSeedMarketImplications(data.inputs || {});
+      } catch (err) {
+        console.warn(`  [MarketImplications] Stage failed: ${err.message}`);
+      }
+
       try {
         const snapshot = await appendHistorySnapshot(data);
         console.log(`  History appended: ${snapshot.predictions.length} forecasts -> ${HISTORY_KEY}`);
@@ -16637,12 +16708,6 @@ if (_isDirectRun) {
       } catch (err) {
         console.warn(`  [Trace] Export failed: ${err.message}`);
         if (err.stack) console.warn(`  [Trace] Stack: ${err.stack.split('\n').slice(0, 3).join(' | ')}`);
-      }
-
-      try {
-        await buildAndSeedMarketImplications(data.inputs || {});
-      } catch (err) {
-        console.warn(`  [MarketImplications] Stage failed: ${err.message}`);
       }
     },
     extraKeys: FORECAST_EXTRA_KEYS,
