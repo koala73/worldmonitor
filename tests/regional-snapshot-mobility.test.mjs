@@ -603,6 +603,25 @@ describe('classifyInputs metaKey fallback (PR #2976 P2 #2)', () => {
     assert.ok(!result.fresh.includes('aviation:delays:faa:v1'));
   });
 
+  // PR #4987: gpsjam restored to the DAILY gpsjam.org source. Its freshness
+  // budget must match the daily cadence / api/health.js (1440min), not the old
+  // 240min (4h) that marked a healthy daily seed stale hours after it ran.
+  it('gpsjam seed ~5h old stays fresh under the daily-source budget', () => {
+    const meta = { fetchedAt: Date.now() - 5 * 60 * 60_000 }; // 5h old — was > 240min, now < 1440min
+    const result = classifyInputs(
+      { 'intelligence:gpsjam:v2': { hexes: [] } },
+      { 'seed-meta:intelligence:gpsjam': meta },
+    );
+    assert.ok(result.fresh.includes('intelligence:gpsjam:v2'), 'gpsjam 5h-old must be fresh under the 1440min daily budget');
+    assert.ok(!result.stale.includes('intelligence:gpsjam:v2'));
+  });
+
+  it('gpsjam freshness budget matches the daily cadence / api/health.js (1440min)', () => {
+    const spec = FRESHNESS_REGISTRY.find((s) => s.key === 'intelligence:gpsjam:v2');
+    assert.ok(spec);
+    assert.equal(spec.maxAgeMin, 1440);
+  });
+
   it('missing payload → classified as missing regardless of meta', () => {
     const result = classifyInputs(
       { 'aviation:delays:faa:v1': null },
