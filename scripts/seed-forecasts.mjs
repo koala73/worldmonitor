@@ -3292,7 +3292,17 @@ async function extractCriticalSignalBundle(inputs) {
   if (candidates.length === 0) return bundle;
 
   const { url, token } = getRedisCredentials();
-  const cacheKey = `forecast:critical-signals:llm:${buildCriticalSignalCandidateHash(candidates)}`;
+  // The key carries the resolved LLM route (#4965 review): the R13-pinned
+  // default and a FORECAST_LLM_CRITICAL_*-unpinned route must not reuse each
+  // other's frames within the TTL — strength/confidence magnitudes are
+  // model-dependent and probability-coupled.
+  const criticalLlmOptions = getForecastLlmCallOptions('critical_signals');
+  const criticalRouteTag = [
+    (criticalLlmOptions.providerOrder || []).join('-') || 'default',
+    criticalLlmOptions.modelOverrides?.openrouter || 'table',
+    criticalLlmOptions.modelOverrides?.groq || 'table',
+  ].join('_').replace(/[^a-zA-Z0-9._\/-]/g, '-');
+  const cacheKey = `forecast:critical-signals:llm:${criticalRouteTag}:${buildCriticalSignalCandidateHash(candidates)}`;
   const fallbackSignalsFromCandidates = (coveredIndexes = new Set()) =>
     extractRegexCriticalNewsSignals(inputs, candidates.filter((item) => !coveredIndexes.has(item.candidateIndex)));
 
@@ -3326,7 +3336,7 @@ async function extractCriticalSignalBundle(inputs) {
   }
 
   const llmOptions = {
-    ...getForecastLlmCallOptions('critical_signals'),
+    ...criticalLlmOptions,
     stage: 'critical_signals',
     maxTokens: 1200,
     temperature: 0.1,
