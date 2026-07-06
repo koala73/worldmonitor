@@ -707,7 +707,9 @@ async function readInputKeys() {
     'military:forecast-inputs:stale:v1',
     'prediction:markets-bootstrap:v1',
     'supply_chain:chokepoints:v4',
-    'conflict:iran-events:v1',
+    // Iran-events sunset: don't fetch the (dormant) key into the pipeline batch
+    // when disabled — the assembly below already feeds empty iranEvents.
+    ...(iranEventsEnabled() ? ['conflict:iran-events:v1'] : []),
     'conflict:ucdp-events:v1',
     'unrest:events:v1',
     'infra:outages:v1',

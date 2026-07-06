@@ -24,6 +24,13 @@ import {
 } from '../filters';
 import type { ToolDef } from '../types';
 
+// Iran-events domain sunset (war ended 2026-07). Default OFF: drop the dormant
+// conflict:iran-events:v1 key from the get_conflict_events cache set so the MCP
+// tool stops serving the stale snapshot that lingers for the key's 14-day TTL.
+// The output schema still documents an iran-events field (harmless when absent).
+// Set IRAN_EVENTS_ENABLED=true to restore. See api/health.js.
+const IRAN_EVENTS_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLowerCase() === 'true';
+
 export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_market_data',
@@ -241,7 +248,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     },
     _cacheKeys: [
       'conflict:ucdp-events:v1',
-      'conflict:iran-events:v1',
+      ...(IRAN_EVENTS_ENABLED ? ['conflict:iran-events:v1'] : []),
       'unrest:events:v1',
       CII_RISK_SCORE_CACHE_KEYS.stale,
     ],

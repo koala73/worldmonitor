@@ -70,4 +70,23 @@ describe('iran-events sunset — backend gates (source guards)', () => {
   it('seed-iran-events.mjs no-ops (exit 0) when disabled', () => {
     assert.match(read('scripts/seed-iran-events.mjs'), /IRAN_EVENTS_ENABLED[\s\S]*?process\.exit\(0\)/);
   });
+
+  // ce-code-review #4982 follow-ups — parallel API/MCP surfaces that also read
+  // the shared cache key must be gated, not just api/bootstrap.js.
+
+  it('get-bootstrap-data RPC drops iranEvents from the shared bootstrap registry', () => {
+    assert.match(read('server/worldmonitor/infrastructure/v1/get-bootstrap-data.ts'), /if \(!IRAN_EVENTS_ENABLED\) delete registry\.iranEvents/);
+  });
+
+  it('list-iran-events RPC serves empty immediately when disabled (not the 14d-TTL snapshot)', () => {
+    assert.match(read('server/worldmonitor/conflict/v1/list-iran-events.ts'), /if \(!IRAN_EVENTS_ENABLED\) return \{ events: \[\], scrapedAt: '0' \}/);
+  });
+
+  it('MCP get_conflict_events drops the iran-events cache key when disabled', () => {
+    assert.match(read('api/mcp/registry/cache-tools.ts'), /\.\.\.\(IRAN_EVENTS_ENABLED \? \['conflict:iran-events:v1'\] : \[\]\)/);
+  });
+
+  it('seed-forecasts.mjs skips fetching the iran key into the pipeline batch when disabled', () => {
+    assert.match(read('scripts/seed-forecasts.mjs'), /\.\.\.\(iranEventsEnabled\(\) \? \['conflict:iran-events:v1'\] : \[\]\)/);
+  });
 });
