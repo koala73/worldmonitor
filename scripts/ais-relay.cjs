@@ -6495,6 +6495,11 @@ const DODO_PRODUCT_IDS = [
   'pdt_0Nbttg7NuOJrhbyBGCius', // API Business Monthly (#4945)
 ];
 
+// ⚠ MANUAL MIRROR of TIER_CONFIG in api/product-catalog.js (and ultimately
+// convex/config/productCatalog.ts marketingFeatures). This seeder's Redis
+// payload is the PRIMARY live catalog — it wins over the edge fallback on
+// cache hits — so drift here silently changes the /pro pricing page (#4946
+// P0, #4974). Parity enforced by tests/product-catalog-freshness.test.mjs.
 const DODO_TIER_CONFIG = {
   free: { name: 'Free', localeKey: 'free', description: 'Get started with the essentials', features: ['Core dashboard panels', 'Global news feed', 'Earthquake & weather alerts', 'Basic map view'], cta: 'Get Started', href: 'https://worldmonitor.app/dashboard', highlighted: false },
   pro: { name: 'Pro', localeKey: 'pro', description: 'Full intelligence dashboard', features: ['Everything in Free', 'AI stock analysis & backtesting', 'Daily market briefs', 'Military & geopolitical tracking', 'Custom widget builder', 'MCP + SDK access for Claude Desktop & other AI clients (50 calls/day)', 'Priority data refresh'], highlighted: true },

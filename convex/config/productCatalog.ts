@@ -20,6 +20,13 @@ export type PlanFeatures = {
   apiAccess: boolean;
   apiRateLimit: number;
   prioritySupport: boolean;
+  /**
+   * Display/entitlement metadata ONLY — as of #4974 NO code consumes this
+   * array to gate any behavior, and formats listed here are not guaranteed
+   * to have exporters ("xlsx" was advertised for months with zero
+   * implementation). Do NOT gate features on it without building the
+   * exporter first.
+   */
   exportFormats: string[];
   /**
    * Pro MCP access — bearer-token MCP authorization via Clerk + per-user 50/day
@@ -108,7 +115,8 @@ const API_BUSINESS_FEATURES: PlanFeatures = {
   apiRateLimit: 300,
   apiDailyAllowance: 10000,
   prioritySupport: true,
-  exportFormats: ["csv", "pdf", "json", "xlsx"],
+  // xlsx removed (#4974): no XLSX exporter exists anywhere in the product.
+  exportFormats: ["csv", "pdf", "json"],
   mcpAccess: true,
 };
 

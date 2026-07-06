@@ -211,6 +211,32 @@ describe('Product catalog freshness', () => {
     assert.deepEqual(relayGroups, edgeGroups,
       'ais-relay publicGroups and api/product-catalog PUBLIC_TIER_GROUPS have drifted apart');
 
+    // Feature-array parity (#4974): the XLSX phantom survived in copy
+    // because nothing compared the mirrors' features lists. Every tier's
+    // features must be IDENTICAL between the seeder and the edge fallback,
+    // and must match the generated tiers.json (catalog marketingFeatures)
+    // for the tiers it carries.
+    const extractFeatures = (src, label) => {
+      const map = {};
+      for (const m of src.matchAll(/(\w+):\s*\{[^{}]*?features:\s*\[([^\]]*)\]/g)) {
+        map[m[1]] = [...m[2].matchAll(/'((?:[^'\\]|\\.)*)'/g)].map((f) => f[1]);
+      }
+      assert.ok(Object.keys(map).length >= 5, label + ': expected ≥5 tier feature lists');
+      return map;
+    };
+    const relayFeatures = extractFeatures(relaySrc, 'ais-relay.cjs');
+    const edgeFeatures = extractFeatures(edgeSrc, 'api/product-catalog.js');
+    assert.deepEqual(relayFeatures, edgeFeatures,
+      'tier features have drifted between ais-relay.cjs and api/product-catalog.js');
+    const tiersByName = new Map(tiersJson.map((tier) => [tier.name, tier]));
+    for (const [group, features] of Object.entries(edgeFeatures)) {
+      const name = { free: 'Free', pro: 'Pro', api_starter: 'API', api_business: 'API Business', enterprise: 'Enterprise' }[group];
+      const generated = tiersByName.get(name);
+      if (!generated) continue;
+      assert.deepEqual(features, generated.features,
+        'features for ' + group + ' drifted between the mirrors and generated tiers.json (catalog marketingFeatures)');
+    }
+
     // Both mirrors must carry the generated localeKey for every public tier
     // so translations survive the live payload replacing static tiers.json
     // (PricingSection falls back to name.toLowerCase(), which breaks for
