@@ -15,14 +15,22 @@ import assert from 'node:assert/strict';
 import {
   buildAndSeedMarketImplications,
   __setRedisStoreForTests,
+  __setForecastLlmTransportForTests,
   __setForecastLlmRunDeadlineForTests,
 } from '../scripts/seed-forecasts.mjs';
 
+const ENV_KEYS = ['OPENROUTER_API_KEY', 'FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER'];
+const originalEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
 const realFetch = global.fetch;
 afterEach(() => {
   global.fetch = realFetch;
   __setRedisStoreForTests(null);
+  __setForecastLlmTransportForTests(null);
   __setForecastLlmRunDeadlineForTests(null);
+  for (const k of ENV_KEYS) {
+    if (originalEnv[k] === undefined) delete process.env[k];
+    else process.env[k] = originalEnv[k];
+  }
 });
 
 const LAST_GOOD = [{
@@ -73,15 +81,86 @@ test('run-budget starve preserves last-good and does NOT write a SEED_ERROR', as
   );
 });
 
+test('run-budget starve restores stale OK meta when previous tick wrote SEED_ERROR', async () => {
+  const store = {};
+  __setRedisStoreForTests(store);
+  seedLastGood(store);
+  store['seed-meta:intelligence:market-implications'] = {
+    fetchedAt: Date.now(),
+    recordCount: 0,
+    status: 'error',
+    errorReason: 'llm_no_response',
+  };
+
+  __setForecastLlmRunDeadlineForTests(Date.now() - 1000);
+
+  const redisCommands = [];
+  global.fetch = async (_url, init = {}) => {
+    redisCommands.push(JSON.parse(String(init.body || '[]')));
+    return { ok: true, status: 200, json: async () => ({ result: 1 }), text: async () => '' };
+  };
+
+  await buildAndSeedMarketImplications({});
+
+  const meta = store['seed-meta:intelligence:market-implications'];
+  assert.equal(meta.status, 'ok', 'a later budget starve must not preserve a prior producer-error meta');
+  assert.equal(meta.recordCount, LAST_GOOD.length);
+  assert.equal(meta.fetchedAt, Date.parse('2026-07-06T13:00:00.000Z'), 'restored meta keeps last-good age');
+  assert.ok(
+    redisCommands.some((command) => command[0] === 'EXPIRE' && command[1] === 'intelligence:market-implications:v1'),
+    'canonical last-good payload TTL is still refreshed',
+  );
+  assert.ok(
+    !redisCommands.some((command) => command[0] === 'EXPIRE' && command[1] === 'seed-meta:intelligence:market-implications'),
+    'stale error meta must not be TTL-refreshed',
+  );
+});
+
 test('a genuine provider failure (budget remaining) still writes a SEED_ERROR', async () => {
   const store = {};
   __setRedisStoreForTests(store);
   // No run deadline set → budget is effectively unlimited, so a null result is a
   // real provider failure, not a starve.
-  global.fetch = async () => { throw new Error('provider down'); };
+  process.env.OPENROUTER_API_KEY = 'test-key';
+  process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER = 'openrouter';
+
+  let providerCalls = 0;
+  __setForecastLlmTransportForTests({
+    fetch: async () => {
+      providerCalls += 1;
+      return { ok: false, status: 401, headers: { get: () => null }, text: async () => 'provider down' };
+    },
+  });
+  global.fetch = async () => ({ ok: true, status: 200, json: async () => ({ result: 1 }), text: async () => '' });
 
   await buildAndSeedMarketImplications({});
 
+  assert.equal(providerCalls, 1, 'the regression must exercise a real provider request');
   const meta = store['seed-meta:intelligence:market-implications'];
   assert.equal(meta.status, 'error', 'a real LLM failure with budget remaining must still surface SEED_ERROR');
+});
+
+test('a genuine provider failure that drains the run deadline still writes a SEED_ERROR', async () => {
+  const store = {};
+  __setRedisStoreForTests(store);
+  seedLastGood(store);
+  process.env.OPENROUTER_API_KEY = 'test-key';
+  process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER = 'openrouter';
+  __setForecastLlmRunDeadlineForTests(Date.now() + 25_000);
+
+  let providerCalls = 0;
+  __setForecastLlmTransportForTests({
+    fetch: async () => {
+      providerCalls += 1;
+      __setForecastLlmRunDeadlineForTests(Date.now() - 1);
+      return { ok: false, status: 401, headers: { get: () => null }, text: async () => 'provider down' };
+    },
+  });
+  global.fetch = async () => ({ ok: true, status: 200, json: async () => ({ result: 1 }), text: async () => '' });
+
+  await buildAndSeedMarketImplications({});
+
+  assert.equal(providerCalls, 1, 'provider failure path must run before the deadline is drained');
+  const meta = store['seed-meta:intelligence:market-implications'];
+  assert.equal(meta.status, 'error', 'provider failure must not be reclassified as budget starve just because the deadline is now exhausted');
 });

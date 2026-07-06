@@ -14547,6 +14547,15 @@ function isForecastLlmBudgetError(err) {
   return Boolean(err?.forecastLlmBudgetExhausted);
 }
 
+const FORECAST_LLM_FAILURE_BUDGET_EXHAUSTED = 'budget_exhausted';
+const FORECAST_LLM_FAILURE_PROVIDER_FAILED = 'provider_failed';
+
+function createForecastLlmFailureResult(options, failureReason) {
+  return options.returnFailureReason
+    ? { text: '', model: '', provider: '', failureReason }
+    : null;
+}
+
 function createForecastLlmHttpError(resp, usableBudgetMs = Infinity) {
   const err = new Error(`HTTP ${resp.status}`);
   err.status = resp.status;
@@ -14606,6 +14615,8 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
   const llmMaxTokens = options.maxTokens || 1500;
   const llmEvents = [];
   let llmAttemptIndex = 0;
+  let sawProviderFailure = false;
+  let sawBudgetCappedTimeout = false;
   const recordLlmAttempt = (providerName, model, ok, startedAtMs, extra = {}) => {
     llmEvents.push({
       _time: new Date().toISOString(),
@@ -14638,6 +14649,7 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
         const resp = await withRetry(async () => {
           const usableBudgetMs = getUsableForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs);
           if (usableBudgetMs <= 0) throw createForecastLlmBudgetError(stage, budgetStartedAtMs, stageBudgetMs);
+          const attemptTimeoutMs = Math.max(1, Math.min(provider.timeout, usableBudgetMs));
           attemptT0 = Date.now();
           try {
             const response = await forecastFetch(provider.apiUrl, {
@@ -14658,9 +14670,10 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
                 temperature: options.temperature ?? 0.3,
                 ...(provider.extraBody || {}),
               }),
-              signal: AbortSignal.timeout(Math.max(1, Math.min(provider.timeout, usableBudgetMs))),
+              signal: AbortSignal.timeout(attemptTimeoutMs),
             });
             if (!response.ok) {
+              sawProviderFailure = true;
               recordLlmAttempt(provider.name, provider.model, false, attemptT0, { reason: `http_${response.status}` });
               const httpErr = createForecastLlmHttpError(
                 response,
@@ -14674,8 +14687,14 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
             if (!err?.__llmAttemptRecorded && !isForecastLlmBudgetError(err)) {
               err.__llmAttemptRecorded = true;
               const name = err?.name;
+              const timedOut = name === 'TimeoutError' || name === 'AbortError';
+              const budgetCappedTimeout = timedOut
+                && attemptTimeoutMs < provider.timeout
+                && getUsableForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs) <= 0;
+              if (budgetCappedTimeout) sawBudgetCappedTimeout = true;
+              else sawProviderFailure = true;
               recordLlmAttempt(provider.name, provider.model, false, attemptT0, {
-                reason: name === 'TimeoutError' || name === 'AbortError' ? 'timeout' : 'fetch_error',
+                reason: timedOut ? 'timeout' : 'fetch_error',
               });
             }
             throw err;
@@ -14687,6 +14706,7 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
           json = await resp.json();
         } catch (err) {
           console.warn(`  [LLM:${stage}] ${provider.name} invalid response: ${err.message}`);
+          sawProviderFailure = true;
           recordLlmAttempt(provider.name, provider.model, false, attemptT0, { reason: 'invalid_json' });
           continue;
         }
@@ -14697,6 +14717,7 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
         };
         const text = json.choices?.[0]?.message?.content?.trim();
         if (!text || text.length < 20) {
+          sawProviderFailure = true;
           recordLlmAttempt(provider.name, provider.model, false, attemptT0, { ...tokensExtra, reason: 'empty' });
           continue;
         }
@@ -14708,10 +14729,22 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
         // All real attempts were recorded inside the retry callback; budget
         // pre-emptions never sent the prompt, so nothing to record here.
         console.warn(`  [LLM:${stage}] ${provider.name} ${err.message}`);
-        if (isForecastLlmBudgetError(err)) return null;
+        if (isForecastLlmBudgetError(err)) {
+          return createForecastLlmFailureResult(
+            options,
+            sawProviderFailure ? FORECAST_LLM_FAILURE_PROVIDER_FAILED : FORECAST_LLM_FAILURE_BUDGET_EXHAUSTED,
+          );
+        }
       }
     }
-    return null;
+    return createForecastLlmFailureResult(
+      options,
+      sawProviderFailure
+        ? FORECAST_LLM_FAILURE_PROVIDER_FAILED
+        : sawBudgetCappedTimeout
+          ? FORECAST_LLM_FAILURE_BUDGET_EXHAUSTED
+          : FORECAST_LLM_FAILURE_PROVIDER_FAILED,
+    );
   } finally {
     await emitForecastLlmEvents(llmEvents);
   }
@@ -16438,17 +16471,37 @@ async function writeMarketImplicationsFailureMeta(reason) {
 
 // A budget-starve is NOT a producer failure — it's resource contention from
 // slow upstream stages consuming the shared 150s run budget before this tail
-// stage runs (#4978). Unlike writeMarketImplicationsFailureMeta, this leaves
-// seed-meta untouched so the last-good fetchedAt stays put: age-based
+// stage runs (#4978). Unlike writeMarketImplicationsFailureMeta, this preserves
+// last-good seed-meta without advancing fetchedAt: existing OK meta is TTL-
+// refreshed, and stale error meta is replaced only when the canonical payload
+// still contains last-good cards with a generatedAt timestamp. Age-based
 // STALE_SEED (maxStaleMin=120) still escalates if the starve persists past 2h,
 // exactly like the gpsjam preserve-last-good design, while a single starved
-// tick stays green. EXPIRE-refresh both keys so the cards + meta outlive a run
-// of consecutive starves rather than TTLing out to EMPTY mid-contention.
+// tick stays green.
 async function preserveMarketImplicationsLastGoodOnStarve() {
   const { url, token } = getRedisCredentials();
+  let currentMeta = null;
+  let lastGoodMeta = null;
+  try {
+    currentMeta = await redisGet(url, token, MARKET_IMPLICATIONS_META_KEY);
+    if (currentMeta?.status !== 'ok') {
+      const currentPayload = await redisGet(url, token, MARKET_IMPLICATIONS_KEY);
+      const cards = Array.isArray(currentPayload?.cards) ? currentPayload.cards : [];
+      const generatedAtMs = Date.parse(currentPayload?.generatedAt || '');
+      if (cards.length > 0 && Number.isFinite(generatedAtMs)) {
+        lastGoodMeta = { fetchedAt: generatedAtMs, recordCount: cards.length, status: 'ok' };
+      }
+    }
+  } catch (err) {
+    console.warn(`  [MarketImplications] last-good meta read failed during starve preserve: ${err.message}`);
+  }
   try {
     await redisCommand(url, token, ['EXPIRE', MARKET_IMPLICATIONS_KEY, String(MARKET_IMPLICATIONS_TTL)]);
-    await redisCommand(url, token, ['EXPIRE', MARKET_IMPLICATIONS_META_KEY, String(MARKET_IMPLICATIONS_META_TTL)]);
+    if (currentMeta?.status === 'ok') {
+      await redisCommand(url, token, ['EXPIRE', MARKET_IMPLICATIONS_META_KEY, String(MARKET_IMPLICATIONS_META_TTL)]);
+    } else if (lastGoodMeta) {
+      await redisSet(url, token, MARKET_IMPLICATIONS_META_KEY, lastGoodMeta, MARKET_IMPLICATIONS_META_TTL);
+    }
   } catch (err) {
     console.warn(`  [MarketImplications] last-good preserve refresh failed: ${err.message}`);
   }
@@ -16501,14 +16554,14 @@ async function buildAndSeedMarketImplications(inputs) {
     stage: 'market_implications',
     maxTokens: 2500,
     temperature: 0.25,
+    returnFailureReason: true,
   });
 
   if (!result?.text) {
-    // A null result with the run budget now exhausted is the same benign starve
-    // as the pre-call guard (budget hit zero mid-call) — preserve last-good
-    // rather than flip to SEED_ERROR. A null with budget remaining is a genuine
-    // provider failure and DOES warrant the error seed-meta. (#4978)
-    if (getRemainingForecastLlmRunBudgetMs() <= 0) {
+    // A budget-exhausted result is the same benign starve as the pre-call guard.
+    // Genuine provider failures stay visible even if they consume the last run
+    // milliseconds before returning. (#4978)
+    if (result?.failureReason === FORECAST_LLM_FAILURE_BUDGET_EXHAUSTED) {
       console.warn('  [MarketImplications] LLM run budget exhausted mid-call — preserving last-good, no SEED_ERROR');
       await preserveMarketImplicationsLastGoodOnStarve();
       return;
