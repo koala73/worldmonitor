@@ -32,6 +32,10 @@ COPY scripts/lib/usni-fleet-parser.cjs ./scripts/lib/usni-fleet-parser.cjs
 # telemetry flush, #4954) — missing it = silent startup crash in the image.
 COPY scripts/lib/llm-telemetry.cjs ./scripts/lib/llm-telemetry.cjs
 COPY scripts/shared/country-name-to-iso2.cjs ./scripts/shared/country-name-to-iso2.cjs
+# notification-dedup.cjs is required by ais-relay.cjs and notification-relay.cjs
+# (Slot B dedup-material helper, #4985). Missing it = ERR_MODULE_NOT_FOUND at
+# relay startup. Guarded by tests/dockerfile-relay-imports.test.mjs.
+COPY scripts/shared/notification-dedup.cjs ./scripts/shared/notification-dedup.cjs
 COPY scripts/_seed-utils.mjs ./scripts/_seed-utils.mjs
 # _seed-envelope-source.mjs and _seed-contract.mjs are transitively imported
 # by _seed-utils.mjs (lines 9-10) and by seed-chokepoint-flows.mjs /
