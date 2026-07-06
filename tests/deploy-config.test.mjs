@@ -1182,14 +1182,37 @@ describe('agent readiness: api-catalog + openapi build', () => {
     }
   });
 
-  it('the docs MCP anchor describes itself with its server-card (service-desc parity with product MCP)', () => {
+  it('the docs MCP anchor describes itself with the first-party server-card (service-desc parity with product MCP)', () => {
     const docsAnchor = apiCatalog.linkset.find((e) => e.anchor === 'https://www.worldmonitor.app/docs/mcp');
     assert.ok(docsAnchor, 'api-catalog must carry a context object anchored at the docs MCP endpoint');
     const desc = docsAnchor['service-desc'] ?? [];
+    // Must be the first-party card, NOT Mintlify's card (whose url 404s) — #4964 review.
     assert.ok(
-      desc.some((d) => d.href === 'https://www.worldmonitor.app/docs/.well-known/mcp/server-card.json'),
-      'docs MCP anchor must advertise its server-card as service-desc (parity with the product /mcp anchor)'
+      desc.some((d) => d.href === 'https://www.worldmonitor.app/.well-known/mcp/docs-server-card.json'),
+      'docs MCP anchor must advertise the first-party server-card as service-desc'
     );
+    assert.ok(
+      !desc.some((d) => /\/docs\/\.well-known\/mcp\/server-card\.json/.test(d.href)),
+      'docs MCP anchor must NOT advertise Mintlify\'s card (its url points at a dead mintlify.dev endpoint)'
+    );
+  });
+
+  it('the first-party docs server-card advertises the working /docs/mcp endpoint, not the dead mintlify url', () => {
+    // The whole point of #4964's fix: a card-following agent must land on an
+    // endpoint that actually initializes. worldmonitor.mintlify.dev/mcp 404s;
+    // www.worldmonitor.app/docs/mcp returns 200. The committed card must carry
+    // the working facade URL and must not smuggle the mintlify.dev host.
+    const card = JSON.parse(
+      readFileSync(resolve(__dirname, '../public/.well-known/mcp/docs-server-card.json'), 'utf-8')
+    );
+    const WORKING = 'https://www.worldmonitor.app/docs/mcp';
+    assert.equal(card.url, WORKING, 'docs card url must be the working /docs/mcp facade');
+    assert.equal(card.serverUrl, WORKING, 'docs card serverUrl must be the working /docs/mcp facade');
+    assert.ok(
+      !JSON.stringify({ url: card.url, serverUrl: card.serverUrl }).includes('mintlify.dev'),
+      'docs card endpoint fields must not point at the dead mintlify.dev host'
+    );
+    assert.ok(Array.isArray(card.tools) && card.tools.length >= 1, 'docs card must list at least one tool');
   });
 
   it('the api host root has its own context object', () => {
@@ -1745,11 +1768,17 @@ describe('agent readiness: homepage Link headers', () => {
       // The docs MCP server (#4958) is advertised in the Link header directly —
       // header-first crawlers should not have to follow rel="api-catalog" to
       // discover the second MCP surface. Same rel as the product card, but
-      // anchored to /docs/mcp (the card describes the docs endpoint).
+      // anchored to /docs/mcp (the card describes the docs endpoint). We
+      // advertise a FIRST-PARTY card (/.well-known/mcp/docs-server-card.json),
+      // NOT Mintlify's /docs/.well-known/mcp/server-card.json, because that
+      // card's url points at worldmonitor.mintlify.dev/mcp which 404s on
+      // initialize — a card-following agent would land on a dead endpoint
+      // (#4964 review). The first-party card advertises the working
+      // /docs/mcp facade.
       assert.match(
         linkHeader.value,
-        /<\/docs\/\.well-known\/mcp\/server-card\.json>[^,]*rel="mcp-server-card"[^,]*anchor="\/docs\/mcp"/,
-        'docs mcp-server-card rel must point at /docs/.well-known/mcp/server-card.json with anchor="/docs/mcp"'
+        /<\/\.well-known\/mcp\/docs-server-card\.json>[^,]*rel="mcp-server-card"[^,]*anchor="\/docs\/mcp"/,
+        'docs mcp-server-card rel must point at the first-party /.well-known/mcp/docs-server-card.json with anchor="/docs/mcp"'
       );
 
       // `service-desc` is advertised twice — the JSON spec (/openapi.json,

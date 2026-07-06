@@ -86,7 +86,7 @@
       "anchor": "https://www.worldmonitor.app/docs/mcp",
       "service-desc": [
         {
-          "href": "https://www.worldmonitor.app/docs/.well-known/mcp/server-card.json",
+          "href": "https://www.worldmonitor.app/.well-known/mcp/docs-server-card.json",
           "type": "application/json"
         }
       ],
