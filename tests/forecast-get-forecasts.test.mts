@@ -200,17 +200,12 @@ describe('getForecasts backend status', () => {
 
   it('passes a judged camelCase resolution spec through by name', async () => {
     // Shape matches what buildResolutionOutputBlock actually writes for judged
-    // specs: string fields and numeric threshold/baselineValue are null, never
-    // '' / 0 (a judged spec with threshold 0 would read as a hard >= 0 bar).
+    // specs: proto3-JSON omission — inapplicable optional fields are ABSENT
+    // keys, never null and never ''/0 (a judged spec with threshold 0 would
+    // read as a hard >= 0 bar). Matches the generated `threshold?: number`.
     const judgedResolution = {
       kind: 'judged',
-      metricKey: null,
-      operator: null,
-      threshold: null,
-      baselineValue: null,
-      window: null,
       deadline: 1700000600000,
-      sourceFeed: null,
       question: 'Will political stability in the region deteriorate before the deadline?',
     };
     const politicalForecast = makeForecast({
@@ -243,24 +238,29 @@ describe('getForecasts backend status', () => {
     const res = await getForecasts(makeCtx(), { domain: '', region: '' });
 
     assert.equal(res.forecasts.length, 1);
-    const resolution = res.forecasts[0].resolution as typeof judgedResolution;
+    const resolution = res.forecasts[0].resolution;
+    assert.ok(resolution, 'judged resolution must survive passthrough');
     assert.equal(resolution.kind, 'judged');
     assert.equal(resolution.question, 'Will political stability in the region deteriorate before the deadline?');
     assert.equal(resolution.deadline, 1700000600000);
-    assert.equal(resolution.threshold, null);
+    // Omission semantics: no threshold key at all on a judged spec.
+    assert.ok(!('threshold' in resolution), 'judged spec must not carry a threshold key');
+    assert.ok(!('baselineValue' in resolution), 'judged spec must not carry a baselineValue key');
     assert.ok(!('metric_key' in resolution), 'snake_case metric_key must not be present');
     assert.ok(!('source_feed' in resolution), 'snake_case source_feed must not be present');
     assert.deepEqual(res.forecasts, [politicalForecast]);
   });
 
-  it('carries a null resolution through rather than dropping the field', async () => {
+  it('omits resolution for a forecast that never got a spec (absent key, per the generated optional type)', async () => {
+    // The seeder omits the key entirely for an unspec'd forecast (proto3-JSON
+    // omission for an unset optional message) — the generated
+    // `resolution?: ResolutionSpec` is exactly honest for this shape, so no
+    // null-as-undefined casts are needed anywhere.
     const noResolutionForecast = makeForecast({
       id: 'no-resolution-yet',
       domain: 'market',
       region: 'Global',
       title: 'Legacy forecast without a resolution spec',
-      resolution: null as unknown as undefined,
-      calibration: null as unknown as undefined,
     });
     globalThis.fetch = (async (input) => {
       const url = typeof input === 'string' ? input : (input as URL).toString();
@@ -285,10 +285,8 @@ describe('getForecasts backend status', () => {
     const res = await getForecasts(makeCtx(), { domain: '', region: '' });
 
     assert.equal(res.forecasts.length, 1);
-    assert.ok('resolution' in res.forecasts[0], 'resolution key must survive, not be dropped');
-    assert.equal(res.forecasts[0].resolution, null);
-    // Match the existing calibration:null convention — null passes through as written, same as calibration.
-    assert.equal(res.forecasts[0].calibration, res.forecasts[0].resolution);
+    assert.ok(!('resolution' in res.forecasts[0]), 'unspec\'d forecast must have no resolution key');
+    assert.equal(res.forecasts[0].resolution, undefined);
     assert.deepEqual(res.forecasts, [noResolutionForecast]);
   });
 });

@@ -5072,27 +5072,32 @@ function slimForecastCaseForPublish(caseFile = null) {
 }
 
 // Emit the resolution spec (#4976 Bet 1) as a camelCase block (D6) matching
-// the generated `Forecast` type, shaped like the sibling `calibration` block.
-// Returns null (not undefined, not a partial object) when the forecast has no
-// spec. The numeric fields threshold/baselineValue preserve null (a judged
-// spec, or a hard spec with a non-`crosses` operator, carries null there) —
-// they are NOT coerced to 0, because a judged spec with threshold 0 would be
-// indistinguishable from a hard threshold. Shared by the canonical payload and
-// the 45-day history entry so both persist the same shape (R6).
+// the generated `Forecast` type. Follows proto3-JSON omission semantics for
+// the message's `optional` fields: a field that does not apply to the kind is
+// OMITTED (absent key), never null and never coerced to 0 — a judged spec
+// with threshold 0 would be indistinguishable from a hard ">= 0" bar, and an
+// explicit null would contradict the generated `threshold?: number` type that
+// Bet-2 consumers compile against. `kind` and `deadline` are always present.
+// Deliberate divergence from the sibling `calibration: null` idiom:
+// ResolutionSpec is machine-consumed against the generated types, so the wire
+// shape matches what proto3 JSON actually specifies for unset optionals.
+// Returns undefined when the forecast has no spec, so the enclosing payload
+// omits `resolution` entirely (JSON.stringify drops undefined properties).
+// Shared by the canonical payload and the 45-day history entry (R6).
 function buildResolutionOutputBlock(resolution) {
-  if (!resolution || typeof resolution !== 'object') return null;
-  const numOrNull = (v) => (Number.isFinite(v) ? Number(v) : null);
-  const strOrNull = (v) => (typeof v === 'string' && v.length > 0 ? v : null);
+  if (!resolution || typeof resolution !== 'object') return undefined;
+  const num = (v) => (Number.isFinite(v) ? Number(v) : undefined);
+  const str = (v) => (typeof v === 'string' && v.length > 0 ? v : undefined);
   return {
-    kind: strOrNull(resolution.kind),
-    metricKey: strOrNull(resolution.metricKey),
-    operator: strOrNull(resolution.operator),
-    threshold: numOrNull(resolution.threshold),
-    baselineValue: numOrNull(resolution.baselineValue),
-    window: strOrNull(resolution.window),
-    deadline: numOrNull(resolution.deadline),
-    sourceFeed: strOrNull(resolution.sourceFeed),
-    question: strOrNull(resolution.question),
+    kind: str(resolution.kind),
+    deadline: num(resolution.deadline),
+    ...(str(resolution.metricKey) !== undefined && { metricKey: str(resolution.metricKey) }),
+    ...(str(resolution.operator) !== undefined && { operator: str(resolution.operator) }),
+    ...(num(resolution.threshold) !== undefined && { threshold: num(resolution.threshold) }),
+    ...(num(resolution.baselineValue) !== undefined && { baselineValue: num(resolution.baselineValue) }),
+    ...(str(resolution.window) !== undefined && { window: str(resolution.window) }),
+    ...(str(resolution.sourceFeed) !== undefined && { sourceFeed: str(resolution.sourceFeed) }),
+    ...(str(resolution.question) !== undefined && { question: str(resolution.question) }),
   };
 }
 

@@ -46,7 +46,6 @@
     "gen:openapi:idempotency": "node scripts/openapi-inject-idempotency.mjs",
     "gen:openapi:rate-limit-errors": "node scripts/openapi-inject-rate-limit-errors.mjs",
     "gen:openapi:async-jobs": "node scripts/openapi-inject-async-jobs.mjs",
-    "gen:openapi:nullable": "node scripts/openapi-inject-nullable.mjs",
     "build:agent-skills": "node scripts/build-agent-skills-index.mjs",
     "prebuild": "npm run build:openapi && npm run build:agent-skills",
     "build": "npm run build:blog && tsc && vite build",

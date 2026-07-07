@@ -359,7 +359,8 @@ describe('forecast resolution spec round-trip (U3)', () => {
     // camelCase only — no snake_case leaked through the boundary (D6).
     assert.ok(!('metric_key' in entry.resolution));
     assert.ok(!('source_feed' in entry.resolution));
-    assert.equal(entry.resolution.question, null);
+    // proto3-JSON omission: an inapplicable optional field is ABSENT, not null.
+    assert.ok(!('question' in entry.resolution));
   });
 
   it('projections now appear in the history entry and equal the source (#4933 gap)', () => {
@@ -369,23 +370,25 @@ describe('forecast resolution spec round-trip (U3)', () => {
     assert.deepEqual(entry.projections, { h24: 0.61, d7: 0.66, d30: 0.72 });
   });
 
-  it('makePrediction defaults resolution:null and the builders emit null (not undefined/partial)', () => {
+  it('makePrediction defaults resolution:null and an unspec\'d forecast serializes with NO resolution key', () => {
     const pred = makeHardConflictPred();
     assert.equal(pred.resolution, null);
 
-    const historyEntry = buildHistoryForecastEntry(pred);
-    assert.strictEqual(historyEntry.resolution, null);
-    assert.ok('resolution' in historyEntry);
+    // proto3-JSON omission: unset optional message -> absent key on the wire
+    // (deliberate divergence from the sibling calibration:null idiom — the
+    // generated `resolution?: ResolutionSpec` type is exactly honest this way).
+    const historyEntry = JSON.parse(JSON.stringify(buildHistoryForecastEntry(pred)));
+    assert.ok(!('resolution' in historyEntry));
 
-    const payload = buildPublishedForecastPayload(pred);
-    assert.strictEqual(payload.resolution, null);
-    assert.ok('resolution' in payload);
-    // projections default: absent projections -> null in both builders.
+    const payload = JSON.parse(JSON.stringify(buildPublishedForecastPayload(pred)));
+    assert.ok(!('resolution' in payload));
+    // projections default: absent projections -> null in both builders
+    // (pre-existing sibling convention, unchanged).
     assert.strictEqual(historyEntry.projections, null);
     assert.strictEqual(payload.projections, null);
   });
 
-  it('canonical payload emits a camelCase resolution object for a spec\'d forecast, null otherwise', () => {
+  it('canonical payload emits a camelCase resolution object for a spec\'d forecast, omits it otherwise', () => {
     const spec = makeHardConflictPred();
     attachResolutionSpecs([spec], {}, HARD_CONFLICT_GENERATED_AT);
     const payload = buildPublishedForecastPayload(spec);
@@ -394,19 +397,23 @@ describe('forecast resolution spec round-trip (U3)', () => {
     assert.ok(!('metric_key' in payload.resolution));
 
     const bare = makeHardConflictPred();
-    assert.strictEqual(buildPublishedForecastPayload(bare).resolution, null);
+    const serialized = JSON.parse(JSON.stringify(buildPublishedForecastPayload(bare)));
+    assert.ok(!('resolution' in serialized));
   });
 
-  it('preserves null (not 0) for a judged spec\'s numeric fields', () => {
+  it('omits (never zeroes) a judged spec\'s numeric fields', () => {
     const pred = makePrediction('political', 'France', 'Government stability: France', 0.4, 0.5, '30d', [
       { type: 'political_signal', value: 'coalition tension', weight: 0.3 },
     ]);
     attachResolutionSpecs([pred], {}, HARD_CONFLICT_GENERATED_AT);
     assert.equal(pred.resolution.kind, 'judged');
 
-    const payload = buildPublishedForecastPayload(pred);
-    assert.strictEqual(payload.resolution.threshold, null);
-    assert.strictEqual(payload.resolution.baselineValue, null);
+    // A judged spec has no threshold — the key must be ABSENT after
+    // serialization (never 0, which would read as a hard ">= 0" bar; never
+    // null, which the generated `threshold?: number` type does not admit).
+    const payload = JSON.parse(JSON.stringify(buildPublishedForecastPayload(pred)));
+    assert.ok(!('threshold' in payload.resolution));
+    assert.ok(!('baselineValue' in payload.resolution));
     assert.ok(payload.resolution.question && payload.resolution.question.length > 0);
     assert.ok(Number.isFinite(payload.resolution.deadline));
   });
