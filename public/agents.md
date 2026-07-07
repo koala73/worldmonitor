@@ -14,6 +14,7 @@ World Monitor is a real-time global intelligence dashboard: 500+ news feeds, 56 
 - **CLI:** `npx worldmonitor tools` lists every tool (public, no key) — https://www.npmjs.com/package/worldmonitor
 - **SDKs:** Python `pip install worldmonitor-sdk` · Ruby `gem install worldmonitor` · Go `go get github.com/koala73/worldmonitor/sdk/go` · JavaScript npm `worldmonitor` — guide: https://www.worldmonitor.app/docs/sdks
 - **LLM briefings:** https://worldmonitor.app/llms.txt (overview) · https://worldmonitor.app/llms-full.txt (full reference) · https://worldmonitor.app/api/llms.txt (API section)
+- **Developer portal:** https://worldmonitor.app/developers.md — links every developer resource by name. Named resource pages: [MCP Server](https://worldmonitor.app/mcp-server.md) · [OpenAPI Specification](https://worldmonitor.app/openapi.md) · [SDKs](https://worldmonitor.app/sdks.md)
 
 ## Authentication
 

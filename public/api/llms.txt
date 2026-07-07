@@ -43,6 +43,13 @@ This is the API-section companion to the site-wide briefing at https://worldmoni
 - Discovery methods (`tools/list`, `prompts/list`, `describe_tool`) are quota-exempt but rate-limited to 60 requests/minute.
 - Data calls consume the plan's daily quota. Free, Pro, API, and Enterprise tier details: https://worldmonitor.app/pricing.md
 
+## Developer Resource Pages
+
+- [World Monitor Developer Portal](https://worldmonitor.app/developers.md): Hub linking every developer resource by name
+- [World Monitor MCP Server](https://worldmonitor.app/mcp-server.md): MCP server endpoint, tools, and auth
+- [World Monitor OpenAPI Specification](https://worldmonitor.app/openapi.md): REST API OpenAPI 3.1 contract (openapi.yaml / openapi.json)
+- [World Monitor SDKs](https://worldmonitor.app/sdks.md): Official Python, Ruby, Go, and JavaScript client libraries
+
 ## Optional
 
 - [Site-wide llms.txt](https://worldmonitor.app/llms.txt): Full platform briefing and agent guidance

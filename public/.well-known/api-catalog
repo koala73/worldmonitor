@@ -64,6 +64,26 @@
           "href": "https://worldmonitor.app/agents.md",
           "type": "text/markdown",
           "title": "Agent operations guide (surfaces, auth, crawl policy)"
+        },
+        {
+          "href": "https://worldmonitor.app/developers.md",
+          "type": "text/markdown",
+          "title": "World Monitor Developer Portal — links every developer resource by name"
+        },
+        {
+          "href": "https://worldmonitor.app/mcp-server.md",
+          "type": "text/markdown",
+          "title": "World Monitor MCP Server — endpoint, tools, auth (machine-readable)"
+        },
+        {
+          "href": "https://worldmonitor.app/openapi.md",
+          "type": "text/markdown",
+          "title": "World Monitor OpenAPI Specification — REST API contract (machine-readable)"
+        },
+        {
+          "href": "https://worldmonitor.app/sdks.md",
+          "type": "text/markdown",
+          "title": "World Monitor SDKs — Python, Ruby, Go, JavaScript (machine-readable)"
         }
       ],
       "status": [
