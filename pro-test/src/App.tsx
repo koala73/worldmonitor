@@ -28,6 +28,7 @@ import {
   DASHBOARD_SCREENSHOT_AVIF_SRCSET,
   DASHBOARD_SCREENSHOT_WEBP_SRCSET,
 } from './assets/dashboard-screenshot';
+import { ensureTurnstileScript } from './turnstile';
 import wiredLogo from './assets/wired-logo.svg';
 import {
   DASHBOARD_EMBED_PREVIEW_URL,
@@ -1212,7 +1213,20 @@ const EnterprisePage = () => (
             const fd = new FormData(form);
             const honeypot = (form.querySelector('input[name="website"]') as HTMLInputElement)?.value || '';
             const turnstileWidget = form.querySelector('.cf-turnstile') as HTMLElement | null;
-            const turnstileToken = turnstileWidget?.dataset.token || '';
+            let turnstileToken = turnstileWidget?.dataset.token || '';
+            if (!turnstileToken && turnstileWidget) {
+              // Turnstile loads lazily (viewport-triggered), so a fast or
+              // autofilled submit can arrive before the widget produced a
+              // token. Kick the loader and give the challenge a bounded
+              // window; if it still hasn't resolved, POST anyway — the
+              // server verdict (and the existing failure UX + widget
+              // reset) stays the authority, same as an expired token.
+              if (await ensureTurnstileScript()) renderTurnstileWidgets();
+              for (let i = 0; i < 40 && !turnstileWidget.dataset.token; i++) {
+                await new Promise((resolve) => setTimeout(resolve, 250));
+              }
+              turnstileToken = turnstileWidget.dataset.token || '';
+            }
             try {
               const res = await fetch(`${API_BASE}/leads/v1/submit-contact`, {
                 method: 'POST',

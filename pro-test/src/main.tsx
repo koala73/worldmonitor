@@ -1,13 +1,12 @@
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App, { renderTurnstileWidgets } from './App.tsx';
+import { ensureTurnstileScript } from './turnstile';
 import { initI18n } from './i18n';
 import { initSentry } from './sentry';
 import './index.css';
 
 initSentry();
-
-const TURNSTILE_SRC = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
 
 initI18n().then(() => {
   createRoot(document.getElementById('root')!).render(
@@ -16,12 +15,9 @@ initI18n().then(() => {
     </StrictMode>,
   );
 
-  // Turnstile is only consumed by the enterprise contact form near the bottom
-  // of the page, so the challenge script is injected on demand — when the form
-  // approaches the viewport or a hash jump lands on it — instead of shipping
-  // ~100KB of challenge JS to every visitor. Injected scripts inherit trust
-  // from this bundle under the CSP's 'strict-dynamic'; the nonce covers
-  // browsers that predate strict-dynamic support.
+  // Turnstile is only consumed by the enterprise contact form, so the
+  // challenge script is injected on demand — when the form approaches the
+  // viewport — instead of shipping ~100KB of challenge JS to every visitor.
   const renderWhenReady = () => {
     if (window.turnstile && renderTurnstileWidgets() > 0) return;
     let attempts = 0;
@@ -32,31 +28,25 @@ initI18n().then(() => {
     }, 250);
   };
 
-  let turnstileInjected = false;
   const ensureTurnstile = () => {
-    if (window.turnstile) {
-      renderWhenReady();
-      return;
-    }
-    if (turnstileInjected) return;
-    turnstileInjected = true;
-    const script = document.createElement('script');
-    script.src = TURNSTILE_SRC;
-    script.async = true;
-    script.nonce = 'wm-static-bootstrap';
-    script.addEventListener('load', renderWhenReady, { once: true });
-    document.head.appendChild(script);
+    void ensureTurnstileScript().then((loaded) => {
+      if (loaded) renderWhenReady();
+    });
   };
 
-  // createRoot().render() doesn't commit synchronously — poll briefly for the
-  // widget container before wiring the viewport trigger.
-  let findAttempts = 0;
-  const armViewportTrigger = () => {
-    const widget = document.querySelector('.cf-turnstile');
+  // The form lives on the enterprise page, which mounts only while the hash
+  // starts with #enterprise — on the home page the container doesn't exist,
+  // so the trigger is (re-)armed on every enterprise hash entry. The poll
+  // covers createRoot().render() not committing synchronously.
+  const isEnterpriseHash = () => window.location.hash.startsWith('#enterprise');
+  const armViewportTrigger = (findAttempts = 0) => {
+    const widget = document.querySelector<HTMLElement>('.cf-turnstile');
     if (!widget) {
-      if (++findAttempts <= 20) window.setTimeout(armViewportTrigger, 250);
+      if (findAttempts < 20) window.setTimeout(() => armViewportTrigger(findAttempts + 1), 250);
       return;
     }
+    if (widget.dataset.wmObserved) return;
+    widget.dataset.wmObserved = 'true';
     if (!('IntersectionObserver' in window)) {
       ensureTurnstile();
       return;
@@ -69,7 +59,11 @@ initI18n().then(() => {
     }, { rootMargin: '600px 0px' });
     observer.observe(widget);
   };
-  armViewportTrigger();
 
-  window.addEventListener('hashchange', ensureTurnstile);
+  if (isEnterpriseHash()) armViewportTrigger();
+  window.addEventListener('hashchange', () => {
+    // Ordinary anchors (#pricing, logo resets to '') must not pull in the
+    // challenge script — only enterprise entries, where the form mounts.
+    if (isEnterpriseHash()) armViewportTrigger();
+  });
 });
