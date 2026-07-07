@@ -40,6 +40,17 @@ export default defineConfig({
         index: path.resolve(__dirname, 'index.html'),
         welcome: path.resolve(__dirname, 'welcome.html'),
       },
+      output: {
+        // Split the Sentry SDK into its own stable chunk. It's a critical-path
+        // dependency (initSentry() runs before render to catch early errors, so
+        // it isn't deferrable), but pulling it out of the catch-all vendor chunk
+        // keeps it cacheable across the frequent app-code redeploys that would
+        // otherwise re-bust its bytes.
+        manualChunks: (id) => {
+          if (id.includes('/node_modules/@sentry/')) return 'sentry';
+          return undefined;
+        },
+      },
     },
   },
   resolve: {
