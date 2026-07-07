@@ -2,6 +2,8 @@ import { Ratelimit, type Duration } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../api/_sentry-edge.js';
+// @ts-expect-error — JS module, no declaration file
+import { redisPipeline } from '../../api/_upstash-json.js';
 
 // @upstash/redis defaults to 5 retries with exponential backoff (~4.3s total)
 // before surfacing an unreachable-Redis error. The node test runner sets
@@ -13,7 +15,87 @@ import { captureSilentError } from '../../api/_sentry-edge.js';
 // MCP limiter to unblock the suite (PR #3963).
 const REDIS_TEST_RETRY_OPTS: { retry?: false } = process.env.NODE_TEST_CONTEXT ? { retry: false } : {};
 
+// Duration parsing mirrors @upstash/ratelimit's internal (unexported) `ms()`
+// helper — needed only so the non-Lua fallback below can pass a plain-seconds
+// EXPIRE argument. Not worth a dependency: same regex, ~10 lines.
+function durationToSeconds(window: Duration): number {
+  const match = /^(\d+)\s?(ms|s|m|h|d)$/.exec(window);
+  if (!match) throw new Error(`Unable to parse rate-limit window: ${window}`);
+  const value = Number(match[1]);
+  const unit = match[2] ?? 's';
+  const unitSeconds: Record<string, number> = { ms: 0.001, s: 1, m: 60, h: 3600, d: 86_400 };
+  return Math.max(1, Math.ceil(value * (unitSeconds[unit] ?? 1)));
+}
+
+// The self-hosted redis-rest proxy (docker/redis-rest-proxy.mjs) blocks
+// EVAL/EVALSHA/SCRIPT via its command allowlist. @upstash/ratelimit's
+// sliding-window limiter is a Lua script run via EVALSHA (falling back to
+// EVAL on NOSCRIPT) — against that proxy every `.limit()` call throws an
+// UpstashError wrapping the proxy's `Command not allowed: EVALSHA` (or
+// `EVAL`/`SCRIPT`) body. Detect that once per process and switch every
+// limiter below to the non-Lua fallback — retrying the Lua path on each
+// request would just double every rate-limit check's latency forever.
+let luaUnsupported = false;
+
+const FALLBACK_REDIS_TIMEOUT_MS = 1_000;
+
+interface LimitResult {
+  success: boolean;
+  limit: number;
+  reset: number;
+}
+
+// Non-Lua fixed-window fallback: INCR + EXPIRE-NX + TTL over the plain REST
+// pipeline endpoint (no EVAL/EVALSHA/SCRIPT). Mirrors the pattern already
+// proven in production by api/_user-api-key.js::checkBootstrapUserApiKeyRateLimit
+// — EXPIRE's NX flag (Redis 7+) means whichever concurrent caller's INCR
+// happens to be first also wins the one-time TTL set; every other command in
+// the window no-ops on EXPIRE, so there's no double-set race and no
+// crash-between-INCR-and-EXPIRE gap to reason about. Returns null when Redis
+// itself is unreachable — callers treat that identically to a Lua-path
+// outage (existing fail-open / failClosed handling below).
+async function fixedWindowLimit(key: string, limit: number, windowSeconds: number): Promise<LimitResult | null> {
+  const result = await redisPipeline([
+    ['INCR', key],
+    ['EXPIRE', key, String(windowSeconds), 'NX'],
+    ['TTL', key],
+  ], FALLBACK_REDIS_TIMEOUT_MS);
+  if (!result) return null;
+
+  const count = Number(result[0]?.result ?? 0);
+  if (!Number.isFinite(count) || count < 1) return null;
+
+  const ttlRaw = Number(result[2]?.result ?? -1);
+  const ttlSeconds = Number.isFinite(ttlRaw) && ttlRaw >= 0 ? ttlRaw : windowSeconds;
+
+  return { success: count <= limit, limit, reset: Date.now() + ttlSeconds * 1000 };
+}
+
+// Drop-in replacement for `ratelimit.limit(identifier)` that transparently
+// falls back to fixedWindowLimit the moment EVAL/EVALSHA is detected as
+// unsupported. Any OTHER error (genuine Redis outage/timeout) is rethrown
+// unchanged so the existing per-caller fail-open/failClosed + Sentry
+// reporting below is untouched.
+async function limitWithFallback(rl: Ratelimit, identifier: string, fallbackKey: string, limit: number, windowSeconds: number): Promise<LimitResult> {
+  if (!luaUnsupported) {
+    try {
+      return await rl.limit(identifier);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (!/Command not allowed: (EVAL|EVALSHA|SCRIPT)\b/i.test(msg)) throw err;
+      luaUnsupported = true;
+      console.warn('[rate-limit] EVAL/EVALSHA rejected by this Redis endpoint — switching to the non-Lua fixed-window fallback for the rest of this process');
+    }
+  }
+  const fallback = await fixedWindowLimit(fallbackKey, limit, windowSeconds);
+  if (!fallback) throw new Error('rate-limit fallback: Redis unreachable');
+  return fallback;
+}
+
 let ratelimit: Ratelimit | null = null;
+const GLOBAL_RATE_LIMIT = 600;
+const GLOBAL_RATE_WINDOW: Duration = '60 s';
+const GLOBAL_RATE_WINDOW_SECONDS = durationToSeconds(GLOBAL_RATE_WINDOW);
 
 function getRatelimit(): Ratelimit | null {
   if (ratelimit) return ratelimit;
@@ -23,7 +105,7 @@ function getRatelimit(): Ratelimit | null {
 
   ratelimit = new Ratelimit({
     redis: new Redis({ url, token, ...REDIS_TEST_RETRY_OPTS }),
-    limiter: Ratelimit.slidingWindow(600, '60 s'),
+    limiter: Ratelimit.slidingWindow(GLOBAL_RATE_LIMIT, GLOBAL_RATE_WINDOW),
     prefix: 'rl',
     analytics: false,
   });
@@ -179,7 +261,7 @@ export async function checkRateLimit(request: Request, corsHeaders: Record<strin
   const ip = getClientIp(request);
 
   try {
-    const { success, limit, reset } = await rl.limit(ip);
+    const { success, limit, reset } = await limitWithFallback(rl, ip, `rl:fw:${ip}`, GLOBAL_RATE_LIMIT, GLOBAL_RATE_WINDOW_SECONDS);
 
     if (!success) {
       return tooManyRequestsResponse(limit, reset, corsHeaders);
@@ -400,9 +482,14 @@ export async function checkEndpointRateLimit(request: Request, pathname: string,
   }
 
   const ip = getClientIp(request);
+  const policy = ENDPOINT_RATE_POLICIES[pathname];
+  // hasEndpointRatePolicy(pathname) above already guarantees this — the
+  // extra check exists only to satisfy noUncheckedIndexedAccess, since TS
+  // can't carry that narrowing across a second independent index lookup.
+  if (!policy) return null;
 
   try {
-    const { success, limit, reset } = await rl.limit(`${pathname}:${ip}`);
+    const { success, limit, reset } = await limitWithFallback(rl, `${pathname}:${ip}`, `rl:ep:fw:${pathname}:${ip}`, policy.limit, durationToSeconds(policy.window));
 
     if (!success) {
       return tooManyRequestsResponse(limit, reset, corsHeaders);
@@ -478,7 +565,7 @@ export async function checkScopedRateLimit(scope: string, limit: number, window:
     return { allowed: true, limit, reset: 0, degraded: true };
   }
   try {
-    const result = await rl.limit(`${scope}:${identifier}`);
+    const result = await limitWithFallback(rl, `${scope}:${identifier}`, `rl:scope:fw:${scope}:${identifier}`, limit, durationToSeconds(window));
     return {
       allowed: result.success,
       limit: result.limit,

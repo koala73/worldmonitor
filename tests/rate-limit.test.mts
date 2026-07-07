@@ -468,3 +468,84 @@ describe('rate-limit constants', () => {
     assert.equal(UNKNOWN_CLIENT_IP, 'unknown');
   });
 });
+
+describe('EVALSHA-unsupported fallback (#7c — self-hosted redis-rest proxy blocks Lua)', () => {
+  beforeEach(() => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    restoreEnv();
+  });
+
+  // Faithful in-memory INCR + EXPIRE-NX + TTL, gated by the same command
+  // allowlist docker/redis-rest-proxy.mjs enforces. @upstash/redis
+  // auto-pipelines every command (including a bare `.evalsha()`) through
+  // POST /pipeline, so the real proxy's per-command `{error}` entries — not
+  // an HTTP-level rejection — are what @upstash/ratelimit actually sees.
+  // Confirmed against the live SDK (v1.37.0): a blocked command surfaces as
+  // `UpstashError: "Command failed: Command not allowed: EVALSHA"`.
+  const ALLOWED_COMMANDS = new Set(['INCR', 'EXPIRE', 'TTL']);
+
+  function makeProxyPipelineHandler() {
+    const store = new Map<string, { count: number; hasTtl: boolean }>();
+    return (commands: unknown[][]) =>
+      commands.map((cmd) => {
+        const op = String(cmd[0]).toUpperCase();
+        if (!ALLOWED_COMMANDS.has(op)) return { error: `Command not allowed: ${op}` };
+        const key = String(cmd[1]);
+        const entry = store.get(key) ?? { count: 0, hasTtl: false };
+        if (op === 'INCR') {
+          entry.count += 1;
+          store.set(key, entry);
+          return { result: entry.count };
+        }
+        if (op === 'EXPIRE') {
+          const applied = !entry.hasTtl;
+          if (applied) entry.hasTtl = true;
+          store.set(key, entry);
+          return { result: applied ? 1 : 0 };
+        }
+        return { result: entry.hasTtl ? 60 : -1 }; // TTL
+      });
+  }
+
+  it('detects "Command not allowed: EVALSHA" and falls back to INCR+EXPIRE, then enforces the window on subsequent calls without retrying Lua', async () => {
+    const pipelineHandler = makeProxyPipelineHandler();
+    let luaAttempts = 0;
+    let fetchCalls = 0;
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      fetchCalls++;
+      const commands = JSON.parse(String(init?.body)) as unknown[][];
+      if (commands.some((c) => /^(EVAL|EVALSHA|SCRIPT)$/i.test(String(c[0])))) luaAttempts++;
+      return new Response(JSON.stringify(pipelineHandler(commands)), { status: 200 });
+    }) as typeof fetch;
+
+    const mod = await importFreshRateLimitModule();
+
+    const first = await mod.checkScopedRateLimit('fallback-scope', 2, '60 s', 'caller-1');
+    assert.equal(first.allowed, true, 'first request is under the limit of 2');
+    assert.equal(first.degraded, false, 'a working fallback is not a degraded/outage state');
+    assert.equal(luaAttempts, 1, 'exactly one Lua attempt before the unsupported-command detection latches');
+    assert.equal(fetchCalls, 2, 'the failed Lua attempt plus its immediate fallback pipeline call');
+
+    const second = await mod.checkScopedRateLimit('fallback-scope', 2, '60 s', 'caller-1');
+    assert.equal(second.allowed, true, 'second request is still under the limit of 2');
+
+    const third = await mod.checkScopedRateLimit('fallback-scope', 2, '60 s', 'caller-1');
+    assert.equal(third.allowed, false, 'third request exceeds the limit of 2 and must be blocked');
+    assert.equal(third.degraded, false, 'enforcement, not an outage — degraded must stay false');
+
+    // The cached "unsupported" detection must not retry Lua on every call —
+    // still exactly 1 attempt after 3 limiter checks, with the other 3 calls
+    // going straight to the non-Lua fallback (4 total: 1 Lua + 3 fallback).
+    assert.equal(luaAttempts, 1, 'Lua must not be retried once EVALSHA is known unsupported');
+    assert.equal(fetchCalls, 4, '1 failed Lua attempt + 3 fallback pipeline calls');
+
+    // A different identifier gets its own independent window.
+    const otherCaller = await mod.checkScopedRateLimit('fallback-scope', 2, '60 s', 'caller-2');
+    assert.equal(otherCaller.allowed, true, 'a different identifier has its own fixed-window counter');
+  });
+});
