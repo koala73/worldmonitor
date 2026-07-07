@@ -1,10 +1,17 @@
 ---
 import Base from '../layouts/Base.astro';
 import { getCollection } from 'astro:content';
+import { coverWebpSources } from '../lib/cover-webp';
 
 const posts = (await getCollection('blog')).sort(
   (a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf()
 );
+
+// Committed covers have generated .webp / -640.webp siblings (guarded by
+// tests/blog-cover-webp.test.mjs); coverWebpSources() returns null when the
+// siblings don't exist (e.g. deploy-generated /blog/og/*.png covers). Cards
+// render at ~340-540px, so the 640w thumb covers 1x displays and the full
+// WebP covers high-DPI ones.
 
 const jsonLd = {
   "@context": "https://schema.org",
@@ -52,17 +59,28 @@ const jsonLd = {
   </div>
   <div class="blog-list">
     <div class="post-grid">
-      {posts.map((post) => (
+      {posts.map((post) => {
+        const cover = coverWebpSources(post.data.heroImage);
+        return (
         <a href={`/blog/posts/${post.id}/`} class="post-card">
           {post.data.heroImage && (
-            <img
-              src={post.data.heroImage}
-              alt={post.data.title}
-              class="post-card-img"
-              loading="lazy"
-              width="600"
-              height="315"
-            />
+            <picture>
+              {cover && (
+                <source
+                  type="image/webp"
+                  srcset={`${cover.webp640} 640w, ${cover.webp} 1200w`}
+                  sizes="(max-width: 740px) calc(100vw - 3rem), 350px"
+                />
+              )}
+              <img
+                src={post.data.heroImage}
+                alt={post.data.title}
+                class="post-card-img"
+                loading="lazy"
+                width="600"
+                height="315"
+              />
+            </picture>
           )}
           <div class="tag">{post.data.audience}</div>
           <h2>{post.data.title}</h2>
@@ -77,7 +95,8 @@ const jsonLd = {
             </time>
           </div>
         </a>
-      ))}
+        );
+      })}
     </div>
   </div>
 </Base>

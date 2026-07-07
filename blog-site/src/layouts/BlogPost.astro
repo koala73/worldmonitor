@@ -1,5 +1,6 @@
 ---
 import Base from './Base.astro';
+import { coverWebpSources } from '../lib/cover-webp';
 
 interface Props {
   title: string;
@@ -46,6 +47,10 @@ const resolvedAuthorBio = authorBio || (authorName === DEFAULT_AUTHOR ? DEFAULT_
 const avatarSrc = authorName === DEFAULT_AUTHOR
   ? `https://unavatar.io/github/${DEFAULT_AUTHOR_GITHUB}`
   : '/favico/apple-touch-icon.png';
+// Committed covers have generated .webp / -640.webp siblings (guarded by
+// tests/blog-cover-webp.test.mjs); coverWebpSources() returns null when the
+// siblings don't exist (e.g. deploy-generated /blog/og/*.png covers).
+const heroWebp = coverWebpSources(heroImage);
 const showUpdated = modifiedDate && modifiedDate.getTime() !== pubDate.getTime();
 const formattedModifiedDate = modifiedDate ? modifiedDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '';
 const wordCount = rawBody ? rawBody.trim().split(/\s+/).filter(Boolean).length : undefined;
@@ -167,7 +172,16 @@ const faqLd = extractFaqLd(rawBody);
       </div>
     </div>
     {heroImage && (
-      <img src={heroImage} alt={title} class="hero-image" width="1200" height="630" fetchpriority="high" decoding="async" />
+      <picture>
+        {heroWebp && (
+          <source
+            type="image/webp"
+            srcset={`${heroWebp.webp640} 640w, ${heroWebp.webp} 1200w`}
+            sizes="(max-width: 812px) calc(100vw - 2rem), 780px"
+          />
+        )}
+        <img src={heroImage} alt={title} class="hero-image" width="1200" height="630" fetchpriority="high" decoding="async" />
+      </picture>
     )}
     <div class="article-content prose">
       <h1>{title}</h1>
