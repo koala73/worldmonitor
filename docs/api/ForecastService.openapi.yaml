@@ -144,6 +144,103 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/forecast/v1/get-forecast-scorecard:
+        get:
+            tags:
+                - ForecastService
+            summary: GetForecastScorecard
+            description: GetForecastScorecard returns the latest forecast resolution scorecard; degraded distinguishes a backend outage from a healthy empty scorecard.
+            operationId: GetForecastScorecard
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "byDomain":
+                                    - "brier": 1.5
+                                      "domain": "example"
+                                      "logScore": 42.5
+                                      "resolved": 1
+                                      "scored": 42
+                                "byGenerationOrigin":
+                                    - "brier": 1.5
+                                      "generationOrigin": "example"
+                                      "logScore": 42.5
+                                      "resolved": 1
+                                      "scored": 42
+                                "calibration":
+                                    - "brier": 1.5
+                                      "bucket": "example"
+                                      "count": 1
+                                      "maxProbability": 1.5
+                                      "minProbability": 1.5
+                                "degraded": true
+                                "error": "example"
+                            schema:
+                                $ref: '#/components/schemas/GetForecastScorecardResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/forecast/v1/get-simulation-package:
         get:
             tags:
@@ -956,6 +1053,170 @@ components:
                  (persisted as JSON null) when it does not apply to the kind — a judged spec
                  carries no threshold/baseline_value so "no threshold" is never confused
                  with a real threshold of 0, and a hard spec carries no question.
+        GetForecastScorecardRequest:
+            type: object
+        GetForecastScorecardResponse:
+            type: object
+            properties:
+                schemaVersion:
+                    type: integer
+                    format: int32
+                generatedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                rollingWindowDays:
+                    type: integer
+                    format: int32
+                methodology:
+                    type: string
+                totals:
+                    $ref: '#/components/schemas/ScorecardTotals'
+                overall:
+                    $ref: '#/components/schemas/ScorecardSummary'
+                byDomain:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ScorecardDomainGroup'
+                byGenerationOrigin:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ScorecardGenerationOriginGroup'
+                calibration:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ScorecardCalibrationBucket'
+                vsMarketSkill:
+                    $ref: '#/components/schemas/ScorecardMarketSkill'
+                degraded:
+                    type: boolean
+                stale:
+                    type: boolean
+                error:
+                    type: string
+        ScorecardTotals:
+            type: object
+            properties:
+                entries:
+                    type: integer
+                    format: int32
+                resolved:
+                    type: integer
+                    format: int32
+                pending:
+                    type: integer
+                    format: int32
+                pendingJudge:
+                    type: integer
+                    format: int32
+                scored:
+                    type: integer
+                    format: int32
+                void:
+                    type: integer
+                    format: int32
+                voidRate:
+                    type: number
+                    format: double
+                publicationCoverage:
+                    type: number
+                    format: double
+        ScorecardSummary:
+            type: object
+            properties:
+                count:
+                    type: integer
+                    format: int32
+                brier:
+                    type: number
+                    format: double
+                logScore:
+                    type: number
+                    format: double
+        ScorecardDomainGroup:
+            type: object
+            properties:
+                domain:
+                    type: string
+                resolved:
+                    type: integer
+                    format: int32
+                scored:
+                    type: integer
+                    format: int32
+                void:
+                    type: integer
+                    format: int32
+                voidRate:
+                    type: number
+                    format: double
+                brier:
+                    type: number
+                    format: double
+                logScore:
+                    type: number
+                    format: double
+        ScorecardGenerationOriginGroup:
+            type: object
+            properties:
+                generationOrigin:
+                    type: string
+                resolved:
+                    type: integer
+                    format: int32
+                scored:
+                    type: integer
+                    format: int32
+                void:
+                    type: integer
+                    format: int32
+                voidRate:
+                    type: number
+                    format: double
+                brier:
+                    type: number
+                    format: double
+                logScore:
+                    type: number
+                    format: double
+        ScorecardCalibrationBucket:
+            type: object
+            properties:
+                bucket:
+                    type: string
+                minProbability:
+                    type: number
+                    format: double
+                maxProbability:
+                    type: number
+                    format: double
+                count:
+                    type: integer
+                    format: int32
+                predictedMean:
+                    type: number
+                    format: double
+                realizedRate:
+                    type: number
+                    format: double
+                brier:
+                    type: number
+                    format: double
+        ScorecardMarketSkill:
+            type: object
+            properties:
+                count:
+                    type: integer
+                    format: int32
+                forecastBrier:
+                    type: number
+                    format: double
+                marketBrier:
+                    type: number
+                    format: double
+                brierDelta:
+                    type: number
+                    format: double
         GetSimulationPackageRequest:
             type: object
             properties:
