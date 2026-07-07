@@ -25554,6 +25554,8 @@ components:
                     format: double
                 demotedBySimulation:
                     type: boolean
+                resolution:
+                    $ref: '#/components/schemas/worldmonitor_forecast_v1_ResolutionSpec'
         worldmonitor_forecast_v1_ForecastSignal:
             type: object
             properties:
@@ -25739,6 +25741,51 @@ components:
                 probabilityShift:
                     type: number
                     format: double
+        worldmonitor_forecast_v1_ResolutionSpec:
+            type: object
+            properties:
+                kind:
+                    type: string
+                metricKey:
+                    type: string
+                operator:
+                    type: string
+                threshold:
+                    type: number
+                    format: double
+                baselineValue:
+                    type: number
+                    format: double
+                window:
+                    type: string
+                deadline:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                sourceFeed:
+                    type: string
+                question:
+                    type: string
+            description: |-
+                Machine-checkable resolution spec — makes a forecast a scoreable *bet*.
+                 Every forecast carries exactly one spec, either "hard" or "judged":
+                   - "hard":   auto-resolvable by a free metric comparison against a
+                               WorldMonitor feed the detector already scored from. Sets
+                               metric_key (feed + path expression), operator, threshold,
+                               window, and source_feed (a RESOLUTION_FEED_KEYS allowlist
+                               member). baseline_value is set only when operator is
+                               "crosses" (the emission-time metric value the move is
+                               measured from).
+                   - "judged": resolved by a later LLM judge against the question string;
+                               no numeric threshold, but still a resolution deadline.
+                 kind and operator are strings, not proto enums, mirroring the trend field
+                 above so a new operator/kind never requires a proto migration to land in
+                 the 45-day history. Current kind values are "hard" and "judged"; current
+                 operator values are ">=", "<=", and "crosses".
+                 kind and deadline are always set; every other field is optional and absent
+                 (persisted as JSON null) when it does not apply to the kind — a judged spec
+                 carries no threshold/baseline_value so "no threshold" is never confused
+                 with a real threshold of 0, and a hard spec carries no question.
         worldmonitor_forecast_v1_GetSimulationPackageRequest:
             type: object
             properties:

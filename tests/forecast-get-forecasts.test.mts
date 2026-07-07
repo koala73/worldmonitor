@@ -141,4 +141,154 @@ describe('getForecasts backend status', () => {
       error: '',
     });
   });
+
+  it('passes a hard camelCase resolution spec through by name', async () => {
+    const hardResolution = {
+      kind: 'hard',
+      metricKey: 'conflict:ucdp-events:v1|count(country=Mali)',
+      operator: '>=',
+      threshold: 12,
+      baselineValue: 8,
+      window: 'within-horizon',
+      deadline: 1700000000000,
+      sourceFeed: 'conflict:ucdp-events:v1',
+      question: '',
+    };
+    const conflictForecast = makeForecast({
+      id: 'mali-conflict',
+      domain: 'conflict',
+      region: 'Sahel',
+      title: 'Mali conflict intensity rises',
+      resolution: hardResolution,
+    });
+    globalThis.fetch = (async (input) => {
+      const url = typeof input === 'string' ? input : (input as URL).toString();
+      assert.ok(url.endsWith(`/get/${encodeURIComponent(REDIS_KEY)}`));
+      return new Response(JSON.stringify({
+        result: JSON.stringify({
+          _seed: {
+            fetchedAt: 123,
+            recordCount: 1,
+            sourceVersion: 'test',
+            schemaVersion: 1,
+            state: 'OK',
+          },
+          data: {
+            predictions: [conflictForecast],
+            generatedAt: 789,
+          },
+        }),
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    const res = await getForecasts(makeCtx(), { domain: '', region: '' });
+
+    assert.equal(res.forecasts.length, 1);
+    const resolution = res.forecasts[0].resolution as typeof hardResolution;
+    assert.equal(resolution.kind, 'hard');
+    assert.equal(resolution.metricKey, 'conflict:ucdp-events:v1|count(country=Mali)');
+    assert.equal(resolution.sourceFeed, 'conflict:ucdp-events:v1');
+    assert.equal(resolution.deadline, 1700000000000);
+    assert.equal(resolution.operator, '>=');
+    assert.equal(resolution.threshold, 12);
+    assert.equal(resolution.baselineValue, 8);
+    assert.equal(resolution.window, 'within-horizon');
+    assert.ok(!('metric_key' in resolution), 'snake_case metric_key must not be present');
+    assert.ok(!('source_feed' in resolution), 'snake_case source_feed must not be present');
+    assert.deepEqual(res.forecasts, [conflictForecast]);
+  });
+
+  it('passes a judged camelCase resolution spec through by name', async () => {
+    // Shape matches what buildResolutionOutputBlock actually writes for judged
+    // specs: string fields and numeric threshold/baselineValue are null, never
+    // '' / 0 (a judged spec with threshold 0 would read as a hard >= 0 bar).
+    const judgedResolution = {
+      kind: 'judged',
+      metricKey: null,
+      operator: null,
+      threshold: null,
+      baselineValue: null,
+      window: null,
+      deadline: 1700000600000,
+      sourceFeed: null,
+      question: 'Will political stability in the region deteriorate before the deadline?',
+    };
+    const politicalForecast = makeForecast({
+      id: 'political-outlook',
+      domain: 'political',
+      region: 'Europe',
+      title: 'Political stability outlook',
+      resolution: judgedResolution,
+    });
+    globalThis.fetch = (async (input) => {
+      const url = typeof input === 'string' ? input : (input as URL).toString();
+      assert.ok(url.endsWith(`/get/${encodeURIComponent(REDIS_KEY)}`));
+      return new Response(JSON.stringify({
+        result: JSON.stringify({
+          _seed: {
+            fetchedAt: 123,
+            recordCount: 1,
+            sourceVersion: 'test',
+            schemaVersion: 1,
+            state: 'OK',
+          },
+          data: {
+            predictions: [politicalForecast],
+            generatedAt: 789,
+          },
+        }),
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    const res = await getForecasts(makeCtx(), { domain: '', region: '' });
+
+    assert.equal(res.forecasts.length, 1);
+    const resolution = res.forecasts[0].resolution as typeof judgedResolution;
+    assert.equal(resolution.kind, 'judged');
+    assert.equal(resolution.question, 'Will political stability in the region deteriorate before the deadline?');
+    assert.equal(resolution.deadline, 1700000600000);
+    assert.equal(resolution.threshold, null);
+    assert.ok(!('metric_key' in resolution), 'snake_case metric_key must not be present');
+    assert.ok(!('source_feed' in resolution), 'snake_case source_feed must not be present');
+    assert.deepEqual(res.forecasts, [politicalForecast]);
+  });
+
+  it('carries a null resolution through rather than dropping the field', async () => {
+    const noResolutionForecast = makeForecast({
+      id: 'no-resolution-yet',
+      domain: 'market',
+      region: 'Global',
+      title: 'Legacy forecast without a resolution spec',
+      resolution: null as unknown as undefined,
+      calibration: null as unknown as undefined,
+    });
+    globalThis.fetch = (async (input) => {
+      const url = typeof input === 'string' ? input : (input as URL).toString();
+      assert.ok(url.endsWith(`/get/${encodeURIComponent(REDIS_KEY)}`));
+      return new Response(JSON.stringify({
+        result: JSON.stringify({
+          _seed: {
+            fetchedAt: 123,
+            recordCount: 1,
+            sourceVersion: 'test',
+            schemaVersion: 1,
+            state: 'OK',
+          },
+          data: {
+            predictions: [noResolutionForecast],
+            generatedAt: 789,
+          },
+        }),
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    const res = await getForecasts(makeCtx(), { domain: '', region: '' });
+
+    assert.equal(res.forecasts.length, 1);
+    assert.ok('resolution' in res.forecasts[0], 'resolution key must survive, not be dropped');
+    assert.equal(res.forecasts[0].resolution, null);
+    // Match the existing calibration:null convention — null passes through as written, same as calibration.
+    assert.equal(res.forecasts[0].calibration, res.forecasts[0].resolution);
+    assert.deepEqual(res.forecasts, [noResolutionForecast]);
+  });
 });

@@ -103,6 +103,30 @@ Probability projections are anchored to the forecast's own time horizon and then
 
 Trend is serialized as a string, not an enum. The current values are `rising`, `falling`, and `stable`, based on a +/- `0.05` probability delta versus the prior forecast snapshot.
 
+## Resolution spec
+
+Every published forecast carries a **resolution spec** — a machine-checkable contract that defines what "came true" means at resolution time. The spec is either `hard` (auto-resolvable by comparing a metric from the same WorldMonitor feed the detector scored from) or `judged` (a resolution question for a later LLM judge, still with a hard deadline). The deadline is always present, encoded in epoch milliseconds: emission time plus the forecast's stated horizon — except prediction-market forecasts, which resolve at the market's own end date when it has one.
+
+**Hard specs** apply to forecasts with clean metric backing:
+
+- **Conflict**: UCDP conflict-event counts in the forecast's region.
+- **UCDP zones**: UCDP conflict-zone event counts.
+- **Market**: commodity-future price moves measured from the emission-time baseline.
+- **Prediction-market**: the market's own resolution; deadline is the market's end date, falling back to the horizon deadline if the market has no settlement date.
+- **Supply chain**: chokepoint disruption scores.
+- **GPS interference**: jamming-activity counts over a region.
+- **Infrastructure**: reported outage events for the forecast's country.
+
+**Judged specs** apply to forecasts in domains where signal-to-outcome mapping is editorial or composite:
+
+- **Political**: regime stability, negotiations, policy shifts.
+- **Military**: posture transitions, deployment patterns.
+- **Cyber**: attribution and impact severity.
+- All **state-derived** forecasts, which blend multiple signal sources and carry composite provenance (if signals alone yielded a clean metric, origin-precedence still routes them to judged rather than hard).
+- Hard-family forecasts that cannot derive a finite threshold despite their domain (e.g., a market forecast with no tradeable anchor).
+
+The resolution spec does not change which forecasts are published or their order — it only *adds* machine-checkable ground truth to each forecast, the substrate for a future public track record that scores forecasts against what actually happened.
+
 ## Refresh cadence
 
 The seeder runs approximately **hourly**. The key is allowed up to **90 minutes** in `api/health.js` (`maxStaleMin: 90`) before the health surface escalates.
