@@ -3,6 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- The app fires a CORS /api/me/entitlement fetch right after boot;
+         warming DNS+TLS here takes the connection setup off that path. -->
+    <link rel="preconnect" href="https://api.worldmonitor.app" crossorigin />
     <!-- Tag <html> with .js so the seo-prerender content (visible by default
          for AEO scanners that don't execute JS) is CSS-hidden for real users.
          Mirrors the same pattern in the SPA's index.html. -->
@@ -164,12 +167,14 @@
       ]
     }
     </script>
-    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer nonce="wm-static-bootstrap"></script>
+    <!-- Turnstile is injected on demand by main.tsx when the enterprise
+         contact form nears the viewport — see ensureTurnstile(). No static
+         script tag so the ~100KB challenge JS stays off the common path. -->
     <!-- Umami (#4931): the /pro page was the one funnel surface with no
          analytics at all — pageviews + checkout-start now land in the same
          Umami site as the dashboard so the funnel joins end-to-end.
          data-domains must list www (exact-hostname match; apex 301s to www).
-         Static nonce satisfies the strict-dynamic CSP (same as Turnstile above). -->
+         Static nonce satisfies the strict-dynamic CSP. -->
     <script async defer src="https://abacus.worldmonitor.app/script.js" data-website-id="e8800335-c853-46a8-8497-c993ed2f58bc" data-domains="worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app" data-exclude-search="true" nonce="wm-static-bootstrap"></script>
   </head>
   <body>
