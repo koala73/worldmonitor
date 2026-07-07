@@ -60,8 +60,11 @@ describe('callLlm', () => {
       const prov = b.provider as { ignore?: string[]; sort?: string } | undefined;
       assert.ok(prov, 'every OpenRouter body must carry provider routing');
       assert.equal(prov.sort, 'throughput');
-      for (const cn of ['Baidu', 'Alibaba', 'DeepSeek', 'SiliconFlow', 'StreamLake', 'Novita']) {
-        assert.ok(prov.ignore?.includes(cn), `China provider ${cn} must be excluded`);
+      // Lowercase OpenRouter provider SLUGS (verified via GET /providers) —
+      // display-name casing is silently ignored by OpenRouter (#4993 review).
+      for (const cn of ['baidu', 'alibaba', 'deepseek', 'siliconflow', 'streamlake', 'novita']) {
+        assert.ok(prov.ignore?.includes(cn), `China provider slug ${cn} must be excluded`);
+        assert.equal(cn, cn.toLowerCase(), 'slug must be lowercase to match OpenRouter');
       }
     }
     // reasoning-off body still disables reasoning; reasoning-on omits it.
