@@ -124,7 +124,8 @@ describe('agent readiness: agent-skills index', () => {
       );
       const local = join(SKILLS_DIR, skill.name, 'SKILL.md');
       const bytes = readFileSync(local);
-      const hex = createHash('sha256').update(bytes).digest('hex');
+      const md = bytes.toString('utf-8').replace(/\r\n/g, '\n');
+      const hex = createHash('sha256').update(md).digest('hex');
       assert.equal(
         skill.digest,
         `sha256:${hex}`,

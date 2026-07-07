@@ -116,7 +116,7 @@ function collectSkills() {
       type: 'skill-md',
       description: fm.description,
       url: `${PUBLIC_BASE}/.well-known/agent-skills/${name}/SKILL.md`,
-      digest: `sha256:${sha256Hex(bytes)}`,
+      digest: `sha256:${sha256Hex(md)}`,
     };
   });
 }
