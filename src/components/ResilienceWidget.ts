@@ -1,5 +1,6 @@
 import { type AuthSession, getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { PanelGateReason, getPanelGateReason } from '@/services/panel-gating';
+import { SITE_VARIANT } from '@/config/variant';
 import { getResilienceScore, type ResilienceDomain, type ResilienceScoreResponse } from '@/services/resilience';
 import { h, replaceChildren } from '@/utils/dom-utils';
 import {
@@ -142,6 +143,15 @@ export class ResilienceWidget {
   }
 
   private render(): void {
+    // Universe variant (app.aihumane.in): resilience scores are a Pro-gated
+    // module (server-side too) — remove the card instead of rendering a
+    // "Sign in to view" lock.
+    if (SITE_VARIANT === 'universe') {
+      replaceChildren(this.element);
+      this.element.style.display = 'none';
+      return;
+    }
+
     const gateReason = this.getGateReason();
     const body = this.renderBody(gateReason);
 

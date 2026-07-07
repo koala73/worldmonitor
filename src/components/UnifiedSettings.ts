@@ -427,7 +427,7 @@ export class UnifiedSettings {
           <button class="${tabClass('panels')}" data-tab="panels" role="tab" aria-selected="${this.activeTab === 'panels'}" id="us-tab-panels" aria-controls="us-tab-panel-panels">${t('header.tabPanels')}</button>
           <button class="${tabClass('sources')}" data-tab="sources" role="tab" aria-selected="${this.activeTab === 'sources'}" id="us-tab-sources" aria-controls="us-tab-panel-sources">${t('header.tabSources')}</button>
           ${showNotificationsTab ? `<button class="${tabClass('notifications')}" data-tab="notifications" role="tab" aria-selected="${this.activeTab === 'notifications'}" id="us-tab-notifications" aria-controls="us-tab-panel-notifications">${t('header.tabNotifications')}</button>` : ''}
-          <button class="${tabClass('api-keys')}" data-tab="api-keys" role="tab" aria-selected="${this.activeTab === 'api-keys'}" id="us-tab-api-keys" aria-controls="us-tab-panel-api-keys">API Keys <span class="panel-pro-badge">PRO</span></button>
+          ${SITE_VARIANT !== 'universe' ? `<button class="${tabClass('api-keys')}" data-tab="api-keys" role="tab" aria-selected="${this.activeTab === 'api-keys'}" id="us-tab-api-keys" aria-controls="us-tab-panel-api-keys">API Keys <span class="panel-pro-badge">PRO</span></button>` : ''}
           ${hasFeature('mcpAccess') ? `<button class="${tabClass('mcp-clients')}" data-tab="mcp-clients" role="tab" aria-selected="${this.activeTab === 'mcp-clients'}" id="us-tab-mcp-clients" aria-controls="us-tab-panel-mcp-clients">MCP Clients <span class="panel-pro-badge">PRO</span></button>` : ''}
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'settings' ? ' active' : ''}" data-panel-id="settings" id="us-tab-panel-settings" role="tabpanel" aria-labelledby="us-tab-settings">
@@ -467,9 +467,11 @@ export class UnifiedSettings {
           ${notifs.html}
         </div>
         ` : ''}
+        ${SITE_VARIANT !== 'universe' ? `
         <div class="unified-settings-tab-panel${this.activeTab === 'api-keys' ? ' active' : ''}" data-panel-id="api-keys" id="us-tab-panel-api-keys" role="tabpanel" aria-labelledby="us-tab-api-keys">
           ${this.renderApiKeysContent()}
         </div>
+        ` : ''}
         ${hasFeature('mcpAccess') ? `
         <div class="unified-settings-tab-panel${this.activeTab === 'mcp-clients' ? ' active' : ''}" data-panel-id="mcp-clients" id="us-tab-panel-mcp-clients" role="tabpanel" aria-labelledby="us-tab-mcp-clients">
           ${this.renderMcpClientsContent()}
@@ -553,6 +555,11 @@ export class UnifiedSettings {
   }
 
   private renderUpgradeSection(): string {
+    // Universe variant (app.aihumane.in) has no Pro tier — never render
+    // upgrade/billing UI.
+    if (SITE_VARIANT === 'universe') {
+      return '<div class="upgrade-pro-section upgrade-pro-hidden" hidden></div>';
+    }
     // Non-Dodo premium (API key / tester key / Clerk pro role without a
     // Convex subscription): neither "Upgrade" nor "Manage Billing" is
     // actionable. Checked FIRST so these users don't get stuck on the
@@ -692,6 +699,15 @@ export class UnifiedSettings {
     let entries = Object.entries(panelSettings)
       .filter(([key]) => key !== 'runtime-config' || this.config.isDesktopApp)
       .filter(([key]) => !key.startsWith('cw-'));
+
+    // Universe variant (app.aihumane.in): premium modules are removed from
+    // the product entirely, so don't offer them for cross-enabling either —
+    // a 🔒 PRO row is itself a sign-in-gated surface.
+    if (SITE_VARIANT === 'universe') {
+      entries = entries.filter(([key]) =>
+        !(ALL_PANELS[key] ? getEffectivePanelConfig(key, SITE_VARIANT).premium : false)
+      );
+    }
 
     if (this.activePanelCategory !== 'all') {
       const catDef = PANEL_CATEGORY_MAP[this.activePanelCategory];

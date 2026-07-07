@@ -8,6 +8,7 @@ import { PanelGateReason } from '../services/panel-gating';
 import type { Panel } from './Panel';
 import { t } from '../services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { SITE_VARIANT } from '@/config/variant';
 
 
 interface FrameworkSelectorOptions {
@@ -55,6 +56,10 @@ export class FrameworkSelector {
           this.openPopup();
         }
       });
+    } else if (SITE_VARIANT === 'universe') {
+      // Universe variant (app.aihumane.in) has no Pro tier: a locked gear that
+      // opens an "Upgrade to Pro" CTA is itself a gated surface — hide it.
+      btn.style.display = 'none';
     } else {
       btn.classList.add('framework-settings-btn--locked');
       btn.addEventListener('click', (e) => {

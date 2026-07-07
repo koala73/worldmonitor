@@ -1089,10 +1089,21 @@ const ENERGY_MOBILE_MAP_LAYERS: MapLayers = {
 // UNIFIED PANEL REGISTRY
 // ============================================
 
-type PanelVariant = 'full' | 'tech' | 'finance' | 'commodity' | 'energy' | 'happy';
+type PanelVariant = 'full' | 'universe' | 'tech' | 'finance' | 'commodity' | 'energy' | 'happy';
+
+/**
+ * UNIVERSE VARIANT (app.aihumane.in): the full geopolitical dashboard with
+ * every sign-in/Pro-gated module removed. Derived from FULL_PANELS by
+ * dropping any panel carrying a `premium` marker ('locked' or 'enhanced'),
+ * so the variant never renders a "Sign In to Unlock" / "Upgrade to Pro" CTA.
+ */
+const UNIVERSE_PANELS: Record<string, PanelConfig> = Object.fromEntries(
+  Object.entries(FULL_PANELS).filter(([, config]) => !config.premium)
+);
 
 const VARIANT_PANEL_CONFIGS: Record<PanelVariant, Record<string, PanelConfig>> = {
   full: FULL_PANELS,
+  universe: UNIVERSE_PANELS,
   tech: TECH_PANELS,
   finance: FINANCE_PANELS,
   commodity: COMMODITY_PANELS,
@@ -1119,6 +1130,7 @@ export const ALL_PANELS: Record<string, PanelConfig> = {
 /** Per-variant canonical panel order (keys = which panels are enabled by default). */
 export const VARIANT_DEFAULTS: Record<string, string[]> = {
   full:      Object.keys(VARIANT_PANEL_CONFIGS.full),
+  universe:  Object.keys(VARIANT_PANEL_CONFIGS.universe),
   tech:      Object.keys(VARIANT_PANEL_CONFIGS.tech),
   finance:   Object.keys(VARIANT_PANEL_CONFIGS.finance),
   commodity: Object.keys(VARIANT_PANEL_CONFIGS.commodity),
@@ -1340,32 +1352,32 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   intelligence: {
     labelKey: 'header.panelCatIntelligence',
     panelKeys: ['cii', 'strategic-risk', 'threat-timeline', 'intel', 'gdelt-intel', 'cascade', 'telegram-intel', 'forecast', 'cross-source-signals', 'regional-intelligence', 'deduction', 'chat-analyst', 'thermal-escalation', 'social-velocity', 'geo-hubs'],
-    variants: ['full'],
+    variants: ['full', 'universe'],
   },
   correlation: {
     labelKey: 'header.panelCatCorrelation',
     panelKeys: ['military-correlation', 'escalation-correlation', 'economic-correlation', 'disaster-correlation'],
-    variants: ['full'],
+    variants: ['full', 'universe'],
   },
   regionalNews: {
     labelKey: 'header.panelCatRegionalNews',
     panelKeys: ['politics', 'us', 'europe', 'middleeast', 'africa', 'latam', 'asia'],
-    variants: ['full'],
+    variants: ['full', 'universe'],
   },
   marketsFinance: {
     labelKey: 'header.panelCatMarketsFinance',
     panelKeys: ['commodities', 'energy-complex', 'energy-risk-overview', 'pipeline-status', 'storage-facility-map', 'oil-inventories', 'fuel-prices', 'chokepoint-strip', 'fuel-shortages', 'energy-disruptions', 'hormuz-tracker', 'energy-crisis', 'markets', 'economic', 'trade-policy', 'sanctions-pressure', 'supply-chain', 'finance', 'polymarket', 'macro-signals', 'gulf-economies', 'etf-flows', 'stablecoins', 'crypto', 'heatmap', 'aaii-sentiment', 'cot-positioning', 'earnings-calendar', 'economic-calendar', 'fear-greed', 'fsi', 'macro-tiles', 'market-breadth', 'liquidity-shifts', 'national-debt', 'positioning-247', 'wsb-ticker-scanner', 'yield-curve', 'gold-intelligence', 'bigmac', 'market-implications'],
-    variants: ['full', 'energy'],
+    variants: ['full', 'universe', 'energy'],
   },
   topical: {
     labelKey: 'header.panelCatTopical',
     panelKeys: ['energy', 'gov', 'thinktanks', 'tech', 'ai', 'layoffs'],
-    variants: ['full', 'energy'],
+    variants: ['full', 'universe', 'energy'],
   },
   dataTracking: {
     labelKey: 'header.panelCatDataTracking',
     panelKeys: ['monitors', 'satellite-fires', 'ucdp-events', 'displacement', 'climate', 'climate-news', 'population-exposure', 'security-advisories', 'radiation-watch', 'oref-sirens', 'world-clock', 'tech-readiness', 'disease-outbreaks', 'fao-food-price-index', 'grocery-basket', 'defense-patents'],
-    variants: ['full', 'energy'],
+    variants: ['full', 'universe', 'energy'],
   },
 
   // Tech variant

@@ -1771,6 +1771,11 @@ export class EventHandlerManager implements AppModule {
   }
 
   setupAuthWidget(): void {
+    // Universe variant (app.aihumane.in) ships with no sign-in-gated modules,
+    // so the header Sign In / Create account surface is not mounted at all.
+    // #authWidgetMount:empty CSS collapses the empty slot.
+    if (SITE_VARIANT === 'universe') return;
+
     const modal = new AuthLauncher();
     this.ctx.authModal = modal;
 

@@ -49,6 +49,7 @@ import {
 import { onEntitlementChange } from '@/services/entitlements';
 import { escapeHtml } from '@/utils/sanitize';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { SITE_VARIANT } from '@/config/variant';
 
 
 // ---------------------------------------------------------------------------
@@ -95,6 +96,12 @@ export interface FollowButtonHandle {
 type UpgradeTrigger = (source: string) => void;
 
 let _upgradeTrigger: UpgradeTrigger = (source) => {
+  // Universe variant (app.aihumane.in) has no sign-in or Pro tier: hitting
+  // the free follow cap is a silent no-op instead of a sign-in/checkout flow.
+  if (SITE_VARIANT === 'universe') {
+    void source;
+    return;
+  }
   // Match the notifications-settings.ts pattern: try sign-in first if no
   // user, otherwise drop into checkout. If anything fails we fall back
   // to the `/pro` page (consistent w/ ProBanner CTA).

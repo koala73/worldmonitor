@@ -4,6 +4,7 @@ import { onEntitlementChange, getEntitlementState } from '@/services/entitlement
 import { getCurrentClerkUser } from '@/services/clerk';
 import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { SITE_VARIANT } from '@/config/variant';
 
 
 let bannerEl: HTMLElement | null = null;
@@ -62,6 +63,11 @@ export function showProBanner(container: HTMLElement): void {
     bannerEl = null;
   }
   if (bannerEl) return;
+  // Universe variant (app.aihumane.in) ships with no Pro tier — never upsell.
+  if (SITE_VARIANT === 'universe') {
+    setReservation(false);
+    return;
+  }
   if (window.self !== window.top) {
     setReservation(false);
     return;

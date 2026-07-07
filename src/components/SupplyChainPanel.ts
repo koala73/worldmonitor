@@ -9,6 +9,7 @@ import { fetchBypassOptions, fetchChokepointHistory } from '@/services/supply-ch
 import type { TransitDayCount } from '@/services/supply-chain';
 import type { ScenarioResult } from '@/config/scenario-templates';
 import { SCENARIO_TEMPLATES } from '@/config/scenario-templates';
+import { SITE_VARIANT } from '@/config/variant';
 import { TransitChart } from '@/utils/transit-chart';
 import { t } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
@@ -253,6 +254,12 @@ export class SupplyChainPanel extends Panel {
 
   private renderBypassSection(container: HTMLElement, chokepointId: string): void {
     if (!chokepointId) return;
+    // Universe variant (app.aihumane.in): bypass corridors are a Pro-gated
+    // module — omit the section instead of rendering a PRO lock row.
+    if (SITE_VARIANT === 'universe') {
+      container.remove();
+      return;
+    }
 
     const renderGate = (): string => {
       return `<div class="sc-bypass-gate"><span class="sc-bypass-lock">\uD83D\uDD12</span><span class="sc-bypass-gate-text">Bypass corridors available with PRO</span></div>`;
