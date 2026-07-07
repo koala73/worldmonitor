@@ -121,7 +121,10 @@ describe('seedTransitSummaries (relay)', () => {
   });
 
   it('PortWatch data is read via envelopeRead (unwraps {_seed, data} contract-mode shape)', () => {
-    assert.match(relaySrc, /const pw = await envelopeRead\(PORTWATCH_REDIS_KEY\)/);
+    // envelopeRead takes an optional onFailure reason callback (added so the
+    // empty-read early return can log WHY, not just THAT, portwatch was
+    // empty) — match the call regardless of that second argument.
+    assert.match(relaySrc, /const pw = await envelopeRead\(PORTWATCH_REDIS_KEY[,)]/);
     assert.doesNotMatch(relaySrc, /const pw = await upstashGet\(PORTWATCH_REDIS_KEY\)/);
   });
 
@@ -136,6 +139,22 @@ describe('seedTransitSummaries (relay)', () => {
 
   it('has TTL >= 6x seed interval (survives multiple missed pings)', () => {
     assert.match(relaySrc, /TRANSIT_SUMMARY_TTL\s*=\s*[3-9]\d{3}/);
+  });
+
+  it('empty-portwatch early return is non-silent (logs key + reason, not a bare `return;`)', () => {
+    // Regression guard for the 2026-07 incident: this early return fired on
+    // every 10-min tick for 4d20h with zero log output (UPSTASH_ENABLED was
+    // false in-container), so the dead scheduler was invisible until a live
+    // audit caught it via the never-populated Redis key. A bare early
+    // `return;` here must never come back.
+    const fnBody = relaySrc.match(/async function seedTransitSummaries\(\)\s*\{([\s\S]*?)\n\}/)?.[1] || '';
+    assert.doesNotMatch(fnBody, /length === 0\) return;/);
+    assert.match(fnBody, /console\.warn\(`\[TransitSummary\] Skipped — \$\{PORTWATCH_REDIS_KEY\}/);
+    // The logged reason must distinguish "Upstash disabled" from "read
+    // failed" from "key genuinely empty" — three different root causes that
+    // all look identical from the caller's perspective otherwise.
+    assert.match(fnBody, /!UPSTASH_ENABLED/);
+    assert.match(fnBody, /pwFailureReason/);
   });
 });
 
@@ -554,7 +573,7 @@ describe('handler transit data strategy', () => {
 describe('seedTransitSummaries Redis reads', () => {
   it('always reads PortWatch fresh from Redis (no in-memory cache guard)', () => {
     assert.doesNotMatch(relaySrc, /if\s*\(\s*!latestPortwatchData\s*\)/);
-    assert.match(relaySrc, /envelopeRead\(PORTWATCH_REDIS_KEY\)/);
+    assert.match(relaySrc, /envelopeRead\(PORTWATCH_REDIS_KEY[,)]/);
   });
 
   it('reads CorridorRisk from Redis when latestCorridorRiskData is null', () => {
@@ -590,16 +609,16 @@ describe('seedTransitSummaries Redis reads', () => {
 
   it('PortWatch Redis read is the first statement (before early return)', () => {
     const fnBody = relaySrc.match(/async function seedTransitSummaries\(\)\s*\{([\s\S]*?)\n\}/)?.[1] || '';
-    const readPos = fnBody.indexOf('envelopeRead(PORTWATCH_REDIS_KEY)');
+    const readPos = fnBody.indexOf('envelopeRead(PORTWATCH_REDIS_KEY');
     const earlyReturnPos = fnBody.indexOf('if (!pw ||');
-    assert.ok(readPos > 0, 'envelopeRead(PORTWATCH_REDIS_KEY) not found in function body');
+    assert.ok(readPos > 0, 'envelopeRead(PORTWATCH_REDIS_KEY not found in function body');
     assert.ok(earlyReturnPos > 0, 'pw early return not found');
     assert.ok(readPos < earlyReturnPos, 'Redis read must come before the early return');
   });
 
   it('PortWatch data is assigned directly from Redis (no stale in-memory cache)', () => {
     const fnBody = relaySrc.match(/async function seedTransitSummaries\(\)\s*\{([\s\S]*?)\n\}/)?.[1] || '';
-    assert.match(fnBody, /const pw = await envelopeRead\(PORTWATCH_REDIS_KEY\)/);
+    assert.match(fnBody, /const pw = await envelopeRead\(PORTWATCH_REDIS_KEY[,)]/);
   });
 
   it('assigns hydrated data back to latestCorridorRiskData', () => {

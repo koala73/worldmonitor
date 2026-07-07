@@ -198,20 +198,38 @@ if (RELAY_SHARED_SECRET && ALLOW_UNAUTHENTICATED_RELAY) {
 // ─────────────────────────────────────────────────────────────
 const UPSTASH_REDIS_REST_URL = process.env.UPSTASH_REDIS_REST_URL || '';
 const UPSTASH_REDIS_REST_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || '';
+// Self-hosted deployments front Redis with a plain-http REST proxy
+// (docker/redis-rest-proxy.mjs) reachable only inside the compose network —
+// there's no TLS to terminate and no public exposure, so the https-only
+// requirement below (which exists to stop a *real* Upstash bearer token from
+// transiting the public internet in cleartext) doesn't apply there. This
+// gate stayed https-only after the local proxy shipped, so every seed loop
+// in this file silently no-ops against http://redis-rest:80 (see
+// docker-compose.override.yml's UPSTASH_* comment + 4+ days of
+// "[TransitSummary]"/"[CorridorRisk]"/etc. never firing).
+// UPSTASH_ALLOW_INSECURE_HTTP is an explicit, off-by-default opt-in (never
+// inferred from hostname/URL shape) so a genuine Upstash misconfiguration in
+// production can't silently downgrade to plaintext.
+const UPSTASH_ALLOW_INSECURE_HTTP = process.env.UPSTASH_ALLOW_INSECURE_HTTP === 'true';
 const UPSTASH_ENABLED = !!(
   UPSTASH_REDIS_REST_URL &&
   UPSTASH_REDIS_REST_TOKEN &&
-  UPSTASH_REDIS_REST_URL.startsWith('https://')
+  (UPSTASH_REDIS_REST_URL.startsWith('https://') ||
+    (UPSTASH_ALLOW_INSECURE_HTTP && UPSTASH_REDIS_REST_URL.startsWith('http://')))
 );
+// Node's https module can't speak to a plain-http endpoint — resolve the
+// matching client once at startup instead of hardcoding https.request at
+// each upstash* call site below.
+const UPSTASH_HTTP_MODULE = UPSTASH_REDIS_REST_URL.startsWith('http://') ? http : https;
 const RELAY_ENV_PREFIX = process.env.RELAY_ENV ? `${process.env.RELAY_ENV}:` : '';
 const OREF_REDIS_KEY = `${RELAY_ENV_PREFIX}relay:oref:history:v1`;
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 
-if (UPSTASH_REDIS_REST_URL && !UPSTASH_REDIS_REST_URL.startsWith('https://')) {
-  console.warn('[Relay] UPSTASH_REDIS_REST_URL must start with https:// — Redis disabled');
+if (UPSTASH_REDIS_REST_URL && !UPSTASH_REDIS_REST_URL.startsWith('https://') && !UPSTASH_ALLOW_INSECURE_HTTP) {
+  console.warn('[Relay] UPSTASH_REDIS_REST_URL must start with https:// — Redis disabled (set UPSTASH_ALLOW_INSECURE_HTTP=true for a trusted internal http proxy)');
 }
 if (UPSTASH_ENABLED) {
-  console.log(`[Relay] Upstash Redis enabled (key: ${OREF_REDIS_KEY})`);
+  console.log(`[Relay] Upstash Redis enabled (key: ${OREF_REDIS_KEY}${UPSTASH_REDIS_REST_URL.startsWith('http://') ? ', insecure-http opt-in' : ''})`);
 }
 
 function upstashGet(key, onFailure) {
@@ -230,7 +248,7 @@ function upstashGet(key, onFailure) {
       resolve(null);
     };
     const url = new URL(`/get/${encodeURIComponent(key)}`, UPSTASH_REDIS_REST_URL);
-    const req = https.request(url, {
+    const req = UPSTASH_HTTP_MODULE.request(url, {
       method: 'GET',
       headers: { Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}` },
       timeout: 5000,
@@ -268,7 +286,7 @@ function upstashSet(key, value, ttlSeconds) {
     if (!UPSTASH_ENABLED) return resolve(false);
     const url = new URL('/', UPSTASH_REDIS_REST_URL);
     const body = JSON.stringify(['SET', key, JSON.stringify(value), 'EX', String(ttlSeconds)]);
-    const req = https.request(url, {
+    const req = UPSTASH_HTTP_MODULE.request(url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
@@ -296,7 +314,7 @@ function upstashExpire(key, ttlSeconds) {
     if (!UPSTASH_ENABLED) return resolve(false);
     const url = new URL('/', UPSTASH_REDIS_REST_URL);
     const body = JSON.stringify(['EXPIRE', key, String(ttlSeconds)]);
-    const req = https.request(url, {
+    const req = UPSTASH_HTTP_MODULE.request(url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
@@ -324,7 +342,7 @@ function upstashMGet(keys) {
     if (!UPSTASH_ENABLED || keys.length === 0) return resolve([]);
     const url = new URL('/pipeline', UPSTASH_REDIS_REST_URL);
     const body = JSON.stringify(keys.map((k) => ['GET', k]));
-    const req = https.request(url, {
+    const req = UPSTASH_HTTP_MODULE.request(url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
@@ -360,7 +378,7 @@ function upstashLpush(key, value) {
     const url = new URL('/', UPSTASH_REDIS_REST_URL);
     const serialized = typeof value === 'string' ? value : JSON.stringify(value);
     const body = JSON.stringify(['LPUSH', key, serialized]);
-    const req = https.request(url, {
+    const req = UPSTASH_HTTP_MODULE.request(url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
@@ -389,7 +407,7 @@ function upstashSetNx(key, value, ttlSeconds) {
     const url = new URL('/', UPSTASH_REDIS_REST_URL);
     const serialized = typeof value === 'string' ? value : JSON.stringify(value);
     const body = JSON.stringify(['SET', key, serialized, 'NX', 'EX', String(ttlSeconds)]);
-    const req = https.request(url, {
+    const req = UPSTASH_HTTP_MODULE.request(url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
@@ -498,7 +516,7 @@ function upstashDel(key) {
     if (!UPSTASH_ENABLED) return resolve(false);
     const url = new URL('/', UPSTASH_REDIS_REST_URL);
     const body = JSON.stringify(['DEL', key]);
-    const req = https.request(url, {
+    const req = UPSTASH_HTTP_MODULE.request(url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
@@ -555,8 +573,8 @@ function envelopeWrite(key, data, ttlSeconds, meta) {
 // passes legacy shapes through unchanged. MUST be used for any seeded canonical
 // key — reading raw via upstashGet() on an enveloped key iterates {_seed, data}
 // as payload keys and silently corrupts downstream consumers.
-async function envelopeRead(key) {
-  const raw = await upstashGet(key);
+async function envelopeRead(key, onFailure) {
+  const raw = await upstashGet(key, onFailure);
   if (raw && typeof raw === 'object' && !Array.isArray(raw) && '_seed' in raw && 'data' in raw) {
     return raw.data;
   }
@@ -7719,8 +7737,17 @@ function detectTrafficAnomalyRelay(history, threatLevel) {
 }
 
 async function seedTransitSummaries() {
-  const pw = await envelopeRead(PORTWATCH_REDIS_KEY);
-  if (!pw || typeof pw !== 'object' || Object.keys(pw).length === 0) return;
+  let pwFailureReason = null;
+  const pw = await envelopeRead(PORTWATCH_REDIS_KEY, (reason) => { pwFailureReason = reason; });
+  if (!pw || typeof pw !== 'object' || Object.keys(pw).length === 0) {
+    const reason = !UPSTASH_ENABLED
+      ? 'Upstash Redis disabled — see [Relay] startup warning (UPSTASH_REDIS_REST_URL/UPSTASH_ALLOW_INSECURE_HTTP)'
+      : pwFailureReason
+        ? `read failed: ${pwFailureReason}`
+        : 'key empty or absent — upstream seeder has not written it yet';
+    console.warn(`[TransitSummary] Skipped — ${PORTWATCH_REDIS_KEY} unavailable (${reason})`);
+    return;
+  }
 
   if (!latestCorridorRiskData) {
     const persisted = await envelopeRead(CORRIDOR_RISK_REDIS_KEY);
