@@ -1191,7 +1191,12 @@ export class MapComponent {
     }
     this.lastRenderTime = now;
 
-    const { width, height } = this.readContainerSize();
+    // Use the ResizeObserver-maintained cache instead of a live clientWidth/
+    // clientHeight read: render() fires repeatedly as data streams in on boot,
+    // and each live read interleaved with the prior tick's SVG writes forces a
+    // synchronous layout (the #5017 boot reflow). getKnownContainerSize() falls
+    // back to a live read only when the cache is still empty (first paint).
+    const { width, height } = this.getKnownContainerSize();
     this.renderWithSize(width, height);
   }
 
@@ -2403,8 +2408,7 @@ export class MapComponent {
 
     // Tech Events / Conferences (📅 icons) - with clustering
     if (this.state.layers.techEvents && this.techEvents.length > 0) {
-      const mapWidth = this.container.clientWidth;
-      const mapHeight = this.container.clientHeight;
+      const { width: mapWidth, height: mapHeight } = this.getKnownContainerSize();
 
       // Map events to have lon property for clustering, filter visible
       const visibleEvents = this.techEvents
@@ -3627,8 +3631,7 @@ export class MapComponent {
   }
 
   public flashLocation(lat: number, lon: number, durationMs = 2000): void {
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    const { width, height } = this.getKnownContainerSize();
     if (!width || !height) return;
 
     const projection = this.getProjection(width, height);
@@ -3792,8 +3795,7 @@ export class MapComponent {
     const hotspot = this.hotspots.find(h => h.id === id);
     if (!hotspot) return;
 
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    const { width, height } = this.getKnownContainerSize();
     const projection = this.getProjection(width, height);
     const pos = projection([hotspot.lon, hotspot.lat]);
     if (!pos) return;
@@ -3814,8 +3816,7 @@ export class MapComponent {
     const conflict = CONFLICT_ZONES.find(c => c.id === id);
     if (!conflict) return;
 
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    const { width, height } = this.getKnownContainerSize();
     const projection = this.getProjection(width, height);
     const pos = projection(conflict.center as [number, number]);
     if (!pos) return;
@@ -3842,8 +3843,7 @@ export class MapComponent {
       return;
     }
 
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    const { width, height } = this.getKnownContainerSize();
     const projection = this.getProjection(width, height);
     const pos = projection([base.lon, base.lat]);
     if (!pos) return;
@@ -3860,8 +3860,7 @@ export class MapComponent {
     const pipeline = PIPELINES.find(p => p.id === id);
     if (!pipeline || pipeline.points.length === 0) return;
 
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    const { width, height } = this.getKnownContainerSize();
     const projection = this.getProjection(width, height);
     const midPoint = pipeline.points[Math.floor(pipeline.points.length / 2)] as [number, number];
     const pos = projection(midPoint);
@@ -3879,8 +3878,7 @@ export class MapComponent {
     const cable = UNDERSEA_CABLES.find(c => c.id === id);
     if (!cable || cable.points.length === 0) return;
 
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    const { width, height } = this.getKnownContainerSize();
     const projection = this.getProjection(width, height);
     const midPoint = cable.points[Math.floor(cable.points.length / 2)] as [number, number];
     const pos = projection(midPoint);
@@ -3898,8 +3896,7 @@ export class MapComponent {
     const dc = AI_DATA_CENTERS.find(d => d.id === id);
     if (!dc) return;
 
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    const { width, height } = this.getKnownContainerSize();
     const projection = this.getProjection(width, height);
     const pos = projection([dc.lon, dc.lat]);
     if (!pos) return;
@@ -3916,8 +3913,7 @@ export class MapComponent {
     const facility = NUCLEAR_FACILITIES.find(n => n.id === id);
     if (!facility) return;
 
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    const { width, height } = this.getKnownContainerSize();
     const projection = this.getProjection(width, height);
     const pos = projection([facility.lon, facility.lat]);
     if (!pos) return;
@@ -3934,8 +3930,7 @@ export class MapComponent {
     const irradiator = GAMMA_IRRADIATORS.find(i => i.id === id);
     if (!irradiator) return;
 
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    const { width, height } = this.getKnownContainerSize();
     const projection = this.getProjection(width, height);
     const pos = projection([irradiator.lon, irradiator.lat]);
     if (!pos) return;
@@ -4153,8 +4148,7 @@ export class MapComponent {
     const [minLon, minLat, maxLon, maxLat] = bbox;
     const midLon = (minLon + maxLon) / 2;
     const midLat = (minLat + maxLat) / 2;
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    const { width, height } = this.getKnownContainerSize();
     const projection = this.getProjection(width, height);
     const topLeft = projection([minLon, maxLat]);
     const bottomRight = projection([maxLon, minLat]);
@@ -4177,8 +4171,7 @@ export class MapComponent {
   }
 
   public getCenter(): { lat: number; lon: number } | null {
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    const { width, height } = this.getKnownContainerSize();
     const projection = this.getProjection(width, height);
     if (!projection.invert) return null;
     const zoom = this.state.zoom;
@@ -4225,8 +4218,7 @@ export class MapComponent {
 
   public setCenter(lat: number, lon: number): void {
     console.log('[Map] setCenter called:', { lat, lon });
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    const { width, height } = this.getKnownContainerSize();
     const projection = this.getProjection(width, height);
     const pos = projection([lon, lat]);
     console.log('[Map] projected pos:', pos, 'container:', { width, height }, 'zoom:', this.state.zoom);
