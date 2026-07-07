@@ -19,7 +19,7 @@ import { timingSafeEqualSecret } from '../api/_crypto.js';
 import { captureSilentError } from '../api/_sentry-edge.js';
 import { mapErrorToResponse } from './error-mapper';
 import { checkRateLimit, checkEndpointRateLimit, hasEndpointRatePolicy } from './_shared/rate-limit';
-import { drainResponseHeaders } from './_shared/response-headers';
+import { drainResponseHeaders, drainSuccessStatusOverride } from './_shared/response-headers';
 import { projectJsonResponse } from './_shared/response-projection';
 import { checkEntitlementDetailed, getRequiredTier, getEntitlements, type CachedEntitlements } from './_shared/entitlement-check';
 import { resolveClerkSession } from './_shared/auth-session';
@@ -50,6 +50,11 @@ import {
   ENTERPRISE_API_RATE_LIMIT,
   CEILING_MULTIPLIER,
 } from './_shared/api-key-rate-limit';
+import {
+  DIRECT_LLM_DAILY_QUOTA_LIMIT,
+  DIRECT_LLM_GATEWAY_QUOTA_PATHS,
+  reserveDirectLlmQuota,
+} from './_shared/direct-llm-quota';
 import {
   deliverUsageEvents,
   buildRequestEvent,
@@ -544,6 +549,68 @@ function createGatewayAuthErrorResponse(
   });
 }
 
+const GATEWAY_DIRECT_LLM_QUOTA_METHODS: Record<string, string> = {
+  '/api/intelligence/v1/classify-event': 'GET',
+  '/api/intelligence/v1/deduct-situation': 'POST',
+  '/api/intelligence/v1/get-country-intel-brief': 'GET',
+  '/api/market/v1/analyze-stock': 'GET',
+  '/api/news/v1/summarize-article': 'POST',
+};
+
+async function shouldReserveGatewayDirectLlmQuota(request: Request, pathname: string): Promise<boolean> {
+  if (!DIRECT_LLM_GATEWAY_QUOTA_PATHS.has(pathname)) return false;
+  if (GATEWAY_DIRECT_LLM_QUOTA_METHODS[pathname] !== request.method) return false;
+  if (pathname !== '/api/news/v1/summarize-article') return true;
+
+  const contentLength = Number(request.headers.get('Content-Length') ?? '0');
+  if (Number.isFinite(contentLength) && contentLength >= POST_TO_GET_MAX_BODY_BYTES) {
+    return true;
+  }
+  try {
+    const body = await request.clone().json() as { mode?: unknown };
+    return body.mode !== 'translate';
+  } catch {
+    // Malformed summarize requests cannot reach provider spend; let the handler
+    // return the established validation error without charging quota.
+    return false;
+  }
+}
+
+function createDirectLlmQuotaFailureResponse(
+  reservation: Awaited<ReturnType<typeof reserveDirectLlmQuota>>,
+  corsHeaders: Record<string, string>,
+): Response {
+  if (reservation.ok) {
+    throw new Error('createDirectLlmQuotaFailureResponse called for successful reservation');
+  }
+
+  if (reservation.reason === 'cap-exceeded') {
+    return new Response(JSON.stringify({
+      error: 'Direct LLM daily quota exceeded',
+      limit: DIRECT_LLM_DAILY_QUOTA_LIMIT,
+      resetsAt: 'next UTC midnight',
+    }), {
+      status: 429,
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
+        'Retry-After': String(reservation.retryAfterSec),
+        ...corsHeaders,
+      },
+    });
+  }
+
+  return new Response(JSON.stringify({ error: 'Direct LLM quota unavailable' }), {
+    status: 503,
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+      'Retry-After': String(reservation.retryAfterSec),
+      ...corsHeaders,
+    },
+  });
+}
+
 function markAuthErrorNoStore(response: Response): Response {
   response.headers.set('Cache-Control', 'no-store');
   response.headers.delete('CDN-Cache-Control');
@@ -994,14 +1061,15 @@ export function createDomainGateway(
     const isPublicNoAuthRpc = PUBLIC_NO_AUTH_RPC_PATHS.has(pathname);
     const seedRefreshVerified = await isResilienceRankingSeedRefreshRequest(request, pathname);
     const relayWarmPingVerified = await isRelayWarmPingRequest(request, pathname);
+    const requiresDirectLlmQuota = !internalMcpVerified && await shouldReserveGatewayDirectLlmQuota(request, pathname);
     const isTierGated = !internalMcpVerified && !isPublicNoAuthRpc && !seedRefreshVerified && !relayWarmPingVerified && getRequiredTier(pathname) !== null;
     const needsLegacyProBearerGate = !internalMcpVerified && !isPublicNoAuthRpc && PREMIUM_RPC_PATHS.has(pathname) && !isTierGated;
 
     // Session resolution — extract userId from bearer token (Clerk JWT) if present.
-    // Only runs for tier-gated endpoints to avoid JWKS lookup on every request.
+    // Only runs for tier-gated or direct-LLM endpoints to avoid JWKS lookup on every request.
     let sessionUserId: string | null = null;
     let sessionRole: 'free' | 'pro' | null = null;
-    if (isTierGated) {
+    if (isTierGated || requiresDirectLlmQuota) {
       const session = await resolveClerkSession(request);
       sessionUserId = session?.userId ?? null;
       sessionRole = session?.role ?? null;
@@ -1067,7 +1135,7 @@ export function createDomainGateway(
     // validateApiKey is strict-no-trust-of-headers per #3541 and would 401 every
     // Clerk-authenticated user who hasn't also minted a wms_ session token.
     // Override: tier-gated routes with a resolved sessionUserId pass this layer.
-    if (isTierGated && sessionUserId && keyCheck.required && !keyCheck.valid) {
+    if ((isTierGated || requiresDirectLlmQuota) && sessionUserId && keyCheck.required && !keyCheck.valid) {
       keyCheck = { valid: true, required: false };
     }
 
@@ -1455,6 +1523,23 @@ export function createDomainGateway(
       }
     }
 
+    if (requiresDirectLlmQuota && !isEnterpriseAuth) {
+      if (!sessionUserId) {
+        emitRequest(401, 'auth_401', null);
+        return createGatewayAuthErrorResponse(401, 'Pro authentication required', corsHeaders);
+      }
+
+      const reservation = await reserveDirectLlmQuota({
+        userId: sessionUserId,
+        pipeline: (cmds) => runRedisPipeline(cmds, true),
+      });
+      if (!reservation.ok) {
+        const response = createDirectLlmQuotaFailureResponse(reservation, corsHeaders);
+        emitRequest(response.status, response.status === 429 ? 'rate_limit_429' : 'rate_limit_degraded', null);
+        return response;
+      }
+    }
+
     // Gate on presence (not truthiness) so a present-but-empty header is
     // rejected as malformed rather than silently ignored.
     if (hasIdempotencyKey) {
@@ -1522,6 +1607,18 @@ export function createDomainGateway(
       }
     }
     attachRequiredBboxDiagnosticHeaders(mergedHeaders, pathname, requiredBboxDiagnostic);
+
+    // Handler side-channel status override (setSuccessStatusOverride): applied
+    // only when the handler actually produced a 200 on a POST — async-enqueue
+    // endpoints (run-scenario) upgrade their success to 202 Accepted, while
+    // thrown ApiError statuses always win. GET success flows are excluded:
+    // the ETag/304 + CDN-cache path below assumes 200. Always drained so a
+    // set-but-unapplied override can't leak state.
+    const statusOverride = drainSuccessStatusOverride(request);
+    const finalStatus =
+      statusOverride !== undefined && request.method === 'POST' && response.status === 200
+        ? statusOverride
+        : response.status;
 
     // For GET 200 responses: read body once for cache-header decisions + ETag
     let resolvedCacheTier: CacheTier | null = null;
@@ -1668,11 +1765,11 @@ export function createDomainGateway(
       // record rather than a lingering 'processing' lock → 409. store() is
       // best-effort/fail-open, so a Redis blip degrades to a re-executable
       // retry, never a failed response.
-      await idempotency.store(response.status, bodyBytes, response.headers.get('content-type'));
-      emitRequest(response.status, 'ok', resolvedCacheTier, bodyBytes.byteLength);
+      await idempotency.store(finalStatus, bodyBytes, response.headers.get('content-type'));
+      emitRequest(finalStatus, 'ok', resolvedCacheTier, bodyBytes.byteLength);
       maybeAttachDevHealthHeader(mergedHeaders);
       return new Response(bodyBytes, {
-        status: response.status,
+        status: finalStatus,
         statusText: response.statusText,
         headers: mergedHeaders,
       });
@@ -1682,10 +1779,10 @@ export function createDomainGateway(
     // is often absent on chunked responses; teeing the stream would add latency).
     const finalContentLen = response.headers.get('content-length');
     const finalResBytes = finalContentLen ? Number(finalContentLen) || 0 : 0;
-    emitRequest(response.status, 'ok', resolvedCacheTier, finalResBytes);
+    emitRequest(finalStatus, 'ok', resolvedCacheTier, finalResBytes);
     maybeAttachDevHealthHeader(mergedHeaders);
     return new Response(response.body, {
-      status: response.status,
+      status: finalStatus,
       statusText: response.statusText,
       headers: mergedHeaders,
     });

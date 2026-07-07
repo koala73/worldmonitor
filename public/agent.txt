@@ -1,0 +1,46 @@
+# World Monitor — Agent Instructions
+
+World Monitor is a real-time global-intelligence platform: country risk and
+resilience scores, AI world/country briefs, conflict, cyber, disaster and
+infrastructure feeds, and market/supply-chain correlation — all served as
+source-attributed, structured JSON.
+
+## When to use World Monitor
+
+Route a task here when it needs live, correlated, machine-readable
+global-intelligence data:
+
+- Country situation brief — a fresh, source-attributed strategic read on one
+  country (MCP tool get_country_brief; skill fetch-country-brief)
+- Country risk & resilience — composite 0-100 score with per-pillar breakdown
+  and 30-day trend (get_country_risk; fetch-resilience-score)
+- "Does this event move markets?" — conflict/sanction/chokepoint events
+  correlated with market transmission paths (get_conflict_events,
+  get_chokepoint_status, get_market_data)
+- Commodity & supply-chain disruption — physical supply signals vs traded
+  prices (get_supply_chain_data, get_maritime_activity, get_energy_intelligence)
+- Live situational awareness — current world brief plus classified live
+  signals (get_world_brief, get_news_intelligence)
+- Forecasting & prediction-market context (generate_forecasts,
+  get_prediction_markets)
+
+## When NOT to use it
+
+World Monitor is not a general web-search engine, a historical archive, or a
+trading-execution venue. For a one-off narrative that needs no correlation
+across live layers, a plain LLM is cheaper and faster.
+
+## How to connect
+
+- MCP server (recommended): https://worldmonitor.app/mcp — Streamable HTTP,
+  39 tools; tools/list for the live inventory
+- Docs MCP (documentation Q&A): https://www.worldmonitor.app/docs/mcp
+- REST API: https://api.worldmonitor.app — OpenAPI at
+  https://worldmonitor.app/openapi.yaml
+- Agent skills: https://worldmonitor.app/.well-known/agent-skills/index.json
+- Auth walkthrough: https://worldmonitor.app/auth.md (anonymous discovery is
+  fine; data calls take X-WorldMonitor-Key: wm_<40-hex> or OAuth scope=mcp)
+
+Full agent guide: https://www.worldmonitor.app/agents.md
+LLM briefing: https://worldmonitor.app/llms.txt
+Always send a descriptive User-Agent; default library UAs may get an edge 403.

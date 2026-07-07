@@ -46,7 +46,7 @@ const DASHBOARD_FONT_LOADERS: Record<DashboardFontFamily, () => Promise<unknown>
 
 function getBuildVariant(): string {
   try {
-    return import.meta.env?.VITE_VARIANT || 'full';
+    return import.meta.env.VITE_VARIANT || 'full';
   } catch {
     return 'full';
   }

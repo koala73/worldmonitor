@@ -1,6 +1,6 @@
 ---
 title: "API Reference"
-description: "Catalog of every WorldMonitor REST service. All endpoints follow /api/<service>/v1/<rpc-name>."
+description: "Catalog of documented WorldMonitor REST service groups. All endpoints follow /api/<service>/v1/<rpc-name>."
 ---
 
 WorldMonitor exposes its data through a family of versioned REST services. Every endpoint follows the same shape:
@@ -11,7 +11,7 @@ https://api.worldmonitor.app/api/<service>/v1/<rpc-name>
 
 `<rpc-name>` is kebab-case (e.g. `list-acled-events`, `get-resilience-ranking`). Auth is the same on every service — pass a user API key such as `X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567`, an operator-issued enterprise key, or use the dashboard's browser session where supported. See [Authentication](/usage-auth) for details.
 
-The grouped pages in the left sidebar render the full OpenAPI spec — request parameters, response schemas, and try-it-out — for each service.
+The grouped pages in the left sidebar render OpenAPI specs — request parameters, response schemas, and try-it-out — for the documented service groups. The bundled spec remains the complete machine-readable source.
 
 Prefer the terminal? The official [`worldmonitor` CLI](/cli) hits any of these paths (`worldmonitor get /api/<service>/v1/<rpc-name>`) and lists the live catalog with `worldmonitor list`.
 
@@ -19,7 +19,7 @@ Prefer the terminal? The official [`worldmonitor` CLI](/cli) hits any of these p
 
 Building an agent or codegen pipeline? Point at `https://worldmonitor.app/` and follow the `Link:` header — every OpenAPI spec, MCP server card, OAuth endpoint, and agent-skill bundle is discoverable from one root URL via standard `.well-known` paths. See [Agent Discovery](/agent-discovery) for the full walkthrough.
 
-The single bundled spec is at [`/openapi.yaml`](https://www.worldmonitor.app/openapi.yaml) — feed it to any OpenAPI generator to produce typed clients for all 34 services in one pass.
+The single bundled spec is at [`/openapi.yaml`](https://www.worldmonitor.app/openapi.yaml) — feed it to any OpenAPI generator to produce typed clients for all 35 generated services in one pass, including platform services that do not have dedicated sidebar pages.
 
 ## Service catalog
 
@@ -33,15 +33,33 @@ The single bundled spec is at [`/openapi.yaml`](https://www.worldmonitor.app/ope
 
 **Health and environment** — Public Health, Imagery, Webcams
 
-**Other** — News (feed digest, article summaries), Research, Positive Events, Giving
+**Other** — News (feed digest, article summaries), Research, Positive Events, Giving, Batch (bulk read fan-out), Leads (contact and Pro-waitlist mutations documented under Platform Endpoints)
 
 Open any group in the sidebar to browse its operations.
 
+## Batch requests
+
+Acting on many items? `POST /api/batch/v1/execute` accepts an **array of operations** and runs up to 20 documented GET endpoints concurrently in a single request, returning per-operation statuses and bodies:
+
+```bash
+curl -X POST https://api.worldmonitor.app/api/batch/v1/execute \
+  -H "X-WorldMonitor-Key: wm_..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "operations": [
+      { "id": "fear-greed", "path": "/api/market/v1/get-fear-greed-index" },
+      { "id": "risk-de",    "path": "/api/intelligence/v1/get-country-risk?country=DE&jmespath=score" }
+    ]
+  }'
+```
+
+Each operation runs with the batch request's own credentials and counts against your rate limits individually — batching saves round trips, not quota. Query strings pass through untouched, so per-operation [`jmespath` projections](/mcp-jmespath) keep the combined response small. Responses over 1 MB per operation are rejected with `response_too_large`; nested batches are refused.
+
 ## MCP equivalents
 
-If you're moving between REST and the [MCP server](/mcp-server), treat them as related but distinct catalogs. REST coverage is defined by OpenAPI. MCP coverage is narrower: an endpoint is **MCP-exposed** only when the exact `METHOD /api/...` path is declared in a tool's registry `_apiPaths` entry.
+If you're moving between REST and the [MCP server](/mcp-overview), treat them as related but distinct catalogs. REST coverage is defined by OpenAPI. MCP coverage is narrower: an endpoint is **MCP-exposed** only when the exact `METHOD /api/...` path is declared in a tool's registry `_apiPaths` entry.
 
-Use the [MCP API coverage table](/mcp-server#api-coverage) as the human-facing reverse lookup. It maps each MCP tool to the REST endpoints it explicitly serves. If a REST route is not in that table, it is REST-only as an API equivalence, even if a cache-backed MCP tool returns similar domain data.
+Use the [MCP API coverage table](/mcp-overview#api-coverage) as the human-facing reverse lookup. It maps each MCP tool to the REST endpoints it explicitly serves. If a REST route is not in that table, it is REST-only as an API equivalence, even if a cache-backed MCP tool returns similar domain data.
 
 Common shapes:
 
@@ -60,7 +78,7 @@ Important non-equivalences:
 | `GET /api/research/v1/list-arxiv-papers`, `GET /api/research/v1/list-trending-repos`, `GET /api/research/v1/list-hackernews-items` | REST-only. `get_research_signals` declares `list-tech-events` only. |
 | `GET /api/aviation/v1/list-airport-delays`, `GET /api/aviation/v1/get-flight-status` | REST-only. MCP aviation coverage is via `get_airspace`, flight-search tools, and cache-backed `get_aviation_status`, not these routes. |
 
-Always cross-check against [the bundled OpenAPI spec](https://www.worldmonitor.app/openapi.yaml) for REST path names, parameters, and response shapes, and against [MCP API coverage](/mcp-server#api-coverage) for MCP exposure.
+Always cross-check against [the bundled OpenAPI spec](https://www.worldmonitor.app/openapi.yaml) for REST path names, parameters, and response shapes, and against [MCP API coverage](/mcp-overview#api-coverage) for MCP exposure.
 
 ## Platform endpoints
 

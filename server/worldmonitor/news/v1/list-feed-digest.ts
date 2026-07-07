@@ -14,6 +14,7 @@ import { sha256Hex } from '../../../_shared/hash';
 import { CHROME_UA } from '../../../_shared/constants';
 import { VARIANT_FEEDS, INTEL_SOURCES, type ServerFeed } from './_feeds';
 import { classifyByKeyword, hasHistoricalMarker, type ThreatLevel } from './_classifier';
+import { assignStoryIdentity, adoptExistingCanonical } from './dedup.mjs';
 import { classifyOpinion } from '../../../_shared/opinion-classifier.js';
 import { classifyFeelGood } from '../../../_shared/feelgood-classifier.js';
 import { classifyEphemeralLiveCoverage } from '../../../../shared/ephemeral-live-classifier.js';
@@ -23,6 +24,7 @@ import {
   STORY_TRACK_KEY,
   STORY_SOURCES_KEY,
   STORY_PEAK_KEY,
+  STORY_ALIAS_KEY,
   DIGEST_ACCUMULATOR_KEY,
   STORY_TTL,
   STORY_TRACK_KEY_PREFIX,
@@ -373,6 +375,7 @@ interface ParseResult {
   items: ParsedItem[];
   parsedTotal: number;     // count of <item>/<entry> blocks attempted
   droppedUndated: number;  // count dropped because every recognized date tag was empty/unparseable/future
+  droppedFeedCap?: number; // #4920: items beyond ITEMS_PER_FEED, previously uncounted
 }
 
 // Cache TTLs: a successful parse (parsedTotal > 0) caches for an hour to
@@ -403,7 +406,9 @@ async function fetchAndParseRss(
   // (Same class of cache-prefix bump as v2→v3 and v3→v4, which this codebase
   // already established as the correct cutover pattern for parsed-cache
   // shape changes.)
-  const cacheKey = `rss:feed:v5:${variant}:${feed.url}`;
+  // v5→v6 (#4920 review): ParseResult gained droppedFeedCap; warm v5 rows
+  // lack it and would undercount the coverage ledger for their whole TTL.
+  const cacheKey = `rss:feed:v6:${variant}:${feed.url}`;
 
   try {
     // Read cache unconditionally — the v5 prefix guarantees pre-fix
@@ -520,6 +525,10 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
   const isAtom = matches.length === 0;
   if (isAtom) matches = [...xml.matchAll(entryRegex)];
 
+  // #4920 coverage ledger: items beyond the per-feed cap were previously
+  // dropped with no counter anywhere — fully invisible.
+  const droppedFeedCap = Math.max(0, matches.length - ITEMS_PER_FEED);
+
   for (const match of matches.slice(0, ITEMS_PER_FEED)) {
     const block = match[1]!;
 
@@ -617,7 +626,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
   //     (default 120s) — the feed retries quickly instead of being pinned
   //     empty for the full 3600s TTL.
   if (parsedTotal === 0) return null;
-  return { items, parsedTotal, droppedUndated };
+  return { items, parsedTotal, droppedUndated, droppedFeedCap };
 }
 
 /**
@@ -736,7 +745,7 @@ async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
   if (candidates.length === 0) return;
 
   // Use the canonical buildClassifyCacheKey from intelligence/v1/_shared
-  // so the cache prefix (currently classify:sebuf:v5:) lives in exactly
+  // so the cache prefix (currently classify:sebuf:v6:) lives in exactly
   // one place — bumping it again only requires touching _shared.ts and
   // the relay's independent .cjs helper. See U4 of the plan.
   const keyMap = new Map<string, ParsedItem[]>();
@@ -1109,11 +1118,39 @@ function buildStoryTrackHsetFields(
   ];
 }
 
-async function writeStoryTracking(items: ParsedItem[], variant: string, lang: string, hashes: string[]): Promise<void> {
+async function writeStoryTracking(items: ParsedItem[], variant: string, lang: string, hashes: string[], memberHashesByFinal?: Map<string, Set<string>>): Promise<void> {
   if (items.length === 0) return;
   const now = Date.now();
   const accKey = DIGEST_ACCUMULATOR_KEY(variant, lang);
 
+  // #4919/#4924: with fuzzy story identity, N same-cycle wording variants
+  // share one titleHash. Mutable per-story writes (mentionCount HINCRBY,
+  // HSET representative fields) must run ONCE per unique hash per cycle —
+  // per-item they would inflate mentionCount by N per cycle (a 6-variant
+  // story would skip DEVELOPING straight to SUSTAINED, since the read
+  // path treats mentionCount as +1/cycle) and let whichever member
+  // iterated last overwrite the representative fields nondeterministically.
+  // Representative = highest importanceScore, tie-break newest publishedAt
+  // then title — deterministic for a given batch. Per-MEMBER writes that
+  // are set-shaped stay per item: SADD source (distinct-source set is the
+  // point of corroboration) and ZADD peak GT (max is idempotent).
+  const representativeByHash = new Map<string, ParsedItem>();
+  for (let i = 0; i < items.length; i++) {
+    const hash = hashes[i]!;
+    const item = items[i]!;
+    const current = representativeByHash.get(hash);
+    if (
+      !current
+      || item.importanceScore > current.importanceScore
+      || (item.importanceScore === current.importanceScore && item.publishedAt > current.publishedAt)
+      || (item.importanceScore === current.importanceScore && item.publishedAt === current.publishedAt
+        && item.title < current.title)
+    ) {
+      representativeByHash.set(hash, item);
+    }
+  }
+
+  const writtenHashes = new Set<string>();
   for (let batchStart = 0; batchStart < items.length; batchStart += STORY_BATCH_SIZE) {
     const batch = items.slice(batchStart, batchStart + STORY_BATCH_SIZE);
     const commands: Array<Array<string | number>> = [];
@@ -1128,18 +1165,35 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
       const nowStr = String(now);
       const ttl = STORY_TTL;
 
-      const hsetFields = buildStoryTrackHsetFields(item, nowStr, score);
+      if (!writtenHashes.has(hash)) {
+        writtenHashes.add(hash);
+        const representative = representativeByHash.get(hash) ?? item;
+        const hsetFields = buildStoryTrackHsetFields(representative, nowStr, representative.importanceScore);
+        commands.push(
+          ['HINCRBY', trackKey, 'mentionCount', '1'],
+          ['HSET', trackKey, ...hsetFields],
+          ['HSETNX', trackKey, 'firstSeen', nowStr],
+          ['EXPIRE', trackKey, ttl],
+          ['ZADD', accKey, nowStr, hash],
+        );
+        // #4924: alias rows for every member exact-title hash -> the FINAL
+        // (post-adoption) canonical, story-track TTL — next cycle's
+        // adoption source. Includes the canonical's own hash.
+        for (const memberHash of memberHashesByFinal?.get(hash) ?? []) {
+          commands.push(['SET', STORY_ALIAS_KEY(memberHash), hash, 'EX', ttl]);
+        }
+      }
 
       commands.push(
-        ['HINCRBY', trackKey, 'mentionCount', '1'],
-        ['HSET', trackKey, ...hsetFields],
-        ['HSETNX', trackKey, 'firstSeen', nowStr],
         ['ZADD', peakKey, 'GT', score, 'peak'],
         ['SADD', sourcesKey, item.source],
-        ['EXPIRE', trackKey, ttl],
+        // #4924 review P2 (TTL ordering): EXPIRE must follow the SADD/ZADD
+        // that CREATE these keys — EXPIRE on a missing key is a no-op, so
+        // the pre-block ordering left brand-new story:sources/story:peak
+        // keys persistent forever. Idempotent per member; kept adjacent to
+        // the creating writes so no future reorder can reopen the leak.
         ['EXPIRE', sourcesKey, ttl],
         ['EXPIRE', peakKey, ttl],
-        ['ZADD', accKey, nowStr, hash],
       );
     }
 
@@ -1153,6 +1207,9 @@ async function writeStoryTracking(items: ParsedItem[], variant: string, lang: st
 async function buildDigest(variant: string, lang: string): Promise<ListFeedDigestResponse> {
   const feedsByCategory = VARIANT_FEEDS[variant] ?? {};
   const feedStatuses: Record<string, string> = {};
+  // #4920 coverage ledger: count every silent drop gate so "how much did
+  // we NOT show" is a queryable number instead of a feeling.
+  const ledgerDrops = { perFeedCap: 0, undated: 0, freshnessFloor: 0, perCategoryCap: 0 };
   const categories: Record<string, CategoryBucket> = {};
 
   const deadlineController = new AbortController();
@@ -1200,16 +1257,23 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
           } else if (result.droppedUndated > 0) {
             feedStatuses[feed.name] = 'partial-undated';
           }
-          return { category, items: result.items };
+          return {
+            category,
+            items: result.items,
+            droppedUndated: result.droppedUndated,
+            droppedFeedCap: result.droppedFeedCap ?? 0,
+          };
         }),
       );
 
       for (const result of settled) {
         if (result.status === 'fulfilled') {
-          const { category, items } = result.value;
+          const { category, items, droppedUndated, droppedFeedCap } = result.value;
           const existing = results.get(category) ?? [];
           existing.push(...items);
           results.set(category, existing);
+          ledgerDrops.undated += droppedUndated;
+          ledgerDrops.perFeedCap += droppedFeedCap;
         }
       }
     }
@@ -1233,6 +1297,7 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
       droppedStaleTotal += items.length - fresh.length;
       results.set(category, fresh);
     }
+    ledgerDrops.freshnessFloor = droppedStaleTotal;
     if (droppedStaleTotal > 0) {
       console.warn(
         `[digest] freshness floor dropped ${droppedStaleTotal} stale items ` +
@@ -1243,19 +1308,64 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     // Flatten ALL items before any truncation so cross-category corroboration is counted.
     const allItems = [...results.values()].flat();
 
-    // Compute sha256 title hashes and build corroboration map in one pass.
-    // Hashes are stored on each item for reuse as Redis story-tracking keys.
-    const corroborationMap = new Map<string, Set<string>>();
+    // #4919: fuzzy story identity. Items are clustered by the shared
+    // story-identity similarity (edit-tolerant: suffixes, truncations,
+    // qualifier swaps, reorders, morphology) and every cluster member
+    // shares one canonical titleHash + a cluster-wide corroboration
+    // count. The previous exact sha256(normalizeTitle) identity forked a
+    // story on ANY wording edit, so corroboration only counted verbatim
+    // wire syndication — deflating importanceScore's corroboration
+    // signal and the BREAKING/DEVELOPING phase tracker. Singleton
+    // clusters hash exactly as before, so story:track keys for
+    // uncorroborated stories are unchanged.
+    const identityByItem = await assignStoryIdentity(allItems, normalizeTitle, sha256Hex);
+
+    // #4924 review P1: adopt a LIVE canonical before assigning hashes.
+    // Alias rows (memberHash -> canonicalHash, story-track TTL) written by
+    // previous cycles let a cluster keep its story identity when the
+    // member that anchored the canonical drops out of the batch. One
+    // batched read for all member hashes; failures degrade to
+    // batch-derived canonicals (pre-adoption behavior).
+    const allMemberHashes = new Set<string>();
+    for (const identity of identityByItem.values()) {
+      for (const h of identity.memberTitleHashes ?? []) allMemberHashes.add(h);
+    }
+    const aliasTargetByHash = new Map<string, string>();
+    if (allMemberHashes.size > 0) {
+      const aliasHashes = [...allMemberHashes];
+      const aliasResults = await runRedisPipeline(aliasHashes.map((h) => ['GET', STORY_ALIAS_KEY(h)]));
+      for (let i = 0; i < aliasHashes.length; i++) {
+        const target = aliasResults[i]?.result;
+        if (typeof target === 'string' && target.length > 0) aliasTargetByHash.set(aliasHashes[i]!, target);
+      }
+    }
+
     await Promise.all(allItems.map(async (item) => {
-      const hash = await sha256Hex(normalizeTitle(item.title));
-      item.titleHash = hash;
-      const sources = corroborationMap.get(hash) ?? new Set<string>();
-      sources.add(item.source);
-      corroborationMap.set(hash, sources);
+      const identity = identityByItem.get(item);
+      if (identity) {
+        item.titleHash = adoptExistingCanonical(identity.memberTitleHashes, identity.titleHash, aliasTargetByHash);
+        item.corroborationCount = identity.corroborationCount;
+      } else {
+        // Defensive: assignStoryIdentity covers every input by
+        // construction; degrade to the pre-#4919 exact identity if not —
+        // and say so, or a future coverage-invariant break is invisible.
+        console.warn(
+          `[digest] story-identity coverage miss — exact-hash fallback for "${item.title.slice(0, 60)}"`,
+        );
+        item.titleHash = await sha256Hex(normalizeTitle(item.title));
+        item.corroborationCount = 1;
+      }
     }));
 
+    // Final(post-adoption) hash -> member exact-title hashes, consumed by
+    // writeStoryTracking to persist next cycle's alias rows.
+    const memberHashesByFinal = new Map<string, Set<string>>();
     for (const item of allItems) {
-      item.corroborationCount = corroborationMap.get(item.titleHash!)?.size ?? 1;
+      const identity = identityByItem.get(item);
+      if (!identity || !item.titleHash) continue;
+      let set = memberHashesByFinal.get(item.titleHash);
+      if (!set) { set = new Set(); memberHashesByFinal.set(item.titleHash, set); }
+      for (const h of identity.memberTitleHashes ?? []) set.add(h);
     }
 
     // Enrich ALL items with the AI classification cache BEFORE scoring so that
@@ -1318,6 +1428,7 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
       items.sort((a, b) =>
         b.importanceScore - a.importanceScore || b.publishedAt - a.publishedAt,
       );
+      ledgerDrops.perCategoryCap += Math.max(0, items.length - MAX_ITEMS_PER_CATEGORY);
       slicedByCategory.set(category, items.slice(0, MAX_ITEMS_PER_CATEGORY));
     }
 
@@ -1334,7 +1445,7 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     const storyTracks = await readStoryTracks(uniqueHashes).catch(() => new Map<string, StoryTrack>());
 
     // Write story tracking. Errors never fail the digest build.
-    await writeStoryTracking(allSliced, variant, lang, titleHashes).catch((err: unknown) =>
+    await writeStoryTracking(allSliced, variant, lang, titleHashes, memberHashesByFinal).catch((err: unknown) =>
       console.warn('[digest] story tracking write failed:', err),
     );
 
@@ -1342,7 +1453,8 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
       categories[category] = {
         items: sliced.map((item) => {
           const hash = item.titleHash!;
-          const sourceCount = corroborationMap.get(hash)?.size ?? 1;
+          // #4919: cluster-wide source count assigned by assignStoryIdentity.
+          const sourceCount = item.corroborationCount ?? 1;
           const stale = storyTracks.get(hash);
           // Merge stale state + this cycle's HINCRBY to get the current mentionCount.
           // New stories (stale = undefined) start at mentionCount=1 this cycle.
@@ -1365,6 +1477,32 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
           return toProtoItem(item, storyMeta);
         }),
       };
+    }
+
+    // #4920: publish the coverage ledger — every gate's drop count plus
+    // what survived — as a side key. Best-effort: ledger failures never
+    // fail the digest. Read by ops tooling and the completeness reports;
+    // deliberately NOT part of the proto response (no schema change).
+    const distinctSources = new Set(allItems.map((item) => item.source)).size;
+    const ledger = {
+      v: 1,
+      generatedAt: Date.now(),
+      variant,
+      lang,
+      itemsIngested: allItems.length,
+      itemsServed: allSliced.length,
+      distinctSources,
+      drops: { ...ledgerDrops },
+    };
+    // Key-cardinality clamp: variant/lang are request-supplied — only write
+    // ledgers for known variants and well-formed 2-letter langs so a caller
+    // spraying arbitrary values cannot inflate the keyspace.
+    if (VARIANT_FEEDS[variant] && /^[a-z]{2}$/.test(lang)) {
+      // #4927 review P2: awaited — a fire-and-forget write can be killed
+      // when the response finishes before the side write lands.
+      await setCachedJson(`news:coverage-ledger:v1:${variant}:${lang}`, ledger, 7200).catch((err: unknown) =>
+        console.warn('[digest] coverage-ledger write failed:', err),
+      );
     }
 
     return {

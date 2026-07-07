@@ -169,12 +169,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/military/v1/get-theater-posture:
         get:
             tags:
@@ -189,7 +216,7 @@ paths:
                     Theater name (e.g., "indo-pacific", "european", "middle-east"). Empty for all theaters.
                      Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
-                  example: "example"
+                  example: "indo-pacific"
                   schema:
                     type: string
                 - name: jmespath
@@ -212,7 +239,7 @@ paths:
                                           - "example"
                                       "assessedAt": 1717200000000
                                       "postureLevel": "example"
-                                      "theater": "example"
+                                      "theater": "indo-pacific"
                             schema:
                                 $ref: '#/components/schemas/GetTheaterPostureResponse'
                 "400":
@@ -235,12 +262,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/military/v1/get-aircraft-details:
         get:
             tags:
@@ -299,18 +353,45 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/military/v1/get-aircraft-details-batch:
         post:
             parameters:
                 - name: Idempotency-Key
                   in: header
-                  description: Optional client-generated idempotency key. Retrying a POST with the same key returns the original response instead of duplicating the side effect. Keys are scoped per caller and retained for 24 hours.
+                  description: Optional client-generated idempotency key. Retrying a POST with the same key and an identical request body replays the original response (only the status, body, and Content-Type are reproduced) instead of re-executing; reusing the key with a different body is rejected with 422. For mutations this avoids duplicating the side effect, while for batch-read POSTs it replays a cached snapshot that can be up to 24 hours stale. Keys are scoped per authenticated caller (falling back to the source IP for unauthenticated endpoints) and retained for 24 hours.
                   required: false
                   example: "4f8b9c2e-1a3d-4b6f-8e0a-2c5d7f9b1e34"
                   schema:
@@ -335,6 +416,15 @@ paths:
             responses:
                 "200":
                     description: Successful response
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key echoed from the request. Present only when the client opted into idempotency.
+                        Idempotent-Replayed:
+                            schema:
+                                type: boolean
+                            description: true when this response was replayed from an earlier request with the same key, false on the first (original) request. Present only when the client opted into idempotency.
                     content:
                         application/json:
                             example:
@@ -351,7 +441,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/GetAircraftDetailsBatchResponse'
                 "400":
-                    description: Validation error or invalid Idempotency-Key header
+                    description: Validation error, invalid Idempotency-Key header, or malformed JSON request body
                     content:
                         application/json:
                             schema:
@@ -366,6 +456,7 @@ paths:
                                             type: string
                                         message:
                                             type: string
+                                    - $ref: '#/components/schemas/InvalidRequestBodyError'
                 "409":
                     description: A request with this Idempotency-Key is still being processed
                     headers:
@@ -420,12 +511,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/military/v1/get-wingbits-status:
         get:
             tags:
@@ -471,12 +589,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/military/v1/get-usni-fleet-report:
         get:
             tags:
@@ -541,12 +686,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/military/v1/list-military-bases:
         get:
             tags:
@@ -694,12 +866,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/military/v1/get-wingbits-live-flight:
         get:
             tags:
@@ -757,12 +956,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/military/v1/list-defense-patents:
         get:
             tags:
@@ -837,12 +1063,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
 components:
     securitySchemes:
         WorldMonitorKey:
@@ -887,6 +1140,36 @@ components:
                     type: string
                     description: Error message (e.g., 'user not found', 'database connection failed')
             description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        InvalidRequestBodyError:
+            type: object
+            description: Returned when a JSON POST request body is empty or malformed.
+            properties:
+                message:
+                    type: string
+                    description: Invalid request body
+            required:
+                - message
+        GatewayError:
+            type: object
+            description: Returned by gateway infrastructure errors before an RPC handler runs, such as origin, routing, method, authentication, or quota checks.
+            properties:
+                error:
+                    oneOf:
+                        - type: string
+                        - type: object
+                          additionalProperties: true
+                    description: Gateway error reason or structured gateway failure details.
+            required:
+                - error
+        RateLimitError:
+            type: object
+            description: Returned when a gateway or handler rate limit rejects the request.
+            properties:
+                error:
+                    type: string
+                    description: Human-readable rate-limit failure reason.
+            required:
+                - error
         ForbiddenError:
             type: object
             properties:

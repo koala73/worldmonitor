@@ -10,6 +10,18 @@ export const config = { runtime: 'edge' };
 const CODE_TTL_SECONDS = 600;
 const CLIENT_TTL_SECONDS = 90 * 24 * 3600; // 90-day sliding reset
 
+// First-party origin allowlist for the consent POST: the worldmonitor.app apex
+// plus any single-label subdomain (www, api, tech, finance, …), matching the
+// host-derived OAuth metadata (api/_agent-metadata.ts resolveMetadataOrigin).
+// The consent page is served host-derived, so its native form submit (action is
+// api.worldmonitor.app) and its JS same-origin fetch both arrive with a
+// first-party Origin — which, before this, only matched api.worldmonitor.app and
+// 403'd the www/apex discovery flow. Foreign origins are still rejected; the
+// single-use CSRF nonce (server-stored, the source of every authoritative value)
+// is the primary protection, this is defense-in-depth. Anchored, so it rejects
+// worldmonitor.app.evil.example, evilworldmonitor.app, and any :port.
+const WM_ORIGIN = /^https:\/\/(?:[a-z0-9-]+\.)?worldmonitor\.app$/;
+
 let _rl = null;
 function getRatelimit() {
   if (_rl) return _rl;
@@ -240,10 +252,13 @@ export default async function handler(req) {
   }
 
   if (method === 'POST') {
-    // Origin validation: allow our domain, absent origin (server/CLI), and 'null'
-    // (WebView with opaque/sandboxed origin). CSRF nonce provides the actual protection.
+    // Origin validation: allow any first-party worldmonitor.app host (the consent
+    // page is served host-derived — apex/www/api/variant — so a same-origin JS
+    // fetch or the native form POST to api.worldmonitor.app arrives with any of
+    // those Origins), plus absent origin (server/CLI) and 'null' (WebView with
+    // opaque/sandboxed origin). CSRF nonce provides the actual protection.
     const origin = req.headers.get('origin');
-    if (origin && origin !== 'https://api.worldmonitor.app' && origin !== 'null') {
+    if (origin && origin !== 'null' && !WM_ORIGIN.test(origin)) {
       return new Response('Forbidden', { status: 403 });
     }
 

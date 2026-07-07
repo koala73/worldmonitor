@@ -3,17 +3,15 @@ import { ArrowRight, Github } from 'lucide-react';
 import { WiredBadge } from '../components/WiredBadge';
 import { t } from '../i18n';
 import { DASHBOARD_PATH } from '../routes';
-import dashboardScreenshot from '../assets/worldmonitor-7-mar-2026.jpg';
-import dashboardScreenshotAvif640 from '../assets/worldmonitor-7-mar-2026-640.avif';
-import dashboardScreenshotAvif960 from '../assets/worldmonitor-7-mar-2026-960.avif';
-import dashboardScreenshotAvif1280 from '../assets/worldmonitor-7-mar-2026-1280.avif';
-import dashboardScreenshotWebp640 from '../assets/worldmonitor-7-mar-2026-640.webp';
-import dashboardScreenshotWebp960 from '../assets/worldmonitor-7-mar-2026-960.webp';
-import dashboardScreenshotWebp1280 from '../assets/worldmonitor-7-mar-2026-1280.webp';
+import {
+  DASHBOARD_SCREENSHOT_JPG,
+  DASHBOARD_SCREENSHOT_WIDTH,
+  DASHBOARD_SCREENSHOT_HEIGHT,
+  DASHBOARD_SCREENSHOT_AVIF_SRCSET,
+  DASHBOARD_SCREENSHOT_WEBP_SRCSET,
+} from '../assets/dashboard-screenshot';
 
 const HERO_IMAGE_SIZES = '(min-width: 1072px) 1024px, (min-width: 640px) calc(100vw - 3rem), calc(100vw - 2rem)';
-const HERO_IMAGE_AVIF_SRCSET = dashboardScreenshotAvif640 + ' 640w, ' + dashboardScreenshotAvif960 + ' 960w, ' + dashboardScreenshotAvif1280 + ' 1280w';
-const HERO_IMAGE_WEBP_SRCSET = dashboardScreenshotWebp640 + ' 640w, ' + dashboardScreenshotWebp960 + ' 960w, ' + dashboardScreenshotWebp1280 + ' 1280w';
 
 const HERO_PROOF_STATS = [
   { valueKey: 'welcome.depth.s1v', labelKey: 'welcome.depth.s1l' },
@@ -51,6 +49,8 @@ const ConsoleFrame = () => (
     <div className="absolute -inset-8 bg-wm-green/5 blur-[60px] rounded-full pointer-events-none" aria-hidden="true" />
     <a
       href={`${DASHBOARD_PATH}?ref=welcome-plate`}
+      data-umami-event="welcome-cta"
+      data-umami-event-target="welcome-plate"
       className="relative block border border-wm-border rounded-md overflow-hidden border-glow bg-wm-card hover:border-wm-green/40 transition-colors"
     >
       <div className="flex items-center justify-between gap-3 px-3 sm:px-4 h-9 border-b border-wm-border bg-wm-bg/80 font-mono text-[10px] uppercase tracking-widest text-wm-muted">
@@ -69,14 +69,14 @@ const ConsoleFrame = () => (
         </span>
       </div>
       <picture>
-        <source type="image/avif" srcSet={HERO_IMAGE_AVIF_SRCSET} sizes={HERO_IMAGE_SIZES} />
-        <source type="image/webp" srcSet={HERO_IMAGE_WEBP_SRCSET} sizes={HERO_IMAGE_SIZES} />
+        <source type="image/avif" srcSet={DASHBOARD_SCREENSHOT_AVIF_SRCSET} sizes={HERO_IMAGE_SIZES} />
+        <source type="image/webp" srcSet={DASHBOARD_SCREENSHOT_WEBP_SRCSET} sizes={HERO_IMAGE_SIZES} />
         <img
-          src={dashboardScreenshot}
+          src={DASHBOARD_SCREENSHOT_JPG}
           alt={t('welcome.hero.screenshotAlt')}
           className="w-full block"
-          width="2940"
-          height="1912"
+          width={DASHBOARD_SCREENSHOT_WIDTH}
+          height={DASHBOARD_SCREENSHOT_HEIGHT}
           fetchPriority="high"
           decoding="async"
         />
@@ -115,6 +115,8 @@ export const Hero = () => (
       >
         <a
           href={`${DASHBOARD_PATH}?ref=welcome-hero`}
+          data-umami-event="welcome-cta"
+          data-umami-event-target="welcome-hero"
           className="w-full sm:w-auto justify-center bg-wm-green text-wm-bg px-5 sm:px-8 py-3.5 rounded-sm font-mono text-sm uppercase tracking-wide sm:tracking-wider font-bold hover:bg-green-400 transition-colors inline-flex items-center gap-2"
         >
           {t('welcome.hero.ctaPrimary')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
@@ -152,6 +154,11 @@ export const Hero = () => (
           className="inline-flex items-center gap-1.5 hover:text-wm-text transition-colors"
         >
           <Github className="w-3.5 h-3.5" aria-hidden="true" /> {t('welcome.hero.trustOpenSource')}
+        </a>
+        <span aria-hidden="true" className="text-wm-border">|</span>
+        {/* Builder self-identification cue — surface names stay untranslated. */}
+        <a href="#agents" className="hover:text-wm-text transition-colors">
+          <span className="text-wm-green">{t('welcome.hero.trustBuild')}</span> REST API · MCP · npm · PyPI · Go · RubyGems
         </a>
       </motion.div>
     </div>

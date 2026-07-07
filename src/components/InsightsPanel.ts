@@ -12,6 +12,7 @@ import { getCachedPosture } from '@/services/cached-theater-posture';
 import { isMobileDevice } from '@/utils';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
 import { collectBriefSources, normalizeCachedBriefSources, renderBriefSourcesFooter, type BriefSource } from '@/utils/brief-sources';
+import { formatIntelBrief } from '@/utils/format-intel-brief';
 import { SITE_VARIANT } from '@/config';
 import { deletePersistentCache, getPersistentCache, setPersistentCache } from '@/services/persistent-cache';
 import { t } from '@/services/i18n';
@@ -513,16 +514,22 @@ export class InsightsPanel extends Panel {
     insights: ServerInsights,
     sentiments: Array<{ label: string; score: number }> | null,
   ): void {
+    // #4928 external review: the synthesis cites up to 8 stories — a
+    // 6-source cap orphaned [7]/[8]. Cap to the payload's own citation
+    // index space (bounded at 12 defensively).
     const worldBriefSources = collectBriefSources(
       insights.worldBriefSources ?? [],
-      6,
+      Math.min(12, Math.max(6, insights.worldBriefSources?.length ?? 6)),
     );
-    const briefHtml = insights.worldBrief ? this.renderWorldBrief(insights.worldBrief, worldBriefSources) : '';
+    const briefHtml = insights.worldBrief
+      ? this.renderWorldBrief(insights.worldBrief, worldBriefSources, this.renderBriefExtras(insights))
+      : '';
     const focalPointsHtml = this.renderFocalPoints();
     const convergenceHtml = this.renderConvergenceZones();
     const sentimentOverview = this.renderSentimentOverview(sentiments);
     const storiesHtml = this.renderServerStories(insights.topStories, sentiments);
     const statsHtml = this.renderServerStats(insights);
+    const provenanceHtml = this.renderProvenance(insights);
     const missedHtml = this.renderMissedStories();
 
     this.setSafeContent(unsafeRawHtml(`
@@ -531,6 +538,7 @@ export class InsightsPanel extends Panel {
       ${convergenceHtml}
       ${sentimentOverview}
       ${statsHtml}
+      ${provenanceHtml}
       <div class="insights-section">
         <div class="insights-section-title">${t('components.insights.breakingConfirmed')}</div>
         ${storiesHtml}
@@ -578,6 +586,20 @@ export class InsightsPanel extends Panel {
     }).join('');
   }
 
+  private renderProvenance(insights: ServerInsights): string {
+    // #4920: the completeness stamp. Absent on pre-rollout payloads.
+    const prov = insights.provenance;
+    if (!prov || !prov.storiesConsidered) return '';
+    return `
+      <div class="insights-provenance" title="${t('components.insights.provenanceTitle')}">
+        ${t('components.insights.compiledFrom', {
+          stories: String(prov.storiesConsidered),
+          sources: String(prov.sourcesConsidered),
+        })}
+      </div>
+    `;
+  }
+
   private renderServerStats(insights: ServerInsights): string {
     return `
       <div class="insights-stats">
@@ -597,7 +619,36 @@ export class InsightsPanel extends Panel {
     `;
   }
 
-  private renderWorldBrief(brief: string, sources: BriefSource[] = []): string {
+  /** #4921: cited per-story lines + staleness footer for the World Brief. */
+  private renderBriefExtras(insights: ServerInsights): string {
+    const lines = Array.isArray(insights.briefStoryLines) ? insights.briefStoryLines : [];
+    const sources = insights.worldBriefSources ?? [];
+    const linesHtml = lines.length > 0
+      ? `<ol class="insights-brief-lines">${lines
+          .map((line) => `<li>${formatIntelBrief(line.text, { sources })
+            .replace(/^<div class="brief-para">/, '')
+            .replace(/<\/div>$/, '')
+            .replace(/^<p>/, '')
+            .replace(/<\/p>$/, '')}</li>`)
+          .join('')}</ol>`
+      : '';
+    let footer = '';
+    const generatedMs = new Date(insights.generatedAt).getTime();
+    const newestMs = insights.sourceAgeRange?.newestMs;
+    // Pre-rollout payloads lack sourceAgeRange — omit the footer rather
+    // than rendering a literal "?h old" (#4928 external review P3).
+    if (Number.isFinite(generatedMs) && Number.isFinite(newestMs)) {
+      const agoMin = Math.max(0, Math.round((Date.now() - generatedMs) / 60000));
+      const newestAgeH = Math.max(0, Math.round((Date.now() - (newestMs as number)) / 3600000 * 10) / 10);
+      footer = `<div class="insights-brief-freshness">${t('components.insights.briefFreshness', {
+        minutes: String(agoMin),
+        hours: String(newestAgeH),
+      })}</div>`;
+    }
+    return linesHtml + footer;
+  }
+
+  private renderWorldBrief(brief: string, sources: BriefSource[] = [], extrasHtml = ''): string {
     const heading =
       SITE_VARIANT === 'tech'      ? `🚀 ${t('components.insights.briefTech')}`
     : SITE_VARIANT === 'commodity' ? `⛏️ ${t('components.insights.briefCommodity')}`
@@ -607,7 +658,8 @@ export class InsightsPanel extends Panel {
       <div class="insights-brief">
         <div class="insights-section-title">${heading}</div>
         <div class="insights-brief-text">${escapeHtml(brief)}</div>
-        ${renderBriefSourcesFooter(sources, { className: 'insights-brief-sources' })}
+        ${extrasHtml}
+        ${renderBriefSourcesFooter(sources, { className: 'insights-brief-sources', maxSources: Math.max(6, sources.length) })}
       </div>
     `;
   }

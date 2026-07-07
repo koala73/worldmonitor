@@ -178,15 +178,15 @@
     "apiTier": "API TIER",
     "title": "Programmatic Intelligence",
     "subtitle": "World Monitor data पर build करने वाले developers, analysts और teams के लिए। Pro से अलग — दोनों या कोई एक use करें।",
-    "restApi": "सभी 30+ service domains में REST API",
+    "restApi": "सभी 30+ service domains में REST API — JavaScript, Python, Ruby, Go के लिए आधिकारिक SDK",
     "authenticated": "Per-key authenticated, per-tier rate-limited",
     "structured": "Cache headers और OpenAPI 3.1 docs के साथ structured JSON",
     "starter": "Starter",
     "starterReqs": "1,000 req/day",
     "starterWebhooks": "5 webhook rules",
     "business": "Business",
-    "businessReqs": "50,000 req/day",
-    "businessWebhooks": "Unlimited webhooks + SLA",
+    "businessReqs": "10,000 req/day",
+    "businessWebhooks": "Priority support",
     "feedData": "अपने dashboards में data feed करें, Zapier/n8n/Make से alerting automate करें, CII/risk data पर custom scoring models बनाएं।"
   },
   "enterpriseShowcase": {
@@ -374,14 +374,14 @@
           "दैनिक मार्केट ब्रीफ़",
           "सैन्य और भू-राजनीतिक ट्रैकिंग",
           "Custom widget builder",
-          "Claude Desktop और अन्य AI क्लाइंट के लिए MCP एक्सेस (50 कॉल/दिन)",
+          "Claude Desktop और अन्य AI क्लाइंट के लिए MCP + SDK एक्सेस (50 कॉल/दिन)",
           "प्राथमिकता वाला डेटा रीफ़्रेश"
         ]
       },
       "api": {
         "description": "इंटेलिजेंस डेटा तक प्रोग्रामेटिक एक्सेस",
         "features": [
-          "REST API एक्सेस",
+          "REST API + आधिकारिक SDK (npm, PyPI, RubyGems, Go)",
           "रीयल-टाइम डेटा स्ट्रीम",
           "60 अनुरोध/मिनट",
           "1,000 अनुरोध/दिन शामिल",

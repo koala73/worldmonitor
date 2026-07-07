@@ -24,7 +24,7 @@ function okResponse(content) {
     ok: true,
     status: 200,
     headers: { get: () => null },
-    json: async () => ({ model: 'llama-3.1-8b-instant', choices: [{ message: { content } }] }),
+    json: async () => ({ model: 'deepseek/deepseek-v4-flash', choices: [{ message: { content } }] }),
   };
 }
 
@@ -53,8 +53,8 @@ describe('seed-insights callLLM retry/budget', () => {
 
       assert.deepEqual(waits, [2000, 2000]);
       assert.equal(calls.length, 3);
-      assert.ok(calls.every((u) => u.includes('api.groq.com')));
-      assert.equal(result?.provider, 'groq');
+      assert.ok(calls.every((u) => u.includes('openrouter.ai')));
+      assert.equal(result?.provider, 'openrouter');
       assert.equal(result?.text, LONG_BRIEF);
     } finally {
       globalThis.setTimeout = originalSetTimeout;
@@ -83,7 +83,7 @@ describe('seed-insights callLLM retry/budget', () => {
 
       assert.deepEqual(waits, [10000]);
       assert.equal(calls, 2);
-      assert.equal(result?.provider, 'groq');
+      assert.equal(result?.provider, 'openrouter');
     } finally {
       globalThis.setTimeout = originalSetTimeout;
     }
@@ -105,7 +105,7 @@ describe('seed-insights callLLM retry/budget', () => {
       __setInsightsLlmTransportForTests({
         fetch: async (url) => {
           calls += 1;
-          assert.ok(String(url).includes('api.groq.com'), 'budget stop must not fall through to openrouter');
+          assert.ok(String(url).includes('openrouter.ai'), 'budget stop must not fall through to groq');
           return { ok: false, status: 429, headers: { get: (n) => (n.toLowerCase() === 'retry-after' ? '30' : null) } };
         },
       });
@@ -131,14 +131,14 @@ describe('seed-insights callLLM retry/budget', () => {
       fetch: async (url) => {
         const href = String(url);
         providers.push(href.includes('api.groq.com') ? 'groq' : 'openrouter');
-        if (href.includes('api.groq.com')) return { ok: false, status: 402, headers: { get: () => null } };
+        if (href.includes('openrouter.ai')) return { ok: false, status: 402, headers: { get: () => null } };
         return okResponse(LONG_BRIEF);
       },
     });
 
     const result = await callLLM('Some breaking headline', { retryDelayMs: 0 });
 
-    assert.deepEqual(providers, ['groq', 'openrouter']);
-    assert.equal(result?.provider, 'openrouter');
+    assert.deepEqual(providers, ['openrouter', 'groq']);
+    assert.equal(result?.provider, 'groq');
   });
 });

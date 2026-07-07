@@ -13,14 +13,18 @@ import { ConvexError, v } from "convex/values";
 import { action, mutation, query, internalAction, internalMutation, internalQuery, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { DodoPayments } from "dodopayments";
+import type { Subscription as DodoSubscription } from "dodopayments/resources/subscriptions";
+import type { Id } from "../_generated/dataModel";
 import { resolveUserId, requireUserId } from "../lib/auth";
 import { getFeaturesForPlan } from "../lib/entitlements";
+import { ANON_ID_V4_REGEX, verifyAnonClaimToken } from "../lib/identitySigning";
 import { PRODUCT_CATALOG, resolveProductToPlan } from "../config/productCatalog";
-import { recomputeEntitlementFromAllSubs } from "./subscriptionHelpers";
-
-// UUID v4 regex matching values produced by crypto.randomUUID() in user-identity.ts.
-// Hoisted to module scope to avoid re-allocation on every claimSubscription call.
-const ANON_ID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+import {
+  isNewerEvent,
+  recomputeEntitlementFromAllSubs,
+  resolvePlanKey,
+  type SubscriptionStatus,
+} from "./subscriptionHelpers";
 
 // ---------------------------------------------------------------------------
 // Shared SDK config (direct REST SDK, not the Convex component from lib/dodo.ts)
@@ -36,7 +40,9 @@ const ANON_ID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[
  *
  * Canonical env var: DODO_API_KEY.
  */
-function getDodoClient(): DodoPayments {
+function getDodoClient(
+  options: { timeout?: number; maxRetries?: number } = {},
+): DodoPayments {
   const apiKey = process.env.DODO_API_KEY;
   if (!apiKey) {
     // Structured throw (object-typed `data`) so the client receives
@@ -49,7 +55,246 @@ function getDodoClient(): DodoPayments {
   return new DodoPayments({
     bearerToken: apiKey,
     ...(isLive ? {} : { environment: "test_mode" as const }),
+    ...options,
   });
+}
+
+// Max Dodo lookups attempted per action INVOCATION (each retrieve is a paid
+// REST round-trip). The daily cron drains a larger backlog across continuation
+// invocations (see MAX_CONTINUATIONS).
+const DODO_RENEWAL_RECONCILIATION_BATCH_SIZE = 50;
+// Max candidate rows the stale-scan query returns per call. Bounds each query's
+// read cost. Continuations page forward via a currentPeriodEnd cursor (see the
+// scheduling block), so a backlog larger than this — or a window fully within
+// its backoff — no longer strands healthy rows behind it: the cursor advances
+// past a drained/saturated window to the next one. The only repeated scan is
+// re-reading the SAME window while draining its eligible rows in batches of
+// `limit` (bounded by that window's eligible count), after which the cursor
+// moves on.
+const DODO_RENEWAL_RECONCILIATION_SCAN_LIMIT = 500;
+const DODO_RENEWAL_RECONCILIATION_TIMEOUT_MS = 10_000;
+// Wall-clock budget per invocation. Worst case a full batch of slow Dodo
+// lookups (retry/timeout) could exceed Convex's 10-min action cap, so we bail
+// with a summary and continuation-schedule the remainder well before it.
+const DODO_RENEWAL_RECONCILIATION_TIME_BUDGET_MS = 8 * 60 * 1000;
+// Hard ceiling on self-scheduled continuations per cron cycle. The chain is the
+// initial invocation plus continuations at budget MAX_CONTINUATIONS-1..0, so it
+// bounds total Dodo calls to (MAX_CONTINUATIONS + 1) * BATCH_SIZE and guarantees
+// termination.
+const DODO_RENEWAL_RECONCILIATION_MAX_CONTINUATIONS = 25;
+// Backoff after a failed/no-progress reconcile attempt. The FIRST failure backs
+// off only a few hours — enough to skip the rest of the current cron cycle's
+// continuations (same `now`) but short enough that a transient Dodo error still
+// gets retried at the very next daily run, so it does not over-delay a
+// legitimate downgrade of a lapsed sub. Repeated failures then back off
+// exponentially (2d, 4d, 8d, … capped) so a permanently-failing row is retried
+// geometrically less often instead of hogging a scan slot every run.
+const DODO_RENEWAL_RECONCILIATION_BACKOFF_FIRST_MS = 6 * 60 * 60 * 1000;
+const DODO_RENEWAL_RECONCILIATION_BACKOFF_BASE_MS = 2 * 24 * 60 * 60 * 1000;
+const DODO_RENEWAL_RECONCILIATION_BACKOFF_MAX_MS = 30 * 24 * 60 * 60 * 1000;
+
+function reconcileBackoffMs(failureCount: number): number {
+  if (failureCount <= 0) return 0;
+  if (failureCount === 1) return DODO_RENEWAL_RECONCILIATION_BACKOFF_FIRST_MS;
+  const exponent = Math.min(failureCount - 2, 5);
+  return Math.min(
+    DODO_RENEWAL_RECONCILIATION_BACKOFF_BASE_MS * 2 ** exponent,
+    DODO_RENEWAL_RECONCILIATION_BACKOFF_MAX_MS,
+  );
+}
+
+function isReconcileEligible(
+  candidate: { lastReconcileAttemptAt?: number; reconcileFailureCount?: number },
+  now: number,
+): boolean {
+  if (candidate.lastReconcileAttemptAt == null) return true;
+  return now - candidate.lastReconcileAttemptAt >= reconcileBackoffMs(candidate.reconcileFailureCount ?? 0);
+}
+
+// Confirmation threshold before a definitive Dodo not-found downgrades the local
+// row: only when the row ALREADY has >= this many recorded failures (i.e. this
+// is at least the 2nd consecutive definitive 404, across >= 2 daily runs) do we
+// expire it. Blocks a single flaky 404 from revoking a paying customer. The
+// batch-level mass-404 circuit breaker (below) bounds the correlated case where
+// a misconfig makes every live sub 404 at once.
+const DODO_RENEWAL_TERMINAL_NOTFOUND_MIN_PRIOR_FAILURES = 1;
+
+// Mass-404 circuit breaker: the max confirmed-not-found DOWNGRADES a single
+// invocation will perform. Beyond `min(this, ceil(plannedAttempts / 2))` the run
+// stops downgrading and routes the rest to the backoff path, on the theory that
+// a whole batch 404ing is far more likely a wrong-environment/API-key misconfig
+// than that many subscriptions genuinely vanishing at once. A real handful of
+// deleted subs still gets cleaned; a config error downgrades at most the
+// threshold before self-halting (and the loud console.error pages ops first).
+const DODO_RENEWAL_MASS_NOTFOUND_ABSOLUTE_CAP = 5;
+
+// A definitive "this subscription does not exist in Dodo" — the SDK throws
+// `NotFoundError extends APIError<404>` (a `.status` of 404). Transient failures
+// (network, timeout, 5xx, 429) carry a different/absent status and must stay on
+// the backoff-and-retry path, never downgrade.
+function isDefinitiveDodoNotFound(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "status" in err &&
+    (err as { status?: unknown }).status === 404
+  );
+}
+
+const dodoReconciliationRemoteSubscriptionValidator = v.object({
+  subscription_id: v.string(),
+  product_id: v.string(),
+  status: v.string(),
+  previous_billing_date: v.union(v.string(), v.number()),
+  next_billing_date: v.union(v.string(), v.number()),
+  customer: v.optional(v.object({
+    customer_id: v.optional(v.string()),
+    email: v.optional(v.string()),
+  })),
+  metadata: v.optional(v.record(v.string(), v.string())),
+  recurring_pre_tax_amount: v.optional(v.number()),
+  currency: v.optional(v.string()),
+  tax_inclusive: v.optional(v.boolean()),
+  discount_id: v.optional(v.union(v.string(), v.null())),
+  cancelled_at: v.optional(v.union(v.string(), v.number(), v.null())),
+});
+
+type DodoReconciliationRemoteSubscription = {
+  subscription_id: string;
+  product_id: string;
+  status: string;
+  previous_billing_date: string | number;
+  next_billing_date: string | number;
+  customer?: { customer_id?: string; email?: string };
+  metadata?: Record<string, string>;
+  recurring_pre_tax_amount?: number;
+  currency?: string;
+  tax_inclusive?: boolean;
+  discount_id?: string | null;
+  cancelled_at?: string | number | null;
+};
+
+type StaleActiveSubscriptionForRenewalReconciliation = {
+  _id: Id<"subscriptions">;
+  userId: string;
+  dodoSubscriptionId: string;
+  currentPeriodEnd: number;
+  lastReconcileAttemptAt?: number;
+  reconcileFailureCount?: number;
+  reconcileNotFoundCount?: number;
+};
+
+type StaleActiveSubscriptionsPage = {
+  page: StaleActiveSubscriptionForRenewalReconciliation[];
+  continueCursor: string;
+  isDone: boolean;
+};
+
+type ReconciliationSkipReason =
+  | "local_missing"
+  | "local_updated_concurrently"
+  | "local_no_longer_stale"
+  | "remote_not_newer";
+
+type ReconciliationMutationResult =
+  | {
+      kind: "reconciled";
+      status: SubscriptionStatus;
+      planKey: string;
+      currentPeriodEnd: number;
+    }
+  | { kind: "skipped"; reason: ReconciliationSkipReason };
+
+type ReconciliationSummary = {
+  inspected: number;
+  reconciled: number;
+  // Rows the reconciler downgraded to `expired` because a CONFIRMED terminal
+  // Dodo not-found (>= 2 consecutive definitive 404s) proved the subscription no
+  // longer exists — distinct from a transient lookup `failed`.
+  expiredMissing: number;
+  skipped: number;
+  failed: number;
+  limit: number;
+  // hasMore can be true while continuationScheduled is false only in the
+  // degenerate case handled by `windowSaturated` below (documented at the
+  // scheduling guard in the action).
+  hasMore: boolean;
+  timeBudgetExhausted: boolean;
+  // The scanned window was entirely within its reconcile backoff (all rows
+  // ineligible). Surfaced so an operator can tell "cooldown-saturated" from
+  // "nothing stale"; the action advances its scan cursor past the window.
+  windowSaturated: boolean;
+  continuationScheduled: boolean;
+  failures: Array<{ dodoSubscriptionId: string; error: string }>;
+};
+
+function normalizeDodoStatus(status: string): SubscriptionStatus | null {
+  switch (status) {
+    case "active":
+    case "on_hold":
+    case "cancelled":
+    case "expired":
+      return status;
+    case "failed":
+      // Dodo `failed` = the subscription's mandate/payment permanently failed.
+      // The SDK `SubscriptionStatus` union carries it separately from `expired`,
+      // but locally it means the same thing: no longer covering. Map to
+      // `expired` so `recomputeEntitlementFromAllSubs` downgrades the user
+      // (a local-active row would otherwise keep full entitlement forever via
+      // `isCoveringAt`).
+      return "expired";
+    default:
+      // `pending` and any unknown status → caller skips + escalates. `pending`
+      // is a real SDK status (initial payment in flight) but not a state we act
+      // on from the reconciler.
+      return null;
+  }
+}
+
+function toReconciliationEpochMs(value: string | number, fieldName: string): number {
+  const ms = typeof value === "number" ? value : new Date(value).getTime();
+  if (!Number.isFinite(ms)) {
+    throw new Error(`[billing/reconcile] invalid Dodo ${fieldName}: ${String(value)}`);
+  }
+  return ms;
+}
+
+function normalizeRemoteSubscription(
+  remote: DodoSubscription | DodoReconciliationRemoteSubscription,
+) {
+  const status = normalizeDodoStatus(remote.status);
+  if (!status) {
+    return {
+      kind: "skip" as const,
+      reason: remote.status === "pending" ? ("pending" as const) : ("unsupported-status" as const),
+      status: remote.status,
+      dodoSubscriptionId: remote.subscription_id,
+    };
+  }
+
+  const cancelledAt = remote.cancelled_at == null
+    ? undefined
+    : toReconciliationEpochMs(remote.cancelled_at, "cancelled_at");
+
+  return {
+    kind: "supported" as const,
+    value: {
+      dodoSubscriptionId: remote.subscription_id,
+      productId: remote.product_id,
+      status,
+      currentPeriodStart: toReconciliationEpochMs(
+        remote.previous_billing_date,
+        "previous_billing_date",
+      ),
+      currentPeriodEnd: toReconciliationEpochMs(
+        remote.next_billing_date,
+        "next_billing_date",
+      ),
+      dodoCustomerId: remote.customer?.customer_id,
+      cancelledAt,
+      rawPayload: remote,
+    },
+  };
 }
 
 /**
@@ -89,7 +334,7 @@ function getDodoClient(): DodoPayments {
  * came from this path throwing on a missing customers row when both
  * the rawPayload and a same-user customers row still held the answer.
  */
-async function createCustomerPortalUrlForUser(
+export async function createCustomerPortalUrlForUser(
   ctx: Pick<ActionCtx, "runQuery">,
   userId: string,
 ): Promise<{ portal_url: string }> {
@@ -311,6 +556,712 @@ export const getDodoCustomerIdForUserPortal = internalQuery({
     }
 
     return null;
+  },
+});
+
+export const listStaleActiveSubscriptionsForRenewalReconciliation = internalQuery({
+  args: {
+    now: v.number(),
+    scanLimit: v.number(),
+    // Opaque Convex pagination cursor threaded through continuations so a cron
+    // cycle pages forward by DOCUMENT POSITION rather than by currentPeriodEnd.
+    // Position-based paging is why >scanLimit rows sharing one currentPeriodEnd
+    // (a tie) can't strand rows behind them, and why a page fully consumed or
+    // fully backed-off is skipped without re-scanning. `null` (or omitted)
+    // starts from the beginning of the stale set.
+    cursor: v.optional(v.union(v.string(), v.null())),
+  },
+  handler: async (ctx, args) => {
+    const result = await ctx.db
+      .query("subscriptions")
+      // Reuses the by_status_currentPeriodEnd index added by the dunning/
+      // winback work (#4935) — same ["status","currentPeriodEnd"] shape, so
+      // no duplicate index is needed. The cron pages by opaque Convex cursor
+      // (position-based), so the index range is just the stale-active window.
+      .withIndex("by_status_currentPeriodEnd", (q) =>
+        q.eq("status", "active").lt("currentPeriodEnd", args.now),
+      )
+      .order("asc")
+      .paginate({ cursor: args.cursor ?? null, numItems: args.scanLimit });
+    // Slim projection — the action only needs identity + the reconcile
+    // bookkeeping fields to decide eligibility. Dropping `rawPayload` (v.any(),
+    // potentially large) keeps the query→action transfer bounded.
+    return {
+      page: result.page.map((row) => ({
+        _id: row._id,
+        userId: row.userId,
+        dodoSubscriptionId: row.dodoSubscriptionId,
+        currentPeriodEnd: row.currentPeriodEnd,
+        lastReconcileAttemptAt: row.lastReconcileAttemptAt,
+        reconcileFailureCount: row.reconcileFailureCount,
+        reconcileNotFoundCount: row.reconcileNotFoundCount,
+      })),
+      continueCursor: result.continueCursor,
+      isDone: result.isDone,
+    };
+  },
+});
+
+/**
+ * Marks a reconcile attempt on a stale-active subscription row: bumps
+ * `reconcileFailureCount` and stamps `lastReconcileAttemptAt` so the
+ * exponential backoff in `isReconcileEligible` de-prioritises permanently-
+ * failing rows and they stop hogging the scan window.
+ *
+ * Used ONLY for no-progress outcomes that never reach
+ * `applyDodoSubscriptionReconciliation` — a failed Dodo lookup and an
+ * unsupported/pending remote status. The remote-not-newer and
+ * concurrently-updated skips record their own attempt inside `apply`'s
+ * transaction (no separate round-trip).
+ *
+ * Deliberately does NOT touch `updatedAt` — that field carries webhook
+ * ordering semantics (`isNewerEvent`) and must not be perturbed by a
+ * bookkeeping write. Skips rows a concurrent webhook already moved out of the
+ * active set.
+ */
+export const markDodoReconcileAttempt = internalMutation({
+  args: {
+    subscriptionId: v.id("subscriptions"),
+    observedAt: v.number(),
+    // Whether THIS attempt was a definitive Dodo 404. Advances the
+    // consecutive-not-found counter that gates the terminal downgrade; a
+    // non-404 attempt resets that streak (a 404 must REPEAT consecutively).
+    notFound: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const existing = await ctx.db.get(args.subscriptionId);
+    if (!existing || existing.status !== "active") return;
+    await ctx.db.patch(args.subscriptionId, {
+      lastReconcileAttemptAt: args.observedAt,
+      reconcileFailureCount: (existing.reconcileFailureCount ?? 0) + 1,
+      reconcileNotFoundCount: args.notFound
+        ? (existing.reconcileNotFoundCount ?? 0) + 1
+        : 0,
+    });
+  },
+});
+
+export const applyDodoSubscriptionReconciliation = internalMutation({
+  args: {
+    subscriptionId: v.id("subscriptions"),
+    dodoSubscriptionId: v.string(),
+    observedAt: v.number(),
+    remote: v.object({
+      dodoSubscriptionId: v.string(),
+      productId: v.string(),
+      status: v.union(
+        v.literal("active"),
+        v.literal("on_hold"),
+        v.literal("cancelled"),
+        v.literal("expired"),
+      ),
+      currentPeriodStart: v.number(),
+      currentPeriodEnd: v.number(),
+      dodoCustomerId: v.optional(v.string()),
+      cancelledAt: v.optional(v.number()),
+      rawPayload: v.any(),
+    }),
+  },
+  handler: async (ctx, args): Promise<ReconciliationMutationResult> => {
+    const existing = await ctx.db.get(args.subscriptionId);
+    if (!existing) {
+      return { kind: "skipped", reason: "local_missing" };
+    }
+    if (existing.dodoSubscriptionId !== args.dodoSubscriptionId) {
+      throw new Error(
+        `[billing/reconcile] subscription id mismatch: expected ${existing.dodoSubscriptionId}, got ${args.dodoSubscriptionId}`,
+      );
+    }
+
+    // A concurrent webhook may have already moved the row out of the
+    // stale-active set (renewed / cancelled-with-future-period / expired). No
+    // work and it left the reconciliation set, so no backoff bookkeeping.
+    if (existing.status !== "active" || existing.currentPeriodEnd >= args.observedAt) {
+      return { kind: "skipped", reason: "local_no_longer_stale" };
+    }
+
+    // Fold the backoff bookkeeping into the no-progress skip branches so a
+    // still-stale row that we won't advance is recorded in the SAME transaction
+    // that read it — no second `markDodoReconcileAttempt` round-trip. Never
+    // touches `updatedAt` (that carries webhook ordering semantics).
+    const recordAttempt = async (): Promise<void> => {
+      await ctx.db.patch(existing._id, {
+        lastReconcileAttemptAt: args.observedAt,
+        reconcileFailureCount: (existing.reconcileFailureCount ?? 0) + 1,
+        // These skips prove the sub still EXISTS in Dodo, so any prior 404
+        // streak is broken.
+        reconcileNotFoundCount: 0,
+      });
+    };
+
+    // Out-of-order guard, identical to every webhook handler. Between the
+    // stale-scan read and this mutation a concurrent lifecycle webhook (e.g.
+    // `subscription.plan_changed`, which patches planKey/productId but NOT
+    // currentPeriodEnd) may have written a newer state. Our `observedAt` is the
+    // cron's read time; if the row was updated at/after it, the cron holds a
+    // stale snapshot and must not clobber the webhook's write. The row is still
+    // stale-active (checked above), so back it off.
+    if (!isNewerEvent(existing.updatedAt, args.observedAt)) {
+      await recordAttempt();
+      return { kind: "skipped", reason: "local_updated_concurrently" };
+    }
+
+    if (
+      args.remote.status === existing.status &&
+      args.remote.productId === existing.dodoProductId &&
+      args.remote.currentPeriodEnd <= existing.currentPeriodEnd &&
+      (args.remote.dodoCustomerId ?? existing.dodoCustomerId) === existing.dodoCustomerId
+    ) {
+      await recordAttempt();
+      return { kind: "skipped", reason: "remote_not_newer" };
+    }
+
+    // Reuse the shared webhook resolver so reconciliation and organic webhook
+    // ingestion resolve a Dodo product ID to a plan key IDENTICALLY —
+    // productPlans table → LEGACY_PRODUCT_ALIASES → enterprise over-grant
+    // fallback (with the same structured console.error escalation).
+    let planKey = existing.planKey;
+    if (args.remote.productId !== existing.dodoProductId) {
+      planKey = await resolvePlanKey(ctx, args.remote.productId);
+    }
+
+    // Does this patch actually move the row OUT of the stale-active set? It does
+    // unless the remote is still active with a period end that is itself still
+    // in the past (Dodo hasn't renewed either). When it does NOT, treat this as
+    // a no-progress attempt: record a backoff instead of clearing the
+    // bookkeeping, so the still-stale row isn't re-fetched (and re-reconciled)
+    // every cycle with a fresh clean slate.
+    const stillStaleAfterPatch =
+      args.remote.status === "active" && args.remote.currentPeriodEnd < args.observedAt;
+    await ctx.db.patch(existing._id, {
+      status: args.remote.status,
+      dodoProductId: args.remote.productId,
+      planKey,
+      currentPeriodStart: args.remote.currentPeriodStart,
+      currentPeriodEnd: args.remote.currentPeriodEnd,
+      dodoCustomerId: args.remote.dodoCustomerId ?? existing.dodoCustomerId,
+      rawPayload: args.remote.rawPayload,
+      updatedAt: args.observedAt,
+      // A successful lookup proves the sub EXISTS in Dodo → any 404 streak is
+      // broken (reset to 0 while still stale, cleared once it leaves the set).
+      ...(stillStaleAfterPatch
+        ? {
+            lastReconcileAttemptAt: args.observedAt,
+            reconcileFailureCount: (existing.reconcileFailureCount ?? 0) + 1,
+            reconcileNotFoundCount: 0,
+          }
+        : {
+            // Row left the stale-active set — clear bookkeeping so a later miss
+            // starts from a clean slate.
+            lastReconcileAttemptAt: undefined,
+            reconcileFailureCount: undefined,
+            reconcileNotFoundCount: undefined,
+          }),
+      ...(args.remote.status === "cancelled"
+        ? { cancelledAt: args.remote.cancelledAt ?? existing.cancelledAt ?? args.observedAt }
+        : {}),
+    });
+
+    await recomputeEntitlementFromAllSubs(ctx, existing.userId, args.observedAt);
+    return {
+      kind: "reconciled",
+      status: args.remote.status,
+      planKey,
+      currentPeriodEnd: args.remote.currentPeriodEnd,
+    };
+  },
+});
+
+/**
+ * Downgrades a stale-active local row to `expired` after the reconciler
+ * confirmed the subscription no longer exists in Dodo (a definitive, repeated
+ * 404 — see `isDefinitiveDodoNotFound` + the confirmation threshold). This is
+ * the terminal counterpart to the backoff path: instead of retrying a row that
+ * will never resolve, it moves it OUT of the active set, which simultaneously
+ * frees its scan slot, ends the entitlement over-grant, and lets the entitlement
+ * recompute downgrade the user.
+ *
+ * Guards mirror `applyDodoSubscriptionReconciliation`: skip if the row already
+ * left the stale-active set or a concurrent webhook wrote a newer state.
+ */
+export const expireMissingDodoSubscription = internalMutation({
+  args: {
+    subscriptionId: v.id("subscriptions"),
+    dodoSubscriptionId: v.string(),
+    observedAt: v.number(),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{ kind: "expired" } | { kind: "skipped"; reason: ReconciliationSkipReason }> => {
+    const existing = await ctx.db.get(args.subscriptionId);
+    if (!existing) {
+      return { kind: "skipped", reason: "local_missing" };
+    }
+    if (existing.dodoSubscriptionId !== args.dodoSubscriptionId) {
+      throw new Error(
+        `[billing/reconcile] subscription id mismatch: expected ${existing.dodoSubscriptionId}, got ${args.dodoSubscriptionId}`,
+      );
+    }
+    if (existing.status !== "active" || existing.currentPeriodEnd >= args.observedAt) {
+      return { kind: "skipped", reason: "local_no_longer_stale" };
+    }
+    if (!isNewerEvent(existing.updatedAt, args.observedAt)) {
+      return { kind: "skipped", reason: "local_updated_concurrently" };
+    }
+
+    await ctx.db.patch(existing._id, {
+      status: "expired",
+      updatedAt: args.observedAt,
+      lastReconcileAttemptAt: undefined,
+      reconcileFailureCount: undefined,
+      reconcileNotFoundCount: undefined,
+    });
+    await recomputeEntitlementFromAllSubs(ctx, existing.userId, args.observedAt);
+    return { kind: "expired" };
+  },
+});
+
+type StaleRowOutcome =
+  | { kind: "reconciled" }
+  | { kind: "skipped" }
+  | { kind: "failed"; error: string }
+  // Confirmed terminal not-found (definitive 404 past the confirmation
+  // threshold). The row is NOT downgraded here — the action loop decides,
+  // gated by the mass-404 circuit breaker, whether to expire it or route it to
+  // the backoff path.
+  | { kind: "terminal_not_found"; error: string };
+
+// Best-effort backoff bookkeeping for the paths that never reach
+// `applyDodoSubscriptionReconciliation` (Dodo lookup failure, unsupported/pending
+// status). Swallows its own error so a bookkeeping OCC conflict can never abort
+// the batch or skip continuation scheduling.
+export async function safeMarkReconcileAttempt(
+  ctx: Pick<ActionCtx, "runMutation">,
+  subscriptionId: Id<"subscriptions">,
+  observedAt: number,
+  notFound: boolean,
+): Promise<void> {
+  try {
+    await ctx.runMutation(internal.payments.billing.markDodoReconcileAttempt, {
+      subscriptionId,
+      observedAt,
+      notFound,
+    });
+  } catch (markErr) {
+    // sentry-coverage-ok: structured console.error is forwarded by Convex
+    // auto-Sentry. Deliberately swallowed (not re-thrown): a failed best-effort
+    // backoff write must never abort the batch or skip continuation scheduling —
+    // the row simply isn't backed off this once and is re-attempted next run.
+    console.error(
+      `[billing/reconcile] markDodoReconcileAttempt failed for ${subscriptionId}: ${markErr instanceof Error ? markErr.message : String(markErr)}`,
+    );
+  }
+}
+
+// Reconcile a single stale-active row against Dodo truth. Fetch → normalize →
+// apply mutation → interpret, with the transient-vs-terminal error split. Never
+// throws — one bad row must not block the rest of the batch; returns the outcome
+// for the caller to fold into the summary.
+async function reconcileOneStaleRow(
+  ctx: Pick<ActionCtx, "runMutation">,
+  sub: StaleActiveSubscriptionForRenewalReconciliation,
+  opts: {
+    now: number;
+    useTestRemotes: boolean;
+    remoteById: Map<string, DodoReconciliationRemoteSubscription>;
+    errorInjection: Map<string, "not_found" | "server_error">;
+    client: DodoPayments | null;
+  },
+): Promise<StaleRowOutcome> {
+  const { now, useTestRemotes, remoteById, errorInjection, client } = opts;
+  try {
+    let remote: DodoSubscription | DodoReconciliationRemoteSubscription | undefined;
+    if (useTestRemotes) {
+      const injected = errorInjection.get(sub.dodoSubscriptionId);
+      if (injected === "not_found") {
+        throw Object.assign(new Error("simulated Dodo not found"), { status: 404 });
+      }
+      if (injected === "server_error") {
+        throw Object.assign(new Error("simulated Dodo server error"), { status: 500 });
+      }
+      remote = remoteById.get(sub.dodoSubscriptionId);
+    } else {
+      remote = await client!.subscriptions.retrieve(sub.dodoSubscriptionId);
+    }
+    if (!remote) {
+      throw new Error("missing test remote subscription");
+    }
+
+    const normalized = normalizeRemoteSubscription(remote);
+    if (normalized.kind === "skip") {
+      // sentry-coverage-ok: escalated to error (Convex auto-Sentry captures
+      // error, not warn) so a `pending`/unknown remote status that a
+      // local-active row is stuck on gets triaged rather than silently skipped
+      // daily.
+      console.error(
+        `[billing/reconcile] Skipping subscription ${normalized.dodoSubscriptionId}: ${normalized.reason} Dodo status "${normalized.status}"`,
+      );
+      // Row is still stale-active — back it off (not a 404, resets the streak).
+      await safeMarkReconcileAttempt(ctx, sub._id, now, false);
+      return { kind: "skipped" };
+    }
+
+    const result = (await ctx.runMutation(
+      internal.payments.billing.applyDodoSubscriptionReconciliation,
+      {
+        subscriptionId: sub._id,
+        dodoSubscriptionId: sub.dodoSubscriptionId,
+        observedAt: now,
+        remote: normalized.value,
+      },
+    )) as ReconciliationMutationResult;
+    // `apply` records its own backoff for the still-stale skip reasons.
+    return result.kind === "reconciled" ? { kind: "reconciled" } : { kind: "skipped" };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const notFound = isDefinitiveDodoNotFound(err);
+    // Confirmed terminal not-found: a definitive 404 AND the row already has
+    // >= the confirmation threshold of CONSECUTIVE prior 404s (so a single
+    // flaky 404 — or a 404 preceded by an unrelated 5xx — can't downgrade a
+    // paying customer). Hand it to the loop, which applies the mass-404 circuit
+    // breaker before actually downgrading. Do NOT back it off here — the loop
+    // either downgrades it or routes it to backoff.
+    if (
+      notFound &&
+      (sub.reconcileNotFoundCount ?? 0) >= DODO_RENEWAL_TERMINAL_NOTFOUND_MIN_PRIOR_FAILURES
+    ) {
+      return { kind: "terminal_not_found", error: message };
+    }
+    // Transient (5xx / network / timeout) OR an unconfirmed 404 → back off and
+    // retry; never downgrade on an ambiguous signal. Pass `notFound` so a 404
+    // advances the consecutive-404 streak while any other failure resets it.
+    // sentry-coverage-ok: structured console.error is forwarded by Convex
+    // auto-Sentry. We intentionally do not re-throw here because one bad Dodo
+    // lookup must not block reconciliation for other stale subscribers.
+    console.error(
+      `[billing/reconcile] Failed to reconcile dodoSubscriptionId=${sub.dodoSubscriptionId} userId=${sub.userId}: ${message}`,
+    );
+    await safeMarkReconcileAttempt(ctx, sub._id, now, notFound);
+    return { kind: "failed", error: message };
+  }
+}
+
+export const reconcileMissedDodoRenewals = internalAction({
+  args: {
+    now: v.optional(v.number()),
+    limit: v.optional(v.number()),
+    // Remaining self-scheduled continuations this cron cycle. Internal — a
+    // fresh cron tick omits it (defaults to the max) and each continuation
+    // passes one fewer. Bounds total work + guarantees termination.
+    continuationBudget: v.optional(v.number()),
+    // Opaque Convex pagination cursor threaded through continuations to page
+    // forward by document position — see the scheduling block. Omitted on a
+    // fresh cron tick.
+    cursor: v.optional(v.union(v.string(), v.null())),
+    // Mass-404 circuit-breaker state threaded through continuations so the bound
+    // is per cron CYCLE, not per invocation. Omitted on a fresh cron tick.
+    notFoundDowngradesSoFar: v.optional(v.number()),
+    massNotFoundHalted: v.optional(v.boolean()),
+    // Per-query scan window size, clamped to the const ceiling. Defaults to the
+    // ceiling; a smaller value is an ops knob (and the test seam that exercises
+    // the window-paging / saturation logic without seeding 500 rows). Threaded
+    // through continuations so a whole cycle uses a consistent window.
+    scanLimit: v.optional(v.number()),
+    remoteSubscriptionsForTest: v.optional(
+      v.array(dodoReconciliationRemoteSubscriptionValidator),
+    ),
+    // Test-only: simulate a Dodo `subscriptions.retrieve` error per subscription
+    // id ("not_found" -> definitive 404, "server_error" -> transient 5xx) so the
+    // terminal-vs-transient split is exercised without a live client.
+    errorInjectionForTest: v.optional(
+      v.record(
+        v.string(),
+        v.union(v.literal("not_found"), v.literal("server_error")),
+      ),
+    ),
+  },
+  handler: async (ctx, args): Promise<ReconciliationSummary> => {
+    const usesTestInjection =
+      args.remoteSubscriptionsForTest !== undefined ||
+      args.errorInjectionForTest !== undefined;
+    if (usesTestInjection && process.env.NODE_ENV !== "test") {
+      throw new Error(
+        "[billing/reconcile] test injection args are only allowed under test",
+      );
+    }
+
+    // Logical clock for staleness + backoff (threaded unchanged through
+    // continuations so a cycle stays coherent). Wall-clock is tracked
+    // separately below for the action-runtime budget.
+    const now = args.now ?? Date.now();
+    const startedAtWallClock = Date.now();
+    const limit = Math.max(
+      1,
+      Math.min(
+        args.limit ?? DODO_RENEWAL_RECONCILIATION_BATCH_SIZE,
+        DODO_RENEWAL_RECONCILIATION_BATCH_SIZE,
+      ),
+    );
+    const scanLimit = Math.max(
+      1,
+      Math.min(
+        args.scanLimit ?? DODO_RENEWAL_RECONCILIATION_SCAN_LIMIT,
+        DODO_RENEWAL_RECONCILIATION_SCAN_LIMIT,
+      ),
+    );
+    const continuationBudget =
+      args.continuationBudget ?? DODO_RENEWAL_RECONCILIATION_MAX_CONTINUATIONS;
+
+    const scanResult = (await ctx.runQuery(
+      internal.payments.billing.listStaleActiveSubscriptionsForRenewalReconciliation,
+      {
+        now,
+        scanLimit,
+        ...(args.cursor !== undefined ? { cursor: args.cursor } : {}),
+      },
+    )) as StaleActiveSubscriptionsPage;
+    const page = scanResult.page;
+
+    // Skip rows still inside their post-failure backoff window so a
+    // permanently-failing (poison) row can't re-occupy a scan slot every run.
+    const eligible = page.filter((sub) => isReconcileEligible(sub, now));
+
+    const remoteById = new Map(
+      (args.remoteSubscriptionsForTest ?? []).map((remote) => [
+        remote.subscription_id,
+        remote,
+      ]),
+    );
+    const errorInjection = new Map<string, "not_found" | "server_error">(
+      Object.entries(args.errorInjectionForTest ?? {}),
+    );
+    const client = usesTestInjection
+      ? null
+      : getDodoClient({
+          timeout: DODO_RENEWAL_RECONCILIATION_TIMEOUT_MS,
+          // No SDK-level retry: a rate-limited/incident retry honors a server
+          // Retry-After VERBATIM and could sleep minutes, blowing the Convex
+          // 10-min action cap. Our row-level backoff + continuation IS the retry
+          // mechanism, so each lookup stays bounded by `timeout`.
+          maxRetries: 0,
+        });
+
+    const summary: ReconciliationSummary = {
+      inspected: 0,
+      reconciled: 0,
+      expiredMissing: 0,
+      skipped: 0,
+      failed: 0,
+      limit,
+      hasMore: false,
+      timeBudgetExhausted: false,
+      windowSaturated: false,
+      continuationScheduled: false,
+      failures: [],
+    };
+
+    // Mass-404 circuit breaker. The running downgrade count and the halt latch
+    // are threaded through continuations so the bound is PER CRON CYCLE, not per
+    // invocation: a genuine handful of deleted subs downgrades; a batch/cycle
+    // that is mostly/entirely 404 (a probable misconfig) self-halts.
+    //   - Per-cycle: at most DODO_RENEWAL_MASS_NOTFOUND_ABSOLUTE_CAP downgrades
+    //     total across the whole continuation chain.
+    //   - Per-invocation: if downgrades in a single invocation reach a majority
+    //     of what it planned to attempt, latch the halt for the rest of the cycle
+    //     (a mostly-404 batch is a strong misconfig signal even under the cap).
+    const plannedAttempts = Math.min(limit, eligible.length);
+    const perInvocationMajorityCap = Math.ceil(plannedAttempts / 2);
+    let notFoundDowngrades = args.notFoundDowngradesSoFar ?? 0;
+    let massNotFoundHalted = args.massNotFoundHalted ?? false;
+    let downgradesThisInvocation = 0;
+
+    let attempted = 0;
+    for (const sub of eligible) {
+      if (attempted >= limit) {
+        summary.hasMore = true;
+        break;
+      }
+      if (Date.now() - startedAtWallClock >= DODO_RENEWAL_RECONCILIATION_TIME_BUDGET_MS) {
+        summary.timeBudgetExhausted = true;
+        summary.hasMore = true;
+        break;
+      }
+      attempted++;
+      summary.inspected++;
+      const outcome = await reconcileOneStaleRow(ctx, sub, {
+        now,
+        useTestRemotes: usesTestInjection,
+        remoteById,
+        errorInjection,
+        client,
+      });
+      switch (outcome.kind) {
+        case "reconciled":
+          summary.reconciled++;
+          break;
+        case "skipped":
+          summary.skipped++;
+          break;
+        case "failed":
+          summary.failed++;
+          summary.failures.push({
+            dodoSubscriptionId: sub.dodoSubscriptionId,
+            error: outcome.error,
+          });
+          break;
+        case "terminal_not_found": {
+          const breakerTripped =
+            massNotFoundHalted ||
+            notFoundDowngrades >= DODO_RENEWAL_MASS_NOTFOUND_ABSOLUTE_CAP ||
+            downgradesThisInvocation >= perInvocationMajorityCap;
+          if (breakerTripped) {
+            // Circuit breaker tripped — too many confirmed 404s. Treat this (and
+            // every subsequent 404 this cycle) as a transient failure: keep the
+            // row active and on backoff instead of downgrading a possibly-live
+            // customer during a suspected wrong-environment/API-key misconfig.
+            if (!massNotFoundHalted) {
+              massNotFoundHalted = true;
+              // sentry-coverage-ok: Convex auto-Sentry captures console.error —
+              // this is the page that must fire BEFORE a second daily run could
+              // downgrade the base under a config error.
+              console.error(
+                `[billing/reconcile] mass Dodo 404s (${notFoundDowngrades} downgraded this cycle) — possible wrong-environment/API-key misconfig; further downgrades halted for the rest of this cycle.`,
+              );
+            }
+            summary.failed++;
+            summary.failures.push({
+              dodoSubscriptionId: sub.dodoSubscriptionId,
+              error: outcome.error,
+            });
+            // Still a 404 — keep the streak so it downgrades once the breaker
+            // clears (config fixed), rather than resetting confirmation.
+            await safeMarkReconcileAttempt(ctx, sub._id, now, true);
+            break;
+          }
+          // Guard the downgrade mutation: an OCC rejection (concurrent webhook on
+          // the same sub/entitlement) or a recompute error must NOT propagate out
+          // of the loop — that would abort the batch AND skip the continuation
+          // scheduling below. Route a failed downgrade to the backoff path.
+          let expireResult:
+            | { kind: "expired" }
+            | { kind: "skipped"; reason: ReconciliationSkipReason };
+          try {
+            expireResult = (await ctx.runMutation(
+              internal.payments.billing.expireMissingDodoSubscription,
+              {
+                subscriptionId: sub._id,
+                dodoSubscriptionId: sub.dodoSubscriptionId,
+                observedAt: now,
+              },
+            )) as { kind: "expired" } | { kind: "skipped"; reason: ReconciliationSkipReason };
+          } catch (expireErr) {
+            const expireMsg =
+              expireErr instanceof Error ? expireErr.message : String(expireErr);
+            // sentry-coverage-ok: Convex auto-Sentry captures console.error.
+            console.error(
+              `[billing/reconcile] expireMissingDodoSubscription failed for dodoSubscriptionId=${sub.dodoSubscriptionId} userId=${sub.userId}: ${expireMsg}`,
+            );
+            summary.failed++;
+            summary.failures.push({
+              dodoSubscriptionId: sub.dodoSubscriptionId,
+              error: expireMsg,
+            });
+            await safeMarkReconcileAttempt(ctx, sub._id, now, true);
+            break;
+          }
+          if (expireResult.kind === "expired") {
+            notFoundDowngrades++;
+            downgradesThisInvocation++;
+            summary.expiredMissing++;
+            // sentry-coverage-ok: Convex auto-Sentry captures console.error so
+            // ops sees confirmed-gone subscriptions being downgraded.
+            console.error(
+              `[billing/reconcile] dodoSubscriptionId=${sub.dodoSubscriptionId} userId=${sub.userId} confirmed not-found in Dodo after ${(sub.reconcileFailureCount ?? 0) + 1} attempts; downgraded local row to expired.`,
+            );
+          } else {
+            // A concurrent webhook already moved the row out of the stale set.
+            summary.skipped++;
+          }
+          break;
+        }
+      }
+    }
+
+    // Did we finish this page's eligible rows (none left un-attempted due to the
+    // batch/time budget)? If so, and more pages exist, page forward via the
+    // opaque cursor. Otherwise keep the cursor so the continuation re-fetches
+    // this page and finishes draining it — the rows we just attempted are backed
+    // off now, so the eligible set strictly shrinks.
+    const pageDrained = eligible.length <= attempted;
+    const advanceToNextPage = pageDrained && !scanResult.isDone;
+    // Whole non-empty page was ineligible (all inside their backoff window) and
+    // more pages remain — surfaced so an operator can tell "cooldown-saturated"
+    // from "nothing stale". Position-based paging advances past it regardless,
+    // so it never strands the rows behind it.
+    summary.windowSaturated = page.length > 0 && eligible.length === 0 && !scanResult.isDone;
+
+    if (summary.windowSaturated) {
+      // sentry-coverage-ok: Convex auto-Sentry captures console.error.
+      console.error(
+        `[billing/reconcile] scan page saturated: all ${page.length} scanned stale rows are within their reconcile backoff window; paging forward to reach rows behind them.`,
+      );
+    }
+
+    const nextCursor = advanceToNextPage ? scanResult.continueCursor : args.cursor;
+    const cursorAdvanced = advanceToNextPage;
+
+    // More work remains if we couldn't attempt every eligible row on this page,
+    // or more pages exist beyond it.
+    summary.hasMore = eligible.length > attempted || !scanResult.isDone;
+
+    if (summary.failed > 0) {
+      console.error(
+        `[billing/reconcile] ${summary.failed}/${summary.inspected} attempted stale active subscriptions failed reconciliation`,
+      );
+    }
+
+    // Chain a continuation when work remains AND we are guaranteed to make
+    // progress next invocation: either we attempted rows this pass (the current
+    // page's eligible set shrank) or the cursor advanced to a new page.
+    // Advancing on a saturated page is what stops a fully-backed-off page from
+    // silently stranding the healthy rows behind it. `continuationBudget` is the
+    // hard termination cap.
+    if (
+      summary.hasMore &&
+      continuationBudget > 0 &&
+      (attempted > 0 || cursorAdvanced)
+    ) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.payments.billing.reconcileMissedDodoRenewals,
+        {
+          now,
+          limit,
+          scanLimit,
+          continuationBudget: continuationBudget - 1,
+          cursor: nextCursor ?? null,
+          // Carry the mass-404 breaker state so the cap is per cron cycle.
+          notFoundDowngradesSoFar: notFoundDowngrades,
+          massNotFoundHalted,
+          ...(args.remoteSubscriptionsForTest
+            ? { remoteSubscriptionsForTest: args.remoteSubscriptionsForTest }
+            : {}),
+          ...(args.errorInjectionForTest
+            ? { errorInjectionForTest: args.errorInjectionForTest }
+            : {}),
+        },
+      );
+      summary.continuationScheduled = true;
+    }
+
+    // No run-lock guards a still-draining continuation chain against the next
+    // daily cron tick (the two could overlap). Left intentionally: every write
+    // path is idempotent under overlap — the per-row mutations re-check
+    // staleness + `isNewerEvent(updatedAt, observedAt)` and Convex OCC serializes
+    // conflicting writes, so a duplicate pass at worst re-marks a backoff (benign)
+    // and never double-applies a reconcile.
+    return summary;
   },
 });
 
@@ -754,13 +1705,29 @@ export const getActiveSubscription = internalQuery({
 });
 
 /**
+ * Billing family for the duplicate-checkout guards. api_starter and
+ * api_business are DISTINCT pricing-page tiers but the SAME product line:
+ * an active Starter customer clicking "API Business" on /pro must hit the
+ * duplicate-subscription dialog and be routed to the billing portal (where
+ * the #4634 Dodo collection upgrade lives) — NOT be sold a second
+ * concurrent API subscription ($99.99 + $249.99 double-billing; PR #4946
+ * review). Pro ↔ API cross-line purchases remain deliberately allowed —
+ * they are complementary products.
+ */
+export function checkoutBillingFamily(tierGroup: string): string {
+  return tierGroup.startsWith("api_") ? "api" : tierGroup;
+}
+
+/**
  * Internal query used by checkout creation to prevent duplicate subscriptions.
  *
  * Blocks new checkout sessions when the user already has an active/on_hold
- * subscription in the same tier group, or a cancelled subscription that
- * still has time remaining in the current billing period. This is an app-side
- * guard only; Dodo's "Allow Multiple Subscriptions" setting is still the
- * provider-side backstop for races before webhook ingestion updates Convex.
+ * subscription in the same billing family (see checkoutBillingFamily —
+ * api_starter and api_business count as one family), or a cancelled
+ * subscription that still has time remaining in the current billing period.
+ * This is an app-side guard only; Dodo's "Allow Multiple Subscriptions"
+ * setting is still the provider-side backstop for races before webhook
+ * ingestion updates Convex.
  */
 export const getCheckoutBlockingSubscription = internalQuery({
   args: {
@@ -782,7 +1749,10 @@ export const getCheckoutBlockingSubscription = internalQuery({
       .filter((sub) => {
         const existingCatalogEntry = PRODUCT_CATALOG[sub.planKey];
         if (!existingCatalogEntry) return false;
-        if (existingCatalogEntry.tierGroup !== targetCatalogEntry.tierGroup) return false;
+        if (
+          checkoutBillingFamily(existingCatalogEntry.tierGroup) !==
+          checkoutBillingFamily(targetCatalogEntry.tierGroup)
+        ) return false;
         if (sub.status === "active" || sub.status === "on_hold") return true;
         return sub.status === "cancelled" && sub.currentPeriodEnd > now;
       })
@@ -818,6 +1788,167 @@ export const getCheckoutBlockingSubscription = internalQuery({
  * err slightly long if tuning. Single source of truth: change it here only.
  */
 export const PENDING_PAYMENT_BLOCK_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+export const STUCK_PAYMENT_RECONCILIATION_THRESHOLD_MS = 6 * 60 * 60 * 1000; // 6 hours
+export const STUCK_PAYMENT_RECONCILIATION_LOOKBACK_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
+export const STUCK_PAYMENT_RECONCILIATION_BATCH_SIZE = 25;
+// A stale pending payment older than this no longer gets a "continue checkout"
+// email — the Dodo hosted-checkout link expires, so a confident email with a
+// dead link is worse than none. Older candidates route to the ops path instead.
+export const STUCK_PAYMENT_CUSTOMER_EMAIL_MAX_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+const MAX_STUCK_PAYMENT_RECONCILIATION_BATCH_SIZE = 100;
+const MAX_STUCK_PAYMENT_RECONCILIATION_SCAN_ROWS = 500;
+const RESEND_EMAILS_URL = "https://api.resend.com/emails";
+const STUCK_PAYMENT_EMAIL_FROM = "World Monitor <noreply@worldmonitor.app>";
+const STUCK_PAYMENT_SUPPORT_EMAIL = "support@worldmonitor.app";
+// Bound the Resend POST so a hung socket can't stall the batch (a known repo
+// failure class — a network read with no timeout drains the event loop).
+const STUCK_PAYMENT_RESEND_TIMEOUT_MS = 10 * 1000;
+// Same bound for the Dodo poll — the highest-cardinality call (one per
+// candidate, up to the batch size sequentially). The SDK default is 60s x 2
+// retries (~180s), so one degraded response could otherwise burn the whole
+// action during exactly the Dodo outage this cron exists to survive.
+const STUCK_PAYMENT_DODO_RETRIEVE_TIMEOUT_MS = 10 * 1000;
+// Sentinel recorded on the marker when Dodo returns no status at all — keeps
+// the `observedStatus` field a non-empty string (v.string()) while preserving
+// "we polled but Dodo told us nothing" for triage.
+const UNKNOWN_DODO_PAYMENT_STATUS = "unknown";
+
+function isPendingPaymentStatus(status: string): boolean {
+  return status === "processing" || status === "requires_customer_action";
+}
+
+function isTerminalPaymentStatus(status: string): status is "succeeded" | "failed" | "cancelled" {
+  return status === "succeeded" || status === "failed" || status === "cancelled";
+}
+
+function boundedPositiveInteger(value: number | undefined, fallback: number, max: number): number {
+  if (!Number.isFinite(value) || value === undefined) return fallback;
+  return Math.max(1, Math.min(max, Math.floor(value)));
+}
+
+function boundedPositiveMs(value: number | undefined, fallback: number): number {
+  if (!Number.isFinite(value) || value === undefined) return fallback;
+  return Math.max(1, Math.floor(value));
+}
+
+type DodoPaymentLookup = {
+  status?: unknown;
+  payment_id?: unknown;
+  subscription_id?: unknown;
+  total_amount?: unknown;
+  amount?: unknown;
+  currency?: unknown;
+  payment_link?: unknown;
+  customer?: {
+    email?: unknown;
+    name?: unknown;
+  } | null;
+};
+
+type StuckPaymentCandidate = {
+  userId: string;
+  dodoPaymentId: string;
+  dodoSubscriptionId?: string;
+  planKey?: string;
+  amount: number;
+  currency: string;
+  pendingStatus: "processing" | "requires_customer_action";
+  pendingOccurredAt: number;
+};
+
+type ReconcileStuckPendingPaymentsSummary = {
+  candidates: number;
+  terminalReconciled: number;
+  customerNotified: number;
+  opsNotified: number;
+  alreadySkipped: number;
+  unknownStatus: number;
+  pollFailed: number;
+  emailFailed: number;
+  recordFailed: number;
+};
+
+function readString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function readNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function extractDodoPaymentStatus(payment: unknown): string | null {
+  if (!payment || typeof payment !== "object") return null;
+  const rawStatus = (payment as DodoPaymentLookup).status;
+  return typeof rawStatus === "string" && rawStatus.length > 0 ? rawStatus : null;
+}
+
+async function retrieveDodoPayment(dodoPaymentId: string): Promise<unknown> {
+  const client = getDodoClient();
+  return await client.payments.retrieve(dodoPaymentId, {
+    timeout: STUCK_PAYMENT_DODO_RETRIEVE_TIMEOUT_MS,
+    maxRetries: 1,
+  });
+}
+
+async function sendStuckPaymentEmail(
+  payment: DodoPaymentLookup,
+  planKey: string | undefined,
+): Promise<"customer_notified" | "ops_notified"> {
+  const email = readString(payment.customer?.email);
+  const checkoutUrl = readString(payment.payment_link);
+  const apiKey = process.env.RESEND_API_KEY;
+
+  if (!email || !checkoutUrl) return "ops_notified";
+  if (!apiKey) {
+    console.warn("[billing/reconciliation] RESEND_API_KEY not set; skipping stuck-payment customer email.");
+    return "ops_notified";
+  }
+
+  const planName = planKey ? PRODUCT_CATALOG[planKey]?.displayName ?? "World Monitor" : "World Monitor";
+  const safePlanName = escapeHtml(planName);
+  const safeCheckoutUrl = escapeHtml(checkoutUrl);
+  const safeSupportEmail = escapeHtml(STUCK_PAYMENT_SUPPORT_EMAIL);
+  const html = `
+    <div style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #111; line-height: 1.5;">
+      <h1 style="font-size: 20px;">Your World Monitor checkout still needs action</h1>
+      <p>Your ${safePlanName} payment is still waiting for bank or card verification.</p>
+      <p>You can safely continue checkout here:</p>
+      <p><a href="${safeCheckoutUrl}" style="display: inline-block; background: #111; color: #fff; padding: 10px 14px; text-decoration: none;">Continue checkout</a></p>
+      <p>If you already completed payment, you can ignore this email or contact <a href="mailto:${safeSupportEmail}">${safeSupportEmail}</a>.</p>
+    </div>`;
+
+  const res = await fetch(RESEND_EMAILS_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      from: STUCK_PAYMENT_EMAIL_FROM,
+      to: [email],
+      subject: "Complete your World Monitor checkout",
+      html,
+      reply_to: STUCK_PAYMENT_SUPPORT_EMAIL,
+    }),
+    signal: AbortSignal.timeout(STUCK_PAYMENT_RESEND_TIMEOUT_MS),
+  });
+
+  if (!res.ok) {
+    // Log the status only — the response body can echo the recipient email.
+    console.warn(`[billing/reconciliation] Resend stuck-payment email failed with HTTP ${res.status}.`);
+    return "ops_notified";
+  }
+
+  return "customer_notified";
+}
 
 /**
  * Internal query used by checkout creation to prevent DUPLICATE PENDING
@@ -887,7 +2018,13 @@ export const getBlockingPendingPayment = internalQuery({
         if (!ev.planKey) return false;
         const entry = PRODUCT_CATALOG[ev.planKey];
         if (!entry) return false;
-        return entry.tierGroup === targetCatalogEntry.tierGroup;
+        // Same family scoping as the subscription guard: a pending Starter
+        // payment blocks a Business checkout (and vice versa), while a
+        // pending Pro payment never blocks an API purchase.
+        return (
+          checkoutBillingFamily(entry.tierGroup) ===
+          checkoutBillingFamily(targetCatalogEntry.tierGroup)
+        );
       })
       .sort((a, b) => b.occurredAt - a.occurredAt)[0];
 
@@ -898,6 +2035,457 @@ export const getBlockingPendingPayment = internalQuery({
       displayName: PRODUCT_CATALOG[blocking.planKey]?.displayName ?? blocking.planKey,
       occurredAt: blocking.occurredAt,
     };
+  },
+});
+
+export const listStuckPendingPaymentCandidates = internalQuery({
+  args: {
+    thresholdMs: v.optional(v.number()),
+    lookbackMs: v.optional(v.number()),
+    batchSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const thresholdMs = boundedPositiveMs(args.thresholdMs, STUCK_PAYMENT_RECONCILIATION_THRESHOLD_MS);
+    const lookbackMs = boundedPositiveMs(args.lookbackMs, STUCK_PAYMENT_RECONCILIATION_LOOKBACK_MS);
+    const batchSize = boundedPositiveInteger(
+      args.batchSize,
+      STUCK_PAYMENT_RECONCILIATION_BATCH_SIZE,
+      MAX_STUCK_PAYMENT_RECONCILIATION_BATCH_SIZE,
+    );
+
+    const now = Date.now();
+    const staleBefore = now - thresholdMs;
+    const lookbackStart = now - lookbackMs;
+    // Scan NEWEST-first: past the scan cap, the freshly-stuck rows (the ones a
+    // customer might still act on) stay visible, while the oldest ops-only rows
+    // are the ones deferred to a later run. Ascending order did the opposite —
+    // fresh stuck payments could silently fall off the end of the window.
+    const paymentEvents = await ctx.db
+      .query("paymentEvents")
+      .withIndex("by_occurredAt", (q) =>
+        q.gt("occurredAt", lookbackStart).lt("occurredAt", staleBefore),
+      )
+      .order("desc")
+      .take(MAX_STUCK_PAYMENT_RECONCILIATION_SCAN_ROWS);
+
+    if (paymentEvents.length >= MAX_STUCK_PAYMENT_RECONCILIATION_SCAN_ROWS) {
+      // Cap hit: only the newest 500 rows in the window were scanned. Because
+      // every run rescans newest-first, rows older than that frontier are NOT
+      // merely deferred to the next run — they stay invisible until the newer
+      // backlog clears. Surface it so ops widen the cap / shorten the cadence
+      // (a cursor/watermark would be the durable fix if this recurs).
+      console.error(
+        `[billing/reconciliation] scan cap hit: ${MAX_STUCK_PAYMENT_RECONCILIATION_SCAN_ROWS} rows in the ` +
+        `${Math.round(lookbackMs / (24 * 60 * 60 * 1000))}d window; rows older than the newest ` +
+        `${MAX_STUCK_PAYMENT_RECONCILIATION_SCAN_ROWS} stay unscanned until the backlog clears.`,
+      );
+    }
+
+    const candidates: StuckPaymentCandidate[] = [];
+    const seenPaymentIds = new Set<string>();
+    for (const ev of paymentEvents) {
+      if (candidates.length >= batchSize) break;
+      if (ev.type !== "charge") continue;
+      if (!isPendingPaymentStatus(ev.status)) continue;
+      if (seenPaymentIds.has(ev.dodoPaymentId)) continue;
+      seenPaymentIds.add(ev.dodoPaymentId);
+
+      const marker = await ctx.db
+        .query("paymentReconciliationAttempts")
+        .withIndex("by_dodoPaymentId", (q) => q.eq("dodoPaymentId", ev.dodoPaymentId))
+        .first();
+      if (marker) continue;
+
+      const history = await ctx.db
+        .query("paymentEvents")
+        .withIndex("by_dodoPaymentId", (q) => q.eq("dodoPaymentId", ev.dodoPaymentId))
+        .collect();
+      if (history.some((row) => row.type === "charge" && isTerminalPaymentStatus(row.status))) {
+        continue;
+      }
+
+      candidates.push({
+        userId: ev.userId,
+        dodoPaymentId: ev.dodoPaymentId,
+        dodoSubscriptionId: ev.dodoSubscriptionId,
+        planKey: ev.planKey,
+        amount: ev.amount,
+        currency: ev.currency,
+        pendingStatus: ev.status as "processing" | "requires_customer_action",
+        pendingOccurredAt: ev.occurredAt,
+      });
+    }
+
+    return candidates;
+  },
+});
+
+/**
+ * Claims a reconciliation marker for one stuck pending payment, recording the
+ * status Dodo reported when we polled it.
+ *
+ * This is the idempotency barrier for the whole flow: the action writes the
+ * marker HERE, before sending any customer email, so a transient failure after
+ * this point can never re-email the customer on the next daily run (the
+ * candidate query skips any payment that already has a marker).
+ *
+ * Outcomes:
+ *   - `already_marked` / `already_terminal` — a prior run or a webhook won;
+ *     nothing written.
+ *   - `terminal_reconciled` — Dodo now reports a terminal status (a dropped
+ *     webhook); backfill the missing paymentEvents row + a terminal marker.
+ *   - `pending_claimed` — any non-terminal status (recognised 3DS-pending,
+ *     an unrecognised IntentStatus like `requires_payment_method`, or the
+ *     `unknown` sentinel when Dodo returned no status). Writes a PROVISIONAL
+ *     `ops_notified` marker; the action later calls
+ *     `finalizeStuckPaymentReconciliation` to upgrade it to `customer_notified`
+ *     on a successful email, or to page ops. Mirrors
+ *     `derivePaymentEventStatus`'s collapse of non-terminal IntentStatus — a
+ *     stuck payment is NEVER dropped without a marker (its absence is what
+ *     causes daily re-polling for 14 days + batch-slot starvation).
+ */
+export const claimStuckPaymentReconciliation = internalMutation({
+  args: {
+    userId: v.string(),
+    dodoPaymentId: v.string(),
+    dodoSubscriptionId: v.optional(v.string()),
+    planKey: v.optional(v.string()),
+    amount: v.number(),
+    currency: v.string(),
+    pendingOccurredAt: v.number(),
+    observedStatus: v.string(),
+    rawPayload: v.any(),
+  },
+  handler: async (ctx, args) => {
+    const existingMarker = await ctx.db
+      .query("paymentReconciliationAttempts")
+      .withIndex("by_dodoPaymentId", (q) => q.eq("dodoPaymentId", args.dodoPaymentId))
+      .first();
+    if (existingMarker) return { action: "already_marked" as const };
+
+    const history = await ctx.db
+      .query("paymentEvents")
+      .withIndex("by_dodoPaymentId", (q) => q.eq("dodoPaymentId", args.dodoPaymentId))
+      .collect();
+    if (history.some((row) => row.type === "charge" && isTerminalPaymentStatus(row.status))) {
+      return { action: "already_terminal" as const };
+    }
+
+    const now = Date.now();
+    if (isTerminalPaymentStatus(args.observedStatus)) {
+      await ctx.db.insert("paymentEvents", {
+        userId: args.userId,
+        dodoPaymentId: args.dodoPaymentId,
+        type: "charge",
+        amount: args.amount,
+        currency: args.currency,
+        status: args.observedStatus,
+        dodoSubscriptionId: args.dodoSubscriptionId,
+        planKey: args.planKey,
+        rawPayload: args.rawPayload,
+        occurredAt: now,
+      });
+      await ctx.db.insert("paymentReconciliationAttempts", {
+        dodoPaymentId: args.dodoPaymentId,
+        userId: args.userId,
+        planKey: args.planKey,
+        action: "terminal_reconciled",
+        observedStatus: args.observedStatus,
+        pendingOccurredAt: args.pendingOccurredAt,
+        reconciledAt: now,
+      });
+
+      // Dropped-webhook guard: a payment webhook that never arrived may have
+      // travelled with a dropped `subscription.active` webhook — the customer
+      // is charged but never entitled, and no other reconciler catches a
+      // never-activated sub (#4794's renewal reconciler only scans active
+      // rows). Silently closing the case here would bury it. Page ops when a
+      // succeeded charge has a subscription id but no subscription row at all.
+      if (args.observedStatus === "succeeded" && args.dodoSubscriptionId) {
+        const sub = await ctx.db
+          .query("subscriptions")
+          .withIndex("by_dodoSubscriptionId", (q) =>
+            q.eq("dodoSubscriptionId", args.dodoSubscriptionId!),
+          )
+          .first();
+        if (!sub) {
+          console.error(
+            `[billing/reconciliation] reconciled a SUCCEEDED payment with no subscription row: ` +
+            `paymentId=${args.dodoPaymentId} userId=${args.userId} subscriptionId=${args.dodoSubscriptionId}. ` +
+            `Charged customer may lack entitlement (dropped subscription.active webhook) — ops follow-up required.`,
+          );
+        }
+      }
+      return { action: "terminal_reconciled" as const };
+    }
+
+    // Non-terminal (recognised pending OR unrecognised / `unknown`): claim a
+    // PROVISIONAL ops_notified marker. No console.error here — the true
+    // outcome (customer emailed vs ops paged) isn't known until the action
+    // finalizes, and paging ops for a customer we then successfully email
+    // would be a false alarm.
+    await ctx.db.insert("paymentReconciliationAttempts", {
+      dodoPaymentId: args.dodoPaymentId,
+      userId: args.userId,
+      planKey: args.planKey,
+      action: "ops_notified",
+      observedStatus: args.observedStatus,
+      pendingOccurredAt: args.pendingOccurredAt,
+      reconciledAt: now,
+    });
+    return { action: "pending_claimed" as const };
+  },
+});
+
+/**
+ * Finalizes a claimed (provisional `ops_notified`) marker once the action
+ * knows the email outcome.
+ *
+ * - `notified: true`  → the customer email was sent; upgrade the marker to
+ *   `customer_notified`. No ops page.
+ * - `notified: false` → ops follow-up (unrecognised status, stale checkout
+ *   link, missing email/link, RESEND_API_KEY unset, or a Resend non-2xx). The
+ *   marker stays `ops_notified` and we `console.error` — Convex auto-Sentry
+ *   forwards console.error (the refund-alert precedent in
+ *   subscriptionHelpers.ts), so ops is ACTUALLY paged instead of the
+ *   never-surfaced console.warn this replaced.
+ */
+export const finalizeStuckPaymentReconciliation = internalMutation({
+  args: {
+    dodoPaymentId: v.string(),
+    notified: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    const marker = await ctx.db
+      .query("paymentReconciliationAttempts")
+      .withIndex("by_dodoPaymentId", (q) => q.eq("dodoPaymentId", args.dodoPaymentId))
+      .first();
+    if (!marker) {
+      // The claim always inserts a marker, so a missing one means a concurrent
+      // delete or a caller bug — surface it rather than silently no-op.
+      console.warn(
+        `[billing/reconciliation] finalize found no marker for paymentId=${args.dodoPaymentId}.`,
+      );
+      return { action: "marker_missing" as const };
+    }
+    // Idempotent: a re-run that already upgraded this marker must not downgrade.
+    if (marker.action === "customer_notified") {
+      return { action: "customer_notified" as const };
+    }
+
+    if (args.notified) {
+      await ctx.db.patch(marker._id, { action: "customer_notified", reconciledAt: Date.now() });
+      return { action: "customer_notified" as const };
+    }
+
+    console.error(
+      `[billing/reconciliation] stale Dodo payment still pending after threshold: ` +
+      `paymentId=${marker.dodoPaymentId} userId=${marker.userId} status=${marker.observedStatus} ` +
+      `pendingOccurredAt=${marker.pendingOccurredAt}. Ops follow-up required.`,
+    );
+    return { action: "ops_notified" as const };
+  },
+});
+
+export const reportPaymentReconciliationFailure = internalMutation({
+  args: {
+    phase: v.union(v.literal("poll"), v.literal("email"), v.literal("record")),
+    dodoPaymentId: v.string(),
+    errorMessage: v.string(),
+  },
+  handler: async (_ctx, args) => {
+    throw new Error(
+      `[billing/reconciliation] ${args.phase} phase failed paymentId=${args.dodoPaymentId}: ${args.errorMessage}`,
+    );
+  },
+});
+
+export const reconcileStuckPendingPayments = internalAction({
+  args: {
+    thresholdMs: v.optional(v.number()),
+    lookbackMs: v.optional(v.number()),
+    batchSize: v.optional(v.number()),
+  },
+  handler: async (ctx, args): Promise<ReconcileStuckPendingPaymentsSummary> => {
+    const candidates = await ctx.runQuery(
+      (internal as any).payments.billing.listStuckPendingPaymentCandidates,
+      args,
+    ) as StuckPaymentCandidate[];
+
+    const summary: ReconcileStuckPendingPaymentsSummary = {
+      candidates: candidates.length,
+      terminalReconciled: 0,
+      customerNotified: 0,
+      opsNotified: 0,
+      alreadySkipped: 0,
+      unknownStatus: 0,
+      pollFailed: 0,
+      emailFailed: 0,
+      recordFailed: 0,
+    };
+
+    // Best-effort Sentry hand-off, labelled by phase (poll vs email vs record)
+    // so a mislabel can't hide the real failure. The scheduled mutation throws,
+    // which Convex auto-Sentry captures; wrapping runAfter in its own try/catch
+    // keeps a scheduler hiccup from aborting the day's batch (webhookHandlers.ts
+    // precedent).
+    const reportFailure = async (
+      phase: "poll" | "email" | "record",
+      dodoPaymentId: string,
+      message: string,
+    ): Promise<void> => {
+      try {
+        await ctx.scheduler.runAfter(
+          0,
+          (internal as any).payments.billing.reportPaymentReconciliationFailure,
+          { phase, dodoPaymentId, errorMessage: message },
+        );
+      } catch (scheduleErr) {
+        // sentry-coverage-ok: the scheduled report is a best-effort Sentry
+        // hand-off; the durable state is the reconciliation marker. A scheduler
+        // outage here must not abort the batch.
+        console.warn(
+          `[billing/reconciliation] failed to schedule ${phase} failure report for ${dodoPaymentId}: ` +
+          `${scheduleErr instanceof Error ? scheduleErr.message : String(scheduleErr)}`,
+        );
+      }
+    };
+
+    // Finalize a claimed marker as ops (notified: false). Swallows its own
+    // failure to a phase="record" Sentry report — the provisional ops_notified
+    // marker from the claim already stands, so the outcome is durable.
+    const finalizeOps = async (dodoPaymentId: string): Promise<void> => {
+      try {
+        await ctx.runMutation(
+          (internal as any).payments.billing.finalizeStuckPaymentReconciliation,
+          { dodoPaymentId, notified: false },
+        );
+      } catch (err) {
+        // sentry-coverage-ok: reportFailure schedules a throwing mutation.
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`[billing/reconciliation] finalize (ops) failed for ${dodoPaymentId}: ${message}`);
+        await reportFailure("record", dodoPaymentId, message);
+      }
+    };
+
+    const now = Date.now();
+
+    for (const candidate of candidates) {
+      // Phase — poll Dodo for the current payment status.
+      let payment: unknown;
+      try {
+        payment = await retrieveDodoPayment(candidate.dodoPaymentId);
+      } catch (err) {
+        // sentry-coverage-ok: reportFailure schedules a throwing mutation.
+        summary.pollFailed++;
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`[billing/reconciliation] poll failed for ${candidate.dodoPaymentId}: ${message}`);
+        await reportFailure("poll", candidate.dodoPaymentId, message);
+        continue;
+      }
+
+      const observedStatus = extractDodoPaymentStatus(payment); // string | null
+      const dodoPayment = payment as DodoPaymentLookup;
+      const recordedStatus = observedStatus ?? UNKNOWN_DODO_PAYMENT_STATUS;
+
+      // Phase — CLAIM the marker BEFORE any email (idempotency barrier).
+      let claim: { action: string };
+      try {
+        claim = await ctx.runMutation(
+          (internal as any).payments.billing.claimStuckPaymentReconciliation,
+          {
+            userId: candidate.userId,
+            dodoPaymentId: candidate.dodoPaymentId,
+            dodoSubscriptionId: readString(dodoPayment.subscription_id) ?? candidate.dodoSubscriptionId,
+            planKey: candidate.planKey,
+            amount: readNumber(dodoPayment.total_amount) ?? readNumber(dodoPayment.amount) ?? candidate.amount,
+            currency: readString(dodoPayment.currency) ?? candidate.currency,
+            pendingOccurredAt: candidate.pendingOccurredAt,
+            observedStatus: recordedStatus,
+            rawPayload: payment,
+          },
+        );
+      } catch (err) {
+        // sentry-coverage-ok: reportFailure schedules a throwing mutation.
+        summary.recordFailed++;
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`[billing/reconciliation] claim failed for ${candidate.dodoPaymentId}: ${message}`);
+        await reportFailure("record", candidate.dodoPaymentId, message);
+        continue;
+      }
+
+      if (claim.action === "terminal_reconciled") {
+        summary.terminalReconciled++;
+        continue;
+      }
+      if (claim.action !== "pending_claimed") {
+        // already_marked / already_terminal — a prior run or a webhook won.
+        summary.alreadySkipped++;
+        continue;
+      }
+
+      // Marker is claimed as provisional ops_notified. Decide whether to email.
+      const recognizedPending = observedStatus != null && isPendingPaymentStatus(observedStatus);
+      const linkFresh = now - candidate.pendingOccurredAt < STUCK_PAYMENT_CUSTOMER_EMAIL_MAX_AGE_MS;
+
+      if (!recognizedPending) {
+        // Unrecognised IntentStatus (incl. null / requires_payment_method — the
+        // typical abandoned-3DS end-state). Ops path, marker already written.
+        summary.unknownStatus++;
+        await finalizeOps(candidate.dodoPaymentId);
+        continue;
+      }
+
+      if (!linkFresh) {
+        // Stale checkout link (Dodo links expire): a confident email with a
+        // dead link is worse than none. Ops path instead.
+        summary.opsNotified++;
+        await finalizeOps(candidate.dodoPaymentId);
+        continue;
+      }
+
+      // Phase — send the customer "continue checkout" email.
+      let emailResult: "customer_notified" | "ops_notified";
+      try {
+        emailResult = await sendStuckPaymentEmail(dodoPayment, candidate.planKey);
+      } catch (err) {
+        // sentry-coverage-ok: reportFailure schedules a throwing mutation. The
+        // claimed ops_notified marker stands, so the next run won't re-email.
+        summary.emailFailed++;
+        const message = err instanceof Error ? err.message : String(err);
+        console.warn(`[billing/reconciliation] email failed for ${candidate.dodoPaymentId}: ${message}`);
+        await reportFailure("email", candidate.dodoPaymentId, message);
+        continue;
+      }
+
+      // Phase — finalize the marker to reflect the email outcome.
+      if (emailResult === "customer_notified") {
+        try {
+          await ctx.runMutation(
+            (internal as any).payments.billing.finalizeStuckPaymentReconciliation,
+            { dodoPaymentId: candidate.dodoPaymentId, notified: true },
+          );
+          summary.customerNotified++;
+        } catch (err) {
+          // sentry-coverage-ok: reportFailure schedules a throwing mutation. The
+          // marker stays ops_notified (safe default) — the ops path owns it.
+          summary.opsNotified++;
+          const message = err instanceof Error ? err.message : String(err);
+          console.warn(`[billing/reconciliation] finalize failed for ${candidate.dodoPaymentId}: ${message}`);
+          await reportFailure("record", candidate.dodoPaymentId, message);
+        }
+      } else {
+        // sendStuckPaymentEmail returned ops_notified (missing email/link,
+        // RESEND_API_KEY unset, or Resend non-2xx).
+        summary.opsNotified++;
+        await finalizeOps(candidate.dodoPaymentId);
+      }
+    }
+
+    if (summary.candidates > 0 || summary.pollFailed > 0) {
+      console.warn(`[billing/reconciliation] summary ${JSON.stringify(summary)}`);
+    }
+    return summary;
   },
 });
 
@@ -946,21 +2534,27 @@ export const internalGetCustomerPortalUrl = internalAction({
  * creates a real account, there is no automatic way to link the purchase.
  *
  * This mutation provides the migration path: once authenticated, the client
- * calls claimSubscription(anonId) to reassign all payment records from the
- * anonymous ID to the real user ID.
+ * calls claimSubscription(anonId, claimToken) to reassign all payment records
+ * from the anonymous ID to the real user ID. The claim token is minted
+ * server-side during checkout creation; a leaked bare UUID is not sufficient
+ * ownership proof.
  *
  * @see https://github.com/koala73/worldmonitor/issues/2078
  */
 export const claimSubscription = mutation({
-  args: { anonId: v.string() },
+  args: { anonId: v.string(), claimToken: v.optional(v.string()) },
   handler: async (ctx, args) => {
     const realUserId = await requireUserId(ctx);
 
     // Validate anonId is a UUID v4 (format produced by crypto.randomUUID() in user-identity.ts).
     // Rejects injected Clerk IDs ("user_xxx") which are structurally distinct from UUID v4,
     // preventing cross-user subscription theft via localStorage injection.
-    if (!ANON_ID_REGEX.test(args.anonId) || args.anonId === realUserId) {
+    if (!ANON_ID_V4_REGEX.test(args.anonId) || args.anonId === realUserId) {
       return { claimed: { subscriptions: 0, entitlements: 0, customers: 0, payments: 0 } };
+    }
+
+    if (args.claimToken !== undefined && !(await verifyAnonClaimToken(args.anonId, args.claimToken))) {
+      throw new ConvexError({ kind: "ANON_CLAIM_PROOF_REQUIRED" });
     }
 
     // Parallel reads for all anonId data — bounded to prevent runaway memory
@@ -970,6 +2564,19 @@ export const claimSubscription = mutation({
       ctx.db.query("customers").withIndex("by_userId", (q) => q.eq("userId", args.anonId)).take(10),
       ctx.db.query("paymentEvents").withIndex("by_userId", (q) => q.eq("userId", args.anonId)).take(1000),
     ]);
+
+    const hasClaimableRows =
+      subs.length > 0 ||
+      anonEntitlement !== null ||
+      customers.length > 0 ||
+      payments.length > 0;
+    if (!hasClaimableRows) {
+      return { claimed: { subscriptions: 0, entitlements: 0, customers: 0, payments: 0 } };
+    }
+
+    if (args.claimToken === undefined) {
+      throw new ConvexError({ kind: "ANON_CLAIM_PROOF_REQUIRED" });
+    }
 
     // Reassign subscriptions
     for (const sub of subs) {

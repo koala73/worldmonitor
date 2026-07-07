@@ -1,0 +1,39 @@
+---
+title: "Support & Contact"
+description: "Every support channel — email, GitHub issues, Discord, status page — and what response to expect on each plan."
+---
+
+<Info>
+Machine-readable version for agents: [`/support.md`](https://worldmonitor.app/support.md)
+</Info>
+
+## Channels
+
+| Concern | Channel |
+|---------|---------|
+| General support, account or billing issues | [support@worldmonitor.app](mailto:support@worldmonitor.app) |
+| Enterprise, sales, custom quotas | [enterprise@worldmonitor.app](mailto:enterprise@worldmonitor.app) |
+| Bug reports & feature requests | [GitHub issues](https://github.com/koala73/worldmonitor/issues) (public, open source) |
+| Community & quick questions | [Discord](https://discord.gg/re63kWKxaz) |
+| Service status & incidents | [status.worldmonitor.app](https://status.worldmonitor.app) — email subscription available |
+| Security vulnerabilities | See [security.txt](https://www.worldmonitor.app/.well-known/security.txt) |
+
+The in-app contact form on [/pro](https://worldmonitor.app/pro) (`POST /api/leads/v1/submit-contact`) is Turnstile-protected and intended for humans in a browser; agents should use email instead.
+
+## Response expectations
+
+- **Free / Pro / API** — best-effort support via email, GitHub, and Discord. No formal SLA.
+- **Enterprise** — dedicated support with committed response times, agreed per contract.
+
+When writing about an API issue, include your key prefix (never the full key), the endpoint, and any request IDs or `X-RateLimit-*` header values you received.
+
+## Before you write in
+
+- **Is it an outage?** Check [status.worldmonitor.app](https://status.worldmonitor.app) and the public health probe `GET /api/health?compact=1`.
+- **Key rotation / limit increases** — [Authentication & Usage](/usage-auth), [Rate Limits](/usage-rate-limits), or email support.
+- **Billing self-serve** — invoices, cancel, and renew live in the customer portal at [worldmonitor.app/pro](https://worldmonitor.app/pro).
+
+## Related
+
+- [Plans & Pricing](/pricing)
+- [Accounts & Sign-up](/accounts)

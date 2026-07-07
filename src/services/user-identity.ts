@@ -18,18 +18,25 @@
  * there is no automatic way to reconnect the purchase to the user.
  *
  * Migration path: After Clerk auth lands, the client should call
- * `claimSubscription(anonId)` (convex/payments/billing.ts) on first
- * authenticated session to reassign payment records from the anon ID to
- * the real Clerk user ID. The anon ID should be read from localStorage
- * before it is replaced by the real identity.
+ * `claimSubscription(anonId, claimToken)` (convex/payments/billing.ts) on
+ * first authenticated session to reassign payment records from the anon ID
+ * to the real Clerk user ID. The anon ID and server-issued claim token
+ * should be read from localStorage before they are cleared.
  *
  * @see https://github.com/koala73/worldmonitor/issues/2078
  */
 
 import { getCurrentClerkUser } from './clerk';
 import { migrateLegacyKeysToHttpOnlySession, readLegacySessionKey } from './browser-key-session';
+import { getStoredAnonId, saveAnonId } from './anonymous-identity-storage';
+export {
+  clearStoredAnonIdentity,
+  getFreshStoredAnonClaimToken,
+  getStoredAnonClaimToken,
+  getStoredAnonId,
+  saveAnonClaimToken,
+} from './anonymous-identity-storage';
 
-const ANON_KEY = 'wm-anon-id';
 let legacyProMigrationStarted = false;
 
 function legacyProKeyForMigration(): string {
@@ -50,10 +57,10 @@ function legacyProKeyForMigration(): string {
  */
 export function getOrCreateAnonId(): string {
   try {
-    let id = localStorage.getItem(ANON_KEY);
+    let id = getStoredAnonId();
     if (!id) {
       id = crypto.randomUUID();
-      localStorage.setItem(ANON_KEY, id);
+      saveAnonId(id);
     }
     return id;
   } catch {

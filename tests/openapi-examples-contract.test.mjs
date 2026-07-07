@@ -40,7 +40,17 @@ const CURATED = (() => {
   assert.ok(llmProviderType, 'expected LlmProviderName union in server/_shared/llm.ts');
   const llmProviders = new Set([...llmProviderType[1].matchAll(/'([^']+)'/g)].map((m) => m[1]));
   assert.ok(llmProviders.size > 0, 'expected at least one LLM provider in LlmProviderName');
-  return { chokepointIds, scenarioIds, llmProviders };
+  const gdeltSrc = readFileSync(resolve(root, 'scripts/seed-gdelt-intel.mjs'), 'utf8');
+  const gdeltTopics = new Set([...gdeltSrc.matchAll(/\bid:\s*['"`]([a-z0-9-]+)['"`]/g)].map((m) => m[1]));
+  const geographySrc = readFileSync(resolve(root, 'scripts/shared/geography.js'), 'utf8');
+  const regionIdsMatch = geographySrc.match(/\bREGION_IDS\s*=\s*\[([\s\S]*?)\]/);
+  const regionIds = new Set(regionIdsMatch ? [...regionIdsMatch[1].matchAll(/['"`]([a-z0-9-]+)['"`]/g)].map((m) => m[1]) : []);
+  const consumerSrc = readFileSync(resolve(root, 'server/worldmonitor/consumer-prices/v1/get-consumer-price-basket-series.ts'), 'utf8');
+  const consumerRangesMatch = consumerSrc.match(/VALID_RANGES\s*=\s*new Set\(\[([^\]]+)\]\)/);
+  const consumerRanges = new Set(consumerRangesMatch ? [...consumerRangesMatch[1].matchAll(/['"`]([^'"`]+)['"`]/g)].map((m) => m[1]) : []);
+  const basketMatch = consumerSrc.match(/\bDEFAULT_BASKET\s*=\s*['"`]([^'"`]+)['"`]/);
+  const consumerBaskets = new Set([basketMatch?.[1] ?? 'essentials-ae']);
+  return { chokepointIds, scenarioIds, llmProviders, gdeltTopics, regionIds, consumerRanges, consumerBaskets };
 })();
 
 // Mirror of scripts/openapi-inject-examples.mjs override routing (normalizeKey is
@@ -289,6 +299,40 @@ function assertSummarizeProviderExamples(spec, label) {
   }
 }
 
+function assertConsumerPriceResponseRanges(spec, label) {
+  const operationIds = new Set(['ListConsumerPriceCategories', 'ListConsumerPriceMovers']);
+  const examples = collectTopLevelFieldExamples(
+    spec,
+    label,
+    ({ op }) => operationIds.has(String(op.operationId ?? '')),
+    'range',
+  ).filter(({ where }) => where.includes(' response '));
+  assert.equal(examples.length, operationIds.size, `${label}: expected consumer-price response range examples`);
+  for (const { value, where } of examples) {
+    assert.notEqual(value, 'example', `${where}: placeholder range`);
+    assert.ok(CURATED.consumerRanges.has(value), `${where}: range '${value}' is not an accepted consumer-price range`);
+  }
+}
+
+function assertComputeEnergyShockChokepointEcho(spec, label) {
+  let checked = 0;
+  for (const { path, method, op } of operationEntries(spec)) {
+    if (op.operationId !== 'ComputeEnergyShockScenario') continue;
+    const param = (op.parameters ?? []).find((p) => p?.name === 'chokepoint_id');
+    assert.ok(param, `${label}: ${method.toUpperCase()} ${path} missing chokepoint_id parameter`);
+    assert.notEqual(param.example, 'example', `${label}: ${method.toUpperCase()} ${path} placeholder chokepoint_id`);
+    assert.ok(CURATED.chokepointIds.has(param.example), `${label}: chokepoint_id '${param.example}' is not registered`);
+    const responseChokepointId = op.responses?.['200']?.content?.[JSON_MEDIA]?.example?.chokepointId;
+    assert.equal(
+      responseChokepointId,
+      param.example,
+      `${label}: ${method.toUpperCase()} ${path} chokepoint_id request and chokepointId response examples must match`,
+    );
+    checked++;
+  }
+  assert.ok(checked > 0, `${label}: expected ComputeEnergyShockScenario chokepoint example to check`);
+}
+
 function assertRouteIntelligenceHs2Example(spec, label) {
   let checked = 0;
   for (const { path, method, op } of operationEntries(spec)) {
@@ -297,20 +341,228 @@ function assertRouteIntelligenceHs2Example(spec, label) {
     assert.ok(param, `${label}: ${method.toUpperCase()} ${path} missing hs2 parameter`);
     assert.equal(param.example, '27', `${label}: ${method.toUpperCase()} ${path} hs2 example must use the 2-digit default`);
     assert.match(String(param.example), /^\d{2}$/, `${label}: ${method.toUpperCase()} ${path} hs2 example must be two digits`);
+    const cargoParam = (op.parameters ?? []).find((p) => p?.name === 'cargoType');
+    assert.ok(cargoParam, `${label}: ${method.toUpperCase()} ${path} missing cargoType parameter`);
+    assert.equal(cargoParam.example, 'container', `${label}: ${method.toUpperCase()} ${path} cargoType must keep the documented default`);
+    const responseCargoType = op.responses?.['200']?.content?.[JSON_MEDIA]?.example?.cargoType;
+    assert.equal(responseCargoType, cargoParam.example, `${label}: ${method.toUpperCase()} ${path} cargoType request/response examples must match`);
     checked++;
   }
   assert.ok(checked > 0, `${label}: expected RouteIntelligence hs2 example to check`);
 }
 
+function collectParamExamples(spec, label, operationId, paramName) {
+  const found = [];
+  for (const { path, method, op } of operationEntries(spec)) {
+    if (op.operationId !== operationId) continue;
+    const param = (op.parameters ?? []).find((p) => p?.name === paramName);
+    assert.ok(param, `${label}: ${method.toUpperCase()} ${path} missing ${paramName} parameter`);
+    const values = Array.isArray(param.example) ? param.example : [param.example];
+    for (const value of values) found.push({ value, where: `${label} ${method.toUpperCase()} ${path} param ${paramName}` });
+  }
+  assert.ok(found.length > 0, `${label}: expected ${operationId}.${paramName} examples to check`);
+  return found;
+}
+
+function assertParamExampleSet(specs, operationId, paramName, acceptedValues) {
+  for (const [label, spec] of specs) {
+    for (const { value, where } of collectParamExamples(spec, label, operationId, paramName)) {
+      assert.notEqual(value, 'example', `${where}: placeholder example`);
+      assert.notEqual(value, 'example1', `${where}: pattern-only placeholder example`);
+      assert.ok(acceptedValues.has(value), `${where}: '${value}' is not an accepted example value`);
+    }
+  }
+}
+
+function normalizeClosedValue(value) {
+  return String(value)
+    .trim()
+    .replace(/^["'`]+|["'`]+$/g, '')
+    .replace(/\s*\([^)]*\)/g, '')
+    .replace(/\s*\[[^\]]*\]/g, '')
+    .replace(/[),.;:]+$/g, '')
+    .trim();
+}
+
+function splitClosedValueList(text) {
+  return String(text)
+    .replace(/\bor\b/g, ',')
+    .replace(/\band\b/g, ',')
+    .split(',')
+    .map((part) => normalizeClosedValue(part))
+    .filter((value) => value && value.toLowerCase() !== 'default' && /^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(value));
+}
+
+function closedValuesFromDescription(description) {
+  const text = String(description ?? '').replace(/\s+/g, ' ').trim();
+  if (!text) return new Set();
+  const match = text.match(
+    /\b(?:one of|supported values?|valid values?|allowed values?|accepted values?)\b(?:\s*(?:are|is|:))?\s*([^.;]+)/i,
+  ) ?? text.match(
+    /\b(?:cabin class|stop filter|sort order|sort mode|summarization mode|fuel mode|policy category|status)\s*:\s*([^.;]+)/i,
+  ) ?? text.match(/\bTopic ID\s*\(([^)]+)\)/i);
+  if (!match) return new Set();
+  const segment = match[1] ?? '';
+  const quoted = [...segment.matchAll(/"([^"]*)"/g)].map((m) => m[1]);
+  return new Set(quoted.length > 0 ? splitClosedValueList(quoted.join(',')) : splitClosedValueList(segment));
+}
+
+function assertClosedValueParamExamples(spec, label) {
+  let checked = 0;
+  for (const { path, method, op } of operationEntries(spec)) {
+    for (const param of op.parameters ?? []) {
+      if (!param?.schema || param.in === 'header') continue;
+      if (Array.isArray(param.schema.enum) && param.schema.enum.length > 0) continue;
+      const accepted = closedValuesFromDescription(param.description ?? param.schema.description);
+      if (accepted.size === 0) continue;
+      const values = Array.isArray(param.example) ? param.example : [param.example];
+      for (const value of values) {
+        const where = `${label} ${method.toUpperCase()} ${path} param ${param.name}`;
+        assert.notEqual(value, 'example', `${where}: placeholder example`);
+        assert.notEqual(value, 'example1', `${where}: pattern-only placeholder example`);
+        assert.ok(accepted.has(String(value)), `${where}: '${value}' is outside documented values ${[...accepted].join(', ')}`);
+        checked++;
+      }
+    }
+  }
+  return checked;
+}
+
+function assertIssue4827Cluster7ResidueFixed(specs) {
+  const cases = [
+    {
+      operationId: 'GetSectorSummary',
+      paramName: 'period',
+      accepted: new Set(['1d', '1w', '1m']),
+    },
+    {
+      operationId: 'SearchGdeltDocuments',
+      paramName: 'timespan',
+      accepted: new Set(['15min', '1h', '24h']),
+    },
+    {
+      operationId: 'GetTradeBarriers',
+      paramName: 'measure_type',
+      accepted: new Set(['SPS', 'TBT']),
+    },
+    {
+      operationId: 'GetPopulationExposure',
+      paramName: 'mode',
+      accepted: new Set(['countries', 'exposure']),
+    },
+    {
+      operationId: 'GetTheaterPosture',
+      paramName: 'theater',
+      accepted: new Set(['indo-pacific', 'european', 'middle-east']),
+    },
+  ];
+
+  for (const { operationId, paramName, accepted } of cases) {
+    let found = 0;
+    for (const [label, spec] of specs) {
+      if (!operationEntries(spec).some(({ op }) => op.operationId === operationId)) continue;
+      for (const { value, where } of collectParamExamples(spec, label, operationId, paramName)) {
+        assert.notEqual(value, 'example', `${where}: placeholder example`);
+        assert.notEqual(value, 'daily', `${where}: generic period example is not documented`);
+        assert.notEqual(value, 'all', `${where}: generic type example is not documented`);
+        assert.notEqual(value, '2026-01-15T12:00:00Z', `${where}: datetime heuristic is not documented`);
+        assert.ok(accepted.has(String(value)), `${where}: '${value}' is outside documented values ${[...accepted].join(', ')}`);
+        found++;
+      }
+    }
+    assert.ok(found > 0, `expected issue #4827 cluster-7 examples for ${operationId}.${paramName}`);
+  }
+}
+
+function assertScenarioStatusPollExample(spec, label) {
+  const example = spec.paths?.['/api/scenario/v1/get-scenario-status']?.get
+    ?.responses?.['200']?.content?.[JSON_MEDIA]?.example;
+  assert.ok(example && typeof example === 'object' && !Array.isArray(example), `${label}: missing get-scenario-status 200 example`);
+  assert.ok(['pending', 'processing', 'done', 'failed'].includes(example.status), `${label}: impossible scenario status '${example.status}'`);
+  if (example.status === 'done') {
+    assert.ok(example.result && typeof example.result === 'object', `${label}: done status must include result`);
+    assert.ok(!Object.hasOwn(example, 'error') || example.error === '', `${label}: done status must not include a populated error`);
+    assert.ok(example.result.template && typeof example.result.template === 'object', `${label}: done result must include template`);
+    assert.notEqual(example.result.template.name, 'WorldMonitor Analyst', `${label}: worker writes a template key, not a display name`);
+    const affected = Array.isArray(example.result.affectedChokepointIds) ? example.result.affectedChokepointIds : [];
+    for (const id of affected) {
+      assert.ok(CURATED.chokepointIds.has(id), `${label}: affected chokepoint '${id}' is not registered`);
+    }
+    const expectedTemplateName = affected.length > 0 ? affected.join('+') : 'tariff_shock';
+    assert.equal(example.result.template.name, expectedTemplateName, `${label}: template.name must match the worker template key`);
+  } else if (example.status === 'failed') {
+    assert.ok(typeof example.error === 'string' && example.error, `${label}: failed status must include error`);
+    assert.ok(!Object.hasOwn(example, 'result'), `${label}: failed status must not include result`);
+  } else {
+    assert.ok(!Object.hasOwn(example, 'result'), `${label}: ${example.status} status must not include result`);
+    assert.ok(!Object.hasOwn(example, 'error') || example.error === '', `${label}: ${example.status} status must not include a populated error`);
+  }
+}
+
+// Honeypot fields are hidden anti-bot inputs (marked by a schema description
+// containing "honeypot"). The handlers silently discard any non-empty value, so
+// a populated request example is a fake-success trap and contradicts the field's
+// own "real submissions leave it empty" description (#4768). Walk a request
+// example against its schema and flag any populated honeypot-marked property.
+function collectHoneypotViolations(example, schema, spec, label, seen = new Set()) {
+  const violations = [];
+  if (!schema || typeof schema !== 'object') return violations;
+  if (schema.$ref) {
+    if (seen.has(schema.$ref)) return violations;
+    seen = new Set([...seen, schema.$ref]);
+    schema = resolveSchema(schema, spec);
+  }
+  if (Array.isArray(schema.allOf)) {
+    for (const part of schema.allOf) violations.push(...collectHoneypotViolations(example, part, spec, label, seen));
+    return violations;
+  }
+  const type = schemaType(schema);
+  if (type === 'object' && example && typeof example === 'object' && !Array.isArray(example)) {
+    for (const [key, child] of Object.entries(example)) {
+      const propSchema = schema.properties?.[key];
+      if (!propSchema) continue;
+      const resolved = propSchema.$ref ? resolveSchema(propSchema, spec) : propSchema;
+      const description = String(resolved?.description ?? propSchema.description ?? '').toLowerCase();
+      if (description.includes('honeypot')) violations.push(`${label}.${key}`);
+      violations.push(...collectHoneypotViolations(child, propSchema, spec, `${label}.${key}`, seen));
+    }
+  } else if (type === 'array' && Array.isArray(example)) {
+    for (const item of example) violations.push(...collectHoneypotViolations(item, schema.items ?? {}, spec, `${label}[]`, seen));
+  }
+  return violations;
+}
+
+function countHoneypotSchemaFields(spec) {
+  let count = 0;
+  for (const s of Object.values(spec.components?.schemas ?? {})) {
+    for (const p of Object.values(s?.properties ?? {})) {
+      if (String(p?.description ?? '').toLowerCase().includes('honeypot')) count++;
+    }
+  }
+  return count;
+}
+
+function honeypotRequestViolations(spec, label) {
+  const violations = [];
+  for (const { path, method, op } of operationEntries(spec)) {
+    const media = op.requestBody?.content?.[JSON_MEDIA];
+    if (!media?.schema || media.example === undefined) continue;
+    violations.push(
+      ...collectHoneypotViolations(media.example, media.schema, spec, `${label} ${method.toUpperCase()} ${path} requestBody`),
+    );
+  }
+  return violations;
+}
+
 describe('OpenAPI examples contract', () => {
   // Bump these exact surface counts when adding or removing proto services/RPCs.
   it('audits the known service operation surface', () => {
-    assert.equal(serviceSpecs.length, 34, `expected 34 service specs, found ${serviceSpecs.length}`);
+    assert.equal(serviceSpecs.length, 35, `expected 35 service specs, found ${serviceSpecs.length}`);
     const total = serviceSpecs.reduce((sum, file) => {
       const spec = JSON.parse(readFileSync(resolve(apiDir, file), 'utf8'));
       return sum + operationEntries(spec).length;
     }, 0);
-    assert.equal(total, 192, `expected 192 OpenAPI operations, found ${total}`);
+    assert.equal(total, 193, `expected 193 OpenAPI operations, found ${total}`);
   });
 
   it('adds schema-valid request and response examples to every service JSON spec', () => {
@@ -322,9 +574,9 @@ describe('OpenAPI examples contract', () => {
       totals.requestExpected += result.requestExpected;
       totals.responseExpected += result.responseExpected;
     }
-    assert.equal(totals.operations, 192);
+    assert.equal(totals.operations, 193);
     assert.ok(totals.requestExpected >= 137, `expected at least 137 request example targets, found ${totals.requestExpected}`);
-    assert.equal(totals.responseExpected, 192);
+    assert.equal(totals.responseExpected, 193);
   });
 
   // record-baseline-snapshot's nested updates[].type is a bare string (no schema
@@ -363,14 +615,38 @@ describe('OpenAPI examples contract', () => {
       const spec = loadYaml(readFileSync(resolve(apiDir, yamlFile), 'utf8'));
       operations += assertOperationExamples(spec, yamlFile).operations;
     }
-    assert.equal(operations, 192);
+    assert.equal(operations, 193);
   });
 
   it('adds request and response examples to the unified OpenAPI bundle', () => {
     const bundle = loadYaml(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8'));
     const result = assertOperationExamples(bundle, 'worldmonitor.openapi.yaml');
-    assert.equal(result.operations, 192);
-    assert.equal(result.responseExpected, 192);
+    assert.equal(result.operations, 193);
+    assert.equal(result.responseExpected, 193);
+  });
+
+  // A honeypot field (hidden anti-bot input) is silently discarded by the
+  // handlers when non-empty, so a populated request example is a fake-success
+  // trap and contradicts the field's own "leave it empty" description (#4768).
+  // The injector must drop honeypot-marked fields from every generated request
+  // example across the JSON specs, per-service YAML, and unified bundle.
+  it('omits honeypot fields from every request example', () => {
+    const violations = [];
+    let guardedFields = 0;
+    for (const file of serviceSpecs) {
+      const spec = JSON.parse(readFileSync(resolve(apiDir, file), 'utf8'));
+      guardedFields += countHoneypotSchemaFields(spec);
+      violations.push(...honeypotRequestViolations(spec, file));
+
+      const yamlFile = file.replace(/\.json$/, '.yaml');
+      const yamlSpec = loadYaml(readFileSync(resolve(apiDir, yamlFile), 'utf8'));
+      violations.push(...honeypotRequestViolations(yamlSpec, yamlFile));
+    }
+    const bundle = loadYaml(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8'));
+    violations.push(...honeypotRequestViolations(bundle, 'worldmonitor.openapi.yaml'));
+
+    assert.ok(guardedFields >= 2, `expected honeypot-marked schema fields to guard, found ${guardedFields}`);
+    assert.deepEqual(violations, [], `request examples must omit honeypot fields; populated: ${violations.join(', ')}`);
   });
 
   it('the examples injector reports the specs as in-sync (idempotent)', () => {
@@ -452,6 +728,118 @@ describe('OpenAPI curated example values', () => {
 
     for (const [label, spec] of specs) {
       assertSummarizeProviderExamples(spec, label);
+    }
+  });
+
+  it('uses accepted closed-value parameter examples from prose descriptions', () => {
+    assert.ok(CURATED.gdeltTopics.size > 0, 'expected seeded GDELT topic ids');
+    assert.ok(CURATED.regionIds.size > 0, 'expected regional intelligence ids');
+    assert.ok(CURATED.consumerRanges.size > 0, 'expected consumer-price ranges');
+    assert.ok(CURATED.consumerBaskets.size > 0, 'expected consumer-price basket ids');
+
+    const intelligenceSpecs = [
+      ['IntelligenceService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'IntelligenceService.openapi.json'), 'utf8'))],
+      ['IntelligenceService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'IntelligenceService.openapi.yaml'), 'utf8'))],
+      ['worldmonitor.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8'))],
+    ];
+    assertParamExampleSet(intelligenceSpecs, 'GetGdeltTopicTimeline', 'topic', CURATED.gdeltTopics);
+    assertParamExampleSet(intelligenceSpecs, 'GetRegionalSnapshot', 'region_id', CURATED.regionIds);
+    assertParamExampleSet(intelligenceSpecs, 'GetRegimeHistory', 'region_id', CURATED.regionIds);
+    assertParamExampleSet(intelligenceSpecs, 'GetRegionalBrief', 'region_id', CURATED.regionIds);
+    for (const [label, spec] of intelligenceSpecs) {
+      assertComputeEnergyShockChokepointEcho(spec, label);
+    }
+
+    const consumerSpecs = [
+      ['ConsumerPricesService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'ConsumerPricesService.openapi.json'), 'utf8'))],
+      ['ConsumerPricesService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'ConsumerPricesService.openapi.yaml'), 'utf8'))],
+      ['worldmonitor.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8'))],
+    ];
+    for (const operationId of ['GetConsumerPriceOverview', 'GetConsumerPriceBasketSeries', 'ListConsumerPriceCategories', 'ListRetailerPriceSpreads']) {
+      assertParamExampleSet(consumerSpecs, operationId, 'basket_slug', CURATED.consumerBaskets);
+    }
+    for (const operationId of ['GetConsumerPriceBasketSeries', 'ListConsumerPriceCategories', 'ListConsumerPriceMovers']) {
+      assertParamExampleSet(consumerSpecs, operationId, 'range', CURATED.consumerRanges);
+    }
+
+    const aviationSpecs = [
+      ['AviationService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'AviationService.openapi.json'), 'utf8'))],
+      ['AviationService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'AviationService.openapi.yaml'), 'utf8'))],
+      ['worldmonitor.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8'))],
+    ];
+    const flightOps = ['SearchGoogleFlights', 'SearchGoogleDates'];
+    for (const operationId of flightOps) {
+      assertParamExampleSet(aviationSpecs, operationId, 'cabin_class', new Set(['ECONOMY', 'PREMIUM_ECONOMY', 'BUSINESS', 'FIRST']));
+      assertParamExampleSet(aviationSpecs, operationId, 'max_stops', new Set(['ANY', 'NON_STOP', 'ONE_STOP', 'TWO_PLUS_STOPS']));
+      assertParamExampleSet(aviationSpecs, operationId, 'departure_window', new Set(['6-20']));
+      for (const [label, spec] of aviationSpecs) {
+        for (const { value, where } of collectParamExamples(spec, label, operationId, 'airlines')) {
+          assert.notEqual(value, 'example', `${where}: placeholder airline`);
+          assert.notEqual(value, 'JFK', `${where}: airport-code placeholder is not an airline`);
+          assert.notEqual(value, 'LHR', `${where}: airport-code placeholder is not an airline`);
+          assert.match(String(value), /^[A-Z0-9]{2}$/, `${where}: airline example '${value}' must be an IATA airline code`);
+        }
+      }
+    }
+    assertParamExampleSet(aviationSpecs, 'SearchGoogleFlights', 'sort_by', new Set(['CHEAPEST', 'DURATION', 'DEPARTURE_TIME', 'ARRIVAL_TIME']));
+
+    const newsSpecs = [
+      ['NewsService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'NewsService.openapi.json'), 'utf8'))],
+      ['NewsService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'NewsService.openapi.yaml'), 'utf8'))],
+      ['worldmonitor.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8'))],
+    ];
+    for (const [label, spec] of newsSpecs) {
+      const mode = spec.paths?.['/api/news/v1/summarize-article']?.post
+        ?.requestBody?.content?.[JSON_MEDIA]?.example?.mode;
+      assert.ok(['brief', 'analysis', 'translate'].includes(mode), `${label}: summarize-article mode '${mode}' is not documented`);
+    }
+
+    for (const [label, spec] of consumerSpecs) {
+      assertConsumerPriceResponseRanges(spec, label);
+    }
+  });
+
+  it('keeps prose-enumerated parameter examples inside their documented closed sets', () => {
+    let checked = 0;
+    for (const file of serviceSpecs) {
+      const spec = JSON.parse(readFileSync(resolve(apiDir, file), 'utf8'));
+      checked += assertClosedValueParamExamples(spec, file);
+
+      const yamlFile = file.replace(/\.json$/, '.yaml');
+      const yamlSpec = loadYaml(readFileSync(resolve(apiDir, yamlFile), 'utf8'));
+      checked += assertClosedValueParamExamples(yamlSpec, yamlFile);
+    }
+    const bundle = loadYaml(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8'));
+    checked += assertClosedValueParamExamples(bundle, 'worldmonitor.openapi.yaml');
+    assert.ok(checked >= 20, `expected at least 20 prose-enumerated parameter examples, checked ${checked}`);
+  });
+
+  it('keeps the issue #4827 cluster-7 residue examples inside their documented closed sets', () => {
+    const specs = [
+      ['MarketService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'MarketService.openapi.json'), 'utf8'))],
+      ['MarketService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'MarketService.openapi.yaml'), 'utf8'))],
+      ['IntelligenceService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'IntelligenceService.openapi.json'), 'utf8'))],
+      ['IntelligenceService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'IntelligenceService.openapi.yaml'), 'utf8'))],
+      ['TradeService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'TradeService.openapi.json'), 'utf8'))],
+      ['TradeService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'TradeService.openapi.yaml'), 'utf8'))],
+      ['DisplacementService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'DisplacementService.openapi.json'), 'utf8'))],
+      ['DisplacementService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'DisplacementService.openapi.yaml'), 'utf8'))],
+      ['MilitaryService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'MilitaryService.openapi.json'), 'utf8'))],
+      ['MilitaryService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'MilitaryService.openapi.yaml'), 'utf8'))],
+      ['worldmonitor.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8'))],
+    ];
+    assertIssue4827Cluster7ResidueFixed(specs);
+  });
+
+  it('uses a plausible get-scenario-status poll response example', () => {
+    const specs = [
+      ['ScenarioService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'ScenarioService.openapi.json'), 'utf8'))],
+      ['ScenarioService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'ScenarioService.openapi.yaml'), 'utf8'))],
+      ['worldmonitor.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8'))],
+    ];
+
+    for (const [label, spec] of specs) {
+      assertScenarioStatusPollExample(spec, label);
     }
   });
 

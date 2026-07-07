@@ -23,7 +23,12 @@ import { SoonBadge } from './components/SoonBadge';
 import { Logo } from './components/Logo';
 import { WiredBadge } from './components/WiredBadge';
 import { Footer } from './components/Footer';
-import dashboardFallback from './assets/worldmonitor-7-mar-2026.jpg';
+import {
+  DASHBOARD_SCREENSHOT_JPG,
+  DASHBOARD_SCREENSHOT_AVIF_SRCSET,
+  DASHBOARD_SCREENSHOT_WEBP_SRCSET,
+} from './assets/dashboard-screenshot';
+import { ensureTurnstileScript } from './turnstile';
 import wiredLogo from './assets/wired-logo.svg';
 import {
   DASHBOARD_EMBED_PREVIEW_URL,
@@ -449,7 +454,7 @@ const SocialProof = () => (
         </p>
         <footer className="mt-6 flex items-center justify-center gap-3">
           <a href="https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-wm-muted hover:text-wm-text transition-colors">
-            <img src={wiredLogo} alt="WIRED" className="h-5 brightness-0 invert opacity-60 hover:opacity-100 transition-opacity" />
+            <img src={wiredLogo} alt="WIRED" loading="lazy" className="h-5 brightness-0 invert opacity-60 hover:opacity-100 transition-opacity" />
           </a>
         </footer>
       </blockquote>
@@ -575,6 +580,9 @@ const DeliveryDesk = () => (
 );
 
 /* ─── 5. Live Dashboard Embed (current) ─── */
+// max-w-6xl (1152px) container inside px-6 section padding.
+const LIVE_PREVIEW_IMAGE_SIZES = '(min-width: 1200px) 1152px, calc(100vw - 3rem)';
+
 const LivePreview = () => (
   <section className="px-6 py-16">
     <div className="max-w-6xl mx-auto">
@@ -596,11 +604,17 @@ const LivePreview = () => (
           </a>
         </div>
         <div className="relative aspect-[16/9] bg-black">
-          <img
-            src={dashboardFallback}
-            alt="World Monitor Dashboard"
-            className="absolute inset-0 w-full h-full object-cover"
-          />
+          <picture>
+            <source type="image/avif" srcSet={DASHBOARD_SCREENSHOT_AVIF_SRCSET} sizes={LIVE_PREVIEW_IMAGE_SIZES} />
+            <source type="image/webp" srcSet={DASHBOARD_SCREENSHOT_WEBP_SRCSET} sizes={LIVE_PREVIEW_IMAGE_SIZES} />
+            <img
+              src={DASHBOARD_SCREENSHOT_JPG}
+              alt="World Monitor Dashboard"
+              className="absolute inset-0 w-full h-full object-cover"
+              loading="lazy"
+              decoding="async"
+            />
+          </picture>
           <iframe
             // ?embed=pro-preview is the unique marker the main app's
             // IS_EMBEDDED_PREVIEW helper keys off to silence premium-RPC
@@ -868,6 +882,20 @@ const ApiSection = () => (
           <li className="flex items-start gap-3">
             <Database className="w-5 h-5 text-wm-muted shrink-0" aria-hidden="true" />
             <span className="text-sm">{t('apiSection.structured')}</span>
+          </li>
+          <li className="flex items-start gap-3">
+            <Terminal className="w-5 h-5 text-wm-muted shrink-0" aria-hidden="true" />
+            <span className="text-sm">
+              {t('apiSection.cli')}{' — '}
+              <a
+                href="https://www.npmjs.com/package/worldmonitor"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono text-wm-green hover:underline"
+              >
+                npx worldmonitor
+              </a>
+            </span>
           </li>
         </ul>
 
@@ -1185,7 +1213,20 @@ const EnterprisePage = () => (
             const fd = new FormData(form);
             const honeypot = (form.querySelector('input[name="website"]') as HTMLInputElement)?.value || '';
             const turnstileWidget = form.querySelector('.cf-turnstile') as HTMLElement | null;
-            const turnstileToken = turnstileWidget?.dataset.token || '';
+            let turnstileToken = turnstileWidget?.dataset.token || '';
+            if (!turnstileToken && turnstileWidget) {
+              // Turnstile loads lazily (viewport-triggered), so a fast or
+              // autofilled submit can arrive before the widget produced a
+              // token. Kick the loader and give the challenge a bounded
+              // window; if it still hasn't resolved, POST anyway — the
+              // server verdict (and the existing failure UX + widget
+              // reset) stays the authority, same as an expired token.
+              if (await ensureTurnstileScript()) renderTurnstileWidgets();
+              for (let i = 0; i < 40 && !turnstileWidget.dataset.token; i++) {
+                await new Promise((resolve) => setTimeout(resolve, 250));
+              }
+              turnstileToken = turnstileWidget.dataset.token || '';
+            }
             try {
               const res = await fetch(`${API_BASE}/leads/v1/submit-contact`, {
                 method: 'POST',
@@ -1250,7 +1291,7 @@ const EnterprisePage = () => (
     <footer className="border-t border-wm-border bg-[#020202] py-8 px-6 text-center">
       <div className="flex flex-col md:flex-row items-center justify-between max-w-7xl mx-auto text-xs text-wm-muted font-mono">
         <div className="flex items-center gap-3 mb-4 md:mb-0">
-          <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" className="rounded-full" />
+          <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" loading="lazy" className="rounded-full" />
           <div className="flex flex-col">
             <span className="font-display font-bold text-sm leading-none tracking-tight text-wm-text">WORLD MONITOR</span>
             <span className="text-[9px] uppercase tracking-[2px] opacity-60 mt-0.5">by Someone.ceo</span>

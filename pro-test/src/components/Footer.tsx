@@ -4,7 +4,7 @@ export const Footer = () => (
   <footer className="border-t border-wm-border bg-[#020202] pt-8 pb-12 px-6 text-center">
     <div className="flex flex-col md:flex-row items-center justify-between max-w-7xl mx-auto text-xs text-wm-muted font-mono">
       <div className="flex items-center gap-3 mb-4 md:mb-0">
-        <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" className="rounded-full" />
+        <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" loading="lazy" className="rounded-full" />
         <div className="flex flex-col">
           <span className="font-display font-bold text-sm leading-none tracking-tight text-wm-text">WORLD MONITOR</span>
           <span className="text-[9px] uppercase tracking-[2px] opacity-60 mt-0.5">by Someone.ceo</span>

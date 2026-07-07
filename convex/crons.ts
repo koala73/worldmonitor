@@ -35,6 +35,20 @@ crons.daily(
   {},
 );
 
+// Every 6h, not daily: a payment becomes a reconciliation candidate at ~6h
+// pending, so on a daily cadence its age at first scan is uniformly 6h-30h and
+// anything landing in (24h, 30h] misses the 24h customer-email freshness gate
+// (STUCK_PAYMENT_CUSTOMER_EMAIL_MAX_AGE_MS) — ~25% of ordinary stuck payments
+// silently dropped to ops-only. At 6h cadence first-scan age stays <=~12h, so
+// every stuck payment gets its recovery email. Safe to run 4x/day: the action
+// is fully idempotent and marker-gated (already-handled payments are skipped).
+crons.interval(
+  "payments-stuck-pending-reconciliation",
+  { hours: 6 },
+  internal.payments.billing.reconcileStuckPendingPayments,
+  {},
+);
+
 // Idempotent daily seed of the `followedCountriesShards` lock table
 // (Codex round-4 P0 v2). Skips existing shards; inserts any missing
 // shard ids in `[0, SHARD_COUNT)`. Defends against a deploy-time seed
@@ -73,6 +87,30 @@ crons.daily(
   "followed-countries-country-locks-dedupe",
   { hourUTC: 3, minuteUTC: 3 },
   internal.followedCountries._dedupeCountryLocks,
+);
+
+// Dunning + winback scan (#4932). Schedules the due day-3/day-7 payment-
+// failure reminders and the 30-day winback (at most one step per
+// subscription per tick; every send re-validates live state). 14:30 UTC =
+// ~10:30am ET, inside US business hours so a reply/complaint gets seen the
+// same day, and 90 minutes after the broadcast ramp runner (13:00) so the
+// two email systems never interleave sends.
+crons.daily(
+  "billing-dunning-scan",
+  { hourUTC: 14, minuteUTC: 30 },
+  internal.payments.subscriptionEmails.runDunningScan,
+  {},
+);
+
+// Missed-renewal reconciliation (#4765): a renewal that succeeded at Dodo
+// but whose webhook was lost leaves the local sub with a lapsed period —
+// wrongly cutting off a paying customer. Daily sweep refreshes those from
+// Dodo's authoritative state and recomputes entitlements.
+crons.daily(
+  "dodo-renewal-reconciliation",
+  { hourUTC: 3, minuteUTC: 17 },
+  internal.payments.billing.reconcileMissedDodoRenewals,
+  {},
 );
 
 export default crons;

@@ -226,6 +226,9 @@ function protoItemToNewsItem(p: ProtoNewsItem): NewsItem {
 }
 
 const CYBER_LAYER_ENABLED = import.meta.env.VITE_ENABLE_CYBER_LAYER === 'true';
+// Iran-events domain sunset (war ended 2026-07). Default OFF: no fetch, even the
+// CII/risk-scoring path. Set VITE_ENABLE_IRAN_ATTACKS=true to restore. Mirrors CYBER_LAYER_ENABLED.
+const IRAN_ATTACKS_ENABLED = import.meta.env.VITE_ENABLE_IRAN_ATTACKS === 'true';
 
 export interface DataLoaderCallbacks {
   renderCriticalBanner: (postures: TheaterPostureSummary[]) => void;
@@ -877,7 +880,7 @@ export class DataLoaderManager implements AppModule {
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.cables) tasks.push({ name: 'cableHealth', task: () => runGuarded('cableHealth', () => this.loadCableHealth()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.flights) tasks.push({ name: 'flights', task: () => runGuarded('flights', () => this.loadFlightDelays()) });
     if (SITE_VARIANT !== 'happy' && CYBER_LAYER_ENABLED && this.ctx.mapLayers.cyberThreats) tasks.push({ name: 'cyberThreats', task: () => runGuarded('cyberThreats', () => this.loadCyberThreats()) });
-    if (SITE_VARIANT !== 'happy' && !isDesktopRuntime() && (this.ctx.mapLayers.iranAttacks || shouldLoadAny(['cii', 'strategic-risk', 'strategic-posture']))) tasks.push({ name: 'iranAttacks', task: () => runGuarded('iranAttacks', () => this.loadIranEvents()) });
+    if (IRAN_ATTACKS_ENABLED && SITE_VARIANT !== 'happy' && !isDesktopRuntime() && (this.ctx.mapLayers.iranAttacks || shouldLoadAny(['cii', 'strategic-risk', 'strategic-posture']))) tasks.push({ name: 'iranAttacks', task: () => runGuarded('iranAttacks', () => this.loadIranEvents()) });
     if (SITE_VARIANT !== 'happy' && (this.ctx.mapLayers.techEvents || SITE_VARIANT === 'tech')) tasks.push({ name: 'techEvents', task: () => runGuarded('techEvents', () => this.loadTechEvents()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.satellites && this.ctx.map?.isGlobeMode?.()) tasks.push({ name: 'satellites', task: () => runGuarded('satellites', () => this.loadSatellites()) });
     if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.webcams) tasks.push({ name: 'webcams', task: () => runGuarded('webcams', () => this.loadWebcams()) });
@@ -2066,14 +2069,16 @@ export class DataLoaderManager implements AppModule {
       // 60s budget for the actual LLM call.
       // `_collectSectorContext` is sync (reads only hydrated data) so it
       // needs no wrapping; allSettled accepts non-promises directly.
-      const [r0, r1, r2] = await Promise.allSettled([
+      const [r0, r1, r2, r3] = await Promise.allSettled([
         withTimeout(this._collectRegimeContext(), 8_000, 'daily-brief-regime-context'),
         withTimeout(this._collectYieldCurveContext(), 8_000, 'daily-brief-yield-context'),
         this._collectSectorContext(),
+        withTimeout(this._collectEarningsContext(), 8_000, 'daily-brief-earnings-context'),
       ]);
       const regimeContext = r0.status === 'fulfilled' ? r0.value : undefined;
       const yieldCurveContext = r1.status === 'fulfilled' ? r1.value : undefined;
       const sectorContext = r2.status === 'fulfilled' ? r2.value : undefined;
+      const earningsContext = r3.status === 'fulfilled' ? r3.value : undefined;
 
       // Wall-clock budget on the whole build. The inner summarizer has its
       // own 45s cap (SUMMARIZER_TIMEOUT_MS in daily-market-brief.ts) and
@@ -2090,6 +2095,7 @@ export class DataLoaderManager implements AppModule {
           regimeContext,
           yieldCurveContext,
           sectorContext,
+          earningsContext,
           frameworkAppend: getActiveFrameworkForPanel('daily-market-brief')?.systemPromptAppend,
           newsCategories: SITE_VARIANT === 'commodity'
             ? ['commodity-news', 'gold-silver', 'mining-news', 'energy', 'critical-minerals']
@@ -2235,6 +2241,30 @@ export class DataLoaderManager implements AppModule {
         countPositive,
         total: sorted.length,
       };
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** #4922 (c): recent earnings surprises + upcoming density for the brief.
+   * RPC-backed (earnings are not bootstrap-hydrated); failures degrade to
+   * undefined — the brief simply omits the earnings block. */
+  private async _collectEarningsContext(): Promise<import('@/services/daily-market-brief').EarningsBriefContext | undefined> {
+    try {
+      const { MarketServiceClient } = await import('@/generated/client/worldmonitor/market/v1/service_client');
+      const { getRpcBaseUrl } = await import('@/services/rpc-client');
+      const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
+      const today = new Date();
+      const past = new Date(today.getTime() - 7 * 86400_000);
+      const future = new Date(today.getTime() + 14 * 86400_000);
+      const resp = await client.listEarningsCalendar({
+        fromDate: past.toISOString().slice(0, 10),
+        toDate: future.toISOString().slice(0, 10),
+      });
+      const earnings = resp.earnings ?? [];
+      if (resp.unavailable || earnings.length === 0) return undefined;
+      const { buildEarningsBriefContext } = await import('@/services/daily-market-brief');
+      return buildEarningsBriefContext(earnings, today.toISOString().slice(0, 10));
     } catch {
       return undefined;
     }
@@ -2820,6 +2850,10 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadIranEvents(): Promise<void> {
+    if (!IRAN_ATTACKS_ENABLED) {
+      this.ctx.map?.setLayerReady('iranAttacks', false);
+      return;
+    }
     try {
       const events = await fetchIranEvents();
       this.ctx.intelligenceCache.iranEvents = events;

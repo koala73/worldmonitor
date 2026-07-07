@@ -24,6 +24,8 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const relaySrc = readFileSync(resolve(__dirname, '..', 'scripts', 'notification-relay.cjs'), 'utf-8');
 const aisRelaySrc = readFileSync(resolve(__dirname, '..', 'scripts', 'ais-relay.cjs'), 'utf-8');
+const seedAviationSrc = readFileSync(resolve(__dirname, '..', 'scripts', 'seed-aviation.mjs'), 'utf-8');
+const notificationDedupSrc = readFileSync(resolve(__dirname, '..', 'scripts', 'shared', 'notification-dedup.cjs'), 'utf-8');
 
 describe('notification-relay checkDedup — Slot B coalesce key', () => {
   it('checkDedup signature accepts an optional coalesceKey parameter', () => {
@@ -38,8 +40,8 @@ describe('notification-relay checkDedup — Slot B coalesce key', () => {
     // Both branches must be present: coalesce-key path and title-hash path.
     assert.match(
       relaySrc,
-      /coalesceKey\s*\?\s*`coalesce:\$\{coalesceKey\}`\s*:\s*`\$\{eventType\}:\$\{title\}`/,
-      'checkDedup keyMaterial must use coalesceKey when set, else fall back to eventType:title',
+      /const keyMaterial = buildDedupMaterial\(eventType,\s*title,\s*coalesceKey\)/,
+      'checkDedup must derive keyMaterial via the shared buildDedupMaterial helper',
     );
   });
 
@@ -64,12 +66,136 @@ describe('notification-relay checkDedup — Slot B coalesce key', () => {
   });
 });
 
+describe('shared notification-dedup helper — buildDedupMaterial', () => {
+  it('keys on coalesceKey when set, else falls back to eventType:title', () => {
+    assert.match(
+      notificationDedupSrc,
+      /coalesceKey\s*\?\s*`coalesce:\$\{coalesceKey\}`\s*:\s*`\$\{eventType\}:\$\{title\s*\?\?\s*''\}`/,
+      'buildDedupMaterial must use coalesceKey when set, else eventType:title',
+    );
+  });
+
+  it('is exported for reuse by all publishers', () => {
+    assert.match(
+      notificationDedupSrc,
+      /module\.exports\s*=\s*\{\s*buildDedupMaterial\s*\}/,
+      'buildDedupMaterial must be exported',
+    );
+  });
+
+  it('all three publishers import/require the shared helper (no re-inlined copies)', () => {
+    assert.match(relaySrc, /require\('\.\/shared\/notification-dedup\.cjs'\)/, 'notification-relay.cjs must require the shared helper');
+    assert.match(aisRelaySrc, /require\('\.\/shared\/notification-dedup\.cjs'\)/, 'ais-relay.cjs must require the shared helper');
+    assert.match(seedAviationSrc, /from '\.\/shared\/notification-dedup\.cjs'/, 'seed-aviation.mjs must import the shared helper');
+  });
+});
+
 describe('ais-relay publishNotificationEvent — Slot B publisher dedup', () => {
   it('publisher dedup key uses coalesceKey when set, else falls back to title', () => {
     assert.match(
       aisRelaySrc,
-      /payload\?\.coalesceKey\s*\?\s*`coalesce:\$\{payload\.coalesceKey\}`\s*:\s*`\$\{eventType\}:\$\{payload\.title\s*\?\?\s*''\}`/,
-      'publishNotificationEvent dedupMaterial must use coalesceKey when set',
+      /const dedupMaterial = buildDedupMaterial\(eventType,\s*payload\?\.title,\s*payload\?\.coalesceKey\)/,
+      'publishNotificationEvent must derive dedupMaterial via the shared buildDedupMaterial helper',
+    );
+  });
+});
+
+describe('market alert producer — asset-family coalesce key', () => {
+  it('defines a stable market alert coalesce helper', () => {
+    assert.match(
+      aisRelaySrc,
+      /function marketAlertCoalesceKey\(assetClass,\s*identifier,\s*direction,\s*severity\)/,
+      'market alerts must build hidden family keys rather than deduping on the rounded subject',
+    );
+    assert.match(
+      aisRelaySrc,
+      /return `market:\$\{assetClass\}:\$\{stableIdentifier\}:\$\{direction\}:\$\{severity\}`/,
+      'market coalesce key must separate asset class, instrument, direction, and severity band',
+    );
+    // Lock the normalization line itself so a source change (dropping the
+    // 'unknown' fallback or the trim/lowercase) is caught — the behavioral test
+    // below re-derives this logic inline, so without this assertion the two
+    // could drift together silently. PR #4985 review finding #4.
+    assert.match(
+      aisRelaySrc,
+      /const stableIdentifier = String\(identifier \|\| 'unknown'\)\.trim\(\)\.toLowerCase\(\)/,
+      'market coalesce key must normalize identifier: fallback to unknown, then trim + lowercase',
+    );
+  });
+
+  it('all market_alert publishers pass coalesceKey through the payload', () => {
+    const marketBlocks = [...aisRelaySrc.matchAll(/eventType:\s*'market_alert'[\s\S]*?dedupTtl:\s*3600,/g)].map(m => m[0]);
+    assert.equal(marketBlocks.length, 3, 'expected equity, commodity, and crypto market_alert producers');
+    for (const block of marketBlocks) {
+      assert.match(
+        block,
+        /coalesceKey:\s*marketAlertCoalesceKey\(/,
+        `market_alert block must pass coalesceKey:\n${block}`,
+      );
+    }
+  });
+
+  it('rounded percent changes within the same critical commodity surge collapse to one family', () => {
+    const coalesce = (assetClass, identifier, direction, severity) =>
+      `market:${assetClass}:${String(identifier || 'unknown').trim().toLowerCase()}:${direction}:${severity}`;
+    const coffee11 = coalesce('commodity', 'KC=F', 'surge', 'critical');
+    const coffee13 = coalesce('commodity', 'KC=F', 'surge', 'critical');
+    assert.equal(coffee11, coffee13, 'Coffee +11% and +13% critical surge must share one dedup family');
+    assert.notEqual(
+      coffee11,
+      coalesce('commodity', 'KC=F', 'surge', 'high'),
+      'a high-to-critical threshold crossing may notify as a severity upgrade',
+    );
+  });
+});
+
+describe('seed-aviation publishNotificationEvent — Slot B publisher dedup', () => {
+  it('publisher dedup key uses coalesceKey when set, else falls back to title', () => {
+    assert.match(
+      seedAviationSrc,
+      /const dedupMaterial = buildDedupMaterial\(eventType,\s*payload\?\.title,\s*payload\?\.coalesceKey\)/,
+      'seed-aviation publishNotificationEvent must derive dedupMaterial via the shared buildDedupMaterial helper',
+    );
+  });
+
+  it('aviation and NOTAM notification payloads include coalesceKey', () => {
+    assert.match(
+      seedAviationSrc,
+      /coalesceKey:\s*`aviation:closure:\$\{a\.iata\}:\$\{severity\}`/,
+      'airport disruption notifications must coalesce by airport + severity band so a MAJOR->SEVERE escalation re-notifies',
+    );
+    assert.match(
+      seedAviationSrc,
+      /coalesceKey:\s*`notam:closure:\$\{icao\}`/,
+      'NOTAM closure notifications must coalesce by ICAO closure family',
+    );
+  });
+
+  it('aviation prev-state diff keys on airport + severity so escalations survive the upstream filter', () => {
+    // P1 (PR #4985 review): the coalesce key is severity-aware, but the upstream
+    // prevSet diff must use the SAME identity — else a MAJOR->SEVERE escalation
+    // for an already-alerted airport is filtered by !prevSet.has(a.iata) BEFORE
+    // the severity-aware coalesce key is ever reached, so the escalation never
+    // publishes.
+    assert.match(
+      seedAviationSrc,
+      /const aviationAlertKey = a => `\$\{a\.iata\}:\$\{aviationSeverityBand\(a\)\}`/,
+      'aviation must build an airport+severity identity matching the coalesce key',
+    );
+    assert.match(
+      seedAviationSrc,
+      /const newAlerts = severeAlerts\.filter\(a => a\.iata && !prevSet\.has\(aviationAlertKey\(a\)\)\)/,
+      'newAlerts must diff by airport+severity identity, not iata alone',
+    );
+    assert.match(
+      seedAviationSrc,
+      /new Set\(severeAlerts\.filter\(a => a\.iata\)\.map\(aviationAlertKey\)\)/,
+      'persisted prev-state must store the same airport+severity identity for next tick',
+    );
+    assert.doesNotMatch(
+      seedAviationSrc,
+      /!prevSet\.has\(a\.iata\)\)/,
+      'the airport-only prevSet filter (which drops escalations) must be gone',
     );
   });
 });

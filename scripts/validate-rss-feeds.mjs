@@ -8,6 +8,10 @@ import { isAllowedDomain } from '../api/_rss-allowed-domain-match.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FEEDS_PATH = join(__dirname, '..', 'src', 'config', 'feeds.ts');
+// #4920: the SERVER digest catalog is a separate universe from the client
+// config — buildDigest ingests from _feeds.ts, so completeness must be
+// measured against it too, not just the client list.
+const SERVER_FEEDS_PATH = join(__dirname, '..', 'server', 'worldmonitor', 'news', 'v1', '_feeds.ts');
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 const FETCH_TIMEOUT = 15_000;
@@ -99,6 +103,44 @@ function extractFeeds() {
     }
   }
 
+  return feeds;
+}
+
+/**
+ * #4920: text-extract the SERVER digest catalog (_feeds.ts). Entries are
+ * `{ name: '…', url: '…' | gn('…') | gnLocale('…', hl, gl, ceid) }` — the
+ * gn()/gnLocale() helpers are replicated here so extracted URLs match what
+ * the digest fetches at runtime. Same no-import text-extraction pattern as
+ * extractFeeds() above (this script must not execute app code).
+ */
+export function extractServerFeeds() {
+  let src;
+  try {
+    src = readFileSync(SERVER_FEEDS_PATH, 'utf8');
+  } catch {
+    return [];
+  }
+  const gn = (q) =>
+    `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`;
+  const gnLocale = (q, hl, gl, ceid) =>
+    `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=${hl}&gl=${gl}&ceid=${ceid}`;
+
+  const feeds = [];
+  const seen = new Set();
+  // Names may be single- OR double-quoted ("Tom's Hardware").
+  const entryRe = /name:\s*(?:'((?:[^'\\]|\\.)*)'|"([^"]+)")\s*,\s*url:\s*(?:'([^']+)'|gn\(\s*'((?:[^'\\]|\\.)*)'\s*\)|gnLocale\(\s*'((?:[^'\\]|\\.)*)'\s*,\s*'([^']+)'\s*,\s*'([^']+)'\s*,\s*'([^']+)'\s*\))/g;
+  let m;
+  while ((m = entryRe.exec(src)) !== null) {
+    const name = (m[1] ?? m[2]).replace(/\\'/g, "'");
+    let url;
+    if (m[3]) url = m[3];
+    else if (m[4] !== undefined) url = gn(m[4].replace(/\\'/g, "'"));
+    else url = gnLocale(m[5].replace(/\\'/g, "'"), m[6], m[7], m[8]);
+    if (!seen.has(url)) {
+      seen.add(url);
+      feeds.push({ name, url, catalog: 'server' });
+    }
+  }
   return feeds;
 }
 
@@ -264,9 +306,21 @@ function pad(str, len) {
 }
 
 async function main() {
-  const feeds = extractFeeds();
+  const clientFeeds = extractFeeds().map((f) => ({ ...f, catalog: 'client' }));
+  const serverFeeds = extractServerFeeds();
+  // Merge on URL: a feed present in both catalogs is validated once and
+  // labeled 'both'. The server catalog is what the digest ingests — its
+  // health is the completeness signal (#4920).
+  const byUrl = new Map();
+  for (const feed of clientFeeds) byUrl.set(feed.url, feed);
+  for (const feed of serverFeeds) {
+    const existing = byUrl.get(feed.url);
+    if (existing) existing.catalog = 'both';
+    else byUrl.set(feed.url, feed);
+  }
+  const feeds = [...byUrl.values()];
   const mode = CI_MODE ? 'CI (https-only + allowlist + per-hop redirect re-check)' : 'standard';
-  console.log(`Validating ${feeds.length} RSS feeds [${mode}] (${CONCURRENCY} concurrent, ${FETCH_TIMEOUT / 1000}s timeout)...\n`);
+  console.log(`Validating ${feeds.length} RSS feeds (${clientFeeds.length} client, ${serverFeeds.length} server) [${mode}] (${CONCURRENCY} concurrent, ${FETCH_TIMEOUT / 1000}s timeout)...\n`);
 
   const results = await runBatch(feeds, validateFeed, CONCURRENCY);
 
@@ -337,6 +391,16 @@ async function main() {
     process.exit(1);
   }
 
+  // #4920: publish per-feed health + silent-zero streaks to Redis when
+  // credentials are present (the daily GitHub Actions run passes them as
+  // secrets; local/PR runs without creds skip silently). Best-effort: a
+  // Redis outage must not fail feed validation. Deliberately AFTER the
+  // config-drift hard-fail (#4927 review P3): a guardrail-failing run must
+  // not refresh health metadata first and mask the failure as fresh/OK.
+  await publishFeedHealth(results).catch((err) =>
+    console.warn(`WARN: feed-health publish failed: ${err.message}`),
+  );
+
   if (stale.length || thirdPartyDead.length || empty.length) {
     console.warn(
       `\nWARN: ${thirdPartyDead.length} third-party dead, ${stale.length} stale, ` +
@@ -346,7 +410,61 @@ async function main() {
   }
 }
 
-main().catch(err => {
-  console.error('Fatal:', err);
-  process.exit(2);
-});
+export async function publishFeedHealth(results) {
+  const { getOptionalUpstashCreds, upstashCommand } = await import('./_upstash-rest.mjs');
+  const creds = getOptionalUpstashCreds();
+  if (!creds) {
+    console.log('feed-health publish skipped (no UPSTASH_REDIS_REST_URL/TOKEN in env)');
+    return { published: false, reason: 'no-creds' };
+  }
+  const { buildFeedHealthPayload } = await import('./_feed-health.mjs');
+  const redis = (command) => upstashCommand(creds, command);
+
+  // Streak continuity (#4927 external review): distinguish "key absent"
+  // (first run — fresh streaks are correct) from "read FAILED" (transient
+  // Redis/network error — publishing would silently reset every
+  // consecutive-empty streak and hide silent-zero continuity). On a
+  // failed read, skip this run's publish entirely; tomorrow's run
+  // continues the streaks.
+  let previous = null;
+  try {
+    const got = await redis(['GET', 'news:feed-health:v1']);
+    if (typeof got?.result === 'string') previous = JSON.parse(got.result);
+  } catch (err) {
+    console.warn(`feed-health publish skipped: previous-state read failed (${err.message}) — preserving streaks`);
+    return { published: false, reason: 'previous-read-failed' };
+  }
+
+  const payload = buildFeedHealthPayload(results, previous, Date.now());
+  await redis(['SET', 'news:feed-health:v1', JSON.stringify(payload), 'EX', String(3 * 86400)]);
+  await redis(['SET', 'seed-meta:news:feed-health', JSON.stringify({
+    fetchedAt: payload.checkedAt,
+    recordCount: payload.summary.ok,
+    sourceVersion: 'feed-health-v1',
+  }), 'EX', String(7 * 86400)]);
+  // Durable activation marker — NO TTL by design (#4927 re-review P1):
+  // health endpoints soften missing data only while this key is absent;
+  // once we have ever published, a dead publisher must alarm as stale,
+  // not revert to pending-activation when the 7d meta expires.
+  await redis(['SET', 'seed-activated:news:feed-health', '1']);
+
+  if (payload.silentZeros.length) {
+    console.warn(`\nSILENT ZEROS (${payload.silentZeros.length} Google News wrappers delivering nothing across runs):`);
+    for (const feed of payload.silentZeros) {
+      console.warn(`  ${feed.name} — ${feed.consecutiveEmpty} consecutive empty runs — ${feed.url}`);
+    }
+  }
+  console.log(`feed-health published: ${payload.summary.ok}/${payload.feedCount} OK, ${payload.silentZeros.length} silent zeros`);
+  return { published: true, payload };
+}
+
+// Importable for tests (#4920): only run when executed directly.
+// pathToFileURL handles Windows drive letters and percent-encoding that a
+// hand-built file:// string gets wrong.
+const { pathToFileURL } = await import('node:url');
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch(err => {
+    console.error('Fatal:', err);
+    process.exit(2);
+  });
+}

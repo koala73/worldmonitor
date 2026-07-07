@@ -1260,7 +1260,10 @@
       "overall": "Général : {{tone}}",
       "signalTypesEvents": "{{types}} types de signaux • {{events}} événements",
       "newsSignals": "{{news}} actualités • {{signals}} signaux",
-      "sources_many": "{{count}} sources"
+      "sources_many": "{{count}} sources",
+      "provenanceTitle": "Provenance de la couverture : nombre d'articles ingérés et de sources distinctes à partir desquels ce résumé a été sélectionné",
+      "compiledFrom": "Compilé à partir de {{stories}} articles provenant de {{sources}} sources",
+      "briefFreshness": "Généré il y a {{minutes}}m · source la plus récente datant de {{hours}}h"
     },
     "settings": {
       "exportSettings": "Exporter les paramètres",

@@ -78,12 +78,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/intelligence/v1/get-pizzint-status:
         get:
             tags:
@@ -148,19 +175,50 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/intelligence/v1/classify-event:
         get:
             tags:
                 - IntelligenceService
             summary: ClassifyEvent
-            description: ClassifyEvent analyzes a news event using AI models.
+            description: ClassifyEvent analyzes a news event using AI models. PRO-gated. Requires entitlement tier >= 1.
             operationId: ClassifyEvent
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: title
                   in: query
@@ -228,17 +286,44 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: PRO entitlement access denied.
                     content:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/intelligence/v1/get-country-risk:
         get:
             tags:
@@ -305,12 +390,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/intelligence/v1/get-country-intel-brief:
         get:
             tags:
@@ -375,12 +487,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/intelligence/v1/search-gdelt-documents:
         get:
             tags:
@@ -413,7 +552,7 @@ paths:
                     Time span filter (e.g., "15min", "1h", "24h").
                      Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
-                  example: "2026-01-15T12:00:00Z"
+                  example: "15min"
                   schema:
                     type: string
                 - name: tone_filter
@@ -432,7 +571,7 @@ paths:
                     Sort mode: "DateDesc" (default), "ToneDesc", "ToneAsc", "HybridRel".
                      Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
-                  example: "example"
+                  example: "DateDesc"
                   schema:
                     type: string
                 - name: jmespath
@@ -479,18 +618,45 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/intelligence/v1/deduct-situation:
         post:
             parameters:
                 - name: Idempotency-Key
                   in: header
-                  description: Optional client-generated idempotency key. Retrying a POST with the same key returns the original response instead of duplicating the side effect. Keys are scoped per caller and retained for 24 hours.
+                  description: Optional client-generated idempotency key. Retrying a POST with the same key and an identical request body replays the original response (only the status, body, and Content-Type are reproduced) instead of re-executing; reusing the key with a different body is rejected with 422. For mutations this avoids duplicating the side effect, while for batch-read POSTs it replays a cached snapshot that can be up to 24 hours stale. Keys are scoped per authenticated caller (falling back to the source IP for unauthenticated endpoints) and retained for 24 hours.
                   required: false
                   example: "4f8b9c2e-1a3d-4b6f-8e0a-2c5d7f9b1e34"
                   schema:
@@ -520,6 +686,15 @@ paths:
             responses:
                 "200":
                     description: Successful response
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key echoed from the request. Present only when the client opted into idempotency.
+                        Idempotent-Replayed:
+                            schema:
+                                type: boolean
+                            description: true when this response was replayed from an earlier request with the same key, false on the first (original) request. Present only when the client opted into idempotency.
                     content:
                         application/json:
                             example:
@@ -529,7 +704,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/DeductSituationResponse'
                 "400":
-                    description: Validation error or invalid Idempotency-Key header
+                    description: Validation error, invalid Idempotency-Key header, or malformed JSON request body
                     content:
                         application/json:
                             schema:
@@ -544,6 +719,7 @@ paths:
                                             type: string
                                         message:
                                             type: string
+                                    - $ref: '#/components/schemas/InvalidRequestBodyError'
                 "409":
                     description: A request with this Idempotency-Key is still being processed
                     headers:
@@ -598,12 +774,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/intelligence/v1/list-satellites:
         get:
             tags:
@@ -662,12 +865,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/intelligence/v1/list-gps-interference:
         get:
             tags:
@@ -732,12 +962,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/intelligence/v1/list-oref-alerts:
         get:
             tags:
@@ -810,12 +1067,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/intelligence/v1/list-telegram-feed:
         get:
             tags:
@@ -892,12 +1176,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/intelligence/v1/get-company-enrichment:
         get:
             deprecated: true
@@ -984,12 +1295,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/intelligence/v1/list-company-signals:
         get:
             deprecated: true
@@ -1083,12 +1421,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/intelligence/v1/get-country-facts:
         get:
             tags:
@@ -1147,12 +1512,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/intelligence/v1/list-security-advisories:
         get:
             tags:
@@ -1205,12 +1597,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/intelligence/v1/get-gdelt-topic-timeline:
         get:
             tags:
@@ -1223,7 +1642,7 @@ paths:
                   in: query
                   description: Topic ID (military, cyber, nuclear, sanctions, intelligence, maritime).
                   required: false
-                  example: "example"
+                  example: "military"
                   schema:
                     type: string
                 - name: jmespath
@@ -1245,7 +1664,7 @@ paths:
                                 "tone":
                                     - "date": "2026-01-15"
                                       "value": 1.5
-                                "topic": "example"
+                                "topic": "military"
                                 "vol":
                                     - "date": "2026-01-15"
                                       "value": 1.5
@@ -1271,12 +1690,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/intelligence/v1/list-cross-source-signals:
         get:
             tags:
@@ -1330,12 +1776,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/intelligence/v1/list-market-implications:
         get:
             tags:
@@ -1400,12 +1873,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/intelligence/v1/get-social-velocity:
         get:
             tags:
@@ -1457,12 +1957,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/intelligence/v1/get-country-energy-profile:
         get:
             tags:
@@ -1519,12 +2046,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/intelligence/v1/compute-energy-shock:
         get:
             tags:
@@ -1587,7 +2141,7 @@ paths:
                             example:
                                 "assessment": "example"
                                 "chokepointConfidence": "example"
-                                "chokepointId": "suez"
+                                "chokepointId": "hormuz_strait"
                                 "comtradeCoverage": true
                                 "countryCode": "US"
                             schema:
@@ -1612,12 +2166,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/intelligence/v1/get-country-port-activity:
         get:
             tags:
@@ -1677,12 +2258,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/intelligence/v1/get-regional-snapshot:
         get:
             tags:
@@ -1705,7 +2313,7 @@ paths:
                      Kebab-case: lowercase alphanumeric groups separated by single hyphens, no
                      trailing or consecutive hyphens.
                   required: true
-                  example: "example1"
+                  example: "mena"
                   schema:
                     type: string
                     pattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'
@@ -1780,12 +2388,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/intelligence/v1/get-regime-history:
         get:
             tags:
@@ -1808,7 +2443,7 @@ paths:
                      Kebab-case: lowercase alphanumeric groups separated by single hyphens, no
                      trailing or consecutive hyphens.
                   required: true
-                  example: "example1"
+                  example: "mena"
                   schema:
                     type: string
                     pattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'
@@ -1840,7 +2475,7 @@ paths:
                                 "transitions":
                                     - "label": "example"
                                       "previousLabel": "example"
-                                      "regionId": "example-id"
+                                      "regionId": "mena"
                                       "snapshotId": "example-id"
                                       "transitionDriver": "example"
                             schema:
@@ -1865,12 +2500,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/intelligence/v1/get-regional-brief:
         get:
             tags:
@@ -1889,7 +2551,7 @@ paths:
                   in: query
                   description: Stable regional brief identifier, such as "middle-east".
                   required: true
-                  example: "example1"
+                  example: "mena"
                   schema:
                     type: string
                     pattern: '^[a-z][a-z0-9]*(-[a-z0-9]+)*$'
@@ -1936,12 +2598,39 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/ForbiddenError'
-                default:
-                    description: Error response
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
 components:
     securitySchemes:
         WorldMonitorKey:
@@ -1990,6 +2679,36 @@ components:
                     type: string
                     description: Error message (e.g., 'user not found', 'database connection failed')
             description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        InvalidRequestBodyError:
+            type: object
+            description: Returned when a JSON POST request body is empty or malformed.
+            properties:
+                message:
+                    type: string
+                    description: Invalid request body
+            required:
+                - message
+        GatewayError:
+            type: object
+            description: Returned by gateway infrastructure errors before an RPC handler runs, such as origin, routing, method, authentication, or quota checks.
+            properties:
+                error:
+                    oneOf:
+                        - type: string
+                        - type: object
+                          additionalProperties: true
+                    description: Gateway error reason or structured gateway failure details.
+            required:
+                - error
+        RateLimitError:
+            type: object
+            description: Returned when a gateway or handler rate limit rejects the request.
+            properties:
+                error:
+                    type: string
+                    description: Human-readable rate-limit failure reason.
+            required:
+                - error
         ForbiddenError:
             type: object
             properties:

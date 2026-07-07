@@ -804,6 +804,8 @@ describe('country risk freshness behavior', { concurrency: 1 }, () => {
       './_shared': resolve(root, 'server/worldmonitor/intelligence/v1/_shared.ts'),
       '../../../_shared/redis': resolve(root, 'server/_shared/redis.ts'),
       '../../../_shared/cache-keys': resolve(root, 'server/_shared/cache-keys.ts'),
+      // #4921: citation verification + grounding telemetry import
+      '../../../../shared/brief-llm-core.js': resolve(root, 'shared/brief-llm-core.js'),
     });
   }
 
@@ -1081,17 +1083,23 @@ describe('theater posture caching behavior', { concurrency: 1 }, () => {
 });
 
 describe('country intel brief caching behavior', { concurrency: 1 }, () => {
-  async function importCountryIntelBrief() {
+  async function importCountryIntelBrief({ premium = false } = {}) {
     return importPatchedTsModule('server/worldmonitor/intelligence/v1/get-country-intel-brief.ts', {
       './_shared': resolve(root, 'server/worldmonitor/intelligence/v1/_shared.ts'),
+      './_country-brief-context': resolve(root, 'server/worldmonitor/intelligence/v1/_country-brief-context.ts'),
       '../../../_shared/constants': resolve(root, 'server/_shared/constants.ts'),
       '../../../_shared/redis': resolve(root, 'server/_shared/redis.ts'),
       '../../../_shared/llm-health': resolve(root, 'tests/helpers/llm-health-stub.ts'),
       '../../../_shared/llm': resolve(root, 'server/_shared/llm.ts'),
       '../../../_shared/hash': resolve(root, 'server/_shared/hash.ts'),
-      '../../../_shared/premium-check': resolve(root, 'tests/helpers/premium-check-stub.ts'),
+      '../../../_shared/premium-check': resolve(
+        root,
+        premium ? 'tests/helpers/premium-check-stub-true.ts' : 'tests/helpers/premium-check-stub.ts',
+      ),
       '../../../_shared/llm-sanitize.js': resolve(root, 'server/_shared/llm-sanitize.js'),
       '../../../_shared/cache-keys': resolve(root, 'server/_shared/cache-keys.ts'),
+      // #4921: citation verification + grounding telemetry import
+      '../../../../shared/brief-llm-core.js': resolve(root, 'shared/brief-llm-core.js'),
     });
   }
 
@@ -1106,26 +1114,17 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     return { request: new Request(url) };
   }
 
-  it('uses distinct cache keys for distinct context snapshots', async () => {
-    const { module, cleanup } = await importCountryIntelBrief();
-    const restoreEnv = withEnv({
-      GROQ_API_KEY: 'test-key',
-      UPSTASH_REDIS_REST_URL: 'https://redis.test',
-      UPSTASH_REDIS_REST_TOKEN: 'token',
-      VERCEL_ENV: undefined,
-      VERCEL_GIT_COMMIT_SHA: undefined,
-    });
-    const originalFetch = globalThis.fetch;
-
-    const store = new Map();
-    const setKeys = [];
-    const userPrompts = [];
-    let groqCalls = 0;
-
+  function installIntelFetchMock({ store, setKeys, userPrompts, counters }) {
     globalThis.fetch = async (url, init = {}) => {
       const raw = String(url);
       if (raw === 'https://api.groq.com') {
         return jsonResponse({});
+      }
+      if (raw.includes('api.groq.com/openai/v1/chat/completions')) {
+        counters.groqCalls += 1;
+        const body = JSON.parse(String(init.body || '{}'));
+        userPrompts.push(body.messages?.[1]?.content || '');
+        return jsonResponse({ choices: [{ message: { content: `brief-${counters.groqCalls}` } }] });
       }
       if (raw.includes('/get/')) {
         const key = parseRedisKey(raw, 'get');
@@ -1137,14 +1136,76 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
         if (!key.startsWith('seed-meta:')) setKeys.push(key);
         return jsonResponse({ result: 'OK' });
       }
-      if (raw.includes('api.groq.com/openai/v1/chat/completions')) {
-        groqCalls += 1;
-        const body = JSON.parse(String(init.body || '{}'));
-        userPrompts.push(body.messages?.[1]?.content || '');
-        return jsonResponse({ choices: [{ message: { content: `brief-${groqCalls}` } }] });
-      }
       throw new Error(`Unexpected fetch URL: ${raw}`);
     };
+  }
+
+  const INTEL_TEST_ENV = {
+    GROQ_API_KEY: 'test-key',
+    // The default chain is openrouter-first since #4944; clear these so the
+    // groq-only fetch mock deterministically sees groq as the first provider
+    // regardless of ambient shell env.
+    OPENROUTER_API_KEY: undefined,
+    OLLAMA_API_URL: undefined,
+    UPSTASH_REDIS_REST_URL: 'https://redis.test',
+    UPSTASH_REDIS_REST_TOKEN: 'token',
+    VERCEL_ENV: undefined,
+    VERCEL_GIT_COMMIT_SHA: undefined,
+  };
+
+  it('anon callers share one digest-grounded cache entry regardless of client context', async () => {
+    const { module, cleanup } = await importCountryIntelBrief();
+    const restoreEnv = withEnv(INTEL_TEST_ENV);
+    const originalFetch = globalThis.fetch;
+
+    const store = new Map();
+    store.set('news:digest:v1:full:en', JSON.stringify({
+      categories: {
+        conflict: {
+          items: [
+            { title: 'Israel announces new security framework', source: 'Reuters', link: 'https://example.com/il-1', pubDate: '2026-07-05T06:00:00.000Z' },
+            { title: 'Unrelated commodity report', source: 'Bloomberg', link: 'https://example.com/other' },
+          ],
+        },
+      },
+    }));
+    const setKeys = [];
+    const userPrompts = [];
+    const counters = { groqCalls: 0 };
+    installIntelFetchMock({ store, setKeys, userPrompts, counters });
+
+    try {
+      const req = { countryCode: 'IL' };
+      const alpha = await module.getCountryIntelBrief(makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=IL&context=alpha'), req);
+      const beta = await module.getCountryIntelBrief(makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=IL&context=beta'), req);
+
+      assert.equal(counters.groqCalls, 1, 'anon context variations must share one cache entry');
+      assert.equal(setKeys.length, 1, 'one shared cache write');
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v5:IL:en:shared'), `anon key should use the shared v5 namespace, got ${setKeys[0]}`);
+      assert.equal(alpha.brief, 'brief-1');
+      assert.equal(beta.brief, 'brief-1', 'second anon caller must be served from cache');
+      assert.ok(!userPrompts[0]?.includes('alpha'), 'anon caller context must not reach the prompt');
+      assert.match(userPrompts[0], /Israel announces new security framework/, 'prompt should be grounded on the server-side digest');
+      assert.ok(!userPrompts[0]?.includes('Unrelated commodity report'), 'digest grounding should be country-filtered');
+      assert.equal(alpha.sources[0]?.url, 'https://example.com/il-1', 'sources should be server-derived');
+      assert.deepEqual(beta.sources, alpha.sources, 'cached sources are shared');
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('premium callers keep per-context personalized cache keys', async () => {
+    const { module, cleanup } = await importCountryIntelBrief({ premium: true });
+    const restoreEnv = withEnv(INTEL_TEST_ENV);
+    const originalFetch = globalThis.fetch;
+
+    const store = new Map();
+    const setKeys = [];
+    const userPrompts = [];
+    const counters = { groqCalls: 0 };
+    installIntelFetchMock({ store, setKeys, userPrompts, counters });
 
     try {
       const req = { countryCode: 'IL' };
@@ -1152,14 +1213,14 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       const beta = await module.getCountryIntelBrief(makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=IL&context=beta'), req);
       const alphaCached = await module.getCountryIntelBrief(makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=IL&context=alpha'), req);
 
-      assert.equal(groqCalls, 2, 'different contexts should not share one cache entry');
-      assert.equal(setKeys.length, 2, 'one cache write per unique context');
-      assert.notEqual(setKeys[0], setKeys[1], 'context hash should differentiate cache keys');
-      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v3:IL:'), 'cache key should use v3 country-intel namespace');
-      assert.ok(setKeys[1]?.startsWith('ci-sebuf:v3:IL:'), 'cache key should use v3 country-intel namespace');
+      assert.equal(counters.groqCalls, 2, 'different premium contexts should not share one cache entry');
+      assert.equal(setKeys.length, 2, 'one cache write per unique premium context');
+      assert.notEqual(setKeys[0], setKeys[1], 'context hash should differentiate premium cache keys');
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v5:IL:'), 'cache key should use the v5 country-intel namespace');
+      assert.ok(!setKeys[0]?.includes(':shared'), 'premium keys must not use the shared namespace');
       assert.equal(alpha.brief, 'brief-1');
       assert.equal(beta.brief, 'brief-2');
-      assert.equal(alphaCached.brief, 'brief-1', 'same context should hit cache');
+      assert.equal(alphaCached.brief, 'brief-1', 'same premium context should hit cache');
       assert.match(userPrompts[0], /Context snapshot:\s*alpha/);
       assert.match(userPrompts[1], /Context snapshot:\s*beta/);
     } finally {
@@ -1173,6 +1234,10 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     const { module, cleanup } = await importCountryIntelBrief();
     const restoreEnv = withEnv({
       GROQ_API_KEY: 'test-key',
+      // Deterministic groq-first for this groq-only mock (chain is
+      // openrouter-first since #4944).
+      OPENROUTER_API_KEY: undefined,
+      OLLAMA_API_URL: undefined,
       UPSTASH_REDIS_REST_URL: 'https://redis.test',
       UPSTASH_REDIS_REST_TOKEN: 'token',
       VERCEL_ENV: undefined,
@@ -1214,10 +1279,10 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       const first = await module.getCountryIntelBrief(makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=US'), req);
       const second = await module.getCountryIntelBrief(makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=US&context=%20%20%20'), req);
 
-      assert.equal(groqCalls, 1, 'blank context should reuse base cache entry');
+      assert.equal(groqCalls, 1, 'blank context should reuse the shared cache entry');
       assert.equal(setKeys.length, 1);
-      assert.ok(setKeys[0]?.endsWith(':base'), 'missing context should use :base cache suffix');
-      assert.ok(!userPrompts[0]?.includes('Context snapshot:'), 'prompt should omit context block when absent');
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v5:US:en:shared'), `anon callers land on the shared key, got ${setKeys[0]}`);
+      assert.ok(!userPrompts[0]?.includes('Context snapshot:'), 'prompt should omit context block when digest grounding is unavailable');
       assert.equal(first.brief, 'base-brief');
       assert.equal(second.brief, 'base-brief');
     } finally {

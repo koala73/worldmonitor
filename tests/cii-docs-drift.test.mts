@@ -424,14 +424,14 @@ describe('CII docs drift guards', () => {
     assert.match(llmsBrief, /six specialized variants/i);
     assert.match(llmsBrief, /56 map layer types/i);
     assert.match(llmsBrief, /500\+ curated RSS feeds/i);
-    assert.match(llmsBrief, /24 languages/i);
+    assert.match(llmsBrief, /25 languages/i);
     assert.match(llmsFull, /Country Instability Index \(CII v8\)[\s\S]{0,240}31 Tier-1 countries/i);
     assert.match(llmsFull, /eventScore = unrest \* 0\.25 \+ conflict \* 0\.30 \+ security \* 0\.20 \+ information \* 0\.25/i);
     assert.match(llmsFull, /Country Resilience Index \(CRI\)[\s\S]{0,160}196-country public rankable universe/i);
     assert.match(llmsFull, /six specialized variants/i);
     assert.match(llmsFull, /56 map layer types/i);
     assert.match(llmsFull, /500\+ RSS feeds/i);
-    assert.match(llmsFull, /24 languages/i);
+    assert.match(llmsFull, /25 languages/i);
     assert.match(pressKit, /server-authoritative CII v8[\s\S]{0,120}31 Tier-1 countries/i);
     assert.match(pressKit, /Country Resilience Index[\s\S]{0,140}196-country public rankable universe/i);
     assert.match(pressKit, /six thematic variants/i);

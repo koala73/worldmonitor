@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 
 import { createRequire } from 'node:module';
+// #4919: story similarity is delegated to the shared story-identity
+// module (scripts/shared mirror — same rootDirectory=scripts reason as
+// the JSON requires below). The local Jaccard-0.5 matcher this file
+// carried was one of three inconsistent "same story?" answers in the
+// codebase; all three now share ONE definition and threshold.
+import { clusterTexts } from './shared/story-identity.js';
 
 const require = createRequire(import.meta.url);
 const SOURCE_TIERS = require('./shared/source-tiers.json');
@@ -9,20 +15,8 @@ const SOURCE_TIERS = require('./shared/source-tiers.json');
 // is not in the container. Matches the SOURCE_TIERS pattern above.
 const DIPLOMACY_KEYWORDS_DATA = require('./shared/diplomacy-keywords.json');
 
-const SIMILARITY_THRESHOLD = 0.5;
 const ENTITY_CORROBORATION_WINDOW_MS = 24 * 60 * 60 * 1000;
 
-const STOP_WORDS = new Set([
-  'the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for',
-  'of', 'with', 'by', 'from', 'as', 'is', 'was', 'are', 'were', 'been',
-  'be', 'have', 'has', 'had', 'do', 'does', 'did', 'will', 'would',
-  'could', 'should', 'may', 'might', 'must', 'shall', 'can', 'need',
-  'it', 'its', 'this', 'that', 'these', 'those', 'i', 'you', 'he',
-  'she', 'we', 'they', 'what', 'which', 'who', 'whom', 'how', 'when',
-  'where', 'why', 'all', 'each', 'every', 'both', 'few', 'more', 'most',
-  'other', 'some', 'such', 'no', 'not', 'only', 'same', 'so', 'than',
-  'too', 'very', 'just', 'also', 'now', 'new', 'says', 'said', 'after',
-]);
 
 const MILITARY_KEYWORDS = [
   'war', 'armada', 'invasion', 'airstrike', 'strike', 'missile', 'troops',
@@ -57,14 +51,6 @@ const DEMOTE_KEYWORDS = [
   'quarterly', 'profit', 'investor', 'ipo', 'funding', 'valuation',
 ];
 
-function tokenize(text) {
-  const words = text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/)
-    .filter(w => w.length > 2 && !STOP_WORDS.has(w));
-  return new Set(words);
-}
 
 function finiteNumber(value, fallback = 0) {
   const n = Number(value);
@@ -131,59 +117,15 @@ function containsKeywordToken(text, kw) {
   return new RegExp(`(^|\\s)${escaped}`).test(text);
 }
 
-function jaccardSimilarity(a, b) {
-  if (a.size === 0 && b.size === 0) return 0;
-  let intersection = 0;
-  for (const x of a) {
-    if (b.has(x)) intersection++;
-  }
-  const union = a.size + b.size - intersection;
-  return intersection / union;
-}
-
 export function clusterItems(items) {
   if (items.length === 0) return [];
 
-  const tokenList = items.map(item => tokenize(item.title || ''));
-
-  const invertedIndex = new Map();
-  for (let i = 0; i < tokenList.length; i++) {
-    for (const token of tokenList[i]) {
-      const bucket = invertedIndex.get(token);
-      if (bucket) bucket.push(i);
-      else invertedIndex.set(token, [i]);
-    }
-  }
-
-  const clusters = [];
-  const assigned = new Set();
-
-  for (let i = 0; i < items.length; i++) {
-    if (assigned.has(i)) continue;
-
-    const cluster = [i];
-    assigned.add(i);
-    const tokensI = tokenList[i];
-
-    const candidates = new Set();
-    for (const token of tokensI) {
-      const bucket = invertedIndex.get(token);
-      if (!bucket) continue;
-      for (const idx of bucket) {
-        if (idx > i) candidates.add(idx);
-      }
-    }
-
-    for (const j of Array.from(candidates).sort((a, b) => a - b)) {
-      if (assigned.has(j)) continue;
-      if (jaccardSimilarity(tokensI, tokenList[j]) >= SIMILARITY_THRESHOLD) {
-        cluster.push(j);
-        assigned.add(j);
-      }
-    }
-
-    clusters.push(cluster.map(idx => items[idx]));
-  }
+  // #4924 review (maintainability P1): delegate the clustering ALGORITHM
+  // to the shared module too, not just the similarity function — a local
+  // copy of the loop would let clustering semantics drift apart again,
+  // one layer above the drift this PR removed.
+  const clusters = clusterTexts(items.map(item => item.title || ''))
+    .map(indices => indices.map(idx => items[idx]));
 
   return clusters.map(group => {
     const sorted = [...group].sort((a, b) => {
@@ -245,7 +187,16 @@ function hasStrongNonKeywordSignal(cluster) {
   return isLlmThreatSource(cluster.threat?.source) && (level === 'high' || level === 'critical');
 }
 
-export function scoreImportance(cluster) {
+/**
+ * @param {object} cluster
+ * @param {{ demoteFinance?: boolean }} [opts] #4922 (f): the ×0.35 finance
+ *   demotion is correct for the geopolitical World Brief but backwards for
+ *   a finance-focused ranking surface. Pass demoteFinance:false to rank
+ *   finance neutrally. NOTE: the only live consumer today (seed-insights)
+ *   runs the full variant and keeps the default — this parameter is the
+ *   seam a finance-variant insights run plugs into (tracked in #4922).
+ */
+export function scoreImportance(cluster, opts = {}) {
   let score = 0;
   const titleLower = normalizedMatchText(cluster.primaryTitle);
   const upstream = finiteNumber(cluster.upstreamImportanceScore, 0);
@@ -286,7 +237,8 @@ export function scoreImportance(cluster) {
   if (crisisN > 0) score += 15 + crisisN * 5;
 
   const demoteN = countMatches(titleLower, DEMOTE_KEYWORDS);
-  if (demoteN > 0 && !cluster.entityCorroboration && !hasStrongNonKeywordSignal(cluster)) score *= 0.35;
+  const demoteFinance = opts.demoteFinance !== false;
+  if (demoteFinance && demoteN > 0 && !cluster.entityCorroboration && !hasStrongNonKeywordSignal(cluster)) score *= 0.35;
 
   return score;
 }
@@ -362,29 +314,69 @@ export function computeEntityCorroboration(clusters, nowMs = Date.now()) {
 
 // Note: velocity filter omitted (vs frontend selectTopStories) because digest
 // items lack velocity data. Phase B may add velocity when RPC provides it.
-export function selectTopStories(clusters, maxCount = 8) {
+/**
+ * @param {object[]} clusters
+ * @param {number} [maxCount]
+ * @param {{ considered?: number; admissibilityDropped?: number; sourceCapDropped?: number; overflowDropped?: number }} [stats]
+ *   #4920 coverage ledger: when provided, populated with how many clusters
+ *   each gate dropped — previously all three gates were silent.
+ */
+export function selectTopStories(clusters, maxCount = 8, stats, opts = {}) {
+  // Positional-arg guard (#4929 external review): a caller passing
+  // { demoteFinance } in the stats slot would silently get default
+  // demotion AND a stats-shaped object mutated with counters. Detect the
+  // opts shape and shift.
+  if (stats && typeof stats === 'object' && 'demoteFinance' in stats
+      && (!opts || Object.keys(opts).length === 0)) {
+    opts = stats;
+    stats = undefined;
+  }
   const nowMs = Date.now();
   computeEntityCorroboration(clusters, nowMs);
-  const scored = clusters
-    .map(c => {
-      const score = scoreImportance(c);
-      return { cluster: c, score, effectiveScore: score * recencyWeight(c, nowMs) };
-    })
-    .filter(({ cluster: c, score }) => isTopStoriesAdmissible(c, score))
-    .sort((a, b) => b.effectiveScore - a.effectiveScore || b.score - a.score);
+  const admissible = [];
+  let admissibilityDropped = 0;
+  for (const c of clusters) {
+    const score = scoreImportance(c, opts);
+    if (isTopStoriesAdmissible(c, score)) {
+      admissible.push({ cluster: c, score, effectiveScore: score * recencyWeight(c, nowMs) });
+    } else {
+      admissibilityDropped++;
+    }
+  }
+  admissible.sort((a, b) => b.effectiveScore - a.effectiveScore || b.score - a.score);
 
   const selected = [];
   const sourceCount = new Map();
   const MAX_PER_SOURCE = 3;
+  let sourceCapDropped = 0;
+  let overflowDropped = 0;
 
-  for (const { cluster, score, effectiveScore } of scored) {
+  // #4927 review P2: classify EVERY admissible candidate — breaking at
+  // maxCount lumped later same-source candidates into overflow arithmetic
+  // even though the source cap would have rejected them regardless of
+  // room. Cap-first attribution: a candidate whose source already hit the
+  // per-source cap is a sourceCap drop; only genuinely rankable candidates
+  // count as overflow.
+  for (const { cluster, score, effectiveScore } of admissible) {
     const source = cluster.primarySource;
     const count = sourceCount.get(source) || 0;
-    if (count < MAX_PER_SOURCE) {
-      selected.push({ ...cluster, importanceScore: score, effectiveImportanceScore: effectiveScore });
-      sourceCount.set(source, count + 1);
+    if (count >= MAX_PER_SOURCE) {
+      sourceCapDropped++;
+      continue;
     }
-    if (selected.length >= maxCount) break;
+    if (selected.length >= maxCount) {
+      overflowDropped++;
+      continue;
+    }
+    selected.push({ ...cluster, importanceScore: score, effectiveImportanceScore: effectiveScore });
+    sourceCount.set(source, count + 1);
+  }
+
+  if (stats && typeof stats === 'object') {
+    stats.considered = clusters.length;
+    stats.admissibilityDropped = admissibilityDropped;
+    stats.sourceCapDropped = sourceCapDropped;
+    stats.overflowDropped = overflowDropped;
   }
 
   return selected;

@@ -28,6 +28,7 @@ const v8 = require('v8');
 const { WebSocketServer, WebSocket } = require('ws');
 const { parseProxyConfig, resolveProxyString } = require('./_proxy-utils.cjs');
 const { countryNameToIso2 } = require('./shared/country-name-to-iso2.cjs');
+const { buildDedupMaterial } = require('./shared/notification-dedup.cjs');
 const parseProxyUrl = parseProxyConfig;
 
 const httpsKeepAliveAgent = new https.Agent({ keepAlive: true, maxSockets: 6, timeout: 60_000 });
@@ -572,6 +573,11 @@ function normalizeNotificationCountryCode(raw) {
   return countryNameToIso2(raw) ?? undefined;
 }
 
+function marketAlertCoalesceKey(assetClass, identifier, direction, severity) {
+  const stableIdentifier = String(identifier || 'unknown').trim().toLowerCase();
+  return `market:${assetClass}:${stableIdentifier}:${direction}:${severity}`;
+}
+
 /**
  * Slot B helper: derive a coalesce-family key from an NWS VTEC string.
  *
@@ -608,9 +614,7 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
     // event collapse at the publisher (queue stays clean) instead of N times
     // per recipient at the relay.
     const variantSuffix = variant ? `:${variant}` : '';
-    const dedupMaterial = payload?.coalesceKey
-      ? `coalesce:${payload.coalesceKey}`
-      : `${eventType}:${payload.title ?? ''}`;
+    const dedupMaterial = buildDedupMaterial(eventType, payload?.title, payload?.coalesceKey);
     const dedupKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${notifySimpleHash(dedupMaterial)}`;
     const isNew = await upstashSetNx(dedupKey, '1', dedupTtl);
     if (!isNew) {
@@ -2145,10 +2149,15 @@ async function seedMarketQuotes() {
   for (const q of movingStocks.slice(0, 3)) {
     const pct = Math.round(q.change);
     const dir = q.change < 0 ? 'decline' : 'surge';
+    const severity = Math.abs(q.change) >= 10 ? 'critical' : 'high';
     publishNotificationEvent({
       eventType: 'market_alert',
-      payload: { title: `${q.symbol}: ${pct > 0 ? '+' : ''}${pct}% ${dir}`, source: 'Equity Market' },
-      severity: Math.abs(q.change) >= 10 ? 'critical' : 'high',
+      payload: {
+        title: `${q.symbol}: ${pct > 0 ? '+' : ''}${pct}% ${dir}`,
+        source: 'Equity Market',
+        coalesceKey: marketAlertCoalesceKey('equity', q.symbol, dir, severity),
+      },
+      severity,
       variant: undefined,
       dedupTtl: 3600,
     }).catch(e => console.warn('[Notify] Market stock publish error:', e?.message));
@@ -2199,10 +2208,15 @@ async function seedCommodityQuotes() {
   for (const q of movingCommodities.slice(0, 3)) {
     const pct = Math.round(q.change);
     const dir = q.change < 0 ? 'decline' : 'surge';
+    const severity = Math.abs(q.change) >= 10 ? 'critical' : 'high';
     publishNotificationEvent({
       eventType: 'market_alert',
-      payload: { title: `${q.name || q.symbol}: ${pct > 0 ? '+' : ''}${pct}% ${dir}`, source: 'Commodity Market' },
-      severity: Math.abs(q.change) >= 10 ? 'critical' : 'high',
+      payload: {
+        title: `${q.name || q.symbol}: ${pct > 0 ? '+' : ''}${pct}% ${dir}`,
+        source: 'Commodity Market',
+        coalesceKey: marketAlertCoalesceKey('commodity', q.symbol || q.name, dir, severity),
+      },
+      severity,
       variant: undefined,
       dedupTtl: 3600,
     }).catch(e => console.warn('[Notify] Commodity publish error:', e?.message));
@@ -2498,10 +2512,15 @@ async function seedCryptoQuotes() {
   for (const q of movingCrypto.slice(0, 3)) {
     const pct = Math.round(q.change);
     const dir = q.change < 0 ? 'decline' : 'surge';
+    const severity = Math.abs(q.change) >= 20 ? 'critical' : 'high';
     publishNotificationEvent({
       eventType: 'market_alert',
-      payload: { title: `${q.symbol}: ${pct > 0 ? '+' : ''}${pct}% ${dir}`, source: 'Crypto Market' },
-      severity: Math.abs(q.change) >= 20 ? 'critical' : 'high',
+      payload: {
+        title: `${q.symbol}: ${pct > 0 ? '+' : ''}${pct}% ${dir}`,
+        source: 'Crypto Market',
+        coalesceKey: marketAlertCoalesceKey('crypto', q.symbol || q.name, dir, severity),
+      },
+      severity,
       variant: undefined,
       dedupTtl: 3600,
     }).catch(e => console.warn('[Notify] Crypto publish error:', e?.message));
@@ -3547,11 +3566,13 @@ function matchCountryNamesInText(text) {
 // three sites.
 function classifyCacheKey(title) {
   const hash = crypto.createHash('sha256').update(title.toLowerCase()).digest('hex').slice(0, 16);
-  return `classify:sebuf:v5:${hash}`;
+  return `classify:sebuf:v6:${hash}`;
 }
 
 // LLM provider fallback chain — mirrors seed-insights.mjs LLM_PROVIDERS
-// Order: ollama → groq → openrouter (canonical chain, mirrors server/_shared/llm.ts)
+// Order: ollama → openrouter → groq (canonical chain since #4944, mirrors
+// server/_shared/llm.ts: DeepSeek V4 Flash primary with reasoning disabled,
+// groq llama-3.3-70b-versatile as the free-tier/outage fallback).
 const CLASSIFY_LLM_PROVIDERS = [
   {
     name: 'ollama',
@@ -3568,19 +3589,20 @@ const CLASSIFY_LLM_PROVIDERS = [
     timeout: 30000,
   },
   {
-    name: 'groq',
-    envKey: 'GROQ_API_KEY',
-    apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
-    model: 'llama-3.1-8b-instant',
-    headers: (key) => ({ Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA }),
-    timeout: 30000,
-  },
-  {
     name: 'openrouter',
     envKey: 'OPENROUTER_API_KEY',
     apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
-    model: 'google/gemini-2.5-flash',
+    model: 'deepseek/deepseek-v4-flash',
     headers: (key) => ({ Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': CHROME_UA }),
+    extraBody: { reasoning: { enabled: false } },
+    timeout: 30000,
+  },
+  {
+    name: 'groq',
+    envKey: 'GROQ_API_KEY',
+    apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
+    model: 'llama-3.3-70b-versatile',
+    headers: (key) => ({ Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA }),
     timeout: 30000,
   },
 ];
@@ -6492,13 +6514,20 @@ const DODO_PRODUCT_IDS = [
   'pdt_0NbttMIfjLWC10jHQWYgJ', // Pro Annual
   'pdt_0NbttVmG1SERrxhygbbUq', // API Starter Monthly
   'pdt_0Nbu2lawHYE3dv2THgSEV', // API Starter Annual
+  'pdt_0Nbttg7NuOJrhbyBGCius', // API Business Monthly (#4945)
 ];
 
+// ⚠ MANUAL MIRROR of TIER_CONFIG in api/product-catalog.js (and ultimately
+// convex/config/productCatalog.ts marketingFeatures). This seeder's Redis
+// payload is the PRIMARY live catalog — it wins over the edge fallback on
+// cache hits — so drift here silently changes the /pro pricing page (#4946
+// P0, #4974). Parity enforced by tests/product-catalog-freshness.test.mjs.
 const DODO_TIER_CONFIG = {
-  free: { name: 'Free', description: 'Get started with the essentials', features: ['Core dashboard panels', 'Global news feed', 'Earthquake & weather alerts', 'Basic map view'], cta: 'Get Started', href: 'https://worldmonitor.app/dashboard', highlighted: false },
-  pro: { name: 'Pro', description: 'Full intelligence dashboard', features: ['Everything in Free', 'AI stock analysis & backtesting', 'Daily market briefs', 'Military & geopolitical tracking', 'Custom widget builder', 'MCP access for Claude Desktop & other AI clients (50 calls/day)', 'Priority data refresh'], highlighted: true },
-  api_starter: { name: 'API', description: 'Programmatic access to intelligence data', features: ['REST API access', 'Real-time data streams', '60 requests/minute', '1,000 requests/day included', 'Webhook notifications', 'Custom data exports'], highlighted: false },
-  enterprise: { name: 'Enterprise', description: 'Custom solutions for organizations', features: ['Everything in Pro + API', 'Unlimited API requests', 'Dedicated support', 'Custom integrations', 'SLA guarantee', 'On-premise option'], cta: 'Contact Sales', href: 'mailto:enterprise@worldmonitor.app', highlighted: false },
+  free: { name: 'Free', localeKey: 'free', description: 'Get started with the essentials', features: ['Core dashboard panels', 'Global news feed', 'Earthquake & weather alerts', 'Basic map view'], cta: 'Get Started', href: 'https://worldmonitor.app/dashboard', highlighted: false },
+  pro: { name: 'Pro', localeKey: 'pro', description: 'Full intelligence dashboard', features: ['Everything in Free', 'AI stock analysis & backtesting', 'Daily market briefs', 'Military & geopolitical tracking', 'Custom widget builder', 'MCP + SDK access for Claude Desktop & other AI clients (50 calls/day)', 'Priority data refresh'], highlighted: true },
+  api_starter: { name: 'API', localeKey: 'api', description: 'Programmatic access to intelligence data', features: ['REST API + official SDKs (npm, PyPI, RubyGems, Go)', 'Real-time data streams', '60 requests/minute', '1,000 requests/day included', 'Webhook notifications', 'Custom data exports'], highlighted: false },
+  api_business: { name: 'API Business', localeKey: 'apiBusiness', description: 'High-volume API for teams', features: ['Everything in API Starter', '300 requests/minute', '10,000 requests/day included', 'Priority support'], highlighted: false },
+  enterprise: { name: 'Enterprise', localeKey: 'enterprise', description: 'Custom solutions for organizations', features: ['Everything in Pro + API', 'Unlimited API requests', 'Dedicated support', 'Custom integrations', 'SLA guarantee', 'On-premise option'], cta: 'Contact Sales', href: 'mailto:enterprise@worldmonitor.app', highlighted: false },
 };
 
 const DODO_PRODUCT_META = {
@@ -6506,6 +6535,7 @@ const DODO_PRODUCT_META = {
   'pdt_0NbttMIfjLWC10jHQWYgJ': { tierGroup: 'pro', billingPeriod: 'annual' },
   'pdt_0NbttVmG1SERrxhygbbUq': { tierGroup: 'api_starter', billingPeriod: 'monthly' },
   'pdt_0Nbu2lawHYE3dv2THgSEV': { tierGroup: 'api_starter', billingPeriod: 'annual' },
+  'pdt_0Nbttg7NuOJrhbyBGCius': { tierGroup: 'api_business', billingPeriod: 'monthly' },
 };
 
 const DODO_FALLBACK_PRICES = {
@@ -6513,6 +6543,7 @@ const DODO_FALLBACK_PRICES = {
   'pdt_0NbttMIfjLWC10jHQWYgJ': 39999,
   'pdt_0NbttVmG1SERrxhygbbUq': 9999,
   'pdt_0Nbu2lawHYE3dv2THgSEV': 99900,
+  'pdt_0Nbttg7NuOJrhbyBGCius': 24999,
 };
 
 let dodoPriceSeedInFlight = false;
@@ -6580,7 +6611,7 @@ async function seedDodoPrices() {
 
     // Build tier view model
     const tiers = [];
-    const publicGroups = ['free', 'pro', 'api_starter', 'enterprise'];
+    const publicGroups = ['free', 'pro', 'api_starter', 'api_business', 'enterprise'];
     for (const group of publicGroups) {
       const config = DODO_TIER_CONFIG[group];
       if (!config) continue;

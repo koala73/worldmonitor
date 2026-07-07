@@ -193,7 +193,7 @@ docker compose down && docker compose up -d
 - Docker nginx mirrors Vercel's `script-src` policy and does not allow `'unsafe-inline'`; hash-pin any custom inline scripts before adding them to a self-hosted build.
 - If you hit `npm ci` sync errors in Docker, regenerate the lockfile with the container's npm version:
   ```bash
-  docker run --rm -v "$(pwd)":/app -w /app node:22-alpine npm install --package-lock-only
+  docker run --rm -v "$(pwd)":/app -w /app node:24-alpine npm install --package-lock-only
   ```
 
 ## 🌐 Connecting to External Infrastructure
@@ -237,7 +237,7 @@ services:
 | 📡 `0/55 OK` on health check | Seeders haven't run — `./scripts/run-seeders.sh` |
 | 🔴 nginx won't start | Check `podman logs worldmonitor` — likely missing `gettext` package |
 | 🔑 Seeders say "Missing UPSTASH_REDIS_REST_URL" | Stack isn't running, or run via `./scripts/run-seeders.sh` (auto-sets env vars) |
-| 📦 `npm ci` fails in Docker build | Lockfile mismatch — regenerate with `docker run --rm -v $(pwd):/app -w /app node:22-alpine npm install --package-lock-only` |
+| 📦 `npm ci` fails in Docker build | Lockfile mismatch — regenerate with `docker run --rm -v $(pwd):/app -w /app node:24-alpine npm install --package-lock-only` |
 | 🚢 No vessel data | Set `AISSTREAM_API_KEY` in both `worldmonitor` and `ais-relay` services |
 | 🔥 No wildfire data | Set `NASA_FIRMS_API_KEY` |
 | 🌐 No outage data | Requires `CLOUDFLARE_API_TOKEN` (paid Radar access) |

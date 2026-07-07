@@ -345,11 +345,12 @@ summary; older source-free cache entries are discarded before reuse.
 The canonical digest prose and direct fallback `whyMatters` paths pin the
 provider chain to OpenRouter by skipping Ollama and Groq, so the live brief
 uses Gemini 2.5 Flash (`google/gemini-2.5-flash`) for those surfaces when the
-LLM layer is enabled. Digest prose and story-description calls use
-temperature `0.4`. Regional weekly briefs intentionally differ from those
-digest prose and `whyMatters` surfaces: `scripts/regional-snapshot/weekly-brief.mjs`
-tries Groq first with `llama-3.3-70b-versatile`, then falls back to
-OpenRouter `google/gemini-2.5-flash`, and sends both providers temperature
+LLM layer is enabled. Digest prose and
+story-description calls use temperature `0.4`. Regional weekly briefs
+intentionally differ from those digest prose and `whyMatters` surfaces:
+`scripts/regional-snapshot/weekly-brief.mjs`
+tries OpenRouter first with `deepseek/deepseek-v4-flash`, then falls back to
+Groq `llama-3.3-70b-versatile`, and sends both providers temperature
 `0.3` because the output is structured weekly JSON for regional snapshots
 rather than per-user digest prose. The digest prompt requires a named
 actor/event lead, bans generic editorial phrases such as "the global stage"

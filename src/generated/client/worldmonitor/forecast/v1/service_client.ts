@@ -37,6 +37,7 @@ export interface Forecast {
   simulationAdjustment: number;
   simPathConfidence: number;
   demotedBySimulation: boolean;
+  resolution?: ResolutionSpec;
 }
 
 export interface ForecastSignal {
@@ -124,6 +125,18 @@ export interface ForecastBranchRound {
   developments: string[];
   actorMoves: string[];
   probabilityShift: number;
+}
+
+export interface ResolutionSpec {
+  kind: string;
+  metricKey?: string;
+  operator?: string;
+  threshold?: number;
+  baselineValue?: number;
+  window?: string;
+  deadline: number;
+  sourceFeed?: string;
+  question?: string;
 }
 
 export interface GetSimulationPackageRequest {

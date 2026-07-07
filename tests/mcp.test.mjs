@@ -139,6 +139,121 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       'anonymous resources/list must expose a non-empty resource catalog (advertised `resources` capability)');
   });
 
+  it('resources/templates/list succeeds WITHOUT credentials (public discovery) and returns URI templates', async () => {
+    // The data-bearing URI templates (country risk, chokepoint, market quote)
+    // moved from resources/list to resources/templates/list — this metadata
+    // method is public so agents can still discover them without auth.
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 5, method: 'resources/templates/list', params: {} }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'unauthenticated resources/templates/list must be public');
+    const body = await res.json();
+    assert.ok(Array.isArray(body.result?.resourceTemplates) && body.result.resourceTemplates.length >= 1,
+      'anonymous resources/templates/list must expose the URI-template catalog');
+    assert.ok(body.result.resourceTemplates.every((r) => typeof r.uriTemplate === 'string'),
+      'each template entry must carry a uriTemplate field');
+  });
+
+  it('resources/read of a PUBLIC resource succeeds WITHOUT credentials + never touches quota (orank mcp-resource-quality)', async () => {
+    // orank reads every resources/list entry via resources/read anonymously.
+    // The concrete PUBLIC resources (freshness/health probes) return
+    // metadata-only content, so they read cleanly without auth or quota.
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 6, method: 'resources/read', params: { uri: 'worldmonitor://seed-meta/freshness' } }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'anonymous resources/read of a public resource must be 200');
+    const body = await res.json();
+    assert.equal(body.error, undefined, `must not error: ${JSON.stringify(body.error)}`);
+    const c = body.result?.contents?.[0];
+    assert.equal(c?.mimeType, 'application/json');
+    assert.ok(typeof c?.text === 'string' && c.text.length > 0, 'content must be non-empty');
+    assertNoStore(res, 'anonymous public resources/read');
+  });
+
+  // Every capability advertised on the ANONYMOUS initialize must be anonymously
+  // exercisable, or an unauthenticated MCP SDK client hangs: a gated method
+  // answers HTTP 401 with JSON-RPC id:null, the SDK transport cannot correlate
+  // a non-200/id:null response to the pending request, and the client times out
+  // 30s later and marks the server unstable (customer-reported via Claude
+  // Desktop + mcp-remote, issue #4937). prompts/* are static workflow templates
+  // and logging/setLevel is a no-op ack — metadata-class, no data, no quota.
+  // ping is a spec-mandated liveness check (SDK keepalives hang the same way).
+  it('prompts/list succeeds WITHOUT credentials and echoes the request id (#4937 — anon hang)', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'prompts/list', params: {} }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'unauthenticated prompts/list must be public — a 401 hangs SDK clients that saw the advertised prompts capability');
+    const body = await res.json();
+    assert.equal(body.id, 2, 'response id must echo the request id (id:null is uncorrelatable)');
+    assert.ok(Array.isArray(body.result?.prompts) && body.result.prompts.length > 0,
+      'anonymous prompts/list must expose the prompt catalog');
+    assertNoStore(res, 'anonymous prompts/list');
+  });
+
+  it('prompts/get succeeds WITHOUT credentials (static template, no data)', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 8, method: 'prompts/get', params: { name: 'country-briefing', arguments: { iso2: 'DE' } } }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'unauthenticated prompts/get must be public — it renders a static workflow template');
+    const body = await res.json();
+    assert.equal(body.id, 8);
+    assert.ok(Array.isArray(body.result?.messages) && body.result.messages.length > 0,
+      'anonymous prompts/get must render the template messages');
+    assertNoStore(res, 'anonymous prompts/get');
+  });
+
+  it('ping succeeds WITHOUT credentials (spec liveness check — SDK keepalives must not hang)', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'ping', params: {} }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'unauthenticated ping must answer — the MCP spec requires ping to be answerable');
+    const body = await res.json();
+    assert.equal(body.id, 9);
+    assert.deepEqual(body.result, {});
+    assertNoStore(res, 'anonymous ping');
+  });
+
+  it('logging/setLevel succeeds WITHOUT credentials (no-op ack for the advertised logging capability)', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 10, method: 'logging/setLevel', params: { level: 'info' } }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'unauthenticated logging/setLevel must be public — the logging capability is advertised anonymously');
+    const body = await res.json();
+    assert.equal(body.id, 10);
+    assert.deepEqual(body.result, {});
+    assertNoStore(res, 'anonymous logging/setLevel');
+  });
+
+  it('resources/read of a data-bearing TEMPLATE instantiation still requires credentials (no quota bypass)', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 7, method: 'resources/read', params: { uri: 'worldmonitor://countries/de/risk' } }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 401, 'resources/read of a data-bearing template is a data/quota method — must stay gated');
+    const body = await res.json();
+    assert.equal(body.error?.code, -32001);
+  });
+
   it('tools/call still requires credentials even though discovery is public', async () => {
     const req = new Request(BASE_URL, {
       method: 'POST',

@@ -20,6 +20,13 @@ export type PlanFeatures = {
   apiAccess: boolean;
   apiRateLimit: number;
   prioritySupport: boolean;
+  /**
+   * Display/entitlement metadata ONLY — as of #4974 NO code consumes this
+   * array to gate any behavior, and formats listed here are not guaranteed
+   * to have exporters ("xlsx" was advertised for months with zero
+   * implementation). Do NOT gate features on it without building the
+   * exporter first.
+   */
   exportFormats: string[];
   /**
    * Pro MCP access — bearer-token MCP authorization via Clerk + per-user 50/day
@@ -108,7 +115,8 @@ const API_BUSINESS_FEATURES: PlanFeatures = {
   apiRateLimit: 300,
   apiDailyAllowance: 10000,
   prioritySupport: true,
-  exportFormats: ["csv", "pdf", "json", "xlsx"],
+  // xlsx removed (#4974): no XLSX exporter exists anywhere in the product.
+  exportFormats: ["csv", "pdf", "json"],
   mcpAccess: true,
 };
 
@@ -161,7 +169,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
       "Daily market briefs",
       "Military & geopolitical tracking",
       "Custom widget builder",
-      "MCP access for Claude Desktop & other AI clients (50 calls/day)",
+      "MCP + SDK access for Claude Desktop & other AI clients (50 calls/day)",
       "Priority data refresh",
     ],
     selfServe: true,
@@ -194,7 +202,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     tierGroup: "api_starter",
     features: API_STARTER_FEATURES,
     marketingFeatures: [
-      "REST API access",
+      "REST API + official SDKs (npm, PyPI, RubyGems, Go)",
       "Real-time data streams",
       "60 requests/minute",
       "1,000 requests/day included",
@@ -226,7 +234,10 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     dodoProductId: "pdt_0Nbttg7NuOJrhbyBGCius",
     planKey: "api_business",
     displayName: "API Business",
-    priceCents: null,
+    // Display fallback only — the /pro page and /api/product-catalog prefer
+    // the live Dodo price, and checkout always charges Dodo's price. Matches
+    // the $249.99/mo verified against Dodo via previewChangePlan (#4634).
+    priceCents: 24999,
     billingPeriod: "monthly",
     tierGroup: "api_business",
     features: API_BUSINESS_FEATURES,
@@ -235,12 +246,16 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
       "300 requests/minute",
       "10,000 requests/day included",
       "Priority support",
-      "XLSX exports",
     ],
-    selfServe: false,
+    // Published + self-serve since #4945 (bet B4): the tier existed in the
+    // billing system but was invisible on every pricing surface and had
+    // zero customers. Starter→Business upgrades for existing subscribers
+    // ride the Dodo collection/portal path (#4634/#4672); this flag set
+    // covers NEW-customer checkout and pricing-page visibility.
+    selfServe: true,
     highlighted: false,
-    currentForCheckout: false,
-    publicVisible: false,
+    currentForCheckout: true,
+    publicVisible: true,
   },
 
   enterprise: {

@@ -12,6 +12,7 @@ const {
 const { callLLM } = require('./lib/llm-chain.cjs');
 const { fetchUserPreferences, extractUserContext, formatUserProfile } = require('./lib/user-context.cjs');
 const { countryNameToIso2 } = require('./shared/country-name-to-iso2.cjs');
+const { buildDedupMaterial } = require('./shared/notification-dedup.cjs');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -79,7 +80,7 @@ async function checkDedup(userId, eventType, title, coalesceKey) {
   // into one notification per user — the title-based dedup misses these
   // because each zone produces a slightly different title.
   // See docs/archive/plans/forbid-realtime-all-events.md "Out of scope: Slot B".
-  const keyMaterial = coalesceKey ? `coalesce:${coalesceKey}` : `${eventType}:${title}`;
+  const keyMaterial = buildDedupMaterial(eventType, title, coalesceKey);
   const hash = sha256Hex(keyMaterial);
   const key = `wm:notif:dedup:${userId}:${hash}`;
   const result = await upstashRest('SET', key, '1', 'NX', 'EX', '1800');

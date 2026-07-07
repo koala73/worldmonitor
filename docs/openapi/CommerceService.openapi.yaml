@@ -1,0 +1,123 @@
+# Hand-authored spec for the commerce surface (plain Vercel functions, not a
+# sebuf proto service — so this file lives OUTSIDE docs/api/, which is a fully
+# generated directory guarded by proto-check regen + injector scripts).
+# Wired into the Mintlify API Reference via docs/docs.json ("Commerce" group).
+# Prose companion: docs/api-commerce.mdx. Added for #4854 — agents guessed
+# /docs/api-reference/commerceservice/getproductcatalog and 404'd because the
+# commerce ops existed only as prose.
+openapi: 3.1.0
+info:
+    title: CommerceService API
+    version: 1.0.0
+    description: Public pricing catalog for World Monitor plans. The catalog endpoint is keyless and read-only; agents evaluating the product should prefer it over scraping pricing prose.
+servers:
+    - url: https://www.worldmonitor.app
+paths:
+    /api/product-catalog:
+        get:
+            tags:
+                - CommerceService
+            summary: GetProductCatalog
+            operationId: GetProductCatalog
+            security: []
+            description: |-
+                Returns the live tier view-model used by the /pro pricing page: plan names,
+                descriptions, feature bullets, monthly/annual USD prices, and Dodo Payments
+                product IDs. Public — no API key required. Cached in Redis for 1 hour; on
+                cache miss, prices are fetched live from Dodo Payments with a static
+                fallback if Dodo is unreachable. The X-Product-Catalog-Source response
+                header distinguishes cache hits ("cache") from live fetches ("dodo") and
+                fallback pricing ("fallback"). Markdown twin: https://worldmonitor.app/pricing.md
+            responses:
+                "200":
+                    description: Successful response
+                    headers:
+                        X-Product-Catalog-Source:
+                            description: Where the prices came from — cache (Redis hit), dodo (all live prices), partial (some Dodo prices missing, gaps filled from static fallback), or fallback (Dodo unreachable, all static). Matches the body's priceSource except on cache hits, where the header says cache and the body retains the priceSource stored at seed time.
+                            schema:
+                                type: string
+                                enum: [cache, dodo, partial, fallback]
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                properties:
+                                    tiers:
+                                        type: array
+                                        description: One entry per plan (Free, Pro, API, API Business, Enterprise).
+                                        items:
+                                            type: object
+                                            properties:
+                                                name:
+                                                    type: string
+                                                description:
+                                                    type: string
+                                                features:
+                                                    type: array
+                                                    items:
+                                                        type: string
+                                                highlighted:
+                                                    type: boolean
+                                                price:
+                                                    type: [number, "null"]
+                                                    description: Flat price for non-subscription tiers — 0 for Free, null for Enterprise (custom pricing). Absent on subscription tiers, which always carry monthlyPrice and add annualPrice/annualProductId only when an annual variant exists (API Business is monthly-only).
+                                                period:
+                                                    type: string
+                                                monthlyPrice:
+                                                    type: number
+                                                monthlyProductId:
+                                                    type: string
+                                                    description: Dodo Payments product ID for monthly billing.
+                                                annualPrice:
+                                                    type: number
+                                                annualProductId:
+                                                    type: string
+                                                    description: Dodo Payments product ID for annual billing.
+                                    fetchedAt:
+                                        type: integer
+                                        description: Epoch ms when the catalog was assembled.
+                                    cachedUntil:
+                                        type: integer
+                                        description: Epoch ms until which the cached copy is served.
+                                    priceSource:
+                                        type: string
+                                        enum: [dodo, partial, fallback]
+                                        description: Provenance of the prices in this payload — dodo (all live), partial (some live, gaps from static fallback), fallback (all static). Cache hits retain the value stored at seed time; the X-Product-Catalog-Source header additionally reports cache.
+                            example:
+                                tiers:
+                                    - name: Free
+                                      description: Get started with the essentials
+                                      features: ["Core dashboard panels", "Global news feed"]
+                                      highlighted: false
+                                      price: 0
+                                      period: forever
+                                    - name: Pro
+                                      description: Full intelligence dashboard
+                                      features: ["Everything in Free", "AI stock analysis & backtesting"]
+                                      highlighted: true
+                                      monthlyPrice: 39.99
+                                      monthlyProductId: pdt_0Nbtt71uObulf7fGXhQup
+                                      annualPrice: 399.99
+                                      annualProductId: pdt_0NbttMIfjLWC10jHQWYgJ
+                                    - name: API
+                                      description: Programmatic access to intelligence data
+                                      features: ["REST API + official SDKs (npm, PyPI, RubyGems, Go)", "1,000 requests/day included"]
+                                      highlighted: false
+                                      monthlyPrice: 99.99
+                                      monthlyProductId: pdt_0NbttVmG1SERrxhygbbUq
+                                      annualPrice: 999
+                                      annualProductId: pdt_0Nbu2lawHYE3dv2THgSEV
+                                    - name: API Business
+                                      description: High-volume API for teams
+                                      features: ["Everything in API Starter", "300 requests/minute", "10,000 requests/day included"]
+                                      highlighted: false
+                                      monthlyPrice: 249.99
+                                      monthlyProductId: pdt_0Nbttg7NuOJrhbyBGCius
+                                    - name: Enterprise
+                                      description: Custom solutions for organizations
+                                      features: ["Everything in Pro + API", "Unlimited API requests"]
+                                      highlighted: false
+                                      price: null
+                                fetchedAt: 1751700000000
+                                cachedUntil: 1751703600000
+                                priceSource: dodo

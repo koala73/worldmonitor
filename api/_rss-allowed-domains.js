@@ -337,5 +337,8 @@ export default [
   "n1info.hr",
   "www.index.hr",
   "www.jutarnji.hr",
-  "balkaninsight.com"
+  "balkaninsight.com",
+  "www.war.gov",
+  "www.thenationalnews.com",
+  "trumpstruth.org"
 ];

@@ -49,7 +49,7 @@ function listSkillDirs() {
 }
 
 // Guards for the Agent Skills discovery manifest (#3310 / epic #3306).
-// Agents trust the index.json sha256 fields; if they drift from the
+// Agents trust the index.json digest fields; if they drift from the
 // served SKILL.md bytes, every downstream verification check fails.
 describe('agent readiness: agent-skills index', () => {
   it('index.json is up to date relative to SKILL.md sources', () => {
@@ -64,7 +64,9 @@ describe('agent readiness: agent-skills index', () => {
   const index = JSON.parse(readFileSync(INDEX_PATH, 'utf-8'));
 
   it('declares the RFC v0.2.0 schema', () => {
-    assert.equal(index.$schema, 'https://agentskills.io/schemas/v0.2.0/index.json');
+    // Exact string graders (orank agent-skills-index-v2) match — do not
+    // "simplify" back to the agentskills.io/schemas/... spelling.
+    assert.equal(index.$schema, 'https://schemas.agentskills.io/discovery/0.2.0/schema.json');
   });
 
   it('advertises at least two skills (epic #3306 acceptance floor)', () => {
@@ -110,10 +112,10 @@ describe('agent readiness: agent-skills index', () => {
     }
   });
 
-  it('every entry points at a real SKILL.md whose bytes match the declared sha256', () => {
+  it('every entry points at a real SKILL.md whose bytes match the declared digest', () => {
     for (const skill of index.skills) {
       assert.ok(skill.name, 'skill entry missing name');
-      assert.equal(skill.type, 'task');
+      assert.equal(skill.type, 'skill-md');
       assert.ok(skill.description && skill.description.length > 0, `${skill.name} missing description`);
       assert.match(
         skill.url,
@@ -124,9 +126,14 @@ describe('agent readiness: agent-skills index', () => {
       const bytes = readFileSync(local);
       const hex = createHash('sha256').update(bytes).digest('hex');
       assert.equal(
-        skill.sha256,
-        hex,
-        `${skill.name} sha256 does not match ${local}`,
+        skill.digest,
+        `sha256:${hex}`,
+        `${skill.name} digest does not match ${local}`,
+      );
+      assert.match(
+        skill.digest,
+        /^sha256:[0-9a-f]{64}$/,
+        `${skill.name} digest must be sha256:<64 lowercase hex>`,
       );
     }
   });

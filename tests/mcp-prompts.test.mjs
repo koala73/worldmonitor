@@ -236,6 +236,38 @@ describe('api/mcp.ts — prompts capability + JMESPath-vs-schema parity', () => 
     assert.equal(body.error?.code, -32602, 'missing params must be -32602');
   });
 
+  // prompts/get is anonymously servable (#4937) and one arg is substituted
+  // into several step templates, so an unbounded value is a PUBLIC
+  // response-amplification vector. The cap must reject ANONYMOUSLY with a
+  // correlatable -32602 (HTTP 200 + echoed id), never by inflating the
+  // response.
+  it('ANONYMOUS prompts/get with an oversize argument returns -32602 (response-amplification guard)', async () => {
+    const res = await handler(new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        jsonrpc: '2.0', id: 10, method: 'prompts/get',
+        params: { name: 'country-briefing', arguments: { iso2: 'X'.repeat(201) } },
+      }),
+    }));
+    assert.equal(res.status, 200, 'oversize arg must reject as a correlatable JSON-RPC error, not an HTTP error');
+    const body = await res.json();
+    assert.equal(body.id, 10, 'rejection must echo the request id');
+    assert.equal(body.error?.code, -32602, `oversize arg must be -32602, got ${body.error?.code}`);
+    assert.ok(/200-character limit/.test(body.error?.message ?? ''), 'error message should state the limit');
+  });
+
+  it('prompts/get accepts an argument at exactly the 200-character boundary', async () => {
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 11, method: 'prompts/get',
+      params: { name: 'country-briefing', arguments: { iso2: 'X'.repeat(200) } },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.error, undefined, `boundary-length arg must be accepted: ${JSON.stringify(body.error)}`);
+    assert.ok(Array.isArray(body.result?.messages) && body.result.messages.length > 0);
+  });
+
   // -------------------------------------------------------------------------
   // Tool-name parity (every step.tool exists in TOOL_REGISTRY)
   // -------------------------------------------------------------------------

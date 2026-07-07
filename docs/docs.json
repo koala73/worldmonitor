@@ -69,7 +69,10 @@
               "usage-quickstart",
               "usage-auth",
               "usage-rate-limits",
-              "usage-errors"
+              "usage-errors",
+              "pricing",
+              "accounts",
+              "support"
             ]
           },
           {
@@ -188,7 +191,8 @@
               "agent-discovery",
               "mcp-quickstart",
               "cli",
-              "mcp-server",
+              "sdks",
+              "mcp-overview",
               "mcp-tools-reference",
               "mcp-jmespath",
               "mcp-error-catalog",
@@ -332,6 +336,10 @@
               {
                 "group": "Forecasts",
                 "openapi": "api/ForecastService.openapi.yaml"
+              },
+              {
+                "group": "Commerce",
+                "openapi": "openapi/CommerceService.openapi.yaml"
               }
             ]
           },
@@ -391,6 +399,10 @@
               {
                 "group": "Giving",
                 "openapi": "api/GivingService.openapi.yaml"
+              },
+              {
+                "group": "Batch",
+                "openapi": "api/BatchService.openapi.yaml"
               }
             ]
           }
@@ -455,5 +467,35 @@
         ]
       }
     ]
-  }
+  },
+  "redirects": [
+    {
+      "source": "/mcp-server",
+      "destination": "/mcp-overview"
+    },
+    {
+      "source": "/plans",
+      "destination": "/pricing"
+    },
+    {
+      "source": "/tiers",
+      "destination": "/pricing"
+    },
+    {
+      "source": "/rate-limit",
+      "destination": "/usage-rate-limits"
+    },
+    {
+      "source": "/rate-limits",
+      "destination": "/usage-rate-limits"
+    },
+    {
+      "source": "/mcp-api-key",
+      "destination": "/usage-auth"
+    },
+    {
+      "source": "/contact",
+      "destination": "/support"
+    }
+  ]
 }

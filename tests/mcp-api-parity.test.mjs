@@ -184,7 +184,9 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   ["POST /api/military/v1/get-aircraft-details-batch",
     "fetch-on-miss: high-cardinality-input — arbitrary query/symbol/identifier params, not enumerable"],
 
-  // === manual-mapping (27) ===
+  // === manual-mapping (28) ===
+  ["POST /api/batch/v1/execute",
+    "manual-mapping: REST-only transport multiplexer — fans out to documented GET RPCs that are each individually covered by a tool's _apiPaths or excluded here; the MCP equivalent is native parallel tool calls, so a batch tool would double-map every covered op"],
   ["GET /api/aviation/v1/search-flight-prices",
     "manual-mapping: handler uses inline Redis or Convex (not server/_shared/redis) — manual triage"],
   ["GET /api/displacement/v1/get-population-exposure",

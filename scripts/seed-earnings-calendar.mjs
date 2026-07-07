@@ -19,6 +19,10 @@ async function fetchAll() {
   }
 
   const from = new Date();
+  // #4922/#4929 review: include the past week so brief consumers can show
+  // recent beats/misses — a today-forward window can only ever contain
+  // same-day morning reporters.
+  from.setDate(from.getDate() - 7);
   const to = new Date();
   to.setDate(to.getDate() + 14);
 

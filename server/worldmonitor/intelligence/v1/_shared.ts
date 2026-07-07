@@ -26,7 +26,10 @@ export const UPSTREAM_TIMEOUT_MS = 25_000;
 // buildClassifyCacheKey), and scripts/ais-relay.cjs (independent inline
 // helper — cannot import from .ts). All three are kept in lockstep by
 // the news-classify-cache-prefix-audit static-analysis test.
-const CLASSIFY_CACHE_PREFIX = 'classify:sebuf:v5:';
+// v5 → v6 (2026-07-06, #4944 U6): the classify chain moved to DeepSeek —
+// bumped LAST in the migration merge order so one eviction retires both the
+// old-chain rows and any mixed-model residue written during the rollout.
+const CLASSIFY_CACHE_PREFIX = 'classify:sebuf:v6:';
 
 // ========================================================================
 // Tier-1 country definitions (used by risk-scores + country-intel-brief)

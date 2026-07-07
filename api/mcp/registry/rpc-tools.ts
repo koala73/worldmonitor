@@ -7,6 +7,7 @@ import { buildAuthHeaders } from '../auth';
 import { SUPPORTED_CONSUMER_PRICES_COUNTRIES } from '../constants';
 import { evaluateFreshness } from '../freshness';
 import type { FreshnessCheck, ToolDef } from '../types';
+import { COUNTRY_RISK_UI_URI } from '../ui/registry';
 import { buildPublicTool, TOOL_REGISTRY } from './index';
 
 type McpBriefSource = {
@@ -344,6 +345,11 @@ export const RPC_TOOLS: ToolDef[] = [
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    // MCP Apps (`io.modelcontextprotocol/ui`): buildPublicTool emits
+    // _meta.ui.resourceUri from this, linking the tool to its interactive
+    // ui:// app shell (rendered inline by an MCP-Apps host). Single source of
+    // truth — the ui:// resource is registered in ../ui/registry.ts.
+    _uiResourceUri: COUNTRY_RISK_UI_URI,
     _execute: async (params, base, context) => {
       const code = String(params.country_code ?? '').toUpperCase().slice(0, 2);
       const url = `${base}/api/intelligence/v1/get-country-risk?country_code=${encodeURIComponent(code)}`;

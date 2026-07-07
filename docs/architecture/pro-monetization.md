@@ -1,6 +1,6 @@
 # Pro monetization — current architecture
 
-**Last verified**: 2026-04-21 against `origin/main @ 2f19d9635`.
+**Last verified**: 2026-07-06 (tier model updated for API Business publication, PR #4946).
 
 Factual snapshot of how authentication, payments, entitlements, and billing management work today. Not aspirational. If you're reading this because `docs/roadmap-pro.md` said something different, that document is archived at [`docs/plans/archive/roadmap-pro-HISTORICAL.md`](../plans/archive/roadmap-pro-HISTORICAL.md) — ignore it.
 
@@ -24,6 +24,7 @@ Products are Dodo `productId`s stored client-side in `pro-test/src/generated/tie
 - **Pro Annual** — `pdt_0NbttMIfjLWC10jHQWYgJ` ($399.99/yr, ~17% discount).
 - **API Starter** — `pdt_0NbttVmG1SERrxhygbbUq` ($99.99/mo, 1k req/day).
 - **API Annual** — `pdt_0Nbu2lawHYE3dv2THgSEV` ($999/yr).
+- **API Business** — `pdt_0Nbttg7NuOJrhbyBGCius` ($249.99/mo, 10k req/day; monthly-only, published in #4945; Starter→Business upgrades ride the Dodo collection/portal path).
 - **Enterprise** — `mailto:enterprise@worldmonitor.app` (contact sales).
 
 ## Auth — Clerk

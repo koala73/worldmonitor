@@ -6,6 +6,8 @@ import {
   isMemeCandidate,
   tagRegions,
   parseYesPrice,
+  parseKalshiYesPrice,
+  selectPricedKalshiMarket,
   shouldInclude,
   scoreMarket,
   filterAndScore,
@@ -18,6 +20,67 @@ import {
 function market(title, yesPrice, volume, opts = {}) {
   return { title, yesPrice, volume, ...opts };
 }
+
+describe('parseKalshiYesPrice', () => {
+  it('converts 0-1 dollar scale to 0-100', () => {
+    assert.equal(parseKalshiYesPrice({ last_price_dollars: '0.62' }), 62);
+  });
+
+  it('returns null for a missing price instead of fabricating 50', () => {
+    assert.equal(parseKalshiYesPrice({}), null);
+  });
+
+  it('returns null for a non-numeric price instead of fabricating 50', () => {
+    assert.equal(parseKalshiYesPrice({ last_price_dollars: 'oops' }), null);
+  });
+
+  it('returns null for out-of-range prices', () => {
+    assert.equal(parseKalshiYesPrice({ last_price_dollars: '1.50' }), null);
+    assert.equal(parseKalshiYesPrice({ last_price_dollars: '-0.10' }), null);
+  });
+
+  it('keeps a genuine zero price (filtered downstream, not fabricated)', () => {
+    assert.equal(parseKalshiYesPrice({ last_price_dollars: '0' }), 0);
+  });
+
+  it('rejects malformed numeric prefixes (whole-string validation)', () => {
+    assert.equal(parseKalshiYesPrice({ last_price_dollars: '0.62oops' }), null);
+    assert.equal(parseKalshiYesPrice({ last_price_dollars: '0,62' }), null);
+  });
+
+  it('accepts plain numbers and whitespace-padded numeric strings', () => {
+    assert.equal(parseKalshiYesPrice({ last_price_dollars: 0.62 }), 62);
+    assert.equal(parseKalshiYesPrice({ last_price_dollars: ' 0.62 ' }), 62);
+  });
+});
+
+describe('selectPricedKalshiMarket', () => {
+  it('falls back to a lower-volume priced sibling when the top-volume market is unpriced', () => {
+    const result = selectPricedKalshiMarket([
+      { ticker: 'HIGH', volume_fp: '10000' },
+      { ticker: 'VALID', volume_fp: '6000', last_price_dollars: '0.64' },
+    ]);
+    assert.equal(result.market.ticker, 'VALID');
+    assert.equal(result.yesPrice, 64);
+  });
+
+  it('picks the highest-volume market among priced ones', () => {
+    const result = selectPricedKalshiMarket([
+      { ticker: 'A', volume_fp: '6000', last_price_dollars: '0.30' },
+      { ticker: 'B', volume_fp: '9000', last_price_dollars: '0.70' },
+    ]);
+    assert.equal(result.market.ticker, 'B');
+    assert.equal(result.yesPrice, 70);
+  });
+
+  it('returns null when no market has a readable price', () => {
+    assert.equal(selectPricedKalshiMarket([
+      { ticker: 'A', volume_fp: '10000' },
+      { ticker: 'B', volume_fp: '9000', last_price_dollars: 'oops' },
+    ]), null);
+    assert.equal(selectPricedKalshiMarket([]), null);
+  });
+});
 
 describe('parseYesPrice', () => {
   it('converts 0-1 scale to 0-100', () => {

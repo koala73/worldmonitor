@@ -8,4 +8,5 @@ export const FALLBACK_PRICES = {
   'pdt_0NbttMIfjLWC10jHQWYgJ': 39999,  // Pro Annual
   'pdt_0NbttVmG1SERrxhygbbUq': 9999,  // API Starter Monthly
   'pdt_0Nbu2lawHYE3dv2THgSEV': 99900,  // API Starter Annual
+  'pdt_0Nbttg7NuOJrhbyBGCius': 24999,  // API Business
 };

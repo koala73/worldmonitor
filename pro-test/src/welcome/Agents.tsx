@@ -2,6 +2,15 @@ import { motion } from 'motion/react';
 import { Check } from 'lucide-react';
 import { t } from '../i18n';
 
+// Registry install commands are product identifiers, not prose — they stay
+// untranslated on purpose (same reason the tool names below do).
+const INSTALL_CHIPS = [
+  { cmd: 'npm i worldmonitor', href: 'https://www.npmjs.com/package/worldmonitor' },
+  { cmd: 'pip install worldmonitor-sdk', href: 'https://pypi.org/project/worldmonitor-sdk/' },
+  { cmd: 'gem install worldmonitor', href: 'https://rubygems.org/gems/worldmonitor' },
+  { cmd: 'go get github.com/koala73/worldmonitor/sdk/go', href: 'https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go' },
+] as const;
+
 export const Agents = () => (
   <section id="agents" className="py-24 px-6 border-t border-wm-border">
     <div className="max-w-6xl mx-auto grid md:grid-cols-2 gap-12 items-center">
@@ -14,7 +23,7 @@ export const Agents = () => (
         <div className="font-mono text-[11px] uppercase tracking-[3px] text-wm-green mb-3">{t('welcome.agents.eyebrow')}</div>
         <h2 className="text-3xl md:text-5xl font-display font-bold tracking-tight mb-6">{t('welcome.agents.title')}</h2>
         <p className="text-wm-muted mb-6">{t('welcome.agents.sub')}</p>
-        <ul className="space-y-3 mb-8 text-sm">
+        <ul className="space-y-3 mb-6 text-sm">
           {[1, 2, 3, 4].map(n => (
             <li key={n} className="flex items-start gap-2.5">
               <Check className="w-4 h-4 text-wm-green shrink-0 mt-0.5" aria-hidden="true" />
@@ -22,6 +31,21 @@ export const Agents = () => (
             </li>
           ))}
         </ul>
+        <div className="mb-6 rounded-sm border border-wm-border bg-wm-card/70 font-mono text-[11px] leading-none">
+          {INSTALL_CHIPS.map(({ cmd, href }, i) => (
+            <a
+              key={cmd}
+              href={href}
+              target="_blank"
+              rel="noreferrer"
+              className={`flex items-center gap-2 px-4 py-2.5 text-wm-muted hover:text-wm-text hover:bg-wm-bg/60 transition-colors ${i > 0 ? 'border-t border-wm-border' : ''}`}
+            >
+              <span className="text-wm-green" aria-hidden="true">$</span>
+              <span className="truncate">{cmd}</span>
+            </a>
+          ))}
+        </div>
+        <p className="font-mono text-xs uppercase tracking-wider text-wm-text mb-8">{t('welcome.agents.promise')}</p>
         <a
           href="https://www.worldmonitor.app/docs"
           className="border border-wm-border text-wm-text px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:border-wm-green/50 transition-colors inline-block"

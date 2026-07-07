@@ -13,7 +13,7 @@ A supply chain early warning dashboard should answer one question before the wee
 
 WorldMonitor is useful here because it does not treat supply chain risk as a single feed. It connects maritime chokepoints, port activity, fuel shortages, energy disruptions, customs flows, commodity prices, trade policy, natural disasters, conflict events, and country risk into one API surface.
 
-This guide gives you a practical dashboard design you can build with the [WorldMonitor API](https://www.worldmonitor.app/docs/api-reference) or the [WorldMonitor MCP server](https://www.worldmonitor.app/docs/mcp-server). For a narrower implementation path, see the tutorial on how to [build a supply-chain early-warning system](/blog/posts/build-supply-chain-early-warning-system-api/), then add alert delivery with the [Slack and Teams alert workflow](/blog/posts/geopolitical-risk-alerts-slack-teams-worldmonitor-api/).
+This guide gives you a practical dashboard design you can build with the [WorldMonitor API](https://www.worldmonitor.app/docs/api-reference) or the [WorldMonitor MCP server](https://www.worldmonitor.app/docs/mcp-overview). For a narrower implementation path, see the tutorial on how to [build a supply-chain early-warning system](/blog/posts/build-supply-chain-early-warning-system-api/), then add alert delivery with the [Slack and Teams alert workflow](/blog/posts/geopolitical-risk-alerts-slack-teams-worldmonitor-api/).
 
 ## The dashboard shape
 
@@ -64,7 +64,7 @@ MCP path:
 }
 ```
 
-REST path: start from the [API reference](https://www.worldmonitor.app/docs/api-reference) or the [MCP-to-REST mapping](https://www.worldmonitor.app/docs/mcp-server#api-coverage) and use the supply-chain and intelligence endpoints behind chokepoint and port activity.
+REST path: start from the [API reference](https://www.worldmonitor.app/docs/api-reference) or the [MCP-to-REST mapping](https://www.worldmonitor.app/docs/mcp-overview#api-coverage) and use the supply-chain and intelligence endpoints behind chokepoint and port activity.
 
 ### 2. Country risk
 

@@ -1,0 +1,82 @@
+{
+  "specVersion": "1.0",
+  "host": {
+    "displayName": "World Monitor",
+    "identifier": "did:web:worldmonitor.app",
+    "documentationUrl": "https://worldmonitor.app/docs/documentation"
+  },
+  "entries": [
+    {
+      "identifier": "urn:air:worldmonitor.app:mcp:worldmonitor",
+      "displayName": "World Monitor MCP server",
+      "type": "application/mcp-server-card+json",
+      "url": "https://worldmonitor.app/.well-known/mcp/server-card.json",
+      "description": "Live global-intelligence MCP server: real-time markets, conflict events, aviation, maritime, energy, climate, health, displacement, supply chain, and AI-generated regional briefs.",
+      "tags": [
+        "news-and-intelligence",
+        "news",
+        "intelligence",
+        "geopolitics",
+        "global-risk",
+        "mcp"
+      ],
+      "capabilities": [
+        "get_world_brief",
+        "get_country_brief",
+        "get_country_risk",
+        "get_conflict_events",
+        "get_market_data",
+        "get_energy_intelligence",
+        "get_maritime_activity",
+        "get_chokepoint_status",
+        "get_supply_chain_data",
+        "analyze_situation",
+        "generate_forecasts"
+      ],
+      "representativeQueries": [
+        "what is happening in the Red Sea right now",
+        "country risk briefing for Egypt",
+        "global markets and conflict overview this morning",
+        "which shipping chokepoints are disrupted",
+        "forecast the impact of a Strait of Hormuz closure"
+      ],
+      "trustManifest": {
+        "identity": "did:web:worldmonitor.app",
+        "identityType": "did"
+      }
+    },
+    {
+      "identifier": "urn:air:worldmonitor.app:api:worldmonitor",
+      "displayName": "World Monitor REST API",
+      "type": "application/vnd.oai.openapi+json;version=3.1",
+      "url": "https://worldmonitor.app/openapi.json",
+      "description": "World Monitor's public REST API: 190+ documented operations across conflict, markets, energy, maritime, aviation, climate, health, and supply-chain intelligence, with API-key and OAuth access.",
+      "tags": [
+        "news-and-intelligence",
+        "api",
+        "rest",
+        "openapi"
+      ],
+      "trustManifest": {
+        "identity": "did:web:worldmonitor.app",
+        "identityType": "did"
+      }
+    },
+    {
+      "identifier": "urn:air:worldmonitor.app:skills:index",
+      "displayName": "World Monitor agent skills",
+      "type": "application/json",
+      "url": "https://worldmonitor.app/.well-known/agent-skills/index.json",
+      "description": "Self-published agent skills for common World Monitor workflows (country briefings, market prep, conflict monitoring, route risk).",
+      "tags": [
+        "news-and-intelligence",
+        "agent-skills",
+        "skills"
+      ],
+      "trustManifest": {
+        "identity": "did:web:worldmonitor.app",
+        "identityType": "did"
+      }
+    }
+  ]
+}

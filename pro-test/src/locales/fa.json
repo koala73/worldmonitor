@@ -36,19 +36,28 @@
           "Daily market briefs",
           "Military & geopolitical tracking",
           "Custom widget builder",
-          "MCP access for Claude Desktop & other AI clients (50 calls/day)",
+          "MCP + SDK access for Claude Desktop & other AI clients (50 calls/day)",
           "Priority data refresh"
         ]
       },
       "api": {
         "description": "Programmatic access to intelligence data",
         "features": [
-          "REST API access",
+          "REST API + official SDKs (npm, PyPI, RubyGems, Go)",
           "Real-time data streams",
           "60 requests/minute",
           "1,000 requests/day included",
           "Webhook notifications",
           "Custom data exports"
+        ]
+      },
+      "apiBusiness": {
+        "description": "High-volume API for teams",
+        "features": [
+          "Everything in API Starter",
+          "300 requests/minute",
+          "10,000 requests/day included",
+          "Priority support"
         ]
       },
       "enterprise": {
@@ -253,15 +262,16 @@
     "apiTier": "API TIER",
     "title": "Programmatic Intelligence",
     "subtitle": "For developers, analysts, and teams building on World Monitor data. Separate from Pro — use both or either.",
-    "restApi": "REST API across all 30+ service domains",
+    "restApi": "REST API across all 30+ service domains — official SDKs for JavaScript, Python, Ruby, Go",
     "authenticated": "Authenticated per-key, rate-limited per tier",
     "structured": "Structured JSON with cache headers and OpenAPI 3.1 docs",
+    "cli": "Zero-dependency CLI to script every tool from your shell",
     "starter": "Starter",
     "starterReqs": "1,000 req/day",
     "starterWebhooks": "5 webhook rules",
     "business": "Business",
-    "businessReqs": "50,000 req/day",
-    "businessWebhooks": "Unlimited webhooks + SLA",
+    "businessReqs": "10,000 req/day",
+    "businessWebhooks": "Priority support",
     "feedData": "Feed data into your dashboards, automate alerting via Zapier/n8n/Make, build custom scoring models on CII/risk data."
   },
   "enterpriseShowcase": {
@@ -437,7 +447,8 @@
       "trustUsers": "2M+ users",
       "trustOpenSource": "Open source · AGPL-3.0",
       "screenshotAlt": "World Monitor live intelligence dashboard — global map with conflict, shipping and market layers",
-      "plateNote": "Captured from the live map — click to open it"
+      "plateNote": "Captured from the live map — click to open it",
+      "trustBuild": "Build on it:"
     },
     "live": {
       "eyebrow": "Live right now",
@@ -590,17 +601,18 @@
     },
     "agents": {
       "eyebrow": "For builders & AI agents",
-      "title": "Your AI can use it too — a 39-tool MCP server.",
-      "sub": "Everything on the map is also a tool. Point Claude — or any MCP-compatible agent — at World Monitor and it researches with live data instead of training-data memories.",
-      "b1": "39 MCP tools: risk scores, chokepoints, conflicts, markets, briefs",
-      "b2": "JMESPath projection on every tool — agents fetch exactly what they need",
-      "b3": "OAuth API with one key across 65+ upstream providers",
-      "b4": "Open source under AGPL-3.0 — read it, self-host it, build on it",
-      "cta": "Read the MCP docs",
+      "title": "Build on live world intelligence — from any stack.",
+      "sub": "Everything on the map is also an API. Wire it into Claude over MCP, call the REST endpoints from anywhere, or install a native client for Python, Ruby, Go, or JavaScript — your code researches with live data instead of training-data memories.",
+      "b1": "39 MCP tools — risk scores, chokepoints, conflicts, markets, briefs",
+      "b2": "Documented REST API — 193 operations, one OpenAPI 3.1 spec, one key",
+      "b3": "Official SDKs on npm, PyPI, RubyGems, and Go — zero-dependency, MCP-first",
+      "b4": "JMESPath projection on every call — fetch exactly the fields you need",
+      "cta": "Read the developer docs",
       "termTitle": "claude — session",
       "termQuery": "Is our Red Sea exposure getting worse this week?",
       "termAnswer": "Transit counts down week-over-week; war-risk tier elevated; two density anomalies in the last 48h.",
-      "termDocs": "See the full tool reference →"
+      "termDocs": "See the full tool reference →",
+      "promise": "One key. 39 MCP tools. A full REST API. Language-native clients."
     },
     "pricing": {
       "eyebrow": "Access",
@@ -618,7 +630,7 @@
       "proF1": "WM Analyst — chat across 30+ live services, with citations",
       "proF2": "Scenario engine & Route Explorer — game disruptions before they hit",
       "proF3": "Personal AI digest — daily, twice-daily or weekly, to Slack, Telegram or email",
-      "proF4": "MCP + API access — 39 tools under one key",
+      "proF4": "MCP, REST API & official SDKs — 39 tools under one key",
       "proF5": "Custom widget builder for your own panels",
       "cta": "See plans & pricing",
       "note": "From $39.99/mo · 2 months free when billed annually"

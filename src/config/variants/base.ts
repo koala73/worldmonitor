@@ -39,7 +39,11 @@ export const REFRESH_INTERVALS = {
   fearGreed: 30 * 60 * 1000,
   strategicPosture: 15 * 60 * 1000,
   strategicRisk: 5 * 60 * 1000,
-  healthFreshness: 60 * 1000,
+  // Seed cadences are 6-24h and badge decay is computed client-side from
+  // lastUpdate, so 5min loses nothing vs 60s; must stay under the 15min
+  // FRESH_THRESHOLD or synthesized-OK sources (compact health carries no age
+  // for healthy checks) would decay to stale between polls (#4907).
+  healthFreshness: 5 * 60 * 1000,
   temporalBaseline: 10 * 60 * 1000,
   tradePolicy: 60 * 60 * 1000,
   supplyChain: 60 * 60 * 1000,

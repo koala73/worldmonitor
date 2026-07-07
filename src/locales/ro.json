@@ -1303,7 +1303,10 @@
       "overall": "Overall: {{tone}}",
       "signalTypesEvents": "{{types}} tipuri de semnale • {{events}} evenimente",
       "newsSignals": "{{news}} știri • {{signals}} semnale",
-      "sources_few": "{{count}} surse"
+      "sources_few": "{{count}} surse",
+      "provenanceTitle": "Proveniență acoperire: câte articole ingerate și surse distincte din care a fost selectat acest rezumat",
+      "compiledFrom": "Compilat din {{stories}} povești din {{sources}} surse",
+      "briefFreshness": "Generat {{minutes}}m în urmă · cea mai nouă sursă {{hours}}h vechime"
     },
     "settings": {
       "exportSettings": "Exportare setări",

@@ -157,7 +157,7 @@ export const seismologyHandler: SeismologyServiceHandler = {
 npx tsc --noEmit   # should pass with zero errors
 ```
 
-The route is already live. `createSeismologyServiceRoutes()` picks up the new RPC automatically — no changes needed to `api/[[...path]].ts` or `vite.config.ts`.
+The route is already live through the domain gateway in `api/seismology/v1/[rpc].ts`. `createSeismologyServiceRoutes()` picks up the new RPC automatically — no route-table or `vite.config.ts` edits are needed.
 
 ### 7. Check the generated docs
 
@@ -300,19 +300,23 @@ export const weatherHandler: WeatherServiceHandler = {
 };
 ```
 
-### 7. Register the service in the gateway
+### 7. Add the per-domain edge gateway
 
-Edit `api/[[...path]].js` — add the import and mount the routes:
+Create `api/weather/v1/[rpc].ts` as the thin Edge entry point for this service:
 
 ```typescript
-import { createWeatherServiceRoutes } from '../src/generated/server/worldmonitor/weather/v1/service_server';
-import { weatherHandler } from './server/worldmonitor/weather/v1/handler';
+export const config = { runtime: 'edge' };
 
-const allRoutes = [
-  // ... existing routes ...
-  ...createWeatherServiceRoutes(weatherHandler, serverOptions),
-];
+import { createDomainGateway, serverOptions } from '../../../server/gateway';
+import { createWeatherServiceRoutes } from '../../../src/generated/server/worldmonitor/weather/v1/service_server';
+import { weatherHandler } from '../../../server/worldmonitor/weather/v1/handler';
+
+export default createDomainGateway(
+  createWeatherServiceRoutes(weatherHandler, serverOptions),
+);
 ```
+
+There is no repository-wide catch-all gateway file or shared route array to edit. Each service owns its `api/<domain>/v1/[rpc].ts` gateway, and the generated `create<Service>Routes(...)` function enforces the RPC path names and HTTP annotations for that domain.
 
 ### 8. Register in the Vite dev server
 

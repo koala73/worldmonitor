@@ -40,6 +40,14 @@ const { TOOL_REGISTRY } = mcpTesting;
 const EXCLUDED_FROM_MCP = new Map([
 
   // ===========================================================================
+  // #4920 completeness-measurement ops keys (pipeline health, not content)
+  // ===========================================================================
+  ['news:feed-health:v1',
+    'ops surface: per-feed validation status + silent-zero streaks published by the daily feed-validation workflow; consumed by api/health.js + operators, not a queryable news slice (#4920).'],
+  ['news:recall-benchmark:v1',
+    'ops surface: daily GDELT recall percentage + missed headlines for coverage monitoring; consumed by api/health.js + operators, not a queryable news slice (#4920).'],
+
+  // ===========================================================================
   // Intermediate / pipeline keys (data surfaces through a sibling tool)
   // ===========================================================================
   ['supply_chain:corridorrisk:v1',

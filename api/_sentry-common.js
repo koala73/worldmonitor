@@ -16,6 +16,10 @@ let _key = '';
 let _envelopeUrl = '';
 
 (function parseDsn() {
+  // Node's test runner can inherit production Vercel/Sentry env when tests run
+  // in deployment-like shells. Never let regression tests emit real events.
+  if (process.env.NODE_TEST_CONTEXT) return;
+
   const dsn = process.env.VITE_SENTRY_DSN ?? '';
   if (!dsn) return;
   try {

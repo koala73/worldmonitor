@@ -26,3 +26,27 @@ export function drainResponseHeaders(req: Request): Record<string, string> | und
   if (headers) channel.delete(req);
   return headers;
 }
+
+/**
+ * Success-status override side-channel (same WeakMap pattern as headers above).
+ *
+ * The sebuf-generated servers emit `status: 200` for every successful RPC —
+ * there is no per-RPC status-code annotation — so async-enqueue endpoints
+ * (e.g. RunScenario's legacy 202 Accepted contract) cannot express their
+ * status from inside a handler. Handlers call
+ * setSuccessStatusOverride(ctx.request, 202) and the gateway swaps the status
+ * after the handler returns. The gateway applies it only when the handler
+ * actually produced a 200 on a POST: thrown ApiError statuses always win, and
+ * GET success flows keep 200 (their ETag/304 + CDN-cache handling assumes it).
+ */
+const statusOverrides = new WeakMap<Request, number>();
+
+export function setSuccessStatusOverride(req: Request, status: number): void {
+  statusOverrides.set(req, status);
+}
+
+export function drainSuccessStatusOverride(req: Request): number | undefined {
+  const status = statusOverrides.get(req);
+  if (status !== undefined) statusOverrides.delete(req);
+  return status;
+}

@@ -13,6 +13,9 @@ service ScenarioService {
   option (sebuf.http.service_config) = {base_path: "/api/scenario/v1"};
 
   // RunScenario enqueues a scenario job on scenario-queue:pending. PRO-gated.
+  // Async job pattern: a successful enqueue returns HTTP 202 Accepted with a
+  // Location header pointing at GetScenarioStatus; poll it (or the statusUrl
+  // body field) with the returned jobId until status is "done" or "failed".
   // The scenario-worker (scripts/scenario-worker.mjs) pulls jobs off the
   // queue via BLMOVE and writes results under scenario-result:{job_id}.
   rpc RunScenario(RunScenarioRequest) returns (RunScenarioResponse) {

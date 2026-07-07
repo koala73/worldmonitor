@@ -27,8 +27,125 @@ import {
 } from './checkout-intent-url';
 import { createEntitlementWatchdog, type EntitlementWatchdog } from './entitlement-watchdog';
 import { DASHBOARD_CHECKOUT_SUCCESS_URL, DASHBOARD_CHECKOUT_RETURN_URL } from '../routes';
+import fallbackTiers from '../generated/tiers.json';
 
 let checkoutInFlight = false;
+
+/**
+ * Funnel events via the raw Umami tracker (#4931). The tracker script is
+ * `async` and typically loads AFTER the mount-time auto-resume runs, so a
+ * fire-and-forget call would silently drop the only signed-in resume event
+ * (#4934 round-4 F3). Events queue until window.umami exists and flush via
+ * a short poll (500ms × 60 ≈ 30s, then give up — blocked tracker).
+ * Analytics must never break checkout, hence the try/catch everywhere.
+ */
+const FUNNEL_QUEUE_LIMIT = 20;
+const FUNNEL_FLUSH_INTERVAL_MS = 500;
+const FUNNEL_FLUSH_MAX_ATTEMPTS = 60;
+const pendingFunnelEvents: Array<{ event: string; data?: Record<string, unknown> }> = [];
+let funnelFlushTimer: number | null = null;
+
+/**
+ * Same-origin handoff for checkout-start events that would otherwise die
+ * with the page (#4934 round-5): the fast signed-in/resume path continues
+ * straight into doCheckout's top-level redirect to Dodo, unloading the
+ * page before the flush poll ever runs. Queued checkout-start events are
+ * mirrored into sessionStorage (per-tab, survives the Dodo round-trip)
+ * and the dashboard replays them on the return landing — see
+ * replayPendingProFunnelEvents in src/services/analytics.ts, which
+ * re-validates every field against closed vocabularies before tracking.
+ * Cleared here the moment a local flush delivers, so no double-replay.
+ */
+const PRO_FUNNEL_PENDING_KEY = 'wm-pro-funnel-pending';
+const PRO_FUNNEL_PERSIST_LIMIT = 10;
+
+function persistFunnelEventForReplay(event: string, data?: Record<string, unknown>): void {
+  if (event !== 'checkout-start') return;
+  try {
+    const raw = window.sessionStorage.getItem(PRO_FUNNEL_PENDING_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : [];
+    const items = Array.isArray(parsed) ? parsed : [];
+    items.push({ event, data });
+    while (items.length > PRO_FUNNEL_PERSIST_LIMIT) items.shift();
+    window.sessionStorage.setItem(PRO_FUNNEL_PENDING_KEY, JSON.stringify(items));
+  } catch {
+    /* storage unavailable — replay just won't be possible */
+  }
+}
+
+function clearPersistedFunnelEvents(): void {
+  try {
+    window.sessionStorage.removeItem(PRO_FUNNEL_PENDING_KEY);
+  } catch {
+    /* no-op */
+  }
+}
+
+function getUmami(): { track: (event: string, data?: Record<string, unknown>) => void } | undefined {
+  try {
+    return (window as Window & {
+      umami?: { track: (event: string, data?: Record<string, unknown>) => void };
+    }).umami;
+  } catch {
+    return undefined;
+  }
+}
+
+function flushPendingFunnelEvents(): boolean {
+  const umami = getUmami();
+  if (!umami) return false;
+  for (const item of pendingFunnelEvents.splice(0, pendingFunnelEvents.length)) {
+    try { umami.track(item.event, item.data); } catch { /* tracker threw — drop */ }
+  }
+  // Everything queued has now reached the tracker — drop the sessionStorage
+  // mirror so the dashboard return doesn't replay a delivered event.
+  clearPersistedFunnelEvents();
+  return true;
+}
+
+function trackFunnelEvent(event: string, data?: Record<string, unknown>): void {
+  try {
+    const umami = getUmami();
+    if (umami) {
+      umami.track(event, data);
+      return;
+    }
+    if (pendingFunnelEvents.length >= FUNNEL_QUEUE_LIMIT) pendingFunnelEvents.shift();
+    pendingFunnelEvents.push({ event, data });
+    persistFunnelEventForReplay(event, data);
+    if (funnelFlushTimer === null) {
+      let attempts = 0;
+      funnelFlushTimer = window.setInterval(() => {
+        attempts += 1;
+        const flushed = flushPendingFunnelEvents();
+        if ((flushed || attempts >= FUNNEL_FLUSH_MAX_ATTEMPTS) && funnelFlushTimer !== null) {
+          window.clearInterval(funnelFlushTimer);
+          funnelFlushTimer = null;
+        }
+      }, FUNNEL_FLUSH_INTERVAL_MS);
+    }
+  } catch {
+    /* no-op — analytics can never break checkout */
+  }
+}
+
+/**
+ * Closed product-id vocabulary for analytics (#4934 round-4 F2): the
+ * resume path replays wm_checkout_product straight from the URL, so a
+ * crafted value must not inject unbounded cardinality into Umami. Unknown
+ * ids collapse to 'unknown'; checkout itself still receives the raw id
+ * (backend validates). tiers.json is generated from the catalog, so the
+ * allowlist is exactly the purchasable set for this build.
+ */
+const KNOWN_PRODUCT_IDS: ReadonlySet<string> = new Set(
+  (fallbackTiers as Array<{ monthlyProductId?: string; annualProductId?: string }>)
+    .flatMap((tier) => [tier.monthlyProductId, tier.annualProductId])
+    .filter((id): id is string => typeof id === 'string' && id.length > 0),
+);
+
+function bucketProductIdForAnalytics(productId: string): string {
+  return KNOWN_PRODUCT_IDS.has(productId) ? productId : 'unknown';
+}
 
 /**
  * Phase machine for the checkout flow. Only `creating_checkout` drives
@@ -261,12 +378,32 @@ export function initOverlay(onSuccess?: () => void): void {
   });
 }
 
+// Synchronous whole-start re-entrancy guard (#4934 round-4 F4):
+// `checkoutInFlight` is only set inside doCheckout, AFTER the awaited
+// ensureClerk() — rapid double-clicks both pass the entry check and
+// double-fire checkout-start (checkout itself stays single: doCheckout
+// re-checks the flag). This flag is set before any await and cleared
+// when startCheckout settles.
+let startCheckoutEntryInFlight = false;
+
 export async function startCheckout(
   productId: string,
   options?: { referralCode?: string; discountCode?: string; bypassPendingGuard?: boolean },
 ): Promise<boolean> {
   if (checkoutInFlight) return false;
+  if (startCheckoutEntryInFlight) return false;
+  startCheckoutEntryInFlight = true;
+  try {
+    return await startCheckoutInner(productId, options);
+  } finally {
+    startCheckoutEntryInFlight = false;
+  }
+}
 
+async function startCheckoutInner(
+  productId: string,
+  options?: { referralCode?: string; discountCode?: string; bypassPendingGuard?: boolean },
+): Promise<boolean> {
   let c: LoadedClerk;
   try {
     c = await ensureClerk();
@@ -275,6 +412,14 @@ export async function startCheckout(
     Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'load-clerk' } });
     return false;
   }
+
+  // Funnel (#4931): every /pro pricing CTA routes through here. authed:false
+  // marks intent clicks that detour through the Clerk sign-in modal first.
+  trackFunnelEvent('checkout-start', {
+    productId: bucketProductIdForAnalytics(productId),
+    surface: 'pro-page',
+    authed: Boolean(c.user),
+  });
 
   if (!c.user) {
     // Intent travels via afterSignInUrl / afterSignUpUrl — bound to
@@ -314,6 +459,10 @@ export async function tryResumeCheckoutFromUrl(): Promise<boolean> {
   }
   if (!c.user) return false;
   const { productId, referralCode, discountCode } = intent;
+  // Funnel (#4931): post-sign-in auto-resume — the pre-auth click already
+  // fired checkout-start{authed:false}; this marks the resumed attempt.
+  // productId is URL-derived here — bucketed for analytics (round-4 F2).
+  trackFunnelEvent('checkout-start', { productId: bucketProductIdForAnalytics(productId), surface: 'pro-resume', authed: true });
   return doCheckout(productId, { referralCode, discountCode });
 }
 

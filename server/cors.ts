@@ -49,6 +49,7 @@ const EXPOSED_HEADERS = [
   'Retry-After',
   'Idempotency-Key',
   'Idempotent-Replayed',
+  'Location',
   'X-RateLimit-Limit',
   'X-RateLimit-Remaining',
   'X-RateLimit-Reset',

@@ -31,8 +31,9 @@ describe('buildSummaryCacheKey', () => {
 
   it('systemAppend suffix does not break existing namespace', () => {
     const base = buildSummaryCacheKey(HEADLINES, 'brief', 'US', 'full', 'en');
-    // v5 → v6 on 2026-04-24 (RSS-description grounding fix, U6).
-    assert.match(base, /^summary:v6:/);
+    // v7 → v8 on 2026-07-06 (#4944 DeepSeek cutover); v6 → v7 on 2026-07-05
+    // (#4914 pair-dedup); v5 → v6 on 2026-04-24 (RSS grounding fix, U6).
+    assert.match(base, /^summary:v8:/);
     assert.doesNotMatch(base, /:fw/);
   });
 
@@ -85,7 +86,7 @@ describe('buildSummaryCacheKey', () => {
 
   it('bodies.length < headlines.length is padded (no crash)', () => {
     const k = buildSummaryCacheKey(HEADLINES, 'brief', 'US', 'full', 'en', undefined, ['only first']);
-    assert.ok(k.startsWith('summary:v6:brief:'));
+    assert.ok(k.startsWith('summary:v8:brief:'));
   });
 
   it('translate mode ignores bodies (no :b segment)', () => {
@@ -99,5 +100,35 @@ describe('buildSummaryCacheKey', () => {
     const keyA = buildSummaryCacheKey(HEADLINES, 'brief', 'US', 'full', 'en', undefined, [bodyA, '', '']);
     const keyB = buildSummaryCacheKey(HEADLINES, 'brief', 'US', 'full', 'en', undefined, [bodyB, '', '']);
     assert.equal(keyA, keyB, 'canonicalizeSummaryInputs clips to 400 before hashing — tails must not shift identity');
+  });
+});
+
+describe('duplicate-composition stability (#4914)', () => {
+  // The server prompt path (summarize-article.ts) dedups headline/body
+  // pairs AFTER the key is computed, so the same unique story set with a
+  // different duplicate composition produced an identical prompt under
+  // distinct keys — every composition variant was a paid cache miss.
+  it('same unique headline set with different duplicate composition produces the same key', () => {
+    const base = buildSummaryCacheKey(HEADLINES, 'brief', 'US', 'full', 'en');
+    const dupFirst = buildSummaryCacheKey([HEADLINES[0], ...HEADLINES], 'brief', 'US', 'full', 'en');
+    const dupSecond = buildSummaryCacheKey([HEADLINES[0], HEADLINES[1], HEADLINES[1], HEADLINES[2]], 'brief', 'US', 'full', 'en');
+    assert.equal(dupFirst, base, 'a duplicated first headline must not shift identity');
+    assert.equal(dupSecond, base, 'a duplicated middle headline must not shift identity');
+  });
+
+  it('duplicates must not displace unique headlines from the top-5 key window', () => {
+    const uniques = ['Alpha story', 'Beta story', 'Gamma story', 'Delta story', 'Epsilon story'];
+    const padded = ['Alpha story', 'Alpha story', 'Alpha story', ...uniques];
+    assert.equal(
+      buildSummaryCacheKey(padded, 'brief', 'US', 'full', 'en'),
+      buildSummaryCacheKey(uniques, 'brief', 'US', 'full', 'en'),
+      'exact-pair dedup must run before the slice so dups cannot crowd out unique stories',
+    );
+  });
+
+  it('a repeated headline with a DIFFERENT body stays distinct (only exact pairs dedup)', () => {
+    const withTwoBodies = buildSummaryCacheKey(['Same headline', 'Same headline'], 'brief', 'US', 'full', 'en', undefined, ['body one', 'body two']);
+    const withOneBody = buildSummaryCacheKey(['Same headline'], 'brief', 'US', 'full', 'en', undefined, ['body one']);
+    assert.notEqual(withTwoBodies, withOneBody, 'distinct bodies are distinct prompt content — keys must not merge');
   });
 });

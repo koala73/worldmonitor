@@ -34,7 +34,17 @@ Dynamic Client Registration. Returns a `client_id` (public clients, no secret).
 }
 ```
 
-**Response**: `{ "client_id": "c_01HX...", "client_id_issued_at": 1713456789, ... }`
+**Response**:
+```json
+{
+  "client_id": "7c3b08f0-0c1f-4a9c-8a52-69e13d2a5d5e",
+  "client_name": "Claude Desktop",
+  "redirect_uris": ["https://claude.ai/api/mcp/auth_callback"],
+  "grant_types": ["authorization_code", "refresh_token"],
+  "response_types": ["code"],
+  "token_endpoint_auth_method": "none"
+}
+```
 
 **Redirect URI allowlist**: only these prefixes are accepted:
 

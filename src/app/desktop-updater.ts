@@ -201,10 +201,10 @@ export class DesktopUpdater implements AppModule {
         if (this.ctx.isDesktopApp) {
           void invokeTauri<void>('open_url', { url }).catch((error) => {
             this.logUpdaterOutcome('open_failed', { url, error: error instanceof Error ? error.message : String(error) });
-            window.open(url, '_blank', 'noopener');
+            window.open(url, '_blank', 'noopener,noreferrer');
           });
         } else {
-          window.open(url, '_blank', 'noopener');
+          window.open(url, '_blank', 'noopener,noreferrer');
         }
         dismissToast();
       } else if (action === 'dismiss') {

@@ -226,6 +226,9 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // request already amplifies into many upstream calls. (#4676)
   '/api/conflict/v1/get-humanitarian-summary-batch': { limit: 30, window: '60 s' },
   '/api/military/v1/get-aircraft-details-batch': { limit: 30, window: '60 s' },
+  // Generic batch fan-out: one request re-dispatches up to 20 gateway GETs, so
+  // cap the multiplier at the same 30/min budget as the other batch routes.
+  '/api/batch/v1/execute': { limit: 30, window: '60 s' },
   // Legacy /api/sanctions-entity-search rate limit was 30/min per IP. Preserve
   // that budget now that LookupSanctionEntity proxies OpenSanctions live.
   '/api/sanctions/v1/lookup-sanction-entity': { limit: 30, window: '60 s' },
@@ -260,6 +263,17 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // resolves edge-function paths via api/api-route-exceptions.json instead
   // of the OpenAPI specs.
   '/api/mcp-proxy': { limit: 30, window: '60 s' },
+  // A2A concierge endpoint (`api/a2a.ts`, external-protocol exception —
+  // JSON-RPC shape dictated by the A2A spec, served at /a2a). Anonymous and
+  // quota-free by design (routes over the public tool catalog + public
+  // freshness envelope only), so the per-IP minute limit is the whole abuse
+  // defence; 60/min mirrors the MCP public-method posture. Enforced
+  // in-handler via `checkScopedRateLimit`, same pattern as /api/mcp-proxy.
+  '/api/a2a': { limit: 60, window: '60 s' },
+  // NLWeb /ask endpoint (`api/ask.ts`, external-protocol exception — request/
+  // response shape dictated by the NLWeb spec, served at /ask). Same anonymous
+  // cheap-catalog posture as /api/a2a, same in-handler enforcement.
+  '/api/ask': { limit: 60, window: '60 s' },
 };
 
 interface RateLimitPolicyDecision {
@@ -284,6 +298,9 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   },
   '/api/military/v1/get-aircraft-details-batch': {
     reason: 'Batch enrichment fans out to the external Wingbits provider on cache miss.',
+  },
+  '/api/batch/v1/execute': {
+    reason: 'Generic batch fan-out multiplies one request into up to 20 gateway sub-requests.',
   },
   '/api/sanctions/v1/lookup-sanction-entity': {
     reason: 'Live sanctions lookup proxies an external provider.',

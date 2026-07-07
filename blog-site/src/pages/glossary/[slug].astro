@@ -1,0 +1,228 @@
+---
+import Base from '../../layouts/Base.astro';
+import { GLOSSARY_TERMS } from '../../data/glossary';
+
+export function getStaticPaths() {
+  return GLOSSARY_TERMS.map((term) => ({
+    params: { slug: term.slug },
+    props: { term },
+  }));
+}
+
+const { term } = Astro.props;
+const bySlug = new Map(GLOSSARY_TERMS.map((t) => [t.slug, t]));
+const related = term.related.map((slug) => bySlug.get(slug)).filter((t) => t != null);
+
+const pageUrl = `https://www.worldmonitor.app/blog/glossary/${term.slug}/`;
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'DefinedTerm',
+  name: term.term,
+  ...(term.abbr ? { alternateName: term.abbr } : {}),
+  description: term.short,
+  url: pageUrl,
+  inLanguage: 'en-US',
+  inDefinedTermSet: {
+    '@type': 'DefinedTermSet',
+    name: 'World Monitor Global Intelligence Glossary',
+    url: 'https://www.worldmonitor.app/blog/glossary/',
+  },
+};
+
+const breadcrumbLd = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Blog', item: 'https://www.worldmonitor.app/blog/' },
+    { '@type': 'ListItem', position: 2, name: 'Glossary', item: 'https://www.worldmonitor.app/blog/glossary/' },
+    { '@type': 'ListItem', position: 3, name: term.term, item: pageUrl },
+  ],
+};
+
+const faqLd = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: [
+    {
+      '@type': 'Question',
+      name: `What is ${term.term}${term.abbr ? ` (${term.abbr})` : ''}?`,
+      acceptedAnswer: { '@type': 'Answer', text: term.short },
+    },
+  ],
+};
+---
+
+<Base
+  title={`What is ${term.term}${term.abbr ? ` (${term.abbr})` : ''}?`}
+  description={term.short}
+  metaTitle={`${term.term}${term.abbr ? ` (${term.abbr})` : ''} — Definition | World Monitor Glossary`}
+  ogType="article"
+  section="Glossary"
+  jsonLd={jsonLd}
+  breadcrumbLd={breadcrumbLd}
+  faqLd={faqLd}
+>
+  <article class="glossary-term">
+    <nav class="glossary-breadcrumb" aria-label="Breadcrumb">
+      <a href="/blog/">Blog</a>
+      <span aria-hidden="true">/</span>
+      <a href="/blog/glossary/">Glossary</a>
+      <span aria-hidden="true">/</span>
+      <span>{term.term}</span>
+    </nav>
+
+    <header class="glossary-term-header">
+      <div class="glossary-term-cat">{term.category}</div>
+      <h1>
+        {term.term}
+        {term.abbr && <span class="glossary-abbr">{term.abbr}</span>}
+      </h1>
+      <p class="glossary-lede">{term.short}</p>
+    </header>
+
+    <div class="prose">
+      {term.body.map((para) => (
+        <p>{para}</p>
+      ))}
+    </div>
+
+    {term.learnMore && term.learnMore.length > 0 && (
+      <div class="glossary-learn">
+        <h2>Learn more</h2>
+        <ul>
+          {term.learnMore.map((link) => (
+            <li><a href={link.href}>{link.label}</a></li>
+          ))}
+        </ul>
+      </div>
+    )}
+
+    {related.length > 0 && (
+      <div class="glossary-related">
+        <h2>Related terms</h2>
+        <div class="glossary-related-grid">
+          {related.map((t) => (
+            <a href={`/blog/glossary/${t.slug}/`} class="glossary-card">
+              <h3>
+                {t.term}
+                {t.abbr && <span class="glossary-abbr">{t.abbr}</span>}
+              </h3>
+              <p>{t.short}</p>
+            </a>
+          ))}
+        </div>
+      </div>
+    )}
+
+    <div class="cta-banner glossary-cta">
+      <h3>See it live</h3>
+      <p>
+        World Monitor tracks this and hundreds of other signals in real time on one map —
+        free, no account required.
+      </p>
+      <a href="https://www.worldmonitor.app" class="btn" target="_blank" rel="noopener noreferrer">
+        Open Dashboard
+      </a>
+    </div>
+  </article>
+
+  <style>
+    .glossary-term {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 1.5rem 1.25rem 4rem;
+    }
+    .glossary-breadcrumb {
+      font-size: 0.8rem;
+      opacity: 0.65;
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      margin-bottom: 1.5rem;
+    }
+    .glossary-breadcrumb a {
+      color: inherit;
+      text-decoration: none;
+    }
+    .glossary-breadcrumb a:hover {
+      color: var(--wm-green, #4ade80);
+    }
+    .glossary-term-cat {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--wm-green, #4ade80);
+      margin-bottom: 0.5rem;
+    }
+    .glossary-term-header h1 {
+      margin: 0 0 0.75rem;
+      display: flex;
+      align-items: baseline;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+    }
+    .glossary-lede {
+      font-size: 1.1rem;
+      line-height: 1.5;
+      opacity: 0.9;
+      margin: 0 0 1.5rem;
+    }
+    .glossary-abbr {
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      color: var(--wm-green, #4ade80);
+      border: 1px solid currentColor;
+      border-radius: 4px;
+      padding: 0.1rem 0.4rem;
+    }
+    .glossary-learn,
+    .glossary-related {
+      margin-top: 2.5rem;
+    }
+    .glossary-learn h2,
+    .glossary-related h2 {
+      font-size: 1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      opacity: 0.8;
+    }
+    .glossary-related-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    .glossary-card {
+      display: block;
+      padding: 1rem 1.1rem;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      text-decoration: none;
+      color: inherit;
+      transition: border-color 0.15s ease, transform 0.15s ease;
+    }
+    .glossary-card:hover {
+      border-color: var(--wm-green, #4ade80);
+      transform: translateY(-2px);
+    }
+    .glossary-card h3 {
+      margin: 0 0 0.4rem;
+      font-size: 0.95rem;
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .glossary-card p {
+      margin: 0;
+      font-size: 0.82rem;
+      line-height: 1.45;
+      opacity: 0.75;
+    }
+    .glossary-cta {
+      margin-top: 3rem;
+    }
+  </style>
+</Base>

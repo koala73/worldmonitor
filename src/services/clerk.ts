@@ -26,7 +26,15 @@ import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 
 type ClerkInstance = Clerk;
 
-const PUBLISHABLE_KEY = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_CLERK_PUBLISHABLE_KEY) as string | undefined;
+function readPublishableKey(): string | undefined {
+  try {
+    return import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+  } catch {
+    return undefined;
+  }
+}
+
+const PUBLISHABLE_KEY = readPublishableKey();
 
 let clerkInstance: ClerkInstance | null = null;
 let loadPromise: Promise<void> | null = null;

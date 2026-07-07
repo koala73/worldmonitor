@@ -60,6 +60,11 @@ import { fetchMultiSectorExposure, fetchCountryProducts, fetchMultiSectorCostSho
 import { getImfCountryBundle, buildImfEconomicIndicators, type ImfCountryBundle } from '@/services/imf-country-data';
 import { EconomicServiceClient, IntelligenceServiceClient, MarketServiceClient, TradeServiceClient } from '@/services/generated-rpc-clients';
 
+// Iran-events domain sunset (war ended 2026-07). Default OFF: no strikes in the
+// country deep-dive or the AI brief. Set VITE_ENABLE_IRAN_ATTACKS=true to restore.
+// Guarded with the client-runtime check so node:test never dereferences import.meta.env.
+const IRAN_ATTACKS_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_IRAN_ATTACKS === 'true';
+
 type IntlDisplayNamesCtor = new (
   locales: string | string[],
   options: { type: 'region' }
@@ -1538,6 +1543,7 @@ export class CountryIntelManager implements AppModule {
   }
 
   private getCountryStrikes(code: string, hasGeoShape: boolean): typeof this.ctx.intelligenceCache.iranEvents & object {
+    if (!IRAN_ATTACKS_ENABLED) return [];
     if (!this.ctx.intelligenceCache.iranEvents) return [];
     const seen = new Set<string>();
     return this.ctx.intelligenceCache.iranEvents.filter(e => {

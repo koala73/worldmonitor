@@ -1302,7 +1302,10 @@
       "tonePositive": "บวก",
       "overall": "โดยรวม: {{tone}}",
       "signalTypesEvents": "{{types}} ประเภทสัญญาณ • {{events}} เหตุการณ์",
-      "newsSignals": "{{news}} ข่าว • {{signals}} สัญญาณ"
+      "newsSignals": "{{news}} ข่าว • {{signals}} สัญญาณ",
+      "provenanceTitle": "ความมาของการครอบคลุม: จำนวนเรื่องข่าวที่นำเข้าและแหล่งข่าวที่แตกต่างกันที่ใช้สำหรับสรุปนี้",
+      "compiledFrom": "รวบรวมจาก {{stories}} เรื่องราวจาก {{sources}} แหล่งที่มา",
+      "briefFreshness": "สร้างเมื่อ {{minutes}}m ที่แล้ว · แหล่งข้อมูลล่าสุด {{hours}}h เก่า"
     },
     "settings": {
       "exportSettings": "ส่งออกการตั้งค่า",

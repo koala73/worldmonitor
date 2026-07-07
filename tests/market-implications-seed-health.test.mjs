@@ -67,3 +67,17 @@ test('market implications success path still writes a healthy seed-meta', () => 
   assert.match(buildRegion, /recordCount: cards\.length, status: 'ok'/);
   assert.match(buildRegion, /await redisSet\(url, token, MARKET_IMPLICATIONS_META_KEY, meta, MARKET_IMPLICATIONS_META_TTL\)/);
 });
+
+test('market_implications runs before the best-effort R2 trace export (#4978 tail-stage budget)', () => {
+  const afterPublish = sourceBetween('afterPublish: async (data, meta)', 'extraKeys: FORECAST_EXTRA_KEYS');
+  const miIndex = afterPublish.indexOf('await buildAndSeedMarketImplications(');
+  const traceIndex = afterPublish.indexOf('[Trace] Starting R2 export');
+  assert.notEqual(miIndex, -1, 'market_implications must be invoked in afterPublish');
+  assert.notEqual(traceIndex, -1, 'the R2 trace export marker must exist in afterPublish');
+  // The tail LLM stage shares the 150s run budget; it must run BEFORE the ~20s
+  // trace export so best-effort telemetry cannot push it past the run deadline.
+  assert.ok(
+    miIndex < traceIndex,
+    'market_implications must run BEFORE the R2 trace export (#4978), else telemetry wall-clock starves the tail LLM stage',
+  );
+});

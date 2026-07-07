@@ -53,69 +53,141 @@ if git diff --name-only origin/main -- scripts/package.json | grep -q .; then
   fi
 fi
 
-echo "Running type check..."
-npm run typecheck || exit 1
+# --- Change scoping + green-tree cache (2026-07 velocity audit) -------------
+# Session-transcript mining showed 43% of sessions fight this gate and most
+# pushes paid every typecheck/lint unconditionally. The typechecks and
+# invariant lints below are now scoped to the paths they actually check
+# (mirroring how the test categories were already scoped), and a tree that
+# passed the full gate once is cached so an immediate re-push (remote-side
+# failure, message-only amend) doesn't re-pay minutes of checks.
+RUN_ALL=false
+RUN_ALL_REASON=""
+DIFF_RESOLVED=true
+if CHANGED_FILES=$(git diff --name-only origin/main...HEAD 2>/dev/null); then
+  :
+else
+  # origin/main is not resolvable (offline, fresh clone, missing remote ref).
+  # Force EVERYTHING: the HEAD~1 fallback only sees the last commit, so using
+  # it to scope safety gates would silently skip typechecks/lints for earlier
+  # commits in the push — and then the green-tree cache would stamp that tree.
+  # HEAD~1 is kept ONLY to narrow the changed-test list (informational).
+  CHANGED_FILES=$(git diff --name-only HEAD~1 2>/dev/null || echo "")
+  RUN_ALL=true
+  DIFF_RESOLVED=false
+  RUN_ALL_REASON="changed files could not be resolved from origin/main"
+  echo "WARNING: Could not resolve branch diff from origin/main — running ALL invariant checks as safety fallback."
+fi
+if echo "$CHANGED_FILES" | grep -q "package.json\|tsconfig"; then
+  RUN_ALL=true
+  RUN_ALL_REASON="${RUN_ALL_REASON:-config changed}"
+fi
 
-echo "Running API type check..."
-npm run typecheck:api || exit 1
+# changed <ERE>: true when RUN_ALL is forced or any changed file matches.
+changed() { [ "$RUN_ALL" = true ] || echo "$CHANGED_FILES" | grep -qE "$1"; }
 
-echo "Running Convex type check..."
-# Catches stale convex/_generated/api.d.ts (forgotten `npx convex codegen`
-# after adding a module) and any drift between convex/schema.ts and the
-# code that reads it. Pre-push is the right gate — these errors surface
-# only at convex deploy time otherwise, deep into a release window.
-npx tsc --noEmit -p convex/tsconfig.json || exit 1
+# Green-tree cache: if this exact tree already passed the full gate, skip the
+# tree-dependent checks. State-dependent checks (secrets, PR state, branch
+# contamination, lockfile sync) have already run above and always do.
+#
+# Cache READS are disabled when the branch diff could not be resolved: the
+# tree hash captures content-derived plan inputs (a package.json change is in
+# the tree), but NOT state-derived ones — a blind run must not trust an
+# attestation minted under a scoped plan it can no longer verify. Writes stay
+# enabled: a fallback run executes everything, the strongest attestation.
+GATE_CACHE="$(git rev-parse --git-dir)/wm-prepush-green"
+TREE_HASH=$(git rev-parse 'HEAD^{tree}' 2>/dev/null || echo "")
+if [ "$DIFF_RESOLVED" = true ] && [ -n "$TREE_HASH" ] && [ -f "$GATE_CACHE" ] && grep -qxF "$TREE_HASH" "$GATE_CACHE" 2>/dev/null; then
+  echo "Pre-push gates: this exact tree already passed ($TREE_HASH)."
+  echo "  Skipping tree-dependent checks (delete $GATE_CACHE to force a re-run)."
+  exit 0
+fi
 
-echo "Running CJS syntax check..."
-for f in scripts/*.cjs; do
-  [ -f "$f" ] && node -c "$f" || exit 1
-done
+if changed '^(src/|tests/|e2e/|middleware|index\.html|vite\.config|scripts/|types/)'; then
+  echo "Running type check..."
+  npm run typecheck || exit 1
+else
+  echo "Type check skipped (no frontend-surface changes)."
+fi
+
+if changed '^(api/|server/|scripts/|middleware|src/generated/)'; then
+  # tsconfig.api.json includes api, src/generated, AND server — a generated
+  # client/contract change alone can break API compilation.
+  echo "Running API type check..."
+  npm run typecheck:api || exit 1
+else
+  echo "API type check skipped (no api/server/scripts/src-generated changes)."
+fi
+
+if changed '^convex/'; then
+  echo "Running Convex type check..."
+  # Catches stale convex/_generated/api.d.ts (forgotten `npx convex codegen`
+  # after adding a module) and any drift between convex/schema.ts and the
+  # code that reads it. Pre-push is the right gate — these errors surface
+  # only at convex deploy time otherwise, deep into a release window.
+  npx tsc --noEmit -p convex/tsconfig.json || exit 1
+else
+  echo "Convex type check skipped (no convex/ changes)."
+fi
+
+if changed '^scripts/.*\.cjs$'; then
+  echo "Running CJS syntax check..."
+  for f in scripts/*.cjs; do
+    [ -f "$f" ] && node -c "$f" || exit 1
+  done
+fi
 
 echo "Running Unicode safety check..."
 node scripts/check-unicode-safety.mjs || exit 1
 
-echo "Running architectural boundary check..."
-npm run lint:boundaries || exit 1
-
-echo "Running safe HTML sink check..."
-npm run lint:safe-html || exit 1
-
-echo "Running Sentry-coverage check..."
-node scripts/check-sentry-coverage.mjs || exit 1
-
-echo "Running rate-limit policy coverage check..."
-npm run lint:rate-limit-policies || exit 1
-
-echo "Running premium-fetch parity check..."
-npm run lint:premium-fetch || exit 1
-
-echo "Running edge function bundle check..."
-while IFS= read -r f; do
-  npx esbuild "$f" --bundle --format=esm --platform=browser --outfile=/dev/null 2>/dev/null || {
-    echo "ERROR: esbuild failed to bundle $f — this will break Vercel deployment"
-    npx esbuild "$f" --bundle --format=esm --platform=browser --outfile=/dev/null
-    exit 1
-  }
-done < <(find api/ -name "*.js" -not -name "_*"; find api/ -maxdepth 1 -name "*.ts" -not -name "_*")
-
-RUN_ALL_REASON=""
-if CHANGED_FILES=$(git diff --name-only origin/main...HEAD 2>/dev/null); then
-  :
-else
-  CHANGED_FILES=$(git diff --name-only HEAD~1 2>/dev/null || echo "")
-  RUN_ALL_REASON="changed files could not be resolved from origin/main"
+# Each guardrail also fires when its OWN implementation script changes, so a
+# broken gate can't push locally and only fail later in CI.
+if changed '^(src/|server/|api/|scripts/lint-boundaries\.mjs$)'; then
+  echo "Running architectural boundary check..."
+  npm run lint:boundaries || exit 1
 fi
-if [ -z "$CHANGED_FILES" ] && [ -n "$RUN_ALL_REASON" ]; then
-  echo "WARNING: Could not determine changed files, running broad invariant checks as safety fallback."
-  RUN_ALL=true
+
+if changed '^(src/|scripts/enforce-safe-html\.mjs$)'; then
+  echo "Running safe HTML sink check..."
+  npm run lint:safe-html || exit 1
+fi
+
+if changed '^(src/|api/|server/|scripts/check-sentry-coverage\.mjs$)'; then
+  echo "Running Sentry-coverage check..."
+  node scripts/check-sentry-coverage.mjs || exit 1
+fi
+
+if changed '^(api/|server/|scripts/enforce-rate-limit-policies\.mjs$)'; then
+  echo "Running rate-limit policy coverage check..."
+  npm run lint:rate-limit-policies || exit 1
+fi
+
+if changed '^(src/|api/|scripts/enforce-premium-fetch\.mjs$)'; then
+  echo "Running premium-fetch parity check..."
+  npm run lint:premium-fetch || exit 1
+fi
+
+if changed '^(api/|server/|src/generated/)'; then
+  # Edge RPC entries under api/ bundle-import server/gateway, domain handlers,
+  # and generated stubs — a server-only Node-ism breaks the Vercel bundle with
+  # zero api/ diff, so those paths must trigger the esbuild check too.
+  echo "Running edge function bundle check..."
+  while IFS= read -r f; do
+    npx esbuild "$f" --bundle --format=esm --platform=browser --outfile=/dev/null 2>/dev/null || {
+      echo "ERROR: esbuild failed to bundle $f — this will break Vercel deployment"
+      npx esbuild "$f" --bundle --format=esm --platform=browser --outfile=/dev/null
+      exit 1
+    }
+  done < <(find api/ -name "*.js" -not -name "_*"; find api/ -maxdepth 1 -name "*.ts" -not -name "_*")
+else
+  echo "Edge function bundle check skipped (no api/, server/, or src/generated changes)."
 fi
 
 # Determine which test categories to run based on changed files
+# (CHANGED_FILES + RUN_ALL were computed above, before the invariant gates.)
 RUN_RESILIENCE=false
 RUN_SEED=false
 RUN_SERVER=false
 RUN_FRONTEND=false
-${RUN_ALL:=false}
 
 if echo "$CHANGED_FILES" | grep -q "^scripts/"; then RUN_SEED=true; fi
 if echo "$CHANGED_FILES" | grep -q "^server/"; then RUN_SERVER=true; fi
@@ -124,11 +196,8 @@ if echo "$CHANGED_FILES" | grep -q "^src/\|^api/"; then RUN_FRONTEND=true; fi
 # RUN_ALL means "run broad invariant checks below", not "run every unit test".
 # Touching tests/ used to trigger the full local suite, but that suite now
 # exceeds this hook's 300s budget. CI remains the full-suite merge gate; this
-# hook stays a fast pre-flight.
-if echo "$CHANGED_FILES" | grep -q "package.json\|tsconfig"; then
-  RUN_ALL=true
-  RUN_ALL_REASON="${RUN_ALL_REASON:-config changed}"
-fi
+# hook stays a fast pre-flight. (The package.json/tsconfig escalation happens
+# in the scoping block above.)
 
 # Test files that changed in this push — run these specifically when
 # RUN_ALL didn't fire, so editing a test doesn't escalate to the full
@@ -342,3 +411,11 @@ fi
 
 echo "Running version sync check..."
 npm run version:check || exit 1
+
+# Record this tree as gate-green: a re-push of the identical tree (remote-side
+# failure, network blip, commit-message-only amend) skips straight past the
+# tree-dependent checks above. Any content change produces a new tree hash.
+if [ -n "$TREE_HASH" ]; then
+  echo "$TREE_HASH" > "$GATE_CACHE"
+fi
+echo "All pre-push gates passed — tree cached."

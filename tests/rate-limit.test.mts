@@ -409,6 +409,16 @@ describe('scoped rate-limit degraded call-site policy (#3531)', () => {
       reason: 'desktop lead capture bypasses Turnstile, so Redis degradation must fail closed locally',
     },
     {
+      path: 'api/a2a.ts',
+      expected: /Redis-degraded scoped limits intentionally stay availability-first/,
+      reason: 'A2A concierge serves only anonymous, quota-free, cheap catalog matching — degradation is logged and stays availability-first',
+    },
+    {
+      path: 'api/ask.ts',
+      expected: /Redis-degraded scoped limits intentionally stay availability-first/,
+      reason: 'NLWeb /ask serves only anonymous, quota-free, cheap catalog matching — degradation is logged and stays availability-first',
+    },
+    {
       path: 'api/mcp-proxy.ts',
       expected: /Redis-degraded scoped limits intentionally stay availability-first/,
       reason: 'MCP proxy is already premium-auth gated; scoped limit degradation is logged and remains availability-first',

@@ -9,10 +9,37 @@ const runtimeSrc = readFileSync(resolve(__dirname, '../src/services/runtime.ts')
 const variantSrc = readFileSync(resolve(__dirname, '../src/config/variant.ts'), 'utf-8');
 
 describe('runtime env guards', () => {
-  it('reads import.meta.env through a guarded ENV wrapper', () => {
-    assert.match(
+  it('reads only explicit import.meta.env properties through a guarded ENV wrapper', () => {
+    assert.doesNotMatch(
       runtimeSrc,
-      /const ENV = \(\(\) => \{\s*try \{\s*return import\.meta\.env \?\? \{\};\s*\} catch \{\s*return \{\} as Record<string, string \| undefined>;/s,
+      /return\s+import\.meta\.env\b/,
+      'runtime.ts must not return the whole Vite env object to client code',
+    );
+    assert.doesNotMatch(
+      runtimeSrc,
+      /\b(?:const|let|var)\s+\w+\s*=\s*import\.meta\.env\b/,
+      'runtime.ts must not snapshot import.meta.env into a local object',
+    );
+    for (const key of [
+      'VITE_DESKTOP_RUNTIME',
+      'VITE_TAURI_API_BASE_URL',
+      'VITE_TAURI_REMOTE_API_BASE_URL',
+      'VITE_WS_API_URL',
+      'VITE_WS_RELAY_URL',
+    ]) {
+      assert.ok(
+        runtimeSrc.includes(`${key}: import.meta.env.${key}`),
+        `runtime ENV wrapper must explicitly allow ${key}`,
+      );
+    }
+  });
+
+  it('runtime-config.ts does not dynamically read the Vite env object for secrets', () => {
+    const runtimeConfigSrc = readFileSync(resolve(__dirname, '../src/services/runtime-config.ts'), 'utf-8');
+    assert.doesNotMatch(
+      runtimeConfigSrc,
+      /\.env\?\.\[[^\]]+\]/,
+      'runtime-config.ts must not dynamically index import.meta.env for runtime secrets',
     );
   });
 
@@ -29,7 +56,7 @@ describe('variant env guards', () => {
   it('computes the build variant through a guarded import.meta.env access', () => {
     assert.match(
       variantSrc,
-      /const buildVariant = \(\(\) => \{\s*try \{\s*return import\.meta\.env\?\.VITE_VARIANT \|\| 'full';\s*\} catch \{\s*return 'full';\s*\}\s*\}\)\(\);/s,
+      /const buildVariant = \(\(\) => \{\s*try \{\s*return import\.meta\.env\.VITE_VARIANT \|\| 'full';\s*\} catch \{\s*return 'full';\s*\}\s*\}\)\(\);/s,
     );
   });
 

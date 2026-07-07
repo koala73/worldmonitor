@@ -1577,7 +1577,10 @@
       "overall": "Ukupno: {{tone}}",
       "signalTypesEvents": "{{types}} tipova signala • {{events}} događaja",
       "newsSignals": "{{news}} vijesti • {{signals}} signala",
-      "sources_few": "{{count}} izvora"
+      "sources_few": "{{count}} izvora",
+      "provenanceTitle": "Pokrivanje izvora: koliko je unesenih članaka i različitih izvora odabrano za ovaj sažetak",
+      "compiledFrom": "Sastavljeno od {{stories}} priča iz {{sources}} izvora",
+      "briefFreshness": "Generirano prije {{minutes}}m · najnoviji izvor star {{hours}}h"
     },
     "settings": {
       "dataManagementLabel": "Upravljanje podacima",

@@ -98,6 +98,7 @@ import { DesktopUpdater } from '@/app/desktop-updater';
 import { CountryIntelManager } from '@/app/country-intel';
 import { registerWebMcpTools } from '@/services/webmcp';
 import { refreshDataFreshnessFromHealth } from '@/services/health-freshness';
+import { scheduleAfterFirstPaint } from '@/utils/after-paint';
 import type { SearchManager } from '@/app/search-manager';
 import { RefreshScheduler } from '@/app/refresh-scheduler';
 import { PanelLayoutManager } from '@/app/panel-layout';
@@ -127,6 +128,11 @@ import {
   initCheckoutWatchers,
   resumePendingCheckout,
 } from '@/services/checkout';
+import {
+  clearStoredAnonIdentity,
+  getFreshStoredAnonClaimToken,
+  getStoredAnonId,
+} from '@/services/anonymous-identity-storage';
 import { captureReferralFromUrl } from '@/services/referral-capture';
 // CorrelationEngine + its 4 adapters are dynamic-imported at the post-loadAllData
 // run site (#4486) so the engine bytes stay off the eager boot graph. The TYPE is
@@ -1407,7 +1413,7 @@ export class App {
         void initSubscriptionWatch(userId);
 
         // Claim any anonymous purchase made before sign-in (anon → real user migration)
-        const anonId = localStorage.getItem('wm-anon-id');
+        const anonId = getStoredAnonId();
         if (anonId) {
           void (async () => {
             const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
@@ -1420,7 +1426,11 @@ export class App {
               console.warn('[billing] claimSubscription skipped — Convex auth not ready');
               return;
             }
-            const result = await client.mutation(api.payments.billing.claimSubscription, { anonId });
+            const claimToken = getFreshStoredAnonClaimToken() ?? undefined;
+            const result = await client.mutation(api.payments.billing.claimSubscription, {
+              anonId,
+              ...(claimToken ? { claimToken } : {}),
+            });
             const claimed = result.claimed;
             const totalClaimed = claimed.subscriptions + claimed.entitlements +
                                  claimed.customers + claimed.payments;
@@ -1429,7 +1439,7 @@ export class App {
             }
             // Always remove after non-throwing completion — mutation is idempotent.
             // Prevents cold Convex init + mutation on every sign-in for non-purchasers.
-            localStorage.removeItem('wm-anon-id');
+            clearStoredAnonIdentity();
           })().catch((err: unknown) => {
             console.warn('[billing] claimSubscription failed:', err);
             // Non-fatal — anon ID preserved for retry on next page load
@@ -1869,7 +1879,7 @@ export class App {
         .closest<HTMLElement>('[data-action]')
         ?.dataset.action;
       if (clickedAction === 'upgrade') {
-        window.open('/pro#pricing', '_blank', 'noopener');
+        window.open('/pro#pricing', '_blank', 'noopener,noreferrer');
         if (this.followedCountriesCapDropToastTimer !== null) {
           window.clearTimeout(this.followedCountriesCapDropToastTimer);
           this.followedCountriesCapDropToastTimer = null;
@@ -1958,13 +1968,18 @@ export class App {
   private setupRefreshIntervals(): void {
     // Always refresh news for all variants
     this.refreshScheduler.scheduleRefresh('news', () => this.dataLoader.loadNews(), REFRESH_INTERVALS.feeds);
-    this.refreshScheduler.scheduleRefresh(
-      'health-freshness',
-      async () => { await refreshDataFreshnessFromHealth(); },
-      REFRESH_INTERVALS.healthFreshness,
-      undefined,
-      { runImmediately: true },
-    );
+    // Registration (and its immediate first hydration) is deferred to
+    // post-paint idle: freshness badges are below-the-fold decoration, so the
+    // fetch must not compete with the LCP-window requests (#4907, #4890).
+    scheduleAfterFirstPaint(() => {
+      this.refreshScheduler.scheduleRefresh(
+        'health-freshness',
+        async () => { await refreshDataFreshnessFromHealth(); },
+        REFRESH_INTERVALS.healthFreshness,
+        undefined,
+        { runImmediately: true },
+      );
+    });
 
     // Happy variant only refreshes news -- skip all geopolitical/financial/military refreshes
     if (SITE_VARIANT !== 'happy') {
