@@ -7,6 +7,11 @@ import { brotliCompress } from 'zlib';
 import { promisify } from 'util';
 import pkg from './package.json';
 import { VARIANT_META, type VariantMeta } from './src/config/variant-meta';
+import {
+  WEB_DASHBOARD_VARIANTS,
+  renderVariantDashboardHtml,
+  variantDashboardFileName,
+} from './src/config/variant-dashboard-html';
 
 // Env-dependent constants moved inside defineConfig function
 
@@ -295,6 +300,38 @@ function dashboardHtmlOutputPlugin(): Plugin {
         dashboardHtml.source = deferDashboardStylesheetLinks(dashboardHtml.source, bundle);
       }
       bundle['dashboard.html'] = dashboardHtml;
+    },
+  };
+}
+
+// Emit dashboard-<variant>.html siblings of dashboard.html for the variant
+// subdomains (#4996). The web deployment serves the 'full' build to every
+// host, so tech/finance/commodity/happy/energy.worldmonitor.app/dashboard
+// shipped full-brand meta and a cross-host canonical pointing at www —
+// crawlers saw five duplicate pages that all declared themselves NOT to be
+// the sitemap URL they were fetched from. vercel.json host-based rewrites
+// map each variant host's /dashboard to its generated file. Runs in
+// generateBundle AFTER dashboardHtmlOutputPlugin (both enforce: 'post',
+// registered later in the plugins array) so it reads the final renamed +
+// stylesheet-deferred dashboard.html; emitted via emitFile so
+// brotliPrecompressPlugin picks the files up like any other asset.
+function variantDashboardHtmlPlugin(): Plugin {
+  return {
+    name: 'wm-variant-dashboard-html',
+    apply: 'build',
+    enforce: 'post',
+    generateBundle(_options, bundle) {
+      const dashboard = bundle['dashboard.html'];
+      if (!dashboard || dashboard.type !== 'asset' || typeof dashboard.source !== 'string') {
+        throw new Error('[vite] wm-variant-dashboard-html expected dashboard.html asset (must run after wm-dashboard-html-output)');
+      }
+      for (const variant of WEB_DASHBOARD_VARIANTS) {
+        this.emitFile({
+          type: 'asset',
+          fileName: variantDashboardFileName(variant),
+          source: renderVariantDashboardHtml(dashboard.source, variant),
+        });
+      }
     },
   };
 }
@@ -930,6 +967,10 @@ export default defineConfig(({ mode }) => {
       },
       htmlVariantPlugin(activeMeta, activeVariant, isDesktopBuild),
       !isDesktopBuild && dashboardHtmlOutputPlugin(),
+      // Variant subdomain SEO pages only make sense on the web deployment,
+      // which is always the 'full' build (variant selection is runtime by
+      // hostname). Desktop and dedicated VITE_VARIANT builds skip it.
+      !isDesktopBuild && activeVariant === 'full' && variantDashboardHtmlPlugin(),
       polymarketPlugin(),
       rssProxyPlugin(),
       youtubeLivePlugin(),
