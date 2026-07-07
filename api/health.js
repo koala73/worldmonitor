@@ -1077,9 +1077,12 @@ export default async function handler(req, ctx) {
     const { 'CF-Cache-Status': _bypassMarker, ...base } = headers;
     responseHeaders = {
       ...base,
-      // public (keyless, shared-cacheable in principle) but no-store so no CDN
-      // or browser ever serves a stale health verdict to a monitor.
-      'Cache-Control': 'public, no-store, max-age=0',
+      // no-store so no CDN or browser ever serves a stale health verdict to a
+      // monitor. Deliberately NOT `public` — `public, no-store` is a
+      // self-contradictory signal (RFC 9111 §5.2.2.5: no-store wins, but a
+      // non-compliant proxy could read `public` as permission to cache — the
+      // exact bug class this closes).
+      'Cache-Control': 'no-store, max-age=0',
       'CDN-Cache-Control': 'no-store',
     };
   }
