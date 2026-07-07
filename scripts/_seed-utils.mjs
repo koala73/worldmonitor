@@ -131,7 +131,11 @@ export async function fetchCoinPaprikaTickersById(paprikaIds, options = {}) {
 export async function allSettledWithConcurrency(items, concurrency, mapper) {
   const results = new Array(items.length);
   let nextIndex = 0;
-  const workerCount = Math.min(concurrency, items.length);
+  // Clamp to a finite integer ≥1 so an invalid concurrency (0, NaN, negative, float)
+  // can't spin up zero workers and silently return a sparse, all-unprocessed array —
+  // it degrades to sequential instead. (items.length===0 → 0 workers → empty result.)
+  const safe = Number.isFinite(concurrency) && concurrency >= 1 ? Math.floor(concurrency) : 1;
+  const workerCount = Math.min(safe, items.length);
 
   await Promise.all(Array.from({ length: workerCount }, async () => {
     while (nextIndex < items.length) {

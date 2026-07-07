@@ -1,12 +1,18 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { fetchBigMacPrices, COUNTRIES } from '../scripts/seed-bigmac.mjs';
+import { fetchBigMacPrices, declareRecords, COUNTRIES } from '../scripts/seed-bigmac.mjs';
+import { allSettledWithConcurrency } from '../scripts/_seed-utils.mjs';
 
 // Reproduces #4994: the 50-country EXA loop used to run STRICTLY SEQUENTIALLY
 // under runSeed's 240s fetch-phase deadline, so it crashed (exit-75 "Deploy
 // Crashed!" alert) the moment average EXA latency crept over 240/50 ≈ 4.8s.
 // The fix runs the loop with bounded concurrency. These tests pin that in.
+
+// The production default (EXA_CONCURRENCY in scripts/seed-bigmac.mjs). Hard-coded
+// on purpose: a regression that drops the default back toward sequential (→ 1)
+// must fail this suite, and an intentional bump must consciously update it here.
+const EXPECTED_DEFAULT_CONCURRENCY = 6;
 
 const PER_CALL_MS = 25;
 
@@ -21,9 +27,38 @@ function makeFakeExa({ failCurrencies = new Set() } = {}) {
   };
 }
 
+// Same as makeFakeExa but records the peak number of simultaneously in-flight calls.
+function makeTrackingExa() {
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const fn = async (query) => {
+    inFlight += 1;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    try {
+      await new Promise((r) => setTimeout(r, PER_CALL_MS));
+      const ccy = query.trim().split(/\s+/).pop();
+      return { results: [{ summary: `A Big Mac costs 5.00 ${ccy}`, url: 'https://test.example' }] };
+    } finally {
+      inFlight -= 1;
+    }
+  };
+  return { fn, get maxInFlight() { return maxInFlight; } };
+}
+
 const fakeFx = async () => Object.fromEntries(COUNTRIES.map((c) => [c.currency, 1]));
 
 describe('seed-bigmac fetchBigMacPrices', () => {
+  it('caps in-flight EXA calls at the production default when NO override is passed (pins #4994 fix)', async () => {
+    const exa = makeTrackingExa();
+    // Deliberately omit `concurrency` so this exercises the real EXA_CONCURRENCY default.
+    await fetchBigMacPrices(null, { searchExaFn: exa.fn, getFxRatesFn: fakeFx });
+    assert.equal(
+      exa.maxInFlight,
+      EXPECTED_DEFAULT_CONCURRENCY,
+      `default run should hold exactly ${EXPECTED_DEFAULT_CONCURRENCY} EXA calls in flight (got ${exa.maxInFlight}); a value of 1 means the loop regressed to sequential`,
+    );
+  });
+
   it('runs the country loop concurrently — much faster than sequential (regression for #4994)', async () => {
     const searchExaFn = makeFakeExa();
 
@@ -32,12 +67,13 @@ describe('seed-bigmac fetchBigMacPrices', () => {
     const seqMs = Date.now() - seqStart;
 
     const conStart = Date.now();
-    await fetchBigMacPrices(null, { searchExaFn, getFxRatesFn: fakeFx, concurrency: 6 });
+    // No override → production default concurrency.
+    await fetchBigMacPrices(null, { searchExaFn, getFxRatesFn: fakeFx });
     const conMs = Date.now() - conStart;
 
-    // Concurrency 6 should be well under half the sequential wall-clock. (Ideal
-    // ratio is ~1/6; assert < 1/3 for CI-scheduler headroom.) BEFORE the fix the
-    // only path was `concurrency: 1` — this comparison would be ~1.0 and fail.
+    // Default concurrency should be well under half the sequential wall-clock. (Ideal
+    // ratio is ~1/6; assert < 1/3 for CI-scheduler headroom.) BEFORE the fix the only
+    // path was sequential — this comparison would be ~1.0 and fail.
     assert.ok(
       conMs < seqMs / 3,
       `concurrent run (${conMs}ms) should be < 1/3 of sequential (${seqMs}ms)`,
@@ -45,7 +81,7 @@ describe('seed-bigmac fetchBigMacPrices', () => {
   });
 
   it('preserves country order and returns one row per country', async () => {
-    const data = await fetchBigMacPrices(null, { searchExaFn: makeFakeExa(), getFxRatesFn: fakeFx, concurrency: 6 });
+    const data = await fetchBigMacPrices(null, { searchExaFn: makeFakeExa(), getFxRatesFn: fakeFx });
     assert.equal(data.countries.length, COUNTRIES.length);
     for (let i = 0; i < COUNTRIES.length; i += 1) {
       assert.equal(data.countries[i].code, COUNTRIES[i].code, `row ${i} must stay aligned with COUNTRIES order`);
@@ -56,10 +92,41 @@ describe('seed-bigmac fetchBigMacPrices', () => {
 
   it('a single failing country degrades to available:false, never crashing the run', async () => {
     const failCurrencies = new Set([COUNTRIES[3].currency]); // one country's EXA throws
-    const data = await fetchBigMacPrices(null, { searchExaFn: makeFakeExa({ failCurrencies }), getFxRatesFn: fakeFx, concurrency: 6 });
+    const data = await fetchBigMacPrices(null, { searchExaFn: makeFakeExa({ failCurrencies }), getFxRatesFn: fakeFx });
     assert.equal(data.countries.length, COUNTRIES.length);
     const failed = data.countries.find((c) => c.currency === COUNTRIES[3].currency);
     assert.equal(failed.available, false, 'failed country is marked unavailable');
     assert.ok(data.countries.some((c) => c.available), 'other countries still resolve');
+  });
+
+  it('total EXA outage → all rows unavailable, empty extremes, declareRecords 0 (no bogus publish)', async () => {
+    const allFail = async () => { throw new Error('EXA down'); };
+    const data = await fetchBigMacPrices(null, { searchExaFn: allFail, getFxRatesFn: fakeFx });
+    // Row per country is still returned, but none is available.
+    assert.equal(data.countries.length, COUNTRIES.length);
+    assert.ok(data.countries.every((c) => c.available === false), 'no country resolves a price on total outage');
+    assert.equal(data.cheapestCountry, '', 'no cheapest country when everything is unavailable');
+    assert.equal(data.mostExpensiveCountry, '', 'no most-expensive country when everything is unavailable');
+    // recordCount 0 is the contract that drives runSeed to retry / not publish a
+    // zero-record snapshot (validateFn only checks countries.length > 0).
+    assert.equal(declareRecords(data), 0, 'declareRecords must be 0 on a total outage');
+  });
+});
+
+describe('allSettledWithConcurrency invalid concurrency', () => {
+  for (const bad of [0, NaN, -3, undefined, 2.9]) {
+    it(`processes every item and returns a dense result when concurrency is ${String(bad)}`, async () => {
+      const items = [1, 2, 3, 4, 5];
+      const seen = [];
+      const results = await allSettledWithConcurrency(items, bad, async (x) => { seen.push(x); return x * 2; });
+      assert.equal(results.length, items.length);
+      assert.ok(results.every((r) => r && r.status === 'fulfilled'), 'no result slot left empty (no sparse array)');
+      assert.deepEqual(results.map((r) => r.value), [2, 4, 6, 8, 10]);
+      assert.equal(seen.length, items.length, 'mapper ran for every item');
+    });
+  }
+
+  it('empty input returns an empty array regardless of concurrency', async () => {
+    assert.deepEqual(await allSettledWithConcurrency([], 6, async (x) => x), []);
   });
 });
