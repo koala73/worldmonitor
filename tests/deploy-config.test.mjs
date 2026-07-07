@@ -48,6 +48,56 @@ const getHeadersForSource = (sourcePath) => {
   return vercelConfig.headers.find((entry) => entry.source === sourcePath)?.headers ?? [];
 };
 
+// Convert a vercel.json `source` (the path-to-regexp subset used in this file)
+// into a RegExp: literal segments, inline regex groups `(...)` kept raw, and
+// `:name*` catch-all params. Lets tests evaluate which rules match a concrete
+// URL instead of only asserting on a rule in isolation.
+const sourceToRegExp = (source) => {
+  let out = '';
+  for (let i = 0; i < source.length; i++) {
+    const ch = source[i];
+    if (ch === '(') {
+      let depth = 0;
+      let j = i;
+      for (; j < source.length; j++) {
+        if (source[j] === '(') depth++;
+        else if (source[j] === ')') {
+          depth--;
+          if (depth === 0) break;
+        }
+      }
+      out += source.slice(i, j + 1);
+      i = j;
+    } else if (ch === ':') {
+      let j = i + 1;
+      while (j < source.length && /[A-Za-z0-9_]/.test(source[j])) j++;
+      if (source[j] === '*') {
+        out = out.replace(/\/$/, '');
+        out += '(?:/.*)?';
+        i = j;
+      } else {
+        out += '[^/]+';
+        i = j - 1;
+      }
+    } else {
+      out += /[.*+?^${}|[\]\\]/.test(ch) ? `\\${ch}` : ch;
+    }
+  }
+  return new RegExp(`^${out}$`);
+};
+
+// Vercel applies every matching `headers` entry in file order; when several
+// set the same header key, the LAST matching rule wins.
+const effectiveCacheControl = (path) => {
+  let value = null;
+  for (const entry of vercelConfig.headers) {
+    if (!sourceToRegExp(entry.source).test(path)) continue;
+    const header = entry.headers?.find((h) => h.key.toLowerCase() === 'cache-control');
+    if (header) value = header.value;
+  }
+  return value;
+};
+
 const getHeaderValueForSource = (sourcePath, key) => {
   const headers = getHeadersForSource(sourcePath);
   const header = headers.find((h) => h.key.toLowerCase() === key.toLowerCase());
@@ -140,6 +190,29 @@ describe('deploy/cache configuration guardrails', () => {
   it('keeps immutable caching for hashed static assets', () => {
     assert.equal(
       getCacheHeaderValue('/assets/(.*)'),
+      'public, max-age=31536000, immutable'
+    );
+  });
+
+  it('serves /pro hashed assets immutable — broader /pro rules must not override', () => {
+    // /pro/:path* also matches /pro/assets/*; because the last matching rule
+    // wins per header key, the immutable /pro/assets rule has to be ordered
+    // AFTER the /pro catch-alls or every hashed chunk (including the ~3MB
+    // Clerk bundle) is re-downloaded on each repeat visit.
+    assert.equal(
+      effectiveCacheControl('/pro/assets/clerk-abc123.js'),
+      'public, max-age=31536000, immutable'
+    );
+    assert.equal(
+      effectiveCacheControl('/pro/assets/worldmonitor-7-mar-2026-abc.jpg'),
+      'public, max-age=31536000, immutable'
+    );
+    // HTML entries under /pro keep revalidating.
+    assert.equal(effectiveCacheControl('/pro'), 'private, no-cache, must-revalidate');
+    assert.equal(effectiveCacheControl('/pro/welcome.html'), 'private, no-cache, must-revalidate');
+    // Main-app hashed assets stay immutable end-to-end too.
+    assert.equal(
+      effectiveCacheControl('/assets/index-abc.js'),
       'public, max-age=31536000, immutable'
     );
   });

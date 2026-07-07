@@ -271,12 +271,6 @@
       ]
     },
     {
-      "source": "/pro/assets/(.*)",
-      "headers": [
-        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
-      ]
-    },
-    {
       "source": "/pro/:path*",
       "headers": [
         { "key": "Cache-Control", "value": "private, no-cache, must-revalidate" }
@@ -286,6 +280,12 @@
       "source": "/pro",
       "headers": [
         { "key": "Cache-Control", "value": "private, no-cache, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/pro/assets/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
       ]
     },
     {
