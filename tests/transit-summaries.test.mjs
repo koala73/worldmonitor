@@ -669,3 +669,114 @@ describe('envelopeRead helper', () => {
     assert.deepEqual(await read('array:key'), [1, 2, 3]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Upstash Redis client selection — runtime behavior for the insecure-http
+// opt-in (regression guard for the incident where the https-only gate
+// silently no-oped every seed loop against http://redis-rest:80 for 4+ days).
+// UPSTASH_ALLOW_INSECURE_HTTP + UPSTASH_HTTP_MODULE decide both whether
+// Redis writes are enabled at all and which Node client (http vs https)
+// upstashGet/Set/etc. use. The source-scan tests above only assert the
+// scheduler shape; these actually eval the init block + upstashGet in a
+// sandbox with mocked http/https clients (no network, no real Upstash) so a
+// future edit that regresses the opt-in gate fails a test, not silence.
+// ---------------------------------------------------------------------------
+describe('Upstash Redis client selection (insecure-http opt-in)', () => {
+  // The relay can't be require()'d directly in a test — it process.exit(1)s
+  // without AISSTREAM_API_KEY and otherwise boots a live server on import.
+  // Slice the init block (UPSTASH_REDIS_REST_URL ... end of upstashGet)
+  // straight out of the relay source and eval it in a sandbox instead.
+  const initStart = relaySrc.indexOf("const UPSTASH_REDIS_REST_URL = process.env.UPSTASH_REDIS_REST_URL || '';");
+  const initEnd = relaySrc.indexOf('function upstashSet(key, value, ttlSeconds) {');
+  assert.ok(initStart > 0 && initEnd > initStart, 'Upstash init block (through upstashGet) not found');
+  const initAndGetSrc = relaySrc.slice(initStart, initEnd);
+
+  function makeMockClient(name) {
+    return {
+      name,
+      requestCalls: [],
+      request(url, opts) {
+        this.requestCalls.push({ url, opts });
+        // No response callback is ever invoked — these tests only assert
+        // which client received the call, so the resulting (intentionally
+        // never-settling) promise must not be awaited.
+        return { on() {}, end() {} };
+      },
+    };
+  }
+
+  function buildUpstashInit(env, httpClient, httpsClient) {
+    // eslint-disable-next-line no-new-func
+    const fn = new Function(
+      'process', 'http', 'https',
+      `${initAndGetSrc}\nreturn { UPSTASH_ALLOW_INSECURE_HTTP, UPSTASH_ENABLED, UPSTASH_HTTP_MODULE, upstashGet };`,
+    );
+    return fn({ env }, httpClient, httpsClient);
+  }
+
+  it('https:// URL enables Upstash and routes upstashGet through the https client', () => {
+    const httpClient = makeMockClient('http');
+    const httpsClient = makeMockClient('https');
+    const { UPSTASH_ENABLED, UPSTASH_HTTP_MODULE, upstashGet } = buildUpstashInit(
+      { UPSTASH_REDIS_REST_URL: 'https://real-upstash.io', UPSTASH_REDIS_REST_TOKEN: 'tok' },
+      httpClient, httpsClient,
+    );
+    assert.equal(UPSTASH_ENABLED, true);
+    assert.equal(UPSTASH_HTTP_MODULE, httpsClient);
+    upstashGet('some:key');
+    assert.equal(httpsClient.requestCalls.length, 1);
+    assert.equal(httpClient.requestCalls.length, 0);
+  });
+
+  it('http:// URL WITHOUT UPSTASH_ALLOW_INSECURE_HTTP disables Upstash entirely (never calls Redis) — the regressed state that silently disabled every seed loop for 4+ days', async () => {
+    const httpClient = makeMockClient('http');
+    const httpsClient = makeMockClient('https');
+    const { UPSTASH_ALLOW_INSECURE_HTTP, UPSTASH_ENABLED, upstashGet } = buildUpstashInit(
+      { UPSTASH_REDIS_REST_URL: 'http://redis-rest:80', UPSTASH_REDIS_REST_TOKEN: 'tok' },
+      httpClient, httpsClient,
+    );
+    assert.equal(UPSTASH_ALLOW_INSECURE_HTTP, false);
+    assert.equal(UPSTASH_ENABLED, false);
+    // Resolves null synchronously via the !UPSTASH_ENABLED guard — safe to
+    // await, and proves no request is ever attempted on either client.
+    assert.equal(await upstashGet('some:key'), null);
+    assert.equal(httpClient.requestCalls.length, 0);
+    assert.equal(httpsClient.requestCalls.length, 0);
+  });
+
+  it('http:// URL WITH UPSTASH_ALLOW_INSECURE_HTTP=true enables Upstash and routes upstashGet through the http client (the scheduler fix)', () => {
+    const httpClient = makeMockClient('http');
+    const httpsClient = makeMockClient('https');
+    const { UPSTASH_ALLOW_INSECURE_HTTP, UPSTASH_ENABLED, UPSTASH_HTTP_MODULE, upstashGet } = buildUpstashInit(
+      { UPSTASH_REDIS_REST_URL: 'http://redis-rest:80', UPSTASH_REDIS_REST_TOKEN: 'tok', UPSTASH_ALLOW_INSECURE_HTTP: 'true' },
+      httpClient, httpsClient,
+    );
+    assert.equal(UPSTASH_ALLOW_INSECURE_HTTP, true);
+    assert.equal(UPSTASH_ENABLED, true);
+    assert.equal(UPSTASH_HTTP_MODULE, httpClient);
+    upstashGet('some:key');
+    assert.equal(httpClient.requestCalls.length, 1);
+    assert.equal(httpsClient.requestCalls.length, 0);
+  });
+
+  it('UPSTASH_ALLOW_INSECURE_HTTP is a strict "true" match — "TRUE"/"1" do not opt in', () => {
+    const httpClient = makeMockClient('http');
+    const httpsClient = makeMockClient('https');
+    const { UPSTASH_ALLOW_INSECURE_HTTP, UPSTASH_ENABLED } = buildUpstashInit(
+      { UPSTASH_REDIS_REST_URL: 'http://redis-rest:80', UPSTASH_REDIS_REST_TOKEN: 'tok', UPSTASH_ALLOW_INSECURE_HTTP: 'TRUE' },
+      httpClient, httpsClient,
+    );
+    assert.equal(UPSTASH_ALLOW_INSECURE_HTTP, false);
+    assert.equal(UPSTASH_ENABLED, false);
+  });
+
+  it('missing UPSTASH_REDIS_REST_TOKEN disables Upstash even over https', () => {
+    const httpClient = makeMockClient('http');
+    const httpsClient = makeMockClient('https');
+    const { UPSTASH_ENABLED } = buildUpstashInit(
+      { UPSTASH_REDIS_REST_URL: 'https://real-upstash.io' },
+      httpClient, httpsClient,
+    );
+    assert.equal(UPSTASH_ENABLED, false);
+  });
+});
