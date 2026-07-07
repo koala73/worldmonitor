@@ -151,9 +151,10 @@ test('a genuine provider failure that drains the run deadline still writes a SEE
   seedLastGood(store);
   process.env.OPENROUTER_API_KEY = 'test-key';
   process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER = 'openrouter';
-  // >= 30_000 so the pre-call guard admits the call; the mock then drains the
-  // deadline mid-flight to prove a real failure is not reclassified as a starve.
-  __setForecastLlmRunDeadlineForTests(Date.now() + 35_000);
+  // >= the full-chain reservation (50_000) so the pre-call guard admits the call;
+  // the mock then drains the deadline mid-flight to prove a real failure is not
+  // reclassified as a starve.
+  __setForecastLlmRunDeadlineForTests(Date.now() + 60_000);
 
   let providerCalls = 0;
   __setForecastLlmTransportForTests({
@@ -172,7 +173,7 @@ test('a genuine provider failure that drains the run deadline still writes a SEE
   assert.equal(meta.status, 'error', 'provider failure must not be reclassified as budget starve just because the deadline is now exhausted');
 });
 
-test('pre-call guard skips in the 20-30s band — needs the full provider timeout, not just 20s (#1/#4)', async () => {
+test('pre-call guard skips when the run budget cannot cover the full provider chain (#1/#4)', async () => {
   const store = {};
   __setRedisStoreForTests(store);
   seedLastGood(store);
@@ -180,10 +181,10 @@ test('pre-call guard skips in the 20-30s band — needs the full provider timeou
   process.env.OPENROUTER_API_KEY = 'test-key';
   process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER = 'openrouter';
 
-  // 25s run budget: the OLD 20s threshold would (wrongly) admit this and then time
-  // out CAPPED below the 25s provider timeout — indistinguishable from a hung
-  // provider. The fix requires the full provider timeout + 5s stage guard (30s), so
-  // a 25s budget must now SKIP cleanly instead of attempting an ambiguous call.
+  // 25s run budget: well below the full-chain reservation (openrouter 25s + groq
+  // 20s + 5s stage guard = 50s). Admitting it would time out CAPPED below the 25s
+  // provider timeout — indistinguishable from a hung provider — so it must SKIP
+  // cleanly and preserve last-good instead of attempting an ambiguous call.
   __setForecastLlmRunDeadlineForTests(Date.now() + 25_000);
 
   let providerCalls = 0;
@@ -194,9 +195,9 @@ test('pre-call guard skips in the 20-30s band — needs the full provider timeou
 
   await buildAndSeedMarketImplications({});
 
-  assert.equal(providerCalls, 0, 'a call with < 30s run budget must be skipped, not attempted with a capped (ambiguous) timeout');
+  assert.equal(providerCalls, 0, 'a call below the full-chain reservation must be skipped, not attempted with a capped (ambiguous) timeout');
   const meta = store['seed-meta:intelligence:market-implications'];
-  assert.equal(meta.status, 'ok', 'skipping in the 20-30s band preserves last-good, no SEED_ERROR');
+  assert.equal(meta.status, 'ok', 'skipping below the full-chain reservation preserves last-good, no SEED_ERROR');
   assert.equal(meta.fetchedAt, 1783340000000, 'fetchedAt untouched on a skip');
 });
 
@@ -205,13 +206,12 @@ test('mid-call budget_exhausted result preserves last-good, no SEED_ERROR (#5 de
   __setRedisStoreForTests(store);
   seedLastGood(store);
 
-  // Admit the call (>= 30s guard), then have callForecastLLM report a run-budget
-  // exhaustion mid-flight. This drives the caller's mid-call preserve branch
-  // (result.failureReason === BUDGET_EXHAUSTED) directly via the call-override seam
-  // — the one branch no organic path reaches now that admitted calls get the full
-  // provider timeout, but which is retained as defense-in-depth for env-overridden
-  // provider chains.
-  __setForecastLlmRunDeadlineForTests(Date.now() + 40_000);
+  // Admit the call (>= the 50s full-chain reservation), then have callForecastLLM
+  // report a run-budget exhaustion mid-flight. This drives the caller's mid-call
+  // preserve branch (result.failureReason === BUDGET_EXHAUSTED) directly via the
+  // call-override seam — retained as defense-in-depth for env-overridden provider
+  // chains and mid-flight deadline drains.
+  __setForecastLlmRunDeadlineForTests(Date.now() + 60_000);
   let overrideCalls = 0;
   __setForecastLlmCallOverrideForTests(() => {
     overrideCalls += 1;
@@ -237,7 +237,7 @@ test('mid-call provider_failed result still writes a SEED_ERROR (#5 classificati
   __setRedisStoreForTests(store);
   seedLastGood(store);
 
-  __setForecastLlmRunDeadlineForTests(Date.now() + 40_000);
+  __setForecastLlmRunDeadlineForTests(Date.now() + 60_000);
   __setForecastLlmCallOverrideForTests(() => ({ text: '', model: '', provider: '', failureReason: PROVIDER_FAILED }));
   global.fetch = async () => ({ ok: true, status: 200, json: async () => ({ result: 1 }), text: async () => '' });
 
@@ -245,4 +245,35 @@ test('mid-call provider_failed result still writes a SEED_ERROR (#5 classificati
 
   const meta = store['seed-meta:intelligence:market-implications'];
   assert.equal(meta.status, 'error', 'a genuine provider failure (even textless) must surface SEED_ERROR, not be preserved as a starve');
+});
+
+test('a budget covering only the primary — not the fallback — skips instead of stranding groq → no SEED_ERROR (#4978 follow-up)', async () => {
+  const store = {};
+  __setRedisStoreForTests(store);
+  seedLastGood(store);
+  process.env.OPENROUTER_API_KEY = 'test-key';
+  process.env.GROQ_API_KEY = 'test-key';
+  // DEFAULT chain (openrouter → groq); do NOT pin to a single provider.
+  delete process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER;
+
+  // 40s budget: enough for the primary openrouter attempt (25s) + guard — the OLD
+  // 30s threshold admitted this — but NOT the full openrouter→groq chain (50s). The
+  // reported bug: admitted, deepseek-v4-flash timed out (~25s), the run budget was
+  // drained, the groq fallback was stranded ("groq llm budget exhausted"), and a
+  // recoverable timeout was misreported as SEED_ERROR (health WARNING). The full-
+  // chain reservation makes this SKIP and preserve last-good (green) instead.
+  __setForecastLlmRunDeadlineForTests(Date.now() + 40_000);
+
+  let providerCalls = 0;
+  __setForecastLlmTransportForTests({
+    fetch: async () => { providerCalls += 1; throw Object.assign(new Error('timeout'), { name: 'TimeoutError' }); },
+  });
+  global.fetch = async () => ({ ok: true, status: 200, json: async () => ({ result: 1 }), text: async () => '' });
+
+  await buildAndSeedMarketImplications({});
+
+  assert.equal(providerCalls, 0, 'a call that cannot finish the openrouter→groq chain must skip before stranding the fallback');
+  const meta = store['seed-meta:intelligence:market-implications'];
+  assert.equal(meta.status, 'ok', 'a stranded-fallback budget must preserve last-good, not write SEED_ERROR (the health WARNING this fixes)');
+  assert.equal(meta.fetchedAt, 1783340000000, 'fetchedAt untouched — STALE_SEED still escalates if the starve persists past 2h');
 });

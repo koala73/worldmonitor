@@ -16439,18 +16439,20 @@ const MARKET_IMPLICATIONS_META_TTL = 86400 * 7;
 // fingerprint is not model-sensitive, so retire old-model rows explicitly.
 const MARKET_IMPLICATIONS_STAGE_CACHE_PREFIX = 'forecast:llm-market-implications:v2:';
 
-// A market_implications completion needs ~20s wall-clock (observed 2026-07-06),
-// and the primary provider (openrouter deepseek-v4-flash) has a 25s call timeout.
 // Admit the tail stage only when the shared run budget (#4978) still covers the
-// FULL provider timeout PLUS the 5s stage guard that getUsableForecastLlmBudgetMs
-// subtracts (25_000 + 5_000 = 30_000). Below that, an admitted call is timeout-
-// CAPPED below the provider's own timeout, which is indistinguishable from a
-// genuinely hung provider — so it would either waste a doomed request (needs
-// ~20s, gets <20s) OR misreport a real provider timeout as a benign starve and
-// suppress a legitimate SEED_ERROR. Skipping instead preserves last-good honestly
-// (age-based STALE_SEED still escalates past 2h). Keep >= max(provider.timeout in
-// FORECAST_LLM_PROVIDERS) + FORECAST_LLM_STAGE_BUDGET_GUARD_MS.
-const MARKET_IMPLICATIONS_MIN_RUN_BUDGET_MS = 30_000;
+// ENTIRE provider chain — the sum of every provider's call timeout PLUS the 5s
+// stage guard that getUsableForecastLlmBudgetMs subtracts. Reserving only the
+// PRIMARY timeout (the original 25_000 + 5_000 = 30_000) was a latent bug: with
+// the default openrouter→groq order, a 25s deepseek-v4-flash timeout drained the
+// budget so the groq FALLBACK was stranded ("groq llm budget exhausted") and a
+// recoverable timeout was misreported as SEED_ERROR (health WARNING). Reserving
+// the full chain (25_000 + 20_000 + 5_000 = 50_000) means an admitted call can
+// exhaust the primary AND still run the fallback; below that we skip and preserve
+// last-good honestly (age-based STALE_SEED still escalates past 2h) rather than
+// attempt a chain we cannot finish. Genuine both-providers-failed still SEED_ERRORs.
+const MARKET_IMPLICATIONS_MIN_RUN_BUDGET_MS =
+  FORECAST_LLM_PROVIDERS.reduce((sum, provider) => sum + (provider.timeout || 0), 0)
+  + FORECAST_LLM_STAGE_BUDGET_GUARD_MS;
 
 // Input-hash guard for the market_implications LLM stage (#4894). This was
 // the only forecast stage with no pre-call cache — a 2,500-token completion
