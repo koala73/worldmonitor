@@ -4552,6 +4552,7 @@ function buildHistoryForecastEntry(pred) {
     probability: pred.probability,
     confidence: pred.confidence,
     timeHorizon: pred.timeHorizon,
+    generationOrigin: pred.generationOrigin || 'legacy_detector',
     trend: pred.trend,
     priorProbability: pred.priorProbability,
     signals: (pred.signals || []).slice(0, 6).map(signal => ({

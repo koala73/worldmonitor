@@ -47,6 +47,9 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
     if (nowMs < sealAfter) {
       return { status: 'pending', evidence: { reason: 'count_settlement_lag', deadline, sealAfter } };
     }
+    if (feedData == null) {
+      return { status: 'pending', evidence: { reason: 'source_feed_unavailable', deadline, metricKey: spec.metricKey } };
+    }
     const generatedAt = Number(entry?.generatedAt ?? entry?.firstSeenAt);
     if (!Number.isFinite(generatedAt)) return voidResult('missing_generated_at', entry, spec, parsed, nowMs);
     const count = countMatchingRecords(feedData, parsed.field, parsed.value, generatedAt, deadline);
@@ -54,9 +57,11 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
   }
 
   if (spec.window === 'at-deadline' || spec.window === 'at-endDate') {
-    const sample = selectDeadlineSample(samples, deadline) || selectLastSample(samples);
+    const sample = selectDeadlineSample(samples, deadline) || selectLastSample(samples, deadline);
     const feedValue = extractMetricValue(parsed, feedData);
-    const value = sample && Number.isFinite(sample.value) ? sample.value : feedValue;
+    const value = sample && Number.isFinite(sample.value)
+      ? sample.value
+      : (nowMs <= deadline ? feedValue : NaN);
     const readTs = sample?.ts ?? nowMs;
     if (!Number.isFinite(value)) return voidResult('no_establishable_metric', entry, spec, parsed, nowMs);
     return compareResult(value, spec, entry, parsed, nowMs, { readTs });
@@ -65,7 +70,7 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
   if (spec.window === 'within-horizon') {
     const timeline = sampleValuesWithin(samples, Number(entry?.generatedAt ?? entry?.firstSeenAt), deadline);
     const feedValue = extractMetricValue(parsed, feedData);
-    if (Number.isFinite(feedValue)) timeline.push({ ts: nowMs, value: feedValue });
+    if (Number.isFinite(feedValue) && nowMs <= deadline) timeline.push({ ts: nowMs, value: feedValue });
     if (!timeline.length) return voidResult('no_establishable_metric', entry, spec, parsed, nowMs);
 
     if (parsed.fn === 'present') {
@@ -251,14 +256,14 @@ function normalizeSamples(samples) {
 function selectDeadlineSample(samples, deadline) {
   return normalizeSamples(samples)
     .map(normalizeSample)
-    .filter((sample) => sample && sample.ts >= deadline && Number.isFinite(sample.value))
+    .filter((sample) => sample && sample.ts === deadline && Number.isFinite(sample.value))
     .sort((a, b) => a.ts - b.ts)[0] || null;
 }
 
-function selectLastSample(samples) {
+function selectLastSample(samples, maxTs = Infinity) {
   return normalizeSamples(samples)
     .map(normalizeSample)
-    .filter((sample) => sample && Number.isFinite(sample.value))
+    .filter((sample) => sample && sample.ts <= maxTs && Number.isFinite(sample.value))
     .sort((a, b) => b.ts - a.ts)[0] || null;
 }
 

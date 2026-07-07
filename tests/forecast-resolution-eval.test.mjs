@@ -97,7 +97,7 @@ describe('resolveHardSpec', () => {
     assert.equal(resolved.evidence.comparison, '2 >= 2');
   });
 
-  it('resolves at-deadline point reads from the first sample at or after deadline', () => {
+  it('resolves at-deadline point reads from the latest sample at or before deadline', () => {
     const e = entry({
       spec: {
         kind: 'hard',
@@ -113,14 +113,23 @@ describe('resolveHardSpec', () => {
 
     const result = resolveHardSpec(e, { chokepoints: [{ route: 'Strait of Hormuz', riskScore: 88 }] }, {
       recent: [
-        { ts: START + DAY_MS - 1, value: 99 },
-        { ts: START + DAY_MS + 10, value: 61 },
+        { ts: START + DAY_MS - 1, value: 61 },
+        { ts: START + DAY_MS + 10, value: 99 },
       ],
     }, START + DAY_MS + 10);
 
     assert.equal(result.outcome, 'YES');
     assert.equal(result.evidence.metricValue, 61);
-    assert.equal(result.evidence.readTs, START + DAY_MS + 10);
+    assert.equal(result.evidence.readTs, START + DAY_MS - 1);
+  });
+
+  it('keeps due count specs pending when the source feed is unavailable', () => {
+    const e = entry();
+
+    const result = resolveHardSpec(e, undefined, {}, e.deadline + UCDP_SETTLEMENT_LAG_MS);
+
+    assert.equal(result.status, 'pending');
+    assert.equal(result.evidence.reason, 'source_feed_unavailable');
   });
 
   it('resolves within-horizon presence when a record appears and then disappears inside samples', () => {
@@ -176,6 +185,86 @@ describe('resolveHardSpec', () => {
     const voided = resolveHardSpec(e, { quotes: [] }, { recent: [] }, START + 3 * DAY_MS);
     assert.equal(voided.outcome, 'VOID');
     assert.match(voided.evidence.reason, /no_establishable_metric/);
+  });
+
+  it('does not resolve within-horizon from a post-deadline current feed snapshot', () => {
+    const e = entry({
+      spec: {
+        kind: 'hard',
+        metricKey: 'market:commodities-bootstrap:v1|price(symbol==CL=F)',
+        operator: '>=',
+        threshold: 110,
+        window: 'within-horizon',
+        deadline: START + DAY_MS,
+        sourceFeed: 'market:commodities-bootstrap:v1',
+      },
+      deadline: START + DAY_MS,
+    });
+
+    const result = resolveHardSpec(e, { quotes: [{ symbol: 'CL=F', price: 120 }] }, {
+      recent: [
+        { ts: START + DAY_MS - 1, value: 90 },
+      ],
+    }, START + DAY_MS + 60_000);
+
+    assert.equal(result.outcome, 'NO');
+    assert.equal(result.evidence.metricValue, 90);
+  });
+
+  it('does not resolve at-deadline from a delayed current feed snapshot', () => {
+    const e = entry({
+      spec: {
+        kind: 'hard',
+        metricKey: 'market:commodities-bootstrap:v1|price(symbol==CL=F)',
+        operator: '>=',
+        threshold: 110,
+        window: 'at-deadline',
+        deadline: START + DAY_MS,
+        sourceFeed: 'market:commodities-bootstrap:v1',
+      },
+      deadline: START + DAY_MS,
+    });
+
+    const result = resolveHardSpec(e, { quotes: [{ symbol: 'CL=F', price: 120 }] }, { recent: [] }, START + 2 * DAY_MS);
+
+    assert.equal(result.outcome, 'VOID');
+    assert.equal(result.evidence.reason, 'no_establishable_metric');
+  });
+
+  it('resolves <= and downward crosses branches', () => {
+    const base = entry({
+      spec: {
+        kind: 'hard',
+        metricKey: 'supply_chain:chokepoints:v4|riskScore(route==Strait of Hormuz)',
+        operator: '<=',
+        threshold: 30,
+        window: 'at-deadline',
+        deadline: START + DAY_MS,
+        sourceFeed: 'supply_chain:chokepoints:v4',
+      },
+      deadline: START + DAY_MS,
+    });
+    const le = resolveHardSpec(base, { chokepoints: [{ route: 'Strait of Hormuz', riskScore: 25 }] }, {}, START + DAY_MS);
+    assert.equal(le.outcome, 'YES');
+    assert.equal(le.evidence.comparison, '25 <= 30');
+
+    const crossDown = resolveHardSpec({
+      ...base,
+      spec: {
+        ...base.spec,
+        operator: 'crosses',
+        threshold: 30,
+        baselineValue: 60,
+        window: 'within-horizon',
+      },
+    }, { chokepoints: [] }, {
+      recent: [
+        { ts: START + 1_000, value: 55 },
+        { ts: START + 2_000, value: 28 },
+      ],
+    }, START + DAY_MS);
+    assert.equal(crossDown.outcome, 'YES');
+    assert.equal(crossDown.evidence.comparison, '28 crosses 30 from 60');
   });
 
   it('resolves at-endDate yesPrice and falls back to the last sample when the market vanishes', () => {

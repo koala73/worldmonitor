@@ -671,7 +671,7 @@ export async function writeExtraKey(key, data, ttl, envelopeMeta) {
   const payload = JSON.stringify(value);
   const resp = await fetch(url, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
     body: JSON.stringify(['SET', key, payload, 'EX', ttl]),
     signal: AbortSignal.timeout(10_000),
   });
@@ -686,16 +686,20 @@ export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaT
   const metaTtl = metaTtlSeconds ?? 86400 * 7;
   const resp = await fetch(url, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
     body: JSON.stringify(['SET', metaKey, JSON.stringify(meta), 'EX', metaTtl]),
     signal: AbortSignal.timeout(5_000),
   });
-  if (!resp.ok) console.warn(`  seed-meta ${metaKey}: write failed`);
+  if (!resp.ok) {
+    console.warn(`  seed-meta ${metaKey}: write failed`);
+    return false;
+  }
+  return true;
 }
 
 export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKeyOverride, metaTtlSeconds) {
   await writeExtraKey(key, data, ttl);
-  await writeSeedMeta(key, recordCount, metaKeyOverride, metaTtlSeconds);
+  return writeSeedMeta(key, recordCount, metaKeyOverride, metaTtlSeconds);
 }
 
 export async function extendExistingTtl(keys, ttlSeconds = 600) {
@@ -1630,6 +1634,10 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
           };
         }
         await writeExtraKey(ek.key, ekData, ek.ttl || ttlSeconds, ekEnvelope);
+        if (contractMode && ek.metaKey) {
+          const wroteMeta = await writeSeedMeta(ek.key, ekEnvelope?.recordCount ?? 0, ek.metaKey, ek.metaTtlSeconds);
+          if (!wroteMeta && ek.metaCritical) throw new Error(`Extra key ${ek.key}: seed-meta ${ek.metaKey} write failed`);
+        }
       }
     }
 

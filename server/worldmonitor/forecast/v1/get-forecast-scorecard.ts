@@ -6,6 +6,7 @@ import type {
 import { unwrapEnvelope } from '../../../_shared/seed-envelope.ts';
 
 const REDIS_KEY = 'forecast:scorecard:v1';
+const MAX_STALE_MS = 2160 * 60 * 1000;
 
 function emptyScorecard(overrides: Partial<GetForecastScorecardResponse> = {}): GetForecastScorecardResponse {
   return {
@@ -37,8 +38,10 @@ export const getForecastScorecard: ForecastServiceHandler['getForecastScorecard'
   _ctx: ServerContext,
 ): Promise<GetForecastScorecardResponse> => {
   try {
-    const data = await getScorecardJson() as Partial<GetForecastScorecardResponse> | null;
+    const envelope = await getScorecardJson();
+    const data = envelope.data as Partial<GetForecastScorecardResponse> | null;
     if (!data) return emptyScorecard();
+    const fetchedAt = Number(envelope.fetchedAt);
     return emptyScorecard({
       ...data,
       totals: data.totals ?? emptyScorecard().totals,
@@ -46,7 +49,7 @@ export const getForecastScorecard: ForecastServiceHandler['getForecastScorecard'
       byGenerationOrigin: data.byGenerationOrigin ?? [],
       calibration: data.calibration ?? [],
       degraded: false,
-      stale: false,
+      stale: Number.isFinite(fetchedAt) ? Date.now() - fetchedAt > MAX_STALE_MS : false,
       error: '',
     });
   } catch (err) {
@@ -59,16 +62,21 @@ export const getForecastScorecard: ForecastServiceHandler['getForecastScorecard'
   }
 };
 
-async function getScorecardJson(): Promise<unknown | null> {
+async function getScorecardJson(): Promise<{ data: unknown | null; fetchedAt: number | null }> {
+  const raw = await getRawString(REDIS_KEY);
+  const unwrapped = unwrapEnvelope(raw == null ? null : JSON.parse(raw));
+  return { data: unwrapped.data, fetchedAt: unwrapped._seed?.fetchedAt ?? null };
+}
+
+async function getRawString(key: string): Promise<string | null> {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) throw new Error('Redis credentials not configured');
-  const resp = await fetch(`${url}/get/${encodeURIComponent(REDIS_KEY)}`, {
-    headers: { Authorization: `Bearer ${token}` },
+  const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
+    headers: { Authorization: `Bearer ${token}`, 'User-Agent': 'worldmonitor-gateway/1.0' },
     signal: AbortSignal.timeout(1_500),
   });
   if (!resp.ok) throw new Error(`Redis HTTP ${resp.status}`);
   const payload = await resp.json() as { result?: string };
-  if (!payload.result) return null;
-  return unwrapEnvelope(JSON.parse(payload.result)).data;
+  return payload.result || null;
 }

@@ -42,7 +42,7 @@ describe('computeScorecard', () => {
     assert.equal(scorecard.totals.voidRate, 0.333333);
     assert.equal(scorecard.totals.publicationCoverage, 1);
     assert.equal(scorecard.overall.brier, 0.1);
-    assert.ok(scorecard.overall.logScore > 0);
+    assert.equal(scorecard.overall.logScore, 0.366985);
 
     const market = scorecard.byDomain.find((row) => row.domain === 'market');
     assert.equal(market.scored, 2);

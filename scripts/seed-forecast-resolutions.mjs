@@ -12,7 +12,7 @@
 //   - Start command: node scripts/seed-forecast-resolutions.mjs
 //   - Cron: daily
 
-import { loadEnvFile, runSeed } from './_seed-utils.mjs';
+import { CHROME_UA, loadEnvFile, runSeed } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { resolveR2StorageConfig, putR2JsonObject } from './_r2-storage.mjs';
 import { parseMetricKey, resolveHardSpec, extractMetricValue } from './_forecast-resolution-eval.mjs';
@@ -21,6 +21,7 @@ import { computeScorecard } from './_forecast-scorecard.mjs';
 export const HISTORY_KEY = 'forecast:predictions:history:v1';
 export const RESOLUTIONS_KEY = 'forecast:resolutions:v1';
 export const SCORECARD_KEY = 'forecast:scorecard:v1';
+export const SCORECARD_META_KEY = 'seed-meta:forecast:scorecard';
 export const SCORECARD_TTL_SECONDS = 7 * 24 * 60 * 60;
 export const RESOLUTION_SOURCE_VERSION = 'forecast-resolution-engine-v1';
 export const RESOLUTION_SCHEMA_VERSION = 1;
@@ -84,6 +85,7 @@ export function samplePendingEntries(ledger, feedsByKey, nowMs) {
     if (entry.status !== 'pending') continue;
     const parsed = parseMetricKey(entry.spec?.metricKey);
     if (!parsed || parsed.fn === 'count') continue;
+    if (nowMs > Number(entry.deadline ?? entry.spec?.deadline)) continue;
     const feedData = feedsByKey?.[entry.spec.sourceFeed] ?? feedsByKey?.[parsed.feedKey];
     if (feedData == null) {
       entry.samples = appendSample(entry.samples, { ts: nowMs, error: `missing_feed:${entry.spec.sourceFeed || parsed.feedKey}` });
@@ -220,7 +222,7 @@ async function readRedisJson(key) {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) throw new Error('Missing UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN');
   const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: { Authorization: `Bearer ${token}`, 'User-Agent': CHROME_UA },
     signal: AbortSignal.timeout(10_000),
   });
   if (!resp.ok) throw new Error(`Redis GET ${key} failed: HTTP ${resp.status}`);
@@ -235,7 +237,7 @@ async function readForecastHistory(limit = 200) {
   if (!url || !token) throw new Error('Missing UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN');
   const resp = await fetch(url, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
     body: JSON.stringify(['LRANGE', HISTORY_KEY, 0, Math.max(0, limit - 1)]),
     signal: AbortSignal.timeout(15_000),
   });
@@ -253,7 +255,16 @@ async function readResolutionFeeds(ledger) {
     .filter((entry) => entry.status === 'pending')
     .map((entry) => entry.spec?.sourceFeed)
     .filter(Boolean))];
-  const pairs = await Promise.all(keys.map(async (key) => [key, await readRedisJson(key)]));
+  const results = await Promise.allSettled(keys.map(async (key) => [key, await readRedisJson(key)]));
+  const pairs = [];
+  for (let index = 0; index < results.length; index += 1) {
+    const result = results[index];
+    if (result.status === 'fulfilled') {
+      pairs.push(result.value);
+    } else {
+      console.warn(`  [forecast-resolutions] feed ${keys[index]} unavailable: ${result.reason?.message || result.reason}`);
+    }
+  }
   return Object.fromEntries(pairs);
 }
 
@@ -297,24 +308,29 @@ async function dryRun() {
   console.log(JSON.stringify(summary, null, 2));
 }
 
-async function appendR2Receipts(receipts) {
+export async function appendR2Receipts(receipts, options = {}) {
   if (!receipts.length) return [];
-  const config = resolveR2StorageConfig(process.env, { prefixEnv: 'CLOUDFLARE_R2_FORECAST_RESOLUTION_PREFIX' });
+  const putObject = options.putObject || putR2JsonObject;
+  const config = resolveR2StorageConfig(options.env || process.env, { prefixEnv: 'CLOUDFLARE_R2_FORECAST_RESOLUTION_PREFIX' });
   if (!config) {
     console.warn(`  [forecast-resolutions] R2 not configured; skipped ${receipts.length} receipt append(s)`);
     return [];
   }
   const archived = [];
   for (const receipt of receipts) {
-    const day = new Date(receipt.resolvedAt).toISOString().slice(0, 10);
-    const safeKey = receipt.key.replace(/[^a-zA-Z0-9@._-]+/g, '_');
-    const key = `${config.basePrefix}/forecast-resolutions/${day}/${safeKey}-${receipt.resolvedAt}.json`;
-    await putR2JsonObject(config, key, receipt, {
-      kind: 'forecast-resolution',
-      outcome: receipt.entry?.outcome || 'unknown',
-    });
-    archived.push({ key: receipt.key, objectKey: key });
-    console.log(`  [forecast-resolutions] R2 receipt: ${key}`);
+    try {
+      const day = new Date(receipt.resolvedAt).toISOString().slice(0, 10);
+      const safeKey = receipt.key.replace(/[^a-zA-Z0-9@._-]+/g, '_');
+      const key = `${config.basePrefix}/forecast-resolutions/${day}/${safeKey}-${receipt.resolvedAt}.json`;
+      await putObject(config, key, receipt, {
+        kind: 'forecast-resolution',
+        outcome: receipt.entry?.outcome || 'unknown',
+      });
+      archived.push({ key: receipt.key, objectKey: key });
+      console.log(`  [forecast-resolutions] R2 receipt: ${key}`);
+    } catch (err) {
+      console.warn(`  [forecast-resolutions] R2 receipt failed for ${receipt.key}: ${err?.message || err}`);
+    }
   }
   return archived;
 }
@@ -336,6 +352,8 @@ if (DIRECT_RUN && process.argv.includes('--dry-run')) {
       ttl: SCORECARD_TTL_SECONDS,
       transform: (ledger) => computeScorecard(ledger, Date.now()),
       declareRecords: declareScorecardRecords,
+      metaKey: SCORECARD_META_KEY,
+      metaCritical: true,
     }],
   });
 }

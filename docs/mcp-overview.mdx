@@ -276,6 +276,7 @@ For per-tool parameters, freshness budgets, timeouts, and concrete `curl` exampl
 | `analyze_situation` | Ad-hoc geopolitical deduction from a query + context. Returns confidence + supporting signals. | LLM |
 | `generate_forecasts` | Fresh probability estimates (bypasses cache). | LLM |
 | `get_forecast_predictions` | Pre-computed cached forecasts. Fast. | Cache |
+| `get_forecast_scorecard` | Cached forecast-resolution calibration and scorecard. | Cache |
 
 ## API coverage
 
@@ -318,6 +319,7 @@ Reverse lookup workflow:
 | `get_research_signals` | `GET /api/research/v1/list-tech-events` |
 | `get_prediction_markets` | `GET /api/prediction/v1/list-prediction-markets` |
 | `get_forecast_predictions` | `GET /api/forecast/v1/get-forecasts` |
+| `get_forecast_scorecard` | `GET /api/forecast/v1/get-forecast-scorecard` |
 | `get_world_brief` | `GET /api/news/v1/list-feed-digest`<br/>`POST /api/news/v1/summarize-article` |
 | `analyze_situation` | `POST /api/intelligence/v1/deduct-situation` |
 | `search_flights` | `GET /api/aviation/v1/search-google-flights` |

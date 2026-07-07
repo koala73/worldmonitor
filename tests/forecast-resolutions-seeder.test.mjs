@@ -3,8 +3,10 @@ import { describe, it } from 'node:test';
 
 import {
   RESOLUTIONS_KEY,
+  SCORECARD_META_KEY,
   SCORECARD_KEY,
   appendSample,
+  appendR2Receipts,
   collectUnarchivedReceipts,
   declareRecords,
   markReceiptsArchived,
@@ -138,6 +140,30 @@ describe('processResolutionCycle', () => {
     assert.equal(row.samples.count, 0);
   });
 
+  it('keeps due count entries pending when the source feed is unavailable', () => {
+    const countForecast = forecast({
+      id: 'fc-mali',
+      domain: 'conflict',
+      region: 'Mali',
+      resolution: {
+        kind: 'hard',
+        metricKey: 'conflict:ucdp-events:v1|count(country==Mali)',
+        operator: '>=',
+        threshold: 1,
+        window: 'within-horizon',
+        deadline: T0 + DAY_MS,
+        sourceFeed: 'conflict:ucdp-events:v1',
+      },
+    });
+
+    const { ledger, receipts } = processResolutionCycle({}, [snapshot(T0, [countForecast])], {}, T0 + 16 * DAY_MS);
+
+    const row = ledger[`fc-mali@${T0 + DAY_MS}`];
+    assert.equal(row.status, 'pending');
+    assert.equal(row.outcome, undefined);
+    assert.equal(receipts.length, 0);
+  });
+
   it('records feed-read gaps as error samples and computes a scorecard', () => {
     const pending = forecast({ deadline: T0 + 7 * DAY_MS });
     const { ledger, scorecard } = processResolutionCycle({}, [snapshot(T0, [pending])], {}, T0 + DAY_MS);
@@ -166,6 +192,7 @@ describe('appendSample and seed contract', () => {
   it('exports stable Redis keys and record-count declaration', () => {
     assert.equal(RESOLUTIONS_KEY, 'forecast:resolutions:v1');
     assert.equal(SCORECARD_KEY, 'forecast:scorecard:v1');
+    assert.equal(SCORECARD_META_KEY, 'seed-meta:forecast:scorecard');
     assert.equal(declareRecords({ a: {}, b: {} }), 2);
   });
 
@@ -198,5 +225,35 @@ describe('appendSample and seed contract', () => {
     assert.equal(ledger['a@1'].receiptArchivedAt, T0 + 2);
     assert.equal(ledger['a@1'].receiptArchiveKey, 'forecast-resolutions/2026-07-07/a.json');
     assert.deepEqual(collectUnarchivedReceipts(ledger), []);
+  });
+
+  it('keeps R2 receipt archival best-effort so one object failure stays retryable', async () => {
+    const warnings = [];
+    const originalWarn = console.warn;
+    console.warn = (...args) => warnings.push(args.join(' '));
+    try {
+      const archived = await appendR2Receipts([
+        { key: 'a@1', resolvedAt: T0, entry: { outcome: 'YES' } },
+        { key: 'b@1', resolvedAt: T0, entry: { outcome: 'NO' } },
+      ], {
+        env: {
+          CLOUDFLARE_R2_ACCOUNT_ID: 'acct',
+          CLOUDFLARE_R2_ACCESS_KEY_ID: 'id',
+          CLOUDFLARE_R2_SECRET_ACCESS_KEY: 'secret',
+          CLOUDFLARE_R2_BUCKET: 'bucket',
+          CLOUDFLARE_R2_FORECAST_RESOLUTION_PREFIX: 'receipts',
+        },
+        putObject: async (_config, key) => {
+          if (key.includes('/b@1-')) throw new Error('r2 down');
+        },
+      });
+
+      assert.equal(archived.length, 1);
+      assert.equal(archived[0].key, 'a@1');
+      assert.match(archived[0].objectKey, /receipts\/forecast-resolutions\/2026-07-07\/a@1-/);
+      assert.ok(warnings.some((line) => line.includes('R2 receipt failed for b@1')));
+    } finally {
+      console.warn = originalWarn;
+    }
   });
 });

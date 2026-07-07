@@ -41,7 +41,7 @@ describe('getForecastScorecard backend status', () => {
       assert.ok(url.endsWith(`/get/${encodeURIComponent(REDIS_KEY)}`));
       return new Response(JSON.stringify({
         result: JSON.stringify({
-          _seed: { fetchedAt: 123, recordCount: 2, sourceVersion: 'test', schemaVersion: 1, state: 'OK' },
+          _seed: { fetchedAt: Date.now(), recordCount: 2, sourceVersion: 'test', schemaVersion: 1, state: 'OK' },
           data: {
             schemaVersion: 1,
             generatedAt: 456,
@@ -67,7 +67,36 @@ describe('getForecastScorecard backend status', () => {
     assert.equal(res.vsMarketSkill?.brierDelta, 0.05);
     assert.equal(JSON.stringify(res).includes('_seed'), false);
     assert.equal(res.degraded, false);
+    assert.equal(res.stale, false);
     assert.equal(res.error, '');
+  });
+
+  it('marks cached scorecards stale when the seed envelope is older than the health budget', async () => {
+    globalThis.fetch = (async () => {
+      return new Response(JSON.stringify({
+        result: JSON.stringify({
+          _seed: {
+            fetchedAt: Date.now() - 2161 * 60 * 1000,
+            recordCount: 1,
+            sourceVersion: 'test',
+            schemaVersion: 1,
+            state: 'OK',
+          },
+          data: {
+            schemaVersion: 1,
+            generatedAt: 456,
+            rollingWindowDays: 180,
+            methodology: 'test methodology',
+            totals: { entries: 1, resolved: 1, pending: 0, pendingJudge: 0, scored: 1, void: 0, voidRate: 0, publicationCoverage: 1 },
+          },
+        }),
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    const res = await getForecastScorecard(makeCtx(), {});
+
+    assert.equal(res.degraded, false);
+    assert.equal(res.stale, true);
   });
 
   it('returns a well-formed degraded empty response on backend failure', async () => {
