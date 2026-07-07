@@ -25,7 +25,10 @@ import {
 const BUDGET_EXHAUSTED = 'budget_exhausted';
 const PROVIDER_FAILED = 'provider_failed';
 
-const ENV_KEYS = ['OPENROUTER_API_KEY', 'FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER'];
+const ENV_KEYS = [
+  'OPENROUTER_API_KEY', 'GROQ_API_KEY',
+  'FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER', 'FORECAST_LLM_PROVIDER_ORDER',
+];
 const originalEnv = Object.fromEntries(ENV_KEYS.map((k) => [k, process.env[k]]));
 const realFetch = global.fetch;
 afterEach(() => {
@@ -151,10 +154,11 @@ test('a genuine provider failure that drains the run deadline still writes a SEE
   seedLastGood(store);
   process.env.OPENROUTER_API_KEY = 'test-key';
   process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER = 'openrouter';
-  // >= the full-chain reservation (50_000) so the pre-call guard admits the call;
-  // the mock then drains the deadline mid-flight to prove a real failure is not
-  // reclassified as a starve.
-  __setForecastLlmRunDeadlineForTests(Date.now() + 60_000);
+  // 40s: the resolved chain here is openrouter-only (pinned below), so the
+  // reservation is just 25s + 5s guard = 30s — a 40s budget admits it (the static
+  // all-provider 50s reservation would have wrongly skipped). The mock then drains
+  // the deadline mid-flight to prove a real failure is not reclassified as a starve.
+  __setForecastLlmRunDeadlineForTests(Date.now() + 40_000);
 
   let providerCalls = 0;
   __setForecastLlmTransportForTests({
@@ -177,14 +181,16 @@ test('pre-call guard skips when the run budget cannot cover the full provider ch
   const store = {};
   __setRedisStoreForTests(store);
   seedLastGood(store);
-  // Real provider config so a broken/too-low guard would actually invoke the transport.
+  // Default chain, both providers runnable → reservation is openrouter 25s + groq
+  // 20s + 5s guard = 50s. Real keys so a broken/too-low guard would actually invoke
+  // the transport rather than short-circuit on a missing key.
   process.env.OPENROUTER_API_KEY = 'test-key';
-  process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER = 'openrouter';
+  process.env.GROQ_API_KEY = 'test-key';
+  delete process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER;
+  delete process.env.FORECAST_LLM_PROVIDER_ORDER;
 
-  // 25s run budget: well below the full-chain reservation (openrouter 25s + groq
-  // 20s + 5s stage guard = 50s). Admitting it would time out CAPPED below the 25s
-  // provider timeout — indistinguishable from a hung provider — so it must SKIP
-  // cleanly and preserve last-good instead of attempting an ambiguous call.
+  // 25s run budget: well below the 50s two-provider reservation, so it must SKIP
+  // cleanly and preserve last-good instead of attempting an ambiguous, doomed call.
   __setForecastLlmRunDeadlineForTests(Date.now() + 25_000);
 
   let providerCalls = 0;
@@ -255,6 +261,7 @@ test('a budget covering only the primary — not the fallback — skips instead 
   process.env.GROQ_API_KEY = 'test-key';
   // DEFAULT chain (openrouter → groq); do NOT pin to a single provider.
   delete process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER;
+  delete process.env.FORECAST_LLM_PROVIDER_ORDER;
 
   // 40s budget: enough for the primary openrouter attempt (25s) + guard — the OLD
   // 30s threshold admitted this — but NOT the full openrouter→groq chain (50s). The
@@ -276,4 +283,62 @@ test('a budget covering only the primary — not the fallback — skips instead 
   const meta = store['seed-meta:intelligence:market-implications'];
   assert.equal(meta.status, 'ok', 'a stranded-fallback budget must preserve last-good, not write SEED_ERROR (the health WARNING this fixes)');
   assert.equal(meta.fetchedAt, 1783340000000, 'fetchedAt untouched — STALE_SEED still escalates if the starve persists past 2h');
+});
+
+test('an admitted primary timeout falls through to the fallback in ONE attempt each — not stranded by retries (#5003 review, finding 1)', async () => {
+  const store = {};
+  __setRedisStoreForTests(store);
+  seedLastGood(store);
+  process.env.OPENROUTER_API_KEY = 'test-key';
+  process.env.GROQ_API_KEY = 'test-key';
+  delete process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER;
+  delete process.env.FORECAST_LLM_PROVIDER_ORDER;
+
+  // 60s admits the full two-provider chain (50s). Every attempt times out. PRE-FIX,
+  // openrouter's 3 retries (4 attempts) drained the run budget and groq was NEVER
+  // reached — a recoverable timeout became a SEED_ERROR without trying the fallback.
+  // With maxRetries:0 each provider gets exactly ONE attempt, so groq IS reached.
+  __setForecastLlmRunDeadlineForTests(Date.now() + 60_000);
+
+  const calls = { openrouter: 0, groq: 0 };
+  __setForecastLlmTransportForTests({
+    fetch: async (u) => {
+      const url = String(u);
+      if (url.includes('openrouter')) calls.openrouter += 1;
+      else if (url.includes('groq')) calls.groq += 1;
+      throw Object.assign(new Error('timeout'), { name: 'TimeoutError' });
+    },
+  });
+  global.fetch = async () => ({ ok: true, status: 200, json: async () => ({ result: 1 }), text: async () => '' });
+
+  await buildAndSeedMarketImplications({});
+
+  assert.equal(calls.openrouter, 1, 'primary must be tried exactly ONCE (maxRetries:0) — no 4-attempt retry storm that burns the fallback budget');
+  assert.equal(calls.groq, 1, 'the fallback MUST be reached (it was stranded pre-fix)');
+  const meta = store['seed-meta:intelligence:market-implications'];
+  assert.equal(meta.status, 'error', 'both providers genuinely failed → SEED_ERROR is correct (the fallback ran, it just also failed)');
+});
+
+test('a single-provider override reserves only that provider — admitted where the 2-provider chain would skip (#5003 review, finding 2)', async () => {
+  const store = {};
+  __setRedisStoreForTests(store);
+  seedLastGood(store);
+  process.env.OPENROUTER_API_KEY = 'test-key';
+  process.env.GROQ_API_KEY = 'test-key';
+  // Pin to openrouter only → resolved chain reserves just 25s + 5s = 30s.
+  process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER = 'openrouter';
+
+  // 40s: below the 2-provider 50s reservation (would skip) but above the pinned
+  // single-provider 30s reservation — so this MUST be admitted, not skipped.
+  __setForecastLlmRunDeadlineForTests(Date.now() + 40_000);
+
+  let providerCalls = 0;
+  __setForecastLlmTransportForTests({
+    fetch: async () => { providerCalls += 1; throw Object.assign(new Error('timeout'), { name: 'TimeoutError' }); },
+  });
+  global.fetch = async () => ({ ok: true, status: 200, json: async () => ({ result: 1 }), text: async () => '' });
+
+  await buildAndSeedMarketImplications({});
+
+  assert.equal(providerCalls, 1, 'a pinned single-provider chain needs only 30s, so a 40s budget must ADMIT it (and try it once)');
 });

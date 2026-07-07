@@ -14609,6 +14609,12 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
   const providers = resolveForecastLlmProviders(options);
   const stageBudgetMs = getForecastLlmStageBudgetMs(options);
   const budgetStartedAtMs = Date.now();
+  // Per-provider retry count is overridable per call. Budget-constrained tail
+  // stages (market_implications) pass 0 so a slow primary cannot burn the shared
+  // run budget across 4 attempts and strand the fallback provider (#5003 review).
+  const providerMaxRetries = Number.isFinite(options.maxRetries)
+    ? Math.max(0, Math.floor(options.maxRetries))
+    : FORECAST_LLM_PROVIDER_MAX_RETRIES;
   const requestedOrder = Array.isArray(options.providerOrder) && options.providerOrder.length > 0
     ? options.providerOrder.join(',')
     : providers.map(provider => provider.name).join(',');
@@ -14709,9 +14715,10 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
               // timeout (attemptTimeoutMs < provider.timeout) AND the run budget is
               // now exhausted — i.e. we never gave the provider its full window, so
               // we cannot call this a provider failure. When the call gets the full
-              // provider.timeout (the MARKET_IMPLICATIONS_MIN_RUN_BUDGET_MS >= 30s
-              // guard guarantees this for admitted market_implications calls), a
-              // timeout is unambiguously a provider failure -> sawProviderFailure.
+              // provider.timeout (market_implications' admission guard reserves the
+              // whole resolved chain — every runnable provider's timeout + the stage
+              // guard, with maxRetries:0 — so each admitted attempt gets its full
+              // window), a timeout is unambiguously a provider failure -> sawProviderFailure.
               const budgetCappedTimeout = timedOut
                 && attemptTimeoutMs < provider.timeout
                 && getUsableForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs) <= 0;
@@ -14723,7 +14730,7 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
             }
             throw err;
           }
-        }, FORECAST_LLM_PROVIDER_MAX_RETRIES, retryDelayMs);
+        }, providerMaxRetries, retryDelayMs);
 
         let json;
         try {
@@ -16439,20 +16446,24 @@ const MARKET_IMPLICATIONS_META_TTL = 86400 * 7;
 // fingerprint is not model-sensitive, so retire old-model rows explicitly.
 const MARKET_IMPLICATIONS_STAGE_CACHE_PREFIX = 'forecast:llm-market-implications:v2:';
 
-// Admit the tail stage only when the shared run budget (#4978) still covers the
-// ENTIRE provider chain — the sum of every provider's call timeout PLUS the 5s
-// stage guard that getUsableForecastLlmBudgetMs subtracts. Reserving only the
-// PRIMARY timeout (the original 25_000 + 5_000 = 30_000) was a latent bug: with
-// the default openrouter→groq order, a 25s deepseek-v4-flash timeout drained the
-// budget so the groq FALLBACK was stranded ("groq llm budget exhausted") and a
-// recoverable timeout was misreported as SEED_ERROR (health WARNING). Reserving
-// the full chain (25_000 + 20_000 + 5_000 = 50_000) means an admitted call can
-// exhaust the primary AND still run the fallback; below that we skip and preserve
-// last-good honestly (age-based STALE_SEED still escalates past 2h) rather than
-// attempt a chain we cannot finish. Genuine both-providers-failed still SEED_ERRORs.
-const MARKET_IMPLICATIONS_MIN_RUN_BUDGET_MS =
-  FORECAST_LLM_PROVIDERS.reduce((sum, provider) => sum + (provider.timeout || 0), 0)
-  + FORECAST_LLM_STAGE_BUDGET_GUARD_MS;
+// Minimum shared run budget to admit the tail stage (#4978): reserve the RESOLVED,
+// RUNNABLE provider chain for THIS call — every provider in the (possibly env-
+// overridden) order that actually has an API key, ONE attempt each (market_implications
+// forces maxRetries:0), summed with the 5s stage guard that getUsableForecastLlmBudgetMs
+// subtracts. Reserving only the PRIMARY timeout (the original 30_000) was a latent bug:
+// with the default openrouter→groq order a 25s deepseek-v4-flash timeout drained the
+// budget so the groq FALLBACK was stranded and a recoverable timeout was misreported as
+// SEED_ERROR (health WARNING). Reserving the full chain means an admitted call can exhaust
+// the primary AND still run the fallback; below that we skip and preserve last-good (green,
+// age-based STALE_SEED still escalates past 2h) rather than attempt a chain we cannot finish.
+// Provider-order/key aware, so a single-provider override or a missing key reserves only what
+// that chain needs (no over-skip); a chain with NO runnable providers reserves just the guard,
+// so a genuine no-key outage is admitted and surfaces SEED_ERROR instead of hiding as a starve.
+function getMarketImplicationsMinRunBudgetMs(llmOptions = {}) {
+  const runnable = resolveForecastLlmProviders(llmOptions).filter((provider) => process.env[provider.envKey]);
+  const chainMs = runnable.reduce((sum, provider) => sum + (provider.timeout || 0), 0);
+  return chainMs + FORECAST_LLM_STAGE_BUDGET_GUARD_MS;
+}
 
 // Input-hash guard for the market_implications LLM stage (#4894). This was
 // the only forecast stage with no pre-call cache — a 2,500-token completion
@@ -16569,24 +16580,31 @@ async function buildAndSeedMarketImplications(inputs) {
   // stage runs; callForecastLLM would then throw a budget error, return null,
   // and we'd (mis)write a SEED_ERROR for benign, self-healing resource
   // contention. Skip gracefully and preserve last-good instead.
+  // Resolve the call options up front so the admission reservation matches the exact
+  // providers this call will use (env-overridable order, key-filtered).
+  const llmOptions = getForecastLlmCallOptions('market_implications');
+  const minRunBudgetMs = getMarketImplicationsMinRunBudgetMs(llmOptions);
   const runBudgetRemainingMs = getRemainingForecastLlmRunBudgetMs();
-  if (runBudgetRemainingMs < MARKET_IMPLICATIONS_MIN_RUN_BUDGET_MS) {
+  if (runBudgetRemainingMs < minRunBudgetMs) {
     const remaining = Math.max(0, Math.round(runBudgetRemainingMs));
-    console.warn(`  [MarketImplications] Skipped: shared LLM run budget exhausted (${remaining}ms left, need ${MARKET_IMPLICATIONS_MIN_RUN_BUDGET_MS}ms) — preserving last-good, no SEED_ERROR`);
-    console.log(JSON.stringify({ event: 'llm_market_implications', skipped: 'run_budget_exhausted', remainingMs: remaining }));
+    console.warn(`  [MarketImplications] Skipped: shared LLM run budget too low for the provider chain (${remaining}ms left, need ${minRunBudgetMs}ms) — preserving last-good, no SEED_ERROR`);
+    console.log(JSON.stringify({ event: 'llm_market_implications', skipped: 'run_budget_exhausted', remainingMs: remaining, needMs: minRunBudgetMs }));
     await preserveMarketImplicationsLastGoodOnStarve();
     return;
   }
 
   const userPrompt = `World state as of ${new Date().toISOString()}:\n\n${context}\n\nAllowed tickers: ${[...ALL_ALLOWED_TICKERS].join(', ')}`;
 
-  const llmOptions = getForecastLlmCallOptions('market_implications');
   const result = await callForecastLLM(MARKET_IMPLICATIONS_SYSTEM_PROMPT, userPrompt, {
     ...llmOptions,
     stage: 'market_implications',
     maxTokens: 2500,
     temperature: 0.25,
     returnFailureReason: true,
+    // One attempt per provider: reserving the full retry chain (4 attempts × 2
+    // providers) would exceed the entire run budget, so a slow primary must fall
+    // straight through to the fallback instead of retrying it (#5003 review).
+    maxRetries: 0,
   });
 
   if (!result?.text) {
