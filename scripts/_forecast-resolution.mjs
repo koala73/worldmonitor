@@ -312,8 +312,10 @@ function firstPercentSignalValue(pred, matchTypes) {
 // SIGNAL_TO_HARD_FAMILY, but only families ALLOWED for pred.domain are eligible
 // — so a market-domain forecast's 'cii' signal (-> conflict) or 'chokepoint'
 // signal (-> supply_chain) is skipped, and it resolves to 'market' via its
-// 'commodity' signal (or the calibration fallback), never to a conflict/
-// supply_chain feed. A domain absent from the table yields no hard family.
+// 'commodity' signal, never to a conflict/supply_chain feed. A market forecast
+// with no eligible hard signal (no commodity) yields no hard family -> judged:
+// there is no calibration.marketPrice fallback (a stocks feed cannot resolve a
+// prediction-market title). A domain absent from the table yields no family.
 function resolveHardFamily(pred) {
   const allowed = DOMAIN_TO_HARD_FAMILIES[pred.domain];
   if (!allowed) return null;
@@ -321,13 +323,6 @@ function resolveHardFamily(pred) {
   for (const signal of pred.signals || []) {
     const family = SIGNAL_TO_HARD_FAMILY[signal.type];
     if (family && allowed.includes(family)) return family;
-  }
-
-  // Market-domain calibration fallback (D3): a market forecast with no
-  // eligible hard signal but a prediction-market calibration anchor still
-  // resolves to the market family (the metric guard lives in deriveHardMetrics).
-  if (allowed.includes('market') && Number.isFinite(pred.calibration?.marketPrice)) {
-    return 'market';
   }
 
   return null;
@@ -342,7 +337,13 @@ function deriveHardMetrics(pred, family, inputs) {
   switch (family) {
     case 'conflict':
     case 'ucdp_zone': {
-      const count = firstFiniteSignalCount(pred, new Set(['ucdp', 'conflict_events', 'cii']));
+      // Count threshold comes ONLY from an actual event-count signal
+      // (ucdp / conflict_events). A 'cii' value is a 0-100 composite INDEX,
+      // not an event count — using it would emit a semantically wrong
+      // `count(country==X) >= <ciiScore>` ground truth, and since detectors
+      // emit the cii signal first it would shadow a real count. A conflict
+      // forecast with only cii signals has no clean count metric -> judged.
+      const count = firstFiniteSignalCount(pred, new Set(['ucdp', 'conflict_events']));
       if (!Number.isFinite(count)) return null;
       return {
         metricKey: `conflict:ucdp-events:v1|count(country==${pred.region})`,
@@ -421,29 +422,15 @@ function deriveHardMetrics(pred, family, inputs) {
             };
           }
         }
-        // commodity label with no ticker mapping (Semiconductors, Trade
-        // goods, ambiguous compounds) or no emission price available: no
-        // finite threshold derivable -> judged fallback (R3).
-        return null;
       }
-      // Fallback: a market-domain forecast with no commodity signal but a
-      // prediction-market calibration anchor (D3 calibration.marketPrice path).
-      // marketPrice is a documented 0..1 fraction; require it in-range before
-      // the ×100 scaling so an already-scaled value can't silently double-scale
-      // (FIX 3b). Out of range -> judged.
-      const marketPrice = pred.calibration?.marketPrice;
-      if (!(marketPrice > 0 && marketPrice <= 1)) return null;
-      // A single coarse but always-valid MARKET_INPUT_KEYS allowlist member —
-      // the module has no per-market routing table for this fallback path.
-      const feedKey = 'market:stocks-bootstrap:v1';
-      return {
-        metricKey: `${feedKey}|price(market==${pred.title})`,
-        sourceFeed: feedKey,
-        operator: 'crosses',
-        threshold: +(marketPrice * 100).toFixed(1),
-        baselineValue: +(marketPrice * 100).toFixed(1),
-        window: FAMILY_WINDOW[family],
-      };
+      // No commodity-ticker hard path succeeded: an unmapped label
+      // (Semiconductors, Trade goods, ambiguous compounds), no emission
+      // price, or no commodity signal at all -> judged (R3). There is NO
+      // calibration.marketPrice hard path: a stocks feed cannot resolve a
+      // prediction-market title, and its threshold===baselineValue 'crosses'
+      // spec was vacuous (fails the R12 sufficiency bar every other family
+      // passed).
+      return null;
     }
     default:
       return null;

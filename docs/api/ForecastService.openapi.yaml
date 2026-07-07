@@ -725,7 +725,9 @@ components:
                 demotedBySimulation:
                     type: boolean
                 resolution:
-                    $ref: '#/components/schemas/ResolutionSpec'
+                    anyOf:
+                        - $ref: '#/components/schemas/ResolutionSpec'
+                        - type: 'null'
         ForecastSignal:
             type: object
             properties:
@@ -917,25 +919,39 @@ components:
                 kind:
                     type: string
                 metricKey:
-                    type: string
+                    type:
+                        - string
+                        - 'null'
                 operator:
-                    type: string
+                    type:
+                        - string
+                        - 'null'
                 threshold:
-                    type: number
+                    type:
+                        - number
+                        - 'null'
                     format: double
                 baselineValue:
-                    type: number
+                    type:
+                        - number
+                        - 'null'
                     format: double
                 window:
-                    type: string
+                    type:
+                        - string
+                        - 'null'
                 deadline:
                     type: integer
                     format: int64
                     description: 'Warning: Values > 2^53 may lose precision in JavaScript'
                 sourceFeed:
-                    type: string
+                    type:
+                        - string
+                        - 'null'
                 question:
-                    type: string
+                    type:
+                        - string
+                        - 'null'
             description: |-
                 Machine-checkable resolution spec — makes a forecast a scoreable *bet*.
                  Every forecast carries exactly one spec, either "hard" or "judged":

@@ -623,15 +623,36 @@ describe('FIX 1 — domain constrains the hard family (DOMAIN_TO_HARD_FAMILIES)'
     assert.notEqual(spec.sourceFeed, 'conflict:ucdp-events:v1');
   });
 
-  it('a conflict-domain forecast with a cii signal still resolves conflict-hard (cii allowed for conflict)', () => {
+  // FIX A: 'cii' is a 0-100 composite index, NOT an event count, so it no
+  // longer drives the conflict/ucdp count threshold. A conflict forecast with
+  // only cii signals has no clean count metric -> judged.
+  it('a conflict-domain forecast with ONLY cii signals is judged (cii is not an event count)', () => {
     const forecast = pred({
       domain: 'conflict',
       region: 'Pakistan',
       signals: [{ type: 'cii', value: 'Pakistan CII 71', weight: 0.4 }],
     });
     const spec = buildResolutionSpec(forecast, {}, GENERATED_AT);
+    assert.equal(spec.kind, 'judged');
+    assert.equal(spec.threshold, null);
+    assert.equal(spec.sourceFeed, null);
+  });
+
+  it('a conflict forecast with cii + conflict_events takes the threshold from the COUNT signal, not the cii score', () => {
+    const forecast = pred({
+      domain: 'conflict',
+      region: 'Sudan',
+      // cii emitted first (would shadow the count if it were accepted) — the
+      // threshold must come from the conflict_events count (3), not 71.
+      signals: [
+        { type: 'cii', value: 'Sudan CII 71', weight: 0.4 },
+        { type: 'conflict_events', value: '3 cross-border events', weight: 0.35 },
+      ],
+    });
+    const spec = buildResolutionSpec(forecast, {}, GENERATED_AT);
     assert.equal(spec.kind, 'hard');
     assert.equal(spec.sourceFeed, 'conflict:ucdp-events:v1');
+    assert.equal(spec.threshold, 3);
   });
 });
 
@@ -647,7 +668,7 @@ describe('FIX 2 — metricKey embeds real values with unified "==" grammar', () 
     assert.ok(!spec.metricKey.includes('<region>'));
   });
 
-  it('supply_chain, infrastructure, gps, prediction_market, and market-calibration metricKeys are all real-value == form', () => {
+  it('supply_chain, infrastructure, gps, and prediction_market metricKeys are all real-value == form', () => {
     const sc = buildResolutionSpec(pred({
       domain: 'supply_chain', region: 'Strait of Hormuz', timeHorizon: '7d',
       signals: [{ type: 'chokepoint', value: 'disruption', weight: 0.5 }],
@@ -672,14 +693,7 @@ describe('FIX 2 — metricKey embeds real values with unified "==" grammar', () 
     }), {}, GENERATED_AT);
     assert.equal(pm.metricKey, 'prediction:markets-bootstrap:v1|yesPrice(market==Will the Fed cut rates in July 2026?)');
 
-    // market calibration fallback (no commodity signal)
-    const cal = buildResolutionSpec(pred({
-      domain: 'market', title: 'Recession by Q4?', signals: [],
-      calibration: { marketTitle: 'Recession', marketPrice: 0.6, drift: 0, source: 'polymarket' },
-    }), {}, GENERATED_AT);
-    assert.equal(cal.metricKey, 'market:stocks-bootstrap:v1|price(market==Recession by Q4?)');
-
-    for (const spec of [sc, infra, gps, pm, cal]) {
+    for (const spec of [sc, infra, gps, pm]) {
       assert.ok(!/[^=]=[^=]/.test(spec.metricKey.split('|')[1]), `metricKey must use ==: ${spec.metricKey}`);
     }
   });
@@ -697,33 +711,29 @@ describe('FIX 3 — zero/garbage-value guards', () => {
     assert.equal(spec.baselineValue, null);
   });
 
-  it('a calibration.marketPrice outside (0,1] falls back to judged (no double-scaling)', () => {
-    // An already-scaled value (e.g. 62 instead of 0.62) must not become 6200.
+  // FIX B: there is NO calibration.marketPrice hard path — a market forecast
+  // with only a calibration anchor (no mapped commodity signal) is judged,
+  // regardless of the marketPrice value. A stocks feed cannot resolve a
+  // prediction-market title, and the old spec was a vacuous
+  // threshold===baselineValue 'crosses'.
+  it('a market forecast with only a valid in-range calibration anchor is judged (no calibration hard path)', () => {
+    const forecast = pred({
+      domain: 'market', title: 'Some market', signals: [],
+      calibration: { marketTitle: 'X', marketPrice: 0.6, drift: 0, source: 'polymarket' },
+    });
+    const spec = buildResolutionSpec(forecast, {}, GENERATED_AT);
+    assert.equal(spec.kind, 'judged');
+    assert.equal(spec.metricKey, null);
+    assert.equal(spec.sourceFeed, null);
+  });
+
+  it('a market forecast with an already-scaled calibration value is still judged (never double-scaled)', () => {
     const forecast = pred({
       domain: 'market', title: 'Some market', signals: [],
       calibration: { marketTitle: 'X', marketPrice: 62, drift: 0, source: 'polymarket' },
     });
     const spec = buildResolutionSpec(forecast, {}, GENERATED_AT);
     assert.equal(spec.kind, 'judged');
-  });
-
-  it('a calibration.marketPrice of exactly 0 falls back to judged', () => {
-    const forecast = pred({
-      domain: 'market', title: 'Some market', signals: [],
-      calibration: { marketTitle: 'X', marketPrice: 0, drift: 0, source: 'polymarket' },
-    });
-    const spec = buildResolutionSpec(forecast, {}, GENERATED_AT);
-    assert.equal(spec.kind, 'judged');
-  });
-
-  it('a valid in-range calibration.marketPrice still resolves hard', () => {
-    const forecast = pred({
-      domain: 'market', title: 'Some market', signals: [],
-      calibration: { marketTitle: 'X', marketPrice: 0.6, drift: 0, source: 'polymarket' },
-    });
-    const spec = buildResolutionSpec(forecast, {}, GENERATED_AT);
-    assert.equal(spec.kind, 'hard');
-    assert.equal(spec.baselineValue, 60);
   });
 });
 
