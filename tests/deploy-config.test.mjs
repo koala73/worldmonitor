@@ -2348,12 +2348,13 @@ describe('agent readiness: named developer-resource pages (#4953)', () => {
     // Mirror the #4958 "advertises...on every discovery surface" guard: a page
     // that is supposed to be advertised everywhere silently going unadvertised
     // on one surface was a real drift incident. Check the api-catalog plus every
-    // text discovery surface the PR wires (llms.txt, agents.md, api/llms.txt).
+    // text discovery surface the PR wires (llms.txt, llms-full.txt, agents.md,
+    // api/llms.txt).
     const catalog = JSON.parse(readFileSync(resolve(__dirname, '../public/.well-known/api-catalog'), 'utf-8'));
     const catalogHrefs = catalog.linkset.flatMap((ctx) =>
       Object.values(ctx).flatMap((v) => (Array.isArray(v) ? v.map((e) => e.href) : []))
     );
-    const surfaces = ['llms.txt', 'agents.md', 'api/llms.txt'].map((f) => [
+    const surfaces = ['llms.txt', 'llms-full.txt', 'agents.md', 'api/llms.txt'].map((f) => [
       f,
       readFileSync(resolve(__dirname, `../public/${f}`), 'utf-8'),
     ]);
