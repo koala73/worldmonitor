@@ -222,3 +222,96 @@ describe('api/_rate-limit constants parity', () => {
     assert.equal(RATE_LIMIT_DEGRADED_HEADERS['Retry-After'], '5');
   });
 });
+
+describe('api/_rate-limit checkRateLimit EVALSHA-unsupported fallback (mirrors tests/rate-limit.test.mts #7c)', () => {
+  // The api/ mirror was only covered by the constants-parity block above —
+  // if this file's limitWithFallback drifts from server/_shared/rate-limit.ts
+  // or mishandles the redis-rest proxy's "Command not allowed: EVALSHA"
+  // response, API routes could keep failing while the tested server helper
+  // stays green. Exercise the mirror's own fallback path end to end.
+  beforeEach(() => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    restoreEnv();
+  });
+
+  // Faithful in-memory INCR + EXPIRE-NX + TTL, gated by the same command
+  // allowlist docker/redis-rest-proxy.mjs enforces — mirrors the handler in
+  // tests/rate-limit.test.mts so both surfaces are proven against identical
+  // proxy behaviour.
+  const ALLOWED_COMMANDS = new Set(['INCR', 'EXPIRE', 'TTL']);
+
+  function makeProxyPipelineHandler() {
+    const store = new Map();
+    return (commands) =>
+      commands.map((cmd) => {
+        const op = String(cmd[0]).toUpperCase();
+        if (!ALLOWED_COMMANDS.has(op)) return { error: `Command not allowed: ${op}` };
+        const key = String(cmd[1]);
+        const entry = store.get(key) ?? { count: 0, hasTtl: false };
+        if (op === 'INCR') {
+          entry.count += 1;
+          store.set(key, entry);
+          return { result: entry.count };
+        }
+        if (op === 'EXPIRE') {
+          const applied = !entry.hasTtl;
+          if (applied) entry.hasTtl = true;
+          store.set(key, entry);
+          return { result: applied ? 1 : 0 };
+        }
+        return { result: entry.hasTtl ? 60 : -1 }; // TTL
+      });
+  }
+
+  it('detects "Command not allowed: EVALSHA", falls back to INCR+EXPIRE without retrying Lua, and enforces 429s', async () => {
+    const pipelineHandler = makeProxyPipelineHandler();
+    let luaAttempts = 0;
+    let fetchCalls = 0;
+    globalThis.fetch = async (_url, init) => {
+      fetchCalls++;
+      const commands = JSON.parse(String(init?.body));
+      if (commands.some((c) => /^(EVAL|EVALSHA|SCRIPT)$/i.test(String(c[0])))) luaAttempts++;
+      return new Response(JSON.stringify(pipelineHandler(commands)), { status: 200 });
+    };
+
+    const mod = await importFreshRateLimitModule();
+    const req = makeRequest({ 'cf-connecting-ip': '203.0.113.9' });
+
+    const first = await mod.checkRateLimit(req, {});
+    assert.equal(first, null, 'first request is under the global limit');
+    assert.equal(luaAttempts, 1, 'exactly one Lua attempt before the unsupported-command detection latches');
+    assert.equal(fetchCalls, 2, 'the failed Lua attempt plus its immediate fallback pipeline call');
+
+    const second = await mod.checkRateLimit(req, {});
+    assert.equal(second, null, 'second request is still under the limit');
+    assert.equal(luaAttempts, 1, 'Lua must not be retried once EVALSHA is known unsupported');
+    assert.equal(fetchCalls, 3, 'no further Lua attempts — only the fallback pipeline call');
+
+    // Drive the same identifier past the global fixed-window limit purely
+    // through the fallback path until checkRateLimit enforces a 429. Bound
+    // generously above the known GLOBAL_RATE_LIMIT (600) so a source change
+    // to the limit can't turn this into an infinite loop.
+    let res = null;
+    let iterations = 0;
+    while (!res && iterations < 1000) {
+      res = await mod.checkRateLimit(req, {});
+      iterations++;
+    }
+
+    assert.ok(res, 'expected checkRateLimit to eventually return a 429 Response');
+    assert.equal(res.status, 429);
+    assert.equal(res.headers.get('X-RateLimit-Remaining'), '0');
+    assert.ok(res.headers.get('Retry-After'), 'expected a Retry-After header on the 429');
+    assert.equal(luaAttempts, 1, 'Lua must stay latched off while the fallback enforces the window');
+
+    // A different identifier gets its own independent fixed window.
+    const otherReq = makeRequest({ 'cf-connecting-ip': '203.0.113.10' });
+    const other = await mod.checkRateLimit(otherReq, {});
+    assert.equal(other, null, 'a different identifier has its own fixed-window counter');
+  });
+});
