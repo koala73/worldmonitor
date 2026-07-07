@@ -16,7 +16,7 @@ const middlewareSource = readFileSync(resolve(__dirname, '../middleware.ts'), 'u
 const dockerfileSource = readFileSync(resolve(__dirname, '../Dockerfile'), 'utf-8');
 const dockerNginxSource = readFileSync(resolve(__dirname, '../docker/nginx.conf'), 'utf-8');
 const frontendDockerfileSource = readFileSync(resolve(__dirname, '../docker/Dockerfile'), 'utf-8');
-const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|agents\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
+const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
 const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html).*)';
 const APP_ROOT_HOST_PATTERN = '^(?:(?:www|tech|finance|commodity|happy|energy)\\.)?worldmonitor\\.app$';
 const GLOBAL_CSP_INLINE_SCRIPT_HTML_FILES = [
@@ -1662,8 +1662,11 @@ describe('agent readiness: auth.md walkthrough', () => {
   // (#4952), so they get the same three-way pinning as auth.md:
   // explicit markdown Content-Type + CORS, catch-all exclusion (deleting or
   // renaming the static file must 404, not silently serve the dashboard HTML
-  // misleading-200 the journey runs flagged), and this guard.
-  for (const mdPath of ['/pricing.md', '/support.md', '/agents.md']) {
+  // misleading-200 the journey runs flagged), and this guard. /ai-search.md
+  // joined the set with its canonical Link header (#4999): it is
+  // sitemap-listed, and without the catch-all exclusion the SPA cache-header
+  // catch-all (later in the headers array) overrides its max-age rule.
+  for (const mdPath of ['/pricing.md', '/support.md', '/agents.md', '/ai-search.md']) {
     it(`serves ${mdPath} as markdown and keeps it off the SPA catch-all`, () => {
       assert.equal(getHeaderValueForSource(mdPath, 'Content-Type'), 'text/markdown; charset=utf-8');
       assert.equal(getHeaderValueForSource(mdPath, 'Access-Control-Allow-Origin'), '*');
@@ -2130,19 +2133,52 @@ describe('agent readiness: registry branding + ARD catalog', () => {
 });
 
 describe('variant subdomain dashboard SEO (#4996)', () => {
-  const WEB_DASHBOARD_VARIANTS = ['tech', 'finance', 'commodity', 'happy', 'energy'];
+  // No hardcoded variant list: every set is extracted from its real source
+  // and compared BIDIRECTIONALLY, so adding a variant to any one surface
+  // (middleware host map, generator, vercel.json rewrites) without the
+  // others fails here instead of shipping a subdomain with full-brand meta.
   const dashboardRewrites = vercelConfig.rewrites.filter((r) => r.source === '/dashboard');
 
-  it('rewrites each variant host /dashboard to its generated variant HTML', () => {
-    for (const variant of WEB_DASHBOARD_VARIANTS) {
-      const rule = dashboardRewrites.find((r) =>
-        (r.has ?? []).some((h) => h.type === 'host' && h.value === `${variant}.worldmonitor.app`)
-      );
-      assert.ok(rule, `missing host rewrite for ${variant}.worldmonitor.app /dashboard`);
+  const rewriteVariants = dashboardRewrites
+    .filter((r) => r.has)
+    .map((r) => {
+      const host = (r.has ?? []).find((h) => h.type === 'host')?.value ?? '';
+      return host.replace('.worldmonitor.app', '');
+    })
+    .sort();
+
+  const middlewareVariants = [...middlewareSource.matchAll(/'([a-z]+)\.worldmonitor\.app': '([a-z]+)'/g)]
+    .map((m) => m[2])
+    .sort();
+
+  const variantHtmlSource = readFileSync(resolve(__dirname, '../src/config/variant-dashboard-html.ts'), 'utf-8');
+  const generatorArrayMatch = variantHtmlSource.match(/WEB_DASHBOARD_VARIANTS = \[([^\]]+)\]/);
+  const generatorVariants = (generatorArrayMatch?.[1] ?? '')
+    .split(',')
+    .map((s) => s.trim().replace(/['"]/g, ''))
+    .filter(Boolean)
+    .sort();
+
+  it('extracted all three variant sets (extraction regressions fail loudly)', () => {
+    assert.ok(rewriteVariants.length > 0, 'no host-conditioned /dashboard rewrites found in vercel.json');
+    assert.ok(middlewareVariants.length > 0, 'VARIANT_HOST_MAP extraction from middleware.ts found nothing');
+    assert.ok(generatorVariants.length > 0, 'WEB_DASHBOARD_VARIANTS extraction from variant-dashboard-html.ts found nothing');
+  });
+
+  it('vercel.json rewrites, middleware host map, and the generator cover the SAME variant set (bidirectional)', () => {
+    assert.deepEqual(rewriteVariants, middlewareVariants, 'vercel.json /dashboard host rewrites vs middleware VARIANT_HOST_MAP diverged');
+    assert.deepEqual(rewriteVariants, generatorVariants, 'vercel.json /dashboard host rewrites vs WEB_DASHBOARD_VARIANTS diverged');
+  });
+
+  it('each variant host rewrite targets its generated variant file', () => {
+    for (const rule of dashboardRewrites.filter((r) => r.has)) {
+      const host = (rule.has ?? []).find((h) => h.type === 'host')?.value ?? '';
+      const variant = host.replace('.worldmonitor.app', '');
+      assert.match(host, /^[a-z]+\.worldmonitor\.app$/, `unexpected host condition shape: ${host}`);
       assert.strictEqual(
         rule.destination,
         `/dashboard-${variant}.html`,
-        `${variant} host rewrite must target the build-generated variant file`
+        `${host} rewrite must target the build-generated variant file`
       );
     }
   });
@@ -2155,7 +2191,7 @@ describe('variant subdomain dashboard SEO (#4996)', () => {
       dashboardRewrites.length - 1,
       'the un-conditioned /dashboard rewrite must come last so host rules win'
     );
-    assert.strictEqual(dashboardRewrites.length, WEB_DASHBOARD_VARIANTS.length + 1);
+    assert.strictEqual(dashboardRewrites.length, rewriteVariants.length + 1, 'exactly one un-conditioned /dashboard rewrite expected');
   });
 
   it('vite build emits the variant dashboard files the rewrites point at (web full build only)', () => {
@@ -2164,22 +2200,6 @@ describe('variant subdomain dashboard SEO (#4996)', () => {
       /!isDesktopBuild && activeVariant === 'full' && variantDashboardHtmlPlugin\(\)/,
       'variantDashboardHtmlPlugin must be registered for web full builds'
     );
-    const variantHtmlSource = readFileSync(resolve(__dirname, '../src/config/variant-dashboard-html.ts'), 'utf-8');
-    for (const variant of WEB_DASHBOARD_VARIANTS) {
-      assert.ok(
-        variantHtmlSource.includes(`'${variant}'`),
-        `src/config/variant-dashboard-html.ts must cover the '${variant}' variant referenced by vercel.json`
-      );
-    }
-  });
-
-  it('middleware variant host map and the rewrites cover the same subdomains', () => {
-    for (const variant of WEB_DASHBOARD_VARIANTS) {
-      assert.ok(
-        middlewareSource.includes(`'${variant}.worldmonitor.app': '${variant}'`),
-        `middleware VARIANT_HOST_MAP must include ${variant}.worldmonitor.app`
-      );
-    }
   });
 });
 
