@@ -128,7 +128,7 @@ export async function fetchCoinPaprikaTickersById(paprikaIds, options = {}) {
   return tickers;
 }
 
-async function allSettledWithConcurrency(items, concurrency, mapper) {
+export async function allSettledWithConcurrency(items, concurrency, mapper) {
   const results = new Array(items.length);
   let nextIndex = 0;
   const workerCount = Math.min(concurrency, items.length);
