@@ -1062,20 +1062,25 @@ export default async function handler(req, ctx) {
     if (Object.keys(problems).length > 0) body.problems = problems;
   }
 
-  // Compact is the public keyless form polled by every dashboard tab (#4907):
-  // a short shared cache collapses per-tab polling onto ~one 196-key Redis
-  // pipeline per cache window per edge region. Browsers stay revalidate-always
-  // so a recovering tab sees fresh state within one poll. Everything else —
-  // the key-gated detailed response, the 401, the REDIS_DOWN 503 — keeps the
-  // no-store defaults from `headers` (caching a 401 would pin an auth failure;
-  // caching a 503 would mask recovery from HTTP monitors).
+  // Compact is the public keyless form polled by external uptime MONITORS, so it
+  // must NEVER be edge-cached: the prior `s-maxage=60` (#4907, to collapse
+  // dashboard-tab polling) let a shared CDN entry pin a stale WARNING that kept
+  // UptimeRobot reading "down" long AFTER the seed recovered (2026-07-07 — the
+  // literal `?cb=*cachebuster*` was a constant, so it never busted the entry).
+  // no-store guarantees a monitor sees live recovery on its very next poll. The
+  // origin cost is one 196-key Redis pipeline per request — cheap — so losing
+  // the per-tab poll-collapse is a non-issue. All other responses already carry
+  // the no-store defaults from `headers` (a cached 401 pins an auth failure; a
+  // cached 503 masks REDIS_DOWN recovery).
   let responseHeaders = headers;
   if (compact) {
-    const { 'CF-Cache-Status': _bypassMarker, ...cacheable } = headers;
+    const { 'CF-Cache-Status': _bypassMarker, ...base } = headers;
     responseHeaders = {
-      ...cacheable,
-      'Cache-Control': 'public, max-age=0, must-revalidate',
-      'CDN-Cache-Control': 'public, s-maxage=60',
+      ...base,
+      // public (keyless, shared-cacheable in principle) but no-store so no CDN
+      // or browser ever serves a stale health verdict to a monitor.
+      'Cache-Control': 'public, no-store, max-age=0',
+      'CDN-Cache-Control': 'no-store',
     };
   }
 

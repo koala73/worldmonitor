@@ -1,13 +1,13 @@
 import { test, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-// Compact /api/health is the public keyless form polled by every dashboard
-// tab. #4907 makes its 200s CDN-cacheable (short s-maxage) so per-tab polling
-// collapses onto ~one origin Redis pipeline per cache window per edge region.
-// Everything else must STAY no-store: caching the key-gated detailed response
-// could leak an operator view across the shared cache, caching a 401 would
-// pin an auth failure, and caching the REDIS_DOWN 503 would mask recovery
-// from HTTP monitors.
+// Compact /api/health is the public keyless form polled by external uptime
+// MONITORS, so its 200 must be no-store: a shared CDN entry (the prior #4907
+// s-maxage=60) pinned a stale WARNING and kept UptimeRobot "down" long after
+// the seed recovered (2026-07-07). Every response here stays no-store: caching
+// the key-gated detailed response could leak an operator view across the shared
+// cache, caching a 401 would pin an auth failure, and caching the REDIS_DOWN
+// 503 would mask recovery from HTTP monitors.
 //
 // Run: node --test tests/health-compact-cdn-cache.test.mjs
 
@@ -34,16 +34,17 @@ function mockRedisPipeline() {
   };
 }
 
-test('compact 200 is CDN-cacheable with a short shared TTL', async () => {
+test('compact 200 is never edge-cached (monitors must see live recovery)', async () => {
   mockRedisPipeline();
   const res = await handler(new Request('https://api.worldmonitor.app/api/health?compact=1'));
   assert.equal(res.status, 200);
-  assert.equal(res.headers.get('CDN-Cache-Control'), 'public, s-maxage=60');
+  // A shared CDN entry (prior s-maxage=60) pinned a stale WARNING and kept
+  // uptime monitors "down" after the seed recovered (2026-07-07). no-store
+  // guarantees a monitor reads live status on its next poll.
+  assert.equal(res.headers.get('CDN-Cache-Control'), 'no-store');
   const cacheControl = res.headers.get('Cache-Control');
-  assert.match(cacheControl, /public/, 'shared caches must be allowed to store the compact form');
-  assert.doesNotMatch(cacheControl, /no-store/);
-  assert.match(cacheControl, /max-age=0/, 'browsers must revalidate so a tab sees recovery within one poll');
-  assert.equal(res.headers.get('CF-Cache-Status'), null, 'no hardcoded BYPASS marker on the cacheable response');
+  assert.match(cacheControl, /no-store/, 'compact health must not be stored by any cache');
+  assert.equal(res.headers.get('CF-Cache-Status'), null, 'no hardcoded BYPASS marker');
 });
 
 test('detailed (key-authenticated) 200 stays no-store', async () => {
