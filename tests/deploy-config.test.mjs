@@ -2345,15 +2345,24 @@ describe('agent readiness: named developer-resource pages (#4953)', () => {
   }
 
   it('advertises the developer portal + resource pages across the discovery chain', () => {
+    // Mirror the #4958 "advertises...on every discovery surface" guard: a page
+    // that is supposed to be advertised everywhere silently going unadvertised
+    // on one surface was a real drift incident. Check the api-catalog plus every
+    // text discovery surface the PR wires (llms.txt, agents.md, api/llms.txt).
     const catalog = JSON.parse(readFileSync(resolve(__dirname, '../public/.well-known/api-catalog'), 'utf-8'));
     const catalogHrefs = catalog.linkset.flatMap((ctx) =>
       Object.values(ctx).flatMap((v) => (Array.isArray(v) ? v.map((e) => e.href) : []))
     );
-    const llms = readFileSync(resolve(__dirname, '../public/llms.txt'), 'utf-8');
+    const surfaces = ['llms.txt', 'agents.md', 'api/llms.txt'].map((f) => [
+      f,
+      readFileSync(resolve(__dirname, `../public/${f}`), 'utf-8'),
+    ]);
     for (const page of DEV_PAGES) {
       const url = `https://worldmonitor.app${page.path}`;
       assert.ok(catalogHrefs.includes(url), `api-catalog must advertise ${url}`);
-      assert.ok(llms.includes(page.path), `llms.txt must link ${page.path}`);
+      for (const [name, content] of surfaces) {
+        assert.ok(content.includes(page.path), `public/${name} must link ${page.path}`);
+      }
     }
   });
 });

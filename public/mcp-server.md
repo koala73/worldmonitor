@@ -19,7 +19,7 @@ The server ships **39 tools** covering world and country briefs, country risk an
 - **`tools/list` and other discovery calls:** anonymous, no key.
 - **`tools/call` and `resources/read` (data):** need either an API key or OAuth.
   - **API key:** header `X-WorldMonitor-Key: wm_<40-hex>` — issue one at https://worldmonitor.app/pro. Rate limit: 60 requests/minute/key.
-  - **OAuth 2.1 (`scope=mcp`):** Pro and API tiers can both connect via OAuth with no API key. Dynamic Client Registration (RFC 7591) at `https://api.worldmonitor.app/api/oauth/register`; authorization and token endpoints follow OAuth 2.1 with PKCE. Pro OAuth contexts get 50 quota-consuming `tools/call` / `resources/read` calls per UTC day.
+  - **OAuth 2.1 (`scope=mcp`):** Pro and API tiers can both connect via OAuth with no API key. Dynamic Client Registration (RFC 7591) at `https://worldmonitor.app/oauth/register`; authorization and token endpoints follow OAuth 2.1 with PKCE. Any OAuth-connected context — Pro *or* API tier — shares one 50 quota-consuming `tools/call` / `resources/read` counter per UTC day; API-tier clients that authenticate with a `wm_…` key instead have no daily reservation (only the 60 requests/minute limiter).
 
 Full agent walkthrough: [auth.md](https://worldmonitor.app/auth.md). Authorization-server metadata: https://worldmonitor.app/.well-known/oauth-authorization-server · protected-resource metadata: https://worldmonitor.app/.well-known/oauth-protected-resource
 

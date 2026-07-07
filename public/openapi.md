@@ -2,14 +2,14 @@
 
 Last updated: July 7, 2026
 
-The World Monitor OpenAPI Specification is the machine-readable contract for the World Monitor REST API — the HTTP surface that exposes the same 39 real-time global-intelligence tools as the [MCP server](https://worldmonitor.app/mcp-server.md), returning source-attributed structured JSON. Point your OpenAPI client, code generator, or agent at the spec to discover every endpoint, parameter, and response shape.
+The World Monitor OpenAPI Specification is the machine-readable contract for the World Monitor REST API — the HTTP surface that exposes the same real-time global-intelligence tools and data as the [MCP server](https://worldmonitor.app/mcp-server.md) via granular REST endpoints, returning source-attributed structured JSON. Point your OpenAPI client, code generator, or agent at the spec to discover every endpoint, parameter, and response shape.
 
 ## The spec
 
 - **OpenAPI 3.1 (YAML):** https://worldmonitor.app/openapi.yaml
 - **OpenAPI 3.1 (JSON):** https://worldmonitor.app/openapi.json
 - **REST API base URL:** `https://api.worldmonitor.app`
-- **Media types:** `application/vnd.oai.openapi` (YAML) and `application/json` (JSON), both served with `Access-Control-Allow-Origin: *`.
+- **Served Content-Type:** `application/yaml; charset=utf-8` (YAML) and `application/json; charset=utf-8` (JSON), both with `Access-Control-Allow-Origin: *`. The API catalog advertises the OpenAPI descriptor media type `application/vnd.oai.openapi` for the spec.
 
 The spec is generated on every deploy from the canonical proto/service definitions, so it always matches the running gateway — there is no hand-maintained drift.
 

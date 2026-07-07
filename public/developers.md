@@ -10,7 +10,7 @@ This page names and links every developer resource type. For the machine-readabl
 
 - **[World Monitor MCP Server](https://worldmonitor.app/mcp-server.md):** the recommended agent surface — `https://worldmonitor.app/mcp`, Streamable HTTP, 39 tools. Connect Claude, Cursor, and any MCP-compatible client to live intelligence data. Details: [mcp-server.md](https://worldmonitor.app/mcp-server.md) · [MCP Overview](https://www.worldmonitor.app/docs/mcp-overview) · Server card: https://worldmonitor.app/.well-known/mcp/server-card.json
 - **[World Monitor OpenAPI Specification](https://worldmonitor.app/openapi.md):** the OpenAPI 3.1 contract for the REST API — [openapi.yaml](https://worldmonitor.app/openapi.yaml) · [openapi.json](https://worldmonitor.app/openapi.json). Details: [openapi.md](https://worldmonitor.app/openapi.md)
-- **World Monitor REST API:** base `https://api.worldmonitor.app` — the same 39 tools and data as the MCP server over plain HTTP. Machine-readable [API catalog (RFC 9727)](https://worldmonitor.app/.well-known/api-catalog) · human docs at [/docs/documentation](https://www.worldmonitor.app/docs/documentation)
+- **World Monitor REST API:** base `https://api.worldmonitor.app` — the same tools and data as the MCP server, exposed as granular endpoints over plain HTTP. Machine-readable [API catalog (RFC 9727)](https://worldmonitor.app/.well-known/api-catalog) · human docs at [/docs/documentation](https://www.worldmonitor.app/docs/documentation)
 - **[World Monitor SDKs](https://worldmonitor.app/sdks.md):** official zero-dependency client libraries for Python, Ruby, Go, and JavaScript. Details: [sdks.md](https://worldmonitor.app/sdks.md) · [SDK guide](https://www.worldmonitor.app/docs/sdks)
 - **World Monitor CLI:** `npx worldmonitor tools` scripts every tool from a shell — [npm `worldmonitor`](https://www.npmjs.com/package/worldmonitor) · [CLI guide](https://www.worldmonitor.app/docs/cli)
 - **World Monitor Agent Skills:** installable skills for agent frameworks — discovery index at https://worldmonitor.app/.well-known/agent-skills/index.json · `npx skills add koala73/worldmonitor`
@@ -24,7 +24,7 @@ Discovery endpoints and `tools/list` are public. Data calls need either an API k
 ## Pricing, limits & support
 
 - **Pricing and plan limits:** [pricing.md](https://worldmonitor.app/pricing.md) · live JSON catalog `GET https://www.worldmonitor.app/api/product-catalog`
-- **Rate limits:** 60 requests/minute/key; OAuth Pro contexts get 50 quota-consuming MCP calls/UTC day. Honor `Retry-After` on 429.
+- **Rate limits:** 60 requests/minute (per key, or per user for OAuth); any OAuth-connected context (Pro *or* API tier) also shares one 50 quota-consuming MCP calls/UTC day counter, while `wm_…`-key MCP clients have no daily reservation. Honor `Retry-After` on 429.
 - **Support:** [support.md](https://worldmonitor.app/support.md) — support@worldmonitor.app · Status: https://status.worldmonitor.app
 - **Source (AGPL-3.0):** https://github.com/koala73/worldmonitor · Issues: https://github.com/koala73/worldmonitor/issues
 
