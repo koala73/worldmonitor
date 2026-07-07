@@ -42,6 +42,25 @@ function isLocalDeployment(): boolean {
   return mode.includes('sidecar') || mode.includes('docker');
 }
 
+// OpenRouter provider routing. WorldMonitor is a geopolitical product, so
+// inference must never physically run on a China-hosted provider — one could
+// log queries or bias outputs on the exact topics we cover (Taiwan, Xinjiang,
+// the South China Sea, etc.). We BLOCK the known China-based providers and let
+// OpenRouter serve the model (DeepSeek weights are fine; hosting is the
+// concern) from the fastest of the rest.
+//   - `ignore`: blocklist. RE-AUDIT against OpenRouter's provider list
+//     periodically — a new China-based entrant would otherwise be eligible.
+//   - `sort: throughput`: also steers off OpenRouter's cheapest-but-slowest
+//     default (DeepInfra ~17 tok/s) to the fastest eligible provider, which is
+//     the brief-latency win we were chasing (#4983 follow-up).
+const OPENROUTER_BLOCKED_PROVIDERS = [
+  'Baidu', 'Alibaba', 'DeepSeek', 'SiliconFlow', 'StreamLake', 'Novita',
+];
+const OPENROUTER_PROVIDER_ROUTING = {
+  ignore: OPENROUTER_BLOCKED_PROVIDERS,
+  sort: 'throughput',
+} as const;
+
 export function getProviderCredentials(
   provider: string,
   overrides: ProviderCredentialOverrides = {},
@@ -102,8 +121,12 @@ export function getProviderCredentials(
       // Hybrid-reasoning models (DeepSeek V4) reason by default via
       // OpenRouter's normalized `reasoning` param; utility calls must not
       // pay reasoning tokens. The reasoning profile opts back in, letting
-      // the model's own default apply.
-      extraBody: overrides.enableReasoning ? undefined : { reasoning: { enabled: false } },
+      // the model's own default apply. `provider` routing is always sent —
+      // the China-provider exclusion is not optional (see the constant).
+      extraBody: {
+        ...(overrides.enableReasoning ? {} : { reasoning: { enabled: false } }),
+        provider: OPENROUTER_PROVIDER_ROUTING,
+      },
     };
   }
 

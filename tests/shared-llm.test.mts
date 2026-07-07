@@ -38,6 +38,37 @@ afterEach(() => {
 });
 
 describe('callLlm', () => {
+  it('excludes China-hosted providers and sorts by throughput on every OpenRouter call', async () => {
+    process.env.OPENROUTER_API_KEY = 'or-test-key';
+    delete process.env.GROQ_API_KEY;
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    const bodies: Array<Record<string, unknown>> = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      if ((init?.method || 'GET') === 'GET') return new Response('', { status: 200 });
+      bodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>);
+      return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }], usage: { total_tokens: 5 } }), { status: 200 });
+    }) as typeof fetch;
+
+    // Utility (reasoning off) AND reasoning-on must both carry the exclusion.
+    await callLlm({ messages: [{ role: 'user', content: 'x' }] });
+    await callLlm({ messages: [{ role: 'user', content: 'y' }], enableReasoning: true });
+
+    for (const b of bodies) {
+      const prov = b.provider as { ignore?: string[]; sort?: string } | undefined;
+      assert.ok(prov, 'every OpenRouter body must carry provider routing');
+      assert.equal(prov.sort, 'throughput');
+      for (const cn of ['Baidu', 'Alibaba', 'DeepSeek', 'SiliconFlow', 'StreamLake', 'Novita']) {
+        assert.ok(prov.ignore?.includes(cn), `China provider ${cn} must be excluded`);
+      }
+    }
+    // reasoning-off body still disables reasoning; reasoning-on omits it.
+    assert.deepEqual(bodies[0]?.reasoning, { enabled: false });
+    assert.equal('reasoning' in (bodies[1] ?? {}), false);
+  });
+
   it('preserves the default provider order (openrouter-first since #4944)', async () => {
     process.env.GROQ_API_KEY = 'groq-test-key';
     process.env.OPENROUTER_API_KEY = 'or-test-key';
