@@ -1,8 +1,19 @@
-import { describe, it } from 'node:test';
+import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { fetchBigMacPrices, declareRecords, COUNTRIES } from '../scripts/seed-bigmac.mjs';
 import { allSettledWithConcurrency } from '../scripts/_seed-utils.mjs';
+
+// The seeder logs one line per country (×50) plus per-failure warnings. Under the
+// full `tsx --test --test-concurrency=16` suite that flood corrupts node:test's
+// child-process message parser (FileTest.parseMessage crash) — especially the
+// total-outage test, which emits 50 warns in one synchronous burst. Silence the
+// seeder's chatter for the duration of this file; restore afterward.
+const realLog = console.log;
+const realWarn = console.warn;
+const realError = console.error;
+before(() => { console.log = () => {}; console.warn = () => {}; console.error = () => {}; });
+after(() => { console.log = realLog; console.warn = realWarn; console.error = realError; });
 
 // Reproduces #4994: the 50-country EXA loop used to run STRICTLY SEQUENTIALLY
 // under runSeed's 240s fetch-phase deadline, so it crashed (exit-75 "Deploy
@@ -59,26 +70,8 @@ describe('seed-bigmac fetchBigMacPrices', () => {
     );
   });
 
-  it('runs the country loop concurrently — much faster than sequential (regression for #4994)', async () => {
-    const searchExaFn = makeFakeExa();
-
-    const seqStart = Date.now();
-    await fetchBigMacPrices(null, { searchExaFn, getFxRatesFn: fakeFx, concurrency: 1 });
-    const seqMs = Date.now() - seqStart;
-
-    const conStart = Date.now();
-    // No override → production default concurrency.
-    await fetchBigMacPrices(null, { searchExaFn, getFxRatesFn: fakeFx });
-    const conMs = Date.now() - conStart;
-
-    // Default concurrency should be well under half the sequential wall-clock. (Ideal
-    // ratio is ~1/6; assert < 1/3 for CI-scheduler headroom.) BEFORE the fix the only
-    // path was sequential — this comparison would be ~1.0 and fail.
-    assert.ok(
-      conMs < seqMs / 3,
-      `concurrent run (${conMs}ms) should be < 1/3 of sequential (${seqMs}ms)`,
-    );
-  });
+  // NOTE: concurrency is proven by the deterministic max-in-flight test above, not
+  // by a wall-clock ratio — timing assertions flake under `--test-concurrency=16`.
 
   it('preserves country order and returns one row per country', async () => {
     const data = await fetchBigMacPrices(null, { searchExaFn: makeFakeExa(), getFxRatesFn: fakeFx });
