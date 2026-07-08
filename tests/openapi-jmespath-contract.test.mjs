@@ -110,26 +110,26 @@ describe('OpenAPI jmespath projection parameter contract', () => {
     );
   });
 
-  it('per-service JSON specs advertise jmespath on every GET (181 total)', () => {
+  it('per-service JSON specs advertise jmespath on every GET (182 total)', () => {
     const total = serviceJsonSpecs.reduce((sum, file) => {
       const spec = JSON.parse(readFileSync(resolve(apiDir, file), 'utf8'));
       return sum + assertJmespathContract(spec, file);
     }, 0);
-    assert.equal(total, 181, `expected 181 GET operations, found ${total}`);
+    assert.equal(total, 182, `expected 182 GET operations, found ${total}`);
   });
 
-  it('per-service YAML specs advertise jmespath on every GET (181 total)', () => {
+  it('per-service YAML specs advertise jmespath on every GET (182 total)', () => {
     const total = serviceYamlSpecs.reduce((sum, file) => {
       const spec = loadYaml(readFileSync(resolve(apiDir, file), 'utf8'));
       return sum + assertJmespathContract(spec, file);
     }, 0);
-    assert.equal(total, 181, `expected 181 GET operations, found ${total}`);
+    assert.equal(total, 182, `expected 182 GET operations, found ${total}`);
   });
 
-  it('the unified bundle advertises jmespath on every GET (181 total)', () => {
+  it('the unified bundle advertises jmespath on every GET (182 total)', () => {
     const bundle = loadYaml(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8'));
     const total = assertJmespathContract(bundle, 'worldmonitor.openapi.yaml');
-    assert.equal(total, 181, `expected 181 GET operations, found ${total}`);
+    assert.equal(total, 182, `expected 182 GET operations, found ${total}`);
   });
 
   it('the injector reports the specs as in-sync (idempotent)', () => {
