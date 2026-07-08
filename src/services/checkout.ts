@@ -981,8 +981,8 @@ export async function startCheckout(
  *
  * Unauthorized / session_expired are *expected* user states (nobody
  * signed in yet, Clerk session aged out) rather than engineering
- * failures. They fire on every free-tier pricing click, so reporting
- * them at `error` level would drown Sentry in non-actionable noise.
+ * failures. duplicate_subscription is also expected when an existing
+ * Pro user clicks checkout again and should route to billing instead.
  * Capture them at `info` so the funnel is still observable without
  * triggering alerts. Everything else stays at `error`.
  */
@@ -990,6 +990,7 @@ type SentryLevel = 'error' | 'info';
 const INFO_LEVEL_CODES: ReadonlySet<CheckoutErrorCode> = new Set([
   'unauthorized',
   'session_expired',
+  'duplicate_subscription',
 ]);
 
 function reportCheckoutError(

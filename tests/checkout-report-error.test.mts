@@ -92,6 +92,10 @@ describe('reportCheckoutError call sites in src/services/checkout.ts', () => {
     );
   });
 
+  it('keeps duplicate-subscription checkout attempts at info level', () => {
+    assert.match(src, /INFO_LEVEL_CODES[\s\S]*'duplicate_subscription'/);
+  });
+
   it('no-user is the only call site marked for skip', () => {
     for (const action of knownActions) {
       const expected = action === 'no-user';

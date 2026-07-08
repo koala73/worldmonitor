@@ -1,0 +1,75 @@
+import assert from 'node:assert/strict';
+import { afterEach, describe, it, mock } from 'node:test';
+
+const originalEnv = { ...process.env };
+
+function restoreEnv(): void {
+  for (const key of Object.keys(process.env)) {
+    if (!(key in originalEnv)) delete process.env[key];
+  }
+  Object.assign(process.env, originalEnv);
+}
+
+async function importFreshCreateCheckout() {
+  process.env.CONVEX_SITE_URL = 'https://convex.test';
+  process.env.RELAY_SHARED_SECRET = 'relay-secret';
+  return import(`../api/create-checkout.ts?test=${Date.now()}-${Math.random()}`);
+}
+
+function makeCheckoutRequest(): Request {
+  return new Request('https://worldmonitor.app/api/create-checkout', {
+    method: 'POST',
+    headers: {
+      Origin: 'https://worldmonitor.app',
+      Authorization: 'Bearer clerk-token',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      productId: 'pdt_pro_monthly',
+      returnUrl: 'https://worldmonitor.app/?wm_checkout=return',
+    }),
+  });
+}
+
+afterEach(() => {
+  mock.restoreAll();
+  restoreEnv();
+});
+
+describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () => {
+  it('forwards the typed duplicate-subscription response without logging a production error', async () => {
+    const mod = await importFreshCreateCheckout();
+    const consoleError = mock.method(console, 'error', () => {});
+    const relayFetch = mock.fn(async () =>
+      Response.json(
+        {
+          error: 'ACTIVE_SUBSCRIPTION_EXISTS',
+          message: 'Active Pro Monthly subscription already exists',
+          subscription: { planKey: 'pro_monthly' },
+        },
+        { status: 409 },
+      ),
+    );
+
+    mod.__setCreateCheckoutDepsForTests({
+      validateBearerToken: async () => ({
+        valid: true,
+        userId: 'user_existing_pro',
+        email: 'pro@example.com',
+        name: 'Existing Pro',
+      }),
+      fetch: relayFetch,
+    });
+
+    const res = await mod.default(makeCheckoutRequest());
+
+    assert.equal(res.status, 409);
+    assert.deepEqual(await res.json(), {
+      error: 'ACTIVE_SUBSCRIPTION_EXISTS',
+      message: 'Active Pro Monthly subscription already exists',
+      subscription: { planKey: 'pro_monthly' },
+    });
+    assert.equal(consoleError.mock.calls.length, 0);
+    assert.equal(relayFetch.mock.calls.length, 1);
+  });
+});
