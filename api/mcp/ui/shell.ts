@@ -251,7 +251,13 @@ const SHARED_BRIDGE_HEAD = `
   }
 `;
 
-const SHARED_BRIDGE_TAIL = `
+// The bridge tail interpolates the per-widget appInfo.name directly (no
+// placeholder sentinel), so a widget whose renderBody happens to contain the
+// old `__APP_NAME__` token can't leak it into the served HTML. `appName` is
+// JSON.stringified at the call site — it becomes a string literal in the
+// emitted JS.
+function renderBridgeTail(appName: string): string {
+  return `
   window.addEventListener("message", function (event) {
     if (event.source !== parentWin) return;
     var msg = event.data;
@@ -288,12 +294,13 @@ const SHARED_BRIDGE_TAIL = `
     method: "ui/initialize",
     params: {
       protocolVersion: "${UI_PROTOCOL_VERSION}",
-      appInfo: { name: __APP_NAME__, version: "1.0.0" },
+      appInfo: { name: ${JSON.stringify(appName)}, version: "1.0.0" },
       appCapabilities: {}
     }
   });
 })();
 `;
+}
 
 export interface AppShellSpec {
   // Page <title> and the app-shell identity reported in ui/initialize.appInfo.name.
@@ -317,7 +324,7 @@ export function buildAppHtml(spec: AppShellSpec): string {
   const bridge =
     SHARED_BRIDGE_HEAD +
     '\n  function renderData(data) {\n' + spec.renderBody + '\n  }\n' +
-    SHARED_BRIDGE_TAIL.replace('__APP_NAME__', JSON.stringify(spec.appName));
+    renderBridgeTail(spec.appName);
 
   return `<!DOCTYPE html>
 <html lang="en">

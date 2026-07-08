@@ -424,8 +424,15 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       const csp = cspMatch[1];
       assert.match(csp, /default-src\s+'none'/, `${uri}: default-src must be 'none'`);
       assert.match(csp, /connect-src[^;]*worldmonitor\.app/, `${uri}: connect-src must include the MCP origin`);
-      assert.match(csp, /frame-ancestors[^;]*https:\/\/chatgpt\.com/, `${uri}: frame-ancestors must include chatgpt.com`);
-      assert.match(csp, /frame-ancestors[^;]*https:\/\/claude\.ai/, `${uri}: frame-ancestors must include claude.ai`);
+      // frame-ancestors in a <meta> CSP is ADVISORY — browsers enforce it only
+      // via an HTTP response header, and a ui:// shell is delivered as a
+      // JSON-RPC string the host injects into its own sandboxed iframe (no HTTP
+      // document, so no header to carry it). We assert its presence as a
+      // declarative host/scanner signal of intended embedders, NOT as
+      // browser-enforced clickjacking protection (the real embedding boundary
+      // is the host sandbox + the bridge's event.source === parent check).
+      assert.match(csp, /frame-ancestors[^;]*https:\/\/chatgpt\.com/, `${uri}: must declare chatgpt.com in frame-ancestors (advisory embedder signal)`);
+      assert.match(csp, /frame-ancestors[^;]*https:\/\/claude\.ai/, `${uri}: must declare claude.ai in frame-ancestors (advisory embedder signal)`);
       assert.match(csp, /form-action\s+'none'/, `${uri}: form-action must be scoped`);
       assert.match(csp, /base-uri\s+'none'/, `${uri}: base-uri must be scoped`);
       assert.match(csp, /(img|script|style)-src/, `${uri}: img/script/style-src must be present`);

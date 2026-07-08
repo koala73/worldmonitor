@@ -58,10 +58,12 @@ const RENDER = `
       if (r === "moderate" || r === "warning") return cssVar("--moderate");
       return cssVar("--low");
     }
-    function stat(k, v) {
+    function stat(k, v, color) {
       var wrap = el("div", "cstat");
       wrap.appendChild(el("span", "k", k));
-      wrap.appendChild(el("span", "v", v));
+      var val = el("span", "v", v);
+      if (color) val.style.color = color;
+      wrap.appendChild(val);
       return wrap;
     }
 
@@ -90,9 +92,8 @@ const RENDER = `
         var total = num(s.todayTotal);
         stats.appendChild(stat("Transits today", total == null ? "—" : String(Math.round(total))));
         var wow = num(s.wowChangePct);
-        var wowCell = stat("Week over week", pctText(wow));
-        if (wow != null) wowCell.lastChild.style.color = wow >= 0 ? cssVar("--up") : cssVar("--down");
-        stats.appendChild(wowCell);
+        var wowColor = wow == null ? null : (wow >= 0 ? cssVar("--up") : cssVar("--down"));
+        stats.appendChild(stat("Week over week", pctText(wow), wowColor));
         var tanker = num(s.todayTanker);
         if (tanker != null) stats.appendChild(stat("Tanker", String(Math.round(tanker))));
         row.appendChild(stats);
