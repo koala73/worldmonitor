@@ -63,6 +63,7 @@ import {
   SIMULATION_OUTCOME_SCHEMA_VERSION,
   buildSimulationOutcomeKey,
   writeSimulationOutcome,
+  computeSimulationLockTtlSeconds,
   buildSimulationRound1SystemPrompt,
   buildSimulationRound2SystemPrompt,
   extractSimulationRoundPayload,
@@ -74,6 +75,9 @@ import {
   patchPublishedForecastsWithSimDecorations,
   redisAtomicPatchSimDecorations,
   redisAtomicWriteSimDecorations,
+  redisAtomicWriteSimulationOutcomePointer,
+  redisCompareAndDeleteSimulationLock,
+  redisCompareAndExpireSimulationLock,
   SIMULATION_DECORATIONS_KEY,
   SIMULATION_DECORATIONS_MAX_AGE_MS,
   CANONICAL_KEY,
@@ -6341,6 +6345,181 @@ describe('simulation runner — outcome key builder', () => {
 });
 
 describe('simulation runner — writeSimulationOutcome', () => {
+  it('skips stale :latest outcome writes when a newer run pointer already exists', async () => {
+    const originalFetch = globalThis.fetch;
+    const newerTs = Date.now();
+    const olderTs = newerTs - 60_000;
+    const store = {
+      [SIMULATION_OUTCOME_LATEST_KEY]: {
+        runId: `${newerTs}-newer`,
+        generatedAt: newerTs,
+        outcomeKey: 'seed-data/forecast-traces/newer/simulation-outcome.json',
+        schemaVersion: SIMULATION_OUTCOME_SCHEMA_VERSION,
+        theaterCount: 1,
+        uiTheaters: [],
+      },
+    };
+    __setRedisStoreForTests(store);
+    globalThis.fetch = async (url, init = {}) => {
+      const target = String(url);
+      if (target.includes('/r2/buckets/')) {
+        return new Response('{}', { status: 200 });
+      }
+      if (target === 'http://test') {
+        const command = JSON.parse(String(init.body || '[]'));
+        if (command[0] === 'SET') {
+          store[command[1]] = JSON.parse(command[2]);
+          return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ result: 1 }), { status: 200 });
+      }
+      throw new Error(`unexpected fetch ${target}`);
+    };
+    try {
+      const olderRunId = `${olderTs}-older`;
+      const result = await writeSimulationOutcome(
+        { runId: olderRunId, generatedAt: olderTs },
+        { theaterResults: [], failedTheaters: [], generatedAt: olderTs },
+        {
+          storageConfig: {
+            mode: 'api',
+            apiBaseUrl: 'https://api.cloudflare.test/client/v4',
+            accountId: 'acct',
+            bucket: 'trace-bucket',
+            apiToken: 'token',
+            basePrefix: 'seed-data/forecast-traces',
+          },
+        },
+      );
+      assert.ok(result?.outcomeKey, 'older outcome still writes its R2 object');
+      assert.equal(store[SIMULATION_OUTCOME_LATEST_KEY].runId, `${newerTs}-newer`, 'newer :latest pointer must win');
+      assert.equal(store[SIMULATION_OUTCOME_LATEST_KEY].generatedAt, newerTs, 'newer :latest generatedAt preserved');
+    } finally {
+      globalThis.fetch = originalFetch;
+      __setRedisStoreForTests(null);
+    }
+  });
+
+  it('redisAtomicWriteSimulationOutcomePointer writes only when generatedAt is not older', async () => {
+    const newerTs = Date.now();
+    const olderTs = newerTs - 30_000;
+    const key = 'forecast:simulation-outcome:by-run:test-run';
+    const store = {
+      [key]: { runId: 'run-newer', generatedAt: newerTs, outcomeKey: 'newer.json' },
+    };
+    __setRedisStoreForTests(store);
+    try {
+      const skipped = await redisAtomicWriteSimulationOutcomePointer('http://test', 'test', key, {
+        runId: 'run-older',
+        generatedAt: olderTs,
+        outcomeKey: 'older.json',
+      }, 86400);
+      assert.ok(skipped.startsWith('SKIPPED:'), `expected SKIPPED, got ${skipped}`);
+      assert.equal(store[key].runId, 'run-newer');
+
+      const written = await redisAtomicWriteSimulationOutcomePointer('http://test', 'test', key, {
+        runId: 'run-newer-2',
+        generatedAt: newerTs + 1,
+        outcomeKey: 'newer-2.json',
+      }, 86400);
+      assert.equal(written, 'WRITTEN');
+      assert.equal(store[key].runId, 'run-newer-2');
+    } finally {
+      __setRedisStoreForTests(null);
+    }
+  });
+
+  it('redisCompareAndDeleteSimulationLock deletes only the current worker-owned lock', async () => {
+    const lockKey = 'forecast:simulation-lock:v1:test-run';
+    const store = { [lockKey]: 'worker-b' };
+    __setRedisStoreForTests(store);
+    try {
+      const stale = await redisCompareAndDeleteSimulationLock('http://test', 'test', lockKey, 'worker-a');
+      assert.equal(stale, false);
+      assert.equal(store[lockKey], 'worker-b', 'successor lock must survive stale worker cleanup');
+
+      const current = await redisCompareAndDeleteSimulationLock('http://test', 'test', lockKey, 'worker-b');
+      assert.equal(current, true);
+      assert.equal(store[lockKey], undefined);
+    } finally {
+      __setRedisStoreForTests(null);
+    }
+  });
+
+  it('computeSimulationLockTtlSeconds scales with theater count and preserves the base TTL floor', () => {
+    assert.equal(computeSimulationLockTtlSeconds(0), 20 * 60);
+    assert.equal(computeSimulationLockTtlSeconds(1), 20 * 60);
+    assert.equal(computeSimulationLockTtlSeconds(3), 60 * 60);
+  });
+
+  it('redisCompareAndExpireSimulationLock extends only the current worker-owned lock', async () => {
+    const originalFetch = globalThis.fetch;
+    const calls = [];
+    globalThis.fetch = async (url, init = {}) => {
+      calls.push({ url: String(url), command: JSON.parse(String(init.body || '[]')) });
+      return new Response(JSON.stringify({ result: calls.length === 1 ? 0 : 1 }), { status: 200 });
+    };
+    try {
+      const stale = await redisCompareAndExpireSimulationLock('http://test', 'test', 'forecast:simulation-lock:v1:test-run', 'worker-a', 3600);
+      const current = await redisCompareAndExpireSimulationLock('http://test', 'test', 'forecast:simulation-lock:v1:test-run', 'worker-b', 3600);
+      assert.equal(stale, false);
+      assert.equal(current, true);
+      assert.equal(calls.length, 2);
+      assert.equal(calls[1].command[0], 'EVAL');
+      assert.equal(calls[1].command.at(-1), '3600');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('writeSimulationOutcome emits an empty-candidateStateId counter for outcome telemetry', async () => {
+    const originalWarn = console.warn;
+    const originalFetch = globalThis.fetch;
+    const warnings = [];
+    console.warn = (...args) => warnings.push(args.join(' '));
+    globalThis.fetch = async (url) => {
+      const target = String(url);
+      if (target.includes('/r2/buckets/')) {
+        return new Response('{}', { status: 200 });
+      }
+      throw new Error(`unexpected fetch ${target}`);
+    };
+    const store = {};
+    __setRedisStoreForTests(store);
+    try {
+      await writeSimulationOutcome(
+        { runId: '1783471835470-emptyid', generatedAt: 1783471835470 },
+        {
+          theaterResults: [
+            { theaterId: 'theater-empty', candidateStateId: '', topPaths: [] },
+            { theaterId: 'theater-ok', candidateStateId: 'state-ok', topPaths: [] },
+          ],
+          failedTheaters: [],
+          generatedAt: 1783471835470,
+        },
+        {
+          storageConfig: {
+            mode: 'api',
+            apiBaseUrl: 'https://api.cloudflare.test/client/v4',
+            accountId: 'acct',
+            bucket: 'trace-bucket',
+            apiToken: 'token',
+            basePrefix: 'seed-data/forecast-traces',
+          },
+        },
+      );
+      assert.equal(store[SIMULATION_OUTCOME_LATEST_KEY].emptyCandidateStateIdCount, 1);
+      assert.ok(
+        warnings.some((line) => line.includes('empty candidateStateId') && line.includes('1/2')),
+        `expected empty candidateStateId warning, got ${warnings.join('\n')}`,
+      );
+    } finally {
+      console.warn = originalWarn;
+      globalThis.fetch = originalFetch;
+      __setRedisStoreForTests(null);
+    }
+  });
+
   it('returns null when R2 storage is not configured', async () => {
     const outcome = { theaterResults: [], failedTheaters: [], runId: 'run-001', generatedAt: Date.now() };
     const result = await writeSimulationOutcome(minimalPkg, outcome, { storageConfig: null });

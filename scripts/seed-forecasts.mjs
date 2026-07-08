@@ -76,6 +76,7 @@ const SIMULATION_DECORATIONS_MAX_AGE_MS = 48 * 60 * 60 * 1000; // 48h — skip a
 const SIMULATION_ROUND1_MAX_TOKENS = 2200;
 const SIMULATION_ROUND2_MAX_TOKENS = 2500;
 const SIMULATION_LOCK_TTL_SECONDS = 20 * 60;
+const SIMULATION_LOCK_MAX_TTL_MULTIPLIER = 6;
 const SIMULATION_POLL_INTERVAL_MS = 30 * 1000;
 const PUBLISH_MIN_PROBABILITY = 0;
 const PANEL_MIN_PROBABILITY = 0.1;
@@ -17281,6 +17282,141 @@ async function redisAtomicWriteSimDecorations(url, token, key, payload, ttlSecon
   return result?.result ?? 'WRITTEN';
 }
 
+// Lua script for atomic write-if-newer of simulation outcome pointers.
+// Prevents a late older simulation worker from regressing :latest or a by-run
+// pointer after a newer payload has already landed.
+//
+// KEYS[1] = outcome pointer key
+// ARGV[1] = payload.generatedAt
+// ARGV[2] = payload JSON
+// ARGV[3] = TTL seconds
+//
+// Returns: 'WRITTEN' | 'SKIPPED:<existingGeneratedAt>'
+const _SIM_OUTCOME_POINTER_WRITE_LUA = `
+local raw = redis.call('GET', KEYS[1])
+if raw then
+  local ok, existing = pcall(cjson.decode, raw)
+  local existingTs = ok and tonumber(existing.generatedAt) or 0
+  local runTs = tonumber(ARGV[1]) or 0
+  if runTs > 0 and existingTs > runTs then
+    return 'SKIPPED:' .. tostring(existingTs)
+  end
+end
+redis.call('SET', KEYS[1], ARGV[2], 'EX', tonumber(ARGV[3]))
+return 'WRITTEN'
+`.trim();
+
+/**
+ * Atomically write a simulation outcome pointer only if the incoming run is
+ * not older than the pointer already stored at the key.
+ *
+ * @param {string} url
+ * @param {string} token
+ * @param {string} key
+ * @param {{ generatedAt?: number }} payload
+ * @param {number} ttlSeconds
+ * @returns {Promise<string>}
+ */
+async function redisAtomicWriteSimulationOutcomePointer(url, token, key, payload, ttlSeconds) {
+  if (_testRedisStore) {
+    const existing = _testRedisStore[key] ?? null;
+    const existingTs = typeof existing?.generatedAt === 'number' ? existing.generatedAt : 0;
+    const runTs = typeof payload.generatedAt === 'number' ? payload.generatedAt : 0;
+    if (runTs > 0 && existingTs > runTs) return `SKIPPED:${existingTs}`;
+    _testRedisStore[key] = JSON.parse(JSON.stringify(payload));
+    return 'WRITTEN';
+  }
+  const result = await redisCommand(url, token, [
+    'EVAL', _SIM_OUTCOME_POINTER_WRITE_LUA, '1',
+    key,
+    String(typeof payload.generatedAt === 'number' ? payload.generatedAt : 0),
+    JSON.stringify(payload),
+    String(ttlSeconds),
+  ]);
+  return result?.result ?? 'WRITTEN';
+}
+
+const _SIM_LOCK_RELEASE_LUA = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('DEL', KEYS[1])
+end
+return 0
+`.trim();
+
+const _SIM_LOCK_EXPIRE_LUA = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+  return redis.call('EXPIRE', KEYS[1], tonumber(ARGV[2]))
+end
+return 0
+`.trim();
+
+/**
+ * Compute the simulation task lock TTL from the amount of theater work queued
+ * for this run. One theater keeps the historical 20-minute floor; multiple
+ * theaters scale linearly, bounded defensively in case a malformed package
+ * bypasses the normal selected-theater cap.
+ *
+ * @param {number} theaterCount
+ * @returns {number}
+ */
+function computeSimulationLockTtlSeconds(theaterCount) {
+  const count = Number.isFinite(theaterCount) ? Math.max(1, Math.floor(theaterCount)) : 1;
+  const multiplier = Math.min(SIMULATION_LOCK_MAX_TTL_MULTIPLIER, count);
+  return SIMULATION_LOCK_TTL_SECONDS * multiplier;
+}
+
+/**
+ * Release a simulation worker lock only when it is still owned by the worker
+ * doing cleanup. This prevents an expired slow worker from deleting a
+ * successor's lock after the successor has already claimed the same task.
+ *
+ * @param {string} url
+ * @param {string} token
+ * @param {string} lockKey
+ * @param {string} workerId
+ * @returns {Promise<boolean>}
+ */
+async function redisCompareAndDeleteSimulationLock(url, token, lockKey, workerId) {
+  if (!workerId) return false;
+  if (_testRedisStore) {
+    if (_testRedisStore[lockKey] !== workerId) return false;
+    delete _testRedisStore[lockKey];
+    return true;
+  }
+  const result = await redisCommand(url, token, [
+    'EVAL', _SIM_LOCK_RELEASE_LUA, '1',
+    lockKey,
+    workerId,
+  ]);
+  return Number(result?.result || 0) > 0;
+}
+
+/**
+ * Extend a simulation worker lock only if the caller still owns it.
+ *
+ * @param {string} url
+ * @param {string} token
+ * @param {string} lockKey
+ * @param {string} workerId
+ * @param {number} ttlSeconds
+ * @returns {Promise<boolean>}
+ */
+async function redisCompareAndExpireSimulationLock(url, token, lockKey, workerId, ttlSeconds) {
+  if (!workerId) return false;
+  const ttl = Number.isFinite(ttlSeconds) ? Math.max(1, Math.floor(ttlSeconds)) : SIMULATION_LOCK_TTL_SECONDS;
+  if (_testRedisStore) {
+    if (_testRedisStore[lockKey] !== workerId) return false;
+    return true;
+  }
+  const result = await redisCommand(url, token, [
+    'EVAL', _SIM_LOCK_EXPIRE_LUA, '1',
+    lockKey,
+    workerId,
+    String(ttl),
+  ]);
+  return Number(result?.result || 0) > 0;
+}
+
 // Lua script for atomic compare-and-swap patch of the canonical forecast key.
 // Executed via EVAL so the read-guard-modify-write is a single Redis operation with no TOCTOU gap.
 //
@@ -17626,7 +17762,12 @@ async function writeSimulationOutcome(pkg, outcome, { storageConfig } = {}) {
     schema_version: SIMULATION_OUTCOME_SCHEMA_VERSION,
   });
   const { url, token } = getRedisCredentials();
-  const uiTheaters = (outcome.theaterResults || []).map((tr) => ({
+  const theaterResults = Array.isArray(outcome.theaterResults) ? outcome.theaterResults : [];
+  const emptyCandidateStateIdCount = theaterResults.filter((tr) => !String(tr?.candidateStateId || '').trim()).length;
+  if (emptyCandidateStateIdCount > 0) {
+    console.warn(`  [Simulation] Outcome ${runId} has ${emptyCandidateStateIdCount}/${theaterResults.length} theaterResults with empty candidateStateId`);
+  }
+  const uiTheaters = theaterResults.map((tr) => ({
     theaterId: tr.theaterId,
     theaterLabel: tr.theaterLabel || tr.theaterId,
     stateKind: tr.stateKind || '',
@@ -17649,20 +17790,23 @@ async function writeSimulationOutcome(pkg, outcome, { storageConfig } = {}) {
     runId,
     outcomeKey,
     schemaVersion: SIMULATION_OUTCOME_SCHEMA_VERSION,
-    theaterCount: (outcome.theaterResults || []).length,
+    theaterCount: theaterResults.length,
+    emptyCandidateStateIdCount,
     generatedAt: generatedAt || Date.now(),
     uiTheaters,
   };
-  const outcomePayloadString = JSON.stringify(outcomePayload);
   // Canonical :latest write — D10. Awaited; throws propagate to the worker's
   // try/catch and surface as `status: 'failed'`.
-  await redisCommand(url, token, [
-    'SET',
+  const latestStatus = await redisAtomicWriteSimulationOutcomePointer(
+    url,
+    token,
     SIMULATION_OUTCOME_LATEST_KEY,
-    outcomePayloadString,
-    'EX',
-    String(TRACE_REDIS_TTL_SECONDS),
-  ]);
+    outcomePayload,
+    TRACE_REDIS_TTL_SECONDS,
+  );
+  if (latestStatus.startsWith('SKIPPED:')) {
+    console.log(`  [Simulation] Skipping stale :latest outcome pointer for ${runId} — existing=${latestStatus.slice(8)} this_run=${outcomePayload.generatedAt}`);
+  }
 
   // Secondary :by-run write — D9. Failure must NOT block the worker
   // (R7: auto-trigger / worker liveness unchanged). On failure, log +
@@ -17670,9 +17814,16 @@ async function writeSimulationOutcome(pkg, outcome, { storageConfig } = {}) {
   // from "by-run write failed" via the get-simulation-outcome `note` text.
   const byRunKey = `${SIMULATION_OUTCOME_BY_RUN_KEY_PREFIX}:${runId}`;
   try {
-    await redisCommand(url, token, [
-      'SET', byRunKey, outcomePayloadString, 'EX', String(SIMULATION_OUTCOME_BY_RUN_TTL_SECONDS),
-    ]);
+    const byRunStatus = await redisAtomicWriteSimulationOutcomePointer(
+      url,
+      token,
+      byRunKey,
+      outcomePayload,
+      SIMULATION_OUTCOME_BY_RUN_TTL_SECONDS,
+    );
+    if (byRunStatus.startsWith('SKIPPED:')) {
+      console.log(`  [Simulation] Skipping stale by-run outcome pointer for ${runId} — existing=${byRunStatus.slice(8)} this_run=${outcomePayload.generatedAt}`);
+    }
   } catch (err) {
     console.warn(`  [Simulation] by-run SET failed for ${runId}: ${err.message}`);
     // Best-effort tombstone with NX — if the primary by-run SET actually
@@ -17767,18 +17918,28 @@ async function claimSimulationTask(runId, workerId) {
   if (claim?.result !== 'OK') return null;
   const taskRaw = await redisGet(url, token, buildSimulationTaskKey(runId));
   if (!taskRaw?.runId) {
-    await redisDel(url, token, lockKey);
+    await redisCompareAndDeleteSimulationLock(url, token, lockKey, workerId);
     return null;
   }
   return taskRaw;
 }
 
-async function completeSimulationTask(runId) {
+async function completeSimulationTask(runId, workerId = '') {
   if (!runId) return;
   const { url, token } = getRedisCredentials();
   await redisCommand(url, token, ['ZREM', SIMULATION_TASK_QUEUE_KEY, runId]);
   await redisDel(url, token, buildSimulationTaskKey(runId));
-  await redisDel(url, token, buildSimulationLockKey(runId));
+  const released = await redisCompareAndDeleteSimulationLock(url, token, buildSimulationLockKey(runId), workerId);
+  if (!released && workerId) {
+    console.warn(`  [Simulation] Did not release lock for ${runId}; worker no longer owns it (${workerId})`);
+  }
+}
+
+async function extendSimulationTaskLockForTheaters(runId, workerId, theaterCount) {
+  if (!runId || !workerId) return false;
+  const ttlSeconds = computeSimulationLockTtlSeconds(theaterCount);
+  const { url, token } = getRedisCredentials();
+  return redisCompareAndExpireSimulationLock(url, token, buildSimulationLockKey(runId), workerId, ttlSeconds);
 }
 
 async function listQueuedSimulationTasks(limit = 10) {
@@ -17826,7 +17987,7 @@ async function processNextSimulationTask(options = {}) {
       const existing = await redisGet(url, token, SIMULATION_OUTCOME_LATEST_KEY);
       if (existing?.runId === runId) {
         console.log(`  [Simulation] Skipping ${runId} — outcome already written`);
-        await completeSimulationTask(runId);
+        await completeSimulationTask(runId, workerId);
         return { status: 'skipped', reason: 'already_processed', runId };
       }
 
@@ -17834,7 +17995,7 @@ async function processNextSimulationTask(options = {}) {
       const pkgPointer = await redisGet(url, token, SIMULATION_PACKAGE_LATEST_KEY);
       if (!pkgPointer?.pkgKey) {
         console.warn(`  [Simulation] No package pointer for ${runId}`);
-        await completeSimulationTask(runId);
+        await completeSimulationTask(runId, workerId);
         return { status: 'failed', reason: 'no_package_pointer', runId };
       }
       if (pkgPointer.runId && pkgPointer.runId !== runId) {
@@ -17859,18 +18020,23 @@ async function processNextSimulationTask(options = {}) {
 
       const storageConfig = resolveR2StorageConfig();
       if (!storageConfig) {
-        await completeSimulationTask(runId);
+        await completeSimulationTask(runId, workerId);
         return { status: 'failed', reason: 'no_storage_config', runId };
       }
 
       const pkgData = await getR2JsonObject(storageConfig, pkgPointer.pkgKey);
       if (!pkgData?.selectedTheaters) {
-        await completeSimulationTask(runId);
+        await completeSimulationTask(runId, workerId);
         return { status: 'failed', reason: 'package_read_failed', runId };
       }
 
       const eligibleTheaters = (pkgData.selectedTheaters || []).filter(isSimulationEligible);
       console.log(`  [Simulation] ${runId}: ${eligibleTheaters.length}/${pkgData.selectedTheaters.length} theaters eligible`);
+      const lockExtended = await extendSimulationTaskLockForTheaters(runId, workerId, eligibleTheaters.length);
+      if (!lockExtended) {
+        console.warn(`  [Simulation] ${runId}: lock ownership lost before theater simulation; leaving task for current owner`);
+        return { status: 'skipped', reason: 'lock_ownership_lost', runId };
+      }
 
       const theaterResults = [];
       const failedTheaters = [];
@@ -17937,7 +18103,7 @@ async function processNextSimulationTask(options = {}) {
       };
 
       const writeResult = await writeSimulationOutcome(pkgData, outcome, { storageConfig });
-      await completeSimulationTask(runId);
+      await completeSimulationTask(runId, workerId);
       console.log(`  [Simulation] Completed ${runId}: ${theaterResults.length} theaters → ${writeResult?.outcomeKey}`);
       // Awaited (not fire-and-forget): re-score must complete before process.exit() so that
       // writeSimulationDecorations + patchPublishedForecastsWithSimDecorations update the
@@ -17949,7 +18115,7 @@ async function processNextSimulationTask(options = {}) {
       return { status: 'completed', runId, theaterCount: theaterResults.length, outcomeKey: writeResult?.outcomeKey };
     } catch (err) {
       console.warn(`  [Simulation] Task failed for ${runId}: ${err.message}`);
-      await completeSimulationTask(runId);
+      await completeSimulationTask(runId, workerId);
       return { status: 'failed', reason: err.message, runId };
     }
   }
@@ -18133,6 +18299,7 @@ export {
   SIMULATION_OUTCOME_SCHEMA_VERSION,
   buildSimulationOutcomeKey,
   writeSimulationOutcome,
+  computeSimulationLockTtlSeconds,
   buildSimulationRound1SystemPrompt,
   buildSimulationRound2SystemPrompt,
   tryParseSimulationRoundPayload,
@@ -18148,6 +18315,9 @@ export {
   patchPublishedForecastsWithSimDecorations,
   redisAtomicPatchSimDecorations,
   redisAtomicWriteSimDecorations,
+  redisAtomicWriteSimulationOutcomePointer,
+  redisCompareAndDeleteSimulationLock,
+  redisCompareAndExpireSimulationLock,
   SIMULATION_DECORATIONS_KEY,
   SIMULATION_DECORATIONS_MAX_AGE_MS,
   computeSimulationAdjustment,
