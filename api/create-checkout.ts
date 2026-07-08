@@ -27,6 +27,7 @@ const CONVEX_SITE_URL =
   (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
 const RELAY_SHARED_SECRET = process.env.RELAY_SHARED_SECRET ?? '';
 const ACTIVE_SUBSCRIPTION_EXISTS = 'ACTIVE_SUBSCRIPTION_EXISTS';
+const CHECKOUT_RELAY_USER_AGENT = 'worldmonitor-checkout-edge/1.0';
 
 type CreateCheckoutDeps = {
   validateBearerToken: typeof validateBearerToken;
@@ -161,6 +162,7 @@ export default async function handler(
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${RELAY_SHARED_SECRET}`,
+        'User-Agent': CHECKOUT_RELAY_USER_AGENT,
       },
       body: JSON.stringify({
         userId: session.userId,

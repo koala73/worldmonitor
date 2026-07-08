@@ -71,5 +71,41 @@ describe('/api/create-checkout ACTIVE_SUBSCRIPTION_EXISTS relay handling', () =>
     });
     assert.equal(consoleError.mock.calls.length, 0);
     assert.equal(relayFetch.mock.calls.length, 1);
+    const relayInit = relayFetch.mock.calls[0].arguments[1] as RequestInit;
+    assert.equal((relayInit.headers as Record<string, string>)['User-Agent'], 'worldmonitor-checkout-edge/1.0');
+  });
+
+  it('continues logging and forwarding non-active 409 checkout blocks', async () => {
+    const mod = await importFreshCreateCheckout();
+    const consoleError = mock.method(console, 'error', () => {});
+    const relayFetch = mock.fn(async () =>
+      Response.json(
+        {
+          error: 'PAYMENT_IN_PROGRESS',
+          message: 'A Pro Monthly payment is already in progress',
+          pendingPayment: { planKey: 'pro_monthly' },
+        },
+        { status: 409 },
+      ),
+    );
+
+    mod.__setCreateCheckoutDepsForTests({
+      validateBearerToken: async () => ({
+        valid: true,
+        userId: 'user_pending_payment',
+      }),
+      fetch: relayFetch,
+    });
+
+    const res = await mod.default(makeCheckoutRequest());
+
+    assert.equal(res.status, 409);
+    assert.deepEqual(await res.json(), {
+      error: 'PAYMENT_IN_PROGRESS',
+      message: 'A Pro Monthly payment is already in progress',
+      pendingPayment: { planKey: 'pro_monthly' },
+    });
+    assert.equal(consoleError.mock.calls.length, 1);
+    assert.equal(String(consoleError.mock.calls[0].arguments[0]), '[create-checkout] Relay error:');
   });
 });

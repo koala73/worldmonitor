@@ -986,12 +986,16 @@ export async function startCheckout(
  * Capture them at `info` so the funnel is still observable without
  * triggering alerts. Everything else stays at `error`.
  */
-type SentryLevel = 'error' | 'info';
+export type SentryLevel = 'error' | 'info';
 const INFO_LEVEL_CODES: ReadonlySet<CheckoutErrorCode> = new Set([
   'unauthorized',
   'session_expired',
   'duplicate_subscription',
 ]);
+
+export function checkoutErrorTelemetryLevel(error: Pick<CheckoutError, 'code'>): SentryLevel {
+  return INFO_LEVEL_CODES.has(error.code) ? 'info' : 'error';
+}
 
 function reportCheckoutError(
   error: CheckoutError,
@@ -999,7 +1003,7 @@ function reportCheckoutError(
   caught?: unknown,
   upstream?: UpstreamSnapshot,
 ): void {
-  const level: SentryLevel = INFO_LEVEL_CODES.has(error.code) ? 'info' : 'error';
+  const level = checkoutErrorTelemetryLevel(error);
   const payload = {
     level,
     tags: {
