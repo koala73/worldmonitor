@@ -81,4 +81,27 @@ describe('notification country-scope forwarding contract', () => {
       'set-alert-rules must catch and translate *_LIMIT_EXCEEDED to a 400',
     );
   });
+
+  // Review round 2: the Convex-layer 400 is only useful if the public edge
+  // forwards it. The set-alert-rules edge handler previously collapsed every
+  // non-ok relay response into a generic 500 — mirror set-notification-config.
+  it('edge set-alert-rules forwards relay 400/402 with body intact', () => {
+    assert.match(
+      edgeSrc,
+      /action === 'set-alert-rules'[\s\S]*?if \(!resp\.ok\) \{[\s\S]*?resp\.status === 400 \|\| resp\.status === 402[\s\S]*?return finish\(json\(payload, resp\.status/,
+      'edge set-alert-rules must pass through 400/402 instead of collapsing to 500',
+    );
+  });
+
+  // Review round 2: set-notification-config now forwards tickers, so it can
+  // throw TICKERS_LIMIT_EXCEEDED; and its catch must decode the JSON-string
+  // err.data shape (extractConvexErrorCode) rather than the object-only check
+  // that missed every code on the ctx.runMutation path.
+  it('set-notification-config translates cap codes via extractConvexErrorCode', () => {
+    assert.match(
+      convexHttpSrc,
+      /action === "set-notification-config"[\s\S]*?\} catch \(err: unknown\) \{[\s\S]*?extractConvexErrorCode\(err\)[\s\S]*?TICKERS_LIMIT_EXCEEDED[\s\S]*?COUNTRIES_LIMIT_EXCEEDED[\s\S]*?status: 400/,
+      'set-notification-config catch must use extractConvexErrorCode and handle cap codes',
+    );
+  });
 });

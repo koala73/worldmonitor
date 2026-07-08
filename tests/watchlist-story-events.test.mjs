@@ -37,14 +37,16 @@ const relaySrc = readFileSync(
 );
 
 const DICT = buildTickerDictionary([
-  { symbol: 'AAPL', name: 'Apple' },
+  // 'Microsoft' (distinctive) drives the builder fixtures; 'Apple' is an
+  // ambiguous common-word name excluded from bare-name matching, so it would
+  // never tag here — the builder logic under test is name-agnostic.
   { symbol: 'MSFT', name: 'Microsoft' },
   { symbol: 'LLY', name: 'Eli Lilly' },
 ]);
 
 const story = (over = {}) => ({
   hash: 'h1',
-  title: 'Apple faces new antitrust probe',
+  title: 'Microsoft faces new antitrust probe',
   description: '',
   link: 'https://example.com/a',
   source: 'Example Wire',
@@ -59,10 +61,10 @@ describe('buildWatchlistStoryEvents — pure builder', () => {
     const ev = events[0];
     assert.equal(ev.eventType, WATCHLIST_STORY_EVENT_TYPE);
     assert.deepEqual(ev.payload, {
-      title: 'Apple faces new antitrust probe',
+      title: 'Microsoft faces new antitrust probe',
       link: 'https://example.com/a',
       source: 'Example Wire',
-      tickers: ['AAPL'],
+      tickers: ['MSFT'],
       importanceScore: 74,
       coalesceKey: 'watchlist:h1',
     });

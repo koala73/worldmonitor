@@ -636,11 +636,13 @@ export type ExtendedHoursQuote = { price: number; changePercent: number };
 
 /**
  * Latest pre/post-market print for a US symbol via the Yahoo 5-minute chart
- * (`includePrePost=true`). Returns the newest finite close inside the
- * extended window — after the regular close for 'post', before the open for
- * 'pre' — with the change measured against the last REGULAR close
- * (meta.regularMarketPrice, falling back to chartPreviousClose). Null when
- * Yahoo has no extended candles or no usable trading-period metadata.
+ * (`includePrePost=true`). Returns the newest finite close inside the CURRENT
+ * session's own [start, end) window from meta.currentTradingPeriod[session] —
+ * so an early-pre-market range=1d chart carrying the prior session's candles
+ * can't leak yesterday's close in as today's pre-market print — with the change
+ * measured against the last REGULAR close (meta.regularMarketPrice, falling
+ * back to chartPreviousClose). Null when Yahoo has no candle in that window or
+ * no usable trading-period metadata.
  */
 export async function fetchExtendedHoursQuote(
   symbol: string,
@@ -657,9 +659,15 @@ export async function fetchExtendedHoursQuote(
 
     const data = await response.json() as YahooChartResponse;
     const result = data.chart?.result?.[0];
-    const regularStart = result?.meta?.currentTradingPeriod?.regular?.start;
-    const regularEnd = result?.meta?.currentTradingPeriod?.regular?.end;
-    if (typeof regularStart !== 'number' || typeof regularEnd !== 'number') return null;
+    const period = result?.meta?.currentTradingPeriod?.[session];
+    const windowStart = period?.start;
+    const windowEnd = period?.end;
+    // Require the CURRENT session's own [start, end) bounds. Gating pre only on
+    // `ts < regularStart` was unbounded below: in early pre-market, before
+    // today's pre candles publish, a range=1d chart still carries the prior
+    // session's candles (all older than today's regular start), so the newest
+    // match would be yesterday's post-market close returned as today's pre.
+    if (typeof windowStart !== 'number' || typeof windowEnd !== 'number') return null;
     const lastRegularClose = [result?.meta?.regularMarketPrice, result?.meta?.chartPreviousClose]
       .find((value) => typeof value === 'number' && Number.isFinite(value) && value > 0);
     if (lastRegularClose === undefined) return null;
@@ -670,15 +678,7 @@ export async function fetchExtendedHoursQuote(
       const ts = timestamps[i];
       const close = closes[i];
       if (typeof ts !== 'number' || typeof close !== 'number' || !Number.isFinite(close) || close <= 0) continue;
-      const inExtendedWindow = session === 'post' ? ts >= regularEnd : ts < regularStart;
-      if (!inExtendedWindow) {
-        // Walking newest→oldest: for 'post' every extended candle is newer
-        // than the regular window, so hitting a regular candle means there is
-        // no post-market data. For 'pre' the regular candles (if any leaked
-        // into the range) are NEWER than the pre window — keep scanning.
-        if (session === 'post') return null;
-        continue;
-      }
+      if (ts < windowStart || ts >= windowEnd) continue; // outside this session's window
       return {
         price: round(close),
         changePercent: round(((close - lastRegularClose) / lastRegularClose) * 100),

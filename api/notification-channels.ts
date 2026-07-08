@@ -384,6 +384,18 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           tickers,
         });
         if (!resp.ok) {
+          // A 400 carries a structured validation code (TICKERS_LIMIT_EXCEEDED /
+          // COUNTRIES_LIMIT_EXCEEDED); 402 is the paywall (PRO_REQUIRED). Pass
+          // both through with body intact so the client renders the real reason
+          // instead of a generic toast — mirrors set-notification-config below.
+          if (resp.status === 400 || resp.status === 402) {
+            const text = await resp.text().catch(() => '');
+            let payload: unknown = { error: 'Validation failed' };
+            if (text) {
+              try { payload = JSON.parse(text); } catch { /* keep default */ }
+            }
+            return finish(json(payload, resp.status, corsHeaders));
+          }
           console.error('[notification-channels] POST set-alert-rules relay error:', resp.status);
           return finish(json({ error: 'Operation failed' }, 500, corsHeaders));
         }

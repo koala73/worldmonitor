@@ -33,6 +33,18 @@
 /** Proto contract: NewsItem.tickers max_items=8 — never emit more. */
 export const MAX_TICKERS = 8;
 
+// Company names that are also ordinary English words / common terms. Bare-name
+// matching on these tags unrelated news ("Visa restrictions" → V, "Amazon
+// rainforest" → AMZN, "meta-analysis" → META, "learn the alphabet" → GOOGL),
+// and the watchlist-alert consumer would fire spurious notifications on them.
+// These are excluded from the company-name matcher — a cashtag ($V, $AMZN,
+// $META) is required to tag them, which is explicit author intent. Distinctive
+// names (Nvidia, Tesla, Netflix, …) and every multi-word name stay matchable.
+// Keep lowercased and in sync with shared/stocks.json when names change.
+const AMBIGUOUS_NAMES = new Set([
+  'apple', 'alphabet', 'amazon', 'meta', 'visa', 'oracle', 'itc',
+]);
+
 // `$` not preceded by an alphanumeric or another `$` (rejects US$100),
 // then 1–5 uppercase letters not followed by an alphanumeric (rejects
 // $AAPLE12 and $ABCDEF entirely rather than truncating them).
@@ -56,6 +68,7 @@ export function buildTickerDictionary(symbols) {
     const symbol = entry?.symbol;
     const name = entry?.name;
     if (!symbol || !name || symbol.startsWith('^')) continue; // indices out
+    if (AMBIGUOUS_NAMES.has(name.toLowerCase())) continue;    // cashtag-only names
     entries.push({ symbol: symbol.toUpperCase(), name });
   }
   // Longest name first so overlapping alternatives prefer the full phrase.

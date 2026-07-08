@@ -69,6 +69,27 @@ describe('extractTickers — company-name dictionary', () => {
   it('does NOT match bare symbols without $ (GM/ALL/IT false-positive class)', () => {
     assert.deepEqual(extractTickers('IT departments report ALL is well', DICT), []);
   });
+
+  it('does NOT bare-name-match ambiguous common-word company names', () => {
+    // These names are ordinary English words; bare-name matching would fire
+    // spurious watchlist alerts. A cashtag is required to tag them (below).
+    assert.deepEqual(extractTickers('Visa restrictions tighten for travelers', DICT), []);
+    assert.deepEqual(extractTickers('The Amazon rainforest lost tree cover', DICT), []);
+    assert.deepEqual(extractTickers('A new meta-analysis of the trials', DICT), []);
+    assert.deepEqual(extractTickers('Kids learn the alphabet in school', DICT), []);
+    assert.deepEqual(extractTickers('an apple a day', DICT), []);
+    assert.deepEqual(extractTickers('the oracle at Delphi', DICT), []);
+  });
+
+  it('still tags ambiguous names via an explicit cashtag (author intent)', () => {
+    assert.deepEqual(extractTickers('$V and $AMZN and $META rally', DICT), ['V', 'AMZN', 'META']);
+  });
+
+  it('still bare-name-matches distinctive single-word names', () => {
+    assert.deepEqual(extractTickers('Nvidia beats estimates', DICT), ['NVDA']);
+    assert.deepEqual(extractTickers('Netflix adds subscribers', DICT), ['NFLX']);
+    assert.deepEqual(extractTickers('Tesla recalls vehicles', DICT), ['TSLA']);
+  });
 });
 
 describe('extractTickers — output contract', () => {
@@ -134,13 +155,14 @@ describe('ingest wiring (source-textual + parse behavior)', () => {
   it('parseRssXml stamps tickers on parsed items end-to-end', async () => {
     const { __testing__ } = await import('../server/worldmonitor/news/v1/list-feed-digest.ts');
     const xml = `<?xml version="1.0"?><rss version="2.0"><channel><item>
-      <title>Apple beats estimates as $TSLA slides</title>
+      <title>Microsoft beats estimates as $TSLA slides</title>
       <link>https://example.com/a</link>
       <pubDate>Tue, 07 Jul 2026 12:00:00 GMT</pubDate>
       <description>Nvidia supply chain unaffected by the quarter, analysts told investors on the call.</description>
     </item></channel></rss>`;
     const parsed = __testing__.parseRssXml(xml, { url: 'https://example.com/rss', name: 'Example', lang: 'en' }, 'full');
     assert.ok(parsed && parsed.items.length === 1);
-    assert.deepEqual(parsed.items[0].tickers, ['AAPL', 'TSLA', 'NVDA']);
+    // Microsoft (distinctive name) + $TSLA cashtag in title, Nvidia name in description.
+    assert.deepEqual(parsed.items[0].tickers, ['MSFT', 'TSLA', 'NVDA']);
   });
 });

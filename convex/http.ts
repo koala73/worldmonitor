@@ -739,26 +739,25 @@ http.route({
           // responses so the UI can route to inline helper text (400) or to
           // the upgrade flow (402). Do NOT swallow as a generic 500 — the
           // client needs the structured `error` field to render the right
-          // surface.
-          const data = (err as { data?: unknown } | undefined)?.data;
-          if (data && typeof data === "object") {
-            const errPayload = data as { code?: string; message?: string };
-            if (errPayload.code === "INCOMPATIBLE_DELIVERY") {
-              return new Response(
-                JSON.stringify({ error: errPayload.code, message: errPayload.message ?? "" }),
-                { status: 400, headers: { "Content-Type": "application/json" } },
-              );
-            }
-            if (errPayload.code === "PRO_REQUIRED") {
-              // 402 Payment Required — the canonical HTTP status for
-              // paywall-gated content. Client reads `error: "PRO_REQUIRED"`
-              // to route to the upgrade flow rather than show a generic
-              // failure toast.
-              return new Response(
-                JSON.stringify({ error: errPayload.code, message: errPayload.message ?? "" }),
-                { status: 402, headers: { "Content-Type": "application/json" } },
-              );
-            }
+          // surface. Use extractConvexErrorCode, which decodes the JSON-STRING
+          // shape ctx.runMutation serializes err.data into across the function
+          // boundary (see :67) — a manual `typeof data === "object"` check
+          // misses every code on this path.
+          const code = extractConvexErrorCode(err);
+          // Preserve the ConvexError message where present — the client renders
+          // it as inline helper text for INCOMPATIBLE_DELIVERY.
+          const parsed = parseConvexErrorData(err);
+          const message = (parsed && typeof parsed === "object")
+            ? (parsed as { message?: string }).message ?? ""
+            : "";
+          if (code === "INCOMPATIBLE_DELIVERY" || code === "TICKERS_LIMIT_EXCEEDED" || code === "COUNTRIES_LIMIT_EXCEEDED") {
+            return new Response(JSON.stringify({ error: code, message }), { status: 400, headers: { "Content-Type": "application/json" } });
+          }
+          if (code === "PRO_REQUIRED") {
+            // 402 Payment Required — the canonical HTTP status for paywall-gated
+            // content. Client reads `error: "PRO_REQUIRED"` to route to the
+            // upgrade flow rather than show a generic failure toast.
+            return new Response(JSON.stringify({ error: code, message }), { status: 402, headers: { "Content-Type": "application/json" } });
           }
           throw err;
         }

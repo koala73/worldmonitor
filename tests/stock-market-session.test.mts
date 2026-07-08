@@ -37,7 +37,17 @@ function extendedChartPayload(overrides: {
   timestamps: number[];
   closes: Array<number | null>;
   regularMarketPrice?: number;
+  preStart?: number;
+  preEnd?: number;
+  postStart?: number;
+  postEnd?: number;
 }) {
+  // Yahoo reports the CURRENT session's own bounds; pre ends at the regular
+  // open and post begins at the regular close by default.
+  const preStart = overrides.preStart ?? overrides.regularStart - 20_000;
+  const preEnd = overrides.preEnd ?? overrides.regularStart;
+  const postStart = overrides.postStart ?? overrides.regularEnd;
+  const postEnd = overrides.postEnd ?? overrides.regularEnd + 20_000;
   return {
     chart: {
       result: [
@@ -46,7 +56,9 @@ function extendedChartPayload(overrides: {
             currency: 'USD',
             regularMarketPrice: overrides.regularMarketPrice,
             currentTradingPeriod: {
+              pre: { start: preStart, end: preEnd },
               regular: { start: overrides.regularStart, end: overrides.regularEnd },
+              post: { start: postStart, end: postEnd },
             },
           },
           timestamp: overrides.timestamps,
@@ -110,6 +122,26 @@ describe('fetchExtendedHoursQuote (#4922d)', () => {
     assert.ok(quote);
     assert.equal(quote.price, 9.45, 'the 100_000 candle is regular, not pre');
     assert.equal(quote.changePercent, 5);
+  });
+
+  it('pre: does NOT return a prior-session candle before the pre window opens', async () => {
+    // Early pre-market before today's pre candles publish: range=1d still
+    // carries the prior session's candles (all older than today's pre window).
+    // The old `ts < regularStart` gate would have returned that stale candle as
+    // today's pre-market price; the bounded window must reject it and return null.
+    mockFetchJson(extendedChartPayload({
+      regularStart: 100_000,
+      regularEnd: 123_400,
+      // pre window is [80_000, 100_000); this candle sits before it.
+      timestamps: [50_000],
+      closes: [8],
+      regularMarketPrice: 9,
+    }));
+    assert.equal(
+      await fetchExtendedHoursQuote('AAPL', 'pre'),
+      null,
+      'a candle before the pre window must not be returned',
+    );
   });
 
   it('returns null when there are no extended candles or no trading-period meta', async () => {
