@@ -61,6 +61,10 @@ describe('news digest timeout budget', () => {
   it('keeps cold cache misses below Vercel initial-response timeout', () => {
     assert.equal(VERCEL_INITIAL_RESPONSE_LIMIT_MS, 25_000);
     assert.ok(
+      RESPONSE_GUARD_BAND_MS >= 3_000,
+      'fallback path must reserve several seconds for edge runtime overhead and response jitter',
+    );
+    assert.ok(
       REDIS_OP_TIMEOUT_MS + DIGEST_RESPONSE_TIMEOUT_MS + REDIS_PIPELINE_TIMEOUT_MS + RESPONSE_GUARD_BAND_MS
         < VERCEL_INITIAL_RESPONSE_LIMIT_MS,
       'cache read + digest timeout + Redis sentinel write must leave platform response headroom',

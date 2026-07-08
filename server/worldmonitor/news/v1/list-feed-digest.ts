@@ -45,9 +45,9 @@ const FEED_TIMEOUT_MS = 8_000;
 // Vercel Edge functions have a 25s initial-response ceiling. The digest
 // must fail closed to the warmed in-isolate fallback before the platform does.
 const VERCEL_INITIAL_RESPONSE_LIMIT_MS = 25_000;
-const DIGEST_RESPONSE_TIMEOUT_MS = 17_000;
-const POST_FETCH_HEADROOM_MS = 10_000;
-const RESPONSE_GUARD_BAND_MS = 1_000;
+const DIGEST_RESPONSE_TIMEOUT_MS = 14_000;
+const POST_FETCH_HEADROOM_MS = 15_000;
+const RESPONSE_GUARD_BAND_MS = 3_000;
 const OVERALL_DEADLINE_MS = VERCEL_INITIAL_RESPONSE_LIMIT_MS - POST_FETCH_HEADROOM_MS;
 const BATCH_CONCURRENCY = 20;
 
