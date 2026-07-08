@@ -22,8 +22,8 @@ export function parseTimeoutEnv(raw: string | undefined, defaultMs: number): num
   const parsed = Number.parseInt(raw ?? '', 10);
   return parsed > 0 ? parsed : defaultMs;
 }
-const REDIS_OP_TIMEOUT_MS = parseTimeoutEnv(process.env.REDIS_OP_TIMEOUT_MS, 1_500);
-const REDIS_PIPELINE_TIMEOUT_MS = parseTimeoutEnv(process.env.REDIS_PIPELINE_TIMEOUT_MS, 5_000);
+export const REDIS_OP_TIMEOUT_MS = parseTimeoutEnv(process.env.REDIS_OP_TIMEOUT_MS, 1_500);
+export const REDIS_PIPELINE_TIMEOUT_MS = parseTimeoutEnv(process.env.REDIS_PIPELINE_TIMEOUT_MS, 5_000);
 
 function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
