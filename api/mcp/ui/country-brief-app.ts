@@ -4,9 +4,13 @@
 // country intelligence brief as paragraphs, the analytical framework lens (when
 // supplied), and the grounding sources. Built on the shared shell foundation.
 //
-// Tool result shape (RPC tool — content[0].text JSON):
-//   { country_code, brief: string, framework, provider, model, generatedAt,
-//     sources: [{ title, url, source, publishedAt }] }
+// Tool result shape (RPC tool — content[0].text JSON). The backing
+// get-country-intel-brief handler emits CAMELCASE identity fields
+// (`countryCode` + a resolved `countryName`), NOT `country_code`:
+//   { countryCode, countryName, brief: string, framework, provider, model,
+//     generatedAt, sources: [{ title, url, source, publishedAt }] }
+// The title read below prefers `countryName`, then resolves `countryCode`
+// via Intl, and still tolerates a legacy `country_code` for safety.
 //
 // textContent-only rendering; renderBody stays backtick/`${`/regex-free.
 
@@ -47,7 +51,7 @@ const RENDER = `
     q("empty").style.display = "none";
     q("card").style.display = "block";
 
-    var name = countryName(data.country_code);
+    var name = collapseWs(data.countryName) || countryName(data.countryCode || data.country_code);
     setText("title", name ? name + " Brief" : "Country Brief");
 
     var fw = collapseWs(data.framework);

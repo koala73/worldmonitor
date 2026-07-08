@@ -213,7 +213,39 @@ const SHARED_BRIDGE_HEAD = `
     }
   }
 
+  // Soft-error envelopes are SUCCESSFUL tools/call results (HTTP 200, valid
+  // JSON) that carry an error sentinel instead of renderable data — the
+  // dispatcher returns { _budget_exceeded, ... } when the tool output exceeds
+  // its byte budget, and a bad jmespath projection returns { _jmespath_error,
+  // ... }. A few tools also surface user-input faults as a result-level
+  // { error: "..." } string. Rendering any of these through renderData() shows
+  // a blank / empty-success dashboard, so detect them and surface a visible
+  // message instead. Returns the message string, or null when data is genuinely
+  // renderable.
+  function softError(data) {
+    if (!data || typeof data !== "object") return null;
+    if (data._budget_exceeded === true) {
+      return "This response is too large to display here. Narrow the request (fewer items, or a jmespath projection) and try again.";
+    }
+    if (data._jmespath_error) {
+      return "The response projection could not be applied, so there is nothing to render. Remove the jmespath argument and retry.";
+    }
+    if (typeof data.error === "string" && data.error) return data.error;
+    return null;
+  }
+  // Every fleet widget owns an #empty placeholder and an #card body; on a soft
+  // error we reuse #empty as the error slot (hide the card) so the message is
+  // visible regardless of which widget is mounted.
+  function showError(msg) {
+    var card = q("card");
+    if (card) card.style.display = "none";
+    var empty = q("empty");
+    if (empty) { empty.textContent = msg; empty.style.display = "block"; }
+  }
+
   function safeRender(data) {
+    var errMsg = softError(data);
+    if (errMsg) { showError(errMsg); reportSize(); return; }
     try { renderData(data); } catch (e) { /* never break the host on a bad payload */ }
     reportSize();
   }

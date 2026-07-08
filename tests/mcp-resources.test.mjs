@@ -447,6 +447,50 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     }
   });
 
+  // -------------------------------------------------------------------------
+  // Soft-error envelopes must surface a VISIBLE message, not a blank/empty-
+  // success dashboard. A successful tools/call can carry an error sentinel
+  // instead of data — { _budget_exceeded, ... } when the tool output exceeds
+  // its byte budget, or { _jmespath_error, ... } on a bad projection. The
+  // shared shell's safeRender detects these before renderData and routes them
+  // to showError (hides #card, fills #empty). Guarded on the served HTML so a
+  // future shell edit can't silently drop the branch.
+  // -------------------------------------------------------------------------
+  it('FLEET: shared-shell widgets surface soft-error envelopes (_budget_exceeded / _jmespath_error) instead of rendering blank success', async () => {
+    const shellWidgets = [
+      'ui://worldmonitor/world-brief.html',
+      'ui://worldmonitor/country-brief.html',
+      'ui://worldmonitor/market-radar.html',
+      'ui://worldmonitor/chokepoint-monitor.html',
+    ];
+    for (const uri of shellWidgets) {
+      const res = await handler(envKeyReq(readBody(uri)));
+      const html = (await res.json()).result.contents[0].text;
+      assert.match(html, /function softError/, `${uri}: must define a softError() detector`);
+      assert.match(html, /_budget_exceeded/, `${uri}: must detect the _budget_exceeded soft-error envelope`);
+      assert.match(html, /_jmespath_error/, `${uri}: must detect the _jmespath_error soft-error envelope`);
+      assert.match(html, /function showError/, `${uri}: must route soft errors to a visible showError() path`);
+      // The detector MUST run before renderData in safeRender — otherwise a
+      // blank/empty-success dashboard renders before the error is caught.
+      assert.match(html, /softError\(data\)[\s\S]*renderData\(data\)/,
+        `${uri}: safeRender must check softError(data) before calling renderData(data)`);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // The country-brief widget must title from the fields get_country_brief
+  // actually returns. The backing get-country-intel-brief handler emits
+  // CAMELCASE identity (`countryCode` + resolved `countryName`), NOT the
+  // snake_case `country_code` the MCP outputSchema documents — so a widget that
+  // reads only `country_code` leaves the title stuck at generic "Country Brief".
+  // -------------------------------------------------------------------------
+  it('country-brief widget resolves its title from the camelCase countryName / countryCode fields the tool returns', async () => {
+    const res = await handler(envKeyReq(readBody('ui://worldmonitor/country-brief.html')));
+    const html = (await res.json()).result.contents[0].text;
+    assert.match(html, /data\.countryName/, 'must prefer the resolved countryName field');
+    assert.match(html, /data\.countryCode/, 'must resolve the camelCase countryCode field');
+  });
+
   it('resources/templates/list returns the three data-bearing URI templates', async () => {
     const res = await handler(envKeyReq({ jsonrpc: '2.0', id: 3, method: 'resources/templates/list', params: {} }));
     assert.equal(res.status, 200);
