@@ -6,6 +6,7 @@ keywords: "open source intelligence API, OSINT API free, geopolitical data API, 
 audience: "Developers, data engineers, startup builders, academic researchers, open-source contributors"
 heroImage: "/blog/images/blog/build-on-worldmonitor-developer-api-open-source.jpg"
 pubDate: "2026-03-09"
+modifiedDate: "2026-07-07"
 ---
 
 Most intelligence platforms are walled gardens. You pay for access, you use their interface, and if you want to build something custom, you're out of luck. The data is locked behind a UI.

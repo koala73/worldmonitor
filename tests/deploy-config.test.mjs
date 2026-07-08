@@ -2358,12 +2358,26 @@ describe('agent readiness: named developer-resource pages (#4953)', () => {
       f,
       readFileSync(resolve(__dirname, `../public/${f}`), 'utf-8'),
     ]);
+    // The sitemap and the indexed "Build on World Monitor" blog post are the two
+    // web-search discovery surfaces (candidate fixes #1/#3 of the issue) — assert
+    // them directly so a dropped sitemap entry or blog cross-link is caught here,
+    // not only via the reverse #4999 sitemap->MD_PAGES sweep.
+    const sitemap = readFileSync(resolve(__dirname, '../public/sitemap.xml'), 'utf-8');
+    const blogPost = readFileSync(
+      resolve(__dirname, '../blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md'),
+      'utf-8'
+    );
     for (const page of DEV_PAGES) {
       const url = `https://worldmonitor.app${page.path}`;
       assert.ok(catalogHrefs.includes(url), `api-catalog must advertise ${url}`);
       for (const [name, content] of surfaces) {
         assert.ok(content.includes(page.path), `public/${name} must link ${page.path}`);
       }
+      assert.ok(
+        sitemap.includes(`https://www.worldmonitor.app${page.path}`),
+        `sitemap.xml must register ${page.path} on the www host`
+      );
+      assert.ok(blogPost.includes(page.path), `the developer blog post must cross-link ${page.path}`);
     }
   });
 });
