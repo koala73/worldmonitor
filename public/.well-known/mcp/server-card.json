@@ -3,12 +3,12 @@
   "kind": "product",
   "description": "WorldMonitor's live global-intelligence stack as an MCP server: real-time markets, conflict events, aviation, maritime, energy, climate, health, displacement, supply chain, and AI-generated regional briefs.",
   "icon": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
-  "version": "1.13.0",
+  "version": "1.14.0",
   "url": "https://worldmonitor.app/mcp",
   "serverUrl": "https://worldmonitor.app/mcp",
   "serverInfo": {
     "name": "worldmonitor",
-    "version": "1.13.0",
+    "version": "1.14.0",
     "description": "WorldMonitor's live global-intelligence stack as an MCP server: real-time markets, conflict events, aviation, maritime, energy, climate, health, displacement, supply chain, and AI-generated regional briefs.",
     "vendor": "WorldMonitor",
     "homepage": "https://www.worldmonitor.app"
@@ -134,6 +134,10 @@
       "description": "AI-generated geopolitical and economic forecasts from WorldMonitor's predictive models. Covers upcoming risk events and probability assessments."
     },
     {
+      "name": "get_forecast_scorecard",
+      "description": "Forecast resolution scorecard with calibration, Brier/log score, domain and generation-origin breakdowns, and pending/judged resolution counts."
+    },
+    {
       "name": "get_social_velocity",
       "description": "Reddit geopolitical social velocity: top posts from worldnews, geopolitics, and related subreddits with engagement scores and trend signals."
     },
@@ -248,8 +252,14 @@
       "extension": "io.modelcontextprotocol/ui",
       "specVersion": "2026-01-26",
       "uiResourceMimeType": "text/html;profile=mcp-app",
-      "uiResources": ["ui://worldmonitor/country-risk.html"],
-      "note": "MCP Apps support: tools with an interactive surface carry `_meta.ui.resourceUri` (get_country_risk → ui://worldmonitor/country-risk.html). Issue `resources/list` to enumerate ui:// app shells and `resources/read` to fetch them — ui:// reads are public + quota-exempt (static, data-free templates); live data reaches the shell via host postMessage after a normal tools/call."
+      "uiResources": [
+        "ui://worldmonitor/country-risk.html",
+        "ui://worldmonitor/world-brief.html",
+        "ui://worldmonitor/country-brief.html",
+        "ui://worldmonitor/market-radar.html",
+        "ui://worldmonitor/chokepoint-monitor.html"
+      ],
+      "note": "MCP Apps support: tools with an interactive surface carry `_meta.ui.resourceUri` (get_country_risk → country-risk.html, get_world_brief → world-brief.html, get_country_brief → country-brief.html, get_market_data → market-radar.html, get_chokepoint_status → chokepoint-monitor.html). Issue `resources/list` to enumerate ui:// app shells and `resources/read` to fetch them — ui:// reads are public + quota-exempt (static, data-free templates); live data reaches the shell via host postMessage after a normal tools/call."
     }
   },
   "features": {

@@ -228,6 +228,9 @@ export interface AnalyzeStockResponse {
   payoutRatio?: number;
   dividendFrequency: string;
   dividendCagr: number;
+  marketSession: string;
+  extendedPrice?: number;
+  extendedChangePercent?: number;
 }
 
 export interface StockAnalysisHeadline {

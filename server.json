@@ -8,7 +8,7 @@
     "url": "https://github.com/koala73/worldmonitor",
     "source": "github"
   },
-  "version": "1.13.0",
+  "version": "1.14.0",
   "remotes": [
     {
       "type": "streamable-http",

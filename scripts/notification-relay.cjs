@@ -12,7 +12,11 @@ const {
 const { callLLM } = require('./lib/llm-chain.cjs');
 const { fetchUserPreferences, extractUserContext, formatUserProfile } = require('./lib/user-context.cjs');
 const { countryNameToIso2 } = require('./shared/country-name-to-iso2.cjs');
-const { buildDedupMaterial } = require('./shared/notification-dedup.cjs');
+const {
+  buildDedupMaterial,
+  classifySetNxResult,
+  recordDedupOutcome,
+} = require('./shared/notification-dedup.cjs');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -30,6 +34,7 @@ const RESEND_FROM = process.env.RESEND_FROM_EMAIL ?? 'WorldMonitor <alerts@world
 const QUIET_HOURS_BATCH_ENABLED = process.env.QUIET_HOURS_BATCH_ENABLED !== '0';
 const AI_IMPACT_ENABLED = process.env.AI_IMPACT_ENABLED === '1';
 const AI_IMPACT_CACHE_TTL = 1800; // 30 min, matches dedup window
+const DEDUP_TTL_SECONDS = 1800;
 
 if (!UPSTASH_URL || !UPSTASH_TOKEN) { console.error('[relay] UPSTASH_REDIS_REST_URL/TOKEN not set'); process.exit(1); }
 if (!CONVEX_URL) { console.error('[relay] CONVEX_URL not set'); process.exit(1); }
@@ -67,6 +72,21 @@ async function upstashRest(...args) {
   return json.result;
 }
 
+async function upstashDedupSetNx(key) {
+  try {
+    const res = await fetch(`${UPSTASH_URL}/${['SET', key, '1', 'NX', 'EX', String(DEDUP_TTL_SECONDS)].map(encodeURIComponent).join('/')}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'User-Agent': 'worldmonitor-relay/1.0' },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return 'error';
+    const json = await res.json();
+    return classifySetNxResult(json.result);
+  } catch (err) {
+    return 'error';
+  }
+}
+
 // ── Dedup ─────────────────────────────────────────────────────────────────────
 
 function sha256Hex(str) {
@@ -83,8 +103,7 @@ async function checkDedup(userId, eventType, title, coalesceKey) {
   const keyMaterial = buildDedupMaterial(eventType, title, coalesceKey);
   const hash = sha256Hex(keyMaterial);
   const key = `wm:notif:dedup:${userId}:${hash}`;
-  const result = await upstashRest('SET', key, '1', 'NX', 'EX', '1800');
-  return result === 'OK'; // true = new, false = duplicate
+  return upstashDedupSetNx(key);
 }
 
 // ── Channel deactivation ──────────────────────────────────────────────────────
@@ -750,6 +769,61 @@ function eventMatchesCountryScope(event, rule) {
   return rule.countries.includes(normalized);
 }
 
+// ── Watchlist story alerts (#4922 item e / U3) ───────────────────────────────
+
+const WATCHLIST_STORY_EVENT_TYPE = 'watchlist_story_alert';
+
+/**
+ * Per-rule eventTypes gate, extracted from the inline matching expression so
+ * `watchlist_story_alert` can be OPT-IN ONLY:
+ *
+ *  - Broadcast event types keep the legacy semantics: an empty eventTypes
+ *    list is a wildcard ("all events"), a populated list is a restriction.
+ *  - `watchlist_story_alert` is NEVER covered by the empty wildcard — the
+ *    rule must explicitly list it. Every production rule today carries
+ *    eventTypes: [] (the settings UI hard-coded it), so without this carve-
+ *    out shipping the new event type would blast ticker-scoped alerts at
+ *    every wildcard subscriber who never opted in.
+ *  - Symmetrically, the watchlist opt-in entry does NOT count toward the
+ *    broadcast restriction: eventTypes ['watchlist_story_alert'] still
+ *    behaves as a wildcard for rss_alert & friends. Otherwise the settings
+ *    UI toggling the watchlist row ON would silently unsubscribe the user
+ *    from every other alert.
+ */
+function ruleMatchesEventType(rule, event) {
+  if (event?.eventType === WATCHLIST_STORY_EVENT_TYPE) {
+    return rule.eventTypes.includes(WATCHLIST_STORY_EVENT_TYPE);
+  }
+  const broadcastTypes = rule.eventTypes.filter((t) => t !== WATCHLIST_STORY_EVENT_TYPE);
+  return broadcastTypes.length === 0 || broadcastTypes.includes(event.eventType);
+}
+
+/**
+ * Filter `watchlist_story_alert` events by per-rule ticker-scope.
+ *
+ * ASYMMETRY vs eventMatchesCountryScope (deliberate, documented): for
+ * countries, an empty/absent list means "unscoped — deliver everything".
+ * For tickers, an empty/absent list means "NO watchlist story alerts" —
+ * the feature is opt-in scoped by construction (the alert only makes sense
+ * relative to a user's market watchlist; there is no meaningful "all
+ * tickers" firehose to fall back to).
+ *
+ * Delivery requires a non-empty intersection between `rule.tickers`
+ * (normalized uppercase by convex/alertRules.ts normalizeTickers) and
+ * `payload.tickers` (uppercase by shared/ticker-extract.js). The uppercase
+ * re-normalization here is defensive against unnormalized legacy rows.
+ *
+ * Every other event type passes through untouched.
+ */
+function eventMatchesTickerScope(event, rule) {
+  if (event?.eventType !== WATCHLIST_STORY_EVENT_TYPE) return true;
+  if (!Array.isArray(rule.tickers) || rule.tickers.length === 0) return false;
+  const eventTickers = Array.isArray(event?.payload?.tickers) ? event.payload.tickers : [];
+  if (eventTickers.length === 0) return false;
+  const ruleSet = new Set(rule.tickers.map((t) => String(t).toUpperCase()));
+  return eventTickers.some((t) => ruleSet.has(String(t).toUpperCase()));
+}
+
 function shouldNotify(rule, event) {
   // Coerce (effective realtime + non-critical) → 'critical' before consulting
   // sensitivity in either branch. The mutation validators + migration make this
@@ -1025,9 +1099,10 @@ async function processEvent(event) {
   // fan out to every other Pro subscriber — see todo #196.
   const matching = enabledRules.filter(r =>
     (!r.digestMode || r.digestMode === 'realtime') &&
-    (r.eventTypes.length === 0 || r.eventTypes.includes(event.eventType)) &&
+    ruleMatchesEventType(r, event) &&
     shouldNotify(r, event) &&
     eventMatchesCountryScope(event, r) &&
+    eventMatchesTickerScope(event, r) &&
     (!event.variant || !r.variant || r.variant === event.variant) &&
     (!event.userId || r.userId === event.userId)
   );
@@ -1062,15 +1137,37 @@ async function processEvent(event) {
     const coalesceKey = typeof event.payload?.coalesceKey === 'string' ? event.payload.coalesceKey : undefined;
 
     if (quietAction === 'hold') {
-      const isNew = await checkDedup(rule.userId, event.eventType, event.payload?.title ?? '', coalesceKey);
-      if (!isNew) { console.log(`[relay] Dedup hit (held) for ${rule.userId}`); continue; }
+      const dedupResult = await checkDedup(rule.userId, event.eventType, event.payload?.title ?? '', coalesceKey);
+      const dedupDecision = recordDedupOutcome(dedupResult, {
+        surface: 'notification-relay-held',
+        eventType: event.eventType,
+        severity: eventSeverity,
+        fallbackKey: `held:${rule.userId}:${event.eventType}:${event.payload?.title ?? ''}:${coalesceKey ?? ''}`,
+        fallbackTtlSeconds: DEDUP_TTL_SECONDS,
+        emitTelemetry: ({ line }) => console.warn(line),
+      });
+      if (!dedupDecision.shouldPublish) {
+        if (dedupDecision.isDuplicate) console.log(`[relay] Dedup hit (held) for ${rule.userId}`);
+        continue;
+      }
       console.log(`[relay] Quiet hours hold for ${rule.userId} — queuing for batch_on_wake`);
       await holdEvent(rule.userId, rule.variant ?? 'full', JSON.stringify(event));
       continue;
     }
 
-    const isNew = await checkDedup(rule.userId, event.eventType, event.payload?.title ?? '', coalesceKey);
-    if (!isNew) { console.log(`[relay] Dedup hit for ${rule.userId}`); continue; }
+    const dedupResult = await checkDedup(rule.userId, event.eventType, event.payload?.title ?? '', coalesceKey);
+    const dedupDecision = recordDedupOutcome(dedupResult, {
+      surface: 'notification-relay',
+      eventType: event.eventType,
+      severity: eventSeverity,
+      fallbackKey: `realtime:${rule.userId}:${event.eventType}:${event.payload?.title ?? ''}:${coalesceKey ?? ''}`,
+      fallbackTtlSeconds: DEDUP_TTL_SECONDS,
+      emitTelemetry: ({ line }) => console.warn(line),
+    });
+    if (!dedupDecision.shouldPublish) {
+      if (dedupDecision.isDuplicate) console.log(`[relay] Dedup hit for ${rule.userId}`);
+      continue;
+    }
 
     let channels = [];
     try {
@@ -1193,4 +1290,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { sendTelegram };
+module.exports = { sendTelegram, checkDedup, upstashDedupSetNx };

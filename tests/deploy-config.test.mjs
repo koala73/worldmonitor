@@ -16,7 +16,7 @@ const middlewareSource = readFileSync(resolve(__dirname, '../middleware.ts'), 'u
 const dockerfileSource = readFileSync(resolve(__dirname, '../Dockerfile'), 'utf-8');
 const dockerNginxSource = readFileSync(resolve(__dirname, '../docker/nginx.conf'), 'utf-8');
 const frontendDockerfileSource = readFileSync(resolve(__dirname, '../docker/Dockerfile'), 'utf-8');
-const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
+const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|mcp-server\\.md|openapi\\.md|sdks\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
 const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html).*)';
 const APP_ROOT_HOST_PATTERN = '^(?:(?:www|tech|finance|commodity|happy|energy)\\.)?worldmonitor\\.app$';
 const GLOBAL_CSP_INLINE_SCRIPT_HTML_FILES = [
@@ -2281,7 +2281,7 @@ describe('markdown canonical Link headers (#4999)', () => {
   // agents, so they cannot carry a <link rel="canonical">. RFC 6596 allows the
   // HTTP Link header form; without it these are the only indexable URLs with
   // no canonical signal at all.
-  const MD_PAGES = ['/pricing.md', '/support.md', '/ai-search.md'];
+  const MD_PAGES = ['/pricing.md', '/support.md', '/ai-search.md', '/developers.md', '/mcp-server.md', '/openapi.md', '/sdks.md'];
 
   for (const page of MD_PAGES) {
     it(`${page} declares a self-referencing canonical Link header`, () => {
@@ -2303,6 +2303,81 @@ describe('markdown canonical Link headers (#4999)', () => {
     assert.ok(mdUrls.length > 0, 'expected .md entries in sitemap.xml');
     for (const path of mdUrls) {
       assert.ok(MD_PAGES.includes(path), `${path} is in sitemap.xml but has no canonical Link header rule — add it to vercel.json and this test`);
+    }
+  });
+});
+
+// #4953 — developer-resource discoverability: an agent web-searching "World
+// Monitor MCP server", "World Monitor OpenAPI", "World Monitor developer
+// portal", or "World Monitor SDK" must land on a crawlable page whose H1 names
+// that resource type. Each named page mirrors the auth.md/ai-search.md serving
+// pattern (static public/*.md, excluded from the SPA catch-all, advertised in
+// the discovery chain).
+describe('agent readiness: named developer-resource pages (#4953)', () => {
+  const DEV_PAGES = [
+    { file: 'developers.md', path: '/developers.md', h1: '# World Monitor Developer Portal' },
+    { file: 'mcp-server.md', path: '/mcp-server.md', h1: '# World Monitor MCP Server' },
+    { file: 'openapi.md', path: '/openapi.md', h1: '# World Monitor OpenAPI Specification' },
+    { file: 'sdks.md', path: '/sdks.md', h1: '# World Monitor SDKs' },
+  ];
+
+  const spaCatchAll = () =>
+    vercelConfig.rewrites.find((r) => r.destination === DASHBOARD_HTML_DESTINATION && r.source.startsWith('/((?!'));
+
+  for (const page of DEV_PAGES) {
+    it(`public/${page.file} opens with the brand-named H1 "${page.h1}"`, () => {
+      const body = readFileSync(resolve(__dirname, `../public/${page.file}`), 'utf-8');
+      assert.ok(body.startsWith(`${page.h1}\n`), `public/${page.file} must open with "${page.h1}"`);
+    });
+
+    it(`${page.path} is excluded from the SPA catch-all (serves the static page, not the app shell)`, () => {
+      const catchAll = spaCatchAll();
+      assert.ok(catchAll, 'expected the SPA catch-all rewrite');
+      assert.ok(
+        !sourceToRegExp(catchAll.source).test(page.path),
+        `${page.path} must be excluded from the SPA catch-all rewrite`
+      );
+      assert.ok(
+        !sourceToRegExp(SPA_HTML_CACHE_SOURCE).test(page.path),
+        `${page.path} must be excluded from the pinned HTML-cache catch-all`
+      );
+    });
+  }
+
+  it('advertises the developer portal + resource pages across the discovery chain', () => {
+    // Mirror the #4958 "advertises...on every discovery surface" guard: a page
+    // that is supposed to be advertised everywhere silently going unadvertised
+    // on one surface was a real drift incident. Check the api-catalog plus every
+    // text discovery surface the PR wires (llms.txt, llms-full.txt, agents.md,
+    // api/llms.txt).
+    const catalog = JSON.parse(readFileSync(resolve(__dirname, '../public/.well-known/api-catalog'), 'utf-8'));
+    const catalogHrefs = catalog.linkset.flatMap((ctx) =>
+      Object.values(ctx).flatMap((v) => (Array.isArray(v) ? v.map((e) => e.href) : []))
+    );
+    const surfaces = ['llms.txt', 'llms-full.txt', 'agents.md', 'api/llms.txt'].map((f) => [
+      f,
+      readFileSync(resolve(__dirname, `../public/${f}`), 'utf-8'),
+    ]);
+    // The sitemap and the indexed "Build on World Monitor" blog post are the two
+    // web-search discovery surfaces (candidate fixes #1/#3 of the issue) — assert
+    // them directly so a dropped sitemap entry or blog cross-link is caught here,
+    // not only via the reverse #4999 sitemap->MD_PAGES sweep.
+    const sitemap = readFileSync(resolve(__dirname, '../public/sitemap.xml'), 'utf-8');
+    const blogPost = readFileSync(
+      resolve(__dirname, '../blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md'),
+      'utf-8'
+    );
+    for (const page of DEV_PAGES) {
+      const url = `https://worldmonitor.app${page.path}`;
+      assert.ok(catalogHrefs.includes(url), `api-catalog must advertise ${url}`);
+      for (const [name, content] of surfaces) {
+        assert.ok(content.includes(page.path), `public/${name} must link ${page.path}`);
+      }
+      assert.ok(
+        sitemap.includes(`https://www.worldmonitor.app${page.path}`),
+        `sitemap.xml must register ${page.path} on the www host`
+      );
+      assert.ok(blogPost.includes(page.path), `the developer blog post must cross-link ${page.path}`);
     }
   });
 });

@@ -131,11 +131,15 @@ The resolution spec does not change which forecasts are published or their order
 
 The seeder runs approximately **hourly**. The key is allowed up to **90 minutes** in `api/health.js` (`maxStaleMin: 90`) before the health surface escalates.
 
+## Resolution & track record
+
+Published forecasts carry machine-checkable resolution specs. A daily resolver pre-registers those specs into `forecast:resolutions:v1`, samples hard-source metrics until their deadlines, then resolves each published forecast to YES, NO, or VOID with evidence. The derived `forecast:scorecard:v1` reports Brier score, log score, calibration buckets, VOID rate, publication coverage, and market-anchor skill. Judged specs are tracked as pending for a fast-follow judge and are excluded from the first hard-source scorecard until resolved.
+
 ## Tier & gating
 
 On **web**, AI Forecasts is currently in **trial** — free to anyone, including unauthenticated readers. On **desktop**, the same panel ships with `premium: 'locked'` in `src/config/panels.ts` so it is gated there. This split reflects the product's current trial positioning; expect the web gating to tighten over time.
 
 ## API reference
 
-- [Forecast service](/api/ForecastService.openapi.yaml) — covers `get-forecasts`, `get-simulation-outcome`, `get-simulation-package`, and `trigger-simulation`.
+- [Forecast service](/api/ForecastService.openapi.yaml) — covers `get-forecasts`, `get-forecast-scorecard`, `get-simulation-outcome`, `get-simulation-package`, and `trigger-simulation`.
 - For **programmatic prediction generation** (fresh probabilities outside the cached cron output), see the [MCP `generate_forecasts` tool](/mcp-overview#ai-intelligence-live-llm).

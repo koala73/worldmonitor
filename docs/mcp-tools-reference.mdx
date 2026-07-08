@@ -1346,6 +1346,31 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_forecast_scorecard`
+
+Forecast resolution scorecard with calibration, Brier/log score, domain and generation-origin breakdowns, and pending/judged resolution counts.
+
+**Parameters (tool-specific):** none
+
+- **API endpoints:** `GET /api/forecast/v1/get-forecast-scorecard`
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **36 h** before `stale: true` is flagged (daily resolver cadence with missed-cron tolerance).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_forecast_scorecard","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
 ## Meta
 
 ### `describe_tool`

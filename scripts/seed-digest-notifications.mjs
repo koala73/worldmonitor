@@ -12,7 +12,6 @@
  *   7. Updates digest:last-sent:v1:${userId}:${variant}
  */
 import { createRequire } from 'node:module';
-import { createHash } from 'node:crypto';
 import dns from 'node:dns/promises';
 import {
   escapeHtml,
@@ -25,6 +24,11 @@ import {
 
 const require = createRequire(import.meta.url);
 const DIGEST_DIPLOMACY_DATA = require('../shared/diplomacy-keywords.json');
+// Watchlist story alerts (#4922 U3): stocks.json feeds the ticker
+// dictionary; loaded via the createRequire JSON pattern this file already
+// uses for diplomacy-keywords.json (avoids the two-sided `with {type:
+// 'json'}` bundler/node trap — see vercel-edge-gotchas).
+const WATCHLIST_STOCKS_DATA = require('../shared/stocks.json');
 const { decrypt } = require('./lib/crypto.cjs');
 const {
   assertNotificationWebhookDeliveryUrlSafe,
@@ -91,6 +95,8 @@ import {
 import { readCooldownConfig } from './lib/digest-cooldown-config.mjs';
 import { evaluateCooldown } from './lib/digest-cooldown-decision.mjs';
 import { emitCooldownShadowLog } from './lib/digest-cooldown-shadow-log.mjs';
+import { buildTickerDictionary } from '../shared/ticker-extract.js';
+import { scanAndEnqueueWatchlistStoryEvents as scanWatchlistStoryEvents } from './lib/watchlist-story-scan.mjs';
 
 const EPHEMERAL_LIVE_LOG_TITLE_SAMPLE_LIMIT = 5;
 const EPHEMERAL_LIVE_LOG_TITLE_MAX_CHARS = 160;
@@ -551,6 +557,49 @@ function matchesSensitivity(ruleSensitivity, severity) {
   if (ruleSensitivity === 'all') return true;
   if (ruleSensitivity === 'high') return severity === 'high' || severity === 'critical';
   return severity === 'critical';
+}
+
+// ── Watchlist story alerts (#4922 item e / U3) ───────────────────────────────
+//
+// @notification-source: rss
+//   The watchlist publisher below builds payload.title from RSS story-track
+//   rows (title persisted at ingest by list-feed-digest). Payload shape is
+//   fixed by the U3 design: { title, link, source, tickers, importanceScore,
+//   coalesceKey } — no `description` field is emitted. Registered in
+//   tests/notification-relay-payload-audit.test.mjs.
+//
+// Once per cron tick (every 30 min), independent of digest rules and digest
+// delivery: scan the story accumulator, extract tickers from title +
+// description, and enqueue one `watchlist_story_alert` event per story whose
+// importance score clears WATCHLIST_STORY_SCORE_MIN. The notification relay
+// fans events out to PRO users whose alert rule opted in AND whose
+// rule.tickers intersects payload.tickers.
+//
+// Re-alert protection: publisher-side SET NX on the shared scan-dedup
+// keyspace, keyed on the coalesceKey (`watchlist:${storyHash}` — stable
+// story identity) via the shared buildDedupMaterial helper, 24h TTL — a
+// story that stays in the 24h scan window alerts once, not every 30-min
+// tick. LPUSH failure rolls the dedup key back so the next tick retries
+// (ais-relay publishNotificationEvent parity).
+
+const WATCHLIST_TICKER_DICTIONARY = buildTickerDictionary(WATCHLIST_STOCKS_DATA?.symbols ?? []);
+
+/**
+ * One watchlist scan per cron tick. Best-effort and self-contained: any
+ * failure logs and returns — it must never block digest delivery, and a
+ * digest failure must never block it (hence the call sits at the very top
+ * of main(), before the digest-rules fetch).
+ */
+async function scanAndEnqueueWatchlistStoryEvents(nowMs) {
+  return scanWatchlistStoryEvents(nowMs, {
+    env: process.env,
+    upstashRest,
+    upstashPipeline,
+    readStoryTracksChunked,
+    tickerDictionary: WATCHLIST_TICKER_DICTIONARY,
+    logger: console,
+    scanWindowMs: DIGEST_LOOKBACK_MS,
+  });
 }
 
 const DIGEST_DIPLOMACY_KEYWORDS = DIGEST_DIPLOMACY_DATA.diplomacyKeywords;
@@ -2206,6 +2255,11 @@ async function main() {
   const nowMs = Date.now();
   digestRunStartedAtMs = nowMs;
   console.log('[digest] Cron run start:', new Date(nowMs).toISOString());
+
+  // Watchlist story alerts (#4922 U3): enqueue BEFORE the digest-rules fetch
+  // so a failed/empty rules fetch can't suppress the scan, and independent of
+  // whether any story also ships in a digest. Never throws.
+  await scanAndEnqueueWatchlistStoryEvents(nowMs);
 
   let rules;
   try {

@@ -19,7 +19,7 @@
 // or summary call shrinks the response further, so testing the unprojected
 // path is the bound the runtime gate cares about.
 //
-// Coverage caveat: only 3/39 tools have captured fixtures today
+// Coverage caveat: only 3/40 tools have captured fixtures today
 // (`tests/fixtures/jmespath-samples/`). Each new fixture added there will be
 // picked up by this test the next CI run. Mocked-response contract coverage
 // for the other tools is a separate follow-up.

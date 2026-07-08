@@ -671,7 +671,7 @@ export async function writeExtraKey(key, data, ttl, envelopeMeta) {
   const payload = JSON.stringify(value);
   const resp = await fetch(url, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
     body: JSON.stringify(['SET', key, payload, 'EX', ttl]),
     signal: AbortSignal.timeout(10_000),
   });
@@ -686,24 +686,35 @@ export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaT
   const metaTtl = metaTtlSeconds ?? 86400 * 7;
   const resp = await fetch(url, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
     body: JSON.stringify(['SET', metaKey, JSON.stringify(meta), 'EX', metaTtl]),
     signal: AbortSignal.timeout(5_000),
   });
-  if (!resp.ok) console.warn(`  seed-meta ${metaKey}: write failed`);
+  if (!resp.ok) {
+    console.warn(`  seed-meta ${metaKey}: write failed`);
+    return false;
+  }
+  return true;
 }
 
 export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKeyOverride, metaTtlSeconds) {
   await writeExtraKey(key, data, ttl);
-  await writeSeedMeta(key, recordCount, metaKeyOverride, metaTtlSeconds);
+  return writeSeedMeta(key, recordCount, metaKeyOverride, metaTtlSeconds);
 }
 
+// Returns true only when EVERY requested key was actually extended (EXPIRE
+// returned 1 for all). Returns false on missing creds, network/HTTP failure,
+// or any key that was missing/expired (EXPIRE no-op). Existing fire-and-forget
+// callers ignore the return; a caller that treats a successful extension as
+// proof the data is still alive (e.g. a market-closed skip that then reports
+// fresh) MUST gate on this boolean and fall back to a real fetch on false —
+// otherwise a silent extension failure looks green while the key expires.
 export async function extendExistingTtl(keys, ttlSeconds = 600) {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) {
     console.error('  Cannot extend TTL: missing Redis credentials');
-    return;
+    return false;
   }
   try {
     // EXPIRE only refreshes TTL when key already exists (returns 0 on missing keys — no-op).
@@ -715,15 +726,16 @@ export async function extendExistingTtl(keys, ttlSeconds = 600) {
       body: JSON.stringify(pipeline),
       signal: AbortSignal.timeout(10_000),
     });
-    if (resp.ok) {
-      const results = await resp.json();
-      const extended = results.filter(r => r?.result === 1).length;
-      const missing = results.filter(r => r?.result === 0).length;
-      if (extended > 0) console.log(`  Extended TTL on ${extended} key(s) (${ttlSeconds}s)`);
-      if (missing > 0) console.warn(`  WARNING: ${missing} key(s) were expired/missing — EXPIRE was a no-op; manual seed required`);
-    }
+    if (!resp.ok) return false;
+    const results = await resp.json();
+    const extended = results.filter(r => r?.result === 1).length;
+    const missing = results.filter(r => r?.result === 0).length;
+    if (extended > 0) console.log(`  Extended TTL on ${extended} key(s) (${ttlSeconds}s)`);
+    if (missing > 0) console.warn(`  WARNING: ${missing} key(s) were expired/missing — EXPIRE was a no-op; manual seed required`);
+    return missing === 0 && extended === keys.length;
   } catch (e) {
     console.error(`  TTL extension failed: ${e.message}`);
+    return false;
   }
 }
 
@@ -1630,6 +1642,10 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
           };
         }
         await writeExtraKey(ek.key, ekData, ek.ttl || ttlSeconds, ekEnvelope);
+        if (contractMode && ek.metaKey) {
+          const wroteMeta = await writeSeedMeta(ek.key, ekEnvelope?.recordCount ?? 0, ek.metaKey, ek.metaTtlSeconds);
+          if (!wroteMeta && ek.metaCritical) throw new Error(`Extra key ${ek.key}: seed-meta ${ek.metaKey} write failed`);
+        }
       }
     }
 

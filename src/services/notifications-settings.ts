@@ -20,6 +20,7 @@ import {
 } from '@/services/notification-channels';
 import { getCurrentClerkUser } from '@/services/clerk';
 import { hasTier } from '@/services/entitlements';
+import { getMarketWatchlistEntries } from '@/services/market-watchlist';
 import { SITE_VARIANT } from '@/config/variant';
 import { mountCountryChipPicker, loadFollowedCountriesSafe, type CountryChipPickerHandle } from '@/utils/country-chip-picker';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
@@ -27,6 +28,13 @@ import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
 const QUIET_HOURS_BATCH_ENABLED = import.meta.env.VITE_QUIET_HOURS_BATCH_ENABLED !== '0';
 const DIGEST_CRON_ENABLED = import.meta.env.VITE_DIGEST_CRON_ENABLED !== '0';
+
+// Watchlist story alerts (#4922 U3). Opt-in event type: unlike the broadcast
+// types (covered by the eventTypes:[] wildcard), the relay only delivers this
+// one when the rule explicitly lists it AND rule.tickers intersects the
+// story's extracted tickers. Enabling the toggle sends the current market
+// watchlist symbols as `tickers`; the watchlist-modal save path re-syncs them.
+const WATCHLIST_STORY_EVENT_TYPE = 'watchlist_story_alert';
 
 export interface NotificationsSettingsHost {
   isSignedIn?: boolean;
@@ -365,6 +373,16 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
                 <span class="ai-flow-slider"></span>
               </label>
             </div>
+            <div class="ai-flow-toggle-row">
+              <div class="ai-flow-toggle-label-wrap">
+                <div class="ai-flow-toggle-label">Watchlist story alerts</div>
+                <div class="ai-flow-toggle-desc">Alert when a high-importance story mentions a company on your market watchlist</div>
+              </div>
+              <label class="ai-flow-switch">
+                <input type="checkbox" id="usWatchlistAlerts"${alertRule?.eventTypes?.includes(WATCHLIST_STORY_EVENT_TYPE) ? ' checked' : ''}>
+                <span class="ai-flow-slider"></span>
+              </label>
+            </div>
             <div class="ai-flow-section-label" style="margin-top:8px">Quiet Hours</div>
             <div class="ai-flow-toggle-row">
               <div class="ai-flow-toggle-label-wrap">
@@ -535,10 +553,12 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         channels: ChannelType[];
         aiDigestEnabled: boolean;
         countries: string[] | undefined;
+        tickers: string[];
       } {
         const enabledEl = container.querySelector<HTMLInputElement>('#usNotifEnabled');
         const sensitivityEl = container.querySelector<HTMLSelectElement>('#usNotifSensitivity');
         const aiDigestEl = container.querySelector<HTMLInputElement>('#usAiDigestEnabled');
+        const watchlistEl = container.querySelector<HTMLInputElement>('#usWatchlistAlerts');
         const connectedChannelTypes = Array.from(
           container.querySelectorAll<HTMLElement>('[data-channel-type]'),
         )
@@ -548,13 +568,20 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         // case send undefined so insert-capable APIs preserve-on-omit instead
         // of accidentally clearing the stored country scope.
         const alertRuleCountries = countryPicker ? countryPicker.getValue() : undefined;
+        // Watchlist story alerts (#4922 U3): the toggle is the opt-in — ON
+        // adds the event type AND snapshots the current market watchlist
+        // symbols as `tickers` (re-synced on every save while enabled); OFF
+        // restores the broadcast wildcard ([]) and clears tickers so no
+        // stale scope lingers server-side.
+        const watchlistOn = watchlistEl?.checked ?? false;
         return {
           enabled: enabledEl?.checked ?? false,
-          eventTypes: [],
+          eventTypes: watchlistOn ? [WATCHLIST_STORY_EVENT_TYPE] : [],
           sensitivity: (sensitivityEl?.value ?? 'all') as 'all' | 'high' | 'critical',
           channels: connectedChannelTypes,
           aiDigestEnabled: aiDigestEl?.checked ?? true,
           countries: alertRuleCountries,
+          tickers: watchlistOn ? getMarketWatchlistEntries().map((e) => e.symbol) : [],
         };
       }
 
@@ -757,7 +784,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           }, 500);
           return;
         }
-        if (target.id === 'usNotifEnabled' || target.id === 'usNotifSensitivity') {
+        if (target.id === 'usNotifEnabled' || target.id === 'usNotifSensitivity' || target.id === 'usWatchlistAlerts') {
           if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
           alertRuleDebounceTimer = setTimeout(() => {
             // Source from the centralized helper so `countries` flows through.

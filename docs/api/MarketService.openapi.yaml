@@ -2984,6 +2984,23 @@ components:
                 dividendCagr:
                     type: number
                     format: double
+                marketSession:
+                    type: string
+                    description: |-
+                        US-equity trading session at analysis time: "regular", "pre", "post" or
+                         "closed". Empty when session detection does not apply (non-US symbols).
+                extendedPrice:
+                    type: number
+                    format: double
+                    description: |-
+                        Latest pre/post-market price from Yahoo extended-hours candles. Only set
+                         when market_session is "pre" or "post" and extended data is available.
+                extendedChangePercent:
+                    type: number
+                    format: double
+                    description: |-
+                        Extended-hours change % vs the last regular-session close. Only set when
+                         extended_price is set.
         StockAnalysisHeadline:
             type: object
             properties:

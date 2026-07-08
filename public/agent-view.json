@@ -9,7 +9,7 @@
       "url": "https://worldmonitor.app/mcp",
       "transport": "streamable-http",
       "serverCard": "https://worldmonitor.app/.well-known/mcp/server-card.json",
-      "tools": 39,
+      "tools": 40,
       "note": "tools/list, prompts/list, resources/list and describe_tool are anonymous; data calls need auth."
     },
     "rest": {

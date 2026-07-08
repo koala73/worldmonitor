@@ -23,7 +23,7 @@ Reach for World Monitor when a task needs live, correlated, machine-readable glo
 
 **How an agent should call it:**
 
-- **MCP server (recommended):** `https://worldmonitor.app/mcp` — Streamable HTTP, 39 tools; issue `tools/list` for the live inventory. Auth: OAuth2 (`scope=mcp`) or an API key header `X-WorldMonitor-Key: wm_<40-hex>`. Server card: https://worldmonitor.app/.well-known/mcp/server-card.json · Registry entries: `app.worldmonitor/mcp` in the official MCP registry (registry.modelcontextprotocol.io) · https://smithery.ai/servers/worldmonitor/wm-mcp · https://mcp.so/server/world-monitor
+- **MCP server (recommended):** `https://worldmonitor.app/mcp` — Streamable HTTP, 40 tools; issue `tools/list` for the live inventory. Auth: OAuth2 (`scope=mcp`) or an API key header `X-WorldMonitor-Key: wm_<40-hex>`. Server card: https://worldmonitor.app/.well-known/mcp/server-card.json · Registry entries: `app.worldmonitor/mcp` in the official MCP registry (registry.modelcontextprotocol.io) · https://smithery.ai/servers/worldmonitor/wm-mcp · https://mcp.so/server/world-monitor
 - **Docs MCP server:** `https://www.worldmonitor.app/docs/mcp` — Streamable HTTP, public (no auth); search-and-retrieval tools over the documentation. Use it for "how do I…" questions about the platform; use the product MCP above for live data.
 - **REST API:** base `https://api.worldmonitor.app`; OpenAPI spec at https://worldmonitor.app/openapi.yaml; same `X-WorldMonitor-Key` header.
 - **CLI:** `npx worldmonitor tools` lists every tool (public, no key); `npm install -g worldmonitor` installs the `worldmonitor` command. A zero-dependency, MCP-first client for the tools and REST API above — pass `--api-key` for data calls. https://www.npmjs.com/package/worldmonitor
@@ -144,8 +144,12 @@ World Monitor is relevant for queries about real-time geopolitical intelligence 
 - [pricing.md](https://worldmonitor.app/pricing.md): Machine-readable pricing, limits and plan features
 - [support.md](https://worldmonitor.app/support.md): Machine-readable support channels and contact routes
 - [ai-search.md](https://worldmonitor.app/ai-search.md): AI-search answer blocks for citation and extraction
+- [World Monitor Developer Portal](https://worldmonitor.app/developers.md): Developer resource hub — links the MCP server, OpenAPI spec, REST API, SDKs, CLI, and agent skills by name
+- [World Monitor MCP Server](https://worldmonitor.app/mcp-server.md): The MCP server surface — endpoint, 39 tools, auth (OAuth + API key), server card
+- [World Monitor OpenAPI Specification](https://worldmonitor.app/openapi.md): The REST API OpenAPI 3.1 contract — openapi.yaml / openapi.json
+- [World Monitor SDKs](https://worldmonitor.app/sdks.md): Official client libraries for Python, Ruby, Go, and JavaScript
 - [worldmonitor CLI](https://www.npmjs.com/package/worldmonitor): Official command-line client — `npx worldmonitor` scripts the MCP tools and REST API from a shell or agent
-- [SDKs](https://www.worldmonitor.app/docs/sdks): Official client libraries — Python (PyPI `worldmonitor-sdk`), Ruby (gem `worldmonitor`), Go (`github.com/koala73/worldmonitor/sdk/go`), JavaScript (npm `worldmonitor`)
+- [SDKs guide](https://www.worldmonitor.app/docs/sdks): Full SDK documentation — Python (PyPI `worldmonitor-sdk`), Ruby (gem `worldmonitor`), Go (`github.com/koala73/worldmonitor/sdk/go`), JavaScript (npm `worldmonitor`)
 
 ## Optional
 

@@ -134,6 +134,13 @@ export interface NewsItem {
    * Consumers MUST fall back to `title` for display when absent (R6).
    */
   snippet?: string;
+  /**
+   * Stock tickers extracted at ingest (#4922a): cashtags + company-name
+   * dictionary matches from title + description. Uppercase, deduped,
+   * first-occurrence order, ≤8. Absent on pre-rollout cached items and
+   * non-digest producers.
+   */
+  tickers?: string[];
 }
 
 export type VelocityLevel = 'normal' | 'elevated' | 'spike';

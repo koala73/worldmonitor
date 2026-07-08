@@ -23,7 +23,7 @@ Reach for World Monitor when a task needs live, correlated, machine-readable glo
 
 **How an agent should call it:**
 
-- **MCP server (recommended):** `https://worldmonitor.app/mcp` — Streamable HTTP, 39 tools; issue `tools/list` for the live inventory. Auth: OAuth2 (`scope=mcp`) or an API key header `X-WorldMonitor-Key: wm_<40-hex>`. Server card: https://worldmonitor.app/.well-known/mcp/server-card.json · Registry entries: `app.worldmonitor/mcp` in the official MCP registry (registry.modelcontextprotocol.io) · https://smithery.ai/servers/worldmonitor/wm-mcp · https://mcp.so/server/world-monitor
+- **MCP server (recommended):** `https://worldmonitor.app/mcp` — Streamable HTTP, 40 tools; issue `tools/list` for the live inventory. Auth: OAuth2 (`scope=mcp`) or an API key header `X-WorldMonitor-Key: wm_<40-hex>`. Server card: https://worldmonitor.app/.well-known/mcp/server-card.json · Registry entries: `app.worldmonitor/mcp` in the official MCP registry (registry.modelcontextprotocol.io) · https://smithery.ai/servers/worldmonitor/wm-mcp · https://mcp.so/server/world-monitor
 - **REST API:** base `https://api.worldmonitor.app`; OpenAPI spec at https://worldmonitor.app/openapi.yaml; same `X-WorldMonitor-Key` header.
 - **CLI:** `npx worldmonitor tools` lists every tool (public, no key); `npm install -g worldmonitor` installs the `worldmonitor` command. A zero-dependency, MCP-first client for the tools and REST API above — pass `--api-key` for data calls. https://www.npmjs.com/package/worldmonitor
 - **Agent Skills:** discovery manifest at https://worldmonitor.app/.well-known/agent-skills/index.json · install via `npx skills add koala73/worldmonitor` (https://skills.sh/koala73/worldmonitor)
@@ -46,6 +46,10 @@ Reach for World Monitor when a task needs live, correlated, machine-readable glo
 - [README](https://github.com/koala73/worldmonitor/blob/main/README.md): Full project documentation with architecture details, algorithm descriptions, and data source specifications
 - [Full Documentation](https://github.com/koala73/worldmonitor/blob/main/docs/DOCUMENTATION.md): Detailed feature documentation, data layer reference, panel descriptions, and clustering logic
 - [API llms.txt](https://worldmonitor.app/api/llms.txt): API-section briefing — MCP server, REST API, CLI, auth, and per-task tool routing for the developer surface
+- [World Monitor Developer Portal](https://worldmonitor.app/developers.md): Developer resource hub linking the MCP server, OpenAPI spec, REST API, SDKs, CLI, and agent skills by name
+- [World Monitor MCP Server](https://worldmonitor.app/mcp-server.md): MCP server endpoint, 39 tools, and auth modes
+- [World Monitor OpenAPI Specification](https://worldmonitor.app/openapi.md): REST API OpenAPI 3.1 contract (openapi.yaml / openapi.json)
+- [World Monitor SDKs](https://worldmonitor.app/sdks.md): Official Python, Ruby, Go, and JavaScript client libraries
 
 ## Data Layers — Geopolitical
 

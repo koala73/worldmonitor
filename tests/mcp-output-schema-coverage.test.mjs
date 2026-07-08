@@ -54,7 +54,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   // actually described.
   it('every tool in TOOL_REGISTRY declares a non-empty outputSchema with at least one properties key (and, for cache tools, at least one data.properties key)', () => {
     const registry = mod.__testing__.TOOL_REGISTRY ?? [];
-    assert.ok(registry.length >= 39, `expected ≥39 tools, got ${registry.length}`);
+    assert.ok(registry.length >= 40, `expected ≥40 tools, got ${registry.length}`);
     const failures = [];
     for (const tool of registry) {
       const schema = tool.outputSchema;
@@ -116,7 +116,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     assert.equal(res.status, 200);
     const body = await res.json();
     const tools = body.result?.tools ?? [];
-    assert.ok(tools.length >= 39, `expected ≥39 tools, got ${tools.length}`);
+    assert.ok(tools.length >= 40, `expected ≥40 tools, got ${tools.length}`);
     const missing = tools.filter(t => !t.outputSchema || typeof t.outputSchema !== 'object'
       || !t.outputSchema.properties || Object.keys(t.outputSchema.properties).length === 0)
       .map(t => t.name);

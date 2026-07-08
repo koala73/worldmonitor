@@ -50,6 +50,11 @@ message NewsItem {
   // when unavailable or indistinguishable from the headline — consumers must
   // fall back to the headline for display/LLM grounding in that case.
   string snippet = 12;
+  // Equity ticker symbols mentioned by the story, extracted at ingest from
+  // cashtags ($AAPL) and the curated company dictionary
+  // (shared/stocks.json). Uppercase symbols, deduplicated, capped at 8.
+  // Empty when no tracked ticker is mentioned. See shared/ticker-extract.js.
+  repeated string tickers = 13 [(buf.validate.field).repeated.max_items = 8];
 }
 
 // StoryMeta carries cross-cycle persistence data attached to each news item.

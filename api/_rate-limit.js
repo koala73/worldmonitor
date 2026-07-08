@@ -3,6 +3,11 @@ import { Redis } from '@upstash/redis';
 import { jsonResponse } from './_json-response.js';
 import { captureSilentError } from './_sentry-edge.js';
 import {
+  durationToSeconds,
+  limitWithFallback,
+  resetRateLimitFallbackForTest,
+} from './_rate-limit-fallback.js';
+import {
   RATE_LIMIT_DEGRADED_HEADERS,
   getClientIp,
 } from './_client-ip.js';
@@ -67,7 +72,7 @@ function getRatelimit(policy) {
 // Mirrored verbatim in server/_shared/rate-limit.ts.
 function rateLimitErrorLevel(stage, msg) {
   if (stage.includes('missing-config')) return 'error';
-  if (/Error running script|execution timed out|Command failed|ETIMEDOUT|ECONNRESET|ENOTFOUND|fetch failed|network|timed out|socket hang up/i.test(msg)) {
+  if (/Error running script|execution timed out|Command failed|ETIMEDOUT|ECONNRESET|ENOTFOUND|fetch failed|network|timed out|socket hang up|Redis unavailable|Redis unreachable/i.test(msg)) {
     return 'warning';
   }
   return 'error';
@@ -122,7 +127,14 @@ export async function checkRateLimit(request, corsHeaders, opts = {}) {
 
   const ip = getClientIp(request);
   try {
-    const { success, limit, reset } = await rl.limit(ip);
+    const fallbackPrefix = policy.scope === DEFAULT_RATE_LIMIT_SCOPE ? 'rl:fw' : `rl:${policy.scope}:fw`;
+    const { success, limit, reset } = await limitWithFallback(
+      rl,
+      ip,
+      `${fallbackPrefix}:${ip}`,
+      policy.limit,
+      durationToSeconds(policy.window),
+    );
 
     if (!success) {
       return jsonResponse({ error: 'Too many requests' }, 429, {
@@ -144,4 +156,5 @@ export async function checkRateLimit(request, corsHeaders, opts = {}) {
 
 export function __resetRateLimitForTest() {
   ratelimits = new Map();
+  resetRateLimitFallbackForTest();
 }

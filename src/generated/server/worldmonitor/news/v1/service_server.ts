@@ -56,6 +56,7 @@ export interface NewsItem {
   corroborationCount: number;
   storyMeta?: StoryMeta;
   snippet: string;
+  tickers: string[];
 }
 
 export interface ThreatClassification {

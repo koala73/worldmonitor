@@ -89,6 +89,11 @@ type YahooChartResponse = {
         regularMarketPrice?: number;
         previousClose?: number;
         chartPreviousClose?: number;
+        currentTradingPeriod?: {
+          pre?: { start?: number; end?: number };
+          regular?: { start?: number; end?: number };
+          post?: { start?: number; end?: number };
+        };
       };
       events?: {
         dividends?: Record<string, { amount?: number; date?: number }>;
@@ -269,7 +274,7 @@ function computeDividendCagr(annualTotals: Map<number, number>): number {
 export async function fetchDividendProfile(symbol: string, currentPrice: number): Promise<DividendProfile> {
   try {
     await yahooGate();
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=5y&interval=1mo&includePrePost=false&events=div`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=5y&interval=1mo&includePrePost=true&events=div`;
     const [chartResponse, payoutRatio] = await Promise.all([
       fetch(url, {
         headers: { 'User-Agent': CHROME_UA },
@@ -518,9 +523,176 @@ function uniqueRounded(values: number[]): number[] {
   return out;
 }
 
+// ── US-equity market session (#4922d) ───────────────────────────────────────
+// TypeScript twin of scripts/shared/market-hours.cjs — the single source of
+// truth for relays/seeders. Server code must NOT import that .cjs (Vercel
+// bundling), so the ~40 lines of session rules are duplicated here. Keep the
+// boundaries in lockstep: pre 04:00–09:30, regular 09:30–16:00, post
+// 16:00–20:00 ET; early-close days end regular at 13:00 with post
+// 13:00–17:00; weekends + full NYSE holidays closed all day.
+// tests/market-hours.test.mjs cross-checks both implementations.
+
+export type UsEquitySession = 'regular' | 'pre' | 'post' | 'closed';
+
+const ET_PARTS_FMT = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'America/New_York',
+  hourCycle: 'h23',
+  weekday: 'short',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+});
+
+function etDow(year: number, month: number, day: number): number {
+  return new Date(Date.UTC(year, month - 1, day)).getUTCDay(); // 0=Sun
+}
+
+function nthWeekdayOfMonth(year: number, month: number, weekday: number, n: number): number {
+  return 1 + ((weekday - etDow(year, month, 1) + 7) % 7) + (n - 1) * 7;
+}
+
+function shiftDays(year: number, month: number, day: number, delta: number): { month: number; day: number } {
+  const d = new Date(Date.UTC(year, month - 1, day + delta));
+  return { month: d.getUTCMonth() + 1, day: d.getUTCDate() };
+}
+
+function observedHoliday(year: number, month: number, day: number): { month: number; day: number } {
+  const w = etDow(year, month, day);
+  if (w === 6) return shiftDays(year, month, day, -1); // Sat → Fri
+  if (w === 0) return shiftDays(year, month, day, 1);  // Sun → Mon
+  return { month, day };
+}
+
+function isNyseFullHoliday(year: number, month: number, day: number): boolean {
+  const key = month * 100 + day;
+  const holidays = new Set<number>();
+  // New Year's Day — no Sat→Fri shift (NYSE stays open the preceding Friday).
+  const nyDow = etDow(year, 1, 1);
+  if (nyDow === 0) holidays.add(102);
+  else if (nyDow !== 6) holidays.add(101);
+  holidays.add(100 + nthWeekdayOfMonth(year, 1, 1, 3));  // MLK
+  holidays.add(200 + nthWeekdayOfMonth(year, 2, 1, 3));  // Presidents
+  // Good Friday — anonymous Gregorian computus (Meeus/Jones/Butcher).
+  const a = year % 19, b = Math.floor(year / 100), c = year % 100;
+  const d = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4), k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const easterMonth = Math.floor((h + l - 7 * m + 114) / 31);
+  const easterDay = ((h + l - 7 * m + 114) % 31) + 1;
+  const gf = shiftDays(year, easterMonth, easterDay, -2);
+  holidays.add(gf.month * 100 + gf.day);
+  const lastDayMay = new Date(Date.UTC(year, 5, 0)).getUTCDate();
+  holidays.add(500 + lastDayMay - ((etDow(year, 5, lastDayMay) - 1 + 7) % 7)); // Memorial
+  const jt = observedHoliday(year, 6, 19);
+  holidays.add(jt.month * 100 + jt.day);                 // Juneteenth
+  const ind = observedHoliday(year, 7, 4);
+  holidays.add(ind.month * 100 + ind.day);               // Independence
+  holidays.add(900 + nthWeekdayOfMonth(year, 9, 1, 1));  // Labor
+  holidays.add(1100 + nthWeekdayOfMonth(year, 11, 4, 4)); // Thanksgiving
+  const xmas = observedHoliday(year, 12, 25);
+  holidays.add(xmas.month * 100 + xmas.day);             // Christmas
+  return holidays.has(key);
+}
+
+function isNyseEarlyCloseDay(year: number, month: number, day: number): boolean {
+  const w = etDow(year, month, day);
+  if (w === 0 || w === 6 || isNyseFullHoliday(year, month, day)) return false;
+  if (month === 7 && day === 3) return true;
+  if (month === 12 && day === 24) return true;
+  if (month === 11 && day === nthWeekdayOfMonth(year, 11, 4, 4) + 1) return true;
+  return false;
+}
+
+export function getUsEquitySessionAt(date: Date = new Date()): UsEquitySession {
+  const parts: Record<string, string> = {};
+  for (const part of ET_PARTS_FMT.formatToParts(date)) parts[part.type] = part.value;
+  const year = Number(parts.year), month = Number(parts.month), day = Number(parts.day);
+  if (parts.weekday === 'Sat' || parts.weekday === 'Sun') return 'closed';
+  if (isNyseFullHoliday(year, month, day)) return 'closed';
+  const early = isNyseEarlyCloseDay(year, month, day);
+  const minutes = Number(parts.hour) * 60 + Number(parts.minute);
+  const closeMin = early ? 13 * 60 : 16 * 60;
+  const postEndMin = early ? 17 * 60 : 20 * 60;
+  if (minutes >= 4 * 60 && minutes < 9 * 60 + 30) return 'pre';
+  if (minutes >= 9 * 60 + 30 && minutes < closeMin) return 'regular';
+  if (minutes >= closeMin && minutes < postEndMin) return 'post';
+  return 'closed';
+}
+
+// US market-hours semantics apply to US listings only: Yahoo reports USD for
+// them, and non-US listings carry an exchange suffix (RELIANCE.NS, BMW.DE, …).
+// USD without a suffix covers NYSE/Nasdaq stocks, US indices (^GSPC) and
+// US-listed ADRs (TSM, NVO) — for everything else marketSession stays ''.
+export function usEquityHoursApply(symbol: string, currency: string): boolean {
+  return currency === 'USD' && !/\.[A-Za-z]+$/.test(symbol);
+}
+
+export type ExtendedHoursQuote = { price: number; changePercent: number };
+
+/**
+ * Latest pre/post-market print for a US symbol via the Yahoo 5-minute chart
+ * (`includePrePost=true`). Returns the newest finite close inside the CURRENT
+ * session's own [start, end) window from meta.currentTradingPeriod[session] —
+ * so an early-pre-market range=1d chart carrying the prior session's candles
+ * can't leak yesterday's close in as today's pre-market print — with the change
+ * measured against the last REGULAR close (meta.regularMarketPrice, falling
+ * back to chartPreviousClose). Null when Yahoo has no candle in that window or
+ * no usable trading-period metadata.
+ */
+export async function fetchExtendedHoursQuote(
+  symbol: string,
+  session: 'pre' | 'post',
+): Promise<ExtendedHoursQuote | null> {
+  try {
+    await yahooGate();
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=1d&interval=5m&includePrePost=true`;
+    const response = await fetch(url, {
+      headers: { 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+    if (!response.ok) return null;
+
+    const data = await response.json() as YahooChartResponse;
+    const result = data.chart?.result?.[0];
+    const period = result?.meta?.currentTradingPeriod?.[session];
+    const windowStart = period?.start;
+    const windowEnd = period?.end;
+    // Require the CURRENT session's own [start, end) bounds. Gating pre only on
+    // `ts < regularStart` was unbounded below: in early pre-market, before
+    // today's pre candles publish, a range=1d chart still carries the prior
+    // session's candles (all older than today's regular start), so the newest
+    // match would be yesterday's post-market close returned as today's pre.
+    if (typeof windowStart !== 'number' || typeof windowEnd !== 'number') return null;
+    const lastRegularClose = [result?.meta?.regularMarketPrice, result?.meta?.chartPreviousClose]
+      .find((value) => typeof value === 'number' && Number.isFinite(value) && value > 0);
+    if (lastRegularClose === undefined) return null;
+
+    const timestamps = result?.timestamp ?? [];
+    const closes = result?.indicators?.quote?.[0]?.close ?? [];
+    for (let i = timestamps.length - 1; i >= 0; i--) {
+      const ts = timestamps[i];
+      const close = closes[i];
+      if (typeof ts !== 'number' || typeof close !== 'number' || !Number.isFinite(close) || close <= 0) continue;
+      if (ts < windowStart || ts >= windowEnd) continue; // outside this session's window
+      return {
+        price: round(close),
+        changePercent: round(((close - lastRegularClose) / lastRegularClose) * 100),
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchYahooHistory(symbol: string): Promise<{ candles: Candle[]; currency: string } | null> {
   await yahooGate();
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=6mo&interval=1d&includePrePost=false&events=div,splits`;
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=6mo&interval=1d&includePrePost=true&events=div,splits`;
   const response = await fetch(url, {
     headers: { 'User-Agent': CHROME_UA },
     signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
@@ -1072,6 +1244,8 @@ export function buildAnalysisResponse(params: {
   generatedAt: string;
   analysisId?: string;
   dividend?: DividendProfile;
+  marketSession?: string;
+  extended?: ExtendedHoursQuote;
 }): AnalyzeStockResponse {
   const {
     symbol,
@@ -1085,6 +1259,8 @@ export function buildAnalysisResponse(params: {
     analysisAt,
     generatedAt,
     dividend,
+    marketSession,
+    extended,
   } = params;
   const analysisId = params.analysisId || `stock:${STOCK_ANALYSIS_ENGINE_VERSION}:${symbol}:${analysisAt}:${includeNews ? 'news' : 'core'}`;
   const { stopLoss, takeProfit } = deriveTradeLevels(
@@ -1150,6 +1326,9 @@ export function buildAnalysisResponse(params: {
     payoutRatio: dividend?.payoutRatio,
     dividendFrequency: dividend?.dividendFrequency ?? '',
     dividendCagr: dividend?.dividendCagr ?? 0,
+    marketSession: marketSession ?? '',
+    // Optional proto fields OMIT their keys when unset — never explicit null.
+    ...(extended ? { extendedPrice: extended.price, extendedChangePercent: extended.changePercent } : {}),
   };
 }
 
@@ -1209,12 +1388,20 @@ function buildEmptyAnalysisResponse(symbol: string, name: string, includeNews: b
     exDividendDate: 0,
     dividendFrequency: '',
     dividendCagr: 0,
+    // No data — US-hours detection can't be applied, so the required
+    // marketSession field carries its documented "not applicable" value.
+    marketSession: '',
   };
 }
+
+export type AnalyzeStockOptions = {
+  now?: Date;
+};
 
 export async function analyzeStock(
   _ctx: ServerContext,
   req: AnalyzeStockRequest,
+  options: AnalyzeStockOptions = {},
 ): Promise<AnalyzeStockResponse> {
   const symbol = sanitizeSymbol(req.symbol || '');
   if (!symbol) {
@@ -1228,7 +1415,7 @@ export async function analyzeStock(
   // v3 rows carry old-model output and must age out at cutover.
   const cacheKey = `market:analyze-stock:v4:${symbol}:${includeNews ? 'news' : 'no-news'}${nameSuffix}`;
 
-  const cached = await cachedFetchJson<AnalyzeStockResponse>(cacheKey, CACHE_TTL_SECONDS, async () => {
+  const fetchFreshAnalysis = async (): Promise<AnalyzeStockResponse | null> => {
     const [history, analystData] = await Promise.all([
       fetchYahooHistory(symbol),
       fetchYahooAnalystData(symbol),
@@ -1237,9 +1424,19 @@ export async function analyzeStock(
 
     const technical = buildTechnicalSnapshot(history.candles);
     technical.currency = history.currency || 'USD';
-    const [headlines, dividend] = await Promise.all([
+    // Session at analysis time (#4922d); '' when US hours don't apply to the
+    // listing. The extended-hours fetch runs ONLY in pre/post — during the
+    // regular session the current price is already live, and while closed
+    // there is no extended tape.
+    const marketSession = usEquityHoursApply(symbol, history.currency || 'USD')
+      ? getUsEquitySessionAt(options.now)
+      : '';
+    const [headlines, dividend, extendedQuote] = await Promise.all([
       includeNews ? searchRecentStockHeadlines(symbol, name, NEWS_LIMIT).then((r) => r.headlines) : Promise.resolve([]),
       fetchDividendProfile(symbol, technical.currentPrice),
+      (marketSession === 'pre' || marketSession === 'post')
+        ? fetchExtendedHoursQuote(symbol, marketSession)
+        : Promise.resolve(null),
     ]);
     const overlay = await buildAiOverlay(symbol, name, technical, headlines);
     const analysisAt = history.candles[history.candles.length - 1]?.timestamp || Date.now();
@@ -1255,16 +1452,22 @@ export async function analyzeStock(
       analysisAt,
       generatedAt: new Date().toISOString(),
       dividend,
+      marketSession,
+      extended: extendedQuote ?? undefined,
     });
     await storeStockAnalysisSnapshot(response, includeNews);
     return response;
-  }, undefined, {
-    // Worst-case fetcher budget: 2× UPSTREAM_TIMEOUT_MS sequenced (10s+10s for
-    // history/analyst then headlines/dividend) + 20s LLM overlay + small
-    // overhead. 60s safely sits above this so the cache safety net (#3539)
-    // doesn't pre-empt the caller's own per-stage timeouts.
-    timeoutMs: 60_000,
-  });
+  };
+
+  const cached = options.now
+    ? await fetchFreshAnalysis()
+    : await cachedFetchJson<AnalyzeStockResponse>(cacheKey, CACHE_TTL_SECONDS, fetchFreshAnalysis, undefined, {
+        // Worst-case fetcher budget: 2× UPSTREAM_TIMEOUT_MS sequenced (10s+10s for
+        // history/analyst then headlines/dividend) + 20s LLM overlay + small
+        // overhead. 60s safely sits above this so the cache safety net (#3539)
+        // doesn't pre-empt the caller's own per-stage timeouts.
+        timeoutMs: 60_000,
+      });
 
   if (cached) return cached;
 

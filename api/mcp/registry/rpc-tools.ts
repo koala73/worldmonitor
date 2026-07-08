@@ -7,7 +7,7 @@ import { buildAuthHeaders } from '../auth';
 import { SUPPORTED_CONSUMER_PRICES_COUNTRIES } from '../constants';
 import { evaluateFreshness } from '../freshness';
 import type { FreshnessCheck, ToolDef } from '../types';
-import { COUNTRY_RISK_UI_URI } from '../ui/registry';
+import { COUNTRY_BRIEF_UI_URI, COUNTRY_RISK_UI_URI, WORLD_BRIEF_UI_URI } from '../ui/registry';
 import { buildPublicTool, TOOL_REGISTRY } from './index';
 
 type McpBriefSource = {
@@ -139,6 +139,10 @@ export const RPC_TOOLS: ToolDef[] = [
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    // MCP Apps (`io.modelcontextprotocol/ui`): links the tool to its interactive
+    // ui:// app shell (rendered inline by an MCP-Apps host). Single source of
+    // truth — the ui:// resource is registered in ../ui/registry.ts.
+    _uiResourceUri: WORLD_BRIEF_UI_URI,
     _execute: async (params, base, context) => {
       const UA = 'worldmonitor-mcp-edge/1.0';
       // Step 1: fetch current geopolitical headlines (budget: 6 s, leaves ~24 s for LLM).
@@ -232,6 +236,9 @@ export const RPC_TOOLS: ToolDef[] = [
       },
     },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
+    // MCP Apps (`io.modelcontextprotocol/ui`): links the tool to its interactive
+    // ui:// app shell. Single source of truth — registered in ../ui/registry.ts.
+    _uiResourceUri: COUNTRY_BRIEF_UI_URI,
     _execute: async (params, base, context) => {
       const UA = 'worldmonitor-mcp-edge/1.0';
       const countryCode = String(params.country_code ?? '').toUpperCase().slice(0, 2);

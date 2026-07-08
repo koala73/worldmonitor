@@ -122,6 +122,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'on-demand: written by writeSimulationPackage after deep forecast runs (matches api/health.js:466 ON_DEMAND_KEYS rationale). Internal pipeline artifact, not a queryable slice.'],
   ['forecast:simulation-outcome:latest',
     'on-demand: written by writeSimulationOutcome after simulation runs (matches api/health.js:467 ON_DEMAND_KEYS rationale). Internal pipeline artifact, not a queryable slice.'],
+  ['forecast:resolutions:v1',
+    'operational: persistent forecast resolution working ledger with raw per-forecast evidence and audit receipt state. Exposed through health and summarized by get_forecast_scorecard; raw ledger MCP access deferred until a filtered/sliced tool exists.'],
 
   // ===========================================================================
   // Recovery pillar scorer inputs — no dedicated recovery-data MCP tool yet.

@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, loadSharedConfig, sleep, CHROME_UA, runSeed, parseYahooChart, writeExtraKey } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, sleep, CHROME_UA, runSeed, parseYahooChart, writeExtraKey, extendExistingTtl, readCanonicalEnvelopeMeta, writeFreshnessMetadata } from './_seed-utils.mjs';
 import { fetchYahooJson } from './_yahoo-fetch.mjs';
 import { fetchAvBulkQuotes } from './_shared-av.mjs';
+import { getUsEquitySession, isUsEquityTradingDay } from './shared/market-hours.cjs';
 
 const stocksConfig = loadSharedConfig('stocks.json');
 
@@ -13,6 +14,7 @@ const CACHE_TTL = 1800;
 const YAHOO_DELAY_MS = 200;
 
 const MARKET_SYMBOLS = stocksConfig.symbols.map(s => s.symbol);
+const RPC_KEY = `market:quotes:v1:${[...MARKET_SYMBOLS].sort().join(',')}`;
 
 const YAHOO_ONLY = new Set(stocksConfig.yahooOnly);
 
@@ -118,6 +120,34 @@ async function fetchAndStash() {
   return seedData;
 }
 
+// #4922d: on non-trading days (weekends + full NYSE holidays) the last
+// published close IS the current truth — skip the upstream fetch entirely and
+// keep last-good alive with the same TTL-extension helper the runSeed phase-1
+// graceful (exit-75) path uses, plus a seed-meta refresh so freshness
+// monitors stay green over a 60h+ weekend. Exit 0, NEVER 75 — a recurring 75
+// is classified as a chronic crash by the fleet diagnoser. Gated on the
+// TRADING DAY, not session === 'closed': the symbol list mixes in NSE
+// tickers whose IST session falls inside the US weekday-overnight window.
+// If last-good is missing/expired (fresh Redis, weekend deploy), fall
+// through to a real fetch so the keys repopulate. We only report fresh and
+// exit(0) when the TTL extension actually CONFIRMS (every key still alive and
+// re-expired) — a silently-failed extension must not refresh seed-meta and
+// leave health monitors green over a canonical key that then lapses.
+if (!isUsEquityTradingDay()) {
+  const lastGood = await readCanonicalEnvelopeMeta(CANONICAL_KEY);
+  if (lastGood) {
+    const extended = await extendExistingTtl([CANONICAL_KEY, 'seed-meta:market:quotes', RPC_KEY], CACHE_TTL);
+    if (extended) {
+      await writeFreshnessMetadata('market', 'quotes', lastGood.recordCount, lastGood.sourceVersion || 'alphavantage+finnhub+yahoo', CACHE_TTL);
+      console.log(`[seed-market-quotes] US market closed (session=${getUsEquitySession()}) — skipping upstream fetch, extended TTL`);
+      process.exit(0);
+    }
+    console.warn('[seed-market-quotes] US market closed but TTL extension did not confirm all keys — fetching to repopulate');
+  } else {
+    console.warn('[seed-market-quotes] US market closed but no last-good canonical data — fetching anyway');
+  }
+}
+
 runSeed('market', 'quotes', CANONICAL_KEY, fetchAndStash, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
@@ -127,8 +157,7 @@ runSeed('market', 'quotes', CANONICAL_KEY, fetchAndStash, {
   maxStaleMin: 30,
 }).then(async (result) => {
   if (result?.skipped || !seedData) return;
-  const rpcKey = `market:quotes:v1:${[...MARKET_SYMBOLS].sort().join(',')}`;
-  await writeExtraKey(rpcKey, seedData, CACHE_TTL);
+  await writeExtraKey(RPC_KEY, seedData, CACHE_TTL);
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

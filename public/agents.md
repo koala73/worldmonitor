@@ -6,7 +6,7 @@ World Monitor is a real-time global intelligence dashboard: 500+ news feeds, 56 
 
 ## Machine surfaces (use these)
 
-- **MCP server (recommended):** `https://worldmonitor.app/mcp` — Streamable HTTP, 39 tools; issue `tools/list` for the live inventory. Server card: https://worldmonitor.app/.well-known/mcp/server-card.json
+- **MCP server (recommended):** `https://worldmonitor.app/mcp` — Streamable HTTP, 40 tools; issue `tools/list` for the live inventory. Server card: https://worldmonitor.app/.well-known/mcp/server-card.json
 - **Docs MCP server:** `https://www.worldmonitor.app/docs/mcp` — Streamable HTTP, public (no auth); search-and-retrieval tools over the documentation. Use it for "how do I…" questions; use the product MCP above for live data.
 - **REST API:** base `https://api.worldmonitor.app` — OpenAPI spec: https://worldmonitor.app/openapi.yaml (JSON: /openapi.json) · API catalog: https://worldmonitor.app/.well-known/api-catalog
 - **NLWeb:** `POST https://www.worldmonitor.app/ask` (supports SSE) for natural-language questions; machine-readable dashboard view at `https://www.worldmonitor.app/?mode=agent`
@@ -14,6 +14,7 @@ World Monitor is a real-time global intelligence dashboard: 500+ news feeds, 56 
 - **CLI:** `npx worldmonitor tools` lists every tool (public, no key) — https://www.npmjs.com/package/worldmonitor
 - **SDKs:** Python `pip install worldmonitor-sdk` · Ruby `gem install worldmonitor` · Go `go get github.com/koala73/worldmonitor/sdk/go` · JavaScript npm `worldmonitor` — guide: https://www.worldmonitor.app/docs/sdks
 - **LLM briefings:** https://worldmonitor.app/llms.txt (overview) · https://worldmonitor.app/llms-full.txt (full reference) · https://worldmonitor.app/api/llms.txt (API section)
+- **Developer portal:** https://worldmonitor.app/developers.md — links every developer resource by name. Named resource pages: [MCP Server](https://worldmonitor.app/mcp-server.md) · [OpenAPI Specification](https://worldmonitor.app/openapi.md) · [SDKs](https://worldmonitor.app/sdks.md)
 
 ## Authentication
 

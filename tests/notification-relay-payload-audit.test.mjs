@@ -33,6 +33,9 @@ const PRODUCER_FILES = [
   { path: 'scripts/regional-snapshot/alert-emitter.mjs', expected: 'domain' },
   // Browser-side RSS producer
   { path: 'src/services/breaking-news-alerts.ts',       expected: 'rss' },
+  // Server-side RSS producer: watchlist_story_alert events built from
+  // RSS story-track rows (#4922 U3). Fixed payload shape — no description.
+  { path: 'scripts/seed-digest-notifications.mjs',      expected: 'rss' },
 ];
 
 const TAG_PATTERN = /@notification-source:\s*(rss|domain)\b/;

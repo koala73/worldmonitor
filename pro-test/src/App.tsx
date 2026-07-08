@@ -321,6 +321,10 @@ const SignalBars = () => {
   const total = 60;
   const center = total / 2;
   const signalRadius = 8;
+  const jitter = (index: number, salt: number) => {
+    const x = Math.sin(index * 12.9898 + salt * 78.233) * 43758.5453;
+    return x - Math.floor(x);
+  };
 
   return (
     <div className="relative my-4 md:my-8 -mx-6">
@@ -334,31 +338,47 @@ const SignalBars = () => {
           const signalIntensity = isSignal ? 1 - distFromCenter / signalRadius : 0;
           const peakHeight = 60 + signalIntensity * 110;
           const noiseBase = Math.max(8, 35 - distFromCenter * 0.8);
+          const barHeight = isSignal ? peakHeight : noiseBase;
+          const initialScale = isSignal ? 0.3 : 0.5;
+          const scaleY = isSignal
+            ? [0.5, 1, 0.65, 0.9]
+            : [1, 0.3, 0.7, 0.15, 0.5];
 
           return (
-            <motion.div
+            <div
               key={i}
-              className={`flex-1 max-w-2 md:max-w-3 rounded-sm ${isSignal ? 'bg-wm-green' : 'bg-wm-muted/20'}`}
-              style={isSignal ? { boxShadow: `0 0 ${6 + signalIntensity * 12}px rgba(74,222,128,${signalIntensity * 0.5})` } : undefined}
-              initial={{ height: isSignal ? peakHeight * 0.3 : noiseBase * 0.5, opacity: isSignal ? 0.4 : 0.08 }}
-              animate={isSignal
-                ? {
-                    height: [peakHeight * 0.5, peakHeight, peakHeight * 0.65, peakHeight * 0.9],
-                    opacity: [0.6 + signalIntensity * 0.3, 1, 0.75 + signalIntensity * 0.2, 0.95],
-                  }
-                : {
-                    height: [noiseBase, noiseBase * 0.3, noiseBase * 0.7, noiseBase * 0.15, noiseBase * 0.5],
-                    opacity: [0.2, 0.06, 0.15, 0.04, 0.12],
-                  }
-              }
-              transition={{
-                duration: isSignal ? 2.5 + signalIntensity * 0.5 : 1 + Math.random() * 0.6,
-                repeat: Infinity,
-                repeatType: 'reverse',
-                delay: isSignal ? distFromCenter * 0.07 : Math.random() * 0.6,
-                ease: 'easeInOut',
-              }}
-            />
+              className="flex flex-1 max-w-2 md:max-w-3 items-end"
+              style={{ height: `${barHeight}px` }}
+            >
+              <motion.div
+                className={`w-full rounded-sm ${isSignal ? 'bg-wm-green' : 'bg-wm-muted/20'}`}
+                style={{
+                  height: '100%',
+                  transformOrigin: 'bottom',
+                  ...(isSignal
+                    ? { boxShadow: `0 0 ${6 + signalIntensity * 12}px rgba(74,222,128,${signalIntensity * 0.5})` }
+                    : null),
+                }}
+                initial={{ scaleY: initialScale, opacity: isSignal ? 0.4 : 0.08 }}
+                animate={isSignal
+                  ? {
+                      scaleY,
+                      opacity: [0.6 + signalIntensity * 0.3, 1, 0.75 + signalIntensity * 0.2, 0.95],
+                    }
+                  : {
+                      scaleY,
+                      opacity: [0.2, 0.06, 0.15, 0.04, 0.12],
+                    }
+                }
+                transition={{
+                  duration: isSignal ? 2.5 + signalIntensity * 0.5 : 1 + jitter(i, 1) * 0.6,
+                  repeat: Infinity,
+                  repeatType: 'reverse',
+                  delay: isSignal ? distFromCenter * 0.07 : jitter(i, 2) * 0.6,
+                  ease: 'easeInOut',
+                }}
+              />
+            </div>
           );
         })}
       </div>

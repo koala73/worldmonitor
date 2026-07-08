@@ -163,7 +163,7 @@ describe('mobile SVG map: defer + chunk dynamic overlays off first paint (#4429/
       "ResizeObserver should refresh cached dimensions before scheduling render",
     );
 
-    const transformStart = mapSrc.indexOf("private applyTransform(): void");
+    const transformStart = mapSrc.indexOf("private applyTransform(rebuildOnZoomVisibilityChange = true): void");
     const transformEnd = mapSrc.indexOf("  private updateLabelVisibility", transformStart);
     assert.ok(transformStart > 0 && transformEnd > transformStart, "applyTransform block should be present");
     const transformBlock = mapSrc.slice(transformStart, transformEnd);

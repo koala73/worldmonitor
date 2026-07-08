@@ -378,6 +378,32 @@ export const WINBACK_MAX_AGE_MS = 60 * DAY_MS;
 const DASHBOARD_URL = "https://www.worldmonitor.app/dashboard";
 const PRICING_URL = "https://www.worldmonitor.app/pro#pricing";
 
+// Resend caps at 10 requests/second. TWO complementary layers keep dunning
+// under it:
+//
+//   1. runDunningScan staggers each send's START by SEND_SPACING_MS (below).
+//      This spreads the upstream Dodo portal-mint load and the initial Resend
+//      load, and keeps reserveResendSlot contention low.
+//   2. The actual Resend POST happens AFTER a variable-latency Dodo portal-mint
+//      (createCustomerPortalUrlForUser), so staggering START times does NOT by
+//      itself bound the POST rate — portal-latency jitter can bunch several
+//      POSTs into the same instant and recreate the burst. So immediately
+//      before the POST, every send reserves a monotonic slot from a shared
+//      token bucket (reserveResendSlot) and waits for it. Slots are handed out
+//      >= SEND_SPACING_MS apart, so actual POSTs stay >= SEND_SPACING_MS apart
+//      regardless of portal latency.
+//
+// Original bug (WORLDMONITOR-VH): sends were scheduled at runAfter(0) and burst
+// concurrently; the 11th+ threw an uncaught 429 out of sendEmail, and since the
+// throw precedes the ledger write those rows re-burst next tick and compounded.
+// The cadence is daily and non-urgent, so spreading a batch over a few seconds
+// (250ms => <=4/s) is inconsequential.
+export const SEND_SPACING_MS = 250;
+
+// Shared-cursor key in the generic `counters` table: the epoch-ms timestamp of
+// the next free Resend send slot for the dunning/winback fleet.
+const RESEND_SLOT_COUNTER = "dunning_resend_next_slot";
+
 const dunningStepValidator = v.union(
   v.literal("dunning_day0"),
   v.literal("dunning_day3"),
@@ -594,6 +620,47 @@ export function buildDunningEmail(
  * cron) and the subscription may have recovered, been cancelled, or been
  * re-held (new episode) since it was scheduled.
  */
+/**
+ * Token-bucket pacer for Resend POSTs across the whole dunning/winback fleet.
+ *
+ * Returns the epoch-ms instant at which the caller may perform its Resend POST.
+ * sendDunningEmail calls this immediately before the send and waits until the
+ * returned slot, so concurrent sends POST >= SEND_SPACING_MS apart no matter how
+ * their upstream Dodo portal-mint latency varies. Single-row OCC makes
+ * concurrent reservations serialize, so no two callers get overlapping slots.
+ * The cursor floors at `now`, so after any idle gap the next send fires
+ * immediately instead of sleeping toward a stale future slot.
+ */
+export const reserveResendSlot = internalMutation({
+  args: {},
+  handler: async (ctx): Promise<number> => {
+    const row = await ctx.db
+      .query("counters")
+      .withIndex("by_name", (q) => q.eq("name", RESEND_SLOT_COUNTER))
+      .unique();
+    const now = Date.now();
+    const slotAt = Math.max(now, row?.value ?? 0);
+    const nextSlotAt = slotAt + SEND_SPACING_MS;
+    if (row) await ctx.db.patch(row._id, { value: nextSlotAt });
+    else await ctx.db.insert("counters", { name: RESEND_SLOT_COUNTER, value: nextSlotAt });
+    return slotAt;
+  },
+});
+
+/**
+ * The wait (ms) a send owes before its reserved Resend slot. Deliberately
+ * UNCAPPED: a large legitimate backlog reserves proportionally distant slots, so
+ * clamping the wait would let the tail — every reservation past cap/SEND_SPACING_MS
+ * — wake together and re-burst, the exact collapse a fixed ceiling caused
+ * (WORLDMONITOR-VH re-review P2). Safe to leave uncapped because
+ * `counters[RESEND_SLOT_COUNTER]` is single-writer (reserveResendSlot only) and
+ * only ever advances by SEND_SPACING_MS, so it can never be corruptly far in the
+ * future — there is no runaway state to defend against. Exported for testing.
+ */
+export function resendPacingWaitMs(slotAt: number, now: number): number {
+  return Math.max(0, slotAt - now);
+}
+
 export const sendDunningEmail = internalAction({
   args: {
     dodoSubscriptionId: v.string(),
@@ -673,6 +740,19 @@ export const sendDunningEmail = internalAction({
 
     const planName = PLAN_DISPLAY[sub.planKey] ?? sub.planKey;
     const { subject, html } = buildDunningEmail(args.step, planName, ctaUrl);
+    // Pace the actual POST (not just the scheduled start): the portal mint above
+    // has variable latency, so reserve the Resend slot HERE — after the mint —
+    // and wait for it. This bounds the true POST rate to <= 1/SEND_SPACING_MS
+    // even when portal jitter bunches start-staggered sends together, which
+    // start-time staggering alone can't guarantee (review follow-up to
+    // WORLDMONITOR-VH). The wait is intentionally uncapped (see resendPacingWaitMs)
+    // so a large backlog stays serialized instead of collapsing into a burst.
+    const slotAt = await ctx.runMutation(
+      internal.payments.subscriptionEmails.reserveResendSlot,
+      {},
+    );
+    const waitMs = resendPacingWaitMs(slotAt, Date.now());
+    if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
     await sendEmail(apiKey, sub.email, subject, html, ADMIN_EMAIL);
     // Ledger write AFTER the send: a Resend failure throws above, leaving no
     // row, so the next cron tick retries. The narrow crash window between
@@ -758,8 +838,10 @@ export const runDunningScan = internalMutation({
         )
         .first();
       if (existing) continue;
+      // Stagger to stay under Resend's 10 req/s limit (see SEND_SPACING_MS):
+      // `scheduled` is the running index, so sends fire at 0ms, 250ms, 500ms, ...
       await ctx.scheduler.runAfter(
-        0,
+        scheduled * SEND_SPACING_MS,
         internal.payments.subscriptionEmails.sendDunningEmail,
         item,
       );

@@ -171,6 +171,20 @@ node scripts/seed-military-flights.mjs
 | `worldmonitor-redis-rest` | Upstash-compatible REST proxy | 8079 |
 | `worldmonitor-ais-relay` | Live vessel tracking WebSocket | 3004 (internal) |
 
+> **`redis-rest` command allowlist**: the bundled proxy (`docker/redis-rest-proxy.mjs`) only
+> forwards a fixed allowlist of Redis commands and rejects `EVAL`/`EVALSHA`/`SCRIPT` (no Lua
+> scripting). Two consequences for a self-hosted stack:
+>
+> - `@upstash/ratelimit`'s Lua-based sliding-window limiter (`server/_shared/rate-limit.ts`,
+>   `api/_rate-limit.js`) can't run against it. Both automatically detect the rejection once and
+>   fall back to a non-Lua fixed-window limiter (`INCR` + `EXPIRE NX`) for the rest of the
+>   process — rate limiting still enforces, just with fixed- instead of sliding-window semantics.
+> - `scripts/ais-relay.cjs`'s own in-container seed loops (`UPSTASH_ENABLED`) also require
+>   `UPSTASH_REDIS_REST_URL` to start with `https://` by default, which the plain-HTTP proxy
+>   never satisfies. Set `UPSTASH_ALLOW_INSECURE_HTTP=true` on the `ais-relay` service (already
+>   wired for `redis-rest` in `docker-compose.yml`) to opt into using the proxy from
+>   inside the relay container.
+
 ## 🔨 Building from Source
 
 ```bash

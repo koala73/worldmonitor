@@ -19,49 +19,37 @@
 // OpenAI Apps SDK's marker).
 
 import { rpcError, rpcOk } from '../rpc';
+import { CHOKEPOINT_MONITOR_APP_HTML } from './chokepoint-monitor-app';
+import { COUNTRY_BRIEF_APP_HTML } from './country-brief-app';
 import { COUNTRY_RISK_APP_HTML } from './country-risk-app';
+import { MARKET_RADAR_APP_HTML } from './market-radar-app';
+import { buildUiMeta, UI_RESOURCE_MIME_TYPE as SHELL_UI_MIME_TYPE, type UiResourceMeta } from './shell';
+import { WORLD_BRIEF_APP_HTML } from './world-brief-app';
 
-export const UI_RESOURCE_MIME_TYPE = 'text/html;profile=mcp-app';
+// Re-exported from the shared shell so the mimeType has a single source of
+// truth across the fleet (the first widget defined it here in v1.11.0).
+export const UI_RESOURCE_MIME_TYPE = SHELL_UI_MIME_TYPE;
 
-// Canonical ui:// URI for the country-risk app shell. Imported by the
-// get_country_risk tool def as its single-source-of-truth `_uiResourceUri`,
-// so the tool linkage and the registered resource can never drift.
+// Canonical ui:// URIs for each app shell. Each is imported by its backing tool
+// def as the single-source-of-truth `_uiResourceUri`, so the tool linkage and
+// the registered resource can never drift.
 export const COUNTRY_RISK_UI_URI = 'ui://worldmonitor/country-risk.html';
+export const WORLD_BRIEF_UI_URI = 'ui://worldmonitor/world-brief.html';
+export const COUNTRY_BRIEF_UI_URI = 'ui://worldmonitor/country-brief.html';
+export const MARKET_RADAR_UI_URI = 'ui://worldmonitor/market-radar.html';
+export const CHOKEPOINT_MONITOR_UI_URI = 'ui://worldmonitor/chokepoint-monitor.html';
 
-// Per-resource `_meta.ui` (ext-apps `UIResourceMeta`). The `csp` block is the
-// spec-native complement to the HTML `<meta http-equiv>` CSP: it declares which
-// external origins the view needs so the HOST can enforce an iframe CSP. It is
-// kept CONSISTENT with the HTML meta: `connectDomains` mirrors the meta's
-// `connect-src` (the MCP server origin — the app's data ultimately originates
-// there); `resourceDomains` / `frameDomains` / `baseUriDomains` stay empty (the
-// secure default) because the app loads no external assets, embeds no frames,
-// and needs no external base URI (postMessage only, inline CSS/JS). `prefersBorder`
-// asks the host to frame the card. Surfaced on BOTH resources/list and the
-// resources/read response so a host learns the policy at discovery time.
-export interface UiResourceMeta {
-  ui: {
-    csp: {
-      connectDomains: string[];
-      resourceDomains: string[];
-      frameDomains: string[];
-      baseUriDomains: string[];
-    };
-    prefersBorder: boolean;
-  };
-}
-
-const COUNTRY_RISK_UI_META: UiResourceMeta = {
-  ui: {
-    csp: {
-      // Mirrors the HTML meta CSP's connect-src (the MCP server origin).
-      connectDomains: ['https://worldmonitor.app', 'https://www.worldmonitor.app'],
-      resourceDomains: [],
-      frameDomains: [],
-      baseUriDomains: [],
-    },
-    prefersBorder: true,
-  },
-};
+// Per-resource `_meta.ui` (ext-apps `UIResourceMeta`) is built by the shared
+// `buildUiMeta()` in ./shell — SINGLE source of truth for the fleet's CSP /
+// render policy. The `csp` block is the spec-native complement to the HTML
+// `<meta http-equiv>` CSP: `connectDomains` mirrors the meta's `connect-src`
+// (the MCP server origin); `resourceDomains` / `frameDomains` / `baseUriDomains`
+// stay empty (the secure default) because the apps load no external assets,
+// embed no frames, and need no external base URI (postMessage + inline CSS/JS
+// only). `prefersBorder` asks the host to frame the card. A fresh object is
+// minted per entry so a mutating consumer can't poison siblings. Surfaced on
+// BOTH resources/list and the resources/read response.
+export type { UiResourceMeta };
 
 interface UiResourceDef {
   uri: string;
@@ -80,8 +68,44 @@ export const UI_RESOURCE_REGISTRY: UiResourceDef[] = [
     description:
       'Interactive in-conversation app shell for get_country_risk: renders the Composite Instability Index (CII 0-100), the unrest/conflict/security/news component breakdown, travel-advisory level, and sanctions exposure. Linked from the get_country_risk tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
     mimeType: UI_RESOURCE_MIME_TYPE,
-    _meta: COUNTRY_RISK_UI_META,
+    _meta: buildUiMeta(),
     html: COUNTRY_RISK_APP_HTML,
+  },
+  {
+    uri: WORLD_BRIEF_UI_URI,
+    name: 'World Brief (interactive)',
+    description:
+      'Interactive in-conversation app shell for get_world_brief: renders the AI-summarised global intelligence brief as readable paragraphs, the grounding headlines, and the source feed articles. Linked from the get_world_brief tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
+    mimeType: UI_RESOURCE_MIME_TYPE,
+    _meta: buildUiMeta(),
+    html: WORLD_BRIEF_APP_HTML,
+  },
+  {
+    uri: COUNTRY_BRIEF_UI_URI,
+    name: 'Country Brief (interactive)',
+    description:
+      'Interactive in-conversation app shell for get_country_brief: renders the AI-synthesised per-country intelligence brief as paragraphs, the analytical framework lens, and the grounding sources. Linked from the get_country_brief tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
+    mimeType: UI_RESOURCE_MIME_TYPE,
+    _meta: buildUiMeta(),
+    html: COUNTRY_BRIEF_APP_HTML,
+  },
+  {
+    uri: MARKET_RADAR_UI_URI,
+    name: 'Market Radar (interactive)',
+    description:
+      'Interactive in-conversation app shell for get_market_data: renders the Fear & Greed composite plus per-asset-class quote tables (equities, commodities, crypto, Gulf, sectors) with signed, colour-coded change. Linked from the get_market_data tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
+    mimeType: UI_RESOURCE_MIME_TYPE,
+    _meta: buildUiMeta(),
+    html: MARKET_RADAR_APP_HTML,
+  },
+  {
+    uri: CHOKEPOINT_MONITOR_UI_URI,
+    name: 'Chokepoint Monitor (interactive)',
+    description:
+      'Interactive in-conversation app shell for get_chokepoint_status: renders per-chokepoint rolling transit summaries (today\'s transit count, week-over-week change, tanker split) with a risk-level badge. Linked from the get_chokepoint_status tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
+    mimeType: UI_RESOURCE_MIME_TYPE,
+    _meta: buildUiMeta(),
+    html: CHOKEPOINT_MONITOR_APP_HTML,
   },
 ];
 

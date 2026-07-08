@@ -189,10 +189,12 @@
             "group": "MCP & Integrations",
             "pages": [
               "agent-discovery",
+              "agent-skills",
               "mcp-quickstart",
               "cli",
               "sdks",
               "mcp-overview",
+              "mcp-apps",
               "mcp-tools-reference",
               "mcp-jmespath",
               "mcp-error-catalog",

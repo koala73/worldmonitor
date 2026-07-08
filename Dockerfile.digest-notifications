@@ -80,6 +80,14 @@ COPY shared/ephemeral-live-classifier.js shared/ephemeral-live-classifier.d.ts .
 # on /app/shared/diplomacy-keywords.json. Guarded by
 # tests/dockerfile-digest-notifications-imports.test.mjs.
 COPY shared/diplomacy-keywords.json ./shared/
+# Watchlist story alerts (#4922 e): seed-digest-notifications.mjs extracts
+# tickers from scanned stories (shared/ticker-extract.js + stocks.json via
+# scripts/lib/watchlist-story-events.mjs) and enqueues watchlist_story_alert
+# events with the shared SET-NX scan-dedup helper. Guarded by
+# tests/dockerfile-digest-notifications-imports.test.mjs.
+COPY shared/ticker-extract.js shared/ticker-extract.d.ts ./shared/
+COPY shared/stocks.json ./shared/
+COPY scripts/shared/notification-dedup.cjs ./scripts/shared/
 COPY shared/brief-llm-core.js shared/brief-llm-core.d.ts ./shared/
 COPY server/_shared/brief-render.js server/_shared/brief-render.d.ts ./server/_shared/
 # llm-sanitize is imported by scripts/lib/brief-llm.mjs on the fallback

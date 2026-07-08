@@ -222,6 +222,10 @@ function protoItemToNewsItem(p: ProtoNewsItem): NewsItem {
     // empty string otherwise. Consumers render the headline and fall back to
     // snippet as a secondary line when non-empty.
     ...(p.snippet ? { snippet: p.snippet } : {}),
+    // Ingest-extracted tickers (#4922a, proto field 13). Runtime guard on
+    // top of the generated type: persisted last-good digests from before
+    // the rollout carry items without the field.
+    ...(p.tickers && p.tickers.length ? { tickers: p.tickers } : {}),
   };
 }
 

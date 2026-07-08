@@ -178,7 +178,7 @@ export const SERVER_NAME = 'worldmonitor';
 //     registry entry — same per-tool authorship discipline as
 //     _outputBudgetBytes (v1.6.0 PR 4) and outputSchema (v1.6.0 PR 6).
 //   - Hint shape extends from 2 booleans → 4 booleans per tool. Wire delta
-//     is small (~50 B × 39 tools); hints unchanged for tools that already
+//     is small (~50 B × 40 tools); hints unchanged for tools that already
 //     matched the old blanket. Cache tools + pure-internal RPCs now
 //     correctly advertise `openWorldHint: false` (closed-world like a
 //     memory tool — they read our seeded Redis cache); LLM-synthesized
@@ -263,9 +263,26 @@ export const SERVER_NAME = 'worldmonitor';
 //     envelope, or auth change. Mirrored into
 //     public/.well-known/mcp/server-card.json::capabilities.extensions so the
 //     static card and the live wire stay in parity.
+// Bumped 1.13.0 → 1.14.0 (2026-07-08) reflecting:
+//   - MCP Apps interactive-dashboard fleet: four new ui:// app-shell resources
+//     joining the v1.11.0 country-risk widget —
+//       * ui://worldmonitor/world-brief.html      (get_world_brief)
+//       * ui://worldmonitor/country-brief.html    (get_country_brief)
+//       * ui://worldmonitor/market-radar.html      (get_market_data)
+//       * ui://worldmonitor/chokepoint-monitor.html (get_chokepoint_status)
+//     Each is linked from its backing tool via `_meta.ui.resourceUri` (+ the
+//     deprecated flat `ui/resourceUri` alias) and registered in
+//     api/mcp/ui/registry.ts. A shared shell (api/mcp/ui/shell.ts) factors the
+//     DOCTYPE / 4-category CSP / dark-mode tokens / postMessage bridge so the
+//     fleet can't drift on the orank quality/CSP signals. resources/read of a
+//     ui:// URI stays public + quota-exempt (static, data-free template); DATA
+//     reads (worldmonitor://…) stay gated + Pro-quota-symmetric.
+//   - Purely additive on the wire: `_meta` appears on the four newly-linked
+//     tools; every ui:// read is anonymously servable. No input/output schema
+//     change to any tool, no envelope-shape change, no auth change.
 // Keep aligned with public/.well-known/mcp/server-card.json::serverInfo.version
 // — discovery scanners cross-check both values.
-export const SERVER_VERSION = '1.13.0';
+export const SERVER_VERSION = '1.14.0';
 
 // MCP logging capability — valid severity levels per the 2025-03-26 spec
 // (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not

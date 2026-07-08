@@ -678,6 +678,17 @@ components:
                          entity-decoded, whitespace-normalised, clipped to 400 chars. Empty string
                          when unavailable or indistinguishable from the headline — consumers must
                          fall back to the headline for display/LLM grounding in that case.
+                tickers:
+                    type: array
+                    items:
+                        type: string
+                        maxItems: 8
+                        description: |-
+                            Equity ticker symbols mentioned by the story, extracted at ingest from
+                             cashtags ($AAPL) and the curated company dictionary
+                             (shared/stocks.json). Uppercase symbols, deduplicated, capped at 8.
+                             Empty when no tracked ticker is mentioned. See shared/ticker-extract.js.
+                    maxItems: 8
             required:
                 - source
                 - title

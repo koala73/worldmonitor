@@ -500,6 +500,7 @@ http.route({
       digestTimezone?: string;
       aiDigestEnabled?: boolean;
       countries?: string[];
+      tickers?: string[];
     };
     try {
       body = await request.json() as typeof body;
@@ -613,28 +614,45 @@ http.route({
           !Array.isArray(body.eventTypes) ||
           !Array.isArray(body.channels) ||
           (body.sensitivity !== undefined && !VALID_SENSITIVITY.has(body.sensitivity as string)) ||
-          (body.countries !== undefined && !Array.isArray(body.countries))
+          (body.countries !== undefined && !Array.isArray(body.countries)) ||
+          (body.tickers !== undefined && !Array.isArray(body.tickers))
         ) {
           return new Response(JSON.stringify({ error: "MISSING_REQUIRED_FIELDS" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
-        await ctx.runMutation((internal as any).alertRules.setAlertRulesForUser, {
-          userId,
-          variant: body.variant,
-          enabled: body.enabled,
-          eventTypes: body.eventTypes as string[],
-          // Pass body.sensitivity through unchanged (may be undefined).
-          // setAlertRulesForUser now accepts optional sensitivity and uses
-          // resolveEffectivePair to preserve existing.sensitivity on patch and
-          // default to 'high' only on fresh insert. A blind '?? "all"' fallback
-          // here would silently narrow existing daily+all digest users to
-          // daily+high whenever a caller omits the field.
-          // See docs/archive/plans/forbid-realtime-all-events.md §1c.
-          sensitivity: body.sensitivity as "all" | "high" | "critical" | undefined,
-          channels: body.channels as Array<"telegram" | "slack" | "email">,
-          aiDigestEnabled: typeof body.aiDigestEnabled === "boolean" ? body.aiDigestEnabled : undefined,
-          // ISO-3166 alpha-2 country-scope; mutation re-validates + normalizes.
-          countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
-        });
+        try {
+          await ctx.runMutation((internal as any).alertRules.setAlertRulesForUser, {
+            userId,
+            variant: body.variant,
+            enabled: body.enabled,
+            eventTypes: body.eventTypes as string[],
+            // Pass body.sensitivity through unchanged (may be undefined).
+            // setAlertRulesForUser now accepts optional sensitivity and uses
+            // resolveEffectivePair to preserve existing.sensitivity on patch and
+            // default to 'high' only on fresh insert. A blind '?? "all"' fallback
+            // here would silently narrow existing daily+all digest users to
+            // daily+high whenever a caller omits the field.
+            // See docs/archive/plans/forbid-realtime-all-events.md §1c.
+            sensitivity: body.sensitivity as "all" | "high" | "critical" | undefined,
+            channels: body.channels as Array<"telegram" | "slack" | "email">,
+            aiDigestEnabled: typeof body.aiDigestEnabled === "boolean" ? body.aiDigestEnabled : undefined,
+            // ISO-3166 alpha-2 country-scope; mutation re-validates + normalizes.
+            countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
+            // Watchlist ticker-scope (#4922 U3); mutation re-validates + normalizes.
+            tickers: Array.isArray(body.tickers) ? (body.tickers as string[]) : undefined,
+          });
+        } catch (err: unknown) {
+          // normalizeTickers/normalizeCountries throw ConvexError with a
+          // structured code (TICKERS_LIMIT_EXCEEDED / COUNTRIES_LIMIT_EXCEEDED)
+          // when a caller exceeds the 50-entry cap. Surface those as a 400 with
+          // the machine-readable code — matching the set-notification-config
+          // path below — instead of letting them fall to the outer catch as a
+          // generic 500, which the client can't route on.
+          const code = extractConvexErrorCode(err);
+          if (code === "TICKERS_LIMIT_EXCEEDED" || code === "COUNTRIES_LIMIT_EXCEEDED") {
+            return new Response(JSON.stringify({ error: code }), { status: 400, headers: { "Content-Type": "application/json" } });
+          }
+          throw err;
+        }
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 
@@ -698,6 +716,9 @@ http.route({
         if (body.countries !== undefined && !Array.isArray(body.countries)) {
           return new Response(JSON.stringify({ error: "COUNTRIES_MUST_BE_ARRAY" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
+        if (body.tickers !== undefined && !Array.isArray(body.tickers)) {
+          return new Response(JSON.stringify({ error: "TICKERS_MUST_BE_ARRAY" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
         try {
           await ctx.runMutation((internal as any).alertRules.setNotificationConfigForUser, {
             userId,
@@ -711,32 +732,32 @@ http.route({
             digestHour: typeof body.digestHour === "number" ? body.digestHour : undefined,
             digestTimezone: typeof body.digestTimezone === "string" ? body.digestTimezone : undefined,
             countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
+            tickers: Array.isArray(body.tickers) ? (body.tickers as string[]) : undefined,
           });
         } catch (err: unknown) {
           // Translate structured ConvexError codes into machine-readable HTTP
           // responses so the UI can route to inline helper text (400) or to
           // the upgrade flow (402). Do NOT swallow as a generic 500 — the
           // client needs the structured `error` field to render the right
-          // surface.
-          const data = (err as { data?: unknown } | undefined)?.data;
-          if (data && typeof data === "object") {
-            const errPayload = data as { code?: string; message?: string };
-            if (errPayload.code === "INCOMPATIBLE_DELIVERY") {
-              return new Response(
-                JSON.stringify({ error: errPayload.code, message: errPayload.message ?? "" }),
-                { status: 400, headers: { "Content-Type": "application/json" } },
-              );
-            }
-            if (errPayload.code === "PRO_REQUIRED") {
-              // 402 Payment Required — the canonical HTTP status for
-              // paywall-gated content. Client reads `error: "PRO_REQUIRED"`
-              // to route to the upgrade flow rather than show a generic
-              // failure toast.
-              return new Response(
-                JSON.stringify({ error: errPayload.code, message: errPayload.message ?? "" }),
-                { status: 402, headers: { "Content-Type": "application/json" } },
-              );
-            }
+          // surface. Use extractConvexErrorCode, which decodes the JSON-STRING
+          // shape ctx.runMutation serializes err.data into across the function
+          // boundary (see :67) — a manual `typeof data === "object"` check
+          // misses every code on this path.
+          const code = extractConvexErrorCode(err);
+          // Preserve the ConvexError message where present — the client renders
+          // it as inline helper text for INCOMPATIBLE_DELIVERY.
+          const parsed = parseConvexErrorData(err);
+          const message = (parsed && typeof parsed === "object")
+            ? (parsed as { message?: string }).message ?? ""
+            : "";
+          if (code === "INCOMPATIBLE_DELIVERY" || code === "TICKERS_LIMIT_EXCEEDED" || code === "COUNTRIES_LIMIT_EXCEEDED") {
+            return new Response(JSON.stringify({ error: code, message }), { status: 400, headers: { "Content-Type": "application/json" } });
+          }
+          if (code === "PRO_REQUIRED") {
+            // 402 Payment Required — the canonical HTTP status for paywall-gated
+            // content. Client reads `error: "PRO_REQUIRED"` to route to the
+            // upgrade flow rather than show a generic failure toast.
+            return new Response(JSON.stringify({ error: code, message }), { status: 402, headers: { "Content-Type": "application/json" } });
           }
           throw err;
         }

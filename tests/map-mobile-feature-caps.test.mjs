@@ -71,7 +71,7 @@ describe('mobile SVG map feature caps and label reflow skip (#4463 / U7)', () =>
       'desktop should keep label measurement enabled while mobile waits for the resume trigger',
     );
 
-    const applyBlock = sliceBetween('private applyTransform(): void {', 'private shouldUpdateLabelVisibility(): boolean');
+    const applyBlock = sliceBetween('private applyTransform(rebuildOnZoomVisibilityChange = true): void {', 'private shouldUpdateLabelVisibility(): boolean');
     const guardIdx = applyBlock.indexOf('if (this.shouldUpdateLabelVisibility()) this.updateLabelVisibility(zoom);');
     const zoomVisibilityIdx = applyBlock.indexOf('this.updateZoomLayerVisibility();');
     const emitIdx = applyBlock.indexOf('this.emitStateChange();');

@@ -177,6 +177,8 @@ interface PostBody {
   aiDigestEnabled?: boolean;
   // Optional ISO-3166 alpha-2 country-scope; relay re-validates + normalizes.
   countries?: string[];
+  // Optional watchlist ticker-scope (#4922 U3); relay re-validates + normalizes.
+  tickers?: string[];
 }
 
 export default async function handler(req: Request, ctx: { waitUntil: (p: Promise<unknown>) => void }): Promise<Response> {
@@ -365,7 +367,10 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       }
 
       if (action === 'set-alert-rules') {
-        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, countries } = body;
+        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, countries, tickers } = body;
+        if (tickers !== undefined && !Array.isArray(tickers)) {
+          return finish(json({ error: 'TICKERS_MUST_BE_ARRAY' }, 400, corsHeaders));
+        }
         const resp = await convexRelay({
           action: 'set-alert-rules',
           userId: session.userId,
@@ -376,8 +381,21 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           channels,
           aiDigestEnabled,
           countries,
+          tickers,
         });
         if (!resp.ok) {
+          // A 400 carries a structured validation code (TICKERS_LIMIT_EXCEEDED /
+          // COUNTRIES_LIMIT_EXCEEDED); 402 is the paywall (PRO_REQUIRED). Pass
+          // both through with body intact so the client renders the real reason
+          // instead of a generic toast — mirrors set-notification-config below.
+          if (resp.status === 400 || resp.status === 402) {
+            const text = await resp.text().catch(() => '');
+            let payload: unknown = { error: 'Validation failed' };
+            if (text) {
+              try { payload = JSON.parse(text); } catch { /* keep default */ }
+            }
+            return finish(json(payload, resp.status, corsHeaders));
+          }
           console.error('[notification-channels] POST set-alert-rules relay error:', resp.status);
           return finish(json({ error: 'Operation failed' }, 500, corsHeaders));
         }
@@ -446,7 +464,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       if (action === 'set-notification-config') {
         const VALID_SENSITIVITY = new Set(['all', 'high', 'critical']);
         const VALID_DIGEST_MODE = new Set(['realtime', 'daily', 'twice_daily', 'weekly']);
-        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, digestMode, digestHour, digestTimezone, countries } = body;
+        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, digestMode, digestHour, digestTimezone, countries, tickers } = body;
         if (!variant) return finish(json({ error: 'variant required' }, 400, corsHeaders));
         if (sensitivity !== undefined && !VALID_SENSITIVITY.has(sensitivity)) {
           return finish(json({ error: 'invalid sensitivity' }, 400, corsHeaders));
@@ -456,6 +474,9 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         }
         if (countries !== undefined && !Array.isArray(countries)) {
           return finish(json({ error: 'COUNTRIES_MUST_BE_ARRAY' }, 400, corsHeaders));
+        }
+        if (tickers !== undefined && !Array.isArray(tickers)) {
+          return finish(json({ error: 'TICKERS_MUST_BE_ARRAY' }, 400, corsHeaders));
         }
         const resp = await convexRelay({
           action: 'set-notification-config',
@@ -470,6 +491,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           digestHour,
           digestTimezone,
           countries,
+          tickers,
         });
         if (!resp.ok) {
           // 400 from convex/http means user-facing validation failure (e.g.

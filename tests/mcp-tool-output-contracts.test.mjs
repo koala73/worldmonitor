@@ -81,7 +81,7 @@ function minimalShape(schema) {
   return null;
 }
 
-describe('api/mcp.ts — per-tool output contract (envelope-shape, all 39 tools)', () => {
+describe('api/mcp.ts — per-tool output contract (envelope-shape, all 40 tools)', () => {
   let mod;
   let mcpHandler;
   let originalExecutes;
@@ -142,7 +142,7 @@ describe('api/mcp.ts — per-tool output contract (envelope-shape, all 39 tools)
     const matches = [...src.matchAll(/^\s{4}name:\s+'([a-z0-9_]+)'/gm)];
     return matches.map((m) => m[1]);
   })();
-  assert.ok(TOOL_NAMES.length >= 39, `expected >= 39 tools, got ${TOOL_NAMES.length}`);
+  assert.ok(TOOL_NAMES.length >= 40, `expected >= 40 tools, got ${TOOL_NAMES.length}`);
 
   for (const name of TOOL_NAMES) {
     it(`${name} — tools/call response validates against declared outputSchema`, async () => {

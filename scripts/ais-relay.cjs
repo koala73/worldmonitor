@@ -28,7 +28,13 @@ const v8 = require('v8');
 const { WebSocketServer, WebSocket } = require('ws');
 const { parseProxyConfig, resolveProxyString } = require('./_proxy-utils.cjs');
 const { countryNameToIso2 } = require('./shared/country-name-to-iso2.cjs');
-const { buildDedupMaterial } = require('./shared/notification-dedup.cjs');
+const {
+  buildDedupMaterial,
+  classifySetNxResult,
+  recordDedupOutcome,
+} = require('./shared/notification-dedup.cjs');
+const { maintainClosedMarketEquityKeys: maintainClosedMarketEquityKeysWithDeps } = require('./shared/closed-market-equity-maintenance.cjs');
+const { getUsEquitySession, isUsEquityTradingDay } = require('./shared/market-hours.cjs');
 const parseProxyUrl = parseProxyConfig;
 
 const httpsKeepAliveAgent = new https.Agent({ keepAlive: true, maxSockets: 6, timeout: 60_000 });
@@ -198,20 +204,38 @@ if (RELAY_SHARED_SECRET && ALLOW_UNAUTHENTICATED_RELAY) {
 // ─────────────────────────────────────────────────────────────
 const UPSTASH_REDIS_REST_URL = process.env.UPSTASH_REDIS_REST_URL || '';
 const UPSTASH_REDIS_REST_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || '';
+// Self-hosted deployments front Redis with a plain-http REST proxy
+// (docker/redis-rest-proxy.mjs) reachable only inside the compose network —
+// there's no TLS to terminate and no public exposure, so the https-only
+// requirement below (which exists to stop a *real* Upstash bearer token from
+// transiting the public internet in cleartext) doesn't apply there. This
+// gate stayed https-only after the local proxy shipped, so every seed loop
+// in this file silently no-ops against http://redis-rest:80 (see
+// SELF_HOSTING.md's redis-rest command allowlist note + 4+ days of
+// "[TransitSummary]"/"[CorridorRisk]"/etc. never firing).
+// UPSTASH_ALLOW_INSECURE_HTTP is an explicit, off-by-default opt-in (never
+// inferred from hostname/URL shape) so a genuine Upstash misconfiguration in
+// production can't silently downgrade to plaintext.
+const UPSTASH_ALLOW_INSECURE_HTTP = process.env.UPSTASH_ALLOW_INSECURE_HTTP === 'true';
 const UPSTASH_ENABLED = !!(
   UPSTASH_REDIS_REST_URL &&
   UPSTASH_REDIS_REST_TOKEN &&
-  UPSTASH_REDIS_REST_URL.startsWith('https://')
+  (UPSTASH_REDIS_REST_URL.startsWith('https://') ||
+    (UPSTASH_ALLOW_INSECURE_HTTP && UPSTASH_REDIS_REST_URL.startsWith('http://')))
 );
+// Node's https module can't speak to a plain-http endpoint — resolve the
+// matching client once at startup instead of hardcoding https.request at
+// each upstash* call site below.
+const UPSTASH_HTTP_MODULE = UPSTASH_REDIS_REST_URL.startsWith('http://') ? http : https;
 const RELAY_ENV_PREFIX = process.env.RELAY_ENV ? `${process.env.RELAY_ENV}:` : '';
 const OREF_REDIS_KEY = `${RELAY_ENV_PREFIX}relay:oref:history:v1`;
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36';
 
-if (UPSTASH_REDIS_REST_URL && !UPSTASH_REDIS_REST_URL.startsWith('https://')) {
-  console.warn('[Relay] UPSTASH_REDIS_REST_URL must start with https:// — Redis disabled');
+if (UPSTASH_REDIS_REST_URL && !UPSTASH_REDIS_REST_URL.startsWith('https://') && !UPSTASH_ALLOW_INSECURE_HTTP) {
+  console.warn('[Relay] UPSTASH_REDIS_REST_URL must start with https:// — Redis disabled (set UPSTASH_ALLOW_INSECURE_HTTP=true for a trusted internal http proxy)');
 }
 if (UPSTASH_ENABLED) {
-  console.log(`[Relay] Upstash Redis enabled (key: ${OREF_REDIS_KEY})`);
+  console.log(`[Relay] Upstash Redis enabled (key: ${OREF_REDIS_KEY}${UPSTASH_REDIS_REST_URL.startsWith('http://') ? ', insecure-http opt-in' : ''})`);
 }
 
 function upstashGet(key, onFailure) {
@@ -230,7 +254,7 @@ function upstashGet(key, onFailure) {
       resolve(null);
     };
     const url = new URL(`/get/${encodeURIComponent(key)}`, UPSTASH_REDIS_REST_URL);
-    const req = https.request(url, {
+    const req = UPSTASH_HTTP_MODULE.request(url, {
       method: 'GET',
       headers: { Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}` },
       timeout: 5000,
@@ -268,7 +292,7 @@ function upstashSet(key, value, ttlSeconds) {
     if (!UPSTASH_ENABLED) return resolve(false);
     const url = new URL('/', UPSTASH_REDIS_REST_URL);
     const body = JSON.stringify(['SET', key, JSON.stringify(value), 'EX', String(ttlSeconds)]);
-    const req = https.request(url, {
+    const req = UPSTASH_HTTP_MODULE.request(url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
@@ -296,7 +320,7 @@ function upstashExpire(key, ttlSeconds) {
     if (!UPSTASH_ENABLED) return resolve(false);
     const url = new URL('/', UPSTASH_REDIS_REST_URL);
     const body = JSON.stringify(['EXPIRE', key, String(ttlSeconds)]);
-    const req = https.request(url, {
+    const req = UPSTASH_HTTP_MODULE.request(url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
@@ -324,7 +348,7 @@ function upstashMGet(keys) {
     if (!UPSTASH_ENABLED || keys.length === 0) return resolve([]);
     const url = new URL('/pipeline', UPSTASH_REDIS_REST_URL);
     const body = JSON.stringify(keys.map((k) => ['GET', k]));
-    const req = https.request(url, {
+    const req = UPSTASH_HTTP_MODULE.request(url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
@@ -360,7 +384,7 @@ function upstashLpush(key, value) {
     const url = new URL('/', UPSTASH_REDIS_REST_URL);
     const serialized = typeof value === 'string' ? value : JSON.stringify(value);
     const body = JSON.stringify(['LPUSH', key, serialized]);
-    const req = https.request(url, {
+    const req = UPSTASH_HTTP_MODULE.request(url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
@@ -385,11 +409,11 @@ function upstashLpush(key, value) {
 
 function upstashSetNx(key, value, ttlSeconds) {
   return new Promise((resolve) => {
-    if (!UPSTASH_ENABLED) return resolve(null);
+    if (!UPSTASH_ENABLED) return resolve('disabled');
     const url = new URL('/', UPSTASH_REDIS_REST_URL);
     const serialized = typeof value === 'string' ? value : JSON.stringify(value);
     const body = JSON.stringify(['SET', key, serialized, 'NX', 'EX', String(ttlSeconds)]);
-    const req = https.request(url, {
+    const req = UPSTASH_HTTP_MODULE.request(url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
@@ -402,12 +426,12 @@ function upstashSetNx(key, value, ttlSeconds) {
       resp.on('end', () => {
         try {
           const parsed = JSON.parse(data);
-          resolve(parsed?.result === 'OK' ? 'OK' : null);
-        } catch { resolve(null); }
+          resolve(classifySetNxResult(parsed?.result));
+        } catch { resolve('error'); }
       });
     });
-    req.on('error', () => resolve(null));
-    req.on('timeout', () => { req.destroy(); resolve(null); });
+    req.on('error', () => resolve('error'));
+    req.on('timeout', () => { req.destroy(); resolve('error'); });
     req.end(body);
   });
 }
@@ -498,7 +522,7 @@ function upstashDel(key) {
     if (!UPSTASH_ENABLED) return resolve(false);
     const url = new URL('/', UPSTASH_REDIS_REST_URL);
     const body = JSON.stringify(['DEL', key]);
-    const req = https.request(url, {
+    const req = UPSTASH_HTTP_MODULE.request(url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
@@ -555,8 +579,8 @@ function envelopeWrite(key, data, ttlSeconds, meta) {
 // passes legacy shapes through unchanged. MUST be used for any seeded canonical
 // key — reading raw via upstashGet() on an enveloped key iterates {_seed, data}
 // as payload keys and silently corrupts downstream consumers.
-async function envelopeRead(key) {
-  const raw = await upstashGet(key);
+async function envelopeRead(key, onFailure) {
+  const raw = await upstashGet(key, onFailure);
   if (raw && typeof raw === 'object' && !Array.isArray(raw) && '_seed' in raw && 'data' in raw) {
     return raw.data;
   }
@@ -616,15 +640,24 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
     const variantSuffix = variant ? `:${variant}` : '';
     const dedupMaterial = buildDedupMaterial(eventType, payload?.title, payload?.coalesceKey);
     const dedupKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${notifySimpleHash(dedupMaterial)}`;
-    const isNew = await upstashSetNx(dedupKey, '1', dedupTtl);
-    if (!isNew) {
+    const dedupResult = await upstashSetNx(dedupKey, '1', dedupTtl);
+    const dedupDecision = recordDedupOutcome(dedupResult, {
+      surface: 'ais-relay',
+      eventType,
+      severity,
+      fallbackKey: dedupKey,
+      fallbackTtlSeconds: dedupTtl,
+      emitTelemetry: recordNotificationDedupSetNxError,
+    });
+    if (!dedupDecision.shouldPublish) {
+      if (!dedupDecision.isDuplicate) return;
       console.log(`[Notify] Dedup hit — ${eventType}: ${String(payload.title ?? '').slice(0, 60)}`);
       return;
     }
-    const msg = JSON.stringify({ eventType, payload, severity, ...(variant ? { variant } : {}), publishedAt: Date.now() });
+    const msg = JSON.stringify({ eventType, payload, severity: dedupDecision.severity, ...(variant ? { variant } : {}), publishedAt: Date.now() });
     const ok = await upstashLpush('wm:events:queue', msg);
     if (ok) {
-      console.log(`[Notify] Queued ${severity} event: ${eventType} — ${String(payload.title ?? '').slice(0, 60)}`);
+      console.log(`[Notify] Queued ${dedupDecision.severity} event: ${eventType} — ${String(payload.title ?? '').slice(0, 60)}`);
     } else {
       // Rollback the dedup key so the next poll cycle can retry — avoids silent
       // suppression for the full dedupTtl when a transient LPUSH fails.
@@ -2106,6 +2139,32 @@ function fetchFinnhubQuoteDirect(symbol, apiKey) {
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
+// #4922d closed-market equity gate. Last quote count published by
+// seedMarketQuotes — reused to refresh seed-meta freshness while skipping.
+let _lastEquityQuoteCount = 0;
+// Log once per open↔closed transition, not every 5-minute cycle.
+let _equityGateLoggedClosed = false;
+
+// While the US market is fully closed (weekend / NYSE holiday — NOT weekday
+// overnight: the MARKET_SYMBOLS list mixes NSE tickers whose IST session sits
+// inside the US overnight window), skip the equity fetch+publish and instead
+// keep the last-good keys alive: extend TTL on both published keys and
+// refresh seed-meta:market:stocks fetchedAt so /api/health (maxStaleMin 30)
+// stays green across a 60h+ weekend. Returns true when last-good was
+// preserved; false means the keys are missing/expired and the caller must
+// fall back to a real fetch to repopulate.
+async function maintainClosedMarketEquityKeys() {
+  return maintainClosedMarketEquityKeysWithDeps({
+    marketSymbols: MARKET_SYMBOLS,
+    marketSeedTtl: MARKET_SEED_TTL,
+    lastEquityQuoteCount: _lastEquityQuoteCount,
+    upstashExpire,
+    upstashGet,
+    upstashSet,
+    nowMs: () => Date.now(),
+  });
+}
+
 async function seedMarketQuotes() {
   const quotes = [];
   const finnhubSymbols = MARKET_SYMBOLS.filter((s) => !YAHOO_ONLY.has(s));
@@ -2144,6 +2203,7 @@ async function seedMarketQuotes() {
   // Bootstrap-friendly fixed key — frontend hydrates from /api/bootstrap without RPC
   const ok2 = await envelopeWrite('market:stocks-bootstrap:v1', payload, MARKET_SEED_TTL, { recordCount: quotes.length, sourceVersion: 'market-stocks' });
   const ok3 = await upstashSet('seed-meta:market:stocks', { fetchedAt: Date.now(), recordCount: quotes.length }, 604800);
+  _lastEquityQuoteCount = quotes.length;
   console.log(`[Market] Seeded ${quotes.length}/${MARKET_SYMBOLS.length} quotes (redis: ${ok && ok2 && ok3 ? 'OK' : 'PARTIAL'})`);
   const movingStocks = quotes.filter(q => Math.abs(q.change ?? 0) >= 5).sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
   for (const q of movingStocks.slice(0, 3)) {
@@ -2701,7 +2761,25 @@ async function seedTokenPanels() {
 
 async function seedAllMarketData() {
   const t0 = Date.now();
-  const q = await seedMarketQuotes();
+  // Equity gate (#4922d): weekends/holidays skip the stocks fetch+publish.
+  // Crypto (24/7), commodities, gulf, ETF and token panels are untouched.
+  let q = 0;
+  let equitySkipped = false;
+  if (!isUsEquityTradingDay()) {
+    equitySkipped = await maintainClosedMarketEquityKeys();
+    if (equitySkipped) {
+      if (!_equityGateLoggedClosed) {
+        console.log(`[Market] US market closed (session=${getUsEquitySession()}) — skipping equity fetch, extended TTL on last-good keys`);
+        _equityGateLoggedClosed = true;
+      }
+    } else {
+      console.warn('[Market] US market closed but last-good equity keys missing — fetching anyway');
+    }
+  } else if (_equityGateLoggedClosed) {
+    console.log(`[Market] US market session now ${getUsEquitySession()} — resuming equity fetch`);
+    _equityGateLoggedClosed = false;
+  }
+  if (!equitySkipped) q = await seedMarketQuotes();
   const c = await seedCommodityQuotes();
   const s = await seedSectorSummary();
   const g = await seedGulfQuotes();
@@ -6794,6 +6872,9 @@ const relayMetricsLifetime = {
   openskyMiss: 0,
   openskyUpstreamFetches: 0,
   drops: 0,
+  notificationDedupSetNxErrors: 0,
+  notificationDedupSetNxFailOpen: 0,
+  notificationDedupSetNxFailClosed: 0,
 };
 let relayMetricsQueueMaxLifetime = 0;
 let relayMetricsCurrentSec = 0;
@@ -6811,6 +6892,9 @@ function createRelayMetricsBucket() {
     openskyMiss: 0,
     openskyUpstreamFetches: 0,
     drops: 0,
+    notificationDedupSetNxErrors: 0,
+    notificationDedupSetNxFailOpen: 0,
+    notificationDedupSetNxFailClosed: 0,
     queueMax: 0,
   };
 }
@@ -6886,6 +6970,9 @@ function getRelayRollingMetrics() {
     rollup.openskyMiss += bucket.openskyMiss;
     rollup.openskyUpstreamFetches += bucket.openskyUpstreamFetches;
     rollup.drops += bucket.drops;
+    rollup.notificationDedupSetNxErrors += bucket.notificationDedupSetNxErrors;
+    rollup.notificationDedupSetNxFailOpen += bucket.notificationDedupSetNxFailOpen;
+    rollup.notificationDedupSetNxFailClosed += bucket.notificationDedupSetNxFailClosed;
     if (bucket.queueMax > rollup.queueMax) rollup.queueMax = bucket.queueMax;
   }
 
@@ -6914,6 +7001,11 @@ function getRelayRollingMetrics() {
       dropsPerSec: Number((rollup.drops / METRICS_WINDOW_SECONDS).toFixed(4)),
       upstreamPaused,
     },
+    notifications: {
+      dedupSetNxErrors: rollup.notificationDedupSetNxErrors,
+      dedupSetNxFailOpen: rollup.notificationDedupSetNxFailOpen,
+      dedupSetNxFailClosed: rollup.notificationDedupSetNxFailClosed,
+    },
     lifetime: {
       openskyRequests: relayMetricsLifetime.openskyRequests,
       openskyCacheHit: relayMetricsLifetime.openskyCacheHit,
@@ -6922,9 +7014,18 @@ function getRelayRollingMetrics() {
       openskyMiss: relayMetricsLifetime.openskyMiss,
       openskyUpstreamFetches: relayMetricsLifetime.openskyUpstreamFetches,
       drops: relayMetricsLifetime.drops,
+      notificationDedupSetNxErrors: relayMetricsLifetime.notificationDedupSetNxErrors,
+      notificationDedupSetNxFailOpen: relayMetricsLifetime.notificationDedupSetNxFailOpen,
+      notificationDedupSetNxFailClosed: relayMetricsLifetime.notificationDedupSetNxFailClosed,
       queueMax: relayMetricsQueueMaxLifetime,
     },
   };
+}
+
+function recordNotificationDedupSetNxError({ line, action }) {
+  incrementRelayMetric('notificationDedupSetNxErrors');
+  incrementRelayMetric(action === 'fail_open' ? 'notificationDedupSetNxFailOpen' : 'notificationDedupSetNxFailClosed');
+  console.warn(line);
 }
 
 // AIS aggregate state for snapshot API (server-side fanout)
@@ -7719,8 +7820,17 @@ function detectTrafficAnomalyRelay(history, threatLevel) {
 }
 
 async function seedTransitSummaries() {
-  const pw = await envelopeRead(PORTWATCH_REDIS_KEY);
-  if (!pw || typeof pw !== 'object' || Object.keys(pw).length === 0) return;
+  let pwFailureReason = null;
+  const pw = await envelopeRead(PORTWATCH_REDIS_KEY, (reason) => { pwFailureReason = reason; });
+  if (!pw || typeof pw !== 'object' || Object.keys(pw).length === 0) {
+    const reason = !UPSTASH_ENABLED
+      ? 'Upstash Redis disabled — see [Relay] startup warning (UPSTASH_REDIS_REST_URL/UPSTASH_ALLOW_INSECURE_HTTP)'
+      : pwFailureReason
+        ? `read failed: ${pwFailureReason}`
+        : 'key empty or absent — upstream seeder has not written it yet';
+    console.warn(`[TransitSummary] Skipped — ${PORTWATCH_REDIS_KEY} unavailable (${reason})`);
+    return;
+  }
 
   if (!latestCorridorRiskData) {
     const persisted = await envelopeRead(CORRIDOR_RISK_REDIS_KEY);
