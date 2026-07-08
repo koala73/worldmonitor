@@ -40,6 +40,9 @@ export interface AlertRule {
   aiDigestEnabled?: boolean;
   // Optional country-scope (ISO-3166 alpha-2). Empty/absent → all countries.
   countries?: string[];
+  // Optional watchlist ticker-scope (#4922 U3). OPT-IN scoped, unlike
+  // countries: empty/absent → NO watchlist_story_alert delivery.
+  tickers?: string[];
 }
 
 export interface ChannelsData {
@@ -172,6 +175,30 @@ export async function setDigestSettings(settings: {
 }
 
 /**
+ * Watchlist story alerts (#4922 U3): re-sync the alert rule's ticker-scope
+ * after the user edits their market watchlist.
+ *
+ * No-ops (without any network write) unless the user's rule is enabled AND
+ * has opted into 'watchlist_story_alert' — callers additionally gate on
+ * PRO tier + signed-in state before invoking, so free/anon watchlist edits
+ * never generate 4xx traffic against the PRO-gated endpoint.
+ */
+export async function syncWatchlistTickersToAlertRule(symbols: string[]): Promise<void> {
+  const data = await getChannelsData();
+  const rule = data.alertRules?.[0];
+  if (!rule?.enabled || !rule.eventTypes?.includes('watchlist_story_alert')) return;
+  await saveAlertRules({
+    variant: rule.variant,
+    enabled: rule.enabled,
+    eventTypes: rule.eventTypes,
+    sensitivity: rule.sensitivity,
+    channels: rule.channels,
+    // countries / aiDigestEnabled omitted on purpose — preserve-on-omit.
+    tickers: symbols,
+  });
+}
+
+/**
  * Thrown when the server rejects a (digestMode, sensitivity) pair as incompatible
  * — currently the (realtime, all) combination. UI catches this specifically to
  * render the helper text inline rather than surfacing a generic error.
@@ -201,6 +228,7 @@ export async function setNotificationConfig(args: {
   digestHour?: number;
   digestTimezone?: string;
   countries?: string[];
+  tickers?: string[];
 }): Promise<void> {
   const res = await authFetch('/api/notification-channels', {
     method: 'POST',

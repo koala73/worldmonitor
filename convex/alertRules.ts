@@ -134,6 +134,49 @@ function normalizeCountries(input: string[]): string[] {
   return cleaned;
 }
 
+// Same defensive ceiling as COUNTRIES_MAX — mirrors the client-side market
+// watchlist cap (src/services/market-watchlist.ts stops at 50 entries).
+const TICKERS_MAX = 50;
+
+/**
+ * Shape-validate + normalize an inbound `tickers` array (#4922 U3).
+ * Modeled EXACTLY on normalizeCountries above:
+ *  - trim each entry
+ *  - uppercase
+ *  - keep only `^[A-Z][A-Z0-9&-]{0,11}(\.[A-Z]{1,3})?$` shapes — plain
+ *    symbols (AAPL), share-class/conglomerate forms (BRK-B, M&M.NS) and
+ *    dot-suffixed exchange listings (RELIANCE.NS, BHARTIARTL.NS — NSE
+ *    bases run to 10 chars); silently drop the rest (^GSPC indices, GC=F
+ *    futures, cashtags, prose). Every non-index shared/stocks.json symbol
+ *    must pass — the extractor emits exactly those for company-name hits,
+ *    and a dropped shape here means that ticker can never alert.
+ *  - dedupe (preserves first-seen order)
+ *  - cap at TICKERS_MAX
+ *
+ * NOT a registry check against shared/stocks.json — a shape-valid symbol
+ * the extractor never emits simply never intersects at the relay. Keeps
+ * alertRules independently shippable, same rationale as countries.
+ */
+function normalizeTickers(input: string[]): string[] {
+  const cleaned: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of input) {
+    if (typeof raw !== "string") continue;
+    const upper = raw.trim().toUpperCase();
+    if (!/^[A-Z][A-Z0-9&-]{0,11}(\.[A-Z]{1,3})?$/.test(upper)) continue;
+    if (seen.has(upper)) continue;
+    seen.add(upper);
+    cleaned.push(upper);
+  }
+  if (cleaned.length > TICKERS_MAX) {
+    throw new ConvexError({
+      code: "TICKERS_LIMIT_EXCEEDED",
+      message: `tickers list capped at ${TICKERS_MAX} entries`,
+    });
+  }
+  return cleaned;
+}
+
 export const getAlertRules = query({
   args: {},
   handler: async (ctx) => {
@@ -157,6 +200,9 @@ export const setAlertRules = mutation({
     // Optional country-scope (ISO-3166 alpha-2). Omit to preserve existing.
     // Pass [] to explicitly reset to "all countries". Pass [...] to restrict.
     countries: v.optional(v.array(v.string())),
+    // Optional watchlist ticker-scope (#4922 U3). Omit to preserve existing;
+    // [] resets. Unlike countries, [] means "no watchlist story alerts".
+    tickers: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -180,6 +226,9 @@ export const setAlertRules = mutation({
     const normalizedCountries = args.countries !== undefined
       ? normalizeCountries(args.countries)
       : undefined;
+    const normalizedTickers = args.tickers !== undefined
+      ? normalizeTickers(args.tickers)
+      : undefined;
 
     const now = Date.now();
 
@@ -199,6 +248,8 @@ export const setAlertRules = mutation({
       // countries:[] writes [] (explicit "all countries" reset). Caller omitting
       // the field leaves the existing value intact.
       if (normalizedCountries !== undefined) patch.countries = normalizedCountries;
+      // Same preserve-on-omit contract for tickers ([] = explicit opt-out).
+      if (normalizedTickers !== undefined) patch.tickers = normalizedTickers;
       await ctx.db.patch(existing._id, patch);
     } else {
       await ctx.db.insert("alertRules", {
@@ -212,6 +263,7 @@ export const setAlertRules = mutation({
         // On insert, store undefined when caller omitted the field so existing
         // backward-compat tests (rule has no `countries` field) still hold.
         countries: normalizedCountries,
+        tickers: normalizedTickers,
         updatedAt: now,
       });
     }
@@ -299,6 +351,7 @@ export const setAlertRulesForUser = internalMutation({
     channels: v.array(channelTypeValidator),
     aiDigestEnabled: v.optional(v.boolean()),
     countries: v.optional(v.array(v.string())),
+    tickers: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const { userId, ...rest } = args;
@@ -318,6 +371,9 @@ export const setAlertRulesForUser = internalMutation({
     const normalizedCountries = rest.countries !== undefined
       ? normalizeCountries(rest.countries)
       : undefined;
+    const normalizedTickers = rest.tickers !== undefined
+      ? normalizeTickers(rest.tickers)
+      : undefined;
 
     const now = Date.now();
     if (existing) {
@@ -332,6 +388,7 @@ export const setAlertRulesForUser = internalMutation({
       if (rest.sensitivity !== undefined) patch.sensitivity = rest.sensitivity;
       if (rest.aiDigestEnabled !== undefined) patch.aiDigestEnabled = rest.aiDigestEnabled;
       if (normalizedCountries !== undefined) patch.countries = normalizedCountries;
+      if (normalizedTickers !== undefined) patch.tickers = normalizedTickers;
       await ctx.db.patch(existing._id, patch);
     } else {
       await ctx.db.insert("alertRules", {
@@ -343,6 +400,7 @@ export const setAlertRulesForUser = internalMutation({
         channels: rest.channels,
         aiDigestEnabled: rest.aiDigestEnabled,
         countries: normalizedCountries,
+        tickers: normalizedTickers,
         updatedAt: now,
       });
     }
@@ -571,6 +629,7 @@ export const setNotificationConfigForUser = internalMutation({
     digestHour: v.optional(v.number()),
     digestTimezone: v.optional(v.string()),
     countries: v.optional(v.array(v.string())),
+    tickers: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const { userId, variant } = args;
@@ -613,6 +672,9 @@ export const setNotificationConfigForUser = internalMutation({
     const normalizedCountries = args.countries !== undefined
       ? normalizeCountries(args.countries)
       : undefined;
+    const normalizedTickers = args.tickers !== undefined
+      ? normalizeTickers(args.tickers)
+      : undefined;
 
     const now = Date.now();
 
@@ -628,6 +690,7 @@ export const setNotificationConfigForUser = internalMutation({
       if (args.digestHour !== undefined) patch.digestHour = args.digestHour;
       if (args.digestTimezone !== undefined) patch.digestTimezone = args.digestTimezone;
       if (normalizedCountries !== undefined) patch.countries = normalizedCountries;
+      if (normalizedTickers !== undefined) patch.tickers = normalizedTickers;
       await ctx.db.patch(existing._id, patch);
     } else {
       await ctx.db.insert("alertRules", {
@@ -642,6 +705,7 @@ export const setNotificationConfigForUser = internalMutation({
         digestHour: args.digestHour,
         digestTimezone: args.digestTimezone,
         countries: normalizedCountries,
+        tickers: normalizedTickers,
         updatedAt: now,
       });
     }

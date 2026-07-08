@@ -25,6 +25,12 @@ import {
 
 const require = createRequire(import.meta.url);
 const DIGEST_DIPLOMACY_DATA = require('../shared/diplomacy-keywords.json');
+// Watchlist story alerts (#4922 U3): stocks.json feeds the ticker
+// dictionary; loaded via the createRequire JSON pattern this file already
+// uses for diplomacy-keywords.json (avoids the two-sided `with {type:
+// 'json'}` bundler/node trap — see vercel-edge-gotchas).
+const WATCHLIST_STOCKS_DATA = require('../shared/stocks.json');
+const { buildDedupMaterial } = require('./shared/notification-dedup.cjs');
 const { decrypt } = require('./lib/crypto.cjs');
 const {
   assertNotificationWebhookDeliveryUrlSafe,
@@ -91,6 +97,12 @@ import {
 import { readCooldownConfig } from './lib/digest-cooldown-config.mjs';
 import { evaluateCooldown } from './lib/digest-cooldown-decision.mjs';
 import { emitCooldownShadowLog } from './lib/digest-cooldown-shadow-log.mjs';
+import { buildTickerDictionary } from '../shared/ticker-extract.js';
+import {
+  buildWatchlistStoryEvents,
+  resolveWatchlistScoreMin,
+  WATCHLIST_STORY_EVENT_TYPE,
+} from './lib/watchlist-story-events.mjs';
 
 const EPHEMERAL_LIVE_LOG_TITLE_SAMPLE_LIMIT = 5;
 const EPHEMERAL_LIVE_LOG_TITLE_MAX_CHARS = 160;
@@ -551,6 +563,144 @@ function matchesSensitivity(ruleSensitivity, severity) {
   if (ruleSensitivity === 'all') return true;
   if (ruleSensitivity === 'high') return severity === 'high' || severity === 'critical';
   return severity === 'critical';
+}
+
+// ── Watchlist story alerts (#4922 item e / U3) ───────────────────────────────
+//
+// @notification-source: rss
+//   The watchlist publisher below builds payload.title from RSS story-track
+//   rows (title persisted at ingest by list-feed-digest). Payload shape is
+//   fixed by the U3 design: { title, link, source, tickers, importanceScore,
+//   coalesceKey } — no `description` field is emitted. Registered in
+//   tests/notification-relay-payload-audit.test.mjs.
+//
+// Once per cron tick (every 30 min), independent of digest rules and digest
+// delivery: scan the story accumulator, extract tickers from title +
+// description, and enqueue one `watchlist_story_alert` event per story whose
+// importance score clears WATCHLIST_STORY_SCORE_MIN. The notification relay
+// fans events out to PRO users whose alert rule opted in AND whose
+// rule.tickers intersects payload.tickers.
+//
+// Re-alert protection: publisher-side SET NX on the shared scan-dedup
+// keyspace, keyed on the coalesceKey (`watchlist:${storyHash}` — stable
+// story identity) via the shared buildDedupMaterial helper, 24h TTL — a
+// story that stays in the 24h scan window alerts once, not every 30-min
+// tick. LPUSH failure rolls the dedup key back so the next tick retries
+// (ais-relay publishNotificationEvent parity).
+
+const WATCHLIST_TICKER_DICTIONARY = buildTickerDictionary(WATCHLIST_STOCKS_DATA?.symbols ?? []);
+const WATCHLIST_SCAN_DEDUP_TTL_SECONDS = 24 * 60 * 60;
+const WATCHLIST_SCAN_WINDOW_MS = DIGEST_LOOKBACK_MS; // same 24h window the digest reads
+// Ticker-bearing stories live in the general pool AND the finance pool;
+// scan both (hash-deduped) so finance-only feeds still alert. Events carry
+// no `variant`, so the relay fans them out across variants.
+const WATCHLIST_SCAN_ACCUMULATORS = [
+  'digest:accumulator:v1:full:en',
+  'digest:accumulator:v1:finance:en',
+];
+
+/**
+ * Publisher: SET NX scan-dedup → LPUSH wm:events:queue → DEL rollback on
+ * LPUSH failure. Mirrors ais-relay.cjs publishNotificationEvent over this
+ * file's upstashRest helper. Returns true when the event was enqueued.
+ */
+async function publishNotificationEvent({ eventType, payload, severity, dedupTtl = WATCHLIST_SCAN_DEDUP_TTL_SECONDS }) {
+  const dedupMaterial = buildDedupMaterial(eventType, payload?.title, payload?.coalesceKey);
+  const dedupHash = createHash('sha256').update(dedupMaterial).digest('hex').slice(0, 16);
+  const dedupKey = `wm:notif:scan-dedup:${eventType}:${dedupHash}`;
+  const isNew = (await upstashRest('SET', dedupKey, '1', 'NX', 'EX', String(dedupTtl))) === 'OK';
+  if (!isNew) return false;
+  const msg = JSON.stringify({ eventType, payload, severity, publishedAt: Date.now() });
+  const pushed = await upstashRest('LPUSH', 'wm:events:queue', msg);
+  if (typeof pushed !== 'number') {
+    // Roll back the dedup key so the next cron tick can retry — otherwise a
+    // transient LPUSH failure silently suppresses the alert for the full TTL.
+    console.warn(`[digest] watchlist LPUSH failed for ${eventType} — rolling back dedup key`);
+    await upstashRest('DEL', dedupKey);
+    return false;
+  }
+  console.log(
+    `[digest] watchlist queued ${severity} ${eventType}: ` +
+      `${String(payload?.title ?? '').slice(0, 60)} tickers=${(payload?.tickers ?? []).join(',')}`,
+  );
+  return true;
+}
+
+/**
+ * One watchlist scan per cron tick. Best-effort and self-contained: any
+ * failure logs and returns — it must never block digest delivery, and a
+ * digest failure must never block it (hence the call sits at the very top
+ * of main(), before the digest-rules fetch).
+ */
+async function scanAndEnqueueWatchlistStoryEvents(nowMs) {
+  try {
+    const scoreMin = resolveWatchlistScoreMin(process.env);
+    const windowStart = String(nowMs - WATCHLIST_SCAN_WINDOW_MS);
+    const seenHashes = new Set();
+    const hashes = [];
+    for (const accKey of WATCHLIST_SCAN_ACCUMULATORS) {
+      const members = await upstashRest('ZRANGEBYSCORE', accKey, windowStart, String(nowMs));
+      if (!Array.isArray(members)) continue;
+      for (const h of members) {
+        if (typeof h === 'string' && h.length > 0 && !seenHashes.has(h)) {
+          seenHashes.add(h);
+          hashes.push(h);
+        }
+      }
+    }
+    if (hashes.length === 0) return;
+
+    const trackResults = await readStoryTracksChunked(hashes, upstashPipeline);
+    if (trackResults === null) {
+      console.warn('[digest] watchlist scan: story-track read failed — skipping this tick');
+      return;
+    }
+
+    const candidates = [];
+    for (let i = 0; i < hashes.length; i++) {
+      const raw = trackResults[i]?.result;
+      if (!Array.isArray(raw) || raw.length === 0) continue;
+      const track = flatArrayToObject(raw);
+      if (!track.title) continue;
+      const currentScore = parseInt(track.currentScore ?? '0', 10);
+      if (!Number.isFinite(currentScore) || currentScore < scoreMin) continue;
+      candidates.push({
+        hash: hashes[i],
+        title: track.title,
+        description: typeof track.description === 'string' ? track.description : '',
+        link: track.link ?? '',
+        source: '',
+        currentScore,
+      });
+    }
+    if (candidates.length === 0) return;
+
+    // Hydrate the primary source for the bounded above-threshold set only
+    // (one SMEMBERS per candidate). Best-effort: a failed pipeline leaves
+    // source='' — the relay renders "Source:" only when non-empty.
+    try {
+      const srcResults = await upstashPipeline(
+        candidates.map((c) => ['SMEMBERS', `story:sources:v1:${c.hash}`]),
+      );
+      for (let i = 0; i < candidates.length; i++) {
+        const arr = srcResults[i]?.result;
+        if (Array.isArray(arr) && typeof arr[0] === 'string') candidates[i].source = arr[0];
+      }
+    } catch { /* best-effort */ }
+
+    const events = buildWatchlistStoryEvents(candidates, WATCHLIST_TICKER_DICTIONARY, scoreMin);
+    let enqueued = 0;
+    for (const ev of events) {
+      if (await publishNotificationEvent(ev)) enqueued++;
+    }
+    console.log(
+      `[digest] watchlist scan: hashes=${hashes.length} candidates=${candidates.length} ` +
+        `events=${events.length} enqueued=${enqueued} score_min=${scoreMin} ` +
+        `event_type=${WATCHLIST_STORY_EVENT_TYPE}`,
+    );
+  } catch (err) {
+    console.warn(`[digest] watchlist scan failed (non-fatal): ${err?.message ?? err}`);
+  }
 }
 
 const DIGEST_DIPLOMACY_KEYWORDS = DIGEST_DIPLOMACY_DATA.diplomacyKeywords;
@@ -2206,6 +2356,11 @@ async function main() {
   const nowMs = Date.now();
   digestRunStartedAtMs = nowMs;
   console.log('[digest] Cron run start:', new Date(nowMs).toISOString());
+
+  // Watchlist story alerts (#4922 U3): enqueue BEFORE the digest-rules fetch
+  // so a failed/empty rules fetch can't suppress the scan, and independent of
+  // whether any story also ships in a digest. Never throws.
+  await scanAndEnqueueWatchlistStoryEvents(nowMs);
 
   let rules;
   try {

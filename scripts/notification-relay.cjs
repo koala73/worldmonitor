@@ -750,6 +750,61 @@ function eventMatchesCountryScope(event, rule) {
   return rule.countries.includes(normalized);
 }
 
+// ── Watchlist story alerts (#4922 item e / U3) ───────────────────────────────
+
+const WATCHLIST_STORY_EVENT_TYPE = 'watchlist_story_alert';
+
+/**
+ * Per-rule eventTypes gate, extracted from the inline matching expression so
+ * `watchlist_story_alert` can be OPT-IN ONLY:
+ *
+ *  - Broadcast event types keep the legacy semantics: an empty eventTypes
+ *    list is a wildcard ("all events"), a populated list is a restriction.
+ *  - `watchlist_story_alert` is NEVER covered by the empty wildcard — the
+ *    rule must explicitly list it. Every production rule today carries
+ *    eventTypes: [] (the settings UI hard-coded it), so without this carve-
+ *    out shipping the new event type would blast ticker-scoped alerts at
+ *    every wildcard subscriber who never opted in.
+ *  - Symmetrically, the watchlist opt-in entry does NOT count toward the
+ *    broadcast restriction: eventTypes ['watchlist_story_alert'] still
+ *    behaves as a wildcard for rss_alert & friends. Otherwise the settings
+ *    UI toggling the watchlist row ON would silently unsubscribe the user
+ *    from every other alert.
+ */
+function ruleMatchesEventType(rule, event) {
+  if (event?.eventType === WATCHLIST_STORY_EVENT_TYPE) {
+    return rule.eventTypes.includes(WATCHLIST_STORY_EVENT_TYPE);
+  }
+  const broadcastTypes = rule.eventTypes.filter((t) => t !== WATCHLIST_STORY_EVENT_TYPE);
+  return broadcastTypes.length === 0 || broadcastTypes.includes(event.eventType);
+}
+
+/**
+ * Filter `watchlist_story_alert` events by per-rule ticker-scope.
+ *
+ * ASYMMETRY vs eventMatchesCountryScope (deliberate, documented): for
+ * countries, an empty/absent list means "unscoped — deliver everything".
+ * For tickers, an empty/absent list means "NO watchlist story alerts" —
+ * the feature is opt-in scoped by construction (the alert only makes sense
+ * relative to a user's market watchlist; there is no meaningful "all
+ * tickers" firehose to fall back to).
+ *
+ * Delivery requires a non-empty intersection between `rule.tickers`
+ * (normalized uppercase by convex/alertRules.ts normalizeTickers) and
+ * `payload.tickers` (uppercase by shared/ticker-extract.js). The uppercase
+ * re-normalization here is defensive against unnormalized legacy rows.
+ *
+ * Every other event type passes through untouched.
+ */
+function eventMatchesTickerScope(event, rule) {
+  if (event?.eventType !== WATCHLIST_STORY_EVENT_TYPE) return true;
+  if (!Array.isArray(rule.tickers) || rule.tickers.length === 0) return false;
+  const eventTickers = Array.isArray(event?.payload?.tickers) ? event.payload.tickers : [];
+  if (eventTickers.length === 0) return false;
+  const ruleSet = new Set(rule.tickers.map((t) => String(t).toUpperCase()));
+  return eventTickers.some((t) => ruleSet.has(String(t).toUpperCase()));
+}
+
 function shouldNotify(rule, event) {
   // Coerce (effective realtime + non-critical) → 'critical' before consulting
   // sensitivity in either branch. The mutation validators + migration make this
@@ -1025,9 +1080,10 @@ async function processEvent(event) {
   // fan out to every other Pro subscriber — see todo #196.
   const matching = enabledRules.filter(r =>
     (!r.digestMode || r.digestMode === 'realtime') &&
-    (r.eventTypes.length === 0 || r.eventTypes.includes(event.eventType)) &&
+    ruleMatchesEventType(r, event) &&
     shouldNotify(r, event) &&
     eventMatchesCountryScope(event, r) &&
+    eventMatchesTickerScope(event, r) &&
     (!event.variant || !r.variant || r.variant === event.variant) &&
     (!event.userId || r.userId === event.userId)
   );

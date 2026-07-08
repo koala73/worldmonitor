@@ -130,6 +130,11 @@ export default defineSchema({
     aiDigestEnabled: v.optional(v.boolean()), // opt-in AI executive summary in digests (default true for new rules)
     // Optional country-scope (ISO-3166 alpha-2). Empty/absent → all countries (current behavior).
     countries: v.optional(v.array(v.string())),
+    // Optional watchlist ticker-scope (#4922 U3, e.g. ["AAPL", "RELIANCE.NS"]).
+    // Unlike `countries`, this is OPT-IN scoped: empty/absent → the rule
+    // receives NO `watchlist_story_alert` events (the relay requires a
+    // non-empty intersection with the story's tickers).
+    tickers: v.optional(v.array(v.string())),
   })
     .index("by_user", ["userId"])
     .index("by_user_variant", ["userId", "variant"])

@@ -500,6 +500,7 @@ http.route({
       digestTimezone?: string;
       aiDigestEnabled?: boolean;
       countries?: string[];
+      tickers?: string[];
     };
     try {
       body = await request.json() as typeof body;
@@ -613,7 +614,8 @@ http.route({
           !Array.isArray(body.eventTypes) ||
           !Array.isArray(body.channels) ||
           (body.sensitivity !== undefined && !VALID_SENSITIVITY.has(body.sensitivity as string)) ||
-          (body.countries !== undefined && !Array.isArray(body.countries))
+          (body.countries !== undefined && !Array.isArray(body.countries)) ||
+          (body.tickers !== undefined && !Array.isArray(body.tickers))
         ) {
           return new Response(JSON.stringify({ error: "MISSING_REQUIRED_FIELDS" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
@@ -634,6 +636,8 @@ http.route({
           aiDigestEnabled: typeof body.aiDigestEnabled === "boolean" ? body.aiDigestEnabled : undefined,
           // ISO-3166 alpha-2 country-scope; mutation re-validates + normalizes.
           countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
+          // Watchlist ticker-scope (#4922 U3); mutation re-validates + normalizes.
+          tickers: Array.isArray(body.tickers) ? (body.tickers as string[]) : undefined,
         });
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
@@ -698,6 +702,9 @@ http.route({
         if (body.countries !== undefined && !Array.isArray(body.countries)) {
           return new Response(JSON.stringify({ error: "COUNTRIES_MUST_BE_ARRAY" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
+        if (body.tickers !== undefined && !Array.isArray(body.tickers)) {
+          return new Response(JSON.stringify({ error: "TICKERS_MUST_BE_ARRAY" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
         try {
           await ctx.runMutation((internal as any).alertRules.setNotificationConfigForUser, {
             userId,
@@ -711,6 +718,7 @@ http.route({
             digestHour: typeof body.digestHour === "number" ? body.digestHour : undefined,
             digestTimezone: typeof body.digestTimezone === "string" ? body.digestTimezone : undefined,
             countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
+            tickers: Array.isArray(body.tickers) ? (body.tickers as string[]) : undefined,
           });
         } catch (err: unknown) {
           // Translate structured ConvexError codes into machine-readable HTTP
