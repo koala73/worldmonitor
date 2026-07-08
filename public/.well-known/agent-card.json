@@ -1,0 +1,42 @@
+{
+  "protocolVersion": "0.3.0",
+  "name": "WorldMonitor Intelligence Concierge",
+  "description": "Agent-facing concierge for WorldMonitor's live global-intelligence platform. Send a natural-language description of the data you need (conflicts, markets, chokepoints, country risk, energy, cyber, forecasts…) and it routes you to the best-fit WorldMonitor MCP tools and REST operations, with auth guidance and a live data-freshness probe. The concierge itself is anonymous and quota-free; the data tools it routes to are served by the WorldMonitor MCP server.",
+  "url": "https://www.worldmonitor.app/a2a",
+  "preferredTransport": "JSONRPC",
+  "version": "1.0.0",
+  "iconUrl": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
+  "documentationUrl": "https://www.worldmonitor.app/docs/documentation",
+  "provider": {
+    "organization": "World Monitor",
+    "url": "https://www.worldmonitor.app"
+  },
+  "capabilities": {
+    "streaming": false,
+    "pushNotifications": false,
+    "stateTransitionHistory": false
+  },
+  "supportsAuthenticatedExtendedCard": false,
+  "defaultInputModes": ["text/plain"],
+  "defaultOutputModes": ["text/plain", "application/json"],
+  "skills": [
+    {
+      "id": "route-to-tool",
+      "name": "Capability discovery and tool routing",
+      "description": "Describe the intelligence data you need in plain language; returns the best-fit WorldMonitor MCP tools (from the live 39-tool catalog) plus the MCP/REST endpoints and auth needed to call them.",
+      "tags": ["discovery", "routing", "mcp", "geopolitics", "markets", "supply-chain"],
+      "examples": [
+        "Which tool gives live shipping chokepoint status?",
+        "I need country risk and instability scores for Iran",
+        "Where do I get commodity prices and energy disruption data?"
+      ]
+    },
+    {
+      "id": "check-data-freshness",
+      "name": "Data freshness probe",
+      "description": "Ask whether WorldMonitor's data is fresh; returns the live seed-meta freshness envelope (cached_at + staleness) from the public, quota-free health surface.",
+      "tags": ["health", "freshness", "monitoring"],
+      "examples": ["Is the market data fresh right now?"]
+    }
+  ]
+}

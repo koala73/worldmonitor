@@ -2,6 +2,8 @@ import { Ratelimit, type Duration } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../api/_sentry-edge.js';
+// @ts-expect-error — JS module, no declaration file
+import { durationToSeconds, limitWithFallback, resetRateLimitFallbackForTest } from '../../api/_rate-limit-fallback.js';
 
 // @upstash/redis defaults to 5 retries with exponential backoff (~4.3s total)
 // before surfacing an unreachable-Redis error. The node test runner sets
@@ -14,6 +16,9 @@ import { captureSilentError } from '../../api/_sentry-edge.js';
 const REDIS_TEST_RETRY_OPTS: { retry?: false } = process.env.NODE_TEST_CONTEXT ? { retry: false } : {};
 
 let ratelimit: Ratelimit | null = null;
+const GLOBAL_RATE_LIMIT = 600;
+const GLOBAL_RATE_WINDOW: Duration = '60 s';
+const GLOBAL_RATE_WINDOW_SECONDS = durationToSeconds(GLOBAL_RATE_WINDOW);
 
 function getRatelimit(): Ratelimit | null {
   if (ratelimit) return ratelimit;
@@ -23,7 +28,7 @@ function getRatelimit(): Ratelimit | null {
 
   ratelimit = new Ratelimit({
     redis: new Redis({ url, token, ...REDIS_TEST_RETRY_OPTS }),
-    limiter: Ratelimit.slidingWindow(600, '60 s'),
+    limiter: Ratelimit.slidingWindow(GLOBAL_RATE_LIMIT, GLOBAL_RATE_WINDOW),
     prefix: 'rl',
     analytics: false,
   });
@@ -53,7 +58,7 @@ export const UNKNOWN_CLIENT_IP = 'unknown';
 // Mirrored verbatim in api/_rate-limit.js.
 function rateLimitErrorLevel(stage: string, msg: string): 'warning' | 'error' {
   if (stage.includes('missing-config')) return 'error';
-  if (/Error running script|execution timed out|Command failed|ETIMEDOUT|ECONNRESET|ENOTFOUND|fetch failed|network|timed out|socket hang up/i.test(msg)) {
+  if (/Error running script|execution timed out|Command failed|ETIMEDOUT|ECONNRESET|ENOTFOUND|fetch failed|network|timed out|socket hang up|Redis unavailable|Redis unreachable/i.test(msg)) {
     return 'warning';
   }
   return 'error';
@@ -179,7 +184,7 @@ export async function checkRateLimit(request: Request, corsHeaders: Record<strin
   const ip = getClientIp(request);
 
   try {
-    const { success, limit, reset } = await rl.limit(ip);
+    const { success, limit, reset } = await limitWithFallback(rl, ip, `rl:fw:${ip}`, GLOBAL_RATE_LIMIT, GLOBAL_RATE_WINDOW_SECONDS);
 
     if (!success) {
       return tooManyRequestsResponse(limit, reset, corsHeaders);
@@ -226,6 +231,9 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // request already amplifies into many upstream calls. (#4676)
   '/api/conflict/v1/get-humanitarian-summary-batch': { limit: 30, window: '60 s' },
   '/api/military/v1/get-aircraft-details-batch': { limit: 30, window: '60 s' },
+  // Generic batch fan-out: one request re-dispatches up to 20 gateway GETs, so
+  // cap the multiplier at the same 30/min budget as the other batch routes.
+  '/api/batch/v1/execute': { limit: 30, window: '60 s' },
   // Legacy /api/sanctions-entity-search rate limit was 30/min per IP. Preserve
   // that budget now that LookupSanctionEntity proxies OpenSanctions live.
   '/api/sanctions/v1/lookup-sanction-entity': { limit: 30, window: '60 s' },
@@ -260,6 +268,17 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // resolves edge-function paths via api/api-route-exceptions.json instead
   // of the OpenAPI specs.
   '/api/mcp-proxy': { limit: 30, window: '60 s' },
+  // A2A concierge endpoint (`api/a2a.ts`, external-protocol exception —
+  // JSON-RPC shape dictated by the A2A spec, served at /a2a). Anonymous and
+  // quota-free by design (routes over the public tool catalog + public
+  // freshness envelope only), so the per-IP minute limit is the whole abuse
+  // defence; 60/min mirrors the MCP public-method posture. Enforced
+  // in-handler via `checkScopedRateLimit`, same pattern as /api/mcp-proxy.
+  '/api/a2a': { limit: 60, window: '60 s' },
+  // NLWeb /ask endpoint (`api/ask.ts`, external-protocol exception — request/
+  // response shape dictated by the NLWeb spec, served at /ask). Same anonymous
+  // cheap-catalog posture as /api/a2a, same in-handler enforcement.
+  '/api/ask': { limit: 60, window: '60 s' },
 };
 
 interface RateLimitPolicyDecision {
@@ -284,6 +303,9 @@ export const FAIL_CLOSED_ENDPOINT_RATE_POLICY_REQUIRED: Record<string, RateLimit
   },
   '/api/military/v1/get-aircraft-details-batch': {
     reason: 'Batch enrichment fans out to the external Wingbits provider on cache miss.',
+  },
+  '/api/batch/v1/execute': {
+    reason: 'Generic batch fan-out multiplies one request into up to 20 gateway sub-requests.',
   },
   '/api/sanctions/v1/lookup-sanction-entity': {
     reason: 'Live sanctions lookup proxies an external provider.',
@@ -383,9 +405,14 @@ export async function checkEndpointRateLimit(request: Request, pathname: string,
   }
 
   const ip = getClientIp(request);
+  const policy = ENDPOINT_RATE_POLICIES[pathname];
+  // hasEndpointRatePolicy(pathname) above already guarantees this — the
+  // extra check exists only to satisfy noUncheckedIndexedAccess, since TS
+  // can't carry that narrowing across a second independent index lookup.
+  if (!policy) return null;
 
   try {
-    const { success, limit, reset } = await rl.limit(`${pathname}:${ip}`);
+    const { success, limit, reset } = await limitWithFallback(rl, `${pathname}:${ip}`, `rl:ep:fw:${pathname}:${ip}`, policy.limit, durationToSeconds(policy.window));
 
     if (!success) {
       return tooManyRequestsResponse(limit, reset, corsHeaders);
@@ -461,7 +488,7 @@ export async function checkScopedRateLimit(scope: string, limit: number, window:
     return { allowed: true, limit, reset: 0, degraded: true };
   }
   try {
-    const result = await rl.limit(`${scope}:${identifier}`);
+    const result = await limitWithFallback(rl, `${scope}:${identifier}`, `rl:scope:fw:${scope}:${identifier}`, limit, durationToSeconds(window));
     return {
       allowed: result.success,
       limit: result.limit,
@@ -472,4 +499,12 @@ export async function checkScopedRateLimit(scope: string, limit: number, window:
     logRateLimitDegraded(`checkScopedRateLimit:${scope}`, err);
     return { allowed: true, limit, reset: 0, degraded: true };
   }
+}
+
+export function __resetRateLimitForTest(): void {
+  ratelimit = null;
+  endpointLimiters.clear();
+  scopedLimiters.clear();
+  scopedMissingConfigStages.clear();
+  resetRateLimitFallbackForTest();
 }

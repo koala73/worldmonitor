@@ -160,7 +160,10 @@ describe('deferred Umami loader', () => {
       assert.equal(firstScript.async, true);
       assert.equal(firstScript.src, 'https://abacus.worldmonitor.app/script.js');
       assert.equal(firstScript.dataset.websiteId, 'e8800335-c853-46a8-8497-c993ed2f58bc');
-      assert.equal(firstScript.dataset.domains, 'worldmonitor.app,happy.worldmonitor.app');
+      // www MUST stay listed (#4931): the apex 301s to www in production and
+      // the tracker's data-domains check is an exact hostname match — without
+      // www, analytics on the canonical host are silently disabled.
+      assert.equal(firstScript.dataset.domains, 'worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app');
       assert.deepEqual(calls, []);
       firstScript.listeners.get('error')?.();
       assert.equal(firstScript.removed, true);

@@ -5,9 +5,11 @@ export interface GpsJamHex {
   lat: number;
   lon: number;
   level: 'medium' | 'high';
-  npAvg: number;
-  sampleCount: number;
-  aircraftCount: number;
+  // gpsjam.org metric (restored 2026-07): share of aircraft in the hex reporting
+  // GPS interference. pct = affectedAircraft / totalAircraft * 100.
+  pct: number;
+  affectedAircraft: number;
+  totalAircraft: number;
 }
 
 export interface GpsJamData {
@@ -46,9 +48,9 @@ export async function fetchGpsInterference(): Promise<GpsJamData | null> {
       lat: h.lat,
       lon: h.lon,
       level: h.level as 'medium' | 'high',
-      npAvg: Number.isFinite(h.npAvg) ? h.npAvg : 0,
-      sampleCount: Number.isFinite(h.sampleCount) ? h.sampleCount : 0,
-      aircraftCount: Number.isFinite(h.aircraftCount) ? h.aircraftCount : 0,
+      pct: Number.isFinite(h.pct) ? h.pct : 0,
+      affectedAircraft: Number.isFinite(h.affectedAircraft) ? h.affectedAircraft : 0,
+      totalAircraft: Number.isFinite(h.totalAircraft) ? h.totalAircraft : 0,
     }));
 
     cachedData = {

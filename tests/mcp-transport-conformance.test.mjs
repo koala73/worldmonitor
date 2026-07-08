@@ -4,6 +4,7 @@
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { Readable } from 'node:stream';
 
@@ -340,6 +341,76 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     assert.equal(replayed.length, 0, 'resume after the sole follow-up event replays nothing');
   });
 
+  it('completes the handshake for browser clients from ANY origin (issue #4802)', async () => {
+    // The endpoint advertises `access-control-allow-origin: *`, so the preflight
+    // succeeds for every origin — the actual POST must not then be rejected by an
+    // Origin allowlist. Auth is API-key/Bearer (no cookies), so a cross-origin
+    // browser request carries no ambient credentials and there is no CSRF surface;
+    // MCP-spec Origin validation targets DNS rebinding against localhost servers,
+    // not public HTTPS endpoints. Regression: a claude.ai/claude.com-only allowlist
+    // 403'd ChatGPT web connectors, MCP Inspector (localhost origin), and every
+    // other browser-context client AFTER their preflight had already succeeded.
+    for (const origin of ['https://chatgpt.com', 'http://localhost:3000', 'https://ora.ai']) {
+      // The exact browser flow the bug broke: preflight succeeds (204 + wildcard),
+      // then the actual POST must succeed too — not 403 after a green preflight.
+      const preflight = await fetch(server.url, {
+        method: 'OPTIONS',
+        headers: {
+          Origin: origin,
+          'Access-Control-Request-Method': 'POST',
+          'Access-Control-Request-Headers': 'content-type,authorization',
+        },
+      });
+      assert.equal(preflight.status, 204, `OPTIONS preflight from ${origin} must be 204`);
+      assert.equal(preflight.headers.get('access-control-allow-origin'), '*');
+
+      // Accept: application/json returns a single complete JSON-RPC body (no open
+      // SSE stream to drain), so the response settles immediately.
+      const res = await fetch(server.url, {
+        method: 'POST',
+        headers: mcpHeaders({ Origin: origin, Accept: 'application/json' }),
+        body: JSON.stringify(initBody(40)),
+      });
+      assert.equal(res.status, 200, `POST initialize with Origin: ${origin} must be 200, got ${res.status}`);
+      assert.equal(res.headers.get('access-control-allow-origin'), '*',
+        'CORS wildcard must hold on the actual response, not just preflight');
+      // Load-bearing invariant that makes wildcard CORS safe here: /mcp must NEVER
+      // pair `ACAO: *` with credentialed CORS. If a refactor swapped /mcp onto the
+      // reflected-origin + Allow-Credentials helper, ambient-credential CSRF would
+      // reopen on a now-gateless endpoint — pin it closed.
+      assert.equal(res.headers.get('access-control-allow-credentials'), null,
+        '/mcp must not emit Access-Control-Allow-Credentials alongside wildcard ACAO');
+      assert.equal((await res.json()).result?.serverInfo?.name, 'worldmonitor',
+        'foreign-origin POST must complete a real initialize, not just return 200');
+    }
+  });
+
+  it('does not 403 the GET branches for a foreign origin either (issue #4802)', async () => {
+    // The removed allowlist sat before method dispatch, so it previously 403'd GET
+    // as well as POST. Both GET sub-paths must now reach their normal handling for
+    // a browser origin — never the old pre-auth 403.
+    const bareGet = await fetch(server.url, {
+      method: 'GET',
+      headers: { Accept: 'text/event-stream', Origin: 'https://chatgpt.com' },
+    });
+    assert.equal(bareGet.status, 405, 'bare GET from a foreign origin must be 405 (no standalone stream), not 403');
+    assert.match(bareGet.headers.get('allow') ?? '', /\bPOST\b/);
+
+    // A GET+Last-Event-ID without the required Accept is a replay header error
+    // (406) — the point is it reaches replay validation instead of the old 403.
+    const replay = await fetch(server.url, {
+      method: 'GET',
+      headers: {
+        Origin: 'https://chatgpt.com',
+        Authorization: `Bearer ${PRO_BEARER}`,
+        'Mcp-Session-Id': crypto.randomUUID(),
+        'Last-Event-ID': 'stream:0',
+      },
+    });
+    assert.notEqual(replay.status, 403, 'foreign-origin SSE replay must reach the authed replay path, not a pre-auth 403');
+    assert.equal(replay.status, 406, 'replay without Accept: text/event-stream is a 406 header error');
+  });
+
   it('honors Accept q=0 and preserves CORS on streamed JSON-RPC errors', async () => {
     const initialize = await fetch(server.url, {
       method: 'POST',
@@ -372,5 +443,105 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     const errorBody = JSON.parse(events[0].data);
     assert.equal(errorBody.id, 21);
     assert.equal(errorBody.error?.code, -32601);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// /.well-known/mcp dual-role (manifest GET + live Streamable HTTP endpoint)
+// ---------------------------------------------------------------------------
+// vercel.json rewrites /.well-known/mcp into the same handler. Agent-readiness
+// scanners (orank `mcp-server`) POST `initialize` AT the well-known URL — when
+// a static file answered that with a bodyless 405, the check scored "MCP
+// manifest found at /.well-known/mcp but protocol handshake failed" (3/6).
+// GET keeps serving the server card so manifest fetchers are unaffected, and
+// an SSE-flavored GET falls through to the endpoint's standalone-stream 405.
+describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
+  let mcpHandler;
+  let deps;
+  let server;
+  let aliasUrl;
+  const realFetch = globalThis.fetch;
+  const cardText = readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8');
+
+  beforeEach(async () => {
+    process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
+    process.env.MCP_TELEMETRY = 'false';
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+
+    const mod = await import(`../api/mcp.ts?t=${Date.now()}-${Math.random()}-wk`);
+    mcpHandler = mod.mcpHandler;
+    deps = makeProDeps().deps;
+    server = await startMcpServer(mcpHandler, deps);
+    aliasUrl = server.url.replace('/mcp', '/.well-known/mcp');
+    // The handler self-fetches the static card asset; the localhost harness
+    // has no static file server, so serve the on-disk card for that one URL
+    // and delegate everything else (including the test's own requests).
+    globalThis.fetch = (input, init) => {
+      const href = typeof input === 'string' ? input : input.url ?? String(input);
+      if (href.endsWith('/.well-known/mcp/server-card.json')) {
+        return Promise.resolve(new Response(cardText, { status: 200, headers: { 'Content-Type': 'application/json' } }));
+      }
+      return realFetch(input, init);
+    };
+  });
+
+  afterEach(async () => {
+    globalThis.fetch = realFetch;
+    if (server) await server.close();
+    Object.keys(process.env).forEach((k) => {
+      if (!(k in originalEnv)) delete process.env[k];
+    });
+    Object.assign(process.env, originalEnv);
+  });
+
+  it('plain GET serves the server card (manifest role), even with a foreign Origin', async () => {
+    const res = await fetch(aliasUrl, {
+      headers: { Accept: 'application/json', Origin: 'https://ora.ai' },
+    });
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('content-type') ?? '', /application\/json/i);
+    const card = await res.json();
+    // Endpoint must be readable under EVERY manifest dialect scanners parse:
+    // top-level `url` + `kind` (ora.ai /.well-known/mcp.json convention),
+    // `serverUrl` (SEP-1649 server card), and registry-style `remotes`.
+    assert.equal(card.url, 'https://worldmonitor.app/mcp');
+    assert.equal(card.kind, 'product');
+    assert.equal(card.serverUrl, 'https://worldmonitor.app/mcp');
+    assert.equal(card.remotes?.[0]?.url, 'https://worldmonitor.app/mcp');
+    // The manifest is a static, immutable-per-deploy asset — it must stay
+    // cacheable (it was `public, max-age=3600` as a static file). The MCP
+    // no-store CORS bundle must NOT clobber that on the manifest GET, or every
+    // discovery fetch (orank + every MCP client) re-hits the function.
+    assert.match(res.headers.get('cache-control') ?? '', /max-age=3600/,
+      'server card GET must be cacheable, not the endpoint no-store');
+    assert.doesNotMatch(res.headers.get('cache-control') ?? '', /no-store/);
+  });
+
+  it('serves the card at the /.well-known/mcp.json alias too', async () => {
+    const res = await fetch(`${aliasUrl}.json`, { headers: { Accept: 'application/json' } });
+    assert.equal(res.status, 200);
+    const card = await res.json();
+    assert.equal(card.url, 'https://worldmonitor.app/mcp');
+  });
+
+  it('POST initialize completes the live Streamable HTTP handshake at the well-known URL', async () => {
+    const res = await fetch(aliasUrl, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      body: JSON.stringify(initBody(31)),
+    });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.result?.serverInfo?.name, 'worldmonitor');
+    assert.ok(res.headers.get('mcp-session-id'), 'well-known endpoint role must mint a session like /mcp');
+  });
+
+  it('GET asking for text/event-stream falls through to the standalone-stream 405', async () => {
+    const res = await fetch(aliasUrl, {
+      headers: { Accept: 'text/event-stream' },
+    });
+    assert.equal(res.status, 405);
+    assert.match(res.headers.get('allow') ?? '', /\bPOST\b/);
   });
 });

@@ -461,6 +461,17 @@ export function declareRecords(data) {
 
 await runSeed('economic', 'grocery-basket', CANONICAL_KEY, () => fetchGroceryBasketPrices(prevSnapshot), {
   ttlSeconds: CACHE_TTL,
+  // 24 countries are fetched SERIALLY (items within a country run concurrently);
+  // per-country critical path is ~8s healthy but ~25s degraded (direct 8s fails →
+  // EXA 15s / Firecrawl 30s on the priced item), so a full run is ~192s healthy but
+  // ~600s degraded — routinely over the default 240s fetch-phase deadline (lockTtlMs
+  // 120s + 120s margin), tripping the #4786 backstop into a graceful exit-75 "crash"
+  // (issue #4864). Every fetch is individually bounded (8/15/30s AbortSignal.timeout),
+  // so this is legitimate serialized latency, not a hang. Size lockTtlMs to the real
+  // worst-case runtime so the deadline (lockTtlMs + 120s = 14min) is a genuine-hang
+  // backstop again — and so the lock outlives the run instead of lapsing at 120s.
+  lockTtlMs: 720_000, // 12min
+
   validateFn: (data) => {
     if (!data?.countries?.length) return false;
     const minItems = Math.ceil(config.items.length * 0.4); // 40% item coverage per country

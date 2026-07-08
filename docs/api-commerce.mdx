@@ -17,6 +17,7 @@ Creates a Dodo checkout session and returns the hosted-checkout URL.
   { "productId": "pro-monthly", "returnUrl": "https://www.worldmonitor.app/pro/success" }
   ```
 - **Response**: `{ "checkoutUrl": "https://checkout.dodopayments.com/..." }`
+- **Idempotency**: optional `Idempotency-Key` supported for 10 minutes after a successful response. Retrying the same key with an identical body replays the original checkout response instead of creating another checkout attempt.
 - **returnUrl** is validated against an allowlist on the Convex side.
 
 ### `POST /api/customer-portal`
@@ -25,6 +26,7 @@ Creates a Dodo customer-portal session for an existing subscriber (update card, 
 
 - **Auth**: Clerk bearer + active entitlement
 - **Response**: `{ "portalUrl": "..." }`
+- **Idempotency**: optional `Idempotency-Key` supported. Retrying the same key replays the original portal response instead of creating another portal attempt.
 
 ## Product catalog
 
@@ -32,13 +34,14 @@ Creates a Dodo customer-portal session for an existing subscriber (update card, 
 
 Returns the tier view-model used by the `/pro` pricing page. Cached in Redis under `product-catalog:v2` for 1 hour; on cache miss, fetches live prices from Dodo Payments and falls back to `_product-fallback-prices.js` if Dodo is unreachable. Response carries an `X-Product-Catalog-Source` header so probes can tell cache hits from live fetches.
 
-**Response** (tiers ordered `free`, `pro`, `api_starter`, `enterprise`):
+**Response** (tiers ordered `free`, `pro`, `api_starter`, `api_business`, `enterprise`):
 
 ```json
 {
   "tiers": [
     {
       "name": "Free",
+      "localeKey": "free",
       "description": "Get started with the essentials",
       "features": ["Core dashboard panels", "..."],
       "cta": "Get Started",
@@ -49,26 +52,38 @@ Returns the tier view-model used by the `/pro` pricing page. Cached in Redis und
     },
     {
       "name": "Pro",
+      "localeKey": "pro",
       "description": "Full intelligence dashboard",
       "features": ["..."],
       "highlighted": true,
-      "monthlyPrice": 20,
+      "monthlyPrice": 39.99,
       "monthlyProductId": "pdt_0Nbtt71uObulf7fGXhQup",
-      "annualPrice": 180,
+      "annualPrice": 399.99,
       "annualProductId": "pdt_0NbttMIfjLWC10jHQWYgJ"
     },
     {
       "name": "API",
+      "localeKey": "api",
       "description": "Programmatic access to intelligence data",
       "features": ["..."],
       "highlighted": false,
-      "monthlyPrice": 99,
+      "monthlyPrice": 99.99,
       "monthlyProductId": "pdt_0NbttVmG1SERrxhygbbUq",
-      "annualPrice": 990,
+      "annualPrice": 999,
       "annualProductId": "pdt_0Nbu2lawHYE3dv2THgSEV"
     },
     {
+      "name": "API Business",
+      "localeKey": "apiBusiness",
+      "description": "High-volume API for teams",
+      "features": ["..."],
+      "highlighted": false,
+      "monthlyPrice": 249.99,
+      "monthlyProductId": "pdt_0Nbttg7NuOJrhbyBGCius"
+    },
+    {
       "name": "Enterprise",
+      "localeKey": "enterprise",
       "description": "Custom solutions for organizations",
       "features": ["..."],
       "cta": "Contact Sales",
@@ -77,14 +92,15 @@ Returns the tier view-model used by the `/pro` pricing page. Cached in Redis und
       "price": null
     }
   ],
-  "fetchedAt": "2026-04-19T12:00:00Z",
-  "cachedUntil": "2026-04-19T13:00:00Z",
+  "fetchedAt": 1751799600000,
+  "cachedUntil": 1751803200000,
   "priceSource": "dodo"
 }
 ```
 
 Notes:
-- Price fields are flat on the tier. Paid tiers expose `monthlyPrice` / `monthlyProductId` and `annualPrice` / `annualProductId`. Free uses `price: 0, period: "forever"`; Enterprise uses `price: null`.
+
+- Price fields are flat on the tier. Paid tiers always expose `monthlyPrice` / `monthlyProductId`, and add `annualPrice` / `annualProductId` only when an annual variant exists — API Business is monthly-only, so those fields are absent on it. Free uses `price: 0, period: "forever"`; Enterprise uses `price: null`.
 - Prices are dollars (Dodo returns cents; the handler divides by 100). Currency is implicit USD for the published catalog.
 
 ### `DELETE /api/product-catalog`
@@ -105,6 +121,7 @@ Returns the caller's deterministic referral code (an 8-char HMAC of the Clerk us
 ```
 
 Errors:
+
 - `401 UNAUTHENTICATED` — missing or invalid Clerk JWT.
 - `503 service_unavailable` — `BRIEF_URL_SIGNING_SECRET` not configured (the referral-code HMAC reuses that secret).
 

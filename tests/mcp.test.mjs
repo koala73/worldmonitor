@@ -176,6 +176,72 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assertNoStore(res, 'anonymous public resources/read');
   });
 
+  // Every capability advertised on the ANONYMOUS initialize must be anonymously
+  // exercisable, or an unauthenticated MCP SDK client hangs: a gated method
+  // answers HTTP 401 with JSON-RPC id:null, the SDK transport cannot correlate
+  // a non-200/id:null response to the pending request, and the client times out
+  // 30s later and marks the server unstable (customer-reported via Claude
+  // Desktop + mcp-remote, issue #4937). prompts/* are static workflow templates
+  // and logging/setLevel is a no-op ack — metadata-class, no data, no quota.
+  // ping is a spec-mandated liveness check (SDK keepalives hang the same way).
+  it('prompts/list succeeds WITHOUT credentials and echoes the request id (#4937 — anon hang)', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'prompts/list', params: {} }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'unauthenticated prompts/list must be public — a 401 hangs SDK clients that saw the advertised prompts capability');
+    const body = await res.json();
+    assert.equal(body.id, 2, 'response id must echo the request id (id:null is uncorrelatable)');
+    assert.ok(Array.isArray(body.result?.prompts) && body.result.prompts.length > 0,
+      'anonymous prompts/list must expose the prompt catalog');
+    assertNoStore(res, 'anonymous prompts/list');
+  });
+
+  it('prompts/get succeeds WITHOUT credentials (static template, no data)', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 8, method: 'prompts/get', params: { name: 'country-briefing', arguments: { iso2: 'DE' } } }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'unauthenticated prompts/get must be public — it renders a static workflow template');
+    const body = await res.json();
+    assert.equal(body.id, 8);
+    assert.ok(Array.isArray(body.result?.messages) && body.result.messages.length > 0,
+      'anonymous prompts/get must render the template messages');
+    assertNoStore(res, 'anonymous prompts/get');
+  });
+
+  it('ping succeeds WITHOUT credentials (spec liveness check — SDK keepalives must not hang)', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'ping', params: {} }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'unauthenticated ping must answer — the MCP spec requires ping to be answerable');
+    const body = await res.json();
+    assert.equal(body.id, 9);
+    assert.deepEqual(body.result, {});
+    assertNoStore(res, 'anonymous ping');
+  });
+
+  it('logging/setLevel succeeds WITHOUT credentials (no-op ack for the advertised logging capability)', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 10, method: 'logging/setLevel', params: { level: 'info' } }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'unauthenticated logging/setLevel must be public — the logging capability is advertised anonymously');
+    const body = await res.json();
+    assert.equal(body.id, 10);
+    assert.deepEqual(body.result, {});
+    assertNoStore(res, 'anonymous logging/setLevel');
+  });
+
   it('resources/read of a data-bearing TEMPLATE instantiation still requires credentials (no quota bypass)', async () => {
     const req = new Request(BASE_URL, {
       method: 'POST',
@@ -366,12 +432,12 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
   // --- tools/list ---
 
-  it('tools/list returns 39 tools with name, description, inputSchema', async () => {
+  it('tools/list returns 40 tools with name, description, inputSchema', async () => {
     const res = await handler(makeReq('POST', { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }));
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.ok(Array.isArray(body.result?.tools), 'result.tools must be an array');
-    assert.equal(body.result.tools.length, 39, `Expected 39 tools, got ${body.result.tools.length}`);
+    assert.equal(body.result.tools.length, 40, `Expected 40 tools, got ${body.result.tools.length}`);
     for (const tool of body.result.tools) {
       assert.ok(tool.name, 'tool.name must be present');
       assert.ok(tool.description, 'tool.description must be present');

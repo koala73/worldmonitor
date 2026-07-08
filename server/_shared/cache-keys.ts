@@ -44,6 +44,10 @@ export const DIGEST_ACCUMULATOR_KEY_PREFIX = 'digest:accumulator:v1:';
 export const STORY_TRACK_KEY = (titleHash: string) => `story:track:v1:${titleHash}`;
 export const STORY_SOURCES_KEY = (titleHash: string) => `story:sources:v1:${titleHash}`;
 export const STORY_PEAK_KEY = (titleHash: string) => `story:peak:v1:${titleHash}`;
+// #4924: member exact-title hash -> canonical story hash, same TTL as the
+// track — lets a later cycle adopt the live canonical when the original
+// canonical member is absent from the batch.
+export const STORY_ALIAS_KEY = (titleHash: string) => `story:alias:v1:${titleHash}`;
 export const DIGEST_ACCUMULATOR_KEY = (variant: string, lang = 'en') => `digest:accumulator:v1:${variant}:${lang}`;
 export const DIGEST_LAST_SENT_KEY = (userId: string, variant: string) => `digest:last-sent:v1:${userId}:${variant}`;
 // NOTE: notification-relay.cjs owns the live value (shadow:score-log:v5 since prompt upgrade).

@@ -3,6 +3,20 @@
   "schema_version": 1,
   "exceptions": [
     {
+      "path": "api/ask.ts",
+      "category": "external-protocol",
+      "reason": "NLWeb /ask endpoint (Microsoft NLWeb protocol) — request/response envelope (_meta {response_type, version}, SSE start/result/complete event stream) dictated by the NLWeb spec, not something we can redefine as proto. Anonymous discovery answers over the public MCP tool catalog only; per-IP limit registered in ENDPOINT_RATE_POLICIES and enforced in-handler.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/a2a.ts",
+      "category": "external-protocol",
+      "reason": "A2A (Agent-to-Agent) JSON-RPC 2.0 endpoint behind /.well-known/agent-card.json — envelope and method surface (message/send, tasks/*) dictated by the A2A spec v0.3.0, not something we can redefine as proto. Anonymous concierge over the public MCP tool catalog + public freshness envelope only; per-IP limit registered in ENDPOINT_RATE_POLICIES and enforced in-handler.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp.ts",
       "category": "external-protocol",
       "reason": "MCP streamable-HTTP transport — JSON-RPC 2.0 envelope dictated by the Model Context Protocol spec, not something we can or should redefine as proto. After the api/mcp.ts → api/mcp/ structural split, this file is a thin re-export shim that preserves the Vercel edge route URL and the public export surface; the actual handler and supporting modules live under api/mcp/ (each listed below).",
@@ -41,6 +55,13 @@
       "path": "api/mcp/error-fingerprint.ts",
       "category": "external-protocol",
       "reason": "MCP Sentry grouping helper for tools/call capture sites. Keeps MCP external-protocol failures grouped by step, tool, and stable inner error signature without introducing a sebuf product API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/usage.ts",
+      "category": "external-protocol",
+      "reason": "MCP wm_api_usage emission (#4866) — phase-to-reason mapper + ctx.waitUntil RequestEvent emitter for the /mcp funnel. Ops/observability plumbing for the same external-protocol handler, not a JSON data API; reuses server/_shared/usage.ts builders.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -164,6 +185,41 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/ui/shell.ts",
+      "category": "external-protocol",
+      "reason": "MCP Apps (io.modelcontextprotocol/ui) shared app-shell builder — factors the DOCTYPE / 4-category CSP / dark-mode tokens / postMessage bridge every ui:// widget inlines. Exports HTML/meta builder functions (no HTTP handler); the bridge protocol + view CSP shape are dictated by the MCP Apps spec. Same external-protocol constraint as the ui/registry.ts it backs.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/ui/world-brief-app.ts",
+      "category": "external-protocol",
+      "reason": "MCP Apps (io.modelcontextprotocol/ui) self-contained HTML app shell served verbatim as the ui://worldmonitor/world-brief.html resource. Exports an HTML string constant (no HTTP handler); the postMessage bridge protocol is dictated by the MCP Apps spec. Same external-protocol constraint as the ui/registry.ts it backs.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/ui/country-brief-app.ts",
+      "category": "external-protocol",
+      "reason": "MCP Apps (io.modelcontextprotocol/ui) self-contained HTML app shell served verbatim as the ui://worldmonitor/country-brief.html resource. Exports an HTML string constant (no HTTP handler); the postMessage bridge protocol is dictated by the MCP Apps spec. Same external-protocol constraint as the ui/registry.ts it backs.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/ui/market-radar-app.ts",
+      "category": "external-protocol",
+      "reason": "MCP Apps (io.modelcontextprotocol/ui) self-contained HTML app shell served verbatim as the ui://worldmonitor/market-radar.html resource. Exports an HTML string constant (no HTTP handler); the postMessage bridge protocol is dictated by the MCP Apps spec. Same external-protocol constraint as the ui/registry.ts it backs.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/ui/chokepoint-monitor-app.ts",
+      "category": "external-protocol",
+      "reason": "MCP Apps (io.modelcontextprotocol/ui) self-contained HTML app shell served verbatim as the ui://worldmonitor/chokepoint-monitor.html resource. Exports an HTML string constant (no HTTP handler); the postMessage bridge protocol is dictated by the MCP Apps spec. Same external-protocol constraint as the ui/registry.ts it backs.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp-proxy.ts",
       "category": "external-protocol",
       "reason": "Proxy for the MCP transport — same shape constraint as api/mcp.ts. Renamed .js → .ts in PR #3768 to unlock the isCallerPremium import from server/.",
@@ -209,6 +265,20 @@
       "path": "api/oauth-authorization-server.ts",
       "category": "external-protocol",
       "reason": "RFC 8414 OAuth Authorization Server metadata + WorkOS auth.md agent_auth block. Dynamic per-host so issuer/endpoints match the request origin and align with the host-derived RFC 9728 PRM — shape dictated by RFC 8414 / workos.com/auth-md.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/http-message-signatures-directory.ts",
+      "category": "external-protocol",
+      "reason": "Web Bot Auth key directory (draft-meunier-web-bot-auth-architecture / http-message-signatures-directory). Publishes an Ed25519 JWK Set at /.well-known/http-message-signatures-directory; body shape and application/http-message-signatures-directory+json content-type are dictated by the spec. Dynamic per-request so nbf/exp roll a <=24h validity window.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/agent-auth.ts",
+      "category": "external-protocol",
+      "reason": "RFC 9728 agent-auth discovery challenge at /agent/auth. Returns 401 + WWW-Authenticate: Bearer resource_metadata=... (host-derived PRM pointer) so a GET-probing agent/scanner discovers the auth flow — /mcp's bare GET must stay 405 for the SSE handshake. Response is an auth challenge, not a JSON data API.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -406,8 +476,8 @@
     },
     {
       "path": "api/notify.ts",
-      "category": "ops-admin",
-      "reason": "Outbound notification dispatch (Slack/Discord/email) driven by cron. Internal, not a typed user API.",
+      "category": "internal-helper",
+      "reason": "Authenticated PRO event-publish endpoint that validates Clerk bearer auth, rejects relay-internal control events, and enqueues accepted events outside sebuf because it is queue plumbing rather than a typed domain RPC.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },

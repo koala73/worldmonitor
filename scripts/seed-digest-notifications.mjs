@@ -12,7 +12,6 @@
  *   7. Updates digest:last-sent:v1:${userId}:${variant}
  */
 import { createRequire } from 'node:module';
-import { createHash } from 'node:crypto';
 import dns from 'node:dns/promises';
 import {
   escapeHtml,
@@ -25,6 +24,11 @@ import {
 
 const require = createRequire(import.meta.url);
 const DIGEST_DIPLOMACY_DATA = require('../shared/diplomacy-keywords.json');
+// Watchlist story alerts (#4922 U3): stocks.json feeds the ticker
+// dictionary; loaded via the createRequire JSON pattern this file already
+// uses for diplomacy-keywords.json (avoids the two-sided `with {type:
+// 'json'}` bundler/node trap — see vercel-edge-gotchas).
+const WATCHLIST_STOCKS_DATA = require('../shared/stocks.json');
 const { decrypt } = require('./lib/crypto.cjs');
 const {
   assertNotificationWebhookDeliveryUrlSafe,
@@ -32,6 +36,7 @@ const {
   postJsonWithPinnedAddress,
 } = require('./lib/notification-webhook-ssrf.cjs');
 const { callLLM } = require('./lib/llm-chain.cjs');
+const { flushPendingLlmEvents } = require('./lib/llm-telemetry.cjs');
 const { fetchUserPreferences, extractUserContext, formatUserProfile } = require('./lib/user-context.cjs');
 const { fetchFollowedCountries } = require('./lib/followed-countries-fetch.cjs');
 const { Resend } = require('resend');
@@ -69,6 +74,10 @@ import {
   leadGroundsAgainstStory,
 } from './lib/brief-llm.mjs';
 import { parseDigestOnlyUser } from './lib/digest-only-user.mjs';
+import {
+  resolveNonDueSynthesisReuse,
+  DEFAULT_NONDUE_SYNTHESIS_REUSE_MIN,
+} from './lib/brief-synthesis-reuse.mjs';
 import { assertBriefEnvelope } from '../server/_shared/brief-render.js';
 import { signBriefUrl, BriefUrlError } from './lib/brief-url-sign.mjs';
 import {
@@ -86,6 +95,8 @@ import {
 import { readCooldownConfig } from './lib/digest-cooldown-config.mjs';
 import { evaluateCooldown } from './lib/digest-cooldown-decision.mjs';
 import { emitCooldownShadowLog } from './lib/digest-cooldown-shadow-log.mjs';
+import { buildTickerDictionary } from '../shared/ticker-extract.js';
+import { scanAndEnqueueWatchlistStoryEvents as scanWatchlistStoryEvents } from './lib/watchlist-story-scan.mjs';
 
 const EPHEMERAL_LIVE_LOG_TITLE_SAMPLE_LIMIT = 5;
 const EPHEMERAL_LIVE_LOG_TITLE_MAX_CHARS = 160;
@@ -190,6 +201,15 @@ const BRIEF_SIGNING_SECRET_MISSING =
 // toggled independently (e.g. kill the brief LLM without silencing
 // the email's AI summary during a provider outage).
 const BRIEF_LLM_ENABLED = process.env.BRIEF_LLM_ENABLED !== '0';
+// #4917: freshness budget for reusing the prior envelope's prose on
+// non-due compose ticks (minutes; 0 disables reuse and restores the
+// pre-#4917 synthesize-every-tick behavior). Due ticks always
+// synthesize fresh regardless of this setting.
+const NONDUE_SYNTHESIS_REUSE_MS = (() => {
+  const raw = Number.parseInt(process.env.DIGEST_NONDUE_SYNTHESIS_REUSE_MIN ?? '', 10);
+  const minutes = Number.isFinite(raw) && raw >= 0 ? raw : DEFAULT_NONDUE_SYNTHESIS_REUSE_MIN;
+  return minutes * 60_000;
+})();
 
 // Free-tier follow limit (PR C / U10). Mirrors the UI cap at
 // `src/components/FollowCountryButton.ts` and the server-side mutation
@@ -319,6 +339,25 @@ const briefLlmDeps = {
 };
 
 // ── Redis helpers ──────────────────────────────────────────────────────────────
+
+/**
+ * #4917: read the user's most recent stored brief envelope via the
+ * latest-pointer. Returns null on any miss/parse failure — callers treat
+ * null as "no prior envelope" and pay a fresh synthesis.
+ */
+async function fetchLatestBriefEnvelope(userId) {
+  try {
+    const rawPtr = await upstashRest('GET', `brief:latest:${userId}`);
+    if (typeof rawPtr !== 'string' || rawPtr.length === 0) return null;
+    const ptr = JSON.parse(rawPtr);
+    if (!ptr || typeof ptr.issueSlot !== 'string' || ptr.issueSlot.length === 0) return null;
+    const rawEnv = await upstashRest('GET', `brief:${userId}:${ptr.issueSlot}`);
+    if (typeof rawEnv !== 'string' || rawEnv.length === 0) return null;
+    return JSON.parse(rawEnv);
+  } catch {
+    return null;
+  }
+}
 
 async function upstashRest(...args) {
   const res = await fetch(`${UPSTASH_URL}/${args.map(encodeURIComponent).join('/')}`, {
@@ -518,6 +557,49 @@ function matchesSensitivity(ruleSensitivity, severity) {
   if (ruleSensitivity === 'all') return true;
   if (ruleSensitivity === 'high') return severity === 'high' || severity === 'critical';
   return severity === 'critical';
+}
+
+// ── Watchlist story alerts (#4922 item e / U3) ───────────────────────────────
+//
+// @notification-source: rss
+//   The watchlist publisher below builds payload.title from RSS story-track
+//   rows (title persisted at ingest by list-feed-digest). Payload shape is
+//   fixed by the U3 design: { title, link, source, tickers, importanceScore,
+//   coalesceKey } — no `description` field is emitted. Registered in
+//   tests/notification-relay-payload-audit.test.mjs.
+//
+// Once per cron tick (every 30 min), independent of digest rules and digest
+// delivery: scan the story accumulator, extract tickers from title +
+// description, and enqueue one `watchlist_story_alert` event per story whose
+// importance score clears WATCHLIST_STORY_SCORE_MIN. The notification relay
+// fans events out to PRO users whose alert rule opted in AND whose
+// rule.tickers intersects payload.tickers.
+//
+// Re-alert protection: publisher-side SET NX on the shared scan-dedup
+// keyspace, keyed on the coalesceKey (`watchlist:${storyHash}` — stable
+// story identity) via the shared buildDedupMaterial helper, 24h TTL — a
+// story that stays in the 24h scan window alerts once, not every 30-min
+// tick. LPUSH failure rolls the dedup key back so the next tick retries
+// (ais-relay publishNotificationEvent parity).
+
+const WATCHLIST_TICKER_DICTIONARY = buildTickerDictionary(WATCHLIST_STOCKS_DATA?.symbols ?? []);
+
+/**
+ * One watchlist scan per cron tick. Best-effort and self-contained: any
+ * failure logs and returns — it must never block digest delivery, and a
+ * digest failure must never block it (hence the call sits at the very top
+ * of main(), before the digest-rules fetch).
+ */
+async function scanAndEnqueueWatchlistStoryEvents(nowMs) {
+  return scanWatchlistStoryEvents(nowMs, {
+    env: process.env,
+    upstashRest,
+    upstashPipeline,
+    readStoryTracksChunked,
+    tickerDictionary: WATCHLIST_TICKER_DICTIONARY,
+    logger: console,
+    scanWindowMs: DIGEST_LOOKBACK_MS,
+  });
 }
 
 const DIGEST_DIPLOMACY_KEYWORDS = DIGEST_DIPLOMACY_DATA.diplomacyKeywords;
@@ -1804,8 +1886,8 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
   let synthesis = null;
   let publicLead = null;
   let synthesisLevel = 3;  // pessimistic default; bumped on success
+  let synthesisReused = false;
   if (BRIEF_LLM_ENABLED) {
-    const ctx = await buildSynthesisCtx(winner.rule, nowMs);
     // Synthesis-boundary adapter. `winnerStories` is the raw
     // buildDigest pool ({ title, severity, sources }); the synthesis
     // path (buildDigestPrompt / checkLeadGrounding / hashDigestInput)
@@ -1818,42 +1900,75 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
     // `winnerStories` (digestStoryToUpstreamTopStory expects the raw
     // shape). See plan 2026-05-14-001 F2 / Phase 2.
     const synthesisStories = winnerStories.map(digestStoryToSynthesisShape);
-    const result = await runSynthesisWithFallback(
-      userId,
-      synthesisStories,
-      sensitivity,
-      ctx,
-      briefLlmDeps,
-      (level, kind, err) => {
-        if (kind === 'throw') {
-          console.warn(
-            `[digest] brief: synthesis L${level} threw for ${userId} — falling to L${level + 1}:`,
-            err?.message,
-          );
-        } else if (kind === 'success' && level === 2) {
-          console.log(`[digest] synthesis level=2_degraded user=${userId}`);
-        } else if (kind === 'success' && level === 3) {
-          console.log(`[digest] synthesis level=3_stub user=${userId}`);
-        }
-      },
-    );
-    synthesis = result.synthesis;
-    synthesisLevel = result.level;
-    // Public synthesis — parallel call. Profile-stripped; cache-
-    // shared across all users for the same (date, sensitivity,
-    // story-pool). Captures the FULL prose object (lead + signals +
-    // threads) since each personalised counterpart in the envelope
-    // can carry profile bias and the public surface needs sibling
-    // safe-versions of all three. Failure is non-fatal — the
-    // renderer's public-mode fail-safes (omit pull-quote / omit
-    // signals page / category-derived threads stub) handle absence
-    // rather than leaking the personalised version. Same adapted
-    // pool as the personalised synthesis.
-    try {
-      const pub = await generateDigestProsePublic(synthesisStories, sensitivity, briefLlmDeps);
-      if (pub) publicLead = pub;  // { lead, threads, signals, rankedStoryHashes }
-    } catch (err) {
-      console.warn(`[digest] brief: publicLead generation failed for ${userId}:`, err?.message);
+
+    // #4917: on a non-due tick the compose only refreshes the dashboard
+    // preview — nothing is delivered — so a young prior envelope's prose
+    // can stand in for the paid synthesis + public-lead calls, provided
+    // it still grounds against the CURRENT pool (pool rotation or an L3
+    // stub lead fails the gate and pays a fresh generation). Due ticks
+    // never enter this branch: delivered digests are always fresh
+    // (`winner.due` is preferred by pickWinningCandidateWithPool, so a
+    // due candidate with stories is always the winner).
+    if (!winner.due && NONDUE_SYNTHESIS_REUSE_MS > 0) {
+      const prior = await fetchLatestBriefEnvelope(userId);
+      const decision = resolveNonDueSynthesisReuse(prior, {
+        nowMs,
+        maxAgeMs: NONDUE_SYNTHESIS_REUSE_MS,
+        currentStories: synthesisStories,
+      });
+      if (decision.reuse) {
+        synthesis = decision.synthesis;
+        publicLead = decision.publicLead;
+        synthesisLevel = 1;
+        synthesisReused = true;
+        console.log(
+          `[digest] synthesis reused user=${userId} ` +
+            `age_min=${Math.round(decision.ageMs / 60_000)} public=${publicLead ? 1 : 0}`,
+        );
+      } else if (decision.reason !== 'no_prior_envelope') {
+        console.log(`[digest] synthesis reuse declined user=${userId} reason=${decision.reason}`);
+      }
+    }
+
+    if (!synthesisReused) {
+      const ctx = await buildSynthesisCtx(winner.rule, nowMs);
+      const result = await runSynthesisWithFallback(
+        userId,
+        synthesisStories,
+        sensitivity,
+        ctx,
+        briefLlmDeps,
+        (level, kind, err) => {
+          if (kind === 'throw') {
+            console.warn(
+              `[digest] brief: synthesis L${level} threw for ${userId} — falling to L${level + 1}:`,
+              err?.message,
+            );
+          } else if (kind === 'success' && level === 2) {
+            console.log(`[digest] synthesis level=2_degraded user=${userId}`);
+          } else if (kind === 'success' && level === 3) {
+            console.log(`[digest] synthesis level=3_stub user=${userId}`);
+          }
+        },
+      );
+      synthesis = result.synthesis;
+      synthesisLevel = result.level;
+      // Public synthesis — parallel call. Profile-stripped; cache-
+      // shared across all users for the same (date, sensitivity,
+      // story-pool). Captures the FULL prose object (lead + signals +
+      // threads) since each personalised counterpart in the envelope
+      // can carry profile bias and the public surface needs sibling
+      // safe-versions of all three. Failure is non-fatal — the
+      // renderer's public-mode fail-safes (omit pull-quote / omit
+      // signals page / category-derived threads stub) handle absence
+      // rather than leaking the personalised version. Same adapted
+      // pool as the personalised synthesis.
+      try {
+        const pub = await generateDigestProsePublic(synthesisStories, sensitivity, briefLlmDeps);
+        if (pub) publicLead = pub;  // { lead, threads, signals, rankedStoryHashes }
+      } catch (err) {
+        console.warn(`[digest] brief: publicLead generation failed for ${userId}:`, err?.message);
+      }
     }
   }
 
@@ -2140,6 +2255,11 @@ async function main() {
   const nowMs = Date.now();
   digestRunStartedAtMs = nowMs;
   console.log('[digest] Cron run start:', new Date(nowMs).toISOString());
+
+  // Watchlist story alerts (#4922 U3): enqueue BEFORE the digest-rules fetch
+  // so a failed/empty rules fetch can't suppress the scan, and independent of
+  // whether any story also ships in a digest. Never throws.
+  await scanAndEnqueueWatchlistStoryEvents(nowMs);
 
   let rules;
   try {
@@ -2991,6 +3111,9 @@ async function main() {
       sentCount,
       errorReason: `brief_compose_failed:${composeFailed}:success:${composeSuccess}`,
     });
+    // process.exit does not drain in-flight promises — flush fire-and-forget
+    // llm_call telemetry first (bounded by the 1.5s fetch timeout).
+    await flushPendingLlmEvents();
     process.exit(1);
   }
 
@@ -3006,5 +3129,6 @@ main().catch(async (err) => {
     status: 'error',
     errorReason: `fatal:${err?.message ?? err}`,
   });
+  await flushPendingLlmEvents();
   process.exit(1);
 });

@@ -717,6 +717,11 @@ function emptyAuxiliarySources(): AuxiliarySources {
   };
 }
 
+// Iran-events domain sunset (war ended 2026-07). Default OFF: the strike feed
+// no longer contributes to CII/risk scores. Set IRAN_EVENTS_ENABLED=true to
+// restore. Mirrors the *_ENABLED env idiom in resilience/v1/_shared.ts.
+const IRAN_EVENTS_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLowerCase() === 'true';
+
 async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
   const currentYear = new Date().getFullYear();
   const [ucdpRaw, outagesRaw, climateRaw, cyberRaw, firesRaw, gpsRaw, iranRaw, orefRaw, advisoriesRaw, displacementRaw, insightsRaw, threatSummaryRaw, aviationRaw, earthquakesRaw, sanctionsRaw, sanctionsCountsRaw, temporalRaw, militaryCiiRaw] = await Promise.all([
@@ -726,7 +731,7 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
     getCachedJson('cyber:threats-bootstrap:v2', true).catch(() => null),
     getCachedJson('wildfire:fires:v1', true).catch(() => null),
     getCachedJson('intelligence:gpsjam:v2', true).catch(() => null),
-    getCachedJson('conflict:iran-events:v1', true).catch(() => null),
+    IRAN_EVENTS_ENABLED ? getCachedJson('conflict:iran-events:v1', true).catch(() => null) : Promise.resolve(null),
     getCachedJson('relay:oref:history:v1', true).catch(() => null),
     getCachedJson('intelligence:advisories:v1', true).catch(() => null),
     // Try current year, fall back to previous year if not yet seeded

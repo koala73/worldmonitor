@@ -813,7 +813,7 @@ describe('endpoint env flag parsing', () => {
       primary = 'gemini';
       invalidPrimaryRaw = rawPrimary;
     }
-    const shadowEnabled = env.BRIEF_WHY_MATTERS_SHADOW !== '0';
+    const shadowEnabled = env.BRIEF_WHY_MATTERS_SHADOW === '1';
     const rawSample = env.BRIEF_WHY_MATTERS_SHADOW_SAMPLE_PCT;
     let samplePct = 100;
     let invalidSamplePctRaw = null;
@@ -828,10 +828,10 @@ describe('endpoint env flag parsing', () => {
     return { primary, invalidPrimaryRaw, shadowEnabled, samplePct, invalidSamplePctRaw };
   }
 
-  it('defaults: primary=analyst, shadow=on, sample=100', () => {
+  it('defaults: primary=analyst, shadow=OFF (opt-in), sample=100', () => {
     const c = readConfig({});
     assert.equal(c.primary, 'analyst');
-    assert.equal(c.shadowEnabled, true);
+    assert.equal(c.shadowEnabled, false, 'shadow must be opt-in — default-on silently doubled gemini spend (#4893)');
     assert.equal(c.samplePct, 100);
   });
 
@@ -846,11 +846,24 @@ describe('endpoint env flag parsing', () => {
     assert.equal(c.invalidPrimaryRaw, 'analust');
   });
 
-  it('SHADOW disabled only by exact "0"', () => {
-    for (const v of ['yes', '1', 'true', '', 'on']) {
-      assert.equal(readConfig({ BRIEF_WHY_MATTERS_SHADOW: v }).shadowEnabled, true, `value=${v}`);
+  it('SHADOW enabled only by exact "1"', () => {
+    for (const v of ['yes', '0', 'true', '', 'on']) {
+      assert.equal(readConfig({ BRIEF_WHY_MATTERS_SHADOW: v }).shadowEnabled, false, `value=${v}`);
     }
-    assert.equal(readConfig({ BRIEF_WHY_MATTERS_SHADOW: '0' }).shadowEnabled, false);
+    assert.equal(readConfig({ BRIEF_WHY_MATTERS_SHADOW: '1' }).shadowEnabled, true);
+  });
+
+  it('handler source uses the same opt-in expression as this mirror (drift pin)', async () => {
+    // The mirror above is handwritten; without this pin, flipping the
+    // handler default would leave these expectations silently asserting
+    // the wrong semantics (that is exactly how default-on shipped in
+    // the first place — #4893).
+    const { readFile } = await import('node:fs/promises');
+    const src = await readFile(new URL('../api/internal/brief-why-matters.ts', import.meta.url), 'utf8');
+    assert.ok(
+      src.includes("env.BRIEF_WHY_MATTERS_SHADOW === '1'"),
+      'brief-why-matters.ts must gate shadow with the opt-in expression mirrored in readConfig()',
+    );
   });
 
   it('SAMPLE_PCT accepts integer 0–100; invalid → 100', () => {

@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import { loadEnvFile, runSeed, CHROME_UA, withRetry, parseRetryAfterMs, getResponseHeader, isRetryableHttpStatus } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { tagRegions } from './_prediction-scoring.mjs';
+import { attachResolutionSpecs } from './_forecast-resolution.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-storage.mjs';
 import { extractFirstJsonObject, extractFirstJsonArray, cleanJsonText } from './_llm-json.mjs';
 import { loadTickerSet } from './_ticker-validation.mjs';
@@ -40,6 +41,11 @@ if (_isDirectRun) loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'forecast:predictions:v2';
 const PRIOR_KEY = 'forecast:predictions:prior:v2';
+// Iran-events domain sunset (war ended 2026-07). Default OFF: the strike feed
+// no longer seeds forecast inputs or critical signals (even while the canonical
+// key's 14d TTL still holds a stale snapshot). IRAN_EVENTS_ENABLED=true restores.
+// Read at call time so it's robust to loadEnvFile() ordering.
+const iranEventsEnabled = () => (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLowerCase() === 'true';
 const HISTORY_KEY = 'forecast:predictions:history:v1';
 const TTL_SECONDS = 21600; // 6h — 6x the 1h cron interval (was 1.75x; hourly miss → 15 min panel gap)
 const HISTORY_MAX_RUNS = 200;
@@ -70,6 +76,14 @@ const SIMULATION_DECORATIONS_MAX_AGE_MS = 48 * 60 * 60 * 1000; // 48h — skip a
 const SIMULATION_ROUND1_MAX_TOKENS = 2200;
 const SIMULATION_ROUND2_MAX_TOKENS = 2500;
 const SIMULATION_LOCK_TTL_SECONDS = 20 * 60;
+const SIMULATION_LOCK_MAX_TTL_MULTIPLIER = 3;
+const REDIS_WRITE_IF_NEWER_SKIPPED_PREFIX = 'SKIPPED:';
+const SIM_LOCK_STATUS_DELETED = 'DELETED';
+const SIM_LOCK_STATUS_EXTENDED = 'EXTENDED';
+const SIM_LOCK_STATUS_EXPIRED = 'EXPIRED';
+const SIM_LOCK_STATUS_OWNED_BY_OTHER = 'OWNED_BY_OTHER';
+const SIM_TASK_COMPLETE_STATUS_COMPLETED = 'COMPLETED';
+const SIM_TASK_COMPLETE_STATUS_MISSING_WORKER = 'MISSING_WORKER';
 const SIMULATION_POLL_INTERVAL_MS = 30 * 1000;
 const PUBLISH_MIN_PROBABILITY = 0;
 const PANEL_MIN_PROBABILITY = 0.1;
@@ -90,6 +104,22 @@ const MIN_TARGET_PUBLISHED_FORECASTS = 10;
 const MAX_TARGET_PUBLISHED_FORECASTS = 14;
 const MAX_PRESELECTED_FORECASTS_PER_FAMILY = 3;
 const MAX_PRESELECTED_FORECASTS_PER_SITUATION = 2;
+
+function isRedisWriteSkippedStatus(status) {
+  return typeof status === 'string' && status.startsWith(REDIS_WRITE_IF_NEWER_SKIPPED_PREFIX);
+}
+
+function redisWriteSkippedGeneratedAt(status) {
+  return String(status || '').slice(REDIS_WRITE_IF_NEWER_SKIPPED_PREFIX.length);
+}
+
+function createSimulationWorkerId() {
+  const randomSuffix = typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : crypto.randomBytes(16).toString('hex');
+  return `sim-worker-${process.pid}-${Date.now()}-${randomSuffix}`;
+}
+
 // stateKind values that legitimately drive maritime energy/freight supply_chain forecasts.
 // Defined at module scope — not per-call — to avoid re-allocating the Set on every invocation.
 const MARITIME_BUCKET_STATE_KINDS = new Set([
@@ -702,7 +732,9 @@ async function readInputKeys() {
     'military:forecast-inputs:stale:v1',
     'prediction:markets-bootstrap:v1',
     'supply_chain:chokepoints:v4',
-    'conflict:iran-events:v1',
+    // Iran-events sunset: don't fetch the (dormant) key into the pipeline batch
+    // when disabled — the assembly below already feeds empty iranEvents.
+    ...(iranEventsEnabled() ? ['conflict:iran-events:v1'] : []),
     'conflict:ucdp-events:v1',
     'unrest:events:v1',
     'infra:outages:v1',
@@ -787,7 +819,7 @@ async function readInputKeys() {
     militaryForecastInputs: parsedByKey['military:forecast-inputs:stale:v1'],
     predictionMarkets: parsedByKey['prediction:markets-bootstrap:v1'],
     chokepoints: normalizeChokepoints(parsedByKey['supply_chain:chokepoints:v4']),
-    iranEvents: parsedByKey['conflict:iran-events:v1'],
+    iranEvents: iranEventsEnabled() ? parsedByKey['conflict:iran-events:v1'] : [],
     ucdpEvents: parsedByKey['conflict:ucdp-events:v1'],
     unrestEvents: parsedByKey['unrest:events:v1'],
     outages: parsedByKey['infra:outages:v1'],
@@ -821,6 +853,18 @@ async function readInputKeys() {
 function forecastId(domain, region, title) {
   const hash = crypto.createHash('sha256')
     .update(`${domain}:${region}:${title}`)
+    .digest('hex').slice(0, 8);
+  return `fc-${domain}-${hash}`;
+}
+
+// Stable id for forecasts whose titles embed run-varying data (military
+// dominantCountry/surgeType, state-derived cluster labels). The id must key
+// on the semantic slot, not the display title, or the same evolving
+// situation splits across ids between runs — breaking trend continuity and
+// outcome matching.
+function forecastIdFromKey(domain, slotKey) {
+  const hash = crypto.createHash('sha256')
+    .update(`${domain}:${slotKey}`)
     .digest('hex').slice(0, 8);
   return `fc-${domain}-${hash}`;
 }
@@ -920,14 +964,15 @@ function makePrediction(domain, region, title, probability, confidence, timeHori
     title,
     scenario: '',
     feedSummary: '',
-    probability: Math.round(Math.max(0, Math.min(1, probability)) * 1000) / 1000,
-    confidence: Math.round(Math.max(0, Math.min(1, confidence)) * 1000) / 1000,
+    probability: Math.round(Math.max(0, Math.min(1, Number.isFinite(probability) ? probability : 0)) * 1000) / 1000,
+    confidence: Math.round(Math.max(0, Math.min(1, Number.isFinite(confidence) ? confidence : 0)) * 1000) / 1000,
     timeHorizon,
     signals,
     cascades: [],
     trend: 'stable',
     priorProbability: 0,
     calibration: null,
+    resolution: null,
     caseFile: null,
     generationOrigin: 'legacy_detector',
     stateDerivedBackfill: false,
@@ -1163,7 +1208,7 @@ function detectSupplyChainScenarios(inputs) {
 
     const aisGaps = anomalies.filter(a =>
       (a.type === 'ais_gaps' || a.type === 'ais_gap') &&
-      (a.region || a.zone || '').toLowerCase().includes(route.toLowerCase()),
+      textIncludesTerm((a.region || a.zone || '').toLowerCase(), route.toLowerCase()),
     );
     if (aisGaps.length > 0) {
       signals.push({ type: 'ais_gap', value: `${aisGaps.length} AIS gap anomalies near ${route}`, weight: 0.3 });
@@ -1171,7 +1216,7 @@ function detectSupplyChainScenarios(inputs) {
     }
 
     const nearbyJam = jamming.filter(j =>
-      (j.region || j.zone || j.name || '').toLowerCase().includes(route.toLowerCase()),
+      textIncludesTerm((j.region || j.zone || j.name || '').toLowerCase(), route.toLowerCase()),
     );
     if (nearbyJam.length > 0) {
       signals.push({ type: 'gps_jamming', value: `GPS interference near ${route}`, weight: 0.2 });
@@ -1452,6 +1497,11 @@ function buildStateDerivedForecast(stateUnit, domain, bucket, candidate, marketC
     domain === 'supply_chain' ? '7d' : '30d',
     signals,
   );
+  // Key on the canonical state-unit identity (content hash over structural
+  // fields, NOT the display label) plus bucket: label churn no longer moves
+  // the id, while two distinct same-region/same-bucket units keep distinct
+  // ids — the cross-state dedup intentionally publishes up to 2 such bets.
+  prediction.id = forecastIdFromKey(domain, `state:${bucket.id}:${stateUnit?.id || stateUnit?.dominantRegion || stateUnit?.regions?.[0] || ''}`);
   prediction.generationOrigin = 'state_derived';
   prediction.feedSummary = buildStateDerivedFeedSummary(
     domain,
@@ -1604,10 +1654,18 @@ function deriveStateDrivenForecasts({
     }
   }
 
+  // Slot ids make same (domain, bucket, dominantRegion) forecasts share an id
+  // regardless of cluster label — keep only the best-ranked one per id.
+  const seenSlotIds = new Set();
   return crossDeduped
     .sort((a, b) => (Number(a.stateDerivedBackfill) - Number(b.stateDerivedBackfill))
       || (b.probability * b.confidence) - (a.probability * a.confidence)
-      || a.title.localeCompare(b.title));
+      || a.title.localeCompare(b.title))
+    .filter((pred) => {
+      if (seenSlotIds.has(pred.id)) return false;
+      seenSlotIds.add(pred.id);
+      return true;
+    });
 }
 
 function detectPoliticalScenarios(inputs) {
@@ -1643,7 +1701,7 @@ function detectPoliticalScenarios(inputs) {
 
     const protestAnomalies = anomalies.filter(a =>
       (a.type === 'protest' || a.type === 'unrest') &&
-      (a.country || a.region || '').toLowerCase().includes(countryName),
+      textIncludesTerm((a.country || a.region || '').toLowerCase(), countryName),
     );
     if (protestAnomalies.length > 0) {
       const maxZ = Math.max(...protestAnomalies.map(a => a.zScore || a.z_score || 0));
@@ -1711,7 +1769,7 @@ function detectMilitaryScenarios(inputs) {
 
     const milFlights = anomalies.filter(a =>
       (a.type === 'military_flights' || a.type === 'military') &&
-      [region, theaterLabel, theaterId].some((part) => part && (a.region || a.theater || '').toLowerCase().includes(part.toLowerCase())),
+      [region, theaterLabel, theaterId].some((part) => part && textIncludesTerm((a.region || a.theater || '').toLowerCase(), part.toLowerCase())),
     );
     if (milFlights.length > 0) {
       const maxZ = Math.max(...milFlights.map(a => a.zScore || a.z_score || 0));
@@ -1787,11 +1845,13 @@ function detectMilitaryScenarios(inputs) {
       ? buildMilitaryForecastTitle(theaterId, theaterLabel, highestSurge)
       : `Military posture escalation: ${region}`;
 
-    predictions.push(makePrediction(
+    const milPred = makePrediction(
       'military', region,
       title,
       prob, confidence, '7d', signals,
-    ));
+    );
+    milPred.id = forecastIdFromKey('military', `theater:${theaterId}`);
+    predictions.push(milPred);
   }
 
   return predictions;
@@ -1823,7 +1883,7 @@ function detectInfraScenarios(inputs) {
     let sourceCount = 1;
 
     const relatedCyber = cyber.filter(t =>
-      (t.country || t.target || t.region || '').toLowerCase().includes(countryLower),
+      textIncludesTerm((t.country || t.target || t.region || '').toLowerCase(), countryLower),
     );
     if (relatedCyber.length > 0) {
       signals.push({ type: 'cyber', value: `${relatedCyber.length} cyber threats targeting ${country}`, weight: 0.3 });
@@ -1831,7 +1891,7 @@ function detectInfraScenarios(inputs) {
     }
 
     const nearbyJam = jamming.filter(j =>
-      (j.country || j.region || j.name || '').toLowerCase().includes(countryLower),
+      textIncludesTerm((j.country || j.region || j.name || '').toLowerCase(), countryLower),
     );
     if (nearbyJam.length > 0) {
       signals.push({ type: 'gps_jamming', value: `GPS interference in ${country}`, weight: 0.2 });
@@ -2057,6 +2117,30 @@ function tokenizeText(text) {
     .filter(token => token.length >= 3);
 }
 
+// Word-boundary term matching to prevent substring false positives
+// (Mali matching Somalia, Niger matching Nigeria, Iran matching Tirana).
+// Boundary class mirrors the tokenizeText delimiter so both matchers agree.
+// A plural suffix on the text side still counts — attacks/elections must
+// match the singular hints — but a term nested inside a DIFFERENT word
+// never does. "es" is only a plural after sibilants (gas→gases, tax→taxes);
+// allowing it globally made "war" match "wares".
+const TERM_MATCH_REGEX_CACHE_MAX = 4000;
+const termMatchRegexCache = new Map();
+function textIncludesTerm(lowerText, lowerTerm) {
+  if (!lowerText || !lowerTerm) return false;
+  let re = termMatchRegexCache.get(lowerTerm);
+  if (!re) {
+    if (termMatchRegexCache.size >= TERM_MATCH_REGEX_CACHE_MAX) {
+      termMatchRegexCache.delete(termMatchRegexCache.keys().next().value);
+    }
+    const escaped = lowerTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const pluralSuffix = /(?:s|x|z|ch|sh)$/.test(lowerTerm) ? '(?:es)?' : 's?';
+    re = new RegExp(`(?:^|[^a-z0-9])${escaped}${pluralSuffix}(?:[^a-z0-9]|$)`);
+    termMatchRegexCache.set(lowerTerm, re);
+  }
+  return re.test(lowerText);
+}
+
 function uniqueLowerTerms(terms) {
   return [...new Set((terms || [])
     .map(term => (term || '').toLowerCase().trim())
@@ -2069,7 +2153,7 @@ function countTermMatches(text, terms) {
   let score = 0;
   for (const term of uniqueLowerTerms(terms)) {
     if (term.length < 3) continue;
-    if (!lower.includes(term)) continue;
+    if (!textIncludesTerm(lower, term)) continue;
     hits += 1;
     score += term.length > 8 ? 4 : term.length > 5 ? 3 : 2;
   }
@@ -2110,16 +2194,16 @@ function computeHeadlineRelevance(headline, terms, domain, options = {}) {
   const tagMismatch = headlineTags.length > 0 && expectedTags.size > 0 && !tagOverlap;
   let score = regionScore + (tagOverlap ? 3 : 0) - (tagMismatch ? 4 : 0);
   for (const hint of getDomainTerms(domain)) {
-    if (lower.includes(hint)) score += 1;
+    if (textIncludesTerm(lower, hint)) score += 1;
   }
   const titleTokens = options.titleTokens || [];
   for (const token of titleTokens) {
-    if (lower.includes(token)) score += 2;
+    if (textIncludesTerm(lower, token)) score += 2;
   }
   if (options.requireRegion && regionHits === 0 && !tagOverlap) return 0;
   if (options.requireSemantic) {
-    const domainHits = getDomainTerms(domain).filter(hint => lower.includes(hint)).length;
-    const titleHits = titleTokens.filter(token => lower.includes(token)).length;
+    const domainHits = getDomainTerms(domain).filter(hint => textIncludesTerm(lower, hint)).length;
+    const titleHits = titleTokens.filter(token => textIncludesTerm(lower, token)).length;
     if (domainHits === 0 && titleHits === 0) return 0;
   }
   return Math.max(0, score);
@@ -2137,7 +2221,7 @@ function computeMarketMatchScore(pred, marketTitle, regionTerms, options = {}) {
   let score = regionScore + (tagOverlap ? 2 : 0) - (tagMismatch ? 5 : 0);
   let domainHits = 0;
   for (const hint of getDomainTerms(pred.domain)) {
-    if (lower.includes(hint)) {
+    if (textIncludesTerm(lower, hint)) {
       domainHits += 1;
       score += 1;
     }
@@ -2145,7 +2229,7 @@ function computeMarketMatchScore(pred, marketTitle, regionTerms, options = {}) {
   let titleHits = 0;
   const titleTokens = options.titleTokens || extractMeaningfulTokens(pred.title, regionTerms);
   for (const token of titleTokens) {
-    if (lower.includes(token)) {
+    if (textIncludesTerm(lower, token)) {
       titleHits += 1;
       score += 2;
     }
@@ -2165,7 +2249,8 @@ function detectFromPredictionMarkets(inputs) {
   const markets = inputs.predictionMarkets?.geopolitical || [];
 
   for (const m of markets) {
-    const yesPrice = (m.yesPrice || 50) / 100;
+    if (!Number.isFinite(m?.yesPrice)) continue;
+    const yesPrice = m.yesPrice / 100;
     if (yesPrice < 0.6 || yesPrice > 0.9) continue;
     const tags = tagRegions(m.title);
     if (tags.length === 0) continue;
@@ -2336,6 +2421,7 @@ function calibrateWithMarkets(predictions, markets) {
         return { market: m, sameMacroRegion, ...match };
       })
       .filter(item => {
+        if (!Number.isFinite(item.market.yesPrice)) return false; // a price-less anchor would blend toward a fabricated 50%
         if (item.tagMismatch && item.regionHits === 0) return false;
         const hasSpecificRegionSignal = item.regionHits > 0 || item.tagOverlap;
         const hasSemanticOverlap = item.titleHits > 0 || item.domainHits > 0;
@@ -2351,7 +2437,7 @@ function calibrateWithMarkets(predictions, markets) {
     const best = candidates[0];
     const match = best?.market || null;
     if (match) {
-      const marketProb = (match.yesPrice || 50) / 100;
+      const marketProb = match.yesPrice / 100;
       pred.calibration = {
         marketTitle: match.title,
         marketPrice: +marketProb.toFixed(3),
@@ -2414,13 +2500,24 @@ function getSearchTermsForRegion(region) {
   if (!countryEntry) {
     const regionLower = region.toLowerCase();
     const regionBase = region.replace(/\s*\([^)]*\)\s*$/, '').toLowerCase(); // strip "(Zaire)", "(Burma)", etc.
+    // Exact name match always wins; containment falls back to the LONGEST
+    // contained name so "DR Congo" resolves to DR Congo, never Congo, and
+    // "Guinea-Bissau" / "Papua New Guinea" never inherit Guinea's terms.
+    let matched = null;
     for (const [, entry] of Object.entries(codes)) {
       const nameLower = entry.name.toLowerCase();
-      if (nameLower === regionLower || nameLower === regionBase || regionLower.includes(nameLower)) {
-        terms.push(entry.name);
-        terms.push(...entry.keywords);
+      if (nameLower === regionLower || nameLower === regionBase) {
+        matched = entry;
         break;
       }
+      if (textIncludesTerm(regionLower, nameLower)
+        && (!matched || nameLower.length > matched.name.length)) {
+        matched = entry;
+      }
+    }
+    if (matched) {
+      terms.push(matched.name);
+      terms.push(...matched.keywords);
     }
   }
 
@@ -3228,7 +3325,17 @@ async function extractCriticalSignalBundle(inputs) {
   if (candidates.length === 0) return bundle;
 
   const { url, token } = getRedisCredentials();
-  const cacheKey = `forecast:critical-signals:llm:${buildCriticalSignalCandidateHash(candidates)}`;
+  // The key carries the resolved LLM route (#4965 review): the R13-pinned
+  // default and a FORECAST_LLM_CRITICAL_*-unpinned route must not reuse each
+  // other's frames within the TTL — strength/confidence magnitudes are
+  // model-dependent and probability-coupled.
+  const criticalLlmOptions = getForecastLlmCallOptions('critical_signals');
+  const criticalRouteTag = [
+    (criticalLlmOptions.providerOrder || []).join('-') || 'default',
+    criticalLlmOptions.modelOverrides?.openrouter || 'table',
+    criticalLlmOptions.modelOverrides?.groq || 'table',
+  ].join('_').replace(/[^a-zA-Z0-9._\/-]/g, '-');
+  const cacheKey = `forecast:critical-signals:llm:${criticalRouteTag}:${buildCriticalSignalCandidateHash(candidates)}`;
   const fallbackSignalsFromCandidates = (coveredIndexes = new Set()) =>
     extractRegexCriticalNewsSignals(inputs, candidates.filter((item) => !coveredIndexes.has(item.candidateIndex)));
 
@@ -3262,7 +3369,7 @@ async function extractCriticalSignalBundle(inputs) {
   }
 
   const llmOptions = {
-    ...getForecastLlmCallOptions('critical_signals'),
+    ...criticalLlmOptions,
     stage: 'critical_signals',
     maxTokens: 1200,
     temperature: 0.1,
@@ -3902,7 +4009,9 @@ async function extractImpactExpansionBundle({
   if (selectedCandidatePackets.length === 0) return bundle;
 
   const { url, token } = getRedisCredentials();
-  const cacheKey = `forecast:impact-expansion:llm:${buildImpactExpansionCandidateHash(selectedCandidatePackets, learnedSection)}`;
+  // v2 (2026-07-06, #4944 U6): impact stage moved to deepseek-v4-flash — the
+  // candidate hash is not model-sensitive, so retire old-model rows explicitly.
+  const cacheKey = `forecast:impact-expansion:llm:v2:${buildImpactExpansionCandidateHash(selectedCandidatePackets, learnedSection)}`;
   const cached = await redisGet(url, token, cacheKey);
   if (Array.isArray(cached?.candidates)) {
     const extractedCandidates = sanitizeImpactExpansionDrafts(cached.candidates, selectedCandidatePackets);
@@ -3939,7 +4048,7 @@ async function extractImpactExpansionBundle({
     const batch = selectedCandidatePackets.slice(i, i + IMPACT_EXPANSION_CONCURRENCY);
     const batchResults = await Promise.all(
       batch.map(async (packet) => {
-        const singleCacheKey = `forecast:impact-expansion:llm:${buildImpactExpansionCandidateHash([packet], learnedSection)}`;
+        const singleCacheKey = `forecast:impact-expansion:llm:v2:${buildImpactExpansionCandidateHash([packet], learnedSection)}`;
         const singleCached = await redisGet(url, token, singleCacheKey);
         if (Array.isArray(singleCached?.candidates)) {
           const hits = sanitizeImpactExpansionDrafts(singleCached.candidates, [packet]);
@@ -4467,6 +4576,7 @@ function buildHistoryForecastEntry(pred) {
     probability: pred.probability,
     confidence: pred.confidence,
     timeHorizon: pred.timeHorizon,
+    generationOrigin: pred.generationOrigin || 'legacy_detector',
     trend: pred.trend,
     priorProbability: pred.priorProbability,
     signals: (pred.signals || []).slice(0, 6).map(signal => ({
@@ -4488,6 +4598,18 @@ function buildHistoryForecastEntry(pred) {
       effect: cascade.effect,
       probability: cascade.probability,
     })),
+    // Persist projections into the 45-day history too (#4933 audit gap —
+    // canonical payload already emits them at :5100; history was the only
+    // store dropping them, so the per-horizon curve a future multi-horizon
+    // Brier needs was lost). Mirror the canonical payload's shape.
+    projections: pred.projections ? {
+      h24: Number(pred.projections.h24 || 0),
+      d7: Number(pred.projections.d7 || 0),
+      d30: Number(pred.projections.d30 || 0),
+    } : null,
+    // Resolution spec (#4976 Bet 1) — same camelCase block the canonical
+    // payload emits, so Bet 2's resolver can score forecasts still in-window.
+    resolution: buildResolutionOutputBlock(pred.resolution),
   };
 }
 
@@ -4974,6 +5096,36 @@ function slimForecastCaseForPublish(caseFile = null) {
   };
 }
 
+// Emit the resolution spec (#4976 Bet 1) as a camelCase block (D6) matching
+// the generated `Forecast` type. Follows proto3-JSON omission semantics for
+// the message's `optional` fields: a field that does not apply to the kind is
+// OMITTED (absent key), never null and never coerced to 0 — a judged spec
+// with threshold 0 would be indistinguishable from a hard ">= 0" bar, and an
+// explicit null would contradict the generated `threshold?: number` type that
+// Bet-2 consumers compile against. `kind` and `deadline` are always present.
+// Deliberate divergence from the sibling `calibration: null` idiom:
+// ResolutionSpec is machine-consumed against the generated types, so the wire
+// shape matches what proto3 JSON actually specifies for unset optionals.
+// Returns undefined when the forecast has no spec, so the enclosing payload
+// omits `resolution` entirely (JSON.stringify drops undefined properties).
+// Shared by the canonical payload and the 45-day history entry (R6).
+function buildResolutionOutputBlock(resolution) {
+  if (!resolution || typeof resolution !== 'object') return undefined;
+  const num = (v) => (Number.isFinite(v) ? Number(v) : undefined);
+  const str = (v) => (typeof v === 'string' && v.length > 0 ? v : undefined);
+  return {
+    kind: str(resolution.kind),
+    deadline: num(resolution.deadline),
+    ...(str(resolution.metricKey) !== undefined && { metricKey: str(resolution.metricKey) }),
+    ...(str(resolution.operator) !== undefined && { operator: str(resolution.operator) }),
+    ...(num(resolution.threshold) !== undefined && { threshold: num(resolution.threshold) }),
+    ...(num(resolution.baselineValue) !== undefined && { baselineValue: num(resolution.baselineValue) }),
+    ...(str(resolution.window) !== undefined && { window: str(resolution.window) }),
+    ...(str(resolution.sourceFeed) !== undefined && { sourceFeed: str(resolution.sourceFeed) }),
+    ...(str(resolution.question) !== undefined && { question: str(resolution.question) }),
+  };
+}
+
 function buildPublishedForecastPayload(pred) {
   return {
     id: pred.id,
@@ -5019,6 +5171,7 @@ function buildPublishedForecastPayload(pred) {
       d7: Number(pred.projections.d7 || 0),
       d30: Number(pred.projections.d30 || 0),
     } : null,
+    resolution: buildResolutionOutputBlock(pred.resolution),
     caseFile: slimForecastCaseForPublish(pred.caseFile),
     simulationAdjustment: Number(pred.simulationAdjustment || 0),
     simPathConfidence: Number(pred.simPathConfidence || 0),
@@ -14037,9 +14190,13 @@ function selectForecastsForEnrichment(predictions, options = {}) {
 }
 
 // ── Phase 2: LLM Scenario Enrichment ───────────────────────
+// openrouter-first since #4944 U6: forecast NARRATIVE (never probabilities —
+// detectors own those) runs DeepSeek V4 Flash with reasoning disabled; groq
+// llama-3.3-70b-versatile is the free-tier/outage fallback. Per-stage
+// FORECAST_LLM_*_PROVIDER_ORDER env still overrides.
 const FORECAST_LLM_PROVIDERS = [
-  { name: 'groq', envKey: 'GROQ_API_KEY', apiUrl: 'https://api.groq.com/openai/v1/chat/completions', model: 'llama-3.1-8b-instant', timeout: 20_000 },
-  { name: 'openrouter', envKey: 'OPENROUTER_API_KEY', apiUrl: 'https://openrouter.ai/api/v1/chat/completions', model: 'google/gemini-2.5-flash', timeout: 25_000 },
+  { name: 'openrouter', envKey: 'OPENROUTER_API_KEY', apiUrl: 'https://openrouter.ai/api/v1/chat/completions', model: 'deepseek/deepseek-v4-flash', timeout: 25_000, extraBody: { reasoning: { enabled: false } } },
+  { name: 'groq', envKey: 'GROQ_API_KEY', apiUrl: 'https://api.groq.com/openai/v1/chat/completions', model: 'llama-3.3-70b-versatile', timeout: 20_000 },
 ];
 const FORECAST_LLM_PROVIDER_NAMES = new Set(FORECAST_LLM_PROVIDERS.map(provider => provider.name));
 // 3 retries (=4 attempts/provider): during an OpenRouter slowdown 2 retries all timed
@@ -14113,6 +14270,31 @@ function getForecastLlmCallOptions(stage = 'default') {
         ? (process.env.FORECAST_LLM_MARKET_IMPLICATIONS_MODEL_OPENROUTER || process.env.FORECAST_LLM_MODEL_OPENROUTER)
       : process.env.FORECAST_LLM_MODEL_OPENROUTER;
 
+  // R13 pin (#4944 U6): critical_signals is NOT narrative-only — its LLM
+  // strength/confidence flow into state-derived (market/supply_chain)
+  // forecast probabilities and publish selection (frames → world signals →
+  // pressure/confirmation scores → buildStateDerivedForecast probability).
+  // Hold this stage on the pre-#4944 models so the DeepSeek narrative
+  // migration cannot move probabilities before the #4930 resolver baseline
+  // exists. ONLY the stage-scoped FORECAST_LLM_CRITICAL_PROVIDER_ORDER
+  // unpins it — a global FORECAST_LLM_PROVIDER_ORDER must not move a
+  // probability-coupled stage as a side effect (review finding on #4965).
+  if (stage === 'critical_signals' && !criticalProviderOrder) {
+    return {
+      providerOrder: ['groq', 'openrouter'],
+      modelOverrides: {
+        groq: 'llama-3.1-8b-instant',
+        // ONLY the stage-scoped model env may change the pinned fallback —
+        // a global FORECAST_LLM_MODEL_OPENROUTER must not move the
+        // probability-coupled stage either (review finding on #4965).
+        openrouter: process.env.FORECAST_LLM_CRITICAL_MODEL_OPENROUTER || 'google/gemini-2.5-flash',
+      },
+      // Legacy request-body parity: the pinned models predate the
+      // reasoning-off extraBody on the table's openrouter entry.
+      extraBodyOverrides: { openrouter: null },
+    };
+  }
+
   return {
     providerOrder,
     modelOverrides: openrouterModel ? { openrouter: openrouterModel } : {},
@@ -14134,6 +14316,11 @@ function resolveForecastLlmProviders(options = {}) {
     providers.push({
       ...provider,
       model: options.modelOverrides?.[provider.name] || provider.model,
+      // `null` explicitly clears the table entry's extraBody (R13 pin);
+      // undefined leaves it untouched.
+      extraBody: options.extraBodyOverrides?.[provider.name] !== undefined
+        ? (options.extraBodyOverrides[provider.name] || undefined)
+        : provider.extraBody,
     });
   }
   return providers.length > 0 ? providers : FORECAST_LLM_PROVIDERS;
@@ -14414,9 +14601,8 @@ function getRemainingForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs) {
   const stageRemaining = budgetStartedAtMs + stageBudgetMs - Date.now();
   // The run deadline (when set) caps cumulative LLM time across all stages so
   // the seed can't outlive its 180s lock; whichever budget is tighter wins.
-  const runRemaining = forecastLlmRunDeadlineMs == null
-    ? Infinity
-    : forecastLlmRunDeadlineMs - Date.now();
+  // Single source of truth for run-remaining lives in getRemainingForecastLlmRunBudgetMs.
+  const runRemaining = getRemainingForecastLlmRunBudgetMs();
   return Math.max(0, Math.min(stageRemaining, runRemaining));
 }
 
@@ -14424,8 +14610,26 @@ function getUsableForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs) {
   return Math.max(0, getRemainingForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs) - FORECAST_LLM_STAGE_BUDGET_GUARD_MS);
 }
 
+// Remaining RUN-level LLM budget in ms (Infinity when no run deadline is set —
+// tests and the deep-forecast worker, which have only the per-stage budget).
+// market_implications runs LAST in afterPublish, so this is the budget that
+// starves it when upstream stages are slow (e.g. deepseek-v4-flash 30s
+// timeouts drain the shared 150s run budget before the tail stage runs). #4978.
+function getRemainingForecastLlmRunBudgetMs() {
+  return forecastLlmRunDeadlineMs == null ? Infinity : forecastLlmRunDeadlineMs - Date.now();
+}
+
 function isForecastLlmBudgetError(err) {
   return Boolean(err?.forecastLlmBudgetExhausted);
+}
+
+const FORECAST_LLM_FAILURE_BUDGET_EXHAUSTED = 'budget_exhausted';
+const FORECAST_LLM_FAILURE_PROVIDER_FAILED = 'provider_failed';
+
+function createForecastLlmFailureResult(options, failureReason) {
+  return options.returnFailureReason
+    ? { text: '', model: '', provider: '', failureReason }
+    : null;
 }
 
 function createForecastLlmHttpError(resp, usableBudgetMs = Infinity) {
@@ -14446,6 +14650,27 @@ function createForecastLlmHttpError(resp, usableBudgetMs = Infinity) {
   return err;
 }
 
+// Seeder-side llm_call telemetry (#4895, post-#4901 review P1). Mirrors
+// server/_shared/usage.ts LlmCallEvent field-for-field and shares its gating
+// (USAGE_TELEMETRY=1 + AXIOM_API_TOKEN) so seeder events unify with the
+// Vercel-side stream in one APL query. Best-effort: one bounded POST per
+// logical call, never throws, never delays the seed meaningfully.
+const AXIOM_WM_API_USAGE_INGEST_URL = 'https://api.axiom.co/v1/datasets/wm_api_usage/ingest';
+
+async function emitForecastLlmEvents(events) {
+  if (process.env.USAGE_TELEMETRY !== '1' || events.length === 0) return;
+  const token = process.env.AXIOM_API_TOKEN;
+  if (!token) return;
+  try {
+    await fetch(AXIOM_WM_API_USAGE_INGEST_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(events),
+      signal: AbortSignal.timeout(1_500),
+    });
+  } catch { /* telemetry must never affect the seed */ }
+}
+
 async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
   if (forecastLlmCallOverrideForTests) {
     return await forecastLlmCallOverrideForTests(systemPrompt, userPrompt, options);
@@ -14454,68 +14679,176 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
   const providers = resolveForecastLlmProviders(options);
   const stageBudgetMs = getForecastLlmStageBudgetMs(options);
   const budgetStartedAtMs = Date.now();
+  // Per-provider retry count is overridable per call. Budget-constrained tail
+  // stages (market_implications) pass 0 so a slow primary cannot burn the shared
+  // run budget across 4 attempts and strand the fallback provider (#5003 review).
+  const providerMaxRetries = Number.isFinite(options.maxRetries)
+    ? Math.max(0, Math.floor(options.maxRetries))
+    : FORECAST_LLM_PROVIDER_MAX_RETRIES;
   const requestedOrder = Array.isArray(options.providerOrder) && options.providerOrder.length > 0
     ? options.providerOrder.join(',')
     : providers.map(provider => provider.name).join(',');
   console.log(`  [LLM:${stage}] providerOrder=${requestedOrder} modelOverrides=${JSON.stringify(options.modelOverrides || {})}`);
 
-  for (const provider of providers) {
-    const apiKey = process.env[provider.envKey];
-    if (!apiKey) continue;
-    try {
-      const forecastFetch = forecastLlmFetchForTests || ((...args) => globalThis.fetch(...args));
-      const retryDelayMs = Number.isFinite(options.retryDelayMs)
-        ? Math.max(0, Math.floor(options.retryDelayMs))
-        : FORECAST_LLM_RETRY_BASE_MS;
-      const resp = await withRetry(async () => {
-        const usableBudgetMs = getUsableForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs);
-        if (usableBudgetMs <= 0) throw createForecastLlmBudgetError(stage, budgetStartedAtMs, stageBudgetMs);
-        const response = await forecastFetch(provider.apiUrl, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-            'User-Agent': CHROME_UA,
-            ...(provider.name === 'openrouter' ? { 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor' } : {}),
-          },
-          body: JSON.stringify({
-            model: provider.model,
-            messages: [
-              { role: 'system', content: systemPrompt },
-              { role: 'user', content: userPrompt },
-            ],
-            max_tokens: options.maxTokens || 1500,
-            temperature: options.temperature ?? 0.3,
-          }),
-          signal: AbortSignal.timeout(Math.max(1, Math.min(provider.timeout, usableBudgetMs))),
-        });
-        if (!response.ok) {
-          throw createForecastLlmHttpError(
-            response,
-            getUsableForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs),
+  // One event per ATTEMPT: every withRetry retry and every provider fallback
+  // re-sends the full prompt, so each gets its own fallback_index. Budget
+  // pre-emptions (thrown before the fetch) are not attempts and emit nothing.
+  const llmPromptChars = (systemPrompt?.length ?? 0) + (userPrompt?.length ?? 0);
+  const llmMaxTokens = options.maxTokens || 1500;
+  const llmEvents = [];
+  let llmAttemptIndex = 0;
+  // Failure-reason classification invariant (#4978): callForecastLLM returns
+  // FORECAST_LLM_FAILURE_BUDGET_EXHAUSTED (a benign starve — the market_implications
+  // caller preserves last-good and writes NO SEED_ERROR) ONLY when the sole cause
+  // was the shared run budget draining (a pre-call/pre-fetch budget pre-emption, or
+  // a budget-CAPPED timeout that never gave the provider its full window). Every
+  // GENUINE provider-failure branch below (HTTP error, invalid/empty response, fetch
+  // error, or a timeout that got the provider's full window) MUST set
+  // `sawProviderFailure = true` so the result is FORECAST_LLM_FAILURE_PROVIDER_FAILED
+  // and /api/health surfaces SEED_ERROR. A new provider-failure branch that forgets
+  // to set this flag would silently misreport a real outage as a benign starve.
+  let sawProviderFailure = false;
+  let sawBudgetCappedTimeout = false;
+  const recordLlmAttempt = (providerName, model, ok, startedAtMs, extra = {}) => {
+    llmEvents.push({
+      _time: new Date().toISOString(),
+      event_type: 'llm_call',
+      provider: providerName,
+      model,
+      stage,
+      ok,
+      duration_ms: Date.now() - startedAtMs,
+      tokens_total: extra.tokensTotal ?? 0,
+      tokens_prompt: extra.tokensPrompt ?? 0,
+      tokens_completion: extra.tokensCompletion ?? 0,
+      prompt_chars: llmPromptChars,
+      max_tokens: llmMaxTokens,
+      fallback_index: llmAttemptIndex++,
+      reason: extra.reason || '',
+    });
+  };
+
+  try {
+    for (const provider of providers) {
+      const apiKey = process.env[provider.envKey];
+      if (!apiKey) continue;
+      let attemptT0 = Date.now();
+      try {
+        const forecastFetch = forecastLlmFetchForTests || ((...args) => globalThis.fetch(...args));
+        const retryDelayMs = Number.isFinite(options.retryDelayMs)
+          ? Math.max(0, Math.floor(options.retryDelayMs))
+          : FORECAST_LLM_RETRY_BASE_MS;
+        const resp = await withRetry(async () => {
+          const usableBudgetMs = getUsableForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs);
+          if (usableBudgetMs <= 0) throw createForecastLlmBudgetError(stage, budgetStartedAtMs, stageBudgetMs);
+          const attemptTimeoutMs = Math.max(1, Math.min(provider.timeout, usableBudgetMs));
+          attemptT0 = Date.now();
+          try {
+            const response = await forecastFetch(provider.apiUrl, {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+                'User-Agent': CHROME_UA,
+                ...(provider.name === 'openrouter' ? { 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor' } : {}),
+              },
+              body: JSON.stringify({
+                model: provider.model,
+                messages: [
+                  { role: 'system', content: systemPrompt },
+                  { role: 'user', content: userPrompt },
+                ],
+                max_tokens: options.maxTokens || 1500,
+                temperature: options.temperature ?? 0.3,
+                ...(provider.extraBody || {}),
+              }),
+              signal: AbortSignal.timeout(attemptTimeoutMs),
+            });
+            if (!response.ok) {
+              sawProviderFailure = true;
+              recordLlmAttempt(provider.name, provider.model, false, attemptT0, { reason: `http_${response.status}` });
+              const httpErr = createForecastLlmHttpError(
+                response,
+                getUsableForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs),
+              );
+              httpErr.__llmAttemptRecorded = true;
+              throw httpErr;
+            }
+            return response;
+          } catch (err) {
+            if (!err?.__llmAttemptRecorded && !isForecastLlmBudgetError(err)) {
+              err.__llmAttemptRecorded = true;
+              const name = err?.name;
+              const timedOut = name === 'TimeoutError' || name === 'AbortError';
+              // Attribute a timeout to the run budget (not the provider) ONLY when
+              // this attempt's timeout was itself CAPPED below the provider's own
+              // timeout (attemptTimeoutMs < provider.timeout) AND the run budget is
+              // now exhausted — i.e. we never gave the provider its full window, so
+              // we cannot call this a provider failure. When the call gets the full
+              // provider.timeout (market_implications' admission guard reserves the
+              // whole resolved chain — every runnable provider's timeout + the stage
+              // guard, with maxRetries:0 — so each admitted attempt gets its full
+              // window), a timeout is unambiguously a provider failure -> sawProviderFailure.
+              const budgetCappedTimeout = timedOut
+                && attemptTimeoutMs < provider.timeout
+                && getUsableForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs) <= 0;
+              if (budgetCappedTimeout) sawBudgetCappedTimeout = true;
+              else sawProviderFailure = true;
+              recordLlmAttempt(provider.name, provider.model, false, attemptT0, {
+                reason: timedOut ? 'timeout' : 'fetch_error',
+              });
+            }
+            throw err;
+          }
+        }, providerMaxRetries, retryDelayMs);
+
+        let json;
+        try {
+          json = await resp.json();
+        } catch (err) {
+          console.warn(`  [LLM:${stage}] ${provider.name} invalid response: ${err.message}`);
+          sawProviderFailure = true;
+          recordLlmAttempt(provider.name, provider.model, false, attemptT0, { reason: 'invalid_json' });
+          continue;
+        }
+        const tokensExtra = {
+          tokensTotal: json.usage?.total_tokens ?? 0,
+          tokensPrompt: json.usage?.prompt_tokens ?? 0,
+          tokensCompletion: json.usage?.completion_tokens ?? 0,
+        };
+        const text = json.choices?.[0]?.message?.content?.trim();
+        if (!text || text.length < 20) {
+          sawProviderFailure = true;
+          recordLlmAttempt(provider.name, provider.model, false, attemptT0, { ...tokensExtra, reason: 'empty' });
+          continue;
+        }
+        const model = json.model || provider.model;
+        console.log(`  [LLM:${stage}] ${provider.name} success model=${model}`);
+        recordLlmAttempt(provider.name, model, true, attemptT0, tokensExtra);
+        return { text, model, provider: provider.name };
+      } catch (err) {
+        // All real attempts were recorded inside the retry callback; budget
+        // pre-emptions never sent the prompt, so nothing to record here.
+        console.warn(`  [LLM:${stage}] ${provider.name} ${err.message}`);
+        if (isForecastLlmBudgetError(err)) {
+          return createForecastLlmFailureResult(
+            options,
+            sawProviderFailure ? FORECAST_LLM_FAILURE_PROVIDER_FAILED : FORECAST_LLM_FAILURE_BUDGET_EXHAUSTED,
           );
         }
-        return response;
-      }, FORECAST_LLM_PROVIDER_MAX_RETRIES, retryDelayMs);
-
-      let json;
-      try {
-        json = await resp.json();
-      } catch (err) {
-        console.warn(`  [LLM:${stage}] ${provider.name} invalid response: ${err.message}`);
-        continue;
       }
-      const text = json.choices?.[0]?.message?.content?.trim();
-      if (!text || text.length < 20) continue;
-      const model = json.model || provider.model;
-      console.log(`  [LLM:${stage}] ${provider.name} success model=${model}`);
-      return { text, model, provider: provider.name };
-    } catch (err) {
-      console.warn(`  [LLM:${stage}] ${provider.name} ${err.message}`);
-      if (isForecastLlmBudgetError(err)) return null;
     }
+    return createForecastLlmFailureResult(
+      options,
+      sawProviderFailure
+        ? FORECAST_LLM_FAILURE_PROVIDER_FAILED
+        : sawBudgetCappedTimeout
+          ? FORECAST_LLM_FAILURE_BUDGET_EXHAUSTED
+          : FORECAST_LLM_FAILURE_PROVIDER_FAILED,
+    );
+  } finally {
+    await emitForecastLlmEvents(llmEvents);
   }
-  return null;
 }
 
 async function redisSet(url, token, key, data, ttlSeconds) {
@@ -14547,19 +14880,26 @@ async function redisSet(url, token, key, data, ttlSeconds) {
   } catch (err) { console.warn(`  [Redis] Cache write failed for ${key}: ${err.message}`); }
 }
 
-function buildCacheHash(preds) {
+// #4914: cache identity = the exact prompt text (system + user) — the same
+// pattern as the regional narrative cache (#4911). The previous hash covered
+// raw values the prompt never renders (probability floats vs the prompt's
+// integer percents, every newsContext entry vs the prompt's top-3, cascade
+// probability floats) so hourly drift minted a fresh key for a
+// byte-identical prompt and the seeder paid a full generation every run.
+// Hashing the prompt makes staleness impossible by construction: any
+// prompt-visible change (including a deploy-time system-prompt edit) is a
+// new key.
+function buildNarrativeCacheHash(systemPrompt, userPrompt) {
   return crypto.createHash('sha256')
-    .update(JSON.stringify(preds.map(p => ({
-      id: p.id, d: p.domain, r: p.region, p: p.probability,
-      s: p.signals.map(s => s.value).join(','),
-      c: p.calibration?.drift,
-      n: (p.newsContext || []).join(','),
-      t: p.trend,
-      j: p.projections ? `${p.projections.h24}|${p.projections.d7}|${p.projections.d30}` : '',
-      g: (p.cascades || []).map(cascade => `${cascade.domain}:${cascade.effect}:${cascade.probability}`).join(','),
-    }))))
+    .update(`${systemPrompt}\u0000${userPrompt}`)
     .digest('hex').slice(0, 16);
 }
+
+// Prompt-hash keys self-invalidate on any input change, so the TTL is only
+// an eviction bound, not a freshness control. The old 3600s TTL expired
+// between hourly runs, guaranteeing a paid regeneration even for an
+// unchanged prompt.
+const NARRATIVE_CACHE_TTL_SEC = 24 * 60 * 60;
 
 function buildUserPrompt(preds) {
   const predsText = preds.map((p, i) => {
@@ -14864,8 +15204,10 @@ async function enrichScenariosWithLLM(predictions) {
 
   // Call 1: Combined scenario + perspectives for top-2
   if (topWithPerspectives.length > 0) {
-    const hash = buildCacheHash(topWithPerspectives);
-    const cacheKey = `forecast:llm-combined:${hash}`;
+    const hash = buildNarrativeCacheHash(COMBINED_SYSTEM_PROMPT, buildUserPrompt(topWithPerspectives));
+    // v2 (2026-07-06, #4944 U6): narrative moved to deepseek-v4-flash — the
+    // prompt hash is not model-sensitive, so retire old-model rows explicitly.
+    const cacheKey = `forecast:llm-combined:v2:${hash}`;
     console.log(`  [LLM:combined] start selected=${topWithPerspectives.length} cacheKey=${cacheKey}`);
     const cached = await redisGet(url, token, cacheKey);
 
@@ -14999,7 +15341,7 @@ async function enrichScenariosWithLLM(predictions) {
           latencyMs: Math.round(Date.now() - t0), cached: false,
         }));
 
-        if (items.length > 0) await redisSet(url, token, cacheKey, { items }, 3600);
+        if (items.length > 0) await redisSet(url, token, cacheKey, { items }, NARRATIVE_CACHE_TTL_SEC);
       } else {
         enrichmentMeta.combined.failureReason = 'call_failed';
         console.warn('  [LLM:combined] call failed');
@@ -15011,8 +15353,9 @@ async function enrichScenariosWithLLM(predictions) {
 
   // Call 2: Scenario-only for predictions 3-4
   if (scenarioOnly.length > 0) {
-    const hash = buildCacheHash(scenarioOnly);
-    const cacheKey = `forecast:llm-scenarios:${hash}`;
+    const hash = buildNarrativeCacheHash(SCENARIO_SYSTEM_PROMPT, buildUserPrompt(scenarioOnly));
+    // v2 (2026-07-06, #4944 U6): see the combined-stage bump note above.
+    const cacheKey = `forecast:llm-scenarios:v2:${hash}`;
     console.log(`  [LLM:scenario] start selected=${scenarioOnly.length} cacheKey=${cacheKey}`);
     const cached = await redisGet(url, token, cacheKey);
 
@@ -15109,7 +15452,7 @@ async function enrichScenariosWithLLM(predictions) {
               ...(c.contrarianCase ? { contrarianCase: c.contrarianCase } : {}),
             });
           }
-          await redisSet(url, token, cacheKey, { scenarios }, 3600);
+          await redisSet(url, token, cacheKey, { scenarios }, NARRATIVE_CACHE_TTL_SEC);
         }
       } else {
         enrichmentMeta.scenario.failureReason = 'call_failed';
@@ -15168,6 +15511,11 @@ async function fetchForecasts() {
     : [[], null, null];
   const priorWorldState = priorWorldStates[0] ?? priorWorldStateFallback;
   const publishSelectionMemoryIndex = buildPublishSelectionMemoryIndex(priorWorldState);
+  // Single per-run timestamp: threaded into the resolution enrichment seam
+  // (so spec deadlines = runGeneratedAt + horizon) AND into the canonical
+  // payload's generatedAt below, so deadlines and the payload agree. Never
+  // call Date.now() inside the builder module (R5).
+  const runGeneratedAt = Date.now();
 
   console.log('  Reading input data from Redis...');
   const inputs = await readInputKeys();
@@ -15281,6 +15629,13 @@ async function fetchForecasts() {
     fullRunStateUnits,
     selectionMarketInputCoverage,
   );
+  // Resolvability contract (#4976 Bet 1, D1 seam): attach a machine-checkable
+  // resolution spec to every forecast. Placed AFTER the state-derived
+  // if-block closes (:15496) so it runs unconditionally on every batch —
+  // including zero-state-derived runs — and BEFORE prepareForecastMetrics.
+  // Threads the single per-run timestamp so spec deadlines agree with the
+  // canonical payload's generatedAt. No publish-selection change (D2).
+  attachResolutionSpecs(predictions, inputs, runGeneratedAt);
   attachMarketSelectionContext(predictions, marketSelectionIndex);
   prepareForecastMetrics(predictions);
 
@@ -15322,7 +15677,7 @@ async function fetchForecasts() {
     predictions: publishedPredictions,
     fullRunPredictions,
     inputs,
-    generatedAt: Date.now(),
+    generatedAt: runGeneratedAt,
     enrichmentMeta,
     publishTelemetry,
     publishSelectionPool,
@@ -16169,6 +16524,45 @@ function validateMarketImplications(cards, allowedTickers = ALL_ALLOWED_TICKERS)
 
 const MARKET_IMPLICATIONS_META_KEY = 'seed-meta:intelligence:market-implications';
 const MARKET_IMPLICATIONS_META_TTL = 86400 * 7;
+// v2 (2026-07-06, #4944 U6): narrative moved to deepseek-v4-flash — the
+// fingerprint is not model-sensitive, so retire old-model rows explicitly.
+const MARKET_IMPLICATIONS_STAGE_CACHE_PREFIX = 'forecast:llm-market-implications:v2:';
+
+// Minimum shared run budget to admit the tail stage (#4978): reserve the RESOLVED,
+// RUNNABLE provider chain for THIS call — every provider in the (possibly env-
+// overridden) order that actually has an API key, ONE attempt each (market_implications
+// forces maxRetries:0), summed with the 5s stage guard that getUsableForecastLlmBudgetMs
+// subtracts. Reserving only the PRIMARY timeout (the original 30_000) was a latent bug:
+// with the default openrouter→groq order a 25s deepseek-v4-flash timeout drained the
+// budget so the groq FALLBACK was stranded and a recoverable timeout was misreported as
+// SEED_ERROR (health WARNING). Reserving the full chain means an admitted call can exhaust
+// the primary AND still run the fallback; below that we skip and preserve last-good (green,
+// age-based STALE_SEED still escalates past 2h) rather than attempt a chain we cannot finish.
+// Provider-order/key aware, so a single-provider override or a missing key reserves only what
+// that chain needs (no over-skip); a chain with NO runnable providers reserves just the guard,
+// so a genuine no-key outage is admitted and surfaces SEED_ERROR instead of hiding as a starve.
+function getMarketImplicationsMinRunBudgetMs(llmOptions = {}) {
+  const runnable = resolveForecastLlmProviders(llmOptions).filter((provider) => process.env[provider.envKey]);
+  const chainMs = runnable.reduce((sum, provider) => sum + (provider.timeout || 0), 0);
+  return chainMs + FORECAST_LLM_STAGE_BUDGET_GUARD_MS;
+}
+
+// Input-hash guard for the market_implications LLM stage (#4894). This was
+// the only forecast stage with no pre-call cache — a 2,500-token completion
+// regenerated every hourly run (plus every triggered re-run) even when the
+// world state hadn't moved. Numbers are quantized to ONE significant digit
+// before hashing: routine price ticks don't defeat the guard, while a
+// bucket-flipping move OR any text change (new signal, sector leadership,
+// theater alert) still regenerates. Percent-change fields — the semantically
+// load-bearing numbers — live in the 0.1–10 range where one significant
+// digit still separates 0.3% from 0.9% from 8%.
+function buildMarketImplicationsFingerprint(context) {
+  const quantized = String(context ?? '').replace(/-?\d+(?:\.\d+)?/g, (match) => {
+    const n = Number(match);
+    return Number.isFinite(n) && n !== 0 ? Number(n).toPrecision(1) : '0';
+  });
+  return crypto.createHash('sha256').update(quantized).digest('hex').slice(0, 16);
+}
 
 function marketImplicationsMetaErrorReason(reason) {
   return String(reason || 'unknown').replace(/\s+/g, ' ').slice(0, 240);
@@ -16200,21 +16594,110 @@ async function writeMarketImplicationsFailureMeta(reason) {
   }
 }
 
+// A budget-starve is NOT a producer failure — it's resource contention from
+// slow upstream stages consuming the shared 150s run budget before this tail
+// stage runs (#4978). Unlike writeMarketImplicationsFailureMeta, this preserves
+// last-good seed-meta without advancing fetchedAt: existing OK meta is TTL-
+// refreshed, and stale error meta is replaced only when the canonical payload
+// still contains last-good cards with a generatedAt timestamp. Age-based
+// STALE_SEED (maxStaleMin=120) still escalates if the starve persists past 2h,
+// exactly like the gpsjam preserve-last-good design, while a single starved
+// tick stays green.
+async function preserveMarketImplicationsLastGoodOnStarve() {
+  const { url, token } = getRedisCredentials();
+  let currentMeta = null;
+  let lastGoodMeta = null;
+  try {
+    currentMeta = await redisGet(url, token, MARKET_IMPLICATIONS_META_KEY);
+    if (currentMeta?.status !== 'ok') {
+      const currentPayload = await redisGet(url, token, MARKET_IMPLICATIONS_KEY);
+      const cards = Array.isArray(currentPayload?.cards) ? currentPayload.cards : [];
+      const generatedAtMs = Date.parse(currentPayload?.generatedAt || '');
+      if (cards.length > 0 && Number.isFinite(generatedAtMs)) {
+        lastGoodMeta = { fetchedAt: generatedAtMs, recordCount: cards.length, status: 'ok' };
+      }
+    }
+  } catch (err) {
+    console.warn(`  [MarketImplications] last-good meta read failed during starve preserve: ${err.message}`);
+  }
+  try {
+    await redisCommand(url, token, ['EXPIRE', MARKET_IMPLICATIONS_KEY, String(MARKET_IMPLICATIONS_TTL)]);
+    if (currentMeta?.status === 'ok') {
+      await redisCommand(url, token, ['EXPIRE', MARKET_IMPLICATIONS_META_KEY, String(MARKET_IMPLICATIONS_META_TTL)]);
+    } else if (lastGoodMeta) {
+      await redisSet(url, token, MARKET_IMPLICATIONS_META_KEY, lastGoodMeta, MARKET_IMPLICATIONS_META_TTL);
+    }
+  } catch (err) {
+    console.warn(`  [MarketImplications] last-good preserve refresh failed: ${err.message}`);
+  }
+}
+
 async function buildAndSeedMarketImplications(inputs) {
   const startMs = Date.now();
   console.log('  [MarketImplications] Building world-state context...');
   const context = buildMarketImplicationsContext(inputs);
+
+  const { url, token } = getRedisCredentials();
+
+  // Input-hash guard: unchanged world state → republish the cached cards
+  // (keeps the canonical key + seed-meta fresh) and skip the LLM entirely.
+  const fingerprint = buildMarketImplicationsFingerprint(context);
+  const stageCacheKey = `${MARKET_IMPLICATIONS_STAGE_CACHE_PREFIX}${fingerprint}`;
+  try {
+    const cachedStage = await redisGet(url, token, stageCacheKey);
+    if (Array.isArray(cachedStage?.cards) && cachedStage.cards.length > 0) {
+      const payload = { cards: cachedStage.cards, generatedAt: new Date().toISOString(), model: cachedStage.model || '' };
+      await redisSet(url, token, MARKET_IMPLICATIONS_KEY, payload, MARKET_IMPLICATIONS_TTL);
+      const meta = { fetchedAt: Date.now(), recordCount: cachedStage.cards.length, status: 'ok' };
+      await redisSet(url, token, MARKET_IMPLICATIONS_META_KEY, meta, MARKET_IMPLICATIONS_META_TTL);
+      console.log(JSON.stringify({ event: 'llm_market_implications', cached: true, hash: fingerprint, count: cachedStage.cards.length }));
+      console.log(`  [MarketImplications] Republished ${cachedStage.cards.length} cached cards (inputs unchanged, ${Math.round(Date.now() - startMs)}ms)`);
+      return;
+    }
+  } catch { /* guard is best-effort — fall through to live generation */ }
+
+  // Tail-stage budget guard (#4978): market_implications is the LAST forecast
+  // LLM stage under the shared 150s run budget. When upstream stages are slow
+  // (e.g. deepseek-v4-flash 30s timeouts) they drain that budget before this
+  // stage runs; callForecastLLM would then throw a budget error, return null,
+  // and we'd (mis)write a SEED_ERROR for benign, self-healing resource
+  // contention. Skip gracefully and preserve last-good instead.
+  // Resolve the call options up front so the admission reservation matches the exact
+  // providers this call will use (env-overridable order, key-filtered).
+  const llmOptions = getForecastLlmCallOptions('market_implications');
+  const minRunBudgetMs = getMarketImplicationsMinRunBudgetMs(llmOptions);
+  const runBudgetRemainingMs = getRemainingForecastLlmRunBudgetMs();
+  if (runBudgetRemainingMs < minRunBudgetMs) {
+    const remaining = Math.max(0, Math.round(runBudgetRemainingMs));
+    console.warn(`  [MarketImplications] Skipped: shared LLM run budget too low for the provider chain (${remaining}ms left, need ${minRunBudgetMs}ms) — preserving last-good, no SEED_ERROR`);
+    console.log(JSON.stringify({ event: 'llm_market_implications', skipped: 'run_budget_exhausted', remainingMs: remaining, needMs: minRunBudgetMs }));
+    await preserveMarketImplicationsLastGoodOnStarve();
+    return;
+  }
+
   const userPrompt = `World state as of ${new Date().toISOString()}:\n\n${context}\n\nAllowed tickers: ${[...ALL_ALLOWED_TICKERS].join(', ')}`;
 
-  const llmOptions = getForecastLlmCallOptions('market_implications');
   const result = await callForecastLLM(MARKET_IMPLICATIONS_SYSTEM_PROMPT, userPrompt, {
     ...llmOptions,
     stage: 'market_implications',
     maxTokens: 2500,
     temperature: 0.25,
+    returnFailureReason: true,
+    // One attempt per provider: reserving the full retry chain (4 attempts × 2
+    // providers) would exceed the entire run budget, so a slow primary must fall
+    // straight through to the fallback instead of retrying it (#5003 review).
+    maxRetries: 0,
   });
 
   if (!result?.text) {
+    // A budget-exhausted result is the same benign starve as the pre-call guard.
+    // Genuine provider failures stay visible even if they consume the last run
+    // milliseconds before returning. (#4978)
+    if (result?.failureReason === FORECAST_LLM_FAILURE_BUDGET_EXHAUSTED) {
+      console.warn('  [MarketImplications] LLM run budget exhausted mid-call — preserving last-good, no SEED_ERROR');
+      await preserveMarketImplicationsLastGoodOnStarve();
+      return;
+    }
     console.warn('  [MarketImplications] LLM returned no response — writing error seed-meta');
     await writeMarketImplicationsFailureMeta('llm_no_response');
     return;
@@ -16228,8 +16711,6 @@ async function buildAndSeedMarketImplications(inputs) {
     await writeMarketImplicationsFailureMeta('no_parseable_cards');
     return;
   }
-
-  const { url, token } = getRedisCredentials();
 
   // Extend the curated static allowlist with tradeable equity symbols from Redis.
   // ALL_ALLOWED_TICKERS is always preserved (ETFs, defense, commodities, forex, rates, crypto).
@@ -16265,6 +16746,10 @@ async function buildAndSeedMarketImplications(inputs) {
 
   const meta = { fetchedAt: Date.now(), recordCount: cards.length, status: 'ok' };
   await redisSet(url, token, MARKET_IMPLICATIONS_META_KEY, meta, MARKET_IMPLICATIONS_META_TTL);
+
+  // Only validated live generations feed the input-hash guard; failures above
+  // returned early so a bad run can never pin bad cards for the TTL.
+  await redisSet(url, token, stageCacheKey, { cards, model: result.model || '' }, MARKET_IMPLICATIONS_TTL);
 
   const durationMs = Date.now() - startMs;
   console.log(`  [MarketImplications] Published ${cards.length} cards to ${MARKET_IMPLICATIONS_KEY} (${Math.round(durationMs)}ms, model=${result.model || 'unknown'})`);
@@ -16314,6 +16799,19 @@ if (_isDirectRun) {
       if (triggerContext.triggerRequest) {
         await clearForecastRefreshRequestIfUnchanged(triggerContext.triggerRequest);
       }
+
+      // market_implications is the last remaining LLM stage and shares the 150s
+      // run budget (#4978). Run it BEFORE the best-effort telemetry below
+      // (history + deep-forecast snapshots, ~20s R2 trace export) so their
+      // wall-clock can't push the tail stage past the run deadline and starve
+      // it into a (pre-fix) SEED_ERROR. Independent of that telemetry — it reads
+      // data.inputs and publishes to its own key.
+      try {
+        await buildAndSeedMarketImplications(data.inputs || {});
+      } catch (err) {
+        console.warn(`  [MarketImplications] Stage failed: ${err.message}`);
+      }
+
       try {
         const snapshot = await appendHistorySnapshot(data);
         console.log(`  History appended: ${snapshot.predictions.length} forecasts -> ${HISTORY_KEY}`);
@@ -16395,12 +16893,6 @@ if (_isDirectRun) {
       } catch (err) {
         console.warn(`  [Trace] Export failed: ${err.message}`);
         if (err.stack) console.warn(`  [Trace] Stack: ${err.stack.split('\n').slice(0, 3).join(' | ')}`);
-      }
-
-      try {
-        await buildAndSeedMarketImplications(data.inputs || {});
-      } catch (err) {
-        console.warn(`  [MarketImplications] Stage failed: ${err.message}`);
       }
     },
     extraKeys: FORECAST_EXTRA_KEYS,
@@ -16735,8 +17227,8 @@ async function writeSimulationDecorations(mergeResult, snapshot) {
       generatedAt: runGeneratedAt,
       byForecastId,
     }, SIMULATION_DECORATIONS_TTL_SECONDS);
-    if (sideKeyStatus.startsWith('SKIPPED:')) {
-      console.log(`  [SimulationDecorations] Skipping side key write — existing is from a newer run (existing=${sideKeyStatus.slice(8)}, this_run=${runGeneratedAt})`);
+    if (isRedisWriteSkippedStatus(sideKeyStatus)) {
+      console.log(`  [SimulationDecorations] Skipping side key write — existing is from a newer run (existing=${redisWriteSkippedGeneratedAt(sideKeyStatus)}, this_run=${runGeneratedAt})`);
       return;
     }
     await redisSet(url, token, SIMULATION_DECORATIONS_META_KEY, {
@@ -16753,16 +17245,16 @@ async function writeSimulationDecorations(mergeResult, snapshot) {
   }
 }
 
-// Lua script for atomic write-if-newer of the simulation decoration side key.
-// Prevents a late older worker from overwriting a newer run's decorations.
+// Lua script for atomic write-if-newer of Redis JSON payloads with generatedAt.
+// Prevents a late older worker from overwriting a newer run's pointers/decorations.
 //
-// KEYS[1]  = SIMULATION_DECORATIONS_KEY (forecast:sim-decorations:v1)
-// ARGV[1]  = runGeneratedAt of this run (decimal string; '0' = unconditional write)
+// KEYS[1]  = Redis key
+// ARGV[1]  = payload.generatedAt of this run (decimal string; '0' = unconditional write)
 // ARGV[2]  = new payload JSON string
 // ARGV[3]  = TTL in seconds
 //
 // Returns: 'WRITTEN' | 'SKIPPED:<existingGeneratedAt>'
-const _SIM_SIDE_WRITE_LUA = `
+const _REDIS_WRITE_IF_NEWER_LUA = `
 local raw = redis.call('GET', KEYS[1])
 if raw then
   local ok, existing = pcall(cjson.decode, raw)
@@ -16777,14 +17269,46 @@ return 'WRITTEN'
 `.trim();
 
 /**
- * Atomically write the simulation decoration side key only if this run is newer
- * than any existing value. Prevents a late older worker from poisoning the side key
- * with stale byForecastId data.
+ * Atomically write a generatedAt-bearing Redis payload only if this run is not
+ * older than the value already stored at the key.
  *
  * Production path: single Redis EVAL (atomic read-compare-write).
  * Test path (_testRedisStore set): equivalent JavaScript logic.
  *
  * Returns: 'WRITTEN' | 'SKIPPED:<existingGeneratedAt>'
+ *
+ * @param {string} url
+ * @param {string} token
+ * @param {string} key
+ * @param {{ generatedAt?: number }} payload
+ * @param {number} ttlSeconds
+ * @returns {Promise<string>}
+ */
+async function redisAtomicWriteIfNewer(url, token, key, payload, ttlSeconds) {
+  // ── Test path ────────────────────────────────────────────────────────────────
+  if (_testRedisStore) {
+    const existing = _testRedisStore[key] ?? null;
+    const existingTs = typeof existing?.generatedAt === 'number' ? existing.generatedAt : 0;
+    const runTs = typeof payload.generatedAt === 'number' ? payload.generatedAt : 0;
+    if (runTs > 0 && existingTs > runTs) return `${REDIS_WRITE_IF_NEWER_SKIPPED_PREFIX}${existingTs}`;
+    _testRedisStore[key] = JSON.parse(JSON.stringify(payload));
+    return 'WRITTEN';
+  }
+  // ── Production path: Lua EVAL ────────────────────────────────────────────────
+  const result = await redisCommand(url, token, [
+    'EVAL', _REDIS_WRITE_IF_NEWER_LUA, '1',
+    key,
+    String(typeof payload.generatedAt === 'number' ? payload.generatedAt : 0),
+    JSON.stringify(payload),
+    String(ttlSeconds),
+  ]);
+  return result?.result ?? 'WRITTEN';
+}
+
+/**
+ * Atomically write the simulation decoration side key only if this run is newer
+ * than any existing value. Prevents a late older worker from poisoning the side key
+ * with stale byForecastId data.
  *
  * @param {string} url
  * @param {string} token
@@ -16794,24 +17318,164 @@ return 'WRITTEN'
  * @returns {Promise<string>}
  */
 async function redisAtomicWriteSimDecorations(url, token, key, payload, ttlSeconds) {
-  // ── Test path ────────────────────────────────────────────────────────────────
+  return redisAtomicWriteIfNewer(url, token, key, payload, ttlSeconds);
+}
+
+/**
+ * Atomically write a simulation outcome pointer only if the incoming run is
+ * not older than the pointer already stored at the key.
+ *
+ * @param {string} url
+ * @param {string} token
+ * @param {string} key
+ * @param {{ generatedAt?: number }} payload
+ * @param {number} ttlSeconds
+ * @returns {Promise<string>}
+ */
+async function redisAtomicWriteSimulationOutcomePointer(url, token, key, payload, ttlSeconds) {
+  return redisAtomicWriteIfNewer(url, token, key, payload, ttlSeconds);
+}
+
+const _SIM_LOCK_RELEASE_LUA = `
+local owner = redis.call('GET', KEYS[1])
+if not owner then return 'EXPIRED' end
+if owner ~= ARGV[1] then return 'OWNED_BY_OTHER' end
+redis.call('DEL', KEYS[1])
+return 'DELETED'
+`.trim();
+
+const _SIM_TASK_COMPLETE_LUA = `
+local owner = redis.call('GET', KEYS[3])
+if not owner then return 'EXPIRED' end
+if owner ~= ARGV[1] then return 'OWNED_BY_OTHER' end
+redis.call('ZREM', KEYS[1], ARGV[2])
+redis.call('DEL', KEYS[2])
+redis.call('DEL', KEYS[3])
+return 'COMPLETED'
+`.trim();
+
+const _SIM_LOCK_EXPIRE_LUA = `
+local owner = redis.call('GET', KEYS[1])
+if not owner then return 'EXPIRED' end
+if owner ~= ARGV[1] then return 'OWNED_BY_OTHER' end
+redis.call('EXPIRE', KEYS[1], tonumber(ARGV[2]))
+return 'EXTENDED'
+`.trim();
+
+function removeRunIdFromTestQueue(runId) {
+  if (!_testRedisStore || !Array.isArray(_testRedisStore[SIMULATION_TASK_QUEUE_KEY])) return;
+  _testRedisStore[SIMULATION_TASK_QUEUE_KEY] = _testRedisStore[SIMULATION_TASK_QUEUE_KEY].filter((entry) => entry !== runId);
+}
+
+function simulationLockStatusFromTestStore(lockKey, workerId, successStatus) {
+  if (!workerId) return SIM_TASK_COMPLETE_STATUS_MISSING_WORKER;
+  const owner = _testRedisStore?.[lockKey];
+  if (!owner) return SIM_LOCK_STATUS_EXPIRED;
+  if (owner !== workerId) return SIM_LOCK_STATUS_OWNED_BY_OTHER;
+  return successStatus;
+}
+
+async function redisCompleteSimulationTaskIfOwned(url, token, runId, workerId) {
+  if (!workerId) return SIM_TASK_COMPLETE_STATUS_MISSING_WORKER;
+  const taskKey = buildSimulationTaskKey(runId);
+  const lockKey = buildSimulationLockKey(runId);
   if (_testRedisStore) {
-    const existing = _testRedisStore[key] ?? null;
-    const existingTs = typeof existing?.generatedAt === 'number' ? existing.generatedAt : 0;
-    const runTs = typeof payload.generatedAt === 'number' ? payload.generatedAt : 0;
-    if (runTs > 0 && existingTs > runTs) return `SKIPPED:${existingTs}`;
-    _testRedisStore[key] = JSON.parse(JSON.stringify(payload));
-    return 'WRITTEN';
+    const status = simulationLockStatusFromTestStore(lockKey, workerId, SIM_TASK_COMPLETE_STATUS_COMPLETED);
+    if (status !== SIM_TASK_COMPLETE_STATUS_COMPLETED) return status;
+    removeRunIdFromTestQueue(runId);
+    delete _testRedisStore[taskKey];
+    delete _testRedisStore[lockKey];
+    return SIM_TASK_COMPLETE_STATUS_COMPLETED;
   }
-  // ── Production path: Lua EVAL ────────────────────────────────────────────────
   const result = await redisCommand(url, token, [
-    'EVAL', _SIM_SIDE_WRITE_LUA, '1',
-    key,
-    String(typeof payload.generatedAt === 'number' ? payload.generatedAt : 0),
-    JSON.stringify(payload),
-    String(ttlSeconds),
+    'EVAL', _SIM_TASK_COMPLETE_LUA, '3',
+    SIMULATION_TASK_QUEUE_KEY,
+    taskKey,
+    lockKey,
+    workerId,
+    runId,
   ]);
-  return result?.result ?? 'WRITTEN';
+  return String(result?.result || SIM_TASK_COMPLETE_STATUS_COMPLETED);
+}
+
+function logSimulationTaskCleanupStatus(runId, workerId, status) {
+  if (status === SIM_TASK_COMPLETE_STATUS_COMPLETED) return;
+  if (status === SIM_LOCK_STATUS_EXPIRED) {
+    console.warn(`  [Simulation] Did not complete ${runId}; lock expired before cleanup (${workerId})`);
+  } else if (status === SIM_LOCK_STATUS_OWNED_BY_OTHER) {
+    console.warn(`  [Simulation] Did not complete ${runId}; lock owned by another worker (${workerId})`);
+  } else if (status === SIM_TASK_COMPLETE_STATUS_MISSING_WORKER) {
+    console.warn(`  [Simulation] Did not complete ${runId}; missing worker id`);
+  } else {
+    console.warn(`  [Simulation] Did not complete ${runId}; unexpected cleanup status ${status}`);
+  }
+}
+
+/**
+ * Compute the simulation task lock TTL from the amount of theater work queued
+ * for this run. One theater keeps the historical 20-minute floor; multiple
+ * theaters scale linearly, bounded defensively in case a malformed package
+ * bypasses the normal selected-theater cap.
+ *
+ * @param {number} theaterCount
+ * @returns {number}
+ */
+function computeSimulationLockTtlSeconds(theaterCount) {
+  const count = Number.isFinite(theaterCount) ? Math.max(1, Math.floor(theaterCount)) : 1;
+  const multiplier = Math.min(SIMULATION_LOCK_MAX_TTL_MULTIPLIER, count);
+  return SIMULATION_LOCK_TTL_SECONDS * multiplier;
+}
+
+/**
+ * Release a simulation worker lock only when it is still owned by the worker
+ * doing cleanup. This prevents an expired slow worker from deleting a
+ * successor's lock after the successor has already claimed the same task.
+ *
+ * @param {string} url
+ * @param {string} token
+ * @param {string} lockKey
+ * @param {string} workerId
+ * @returns {Promise<string>}
+ */
+async function redisCompareAndDeleteSimulationLock(url, token, lockKey, workerId) {
+  if (!workerId) return SIM_TASK_COMPLETE_STATUS_MISSING_WORKER;
+  if (_testRedisStore) {
+    const status = simulationLockStatusFromTestStore(lockKey, workerId, SIM_LOCK_STATUS_DELETED);
+    if (status !== SIM_LOCK_STATUS_DELETED) return status;
+    delete _testRedisStore[lockKey];
+    return SIM_LOCK_STATUS_DELETED;
+  }
+  const result = await redisCommand(url, token, [
+    'EVAL', _SIM_LOCK_RELEASE_LUA, '1',
+    lockKey,
+    workerId,
+  ]);
+  return String(result?.result || SIM_LOCK_STATUS_EXPIRED);
+}
+
+/**
+ * Extend a simulation worker lock only if the caller still owns it.
+ *
+ * @param {string} url
+ * @param {string} token
+ * @param {string} lockKey
+ * @param {string} workerId
+ * @param {number} ttlSeconds
+ * @returns {Promise<string>}
+ */
+async function redisCompareAndExpireSimulationLock(url, token, lockKey, workerId, ttlSeconds) {
+  if (!workerId) return SIM_TASK_COMPLETE_STATUS_MISSING_WORKER;
+  const ttl = Number.isFinite(ttlSeconds) ? Math.max(1, Math.floor(ttlSeconds)) : SIMULATION_LOCK_TTL_SECONDS;
+  if (_testRedisStore) {
+    return simulationLockStatusFromTestStore(lockKey, workerId, SIM_LOCK_STATUS_EXTENDED);
+  }
+  const result = await redisCommand(url, token, [
+    'EVAL', _SIM_LOCK_EXPIRE_LUA, '1',
+    lockKey,
+    workerId,
+    String(ttl),
+  ]);
+  return String(result?.result || SIM_LOCK_STATUS_EXPIRED);
 }
 
 // Lua script for atomic compare-and-swap patch of the canonical forecast key.
@@ -16962,8 +17626,8 @@ async function patchPublishedForecastsWithSimDecorations(byForecastId, runGenera
     const status = await redisAtomicPatchSimDecorations(url, token, CANONICAL_KEY, byForecastId, runGeneratedAt, TTL_SECONDS);
     if (status.startsWith('PATCHED:')) {
       console.log(`  [SimulationDecorations] Patched ${status.slice(8)} forecasts in ${CANONICAL_KEY} (atomic)`);
-    } else if (status.startsWith('SKIPPED:')) {
-      console.log(`  [SimulationDecorations] Skipping patch — canonical key is from a newer run (published=${status.slice(8)}, sim_run=${runGeneratedAt})`);
+    } else if (isRedisWriteSkippedStatus(status)) {
+      console.log(`  [SimulationDecorations] Skipping patch — canonical key is from a newer run (published=${redisWriteSkippedGeneratedAt(status)}, sim_run=${runGeneratedAt})`);
     } else if (status === 'MISSING') {
       console.warn('  [SimulationDecorations] Cannot patch canonical key — predictions missing or not an array');
     }
@@ -17159,7 +17823,12 @@ async function writeSimulationOutcome(pkg, outcome, { storageConfig } = {}) {
     schema_version: SIMULATION_OUTCOME_SCHEMA_VERSION,
   });
   const { url, token } = getRedisCredentials();
-  const uiTheaters = (outcome.theaterResults || []).map((tr) => ({
+  const theaterResults = Array.isArray(outcome.theaterResults) ? outcome.theaterResults : [];
+  const emptyCandidateStateIdCount = theaterResults.filter((tr) => !String(tr?.candidateStateId || '').trim()).length;
+  if (emptyCandidateStateIdCount > 0) {
+    console.warn(`  [Simulation] Outcome ${runId} has ${emptyCandidateStateIdCount}/${theaterResults.length} theaterResults with empty candidateStateId`);
+  }
+  const uiTheaters = theaterResults.map((tr) => ({
     theaterId: tr.theaterId,
     theaterLabel: tr.theaterLabel || tr.theaterId,
     stateKind: tr.stateKind || '',
@@ -17182,20 +17851,23 @@ async function writeSimulationOutcome(pkg, outcome, { storageConfig } = {}) {
     runId,
     outcomeKey,
     schemaVersion: SIMULATION_OUTCOME_SCHEMA_VERSION,
-    theaterCount: (outcome.theaterResults || []).length,
+    theaterCount: theaterResults.length,
+    emptyCandidateStateIdCount,
     generatedAt: generatedAt || Date.now(),
     uiTheaters,
   };
-  const outcomePayloadString = JSON.stringify(outcomePayload);
   // Canonical :latest write — D10. Awaited; throws propagate to the worker's
   // try/catch and surface as `status: 'failed'`.
-  await redisCommand(url, token, [
-    'SET',
+  const latestStatus = await redisAtomicWriteSimulationOutcomePointer(
+    url,
+    token,
     SIMULATION_OUTCOME_LATEST_KEY,
-    outcomePayloadString,
-    'EX',
-    String(TRACE_REDIS_TTL_SECONDS),
-  ]);
+    outcomePayload,
+    TRACE_REDIS_TTL_SECONDS,
+  );
+  if (isRedisWriteSkippedStatus(latestStatus)) {
+    console.log(`  [Simulation] Skipping stale :latest outcome pointer for ${runId} — existing=${redisWriteSkippedGeneratedAt(latestStatus)} this_run=${outcomePayload.generatedAt}`);
+  }
 
   // Secondary :by-run write — D9. Failure must NOT block the worker
   // (R7: auto-trigger / worker liveness unchanged). On failure, log +
@@ -17203,9 +17875,16 @@ async function writeSimulationOutcome(pkg, outcome, { storageConfig } = {}) {
   // from "by-run write failed" via the get-simulation-outcome `note` text.
   const byRunKey = `${SIMULATION_OUTCOME_BY_RUN_KEY_PREFIX}:${runId}`;
   try {
-    await redisCommand(url, token, [
-      'SET', byRunKey, outcomePayloadString, 'EX', String(SIMULATION_OUTCOME_BY_RUN_TTL_SECONDS),
-    ]);
+    const byRunStatus = await redisAtomicWriteSimulationOutcomePointer(
+      url,
+      token,
+      byRunKey,
+      outcomePayload,
+      SIMULATION_OUTCOME_BY_RUN_TTL_SECONDS,
+    );
+    if (isRedisWriteSkippedStatus(byRunStatus)) {
+      console.log(`  [Simulation] Skipping stale by-run outcome pointer for ${runId} — existing=${redisWriteSkippedGeneratedAt(byRunStatus)} this_run=${outcomePayload.generatedAt}`);
+    }
   } catch (err) {
     console.warn(`  [Simulation] by-run SET failed for ${runId}: ${err.message}`);
     // Best-effort tombstone with NX — if the primary by-run SET actually
@@ -17300,18 +17979,25 @@ async function claimSimulationTask(runId, workerId) {
   if (claim?.result !== 'OK') return null;
   const taskRaw = await redisGet(url, token, buildSimulationTaskKey(runId));
   if (!taskRaw?.runId) {
-    await redisDel(url, token, lockKey);
+    await redisCompareAndDeleteSimulationLock(url, token, lockKey, workerId);
     return null;
   }
   return taskRaw;
 }
 
-async function completeSimulationTask(runId) {
-  if (!runId) return;
+async function completeSimulationTask(runId, workerId = '') {
+  if (!runId) return '';
   const { url, token } = getRedisCredentials();
-  await redisCommand(url, token, ['ZREM', SIMULATION_TASK_QUEUE_KEY, runId]);
-  await redisDel(url, token, buildSimulationTaskKey(runId));
-  await redisDel(url, token, buildSimulationLockKey(runId));
+  const status = await redisCompleteSimulationTaskIfOwned(url, token, runId, workerId);
+  logSimulationTaskCleanupStatus(runId, workerId, status);
+  return status;
+}
+
+async function extendSimulationTaskLockForTheaters(runId, workerId, theaterCount) {
+  if (!runId || !workerId) return SIM_TASK_COMPLETE_STATUS_MISSING_WORKER;
+  const ttlSeconds = computeSimulationLockTtlSeconds(theaterCount);
+  const { url, token } = getRedisCredentials();
+  return redisCompareAndExpireSimulationLock(url, token, buildSimulationLockKey(runId), workerId, ttlSeconds);
 }
 
 async function listQueuedSimulationTasks(limit = 10) {
@@ -17340,7 +18026,7 @@ function sanitizeKeyActorRoles(rawRoles, allowedRoles) {
 }
 
 async function processNextSimulationTask(options = {}) {
-  const workerId = options.workerId || `sim-worker-${process.pid}-${Date.now()}`;
+  const workerId = options.workerId || createSimulationWorkerId();
   const queuedRunIds = options.runId ? [options.runId] : await listQueuedSimulationTasks(10);
   console.log(`  [Simulation] Queue check: ${queuedRunIds.length} task(s) in ${SIMULATION_TASK_QUEUE_KEY}`);
 
@@ -17359,7 +18045,7 @@ async function processNextSimulationTask(options = {}) {
       const existing = await redisGet(url, token, SIMULATION_OUTCOME_LATEST_KEY);
       if (existing?.runId === runId) {
         console.log(`  [Simulation] Skipping ${runId} — outcome already written`);
-        await completeSimulationTask(runId);
+        await completeSimulationTask(runId, workerId);
         return { status: 'skipped', reason: 'already_processed', runId };
       }
 
@@ -17367,7 +18053,7 @@ async function processNextSimulationTask(options = {}) {
       const pkgPointer = await redisGet(url, token, SIMULATION_PACKAGE_LATEST_KEY);
       if (!pkgPointer?.pkgKey) {
         console.warn(`  [Simulation] No package pointer for ${runId}`);
-        await completeSimulationTask(runId);
+        await completeSimulationTask(runId, workerId);
         return { status: 'failed', reason: 'no_package_pointer', runId };
       }
       if (pkgPointer.runId && pkgPointer.runId !== runId) {
@@ -17392,18 +18078,25 @@ async function processNextSimulationTask(options = {}) {
 
       const storageConfig = resolveR2StorageConfig();
       if (!storageConfig) {
-        await completeSimulationTask(runId);
+        await completeSimulationTask(runId, workerId);
         return { status: 'failed', reason: 'no_storage_config', runId };
       }
 
       const pkgData = await getR2JsonObject(storageConfig, pkgPointer.pkgKey);
       if (!pkgData?.selectedTheaters) {
-        await completeSimulationTask(runId);
+        await completeSimulationTask(runId, workerId);
         return { status: 'failed', reason: 'package_read_failed', runId };
       }
 
       const eligibleTheaters = (pkgData.selectedTheaters || []).filter(isSimulationEligible);
       console.log(`  [Simulation] ${runId}: ${eligibleTheaters.length}/${pkgData.selectedTheaters.length} theaters eligible`);
+      const lockStatus = await extendSimulationTaskLockForTheaters(runId, workerId, eligibleTheaters.length);
+      if (lockStatus !== SIM_LOCK_STATUS_EXTENDED) {
+        const reason = lockStatus === SIM_LOCK_STATUS_EXPIRED ? 'lock_expired' : 'lock_ownership_lost';
+        const detail = lockStatus === SIM_LOCK_STATUS_EXPIRED ? 'lock expired' : 'lock ownership lost';
+        console.warn(`  [Simulation] ${runId}: ${detail} before theater simulation; leaving task for reclaim`);
+        return { status: 'skipped', reason, runId };
+      }
 
       const theaterResults = [];
       const failedTheaters = [];
@@ -17470,7 +18163,7 @@ async function processNextSimulationTask(options = {}) {
       };
 
       const writeResult = await writeSimulationOutcome(pkgData, outcome, { storageConfig });
-      await completeSimulationTask(runId);
+      await completeSimulationTask(runId, workerId);
       console.log(`  [Simulation] Completed ${runId}: ${theaterResults.length} theaters → ${writeResult?.outcomeKey}`);
       // Awaited (not fire-and-forget): re-score must complete before process.exit() so that
       // writeSimulationDecorations + patchPublishedForecastsWithSimDecorations update the
@@ -17482,7 +18175,7 @@ async function processNextSimulationTask(options = {}) {
       return { status: 'completed', runId, theaterCount: theaterResults.length, outcomeKey: writeResult?.outcomeKey };
     } catch (err) {
       console.warn(`  [Simulation] Task failed for ${runId}: ${err.message}`);
-      await completeSimulationTask(runId);
+      await completeSimulationTask(runId, workerId);
       return { status: 'failed', reason: err.message, runId };
     }
   }
@@ -17502,6 +18195,8 @@ export {
   PRIOR_KEY,
   HISTORY_KEY,
   HISTORY_MAX_RUNS,
+  forecastIdFromKey,
+  buildStateDerivedForecast,
   HISTORY_MAX_FORECASTS,
   TRACE_LATEST_KEY,
   TRACE_RUNS_KEY,
@@ -17530,6 +18225,7 @@ export {
   computeHeadlineRelevance,
   computeMarketMatchScore,
   buildUserPrompt,
+  buildNarrativeCacheHash,
   buildForecastCase,
   buildForecastCases,
   buildPriorForecastSnapshot,
@@ -17545,6 +18241,7 @@ export {
   writeForecastTraceArtifacts,
   buildForecastTraceArtifactKeys,
   parseForecastRunGeneratedAt,
+  readInputKeys,
   readForecastTraceArtifactsForRun,
   buildForecastRunStatusPayload,
   writeForecastRunStatusArtifact,
@@ -17662,12 +18359,15 @@ export {
   SIMULATION_OUTCOME_SCHEMA_VERSION,
   buildSimulationOutcomeKey,
   writeSimulationOutcome,
+  computeSimulationLockTtlSeconds,
+  createSimulationWorkerId,
   buildSimulationRound1SystemPrompt,
   buildSimulationRound2SystemPrompt,
   tryParseSimulationRoundPayload,
   extractSimulationRoundPayload,
   runTheaterSimulation,
   enqueueSimulationTask,
+  completeSimulationTask,
   processNextSimulationTask,
   runSimulationWorker,
   fetchSimulationOutcomeForMerge,
@@ -17677,6 +18377,10 @@ export {
   patchPublishedForecastsWithSimDecorations,
   redisAtomicPatchSimDecorations,
   redisAtomicWriteSimDecorations,
+  redisAtomicWriteSimulationOutcomePointer,
+  redisCompareAndDeleteSimulationLock,
+  redisCompareAndExpireSimulationLock,
+  redisCompleteSimulationTaskIfOwned,
   SIMULATION_DECORATIONS_KEY,
   SIMULATION_DECORATIONS_MAX_AGE_MS,
   computeSimulationAdjustment,
@@ -17700,6 +18404,9 @@ export {
   __redisSetForTests,
   __setForecastLlmCallOverrideForTests,
   __setForecastLlmTransportForTests,
+  callForecastLLM,
   __setForecastLlmRunDeadlineForTests,
   __setRedisStoreForTests,
+  buildMarketImplicationsFingerprint,
+  buildAndSeedMarketImplications,
 };

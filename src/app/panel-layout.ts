@@ -40,7 +40,7 @@ import { resolveNewsCategories, enabledNewsCategoryKeys } from '@/config/feed-re
 import { BETA_MODE } from '@/config/beta';
 import { t } from '@/services/i18n';
 import { getCurrentTheme } from '@/utils';
-import { trackCriticalBannerAction } from '@/services/analytics';
+import { trackCriticalBannerAction, trackCheckoutSuccess, trackCheckoutFailed, replayPendingCheckoutSuccess, replayPendingProFunnelEvents } from '@/services/analytics';
 import { getStoredMapModePreference } from '@/services/map-mode-preference';
 import { loadWidgets, saveWidget, isProUser } from '@/services/widget-store';
 import type { CustomWidgetSpec } from '@/services/widget-store';
@@ -277,6 +277,9 @@ export class PanelLayoutManager implements AppModule {
     const returnedFromOverlay = consumePostCheckoutFlag();
     const returnedFromCheckout = returnResult.kind === 'success' || returnedFromOverlay;
     if (returnedFromCheckout) {
+      // Funnel (#4931): the purchase-complete signal on the client side.
+      // Queued by the analytics facade until Umami loads after first paint.
+      trackCheckoutSuccess(returnResult.kind === 'success' ? 'url-return' : 'overlay-flag');
       // Full-page return cleared its URL params; belt-and-braces clear
       // of the attempt record here catches the success path where the
       // overlay handler never ran (direct Dodo redirect).
@@ -294,8 +297,22 @@ export class PanelLayoutManager implements AppModule {
         email: getAuthState().user?.email ?? null,
       });
     } else if (returnResult.kind === 'failed') {
+      trackCheckoutFailed(returnResult.rawStatus);
       showCheckoutFailureBanner(returnResult.rawStatus);
     }
+    if (!returnedFromCheckout) {
+      // #4934 round-2 F2: the entitlement watcher reloads the page the
+      // moment Pro lands — often before the deferred Umami queue flushes,
+      // which would silently drop the terminal checkout-success event.
+      // This boot-time replay re-queues it from the durable marker the
+      // pre-reload track left behind (no-op on ordinary loads).
+      replayPendingCheckoutSuccess();
+    }
+    // #4934 round-5: /pro checkout-start events that died with the Dodo
+    // redirect are mirrored in sessionStorage; the buyer lands back here
+    // in the same tab — on BOTH the checkout-return and ordinary branches —
+    // so this replay is unconditional (no-op when nothing is pending).
+    replayPendingProFunnelEvents();
 
     // Always register the payment-failure-banner listener — onSubscriptionChange
     // is an in-memory listener registry, doesn't open any network connection,

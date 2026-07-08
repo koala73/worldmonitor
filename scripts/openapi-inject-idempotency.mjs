@@ -132,6 +132,34 @@ function isIdempotencyParam(param) {
   );
 }
 
+function isValidationErrorRef(schema) {
+  return schema && typeof schema === 'object' && schema.$ref === '#/components/schemas/ValidationError';
+}
+
+function canonicalizeJson400Response(existing) {
+  const existingOneOf = existing?.content?.['application/json']?.schema?.oneOf;
+  const extras = Array.isArray(existingOneOf)
+    ? existingOneOf.filter(
+      (schema) => !isValidationErrorRef(schema) && !eq(schema, IDEMPOTENCY_ERROR_SCHEMA),
+    )
+    : [];
+  return {
+    ...clone(JSON_RESPONSES['400']),
+    description: existing?.description ?? JSON_RESPONSES['400'].description,
+    content: {
+      'application/json': {
+        schema: {
+          oneOf: [
+            { $ref: '#/components/schemas/ValidationError' },
+            clone(IDEMPOTENCY_ERROR_SCHEMA),
+            ...clone(extras),
+          ],
+        },
+      },
+    },
+  };
+}
+
 function injectJson(spec) {
   let changed = false;
   for (const ops of Object.values(spec.paths ?? {})) {
@@ -149,6 +177,14 @@ function injectJson(spec) {
     }
     post.responses ??= {};
     for (const [code, response] of Object.entries(JSON_RESPONSES)) {
+      if (code === '400') {
+        const merged = canonicalizeJson400Response(post.responses[code]);
+        if (!eq(post.responses[code], merged)) {
+          post.responses[code] = merged;
+          changed = true;
+        }
+        continue;
+      }
       if (!eq(post.responses[code], response)) {
         post.responses[code] = clone(response);
         changed = true;
@@ -352,6 +388,36 @@ function ensureYamlResponse(lines, responsesIndex, end, code, replacement, previ
   return replacement.length;
 }
 
+function yaml400HasIdempotencyContract(lines, start, blockEnd) {
+  const block = lines.slice(start, blockEnd);
+  return (
+    block.some((line) => line.includes("#/components/schemas/ValidationError")) &&
+    block.some((line) => /^ {38}- error\s*$/.test(line) || /^ {40}- error\s*$/.test(line)) &&
+    block.some((line) => /^ {38}- message\s*$/.test(line) || /^ {40}- message\s*$/.test(line)) &&
+    block.some((line) => /^ {40}error:\s*$/.test(line)) &&
+    block.some((line) => /^ {40}message:\s*$/.test(line))
+  );
+}
+
+function ensureYaml400Response(lines, responsesIndex, end) {
+  const codeRegex = yamlResponseCodeRegex('400');
+  for (let j = responsesIndex + 1; j < end; j++) {
+    if (!codeRegex.test(lines[j])) continue;
+    const blockEnd = findIndentedBlockEnd(
+      lines,
+      j,
+      end,
+      /^ {16}"(?:[0-9]{3}|default)":/,
+      /^ {0,12}\S/,
+    );
+    if (yaml400HasIdempotencyContract(lines, j, blockEnd)) return 0;
+    return replaceLinesIfDifferent(lines, j, blockEnd, YAML_400_RESPONSE);
+  }
+
+  lines.splice(responsesIndex + 1, 0, ...YAML_400_RESPONSE);
+  return YAML_400_RESPONSE.length;
+}
+
 // Insert (or refresh) the replay-marker `headers:` block inside the existing
 // 2xx response, before its `content:` (mirroring the 409/422 ordering) without
 // disturbing the plugin-generated description/content.
@@ -433,8 +499,12 @@ function injectYaml(text) {
         changed = true;
         end += delta;
       }
+      delta = ensureYaml400Response(lines, responsesIndex, end);
+      if (delta !== 0) {
+        changed = true;
+        end += delta;
+      }
       for (const [code, replacement, previousCode] of [
-        ['400', YAML_400_RESPONSE, null],
         ['409', YAML_409_RESPONSE, '400'],
         ['422', YAML_422_RESPONSE, '409'],
       ]) {

@@ -1302,7 +1302,10 @@
       "tonePositive": "긍정적",
       "overall": "전체: {{tone}}",
       "signalTypesEvents": "{{types}}개 신호 유형 • {{events}}개 이벤트",
-      "newsSignals": "{{news}}개 뉴스 • {{signals}}개 신호"
+      "newsSignals": "{{news}}개 뉴스 • {{signals}}개 신호",
+      "provenanceTitle": "커버리지 출처: 이 브리프가 선택된 수집 스토리 및 고유 소스의 개수",
+      "compiledFrom": "{{stories}}개의 스토리와 {{sources}}개의 소스에서 컴파일됨",
+      "briefFreshness": "{{minutes}}분 전 생성됨 · 최신 소스 {{hours}}시간 전"
     },
     "settings": {
       "exportSettings": "설정 내보내기",

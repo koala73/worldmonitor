@@ -203,7 +203,7 @@ describe('api/mcp.ts — protocol conformance lifecycle (in-process)', () => {
     assert.ok(Array.isArray(step3Body.result?.tools), 'step 3: result.tools must be an array');
     assert.ok(
       step3Body.result.tools.length >= 39,
-      `step 3: expected >= 39 tools, got ${step3Body.result.tools.length}`,
+      `step 3: expected >= 40 tools, got ${step3Body.result.tools.length}`,
     );
     for (const tool of step3Body.result.tools) {
       assert.ok(

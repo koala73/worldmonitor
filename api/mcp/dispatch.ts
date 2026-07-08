@@ -134,7 +134,12 @@ export async function dispatchToolsCall(
   // 50/day cap from even seeing tool definitions. Exempt by name; rate-
   // limiter (60/min) still applies as the abuse guard.
   const isMetadataTool = p.name === 'describe_tool';
-  if (context.kind === 'pro' && !isMetadataTool) {
+  // user_key (#4859) consumes the same per-user daily quota as pro: cache
+  // tools read Upstash directly (no downstream gateway metering), so an
+  // unquota'd user_key would be an unmetered data loophole bounded only by
+  // the 60/min limiter. Raising API-plan MCP allowances above the Pro cap is
+  // a deliberate follow-up, not a default.
+  if ((context.kind === 'pro' || context.kind === 'user_key') && !isMetadataTool) {
     const reservation = await reserveQuota(context.userId, deps.redisPipeline);
     if (!reservation.ok) {
       if (reservation.reason === 'cap-exceeded') {

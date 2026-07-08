@@ -89,6 +89,10 @@ export function makeProDeps(overrides = {}) {
         features: { tier: 1, mcpAccess: true },
         validUntil: Date.now() + 86_400_000,
       })),
+      // #4859 user-key path. Default rejects every key so pre-existing suites
+      // keep their exact 401 behaviour; user-key tests override with a
+      // fixture-matching resolver.
+      validateUserApiKey: overrides.validateUserApiKey ?? (async () => null),
       redisPipeline: pipe.pipeline,
     },
     pipe,

@@ -42,6 +42,7 @@ All notable changes to World Monitor are documented here. Subscribe via [RSS](/c
 
   Aliases retire at the next v1→v2 break (tracked in [#3282](https://github.com/koala73/worldmonitor/issues/3282)).
 
+- `POST /api/scenario/v1/run-scenario` **returns `202 Accepted` again** on successful enqueue, restoring the pre-sebuf-migration contract (supersedes the `200 OK` entry below). The response now also carries a `Location` header pointing at the `get-scenario-status` poll URL (same value as the body's `statusUrl`), completing the standard REST async-job pattern. The gateway upgrades the sebuf-generated 200 via a status-override side-channel; error statuses (400/403/429/502) are unchanged. Treat any `2xx` as success — the interim guidance to branch on `response.body.status === "pending"` remains valid.
 - `POST /api/scenario/v1/run-scenario` now returns `200 OK` instead of the pre-migration `202 Accepted`. sebuf's HTTP annotations don't carry per-RPC status codes. Branch on response body `status === "pending"` instead of `response.status === 202`. `statusUrl` field is preserved.
 
 ### Security

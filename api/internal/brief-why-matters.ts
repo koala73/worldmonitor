@@ -34,7 +34,10 @@
  * and does not apply here.
  */
 
-export const config = { runtime: 'edge' };
+// Regions pinned (#4944 U7): both whyMatters paths reach OpenRouter — LLM
+// calls from restricted-region edge nodes fail with geo-keyed 403s. Mirrors
+// api/news/v1/[rpc].ts and api/intelligence/v1/[rpc].ts.
+export const config = { runtime: 'edge', regions: ['iad1', 'lhr1', 'fra1', 'sfo1'] };
 
 import { authenticateInternalRequest } from '../../server/_shared/internal-auth';
 import { normalizeCountryToIso2 } from '../../server/_shared/country-normalize';
@@ -43,7 +46,7 @@ import {
   buildAnalystWhyMattersPrompt,
   sanitizeStoryFields,
 } from '../../server/worldmonitor/intelligence/v1/brief-why-matters-prompt';
-import { callLlmReasoning } from '../../server/_shared/llm';
+import { callLlm } from '../../server/_shared/llm';
 // @ts-expect-error — JS module, no declaration file
 import { readRawJsonFromUpstash, setCachedData, redisPipeline } from '../_upstash-json.js';
 // @ts-expect-error — JS module, no declaration file
@@ -78,8 +81,11 @@ function readConfig(env: Record<string, string | undefined> = process.env as Rec
     invalidPrimaryRaw = rawPrimary;
   }
 
-  // SHADOW: default-on kill switch. Only exactly '0' disables.
-  const shadowEnabled = env.BRIEF_WHY_MATTERS_SHADOW !== '0';
+  // SHADOW: opt-in. Only exactly '1' enables. The original default-on
+  // rollout ran BOTH the analyst and gemini paths on every cache miss and
+  // silently kept doubling gemini spend after the comparison window ended
+  // (#4893) — a fresh deploy must never pay 2× unless someone asked for it.
+  const shadowEnabled = env.BRIEF_WHY_MATTERS_SHADOW === '1';
 
   // SAMPLE_PCT: default 100. Invalid/out-of-range → 100 + warn.
   const rawSample = env.BRIEF_WHY_MATTERS_SHADOW_SAMPLE_PCT;
@@ -109,6 +115,15 @@ function readConfig(env: Record<string, string | undefined> = process.env as Rec
 // ── TTLs ──────────────────────────────────────────────────────────────
 const WHY_MATTERS_TTL_SEC = 6 * 60 * 60; // 6h
 const SHADOW_TTL_SEC = 7 * 24 * 60 * 60; // 7d
+
+// whyMatters is a 2–3 sentence editorial blurb — the fast utility model, not
+// the reasoning tier. Pinning it here DECOUPLES the stage from
+// LLM_REASONING_MODEL: the U3 flip to deepseek-v4-pro dragged this stage onto
+// a 6–10s reasoning model (#4983); flash serves it at ~1.6–2.4s. openrouter
+// primary, groq-70B fallback if openrouter is down. Reasoning stays off
+// (callLlm default). Both whyMatters paths share this route.
+const WHY_MATTERS_PROVIDER_ORDER = ['openrouter', 'groq'];
+const WHY_MATTERS_MODEL_OVERRIDES = { openrouter: 'deepseek/deepseek-v4-flash' } as const;
 
 // ── Validation ────────────────────────────────────────────────────────
 const VALID_THREAT_LEVELS = new Set(['critical', 'high', 'medium', 'low']);
@@ -224,7 +239,7 @@ async function runAnalystPath(story: StoryPayload, iso2: string | null): Promise
     console.log(
       `[brief-why-matters] analyst gate policy=${policyLabel} category="${story.category}" promptLen=${user.length}`,
     );
-    const result = await callLlmReasoning({
+    const result = await callLlm({
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: user },
@@ -234,12 +249,14 @@ async function runAnalystPath(story: StoryPayload, iso2: string | null): Promise
       maxTokens: 260,
       temperature: 0.4,
       timeoutMs: 15_000,
-      // Provider is pinned via LLM_REASONING_PROVIDER env var (already
-      // set to 'openrouter' in prod). `callLlmReasoning` routes through
-      // the resolveProviderChain based on that env.
+      stage: 'brief-why-matters-analyst',
+      // Fast utility model (deepseek-v4-flash), reasoning off — see the
+      // WHY_MATTERS_* constants above. Decoupled from LLM_REASONING_MODEL.
+      providerOrder: WHY_MATTERS_PROVIDER_ORDER,
+      modelOverrides: WHY_MATTERS_MODEL_OVERRIDES,
       // Note: no `validate` option. The post-call parseWhyMattersV2
       // check below handles rejection. Using validate inside
-      // callLlmReasoning would walk the provider chain on parse-reject,
+      // callLlm would walk the provider chain on parse-reject,
       // causing duplicate openrouter billings (see todo 245).
     });
     if (!result) return null;
@@ -263,7 +280,7 @@ async function runGeminiPath(story: StoryPayload): Promise<string | null> {
     // defense-in-depth against prompt injection even under a valid
     // RELAY_SHARED_SECRET caller (consistent with the analyst path).
     const { system, user } = buildWhyMattersUserPrompt(sanitizeStoryFields(story));
-    const result = await callLlmReasoning({
+    const result = await callLlm({
       messages: [
         { role: 'system', content: system },
         { role: 'user', content: user },
@@ -271,9 +288,14 @@ async function runGeminiPath(story: StoryPayload): Promise<string | null> {
       maxTokens: 120,
       temperature: 0.4,
       timeoutMs: 10_000,
+      stage: 'brief-why-matters-gemini',
+      // Fast utility model (deepseek-v4-flash), reasoning off — see the
+      // WHY_MATTERS_* constants above. Decoupled from LLM_REASONING_MODEL.
+      providerOrder: WHY_MATTERS_PROVIDER_ORDER,
+      modelOverrides: WHY_MATTERS_MODEL_OVERRIDES,
       // Note: no `validate` option. The post-call parseWhyMatters check
       // below handles rejection by returning null. Using validate inside
-      // callLlmReasoning would walk the provider chain on parse-reject,
+      // callLlm would walk the provider chain on parse-reject,
       // causing duplicate openrouter billings when only one provider is
       // configured in prod. See todo 245.
     });

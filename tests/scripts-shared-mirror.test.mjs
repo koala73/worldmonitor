@@ -21,6 +21,7 @@ const MIRRORED_FILES = [
   'geography.js',
   'iso2-to-region.json',
   'iso3-to-iso2.json',
+  'story-identity.js',
   'un-to-iso2.json',
 ];
 
@@ -53,6 +54,7 @@ describe('regional snapshot seed scripts use scripts/shared/ (not repo-root shar
   // shared/) will ERR_MODULE_NOT_FOUND at runtime on Railway because the
   // shared/ dir is not copied into the deploy root.
   const FILES_THAT_MUST_USE_MIRROR = [
+    'scripts/_clustering.mjs',
     'scripts/seed-regional-snapshots.mjs',
     'scripts/regional-snapshot/actor-scoring.mjs',
     'scripts/regional-snapshot/balance-vector.mjs',

@@ -37,6 +37,7 @@ export interface Forecast {
   simulationAdjustment: number;
   simPathConfidence: number;
   demotedBySimulation: boolean;
+  resolution?: ResolutionSpec;
 }
 
 export interface ForecastSignal {
@@ -124,6 +125,91 @@ export interface ForecastBranchRound {
   developments: string[];
   actorMoves: string[];
   probabilityShift: number;
+}
+
+export interface ResolutionSpec {
+  kind: string;
+  metricKey?: string;
+  operator?: string;
+  threshold?: number;
+  baselineValue?: number;
+  window?: string;
+  deadline: number;
+  sourceFeed?: string;
+  question?: string;
+}
+
+export interface GetForecastScorecardRequest {
+}
+
+export interface GetForecastScorecardResponse {
+  schemaVersion: number;
+  generatedAt: number;
+  rollingWindowDays: number;
+  methodology: string;
+  totals?: ScorecardTotals;
+  overall?: ScorecardSummary;
+  byDomain: ScorecardDomainGroup[];
+  byGenerationOrigin: ScorecardGenerationOriginGroup[];
+  calibration: ScorecardCalibrationBucket[];
+  vsMarketSkill?: ScorecardMarketSkill;
+  degraded: boolean;
+  stale: boolean;
+  error: string;
+}
+
+export interface ScorecardTotals {
+  entries: number;
+  resolved: number;
+  pending: number;
+  pendingJudge: number;
+  scored: number;
+  void: number;
+  voidRate: number;
+  publicationCoverage: number;
+}
+
+export interface ScorecardSummary {
+  count: number;
+  brier: number;
+  logScore: number;
+}
+
+export interface ScorecardDomainGroup {
+  domain: string;
+  resolved: number;
+  scored: number;
+  void: number;
+  voidRate: number;
+  brier?: number;
+  logScore?: number;
+}
+
+export interface ScorecardGenerationOriginGroup {
+  generationOrigin: string;
+  resolved: number;
+  scored: number;
+  void: number;
+  voidRate: number;
+  brier?: number;
+  logScore?: number;
+}
+
+export interface ScorecardCalibrationBucket {
+  bucket: string;
+  minProbability: number;
+  maxProbability: number;
+  count: number;
+  predictedMean?: number;
+  realizedRate?: number;
+  brier?: number;
+}
+
+export interface ScorecardMarketSkill {
+  count: number;
+  forecastBrier: number;
+  marketBrier: number;
+  brierDelta: number;
 }
 
 export interface GetSimulationPackageRequest {
@@ -241,6 +327,29 @@ export class ForecastServiceClient {
     }
 
     return await resp.json() as GetForecastsResponse;
+  }
+
+  async getForecastScorecard(_req: GetForecastScorecardRequest, options?: ForecastServiceCallOptions): Promise<GetForecastScorecardResponse> {
+    let path = "/api/forecast/v1/get-forecast-scorecard";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetForecastScorecardResponse;
   }
 
   async getSimulationPackage(req: GetSimulationPackageRequest, options?: ForecastServiceCallOptions): Promise<GetSimulationPackageResponse> {

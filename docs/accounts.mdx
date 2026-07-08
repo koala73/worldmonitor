@@ -1,0 +1,34 @@
+---
+title: "Accounts & Sign-up"
+description: "How account creation works: the free dashboard needs no account; Pro/API accounts are created via the Clerk sign-up flow in a browser."
+---
+
+<Info>
+**The free dashboard requires no account.** Everything listed under the Free plan — 56 map layers, 500+ feeds, country briefs, watchlists — works anonymously at [worldmonitor.app](https://worldmonitor.app). Create an account only when you want Pro/API features or need to mint an API key.
+</Info>
+
+## How sign-up works
+
+Account creation is an interactive browser flow, not an API:
+
+1. Open [worldmonitor.app/pro](https://worldmonitor.app/pro) and click **Sign up** (or use the dashboard's sign-in button). A [Clerk](https://clerk.com) modal opens inside the page — there is no standalone `/sign-up` form page; that URL serves the app shell.
+2. Register with email + password or an OAuth provider (Google, GitHub). Email registrations get a verification code; the modal walks through it.
+3. A free account by itself unlocks nothing extra on the dashboard — it is the identity that Pro/API subscriptions and API keys attach to.
+
+## After signing up
+
+- **Upgrade to Pro or API** from [worldmonitor.app/pro](https://worldmonitor.app/pro) — checkout runs on Dodo Payments; see [Plans & Pricing](/pricing).
+- **Mint an API key** from the dashboard once subscribed (`wm_` + 40 hex chars); the [auth matrix](/usage-auth) covers where each key type works.
+- **Connect an agent via OAuth** instead of a key: MCP clients (Claude Desktop and others) use OAuth 2.1 + PKCE with dynamic client registration — no manual account dance; see [auth.md](https://worldmonitor.app/auth.md) for the self-bootstrapping discovery chain.
+
+## For agents
+
+- You cannot complete browser sign-up on a user's behalf by fetching pages — the flow lives in a client-side Clerk modal. Direct users to [worldmonitor.app/pro](https://worldmonitor.app/pro).
+- To act *as* an agent with your own credentials, use the OAuth path in [auth.md](https://worldmonitor.app/auth.md) (anonymous dynamic client registration, then a human consents at authorization time).
+- Pricing, plan gates, and quotas are machine-readable: [`/pricing.md`](https://worldmonitor.app/pricing.md) and [`GET /api/product-catalog`](https://www.worldmonitor.app/api/product-catalog).
+
+## Related
+
+- [Plans & Pricing](/pricing)
+- [Authentication & Usage](/usage-auth)
+- [Support & Contact](/support)

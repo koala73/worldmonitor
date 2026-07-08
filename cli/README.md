@@ -104,5 +104,5 @@ const code = await run(['risk', 'IR'], { env: process.env });
 
 ## License
 
-AGPL-3.0-or-later. Part of the
+MIT-licensed thin client (the World Monitor platform itself remains AGPL-3.0). Part of the
 [World Monitor](https://github.com/koala73/worldmonitor) project.

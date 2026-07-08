@@ -51,12 +51,23 @@ describe('seed-bundle-regional shouldRunBriefs — behavior', () => {
   // wrapped in the Upstash `{ result }` envelope. The seed-meta is bare
   // shape `{ fetchedAt, recordCount }` (NOT enveloped), matching writeSeedMeta.
   let nextMeta = null;
-  function stubFetch(meta) {
+  // The retry-budget guard (#4896) issues a POST /pipeline (INCR+EXPIRE)
+  // when the coverage-fail bypass fires; `incrResult` controls the count the
+  // stub reports back (default 1 = budget available).
+  function stubFetch(meta, { incrResult = 1, pipelineOk = true } = {}) {
     nextMeta = meta;
-    global.fetch = async () => ({
-      ok: true,
-      json: async () => ({ result: nextMeta === null ? null : JSON.stringify(nextMeta) }),
-    });
+    global.fetch = async (_url, init = {}) => {
+      if ((init.method || 'GET') === 'POST') {
+        return {
+          ok: pipelineOk,
+          json: async () => [{ result: incrResult }, { result: 1 }],
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({ result: nextMeta === null ? null : JSON.stringify(nextMeta) }),
+      };
+    };
   }
 
   before(async () => {
@@ -111,5 +122,30 @@ describe('seed-bundle-regional shouldRunBriefs — behavior', () => {
   it('runs defensively when Redis returns a non-ok response', async () => {
     global.fetch = async () => ({ ok: false, json: async () => ({}) });
     assert.equal(await shouldRunBriefs(), true);
+  });
+
+  // ── Retry-budget cap on the coverage-fail bypass (#4896 item 2) ──
+  // Without it, a sustained OpenRouter outage re-ran all 7 region briefs on
+  // every 6h tick (~28 LLM calls/day) until the outage ended — a burn spike
+  // timed exactly to provider incidents.
+
+  it('coverage-fail bypass still fires while the 24h retry budget has room', async () => {
+    stubFetch({ fetchedAt: Date.now() - 60_000, recordCount: 0 }, { incrResult: 2 });
+    assert.equal(await shouldRunBriefs(), true);
+  });
+
+  it('coverage-fail bypass is capped once the rolling 24h retry budget is exhausted', async () => {
+    stubFetch({ fetchedAt: Date.now() - 60_000, recordCount: 0 }, { incrResult: 3 });
+    assert.equal(await shouldRunBriefs(), false, 'third bypass within 24h must be suppressed');
+  });
+
+  it('budget check fails OPEN so a Redis hiccup cannot block self-healing', async () => {
+    stubFetch({ fetchedAt: Date.now() - 60_000, recordCount: 0 }, { pipelineOk: false });
+    assert.equal(await shouldRunBriefs(), true);
+  });
+
+  it('the budget does not gate the normal weekly cadence', async () => {
+    stubFetch({ fetchedAt: Date.now() - (BRIEF_COOLDOWN_MS + 60_000), recordCount: 6 }, { incrResult: 99 });
+    assert.equal(await shouldRunBriefs(), true, 'scheduled runs must never consult the retry budget');
   });
 });

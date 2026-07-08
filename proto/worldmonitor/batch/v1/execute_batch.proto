@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package worldmonitor.batch.v1;
+
+import "buf/validate/validate.proto";
+
+// BatchOperation describes one read operation to execute within a batch request.
+message BatchOperation {
+  // Client-chosen correlation id echoed back in the matching result. Defaults to the operation's zero-based index when omitted.
+  string id = 1 [(buf.validate.field).string.max_len = 64];
+  // Absolute path of any documented GET operation, optionally including a query string — e.g. "/api/market/v1/list-market-quotes" or "/api/intelligence/v1/get-country-risk?country=DE&jmespath=score". Nested batch paths (/api/batch/*) are rejected.
+  string path = 2 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.max_len = 2048
+  ];
+}
+
+// ExecuteBatchRequest carries the array of operations to execute in bulk.
+message ExecuteBatchRequest {
+  // Operations to execute concurrently server-side; between 1 and 20 per request. Each operation counts against the caller's rate limits individually.
+  repeated BatchOperation operations = 1 [
+    (buf.validate.field).repeated.min_items = 1,
+    (buf.validate.field).repeated.max_items = 20
+  ];
+}
+
+// BatchOperationBody is the JSON response body returned by one batched operation. It is a free-form object whose shape is defined by the target operation's own response schema (see that operation's entry in this spec).
+message BatchOperationBody {}
+
+// BatchOperationResult is the outcome of one operation in the batch.
+message BatchOperationResult {
+  // Correlation id from the request (or the operation's zero-based index when omitted).
+  string id = 1;
+  // HTTP status code returned by the operation, or 0 when the operation could not be executed at all (see error).
+  int32 status = 2;
+  // Decoded JSON response body of the operation, exactly as the target operation returned it. Omitted when error is set.
+  BatchOperationBody body = 3;
+  // Machine-readable failure reason when no response body is available: invalid_path, nested_batch, timeout, fetch_failed, response_too_large, or invalid_json.
+  string error = 4;
+}
+
+// ExecuteBatchResponse aggregates the per-operation results.
+message ExecuteBatchResponse {
+  // Per-operation results, index-aligned with the request's operations array.
+  repeated BatchOperationResult results = 1;
+  // Number of operations that returned an HTTP 2xx status.
+  int32 succeeded = 2;
+  // Number of operations that returned a non-2xx status or failed to execute.
+  int32 failed = 3;
+}

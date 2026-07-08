@@ -93,22 +93,26 @@ function assertIdempotencyResponses(op, label) {
     `${label} 422 response must document echoed Idempotency-Key`,
   );
   // The 2xx (success) response must document the replay markers — the only
-  // observable signal for "was this a replay?" (issue #4769 P2).
-  const success = op.responses?.['200'];
-  assert.ok(success, `${label} must document a 200 success response`);
+  // observable signal for "was this a replay?" (issue #4769 P2). The success
+  // response is 200 everywhere except async-enqueue POSTs, which document
+  // 202 Accepted instead (scripts/openapi-inject-async-jobs.mjs renames the
+  // generated 200 after the replay markers are stamped).
+  const successEntries = Object.entries(op.responses ?? {}).filter(([code]) => /^2\d\d$/.test(code));
+  assert.equal(successEntries.length, 1, `${label} must document exactly one 2xx success response`);
+  const [successCode, success] = successEntries[0];
   const echoed = success.headers?.['Idempotency-Key'];
-  assert.ok(echoed, `${label} 200 response must document the echoed Idempotency-Key header`);
+  assert.ok(echoed, `${label} ${successCode} response must document the echoed Idempotency-Key header`);
   assert.equal(
     echoed.schema?.type,
     'string',
-    `${label} 200 Idempotency-Key must be a string header`,
+    `${label} ${successCode} Idempotency-Key must be a string header`,
   );
   const replayed = success.headers?.['Idempotent-Replayed'];
-  assert.ok(replayed, `${label} 200 response must document the Idempotent-Replayed marker`);
+  assert.ok(replayed, `${label} ${successCode} response must document the Idempotent-Replayed marker`);
   assert.equal(
     replayed.schema?.type,
     'boolean',
-    `${label} 200 Idempotent-Replayed must be a boolean header`,
+    `${label} ${successCode} Idempotent-Replayed must be a boolean header`,
   );
 }
 

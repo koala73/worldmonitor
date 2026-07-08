@@ -7,7 +7,7 @@
 # Set AISSTREAM_API_KEY in docker-compose.yml or Railway env.
 # =============================================================================
 
-FROM node:22-alpine@sha256:16e22a550f3863206a3f701448c45f7912c6896a62de43add43bb9c86130c3e2
+FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd
 
 # curl required by OREF polling (Node.js JA3 fingerprint blocked by Akamai; curl passes)
 RUN apk add --no-cache curl
@@ -28,7 +28,20 @@ RUN npm ci --prefix scripts --omit=dev --omit=optional --ignore-scripts
 COPY scripts/ais-relay.cjs ./scripts/ais-relay.cjs
 COPY scripts/_proxy-utils.cjs ./scripts/_proxy-utils.cjs
 COPY scripts/lib/usni-fleet-parser.cjs ./scripts/lib/usni-fleet-parser.cjs
+# llm-telemetry.cjs is transitively imported by _seed-utils.mjs (SIGTERM
+# telemetry flush, #4954) — missing it = silent startup crash in the image.
+COPY scripts/lib/llm-telemetry.cjs ./scripts/lib/llm-telemetry.cjs
 COPY scripts/shared/country-name-to-iso2.cjs ./scripts/shared/country-name-to-iso2.cjs
+# notification-dedup.cjs is required by ais-relay.cjs and notification-relay.cjs
+# (Slot B dedup-material helper, #4985). Missing it = ERR_MODULE_NOT_FOUND at
+# relay startup. Guarded by tests/dockerfile-relay-imports.test.mjs.
+COPY scripts/shared/notification-dedup.cjs ./scripts/shared/notification-dedup.cjs
+# market-hours.cjs gates the equity portion of the relay market seed loop on
+# the US-equity session (#4922d). Missing it = ERR_MODULE_NOT_FOUND at startup.
+COPY scripts/shared/market-hours.cjs ./scripts/shared/market-hours.cjs
+# closed-market-equity-maintenance.cjs keeps the closed-market TTL refresh
+# logic importable/testable for ais-relay.cjs. Missing it = startup crash.
+COPY scripts/shared/closed-market-equity-maintenance.cjs ./scripts/shared/closed-market-equity-maintenance.cjs
 COPY scripts/_seed-utils.mjs ./scripts/_seed-utils.mjs
 # _seed-envelope-source.mjs and _seed-contract.mjs are transitively imported
 # by _seed-utils.mjs (lines 9-10) and by seed-chokepoint-flows.mjs /

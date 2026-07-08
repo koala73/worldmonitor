@@ -377,8 +377,22 @@ export function classifyByKeyword(title: string, variant = 'full'): ThreatClassi
 import type { ClassifyEventResponse } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { IntelligenceServiceClient } from '@/services/generated-rpc-clients';
+import {
+  canAttemptAiClassification,
+  configureClassifyGate,
+  suppressAiClassification,
+} from '@/services/classify-gate';
+import { hasPremiumAccess } from '@/services/panel-gating';
 
 const classifyClient = new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
+
+// #4865: classify-event is premium-gated server-side (#4779). Gate every
+// enqueue on the client-side entitlement signal so anon/free principals fall
+// back to keyword classification with ZERO network attempts — before this
+// gate, every incoming headline fired an RPC that 401/403'd (~570k wasted
+// requests/day). panel-gating's hasPremiumAccess is the dual-signal source
+// of truth (API key, tester keys, Clerk role, Convex entitlement).
+configureClassifyGate(() => hasPremiumAccess());
 
 const classifyBreaker = createCircuitBreaker<ThreatClassification | null>({
   name: 'AIClassify',
@@ -463,6 +477,21 @@ function flushBatch(): void {
           job.resolve(toThreat(resp));
         } catch (err) {
           const statusCode = getRpcErrorStatusCode(err);
+          if (statusCode === 403) {
+            // #4865: a 403 is a deterministic entitlement rejection for this
+            // principal — retrying per headline recreated the flood (the
+            // pre-fix loop resolved null and kept firing at full cadence).
+            // Suppress ALL attempts for the gate window, drain everything to
+            // the keyword fallback, and let the gate re-probe after the
+            // window (self-heals a mid-session upgrade).
+            suppressAiClassification();
+            console.warn('[Classify] 403 (subscription required) — AI classification suppressed, falling back to keyword classification');
+            job.resolve(null);
+            for (const rest of batch.slice(i + 1)) rest.resolve(null);
+            for (const queued of batchQueue.splice(0)) queued.resolve(null);
+            batchInFlight = false;
+            return;
+          }
           if (statusCode === 401 || statusCode === 429 || (statusCode !== undefined && statusCode >= 500)) {
             batchPaused = true;
             let delay: number;
@@ -521,6 +550,13 @@ function classifyWithAIUncached(
   variant: string
 ): Promise<ThreatClassification | null> {
   return new Promise((resolve) => {
+    // #4865: entitlement gate — anon/free principals (and any principal
+    // inside the post-403 suppression window) resolve straight to null so
+    // callers keep their keyword classification. No request is made.
+    if (!canAttemptAiClassification()) {
+      resolve(null);
+      return;
+    }
     if (batchQueue.length >= MAX_QUEUE_LENGTH) {
       console.warn(`[Classify] Queue full (${MAX_QUEUE_LENGTH}), dropping classification for: ${title.slice(0, 60)}`);
       resolve(null);

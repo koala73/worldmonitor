@@ -68,4 +68,40 @@ describe('notification country-scope forwarding contract', () => {
       'setQuietHoursForUser must accept and normalize countries',
     );
   });
+
+  // #4922 U3 review fix: normalizeTickers/normalizeCountries throw ConvexError
+  // with a structured *_LIMIT_EXCEEDED code on a >50-entry cap. The set-alert-rules
+  // HTTP block previously had no try/catch, so the cap violation fell to the
+  // outer catch as a generic 500 the client cannot route on — unlike the
+  // set-notification-config block, which already translates codes to 400/402.
+  it('set-alert-rules translates cap-exceeded ConvexError codes to a 400', () => {
+    assert.match(
+      convexHttpSrc,
+      /action === "set-alert-rules"[\s\S]*?try \{[\s\S]*?setAlertRulesForUser[\s\S]*?\} catch \(err: unknown\) \{[\s\S]*?TICKERS_LIMIT_EXCEEDED[\s\S]*?COUNTRIES_LIMIT_EXCEEDED[\s\S]*?status: 400/,
+      'set-alert-rules must catch and translate *_LIMIT_EXCEEDED to a 400',
+    );
+  });
+
+  // Review round 2: the Convex-layer 400 is only useful if the public edge
+  // forwards it. The set-alert-rules edge handler previously collapsed every
+  // non-ok relay response into a generic 500 — mirror set-notification-config.
+  it('edge set-alert-rules forwards relay 400/402 with body intact', () => {
+    assert.match(
+      edgeSrc,
+      /action === 'set-alert-rules'[\s\S]*?if \(!resp\.ok\) \{[\s\S]*?resp\.status === 400 \|\| resp\.status === 402[\s\S]*?return finish\(json\(payload, resp\.status/,
+      'edge set-alert-rules must pass through 400/402 instead of collapsing to 500',
+    );
+  });
+
+  // Review round 2: set-notification-config now forwards tickers, so it can
+  // throw TICKERS_LIMIT_EXCEEDED; and its catch must decode the JSON-string
+  // err.data shape (extractConvexErrorCode) rather than the object-only check
+  // that missed every code on the ctx.runMutation path.
+  it('set-notification-config translates cap codes via extractConvexErrorCode', () => {
+    assert.match(
+      convexHttpSrc,
+      /action === "set-notification-config"[\s\S]*?\} catch \(err: unknown\) \{[\s\S]*?extractConvexErrorCode\(err\)[\s\S]*?TICKERS_LIMIT_EXCEEDED[\s\S]*?COUNTRIES_LIMIT_EXCEEDED[\s\S]*?status: 400/,
+      'set-notification-config catch must use extractConvexErrorCode and handle cap codes',
+    );
+  });
 });

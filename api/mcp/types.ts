@@ -11,7 +11,14 @@
 
 export type McpAuthContext =
   | { kind: 'env_key'; apiKey: string }
-  | { kind: 'pro'; userId: string; mcpTokenId: string };
+  | { kind: 'pro'; userId: string; mcpTokenId: string }
+  // Customer-issued dashboard key (Convex userApiKeys, #4859). Carries BOTH
+  // the raw key (downstream _execute fetches authenticate as the owner via
+  // X-WorldMonitor-Key, so REST metering/limits attribute to them) AND the
+  // resolved owner userId (per-user rate limit + daily quota + the mcpAccess
+  // entitlement pre-check — a user_key context must NEVER skip that gate the
+  // way env_key does).
+  | { kind: 'user_key'; apiKey: string; userId: string };
 
 // ---------------------------------------------------------------------------
 // Tool registry types
@@ -229,6 +236,11 @@ export interface McpHandlerDeps {
   resolveBearerToContext: (token: string) => Promise<McpAuthContext | null>;
   validateProMcpToken: (tokenId: string) => Promise<{ userId: string } | null>;
   getEntitlements: (userId: string) => Promise<{ planKey?: string; features: { tier: number; mcpAccess?: boolean }; validUntil: number } | null>;
+  // #4859: Convex userApiKeys hash lookup (same shared helper as the REST
+  // gateway). Returns the key owner, or null for unknown/revoked keys. The
+  // production impl fail-softs to null internally; a THROW from a dep is
+  // treated as auth-backend-transient (503), mirroring resolveBearerToContext.
+  validateUserApiKey: (key: string) => Promise<{ userId: string } | null>;
   redisPipeline: PipelineFn;
 }
 

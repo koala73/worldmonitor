@@ -62,6 +62,12 @@ function installPipelineMock(values) {
     const commands = JSON.parse(init.body);
     const results = commands.map((command) => {
       const [op, key] = command;
+      // #4927: activation-gated entries add EXISTS probes on their
+      // seed-activated:* markers; absent unless a test seeds them.
+      if (op === 'EXISTS') {
+        assert.match(String(key), /^seed-activated:/, 'EXISTS is only used for activation markers');
+        return { result: values.has(key) ? 1 : 0 };
+      }
       assert.equal(op, 'GET');
       const value = values.has(key)
         ? values.get(key)

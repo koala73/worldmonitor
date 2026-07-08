@@ -171,6 +171,20 @@ node scripts/seed-military-flights.mjs
 | `worldmonitor-redis-rest` | Upstash-compatible REST proxy | 8079 |
 | `worldmonitor-ais-relay` | Live vessel tracking WebSocket | 3004 (internal) |
 
+> **`redis-rest` command allowlist**: the bundled proxy (`docker/redis-rest-proxy.mjs`) only
+> forwards a fixed allowlist of Redis commands and rejects `EVAL`/`EVALSHA`/`SCRIPT` (no Lua
+> scripting). Two consequences for a self-hosted stack:
+>
+> - `@upstash/ratelimit`'s Lua-based sliding-window limiter (`server/_shared/rate-limit.ts`,
+>   `api/_rate-limit.js`) can't run against it. Both automatically detect the rejection once and
+>   fall back to a non-Lua fixed-window limiter (`INCR` + `EXPIRE NX`) for the rest of the
+>   process — rate limiting still enforces, just with fixed- instead of sliding-window semantics.
+> - `scripts/ais-relay.cjs`'s own in-container seed loops (`UPSTASH_ENABLED`) also require
+>   `UPSTASH_REDIS_REST_URL` to start with `https://` by default, which the plain-HTTP proxy
+>   never satisfies. Set `UPSTASH_ALLOW_INSECURE_HTTP=true` on the `ais-relay` service (already
+>   wired for `redis-rest` in `docker-compose.yml`) to opt into using the proxy from
+>   inside the relay container.
+
 ## 🔨 Building from Source
 
 ```bash
@@ -193,7 +207,7 @@ docker compose down && docker compose up -d
 - Docker nginx mirrors Vercel's `script-src` policy and does not allow `'unsafe-inline'`; hash-pin any custom inline scripts before adding them to a self-hosted build.
 - If you hit `npm ci` sync errors in Docker, regenerate the lockfile with the container's npm version:
   ```bash
-  docker run --rm -v "$(pwd)":/app -w /app node:22-alpine npm install --package-lock-only
+  docker run --rm -v "$(pwd)":/app -w /app node:24-alpine npm install --package-lock-only
   ```
 
 ## 🌐 Connecting to External Infrastructure
@@ -237,7 +251,7 @@ services:
 | 📡 `0/55 OK` on health check | Seeders haven't run — `./scripts/run-seeders.sh` |
 | 🔴 nginx won't start | Check `podman logs worldmonitor` — likely missing `gettext` package |
 | 🔑 Seeders say "Missing UPSTASH_REDIS_REST_URL" | Stack isn't running, or run via `./scripts/run-seeders.sh` (auto-sets env vars) |
-| 📦 `npm ci` fails in Docker build | Lockfile mismatch — regenerate with `docker run --rm -v $(pwd):/app -w /app node:22-alpine npm install --package-lock-only` |
+| 📦 `npm ci` fails in Docker build | Lockfile mismatch — regenerate with `docker run --rm -v $(pwd):/app -w /app node:24-alpine npm install --package-lock-only` |
 | 🚢 No vessel data | Set `AISSTREAM_API_KEY` in both `worldmonitor` and `ais-relay` services |
 | 🔥 No wildfire data | Set `NASA_FIRMS_API_KEY` |
 | 🌐 No outage data | Requires `CLOUDFLARE_API_TOKEN` (paid Radar access) |

@@ -17948,6 +17948,32 @@ a.prediction-link:hover {
   flex: 1;
 }
 
+/* #4921 cited per-story brief lines + freshness footer */
+.insights-brief-lines {
+  margin: 8px 0 4px;
+  padding-left: 18px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text);
+}
+.insights-brief-lines li {
+  margin-bottom: 3px;
+}
+.insights-brief-freshness {
+  font-size: 9px;
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+/* #4920 coverage provenance stamp under the insights stats */
+.insights-provenance {
+  font-size: 10px;
+  color: var(--text-dim);
+  margin: -6px 0 12px;
+  padding: 0 8px;
+  text-align: right;
+}
+
 .insight-stat-value {
   display: block;
   font-size: 18px;
@@ -25936,4 +25962,38 @@ body.map-width-resizing {
 .us-notif-manage-link:hover {
   color: var(--settings-text);
   border-color: var(--settings-border-strong);
+}
+
+/* ============================================
+   Marker pulse settle (#4669)
+   Each infinite opacity pulse below holds a permanent compositing layer per
+   marker (385 of 517 desktop layers; Layerize main-thread cost scales with
+   the count). MapComponent adds .markers-settled to .map-wrapper after the
+   on-appearance attention window and removes it on every overlay re-render,
+   so markers still pulse when they appear or update but release their layers
+   at idle. Intentionally NOT settled: .cable-path:hover (animates only while
+   hovered) and .asset-highlight variants (user-intent single-asset highlight,
+   #4538). A guard test (tests/marker-pulse-settle.test.mjs) keeps this list
+   in sync with the pulses declared above.
+   ============================================ */
+.markers-settled .hotspot-marker.high,
+.markers-settled .hotspot-breaking,
+.markers-settled .breaking-tag,
+.markers-settled .cable-path.cable-health-fault,
+.markers-settled .cable-advisory-marker.fault,
+.markers-settled .protest-marker.high,
+.markers-settled .outage-marker.total,
+.markers-settled .conflict-zone,
+.markers-settled .iran-event-marker,
+.markers-settled .earthquake-marker,
+.markers-settled .nuclear-marker.active,
+.markers-settled .nuclear-marker.contested,
+.markers-settled .weather-marker.extreme .weather-icon,
+.markers-settled .flight-delay-marker.major,
+.markers-settled .flight-delay-marker.severe,
+.markers-settled .military-vessel-marker.dark-vessel,
+.markers-settled .military-vessel-marker.interesting,
+.markers-settled .dark-vessel-indicator,
+.markers-settled .tech-event-marker.upcoming-soon::after {
+  animation: none;
 }

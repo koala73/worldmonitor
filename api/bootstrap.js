@@ -18,6 +18,10 @@ import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.js';
 
 export const config = { runtime: 'edge' };
 
+// Iran-events domain sunset (war ended 2026-07). Default OFF: don't ship the
+// domain to the client. Set IRAN_EVENTS_ENABLED=true to restore. See api/health.js.
+const IRAN_EVENTS_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLowerCase() === 'true';
+
 const BOOTSTRAP_CACHE_KEYS = {
   earthquakes:      'seismology:earthquakes:v1',
   outages:          'infra:outages:v1',
@@ -197,6 +201,13 @@ const FAST_KEYS = new Set([
   'iranEvents', 'temporalAnomalies', 'weatherAlerts', 'spending', 'theaterPosture', 'gdeltIntel',
   'correlationCards', 'forecasts', 'shippingRates', 'shippingStress', 'socialVelocity', 'wsbTickers',
 ]);
+
+// Iran-events sunset: strip the domain from the bootstrap payload + fast tier
+// when disabled (default), so the client never hydrates it.
+if (!IRAN_EVENTS_ENABLED) {
+  delete BOOTSTRAP_CACHE_KEYS.iranEvents;
+  FAST_KEYS.delete('iranEvents');
+}
 
 // No public/s-maxage: CF (in front of api.worldmonitor.app) ignores Vary: Origin and would
 // pin ACAO: worldmonitor.app on cached responses, breaking CORS for preview deployments.

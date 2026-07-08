@@ -9,7 +9,7 @@
 // small REST escape hatch (`health`, `get <path>`) and an OpenAPI listing
 // (`list`) round it out for host-relative and self-hosted use.
 
-export const VERSION = '0.1.2';
+export const VERSION = '0.1.3';
 
 // Cloudflare's WAF challenges generic library User-Agents (node, curl,
 // python-requests, empty) on the API edge, so we always identify ourselves.

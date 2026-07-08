@@ -158,6 +158,11 @@ export default defineSchema({
     aiDigestEnabled: v.optional(v.boolean()), // opt-in AI executive summary in digests (default true for new rules)
     // Optional country-scope (ISO-3166 alpha-2). Empty/absent → all countries (current behavior).
     countries: v.optional(v.array(v.string())),
+    // Optional watchlist ticker-scope (#4922 U3, e.g. ["AAPL", "RELIANCE.NS"]).
+    // Unlike `countries`, this is OPT-IN scoped: empty/absent → the rule
+    // receives NO `watchlist_story_alert` events (the relay requires a
+    // non-empty intersection with the story's tickers).
+    tickers: v.optional(v.array(v.string())),
   })
     .index("by_user", ["userId"])
     .index("by_user_variant", ["userId", "variant"])
@@ -563,12 +568,70 @@ export default defineSchema({
     // may still rely on tiers 2-3 until
     // `backfillSubscriptionDodoCustomerId` lands their values here.
     dodoCustomerId: v.optional(v.string()),
+    // Epoch ms of the event that opened the CURRENT on_hold episode.
+    // Set by handleSubscriptionOnHold only on the active→on_hold
+    // transition (webhook replays while already on_hold keep the
+    // original anchor), and used as the dunning episode key (#4932):
+    // day-3/day-7 reminders compute their age from it, and the
+    // dunningEmails ledger scopes idempotency to it so a NEW payment
+    // failure months later starts a fresh email sequence. Optional —
+    // rows that entered on_hold before this field existed fall back
+    // to `updatedAt` in the dunning scan.
+    onHoldAt: v.optional(v.number()),
     rawPayload: v.any(),
     updatedAt: v.number(),
+    // Renewal-reconciliation bookkeeping (see
+    // `payments/billing:reconcileMissedDodoRenewals`). Orthogonal to
+    // `updatedAt` — these are NEVER bumped on a webhook state change, only
+    // when the reconciliation cron attempts (and fails/skips) a row. Used to
+    // back off permanently-failing rows (e.g. test-mode-era subs that 404
+    // against the live Dodo client) so they stop starving the batch's scan
+    // slots. Cleared on a successful reconcile AND on a webhook that renews the
+    // sub (so a new stale episode starts from a clean slate).
+    lastReconcileAttemptAt: v.optional(v.number()),
+    reconcileFailureCount: v.optional(v.number()),
+    // Count of CONSECUTIVE definitive Dodo 404s (reset by any non-404 reconcile
+    // outcome). Distinct from `reconcileFailureCount` (which counts all failure
+    // kinds for backoff) so the terminal "subscription deleted in Dodo"
+    // downgrade requires repeated 404s specifically, not just any prior failure.
+    reconcileNotFoundCount: v.optional(v.number()),
   })
     .index("by_userId", ["userId"])
     .index("by_dodoSubscriptionId", ["dodoSubscriptionId"])
-    .index("by_dodoCustomerId", ["dodoCustomerId"]),
+    .index("by_dodoCustomerId", ["dodoCustomerId"])
+    // Dunning scan (#4932): on_hold is a small TRANSIENT set (tens of rows),
+    // safe to collect() daily.
+    .index("by_status", ["status"])
+    // Winback scan (#4932): cancelled is an ACCUMULATING terminal status —
+    // it grows with lifetime churn, so a bare by_status collect() would
+    // eventually hit Convex's per-transaction read cap and kill the whole
+    // daily scan (PR #4935 review finding 2). This compound index lets the
+    // scan range-read only a bounded window. Keyed on currentPeriodEnd
+    // (ACCESS end), not cancelledAt: an annual subscriber who cancels
+    // months before expiry would otherwise be paid-through during the
+    // post-cancel window and outside it once access actually ends — never
+    // winback-eligible (review round 2, finding 3). The winback email says
+    // "your access ended ~a month ago", so access end is the right clock.
+    .index("by_status_currentPeriodEnd", ["status", "currentPeriodEnd"]),
+
+  // Dunning/winback send ledger (#4932): one row per email step actually
+  // delivered for a given subscription episode. `episodeAt` is the on_hold
+  // anchor (dunning steps) or `cancelledAt` (winback), so a later, separate
+  // payment-failure episode legitimately re-sends the sequence while webhook
+  // replays and overlapping cron ticks stay idempotent. Growth is bounded by
+  // real billing events (≤4 rows per episode), so no prune cron is needed.
+  dunningEmails: defineTable({
+    dodoSubscriptionId: v.string(),
+    step: v.union(
+      v.literal("dunning_day0"),
+      v.literal("dunning_day3"),
+      v.literal("dunning_day7"),
+      v.literal("winback_day30"),
+    ),
+    episodeAt: v.number(),
+    email: v.string(),
+    sentAt: v.number(),
+  }).index("by_sub_step_episode", ["dodoSubscriptionId", "step", "episodeAt"]),
 
   entitlements: defineTable({
     userId: v.string(),
@@ -738,11 +801,28 @@ export default defineSchema({
   })
     .index("by_userId", ["userId"])
     .index("by_dodoPaymentId", ["dodoPaymentId"])
+    .index("by_occurredAt", ["occurredAt"])
     // Time-bounded read for the duplicate-payment guard (#4438): it only needs
     // recent rows (within the staleness window), so it queries this index with a
     // range on occurredAt instead of collecting the user's whole (unbounded,
     // rawPayload-carrying) payment history — keeps the guard fail-open.
     .index("by_userId_occurredAt", ["userId", "occurredAt"]),
+
+  paymentReconciliationAttempts: defineTable({
+    dodoPaymentId: v.string(),
+    userId: v.string(),
+    planKey: v.optional(v.string()),
+    action: v.union(
+      v.literal("terminal_reconciled"),
+      v.literal("customer_notified"),
+      v.literal("ops_notified"),
+    ),
+    observedStatus: v.string(),
+    pendingOccurredAt: v.number(),
+    reconciledAt: v.number(),
+  })
+    .index("by_dodoPaymentId", ["dodoPaymentId"])
+    .index("by_reconciledAt", ["reconciledAt"]),
 
   productPlans: defineTable({
     dodoProductId: v.string(),

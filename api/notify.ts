@@ -22,7 +22,11 @@ import { validateBearerToken } from '../server/auth-session';
 import { getEntitlements } from '../server/_shared/entitlement-check';
 
 const VALID_SEVERITIES = new Set(['critical', 'high', 'medium', 'low', 'info']);
-const INTERNAL_EVENT_TYPES = new Set(['flush_quiet_held', 'channel_welcome']);
+const INTERNAL_EVENT_TYPES = new Set(['flush_quiet_held', 'channel_welcome', 'watchlist_story_alert']);
+
+export function isInternalNotifyEventType(eventType: string): boolean {
+  return INTERNAL_EVENT_TYPES.has(eventType);
+}
 
 export default async function handler(req: Request): Promise<Response> {
   if (isDisallowedOrigin(req)) {
@@ -71,8 +75,10 @@ export default async function handler(req: Request): Promise<Response> {
   // Reject internal relay control events. These are dispatched by Railway
   // cron scripts (seed-digest-notifications, quiet-hours) and must never be
   // user-submittable. flush_quiet_held would let a Pro user force-drain their
-  // held queue on demand, bypassing batch_on_wake behaviour.
-  if (INTERNAL_EVENT_TYPES.has(body.eventType)) {
+  // held queue on demand, bypassing batch_on_wake behaviour. watchlist_story_alert
+  // is produced by the digest scanner after ticker extraction, importance gating,
+  // and scan dedup; user-submitted copies would bypass that pipeline.
+  if (isInternalNotifyEventType(body.eventType)) {
     return jsonResponse({ error: 'Reserved event type' }, 403, cors);
   }
 

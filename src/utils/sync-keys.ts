@@ -36,6 +36,10 @@ export const CLOUD_SYNC_KEYS = [
   'wm-map-theme:carto',
   // Live-stream mode
   'wm-live-streams-always-on',
+  // #4923 read-state: previous-visit timestamp driving "new since you were
+  // last here" — synced so a phone visit doesn't re-flag stories already
+  // read on desktop.
+  'wm-read-state-v1',
 ] as const;
 
 export type CloudSyncKey = (typeof CLOUD_SYNC_KEYS)[number];

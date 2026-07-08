@@ -5,7 +5,7 @@ import {
   applyPerMinuteLimit,
   PRODUCTION_DEPS,
   resolveAuthContext,
-  runProPreChecks,
+  runContextPreChecks,
   wwwAuthHeader,
 } from './auth';
 import {
@@ -28,34 +28,48 @@ import {
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
 import { buildUiResourceRead, isUiResourceUri, UI_RESOURCE_LIST_RESPONSE } from './ui/registry';
 import { emitTelemetry, principalIdForLog } from './telemetry';
+import { createMcpUsage, emitMcpRequestEvent, setUsageContext, type McpUsage } from './usage';
 import type { McpAuthContext, McpHandlerDeps } from './types';
 
 // MCP methods servable WITHOUT authentication. These are the zero-data
 // discovery surface an agent (or an agent-readiness scanner) needs to learn
 // what this server is and what it exposes BEFORE authenticating — exactly the
 // metadata already published in the static server-card.json and the public
-// docs. `tools/list`, `resources/list`, and `resources/templates/list` are all
-// catalog-enumeration methods that return only public metadata (names,
-// descriptions, URIs / URI templates — no data, no quota), so all are
+// docs. `tools/list`, `resources/list`, `resources/templates/list`,
+// `prompts/list`, and `prompts/get` are all catalog/template-enumeration
+// methods that return only public metadata (names, descriptions, URIs / URI
+// templates, static workflow-template prose — no data, no quota), so all are
 // anonymously servable: a scanner that reads the `resources` capability from
 // `initialize` MUST be able to enumerate it, or the capability reads as
-// advertised-but-empty. `resources/read` of a PUBLIC resource (a concrete,
-// metadata-only freshness/health probe — see PUBLIC_RESOURCE_REGISTRY) is
-// ALSO anonymously servable + quota-exempt; it is promoted to the public path
-// per-request via `isPublicResourceUri` below because it carries no billable
-// data. Everything that returns DATA or spends quota (`tools/call`, and
-// `resources/read` of a data-bearing TEMPLATE instantiation) — plus the
-// metadata methods the product keeps gated (`prompts/list`,
-// `logging/setLevel`) — still requires credentials. `notifications/initialized`
+// advertised-but-empty. The gating invariant (#4937): every capability the
+// ANONYMOUS `initialize` advertises must be anonymously exercisable. A gated
+// method answers HTTP 401 with JSON-RPC id:null, which an MCP SDK transport
+// cannot correlate to the pending request — the client hangs to its 30s
+// timeout and marks the server unstable (customer-hit via Claude Desktop +
+// mcp-remote, which never OAuths because the public `initialize` never
+// challenges it). That is why `prompts/*` (static templates), `ping` (spec
+// liveness check — SDK keepalives hang identically), and `logging/setLevel`
+// (no-op ack for the advertised `logging` capability) are public. All
+// anonymous traffic stays behind applyAnonDiscoveryLimit. `resources/read` of
+// a PUBLIC resource (a concrete, metadata-only freshness/health probe — see
+// PUBLIC_RESOURCE_REGISTRY) is ALSO anonymously servable + quota-exempt; it
+// is promoted to the public path per-request via `isPublicResourceUri` below
+// because it carries no billable data. Everything that returns DATA or spends
+// quota (`tools/call`, and `resources/read` of a data-bearing TEMPLATE
+// instantiation) still requires credentials. `notifications/initialized`
 // is the client's post-`initialize` handshake notification (carries no data);
 // leaving it public lets a strict MCP client complete the handshake before
 // calling `tools/list`.
 const PUBLIC_MCP_METHODS: ReadonlySet<string> = new Set([
   'initialize',
   'notifications/initialized',
+  'ping',
   'tools/list',
+  'prompts/list',
+  'prompts/get',
   'resources/list',
   'resources/templates/list',
+  'logging/setLevel',
 ]);
 
 // Mirror of resolveAuthContext's credential-header contract: does the request
@@ -283,30 +297,119 @@ function handleSseReplay(req: Request, corsHeaders: Record<string, string>): Res
 }
 
 // ---------------------------------------------------------------------------
+// /.well-known/mcp dual-role support
+// ---------------------------------------------------------------------------
+// vercel.json rewrites /.well-known/mcp into this handler so ONE URL is both
+// the discovery manifest (plain GET → static server card) and a live
+// Streamable HTTP endpoint (POST initialize etc.). Agent-readiness scanners
+// (orank `mcp-server`) POST `initialize` AT the well-known URL; when a static
+// file answered that with a bodyless 405 the check scored "MCP manifest found
+// at /.well-known/mcp but protocol handshake failed" (3/6) even though /mcp
+// itself handshakes cleanly.
+// Two manifest aliases: bare `/.well-known/mcp` (SEP-1649 server-card style)
+// and `/.well-known/mcp.json` (the ora.ai/registry convention whose schema
+// keys the endpoint as top-level `url`). Both rewrite here via vercel.json.
+const WELL_KNOWN_MCP_PATHS = new Set(['/.well-known/mcp', '/.well-known/mcp.json']);
+// Module-scope cache: the card is a static asset, immutable per deployment.
+let serverCardCache: string | null = null;
+async function serveServerCard(req: Request, corsHeaders: Record<string, string>): Promise<Response> {
+  if (serverCardCache === null) {
+    try {
+      const res = await fetch(new URL('/.well-known/mcp/server-card.json', req.url));
+      if (!res.ok) throw new Error(`server-card fetch ${res.status}`);
+      serverCardCache = await res.text();
+    } catch {
+      // Self-fetch failed (deploy skew / transient) — point the fetcher at the
+      // canonical static path instead of caching a failure.
+      return new Response(null, {
+        status: 302,
+        headers: { Location: '/.well-known/mcp/server-card.json', ...corsHeaders },
+      });
+    }
+  }
+  return new Response(serverCardCache, {
+    status: 200,
+    // Cache-Control comes AFTER the ...corsHeaders spread: getMcpCorsHeaders()
+    // carries MCP_CACHE_CONTROL (`no-store`) for the live JSON-RPC/SSE endpoint,
+    // but the manifest is a static, immutable-per-deploy asset that must stay
+    // cacheable (it was `public, max-age=3600` as a static file). Spreading last
+    // would clobber that back to no-store and re-hit the function on every
+    // discovery fetch.
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      ...corsHeaders,
+      'Cache-Control': 'public, max-age=3600',
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Main handler
 // ---------------------------------------------------------------------------
+// Thin emission wrapper (#4866): one wm_api_usage RequestEvent per servable
+// request, registered on ctx.waitUntil AFTER the response is computed. An
+// uncaught throw from the inner handler (the raw-500 class hardened in #4860)
+// still emits — with status 500 — before re-throwing, so platform 500s are
+// visible in Axiom even though they bypass every structured error path.
 export async function mcpHandler(
   req: Request,
   deps: McpHandlerDeps,
+  ctx?: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<Response> {
+  const t0 = Date.now();
+  const usage = createMcpUsage();
+  let res: Response;
+  try {
+    res = await mcpHandlerInner(req, deps, usage, ctx);
+  } catch (err) {
+    emitMcpRequestEvent(req, new Response(null, { status: 500 }), usage, Date.now() - t0, ctx);
+    throw err;
+  }
+  emitMcpRequestEvent(req, res, usage, Date.now() - t0, ctx);
+  return res;
+}
+
+async function mcpHandlerInner(
+  req: Request,
+  deps: McpHandlerDeps,
+  usage: McpUsage,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
 ): Promise<Response> {
   // MCP is a public API endpoint secured by API key — allow all origins (claude.ai, Claude Desktop, custom agents)
   const corsHeaders = getMcpCorsHeaders();
 
   if (req.method === 'OPTIONS') {
+    usage.skip = true;
     return new Response(null, { status: 204, headers: withMcpNoStore(corsHeaders) });
   }
   if (req.method === 'HEAD') {
+    usage.skip = true;
     return new Response(null, { status: 200, headers: withMcpNoStore({ 'Content-Type': 'application/json', ...corsHeaders }) });
   }
 
-  // Origin validation: allow claude.ai/claude.com web clients; allow absent origin (desktop/CLI)
-  const origin = req.headers.get('Origin');
-  if (origin && origin !== 'https://claude.ai' && origin !== 'https://claude.com') {
-    return new Response('Forbidden', { status: 403, headers: withMcpNoStore(corsHeaders) });
+  // /.well-known/mcp manifest GET: the card is public static data. A GET that
+  // asks for `text/event-stream` (an SDK opening the optional standalone
+  // stream) or carries `Last-Event-ID` (SSE replay) falls through to the
+  // normal endpoint GET handling so transport semantics stay identical to /mcp.
+  if (
+    req.method === 'GET' &&
+    WELL_KNOWN_MCP_PATHS.has(new URL(req.url).pathname) &&
+    !req.headers.get('last-event-id') &&
+    !(req.headers.get('accept') ?? '').includes('text/event-stream')
+  ) {
+    usage.skip = true;
+    return serveServerCard(req, corsHeaders);
   }
 
+  // No Origin gate (issue #4802): the endpoint advertises CORS `*`, auth is
+  // API-key/Bearer (no cookies → no CSRF surface), and MCP-spec Origin
+  // validation targets DNS rebinding against localhost servers — not a public
+  // HTTPS endpoint. A claude.ai-only allowlist here 403'd ChatGPT web
+  // connectors, MCP Inspector (localhost origin), and every other
+  // browser-context client AFTER their preflight had already succeeded.
+
   if (req.method !== 'POST' && req.method !== 'GET') {
+    usage.phase = 'transport';
     return new Response(null, { status: 405, headers: withMcpNoStore({ Allow: 'POST, GET, HEAD, OPTIONS', ...corsHeaders }) });
   }
 
@@ -331,20 +434,31 @@ export async function mcpHandler(
   //      fully authenticated (never a discovery surface).
   if (req.method === 'GET') {
     if (!req.headers.get('last-event-id')) {
+      usage.phase = 'transport';
       return new Response(null, {
         status: 405,
         headers: withMcpNoStore({ Allow: 'POST, GET, HEAD, OPTIONS', ...corsHeaders }),
       });
     }
     const auth = await resolveAuthContext(req, deps, resourceMetadataUrl, corsHeaders);
-    if (!auth.ok) return auth.response;
-    if (auth.context.kind === 'pro') {
-      const proCheck = await runProPreChecks(auth.context, deps, resourceMetadataUrl, corsHeaders, ctx);
-      if (proCheck) return proCheck;
+    if (!auth.ok) {
+      usage.phase = 'auth';
+      return auth.response;
+    }
+    setUsageContext(usage, auth.context);
+    const getPreCheck = await runContextPreChecks(auth.context, deps, resourceMetadataUrl, corsHeaders, ctx);
+    if (getPreCheck) {
+      usage.phase = 'precheck';
+      return getPreCheck;
     }
     const getLimited = await applyPerMinuteLimit(auth.context, corsHeaders);
-    if (getLimited) return getLimited;
-    return handleSseReplay(req, corsHeaders);
+    if (getLimited) {
+      usage.phase = 'limit';
+      return getLimited;
+    }
+    const replay = handleSseReplay(req, corsHeaders);
+    if (replay.status !== 200) usage.phase = 'transport';
+    return replay;
   }
 
   // Parse body BEFORE auth: the method decides whether credentials are required
@@ -355,10 +469,12 @@ export async function mcpHandler(
   try {
     body = await req.json();
   } catch {
+    usage.phase = 'malformed';
     return rpcError(null, -32600, 'Invalid request: malformed JSON', corsHeaders);
   }
 
   if (!body || typeof body.method !== 'string') {
+    usage.phase = 'malformed';
     return rpcError(body?.id ?? null, -32600, 'Invalid request: missing method', corsHeaders);
   }
 
@@ -394,24 +510,42 @@ export async function mcpHandler(
       // present-but-invalid key surfaces a 401 instead of a silent anon
       // downgrade; a valid principal is attributed for telemetry + limits.
       const auth = await resolveAuthContext(req, deps, resourceMetadataUrl, corsHeaders);
-      if (!auth.ok) return auth.response;
+      if (!auth.ok) {
+        usage.phase = 'auth';
+        return auth.response;
+      }
       context = auth.context;
+      setUsageContext(usage, context);
       const limited = await applyPerMinuteLimit(context, corsHeaders);
-      if (limited) return limited;
+      if (limited) {
+        usage.phase = 'limit';
+        return limited;
+      }
     } else {
       const anonLimited = await applyAnonDiscoveryLimit(req, corsHeaders);
-      if (anonLimited) return anonLimited;
+      if (anonLimited) {
+        usage.phase = 'limit';
+        return anonLimited;
+      }
     }
   } else {
     const auth = await resolveAuthContext(req, deps, resourceMetadataUrl, corsHeaders);
-    if (!auth.ok) return auth.response;
+    if (!auth.ok) {
+      usage.phase = 'auth';
+      return auth.response;
+    }
     context = auth.context;
-    if (context.kind === 'pro') {
-      const proCheck = await runProPreChecks(context, deps, resourceMetadataUrl, corsHeaders, ctx);
-      if (proCheck) return proCheck;
+    setUsageContext(usage, context);
+    const preCheck = await runContextPreChecks(context, deps, resourceMetadataUrl, corsHeaders, ctx);
+    if (preCheck) {
+      usage.phase = 'precheck';
+      return preCheck;
     }
     const limited = await applyPerMinuteLimit(context, corsHeaders);
-    if (limited) return limited;
+    if (limited) {
+      usage.phase = 'limit';
+      return limited;
+    }
   }
 
   // Dispatch
@@ -466,11 +600,17 @@ export async function mcpHandler(
       return maybeStreamJsonRpcResponse(req, rpcOk(id, {}, corsHeaders));
     case 'tools/list':
       return maybeStreamJsonRpcResponse(req, rpcOk(id, { tools: TOOL_LIST_RESPONSE }, corsHeaders));
-    case 'tools/call':
+    case 'tools/call': {
       // context is always set here — tools/call is never a PUBLIC_MCP_METHOD.
       // The guard narrows the type and hard-fails closed if that ever changes.
-      if (!context) return authRequiredResponse(id, resourceMetadataUrl, corsHeaders);
-      return maybeStreamJsonRpcResponse(req, await dispatchToolsCall(req, context, deps, body, corsHeaders, ctx));
+      if (!context) {
+        usage.phase = 'auth';
+        return authRequiredResponse(id, resourceMetadataUrl, corsHeaders);
+      }
+      const dispatched = await dispatchToolsCall(req, context, deps, body, corsHeaders, ctx);
+      if (dispatched.status === 429 || dispatched.status === 503) usage.phase = 'dispatch';
+      return maybeStreamJsonRpcResponse(req, dispatched);
+    }
     // Prompts are metadata-class — they ship a workflow template, not data.
     // Symmetric posture with `describe_tool`: quota-exempt (counting template
     // fetches against the 50/day cap would discourage exploration, which
@@ -527,8 +667,15 @@ export async function mcpHandler(
       // routes through dispatchToolsCall, inheriting the reservation +
       // telemetry path. `context` is always set here — a non-public
       // resources/read runs the gated path above; the guard fails closed.
-      if (!context) return authRequiredResponse(id, resourceMetadataUrl, corsHeaders);
-      return maybeStreamJsonRpcResponse(req, await buildResourceResponse(req, context, deps, body, corsHeaders, ctx));
+      if (!context) {
+        usage.phase = 'auth';
+        return authRequiredResponse(id, resourceMetadataUrl, corsHeaders);
+      }
+      {
+        const resourceRes = await buildResourceResponse(req, context, deps, body, corsHeaders, ctx);
+        if (resourceRes.status === 429 || resourceRes.status === 503) usage.phase = 'dispatch';
+        return maybeStreamJsonRpcResponse(req, resourceRes);
+      }
     case 'logging/setLevel': {
       const level = (body.params as { level?: string } | null)?.level;
       if (typeof level !== 'string' || !MCP_LOG_LEVELS.has(level)) {

@@ -1,15 +1,21 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { registerClsReporting, reportClsMetric, type ClsMetricLike } from '@/bootstrap/cls-report';
+import {
+  collectClsReportEnv,
+  registerClsReporting,
+  reportClsMetric,
+  type ClsMetricLike,
+  type ClsReportEnv,
+} from '@/bootstrap/cls-report';
 
 // Capture what reportClsMetric would send, by injecting a fake enqueue that
 // immediately invokes the closure with a fake Sentry namespace.
-function capture(metric: ClsMetricLike): { msg: string; ctx: any } {
+function capture(metric: ClsMetricLike, env?: ClsReportEnv): { msg: string; ctx: any } {
   let out: { msg: string; ctx: any } | null = null;
   const fakeEnqueue = ((fn: (s: any) => void) => {
     fn({ captureMessage: (msg: string, ctx: unknown) => { out = { msg, ctx }; } });
   }) as unknown as typeof import('@/bootstrap/sentry-defer').enqueueSentryCall;
-  reportClsMetric(metric, fakeEnqueue);
+  reportClsMetric(metric, fakeEnqueue, env);
   assert.ok(out, 'reportClsMetric must call enqueue exactly once');
   return out!;
 }
@@ -63,6 +69,33 @@ test('reportClsMetric still reports unknown/undefined-rated CLS conservatively',
   }) as unknown as typeof import('@/bootstrap/sentry-defer').enqueueSentryCall;
   reportClsMetric({ value: 0.17 }, fakeEnqueue);
   assert.equal(calls, 1, 'unknown/undefined rating still reports; do not drop unknowns');
+});
+
+test('reportClsMetric includes the shift-class environment fields (#4580)', () => {
+  const { ctx } = capture(
+    { value: 0.24, rating: 'poor', attribution: { largestShiftTarget: '#panelsGrid' } },
+    {
+      hiddenAtLoad: true,
+      hadHiddenPeriod: true,
+      visibilityState: 'visible',
+      scrollY: 0,
+      viewport: '1440x900',
+    },
+  );
+  assert.equal(ctx.extra.hiddenAtLoad, true, 'background-tab load flag must reach Sentry');
+  assert.equal(ctx.extra.hadHiddenPeriod, true);
+  assert.equal(ctx.extra.visibilityState, 'visible');
+  assert.equal(ctx.extra.scrollY, 0);
+  assert.equal(ctx.extra.viewport, '1440x900');
+});
+
+test('collectClsReportEnv is safe (empty) in non-browser contexts', () => {
+  // Node test runner has no window/document; the collector must not throw and
+  // the report path must still work with the resulting empty env.
+  const env = collectClsReportEnv();
+  assert.deepEqual(env, {});
+  const { ctx } = capture({ value: 0.2, rating: 'poor' }, env);
+  assert.equal(ctx.extra.hiddenAtLoad, undefined);
 });
 
 test('registerClsReporting returns without importing in non-browser contexts', () => {

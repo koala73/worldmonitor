@@ -34,6 +34,12 @@
     "documentedAt": "tests/scripts-railway-nixpacks-no-escape-import.test.mts (pre-registry ENTRY_POINTS)"
   },
   {
+    "entry": "scripts/seed-forecast-resolutions.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-forecast-resolutions",
+    "documentedAt": "scripts/seed-forecast-resolutions.mjs (header docblock declares daily cron)"
+  },
+  {
     "entry": "scripts/process-simulation-tasks.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "process-simulation-tasks",

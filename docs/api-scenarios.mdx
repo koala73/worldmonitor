@@ -68,7 +68,7 @@ Enqueues a job. Returns the assigned `jobId` the caller must poll.
 - `scenarioId` — id from `/list-scenario-templates`. Required.
 - `iso2` — optional ISO-3166-1 alpha-2 (uppercase). Scopes the scenario to one country. Empty string means the worker uses the v1 seeded reporter set: `US`, `CN`, `RU`, `IR`, `IN`, and `TW`.
 
-**Response (`200`)**:
+**Response (`202 Accepted`)**:
 ```json
 {
   "jobId": "scenario:1713456789012:a1b2c3d4",
@@ -78,12 +78,13 @@ Enqueues a job. Returns the assigned `jobId` the caller must poll.
 ```
 
 - `statusUrl` — server-computed convenience URL. Callers that don't want to hardcode the status path can follow this directly (it URL-encodes the `jobId`).
+- `Location` response header — carries the same poll URL as `statusUrl`, per the standard REST async-job pattern (`202` + `Location` → poll until terminal).
 
-<Warning>
-**Wire-contract change (v1 → v1)** — the pre-sebuf-migration endpoint returned `202 Accepted` on successful enqueue; the migrated endpoint returns `200 OK`. No per-RPC status-code configuration is available in sebuf's HTTP annotations today, and introducing a `/v2` for a single status-code shift was judged heavier than the break itself.
+<Note>
+**Status-code history (v1 → v1 → v1)** — the pre-sebuf-migration endpoint returned `202 Accepted` on successful enqueue; the sebuf migration shifted it to `200 OK` (no per-RPC status-code configuration exists in sebuf's HTTP annotations). The original `202 Accepted` contract has since been **restored** — the gateway upgrades the generated 200 via a status-override side-channel and adds the `Location` header.
 
-If your integration branches on `response.status === 202`, switch to branching on response body shape (`response.body.status === "pending"` indicates enqueue success). `statusUrl` is preserved exactly as before and is a safe signal to key off.
-</Warning>
+Treat any `2xx` as enqueue success. The interim guidance to branch on response body shape (`response.body.status === "pending"`) instead of the status code remains valid, and `statusUrl` is preserved exactly as before.
+</Note>
 
 **Errors**:
 

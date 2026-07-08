@@ -26,7 +26,7 @@ describe('worldmonitor CLI package wiring', () => {
     assert.equal(pkg.name, 'worldmonitor');
     assert.equal(pkg.type, 'module');
     assert.equal(pkg.publishConfig?.access, 'public');
-    assert.match(pkg.license, /AGPL-3\.0/);
+    assert.match(pkg.license, /^MIT$/);
   });
 
   it('exposes the worldmonitor bin pointing at the shipped entry', () => {

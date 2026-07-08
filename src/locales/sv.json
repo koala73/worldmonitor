@@ -1274,7 +1274,10 @@
       "tonePositive": "Positiv",
       "overall": "Totalt: {{tone}}",
       "signalTypesEvents": "{{types}} signaltyper • {{events}} händelser",
-      "newsSignals": "{{news}} nyheter • {{signals}} signaler"
+      "newsSignals": "{{news}} nyheter • {{signals}} signaler",
+      "provenanceTitle": "Täckningshärkomst: hur många inmatade historier och unika källor denna kortfattade sammanfattning valdes från",
+      "compiledFrom": "Kompilerat från {{stories}} berättelser från {{sources}} källor",
+      "briefFreshness": "Genererad {{minutes}}m sedan · senaste källa {{hours}}h gammal"
     },
     "techHubs": {
       "infoTooltip": "<strong>Teknisk hubbaktivitet</strong><br>Visar tekniska nav med mest nyhetsaktivitet.<br><br><em>Aktivitetsnivåer:</em><br>• <span style=\"color: {{highColor}}\">Hög</span> — Nyheter från 50+ PH_• 50+ stil: {{elevatedColor}}\">Höjd</span> — Poäng 20-49<br>• <span style=\"color: {{lowColor}}\">Låg</span> — Poäng under 20<br><br>Klicka på ett nav för att zooma till dess plats."

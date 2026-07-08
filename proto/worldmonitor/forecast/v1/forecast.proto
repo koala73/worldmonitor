@@ -29,6 +29,37 @@ message Perspectives {
   string contrarian = 3;
 }
 
+// Machine-checkable resolution spec — makes a forecast a scoreable *bet*.
+// Every forecast carries exactly one spec, either "hard" or "judged":
+//   - "hard":   auto-resolvable by a free metric comparison against a
+//               WorldMonitor feed the detector already scored from. Sets
+//               metric_key (feed + path expression), operator, threshold,
+//               window, and source_feed (a RESOLUTION_FEED_KEYS allowlist
+//               member). baseline_value is set only when operator is
+//               "crosses" (the emission-time metric value the move is
+//               measured from).
+//   - "judged": resolved by a later LLM judge against the question string;
+//               no numeric threshold, but still a resolution deadline.
+// kind and operator are strings, not proto enums, mirroring the trend field
+// above so a new operator/kind never requires a proto migration to land in
+// the 45-day history. Current kind values are "hard" and "judged"; current
+// operator values are ">=", "<=", and "crosses".
+// kind and deadline are always set; every other field is optional and absent
+// (persisted as JSON null) when it does not apply to the kind — a judged spec
+// carries no threshold/baseline_value so "no threshold" is never confused
+// with a real threshold of 0, and a hard spec carries no question.
+message ResolutionSpec {
+  string kind = 1;
+  optional string metric_key = 2;
+  optional string operator = 3;
+  optional double threshold = 4;
+  optional double baseline_value = 5;
+  optional string window = 6;
+  int64 deadline = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  optional string source_feed = 8;
+  optional string question = 9;
+}
+
 message Projections {
   double h24 = 1;
   double d7 = 2;
@@ -123,4 +154,10 @@ message Forecast {
   double simulation_adjustment = 20;
   double sim_path_confidence = 21;
   bool demoted_by_simulation = 22;
+  // Resolution spec — the machine-checkable outcome contract for this forecast
+  // (see ResolutionSpec). "hard" specs resolve for free by metric comparison
+  // against source_feed; "judged" specs resolve via a later LLM judge against
+  // question. Nullable: a forecast that never passed through the resolution
+  // enrichment pass carries null. deadline is an epoch-milliseconds timestamp.
+  ResolutionSpec resolution = 23;
 }

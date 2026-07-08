@@ -287,3 +287,76 @@ describe('buildDailyMarketBrief', () => {
     assert.ok(elapsed < 5_000, `elapsed ${elapsed}ms — withTimeout did not fire`);
   });
 });
+
+describe('summarizer geoContext cache identity (#4914)', () => {
+  // The geoContext string becomes the summary cache key's :g segment
+  // (summary-cache-key.ts), shared across every user reading the same
+  // seeded quotes/regime. Raw 5-min-tick floats (VIX 18.24 → 18.31,
+  // AAPL +1.84% → +1.87%) minted a fresh key per tick and per user,
+  // defeating the 24h TTL. Values interpolated into the prompt must be
+  // quantized so trivially-drifted inputs produce a byte-identical
+  // context — and therefore one shared paid generation.
+  const news = {
+    markets: [makeNewsItem('Apple extends gains after stronger iPhone cycle outlook')],
+    economic: [makeNewsItem('Treasury yields steady ahead of inflation data', 'WSJ', '2026-03-08T03:00:00.000Z')],
+  };
+
+  function contexts(drift: number): {
+    markets: MarketData[];
+    regimeContext: import('../src/services/daily-market-brief.ts').RegimeMacroContext;
+    yieldCurveContext: import('../src/services/daily-market-brief.ts').YieldCurveContext;
+    sectorContext: import('../src/services/daily-market-brief.ts').SectorBriefContext;
+  } {
+    return {
+      markets: [
+        { symbol: 'AAPL', name: 'Apple', display: 'AAPL', price: 212.45 + drift, change: 1.84 + drift },
+        { symbol: 'MSFT', name: 'Microsoft', display: 'MSFT', price: 468.12 - drift, change: -1.26 + drift },
+      ],
+      regimeContext: {
+        compositeScore: 55.3 + drift, compositeLabel: 'Neutral',
+        fsiValue: 1.21 + drift, fsiLabel: 'Calm',
+        vix: 18.24 + drift, hySpread: 341 + 100 * drift,
+        cnnFearGreed: 61.2 + drift, cnnLabel: 'Greed',
+        momentum: { score: 63.2 + drift }, sentiment: { score: 47.1 + drift },
+      } as import('../src/services/daily-market-brief.ts').RegimeMacroContext,
+      yieldCurveContext: {
+        rate2y: 4.31 + drift, rate10y: 4.41 + drift, rate30y: 4.61 + drift,
+        spread2s10s: -14.2 + 10 * drift, inverted: true,
+      } as import('../src/services/daily-market-brief.ts').YieldCurveContext,
+      sectorContext: {
+        total: 11, countPositive: 7,
+        topName: 'Energy', topChange: 2.13 + drift,
+        worstName: 'Utilities', worstChange: -1.41 + drift,
+      } as import('../src/services/daily-market-brief.ts').SectorBriefContext,
+    };
+  }
+
+  async function captureGeoContext(drift: number): Promise<string> {
+    let captured = '';
+    await buildDailyMarketBrief({
+      ...contexts(drift),
+      newsByCategory: news,
+      timezone: 'UTC',
+      now: new Date('2026-03-08T10:30:00.000Z'),
+      targets: [{ symbol: 'AAPL', name: 'Apple', display: 'AAPL' }],
+      summarize: async (_headlines, _onProgress, geoContext) => {
+        captured = geoContext ?? '';
+        return { summary: 'Stable enough summary for the capture test.', provider: 'test', model: 'test', cached: false };
+      },
+    });
+    return captured;
+  }
+
+  it('trivially-drifted quote/regime floats produce a byte-identical geoContext', async () => {
+    const a = await captureGeoContext(0);
+    const b = await captureGeoContext(0.03);
+    assert.ok(a.length > 0, 'stub must have captured a geoContext');
+    assert.equal(b, a, 'sub-bucket drift must not shift the summary cache identity');
+  });
+
+  it('a material regime move still shifts the geoContext', async () => {
+    const a = await captureGeoContext(0);
+    const c = await captureGeoContext(3);
+    assert.notEqual(c, a, 'a real move (VIX +3, HY +300bps) must produce a fresh prompt and key');
+  });
+});

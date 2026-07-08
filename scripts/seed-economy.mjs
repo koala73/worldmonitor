@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, resolveProxy, resolveProxyForConnect, fredFetchJson, curlFetch, getRedisCredentials } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, resolveProxy, resolveProxyForConnect, fredFetchJson, curlFetch, getRedisCredentials, allSettledWithConcurrency } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
 loadEnvFile(import.meta.url);
@@ -67,7 +67,15 @@ async function eiaFetchJson(url, label, { timeoutMs = 20_000, attempts = 3 } = {
   throw lastErr;
 }
 
-const FRED_SERIES = ['WALCL', 'FEDFUNDS', 'T10Y2Y', 'UNRATE', 'CPIAUCSL', 'DGS10', 'VIXCLS', 'GDP', 'M2SL', 'DCOILWTICO', 'BAMLH0A0HYM2', 'ICSA', 'MORTGAGE30US', 'BAMLC0A0CM', 'SOFR', 'DGS1MO', 'DGS3MO', 'DGS6MO', 'DGS1', 'DGS2', 'DGS5', 'DGS30', 'T10Y3M', 'STLFSI4'];
+export const FRED_SERIES = ['WALCL', 'FEDFUNDS', 'T10Y2Y', 'UNRATE', 'CPIAUCSL', 'DGS10', 'VIXCLS', 'GDP', 'M2SL', 'DCOILWTICO', 'BAMLH0A0HYM2', 'ICSA', 'MORTGAGE30US', 'BAMLC0A0CM', 'SOFR', 'DGS1MO', 'DGS3MO', 'DGS6MO', 'DGS1', 'DGS2', 'DGS5', 'DGS30', 'T10Y3M', 'STLFSI4'];
+
+// In-flight FRED series. The 24-series loop MUST finish inside runSeed's 240s fetch-phase
+// deadline even when the proxy is fully down: fredFetchJson worst case ≈ 3×20s proxy attempts
+// + 20s direct fallback ≈ 82s/series. Sequential (the old code) = 24×82s ≫ 240s → recurring
+// exit-75 "Deploy Crashed!" alerts (issue #5037). At concurrency 12, ⌈24/12⌉ = 2 waves × 82s
+// ≈ 164s — comfortably under the deadline. In-flight requests peak at 12×2 (obs+meta), well
+// under FRED's 120/min limit. Mirrors the seed-bigmac #4994 bounded-concurrency fix.
+export const FRED_CONCURRENCY = 12;
 
 // ─── Economic Stress Index (computed last from FRED data in fetchAll) ───
 
@@ -298,49 +306,63 @@ async function fetchEnergyCapacity() {
 
 // ─── FRED Series (10 allowed series) ───
 
-async function fetchFredSeries() {
+// Fetch one FRED series (observations + metadata in parallel). Throws on a rejected
+// observations fetch so allSettledWithConcurrency records it as a per-series failure —
+// one flaky series can NOT sink the whole run.
+async function fetchOneFredSeries(seriesId, apiKey, fredFetchFn) {
+  const limit = 120;
+  const obsParams = new URLSearchParams({
+    series_id: seriesId, api_key: apiKey, file_type: 'json', sort_order: 'desc', limit: String(limit),
+  });
+  const metaParams = new URLSearchParams({
+    series_id: seriesId, api_key: apiKey, file_type: 'json',
+  });
+
+  const [obsResp, metaResp] = await Promise.allSettled([
+    fredFetchFn(`https://api.stlouisfed.org/fred/series/observations?${obsParams}`, _proxyAuth),
+    fredFetchFn(`https://api.stlouisfed.org/fred/series?${metaParams}`, _proxyAuth),
+  ]);
+
+  if (obsResp.status === 'rejected') {
+    throw new Error(`fetch failed — ${obsResp.reason?.message || obsResp.reason}`);
+  }
+
+  const obsData = obsResp.value;
+  const observations = (obsData.observations || [])
+    .map((o) => { const v = parseFloat(o.value); return Number.isNaN(v) || o.value === '.' ? null : { date: o.date, value: v }; })
+    .filter(Boolean)
+    .reverse();
+
+  let title = seriesId, units = '', frequency = '';
+  if (metaResp.status === 'fulfilled') {
+    const meta = metaResp.value.seriess?.[0];
+    if (meta) { title = meta.title || seriesId; units = meta.units || ''; frequency = meta.frequency || ''; }
+  }
+
+  return { seriesId, title, units, frequency, observations };
+}
+
+// Fetch all FRED series with BOUNDED CONCURRENCY. The old sequential for…of loop breached
+// runSeed's 240s fetch-phase deadline whenever the proxy was down (24 series × ~82s worst-case
+// fredFetchJson budget) → recurring exit-75 "Deploy Crashed!" alerts (issue #5037). deps are
+// injectable for tests (see tests/seed-economy-fred-concurrency.test.mjs).
+export async function fetchFredSeries({ fredFetchFn = fredFetchJson, concurrency = FRED_CONCURRENCY } = {}) {
   const apiKey = process.env.FRED_API_KEY;
   if (!apiKey) throw new Error('Missing FRED_API_KEY');
 
+  const settled = await allSettledWithConcurrency(
+    FRED_SERIES,
+    concurrency,
+    (seriesId) => fetchOneFredSeries(seriesId, apiKey, fredFetchFn),
+  );
+
   const results = {};
-  for (const seriesId of FRED_SERIES) {
-    try {
-      const limit = 120;
-      const obsParams = new URLSearchParams({
-        series_id: seriesId, api_key: apiKey, file_type: 'json', sort_order: 'desc', limit: String(limit),
-      });
-      const metaParams = new URLSearchParams({
-        series_id: seriesId, api_key: apiKey, file_type: 'json',
-      });
+  settled.forEach((s, i) => {
+    const seriesId = FRED_SERIES[i];
+    if (s.status === 'fulfilled') results[seriesId] = s.value;
+    else console.warn(`  FRED ${seriesId}: ${s.reason?.message || s.reason}`);
+  });
 
-      const [obsResp, metaResp] = await Promise.allSettled([
-        fredFetchJson(`https://api.stlouisfed.org/fred/series/observations?${obsParams}`, _proxyAuth),
-        fredFetchJson(`https://api.stlouisfed.org/fred/series?${metaParams}`, _proxyAuth),
-      ]);
-
-      if (obsResp.status === 'rejected') {
-        console.warn(`  FRED ${seriesId}: fetch failed — ${obsResp.reason?.message || obsResp.reason}`);
-        continue;
-      }
-
-      const obsData = obsResp.value;
-      const observations = (obsData.observations || [])
-        .map((o) => { const v = parseFloat(o.value); return Number.isNaN(v) || o.value === '.' ? null : { date: o.date, value: v }; })
-        .filter(Boolean)
-        .reverse();
-
-      let title = seriesId, units = '', frequency = '';
-      if (metaResp.status === 'fulfilled') {
-        const meta = metaResp.value.seriess?.[0];
-        if (meta) { title = meta.title || seriesId; units = meta.units || ''; frequency = meta.frequency || ''; }
-      }
-
-      results[seriesId] = { seriesId, title, units, frequency, observations };
-      await sleep(200); // be nice to FRED
-    } catch (e) {
-      console.warn(`  FRED ${seriesId}: ${e.message}`);
-    }
-  }
   const fredCount = Object.keys(results).length;
   console.log(`  FRED series: ${fredCount}/${FRED_SERIES.length}`);
   if (fredCount === 0) console.warn('  [WARN] FRED series: 0 fetched — all series failed. Check FRED_API_KEY and PROXY_URL. FRED-dependent panels will go stale.');

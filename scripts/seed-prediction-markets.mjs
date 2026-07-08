@@ -2,7 +2,7 @@
 
 import { loadEnvFile, CHROME_UA, sleep, runSeed } from './_seed-utils.mjs';
 import {
-  isExcluded, isMemeCandidate, tagRegions, parseYesPrice,
+  isExcluded, isMemeCandidate, tagRegions, parseYesPrice, selectPricedKalshiMarket,
   shouldInclude, scoreMarket, filterAndScore, isExpired,
 } from './_prediction-scoring.mjs';
 import predictionTags from './data/prediction-tags.json' with { type: 'json' };
@@ -89,17 +89,12 @@ async function fetchKalshiMarkets() {
     );
     if (binaryActive.length === 0) continue;
 
-    const topMarket = binaryActive.reduce((best, m) => {
-      const vol = parseFloat(m.volume_fp) || 0;
-      const bestVol = parseFloat(best.volume_fp) || 0;
-      return vol > bestVol ? m : best;
-    });
+    const selected = selectPricedKalshiMarket(binaryActive);
+    if (!selected) continue;
+    const { market: topMarket, yesPrice } = selected;
 
     const volume = parseFloat(topMarket.volume_fp) || 0;
     if (volume <= 5000) continue;
-
-    const rawPrice = parseFloat(topMarket.last_price_dollars);
-    const yesPrice = Number.isFinite(rawPrice) ? +(rawPrice * 100).toFixed(1) : 50;
 
     const marketTitle = topMarket.yes_sub_title || topMarket.title || '';
     const title = kalshiTitle(marketTitle, event.title);

@@ -1302,7 +1302,10 @@
       "tonePositive": "Pozitif",
       "overall": "Genel: {{tone}}",
       "signalTypesEvents": "{{types}} sinyal türü • {{events}} olay",
-      "newsSignals": "{{news}} haber • {{signals}} sinyal"
+      "newsSignals": "{{news}} haber • {{signals}} sinyal",
+      "compiledFrom": "{{stories}} hikaye ve {{sources}} kaynaktan derlenmiştir",
+      "provenanceTitle": "Kapsam kaynağı: bu özet için kaç alınan hikaye ve farklı kaynaktan seçildiği",
+      "briefFreshness": "{{minutes}}m önce oluşturuldu · en yeni kaynak {{hours}}s eski"
     },
     "settings": {
       "exportSettings": "Ayarları Dışa Aktar",

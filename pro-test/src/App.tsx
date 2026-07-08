@@ -23,7 +23,12 @@ import { SoonBadge } from './components/SoonBadge';
 import { Logo } from './components/Logo';
 import { WiredBadge } from './components/WiredBadge';
 import { Footer } from './components/Footer';
-import dashboardFallback from './assets/worldmonitor-7-mar-2026.jpg';
+import {
+  DASHBOARD_SCREENSHOT_JPG,
+  DASHBOARD_SCREENSHOT_AVIF_SRCSET,
+  DASHBOARD_SCREENSHOT_WEBP_SRCSET,
+} from './assets/dashboard-screenshot';
+import { ensureTurnstileScript } from './turnstile';
 import wiredLogo from './assets/wired-logo.svg';
 import {
   DASHBOARD_EMBED_PREVIEW_URL,
@@ -316,6 +321,10 @@ const SignalBars = () => {
   const total = 60;
   const center = total / 2;
   const signalRadius = 8;
+  const jitter = (index: number, salt: number) => {
+    const x = Math.sin(index * 12.9898 + salt * 78.233) * 43758.5453;
+    return x - Math.floor(x);
+  };
 
   return (
     <div className="relative my-4 md:my-8 -mx-6">
@@ -329,31 +338,47 @@ const SignalBars = () => {
           const signalIntensity = isSignal ? 1 - distFromCenter / signalRadius : 0;
           const peakHeight = 60 + signalIntensity * 110;
           const noiseBase = Math.max(8, 35 - distFromCenter * 0.8);
+          const barHeight = isSignal ? peakHeight : noiseBase;
+          const initialScale = isSignal ? 0.3 : 0.5;
+          const scaleY = isSignal
+            ? [0.5, 1, 0.65, 0.9]
+            : [1, 0.3, 0.7, 0.15, 0.5];
 
           return (
-            <motion.div
+            <div
               key={i}
-              className={`flex-1 max-w-2 md:max-w-3 rounded-sm ${isSignal ? 'bg-wm-green' : 'bg-wm-muted/20'}`}
-              style={isSignal ? { boxShadow: `0 0 ${6 + signalIntensity * 12}px rgba(74,222,128,${signalIntensity * 0.5})` } : undefined}
-              initial={{ height: isSignal ? peakHeight * 0.3 : noiseBase * 0.5, opacity: isSignal ? 0.4 : 0.08 }}
-              animate={isSignal
-                ? {
-                    height: [peakHeight * 0.5, peakHeight, peakHeight * 0.65, peakHeight * 0.9],
-                    opacity: [0.6 + signalIntensity * 0.3, 1, 0.75 + signalIntensity * 0.2, 0.95],
-                  }
-                : {
-                    height: [noiseBase, noiseBase * 0.3, noiseBase * 0.7, noiseBase * 0.15, noiseBase * 0.5],
-                    opacity: [0.2, 0.06, 0.15, 0.04, 0.12],
-                  }
-              }
-              transition={{
-                duration: isSignal ? 2.5 + signalIntensity * 0.5 : 1 + Math.random() * 0.6,
-                repeat: Infinity,
-                repeatType: 'reverse',
-                delay: isSignal ? distFromCenter * 0.07 : Math.random() * 0.6,
-                ease: 'easeInOut',
-              }}
-            />
+              className="flex flex-1 max-w-2 md:max-w-3 items-end"
+              style={{ height: `${barHeight}px` }}
+            >
+              <motion.div
+                className={`w-full rounded-sm ${isSignal ? 'bg-wm-green' : 'bg-wm-muted/20'}`}
+                style={{
+                  height: '100%',
+                  transformOrigin: 'bottom',
+                  ...(isSignal
+                    ? { boxShadow: `0 0 ${6 + signalIntensity * 12}px rgba(74,222,128,${signalIntensity * 0.5})` }
+                    : null),
+                }}
+                initial={{ scaleY: initialScale, opacity: isSignal ? 0.4 : 0.08 }}
+                animate={isSignal
+                  ? {
+                      scaleY,
+                      opacity: [0.6 + signalIntensity * 0.3, 1, 0.75 + signalIntensity * 0.2, 0.95],
+                    }
+                  : {
+                      scaleY,
+                      opacity: [0.2, 0.06, 0.15, 0.04, 0.12],
+                    }
+                }
+                transition={{
+                  duration: isSignal ? 2.5 + signalIntensity * 0.5 : 1 + jitter(i, 1) * 0.6,
+                  repeat: Infinity,
+                  repeatType: 'reverse',
+                  delay: isSignal ? distFromCenter * 0.07 : jitter(i, 2) * 0.6,
+                  ease: 'easeInOut',
+                }}
+              />
+            </div>
           );
         })}
       </div>
@@ -449,7 +474,7 @@ const SocialProof = () => (
         </p>
         <footer className="mt-6 flex items-center justify-center gap-3">
           <a href="https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-wm-muted hover:text-wm-text transition-colors">
-            <img src={wiredLogo} alt="WIRED" className="h-5 brightness-0 invert opacity-60 hover:opacity-100 transition-opacity" />
+            <img src={wiredLogo} alt="WIRED" loading="lazy" className="h-5 brightness-0 invert opacity-60 hover:opacity-100 transition-opacity" />
           </a>
         </footer>
       </blockquote>
@@ -575,6 +600,9 @@ const DeliveryDesk = () => (
 );
 
 /* ─── 5. Live Dashboard Embed (current) ─── */
+// max-w-6xl (1152px) container inside px-6 section padding.
+const LIVE_PREVIEW_IMAGE_SIZES = '(min-width: 1200px) 1152px, calc(100vw - 3rem)';
+
 const LivePreview = () => (
   <section className="px-6 py-16">
     <div className="max-w-6xl mx-auto">
@@ -596,11 +624,17 @@ const LivePreview = () => (
           </a>
         </div>
         <div className="relative aspect-[16/9] bg-black">
-          <img
-            src={dashboardFallback}
-            alt="World Monitor Dashboard"
-            className="absolute inset-0 w-full h-full object-cover"
-          />
+          <picture>
+            <source type="image/avif" srcSet={DASHBOARD_SCREENSHOT_AVIF_SRCSET} sizes={LIVE_PREVIEW_IMAGE_SIZES} />
+            <source type="image/webp" srcSet={DASHBOARD_SCREENSHOT_WEBP_SRCSET} sizes={LIVE_PREVIEW_IMAGE_SIZES} />
+            <img
+              src={DASHBOARD_SCREENSHOT_JPG}
+              alt="World Monitor Dashboard"
+              className="absolute inset-0 w-full h-full object-cover"
+              loading="lazy"
+              decoding="async"
+            />
+          </picture>
           <iframe
             // ?embed=pro-preview is the unique marker the main app's
             // IS_EMBEDDED_PREVIEW helper keys off to silence premium-RPC
@@ -1199,7 +1233,20 @@ const EnterprisePage = () => (
             const fd = new FormData(form);
             const honeypot = (form.querySelector('input[name="website"]') as HTMLInputElement)?.value || '';
             const turnstileWidget = form.querySelector('.cf-turnstile') as HTMLElement | null;
-            const turnstileToken = turnstileWidget?.dataset.token || '';
+            let turnstileToken = turnstileWidget?.dataset.token || '';
+            if (!turnstileToken && turnstileWidget) {
+              // Turnstile loads lazily (viewport-triggered), so a fast or
+              // autofilled submit can arrive before the widget produced a
+              // token. Kick the loader and give the challenge a bounded
+              // window; if it still hasn't resolved, POST anyway — the
+              // server verdict (and the existing failure UX + widget
+              // reset) stays the authority, same as an expired token.
+              if (await ensureTurnstileScript()) renderTurnstileWidgets();
+              for (let i = 0; i < 40 && !turnstileWidget.dataset.token; i++) {
+                await new Promise((resolve) => setTimeout(resolve, 250));
+              }
+              turnstileToken = turnstileWidget.dataset.token || '';
+            }
             try {
               const res = await fetch(`${API_BASE}/leads/v1/submit-contact`, {
                 method: 'POST',
@@ -1264,7 +1311,7 @@ const EnterprisePage = () => (
     <footer className="border-t border-wm-border bg-[#020202] py-8 px-6 text-center">
       <div className="flex flex-col md:flex-row items-center justify-between max-w-7xl mx-auto text-xs text-wm-muted font-mono">
         <div className="flex items-center gap-3 mb-4 md:mb-0">
-          <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" className="rounded-full" />
+          <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" loading="lazy" className="rounded-full" />
           <div className="flex flex-col">
             <span className="font-display font-bold text-sm leading-none tracking-tight text-wm-text">WORLD MONITOR</span>
             <span className="text-[9px] uppercase tracking-[2px] opacity-60 mt-0.5">by Someone.ceo</span>

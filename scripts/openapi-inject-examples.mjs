@@ -82,6 +82,22 @@ const SCENARIO_EXAMPLE_ID = (() => {
   return ids.includes('hormuz-tanker-blockade') ? 'hormuz-tanker-blockade' : (ids[0] ?? 'hormuz-tanker-blockade');
 })();
 
+const SCENARIO_RESULT_AFFECTED_CHOKEPOINT_IDS = (() => {
+  const src = readRepoText('server/worldmonitor/supply-chain/v1/scenario-templates.ts');
+  const idMatch = src.match(new RegExp(`\\bid:\\s*['"\`]${SCENARIO_EXAMPLE_ID}['"\`]`));
+  const start = idMatch ? src.lastIndexOf('{', idMatch.index) : -1;
+  const end = start >= 0 ? src.indexOf('\n  },', start) : -1;
+  const block = start >= 0 && end > start ? src.slice(start, end) : '';
+  const affected = block.match(/affectedChokepointIds:\s*\[([^\]]*)\]/)?.[1] ?? '';
+  const ids = [...affected.matchAll(/['"`]([^'"`]+)['"`]/g)].map((m) => m[1]);
+  return ids;
+})();
+
+const SCENARIO_RESULT_TEMPLATE_NAME =
+  SCENARIO_RESULT_AFFECTED_CHOKEPOINT_IDS.length > 0
+    ? SCENARIO_RESULT_AFFECTED_CHOKEPOINT_IDS.join('+')
+    : 'tariff_shock';
+
 // FRED series id: get-fred-series reads a seeded series by id; the OpenAPI
 // description lists GDP/UNRATE/CPIAUCSL. No importable allowlist (series live in
 // the seed cache) — pin a real, well-known series. BLS get-bls-series carries a
@@ -109,30 +125,188 @@ const BASELINE_TYPE_EXAMPLE_ID = (() => {
   }
 })();
 
+const CONSUMER_PRICE_BASKET_EXAMPLE_ID = (() => {
+  const src = readRepoText('server/worldmonitor/consumer-prices/v1/get-consumer-price-basket-series.ts');
+  const match = src.match(/\bDEFAULT_BASKET\s*=\s*['"`]([^'"`]+)['"`]/);
+  return match?.[1] ?? 'essentials-ae';
+})();
+
+const CONSUMER_PRICE_RANGE_EXAMPLE_ID = (() => {
+  const src = readRepoText('server/worldmonitor/consumer-prices/v1/get-consumer-price-basket-series.ts');
+  const match = src.match(/VALID_RANGES\s*=\s*new Set\(\[([^\]]+)\]\)/);
+  const ranges = match ? [...match[1].matchAll(/['"`]([^'"`]+)['"`]/g)].map((m) => m[1]) : [];
+  return ranges.includes('7d') ? '7d' : (ranges[0] ?? '7d');
+})();
+
+const REGIONAL_INTELLIGENCE_EXAMPLE_ID = (() => {
+  const src = readRepoText('scripts/shared/geography.js');
+  const match = src.match(/\bREGION_IDS\s*=\s*\[([\s\S]*?)\]/);
+  const ids = match ? [...match[1].matchAll(/['"`]([a-z0-9-]+)['"`]/g)].map((m) => m[1]) : [];
+  return ids.includes('mena') ? 'mena' : (ids.find((id) => id !== 'global') ?? 'mena');
+})();
+
+const GDELT_TOPIC_EXAMPLE_ID = (() => {
+  const src = readRepoText('scripts/seed-gdelt-intel.mjs');
+  const ids = [...src.matchAll(/\bid:\s*['"`]([a-z0-9-]+)['"`]/g)].map((m) => m[1]);
+  return ids.includes('military') ? 'military' : (ids[0] ?? 'military');
+})();
+
 // key = normalizeKey(paramName); context carries { operationId, path, method }.
 // Returns a curated example that overrides the field-name heuristic, or
 // undefined to fall through. `series_id` / `series_ids` is shared by FRED (no
 // enum, needs an override) and BLS (enum-resolved upstream) — disambiguate by
 // operation.
 function overrideStringExample(key, context = {}) {
+  const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
   if (key === 'jmespath') return 'keys(@)';
+  // RunScenario's async-job envelope (202 Accepted, see
+  // openapi-inject-async-jobs.mjs): status is ALWAYS "pending" at enqueue
+  // time, and statusUrl is the server-computed GetScenarioStatus poll URL —
+  // the heuristic defaults ('example' / a generic https URL) contradict the
+  // fields' own descriptions. The statusUrl value must mirror the Location
+  // header example in openapi-inject-async-jobs.mjs (contract-tested).
+  if (key === 'status' || key === 'statusurl') {
+    if (where.includes('runscenario') || where.includes('run-scenario')) {
+      return key === 'status'
+        ? 'pending'
+        : '/api/scenario/v1/get-scenario-status?jobId=scenario%3A1717200000000%3Aabcd1234';
+    }
+  }
+  if (key === 'period' && where.includes('getsectorsummary')) return '1d';
+  if (key === 'timespan' && where.includes('searchgdeltdocuments')) return '15min';
+  if (key === 'measuretype' && where.includes('gettradebarriers')) return 'SPS';
+  if (key === 'mode' && where.includes('getpopulationexposure')) return 'countries';
+  if (key === 'theater' && where.includes('gettheaterposture')) return 'indo-pacific';
   if (key.includes('hs2')) return '27';
   if (key === 'provider') {
-    const where = (String(context.operationId ?? '') + ' ' + String(context.path ?? '')).toLowerCase();
     if (where.includes('summarizearticle') || where.includes('summarize-article')) return 'openrouter';
   }
-  if (key.includes('chokepointid')) return CHOKEPOINT_EXAMPLE_ID;
+  if (key === 'topic') {
+    if (where.includes('getgdelttopictimeline') || where.includes('get-gdelt-topic-timeline')) return GDELT_TOPIC_EXAMPLE_ID;
+  }
+  if (key === 'basketslug') return CONSUMER_PRICE_BASKET_EXAMPLE_ID;
+  if (key === 'range') {
+    if (where.includes('consumerprice') || where.includes('consumer-prices')) return CONSUMER_PRICE_RANGE_EXAMPLE_ID;
+  }
+  if (key === 'regionid') return REGIONAL_INTELLIGENCE_EXAMPLE_ID;
+  if (key === 'airlines') return 'BA';
+  if (key === 'departurewindow') return '6-20';
+  if (key.includes('chokepointid')) {
+    if (where.includes('computeenergyshockscenario') || where.includes('compute-energy-shock')) return 'hormuz_strait';
+    return CHOKEPOINT_EXAMPLE_ID;
+  }
   if (key.includes('scenarioid')) return SCENARIO_EXAMPLE_ID;
   if (key.includes('icao24')) return ICAO24_EXAMPLE;
+  // BatchOperation.path: the heuristic emits the literal 'example', which the
+  // execute-batch handler rejects (paths must match a documented GET RPC).
+  // Pin a parameterless GET so the published sample is runnable verbatim.
+  if (key === 'path') {
+    if (where.includes('executebatch') || where.includes('batch/v1/execute')) {
+      return '/api/market/v1/get-fear-greed-index';
+    }
+  }
   if (key === 'type') {
-    const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
     if (where.includes('baseline')) return BASELINE_TYPE_EXAMPLE_ID;
   }
   if (key === 'seriesid' || key === 'seriesids') {
-    const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
     if (where.includes('fred')) return FRED_SERIES_EXAMPLE_ID;
   }
   return undefined;
+}
+
+function normalizeDescriptionValue(value) {
+  return String(value)
+    .trim()
+    .replace(/^["'`]+|["'`]+$/g, '')
+    .replace(/\s*\([^)]*\)/g, '')
+    .replace(/\s*\[[^\]]*\]/g, '')
+    .replace(/[),.;:]+$/g, '')
+    .trim();
+}
+
+function candidateLooksLikeClosedValue(value) {
+  return /^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(value);
+}
+
+function firstClosedValue(candidates) {
+  for (const raw of candidates) {
+    const value = normalizeDescriptionValue(raw);
+    if (/\bdefault\b/i.test(String(raw)) && value.toLowerCase() !== 'default' && candidateLooksLikeClosedValue(value)) return value;
+  }
+  for (const raw of candidates) {
+    const value = normalizeDescriptionValue(raw);
+    if (!value || value.toLowerCase() === 'default') continue;
+    if (candidateLooksLikeClosedValue(value)) return value;
+  }
+  return undefined;
+}
+
+function extractDelimitedValues(text) {
+  return [...text.matchAll(/"([^"]*)"/g)].map((m) => m[1]);
+}
+
+function splitValueList(text) {
+  return text
+    .replace(/\bor\b/g, ',')
+    .replace(/\band\b/g, ',')
+    .split(',')
+    .map((part) => normalizeDescriptionValue(part))
+    .filter(Boolean);
+}
+
+function closedValueFromSegment(segment) {
+  const quoted = extractDelimitedValues(segment);
+  return firstClosedValue(quoted.length > 0 ? quoted : splitValueList(segment));
+}
+
+function descriptionClosedValueExample(description) {
+  const text = String(description ?? '').replace(/\s+/g, ' ').trim();
+  if (!text) return undefined;
+
+  const closedListMatch = text.match(
+    /\b(?:one of|supported values?|valid values?|allowed values?|accepted values?)\b(?:\s*(?:are|is|:))?\s*([^.;]+)/i,
+  );
+  if (closedListMatch) {
+    return closedValueFromSegment(closedListMatch[1] ?? '');
+  }
+
+  const labeledSetMatch = text.match(
+    /\b(?:cabin class|stop filter|sort order|sort mode|summarization mode|fuel mode|policy category|status)\s*:\s*([^.;]+)/i,
+  );
+  if (labeledSetMatch) {
+    return closedValueFromSegment(labeledSetMatch[1] ?? '');
+  }
+
+  const topicMatch = text.match(/\bTopic ID\s*\(([^)]+)\)/i);
+  if (topicMatch) return firstClosedValue(splitValueList(topicMatch[1] ?? ''));
+
+  return undefined;
+}
+
+function shouldUseDescriptionClosedValue(context = {}) {
+  return context.exampleSurface === 'parameter' || context.exampleSurface === 'request';
+}
+
+function getScenarioStatusExample() {
+  return {
+    result: {
+      affectedChokepointIds: SCENARIO_RESULT_AFFECTED_CHOKEPOINT_IDS,
+      template: {
+        name: SCENARIO_RESULT_TEMPLATE_NAME,
+        disruptionPct: 100,
+        durationDays: 14,
+        costShockMultiplier: 2.1,
+      },
+      topImpactCountries: [
+        {
+          iso2: 'US',
+          totalImpact: 42.5,
+          impactPct: 100,
+        },
+      ],
+    },
+    status: 'done',
+  };
 }
 
 function clone(value) {
@@ -207,6 +381,10 @@ function stringExample(name, schema = {}, context = {}) {
   const description = String(schema.description ?? context.description ?? '').toLowerCase();
   const override = overrideStringExample(key, context);
   if (override !== undefined) return constrainedString(override, schema);
+  if (shouldUseDescriptionClosedValue(context)) {
+    const closed = descriptionClosedValueExample(schema.description ?? context.description);
+    if (closed !== undefined) return constrainedString(closed, schema);
+  }
   if (schema.format === 'int64' || schema.format === 'uint64') return constrainedString('1717200000000', schema);
   if (key === 'lastupdated' || description.includes('iso-8601 datetime')) return constrainedString('2026-01-15T12:00:00.000Z', schema);
   if (schema.format === 'date-time') return constrainedString('2026-01-15T12:00:00Z', schema);
@@ -299,6 +477,13 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   if (!schema || typeof schema !== 'object') return 'example';
   const original = schema;
   schema = resolveRef(schema, spec);
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'getscenariostatus'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getScenarioStatusExample();
+  }
   const ref = original.$ref;
   if (ref) {
     if (seen.has(ref)) return {};
@@ -406,6 +591,7 @@ function injectSpecExamples(spec) {
             ...context,
             name: param.name,
             description: param.description,
+            exampleSurface: 'parameter',
           });
           changed = setExample(param, example) || changed;
         }
@@ -417,6 +603,7 @@ function injectSpecExamples(spec) {
         const example = exampleForSchema(requestMedia.schema, spec, {
           ...context,
           name: `${op.operationId ?? 'operation'}Request`,
+          exampleSurface: 'request',
         });
         changed = setExample(requestMedia, example) || changed;
       }
@@ -430,6 +617,7 @@ function injectSpecExamples(spec) {
         const example = exampleForSchema(media.schema, spec, {
           ...context,
           name: `${op.operationId ?? 'operation'}Response`,
+          exampleSurface: 'response',
         });
         changed = setExample(media, example) || changed;
       }

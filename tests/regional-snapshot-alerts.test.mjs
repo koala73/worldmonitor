@@ -425,10 +425,10 @@ describe('publishEventWithOps — dedup rollback', () => {
     const deletedKeys = [];
     const ops = {
       setNx: async (key, _ttl) => {
-        if (setNxFails) return false;
-        if (dedupKeys[key]) return false;
+        if (setNxFails) return 'error';
+        if (dedupKeys[key]) return 'duplicate';
         dedupKeys[key] = true;
-        return true;
+        return 'new';
       },
       lpush: async (_key, value) => {
         if (lpushFails) return false;
@@ -467,6 +467,33 @@ describe('publishEventWithOps — dedup rollback', () => {
     assert.deepEqual(outcome, { enqueued: false, dedupHit: true, rolledBack: false });
     assert.equal(mem.queue.length, 0);
     assert.equal(mem.deletedKeys.length, 0);
+  });
+
+  it('SETNX error fails open for the first high-priority alert, then fallback-suppresses repeats', async () => {
+    const mem = memoryOps({ setNxFails: true });
+    const event = {
+      ...sampleEvent,
+      payload: { title: `MENA: regime shift SETNX outage ${Date.now()}` },
+    };
+    const first = await publishEventWithOps(event, mem.ops);
+    assert.deepEqual(first, { enqueued: true, dedupHit: false, rolledBack: false });
+    assert.equal(mem.queue.length, 1);
+
+    const second = await publishEventWithOps(event, mem.ops);
+    assert.deepEqual(second, { enqueued: false, dedupHit: true, rolledBack: false });
+    assert.equal(mem.queue.length, 1);
+  });
+
+  it('SETNX error fails closed for low-priority injected test events', async () => {
+    const mem = memoryOps({ setNxFails: true });
+    const lowEvent = {
+      ...sampleEvent,
+      severity: 'low',
+      payload: { title: `MENA: low-priority SETNX outage ${Date.now()}` },
+    };
+    const outcome = await publishEventWithOps(lowEvent, mem.ops);
+    assert.deepEqual(outcome, { enqueued: false, dedupHit: false, rolledBack: false });
+    assert.equal(mem.queue.length, 0);
   });
 
   it('LPUSH failure: dedup key is rolled back via DEL', async () => {

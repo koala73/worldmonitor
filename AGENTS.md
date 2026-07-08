@@ -15,7 +15,7 @@ Real-time global intelligence dashboard. TypeScript SPA (Vite + Preact) with 160
 │   ├── bootstrap/          # Startup/recovery (chunk reload, deferred Sentry, SW update)
 │   ├── components/         # 160 top-level TypeScript component files
 │   ├── config/             # Variant configs, panel/layer definitions, market symbols
-│   ├── services/           # Business logic (195 service modules and domain directories)
+│   ├── services/           # Business logic (197 service modules and domain directories)
 │   ├── shared/             # Cross-cutting helpers (premium paths, registries, staleness)
 │   ├── embed/              # Embeddable widget loader
 │   ├── styles/             # Global CSS (layers, themes, panel styles)
@@ -199,16 +199,22 @@ Variant is set via `VITE_VARIANT` env var. Config lives in `src/config/variants/
 
 ## Pre-Push Hook
 
-Runs automatically before `git push`:
+Runs automatically before `git push`. Two tiers:
 
-1. Local Vercel env dump guard (blocks pushes when `.env.vercel-backup` or `.env.vercel-export` exist in repo root)
-2. TypeScript check (src + API)
-3. CJS syntax validation
-4. Edge function esbuild bundle check
-5. Edge function import guardrail test
-6. Markdown lint
-7. MDX lint (Mintlify compatibility)
-8. Version sync check
+**Always (state-dependent, fast — run even on a cache hit):** local Vercel env-dump guard, PR-state check (no pushes to merged/closed PR branches), branch-contamination guard (>20 commits ahead), `scripts/` lockfile sync.
+
+**Tree-dependent (skipped entirely on a green-tree cache hit):** Unicode safety and version sync (always run for uncached trees), plus the diff-scoped checks: TypeScript (frontend tsc on `src/`-surface changes; `typecheck:api` on `api/|server/|scripts/|src/generated/`; Convex tsc on `convex/`), CJS syntax, boundary/safe-html/Sentry-coverage/rate-limit/premium-fetch lints (each also fires when its own guardrail script changes), edge esbuild check (`api/|server/|src/generated/` — edge entries bundle-import server code), markdown/MDX lint, proto + pro-test bundle freshness, change-scoped tests. `package.json`/`tsconfig` changes — or an unresolvable `origin/main` diff — force everything (an unresolvable diff also bypasses the green-tree cache: a blind run trusts nothing, including prior attestations).
+
+**Green-tree cache:** a tree that passed the full gate is recorded (`$GIT_DIR/wm-prepush-green`); re-pushing the identical tree (remote failure, message-only amend) skips all tree-dependent checks — same tree, same result. Delete that file to force a full re-run.
+
+Heavy checks (`test:data`, typechecks, edge-bundle) must run **sequentially** in worktrees — parallel runs OOM (exit 137).
+
+## Shipping Velocity (Agent Workflow)
+
+- **Before starting work on an issue:** check for parallel/duplicate work first — `gh pr list --search "<issue#>"` AND `git worktree list` (background codex/claude sessions ship PRs under the same account).
+- **After pushing a PR:** don't sleep-poll CI. Enable auto-merge (`gh pr merge <n> --auto --squash` — repo has auto-merge enabled) and/or start `gh pr checks <n> --watch` as a background task; act only when it exits.
+- **docs/plans/ is gitignored** — plan documents are local working state and do not travel between worktrees or ship in PRs.
+- **PR-review verification:** never assert a finding is fixed/stale from memory — re-fetch the PR head SHA and diff the cited lines first.
 
 ## Deployment
 

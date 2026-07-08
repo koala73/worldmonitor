@@ -101,7 +101,9 @@ export function parseWhyMatters(text) {
 
 /**
  * Deterministic 16-char hex hash of the SIX story fields that flow
- * into the whyMatters prompt (5 core + description). Cache identity
+ * into the whyMatters prompt (5 core + description). Also consumed by
+ * server/worldmonitor/intelligence/v1/get-country-intel-brief.ts
+ * (citation verification + grounding telemetry, #4921). Cache identity
  * MUST cover every field that shapes the LLM output, or two requests
  * with the same core fields but different descriptions will share a
  * cache entry and the second caller gets prose grounded in the first
@@ -658,3 +660,316 @@ function containsSubsequence(haystack, needle) {
   }
   return false;
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Grounding spine (#4921 — ported from scripts/lib/brief-llm.mjs so EVERY
+// brief product shares one grounding implementation; brief-llm.mjs
+// re-exports these for backcompat). Edge-safe: no node:crypto, no env reads.
+// ═══════════════════════════════════════════════════════════════════════════
+
+
+// Shared delimiter regex for tokenising both story headlines (anchor
+// extraction) and synthesis prose (haystack lookup). Same delimiter
+// set on both sides keeps the matching contract symmetric.
+//
+// Unicode quotes (U+2018, U+2019, U+201C, U+201D, U+00B4) are
+// included alongside their ASCII counterparts. News headlines from
+// Reuters/AP/Guardian use U+2019 for possessives ("China's",
+// "Iran's", "DPRK's") and U+201C/U+201D for quoted phrases. Without
+// splitting on them, "China's" becomes one token "china’s" that
+// a lead saying "China" can never match — a false negative that
+// would reject genuinely grounded leads. (PR #3667 review round 2
+// finding #2.)
+const GROUNDING_TOKEN_DELIMS = /[\s,.!?;:()'"‘’“”´\\/—–\-[\]{}]+/;
+
+// Anchor-side stopword list. Story headlines often capitalise
+// titles ("President Trump"), generic actors ("Officials confirmed"),
+// quasi-adjectives ("Senior commander", "Federal court"), and
+// sentence-start filler ("Following the announcement"). Without
+// filtering, these enter storyTokens and a hallucinated lead like
+// "President Biden announced..." passes the lead-anchor check via
+// the shared word "President", then a teaser mentioning a real
+// anchor satisfies the combined threshold — the visible top-of-
+// email lead stays fabricated. (PR #3667 review round 2 finding #1.)
+//
+// Scope rule: only words that are commonly capitalised but do NOT
+// discriminate a story. Specific entity names (people, places,
+// orgs, brands) are NEVER on this list, even when common — "Iran",
+// "Trump", "Israel", "EU", "UN" all stay in. "May" is also
+// deliberately omitted (Theresa May, May Day, May = month all
+// collide on it; safer to keep "may" matchable than to filter it
+// and lose a real anchor).
+//
+// Maintenance heuristic (PR #3667 review round 5 #3): a capitalised
+// token of length ≥4 belongs in this set if it appears in >~10% of
+// real headlines without discriminating between stories. The cheap
+// audit is: dump a week of headlines, tokenise with this same
+// extractAnchorTokens function (with stopwords disabled), count
+// frequencies, and inspect any token in >50 of ~500 headlines that
+// isn't already a known proper noun. The "Prime"/"Chief"/"Cardinal"
+// gaps caught on review rounds 2-3 would each have surfaced from
+// such a frequency audit. Don't try to enumerate exhaustively up
+// front; let production usage drive additions and capture each new
+// ride-along bug class as a regression test.
+const GROUNDING_ANCHOR_STOPWORDS = new Set([
+  // Honorifics / titles
+  'president', 'vice', 'senator', 'minister', 'secretary',
+  'chairman', 'chairwoman', 'spokesman', 'spokeswoman',
+  'director', 'general', 'admiral', 'colonel', 'captain',
+  'mayor', 'governor', 'judge', 'justice', 'doctor',
+  'professor', 'pope', 'rabbi', 'imam', 'sheikh', 'sultan',
+  'emir', 'king', 'queen', 'prince', 'princess',
+  // Round-3 review additions: bigram-leading titles ("Prime
+  // Minister", "Chief Justice", "Cardinal Smith") whose first
+  // word alone passes the cap+length filter and would otherwise
+  // let a hallucinated "Prime Minister Trudeau announced..." lead
+  // ride on a "Prime Minister Netanyahu says..." headline via the
+  // shared "prime" token. PR #3667 review round 3.
+  'prime', 'chief', 'premier', 'chancellor', 'speaker',
+  'ambassador', 'envoy', 'commissioner', 'attorney',
+  'cardinal', 'archbishop', 'monsignor', 'reverend',
+  'pastor', 'bishop', 'lord', 'lady', 'dame',
+  'congressman', 'congresswoman', 'congressperson',
+  'representative', 'delegate', 'baron', 'baroness',
+  // Generic role plurals / institutional collectives
+  'officials', 'officers', 'leaders', 'members', 'people',
+  'forces', 'police', 'troops', 'agents', 'authorities',
+  'sources', 'rebels', 'militants', 'protesters', 'civilians',
+  'residents', 'citizens', 'workers', 'voters',
+  // Headline qualifiers / quasi-adjectives
+  'senior', 'junior', 'former', 'acting', 'deputy', 'assistant',
+  'federal', 'national', 'international', 'global', 'regional',
+  'central', 'local', 'foreign', 'domestic', 'civil', 'public',
+  'private', 'special', 'major', 'armed',
+  // Sentence-start / common filler
+  'after', 'before', 'during', 'while', 'despite', 'following',
+  'amid', 'today', 'yesterday', 'tomorrow', 'this', 'these',
+  'those', 'when', 'where', 'what', 'which', 'breaking',
+  // News-headline glue
+  'says', 'said', 'told', 'reports', 'analysis', 'opinion',
+  'editorial', 'update', 'updates',
+  // Calendar (May omitted — see scope rule above)
+  'monday', 'tuesday', 'wednesday', 'thursday', 'friday',
+  'saturday', 'sunday', 'january', 'february', 'march', 'april',
+  'june', 'july', 'august', 'september', 'october', 'november',
+  'december',
+]);
+
+/**
+ * Anchor extraction from a story headline: capitalised + length ≥4 +
+ * NOT in GROUNDING_ANCHOR_STOPWORDS. The capitalisation filter makes
+ * this a "proper noun" heuristic; the stopword filter strips
+ * honorifics, role labels, bigram-leading titles, and sentence-start
+ * filler that would otherwise be shared anchors between any
+ * "President X..." headline and any "President Y..." hallucinated
+ * lead. File-level so the closure isn't re-instantiated per
+ * checkLeadGrounding call (PR #3667 review round 4 P2).
+ *
+ * @param {string} s
+ * @returns {string[]} lowercased anchor tokens
+ */
+export function extractAnchorTokens(s) {
+  if (typeof s !== 'string' || s.length === 0) return [];
+  const out = [];
+  for (const w of s.split(GROUNDING_TOKEN_DELIMS)) {
+    if (w.length < 4 || !/^[A-Z]/.test(w)) continue;
+    const lower = w.toLowerCase();
+    if (!GROUNDING_ANCHOR_STOPWORDS.has(lower)) out.push(lower);
+  }
+  return out;
+}
+
+/**
+ * Tokenise synthesis prose into a Set of lowercased words for
+ * membership lookup. NO capitalisation filter — the synthesis can
+ * mention the entity in any case (sentence-medial, possessive form,
+ * etc.) and we still want it to count. File-level for the same
+ * reason as extractAnchorTokens (PR #3667 review round 4 P2).
+ *
+ * @param {string} text
+ * @returns {Set<string>}
+ */
+export function groundingTokenSet(text) {
+  const set = new Set();
+  if (typeof text !== 'string' || text.length === 0) return set;
+  for (const w of text.toLowerCase().split(GROUNDING_TOKEN_DELIMS)) {
+    if (w.length >= 4) set.add(w);
+  }
+  return set;
+}
+
+/**
+ * Cheap content-grounding check: the canonical lead MUST reference
+ * proper-noun tokens that actually appear in the input story
+ * headlines. Without this, the LLM is free to confabulate even with
+ * shape-valid output — e.g. the 2026-05-12 incident where a Trump-
+ * era geopolitics pool (Iran/Israel/Sudan/Cuba/Ukraine) shipped a
+ * "President Biden announced a crypto executive order" lead. Shape
+ * was valid; content was a complete fabrication the model produced
+ * from training-data priors instead of grounding.
+ *
+ * Two independent grounding requirements (BOTH must pass):
+ *
+ *   1. **Lead anchor**: the lead alone must hit ≥1 anchor token.
+ *      Without this, a hallucinated lead can sneak through when the
+ *      threads happen to mention real entities — the visible lead
+ *      stays fabricated even though the combined check passes.
+ *      (Code-review finding on PR #3667 #1.)
+ *   2. **Combined coverage**: the lead + thread teasers together
+ *      must hit ≥2 anchors (relaxed to 1 when the corpus itself has
+ *      <4 anchor tokens, so single-named-actor briefs aren't
+ *      false-positives).
+ *
+ * Matching is **token-set membership** — both sides are split on
+ * the same delimiter regex and lowercased into Sets. Substring
+ * matching (the v1 implementation) was rejected on PR #3667 review:
+ * it accepts unrelated entities like `iran` inside `tirana`,
+ * `oman` inside `romania`, `india` inside `indiana`. Token-set
+ * matching avoids that class of false positive cleanly.
+ * (Code-review finding on PR #3667 #2.)
+ *
+ * Length cap of 4 deliberately filters out 2-letter ISO country
+ * codes (`IR`, `PS`, `US`) and short-form orgs (`UN`, `EU`, `RSF`)
+ * which are too generic to be discriminating anchors. The check is
+ * about whether the lead names a SPECIFIC entity — not whether it
+ * uses any capitalised token at all.
+ *
+ * Returns true (grounded, or check-skipped because corpus lacks
+ * signal / no stories supplied) → accept. Returns false → reject.
+ *
+ * @param {{ lead?: string; threads?: Array<{tag?:string;teaser?:string}> }} synthesis
+ * @param {Array<{ headline?: string }>} stories
+ * @returns {boolean}
+ */
+// Default story cap for grounding: mirrors the digest's default
+// MAX_STORIES_PER_USER without dragging its env read into this
+// edge-safe module — callers with a different cap pass it explicitly.
+const DEFAULT_GROUNDING_STORY_CAP = 8;
+
+export function checkLeadGrounding(synthesis, stories, storyCap = DEFAULT_GROUNDING_STORY_CAP) {
+  if (!Array.isArray(stories) || stories.length === 0) return true;
+
+  const storyTokens = new Set();
+  for (const s of stories.slice(0, storyCap)) {
+    for (const tok of extractAnchorTokens(s?.headline ?? '')) {
+      storyTokens.add(tok);
+    }
+  }
+  // Corpus has no proper-noun anchors — can't validate, skip.
+  // Genuine input (2026-era stories) reliably has >0 such tokens;
+  // the empty branch is for synthetic / single-headline tests.
+  //
+  // Lowercase-headline blind spot (PR #3667 review round 5 #2):
+  // if a feed ever produces all-lowercase or all-≤3-char headlines,
+  // every story contributes zero anchors and the gate silently
+  // skips. Emit a warn so ops can detect the regression — but only
+  // when stories.length is meaningful (≥3) so the synthetic
+  // single-headline test corpora don't spam logs.
+  if (storyTokens.size === 0) {
+    if (stories.length >= 3) {
+      console.warn(
+        `[brief-llm-core] grounding gate skipped: storyTokens empty for stories.length=${stories.length} — likely all-lowercase or <4-char headlines from a feed regression`,
+      );
+    }
+    return true;
+  }
+
+  const leadTokens = groundingTokenSet(typeof synthesis?.lead === 'string' ? synthesis.lead : '');
+
+  // Requirement 1: the lead alone must hit ≥1 anchor. A hallucinated
+  // lead with grounded teasers would otherwise pass — the user still
+  // sees the fabricated text at the top of the email.
+  let leadHasAnchor = false;
+  for (const tok of leadTokens) {
+    if (storyTokens.has(tok)) { leadHasAnchor = true; break; }
+  }
+  if (!leadHasAnchor) return false;
+
+  // Requirement 2: combined lead + teasers hit ≥threshold anchors.
+  // Threshold relaxes to 1 when the corpus is sparse so single-
+  // story briefs don't false-positive.
+  const combinedTokens = new Set(leadTokens);
+  for (const t of (Array.isArray(synthesis?.threads) ? synthesis.threads : [])) {
+    for (const w of groundingTokenSet(typeof t?.teaser === 'string' ? t.teaser : '')) {
+      combinedTokens.add(w);
+    }
+  }
+  const threshold = storyTokens.size >= 4 ? 2 : 1;
+  let combinedHits = 0;
+  for (const tok of storyTokens) {
+    if (combinedTokens.has(tok)) {
+      combinedHits++;
+      if (combinedHits >= threshold) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Lead ↔ single-story coherence check (F4). Returns true iff `lead`
+ * shares ≥1 proper-noun anchor with `headline`. Reuses the same
+ * anchor machinery as `checkLeadGrounding` (capitalised, length ≥4,
+ * stopword-filtered headline anchors; token-set membership against
+ * the lead) but with a FIXED threshold of 1 — coherence asks only
+ * "is the lead about the same story?", not "how well-grounded is it?".
+ *
+ * `checkLeadGrounding` itself is the wrong fit here: scoped to one
+ * story, a single headline can carry ≥4 anchor tokens, which trips
+ * its `size >= 4 ? 2 : 1` threshold up to 2 — too strict for
+ * coherence, where a lead legitimately about card #1 may name only
+ * one of its entities.
+ *
+ * Used by the cron's lead/card-#1 coherence telemetry
+ * (`composeAndStoreBriefForUser`) — see plan
+ * docs/plans/2026-05-14-001-…-plan.md (F4, Phase 4).
+ *
+ * @param {string} lead — the canonical synthesis lead
+ * @param {string} headline — the rendered first card's headline
+ * @returns {boolean} true = coherent (or check-skipped); false = the
+ *   lead names none of the headline's proper-noun anchors
+ */
+export function leadGroundsAgainstStory(lead, headline) {
+  const anchors = new Set(extractAnchorTokens(typeof headline === 'string' ? headline : ''));
+  // No proper-noun anchors in the headline → cannot judge coherence,
+  // skip (same "degenerate corpus → accept" stance as checkLeadGrounding).
+  if (anchors.size === 0) return true;
+  const leadTokens = groundingTokenSet(typeof lead === 'string' ? lead : '');
+  for (const tok of anchors) {
+    if (leadTokens.has(tok)) return true;
+  }
+  return false;
+}
+
+
+/**
+ * #4921: mechanical citation verification. Every bracket citation [n]
+ * in LLM brief prose must map to a real entry in the grounding source
+ * list (1..sourceCount). Out-of-range markers are invented — strip them
+ * rather than rendering a dead reference. Returns the cleaned text and
+ * the count of stripped markers (callers log/telemeter when > 0).
+ *
+ * Pure string operation; deliberately does NOT try to verify the CLAIM
+ * against the source — that is the grounding gates' job. This closes
+ * the cheaper hole: "[9]" shipped against a 6-source list.
+ *
+ * @param {string} text
+ * @param {number} sourceCount
+ * @returns {{ text: string; stripped: number }}
+ */
+export function verifyCitationIndexes(text, sourceCount) {
+  if (typeof text !== 'string' || text.length === 0) {
+    return { text: typeof text === 'string' ? text : '', stripped: 0 };
+  }
+  const max = Number.isFinite(sourceCount) && sourceCount > 0 ? Math.floor(sourceCount) : 0;
+  let stripped = 0;
+  // 1-3 digits: [123] must not sail through unverified (review finding);
+  // 4+ digit brackets ([2026]) are treated as prose, not citations.
+  const cleaned = text.replace(/\s*\[(\d{1,3})\]/g, (full, numStr) => {
+    const n = Number.parseInt(numStr, 10);
+    if (n >= 1 && n <= max) return full;
+    stripped++;
+    return '';
+  });
+  return { text: cleaned, stripped };
+}
+

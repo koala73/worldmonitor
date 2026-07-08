@@ -9,6 +9,13 @@ import { isEntitled } from '@/services/entitlements';
 
 const _desktop = isDesktopRuntime();
 
+// Iran-events domain sunset (war ended 2026-07). Default OFF: iranAttacks is
+// disabled in every variant default so DEFAULT_MAP_LAYERS agrees with the gated
+// layer registry (getAllowedLayerKeys strips it). Guarded so node:test — where
+// import.meta.env is undefined — resolves it OFF at module load. See
+// map-layer-definitions.ts and tests/browser-bundle-secret-guard (allowlist).
+const IRAN_ATTACKS_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_IRAN_ATTACKS === 'true';
+
 // ============================================
 // FULL VARIANT (Geopolitical)
 // ============================================
@@ -120,7 +127,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
 };
 
 const FULL_MAP_LAYERS: MapLayers = {
-  iranAttacks: !_desktop,
+  iranAttacks: IRAN_ATTACKS_ENABLED && !_desktop,
   gpsJamming: false,
   satellites: false,
 
@@ -185,7 +192,7 @@ const FULL_MAP_LAYERS: MapLayers = {
 };
 
 const FULL_MOBILE_MAP_LAYERS: MapLayers = {
-  iranAttacks: true,
+  iranAttacks: IRAN_ATTACKS_ENABLED,
   gpsJamming: false,
   satellites: false,
 

@@ -287,16 +287,29 @@ function readLocalPositiveFallback(key: string): unknown | undefined {
  * Batch GET using Upstash pipeline API — single HTTP round-trip for N keys.
  * Returns a Map of key → parsed JSON value (missing/failed/sentinel keys omitted).
  */
-export async function getCachedJsonBatch(keys: string[]): Promise<Map<string, unknown>> {
+export async function getCachedJsonBatch(keys: string[], raw = false): Promise<Map<string, unknown>> {
   const result = new Map<string, unknown>();
   if (keys.length === 0) return result;
+
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+    try {
+      const { sidecarCacheGet } = await import('./sidecar-cache');
+      for (const key of keys) {
+        const value = sidecarCacheGet(key);
+        if (value != null) result.set(key, value);
+      }
+    } catch (error) {
+      console.warn('[redis] getCachedJsonBatch failed:', errMsg(error));
+    }
+    return result;
+  }
 
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return result;
 
   try {
-    const pipeline = keys.map((k) => ['GET', prefixKey(k)]);
+    const pipeline = keys.map((k) => ['GET', raw ? k : prefixKey(k)]);
     const resp = await fetch(`${url}/pipeline`, {
       method: 'POST',
       headers: {
@@ -306,14 +319,17 @@ export async function getCachedJsonBatch(keys: string[]): Promise<Map<string, un
       body: JSON.stringify(pipeline),
       signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
     });
-    if (!resp.ok) return result;
+    if (!resp.ok) {
+      console.warn(`[redis] getCachedJsonBatch HTTP ${resp.status}`);
+      return result;
+    }
 
     const data = (await resp.json()) as Array<{ result?: string }>;
     for (let i = 0; i < keys.length; i++) {
-      const raw = data[i]?.result;
-      if (raw) {
+      const rawResult = data[i]?.result;
+      if (rawResult) {
         try {
-          const parsed = JSON.parse(raw);
+          const parsed = JSON.parse(rawResult);
           if (parsed === NEG_SENTINEL) continue;
           // Envelope-aware: unwrap contract-mode canonical keys; legacy values
           // pass through.
@@ -324,7 +340,12 @@ export async function getCachedJsonBatch(keys: string[]): Promise<Map<string, un
       }
     }
   } catch (err) {
-    console.warn('[redis] getCachedJsonBatch failed:', errMsg(err));
+    const isTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
+    if (isTimeout) {
+      console.error(`[REDIS-TIMEOUT] getCachedJsonBatch keys=${keys.length} timeoutMs=${REDIS_PIPELINE_TIMEOUT_MS}`);
+    } else {
+      console.warn('[redis] getCachedJsonBatch failed:', errMsg(err));
+    }
   }
   return result;
 }

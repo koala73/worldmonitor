@@ -6,6 +6,10 @@ import type { ConvergenceCard } from '@/services/correlation-engine';
 import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
+// Iran-events domain sunset (war ended 2026-07). Default OFF: omit the IRAN
+// EVENTS CSV block. Set VITE_ENABLE_IRAN_ATTACKS=true to restore. Guarded so
+// node:test never dereferences import.meta.env.
+const IRAN_ATTACKS_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_IRAN_ATTACKS === 'true';
 
 type ExportFormat = 'json' | 'csv';
 
@@ -165,7 +169,7 @@ export function exportToCSV(data: ExportData, filename = 'worldmonitor-export'):
       lines.push('');
     }
 
-    if (intel.iranEvents && intel.iranEvents.length > 0) {
+    if (IRAN_ATTACKS_ENABLED && intel.iranEvents && intel.iranEvents.length > 0) {
       lines.push('=== IRAN EVENTS ===');
       lines.push('Title,Category,Location,Severity,Timestamp');
       intel.iranEvents.forEach(e => {

@@ -164,6 +164,7 @@ describe('middleware PUBLIC_API_PATHS — secret-authed internal endpoints bypas
     '/api/seed-contract-probe',
     '/api/internal/brief-why-matters',
     '/api/llms.txt',
+    '/api/product-catalog',
   ];
 
   for (const path of ALLOWED_PATHS) {
@@ -223,6 +224,35 @@ describe('middleware /api/llms.txt — AI crawlers reach the agent-discovery fil
 
   it('still 403s a crawler on a sibling /api path (bypass is exact, not a prefix)', () => {
     const res = call('/api/llms', 'CCBot/2.0 (https://commoncrawl.org/faq/)');
+    assert.ok(res instanceof Response);
+    assert.equal(res.status, 403);
+  });
+});
+
+// ── /api/product-catalog public-pricing bypass ──────────────────────────────
+// The keyless read-only pricing catalog is advertised as service-meta in
+// /.well-known/api-catalog; agents evaluating the product are its primary
+// audience. An agent-journey run (#4854) hit the UA gate here and concluded
+// the endpoint did not exist. DELETE (cache purge) stays protected by the
+// endpoint's own auth — the middleware bypass only skips UA filtering.
+
+describe('middleware /api/product-catalog — agents reach the public pricing catalog', () => {
+  const CRAWLER_UAS = [
+    { label: 'ClaudeBot', ua: 'Mozilla/5.0 (compatible; ClaudeBot/1.0; +claudebot@anthropic.com)' },
+    { label: 'GPTBot', ua: 'Mozilla/5.0 (compatible; GPTBot/1.1; +https://openai.com/gptbot)' },
+    { label: 'python-requests', ua: 'python-requests/2.31' },
+    { label: 'empty UA', ua: '' },
+  ];
+
+  for (const { label, ua } of CRAWLER_UAS) {
+    it(`passes ${label} through to /api/product-catalog`, () => {
+      const res = call('/api/product-catalog', ua);
+      assert.equal(res, undefined, '/api/product-catalog must pass through the bot gate; it is a public discovery surface');
+    });
+  }
+
+  it('still 403s a crawler on a sibling /api path (bypass is exact, not a prefix)', () => {
+    const res = call('/api/product', 'CCBot/2.0 (https://commoncrawl.org/faq/)');
     assert.ok(res instanceof Response);
     assert.equal(res.status, 403);
   });

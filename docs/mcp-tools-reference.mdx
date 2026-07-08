@@ -29,6 +29,8 @@ If you've completed the OAuth flow instead, replace `-H "X-WorldMonitor-Key: $WM
 
 Before diving into the per-tool reference, two affordances make discovery cheaper than reading this page top-to-bottom. If you are starting from a REST route instead of a tool name, use the [API coverage table](/mcp-overview#api-coverage); per-tool **API endpoints** lines mean exact `_apiPaths` declarations, while `none directly` means the tool returns data without claiming an equivalent REST route.
 
+MCP coverage is intentionally curated. Some OpenAPI operations are REST-only because they mutate state, pass through LLM cost, fetch paid/high-cardinality upstreams on cache miss, or need manual cache-key mapping. The [API coverage section](/mcp-overview#api-coverage) names the enforced categories and links the current follow-up trackers.
+
 ### `describe_tool` — full uncompressed definition on demand
 
 Since v1.5.0, `tools/list` returns each tool's `description` truncated to the first sentence (≤120 UTF-8 bytes). That keeps the per-session input-token cost low when the LLM only needs to scan names — and the same `tools/list` entry now ships an `outputSchema` (v1.6.0) so the model can author a JMESPath projection on the first call. When the compressed description is ambiguous, call `describe_tool` for the long form:
@@ -1341,6 +1343,31 @@ curl -s https://worldmonitor.app/mcp \
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
     "params":{"name":"get_forecast_predictions","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_forecast_scorecard`
+
+Forecast resolution scorecard with calibration, Brier/log score, domain and generation-origin breakdowns, and pending/judged resolution counts.
+
+**Parameters (tool-specific):** none
+
+- **API endpoints:** `GET /api/forecast/v1/get-forecast-scorecard`
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **36 h** before `stale: true` is flagged (daily resolver cadence with missed-cron tolerance).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_forecast_scorecard","arguments":{}}
   }'
 ```
 

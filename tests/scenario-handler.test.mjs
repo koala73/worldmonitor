@@ -66,10 +66,15 @@ describe('ScenarioService handlers', () => {
 
   describe('runScenario', () => {
     it('rejects non-PRO callers with 403', async () => {
+      const ctx = makeCtx();
       await assert.rejects(
-        () => runScenario(makeCtx(), { scenarioId: 'taiwan-strait-full-closure', iso2: '' }),
+        () => runScenario(ctx, { scenarioId: 'taiwan-strait-full-closure', iso2: '' }),
         (err) => err instanceof ApiError && err.statusCode === 403,
       );
+      // Error paths must never mark the request for the 202 upgrade.
+      const sideChannel = await import('../server/_shared/response-headers.ts');
+      assert.equal(sideChannel.drainSuccessStatusOverride(ctx.request), undefined);
+      assert.equal(sideChannel.drainResponseHeaders(ctx.request), undefined);
     });
 
     it('rejects missing scenarioId with ValidationError', async () => {
@@ -102,7 +107,8 @@ describe('ScenarioService handlers', () => {
         const results = body.map((cmd) => cmd[0] === 'LLEN' ? { result: 0 } : { result: 1 });
         return new Response(JSON.stringify(results), { status: 200 });
       };
-      const res = await runScenario(proCtx(), { scenarioId: 'taiwan-strait-full-closure', iso2: '' });
+      const ctx = proCtx();
+      const res = await runScenario(ctx, { scenarioId: 'taiwan-strait-full-closure', iso2: '' });
       assert.match(res.jobId, /^scenario:\d{13}:[a-z0-9]{8}$/);
       assert.equal(res.status, 'pending');
       // statusUrl preserved from the legacy v1 contract — server-computed,
@@ -113,6 +119,13 @@ describe('ScenarioService handlers', () => {
         res.statusUrl,
         `/api/scenario/v1/get-scenario-status?jobId=${encodeURIComponent(res.jobId)}`,
       );
+      // Async-job contract: a successful enqueue marks the request for the
+      // gateway's 202 Accepted upgrade with Location pointing at the poller
+      // (the sebuf-generated server itself hardcodes 200 — the override
+      // side-channel is the only way the handler can express the status).
+      const sideChannel = await import('../server/_shared/response-headers.ts');
+      assert.equal(sideChannel.drainSuccessStatusOverride(ctx.request), 202);
+      assert.equal(sideChannel.drainResponseHeaders(ctx.request)?.Location, res.statusUrl);
       const pushCall = calls.find((c) => String(c.body).includes('RPUSH'));
       assert.ok(pushCall, 'RPUSH pipeline must be dispatched');
       const pushed = JSON.parse(pushCall.body);

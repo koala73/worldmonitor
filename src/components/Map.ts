@@ -118,6 +118,12 @@ interface WorldTopology extends Topology {
 export class MapComponent {
   private static readonly MOBILE_MIN_EARTHQUAKE_MAGNITUDE = 5;
   private static readonly MOBILE_MAX_IRAN_EVENTS = 50;
+  // #4669: how long markers pulse after a render before settling to static.
+  // Infinite opacity pulses hold a permanent compositing layer per marker
+  // (385 of 517 desktop layers; Layerize ~34% of the main thread scales with
+  // the count), so after the attention window the pulses are switched off via
+  // the .markers-settled class. Any overlay re-render re-arms the window.
+  private static readonly MARKER_SETTLE_MS = 6000;
   private static readonly LAYER_ZOOM_THRESHOLDS: Partial<
     Record<keyof MapLayers, { minZoom: number; showLabels?: number }>
   > = {
@@ -128,10 +134,13 @@ export class MapComponent {
       natural: { minZoom: 1, showLabels: 2 },
     };
 
+  private static readonly SVG_MARKER_DOM_ZOOM_LAYERS = new Set<keyof MapLayers>(['bases', 'nuclear']);
+
   private container: HTMLElement;
   private svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
   private wrapper: HTMLElement;
   private overlays: HTMLElement;
+  private markerSettleTimer: ReturnType<typeof setTimeout> | null = null;
   private clusterCanvas: HTMLCanvasElement;
   private clusterGl: WebGLRenderingContext | null = null;
   private state: MapState;
@@ -314,12 +323,16 @@ export class MapComponent {
       if (this.isResizing) return;
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
-        if (width > 0 && height > 0 && (width !== lastWidth || height !== lastHeight)) {
-          lastWidth = width;
-          lastHeight = height;
-          this.rememberContainerSize({ width, height });
-          this.scheduleRender();
-        }
+        if (width === lastWidth && height === lastHeight) continue;
+        lastWidth = width;
+        lastHeight = height;
+        // Record zero-size (hidden) transitions too, not just visible sizes.
+        // getKnownContainerSize() falls back to a live read whenever the cache
+        // is zero, so recording the hide keeps render()'s zero-size skip intact
+        // and lets a reveal center off current dimensions instead of the last
+        // visible ones (#5022 review). Only a visible size is worth rendering.
+        this.rememberContainerSize({ width, height });
+        if (width > 0 && height > 0) this.scheduleRender();
       }
     });
     this.resizeObserver.observe(this.container);
@@ -348,6 +361,10 @@ export class MapComponent {
   public destroy(): void {
     this.destroyed = true;
     this.listenerAbort.abort();
+    if (this.markerSettleTimer !== null) {
+      clearTimeout(this.markerSettleTimer);
+      this.markerSettleTimer = null;
+    }
     window.removeEventListener('theme-changed', this.handleThemeChange);
     document.removeEventListener('visibilitychange', this.boundVisibilityHandler);
     if (this.resizeObserver) {
@@ -1180,7 +1197,12 @@ export class MapComponent {
     }
     this.lastRenderTime = now;
 
-    const { width, height } = this.readContainerSize();
+    // Use the ResizeObserver-maintained cache instead of a live clientWidth/
+    // clientHeight read: render() fires repeatedly as data streams in on boot,
+    // and each live read interleaved with the prior tick's SVG writes forces a
+    // synchronous layout (the #5017 boot reflow). getKnownContainerSize() falls
+    // back to a live read only when the cache is still empty (first paint).
+    const { width, height } = this.getKnownContainerSize();
     this.renderWithSize(width, height);
   }
 
@@ -1278,7 +1300,7 @@ export class MapComponent {
         // sub-50ms tasks (#4442), so the overlay build is neither blocking nor one long task.
         scheduleAfterFirstPaint(() => { void this.renderInitialDynamicPass(); });
       }
-      this.applyTransform();
+      this.applyTransform(false);
       return;
     }
 
@@ -1300,7 +1322,7 @@ export class MapComponent {
       }
     }
 
-    this.applyTransform();
+    this.applyTransform(false);
   }
 
   // Builds the dynamic overlay layers (cables/pipelines/conflicts/AIS/cluster/overlays).
@@ -1346,7 +1368,7 @@ export class MapComponent {
     if (width === 0 || height === 0) return; // next real render handles it
     this.initialDynamicRendered = true;
     await this.renderDynamicLayers(width, height, true);
-    if (!this.destroyed) this.applyTransform();
+    if (!this.destroyed) this.applyTransform(false);
   }
 
   private renderGrid(
@@ -1633,6 +1655,13 @@ export class MapComponent {
     return clusters;
   }
 
+  private isLayerZoomVisible(layer: keyof MapLayers): boolean {
+    if (!this.state.layers[layer]) return false;
+    const thresholds = MapComponent.LAYER_ZOOM_THRESHOLDS[layer];
+    if (!thresholds) return true;
+    return Boolean(this.layerZoomOverrides[layer]) || this.state.zoom >= thresholds.minZoom;
+  }
+
   private renderOverlays(projection: d3.GeoProjection): void {
     setTrustedHtml(this.overlays, trustedHtml('', "legacy direct innerHTML migration"));
     this.labelVisibilityScheduled = false;
@@ -1657,7 +1686,7 @@ export class MapComponent {
     }
 
     // Nuclear facilities (always HTML - shapes convey status)
-    if (this.state.layers.nuclear) {
+    if (this.state.layers.nuclear && this.isLayerZoomVisible('nuclear')) {
       NUCLEAR_FACILITIES.forEach((facility) => {
         const pos = projection([facility.lon, facility.lat]);
         if (!pos) return;
@@ -1813,7 +1842,7 @@ export class MapComponent {
     }
 
     // Military bases (always HTML - nation colors matter)
-    if (this.state.layers.bases) {
+    if (this.state.layers.bases && this.isLayerZoomVisible('bases')) {
       this.getMilitaryBasesForRender().forEach((base) => {
         const pos = projection([base.lon, base.lat]);
         if (!pos) return;
@@ -2392,8 +2421,7 @@ export class MapComponent {
 
     // Tech Events / Conferences (📅 icons) - with clustering
     if (this.state.layers.techEvents && this.techEvents.length > 0) {
-      const mapWidth = this.container.clientWidth;
-      const mapHeight = this.container.clientHeight;
+      const { width: mapWidth, height: mapHeight } = this.getKnownContainerSize();
 
       // Map events to have lon property for clustering, filter visible
       const visibleEvents = this.techEvents
@@ -3129,7 +3157,21 @@ export class MapComponent {
     } finally {
       this.overlayAppendTarget = previousTarget;
       this.overlays.appendChild(fragment);
+      this.armMarkerSettle();
     }
+  }
+
+  // #4669: let freshly-rendered markers pulse for the attention window, then
+  // add .markers-settled on the wrapper so main.css stops the infinite pulses
+  // and their compositing layers are released while the map is idle.
+  private armMarkerSettle(): void {
+    this.wrapper.classList.remove('markers-settled');
+    if (this.markerSettleTimer !== null) clearTimeout(this.markerSettleTimer);
+    this.markerSettleTimer = setTimeout(() => {
+      this.markerSettleTimer = null;
+      if (this.destroyed) return;
+      this.wrapper.classList.add('markers-settled');
+    }, MapComponent.MARKER_SETTLE_MS);
   }
 
   private renderConflictEventMarkers(projection: d3.GeoProjection): void {
@@ -3602,8 +3644,7 @@ export class MapComponent {
   }
 
   public flashLocation(lat: number, lon: number, durationMs = 2000): void {
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    const { width, height } = this.readContainerSize();
     if (!width || !height) return;
 
     const projection = this.getProjection(width, height);
@@ -3767,8 +3808,7 @@ export class MapComponent {
     const hotspot = this.hotspots.find(h => h.id === id);
     if (!hotspot) return;
 
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    const { width, height } = this.readContainerSize();
     const projection = this.getProjection(width, height);
     const pos = projection([hotspot.lon, hotspot.lat]);
     if (!pos) return;
@@ -3789,8 +3829,7 @@ export class MapComponent {
     const conflict = CONFLICT_ZONES.find(c => c.id === id);
     if (!conflict) return;
 
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    const { width, height } = this.readContainerSize();
     const projection = this.getProjection(width, height);
     const pos = projection(conflict.center as [number, number]);
     if (!pos) return;
@@ -3817,8 +3856,7 @@ export class MapComponent {
       return;
     }
 
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    const { width, height } = this.readContainerSize();
     const projection = this.getProjection(width, height);
     const pos = projection([base.lon, base.lat]);
     if (!pos) return;
@@ -3835,8 +3873,7 @@ export class MapComponent {
     const pipeline = PIPELINES.find(p => p.id === id);
     if (!pipeline || pipeline.points.length === 0) return;
 
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    const { width, height } = this.readContainerSize();
     const projection = this.getProjection(width, height);
     const midPoint = pipeline.points[Math.floor(pipeline.points.length / 2)] as [number, number];
     const pos = projection(midPoint);
@@ -3854,8 +3891,7 @@ export class MapComponent {
     const cable = UNDERSEA_CABLES.find(c => c.id === id);
     if (!cable || cable.points.length === 0) return;
 
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    const { width, height } = this.readContainerSize();
     const projection = this.getProjection(width, height);
     const midPoint = cable.points[Math.floor(cable.points.length / 2)] as [number, number];
     const pos = projection(midPoint);
@@ -3873,8 +3909,7 @@ export class MapComponent {
     const dc = AI_DATA_CENTERS.find(d => d.id === id);
     if (!dc) return;
 
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    const { width, height } = this.readContainerSize();
     const projection = this.getProjection(width, height);
     const pos = projection([dc.lon, dc.lat]);
     if (!pos) return;
@@ -3891,8 +3926,7 @@ export class MapComponent {
     const facility = NUCLEAR_FACILITIES.find(n => n.id === id);
     if (!facility) return;
 
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    const { width, height } = this.readContainerSize();
     const projection = this.getProjection(width, height);
     const pos = projection([facility.lon, facility.lat]);
     if (!pos) return;
@@ -3909,8 +3943,7 @@ export class MapComponent {
     const irradiator = GAMMA_IRRADIATORS.find(i => i.id === id);
     if (!irradiator) return;
 
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    const { width, height } = this.readContainerSize();
     const projection = this.getProjection(width, height);
     const pos = projection([irradiator.lon, irradiator.lat]);
     if (!pos) return;
@@ -3967,7 +4000,7 @@ export class MapComponent {
     this.state.pan.y = Math.max(-maxPanY, Math.min(maxPanY, this.state.pan.y));
   }
 
-  private applyTransform(): void {
+  private applyTransform(rebuildOnZoomVisibilityChange = true): void {
     const { width, height } = this.getKnownContainerSize();
     this.clampPan(width, height);
     const zoom = this.state.zoom;
@@ -3992,8 +4025,9 @@ export class MapComponent {
 
     // Smart label hiding based on zoom level and overlap
     if (this.shouldUpdateLabelVisibility()) this.updateLabelVisibility(zoom);
-    this.updateZoomLayerVisibility();
+    const zoomVisibilityChanged = this.updateZoomLayerVisibility();
     this.emitStateChange();
+    if (rebuildOnZoomVisibilityChange && zoomVisibilityChanged) this.scheduleRender();
   }
 
   private shouldUpdateLabelVisibility(): boolean {
@@ -4006,8 +4040,9 @@ export class MapComponent {
     this.updateLabelVisibility(this.state.zoom);
   }
 
-  private updateZoomLayerVisibility(): void {
+  private updateZoomLayerVisibility(): boolean {
     const zoom = this.state.zoom;
+    let visibilityChanged = false;
     (Object.keys(MapComponent.LAYER_ZOOM_THRESHOLDS) as (keyof MapLayers)[]).forEach((layer) => {
       const thresholds = MapComponent.LAYER_ZOOM_THRESHOLDS[layer];
       if (!thresholds) return;
@@ -4019,6 +4054,10 @@ export class MapComponent {
       const labelsVisible = enabled && zoom >= labelZoom;
       const hiddenAttr = `data-layer-hidden-${layer}`;
       const labelsHiddenAttr = `data-labels-hidden-${layer}`;
+      const wasVisible = !this.wrapper.hasAttribute(hiddenAttr);
+
+      const affectsSvgMarkerDom = MapComponent.SVG_MARKER_DOM_ZOOM_LAYERS.has(layer);
+      if (affectsSvgMarkerDom && wasVisible !== isVisible) visibilityChanged = true;
 
       if (isVisible) {
         this.wrapper.removeAttribute(hiddenAttr);
@@ -4036,6 +4075,7 @@ export class MapComponent {
       const autoHidden = enabled && !override && zoom < thresholds.minZoom;
       btn?.classList.toggle('auto-hidden', autoHidden);
     });
+    return visibilityChanged;
   }
 
   private emitStateChange(): void {
@@ -4128,8 +4168,7 @@ export class MapComponent {
     const [minLon, minLat, maxLon, maxLat] = bbox;
     const midLon = (minLon + maxLon) / 2;
     const midLat = (minLat + maxLat) / 2;
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    const { width, height } = this.readContainerSize();
     const projection = this.getProjection(width, height);
     const topLeft = projection([minLon, maxLat]);
     const bottomRight = projection([maxLon, minLat]);
@@ -4152,8 +4191,7 @@ export class MapComponent {
   }
 
   public getCenter(): { lat: number; lon: number } | null {
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    const { width, height } = this.readContainerSize();
     const projection = this.getProjection(width, height);
     if (!projection.invert) return null;
     const zoom = this.state.zoom;
@@ -4200,8 +4238,7 @@ export class MapComponent {
 
   public setCenter(lat: number, lon: number): void {
     console.log('[Map] setCenter called:', { lat, lon });
-    const width = this.container.clientWidth;
-    const height = this.container.clientHeight;
+    const { width, height } = this.readContainerSize();
     const projection = this.getProjection(width, height);
     const pos = projection([lon, lat]);
     console.log('[Map] projected pos:', pos, 'container:', { width, height }, 'zoom:', this.state.zoom);

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "app.worldmonitor/mcp",
+  "title": "World Monitor",
+  "description": "Live global intelligence: real-time markets, conflicts, country risk, chokepoints, energy. 39 tools.",
+  "websiteUrl": "https://www.worldmonitor.app",
+  "repository": {
+    "url": "https://github.com/koala73/worldmonitor",
+    "source": "github"
+  },
+  "version": "1.14.0",
+  "remotes": [
+    {
+      "type": "streamable-http",
+      "url": "https://worldmonitor.app/mcp"
+    }
+  ]
+}

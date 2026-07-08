@@ -32,12 +32,17 @@ const LEGACY_DASHBOARD_ROOT_QUERY_KEYS = ['lat', 'lon', 'zoom', 'view', 'timeRan
 //   public/api/llms.txt). It MUST bypass the bot gate — AI crawlers (ClaudeBot,
 //   GPTBot, PerplexityBot, CCBot, …) are the entire audience for an llms.txt,
 //   yet every one of those UAs matches BOT_UA and would otherwise 403.
+// - /api/product-catalog: public read-only pricing catalog (Redis-cached,
+//   keyless, advertised as service-meta in /.well-known/api-catalog). Agents
+//   evaluating the product are a primary audience; an agent-journey run (#4854)
+//   got 403 here and concluded the endpoint didn't exist.
 const PUBLIC_API_PATHS = new Set([
   '/api/version',
   '/api/health',
   '/api/seed-contract-probe',
   '/api/internal/brief-why-matters',
   '/api/llms.txt',
+  '/api/product-catalog',
 ]);
 
 const SOCIAL_IMAGE_UA =
@@ -228,8 +233,17 @@ export default function middleware(request: Request) {
     }
   }
 
-  // Only apply bot filtering to /api/* and /favico/* paths
-  if (!path.startsWith('/api/') && !path.startsWith('/favico/')) {
+  // Only apply bot filtering to /api/* paths.
+  //
+  // /favico/* is deliberately NOT gated: it serves public static brand
+  // assets (favicons, app icons, the email logo) that must be retrievable
+  // by ANY client — browsers, email clients and their image proxies, link
+  // unfurlers, preview scrapers. Bot-gating it broke the logo in
+  // transactional emails when a client/proxy fetched with a script-like UA
+  // (the same reason Cloudflare's "Block API Bots" rule was narrowed to
+  // /api/* only). /favico/* is also removed from the matcher below so the
+  // middleware never runs on it.
+  if (!path.startsWith('/api/')) {
     return;
   }
 
@@ -249,7 +263,6 @@ export default function middleware(request: Request) {
   // this allowlist is defence-in-depth for any well-shaped request
   // whose UA happens to be in SOCIAL_IMAGE_UA.
   if (
-    path.startsWith('/favico/') ||
     path.endsWith('.png') ||
     BRIEF_CAROUSEL_PATH_RE.test(path)
   ) {
@@ -302,5 +315,5 @@ export default function middleware(request: Request) {
 }
 
 export const config = {
-  matcher: ['/', '/api/:path*', '/favico/:path*'],
+  matcher: ['/', '/api/:path*'],
 };

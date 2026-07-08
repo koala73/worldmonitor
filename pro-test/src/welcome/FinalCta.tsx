@@ -18,13 +18,15 @@ export const FinalCta = () => (
       <div className="mt-9">
         <a
           href={`${DASHBOARD_PATH}?ref=welcome-final`}
+          data-umami-event="welcome-cta"
+          data-umami-event-target="welcome-final"
           className="bg-wm-green text-wm-bg px-10 py-4 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors inline-flex items-center gap-2"
         >
           {t('welcome.cta.button')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
         </a>
         <div className="mt-3 font-mono text-[11px] uppercase tracking-widest text-wm-muted">{t('welcome.cta.note')}</div>
       </div>
-      <a href="/pro" className="inline-block mt-6 text-sm text-wm-muted hover:text-wm-green transition-colors font-mono">
+      <a href="/pro" data-umami-event="welcome-cta" data-umami-event-target="welcome-final-pro" className="inline-block mt-6 text-sm text-wm-muted hover:text-wm-green transition-colors font-mono">
         {t('welcome.cta.secondary')}
       </a>
     </motion.div>

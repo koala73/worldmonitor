@@ -8,18 +8,18 @@ description: "Every error shape WorldMonitor's MCP server can emit — JSON-RPC 
   Every code/envelope in this page should resolve to a line below; every
   emission site below should appear in the page.
 
-  - JSON-RPC envelope helpers           api/mcp/rpc.ts:7-13
-  - Origin / method gates               api/mcp/handler.ts:35-49
-  - Top-level dispatch / -32600/-32601  api/mcp/handler.ts:66-164
-  - Auth -32001 / -32603 emitters       api/mcp/auth.ts:126-238
-  - Per-minute -32029 + hit telemetry    api/mcp/auth.ts:243-260
-  - Pro daily-cap -32029 (HTTP 429)     api/mcp/dispatch.ts:136-149
-  - Tool exec -32603                    api/mcp/dispatch.ts:239-282
-  - _budget_exceeded envelope           api/mcp/dispatch.ts:223-236
-  - _jmespath_error envelope            api/mcp/jmespath.ts:46-94
-  - JMESPath caps                       api/mcp/constants.ts:232-233
-  - Prompts -32602                      api/mcp/prompts/index.ts:296-316
-  - Resources -32602 / -32603           api/mcp/resources/index.ts:198-289
+  - JSON-RPC envelope helpers           api/mcp/rpc.ts (rpcOk, rpcError)
+  - Method gate (405 + Allow)           api/mcp/handler.ts (mcpHandler method check)
+  - Top-level dispatch / -32600/-32601  api/mcp/handler.ts (POST body parse and dispatch switch)
+  - Auth -32001 / -32603 emitters       api/mcp/auth.ts (resolveAuthContext and entitlement checks)
+  - Per-minute -32029 + hit telemetry   api/mcp/auth.ts (applyPerMinuteLimit, applyAnonDiscoveryLimit, emitMcpRateLimitHit)
+  - Pro daily-cap -32029 (HTTP 429)     api/mcp/dispatch.ts (reserveDailyQuotaForRequest)
+  - Tool exec -32603                    api/mcp/dispatch.ts (dispatchToolsCall)
+  - _budget_exceeded envelope           api/mcp/dispatch.ts (budget cap handling)
+  - _jmespath_error envelope            api/mcp/jmespath.ts (applyJmespath)
+  - JMESPath caps                       api/mcp/constants.ts (JMESPATH_LIMITS)
+  - Prompts -32602                      api/mcp/prompts/index.ts (listPrompts, getPrompt)
+  - Resources -32602 / -32603           api/mcp/resources/index.ts (listResources, readResource)
 */}
 
 This page is the practical reference: a payload arrives, you look it up, and you know what to do next. The server signals failure on three independent layers — **HTTP status**, **JSON-RPC `error.code`**, and **soft-behavior envelopes inside `result.content[0].text`** — and a single failure can touch one, two, or all three. Triage from the outside in: HTTP status → JSON-RPC code → soft envelope.
@@ -80,18 +80,19 @@ Content-Type: application/json
 
 ### `-32029` — Rate limited (per-minute OR daily)
 
-Two distinct triggers share this code; the HTTP status disambiguates.
+Per-minute and daily-cap triggers share this code; the HTTP status disambiguates.
 
-**Per-minute throttle — HTTP 200.** Sliding-window limiter at **60 requests / minute** keyed per API key (Starter+) or per Pro user (combined across all that user's tokens). The limiter runs in `api/mcp/handler.ts` **before** the method-dispatch switch, so **every** request that reaches it counts — `tools/call`, all metadata methods (`tools/list`, `describe_tool`, `prompts/list`, `resources/list`), AND the lifecycle methods (`initialize`, `notifications/initialized`, `ping`). There is no per-method exemption. (The Pro daily-cap exemption set is separate and narrower — see below.) Comes back as a JSON-RPC error inside HTTP 200 because the limiter is upstream of any per-id correlation. Fails OPEN on Upstash transient errors — single spikes in limiter-backend latency won't take the API down.
+**Per-minute throttle — HTTP 200.** Sliding-window limiter at **60 requests / minute** keyed per API key (Starter+), per Pro user (combined across all that user's tokens), or per IP for anonymous public discovery. Credentialed requests are limited after auth. Credential-less public discovery methods (`initialize`, `notifications/initialized`, `tools/list`, `resources/list`, `resources/templates/list`) and anonymous public-resource reads are served without auth but still pass through the anonymous discovery limiter. Credential-less data/quota methods, or metadata methods outside that public set, do **not** use anonymous discovery — they fail closed with `-32001` / HTTP 401. Comes back as a JSON-RPC error inside HTTP 200 because the limiter is upstream of any per-id correlation. Fails OPEN on Upstash transient errors — single spikes in limiter-backend latency won't take the API down.
 
 When the per-minute limiter rejects, the handler emits a durable `mcp.rate_limit_hit` telemetry event with an allowlisted identity shape. The plan-limit scanner uses that event for sustained-burst notices; it does not infer customer-facing MCP burst notices from raw Upstash limiter internals.
 
-The `message` text identifies which limiter fired. Two distinct strings:
+The `message` text identifies which limiter fired. Three distinct strings:
 
-| Auth context           | `message`                                                        | Site                  |
-|------------------------|------------------------------------------------------------------|-----------------------|
-| `X-WorldMonitor-Key`   | `Rate limit exceeded. Max 60 requests per minute per API key.`   | `api/mcp/auth.ts:249` |
-| Pro OAuth bearer       | `Rate limit exceeded. Max 60 requests per minute per Pro user.`  | `api/mcp/auth.ts:257` |
+| Auth context                              | `message`                                                                           | Site                                                    |
+|-------------------------------------------|-------------------------------------------------------------------------------------|---------------------------------------------------------|
+| `X-WorldMonitor-Key`                      | `Rate limit exceeded. Max 60 requests per minute per API key.`                      | `api/mcp/auth.ts` `applyPerMinuteLimit` API-key branch  |
+| Pro OAuth bearer                          | `Rate limit exceeded. Max 60 requests per minute per Pro user.`                     | `api/mcp/auth.ts` `applyPerMinuteLimit` Pro branch      |
+| No credential on anonymous discovery path | `Rate limit exceeded. Max 60 unauthenticated discovery requests per minute per IP.` | `api/mcp/auth.ts` `applyAnonDiscoveryLimit`             |
 
 Example payload (Pro variant — env_key clients get the same envelope shape with the API-key message string):
 
@@ -163,12 +164,12 @@ The most common error code, shared across `tools/call`, `prompts/get`, `resource
 
 | Trigger                                                | Site                              | Example `message`                                                          |
 |--------------------------------------------------------|-----------------------------------|----------------------------------------------------------------------------|
-| `tools/call` with no/non-string `name`                 | `api/mcp/dispatch.ts:113`         | `Invalid params: missing tool name`                                        |
-| `tools/call` with `name` that isn't in the registry    | `api/mcp/dispatch.ts:117`         | `Unknown tool: get_foo`                                                    |
-| `prompts/get` with no/non-string `name`                | `api/mcp/handler.ts:133`          | `Invalid params: missing prompt name`                                      |
-| `prompts/get` with unknown name or missing required arg | `api/mcp/prompts/index.ts:302/310` | `Unknown prompt: …` / `Missing required argument "iso2" for prompt "country-briefing"` |
+| `tools/call` with no/non-string `name`                 | `api/mcp/dispatch.ts` `dispatchToolsCall` param guard | `Invalid params: missing tool name`                         |
+| `tools/call` with `name` that isn't in the registry    | `api/mcp/dispatch.ts` `dispatchToolsCall` registry lookup | `Unknown tool: get_foo`                                  |
+| `prompts/get` with no/non-string `name`                | `api/mcp/handler.ts` `prompts/get` switch branch       | `Invalid params: missing prompt name`                        |
+| `prompts/get` with unknown name or missing required arg | `api/mcp/prompts/index.ts` `buildPromptResponse`       | `Unknown prompt: …` / `Missing required argument "iso2" for prompt "country-briefing"` |
 | `resources/read` with no/unknown/malformed `uri`       | `api/mcp/resources/index.ts` (`buildPublicResourceResponse` / `buildResourceResponse`) | `Invalid params: missing resource uri` / `Unknown resource uri "..."` |
-| `logging/setLevel` with non-string or out-of-set level | `api/mcp/handler.ts:156`          | `Invalid params: level must be one of debug, info, notice, warning, error, critical, alert, emergency` |
+| `logging/setLevel` with non-string or out-of-set level | `api/mcp/handler.ts` `logging/setLevel` switch branch  | `Invalid params: level must be one of debug, info, notice, warning, error, critical, alert, emergency` |
 
 ```json
 {
@@ -214,9 +215,9 @@ The `message` text identifies the trigger. Three sites emit a 503; two distinct 
 
 | Trigger                                         | `message`                                              | Site                              |
 |-------------------------------------------------|--------------------------------------------------------|-----------------------------------|
-| OAuth resolution service threw (Convex blip)    | `Auth service temporarily unavailable. Try again.`     | `api/mcp/auth.ts:142`             |
-| `MCP_INTERNAL_HMAC_SECRET` unset (Pro path)     | `Service temporarily unavailable, retry in a moment.`  | `api/mcp/auth.ts:204`             |
-| Pro quota-reservation Redis failure (non-cap)   | `Service temporarily unavailable, retry in a moment.`  | `api/mcp/dispatch.ts:141`         |
+| OAuth resolution service threw (Convex blip)    | `Auth service temporarily unavailable. Try again.`     | `api/mcp/auth.ts` `resolveAuthContext` bearer branch |
+| `MCP_INTERNAL_HMAC_SECRET` unset (Pro path)     | `Service temporarily unavailable, retry in a moment.`  | `api/mcp/auth.ts` `runProPreChecks` secret preflight |
+| Pro quota-reservation Redis failure (non-cap)   | `Service temporarily unavailable, retry in a moment.`  | `api/mcp/dispatch.ts` `dispatchToolsCall` quota reservation |
 
 Client recovery is identical for all three (honour `Retry-After: 5`); the message disambiguates only for log analysis.
 
@@ -234,15 +235,13 @@ Every status the MCP handler can return. Most JSON-RPC replies — including mos
 | **202** | empty                     | n/a              | `notifications/initialized` — JSON-RPC notifications take no response body, per spec |
 | **204** | empty                     | n/a              | `OPTIONS` preflight                                                  |
 | **401** | JSON-RPC envelope         | `-32001`         | Missing/invalid/expired credentials, revoked Pro MCP token, inactive subscription. `WWW-Authenticate` header set. |
-| **403** | plain `"Forbidden"`       | n/a (NOT JSON-RPC)| `Origin` header is present and is not `https://claude.ai` or `https://claude.com`. Server-to-server callers (no `Origin`) are exempt. |
-| **405** | empty                     | n/a              | Request method is not `POST`, `HEAD`, or `OPTIONS`. `Allow: POST, HEAD, OPTIONS` header set. |
+| **405** | empty                     | n/a              | Request method is not `POST`, `GET`, `HEAD`, or `OPTIONS` (or a bare `GET` with no `Last-Event-ID`). `Allow: POST, GET, HEAD, OPTIONS` header set. |
 | **429** | JSON-RPC envelope         | `-32029`         | **Pro daily cap exceeded only.** `Retry-After: <seconds-until-UTC-midnight>` set. (Per-minute throttle returns `-32029` inside HTTP 200 — see `-32029` above.) |
 | **503** | JSON-RPC envelope         | `-32603`         | Auth service unavailable, `MCP_INTERNAL_HMAC_SECRET` misconfigured, or quota-reservation Redis failure. `Retry-After: 5`. |
 
-Two HTTP statuses appear that aren't JSON-RPC errors:
+One HTTP status appears that isn't a JSON-RPC error:
 
-- **403 with a plain `Forbidden` body** comes from origin-validation BEFORE the JSON-RPC layer runs. Don't try to `JSON.parse` the body. This is only relevant to browser-origin clients; CLI clients, Claude Desktop, and `curl` send no `Origin` header and are exempt.
-- **405 with an empty body** comes from method-validation BEFORE JSON-RPC. The handler accepts `POST` (the JSON-RPC path), `HEAD` (a 200 ack with `Content-Type: application/json`, used by uptime probes), and `OPTIONS` (CORS preflight). Anything else gets 405 + `Allow: POST, HEAD, OPTIONS`.
+- **405 with an empty body** comes from method-validation BEFORE JSON-RPC. The handler accepts `POST` (the JSON-RPC path), `GET` (the standalone SSE stream / `Last-Event-ID` replay channel), `HEAD` (a 200 ack with `Content-Type: application/json`, used by uptime probes), and `OPTIONS` (CORS preflight). A bare `GET` with no `Last-Event-ID` also returns 405 (no standalone stream is offered). Anything else gets 405 + `Allow: POST, GET, HEAD, OPTIONS`. The endpoint enforces no `Origin` allowlist: it advertises wildcard CORS and authenticates by explicit `Authorization` / `X-WorldMonitor-Key` header, so browser-origin clients (any origin) are accepted.
 
 ## Soft-behavior envelopes
 

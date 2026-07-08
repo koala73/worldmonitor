@@ -18,11 +18,19 @@
  * JSON so `/openapi.json` serves a parseable, self-describing spec alongside
  * the human-readable YAML. Wired into `build:openapi` (and therefore every
  * web-variant build + the default prebuild hook). Idempotent.
+ *
+ * It also $ref-dedupes the repeated non-2xx error responses (see
+ * openapi-dedup-responses.mjs): the 2026-07-05 rate-limit/idempotency/example
+ * doc injections grew the minified JSON from ~752 KB to ~1.04 MB, crossing the
+ * ~1 MB cap and flipping orank's function-calling check to "couldn't
+ * validate". Dedup keeps the served JSON ~814 KB with identical semantics;
+ * tests/openapi-json-dedup.test.mjs guards the size budget.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
+import { dedupeErrorResponses } from './openapi-dedup-responses.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const yamlPath = resolve(scriptDir, '../docs/api/worldmonitor.openapi.yaml');
@@ -36,11 +44,15 @@ if (!spec || typeof spec !== 'object' || typeof spec.openapi !== 'string') {
   );
 }
 
+const stats = dedupeErrorResponses(spec);
+
 // Minified: this artifact is machine-consumed (scanners/agents), and the
 // smaller payload dodges fetch-size caps. The YAML remains the human copy.
-writeFileSync(jsonPath, JSON.stringify(spec));
+const json = JSON.stringify(spec);
+writeFileSync(jsonPath, json);
 
 const pathCount = spec.paths ? Object.keys(spec.paths).length : 0;
 console.log(
-  `build-openapi-json: wrote ${jsonPath} (OpenAPI ${spec.openapi}, ${pathCount} paths)`,
+  `build-openapi-json: wrote ${jsonPath} (OpenAPI ${spec.openapi}, ${pathCount} paths, ` +
+    `${json.length} bytes; hoisted ${stats.hoisted} shared error responses into ${stats.replacedRefs} $refs)`,
 );

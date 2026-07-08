@@ -40,6 +40,14 @@ const { TOOL_REGISTRY } = mcpTesting;
 const EXCLUDED_FROM_MCP = new Map([
 
   // ===========================================================================
+  // #4920 completeness-measurement ops keys (pipeline health, not content)
+  // ===========================================================================
+  ['news:feed-health:v1',
+    'ops surface: per-feed validation status + silent-zero streaks published by the daily feed-validation workflow; consumed by api/health.js + operators, not a queryable news slice (#4920).'],
+  ['news:recall-benchmark:v1',
+    'ops surface: daily GDELT recall percentage + missed headlines for coverage monitoring; consumed by api/health.js + operators, not a queryable news slice (#4920).'],
+
+  // ===========================================================================
   // Intermediate / pipeline keys (data surfaces through a sibling tool)
   // ===========================================================================
   ['supply_chain:corridorrisk:v1',
@@ -114,6 +122,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'on-demand: written by writeSimulationPackage after deep forecast runs (matches api/health.js:466 ON_DEMAND_KEYS rationale). Internal pipeline artifact, not a queryable slice.'],
   ['forecast:simulation-outcome:latest',
     'on-demand: written by writeSimulationOutcome after simulation runs (matches api/health.js:467 ON_DEMAND_KEYS rationale). Internal pipeline artifact, not a queryable slice.'],
+  ['forecast:resolutions:v1',
+    'operational: persistent forecast resolution working ledger with raw per-forecast evidence and audit receipt state. Exposed through health and summarized by get_forecast_scorecard; raw ledger MCP access deferred until a filtered/sliced tool exists.'],
 
   // ===========================================================================
   // Recovery pillar scorer inputs — no dedicated recovery-data MCP tool yet.

@@ -30,12 +30,49 @@ export interface ClsMetricLike {
 }
 
 /**
+ * Environment facts that split the field-only CLS classes (#4580): a
+ * background-tab load revealed all at once, a top-of-page banner push, or a
+ * below-fold panel swap all produce different (hiddenAtLoad, scrollY) pairs
+ * that `largestShiftTarget` alone cannot distinguish. Injectable for tests.
+ */
+export interface ClsReportEnv {
+  /** Document was hidden when CLS reporting registered (≈ background-tab load). */
+  hiddenAtLoad?: boolean;
+  /** Document went hidden at least once before this report. */
+  hadHiddenPeriod?: boolean;
+  /** document.visibilityState at report time. */
+  visibilityState?: string;
+  /** window.scrollY at report time, rounded (0 ≈ top-of-page shift class). */
+  scrollY?: number;
+  /** `${innerWidth}x${innerHeight}` at report time. */
+  viewport?: string;
+}
+
+// Set once by registerClsReporting(); module-scope so collectClsReportEnv()
+// can answer "was this a background-tab load" long after boot.
+let hiddenAtLoad: boolean | undefined;
+let hadHiddenPeriod = false;
+
+/** Snapshot the reporting environment. Safe in non-browser contexts. */
+export function collectClsReportEnv(): ClsReportEnv {
+  if (typeof document === 'undefined' || typeof window === 'undefined') return {};
+  return {
+    hiddenAtLoad,
+    hadHiddenPeriod,
+    visibilityState: document.visibilityState,
+    scrollY: Math.round(window.scrollY),
+    viewport: `${window.innerWidth}x${window.innerHeight}`,
+  };
+}
+
+/**
  * Report one field CLS measurement to Sentry. `enqueue` is injectable for tests;
  * in production it defaults to the deferred-Sentry queue.
  */
 export function reportClsMetric(
   metric: ClsMetricLike,
   enqueue: typeof enqueueSentryCall = enqueueSentryCall,
+  env: ClsReportEnv = collectClsReportEnv(),
 ): void {
   // Volume trim: skip 'good' (<0.1) CLS and report needs-improvement / poor /
   // unknown only, so field attribution stays focused on actionable shifts.
@@ -54,6 +91,11 @@ export function reportClsMetric(
         largestShiftValue: a.largestShiftValue,
         largestShiftTime: roundMs(a.largestShiftTime),
         loadState: a.loadState,
+        hiddenAtLoad: env.hiddenAtLoad,
+        hadHiddenPeriod: env.hadHiddenPeriod,
+        visibilityState: env.visibilityState,
+        scrollY: env.scrollY,
+        viewport: env.viewport,
       },
     });
   });
@@ -67,6 +109,14 @@ export function reportClsMetric(
  */
 export function registerClsReporting(): void {
   if (typeof window === 'undefined') return;
+  // Track visibility synchronously at boot: registration runs from main.ts, so
+  // hidden-here ≈ the tab was opened in the background (cmd-click). The
+  // listener stays for the page's life to catch later hide/reveal cycles.
+  hiddenAtLoad = document.visibilityState === 'hidden';
+  hadHiddenPeriod = hiddenAtLoad;
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') hadHiddenPeriod = true;
+  });
   void import('web-vitals/attribution')
     .then(({ onCLS }) => {
       onCLS((metric) => reportClsMetric(metric as unknown as ClsMetricLike));

@@ -38,7 +38,14 @@ import {
   getRedisCredentials,
   readCanonicalValue,
 } from './_seed-utils.mjs';
+import notificationDedup from './shared/notification-dedup.cjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
+
+const {
+  buildDedupMaterial,
+  classifySetNxResult,
+  recordDedupOutcome,
+} = notificationDedup;
 
 loadEnvFile(import.meta.url);
 
@@ -316,8 +323,8 @@ async function upstashSetNx(key, value, ttlSeconds) {
   try {
     const serialized = typeof value === 'string' ? value : JSON.stringify(value);
     const result = await upstashCommand(['SET', key, serialized, 'NX', 'EX', String(ttlSeconds)]);
-    return result?.result === 'OK' ? 'OK' : null;
-  } catch { return null; }
+    return classifySetNxResult(result?.result);
+  } catch { return 'error'; }
 }
 
 async function upstashLpush(key, value) {
@@ -349,16 +356,26 @@ function notifyHash(str) {
 async function publishNotificationEvent({ eventType, payload, severity, variant, dedupTtl = 1800 }) {
   try {
     const variantSuffix = variant ? `:${variant}` : '';
-    const dedupKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${notifyHash(`${eventType}:${payload.title ?? ''}`)}`;
-    const isNew = await upstashSetNx(dedupKey, '1', dedupTtl);
-    if (!isNew) {
+    const dedupMaterial = buildDedupMaterial(eventType, payload?.title, payload?.coalesceKey);
+    const dedupKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${notifyHash(dedupMaterial)}`;
+    const dedupResult = await upstashSetNx(dedupKey, '1', dedupTtl);
+    const dedupDecision = recordDedupOutcome(dedupResult, {
+      surface: 'seed-aviation',
+      eventType,
+      severity,
+      fallbackKey: dedupKey,
+      fallbackTtlSeconds: dedupTtl,
+      emitTelemetry: ({ line }) => console.warn(line),
+    });
+    if (!dedupDecision.shouldPublish) {
+      if (!dedupDecision.isDuplicate) return;
       console.log(`[Notify] Dedup hit — ${eventType}: ${String(payload.title ?? '').slice(0, 60)}`);
       return;
     }
-    const msg = JSON.stringify({ eventType, payload, severity, ...(variant ? { variant } : {}), publishedAt: Date.now() });
+    const msg = JSON.stringify({ eventType, payload, severity: dedupDecision.severity, ...(variant ? { variant } : {}), publishedAt: Date.now() });
     const ok = await upstashLpush('wm:events:queue', msg);
     if (ok) {
-      console.log(`[Notify] Queued ${severity} event: ${eventType} — ${String(payload.title ?? '').slice(0, 60)}`);
+      console.log(`[Notify] Queued ${dedupDecision.severity} event: ${eventType} — ${String(payload.title ?? '').slice(0, 60)}`);
     } else {
       console.warn(`[Notify] LPUSH failed for ${eventType} — rolling back dedup key`);
       await upstashDel(dedupKey);
@@ -779,19 +796,36 @@ async function dispatchAviationNotifications(alerts) {
   const severeAlerts = alerts.filter(a =>
     a.severity === 'FLIGHT_DELAY_SEVERITY_SEVERE' || a.severity === 'FLIGHT_DELAY_SEVERITY_MAJOR',
   );
-  const currentIatas = new Set(severeAlerts.map(a => a.iata).filter(Boolean));
+  // Diff identity MUST match the publisher coalesce key (airport + severity band).
+  // Diffing by airport alone would filter a MAJOR->SEVERE escalation for an
+  // already-alerted airport out HERE — before the severity-aware coalesce key is
+  // ever reached — so the escalation would never publish (PR #4985 review P1).
+  const aviationSeverityBand = a => (a.severity === 'FLIGHT_DELAY_SEVERITY_SEVERE' ? 'critical' : 'high');
+  const aviationAlertKey = a => `${a.iata}:${aviationSeverityBand(a)}`;
+  const currentKeys = new Set(severeAlerts.filter(a => a.iata).map(aviationAlertKey));
   const prev = await upstashGet(AVIATION_PREV_ALERTED_KEY);
   const prevSet = new Set(Array.isArray(prev) ? prev : []);
-  const newAlerts = severeAlerts.filter(a => a.iata && !prevSet.has(a.iata));
+  const newAlerts = severeAlerts.filter(a => a.iata && !prevSet.has(aviationAlertKey(a)));
 
   // Persist current set for next tick's diff (24h TTL guards restarts).
-  await upstashSet(AVIATION_PREV_ALERTED_KEY, [...currentIatas], PREV_STATE_TTL);
+  // Keyed by airport+severity so a later band change is seen as a new state.
+  await upstashSet(AVIATION_PREV_ALERTED_KEY, [...currentKeys], PREV_STATE_TTL);
 
   for (const a of newAlerts.slice(0, 3)) {
+    const severity = aviationSeverityBand(a);
     await publishNotificationEvent({
       eventType: 'aviation_closure',
-      payload: { title: `${a.iata}${a.city ? ` (${a.city})` : ''}: ${a.reason || 'Airport disruption'}`, source: 'AviationStack' },
-      severity: a.severity === 'FLIGHT_DELAY_SEVERITY_SEVERE' ? 'critical' : 'high',
+      payload: {
+        title: `${a.iata}${a.city ? ` (${a.city})` : ''}: ${a.reason || 'Airport disruption'}`,
+        source: 'AviationStack',
+        // Coalesce by airport + severity band: repeated same-band disruptions
+        // collapse, but a MAJOR->SEVERE escalation produces a distinct key — and
+        // the prev-state diff above uses the SAME identity, so the escalation is
+        // not filtered upstream (mirrors marketAlertCoalesceKey; prefix matches
+        // the aviation_closure eventType and the notam:closure sibling). PR #4985.
+        coalesceKey: `aviation:closure:${a.iata}:${severity}`,
+      },
+      severity,
       variant: undefined,
       dedupTtl: 14_400, // 4h
     });
@@ -808,7 +842,11 @@ async function dispatchNotamNotifications(closedIcaos, reasons) {
   for (const icao of newClosures.slice(0, 3)) {
     await publishNotificationEvent({
       eventType: 'notam_closure',
-      payload: { title: `NOTAM: ${icao} — ${reasons[icao] || 'Airport closure'}`, source: 'ICAO NOTAM' },
+      payload: {
+        title: `NOTAM: ${icao} — ${reasons[icao] || 'Airport closure'}`,
+        source: 'ICAO NOTAM',
+        coalesceKey: `notam:closure:${icao}`,
+      },
       severity: 'high',
       variant: undefined,
       dedupTtl: 21_600, // 6h

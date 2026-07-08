@@ -334,15 +334,30 @@ const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
 
 const I18N_PREFIX = 'components.deckgl.layers.';
 
+// Iran-events domain sunset (war ended 2026-07). Default OFF: hide the layer
+// from the picker (getLayersForVariant), strip it from any restored MapLayers
+// (getAllowedLayerKeys → sanitizeLayersForVariant), and make CMD+K skip it
+// (isLayerExecutable). Set VITE_ENABLE_IRAN_ATTACKS=true (+ backend
+// IRAN_EVENTS_ENABLED=true) and rebuild to restore. Mirrors CYBER_LAYER_ENABLED.
+// Guarded with isClientRuntime so `import.meta.env` (undefined under node:test,
+// where this config module is imported directly) is never dereferenced there —
+// see src/services/maritime/index.ts and tests/browser-bundle-secret-guard.
+const IRAN_ATTACKS_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_IRAN_ATTACKS === 'true';
+
+function isSunsetLayer(key: keyof MapLayers): boolean {
+  return !IRAN_ATTACKS_ENABLED && key === 'iranAttacks';
+}
+
 export function getLayersForVariant(variant: MapVariant, renderer: MapRenderer): LayerDefinition[] {
   const keys = VARIANT_LAYER_ORDER[variant] ?? VARIANT_LAYER_ORDER.full;
   return keys
+    .filter(k => !isSunsetLayer(k))
     .map(k => LAYER_REGISTRY[k])
     .filter(d => d.renderers.includes(renderer));
 }
 
 export function getAllowedLayerKeys(variant: MapVariant): Set<keyof MapLayers> {
-  return new Set(VARIANT_LAYER_ORDER[variant] ?? VARIANT_LAYER_ORDER.full);
+  return new Set((VARIANT_LAYER_ORDER[variant] ?? VARIANT_LAYER_ORDER.full).filter(k => !isSunsetLayer(k)));
 }
 
 export function sanitizeLayersForVariant(layers: MapLayers, variant: MapVariant): MapLayers {
@@ -371,6 +386,7 @@ export function isLayerExecutable(
   currentRenderer: MapRenderer,
   isDeckGLActive: boolean,
 ): boolean {
+  if (isSunsetLayer(layerKey)) return false;
   const def = LAYER_REGISTRY[layerKey];
   if (!def) return false;
   if (!def.renderers.includes(currentRenderer)) return false;

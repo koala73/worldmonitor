@@ -90,7 +90,12 @@ export type RequestReason =
   | 'idempotency_invalid'
   | 'idempotent_replay'
   | 'idempotency_conflict'
-  | 'idempotency_mismatch';
+  | 'idempotency_mismatch'
+  // #4866 — auth backend (Convex/Redis) unreachable during credential or
+  // entitlement resolution on /mcp: the caller was told 503 + Retry-After.
+  // Distinct from auth_401 so a backend outage never reads as a wave of
+  // invalid credentials.
+  | 'auth_unavailable';
 
 export interface RequestEvent {
   _time: string;
@@ -146,9 +151,65 @@ export interface UpstreamEvent {
   cache_status: CacheStatus;
 }
 
-export type UsageEvent = RequestEvent | UpstreamEvent;
+// #4895 — per-completion LLM spend attribution. One event per PROVIDER
+// ATTEMPT (not per logical call): a fallback chain that re-sends the prompt
+// shows up as fallback_index 0..n, making retry amplification queryable.
+export interface LlmCallEvent {
+  _time: string;
+  event_type: 'llm_call';
+  provider: string;
+  model: string;
+  /** Caller surface tag, e.g. 'classify-event', 'country-intel-brief'. 'unknown' when untagged. */
+  stage: string;
+  ok: boolean;
+  duration_ms: number;
+  tokens_total: number;
+  tokens_prompt: number;
+  tokens_completion: number;
+  /** Input size in characters — recorded even when the provider omits usage. */
+  prompt_chars: number;
+  max_tokens: number;
+  /** 0 = first provider attempted; 1+ = fallbacks (each re-sends the full prompt). */
+  fallback_index: number;
+  /** '' on success; 'http_<status>' | 'timeout' | 'fetch_error' | 'empty' | 'stripped_empty' | 'validate_reject'. */
+  reason: string;
+}
+
+export type UsageEvent = RequestEvent | UpstreamEvent | LlmCallEvent;
 
 // ---------- Builders (allowlisted primitives only) ----------
+
+export function buildLlmCallEvent(p: {
+  provider: string;
+  model: string;
+  stage: string;
+  ok: boolean;
+  durationMs: number;
+  tokensTotal?: number;
+  tokensPrompt?: number;
+  tokensCompletion?: number;
+  promptChars: number;
+  maxTokens: number;
+  fallbackIndex: number;
+  reason?: string;
+}): LlmCallEvent {
+  return {
+    _time: new Date().toISOString(),
+    event_type: 'llm_call',
+    provider: p.provider,
+    model: p.model,
+    stage: p.stage,
+    ok: p.ok,
+    duration_ms: Math.round(p.durationMs),
+    tokens_total: p.tokensTotal ?? 0,
+    tokens_prompt: p.tokensPrompt ?? 0,
+    tokens_completion: p.tokensCompletion ?? 0,
+    prompt_chars: p.promptChars,
+    max_tokens: p.maxTokens,
+    fallback_index: p.fallbackIndex,
+    reason: p.reason ?? '',
+  };
+}
 
 export function buildRequestEvent(p: {
   requestId: string;

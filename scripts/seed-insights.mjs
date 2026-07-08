@@ -10,7 +10,15 @@ import {
 } from './_clustering.mjs';
 import { extractCountryCode } from './shared/geo-extract.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
-import { pickBriefCluster, briefSystemPrompt, briefUserPrompt } from './_insights-brief.mjs';
+import {
+  pickBriefCluster,
+  briefSystemPrompt,
+  briefUserPrompt,
+  synthesisSystemPrompt,
+  synthesisUserPrompt,
+  composeSynthesizedBrief,
+} from './_insights-brief.mjs';
+import { buildLlmCallEvent, emitLlmEvents, flushPendingLlmEvents } from './lib/llm-telemetry.cjs';
 // Import from the scripts mirror (`scripts/shared/`) — NOT the repo-root
 // `shared/`. Railway services with nixpacks `rootDirectory=scripts` only
 // package files under scripts/; a `../shared/` import resolves to
@@ -25,8 +33,11 @@ import { validateNoHallucinatedProperNouns } from './shared/brief-llm-core.js';
 // output unchanged (default, safe). `enforce` = on violation, replace
 // the LLM summary with the source headline. Flip via Railway env after
 // the 7-day shadow window confirms <5% violation rate.
+// #4921: enforce is the DEFAULT — the shadow window measured its
+// false-positive rate; shipping detected hallucinations was the residual
+// risk. Set BRIEF_VALIDATOR_MODE=shadow to revert during an incident.
 const BRIEF_VALIDATOR_MODE =
-  process.env.BRIEF_VALIDATOR_MODE === 'enforce' ? 'enforce' : 'shadow';
+  process.env.BRIEF_VALIDATOR_MODE === 'shadow' ? 'shadow' : 'enforce';
 
 // True only when run directly as a cron entry (node seed-insights.mjs), false
 // when imported by tests — so importing the module doesn't load .env or fire a
@@ -65,7 +76,7 @@ const CACHE_TTL = 10800; // 3h — 6x the 30 min cron interval. Shorter = key ex
                          // is gated at brief-selection time (see pickBriefCluster + briefSystemPrompt
                          // in _insights-brief.mjs), not by aging out fast.
 const MAX_HEADLINE_LEN = 500;
-const GROQ_MODEL = 'llama-3.1-8b-instant';
+const GROQ_MODEL = 'llama-3.3-70b-versatile';
 
 const TASK_NARRATION = /^(we need to|i need to|let me|i'll |i should|i will |the task is|the instructions|according to the rules|so we need to|okay[,.]\s*(i'll|let me|so|we need|the task|i should|i will)|sure[,.]\s*(i'll|let me|so|we need|the task|i should|i will|here)|first[, ]+(i|we|let)|to summarize (the headlines|the task|this)|my task (is|was|:)|step \d)/i;
 const PROMPT_ECHO = /^(summarize the top story|summarize the key|rules:|here are the rules|the top story is likely)/i;
@@ -119,6 +130,54 @@ function briefSourceFromStory(story) {
   return publishedAt ? { title, source, url, publishedAt } : { title, source, url };
 }
 
+/**
+ * #4928: the legacy single-headline brief, extracted intact from the main
+ * flow (L2 of the fallback chain). Corroboration-gated via
+ * pickBriefCluster; enforce/shadow semantics unchanged.
+ */
+async function generateLegacySingleHeadlineBrief(topStories) {
+  const briefCluster = pickBriefCluster(topStories);
+  const topHeadline = briefCluster ? sanitizeTitle(briefCluster.primaryTitle) : '';
+  const worldBriefSources = briefCluster ? [briefSourceFromStory(briefCluster)].filter(Boolean) : [];
+
+  if (!topHeadline) {
+    console.warn('  No multi-source cluster available — publishing degraded (stories without brief)');
+    return { worldBrief: '', briefProvider: '', briefModel: '', worldBriefSources, status: 'degraded' };
+  }
+
+  const llmResult = await callLLM(topHeadline);
+  if (!llmResult) {
+    console.warn('  No LLM available — publishing degraded (stories without brief)');
+    return { worldBrief: '', briefProvider: '', briefModel: '', worldBriefSources, status: 'degraded' };
+  }
+
+  // Hallucination check: did the LLM invent proper nouns not in the
+  // headline? (May 19 incident: "Lebanese President Michel Aoun pledged…"
+  // against a nameless headline. docs/plans/2026-05-19-001 U2.)
+  const validation = validateNoHallucinatedProperNouns(llmResult.text, topHeadline);
+  if (!validation.ok) {
+    const hallucinated = (validation.hallucinated || []).join(' ');
+    if (BRIEF_VALIDATOR_MODE === 'enforce') {
+      console.warn(`  [brief_hallucination ENFORCE] dropped LLM summary: invented "${hallucinated}" not in headline; fell back to headline`);
+      return {
+        worldBrief: topHeadline,
+        briefProvider: `${llmResult.provider}+headline-fallback`,
+        briefModel: llmResult.model,
+        worldBriefSources,
+        status: 'ok',
+      };
+    }
+    console.warn(`  [brief_hallucination SHADOW] would have dropped LLM summary: invented "${hallucinated}" not in headline`);
+  }
+  return {
+    worldBrief: llmResult.text,
+    briefProvider: llmResult.provider,
+    briefModel: llmResult.model,
+    worldBriefSources,
+    status: 'ok',
+  };
+}
+
 async function readDigestFromRedis() {
   const { url, token } = getRedisCredentials();
   const resp = await fetch(`${url}/get/${encodeURIComponent(DIGEST_KEY)}`, {
@@ -142,7 +201,8 @@ async function readExistingInsights() {
 }
 
 // Provider config — mirrors server/_shared/llm.ts getProviderCredentials()
-// Order: ollama → groq → openrouter (canonical chain)
+// Order: ollama → openrouter → groq (canonical chain since #4944: DeepSeek
+// V4 Flash primary with reasoning disabled, groq 70B free-tier fallback)
 const LLM_PROVIDERS = [
   {
     name: 'ollama',
@@ -159,20 +219,21 @@ const LLM_PROVIDERS = [
     timeout: 25_000,
   },
   {
+    name: 'openrouter',
+    envKey: 'OPENROUTER_API_KEY',
+    apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
+    model: 'deepseek/deepseek-v4-flash',
+    headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': CHROME_UA }),
+    extraBody: { reasoning: { enabled: false } },
+    timeout: 20_000,
+  },
+  {
     name: 'groq',
     envKey: 'GROQ_API_KEY',
     apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
     model: GROQ_MODEL,
     headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA }),
     timeout: 15_000,
-  },
-  {
-    name: 'openrouter',
-    envKey: 'OPENROUTER_API_KEY',
-    apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
-    model: 'google/gemini-2.5-flash',
-    headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': CHROME_UA }),
-    timeout: 20_000,
   },
 ];
 
@@ -192,8 +253,13 @@ function __setInsightsLlmTransportForTests(overrides = null) {
 }
 
 async function callLLM(headline, options = {}) {
-  const systemPrompt = briefSystemPrompt(new Date().toISOString().split('T')[0]);
-  const userPrompt = briefUserPrompt(headline);
+  // #4921: callers may supply explicit prompts (the top-8 synthesis call);
+  // the headline default keeps the legacy single-headline path and its
+  // retry tests unchanged.
+  const systemPrompt = options.systemPrompt
+    ?? briefSystemPrompt(new Date().toISOString().split('T')[0]);
+  const userPrompt = options.userPrompt ?? briefUserPrompt(headline);
+  const maxTokens = Number.isFinite(options.maxTokens) ? options.maxTokens : 300;
 
   const insightsFetch = insightsLlmFetchForTests || ((...args) => globalThis.fetch(...args));
   const callBudgetMs = Number.isFinite(options.callBudgetMs)
@@ -205,12 +271,28 @@ async function callLLM(headline, options = {}) {
   const budgetStartedAtMs = Date.now();
   const usableBudgetMs = () => Math.max(0, budgetStartedAtMs + callBudgetMs - Date.now() - INSIGHTS_LLM_CALL_BUDGET_GUARD_MS);
 
+  // llm_call telemetry (#4944 U5): one event per provider OUTCOME (the
+  // withRetry duration covers in-provider retries), unified with the
+  // Vercel-side stream via scripts/lib/llm-telemetry.cjs.
+  const promptChars = (systemPrompt?.length ?? 0) + (userPrompt?.length ?? 0);
+  const events = [];
+  let attemptIndex = 0;
+
   for (const provider of LLM_PROVIDERS) {
     const envVal = process.env[provider.envKey];
     if (!envVal) continue;
 
     const apiUrl = provider.apiUrlFn ? provider.apiUrlFn(envVal) : provider.apiUrl;
     const model = typeof provider.model === 'function' ? provider.model() : provider.model;
+    const t0 = Date.now();
+    const record = (ok, extra = {}) => {
+      events.push(buildLlmCallEvent({
+        provider: provider.name, model, stage: 'seed-insights', ok,
+        durationMs: Date.now() - t0, promptChars, maxTokens: 300,
+        fallbackIndex: attemptIndex++,
+        ...extra,
+      }));
+    };
 
     try {
       const resp = await withRetry(async () => {
@@ -225,7 +307,7 @@ async function callLLM(headline, options = {}) {
               { role: 'system', content: systemPrompt },
               { role: 'user', content: userPrompt },
             ],
-            max_tokens: 300,
+            max_tokens: maxTokens,
             temperature: 0.1,
             ...provider.extraBody,
           }),
@@ -238,9 +320,15 @@ async function callLLM(headline, options = {}) {
       }, INSIGHTS_LLM_MAX_RETRIES, retryDelayMs);
 
       const json = await resp.json();
+      const usage = {
+        tokensTotal: json.usage?.total_tokens ?? 0,
+        tokensPrompt: json.usage?.prompt_tokens ?? 0,
+        tokensCompletion: json.usage?.completion_tokens ?? 0,
+      };
       const rawText = json.choices?.[0]?.message?.content?.trim();
       if (!rawText) {
         console.warn(`  ${provider.name}: empty response`);
+        record(false, { ...usage, reason: 'empty' });
         continue;
       }
 
@@ -252,17 +340,31 @@ async function callLLM(headline, options = {}) {
 
       if (text.length < 20) {
         console.warn(`  ${provider.name}: output too short (${text.length} chars)`);
+        record(false, { ...usage, reason: 'too_short' });
         continue;
       }
 
+      record(true, { ...usage, model: json.model || model });
+      void emitLlmEvents(events); // fire-and-forget: telemetry never delays the return path
       return { text, model: json.model || model, provider: provider.name };
     } catch (err) {
       console.warn(`  ${provider.name} failed: ${err.message}`);
+      const httpMatch = /HTTP (\d{3})/.exec(err.message || '');
+      record(false, {
+        reason: isLlmBudgetError(err) ? 'budget_exhausted'
+          : err?.name === 'TimeoutError' || err?.name === 'AbortError' ? 'timeout'
+          : httpMatch ? `http_${httpMatch[1]}`
+          : 'fetch_error',
+      });
       // Budget spent — give up rather than burning the next provider's timeout.
-      if (isLlmBudgetError(err)) return null;
+      if (isLlmBudgetError(err)) {
+        void emitLlmEvents(events); // fire-and-forget: telemetry never delays the return path
+        return null;
+      }
     }
   }
 
+  void emitLlmEvents(events); // fire-and-forget: telemetry never delays the return path
   return null;
 }
 
@@ -397,7 +499,9 @@ async function fetchInsights() {
   const clusters = clusterItems(normalizedItems);
   console.log(`  Clusters: ${clusters.length}`);
 
-  const topStories = selectTopStories(clusters, 8);
+  // #4920 coverage ledger: capture what the selection gates dropped.
+  const selectionStats = {};
+  const topStories = selectTopStories(clusters, 8, selectionStats);
   console.log(`  Top stories: ${topStories.length}`);
   const observability = buildImportanceObservability(clusters, topStories);
   console.log(
@@ -417,59 +521,56 @@ async function fetchInsights() {
   // continues to include single-source clusters, rendered as the headline list
   // under the brief. The brief paragraph is the one surface where corroboration
   // matters; the list is already visually marked with per-story sourceCount.
-  const briefCluster = pickBriefCluster(topStories);
-  const topHeadline = briefCluster ? sanitizeTitle(briefCluster.primaryTitle) : '';
-  const worldBriefSources = briefCluster ? [briefSourceFromStory(briefCluster)].filter(Boolean) : [];
-
+  // #4921/#4928: L1 = top-8 synthesis via the pure composer (parse +
+  // corroboration gate + lead noun/anchor gates + per-line enforcement +
+  // citation verification + index-locked sources — all unit-tested in
+  // _insights-brief.mjs). L2 = legacy single-headline brief. Degraded last.
+  // The brief always ships.
   let worldBrief = '';
   let briefProvider = '';
   let briefModel = '';
+  let briefStoryLines = [];
+  let worldBriefSources = [];
   let status = 'ok';
 
-  if (!topHeadline) {
-    status = 'degraded';
-    console.warn('  No multi-source cluster available — publishing degraded (stories without brief)');
-  } else {
-    const llmResult = await callLLM(topHeadline);
-    if (llmResult) {
-      // Hallucination check: did the LLM invent proper nouns not in
-      // the headline? The May 19 brief shipped "Lebanese President
-      // Michel Aoun pledged..." against a headline that contained no
-      // name. See docs/plans/2026-05-19-001 U2.
-      const validation = validateNoHallucinatedProperNouns(llmResult.text, topHeadline);
-      if (!validation.ok) {
-        const hallucinated = (validation.hallucinated || []).join(' ');
-        if (BRIEF_VALIDATOR_MODE === 'enforce') {
-          // Replace the LLM summary with the source headline. R1 of the
-          // plan: "falls back to a safe summary (headline-grounded
-          // template) rather than publishing the hallucination."
-          worldBrief = topHeadline;
-          briefProvider = `${llmResult.provider}+headline-fallback`;
-          briefModel = llmResult.model;
-          console.warn(
-            `  [brief_hallucination ENFORCE] dropped LLM summary: invented "${hallucinated}" not in headline; fell back to headline`
-          );
-        } else {
-          // Shadow mode: log but ship the LLM output. The 7-day rollout
-          // window measures the false-positive rate before flipping to
-          // enforce.
-          worldBrief = llmResult.text;
-          briefProvider = llmResult.provider;
-          briefModel = llmResult.model;
-          console.warn(
-            `  [brief_hallucination SHADOW] would have dropped LLM summary: invented "${hallucinated}" not in headline`
-          );
-        }
-      } else {
-        worldBrief = llmResult.text;
-        briefProvider = llmResult.provider;
-        briefModel = llmResult.model;
-        console.log(`  Brief generated via ${briefProvider} (${briefModel})`);
-      }
-    } else {
-      status = 'degraded';
-      console.warn('  No LLM available — publishing degraded (stories without brief)');
+  const synthesisResult = topStories.length > 0
+    ? await callLLM(null, {
+        systemPrompt: synthesisSystemPrompt(new Date().toISOString().split('T')[0]),
+        userPrompt: synthesisUserPrompt(topStories),
+        maxTokens: 900,
+      })
+    : null;
+  const composed = synthesisResult
+    ? composeSynthesizedBrief(synthesisResult.text, topStories, {
+        validatorMode: BRIEF_VALIDATOR_MODE,
+        sanitizeTitle,
+        sourceFromStory: briefSourceFromStory,
+      })
+    : null;
+
+  if (composed) {
+    worldBrief = composed.lead;
+    briefStoryLines = composed.lines;
+    worldBriefSources = composed.sources;
+    briefProvider = synthesisResult.provider;
+    briefModel = synthesisResult.model;
+    if (composed.strippedCitations > 0) {
+      console.warn(`  [brief_citation ENFORCE] stripped ${composed.strippedCitations} out-of-range citation(s)`);
     }
+    if (composed.hallucinatedLines > 0) {
+      console.warn(`  [brief_hallucination ${BRIEF_VALIDATOR_MODE.toUpperCase()}] ${composed.hallucinatedLines}/${topStories.length} synthesis lines flagged`);
+    }
+    console.log(`  Brief synthesized (top-${topStories.length}) via ${briefProvider} (${briefModel})`);
+  } else {
+    if (synthesisResult) {
+      console.warn('  [brief_synthesis] composer rejected output (parse/gates) — falling back to single-headline brief');
+    }
+    const legacy = await generateLegacySingleHeadlineBrief(topStories);
+    worldBrief = legacy.worldBrief;
+    briefProvider = legacy.briefProvider;
+    briefModel = legacy.briefModel;
+    worldBriefSources = legacy.worldBriefSources;
+    status = legacy.status;
   }
 
   const multiSourceCount = clusters.filter(c => (c.sources?.length ?? 0) >= 2 || c.entityCorroboration === true).length;
@@ -507,8 +608,38 @@ async function fetchInsights() {
     };
   });
 
+  // #4920: user-facing provenance — "compiled from N stories across M
+  // sources" — plus the selection-gate drop counts. Read by
+  // insights-loader/InsightsPanel; no proto involved (plain Redis JSON).
+  const provenance = {
+    storiesConsidered: normalizedItems.length,
+    sourcesConsidered: new Set(normalizedItems.map(item => item.source).filter(Boolean)).size,
+    selectionDrops: {
+      admissibility: selectionStats.admissibilityDropped ?? 0,
+      sourceCap: selectionStats.sourceCapDropped ?? 0,
+      overflow: selectionStats.overflowDropped ?? 0,
+    },
+  };
+  console.log(
+    `  Provenance: ${provenance.storiesConsidered} stories / ${provenance.sourcesConsidered} sources; ` +
+      `drops adm=${provenance.selectionDrops.admissibility} srcCap=${provenance.selectionDrops.sourceCap} overflow=${provenance.selectionDrops.overflow}`,
+  );
+
+  // #4921 staleness footer: the age window of the BRIEF'S OWN material —
+  // the top stories the synthesis cites — not the whole digest pool
+  // (#4928 external review: an unrelated fresh item made the footer claim
+  // the brief's sources were fresher than they are).
+  const pubTimes = topStories
+    .map(story => new Date(story.pubDate).getTime())
+    .filter(Number.isFinite);
+  const sourceAgeRange = pubTimes.length > 0
+    ? { newestMs: Math.max(...pubTimes), oldestMs: Math.min(...pubTimes) }
+    : null;
+
   const payload = {
     worldBrief,
+    briefStoryLines,
+    sourceAgeRange,
     worldBriefSources,
     briefProvider,
     briefModel,
@@ -519,6 +650,7 @@ async function fetchInsights() {
     multiSourceCount,
     fastMovingCount,
     importanceSignals: observability,
+    provenance,
   };
 
   // LKG preservation: don't overwrite "ok" with "degraded"
@@ -552,9 +684,12 @@ if (_isDirectRun) {
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 30,
-  }).catch((err) => {
+  }).catch(async (err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
-    // Exit gracefully for cron — health endpoint flags stale data via seed-meta.
+    // Exit gracefully for cron — health endpoint flags stale data via
+    // seed-meta. process.exit does not drain in-flight promises — flush
+    // llm_call telemetry first (bounded by the 1.5s fetch timeout).
+    await flushPendingLlmEvents();
     process.exit(0);
   });
 }

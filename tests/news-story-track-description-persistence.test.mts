@@ -346,7 +346,7 @@ describe('buildStoryTrackHsetFields — story:track:v1 HSET contract', () => {
 });
 
 describe('fetchAndParseRss — cache prefix invalidation contract', () => {
-  it('rss:feed cache prefix is v5 (post-isEphemeralLiveCoverage), not v4', () => {
+  it('rss:feed cache prefix is v6 (post-droppedFeedCap, #4920), not v4/v5', () => {
     // Pre-PR ParsedItems cached at rss:feed:v4 lack the
     // isEphemeralLiveCoverage field. If a cache hit returned one of those,
     // the falsy-coerce in
@@ -363,13 +363,15 @@ describe('fetchAndParseRss — cache prefix invalidation contract', () => {
       resolve(__dirname, '..', 'server', 'worldmonitor', 'news', 'v1', 'list-feed-digest.ts'),
       'utf-8',
     );
+    // v5→v6 (#4920 review): ParseResult gained droppedFeedCap; warm v5
+    // rows lack it and would undercount the coverage ledger for their TTL.
     assert.ok(
-      src.includes("`rss:feed:v5:${variant}:${feed.url}`"),
-      'rss:feed cache key must use v5 prefix — see comment above the cacheKey assignment in fetchAndParseRss',
+      src.includes("`rss:feed:v6:${variant}:${feed.url}`"),
+      'rss:feed cache key must use v6 prefix — see comment above the cacheKey assignment in fetchAndParseRss',
     );
     assert.ok(
-      !src.includes("`rss:feed:v4:${variant}:${feed.url}`"),
-      'must NOT leave a residual v4 cacheKey assignment — would silently revert the cutover',
+      !src.includes("`rss:feed:v5:${variant}:${feed.url}`") && !src.includes("`rss:feed:v4:${variant}:${feed.url}`"),
+      'must NOT leave a residual v4/v5 cacheKey assignment — would silently revert the cutover',
     );
   });
 });

@@ -1602,7 +1602,10 @@
       "tonePositive": "Positiv",
       "overall": "Gesamt: {{tone}}",
       "signalTypesEvents": "{{types}} Signaltypen • {{events}} Ereignisse",
-      "newsSignals": "{{news}} Nachrichten • {{signals}} Signale"
+      "newsSignals": "{{news}} Nachrichten • {{signals}} Signale",
+      "provenanceTitle": "Abdeckungsherkunft: Anzahl der erfassten Stories und unterschiedlichen Quellen, aus denen dieser Brief ausgewählt wurde",
+      "compiledFrom": "Zusammengestellt aus {{stories}} Geschichten über {{sources}} Quellen",
+      "briefFreshness": "Generiert vor {{minutes}}m · neueste Quelle {{hours}}h alt"
     },
     "etfFlows": {
       "unavailable": "ETF-Daten vorübergehend nicht verfügbar",

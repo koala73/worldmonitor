@@ -19,7 +19,7 @@ import { timingSafeEqualSecret } from '../api/_crypto.js';
 import { captureSilentError } from '../api/_sentry-edge.js';
 import { mapErrorToResponse } from './error-mapper';
 import { checkRateLimit, checkEndpointRateLimit, hasEndpointRatePolicy } from './_shared/rate-limit';
-import { drainResponseHeaders } from './_shared/response-headers';
+import { drainResponseHeaders, drainSuccessStatusOverride } from './_shared/response-headers';
 import { projectJsonResponse } from './_shared/response-projection';
 import { checkEntitlementDetailed, getRequiredTier, getEntitlements, type CachedEntitlements } from './_shared/entitlement-check';
 import { resolveClerkSession } from './_shared/auth-session';
@@ -178,6 +178,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/infrastructure/v1/list-internet-outages': 'slow',
   '/api/infrastructure/v1/list-internet-ddos-attacks': 'slow',
   '/api/infrastructure/v1/list-internet-traffic-anomalies': 'slow',
+  '/api/forecast/v1/get-forecast-scorecard': 'fast',
 
   '/api/unrest/v1/list-unrest-events': 'slow',
   '/api/cyber/v1/list-cyber-threats': 'static',
@@ -1608,6 +1609,18 @@ export function createDomainGateway(
     }
     attachRequiredBboxDiagnosticHeaders(mergedHeaders, pathname, requiredBboxDiagnostic);
 
+    // Handler side-channel status override (setSuccessStatusOverride): applied
+    // only when the handler actually produced a 200 on a POST — async-enqueue
+    // endpoints (run-scenario) upgrade their success to 202 Accepted, while
+    // thrown ApiError statuses always win. GET success flows are excluded:
+    // the ETag/304 + CDN-cache path below assumes 200. Always drained so a
+    // set-but-unapplied override can't leak state.
+    const statusOverride = drainSuccessStatusOverride(request);
+    const finalStatus =
+      statusOverride !== undefined && request.method === 'POST' && response.status === 200
+        ? statusOverride
+        : response.status;
+
     // For GET 200 responses: read body once for cache-header decisions + ETag
     let resolvedCacheTier: CacheTier | null = null;
     if (response.status === 200 && request.method === 'GET' && response.body) {
@@ -1753,11 +1766,11 @@ export function createDomainGateway(
       // record rather than a lingering 'processing' lock → 409. store() is
       // best-effort/fail-open, so a Redis blip degrades to a re-executable
       // retry, never a failed response.
-      await idempotency.store(response.status, bodyBytes, response.headers.get('content-type'));
-      emitRequest(response.status, 'ok', resolvedCacheTier, bodyBytes.byteLength);
+      await idempotency.store(finalStatus, bodyBytes, response.headers.get('content-type'));
+      emitRequest(finalStatus, 'ok', resolvedCacheTier, bodyBytes.byteLength);
       maybeAttachDevHealthHeader(mergedHeaders);
       return new Response(bodyBytes, {
-        status: response.status,
+        status: finalStatus,
         statusText: response.statusText,
         headers: mergedHeaders,
       });
@@ -1767,10 +1780,10 @@ export function createDomainGateway(
     // is often absent on chunked responses; teeing the stream would add latency).
     const finalContentLen = response.headers.get('content-length');
     const finalResBytes = finalContentLen ? Number(finalContentLen) || 0 : 0;
-    emitRequest(response.status, 'ok', resolvedCacheTier, finalResBytes);
+    emitRequest(finalStatus, 'ok', resolvedCacheTier, finalResBytes);
     maybeAttachDevHealthHeader(mergedHeaders);
     return new Response(response.body, {
-      status: response.status,
+      status: finalStatus,
       statusText: response.statusText,
       headers: mergedHeaders,
     });

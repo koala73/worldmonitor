@@ -1,0 +1,140 @@
+---
+import Base from '../../layouts/Base.astro';
+import { GLOSSARY_TERMS, GLOSSARY_CATEGORIES } from '../../data/glossary';
+
+const sorted = [...GLOSSARY_TERMS].sort((a, b) => a.term.localeCompare(b.term));
+const byCategory = GLOSSARY_CATEGORIES.map((category) => ({
+  category,
+  terms: sorted.filter((t) => t.category === category),
+}));
+
+const pageUrl = 'https://www.worldmonitor.app/blog/glossary/';
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'DefinedTermSet',
+  name: 'World Monitor Global Intelligence Glossary',
+  description:
+    'Definitions of the global-intelligence, OSINT, resilience-scoring, and maritime-chokepoint terms used across World Monitor.',
+  url: pageUrl,
+  inLanguage: 'en-US',
+  hasDefinedTerm: sorted.map((t) => ({
+    '@type': 'DefinedTerm',
+    name: t.term,
+    ...(t.abbr ? { alternateName: t.abbr } : {}),
+    description: t.short,
+    url: `https://www.worldmonitor.app/blog/glossary/${t.slug}/`,
+  })),
+};
+
+const breadcrumbLd = {
+  '@context': 'https://schema.org',
+  '@type': 'BreadcrumbList',
+  itemListElement: [
+    { '@type': 'ListItem', position: 1, name: 'Blog', item: 'https://www.worldmonitor.app/blog/' },
+    { '@type': 'ListItem', position: 2, name: 'Glossary', item: pageUrl },
+  ],
+};
+---
+
+<Base
+  title="Global Intelligence Glossary"
+  description="Definitions of the global-intelligence, OSINT, country-resilience, and maritime-chokepoint terms used across World Monitor — the Country Instability Index, Country Resilience Index, geographic convergence, focal points, chokepoints, and more."
+  metaTitle="Global Intelligence & OSINT Glossary | World Monitor"
+  keywords="OSINT glossary, country instability index, country resilience index, maritime chokepoint, geographic convergence, focal point detection"
+  jsonLd={jsonLd}
+  breadcrumbLd={breadcrumbLd}
+>
+  <div class="blog-hero">
+    <div class="badge">
+      <span class="dot"></span>
+      Reference
+    </div>
+    <h1>Intelligence<span class="green">.</span>Glossary</h1>
+    <p class="subtitle">
+      Plain-English definitions of the scoring indices, detection signals, maritime chokepoints,
+      and OSINT methodology terms used across World Monitor. Each entry links to the methodology
+      behind it.
+    </p>
+  </div>
+
+  <div class="blog-list glossary-index">
+    {byCategory.map(({ category, terms }) => (
+      <section class="glossary-group">
+        <h2 class="glossary-group-title">{category}</h2>
+        <div class="glossary-grid">
+          {terms.map((t) => (
+            <a href={`/blog/glossary/${t.slug}/`} class="glossary-card">
+              <h3>
+                {t.term}
+                {t.abbr && <span class="glossary-abbr">{t.abbr}</span>}
+              </h3>
+              <p>{t.short}</p>
+            </a>
+          ))}
+        </div>
+      </section>
+    ))}
+  </div>
+
+  <style>
+    .glossary-index {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 0 1.25rem 4rem;
+    }
+    .glossary-group {
+      margin-top: 2.5rem;
+    }
+    .glossary-group-title {
+      font-size: 1.1rem;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--wm-green, #4ade80);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding-bottom: 0.5rem;
+      margin-bottom: 1.25rem;
+    }
+    .glossary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 1rem;
+    }
+    .glossary-card {
+      display: block;
+      padding: 1rem 1.1rem;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      text-decoration: none;
+      color: inherit;
+      transition: border-color 0.15s ease, transform 0.15s ease;
+    }
+    .glossary-card:hover {
+      border-color: var(--wm-green, #4ade80);
+      transform: translateY(-2px);
+    }
+    .glossary-card h3 {
+      margin: 0 0 0.4rem;
+      font-size: 1rem;
+      display: flex;
+      align-items: baseline;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .glossary-abbr {
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      color: var(--wm-green, #4ade80);
+      border: 1px solid currentColor;
+      border-radius: 4px;
+      padding: 0.05rem 0.35rem;
+    }
+    .glossary-card p {
+      margin: 0;
+      font-size: 0.85rem;
+      line-height: 1.45;
+      opacity: 0.75;
+    }
+  </style>
+</Base>
