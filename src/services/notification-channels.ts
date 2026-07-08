@@ -183,19 +183,51 @@ export async function setDigestSettings(settings: {
  * PRO tier + signed-in state before invoking, so free/anon watchlist edits
  * never generate 4xx traffic against the PRO-gated endpoint.
  */
-export async function syncWatchlistTickersToAlertRule(symbols: string[]): Promise<void> {
-  const data = await getChannelsData();
-  const rule = data.alertRules?.[0];
-  if (!rule?.enabled || !rule.eventTypes?.includes('watchlist_story_alert')) return;
-  await saveAlertRules({
+const WATCHLIST_TICKERS_MAX = 50;
+const WATCHLIST_TICKER_RE = /^[A-Z][A-Z0-9&-]{0,11}(\.[A-Z]{1,3})?$/;
+
+function normalizeWatchlistTickers(input: readonly string[] | undefined): string[] {
+  const cleaned: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of input ?? []) {
+    if (typeof raw !== 'string') continue;
+    const upper = raw.trim().toUpperCase();
+    if (!WATCHLIST_TICKER_RE.test(upper)) continue;
+    if (seen.has(upper)) continue;
+    seen.add(upper);
+    cleaned.push(upper);
+  }
+  return cleaned.slice(0, WATCHLIST_TICKERS_MAX);
+}
+
+function tickerListsEqual(a: readonly string[], b: readonly string[]): boolean {
+  return a.length === b.length && a.every((ticker, index) => ticker === b[index]);
+}
+
+export type WatchlistTickerSyncPayload = Pick<AlertRule, 'variant' | 'enabled' | 'eventTypes' | 'sensitivity' | 'channels'> & {
+  tickers: string[];
+};
+
+export function buildWatchlistTickerSyncPayload(rule: AlertRule | undefined, symbols: string[]): WatchlistTickerSyncPayload | null {
+  if (!rule?.enabled || !rule.eventTypes?.includes('watchlist_story_alert')) return null;
+  const tickers = normalizeWatchlistTickers(symbols);
+  if (tickerListsEqual(normalizeWatchlistTickers(rule.tickers), tickers)) return null;
+  return {
     variant: rule.variant,
     enabled: rule.enabled,
     eventTypes: rule.eventTypes,
     sensitivity: rule.sensitivity,
     channels: rule.channels,
     // countries / aiDigestEnabled omitted on purpose — preserve-on-omit.
-    tickers: symbols,
-  });
+    tickers,
+  };
+}
+
+export async function syncWatchlistTickersToAlertRule(symbols: string[]): Promise<void> {
+  const data = await getChannelsData();
+  const payload = buildWatchlistTickerSyncPayload(data.alertRules?.[0], symbols);
+  if (!payload) return;
+  await saveAlertRules(payload);
 }
 
 /**

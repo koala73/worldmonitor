@@ -124,6 +124,7 @@ describe('closed-market seeding gates (source-textual, #4922d)', () => {
 
   it('Dockerfile.relay COPYs the new shared helper (scripts/shared/ is copied per-file)', () => {
     const src = readSrc('Dockerfile.relay');
+    assert.match(src, /COPY scripts\/shared\/closed-market-equity-maintenance\.cjs \.\/scripts\/shared\/closed-market-equity-maintenance\.cjs/);
     assert.match(src, /COPY scripts\/shared\/market-hours\.cjs \.\/scripts\/shared\/market-hours\.cjs/);
   });
 });

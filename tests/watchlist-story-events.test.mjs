@@ -4,10 +4,10 @@
  * Two surfaces:
  *  1. Unit tests for the pure builder in scripts/lib/watchlist-story-events.mjs
  *     (extraction + threshold + event-shape decisions).
- *  2. Source-grep contract on scripts/seed-digest-notifications.mjs — the cron
- *     is a runtime side-effect module (top-level main() + process.exit guards),
- *     so its wiring is locked via source text, same pattern as
- *     tests/notification-relay-country-filter.test.mjs.
+ *  2. Source-grep contract on scripts/seed-digest-notifications.mjs and
+ *     scripts/lib/watchlist-story-scan.mjs — the cron is a runtime
+ *     side-effect module, so only the wrapper wiring stays in the cron body
+ *     while the Redis orchestration lives in an importable helper.
  *
  * Run: node --test tests/watchlist-story-events.test.mjs
  */
@@ -29,6 +29,10 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const digestSrc = readFileSync(
   resolve(__dirname, '..', 'scripts', 'seed-digest-notifications.mjs'),
+  'utf-8',
+);
+const scanSrc = readFileSync(
+  resolve(__dirname, '..', 'scripts', 'lib', 'watchlist-story-scan.mjs'),
   'utf-8',
 );
 const relaySrc = readFileSync(
@@ -153,11 +157,11 @@ describe('resolveWatchlistScoreMin — env threshold', () => {
 });
 
 describe('seed-digest-notifications.mjs — enqueue wiring (source-grep contract)', () => {
-  it('imports the pure builder + threshold resolver and the shared ticker dictionary', () => {
+  it('wires the importable scan helper and the shared ticker dictionary', () => {
     assert.match(
       digestSrc,
-      /from '\.\/lib\/watchlist-story-events\.mjs'/,
-      'cron must import the watchlist-story-events lib',
+      /from '\.\/lib\/watchlist-story-scan\.mjs'/,
+      'cron must delegate Redis orchestration to the watchlist-story-scan helper',
     );
     assert.match(
       digestSrc,
@@ -177,22 +181,22 @@ describe('seed-digest-notifications.mjs — enqueue wiring (source-grep contract
 
   it('publishes via the SET-NX scan-dedup → LPUSH wm:events:queue → DEL-rollback pattern', () => {
     assert.match(
-      digestSrc,
+      scanSrc,
       /wm:notif:scan-dedup:/,
       'publisher must dedup on the shared scan-dedup keyspace',
     );
     assert.match(
-      digestSrc,
+      scanSrc,
       /buildDedupMaterial\(/,
       'publisher dedup material must come from the shared notification-dedup helper',
     );
     assert.match(
-      digestSrc,
+      scanSrc,
       /'LPUSH',\s*'wm:events:queue'/,
       'events must be LPUSHed onto the queue the notification relay consumes',
     );
     assert.match(
-      digestSrc,
+      scanSrc,
       /rolling back dedup key/i,
       'LPUSH failure must roll back the dedup key (ais-relay publishNotificationEvent parity)',
     );
@@ -213,6 +217,6 @@ describe('seed-digest-notifications.mjs — enqueue wiring (source-grep contract
   });
 
   it('threshold comes from WATCHLIST_STORY_SCORE_MIN via resolveWatchlistScoreMin', () => {
-    assert.match(digestSrc, /resolveWatchlistScoreMin\(process\.env\)/);
+    assert.match(scanSrc, /resolveWatchlistScoreMin\(env\)/);
   });
 });

@@ -77,6 +77,63 @@ function mockFetchJson(payload: unknown, capture?: { url?: string }) {
   }) as typeof fetch;
 }
 
+function yahooHistoryPayload() {
+  const timestamps = Array.from({ length: 80 }, (_, i) => 1_700_000_000 + i * 86_400);
+  const closes = timestamps.map((_, i) => 100 + i * 0.4);
+  return {
+    chart: {
+      result: [
+        {
+          meta: { currency: 'USD' },
+          timestamp: timestamps,
+          indicators: {
+            quote: [
+              {
+                open: closes.map((close) => close - 0.2),
+                high: closes.map((close) => close + 1),
+                low: closes.map((close) => close - 1),
+                close: closes,
+                volume: closes.map(() => 1_000_000),
+              },
+            ],
+          },
+        },
+      ],
+    },
+  };
+}
+
+function installAnalyzeStockFetchMock() {
+  const urls: string[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+    urls.push(url);
+    if (url.includes('range=6mo&interval=1d')) {
+      return new Response(JSON.stringify(yahooHistoryPayload()), { status: 200 });
+    }
+    if (url.includes('modules=recommendationTrend,financialData,upgradeDowngradeHistory')) {
+      return new Response(JSON.stringify({ quoteSummary: { result: [{}] } }), { status: 200 });
+    }
+    if (url.includes('range=5y&interval=1mo')) {
+      return new Response(JSON.stringify({ chart: { result: [{ meta: { currency: 'USD' }, events: { dividends: {} } }] } }), { status: 200 });
+    }
+    if (url.includes('modules=summaryDetail')) {
+      return new Response(JSON.stringify({ quoteSummary: { result: [{ summaryDetail: {} }] } }), { status: 200 });
+    }
+    if (url.includes('range=1d&interval=5m')) {
+      return new Response(JSON.stringify(extendedChartPayload({
+        regularStart: 100_000,
+        regularEnd: 123_400,
+        timestamps: [95_000, 96_000, 100_000],
+        closes: [9, 9.45, 10],
+        regularMarketPrice: 9,
+      })), { status: 200 });
+    }
+    throw new Error('unexpected fetch ' + url);
+  }) as typeof fetch;
+  return urls;
+}
+
 describe('usEquityHoursApply (#4922d)', () => {
   it('applies to US listings (USD, no exchange suffix) including indices and ADRs', () => {
     assert.equal(usEquityHoursApply('AAPL', 'USD'), true);
@@ -224,6 +281,47 @@ describe('AnalyzeStockResponse marketSession / extended fields (#4922d)', () => 
     const invalid = await analyzeStock({} as never, { symbol: '', name: '', includeNews: false });
     assert.equal(invalid.available, false);
     assert.equal(invalid.marketSession, '');
+  });
+
+  it('success path uses the injected analysis clock to fetch and attach pre-market extended fields', async () => {
+    const previousRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const previousRedisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    const previousOpenRouterKey = process.env.OPENROUTER_API_KEY;
+    const previousLlmApiUrl = process.env.LLM_API_URL;
+    const previousLlmApiKey = process.env.LLM_API_KEY;
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+    try {
+      const urls = installAnalyzeStockFetchMock();
+      const response = await analyzeStock(
+        {} as never,
+        { symbol: 'AAPL', name: 'Apple', includeNews: false },
+        { now: new Date('2026-07-08T11:00:00Z') },
+      );
+
+      assert.equal(response.available, true);
+      assert.equal(response.marketSession, 'pre');
+      assert.equal(response.extendedPrice, 9.45);
+      assert.equal(response.extendedChangePercent, 5);
+      assert.ok(
+        urls.some((url) => url.includes('range=1d&interval=5m&includePrePost=true')),
+        'pre-market analysis must request the extended-hours Yahoo chart',
+      );
+    } finally {
+      if (previousRedisUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = previousRedisUrl;
+      if (previousRedisToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = previousRedisToken;
+      if (previousOpenRouterKey === undefined) delete process.env.OPENROUTER_API_KEY;
+      else process.env.OPENROUTER_API_KEY = previousOpenRouterKey;
+      if (previousLlmApiUrl === undefined) delete process.env.LLM_API_URL;
+      else process.env.LLM_API_URL = previousLlmApiUrl;
+      if (previousLlmApiKey === undefined) delete process.env.LLM_API_KEY;
+      else process.env.LLM_API_KEY = previousLlmApiKey;
+    }
   });
 });
 

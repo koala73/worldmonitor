@@ -1394,9 +1394,14 @@ function buildEmptyAnalysisResponse(symbol: string, name: string, includeNews: b
   };
 }
 
+export type AnalyzeStockOptions = {
+  now?: Date;
+};
+
 export async function analyzeStock(
   _ctx: ServerContext,
   req: AnalyzeStockRequest,
+  options: AnalyzeStockOptions = {},
 ): Promise<AnalyzeStockResponse> {
   const symbol = sanitizeSymbol(req.symbol || '');
   if (!symbol) {
@@ -1424,7 +1429,7 @@ export async function analyzeStock(
     // regular session the current price is already live, and while closed
     // there is no extended tape.
     const marketSession = usEquityHoursApply(symbol, history.currency || 'USD')
-      ? getUsEquitySessionAt()
+      ? getUsEquitySessionAt(options.now)
       : '';
     const [headlines, dividend, extendedQuote] = await Promise.all([
       includeNews ? searchRecentStockHeadlines(symbol, name, NEWS_LIMIT).then((r) => r.headlines) : Promise.resolve([]),

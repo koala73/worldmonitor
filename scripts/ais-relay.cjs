@@ -33,6 +33,7 @@ const {
   classifySetNxResult,
   recordDedupOutcome,
 } = require('./shared/notification-dedup.cjs');
+const { maintainClosedMarketEquityKeys: maintainClosedMarketEquityKeysWithDeps } = require('./shared/closed-market-equity-maintenance.cjs');
 const { getUsEquitySession, isUsEquityTradingDay } = require('./shared/market-hours.cjs');
 const parseProxyUrl = parseProxyConfig;
 
@@ -2153,19 +2154,15 @@ let _equityGateLoggedClosed = false;
 // preserved; false means the keys are missing/expired and the caller must
 // fall back to a real fetch to repopulate.
 async function maintainClosedMarketEquityKeys() {
-  const redisKey = `market:quotes:v1:${[...MARKET_SYMBOLS].sort().join(',')}`;
-  const ok1 = await upstashExpire(redisKey, MARKET_SEED_TTL);
-  const ok2 = await upstashExpire('market:stocks-bootstrap:v1', MARKET_SEED_TTL);
-  if (!ok1 || !ok2) return false;
-  let count = _lastEquityQuoteCount;
-  if (!count) {
-    const meta = await upstashGet('seed-meta:market:stocks');
-    count = (meta && typeof meta.recordCount === 'number') ? meta.recordCount : 0;
-  }
-  if (count > 0) {
-    await upstashSet('seed-meta:market:stocks', { fetchedAt: Date.now(), recordCount: count }, 604800);
-  }
-  return true;
+  return maintainClosedMarketEquityKeysWithDeps({
+    marketSymbols: MARKET_SYMBOLS,
+    marketSeedTtl: MARKET_SEED_TTL,
+    lastEquityQuoteCount: _lastEquityQuoteCount,
+    upstashExpire,
+    upstashGet,
+    upstashSet,
+    nowMs: () => Date.now(),
+  });
 }
 
 async function seedMarketQuotes() {
