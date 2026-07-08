@@ -451,7 +451,8 @@ describe('story key TTL ordering (#4924 external review P2)', () => {
       'sources EXPIRE must not sit in the once-per-hash pre-block — EXPIRE on a missing key is a no-op and the later SADD creates a persistent key');
     assert.ok(!onceBlock.includes("['EXPIRE', peakKey"),
       'peak EXPIRE must not sit in the once-per-hash pre-block');
-    const memberBlock = src.slice(src.indexOf("['ZADD', peakKey, 'GT'"), src.indexOf('runRedisPipeline(commands)'));
+    const memberBlockStart = src.indexOf("['ZADD', peakKey, 'GT'");
+    const memberBlock = src.slice(memberBlockStart, src.indexOf('runRedisPipeline(commands)', memberBlockStart));
     assert.ok(memberBlock.includes("['EXPIRE', sourcesKey") && memberBlock.includes("['EXPIRE', peakKey"),
       'both EXPIREs must follow the creating SADD/ZADD in the per-member block');
     assert.match(src, /STORY_ALIAS_KEY\(memberHash\), hash, 'EX', ttl/, 'alias rows persisted with story TTL');
