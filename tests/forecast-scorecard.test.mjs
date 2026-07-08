@@ -40,7 +40,7 @@ describe('computeScorecard', () => {
     assert.equal(scorecard.totals.scored, 2);
     assert.equal(scorecard.totals.void, 1);
     assert.equal(scorecard.totals.voidRate, 0.333333);
-    assert.equal(scorecard.totals.publicationCoverage, 1);
+    assert.equal(scorecard.totals.publicationCoverage, 0.4);
     assert.equal(scorecard.overall.brier, 0.1);
     assert.equal(scorecard.overall.logScore, 0.366985);
 

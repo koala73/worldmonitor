@@ -97,7 +97,7 @@ describe('resolveHardSpec', () => {
     assert.equal(resolved.evidence.comparison, '2 >= 2');
   });
 
-  it('resolves at-deadline point reads from the latest sample at or before deadline', () => {
+  it('resolves at-deadline point reads from the first sample at or after deadline', () => {
     const e = entry({
       spec: {
         kind: 'hard',
@@ -115,12 +115,36 @@ describe('resolveHardSpec', () => {
       recent: [
         { ts: START + DAY_MS - 1, value: 61 },
         { ts: START + DAY_MS + 10, value: 99 },
+        { ts: START + DAY_MS + 20, value: 20 },
       ],
     }, START + DAY_MS + 10);
 
     assert.equal(result.outcome, 'YES');
-    assert.equal(result.evidence.metricValue, 61);
-    assert.equal(result.evidence.readTs, START + DAY_MS - 1);
+    assert.equal(result.evidence.metricValue, 99);
+    assert.equal(result.evidence.readTs, START + DAY_MS + 10);
+  });
+
+  it('resolves at-deadline point reads from live feed after deadline when no post-deadline sample exists', () => {
+    const e = entry({
+      spec: {
+        kind: 'hard',
+        metricKey: 'supply_chain:chokepoints:v4|riskScore(route==Strait of Hormuz)',
+        operator: '>=',
+        threshold: 60,
+        window: 'at-deadline',
+        deadline: START + DAY_MS,
+        sourceFeed: 'supply_chain:chokepoints:v4',
+      },
+      deadline: START + DAY_MS,
+    });
+
+    const result = resolveHardSpec(e, { chokepoints: [{ route: 'Strait of Hormuz', riskScore: 88 }] }, {
+      recent: [{ ts: START + DAY_MS - 1, value: 12 }],
+    }, START + DAY_MS + 10);
+
+    assert.equal(result.outcome, 'YES');
+    assert.equal(result.evidence.metricValue, 88);
+    assert.equal(result.evidence.readTs, START + DAY_MS + 10);
   });
 
   it('keeps due count specs pending when the source feed is unavailable', () => {
@@ -211,7 +235,7 @@ describe('resolveHardSpec', () => {
     assert.equal(result.evidence.metricValue, 90);
   });
 
-  it('does not resolve at-deadline from a delayed current feed snapshot', () => {
+  it('keeps at-deadline pending on feed outage instead of voiding before the first post-deadline read', () => {
     const e = entry({
       spec: {
         kind: 'hard',
@@ -225,10 +249,10 @@ describe('resolveHardSpec', () => {
       deadline: START + DAY_MS,
     });
 
-    const result = resolveHardSpec(e, { quotes: [{ symbol: 'CL=F', price: 120 }] }, { recent: [] }, START + 2 * DAY_MS);
+    const result = resolveHardSpec(e, undefined, { recent: [] }, START + 2 * DAY_MS);
 
-    assert.equal(result.outcome, 'VOID');
-    assert.equal(result.evidence.reason, 'no_establishable_metric');
+    assert.equal(result.status, 'pending');
+    assert.equal(result.evidence.reason, 'source_feed_unavailable');
   });
 
   it('resolves <= and downward crosses branches', () => {
@@ -267,14 +291,14 @@ describe('resolveHardSpec', () => {
     assert.equal(crossDown.evidence.comparison, '28 crosses 30 from 60');
   });
 
-  it('resolves at-endDate yesPrice and falls back to the last sample when the market vanishes', () => {
+  it('resolves at-endDate yesPrice from production market baselines without inverting settlement', () => {
     const e = entry({
       spec: {
         kind: 'hard',
         metricKey: 'prediction:markets-bootstrap:v1|yesPrice(market==Will the Fed cut rates in July 2026?)',
         operator: 'crosses',
         threshold: 50,
-        baselineValue: 42,
+        baselineValue: 72,
         window: 'at-endDate',
         deadline: START + DAY_MS,
         sourceFeed: 'prediction:markets-bootstrap:v1',
@@ -282,15 +306,47 @@ describe('resolveHardSpec', () => {
       deadline: START + DAY_MS,
     });
 
-    const result = resolveHardSpec(e, { markets: [] }, {
+    const yes = resolveHardSpec(e, { markets: [{ market: 'Will the Fed cut rates in July 2026?', yesPrice: 98 }] }, {
       recent: [
-        { ts: START, value: 42 },
-        { ts: START + DAY_MS - 5, value: 87 },
+        { ts: START, value: 72 },
+        { ts: START + DAY_MS - 5, value: 3 },
       ],
     }, START + DAY_MS);
 
-    assert.equal(result.outcome, 'YES');
-    assert.equal(result.evidence.metricValue, 87);
+    assert.equal(yes.outcome, 'YES');
+    assert.equal(yes.evidence.metricValue, 98);
+
+    const no = resolveHardSpec(e, { markets: [{ market: 'Will the Fed cut rates in July 2026?', yesPrice: 2 }] }, {
+      recent: [
+        { ts: START, value: 72 },
+        { ts: START + DAY_MS - 5, value: 98 },
+      ],
+    }, START + DAY_MS);
+
+    assert.equal(no.outcome, 'NO');
+    assert.equal(no.evidence.metricValue, 2);
+  });
+
+  it('keeps prediction-market yesPrice settlement flip-resistant around the 50 line', () => {
+    const e = entry({
+      spec: {
+        kind: 'hard',
+        metricKey: 'prediction:markets-bootstrap:v1|yesPrice(market==Will the Fed cut rates in July 2026?)',
+        operator: 'crosses',
+        threshold: 50,
+        baselineValue: 90,
+        window: 'at-endDate',
+        deadline: START + DAY_MS,
+        sourceFeed: 'prediction:markets-bootstrap:v1',
+      },
+      deadline: START + DAY_MS,
+    });
+
+    const yes = resolveHardSpec(e, { markets: [{ market: 'Will the Fed cut rates in July 2026?', yesPrice: 51 }] }, {}, START + DAY_MS);
+    const no = resolveHardSpec(e, { markets: [{ market: 'Will the Fed cut rates in July 2026?', yesPrice: 49 }] }, {}, START + DAY_MS);
+
+    assert.equal(yes.outcome, 'YES');
+    assert.equal(no.outcome, 'NO');
   });
 
   it('is deterministic and every VOID carries a reason', () => {

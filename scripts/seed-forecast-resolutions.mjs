@@ -85,7 +85,10 @@ export function samplePendingEntries(ledger, feedsByKey, nowMs) {
     if (entry.status !== 'pending') continue;
     const parsed = parseMetricKey(entry.spec?.metricKey);
     if (!parsed || parsed.fn === 'count') continue;
-    if (nowMs > Number(entry.deadline ?? entry.spec?.deadline)) continue;
+    const deadline = Number(entry.deadline ?? entry.spec?.deadline);
+    const isPointWindow = entry.spec?.window === 'at-deadline' || entry.spec?.window === 'at-endDate';
+    if (!isPointWindow && nowMs > deadline) continue;
+    if (isPointWindow && nowMs > deadline && hasSampleAtOrAfterDeadline(entry.samples, deadline)) continue;
     const feedData = feedsByKey?.[entry.spec.sourceFeed] ?? feedsByKey?.[parsed.feedKey];
     if (feedData == null) {
       entry.samples = appendSample(entry.samples, { ts: nowMs, error: `missing_feed:${entry.spec.sourceFeed || parsed.feedKey}` });
@@ -156,6 +159,12 @@ export function appendSample(samples, sample) {
     current.recent = current.recent.slice(-MAX_RECENT_SAMPLES);
   }
   return current;
+}
+
+function hasSampleAtOrAfterDeadline(samples, deadline) {
+  if (!Number.isFinite(deadline)) return false;
+  return Array.isArray(samples?.recent)
+    && samples.recent.some((sample) => Number(sample?.ts) >= deadline && Number.isFinite(Number(sample?.value)));
 }
 
 function createEntry(id, forecast, spec, generatedAt, snapshotAt, deadline) {

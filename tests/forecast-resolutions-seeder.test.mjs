@@ -174,6 +174,36 @@ describe('processResolutionCycle', () => {
     assert.equal(scorecard.totals.entries, 1);
     assert.equal(scorecard.totals.pending, 1);
   });
+
+  it('samples the first live feed read after a point-window deadline before resolving', () => {
+    const point = forecast({
+      resolution: {
+        kind: 'hard',
+        metricKey: 'prediction:markets-bootstrap:v1|yesPrice(market==Will the Fed cut rates in July 2026?)',
+        operator: 'crosses',
+        threshold: 50,
+        baselineValue: 72,
+        window: 'at-endDate',
+        deadline: T0 + DAY_MS,
+        sourceFeed: 'prediction:markets-bootstrap:v1',
+      },
+      deadline: T0 + DAY_MS,
+      title: 'Will the Fed cut rates in July 2026?',
+    });
+
+    const { ledger, receipts } = processResolutionCycle({}, [snapshot(T0, [point])], {
+      'prediction:markets-bootstrap:v1': {
+        markets: [{ market: 'Will the Fed cut rates in July 2026?', yesPrice: 98 }],
+      },
+    }, T0 + DAY_MS + 10);
+
+    const row = ledger[`fc-hormuz@${T0 + DAY_MS}`];
+    assert.equal(row.status, 'resolved');
+    assert.equal(row.outcome, 'YES');
+    assert.equal(row.samples.recent.at(-1).ts, T0 + DAY_MS + 10);
+    assert.equal(row.evidence.metricValue, 98);
+    assert.equal(receipts.length, 1);
+  });
 });
 
 describe('appendSample and seed contract', () => {

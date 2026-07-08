@@ -36,7 +36,7 @@ export function computeScorecard(ledger, nowMs, options = {}) {
       scored: scored.length,
       void: voided.length,
       voidRate: resolved.length ? round(voided.length / resolved.length) : 0,
-      publicationCoverage: entries.length ? 1 : 0,
+      publicationCoverage: entries.length ? round(scored.length / entries.length) : 0,
     },
     byDomain: summarizeGroups(scored, resolved, 'domain', 'domain'),
     byGenerationOrigin: summarizeGroups(scored, resolved, 'generationOrigin', 'generationOrigin'),

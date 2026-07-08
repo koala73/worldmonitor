@@ -57,11 +57,12 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
   }
 
   if (spec.window === 'at-deadline' || spec.window === 'at-endDate') {
-    const sample = selectDeadlineSample(samples, deadline) || selectLastSample(samples, deadline);
+    const sample = selectFirstSampleAtOrAfter(samples, deadline);
     const feedValue = extractMetricValue(parsed, feedData);
-    const value = sample && Number.isFinite(sample.value)
-      ? sample.value
-      : (nowMs <= deadline ? feedValue : NaN);
+    if (feedData == null && !sample) {
+      return { status: 'pending', evidence: { reason: 'source_feed_unavailable', deadline, metricKey: spec.metricKey } };
+    }
+    const value = sample && Number.isFinite(sample.value) ? sample.value : feedValue;
     const readTs = sample?.ts ?? nowMs;
     if (!Number.isFinite(value)) return voidResult('no_establishable_metric', entry, spec, parsed, nowMs);
     return compareResult(value, spec, entry, parsed, nowMs, { readTs });
@@ -115,7 +116,7 @@ export function extractMetricValue(parsed, feedData) {
 function compareResult(value, spec, entry, parsed, nowMs, extraEvidence = {}) {
   if (!Number.isFinite(value)) return voidResult('no_establishable_metric', entry, spec, parsed, nowMs);
   const threshold = Number(spec.threshold);
-  const yes = compare(value, spec.operator, threshold, spec.baselineValue);
+  const yes = compare(value, spec.operator, threshold, spec.baselineValue, parsed);
   return {
     status: 'resolved',
     outcome: yes ? 'YES' : 'NO',
@@ -143,9 +144,10 @@ function voidResult(reason, entry, spec, parsed, nowMs) {
   };
 }
 
-function compare(value, operator, threshold, baselineValue) {
+function compare(value, operator, threshold, baselineValue, parsed) {
   if (operator === '>=') return value >= threshold;
   if (operator === '<=') return value <= threshold;
+  if (operator === 'crosses' && parsed?.fn === 'yesPrice') return value >= threshold;
   if (operator === 'crosses') return crossesThreshold(value, threshold, baselineValue);
   return false;
 }
@@ -253,18 +255,11 @@ function normalizeSamples(samples) {
   return [];
 }
 
-function selectDeadlineSample(samples, deadline) {
+function selectFirstSampleAtOrAfter(samples, deadline) {
   return normalizeSamples(samples)
     .map(normalizeSample)
-    .filter((sample) => sample && sample.ts === deadline && Number.isFinite(sample.value))
+    .filter((sample) => sample && sample.ts >= deadline && Number.isFinite(sample.value))
     .sort((a, b) => a.ts - b.ts)[0] || null;
-}
-
-function selectLastSample(samples, maxTs = Infinity) {
-  return normalizeSamples(samples)
-    .map(normalizeSample)
-    .filter((sample) => sample && sample.ts <= maxTs && Number.isFinite(sample.value))
-    .sort((a, b) => b.ts - a.ts)[0] || null;
 }
 
 function sampleValuesWithin(samples, startMs, endMs) {
