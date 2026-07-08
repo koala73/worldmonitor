@@ -29,7 +29,6 @@ import {
   STORY_ALIAS_KEY,
   DIGEST_ACCUMULATOR_KEY,
   STORY_TTL,
-  STORY_TRACK_KEY_PREFIX,
   DIGEST_ACCUMULATOR_TTL,
 } from '../../../_shared/cache-keys';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
@@ -968,9 +967,9 @@ async function readStoryTracks(titleHashes: string[]): Promise<Map<string, Story
   if (titleHashes.length === 0) return new Map();
   const fields = ['firstSeen', 'lastSeen', 'mentionCount', 'sourceCount', 'currentScore', 'peakScore'];
   const commands = titleHashes.map(h => [
-    'HMGET', `${STORY_TRACK_KEY_PREFIX}${h}`, ...fields,
+    'HMGET', STORY_TRACK_KEY(h), ...fields,
   ]);
-  const results = await runRedisPipeline(commands, true);
+  const results = await runRedisPipeline(commands);
   const map = new Map<string, StoryTrack>();
   for (let i = 0; i < titleHashes.length; i++) {
     const vals = results[i]?.result as string[] | null;
@@ -1540,6 +1539,7 @@ export const __testing__ = {
   promoteDiplomacySeverity,
   computeEntityCorroborationSignals,
   computeEntityCorroborationCounts,
+  readStoryTracks,
   resolveMaxAgeMs,
   capLlmUpgrade,
   MAX_DESCRIPTION_LEN,
