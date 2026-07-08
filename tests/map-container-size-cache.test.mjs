@@ -94,3 +94,29 @@ describe('Map one-shot viewport commands read current size (#5022 review)', () =
     assert.match(mapSrc, /if \(width === 0 \|\| height === 0\)/, 'renderWithSize must skip when the container has no dimensions');
   });
 });
+
+// #5049: the residual Map base-map forced reflow (246ms / 55% of the 450ms
+// authenticated DebugBear /dashboard total) was dominated by flashLocation().
+// flashMapForNews() calls it once per streamed news item, so on boot it fires
+// hundreds of times; each live readContainerSize() forced a synchronous layout
+// of the whole base-map SVG (~75ms across the load in the symbolicated trace).
+// flashLocation is the draw/render path (a transient marker on a container whose
+// size is not changing), NOT a one-shot viewport command, so per #5022 it must
+// read the ResizeObserver-maintained cache via getKnownContainerSize().
+describe('Map flashLocation reads the cached container size (#5049 forced-reflow guard)', () => {
+  const flash = mapSrc.match(/public flashLocation\([\s\S]*?\n {2}\}/);
+
+  it('flashLocation() reads via getKnownContainerSize(), not a live readContainerSize()', () => {
+    assert.ok(flash, 'could not locate flashLocation() body');
+    assert.match(
+      flash[0],
+      /getKnownContainerSize\(\)/,
+      'flashLocation() must read the cached container size — it is called once per news item on the draw path',
+    );
+    assert.doesNotMatch(
+      flash[0],
+      /readContainerSize\(\)/,
+      'flashLocation() must not read live per call (reintroduces the #5049 base-map forced reflow)',
+    );
+  });
+});
