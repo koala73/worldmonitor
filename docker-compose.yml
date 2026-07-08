@@ -73,6 +73,7 @@ services:
       UPSTASH_REDIS_REST_URL: "http://redis-rest:80"
       UPSTASH_REDIS_REST_TOKEN: "${REDIS_TOKEN:?REDIS_TOKEN required — generate with: openssl rand -hex 32}"
       UPSTASH_ALLOW_INSECURE_HTTP: "true"
+      UCDP_ACCESS_TOKEN: "${UCDP_ACCESS_TOKEN:-}"
       PORT: "3004"
     depends_on:
       redis-rest:
