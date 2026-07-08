@@ -278,6 +278,42 @@ describe('seedTransitSummaries (relay)', () => {
     assert.equal(metaWrites.length, 0, 'no seed-meta write should occur when portwatch is empty');
     assert.equal(warnings.length, 1, 'the skip must log, not fail silently');
     assert.match(warnings[0], /\[TransitSummary\] Skipped — supply_chain:portwatch:v1 unavailable/);
+    assert.match(warnings[0], /key empty or absent — upstream seeder has not written it yet/);
+  });
+
+  it('disabled Upstash skip reason is exercised behaviorally', async () => {
+    const warnings = [];
+    const seed = buildSeedTransitSummaries({
+      envelopeRead: async () => null,
+      envelopeWrite: async () => { throw new Error('must not write when portwatch is unavailable'); },
+      upstashSet: async () => { throw new Error('must not write seed-meta when portwatch is unavailable'); },
+      upstashEnabled: false,
+      warn: msg => warnings.push(msg),
+    });
+
+    await seed();
+
+    assert.equal(warnings.length, 1, 'the skip must log even when Redis is disabled');
+    assert.match(warnings[0], /Upstash Redis disabled/);
+    assert.match(warnings[0], /UPSTASH_REDIS_REST_URL\/UPSTASH_ALLOW_INSECURE_HTTP/);
+  });
+
+  it('portwatch read-failure skip reason is exercised behaviorally', async () => {
+    const warnings = [];
+    const seed = buildSeedTransitSummaries({
+      envelopeRead: async (_key, onFailure) => {
+        onFailure('HTTP 500 from redis-rest');
+        return null;
+      },
+      envelopeWrite: async () => { throw new Error('must not write when portwatch read failed'); },
+      upstashSet: async () => { throw new Error('must not write seed-meta when portwatch read failed'); },
+      warn: msg => warnings.push(msg),
+    });
+
+    await seed();
+
+    assert.equal(warnings.length, 1, 'the skip must log the read failure reason');
+    assert.match(warnings[0], /read failed: HTTP 500 from redis-rest/);
   });
 });
 

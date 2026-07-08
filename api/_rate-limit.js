@@ -2,7 +2,11 @@ import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 import { jsonResponse } from './_json-response.js';
 import { captureSilentError } from './_sentry-edge.js';
-import { redisPipeline } from './_upstash-json.js';
+import {
+  durationToSeconds,
+  limitWithFallback,
+  resetRateLimitFallbackForTest,
+} from './_rate-limit-fallback.js';
 import {
   RATE_LIMIT_DEGRADED_HEADERS,
   getClientIp,
@@ -24,78 +28,6 @@ const REDIS_TEST_RETRY_OPTS = process.env.NODE_TEST_CONTEXT ? { retry: false } :
 const DEFAULT_RATE_LIMIT_SCOPE = 'global';
 const DEFAULT_RATE_LIMIT = 600;
 const DEFAULT_RATE_LIMIT_WINDOW = '60 s';
-
-// Duration parsing — same regex as @upstash/ratelimit's internal (unexported)
-// `ms()` helper. Mirrored verbatim in server/_shared/rate-limit.ts.
-function durationToSeconds(window) {
-  const match = /^(\d+)\s?(ms|s|m|h|d)$/.exec(window);
-  if (!match) throw new Error(`Unable to parse rate-limit window: ${window}`);
-  const value = Number(match[1]);
-  const unit = match[2] ?? 's';
-  const unitSeconds = { ms: 0.001, s: 1, m: 60, h: 3600, d: 86_400 };
-  return Math.max(1, Math.ceil(value * (unitSeconds[unit] ?? 1)));
-}
-
-// The self-hosted redis-rest proxy (docker/redis-rest-proxy.mjs) blocks
-// EVAL/EVALSHA/SCRIPT via its command allowlist. @upstash/ratelimit's
-// sliding-window limiter is a Lua script run via EVALSHA (falling back to
-// EVAL on NOSCRIPT) — against that proxy every `.limit()` call throws an
-// UpstashError wrapping the proxy's `Command not allowed: EVALSHA` (or
-// `EVAL`/`SCRIPT`) body. Detect that once per process and switch to the
-// non-Lua fallback below — retrying the Lua path on every request would
-// just double every rate-limit check's latency forever. Mirrored verbatim
-// in server/_shared/rate-limit.ts.
-let luaUnsupported = false;
-
-const FALLBACK_REDIS_TIMEOUT_MS = 1_000;
-
-// Non-Lua fixed-window fallback: INCR + EXPIRE-NX + TTL over the plain REST
-// pipeline endpoint (no EVAL/EVALSHA/SCRIPT). Mirrors the pattern already
-// proven in production by
-// api/_user-api-key.js::checkBootstrapUserApiKeyRateLimit — EXPIRE's NX flag
-// (Redis 7+) means whichever concurrent caller's INCR happens to be first
-// also wins the one-time TTL set; every other command in the window no-ops
-// on EXPIRE, so there's no double-set race and no crash-between-INCR-and-
-// EXPIRE gap to reason about. Returns null when Redis itself is
-// unreachable — callers treat that identically to a Lua-path outage
-// (existing fail-open / failClosed handling below).
-async function fixedWindowLimit(key, limit, windowSeconds) {
-  const result = await redisPipeline([
-    ['INCR', key],
-    ['EXPIRE', key, String(windowSeconds), 'NX'],
-    ['TTL', key],
-  ], FALLBACK_REDIS_TIMEOUT_MS);
-  if (!result) return null;
-
-  const count = Number(result[0]?.result ?? 0);
-  if (!Number.isFinite(count) || count < 1) return null;
-
-  const ttlRaw = Number(result[2]?.result ?? -1);
-  const ttlSeconds = Number.isFinite(ttlRaw) && ttlRaw >= 0 ? ttlRaw : windowSeconds;
-
-  return { success: count <= limit, limit, reset: Date.now() + ttlSeconds * 1000 };
-}
-
-// Drop-in replacement for `ratelimit.limit(identifier)` that transparently
-// falls back to fixedWindowLimit the moment EVAL/EVALSHA is detected as
-// unsupported. Any OTHER error (genuine Redis outage/timeout) is rethrown
-// unchanged so the existing per-caller fail-open/failClosed + Sentry
-// reporting below is untouched.
-async function limitWithFallback(rl, identifier, fallbackKey, limit, windowSeconds) {
-  if (!luaUnsupported) {
-    try {
-      return await rl.limit(identifier);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      if (!/Command not allowed: (EVAL|EVALSHA|SCRIPT)\b/i.test(msg)) throw err;
-      luaUnsupported = true;
-      console.warn('[rate-limit] EVAL/EVALSHA rejected by this Redis endpoint — switching to the non-Lua fixed-window fallback for the rest of this process');
-    }
-  }
-  const fallback = await fixedWindowLimit(fallbackKey, limit, windowSeconds);
-  if (!fallback) throw new Error('rate-limit fallback: Redis unreachable');
-  return fallback;
-}
 
 let ratelimits = new Map();
 
@@ -140,7 +72,7 @@ function getRatelimit(policy) {
 // Mirrored verbatim in server/_shared/rate-limit.ts.
 function rateLimitErrorLevel(stage, msg) {
   if (stage.includes('missing-config')) return 'error';
-  if (/Error running script|execution timed out|Command failed|ETIMEDOUT|ECONNRESET|ENOTFOUND|fetch failed|network|timed out|socket hang up/i.test(msg)) {
+  if (/Error running script|execution timed out|Command failed|ETIMEDOUT|ECONNRESET|ENOTFOUND|fetch failed|network|timed out|socket hang up|Redis unavailable|Redis unreachable/i.test(msg)) {
     return 'warning';
   }
   return 'error';
@@ -224,5 +156,5 @@ export async function checkRateLimit(request, corsHeaders, opts = {}) {
 
 export function __resetRateLimitForTest() {
   ratelimits = new Map();
-  luaUnsupported = false;
+  resetRateLimitFallbackForTest();
 }

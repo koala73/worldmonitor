@@ -205,7 +205,7 @@ const UPSTASH_REDIS_REST_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN || '';
 // transiting the public internet in cleartext) doesn't apply there. This
 // gate stayed https-only after the local proxy shipped, so every seed loop
 // in this file silently no-ops against http://redis-rest:80 (see
-// docker-compose.override.yml's UPSTASH_* comment + 4+ days of
+// SELF_HOSTING.md's redis-rest command allowlist note + 4+ days of
 // "[TransitSummary]"/"[CorridorRisk]"/etc. never firing).
 // UPSTASH_ALLOW_INSECURE_HTTP is an explicit, off-by-default opt-in (never
 // inferred from hostname/URL shape) so a genuine Upstash misconfiguration in

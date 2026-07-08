@@ -236,6 +236,7 @@ describe('api/_rate-limit checkRateLimit EVALSHA-unsupported fallback (mirrors t
 
   afterEach(() => {
     globalThis.fetch = originalFetch;
+    __resetRateLimitForTest();
     restoreEnv();
   });
 
@@ -245,7 +246,7 @@ describe('api/_rate-limit checkRateLimit EVALSHA-unsupported fallback (mirrors t
   // proxy behaviour.
   const ALLOWED_COMMANDS = new Set(['INCR', 'EXPIRE', 'TTL']);
 
-  function makeProxyPipelineHandler() {
+  function makeProxyPipelineHandler({ expireNxUnsupported = false } = {}) {
     const store = new Map();
     return (commands) =>
       commands.map((cmd) => {
@@ -259,6 +260,9 @@ describe('api/_rate-limit checkRateLimit EVALSHA-unsupported fallback (mirrors t
           return { result: entry.count };
         }
         if (op === 'EXPIRE') {
+          if (expireNxUnsupported && String(cmd[3]).toUpperCase() === 'NX') {
+            return { error: 'ERR syntax error' };
+          }
           const applied = !entry.hasTtl;
           if (applied) entry.hasTtl = true;
           store.set(key, entry);
@@ -267,6 +271,33 @@ describe('api/_rate-limit checkRateLimit EVALSHA-unsupported fallback (mirrors t
         return { result: entry.hasTtl ? 60 : -1 }; // TTL
       });
   }
+
+  it('degrades instead of creating a permanent counter when EXPIRE NX is unsupported', async () => {
+    const pipelineHandler = makeProxyPipelineHandler({ expireNxUnsupported: true });
+    globalThis.fetch = async (_url, init) => {
+      const commands = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify(pipelineHandler(commands)), { status: 200 });
+    };
+
+    const mod = await importFreshRateLimitModule();
+    const req = makeRequest({ 'x-real-ip': '203.0.113.12' });
+
+    const failOpen = await mod.checkRateLimit(
+      req,
+      {},
+      { scope: 'redis6-fallback', limit: 1, window: '60 s' },
+    );
+    assert.equal(failOpen, null, 'default API rate limit should fail open when fallback cannot set a TTL');
+
+    const failClosed = await mod.checkRateLimit(
+      req,
+      {},
+      { scope: 'redis6-fallback', limit: 1, window: '60 s', failClosed: true },
+    );
+    assert.ok(failClosed, 'failClosed API callers should receive a degraded response when fallback cannot set a TTL');
+    assert.equal(failClosed.status, 503);
+    assert.equal(failClosed.headers.get('X-RateLimit-Mode'), 'degraded');
+  });
 
   it('detects "Command not allowed: EVALSHA", falls back to INCR+EXPIRE without retrying Lua, and enforces 429s', async () => {
     const pipelineHandler = makeProxyPipelineHandler();
