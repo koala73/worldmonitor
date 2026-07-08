@@ -91,6 +91,7 @@ import { t } from '@/services/i18n';
 import { TvModeController } from '@/services/tv-mode';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { scheduleAfterFirstPaint } from '@/utils/after-paint';
 import { escapeHtml } from '@/utils/sanitize';
 import { buildEmbedIframeSnippet, buildEmbedMapUrl, type EmbedVariant } from '@/embed/embed-url';
 import { createSettingsButton } from '@/components/settings-button';
@@ -795,10 +796,16 @@ export class EventHandlerManager implements AppModule {
       !loadStoredMissionPreset() &&
       !isMissionPresetPromptDismissed();
     if (shouldPrompt) {
-      window.setTimeout(() => {
+      // Defer the onboarding auto-open to browser idle after first paint so it
+      // never competes with load or first-interaction work — it was a fixed
+      // 700ms timeout that also forced a layout read (getBoundingClientRect +
+      // offsetHeight) on the post-load path. Re-check state at fire time since
+      // the idle wait can outlast the old fixed delay.
+      scheduleAfterFirstPaint(() => {
         if (this.ctx.isDestroyed) return;
+        if (loadStoredMissionPreset() || isMissionPresetPromptDismissed()) return;
         this.openMissionPresetPopover(document.getElementById('missionPresetBtn'), false);
-      }, 700);
+      });
     }
   }
 
