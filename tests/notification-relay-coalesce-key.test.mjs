@@ -18,14 +18,17 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
 const relaySrc = readFileSync(resolve(__dirname, '..', 'scripts', 'notification-relay.cjs'), 'utf-8');
 const aisRelaySrc = readFileSync(resolve(__dirname, '..', 'scripts', 'ais-relay.cjs'), 'utf-8');
 const seedAviationSrc = readFileSync(resolve(__dirname, '..', 'scripts', 'seed-aviation.mjs'), 'utf-8');
 const notificationDedupSrc = readFileSync(resolve(__dirname, '..', 'scripts', 'shared', 'notification-dedup.cjs'), 'utf-8');
+const notificationDedup = require('../scripts/shared/notification-dedup.cjs');
 
 describe('notification-relay checkDedup — Slot B coalesce key', () => {
   it('checkDedup signature accepts an optional coalesceKey parameter', () => {
@@ -76,17 +79,82 @@ describe('shared notification-dedup helper — buildDedupMaterial', () => {
   });
 
   it('is exported for reuse by all publishers', () => {
-    assert.match(
-      notificationDedupSrc,
-      /module\.exports\s*=\s*\{\s*buildDedupMaterial\s*\}/,
-      'buildDedupMaterial must be exported',
-    );
+    assert.equal(typeof notificationDedup.buildDedupMaterial, 'function', 'buildDedupMaterial must be exported');
   });
 
   it('all three publishers import/require the shared helper (no re-inlined copies)', () => {
     assert.match(relaySrc, /require\('\.\/shared\/notification-dedup\.cjs'\)/, 'notification-relay.cjs must require the shared helper');
     assert.match(aisRelaySrc, /require\('\.\/shared\/notification-dedup\.cjs'\)/, 'ais-relay.cjs must require the shared helper');
     assert.match(seedAviationSrc, /from '\.\/shared\/notification-dedup\.cjs'/, 'seed-aviation.mjs must import the shared helper');
+  });
+});
+
+describe('shared notification-dedup helper — SETNX failure policy', () => {
+  it('distinguishes new keys, genuine duplicate hits, and Redis errors', () => {
+    assert.equal(notificationDedup.classifySetNxResult('OK'), 'new');
+    assert.equal(notificationDedup.classifySetNxResult(null), 'duplicate');
+    assert.equal(notificationDedup.classifySetNxResult(undefined), 'error');
+    assert.equal(notificationDedup.classifySetNxResult('ERR'), 'error');
+  });
+
+  it('fails open only for high-priority notification severities on SETNX errors', () => {
+    assert.equal(notificationDedup.shouldPublishAfterDedupResult('new', 'low'), true);
+    assert.equal(notificationDedup.shouldPublishAfterDedupResult('duplicate', 'critical'), false);
+    assert.equal(notificationDedup.shouldPublishAfterDedupResult('error', 'critical'), true);
+    assert.equal(notificationDedup.shouldPublishAfterDedupResult('error', 'high'), true);
+    assert.equal(notificationDedup.shouldPublishAfterDedupResult('error', 'info'), false);
+    assert.equal(notificationDedup.shouldPublishAfterDedupResult('error', undefined), false);
+  });
+
+  it('emits a stable low-cardinality Sentry/metric marker for SETNX errors', () => {
+    const line = notificationDedup.buildSetNxErrorTelemetryLine({
+      surface: 'Notification Relay',
+      eventType: 'market_alert',
+      severity: 'critical',
+      action: 'fail_open',
+    });
+    assert.equal(
+      line,
+      '[notifications] wm_notification_dedup_setnx_error count=1 surface=notification_relay event_type=market_alert severity=critical action=fail_open',
+    );
+    assert.ok(!line.includes('user'), 'telemetry marker must not include user identifiers');
+    assert.ok(!line.includes('title'), 'telemetry marker must not include alert titles');
+  });
+
+  it('all notification publishers consume the shared SETNX classification helper', () => {
+    assert.match(
+      notificationDedupSrc,
+      /module\.exports\s*=\s*\{[\s\S]*classifySetNxResult[\s\S]*shouldPublishAfterDedupResult[\s\S]*buildSetNxErrorTelemetryLine[\s\S]*\}/,
+      'shared helper must export the SETNX classifier, publish policy, and telemetry marker',
+    );
+    assert.match(
+      relaySrc,
+      /classifySetNxResult[\s\S]*shouldPublishAfterDedupResult[\s\S]*buildSetNxErrorTelemetryLine/,
+      'notification-relay.cjs must use the shared SETNX classifier, publish policy, and telemetry marker',
+    );
+    assert.match(
+      aisRelaySrc,
+      /classifySetNxResult[\s\S]*shouldPublishAfterDedupResult[\s\S]*buildSetNxErrorTelemetryLine/,
+      'ais-relay.cjs must use the shared SETNX classifier, publish policy, and telemetry marker',
+    );
+    assert.match(
+      seedAviationSrc,
+      /classifySetNxResult[\s\S]*shouldPublishAfterDedupResult[\s\S]*buildSetNxErrorTelemetryLine/,
+      'seed-aviation.mjs must use the shared SETNX classifier, publish policy, and telemetry marker',
+    );
+  });
+
+  it('ais-relay exposes SETNX error counters in /metrics rollups', () => {
+    assert.match(
+      aisRelaySrc,
+      /notificationDedupSetNxErrors:\s*0/,
+      'rolling metrics bucket must count notification SETNX errors',
+    );
+    assert.match(
+      aisRelaySrc,
+      /notifications:\s*\{[\s\S]*dedupSetNxErrors[\s\S]*dedupSetNxFailOpen[\s\S]*dedupSetNxFailClosed[\s\S]*\}/,
+      '/metrics output must expose notification SETNX error counters',
+    );
   });
 });
 

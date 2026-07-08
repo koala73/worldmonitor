@@ -12,7 +12,12 @@ const {
 const { callLLM } = require('./lib/llm-chain.cjs');
 const { fetchUserPreferences, extractUserContext, formatUserProfile } = require('./lib/user-context.cjs');
 const { countryNameToIso2 } = require('./shared/country-name-to-iso2.cjs');
-const { buildDedupMaterial } = require('./shared/notification-dedup.cjs');
+const {
+  buildDedupMaterial,
+  buildSetNxErrorTelemetryLine,
+  classifySetNxResult,
+  shouldPublishAfterDedupResult,
+} = require('./shared/notification-dedup.cjs');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -67,6 +72,24 @@ async function upstashRest(...args) {
   return json.result;
 }
 
+async function upstashDedupSetNx(key) {
+  try {
+    const res = await fetch(`${UPSTASH_URL}/${['SET', key, '1', 'NX', 'EX', '1800'].map(encodeURIComponent).join('/')}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'User-Agent': 'worldmonitor-relay/1.0' },
+    });
+    if (!res.ok) {
+      console.warn(`[relay] Upstash SETNX dedup error ${res.status}`);
+      return 'error';
+    }
+    const json = await res.json();
+    return classifySetNxResult(json.result);
+  } catch (err) {
+    console.warn('[relay] Upstash SETNX dedup request failed:', err?.message || err);
+    return 'error';
+  }
+}
+
 // ── Dedup ─────────────────────────────────────────────────────────────────────
 
 function sha256Hex(str) {
@@ -83,8 +106,7 @@ async function checkDedup(userId, eventType, title, coalesceKey) {
   const keyMaterial = buildDedupMaterial(eventType, title, coalesceKey);
   const hash = sha256Hex(keyMaterial);
   const key = `wm:notif:dedup:${userId}:${hash}`;
-  const result = await upstashRest('SET', key, '1', 'NX', 'EX', '1800');
-  return result === 'OK'; // true = new, false = duplicate
+  return upstashDedupSetNx(key);
 }
 
 // ── Channel deactivation ──────────────────────────────────────────────────────
@@ -1062,15 +1084,29 @@ async function processEvent(event) {
     const coalesceKey = typeof event.payload?.coalesceKey === 'string' ? event.payload.coalesceKey : undefined;
 
     if (quietAction === 'hold') {
-      const isNew = await checkDedup(rule.userId, event.eventType, event.payload?.title ?? '', coalesceKey);
-      if (!isNew) { console.log(`[relay] Dedup hit (held) for ${rule.userId}`); continue; }
+      const dedupResult = await checkDedup(rule.userId, event.eventType, event.payload?.title ?? '', coalesceKey);
+      if (!shouldPublishAfterDedupResult(dedupResult, eventSeverity)) {
+        if (dedupResult === 'duplicate') console.log(`[relay] Dedup hit (held) for ${rule.userId}`);
+        else console.warn(buildSetNxErrorTelemetryLine({ surface: 'notification-relay-held', eventType: event.eventType, severity: eventSeverity, action: 'fail_closed' }));
+        continue;
+      }
+      if (dedupResult === 'error') {
+        console.warn(buildSetNxErrorTelemetryLine({ surface: 'notification-relay-held', eventType: event.eventType, severity: eventSeverity, action: 'fail_open' }));
+      }
       console.log(`[relay] Quiet hours hold for ${rule.userId} — queuing for batch_on_wake`);
       await holdEvent(rule.userId, rule.variant ?? 'full', JSON.stringify(event));
       continue;
     }
 
-    const isNew = await checkDedup(rule.userId, event.eventType, event.payload?.title ?? '', coalesceKey);
-    if (!isNew) { console.log(`[relay] Dedup hit for ${rule.userId}`); continue; }
+    const dedupResult = await checkDedup(rule.userId, event.eventType, event.payload?.title ?? '', coalesceKey);
+    if (!shouldPublishAfterDedupResult(dedupResult, eventSeverity)) {
+      if (dedupResult === 'duplicate') console.log(`[relay] Dedup hit for ${rule.userId}`);
+      else console.warn(buildSetNxErrorTelemetryLine({ surface: 'notification-relay', eventType: event.eventType, severity: eventSeverity, action: 'fail_closed' }));
+      continue;
+    }
+    if (dedupResult === 'error') {
+      console.warn(buildSetNxErrorTelemetryLine({ surface: 'notification-relay', eventType: event.eventType, severity: eventSeverity, action: 'fail_open' }));
+    }
 
     let channels = [];
     try {

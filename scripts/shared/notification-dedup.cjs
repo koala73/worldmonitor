@@ -22,4 +22,41 @@ function buildDedupMaterial(eventType, title, coalesceKey) {
   return coalesceKey ? `coalesce:${coalesceKey}` : `${eventType}:${title ?? ''}`;
 }
 
-module.exports = { buildDedupMaterial };
+function classifySetNxResult(result) {
+  if (result === 'OK') return 'new';
+  if (result === null) return 'duplicate';
+  return 'error';
+}
+
+function isHighPriorityNotificationSeverity(severity) {
+  const normalized = String(severity ?? '').toLowerCase();
+  return normalized === 'critical' || normalized === 'high';
+}
+
+function shouldPublishAfterDedupResult(dedupResult, severity) {
+  if (dedupResult === 'new') return true;
+  if (dedupResult === 'duplicate') return false;
+  if (dedupResult === 'error') return isHighPriorityNotificationSeverity(severity);
+  return false;
+}
+
+function normalizeTelemetryToken(raw) {
+  const value = String(raw ?? 'unknown').trim().toLowerCase();
+  return (value || 'unknown').replace(/[^a-z0-9_.:-]+/g, '_').slice(0, 80);
+}
+
+function buildSetNxErrorTelemetryLine({ surface, eventType, severity, action }) {
+  return `[notifications] wm_notification_dedup_setnx_error ` +
+    `count=1 ` +
+    `surface=${normalizeTelemetryToken(surface)} ` +
+    `event_type=${normalizeTelemetryToken(eventType)} ` +
+    `severity=${normalizeTelemetryToken(severity)} ` +
+    `action=${normalizeTelemetryToken(action)}`;
+}
+
+module.exports = {
+  buildDedupMaterial,
+  classifySetNxResult,
+  shouldPublishAfterDedupResult,
+  buildSetNxErrorTelemetryLine,
+};

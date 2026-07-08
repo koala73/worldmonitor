@@ -41,7 +41,12 @@ import {
 import notificationDedup from './shared/notification-dedup.cjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
-const { buildDedupMaterial } = notificationDedup;
+const {
+  buildDedupMaterial,
+  buildSetNxErrorTelemetryLine,
+  classifySetNxResult,
+  shouldPublishAfterDedupResult,
+} = notificationDedup;
 
 loadEnvFile(import.meta.url);
 
@@ -319,8 +324,8 @@ async function upstashSetNx(key, value, ttlSeconds) {
   try {
     const serialized = typeof value === 'string' ? value : JSON.stringify(value);
     const result = await upstashCommand(['SET', key, serialized, 'NX', 'EX', String(ttlSeconds)]);
-    return result?.result === 'OK' ? 'OK' : null;
-  } catch { return null; }
+    return classifySetNxResult(result?.result);
+  } catch { return 'error'; }
 }
 
 async function upstashLpush(key, value) {
@@ -354,10 +359,17 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
     const variantSuffix = variant ? `:${variant}` : '';
     const dedupMaterial = buildDedupMaterial(eventType, payload?.title, payload?.coalesceKey);
     const dedupKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${notifyHash(dedupMaterial)}`;
-    const isNew = await upstashSetNx(dedupKey, '1', dedupTtl);
-    if (!isNew) {
+    const dedupResult = await upstashSetNx(dedupKey, '1', dedupTtl);
+    if (!shouldPublishAfterDedupResult(dedupResult, severity)) {
+      if (dedupResult !== 'duplicate') {
+        console.warn(buildSetNxErrorTelemetryLine({ surface: 'seed-aviation', eventType, severity, action: 'fail_closed' }));
+        return;
+      }
       console.log(`[Notify] Dedup hit — ${eventType}: ${String(payload.title ?? '').slice(0, 60)}`);
       return;
+    }
+    if (dedupResult === 'error') {
+      console.warn(buildSetNxErrorTelemetryLine({ surface: 'seed-aviation', eventType, severity, action: 'fail_open' }));
     }
     const msg = JSON.stringify({ eventType, payload, severity, ...(variant ? { variant } : {}), publishedAt: Date.now() });
     const ok = await upstashLpush('wm:events:queue', msg);
