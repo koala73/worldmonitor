@@ -92,4 +92,32 @@ describe('writeSimulationOutcome by-run write structural lock (#3734 U5)', () =>
       'writeSimulationOutcome must return { outcomeKey } at the end of its body',
     );
   });
+
+  it('keeps generatedAt CAS centralized for decorations and outcome pointers', () => {
+    assert.equal(
+      (src.match(/const _REDIS_WRITE_IF_NEWER_LUA =/g) || []).length,
+      1,
+      'generatedAt write-if-newer Lua must have one shared implementation',
+    );
+    assert.ok(
+      /async function redisAtomicWriteSimDecorations[\s\S]*?return redisAtomicWriteIfNewer\(/.test(src),
+      'simulation decorations helper must delegate to the shared generatedAt CAS helper',
+    );
+    assert.ok(
+      /async function redisAtomicWriteSimulationOutcomePointer[\s\S]*?return redisAtomicWriteIfNewer\(/.test(src),
+      'simulation outcome pointer helper must delegate to the shared generatedAt CAS helper',
+    );
+  });
+
+  it('extends the simulation task lock before the theater loop and returns explicit lost-lock reasons', () => {
+    const extensionIdx = src.indexOf('extendSimulationTaskLockForTheaters(runId, workerId, eligibleTheaters.length)');
+    const loopIdx = src.indexOf('for (const theater of eligibleTheaters)');
+    assert.ok(extensionIdx >= 0, 'worker must extend the simulation task lock after theater eligibility is known');
+    assert.ok(loopIdx >= 0, 'worker theater loop not found');
+    assert.ok(extensionIdx < loopIdx, 'worker must check lock ownership before starting theater simulation work');
+    assert.ok(
+      /lockStatus !== SIM_LOCK_STATUS_EXTENDED[\s\S]*?reason = lockStatus === SIM_LOCK_STATUS_EXPIRED \? 'lock_expired' : 'lock_ownership_lost'/.test(src),
+      'worker must early-return with distinct expired-vs-owned-by-other lock reasons',
+    );
+  });
 });

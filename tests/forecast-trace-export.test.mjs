@@ -64,6 +64,7 @@ import {
   buildSimulationOutcomeKey,
   writeSimulationOutcome,
   computeSimulationLockTtlSeconds,
+  createSimulationWorkerId,
   buildSimulationRound1SystemPrompt,
   buildSimulationRound2SystemPrompt,
   extractSimulationRoundPayload,
@@ -78,6 +79,8 @@ import {
   redisAtomicWriteSimulationOutcomePointer,
   redisCompareAndDeleteSimulationLock,
   redisCompareAndExpireSimulationLock,
+  redisCompleteSimulationTaskIfOwned,
+  completeSimulationTask,
   SIMULATION_DECORATIONS_KEY,
   SIMULATION_DECORATIONS_MAX_AGE_MS,
   CANONICAL_KEY,
@@ -6417,6 +6420,14 @@ describe('simulation runner — writeSimulationOutcome', () => {
       assert.ok(skipped.startsWith('SKIPPED:'), `expected SKIPPED, got ${skipped}`);
       assert.equal(store[key].runId, 'run-newer');
 
+      const equal = await redisAtomicWriteSimulationOutcomePointer('http://test', 'test', key, {
+        runId: 'run-equal-rerun',
+        generatedAt: newerTs,
+        outcomeKey: 'equal-rerun.json',
+      }, 86400);
+      assert.equal(equal, 'WRITTEN');
+      assert.equal(store[key].runId, 'run-equal-rerun', 'equal generatedAt re-runs must overwrite per D6');
+
       const written = await redisAtomicWriteSimulationOutcomePointer('http://test', 'test', key, {
         runId: 'run-newer-2',
         generatedAt: newerTs + 1,
@@ -6435,12 +6446,15 @@ describe('simulation runner — writeSimulationOutcome', () => {
     __setRedisStoreForTests(store);
     try {
       const stale = await redisCompareAndDeleteSimulationLock('http://test', 'test', lockKey, 'worker-a');
-      assert.equal(stale, false);
+      assert.equal(stale, 'OWNED_BY_OTHER');
       assert.equal(store[lockKey], 'worker-b', 'successor lock must survive stale worker cleanup');
 
       const current = await redisCompareAndDeleteSimulationLock('http://test', 'test', lockKey, 'worker-b');
-      assert.equal(current, true);
+      assert.equal(current, 'DELETED');
       assert.equal(store[lockKey], undefined);
+
+      const expired = await redisCompareAndDeleteSimulationLock('http://test', 'test', lockKey, 'worker-b');
+      assert.equal(expired, 'EXPIRED');
     } finally {
       __setRedisStoreForTests(null);
     }
@@ -6450,6 +6464,8 @@ describe('simulation runner — writeSimulationOutcome', () => {
     assert.equal(computeSimulationLockTtlSeconds(0), 20 * 60);
     assert.equal(computeSimulationLockTtlSeconds(1), 20 * 60);
     assert.equal(computeSimulationLockTtlSeconds(3), 60 * 60);
+    assert.equal(computeSimulationLockTtlSeconds(4), 60 * 60, 'current selected-theater cap bounds crash recovery at 3x');
+    assert.equal(computeSimulationLockTtlSeconds(99), 60 * 60);
   });
 
   it('redisCompareAndExpireSimulationLock extends only the current worker-owned lock', async () => {
@@ -6457,19 +6473,82 @@ describe('simulation runner — writeSimulationOutcome', () => {
     const calls = [];
     globalThis.fetch = async (url, init = {}) => {
       calls.push({ url: String(url), command: JSON.parse(String(init.body || '[]')) });
-      return new Response(JSON.stringify({ result: calls.length === 1 ? 0 : 1 }), { status: 200 });
+      const result = calls.length === 1 ? 'OWNED_BY_OTHER' : 'EXTENDED';
+      return new Response(JSON.stringify({ result }), { status: 200 });
     };
     try {
       const stale = await redisCompareAndExpireSimulationLock('http://test', 'test', 'forecast:simulation-lock:v1:test-run', 'worker-a', 3600);
       const current = await redisCompareAndExpireSimulationLock('http://test', 'test', 'forecast:simulation-lock:v1:test-run', 'worker-b', 3600);
-      assert.equal(stale, false);
-      assert.equal(current, true);
+      assert.equal(stale, 'OWNED_BY_OTHER');
+      assert.equal(current, 'EXTENDED');
       assert.equal(calls.length, 2);
       assert.equal(calls[1].command[0], 'EVAL');
       assert.equal(calls[1].command.at(-1), '3600');
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+
+  it('completeSimulationTask leaves queue and task state when another worker owns the lock', async () => {
+    const originalWarn = console.warn;
+    const warnings = [];
+    console.warn = (...args) => warnings.push(args.join(' '));
+    const runId = '1783471835470-cleanup';
+    const taskKey = `forecast:simulation-task:v1:${runId}`;
+    const lockKey = `forecast:simulation-lock:v1:${runId}`;
+    const queueKey = 'forecast:simulation-task-queue:v1';
+    const store = {
+      [taskKey]: { runId },
+      [lockKey]: 'worker-b',
+      [queueKey]: [runId],
+    };
+    __setRedisStoreForTests(store);
+    try {
+      const stale = await completeSimulationTask(runId, 'worker-a');
+      assert.equal(stale, 'OWNED_BY_OTHER');
+      assert.deepEqual(store[taskKey], { runId }, 'task payload must survive stale cleanup');
+      assert.equal(store[lockKey], 'worker-b', 'successor lock must survive stale cleanup');
+      assert.deepEqual(store[queueKey], [runId], 'queue member must survive stale cleanup');
+      assert.ok(
+        warnings.some((line) => line.includes('lock owned by another worker')),
+        `expected ownership warning, got ${warnings.join('\n')}`,
+      );
+
+      const current = await completeSimulationTask(runId, 'worker-b');
+      assert.equal(current, 'COMPLETED');
+      assert.equal(store[taskKey], undefined);
+      assert.equal(store[lockKey], undefined);
+      assert.deepEqual(store[queueKey], []);
+    } finally {
+      console.warn = originalWarn;
+      __setRedisStoreForTests(null);
+    }
+  });
+
+  it('redisCompleteSimulationTaskIfOwned reports expired locks without deleting task state', async () => {
+    const runId = '1783471835470-expired';
+    const taskKey = `forecast:simulation-task:v1:${runId}`;
+    const queueKey = 'forecast:simulation-task-queue:v1';
+    const store = {
+      [taskKey]: { runId },
+      [queueKey]: [runId],
+    };
+    __setRedisStoreForTests(store);
+    try {
+      const status = await redisCompleteSimulationTaskIfOwned('http://test', 'test', runId, 'worker-a');
+      assert.equal(status, 'EXPIRED');
+      assert.deepEqual(store[taskKey], { runId });
+      assert.deepEqual(store[queueKey], [runId]);
+    } finally {
+      __setRedisStoreForTests(null);
+    }
+  });
+
+  it('createSimulationWorkerId includes a random suffix for same-process workers', () => {
+    const first = createSimulationWorkerId();
+    const second = createSimulationWorkerId();
+    assert.match(first, /^sim-worker-\d+-\d+-[a-f0-9-]+$/);
+    assert.notEqual(first, second);
   });
 
   it('writeSimulationOutcome emits an empty-candidateStateId counter for outcome telemetry', async () => {
