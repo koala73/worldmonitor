@@ -189,6 +189,7 @@
             "group": "MCP & Integrations",
             "pages": [
               "agent-discovery",
+              "agent-skills",
               "mcp-quickstart",
               "cli",
               "sdks",
