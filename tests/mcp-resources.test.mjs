@@ -248,7 +248,11 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     assert.deepEqual(actualUris, [
       'worldmonitor://seed-meta/freshness',
       'ui://worldmonitor/country-risk.html',
-    ], 'resources/list = concrete DATA freshness probe then ui:// shell, in order');
+      'ui://worldmonitor/world-brief.html',
+      'ui://worldmonitor/country-brief.html',
+      'ui://worldmonitor/market-radar.html',
+      'ui://worldmonitor/chokepoint-monitor.html',
+    ], 'resources/list = concrete DATA freshness probe then the ui:// app-shell fleet, in registry order');
     for (const r of body.result.resources) {
       assert.equal(typeof r.uri, 'string', `resource ${r.uri}: uri must be a string`);
       assert.ok(r.uri.length > 0, `resource ${r.uri}: uri must be non-empty`);
@@ -386,6 +390,60 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     for (const uri of listedUiUris) {
       assert.ok(linkedByTools.has(uri),
         `ui:// resource "${uri}" is advertised but no tool references it via _uiResourceUri`);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // MCP Apps fleet-wide quality — the orank view-quality / view-csp signals
+  // asserted for country-risk above must hold for EVERY widget in the fleet,
+  // so a future app shell (or a shared-shell edit) can't silently regress the
+  // CSP / dark-mode / bridge contract. Generalises the single-widget check to
+  // the whole ui:// registry read back off the wire.
+  // -------------------------------------------------------------------------
+  it('FLEET: every ui:// shell carries the orank quality signals (DOCTYPE, color-scheme, 4-category CSP, bridge, no secrets)', async () => {
+    const listRes = await handler(envKeyReq({ jsonrpc: '2.0', id: 11, method: 'resources/list', params: {} }));
+    const listBody = await listRes.json();
+    const uiUris = listBody.result.resources.map((r) => r.uri).filter((u) => u.startsWith('ui://'));
+    assert.ok(uiUris.length >= 5, `expected the interactive-dashboard fleet (>=5 widgets), got ${uiUris.length}`);
+
+    for (const uri of uiUris) {
+      const res = await handler(envKeyReq(readBody(uri)));
+      const c = (await res.json()).result.contents[0];
+      const html = c.text;
+
+      // ui-quality + view-domain.
+      assert.match(html, /^<!DOCTYPE html>/, `${uri}: must open with an uppercase <!DOCTYPE html>`);
+      assert.match(html, /<meta\s+name="color-scheme"\s+content="light dark">/, `${uri}: must declare color-scheme`);
+      assert.doesNotMatch(html, /wm_[a-f0-9]{40}|X-WorldMonitor-Key|Bearer\s+[A-Za-z0-9]/, `${uri}: must not hardcode secrets`);
+      // The TS template interpolation must be fully resolved — no leaked `${` markers.
+      assert.doesNotMatch(html, /\$\{/, `${uri}: unresolved template placeholder leaked into served HTML`);
+
+      // view-csp: all four required directive categories, scoped (not `*`).
+      const cspMatch = html.match(/<meta\s+http-equiv="Content-Security-Policy"\s+content="([^"]+)">/);
+      assert.ok(cspMatch, `${uri}: must carry a <meta http-equiv CSP> tag`);
+      const csp = cspMatch[1];
+      assert.match(csp, /default-src\s+'none'/, `${uri}: default-src must be 'none'`);
+      assert.match(csp, /connect-src[^;]*worldmonitor\.app/, `${uri}: connect-src must include the MCP origin`);
+      assert.match(csp, /frame-ancestors[^;]*https:\/\/chatgpt\.com/, `${uri}: frame-ancestors must include chatgpt.com`);
+      assert.match(csp, /frame-ancestors[^;]*https:\/\/claude\.ai/, `${uri}: frame-ancestors must include claude.ai`);
+      assert.match(csp, /form-action\s+'none'/, `${uri}: form-action must be scoped`);
+      assert.match(csp, /base-uri\s+'none'/, `${uri}: base-uri must be scoped`);
+      assert.match(csp, /(img|script|style)-src/, `${uri}: img/script/style-src must be present`);
+      assert.doesNotMatch(csp, /default-src\s+\*/, `${uri}: must not use a permissive default-src *`);
+
+      // MCP Apps postMessage bridge handshake must be implemented.
+      assert.match(html, /ui\/initialize/, `${uri}: must implement the ui/initialize handshake`);
+      assert.match(html, /ui\/notifications\/tool-result/, `${uri}: must consume tool-result notifications`);
+      assert.match(html, /ui\/notifications\/size-changed/, `${uri}: must report size to the host`);
+
+      // Spec _meta.ui.csp must mirror the HTML connect-src and keep the other
+      // allowlists empty (the fleet's shared secure default).
+      assert.deepEqual(c._meta?.ui?.csp?.connectDomains,
+        ['https://worldmonitor.app', 'https://www.worldmonitor.app'],
+        `${uri}: _meta.ui.csp.connectDomains must mirror the HTML connect-src`);
+      assert.deepEqual(c._meta?.ui?.csp?.resourceDomains, [], `${uri}: resourceDomains must be empty`);
+      assert.deepEqual(c._meta?.ui?.csp?.frameDomains, [], `${uri}: frameDomains must be empty`);
+      assert.deepEqual(c._meta?.ui?.csp?.baseUriDomains, [], `${uri}: baseUriDomains must be empty`);
     }
   });
 

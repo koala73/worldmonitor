@@ -28,7 +28,7 @@ Pro subscribers can connect Claude Desktop / Cursor / claude.ai without ever pas
 | `https://api.worldmonitor.app/.well-known/oauth-authorization-server` | AS metadata (RFC 8414) |
 | `https://worldmonitor.app/.well-known/oauth-protected-resource` | Resource server metadata (RFC 9728) |
 
-Server identifier: `worldmonitor` v1.13.0.
+Server identifier: `worldmonitor` v1.14.0.
 
 Registry listings: the server is published in the [official MCP registry](https://registry.modelcontextprotocol.io/v0/servers?search=worldmonitor) as `app.worldmonitor/mcp` — a domain-verified namespace, so clients that resolve servers through the registry get the same endpoint and metadata as the server card above — and listed on [Smithery](https://smithery.ai/servers/worldmonitor/wm-mcp) and [mcp.so](https://mcp.so/server/world-monitor).
 
@@ -386,12 +386,18 @@ Resources come in two tiers. **Concrete resources** are surfaced by `resources/l
 The server supports [MCP Apps](https://modelcontextprotocol.io/extensions/apps/build) (extension `io.modelcontextprotocol/ui`, spec `2026-01-26`) — interactive views a host renders in a sandboxed iframe when a linked tool is called. Three wire signals drive it:
 
 - **`initialize`** declares support in the handshake. The response's `capabilities.extensions` names the extension: `{"io.modelcontextprotocol/ui": {}}`. This is the negotiation signal a host (or agent-readiness scanner) reads to classify the endpoint as an MCP-App surface — the `tools/list` and `resources/list` entries below are the content it then renders.
-- **`tools/list`** advertises the linkage on the tool. `get_country_risk` carries `_meta.ui.resourceUri` (and the deprecated flat `ui/resourceUri` alias) pointing at its UI resource.
-- **`resources/list`** surfaces the UI resource itself, alongside the concrete data resource (the parameterised data templates live in `resources/templates/list`):
+- **`tools/list`** advertises the linkage on the tool. Each UI-linked tool carries `_meta.ui.resourceUri` (and the deprecated flat `ui/resourceUri` alias) pointing at its UI resource.
+- **`resources/list`** surfaces the UI resources themselves, alongside the concrete data resource (the parameterised data templates live in `resources/templates/list`):
 
-| UI resource URI | mimeType | Renders |
-|-----------------|----------|---------|
-| `ui://worldmonitor/country-risk.html` | `text/html;profile=mcp-app` | The `get_country_risk` result as an interactive card: CII score, unrest/conflict/security/news component breakdown, travel-advisory level, and OFAC sanctions exposure. |
+| UI resource URI | Linked tool | Renders |
+|-----------------|-------------|---------|
+| `ui://worldmonitor/country-risk.html` | `get_country_risk` | CII score, unrest/conflict/security/news component breakdown, travel-advisory level, and OFAC sanctions exposure. |
+| `ui://worldmonitor/world-brief.html` | `get_world_brief` | The AI-summarised global intelligence brief as readable paragraphs, plus grounding headlines and source articles. |
+| `ui://worldmonitor/country-brief.html` | `get_country_brief` | The AI-synthesised per-country brief as paragraphs, with the analytical framework lens and grounding sources. |
+| `ui://worldmonitor/market-radar.html` | `get_market_data` | The Fear & Greed composite plus per-asset-class quote tables (equities, commodities, crypto, Gulf, sectors) with signed, colour-coded change. |
+| `ui://worldmonitor/chokepoint-monitor.html` | `get_chokepoint_status` | Per-chokepoint rolling transit summaries (today's count, week-over-week change, tanker split) with a risk-level badge. |
+
+All UI resources share `mimeType: text/html;profile=mcp-app`.
 
 `resources/read` on a `ui://` URI returns the self-contained HTML view. Unlike the data resources, a `ui://` read is **public and quota-exempt** — the template carries no data and spends no upstream call, so a host can preload it (and an agent-readiness scanner can fetch it) without credentials and without touching the Pro daily cap. The view is fully self-contained (no external assets) and communicates with the host over the standard MCP Apps `postMessage` bridge (`ui/initialize` → `ui/notifications/tool-result` → `ui/notifications/size-changed`).
 

@@ -140,8 +140,11 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
 
     it('compressDescriptions=true returns { name, description, inputSchema, outputSchema, annotations } with no other top-level keys', async () => {
       const tools = await getRegistry();
-      const t = tools.find(t => t.name === 'get_market_data');
-      assert.ok(t, 'get_market_data must be registered');
+      // get_cyber_threats is a cache tool WITHOUT a ui:// surface, so it carries
+      // no `_meta` — the clean 5-key public shape. (get_market_data now links a
+      // Market Radar ui:// app shell and legitimately carries `_meta`.)
+      const t = tools.find(t => t.name === 'get_cyber_threats');
+      assert.ok(t, 'get_cyber_threats must be registered');
       assert.deepEqual(Object.keys(t).sort(), ['annotations', 'description', 'inputSchema', 'name', 'outputSchema']);
     });
 
@@ -286,10 +289,10 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
         'the deprecated flat ui/resourceUri alias must mirror the nested form');
     });
 
-    it('a tool WITHOUT a UI surface (get_market_data) omits _meta entirely (no empty object on the wire)', async () => {
+    it('a tool WITHOUT a UI surface (get_cyber_threats) omits _meta entirely (no empty object on the wire)', async () => {
       const tools = await getRegistry();
-      const t = tools.find(t => t.name === 'get_market_data');
-      assert.ok(t, 'get_market_data must be registered');
+      const t = tools.find(t => t.name === 'get_cyber_threats');
+      assert.ok(t, 'get_cyber_threats must be registered');
       assert.ok(!('_meta' in t), 'non-UI tools must not carry a _meta key at all');
     });
 
@@ -402,14 +405,14 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
     // ============================================================
     // U4: Version bump + SERVER_INSTRUCTIONS + server-card sync
     // ============================================================
-    it('serverInfo.version === "1.13.0"', async () => {
+    it('serverInfo.version === "1.14.0"', async () => {
       const res = await mod.default(new Request('https://worldmonitor.app/mcp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': VALID_KEY },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 't', version: '1' } } }),
       }));
       const body = await res.json();
-      assert.equal(body.result?.serverInfo?.version, '1.13.0');
+      assert.equal(body.result?.serverInfo?.version, '1.14.0');
     });
 
     it('initialize.result.instructions mentions describe_tool AND the TOOL_DESCRIPTION_MAX_BYTES cap value', async () => {
@@ -426,9 +429,9 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
         'instructions should mention the TOOL_DESCRIPTION_MAX_BYTES cap');
     });
 
-    it('server-card.json version matches SERVER_VERSION (1.13.0) AND tools[] length matches (40)', () => {
+    it('server-card.json version matches SERVER_VERSION (1.14.0) AND tools[] length matches (40)', () => {
       const card = JSON.parse(readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'));
-      assert.equal(card.serverInfo.version, '1.13.0');
+      assert.equal(card.serverInfo.version, '1.14.0');
       // orank (ora.ai) agent-readiness scanner reads the card's `tools` as an
       // ARRAY (tools[]) for pre-connection preview — not the old {count,categories}
       // object. Keep it an array; the count now derives from the length.

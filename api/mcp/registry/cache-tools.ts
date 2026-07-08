@@ -23,6 +23,7 @@ import {
   selectDatasets,
 } from '../filters';
 import type { ToolDef } from '../types';
+import { CHOKEPOINT_MONITOR_UI_URI, MARKET_RADAR_UI_URI } from '../ui/registry';
 
 // Iran-events domain sunset (war ended 2026-07). Default OFF: drop the dormant
 // conflict:iran-events:v1 key from the get_conflict_events cache set so the MCP
@@ -138,6 +139,9 @@ export const CACHE_TOOLS: ToolDef[] = [
       }
       return data;
     },
+    // MCP Apps (`io.modelcontextprotocol/ui`): links the tool to its interactive
+    // ui:// app shell. Single source of truth — registered in ../ui/registry.ts.
+    _uiResourceUri: MARKET_RADAR_UI_URI,
     _cacheKeys: [
       'market:stocks-bootstrap:v1',
       'market:commodities-bootstrap:v1',
@@ -1600,6 +1604,9 @@ export const CACHE_TOOLS: ToolDef[] = [
     // EXCLUDED on purpose: supply_chain:corridorrisk:v1 is an intermediate
     // key whose data flows through supply_chain:transit-summaries:v1
     // (api/health.js:461). U7 will add corridorrisk to EXCLUDED_FROM_MCP.
+    // MCP Apps (`io.modelcontextprotocol/ui`): links the tool to its interactive
+    // ui:// app shell. Single source of truth — registered in ../ui/registry.ts.
+    _uiResourceUri: CHOKEPOINT_MONITOR_UI_URI,
     _cacheKeys: [
       'supply_chain:transit-summaries:v1',          // STANDALONE_KEYS::transitSummaries
       'supply_chain:chokepoint_transits:v1',        // STANDALONE_KEYS::chokepointTransits
