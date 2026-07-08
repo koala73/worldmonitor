@@ -111,19 +111,26 @@ export async function scanAndEnqueueWatchlistStoryEvents(nowMs, {
     }
     if (candidates.length === 0) return { hashes: hashes.length, candidates: 0, events: 0, enqueued: 0, scoreMin };
 
-    const events = buildWatchlistStoryEvents(candidates, tickerDictionary, scoreMin);
+    const eventEntries = [];
+    for (const candidate of candidates) {
+      for (const event of buildWatchlistStoryEvents([candidate], tickerDictionary, scoreMin)) {
+        eventEntries.push({ event, sourceKey: `story:sources:v1:${candidate.hash}` });
+      }
+    }
 
-    if (events.length > 0) {
+    if (eventEntries.length > 0) {
       try {
         const srcResults = await upstashPipeline(
-          events.map((event) => ['SMEMBERS', `story:sources:v1:${String(event.payload.coalesceKey).slice('watchlist:'.length)}`]),
+          eventEntries.map(({ sourceKey }) => ['SMEMBERS', sourceKey]),
         );
-        for (let i = 0; i < events.length; i++) {
+        for (let i = 0; i < eventEntries.length; i++) {
           const arr = srcResults[i]?.result;
-          if (Array.isArray(arr) && typeof arr[0] === 'string') events[i].payload.source = arr[0];
+          if (Array.isArray(arr) && typeof arr[0] === 'string') eventEntries[i].event.payload.source = arr[0];
         }
       } catch { /* best-effort */ }
     }
+
+    const events = eventEntries.map(({ event }) => event);
     const publish = publishNotificationEvent ??
       ((event) => publishWatchlistNotificationEvent(event, { upstashRest, logger }));
     let enqueued = 0;

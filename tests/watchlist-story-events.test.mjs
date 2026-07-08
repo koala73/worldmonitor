@@ -219,4 +219,9 @@ describe('seed-digest-notifications.mjs — enqueue wiring (source-grep contract
   it('threshold comes from WATCHLIST_STORY_SCORE_MIN via resolveWatchlistScoreMin', () => {
     assert.match(scanSrc, /resolveWatchlistScoreMin\(env\)/);
   });
+
+  it('hydrates sources using the candidate hash rather than parsing coalesceKey', () => {
+    assert.ok(scanSrc.includes('sourceKey: `story:sources:v1:${candidate.hash}`'));
+    assert.doesNotMatch(scanSrc, /coalesceKey\)\.slice\('watchlist:'/);
+  });
 });

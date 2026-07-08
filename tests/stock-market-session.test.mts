@@ -103,11 +103,13 @@ function yahooHistoryPayload() {
   };
 }
 
-function installAnalyzeStockFetchMock() {
+function installAnalyzeStockFetchMock(handleUrl?: (url: string) => Response | undefined) {
   const urls: string[] = [];
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
     urls.push(url);
+    const handled = handleUrl?.(url);
+    if (handled) return handled;
     if (url.includes('range=6mo&interval=1d')) {
       return new Response(JSON.stringify(yahooHistoryPayload()), { status: 200 });
     }
@@ -309,6 +311,58 @@ describe('AnalyzeStockResponse marketSession / extended fields (#4922d)', () => 
       assert.ok(
         urls.some((url) => url.includes('range=1d&interval=5m&includePrePost=true')),
         'pre-market analysis must request the extended-hours Yahoo chart',
+      );
+    } finally {
+      if (previousRedisUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = previousRedisUrl;
+      if (previousRedisToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = previousRedisToken;
+      if (previousOpenRouterKey === undefined) delete process.env.OPENROUTER_API_KEY;
+      else process.env.OPENROUTER_API_KEY = previousOpenRouterKey;
+      if (previousLlmApiUrl === undefined) delete process.env.LLM_API_URL;
+      else process.env.LLM_API_URL = previousLlmApiUrl;
+      if (previousLlmApiKey === undefined) delete process.env.LLM_API_KEY;
+      else process.env.LLM_API_KEY = previousLlmApiKey;
+    }
+  });
+
+  it('bypasses a warm shared cache when the analysis clock is injected', async () => {
+    const previousRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const previousRedisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    const previousOpenRouterKey = process.env.OPENROUTER_API_KEY;
+    const previousLlmApiUrl = process.env.LLM_API_URL;
+    const previousLlmApiKey = process.env.LLM_API_KEY;
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+    try {
+      const staleCachedResponse = buildAnalysisResponse({ ...baseParams, marketSession: 'regular' });
+      const urls = installAnalyzeStockFetchMock((url) => {
+        if (url.startsWith('https://redis.example') && url.includes('market%3Aanalyze-stock')) {
+          return new Response(JSON.stringify({ result: JSON.stringify(staleCachedResponse) }), { status: 200 });
+        }
+        if (url.startsWith('https://redis.example')) {
+          return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+        }
+        return undefined;
+      });
+
+      const response = await analyzeStock(
+        {} as never,
+        { symbol: 'AAPL', name: 'Apple', includeNews: false },
+        { now: new Date('2026-07-08T11:00:00Z') },
+      );
+
+      assert.equal(response.available, true);
+      assert.equal(response.marketSession, 'pre');
+      assert.equal(response.extendedPrice, 9.45);
+      assert.equal(response.extendedChangePercent, 5);
+      assert.equal(
+        urls.some((url) => url.startsWith('https://redis.example') && url.includes('market%3Aanalyze-stock')),
+        false,
+        'injected analysis clocks must not read session-agnostic analyze-stock cache entries',
       );
     } finally {
       if (previousRedisUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;

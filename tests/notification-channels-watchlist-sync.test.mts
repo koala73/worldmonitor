@@ -46,4 +46,11 @@ describe('buildWatchlistTickerSyncPayload', () => {
       null,
     );
   });
+
+  it('returns null for reorder-only ticker scope changes', () => {
+    assert.equal(
+      buildWatchlistTickerSyncPayload({ ...baseRule, tickers: ['MSFT', 'aapl'] }, [' AAPL ', 'MSFT', 'MSFT', '^GSPC']),
+      null,
+    );
+  });
 });

@@ -200,8 +200,10 @@ function normalizeWatchlistTickers(input: readonly string[] | undefined): string
   return cleaned.slice(0, WATCHLIST_TICKERS_MAX);
 }
 
-function tickerListsEqual(a: readonly string[], b: readonly string[]): boolean {
-  return a.length === b.length && a.every((ticker, index) => ticker === b[index]);
+function tickerSetsEqual(a: readonly string[], b: readonly string[]): boolean {
+  if (a.length !== b.length) return false;
+  const bSet = new Set(b);
+  return a.every((ticker) => bSet.has(ticker));
 }
 
 export type WatchlistTickerSyncPayload = Pick<AlertRule, 'variant' | 'enabled' | 'eventTypes' | 'sensitivity' | 'channels'> & {
@@ -211,7 +213,7 @@ export type WatchlistTickerSyncPayload = Pick<AlertRule, 'variant' | 'enabled' |
 export function buildWatchlistTickerSyncPayload(rule: AlertRule | undefined, symbols: string[]): WatchlistTickerSyncPayload | null {
   if (!rule?.enabled || !rule.eventTypes?.includes('watchlist_story_alert')) return null;
   const tickers = normalizeWatchlistTickers(symbols);
-  if (tickerListsEqual(normalizeWatchlistTickers(rule.tickers), tickers)) return null;
+  if (tickerSetsEqual(normalizeWatchlistTickers(rule.tickers), tickers)) return null;
   return {
     variant: rule.variant,
     enabled: rule.enabled,

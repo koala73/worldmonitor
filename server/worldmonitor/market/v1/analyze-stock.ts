@@ -1415,7 +1415,7 @@ export async function analyzeStock(
   // v3 rows carry old-model output and must age out at cutover.
   const cacheKey = `market:analyze-stock:v4:${symbol}:${includeNews ? 'news' : 'no-news'}${nameSuffix}`;
 
-  const cached = await cachedFetchJson<AnalyzeStockResponse>(cacheKey, CACHE_TTL_SECONDS, async () => {
+  const fetchFreshAnalysis = async (): Promise<AnalyzeStockResponse | null> => {
     const [history, analystData] = await Promise.all([
       fetchYahooHistory(symbol),
       fetchYahooAnalystData(symbol),
@@ -1457,13 +1457,17 @@ export async function analyzeStock(
     });
     await storeStockAnalysisSnapshot(response, includeNews);
     return response;
-  }, undefined, {
-    // Worst-case fetcher budget: 2× UPSTREAM_TIMEOUT_MS sequenced (10s+10s for
-    // history/analyst then headlines/dividend) + 20s LLM overlay + small
-    // overhead. 60s safely sits above this so the cache safety net (#3539)
-    // doesn't pre-empt the caller's own per-stage timeouts.
-    timeoutMs: 60_000,
-  });
+  };
+
+  const cached = options.now
+    ? await fetchFreshAnalysis()
+    : await cachedFetchJson<AnalyzeStockResponse>(cacheKey, CACHE_TTL_SECONDS, fetchFreshAnalysis, undefined, {
+        // Worst-case fetcher budget: 2× UPSTREAM_TIMEOUT_MS sequenced (10s+10s for
+        // history/analyst then headlines/dividend) + 20s LLM overlay + small
+        // overhead. 60s safely sits above this so the cache safety net (#3539)
+        // doesn't pre-empt the caller's own per-stage timeouts.
+        timeoutMs: 60_000,
+      });
 
   if (cached) return cached;
 
