@@ -7530,6 +7530,10 @@ export class DeckGLMap {
     this.hoverQueryThrottle = hoverQueryThrottle;
 
     map.on('mousemove', (e) => {
+      if (!this.onCountryClick) {
+        hoverQueryThrottle.cancel();
+        return;
+      }
       hoverQueryThrottle.queue(e.point);
     });
 
