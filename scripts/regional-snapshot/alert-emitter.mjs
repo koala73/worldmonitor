@@ -39,6 +39,12 @@
 // touching the network.
 
 import { getRedisCredentials } from '../_seed-utils.mjs';
+import notificationDedup from '../shared/notification-dedup.cjs';
+
+const {
+  classifySetNxResult,
+  recordDedupOutcome,
+} = notificationDedup;
 
 // ── Event type constants ─────────────────────────────────────────────────────
 
@@ -199,18 +205,22 @@ export function buildDedupKey(event) {
 // ── Default Upstash publisher ────────────────────────────────────────────────
 
 async function upstashSetNx(url, token, key, ttlSeconds) {
-  // Path-based REST call: /set/{key}/{value}?NX=true&EX={ttl}
-  const resp = await fetch(
-    `${url}/set/${encodeURIComponent(key)}/1?NX=true&EX=${ttlSeconds}`,
-    {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(5_000),
-    },
-  );
-  if (!resp.ok) return false;
-  const json = await resp.json().catch(() => null);
-  return json?.result === 'OK';
+  try {
+    // Path-based REST call: /set/{key}/{value}?NX=true&EX={ttl}
+    const resp = await fetch(
+      `${url}/set/${encodeURIComponent(key)}/1?NX=true&EX=${ttlSeconds}`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(5_000),
+      },
+    );
+    if (!resp.ok) return 'error';
+    const json = await resp.json().catch(() => null);
+    return classifySetNxResult(json?.result);
+  } catch {
+    return 'error';
+  }
 }
 
 async function upstashLpush(url, token, key, value) {
@@ -249,7 +259,7 @@ async function upstashDel(url, token, key) {
  * testable without fetch stubs.
  *
  * @typedef {{
- *   setNx: (key: string, ttlSeconds: number) => Promise<boolean>,
+ *   setNx: (key: string, ttlSeconds: number) => Promise<boolean|'new'|'duplicate'|'error'|'disabled'>,
  *   lpush: (key: string, value: string) => Promise<boolean>,
  *   del: (key: string) => Promise<boolean>,
  * }} RedisPublishOps
@@ -262,6 +272,8 @@ async function upstashDel(url, token, key) {
  *
  * Flow:
  *   1. SET NX dedup key (6h TTL). If already set → dedup hit, return false.
+ *      SET NX transport errors fail open for high/critical events through the
+ *      shared notification-dedup policy, with in-process fallback suppression.
  *   2. LPUSH event onto wm:events:queue.
  *   3. If LPUSH fails → DEL the dedup key so the next cron cycle can retry.
  *      Otherwise the alert would be silently suppressed for 6h even though
@@ -279,14 +291,24 @@ export async function publishEventWithOps(event, ops) {
   const outcome = { enqueued: false, dedupHit: false, rolledBack: false };
   try {
     const dedupKey = buildDedupKey(event);
-    const isNew = await ops.setNx(dedupKey, DEDUP_TTL_SECONDS);
-    if (!isNew) {
-      outcome.dedupHit = true;
-      const title = String(event.payload?.title ?? '');
-      console.log(`[alerts] dedup skip: ${event.eventType} — ${title.slice(0, 60)}`);
+    const dedupResult = await ops.setNx(dedupKey, DEDUP_TTL_SECONDS);
+    const dedupDecision = recordDedupOutcome(dedupResult, {
+      surface: 'regional-snapshot',
+      eventType: event.eventType,
+      severity: event.severity,
+      fallbackKey: dedupKey,
+      fallbackTtlSeconds: DEDUP_TTL_SECONDS,
+      emitTelemetry: ({ line }) => console.warn(line),
+    });
+    if (!dedupDecision.shouldPublish) {
+      outcome.dedupHit = dedupDecision.isDuplicate;
+      if (dedupDecision.isDuplicate) {
+        const title = String(event.payload?.title ?? '');
+        console.log(`[alerts] dedup skip: ${event.eventType} — ${title.slice(0, 60)}`);
+      }
       return outcome;
     }
-    const msg = JSON.stringify({ ...event, publishedAt: Date.now() });
+    const msg = JSON.stringify({ ...event, severity: dedupDecision.severity, publishedAt: Date.now() });
     const ok = await ops.lpush('wm:events:queue', msg);
     if (ok) {
       outcome.enqueued = true;

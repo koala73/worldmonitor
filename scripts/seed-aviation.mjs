@@ -43,9 +43,8 @@ import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
 const {
   buildDedupMaterial,
-  buildSetNxErrorTelemetryLine,
   classifySetNxResult,
-  shouldPublishAfterDedupResult,
+  recordDedupOutcome,
 } = notificationDedup;
 
 loadEnvFile(import.meta.url);
@@ -360,21 +359,23 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
     const dedupMaterial = buildDedupMaterial(eventType, payload?.title, payload?.coalesceKey);
     const dedupKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${notifyHash(dedupMaterial)}`;
     const dedupResult = await upstashSetNx(dedupKey, '1', dedupTtl);
-    if (!shouldPublishAfterDedupResult(dedupResult, severity)) {
-      if (dedupResult !== 'duplicate') {
-        console.warn(buildSetNxErrorTelemetryLine({ surface: 'seed-aviation', eventType, severity, action: 'fail_closed' }));
-        return;
-      }
+    const dedupDecision = recordDedupOutcome(dedupResult, {
+      surface: 'seed-aviation',
+      eventType,
+      severity,
+      fallbackKey: dedupKey,
+      fallbackTtlSeconds: dedupTtl,
+      emitTelemetry: ({ line }) => console.warn(line),
+    });
+    if (!dedupDecision.shouldPublish) {
+      if (!dedupDecision.isDuplicate) return;
       console.log(`[Notify] Dedup hit — ${eventType}: ${String(payload.title ?? '').slice(0, 60)}`);
       return;
     }
-    if (dedupResult === 'error') {
-      console.warn(buildSetNxErrorTelemetryLine({ surface: 'seed-aviation', eventType, severity, action: 'fail_open' }));
-    }
-    const msg = JSON.stringify({ eventType, payload, severity, ...(variant ? { variant } : {}), publishedAt: Date.now() });
+    const msg = JSON.stringify({ eventType, payload, severity: dedupDecision.severity, ...(variant ? { variant } : {}), publishedAt: Date.now() });
     const ok = await upstashLpush('wm:events:queue', msg);
     if (ok) {
-      console.log(`[Notify] Queued ${severity} event: ${eventType} — ${String(payload.title ?? '').slice(0, 60)}`);
+      console.log(`[Notify] Queued ${dedupDecision.severity} event: ${eventType} — ${String(payload.title ?? '').slice(0, 60)}`);
     } else {
       console.warn(`[Notify] LPUSH failed for ${eventType} — rolling back dedup key`);
       await upstashDel(dedupKey);

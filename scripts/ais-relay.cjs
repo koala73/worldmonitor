@@ -30,9 +30,8 @@ const { parseProxyConfig, resolveProxyString } = require('./_proxy-utils.cjs');
 const { countryNameToIso2 } = require('./shared/country-name-to-iso2.cjs');
 const {
   buildDedupMaterial,
-  buildSetNxErrorTelemetryLine,
   classifySetNxResult,
-  shouldPublishAfterDedupResult,
+  recordDedupOutcome,
 } = require('./shared/notification-dedup.cjs');
 const parseProxyUrl = parseProxyConfig;
 
@@ -390,7 +389,7 @@ function upstashLpush(key, value) {
 
 function upstashSetNx(key, value, ttlSeconds) {
   return new Promise((resolve) => {
-    if (!UPSTASH_ENABLED) return resolve('error');
+    if (!UPSTASH_ENABLED) return resolve('disabled');
     const url = new URL('/', UPSTASH_REDIS_REST_URL);
     const serialized = typeof value === 'string' ? value : JSON.stringify(value);
     const body = JSON.stringify(['SET', key, serialized, 'NX', 'EX', String(ttlSeconds)]);
@@ -622,21 +621,23 @@ async function publishNotificationEvent({ eventType, payload, severity, variant,
     const dedupMaterial = buildDedupMaterial(eventType, payload?.title, payload?.coalesceKey);
     const dedupKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${notifySimpleHash(dedupMaterial)}`;
     const dedupResult = await upstashSetNx(dedupKey, '1', dedupTtl);
-    if (!shouldPublishAfterDedupResult(dedupResult, severity)) {
-      if (dedupResult !== 'duplicate') {
-        recordNotificationDedupSetNxError({ surface: 'ais-relay', eventType, severity, action: 'fail_closed' });
-        return;
-      }
+    const dedupDecision = recordDedupOutcome(dedupResult, {
+      surface: 'ais-relay',
+      eventType,
+      severity,
+      fallbackKey: dedupKey,
+      fallbackTtlSeconds: dedupTtl,
+      emitTelemetry: recordNotificationDedupSetNxError,
+    });
+    if (!dedupDecision.shouldPublish) {
+      if (!dedupDecision.isDuplicate) return;
       console.log(`[Notify] Dedup hit — ${eventType}: ${String(payload.title ?? '').slice(0, 60)}`);
       return;
     }
-    if (dedupResult === 'error') {
-      recordNotificationDedupSetNxError({ surface: 'ais-relay', eventType, severity, action: 'fail_open' });
-    }
-    const msg = JSON.stringify({ eventType, payload, severity, ...(variant ? { variant } : {}), publishedAt: Date.now() });
+    const msg = JSON.stringify({ eventType, payload, severity: dedupDecision.severity, ...(variant ? { variant } : {}), publishedAt: Date.now() });
     const ok = await upstashLpush('wm:events:queue', msg);
     if (ok) {
-      console.log(`[Notify] Queued ${severity} event: ${eventType} — ${String(payload.title ?? '').slice(0, 60)}`);
+      console.log(`[Notify] Queued ${dedupDecision.severity} event: ${eventType} — ${String(payload.title ?? '').slice(0, 60)}`);
     } else {
       // Rollback the dedup key so the next poll cycle can retry — avoids silent
       // suppression for the full dedupTtl when a transient LPUSH fails.
@@ -6956,10 +6957,10 @@ function getRelayRollingMetrics() {
   };
 }
 
-function recordNotificationDedupSetNxError({ surface, eventType, severity, action }) {
+function recordNotificationDedupSetNxError({ line, action }) {
   incrementRelayMetric('notificationDedupSetNxErrors');
   incrementRelayMetric(action === 'fail_open' ? 'notificationDedupSetNxFailOpen' : 'notificationDedupSetNxFailClosed');
-  console.warn(buildSetNxErrorTelemetryLine({ surface, eventType, severity, action }));
+  console.warn(line);
 }
 
 // AIS aggregate state for snapshot API (server-side fanout)
