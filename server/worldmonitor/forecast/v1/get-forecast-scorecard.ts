@@ -3,10 +3,14 @@ import type {
   GetForecastScorecardResponse,
   ServerContext,
 } from '../../../../src/generated/server/worldmonitor/forecast/v1/service_server';
-import { unwrapEnvelope } from '../../../_shared/seed-envelope.ts';
 
 const REDIS_KEY = 'forecast:scorecard:v1';
 const MAX_STALE_MS = 2160 * 60 * 1000;
+
+interface ScorecardSeedEnvelope {
+  _seed?: { fetchedAt?: unknown };
+  data?: unknown;
+}
 
 function emptyScorecard(overrides: Partial<GetForecastScorecardResponse> = {}): GetForecastScorecardResponse {
   return {
@@ -64,8 +68,19 @@ export const getForecastScorecard: ForecastServiceHandler['getForecastScorecard'
 
 async function getScorecardJson(): Promise<{ data: unknown | null; fetchedAt: number | null }> {
   const raw = await getRawString(REDIS_KEY);
-  const unwrapped = unwrapEnvelope(raw == null ? null : JSON.parse(raw));
-  return { data: unwrapped.data, fetchedAt: unwrapped._seed?.fetchedAt ?? null };
+  if (raw == null) return { data: null, fetchedAt: null };
+  const parsed = JSON.parse(raw) as unknown;
+  if (isScorecardSeedEnvelope(parsed)) {
+    const fetchedAt = Number(parsed._seed.fetchedAt);
+    return { data: parsed.data ?? null, fetchedAt: Number.isFinite(fetchedAt) ? fetchedAt : null };
+  }
+  return { data: parsed, fetchedAt: null };
+}
+
+function isScorecardSeedEnvelope(value: unknown): value is ScorecardSeedEnvelope & { _seed: { fetchedAt: unknown } } {
+  if (value == null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const seed = (value as ScorecardSeedEnvelope)._seed;
+  return seed != null && typeof seed === 'object' && 'fetchedAt' in seed;
 }
 
 async function getRawString(key: string): Promise<string | null> {
