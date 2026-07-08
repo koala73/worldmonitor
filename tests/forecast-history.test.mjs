@@ -370,6 +370,16 @@ describe('forecast resolution spec round-trip (U3)', () => {
     assert.deepEqual(entry.projections, { h24: 0.61, d7: 0.66, d30: 0.72 });
   });
 
+  it('preserves generationOrigin in history entries for scorecard grouping', () => {
+    const pred = makeHardConflictPred();
+    pred.generationOrigin = 'state_derived';
+    const entry = buildHistoryForecastEntry(pred);
+    assert.equal(entry.generationOrigin, 'state_derived');
+
+    const legacy = buildHistoryForecastEntry(makeHardConflictPred());
+    assert.equal(legacy.generationOrigin, 'legacy_detector');
+  });
+
   it('makePrediction defaults resolution:null and an unspec\'d forecast serializes with NO resolution key', () => {
     const pred = makeHardConflictPred();
     assert.equal(pred.resolution, null);

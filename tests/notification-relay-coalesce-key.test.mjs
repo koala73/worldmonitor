@@ -18,14 +18,19 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import Module from 'node:module';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
 const relaySrc = readFileSync(resolve(__dirname, '..', 'scripts', 'notification-relay.cjs'), 'utf-8');
 const aisRelaySrc = readFileSync(resolve(__dirname, '..', 'scripts', 'ais-relay.cjs'), 'utf-8');
 const seedAviationSrc = readFileSync(resolve(__dirname, '..', 'scripts', 'seed-aviation.mjs'), 'utf-8');
+const regionalAlertEmitterSrc = readFileSync(resolve(__dirname, '..', 'scripts', 'regional-snapshot', 'alert-emitter.mjs'), 'utf-8');
 const notificationDedupSrc = readFileSync(resolve(__dirname, '..', 'scripts', 'shared', 'notification-dedup.cjs'), 'utf-8');
+const notificationDedup = require('../scripts/shared/notification-dedup.cjs');
 
 describe('notification-relay checkDedup — Slot B coalesce key', () => {
   it('checkDedup signature accepts an optional coalesceKey parameter', () => {
@@ -66,6 +71,67 @@ describe('notification-relay checkDedup — Slot B coalesce key', () => {
   });
 });
 
+describe('notification-relay checkDedup — SETNX transport outcomes', () => {
+  function loadRelayForUnitTest() {
+    const relayPath = resolve(__dirname, '..', 'scripts', 'notification-relay.cjs');
+    const previousEnv = {
+      UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
+      UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
+      CONVEX_URL: process.env.CONVEX_URL,
+      CONVEX_SITE_URL: process.env.CONVEX_SITE_URL,
+      RELAY_SHARED_SECRET: process.env.RELAY_SHARED_SECRET,
+    };
+    process.env.UPSTASH_REDIS_REST_URL = 'https://upstash.example.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    process.env.CONVEX_URL = 'https://example.convex.cloud';
+    process.env.CONVEX_SITE_URL = 'https://example.convex.site';
+    process.env.RELAY_SHARED_SECRET = 'secret';
+    delete require.cache[require.resolve(relayPath)];
+
+    const originalLoad = Module._load;
+    Module._load = function patchedLoad(request, parent, ...rest) {
+      if (request === 'resend') return { Resend: class {} };
+      return originalLoad.call(this, request, parent, ...rest);
+    };
+    try {
+      return require(relayPath);
+    } finally {
+      Module._load = originalLoad;
+      for (const [key, value] of Object.entries(previousEnv)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  }
+
+  it('exports checkDedup and maps SET NX OK/null/non-OK with a timeout-bound fetch', async () => {
+    const relay = loadRelayForUnitTest();
+    assert.equal(typeof relay.checkDedup, 'function');
+
+    const originalFetch = globalThis.fetch;
+    const results = ['OK', null];
+    const seenSignals = [];
+    try {
+      globalThis.fetch = async (_url, init) => {
+        seenSignals.push(init?.signal);
+        const result = results.shift();
+        return { ok: true, json: async () => ({ result }) };
+      };
+      assert.equal(await relay.checkDedup('user1', 'market_alert', 'Oil spike'), 'new');
+      assert.equal(await relay.checkDedup('user1', 'market_alert', 'Oil spike'), 'duplicate');
+
+      globalThis.fetch = async (_url, init) => {
+        seenSignals.push(init?.signal);
+        return { ok: false, status: 503, json: async () => ({}) };
+      };
+      assert.equal(await relay.checkDedup('user1', 'market_alert', 'Oil spike'), 'error');
+      assert.ok(seenSignals.every(signal => signal instanceof AbortSignal));
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
 describe('shared notification-dedup helper — buildDedupMaterial', () => {
   it('keys on coalesceKey when set, else falls back to eventType:title', () => {
     assert.match(
@@ -76,17 +142,134 @@ describe('shared notification-dedup helper — buildDedupMaterial', () => {
   });
 
   it('is exported for reuse by all publishers', () => {
-    assert.match(
-      notificationDedupSrc,
-      /module\.exports\s*=\s*\{\s*buildDedupMaterial\s*\}/,
-      'buildDedupMaterial must be exported',
-    );
+    assert.equal(typeof notificationDedup.buildDedupMaterial, 'function', 'buildDedupMaterial must be exported');
   });
 
-  it('all three publishers import/require the shared helper (no re-inlined copies)', () => {
+  it('all notification publishers import/require the shared helper (no re-inlined copies)', () => {
     assert.match(relaySrc, /require\('\.\/shared\/notification-dedup\.cjs'\)/, 'notification-relay.cjs must require the shared helper');
     assert.match(aisRelaySrc, /require\('\.\/shared\/notification-dedup\.cjs'\)/, 'ais-relay.cjs must require the shared helper');
     assert.match(seedAviationSrc, /from '\.\/shared\/notification-dedup\.cjs'/, 'seed-aviation.mjs must import the shared helper');
+    assert.match(regionalAlertEmitterSrc, /from '\.\.\/shared\/notification-dedup\.cjs'/, 'regional alert emitter must import the shared helper');
+  });
+});
+
+describe('shared notification-dedup helper — SETNX failure policy', () => {
+  it('distinguishes new keys, genuine duplicate hits, disabled Redis, and Redis errors', () => {
+    assert.equal(notificationDedup.classifySetNxResult('OK'), 'new');
+    assert.equal(notificationDedup.classifySetNxResult(null), 'duplicate');
+    assert.equal(notificationDedup.classifySetNxResult('disabled'), 'disabled');
+    assert.equal(notificationDedup.classifySetNxResult(undefined), 'error');
+    assert.equal(notificationDedup.classifySetNxResult('ERR'), 'error');
+  });
+
+  it('fails open only for high-priority notification severities on SETNX errors', () => {
+    assert.equal(notificationDedup.shouldPublishAfterDedupResult('new', 'low'), true);
+    assert.equal(notificationDedup.shouldPublishAfterDedupResult('duplicate', 'critical'), false);
+    assert.equal(notificationDedup.shouldPublishAfterDedupResult('disabled', 'critical'), false);
+    assert.equal(notificationDedup.shouldPublishAfterDedupResult('error', 'critical'), true);
+    assert.equal(notificationDedup.shouldPublishAfterDedupResult('error', 'high'), true);
+    assert.equal(notificationDedup.shouldPublishAfterDedupResult('error', 'info'), false);
+    assert.equal(notificationDedup.shouldPublishAfterDedupResult('error', undefined), true);
+  });
+
+  it('records the shared SETNX outcome branch and caps repeat fail-open publishes in-process', () => {
+    const emitted = [];
+    const fallbackKey = `unit:${Date.now()}:setnx-error`;
+    const first = notificationDedup.recordDedupOutcome('error', {
+      surface: 'notification-relay',
+      eventType: 'market_alert',
+      severity: 'critical',
+      fallbackKey,
+      fallbackTtlSeconds: 60,
+      nowMs: 1_000,
+      emitTelemetry: event => emitted.push(event),
+    });
+    assert.equal(first.shouldPublish, true);
+    assert.equal(first.isDuplicate, false);
+    assert.equal(first.action, 'fail_open');
+
+    const second = notificationDedup.recordDedupOutcome('error', {
+      surface: 'notification-relay',
+      eventType: 'market_alert',
+      severity: 'critical',
+      fallbackKey,
+      fallbackTtlSeconds: 60,
+      nowMs: 2_000,
+      emitTelemetry: event => emitted.push(event),
+    });
+    assert.equal(second.shouldPublish, false);
+    assert.equal(second.isDuplicate, true);
+    assert.equal(second.action, 'fallback_suppressed');
+    assert.equal(emitted.length, 2);
+  });
+
+  it('keeps low-priority SETNX errors fail-closed through the shared outcome branch', () => {
+    const decision = notificationDedup.recordDedupOutcome('error', {
+      surface: 'notification-relay',
+      eventType: 'market_alert',
+      severity: 'low',
+      fallbackKey: `unit:${Date.now()}:low`,
+      fallbackTtlSeconds: 60,
+      emitTelemetry: () => {},
+    });
+    assert.equal(decision.shouldPublish, false);
+    assert.equal(decision.action, 'fail_closed');
+  });
+
+  it('emits a stable low-cardinality Sentry/metric marker for SETNX errors', () => {
+    const line = notificationDedup.buildSetNxErrorTelemetryLine({
+      surface: 'Notification Relay',
+      eventType: 'market_alert',
+      severity: 'critical',
+      action: 'fail_open',
+    });
+    assert.equal(
+      line,
+      '[notifications] wm_notification_dedup_setnx_error count=1 surface=notification_relay event_type=market_alert severity=critical action=fail_open reason=setnx_error',
+    );
+    assert.ok(!line.includes('user'), 'telemetry marker must not include user identifiers');
+    assert.ok(!line.includes('title'), 'telemetry marker must not include alert titles');
+  });
+
+  it('all notification publishers consume the shared SETNX classification helper', () => {
+    assert.match(
+      notificationDedupSrc,
+      /module\.exports\s*=\s*\{[\s\S]*classifySetNxResult[\s\S]*recordDedupOutcome[\s\S]*\}/,
+      'shared helper must export the SETNX classifier and outcome recorder',
+    );
+    assert.match(
+      relaySrc,
+      /classifySetNxResult[\s\S]*recordDedupOutcome/,
+      'notification-relay.cjs must use the shared SETNX classifier and outcome recorder',
+    );
+    assert.match(
+      aisRelaySrc,
+      /classifySetNxResult[\s\S]*recordDedupOutcome/,
+      'ais-relay.cjs must use the shared SETNX classifier and outcome recorder',
+    );
+    assert.match(
+      seedAviationSrc,
+      /classifySetNxResult[\s\S]*recordDedupOutcome/,
+      'seed-aviation.mjs must use the shared SETNX classifier and outcome recorder',
+    );
+    assert.match(
+      regionalAlertEmitterSrc,
+      /classifySetNxResult[\s\S]*recordDedupOutcome/,
+      'regional alert emitter must use the shared SETNX classifier and outcome recorder',
+    );
+  });
+
+  it('ais-relay exposes SETNX error counters in /metrics rollups', () => {
+    assert.match(
+      aisRelaySrc,
+      /notificationDedupSetNxErrors:\s*0/,
+      'rolling metrics bucket must count notification SETNX errors',
+    );
+    assert.match(
+      aisRelaySrc,
+      /notifications:\s*\{[\s\S]*dedupSetNxErrors[\s\S]*dedupSetNxFailOpen[\s\S]*dedupSetNxFailClosed[\s\S]*\}/,
+      '/metrics output must expose notification SETNX error counters',
+    );
   });
 });
 

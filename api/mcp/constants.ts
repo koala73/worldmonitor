@@ -178,7 +178,7 @@ export const SERVER_NAME = 'worldmonitor';
 //     registry entry — same per-tool authorship discipline as
 //     _outputBudgetBytes (v1.6.0 PR 4) and outputSchema (v1.6.0 PR 6).
 //   - Hint shape extends from 2 booleans → 4 booleans per tool. Wire delta
-//     is small (~50 B × 39 tools); hints unchanged for tools that already
+//     is small (~50 B × 40 tools); hints unchanged for tools that already
 //     matched the old blanket. Cache tools + pure-internal RPCs now
 //     correctly advertise `openWorldHint: false` (closed-world like a
 //     memory tool — they read our seeded Redis cache); LLM-synthesized

@@ -12,7 +12,11 @@ const {
 const { callLLM } = require('./lib/llm-chain.cjs');
 const { fetchUserPreferences, extractUserContext, formatUserProfile } = require('./lib/user-context.cjs');
 const { countryNameToIso2 } = require('./shared/country-name-to-iso2.cjs');
-const { buildDedupMaterial } = require('./shared/notification-dedup.cjs');
+const {
+  buildDedupMaterial,
+  classifySetNxResult,
+  recordDedupOutcome,
+} = require('./shared/notification-dedup.cjs');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -30,6 +34,7 @@ const RESEND_FROM = process.env.RESEND_FROM_EMAIL ?? 'WorldMonitor <alerts@world
 const QUIET_HOURS_BATCH_ENABLED = process.env.QUIET_HOURS_BATCH_ENABLED !== '0';
 const AI_IMPACT_ENABLED = process.env.AI_IMPACT_ENABLED === '1';
 const AI_IMPACT_CACHE_TTL = 1800; // 30 min, matches dedup window
+const DEDUP_TTL_SECONDS = 1800;
 
 if (!UPSTASH_URL || !UPSTASH_TOKEN) { console.error('[relay] UPSTASH_REDIS_REST_URL/TOKEN not set'); process.exit(1); }
 if (!CONVEX_URL) { console.error('[relay] CONVEX_URL not set'); process.exit(1); }
@@ -67,6 +72,21 @@ async function upstashRest(...args) {
   return json.result;
 }
 
+async function upstashDedupSetNx(key) {
+  try {
+    const res = await fetch(`${UPSTASH_URL}/${['SET', key, '1', 'NX', 'EX', String(DEDUP_TTL_SECONDS)].map(encodeURIComponent).join('/')}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'User-Agent': 'worldmonitor-relay/1.0' },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return 'error';
+    const json = await res.json();
+    return classifySetNxResult(json.result);
+  } catch (err) {
+    return 'error';
+  }
+}
+
 // ── Dedup ─────────────────────────────────────────────────────────────────────
 
 function sha256Hex(str) {
@@ -83,8 +103,7 @@ async function checkDedup(userId, eventType, title, coalesceKey) {
   const keyMaterial = buildDedupMaterial(eventType, title, coalesceKey);
   const hash = sha256Hex(keyMaterial);
   const key = `wm:notif:dedup:${userId}:${hash}`;
-  const result = await upstashRest('SET', key, '1', 'NX', 'EX', '1800');
-  return result === 'OK'; // true = new, false = duplicate
+  return upstashDedupSetNx(key);
 }
 
 // ── Channel deactivation ──────────────────────────────────────────────────────
@@ -1118,15 +1137,37 @@ async function processEvent(event) {
     const coalesceKey = typeof event.payload?.coalesceKey === 'string' ? event.payload.coalesceKey : undefined;
 
     if (quietAction === 'hold') {
-      const isNew = await checkDedup(rule.userId, event.eventType, event.payload?.title ?? '', coalesceKey);
-      if (!isNew) { console.log(`[relay] Dedup hit (held) for ${rule.userId}`); continue; }
+      const dedupResult = await checkDedup(rule.userId, event.eventType, event.payload?.title ?? '', coalesceKey);
+      const dedupDecision = recordDedupOutcome(dedupResult, {
+        surface: 'notification-relay-held',
+        eventType: event.eventType,
+        severity: eventSeverity,
+        fallbackKey: `held:${rule.userId}:${event.eventType}:${event.payload?.title ?? ''}:${coalesceKey ?? ''}`,
+        fallbackTtlSeconds: DEDUP_TTL_SECONDS,
+        emitTelemetry: ({ line }) => console.warn(line),
+      });
+      if (!dedupDecision.shouldPublish) {
+        if (dedupDecision.isDuplicate) console.log(`[relay] Dedup hit (held) for ${rule.userId}`);
+        continue;
+      }
       console.log(`[relay] Quiet hours hold for ${rule.userId} — queuing for batch_on_wake`);
       await holdEvent(rule.userId, rule.variant ?? 'full', JSON.stringify(event));
       continue;
     }
 
-    const isNew = await checkDedup(rule.userId, event.eventType, event.payload?.title ?? '', coalesceKey);
-    if (!isNew) { console.log(`[relay] Dedup hit for ${rule.userId}`); continue; }
+    const dedupResult = await checkDedup(rule.userId, event.eventType, event.payload?.title ?? '', coalesceKey);
+    const dedupDecision = recordDedupOutcome(dedupResult, {
+      surface: 'notification-relay',
+      eventType: event.eventType,
+      severity: eventSeverity,
+      fallbackKey: `realtime:${rule.userId}:${event.eventType}:${event.payload?.title ?? ''}:${coalesceKey ?? ''}`,
+      fallbackTtlSeconds: DEDUP_TTL_SECONDS,
+      emitTelemetry: ({ line }) => console.warn(line),
+    });
+    if (!dedupDecision.shouldPublish) {
+      if (dedupDecision.isDuplicate) console.log(`[relay] Dedup hit for ${rule.userId}`);
+      continue;
+    }
 
     let channels = [];
     try {
@@ -1249,4 +1290,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { sendTelegram };
+module.exports = { sendTelegram, checkDedup, upstashDedupSetNx };

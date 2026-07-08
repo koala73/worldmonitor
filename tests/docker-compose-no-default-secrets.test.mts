@@ -22,6 +22,14 @@ async function read(rel: string): Promise<string> {
   return readFile(new URL(rel, REPO_ROOT), 'utf8');
 }
 
+function serviceBlock(compose: string, serviceName: string): string {
+  const match = compose.match(
+    new RegExp(`^  ${serviceName}:\\n([\\s\\S]*?)(?=^  [a-zA-Z0-9_-]+:\\n|^volumes:)`, 'm'),
+  );
+  assert.ok(match, `docker-compose.yml must define ${serviceName} service`);
+  return match[1];
+}
+
 // Allow a documentation note that EXPLAINS the historical default while
 // scanning for live shipped defaults. The note has the literal in prose
 // (e.g. "shipped `wm-local-token` as a default") rather than as a YAML
@@ -88,6 +96,32 @@ describe('docker self-hosting — no default credentials (#3804)', () => {
     assert.ok(
       /--requirepass\s+"\$\{REDIS_PASSWORD/.test(compose),
       'docker-compose.yml redis service must pass --requirepass using REDIS_PASSWORD',
+    );
+  });
+
+  it('docker-compose.yml wires redis-rest into the ais-relay seed loops', async () => {
+    const compose = await read('docker-compose.yml');
+    const relay = serviceBlock(compose, 'ais-relay');
+
+    assert.match(
+      relay,
+      /UPSTASH_REDIS_REST_URL:\s*"http:\/\/redis-rest:80"/,
+      'ais-relay must point UPSTASH_REDIS_REST_URL at the in-network redis-rest proxy',
+    );
+    assert.match(
+      relay,
+      /UPSTASH_REDIS_REST_TOKEN:\s*"\$\{REDIS_TOKEN:\?/,
+      'ais-relay must pass the fail-closed REDIS_TOKEN to redis-rest',
+    );
+    assert.match(
+      relay,
+      /UPSTASH_ALLOW_INSECURE_HTTP:\s*"true"/,
+      'ais-relay must explicitly opt into the plain-http redis-rest proxy inside the compose network',
+    );
+    assert.match(
+      relay,
+      /depends_on:\s*\n\s+redis-rest:\s*\n\s+condition:\s*service_started/,
+      'ais-relay must wait for redis-rest so Redis-backed seed loops can start in the bundled stack',
     );
   });
 

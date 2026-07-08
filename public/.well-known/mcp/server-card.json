@@ -134,6 +134,10 @@
       "description": "AI-generated geopolitical and economic forecasts from WorldMonitor's predictive models. Covers upcoming risk events and probability assessments."
     },
     {
+      "name": "get_forecast_scorecard",
+      "description": "Forecast resolution scorecard with calibration, Brier/log score, domain and generation-origin breakdowns, and pending/judged resolution counts."
+    },
+    {
       "name": "get_social_velocity",
       "description": "Reddit geopolitical social velocity: top posts from worldnews, geopolitics, and related subreddits with engagement scores and trend signals."
     },

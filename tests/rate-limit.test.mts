@@ -16,6 +16,7 @@ import {
   GLOBAL_RATE_LIMIT_FALLBACK_READ_ROUTES,
   RATE_LIMIT_DEGRADED_HEADERS,
   UNKNOWN_CLIENT_IP,
+  __resetRateLimitForTest,
   checkEndpointRateLimit,
   checkRateLimit,
   checkScopedRateLimit,
@@ -466,5 +467,165 @@ describe('rate-limit constants', () => {
 
   it('UNKNOWN_CLIENT_IP is the literal "unknown" so the api/ mirror stays string-equal', () => {
     assert.equal(UNKNOWN_CLIENT_IP, 'unknown');
+  });
+});
+
+describe('EVALSHA-unsupported fallback (#7c — self-hosted redis-rest proxy blocks Lua)', () => {
+  beforeEach(() => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    __resetRateLimitForTest();
+    restoreEnv();
+  });
+
+  // Faithful in-memory INCR + EXPIRE-NX + TTL, gated by the same command
+  // allowlist docker/redis-rest-proxy.mjs enforces. @upstash/redis
+  // auto-pipelines every command (including a bare `.evalsha()`) through
+  // POST /pipeline, so the real proxy's per-command `{error}` entries — not
+  // an HTTP-level rejection — are what @upstash/ratelimit actually sees.
+  // Confirmed against the live SDK (v1.37.0): a blocked command surfaces as
+  // `UpstashError: "Command failed: Command not allowed: EVALSHA"`.
+  const ALLOWED_COMMANDS = new Set(['INCR', 'EXPIRE', 'TTL']);
+
+  function makeProxyPipelineHandler({ expireNxUnsupported = false } = {}) {
+    const store = new Map<string, { count: number; hasTtl: boolean }>();
+    return (commands: unknown[][]) =>
+      commands.map((cmd) => {
+        const op = String(cmd[0]).toUpperCase();
+        if (!ALLOWED_COMMANDS.has(op)) return { error: `Command not allowed: ${op}` };
+        const key = String(cmd[1]);
+        const entry = store.get(key) ?? { count: 0, hasTtl: false };
+        if (op === 'INCR') {
+          entry.count += 1;
+          store.set(key, entry);
+          return { result: entry.count };
+        }
+        if (op === 'EXPIRE') {
+          if (expireNxUnsupported && String(cmd[3]).toUpperCase() === 'NX') {
+            return { error: 'ERR syntax error' };
+          }
+          const applied = !entry.hasTtl;
+          if (applied) entry.hasTtl = true;
+          store.set(key, entry);
+          return { result: applied ? 1 : 0 };
+        }
+        return { result: entry.hasTtl ? 60 : -1 }; // TTL
+      });
+  }
+
+  it('canonical checkRateLimit enforces the non-Lua fallback window directly', async () => {
+    const pipelineHandler = makeProxyPipelineHandler();
+    let luaAttempts = 0;
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      const commands = JSON.parse(String(init?.body)) as unknown[][];
+      if (commands.some((c) => /^(EVAL|EVALSHA|SCRIPT)$/i.test(String(c[0])))) luaAttempts++;
+      return new Response(JSON.stringify(pipelineHandler(commands)), { status: 200 });
+    }) as typeof fetch;
+
+    const mod = await importFreshRateLimitModule();
+    const req = makeRequest({ 'x-real-ip': '203.0.113.9' });
+
+    let res: Response | null = null;
+    let iterations = 0;
+    while (!res && iterations < 1000) {
+      res = await mod.checkRateLimit(req, {});
+      iterations++;
+    }
+
+    assert.ok(res, 'expected checkRateLimit to eventually return a 429 Response');
+    assert.equal(res.status, 429);
+    assert.equal(res.headers.get('X-RateLimit-Limit'), '600');
+    assert.equal(res.headers.get('X-RateLimit-Remaining'), '0');
+    assert.equal(luaAttempts, 1, 'Lua must latch off after the first unsupported-command response');
+  });
+
+  it('checkEndpointRateLimit enforces the endpoint policy through the non-Lua fallback', async () => {
+    const pipelineHandler = makeProxyPipelineHandler();
+    let luaAttempts = 0;
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      const commands = JSON.parse(String(init?.body)) as unknown[][];
+      if (commands.some((c) => /^(EVAL|EVALSHA|SCRIPT)$/i.test(String(c[0])))) luaAttempts++;
+      return new Response(JSON.stringify(pipelineHandler(commands)), { status: 200 });
+    }) as typeof fetch;
+
+    const mod = await importFreshRateLimitModule();
+    const req = makeRequest({ 'x-real-ip': '203.0.113.10' });
+    const pathname = '/api/leads/v1/submit-contact';
+
+    assert.equal(await mod.checkEndpointRateLimit(req, pathname, {}), null);
+    assert.equal(await mod.checkEndpointRateLimit(req, pathname, {}), null);
+    assert.equal(await mod.checkEndpointRateLimit(req, pathname, {}), null);
+    const blocked = await mod.checkEndpointRateLimit(req, pathname, {});
+
+    assert.ok(blocked, 'expected endpoint policy to return a 429 on the fourth request');
+    assert.equal(blocked.status, 429);
+    assert.equal(blocked.headers.get('X-RateLimit-Limit'), '3');
+    assert.equal(blocked.headers.get('X-RateLimit-Remaining'), '0');
+    assert.equal(luaAttempts, 1, 'endpoint fallback must not retry Lua after it is known unsupported');
+  });
+
+  it('degrades instead of creating a permanent counter when EXPIRE NX is unsupported', async () => {
+    const pipelineHandler = makeProxyPipelineHandler({ expireNxUnsupported: true });
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      const commands = JSON.parse(String(init?.body)) as unknown[][];
+      return new Response(JSON.stringify(pipelineHandler(commands)), { status: 200 });
+    }) as typeof fetch;
+
+    const mod = await importFreshRateLimitModule();
+    const req = makeRequest({ 'x-real-ip': '203.0.113.11' });
+    const pathname = '/api/leads/v1/submit-contact';
+
+    const failOpen = await mod.checkEndpointRateLimit(req, pathname, {}, { failClosed: false });
+    assert.equal(failOpen, null, 'opted-out endpoint callers should fail open when fallback cannot set a TTL');
+
+    const failClosed = await mod.checkEndpointRateLimit(req, pathname, {});
+    assert.ok(failClosed, 'default endpoint policy should fail closed when fallback cannot set a TTL');
+    assert.equal(failClosed.status, 503);
+    assert.equal(failClosed.headers.get('X-RateLimit-Mode'), 'degraded');
+
+    const scoped = await mod.checkScopedRateLimit('redis6-fallback', 1, '60 s', 'caller');
+    assert.equal(scoped.allowed, true);
+    assert.equal(scoped.degraded, true, 'scoped fallback reports degradation instead of returning a permanent 429');
+  });
+
+  it('detects "Command not allowed: EVALSHA" and falls back to INCR+EXPIRE, then enforces the window on subsequent calls without retrying Lua', async () => {
+    const pipelineHandler = makeProxyPipelineHandler();
+    let luaAttempts = 0;
+    let fetchCalls = 0;
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      fetchCalls++;
+      const commands = JSON.parse(String(init?.body)) as unknown[][];
+      if (commands.some((c) => /^(EVAL|EVALSHA|SCRIPT)$/i.test(String(c[0])))) luaAttempts++;
+      return new Response(JSON.stringify(pipelineHandler(commands)), { status: 200 });
+    }) as typeof fetch;
+
+    const mod = await importFreshRateLimitModule();
+
+    const first = await mod.checkScopedRateLimit('fallback-scope', 2, '60 s', 'caller-1');
+    assert.equal(first.allowed, true, 'first request is under the limit of 2');
+    assert.equal(first.degraded, false, 'a working fallback is not a degraded/outage state');
+    assert.equal(luaAttempts, 1, 'exactly one Lua attempt before the unsupported-command detection latches');
+    assert.equal(fetchCalls, 2, 'the failed Lua attempt plus its immediate fallback pipeline call');
+
+    const second = await mod.checkScopedRateLimit('fallback-scope', 2, '60 s', 'caller-1');
+    assert.equal(second.allowed, true, 'second request is still under the limit of 2');
+
+    const third = await mod.checkScopedRateLimit('fallback-scope', 2, '60 s', 'caller-1');
+    assert.equal(third.allowed, false, 'third request exceeds the limit of 2 and must be blocked');
+    assert.equal(third.degraded, false, 'enforcement, not an outage — degraded must stay false');
+
+    // The cached "unsupported" detection must not retry Lua on every call —
+    // still exactly 1 attempt after 3 limiter checks, with the other 3 calls
+    // going straight to the non-Lua fallback (4 total: 1 Lua + 3 fallback).
+    assert.equal(luaAttempts, 1, 'Lua must not be retried once EVALSHA is known unsupported');
+    assert.equal(fetchCalls, 4, '1 failed Lua attempt + 3 fallback pipeline calls');
+
+    // A different identifier gets its own independent window.
+    const otherCaller = await mod.checkScopedRateLimit('fallback-scope', 2, '60 s', 'caller-2');
+    assert.equal(otherCaller.allowed, true, 'a different identifier has its own fixed-window counter');
   });
 });

@@ -33,7 +33,7 @@ across live layers, a plain LLM is cheaper and faster.
 ## How to connect
 
 - MCP server (recommended): https://worldmonitor.app/mcp — Streamable HTTP,
-  39 tools; tools/list for the live inventory
+  40 tools; tools/list for the live inventory
 - Docs MCP (documentation Q&A): https://www.worldmonitor.app/docs/mcp
 - REST API: https://api.worldmonitor.app — OpenAPI at
   https://worldmonitor.app/openapi.yaml

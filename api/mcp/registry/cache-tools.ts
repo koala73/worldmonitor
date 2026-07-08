@@ -1784,6 +1784,38 @@ export const CACHE_TOOLS: ToolDef[] = [
       "GET /api/forecast/v1/get-forecasts",
     ],
   },
+  {
+    name: 'get_forecast_scorecard',
+    _outputBudgetBytes: 65536,
+    description: 'Forecast resolution scorecard with calibration, Brier/log score, domain and generation-origin breakdowns, and pending/judged resolution counts.',
+    inputSchema: {
+      type: 'object',
+      properties: {},
+      required: [],
+    },
+    outputSchema: cacheEnvelope({
+      scorecard: {
+        type: ['object', 'null'],
+        properties: {
+          generatedAt: { type: ['number', 'null'] },
+          rollingWindowDays: { type: ['number', 'null'] },
+          totals: { type: ['object', 'null'] },
+          overall: { type: ['object', 'null'] },
+          byDomain: { type: 'array', items: { type: 'object' } },
+          byGenerationOrigin: { type: 'array', items: { type: 'object' } },
+          calibration: { type: 'array', items: { type: 'object' } },
+          vsMarketSkill: { type: ['object', 'null'] },
+        },
+      },
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _cacheKeys: ['forecast:scorecard:v1'],
+    _seedMetaKey: 'seed-meta:forecast:scorecard',
+    _maxStaleMin: 2160,
+    _apiPaths: [
+      "GET /api/forecast/v1/get-forecast-scorecard",
+    ],
+  },
 
   // -------------------------------------------------------------------------
   // Social velocity — cache read (Reddit signals, seeded by relay)

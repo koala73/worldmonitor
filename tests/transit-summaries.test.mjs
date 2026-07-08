@@ -121,7 +121,10 @@ describe('seedTransitSummaries (relay)', () => {
   });
 
   it('PortWatch data is read via envelopeRead (unwraps {_seed, data} contract-mode shape)', () => {
-    assert.match(relaySrc, /const pw = await envelopeRead\(PORTWATCH_REDIS_KEY\)/);
+    // envelopeRead takes an optional onFailure reason callback (added so the
+    // empty-read early return can log WHY, not just THAT, portwatch was
+    // empty) — match the call regardless of that second argument.
+    assert.match(relaySrc, /const pw = await envelopeRead\(PORTWATCH_REDIS_KEY[,)]/);
     assert.doesNotMatch(relaySrc, /const pw = await upstashGet\(PORTWATCH_REDIS_KEY\)/);
   });
 
@@ -136,6 +139,181 @@ describe('seedTransitSummaries (relay)', () => {
 
   it('has TTL >= 6x seed interval (survives multiple missed pings)', () => {
     assert.match(relaySrc, /TRANSIT_SUMMARY_TTL\s*=\s*[3-9]\d{3}/);
+  });
+
+  it('empty-portwatch early return is non-silent (logs key + reason, not a bare `return;`)', () => {
+    // Regression guard for the 2026-07 incident: this early return fired on
+    // every 10-min tick for 4d20h with zero log output (UPSTASH_ENABLED was
+    // false in-container), so the dead scheduler was invisible until a live
+    // audit caught it via the never-populated Redis key. A bare early
+    // `return;` here must never come back.
+    const fnBody = relaySrc.match(/async function seedTransitSummaries\(\)\s*\{([\s\S]*?)\n\}/)?.[1] || '';
+    assert.doesNotMatch(fnBody, /length === 0\) return;/);
+    assert.match(fnBody, /console\.warn\(`\[TransitSummary\] Skipped — \$\{PORTWATCH_REDIS_KEY\}/);
+    // The logged reason must distinguish "Upstash disabled" from "read
+    // failed" from "key genuinely empty" — three different root causes that
+    // all look identical from the caller's perspective otherwise.
+    assert.match(fnBody, /!UPSTASH_ENABLED/);
+    assert.match(fnBody, /pwFailureReason/);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Behavioral seeding — runs the real seedTransitSummaries body (extracted
+  // from source, not reimplemented) in a sandbox with mocked
+  // envelopeRead/envelopeWrite/upstashSet. No network, no real Upstash. The
+  // regex assertions above only prove the source SHAPE is wired correctly —
+  // they still pass even if the scheduler silently never populates Redis
+  // (the exact 2026-07 incident class). These tests actually invoke the
+  // function and assert on the writes it produces.
+  // ---------------------------------------------------------------------------
+
+  function extractConstLine(name) {
+    const m = relaySrc.match(new RegExp(`const ${name} = [^;]+;`));
+    assert.ok(m, `${name} definition not found in relaySrc`);
+    return m[0];
+  }
+
+  function extractObjectConst(name) {
+    const m = relaySrc.match(new RegExp(`const ${name} = \\{[\\s\\S]*?\\n\\};`));
+    assert.ok(m, `${name} definition not found in relaySrc`);
+    return m[0];
+  }
+
+  const seedFnBody = relaySrc.match(/async function seedTransitSummaries\(\)\s*\{([\s\S]*?)\n\}/)?.[1];
+  assert.ok(seedFnBody, 'seedTransitSummaries body not found');
+  const anomalyFnBody = relaySrc.match(/function detectTrafficAnomalyRelay\(history, threatLevel\)\s*\{([\s\S]*?)\n\}/)?.[1];
+  assert.ok(anomalyFnBody, 'detectTrafficAnomalyRelay body not found');
+
+  // Assembled in dependency order from real extracted source snippets, not
+  // hand-copied literals — a future rename/edit in ais-relay.cjs breaks this
+  // extraction (loud) instead of silently testing stale duplicated code.
+  const seedHarnessSrc = [
+    extractConstLine('PORTWATCH_REDIS_KEY'),
+    extractConstLine('CORRIDOR_RISK_REDIS_KEY'),
+    extractConstLine('TRANSIT_SUMMARY_REDIS_KEY'),
+    extractConstLine('TRANSIT_SUMMARY_HISTORY_KEY_PREFIX'),
+    extractConstLine('TRANSIT_SUMMARY_TTL'),
+    extractConstLine('TRANSIT_WINDOW_MS'),
+    extractObjectConst('CHOKEPOINT_THREAT_LEVELS'),
+    extractObjectConst('RELAY_NAME_TO_ID'),
+    'let latestCorridorRiskData = null;',
+    `function detectTrafficAnomalyRelay(history, threatLevel) {${anomalyFnBody}\n}`,
+    `async function seedTransitSummaries() {${seedFnBody}\n}`,
+    'return seedTransitSummaries;',
+  ].join('\n');
+
+  // Fresh sandbox per call — `latestCorridorRiskData` resets like a cold
+  // relay restart instead of leaking state between tests.
+  function buildSeedTransitSummaries({ envelopeRead, envelopeWrite, upstashSet, upstashEnabled = true, warn = () => {}, log = () => {} }) {
+    // eslint-disable-next-line no-new-func
+    const factory = new Function(
+      'envelopeRead', 'envelopeWrite', 'upstashSet', 'console', 'UPSTASH_ENABLED', 'chokepointCrossings',
+      seedHarnessSrc,
+    );
+    return factory(envelopeRead, envelopeWrite, upstashSet, { warn, log }, upstashEnabled, new Map());
+  }
+
+  const ALL_CANONICAL_IDS = [
+    'suez', 'malacca_strait', 'hormuz_strait', 'bab_el_mandeb', 'panama',
+    'taiwan_strait', 'cape_of_good_hope', 'gibraltar', 'bosphorus',
+    'korea_strait', 'dover_strait', 'kerch_strait', 'lombok_strait',
+  ];
+
+  it('populated portwatch actually produces the compact summary key, all 13 per-id history keys, and a seed-meta write', async () => {
+    const fakePortwatch = {
+      suez: { history: makeDays(40, 120, 0), wowChangePct: 4.2 },
+      hormuz_strait: { history: makeDays(3, 10, 0), wowChangePct: -1 },
+    };
+    const writes = [];
+    const metaWrites = [];
+    const seed = buildSeedTransitSummaries({
+      envelopeRead: async key => (key === 'supply_chain:portwatch:v1' ? fakePortwatch : null),
+      envelopeWrite: async (key, data, ttlSeconds, meta) => { writes.push({ key, data, ttlSeconds, meta }); return true; },
+      upstashSet: async (key, data, ttlSeconds) => { metaWrites.push({ key, data, ttlSeconds }); },
+    });
+
+    await seed();
+
+    const summaryWrites = writes.filter(w => w.key === 'supply_chain:transit-summaries:v1');
+    assert.equal(summaryWrites.length, 1, 'expected exactly one write to the compact summary key');
+    const { summaries } = summaryWrites[0].data;
+    assert.deepEqual(Object.keys(summaries).sort(), [...ALL_CANONICAL_IDS].sort());
+    assert.equal(summaries.suez.dataAvailable, true);
+    assert.equal(summaries.hormuz_strait.dataAvailable, true);
+    // Chokepoint missing from this cycle's portwatch payload still publishes
+    // a zero-state row instead of vanishing (partial-coverage regression).
+    assert.equal(summaries.panama.dataAvailable, false);
+    assert.equal(summaries.panama.todayTotal, 0);
+    assert.equal(summaryWrites[0].meta.recordCount, 2, 'recordCount must reflect pwCovered, not the always-13 shape');
+    assert.equal(summaryWrites[0].ttlSeconds, 3600);
+
+    const historyWrites = writes.filter(w => w.key.startsWith('supply_chain:transit-summaries:history:v1:'));
+    assert.equal(historyWrites.length, 13, 'one history write per canonical chokepoint, covered or not');
+    const suezHistory = historyWrites.find(w => w.key === 'supply_chain:transit-summaries:history:v1:suez');
+    assert.deepEqual(suezHistory.data.history, fakePortwatch.suez.history);
+    assert.equal(suezHistory.data.chokepointId, 'suez');
+    const panamaHistory = historyWrites.find(w => w.key === 'supply_chain:transit-summaries:history:v1:panama');
+    assert.deepEqual(panamaHistory.data.history, []);
+
+    assert.equal(metaWrites.length, 1, 'seed-meta must actually be written so health checks see it');
+    assert.equal(metaWrites[0].key, 'seed-meta:supply_chain:transit-summaries');
+    assert.equal(metaWrites[0].data.recordCount, 2);
+    assert.equal(metaWrites[0].ttlSeconds, 604800);
+  });
+
+  it('empty portwatch writes NOTHING to Redis — the exact "scheduler wired but keys never populate" failure class this suite must catch', async () => {
+    const writes = [];
+    const metaWrites = [];
+    const warnings = [];
+    const seed = buildSeedTransitSummaries({
+      envelopeRead: async () => null,
+      envelopeWrite: async (key, data, ttlSeconds, meta) => { writes.push({ key, data, ttlSeconds, meta }); return true; },
+      upstashSet: async (key, data, ttlSeconds) => { metaWrites.push({ key, data, ttlSeconds }); },
+      warn: msg => warnings.push(msg),
+    });
+
+    await seed();
+
+    assert.equal(writes.length, 0, 'no Redis writes should occur when portwatch is empty');
+    assert.equal(metaWrites.length, 0, 'no seed-meta write should occur when portwatch is empty');
+    assert.equal(warnings.length, 1, 'the skip must log, not fail silently');
+    assert.match(warnings[0], /\[TransitSummary\] Skipped — supply_chain:portwatch:v1 unavailable/);
+    assert.match(warnings[0], /key empty or absent — upstream seeder has not written it yet/);
+  });
+
+  it('disabled Upstash skip reason is exercised behaviorally', async () => {
+    const warnings = [];
+    const seed = buildSeedTransitSummaries({
+      envelopeRead: async () => null,
+      envelopeWrite: async () => { throw new Error('must not write when portwatch is unavailable'); },
+      upstashSet: async () => { throw new Error('must not write seed-meta when portwatch is unavailable'); },
+      upstashEnabled: false,
+      warn: msg => warnings.push(msg),
+    });
+
+    await seed();
+
+    assert.equal(warnings.length, 1, 'the skip must log even when Redis is disabled');
+    assert.match(warnings[0], /Upstash Redis disabled/);
+    assert.match(warnings[0], /UPSTASH_REDIS_REST_URL\/UPSTASH_ALLOW_INSECURE_HTTP/);
+  });
+
+  it('portwatch read-failure skip reason is exercised behaviorally', async () => {
+    const warnings = [];
+    const seed = buildSeedTransitSummaries({
+      envelopeRead: async (_key, onFailure) => {
+        onFailure('HTTP 500 from redis-rest');
+        return null;
+      },
+      envelopeWrite: async () => { throw new Error('must not write when portwatch read failed'); },
+      upstashSet: async () => { throw new Error('must not write seed-meta when portwatch read failed'); },
+      warn: msg => warnings.push(msg),
+    });
+
+    await seed();
+
+    assert.equal(warnings.length, 1, 'the skip must log the read failure reason');
+    assert.match(warnings[0], /read failed: HTTP 500 from redis-rest/);
   });
 });
 
@@ -554,7 +732,7 @@ describe('handler transit data strategy', () => {
 describe('seedTransitSummaries Redis reads', () => {
   it('always reads PortWatch fresh from Redis (no in-memory cache guard)', () => {
     assert.doesNotMatch(relaySrc, /if\s*\(\s*!latestPortwatchData\s*\)/);
-    assert.match(relaySrc, /envelopeRead\(PORTWATCH_REDIS_KEY\)/);
+    assert.match(relaySrc, /envelopeRead\(PORTWATCH_REDIS_KEY[,)]/);
   });
 
   it('reads CorridorRisk from Redis when latestCorridorRiskData is null', () => {
@@ -590,16 +768,16 @@ describe('seedTransitSummaries Redis reads', () => {
 
   it('PortWatch Redis read is the first statement (before early return)', () => {
     const fnBody = relaySrc.match(/async function seedTransitSummaries\(\)\s*\{([\s\S]*?)\n\}/)?.[1] || '';
-    const readPos = fnBody.indexOf('envelopeRead(PORTWATCH_REDIS_KEY)');
+    const readPos = fnBody.indexOf('envelopeRead(PORTWATCH_REDIS_KEY');
     const earlyReturnPos = fnBody.indexOf('if (!pw ||');
-    assert.ok(readPos > 0, 'envelopeRead(PORTWATCH_REDIS_KEY) not found in function body');
+    assert.ok(readPos > 0, 'envelopeRead(PORTWATCH_REDIS_KEY not found in function body');
     assert.ok(earlyReturnPos > 0, 'pw early return not found');
     assert.ok(readPos < earlyReturnPos, 'Redis read must come before the early return');
   });
 
   it('PortWatch data is assigned directly from Redis (no stale in-memory cache)', () => {
     const fnBody = relaySrc.match(/async function seedTransitSummaries\(\)\s*\{([\s\S]*?)\n\}/)?.[1] || '';
-    assert.match(fnBody, /const pw = await envelopeRead\(PORTWATCH_REDIS_KEY\)/);
+    assert.match(fnBody, /const pw = await envelopeRead\(PORTWATCH_REDIS_KEY[,)]/);
   });
 
   it('assigns hydrated data back to latestCorridorRiskData', () => {
@@ -648,5 +826,116 @@ describe('envelopeRead helper', () => {
     const stub = async () => [1, 2, 3];
     const read = buildEnvelopeRead(stub);
     assert.deepEqual(await read('array:key'), [1, 2, 3]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Upstash Redis client selection — runtime behavior for the insecure-http
+// opt-in (regression guard for the incident where the https-only gate
+// silently no-oped every seed loop against http://redis-rest:80 for 4+ days).
+// UPSTASH_ALLOW_INSECURE_HTTP + UPSTASH_HTTP_MODULE decide both whether
+// Redis writes are enabled at all and which Node client (http vs https)
+// upstashGet/Set/etc. use. The source-scan tests above only assert the
+// scheduler shape; these actually eval the init block + upstashGet in a
+// sandbox with mocked http/https clients (no network, no real Upstash) so a
+// future edit that regresses the opt-in gate fails a test, not silence.
+// ---------------------------------------------------------------------------
+describe('Upstash Redis client selection (insecure-http opt-in)', () => {
+  // The relay can't be require()'d directly in a test — it process.exit(1)s
+  // without AISSTREAM_API_KEY and otherwise boots a live server on import.
+  // Slice the init block (UPSTASH_REDIS_REST_URL ... end of upstashGet)
+  // straight out of the relay source and eval it in a sandbox instead.
+  const initStart = relaySrc.indexOf("const UPSTASH_REDIS_REST_URL = process.env.UPSTASH_REDIS_REST_URL || '';");
+  const initEnd = relaySrc.indexOf('function upstashSet(key, value, ttlSeconds) {');
+  assert.ok(initStart > 0 && initEnd > initStart, 'Upstash init block (through upstashGet) not found');
+  const initAndGetSrc = relaySrc.slice(initStart, initEnd);
+
+  function makeMockClient(name) {
+    return {
+      name,
+      requestCalls: [],
+      request(url, opts) {
+        this.requestCalls.push({ url, opts });
+        // No response callback is ever invoked — these tests only assert
+        // which client received the call, so the resulting (intentionally
+        // never-settling) promise must not be awaited.
+        return { on() {}, end() {} };
+      },
+    };
+  }
+
+  function buildUpstashInit(env, httpClient, httpsClient) {
+    // eslint-disable-next-line no-new-func
+    const fn = new Function(
+      'process', 'http', 'https',
+      `${initAndGetSrc}\nreturn { UPSTASH_ALLOW_INSECURE_HTTP, UPSTASH_ENABLED, UPSTASH_HTTP_MODULE, upstashGet };`,
+    );
+    return fn({ env }, httpClient, httpsClient);
+  }
+
+  it('https:// URL enables Upstash and routes upstashGet through the https client', () => {
+    const httpClient = makeMockClient('http');
+    const httpsClient = makeMockClient('https');
+    const { UPSTASH_ENABLED, UPSTASH_HTTP_MODULE, upstashGet } = buildUpstashInit(
+      { UPSTASH_REDIS_REST_URL: 'https://real-upstash.io', UPSTASH_REDIS_REST_TOKEN: 'tok' },
+      httpClient, httpsClient,
+    );
+    assert.equal(UPSTASH_ENABLED, true);
+    assert.equal(UPSTASH_HTTP_MODULE, httpsClient);
+    upstashGet('some:key');
+    assert.equal(httpsClient.requestCalls.length, 1);
+    assert.equal(httpClient.requestCalls.length, 0);
+  });
+
+  it('http:// URL WITHOUT UPSTASH_ALLOW_INSECURE_HTTP disables Upstash entirely (never calls Redis) — the regressed state that silently disabled every seed loop for 4+ days', async () => {
+    const httpClient = makeMockClient('http');
+    const httpsClient = makeMockClient('https');
+    const { UPSTASH_ALLOW_INSECURE_HTTP, UPSTASH_ENABLED, upstashGet } = buildUpstashInit(
+      { UPSTASH_REDIS_REST_URL: 'http://redis-rest:80', UPSTASH_REDIS_REST_TOKEN: 'tok' },
+      httpClient, httpsClient,
+    );
+    assert.equal(UPSTASH_ALLOW_INSECURE_HTTP, false);
+    assert.equal(UPSTASH_ENABLED, false);
+    // Resolves null synchronously via the !UPSTASH_ENABLED guard — safe to
+    // await, and proves no request is ever attempted on either client.
+    assert.equal(await upstashGet('some:key'), null);
+    assert.equal(httpClient.requestCalls.length, 0);
+    assert.equal(httpsClient.requestCalls.length, 0);
+  });
+
+  it('http:// URL WITH UPSTASH_ALLOW_INSECURE_HTTP=true enables Upstash and routes upstashGet through the http client (the scheduler fix)', () => {
+    const httpClient = makeMockClient('http');
+    const httpsClient = makeMockClient('https');
+    const { UPSTASH_ALLOW_INSECURE_HTTP, UPSTASH_ENABLED, UPSTASH_HTTP_MODULE, upstashGet } = buildUpstashInit(
+      { UPSTASH_REDIS_REST_URL: 'http://redis-rest:80', UPSTASH_REDIS_REST_TOKEN: 'tok', UPSTASH_ALLOW_INSECURE_HTTP: 'true' },
+      httpClient, httpsClient,
+    );
+    assert.equal(UPSTASH_ALLOW_INSECURE_HTTP, true);
+    assert.equal(UPSTASH_ENABLED, true);
+    assert.equal(UPSTASH_HTTP_MODULE, httpClient);
+    upstashGet('some:key');
+    assert.equal(httpClient.requestCalls.length, 1);
+    assert.equal(httpsClient.requestCalls.length, 0);
+  });
+
+  it('UPSTASH_ALLOW_INSECURE_HTTP is a strict "true" match — "TRUE"/"1" do not opt in', () => {
+    const httpClient = makeMockClient('http');
+    const httpsClient = makeMockClient('https');
+    const { UPSTASH_ALLOW_INSECURE_HTTP, UPSTASH_ENABLED } = buildUpstashInit(
+      { UPSTASH_REDIS_REST_URL: 'http://redis-rest:80', UPSTASH_REDIS_REST_TOKEN: 'tok', UPSTASH_ALLOW_INSECURE_HTTP: 'TRUE' },
+      httpClient, httpsClient,
+    );
+    assert.equal(UPSTASH_ALLOW_INSECURE_HTTP, false);
+    assert.equal(UPSTASH_ENABLED, false);
+  });
+
+  it('missing UPSTASH_REDIS_REST_TOKEN disables Upstash even over https', () => {
+    const httpClient = makeMockClient('http');
+    const httpsClient = makeMockClient('https');
+    const { UPSTASH_ENABLED } = buildUpstashInit(
+      { UPSTASH_REDIS_REST_URL: 'https://real-upstash.io' },
+      httpClient, httpsClient,
+    );
+    assert.equal(UPSTASH_ENABLED, false);
   });
 });
