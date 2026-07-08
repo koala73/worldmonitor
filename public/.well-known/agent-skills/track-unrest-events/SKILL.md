@@ -47,7 +47,7 @@ GET https://api.worldmonitor.app/api/unrest/v1/list-unrest-events
       "city": "Paris",
       "country": "FR",
       "region": "Ile-de-France",
-      "location": { "lat": 48.8566, "lon": 2.3522 },
+      "location": { "latitude": 48.8566, "longitude": 2.3522 },
       "occurredAt": 1783250000000,
       "severity": "SEVERITY_LEVEL_MEDIUM",
       "fatalities": 0,

@@ -189,6 +189,33 @@ describe('agent readiness: agent-skills index', () => {
     }
   });
 
+  it("tranche 4 recipes keep review-sensitive API examples honest", () => {
+    const readSkill = (name) => readFileSync(join(SKILLS_DIR, name, "SKILL.md"), "utf-8");
+
+    const health = readSkill("monitor-health-alerts");
+    assert.match(health, /--data-urlencode .*jmespath=outbreaks/);
+    assert.doesNotMatch(health, /list-disease-outbreaks\?jmespath=/);
+    assert.match(health, /Use JMESPath projection at the API edge/);
+
+    const webcams = readSkill("monitor-webcams");
+    assert.match(webcams, /\.webcams\[0\]\.webcamId \/\/ empty/);
+    assert.match(webcams, /if \[ -z "\$WEBCAM_ID" \]/);
+    assert.match(webcams, /\| `zoom` \| query \| no \| integer map zoom \| Defaults to `3`\./);
+    assert.match(webcams, /\| `bound_w`, `bound_s`, `bound_e`, `bound_n` \| query \| no \|/);
+
+    const unrest = readSkill("track-unrest-events");
+    assert.match(unrest, /"location": \{ "latitude": 48\.8566, "longitude": 2\.3522 \}/);
+    assert.doesNotMatch(unrest, /"location": \{ "lat": 48\.8566/);
+
+    const forecast = readSkill("check-forecast-signals");
+    assert.match(forecast, /jmespath=\{generatedAt:generatedAt,degraded:degraded,stale:stale,error:error,forecasts:/);
+    assert.match(forecast, /keep `generatedAt`, `degraded`, `stale`, and `error`/);
+
+    const energyShock = readSkill("assess-energy-shock");
+    assert.match(energyShock, /\| `disruption_pct` \| query \| no \| integer 10-100 \|/);
+    assert.match(energyShock, /Values below `10` are clamped to `10`/);
+  });
+
   it('fetch-resilience-score documents the generated score contract', () => {
     const skill = readFileSync(
       join(SKILLS_DIR, 'fetch-resilience-score', 'SKILL.md'),

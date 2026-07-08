@@ -7,7 +7,7 @@
       "type": "skill-md",
       "description": "Model oil or gas supply shock exposure for a country and chokepoint. Use when the user asks how an energy disruption could affect fuel supply, strategic cover, or product deficits.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/assess-energy-shock/SKILL.md",
-      "digest": "sha256:ab65d2ac7d0d0d94778e5077bfc22acf20fcc8b90eacfa6525432d8646a1de0b"
+      "digest": "sha256:15ce45d24220ad5e6f103c64527e7d9789eb9c61a7e7067631095c2ea13ae776"
     },
     {
       "name": "check-airport-delays",
@@ -35,7 +35,7 @@
       "type": "skill-md",
       "description": "Retrieve probabilistic forecasts and their scorecard context. Use when the user asks what World Monitor is forecasting, how probabilities shifted, or how calibrated the forecasts are.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/check-forecast-signals/SKILL.md",
-      "digest": "sha256:10bc15f79ef8da4113ad4b090dc5634c21d6ab55b71d969890ccd4c84c7fee0b"
+      "digest": "sha256:ae0bda921477e8173d1595a4d6673aac669e39b76586ac8061bab013f73f1de5"
     },
     {
       "name": "check-sanctions-pressure",
@@ -91,7 +91,7 @@
       "type": "skill-md",
       "description": "Retrieve disease outbreak alerts and PM2.5 air-quality health warnings. Use when the user asks about current public-health risks in a country, city, or region.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/monitor-health-alerts/SKILL.md",
-      "digest": "sha256:ab95c36d39ed16a51ce26c6f59f9378abb4c32b7364cc9813df93be0fcf46b26"
+      "digest": "sha256:4906088ff4dddf4961b802c4671bf9ffd7a14b32178915bc1bbe0fb032f0e8e4"
     },
     {
       "name": "monitor-internet-outages",
@@ -112,7 +112,7 @@
       "type": "skill-md",
       "description": "Discover live webcams in a map viewport and resolve thumbnails or player URLs. Use when the user asks for visual context near a location, route, border, port, or city.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/monitor-webcams/SKILL.md",
-      "digest": "sha256:5c950b42ccb1d7a5b9a651b89bed20741c0f45eaa62a8131742ae1724cc1f0c4"
+      "digest": "sha256:f3de54c31bdbfedfb6bf64e28a02d73595c3297265eda28434a33892c4b5ac58"
     },
     {
       "name": "scan-cyber-threats",
@@ -168,7 +168,7 @@
       "type": "skill-md",
       "description": "Retrieve seeded protest, riot, strike, and civil unrest events. Use when the user asks whether social unrest is occurring in a country or over a recent time window.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/track-unrest-events/SKILL.md",
-      "digest": "sha256:048084d0b368cab572e2c66078582866614c987f710d3a4240eb64a5cfd5fddc"
+      "digest": "sha256:081bb36f52bdfc99463edeb7bfa675d35f87ed6fa220cac1b7dd71dc859a2528"
     },
     {
       "name": "track-vessel-traffic",

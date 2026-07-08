@@ -31,8 +31,8 @@ GET https://api.worldmonitor.app/api/webcam/v1/get-webcam-image
 
 | Name | In | Required | Shape | Notes |
 |---|---|---|---|---|
-| `zoom` | query | yes | integer map zoom | Lower zooms return clusters; higher zooms return individual webcams. |
-| `bound_w`, `bound_s`, `bound_e`, `bound_n` | query | yes | viewport bounds | West, south, east, north in decimal degrees. |
+| `zoom` | query | no | integer map zoom | Defaults to `3`. Lower zooms return clusters; higher zooms return individual webcams. |
+| `bound_w`, `bound_s`, `bound_e`, `bound_n` | query | no | viewport bounds | Default to global bounds. Provide west, south, east, north decimal degrees for local context. |
 | `jmespath` | query | no | JMESPath, <= 1024 chars | Server-side projection, e.g. `{total: totalInView, webcams: webcams[:5]}` |
 
 `get-webcam-image`
@@ -89,7 +89,12 @@ WEBCAM_ID=$(curl -s --get \
   --data-urlencode 'zoom=8' \
   --data-urlencode 'bound_w=55.5' --data-urlencode 'bound_s=25.5' \
   --data-urlencode 'bound_e=57.5' --data-urlencode 'bound_n=27.2' \
-  | jq -r '.webcams[0].webcamId')
+  | jq -r '.webcams[0].webcamId // empty')
+
+if [ -z "$WEBCAM_ID" ]; then
+  echo "No individual webcams returned for this viewport; increase zoom or adjust bounds." >&2
+  exit 0
+fi
 
 curl -s --get \
   -H "X-WorldMonitor-Key: $WM_API_KEY" \

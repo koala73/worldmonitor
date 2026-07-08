@@ -31,7 +31,7 @@ GET https://api.worldmonitor.app/api/health/v1/list-air-quality-alerts
 |---|---|---|---|---|
 | `jmespath` | query | no | JMESPath, <= 1024 chars | Server-side projection, e.g. `outbreaks[?countryCode=='US'].{disease: disease, level: alertLevel, source: sourceName}` |
 
-Neither endpoint has endpoint-specific filters today. Use JMESPath projection to reduce payloads client-side at the API edge.
+Neither endpoint has endpoint-specific filters today. Use JMESPath projection at the API edge to reduce payloads returned to the client.
 
 ## Response shape
 
@@ -85,9 +85,11 @@ Air-quality alerts:
 ## Worked example
 
 ```bash
-curl -s -H "X-WorldMonitor-Key: $WM_API_KEY" \
+curl -s --get \
+  -H "X-WorldMonitor-Key: $WM_API_KEY" \
   -H "User-Agent: worldmonitor-agent-skill/1.0" \
-  'https://api.worldmonitor.app/api/health/v1/list-disease-outbreaks?jmespath=outbreaks[:10].{disease:disease,location:location,level:alertLevel,source:sourceName}' \
+  'https://api.worldmonitor.app/api/health/v1/list-disease-outbreaks' \
+  --data-urlencode 'jmespath=outbreaks[:10].{disease:disease,location:location,level:alertLevel,source:sourceName}' \
   | jq .
 ```
 

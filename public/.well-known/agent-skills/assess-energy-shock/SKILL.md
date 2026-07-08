@@ -30,7 +30,7 @@ GET https://api.worldmonitor.app/api/intelligence/v1/compute-energy-shock
 |---|---|---|---|---|
 | `country_code` | query | yes | ISO 3166-1 alpha-2 | Affected energy market, e.g. `JP`, `DE`, `US`. |
 | `chokepoint_id` | query | yes | `hormuz_strait`, `malacca_strait`, `suez`, `bab_el_mandeb` | Chokepoint to model as disrupted. |
-| `disruption_pct` | query | no | integer 0-100 | Percent of flow disrupted. The service clamps to its supported range. |
+| `disruption_pct` | query | no | integer 10-100 | Percent of flow disrupted. Values below `10` are clamped to `10`; values above `100` are clamped to `100`. |
 | `fuel_mode` | query | no | `oil`, `gas`, `both` | Defaults to `oil`. |
 | `jmespath` | query | no | JMESPath, <= 1024 chars | Server-side projection, e.g. `{assessment: assessment, cover: effectiveCoverDays, coverage: coverageLevel}` |
 

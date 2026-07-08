@@ -33,7 +33,7 @@ GET https://api.worldmonitor.app/api/forecast/v1/get-forecast-scorecard
 |---|---|---|---|---|
 | `domain` | query | no | `conflict`, `market`, `supply_chain`, `political`, `military`, `cyber`, `infrastructure` | Forecast domain filter. Unsupported values return an empty non-degraded set. |
 | `region` | query | no | string | Geographic or thematic region filter. |
-| `jmespath` | query | no | JMESPath, <= 1024 chars | Server-side projection, e.g. `forecasts[:5].{title: title, p: probability, trend: trend}` |
+| `jmespath` | query | no | JMESPath, <= 1024 chars | Server-side projection, e.g. `{generatedAt: generatedAt, degraded: degraded, stale: stale, error: error, forecasts: forecasts[:5].{title: title, p: probability, trend: trend}}` |
 
 `get-forecast-scorecard` has no endpoint-specific parameters.
 
@@ -68,6 +68,8 @@ GET https://api.worldmonitor.app/api/forecast/v1/get-forecast-scorecard
 
 `degraded: true` means the forecast backend could not read the canonical cache. Treat empty forecasts plus `degraded: true` as "forecast data unavailable", not "no forecasted risk".
 
+When projecting with JMESPath, keep `generatedAt`, `degraded`, `stale`, and `error` alongside the forecast rows so cache misses or backend failures do not look like an all-clear empty forecast set.
+
 ## Worked example
 
 ```bash
@@ -75,7 +77,7 @@ curl -s --get -H "X-WorldMonitor-Key: $WM_API_KEY" \
   -H "User-Agent: worldmonitor-agent-skill/1.0" \
   'https://api.worldmonitor.app/api/forecast/v1/get-forecasts' \
   --data-urlencode 'domain=conflict' \
-  --data-urlencode 'jmespath=forecasts[:5].{title:title,probability:probability,trend:trend,region:region}' \
+  --data-urlencode 'jmespath={generatedAt:generatedAt,degraded:degraded,stale:stale,error:error,forecasts:forecasts[:5].{title:title,probability:probability,trend:trend,region:region}}' \
   | jq .
 ```
 
