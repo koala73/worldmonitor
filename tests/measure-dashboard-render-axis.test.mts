@@ -95,7 +95,10 @@ describe('measure-dashboard-render-axis trace parsing', () => {
     assert.equal(forced.totalMs, 10);
     assert.match(forced.stacks[0].topFrame, /readContainerSize/);
     assert.equal(forced.stacks[0].totalMs, 8);
+    // Every name in FORCED_LAYOUT_NAMES is a forced reflow when it carries a stack.
     assert.equal(isForcedReflow({ name: 'Layout', args: { beginData: { stackTrace: [{ functionName: 'readContainerSize' }] } } }), true);
+    assert.equal(isForcedReflow({ name: 'RecalculateStyles', args: { beginData: { stackTrace: [{ functionName: 'f' }] } } }), true);
+    assert.equal(isForcedReflow({ name: 'Blink.UpdateLayout', args: { data: { stackTrace: [{ functionName: 'g' }] } } }), true);
   });
 
   it('excludes scheduled (end-of-frame) style/layout events that carry no JS stack', () => {
@@ -108,6 +111,10 @@ describe('measure-dashboard-render-axis trace parsing', () => {
     assert.equal(forced.totalMs, 0);
     assert.deepEqual(forced.stacks, []);
     assert.equal(isForcedReflow({ name: 'Layout', dur: 8000 }), false);
+    // An explicitly annotated event is forced regardless of name/stack (all
+    // three synonyms), for synthetic fixtures and traces that flag the event.
+    assert.equal(isForcedReflow({ name: 'X', args: { data: { isForced: true } } }), true);
+    assert.equal(isForcedReflow({ name: 'X', args: { beginData: { forcedLayout: true } } }), true);
   });
 
   it('aggregates stackless Blink.ForcedStyleAndLayout markers separately as a fallback signal', () => {
@@ -185,6 +192,25 @@ describe('measure-dashboard-render-axis reporting', () => {
     assert.equal(comparison.forcedReflowMs.before, 246);
     assert.equal(comparison.forcedReflowMs.after, 171);
     assert.equal(comparison.forcedReflowMs.delta, -75);
+    assert.deepEqual(comparison.warnings, []);
+  });
+
+  it('carries the marker fallback and warns when a compare side has stackless captures', () => {
+    // Both sides captured without the timeline.stack category: attributed
+    // totalMs is 0 (no JS stacks) but the real forced style+layout cost lives in
+    // the markers. The compare must surface the markers and warn, so the gate
+    // view cannot go falsely green on forcedReflowMs 0 -> 0.
+    const comparison = compareReports(
+      { url: 'before', durationMs: { styleLayout: 100 }, forcedReflows: { eventCount: 0, totalMs: 0, markerTotalMs: 460 } },
+      { url: 'after', durationMs: { styleLayout: 90 }, forcedReflows: { eventCount: 0, totalMs: 0, markerTotalMs: 300 } },
+    );
+
+    assert.equal(comparison.forcedReflowMs.delta, 0);
+    assert.equal(comparison.forcedStyleLayoutMarkerMs.before, 460);
+    assert.equal(comparison.forcedStyleLayoutMarkerMs.after, 300);
+    assert.equal(comparison.forcedStyleLayoutMarkerMs.delta, -160);
+    assert.equal(comparison.warnings.length, 1);
+    assert.match(comparison.warnings[0], /lacks JS stacks/);
   });
 });
 

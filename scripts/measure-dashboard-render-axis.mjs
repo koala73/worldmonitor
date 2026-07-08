@@ -281,14 +281,20 @@ export function buildReport(result) {
 }
 
 export function normalizeReport(input) {
-  if (input?.durationMs) return input;
+  const events = traceEvents(input);
+  // A stored summary (has durationMs, no raw traceEvents) is returned as-is.
+  // But whenever traceEvents are present, recompute with the CURRENT detector
+  // rather than trusting a stored forcedReflows summary — a summary written by
+  // an older tool version carries the marker-based totalMs, which would make a
+  // --compare mix two different quantities under the same field name.
+  if (input?.durationMs && !events.length) return input;
   return buildReport({
     url: input?.url,
     generatedAt: input?.generatedAt,
     viewport: input?.viewport,
     settleMs: input?.settleMs,
     tracePath: input?.tracePath || null,
-    traceEvents: traceEvents(input),
+    traceEvents: events,
   });
 }
 
@@ -299,6 +305,22 @@ export function compareReports(before, after) {
   const afterStyle = Number(a.styleLayout) || 0;
   const beforeTbt = Number(b.estimatedTbt) || 0;
   const afterTbt = Number(a.estimatedTbt) || 0;
+  const beforeAttribMs = Number(before?.forcedReflows?.totalMs) || 0;
+  const afterAttribMs = Number(after?.forcedReflows?.totalMs) || 0;
+  const beforeMarkerMs = Number(before?.forcedReflows?.markerTotalMs) || 0;
+  const afterMarkerMs = Number(after?.forcedReflows?.markerTotalMs) || 0;
+  // A side with forced style+layout marker time but ZERO attributed stacks was
+  // captured without the timeline.stack category — its attributed forcedReflowMs
+  // is ~0 and would pass the <=200ms gate trivially while the real forced cost
+  // (markers) is unmeasured. Carry the marker aggregate + a warning into the
+  // compare so the gate view cannot go falsely green on a stackless capture.
+  const warnings = [];
+  if ((beforeMarkerMs > 0 && beforeAttribMs === 0) || (afterMarkerMs > 0 && afterAttribMs === 0)) {
+    warnings.push(
+      'Attributed forced-reflow ms is 0 on a side with non-zero Blink.ForcedStyleAndLayout markers — '
+      + 'that capture lacks JS stacks; gate on forcedStyleLayoutMarkerMs, not forcedReflowMs.',
+    );
+  }
   return {
     before: before?.url || null,
     after: after?.url || null,
@@ -318,10 +340,16 @@ export function compareReports(before, after) {
       delta: (Number(after?.forcedReflows?.eventCount) || 0) - (Number(before?.forcedReflows?.eventCount) || 0),
     },
     forcedReflowMs: {
-      before: Number(before?.forcedReflows?.totalMs) || 0,
-      after: Number(after?.forcedReflows?.totalMs) || 0,
-      delta: round((Number(after?.forcedReflows?.totalMs) || 0) - (Number(before?.forcedReflows?.totalMs) || 0)),
+      before: round(beforeAttribMs),
+      after: round(afterAttribMs),
+      delta: round(afterAttribMs - beforeAttribMs),
     },
+    forcedStyleLayoutMarkerMs: {
+      before: round(beforeMarkerMs),
+      after: round(afterMarkerMs),
+      delta: round(afterMarkerMs - beforeMarkerMs),
+    },
+    warnings,
   };
 }
 
@@ -434,6 +462,10 @@ function printHuman(report) {
     if (report.forcedReflowMs) {
       console.log(`Attributed forced-reflow ms: ${report.forcedReflowMs.before} -> ${report.forcedReflowMs.after} (${report.forcedReflowMs.delta}ms)`);
     }
+    if (report.forcedStyleLayoutMarkerMs) {
+      console.log(`Blink.ForcedStyleAndLayout marker ms: ${report.forcedStyleLayoutMarkerMs.before} -> ${report.forcedStyleLayoutMarkerMs.after} (${report.forcedStyleLayoutMarkerMs.delta}ms — stackless fallback)`);
+    }
+    for (const w of report.warnings || []) console.log(`  ! ${w}`);
     console.log('');
     return;
   }
