@@ -42,7 +42,12 @@ const fallbackDigestCache = new Map<string, { data: ListFeedDigestResponse; ts: 
 const ITEMS_PER_FEED = 5;
 const MAX_ITEMS_PER_CATEGORY = 20;
 const FEED_TIMEOUT_MS = 8_000;
-const OVERALL_DEADLINE_MS = 25_000;
+// Vercel Edge functions have a 25s initial-response ceiling. The digest
+// must fail closed to the warmed in-isolate fallback before the platform does.
+const VERCEL_INITIAL_RESPONSE_LIMIT_MS = 25_000;
+const DIGEST_RESPONSE_TIMEOUT_MS = 20_000;
+const POST_FETCH_HEADROOM_MS = 7_000;
+const OVERALL_DEADLINE_MS = VERCEL_INITIAL_RESPONSE_LIMIT_MS - POST_FETCH_HEADROOM_MS;
 const BATCH_CONCURRENCY = 20;
 
 // U3 — hard freshness floor (default 96h, env override NEWS_MAX_AGE_HOURS).
@@ -1034,6 +1039,8 @@ export async function listFeedDigest(
         const totalItems = Object.values(result.categories).reduce((sum, b) => sum + b.items.length, 0);
         return totalItems > 0 ? result : null;
       },
+      120,
+      { timeoutMs: DIGEST_RESPONSE_TIMEOUT_MS },
     );
 
     if (fresh === null) {
@@ -1542,6 +1549,10 @@ export const __testing__ = {
   computeEntityCorroborationCounts,
   resolveMaxAgeMs,
   capLlmUpgrade,
+  VERCEL_INITIAL_RESPONSE_LIMIT_MS,
+  DIGEST_RESPONSE_TIMEOUT_MS,
+  POST_FETCH_HEADROOM_MS,
+  OVERALL_DEADLINE_MS,
   MAX_DESCRIPTION_LEN,
   MIN_DESCRIPTION_LEN,
   FUTURE_DATE_TOLERANCE_MS,
