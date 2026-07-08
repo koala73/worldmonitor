@@ -32,7 +32,7 @@ GET https://api.worldmonitor.app/api/webcam/v1/get-webcam-image
 | Name | In | Required | Shape | Notes |
 |---|---|---|---|---|
 | `zoom` | query | no | integer map zoom | Defaults to `3`. Lower zooms return clusters; higher zooms return individual webcams. |
-| `bound_w`, `bound_s`, `bound_e`, `bound_n` | query | no | viewport bounds | Default to global bounds. Provide west, south, east, north decimal degrees for local context. |
+| `bound_w`, `bound_s`, `bound_e`, `bound_n` | query | yes | viewport bounds | Provide west, south, east, north decimal degrees. REST callers should not omit bounds; omitted numeric params are interpreted as `0`. |
 | `jmespath` | query | no | JMESPath, <= 1024 chars | Server-side projection, e.g. `{total: totalInView, webcams: webcams[:5]}` |
 
 `get-webcam-image`
