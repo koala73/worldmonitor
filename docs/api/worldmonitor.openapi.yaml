@@ -30081,6 +30081,23 @@ components:
                 dividendCagr:
                     type: number
                     format: double
+                marketSession:
+                    type: string
+                    description: |-
+                        US-equity trading session at analysis time: "regular", "pre", "post" or
+                         "closed". Empty when session detection does not apply (non-US symbols).
+                extendedPrice:
+                    type: number
+                    format: double
+                    description: |-
+                        Latest pre/post-market price from Yahoo extended-hours candles. Only set
+                         when market_session is "pre" or "post" and extended data is available.
+                extendedChangePercent:
+                    type: number
+                    format: double
+                    description: |-
+                        Extended-hours change % vs the last regular-session close. Only set when
+                         extended_price is set.
         worldmonitor_market_v1_StockAnalysisHeadline:
             type: object
             properties:
@@ -32214,6 +32231,17 @@ components:
                          entity-decoded, whitespace-normalised, clipped to 400 chars. Empty string
                          when unavailable or indistinguishable from the headline — consumers must
                          fall back to the headline for display/LLM grounding in that case.
+                tickers:
+                    type: array
+                    items:
+                        type: string
+                        maxItems: 8
+                        description: |-
+                            Equity ticker symbols mentioned by the story, extracted at ingest from
+                             cashtags ($AAPL) and the curated company dictionary
+                             (shared/stocks.json). Uppercase symbols, deduplicated, capped at 8.
+                             Empty when no tracked ticker is mentioned. See shared/ticker-extract.js.
+                    maxItems: 8
             required:
                 - source
                 - title

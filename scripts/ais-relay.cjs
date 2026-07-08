@@ -29,6 +29,7 @@ const { WebSocketServer, WebSocket } = require('ws');
 const { parseProxyConfig, resolveProxyString } = require('./_proxy-utils.cjs');
 const { countryNameToIso2 } = require('./shared/country-name-to-iso2.cjs');
 const { buildDedupMaterial } = require('./shared/notification-dedup.cjs');
+const { getUsEquitySession, isUsEquityTradingDay } = require('./shared/market-hours.cjs');
 const parseProxyUrl = parseProxyConfig;
 
 const httpsKeepAliveAgent = new https.Agent({ keepAlive: true, maxSockets: 6, timeout: 60_000 });
@@ -2106,6 +2107,36 @@ function fetchFinnhubQuoteDirect(symbol, apiKey) {
 
 function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
+// #4922d closed-market equity gate. Last quote count published by
+// seedMarketQuotes — reused to refresh seed-meta freshness while skipping.
+let _lastEquityQuoteCount = 0;
+// Log once per open↔closed transition, not every 5-minute cycle.
+let _equityGateLoggedClosed = false;
+
+// While the US market is fully closed (weekend / NYSE holiday — NOT weekday
+// overnight: the MARKET_SYMBOLS list mixes NSE tickers whose IST session sits
+// inside the US overnight window), skip the equity fetch+publish and instead
+// keep the last-good keys alive: extend TTL on both published keys and
+// refresh seed-meta:market:stocks fetchedAt so /api/health (maxStaleMin 30)
+// stays green across a 60h+ weekend. Returns true when last-good was
+// preserved; false means the keys are missing/expired and the caller must
+// fall back to a real fetch to repopulate.
+async function maintainClosedMarketEquityKeys() {
+  const redisKey = `market:quotes:v1:${[...MARKET_SYMBOLS].sort().join(',')}`;
+  const ok1 = await upstashExpire(redisKey, MARKET_SEED_TTL);
+  const ok2 = await upstashExpire('market:stocks-bootstrap:v1', MARKET_SEED_TTL);
+  if (!ok1 || !ok2) return false;
+  let count = _lastEquityQuoteCount;
+  if (!count) {
+    const meta = await upstashGet('seed-meta:market:stocks');
+    count = (meta && typeof meta.recordCount === 'number') ? meta.recordCount : 0;
+  }
+  if (count > 0) {
+    await upstashSet('seed-meta:market:stocks', { fetchedAt: Date.now(), recordCount: count }, 604800);
+  }
+  return true;
+}
+
 async function seedMarketQuotes() {
   const quotes = [];
   const finnhubSymbols = MARKET_SYMBOLS.filter((s) => !YAHOO_ONLY.has(s));
@@ -2144,6 +2175,7 @@ async function seedMarketQuotes() {
   // Bootstrap-friendly fixed key — frontend hydrates from /api/bootstrap without RPC
   const ok2 = await envelopeWrite('market:stocks-bootstrap:v1', payload, MARKET_SEED_TTL, { recordCount: quotes.length, sourceVersion: 'market-stocks' });
   const ok3 = await upstashSet('seed-meta:market:stocks', { fetchedAt: Date.now(), recordCount: quotes.length }, 604800);
+  _lastEquityQuoteCount = quotes.length;
   console.log(`[Market] Seeded ${quotes.length}/${MARKET_SYMBOLS.length} quotes (redis: ${ok && ok2 && ok3 ? 'OK' : 'PARTIAL'})`);
   const movingStocks = quotes.filter(q => Math.abs(q.change ?? 0) >= 5).sort((a, b) => Math.abs(b.change) - Math.abs(a.change));
   for (const q of movingStocks.slice(0, 3)) {
@@ -2701,7 +2733,25 @@ async function seedTokenPanels() {
 
 async function seedAllMarketData() {
   const t0 = Date.now();
-  const q = await seedMarketQuotes();
+  // Equity gate (#4922d): weekends/holidays skip the stocks fetch+publish.
+  // Crypto (24/7), commodities, gulf, ETF and token panels are untouched.
+  let q = 0;
+  let equitySkipped = false;
+  if (!isUsEquityTradingDay()) {
+    equitySkipped = await maintainClosedMarketEquityKeys();
+    if (equitySkipped) {
+      if (!_equityGateLoggedClosed) {
+        console.log(`[Market] US market closed (session=${getUsEquitySession()}) — skipping equity fetch, extended TTL on last-good keys`);
+        _equityGateLoggedClosed = true;
+      }
+    } else {
+      console.warn('[Market] US market closed but last-good equity keys missing — fetching anyway');
+    }
+  } else if (_equityGateLoggedClosed) {
+    console.log(`[Market] US market session now ${getUsEquitySession()} — resuming equity fetch`);
+    _equityGateLoggedClosed = false;
+  }
+  if (!equitySkipped) q = await seedMarketQuotes();
   const c = await seedCommodityQuotes();
   const s = await seedSectorSummary();
   const g = await seedGulfQuotes();
