@@ -298,6 +298,31 @@ export function normalizeReport(input) {
   });
 }
 
+function hasOwn(value, key) {
+  return Object.prototype.hasOwnProperty.call(Object(value), key);
+}
+
+function legacySummaryForcedReflows(report) {
+  const forced = report?.forcedReflows;
+  return Boolean(
+    report?.durationMs
+      && forced
+      && !hasOwn(forced, 'markerTotalMs')
+      && !hasOwn(forced, 'markerCount'),
+  );
+}
+
+function compareForcedReflowMetrics(report) {
+  const forced = report?.forcedReflows || {};
+  const legacySummary = legacySummaryForcedReflows(report);
+  const totalMs = Number(forced.totalMs) || 0;
+  return {
+    attributedMs: legacySummary ? 0 : totalMs,
+    markerMs: legacySummary ? totalMs : Number(forced.markerTotalMs) || 0,
+    legacySummary,
+  };
+}
+
 export function compareReports(before, after) {
   const b = before?.durationMs || {};
   const a = after?.durationMs || {};
@@ -305,16 +330,25 @@ export function compareReports(before, after) {
   const afterStyle = Number(a.styleLayout) || 0;
   const beforeTbt = Number(b.estimatedTbt) || 0;
   const afterTbt = Number(a.estimatedTbt) || 0;
-  const beforeAttribMs = Number(before?.forcedReflows?.totalMs) || 0;
-  const afterAttribMs = Number(after?.forcedReflows?.totalMs) || 0;
-  const beforeMarkerMs = Number(before?.forcedReflows?.markerTotalMs) || 0;
-  const afterMarkerMs = Number(after?.forcedReflows?.markerTotalMs) || 0;
+  const beforeForced = compareForcedReflowMetrics(before);
+  const afterForced = compareForcedReflowMetrics(after);
+  const beforeAttribMs = beforeForced.attributedMs;
+  const afterAttribMs = afterForced.attributedMs;
+  const beforeMarkerMs = beforeForced.markerMs;
+  const afterMarkerMs = afterForced.markerMs;
   // A side with forced style+layout marker time but ZERO attributed stacks was
   // captured without the timeline.stack category — its attributed forcedReflowMs
   // is ~0 and would pass the <=200ms gate trivially while the real forced cost
   // (markers) is unmeasured. Carry the marker aggregate + a warning into the
   // compare so the gate view cannot go falsely green on a stackless capture.
   const warnings = [];
+  if (beforeForced.legacySummary || afterForced.legacySummary) {
+    warnings.push(
+      'Legacy stored forcedReflows.totalMs lacks marker fields; treating it as '
+      + 'Blink.ForcedStyleAndLayout marker fallback. Re-run the capture or keep '
+      + 'raw traceEvents before gating on attributed forcedReflowMs.',
+    );
+  }
   if ((beforeMarkerMs > 0 && beforeAttribMs === 0) || (afterMarkerMs > 0 && afterAttribMs === 0)) {
     warnings.push(
       'Attributed forced-reflow ms is 0 on a side with non-zero Blink.ForcedStyleAndLayout markers — '

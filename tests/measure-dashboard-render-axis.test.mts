@@ -180,8 +180,8 @@ describe('measure-dashboard-render-axis reporting', () => {
 
   it('compares before/after reports with absolute and relative deltas', () => {
     const comparison = compareReports(
-      { url: 'before', durationMs: { styleLayout: 100, rendering: 20, scriptEvaluation: 10, estimatedTbt: 50 }, forcedReflows: { eventCount: 4, totalMs: 246 } },
-      { url: 'after', durationMs: { styleLayout: 60, rendering: 15, scriptEvaluation: 11, estimatedTbt: 35 }, forcedReflows: { eventCount: 1, totalMs: 171 } },
+      { url: 'before', durationMs: { styleLayout: 100, rendering: 20, scriptEvaluation: 10, estimatedTbt: 50 }, forcedReflows: { eventCount: 4, totalMs: 246, markerCount: 0, markerTotalMs: 0 } },
+      { url: 'after', durationMs: { styleLayout: 60, rendering: 15, scriptEvaluation: 11, estimatedTbt: 35 }, forcedReflows: { eventCount: 1, totalMs: 171, markerCount: 0, markerTotalMs: 0 } },
     );
 
     assert.equal(comparison.deltaMs.styleLayout, -40);
@@ -193,6 +193,22 @@ describe('measure-dashboard-render-axis reporting', () => {
     assert.equal(comparison.forcedReflowMs.after, 171);
     assert.equal(comparison.forcedReflowMs.delta, -75);
     assert.deepEqual(comparison.warnings, []);
+  });
+
+  it('treats legacy summary-only forcedReflows.totalMs as marker fallback', () => {
+    // Older stored summaries had durationMs but no raw traceEvents/marker fields,
+    // and their forcedReflows.totalMs came from Blink.ForcedStyleAndLayout markers.
+    // Do not compare that old stackless marker total as attributed forced-reflow ms.
+    const comparison = compareReports(
+      { url: 'before', durationMs: { styleLayout: 100 }, forcedReflows: { eventCount: 4, totalMs: 460 } },
+      { url: 'after', durationMs: { styleLayout: 90 }, forcedReflows: { eventCount: 1, totalMs: 171, markerCount: 0, markerTotalMs: 0 } },
+    );
+
+    assert.equal(comparison.forcedReflowMs.before, 0);
+    assert.equal(comparison.forcedReflowMs.after, 171);
+    assert.equal(comparison.forcedStyleLayoutMarkerMs.before, 460);
+    assert.equal(comparison.forcedStyleLayoutMarkerMs.after, 0);
+    assert.match(comparison.warnings.join('\\n'), /Legacy stored forcedReflows.totalMs/);
   });
 
   it('carries the marker fallback and warns when a compare side has stackless captures', () => {
