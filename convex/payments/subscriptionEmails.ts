@@ -378,6 +378,15 @@ export const WINBACK_MAX_AGE_MS = 60 * DAY_MS;
 const DASHBOARD_URL = "https://www.worldmonitor.app/dashboard";
 const PRICING_URL = "https://www.worldmonitor.app/pro#pricing";
 
+// Resend caps at 10 requests/second. A scan that schedules every due send at
+// runAfter(0) fires them concurrently, so the 11th+ gets a 429 that throws
+// uncaught out of sendDunningEmail -> Sentry WORLDMONITOR-VH; because the send
+// throws before the ledger write, those rows re-burst on the next daily tick and
+// compound. Stagger sends 250ms apart (<=4/s) to stay well under the cap with
+// headroom for concurrent welcome/admin emails. The cadence is daily and
+// non-urgent, so spreading a batch over a few seconds is inconsequential.
+export const SEND_SPACING_MS = 250;
+
 const dunningStepValidator = v.union(
   v.literal("dunning_day0"),
   v.literal("dunning_day3"),
@@ -758,8 +767,10 @@ export const runDunningScan = internalMutation({
         )
         .first();
       if (existing) continue;
+      // Stagger to stay under Resend's 10 req/s limit (see SEND_SPACING_MS):
+      // `scheduled` is the running index, so sends fire at 0ms, 250ms, 500ms, ...
       await ctx.scheduler.runAfter(
-        0,
+        scheduled * SEND_SPACING_MS,
         internal.payments.subscriptionEmails.sendDunningEmail,
         item,
       );

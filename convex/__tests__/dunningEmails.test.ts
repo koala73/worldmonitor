@@ -21,6 +21,7 @@ import {
   DUNNING_DAY7_AGE_MS,
   WINBACK_MIN_AGE_MS,
   WINBACK_MAX_AGE_MS,
+  SEND_SPACING_MS,
 } from "../payments/subscriptionEmails";
 
 const modules = import.meta.glob("../**/*.ts");
@@ -358,6 +359,50 @@ describe("runDunningScan windows", () => {
     const summary = await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {});
     expect(summary.scheduled).toBe(0);
     expect(resendSends(fetchMock)).toHaveLength(0);
+  });
+
+  test("batch scan staggers sends to stay under Resend's 10 req/s cap (WORLDMONITOR-VH)", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    // 12 distinct subs all past the day-7 window → 12 due sends in one tick.
+    // Pre-fix every send was scheduled at runAfter(0), bursting concurrently and
+    // tripping Resend's 10 req/s limit (the 11th+ threw a 429 out of sendEmail).
+    const anchor = Date.now() - (DUNNING_DAY7_AGE_MS + DAY_MS);
+    const N = 12;
+    for (let i = 0; i < N; i++) {
+      await seedSub(t, {
+        dodoSubscriptionId: `sub_burst_${i}`,
+        userId: `user_burst_${i}`,
+        email: `burst${i}@example.com`,
+        onHoldAt: anchor,
+      });
+    }
+
+    const summary = await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {});
+    expect(summary.scheduled).toBe(N);
+
+    // Inspect the PENDING scheduled sends (before draining): their scheduledTime
+    // must be staggered by SEND_SPACING_MS, not all identical (the burst bug).
+    const scheduledTimes = await t.run(async (ctx) => {
+      const jobs = await ctx.db.system.query("_scheduled_functions").collect();
+      return jobs
+        .filter((j) => j.name.endsWith("sendDunningEmail"))
+        .map((j) => j.scheduledTime)
+        .sort((a, b) => a - b);
+    });
+    expect(scheduledTimes).toHaveLength(N);
+    // All distinct — pre-fix every send fired at the same instant (Set size 1).
+    expect(new Set(scheduledTimes).size).toBe(N);
+    // Consecutive sends are exactly SEND_SPACING_MS apart (≤4/s, under 10/s).
+    for (let i = 1; i < scheduledTimes.length; i++) {
+      expect(scheduledTimes[i]! - scheduledTimes[i - 1]!).toBe(SEND_SPACING_MS);
+    }
+
+    // …and they all still deliver once drained.
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(resendSends(fetchMock)).toHaveLength(N);
   });
 });
 
