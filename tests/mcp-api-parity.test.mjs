@@ -45,6 +45,10 @@ const VALID_FETCH_ON_MISS_SECONDARIES = [
 const FORBIDDEN_FETCH_ON_MISS_SECONDARIES = [
   'already-covered-by-rpc-tool',
 ];
+const MCP_DOCS_WITH_EXCLUSION_TAXONOMY = [
+  'docs/adding-endpoints.mdx',
+  'docs/mcp-overview.mdx',
+];
 
 // -----------------------------------------------------------------------------
 // HTTP-method allowlist — used by the OpenAPI walker to skip path-level siblings
@@ -502,6 +506,21 @@ function findForbiddenFetchOnMissSecondaries(excludedMap) {
   return offenders;
 }
 
+/** Overview category bullets include sample REST-only ops; keep those examples honest. */
+function collectDocumentedExclusionExamples(markdown) {
+  const examples = [];
+  for (const line of markdown.split("\n")) {
+    const category = line.match(/^- \*\*`([^`]+)`\*\*/)?.[1];
+    if (!category || !VALID_PREFIXES.includes(category)) continue;
+    const exampleText = line.split(";")[0];
+    const opMatches = exampleText.matchAll(/`((?:GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD) \/api\/[^`]+)`/g);
+    for (const match of opMatches) {
+      examples.push({ category, op: match[1] });
+    }
+  }
+  return examples;
+}
+
 // -----------------------------------------------------------------------------
 // Live structural assertions — run against the real OpenAPI + TOOL_REGISTRY
 // -----------------------------------------------------------------------------
@@ -580,6 +599,30 @@ describe('Tier-4 — MCP↔API parity assertions', () => {
     // Side-effect-only: emit summary so CI logs surface the actionable inventory.
     console.log(`[mcp-api-parity] ${declaredPaths.size} covered / ${EXCLUDED_FROM_MCP_PARITY.size} excluded (${breakdown}) / ${apiOps.size} total ops`);
   });
+  it("documents every enforced MCP exclusion category and fetch-on-miss secondary signal", () => {
+    for (const docPath of MCP_DOCS_WITH_EXCLUSION_TAXONOMY) {
+      const markdown = readFileSync(join(import.meta.dirname, "..", docPath), "utf8");
+      for (const prefix of VALID_PREFIXES) {
+        assert.ok(markdown.includes(`\`${prefix}\``), `${docPath} must document MCP exclusion category ${prefix}`);
+      }
+      for (const secondary of VALID_FETCH_ON_MISS_SECONDARIES) {
+        assert.ok(markdown.includes(`\`${secondary}\``), `${docPath} must document fetch-on-miss secondary ${secondary}`);
+      }
+    }
+  });
+
+  it("keeps documented REST-only exclusion examples aligned with EXCLUDED_FROM_MCP_PARITY", () => {
+    const overview = readFileSync(join(import.meta.dirname, "..", "docs", "mcp-overview.mdx"), "utf8");
+    const mismatches = [];
+    for (const { category, op } of collectDocumentedExclusionExamples(overview)) {
+      const reason = EXCLUDED_FROM_MCP_PARITY.get(op);
+      if (!reason?.startsWith(`${category}:`)) {
+        mismatches.push(`${op} documented as ${category}, actual=${reason ?? "missing"}`);
+      }
+    }
+    assert.deepEqual(mismatches, [], `Documented MCP exclusion examples drifted:\n${mismatches.join("\n")}`);
+  });
+
 });
 
 // -----------------------------------------------------------------------------
@@ -725,6 +768,19 @@ describe('Tier-4 meta-tests — predicates fire on synthetic invalid inputs', ()
     ]);
     assert.deepEqual(findDoubleCoveredOps({ declaredPaths, excludedMap }), ['GET /double']);
   });
+  it("collectDocumentedExclusionExamples: extracts category-scoped method/path examples", () => {
+    const markdown = [
+      "- **`mutating`** — Example: `GET /api/example/v1/write`.",
+      "- **`fetch-on-miss`** — Examples: `GET /api/example/v1/live` and `POST /api/example/v1/batch`; sibling tool declares only `GET /api/example/v1/covered`.",
+      "- **Other** — Tool `get_market_data` is not an API example.",
+    ].join("\n");
+    assert.deepEqual(collectDocumentedExclusionExamples(markdown), [
+      { category: "mutating", op: "GET /api/example/v1/write" },
+      { category: "fetch-on-miss", op: "GET /api/example/v1/live" },
+      { category: "fetch-on-miss", op: "POST /api/example/v1/batch" },
+    ]);
+  });
+
 });
 
 // -----------------------------------------------------------------------------
