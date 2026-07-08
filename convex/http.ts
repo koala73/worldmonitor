@@ -619,26 +619,40 @@ http.route({
         ) {
           return new Response(JSON.stringify({ error: "MISSING_REQUIRED_FIELDS" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
-        await ctx.runMutation((internal as any).alertRules.setAlertRulesForUser, {
-          userId,
-          variant: body.variant,
-          enabled: body.enabled,
-          eventTypes: body.eventTypes as string[],
-          // Pass body.sensitivity through unchanged (may be undefined).
-          // setAlertRulesForUser now accepts optional sensitivity and uses
-          // resolveEffectivePair to preserve existing.sensitivity on patch and
-          // default to 'high' only on fresh insert. A blind '?? "all"' fallback
-          // here would silently narrow existing daily+all digest users to
-          // daily+high whenever a caller omits the field.
-          // See docs/archive/plans/forbid-realtime-all-events.md §1c.
-          sensitivity: body.sensitivity as "all" | "high" | "critical" | undefined,
-          channels: body.channels as Array<"telegram" | "slack" | "email">,
-          aiDigestEnabled: typeof body.aiDigestEnabled === "boolean" ? body.aiDigestEnabled : undefined,
-          // ISO-3166 alpha-2 country-scope; mutation re-validates + normalizes.
-          countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
-          // Watchlist ticker-scope (#4922 U3); mutation re-validates + normalizes.
-          tickers: Array.isArray(body.tickers) ? (body.tickers as string[]) : undefined,
-        });
+        try {
+          await ctx.runMutation((internal as any).alertRules.setAlertRulesForUser, {
+            userId,
+            variant: body.variant,
+            enabled: body.enabled,
+            eventTypes: body.eventTypes as string[],
+            // Pass body.sensitivity through unchanged (may be undefined).
+            // setAlertRulesForUser now accepts optional sensitivity and uses
+            // resolveEffectivePair to preserve existing.sensitivity on patch and
+            // default to 'high' only on fresh insert. A blind '?? "all"' fallback
+            // here would silently narrow existing daily+all digest users to
+            // daily+high whenever a caller omits the field.
+            // See docs/archive/plans/forbid-realtime-all-events.md §1c.
+            sensitivity: body.sensitivity as "all" | "high" | "critical" | undefined,
+            channels: body.channels as Array<"telegram" | "slack" | "email">,
+            aiDigestEnabled: typeof body.aiDigestEnabled === "boolean" ? body.aiDigestEnabled : undefined,
+            // ISO-3166 alpha-2 country-scope; mutation re-validates + normalizes.
+            countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
+            // Watchlist ticker-scope (#4922 U3); mutation re-validates + normalizes.
+            tickers: Array.isArray(body.tickers) ? (body.tickers as string[]) : undefined,
+          });
+        } catch (err: unknown) {
+          // normalizeTickers/normalizeCountries throw ConvexError with a
+          // structured code (TICKERS_LIMIT_EXCEEDED / COUNTRIES_LIMIT_EXCEEDED)
+          // when a caller exceeds the 50-entry cap. Surface those as a 400 with
+          // the machine-readable code — matching the set-notification-config
+          // path below — instead of letting them fall to the outer catch as a
+          // generic 500, which the client can't route on.
+          const code = extractConvexErrorCode(err);
+          if (code === "TICKERS_LIMIT_EXCEEDED" || code === "COUNTRIES_LIMIT_EXCEEDED") {
+            return new Response(JSON.stringify({ error: code }), { status: 400, headers: { "Content-Type": "application/json" } });
+          }
+          throw err;
+        }
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 

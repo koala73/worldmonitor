@@ -129,16 +129,23 @@ async function fetchAndStash() {
 // TRADING DAY, not session === 'closed': the symbol list mixes in NSE
 // tickers whose IST session falls inside the US weekday-overnight window.
 // If last-good is missing/expired (fresh Redis, weekend deploy), fall
-// through to a real fetch so the keys repopulate.
+// through to a real fetch so the keys repopulate. We only report fresh and
+// exit(0) when the TTL extension actually CONFIRMS (every key still alive and
+// re-expired) — a silently-failed extension must not refresh seed-meta and
+// leave health monitors green over a canonical key that then lapses.
 if (!isUsEquityTradingDay()) {
   const lastGood = await readCanonicalEnvelopeMeta(CANONICAL_KEY);
   if (lastGood) {
-    await extendExistingTtl([CANONICAL_KEY, 'seed-meta:market:quotes', RPC_KEY], CACHE_TTL);
-    await writeFreshnessMetadata('market', 'quotes', lastGood.recordCount, lastGood.sourceVersion || 'alphavantage+finnhub+yahoo', CACHE_TTL);
-    console.log(`[seed-market-quotes] US market closed (session=${getUsEquitySession()}) — skipping upstream fetch, extended TTL`);
-    process.exit(0);
+    const extended = await extendExistingTtl([CANONICAL_KEY, 'seed-meta:market:quotes', RPC_KEY], CACHE_TTL);
+    if (extended) {
+      await writeFreshnessMetadata('market', 'quotes', lastGood.recordCount, lastGood.sourceVersion || 'alphavantage+finnhub+yahoo', CACHE_TTL);
+      console.log(`[seed-market-quotes] US market closed (session=${getUsEquitySession()}) — skipping upstream fetch, extended TTL`);
+      process.exit(0);
+    }
+    console.warn('[seed-market-quotes] US market closed but TTL extension did not confirm all keys — fetching to repopulate');
+  } else {
+    console.warn('[seed-market-quotes] US market closed but no last-good canonical data — fetching anyway');
   }
-  console.warn('[seed-market-quotes] US market closed but no last-good canonical data — fetching anyway');
 }
 
 runSeed('market', 'quotes', CANONICAL_KEY, fetchAndStash, {

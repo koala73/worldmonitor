@@ -68,4 +68,17 @@ describe('notification country-scope forwarding contract', () => {
       'setQuietHoursForUser must accept and normalize countries',
     );
   });
+
+  // #4922 U3 review fix: normalizeTickers/normalizeCountries throw ConvexError
+  // with a structured *_LIMIT_EXCEEDED code on a >50-entry cap. The set-alert-rules
+  // HTTP block previously had no try/catch, so the cap violation fell to the
+  // outer catch as a generic 500 the client cannot route on — unlike the
+  // set-notification-config block, which already translates codes to 400/402.
+  it('set-alert-rules translates cap-exceeded ConvexError codes to a 400', () => {
+    assert.match(
+      convexHttpSrc,
+      /action === "set-alert-rules"[\s\S]*?try \{[\s\S]*?setAlertRulesForUser[\s\S]*?\} catch \(err: unknown\) \{[\s\S]*?TICKERS_LIMIT_EXCEEDED[\s\S]*?COUNTRIES_LIMIT_EXCEEDED[\s\S]*?status: 400/,
+      'set-alert-rules must catch and translate *_LIMIT_EXCEEDED to a 400',
+    );
+  });
 });

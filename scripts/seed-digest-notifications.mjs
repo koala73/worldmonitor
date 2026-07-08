@@ -638,8 +638,14 @@ async function scanAndEnqueueWatchlistStoryEvents(nowMs) {
     const windowStart = String(nowMs - WATCHLIST_SCAN_WINDOW_MS);
     const seenHashes = new Set();
     const hashes = [];
-    for (const accKey of WATCHLIST_SCAN_ACCUMULATORS) {
-      const members = await upstashRest('ZRANGEBYSCORE', accKey, windowStart, String(nowMs));
+    // Read the accumulators concurrently — they are independent ZRANGEBYSCOREs;
+    // one round-trip instead of one-per-accumulator each cron tick.
+    const memberLists = await Promise.all(
+      WATCHLIST_SCAN_ACCUMULATORS.map((accKey) =>
+        upstashRest('ZRANGEBYSCORE', accKey, windowStart, String(nowMs)),
+      ),
+    );
+    for (const members of memberLists) {
       if (!Array.isArray(members)) continue;
       for (const h of members) {
         if (typeof h === 'string' && h.length > 0 && !seenHashes.has(h)) {
