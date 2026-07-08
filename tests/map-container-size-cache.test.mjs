@@ -56,3 +56,41 @@ describe('Map container-size cache (#5017 forced-reflow guard)', () => {
     assert.match(mapSrc, /rememberContainerSize\(\{ width, height \}\)/, 'ResizeObserver must refresh the cache via rememberContainerSize()');
   });
 });
+
+// #5022 review: cached geometry is only safe on the render/draw hot path. One-shot
+// viewport commands can run right after revealMobileMap() expands the map — before
+// the ResizeObserver refreshes the cache — so they must read the CURRENT size or
+// they center off stale dimensions. readContainerSize() reads live AND refreshes
+// the cache, keeping the subsequent cached applyTransform() read consistent.
+describe('Map one-shot viewport commands read current size (#5022 review)', () => {
+  function methodSlice(name) {
+    const start = mapSrc.search(new RegExp(String.raw`\n  (?:public|private) ${name}\(`));
+    assert.ok(start >= 0, `could not locate ${name}()`);
+    const rest = mapSrc.slice(start + 1);
+    const next = rest.slice(1).search(/\n {2}(?:public|private|protected) \w+\(/);
+    return next >= 0 ? rest.slice(0, next + 1) : rest;
+  }
+
+  for (const name of ['setCenter', 'fitCountry', 'getCenter']) {
+    it(`${name}() reads live via readContainerSize(), not the stale cache`, () => {
+      const body = methodSlice(name);
+      assert.match(body, /readContainerSize\(\)/, `${name}() must read the current size (correct after reveal/resize)`);
+      assert.doesNotMatch(body, /getKnownContainerSize\(\)/, `${name}() must not read the cached size — it can run before the ResizeObserver refresh`);
+    });
+  }
+
+  it('ResizeObserver records zero-size (hidden) transitions, gating only the render on visibility', () => {
+    const ro = mapSrc.slice(mapSrc.indexOf('private setupResizeObserver('));
+    const body = ro.slice(0, ro.slice(1).search(/\n {2}(?:public|private) \w+\(/) + 1);
+    // scheduleRender is gated on a visible size...
+    assert.match(body, /if \(width > 0 && height > 0\) this\.scheduleRender\(\)/, 'scheduleRender must fire only for a visible size');
+    // ...but the cache update must run for ANY change (including -> 0), so the
+    // old combined visible-only guard must be gone.
+    assert.doesNotMatch(body, /width > 0 && height > 0 && \(width !== lastWidth/, 'must not gate the cache update behind the visible-size check (hidden state must be recorded so render() skips)');
+    assert.match(body, /rememberContainerSize\(\{ width, height \}\)/, 'must record every observed size (including zero) into the cache');
+  });
+
+  it('render paths keep the zero-size skip so a hidden map does not render off stale dimensions', () => {
+    assert.match(mapSrc, /if \(width === 0 \|\| height === 0\)/, 'renderWithSize must skip when the container has no dimensions');
+  });
+});
