@@ -280,7 +280,7 @@ describe('api/_rate-limit checkRateLimit EVALSHA-unsupported fallback (mirrors t
     };
 
     const mod = await importFreshRateLimitModule();
-    const req = makeRequest({ 'cf-connecting-ip': '203.0.113.9' });
+    const req = makeRequest({ 'x-real-ip': '203.0.113.9' });
 
     const first = await mod.checkRateLimit(req, {});
     assert.equal(first, null, 'first request is under the global limit');
@@ -310,7 +310,7 @@ describe('api/_rate-limit checkRateLimit EVALSHA-unsupported fallback (mirrors t
     assert.equal(luaAttempts, 1, 'Lua must stay latched off while the fallback enforces the window');
 
     // A different identifier gets its own independent fixed window.
-    const otherReq = makeRequest({ 'cf-connecting-ip': '203.0.113.10' });
+    const otherReq = makeRequest({ 'x-real-ip': '203.0.113.10' });
     const other = await mod.checkRateLimit(otherReq, {});
     assert.equal(other, null, 'a different identifier has its own fixed-window counter');
   });
