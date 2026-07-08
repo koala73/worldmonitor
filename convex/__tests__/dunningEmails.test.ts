@@ -22,6 +22,7 @@ import {
   WINBACK_MIN_AGE_MS,
   WINBACK_MAX_AGE_MS,
   SEND_SPACING_MS,
+  resendPacingWaitMs,
 } from "../payments/subscriptionEmails";
 
 const modules = import.meta.glob("../**/*.ts");
@@ -425,6 +426,21 @@ describe("runDunningScan windows", () => {
     vi.advanceTimersByTime(N * SEND_SPACING_MS + 10_000);
     const afterIdle = await t.mutation(internal.payments.subscriptionEmails.reserveResendSlot, {});
     expect(afterIdle).toBe(Date.now());
+  });
+
+  test("resendPacingWaitMs never clamps a large backlog into a burst (WORLDMONITOR-VH re-review P2)", () => {
+    const now = 1_000_000_000_000;
+    expect(resendPacingWaitMs(now, now)).toBe(0);
+    expect(resendPacingWaitMs(now + SEND_SPACING_MS, now)).toBe(SEND_SPACING_MS);
+    // A backlog past ~240 reservations reserves a slot >60s out. A fixed 60s cap
+    // (the earlier bug) would flatten every such tail send to a 60s wait so they
+    // woke together and re-burst; the wait must equal the FULL distance to the
+    // slot. 300 * 250ms = 75s, well past the removed ceiling.
+    const bigBacklogMs = 300 * SEND_SPACING_MS;
+    expect(bigBacklogMs).toBeGreaterThan(60_000);
+    expect(resendPacingWaitMs(now + bigBacklogMs, now)).toBe(bigBacklogMs);
+    // Slot already elapsed (clock moved past it): no negative/oversized wait.
+    expect(resendPacingWaitMs(now - 5_000, now)).toBe(0);
   });
 });
 

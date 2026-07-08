@@ -404,10 +404,6 @@ export const SEND_SPACING_MS = 250;
 // the next free Resend send slot for the dunning/winback fleet.
 const RESEND_SLOT_COUNTER = "dunning_resend_next_slot";
 
-// Safety ceiling on how long one send will wait for its slot, so a corrupt or
-// far-future cursor value can never wedge an action indefinitely.
-const MAX_PACING_WAIT_MS = 60_000;
-
 const dunningStepValidator = v.union(
   v.literal("dunning_day0"),
   v.literal("dunning_day3"),
@@ -651,6 +647,20 @@ export const reserveResendSlot = internalMutation({
   },
 });
 
+/**
+ * The wait (ms) a send owes before its reserved Resend slot. Deliberately
+ * UNCAPPED: a large legitimate backlog reserves proportionally distant slots, so
+ * clamping the wait would let the tail — every reservation past cap/SEND_SPACING_MS
+ * — wake together and re-burst, the exact collapse a fixed ceiling caused
+ * (WORLDMONITOR-VH re-review P2). Safe to leave uncapped because
+ * `counters[RESEND_SLOT_COUNTER]` is single-writer (reserveResendSlot only) and
+ * only ever advances by SEND_SPACING_MS, so it can never be corruptly far in the
+ * future — there is no runaway state to defend against. Exported for testing.
+ */
+export function resendPacingWaitMs(slotAt: number, now: number): number {
+  return Math.max(0, slotAt - now);
+}
+
 export const sendDunningEmail = internalAction({
   args: {
     dodoSubscriptionId: v.string(),
@@ -735,12 +745,13 @@ export const sendDunningEmail = internalAction({
     // and wait for it. This bounds the true POST rate to <= 1/SEND_SPACING_MS
     // even when portal jitter bunches start-staggered sends together, which
     // start-time staggering alone can't guarantee (review follow-up to
-    // WORLDMONITOR-VH). The wait is capped by MAX_PACING_WAIT_MS.
+    // WORLDMONITOR-VH). The wait is intentionally uncapped (see resendPacingWaitMs)
+    // so a large backlog stays serialized instead of collapsing into a burst.
     const slotAt = await ctx.runMutation(
       internal.payments.subscriptionEmails.reserveResendSlot,
       {},
     );
-    const waitMs = Math.min(Math.max(0, slotAt - Date.now()), MAX_PACING_WAIT_MS);
+    const waitMs = resendPacingWaitMs(slotAt, Date.now());
     if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
     await sendEmail(apiKey, sub.email, subject, html, ADMIN_EMAIL);
     // Ledger write AFTER the send: a Resend failure throws above, leaving no
