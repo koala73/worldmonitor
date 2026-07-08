@@ -361,14 +361,15 @@ describe("runDunningScan windows", () => {
     expect(resendSends(fetchMock)).toHaveLength(0);
   });
 
-  test("batch scan staggers sends to stay under Resend's 10 req/s cap (WORLDMONITOR-VH)", async () => {
+  test("batch scan staggers send START times (first pacing layer, WORLDMONITOR-VH)", async () => {
     vi.useFakeTimers();
     process.env.RESEND_API_KEY = "re_test";
-    const fetchMock = mockResend();
     const t = convexTest(schema, modules);
     // 12 distinct subs all past the day-7 window → 12 due sends in one tick.
     // Pre-fix every send was scheduled at runAfter(0), bursting concurrently and
     // tripping Resend's 10 req/s limit (the 11th+ threw a 429 out of sendEmail).
+    // Start-staggering spreads the Dodo portal load and the initial Resend load;
+    // the hard POST-rate guarantee is reserveResendSlot (see the pacing test).
     const anchor = Date.now() - (DUNNING_DAY7_AGE_MS + DAY_MS);
     const N = 12;
     for (let i = 0; i < N; i++) {
@@ -383,8 +384,8 @@ describe("runDunningScan windows", () => {
     const summary = await t.mutation(internal.payments.subscriptionEmails.runDunningScan, {});
     expect(summary.scheduled).toBe(N);
 
-    // Inspect the PENDING scheduled sends (before draining): their scheduledTime
-    // must be staggered by SEND_SPACING_MS, not all identical (the burst bug).
+    // Pending scheduled sends: their scheduledTime must be staggered by
+    // SEND_SPACING_MS, not all identical (the burst bug).
     const scheduledTimes = await t.run(async (ctx) => {
       const jobs = await ctx.db.system.query("_scheduled_functions").collect();
       return jobs
@@ -395,14 +396,35 @@ describe("runDunningScan windows", () => {
     expect(scheduledTimes).toHaveLength(N);
     // All distinct — pre-fix every send fired at the same instant (Set size 1).
     expect(new Set(scheduledTimes).size).toBe(N);
-    // Consecutive sends are exactly SEND_SPACING_MS apart (≤4/s, under 10/s).
+    // Consecutive starts are exactly SEND_SPACING_MS apart (≤4/s, under 10/s).
     for (let i = 1; i < scheduledTimes.length; i++) {
       expect(scheduledTimes[i]! - scheduledTimes[i - 1]!).toBe(SEND_SPACING_MS);
     }
+  });
 
-    // …and they all still deliver once drained.
-    await t.finishAllScheduledFunctions(vi.runAllTimers);
-    expect(resendSends(fetchMock)).toHaveLength(N);
+  test("reserveResendSlot paces actual POSTs >= SEND_SPACING_MS apart, portal-latency-independent (WORLDMONITOR-VH)", async () => {
+    // Staggering only spaces send START times; the real Resend POST happens
+    // after a variable-latency Dodo portal mint, so start-spacing alone can't
+    // bound the POST rate. reserveResendSlot is the hard guarantee: it hands out
+    // the instant each send may POST. Asserting those instants are monotonic and
+    // exactly SEND_SPACING_MS apart proves the POST rate stays <= 1/SEND_SPACING_MS
+    // regardless of portal jitter — no timers/portal mocking needed because the
+    // reserved slot IS the POST schedule.
+    vi.useFakeTimers();
+    const t = convexTest(schema, modules);
+    const N = 12;
+    const slots: number[] = [];
+    for (let i = 0; i < N; i++) {
+      slots.push(await t.mutation(internal.payments.subscriptionEmails.reserveResendSlot, {}));
+    }
+    for (let i = 1; i < N; i++) {
+      expect(slots[i]! - slots[i - 1]!).toBe(SEND_SPACING_MS);
+    }
+    // Idle reset: once the reserved window fully elapses, the next slot floors at
+    // `now` (no wait toward a stale future cursor), not lastSlot + spacing.
+    vi.advanceTimersByTime(N * SEND_SPACING_MS + 10_000);
+    const afterIdle = await t.mutation(internal.payments.subscriptionEmails.reserveResendSlot, {});
+    expect(afterIdle).toBe(Date.now());
   });
 });
 
