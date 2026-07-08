@@ -26,6 +26,7 @@ const middlewareSource = readFileSync(resolve(__dirname, '../middleware.ts'), 'u
 const dockerfileSource = readFileSync(resolve(__dirname, '../Dockerfile'), 'utf-8');
 const dockerNginxSource = readFileSync(resolve(__dirname, '../docker/nginx.conf'), 'utf-8');
 const frontendDockerfileSource = readFileSync(resolve(__dirname, '../docker/Dockerfile'), 'utf-8');
+const vercelIgnoreSource = readFileSync(resolve(__dirname, '../scripts/vercel-ignore.sh'), 'utf-8');
 const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|countries|chokepoints|reference|changelog|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|mcp-server\\.md|openapi\\.md|sdks\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
 const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html).*)';
 const APP_ROOT_HOST_PATTERN = '^(?:(?:www|tech|finance|commodity|happy|energy)\\.)?worldmonitor\\.app$';
@@ -180,7 +181,7 @@ describe('crawlable content corpus deployment contracts', () => {
   it('runs content corpus sitemap integration after generated blog pages but before Vite builds', () => {
     assert.equal(
       packageJson.scripts['build:crawlable-corpus'],
-      'node scripts/build-crawlable-corpus.mjs'
+      'tsx scripts/build-crawlable-corpus.mjs'
     );
     assert.equal(
       packageJson.scripts['build:content-corpus'],
@@ -205,6 +206,27 @@ describe('crawlable content corpus deployment contracts', () => {
         scriptName + ' must update public/sitemap.xml before Vite copies public/ into dist/'
       );
     }
+
+    for (const [name, source] of [
+      ['Dockerfile', dockerfileSource],
+      ['docker/Dockerfile', frontendDockerfileSource],
+    ]) {
+      assert.ok(source.includes('npm run build:crawlable-corpus'), name + ' must build the static corpus');
+      assert.ok(source.includes('npm run build:content-corpus'), name + ' must update the sitemap block');
+      assert.ok(
+        source.indexOf('npm run build:crawlable-corpus') < source.indexOf('npm run build:content-corpus'),
+        name + ' must scan the sitemap only after corpus pages exist'
+      );
+      assert.ok(
+        source.indexOf('npm run build:content-corpus') < source.indexOf('npx vite build'),
+        name + ' must update public/sitemap.xml before Vite copies public/ into dist/'
+      );
+    }
+  });
+
+  it('builds Vercel when corpus source files change', () => {
+    assert.ok(vercelIgnoreSource.includes("'CHANGELOG.md'"));
+    assert.ok(vercelIgnoreSource.includes("'docs/snapshots/'"));
   });
 
   it('keeps generated corpus prefixes out of the SPA catch-all while preserving normal app deep links', () => {
@@ -290,6 +312,10 @@ describe('crawlable content corpus deployment contracts', () => {
         pages
       );
       assert.match(injected, /<!-- content-corpus:start -->[\s\S]*\/countries\/ukraine\/[\s\S]*<!-- content-corpus:end -->/);
+      const reinjected = injectContentCorpusSitemapBlock(injected, pages);
+      assert.equal(reinjected, injected, 're-injecting the same pages must be idempotent');
+      assert.equal((reinjected.match(/<!-- content-corpus:start -->/g) ?? []).length, 1);
+      assert.equal((reinjected.match(/<!-- content-corpus:end -->/g) ?? []).length, 1);
 
       writeFixturePage(
         publicDir,
@@ -626,6 +652,18 @@ describe('welcome landing page routing', () => {
     assert.ok(redirect, 'expected a redirect for /index.html');
     assert.equal(redirect.destination, '/');
     assert.equal(redirect.permanent, true);
+  });
+
+  it('redirects bare corpus roots to canonical generated pages', () => {
+    const changelog = vercelConfig.redirects.find((r) => r.source === '/changelog');
+    assert.ok(changelog, 'expected a redirect for /changelog');
+    assert.equal(changelog.destination, '/reference/changelog/');
+    assert.equal(changelog.permanent, true);
+
+    const reference = vercelConfig.redirects.find((r) => r.source === '/reference');
+    assert.ok(reference, 'expected a redirect for /reference');
+    assert.equal(reference.destination, '/reference/changelog/');
+    assert.equal(reference.permanent, false);
   });
 
   it('requires revalidation for /dashboard HTML without disabling bfcache', () => {

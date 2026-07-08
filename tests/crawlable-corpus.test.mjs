@@ -71,18 +71,23 @@ describe('crawlable corpus generator', () => {
       const changelogIndex = read(outDir, 'reference/changelog/index.html');
       const changelogPage2 = read(outDir, 'reference/changelog/page/2/index.html');
       assert.match(changelogIndex, /<link rel="next" href="https:\/\/www\.worldmonitor\.app\/reference\/changelog\/page\/2\/">/);
+      assert.match(changelogIndex, /server scorer read non-existent/);
+      assert.match(changelogIndex, /methodology_version is now v8/);
       assert.match(changelogPage2, /<link rel="prev" href="https:\/\/www\.worldmonitor\.app\/reference\/changelog\/">/);
     } finally {
       rmSync(outDir, { recursive: true, force: true });
     }
   });
 
-  it('loads deterministic source data without network access', () => {
-    const data = loadCorpusData({ rootDir: repoRoot });
+  it('loads deterministic source data without network access', async () => {
+    const data = await loadCorpusData({ rootDir: repoRoot });
     assert.equal(data.sources.resilienceSnapshot, 'docs/snapshots/resilience-ranking-2026-05-28.json');
     assert.equal(data.resilience.capturedAt, '2026-05-28');
     assert.ok(data.countries.some((country) => country.slug === 'norway' && country.rank === 1));
     assert.ok(data.chokepoints.some((chokepoint) => chokepoint.slug === 'strait-of-hormuz' && chokepoint.id === 'hormuz_strait'));
     assert.ok(data.glossaryTerms.some((term) => term.slug === 'country-resilience-index'));
+    assert.ok(data.changelog[0].bullets[0].includes('server scorer read non-existent'));
+    assert.ok(data.changelog[0].bullets[0].includes('methodology_version is now v8'));
+    assert.match(data.lastmod.chokepoints, /^\d{4}-\d{2}-\d{2}$/);
   });
 });

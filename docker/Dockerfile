@@ -25,10 +25,11 @@ ARG VITE_WS_API_URL=https://api.worldmonitor.app
 ENV VITE_VARIANT=${VITE_VARIANT}
 ENV VITE_WS_API_URL=${VITE_WS_API_URL}
 
-# tsc + vite build, invoked directly like the sidecar image's builder:
-# `npm run build` would chain build:blog (blog-site has its own lockfile,
-# not installed here) and the prebuild openapi/agent-skills generators.
-RUN npx tsc && npx vite build
+# Build the crawlable static corpus, then tsc + vite build directly like the
+# sidecar image's builder. `npm run build` would chain build:blog
+# (blog-site has its own lockfile, not installed here) and the prebuild
+# openapi/agent-skills generators.
+RUN npm run build:crawlable-corpus && npm run build:content-corpus && npx tsc && npx vite build
 
 
 # Stage 2: Serve the built assets from nginx.

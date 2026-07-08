@@ -146,85 +146,34 @@ function formatScore(value) {
   return numeric.toFixed(1).replace(/\.0$/, '');
 }
 
-function parseQuotedStringAt(source, quoteIndex) {
-  const quote = source[quoteIndex];
-  let out = '';
-  for (let i = quoteIndex + 1; i < source.length; i += 1) {
-    const ch = source[i];
-    if (ch === '\\') {
-      const next = source[i + 1];
-      if (next) {
-        out += next;
-        i += 1;
-      }
-      continue;
-    }
-    if (ch === quote) return out;
-    out += ch;
-  }
-  return '';
+async function importRepoModule(rootDir, relativePath) {
+  return import(pathToFileURL(repoPath(rootDir, relativePath)).href);
 }
 
-function extractStringProperty(block, key) {
-  const keyIndex = block.indexOf(`${key}:`);
-  if (keyIndex === -1) return '';
-  const quoteIndex = block.slice(keyIndex).search(/['"`]/);
-  if (quoteIndex === -1) return '';
-  return parseQuotedStringAt(block, keyIndex + quoteIndex);
-}
-
-function parseGlossaryTerms(source) {
-  return source
-    .split(/\n\s*\{\s*\n\s*slug:\s*/)
-    .slice(1)
-    .map((chunk) => {
-      const slug = parseQuotedStringAt(chunk, chunk.search(/['"`]/));
-      const term = extractStringProperty(chunk, 'term');
-      const abbr = extractStringProperty(chunk, 'abbr');
-      const short = extractStringProperty(chunk, 'short');
-      return { slug, term, abbr: abbr || undefined, short };
-    })
+function normalizeGlossaryTerms(terms) {
+  return (terms || [])
+    .map((term) => ({
+      slug: term.slug,
+      term: term.term,
+      abbr: term.abbr || undefined,
+      short: term.short,
+    }))
     .filter((term) => term.slug && term.term)
     .sort((a, b) => a.term.localeCompare(b.term));
 }
 
-function parseRouteIds(block) {
-  const match = block.match(/routeIds:\s*\[([\s\S]*?)\]/);
-  if (!match) return [];
-  return [...match[1].matchAll(/'([^']+)'/g)].map(([, id]) => id);
-}
-
-function parseNullableStringProperty(block, key) {
-  const keyIndex = block.indexOf(`${key}:`);
-  if (keyIndex === -1) return null;
-  const after = block.slice(keyIndex);
-  if (/:\s*null\b/.test(after)) return null;
-  return extractStringProperty(block, key);
-}
-
-function parseChokepointRegistry(source) {
-  return source
-    .split(/\n\s*\{\s*\n\s*id:\s*/)
-    .slice(1)
-    .map((chunk) => {
-      const id = parseQuotedStringAt(chunk, chunk.search(/['"`]/));
-      const displayName = extractStringProperty(chunk, 'displayName');
-      const baselineId = parseNullableStringProperty(chunk, 'baselineId');
-      const shockModelSupported = /shockModelSupported:\s*true/.test(chunk);
-      const routeIds = parseRouteIds(chunk);
-      const lat = Number(chunk.match(/lat:\s*(-?\d+(?:\.\d+)?)/)?.[1]);
-      const lon = Number(chunk.match(/lon:\s*(-?\d+(?:\.\d+)?)/)?.[1]);
-      return {
-        id,
-        displayName,
-        baselineId,
-        shockModelSupported,
-        routeIds,
-        lat,
-        lon,
-        slug: slugify(displayName || id),
-      };
-    })
+function normalizeChokepoints(entries) {
+  return (entries || [])
+    .map((entry) => ({
+      id: entry.id,
+      displayName: entry.displayName,
+      baselineId: entry.baselineId,
+      shockModelSupported: Boolean(entry.shockModelSupported),
+      routeIds: Array.isArray(entry.routeIds) ? [...entry.routeIds] : [],
+      lat: Number(entry.lat),
+      lon: Number(entry.lon),
+      slug: slugify(entry.displayName || entry.id),
+    }))
     .filter((entry) => entry.id && entry.displayName)
     .sort((a, b) => a.displayName.localeCompare(b.displayName));
 }
@@ -281,7 +230,7 @@ function stripMarkdownInline(value) {
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
     .replace(/`([^`]+)`/g, '$1')
     .replace(/\*\*([^*]+)\*\*/g, '$1')
-    .replace(/[_*]/g, '')
+    .replace(/\*+/g, '')
     .replace(/<[^>]+>/g, '')
     .replace(/\s+/g, ' ')
     .trim();
@@ -292,8 +241,25 @@ function parseChangelog(source) {
   return matches.map((match, index) => {
     const next = matches[index + 1];
     const body = source.slice(match.index + match[0].length, next ? next.index : source.length);
-    const bullets = [...body.matchAll(/^- (.+)$/gm)]
-      .map(([, line]) => stripMarkdownInline(line))
+    const bulletItems = [];
+    let currentBullet = null;
+    for (const line of body.split(/\r?\n/)) {
+      const bulletMatch = line.match(/^- (.+)$/);
+      if (bulletMatch) {
+        if (currentBullet) bulletItems.push(currentBullet.join(' '));
+        currentBullet = [bulletMatch[1]];
+      } else if (currentBullet && /^\s{2,}\S/.test(line)) {
+        currentBullet.push(line.trim());
+      } else if (currentBullet && line.trim() === '') {
+        continue;
+      } else if (currentBullet) {
+        bulletItems.push(currentBullet.join(' '));
+        currentBullet = null;
+      }
+    }
+    if (currentBullet) bulletItems.push(currentBullet.join(' '));
+    const bullets = bulletItems
+      .map((line) => stripMarkdownInline(line))
       .filter(Boolean)
       .slice(0, 8);
     const headings = [...body.matchAll(/^###\s+(.+)$/gm)]
@@ -330,15 +296,21 @@ function gitFileLastmod(rootDir, relativePath) {
   }
 }
 
-export function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
+export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   const resilience = readJson(rootDir, RESILIENCE_SNAPSHOT_PATH);
   const reverseNames = reverseCountryNames(readJson(rootDir, COUNTRY_NAMES_PATH));
+  const [{ CHOKEPOINT_REGISTRY }, { GLOSSARY_TERMS }] = await Promise.all([
+    importRepoModule(rootDir, CHOKEPOINT_REGISTRY_PATH),
+    importRepoModule(rootDir, GLOSSARY_DATA_PATH),
+  ]);
   const countries = normalizeCountries(resilience, reverseNames);
-  const chokepoints = parseChokepointRegistry(readText(rootDir, CHOKEPOINT_REGISTRY_PATH));
-  const glossaryTerms = parseGlossaryTerms(readText(rootDir, GLOSSARY_DATA_PATH));
+  const chokepoints = normalizeChokepoints(CHOKEPOINT_REGISTRY);
+  const glossaryTerms = normalizeGlossaryTerms(GLOSSARY_TERMS);
   const changelog = parseChangelog(readText(rootDir, CHANGELOG_PATH));
   const changelogLastmod = gitFileLastmod(rootDir, CHANGELOG_PATH)
     || latestDatedChangelogRelease(changelog)
+    || resilience.capturedAt;
+  const chokepointsLastmod = gitFileLastmod(rootDir, CHOKEPOINT_REGISTRY_PATH)
     || resilience.capturedAt;
 
   return {
@@ -351,6 +323,7 @@ export function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     },
     lastmod: {
       changelog: changelogLastmod,
+      chokepoints: chokepointsLastmod,
     },
     resilience,
     countries,
@@ -527,7 +500,7 @@ function renderCountryPage({ country, baseUrl, capturedAt, methodologyFormula })
   });
 }
 
-function renderChokepointsIndex({ chokepoints, baseUrl }) {
+function renderChokepointsIndex({ chokepoints, baseUrl, lastmod }) {
   const path = '/chokepoints/';
   const description = 'Static reference pages for World Monitor maritime chokepoints and waterways.';
   const body = `      <p class="eyebrow">Maritime corpus</p>
@@ -542,7 +515,7 @@ ${chokepoints.map((cp) => `        <a class="card" href="/chokepoints/${cp.slug}
     path,
     title: 'Maritime Chokepoints | World Monitor',
     description,
-    lastmod: '2026-07-06',
+    lastmod,
     jsonLd: {
       '@context': 'https://schema.org',
       '@type': 'CollectionPage',
@@ -559,7 +532,7 @@ ${chokepoints.map((cp) => `        <a class="card" href="/chokepoints/${cp.slug}
   });
 }
 
-function renderChokepointPage({ chokepoint, baseUrl }) {
+function renderChokepointPage({ chokepoint, baseUrl, lastmod }) {
   const path = `/chokepoints/${chokepoint.slug}/`;
   const description = `${chokepoint.displayName} is one of the 13 canonical maritime chokepoints tracked by World Monitor.`;
   const modelText = chokepoint.shockModelSupported
@@ -583,7 +556,7 @@ function renderChokepointPage({ chokepoint, baseUrl }) {
     path,
     title: `${chokepoint.displayName} Chokepoint | World Monitor`,
     description,
-    lastmod: '2026-07-06',
+    lastmod,
     jsonLd: {
       '@context': 'https://schema.org',
       '@type': 'WebPage',
@@ -729,7 +702,7 @@ export async function buildCorpus({
   baseUrl = DEFAULT_BASE_URL,
   clean = true,
 } = {}) {
-  const data = loadCorpusData({ rootDir });
+  const data = await loadCorpusData({ rootDir });
   if (clean) {
     for (const dir of GENERATED_DIRS) {
       rmSync(join(outDir, dir), { recursive: true, force: true });
@@ -761,13 +734,21 @@ export async function buildCorpus({
   writeGeneratedFile(
     outDir,
     'chokepoints/index.html',
-    renderChokepointsIndex({ chokepoints: data.chokepoints, baseUrl }),
+    renderChokepointsIndex({
+      chokepoints: data.chokepoints,
+      baseUrl,
+      lastmod: data.lastmod.chokepoints,
+    }),
   );
   for (const chokepoint of data.chokepoints) {
     writeGeneratedFile(
       outDir,
       routeFile(`/chokepoints/${chokepoint.slug}/`),
-      renderChokepointPage({ chokepoint, baseUrl }),
+      renderChokepointPage({
+        chokepoint,
+        baseUrl,
+        lastmod: data.lastmod.chokepoints,
+      }),
     );
   }
 
