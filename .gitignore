@@ -2,6 +2,10 @@ node_modules/
 .idea/
 dist/
 public/blog/
+public/countries/
+public/chokepoints/
+public/reference/
+public/crawlable-corpus.json
 .DS_Store
 *.log
 .env
