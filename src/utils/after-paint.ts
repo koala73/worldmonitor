@@ -57,3 +57,27 @@ export function yieldToMain(): Promise<void> {
   }
   return new Promise((resolve) => { setTimeout(resolve, 0); });
 }
+
+/**
+ * Whether the browser currently has queued input (a click/keypress) waiting to
+ * be dispatched. Recurring, animation-driven work on the input path calls this
+ * and skips its tick when input is pending, so the interaction handler can run
+ * sooner (#5042).
+ *
+ * Feature-detected: `navigator.scheduling.isInputPending` is Chromium-only,
+ * which matches INP being a Chromium-measured metric. Returns `false` wherever
+ * the API is absent (Firefox/Safari/node), so callers degrade to today's
+ * behavior with no functional change.
+ *
+ * Called with no arguments, so it reports DISCRETE input (clicks/keys) only —
+ * `includeContinuous` defaults to `false`. That is the correct scope for the
+ * click/keypress control targets; passing `{ includeContinuous: true }` would
+ * also report pointermove/wheel/drag and stall callers during any hover/pan.
+ */
+export function isInputPending(): boolean {
+  const scheduling = (globalThis as unknown as {
+    navigator?: { scheduling?: { isInputPending?: () => boolean } };
+  }).navigator?.scheduling;
+  if (typeof scheduling?.isInputPending !== 'function') return false;
+  return scheduling.isInputPending();
+}
