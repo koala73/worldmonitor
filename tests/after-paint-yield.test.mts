@@ -74,3 +74,31 @@ test('scheduleYield cancel before resolution prevents the callback (coalesce/tea
   });
   assert.equal(ran, 0, 'a pre-resolution cancel drops the flush');
 });
+
+test('scheduleYield rethrows deferred callback errors on the timer channel (#5042 U4)', async () => {
+  const sentinel = new Error('deferred flush failed');
+  let timerHandler: (() => void) | null = null;
+  const originalSetTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = ((handler: Parameters<typeof globalThis.setTimeout>[0]) => {
+    assert.equal(typeof handler, 'function', 'scheduleYield should surface errors with a function timer');
+    timerHandler = handler as () => void;
+    return 0 as ReturnType<typeof globalThis.setTimeout>;
+  }) as typeof globalThis.setTimeout;
+
+  try {
+    await withScheduler({ yield: () => Promise.resolve() }, async () => {
+      scheduleYield(() => { throw sentinel; });
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    assert.ok(timerHandler, 'failed deferred flush should be rethrown via setTimeout');
+    assert.throws(
+      () => { timerHandler?.(); },
+      (err) => err === sentinel,
+    );
+  } finally {
+    globalThis.setTimeout = originalSetTimeout;
+  }
+});
