@@ -134,6 +134,8 @@ export class MapComponent {
       natural: { minZoom: 1, showLabels: 2 },
     };
 
+  private static readonly SVG_MARKER_DOM_ZOOM_LAYERS = new Set<keyof MapLayers>(['bases', 'nuclear']);
+
   private container: HTMLElement;
   private svg: d3.Selection<SVGSVGElement, unknown, null, undefined>;
   private wrapper: HTMLElement;
@@ -1298,7 +1300,7 @@ export class MapComponent {
         // sub-50ms tasks (#4442), so the overlay build is neither blocking nor one long task.
         scheduleAfterFirstPaint(() => { void this.renderInitialDynamicPass(); });
       }
-      this.applyTransform();
+      this.applyTransform(false);
       return;
     }
 
@@ -1320,7 +1322,7 @@ export class MapComponent {
       }
     }
 
-    this.applyTransform();
+    this.applyTransform(false);
   }
 
   // Builds the dynamic overlay layers (cables/pipelines/conflicts/AIS/cluster/overlays).
@@ -1366,7 +1368,7 @@ export class MapComponent {
     if (width === 0 || height === 0) return; // next real render handles it
     this.initialDynamicRendered = true;
     await this.renderDynamicLayers(width, height, true);
-    if (!this.destroyed) this.applyTransform();
+    if (!this.destroyed) this.applyTransform(false);
   }
 
   private renderGrid(
@@ -1653,6 +1655,13 @@ export class MapComponent {
     return clusters;
   }
 
+  private isLayerZoomVisible(layer: keyof MapLayers): boolean {
+    if (!this.state.layers[layer]) return false;
+    const thresholds = MapComponent.LAYER_ZOOM_THRESHOLDS[layer];
+    if (!thresholds) return true;
+    return Boolean(this.layerZoomOverrides[layer]) || this.state.zoom >= thresholds.minZoom;
+  }
+
   private renderOverlays(projection: d3.GeoProjection): void {
     setTrustedHtml(this.overlays, trustedHtml('', "legacy direct innerHTML migration"));
     this.labelVisibilityScheduled = false;
@@ -1677,7 +1686,7 @@ export class MapComponent {
     }
 
     // Nuclear facilities (always HTML - shapes convey status)
-    if (this.state.layers.nuclear) {
+    if (this.state.layers.nuclear && this.isLayerZoomVisible('nuclear')) {
       NUCLEAR_FACILITIES.forEach((facility) => {
         const pos = projection([facility.lon, facility.lat]);
         if (!pos) return;
@@ -1833,7 +1842,7 @@ export class MapComponent {
     }
 
     // Military bases (always HTML - nation colors matter)
-    if (this.state.layers.bases) {
+    if (this.state.layers.bases && this.isLayerZoomVisible('bases')) {
       this.getMilitaryBasesForRender().forEach((base) => {
         const pos = projection([base.lon, base.lat]);
         if (!pos) return;
@@ -3991,7 +4000,7 @@ export class MapComponent {
     this.state.pan.y = Math.max(-maxPanY, Math.min(maxPanY, this.state.pan.y));
   }
 
-  private applyTransform(): void {
+  private applyTransform(rebuildOnZoomVisibilityChange = true): void {
     const { width, height } = this.getKnownContainerSize();
     this.clampPan(width, height);
     const zoom = this.state.zoom;
@@ -4016,8 +4025,9 @@ export class MapComponent {
 
     // Smart label hiding based on zoom level and overlap
     if (this.shouldUpdateLabelVisibility()) this.updateLabelVisibility(zoom);
-    this.updateZoomLayerVisibility();
+    const zoomVisibilityChanged = this.updateZoomLayerVisibility();
     this.emitStateChange();
+    if (rebuildOnZoomVisibilityChange && zoomVisibilityChanged) this.scheduleRender();
   }
 
   private shouldUpdateLabelVisibility(): boolean {
@@ -4030,8 +4040,9 @@ export class MapComponent {
     this.updateLabelVisibility(this.state.zoom);
   }
 
-  private updateZoomLayerVisibility(): void {
+  private updateZoomLayerVisibility(): boolean {
     const zoom = this.state.zoom;
+    let visibilityChanged = false;
     (Object.keys(MapComponent.LAYER_ZOOM_THRESHOLDS) as (keyof MapLayers)[]).forEach((layer) => {
       const thresholds = MapComponent.LAYER_ZOOM_THRESHOLDS[layer];
       if (!thresholds) return;
@@ -4043,6 +4054,10 @@ export class MapComponent {
       const labelsVisible = enabled && zoom >= labelZoom;
       const hiddenAttr = `data-layer-hidden-${layer}`;
       const labelsHiddenAttr = `data-labels-hidden-${layer}`;
+      const wasVisible = !this.wrapper.hasAttribute(hiddenAttr);
+
+      const affectsSvgMarkerDom = MapComponent.SVG_MARKER_DOM_ZOOM_LAYERS.has(layer);
+      if (affectsSvgMarkerDom && wasVisible !== isVisible) visibilityChanged = true;
 
       if (isVisible) {
         this.wrapper.removeAttribute(hiddenAttr);
@@ -4060,6 +4075,7 @@ export class MapComponent {
       const autoHidden = enabled && !override && zoom < thresholds.minZoom;
       btn?.classList.toggle('auto-hidden', autoHidden);
     });
+    return visibilityChanged;
   }
 
   private emitStateChange(): void {
