@@ -94,6 +94,16 @@ export function isInputPending(): boolean {
  */
 export function scheduleYield(run: () => void): () => void {
   let aborted = false;
-  void yieldToMain().then(() => { if (!aborted) run(); });
+  void yieldToMain().then(() => {
+    if (aborted) return;
+    try {
+      run();
+    } catch (err) {
+      // Surface a throw from the deferred flush on the global error channel
+      // (window.onerror -> Sentry) exactly as the replaced setTimeout(fn, 0)
+      // did, rather than leaving it as a floating promise rejection.
+      setTimeout(() => { throw err; });
+    }
+  });
   return () => { aborted = true; };
 }
