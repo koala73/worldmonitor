@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { yieldToMain } from '@/utils/after-paint';
+import { yieldToMain, scheduleYield } from '@/utils/after-paint';
 
 type SchedulerHost = { scheduler?: { yield?: () => Promise<void> } };
 
@@ -50,4 +50,27 @@ test('yieldToMain returns a Promise in both paths (signature preserved)', () => 
   assert.ok(withYield instanceof Promise);
   assert.ok(withoutYield instanceof Promise);
   return Promise.all([withYield, withoutYield]);
+});
+
+test('scheduleYield runs the callback after the yield resolves (#5042 U4)', async () => {
+  let ran = 0;
+  await withScheduler({ yield: () => Promise.resolve() }, async () => {
+    scheduleYield(() => { ran += 1; });
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  assert.equal(ran, 1, 'callback fires once after the yield');
+});
+
+test('scheduleYield cancel before resolution prevents the callback (coalesce/teardown, U4)', async () => {
+  let ran = 0;
+  await withScheduler({ yield: () => Promise.resolve() }, async () => {
+    const cancel = scheduleYield(() => { ran += 1; });
+    cancel();
+    await Promise.resolve();
+    await Promise.resolve();
+    await Promise.resolve();
+  });
+  assert.equal(ran, 0, 'a pre-resolution cancel drops the flush');
 });

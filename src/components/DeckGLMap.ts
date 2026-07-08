@@ -75,6 +75,7 @@ import { getCachedFuelShortageRegistry } from '@/shared/fuel-shortage-registry-s
 import { tokenizeForMatch, matchKeyword, matchesAnyKeyword, findMatchingKeywords } from '@/utils/keyword-match';
 import { t } from '@/services/i18n';
 import { debounce, rafSchedule, getCurrentTheme } from '@/utils/index';
+import { isInputPending, scheduleYield } from '@/utils/after-paint';
 import { showLayerWarning } from '@/utils/layer-warning';
 import { localizeMapLabels } from '@/utils/map-locale';
 import { getCachedMilitaryBases, preloadMilitaryBases } from '@/services/military-base-config';
@@ -737,7 +738,9 @@ export class DeckGLMap {
    * lands off the measured frame. The gate skips the defer when data is unchanged.
    */
   private readonly heavyGate = new DeferredHeavyCommit<unknown>({
-    schedule: (fn) => { const id = setTimeout(fn, 0); return () => clearTimeout(id); },
+    // Yield the deferred heavy-layer flush off the interaction frame via
+    // scheduler.yield (ahead of clamped timers, behind queued input) — #5042 U4.
+    schedule: (fn) => scheduleYield(fn),
     isAlive: () => !this.renderPaused && !this.webglLost && !!this.maplibreMap,
     onCommit: () => this.updateLayers(true),
   });
@@ -4279,7 +4282,10 @@ export class DeckGLMap {
         return;
       }
       this.pulseTime = now;
-      this.rafUpdateLayers();
+      // Steady-state pulse rebuild: skip when input is queued (#5042 U2). The
+      // terminal settle branch above is never guarded — it must commit the
+      // static end state. pulseTime still advances so no visual state is lost.
+      if (!isInputPending()) this.rafUpdateLayers();
     }, PULSE_UPDATE_INTERVAL_MS);
   }
 
@@ -6300,7 +6306,10 @@ export class DeckGLMap {
       this.tradeAnimationTime = (this.tradeAnimationTime + delta * TRADE_ANIMATION_SPEED) % TRADE_ANIMATION_CYCLE;
       this.tradeAnimationFrame = requestAnimationFrame(animate);
       this.tradeAnimationFrameCount++;
-      if (this.tradeAnimationFrameCount % 2 === 0) this.render();
+      // Skip this decorative rebuild when input is queued so the pending
+      // interaction handler runs sooner (#5042 U2). Frame-predictive and
+      // discrete-only; graceful no-op where isInputPending is unsupported.
+      if (this.tradeAnimationFrameCount % 2 === 0 && !isInputPending()) this.render();
     };
     this.tradeAnimationFrame = requestAnimationFrame(animate);
   }
@@ -7475,11 +7484,15 @@ export class DeckGLMap {
       map.setFilter('country-hover-border', noMatch);
     };
 
-    map.on('mousemove', (e) => {
+    // rAF-throttle the per-mousemove feature query (#5042 U3). The canvas is the
+    // dominant input-delay surface and queryRenderedFeatures is synchronous, so
+    // coalesce to at most one query per frame; the latest pointer position wins.
+    let pendingHoverPoint: maplibregl.Point | null = null;
+    const runHoverQuery = (point: maplibregl.Point) => {
       if (!this.onCountryClick) return;
       try {
         if (!map.getLayer('country-interactive')) return;
-        const features = map.queryRenderedFeatures(e.point, { layers: ['country-interactive'] });
+        const features = map.queryRenderedFeatures(point, { layers: ['country-interactive'] });
         const props = features?.[0]?.properties;
         const iso2 = props?.['ISO3166-1-Alpha-2'] as string | undefined;
         const name = props?.['name'] as string | undefined;
@@ -7497,9 +7510,22 @@ export class DeckGLMap {
           clearHover();
         }
       } catch { /* style not done loading during theme switch */ }
+    };
+    const throttledHoverQuery = rafSchedule(() => {
+      if (pendingHoverPoint) runHoverQuery(pendingHoverPoint);
+    });
+    this.hoverQueryThrottle = throttledHoverQuery;
+
+    map.on('mousemove', (e) => {
+      pendingHoverPoint = e.point;
+      throttledHoverQuery();
     });
 
     map.on('mouseout', () => {
+      // Cancel a queued query so a deferred rAF cannot re-highlight a country the
+      // pointer has already left (R8); clearHover stays immediate.
+      pendingHoverPoint = null;
+      throttledHoverQuery.cancel();
       if (hoveredIso2) {
         hoveredIso2 = null;
         try { clearHover(); } catch { /* style not done loading */ }
@@ -7508,6 +7534,7 @@ export class DeckGLMap {
   }
 
   private countryPulseRaf: number | null = null;
+  private hoverQueryThrottle: ((() => void) & { cancel(): void }) | null = null;
 
   private getHighlightRestOpacity(): { fill: number; border: number } {
     const theme = isLightMapTheme(getMapTheme(getMapProvider())) ? 'light' : 'dark';
@@ -7697,6 +7724,7 @@ export class DeckGLMap {
     this.debouncedFetchBases.cancel();
     this.debouncedFetchAircraft.cancel();
     this.rafUpdateLayers.cancel();
+    this.hoverQueryThrottle?.cancel();
     this.heavyGate.cancel();
 
     if (this.renderRafId !== null) {

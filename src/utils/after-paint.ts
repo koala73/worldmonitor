@@ -81,3 +81,19 @@ export function isInputPending(): boolean {
   if (typeof scheduling?.isInputPending !== 'function') return false;
   return scheduling.isInputPending();
 }
+
+/**
+ * Adapt `yieldToMain()` to a fire-once scheduler with a cancel handle:
+ * `scheduleYield(run)` runs `run` after the yield resolves and returns a cancel
+ * that prevents it. `DeferredHeavyCommit` (#4558) depends on this shape to
+ * coalesce a burst of stages into one flush and to drop the flush on teardown;
+ * the `yieldToMain` promise can't be cleared, so an abort flag preserves those
+ * semantics. Prefer this over `setTimeout(0)`: `scheduler.yield()` resumes ahead
+ * of clamped timer work (but still behind queued input), lowering commit latency
+ * without newly blocking the input path (#5042 U4).
+ */
+export function scheduleYield(run: () => void): () => void {
+  let aborted = false;
+  void yieldToMain().then(() => { if (!aborted) run(); });
+  return () => { aborted = true; };
+}
