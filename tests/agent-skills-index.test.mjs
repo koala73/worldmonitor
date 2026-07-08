@@ -200,7 +200,9 @@ describe('agent readiness: agent-skills index', () => {
     const webcams = readSkill("monitor-webcams");
     assert.match(webcams, /\.webcams\[0\]\.webcamId \/\/ empty/);
     assert.match(webcams, /if \[ -z "\$WEBCAM_ID" \]/);
-    assert.match(webcams, /\| `zoom` \| query \| no \| integer map zoom \| Defaults to `3`\./);
+    assert.match(webcams, /\| `zoom` \| query \| yes \| integer map zoom \| Pass an explicit map zoom\./);
+    assert.match(webcams, /Omitted REST numeric params are interpreted as `0`/);
+    assert.doesNotMatch(webcams, /Defaults to `3`/);
     assert.match(webcams, /\| `bound_w`, `bound_s`, `bound_e`, `bound_n` \| query \| yes \|/);
     assert.match(webcams, /REST callers should not omit bounds/);
     assert.doesNotMatch(webcams, /Default to global bounds/);

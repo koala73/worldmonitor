@@ -112,7 +112,7 @@
       "type": "skill-md",
       "description": "Discover live webcams in a map viewport and resolve thumbnails or player URLs. Use when the user asks for visual context near a location, route, border, port, or city.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/monitor-webcams/SKILL.md",
-      "digest": "sha256:3503bd709fb0c53b593713c8a1592f65c0931c0490e6caeefb9e50da4b2f9ecf"
+      "digest": "sha256:5c8b4993d68de8ce50349210fe28e85517ab31658cc79d039db41f80d88ce990"
     },
     {
       "name": "scan-cyber-threats",
