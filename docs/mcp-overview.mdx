@@ -284,6 +284,14 @@ An API endpoint is **MCP-exposed** only when the exact `METHOD /api/...` path is
 
 A REST route can exist in OpenAPI and still be REST-only. The parity test keeps that distinction explicit: every public OpenAPI operation must either appear in `_apiPaths` or be listed in `tests/mcp-api-parity.test.mjs` with a categorized exclusion reason.
 
+The canonical current split is whatever this command prints:
+
+```bash
+./node_modules/.bin/tsx --test tests/mcp-api-parity.test.mjs
+```
+
+That output includes covered, excluded, and total operation counts. Treat the counts as moving inventory, not product copy; the test and registry are the source of truth.
+
 Reverse lookup workflow:
 
 1. Copy the exact method and path from the OpenAPI page, for example `GET /api/research/v1/list-tech-events`.
@@ -331,14 +339,19 @@ Tools with no declared API paths still return data via `tools/call`, but they sh
 - **Static in-memory registries** — filter a constant bundled with the MCP server's edge binary, no upstream call at all (e.g. `get_commodity_geo`).
 - **Live tools without a public OpenAPI row** — runtime proxies an HTTP call whose method drifts from the public spec, where a sibling tool already covers the spec-declared method (e.g. `generate_forecasts` POSTs `/api/forecast/v1/get-forecasts` while `get_forecast_predictions` owns the GET).
 
-Common REST-only exclusions in `tests/mcp-api-parity.test.mjs`:
+In this table, `covered` means a tool declares the exact operation in `_apiPaths`. Common REST-only exclusions in `tests/mcp-api-parity.test.mjs`:
 
-- **Mutating endpoints** — writes, queues, webhooks, cache refreshes, or persistent side effects. Example: `GET /api/aviation/v1/list-airport-delays` is intentionally REST-only because the GET handler refreshes/persists airport-delay cache state; `get_aviation_status` exposes the already-seeded cache-backed snapshot instead.
-- **Fetch-on-miss endpoints** — may call paid or rate-limited upstreams when cache is cold. Examples: `GET /api/conflict/v1/list-acled-events`, `GET /api/infrastructure/v1/list-service-statuses`, and `GET /api/supply-chain/v1/get-critical-minerals`.
-- **High-cardinality lookups** — arbitrary identifiers are not enumerable or cache-bundle friendly. Example: `GET /api/aviation/v1/get-flight-status`.
-- **LLM-cost endpoints** — direct LLM passthroughs or fetch-on-miss paths with per-call model cost stay out of open MCP exposure unless wrapped by a purpose-built tool.
-- **Deferred future tools** — pure reads whose cache keys are not yet exposed by an MCP bundle. Example: `GET /api/cyber/v1/list-cyber-threats` is slated for a future expanded-domain tool rather than claimed by today's cache-backed `get_cyber_threats`.
-- **Manual mapping** — parameterized cache keys or inline Redis/Convex handlers need human triage. Examples: `GET /api/research/v1/list-arxiv-papers`, `GET /api/research/v1/list-trending-repos`, and `GET /api/research/v1/list-hackernews-items`; `get_research_signals` declares only `GET /api/research/v1/list-tech-events`.
+- **`mutating`** — writes, queues, webhooks, cache refreshes, or persistent side effects. Example: `GET /api/aviation/v1/list-airport-delays` is intentionally REST-only because the GET handler refreshes/persists airport-delay cache state; `get_aviation_status` exposes the already-seeded cache-backed snapshot instead.
+- **`llm-passthrough`** — direct per-call LLM work that needs a purpose-built cost/threat model before MCP exposure.
+- **`fetch-on-miss`** — may call paid or rate-limited upstreams when cache is cold, or accepts high-cardinality identifiers that are not cache-bundle friendly. Examples: `GET /api/conflict/v1/list-acled-events`, `GET /api/infrastructure/v1/list-service-statuses`, `GET /api/supply-chain/v1/get-critical-minerals`, and `GET /api/aviation/v1/get-flight-status`.
+- **`admin`** — internal-only operations behind an explicit admin boundary, such as an admin key, internal-only middleware, or cron-only path.
+- **`manual-mapping`** — parameterized cache keys or inline Redis/Convex handlers need human triage. Examples: `GET /api/research/v1/list-arxiv-papers`, `GET /api/research/v1/list-trending-repos`, and `GET /api/research/v1/list-hackernews-items`; `get_research_signals` declares only `GET /api/research/v1/list-tech-events`.
+- **`deferred-to-future-tool`** — pure reads whose cache keys are not yet exposed by an MCP bundle. Example: `GET /api/cyber/v1/list-cyber-threats` is slated for a future expanded-domain tool rather than claimed by today's cache-backed `get_cyber_threats`.
+
+Current follow-up trackers:
+
+- [#4525](https://github.com/koala73/worldmonitor/issues/4525) — pure-read deferred MCP coverage candidates.
+- [#4526](https://github.com/koala73/worldmonitor/issues/4526) — manual mapping and fetch-on-miss triage.
 
 See the [Tool catalog](#tool-catalog) above for the complete list of 40 tools, or the [MCP Tools Reference](/mcp-tools-reference) for per-tool details.
 

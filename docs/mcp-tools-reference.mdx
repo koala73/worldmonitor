@@ -29,6 +29,8 @@ If you've completed the OAuth flow instead, replace `-H "X-WorldMonitor-Key: $WM
 
 Before diving into the per-tool reference, two affordances make discovery cheaper than reading this page top-to-bottom. If you are starting from a REST route instead of a tool name, use the [API coverage table](/mcp-overview#api-coverage); per-tool **API endpoints** lines mean exact `_apiPaths` declarations, while `none directly` means the tool returns data without claiming an equivalent REST route.
 
+MCP coverage is intentionally curated. Some OpenAPI operations are REST-only because they mutate state, pass through LLM cost, fetch paid/high-cardinality upstreams on cache miss, or need manual cache-key mapping. The [API coverage section](/mcp-overview#api-coverage) names the enforced categories and links the current follow-up trackers.
+
 ### `describe_tool` — full uncompressed definition on demand
 
 Since v1.5.0, `tools/list` returns each tool's `description` truncated to the first sentence (≤120 UTF-8 bytes). That keeps the per-session input-token cost low when the LLM only needs to scan names — and the same `tools/list` entry now ships an `outputSchema` (v1.6.0) so the model can author a JMESPath projection on the first call. When the compressed description is ambiguous, call `describe_tool` for the long form:
