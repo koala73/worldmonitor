@@ -401,6 +401,8 @@ All UI resources share `mimeType: text/html;profile=mcp-app`.
 
 `resources/read` on a `ui://` URI returns the self-contained HTML view. Unlike the data resources, a `ui://` read is **public and quota-exempt** — the template carries no data and spends no upstream call, so a host can preload it (and an agent-readiness scanner can fetch it) without credentials and without touching the Pro daily cap. The view is fully self-contained (no external assets) and communicates with the host over the standard MCP Apps `postMessage` bridge (`ui/initialize` → `ui/notifications/tool-result` → `ui/notifications/size-changed`).
 
+For the full MCP Apps contract — host flow, security posture, per-widget inventory, source files, and docs-stat drift checks — see [MCP Apps](/mcp-apps).
+
 ## JSON-RPC example
 
 Server-side with a direct API key — send it as `X-WorldMonitor-Key`, **not** as a bearer token.

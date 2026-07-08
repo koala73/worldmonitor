@@ -12,7 +12,19 @@ The World Monitor MCP Server exposes World Monitor's real-time global-intelligen
 
 ## Tools
 
-The server ships **39 tools** covering world and country briefs, country risk and resilience, conflict events, markets, commodities, energy, maritime and aviation activity, cyber threats, sanctions, natural disasters, health signals, prediction markets, and AI forecasts. Issue `tools/list` for the live inventory, `prompts/list` for pre-built workflow templates, and `resources/list` for read-only resources. `tools/list`, `prompts/list`, and `resources/list` are **public** — no key required. Every tool accepts an optional `jmespath` argument for [server-side projection](https://www.worldmonitor.app/docs/mcp-jmespath), typically an 80–95% response-size cut.
+The server ships **40 tools** covering world and country briefs, country risk and resilience, conflict events, markets, commodities, energy, maritime and aviation activity, cyber threats, sanctions, natural disasters, health signals, prediction markets, and AI forecasts. Issue `tools/list` for the live inventory, `prompts/list` for pre-built workflow templates, and `resources/list` for read-only resources. `tools/list`, `prompts/list`, and `resources/list` are **public** — no key required. Every tool accepts an optional `jmespath` argument for [server-side projection](https://www.worldmonitor.app/docs/mcp-jmespath), typically an 80–95% response-size cut.
+
+## MCP Apps
+
+World Monitor supports MCP Apps (`io.modelcontextprotocol/ui`) with five interactive `ui://` app shells. The linked tools are `get_country_risk`, `get_world_brief`, `get_country_brief`, `get_market_data`, and `get_chokepoint_status`; their UI resources are:
+
+- `ui://worldmonitor/country-risk.html`
+- `ui://worldmonitor/world-brief.html`
+- `ui://worldmonitor/country-brief.html`
+- `ui://worldmonitor/market-radar.html`
+- `ui://worldmonitor/chokepoint-monitor.html`
+
+Hosts discover the links through `_meta.ui.resourceUri` in `tools/list`, enumerate the shells through `resources/list`, and fetch each template with `resources/read`. `ui://` reads are public and quota-exempt because they return static, data-free HTML; live data still arrives through a normal authenticated `tools/call`. Full contract: [MCP Apps](https://www.worldmonitor.app/docs/mcp-apps).
 
 ## Authentication
 
@@ -35,6 +47,7 @@ Add the server to Claude Desktop / Cursor via their MCP settings using the URL `
 ## Learn more
 
 - [MCP Overview](https://www.worldmonitor.app/docs/mcp-overview) — auth modes, plans, OAuth setup, full tool catalog
+- [MCP Apps](https://www.worldmonitor.app/docs/mcp-apps) — interactive `ui://` resources, host flow, view security, and drift checks
 - [MCP Quickstart](https://www.worldmonitor.app/docs/mcp-quickstart) · [Tool reference](https://www.worldmonitor.app/docs/mcp-tools-reference) · [JMESPath projection](https://www.worldmonitor.app/docs/mcp-jmespath) · [Error catalog](https://www.worldmonitor.app/docs/mcp-error-catalog)
 - [Developer Portal](https://worldmonitor.app/developers.md) · [REST API OpenAPI spec](https://worldmonitor.app/openapi.md) · [SDKs](https://worldmonitor.app/sdks.md) · [agents.md](https://worldmonitor.app/agents.md)
 

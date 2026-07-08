@@ -84,5 +84,98 @@
   },
   "leaderNames": 16,
   "populationPriorityCountries": 20,
-  "sebufVersion": "v0.11.1"
+  "sebufVersion": "v0.11.1",
+  "mcpToolCount": 40,
+  "mcpApps": {
+    "specVersion": "2026-01-26",
+    "mimeType": "text/html;profile=mcp-app",
+    "apps": [
+      {
+        "uriConst": "COUNTRY_RISK_UI_URI",
+        "uri": "ui://worldmonitor/country-risk.html",
+        "name": "Country Risk (interactive)",
+        "description": "Interactive in-conversation app shell for get_country_risk: renders the Composite Instability Index (CII 0-100), the unrest/conflict/security/news component breakdown, travel-advisory level, and sanctions exposure. Linked from the get_country_risk tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.",
+        "tool": "get_country_risk"
+      },
+      {
+        "uriConst": "WORLD_BRIEF_UI_URI",
+        "uri": "ui://worldmonitor/world-brief.html",
+        "name": "World Brief (interactive)",
+        "description": "Interactive in-conversation app shell for get_world_brief: renders the AI-summarised global intelligence brief as readable paragraphs, the grounding headlines, and the source feed articles. Linked from the get_world_brief tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.",
+        "tool": "get_world_brief"
+      },
+      {
+        "uriConst": "COUNTRY_BRIEF_UI_URI",
+        "uri": "ui://worldmonitor/country-brief.html",
+        "name": "Country Brief (interactive)",
+        "description": "Interactive in-conversation app shell for get_country_brief: renders the AI-synthesised per-country intelligence brief as paragraphs, the analytical framework lens, and the grounding sources. Linked from the get_country_brief tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.",
+        "tool": "get_country_brief"
+      },
+      {
+        "uriConst": "MARKET_RADAR_UI_URI",
+        "uri": "ui://worldmonitor/market-radar.html",
+        "name": "Market Radar (interactive)",
+        "description": "Interactive in-conversation app shell for get_market_data: renders the Fear & Greed composite plus per-asset-class quote tables (equities, commodities, crypto, Gulf, sectors) with signed, colour-coded change. Linked from the get_market_data tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.",
+        "tool": "get_market_data"
+      },
+      {
+        "uriConst": "CHOKEPOINT_MONITOR_UI_URI",
+        "uri": "ui://worldmonitor/chokepoint-monitor.html",
+        "name": "Chokepoint Monitor (interactive)",
+        "description": "Interactive in-conversation app shell for get_chokepoint_status: renders per-chokepoint rolling transit summaries (today's transit count, week-over-week change, tanker split) with a risk-level badge. Linked from the get_chokepoint_status tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.",
+        "tool": "get_chokepoint_status"
+      }
+    ],
+    "uiResources": [
+      "ui://worldmonitor/country-risk.html",
+      "ui://worldmonitor/world-brief.html",
+      "ui://worldmonitor/country-brief.html",
+      "ui://worldmonitor/market-radar.html",
+      "ui://worldmonitor/chokepoint-monitor.html"
+    ],
+    "linkedTools": [
+      "get_country_risk",
+      "get_world_brief",
+      "get_country_brief",
+      "get_market_data",
+      "get_chokepoint_status"
+    ],
+    "toolLinks": [
+      {
+        "tool": "get_country_risk",
+        "uri": "ui://worldmonitor/country-risk.html"
+      },
+      {
+        "tool": "get_world_brief",
+        "uri": "ui://worldmonitor/world-brief.html"
+      },
+      {
+        "tool": "get_country_brief",
+        "uri": "ui://worldmonitor/country-brief.html"
+      },
+      {
+        "tool": "get_market_data",
+        "uri": "ui://worldmonitor/market-radar.html"
+      },
+      {
+        "tool": "get_chokepoint_status",
+        "uri": "ui://worldmonitor/chokepoint-monitor.html"
+      }
+    ]
+  },
+  "mcpAppCount": 5,
+  "mcpAppUiResources": [
+    "ui://worldmonitor/country-risk.html",
+    "ui://worldmonitor/world-brief.html",
+    "ui://worldmonitor/country-brief.html",
+    "ui://worldmonitor/market-radar.html",
+    "ui://worldmonitor/chokepoint-monitor.html"
+  ],
+  "mcpAppLinkedTools": [
+    "get_country_risk",
+    "get_world_brief",
+    "get_country_brief",
+    "get_market_data",
+    "get_chokepoint_status"
+  ]
 }

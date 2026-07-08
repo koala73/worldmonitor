@@ -193,6 +193,7 @@
               "cli",
               "sdks",
               "mcp-overview",
+              "mcp-apps",
               "mcp-tools-reference",
               "mcp-jmespath",
               "mcp-error-catalog",
