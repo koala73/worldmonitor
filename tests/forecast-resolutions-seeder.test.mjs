@@ -3,6 +3,9 @@ import { readFileSync } from 'node:fs';
 import { afterEach, describe, it } from 'node:test';
 
 import {
+  DEFAULT_JUDGED_ARCHIVE_HASH_LIMIT,
+  DEFAULT_JUDGED_MAX_PENDING_AGE_MS,
+  DEFAULT_JUDGED_MAX_PENDING_ATTEMPTS,
   JUDGED_ARCHIVE_KEY,
   JUDGED_ARCHIVE_RETENTION_MS,
   RESOLUTIONS_KEY,
@@ -667,6 +670,56 @@ describe('processResolutionCycleWithJudges', () => {
     assert.equal(judgeCalls, 2);
   });
 
+  it('rotates judged backlog by oldest attempt instead of fixed key order', async () => {
+    const deadline = T0 + DAY_MS;
+    const { ledger } = processResolutionCycle({}, [snapshot(T0, [
+      judgedForecast({ id: 'a-recent' }),
+      judgedForecast({ id: 'b-old' }),
+    ])], {}, T0);
+    ledger[`a-recent@${deadline}`].judgeAttempts = 3;
+    ledger[`a-recent@${deadline}`].judgeLastAttempt = { at: T0 + 12 * 60 * 60 * 1000, reason: 'archive_unavailable' };
+    ledger[`b-old@${deadline}`].judgeAttempts = 3;
+    ledger[`b-old@${deadline}`].judgeLastAttempt = { at: T0 + 60 * 60 * 1000, reason: 'archive_unavailable' };
+
+    const result = await processResolutionCycleWithJudges(ledger, [], {}, archive, T0 + DAY_MS + 2, {
+      maxJudgedEntries: 1,
+      maxJudgedPendingAttempts: 99,
+      judgeModels: [
+        async () => ({ outcome: 'YES', citations: [{ id: 'N1', quote: 'The bill passed before the forecast deadline' }] }),
+        async () => ({ outcome: 'YES', citations: [{ id: 'N1', quote: 'The bill passed before the forecast deadline' }] }),
+      ],
+    });
+
+    assert.equal(result.ledger[`a-recent@${deadline}`].status, 'pending-judge');
+    assert.equal(result.ledger[`b-old@${deadline}`].status, 'resolved');
+    assert.equal(result.receipts[0].key, `b-old@${deadline}`);
+  });
+
+  it('voids old judged entries after retry attempts are exhausted', async () => {
+    const deadline = T0 + DAY_MS;
+    const { ledger } = processResolutionCycle({}, [snapshot(T0, [judgedForecast({ id: 'stuck-judge' })])], {}, T0);
+    const key = `stuck-judge@${deadline}`;
+    ledger[key].judgeAttempts = 1;
+    ledger[key].judgeLastAttempt = { at: deadline + 1, reason: 'archive_unavailable' };
+
+    const result = await processResolutionCycleWithJudges(ledger, [], {}, { available: false }, deadline + 2 * DAY_MS, {
+      maxJudgedPendingAttempts: 2,
+      maxJudgedPendingAgeMs: DAY_MS,
+    });
+
+    const row = result.ledger[key];
+    assert.equal(row.status, 'resolved');
+    assert.equal(row.outcome, 'VOID');
+    assert.equal(row.judgeAttempts, 2);
+    assert.equal(row.evidence.reason, 'judge_retry_exhausted');
+    assert.equal(row.evidence.attempts, 2);
+    assert.equal(row.evidence.maxAttempts, 2);
+    assert.equal(row.evidence.maxAgeMs, DAY_MS);
+    assert.equal(row.evidence.lastAttemptReason, 'archive_unavailable');
+    assert.equal(result.receipts.length, 1);
+    assert.equal(result.scorecard.totals.void, 1);
+  });
+
   it('does not start judge calls when the remaining run budget is below the admission floor', async () => {
     const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedForecast()])], {}, archive, T0 + DAY_MS + 2, {
       deadlineMs: Date.now() + 2_000,
@@ -686,6 +739,9 @@ describe('processResolutionCycleWithJudges', () => {
   it('marks capped archive reads as truncated instead of complete', async () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    const warnings = [];
+    const originalWarn = console.warn;
+    console.warn = (...args) => warnings.push(args.join(' '));
     globalThis.fetch = async (url, init) => {
       if (String(url).endsWith('/pipeline')) {
         const commands = JSON.parse(init.body);
@@ -702,9 +758,14 @@ describe('processResolutionCycleWithJudges', () => {
       };
     };
 
-    const archive = await readDigestAccumulatorArchive(T0, T0 + DAY_MS, { maxHashes: 1 });
-    assert.equal(archive.truncated, true);
-    assert.equal(archive.items.length, 1);
+    try {
+      const archive = await readDigestAccumulatorArchive(T0, T0 + DAY_MS, { maxHashes: 1 });
+      assert.equal(archive.truncated, true);
+      assert.equal(archive.items.length, 1);
+      assert.ok(warnings.some((line) => line.includes('judged archive hash cap reached')));
+    } finally {
+      console.warn = originalWarn;
+    }
   });
 });
 
@@ -727,11 +788,34 @@ describe('readDigestAccumulatorArchive', () => {
     }
   });
 
+  it('uses a production-sized default archive hash limit', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    let zsetCommand;
+    globalThis.fetch = async (_url, init) => {
+      zsetCommand = JSON.parse(init.body);
+      return {
+        ok: true,
+        json: async () => ({ result: [] }),
+      };
+    };
+
+    const archive = await readDigestAccumulatorArchive(T0, T0 + DAY_MS);
+
+    assert.ok(DEFAULT_JUDGED_ARCHIVE_HASH_LIMIT >= 2_500);
+    assert.equal(zsetCommand.at(-1), String(DEFAULT_JUDGED_ARCHIVE_HASH_LIMIT));
+    assert.equal(archive.truncated, undefined);
+    assert.equal(archive.items.length, 0);
+  });
+
   it('bounds the Redis archive query to the retention floor and hash limit', async () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
     let zsetCommand;
     let pipelineCommands;
+    const warnings = [];
+    const originalWarn = console.warn;
+    console.warn = (...args) => warnings.push(args.join(' '));
     const nowMs = T0 + 5 * DAY_MS;
     globalThis.fetch = async (url, init) => {
       if (String(url).endsWith('/pipeline')) {
@@ -750,24 +834,29 @@ describe('readDigestAccumulatorArchive', () => {
       };
     };
 
-    const archive = await readDigestAccumulatorArchive(T0 - 30 * DAY_MS, nowMs, { maxHashes: 2 });
+    try {
+      const archive = await readDigestAccumulatorArchive(T0 - 30 * DAY_MS, nowMs, { maxHashes: 2 });
 
-    assert.deepEqual(zsetCommand, [
-      'ZREVRANGEBYSCORE',
-      JUDGED_ARCHIVE_KEY,
-      String(nowMs),
-      String(nowMs - JUDGED_ARCHIVE_RETENTION_MS),
-      'LIMIT',
-      '0',
-      '2',
-    ]);
-    assert.deepEqual(pipelineCommands.map(([, key]) => key), [
-      'story:track:v1:new-hash',
-      'story:track:v1:old-hash',
-    ]);
-    assert.equal(archive.coverageStartMs, nowMs - JUDGED_ARCHIVE_RETENTION_MS);
-    assert.equal(archive.items.length, 2);
-    assert.equal(archive.truncated, true);
+      assert.deepEqual(zsetCommand, [
+        'ZREVRANGEBYSCORE',
+        JUDGED_ARCHIVE_KEY,
+        String(nowMs),
+        String(nowMs - JUDGED_ARCHIVE_RETENTION_MS),
+        'LIMIT',
+        '0',
+        '2',
+      ]);
+      assert.deepEqual(pipelineCommands.map(([, key]) => key), [
+        'story:track:v1:new-hash',
+        'story:track:v1:old-hash',
+      ]);
+      assert.equal(archive.coverageStartMs, nowMs - JUDGED_ARCHIVE_RETENTION_MS);
+      assert.equal(archive.items.length, 2);
+      assert.equal(archive.truncated, true);
+      assert.ok(warnings.some((line) => line.includes('FORECAST_RESOLUTION_JUDGE_ARCHIVE_HASH_LIMIT')));
+    } finally {
+      console.warn = originalWarn;
+    }
   });
 
   it('normalizes object-shaped HGETALL rows', async () => {
@@ -909,6 +998,8 @@ describe('appendSample and seed contract', () => {
     assert.equal(RESOLUTIONS_KEY, 'forecast:resolutions:v1');
     assert.equal(SCORECARD_KEY, 'forecast:scorecard:v1');
     assert.equal(SCORECARD_META_KEY, 'seed-meta:forecast:scorecard');
+    assert.equal(DEFAULT_JUDGED_MAX_PENDING_ATTEMPTS, 14);
+    assert.equal(DEFAULT_JUDGED_MAX_PENDING_AGE_MS, 14 * DAY_MS);
     assert.equal(declareRecords({ a: {}, b: {} }), 2);
   });
 

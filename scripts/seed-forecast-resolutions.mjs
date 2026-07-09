@@ -36,8 +36,11 @@ export const JUDGED_ARCHIVE_LOOKBACK_PAD_MS = 6 * 60 * 60 * 1000;
 export const DEFAULT_JUDGED_ARCHIVE_ITEMS = 16;
 export const DEFAULT_JUDGED_MAX_PER_RUN = 12;
 export const DEFAULT_JUDGED_RUN_BUDGET_MS = 110_000;
+export const DEFAULT_JUDGED_ARCHIVE_HASH_LIMIT = 3_000;
 const DEFAULT_MIN_JUDGED_STAGE_BUDGET_MS = 5_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+export const DEFAULT_JUDGED_MAX_PENDING_ATTEMPTS = 14;
+export const DEFAULT_JUDGED_MAX_PENDING_AGE_MS = 14 * DAY_MS;
 const JUDGED_TOKEN_STOPWORDS = new Set([
   'about', 'above', 'after', 'again', 'against', 'before', 'being', 'below',
   'between', 'could', 'deadline', 'during', 'forecast', 'from', 'have',
@@ -106,10 +109,14 @@ export async function resolvePendingJudgedEntries(ledger, newsArchive, nowMs, op
   const minJudgeStageBudgetMs = Number.isFinite(options.minJudgeStageBudgetMs)
     ? Math.max(0, Math.floor(options.minJudgeStageBudgetMs))
     : Math.min(DEFAULT_MIN_JUDGED_STAGE_BUDGET_MS, judgeStageBudgetMs);
+  const retryPolicy = resolveJudgedRetryPolicy(options);
   let attempted = 0;
 
-  for (const [key, entry] of Object.entries(ledger)) {
-    if (entry?.status !== 'pending-judge') continue;
+  const pendingRows = Object.entries(ledger)
+    .filter(([, entry]) => entry?.status === 'pending-judge')
+    .sort((left, right) => comparePendingJudgedEntries(left, right, nowMs));
+
+  for (const [key, entry] of pendingRows) {
     if (attempted >= maxEntries) break;
     let entryOptions = options;
     if (Number.isFinite(deadlineMs)) {
@@ -121,17 +128,14 @@ export async function resolvePendingJudgedEntries(ledger, newsArchive, nowMs, op
       };
     }
 
-    const result = await resolveJudgedEntry(entry, newsArchive, nowMs, entryOptions);
+    let result = await resolveJudgedEntry(entry, newsArchive, nowMs, entryOptions);
     if (result.status === 'skip') continue;
     attempted += 1;
 
     if (result.status === 'pending') {
-      entry.judgeLastAttempt = {
-        at: nowMs,
-        reason: result.reason || 'judge_pending',
-        detail: result.detail || '',
-      };
-      continue;
+      recordJudgedPendingAttempt(entry, result, nowMs);
+      result = maybeExpireJudgedEntry(entry, nowMs, retryPolicy);
+      if (!result) continue;
     }
 
     entry.status = 'resolved';
@@ -143,6 +147,76 @@ export async function resolvePendingJudgedEntries(ledger, newsArchive, nowMs, op
   }
 
   return receipts;
+}
+
+function comparePendingJudgedEntries([keyA, entryA], [keyB, entryB], nowMs) {
+  const dueA = judgedEntryIsDue(entryA, nowMs);
+  const dueB = judgedEntryIsDue(entryB, nowMs);
+  if (dueA !== dueB) return dueA ? -1 : 1;
+
+  const attemptA = toFiniteNumber(entryA?.judgeLastAttempt?.at);
+  const attemptB = toFiniteNumber(entryB?.judgeLastAttempt?.at);
+  const orderA = Number.isFinite(attemptA) ? attemptA : -Infinity;
+  const orderB = Number.isFinite(attemptB) ? attemptB : -Infinity;
+  if (orderA !== orderB) return orderA - orderB;
+
+  const deadlineA = toFiniteNumber(entryA?.deadline ?? entryA?.spec?.deadline);
+  const deadlineB = toFiniteNumber(entryB?.deadline ?? entryB?.spec?.deadline);
+  const deadlineOrderA = Number.isFinite(deadlineA) ? deadlineA : Infinity;
+  const deadlineOrderB = Number.isFinite(deadlineB) ? deadlineB : Infinity;
+  if (deadlineOrderA !== deadlineOrderB) return deadlineOrderA - deadlineOrderB;
+
+  return keyA.localeCompare(keyB);
+}
+
+function judgedEntryIsDue(entry, nowMs) {
+  const deadline = toFiniteNumber(entry?.deadline ?? entry?.spec?.deadline);
+  return !Number.isFinite(deadline) || nowMs >= deadline;
+}
+
+function recordJudgedPendingAttempt(entry, result, nowMs) {
+  entry.judgeAttempts = toNonNegativeInteger(entry.judgeAttempts) + 1;
+  entry.judgeLastAttempt = {
+    at: nowMs,
+    reason: result.reason || 'judge_pending',
+    detail: result.detail || '',
+  };
+}
+
+function resolveJudgedRetryPolicy(options = {}) {
+  return {
+    maxAttempts: Number.isFinite(options.maxJudgedPendingAttempts)
+      ? Math.max(1, Math.floor(options.maxJudgedPendingAttempts))
+      : envPositiveInt('FORECAST_RESOLUTION_JUDGE_MAX_PENDING_ATTEMPTS', DEFAULT_JUDGED_MAX_PENDING_ATTEMPTS),
+    maxAgeMs: Number.isFinite(options.maxJudgedPendingAgeMs)
+      ? Math.max(0, Math.floor(options.maxJudgedPendingAgeMs))
+      : envPositiveInt('FORECAST_RESOLUTION_JUDGE_MAX_PENDING_AGE_MS', DEFAULT_JUDGED_MAX_PENDING_AGE_MS),
+  };
+}
+
+function maybeExpireJudgedEntry(entry, nowMs, retryPolicy) {
+  const attempts = toNonNegativeInteger(entry?.judgeAttempts);
+  if (attempts < retryPolicy.maxAttempts) return null;
+  const deadline = toFiniteNumber(entry?.deadline ?? entry?.spec?.deadline);
+  const ageMs = Number.isFinite(deadline) ? nowMs - deadline : retryPolicy.maxAgeMs;
+  if (ageMs < retryPolicy.maxAgeMs) return null;
+
+  const result = resolvedJudgedResult('VOID', 'judge_retry_exhausted', entry, [], [], nowMs);
+  result.evidence = pruneUndefined({
+    ...result.evidence,
+    attempts,
+    maxAttempts: retryPolicy.maxAttempts,
+    deadlineAgeMs: Number.isFinite(ageMs) ? Math.max(0, ageMs) : undefined,
+    maxAgeMs: retryPolicy.maxAgeMs,
+    lastAttemptReason: entry?.judgeLastAttempt?.reason,
+    lastAttemptDetail: entry?.judgeLastAttempt?.detail,
+  });
+  return result;
+}
+
+function toNonNegativeInteger(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? Math.floor(numeric) : 0;
 }
 
 export async function resolveJudgedEntry(entry, newsArchive, nowMs, options = {}) {
@@ -915,7 +989,7 @@ export async function readDigestAccumulatorArchive(windowStartMs, nowMs, options
   const coverageStartMs = Math.max(windowStartMs, nowMs - JUDGED_ARCHIVE_RETENTION_MS);
   const maxHashes = Number.isFinite(options.maxHashes)
     ? Math.max(1, Math.floor(options.maxHashes))
-    : envPositiveInt('FORECAST_RESOLUTION_JUDGE_ARCHIVE_HASH_LIMIT', 300);
+    : envPositiveInt('FORECAST_RESOLUTION_JUDGE_ARCHIVE_HASH_LIMIT', DEFAULT_JUDGED_ARCHIVE_HASH_LIMIT);
   const base = {
     requestedStartMs: windowStartMs,
     requestedEndMs: nowMs,
@@ -943,6 +1017,9 @@ export async function readDigestAccumulatorArchive(windowStartMs, nowMs, options
 
   const selectedHashes = hashes.slice(0, maxHashes);
   const truncated = hashes.length >= maxHashes;
+  if (truncated) {
+    console.warn(`  [forecast-resolutions] judged archive hash cap reached (${selectedHashes.length}/${maxHashes}) for ${new Date(coverageStartMs).toISOString()}..${new Date(nowMs).toISOString()}; increase FORECAST_RESOLUTION_JUDGE_ARCHIVE_HASH_LIMIT or page the archive scan`);
+  }
   const pipelineResp = await fetch(`${url}/pipeline`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
