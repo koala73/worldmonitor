@@ -1,0 +1,44 @@
+import assert from 'node:assert/strict';
+import { describe, it } from 'node:test';
+
+import {
+  buildForecastInputPresenceRows,
+  warnOnMissingForecastInputs,
+} from '../scripts/seed-forecasts.mjs';
+
+describe('forecast input observability', () => {
+  it('reports zero records for missing or empty forecast input feeds by Redis key', () => {
+    const rows = buildForecastInputPresenceRows({
+      'temporal:anomalies:v1': null,
+      'conflict:acled:v1:all:0:0': { events: [] },
+      'economic:fred:v1:FEDFUNDS:0': {
+        series: { observations: [{ date: '2026-07-01', value: 4.25 }] },
+      },
+      'market:stocks-bootstrap:v1': { quotes: [{ symbol: 'SPY', price: 600 }] },
+      'theater_posture:sebuf:stale:v1': 'valid-json-but-wrong-shape',
+    });
+
+    assert.equal(rows.find((row) => row.key === 'temporal:anomalies:v1')?.records, 0);
+    assert.equal(rows.find((row) => row.key === 'conflict:acled:v1:all:0:0')?.records, 0);
+    assert.equal(rows.find((row) => row.key === 'economic:fred:v1:FEDFUNDS:0')?.records, 1);
+    assert.equal(rows.find((row) => row.key === 'market:stocks-bootstrap:v1')?.records, 1);
+    assert.equal(rows.find((row) => row.key === 'theater_posture:sebuf:stale:v1')?.records, 0);
+  });
+
+  it('warns once per zero-record forecast input with feed key and count', () => {
+    const warnings = [];
+    const logger = { warn: (line) => warnings.push(String(line)) };
+
+    warnOnMissingForecastInputs([
+      { key: 'temporal:anomalies:v1', label: 'temporalAnomalies', records: 0 },
+      { key: 'conflict:acled:v1:all:0:0', label: 'acledEvents', records: 0 },
+      { key: 'economic:fred:v1:FEDFUNDS:0', label: 'fred:FEDFUNDS', records: 3 },
+    ], logger);
+
+    assert.equal(warnings.length, 2);
+    assert.match(warnings[0], /\[ForecastInputs\]/);
+    assert.match(warnings[0], /temporal:anomalies:v1/);
+    assert.match(warnings[0], /records=0/);
+    assert.match(warnings[1], /conflict:acled:v1:all:0:0/);
+  });
+});

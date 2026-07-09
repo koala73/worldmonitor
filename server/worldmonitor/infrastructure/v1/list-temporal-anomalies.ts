@@ -181,7 +181,13 @@ export async function listTemporalAnomalies(
         computedAt: now.toISOString(),
       };
 
-      await setCachedJson(TEMPORAL_ANOMALIES_KEY, snapshot, TEMPORAL_ANOMALIES_TTL);
+      const published = await setCachedJson(TEMPORAL_ANOMALIES_KEY, snapshot, TEMPORAL_ANOMALIES_TTL);
+      if (published) {
+        await setCachedJson('seed-meta:temporal:anomalies', {
+          fetchedAt: Date.now(),
+          recordCount: trackedTypes.length,
+        }, 604800).catch(() => false);
+      }
       return snapshot;
     }
   } catch {

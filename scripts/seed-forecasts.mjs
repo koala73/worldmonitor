@@ -278,6 +278,98 @@ const FRED_MARKET_INPUT_KEYS = {
 
 const FRED_MARKET_SERIES = Object.keys(FRED_MARKET_INPUT_KEYS);
 
+function countArrayField(payload, fieldName) {
+  if (Array.isArray(payload)) return payload.length;
+  const value = payload?.[fieldName];
+  return Array.isArray(value) ? value.length : 0;
+}
+
+function countObjectCollection(payload) {
+  if (!payload) return 0;
+  if (Array.isArray(payload)) return payload.length;
+  if (typeof payload !== 'object') return 0;
+
+  const arrayLengths = Object.values(payload)
+    .filter((value) => Array.isArray(value))
+    .map((value) => value.length);
+  if (arrayLengths.length > 0) return Math.max(...arrayLengths);
+
+  return Object.entries(payload)
+    .filter(([key, value]) => value != null && !['asOf', 'generatedAt', 'computedAt', 'fetchedAt', 'source', 'version'].includes(key))
+    .length;
+}
+
+function countFredSeriesRecords(payload) {
+  const series = payload?.series || payload;
+  if (!series || typeof series !== 'object') return 0;
+  if (Array.isArray(series.observations)) return series.observations.length;
+  return Object.keys(series).length > 0 ? 1 : 0;
+}
+
+function buildForecastInputFeedDefinitions() {
+  return [
+    { key: CII_RISK_SCORE_CACHE_KEYS.stale, label: 'ciiScores', countRecords: countObjectCollection },
+    { key: 'temporal:anomalies:v1', label: 'temporalAnomalies', countRecords: (value) => countArrayField(value, 'anomalies') },
+    { key: 'theater_posture:sebuf:stale:v1', label: 'theaterPosture', countRecords: countObjectCollection },
+    { key: 'military:forecast-inputs:stale:v1', label: 'militaryForecastInputs', countRecords: (value) => countArrayField(value, 'theaters') + countArrayField(value, 'surges') },
+    { key: 'prediction:markets-bootstrap:v1', label: 'predictionMarkets', countRecords: countObjectCollection },
+    { key: 'supply_chain:chokepoints:v4', label: 'chokepoints', countRecords: countObjectCollection },
+    { key: 'conflict:iran-events:v1', label: 'iranEvents', countRecords: countObjectCollection },
+    { key: 'conflict:ucdp-events:v1', label: 'ucdpEvents', countRecords: countObjectCollection },
+    { key: 'unrest:events:v1', label: 'unrestEvents', countRecords: countObjectCollection },
+    { key: 'infra:outages:v1', label: 'outages', countRecords: (value) => countArrayField(value, 'outages') },
+    { key: 'cyber:threats-bootstrap:v2', label: 'cyberThreats', countRecords: (value) => countArrayField(value, 'threats') || countObjectCollection(value) },
+    { key: 'intelligence:gpsjam:v2', label: 'gpsJamming', countRecords: countObjectCollection },
+    { key: 'news:insights:v1', label: 'newsInsights', countRecords: (value) => countArrayField(value, 'topStories') || countObjectCollection(value) },
+    { key: 'news:digest:v1:full:en', label: 'newsDigest', countRecords: (value) => countArrayField(value, 'topStories') || countArrayField(value, 'stories') || countObjectCollection(value) },
+    { key: 'sanctions:pressure:v1', label: 'sanctionsPressure', countRecords: countObjectCollection },
+    { key: 'thermal:escalation:v1', label: 'thermalEscalation', countRecords: countObjectCollection },
+    { key: MARKET_INPUT_KEYS.stocks, label: 'market:stocks', countRecords: (value) => extractQuoteItems(value).length },
+    { key: MARKET_INPUT_KEYS.commodities, label: 'market:commodities', countRecords: (value) => extractQuoteItems(value).length },
+    { key: MARKET_INPUT_KEYS.sectors, label: 'market:sectors', countRecords: (value) => extractSectorItems(value).length },
+    { key: MARKET_INPUT_KEYS.gulfQuotes, label: 'market:gulfQuotes', countRecords: (value) => extractQuoteItems(value).length },
+    { key: MARKET_INPUT_KEYS.etfFlows, label: 'market:etfFlows', countRecords: (value) => extractEtfItems(value).length },
+    { key: MARKET_INPUT_KEYS.crypto, label: 'market:crypto', countRecords: (value) => extractQuoteItems(value).length },
+    { key: MARKET_INPUT_KEYS.stablecoins, label: 'market:stablecoins', countRecords: (value) => countArrayField(value, 'stablecoins') },
+    { key: MARKET_INPUT_KEYS.bisExchange, label: 'market:bisExchange', countRecords: (value) => extractRateItems(value).length },
+    { key: MARKET_INPUT_KEYS.bisPolicy, label: 'market:bisPolicy', countRecords: (value) => extractRateItems(value).length },
+    { key: MARKET_INPUT_KEYS.shippingRates, label: 'market:shippingRates', countRecords: (value) => extractShippingIndices(value).length },
+    { key: MARKET_INPUT_KEYS.correlationCards, label: 'market:correlationCards', countRecords: (value) => extractCorrelationCards(value).length },
+    { key: 'conflict:acled:v1:all:0:0', label: 'acledEvents', countRecords: (value) => countArrayField(value, 'events') },
+    { key: 'conflict:ema-windows:v1', label: 'emaWindows', countRecords: countObjectCollection },
+    ...FRED_MARKET_SERIES.map((seriesId) => ({
+      key: FRED_MARKET_INPUT_KEYS[seriesId],
+      label: `fred:${seriesId}`,
+      countRecords: countFredSeriesRecords,
+    })),
+  ];
+}
+
+function buildForecastInputPresenceRows(parsedByKey = {}) {
+  return buildForecastInputFeedDefinitions()
+    .filter((feed) => Object.prototype.hasOwnProperty.call(parsedByKey, feed.key))
+    .map((feed) => {
+      let records = 0;
+      try {
+        records = feed.countRecords(parsedByKey[feed.key]);
+      } catch {
+        records = 0;
+      }
+      return {
+        key: feed.key,
+        label: feed.label,
+        records: Number.isFinite(records) && records > 0 ? records : 0,
+      };
+    });
+}
+
+function warnOnMissingForecastInputs(rows = [], logger = console) {
+  for (const row of rows) {
+    if ((row?.records ?? 0) > 0) continue;
+    logger.warn(`  [ForecastInputs] ${row.label} ${row.key} records=0 (missing/empty forecast input)`);
+  }
+}
+
 const MARKET_BUCKET_CONFIG = [
   {
     id: 'energy',
@@ -818,6 +910,7 @@ async function readInputKeys() {
     } catch { return null; }
   };
   const parsedByKey = Object.fromEntries(keys.map((key, index) => [key, parse(index)]));
+  warnOnMissingForecastInputs(buildForecastInputPresenceRows(parsedByKey));
   const fredSeries = Object.fromEntries(
     FRED_MARKET_SERIES
       .map((seriesId) => [seriesId, parsedByKey[FRED_MARKET_INPUT_KEYS[seriesId]]])
@@ -18267,6 +18360,8 @@ export {
   buildForecastTraceArtifactKeys,
   parseForecastRunGeneratedAt,
   readInputKeys,
+  buildForecastInputPresenceRows,
+  warnOnMissingForecastInputs,
   readForecastTraceArtifactsForRun,
   buildForecastRunStatusPayload,
   writeForecastRunStatusArtifact,
