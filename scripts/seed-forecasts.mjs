@@ -1287,19 +1287,18 @@ function getStateDerivedAllowedBuckets(domain) {
   return [];
 }
 
-const STATE_DERIVED_DOMAIN_PROBABILITY_CAPS = {
+const DOMAIN_PROBABILITY_CAPS = {
   market: 0.85,
   supply_chain: 0.85,
 };
 
-function capStateDerivedProbability(domain, probability) {
-  const cap = STATE_DERIVED_DOMAIN_PROBABILITY_CAPS[domain] ?? 1;
+function capDomainProbability(domain, probability) {
+  const cap = DOMAIN_PROBABILITY_CAPS[domain] ?? 1;
   return Math.min(cap, probability);
 }
 
-function capStateDerivedPredictionProbability(pred, probability) {
-  if (pred?.generationOrigin !== 'state_derived') return probability;
-  return capStateDerivedProbability(pred.domain, probability);
+function capPredictionProbability(pred, probability) {
+  return capDomainProbability(pred?.domain, probability);
 }
 
 function getStateDerivedMinimumScore(domain, bucketId) {
@@ -1484,7 +1483,7 @@ function buildStateDerivedForecast(stateUnit, domain, bucket, candidate, marketC
     (Number(bucket.pressureScore || 0) * 0.24) +
     (Number(stateUnit?.avgProbability || 0) * 0.18),
   );
-  const probability = capStateDerivedProbability(domain, rawProbability);
+  const probability = capDomainProbability(domain, rawProbability);
   const confidence = clampUnitInterval(
     (candidate.score * 0.34) +
     (Number(bucket.confidence || 0) * 0.28) +
@@ -2496,7 +2495,7 @@ function calibrateWithMarkets(predictions, markets) {
         source: match.source || 'polymarket',
       };
       const calibratedProbability = 0.4 * marketProb + 0.6 * pred.probability;
-      pred.probability = +capStateDerivedPredictionProbability(pred, calibratedProbability).toFixed(3);
+      pred.probability = +capPredictionProbability(pred, calibratedProbability).toFixed(3);
     }
   }
 }

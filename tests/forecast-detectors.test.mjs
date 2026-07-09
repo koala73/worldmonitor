@@ -313,6 +313,38 @@ describe('calibrateWithMarkets', () => {
     assert.equal(pred.calibration, null);
     assert.equal(pred.probability, 0.668);
   });
+
+  it('keeps first-party market and supply-chain forecasts capped after high-anchor calibration', () => {
+    const market = makePrediction(
+      'market', 'Middle East', 'Energy repricing risk: Middle East',
+      0.85, 0.6, '30d', [],
+    );
+    const supplyChain = makePrediction(
+      'supply_chain', 'Middle East', 'Supply chain disruption: Middle East',
+      0.85, 0.6, '7d', [],
+    );
+    calibrateWithMarkets([market, supplyChain], {
+      geopolitical: [
+        {
+          title: 'Will Middle East energy repricing risk hit extreme levels?',
+          yesPrice: 100,
+          source: 'test-market',
+          volume: 1000,
+        },
+        {
+          title: 'Will Middle East supply chain disruption intensify?',
+          yesPrice: 100,
+          source: 'test-market',
+          volume: 1000,
+        },
+      ],
+    });
+
+    assert.ok(market.calibration);
+    assert.ok(supplyChain.calibration);
+    assert.equal(market.probability, 0.85);
+    assert.equal(supplyChain.probability, 0.85);
+  });
 });
 
 describe('word-boundary term matching: no substring false positives (#4933)', () => {
@@ -2557,6 +2589,18 @@ describe('detectUcdpConflictZones', () => {
     const [pred] = detectUcdpConflictZones({ ucdpEvents: { events } });
     assert.ok(pred);
     assert.equal(pred.probability, 0.35);
+  });
+
+  it('ramps UCDP conflict probability above the 10-event gate', () => {
+    const midGateEvents = Array.from({ length: 55 }, () => ({ country: 'Sudan' }));
+    const [midGate] = detectUcdpConflictZones({ ucdpEvents: { events: midGateEvents } });
+    assert.ok(midGate);
+    assert.equal(midGate.probability, 0.6);
+
+    const cappedEvents = Array.from({ length: 120 }, () => ({ country: 'Sudan' }));
+    const [capped] = detectUcdpConflictZones({ ucdpEvents: { events: cappedEvents } });
+    assert.ok(capped);
+    assert.equal(capped.probability, 0.85);
   });
 
   it('skips countries with < 10 events', () => {

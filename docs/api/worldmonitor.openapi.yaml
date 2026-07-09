@@ -25706,12 +25706,20 @@ components:
                 h24:
                     type: number
                     format: double
+                    description: Projected 24-hour probability after domain-curve normalization.
                 d7:
                     type: number
                     format: double
+                    description: Projected 7-day probability after domain-curve normalization.
                 d30:
                     type: number
                     format: double
+                    description: Projected 30-day probability after domain-curve normalization.
+            description: |-
+                Projections contains bounded presentation-path probabilities derived from
+                 domain curves. Market forecasts are peak-anchored, so the projected value at
+                 the forecast's own time_horizon can intentionally differ from the headline
+                 probability; non-market forecasts preserve their emitted horizon as anchor.
         worldmonitor_forecast_v1_ForecastCase:
             type: object
             properties:

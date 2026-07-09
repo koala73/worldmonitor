@@ -66,6 +66,8 @@ describe('forecast integrity and provenance surfaces', () => {
   it('documents market calibration limits and projection clamp heuristics', () => {
     const docs = read('docs/panels/forecast.mdx');
     const seeder = read('scripts/seed-forecasts.mjs');
+    const forecastProto = read('proto/worldmonitor/forecast/v1/forecast.proto');
+    const forecastOpenapi = read('docs/api/ForecastService.openapi.yaml');
     const cyberProbMax = parseNumericConst(seeder, 'CYBER_PROB_MAX');
     const conflictBaseMax = parseNumericConst(seeder, 'CONFLICT_BASE_DETECTOR_PROB_MAX');
     const ucdpConflictZoneMax = parseNumericConst(seeder, 'UCDP_CONFLICT_ZONE_PROB_MAX');
@@ -131,6 +133,10 @@ describe('forecast integrity and provenance surfaces', () => {
     assert.match(docs, /1% floor and 95% cap/);
     assert.match(docs, /Market projections use the curve's peak multiplier as the anchor/);
     assert.match(docs, /other domains use the forecast's emitted horizon/);
+    assert.match(forecastProto, /Market forecasts are peak-anchored/);
+    assert.match(forecastProto, /non-market forecasts preserve their emitted horizon as anchor/);
+    assert.match(forecastOpenapi, /Market forecasts are peak-anchored/);
+    assert.match(forecastOpenapi, /non-market forecasts preserve their emitted horizon as anchor/);
     assert.match(seeder, /const PROJECTION_PROBABILITY_FLOOR = 0\.01;/);
     assert.match(seeder, /const PROJECTION_PROBABILITY_CAP = 0\.95;/);
     assert.match(seeder, /const PROJECTION_PEAK_ANCHORED_DOMAINS = new Set\(\['market'\]\);/);
