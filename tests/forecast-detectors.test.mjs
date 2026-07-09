@@ -235,7 +235,7 @@ describe('calibrateWithMarkets', () => {
     );
     pred.region = 'Middle East';
     const markets = {
-      geopolitical: [{ title: 'Will Iran conflict escalate in MENA?', yesPrice: 30, source: 'polymarket' }],
+      geopolitical: [{ title: 'Will Iran conflict escalate in MENA?', yesPrice: 30, source: 'polymarket', volume: 50000 }],
     };
     calibrateWithMarkets([pred], markets);
     const expected = +(0.4 * 0.3 + 0.6 * 0.7).toFixed(3);
@@ -264,10 +264,46 @@ describe('calibrateWithMarkets', () => {
       0.7, 0.6, '7d', [],
     );
     const markets = {
-      geopolitical: [{ title: 'Iran MENA conflict?', yesPrice: 40 }],
+      geopolitical: [{ title: 'Iran MENA conflict?', yesPrice: 40, volume: 50000 }],
     };
     calibrateWithMarkets([pred], markets);
     assert.equal(pred.calibration.drift, +(0.7 - 0.4).toFixed(3));
+  });
+
+  it('does not calibrate escalation risk from a de-escalation YES market', () => {
+    const pred = makePrediction(
+      'conflict', 'Sudan', 'Escalation risk: Sudan',
+      0.45, 0.6, '30d', [],
+    );
+    calibrateWithMarkets([pred], {
+      geopolitical: [{ title: 'Will Sudan reach a ceasefire by Q3?', yesPrice: 85, source: 'polymarket', volume: 50000 }],
+    });
+    assert.equal(pred.calibration, null);
+    assert.equal(pred.probability, 0.45);
+  });
+
+  it('does not calibrate from a low-liquidity market', () => {
+    const pred = makePrediction(
+      'conflict', 'Middle East', 'Escalation risk: Iran',
+      0.5, 0.6, '7d', [],
+    );
+    calibrateWithMarkets([pred], {
+      geopolitical: [{ title: 'Will Iran conflict escalate in MENA?', yesPrice: 95, source: 'polymarket', volume: 20 }],
+    });
+    assert.equal(pred.calibration, null);
+    assert.equal(pred.probability, 0.5);
+  });
+
+  it('re-applies the domain cap after market calibration', () => {
+    const pred = makePrediction(
+      'conflict', 'Middle East', 'Escalation risk: Iran',
+      0.9, 0.6, '7d', [],
+    );
+    calibrateWithMarkets([pred], {
+      geopolitical: [{ title: 'Will Iran conflict escalate in MENA?', yesPrice: 96, source: 'polymarket', volume: 50000 }],
+    });
+    assert.ok(pred.calibration !== null);
+    assert.equal(pred.probability, 0.9);
   });
 
   it('null markets handled gracefully', () => {
@@ -500,7 +536,7 @@ describe('word-boundary term matching: no substring false positives (#4933)', ()
   it('calibrateWithMarkets: plural domain hint still calibrates (elections vs election)', () => {
     const pred = makePrediction('political', 'Nigeria', 'Political instability: Nigeria', 0.7, 0.6, '30d', []);
     calibrateWithMarkets([pred], {
-      geopolitical: [{ title: 'Will Nigeria hold peaceful elections in 2026?', yesPrice: 80, source: 'polymarket', volume: 50000 }],
+      geopolitical: [{ title: 'Will Nigeria elections trigger unrest in 2026?', yesPrice: 80, source: 'polymarket', volume: 50000 }],
     });
     assert.ok(pred.calibration !== null);
     assert.equal(pred.probability, +(0.4 * 0.8 + 0.6 * 0.7).toFixed(3));

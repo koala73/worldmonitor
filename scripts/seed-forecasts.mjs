@@ -2066,6 +2066,25 @@ const DOMAIN_HINTS = {
   infrastructure: ['outage', 'blackout', 'power', 'grid', 'pipeline', 'cyber', 'telecom', 'internet'],
 };
 
+const MARKET_CALIBRATION_WEIGHT = 0.4;
+const MARKET_CALIBRATION_MIN_VOLUME = 5_000;
+const MARKET_CALIBRATION_DOMAIN_CAPS = {
+  conflict: CONFLICT_BASE_DETECTOR_PROB_MAX,
+  market: 0.85,
+  supply_chain: 0.85,
+  cyber: CYBER_PROB_MAX,
+};
+const MARKET_DE_ESCALATION_OUTCOME_TERMS = [
+  'ceasefire', 'truce', 'peace', 'peaceful', 'agreement', 'diplomatic solution',
+  'withdrawal', 'de-escalat', 'deescalat', 'reopen', 'reopened', 'restored',
+  'stabiliz', 'normaliz', 'resolution', 'resolved',
+];
+const MARKET_ADVERSE_OUTCOME_TERMS = [
+  'attack', 'strike', 'war', 'conflict', 'escalat', 'offensive', 'unrest',
+  'instability', 'crisis', 'disruption', 'shock', 'stress', 'collapse',
+  'fail', 'breach', 'violate', 'reject', 'resume', 'renewed',
+];
+
 const DOMAIN_ACTOR_BLUEPRINTS = {
   conflict: [
     { key: 'state_command', name: 'Regional command authority', category: 'state', influenceScore: 0.88 },
@@ -2264,6 +2283,40 @@ function computeMarketMatchScore(pred, marketTitle, regionTerms, options = {}) {
   };
 }
 
+function textHasAnyStem(text, terms) {
+  const lower = String(text || '').toLowerCase();
+  return terms.some((term) => lower.includes(term));
+}
+
+function marketYesOutcomeLooksDeEscalatory(marketTitle) {
+  if (!textHasAnyStem(marketTitle, MARKET_DE_ESCALATION_OUTCOME_TERMS)) return false;
+  return !textHasAnyStem(marketTitle, MARKET_ADVERSE_OUTCOME_TERMS);
+}
+
+function predictionYesOutcomeLooksDeEscalatory(pred) {
+  const signalText = (pred.signals || [])
+    .map((signal) => `${signal?.type || ''} ${signal?.value || ''}`)
+    .join(' ');
+  const text = `${pred.title || ''} ${pred.scenario || ''} ${signalText}`;
+  if (!textHasAnyStem(text, MARKET_DE_ESCALATION_OUTCOME_TERMS)) return false;
+  return !textHasAnyStem(text, MARKET_ADVERSE_OUTCOME_TERMS);
+}
+
+function marketOutcomeAlignsPrediction(predictionDeEscalatoryOutcome, marketTitle) {
+  if (!marketYesOutcomeLooksDeEscalatory(marketTitle)) return true;
+  return predictionDeEscalatoryOutcome;
+}
+
+function getMarketCalibrationVolume(market) {
+  const volume = Number(market?.volume ?? 0);
+  return Number.isFinite(volume) ? volume : 0;
+}
+
+function capMarketCalibrationProbability(domain, probability) {
+  const cap = MARKET_CALIBRATION_DOMAIN_CAPS[domain] ?? 1;
+  return +Math.max(0, Math.min(cap, probability)).toFixed(3);
+}
+
 function detectFromPredictionMarkets(inputs) {
   const predictions = [];
   const markets = inputs.predictionMarkets?.geopolitical || [];
@@ -2432,6 +2485,7 @@ function calibrateWithMarkets(predictions, markets) {
     const regionTerms = [...new Set([...getSearchTermsForRegion(pred.region), pred.region])];
     const expectedTags = buildExpectedRegionTags(regionTerms, pred.region);
     const titleTokens = extractMeaningfulTokens(pred.title, regionTerms);
+    const predictionDeEscalatoryOutcome = predictionYesOutcomeLooksDeEscalatory(pred);
     if (keywords.length === 0 && regionTerms.length === 0) continue;
     const candidates = markets.geopolitical
       .map(m => {
@@ -2442,6 +2496,8 @@ function calibrateWithMarkets(predictions, markets) {
       })
       .filter(item => {
         if (!Number.isFinite(item.market.yesPrice)) return false; // a price-less anchor would blend toward a fabricated 50%
+        if (getMarketCalibrationVolume(item.market) < MARKET_CALIBRATION_MIN_VOLUME) return false;
+        if (!marketOutcomeAlignsPrediction(predictionDeEscalatoryOutcome, item.market.title)) return false;
         if (item.tagMismatch && item.regionHits === 0) return false;
         const hasSpecificRegionSignal = item.regionHits > 0 || item.tagOverlap;
         const hasSemanticOverlap = item.titleHits > 0 || item.domainHits > 0;
@@ -2452,7 +2508,7 @@ function calibrateWithMarkets(predictions, markets) {
       })
       .sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
-        return (b.market.volume || 0) - (a.market.volume || 0);
+        return getMarketCalibrationVolume(b.market) - getMarketCalibrationVolume(a.market);
       });
     const best = candidates[0];
     const match = best?.market || null;
@@ -2464,7 +2520,9 @@ function calibrateWithMarkets(predictions, markets) {
         drift: +(pred.probability - marketProb).toFixed(3),
         source: match.source || 'polymarket',
       };
-      pred.probability = +(0.4 * marketProb + 0.6 * pred.probability).toFixed(3);
+      const blendedProbability = +((MARKET_CALIBRATION_WEIGHT * marketProb)
+        + ((1 - MARKET_CALIBRATION_WEIGHT) * pred.probability)).toFixed(3);
+      pred.probability = capMarketCalibrationProbability(pred.domain, blendedProbability);
     }
   }
 }
