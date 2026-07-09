@@ -40,6 +40,7 @@ describe('ACLED resolution-feed seed contract (#5076)', () => {
 
   it('conflict seeder fails the primary feed when ACLED display data is unavailable', () => {
     assert.match(conflictSeed, /if\s*\(!ac\)\s*\{[\s\S]*throw new Error\([\s\S]*ACLED display fetch failed for \$\{ACLED_CACHE_KEY\}[\s\S]*auxiliary conflict\/intel feeds mask the primary feed/);
+    assert.match(conflictSeed, /ACLED credentials not configured \(set ACLED_EMAIL \+ ACLED_PASSWORD or ACLED_ACCESS_TOKEN\)/);
     assert.doesNotMatch(conflictSeed, /return\s+ac\s*\|\|\s*\{\s*events:\s*\[\],\s*pagination:\s*undefined\s*\}/);
   });
 

@@ -352,7 +352,7 @@ async function fetchAll() {
   if (!ac) {
     const reason = acled.status === 'rejected'
       ? (acled.reason?.message || acled.reason)
-      : 'no ACLED display payload returned';
+      : 'ACLED credentials not configured (set ACLED_EMAIL + ACLED_PASSWORD or ACLED_ACCESS_TOKEN)';
     throw new Error(
       `ACLED display fetch failed for ${ACLED_CACHE_KEY}; refusing to let auxiliary conflict/intel feeds mask the primary feed (${reason})`,
     );
