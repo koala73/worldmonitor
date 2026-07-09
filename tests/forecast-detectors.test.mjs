@@ -251,7 +251,7 @@ describe('calibrateWithMarkets', () => {
     );
     const originalProb = pred.probability;
     const markets = {
-      geopolitical: [{ title: 'Will EU inflation drop?', yesPrice: 50 }],
+      geopolitical: [{ title: 'Will EU inflation drop?', yesPrice: 50, volume: 50000 }],
     };
     calibrateWithMarkets([pred], markets);
     assert.equal(pred.probability, originalProb);
@@ -282,6 +282,18 @@ describe('calibrateWithMarkets', () => {
     assert.equal(pred.probability, 0.45);
   });
 
+  it('does not calibrate de-escalation risk from an adverse YES market', () => {
+    const pred = makePrediction(
+      'conflict', 'Sudan', 'Ceasefire holds in Sudan',
+      0.6, 0.5, '7d', [{ type: 'ceasefire', value: 'ceasefire holds', weight: 0.4 }],
+    );
+    calibrateWithMarkets([pred], {
+      geopolitical: [{ title: 'Will Sudan conflict escalate by Q3?', yesPrice: 85, source: 'polymarket', volume: 50000 }],
+    });
+    assert.equal(pred.calibration, null);
+    assert.equal(pred.probability, 0.6);
+  });
+
   it('does not calibrate from a low-liquidity market', () => {
     const pred = makePrediction(
       'conflict', 'Middle East', 'Escalation risk: Iran',
@@ -304,6 +316,18 @@ describe('calibrateWithMarkets', () => {
     });
     assert.ok(pred.calibration !== null);
     assert.equal(pred.probability, 0.9);
+  });
+
+  it('applies explicit post-blend caps to non-conflict domains', () => {
+    const pred = makePrediction(
+      'political', 'Iran', 'Political instability: Iran',
+      0.94, 0.6, '7d', [],
+    );
+    calibrateWithMarkets([pred], {
+      geopolitical: [{ title: 'Will Iran political unrest escalate in 2026?', yesPrice: 99, source: 'polymarket', volume: 50000 }],
+    });
+    assert.ok(pred.calibration !== null);
+    assert.equal(pred.probability, 0.95);
   });
 
   it('null markets handled gracefully', () => {

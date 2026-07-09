@@ -2072,7 +2072,10 @@ const MARKET_CALIBRATION_DOMAIN_CAPS = {
   conflict: CONFLICT_BASE_DETECTOR_PROB_MAX,
   market: 0.85,
   supply_chain: 0.85,
+  political: 0.95,
+  military: 0.95,
   cyber: CYBER_PROB_MAX,
+  infrastructure: 0.95,
 };
 const MARKET_DE_ESCALATION_OUTCOME_TERMS = [
   'ceasefire', 'truce', 'peace', 'peaceful', 'agreement', 'diplomatic solution',
@@ -2293,6 +2296,11 @@ function marketYesOutcomeLooksDeEscalatory(marketTitle) {
   return !textHasAnyStem(marketTitle, MARKET_ADVERSE_OUTCOME_TERMS);
 }
 
+function marketYesOutcomeLooksAdverse(marketTitle) {
+  if (!textHasAnyStem(marketTitle, MARKET_ADVERSE_OUTCOME_TERMS)) return false;
+  return !textHasAnyStem(marketTitle, MARKET_DE_ESCALATION_OUTCOME_TERMS);
+}
+
 function predictionYesOutcomeLooksDeEscalatory(pred) {
   const signalText = (pred.signals || [])
     .map((signal) => `${signal?.type || ''} ${signal?.value || ''}`)
@@ -2303,8 +2311,9 @@ function predictionYesOutcomeLooksDeEscalatory(pred) {
 }
 
 function marketOutcomeAlignsPrediction(predictionDeEscalatoryOutcome, marketTitle) {
-  if (!marketYesOutcomeLooksDeEscalatory(marketTitle)) return true;
-  return predictionDeEscalatoryOutcome;
+  if (marketYesOutcomeLooksDeEscalatory(marketTitle)) return predictionDeEscalatoryOutcome;
+  if (marketYesOutcomeLooksAdverse(marketTitle)) return !predictionDeEscalatoryOutcome;
+  return true;
 }
 
 function getMarketCalibrationVolume(market) {
