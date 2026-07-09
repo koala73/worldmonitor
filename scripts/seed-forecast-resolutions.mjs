@@ -2,9 +2,11 @@
 
 // Daily forecast resolution seeder for Bet 2 (#5007).
 //
-// The exported helpers are pure/testable; the direct-run block is the Railway
-// worker shell that reads the forecast history intake, persists the working
-// ledger, writes the scorecard, and appends terminal receipts to R2.
+// Pure exported helpers cover ledger ingest, hard resolution, scorecards, and
+// pruning. Exported live-I/O helpers take options/test doubles so tests can use
+// them without invoking Redis or LLM providers. The direct-run block is the
+// Railway worker shell that reads the forecast history intake, persists the
+// working ledger, writes the scorecard, and appends terminal receipts to R2.
 //
 // Railway service config (set up manually via Railway dashboard or
 // `railway service`):
@@ -12,7 +14,7 @@
 //   - Start command: node scripts/seed-forecast-resolutions.mjs
 //   - Cron: daily
 
-import { CHROME_UA, getRedisCredentials, loadEnvFile, runSeed } from './_seed-utils.mjs';
+import { CHROME_UA, loadEnvFile, runSeed } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { resolveR2StorageConfig, putR2JsonObject } from './_r2-storage.mjs';
 import { parseMetricKey, resolveHardSpec, extractMetricValue } from './_forecast-resolution-eval.mjs';
@@ -33,6 +35,7 @@ export const JUDGED_ARCHIVE_LOOKBACK_PAD_MS = 6 * 60 * 60 * 1000;
 export const DEFAULT_JUDGED_ARCHIVE_ITEMS = 16;
 export const DEFAULT_JUDGED_MAX_PER_RUN = 12;
 export const DEFAULT_JUDGED_RUN_BUDGET_MS = 110_000;
+const DEFAULT_MIN_JUDGED_STAGE_BUDGET_MS = 5_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const JUDGED_TOKEN_STOPWORDS = new Set([
   'about', 'above', 'after', 'again', 'against', 'before', 'being', 'below',
@@ -92,14 +95,28 @@ export async function resolvePendingJudgedEntries(ledger, newsArchive, nowMs, op
     ? Math.max(0, Math.floor(options.maxJudgedEntries))
     : Infinity;
   const deadlineMs = Number.isFinite(options.deadlineMs) ? options.deadlineMs : Infinity;
+  const judgeStageBudgetMs = Number.isFinite(options.judgeStageBudgetMs)
+    ? Math.max(0, Math.floor(options.judgeStageBudgetMs))
+    : envPositiveInt('FORECAST_RESOLUTION_JUDGE_STAGE_BUDGET_MS', 35_000);
+  const minJudgeStageBudgetMs = Number.isFinite(options.minJudgeStageBudgetMs)
+    ? Math.max(0, Math.floor(options.minJudgeStageBudgetMs))
+    : Math.min(DEFAULT_MIN_JUDGED_STAGE_BUDGET_MS, judgeStageBudgetMs);
   let attempted = 0;
 
   for (const [key, entry] of Object.entries(ledger)) {
     if (entry?.status !== 'pending-judge') continue;
     if (attempted >= maxEntries) break;
-    if (Date.now() + 1_000 > deadlineMs) break;
+    let entryOptions = options;
+    if (Number.isFinite(deadlineMs)) {
+      const remainingBudgetMs = deadlineMs - Date.now() - 1_000;
+      if (remainingBudgetMs < minJudgeStageBudgetMs) break;
+      entryOptions = {
+        ...options,
+        judgeStageBudgetMs: Math.min(judgeStageBudgetMs, remainingBudgetMs),
+      };
+    }
 
-    const result = await resolveJudgedEntry(entry, newsArchive, nowMs, options);
+    const result = await resolveJudgedEntry(entry, newsArchive, nowMs, entryOptions);
     if (result.status === 'skip') continue;
     attempted += 1;
 
@@ -141,14 +158,18 @@ export async function resolveJudgedEntry(entry, newsArchive, nowMs, options = {}
   const archiveItems = selectJudgedArchiveItems(entry, archiveInput.items, {
     maxItems: options.maxArchiveItems ?? DEFAULT_JUDGED_ARCHIVE_ITEMS,
   });
+  const archiveComplete = archiveCoversEntryWindow(entry, archiveInput, nowMs);
   if (!archiveItems.length) {
-    if (!archiveCoversEntryWindow(entry, archiveInput, nowMs)) {
+    if (!archiveComplete) {
       return { status: 'pending', reason: 'archive_unavailable', detail: 'archive_window_incomplete' };
     }
     return resolvedJudgedResult('VOID', 'no_archive_evidence', entry, [], [], nowMs);
   }
 
-  const judgeModels = Array.isArray(options.judgeModels) && options.judgeModels.length >= 2
+  if (Array.isArray(options.judgeModels) && options.judgeModels.length < 2) {
+    return { status: 'pending', reason: 'judge_unavailable', detail: 'fewer_than_two_models' };
+  }
+  const judgeModels = Array.isArray(options.judgeModels)
     ? options.judgeModels.slice(0, 2)
     : createLiveJudgeModels(options);
   if (judgeModels.length < 2) {
@@ -169,6 +190,9 @@ export async function resolveJudgedEntry(entry, newsArchive, nowMs, options = {}
   const nonVoidOutcomes = judgments.map((judgment) => judgment.outcome).filter((outcome) => outcome !== 'VOID');
   if (nonVoidOutcomes.length === judgments.length && new Set(nonVoidOutcomes).size === 1) {
     return resolvedJudgedResult(nonVoidOutcomes[0], 'dual_model_agreement', entry, judgments, archiveItems, nowMs);
+  }
+  if (!archiveComplete) {
+    return { status: 'pending', reason: 'archive_unavailable', detail: 'archive_window_incomplete' };
   }
   if (judgments.every((judgment) => judgment.outcome === 'VOID')) {
     return resolvedJudgedResult('VOID', 'all_judges_void', entry, judgments, archiveItems, nowMs);
@@ -867,8 +891,11 @@ async function readJudgedNewsArchiveForLedger(ledger, nowMs, options = {}) {
 }
 
 export async function readDigestAccumulatorArchive(windowStartMs, nowMs, options = {}) {
-  const { url, token } = getRedisCredentials();
+  const { url, token } = getArchiveRedisCredentials(options);
   const coverageStartMs = Math.max(windowStartMs, nowMs - JUDGED_ARCHIVE_RETENTION_MS);
+  const maxHashes = Number.isFinite(options.maxHashes)
+    ? Math.max(1, Math.floor(options.maxHashes))
+    : envPositiveInt('FORECAST_RESOLUTION_JUDGE_ARCHIVE_HASH_LIMIT', 300);
   const base = {
     requestedStartMs: windowStartMs,
     requestedEndMs: nowMs,
@@ -878,19 +905,24 @@ export async function readDigestAccumulatorArchive(windowStartMs, nowMs, options
   const zsetResp = await fetch(url, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
-    body: JSON.stringify(['ZRANGEBYSCORE', JUDGED_ARCHIVE_KEY, String(windowStartMs), String(nowMs)]),
+    body: JSON.stringify([
+      'ZREVRANGEBYSCORE',
+      JUDGED_ARCHIVE_KEY,
+      String(nowMs),
+      String(coverageStartMs),
+      'LIMIT',
+      '0',
+      String(maxHashes),
+    ]),
     signal: AbortSignal.timeout(10_000),
   });
-  if (!zsetResp.ok) throw new Error(`Redis ZRANGEBYSCORE ${JUDGED_ARCHIVE_KEY} failed: HTTP ${zsetResp.status}`);
+  if (!zsetResp.ok) throw new Error(`Redis ZREVRANGEBYSCORE ${JUDGED_ARCHIVE_KEY} failed: HTTP ${zsetResp.status}`);
   const zsetPayload = await zsetResp.json();
   const hashes = Array.isArray(zsetPayload.result) ? zsetPayload.result.filter(Boolean) : [];
   if (!hashes.length) return { ...base, items: [], available: true };
 
-  const maxHashes = Number.isFinite(options.maxHashes)
-    ? Math.max(1, Math.floor(options.maxHashes))
-    : envPositiveInt('FORECAST_RESOLUTION_JUDGE_ARCHIVE_HASH_LIMIT', 300);
-  const selectedHashes = hashes.slice(-maxHashes);
-  const truncated = selectedHashes.length < hashes.length;
+  const selectedHashes = hashes.slice(0, maxHashes);
+  const truncated = hashes.length >= maxHashes;
   const pipelineResp = await fetch(`${url}/pipeline`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
@@ -904,15 +936,21 @@ export async function readDigestAccumulatorArchive(windowStartMs, nowMs, options
   }
   const rows = pipelinePayload;
   const items = [];
+  let missingRows = 0;
   for (let index = 0; index < selectedHashes.length; index += 1) {
     if (rows[index]?.error) {
       throw new Error(`Redis story-track pipeline row ${index} failed: ${rows[index].error}`);
     }
     const raw = rows[index]?.result;
-    if (!Array.isArray(raw) || raw.length === 0) {
+    const flat = normalizeRedisHashResult(raw);
+    if (!flat) {
       throw new Error(`Redis story-track pipeline row ${index} returned invalid HGETALL result`);
     }
-    const track = flatArrayToObject(raw);
+    if (flat.length === 0) {
+      missingRows += 1;
+      continue;
+    }
+    const track = flatArrayToObject(flat);
     items.push(pruneUndefined({
       id: `N${items.length + 1}`,
       hash: selectedHashes[index],
@@ -925,7 +963,21 @@ export async function readDigestAccumulatorArchive(windowStartMs, nowMs, options
       currentScore: toFiniteNumber(track.currentScore ?? track.score),
     }));
   }
-  return { ...base, items: normalizeJudgedArchiveItems(items), available: true, truncated };
+  return { ...base, items: normalizeJudgedArchiveItems(items), available: true, truncated: truncated || missingRows > 0, missingRows };
+}
+
+function getArchiveRedisCredentials(options = {}) {
+  const env = options.env || process.env;
+  const url = options.redisUrl || env.UPSTASH_REDIS_REST_URL;
+  const token = options.redisToken || env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) throw new Error('Missing UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN');
+  return { url, token };
+}
+
+function normalizeRedisHashResult(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (raw && typeof raw === 'object') return Object.entries(raw).flat();
+  return null;
 }
 
 function flatArrayToObject(flat) {
@@ -974,10 +1026,20 @@ async function dryRun() {
   ]);
   const preLedger = ingestHistory(existingLedger || {}, history, nowMs);
   const feeds = await readResolutionFeeds(preLedger);
-  const result = processResolutionCycle(preLedger, [], feeds, nowMs);
+  const judgedOptions = buildLiveJudgedOptions(nowMs);
+  const judgedArchive = await readJudgedNewsArchiveForLedger(preLedger, nowMs, judgedOptions);
+  const dryRunJudgeModels = [
+    async () => null,
+    async () => null,
+  ];
+  const result = await processResolutionCycleWithJudges(preLedger, [], feeds, judgedArchive, nowMs, {
+    ...judgedOptions,
+    judgeModels: dryRunJudgeModels,
+  });
   const entries = Object.values(result.ledger);
   const summary = {
     dryRun: true,
+    judgedMode: 'no-llm',
     historySnapshots: history.length,
     ledgerEntries: entries.length,
     pending: entries.filter((entry) => entry.status === 'pending').length,

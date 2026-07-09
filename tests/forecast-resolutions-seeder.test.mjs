@@ -1,7 +1,10 @@
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
 import { afterEach, describe, it } from 'node:test';
 
 import {
+  JUDGED_ARCHIVE_KEY,
+  JUDGED_ARCHIVE_RETENTION_MS,
   RESOLUTIONS_KEY,
   SCORECARD_META_KEY,
   SCORECARD_KEY,
@@ -20,6 +23,7 @@ import { computeScorecard } from '../scripts/_forecast-scorecard.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const T0 = Date.parse('2026-07-07T00:00:00Z');
+const SEEDER_SOURCE = readFileSync(new URL('../scripts/seed-forecast-resolutions.mjs', import.meta.url), 'utf8');
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_REDIS_ENV = {
   UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
@@ -400,6 +404,27 @@ describe('processResolutionCycleWithJudges', () => {
     assert.equal(result.receipts.length, 0);
   });
 
+  it('keeps weak judge outcomes pending when matching evidence comes from an incomplete archive', async () => {
+    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedForecast()])], {}, {
+      available: true,
+      coverageStartMs: T0 + DAY_MS,
+      coverageEndMs: T0 + DAY_MS + 2,
+      items: archive,
+    }, T0 + DAY_MS + 2, {
+      judgeModels: [
+        async () => ({ provider: 'openrouter', model: 'deepseek/deepseek-v4-flash', outcome: 'VOID', citations: [], rationale: 'Archive is insufficient.' }),
+        async () => ({ provider: 'groq', model: 'llama-3.3-70b-versatile', outcome: 'VOID', citations: [], rationale: 'Not enough coverage.' }),
+      ],
+    });
+
+    const row = result.ledger[`fc-judge@${T0 + DAY_MS}`];
+    assert.equal(row.status, 'pending-judge');
+    assert.equal(row.outcome, undefined);
+    assert.equal(row.judgeLastAttempt.reason, 'archive_unavailable');
+    assert.equal(row.judgeLastAttempt.detail, 'archive_window_incomplete');
+    assert.equal(result.receipts.length, 0);
+  });
+
   it('resolves YES/NO judge agreement to VOID when citations lack matching excerpts', async () => {
     const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedForecast()])], {}, archive, T0 + DAY_MS + 2, {
       judgeModels: [
@@ -432,6 +457,78 @@ describe('processResolutionCycleWithJudges', () => {
     assert.equal(result.receipts.length, 0);
   });
 
+  it('does not fall back to live judges when an injected judge list is incomplete', async () => {
+    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedForecast()])], {}, archive, T0 + DAY_MS + 2, {
+      judgeModels: [
+        async () => ({ provider: 'openrouter', model: 'deepseek/deepseek-v4-flash', outcome: 'YES', citations: [{ id: 'N1', quote: 'The bill passed before the forecast deadline' }], rationale: 'The article says it passed.' }),
+      ],
+    });
+
+    const row = result.ledger[`fc-judge@${T0 + DAY_MS}`];
+    assert.equal(row.status, 'pending-judge');
+    assert.equal(row.outcome, undefined);
+    assert.equal(row.judgeLastAttempt.reason, 'judge_unavailable');
+    assert.equal(row.judgeLastAttempt.detail, 'fewer_than_two_models');
+    assert.equal(result.receipts.length, 0);
+  });
+
+  it('keeps the entry pending when a judge returns unparseable text', async () => {
+    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedForecast()])], {}, archive, T0 + DAY_MS + 2, {
+      judgeModels: [
+        async () => ({ provider: 'openrouter', model: 'deepseek/deepseek-v4-flash', outcome: 'YES', citations: [{ id: 'N1', quote: 'The bill passed before the forecast deadline' }], rationale: 'The article says it passed.' }),
+        async () => ({ provider: 'groq', model: 'llama-3.3-70b-versatile', text: 'not-json' }),
+      ],
+    });
+
+    const row = result.ledger[`fc-judge@${T0 + DAY_MS}`];
+    assert.equal(row.status, 'pending-judge');
+    assert.equal(row.judgeLastAttempt.reason, 'judge_unavailable');
+    assert.equal(row.judgeLastAttempt.detail, 'invalid_judge_response');
+    assert.equal(result.receipts.length, 0);
+  });
+
+  it('caps judged attempts per run', async () => {
+    let judgeCalls = 0;
+    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [
+      judgedForecast({ id: 'fc-judge-1' }),
+      judgedForecast({ id: 'fc-judge-2' }),
+    ])], {}, archive, T0 + DAY_MS + 2, {
+      maxJudgedEntries: 1,
+      judgeModels: [
+        async () => {
+          judgeCalls += 1;
+          return { outcome: 'YES', citations: [{ id: 'N1', quote: 'The bill passed before the forecast deadline' }] };
+        },
+        async () => {
+          judgeCalls += 1;
+          return { outcome: 'YES', citations: [{ id: 'N1', quote: 'The bill passed before the forecast deadline' }] };
+        },
+      ],
+    });
+
+    const rows = Object.values(result.ledger);
+    assert.equal(rows.filter((row) => row.status === 'resolved').length, 1);
+    assert.equal(rows.filter((row) => row.status === 'pending-judge').length, 1);
+    assert.equal(result.receipts.length, 1);
+    assert.equal(judgeCalls, 2);
+  });
+
+  it('does not start judge calls when the remaining run budget is below the admission floor', async () => {
+    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedForecast()])], {}, archive, T0 + DAY_MS + 2, {
+      deadlineMs: Date.now() + 2_000,
+      minJudgeStageBudgetMs: 5_000,
+      judgeModels: [
+        async () => { throw new Error('judge should not start when the run budget is exhausted'); },
+        async () => { throw new Error('judge should not start when the run budget is exhausted'); },
+      ],
+    });
+
+    const row = result.ledger[`fc-judge@${T0 + DAY_MS}`];
+    assert.equal(row.status, 'pending-judge');
+    assert.equal(row.judgeLastAttempt, undefined);
+    assert.equal(result.receipts.length, 0);
+  });
+
   it('marks capped archive reads as truncated instead of complete', async () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
@@ -458,6 +555,163 @@ describe('processResolutionCycleWithJudges', () => {
 });
 
 describe('readDigestAccumulatorArchive', () => {
+  it('rejects missing Redis credentials without exiting the process', async () => {
+    const originalExit = process.exit;
+    let exitCalled = false;
+    process.exit = (() => {
+      exitCalled = true;
+      throw new Error('process.exit should not be called');
+    });
+    try {
+      await assert.rejects(
+        readDigestAccumulatorArchive(T0, T0 + DAY_MS, { env: {} }),
+        /Missing UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN/,
+      );
+      assert.equal(exitCalled, false);
+    } finally {
+      process.exit = originalExit;
+    }
+  });
+
+  it('bounds the Redis archive query to the retention floor and hash limit', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    let zsetCommand;
+    let pipelineCommands;
+    const nowMs = T0 + 5 * DAY_MS;
+    globalThis.fetch = async (url, init) => {
+      if (String(url).endsWith('/pipeline')) {
+        pipelineCommands = JSON.parse(init.body);
+        return {
+          ok: true,
+          json: async () => pipelineCommands.map(([, key]) => ({
+            result: ['title', `Story ${key}`, 'description', 'Policy change context', 'publishedAt', String(T0 + 1)],
+          })),
+        };
+      }
+      zsetCommand = JSON.parse(init.body);
+      return {
+        ok: true,
+        json: async () => ({ result: ['new-hash', 'old-hash', 'extra-hash'] }),
+      };
+    };
+
+    const archive = await readDigestAccumulatorArchive(T0 - 30 * DAY_MS, nowMs, { maxHashes: 2 });
+
+    assert.deepEqual(zsetCommand, [
+      'ZREVRANGEBYSCORE',
+      JUDGED_ARCHIVE_KEY,
+      String(nowMs),
+      String(nowMs - JUDGED_ARCHIVE_RETENTION_MS),
+      'LIMIT',
+      '0',
+      '2',
+    ]);
+    assert.deepEqual(pipelineCommands.map(([, key]) => key), [
+      'story:track:v1:new-hash',
+      'story:track:v1:old-hash',
+    ]);
+    assert.equal(archive.coverageStartMs, nowMs - JUDGED_ARCHIVE_RETENTION_MS);
+    assert.equal(archive.items.length, 2);
+    assert.equal(archive.truncated, true);
+  });
+
+  it('normalizes object-shaped HGETALL rows', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    globalThis.fetch = async (url) => {
+      if (String(url).endsWith('/pipeline')) {
+        return {
+          ok: true,
+          json: async () => [{
+            result: {
+              title: 'Policy change passes',
+              description: 'The bill passed.',
+              publishedAt: String(T0 + 1),
+            },
+          }],
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({ result: ['hash-1'] }),
+      };
+    };
+
+    const archive = await readDigestAccumulatorArchive(T0, T0 + DAY_MS, { maxHashes: 2 });
+
+    assert.equal(archive.items.length, 1);
+    assert.equal(archive.items[0].hash, 'hash-1');
+    assert.equal(archive.items[0].title, 'Policy change passes');
+  });
+
+  it('skips missing story-track rows but marks the archive incomplete', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    globalThis.fetch = async (url) => {
+      if (String(url).endsWith('/pipeline')) {
+        return {
+          ok: true,
+          json: async () => [
+            { result: [] },
+            { result: ['title', 'Policy change passes', 'description', 'The bill passed.', 'publishedAt', String(T0 + 1)] },
+          ],
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({ result: ['missing-hash', 'hash-2'] }),
+      };
+    };
+
+    const archive = await readDigestAccumulatorArchive(T0, T0 + DAY_MS);
+
+    assert.equal(archive.items.length, 1);
+    assert.equal(archive.truncated, true);
+    assert.equal(archive.missingRows, 1);
+    assert.equal(archive.items[0].hash, 'hash-2');
+  });
+
+  it('does not seal no-evidence judged forecasts when every archive row is missing', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    globalThis.fetch = async (url) => {
+      if (String(url).endsWith('/pipeline')) {
+        return {
+          ok: true,
+          json: async () => [{ result: [] }],
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({ result: ['missing-hash'] }),
+      };
+    };
+
+    const archive = await readDigestAccumulatorArchive(T0, T0 + DAY_MS);
+    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [forecast({
+      id: 'judge-missing-archive-row',
+      domain: 'political',
+      region: 'Freedonia',
+      title: 'Policy change passes',
+      resolution: {
+        kind: 'judged',
+        deadline: T0 + 1,
+        question: 'Will the emergency policy change pass before the deadline?',
+      },
+    })])], {}, archive, T0 + DAY_MS, {
+      judgeModels: [
+        async () => { throw new Error('judge should not be called without relevant archive evidence'); },
+        async () => { throw new Error('judge should not be called without relevant archive evidence'); },
+      ],
+    });
+
+    const row = result.ledger[`judge-missing-archive-row@${T0 + 1}`];
+    assert.equal(row.status, 'pending-judge');
+    assert.equal(row.judgeLastAttempt.reason, 'archive_unavailable');
+    assert.equal(result.receipts.length, 0);
+  });
+
   it('fails closed when a same-length Redis pipeline response has an invalid story row', async () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
@@ -502,6 +756,19 @@ describe('appendSample and seed contract', () => {
     assert.equal(SCORECARD_KEY, 'forecast:scorecard:v1');
     assert.equal(SCORECARD_META_KEY, 'seed-meta:forecast:scorecard');
     assert.equal(declareRecords({ a: {}, b: {} }), 2);
+  });
+
+  it('keeps dry-run on the judged path without live LLM calls', () => {
+    const dryRunStart = SEEDER_SOURCE.indexOf('async function dryRun()');
+    const dryRunEnd = SEEDER_SOURCE.indexOf('export async function appendR2Receipts');
+    const dryRunSource = SEEDER_SOURCE.slice(dryRunStart, dryRunEnd);
+
+    assert.ok(dryRunStart > -1);
+    assert.ok(dryRunEnd > dryRunStart);
+    assert.match(dryRunSource, /processResolutionCycleWithJudges/);
+    assert.match(dryRunSource, /judgedMode:\s*'no-llm'/);
+    assert.match(dryRunSource, /judgeModels:\s*dryRunJudgeModels/);
+    assert.doesNotMatch(dryRunSource, /processResolutionCycle\(/);
   });
 
   it('keeps terminal receipts retryable until R2 archival is marked successful', () => {
@@ -612,7 +879,7 @@ describe('pruneArchivedTerminalEntries', () => {
       },
       // pending forever → kept (still needs resolution)
       'pending@1': { key: 'pending@1', id: 'pending', status: 'pending' },
-      // judged spec awaiting a judge resolver that has not shipped → kept
+      // judged spec awaiting resolution → kept
       'judge@1': { key: 'judge@1', id: 'judge', status: 'pending-judge' },
       // resolved+archived but missing resolvedAt → kept (cannot age-check safely)
       'no-resolvedat@1': {
