@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  buildForecastInputFetchKeys,
   buildForecastInputPresenceRows,
   warnOnMissingForecastInputs,
 } from '../scripts/seed-forecasts.mjs';
@@ -57,6 +58,62 @@ describe('forecast input observability', () => {
     assert.equal(rows.find((row) => row.key === 'unrest:events:v1')?.records, 1);
   });
 
+  it('counts temporal anomaly snapshots by tracked coverage, not rare anomalies', () => {
+    const rows = buildForecastInputPresenceRows({
+      'temporal:anomalies:v1': {
+        anomalies: [],
+        trackedTypes: ['news', 'satellite_fires'],
+        computedAt: '2026-07-09T00:00:00.000Z',
+      },
+    });
+
+    assert.equal(rows.find((row) => row.key === 'temporal:anomalies:v1')?.records, 2);
+  });
+
+  it('requires prediction-market bootstrap coverage to include finance markets', () => {
+    const rows = buildForecastInputPresenceRows({
+      'prediction:markets-bootstrap:v1': {
+        geopolitical: [{ id: 'geo-1' }],
+        tech: [],
+        finance: [],
+      },
+    });
+
+    assert.equal(rows.find((row) => row.key === 'prediction:markets-bootstrap:v1')?.records, 0);
+
+    const coveredRows = buildForecastInputPresenceRows({
+      'prediction:markets-bootstrap:v1': {
+        geopolitical: [{ id: 'geo-1' }],
+        tech: [],
+        finance: [{ id: 'fin-1' }],
+      },
+    });
+
+    assert.equal(coveredRows.find((row) => row.key === 'prediction:markets-bootstrap:v1')?.records, 2);
+  });
+
+  it('sums generic top-level array collections instead of taking the largest sibling', () => {
+    const rows = buildForecastInputPresenceRows({
+      'conflict:ema-windows:v1': {
+        shortWindows: [{ id: 's1' }, { id: 's2' }],
+        longWindows: [{ id: 'l1' }],
+        computedAt: '2026-07-09T00:00:00.000Z',
+      },
+    });
+
+    assert.equal(rows.find((row) => row.key === 'conflict:ema-windows:v1')?.records, 3);
+
+    const emptyRows = buildForecastInputPresenceRows({
+      'conflict:ema-windows:v1': {
+        shortWindows: [],
+        longWindows: [],
+        computedAt: '2026-07-09T00:00:00.000Z',
+      },
+    });
+
+    assert.equal(emptyRows.find((row) => row.key === 'conflict:ema-windows:v1')?.records, 0);
+  });
+
   it('counts only usable FRED observations, not metadata-only payloads', () => {
     const rows = buildForecastInputPresenceRows({
       'economic:fred:v1:FEDFUNDS:0': {
@@ -69,6 +126,14 @@ describe('forecast input observability', () => {
 
     assert.equal(rows.find((row) => row.key === 'economic:fred:v1:FEDFUNDS:0')?.records, 0);
     assert.equal(rows.find((row) => row.key === 'economic:fred:v1:VIXCLS:0')?.records, 1);
+  });
+
+  it('derives Redis fetch keys from the forecast input feed definitions', () => {
+    const fetchKeys = buildForecastInputFetchKeys();
+    const presenceKeys = buildForecastInputPresenceRows({}).map((row) => row.key);
+
+    assert.deepEqual(fetchKeys, presenceKeys);
+    assert.equal(new Set(fetchKeys).size, fetchKeys.length);
   });
 
   it('warns once per zero-record forecast input with feed key and count', () => {

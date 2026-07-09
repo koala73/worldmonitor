@@ -40,7 +40,7 @@ export const COUNT_SOURCE_KEYS: Record<string, string> = {
 };
 
 export const TEMPORAL_ANOMALIES_KEY = 'temporal:anomalies:v1';
-export const TEMPORAL_ANOMALIES_TTL = 900;
+export const TEMPORAL_ANOMALIES_TTL = 3600;
 export const BASELINE_LOCK_KEY = 'baseline:lock';
 export const BASELINE_LOCK_TTL = 30;
 

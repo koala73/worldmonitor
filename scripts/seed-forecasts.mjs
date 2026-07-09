@@ -292,11 +292,29 @@ function countObjectCollection(payload) {
   const arrayLengths = Object.values(payload)
     .filter((value) => Array.isArray(value))
     .map((value) => value.length);
-  if (arrayLengths.length > 0) return Math.max(...arrayLengths);
+  if (arrayLengths.length > 0) {
+    return arrayLengths.reduce((sum, length) => sum + length, 0);
+  }
 
   return Object.entries(payload)
     .filter(([key, value]) => value != null && !['asOf', 'generatedAt', 'computedAt', 'fetchedAt', 'source', 'version'].includes(key))
     .length;
+}
+
+function countTemporalAnomalySnapshotRecords(payload) {
+  if (Array.isArray(payload)) return payload.length;
+  if (!payload || typeof payload !== 'object') return 0;
+  if (Array.isArray(payload.trackedTypes)) return payload.trackedTypes.length;
+  return countArrayField(payload, 'anomalies');
+}
+
+function countPredictionMarketRecords(payload) {
+  const geopoliticalCount = countArrayField(payload, 'geopolitical');
+  const techCount = countArrayField(payload, 'tech');
+  const financeCount = countArrayField(payload, 'finance');
+  return (geopoliticalCount > 0 || techCount > 0) && financeCount > 0
+    ? geopoliticalCount + techCount + financeCount
+    : 0;
 }
 
 function countFredSeriesRecords(payload) {
@@ -307,10 +325,10 @@ function countFredSeriesRecords(payload) {
 function buildForecastInputFeedDefinitions() {
   return [
     { key: CII_RISK_SCORE_CACHE_KEYS.stale, label: 'ciiScores', countRecords: countObjectCollection },
-    { key: 'temporal:anomalies:v1', label: 'temporalAnomalies', countRecords: (value) => countArrayField(value, 'anomalies') },
+    { key: 'temporal:anomalies:v1', label: 'temporalAnomalies', countRecords: countTemporalAnomalySnapshotRecords },
     { key: 'theater_posture:sebuf:stale:v1', label: 'theaterPosture', countRecords: countObjectCollection },
     { key: 'military:forecast-inputs:stale:v1', label: 'militaryForecastInputs', countRecords: (value) => countArrayField(value, 'theaters') + countArrayField(value, 'surges') },
-    { key: 'prediction:markets-bootstrap:v1', label: 'predictionMarkets', countRecords: countObjectCollection },
+    { key: 'prediction:markets-bootstrap:v1', label: 'predictionMarkets', countRecords: countPredictionMarketRecords },
     { key: 'supply_chain:chokepoints:v4', label: 'chokepoints', countRecords: countObjectCollection },
     { key: 'conflict:iran-events:v1', label: 'iranEvents', countRecords: (value) => countArrayField(value, 'events'), enabled: iranEventsEnabled },
     { key: 'conflict:ucdp-events:v1', label: 'ucdpEvents', countRecords: (value) => countArrayField(value, 'events') },
@@ -341,6 +359,12 @@ function buildForecastInputFeedDefinitions() {
       countRecords: countFredSeriesRecords,
     })),
   ];
+}
+
+function buildForecastInputFetchKeys() {
+  return buildForecastInputFeedDefinitions()
+    .filter((feed) => !feed.enabled || feed.enabled())
+    .map((feed) => feed.key);
 }
 
 function buildForecastInputPresenceRows(parsedByKey = {}) {
@@ -828,41 +852,7 @@ async function warmPingChokepoints() {
 
 async function readInputKeys() {
   const { url, token } = getRedisCredentials();
-  const fredKeys = FRED_MARKET_SERIES.map((seriesId) => FRED_MARKET_INPUT_KEYS[seriesId]);
-  const keys = [
-    CII_RISK_SCORE_CACHE_KEYS.stale,
-    'temporal:anomalies:v1',
-    'theater_posture:sebuf:stale:v1',
-    'military:forecast-inputs:stale:v1',
-    'prediction:markets-bootstrap:v1',
-    'supply_chain:chokepoints:v4',
-    // Iran-events sunset: don't fetch the (dormant) key into the pipeline batch
-    // when disabled — the assembly below already feeds empty iranEvents.
-    ...(iranEventsEnabled() ? ['conflict:iran-events:v1'] : []),
-    'conflict:ucdp-events:v1',
-    'unrest:events:v1',
-    'infra:outages:v1',
-    'cyber:threats-bootstrap:v2',
-    'intelligence:gpsjam:v2',
-    'news:insights:v1',
-    'news:digest:v1:full:en',
-    'sanctions:pressure:v1',
-    'thermal:escalation:v1',
-    MARKET_INPUT_KEYS.stocks,
-    MARKET_INPUT_KEYS.commodities,
-    MARKET_INPUT_KEYS.sectors,
-    MARKET_INPUT_KEYS.gulfQuotes,
-    MARKET_INPUT_KEYS.etfFlows,
-    MARKET_INPUT_KEYS.crypto,
-    MARKET_INPUT_KEYS.stablecoins,
-    MARKET_INPUT_KEYS.bisExchange,
-    MARKET_INPUT_KEYS.bisPolicy,
-    MARKET_INPUT_KEYS.shippingRates,
-    MARKET_INPUT_KEYS.correlationCards,
-    'conflict:acled:v1:all:0:0',
-    'conflict:ema-windows:v1',
-    ...fredKeys,
-  ];
+  const keys = buildForecastInputFetchKeys();
   // Sized for Upstash REST /pipeline payload limits.
   //
   // STRLEN audit 2026-04-14: 40 input keys total ~2.27 MB; top 5 keys
@@ -18360,6 +18350,8 @@ export {
   buildForecastTraceArtifactKeys,
   parseForecastRunGeneratedAt,
   readInputKeys,
+  buildForecastInputFeedDefinitions,
+  buildForecastInputFetchKeys,
   buildForecastInputPresenceRows,
   warnOnMissingForecastInputs,
   readForecastTraceArtifactsForRun,
