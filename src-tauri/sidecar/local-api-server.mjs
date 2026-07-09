@@ -1291,7 +1291,7 @@ async function dispatch(requestUrl, req, routes, context) {
   // and dependency-free: a 200 here proves the sidecar process is up and
   // routing (and, when reached via nginx /api/, that the whole request path
   // works end-to-end). Does not touch cloud, Redis, or any data source.
-  if (requestUrl.pathname === '/api/health') {
+  if (requestUrl.pathname === '/api/sidecar-health') {
     return json({ status: 'ok', mode: context.mode, port: context.port });
   }
 

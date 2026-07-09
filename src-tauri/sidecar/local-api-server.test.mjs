@@ -1809,6 +1809,75 @@ test('allows unauthenticated requests to /api/service-status (health check exemp
   }
 });
 
+test('allows unauthenticated requests to /api/sidecar-health (container healthcheck exempt)', async () => {
+  const localApi = await setupApiDir({});
+  const originalToken = process.env.LOCAL_API_TOKEN;
+  process.env.LOCAL_API_TOKEN = 'security-test-token';
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/sidecar-health`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.status, 'ok');
+    assert.equal(body.port, port);
+  } finally {
+    if (originalToken !== undefined) {
+      process.env.LOCAL_API_TOKEN = originalToken;
+    } else {
+      delete process.env.LOCAL_API_TOKEN;
+    }
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('/api/health?compact=1 still dispatches to the bundled health handler', async () => {
+  const localApi = await setupApiDir({
+    'health.js': `
+      export default async function handler(req) {
+        return new Response(JSON.stringify({
+          source: 'bundled-health',
+          url: req.url,
+        }), { headers: { 'content-type': 'application/json' } });
+      }
+    `,
+  });
+  const originalToken = process.env.LOCAL_API_TOKEN;
+  process.env.LOCAL_API_TOKEN = 'security-test-token';
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/health?compact=1`, {
+      headers: { Authorization: 'Bearer security-test-token' },
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.source, 'bundled-health');
+    assert.match(body.url, /\/api\/health\?compact=1$/);
+  } finally {
+    if (originalToken !== undefined) {
+      process.env.LOCAL_API_TOKEN = originalToken;
+    } else {
+      delete process.env.LOCAL_API_TOKEN;
+    }
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
 test('default-deny: rejects every authenticated route when LOCAL_API_TOKEN is unset', async () => {
   // Regression for the security advisory fix: previously, an unset
   // LOCAL_API_TOKEN was treated as "auth disabled", which made any
@@ -1837,7 +1906,7 @@ test('default-deny: rejects every authenticated route when LOCAL_API_TOKEN is un
 
     // Health check is still exempt — it runs before the auth gate so
     // operators can probe a misconfigured sidecar.
-    const health = await fetch(`http://127.0.0.1:${port}/api/service-status`);
+    const health = await fetch(`http://127.0.0.1:${port}/api/sidecar-health`);
     assert.equal(health.status, 200);
   } finally {
     if (originalToken !== undefined) {
