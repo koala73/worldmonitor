@@ -248,6 +248,21 @@ function assertGccInvestmentsFocusHelperIsLoadedOnce(source: string) {
   );
 }
 
+function assertDestroyOnceIsolatesPanelThrows(source: string) {
+  const start = source.indexOf('const destroyOnce =');
+  assert.notEqual(start, -1, 'destroyOnce helper not found');
+  // Bound the helper body at its arrow closing so the assertion can't match a
+  // try/catch that belongs to some later statement in destroy().
+  const end = source.indexOf('\n    };', start);
+  assert.ok(end > start, 'destroyOnce helper body boundary not found');
+  const body = source.slice(start, end);
+  assert.match(
+    body,
+    /try \{\s*target\.destroy\?\.\(\);\s*\} catch/,
+    'destroyOnce must wrap target.destroy?.() in try/catch so one panel throwing cannot abort the rest of teardown (App.destroy() iterates modules without its own try/catch).',
+  );
+}
+
 const SPLIT_RISK_PANEL_IMPORTS: Array<[string, string, string]> = [
   ['pipeline-status', '@/components/PipelineStatusPanel', 'PipelineStatusPanel'],
   ['storage-facility-map', '@/components/StorageFacilityMapPanel', 'StorageFacilityMapPanel'],
@@ -301,6 +316,11 @@ describe('panel-layout lazy dynamic-import guard (WORLDMONITOR-R4)', () => {
   it('GCC investments map focus helper is loaded once during panel load', async () => {
     const source = await readFile(filePath, 'utf8');
     assertGccInvestmentsFocusHelperIsLoadedOnce(source);
+  });
+
+  it('destroy() isolates a single panel destroy() throw from the rest of teardown', async () => {
+    const source = await readFile(filePath, 'utf8');
+    assertDestroyOnceIsolatesPanelThrows(source);
   });
 
   it('token-aware brace walker skips strings/templates/comments', () => {

@@ -442,7 +442,15 @@ export class PanelLayoutManager implements AppModule {
     const destroyOnce = (target: { destroy?: () => void } | null | undefined): void => {
       if (!target || destroyedTargets.has(target)) return;
       destroyedTargets.add(target);
-      target.destroy?.();
+      // Isolate each destroy(): teardown runs over every registered panel, so a
+      // single panel throwing must not abort the remaining panel/subscription/
+      // overlay cleanup below (nor the rest of App.destroy(), which iterates
+      // modules without its own try/catch).
+      try {
+        target.destroy?.();
+      } catch (err) {
+        console.error('[panel] destroy() threw during teardown', err);
+      }
     };
     if (this.boundWidgetCreatorHandler) {
       this.ctx.container.removeEventListener('wm:open-widget-creator', this.boundWidgetCreatorHandler);
@@ -488,6 +496,8 @@ export class PanelLayoutManager implements AppModule {
     this.ctx.digestPanel = null;
     destroyOnce(this.ctx.speciesPanel);
     this.ctx.speciesPanel = null;
+    destroyOnce(this.ctx.positivePanel);
+    this.ctx.positivePanel = null;
     destroyOnce(this.ctx.renewablePanel);
     this.ctx.renewablePanel = null;
 
@@ -502,6 +512,11 @@ export class PanelLayoutManager implements AppModule {
     }
     for (const key of Object.keys(this.ctx.panels)) {
       delete this.ctx.panels[key];
+    }
+    // News panels are the same instances just destroyed above; drop the
+    // secondary index so it never hands out a torn-down panel post-destroy.
+    for (const key of Object.keys(this.ctx.newsPanels)) {
+      delete this.ctx.newsPanels[key];
     }
 
     // Clean up billing subscription watch + entitlement subscription
