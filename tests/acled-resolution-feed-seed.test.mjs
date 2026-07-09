@@ -11,6 +11,10 @@ function source(path) {
   return readFileSync(resolve(root, path), 'utf8');
 }
 
+function assertObjectProperty(sourceText, objectName, propertyPattern) {
+  assert.match(sourceText, new RegExp(`${objectName}:\\s*\\{[^}]*${propertyPattern}`, 's'));
+}
+
 describe('ACLED resolution-feed seed contract (#5076)', () => {
   const conflictSeed = source('scripts/seed-conflict-intel.mjs');
   const unrestSeed = source('scripts/seed-unrest-events.mjs');
@@ -51,8 +55,10 @@ describe('ACLED resolution-feed seed contract (#5076)', () => {
 
   it('health surfaces the ACLED display cache and seeder heartbeat (#5099)', () => {
     assert.match(healthApi, /acledIntel:\s*'conflict:acled:v1:all:0:0'/);
-    assert.match(healthApi, /acledIntel:\s*\{\s*key:\s*'seed-meta:conflict:acled-intel',\s*maxStaleMin:\s*38\s*\}/);
-    assert.match(seedHealthApi, /'conflict:acled-intel':\s*\{\s*key:\s*'seed-meta:conflict:acled-intel',\s*intervalMin:\s*19\s*\}/);
+    assertObjectProperty(healthApi, 'acledIntel', "key:\\s*'seed-meta:conflict:acled-intel'");
+    assertObjectProperty(healthApi, 'acledIntel', 'maxStaleMin:\\s*38');
+    assertObjectProperty(seedHealthApi, "'conflict:acled-intel'", "key:\\s*'seed-meta:conflict:acled-intel'");
+    assertObjectProperty(seedHealthApi, "'conflict:acled-intel'", 'intervalMin:\\s*19');
   });
 
   it('unrest seeder keeps the canonical display feed but also publishes a paginated 60d ACLED resolution feed', () => {

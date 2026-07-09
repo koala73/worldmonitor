@@ -221,10 +221,6 @@ test('classifyKey: issue #5055 strict seeds surface missing metadata instead of 
 });
 
 test('classifyKey: issue #5099 ACLED display feed is strict, not on-demand softened', () => {
-  assert.equal(STANDALONE_KEYS.acledIntel, 'conflict:acled:v1:all:0:0');
-  assert.equal(SEED_META.acledIntel?.key, 'seed-meta:conflict:acled-intel');
-  assert.equal(SEED_META.acledIntel?.maxStaleMin, 38);
-
   const missing = classifyKey('acledIntel', STANDALONE_KEYS.acledIntel, { allowOnDemand: true },
     makeCtx({}));
   assert.equal(missing.status, 'EMPTY');
