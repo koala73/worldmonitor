@@ -276,7 +276,7 @@ describe('calibrateWithMarkets', () => {
       0.45, 0.6, '30d', [],
     );
     calibrateWithMarkets([pred], {
-      geopolitical: [{ title: 'Will Sudan reach a ceasefire by Q3?', yesPrice: 85, source: 'polymarket', volume: 50000 }],
+      geopolitical: [{ title: 'Will the Sudan conflict reach a ceasefire by Q3?', yesPrice: 85, source: 'polymarket', volume: 50000 }],
     });
     assert.equal(pred.calibration, null);
     assert.equal(pred.probability, 0.45);
@@ -288,7 +288,7 @@ describe('calibrateWithMarkets', () => {
       0.6, 0.5, '7d', [{ type: 'ceasefire', value: 'ceasefire holds', weight: 0.4 }],
     );
     calibrateWithMarkets([pred], {
-      geopolitical: [{ title: 'Will Sudan conflict escalate by Q3?', yesPrice: 85, source: 'polymarket', volume: 50000 }],
+      geopolitical: [{ title: 'Will the Sudan ceasefire fail by Q3?', yesPrice: 85, source: 'polymarket', volume: 50000 }],
     });
     assert.equal(pred.calibration, null);
     assert.equal(pred.probability, 0.6);

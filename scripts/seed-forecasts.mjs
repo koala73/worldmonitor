@@ -2087,6 +2087,15 @@ const MARKET_ADVERSE_OUTCOME_TERMS = [
   'instability', 'crisis', 'disruption', 'shock', 'stress', 'collapse',
   'fail', 'breach', 'violate', 'reject', 'resume', 'renewed',
 ];
+const MARKET_STEM_OUTCOME_TERMS = new Set([
+  'de-escalat', 'deescalat', 'stabiliz', 'normaliz', 'escalat',
+]);
+const MARKET_DE_ESCALATION_ANCHOR_PATTERN = String.raw`(?:ceasefire|truce|peace(?: agreement| deal)?|agreement)`;
+const MARKET_DE_ESCALATION_FAILURE_PATTERN = String.raw`(?:fail(?:s|ed|ure)?|collapse(?:s|d)?|break(?:s|ing)? down|breakdown|breach(?:es|ed)?|violat(?:e|es|ed|ion)|reject(?:s|ed)?|expire(?:s|d)?|end(?:s|ed)?)`;
+const MARKET_FAILED_DE_ESCALATION_PATTERNS = [
+  new RegExp(String.raw`\b${MARKET_DE_ESCALATION_ANCHOR_PATTERN}\b.{0,40}\b${MARKET_DE_ESCALATION_FAILURE_PATTERN}\b`),
+  new RegExp(String.raw`\b${MARKET_DE_ESCALATION_FAILURE_PATTERN}\b.{0,40}\b${MARKET_DE_ESCALATION_ANCHOR_PATTERN}\b`),
+];
 
 const DOMAIN_ACTOR_BLUEPRINTS = {
   conflict: [
@@ -2286,19 +2295,27 @@ function computeMarketMatchScore(pred, marketTitle, regionTerms, options = {}) {
   };
 }
 
-function textHasAnyStem(text, terms) {
+function textHasAnyOutcomeTerm(text, terms) {
   const lower = String(text || '').toLowerCase();
-  return terms.some((term) => lower.includes(term));
+  return terms.some((term) => {
+    const lowerTerm = String(term || '').toLowerCase().trim();
+    if (!lowerTerm) return false;
+    if (MARKET_STEM_OUTCOME_TERMS.has(lowerTerm)) return lower.includes(lowerTerm);
+    return textIncludesTerm(lower, lowerTerm);
+  });
 }
 
-function marketYesOutcomeLooksDeEscalatory(marketTitle) {
-  if (!textHasAnyStem(marketTitle, MARKET_DE_ESCALATION_OUTCOME_TERMS)) return false;
-  return !textHasAnyStem(marketTitle, MARKET_ADVERSE_OUTCOME_TERMS);
+function marketTitleHasFailedDeEscalationOutcome(marketTitle) {
+  const lower = String(marketTitle || '').toLowerCase();
+  if (!textHasAnyOutcomeTerm(lower, MARKET_DE_ESCALATION_OUTCOME_TERMS)) return false;
+  return MARKET_FAILED_DE_ESCALATION_PATTERNS.some((pattern) => pattern.test(lower));
 }
 
-function marketYesOutcomeLooksAdverse(marketTitle) {
-  if (!textHasAnyStem(marketTitle, MARKET_ADVERSE_OUTCOME_TERMS)) return false;
-  return !textHasAnyStem(marketTitle, MARKET_DE_ESCALATION_OUTCOME_TERMS);
+function classifyMarketYesOutcome(marketTitle) {
+  if (marketTitleHasFailedDeEscalationOutcome(marketTitle)) return 'adverse';
+  if (textHasAnyOutcomeTerm(marketTitle, MARKET_DE_ESCALATION_OUTCOME_TERMS)) return 'deescalatory';
+  if (textHasAnyOutcomeTerm(marketTitle, MARKET_ADVERSE_OUTCOME_TERMS)) return 'adverse';
+  return 'unknown';
 }
 
 function predictionYesOutcomeLooksDeEscalatory(pred) {
@@ -2306,13 +2323,14 @@ function predictionYesOutcomeLooksDeEscalatory(pred) {
     .map((signal) => `${signal?.type || ''} ${signal?.value || ''}`)
     .join(' ');
   const text = `${pred.title || ''} ${pred.scenario || ''} ${signalText}`;
-  if (!textHasAnyStem(text, MARKET_DE_ESCALATION_OUTCOME_TERMS)) return false;
-  return !textHasAnyStem(text, MARKET_ADVERSE_OUTCOME_TERMS);
+  if (!textHasAnyOutcomeTerm(text, MARKET_DE_ESCALATION_OUTCOME_TERMS)) return false;
+  return !textHasAnyOutcomeTerm(text, MARKET_ADVERSE_OUTCOME_TERMS);
 }
 
 function marketOutcomeAlignsPrediction(predictionDeEscalatoryOutcome, marketTitle) {
-  if (marketYesOutcomeLooksDeEscalatory(marketTitle)) return predictionDeEscalatoryOutcome;
-  if (marketYesOutcomeLooksAdverse(marketTitle)) return !predictionDeEscalatoryOutcome;
+  const marketOutcome = classifyMarketYesOutcome(marketTitle);
+  if (marketOutcome === 'deescalatory') return predictionDeEscalatoryOutcome;
+  if (marketOutcome === 'adverse') return !predictionDeEscalatoryOutcome;
   return true;
 }
 
