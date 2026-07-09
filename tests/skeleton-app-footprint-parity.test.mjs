@@ -48,67 +48,119 @@ function ruleBody(source, selectorRe, must) {
   return null;
 }
 
+function mobileBreakpoint() {
+  const bp = utils.match(/MOBILE_BREAKPOINT_PX\s*=\s*(\d+)/);
+  assert.ok(bp, 'Expected MOBILE_BREAKPOINT_PX in src/utils/index.ts');
+  return bp[1];
+}
+
+function matchingBraceIndex(source, openBraceIndex) {
+  let depth = 0;
+  for (let i = openBraceIndex; i < source.length; i += 1) {
+    if (source[i] === '{') depth += 1;
+    else if (source[i] === '}') {
+      depth -= 1;
+      if (depth === 0) return i;
+    }
+  }
+  return -1;
+}
+
+function maxWidthMediaBlocks(source) {
+  const blocks = [];
+  const re = /@media\s*\(max-width:\s*(\d+)px\)\s*\{/g;
+  for (const m of source.matchAll(re)) {
+    const openBrace = source.indexOf('{', m.index);
+    const closeBrace = matchingBraceIndex(source, openBrace);
+    assert.notEqual(closeBrace, -1, `Expected @media (max-width:${m[1]}px) block to close`);
+    blocks.push({
+      breakpoint: m[1],
+      body: source.slice(openBrace + 1, closeBrace),
+    });
+  }
+  return blocks;
+}
+
+function mediaRule(source, selectorRe, must) {
+  for (const block of maxWidthMediaBlocks(source)) {
+    const body = ruleBody(block.body, selectorRe, must);
+    if (body) return { breakpoint: block.breakpoint, body };
+  }
+  return null;
+}
+
+function mediaRuleAtBreakpoint(source, breakpoint, selectorRe, must) {
+  for (const block of maxWidthMediaBlocks(source)) {
+    if (block.breakpoint !== breakpoint) continue;
+    const body = ruleBody(block.body, selectorRe, must);
+    if (body) return body;
+  }
+  return null;
+}
+
 describe('#4580 boot skeleton <-> app footprint parity', () => {
   it('mobile skeleton map reserves the same height as the real .map-section', () => {
     // Source of truth: the full-viewport mobile map rule in main.css.
-    const realMap = ruleBody(css, '\\.map-section', '100dvh');
+    const realMap = mediaRule(css, '\\.map-section', '100dvh');
     assert.ok(realMap, 'Expected a mobile .map-section rule using 100dvh in main.css');
     // The skeleton mirror (the only .skeleton-map rule carrying 100dvh).
-    const skelMap = ruleBody(html, '\\.skeleton-map', '100dvh');
+    const skelMap = mediaRule(html, '\\.skeleton-map', '100dvh');
     assert.ok(
       skelMap,
       'index.html .skeleton-map must mirror the real mobile map height (calc(100dvh - 48px ...)). ' +
         'It currently does not reserve a 100dvh height — the skeleton->app swap will shove #panelsGrid on mobile.',
     );
 
+    assert.equal(
+      skelMap.breakpoint,
+      realMap.breakpoint,
+      'skeleton .skeleton-map and real .map-section must live under the same mobile breakpoint',
+    );
+
     for (const prop of ['height', 'min-height', 'max-height']) {
       assert.deepEqual(
-        declarations(skelMap, prop),
-        declarations(realMap, prop),
+        declarations(skelMap.body, prop),
+        declarations(realMap.body, prop),
         `skeleton .skeleton-map "${prop}" must match real .map-section "${prop}" (#4580 mobile CLS parity)`,
       );
     }
   });
 
   it('mobile skeleton header height matches the real .header height', () => {
-    // Source of truth is the BASE .header height; no rule under @media (max-width:768px)
-    // overrides .header height today (the mobile blocks only touch its padding), so the
-    // base value is the effective mobile height. If a mobile header-height override is
-    // ever added, tighten this to read the effective mobile value instead.
-    const realHeader = ruleBody(css, '(?:^|\\n)\\.header');
-    assert.ok(realHeader, 'Expected a base .header rule in main.css');
-    // The skeleton-header inside the mobile media block (first rule after the query open).
-    // Whitespace-tolerant so a reformat of the (hand-authored, compact) inline CSS doesn't
-    // spuriously fail — we assert the breakpoint value and the height, not the formatting.
-    const skelHeaderMobile = html.match(/@media \(max-width:\s*768px\)\s*\{\s*\.skeleton-header\{([^}]*)\}/);
+    const breakpoint = mobileBreakpoint();
+    const baseHeader = ruleBody(css, '(?:^|\\n)\\.header');
+    assert.ok(baseHeader, 'Expected a base .header rule in main.css');
+    const mobileHeader = mediaRuleAtBreakpoint(css, breakpoint, '\\.header');
+    const effectiveRealHeader =
+      mobileHeader && declarations(mobileHeader, 'height').length > 0 ? mobileHeader : baseHeader;
+    const skelHeaderMobile = mediaRuleAtBreakpoint(html, breakpoint, '\\.skeleton-header');
     assert.ok(
       skelHeaderMobile,
-      'Expected a .skeleton-header rule inside the @media (max-width:768px) skeleton block',
+      `Expected a .skeleton-header rule inside the @media (max-width:${breakpoint}px) skeleton block`,
     );
     assert.deepEqual(
-      declarations(skelHeaderMobile[1], 'height'),
-      declarations(realHeader, 'height'),
+      declarations(skelHeaderMobile, 'height'),
+      declarations(effectiveRealHeader, 'height'),
       'skeleton mobile header height must match the real .header height (#4580 header parity)',
     );
   });
 
   it('skeleton mobile breakpoint matches the app mobile breakpoint (MOBILE_BREAKPOINT_PX)', () => {
-    const bp = utils.match(/MOBILE_BREAKPOINT_PX\s*=\s*(\d+)/);
-    assert.ok(bp, 'Expected MOBILE_BREAKPOINT_PX in src/utils/index.ts');
-    const breakpoint = bp[1];
+    const breakpoint = mobileBreakpoint();
+    const realMap = mediaRule(css, '\\.map-section', '100dvh');
+    assert.ok(realMap, 'Expected a mobile .map-section rule using 100dvh in main.css');
 
     // main.css switches the map to full-viewport at exactly this breakpoint...
-    assert.match(
-      css,
-      new RegExp(`@media \\(max-width:\\s*${breakpoint}px\\)`),
-      `main.css should gate mobile rules at MOBILE_BREAKPOINT_PX (${breakpoint}px)`,
+    assert.equal(
+      realMap.breakpoint,
+      breakpoint,
+      `main.css .map-section should gate mobile rules at MOBILE_BREAKPOINT_PX (${breakpoint}px)`,
     );
     // ...so the skeleton mobile block must use the SAME breakpoint. A 767/768 seam
     // fully de-syncs the skeleton on iPad portrait (exactly 768px CSS width): the app
     // renders the 100dvh map while the skeleton stays on the desktop 50vh map.
-    assert.match(
-      html,
-      new RegExp(`@media \\(max-width:\\s*${breakpoint}px\\)\\s*\\{\\s*\\.skeleton-header`),
+    assert.ok(
+      mediaRuleAtBreakpoint(html, breakpoint, '\\.skeleton-header'),
       `The skeleton mobile block must gate at MOBILE_BREAKPOINT_PX (${breakpoint}px), not a 1px-off seam`,
     );
   });
