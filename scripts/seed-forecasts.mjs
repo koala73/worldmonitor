@@ -1297,6 +1297,11 @@ function capStateDerivedProbability(domain, probability) {
   return Math.min(cap, probability);
 }
 
+function capStateDerivedPredictionProbability(pred, probability) {
+  if (pred?.generationOrigin !== 'state_derived') return probability;
+  return capStateDerivedProbability(pred.domain, probability);
+}
+
 function getStateDerivedMinimumScore(domain, bucketId) {
   if (domain === 'supply_chain') {
     if (bucketId === 'freight') return 0.4;
@@ -2490,7 +2495,8 @@ function calibrateWithMarkets(predictions, markets) {
         drift: +(pred.probability - marketProb).toFixed(3),
         source: match.source || 'polymarket',
       };
-      pred.probability = +(0.4 * marketProb + 0.6 * pred.probability).toFixed(3);
+      const calibratedProbability = 0.4 * marketProb + 0.6 * pred.probability;
+      pred.probability = +capStateDerivedPredictionProbability(pred, calibratedProbability).toFixed(3);
     }
   }
 }

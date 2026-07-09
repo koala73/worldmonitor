@@ -3407,6 +3407,41 @@ describe('stable forecast ids: semantic slots, not volatile titles (#4933)', () 
     assert.equal(supplyChain.probability, 0.85);
   });
 
+  it('keeps state-derived caps after market calibration blends high anchors', () => {
+    const stateUnit = {
+      id: 'state-cap-calibrated-test', label: 'High pressure state', stateKind: 'market_stress',
+      dominantRegion: 'Middle East', regions: ['Middle East'],
+      avgProbability: 1, avgConfidence: 0.8,
+      situationCount: 3, forecastCount: 4,
+    };
+    const bucket = { id: 'energy', label: 'Energy', pressureScore: 1, confidence: 0.8 };
+    const candidate = { score: 1, criticalLift: 0.2, primarySignalType: 'energy_supply_shock', primaryChannel: 'energy' };
+    const market = buildStateDerivedForecast(stateUnit, 'market', bucket, candidate, null);
+    const supplyChain = buildStateDerivedForecast(stateUnit, 'supply_chain', bucket, candidate, null);
+
+    calibrateWithMarkets([market, supplyChain], {
+      geopolitical: [
+        {
+          title: 'Will Middle East energy repricing risk hit extreme levels?',
+          yesPrice: 100,
+          source: 'test-market',
+          volume: 1000,
+        },
+        {
+          title: 'Will Middle East energy supply chain disruption intensify?',
+          yesPrice: 100,
+          source: 'test-market',
+          volume: 1000,
+        },
+      ],
+    });
+
+    assert.ok(market.calibration);
+    assert.ok(supplyChain.calibration);
+    assert.equal(market.probability, 0.85);
+    assert.equal(supplyChain.probability, 0.85);
+  });
+
   it('two DISTINCT state units in the same region+bucket keep distinct ids (no slot collapse)', () => {
     const mkUnit = (id, label) => ({
       id, label, stateKind: 'market_stress',
