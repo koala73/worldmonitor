@@ -2375,6 +2375,14 @@ describe('computeProjections', () => {
     assert.equal(p.projections.d7, 0.5);
     assert.equal(p.projections.d30, 0.5);
   });
+
+  it('de-anchors projections from non-peak emit horizons', () => {
+    const p = makePrediction('market', 'Middle East', 'test', 0.5, 0.5, '30d', []);
+    computeProjections([p]);
+    assert.equal(p.projections.h24, p.probability);
+    assert.equal(p.projections.d7, 0.29);
+    assert.equal(p.projections.d30, 0.21);
+  });
 });
 
 describe('validatePerspectives', () => {
@@ -2534,6 +2542,13 @@ describe('detectUcdpConflictZones', () => {
     assert.equal(result.length, 1);
     assert.equal(result[0].domain, 'conflict');
     assert.equal(result[0].region, 'Syria');
+  });
+
+  it('does not pin the 10-event gate to the old normalization floor', () => {
+    const events = Array.from({ length: 10 }, () => ({ country: 'Sudan' }));
+    const [pred] = detectUcdpConflictZones({ ucdpEvents: { events } });
+    assert.ok(pred);
+    assert.equal(pred.probability, 0.35);
   });
 
   it('skips countries with < 10 events', () => {
@@ -3365,6 +3380,23 @@ describe('stable forecast ids: semantic slots, not volatile titles (#4933)', () 
     const b = buildStateDerivedForecast(mkUnit('Gulf energy stress cluster'), 'market', bucket, candidate, null);
     assert.notEqual(a.title, b.title);
     assert.equal(a.id, b.id);
+  });
+
+  it('caps state-derived market and supply-chain forecasts like first-party detectors', () => {
+    const stateUnit = {
+      id: 'state-cap-test', label: 'High pressure state', stateKind: 'market_stress',
+      dominantRegion: 'Middle East', regions: ['Middle East'],
+      avgProbability: 1, avgConfidence: 0.8,
+      situationCount: 3, forecastCount: 4,
+    };
+    const bucket = { id: 'energy', label: 'Energy', pressureScore: 1, confidence: 0.8 };
+    const candidate = { score: 1, criticalLift: 0.2, primarySignalType: 'energy_supply_shock', primaryChannel: 'energy' };
+
+    const market = buildStateDerivedForecast(stateUnit, 'market', bucket, candidate, null);
+    const supplyChain = buildStateDerivedForecast(stateUnit, 'supply_chain', bucket, candidate, null);
+
+    assert.equal(market.probability, 0.85);
+    assert.equal(supplyChain.probability, 0.85);
   });
 
   it('two DISTINCT state units in the same region+bucket keep distinct ids (no slot collapse)', () => {
