@@ -135,7 +135,6 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  contain: layout paint;
 }
 
 .country-deep-dive .panel-close {
@@ -156,7 +155,6 @@
   height: 100%;
   overflow-y: auto;
   padding: 12px;
-  contain: layout paint;
 }
 
 .cdp-shell {
