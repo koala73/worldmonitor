@@ -131,12 +131,12 @@ describe('aviation budget: call sites are wired to the cap', () => {
     assert.match(src, /flights\.slice\(0, limit\)/);
   });
 
-  it('get-flight-status reserves budget before the upstream call and caches relay errors', () => {
+  it('get-flight-status reserves budget before the upstream call and negative-caches relay errors', () => {
     const src = read('server/worldmonitor/aviation/v1/get-flight-status.ts');
     assert.match(src, /reserveAviationStackCalls\(1, 'request'\)/);
     assert.match(src, /aviation:status:\$\{flightNumber\}:\$\{date\}:\$\{origin\}:v1:\$\{aviationStackBudgetMonth\(\)\}/);
     assert.match(src, /Flight status relay fetch failed/);
-    assert.match(src, /return \{ flights: \[\], source: 'error' \}/);
+    assert.match(src, /unavailableSource = 'error';\n\s+return null;/);
   });
 
   it('seeder reserves its batch against the same shared counter + key', () => {
