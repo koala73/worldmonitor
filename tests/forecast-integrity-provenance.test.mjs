@@ -129,9 +129,12 @@ describe('forecast integrity and provenance surfaces', () => {
       'forecast panel doc must distinguish the extra confidence penalty from the table-driven pressure dampener',
     );
     assert.match(docs, /1% floor and 95% cap/);
-    assert.match(docs, /normalized against each domain curve's peak multiplier/);
+    assert.match(docs, /Market projections use the curve's peak multiplier as the anchor/);
+    assert.match(docs, /other domains use the forecast's emitted horizon/);
     assert.match(seeder, /const PROJECTION_PROBABILITY_FLOOR = 0\.01;/);
     assert.match(seeder, /const PROJECTION_PROBABILITY_CAP = 0\.95;/);
+    assert.match(seeder, /const PROJECTION_PEAK_ANCHORED_DOMAINS = new Set\(\['market'\]\);/);
+    assert.match(seeder, /const anchorKey = projectionAnchorKeyForHorizon\(pred\.timeHorizon\);/);
     assert.match(seeder, /const peakMult = Math\.max\(curve\.h24 \|\| 0, curve\.d7 \|\| 0, curve\.d30 \|\| 0\);/);
     assert.doesNotMatch(seeder, /const anchor = pred\.timeHorizon/);
     assert.match(seeder, /Math\.min\(\s*UCDP_CONFLICT_ZONE_PROB_MAX,\s*UCDP_CONFLICT_ZONE_GATE_PROB_MIN\s*\+/);

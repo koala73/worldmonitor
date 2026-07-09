@@ -2339,11 +2339,11 @@ describe('validateScenarios', () => {
 // ── Phase 3 Tests ──────────────────────────────────────────
 
 describe('computeProjections', () => {
-  it('anchors projection to timeHorizon', () => {
+  it('keeps peak-horizon projection equal to probability', () => {
     const p = makePrediction('conflict', 'Iran', 'test', 0.5, 0.5, '7d', []);
     computeProjections([p]);
     assert.ok(p.projections);
-    // probability should equal the d7 projection (anchored to 7d)
+    // Conflict's 7d multiplier is the domain peak, so it remains the stored probability.
     assert.equal(p.projections.d7, p.probability);
   });
 
@@ -2382,6 +2382,14 @@ describe('computeProjections', () => {
     assert.equal(p.projections.h24, p.probability);
     assert.equal(p.projections.d7, 0.29);
     assert.equal(p.projections.d30, 0.21);
+  });
+
+  it('preserves own-horizon projections for non-market 30d forecasts', () => {
+    const p = makePrediction('conflict', 'Sudan', 'test', 0.35, 0.5, '30d', []);
+    computeProjections([p]);
+    assert.equal(p.projections.d30, p.probability);
+    assert.equal(p.projections.h24, 0.408);
+    assert.equal(p.projections.d7, 0.449);
   });
 });
 

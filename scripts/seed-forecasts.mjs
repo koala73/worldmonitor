@@ -2426,12 +2426,23 @@ const PROJECTION_CURVES = {
 };
 const PROJECTION_PROBABILITY_FLOOR = 0.01;
 const PROJECTION_PROBABILITY_CAP = 0.95;
+const PROJECTION_PEAK_ANCHORED_DOMAINS = new Set(['market']);
+
+function projectionAnchorKeyForHorizon(timeHorizon) {
+  if (timeHorizon === '24h') return 'h24';
+  if (timeHorizon === '30d') return 'd30';
+  return 'd7';
+}
 
 function computeProjections(predictions) {
   for (const pred of predictions) {
     const curve = PROJECTION_CURVES[pred.domain] || { h24: 1, d7: 1, d30: 1 };
     const peakMult = Math.max(curve.h24 || 0, curve.d7 || 0, curve.d30 || 0);
-    const base = peakMult > 0 ? pred.probability / peakMult : pred.probability;
+    const anchorKey = projectionAnchorKeyForHorizon(pred.timeHorizon);
+    const anchorMult = PROJECTION_PEAK_ANCHORED_DOMAINS.has(pred.domain)
+      ? peakMult
+      : (curve[anchorKey] || peakMult);
+    const base = anchorMult > 0 ? pred.probability / anchorMult : pred.probability;
     pred.projections = {
       h24: Math.round(Math.min(PROJECTION_PROBABILITY_CAP, Math.max(PROJECTION_PROBABILITY_FLOOR, base * curve.h24)) * 1000) / 1000,
       d7:  Math.round(Math.min(PROJECTION_PROBABILITY_CAP, Math.max(PROJECTION_PROBABILITY_FLOOR, base * curve.d7)) * 1000) / 1000,
