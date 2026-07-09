@@ -363,15 +363,18 @@ import { applyStoredTheme } from '@/utils/theme-manager';
 import { applyFont } from '@/services/font-settings';
 import { initAnalytics } from '@/services/analytics';
 import { clearChunkReloadGuard, installChunkReloadGuard } from '@/bootstrap/chunk-reload';
+import { initDebugBearRum } from '@/bootstrap/debugbear-rum';
 import { installStaleBundleCheck } from '@/bootstrap/stale-bundle-check';
 import { installSwUpdateHandler } from '@/bootstrap/sw-update';
 
 // Auto-reload on stale chunk 404s after deployment (Vite fires this for modulepreload failures).
 const chunkReloadStorageKey = installChunkReloadGuard(__APP_VERSION__);
 
-// Analytics are secondary startup work: schedule loaders after first paint.
+// Product analytics are secondary startup work; RUM starts once the trusted
+// dashboard entry executes so it can observe page-load vitals.
 void initAnalytics();
 initVercelAnalytics();
+initDebugBearRum();
 
 // Initialize dynamic meta tags for sharing
 initMetaTags();

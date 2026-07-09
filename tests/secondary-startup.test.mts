@@ -26,6 +26,11 @@ describe('secondary dashboard startup', () => {
       'Umami must be injected by the deferred dashboard loader, not index.html',
     );
     assert.equal(
+      /<script\b[^>]+src=["']https:\/\/cdn\.debugbear\.com\/lpMwA9KpC6pf\.js["']/i.test(activeMarkup),
+      false,
+      'DebugBear RUM must be injected by the dashboard loader, not index.html',
+    );
+    assert.equal(
       /<link\b[^>]+rel=["']preconnect["'][^>]+href=["']https:\/\/o4509927897890816\.ingest\.us\.sentry\.io["']/i.test(activeMarkup),
       false,
       'Sentry ingest preconnect must not compete with initial dashboard paint',
@@ -51,6 +56,7 @@ describe('secondary dashboard startup', () => {
     const scriptSrc = dashboardCsp.match(/script-src\s+([^;]+)/)?.[1] ?? '';
     assert.match(scriptSrc, /'strict-dynamic'/);
     assert.doesNotMatch(scriptSrc, /https:\/\/abacus\.worldmonitor\.app/);
+    assert.doesNotMatch(scriptSrc, /https:\/\/cdn\.debugbear\.com/);
     assert.doesNotMatch(scriptSrc, /https:\/\/static\.cloudflareinsights\.com/);
     assert.doesNotMatch(dashboardCsp, /style-src[^;]*https:\/\/fonts\.googleapis\.com/);
     assert.match(dashboardCsp, /font-src[^;]*'self'/);
