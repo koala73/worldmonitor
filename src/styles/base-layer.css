@@ -10,3 +10,6 @@
 @import url('./country-deep-dive.css') layer(base);
 @import url('./map-context-menu.css') layer(base);
 @import url('./supply-chain-panel.css') layer(base);
+
+/* Private demo overlay. Kept outside @layer so it intentionally wins the UI cascade. */
+@import url('./private-demo.css');
