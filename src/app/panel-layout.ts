@@ -200,6 +200,83 @@ function warnOnDeferredFootprintDrift(key: string, placeholder: HTMLElement, rea
   }
 }
 
+type BootShellFootprintKey = 'header' | 'tabs' | 'main' | 'map' | 'grid';
+
+type BootShellFootprintBox = {
+  height: number;
+  width: number;
+  x: number;
+  y: number;
+};
+
+type BootShellFootprintSnapshot = Partial<Record<BootShellFootprintKey, BootShellFootprintBox>>;
+
+const BOOT_SHELL_FOOTPRINT_TARGETS: ReadonlyArray<{
+  key: BootShellFootprintKey;
+  shellSelector: string;
+  appSelector: string;
+}> = [
+  { key: 'header', shellSelector: '.skeleton-header', appSelector: '.header' },
+  { key: 'tabs', shellSelector: '.skeleton-tabs', appSelector: '#panelTabsMount' },
+  { key: 'main', shellSelector: '.skeleton-main', appSelector: '#main' },
+  { key: 'map', shellSelector: '.skeleton-map', appSelector: '#mapSection' },
+  { key: 'grid', shellSelector: '.skeleton-grid', appSelector: '#panelsGrid' },
+];
+
+function readFootprintBox(root: ParentNode, selector: string): BootShellFootprintBox | null {
+  const el = root.querySelector<Element>(selector);
+  if (!el) return null;
+  const rect = el.getBoundingClientRect();
+  return {
+    height: rect.height,
+    width: rect.width,
+    x: rect.x,
+    y: rect.y,
+  };
+}
+
+function captureBootShellFootprint(root: ParentNode): BootShellFootprintSnapshot | null {
+  if (!root.querySelector('.skeleton-shell')) return null;
+  const snapshot: BootShellFootprintSnapshot = {};
+  for (const target of BOOT_SHELL_FOOTPRINT_TARGETS) {
+    const box = readFootprintBox(root, target.shellSelector);
+    if (box) snapshot[target.key] = box;
+  }
+  return Object.keys(snapshot).length > 0 ? snapshot : null;
+}
+
+function formatFootprintDelta(before: BootShellFootprintBox, after: BootShellFootprintBox): string {
+  const delta = (field: keyof BootShellFootprintBox) => Math.round((after[field] - before[field]) * 10) / 10;
+  return `dx=${delta('x')}, dy=${delta('y')}, dw=${delta('width')}, dh=${delta('height')}`;
+}
+
+function warnOnBootShellFootprintDrift(snapshot: BootShellFootprintSnapshot): void {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      const drifts: string[] = [];
+      for (const target of BOOT_SHELL_FOOTPRINT_TARGETS) {
+        const before = snapshot[target.key];
+        const after = readFootprintBox(document, target.appSelector);
+        if (!before || !after) continue;
+        const maxDelta = Math.max(
+          Math.abs(after.x - before.x),
+          Math.abs(after.y - before.y),
+          Math.abs(after.width - before.width),
+          Math.abs(after.height - before.height),
+        );
+        if (maxDelta > 2) {
+          drifts.push(`${target.key} ${formatFootprintDelta(before, after)}`);
+        }
+      }
+      if (drifts.length === 0) return;
+      console.warn(
+        '[PanelLayoutManager] Boot shell footprint drift during skeleton->app swap: ' +
+          `${drifts.join('; ')}. Keep index.html skeleton dimensions in parity with the first hydrated dashboard frame.`,
+      );
+    });
+  });
+}
+
 export interface PanelLayoutManagerCallbacks {
   openCountryStory: (code: string, name: string) => void;
   openCountryBrief: (code: string) => void;
@@ -596,6 +673,7 @@ export class PanelLayoutManager implements AppModule {
 
   async renderLayout(): Promise<void> {
     const isGlobeMode = getStoredMapModePreference() === 'globe';
+    const bootShellFootprint = import.meta.env.DEV ? captureBootShellFootprint(this.ctx.container) : null;
 
     markLcpDebug('wm:layout:render-start');
     document.documentElement.classList.add('wm-layout-hydrated');
@@ -864,6 +942,7 @@ export class PanelLayoutManager implements AppModule {
     await this.createPanels();
 
     this.initPanelTabs();
+    if (import.meta.env.DEV && bootShellFootprint) warnOnBootShellFootprintDrift(bootShellFootprint);
 
     if (this.ctx.isMobile) {
       this.setupMobileMapToggle();
