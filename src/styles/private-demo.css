@@ -1,0 +1,151 @@
+/*
+ * Private demo overlay for Omar-Khaleel/worldmonitor.
+ *
+ * Purpose:
+ * - Rebrand the visible demo shell for internal presentation use.
+ * - Hide hosted-SaaS Pro/Upgrade CTAs from the demo UI.
+ * - Do not unlock paid/remote services or bypass server-side authorization.
+ *
+ * License note: the upstream project remains AGPL-3.0-only. Keep LICENSE and
+ * copyright notices intact when self-hosting or redistributing modified builds.
+ */
+
+:root {
+  --private-demo-brand: 'FALCON MONITOR';
+  --private-demo-brand-mobile: 'Falcon Monitor';
+  --private-demo-subtitle: 'Situational Intelligence Dashboard';
+}
+
+/* Remove the hosted Pro banner reservation/slot from the visual demo. */
+html.wm-pro-banner-reserved #app::before,
+html.wm-pro-banner-reserved .pro-banner-slot,
+.pro-banner-slot,
+.pro-banner-slot .pro-banner,
+#proBannerSlot {
+  display: none !important;
+  min-height: 0 !important;
+  height: 0 !important;
+  flex-basis: 0 !important;
+}
+
+html.wm-pro-banner-reserved .skeleton-shell {
+  height: 100vh !important;
+}
+
+/* Hide subscription/auth upsell surfaces in the visual demo. */
+.panel-pro-badge,
+.panel-locked-state,
+.panel-is-locked,
+.auth-widget-mount,
+#authWidgetMount,
+.payment-failure-banner,
+.checkout-failure-banner,
+.checkout-overlay,
+.pro-banner,
+.pro-banner-slot {
+  display: none !important;
+}
+
+/* Hide links that route viewers back to the hosted World Monitor SaaS/Pro funnel. */
+.mobile-menu-footer-links a[href*='/pro'],
+.mobile-menu-footer-links a[href*='worldmonitor.app/pro'],
+.site-footer nav a[href*='/pro'],
+.site-footer nav a[href*='worldmonitor.app/pro'],
+.site-footer nav a[href*='discord.gg'],
+.site-footer nav a[href*='x.com/'],
+.credit-link,
+.github-link,
+.site-footer-credit {
+  display: none !important;
+}
+
+/* Keep non-Pro locked panels from showing empty upgrade placeholders. */
+.panel.panel-is-locked {
+  display: none !important;
+}
+
+/* Header branding. */
+.logo,
+.logo-mobile,
+.mobile-menu-title,
+.site-footer-name,
+.site-footer-copy {
+  color: transparent !important;
+  font-size: 0 !important;
+  letter-spacing: 0 !important;
+}
+
+.logo::after,
+.mobile-menu-title::after,
+.site-footer-name::after {
+  content: var(--private-demo-brand);
+  color: var(--text-primary, #f5f5f5);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+
+.logo-mobile::after {
+  content: var(--private-demo-brand-mobile);
+  color: var(--text-primary, #f5f5f5);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: .02em;
+}
+
+.site-footer-copy::after {
+  content: '© 2026 Falcon Monitor · AGPL-3.0 self-hosted build';
+  color: var(--text-muted, #9ca3af);
+  font-size: 11px;
+  letter-spacing: normal;
+}
+
+/* Loading shell branding before the app fully hydrates. */
+.skeleton-brand span:last-child {
+  color: transparent !important;
+  font-size: 0 !important;
+}
+
+.skeleton-brand span:last-child::after {
+  content: var(--private-demo-brand-mobile);
+  color: var(--text-primary, #f5f5f5);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.skeleton-kicker {
+  color: transparent !important;
+  font-size: 0 !important;
+}
+
+.skeleton-kicker::after {
+  content: var(--private-demo-subtitle);
+  color: var(--text-muted, #9ca3af);
+  font-size: 11px;
+}
+
+/* Mobile menu footer: remove SaaS funnel, keep the menu compact. */
+.mobile-menu-footer-links {
+  gap: 10px;
+}
+
+/* Avoid leaving awkward empty panels where upgrade cards used to be. */
+.panels-grid > .panel.panel-is-locked {
+  display: none !important;
+}
+
+/* Presentation polish. */
+.header .version::before {
+  content: 'demo ';
+  color: var(--text-muted, #9ca3af);
+}
+
+@media (max-width: 767px) {
+  .logo::after,
+  .logo-mobile::after,
+  .mobile-menu-title::after,
+  .site-footer-name::after {
+    font-size: 12px;
+    letter-spacing: .04em;
+  }
+}
