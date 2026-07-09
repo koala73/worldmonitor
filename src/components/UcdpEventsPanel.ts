@@ -5,6 +5,7 @@ import { t } from '@/services/i18n';
 
 export class UcdpEventsPanel extends Panel {
   private events: UcdpGeoEvent[] = [];
+  private hasLoadedEvents = false;
   private activeTab: UcdpEventType = 'state-based';
   private onEventClick?: (lat: number, lon: number) => void;
 
@@ -41,8 +42,13 @@ export class UcdpEventsPanel extends Panel {
 
   public setEvents(events: UcdpGeoEvent[]): void {
     this.events = events;
+    this.hasLoadedEvents = true;
     this.setCount(events.length);
     this.renderContent();
+  }
+
+  public hasData(): boolean {
+    return this.hasLoadedEvents;
   }
 
   public getEvents(): UcdpGeoEvent[] {

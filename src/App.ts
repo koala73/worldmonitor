@@ -1784,6 +1784,7 @@ export class App {
     this.unsubAiFlow?.();
     this.unsubFreeTier?.();
     this.unsubEntitlementPremiumLoaders?.();
+    mlWorker.terminate();
     this.state.findingsBadge?.destroy();
     this.state.findingsBadge = null;
     this.state.breakingBanner?.destroy();

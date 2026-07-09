@@ -5,6 +5,7 @@ import { t } from '@/services/i18n';
 
 export class ClimateAnomalyPanel extends Panel {
   private anomalies: ClimateAnomaly[] = [];
+  private hasLoadedAnomalies = false;
   private onZoneClick?: (lat: number, lon: number) => void;
 
   constructor() {
@@ -24,8 +25,13 @@ export class ClimateAnomalyPanel extends Panel {
 
   public setAnomalies(anomalies: ClimateAnomaly[]): void {
     this.anomalies = anomalies;
+    this.hasLoadedAnomalies = true;
     this.setCount(anomalies.length);
     this.renderContent();
+  }
+
+  public hasData(): boolean {
+    return this.hasLoadedAnomalies;
   }
 
   private renderContent(): void {
