@@ -1,5 +1,5 @@
-const DEBUGBEAR_RUM_SCRIPT_SRC = 'https://cdn.debugbear.com/lpMwA9KpC6pf.js';
-const DEBUGBEAR_RUM_SAMPLE_RATE = 100;
+export const DEBUGBEAR_RUM_SCRIPT_SRC = 'https://cdn.debugbear.com/lpMwA9KpC6pf.js';
+export const DEBUGBEAR_RUM_SAMPLE_RATE = 100;
 const DEBUGBEAR_RUM_HOSTS = new Set([
   'worldmonitor.app',
   'www.worldmonitor.app',
