@@ -15637,7 +15637,9 @@ async function fetchForecasts() {
   // if-block closes (:15496) so it runs unconditionally on every batch —
   // including zero-state-derived runs — and BEFORE prepareForecastMetrics.
   // Threads the single per-run timestamp so spec deadlines agree with the
-  // canonical payload's generatedAt. No publish-selection change (D2).
+  // canonical payload's generatedAt. Runs BEFORE selectPublishedForecastPool
+  // because computePublishSelectionScore now reads resolution.kind for the
+  // hard-resolvable selection lift (RESOLVABLE_HARD_SELECTION_LIFT).
   attachResolutionSpecs(predictions, inputs, runGeneratedAt);
   attachMarketSelectionContext(predictions, marketSelectionIndex);
   prepareForecastMetrics(predictions);

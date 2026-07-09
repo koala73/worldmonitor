@@ -86,8 +86,13 @@ USER appuser
 
 EXPOSE 8080
 
-# Healthcheck via nginx
+# Healthcheck via nginx. Use 127.0.0.1 (not localhost - that resolves to ::1
+# first, where nginx does not listen). Probe /api/sidecar-health, a dedicated
+# auth-exempt liveness route in the sidecar (local-api-server.mjs): reaching it
+# through nginx's /api/ proxy verifies BOTH nginx and the node sidecar are up,
+# unlike a static "/" probe which only proves nginx is serving. Keep this off
+# /api/health so the public compact data-health contract still reaches api/health.js.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD wget -qO- http://localhost:8080/api/health?compact=1 || exit 1
+  CMD wget -qO- http://127.0.0.1:8080/api/sidecar-health >/dev/null 2>&1 || exit 1
 
 CMD ["/app/entrypoint.sh"]
