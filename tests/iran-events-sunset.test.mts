@@ -19,6 +19,7 @@ import {
   isLayerExecutable,
   sanitizeLayersForVariant,
 } from '../src/config/map-layer-definitions';
+import { buildForecastInputFetchKeys } from '../scripts/seed-forecasts.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (p: string) => readFileSync(resolve(repoRoot, p), 'utf8');
@@ -87,6 +88,17 @@ describe('iran-events sunset — backend gates (source guards)', () => {
   });
 
   it('seed-forecasts.mjs skips fetching the iran key into the pipeline batch when disabled', () => {
-    assert.match(read('scripts/seed-forecasts.mjs'), /\.\.\.\(iranEventsEnabled\(\) \? \['conflict:iran-events:v1'\] : \[\]\)/);
+    const previousIranEventsEnabled = process.env.IRAN_EVENTS_ENABLED;
+    delete process.env.IRAN_EVENTS_ENABLED;
+    try {
+      assert.ok(!buildForecastInputFetchKeys().includes('conflict:iran-events:v1'));
+      process.env.IRAN_EVENTS_ENABLED = 'true';
+      assert.ok(buildForecastInputFetchKeys().includes('conflict:iran-events:v1'));
+    } finally {
+      if (previousIranEventsEnabled === undefined) delete process.env.IRAN_EVENTS_ENABLED;
+      else process.env.IRAN_EVENTS_ENABLED = previousIranEventsEnabled;
+    }
+
+    assert.match(read('scripts/seed-forecasts.mjs'), /const keys = buildForecastInputFetchKeys\(\);/);
   });
 });

@@ -4938,6 +4938,7 @@ body.playback-mode .status-dot {
   position: relative;
   overflow: hidden;
   background: var(--map-bg);
+  contain: layout paint;
   /* Let the map library handle all touch gestures (pinch-zoom, pan)
      instead of the browser intercepting them on mobile/Android */
   touch-action: none;
@@ -5000,6 +5001,7 @@ body.playback-mode .status-dot {
   width: 100%;
   height: 100%;
   pointer-events: none;
+  contain: layout paint;
 }
 
 #mapOverlays>* {
@@ -13275,6 +13277,15 @@ a.prediction-link:hover {
   .conflict-click-area {
     min-width: 44px;
     min-height: 44px;
+  }
+
+  .nat-event-marker,
+  .conflict-click-area {
+    transition: opacity 0.2s ease;
+  }
+
+  .nat-event-marker:hover {
+    transform: translate(-50%, -50%) scale(var(--marker-scale, 1));
   }
 
   /* Ensure hotspot container is large enough for touch */

@@ -43,4 +43,13 @@ message GetSimulationOutcomeResponse {
   // Added in #3734 to prevent the 30-day demand experiment from being contaminated
   // by the queued-vs-expired indistinguishability.
   bool processing = 10;
+  // Number of theaters eligible for simulation in the package used by this outcome.
+  int32 eligible_theater_count = 11;
+  // Number of eligible theaters that failed before producing a Round 2 result.
+  int32 failed_theater_count = 12;
+  // True when eligible_theater_count > 0 and no theater produced an outcome.
+  bool all_theaters_failed = 13;
+  // Machine-readable completion status. Current values:
+  // "completed", "partial", "no_eligible_theaters", or "all_theaters_failed".
+  string completion_status = 14;
 }

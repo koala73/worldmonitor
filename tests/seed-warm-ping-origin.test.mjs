@@ -16,6 +16,7 @@ describe('warm-ping seed scripts', () => {
     const src = readScript('scripts/seed-infra.mjs');
     assert.match(src, /Origin:\s*'https:\/\/worldmonitor\.app'/);
     assert.match(src, /method:\s*'POST'/);
+    assert.match(src, /\/api\/infrastructure\/v1\/list-temporal-anomalies/);
   });
 
   it('sends the app Origin header for military/maritime warm-pings', () => {

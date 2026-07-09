@@ -21,7 +21,18 @@ import {
 } from '../../../../scripts/_simulation-queue-constants.mjs';
 import { listProcessingRunIds } from '../../../_shared/simulation-queue';
 
-type OutcomePointer = { runId: string; outcomeKey: string; schemaVersion: string; theaterCount: number; generatedAt: number; uiTheaters?: unknown[] };
+type OutcomePointer = {
+  runId: string;
+  outcomeKey: string;
+  schemaVersion: string;
+  theaterCount: number;
+  generatedAt: number;
+  eligibleTheaterCount?: number;
+  failedTheaterCount?: number;
+  allTheatersFailed?: boolean;
+  completionStatus?: string;
+  uiTheaters?: unknown[];
+};
 type TombstonePayload = { runId: string; error: string; tombstoneAt: number };
 
 function isOutcomePointer(v: unknown): v is OutcomePointer {
@@ -39,7 +50,20 @@ function isTombstone(v: unknown): v is TombstonePayload {
 }
 
 const NOT_FOUND: GetSimulationOutcomeResponse = {
-  found: false, runId: '', outcomeKey: '', schemaVersion: '', theaterCount: 0, generatedAt: 0, note: '', error: '', theaterSummariesJson: '', processing: false,
+  found: false,
+  runId: '',
+  outcomeKey: '',
+  schemaVersion: '',
+  theaterCount: 0,
+  generatedAt: 0,
+  note: '',
+  error: '',
+  theaterSummariesJson: '',
+  processing: false,
+  eligibleTheaterCount: 0,
+  failedTheaterCount: 0,
+  allTheatersFailed: false,
+  completionStatus: '',
 };
 
 function outcomeToResponse(pointer: OutcomePointer, note: string): GetSimulationOutcomeResponse {
@@ -57,6 +81,10 @@ function outcomeToResponse(pointer: OutcomePointer, note: string): GetSimulation
     error: '',
     theaterSummariesJson,
     processing: false,
+    eligibleTheaterCount: typeof pointer.eligibleTheaterCount === 'number' ? pointer.eligibleTheaterCount : pointer.theaterCount,
+    failedTheaterCount: typeof pointer.failedTheaterCount === 'number' ? pointer.failedTheaterCount : 0,
+    allTheatersFailed: pointer.allTheatersFailed === true,
+    completionStatus: typeof pointer.completionStatus === 'string' ? pointer.completionStatus : '',
   };
 }
 

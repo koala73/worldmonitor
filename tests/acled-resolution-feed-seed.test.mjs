@@ -38,6 +38,15 @@ describe('ACLED resolution-feed seed contract (#5076)', () => {
     assert.match(conflictSeed, /ACLED_RESOLUTION_CACHE_KEY,[\s\S]*clusters:\s*\[\],[\s\S]*acResolution\.pagination/);
   });
 
+  it('conflict seeder fails the primary feed when ACLED display data is unavailable', () => {
+    assert.match(conflictSeed, /if\s*\(!ac\)\s*\{[\s\S]*const err = new Error\([\s\S]*ACLED display fetch failed for \$\{ACLED_CACHE_KEY\}[\s\S]*auxiliary conflict\/intel feeds mask the primary feed/);
+    assert.match(conflictSeed, /ACLED credentials not configured \(set ACLED_EMAIL \+ ACLED_PASSWORD or ACLED_ACCESS_TOKEN\)/);
+    assert.match(conflictSeed, /missingCredentials\s*=\s*acled\.status\s*===\s*'fulfilled'/);
+    assert.match(conflictSeed, /if\s*\(\s*missingCredentials\s*\|\|\s*acled\.reason\?\.nonRetryable\s*\)\s*err\.nonRetryable\s*=\s*true/);
+    assert.match(conflictSeed, /throw err/);
+    assert.doesNotMatch(conflictSeed, /return\s+ac\s*\|\|\s*\{\s*events:\s*\[\],\s*pagination:\s*undefined\s*\}/);
+  });
+
   it('unrest seeder keeps the canonical display feed but also publishes a paginated 60d ACLED resolution feed', () => {
     assert.match(unrestSeed, /CANONICAL_KEY\s*=\s*'unrest:events:v1'/);
     assert.match(unrestSeed, /ACLED_DISPLAY_LOOKBACK_DAYS\s*=\s*30/);

@@ -630,6 +630,39 @@ describe('existing beforeSend filters', () => {
     assert.ok(beforeSend(event) !== null, 'First-party + extension Failed-to-fetch must reach Sentry');
   });
 
+  it('suppresses Firefox "NetworkError ... (data.debugbear.com)" — embedded RUM beacon, zero frames (WORLDMONITOR-RP)', () => {
+    // Firefox's host-suffixed phrasing for a failed fetch. The DebugBear RUM
+    // script (src/bootstrap/debugbear-rum.ts) POSTs field metrics to
+    // data.debugbear.com; a dropped beacon surfaces via onunhandledrejection
+    // with no captured frames. Routed through the same host allowlist as the
+    // Chrome `Failed to fetch (<host>)` shape, so an allowlisted host is
+    // suppressed regardless of stack.
+    const event = makeEvent('NetworkError when attempting to fetch resource. (data.debugbear.com)', 'TypeError', []);
+    assert.equal(beforeSend(event), null, 'DebugBear RUM beacon network failure should be suppressed');
+  });
+
+  it('suppresses Firefox "NetworkError ... (data.debugbear.com)" even with the DebugBear RUM script frame', () => {
+    // The DebugBear collector monkeypatches window.fetch, so the leaked
+    // rejection can carry its own CDN script frame. That chunk is not
+    // first-party (not under /assets/, not .ts), so the host allowlist — not
+    // hasFirstParty — must decide.
+    const event = makeEvent('NetworkError when attempting to fetch resource. (data.debugbear.com)', 'TypeError', [
+      { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'window.fetch' },
+    ]);
+    assert.equal(beforeSend(event), null, 'DebugBear-framed beacon failure should be suppressed');
+  });
+
+  it('does NOT suppress Firefox "NetworkError ... (<host>)" for a NON-allowlisted first-party host', () => {
+    // Safety mirror of the Chrome `Failed to fetch (api.worldmonitor.app)`
+    // guard: the Firefox host-suffixed shape must still surface for our own
+    // API so a real outage isn't silenced just because Firefox phrases the
+    // network error differently.
+    const event = makeEvent('NetworkError when attempting to fetch resource. (api.worldmonitor.app)', 'TypeError', [
+      { filename: '/assets/panels-wF5GXf0N.js', lineno: 100, function: 'MyApiCall' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'Non-allowlisted host Firefox NetworkError must reach Sentry');
+  });
+
   it('suppresses iOS Safari WKWebView "Cannot inject key into script value" regardless of first-party frame', () => {
     // The native throw always lands in a first-party caller; the existing
     // !hasFirstParty gate missed it. `UnknownError` type name is WebKit-only

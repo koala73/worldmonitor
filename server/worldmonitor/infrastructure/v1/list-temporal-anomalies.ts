@@ -73,6 +73,24 @@ async function tryAcquireLock(): Promise<boolean> {
   }
 }
 
+function countSnapshotCoverage(snapshot: AnomalySnapshot): number {
+  if (Array.isArray(snapshot.trackedTypes)) return snapshot.trackedTypes.length;
+  if (Array.isArray(snapshot.anomalies)) return snapshot.anomalies.length;
+  return 0;
+}
+
+async function writeTemporalAnomaliesSeedMeta(snapshot: AnomalySnapshot): Promise<boolean> {
+  return setCachedJson('seed-meta:temporal:anomalies', {
+    fetchedAt: Date.now(),
+    recordCount: countSnapshotCoverage(snapshot),
+  }, 604800).catch(() => false);
+}
+
+async function refreshTemporalAnomaliesCacheHit(snapshot: AnomalySnapshot): Promise<void> {
+  const refreshed = await setCachedJson(TEMPORAL_ANOMALIES_KEY, snapshot, TEMPORAL_ANOMALIES_TTL).catch(() => false);
+  if (refreshed) await writeTemporalAnomaliesSeedMeta(snapshot);
+}
+
 export async function listTemporalAnomalies(
   _ctx: ServerContext,
   _req: ListTemporalAnomaliesRequest,
@@ -82,6 +100,7 @@ export async function listTemporalAnomalies(
     if (cached?.computedAt) {
       const age = Date.now() - new Date(cached.computedAt).getTime();
       if (age < TEMPORAL_ANOMALIES_TTL * 1000) {
+        await refreshTemporalAnomaliesCacheHit(cached);
         return cached;
       }
     }
@@ -181,7 +200,10 @@ export async function listTemporalAnomalies(
         computedAt: now.toISOString(),
       };
 
-      await setCachedJson(TEMPORAL_ANOMALIES_KEY, snapshot, TEMPORAL_ANOMALIES_TTL);
+      const published = await setCachedJson(TEMPORAL_ANOMALIES_KEY, snapshot, TEMPORAL_ANOMALIES_TTL);
+      if (published) {
+        await writeTemporalAnomaliesSeedMeta(snapshot);
+      }
       return snapshot;
     }
   } catch {
