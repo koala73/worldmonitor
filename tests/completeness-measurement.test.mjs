@@ -299,9 +299,10 @@ describe('feed-health streak continuity (#4927 external review)', () => {
 
 describe('selection attribution: same-source overflow (#4927 re-review)', () => {
   it('REGRESSION: candidates past maxCount are cap-attributed when their source already hit the cap', () => {
+    const pubDate = '2026-01-01T00:00:00.000Z';
     const mk = (title, source) => ({
       primaryTitle: title, primarySource: source, primaryLink: `https://x/${title}`,
-      pubDate: new Date().toISOString(), sources: [source, 'Wire'], isAlert: true, tier: 1,
+      pubDate, sources: [source, 'Wire'], isAlert: true, tier: 1,
     });
     // 3 selected from SameSource (hits MAX_PER_SOURCE), then 2 distinct fill
     // maxCount=5; then: 1 more SameSource (cap drop even though selection is
