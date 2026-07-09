@@ -148,6 +148,11 @@ const CYBER_PROB_VOLUME_WEIGHT = 0.5;       // weight of volume in probability f
 const CYBER_PROB_TYPE_WEIGHT = 0.15;        // weight of type diversity in probability formula
 const CONFLICT_BASE_DETECTOR_PROB_MAX = 0.90;
 const UCDP_CONFLICT_ZONE_PROB_MAX = 0.85;
+const MARKET_DETECTOR_PROB_MAX = 0.85;
+const SUPPLY_CHAIN_DETECTOR_PROB_MAX = 0.85;
+const POLITICAL_DETECTOR_PROB_MAX = 0.80;
+const MILITARY_DETECTOR_PROB_MAX = 0.90;
+const INFRASTRUCTURE_DETECTOR_PROB_MAX = 0.85;
 const VELOCITY_SPIKE_PROBABILITY_LIFT = 0.08;
 const VELOCITY_SPIKE_PROBABILITY_MAX = 0.99;
 const DEFENSE_DIRECT_CONFIRMATION_PRESSURE_LIFT = 0.12;
@@ -1141,7 +1146,7 @@ function detectMarketScenarios(inputs) {
     affectedRegions.add(region);
 
     const riskNorm = normalize(cp.riskScore || (risk === 'critical' ? 85 : 70), 40, 100);
-    const prob = Math.min(0.85, riskNorm * commodity.sensitivity);
+    const prob = Math.min(MARKET_DETECTOR_PROB_MAX, riskNorm * commodity.sensitivity);
 
     predictions.push(makePrediction(
       'market', region,
@@ -1236,7 +1241,7 @@ function detectSupplyChainScenarios(inputs) {
     }
 
     const riskNorm = normalize(cp.riskScore || 70, 40, 100);
-    const prob = Math.min(0.85, riskNorm * 0.7 + (aisGaps.length > 0 ? 0.1 : 0) + (nearbyJam.length > 0 ? 0.05 : 0));
+    const prob = Math.min(SUPPLY_CHAIN_DETECTOR_PROB_MAX, riskNorm * 0.7 + (aisGaps.length > 0 ? 0.1 : 0) + (nearbyJam.length > 0 ? 0.05 : 0));
     const confidence = Math.max(0.3, normalize(sourceCount, 0, 4));
 
     predictions.push(makePrediction(
@@ -1732,7 +1737,7 @@ function detectPoliticalScenarios(inputs) {
     const unrestNorm = normalize(Math.max(unrestComp, unrestCount * 10), 30, 100);
     const anomalyBoost = protestAnomalies.length > 0 ? 0.1 : 0;
     const eventBoost = unrestCount >= 5 ? 0.08 : unrestCount >= 3 ? 0.04 : 0;
-    const prob = Math.min(0.8, unrestNorm * 0.6 + anomalyBoost + eventBoost);
+    const prob = Math.min(POLITICAL_DETECTOR_PROB_MAX, unrestNorm * 0.6 + anomalyBoost + eventBoost);
     const confidence = Math.max(0.3, normalize(sourceCount, 0, 4));
 
     predictions.push(makePrediction(
@@ -1859,7 +1864,7 @@ function detectMilitaryScenarios(inputs) {
     const strikeBoost = (t?.activeOperations?.includes?.('strike_capable') || highestSurge?.strikeCapable) ? 0.06 : 0;
     const persistenceBoost = persistent ? 0.08 : 0;
     const genericPenalty = highestSurge?.surgeType === 'air_activity' && !persistent ? 0.12 : 0;
-    const prob = Math.min(0.9, Math.max(0.05, baseLine + flightBoost + postureBoost + supportBoost + strikeBoost + persistenceBoost + actorScore - genericPenalty));
+    const prob = Math.min(MILITARY_DETECTOR_PROB_MAX, Math.max(0.05, baseLine + flightBoost + postureBoost + supportBoost + strikeBoost + persistenceBoost + actorScore - genericPenalty));
     const confidence = Math.max(0.3, normalize(sourceCount, 0, 4));
     const title = highestSurge
       ? buildMilitaryForecastTitle(theaterId, theaterLabel, highestSurge)
@@ -1921,7 +1926,7 @@ function detectInfraScenarios(inputs) {
     const cyberBoost = relatedCyber.length > 0 ? 0.15 : 0;
     const jamBoost = nearbyJam.length > 0 ? 0.05 : 0;
     const baseLine = severity === 'total' ? 0.55 : 0.4;
-    const prob = Math.min(0.85, baseLine + cyberBoost + jamBoost);
+    const prob = Math.min(INFRASTRUCTURE_DETECTOR_PROB_MAX, baseLine + cyberBoost + jamBoost);
     const confidence = Math.max(0.3, normalize(sourceCount, 0, 4));
 
     predictions.push(makePrediction(
@@ -2067,34 +2072,53 @@ const DOMAIN_HINTS = {
 };
 
 const MARKET_CALIBRATION_WEIGHT = 0.4;
+// Detector generation can ingest thinner market rows, but calibration only
+// moves canonical probabilities from high-liquidity anchors.
 const MARKET_CALIBRATION_MIN_VOLUME = 5_000;
 const MARKET_CALIBRATION_DOMAIN_CAPS = {
   conflict: CONFLICT_BASE_DETECTOR_PROB_MAX,
-  market: 0.85,
-  supply_chain: 0.85,
-  political: 0.95,
-  military: 0.95,
+  market: MARKET_DETECTOR_PROB_MAX,
+  supply_chain: SUPPLY_CHAIN_DETECTOR_PROB_MAX,
+  political: POLITICAL_DETECTOR_PROB_MAX,
+  military: MILITARY_DETECTOR_PROB_MAX,
   cyber: CYBER_PROB_MAX,
-  infrastructure: 0.95,
+  infrastructure: INFRASTRUCTURE_DETECTOR_PROB_MAX,
 };
 const MARKET_DE_ESCALATION_OUTCOME_TERMS = [
   'ceasefire', 'truce', 'peace', 'peaceful', 'agreement', 'diplomatic solution',
-  'withdrawal', 'de-escalat', 'deescalat', 'reopen', 'reopened', 'restored',
-  'stabiliz', 'normaliz', 'resolution', 'resolved',
+  'withdrawal', 'reopen', 'reopened', 'restored', 'resolution', 'resolved',
 ];
 const MARKET_ADVERSE_OUTCOME_TERMS = [
-  'attack', 'strike', 'war', 'conflict', 'escalat', 'offensive', 'unrest',
+  'attack', 'strike', 'war', 'conflict', 'offensive', 'unrest',
   'instability', 'crisis', 'disruption', 'shock', 'stress', 'collapse',
-  'fail', 'breach', 'violate', 'reject', 'resume', 'renewed',
+  'renewed',
 ];
-const MARKET_STEM_OUTCOME_TERMS = new Set([
-  'de-escalat', 'deescalat', 'stabiliz', 'normaliz', 'escalat',
-]);
+const MARKET_DE_ESCALATION_OUTCOME_PATTERNS = [
+  /(?:^|[^a-z0-9])de-?escalat(?:e|es|ed|ing|ion|ory)?(?:[^a-z0-9]|$)/,
+  /(?:^|[^a-z0-9])stabili[sz](?:e|es|ed|ing|ation|ations)?(?:[^a-z0-9]|$)/,
+  /(?:^|[^a-z0-9])normali[sz](?:e|es|ed|ing|ation|ations)?(?:[^a-z0-9]|$)/,
+];
+const MARKET_ADVERSE_OUTCOME_PATTERNS = [
+  /(?:^|[^a-z0-9-])escalat(?:e|es|ed|ing|ion|ory)?(?:[^a-z0-9]|$)/,
+  /(?:^|[^a-z0-9])destabili[sz](?:e|es|ed|ing|ation|ations)?(?:[^a-z0-9]|$)/,
+  /(?:^|[^a-z0-9])fail(?:s|ed|ing|ure|ures)?(?:[^a-z0-9]|$)/,
+  /(?:^|[^a-z0-9])breach(?:es|ed|ing)?(?:[^a-z0-9]|$)/,
+  /(?:^|[^a-z0-9])violat(?:e|es|ed|ing|ion|ions)?(?:[^a-z0-9]|$)/,
+  /(?:^|[^a-z0-9])reject(?:s|ed|ing|ion|ions)?(?:[^a-z0-9]|$)/,
+  /(?:^|[^a-z0-9])resum(?:e|es|ed|ing|ption|ptions)?(?:[^a-z0-9]|$)/,
+  /(?:^|[^a-z0-9])renew(?:s|ed|ing|al|als)?(?:[^a-z0-9]|$)/,
+  /(?:^|[^a-z0-9])collaps(?:e|es|ed|ing)?(?:[^a-z0-9]|$)/,
+];
 const MARKET_DE_ESCALATION_ANCHOR_PATTERN = String.raw`(?:ceasefire|truce|peace(?: agreement| deal)?|agreement)`;
-const MARKET_DE_ESCALATION_FAILURE_PATTERN = String.raw`(?:fail(?:s|ed|ure)?|collapse(?:s|d)?|break(?:s|ing)? down|breakdown|breach(?:es|ed)?|violat(?:e|es|ed|ion)|reject(?:s|ed)?|expire(?:s|d)?|end(?:s|ed)?)`;
+const MARKET_DE_ESCALATION_FAILURE_PATTERN = String.raw`(?:fail(?:s|ed|ing|ure|ures)?|collaps(?:e|es|ed|ing)?|break(?:s|ing)? down|breakdown|breach(?:es|ed|ing)?|violat(?:e|es|ed|ing|ion|ions)?|reject(?:s|ed|ing|ion|ions)?|expire(?:s|d|ing)?|ends?\b(?!\s+of\b))`;
 const MARKET_FAILED_DE_ESCALATION_PATTERNS = [
   new RegExp(String.raw`\b${MARKET_DE_ESCALATION_ANCHOR_PATTERN}\b.{0,40}\b${MARKET_DE_ESCALATION_FAILURE_PATTERN}\b`),
   new RegExp(String.raw`\b${MARKET_DE_ESCALATION_FAILURE_PATTERN}\b.{0,40}\b${MARKET_DE_ESCALATION_ANCHOR_PATTERN}\b`),
+];
+const MARKET_ADVERSE_CONDITION_PATTERN = String.raw`(?:war|conflict|fighting|hostilities|violence|offensive|attacks?)`;
+const MARKET_ADVERSE_CONDITION_END_PATTERNS = [
+  new RegExp(String.raw`\b${MARKET_ADVERSE_CONDITION_PATTERN}\b.{0,40}\bend(?:s|ed|ing)?\b(?!\s+of\b)`),
+  new RegExp(String.raw`\bend(?:s|ed|ing)?\b(?:\s+of)?.{0,40}\b${MARKET_ADVERSE_CONDITION_PATTERN}\b`),
 ];
 
 const DOMAIN_ACTOR_BLUEPRINTS = {
@@ -2295,26 +2319,31 @@ function computeMarketMatchScore(pred, marketTitle, regionTerms, options = {}) {
   };
 }
 
-function textHasAnyOutcomeTerm(text, terms) {
+function textMatchesAnyPattern(text, patterns) {
+  const lower = String(text || '').toLowerCase();
+  return patterns.some((pattern) => pattern.test(lower));
+}
+
+function textHasAnyOutcomeTerm(text, terms, patterns = []) {
   const lower = String(text || '').toLowerCase();
   return terms.some((term) => {
     const lowerTerm = String(term || '').toLowerCase().trim();
     if (!lowerTerm) return false;
-    if (MARKET_STEM_OUTCOME_TERMS.has(lowerTerm)) return lower.includes(lowerTerm);
     return textIncludesTerm(lower, lowerTerm);
-  });
+  }) || textMatchesAnyPattern(lower, patterns);
 }
 
 function marketTitleHasFailedDeEscalationOutcome(marketTitle) {
   const lower = String(marketTitle || '').toLowerCase();
-  if (!textHasAnyOutcomeTerm(lower, MARKET_DE_ESCALATION_OUTCOME_TERMS)) return false;
+  if (!textHasAnyOutcomeTerm(lower, MARKET_DE_ESCALATION_OUTCOME_TERMS, MARKET_DE_ESCALATION_OUTCOME_PATTERNS)) return false;
   return MARKET_FAILED_DE_ESCALATION_PATTERNS.some((pattern) => pattern.test(lower));
 }
 
 function classifyMarketYesOutcome(marketTitle) {
   if (marketTitleHasFailedDeEscalationOutcome(marketTitle)) return 'adverse';
-  if (textHasAnyOutcomeTerm(marketTitle, MARKET_DE_ESCALATION_OUTCOME_TERMS)) return 'deescalatory';
-  if (textHasAnyOutcomeTerm(marketTitle, MARKET_ADVERSE_OUTCOME_TERMS)) return 'adverse';
+  if (textMatchesAnyPattern(marketTitle, MARKET_ADVERSE_CONDITION_END_PATTERNS)) return 'deescalatory';
+  if (textHasAnyOutcomeTerm(marketTitle, MARKET_DE_ESCALATION_OUTCOME_TERMS, MARKET_DE_ESCALATION_OUTCOME_PATTERNS)) return 'deescalatory';
+  if (textHasAnyOutcomeTerm(marketTitle, MARKET_ADVERSE_OUTCOME_TERMS, MARKET_ADVERSE_OUTCOME_PATTERNS)) return 'adverse';
   return 'unknown';
 }
 
@@ -2323,8 +2352,8 @@ function predictionYesOutcomeLooksDeEscalatory(pred) {
     .map((signal) => `${signal?.type || ''} ${signal?.value || ''}`)
     .join(' ');
   const text = `${pred.title || ''} ${pred.scenario || ''} ${signalText}`;
-  if (!textHasAnyOutcomeTerm(text, MARKET_DE_ESCALATION_OUTCOME_TERMS)) return false;
-  return !textHasAnyOutcomeTerm(text, MARKET_ADVERSE_OUTCOME_TERMS);
+  if (!textHasAnyOutcomeTerm(text, MARKET_DE_ESCALATION_OUTCOME_TERMS, MARKET_DE_ESCALATION_OUTCOME_PATTERNS)) return false;
+  return !textHasAnyOutcomeTerm(text, MARKET_ADVERSE_OUTCOME_TERMS, MARKET_ADVERSE_OUTCOME_PATTERNS);
 }
 
 function marketOutcomeAlignsPrediction(predictionDeEscalatoryOutcome, marketTitle) {
@@ -2507,6 +2536,15 @@ function computeProjections(predictions) {
 
 function calibrateWithMarkets(predictions, markets) {
   if (!markets?.geopolitical) return;
+  const stats = {
+    applied: 0,
+    noPrice: 0,
+    lowVolume: 0,
+    direction: 0,
+    region: 0,
+    semantic: 0,
+    capNoop: 0,
+  };
   for (const pred of predictions) {
     const keywords = REGION_KEYWORDS[pred.region] || [];
     const regionTerms = [...new Set([...getSearchTermsForRegion(pred.region), pred.region])];
@@ -2522,16 +2560,32 @@ function calibrateWithMarkets(predictions, markets) {
         return { market: m, sameMacroRegion, ...match };
       })
       .filter(item => {
-        if (!Number.isFinite(item.market.yesPrice)) return false; // a price-less anchor would blend toward a fabricated 50%
-        if (getMarketCalibrationVolume(item.market) < MARKET_CALIBRATION_MIN_VOLUME) return false;
-        if (!marketOutcomeAlignsPrediction(predictionDeEscalatoryOutcome, item.market.title)) return false;
-        if (item.tagMismatch && item.regionHits === 0) return false;
+        if (!Number.isFinite(item.market.yesPrice)) {
+          stats.noPrice++;
+          return false; // a price-less anchor would blend toward a fabricated 50%
+        }
+        if (getMarketCalibrationVolume(item.market) < MARKET_CALIBRATION_MIN_VOLUME) {
+          stats.lowVolume++;
+          return false;
+        }
+        if (!marketOutcomeAlignsPrediction(predictionDeEscalatoryOutcome, item.market.title)) {
+          stats.direction++;
+          return false;
+        }
+        if (item.tagMismatch && item.regionHits === 0) {
+          stats.region++;
+          return false;
+        }
         const hasSpecificRegionSignal = item.regionHits > 0 || item.tagOverlap;
         const hasSemanticOverlap = item.titleHits > 0 || item.domainHits > 0;
         if (pred.domain === 'market') {
-          return hasSpecificRegionSignal && item.titleHits > 0 && (item.domainHits > 0 || item.score >= 7);
+          const keep = hasSpecificRegionSignal && item.titleHits > 0 && (item.domainHits > 0 || item.score >= 7);
+          if (!keep) stats.semantic++;
+          return keep;
         }
-        return hasSpecificRegionSignal && (hasSemanticOverlap || item.score >= 6);
+        const keep = hasSpecificRegionSignal && (hasSemanticOverlap || item.score >= 6);
+        if (!keep) stats.semantic++;
+        return keep;
       })
       .sort((a, b) => {
         if (b.score !== a.score) return b.score - a.score;
@@ -2541,16 +2595,27 @@ function calibrateWithMarkets(predictions, markets) {
     const match = best?.market || null;
     if (match) {
       const marketProb = match.yesPrice / 100;
+      const originalProbability = pred.probability;
+      const blendedProbability = +((MARKET_CALIBRATION_WEIGHT * marketProb)
+        + ((1 - MARKET_CALIBRATION_WEIGHT) * originalProbability)).toFixed(3);
+      const cappedProbability = capMarketCalibrationProbability(pred.domain, blendedProbability);
+      if (cappedProbability === originalProbability) {
+        stats.capNoop++;
+        continue;
+      }
       pred.calibration = {
         marketTitle: match.title,
         marketPrice: +marketProb.toFixed(3),
-        drift: +(pred.probability - marketProb).toFixed(3),
+        drift: +(originalProbability - marketProb).toFixed(3),
         source: match.source || 'polymarket',
       };
-      const blendedProbability = +((MARKET_CALIBRATION_WEIGHT * marketProb)
-        + ((1 - MARKET_CALIBRATION_WEIGHT) * pred.probability)).toFixed(3);
-      pred.probability = capMarketCalibrationProbability(pred.domain, blendedProbability);
+      pred.probability = cappedProbability;
+      stats.applied++;
     }
+  }
+  const dropped = stats.noPrice + stats.lowVolume + stats.direction + stats.region + stats.semantic + stats.capNoop;
+  if (stats.applied > 0 || dropped > 0) {
+    console.log(`  [calibrateWithMarkets] applied=${stats.applied} dropped=${dropped} no_price=${stats.noPrice} low_volume=${stats.lowVolume} direction=${stats.direction} region=${stats.region} semantic=${stats.semantic} cap_noop=${stats.capNoop}`);
   }
 }
 
