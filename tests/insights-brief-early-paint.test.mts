@@ -61,5 +61,19 @@ describe('InsightsPanel early cached-brief paint (#4890)', () => {
       /setPersistentCache\(InsightsPanel\.BRIEF_CACHE_KEY, \{ summary: insights\.worldBrief, sources: this\.cachedBriefSources \}\)/,
       'the server path must write the persistent brief cache — before #4890 only the client-LLM fallback wrote it, so repeat visitors on the dominant server path had an empty cache',
     );
+    assert.doesNotMatch(
+      method,
+      /worldBriefSources\.slice\(0,\s*6\)/,
+      '#4928: the server brief cites up to 12 sources — re-capping the persisted list at 6 orphans [7]/[8] citations in the early paint (Greptile P1 on PR #5130)',
+    );
+  });
+
+  it('reads the cached brief with the citation-space bound, not the legacy 6 cap', () => {
+    const method = sliceBetween('private async loadBriefFromCache()', 'private async paintCachedBriefEarly()');
+    assert.match(
+      method,
+      /normalizeCachedBriefSources\(entry\.data, InsightsPanel\.BRIEF_CACHE_MAX_SOURCES\)/,
+      'the cache read must use the shared 12-source citation bound — a literal 6 re-orphans [7]/[8] on the early paint and client cooldown renders',
+    );
   });
 });
