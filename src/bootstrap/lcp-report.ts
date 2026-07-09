@@ -19,6 +19,8 @@
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { getWebVitalsFormFactor, roundMs, sanitizeWebVitalUrl } from '@/bootstrap/web-vitals-utils';
 
+const MAX_LCP_ELEMENT_TAG_LENGTH = 200;
+
 /** Structural subset of web-vitals' LCP attribution (kept local to avoid the dep). */
 export interface LcpAttributionLike {
   target?: string;
@@ -36,6 +38,11 @@ export interface LcpMetricLike {
   attribution?: LcpAttributionLike;
 }
 
+function normalizeLcpElementTag(target: string | undefined): string {
+  const normalized = (target ?? '').replace(/\s+/g, ' ').trim();
+  return normalized ? normalized.slice(0, MAX_LCP_ELEMENT_TAG_LENGTH) : 'unknown';
+}
+
 /**
  * Report one field LCP measurement to Sentry. `enqueue` is injectable for tests;
  * in production it defaults to the deferred-Sentry queue.
@@ -50,6 +57,7 @@ export function reportLcpMetric(
   if (metric.rating === 'good') return;
   const a = metric.attribution ?? {};
   const formFactor = getWebVitalsFormFactor();
+  const elementTag = normalizeLcpElementTag(a.target);
   enqueue((s) => {
     s.captureMessage('web-vital: LCP', {
       level: 'info',
@@ -57,6 +65,7 @@ export function reportLcpMetric(
         webvital: 'lcp',
         formFactor,
         'lcp.rating': metric.rating ?? 'unknown',
+        'lcp.element': elementTag,
       },
       extra: {
         value: Math.round(metric.value),

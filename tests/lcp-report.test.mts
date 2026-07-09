@@ -30,6 +30,7 @@ test('reportLcpMetric reports LCP value, target, phase sub-parts, and form facto
   assert.equal(msg, 'web-vital: LCP');
   assert.equal(ctx.tags.webvital, 'lcp');
   assert.equal(ctx.tags['lcp.rating'], 'needs-improvement');
+  assert.equal(ctx.tags['lcp.element'], 'main.hero>h1');
   assert.equal(ctx.tags.formFactor, 'desktop');
   assert.equal(ctx.extra.value, 3876, 'LCP value rounded');
   assert.equal(ctx.extra.elementTarget, 'main.hero>h1');
@@ -77,9 +78,21 @@ test('reportLcpMetric still reports unknown/undefined-rated LCP conservatively',
   assert.equal(calls, 1, 'unknown/undefined rating still reports; do not drop unknowns');
 });
 
+test('reportLcpMetric bounds the LCP element tag value', () => {
+  const target = `section.${'x'.repeat(240)}`;
+  const { ctx } = capture({
+    value: 4100,
+    rating: 'poor',
+    attribution: { target },
+  });
+  assert.equal(ctx.tags['lcp.element'].length, 200);
+  assert.equal(ctx.extra.elementTarget, target);
+});
+
 test('reportLcpMetric tolerates missing attribution', () => {
   const { ctx } = capture({ value: 4100, rating: 'poor' });
   assert.equal(ctx.tags['lcp.rating'], 'poor');
+  assert.equal(ctx.tags['lcp.element'], 'unknown');
   assert.equal(ctx.extra.value, 4100);
   assert.equal(ctx.extra.elementTarget, 'unknown');
   assert.equal(ctx.extra.timeToFirstByte, undefined);
