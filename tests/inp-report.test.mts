@@ -36,6 +36,7 @@ test('reportInpMetric reports value + all three sub-parts + interaction target (
   assert.equal(ctx.tags['inp.rating'], 'needs-improvement');
   assert.equal(ctx.tags['inp.interactionType'], 'pointer');
   assert.equal(ctx.tags.webvital, 'inp');
+  assert.equal(ctx.tags.formFactor, 'desktop');
 });
 
 test('reportInpMetric tolerates missing attribution (R1)', () => {

@@ -44,6 +44,7 @@ test('reportClsMetric reports CLS attribution for needs-improvement field shifts
   assert.equal(msg, 'web-vital: CLS');
   assert.equal(ctx.tags.webvital, 'cls');
   assert.equal(ctx.tags['cls.rating'], 'needs-improvement');
+  assert.equal(ctx.tags.formFactor, 'desktop');
   assert.equal(ctx.extra.value, 0.15321, 'CLS value keeps fractional precision');
   assert.equal(ctx.extra.largestShiftTarget, 'div.payment-failure-banner');
   assert.equal(ctx.extra.largestShiftValue, 0.1287);

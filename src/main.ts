@@ -6,6 +6,7 @@ import { markLcpDebug } from '@/utils/lcp-debug';
 import { enqueueSentryCall, installPreInitErrorQueue, scheduleSentryInit } from '@/bootstrap/sentry-defer';
 import { registerClsReporting } from '@/bootstrap/cls-report';
 import { registerInpReporting } from '@/bootstrap/inp-report';
+import { registerLcpReporting } from '@/bootstrap/lcp-report';
 import { initVercelAnalytics } from '@/bootstrap/secondary-startup';
 import { App } from './App';
 import { installUtmInterceptor } from './utils/utm';
@@ -48,6 +49,10 @@ registerInpReporting();
 // Report field CLS attribution to Sentry so field-only layout shifts can name
 // their largest shifting element before we scope the layout fix (#4580).
 registerClsReporting();
+
+// Report field LCP attribution to Sentry so the last-mile render-delay work can
+// see the real LCP element plus TTFB / load-delay / load-time / render-delay parts (#5079).
+registerLcpReporting();
 
 // Suppress NotAllowedError from YouTube IFrame API's internal play() — browser autoplay policy,
 // not actionable. The YT IFrame API doesn't expose the play() promise so it leaks as unhandled.
