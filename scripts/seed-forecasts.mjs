@@ -118,6 +118,14 @@ const MAX_TARGET_PUBLISHED_FORECASTS = 14;
 const MAX_PRESELECTED_FORECASTS_PER_FAMILY = 3;
 const MAX_PRESELECTED_FORECASTS_PER_SITUATION = 2;
 
+function hasPublishSelectionCapacity({ familyTotal = 0, familyDomainTotal = 0, situationTotal = 0 } = {}) {
+  return (
+    familyTotal < Math.min(MAX_PUBLISHED_FORECASTS_PER_FAMILY, MAX_PRESELECTED_FORECASTS_PER_FAMILY)
+    && familyDomainTotal < MAX_PUBLISHED_FORECASTS_PER_FAMILY_DOMAIN
+    && situationTotal < MAX_PRESELECTED_FORECASTS_PER_SITUATION
+  );
+}
+
 function isRedisWriteSkippedStatus(status) {
   return typeof status === 'string' && status.startsWith(REDIS_WRITE_IF_NEWER_SKIPPED_PREFIX);
 }
@@ -13826,9 +13834,7 @@ function selectPublishedForecastPool(predictions, options = {}) {
     const situationTotal = situationCounts.get(situationId) || 0;
     const selectedForSituation = selected.filter((item) => getForecastSelectionSituationId(item) === situationId);
     const distinctStrategicFollowOn = canCoexistAsDistinctStrategicFollowOn(pred, selectedForSituation);
-    if (familyTotal >= Math.min(MAX_PUBLISHED_FORECASTS_PER_FAMILY, MAX_PRESELECTED_FORECASTS_PER_FAMILY)) return false;
-    if (familyDomainTotal >= MAX_PUBLISHED_FORECASTS_PER_FAMILY_DOMAIN) return false;
-    if (situationTotal >= MAX_PRESELECTED_FORECASTS_PER_SITUATION) return false;
+    if (!hasPublishSelectionCapacity({ familyTotal, familyDomainTotal, situationTotal })) return false;
     if ((mode === 'state_anchor' || mode === 'diversity') && situationTotal >= 1 && !distinctStrategicFollowOn) return false;
     if (mode === 'fill' && situationTotal >= 1 && !distinctStrategicFollowOn && !isHighLeverageStateFollowOn(pred)) return false;
     if (mode === 'diversity') {
@@ -13863,6 +13869,17 @@ function selectPublishedForecastPool(predictions, options = {}) {
     updateSelectionCounts(pred, 1);
   }
 
+  function isProtectedRebalanceRepresentative(pred) {
+    if (!pred) return false;
+    if (pred.domain === 'military') {
+      return selected.filter((item) => item.domain === 'military').length <= 1;
+    }
+    if (pred.domain === 'supply_chain' && isStrategicSupplyChainCandidate(pred)) {
+      return selected.filter((item) => item.domain === 'supply_chain' && isStrategicSupplyChainCandidate(item)).length <= 1;
+    }
+    return false;
+  }
+
   function canFitCandidateInSelection(candidate, currentSelection) {
     if (!candidate || currentSelection.some((item) => item.id === candidate.id)) return false;
     const familyId = getForecastSelectionFamilyId(candidate);
@@ -13880,9 +13897,7 @@ function selectPublishedForecastPool(predictions, options = {}) {
     const situationTotal = selectedForSituation.length;
     const distinctStrategicFollowOn = canCoexistAsDistinctStrategicFollowOn(candidate, selectedForSituation);
 
-    if (familyTotal >= Math.min(MAX_PUBLISHED_FORECASTS_PER_FAMILY, MAX_PRESELECTED_FORECASTS_PER_FAMILY)) return false;
-    if (familyDomainTotal >= MAX_PUBLISHED_FORECASTS_PER_FAMILY_DOMAIN) return false;
-    if (situationTotal >= MAX_PRESELECTED_FORECASTS_PER_SITUATION) return false;
+    if (!hasPublishSelectionCapacity({ familyTotal, familyDomainTotal, situationTotal })) return false;
     if (situationTotal >= 1 && !distinctStrategicFollowOn && !isHighLeverageStateFollowOn(candidate)) return false;
     return true;
   }
@@ -13902,7 +13917,7 @@ function selectPublishedForecastPool(predictions, options = {}) {
       if (selectedHardCount >= targetHardCount) break;
       const replacements = selected
         .map((pred, index) => ({ pred, index }))
-        .filter(({ pred }) => !isHardResolvableForecast(pred))
+        .filter(({ pred }) => !isHardResolvableForecast(pred) && !isProtectedRebalanceRepresentative(pred))
         .sort((a, b) => (a.pred.publishSelectionScore || 0) - (b.pred.publishSelectionScore || 0)
           || (a.pred.analysisPriority || 0) - (b.pred.analysisPriority || 0)
           || (a.pred.probability || 0) - (b.pred.probability || 0));

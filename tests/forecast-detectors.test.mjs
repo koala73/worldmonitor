@@ -2677,6 +2677,55 @@ describe('discoverGraphCascades', () => {
 });
 
 describe('forecast quality gating', () => {
+  function attachPublishSelectionContext(pred, {
+    stateId = `state-${pred.id}`,
+    situationId = `sit-${pred.id}`,
+    familyId = `fam-${pred.id}`,
+    label = `${pred.region || pred.id} selection state`,
+    dominantRegion = pred.region || pred.id,
+    dominantDomain = pred.domain,
+    stateKind = '',
+    priority = 0.5,
+    readiness = 0.7,
+    forecastCount = 1,
+    topSignals = [{ type: 'news_corroboration' }],
+  } = {}) {
+    const state = {
+      id: stateId,
+      label,
+      dominantRegion,
+      dominantDomain,
+      stateKind,
+      forecastCount,
+      familyId,
+      topSignals,
+    };
+    const situation = {
+      id: situationId,
+      label: `${label} situation`,
+      forecastCount,
+      topSignals: topSignals.map((signal) => ({ type: signal.type, count: signal.count || 1 })),
+    };
+    const family = {
+      id: familyId,
+      label: `${label} family`,
+      forecastCount,
+      situationCount: 1,
+      situationIds: [situationId],
+    };
+
+    pred.traceMeta = { narrativeSource: 'fallback' };
+    pred.readiness = { overall: readiness };
+    pred.analysisPriority = priority;
+    pred.stateContext = state;
+    pred.situationContext = situation;
+    pred.familyContext = family;
+    pred.caseFile = pred.caseFile || {};
+    pred.caseFile.situationContext = situation;
+    pred.caseFile.familyContext = family;
+    return pred;
+  }
+
   it('reserves scenario enrichment slots for scarce market and military forecasts', () => {
     const predictions = [
       makePrediction('cyber', 'A', 'Cyber A', 0.7, 0.55, '7d', [{ type: 'cyber', value: '8 threats', weight: 0.5 }]),
@@ -3167,6 +3216,192 @@ describe('forecast quality gating', () => {
     assert.ok(hardCount >= 8, `expected >=8 hard forecasts, got ${hardCount}`);
   });
 
+  it('preserves sole guaranteed military and strategic supply-chain forecasts during hard rebalance', () => {
+    const deadline = Date.parse('2026-08-01T00:00:00Z');
+    const rankedJudged = Array.from({ length: 10 }, (_, index) => {
+      const pred = makePrediction('market', `Ranked market ${index}`, `Market repricing: Ranked market ${index}`, 0.77 - (index * 0.01), 0.68, '7d', [
+        { type: 'market_signal', value: `Ranked market ${index} remains elevated`, weight: 0.4 },
+      ]);
+      pred.id = `ranked-judged-${index}`;
+      pred.resolution = { kind: 'judged', deadline, question: `Will ranked market ${index} reprice?` };
+      attachPublishSelectionContext(pred, {
+        stateId: `state-ranked-judged-${index}`,
+        situationId: `sit-ranked-judged-${index}`,
+        familyId: `fam-ranked-judged-${index}`,
+        priority: 0.9 - (index * 0.015),
+        readiness: 0.88 - (index * 0.01),
+      });
+      return pred;
+    });
+
+    const military = makePrediction('military', 'Baltic airspace', 'Military posture: Baltic airspace', 0.52, 0.54, '7d', [
+      { type: 'theater', value: 'Baltic patrol activity remains elevated', weight: 0.35 },
+    ]);
+    military.id = 'guaranteed-military';
+    military.resolution = { kind: 'judged', deadline, question: 'Will Baltic posture escalate?' };
+    attachPublishSelectionContext(military, {
+      stateId: 'state-guaranteed-military',
+      situationId: 'sit-guaranteed-military',
+      familyId: 'fam-guaranteed-military',
+      priority: 0.02,
+      readiness: 0.52,
+    });
+
+    const supply = makePrediction('supply_chain', 'Strait of Hormuz', 'Shipping disruption: Strait of Hormuz', 0.51, 0.53, '14d', [
+      { type: 'shipping_cost_shock', value: 'Shipping reroutes persist through the Hormuz corridor.', weight: 0.35 },
+    ]);
+    supply.id = 'guaranteed-strategic-supply';
+    supply.marketSelectionContext = {
+      confirmationScore: 0.38,
+      contradictionScore: 0.05,
+      topBucketId: 'freight',
+      topBucketLabel: 'Freight',
+      topBucketPressure: 0.44,
+      transmissionEdgeCount: 1,
+      criticalSignalLift: 0.25,
+      topChannel: 'shipping_cost_shock',
+      linkedBucketIds: ['freight'],
+    };
+    supply.resolution = { kind: 'judged', deadline, question: 'Will Hormuz shipping disruption persist?' };
+    attachPublishSelectionContext(supply, {
+      stateId: 'state-guaranteed-supply',
+      situationId: 'sit-guaranteed-supply',
+      familyId: 'fam-guaranteed-supply',
+      stateKind: 'maritime_disruption',
+      priority: 0.03,
+      readiness: 0.54,
+      topSignals: [{ type: 'shipping_cost_shock' }],
+    });
+
+    const hardCandidates = Array.from({ length: 8 }, (_, index) => {
+      const hard = makePrediction('conflict', `Hard country ${index}`, `Escalation risk: Hard country ${index}`, 0.51, 0.57, '7d', [
+        { type: 'conflict_events', value: `4 conflict events in Hard country ${index}`, weight: 0.35 },
+      ]);
+      hard.id = `domain-guard-hard-${index}`;
+      hard.resolution = {
+        kind: 'hard',
+        metricKey: `${CONFLICT_COUNT_SOURCE_FEED}|count(country==Hard country ${index})`,
+        operator: '>=',
+        threshold: 1,
+        window: 'within-horizon',
+        deadline,
+        sourceFeed: CONFLICT_COUNT_SOURCE_FEED,
+      };
+      attachPublishSelectionContext(hard, {
+        stateId: `state-domain-guard-hard-${index}`,
+        situationId: `sit-domain-guard-hard-${index}`,
+        familyId: `fam-domain-guard-hard-${index}`,
+        priority: 0.05,
+        readiness: 0.55,
+      });
+      return hard;
+    });
+
+    const pool = selectPublishedForecastPool([...rankedJudged, military, supply, ...hardCandidates], { targetCount: 10 });
+    const poolIds = pool.map((pred) => pred.id);
+    const hardCount = pool.filter((pred) => pred.resolution?.kind === 'hard').length;
+    assert.ok(poolIds.includes(military.id), poolIds.join(', '));
+    assert.ok(poolIds.includes(supply.id), poolIds.join(', '));
+    assert.equal(hardCount, 8, poolIds.join(', '));
+  });
+
+  it('tops out hard rebalance at constrained hard supply', () => {
+    const deadline = Date.parse('2026-08-01T00:00:00Z');
+    const judged = Array.from({ length: 10 }, (_, index) => {
+      const pred = makePrediction('market', `Constrained market ${index}`, `Market repricing: Constrained market ${index}`, 0.76 - (index * 0.01), 0.68, '7d', [
+        { type: 'market_signal', value: `Constrained market ${index} remains elevated`, weight: 0.4 },
+      ]);
+      pred.id = `constrained-judged-${index}`;
+      pred.resolution = { kind: 'judged', deadline, question: `Will constrained market ${index} reprice?` };
+      attachPublishSelectionContext(pred, {
+        stateId: `state-constrained-judged-${index}`,
+        situationId: `sit-constrained-judged-${index}`,
+        familyId: `fam-constrained-judged-${index}`,
+        priority: 0.84 - (index * 0.015),
+        readiness: 0.84,
+      });
+      return pred;
+    });
+    const hardCandidates = Array.from({ length: 2 }, (_, index) => {
+      const hard = makePrediction('conflict', `Constrained hard ${index}`, `Escalation risk: Constrained hard ${index}`, 0.51, 0.56, '7d', [
+        { type: 'conflict_events', value: `4 conflict events in Constrained hard ${index}`, weight: 0.35 },
+      ]);
+      hard.id = `constrained-hard-${index}`;
+      hard.resolution = {
+        kind: 'hard',
+        metricKey: `${CONFLICT_COUNT_SOURCE_FEED}|count(country==Constrained hard ${index})`,
+        operator: '>=',
+        threshold: 1,
+        window: 'within-horizon',
+        deadline,
+        sourceFeed: CONFLICT_COUNT_SOURCE_FEED,
+      };
+      attachPublishSelectionContext(hard, {
+        stateId: `state-constrained-hard-${index}`,
+        situationId: `sit-constrained-hard-${index}`,
+        familyId: `fam-constrained-hard-${index}`,
+        priority: 0.04,
+        readiness: 0.54,
+      });
+      return hard;
+    });
+
+    const pool = selectPublishedForecastPool([...judged, ...hardCandidates], { targetCount: 10 });
+    const hardCount = pool.filter((pred) => pred.resolution?.kind === 'hard').length;
+    assert.equal(pool.length, 10);
+    assert.equal(hardCount, 2, pool.map((pred) => pred.id).join(', '));
+  });
+
+  it('leaves selection unchanged when every hard rebalance candidate is cap-blocked', () => {
+    const deadline = Date.parse('2026-08-01T00:00:00Z');
+    const judged = Array.from({ length: 8 }, (_, index) => {
+      const pred = makePrediction('market', `Blocked market ${index}`, `Market repricing: Blocked market ${index}`, 0.74 - (index * 0.01), 0.66, '7d', [
+        { type: 'market_signal', value: `Blocked market ${index} remains elevated`, weight: 0.4 },
+      ]);
+      pred.id = `cap-blocked-judged-${index}`;
+      pred.resolution = { kind: 'judged', deadline, question: `Will blocked market ${index} reprice?` };
+      attachPublishSelectionContext(pred, {
+        stateId: `state-cap-blocked-judged-${index}`,
+        situationId: `sit-cap-blocked-judged-${index}`,
+        familyId: `fam-cap-blocked-judged-${index}`,
+        priority: 0.72 - (index * 0.02),
+        readiness: 0.78,
+      });
+      return pred;
+    });
+    const hardCandidates = Array.from({ length: 3 }, (_, index) => {
+      const hard = makePrediction('conflict', `Blocked hard ${index}`, `Escalation risk: Blocked hard ${index}`, 0.55, 0.58, '7d', [
+        { type: 'conflict_events', value: `4 conflict events in Blocked hard ${index}`, weight: 0.35 },
+      ]);
+      hard.id = `cap-blocked-hard-${index}`;
+      hard.resolution = {
+        kind: 'hard',
+        metricKey: `${CONFLICT_COUNT_SOURCE_FEED}|count(country==Blocked hard ${index})`,
+        operator: '>=',
+        threshold: 1,
+        window: 'within-horizon',
+        deadline,
+        sourceFeed: CONFLICT_COUNT_SOURCE_FEED,
+      };
+      attachPublishSelectionContext(hard, {
+        stateId: `state-cap-blocked-hard-${index}`,
+        situationId: `sit-cap-blocked-hard-${index}`,
+        familyId: 'fam-cap-blocked-hard',
+        priority: index < 2 ? 0.94 - (index * 0.01) : 0.01,
+        readiness: index < 2 ? 0.86 : 0.5,
+      });
+      return hard;
+    });
+
+    const pool = selectPublishedForecastPool([...judged, ...hardCandidates], { targetCount: 10 });
+    const poolIds = new Set(pool.map((pred) => pred.id));
+    assert.equal(pool.length, 10);
+    assert.ok(poolIds.has(hardCandidates[0].id));
+    assert.ok(poolIds.has(hardCandidates[1].id));
+    assert.ok(!poolIds.has(hardCandidates[2].id));
+    for (const pred of judged) assert.ok(poolIds.has(pred.id), [...poolIds].join(', '));
+  });
+
   it('keeps the hard situation cap while rebalancing for resolution coverage', () => {
     const deadline = Date.parse('2026-08-01T00:00:00Z');
     const hormuzState = {
@@ -3464,6 +3699,57 @@ describe('forecast quality gating', () => {
     const next = selectDeferredForecastForPublishBackfill(deferred, published, 10);
     assert.equal(next.id, hard.id);
     assert.deepEqual(deferred.map((pred) => pred.id), [judged.id]);
+  });
+
+  it('preserves FIFO deferred backfill when hard coverage does not require a hard candidate', () => {
+    const deadline = Date.parse('2026-08-01T00:00:00Z');
+    const first = makePrediction('market', 'Market A', 'Market repricing: A', 0.65, 0.6, '7d', []);
+    first.id = 'deferred-fifo-first';
+    first.resolution = { kind: 'judged', deadline, question: 'Will market A reprice?' };
+    const second = makePrediction('market', 'Market B', 'Market repricing: B', 0.63, 0.6, '7d', []);
+    second.id = 'deferred-fifo-second';
+    second.resolution = { kind: 'judged', deadline, question: 'Will market B reprice?' };
+
+    const deferred = [first, second];
+    const next = selectDeferredForecastForPublishBackfill(deferred, [], 2);
+    assert.equal(next.id, first.id);
+    assert.deepEqual(deferred.map((pred) => pred.id), [second.id]);
+  });
+
+  it('reports hard-resolution coverage telemetry for candidate, selected, and published pools', () => {
+    const hard = { id: 'telemetry-hard', domain: 'conflict', resolution: { kind: 'hard' } };
+    const judgedA = { id: 'telemetry-judged-a', domain: 'market', resolution: { kind: 'judged' } };
+    const judgedB = { id: 'telemetry-judged-b', domain: 'military', resolution: { kind: 'judged' } };
+
+    const telemetry = summarizePublishFiltering([hard, judgedA, judgedB], [hard, judgedA], [hard]);
+    assert.deepEqual(telemetry.candidateResolutionCoverage, {
+      total: 3,
+      hard: 1,
+      judged: 2,
+      hardRatio: 0.333333,
+    });
+    assert.deepEqual(telemetry.selectedResolutionCoverage, {
+      total: 2,
+      hard: 1,
+      judged: 1,
+      hardRatio: 0.5,
+    });
+    assert.deepEqual(telemetry.publishedResolutionCoverage, {
+      total: 1,
+      hard: 1,
+      judged: 0,
+      hardRatio: 1,
+    });
+
+    const emptyTelemetry = summarizePublishFiltering([], [], []);
+    assert.deepEqual(emptyTelemetry.candidateResolutionCoverage, {
+      total: 0,
+      hard: 0,
+      judged: 0,
+      hardRatio: 0,
+    });
+    assert.deepEqual(emptyTelemetry.selectedResolutionCoverage, emptyTelemetry.candidateResolutionCoverage);
+    assert.deepEqual(emptyTelemetry.publishedResolutionCoverage, emptyTelemetry.candidateResolutionCoverage);
   });
 
   it('keeps strategic supply-chain forecasts alive alongside same-state market repricing and reports survival telemetry', () => {
