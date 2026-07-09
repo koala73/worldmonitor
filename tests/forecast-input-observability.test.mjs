@@ -25,6 +25,38 @@ describe('forecast input observability', () => {
     assert.equal(rows.find((row) => row.key === 'theater_posture:sebuf:stale:v1')?.records, 0);
   });
 
+  it('reports zero records for enabled feed definitions missing from parsed inputs', () => {
+    const rows = buildForecastInputPresenceRows({
+      'temporal:anomalies:v1': { anomalies: [{ id: 'a1' }] },
+    });
+
+    assert.equal(rows.find((row) => row.key === 'temporal:anomalies:v1')?.records, 1);
+    assert.equal(rows.find((row) => row.key === 'conflict:acled:v1:all:0:0')?.records, 0);
+  });
+
+  it('does not warn for intentionally disabled forecast input definitions', () => {
+    const previousIranEventsEnabled = process.env.IRAN_EVENTS_ENABLED;
+    delete process.env.IRAN_EVENTS_ENABLED;
+    try {
+      const rows = buildForecastInputPresenceRows({});
+
+      assert.equal(rows.some((row) => row.key === 'conflict:iran-events:v1'), false);
+    } finally {
+      if (previousIranEventsEnabled === undefined) delete process.env.IRAN_EVENTS_ENABLED;
+      else process.env.IRAN_EVENTS_ENABLED = previousIranEventsEnabled;
+    }
+  });
+
+  it('counts event feeds by their semantic events array', () => {
+    const rows = buildForecastInputPresenceRows({
+      'conflict:ucdp-events:v1': { meta: ['cached'], events: [] },
+      'unrest:events:v1': { meta: ['cached'], events: [{ id: 'u1' }] },
+    });
+
+    assert.equal(rows.find((row) => row.key === 'conflict:ucdp-events:v1')?.records, 0);
+    assert.equal(rows.find((row) => row.key === 'unrest:events:v1')?.records, 1);
+  });
+
   it('warns once per zero-record forecast input with feed key and count', () => {
     const warnings = [];
     const logger = { warn: (line) => warnings.push(String(line)) };

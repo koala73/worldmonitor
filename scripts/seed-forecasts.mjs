@@ -314,9 +314,9 @@ function buildForecastInputFeedDefinitions() {
     { key: 'military:forecast-inputs:stale:v1', label: 'militaryForecastInputs', countRecords: (value) => countArrayField(value, 'theaters') + countArrayField(value, 'surges') },
     { key: 'prediction:markets-bootstrap:v1', label: 'predictionMarkets', countRecords: countObjectCollection },
     { key: 'supply_chain:chokepoints:v4', label: 'chokepoints', countRecords: countObjectCollection },
-    { key: 'conflict:iran-events:v1', label: 'iranEvents', countRecords: countObjectCollection },
-    { key: 'conflict:ucdp-events:v1', label: 'ucdpEvents', countRecords: countObjectCollection },
-    { key: 'unrest:events:v1', label: 'unrestEvents', countRecords: countObjectCollection },
+    { key: 'conflict:iran-events:v1', label: 'iranEvents', countRecords: (value) => countArrayField(value, 'events'), enabled: iranEventsEnabled },
+    { key: 'conflict:ucdp-events:v1', label: 'ucdpEvents', countRecords: (value) => countArrayField(value, 'events') },
+    { key: 'unrest:events:v1', label: 'unrestEvents', countRecords: (value) => countArrayField(value, 'events') },
     { key: 'infra:outages:v1', label: 'outages', countRecords: (value) => countArrayField(value, 'outages') },
     { key: 'cyber:threats-bootstrap:v2', label: 'cyberThreats', countRecords: (value) => countArrayField(value, 'threats') || countObjectCollection(value) },
     { key: 'intelligence:gpsjam:v2', label: 'gpsJamming', countRecords: countObjectCollection },
@@ -347,11 +347,13 @@ function buildForecastInputFeedDefinitions() {
 
 function buildForecastInputPresenceRows(parsedByKey = {}) {
   return buildForecastInputFeedDefinitions()
-    .filter((feed) => Object.prototype.hasOwnProperty.call(parsedByKey, feed.key))
+    .filter((feed) => !feed.enabled || feed.enabled())
     .map((feed) => {
       let records = 0;
       try {
-        records = feed.countRecords(parsedByKey[feed.key]);
+        records = Object.prototype.hasOwnProperty.call(parsedByKey, feed.key)
+          ? feed.countRecords(parsedByKey[feed.key])
+          : 0;
       } catch {
         records = 0;
       }
