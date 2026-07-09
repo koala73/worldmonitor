@@ -86,7 +86,13 @@ const SIM_TASK_COMPLETE_STATUS_COMPLETED = 'COMPLETED';
 const SIM_TASK_COMPLETE_STATUS_MISSING_WORKER = 'MISSING_WORKER';
 const SIMULATION_POLL_INTERVAL_MS = 30 * 1000;
 const PUBLISH_MIN_PROBABILITY = 0;
-const RESOLVABLE_HARD_SELECTION_LIFT = 0.25;
+// Publish-selection lift for hard-resolvable forecasts (helps the canonical set
+// meet the >=80% resolvability KPI). Kept below the primary quality signals it
+// sits beside in computePublishSelectionScore -- priority (x0.55), readiness
+// (x0.2), probability (x0.15) and the memory lift (<=~0.17) -- so it strongly
+// favours measurable forecasts without flatly overriding a large quality gap.
+// A former flat 0.25 dominated every other term. Tune upward if the KPI is missed.
+const RESOLVABLE_HARD_SELECTION_LIFT = 0.12;
 const PANEL_MIN_PROBABILITY = 0.1;
 const CANONICAL_PAYLOAD_SOFT_LIMIT_BYTES = 4 * 1024 * 1024;
 const ENRICHMENT_COMBINED_MAX = 5;

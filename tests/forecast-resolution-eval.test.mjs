@@ -117,7 +117,7 @@ describe('resolveHardSpec', () => {
     assert.equal(resolved.evidence.comparison, '2 >= 2');
   });
 
-  it('uses the shorter ACLED lag and event_date for fresh conflict counts', () => {
+  it('uses the shorter ACLED lag for fresh conflict counts', () => {
     const deadline = START + 3 * DAY_MS;
     const e = entry({
       deadline,
@@ -133,9 +133,11 @@ describe('resolveHardSpec', () => {
     });
     const feed = {
       events: [
-        { country: 'Mali', event_date: '2026-07-07' },
-        { country: 'Mali', event_date: '2026-07-09' },
-        { country: 'Mali', event_date: '2026-07-11' },
+        // Production ACLED shape from seed-conflict-intel.mjs: numeric occurredAt.
+        { country: 'Mali', occurredAt: START },
+        { country: 'Mali', occurredAt: START + 2 * DAY_MS },
+        { country: 'Mali', occurredAt: START + 4 * DAY_MS },
+        // Raw ACLED date string still resolves via the event_date fallback.
         { country: 'Burkina Faso', event_date: '2026-07-09' },
       ],
     };
