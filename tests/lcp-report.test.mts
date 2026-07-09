@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { reportLcpMetric, type LcpMetricLike } from '@/bootstrap/lcp-report';
+import { webVitalsTestWindow, withWindow } from './web-vitals-report-test-helpers.mts';
 
 function capture(metric: LcpMetricLike): { msg: string; ctx: any } {
   let out: { msg: string; ctx: any } | null = null;
@@ -47,6 +48,23 @@ test('reportLcpMetric drops good-rated LCP without enqueuing (#4565)', () => {
   }) as unknown as typeof import('@/bootstrap/sentry-defer').enqueueSentryCall;
   reportLcpMetric({ value: 1900, rating: 'good', attribution: { target: 'h1' } }, fakeEnqueue);
   assert.equal(calls, 0, 'good-rated (<=2500ms) LCP is not reported');
+});
+
+test('reportLcpMetric captures formFactor before deferred Sentry drain', () => {
+  let queued: ((s: any) => void) | undefined;
+  const fakeEnqueue = ((fn: (s: any) => void) => {
+    queued = fn;
+  }) as unknown as typeof import('@/bootstrap/sentry-defer').enqueueSentryCall;
+  const out = withWindow(webVitalsTestWindow(900), () => {
+    reportLcpMetric({ value: 3200, rating: 'needs-improvement' }, fakeEnqueue);
+    return { ctx: undefined as any };
+  });
+
+  withWindow(webVitalsTestWindow(1440), () => {
+    queued?.({ captureMessage: (_msg: string, ctx: unknown) => { out.ctx = ctx; } });
+  });
+
+  assert.equal(out.ctx.tags.formFactor, 'mobile');
 });
 
 test('reportLcpMetric still reports unknown/undefined-rated LCP conservatively', () => {

@@ -81,12 +81,13 @@ export function reportClsMetric(
   // unknown only, so field attribution stays focused on actionable shifts.
   if (metric.rating === 'good') return;
   const a = metric.attribution ?? {};
+  const formFactor = getWebVitalsFormFactor();
   enqueue((s) => {
     s.captureMessage('web-vital: CLS', {
       level: 'info',
       tags: {
         webvital: 'cls',
-        formFactor: getWebVitalsFormFactor(),
+        formFactor,
         'cls.rating': metric.rating ?? 'unknown',
       },
       extra: {

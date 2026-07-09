@@ -50,12 +50,13 @@ export function reportInpMetric(
   // actionable worst-case signal still lands while Sentry event volume drops ~70%.
   if (metric.rating === 'good') return;
   const a = metric.attribution ?? {};
+  const formFactor = getWebVitalsFormFactor();
   enqueue((s) => {
     s.captureMessage('web-vital: INP', {
       level: 'info',
       tags: {
         webvital: 'inp',
-        formFactor: getWebVitalsFormFactor(),
+        formFactor,
         'inp.rating': metric.rating ?? 'unknown',
         'inp.interactionType': a.interactionType ?? 'unknown',
       },

@@ -1,17 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { getWebVitalsFormFactor, sanitizeWebVitalUrl } from '@/bootstrap/web-vitals-utils';
-
-function withWindow<T>(value: unknown, fn: () => T): T {
-  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'window');
-  Object.defineProperty(globalThis, 'window', { configurable: true, value });
-  try {
-    return fn();
-  } finally {
-    if (descriptor) Object.defineProperty(globalThis, 'window', descriptor);
-    else delete (globalThis as typeof globalThis & { window?: unknown }).window;
-  }
-}
+import { withWindow } from './web-vitals-report-test-helpers.mts';
 
 test('getWebVitalsFormFactor defaults to desktop outside the browser', () => {
   assert.equal(getWebVitalsFormFactor(), 'desktop');

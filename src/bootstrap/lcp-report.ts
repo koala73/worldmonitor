@@ -49,12 +49,13 @@ export function reportLcpMetric(
   // the bad tail while success is measured by bad-event rate per surface.
   if (metric.rating === 'good') return;
   const a = metric.attribution ?? {};
+  const formFactor = getWebVitalsFormFactor();
   enqueue((s) => {
     s.captureMessage('web-vital: LCP', {
       level: 'info',
       tags: {
         webvital: 'lcp',
-        formFactor: getWebVitalsFormFactor(),
+        formFactor,
         'lcp.rating': metric.rating ?? 'unknown',
       },
       extra: {
