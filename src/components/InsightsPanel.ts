@@ -71,6 +71,13 @@ export class InsightsPanel extends Panel {
 
     this.fwSelector = new FrameworkSelector({ panelId: 'insights', isPremium: hasPremiumAccess(), panel: this, note: t('components.insights.frameworkNote') });
     this.header.appendChild(this.fwSelector.el);
+
+    // #4890: the World Brief text is the field LCP element in ~1/3 of desktop
+    // views but normally paints only after clusters + hydration + sentiment
+    // complete (p75 ~4.3s). Repeat visitors already have the previous brief in
+    // the persistent cache — paint it with the shell so the LCP text lands in
+    // the first paint window; the first real update pass overwrites it.
+    void this.paintCachedBriefEarly();
   }
 
   public setMilitaryFlights(flights: MilitaryFlight[]): void {
@@ -118,6 +125,25 @@ export class InsightsPanel extends Panel {
     this.cachedBriefSources = sources;
     this.lastBriefUpdate = entry.updatedAt;
     return true;
+  }
+
+  /**
+   * #4890: early-paint the persisted World Brief at construction time so the
+   * LCP text block exists at shell paint instead of after the full insights
+   * pipeline. Generation guards on BOTH sides of the async cache read keep
+   * this from clobbering a real updateInsights() pass that races the
+   * IndexedDB read (updateInsights bumps updateGeneration synchronously on
+   * entry, so a stale early paint can never land on top of real content).
+   */
+  private async paintCachedBriefEarly(): Promise<void> {
+    if (this.updateGeneration > 0) return;
+    await this.loadBriefFromCache();
+    if (this.updateGeneration > 0 || !this.cachedBrief) return;
+    this.setDataBadge('cached');
+    this.setSafeContent(unsafeRawHtml(
+      this.renderWorldBrief(this.cachedBrief, this.cachedBriefSources),
+      'renderWorldBrief escapes the cached summary (#4890 early brief paint)',
+    ));
   }
 
   private extractISQInput(cluster: ClusteredEvent): SignalQualityInput {
@@ -524,6 +550,15 @@ export class InsightsPanel extends Panel {
     const briefHtml = insights.worldBrief
       ? this.renderWorldBrief(insights.worldBrief, worldBriefSources, this.renderBriefExtras(insights))
       : '';
+    if (insights.worldBrief) {
+      // #4890: keep the persistent brief cache warm from the dominant server
+      // path (previously only the client-LLM fallback wrote it, so repeat
+      // visitors had an empty cache and nothing to early-paint at boot).
+      this.cachedBrief = insights.worldBrief;
+      this.cachedBriefSources = worldBriefSources.slice(0, 6);
+      this.lastBriefUpdate = Date.now();
+      void setPersistentCache(InsightsPanel.BRIEF_CACHE_KEY, { summary: insights.worldBrief, sources: this.cachedBriefSources });
+    }
     const focalPointsHtml = this.renderFocalPoints();
     const convergenceHtml = this.renderConvergenceZones();
     const sentimentOverview = this.renderSentimentOverview(sentiments);
