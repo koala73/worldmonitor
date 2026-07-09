@@ -4,6 +4,7 @@ import { afterEach, describe, it } from 'node:test';
 import handler, { mapFinnhubResults } from '../api/symbol-search.ts';
 
 const originalFetch = globalThis.fetch;
+const originalDateNow = Date.now;
 
 // validateApiKey() rejects credential-less requests (production browsers send
 // an anonymous session token via the wm-session fetch wrapper). The enterprise
@@ -14,6 +15,7 @@ process.env.WORLDMONITOR_VALID_KEYS = TEST_KEY;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  Date.now = originalDateNow;
   delete process.env.FINNHUB_API_KEY;
   delete process.env.UPSTASH_REDIS_REST_URL;
   delete process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -157,12 +159,19 @@ describe('symbol-search handler', () => {
     assert.equal(finnhubCalls, 1, 'first real 429 must still hit Finnhub once');
     assert.match(cooldownSetBody ?? '', /"SET","symsearch-cooldown:v1:finnhub-429"/);
     assert.match(cooldownSetBody ?? '', /"EX","17"/);
+    const commands = JSON.parse(cooldownSetBody ?? '[]') as string[][];
+    const cooldownValue = JSON.parse(commands[0]?.[2] ?? '{}') as { retryAfterSeconds?: number; expiresAt?: number };
+    assert.equal(cooldownValue.retryAfterSeconds, 17);
+    assert.equal(typeof cooldownValue.expiresAt, 'number');
   });
 
-  it('honors a cached Finnhub 429 cooldown without calling Finnhub again', async () => {
+  it('honors a cached Finnhub 429 cooldown with remaining Retry-After seconds', async () => {
     process.env.FINNHUB_API_KEY = 'test-key';
     process.env.UPSTASH_REDIS_REST_URL = 'https://upstash.test';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'upstash-tok';
+
+    const now = 1_700_000_000_000;
+    Date.now = () => now;
 
     let finnhubCalls = 0;
     const cooldown = {
@@ -170,6 +179,7 @@ describe('symbol-search handler', () => {
       reason: 'finnhub_rate_limit',
       finnhubStatus: 429,
       retryAfterSeconds: 42,
+      expiresAt: now + 12_100,
     };
 
     globalThis.fetch = (async (input: RequestInfo | URL) => {
@@ -193,7 +203,7 @@ describe('symbol-search handler', () => {
 
     const res = await handler(makeReq('nvidia'));
     assert.equal(res.status, 503);
-    assert.equal(res.headers.get('Retry-After'), '42');
+    assert.equal(res.headers.get('Retry-After'), '13');
     assert.deepEqual(await res.json(), { error: 'SYMBOL_SEARCH_UNAVAILABLE' });
     assert.equal(finnhubCalls, 0, 'cooldown hit must not spend more Finnhub quota');
   });

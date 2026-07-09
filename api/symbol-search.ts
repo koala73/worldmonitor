@@ -74,6 +74,7 @@ interface FinnhubRateLimitCooldown {
   reason: 'finnhub_rate_limit';
   finnhubStatus: 429;
   retryAfterSeconds: number;
+  expiresAt: number;
 }
 
 function normalizeRetryAfterSeconds(value: number): number {
@@ -106,8 +107,17 @@ function isFinnhubRateLimitCooldown(value: unknown): value is FinnhubRateLimitCo
     maybe.finnhubStatus === 429 &&
     typeof maybe.retryAfterSeconds === 'number' &&
     Number.isFinite(maybe.retryAfterSeconds) &&
-    maybe.retryAfterSeconds > 0
+    maybe.retryAfterSeconds > 0 &&
+    typeof maybe.expiresAt === 'number' &&
+    Number.isFinite(maybe.expiresAt) &&
+    maybe.expiresAt > 0
   );
+}
+
+function getFinnhubCooldownRetryAfterSeconds(cooldown: FinnhubRateLimitCooldown): number | null {
+  const remainingSeconds = (cooldown.expiresAt - Date.now()) / 1000;
+  if (!Number.isFinite(remainingSeconds) || remainingSeconds <= 0) return null;
+  return normalizeRetryAfterSeconds(remainingSeconds);
 }
 
 function symbolSearchUnavailableResponse(
@@ -201,7 +211,10 @@ export default async function handler(
   try {
     const cooldown = await readRawJsonFromUpstash(FINNHUB_429_COOLDOWN_KEY);
     if (isFinnhubRateLimitCooldown(cooldown)) {
-      return symbolSearchUnavailableResponse(cors, cooldown.retryAfterSeconds);
+      const retryAfterSeconds = getFinnhubCooldownRetryAfterSeconds(cooldown);
+      if (retryAfterSeconds) {
+        return symbolSearchUnavailableResponse(cors, retryAfterSeconds);
+      }
     }
   } catch {
     // Cache infrastructure is best-effort; fall through to the real upstream.
@@ -267,7 +280,12 @@ export default async function handler(
           reason: 'finnhub_rate_limit',
           finnhubStatus: 429,
           retryAfterSeconds,
+          expiresAt: Date.now() + retryAfterSeconds * 1000,
         };
+        // The Redis write is async and distributed, so a sudden burst of cold
+        // requests can still produce multiple first-429 captures before the
+        // cooldown key propagates. Once present, it suppresses sequential
+        // duplicate Finnhub calls and Sentry captures for the remaining window.
         const writePromise = setCachedData(FINNHUB_429_COOLDOWN_KEY, cooldown, retryAfterSeconds).catch(() => false);
         if (ctx) ctx.waitUntil(writePromise);
         else void writePromise;
