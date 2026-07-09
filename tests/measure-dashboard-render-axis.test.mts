@@ -5,11 +5,14 @@ import {
   buildReport,
   classifyRenderAxisEvent,
   compareReports,
+  dominantRenderPhase,
   extractStackFrames,
   isForcedReflow,
   normalizeReport,
   parseArgs,
+  resolveInteractionTarget,
   summarizeForcedReflows,
+  summarizeInteractionTimings,
   summarizeTraceEvents,
 } from '../scripts/measure-dashboard-render-axis.mjs';
 
@@ -18,6 +21,7 @@ describe('measure-dashboard-render-axis trace parsing', () => {
     assert.equal(classifyRenderAxisEvent('Layout'), 'styleLayout');
     assert.equal(classifyRenderAxisEvent('UpdateLayoutTree'), 'styleLayout');
     assert.equal(classifyRenderAxisEvent('Paint'), 'rendering');
+    assert.equal(classifyRenderAxisEvent('Canvas2DLayerBridge::FlushCanvas'), 'canvas');
     assert.equal(classifyRenderAxisEvent('EvaluateScript'), 'scriptEvaluation');
     assert.equal(classifyRenderAxisEvent('LayoutShift'), null);
   });
@@ -27,19 +31,21 @@ describe('measure-dashboard-render-axis trace parsing', () => {
       traceEvents: [
         { ph: 'X', name: 'Layout', dur: 4000 },
         { ph: 'X', name: 'Paint', dur: 2000 },
+        { ph: 'X', name: 'Canvas2DLayerBridge::FlushCanvas', dur: 1000 },
         { ph: 'X', name: 'EvaluateScript', dur: 6000 },
         { ph: 'X', name: 'RunTask', dur: 90000 },
         { ph: 'I', name: 'Layout', dur: 100000 },
       ],
     });
 
-    assert.equal(summary.eventCount, 5);
+    assert.equal(summary.eventCount, 6);
     assert.equal(summary.durationMs.styleLayout, 4);
     assert.equal(summary.durationMs.rendering, 2);
+    assert.equal(summary.durationMs.canvas, 1);
     assert.equal(summary.durationMs.scriptEvaluation, 6);
     assert.equal(summary.durationMs.topLevelTasks, 90);
     assert.equal(summary.durationMs.estimatedTbt, 40);
-    assert.equal(summary.sharePct.styleLayoutOfAccounted, 33.3);
+    assert.equal(summary.sharePct.styleLayoutOfAccounted, 30.8);
   });
 
   it('extracts and ranks explicitly forced reflow stacks', () => {
@@ -161,6 +167,97 @@ describe('measure-dashboard-render-axis reporting', () => {
     assert.doesNotThrow(() => JSON.parse(JSON.stringify(report)));
   });
 
+  it('builds an interaction report with event timing parts and dominant render phase', () => {
+    const report = buildReport({
+      url: 'http://127.0.0.1:4173/dashboard',
+      generatedAt: '2026-07-09T00:00:00.000Z',
+      viewport: { width: 390, height: 844 },
+      cpuThrottleRate: 4,
+      interaction: {
+        ...resolveInteractionTarget('country'),
+        postInteractMs: 1500,
+        targetInfo: { tapPoint: { x: 120, y: 200, matchedTop: true } },
+      },
+      eventTimings: [
+        {
+          name: 'pointerup',
+          startTime: 100,
+          processingStart: 150,
+          processingEnd: 180,
+          duration: 600,
+          selector: '#mapSvg path.country',
+        },
+      ],
+      traceEvents: [
+        { ph: 'X', name: 'Layout', dur: 20_000 },
+        { ph: 'X', name: 'Paint', dur: 250_000 },
+        { ph: 'X', name: 'FunctionCall', dur: 30_000 },
+      ],
+    });
+
+    assert.equal(report.interaction?.target.name, 'country');
+    assert.equal(report.cpuThrottleRate, 4);
+    assert.equal(report.interaction?.timings.worst?.presentationDelayMs, 520);
+    assert.equal(report.interaction?.dominantPhase.phase, 'rendering');
+    assert.equal(report.interaction?.dominantPhase.ms, 250);
+    assert.deepEqual(report.interaction?.traceWindow, {
+      postInteractMs: 1500,
+      dominantPhaseScope: 'full-post-interaction-trace-window',
+    });
+    assert.deepEqual(report.interaction?.warnings, []);
+  });
+
+  it('warns when the tap target falls back to a point that did not hit the selector', () => {
+    const report = buildReport({
+      url: 'http://127.0.0.1:4173/dashboard',
+      interaction: {
+        ...resolveInteractionTarget('country'),
+        targetInfo: { tapPoint: { x: 120, y: 200, matchedTop: false } },
+      },
+      eventTimings: [],
+      traceEvents: [{ ph: 'X', name: 'Paint', dur: 250_000 }],
+    });
+
+    assert.match(report.interaction?.warnings[0] || '', /fallback tap point/);
+    assert.match(report.warnings.join('\n'), /did not hit the requested selector/);
+  });
+
+  it('summarizes event-timing entries into input, processing, and presentation delay', () => {
+    const summary = summarizeInteractionTimings([
+      { name: 'pointerdown', startTime: 20, processingStart: 30, processingEnd: 45, duration: 80 },
+      { name: 'click', startTime: 100, processingStart: 140, processingEnd: 160, duration: 240 },
+    ]);
+
+    assert.equal(summary.eventCount, 2);
+    assert.equal(summary.worst?.name, 'click');
+    assert.equal(summary.worst?.inputDelayMs, 40);
+    assert.equal(summary.worst?.processingMs, 20);
+    assert.equal(summary.worst?.presentationDelayMs, 180);
+  });
+
+  it('names the dominant render phase from render-axis durations', () => {
+    assert.deepEqual(dominantRenderPhase({
+      styleLayout: 12,
+      rendering: 4,
+      canvas: 45,
+      scriptEvaluation: 8,
+    }), {
+      phase: 'canvas',
+      label: 'canvas/webgl',
+      ms: 45,
+    });
+    assert.deepEqual(dominantRenderPhase({
+      styleLayout: 0,
+      rendering: 0,
+      canvas: 0,
+      scriptEvaluation: 0,
+    }), {
+      phase: 'none',
+      label: 'none',
+      ms: 0,
+    });
+  });
+
   it('normalizes raw trace files before comparison', () => {
     const report = normalizeReport({
       url: 'http://127.0.0.1:4175/dashboard',
@@ -178,14 +275,47 @@ describe('measure-dashboard-render-axis reporting', () => {
     assert.equal(report.forcedReflows.eventCount, 0);
   });
 
+  it('normalizes raw interaction trace files without dropping timing metadata', () => {
+    const report = normalizeReport({
+      url: 'http://127.0.0.1:4175/dashboard',
+      cpuThrottleRate: 6,
+      interaction: {
+        ...resolveInteractionTarget('nav-chip'),
+        targetInfo: { tapPoint: { x: 32, y: 48, matchedTop: true } },
+      },
+      eventTimings: [
+        {
+          name: 'click',
+          startTime: 100,
+          processingStart: 120,
+          processingEnd: 140,
+          duration: 300,
+          selector: '.mobile-panel-nav-chip',
+        },
+      ],
+      traceEvents: [
+        { ph: 'X', name: 'Canvas2DLayerBridge::FlushCanvas', dur: 5000 },
+      ],
+    });
+
+    assert.equal(report.interaction?.target.name, 'nav-chip');
+    assert.equal(report.cpuThrottleRate, 6);
+    assert.equal(report.interaction?.timings.eventCount, 1);
+    assert.equal(report.interaction?.timings.worst?.name, 'click');
+    assert.equal(report.interaction?.timings.worst?.presentationDelayMs, 260);
+    assert.equal(report.interaction?.dominantPhase.phase, 'canvas');
+  });
+
   it('compares before/after reports with absolute and relative deltas', () => {
     const comparison = compareReports(
-      { url: 'before', durationMs: { styleLayout: 100, rendering: 20, scriptEvaluation: 10, estimatedTbt: 50 }, forcedReflows: { eventCount: 4, totalMs: 246, markerCount: 0, markerTotalMs: 0 } },
-      { url: 'after', durationMs: { styleLayout: 60, rendering: 15, scriptEvaluation: 11, estimatedTbt: 35 }, forcedReflows: { eventCount: 1, totalMs: 171, markerCount: 0, markerTotalMs: 0 } },
+      { url: 'before', durationMs: { styleLayout: 100, rendering: 20, canvas: 10, scriptEvaluation: 10, estimatedTbt: 50 }, forcedReflows: { eventCount: 4, totalMs: 246, markerCount: 0, markerTotalMs: 0 } },
+      { url: 'after', durationMs: { styleLayout: 60, rendering: 15, canvas: 25, scriptEvaluation: 11, estimatedTbt: 35 }, forcedReflows: { eventCount: 1, totalMs: 171, markerCount: 0, markerTotalMs: 0 } },
     );
 
     assert.equal(comparison.deltaMs.styleLayout, -40);
     assert.equal(comparison.deltaPct.styleLayout, -40);
+    assert.equal(comparison.deltaMs.canvas, 15);
+    assert.equal(comparison.deltaPct.canvas, 150);
     assert.equal(comparison.deltaMs.estimatedTbt, -15);
     assert.equal(comparison.forcedReflowEvents.delta, -3);
     // The ≤200ms #4487 acceptance target tracks attributed forced-reflow ms.
@@ -237,6 +367,7 @@ describe('measure-dashboard-render-axis parseArgs', () => {
     assert.equal(args.settle, 10000);
     assert.equal(args.width, 1365);
     assert.equal(args.height, 768);
+    assert.equal(args.cpuThrottleRate, 1);
     assert.equal(args.json, false);
   });
 
@@ -251,6 +382,8 @@ describe('measure-dashboard-render-axis parseArgs', () => {
       '1440',
       '--height',
       '900',
+      '--cpu-throttle',
+      '4',
       '--trace-out',
       '/tmp/trace.json',
       '--json',
@@ -259,6 +392,7 @@ describe('measure-dashboard-render-axis parseArgs', () => {
     assert.equal(args.settle, 250);
     assert.equal(args.width, 1440);
     assert.equal(args.height, 900);
+    assert.equal(args.cpuThrottleRate, 4);
     assert.equal(args.traceOut, '/tmp/trace.json');
     assert.equal(args.json, true);
   });
@@ -267,5 +401,61 @@ describe('measure-dashboard-render-axis parseArgs', () => {
     const args = parseArgs(['node', 'script', '--compare', 'before.json', 'after.json', '--json']);
     assert.deepEqual(args.compare, { before: 'before.json', after: 'after.json' });
     assert.equal(args.json, true);
+  });
+
+  it('accepts named mobile interaction targets and uses the 390x844 issue viewport', () => {
+    const args = parseArgs([
+      'node',
+      'script',
+      'http://localhost:4173/dashboard',
+      '--interact',
+      'country',
+      '--json',
+    ]);
+
+    assert.equal(args.url, 'http://localhost:4173/dashboard');
+    assert.equal(args.interact?.name, 'country');
+    assert.equal(args.interact?.selector, '#mapSvg path.country');
+    assert.equal(args.width, 390);
+    assert.equal(args.height, 844);
+    assert.equal(args.postInteract, 1200);
+    assert.equal(args.json, true);
+  });
+
+  it('accepts custom interaction selectors without losing explicit viewport overrides', () => {
+    const args = parseArgs([
+      'node',
+      'script',
+      '--width',
+      '430',
+      '--height',
+      '932',
+      '--interact',
+      'selector:#mapOverlays .conflict-click-area',
+    ]);
+
+    assert.equal(args.interact?.name, 'custom');
+    assert.equal(args.interact?.selector, '#mapOverlays .conflict-click-area');
+    assert.equal(args.width, 430);
+    assert.equal(args.height, 932);
+  });
+
+  it('falls back to the issue viewport when invalid interaction viewport overrides are ignored', () => {
+    const args = parseArgs([
+      'node',
+      'script',
+      '--width',
+      'notanumber',
+      '--height',
+      'nope',
+      '--cpu-throttle',
+      'nope',
+      '--interact',
+      'country',
+    ]);
+
+    assert.equal(args.width, 390);
+    assert.equal(args.height, 844);
+    assert.equal(args.cpuThrottleRate, 1);
   });
 });

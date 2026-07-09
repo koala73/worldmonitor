@@ -8,6 +8,9 @@
  * occurs. Reporting interaction target + the three INP sub-parts lets us see
  * which real interaction is slow and whether the cost is input delay,
  * processing, or presentation — the data that drives fix prioritization.
+ * Good-rated events are trimmed (#4565), so captured-event p75 is conditioned
+ * on the bad tail. Verify fixes with bad-event rate per formFactor plus
+ * weekly page-level CrUX queryHistoryRecord, not p75 of captured Sentry events.
  *
  * The `onINP` registration that calls this lives behind the `web-vitals`
  * dependency (see `registerInpReporting` doc at the bottom). This module keeps
@@ -15,7 +18,7 @@
  * without the package present.
  */
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
-import { roundMs } from '@/bootstrap/web-vitals-utils';
+import { getWebVitalsFormFactor, roundMs } from '@/bootstrap/web-vitals-utils';
 
 /** Structural subset of web-vitals' INP attribution (kept local to avoid the dep). */
 export interface InpAttributionLike {
@@ -47,11 +50,13 @@ export function reportInpMetric(
   // actionable worst-case signal still lands while Sentry event volume drops ~70%.
   if (metric.rating === 'good') return;
   const a = metric.attribution ?? {};
+  const formFactor = getWebVitalsFormFactor();
   enqueue((s) => {
     s.captureMessage('web-vital: INP', {
       level: 'info',
       tags: {
         webvital: 'inp',
+        formFactor,
         'inp.rating': metric.rating ?? 'unknown',
         'inp.interactionType': a.interactionType ?? 'unknown',
       },

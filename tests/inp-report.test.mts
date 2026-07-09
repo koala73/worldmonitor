@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { reportInpMetric, type InpMetricLike } from '@/bootstrap/inp-report';
+import { webVitalsTestWindow, withWindow } from './web-vitals-report-test-helpers.mts';
 
 // Capture what reportInpMetric would send, by injecting a fake enqueue that
 // immediately invokes the closure with a fake Sentry namespace.
@@ -36,6 +37,7 @@ test('reportInpMetric reports value + all three sub-parts + interaction target (
   assert.equal(ctx.tags['inp.rating'], 'needs-improvement');
   assert.equal(ctx.tags['inp.interactionType'], 'pointer');
   assert.equal(ctx.tags.webvital, 'inp');
+  assert.equal(ctx.tags.formFactor, 'desktop');
 });
 
 test('reportInpMetric tolerates missing attribution (R1)', () => {
@@ -54,6 +56,23 @@ test('reportInpMetric routes through the injected enqueue exactly once (R2 deleg
   }) as unknown as typeof import('@/bootstrap/sentry-defer').enqueueSentryCall;
   reportInpMetric({ value: 100 }, fakeEnqueue);
   assert.equal(calls, 1, 'delegates to enqueueSentryCall (which buffers until Sentry init)');
+});
+
+test('reportInpMetric captures formFactor before deferred Sentry drain', () => {
+  let queued: ((s: any) => void) | undefined;
+  const fakeEnqueue = ((fn: (s: any) => void) => {
+    queued = fn;
+  }) as unknown as typeof import('@/bootstrap/sentry-defer').enqueueSentryCall;
+  const out = withWindow(webVitalsTestWindow(900), () => {
+    reportInpMetric({ value: 350, rating: 'needs-improvement' }, fakeEnqueue);
+    return { ctx: undefined as any };
+  });
+
+  withWindow(webVitalsTestWindow(1440), () => {
+    queued?.({ captureMessage: (_msg: string, ctx: unknown) => { out.ctx = ctx; } });
+  });
+
+  assert.equal(out.ctx.tags.formFactor, 'mobile');
 });
 
 test('reportInpMetric drops good-rated INP without enqueuing (#4565)', () => {

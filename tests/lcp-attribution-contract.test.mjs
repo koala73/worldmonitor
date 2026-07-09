@@ -17,6 +17,18 @@ describe('LCP attribution debug contract', () => {
     assert.ok(installIndex < appIndex, 'LCP attribution debug must install before App construction');
   });
 
+  it('registers LCP RUM reporting before App construction', () => {
+    const src = readSrc('src/main.ts');
+    const importIndex = src.indexOf("import { registerLcpReporting } from '@/bootstrap/lcp-report';");
+    const registerIndex = src.indexOf('registerLcpReporting();');
+    const appIndex = src.indexOf('new App(');
+
+    assert.ok(importIndex >= 0, 'main.ts must import registerLcpReporting');
+    assert.ok(registerIndex >= 0, 'main.ts must register LCP RUM reporting');
+    assert.ok(appIndex >= 0, 'main.ts must construct App');
+    assert.ok(registerIndex < appIndex, 'LCP RUM reporting must register before App construction');
+  });
+
   it('marks the boot gates that can delay final LCP', () => {
     const appSrc = readSrc('src/App.ts');
     for (const mark of [

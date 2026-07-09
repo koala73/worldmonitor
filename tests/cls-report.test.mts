@@ -7,6 +7,7 @@ import {
   type ClsMetricLike,
   type ClsReportEnv,
 } from '@/bootstrap/cls-report';
+import { webVitalsTestWindow, withWindow } from './web-vitals-report-test-helpers.mts';
 
 // Capture what reportClsMetric would send, by injecting a fake enqueue that
 // immediately invokes the closure with a fake Sentry namespace.
@@ -44,6 +45,7 @@ test('reportClsMetric reports CLS attribution for needs-improvement field shifts
   assert.equal(msg, 'web-vital: CLS');
   assert.equal(ctx.tags.webvital, 'cls');
   assert.equal(ctx.tags['cls.rating'], 'needs-improvement');
+  assert.equal(ctx.tags.formFactor, 'desktop');
   assert.equal(ctx.extra.value, 0.15321, 'CLS value keeps fractional precision');
   assert.equal(ctx.extra.largestShiftTarget, 'div.payment-failure-banner');
   assert.equal(ctx.extra.largestShiftValue, 0.1287);
@@ -87,6 +89,23 @@ test('reportClsMetric includes the shift-class environment fields (#4580)', () =
   assert.equal(ctx.extra.visibilityState, 'visible');
   assert.equal(ctx.extra.scrollY, 0);
   assert.equal(ctx.extra.viewport, '1440x900');
+});
+
+test('reportClsMetric captures formFactor before deferred Sentry drain', () => {
+  let queued: ((s: any) => void) | undefined;
+  const fakeEnqueue = ((fn: (s: any) => void) => {
+    queued = fn;
+  }) as unknown as typeof import('@/bootstrap/sentry-defer').enqueueSentryCall;
+  const out = withWindow(webVitalsTestWindow(900), () => {
+    reportClsMetric({ value: 0.22, rating: 'poor' }, fakeEnqueue);
+    return { ctx: undefined as any };
+  });
+
+  withWindow(webVitalsTestWindow(1440), () => {
+    queued?.({ captureMessage: (_msg: string, ctx: unknown) => { out.ctx = ctx; } });
+  });
+
+  assert.equal(out.ctx.tags.formFactor, 'mobile');
 });
 
 test('collectClsReportEnv is safe (empty) in non-browser contexts', () => {

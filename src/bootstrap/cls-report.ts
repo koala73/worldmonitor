@@ -5,6 +5,9 @@
  * into a Sentry event and routes it through `enqueueSentryCall` so it survives
  * Sentry's deferred (~10s idle) init. Reporting the largest shift target/value
  * lets field data name the real shifting element before we ship a layout fix.
+ * Good-rated events are trimmed (#4565), so captured-event p75 is conditioned
+ * on the bad tail. Verify fixes with bad-event rate per formFactor plus
+ * weekly page-level CrUX queryHistoryRecord, not p75 of captured Sentry events.
  *
  * The `onCLS` registration that calls this lives behind the `web-vitals`
  * dependency (see `registerClsReporting` doc at the bottom). This module keeps
@@ -12,7 +15,7 @@
  * without the package present.
  */
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
-import { roundMs } from '@/bootstrap/web-vitals-utils';
+import { getWebVitalsFormFactor, roundMs } from '@/bootstrap/web-vitals-utils';
 
 /** Structural subset of web-vitals' CLS attribution (kept local to avoid the dep). */
 export interface ClsAttributionLike {
@@ -78,11 +81,13 @@ export function reportClsMetric(
   // unknown only, so field attribution stays focused on actionable shifts.
   if (metric.rating === 'good') return;
   const a = metric.attribution ?? {};
+  const formFactor = getWebVitalsFormFactor();
   enqueue((s) => {
     s.captureMessage('web-vital: CLS', {
       level: 'info',
       tags: {
         webvital: 'cls',
+        formFactor,
         'cls.rating': metric.rating ?? 'unknown',
       },
       extra: {

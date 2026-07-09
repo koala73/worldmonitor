@@ -1,4 +1,5 @@
 import { markLcpDebug, type LcpMarkSnapshot } from '@/utils/lcp-debug';
+import { sanitizeWebVitalUrl } from '@/bootstrap/web-vitals-utils';
 
 type LcpElementSnapshot = {
   className: string;
@@ -144,18 +145,6 @@ function isLcpTextCaptureEnabled(): boolean {
   return isFlagEnabled(DEBUG_TEXT_QUERY_PARAM, DEBUG_TEXT_STORAGE_KEYS);
 }
 
-function sanitizeResourceUrl(raw: string | undefined): string {
-  if (!raw) return '';
-  try {
-    const url = new URL(raw, typeof window !== 'undefined' ? window.location.href : 'https://worldmonitor.app/');
-    const query = url.search ? '?[redacted]' : '';
-    return `${url.origin}${url.pathname}${query}`;
-  } catch {
-    const [withoutQuery = raw] = raw.split('?');
-    return withoutQuery.slice(0, 200);
-  }
-}
-
 function getClassName(element: Element): string {
   const className = element.className;
   if (typeof className === 'string') return className;
@@ -259,7 +248,7 @@ function summarizeCriticalResources(upToStartTime = Number.POSITIVE_INFINITY): L
       group.largest = {
         duration: Math.round(resource.duration),
         initiatorType: resource.initiatorType,
-        name: sanitizeResourceUrl(resource.name),
+        name: sanitizeWebVitalUrl(resource.name),
         startTime: Math.round(resource.startTime),
         transferSize,
       };
@@ -322,7 +311,7 @@ function recordLcpEntry(entry: LcpPerformanceEntry): void {
     resources: summarizeCriticalResources(entry.startTime),
     size: Math.round(entry.size ?? 0),
     startTime: Math.round(entry.startTime),
-    url: sanitizeResourceUrl(entry.url),
+    url: sanitizeWebVitalUrl(entry.url),
   }, MAX_ENTRIES);
 }
 
@@ -359,6 +348,6 @@ export const __testing__ = {
   isLcpDebugEnabled,
   isLcpTextCaptureEnabled,
   isTruthyDebugFlag,
-  sanitizeResourceUrl,
+  sanitizeResourceUrl: sanitizeWebVitalUrl,
   snapshotContext,
 };
