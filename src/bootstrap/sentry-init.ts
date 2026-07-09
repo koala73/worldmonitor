@@ -30,6 +30,15 @@ const THIRD_PARTY_FETCH_HOST_ALLOWLIST = new Set([
   // ignoreError. NOT our `api.worldmonitor.app`, which stays off the list so
   // genuine API regressions still surface (WORLDMONITOR-SA/SB).
   'clerk.worldmonitor.app',
+  // DebugBear RUM beacon collector. We embed the DebugBear RUM script
+  // (`src/bootstrap/debugbear-rum.ts` → cdn.debugbear.com) whose collector
+  // POSTs field metrics to `data.debugbear.com`; a leaked
+  // `NetworkError ... (data.debugbear.com)` / `Failed to fetch (data.debugbear.com)`
+  // is a dropped monitoring beacon (adblock / network blip) — invisible to the
+  // user and unactionable, same disposition as the Clerk-SDK-internal fetch
+  // above. NOT `api.worldmonitor.app` (stays off so real API regressions
+  // surface). WORLDMONITOR-RP.
+  'data.debugbear.com',
 ]);
 
 function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
@@ -336,11 +345,14 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // so a self-hosted R2 PMTiles / first-party basemap regression isn't silently dropped just
       // because its stack happens to be all-vendor frames (WORLDMONITOR-NE/NF follow-up).
       const excType = event.exception?.values?.[0]?.type ?? '';
-      // `TypeError: Failed to fetch (<host>)` shape — emitted by maplibre's AJAX
-      // wrapper AND by first-party fetch callers that surface a host-suffixed
-      // network error. The host allowlist below is the load-bearing safety;
-      // this match is just the shape detector.
-      const isHostScopedFetchFailure = excType === 'TypeError' && /^Failed to fetch \([^)]+\)$/.test(msg);
+      // Host-suffixed fetch-failure shapes — Chrome/Edge `Failed to fetch (<host>)`
+      // (maplibre's AJAX wrapper AND first-party fetch callers) and Firefox
+      // `NetworkError when attempting to fetch resource. (<host>)` (the
+      // engine-equivalent phrasing, e.g. an embedded SDK's beacon fetch —
+      // WORLDMONITOR-RP). Both route through the host allowlist below, which is
+      // the load-bearing safety; this match is just the shape detector.
+      const isHostScopedFetchFailure = excType === 'TypeError'
+        && /^(?:Failed to fetch|NetworkError when attempting to fetch resource\.) \([^)]+\)$/.test(msg);
       if (!isHostScopedFetchFailure
           && (excType === 'TypeError' || excType === 'RangeError' || /^(?:TypeError|RangeError):/.test(msg))
           && frames.length > 0) {
@@ -359,7 +371,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // real basemap / API regression is never silently dropped
       // (WORLDMONITOR-NE/NF, WORLDMONITOR-QG).
       if (isHostScopedFetchFailure) {
-        const hostMatch = msg.match(/^Failed to fetch \(([^)]+)\)$/);
+        const hostMatch = msg.match(/^(?:Failed to fetch|NetworkError when attempting to fetch resource\.) \(([^)]+)\)$/);
         const host = hostMatch?.[1];
         if (host && THIRD_PARTY_FETCH_HOST_ALLOWLIST.has(host)) return null;
       }
