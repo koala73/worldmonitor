@@ -405,6 +405,29 @@ describe('pruneArchivedTerminalEntries', () => {
     assert.ok(ledger['old-archived@1'], 'input must be left intact for the caller');
   });
 
+  it('normalizes array and seed-envelope ledger inputs before pruning', () => {
+    const ledger = ledgerFixture();
+    const arrayPruned = pruneArchivedTerminalEntries(Object.values(ledger), NOW);
+    assert.equal(arrayPruned['old-archived@1'], undefined);
+    assert.ok(arrayPruned['recent-archived@1'], 'array input keeps in-window archived rows');
+    assert.ok(arrayPruned['old-unarchived@1'], 'array input keeps unarchived retry rows');
+
+    const envelopedPruned = pruneArchivedTerminalEntries({
+      _seed: {
+        fetchedAt: NOW,
+        recordCount: Object.keys(ledger).length,
+        sourceVersion: 'test',
+        schemaVersion: 1,
+        state: 'OK',
+      },
+      data: Object.values(ledger),
+    }, NOW);
+    assert.equal(envelopedPruned['old-archived@1'], undefined);
+    assert.equal(envelopedPruned.data, undefined, 'envelope wrapper must not leak into the pruned ledger');
+    assert.ok(envelopedPruned['recent-archived@1'], 'enveloped input keeps in-window archived rows');
+    assert.ok(envelopedPruned['old-unarchived@1'], 'enveloped input keeps unarchived retry rows');
+  });
+
   it('honors a custom retention window', () => {
     const ledger = ledgerFixture();
     // With a 5-day window, the 10-day-old archived entry is also out of window.

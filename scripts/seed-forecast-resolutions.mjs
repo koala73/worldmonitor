@@ -71,7 +71,7 @@ export function pruneArchivedTerminalEntries(ledger, nowMs, options = {}) {
   const retentionDays = options.retentionWindowDays ?? LEDGER_RETENTION_WINDOW_DAYS;
   const minResolvedAt = nowMs - retentionDays * DAY_MS;
   const kept = {};
-  for (const [key, entry] of Object.entries(ledger || {})) {
+  for (const [key, entry] of Object.entries(normalizeLedger(ledger))) {
     if (isPrunableTerminalEntry(entry, minResolvedAt)) continue;
     kept[key] = entry;
   }
@@ -326,10 +326,12 @@ async function buildLedgerForRun() {
   const preLedger = ingestHistory(existingLedger || {}, history, nowMs);
   const feeds = await readResolutionFeeds(preLedger);
   const result = processResolutionCycle(preLedger, [], feeds, nowMs);
-  const archivedReceipts = await appendR2Receipts(collectUnarchivedReceipts(result.ledger));
+  const receiptsForArchive = collectUnarchivedReceipts(result.ledger);
+  const archivedReceipts = await appendR2Receipts(receiptsForArchive);
   markReceiptsArchived(result.ledger, archivedReceipts, Date.now());
   console.log(`  Resolution ledger entries: ${Object.keys(result.ledger).length}`);
-  console.log(`  New terminal receipts: ${result.receipts.length}`);
+  console.log(`  Terminal receipts resolved this cycle: ${result.receipts.length}`);
+  console.log(`  Terminal receipts queued for R2: ${receiptsForArchive.length}`);
   console.log(`  R2 receipts archived: ${archivedReceipts.length}`);
   return result.ledger;
 }
