@@ -219,6 +219,35 @@ function assertChatAnalystLoadsWithoutAgentBusApplier(source: string) {
   );
 }
 
+function assertLiveNewsDirectMountCatchesCallbackErrors(source: string) {
+  const start = source.indexOf('mountLiveNewsIfReady(): void');
+  const end = source.indexOf('\n  private shouldCreatePanel', start);
+  assert.ok(start >= 0 && end > start, 'mountLiveNewsIfReady block not found');
+  const block = source.slice(start, end);
+  assert.match(
+    block,
+    /void this\.importPanel\([\s\S]*?\)\.then\(\(panel\) => \{[\s\S]*?this\.afterPanelMounted\('live-news', panel\);[\s\S]*?\}\)\.catch\(\(err\) => \{[\s\S]*?failed to lazy-load "live-news"/,
+    'direct live-news mount path must catch callback errors as well as import failures',
+  );
+}
+
+function assertGccInvestmentsFocusHelperIsLoadedOnce(source: string) {
+  const start = source.indexOf("this.lazyPanel('gcc-investments'");
+  const end = source.indexOf("this.lazyDefaultPanel('world-clock'", start);
+  assert.ok(start >= 0 && end > start, 'gcc-investments lazy panel registration not found');
+  const registration = source.slice(start, end);
+  assert.match(
+    registration,
+    /const \{ focusInvestmentOnMap \} = await import\('@\/services\/investments-focus'\);[\s\S]*?this\.importPanel\('gcc-investments'/,
+    'gcc-investments should load the map focus helper once during panel load before constructing the click handler',
+  );
+  assert.doesNotMatch(
+    registration,
+    /new InvestmentsPanel\(\(inv\) => \{[\s\S]*?import\('@\/services\/investments-focus'\)/,
+    'gcc-investments click handler must not import investments-focus on every click',
+  );
+}
+
 const SPLIT_RISK_PANEL_IMPORTS: Array<[string, string, string]> = [
   ['pipeline-status', '@/components/PipelineStatusPanel', 'PipelineStatusPanel'],
   ['storage-facility-map', '@/components/StorageFacilityMapPanel', 'StorageFacilityMapPanel'],
@@ -262,6 +291,16 @@ describe('panel-layout lazy dynamic-import guard (WORLDMONITOR-R4)', () => {
   it('chat analyst mounts even if the dashboard action handler chunk fails', async () => {
     const source = await readFile(filePath, 'utf8');
     assertChatAnalystLoadsWithoutAgentBusApplier(source);
+  });
+
+  it('direct live-news mid-session mount path catches callback errors', async () => {
+    const source = await readFile(filePath, 'utf8');
+    assertLiveNewsDirectMountCatchesCallbackErrors(source);
+  });
+
+  it('GCC investments map focus helper is loaded once during panel load', async () => {
+    const source = await readFile(filePath, 'utf8');
+    assertGccInvestmentsFocusHelperIsLoadedOnce(source);
   });
 
   it('token-aware brace walker skips strings/templates/comments', () => {

@@ -11,6 +11,8 @@ import { App } from './App';
 import { installUtmInterceptor } from './utils/utm';
 
 if (SITE_VARIANT === 'happy') {
+  // Keeps happy-theme.css off other variants' eager CSS graph. On happy, the
+  // stylesheet applies asynchronously, so a brief base-theme flash is possible.
   void import('./styles/happy-theme.css');
 }
 

@@ -1235,6 +1235,8 @@ export class PanelLayoutManager implements AppModule {
       }
       this.applyPanelSettings();
       this.afterPanelMounted('live-news', panel);
+    }).catch((err) => {
+      console.error('[panel] failed to lazy-load "live-news"', err);
     });
   }
 
@@ -1850,17 +1852,14 @@ export class PanelLayoutManager implements AppModule {
       _lockPanels ? [t('premium.features.telegramIntel1'), t('premium.features.telegramIntel2')] : undefined,
     );
 
-    this.lazyImportedPanel('gcc-investments', () => import('@/components/InvestmentsPanel'), 'InvestmentsPanel', (InvestmentsPanel) =>
-      new InvestmentsPanel((inv) => {
-        void import('@/services/investments-focus')
-          .then(({ focusInvestmentOnMap }) => {
-            focusInvestmentOnMap(this.ctx.map, this.ctx.mapLayers, inv.lat, inv.lon);
-          })
-          .catch((err) => {
-            console.error('[panel] failed to lazy-load "gcc-investments" map focus helper', err);
-          });
-      }),
-    );
+    this.lazyPanel('gcc-investments', async () => {
+      const { focusInvestmentOnMap } = await import('@/services/investments-focus');
+      return this.importPanel('gcc-investments', () => import('@/components/InvestmentsPanel'), 'InvestmentsPanel', (InvestmentsPanel) =>
+        new InvestmentsPanel((inv) => {
+          focusInvestmentOnMap(this.ctx.map, this.ctx.mapLayers, inv.lat, inv.lon);
+        }),
+      );
+    });
 
     this.lazyDefaultPanel('world-clock', () => import('@/components/WorldClockPanel'), 'WorldClockPanel');
 
