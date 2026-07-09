@@ -57,3 +57,53 @@ export function yieldToMain(): Promise<void> {
   }
   return new Promise((resolve) => { setTimeout(resolve, 0); });
 }
+
+/**
+ * Whether the browser currently has queued input (a click/keypress) waiting to
+ * be dispatched. Recurring, animation-driven work on the input path calls this
+ * and skips its tick when input is pending, so the interaction handler can run
+ * sooner (#5042).
+ *
+ * Feature-detected: `navigator.scheduling.isInputPending` is Chromium-only,
+ * which matches INP being a Chromium-measured metric. Returns `false` wherever
+ * the API is absent (Firefox/Safari/node), so callers degrade to today's
+ * behavior with no functional change.
+ *
+ * Called with no arguments, so it reports DISCRETE input (clicks/keys) only —
+ * `includeContinuous` defaults to `false`. That is the correct scope for the
+ * click/keypress control targets; passing `{ includeContinuous: true }` would
+ * also report pointermove/wheel/drag and stall callers during any hover/pan.
+ */
+export function isInputPending(): boolean {
+  const scheduling = (globalThis as unknown as {
+    navigator?: { scheduling?: { isInputPending?: () => boolean } };
+  }).navigator?.scheduling;
+  if (typeof scheduling?.isInputPending !== 'function') return false;
+  return scheduling.isInputPending();
+}
+
+/**
+ * Adapt `yieldToMain()` to a fire-once scheduler with a cancel handle:
+ * `scheduleYield(run)` runs `run` after the yield resolves and returns a cancel
+ * that prevents it. `DeferredHeavyCommit` (#4558) depends on this shape to
+ * coalesce a burst of stages into one flush and to drop the flush on teardown;
+ * the `yieldToMain` promise can't be cleared, so an abort flag preserves those
+ * semantics. Prefer this over `setTimeout(0)`: `scheduler.yield()` resumes ahead
+ * of clamped timer work (but still behind queued input), lowering commit latency
+ * without newly blocking the input path (#5042 U4).
+ */
+export function scheduleYield(run: () => void): () => void {
+  let aborted = false;
+  void yieldToMain().then(() => {
+    if (aborted) return;
+    try {
+      run();
+    } catch (err) {
+      // Surface a throw from the deferred flush on the global error channel
+      // (window.onerror -> Sentry) exactly as the replaced setTimeout(fn, 0)
+      // did, rather than leaving it as a floating promise rejection.
+      setTimeout(() => { throw err; });
+    }
+  });
+  return () => { aborted = true; };
+}

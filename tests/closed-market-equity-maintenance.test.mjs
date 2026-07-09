@@ -7,6 +7,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { readFileSync } from 'node:fs';
 
 const require = createRequire(import.meta.url);
 const {
@@ -17,6 +18,19 @@ const {
 describe('closed-market equity key maintenance', () => {
   it('builds the stock quotes key with sorted symbols', () => {
     assert.equal(marketQuotesKey(['MSFT', 'AAPL', '^GSPC']), 'market:quotes:v1:AAPL,MSFT,^GSPC');
+  });
+
+  it('seed-market-quotes writes the health-watched stock meta before terminal exit', () => {
+    const source = readFileSync(new URL('../scripts/seed-market-quotes.mjs', import.meta.url), 'utf8');
+
+    assert.match(source, /runSeed\('market', 'stocks'/);
+    assert.doesNotMatch(source, /runSeed\('market', 'quotes'/);
+    assert.match(source, /writeFreshnessMetadata\('market', 'stocks'/);
+    assert.doesNotMatch(source, /seed-meta:market:quotes/);
+    const runSeedCall = source.match(/runSeed\('market', 'stocks', CANONICAL_KEY, fetchMarketQuotes, \{[\s\S]*?\}\)\.catch/);
+    assert.ok(runSeedCall, 'expected seed-market-quotes to use a catch-terminated runSeed call');
+    assert.match(runSeedCall[0], /afterPublish:\s*async \(data\) => \{[\s\S]*writeRequiredCompanionKeys\(data\)/);
+    assert.doesNotMatch(runSeedCall[0], /\.then\(async/);
   });
 
   it('extends both stock keys and refreshes seed-meta from the last in-process quote count', async () => {

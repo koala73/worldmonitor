@@ -14,11 +14,41 @@
  *   6. Re-seed plans: npx convex run payments/seedProductPlans:seedProductPlans
  */
 
+export type PlanLimits = {
+  /**
+   * Daily REST/gateway request allowance. `null` means unlimited for plans
+   * where customer-specific contracts set the real cap outside the catalog.
+   */
+  apiRequestsPerDay: number | null;
+  /**
+   * Per-minute REST/gateway burst allowance. Mirrors `apiRateLimit` for
+   * current callers while giving plan-limit lifecycle code a named dimension.
+   */
+  apiBurstRequestsPerMinute: number | null;
+  /**
+   * Daily MCP tool/resource call allowance. Current runtime enforcement only
+   * has a Pro daily counter; API-tier counters need scanner/source support.
+   */
+  mcpCallsPerDay: number | null;
+  /**
+   * Per-minute MCP burst allowance. Notices stay disabled until limiter-hit
+   * telemetry is durable enough to scan.
+   */
+  mcpBurstRequestsPerMinute: number | null;
+};
+
+export type PlanLimitDimension =
+  | "api_daily_requests"
+  | "api_minute_burst"
+  | "mcp_daily_calls"
+  | "mcp_minute_burst";
+
 export type PlanFeatures = {
   tier: number;
   maxDashboards: number;
   apiAccess: boolean;
   apiRateLimit: number;
+  planLimits?: PlanLimits;
   prioritySupport: boolean;
   /**
    * Display/entitlement metadata ONLY — as of #4974 NO code consumes this
@@ -68,6 +98,13 @@ export interface CatalogEntry {
   selfServe: boolean;
   highlighted: boolean;
   currentForCheckout: boolean;
+  // Whether EXISTING customers can self-serve CHANGE their plan to this one.
+  // Distinct from `currentForCheckout` (which only means "purchasable at all"):
+  // the Dodo customer portal cannot perform a plan change, so the plan-limit
+  // upgrade CTA's `billing_portal` path is gated on THIS flag. Keep false until
+  // a real self-serve change-plan surface exists; otherwise the CTA leads to a
+  // portal that can't upgrade anyone.
+  canChangePlanSelfServe?: boolean;
   publicVisible: boolean;
 }
 
@@ -81,6 +118,12 @@ const FREE_FEATURES: PlanFeatures = {
   apiAccess: false,
   apiRateLimit: 0,
   apiDailyAllowance: 0,
+  planLimits: {
+    apiRequestsPerDay: 0,
+    apiBurstRequestsPerMinute: 0,
+    mcpCallsPerDay: 0,
+    mcpBurstRequestsPerMinute: 0,
+  },
   prioritySupport: false,
   exportFormats: ["csv"],
   mcpAccess: false,
@@ -92,6 +135,12 @@ const PRO_FEATURES: PlanFeatures = {
   apiAccess: false,
   apiRateLimit: 0,
   apiDailyAllowance: 0,
+  planLimits: {
+    apiRequestsPerDay: 0,
+    apiBurstRequestsPerMinute: 0,
+    mcpCallsPerDay: 50,
+    mcpBurstRequestsPerMinute: 60,
+  },
   prioritySupport: false,
   exportFormats: ["csv", "pdf"],
   mcpAccess: true,
@@ -103,6 +152,12 @@ const API_STARTER_FEATURES: PlanFeatures = {
   apiAccess: true,
   apiRateLimit: 60,
   apiDailyAllowance: 1000,
+  planLimits: {
+    apiRequestsPerDay: 1_000,
+    apiBurstRequestsPerMinute: 60,
+    mcpCallsPerDay: 1_000,
+    mcpBurstRequestsPerMinute: 60,
+  },
   prioritySupport: false,
   exportFormats: ["csv", "pdf", "json"],
   mcpAccess: true,
@@ -114,6 +169,12 @@ const API_BUSINESS_FEATURES: PlanFeatures = {
   apiAccess: true,
   apiRateLimit: 300,
   apiDailyAllowance: 10000,
+  planLimits: {
+    apiRequestsPerDay: 10_000,
+    apiBurstRequestsPerMinute: 300,
+    mcpCallsPerDay: 10_000,
+    mcpBurstRequestsPerMinute: 300,
+  },
   prioritySupport: true,
   // xlsx removed (#4974): no XLSX exporter exists anywhere in the product.
   exportFormats: ["csv", "pdf", "json"],
@@ -126,6 +187,12 @@ const ENTERPRISE_FEATURES: PlanFeatures = {
   apiAccess: true,
   apiRateLimit: 1000,
   apiDailyAllowance: -1,
+  planLimits: {
+    apiRequestsPerDay: null,
+    apiBurstRequestsPerMinute: 1000,
+    mcpCallsPerDay: null,
+    mcpBurstRequestsPerMinute: 1000,
+  },
   prioritySupport: true,
   exportFormats: ["csv", "pdf", "json", "xlsx", "api-stream"],
   mcpAccess: true,
@@ -255,6 +322,11 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     selfServe: true,
     highlighted: false,
     currentForCheckout: true,
+    // Self-serve plan change is live (#4634): api_starter + api_business share a
+    // Dodo product COLLECTION with "Allow Subscription Updates" enabled, so the
+    // customer portal surfaces the prorated Starter→Business upgrade. Flipping
+    // this promotes the plan-limit-notice CTA from contact_support → billing_portal.
+    canChangePlanSelfServe: true,
     publicVisible: true,
   },
 
@@ -338,6 +410,24 @@ export function getEntitlementFeatures(planKey: string): PlanFeatures {
     );
   }
   return entry.features;
+}
+
+export function getPlanLimit(
+  planKey: string,
+  dimension: PlanLimitDimension,
+): number | null {
+  const limits = getEntitlementFeatures(planKey).planLimits;
+  if (!limits) return null;
+  switch (dimension) {
+    case "api_daily_requests":
+      return limits.apiRequestsPerDay;
+    case "api_minute_burst":
+      return limits.apiBurstRequestsPerMinute;
+    case "mcp_daily_calls":
+      return limits.mcpCallsPerDay;
+    case "mcp_minute_burst":
+      return limits.mcpBurstRequestsPerMinute;
+  }
 }
 
 export function resolveProductToPlan(dodoProductId: string): string | null {

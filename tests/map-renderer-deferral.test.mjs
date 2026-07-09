@@ -161,6 +161,14 @@ function mapContainerClass(sourceFile) {
   return cls;
 }
 
+function findClass(sourceFile, className) {
+  const cls = sourceFile.statements.find((statement) => (
+    ts.isClassDeclaration(statement) && statement.name?.text === className
+  ));
+  assert.ok(cls, `${className} class should exist`);
+  return cls;
+}
+
 function classMemberNames(cls) {
   return new Set(cls.members
     .filter((member) => ts.isPropertyDeclaration(member) || ts.isMethodDeclaration(member))
@@ -353,6 +361,76 @@ describe('map renderer deferral boundary', () => {
         `rehydrateActiveMap should replay ${setter}`,
       );
     }
+  });
+
+  it('queues chokepoint popup opens that arrive before the deferred renderer exists', () => {
+    const mapContainer = parseSource('src/components/MapContainer.ts');
+    const cls = mapContainerClass(mapContainer);
+    const members = classMemberNames(cls);
+
+    assert.ok(
+      members.has('pendingChokepointOpen'),
+      'MapContainer should cache chokepoint deep-link opens for deferred renderer replay',
+    );
+    assert.ok(
+      members.has('rendererReady'),
+      'MapContainer should track concrete renderer readiness before replaying chokepoint opens',
+    );
+    assert.ok(
+      members.has('replayPendingChokepointOpen'),
+      'MapContainer should replay queued chokepoint opens from explicit renderer-ready points',
+    );
+
+    const openBody = methodBodyText(cls, 'openChokepoint');
+    assert.match(
+      openBody,
+      /!this\.isChokepointRendererReady\(\)[\s\S]*this\.pendingChokepointOpen\s*=\s*id[\s\S]*return/,
+      'openChokepoint should queue the id until the concrete renderer is ready',
+    );
+
+    const replayBody = methodBodyText(cls, 'replayPendingChokepointOpen');
+    assert.match(
+      replayBody,
+      /this\.pendingChokepointOpen[\s\S]*this\.openChokepoint\(pendingChokepointOpen\)/,
+      'replayPendingChokepointOpen should drain the queued chokepoint through the public open path',
+    );
+
+    const rehydrateBody = methodBodyText(cls, 'rehydrateActiveMap');
+    assert.doesNotMatch(
+      rehydrateBody,
+      /pendingChokepointOpen/,
+      'rehydrateActiveMap must not consume chokepoint opens before async renderer readiness/fallback settles',
+    );
+
+    const svgBody = methodBodyText(cls, 'initSvgMap');
+    assert.match(
+      svgBody,
+      /this\.rendererReady\s*=\s*true[\s\S]*this\.replayPendingChokepointOpen\(\)/,
+      'SVG fallback should replay queued chokepoint opens once it is ready',
+    );
+
+    const deckBody = methodBodyText(cls, 'createDeckGLMap');
+    assert.match(
+      deckBody,
+      /await\s+this\.deckGLMap\.whenReady\(\)[\s\S]*this\.rendererReady\s*=\s*true[\s\S]*this\.replayPendingChokepointOpen\(\)/,
+      'DeckGL should replay queued chokepoint opens only after whenReady() succeeds',
+    );
+  });
+
+  // The MapContainer queue only covers "no renderer object yet". A deferred
+  // renderer object can exist while its underlying map (DeckGL maplibreMap /
+  // GlobeMap globe) is still being built asynchronously — rehydrateActiveMap
+  // replays the queued open *before* createDeckGLMap awaits whenReady(). Each
+  // renderer's setCenter no-ops until its map exists, so openChokepoint must
+  // defer the pan+popup until it is ready rather than dropping it silently.
+  it('defers chokepoint opens in the async WebGL/globe renderers until their map is built', () => {
+    const deckBody = methodBodyText(findClass(parseSource('src/components/DeckGLMap.ts'), 'DeckGLMap'), 'openChokepoint');
+    assert.match(deckBody, /this\.maplibreMap/, 'DeckGLMap.openChokepoint should gate on maplibreMap readiness');
+    assert.match(deckBody, /whenReady\(\)/, 'DeckGLMap.openChokepoint should defer until whenReady() when maplibreMap is not built yet');
+
+    const globeBody = methodBodyText(findClass(parseSource('src/components/GlobeMap.ts'), 'GlobeMap'), 'openChokepoint');
+    assert.match(globeBody, /this\.globe/, 'GlobeMap.openChokepoint should gate on globe readiness');
+    assert.match(globeBody, /whenReady\(\)/, 'GlobeMap.openChokepoint should defer until whenReady() when the globe is not built yet');
   });
 
   it('gates desktop DeckGL startup behind viewport idle or first interaction', () => {

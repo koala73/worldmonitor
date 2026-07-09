@@ -93,6 +93,24 @@ For a daily-ceiling 429 the `Retry-After` counts down to the next 00:00 UTC.
 - For MCP, 60/min is generous for conversational use but tight for scripted batch fetches — prefer the REST API for batch.
 - Spurious 429s often mean you're sharing an egress IP (corporate proxy, CI runner). Contact support for a per-key limit bump if needed.
 
+## Customer notifications and paid-plan caps
+
+API and MCP plan caps are tracked against the product catalog limits that ship with entitlements:
+
+| Plan | API requests / day | API burst / minute | MCP calls / day | MCP burst / minute |
+|------|--------------------|--------------------|-----------------|--------------------|
+| Free | 0 | 0 | 0 | 0 |
+| Pro | 0 | 0 | 50 | 60 |
+| API Starter | 1,000 | 60 | 1,000 | 60 |
+| API Business | 10,000 | 300 | 10,000 | 300 |
+| Enterprise | Unlimited | 1,000 | Unlimited | 1,000 |
+
+When a paid user approaches or exceeds one of these limits, WorldMonitor records a compact Convex rollup and opens a current account notice in Settings. The daily count is read from the same per-account meter that governs enforcement, so a warning reflects the same usage number the plan is metered against. Daily limits warn at 80% and switch to over-limit at 100%; burst limits only notify on sustained pressure, not a single isolated spike.
+
+If the notice is still current, a Resend-backed lifecycle sends an email at a bounded cadence. The email and dashboard notice explain the current usage, the relevant plan limit, and the available options: reduce traffic, wait for reset, upgrade when a self-serve path exists, or contact support when the next tier is not self-serve.
+
+WorldMonitor does **not** automatically upgrade a user, charge for overages, or move a customer into API Business because they crossed a cap. Any future hard enforcement for paid plans must first pass the internal `apiPlanLimitNotices.getEnforcementReadiness` gate: no stale usage source, no pending/failed email, and no blocked self-serve upgrade path.
+
 ## Hard caps (not soft limits)
 
 - Webhook callback URLs must be HTTPS (except localhost).

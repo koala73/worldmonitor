@@ -51,7 +51,9 @@ export {
   TOOL_REGISTRY,
 } from './mcp/registry/index';
 export {
+  emitMcpRateLimitHit,
   emitTelemetry,
+  MCP_RATE_LIMIT_HIT_TELEMETRY_KEYS,
   MCP_TOOLCALL_TELEMETRY_KEYS,
   MCP_TOOLS_LIST_TELEMETRY_KEYS,
   principalIdForLog,

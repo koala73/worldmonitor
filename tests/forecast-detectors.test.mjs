@@ -3050,6 +3050,43 @@ describe('forecast quality gating', () => {
     assert.ok((pool[0].publishSelectionMarket?.confirmationScore || 0) > 0.7);
   });
 
+  it('boosts hard-resolvable forecasts during publish selection', () => {
+    const judged = makePrediction('political', 'France', 'Political pressure: France', 0.82, 0.58, '14d', [
+      { type: 'news_corroboration', value: 'France coalition pressure persists', weight: 0.35 },
+    ]);
+    const hard = makePrediction('conflict', 'Mali', 'Escalation risk: Mali', 0.5, 0.58, '14d', [
+      { type: 'conflict_events', value: '4 cross-border events in Mali', weight: 0.35 },
+    ]);
+
+    buildForecastCases([judged, hard]);
+    for (const pred of [judged, hard]) {
+      pred.traceMeta = { narrativeSource: 'fallback' };
+      pred.readiness = { overall: 0.6 };
+      pred.analysisPriority = 0.12;
+    }
+
+    const deadline = Date.parse('2026-08-01T00:00:00Z');
+    judged.resolution = {
+      kind: 'judged',
+      deadline,
+      question: 'Will French political pressure materially escalate?',
+    };
+    hard.resolution = {
+      kind: 'hard',
+      metricKey: 'conflict:acled:v1:all:0:0|count(country==Mali)',
+      operator: '>=',
+      threshold: 1,
+      window: 'within-horizon',
+      deadline,
+      sourceFeed: 'conflict:acled:v1:all:0:0',
+    };
+
+    const pool = selectPublishedForecastPool([judged, hard], { targetCount: 1 });
+    assert.equal(pool.length, 1);
+    assert.equal(pool[0].id, hard.id);
+    assert.ok(hard.publishSelectionScore > judged.publishSelectionScore);
+  });
+
   it('keeps strategic supply-chain forecasts alive alongside same-state market repricing and reports survival telemetry', () => {
     const market = makePrediction('market', 'Strait of Hormuz', 'Energy repricing risk: Strait of Hormuz', 0.66, 0.61, '30d', [
       { type: 'energy_supply_shock', value: 'Energy repricing persists around Hormuz shipping stress.', weight: 0.36 },

@@ -981,16 +981,21 @@ export async function startCheckout(
  *
  * Unauthorized / session_expired are *expected* user states (nobody
  * signed in yet, Clerk session aged out) rather than engineering
- * failures. They fire on every free-tier pricing click, so reporting
- * them at `error` level would drown Sentry in non-actionable noise.
+ * failures. duplicate_subscription is also expected when an existing
+ * Pro user clicks checkout again and should route to billing instead.
  * Capture them at `info` so the funnel is still observable without
  * triggering alerts. Everything else stays at `error`.
  */
-type SentryLevel = 'error' | 'info';
+export type SentryLevel = 'error' | 'info';
 const INFO_LEVEL_CODES: ReadonlySet<CheckoutErrorCode> = new Set([
   'unauthorized',
   'session_expired',
+  'duplicate_subscription',
 ]);
+
+export function checkoutErrorTelemetryLevel(error: Pick<CheckoutError, 'code'>): SentryLevel {
+  return INFO_LEVEL_CODES.has(error.code) ? 'info' : 'error';
+}
 
 function reportCheckoutError(
   error: CheckoutError,
@@ -998,7 +1003,7 @@ function reportCheckoutError(
   caught?: unknown,
   upstream?: UpstreamSnapshot,
 ): void {
-  const level: SentryLevel = INFO_LEVEL_CODES.has(error.code) ? 'info' : 'error';
+  const level = checkoutErrorTelemetryLevel(error);
   const payload = {
     level,
     tags: {

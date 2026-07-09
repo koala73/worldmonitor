@@ -24,6 +24,7 @@ import type {
   McpAuthContext,
   McpHandlerDeps,
 } from './types';
+import { emitMcpRateLimitHit } from './telemetry';
 
 // ---------------------------------------------------------------------------
 // Rate limiters
@@ -372,7 +373,14 @@ export async function applyPerMinuteLimit(context: McpAuthContext, headers: Reco
     if (!rl) return null;
     try {
       const { success } = await rl.limit(`key:${context.apiKey}`);
-      if (!success) return rpcError(null, -32029, 'Rate limit exceeded. Max 60 requests per minute per API key.', headers);
+      if (!success) {
+        emitMcpRateLimitHit(context, {
+          dimension: 'mcp_minute_burst',
+          limit: 60,
+          windowSeconds: 60,
+        });
+        return rpcError(null, -32029, 'Rate limit exceeded. Max 60 requests per minute per API key.', headers);
+      }
     } catch { /* graceful degradation */ }
     return null;
   }
@@ -380,7 +388,14 @@ export async function applyPerMinuteLimit(context: McpAuthContext, headers: Reco
   if (!rl) return null;
   try {
     const { success } = await rl.limit(`pro-user:${context.userId}`);
-    if (!success) return rpcError(null, -32029, 'Rate limit exceeded. Max 60 requests per minute per user.', headers);
+    if (!success) {
+      emitMcpRateLimitHit(context, {
+        dimension: 'mcp_minute_burst',
+        limit: 60,
+        windowSeconds: 60,
+      });
+      return rpcError(null, -32029, 'Rate limit exceeded. Max 60 requests per minute per user.', headers);
+    }
   } catch { /* graceful degradation */ }
   return null;
 }

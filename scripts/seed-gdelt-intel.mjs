@@ -317,6 +317,6 @@ if (process.argv[1]?.endsWith('seed-gdelt-intel.mjs')) {
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);
-    process.exit(0);
+    process.exit(1);
   });
 }

@@ -50,6 +50,11 @@ const HISTORY_KEY = 'forecast:predictions:history:v1';
 const TTL_SECONDS = 21600; // 6h — 6x the 1h cron interval (was 1.75x; hourly miss → 15 min panel gap)
 const HISTORY_MAX_RUNS = 200;
 const HISTORY_MAX_FORECASTS = 25;
+// This list is the resolver's intake window (LRANGE 200 at hourly cadence ~8.3d,
+// hard-capped at 45d by the TTL below). seed-forecast-resolutions.mjs relies on
+// that reach staying well under LEDGER_RETENTION_WINDOW_DAYS (180d) so pruned
+// terminal windows can never be re-ingested — keep this cadence×count and TTL
+// far below that retention window if you change either.
 const HISTORY_TTL_SECONDS = 45 * 24 * 60 * 60;
 const TRACE_LATEST_KEY = 'forecast:trace:latest:v1';
 const TRACE_RUNS_KEY = 'forecast:trace:runs:v1';
@@ -86,6 +91,13 @@ const SIM_TASK_COMPLETE_STATUS_COMPLETED = 'COMPLETED';
 const SIM_TASK_COMPLETE_STATUS_MISSING_WORKER = 'MISSING_WORKER';
 const SIMULATION_POLL_INTERVAL_MS = 30 * 1000;
 const PUBLISH_MIN_PROBABILITY = 0;
+// Publish-selection lift for hard-resolvable forecasts (helps the canonical set
+// meet the >=80% resolvability KPI). Kept below the primary quality signals it
+// sits beside in computePublishSelectionScore -- priority (x0.55), readiness
+// (x0.2), probability (x0.15) and the memory lift (<=~0.17) -- so it strongly
+// favours measurable forecasts without flatly overriding a large quality gap.
+// A former flat 0.25 dominated every other term. Tune upward if the KPI is missed.
+const RESOLVABLE_HARD_SELECTION_LIFT = 0.12;
 const PANEL_MIN_PROBABILITY = 0.1;
 const CANONICAL_PAYLOAD_SOFT_LIMIT_BYTES = 4 * 1024 * 1024;
 const ENRICHMENT_COMBINED_MAX = 5;
@@ -13621,6 +13633,7 @@ function computePublishSelectionScore(pred, memoryIndex = null) {
   const defensePenalty = topBucketId === 'defense' && pred.marketSelectionContext?.topChannel !== 'defense_repricing'
     ? 0.018
     : 0;
+  const resolvabilityLift = pred?.resolution?.kind === 'hard' ? RESOLVABLE_HARD_SELECTION_LIFT : 0;
   pred.publishSelectionMemory = memoryHint ? {
     matchedBy: memoryHint.matchedBy,
     situationId: memoryHint.memory?.situationId || '',
@@ -13649,7 +13662,8 @@ function computePublishSelectionScore(pred, memoryIndex = null) {
     enrichedLift +
     memoryLift +
     marketTransmissionLift +
-    criticalLift -
+    criticalLift +
+    resolvabilityLift -
     marketPenalty +
     coreBucketLift -
     defensePenalty
@@ -15634,7 +15648,9 @@ async function fetchForecasts() {
   // if-block closes (:15496) so it runs unconditionally on every batch —
   // including zero-state-derived runs — and BEFORE prepareForecastMetrics.
   // Threads the single per-run timestamp so spec deadlines agree with the
-  // canonical payload's generatedAt. No publish-selection change (D2).
+  // canonical payload's generatedAt. Runs BEFORE selectPublishedForecastPool
+  // because computePublishSelectionScore now reads resolution.kind for the
+  // hard-resolvable selection lift (RESOLVABLE_HARD_SELECTION_LIFT).
   attachResolutionSpecs(predictions, inputs, runGeneratedAt);
   attachMarketSelectionContext(predictions, marketSelectionIndex);
   prepareForecastMetrics(predictions);

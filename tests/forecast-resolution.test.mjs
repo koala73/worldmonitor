@@ -6,6 +6,9 @@ import { fileURLToPath } from 'node:url';
 
 import {
   HORIZON_MS,
+  CONFLICT_COUNT_SOURCE_FEED,
+  UNREST_COUNT_SOURCE_FEED,
+  CYBER_COUNT_SOURCE_FEED,
   RESOLUTION_FEED_KEYS,
   SIGNAL_TO_HARD_FAMILY,
   JUDGED_DOMAINS,
@@ -122,7 +125,7 @@ describe('buildResolutionSpec — happy path (conflict)', () => {
     const spec = buildResolutionSpec(forecast, {}, GENERATED_AT);
     assert.equal(spec.kind, 'hard');
     assert.ok(RESOLUTION_FEED_KEYS.has(spec.sourceFeed));
-    assert.equal(spec.sourceFeed, 'conflict:ucdp-events:v1');
+    assert.equal(spec.sourceFeed, CONFLICT_COUNT_SOURCE_FEED);
     assert.ok(Number.isFinite(spec.threshold));
     assert.ok(['>=', '<=', 'crosses'].includes(spec.operator));
     assert.ok(Object.hasOwn(spec, 'metricKey'));
@@ -223,14 +226,43 @@ describe('buildResolutionSpec — feed mapping per family', () => {
     assert.equal(spec.sourceFeed, 'intelligence:gpsjam:v2');
   });
 
-  it('a UCDP-zone forecast resolves to conflict:ucdp-events:v1', () => {
+  it('a UCDP-zone forecast resolves to the fresh ACLED count feed', () => {
     const forecast = pred({
       domain: 'conflict',
       signals: [{ type: 'ucdp', value: '25 UCDP conflict events', weight: 0.5 }],
     });
     const spec = buildResolutionSpec(forecast, {}, GENERATED_AT);
     assert.equal(spec.kind, 'hard');
-    assert.equal(spec.sourceFeed, 'conflict:ucdp-events:v1');
+    assert.equal(spec.sourceFeed, CONFLICT_COUNT_SOURCE_FEED);
+  });
+
+  it('a political unrest-events forecast resolves to the unrest count feed', () => {
+    const forecast = pred({
+      domain: 'political',
+      region: 'Venezuela',
+      title: 'Political instability: Venezuela',
+      signals: [
+        { type: 'unrest', value: 'Venezuela unrest component: 62', weight: 0.4 },
+        { type: 'unrest_events', value: '4 unrest events in Venezuela', weight: 0.3 },
+      ],
+    });
+    const spec = buildResolutionSpec(forecast, {}, GENERATED_AT);
+    assert.equal(spec.kind, 'hard');
+    assert.equal(spec.sourceFeed, UNREST_COUNT_SOURCE_FEED);
+    assert.equal(spec.metricKey, `${UNREST_COUNT_SOURCE_FEED}|count(country==Venezuela)`);
+  });
+
+  it('a cyber volume forecast resolves to the cyber threat count feed', () => {
+    const forecast = pred({
+      domain: 'cyber',
+      region: 'Estonia',
+      title: 'Cyber disruption risk: Estonia',
+      signals: [{ type: 'cyber', value: '10 threats (malware)', weight: 0.5 }],
+    });
+    const spec = buildResolutionSpec(forecast, {}, GENERATED_AT);
+    assert.equal(spec.kind, 'hard');
+    assert.equal(spec.sourceFeed, CYBER_COUNT_SOURCE_FEED);
+    assert.equal(spec.metricKey, `${CYBER_COUNT_SOURCE_FEED}|count(country==Estonia)`);
   });
 
   it('an infrastructure forecast resolves to infra:outages:v1', () => {
@@ -373,18 +405,13 @@ describe('buildResolutionSpec — threshold fallback', () => {
   });
 });
 
-describe('buildResolutionSpec — judged families', () => {
-  it('a political forecast yields judged with a non-empty question and no threshold', () => {
+describe('buildResolutionSpec — domain-specific hard and judged families', () => {
+  it('a political forecast with no unrest event count yields judged with a non-empty question and no threshold', () => {
     const forecast = pred({
       domain: 'political',
       region: 'Venezuela',
       title: 'Political instability: Venezuela',
-      // Real detectPoliticalScenarios signal vocabulary (unrest/unrest_events/anomaly) —
-      // none of these are hard-family-mapped, unlike 'cii' (which maps to conflict).
-      signals: [
-        { type: 'unrest', value: 'Venezuela unrest component: 62', weight: 0.4 },
-        { type: 'unrest_events', value: '4 unrest events in Venezuela', weight: 0.3 },
-      ],
+      signals: [{ type: 'unrest', value: 'Venezuela unrest component: elevated', weight: 0.4 }],
     });
     const spec = buildResolutionSpec(forecast, {}, GENERATED_AT);
     assert.equal(spec.kind, 'judged');
@@ -398,23 +425,17 @@ describe('buildResolutionSpec — judged families', () => {
     const spec = buildResolutionSpec(forecast, {}, GENERATED_AT);
     assert.equal(spec.kind, 'judged');
   });
-
-  it('a cyber forecast yields judged', () => {
-    const forecast = pred({ domain: 'cyber', signals: [{ type: 'cyber', value: '10 threats (malware)', weight: 0.5 }] });
-    const spec = buildResolutionSpec(forecast, {}, GENERATED_AT);
-    assert.equal(spec.kind, 'judged');
-  });
 });
 
-describe('buildResolutionSpec — JUDGED_DOMAINS gate wins over hard-mapped signals (R3 by-domain)', () => {
-  it('JUDGED_DOMAINS is the documented political/military/cyber set', () => {
-    assert.deepEqual([...JUDGED_DOMAINS].sort(), ['cyber', 'military', 'political']);
+describe('buildResolutionSpec — domain constraints win over hard-mapped signals (R3 by-domain)', () => {
+  it('JUDGED_DOMAINS only retains domains without a stable hard metric identity', () => {
+    assert.deepEqual([...JUDGED_DOMAINS].sort(), ['military']);
   });
 
   it('a political-domain forecast carrying a cii signal yields judged, never a hard conflict spec', () => {
-    // 'cii' maps to the conflict hard family in SIGNAL_TO_HARD_FAMILY — without
-    // the domain gate this political claim would be resolved against a conflict
-    // event-count metric (the exact latent coupling the gate closes).
+    // 'cii' maps to the conflict hard family in SIGNAL_TO_HARD_FAMILY, but
+    // political claims only permit the unrest hard family. This must not
+    // resolve against a conflict event-count metric.
     const forecast = pred({
       domain: 'political',
       region: 'Venezuela',
@@ -480,6 +501,8 @@ describe('deadline is always present', () => {
 describe('R4 — sourceFeed membership over every hard fixture', () => {
   const fixtures = [
     pred({ id: 'conflict', domain: 'conflict', signals: [{ type: 'ucdp', value: '14 UCDP conflict events', weight: 0.5 }] }),
+    pred({ id: 'political', domain: 'political', region: 'Venezuela', signals: [{ type: 'unrest_events', value: '4 unrest events', weight: 0.3 }] }),
+    pred({ id: 'cyber', domain: 'cyber', region: 'Estonia', signals: [{ type: 'cyber', value: '10 threats', weight: 0.5 }] }),
     pred({ id: 'supply_chain', domain: 'supply_chain', timeHorizon: '7d', signals: [{ type: 'chokepoint', value: 'disruption', weight: 0.5 }] }),
     pred({ id: 'gps', domain: 'supply_chain', timeHorizon: '7d', signals: [{ type: 'gps_jamming', value: '5 jamming hexes', weight: 0.5 }] }),
     pred({ id: 'infra', domain: 'infrastructure', timeHorizon: '24h', signals: [{ type: 'outage', value: '2 outages', weight: 0.5 }] }),
@@ -565,6 +588,9 @@ describe('edge cases', () => {
     assert.equal(SIGNAL_TO_HARD_FAMILY.commodity, 'market');
     assert.equal(SIGNAL_TO_HARD_FAMILY.prediction_market, 'prediction_market');
     assert.equal(SIGNAL_TO_HARD_FAMILY.ucdp, 'ucdp_zone');
+    assert.equal(SIGNAL_TO_HARD_FAMILY.unrest, 'unrest');
+    assert.equal(SIGNAL_TO_HARD_FAMILY.unrest_events, 'unrest');
+    assert.equal(SIGNAL_TO_HARD_FAMILY.cyber, 'cyber');
     assert.equal(SIGNAL_TO_HARD_FAMILY.gps_jamming, 'gps');
     assert.equal(SIGNAL_TO_HARD_FAMILY.outage, 'infrastructure');
     assert.equal(SIGNAL_TO_HARD_FAMILY.conflict_events, 'conflict');
@@ -579,6 +605,8 @@ describe('FIX 1 — domain constrains the hard family (DOMAIN_TO_HARD_FAMILIES)'
       market: ['market', 'prediction_market'],
       supply_chain: ['supply_chain', 'gps'],
       infrastructure: ['infrastructure'],
+      political: ['unrest'],
+      cyber: ['cyber'],
     });
   });
 
@@ -587,7 +615,7 @@ describe('FIX 1 — domain constrains the hard family (DOMAIN_TO_HARD_FAMILIES)'
     // :1152-1157): domain 'market', signals [cii, commodity]. 'cii' maps to
     // the conflict family, but conflict is not allowed for domain 'market' —
     // so the claim must resolve via 'commodity' (market family), never against
-    // UCDP event counts on conflict:ucdp-events:v1.
+    // event counts on the conflict count feed.
     const forecast = pred({
       domain: 'market',
       region: 'Middle East',
@@ -599,10 +627,10 @@ describe('FIX 1 — domain constrains the hard family (DOMAIN_TO_HARD_FAMILIES)'
     });
     const spec = buildResolutionSpec(forecast, COMMODITY_INPUTS, GENERATED_AT);
     // Never a conflict-feed hard spec.
-    assert.notEqual(spec.sourceFeed, 'conflict:ucdp-events:v1');
+    assert.notEqual(spec.sourceFeed, CONFLICT_COUNT_SOURCE_FEED);
     if (spec.kind === 'hard') {
       assert.equal(spec.sourceFeed, 'market:commodities-bootstrap:v1');
-      assert.ok(!spec.metricKey.includes('conflict:ucdp-events'));
+      assert.ok(!spec.metricKey.includes(CONFLICT_COUNT_SOURCE_FEED));
     } else {
       assert.equal(spec.kind, 'judged');
     }
@@ -621,7 +649,7 @@ describe('FIX 1 — domain constrains the hard family (DOMAIN_TO_HARD_FAMILIES)'
     const spec = buildResolutionSpec(forecast, COMMODITY_INPUTS, GENERATED_AT);
     assert.equal(spec.kind, 'judged');
     assert.equal(spec.sourceFeed, null);
-    assert.notEqual(spec.sourceFeed, 'conflict:ucdp-events:v1');
+    assert.notEqual(spec.sourceFeed, CONFLICT_COUNT_SOURCE_FEED);
   });
 
   // FIX A: 'cii' is a 0-100 composite index, NOT an event count, so it no
@@ -652,7 +680,7 @@ describe('FIX 1 — domain constrains the hard family (DOMAIN_TO_HARD_FAMILIES)'
     });
     const spec = buildResolutionSpec(forecast, {}, GENERATED_AT);
     assert.equal(spec.kind, 'hard');
-    assert.equal(spec.sourceFeed, 'conflict:ucdp-events:v1');
+    assert.equal(spec.sourceFeed, CONFLICT_COUNT_SOURCE_FEED);
     // #5010 horizon-commensurable threshold: the 365d-trailing tally (3) is
     // scaled to the 30d horizon and escalated —
     // max(1, round(3 × 30d/365d × CONFLICT_ESCALATION_RATIO)) = 1.
@@ -672,7 +700,7 @@ describe('FIX 2 — metricKey embeds real values with unified "==" grammar', () 
       signals: [{ type: 'ucdp', value: '175 UCDP conflict events', weight: 0.5 }],
     });
     const spec = buildResolutionSpec(forecast, {}, GENERATED_AT);
-    assert.equal(spec.metricKey, 'conflict:ucdp-events:v1|count(country==Pakistan)');
+    assert.equal(spec.metricKey, `${CONFLICT_COUNT_SOURCE_FEED}|count(country==Pakistan)`);
     assert.ok(!spec.metricKey.includes('<region>'));
   });
 

@@ -28,6 +28,11 @@ import { hasPremiumAccess } from '@/services/panel-gating';
 import { getSubscription, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
 import { createApiKey, listApiKeys, revokeApiKey, type ApiKeyInfo } from '@/services/api-keys';
 import { listMcpClients, revokeMcpClient, fetchMcpQuota, type McpClientInfo, type McpQuota } from '@/services/mcp-clients';
+import {
+  acknowledgePlanLimitNotice,
+  listCurrentPlanLimitNotices,
+  type ApiPlanLimitNotice,
+} from '@/services/api-plan-limit-notices';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
 
@@ -76,6 +81,8 @@ export class UnifiedSettings {
   private apiKeysLoading = false;
   private apiKeysError = '';
   private newlyCreatedKey: string | null = null;
+  private planLimitNotices: ApiPlanLimitNotice[] = [];
+  private planLimitNoticesLoading = false;
   // ---- Connected MCP clients tab (plan 2026-05-10-001 U9) ----
   private mcpClients: McpClientInfo[] = [];
   private mcpClientsLoading = false;
@@ -126,6 +133,23 @@ export class UnifiedSettings {
         return;
       }
 
+      if (target.closest('.upgrade-to-business-btn')) {
+        // Self-serve Starter→Business upgrade (#4634): open the Dodo customer
+        // portal, which surfaces the prorated plan change via the product
+        // collection ("Allow Subscription Updates" enabled). Same hosted open
+        // path as Manage Billing — Dodo owns payment + 3DS + proration; a failed
+        // charge (prevent_change) leaves the customer on Starter.
+        const reservedWin = prereserveBillingPortalTab();
+        void openBillingPortal(reservedWin).then((result) => {
+          if (result.outcome === 'no-customer') {
+            showToast(
+              'Subscription is managed outside Dodo. Email support@worldmonitor.app for help.',
+            );
+          }
+        });
+        return;
+      }
+
       if (target.closest('.manage-billing-btn')) {
         // Pre-reserve the portal tab synchronously inside the click
         // handler so the popup blocker doesn't suppress the eventual
@@ -143,6 +167,18 @@ export class UnifiedSettings {
             );
           }
         });
+        return;
+      }
+
+      const planNoticeAck = target.closest<HTMLElement>('[data-plan-limit-ack]');
+      if (planNoticeAck?.dataset.planLimitAck) {
+        void this.handleAcknowledgePlanLimitNotice(planNoticeAck.dataset.planLimitAck);
+        return;
+      }
+
+      const planNoticeCta = target.closest<HTMLElement>('[data-plan-limit-cta]');
+      if (planNoticeCta?.dataset.planLimitCta) {
+        this.handlePlanLimitNoticeCta(planNoticeCta.dataset.planLimitCta);
         return;
       }
 
@@ -521,6 +557,9 @@ export class UnifiedSettings {
     this.updateSourcesCounter();
 
     this.attachApiKeysHandlers();
+    if (this.activeTab === 'api-keys' || this.activeTab === 'mcp-clients') {
+      void this.loadPlanLimitNotices();
+    }
     if (this.activeTab === 'api-keys' && getAuthState().user && hasFeature('apiAccess')) {
       void this.loadApiKeys();
     }
@@ -544,10 +583,12 @@ export class UnifiedSettings {
     });
 
     if (tab === 'api-keys' && getAuthState().user && hasFeature('apiAccess')) {
+      void this.loadPlanLimitNotices();
       void this.loadApiKeys();
     }
 
     if (tab === 'mcp-clients' && getAuthState().user && hasFeature('mcpAccess')) {
+      void this.loadPlanLimitNotices();
       void this.loadMcpClients();
       this.startMcpQuotaPolling();
     } else {
@@ -626,6 +667,7 @@ export class UnifiedSettings {
             <span style="color:${statusColor};font-weight:600;font-size:13px;">${escapeHtml(planName)}</span>
           </div>
           ${statusLine ? `<div class="upgrade-pro-status-line">${escapeHtml(statusLine)}</div>` : ''}
+          ${sub?.planKey === 'api_starter' ? `<button class="upgrade-to-business-btn" style="margin-right:8px;">Upgrade to Business</button>` : ''}
           <button class="manage-billing-btn">Manage Billing</button>
         </div>
       `;
@@ -952,6 +994,134 @@ export class UnifiedSettings {
     counter.textContent = t('header.sourcesEnabled', { enabled: String(enabledTotal), total: String(allSources.length) });
   }
 
+  private async loadPlanLimitNotices(): Promise<void> {
+    if (!getAuthState().user || this.planLimitNoticesLoading) return;
+    this.planLimitNoticesLoading = true;
+    try {
+      this.planLimitNotices = await listCurrentPlanLimitNotices();
+    } catch (err) {
+      console.warn('[settings] Failed to load API plan-limit notices:', err);
+      this.planLimitNotices = [];
+    } finally {
+      this.planLimitNoticesLoading = false;
+      this.renderPlanLimitNoticeBlocks();
+    }
+  }
+
+  private renderPlanLimitNoticeBlocks(): void {
+    const html = this.renderPlanLimitNotices();
+    this.overlay.querySelectorAll<HTMLElement>('[data-plan-limit-notices]').forEach((el) => {
+      setTrustedHtml(el, trustedHtml(html, "legacy direct innerHTML migration"));
+    });
+  }
+
+  private planLimitDimensionLabel(dimension: ApiPlanLimitNotice['dimension']): string {
+    switch (dimension) {
+      case 'api_daily_requests': return 'Daily API requests';
+      case 'api_minute_burst': return 'API burst traffic';
+      case 'mcp_daily_calls': return 'Daily MCP calls';
+      case 'mcp_minute_burst': return 'MCP burst traffic';
+    }
+  }
+
+  private planLimitStateLabel(state: ApiPlanLimitNotice['state']): string {
+    if (state === 'warning') return 'Nearing plan limit';
+    if (state === 'sustained_burst') return 'Burst limit exceeded';
+    return 'Plan limit exceeded';
+  }
+
+  private renderPlanLimitNotices(): string {
+    if (this.planLimitNotices.length === 0) return '';
+    const nf = new Intl.NumberFormat();
+    return `
+      <div class="api-plan-limit-notices" aria-live="polite">
+        ${this.planLimitNotices.map((notice) => {
+          const limit = notice.limit == null ? 'unlimited' : nf.format(notice.limit);
+          const usage = nf.format(notice.usage);
+          const ratio = notice.usageRatio == null ? '' : ` (${Math.round(notice.usageRatio * 100)}%)`;
+          const cta = notice.ctaKind === 'contact_support'
+            ? 'Contact support'
+            : notice.ctaKind === 'billing_portal'
+            ? 'Manage billing'
+            : notice.ctaKind === 'checkout'
+            ? 'Upgrade'
+            : '';
+          return `
+            <div class="api-plan-limit-notice ${escapeHtml(notice.state)}">
+              <div class="api-plan-limit-notice-main">
+                <div class="api-plan-limit-notice-title">${escapeHtml(this.planLimitStateLabel(notice.state))}</div>
+                <div class="api-plan-limit-notice-body">
+                  ${escapeHtml(this.planLimitDimensionLabel(notice.dimension))}: ${escapeHtml(usage)} used / ${escapeHtml(limit)} included${escapeHtml(ratio)} in ${escapeHtml(notice.windowKey)}.
+                  You can upgrade for more room or reduce traffic to stay on this plan.
+                </div>
+              </div>
+              <div class="api-plan-limit-notice-actions">
+                ${cta ? `<button class="btn btn-primary api-plan-limit-notice-cta" data-plan-limit-cta="${escapeHtml(notice._id)}">${escapeHtml(cta)}</button>` : ''}
+                <button class="btn btn-ghost api-plan-limit-notice-ack" data-plan-limit-ack="${escapeHtml(notice._id)}">Dismiss</button>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  }
+
+  private async handleAcknowledgePlanLimitNotice(noticeId: string): Promise<void> {
+    try {
+      await acknowledgePlanLimitNotice(noticeId);
+      this.planLimitNotices = this.planLimitNotices.filter((notice) => notice._id !== noticeId);
+      this.renderPlanLimitNoticeBlocks();
+    } catch (err) {
+      console.warn('[settings] Failed to acknowledge API plan-limit notice:', err);
+      showToast('Could not dismiss this notice. Try again.');
+    }
+  }
+
+  private handlePlanLimitNoticeCta(noticeId: string): void {
+    const notice = this.planLimitNotices.find((item) => item._id === noticeId);
+    if (!notice) return;
+    if (notice.ctaKind === 'billing_portal') {
+      const reservedWin = prereserveBillingPortalTab();
+      void openBillingPortal(reservedWin).then((result) => {
+        if (result.outcome === 'no-customer') {
+          showToast('Subscription is managed outside Dodo. Email support@worldmonitor.app for help.');
+        }
+      });
+      return;
+    }
+    if (notice.ctaKind === 'checkout') {
+      // Never send an active subscriber to a fresh checkout. The upgrade target
+      // (api_starter) sits in a DIFFERENT tierGroup than an existing Pro sub, and
+      // getCheckoutBlockingSubscription only blocks a same-tierGroup duplicate
+      // (#4797) — so startCheckout would STACK a second live subscription and
+      // double-charge. Route entitled users to the billing portal instead (same
+      // precedent as handleUpgradeClick); its no-customer outcome surfaces the
+      // support path for a subscription managed outside Dodo.
+      if (isEntitled()) {
+        const reservedWin = prereserveBillingPortalTab();
+        void openBillingPortal(reservedWin).then((result) => {
+          if (result.outcome === 'no-customer') {
+            showToast('Subscription is managed outside Dodo. Email support@worldmonitor.app for help.');
+          }
+        });
+        return;
+      }
+      this.close();
+      import('@/services/checkout').then(m => import('@/config/products').then((p) => {
+        const product = notice.upgradeTargetPlanKey === 'api_starter'
+          ? p.DODO_PRODUCTS.API_STARTER_MONTHLY
+          : p.DODO_PRODUCTS.PRO_MONTHLY;
+        return m.startCheckout(product);
+      })).catch(() => {
+        window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
+      });
+      return;
+    }
+    if (notice.ctaKind === 'contact_support') {
+      window.location.href = `mailto:support@worldmonitor.app?subject=${encodeURIComponent('WorldMonitor API plan limit upgrade')}`;
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // API Keys tab
   // ---------------------------------------------------------------------------
@@ -1007,6 +1177,7 @@ export class UnifiedSettings {
 
     return `
       <div class="api-keys-section">
+        <div data-plan-limit-notices>${this.renderPlanLimitNotices()}</div>
         <div class="api-keys-header">
           <p class="api-keys-desc">Create API keys to access WorldMonitor data programmatically. Keys are shown once on creation — store them securely.</p>
         </div>
@@ -1196,6 +1367,7 @@ export class UnifiedSettings {
 
     return `
       <div class="mcp-clients-section">
+        <div data-plan-limit-notices>${this.renderPlanLimitNotices()}</div>
         <div class="mcp-clients-header">
           <p class="mcp-clients-desc">Connect Claude Desktop, Cursor, and other AI clients to your WorldMonitor account. Each client gets its own credential — revoke any time.</p>
         </div>

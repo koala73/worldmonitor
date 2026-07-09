@@ -18,7 +18,7 @@ import type { Id } from "../_generated/dataModel";
 import { resolveUserId, requireUserId } from "../lib/auth";
 import { getFeaturesForPlan } from "../lib/entitlements";
 import { ANON_ID_V4_REGEX, verifyAnonClaimToken } from "../lib/identitySigning";
-import { PRODUCT_CATALOG, resolveProductToPlan } from "../config/productCatalog";
+import { PLAN_PRECEDENCE, PRODUCT_CATALOG, resolveProductToPlan } from "../config/productCatalog";
 import {
   isNewerEvent,
   recomputeEntitlementFromAllSubs,
@@ -57,6 +57,17 @@ function getDodoClient(
     ...(isLive ? {} : { environment: "test_mode" as const }),
     ...options,
   });
+}
+
+function compareEntitlementPlans(
+  a: { planKey: string; validUntil: number },
+  b: { planKey: string; validUntil: number },
+): number {
+  const tierDelta = getFeaturesForPlan(a.planKey).tier - getFeaturesForPlan(b.planKey).tier;
+  if (tierDelta !== 0) return tierDelta;
+  const rankDelta = (PLAN_PRECEDENCE[a.planKey] ?? 0) - (PLAN_PRECEDENCE[b.planKey] ?? 0);
+  if (rankDelta !== 0) return rankDelta;
+  return a.validUntil - b.validUntil;
 }
 
 // Max Dodo lookups attempted per action INVOCATION (each retrieve is a paid
@@ -2583,44 +2594,74 @@ export const claimSubscription = mutation({
       await ctx.db.patch(sub._id, { userId: realUserId });
     }
 
-    // Reassign entitlements — compare by tier first, then validUntil
-    // Use .first() instead of .unique() to avoid throwing on duplicate rows
-    let winningPlanKey: string | null = null;
-    let winningFeatures: ReturnType<typeof getFeaturesForPlan> | null = null;
-    let winningValidUntil: number | null = null;
+    // Move entitlement rows first, then let the shared recompute path derive
+    // the final paid/free state from the post-claim subscriptions. If the
+    // anonymous row carried a future complimentary floor, transfer it only
+    // when it does not undercut stronger current real-user coverage.
+    const recomputeTimestamp = Date.now();
     if (anonEntitlement) {
       const existingEntitlement = await ctx.db
         .query("entitlements")
         .withIndex("by_userId", (q) => q.eq("userId", realUserId))
         .first();
       if (existingEntitlement) {
-        // Compare by tier first, break ties with validUntil
-        const anonTier = anonEntitlement.features?.tier ?? 0;
-        const existingTier = existingEntitlement.features?.tier ?? 0;
-        const anonWins =
-          anonTier > existingTier ||
-          (anonTier === existingTier && anonEntitlement.validUntil > existingEntitlement.validUntil);
-        if (anonWins) {
-          winningPlanKey = anonEntitlement.planKey;
-          winningFeatures = anonEntitlement.features;
-          winningValidUntil = anonEntitlement.validUntil;
-          await ctx.db.patch(existingEntitlement._id, {
-            planKey: anonEntitlement.planKey,
-            features: anonEntitlement.features,
-            validUntil: anonEntitlement.validUntil,
-            updatedAt: Date.now(),
-          });
-        } else {
-          winningPlanKey = existingEntitlement.planKey;
-          winningFeatures = existingEntitlement.features;
-          winningValidUntil = existingEntitlement.validUntil;
+        const anonCompUntil = anonEntitlement.compUntil ?? 0;
+        const existingCompUntil = existingEntitlement.compUntil ?? 0;
+        if (anonCompUntil > existingCompUntil && anonCompUntil > recomputeTimestamp) {
+          const realSubscriptions = await ctx.db
+            .query("subscriptions")
+            .withIndex("by_userId", (q) => q.eq("userId", realUserId))
+            .collect();
+          let bestCoveringSubscription: (typeof realSubscriptions)[number] | null = null;
+          for (const candidate of realSubscriptions) {
+            const covers =
+              candidate.status === "active" ||
+              candidate.status === "on_hold" ||
+              (candidate.status === "cancelled" && candidate.currentPeriodEnd > recomputeTimestamp);
+            if (!covers) continue;
+            if (
+              bestCoveringSubscription === null ||
+              compareEntitlementPlans(
+                { planKey: candidate.planKey, validUntil: candidate.currentPeriodEnd },
+                {
+                  planKey: bestCoveringSubscription.planKey,
+                  validUntil: bestCoveringSubscription.currentPeriodEnd,
+                },
+              ) > 0
+            ) {
+              bestCoveringSubscription = candidate;
+            }
+          }
+          const strongestCurrentCoverage = bestCoveringSubscription
+            ? {
+                planKey: bestCoveringSubscription.planKey,
+                validUntil: bestCoveringSubscription.currentPeriodEnd,
+              }
+            : existingEntitlement.validUntil > recomputeTimestamp
+              ? { planKey: existingEntitlement.planKey, validUntil: existingEntitlement.validUntil }
+              : null;
+          const anonCompOutranksCurrentCoverage =
+            strongestCurrentCoverage === null ||
+            compareEntitlementPlans(
+              { planKey: anonEntitlement.planKey, validUntil: anonEntitlement.validUntil },
+              strongestCurrentCoverage,
+            ) >= 0;
+          if (anonCompOutranksCurrentCoverage) {
+            await ctx.db.patch(existingEntitlement._id, {
+              planKey: anonEntitlement.planKey,
+              features: anonEntitlement.features,
+              validUntil: Math.max(existingEntitlement.validUntil, anonEntitlement.validUntil),
+              compUntil: anonCompUntil,
+              updatedAt: recomputeTimestamp,
+            });
+          }
         }
         await ctx.db.delete(anonEntitlement._id);
       } else {
-        winningPlanKey = anonEntitlement.planKey;
-        winningFeatures = anonEntitlement.features;
-        winningValidUntil = anonEntitlement.validUntil;
-        await ctx.db.patch(anonEntitlement._id, { userId: realUserId });
+        await ctx.db.patch(anonEntitlement._id, {
+          userId: realUserId,
+          updatedAt: recomputeTimestamp,
+        });
       }
     }
 
@@ -2635,26 +2676,30 @@ export const claimSubscription = mutation({
       await ctx.db.patch(payment._id, { userId: realUserId });
     }
 
+    await recomputeEntitlementFromAllSubs(ctx, realUserId, recomputeTimestamp);
+    const recomputedEntitlement = await ctx.db
+      .query("entitlements")
+      .withIndex("by_userId", (q) => q.eq("userId", realUserId))
+      .first();
+
     // ACCEPTED BOUND: cache sync runs after mutation commits. Stale cache
     // survives up to ENTITLEMENT_CACHE_TTL_SECONDS (900s) if scheduler fails.
-    // Sync Redis cache: clear stale anon entry + write real user's entitlement
+    // Clear stale anon cache and sync the final recomputed real-user state.
     if (process.env.UPSTASH_REDIS_REST_URL) {
-      // Delete the anon ID's stale Redis cache entry
       await ctx.scheduler.runAfter(
         0,
         internal.payments.cacheActions.deleteEntitlementCache,
         { userId: args.anonId },
       );
-      // Sync the real user's entitlement to Redis
-      if (winningPlanKey && winningFeatures && winningValidUntil) {
+      if (recomputedEntitlement) {
         await ctx.scheduler.runAfter(
           0,
           internal.payments.cacheActions.syncEntitlementCache,
           {
             userId: realUserId,
-            planKey: winningPlanKey,
-            features: winningFeatures,
-            validUntil: winningValidUntil,
+            planKey: recomputedEntitlement.planKey,
+            features: recomputedEntitlement.features,
+            validUntil: recomputedEntitlement.validUntil,
           },
         );
       }

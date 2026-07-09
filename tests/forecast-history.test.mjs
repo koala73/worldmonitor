@@ -9,7 +9,10 @@ import {
   buildPublishedForecastPayload,
 } from '../scripts/seed-forecasts.mjs';
 
-import { attachResolutionSpecs } from '../scripts/_forecast-resolution.mjs';
+import {
+  CONFLICT_COUNT_SOURCE_FEED,
+  attachResolutionSpecs,
+} from '../scripts/_forecast-resolution.mjs';
 
 import {
   selectBenchmarkCandidates,
@@ -331,8 +334,8 @@ describe('forecast benchmark promotion', () => {
 // the makePrediction default, and the camelCase resolution + projections
 // blocks in both the canonical payload and the 45-day history entry.
 
-// A conflict forecast reaching the hard path needs a ucdp/cii signal with a
-// finite count; a commodity market forecast needs an inputs feed with the
+// A conflict forecast reaching the hard path needs a count-bearing signal;
+// a commodity market forecast needs an inputs feed with the
 // mapped future ticker priced. Kept minimal + console-quiet.
 const HARD_CONFLICT_GENERATED_AT = 1_700_000_000_000;
 
@@ -354,7 +357,7 @@ describe('forecast resolution spec round-trip (U3)', () => {
     assert.equal(entry.resolution.metricKey, pred.resolution.metricKey);
     assert.equal(entry.resolution.operator, '>=');
     assert.ok(Number.isFinite(entry.resolution.threshold));
-    assert.equal(entry.resolution.sourceFeed, 'conflict:ucdp-events:v1');
+    assert.equal(entry.resolution.sourceFeed, CONFLICT_COUNT_SOURCE_FEED);
     assert.equal(entry.resolution.deadline, HARD_CONFLICT_GENERATED_AT + 7 * 24 * 60 * 60 * 1000);
     // camelCase only — no snake_case leaked through the boundary (D6).
     assert.ok(!('metric_key' in entry.resolution));

@@ -16,7 +16,7 @@ import { CHROME_UA, loadEnvFile, runSeed } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { resolveR2StorageConfig, putR2JsonObject } from './_r2-storage.mjs';
 import { parseMetricKey, resolveHardSpec, extractMetricValue } from './_forecast-resolution-eval.mjs';
-import { computeScorecard } from './_forecast-scorecard.mjs';
+import { computeScorecard, DEFAULT_ROLLING_WINDOW_DAYS } from './_forecast-scorecard.mjs';
 
 export const HISTORY_KEY = 'forecast:predictions:history:v1';
 export const RESOLUTIONS_KEY = 'forecast:resolutions:v1';
@@ -26,6 +26,17 @@ export const SCORECARD_TTL_SECONDS = 7 * 24 * 60 * 60;
 export const RESOLUTION_SOURCE_VERSION = 'forecast-resolution-engine-v1';
 export const RESOLUTION_SCHEMA_VERSION = 1;
 export const MAX_RECENT_SAMPLES = 40;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Retention for the persistent working ledger (#5067). A resolved entry only
+// leaves the hot `forecast:resolutions:v1` value once it is (a) durably archived
+// to R2 as a receipt AND (b) older than this window — by which point it no longer
+// contributes to the rolling scorecard math, so pruning it is scorecard-neutral.
+// Aligned to the scorecard's rolling window so the two never diverge: any pruned
+// entry is exactly one the scorecard already excludes. The window (180d) dwarfs
+// the forecast-history intake reach (LRANGE 200 at hourly cadence ~8.3 days), so
+// a pruned window can never be re-ingested from a stale snapshot.
+export const LEDGER_RETENTION_WINDOW_DAYS = DEFAULT_ROLLING_WINDOW_DAYS;
 
 const DIRECT_RUN = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/'));
 if (DIRECT_RUN) loadEnvFile(import.meta.url);
@@ -39,11 +50,40 @@ export function declareScorecardRecords(scorecard) {
 }
 
 export function processResolutionCycle(existingLedger, historySnapshots, feedsByKey, nowMs) {
-  const ledger = ingestHistory(existingLedger, historySnapshots, nowMs);
-  samplePendingEntries(ledger, feedsByKey, nowMs);
-  const receipts = resolveDueEntries(ledger, feedsByKey, nowMs);
+  const ingested = ingestHistory(existingLedger, historySnapshots, nowMs);
+  samplePendingEntries(ingested, feedsByKey, nowMs);
+  const receipts = resolveDueEntries(ingested, feedsByKey, nowMs);
+  // Drop terminal entries that are already receipted to R2 and outside the
+  // rolling scorecard window, keeping the persistent ledger bounded (#5067). Runs after
+  // resolveDueEntries so entries resolved this cycle (resolvedAt === nowMs, not
+  // yet archived) are always retained and still emit a receipt above.
+  const ledger = pruneArchivedTerminalEntries(ingested, nowMs);
   const scorecard = computeScorecard(ledger, nowMs);
   return { ledger, receipts, scorecard };
+}
+
+// Terminal entries whose receipt is safely in R2 and that have aged past the
+// retention window are removed from the hot working ledger; everything else
+// (pending, pending-judge, within-window resolved, un-archived resolved, or
+// resolved-without-a-timestamp) is retained. Pure: returns a new object and
+// never mutates the input.
+export function pruneArchivedTerminalEntries(ledger, nowMs, options = {}) {
+  const retentionDays = options.retentionWindowDays ?? LEDGER_RETENTION_WINDOW_DAYS;
+  const minResolvedAt = nowMs - retentionDays * DAY_MS;
+  const kept = {};
+  for (const [key, entry] of Object.entries(normalizeLedger(ledger))) {
+    if (isPrunableTerminalEntry(entry, minResolvedAt)) continue;
+    kept[key] = entry;
+  }
+  return kept;
+}
+
+function isPrunableTerminalEntry(entry, minResolvedAt) {
+  if (!entry || entry.status !== 'resolved') return false;
+  if (!entry.receiptArchivedAt) return false;
+  const resolvedAt = Number(entry.resolvedAt);
+  if (!Number.isFinite(resolvedAt)) return false;
+  return resolvedAt < minResolvedAt;
 }
 
 export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now()) {
@@ -286,10 +326,12 @@ async function buildLedgerForRun() {
   const preLedger = ingestHistory(existingLedger || {}, history, nowMs);
   const feeds = await readResolutionFeeds(preLedger);
   const result = processResolutionCycle(preLedger, [], feeds, nowMs);
-  const archivedReceipts = await appendR2Receipts(collectUnarchivedReceipts(result.ledger));
+  const receiptsForArchive = collectUnarchivedReceipts(result.ledger);
+  const archivedReceipts = await appendR2Receipts(receiptsForArchive);
   markReceiptsArchived(result.ledger, archivedReceipts, Date.now());
   console.log(`  Resolution ledger entries: ${Object.keys(result.ledger).length}`);
-  console.log(`  New terminal receipts: ${result.receipts.length}`);
+  console.log(`  Terminal receipts resolved this cycle: ${result.receipts.length}`);
+  console.log(`  Terminal receipts queued for R2: ${receiptsForArchive.length}`);
   console.log(`  R2 receipts archived: ${archivedReceipts.length}`);
   return result.ledger;
 }

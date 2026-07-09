@@ -51,6 +51,9 @@ const UPSTREAM_TIMEOUT_MS = 8_000;
 // can't repeatedly hammer Finnhub.
 const CACHE_KEY_PREFIX = 'symsearch:v1:';
 const CACHE_TTL_SECONDS = 600;
+const FINNHUB_429_COOLDOWN_KEY = 'symsearch-cooldown:v1:finnhub-429';
+const FINNHUB_429_DEFAULT_RETRY_AFTER_SECONDS = 60;
+const FINNHUB_429_MAX_RETRY_AFTER_SECONDS = 120;
 // Honest UA identifying ourselves to Finnhub. The AGENTS.md Critical
 // Conventions section requires UA on server-side fetches; matches the
 // `worldmonitor-edge/1.0` convention used by api/notify.ts and
@@ -65,6 +68,67 @@ const FETCH_USER_AGENT = 'worldmonitor-edge/1.0';
 const ALLOWED_TYPES = new Set([
   'Common Stock', 'ADR', 'GDR', 'ETP', 'ETF', 'REIT', 'Unit', 'Equity', '',
 ]);
+
+interface FinnhubRateLimitCooldown {
+  error: 'SYMBOL_SEARCH_UNAVAILABLE';
+  reason: 'finnhub_rate_limit';
+  finnhubStatus: 429;
+  retryAfterSeconds: number;
+  expiresAt: number;
+}
+
+function normalizeRetryAfterSeconds(value: number): number {
+  return Math.max(1, Math.min(FINNHUB_429_MAX_RETRY_AFTER_SECONDS, Math.ceil(value)));
+}
+
+function parseRetryAfterSeconds(value: string | null): number | null {
+  const trimmed = value?.trim();
+  if (!trimmed) return null;
+
+  const numeric = Number(trimmed);
+  if (Number.isFinite(numeric)) return normalizeRetryAfterSeconds(numeric);
+
+  const timestamp = Date.parse(trimmed);
+  if (Number.isFinite(timestamp)) return normalizeRetryAfterSeconds((timestamp - Date.now()) / 1000);
+
+  return null;
+}
+
+function getFinnhub429RetryAfterSeconds(resp: Response): number {
+  return parseRetryAfterSeconds(resp.headers.get('Retry-After')) ?? FINNHUB_429_DEFAULT_RETRY_AFTER_SECONDS;
+}
+
+function isFinnhubRateLimitCooldown(value: unknown): value is FinnhubRateLimitCooldown {
+  if (!value || typeof value !== 'object') return false;
+  const maybe = value as Partial<FinnhubRateLimitCooldown>;
+  return (
+    maybe.error === 'SYMBOL_SEARCH_UNAVAILABLE' &&
+    maybe.reason === 'finnhub_rate_limit' &&
+    maybe.finnhubStatus === 429 &&
+    typeof maybe.retryAfterSeconds === 'number' &&
+    Number.isFinite(maybe.retryAfterSeconds) &&
+    maybe.retryAfterSeconds > 0 &&
+    typeof maybe.expiresAt === 'number' &&
+    Number.isFinite(maybe.expiresAt) &&
+    maybe.expiresAt > 0
+  );
+}
+
+function getFinnhubCooldownRetryAfterSeconds(cooldown: FinnhubRateLimitCooldown): number | null {
+  const remainingSeconds = (cooldown.expiresAt - Date.now()) / 1000;
+  if (!Number.isFinite(remainingSeconds) || remainingSeconds <= 0) return null;
+  return normalizeRetryAfterSeconds(remainingSeconds);
+}
+
+function symbolSearchUnavailableResponse(
+  cors: Record<string, string>,
+  retryAfterSeconds?: number,
+): Response {
+  const headers = retryAfterSeconds
+    ? { ...cors, 'Retry-After': String(normalizeRetryAfterSeconds(retryAfterSeconds)) }
+    : cors;
+  return jsonResponse({ error: 'SYMBOL_SEARCH_UNAVAILABLE' }, 503, headers);
+}
 
 /**
  * Map + filter raw Finnhub results to our shape. Exported for unit tests —
@@ -140,6 +204,22 @@ export default async function handler(
     // Treat Upstash unavailability as a cache miss; do not 5xx the user.
   }
 
+  // Finnhub's 429 quota is per shared API key. Once one real upstream 429 has
+  // been observed and captured, cold searches briefly fail fast instead of
+  // multiplying both user-facing latency and the upstream quota outage. Cached
+  // successful query results above still serve during this cooldown.
+  try {
+    const cooldown = await readRawJsonFromUpstash(FINNHUB_429_COOLDOWN_KEY);
+    if (isFinnhubRateLimitCooldown(cooldown)) {
+      const retryAfterSeconds = getFinnhubCooldownRetryAfterSeconds(cooldown);
+      if (retryAfterSeconds) {
+        return symbolSearchUnavailableResponse(cors, retryAfterSeconds);
+      }
+    }
+  } catch {
+    // Cache infrastructure is best-effort; fall through to the real upstream.
+  }
+
   try {
     const url = `https://finnhub.io/api/v1/search?q=${encodeURIComponent(q)}&token=${encodeURIComponent(apiKey)}`;
     const resp = await fetch(url, {
@@ -174,6 +254,7 @@ export default async function handler(
       // 429 from Finnhub = quota exhausted; surface as 503 so the client
       // backs off rather than treating it as a permanent failure.
       const status = resp.status === 429 ? 503 : 502;
+      const retryAfterSeconds = resp.status === 429 ? getFinnhub429RetryAfterSeconds(resp) : undefined;
       console.warn(`[symbol-search] Finnhub HTTP ${resp.status} for q="${q}"`);
       // Upstream gateway transients (502/503/504) are Finnhub-side infra blips —
       // not our bug, not our quota, not our auth. Like the 422 skip above, the
@@ -188,10 +269,27 @@ export default async function handler(
       if (!isUpstreamGatewayTransient) {
         captureSilentError(new Error(`Finnhub search HTTP ${resp.status}`), {
           tags: { route: 'api/symbol-search', step: 'finnhub_fetch' },
-          extra: { q, finnhubStatus: resp.status },
+          extra: { q, finnhubStatus: resp.status, ...(retryAfterSeconds ? { retryAfterSeconds } : {}) },
           level: 'warning',
           ctx,
         });
+      }
+      if (resp.status === 429 && retryAfterSeconds) {
+        const cooldown: FinnhubRateLimitCooldown = {
+          error: 'SYMBOL_SEARCH_UNAVAILABLE',
+          reason: 'finnhub_rate_limit',
+          finnhubStatus: 429,
+          retryAfterSeconds,
+          expiresAt: Date.now() + retryAfterSeconds * 1000,
+        };
+        // The Redis write is async and distributed, so a sudden burst of cold
+        // requests can still produce multiple first-429 captures before the
+        // cooldown key propagates. Once present, it suppresses sequential
+        // duplicate Finnhub calls and Sentry captures for the remaining window.
+        const writePromise = setCachedData(FINNHUB_429_COOLDOWN_KEY, cooldown, retryAfterSeconds).catch(() => false);
+        if (ctx) ctx.waitUntil(writePromise);
+        else void writePromise;
+        return symbolSearchUnavailableResponse(cors, retryAfterSeconds);
       }
       return jsonResponse({ error: 'SYMBOL_SEARCH_UNAVAILABLE' }, status, cors);
     }

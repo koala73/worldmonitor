@@ -1,5 +1,7 @@
 import { convexTest } from "convex-test";
-import { expect, test, describe } from "vitest";
+import { afterEach, expect, test, describe } from "vitest";
+import { getFeaturesForPlan } from "../lib/entitlements";
+import { signUserId } from "../lib/identitySigning";
 import schema from "../schema";
 import { internal } from "../_generated/api";
 
@@ -62,6 +64,11 @@ function makePaymentPayload(
 }
 
 const BASE_TIMESTAMP = new Date("2026-03-21T10:00:00Z").getTime();
+const SIGNING_SECRET = "test-dodo-identity-signing-secret";
+
+afterEach(() => {
+  delete process.env.DODO_IDENTITY_SIGNING_SECRET;
+});
 
 // ---------------------------------------------------------------------------
 // Helper: seed a productPlans mapping
@@ -344,6 +351,38 @@ describe("webhook processWebhookEvent", () => {
     );
   });
 
+  test("subscription.plan_changed api_starter -> api_business resolves the Business entitlement (#4634)", async () => {
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_api_starter", "api_starter", "API Starter");
+    await seedProductPlan(t, "pdt_test_api_business", "api_business", "API Business");
+
+    // Active on Starter, then the Dodo collection upgrade fires plan_changed.
+    await processEvent(
+      t,
+      "wh_up_01",
+      "subscription.active",
+      makeSubscriptionPayload({ product_id: "pdt_test_api_starter" }),
+      BASE_TIMESTAMP,
+    );
+    await processEvent(
+      t,
+      "wh_up_02",
+      "subscription.plan_changed",
+      makeSubscriptionPayload({ product_id: "pdt_test_api_business" }),
+      BASE_TIMESTAMP + 1000,
+    );
+
+    const subs = await t.run((ctx) => ctx.db.query("subscriptions").collect());
+    expect(subs).toHaveLength(1);
+    expect(subs[0].planKey).toBe("api_business");
+
+    const entitlements = await t.run((ctx) => ctx.db.query("entitlements").collect());
+    expect(entitlements).toHaveLength(1);
+    expect(entitlements[0].planKey).toBe("api_business");
+    expect(entitlements[0].features).toMatchObject({ apiAccess: true, apiRateLimit: 300 });
+  });
+
   test("subscription.plan_changed updates product and entitlements", async () => {
     const t = convexTest(schema, modules);
 
@@ -432,6 +471,241 @@ describe("webhook processWebhookEvent", () => {
     });
     expect(paymentEvents).toHaveLength(1);
     expect(paymentEvents[0].status).toBe("failed");
+  });
+
+  // #5056 — entitlement lifecycle integrity across claim, active webhook, and dispute races.
+  test("subscription.active keeps claimed real owner when stale signed anon metadata arrives", async () => {
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    const realUserId = "user_claimed_subscription";
+    const anonId = "22222222-2222-4222-8222-222222222222";
+    const customerId = "cust_claimed_001";
+    const subscriptionId = "sub_claimed_001";
+    const anonSig = await signUserId(anonId);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: realUserId,
+        dodoSubscriptionId: subscriptionId,
+        dodoProductId: "pdt_test_pro",
+        planKey: "pro_monthly",
+        status: "active",
+        currentPeriodStart: BASE_TIMESTAMP - 86400000,
+        currentPeriodEnd: BASE_TIMESTAMP,
+        dodoCustomerId: customerId,
+        rawPayload: {},
+        updatedAt: BASE_TIMESTAMP - 1000,
+      });
+      await ctx.db.insert("entitlements", {
+        userId: realUserId,
+        planKey: "pro_monthly",
+        features: getFeaturesForPlan("pro_monthly"),
+        validUntil: BASE_TIMESTAMP,
+        updatedAt: BASE_TIMESTAMP - 1000,
+      });
+    });
+
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_claimed_stale_anon",
+      eventType: "subscription.active",
+      rawPayload: makeSubscriptionPayload({
+        subscription_id: subscriptionId,
+        customer: {
+          customer_id: customerId,
+          email: "claimed@example.com",
+          name: "Claimed User",
+        },
+        metadata: { wm_user_id: anonId, wm_user_id_sig: anonSig },
+        next_billing_date: "2026-05-21T00:00:00Z",
+      }),
+      timestamp: BASE_TIMESTAMP + 1000,
+    });
+
+    const rows = await t.run(async (ctx) => {
+      const [sub, customer, realEntitlement, anonEntitlement] = await Promise.all([
+        ctx.db.query("subscriptions").withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", subscriptionId)).unique(),
+        ctx.db.query("customers").withIndex("by_dodoCustomerId", (q) => q.eq("dodoCustomerId", customerId)).first(),
+        ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", realUserId)).first(),
+        ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", anonId)).first(),
+      ]);
+      return { sub, customer, realEntitlement, anonEntitlement };
+    });
+    expect(rows.sub?.userId).toBe(realUserId);
+    expect(rows.customer?.userId).toBe(realUserId);
+    expect(rows.realEntitlement?.planKey).toBe("pro_monthly");
+    expect(rows.realEntitlement?.validUntil).toBe(new Date("2026-05-21T00:00:00Z").getTime());
+    expect(rows.anonEntitlement).toBeNull();
+  });
+
+  test("subscription.active uses signed real metadata for a new sub even when the Dodo customer row exists", async () => {
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    const previousUserId = "user_existing_customer";
+    const newUserId = "user_new_signed_checkout";
+    const customerId = "cust_shared_real";
+    const subscriptionId = "sub_new_signed_real";
+    const userSig = await signUserId(newUserId);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("customers", {
+        userId: previousUserId,
+        dodoCustomerId: customerId,
+        email: "shared@example.com",
+        normalizedEmail: "shared@example.com",
+        createdAt: BASE_TIMESTAMP - 1000,
+        updatedAt: BASE_TIMESTAMP - 1000,
+      });
+    });
+
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_new_signed_real_shared_customer",
+      eventType: "subscription.active",
+      rawPayload: makeSubscriptionPayload({
+        subscription_id: subscriptionId,
+        customer: { customer_id: customerId, email: "shared@example.com", name: "Shared Customer" },
+        metadata: { wm_user_id: newUserId, wm_user_id_sig: userSig },
+      }),
+      timestamp: BASE_TIMESTAMP + 1000,
+    });
+
+    const rows = await t.run(async (ctx) => {
+      const [sub, entitlement] = await Promise.all([
+        ctx.db.query("subscriptions").withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", subscriptionId)).unique(),
+        ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", newUserId)).first(),
+      ]);
+      return { sub, entitlement };
+    });
+    expect(rows.sub?.userId).toBe(newUserId);
+    expect(rows.entitlement?.planKey).toBe("pro_monthly");
+  });
+
+  test("dispute.lost expires only the disputed subscription when another active subscription covers the user", async () => {
+    const t = convexTest(schema, modules);
+    const userId = "user_dispute_multi";
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("customers", {
+        userId,
+        dodoCustomerId: "cust_dispute_multi",
+        email: "multi@example.com",
+        normalizedEmail: "multi@example.com",
+        createdAt: BASE_TIMESTAMP - 1000,
+        updatedAt: BASE_TIMESTAMP - 1000,
+      });
+      await ctx.db.insert("subscriptions", {
+        userId,
+        dodoSubscriptionId: "sub_disputed_multi",
+        dodoProductId: "pdt_test_pro",
+        planKey: "pro_monthly",
+        status: "active",
+        currentPeriodStart: BASE_TIMESTAMP - 86400000,
+        currentPeriodEnd: BASE_TIMESTAMP + 30 * 86400000,
+        dodoCustomerId: "cust_dispute_multi",
+        rawPayload: {},
+        updatedAt: BASE_TIMESTAMP - 1000,
+      });
+      await ctx.db.insert("subscriptions", {
+        userId,
+        dodoSubscriptionId: "sub_cover_multi",
+        dodoProductId: "pdt_test_api",
+        planKey: "api_starter",
+        status: "active",
+        currentPeriodStart: BASE_TIMESTAMP - 86400000,
+        currentPeriodEnd: BASE_TIMESTAMP + 45 * 86400000,
+        dodoCustomerId: "cust_dispute_multi",
+        rawPayload: {},
+        updatedAt: BASE_TIMESTAMP - 1000,
+      });
+      await ctx.db.insert("entitlements", {
+        userId,
+        planKey: "pro_monthly",
+        features: getFeaturesForPlan("pro_monthly"),
+        validUntil: BASE_TIMESTAMP + 30 * 86400000,
+        updatedAt: BASE_TIMESTAMP - 1000,
+      });
+    });
+
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_dispute_multi",
+      eventType: "dispute.lost",
+      rawPayload: makePaymentPayload("payment.succeeded", {
+        payment_id: "pay_dispute_multi",
+        subscription_id: "sub_disputed_multi",
+        customer: { customer_id: "cust_dispute_multi", email: "multi@example.com" },
+        metadata: { wm_user_id: userId },
+      }),
+      timestamp: BASE_TIMESTAMP + 1000,
+    });
+
+    const rows = await t.run(async (ctx) => {
+      const [disputed, cover, entitlement, paymentEvent] = await Promise.all([
+        ctx.db.query("subscriptions").withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", "sub_disputed_multi")).unique(),
+        ctx.db.query("subscriptions").withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", "sub_cover_multi")).unique(),
+        ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", userId)).first(),
+        ctx.db.query("paymentEvents").withIndex("by_dodoPaymentId", (q) => q.eq("dodoPaymentId", "pay_dispute_multi")).first(),
+      ]);
+      return { disputed, cover, entitlement, paymentEvent };
+    });
+    expect(rows.disputed?.status).toBe("expired");
+    expect(rows.cover?.status).toBe("active");
+    expect(rows.entitlement?.planKey).toBe("api_starter");
+    expect(rows.entitlement?.validUntil).toBe(BASE_TIMESTAMP + 45 * 86400000);
+    expect(rows.entitlement?.features.tier).toBe(getFeaturesForPlan("api_starter").tier);
+    expect(rows.paymentEvent?.status).toBe("dispute_lost");
+  });
+
+  test("dispute.lost preserves a future complimentary entitlement floor", async () => {
+    const t = convexTest(schema, modules);
+    const userId = "user_dispute_comp";
+    const compUntil = BASE_TIMESTAMP + 60 * 86400000;
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId,
+        dodoSubscriptionId: "sub_dispute_comp",
+        dodoProductId: "pdt_test_pro",
+        planKey: "pro_monthly",
+        status: "active",
+        currentPeriodStart: BASE_TIMESTAMP - 86400000,
+        currentPeriodEnd: BASE_TIMESTAMP + 30 * 86400000,
+        rawPayload: {},
+        updatedAt: BASE_TIMESTAMP - 1000,
+      });
+      await ctx.db.insert("entitlements", {
+        userId,
+        planKey: "pro_monthly",
+        features: getFeaturesForPlan("pro_monthly"),
+        validUntil: compUntil,
+        compUntil,
+        updatedAt: BASE_TIMESTAMP - 1000,
+      });
+    });
+
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_dispute_comp",
+      eventType: "dispute.lost",
+      rawPayload: makePaymentPayload("payment.succeeded", {
+        payment_id: "pay_dispute_comp",
+        subscription_id: "sub_dispute_comp",
+        customer: { customer_id: "cust_dispute_comp", email: "comp@example.com" },
+        metadata: { wm_user_id: userId },
+      }),
+      timestamp: BASE_TIMESTAMP + 1000,
+    });
+
+    const rows = await t.run(async (ctx) => {
+      const [sub, entitlement] = await Promise.all([
+        ctx.db.query("subscriptions").withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", "sub_dispute_comp")).unique(),
+        ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", userId)).first(),
+      ]);
+      return { sub, entitlement };
+    });
+    expect(rows.sub?.status).toBe("expired");
+    expect(rows.entitlement?.planKey).toBe("pro_monthly");
+    expect(rows.entitlement?.validUntil).toBe(compUntil);
+    expect(rows.entitlement?.compUntil).toBe(compUntil);
   });
 
   // #4436 — Dodo delivers the 3DS/SCA-pending state as a `payment.processing`

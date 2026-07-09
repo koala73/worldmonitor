@@ -12,7 +12,7 @@ description: "Every error shape WorldMonitor's MCP server can emit — JSON-RPC 
   - Method gate (405 + Allow)           api/mcp/handler.ts (mcpHandler method check)
   - Top-level dispatch / -32600/-32601  api/mcp/handler.ts (POST body parse and dispatch switch)
   - Auth -32001 / -32603 emitters       api/mcp/auth.ts (resolveAuthContext and entitlement checks)
-  - Per-minute -32029                   api/mcp/auth.ts (applyPerMinuteLimit, applyAnonDiscoveryLimit)
+  - Per-minute -32029 + hit telemetry   api/mcp/auth.ts (applyPerMinuteLimit, applyAnonDiscoveryLimit, emitMcpRateLimitHit)
   - Pro daily-cap -32029 (HTTP 429)     api/mcp/dispatch.ts (reserveDailyQuotaForRequest)
   - Tool exec -32603                    api/mcp/dispatch.ts (dispatchToolsCall)
   - _budget_exceeded envelope           api/mcp/dispatch.ts (budget cap handling)
@@ -84,6 +84,8 @@ Per-minute and daily-cap triggers share this code; the HTTP status disambiguates
 
 **Per-minute throttle — HTTP 200.** Sliding-window limiter at **60 requests / minute** keyed per API key (Starter+), per Pro user (combined across all that user's tokens), or per IP for anonymous public discovery. Credentialed requests are limited after auth. Credential-less public discovery methods (`initialize`, `notifications/initialized`, `tools/list`, `resources/list`, `resources/templates/list`) and anonymous public-resource reads are served without auth but still pass through the anonymous discovery limiter. Credential-less data/quota methods, or metadata methods outside that public set, do **not** use anonymous discovery — they fail closed with `-32001` / HTTP 401. Comes back as a JSON-RPC error inside HTTP 200 because the limiter is upstream of any per-id correlation. Fails OPEN on Upstash transient errors — single spikes in limiter-backend latency won't take the API down.
 
+When the per-minute limiter rejects, the handler emits a durable `mcp.rate_limit_hit` telemetry event with an allowlisted identity shape. The plan-limit scanner uses that event for sustained-burst notices; it does not infer customer-facing MCP burst notices from raw Upstash limiter internals.
+
 The `message` text identifies which limiter fired. Three distinct strings:
 
 | Auth context                              | `message`                                                                           | Site                                                    |
@@ -125,6 +127,8 @@ Content-Type: application/json
 ```
 
 **What to do.** For HTTP 200 / per-minute: back off ~1 second and retry. The limiter is a sliding window, not a token bucket — sustained 60 rpm is fine; bursts above 60 in any 60-second window reject. For HTTP 429 / daily: honour `Retry-After` (the value is `seconds-until-UTC-midnight`). If the Pro/OAuth daily cap is the binding constraint for batch work, use the API-key or REST/API path where appropriate, or contact Enterprise for a custom MCP limit.
+
+Paid-plan customers also receive account notices and bounded-cadence email when sustained usage crosses a plan threshold. These notices never imply an automatic upgrade, automatic overage charge, or automatic move into API Business; support or checkout action is explicit.
 
 ### `-32600` — Invalid request envelope
 

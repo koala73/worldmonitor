@@ -709,6 +709,27 @@ describe('loadCurrent race simulation', () => {
     await loadCurrent('mena', Promise.resolve('snap'));
     assert.deepEqual(state.rendered, ['mena:snap']);
   });
+
+  it('drops an in-flight response after premium revocation invalidates the sequence', async () => {
+    const state = { latestSequence: 0, rendered: [] as string[] };
+    let resolveSnapshot: (value: string) => void;
+    const snapshot = new Promise<string>((resolve) => { resolveSnapshot = resolve; });
+
+    async function loadCurrent(promise: Promise<string>) {
+      state.latestSequence += 1;
+      const mySeq = state.latestSequence;
+      const result = await promise;
+      if (!isLatestSequence(mySeq, state.latestSequence)) return;
+      state.rendered.push(result);
+    }
+
+    const load = loadCurrent(snapshot);
+    state.latestSequence += 1;
+    resolveSnapshot!('premium-snapshot');
+    await load;
+
+    assert.deepEqual(state.rendered, []);
+  });
 });
 
 // ────────────────────────────────────────────────────────────────────────────

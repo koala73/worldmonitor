@@ -27,6 +27,34 @@ const paymentEventStatus = v.union(
   v.literal("dispute_closed"),
 );
 
+const apiPlanLimitDimension = v.union(
+  v.literal("api_daily_requests"),
+  v.literal("api_minute_burst"),
+  v.literal("mcp_daily_calls"),
+  v.literal("mcp_minute_burst"),
+);
+
+const apiPlanLimitNoticeState = v.union(
+  v.literal("warning"),
+  v.literal("over_limit"),
+  v.literal("sustained_burst"),
+);
+
+const apiPlanLimitEmailStatus = v.union(
+  v.literal("pending"),
+  v.literal("sent"),
+  v.literal("skipped"),
+  v.literal("suppressed"),
+  v.literal("failed"),
+);
+
+const apiPlanLimitCtaKind = v.union(
+  v.literal("checkout"),
+  v.literal("billing_portal"),
+  v.literal("contact_support"),
+  v.literal("none"),
+);
+
 export default defineSchema({
   userPreferences: defineTable({
     userId: v.string(),
@@ -613,6 +641,12 @@ export default defineSchema({
       maxDashboards: v.number(),
       apiAccess: v.boolean(),
       apiRateLimit: v.number(),
+      planLimits: v.optional(v.object({
+        apiRequestsPerDay: v.union(v.number(), v.null()),
+        apiBurstRequestsPerMinute: v.union(v.number(), v.null()),
+        mcpCallsPerDay: v.union(v.number(), v.null()),
+        mcpBurstRequestsPerMinute: v.union(v.number(), v.null()),
+      })),
       prioritySupport: v.boolean(),
       exportFormats: v.array(v.string()),
       // Optional for backward-compat with existing rows written before
@@ -633,7 +667,63 @@ export default defineSchema({
     // goodwill credits outlive Dodo subscription cancellations.
     compUntil: v.optional(v.number()),
     updatedAt: v.number(),
-  }).index("by_userId", ["userId"]),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_validUntil", ["validUntil"]),
+
+  apiUsageRollups: defineTable({
+    userId: v.string(),
+    planKey: v.string(),
+    dimension: apiPlanLimitDimension,
+    windowKey: v.string(),
+    windowStart: v.number(),
+    windowEnd: v.number(),
+    limit: v.union(v.number(), v.null()),
+    usage: v.number(),
+    usageRatio: v.union(v.number(), v.null()),
+    source: v.string(),
+    sourceFreshAt: v.number(),
+    computedAt: v.number(),
+  })
+    .index("by_user_window", ["userId", "windowKey"])
+    .index("by_window_dimension", ["windowKey", "dimension"])
+    // Age-ordered for the retention prune cron (burst mints one rollup per
+    // user per hourly scan, so this table grows without bound otherwise).
+    .index("by_computedAt", ["computedAt"]),
+
+  apiPlanLimitNotices: defineTable({
+    userId: v.string(),
+    planKey: v.string(),
+    dimension: apiPlanLimitDimension,
+    state: apiPlanLimitNoticeState,
+    windowKey: v.string(),
+    usage: v.number(),
+    limit: v.union(v.number(), v.null()),
+    usageRatio: v.union(v.number(), v.null()),
+    current: v.boolean(),
+    firstSeenAt: v.number(),
+    lastSeenAt: v.number(),
+    lastEmailedAt: v.optional(v.number()),
+    acknowledgedAt: v.optional(v.number()),
+    emailStatus: apiPlanLimitEmailStatus,
+    // Number of delivery attempts that ended in `failed`. Bounds retries so a
+    // permanently undeliverable recipient stops being re-sent on every scan.
+    emailAttempts: v.optional(v.number()),
+    upgradeTargetPlanKey: v.optional(v.string()),
+    ctaKind: apiPlanLimitCtaKind,
+    blockedReason: v.optional(v.string()),
+  })
+    .index("by_notice_dedupe", ["userId", "planKey", "dimension", "state", "windowKey"])
+    // `current` first so listEmailDue can exclude superseded rows in the index
+    // (not a post-take filter) -- a dead-pending backlog can't starve live due notices.
+    .index("by_email_due", ["current", "emailStatus", "lastSeenAt"])
+    // Only-`current` scans (readiness gate + stale-notice recovery sweep) query
+    // through this index instead of collecting the whole (ever-growing) table.
+    .index("by_current", ["current", "lastSeenAt"])
+    // Per-user live-notice lookups (supersede loop, recovery clear, Settings
+    // list) query this instead of scanning all per-(user,state) history and
+    // filtering `current` in memory -- bounds the hot path to live rows.
+    .index("by_user_dimension_current", ["userId", "dimension", "current"]),
 
   customers: defineTable({
     userId: v.string(),

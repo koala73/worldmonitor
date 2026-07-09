@@ -252,6 +252,39 @@ function hasBootstrapCredentialCookie(req) {
 }
 
 const NEG_SENTINEL = '__WM_NEG__';
+const WILDFIRE_DASHBOARD_DETECTION_LIMIT = 500;
+
+function numeric(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function confidenceRank(confidence) {
+  switch (confidence) {
+    case 'FIRE_CONFIDENCE_HIGH': return 3;
+    case 'FIRE_CONFIDENCE_NOMINAL': return 2;
+    case 'FIRE_CONFIDENCE_LOW': return 1;
+    default: return 0;
+  }
+}
+
+function compareFireDetectionsForDashboard(a, b) {
+  return Number(Boolean(b?.possibleExplosion)) - Number(Boolean(a?.possibleExplosion))
+    || confidenceRank(b?.confidence) - confidenceRank(a?.confidence)
+    || numeric(b?.brightness) - numeric(a?.brightness)
+    || numeric(b?.frp) - numeric(a?.frp)
+    || numeric(b?.detectedAt) - numeric(a?.detectedAt);
+}
+
+export function compactWildfireBootstrapPayload(value, limit = WILDFIRE_DASHBOARD_DETECTION_LIMIT) {
+  if (!value || typeof value !== 'object' || !Array.isArray(value.fireDetections)) return value;
+  if (value.fireDetections.length <= limit) return value;
+  return {
+    ...value,
+    fireDetections: [...value.fireDetections].sort(compareFireDetectionsForDashboard).slice(0, limit),
+    pagination: { nextCursor: '', totalCount: value.fireDetections.length },
+  };
+}
 
 async function getCachedJsonBatch(keys) {
   const result = new Map();
@@ -422,13 +455,14 @@ export default async function handler(req) {
   for (let i = 0; i < names.length; i++) {
     const val = cached.get(keys[i]);
     if (val !== undefined) {
+      let responseValue = val;
       // Strip seed-internal metadata not intended for API clients
       if (names[i] === 'forecasts' && val != null && 'enrichmentMeta' in val) {
         const { enrichmentMeta: _stripped, ...rest } = val;
-        data[names[i]] = rest;
-      } else {
-        data[names[i]] = val;
+        responseValue = rest;
       }
+      if (names[i] === 'wildfires') responseValue = compactWildfireBootstrapPayload(responseValue);
+      data[names[i]] = responseValue;
     } else {
       missing.push(names[i]);
     }

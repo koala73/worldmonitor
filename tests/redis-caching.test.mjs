@@ -135,6 +135,42 @@ describe('redis caching behavior', { concurrency: 1 }, () => {
     }
   });
 
+  it('does not positive-cache no-store fallback payloads', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    const setValues = [];
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: undefined });
+      if (isSetRequest(url, init)) {
+        const parsed = parseSetRequest(url, init);
+        setValues.push(parsed);
+        return jsonResponse({ result: 'OK' });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const fallback = { items: [], degraded: true, error: 'upstream_unavailable' };
+      const result = await redis.cachedFetchJson('meta:test:no-store', 60, async () => fallback);
+
+      assert.deepEqual(result, fallback);
+      assert.equal(setValues.length, 1);
+      assert.equal(JSON.parse(setValues[0].value), '__WM_NEG__');
+      assert.equal(setValues[0].ttlSeconds, 120);
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
   it('parses pipeline results and skips malformed entries', async () => {
     const redis = await importRedisFresh();
     const restoreEnv = withEnv({
@@ -919,6 +955,7 @@ describe('theater posture caching behavior', { concurrency: 1 }, () => {
       './_shared': resolve(root, 'server/worldmonitor/military/v1/_shared.ts'),
       '../../../_shared/constants': resolve(root, 'server/_shared/constants.ts'),
       '../../../_shared/redis': resolve(root, 'server/_shared/redis.ts'),
+      '../../../_shared/response-headers': resolve(root, 'server/_shared/response-headers.ts'),
     });
   }
 
@@ -957,7 +994,7 @@ describe('theater posture caching behavior', { concurrency: 1 }, () => {
     };
 
     try {
-      const result = await module.getTheaterPosture({}, {});
+      const result = await module.getTheaterPosture({ request: new Request('https://worldmonitor.app/api/military/v1/get-theater-posture') }, {});
       assert.equal(openskyFetchCount, 0, 'must not call upstream APIs (Redis-read-only)');
       assert.deepEqual(result, liveData, 'should return live Redis data');
     } finally {
@@ -1004,7 +1041,7 @@ describe('theater posture caching behavior', { concurrency: 1 }, () => {
     };
 
     try {
-      const result = await module.getTheaterPosture({}, {});
+      const result = await module.getTheaterPosture({ request: new Request('https://worldmonitor.app/api/military/v1/get-theater-posture') }, {});
       assert.deepEqual(result, staleData, 'should return stale cache when upstreams fail');
     } finally {
       cleanup();
@@ -1041,7 +1078,7 @@ describe('theater posture caching behavior', { concurrency: 1 }, () => {
     };
 
     try {
-      const result = await module.getTheaterPosture({}, {});
+      const result = await module.getTheaterPosture({ request: new Request('https://worldmonitor.app/api/military/v1/get-theater-posture') }, {});
       assert.deepEqual(result, { theaters: [] }, 'should return empty when all tiers exhausted');
     } finally {
       cleanup();
@@ -1072,7 +1109,7 @@ describe('theater posture caching behavior', { concurrency: 1 }, () => {
     };
 
     try {
-      await module.getTheaterPosture({}, {});
+      await module.getTheaterPosture({ request: new Request('https://worldmonitor.app/api/military/v1/get-theater-posture') }, {});
       assert.equal(cacheWrites.length, 0, 'handler must not write to Redis (read-only)');
     } finally {
       cleanup();

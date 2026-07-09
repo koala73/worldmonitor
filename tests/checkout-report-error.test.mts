@@ -20,6 +20,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { shouldSkipSentryForAction, SENTRY_SKIP_ACTIONS } from '../src/services/checkout-sentry-policy.ts';
+import { checkoutErrorTelemetryLevel } from '../src/services/checkout.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -90,6 +91,12 @@ describe('reportCheckoutError call sites in src/services/checkout.ts', () => {
       [...knownActions].sort(),
       ['exception', 'http-error', 'missing-checkout-url', 'no-token', 'no-user'].sort(),
     );
+  });
+
+  it('keeps duplicate-subscription checkout attempts at info level', () => {
+    assert.equal(checkoutErrorTelemetryLevel({ code: 'duplicate_subscription' }), 'info');
+    assert.equal(checkoutErrorTelemetryLevel({ code: 'payment_in_progress' }), 'error');
+    assert.equal(checkoutErrorTelemetryLevel({ code: 'service_unavailable' }), 'error');
   });
 
   it('no-user is the only call site marked for skip', () => {

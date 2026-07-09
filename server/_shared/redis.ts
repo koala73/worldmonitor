@@ -1,4 +1,5 @@
 import { unwrapEnvelope } from './seed-envelope';
+import { getRpcNoStoreReasonFromPayload } from './cache-contract';
 import { buildUpstreamEvent, getUsageScope, sendToAxiom } from './usage';
 
 // Default Upstash REST timeouts are tuned for production (Vercel ↔ Upstash
@@ -22,8 +23,8 @@ export function parseTimeoutEnv(raw: string | undefined, defaultMs: number): num
   const parsed = Number.parseInt(raw ?? '', 10);
   return parsed > 0 ? parsed : defaultMs;
 }
-const REDIS_OP_TIMEOUT_MS = parseTimeoutEnv(process.env.REDIS_OP_TIMEOUT_MS, 1_500);
-const REDIS_PIPELINE_TIMEOUT_MS = parseTimeoutEnv(process.env.REDIS_PIPELINE_TIMEOUT_MS, 5_000);
+export const REDIS_OP_TIMEOUT_MS = parseTimeoutEnv(process.env.REDIS_OP_TIMEOUT_MS, 1_500);
+export const REDIS_PIPELINE_TIMEOUT_MS = parseTimeoutEnv(process.env.REDIS_PIPELINE_TIMEOUT_MS, 5_000);
 
 function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -537,12 +538,18 @@ export async function cachedFetchJson<T extends object>(
   const promise = withFetcherTimeout(fetcher(), key, timeoutMs, 'cachedFetchJson')
     .then(async (result) => {
       if (result != null) {
-        const wrote = await setCachedJson(key, result, ttlSeconds);
-        // Remote Redis write/read failures should not force every caller back
-        // upstream while the isolate is still warm. Sidecar/local mode skips
-        // this bridge because hasRemoteRedisConfig() is false there.
-        if (hadCacheReadError || (!wrote && hasRemoteRedisConfig())) {
-          armLocalPositiveFallback(key, result, ttlSeconds);
+        const noStoreReason = getRpcNoStoreReasonFromPayload(result, { includeAvailableFalse: false });
+        if (noStoreReason) {
+          armLocalNegativeCooldown(key, negativeTtlSeconds);
+          await setCachedJson(key, NEG_SENTINEL, negativeTtlSeconds);
+        } else {
+          const wrote = await setCachedJson(key, result, ttlSeconds);
+          // Remote Redis write/read failures should not force every caller back
+          // upstream while the isolate is still warm. Sidecar/local mode skips
+          // this bridge because hasRemoteRedisConfig() is false there.
+          if (hadCacheReadError || (!wrote && hasRemoteRedisConfig())) {
+            armLocalPositiveFallback(key, result, ttlSeconds);
+          }
         }
       } else {
         armLocalNegativeCooldown(key, negativeTtlSeconds);
@@ -644,12 +651,20 @@ export async function cachedFetchJsonWithMeta<T extends object>(
       // error rates). Use status=0 for the empty branch; cache_status carries
       // the structural detail.
       if (result != null) {
-        upstreamStatus = 200;
-        const wrote = await setCachedJson(key, result, ttlSeconds);
-        // See cachedFetchJson(): this short in-process bridge is only for
-        // remote Redis outages, not local sidecar cache writes.
-        if (hadCacheReadError || (!wrote && hasRemoteRedisConfig())) {
-          armLocalPositiveFallback(key, result, ttlSeconds);
+        const noStoreReason = getRpcNoStoreReasonFromPayload(result, { includeAvailableFalse: false });
+        if (noStoreReason) {
+          upstreamStatus = 0;
+          cacheStatus = 'neg-sentinel';
+          armLocalNegativeCooldown(key, negativeTtlSeconds);
+          await setCachedJson(key, NEG_SENTINEL, negativeTtlSeconds);
+        } else {
+          upstreamStatus = 200;
+          const wrote = await setCachedJson(key, result, ttlSeconds);
+          // See cachedFetchJson(): this short in-process bridge is only for
+          // remote Redis outages, not local sidecar cache writes.
+          if (hadCacheReadError || (!wrote && hasRemoteRedisConfig())) {
+            armLocalPositiveFallback(key, result, ttlSeconds);
+          }
         }
       } else {
         upstreamStatus = 0;

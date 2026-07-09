@@ -26,8 +26,18 @@ test('Docker nginx injects LOCAL_API_TOKEN on private sidecar proxy requests', (
   assert.match(nginx, /proxy_set_header Authorization "Bearer \$\{LOCAL_API_TOKEN\}"/);
 });
 
-test('Docker healthcheck continues through nginx so the injected token is applied', () => {
+test('Docker healthcheck uses the dedicated sidecar liveness route', () => {
   const dockerfile = readProjectFile('Dockerfile');
 
-  assert.match(dockerfile, /HEALTHCHECK[\s\S]*wget -qO- http:\/\/localhost:8080\/api\/health/);
+  assert.match(dockerfile, /HEALTHCHECK[\s\S]*wget -qO- http:\/\/127\.0\.0\.1:8080\/api\/sidecar-health/);
+  assert.doesNotMatch(dockerfile, /HEALTHCHECK[\s\S]*wget -qO- http:\/\/(?:localhost|127\.0\.0\.1):8080\/api\/health(?:\s|$)/);
+});
+
+test('Relay healthcheck probes 127.0.0.1 (not localhost) so the IPv4 bind is reachable', () => {
+  const dockerfile = readProjectFile('Dockerfile.relay');
+
+  // localhost resolves to ::1 first, but the relay binds IPv4 (or dual-stack
+  // without an IPv6 loopback), so a localhost probe gets "connection refused".
+  assert.match(dockerfile, /HEALTHCHECK[\s\S]*wget -qO- http:\/\/127\.0\.0\.1:3004\/health/);
+  assert.doesNotMatch(dockerfile, /HEALTHCHECK[\s\S]*wget -qO- http:\/\/localhost:3004\/health/);
 });

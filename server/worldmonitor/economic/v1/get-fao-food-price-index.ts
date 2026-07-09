@@ -10,6 +10,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/economic/v1/service_server';
 
 import { getCachedJson } from '../../../_shared/redis';
+import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 
 const SEED_CACHE_KEY = 'economic:fao-ffpi:v1';
 
@@ -22,14 +23,14 @@ const EMPTY: GetFaoFoodPriceIndexResponse = {
 };
 
 export async function getFaoFoodPriceIndex(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   _req: GetFaoFoodPriceIndexRequest,
 ): Promise<GetFaoFoodPriceIndexResponse> {
   try {
     const result = await getCachedJson(SEED_CACHE_KEY, true) as GetFaoFoodPriceIndexResponse | null;
-    if (!result?.points?.length) return EMPTY;
+    if (!result?.points?.length) return markNoStoreFallbackResponse(ctx.request, EMPTY);
     return result;
   } catch {
-    return EMPTY;
+    return markNoStoreFallbackResponse(ctx.request, EMPTY);
   }
 }

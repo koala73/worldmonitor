@@ -12,12 +12,13 @@ import type {
 import filterParamContracts from '../../../../shared/openapi-filter-param-contracts.json';
 import { clampInt } from '../../../_shared/constants';
 import { getCachedJson } from '../../../_shared/redis';
+import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 
 const SEED_KEY_PREFIX = 'research:hackernews:v1';
 const ALLOWED_HN_FEEDS = new Set(filterParamContracts.researchHackerNewsFeedTypes);
 
 export async function listHackernewsItems(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   req: ListHackernewsItemsRequest,
 ): Promise<ListHackernewsItemsResponse> {
   try {
@@ -25,9 +26,9 @@ export async function listHackernewsItems(
     const pageSize = clampInt(req.pageSize, 30, 1, 100);
     const seedKey = `${SEED_KEY_PREFIX}:${feedType}:30`;
     const result = await getCachedJson(seedKey, true) as ListHackernewsItemsResponse | null;
-    if (!result?.items?.length) return { items: [], pagination: undefined };
+    if (!result?.items?.length) return markNoStoreFallbackResponse(ctx.request, { items: [], pagination: undefined });
     return { items: result.items.slice(0, pageSize), pagination: undefined };
   } catch {
-    return { items: [], pagination: undefined };
+    return markNoStoreFallbackResponse(ctx.request, { items: [], pagination: undefined });
   }
 }

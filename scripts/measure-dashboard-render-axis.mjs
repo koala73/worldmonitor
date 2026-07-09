@@ -69,6 +69,28 @@ const TOP_LEVEL_TASK_NAMES = new Set([
   'ThreadControllerImpl::RunTask',
 ]);
 
+// A JS-forced synchronous style/layout is recorded under one of these event
+// names AND carries the forcing JS stack (from the timeline.stack category).
+// Scheduled (end-of-frame) layouts run inside the rendering lifecycle with no
+// script on the stack, so they carry no stackTrace — that presence/absence is
+// exactly how DevTools separates a "Forced reflow" from an ordinary layout.
+const FORCED_LAYOUT_NAMES = new Set([
+  'Layout',
+  'UpdateLayoutTree',
+  'RecalculateStyles',
+  'Blink.UpdateLayout',
+]);
+
+// Blink.ForcedStyleAndLayout(.UpdateTime) reports the aggregate forced
+// style+layout TIME but carries no JS stack, so it cannot be attributed to a
+// call site. It is tracked separately as an always-available fallback signal
+// for traces captured without the disabled-by-default-devtools.timeline.stack
+// category (e.g. some minified prod captures).
+const FORCED_MARKER_NAMES = new Set([
+  'Blink.ForcedStyleAndLayout',
+  'Blink.ForcedStyleAndLayout.UpdateTime',
+]);
+
 function round(n) {
   return Math.round((Number(n) || 0) * 10) / 10;
 }
@@ -125,21 +147,33 @@ export function extractStackFrames(event) {
   );
 }
 
-function looksForcedReflow(event) {
-  const name = String(event?.name || '');
-  if (/forced.*(layout|reflow)|layout.*forced|reflow/i.test(name)) return true;
+export function isForcedReflow(event) {
   const data = event?.args?.data || event?.args?.beginData || {};
+  // Explicitly annotated (synthetic fixtures / traces that flag the event).
   if (data.forcedReflow || data.forcedLayout || data.isForced) return true;
-  return false;
+  // Real captures: a style/layout event is JS-forced iff it carries a stack.
+  if (!FORCED_LAYOUT_NAMES.has(String(event?.name || ''))) return false;
+  return extractStackFrames(event).length > 0;
 }
 
 export function summarizeForcedReflows(events, limit = 10) {
   const stacks = new Map();
   let eventCount = 0;
   let totalMs = 0;
+  let markerCount = 0;
+  let markerTotalMs = 0;
 
   for (const event of Array.isArray(events) ? events : []) {
-    if (event?.ph !== 'X' || !looksForcedReflow(event)) continue;
+    if (event?.ph !== 'X') continue;
+    // Aggregate the stackless browser markers separately — they carry the total
+    // forced style+layout time but no call site, so they must not pollute the
+    // attributed-stack ranking.
+    if (FORCED_MARKER_NAMES.has(String(event.name || ''))) {
+      markerCount += 1;
+      markerTotalMs += durationMs(event);
+      continue;
+    }
+    if (!isForcedReflow(event)) continue;
     const ms = durationMs(event);
     const frames = extractStackFrames(event);
     const key = frames.slice(0, 4).join(' <- ') || String(event.name || 'unknown');
@@ -156,6 +190,8 @@ export function summarizeForcedReflows(events, limit = 10) {
   return {
     eventCount,
     totalMs: round(totalMs),
+    markerCount,
+    markerTotalMs: round(markerTotalMs),
     stacks: [...stacks.values()]
       .map((row) => ({ ...row, totalMs: round(row.totalMs), maxMs: round(row.maxMs) }))
       .sort((a, b) => b.totalMs - a.totalMs || b.count - a.count)
@@ -245,15 +281,46 @@ export function buildReport(result) {
 }
 
 export function normalizeReport(input) {
-  if (input?.durationMs) return input;
+  const events = traceEvents(input);
+  // A stored summary (has durationMs, no raw traceEvents) is returned as-is.
+  // But whenever traceEvents are present, recompute with the CURRENT detector
+  // rather than trusting a stored forcedReflows summary — a summary written by
+  // an older tool version carries the marker-based totalMs, which would make a
+  // --compare mix two different quantities under the same field name.
+  if (input?.durationMs && !events.length) return input;
   return buildReport({
     url: input?.url,
     generatedAt: input?.generatedAt,
     viewport: input?.viewport,
     settleMs: input?.settleMs,
     tracePath: input?.tracePath || null,
-    traceEvents: traceEvents(input),
+    traceEvents: events,
   });
+}
+
+function hasOwn(value, key) {
+  return Object.prototype.hasOwnProperty.call(Object(value), key);
+}
+
+function legacySummaryForcedReflows(report) {
+  const forced = report?.forcedReflows;
+  return Boolean(
+    report?.durationMs
+      && forced
+      && !hasOwn(forced, 'markerTotalMs')
+      && !hasOwn(forced, 'markerCount'),
+  );
+}
+
+function compareForcedReflowMetrics(report) {
+  const forced = report?.forcedReflows || {};
+  const legacySummary = legacySummaryForcedReflows(report);
+  const totalMs = Number(forced.totalMs) || 0;
+  return {
+    attributedMs: legacySummary ? 0 : totalMs,
+    markerMs: legacySummary ? totalMs : Number(forced.markerTotalMs) || 0,
+    legacySummary,
+  };
 }
 
 export function compareReports(before, after) {
@@ -263,6 +330,31 @@ export function compareReports(before, after) {
   const afterStyle = Number(a.styleLayout) || 0;
   const beforeTbt = Number(b.estimatedTbt) || 0;
   const afterTbt = Number(a.estimatedTbt) || 0;
+  const beforeForced = compareForcedReflowMetrics(before);
+  const afterForced = compareForcedReflowMetrics(after);
+  const beforeAttribMs = beforeForced.attributedMs;
+  const afterAttribMs = afterForced.attributedMs;
+  const beforeMarkerMs = beforeForced.markerMs;
+  const afterMarkerMs = afterForced.markerMs;
+  // A side with forced style+layout marker time but ZERO attributed stacks was
+  // captured without the timeline.stack category — its attributed forcedReflowMs
+  // is ~0 and would pass the <=200ms gate trivially while the real forced cost
+  // (markers) is unmeasured. Carry the marker aggregate + a warning into the
+  // compare so the gate view cannot go falsely green on a stackless capture.
+  const warnings = [];
+  if (beforeForced.legacySummary || afterForced.legacySummary) {
+    warnings.push(
+      'Legacy stored forcedReflows.totalMs lacks marker fields; treating it as '
+      + 'Blink.ForcedStyleAndLayout marker fallback. Re-run the capture or keep '
+      + 'raw traceEvents before gating on attributed forcedReflowMs.',
+    );
+  }
+  if ((beforeMarkerMs > 0 && beforeAttribMs === 0) || (afterMarkerMs > 0 && afterAttribMs === 0)) {
+    warnings.push(
+      'Attributed forced-reflow ms is 0 on a side with non-zero Blink.ForcedStyleAndLayout markers — '
+      + 'that capture lacks JS stacks; gate on forcedStyleLayoutMarkerMs, not forcedReflowMs.',
+    );
+  }
   return {
     before: before?.url || null,
     after: after?.url || null,
@@ -281,6 +373,17 @@ export function compareReports(before, after) {
       after: Number(after?.forcedReflows?.eventCount) || 0,
       delta: (Number(after?.forcedReflows?.eventCount) || 0) - (Number(before?.forcedReflows?.eventCount) || 0),
     },
+    forcedReflowMs: {
+      before: round(beforeAttribMs),
+      after: round(afterAttribMs),
+      delta: round(afterAttribMs - beforeAttribMs),
+    },
+    forcedStyleLayoutMarkerMs: {
+      before: round(beforeMarkerMs),
+      after: round(afterMarkerMs),
+      delta: round(afterMarkerMs - beforeMarkerMs),
+    },
+    warnings,
   };
 }
 
@@ -390,6 +493,13 @@ function printHuman(report) {
     console.log(`Style/Layout delta: ${report.deltaMs.styleLayout}ms (${report.deltaPct.styleLayout}%)`);
     console.log(`Estimated TBT delta: ${report.deltaMs.estimatedTbt}ms (${report.deltaPct.estimatedTbt}%)`);
     console.log(`Forced-reflow events: ${report.forcedReflowEvents.before} -> ${report.forcedReflowEvents.after}`);
+    if (report.forcedReflowMs) {
+      console.log(`Attributed forced-reflow ms: ${report.forcedReflowMs.before} -> ${report.forcedReflowMs.after} (${report.forcedReflowMs.delta}ms)`);
+    }
+    if (report.forcedStyleLayoutMarkerMs) {
+      console.log(`Blink.ForcedStyleAndLayout marker ms: ${report.forcedStyleLayoutMarkerMs.before} -> ${report.forcedStyleLayoutMarkerMs.after} (${report.forcedStyleLayoutMarkerMs.delta}ms — stackless fallback)`);
+    }
+    for (const w of report.warnings || []) console.log(`  ! ${w}`);
     console.log('');
     return;
   }
@@ -398,12 +508,16 @@ function printHuman(report) {
   console.log(`Rendering:        ${d.rendering}ms (${report.sharePct.renderingOfAccounted}% of accounted render-axis)`);
   console.log(`Script Evaluation:${String(d.scriptEvaluation).padStart(7)}ms (${report.sharePct.scriptEvaluationOfAccounted}% of accounted render-axis)`);
   console.log(`Estimated TBT:    ${d.estimatedTbt}ms`);
-  console.log(`Forced reflows:   ${report.forcedReflows.eventCount} events, ${report.forcedReflows.totalMs}ms`);
+  console.log(`Forced reflows:   ${report.forcedReflows.eventCount} attributed events, ${report.forcedReflows.totalMs}ms`);
+  console.log(`  (Blink.ForcedStyleAndLayout markers: ${report.forcedReflows.markerCount ?? 0}, ${report.forcedReflows.markerTotalMs ?? 0}ms — stackless fallback)`);
   if (report.forcedReflows.stacks.length > 0) {
     console.log('\nTop forced-reflow stacks:');
     for (const stack of report.forcedReflows.stacks) {
       console.log(`  ${stack.totalMs}ms across ${stack.count}x - ${stack.topFrame}`);
     }
+  } else if (report.forcedReflows.markerCount) {
+    console.log('\nNo JS-attributed forced reflows (capture lacks the timeline.stack category);');
+    console.log('only the stackless Blink.ForcedStyleAndLayout aggregate above is available.');
   }
   if (report.warnings.length > 0) {
     console.log('\nWarnings:');

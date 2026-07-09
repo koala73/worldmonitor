@@ -12,15 +12,19 @@ import type {
 
 import { getCachedJson } from '../../../_shared/redis';
 import { CLIMATE_ANOMALIES_KEY } from '../../../_shared/cache-keys';
+import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 
 export const listClimateAnomalies: ClimateServiceHandler['listClimateAnomalies'] = async (
-  _ctx: ServerContext,
+  ctx: ServerContext,
   _req: ListClimateAnomaliesRequest,
 ): Promise<ListClimateAnomaliesResponse> => {
   try {
     const result = await getCachedJson(CLIMATE_ANOMALIES_KEY, true) as ListClimateAnomaliesResponse | null;
-    return { anomalies: result?.anomalies || [], pagination: undefined };
+    if (!result?.anomalies) {
+      return markNoStoreFallbackResponse(ctx.request, { anomalies: [], pagination: undefined });
+    }
+    return { anomalies: result.anomalies, pagination: result.pagination };
   } catch {
-    return { anomalies: [], pagination: undefined };
+    return markNoStoreFallbackResponse(ctx.request, { anomalies: [], pagination: undefined });
   }
 };

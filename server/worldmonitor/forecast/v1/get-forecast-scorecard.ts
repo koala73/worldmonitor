@@ -3,6 +3,7 @@ import type {
   GetForecastScorecardResponse,
   ServerContext,
 } from '../../../../src/generated/server/worldmonitor/forecast/v1/service_server';
+import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 
 const REDIS_KEY = 'forecast:scorecard:v1';
 const MAX_STALE_MS = 2160 * 60 * 1000;
@@ -39,12 +40,12 @@ function emptyScorecard(overrides: Partial<GetForecastScorecardResponse> = {}): 
 }
 
 export const getForecastScorecard: ForecastServiceHandler['getForecastScorecard'] = async (
-  _ctx: ServerContext,
+  ctx: ServerContext,
 ): Promise<GetForecastScorecardResponse> => {
   try {
     const envelope = await getScorecardJson();
     const data = envelope.data as Partial<GetForecastScorecardResponse> | null;
-    if (!data) return emptyScorecard();
+    if (!data) return markNoStoreFallbackResponse(ctx.request, emptyScorecard());
     const fetchedAt = Number(envelope.fetchedAt);
     return emptyScorecard({
       ...data,

@@ -235,7 +235,7 @@ export async function runBundle(label, sections, opts = {}) {
   const budgetLabel = Number.isFinite(maxBundleMs) ? `, budget ${Math.round(maxBundleMs / 1000)}s` : '';
   console.log(`[Bundle:${label}] Starting (${sections.length} sections${budgetLabel})`);
 
-  let ran = 0, skipped = 0, deferred = 0, failed = 0;
+  let ran = 0, skipped = 0, deferred = 0, failed = 0, gracefulFailed = 0;
 
   for (const section of sections) {
     const scriptPath = join(__dirname, section.script);
@@ -293,11 +293,23 @@ export async function runBundle(label, sections, opts = {}) {
       // signal-escalation ordering.
       const status = result.status || 'FAILED';
       console.error(`[Bundle:${label}] section=${section.label} status=${status} elapsed=${result.elapsed}s reason=${(result.reason || 'unknown').replace(/\s+/g, ' ')}`);
-      failed++;
+      // A GRACEFUL_FAIL (child exit 75) extended the last-good TTL and lost no
+      // data — a transient upstream blip (e.g. a rate-limited source). Counting
+      // it as a hard failure would crash the whole bundle (exit 1 → Railway
+      // "Deploy Crashed!") over a benign per-member skip. Track it separately so
+      // only HARD failures gate the exit code; the skip stays fully logged above.
+      if (status === 'GRACEFUL_FAIL') gracefulFailed++;
+      else failed++;
     }
   }
 
   const totalSec = ((Date.now() - t0) / 1000).toFixed(1);
-  console.log(`[Bundle:${label}] Finished in ${totalSec}s, ran:${ran} skipped:${skipped} deferred:${deferred} failed:${failed}`);
+  console.log(`[Bundle:${label}] Finished in ${totalSec}s, ran:${ran} skipped:${skipped} deferred:${deferred} failed:${failed} graceful:${gracefulFailed}`);
+  // Graceful-only run (transient skips, no hard failures): exit 0 so Railway
+  // does not paint CRASHED and fire a spurious alert. Real staleness is caught
+  // independently by the /api/health freshness monitor keyed on seed-meta TTL.
+  if (failed === 0 && gracefulFailed > 0) {
+    console.log(`[Bundle:${label}] ${gracefulFailed} graceful fetch skip(s), no hard failures — no data lost, exiting 0 (not a crash)`);
+  }
   process.exit(failed > 0 ? 1 : 0);
 }

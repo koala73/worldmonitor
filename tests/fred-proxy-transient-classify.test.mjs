@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { isTransientProxyError } from '../scripts/_seed-utils.mjs';
+import { CHROME_UA, fredFetchJson, isTransientProxyError } from '../scripts/_seed-utils.mjs';
 
 // fredFetchJson retries the (IP-rotating) Decodo proxy only when the error is
 // classified transient; otherwise it breaks to a direct FRED fetch, which a
@@ -11,6 +11,42 @@ import { isTransientProxyError } from '../scripts/_seed-utils.mjs';
 // MUST be retried — they did not match the original 5xx/timeout-only regex.
 //
 // Run: node --test tests/fred-proxy-transient-classify.test.mjs
+
+const originalFetch = globalThis.fetch;
+
+test('fredFetchJson direct FRED fallback sends a User-Agent header', async (t) => {
+  t.after(() => { globalThis.fetch = originalFetch; });
+  let seenHeaders = null;
+  globalThis.fetch = async (_url, init = {}) => {
+    seenHeaders = init.headers;
+    return new Response(JSON.stringify({ observations: [] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+
+  await fredFetchJson('https://api.stlouisfed.org/fred/series/observations?series_id=GDP');
+
+  assert.equal(seenHeaders?.['User-Agent'], CHROME_UA);
+  assert.equal(seenHeaders?.Accept, 'application/json');
+});
+
+test('fredFetchJson proxy fallback direct path sends a User-Agent header', async (t) => {
+  t.after(() => { globalThis.fetch = originalFetch; });
+  let seenHeaders = null;
+  globalThis.fetch = async (_url, init = {}) => {
+    seenHeaders = init.headers;
+    return new Response(JSON.stringify({ observations: [] }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  };
+
+  await fredFetchJson('https://api.stlouisfed.org/fred/series/observations?series_id=GDP', 'invalid-proxy-auth');
+
+  assert.equal(seenHeaders?.['User-Agent'], CHROME_UA);
+  assert.equal(seenHeaders?.Accept, 'application/json');
+});
 
 test('TLS-handshake tear signatures (from the real failing logs) are transient', () => {
   const tlsTears = [

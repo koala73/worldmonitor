@@ -12,6 +12,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/climate/v1/service_server';
 
 import { getCachedJson } from '../../../_shared/redis';
+import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 
 const SEED_CACHE_KEY = 'climate:disasters:v1';
 const DEFAULT_LIMIT = 100;
@@ -58,16 +59,22 @@ function normalizeCachedDisaster(row: unknown): ClimateDisaster | null {
 }
 
 export const listClimateDisasters: ClimateServiceHandler['listClimateDisasters'] = async (
-  _ctx: ServerContext,
+  ctx: ServerContext,
   req: ListClimateDisastersRequest,
 ): Promise<ListClimateDisastersResponse> => {
   try {
     const limit = clampInt(req.pageSize, DEFAULT_LIMIT, 1, MAX_LIMIT);
     const offset = parseCursor(req.cursor);
     const result = await getCachedJson(SEED_CACHE_KEY, true) as { disasters?: unknown[] } | null;
-    const allDisasters = Array.isArray(result?.disasters)
-      ? result.disasters.map(normalizeCachedDisaster).filter((row): row is ClimateDisaster => row != null)
-      : [];
+    if (!result || !Array.isArray(result.disasters)) {
+      return markNoStoreFallbackResponse(ctx.request, {
+        disasters: [],
+        pagination: { nextCursor: '', totalCount: 0 },
+      });
+    }
+    const allDisasters = result.disasters
+      .map(normalizeCachedDisaster)
+      .filter((row): row is ClimateDisaster => row != null);
     if (offset >= allDisasters.length) {
       return {
         disasters: [],
@@ -85,9 +92,9 @@ export const listClimateDisasters: ClimateServiceHandler['listClimateDisasters']
       },
     };
   } catch {
-    return {
+    return markNoStoreFallbackResponse(ctx.request, {
       disasters: [],
       pagination: { nextCursor: '', totalCount: 0 },
-    };
+    });
   }
 };

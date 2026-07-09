@@ -44,11 +44,19 @@ const productEntries = Object.entries(PRODUCT_CATALOG)
   })
   .join('\n');
 
+const planLimitEntries = Object.entries(PRODUCT_CATALOG)
+  .map(([key, e]) => `  ${JSON.stringify(key)}: ${JSON.stringify(e.features.planLimits ?? null)},`)
+  .join('\n');
+
 const productsTs = `// AUTO-GENERATED from convex/config/productCatalog.ts
 // Do not edit manually. Run: npx tsx scripts/generate-product-config.mjs
 
 export const DODO_PRODUCTS = {
 ${productEntries}
+} as const;
+
+export const PLAN_LIMITS = {
+${planLimitEntries}
 } as const;
 
 /** Default product for upgrade CTAs (Pro Monthly). */
@@ -133,6 +141,7 @@ for (const [tierGroup, entries] of tierGroups) {
 
   tier.description = getDescription(primary.tierGroup);
   tier.features = marketingFeatures;
+  tier.planLimits = primary.features.planLimits ?? null;
   if (localeFeaturesByKey[localeKey]) {
     throw new Error(`[product-config] Duplicate pro locale tier key "${localeKey}" generated for public tier group "${tierGroup}".`);
   }

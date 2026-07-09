@@ -4,6 +4,7 @@ import { premiumFetch } from '@/services/premium-fetch';
 import { IS_EMBEDDED_PREVIEW } from '@/utils/embedded-preview';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { subscribeAuthState } from '@/services/auth-state';
+import { onEntitlementChange } from '@/services/entitlements';
 
 import type { RegionalSnapshot, RegimeTransition, RegionalBrief } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { h, replaceChildren, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
@@ -69,6 +70,7 @@ export class RegionalIntelligenceBoard extends Panel {
    * previous "Panel has no destroy hook" comment was wrong.
    */
   private authUnsubscribe: (() => void) | null = null;
+  private entitlementUnsubscribe: (() => void) | null = null;
 
   constructor() {
     super({
@@ -109,20 +111,8 @@ export class RegionalIntelligenceBoard extends Panel {
     // session hasn't resolved at panel-construction time would see
     // renderEmpty() and then stay empty forever even after sign-in, because
     // nothing else triggers loadCurrent for the current region.
-    this.authUnsubscribe = subscribeAuthState(() => {
-      const hasPremium = hasPremiumAccess();
-      if (hasPremium && !this.lastHadPremium) {
-        this.lastHadPremium = true;
-        void this.loadCurrent();
-      } else if (!hasPremium && this.lastHadPremium) {
-        // Entitlement was revoked (sign-out, subscription ended) — blank
-        // the panel so stale data doesn't linger for a user who can no
-        // longer see it. Panel locking separately re-applies via
-        // panel-layout's auth subscription.
-        this.lastHadPremium = false;
-        this.renderEmpty();
-      }
-    });
+    this.authUnsubscribe = subscribeAuthState(() => this.handlePremiumAccessChange());
+    this.entitlementUnsubscribe = onEntitlementChange(() => this.handlePremiumAccessChange());
   }
 
   /** Public API for tests and agent tools: force-load a region directly. */
@@ -135,6 +125,8 @@ export class RegionalIntelligenceBoard extends Panel {
   override destroy(): void {
     this.authUnsubscribe?.();
     this.authUnsubscribe = null;
+    this.entitlementUnsubscribe?.();
+    this.entitlementUnsubscribe = null;
     // Invalidate any in-flight loadCurrent: the existing sequence guard
     // (see `isLatestSequence` checks) drops responses whose sequence no
     // longer matches `latestSequence`. Bumping it here ensures a pending
@@ -142,6 +134,22 @@ export class RegionalIntelligenceBoard extends Panel {
     // render into a detached DOM tree.
     this.latestSequence += 1;
     super.destroy();
+  }
+
+  private handlePremiumAccessChange(): void {
+    const hasPremium = hasPremiumAccess();
+    if (hasPremium && !this.lastHadPremium) {
+      this.lastHadPremium = true;
+      void this.loadCurrent();
+    } else if (!hasPremium && this.lastHadPremium) {
+      // Entitlement was revoked (sign-out, subscription ended) — blank
+      // the panel so stale data doesn't linger for a user who can no
+      // longer see it. Panel locking separately re-applies via
+      // panel-layout's auth subscription.
+      this.lastHadPremium = false;
+      this.latestSequence += 1;
+      this.renderEmpty();
+    }
   }
 
   private async loadCurrent(): Promise<void> {

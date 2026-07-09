@@ -355,6 +355,33 @@ export async function fetchWeatherStations(network?: string): Promise<WeatherSta
 npx tsc --noEmit   # zero errors
 ```
 
+## MCP exposure decision
+
+Every new public OpenAPI operation needs an explicit MCP decision before review. MCP is a curated agent surface, not a 1:1 mirror of REST: expose operations that are safe, predictable, and useful as tools; keep REST-only operations documented when they mutate state, spend per-call LLM or upstream budget, or need manual cache-key review.
+
+Use this checklist for each new or changed RPC:
+
+- [ ] Decide whether this operation should be exposed to MCP.
+- [ ] If yes, identify the owning MCP tool and add the exact `METHOD /api/...` entry to that tool's `_apiPaths`.
+- [ ] If cache-backed, confirm the tool has the right `_cacheKeys` / `_coverageKeys`, freshness metadata, and `seed-meta:<key>` health coverage.
+- [ ] If no, add or update the `tests/mcp-api-parity.test.mjs` exclusion with the matching category prefix and a concrete reason.
+- [ ] If `fetch-on-miss`, include one enforced secondary signal (`high-cardinality-input`, `paid-upstream`, or `llm-cost`) and name the upstream cost, cardinality, and tier policy that makes open MCP exposure unsafe for now.
+- [ ] If `mutating` or `llm-passthrough`, document the separate threat/cost model before proposing an MCP wrapper.
+- [ ] Run `./node_modules/.bin/tsx --test tests/mcp-api-parity.test.mjs` and include the result in the PR.
+
+A `covered` operation is declared in a tool `_apiPaths` entry. For REST-only operations, the parity test accepts these exclusion categories:
+
+| Category | Use when |
+|----------|----------|
+| `mutating` | The handler writes state, queues work, refreshes caches, records webhooks, or has another persistent side effect. |
+| `llm-passthrough` | The operation invokes per-call LLM work and should not be opened as a generic MCP tool without a cost model. |
+| `fetch-on-miss` | The operation can call a paid, rate-limited, high-cardinality, or otherwise expensive upstream when the cache is cold. Include one enforced secondary signal in the reason: `high-cardinality-input`, `paid-upstream`, or `llm-cost`. |
+| `admin` | The operation is internal-only and protected by an explicit admin boundary, such as an admin key, internal-only middleware, or cron-only path. |
+| `manual-mapping` | The operation uses parameterized cache keys, inline Redis/Convex shapes, or another mapping the static parity walker cannot prove automatically. |
+| `deferred-to-future-tool` | The operation is pure-read and agent-useful, but belongs in a future MCP tool or expanded bundle rather than today's registry. |
+
+The MCP reference docs render the current `_apiPaths` coverage table in [MCP Overview](/mcp-overview#api-coverage). The parity test is canonical for the current covered/excluded split, so do not rely on stale counts in a PR description.
+
 ## Proto conventions
 
 These conventions are enforced across the codebase. Follow them for consistency.

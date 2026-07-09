@@ -113,12 +113,6 @@ export function declareRecords(data) {
   return Array.isArray(data?.quotes) ? data.quotes.length : 0;
 }
 
-let seedData = null;
-
-async function fetchAndStash() {
-  seedData = await fetchMarketQuotes();
-  return seedData;
-}
 
 // #4922d: on non-trading days (weekends + full NYSE holidays) the last
 // published close IS the current truth — skip the upstream fetch entirely and
@@ -136,9 +130,9 @@ async function fetchAndStash() {
 if (!isUsEquityTradingDay()) {
   const lastGood = await readCanonicalEnvelopeMeta(CANONICAL_KEY);
   if (lastGood) {
-    const extended = await extendExistingTtl([CANONICAL_KEY, 'seed-meta:market:quotes', RPC_KEY], CACHE_TTL);
+    const extended = await extendExistingTtl([CANONICAL_KEY, 'seed-meta:market:stocks', RPC_KEY], CACHE_TTL);
     if (extended) {
-      await writeFreshnessMetadata('market', 'quotes', lastGood.recordCount, lastGood.sourceVersion || 'alphavantage+finnhub+yahoo', CACHE_TTL);
+      await writeFreshnessMetadata('market', 'stocks', lastGood.recordCount, lastGood.sourceVersion || 'alphavantage+finnhub+yahoo', CACHE_TTL);
       console.log(`[seed-market-quotes] US market closed (session=${getUsEquitySession()}) — skipping upstream fetch, extended TTL`);
       process.exit(0);
     }
@@ -148,16 +142,23 @@ if (!isUsEquityTradingDay()) {
   }
 }
 
-runSeed('market', 'quotes', CANONICAL_KEY, fetchAndStash, {
+async function writeRequiredCompanionKeys(data) {
+  if (!data) return;
+  await writeExtraKey(RPC_KEY, data, CACHE_TTL);
+}
+
+runSeed('market', 'stocks', CANONICAL_KEY, fetchMarketQuotes, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'alphavantage+finnhub+yahoo',
   declareRecords,
   schemaVersion: 1,
   maxStaleMin: 30,
-}).then(async (result) => {
-  if (result?.skipped || !seedData) return;
-  await writeExtraKey(RPC_KEY, seedData, CACHE_TTL);
+  afterPublish: async (data) => {
+    // runSeed exits the process on success; required companion writes must be
+    // awaited here so the RPC key is published before the terminal exit.
+    await writeRequiredCompanionKeys(data);
+  },
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

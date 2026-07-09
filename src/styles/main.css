@@ -24546,6 +24546,73 @@ body.map-width-resizing {
   margin-bottom: 6px;
 }
 
+.api-plan-limit-notices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.api-plan-limit-notice {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, #facc15 35%, var(--border));
+  border-left: 3px solid #facc15;
+  border-radius: 6px;
+  background: color-mix(in srgb, #facc15 8%, transparent);
+}
+
+.api-plan-limit-notice.over_limit,
+.api-plan-limit-notice.sustained_burst {
+  border-color: color-mix(in srgb, var(--semantic-critical) 35%, var(--border));
+  border-left-color: var(--semantic-critical);
+  background: color-mix(in srgb, var(--semantic-critical) 8%, transparent);
+}
+
+.api-plan-limit-notice-main {
+  min-width: 0;
+}
+
+.api-plan-limit-notice-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.api-plan-limit-notice-body {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.api-plan-limit-notice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
+.api-plan-limit-notice-actions .btn {
+  font-size: 12px;
+  padding: 5px 10px;
+  white-space: nowrap;
+}
+
+@media (max-width: 560px) {
+  .api-plan-limit-notice {
+    flex-direction: column;
+  }
+
+  .api-plan-limit-notice-actions {
+    justify-content: flex-start;
+  }
+}
+
 /* ---- Connected MCP clients (Pro tier) ---- */
 
 .mcp-clients-section {

@@ -122,6 +122,16 @@ Don't try to memorise the grammar from scratch — head to the [JMESPath guide](
 
 Full per-tool parameters, freshness budgets, and `curl` examples are in the [MCP Tools Reference](/mcp-tools-reference). When the compressed `tools/list` description is ambiguous about a specific tool, call `describe_tool` with `tool_name: "<name>"` for the full uncompressed definition — it's exempt from the Pro daily quota, so use it freely while exploring.
 
+## Troubleshooting and expectations
+
+If an endpoint appears in the REST OpenAPI docs but does not appear as an MCP tool, that is usually intentional. MCP exposes curated agent-safe tools, not every REST operation. Some REST routes are excluded because they mutate state, invoke per-call LLM work, fetch paid or high-cardinality upstream data on cache miss, or need manual cache-key mapping.
+
+To discover what MCP can call from your client:
+
+- Call `tools/list` for the current tool names and compressed descriptions.
+- Call `describe_tool` with `tool_name` when a `tools/list` entry is too short to choose confidently.
+- Use the [API coverage table](/mcp-overview#api-coverage) when you are starting from a REST method/path and want to know whether an exact MCP `_apiPaths` mapping exists.
+
 ## What just happened
 
 The MCP handshake is invisible from the chat side, but here's the sequence so you know where to look if something breaks:

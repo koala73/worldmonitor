@@ -91,6 +91,7 @@ import { t } from '@/services/i18n';
 import { TvModeController } from '@/services/tv-mode';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { scheduleAfterFirstPaint } from '@/utils/after-paint';
 import { escapeHtml } from '@/utils/sanitize';
 import { buildEmbedIframeSnippet, buildEmbedMapUrl, type EmbedVariant } from '@/embed/embed-url';
 import { createSettingsButton } from '@/components/settings-button';
@@ -795,10 +796,16 @@ export class EventHandlerManager implements AppModule {
       !loadStoredMissionPreset() &&
       !isMissionPresetPromptDismissed();
     if (shouldPrompt) {
-      window.setTimeout(() => {
+      // Defer the onboarding auto-open to browser idle after first paint so it
+      // never competes with load or first-interaction work. This replaced a
+      // fixed 700ms timeout that forced layout reads (getBoundingClientRect +
+      // offsetHeight) on the post-load path. Re-check state at fire time since
+      // the idle wait can outlast an early user choice.
+      scheduleAfterFirstPaint(() => {
         if (this.ctx.isDestroyed) return;
+        if (loadStoredMissionPreset() || isMissionPresetPromptDismissed()) return;
         this.openMissionPresetPopover(document.getElementById('missionPresetBtn'), false);
-      }, 700);
+      });
     }
   }
 
@@ -1205,10 +1212,11 @@ export class EventHandlerManager implements AppModule {
     // SVG Map fires emitStateChange before the listener is installed — neither
     // can rely on a later onStateChanged to drive the URL write, so they must
     // use the immediate debounce path.
-    const { view, lat, lon, zoom } = this.ctx.initialUrlState ?? {};
+    const { view, lat, lon, zoom, chokepoint } = this.ctx.initialUrlState ?? {};
     const urlHasAsyncFlyTo =
       (lat !== undefined && lon !== undefined) ||   // setCenter → flyTo (requires both)
-      (!view && zoom !== undefined);                // zoom-only → setZoom animated
+      (!view && zoom !== undefined) ||              // zoom-only → setZoom animated
+      chokepoint !== undefined;                     // chokepoint opens after renderer readiness
     if (!urlHasAsyncFlyTo) {
       this.debouncedUrlSync();
     }
@@ -1270,6 +1278,7 @@ export class EventHandlerManager implements AppModule {
       layers: state.layers,
       country: isCountryVisible ? (briefPage?.getCode() ?? undefined) : undefined,
       expanded: isCountryVisible && briefPage?.getIsMaximized?.() ? true : undefined,
+      chokepoint: !isCountryVisible ? (this.ctx.activeChokepoint ?? undefined) : undefined,
     });
   }
 

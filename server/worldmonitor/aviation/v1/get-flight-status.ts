@@ -5,6 +5,7 @@ import type {
     FlightInstance,
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { cachedFetchJson } from '../../../_shared/redis';
+import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { getRelayBaseUrl, getRelayHeaders } from './_shared';
 import { aviationStackBudgetMonth, reserveAviationStackCalls } from './_avstack-budget';
 
@@ -52,7 +53,7 @@ function normalizeFlight(f: AVSFlight, now: number): FlightInstance {
 }
 
 export async function getFlightStatus(
-    _ctx: ServerContext,
+    ctx: ServerContext,
     req: GetFlightStatusRequest,
 ): Promise<GetFlightStatusResponse> {
     // Normalize: strip leading zeros from numeric suffix (EK03 → EK3, BA002 → BA2)
@@ -64,21 +65,27 @@ export async function getFlightStatus(
     const now = Date.now();
 
     if (!flightNumber || flightNumber.length > 10) {
+        markNoCacheResponse(ctx.request);
         return { flights: [], source: 'error', cacheHit: false };
     }
 
+    let unavailableSource = 'unavailable';
+
     try {
-        const result = await cachedFetchJson<{ flights: FlightInstance[]; source: string }>(
+        const result = await cachedFetchJson<{ flights: FlightInstance[]; source: 'aviationstack' }>(
             cacheKey, CACHE_TTL, async () => {
                 const relayBase = getRelayBaseUrl();
                 if (!relayBase) {
-                    return { flights: [], source: 'no-relay' };
+                    unavailableSource = 'no-relay';
+                    return null;
                 }
 
-                // Monthly quota guard — once the request-time budget is spent,
-                // serve empty (cached briefly) rather than calling upstream.
+                // Monthly quota guard: once the request-time budget is spent,
+                // negative-cache the unavailable state rather than storing an
+                // empty positive flight-status result.
                 if (!(await reserveAviationStackCalls(1, 'request'))) {
-                    return { flights: [], source: 'budget' };
+                    unavailableSource = 'budget';
+                    return null;
                 }
 
                 const params = new URLSearchParams({
@@ -101,18 +108,29 @@ export async function getFlightStatus(
                     return { flights, source: 'aviationstack' };
                 } catch (err) {
                     console.warn(`[Aviation] Flight status relay fetch failed for ${flightNumber}: ${err instanceof Error ? err.message : err}`);
-                    return { flights: [], source: 'error' };
+                    unavailableSource = 'error';
+                    return null;
                 }
             }
         );
 
+        if (!result) {
+            markNoCacheResponse(ctx.request);
+            return {
+                flights: [],
+                source: unavailableSource,
+                cacheHit: false,
+            };
+        }
+
         return {
-            flights: result?.flights ?? [],
-            source: result?.source ?? 'unknown',
+            flights: result.flights,
+            source: result.source,
             cacheHit: false,
         };
     } catch (err) {
         console.warn(`[Aviation] GetFlightStatus failed for ${flightNumber}: ${err instanceof Error ? err.message : err}`);
+        markNoCacheResponse(ctx.request);
         return { flights: [], source: 'error', cacheHit: false };
     }
 }

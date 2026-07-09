@@ -1286,6 +1286,15 @@ async function dispatch(requestUrl, req, routes, context) {
     return new Response(null, { status: 204, headers: makeCorsHeaders(req) });
   }
 
+  // Liveness probe — exempt from auth so container/orchestrator healthchecks
+  // can hit it without the per-session LOCAL_API_TOKEN. Deliberately minimal
+  // and dependency-free: a 200 here proves the sidecar process is up and
+  // routing (and, when reached via nginx /api/, that the whole request path
+  // works end-to-end). Does not touch cloud, Redis, or any data source.
+  if (requestUrl.pathname === '/api/sidecar-health') {
+    return json({ status: 'ok', mode: context.mode, port: context.port });
+  }
+
   // Health check — exempt from auth to support external monitoring tools
   if (requestUrl.pathname === '/api/service-status') {
     return handleLocalServiceStatus(context);

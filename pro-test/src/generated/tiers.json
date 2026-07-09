@@ -11,6 +11,12 @@
       "Earthquake & weather alerts",
       "Basic map view"
     ],
+    "planLimits": {
+      "apiRequestsPerDay": 0,
+      "apiBurstRequestsPerMinute": 0,
+      "mcpCallsPerDay": 0,
+      "mcpBurstRequestsPerMinute": 0
+    },
     "cta": "Get Started",
     "href": "https://worldmonitor.app/dashboard",
     "highlighted": false
@@ -30,6 +36,12 @@
       "MCP + SDK access for Claude Desktop & other AI clients (50 calls/day)",
       "Priority data refresh"
     ],
+    "planLimits": {
+      "apiRequestsPerDay": 0,
+      "apiBurstRequestsPerMinute": 0,
+      "mcpCallsPerDay": 50,
+      "mcpBurstRequestsPerMinute": 60
+    },
     "monthlyProductId": "pdt_0Nbtt71uObulf7fGXhQup",
     "annualProductId": "pdt_0NbttMIfjLWC10jHQWYgJ",
     "highlighted": true
@@ -48,6 +60,12 @@
       "Webhook notifications",
       "Custom data exports"
     ],
+    "planLimits": {
+      "apiRequestsPerDay": 1000,
+      "apiBurstRequestsPerMinute": 60,
+      "mcpCallsPerDay": 1000,
+      "mcpBurstRequestsPerMinute": 60
+    },
     "monthlyProductId": "pdt_0NbttVmG1SERrxhygbbUq",
     "annualProductId": "pdt_0Nbu2lawHYE3dv2THgSEV",
     "highlighted": false
@@ -63,6 +81,12 @@
       "10,000 requests/day included",
       "Priority support"
     ],
+    "planLimits": {
+      "apiRequestsPerDay": 10000,
+      "apiBurstRequestsPerMinute": 300,
+      "mcpCallsPerDay": 10000,
+      "mcpBurstRequestsPerMinute": 300
+    },
     "monthlyProductId": "pdt_0Nbttg7NuOJrhbyBGCius",
     "highlighted": false
   },
@@ -79,6 +103,12 @@
       "SLA guarantee",
       "On-premise option"
     ],
+    "planLimits": {
+      "apiRequestsPerDay": null,
+      "apiBurstRequestsPerMinute": 1000,
+      "mcpCallsPerDay": null,
+      "mcpBurstRequestsPerMinute": 1000
+    },
     "cta": "Contact Sales",
     "href": "mailto:enterprise@worldmonitor.app",
     "highlighted": false

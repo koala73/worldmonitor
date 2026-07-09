@@ -2,7 +2,9 @@ import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
 import {
+  ACLED_SETTLEMENT_LAG_MS,
   UCDP_SETTLEMENT_LAG_MS,
+  countSettlementLagMs,
   parseMetricKey,
   resolveHardSpec,
 } from '../scripts/_forecast-resolution-eval.mjs';
@@ -42,9 +44,15 @@ function assertNoNullFields(value, path = 'fixture') {
 }
 
 describe('parseMetricKey', () => {
-  it('parses the six emitted function forms with anchored delimiters', () => {
+  it('parses the emitted function forms with anchored delimiters', () => {
     assert.deepEqual(parseMetricKey('conflict:ucdp-events:v1|count(country==Mali)'), {
       feedKey: 'conflict:ucdp-events:v1',
+      fn: 'count',
+      field: 'country',
+      value: 'Mali',
+    });
+    assert.deepEqual(parseMetricKey('conflict:acled:v1:all:0:0|count(country==Mali)'), {
+      feedKey: 'conflict:acled:v1:all:0:0',
       fn: 'count',
       field: 'country',
       value: 'Mali',
@@ -66,6 +74,18 @@ describe('parseMetricKey', () => {
     for (const bad of ['', 'no-pipe', 'feed|fn(field=value)', 'feed|fn(field==value', 'feed|fn()']) {
       assert.equal(parseMetricKey(bad), null, bad);
     }
+  });
+});
+
+describe('countSettlementLagMs', () => {
+  it('uses the long UCDP lag only for legacy UCDP count feeds', () => {
+    assert.equal(countSettlementLagMs('conflict:ucdp-events:v1'), UCDP_SETTLEMENT_LAG_MS);
+    assert.equal(countSettlementLagMs('conflict:acled:v1:all:0:0'), ACLED_SETTLEMENT_LAG_MS);
+    // Unrest is ACLED "Protests" dated by event_date — it must seal after the
+    // same 2-day lag, not resolve live (a premature read scores a false NO).
+    assert.equal(countSettlementLagMs('unrest:events:v1'), ACLED_SETTLEMENT_LAG_MS);
+    // Cyber stays live: firstSeenAt is a near-real-time observation stamp.
+    assert.equal(countSettlementLagMs('cyber:threats-bootstrap:v2'), 0);
   });
 });
 
@@ -95,6 +115,204 @@ describe('resolveHardSpec', () => {
     assert.equal(resolved.outcome, 'YES');
     assert.equal(resolved.evidence.metricValue, 2);
     assert.equal(resolved.evidence.comparison, '2 >= 2');
+  });
+
+  it('uses the shorter ACLED lag for fresh conflict counts', () => {
+    const deadline = START + 3 * DAY_MS;
+    const e = entry({
+      deadline,
+      spec: {
+        kind: 'hard',
+        metricKey: 'conflict:acled:v1:all:0:0|count(country==Mali)',
+        operator: '>=',
+        threshold: 2,
+        window: 'within-horizon',
+        deadline,
+        sourceFeed: 'conflict:acled:v1:all:0:0',
+      },
+    });
+    const feed = {
+      events: [
+        // Production ACLED shape from seed-conflict-intel.mjs: numeric occurredAt.
+        { country: 'Mali', occurredAt: START },
+        { country: 'Mali', occurredAt: START + 2 * DAY_MS },
+        { country: 'Mali', occurredAt: START + 4 * DAY_MS },
+        // Raw ACLED date string still resolves via the event_date fallback.
+        { country: 'Burkina Faso', event_date: '2026-07-09' },
+      ],
+    };
+
+    assert.deepEqual(
+      resolveHardSpec(e, feed, {}, deadline + ACLED_SETTLEMENT_LAG_MS - 1),
+      {
+        status: 'pending',
+        evidence: { reason: 'count_settlement_lag', deadline, sealAfter: deadline + ACLED_SETTLEMENT_LAG_MS },
+      },
+    );
+
+    const resolved = resolveHardSpec(e, feed, {}, deadline + ACLED_SETTLEMENT_LAG_MS);
+    assert.equal(resolved.status, 'resolved');
+    assert.equal(resolved.outcome, 'YES');
+    assert.equal(resolved.evidence.metricValue, 2);
+    assert.equal(resolved.evidence.comparison, '2 >= 2');
+  });
+
+  it('keeps due count specs pending until the UCDP source has reached the forecast deadline', () => {
+    const generatedAt = Date.parse('2026-07-09T00:00:00Z');
+    const deadline = Date.parse('2026-08-08T00:00:00Z');
+    const e = entry({
+      id: 'fc-ukraine',
+      generatedAt,
+      deadline,
+      spec: {
+        kind: 'hard',
+        metricKey: 'conflict:ucdp-events:v1|count(country==Ukraine)',
+        operator: '>=',
+        threshold: 66,
+        window: 'within-horizon',
+        deadline,
+        sourceFeed: 'conflict:ucdp-events:v1',
+      },
+    });
+    const feed = {
+      events: [
+        { country: 'Ukraine', dateStart: Date.parse('2025-11-20T00:00:00Z') },
+        { country: 'Ukraine', dateStart: Date.parse('2025-12-18T00:00:00Z') },
+        { country: 'Somalia', dateStart: Date.parse('2025-12-19T00:00:00Z') },
+      ],
+    };
+
+    const result = resolveHardSpec(e, feed, {}, deadline + UCDP_SETTLEMENT_LAG_MS);
+
+    assert.equal(result.status, 'pending');
+    assert.equal(result.evidence.reason, 'count_source_lags_deadline');
+    assert.equal(result.evidence.sourceMaxTs, Date.parse('2025-12-19T00:00:00Z'));
+  });
+
+  it('voids count specs when a capped feed can no longer establish a below-threshold count', () => {
+    const generatedAt = Date.parse('2026-07-01T00:00:00Z');
+    const deadline = Date.parse('2026-07-10T00:00:00Z');
+    const e = entry({
+      id: 'fc-pruned-window',
+      generatedAt,
+      deadline,
+      spec: {
+        kind: 'hard',
+        metricKey: 'conflict:ucdp-events:v1|count(country==Mali)',
+        operator: '>=',
+        threshold: 2,
+        window: 'within-horizon',
+        deadline,
+        sourceFeed: 'conflict:ucdp-events:v1',
+      },
+    });
+    const feed = {
+      events: [
+        { country: 'Mali', dateStart: Date.parse('2026-07-09T00:00:00Z') },
+        { country: 'Ghana', dateStart: Date.parse('2026-07-11T00:00:00Z') },
+      ],
+    };
+
+    const result = resolveHardSpec(e, feed, {}, deadline + UCDP_SETTLEMENT_LAG_MS);
+
+    assert.equal(result.status, 'resolved');
+    assert.equal(result.outcome, 'VOID');
+    assert.equal(result.evidence.reason, 'count_source_window_not_retained');
+    assert.equal(result.evidence.partialMetricValue, 1);
+  });
+
+  it('resolves truncated count specs when the partial count already establishes YES', () => {
+    const generatedAt = Date.parse('2026-07-01T00:00:00Z');
+    const deadline = Date.parse('2026-07-10T00:00:00Z');
+    const e = entry({
+      id: 'fc-pruned-yes',
+      generatedAt,
+      deadline,
+      spec: {
+        kind: 'hard',
+        metricKey: 'conflict:ucdp-events:v1|count(country==Mali)',
+        operator: '>=',
+        threshold: 2,
+        window: 'within-horizon',
+        deadline,
+        sourceFeed: 'conflict:ucdp-events:v1',
+      },
+    });
+    const feed = {
+      events: [
+        { country: 'Mali', dateStart: Date.parse('2026-07-09T00:00:00Z') },
+        { country: 'Mali', dateStart: Date.parse('2026-07-10T00:00:00Z') },
+        { country: 'Ghana', dateStart: Date.parse('2026-07-11T00:00:00Z') },
+      ],
+    };
+
+    const result = resolveHardSpec(e, feed, {}, deadline + UCDP_SETTLEMENT_LAG_MS);
+
+    assert.equal(result.status, 'resolved');
+    assert.equal(result.outcome, 'YES');
+    assert.equal(result.evidence.metricValue, 2);
+    assert.equal(result.evidence.sourceCoverage.minTs, Date.parse('2026-07-09T00:00:00Z'));
+  });
+
+  it('matches country display names against ISO-2 country fields for cyber counts', () => {
+    const deadline = START + DAY_MS;
+    const e = entry({
+      deadline,
+      spec: {
+        kind: 'hard',
+        metricKey: 'cyber:threats-bootstrap:v2|count(country==Estonia)',
+        operator: '>=',
+        threshold: 1,
+        window: 'within-horizon',
+        deadline,
+        sourceFeed: 'cyber:threats-bootstrap:v2',
+      },
+    });
+    const feed = {
+      threats: [
+        { country: 'EE', firstSeenAt: START + 1_000 },
+        { country: 'LV', firstSeenAt: START + 2_000 },
+      ],
+    };
+
+    const resolved = resolveHardSpec(e, feed, {}, deadline);
+    assert.equal(resolved.status, 'resolved');
+    assert.equal(resolved.outcome, 'YES');
+    assert.equal(resolved.evidence.metricValue, 1);
+  });
+
+  it('bridges a UCDP parenthetical region name to ACLED country naming for conflict counts', () => {
+    // The conflict detector names the region from the UCDP feed (a former name
+    // in parentheses), but the spec now resolves against the ACLED feed, whose
+    // country field drops the article. Without canonical bridging these never
+    // match and an active conflict zone scores a false NO.
+    const deadline = START + 3 * DAY_MS;
+    const e = entry({
+      region: 'DR Congo (Zaire)',
+      deadline,
+      spec: {
+        kind: 'hard',
+        metricKey: 'conflict:acled:v1:all:0:0|count(country==DR Congo (Zaire))',
+        operator: '>=',
+        threshold: 2,
+        window: 'within-horizon',
+        deadline,
+        sourceFeed: 'conflict:acled:v1:all:0:0',
+      },
+    });
+    // Real ACLED feed shape: ACLED country naming + numeric occurredAt (epoch ms).
+    const feed = {
+      events: [
+        { country: 'Democratic Republic of Congo', occurredAt: START + DAY_MS },
+        { country: 'Democratic Republic of Congo', occurredAt: START + 2 * DAY_MS },
+        { country: 'Rwanda', occurredAt: deadline },
+      ],
+    };
+
+    const resolved = resolveHardSpec(e, feed, {}, deadline + ACLED_SETTLEMENT_LAG_MS);
+    assert.equal(resolved.status, 'resolved');
+    assert.equal(resolved.outcome, 'YES');
+    assert.equal(resolved.evidence.metricValue, 2);
   });
 
   it('resolves at-deadline point reads from the first sample at or after deadline', () => {

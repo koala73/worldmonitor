@@ -66,7 +66,10 @@ COPY data/ ./data/
 
 EXPOSE 3004
 
+# Use 127.0.0.1, not localhost: localhost resolves to ::1 first, but the relay
+# server binds IPv4, so a localhost probe gets "connection refused". /health is
+# a public (unauthenticated) route in ais-relay.cjs.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD wget -qO- http://localhost:3004/health || exit 1
+  CMD wget -qO- http://127.0.0.1:3004/health >/dev/null 2>&1 || exit 1
 
 CMD ["node", "scripts/ais-relay.cjs"]

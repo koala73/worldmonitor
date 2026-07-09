@@ -4,10 +4,26 @@
 // entry, current feed snapshot, observed samples, and nowMs; output is a
 // deterministic pending/resolved result with evidence.
 
+import { readFileSync } from 'node:fs';
+
 const DAY_MS = 24 * 60 * 60 * 1000;
+export const ACLED_SETTLEMENT_LAG_MS = 2 * DAY_MS;
 export const UCDP_SETTLEMENT_LAG_MS = 14 * DAY_MS;
 
 const SUPPORTED_FUNCTIONS = new Set(['count', 'riskScore', 'present', 'yesPrice', 'hexCount', 'price']);
+const COUNTRY_ALIASES = loadCountryAliases();
+
+export function countSettlementLagMs(feedKey) {
+  const key = String(feedKey || '');
+  if (key.includes('ucdp-events')) return UCDP_SETTLEMENT_LAG_MS;
+  // ACLED-sourced count feeds (conflict + unrest Protests) are dated by
+  // event_date, which trails ingestion by ~1-2 days; seal after that lag so the
+  // count is never read before the source has caught up to the deadline (a
+  // premature read scores a false NO). Cyber is intentionally excluded: its
+  // firstSeenAt is a near-real-time observation stamp, not a lagged event date.
+  if (key.includes('acled') || key.includes('unrest')) return ACLED_SETTLEMENT_LAG_MS;
+  return 0;
+}
 
 export function parseMetricKey(metricKey) {
   if (typeof metricKey !== 'string' || !metricKey) return null;
@@ -43,7 +59,8 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
   }
 
   if (parsed.fn === 'count') {
-    const sealAfter = deadline + UCDP_SETTLEMENT_LAG_MS;
+    const settlementLagMs = countSettlementLagMs(parsed.feedKey || spec.sourceFeed);
+    const sealAfter = deadline + settlementLagMs;
     if (nowMs < sealAfter) {
       return { status: 'pending', evidence: { reason: 'count_settlement_lag', deadline, sealAfter } };
     }
@@ -52,8 +69,52 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
     }
     const generatedAt = Number(entry?.generatedAt ?? entry?.firstSeenAt);
     if (!Number.isFinite(generatedAt)) return voidResult('missing_generated_at', entry, spec, parsed, nowMs);
+    // Source-coverage gating (has the feed caught up to the deadline? was the
+    // scored window pruned?) assumes a homogeneous, dated snapshot where
+    // feed-wide min/max timestamps describe every country series -- true for
+    // the lagged UCDP GED / ACLED conflict feeds. Live feeds (settlement lag 0:
+    // cyber, unrest) carry heterogeneous observation windows whose max
+    // timestamp trails the deadline by design, so the same gate would strand
+    // them pending forever; resolve those directly. See #5063.
+    const coverage = settlementLagMs > 0 ? summarizeRecordCoverage(feedData) : null;
+    if (coverage) {
+      if (!coverage.count || !Number.isFinite(coverage.maxTs)) {
+        return {
+          status: 'pending',
+          evidence: {
+            reason: 'count_source_no_dated_records',
+            deadline,
+            metricKey: spec.metricKey,
+            sourceRecordCount: coverage.count,
+          },
+        };
+      }
+      if (coverage.maxTs < deadline) {
+        return {
+          status: 'pending',
+          evidence: {
+            reason: 'count_source_lags_deadline',
+            deadline,
+            metricKey: spec.metricKey,
+            sourceMaxTs: coverage.maxTs,
+            sourceRecordCount: coverage.count,
+          },
+        };
+      }
+    }
     const count = countMatchingRecords(feedData, parsed.field, parsed.value, generatedAt, deadline);
-    return compareResult(count, spec, entry, parsed, nowMs, { sampleSpan: summarizeSamples(samples) });
+    if (coverage && Number.isFinite(coverage.minTs) && coverage.minTs > generatedAt && !partialCountEstablishesOutcome(count, spec)) {
+      return voidResult('count_source_window_not_retained', entry, spec, parsed, nowMs, {
+        sourceMinTs: coverage.minTs,
+        sourceMaxTs: coverage.maxTs,
+        sourceRecordCount: coverage.count,
+        partialMetricValue: count,
+      });
+    }
+    return compareResult(count, spec, entry, parsed, nowMs, {
+      sampleSpan: summarizeSamples(samples),
+      ...(coverage ? { sourceCoverage: coverage } : {}),
+    });
   }
 
   if (spec.window === 'at-deadline' || spec.window === 'at-endDate') {
@@ -130,7 +191,7 @@ function compareResult(value, spec, entry, parsed, nowMs, extraEvidence = {}) {
   };
 }
 
-function voidResult(reason, entry, spec, parsed, nowMs) {
+function voidResult(reason, entry, spec, parsed, nowMs, extraEvidence = {}) {
   return {
     status: 'resolved',
     outcome: 'VOID',
@@ -140,6 +201,7 @@ function voidResult(reason, entry, spec, parsed, nowMs) {
       parsed,
       resolvedAt: nowMs,
       id: entry?.id,
+      ...extraEvidence,
     },
   };
 }
@@ -183,16 +245,58 @@ function firstFinite(...values) {
   return NaN;
 }
 
+function normalizeComparable(value) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+// UCDP GED and ACLED name the same country differently: UCDP carries a former
+// name in parentheses ("DR Congo (Zaire)", "Myanmar (Burma)", "Yemen (North
+// Yemen)") and ACLED drops the article ("Democratic Republic of Congo" vs the
+// alias file's "...of the Congo"). A conflict forecast's region is UCDP-named
+// but now resolves against the ACLED feed, so canonicalize both toward a shared
+// token — parenthetical alternate and the "the" article removed — before
+// bridging through country-names.json. Verified collision-free against that
+// file (no two ISO codes collapse to the same canonical form).
+function canonicalCountryToken(value) {
+  return normalizeComparable(value)
+    .replace(/\s*\([^)]*\)/g, '')
+    .replace(/\bthe\b/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// The tokens a country value should be looked up / indexed under: its plain
+// normalized form plus, when different, its canonical form.
+function countryNameTokens(value) {
+  const normalized = normalizeComparable(value);
+  if (!normalized) return [];
+  const canonical = canonicalCountryToken(value);
+  return canonical && canonical !== normalized ? [normalized, canonical] : [normalized];
+}
+
 function valueEquals(actual, expected) {
-  return String(actual ?? '').trim().toLowerCase() === String(expected ?? '').trim().toLowerCase();
+  return normalizeComparable(actual) === normalizeComparable(expected);
+}
+
+function countryValueEquals(actual, expected) {
+  const actualAliases = countryAliases(actual);
+  const expectedAliases = countryAliases(expected);
+  for (const alias of actualAliases) {
+    if (expectedAliases.has(alias)) return true;
+  }
+  return false;
+}
+
+function metricValueEquals(actual, expected, field) {
+  return field === 'country' ? countryValueEquals(actual, expected) : valueEquals(actual, expected);
 }
 
 function findMatchingRecord(feedData, field, value) {
   for (const record of iterateRecords(feedData)) {
-    if (record && typeof record === 'object' && valueEquals(record[field], value)) return record;
+    if (record && typeof record === 'object' && metricValueEquals(record[field], value, field)) return record;
     if (record && typeof record === 'object') {
       const aliases = fieldAliases(field);
-      if (aliases.some((alias) => valueEquals(record[alias], value))) return record;
+      if (aliases.some((alias) => metricValueEquals(record[alias], value, field))) return record;
     }
   }
   return null;
@@ -201,16 +305,54 @@ function findMatchingRecord(feedData, field, value) {
 function fieldAliases(field) {
   if (field === 'market') return ['market', 'title', 'question'];
   if (field === 'route') return ['route', 'name', 'label', 'chokepoint'];
-  if (field === 'country') return ['country', 'country_name', 'countryName', 'location'];
+  if (field === 'country') return ['country', 'country_name', 'countryName', 'countryCode', 'iso2', 'location'];
   if (field === 'region') return ['region', 'name', 'label'];
   return [field];
+}
+
+function loadCountryAliases() {
+  const byToken = new Map();
+  const link = (a, b) => {
+    if (!a || !b) return;
+    if (!byToken.has(a)) byToken.set(a, new Set());
+    byToken.get(a).add(b);
+  };
+  try {
+    const raw = JSON.parse(readFileSync(new URL('../shared/country-names.json', import.meta.url), 'utf8'));
+    for (const [name, code] of Object.entries(raw || {})) {
+      const normalizedCode = normalizeComparable(code);
+      if (!normalizedCode) continue;
+      // Index each name under both its plain and canonical tokens so a UCDP
+      // parenthetical / ACLED article-dropped form still bridges to the ISO code
+      // that every other spelling of the country shares.
+      for (const token of countryNameTokens(name)) {
+        link(token, normalizedCode);
+        link(normalizedCode, token);
+      }
+    }
+  } catch {
+    // Country aliases are a best-effort bridge for mixed ISO/name feeds.
+  }
+  return byToken;
+}
+
+function countryAliases(value) {
+  const aliases = new Set();
+  for (const token of countryNameTokens(value)) {
+    aliases.add(token);
+    const direct = COUNTRY_ALIASES.get(token);
+    if (direct) {
+      for (const alias of direct) aliases.add(alias);
+    }
+  }
+  return aliases;
 }
 
 function countMatchingRecords(feedData, field, value, startMs, endMs) {
   let count = 0;
   for (const record of iterateRecords(feedData)) {
     if (!record || typeof record !== 'object') continue;
-    const matches = [field, ...fieldAliases(field)].some((key) => valueEquals(record[key], value));
+    const matches = [field, ...fieldAliases(field)].some((key) => metricValueEquals(record[key], value, field));
     if (!matches) continue;
     const ts = extractRecordTime(record);
     if (Number.isFinite(ts) && ts >= startMs && ts <= endMs) count += 1;
@@ -218,13 +360,44 @@ function countMatchingRecords(feedData, field, value, startMs, endMs) {
   return count;
 }
 
+function partialCountEstablishesOutcome(count, spec) {
+  const threshold = Number(spec?.threshold);
+  if (!Number.isFinite(count) || !Number.isFinite(threshold)) return false;
+  if (spec?.operator === '>=') return count >= threshold;
+  if (spec?.operator === '<=') return count > threshold;
+  return false;
+}
+
+// Count specs currently resolve only against homogeneous dated snapshots
+// (UCDP GED), where feed-wide min/max dates describe every country series.
+// Do not reuse this coverage gate for heterogeneous feeds unless it is scoped
+// to the metric filter first.
+function summarizeRecordCoverage(feedData) {
+  let count = 0;
+  let minTs = NaN;
+  let maxTs = NaN;
+  for (const record of iterateRecords(feedData)) {
+    if (!record || typeof record !== 'object') continue;
+    const ts = extractRecordTime(record);
+    if (!Number.isFinite(ts)) continue;
+    count += 1;
+    if (!Number.isFinite(minTs) || ts < minTs) minTs = ts;
+    if (!Number.isFinite(maxTs) || ts > maxTs) maxTs = ts;
+  }
+  return { count, minTs, maxTs };
+}
+
 function extractRecordTime(record) {
   return firstFinite(
     record.ts,
     record.timestamp,
     record.generatedAt,
+    record.firstSeenAt,
+    record.lastSeenAt,
+    record.occurredAt,
     record.dateStart,
     record.date_start && Date.parse(record.date_start),
+    record.event_date && Date.parse(record.event_date),
     record.date && Date.parse(record.date),
     record.eventDate && Date.parse(record.eventDate),
   );

@@ -29,7 +29,6 @@ import {
   STORY_ALIAS_KEY,
   DIGEST_ACCUMULATOR_KEY,
   STORY_TTL,
-  STORY_TRACK_KEY_PREFIX,
   DIGEST_ACCUMULATOR_TTL,
 } from '../../../_shared/cache-keys';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
@@ -42,7 +41,13 @@ const fallbackDigestCache = new Map<string, { data: ListFeedDigestResponse; ts: 
 const ITEMS_PER_FEED = 5;
 const MAX_ITEMS_PER_CATEGORY = 20;
 const FEED_TIMEOUT_MS = 8_000;
-const OVERALL_DEADLINE_MS = 25_000;
+// Vercel Edge functions have a 25s initial-response ceiling. The digest
+// must fail closed to the warmed in-isolate fallback before the platform does.
+const VERCEL_INITIAL_RESPONSE_LIMIT_MS = 25_000;
+const DIGEST_RESPONSE_TIMEOUT_MS = 14_000;
+const POST_FETCH_HEADROOM_MS = 15_000;
+const RESPONSE_GUARD_BAND_MS = 3_000;
+const OVERALL_DEADLINE_MS = VERCEL_INITIAL_RESPONSE_LIMIT_MS - POST_FETCH_HEADROOM_MS;
 const BATCH_CONCURRENCY = 20;
 
 // U3 — hard freshness floor (default 96h, env override NEWS_MAX_AGE_HOURS).
@@ -968,9 +973,9 @@ async function readStoryTracks(titleHashes: string[]): Promise<Map<string, Story
   if (titleHashes.length === 0) return new Map();
   const fields = ['firstSeen', 'lastSeen', 'mentionCount', 'sourceCount', 'currentScore', 'peakScore'];
   const commands = titleHashes.map(h => [
-    'HMGET', `${STORY_TRACK_KEY_PREFIX}${h}`, ...fields,
+    'HMGET', STORY_TRACK_KEY(h), ...fields,
   ]);
-  const results = await runRedisPipeline(commands, true);
+  const results = await runRedisPipeline(commands);
   const map = new Map<string, StoryTrack>();
   for (let i = 0; i < titleHashes.length; i++) {
     const vals = results[i]?.result as string[] | null;
@@ -1034,6 +1039,8 @@ export async function listFeedDigest(
         const totalItems = Object.values(result.categories).reduce((sum, b) => sum + b.items.length, 0);
         return totalItems > 0 ? result : null;
       },
+      120,
+      { timeoutMs: DIGEST_RESPONSE_TIMEOUT_MS },
     );
 
     if (fresh === null) {
@@ -1540,8 +1547,14 @@ export const __testing__ = {
   promoteDiplomacySeverity,
   computeEntityCorroborationSignals,
   computeEntityCorroborationCounts,
+  readStoryTracks,
   resolveMaxAgeMs,
   capLlmUpgrade,
+  VERCEL_INITIAL_RESPONSE_LIMIT_MS,
+  DIGEST_RESPONSE_TIMEOUT_MS,
+  POST_FETCH_HEADROOM_MS,
+  RESPONSE_GUARD_BAND_MS,
+  OVERALL_DEADLINE_MS,
   MAX_DESCRIPTION_LEN,
   MIN_DESCRIPTION_LEN,
   FUTURE_DATE_TOLERANCE_MS,
