@@ -286,6 +286,23 @@ describe('measure-dashboard-render-axis reporting', () => {
     assert.match(report.warnings.join('\n'), /Unable to scope dominant phase/);
   });
 
+  it('warns when a captured interaction anchor serialized a null trace timestamp', () => {
+    const report = buildReport({
+      interaction: {
+        ...resolveInteractionTarget('country'),
+        targetInfo: { tapPoint: { x: 120, y: 200, matchedTop: true } },
+      },
+      interactionTimeAnchor: { performanceTimeMs: 400, traceTimeUs: null },
+      eventTimings: [
+        { name: 'pointerup', startTime: 450, processingStart: 450, processingEnd: 500, duration: 180 },
+      ],
+      traceEvents: [{ ph: 'X', name: 'Paint', ts: 10_140_000, dur: 20_000 }],
+    });
+
+    assert.equal(report.interaction?.eventWindow, null);
+    assert.match(report.interaction?.warnings.join('\n') || '', /Unable to scope dominant phase/);
+  });
+
   it('warns when the tap target falls back to a point that did not hit the selector', () => {
     const report = buildReport({
       url: 'http://127.0.0.1:4173/dashboard',

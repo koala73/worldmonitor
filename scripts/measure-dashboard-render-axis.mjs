@@ -445,7 +445,8 @@ function findTraceMarkerTimeUs(trace, markerName = INTERACTION_TRACE_MARK) {
 function resolveInteractionTimeAnchor(trace, anchor) {
   const performanceTimeMs = Number(anchor?.performanceTimeMs);
   const markerName = String(anchor?.markName || INTERACTION_TRACE_MARK);
-  let traceTimeUs = Number(anchor?.traceTimeUs);
+  const rawTraceTimeUs = anchor?.traceTimeUs;
+  let traceTimeUs = rawTraceTimeUs == null ? NaN : Number(rawTraceTimeUs);
   if (!Number.isFinite(traceTimeUs)) {
     const markerTraceTimeUs = findTraceMarkerTimeUs(trace, markerName);
     traceTimeUs = markerTraceTimeUs == null ? NaN : Number(markerTraceTimeUs);
@@ -950,6 +951,7 @@ async function captureTrace(url, {
     }
 
     const events = await stopTracing(client);
+    const interactionTraceTimeUs = findTraceMarkerTimeUs(events, INTERACTION_TRACE_MARK);
     const result = {
       url,
       generatedAt: new Date().toISOString(),
@@ -963,7 +965,7 @@ async function captureTrace(url, {
       interactionTimeAnchor: interactionTimeAnchor
         ? {
           ...interactionTimeAnchor,
-          traceTimeUs: findTraceMarkerTimeUs(events, INTERACTION_TRACE_MARK),
+          ...(interactionTraceTimeUs == null ? {} : { traceTimeUs: interactionTraceTimeUs }),
         }
         : null,
     };
