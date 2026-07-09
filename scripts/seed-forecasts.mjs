@@ -17076,12 +17076,12 @@ const SIMULATION_REQUIRED_PATH_IDS = ['escalation', 'containment', 'market_casca
 /**
  * @param {string} text - raw LLM response text (JSON or JSON-with-prefix)
  * @param {1 | 2} round - simulation round number
- * @returns {{ paths: object[] | null, stabilizers?: string[], invalidators?: string[], globalObservations?: string, confidenceNotes?: string, dominantReactions?: string[], note?: string }}
+ * @returns {{ paths: object[] | null, parseStatus?: string, stabilizers?: string[], invalidators?: string[], globalObservations?: string, confidenceNotes?: string, dominantReactions?: string[], note?: string }}
  */
 function tryParseSimulationRoundPayload(text, round) {
   try {
     const parsed = JSON.parse(text);
-    if (!Array.isArray(parsed?.paths)) return { paths: null };
+    if (!Array.isArray(parsed?.paths)) return { paths: null, parseStatus: 'invalid_payload' };
     const expectedIds = new Set(SIMULATION_REQUIRED_PATH_IDS);
     const byPathId = new Map();
     for (const path of parsed.paths) {
@@ -17089,7 +17089,7 @@ function tryParseSimulationRoundPayload(text, round) {
       byPathId.set(path.pathId, path);
     }
     const paths = SIMULATION_REQUIRED_PATH_IDS.map((pathId) => byPathId.get(pathId));
-    if (paths.some((path) => !path)) return { paths: null };
+    if (paths.some((path) => !path)) return { paths: null, parseStatus: 'invalid_payload' };
     if (round === 2) {
       return {
         paths: paths.map((p) => ({
@@ -17110,7 +17110,7 @@ function tryParseSimulationRoundPayload(text, round) {
       note: String(parsed.note || '').slice(0, 200),
     };
   } catch {
-    return { paths: null };
+    return { paths: null, parseStatus: 'invalid_json' };
   }
 }
 
@@ -17124,19 +17124,28 @@ function extractSimulationRoundPayload(text, round) {
   const fencedBlocks = [...cleaned.matchAll(/```([\s\S]*?)```/g)].map((m) => m[1].trim());
   candidates.push(...fencedBlocks);
   candidates.push(cleaned);
+  let sawInvalidPayload = false;
 
   for (const candidate of candidates) {
     const trimmed = candidate.trim();
     if (!trimmed) continue;
     const direct = tryParseSimulationRoundPayload(trimmed, round);
     if (direct.paths) return { ...direct, diagnostics: { stage: 'direct', preview: sanitizeForPrompt(trimmed).slice(0, 160) } };
+    sawInvalidPayload ||= direct.parseStatus === 'invalid_payload';
     const firstObject = extractFirstJsonObject(trimmed);
     if (firstObject) {
       const parsed = tryParseSimulationRoundPayload(firstObject, round);
       if (parsed.paths) return { ...parsed, diagnostics: { stage: 'extracted', preview: sanitizeForPrompt(firstObject).slice(0, 160) } };
+      sawInvalidPayload ||= parsed.parseStatus === 'invalid_payload';
     }
   }
-  return { paths: null, diagnostics: { stage: 'no_json', preview: sanitizeForPrompt(cleaned).slice(0, 160) } };
+  return {
+    paths: null,
+    diagnostics: {
+      stage: sawInvalidPayload ? 'invalid_payload' : 'no_json',
+      preview: sanitizeForPrompt(cleaned).slice(0, 160),
+    },
+  };
 }
 
 async function runTheaterSimulation(theater, pkg) {

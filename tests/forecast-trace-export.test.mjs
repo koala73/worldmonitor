@@ -5771,7 +5771,7 @@ describe('simulation package export', () => {
     );
   });
 
-  it('geo-dedup: Strait of Hormuz (MENA_Gulf) and Red Sea (MENA_RedSea) are distinct groups — both selected', () => {
+  it('rank-capped selection keeps Hormuz, Red Sea, and Malacca when all rank inside the cap', () => {
     const hormuz = makeCandidate({
       candidateStateId: 'state-hormuz',
       candidateStateLabel: 'Strait of Hormuz disruption',
@@ -5796,10 +5796,10 @@ describe('simulation package export', () => {
     });
     const pkg = buildSimulationPackageFromDeepSnapshot(makeSnapshot([hormuz, redsea, malacca]));
     assert.ok(pkg, 'package should not be null');
-    assert.equal(pkg.selectedTheaters.length, 3, 'all 3 should be selected — Hormuz (MENA_Gulf), Red Sea (MENA_RedSea), Malacca (AsiaPacific)');
+    assert.equal(pkg.selectedTheaters.length, 3, 'all 3 highest-ranked eligible theaters should be selected');
     const routeKeys = pkg.selectedTheaters.map((t) => t.routeFacilityKey);
     assert.ok(routeKeys.includes('Strait of Hormuz'), 'Hormuz must be selected');
-    assert.ok(routeKeys.includes('Red Sea'), 'Red Sea must be selected — it is a distinct geo group from Hormuz');
+    assert.ok(routeKeys.includes('Red Sea'), 'Red Sea must be selected');
     assert.ok(routeKeys.includes('Strait of Malacca'), 'Malacca must be selected');
   });
 
@@ -6321,6 +6321,7 @@ describe('simulation runner — extractSimulationRoundPayload', () => {
   it('returns null paths when paths array is missing', () => {
     const result = extractSimulationRoundPayload('{"no_paths": true}', 1);
     assert.equal(result.paths, null);
+    assert.equal(result.diagnostics.stage, 'invalid_payload');
   });
 
   it('returns null paths when no valid pathId present', () => {
@@ -6354,6 +6355,7 @@ describe('simulation runner — extractSimulationRoundPayload', () => {
     });
     const result = extractSimulationRoundPayload(partialPayload, 2);
     assert.equal(result.paths, null, 'Round 2 must not pass with only 2 archetypes');
+    assert.equal(result.diagnostics.stage, 'invalid_payload');
   });
 
   it('uses extractFirstJsonObject fallback for prefix text', () => {
@@ -6415,6 +6417,23 @@ describe('simulation runner — extractSimulationRoundPayload', () => {
       assert.equal(result.failed, true);
       assert.equal(result.reason, 'round2_parse_failed');
       assert.ok(result.round1?.paths?.length === 3, 'round1 evidence is retained for diagnostics');
+    } finally {
+      __setForecastLlmCallOverrideForTests(null);
+    }
+  });
+
+  it('runTheaterSimulation fails the theater when Round 2 LLM returns no result', async () => {
+    __setForecastLlmCallOverrideForTests(async (_systemPrompt, _userPrompt, options = {}) => {
+      if (options.stage === 'simulation_round_1') return { text: r1Payload, model: 'test', provider: 'test' };
+      if (options.stage === 'simulation_round_2') return null;
+      throw new Error(`unexpected LLM stage ${options.stage}`);
+    });
+    try {
+      const result = await runTheaterSimulation(minimalTheater, minimalPkg);
+      assert.equal(result.failed, true);
+      assert.equal(result.reason, 'round2_llm_failed');
+      assert.ok(result.round1?.paths?.length === 3, 'round1 evidence is retained for diagnostics');
+      assert.equal(result.round2, null);
     } finally {
       __setForecastLlmCallOverrideForTests(null);
     }
