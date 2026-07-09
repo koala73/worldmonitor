@@ -52,8 +52,43 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
     }
     const generatedAt = Number(entry?.generatedAt ?? entry?.firstSeenAt);
     if (!Number.isFinite(generatedAt)) return voidResult('missing_generated_at', entry, spec, parsed, nowMs);
+    const coverage = summarizeRecordCoverage(feedData);
+    if (!coverage.count || !Number.isFinite(coverage.maxTs)) {
+      return {
+        status: 'pending',
+        evidence: {
+          reason: 'count_source_no_dated_records',
+          deadline,
+          metricKey: spec.metricKey,
+          sourceRecordCount: coverage.count,
+        },
+      };
+    }
+    if (coverage.maxTs < deadline) {
+      return {
+        status: 'pending',
+        evidence: {
+          reason: 'count_source_lags_deadline',
+          deadline,
+          metricKey: spec.metricKey,
+          sourceMaxTs: coverage.maxTs,
+          sourceRecordCount: coverage.count,
+        },
+      };
+    }
     const count = countMatchingRecords(feedData, parsed.field, parsed.value, generatedAt, deadline);
-    return compareResult(count, spec, entry, parsed, nowMs, { sampleSpan: summarizeSamples(samples) });
+    if (Number.isFinite(coverage.minTs) && coverage.minTs > generatedAt && !partialCountEstablishesOutcome(count, spec)) {
+      return voidResult('count_source_window_not_retained', entry, spec, parsed, nowMs, {
+        sourceMinTs: coverage.minTs,
+        sourceMaxTs: coverage.maxTs,
+        sourceRecordCount: coverage.count,
+        partialMetricValue: count,
+      });
+    }
+    return compareResult(count, spec, entry, parsed, nowMs, {
+      sampleSpan: summarizeSamples(samples),
+      sourceCoverage: coverage,
+    });
   }
 
   if (spec.window === 'at-deadline' || spec.window === 'at-endDate') {
@@ -130,7 +165,7 @@ function compareResult(value, spec, entry, parsed, nowMs, extraEvidence = {}) {
   };
 }
 
-function voidResult(reason, entry, spec, parsed, nowMs) {
+function voidResult(reason, entry, spec, parsed, nowMs, extraEvidence = {}) {
   return {
     status: 'resolved',
     outcome: 'VOID',
@@ -140,6 +175,7 @@ function voidResult(reason, entry, spec, parsed, nowMs) {
       parsed,
       resolvedAt: nowMs,
       id: entry?.id,
+      ...extraEvidence,
     },
   };
 }
@@ -216,6 +252,29 @@ function countMatchingRecords(feedData, field, value, startMs, endMs) {
     if (Number.isFinite(ts) && ts >= startMs && ts <= endMs) count += 1;
   }
   return count;
+}
+
+function partialCountEstablishesOutcome(count, spec) {
+  const threshold = Number(spec?.threshold);
+  if (!Number.isFinite(count) || !Number.isFinite(threshold)) return false;
+  if (spec?.operator === '>=') return count >= threshold;
+  if (spec?.operator === '<=') return count > threshold;
+  return false;
+}
+
+function summarizeRecordCoverage(feedData) {
+  let count = 0;
+  let minTs = NaN;
+  let maxTs = NaN;
+  for (const record of iterateRecords(feedData)) {
+    if (!record || typeof record !== 'object') continue;
+    const ts = extractRecordTime(record);
+    if (!Number.isFinite(ts)) continue;
+    count += 1;
+    if (!Number.isFinite(minTs) || ts < minTs) minTs = ts;
+    if (!Number.isFinite(maxTs) || ts > maxTs) maxTs = ts;
+  }
+  return { count, minTs, maxTs };
 }
 
 function extractRecordTime(record) {

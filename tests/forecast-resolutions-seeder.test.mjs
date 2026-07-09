@@ -164,6 +164,43 @@ describe('processResolutionCycle', () => {
     assert.equal(receipts.length, 0);
   });
 
+  it('does not resolve stale UCDP count snapshots to NO after the settlement lag', () => {
+    const deadline = T0 + 30 * DAY_MS;
+    const countForecast = forecast({
+      id: 'fc-ukraine',
+      domain: 'conflict',
+      region: 'Ukraine',
+      timeHorizon: '30d',
+      deadline,
+      resolution: {
+        kind: 'hard',
+        metricKey: 'conflict:ucdp-events:v1|count(country==Ukraine)',
+        operator: '>=',
+        threshold: 66,
+        window: 'within-horizon',
+        deadline,
+        sourceFeed: 'conflict:ucdp-events:v1',
+      },
+    });
+
+    const { ledger, receipts, scorecard } = processResolutionCycle({}, [snapshot(T0, [countForecast])], {
+      'conflict:ucdp-events:v1': {
+        events: [
+          { country: 'Ukraine', dateStart: Date.parse('2025-11-20T00:00:00Z') },
+          { country: 'Ukraine', dateStart: Date.parse('2025-12-18T00:00:00Z') },
+        ],
+      },
+    }, deadline + 14 * DAY_MS);
+
+    const row = ledger[`fc-ukraine@${deadline}`];
+    assert.equal(row.status, 'pending');
+    assert.equal(row.outcome, undefined);
+    assert.equal(row.samples.count, 0);
+    assert.equal(receipts.length, 0);
+    assert.equal(scorecard.totals.pending, 1);
+    assert.equal(scorecard.totals.scored, 0);
+  });
+
   it('records feed-read gaps as error samples and computes a scorecard', () => {
     const pending = forecast({ deadline: T0 + 7 * DAY_MS });
     const { ledger, scorecard } = processResolutionCycle({}, [snapshot(T0, [pending])], {}, T0 + DAY_MS);

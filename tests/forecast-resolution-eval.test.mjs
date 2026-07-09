@@ -97,6 +97,70 @@ describe('resolveHardSpec', () => {
     assert.equal(resolved.evidence.comparison, '2 >= 2');
   });
 
+  it('keeps due count specs pending until the UCDP source has reached the forecast deadline', () => {
+    const generatedAt = Date.parse('2026-07-09T00:00:00Z');
+    const deadline = Date.parse('2026-08-08T00:00:00Z');
+    const e = entry({
+      id: 'fc-ukraine',
+      generatedAt,
+      deadline,
+      spec: {
+        kind: 'hard',
+        metricKey: 'conflict:ucdp-events:v1|count(country==Ukraine)',
+        operator: '>=',
+        threshold: 66,
+        window: 'within-horizon',
+        deadline,
+        sourceFeed: 'conflict:ucdp-events:v1',
+      },
+    });
+    const feed = {
+      events: [
+        { country: 'Ukraine', dateStart: Date.parse('2025-11-20T00:00:00Z') },
+        { country: 'Ukraine', dateStart: Date.parse('2025-12-18T00:00:00Z') },
+        { country: 'Somalia', dateStart: Date.parse('2025-12-19T00:00:00Z') },
+      ],
+    };
+
+    const result = resolveHardSpec(e, feed, {}, deadline + UCDP_SETTLEMENT_LAG_MS);
+
+    assert.equal(result.status, 'pending');
+    assert.equal(result.evidence.reason, 'count_source_lags_deadline');
+    assert.equal(result.evidence.sourceMaxTs, Date.parse('2025-12-19T00:00:00Z'));
+  });
+
+  it('voids count specs when a capped feed can no longer establish a below-threshold count', () => {
+    const generatedAt = Date.parse('2026-07-01T00:00:00Z');
+    const deadline = Date.parse('2026-07-10T00:00:00Z');
+    const e = entry({
+      id: 'fc-pruned-window',
+      generatedAt,
+      deadline,
+      spec: {
+        kind: 'hard',
+        metricKey: 'conflict:ucdp-events:v1|count(country==Mali)',
+        operator: '>=',
+        threshold: 2,
+        window: 'within-horizon',
+        deadline,
+        sourceFeed: 'conflict:ucdp-events:v1',
+      },
+    });
+    const feed = {
+      events: [
+        { country: 'Mali', dateStart: Date.parse('2026-07-09T00:00:00Z') },
+        { country: 'Ghana', dateStart: Date.parse('2026-07-11T00:00:00Z') },
+      ],
+    };
+
+    const result = resolveHardSpec(e, feed, {}, deadline + UCDP_SETTLEMENT_LAG_MS);
+
+    assert.equal(result.status, 'resolved');
+    assert.equal(result.outcome, 'VOID');
+    assert.equal(result.evidence.reason, 'count_source_window_not_retained');
+    assert.equal(result.evidence.partialMetricValue, 1);
+  });
+
   it('resolves at-deadline point reads from the first sample at or after deadline', () => {
     const e = entry({
       spec: {
