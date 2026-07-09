@@ -123,6 +123,81 @@ describe('symbol-search handler', () => {
     assert.equal(res.status, 503);
   });
 
+  it('writes a short shared cooldown when Finnhub returns 429', async () => {
+    process.env.FINNHUB_API_KEY = 'test-key';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://upstash.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'upstash-tok';
+
+    let finnhubCalls = 0;
+    let cooldownSetBody: string | null = null;
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.startsWith('https://upstash.test/get/symsearch')) {
+        return new Response(JSON.stringify({ result: null }), { status: 200 });
+      }
+      if (url === 'https://upstash.test/pipeline' && typeof init?.body === 'string' && init.body.includes('symsearch-cooldown:v1:finnhub-429')) {
+        cooldownSetBody = init.body;
+        return new Response(JSON.stringify([{ result: 'OK' }]), { status: 200 });
+      }
+      if (url.includes('finnhub.io')) {
+        finnhubCalls++;
+        return new Response('rate limited', { status: 429, headers: { 'Retry-After': '17' } });
+      }
+      if (url.startsWith('https://upstash.test')) return permissiveUpstashCatchAll();
+      throw new Error(`unexpected fetch: ${url}`);
+    }) as typeof fetch;
+
+    const writePromises: Array<Promise<unknown>> = [];
+    const res = await handler(makeReq('nvidia'), { waitUntil: (p) => writePromises.push(p) });
+    await Promise.all(writePromises);
+
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('Retry-After'), '17');
+    assert.equal(finnhubCalls, 1, 'first real 429 must still hit Finnhub once');
+    assert.match(cooldownSetBody ?? '', /"SET","symsearch-cooldown:v1:finnhub-429"/);
+    assert.match(cooldownSetBody ?? '', /"EX","17"/);
+  });
+
+  it('honors a cached Finnhub 429 cooldown without calling Finnhub again', async () => {
+    process.env.FINNHUB_API_KEY = 'test-key';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://upstash.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'upstash-tok';
+
+    let finnhubCalls = 0;
+    const cooldown = {
+      error: 'SYMBOL_SEARCH_UNAVAILABLE',
+      reason: 'finnhub_rate_limit',
+      finnhubStatus: 429,
+      retryAfterSeconds: 42,
+    };
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.startsWith('https://upstash.test/get/')) {
+        const key = decodeURIComponent(url.slice('https://upstash.test/get/'.length));
+        if (key === 'symsearch-cooldown:v1:finnhub-429') {
+          return new Response(JSON.stringify({ result: JSON.stringify(cooldown) }), { status: 200 });
+        }
+        if (key === 'symsearch:v1:nvidia') {
+          return new Response(JSON.stringify({ result: null }), { status: 200 });
+        }
+      }
+      if (url.includes('finnhub.io')) {
+        finnhubCalls++;
+        return new Response('should not be called', { status: 500 });
+      }
+      if (url.startsWith('https://upstash.test')) return permissiveUpstashCatchAll();
+      throw new Error(`unexpected fetch: ${url}`);
+    }) as typeof fetch;
+
+    const res = await handler(makeReq('nvidia'));
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('Retry-After'), '42');
+    assert.deepEqual(await res.json(), { error: 'SYMBOL_SEARCH_UNAVAILABLE' });
+    assert.equal(finnhubCalls, 0, 'cooldown hit must not spend more Finnhub quota');
+  });
+
   it('returns 500 when the upstream fetch throws', async () => {
     process.env.FINNHUB_API_KEY = 'test-key';
     globalThis.fetch = (async () => { throw new Error('network down'); }) as typeof fetch;
@@ -195,7 +270,8 @@ describe('symbol-search handler', () => {
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       if (url.startsWith('https://upstash.test/get/symsearch')) {
-        getKey = decodeURIComponent(url.slice('https://upstash.test/get/'.length));
+        const key = decodeURIComponent(url.slice('https://upstash.test/get/'.length));
+        if (key !== 'symsearch-cooldown:v1:finnhub-429') getKey = key;
         return new Response(JSON.stringify({ result: null }), { status: 200 }); // miss
       }
       // setCachedData posts a SET-bearing pipeline; identify it by body
