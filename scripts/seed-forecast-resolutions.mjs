@@ -12,11 +12,12 @@
 //   - Start command: node scripts/seed-forecast-resolutions.mjs
 //   - Cron: daily
 
-import { CHROME_UA, loadEnvFile, runSeed } from './_seed-utils.mjs';
+import { CHROME_UA, getRedisCredentials, loadEnvFile, runSeed } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { resolveR2StorageConfig, putR2JsonObject } from './_r2-storage.mjs';
 import { parseMetricKey, resolveHardSpec, extractMetricValue } from './_forecast-resolution-eval.mjs';
 import { computeScorecard, DEFAULT_ROLLING_WINDOW_DAYS } from './_forecast-scorecard.mjs';
+import { callForecastLLM } from './seed-forecasts.mjs';
 
 export const HISTORY_KEY = 'forecast:predictions:history:v1';
 export const RESOLUTIONS_KEY = 'forecast:resolutions:v1';
@@ -26,7 +27,20 @@ export const SCORECARD_TTL_SECONDS = 7 * 24 * 60 * 60;
 export const RESOLUTION_SOURCE_VERSION = 'forecast-resolution-engine-v1';
 export const RESOLUTION_SCHEMA_VERSION = 1;
 export const MAX_RECENT_SAMPLES = 40;
+export const JUDGED_ARCHIVE_KEY = 'digest:accumulator:v1:full:en';
+export const JUDGED_ARCHIVE_RETENTION_MS = 48 * 60 * 60 * 1000;
+export const JUDGED_ARCHIVE_LOOKBACK_PAD_MS = 6 * 60 * 60 * 1000;
+export const DEFAULT_JUDGED_ARCHIVE_ITEMS = 16;
+export const DEFAULT_JUDGED_MAX_PER_RUN = 12;
+export const DEFAULT_JUDGED_RUN_BUDGET_MS = 110_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const JUDGED_TOKEN_STOPWORDS = new Set([
+  'about', 'above', 'after', 'again', 'against', 'before', 'being', 'below',
+  'between', 'could', 'deadline', 'during', 'forecast', 'from', 'have',
+  'into', 'more', 'over', 'than', 'that', 'their', 'there', 'these',
+  'this', 'through', 'under', 'until', 'what', 'when', 'where', 'which',
+  'while', 'will', 'with', 'within', 'would',
+]);
 
 // Retention for the persistent working ledger (#5067). A resolved entry only
 // leaves the hot `forecast:resolutions:v1` value once it is (a) durably archived
@@ -60,6 +74,526 @@ export function processResolutionCycle(existingLedger, historySnapshots, feedsBy
   const ledger = pruneArchivedTerminalEntries(ingested, nowMs);
   const scorecard = computeScorecard(ledger, nowMs);
   return { ledger, receipts, scorecard };
+}
+
+export async function processResolutionCycleWithJudges(existingLedger, historySnapshots, feedsByKey, newsArchive, nowMs, options = {}) {
+  const ingested = ingestHistory(existingLedger, historySnapshots, nowMs);
+  samplePendingEntries(ingested, feedsByKey, nowMs);
+  const receipts = resolveDueEntries(ingested, feedsByKey, nowMs);
+  receipts.push(...await resolvePendingJudgedEntries(ingested, newsArchive, nowMs, options));
+  const ledger = pruneArchivedTerminalEntries(ingested, nowMs);
+  const scorecard = computeScorecard(ledger, nowMs);
+  return { ledger, receipts, scorecard };
+}
+
+export async function resolvePendingJudgedEntries(ledger, newsArchive, nowMs, options = {}) {
+  const receipts = [];
+  const maxEntries = Number.isFinite(options.maxJudgedEntries)
+    ? Math.max(0, Math.floor(options.maxJudgedEntries))
+    : Infinity;
+  const deadlineMs = Number.isFinite(options.deadlineMs) ? options.deadlineMs : Infinity;
+  let attempted = 0;
+
+  for (const [key, entry] of Object.entries(ledger)) {
+    if (entry?.status !== 'pending-judge') continue;
+    if (attempted >= maxEntries) break;
+    if (Date.now() + 1_000 > deadlineMs) break;
+
+    const result = await resolveJudgedEntry(entry, newsArchive, nowMs, options);
+    if (result.status === 'skip') continue;
+    attempted += 1;
+
+    if (result.status === 'pending') {
+      entry.judgeLastAttempt = {
+        at: nowMs,
+        reason: result.reason || 'judge_pending',
+        detail: result.detail || '',
+      };
+      continue;
+    }
+
+    entry.status = 'resolved';
+    entry.outcome = result.outcome;
+    entry.resolvedAt = nowMs;
+    entry.sealedAt = nowMs;
+    entry.evidence = result.evidence;
+    receipts.push({ key, entry: cloneJson(entry), resolvedAt: nowMs });
+  }
+
+  return receipts;
+}
+
+export async function resolveJudgedEntry(entry, newsArchive, nowMs, options = {}) {
+  const spec = entry?.spec || entry?.resolution;
+  if (!spec || spec.kind !== 'judged') return { status: 'skip' };
+
+  const deadline = Number(spec.deadline ?? entry.deadline);
+  if (!Number.isFinite(deadline)) {
+    return resolvedJudgedResult('VOID', 'missing_deadline', entry, [], [], nowMs);
+  }
+  if (nowMs < deadline) return { status: 'skip' };
+
+  const archiveInput = normalizeJudgedArchiveInput(newsArchive);
+  if (!archiveInput.available) {
+    return { status: 'pending', reason: 'archive_unavailable' };
+  }
+
+  const archiveItems = selectJudgedArchiveItems(entry, archiveInput.items, {
+    maxItems: options.maxArchiveItems ?? DEFAULT_JUDGED_ARCHIVE_ITEMS,
+  });
+  if (!archiveItems.length) {
+    if (!archiveCoversEntryWindow(entry, archiveInput, nowMs)) {
+      return { status: 'pending', reason: 'archive_unavailable', detail: 'archive_window_incomplete' };
+    }
+    return resolvedJudgedResult('VOID', 'no_archive_evidence', entry, [], [], nowMs);
+  }
+
+  const judgeModels = Array.isArray(options.judgeModels) && options.judgeModels.length >= 2
+    ? options.judgeModels.slice(0, 2)
+    : createLiveJudgeModels(options);
+  if (judgeModels.length < 2) {
+    return { status: 'pending', reason: 'judge_unavailable', detail: 'fewer_than_two_models' };
+  }
+
+  const settled = await Promise.allSettled(judgeModels.map((judge) => judge(entry, archiveItems, nowMs)));
+  const judgments = [];
+  for (const result of settled) {
+    if (result.status !== 'fulfilled') {
+      return { status: 'pending', reason: 'judge_unavailable', detail: result.reason?.message || String(result.reason || '') };
+    }
+    const normalized = normalizeJudgment(result.value, archiveItems);
+    if (!normalized) return { status: 'pending', reason: 'judge_unavailable', detail: 'invalid_judge_response' };
+    judgments.push(normalized);
+  }
+
+  const nonVoidOutcomes = judgments.map((judgment) => judgment.outcome).filter((outcome) => outcome !== 'VOID');
+  if (nonVoidOutcomes.length === judgments.length && new Set(nonVoidOutcomes).size === 1) {
+    return resolvedJudgedResult(nonVoidOutcomes[0], 'dual_model_agreement', entry, judgments, archiveItems, nowMs);
+  }
+  if (judgments.every((judgment) => judgment.outcome === 'VOID')) {
+    return resolvedJudgedResult('VOID', 'all_judges_void', entry, judgments, archiveItems, nowMs);
+  }
+  return resolvedJudgedResult('VOID', 'judge_disagreement', entry, judgments, archiveItems, nowMs);
+}
+
+export function selectJudgedArchiveItems(entry, archiveItems, options = {}) {
+  const maxItems = Number.isFinite(options.maxItems) ? Math.max(1, Math.floor(options.maxItems)) : DEFAULT_JUDGED_ARCHIVE_ITEMS;
+  const tokenPatterns = judgedQueryTokens(entry).map(buildTokenPattern);
+  return normalizeJudgedArchiveItems(archiveItems)
+    .map((item, index) => ({
+      ...item,
+      id: item.id || `N${index + 1}`,
+      relevance: scoreArchiveItem(item, tokenPatterns),
+    }))
+    .filter((item) => item.relevance > 0)
+    .sort((a, b) => b.relevance - a.relevance || Number(b.publishedAt || 0) - Number(a.publishedAt || 0))
+    .slice(0, maxItems)
+    .map((item, index) => pruneUndefined({
+      id: item.id || `N${index + 1}`,
+      title: item.title,
+      description: item.description,
+      url: item.url,
+      source: item.source,
+      publishedAt: item.publishedAt,
+      severity: item.severity,
+      relevance: item.relevance,
+    }));
+}
+
+function normalizeJudgedArchiveInput(newsArchive) {
+  if (Array.isArray(newsArchive)) {
+    return { items: normalizeJudgedArchiveItems(newsArchive), available: true };
+  }
+  if (!newsArchive || typeof newsArchive !== 'object') {
+    return { items: [], available: false };
+  }
+  if (newsArchive.available === false) {
+    return { items: [], available: false };
+  }
+  const items = newsArchive.items
+    ?? newsArchive.stories
+    ?? newsArchive.topStories
+    ?? newsArchive.articles
+    ?? newsArchive.data
+    ?? [];
+  return {
+    items: normalizeJudgedArchiveItems(items),
+    available: true,
+    truncated: Boolean(newsArchive.truncated || newsArchive.partial || newsArchive.coverageComplete === false),
+    coverageStartMs: toFiniteMs(newsArchive.coverageStartMs ?? newsArchive.windowStartMs ?? newsArchive.fromMs),
+    coverageEndMs: toFiniteMs(newsArchive.coverageEndMs ?? newsArchive.windowEndMs ?? newsArchive.toMs),
+  };
+}
+
+function normalizeJudgedArchiveItems(value) {
+  const rows = unwrapArchiveRows(value);
+  return rows
+    .map((row, index) => normalizeJudgedArchiveItem(row, index))
+    .filter(Boolean);
+}
+
+function unwrapArchiveRows(value) {
+  if (Array.isArray(value)) return value;
+  if (!value || typeof value !== 'object') return [];
+  return unwrapArchiveRows(
+    value.items
+      ?? value.stories
+      ?? value.topStories
+      ?? value.articles
+      ?? value.data
+      ?? [],
+  );
+}
+
+function normalizeJudgedArchiveItem(row, index) {
+  if (!row || typeof row !== 'object') return null;
+  const title = cleanString(row.title ?? row.headline ?? row.name);
+  const description = truncateText(cleanString(row.description ?? row.summary ?? row.text ?? row.body), 700);
+  if (!title && !description) return null;
+  return pruneUndefined({
+    id: cleanString(row.id ?? row.hash ?? row.titleHash ?? row.key) || `N${index + 1}`,
+    hash: cleanString(row.hash ?? row.titleHash),
+    title,
+    description,
+    url: cleanString(row.url ?? row.link ?? row.sourceUrl),
+    source: cleanString(row.source ?? row.publisher ?? row.feedName ?? row.domain),
+    publishedAt: toFiniteMs(row.publishedAt ?? row.pubDate ?? row.lastSeen ?? row.lastSeenAt ?? row.firstSeen),
+    severity: cleanString(row.severity),
+    currentScore: toFiniteNumber(row.currentScore ?? row.score),
+  });
+}
+
+function judgedQueryTokens(entry) {
+  const spec = entry?.spec || entry?.resolution || {};
+  const text = [
+    entry?.title,
+    entry?.domain,
+    entry?.region,
+    spec.question,
+  ].filter(Boolean).join(' ');
+  const rawTokens = text.toLowerCase().match(/[a-z0-9][a-z0-9-]{2,}/g) || [];
+  return [...new Set(rawTokens
+    .map((token) => token.replace(/^-+|-+$/g, ''))
+    .filter((token) => token.length >= 4)
+    .filter((token) => !JUDGED_TOKEN_STOPWORDS.has(token)))];
+}
+
+function scoreArchiveItem(item, tokenPatterns) {
+  if (!tokenPatterns.length) return 0;
+  const title = `${item.title || ''}`.toLowerCase();
+  const description = `${item.description || ''}`.toLowerCase();
+  const source = `${item.source || ''}`.toLowerCase();
+  let score = 0;
+  for (const pattern of tokenPatterns) {
+    if (textHasToken(title, pattern)) score += 3;
+    if (textHasToken(description, pattern)) score += 1;
+    if (textHasToken(source, pattern)) score += 0.25;
+  }
+  return score;
+}
+
+function archiveCoversEntryWindow(entry, archiveInput, nowMs) {
+  if (archiveInput.truncated) return false;
+  const coverageStartMs = Number(archiveInput.coverageStartMs);
+  const coverageEndMs = Number(archiveInput.coverageEndMs);
+  if (!Number.isFinite(coverageStartMs) && !Number.isFinite(coverageEndMs)) return true;
+  const { startMs, endMs } = judgedArchiveWindowForEntry(entry, nowMs);
+  return (!Number.isFinite(coverageStartMs) || coverageStartMs <= startMs)
+    && (!Number.isFinite(coverageEndMs) || coverageEndMs >= endMs);
+}
+
+function judgedArchiveWindowForEntry(entry, nowMs) {
+  const deadline = Number(entry?.deadline ?? entry?.spec?.deadline);
+  const candidates = [entry?.generatedAt, entry?.firstSeenAt, deadline, nowMs]
+    .map(Number)
+    .filter(Number.isFinite);
+  const anchor = candidates.length ? Math.min(...candidates) : nowMs;
+  return {
+    startMs: Math.max(0, anchor - JUDGED_ARCHIVE_LOOKBACK_PAD_MS),
+    endMs: nowMs,
+  };
+}
+
+function buildTokenPattern(token) {
+  return new RegExp(`(^|[^a-z0-9])${escapeRegExp(token)}([^a-z0-9]|$)`, 'i');
+}
+
+function textHasToken(text, pattern) {
+  return pattern.test(text);
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function createLiveJudgeModels(options = {}) {
+  const stageBudgetMs = envPositiveInt('FORECAST_RESOLUTION_JUDGE_STAGE_BUDGET_MS', 35_000);
+  const common = {
+    temperature: 0.1,
+    maxTokens: envPositiveInt('FORECAST_RESOLUTION_JUDGE_MAX_TOKENS', 700),
+    maxRetries: 0,
+    returnFailureReason: true,
+    stageBudgetMs: options.judgeStageBudgetMs ?? stageBudgetMs,
+  };
+  return [
+    (entry, archiveItems, nowMs) => callLiveJudgedModel(entry, archiveItems, nowMs, {
+      ...common,
+      stage: 'forecast_resolution_judge_openrouter',
+      providerOrder: ['openrouter'],
+      modelOverrides: {
+        openrouter: process.env.FORECAST_RESOLUTION_JUDGE_MODEL_OPENROUTER
+          || process.env.FORECAST_LLM_MODEL_OPENROUTER
+          || 'deepseek/deepseek-v4-flash',
+      },
+    }),
+    (entry, archiveItems, nowMs) => callLiveJudgedModel(entry, archiveItems, nowMs, {
+      ...common,
+      stage: 'forecast_resolution_judge_groq',
+      providerOrder: ['groq'],
+      modelOverrides: {
+        groq: process.env.FORECAST_RESOLUTION_JUDGE_MODEL_GROQ || 'llama-3.3-70b-versatile',
+      },
+    }),
+  ];
+}
+
+async function callLiveJudgedModel(entry, archiveItems, nowMs, options) {
+  const { systemPrompt, userPrompt } = buildJudgedResolutionPrompt(entry, archiveItems, nowMs);
+  const result = await callForecastLLM(systemPrompt, userPrompt, options);
+  if (!result?.text) return null;
+  return {
+    text: result.text,
+    provider: result.provider,
+    model: result.model,
+  };
+}
+
+function buildJudgedResolutionPrompt(entry, archiveItems, nowMs) {
+  const spec = entry?.spec || entry?.resolution || {};
+  const systemPrompt = [
+    'You resolve forecasts using only the provided news archive.',
+    'Return JSON only: {"outcome":"YES|NO|VOID","citations":[{"id":"N1","quote":"short evidence"}],"rationale":"short reason"}.',
+    'YES means the archive proves the forecast happened by the deadline.',
+    'NO means the archive proves it did not happen by the deadline.',
+    'VOID means the archive is insufficient, ambiguous, contradictory, or unrelated.',
+    'YES and NO require at least one valid citation id and quote/excerpt copied from that archive item. Never use outside knowledge.',
+  ].join('\n');
+  const archiveText = archiveItems.map((item) => [
+    `[${item.id}] ${new Date(item.publishedAt || nowMs).toISOString()}`,
+    item.source ? `source=${item.source}` : '',
+    item.title || '',
+    item.url ? `url=${item.url}` : '',
+    item.description ? `summary=${truncateText(item.description, 420)}` : '',
+  ].filter(Boolean).join(' | ')).join('\n');
+  const userPrompt = [
+    `Forecast: ${entry?.title || entry?.id || 'untitled forecast'}`,
+    `Domain: ${entry?.domain || 'unknown'}`,
+    `Region: ${entry?.region || 'global'}`,
+    `Question: ${spec.question || entry?.title || ''}`,
+    `Deadline: ${Number.isFinite(Number(spec.deadline ?? entry?.deadline)) ? new Date(Number(spec.deadline ?? entry?.deadline)).toISOString() : 'unknown'}`,
+    '',
+    'News archive:',
+    archiveText,
+  ].join('\n');
+  return { systemPrompt, userPrompt };
+}
+
+function normalizeJudgment(value, archiveItems) {
+  const raw = parseJudgmentPayload(value);
+  if (!raw || typeof raw !== 'object') return null;
+  const outcome = cleanString(raw.outcome ?? raw.result ?? raw.resolution).toUpperCase();
+  if (!['YES', 'NO', 'VOID'].includes(outcome)) return null;
+  const rawCitations = raw.citations ?? raw.evidence ?? raw.sources ?? [];
+  const citationRows = normalizeCitationRows(rawCitations);
+  const citations = normalizeJudgmentCitations(citationRows, archiveItems);
+  const base = pruneUndefined({
+    provider: cleanString(raw.provider),
+    model: cleanString(raw.model),
+    outcome,
+    citations,
+    rationale: truncateText(cleanString(raw.rationale ?? raw.reason ?? raw.explanation), 420),
+    reason: cleanString(raw.reasonCode ?? raw.reason),
+  });
+  if ((outcome === 'YES' || outcome === 'NO') && citations.length === 0) {
+    return { ...base, outcome: 'VOID', reason: citationRows.length ? 'invalid_citations' : 'missing_citations' };
+  }
+  return base;
+}
+
+function parseJudgmentPayload(value) {
+  if (!value) return null;
+  if (typeof value === 'object' && !value.text) return value;
+  const text = typeof value === 'string' ? value : value.text;
+  if (typeof text !== 'string' || !text.trim()) return null;
+  const parsed = parseJsonObject(text);
+  if (!parsed) return null;
+  if (typeof value === 'object') {
+    return {
+      ...parsed,
+      provider: parsed.provider ?? value.provider,
+      model: parsed.model ?? value.model,
+    };
+  }
+  return parsed;
+}
+
+function parseJsonObject(text) {
+  const trimmed = text.trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch {}
+  try {
+    return JSON.parse(cleanJudgmentJson(trimmed));
+  } catch {}
+  const start = trimmed.indexOf('{');
+  const end = trimmed.lastIndexOf('}');
+  if (start === -1 || end <= start) return null;
+  try {
+    return JSON.parse(trimmed.slice(start, end + 1));
+  } catch {}
+  try {
+    return JSON.parse(cleanJudgmentJson(trimmed.slice(start, end + 1)));
+  } catch {
+    return null;
+  }
+}
+
+function cleanJudgmentJson(text) {
+  return text.replace(/,(\s*[}\]])/g, '$1');
+}
+
+function normalizeCitationRows(rawCitations) {
+  return Array.isArray(rawCitations) ? rawCitations : [rawCitations].filter(Boolean);
+}
+
+function normalizeJudgmentCitations(citationRows, archiveItems) {
+  const byId = new Map(archiveItems.map((item) => [item.id, item]));
+  const citations = [];
+  const seen = new Set();
+  for (const citation of citationRows) {
+    const rawId = typeof citation === 'object'
+      ? citation.id ?? citation.sourceId ?? citation.articleId ?? citation.citationId ?? citation.n
+      : citation;
+    const id = normalizeCitationId(rawId);
+    const item = byId.get(id);
+    if (!item || seen.has(id)) continue;
+    const quote = truncateText(cleanString(citation?.quote ?? citation?.excerpt), 240);
+    if (!quote || !citationQuoteMatchesItem(quote, item)) continue;
+    seen.add(id);
+    citations.push(pruneUndefined({
+      id,
+      title: item.title,
+      url: item.url,
+      publishedAt: item.publishedAt,
+      quote,
+    }));
+  }
+  return citations;
+}
+
+function citationQuoteMatchesItem(quote, item) {
+  const quoteText = normalizeCitationText(quote);
+  const itemText = normalizeCitationText([item.title, item.description].filter(Boolean).join(' '));
+  if (!quoteText || !itemText) return false;
+  if (itemText.includes(quoteText)) return true;
+  const quoteTokens = quoteText.match(/[a-z0-9]{4,}/g) || [];
+  if (quoteTokens.length < 3) return false;
+  const matched = quoteTokens.filter((token) => itemText.includes(token)).length;
+  return matched / quoteTokens.length >= 0.8;
+}
+
+function normalizeCitationText(value) {
+  return String(value || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+function normalizeCitationId(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return `N${Math.floor(value)}`;
+  const text = cleanString(value);
+  if (/^\d+$/.test(text)) return `N${text}`;
+  const match = text.match(/^N?\s*(\d+)$/i);
+  if (match) return `N${match[1]}`;
+  return text;
+}
+
+function resolvedJudgedResult(outcome, reason, entry, judgments, archiveItems, nowMs) {
+  const spec = entry?.spec || entry?.resolution || {};
+  return {
+    status: 'resolved',
+    outcome,
+    evidence: pruneUndefined({
+      kind: 'judged',
+      reason,
+      resolvedAt: nowMs,
+      question: spec.question,
+      deadline: Number.isFinite(Number(spec.deadline ?? entry?.deadline)) ? Number(spec.deadline ?? entry?.deadline) : undefined,
+      judgedBy: judgments.map((judgment) => pruneUndefined({
+        provider: judgment.provider,
+        model: judgment.model,
+        outcome: judgment.outcome,
+        reason: judgment.reason,
+      })),
+      judgments: judgments.map((judgment) => pruneUndefined({
+        provider: judgment.provider,
+        model: judgment.model,
+        outcome: judgment.outcome,
+        reason: judgment.reason,
+        rationale: judgment.rationale,
+        citations: judgment.citations,
+      })),
+      citations: mergeJudgmentCitations(judgments),
+      archive: archiveItems.map((item) => pruneUndefined({
+        id: item.id,
+        title: item.title,
+        url: item.url,
+        source: item.source,
+        publishedAt: item.publishedAt,
+      })),
+    }),
+  };
+}
+
+function mergeJudgmentCitations(judgments) {
+  const merged = [];
+  const seen = new Set();
+  for (const judgment of judgments) {
+    for (const citation of judgment.citations || []) {
+      if (seen.has(citation.id)) continue;
+      seen.add(citation.id);
+      merged.push(citation);
+    }
+  }
+  return merged;
+}
+
+function cleanString(value) {
+  return typeof value === 'string' ? value.replace(/\s+/g, ' ').trim() : '';
+}
+
+function truncateText(value, maxLength) {
+  const text = cleanString(value);
+  if (!text || text.length <= maxLength) return text;
+  return `${text.slice(0, Math.max(0, maxLength - 1)).trimEnd()}...`;
+}
+
+function toFiniteMs(value) {
+  if (value == null || value === '') return undefined;
+  const numeric = Number(value);
+  if (Number.isFinite(numeric)) return numeric > 0 && numeric < 1_000_000_000_000 ? numeric * 1000 : numeric;
+  const parsed = Date.parse(String(value));
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function toFiniteNumber(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : undefined;
+}
+
+function envPositiveInt(name, fallback) {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
 }
 
 // Terminal entries whose receipt is safely in R2 and that have aged past the
@@ -317,6 +851,100 @@ async function readResolutionFeeds(ledger) {
   return Object.fromEntries(pairs);
 }
 
+async function readJudgedNewsArchiveForLedger(ledger, nowMs, options = {}) {
+  const dueEntries = Object.values(normalizeLedger(ledger))
+    .filter((entry) => entry?.status === 'pending-judge')
+    .filter((entry) => Number(entry.deadline ?? entry.spec?.deadline) <= nowMs);
+  if (!dueEntries.length) return { items: [], available: false };
+
+  const windowStartMs = Math.min(...dueEntries.map((entry) => judgedArchiveWindowForEntry(entry, nowMs).startMs));
+  try {
+    return await readDigestAccumulatorArchive(windowStartMs, nowMs, options);
+  } catch (err) {
+    console.warn(`  [forecast-resolutions] judged archive unavailable: ${err?.message || err}`);
+    return { items: [], available: false };
+  }
+}
+
+export async function readDigestAccumulatorArchive(windowStartMs, nowMs, options = {}) {
+  const { url, token } = getRedisCredentials();
+  const coverageStartMs = Math.max(windowStartMs, nowMs - JUDGED_ARCHIVE_RETENTION_MS);
+  const base = {
+    requestedStartMs: windowStartMs,
+    requestedEndMs: nowMs,
+    coverageStartMs,
+    coverageEndMs: nowMs,
+  };
+  const zsetResp = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
+    body: JSON.stringify(['ZRANGEBYSCORE', JUDGED_ARCHIVE_KEY, String(windowStartMs), String(nowMs)]),
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!zsetResp.ok) throw new Error(`Redis ZRANGEBYSCORE ${JUDGED_ARCHIVE_KEY} failed: HTTP ${zsetResp.status}`);
+  const zsetPayload = await zsetResp.json();
+  const hashes = Array.isArray(zsetPayload.result) ? zsetPayload.result.filter(Boolean) : [];
+  if (!hashes.length) return { ...base, items: [], available: true };
+
+  const maxHashes = Number.isFinite(options.maxHashes)
+    ? Math.max(1, Math.floor(options.maxHashes))
+    : envPositiveInt('FORECAST_RESOLUTION_JUDGE_ARCHIVE_HASH_LIMIT', 300);
+  const selectedHashes = hashes.slice(-maxHashes);
+  const truncated = selectedHashes.length < hashes.length;
+  const pipelineResp = await fetch(`${url}/pipeline`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
+    body: JSON.stringify(selectedHashes.map((hash) => ['HGETALL', `story:track:v1:${hash}`])),
+    signal: AbortSignal.timeout(options.archiveTimeoutMs ?? 15_000),
+  });
+  if (!pipelineResp.ok) throw new Error(`Redis story-track pipeline failed: HTTP ${pipelineResp.status}`);
+  const pipelinePayload = await pipelineResp.json();
+  if (!Array.isArray(pipelinePayload) || pipelinePayload.length !== selectedHashes.length) {
+    throw new Error(`Redis story-track pipeline returned ${Array.isArray(pipelinePayload) ? pipelinePayload.length : 'non-array'} of ${selectedHashes.length}`);
+  }
+  const rows = pipelinePayload;
+  const items = [];
+  for (let index = 0; index < selectedHashes.length; index += 1) {
+    if (rows[index]?.error) {
+      throw new Error(`Redis story-track pipeline row ${index} failed: ${rows[index].error}`);
+    }
+    const raw = rows[index]?.result;
+    if (!Array.isArray(raw) || raw.length === 0) {
+      throw new Error(`Redis story-track pipeline row ${index} returned invalid HGETALL result`);
+    }
+    const track = flatArrayToObject(raw);
+    items.push(pruneUndefined({
+      id: `N${items.length + 1}`,
+      hash: selectedHashes[index],
+      title: track.title,
+      description: track.description,
+      url: track.link || track.url,
+      source: track.source || track.publisher || track.domain,
+      publishedAt: toFiniteMs(track.publishedAt ?? track.lastSeen ?? track.firstSeen),
+      severity: track.severity,
+      currentScore: toFiniteNumber(track.currentScore ?? track.score),
+    }));
+  }
+  return { ...base, items: normalizeJudgedArchiveItems(items), available: true, truncated };
+}
+
+function flatArrayToObject(flat) {
+  const obj = {};
+  for (let i = 0; i + 1 < flat.length; i += 2) {
+    obj[flat[i]] = flat[i + 1];
+  }
+  return obj;
+}
+
+function buildLiveJudgedOptions(nowMs = Date.now()) {
+  return {
+    maxJudgedEntries: envPositiveInt('FORECAST_RESOLUTION_JUDGE_MAX_PER_RUN', DEFAULT_JUDGED_MAX_PER_RUN),
+    maxArchiveItems: envPositiveInt('FORECAST_RESOLUTION_JUDGE_ARCHIVE_ITEMS', DEFAULT_JUDGED_ARCHIVE_ITEMS),
+    judgeStageBudgetMs: envPositiveInt('FORECAST_RESOLUTION_JUDGE_STAGE_BUDGET_MS', 35_000),
+    deadlineMs: nowMs + envPositiveInt('FORECAST_RESOLUTION_JUDGE_RUN_BUDGET_MS', DEFAULT_JUDGED_RUN_BUDGET_MS),
+  };
+}
+
 async function buildLedgerForRun() {
   const nowMs = Date.now();
   const [existingLedger, history] = await Promise.all([
@@ -325,7 +953,9 @@ async function buildLedgerForRun() {
   ]);
   const preLedger = ingestHistory(existingLedger || {}, history, nowMs);
   const feeds = await readResolutionFeeds(preLedger);
-  const result = processResolutionCycle(preLedger, [], feeds, nowMs);
+  const judgedOptions = buildLiveJudgedOptions(nowMs);
+  const judgedArchive = await readJudgedNewsArchiveForLedger(preLedger, nowMs, judgedOptions);
+  const result = await processResolutionCycleWithJudges(preLedger, [], feeds, judgedArchive, nowMs, judgedOptions);
   const receiptsForArchive = collectUnarchivedReceipts(result.ledger);
   const archivedReceipts = await appendR2Receipts(receiptsForArchive);
   markReceiptsArchived(result.ledger, archivedReceipts, Date.now());
@@ -397,7 +1027,8 @@ if (DIRECT_RUN && process.argv.includes('--dry-run')) {
     schemaVersion: RESOLUTION_SCHEMA_VERSION,
     zeroIsValid: true,
     maxStaleMin: 2160,
-    fetchPhaseTimeoutMs: 90_000,
+    lockTtlMs: 180_000,
+    fetchPhaseTimeoutMs: 150_000,
     extraKeys: [{
       key: SCORECARD_KEY,
       ttl: SCORECARD_TTL_SECONDS,
