@@ -2680,7 +2680,7 @@ export class DataLoaderManager implements AppModule {
         if (data.countries.length > 0) dataFreshness.recordUpdate('unhcr', data.countries.length);
       } catch (error) {
         console.error('[Intelligence] UNHCR displacement fetch failed:', error);
-        this.callPanel('displacement', 'showError');
+        this.showColdLoadError('displacement');
         dataFreshness.recordError('unhcr', String(error));
       }
     })());
@@ -2702,7 +2702,7 @@ export class DataLoaderManager implements AppModule {
         if (anomalies.length > 0) dataFreshness.recordUpdate('climate', anomalies.length);
       } catch (error) {
         console.error('[Intelligence] Climate anomalies fetch failed:', error);
-        this.callPanel('climate', 'showError');
+        this.showColdLoadError('climate');
         dataFreshness.recordError('climate', String(error));
       }
     })());

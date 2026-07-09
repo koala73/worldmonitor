@@ -147,6 +147,7 @@ export class RegionalIntelligenceBoard extends Panel {
       // longer see it. Panel locking separately re-applies via
       // panel-layout's auth subscription.
       this.lastHadPremium = false;
+      this.latestSequence += 1;
       this.renderEmpty();
     }
   }

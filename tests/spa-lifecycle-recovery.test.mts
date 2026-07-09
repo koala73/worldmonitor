@@ -149,6 +149,20 @@ describe('SPA lifecycle recovery contracts', () => {
       [],
       'all validated cold soft-fail loaders must call showColdLoadError',
     );
+
+    const directShowErrorPanels = new Set(
+      propertyCalls(file, 'callPanel')
+        .filter(call =>
+          ts.isStringLiteralLike(call.arguments[0]!) &&
+          ts.isStringLiteralLike(call.arguments[1]!) &&
+          call.arguments[1].text === 'showError')
+        .map(call => (call.arguments[0] as ts.StringLiteralLike).text),
+    );
+    assert.deepEqual(
+      requiredColdFailPanels.filter(panel => directShowErrorPanels.has(panel)),
+      [],
+      'validated cold-failure panels must route every showError path through showColdLoadError',
+    );
   });
 
   it('cold-failure panels expose loaded-data state to preserve warm retained views', () => {
@@ -202,6 +216,11 @@ describe('SPA lifecycle recovery contracts', () => {
     assert.ok(
       propertyCalls(handler, 'loadCurrent').length >= 1,
       'false-to-true premium transition must reload the current regional snapshot',
+    );
+    assert.match(
+      handler.getText(file),
+      /this\.latestSequence\s*\+=\s*1[\s\S]*this\.renderEmpty\(\)/,
+      'true-to-false premium transition must invalidate in-flight loads before blanking the panel',
     );
   });
 
