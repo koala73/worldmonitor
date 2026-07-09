@@ -139,7 +139,7 @@ describe("api plan-limit usage scanner", () => {
     expect(notices).toHaveLength(0);
   });
 
-  test("records over-limit API Starter notice and blocks readiness when Business is not self-serve", async () => {
+  test("records over-limit API Starter notice with a self-serve billing_portal CTA", async () => {
     const t = convexTest(schema, modules);
     await seedEntitlement(t, "user-api", "api_starter");
 
@@ -154,7 +154,10 @@ describe("api plan-limit usage scanner", () => {
     });
 
     expect(summary.notified).toBe(1);
-    expect(summary.blocked).toContainEqual({
+    // Self-serve upgrade is live (#4634): an over-cap Starter customer now gets a
+    // billing_portal CTA (→ the Dodo collection upgrade), so the notice is NOT
+    // recorded as blocked-for-no-self-serve-path.
+    expect(summary.blocked).not.toContainEqual({
       userId: "user-api",
       dimension: "api_daily_requests",
       reason: "api_business_not_self_serve",
@@ -163,6 +166,36 @@ describe("api plan-limit usage scanner", () => {
     const notices = await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect());
     expect(notices).toHaveLength(1);
     expect(notices[0]).toMatchObject({
+      state: "over_limit",
+      ctaKind: "billing_portal",
+      upgradeTargetPlanKey: "api_business",
+    });
+    expect(notices[0].blockedReason).toBeUndefined();
+  });
+
+  test("an over-limit annual API Starter notice routes to contact_support, not a portal dead-end", async () => {
+    const t = convexTest(schema, modules);
+    await seedEntitlement(t, "user-annual", "api_starter_annual");
+
+    // api_starter_annual carries API_STARTER_FEATURES (planLimits: 1000/day), so it
+    // IS scanner-reachable. Its self-serve portal upgrade path to Business is
+    // unverified, so the CTA must be contact_support (never a billing_portal
+    // dead-end), matching the Settings button that renders only for 'api_starter'.
+    const summary = await t.action(usageFns.scanApiPlanLimitUsageInternal, {
+      now: NOW,
+      rows: [{
+        userId: "user-annual",
+        dimension: "api_daily_requests",
+        usage: 1_200,
+        source: "test",
+      }],
+    });
+
+    expect(summary.notified).toBe(1);
+    const notices = await t.run((ctx) => ctx.db.query("apiPlanLimitNotices").collect());
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toMatchObject({
+      planKey: "api_starter_annual",
       state: "over_limit",
       ctaKind: "contact_support",
       blockedReason: "api_business_not_self_serve",

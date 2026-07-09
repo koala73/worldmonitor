@@ -150,6 +150,8 @@ export class App {
   private pendingDeepLinkCountry: string | null = null;
   private pendingDeepLinkExpanded = false;
   private pendingDeepLinkStoryCode: string | null = null;
+  private pendingDeepLinkChokepoint: string | null = null;
+  private chokepointDeepLinkTimer: number | null = null;
 
   private panelLayout: PanelLayoutManager;
   private dataLoader: DataLoaderManager;
@@ -943,6 +945,7 @@ export class App {
       isIdle: false,
       initialLoadComplete: false,
       resolvedLocation: 'global',
+      activeChokepoint: initialUrlState.chokepoint ?? null,
       initialUrlState,
       PANEL_ORDER_KEY,
       PANEL_SPANS_KEY,
@@ -1547,6 +1550,7 @@ export class App {
     const initState = parseMapUrlState(window.location.search, this.state.mapLayers);
     this.pendingDeepLinkCountry = initState.country ?? null;
     this.pendingDeepLinkExpanded = initState.expanded === true;
+    this.pendingDeepLinkChokepoint = initState.chokepoint ?? null;
     const earlyParams = new URLSearchParams(window.location.search);
     this.pendingDeepLinkStoryCode = earlyParams.get('c') ?? null;
     this.eventHandlers.setupUrlStateSync();
@@ -1766,6 +1770,10 @@ export class App {
       window.cancelAnimationFrame(this.visiblePanelPrimeRaf);
       this.visiblePanelPrimeRaf = null;
     }
+    if (this.chokepointDeepLinkTimer !== null) {
+      window.clearTimeout(this.chokepointDeepLinkTimer);
+      this.chokepointDeepLinkTimer = null;
+    }
 
     // Destroy all modules in reverse order
     for (let i = this.modules.length - 1; i >= 0; i--) {
@@ -1960,6 +1968,24 @@ export class App {
           this.state.map?.setRenderPaused(false);
           showToast('Country brief failed to open. Please try again.');
         });
+        this.eventHandlers.syncUrlState();
+      }, DEEP_LINK_INITIAL_DELAY_MS);
+    }
+
+    // Check for chokepoint deep link: ?chokepoint=bab_el_mandeb — pans the map to
+    // the waterway and opens its popup (the chokepoint equivalent of the country
+    // brief deep link). openChokepoint no-ops on an unknown id.
+    const deepLinkChokepoint = this.pendingDeepLinkChokepoint;
+    this.pendingDeepLinkChokepoint = null;
+    if (deepLinkChokepoint) {
+      trackDeeplinkOpened('chokepoint', deepLinkChokepoint);
+      this.state.activeChokepoint = deepLinkChokepoint;
+      this.chokepointDeepLinkTimer = window.setTimeout(() => {
+        this.chokepointDeepLinkTimer = null;
+        if (this.state.isDestroyed) return;
+        this.state.mapLayers.waterways = true;
+        this.state.map?.enableLayer('waterways');
+        this.state.map?.openChokepoint(deepLinkChokepoint);
         this.eventHandlers.syncUrlState();
       }, DEEP_LINK_INITIAL_DELAY_MS);
     }

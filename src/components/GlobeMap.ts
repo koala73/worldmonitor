@@ -459,9 +459,15 @@ interface GlobeControlsLike {
   removeEventListener(type: string, listener: () => void): void;
 }
 
+// Duration (ms) of the globe.gl pointOfView rotation used by setCenter(). Shared
+// so callers that must wait for the rotation to settle (e.g. openChokepoint,
+// which opens a popup at container centre) stay in lockstep with the animation.
+const SET_CENTER_ROTATION_MS = 1200;
+
 export class GlobeMap {
   private container: HTMLElement;
   private globe: GlobeInstance | null = null;
+  private initPromise: Promise<void> = Promise.resolve();
   private unsubscribeGlobeQuality: (() => void) | null = null;
   private unsubscribeGlobeTexture: (() => void) | null = null;
   private unsubscribeVisualPreset: (() => void) | null = null;
@@ -597,10 +603,18 @@ export class GlobeMap {
     this.container.classList.add('globe-mode');
     this.container.style.cssText = 'width:100%;height:100%;background:#000;position:relative;';
 
-    this.initGlobe().catch(err => {
+    this.initPromise = this.initGlobe();
+    this.initPromise.catch(err => {
       console.error('[GlobeMap] Init failed:', err);
       options.onInitError?.(err);
     });
+  }
+
+  // Resolves once initGlobe() has finished (this.globe is set on success). Lets
+  // callers defer work that needs the globe — e.g. a replayed chokepoint deep
+  // link — instead of dropping it during the async init window.
+  public whenReady(): Promise<void> {
+    return this.initPromise;
   }
 
   private async initGlobe(): Promise<void> {
@@ -2753,7 +2767,7 @@ export class GlobeMap {
       else if (zoom >= 3) altitude = 0.8;
       else                altitude = 1.5;
     }
-    this.globe.pointOfView({ lat: preset.lat, lng: preset.lng, altitude }, 1200);
+    this.globe.pointOfView({ lat: preset.lat, lng: preset.lng, altitude }, SET_CENTER_ROTATION_MS);
   }
 
   public setCenter(lat: number, lon: number, zoom?: number): void {
@@ -2771,7 +2785,7 @@ export class GlobeMap {
       else if (zoom >= 3) altitude = 0.8;
       else                altitude = 1.5;
     }
-    this.globe.pointOfView({ lat, lng: lon, altitude }, 1200);
+    this.globe.pointOfView({ lat, lng: lon, altitude }, SET_CENTER_ROTATION_MS);
   }
 
   public getCenter(): { lat: number; lon: number } | null {
@@ -2920,6 +2934,30 @@ export class GlobeMap {
   public triggerDatacenterClick(_id: string): void {}
   public triggerNuclearClick(_id: string): void {}
   public triggerIrradiatorClick(_id: string): void {}
+  // Rotate the globe so the chokepoint/waterway faces front, then open its popup
+  // once it has settled at container centre. The wait is tied to setCenter()'s
+  // rotation duration via SET_CENTER_ROTATION_MS so the two can't drift apart.
+  //
+  // MapContainer can replay a queued chokepoint deep-link right after construction,
+  // before initGlobe() has built the globe (this.globe is still null then), so
+  // defer until whenReady() rather than dropping the pan.
+  public openChokepoint(id: string): void {
+    const waterway = STRATEGIC_WATERWAYS.find(w => w.id === id || w.chokepointId === id);
+    if (!waterway) return;
+    const reveal = () => {
+      if (this.destroyed || !this.globe) return;
+      this.setCenter(waterway.lat, waterway.lon, 5);
+      const rect = this.container.getBoundingClientRect();
+      const x = rect.width / 2;
+      const y = rect.height / 2;
+      window.setTimeout(() => {
+        if (this.destroyed || !this.popup) return;
+        this.popup?.show({ type: 'waterway', data: waterway, x, y });
+      }, SET_CENTER_ROTATION_MS);
+    };
+    if (this.globe) reveal();
+    else void this.whenReady().then(reveal).catch(() => {});
+  }
   public fitCountry(code: string): void {
     if (!this.globe) return;
     const bbox = getCountryBbox(code);

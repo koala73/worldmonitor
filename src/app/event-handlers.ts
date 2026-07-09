@@ -797,10 +797,10 @@ export class EventHandlerManager implements AppModule {
       !isMissionPresetPromptDismissed();
     if (shouldPrompt) {
       // Defer the onboarding auto-open to browser idle after first paint so it
-      // never competes with load or first-interaction work — it was a fixed
-      // 700ms timeout that also forced a layout read (getBoundingClientRect +
+      // never competes with load or first-interaction work. This replaced a
+      // fixed 700ms timeout that forced layout reads (getBoundingClientRect +
       // offsetHeight) on the post-load path. Re-check state at fire time since
-      // the idle wait can outlast the old fixed delay.
+      // the idle wait can outlast an early user choice.
       scheduleAfterFirstPaint(() => {
         if (this.ctx.isDestroyed) return;
         if (loadStoredMissionPreset() || isMissionPresetPromptDismissed()) return;
@@ -1212,10 +1212,11 @@ export class EventHandlerManager implements AppModule {
     // SVG Map fires emitStateChange before the listener is installed — neither
     // can rely on a later onStateChanged to drive the URL write, so they must
     // use the immediate debounce path.
-    const { view, lat, lon, zoom } = this.ctx.initialUrlState ?? {};
+    const { view, lat, lon, zoom, chokepoint } = this.ctx.initialUrlState ?? {};
     const urlHasAsyncFlyTo =
       (lat !== undefined && lon !== undefined) ||   // setCenter → flyTo (requires both)
-      (!view && zoom !== undefined);                // zoom-only → setZoom animated
+      (!view && zoom !== undefined) ||              // zoom-only → setZoom animated
+      chokepoint !== undefined;                     // chokepoint opens after renderer readiness
     if (!urlHasAsyncFlyTo) {
       this.debouncedUrlSync();
     }
@@ -1277,6 +1278,7 @@ export class EventHandlerManager implements AppModule {
       layers: state.layers,
       country: isCountryVisible ? (briefPage?.getCode() ?? undefined) : undefined,
       expanded: isCountryVisible && briefPage?.getIsMaximized?.() ? true : undefined,
+      chokepoint: !isCountryVisible ? (this.ctx.activeChokepoint ?? undefined) : undefined,
     });
   }
 

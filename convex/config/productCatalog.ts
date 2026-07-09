@@ -322,9 +322,11 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     selfServe: true,
     highlighted: false,
     currentForCheckout: true,
-    // No self-serve plan-CHANGE surface yet (change-plan is a distinct Dodo API,
-    // not the customer portal), so the upgrade CTA falls through to contact_support.
-    canChangePlanSelfServe: false,
+    // Self-serve plan change is live (#4634): api_starter + api_business share a
+    // Dodo product COLLECTION with "Allow Subscription Updates" enabled, so the
+    // customer portal surfaces the prorated Starter→Business upgrade. Flipping
+    // this promotes the plan-limit-notice CTA from contact_support → billing_portal.
+    canChangePlanSelfServe: true,
     publicVisible: true,
   },
 

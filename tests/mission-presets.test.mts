@@ -339,6 +339,7 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
         url.searchParams.set('timeRange', state.timeRange);
         const layers = Object.keys(state.layers).filter((key) => state.layers[key]);
         url.searchParams.set('layers', layers.length ? layers.join(',') : 'none');
+        if (state.chokepoint) url.searchParams.set('chokepoint', state.chokepoint);
         return url.toString();
       }
       export function debounce(fn, delay) {
@@ -372,6 +373,12 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
       export function showToast(message) {
         globalThis.__missionToastMessages = globalThis.__missionToastMessages || [];
         globalThis.__missionToastMessages.push(message);
+      }
+    `],
+    ['@/utils/after-paint', `
+      export function scheduleAfterFirstPaint(task) {
+        globalThis.__missionAfterPaintTasks = globalThis.__missionAfterPaintTasks || [];
+        globalThis.__missionAfterPaintTasks.push(task);
       }
     `],
     ['@/utils/dom-utils', `
@@ -560,6 +567,7 @@ function resetMissionGlobals(): void {
   delete (globalThis as { __missionAisConfigured?: unknown }).__missionAisConfigured;
   delete (globalThis as { __missionFreshness?: unknown }).__missionFreshness;
   delete (globalThis as { __missionToastMessages?: unknown }).__missionToastMessages;
+  delete (globalThis as { __missionAfterPaintTasks?: unknown }).__missionAfterPaintTasks;
 }
 
 beforeEach(() => {
@@ -1078,6 +1086,7 @@ function createMissionHarness(options: { mobile?: boolean; storage?: MemoryStora
     isIdle: false,
     initialLoadComplete: true,
     resolvedLocation: 'global',
+    activeChokepoint: null,
     initialUrlState: null,
     PANEL_ORDER_KEY: 'panel-order',
     PANEL_SPANS_KEY: 'panel-spans',
@@ -1102,6 +1111,24 @@ function createMissionHarness(options: { mobile?: boolean; storage?: MemoryStora
 }
 
 describe('mission preset shell integration', () => {
+  it('rechecks mission prompt eligibility before the idle auto-open fires', async () => {
+    const { manager } = createMissionHarness();
+    const opened: Array<{ anchor: unknown; mobile: unknown }> = [];
+
+    manager.setupMissionPresets();
+    manager.openMissionPresetPopover = (anchor: unknown, mobile: unknown) => {
+      opened.push({ anchor, mobile });
+    };
+
+    const tasks = (globalThis as { __missionAfterPaintTasks?: Array<() => void> }).__missionAfterPaintTasks ?? [];
+    assert.equal(tasks.length, 1, 'desktop startup should schedule one mission prompt idle task');
+
+    saveMissionPreset('supply-chain-risk');
+    tasks[0]!();
+
+    assert.deepEqual(opened, [], 'stored mission state should cancel the delayed auto-open');
+  });
+
   it('applies a preset through the real manager path and resets state, storage, layers, map view, and URL to defaults', async () => {
     const { ctx, callbacks, manager } = createMissionHarness();
     const baselineWorkspace = defaultWorkspacePanelKeys('full');

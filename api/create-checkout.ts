@@ -26,6 +26,35 @@ const CONVEX_SITE_URL =
   process.env.CONVEX_SITE_URL ??
   (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
 const RELAY_SHARED_SECRET = process.env.RELAY_SHARED_SECRET ?? '';
+const ACTIVE_SUBSCRIPTION_EXISTS = 'ACTIVE_SUBSCRIPTION_EXISTS';
+const CHECKOUT_RELAY_USER_AGENT = 'worldmonitor-checkout-edge/1.0';
+
+type CreateCheckoutDeps = {
+  validateBearerToken: typeof validateBearerToken;
+  fetch: typeof fetch;
+};
+
+type RelayErrorBody = {
+  error?: unknown;
+  message?: unknown;
+  subscription?: unknown;
+  pendingPayment?: unknown;
+};
+
+function createDefaultCreateCheckoutDeps(): CreateCheckoutDeps {
+  return {
+    validateBearerToken,
+    fetch: (...args) => globalThis.fetch(...args),
+  };
+}
+
+let createCheckoutDeps: CreateCheckoutDeps = createDefaultCreateCheckoutDeps();
+
+export function __setCreateCheckoutDepsForTests(overrides: Partial<CreateCheckoutDeps> | null): void {
+  createCheckoutDeps = overrides
+    ? { ...createDefaultCreateCheckoutDeps(), ...overrides }
+    : createDefaultCreateCheckoutDeps();
+}
 
 function json(body: unknown, status: number, cors: Record<string, string>): Response {
   return new Response(JSON.stringify(body), {
@@ -36,6 +65,20 @@ function json(body: unknown, status: number, cors: Record<string, string>): Resp
       ...cors,
     },
   });
+}
+
+function checkoutBlockedBody(data: RelayErrorBody): {
+  error: string;
+  message: string;
+  subscription: unknown;
+  pendingPayment: unknown;
+} {
+  return {
+    error: typeof data?.error === 'string' ? data.error : 'CHECKOUT_BLOCKED',
+    message: typeof data?.message === 'string' ? data.message : 'This checkout could not be started.',
+    subscription: data?.subscription,
+    pendingPayment: data?.pendingPayment,
+  };
 }
 
 export default async function handler(
@@ -64,7 +107,7 @@ export default async function handler(
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
   if (!token) return json({ error: 'Unauthorized' }, 401, cors);
 
-  const session = await validateBearerToken(token);
+  const session = await createCheckoutDeps.validateBearerToken(token);
   if (!session.valid || !session.userId) {
     return json({ error: 'Unauthorized' }, 401, cors);
   }
@@ -114,11 +157,12 @@ export default async function handler(
 
   // Relay to Convex
   try {
-    const resp = await fetch(`${CONVEX_SITE_URL}/relay/create-checkout`, {
+    const resp = await createCheckoutDeps.fetch(`${CONVEX_SITE_URL}/relay/create-checkout`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${RELAY_SHARED_SECRET}`,
+        'User-Agent': CHECKOUT_RELAY_USER_AGENT,
       },
       body: JSON.stringify({
         userId: session.userId,
@@ -135,7 +179,6 @@ export default async function handler(
 
     const data = await resp.json();
     if (!resp.ok) {
-      console.error('[create-checkout] Relay error:', resp.status, data);
       if (resp.status === 409) {
         // Two distinct blocks share 409; the client discriminates on `error`
         // (ACTIVE_SUBSCRIPTION_EXISTS vs PAYMENT_IN_PROGRESS, #4438). Forward
@@ -144,13 +187,14 @@ export default async function handler(
         // to ACTIVE_SUBSCRIPTION_EXISTS would silently misroute a PAYMENT_IN_PROGRESS
         // (or any future) block to the wrong dialog — so fall back to a generic
         // code that the client classifies as a neutral block, not a duplicate sub.
-        return completeStandaloneIdempotency(idempotency, json({
-          error: data?.error ?? 'CHECKOUT_BLOCKED',
-          message: data?.message ?? 'This checkout could not be started.',
-          subscription: data?.subscription,
-          pendingPayment: data?.pendingPayment,
-        }, 409, cors));
+        const blockedBody = checkoutBlockedBody(data as RelayErrorBody);
+        if (blockedBody.error === ACTIVE_SUBSCRIPTION_EXISTS) {
+          return completeStandaloneIdempotency(idempotency, json(blockedBody, 409, cors));
+        }
+        console.error('[create-checkout] Relay error:', resp.status, data);
+        return completeStandaloneIdempotency(idempotency, json(blockedBody, 409, cors));
       }
+      console.error('[create-checkout] Relay error:', resp.status, data);
       return completeStandaloneIdempotency(idempotency, json({ error: data?.error || 'Checkout creation failed' }, 502, cors));
     }
 

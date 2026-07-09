@@ -116,6 +116,7 @@ export interface AppContext {
   isIdle: boolean;
   initialLoadComplete: boolean;
   resolvedLocation: 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
+  activeChokepoint: string | null;
 
   initialUrlState: import('@/utils').ParsedMapUrlState | null;
   readonly PANEL_ORDER_KEY: string;

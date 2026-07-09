@@ -3644,7 +3644,17 @@ export class MapComponent {
   }
 
   public flashLocation(lat: number, lon: number, durationMs = 2000): void {
-    const { width, height } = this.readContainerSize();
+    // flashMapForNews() flashes the map once per matching news item, firing in
+    // bursts across load passes (hundreds of calls shortly after load) against a
+    // container whose size is not changing. A live clientWidth/clientHeight read
+    // here forced a synchronous layout of the whole base-map SVG on every call
+    // (~75ms across the load in the authenticated DebugBear trace — the dominant
+    // Map forced-reflow, #5049 / tail of #5017/#5022). Route through the
+    // ResizeObserver-maintained cache
+    // instead; it falls back to a live read only while the cache is empty
+    // (first paint). This is the draw/render path, not a one-shot viewport
+    // command, so the cache is the correct source (#5022).
+    const { width, height } = this.getKnownContainerSize();
     if (!width || !height) return;
 
     const projection = this.getProjection(width, height);
@@ -3903,6 +3913,19 @@ export class MapComponent {
       x: pos[0],
       y: pos[1],
     });
+  }
+
+  // Pan to a chokepoint/waterway and open its popup (chokepoint deep-link target).
+  // Pans first so the waterway lands at the container centre, where the popup is
+  // anchored — unlike the trigger* methods which project in place.
+  public openChokepoint(id: string): void {
+    if (this.destroyed) return;
+    const waterway = STRATEGIC_WATERWAYS.find(w => w.id === id || w.chokepointId === id);
+    if (!waterway) return;
+    this.setCenter(waterway.lat, waterway.lon);
+    this.setZoom(5);
+    const { width, height } = this.readContainerSize();
+    this.popup.show({ type: 'waterway', data: waterway, x: width / 2, y: height / 2 });
   }
 
   public triggerDatacenterClick(id: string): void {

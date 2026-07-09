@@ -22,9 +22,87 @@ const DEFAULT_BASE_URL = 'https://www.worldmonitor.app';
 const RESILIENCE_SNAPSHOT_PATH = 'docs/snapshots/resilience-ranking-2026-05-28.json';
 const COUNTRY_NAMES_PATH = 'shared/country-names.json';
 const CHOKEPOINT_REGISTRY_PATH = 'src/config/chokepoint-registry.ts';
+const TRADE_ROUTES_PATH = 'src/config/trade-routes.ts';
 const GLOSSARY_DATA_PATH = 'blog-site/src/data/glossary.ts';
 const CHANGELOG_PATH = 'CHANGELOG.md';
 const CHANGELOG_PAGE_SIZE = 2;
+
+// Hand-authored, human-readable context for each canonical chokepoint, keyed by
+// the registry `id`. `region` describes what the waterway connects (used as the
+// index card subtitle and the "Connects" tile); `blurb` is a factual 2-sentence
+// summary used as the page lede and meta description; `glossarySlug` cross-links
+// to the matching /blog/glossary/ term where one exists. Keeping this beside the
+// registry (rather than in it) keeps the app bundle free of prose it never uses.
+const CHOKEPOINT_CONTENT = {
+  suez: {
+    region: 'Mediterranean ↔ Red Sea',
+    glossarySlug: 'suez-canal',
+    blurb:
+      'The Suez Canal is the artificial waterway linking the Mediterranean and the Red Sea, giving shipping the shortest route between Europe and Asia without rounding Africa. Its southern approach runs through Bab el-Mandeb, so a blockage or a Red Sea security threat that reroutes traffic around the Cape of Good Hope adds days of transit and materially raises freight costs.',
+  },
+  malacca_strait: {
+    region: 'Indian Ocean ↔ South China Sea',
+    glossarySlug: 'strait-of-malacca',
+    blurb:
+      'The Strait of Malacca runs between the Malay Peninsula and Sumatra, linking the Indian Ocean to the South China Sea and the Pacific. It is one of the busiest shipping lanes in the world and the main artery for energy and container flows into East Asia, where the alternatives are longer and lower-capacity.',
+  },
+  hormuz_strait: {
+    region: 'Persian Gulf ↔ Gulf of Oman',
+    glossarySlug: 'strait-of-hormuz',
+    blurb:
+      'The Strait of Hormuz is the narrow waterway connecting the Persian Gulf to the Gulf of Oman and the open ocean. It is the single most closely watched energy chokepoint on Earth: a very large share of the world’s seaborne crude oil and LNG has no alternative route out of the Gulf.',
+  },
+  bab_el_mandeb: {
+    region: 'Red Sea ↔ Gulf of Aden',
+    blurb:
+      'Bab el-Mandeb is the strait between the Horn of Africa and the Arabian Peninsula that connects the Red Sea to the Gulf of Aden and the Indian Ocean. Every ship using the Suez Canal route also transits Bab el-Mandeb, so attacks or instability here push traffic onto the far longer Cape of Good Hope route.',
+  },
+  panama: {
+    region: 'Atlantic ↔ Pacific',
+    blurb:
+      'The Panama Canal cuts across the Isthmus of Panama to link the Atlantic and Pacific oceans, saving vessels the long voyage around South America. Its lock system depends on freshwater from Gatún Lake, so drought can throttle daily transits and reshape Asia–US East Coast routing.',
+  },
+  taiwan_strait: {
+    region: 'East China Sea ↔ South China Sea',
+    blurb:
+      'The Taiwan Strait separates Taiwan from mainland China and carries a large share of the container traffic moving between North Asia and the rest of the world. Its strategic sensitivity makes any military tension here a first-order risk to global shipping and the semiconductor supply chain.',
+  },
+  cape_of_good_hope: {
+    region: 'Atlantic ↔ Indian Ocean',
+    blurb:
+      'The Cape of Good Hope is the deep-water route around the southern tip of Africa. It has no canal tolls and no width limits, which makes it the default fallback when the Suez–Bab el-Mandeb corridor is disrupted — at the cost of thousands of extra nautical miles and days of transit.',
+  },
+  gibraltar: {
+    region: 'Atlantic ↔ Mediterranean',
+    blurb:
+      'The Strait of Gibraltar is the roughly 14-km-wide gateway between the Atlantic Ocean and the Mediterranean Sea. Every cargo moving between the Mediterranean and the wider ocean — including Suez-bound Europe–Asia traffic — passes through it.',
+  },
+  bosphorus: {
+    region: 'Black Sea ↔ Sea of Marmara',
+    blurb:
+      'The Bosporus Strait runs through Istanbul to connect the Black Sea to the Sea of Marmara and, via the Dardanelles, the Mediterranean. It is the sole maritime outlet for Black Sea grain and Russian oil exports, and passage through it is governed by the Montreux Convention.',
+  },
+  korea_strait: {
+    region: 'East China Sea ↔ Sea of Japan',
+    blurb:
+      'The Korea Strait lies between the Korean Peninsula and the Japanese islands, linking the East China Sea to the Sea of Japan. It is a key passage for North Asian container and energy traffic and a closely watched naval corridor.',
+  },
+  dover_strait: {
+    region: 'English Channel ↔ North Sea',
+    blurb:
+      'The Strait of Dover is the narrowest point of the English Channel, connecting it to the North Sea. It is one of the busiest shipping lanes in the world, funnelling North Sea and Baltic traffic past the coasts of England and France.',
+  },
+  kerch_strait: {
+    region: 'Black Sea ↔ Sea of Azov',
+    blurb:
+      'The Kerch Strait connects the Black Sea to the Sea of Azov and is the only sea route to the Azov ports of Ukraine and Russia. It has been a repeated flashpoint in the Russia–Ukraine conflict, where control of the strait directly gates Azov-basin trade.',
+  },
+  lombok_strait: {
+    region: 'Indian Ocean ↔ Java Sea',
+    blurb:
+      'The Lombok Strait, between Bali and Lombok, is a deep-water alternative to the Malacca–Singapore route. It is favoured by the largest, deepest-draft bulk carriers and serves as a relief valve when Malacca is congested or disrupted.',
+  },
+};
 
 const GENERATED_DIRS = [
   'countries',
@@ -144,6 +222,27 @@ function formatScore(value) {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return 'not ranked';
   return numeric.toFixed(1).replace(/\.0$/, '');
+}
+
+function formatCoordinates(lat, lon) {
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return 'not available';
+  const latText = `${Math.abs(lat)}°${lat >= 0 ? 'N' : 'S'}`;
+  const lonText = `${Math.abs(lon)}°${lon >= 0 ? 'E' : 'W'}`;
+  return `${latText}, ${lonText}`;
+}
+
+// Clamp a lede down to a search-friendly meta description length without cutting
+// a word in half.
+function metaDescription(text, max = 155) {
+  const clean = String(text ?? '').trim();
+  if (clean.length <= max) return clean;
+  const truncated = clean.slice(0, max - 1);
+  const lastSpace = truncated.lastIndexOf(' ');
+  return `${(lastSpace > 40 ? truncated.slice(0, lastSpace) : truncated).replace(/[\s,;:.]+$/, '')}…`;
+}
+
+function metricTile(label, value) {
+  return `        <div class="metric"><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong></div>`;
 }
 
 async function importRepoModule(rootDir, relativePath) {
@@ -299,12 +398,21 @@ function gitFileLastmod(rootDir, relativePath) {
 export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   const resilience = readJson(rootDir, RESILIENCE_SNAPSHOT_PATH);
   const reverseNames = reverseCountryNames(readJson(rootDir, COUNTRY_NAMES_PATH));
-  const [{ CHOKEPOINT_REGISTRY }, { GLOSSARY_TERMS }] = await Promise.all([
+  const [{ CHOKEPOINT_REGISTRY }, { TRADE_ROUTES }, { GLOSSARY_TERMS }] = await Promise.all([
     importRepoModule(rootDir, CHOKEPOINT_REGISTRY_PATH),
+    importRepoModule(rootDir, TRADE_ROUTES_PATH),
     importRepoModule(rootDir, GLOSSARY_DATA_PATH),
   ]);
   const countries = normalizeCountries(resilience, reverseNames);
   const chokepoints = normalizeChokepoints(CHOKEPOINT_REGISTRY);
+  const tradeRoutesById = new Map(
+    (TRADE_ROUTES || []).map((route) => [route.id, {
+      id: route.id,
+      name: route.name,
+      volumeDesc: route.volumeDesc,
+      category: route.category,
+    }]),
+  );
   const glossaryTerms = normalizeGlossaryTerms(GLOSSARY_TERMS);
   const changelog = parseChangelog(readText(rootDir, CHANGELOG_PATH));
   const changelogLastmod = gitFileLastmod(rootDir, CHANGELOG_PATH)
@@ -320,6 +428,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
       chokepointRegistry: CHOKEPOINT_REGISTRY_PATH,
       glossaryData: GLOSSARY_DATA_PATH,
       changelog: CHANGELOG_PATH,
+      tradeRoutes: TRADE_ROUTES_PATH,
     },
     lastmod: {
       changelog: changelogLastmod,
@@ -328,6 +437,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     resilience,
     countries,
     chokepoints,
+    tradeRoutesById,
     glossaryTerms,
     changelog,
   };
@@ -394,6 +504,12 @@ function pageDocument({
       .card, .metric { border: 1px solid var(--line); border-radius: 8px; padding: 16px; background: var(--panel); }
       .metric strong { display: block; font-size: 28px; color: var(--text); }
       .eyebrow { color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; font-size: 12px; font-weight: 700; }
+      .cta { display: inline-flex; align-items: center; gap: 8px; margin-top: 22px; padding: 11px 18px; border-radius: 8px; background: var(--accent); color: #04170c; font-weight: 700; font-size: 15px; }
+      .cta:hover { text-decoration: none; filter: brightness(1.08); }
+      .routes { list-style: none; padding: 0; margin: 20px 0 0; display: grid; gap: 8px; }
+      .routes li { border: 1px solid var(--line); border-radius: 8px; padding: 11px 14px; background: var(--panel); color: var(--text); font-size: 14px; }
+      .routes .vol { color: var(--muted); }
+      .related { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 10px 20px; }
       .source { margin-top: 34px; font-size: 13px; color: var(--muted); }
       footer { border-top: 1px solid var(--line); padding-top: 20px; padding-bottom: 28px; color: var(--muted); font-size: 13px; }
     </style>
@@ -453,9 +569,11 @@ function renderCountryPage({ country, baseUrl, capturedAt, methodologyFormula })
   const path = `/countries/${country.slug}/`;
   const rankText = country.rank == null ? 'not ranked in the headline table' : `ranked #${country.rank}`;
   const description = `${country.name} is ${rankText} in the ${capturedAt} World Monitor Country Resilience Index snapshot.`;
+  const mapUrl = absoluteUrl(baseUrl, `/?country=${encodeURIComponent(country.code)}&expanded=1`);
   const body = `      <p class="eyebrow">Country &middot; ${escapeHtml(country.code)}</p>
       <h1>${escapeHtml(country.name)} country risk and resilience</h1>
       <p class="lede">${escapeHtml(description)} The page is a static, dated reference built from committed data, not a live score.</p>
+      <a class="cta" href="${escapeHtml(mapUrl)}">Open ${escapeHtml(country.name)} on the live map →</a>
       <section class="grid" aria-label="Country resilience metrics">
         <div class="metric"><span>Rank</span><strong>${escapeHtml(country.rank == null ? 'Not ranked' : `#${country.rank}`)}</strong></div>
         <div class="metric"><span>Overall score</span><strong>${escapeHtml(formatScore(country.overallScore))}</strong></div>
@@ -464,7 +582,7 @@ function renderCountryPage({ country, baseUrl, capturedAt, methodologyFormula })
       </section>
       <h2>How to read this page</h2>
       <p>World Monitor's Country Resilience Index is a 0-100 structural resilience score. This page records the committed ${escapeHtml(prettyDate(capturedAt))} snapshot using the ${escapeHtml(methodologyFormula)} methodology tag.</p>
-      <p>Use it as a crawlable reference and stable landing page. For current operational data, use the dashboard or API.</p>
+      <p>Use it as a crawlable reference and stable landing page. For the current live picture — active alerts, conflict events, market and energy signals — open ${escapeHtml(country.name)} on the live map above.</p>
       <p class="source">Source: ${RESILIENCE_SNAPSHOT_PATH}. Captured ${escapeHtml(capturedAt)}.</p>`;
   return pageDocument({
     baseUrl,
@@ -502,12 +620,15 @@ function renderCountryPage({ country, baseUrl, capturedAt, methodologyFormula })
 
 function renderChokepointsIndex({ chokepoints, baseUrl, lastmod }) {
   const path = '/chokepoints/';
-  const description = 'Static reference pages for World Monitor maritime chokepoints and waterways.';
+  const description = 'The maritime chokepoints and waterways World Monitor tracks — the narrow straits and canals where a disruption removes optionality from global trade, energy and food flows.';
   const body = `      <p class="eyebrow">Maritime corpus</p>
       <h1>Chokepoints and waterways</h1>
       <p class="lede">${escapeHtml(description)}</p>
       <div class="grid">
-${chokepoints.map((cp) => `        <a class="card" href="/chokepoints/${cp.slug}/"><strong>${escapeHtml(cp.displayName)}</strong><br><span>${escapeHtml(cp.id)} &middot; ${cp.routeIds.length} route${cp.routeIds.length === 1 ? '' : 's'}</span></a>`).join('\n')}
+${chokepoints.map((cp) => {
+    const subtitle = CHOKEPOINT_CONTENT[cp.id]?.region || 'Strategic maritime waterway';
+    return `        <a class="card" href="/chokepoints/${cp.slug}/"><strong>${escapeHtml(cp.displayName)}</strong><br><span>${escapeHtml(subtitle)}</span></a>`;
+  }).join('\n')}
       </div>
       <p class="source">Source: ${CHOKEPOINT_REGISTRY_PATH}.</p>`;
   return pageDocument({
@@ -532,25 +653,52 @@ ${chokepoints.map((cp) => `        <a class="card" href="/chokepoints/${cp.slug}
   });
 }
 
-function renderChokepointPage({ chokepoint, baseUrl, lastmod }) {
+function renderChokepointPage({ chokepoint, baseUrl, lastmod, tradeRoutesById }) {
   const path = `/chokepoints/${chokepoint.slug}/`;
-  const description = `${chokepoint.displayName} is one of the 13 canonical maritime chokepoints tracked by World Monitor.`;
-  const modelText = chokepoint.shockModelSupported
-    ? 'This chokepoint has an energy shock model in the committed registry.'
-    : 'This chokepoint is monitored as a waterway reference; it does not currently have an energy shock model flag in the registry.';
+  const content = CHOKEPOINT_CONTENT[chokepoint.id] || {};
+  const blurb = content.blurb
+    || `${chokepoint.displayName} is one of the 13 canonical maritime chokepoints tracked by World Monitor.`;
+  const description = metaDescription(blurb);
+  const mapUrl = absoluteUrl(baseUrl, `/?chokepoint=${encodeURIComponent(chokepoint.id)}`);
+
+  const routes = chokepoint.routeIds
+    .map((id) => tradeRoutesById.get(id))
+    .filter(Boolean);
+  const routesSection = routes.length
+    ? `<ul class="routes">
+${routes.map((route) => {
+    const category = route.category ? route.category.charAt(0).toUpperCase() + route.category.slice(1) : '';
+    return `        <li>${escapeHtml(route.name)} <span class="vol">&middot; ${escapeHtml(route.volumeDesc)}${category ? ` &middot; ${escapeHtml(category)}` : ''}</span></li>`;
+  }).join('\n')}
+      </ul>`
+    : `<p>${escapeHtml(chokepoint.displayName)} is tracked as a strategic waterway reference. It is not currently mapped to one of World Monitor's modelled trade-route corridors, but its vessel traffic and disruption signals are still monitored on the live map.</p>`;
+
+  const tiles = [
+    content.region ? metricTile('Connects', content.region) : null,
+    metricTile('Position', formatCoordinates(chokepoint.lat, chokepoint.lon)),
+    chokepoint.shockModelSupported ? metricTile('Energy shock model', 'Yes') : null,
+  ].filter(Boolean).join('\n');
+
+  const relatedItems = [];
+  if (content.glossarySlug) {
+    relatedItems.push(`<a href="/blog/glossary/${content.glossarySlug}/">${escapeHtml(chokepoint.displayName)} in the glossary</a>`);
+  }
+  relatedItems.push('<a href="/blog/glossary/maritime-chokepoint/">What is a maritime chokepoint?</a>');
+
   const body = `      <p class="eyebrow">Chokepoint</p>
-      <h1>${escapeHtml(chokepoint.displayName)} chokepoint</h1>
-      <p class="lede">${escapeHtml(description)}</p>
-      <section class="grid" aria-label="Chokepoint registry fields">
-        <div class="metric"><span>Canonical ID</span><strong>${escapeHtml(chokepoint.id)}</strong></div>
-        <div class="metric"><span>Trade routes</span><strong>${chokepoint.routeIds.length}</strong></div>
-        <div class="metric"><span>Energy baseline</span><strong>${escapeHtml(chokepoint.baselineId || 'None')}</strong></div>
-        <div class="metric"><span>Coordinates</span><strong>${escapeHtml(`${chokepoint.lat}, ${chokepoint.lon}`)}</strong></div>
+      <h1>${escapeHtml(chokepoint.displayName)}</h1>
+      <p class="lede">${escapeHtml(blurb)}</p>
+      <a class="cta" href="${escapeHtml(mapUrl)}">Open ${escapeHtml(chokepoint.displayName)} on the live map →</a>
+      <section class="grid" aria-label="Chokepoint overview">
+${tiles}
       </section>
-      <h2>Operational context</h2>
-      <p>${escapeHtml(modelText)}</p>
-      <p>Canonical ID: ${escapeHtml(chokepoint.id)}. Route IDs: ${escapeHtml(chokepoint.routeIds.length ? chokepoint.routeIds.join(', ') : 'none configured')}.</p>
-      <p class="source">Source: ${CHOKEPOINT_REGISTRY_PATH}.</p>`;
+      <h2>Major trade routes through ${escapeHtml(chokepoint.displayName)}</h2>
+      ${routesSection}
+      <h2>Related</h2>
+      <ul class="related">
+${relatedItems.map((item) => `        <li>${item}</li>`).join('\n')}
+      </ul>
+      <p class="source">Source: ${CHOKEPOINT_REGISTRY_PATH} and ${TRADE_ROUTES_PATH}.</p>`;
   return pageDocument({
     baseUrl,
     path,
@@ -748,6 +896,7 @@ export async function buildCorpus({
         chokepoint,
         baseUrl,
         lastmod: data.lastmod.chokepoints,
+        tradeRoutesById: data.tradeRoutesById,
       }),
     );
   }

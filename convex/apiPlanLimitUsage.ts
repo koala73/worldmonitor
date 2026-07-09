@@ -110,10 +110,16 @@ function dodoUpgradeNotice(planKey: string, dimension: PlanLimitDimension): Omit
   if (planKey === "api_starter" || planKey === "api_starter_annual") {
     const business = PRODUCT_CATALOG.api_business;
     // Gate billing_portal on a real self-serve plan-CHANGE surface, not on
-    // currentForCheckout ("purchasable at all"). The Dodo customer portal cannot
-    // change an existing customer's plan, so pointing "Upgrade to Business" there
-    // would dead-end; fall through to contact_support until that surface exists.
-    if (business?.canChangePlanSelfServe) {
+    // currentForCheckout ("purchasable at all"). The Dodo customer portal
+    // surfaces the prorated Starter→Business change only for MONTHLY api_starter:
+    // it shares a product collection with "Allow Subscription Updates" enabled
+    // (#4634). api_starter_annual DOES carry planLimits (API_STARTER_FEATURES),
+    // so it IS scanner-reachable — but its membership in that upgradeable
+    // collection is unverified, so routing it to the portal risks a dead-end
+    // (open portal, no upgrade path). Send annual to contact_support until that
+    // is confirmed. This also keeps parity with the Settings "Upgrade to
+    // Business" button, which renders only for exact 'api_starter'.
+    if (planKey === "api_starter" && business?.canChangePlanSelfServe) {
       return { upgradeTargetPlanKey: "api_business", ctaKind: "billing_portal" };
     }
     return {
