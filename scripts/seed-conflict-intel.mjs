@@ -350,12 +350,15 @@ async function fetchAll() {
   if (pi && gd) await writeExtraKeyWithMeta('intel:pizzint:v1:gdelt', { pizzint: pi, tensionPairs: gd }, PIZZINT_TTL, gd.length ?? 0);
 
   if (!ac) {
+    const missingCredentials = acled.status === 'fulfilled';
     const reason = acled.status === 'rejected'
       ? (acled.reason?.message || acled.reason)
       : 'ACLED credentials not configured (set ACLED_EMAIL + ACLED_PASSWORD or ACLED_ACCESS_TOKEN)';
-    throw new Error(
+    const err = new Error(
       `ACLED display fetch failed for ${ACLED_CACHE_KEY}; refusing to let auxiliary conflict/intel feeds mask the primary feed (${reason})`,
     );
+    if (missingCredentials || acled.reason?.nonRetryable) err.nonRetryable = true;
+    throw err;
   }
 
   return ac;
