@@ -111,7 +111,7 @@ describe('mobile SVG map feature caps and label reflow skip (#4463 / U7)', () =>
     );
   });
 
-  it('isolates mobile tap paint and disables marker hover transitions in the touch map', () => {
+  it('isolates mobile tap paint and removes marker transform transitions in the touch map', () => {
     assert.match(
       cssSrc,
       /\.map-container\s*\{[\s\S]*?contain:\s*layout paint;/,
@@ -128,8 +128,15 @@ describe('mobile SVG map feature caps and label reflow skip (#4463 / U7)', () =>
     );
     assert.match(
       mobileTouchBlock,
-      /\.nat-event-marker,\s*\.conflict-click-area\s*\{[\s\S]*?transition:\s*none;/,
-      'mobile marker tap targets should not run hover/opacity transitions during touch interactions',
+      /\.nat-event-marker,\s*\.conflict-click-area\s*\{[\s\S]*?transition:\s*opacity 0\.2s ease;/,
+      'mobile marker tap targets should keep opacity fades while avoiding transform transitions',
+    );
+    const mobileMarkerTransitionBlock =
+      mobileTouchBlock.match(/\.nat-event-marker,\s*\.conflict-click-area\s*\{[\s\S]*?\}/)?.[0] ?? '';
+    assert.doesNotMatch(
+      mobileMarkerTransitionBlock,
+      /transform/,
+      'mobile marker tap target transitions must not include transform',
     );
     assert.match(
       mobileTouchBlock,

@@ -13281,7 +13281,7 @@ a.prediction-link:hover {
 
   .nat-event-marker,
   .conflict-click-area {
-    transition: none;
+    transition: opacity 0.2s ease;
   }
 
   .nat-event-marker:hover {
