@@ -109,6 +109,12 @@ describe('mobile SVG map feature caps and label reflow skip (#4463 / U7)', () =>
       /private resumeMobileLabelVisibility\(\): void \{\s*if \(!this\.isMobile \|\| this\.mobileLabelVisibilityArmed\) return;\s*this\.mobileLabelVisibilityArmed = true;\s*this\.updateLabelVisibility\(this\.state\.zoom\);\s*\}/,
       'resume should remain mobile-only, idempotent, and run one label pass when movement/zoom arms it',
     );
+    const fitCountryBlock = sliceBetween('public fitCountry(code: string): void {', 'public getState(): MapState {');
+    assert.equal(
+      fitCountryBlock.match(/this\.setCenter\(midLat, midLon\);\s*this\.resumeMobileLabelVisibility\(\);/g)?.length,
+      2,
+      'fitCountry should re-arm mobile label measurement after both country-fit center paths',
+    );
   });
 
   it('isolates mobile tap paint and removes marker transform transitions in the touch map', () => {

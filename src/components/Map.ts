@@ -4191,6 +4191,7 @@ export class MapComponent {
     if (!topLeft || !bottomRight) {
       this.state.zoom = 4;
       this.setCenter(midLat, midLon);
+      this.resumeMobileLabelVisibility();
       return;
     }
     const pxWidth = Math.abs(bottomRight[0] - topLeft[0]);
@@ -4200,6 +4201,7 @@ export class MapComponent {
     const zoomY = pxHeight > 0 ? (height * padFactor) / pxHeight : 4;
     this.state.zoom = Math.max(1, Math.min(8, Math.min(zoomX, zoomY)));
     this.setCenter(midLat, midLon);
+    this.resumeMobileLabelVisibility();
   }
 
   public getState(): MapState {
