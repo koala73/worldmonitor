@@ -69,6 +69,7 @@ describe('forecast integrity and provenance surfaces', () => {
     const cyberProbMax = parseNumericConst(seeder, 'CYBER_PROB_MAX');
     const conflictBaseMax = parseNumericConst(seeder, 'CONFLICT_BASE_DETECTOR_PROB_MAX');
     const ucdpConflictZoneMax = parseNumericConst(seeder, 'UCDP_CONFLICT_ZONE_PROB_MAX');
+    const ucdpConflictZoneGateMin = parseNumericConst(seeder, 'UCDP_CONFLICT_ZONE_GATE_PROB_MIN');
     const velocitySpikeLift = parseNumericConst(seeder, 'VELOCITY_SPIKE_PROBABILITY_LIFT');
     const velocitySpikeMax = parseNumericConst(seeder, 'VELOCITY_SPIKE_PROBABILITY_MAX');
     const defensePressureLift = parseNumericConst(seeder, 'DEFENSE_DIRECT_CONFIRMATION_PRESSURE_LIFT');
@@ -92,6 +93,10 @@ describe('forecast integrity and provenance surfaces', () => {
       `forecast panel doc must disclose UCDP conflict-zone cap from UCDP_CONFLICT_ZONE_PROB_MAX=${ucdpConflictZoneMax}`,
     );
     assert.ok(
+      docs.includes(`| UCDP conflict-zone gate floor at 10 events (before velocity spike) | ${formatProbabilityFixed(ucdpConflictZoneGateMin)} |`),
+      `forecast panel doc must disclose UCDP conflict-zone gate floor from UCDP_CONFLICT_ZONE_GATE_PROB_MIN=${ucdpConflictZoneGateMin}`,
+    );
+    assert.ok(
       docs.includes(`| Conflict velocity-spike override ceiling | ${formatProbabilityFixed(velocitySpikeMax)} |`),
       `forecast panel doc must disclose velocity-spike ceiling from VELOCITY_SPIKE_PROBABILITY_MAX=${velocitySpikeMax}`,
     );
@@ -107,7 +112,6 @@ describe('forecast integrity and provenance surfaces', () => {
     assert.match(docs, /Infrastructure probability ceiling \| 0\.85/);
     assert.match(seeder, /Math\.min\(CYBER_PROB_MAX,/);
     assert.match(seeder, /Math\.min\(CONFLICT_BASE_DETECTOR_PROB_MAX,/);
-    assert.match(seeder, /Math\.min\(UCDP_CONFLICT_ZONE_PROB_MAX,/);
     assert.equal(
       countMatches(seeder, /Math\.min\(VELOCITY_SPIKE_PROBABILITY_MAX,\s*prob \+ VELOCITY_SPIKE_PROBABILITY_LIFT\)/g),
       2,
@@ -115,6 +119,7 @@ describe('forecast integrity and provenance surfaces', () => {
     );
     assert.match(docs, /Market-bucket scenario calibration is an editorial calibration layer/);
     assert.match(docs, /Defense.*0\.12/);
+    assert.match(docs, /UCDP conflict-zone counts begin at the 10-event publish gate with a `0\.35` base probability/);
     assert.ok(
       docs.includes(`each unit of direct \`defense_repricing\` confirmation adds \`${formatSignedProbability(defensePressureLift)}\` pressure and \`${formatSignedProbability(defenseConfidenceLift)}\` confidence`),
       'forecast panel doc must disclose direct defense_repricing pressure and confidence lifts',
@@ -124,8 +129,16 @@ describe('forecast integrity and provenance surfaces', () => {
       'forecast panel doc must distinguish the extra confidence penalty from the table-driven pressure dampener',
     );
     assert.match(docs, /1% floor and 95% cap/);
+    assert.match(docs, /normalized against each domain curve's peak multiplier/);
     assert.match(seeder, /const PROJECTION_PROBABILITY_FLOOR = 0\.01;/);
     assert.match(seeder, /const PROJECTION_PROBABILITY_CAP = 0\.95;/);
+    assert.match(seeder, /const peakMult = Math\.max\(curve\.h24 \|\| 0, curve\.d7 \|\| 0, curve\.d30 \|\| 0\);/);
+    assert.doesNotMatch(seeder, /const anchor = pred\.timeHorizon/);
+    assert.match(seeder, /Math\.min\(\s*UCDP_CONFLICT_ZONE_PROB_MAX,\s*UCDP_CONFLICT_ZONE_GATE_PROB_MIN\s*\+/);
+    assert.match(
+      seeder,
+      /normalize\(count, 10, 100\) \* \(UCDP_CONFLICT_ZONE_PROB_MAX - UCDP_CONFLICT_ZONE_GATE_PROB_MIN\)/,
+    );
     assert.ok(
       docs.includes(`| Cyber probability ceiling | ${formatProbability(cyberProbMax)} |`),
       `forecast panel doc must derive cyber ceiling from CYBER_PROB_MAX=${cyberProbMax}`,
