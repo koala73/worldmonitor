@@ -161,6 +161,39 @@ describe('resolveHardSpec', () => {
     assert.equal(result.evidence.partialMetricValue, 1);
   });
 
+  it('resolves truncated count specs when the partial count already establishes YES', () => {
+    const generatedAt = Date.parse('2026-07-01T00:00:00Z');
+    const deadline = Date.parse('2026-07-10T00:00:00Z');
+    const e = entry({
+      id: 'fc-pruned-yes',
+      generatedAt,
+      deadline,
+      spec: {
+        kind: 'hard',
+        metricKey: 'conflict:ucdp-events:v1|count(country==Mali)',
+        operator: '>=',
+        threshold: 2,
+        window: 'within-horizon',
+        deadline,
+        sourceFeed: 'conflict:ucdp-events:v1',
+      },
+    });
+    const feed = {
+      events: [
+        { country: 'Mali', dateStart: Date.parse('2026-07-09T00:00:00Z') },
+        { country: 'Mali', dateStart: Date.parse('2026-07-10T00:00:00Z') },
+        { country: 'Ghana', dateStart: Date.parse('2026-07-11T00:00:00Z') },
+      ],
+    };
+
+    const result = resolveHardSpec(e, feed, {}, deadline + UCDP_SETTLEMENT_LAG_MS);
+
+    assert.equal(result.status, 'resolved');
+    assert.equal(result.outcome, 'YES');
+    assert.equal(result.evidence.metricValue, 2);
+    assert.equal(result.evidence.sourceCoverage.minTs, Date.parse('2026-07-09T00:00:00Z'));
+  });
+
   it('resolves at-deadline point reads from the first sample at or after deadline', () => {
     const e = entry({
       spec: {

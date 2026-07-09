@@ -262,6 +262,10 @@ function partialCountEstablishesOutcome(count, spec) {
   return false;
 }
 
+// Count specs currently resolve only against homogeneous dated snapshots
+// (UCDP GED), where feed-wide min/max dates describe every country series.
+// Do not reuse this coverage gate for heterogeneous feeds unless it is scoped
+// to the metric filter first.
 function summarizeRecordCoverage(feedData) {
   let count = 0;
   let minTs = NaN;
