@@ -534,9 +534,11 @@ describe('forecast trace artifact builder', () => {
 describe('market transmission macro state', () => {
   it('uses live-shaped macro and market payloads to form energy-aware world signals and keep market consequences selective', () => {
     const fredSeries = (seriesId, observations) => ({
-      seriesId,
-      title: seriesId,
-      observations: observations.map(([date, value]) => ({ date, value })),
+      series: {
+        seriesId,
+        title: seriesId,
+        observations: observations.map(([date, value]) => ({ date, value })),
+      },
     });
 
     const conflict = makePrediction('conflict', 'Middle East', 'Hormuz escalation risk', 0.73, 0.64, '7d', [

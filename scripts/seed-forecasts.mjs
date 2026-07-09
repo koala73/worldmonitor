@@ -9672,7 +9672,8 @@ function extractFredSeriesMap(payload) {
 }
 
 function extractFredObservations(series) {
-  return Array.isArray(series?.observations) ? series.observations : [];
+  const observations = series?.series?.observations ?? series?.observations;
+  return Array.isArray(observations) ? observations : [];
 }
 
 function getFredLatestObservation(series) {
