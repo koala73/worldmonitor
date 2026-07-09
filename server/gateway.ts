@@ -1470,7 +1470,7 @@ export function createDomainGateway(
                 headers: {
                   'Content-Type': 'application/json',
                   'Cache-Control': 'no-store',
-                  ...rateLimitHeaders({ limit: burst.limit, remaining: 0, resetMs: burst.reset, retryAfterSec }),
+                  ...rateLimitHeaders({ limit: burst.limit, remaining: 0, resetMs: burst.reset, retryAfterSec, windowSec: 60 }),
                   ...corsHeaders,
                 },
               });
@@ -1497,6 +1497,8 @@ export function createDomainGateway(
                       remaining: 0,
                       resetMs: Date.now() + meter.retryAfterSec * 1000,
                       retryAfterSec: meter.retryAfterSec,
+                      // Daily ceiling window (24 h) for the advertised policy.
+                      windowSec: 86_400,
                     }),
                     ...corsHeaders,
                   },

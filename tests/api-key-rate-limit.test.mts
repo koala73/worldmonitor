@@ -157,6 +157,24 @@ describe('#3199 U3 — burst limiter fail-open + headers', () => {
     assert.equal(h['Retry-After'], '42');
   });
 
+  it('rateLimitHeaders emits IETF RateLimit fields with a delta-seconds reset', () => {
+    const now = Date.now();
+    const h = rateLimitHeaders({ limit: 60, remaining: 7, resetMs: now + 30_000, retryAfterSec: 30, windowSec: 60 });
+    // RateLimit-Policy advertises the quota + window (structured-field syntax).
+    assert.equal(h['RateLimit-Policy'], '"default";q=60;w=60');
+    assert.equal(h['RateLimit-Limit'], '60');
+    assert.equal(h['RateLimit-Remaining'], '7');
+    // IETF reset is DELTA-seconds (~30), not the epoch-ms carried by X-RateLimit-Reset.
+    const resetSec = Number(h['RateLimit-Reset']);
+    assert.ok(resetSec >= 29 && resetSec <= 31, `RateLimit-Reset should be ~30s, got ${resetSec}`);
+    assert.equal(h.RateLimit, `"default";r=7;t=${resetSec}`);
+  });
+
+  it('rateLimitHeaders defaults the advertised window to 60s', () => {
+    const h = rateLimitHeaders({ limit: 600, remaining: 0, resetMs: Date.now() + 1000, retryAfterSec: 1 });
+    assert.equal(h['RateLimit-Policy'], '"default";q=600;w=60');
+  });
+
   it('Retry-After floors at 1 second', () => {
     assert.equal(rateLimitHeaders({ limit: 60, remaining: 0, resetMs: 0, retryAfterSec: 0 })['Retry-After'], '1');
   });

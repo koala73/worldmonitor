@@ -134,15 +134,29 @@ export function getClientIp(request: Request): string {
   return xr || UNKNOWN_CLIENT_IP;
 }
 
-function tooManyRequestsResponse(limit: number, reset: number, corsHeaders: Record<string, string>): Response {
+function tooManyRequestsResponse(limit: number, reset: number, corsHeaders: Record<string, string>, windowSeconds: number): Response {
+  // `reset` is a Unix epoch in MILLISECONDS (Upstash). IETF RateLimit fields
+  // carry a delta-seconds reset (`t` / RateLimit-Reset), NOT an epoch — derive
+  // it here. Legacy X-RateLimit-Reset stays epoch-ms for back-compat.
+  const resetSeconds = Math.max(0, Math.ceil((reset - Date.now()) / 1000));
   return new Response(JSON.stringify({ error: 'Too many requests' }), {
     status: 429,
     headers: {
       'Content-Type': 'application/json',
+      // IETF RateLimit fields (draft-ietf-httpapi-ratelimit-headers). The
+      // combined RateLimit member references the "default" policy advertised on
+      // every API response via vercel.json so agents can self-throttle. Mirrors
+      // api/_rate-limit.js.
+      'RateLimit-Policy': `"default";q=${limit};w=${windowSeconds}`,
+      'RateLimit-Limit': String(limit),
+      'RateLimit-Remaining': '0',
+      'RateLimit-Reset': String(resetSeconds),
+      RateLimit: `"default";r=0;t=${resetSeconds}`,
+      // Legacy X-RateLimit-* retained for back-compat (Reset is epoch-ms).
       'X-RateLimit-Limit': String(limit),
       'X-RateLimit-Remaining': '0',
       'X-RateLimit-Reset': String(reset),
-      'Retry-After': String(Math.ceil((reset - Date.now()) / 1000)),
+      'Retry-After': String(resetSeconds),
       ...corsHeaders,
     },
   });
@@ -187,7 +201,7 @@ export async function checkRateLimit(request: Request, corsHeaders: Record<strin
     const { success, limit, reset } = await limitWithFallback(rl, ip, `rl:fw:${ip}`, GLOBAL_RATE_LIMIT, GLOBAL_RATE_WINDOW_SECONDS);
 
     if (!success) {
-      return tooManyRequestsResponse(limit, reset, corsHeaders);
+      return tooManyRequestsResponse(limit, reset, corsHeaders, GLOBAL_RATE_WINDOW_SECONDS);
     }
 
     return null;
@@ -415,7 +429,7 @@ export async function checkEndpointRateLimit(request: Request, pathname: string,
     const { success, limit, reset } = await limitWithFallback(rl, `${pathname}:${ip}`, `rl:ep:fw:${pathname}:${ip}`, policy.limit, durationToSeconds(policy.window));
 
     if (!success) {
-      return tooManyRequestsResponse(limit, reset, corsHeaders);
+      return tooManyRequestsResponse(limit, reset, corsHeaders, durationToSeconds(policy.window));
     }
 
     return null;

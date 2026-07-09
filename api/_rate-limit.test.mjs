@@ -209,6 +209,14 @@ describe('api/_rate-limit checkRateLimit fail-open / fail-closed (#3531 M9)', ()
     assert.equal(res.status, 429);
     assert.equal(res.headers.get('X-RateLimit-Limit'), '30');
     assert.equal(res.headers.get('X-RateLimit-Remaining'), '0');
+    // IETF RateLimit fields alongside the legacy set (draft-ietf-httpapi-ratelimit-headers).
+    assert.equal(res.headers.get('RateLimit-Policy'), '"default";q=30;w=60');
+    assert.equal(res.headers.get('RateLimit-Limit'), '30');
+    assert.equal(res.headers.get('RateLimit-Remaining'), '0');
+    // Combined RateLimit member references the "default" policy with a delta-seconds reset.
+    assert.match(res.headers.get('RateLimit') ?? '', /^"default";r=0;t=\d+$/);
+    // Retry-After is delta-seconds (not the epoch-ms carried by X-RateLimit-Reset).
+    assert.match(res.headers.get('Retry-After') ?? '', /^\d+$/);
     assert.equal(
       res.headers.get('Access-Control-Allow-Origin'),
       'https://worldmonitor.app',

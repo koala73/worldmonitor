@@ -207,19 +207,38 @@ export async function reserveDailyMeter(opts: {
 }
 
 /**
- * Standard rate-limit response headers. Mirrors api/_rate-limit.js:110-116 so
- * customers get a uniform self-throttle contract across the per-IP and
- * per-account limiters. The gateway merges these with corsHeaders.
+ * Standard rate-limit response headers for a 429. Emits the IETF RateLimit
+ * fields (draft-ietf-httpapi-ratelimit-headers) — RateLimit-Policy advertises
+ * the quota/window, the combined RateLimit member carries live remaining +
+ * delta-seconds reset — alongside the legacy X-RateLimit-* set for back-compat,
+ * so customers get a uniform self-throttle contract across the per-IP and
+ * per-account limiters. Mirrors api/_rate-limit.js. The gateway merges these
+ * with corsHeaders.
+ *
+ * `resetMs` is a Unix epoch in MILLISECONDS; the IETF reset (`t` /
+ * RateLimit-Reset) is delta-SECONDS, so it is derived here. `windowSec` is the
+ * policy window in seconds (defaults to the 60 s burst window).
  */
 export function rateLimitHeaders(opts: {
   limit: number;
   remaining: number;
   resetMs: number;
   retryAfterSec: number;
+  windowSec?: number;
 }): Record<string, string> {
+  const remaining = Math.max(0, opts.remaining);
+  const resetSeconds = Math.max(0, Math.ceil((opts.resetMs - Date.now()) / 1000));
+  const windowSec = opts.windowSec ?? 60;
   return {
+    // IETF RateLimit fields.
+    'RateLimit-Policy': `"default";q=${opts.limit};w=${windowSec}`,
+    'RateLimit-Limit': String(opts.limit),
+    'RateLimit-Remaining': String(remaining),
+    'RateLimit-Reset': String(resetSeconds),
+    RateLimit: `"default";r=${remaining};t=${resetSeconds}`,
+    // Legacy X-RateLimit-* retained for back-compat (Reset is epoch-ms).
     'X-RateLimit-Limit': String(opts.limit),
-    'X-RateLimit-Remaining': String(Math.max(0, opts.remaining)),
+    'X-RateLimit-Remaining': String(remaining),
     'X-RateLimit-Reset': String(opts.resetMs),
     'Retry-After': String(Math.max(1, opts.retryAfterSec)),
   };

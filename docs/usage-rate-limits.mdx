@@ -69,22 +69,41 @@ These mostly use the default public API limit. Cache headers vary by endpoint:
 - `GET /api/health` — `private, no-store, max-age=0` plus `CDN-Cache-Control: no-store`.
 - `GET /api/version` — `public, s-maxage=300, stale-while-revalidate=60, stale-if-error=3600`.
 
+## Rate limit response headers (self-throttle before a 429)
+
+Every `/api/*` response — success or error — advertises the [IETF `RateLimit` header fields](https://datatracker.ietf.org/doc/draft-ietf-httpapi-ratelimit-headers/) so an agent can pace itself **before** it trips a 429:
+
+```
+RateLimit-Policy: "default";q=600;w=60
+RateLimit-Limit: 600
+```
+
+- `RateLimit-Policy` — the applicable quota (`q`) over a window of `w` seconds for the default sliding window. Stricter per-endpoint, per-plan, and OAuth limits (see the tables above) apply on those routes.
+- `RateLimit-Limit` — the same quota as a bare integer, for parsers that predate the structured-field draft.
+
+These are static advertisements, so they add no latency on the hot path. The legacy `X-RateLimit-*` names are also emitted for back-compat.
+
 ## Response when limited
 
-HTTP 429 with the standard rate-limit headers so you can self-throttle:
+An HTTP 429 additionally carries the live per-window counters (remaining is `0`; the reset and `Retry-After` are **delta-seconds**) plus the combined `RateLimit` member:
 
 ```
 HTTP/1.1 429 Too Many Requests
+RateLimit-Policy: "default";q=<limit>;w=<window>
+RateLimit-Limit: <limit>
+RateLimit-Remaining: 0
+RateLimit-Reset: <seconds until reset>
+RateLimit: "default";r=0;t=<seconds until reset>
+Retry-After: <seconds>
 X-RateLimit-Limit: <limit>
 X-RateLimit-Remaining: 0
 X-RateLimit-Reset: <reset, ms since epoch>
-Retry-After: <seconds>
 Content-Type: application/json
 
 { "error": "Too many requests" }
 ```
 
-For a daily-ceiling 429 the `Retry-After` counts down to the next 00:00 UTC.
+Note the IETF `RateLimit-Reset` (and the `t` value in the combined `RateLimit` member) is **seconds remaining**, whereas the legacy `X-RateLimit-Reset` is an absolute epoch in **milliseconds**. For a daily-ceiling 429 the `Retry-After` counts down to the next 00:00 UTC.
 
 ## Retry guidance
 

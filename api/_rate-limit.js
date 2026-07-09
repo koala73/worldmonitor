@@ -137,11 +137,26 @@ export async function checkRateLimit(request, corsHeaders, opts = {}) {
     );
 
     if (!success) {
+      // `reset` is a Unix epoch in MILLISECONDS (Upstash convention). The IETF
+      // RateLimit fields carry a delta-seconds reset (`t` / RateLimit-Reset),
+      // NOT an epoch, so derive the remaining-seconds view for them and for
+      // Retry-After. The legacy X-RateLimit-Reset stays epoch-ms unchanged.
+      const resetSeconds = Math.max(0, Math.ceil((reset - Date.now()) / 1000));
+      const windowSeconds = durationToSeconds(policy.window);
       return jsonResponse({ error: 'Too many requests' }, 429, {
+        // IETF RateLimit fields (draft-ietf-httpapi-ratelimit-headers). The
+        // combined RateLimit member references the "default" policy advertised
+        // on every API response via vercel.json so an agent can self-throttle.
+        'RateLimit-Policy': `"default";q=${limit};w=${windowSeconds}`,
+        'RateLimit-Limit': String(limit),
+        'RateLimit-Remaining': '0',
+        'RateLimit-Reset': String(resetSeconds),
+        RateLimit: `"default";r=0;t=${resetSeconds}`,
+        // Legacy X-RateLimit-* retained for back-compat (Reset is epoch-ms).
         'X-RateLimit-Limit': String(limit),
         'X-RateLimit-Remaining': '0',
         'X-RateLimit-Reset': String(reset),
-        'Retry-After': String(Math.ceil((reset - Date.now()) / 1000)),
+        'Retry-After': String(resetSeconds),
         ...corsHeaders,
       });
     }

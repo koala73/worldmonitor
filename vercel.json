@@ -265,6 +265,13 @@
       ]
     },
     {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "RateLimit-Policy", "value": "\"default\";q=600;w=60" },
+        { "key": "RateLimit-Limit", "value": "600" }
+      ]
+    },
+    {
       "source": "/",
       "headers": [
         { "key": "Cache-Control", "value": "private, no-cache, must-revalidate" },

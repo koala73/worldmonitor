@@ -55,6 +55,14 @@ test('CORS allow headers include MCP transport headers', () => {
     assert.match(exposed, /\bMcp-Session-Id\b/);
     assert.match(exposed, /\bWWW-Authenticate\b/);
     assert.match(exposed, /\bRetry-After\b/);
+    // IETF RateLimit fields so browser-context agents can self-throttle cross-origin.
+    assert.match(exposed, /\bRateLimit-Policy\b/);
+    assert.match(exposed, /\bRateLimit-Limit\b/);
+    assert.match(exposed, /\bRateLimit-Remaining\b/);
+    assert.match(exposed, /\bRateLimit-Reset\b/);
+    // Bare combined member: match RateLimit NOT preceded by "-" (so it doesn't
+    // just re-match the RateLimit-* fields above) and followed by a delimiter.
+    assert.match(exposed, /(^|[\s,])RateLimit(,|$)/);
     assert.match(exposed, /\bX-RateLimit-Limit\b/);
     assert.match(exposed, /\bX-RateLimit-Remaining\b/);
     assert.match(exposed, /\bX-RateLimit-Reset\b/);
