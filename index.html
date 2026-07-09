@@ -352,12 +352,17 @@
       [data-variant="happy"][data-theme="dark"] .skeleton-panel-metric span{color:#B9C4B0}
       [data-variant="happy"][data-theme="dark"] .skeleton-line{background:linear-gradient(90deg,rgba(139,175,122,.05) 25%,rgba(139,175,122,.10) 50%,rgba(139,175,122,.05) 75%);background-size:200% 100%;animation:skel-shimmer 1.5s infinite}
 
-      @media (max-width:767px){
-        .skeleton-header{height:44px;padding:6px 10px;gap:8px}
+      @media (max-width:768px){
+        .skeleton-header{height:40px;padding:6px 10px;gap:8px}
         .skeleton-header-left,.skeleton-header-right{gap:8px;min-width:0}
         .skeleton-kicker,.skeleton-section-note{display:none}
         .skeleton-chip{padding:0 6px;font-size:10px}
-        .skeleton-map{min-height:320px}
+        /* Mirror the real full-viewport mobile map (.map-section @ max-width:768px in
+           main.css): the skeleton previously reserved 50vh (~422px) while the hydrated
+           map is calc(100dvh - 48px) (~796px), shoving #panelsGrid down ~374px on the
+           skeleton->app swap (#4580 item a, largest mobile CLS offender). Keep the
+           100vh fallback first for pre-dvh browsers, same order as the real rule. */
+        .skeleton-map{height:calc(100vh - 48px);height:calc(100dvh - 48px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));min-height:60vh;max-height:100dvh}
         .skeleton-map-content{max-width:calc(100% - 24px);margin:12px;padding:16px}
         .skeleton-map-title{font-size:22px;line-height:1.15}
         .skeleton-map-copy{font-size:13px;line-height:1.42}
