@@ -300,10 +300,8 @@ function countObjectCollection(payload) {
 }
 
 function countFredSeriesRecords(payload) {
-  const series = payload?.series || payload;
-  if (!series || typeof series !== 'object') return 0;
-  if (Array.isArray(series.observations)) return series.observations.length;
-  return Object.keys(series).length > 0 ? 1 : 0;
+  const observations = payload?.series?.observations ?? payload?.observations;
+  return Array.isArray(observations) ? observations.length : 0;
 }
 
 function buildForecastInputFeedDefinitions() {

@@ -57,6 +57,20 @@ describe('forecast input observability', () => {
     assert.equal(rows.find((row) => row.key === 'unrest:events:v1')?.records, 1);
   });
 
+  it('counts only usable FRED observations, not metadata-only payloads', () => {
+    const rows = buildForecastInputPresenceRows({
+      'economic:fred:v1:FEDFUNDS:0': {
+        series: { seriesId: 'FEDFUNDS', title: 'Federal Funds Effective Rate' },
+      },
+      'economic:fred:v1:VIXCLS:0': {
+        observations: [{ date: '2026-07-01', value: 18.2 }],
+      },
+    });
+
+    assert.equal(rows.find((row) => row.key === 'economic:fred:v1:FEDFUNDS:0')?.records, 0);
+    assert.equal(rows.find((row) => row.key === 'economic:fred:v1:VIXCLS:0')?.records, 1);
+  });
+
   it('warns once per zero-record forecast input with feed key and count', () => {
     const warnings = [];
     const logger = { warn: (line) => warnings.push(String(line)) };
