@@ -11826,6 +11826,17 @@ function normalizeActorName(name) {
   return s.toLowerCase().replace(/[_-]/g, ' ').replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
 }
 
+function normalizeSimulationKeywordText(text) {
+  return String(text || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function simulationTextMatchesKeyword(normalizedText, keyword) {
+  const normalizedKeyword = normalizeSimulationKeywordText(keyword);
+  if (!normalizedText || !normalizedKeyword) return false;
+  const escaped = normalizedKeyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|\\s)${escaped}`).test(normalizedText);
+}
+
 const BUCKET_KEYWORDS = {
   energy: ['oil', 'crude', 'petroleum', 'energy', 'lng', 'gas', 'fuel', 'brent', 'wti'],
   freight: ['freight', 'shipping', 'container', 'cargo', 'transit', 'route', 'chokepoint'],
@@ -11846,7 +11857,7 @@ const CHANNEL_KEYWORDS = {
   shipping_cost_shock: ['shipping cost', 'freight cost', 'freight rate', 'route disruption', 'chokepoint', 'transit', 'shipping interrupt', 'rerouting', 'vessel', 'shipping lane', 'maritime'],
   sovereign_stress: ['sovereign', 'debt stress', 'default risk', 'credit stress', 'bond spread'],
   risk_off_rotation: ['risk off', 'risk aversion', 'flight to safety', 'sell off', 'selloff', 'sell-off', 'capital flight', 'capital outflow', 'risk premium', 'avers', 'retreat', 'flight to', 'sovereign risk', 'shockwave', 'shock wave', 'economic shock', 'contagion', 'spiral', 'crisis'],
-  security_escalation: ['escalat', 'military action', 'conflict', 'war', 'strike', 'attack', 'military', 'geopolit'],
+  security_escalation: ['escalat', 'military action', 'conflict', 'war', 'strike', 'geopolit'],
   yield_curve_stress: ['yield curve', 'yield spread', 'term premium'],
   volatility_shock: ['volatility', 'vix', 'vol spike'],
   safe_haven_bid: ['safe haven', 'gold', 'yen', 'swiss franc', 'treasur'],
@@ -11862,16 +11873,16 @@ const CHANNEL_KEYWORDS = {
 
 function matchesBucket(simPath, targetBucket) {
   if (!targetBucket || !simPath) return false;
-  const text = `${simPath.label || ''} ${simPath.summary || ''}`.toLowerCase();
+  const text = normalizeSimulationKeywordText(`${simPath.label || ''} ${simPath.summary || ''}`);
   const keywords = BUCKET_KEYWORDS[targetBucket] || [targetBucket.replace(/_/g, ' ')];
-  return keywords.some((kw) => text.includes(kw));
+  return keywords.some((kw) => simulationTextMatchesKeyword(text, kw));
 }
 
 function matchesChannel(simPath, channel) {
   if (!channel || !simPath) return false;
-  const text = `${simPath.label || ''} ${simPath.summary || ''}`.toLowerCase();
+  const text = normalizeSimulationKeywordText(`${simPath.label || ''} ${simPath.summary || ''}`);
   const keywords = CHANNEL_KEYWORDS[channel] || [channel.replace(/_/g, ' ')];
-  return keywords.some((kw) => text.includes(kw));
+  return keywords.some((kw) => simulationTextMatchesKeyword(text, kw));
 }
 
 const NEGATION_TERMS = ['ceasefire', 'reopen', 'reopened', 'resolv', 'diplomatic solution', 'withdrawal', 'de-escalat', 'deescalat', 'restored', 'stabiliz', 'lifted', 'normaliz', 'agreement'];

@@ -7869,6 +7869,19 @@ describe('phase 3 simulation re-ingestion — matching helpers', () => {
     assert.ok(matchesChannel({ label: 'Market contagion from India FX crisis', summary: '' }, 'risk_off_rotation'));
   });
 
+  it('matchesBucket avoids substring hits inside unrelated words', () => {
+    assert.ok(!matchesBucket({ label: 'Corporate debt briefing', summary: '' }, 'rates_inflation'));
+    assert.ok(matchesBucket({ label: 'Interest rate shock hits lenders', summary: '' }, 'rates_inflation'));
+  });
+
+  it('matchesChannel avoids bare security keyword over-fires inside broader words', () => {
+    assert.ok(!matchesChannel({ label: 'Paramilitary procurement budget update', summary: '' }, 'security_escalation'));
+    assert.ok(!matchesChannel({ label: 'Cyberattack insurance repricing', summary: '' }, 'security_escalation'));
+    assert.ok(!matchesChannel({ label: 'Military procurement budget update', summary: '' }, 'security_escalation'));
+    assert.ok(!matchesChannel({ label: 'Cyber attack insurance repricing', summary: '' }, 'security_escalation'));
+    assert.ok(matchesChannel({ label: 'Military action expands near the border', summary: '' }, 'security_escalation'));
+  });
+
   it('matchesChannel returns false for unrelated text', () => {
     assert.ok(!matchesChannel({ label: 'Political talks', summary: 'Ceasefire' }, 'shipping_cost_shock'));
   });
