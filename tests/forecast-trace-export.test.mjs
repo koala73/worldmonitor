@@ -64,6 +64,7 @@ import {
   buildSimulationOutcomeKey,
   writeSimulationOutcome,
   computeSimulationLockTtlSeconds,
+  getSimulationCompletionStatus,
   createSimulationWorkerId,
   buildSimulationRound1SystemPrompt,
   buildSimulationRound2SystemPrompt,
@@ -6358,6 +6359,40 @@ describe('simulation runner — extractSimulationRoundPayload', () => {
     assert.equal(result.diagnostics.stage, 'invalid_payload');
   });
 
+  it('rejects Round 2 payloads with required archetypes but empty path content', () => {
+    const emptyPathPayload = JSON.stringify({
+      paths: [
+        { pathId: 'escalation', label: '', summary: '', keyActors: [], keyActorRoles: [], roundByRoundEvolution: [], confidence: 0.6, timingMarkers: [] },
+        { pathId: 'containment', label: 'Containment', summary: 'Contained', keyActors: [], keyActorRoles: [], roundByRoundEvolution: [], confidence: 0.3, timingMarkers: [] },
+        { pathId: 'market_cascade', label: 'Cascade', summary: 'Markets react', keyActors: [], keyActorRoles: [], roundByRoundEvolution: [], confidence: 0.1, timingMarkers: [] },
+      ],
+      stabilizers: [],
+      invalidators: [],
+      globalObservations: '',
+      confidenceNotes: '',
+    });
+    const result = extractSimulationRoundPayload(emptyPathPayload, 2);
+    assert.equal(result.paths, null);
+    assert.equal(result.diagnostics.stage, 'invalid_payload');
+  });
+
+  it('rejects Round 2 payloads with non-numeric path confidence', () => {
+    const badConfidencePayload = JSON.stringify({
+      paths: [
+        { pathId: 'escalation', label: 'Escalation', summary: 'Oil disruption', keyActors: [], keyActorRoles: [], roundByRoundEvolution: [], confidence: '0.6', timingMarkers: [] },
+        { pathId: 'containment', label: 'Containment', summary: 'Contained', keyActors: [], keyActorRoles: [], roundByRoundEvolution: [], confidence: 0.3, timingMarkers: [] },
+        { pathId: 'market_cascade', label: 'Cascade', summary: 'Markets react', keyActors: [], keyActorRoles: [], roundByRoundEvolution: [], confidence: 0.1, timingMarkers: [] },
+      ],
+      stabilizers: [],
+      invalidators: [],
+      globalObservations: '',
+      confidenceNotes: '',
+    });
+    const result = extractSimulationRoundPayload(badConfidencePayload, 2);
+    assert.equal(result.paths, null);
+    assert.equal(result.diagnostics.stage, 'invalid_payload');
+  });
+
   it('uses extractFirstJsonObject fallback for prefix text', () => {
     const withPrefix = `Here is the result:\n${r1Payload}\nEnd.`;
     const result = extractSimulationRoundPayload(withPrefix, 1);
@@ -6416,7 +6451,7 @@ describe('simulation runner — extractSimulationRoundPayload', () => {
       const result = await runTheaterSimulation(minimalTheater, minimalPkg);
       assert.equal(result.failed, true);
       assert.equal(result.reason, 'round2_parse_failed');
-      assert.ok(result.round1?.paths?.length === 3, 'round1 evidence is retained for diagnostics');
+      assert.equal(result.round1?.paths?.length, 3, 'round1 evidence is retained for diagnostics');
     } finally {
       __setForecastLlmCallOverrideForTests(null);
     }
@@ -6432,7 +6467,7 @@ describe('simulation runner — extractSimulationRoundPayload', () => {
       const result = await runTheaterSimulation(minimalTheater, minimalPkg);
       assert.equal(result.failed, true);
       assert.equal(result.reason, 'round2_llm_failed');
-      assert.ok(result.round1?.paths?.length === 3, 'round1 evidence is retained for diagnostics');
+      assert.equal(result.round1?.paths?.length, 3, 'round1 evidence is retained for diagnostics');
       assert.equal(result.round2, null);
     } finally {
       __setForecastLlmCallOverrideForTests(null);
@@ -6660,6 +6695,13 @@ describe('simulation runner — writeSimulationOutcome', () => {
     assert.notEqual(first, second);
   });
 
+  it('getSimulationCompletionStatus distinguishes all-failed and partial simulation runs', () => {
+    assert.equal(getSimulationCompletionStatus({ eligibleTheaterCount: 0, theaterCount: 0, failedTheaterCount: 0 }), 'no_eligible_theaters');
+    assert.equal(getSimulationCompletionStatus({ eligibleTheaterCount: 2, theaterCount: 0, failedTheaterCount: 2 }), 'all_theaters_failed');
+    assert.equal(getSimulationCompletionStatus({ eligibleTheaterCount: 2, theaterCount: 1, failedTheaterCount: 1 }), 'partial');
+    assert.equal(getSimulationCompletionStatus({ eligibleTheaterCount: 2, theaterCount: 2, failedTheaterCount: 0 }), 'completed');
+  });
+
   it('writeSimulationOutcome emits an empty-candidateStateId counter for outcome telemetry', async () => {
     const originalWarn = console.warn;
     const originalFetch = globalThis.fetch;
@@ -6703,6 +6745,52 @@ describe('simulation runner — writeSimulationOutcome', () => {
       );
     } finally {
       console.warn = originalWarn;
+      globalThis.fetch = originalFetch;
+      __setRedisStoreForTests(null);
+    }
+  });
+
+  it('writeSimulationOutcome surfaces all-failed simulation metadata in the Redis pointer', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      const target = String(url);
+      if (target.includes('/r2/buckets/')) {
+        return new Response('{}', { status: 200 });
+      }
+      throw new Error(`unexpected fetch ${target}`);
+    };
+    const store = {};
+    __setRedisStoreForTests(store);
+    try {
+      await writeSimulationOutcome(
+        { runId: '1783471835470-allfailed', generatedAt: 1783471835470 },
+        {
+          theaterResults: [],
+          failedTheaters: [
+            { theaterId: 'theater-red-sea', reason: 'round2_parse_failed', diagnostics: { stage: 'invalid_payload', preview: '{"paths":[]}' } },
+          ],
+          eligibleTheaterCount: 1,
+          failedTheaterCount: 1,
+          generatedAt: 1783471835470,
+        },
+        {
+          storageConfig: {
+            mode: 'api',
+            apiBaseUrl: 'https://api.cloudflare.test/client/v4',
+            accountId: 'acct',
+            bucket: 'trace-bucket',
+            apiToken: 'token',
+            basePrefix: 'seed-data/forecast-traces',
+          },
+        },
+      );
+      const pointer = store[SIMULATION_OUTCOME_LATEST_KEY];
+      assert.equal(pointer.theaterCount, 0);
+      assert.equal(pointer.eligibleTheaterCount, 1);
+      assert.equal(pointer.failedTheaterCount, 1);
+      assert.equal(pointer.allTheatersFailed, true);
+      assert.equal(pointer.completionStatus, 'all_theaters_failed');
+    } finally {
       globalThis.fetch = originalFetch;
       __setRedisStoreForTests(null);
     }

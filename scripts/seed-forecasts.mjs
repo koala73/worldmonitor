@@ -132,6 +132,21 @@ function createSimulationWorkerId() {
   return `sim-worker-${process.pid}-${Date.now()}-${randomSuffix}`;
 }
 
+function toNonNegativeInteger(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.max(0, Math.floor(numeric)) : 0;
+}
+
+function getSimulationCompletionStatus({ eligibleTheaterCount = 0, theaterCount = 0, failedTheaterCount = 0 } = {}) {
+  const eligibleCount = toNonNegativeInteger(eligibleTheaterCount);
+  const completedCount = toNonNegativeInteger(theaterCount);
+  const failedCount = toNonNegativeInteger(failedTheaterCount);
+  if (eligibleCount <= 0) return 'no_eligible_theaters';
+  if (completedCount <= 0) return 'all_theaters_failed';
+  if (failedCount > 0) return 'partial';
+  return 'completed';
+}
+
 // stateKind values that legitimately drive maritime energy/freight supply_chain forecasts.
 // Defined at module scope — not per-call — to avoid re-allocating the Set on every invocation.
 const MARITIME_BUCKET_STATE_KINDS = new Set([
@@ -17073,6 +17088,14 @@ Return ONLY a JSON object with no markdown fences:
 
 const SIMULATION_REQUIRED_PATH_IDS = ['escalation', 'containment', 'market_cascade'];
 
+function hasUsableSimulationPathContent(path, round) {
+  const label = sanitizeForPrompt(path?.label || '').trim();
+  const summary = sanitizeForPrompt(path?.summary || '').trim();
+  if (!label || !summary) return false;
+  if (round === 2 && !(typeof path.confidence === 'number' && Number.isFinite(path.confidence))) return false;
+  return true;
+}
+
 /**
  * @param {string} text - raw LLM response text (JSON or JSON-with-prefix)
  * @param {1 | 2} round - simulation round number
@@ -17090,6 +17113,7 @@ function tryParseSimulationRoundPayload(text, round) {
     }
     const paths = SIMULATION_REQUIRED_PATH_IDS.map((pathId) => byPathId.get(pathId));
     if (paths.some((path) => !path)) return { paths: null, parseStatus: 'invalid_payload' };
+    if (paths.some((path) => !hasUsableSimulationPathContent(path, round))) return { paths: null, parseStatus: 'invalid_payload' };
     if (round === 2) {
       return {
         paths: paths.map((p) => ({
@@ -17774,10 +17798,9 @@ async function applyPostSimulationRescore(runId, freshOutcome, storageConfig) {
     // Only re-score if there is actionable opportunity:
     // - 'completed_no_material_change': always proceed — any simulation evidence could promote a rejected path
     // - 'completed': proceed if (a) a selected expanded path risks demotion, or (b) a rejected expanded
-    //   path could be promoted. Thresholds are derived from the max adjustments in computeSimulationAdjustment:
-    //     max positive: +0.08 (bucketChannelMatch) + 0.04 (actor overlap >= 2) + 0.02 (timing markers) = +0.14
-    //     max negative: -0.12 (invalidator) + -0.15 (stabilizer) = -0.27
-    //   Demotion risk threshold: 0.50 + 0.27 = 0.77. Promotion window: [0.50 - 0.14, 0.50) = [0.36, 0.50).
+    //   path could be promoted. The guard uses the derived simulation-adjustment constants:
+    //   SIMULATION_MAX_NEGATIVE_ADJUSTMENT for demotion risk and
+    //   SIMULATION_RESCORING_PROMOTION_FLOOR for the rejected-path promotion window.
     if (!hasSimulationRescoreOpportunity(evalData)) {
       return { skipped: true, reason: 'no_actionable_paths' };
     }
@@ -17878,6 +17901,15 @@ async function writeSimulationOutcome(pkg, outcome, { storageConfig } = {}) {
   });
   const { url, token } = getRedisCredentials();
   const theaterResults = Array.isArray(outcome.theaterResults) ? outcome.theaterResults : [];
+  const failedTheaters = Array.isArray(outcome.failedTheaters) ? outcome.failedTheaters : [];
+  const failedTheaterCount = toNonNegativeInteger(outcome.failedTheaterCount ?? failedTheaters.length);
+  const eligibleTheaterCount = toNonNegativeInteger(outcome.eligibleTheaterCount ?? (theaterResults.length + failedTheaterCount));
+  const completionStatus = getSimulationCompletionStatus({
+    eligibleTheaterCount,
+    theaterCount: theaterResults.length,
+    failedTheaterCount,
+  });
+  const allTheatersFailed = completionStatus === 'all_theaters_failed';
   const emptyCandidateStateIdCount = theaterResults.filter((tr) => !String(tr?.candidateStateId || '').trim()).length;
   if (emptyCandidateStateIdCount > 0) {
     console.warn(`  [Simulation] Outcome ${runId} has ${emptyCandidateStateIdCount}/${theaterResults.length} theaterResults with empty candidateStateId`);
@@ -17906,6 +17938,10 @@ async function writeSimulationOutcome(pkg, outcome, { storageConfig } = {}) {
     outcomeKey,
     schemaVersion: SIMULATION_OUTCOME_SCHEMA_VERSION,
     theaterCount: theaterResults.length,
+    eligibleTheaterCount,
+    failedTheaterCount,
+    allTheatersFailed,
+    completionStatus,
     emptyCandidateStateIdCount,
     generatedAt: generatedAt || Date.now(),
     uiTheaters,
@@ -18159,15 +18195,17 @@ async function processNextSimulationTask(options = {}) {
         console.log(`  [Simulation] Running theater: ${theater.theaterId}`);
         const result = await runTheaterSimulation(theater, pkgData);
         if (result.failed) {
-          console.warn(`  [Simulation] Theater ${theater.theaterId} failed: ${result.reason}`);
-          failedTheaters.push({ theaterId: theater.theaterId, reason: result.reason });
+          const diagnostics = result.diagnostics || null;
+          const stageSuffix = diagnostics?.stage ? ` stage=${diagnostics.stage}` : '';
+          console.warn(`  [Simulation] Theater ${theater.theaterId} failed: ${result.reason}${stageSuffix}`);
+          failedTheaters.push({ theaterId: theater.theaterId, reason: result.reason, diagnostics });
           continue;
         }
 
         const r2Paths = result.round2?.paths || [];
         const r1Paths = result.round1?.paths || [];
         const allowedRoles = Array.isArray(theater.actorRoles) ? theater.actorRoles : [];
-        const mergedPaths = (r2Paths.length ? r2Paths : r1Paths).map((p) => {
+        const mergedPaths = r2Paths.map((p) => {
           const r1Path = r1Paths.find((r) => r.pathId === p.pathId);
           return {
             pathId: p.pathId,
@@ -18198,6 +18236,15 @@ async function processNextSimulationTask(options = {}) {
         });
       }
 
+      const eligibleTheaterCount = eligibleTheaters.length;
+      const failedTheaterCount = failedTheaters.length;
+      const completionStatus = getSimulationCompletionStatus({
+        eligibleTheaterCount,
+        theaterCount: theaterResults.length,
+        failedTheaterCount,
+      });
+      const allTheatersFailed = completionStatus === 'all_theaters_failed';
+
       const outcome = {
         runId,
         schemaVersion: SIMULATION_OUTCOME_SCHEMA_VERSION,
@@ -18209,6 +18256,10 @@ async function processNextSimulationTask(options = {}) {
         _meta: packageRotated ? { packageRotated: true } : {},
         theaterResults,
         failedTheaters,
+        eligibleTheaterCount,
+        failedTheaterCount,
+        allTheatersFailed,
+        completionStatus,
         globalObservations: eligibleTheaters.length === 0
           ? 'No maritime chokepoint/energy theaters in package'
           : theaterResults.length === 0 ? 'All theaters failed simulation' : '',
@@ -18226,7 +18277,16 @@ async function processNextSimulationTask(options = {}) {
       const rescoreResult = await applyPostSimulationRescore(runId, outcome, storageConfig)
         .catch((err) => { console.warn(`  [SimulationRescore] Error for ${runId}: ${err.message}`); return null; });
       if (rescoreResult && !rescoreResult.skipped) console.log(`  [SimulationRescore] ${runId}: ${JSON.stringify(rescoreResult)}`);
-      return { status: 'completed', runId, theaterCount: theaterResults.length, outcomeKey: writeResult?.outcomeKey };
+      return {
+        status: allTheatersFailed ? 'all_theaters_failed' : 'completed',
+        runId,
+        theaterCount: theaterResults.length,
+        eligibleTheaterCount,
+        failedTheaterCount,
+        allTheatersFailed,
+        completionStatus,
+        outcomeKey: writeResult?.outcomeKey,
+      };
     } catch (err) {
       console.warn(`  [Simulation] Task failed for ${runId}: ${err.message}`);
       await completeSimulationTask(runId, workerId);
@@ -18415,6 +18475,7 @@ export {
   buildSimulationOutcomeKey,
   writeSimulationOutcome,
   computeSimulationLockTtlSeconds,
+  getSimulationCompletionStatus,
   createSimulationWorkerId,
   buildSimulationRound1SystemPrompt,
   buildSimulationRound2SystemPrompt,

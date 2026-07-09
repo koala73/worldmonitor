@@ -372,11 +372,11 @@ paths:
                     content:
                         application/json:
                             example:
+                                "allTheatersFailed": true
+                                "completionStatus": "example"
+                                "eligibleTheaterCount": 1
                                 "error": "example"
-                                "found": true
-                                "generatedAt": 1717200000000
-                                "note": "example"
-                                "outcomeKey": "example"
+                                "failedTheaterCount": 1
                             schema:
                                 $ref: '#/components/schemas/GetSimulationOutcomeResponse'
                 "400":
@@ -1314,6 +1314,22 @@ components:
                          from "your run expired beyond retention" — both previously returned NOT_FOUND.
                          Added in #3734 to prevent the 30-day demand experiment from being contaminated
                          by the queued-vs-expired indistinguishability.
+                eligibleTheaterCount:
+                    type: integer
+                    format: int32
+                    description: Number of theaters eligible for simulation in the package used by this outcome.
+                failedTheaterCount:
+                    type: integer
+                    format: int32
+                    description: Number of eligible theaters that failed before producing a Round 2 result.
+                allTheatersFailed:
+                    type: boolean
+                    description: True when eligible_theater_count > 0 and no theater produced an outcome.
+                completionStatus:
+                    type: string
+                    description: |-
+                        Machine-readable completion status. Current values:
+                         "completed", "partial", "no_eligible_theaters", or "all_theaters_failed".
         TriggerSimulationRequest:
             type: object
             properties:
