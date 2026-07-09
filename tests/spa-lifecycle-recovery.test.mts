@@ -100,11 +100,17 @@ function hasReturnGuard(method: ts.MethodDeclaration, guardedCall: string): bool
   visit(method, child => {
     if (!ts.isIfStatement(child)) return;
     const expr = child.expression;
+    const thenStatement = child.thenStatement;
+    const returns =
+      ts.isReturnStatement(thenStatement) ||
+      (ts.isBlock(thenStatement) &&
+        thenStatement.statements.length === 1 &&
+        ts.isReturnStatement(thenStatement.statements[0]!));
     if (
       ts.isCallExpression(expr) &&
       ts.isPropertyAccessExpression(expr.expression) &&
       expr.expression.name.text === guardedCall &&
-      ts.isReturnStatement(child.thenStatement)
+      returns
     ) {
       found = true;
     }
