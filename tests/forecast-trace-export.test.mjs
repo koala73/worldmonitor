@@ -5758,7 +5758,7 @@ describe('simulation package export', () => {
     }));
     const pkg = buildSimulationPackageFromDeepSnapshot(makeSnapshot(candidates));
     assert.ok(pkg);
-    assert.ok(pkg.selectedTheaters.length <= 3);
+    assert.equal(pkg.selectedTheaters.length, 3, 'selection must apply the hard cap at exactly three theaters');
   });
 
   it('selection preserves the top three ranked candidates even when they share a geo group', () => {
@@ -5831,7 +5831,7 @@ describe('simulation package export', () => {
     assert.ok(routeKeys.includes('Strait of Malacca'), 'Malacca must be selected');
   });
 
-  it('same geo-group candidates are retained when they rank inside the theater cap', () => {
+  it('rank-capped selection retains multiple high-ranked candidates from one region', () => {
     const redsea = makeCandidate({
       candidateStateId: 'state-redsea',
       candidateStateLabel: 'Red Sea blockade',
