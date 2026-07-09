@@ -172,7 +172,10 @@ describe('measure-dashboard-render-axis reporting', () => {
       url: 'http://127.0.0.1:4173/dashboard',
       generatedAt: '2026-07-09T00:00:00.000Z',
       viewport: { width: 390, height: 844 },
-      interaction: resolveInteractionTarget('country'),
+      interaction: {
+        ...resolveInteractionTarget('country'),
+        targetInfo: { tapPoint: { x: 120, y: 200, matchedTop: true } },
+      },
       eventTimings: [
         {
           name: 'pointerup',
@@ -194,6 +197,22 @@ describe('measure-dashboard-render-axis reporting', () => {
     assert.equal(report.interaction?.timings.worst?.presentationDelayMs, 520);
     assert.equal(report.interaction?.dominantPhase.phase, 'rendering');
     assert.equal(report.interaction?.dominantPhase.ms, 250);
+    assert.deepEqual(report.interaction?.warnings, []);
+  });
+
+  it('warns when the tap target falls back to a point that did not hit the selector', () => {
+    const report = buildReport({
+      url: 'http://127.0.0.1:4173/dashboard',
+      interaction: {
+        ...resolveInteractionTarget('country'),
+        targetInfo: { tapPoint: { x: 120, y: 200, matchedTop: false } },
+      },
+      eventTimings: [],
+      traceEvents: [{ ph: 'X', name: 'Paint', dur: 250_000 }],
+    });
+
+    assert.match(report.interaction?.warnings[0] || '', /fallback tap point/);
+    assert.match(report.warnings.join('\n'), /did not hit the requested selector/);
   });
 
   it('summarizes event-timing entries into input, processing, and presentation delay', () => {
@@ -220,6 +239,16 @@ describe('measure-dashboard-render-axis reporting', () => {
       label: 'canvas/webgl',
       ms: 45,
     });
+    assert.deepEqual(dominantRenderPhase({
+      styleLayout: 0,
+      rendering: 0,
+      canvas: 0,
+      scriptEvaluation: 0,
+    }), {
+      phase: 'none',
+      label: 'none',
+      ms: 0,
+    });
   });
 
   it('normalizes raw trace files before comparison', () => {
@@ -239,14 +268,45 @@ describe('measure-dashboard-render-axis reporting', () => {
     assert.equal(report.forcedReflows.eventCount, 0);
   });
 
+  it('normalizes raw interaction trace files without dropping timing metadata', () => {
+    const report = normalizeReport({
+      url: 'http://127.0.0.1:4175/dashboard',
+      interaction: {
+        ...resolveInteractionTarget('nav-chip'),
+        targetInfo: { tapPoint: { x: 32, y: 48, matchedTop: true } },
+      },
+      eventTimings: [
+        {
+          name: 'click',
+          startTime: 100,
+          processingStart: 120,
+          processingEnd: 140,
+          duration: 300,
+          selector: '.mobile-panel-nav-chip',
+        },
+      ],
+      traceEvents: [
+        { ph: 'X', name: 'Canvas2DLayerBridge::FlushCanvas', dur: 5000 },
+      ],
+    });
+
+    assert.equal(report.interaction?.target.name, 'nav-chip');
+    assert.equal(report.interaction?.timings.eventCount, 1);
+    assert.equal(report.interaction?.timings.worst?.name, 'click');
+    assert.equal(report.interaction?.timings.worst?.presentationDelayMs, 260);
+    assert.equal(report.interaction?.dominantPhase.phase, 'canvas');
+  });
+
   it('compares before/after reports with absolute and relative deltas', () => {
     const comparison = compareReports(
-      { url: 'before', durationMs: { styleLayout: 100, rendering: 20, scriptEvaluation: 10, estimatedTbt: 50 }, forcedReflows: { eventCount: 4, totalMs: 246, markerCount: 0, markerTotalMs: 0 } },
-      { url: 'after', durationMs: { styleLayout: 60, rendering: 15, scriptEvaluation: 11, estimatedTbt: 35 }, forcedReflows: { eventCount: 1, totalMs: 171, markerCount: 0, markerTotalMs: 0 } },
+      { url: 'before', durationMs: { styleLayout: 100, rendering: 20, canvas: 10, scriptEvaluation: 10, estimatedTbt: 50 }, forcedReflows: { eventCount: 4, totalMs: 246, markerCount: 0, markerTotalMs: 0 } },
+      { url: 'after', durationMs: { styleLayout: 60, rendering: 15, canvas: 25, scriptEvaluation: 11, estimatedTbt: 35 }, forcedReflows: { eventCount: 1, totalMs: 171, markerCount: 0, markerTotalMs: 0 } },
     );
 
     assert.equal(comparison.deltaMs.styleLayout, -40);
     assert.equal(comparison.deltaPct.styleLayout, -40);
+    assert.equal(comparison.deltaMs.canvas, 15);
+    assert.equal(comparison.deltaPct.canvas, 150);
     assert.equal(comparison.deltaMs.estimatedTbt, -15);
     assert.equal(comparison.forcedReflowEvents.delta, -3);
     // The ≤200ms #4487 acceptance target tracks attributed forced-reflow ms.
@@ -365,5 +425,21 @@ describe('measure-dashboard-render-axis parseArgs', () => {
     assert.equal(args.interact?.selector, '#mapOverlays .conflict-click-area');
     assert.equal(args.width, 430);
     assert.equal(args.height, 932);
+  });
+
+  it('falls back to the issue viewport when invalid interaction viewport overrides are ignored', () => {
+    const args = parseArgs([
+      'node',
+      'script',
+      '--width',
+      'notanumber',
+      '--height',
+      'nope',
+      '--interact',
+      'country',
+    ]);
+
+    assert.equal(args.width, 390);
+    assert.equal(args.height, 844);
   });
 });

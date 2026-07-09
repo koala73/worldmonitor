@@ -344,7 +344,8 @@ export function dominantRenderPhase(duration = {}) {
   const phases = ['styleLayout', 'rendering', 'canvas', 'scriptEvaluation'];
   const [phase, ms] = phases
     .map((key) => [key, Number(duration[key]) || 0])
-    .sort((a, b) => b[1] - a[1])[0] || ['none', 0];
+    .sort((a, b) => b[1] - a[1])
+    .find(([, value]) => value > 0) || ['none', 0];
   return { phase, label: labels[phase] || 'none', ms: round(ms) };
 }
 
@@ -386,11 +387,19 @@ export function buildReport(result) {
     ...summary,
   };
   if (result?.interaction) {
+    const targetWarnings = [];
+    if (result.interaction?.targetInfo?.tapPoint?.matchedTop === false) {
+      targetWarnings.push(
+        `Interaction target ${result.interaction.name || 'custom'} used a fallback tap point that did not hit the requested selector.`,
+      );
+    }
     report.interaction = {
       target: result.interaction,
       timings: summarizeInteractionTimings(result?.eventTimings),
       dominantPhase: dominantRenderPhase(summary.durationMs),
+      warnings: targetWarnings,
     };
+    report.warnings = [...report.warnings, ...targetWarnings];
   }
   return report;
 }
@@ -410,6 +419,8 @@ export function normalizeReport(input) {
     settleMs: input?.settleMs,
     tracePath: input?.tracePath || null,
     traceEvents: events,
+    interaction: input?.interaction || null,
+    eventTimings: input?.eventTimings || [],
   });
 }
 
@@ -443,6 +454,8 @@ export function compareReports(before, after) {
   const a = after?.durationMs || {};
   const beforeStyle = Number(b.styleLayout) || 0;
   const afterStyle = Number(a.styleLayout) || 0;
+  const beforeCanvas = Number(b.canvas) || 0;
+  const afterCanvas = Number(a.canvas) || 0;
   const beforeTbt = Number(b.estimatedTbt) || 0;
   const afterTbt = Number(a.estimatedTbt) || 0;
   const beforeForced = compareForcedReflowMetrics(before);
@@ -476,11 +489,13 @@ export function compareReports(before, after) {
     deltaMs: {
       styleLayout: round(afterStyle - beforeStyle),
       rendering: round((Number(a.rendering) || 0) - (Number(b.rendering) || 0)),
+      canvas: round(afterCanvas - beforeCanvas),
       scriptEvaluation: round((Number(a.scriptEvaluation) || 0) - (Number(b.scriptEvaluation) || 0)),
       estimatedTbt: round(afterTbt - beforeTbt),
     },
     deltaPct: {
       styleLayout: beforeStyle ? round(((afterStyle - beforeStyle) / beforeStyle) * 100) : 0,
+      canvas: beforeCanvas ? round(((afterCanvas - beforeCanvas) / beforeCanvas) * 100) : 0,
       estimatedTbt: beforeTbt ? round(((afterTbt - beforeTbt) / beforeTbt) * 100) : 0,
     },
     forcedReflowEvents: {
@@ -524,12 +539,16 @@ export function parseArgs(argv) {
       if (!Number.isNaN(n)) args.settle = n;
     } else if (value === '--width') {
       const n = Number(rest[++i]);
-      if (!Number.isNaN(n)) args.width = n;
-      widthExplicit = true;
+      if (!Number.isNaN(n)) {
+        args.width = n;
+        widthExplicit = true;
+      }
     } else if (value === '--height') {
       const n = Number(rest[++i]);
-      if (!Number.isNaN(n)) args.height = n;
-      heightExplicit = true;
+      if (!Number.isNaN(n)) {
+        args.height = n;
+        heightExplicit = true;
+      }
     } else if (value === '--trace-out') {
       args.traceOut = rest[++i] || '';
     } else if (value === '--interact') {
@@ -820,6 +839,7 @@ function printHuman(report) {
   console.log(`\nDesktop render-axis trace - ${report.url || 'comparison'}\n`);
   if (report.deltaMs) {
     console.log(`Style/Layout delta: ${report.deltaMs.styleLayout}ms (${report.deltaPct.styleLayout}%)`);
+    console.log(`Canvas/WebGL delta: ${report.deltaMs.canvas}ms (${report.deltaPct.canvas}%)`);
     console.log(`Estimated TBT delta: ${report.deltaMs.estimatedTbt}ms (${report.deltaPct.estimatedTbt}%)`);
     console.log(`Forced-reflow events: ${report.forcedReflowEvents.before} -> ${report.forcedReflowEvents.after}`);
     if (report.forcedReflowMs) {
@@ -851,6 +871,7 @@ function printHuman(report) {
       console.log('Event Timing:     unavailable (browser did not emit Event Timing entries)');
     }
     console.log(`Dominant phase:   ${dominantPhase.label} (${dominantPhase.ms}ms)`);
+    for (const warning of report.interaction.warnings || []) console.log(`  ! ${warning}`);
   }
   console.log(`Forced reflows:   ${report.forcedReflows.eventCount} attributed events, ${report.forcedReflows.totalMs}ms`);
   console.log(`  (Blink.ForcedStyleAndLayout markers: ${report.forcedReflows.markerCount ?? 0}, ${report.forcedReflows.markerTotalMs ?? 0}ms — stackless fallback)`);
