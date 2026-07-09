@@ -562,6 +562,9 @@ export async function handleSubscriptionActive(
     typeof data.customer?.customer_id === "string" && data.customer.customer_id.length > 0
       ? data.customer.customer_id
       : undefined;
+
+  if (existing && !isNewerEvent(existing.updatedAt, eventTimestamp)) return;
+
   const existingCustomer = incomingDodoCustomerId
     ? await ctx.db
         .query("customers")
@@ -570,14 +573,14 @@ export async function handleSubscriptionActive(
         )
         .first()
     : null;
-  const resolvedUserId = existing?.userId
-    ?? await resolveUserId(ctx, incomingDodoCustomerId ?? "", data.metadata);
+  const resolvedUserId = existing
+    ? existing.userId
+    : await resolveUserId(ctx, incomingDodoCustomerId ?? "", data.metadata);
   const userId = existing
-    ? resolvedUserId
+    ? existing.userId
     : preferExistingCustomerOwner(existingCustomer?.userId, resolvedUserId);
 
   if (existing) {
-    if (!isNewerEvent(existing.updatedAt, eventTimestamp)) return;
     await ctx.db.patch(existing._id, {
       userId,
       status: "active",

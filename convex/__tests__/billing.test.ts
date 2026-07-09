@@ -80,10 +80,12 @@ async function seedAnonClaimState(
     anonId?: string;
     planKey?: PlanKey;
     validUntil?: number;
+    compUntil?: number;
     existingRealEntitlement?: {
       userId: string;
       planKey: PlanKey;
       validUntil: number;
+      compUntil?: number;
     };
     includeAnonEntitlement?: boolean;
   } = {},
@@ -109,6 +111,7 @@ async function seedAnonClaimState(
         planKey,
         features: getFeaturesForPlan(planKey),
         validUntil: opts.validUntil ?? NOW + 30 * DAY_MS,
+        ...(opts.compUntil !== undefined ? { compUntil: opts.compUntil } : {}),
         updatedAt: NOW,
       });
     }
@@ -139,6 +142,9 @@ async function seedAnonClaimState(
         planKey: opts.existingRealEntitlement.planKey,
         features: getFeaturesForPlan(opts.existingRealEntitlement.planKey),
         validUntil: opts.existingRealEntitlement.validUntil,
+        ...(opts.existingRealEntitlement.compUntil !== undefined
+          ? { compUntil: opts.existingRealEntitlement.compUntil }
+          : {}),
         updatedAt: NOW - DAY_MS,
       });
     }
@@ -281,6 +287,50 @@ describe("claimSubscription anonymous ownership proof", () => {
     );
     expect(entitlement?.planKey).toBe("api_business");
     expect(entitlement?.features.tier).toBe(getFeaturesForPlan("api_business").tier);
+  });
+
+  test("does not let a lower-tier anon comp floor suppress a higher real subscription on claim", async () => {
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    const anonCompUntil = NOW + 90 * DAY_MS;
+    const realPaidUntil = NOW + 30 * DAY_MS;
+    await seedAnonClaimState(t, {
+      planKey: "api_starter",
+      validUntil: anonCompUntil,
+      compUntil: anonCompUntil,
+      existingRealEntitlement: {
+        userId: CLAIMANT_A.subject,
+        planKey: "pro_monthly",
+        validUntil: realPaidUntil,
+      },
+    });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: CLAIMANT_A.subject,
+        dodoSubscriptionId: "sub_real_api_business",
+        dodoProductId: PRODUCT_CATALOG.api_business.dodoProductId!,
+        planKey: "api_business",
+        status: "active",
+        currentPeriodStart: NOW - DAY_MS,
+        currentPeriodEnd: realPaidUntil,
+        rawPayload: {},
+        updatedAt: NOW - DAY_MS,
+      });
+    });
+    const claimToken = await signAnonClaimToken(ANON_USER_ID);
+
+    await t.withIdentity(CLAIMANT_A).mutation(api.payments.billing.claimSubscription, {
+      anonId: ANON_USER_ID,
+      claimToken,
+    });
+
+    const entitlement = await t.run(async (ctx) =>
+      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", CLAIMANT_A.subject)).first(),
+    );
+    expect(entitlement?.planKey).toBe("api_business");
+    expect(entitlement?.features.tier).toBe(getFeaturesForPlan("api_business").tier);
+    expect(entitlement?.validUntil).toBe(realPaidUntil);
+    expect(entitlement?.compUntil).toBeUndefined();
   });
 
   test("schedules anon cache delete and real-user cache sync after a proven claim", async () => {
