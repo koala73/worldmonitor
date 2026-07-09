@@ -13,7 +13,7 @@
 // metricKey format: '<feedKey>|<fn>(<field>==<value>)' — a path expression
 // over the shape read from that feed, with REAL substituted values (region,
 // title, ticker) and a unified '==' comparison grammar across every family,
-// e.g. 'conflict:acled:v1:all:0:0|count(country==Mali)' or
+// e.g. 'conflict:acled-resolution:v1:all:0:0|count(country==Mali)' or
 // 'market:commodities-bootstrap:v1|price(symbol==CL=F)'. It documents where in
 // the feed the metric lives and what to match; it is not executable code and
 // is not parsed by this module or any consumer today (Bet 2's resolver
@@ -41,8 +41,8 @@ export const HORIZON_MS = {
   '30d': 30 * DAY_MS,
 };
 
-export const CONFLICT_COUNT_SOURCE_FEED = 'conflict:acled:v1:all:0:0';
-export const UNREST_COUNT_SOURCE_FEED = 'unrest:events:v1';
+export const CONFLICT_COUNT_SOURCE_FEED = 'conflict:acled-resolution:v1:all:0:0';
+export const UNREST_COUNT_SOURCE_FEED = 'unrest:events-resolution:v1';
 export const CYBER_COUNT_SOURCE_FEED = 'cyber:threats-bootstrap:v2';
 
 // Never returns null and never silently coerces an unrecognized horizon to a

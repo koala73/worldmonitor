@@ -234,6 +234,8 @@ describe('buildResolutionSpec — feed mapping per family', () => {
     const spec = buildResolutionSpec(forecast, {}, GENERATED_AT);
     assert.equal(spec.kind, 'hard');
     assert.equal(spec.sourceFeed, CONFLICT_COUNT_SOURCE_FEED);
+    assert.equal(CONFLICT_COUNT_SOURCE_FEED, 'conflict:acled-resolution:v1:all:0:0');
+    assert.notEqual(spec.sourceFeed, 'conflict:acled:v1:all:0:0');
   });
 
   it('a political unrest-events forecast resolves to the unrest count feed', () => {
@@ -249,6 +251,8 @@ describe('buildResolutionSpec — feed mapping per family', () => {
     const spec = buildResolutionSpec(forecast, {}, GENERATED_AT);
     assert.equal(spec.kind, 'hard');
     assert.equal(spec.sourceFeed, UNREST_COUNT_SOURCE_FEED);
+    assert.equal(UNREST_COUNT_SOURCE_FEED, 'unrest:events-resolution:v1');
+    assert.notEqual(spec.sourceFeed, 'unrest:events:v1');
     assert.equal(spec.metricKey, `${UNREST_COUNT_SOURCE_FEED}|count(country==Venezuela)`);
   });
 

@@ -84,6 +84,7 @@ import {
   __setForecastLlmTransportForTests,
   __setForecastLlmRunDeadlineForTests,
 } from '../scripts/seed-forecasts.mjs';
+import { CONFLICT_COUNT_SOURCE_FEED } from '../scripts/_forecast-resolution.mjs';
 
 const originalForecastEnv = {
   FORECAST_LLM_PROVIDER_ORDER: process.env.FORECAST_LLM_PROVIDER_ORDER,
@@ -3073,12 +3074,12 @@ describe('forecast quality gating', () => {
     };
     hard.resolution = {
       kind: 'hard',
-      metricKey: 'conflict:acled:v1:all:0:0|count(country==Mali)',
+      metricKey: `${CONFLICT_COUNT_SOURCE_FEED}|count(country==Mali)`,
       operator: '>=',
       threshold: 1,
       window: 'within-horizon',
       deadline,
-      sourceFeed: 'conflict:acled:v1:all:0:0',
+      sourceFeed: CONFLICT_COUNT_SOURCE_FEED,
     };
 
     const pool = selectPublishedForecastPool([judged, hard], { targetCount: 1 });
