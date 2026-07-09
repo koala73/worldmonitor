@@ -2583,44 +2583,34 @@ export const claimSubscription = mutation({
       await ctx.db.patch(sub._id, { userId: realUserId });
     }
 
-    // Reassign entitlements — compare by tier first, then validUntil
-    // Use .first() instead of .unique() to avoid throwing on duplicate rows
-    let winningPlanKey: string | null = null;
-    let winningFeatures: ReturnType<typeof getFeaturesForPlan> | null = null;
-    let winningValidUntil: number | null = null;
+    // Move entitlement rows first, then let the shared recompute path derive
+    // the final paid/free state from the post-claim subscriptions. If the
+    // anonymous row carried a future complimentary floor, preserve that floor
+    // on the real user before recompute so support credits survive the claim.
+    const recomputeTimestamp = Date.now();
     if (anonEntitlement) {
       const existingEntitlement = await ctx.db
         .query("entitlements")
         .withIndex("by_userId", (q) => q.eq("userId", realUserId))
         .first();
       if (existingEntitlement) {
-        // Compare by tier first, break ties with validUntil
-        const anonTier = anonEntitlement.features?.tier ?? 0;
-        const existingTier = existingEntitlement.features?.tier ?? 0;
-        const anonWins =
-          anonTier > existingTier ||
-          (anonTier === existingTier && anonEntitlement.validUntil > existingEntitlement.validUntil);
-        if (anonWins) {
-          winningPlanKey = anonEntitlement.planKey;
-          winningFeatures = anonEntitlement.features;
-          winningValidUntil = anonEntitlement.validUntil;
+        const anonCompUntil = anonEntitlement.compUntil ?? 0;
+        const existingCompUntil = existingEntitlement.compUntil ?? 0;
+        if (anonCompUntil > existingCompUntil && anonCompUntil > recomputeTimestamp) {
           await ctx.db.patch(existingEntitlement._id, {
             planKey: anonEntitlement.planKey,
             features: anonEntitlement.features,
-            validUntil: anonEntitlement.validUntil,
-            updatedAt: Date.now(),
+            validUntil: Math.max(existingEntitlement.validUntil, anonEntitlement.validUntil),
+            compUntil: anonCompUntil,
+            updatedAt: recomputeTimestamp,
           });
-        } else {
-          winningPlanKey = existingEntitlement.planKey;
-          winningFeatures = existingEntitlement.features;
-          winningValidUntil = existingEntitlement.validUntil;
         }
         await ctx.db.delete(anonEntitlement._id);
       } else {
-        winningPlanKey = anonEntitlement.planKey;
-        winningFeatures = anonEntitlement.features;
-        winningValidUntil = anonEntitlement.validUntil;
-        await ctx.db.patch(anonEntitlement._id, { userId: realUserId });
+        await ctx.db.patch(anonEntitlement._id, {
+          userId: realUserId,
+          updatedAt: recomputeTimestamp,
+        });
       }
     }
 
@@ -2635,26 +2625,30 @@ export const claimSubscription = mutation({
       await ctx.db.patch(payment._id, { userId: realUserId });
     }
 
+    await recomputeEntitlementFromAllSubs(ctx, realUserId, recomputeTimestamp);
+    const recomputedEntitlement = await ctx.db
+      .query("entitlements")
+      .withIndex("by_userId", (q) => q.eq("userId", realUserId))
+      .first();
+
     // ACCEPTED BOUND: cache sync runs after mutation commits. Stale cache
     // survives up to ENTITLEMENT_CACHE_TTL_SECONDS (900s) if scheduler fails.
-    // Sync Redis cache: clear stale anon entry + write real user's entitlement
+    // Clear stale anon cache and sync the final recomputed real-user state.
     if (process.env.UPSTASH_REDIS_REST_URL) {
-      // Delete the anon ID's stale Redis cache entry
       await ctx.scheduler.runAfter(
         0,
         internal.payments.cacheActions.deleteEntitlementCache,
         { userId: args.anonId },
       );
-      // Sync the real user's entitlement to Redis
-      if (winningPlanKey && winningFeatures && winningValidUntil) {
+      if (recomputedEntitlement) {
         await ctx.scheduler.runAfter(
           0,
           internal.payments.cacheActions.syncEntitlementCache,
           {
             userId: realUserId,
-            planKey: winningPlanKey,
-            features: winningFeatures,
-            validUntil: winningValidUntil,
+            planKey: recomputedEntitlement.planKey,
+            features: recomputedEntitlement.features,
+            validUntil: recomputedEntitlement.validUntil,
           },
         );
       }
