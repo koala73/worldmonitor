@@ -8,7 +8,8 @@ function capture(metric: LcpMetricLike): { msg: string; ctx: any } {
   const fakeEnqueue = ((fn: (s: any) => void) => {
     fn({ captureMessage: (msg: string, ctx: unknown) => { out = { msg, ctx }; } });
   }) as unknown as typeof import('@/bootstrap/sentry-defer').enqueueSentryCall;
-  reportLcpMetric(metric, fakeEnqueue);
+  // Force-keep the sampling gate so distribution-shaping assertions are stable.
+  reportLcpMetric(metric, fakeEnqueue, () => true);
   assert.ok(out, 'reportLcpMetric must call enqueue exactly once');
   return out!;
 }
@@ -57,7 +58,7 @@ test('reportLcpMetric captures formFactor before deferred Sentry drain', () => {
     queued = fn;
   }) as unknown as typeof import('@/bootstrap/sentry-defer').enqueueSentryCall;
   const out = withWindow(webVitalsTestWindow(900), () => {
-    reportLcpMetric({ value: 3200, rating: 'needs-improvement' }, fakeEnqueue);
+    reportLcpMetric({ value: 3200, rating: 'needs-improvement' }, fakeEnqueue, () => true);
     return { ctx: undefined as any };
   });
 
@@ -74,7 +75,7 @@ test('reportLcpMetric still reports unknown/undefined-rated LCP conservatively',
     calls += 1;
     fn({ captureMessage: () => {} });
   }) as unknown as typeof import('@/bootstrap/sentry-defer').enqueueSentryCall;
-  reportLcpMetric({ value: 2600 }, fakeEnqueue);
+  reportLcpMetric({ value: 2600 }, fakeEnqueue, () => true);
   assert.equal(calls, 1, 'unknown/undefined rating still reports; do not drop unknowns');
 });
 
@@ -87,6 +88,21 @@ test('reportLcpMetric bounds the LCP element tag value', () => {
   });
   assert.equal(ctx.tags['lcp.element'].length, 200);
   assert.equal(ctx.extra.elementTarget, target);
+});
+
+test('reportLcpMetric drops when the sample gate rejects (volume trim)', () => {
+  let calls = 0;
+  const fakeEnqueue = ((fn: (s: any) => void) => {
+    calls += 1;
+    fn({ captureMessage: () => {} });
+  }) as unknown as typeof import('@/bootstrap/sentry-defer').enqueueSentryCall;
+  reportLcpMetric({ value: 4100, rating: 'poor' }, fakeEnqueue, () => false);
+  assert.equal(calls, 0, 'sampled-out LCP is not enqueued even when rating is poor');
+});
+
+test('reportLcpMetric tags the configured sampleRate for reweighting', () => {
+  const { ctx } = capture({ value: 3200, rating: 'needs-improvement' });
+  assert.equal(ctx.tags.sampleRate, '0.2', 'sampleRate tag lets analysis rescale to true field volume');
 });
 
 test('reportLcpMetric tolerates missing attribution', () => {
