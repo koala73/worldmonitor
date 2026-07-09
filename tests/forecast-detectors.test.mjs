@@ -56,6 +56,7 @@ import {
   computeAnalysisPriority,
   rankForecastsForAnalysis,
   selectPublishedForecastPool,
+  selectDeferredForecastForPublishBackfill,
   buildPublishedForecastArtifacts,
   filterPublishedForecasts,
   applySituationFamilyCaps,
@@ -3118,6 +3119,233 @@ describe('forecast quality gating', () => {
     assert.equal(pool.length, 1);
     assert.equal(pool[0].id, hard.id);
     assert.ok(hard.publishSelectionScore > judged.publishSelectionScore);
+  });
+
+  it('rebalances the freshest selected snapshot to >=80% hard when hard supply exists', () => {
+    const deadline = Date.parse('2026-08-01T00:00:00Z');
+    const forecasts = [];
+
+    for (let i = 0; i < 6; i++) {
+      const judged = makePrediction('military', `Theater ${i}`, `Military posture: Theater ${i}`, 0.75, 0.7, '7d', [
+        { type: 'theater', value: `Theater ${i} posture: elevated`, weight: 0.45 },
+      ]);
+      judged.id = `judged-${i}`;
+      judged.traceMeta = { narrativeSource: 'fallback' };
+      judged.readiness = { overall: 0.7 };
+      judged.analysisPriority = 0.8;
+      judged.resolution = {
+        kind: 'judged',
+        deadline,
+        question: `Will Theater ${i} posture escalate?`,
+      };
+      forecasts.push(judged);
+    }
+
+    for (let i = 0; i < 10; i++) {
+      const hard = makePrediction('conflict', `Country ${i}`, `Escalation risk: Country ${i}`, 0.5, 0.6, '7d', [
+        { type: 'conflict_events', value: `4 cross-border events in Country ${i}`, weight: 0.35 },
+      ]);
+      hard.id = `hard-${i}`;
+      hard.traceMeta = { narrativeSource: 'fallback' };
+      hard.readiness = { overall: 0.65 };
+      hard.analysisPriority = 0.5;
+      hard.resolution = {
+        kind: 'hard',
+        metricKey: `${CONFLICT_COUNT_SOURCE_FEED}|count(country==Country ${i})`,
+        operator: '>=',
+        threshold: 1,
+        window: 'within-horizon',
+        deadline,
+        sourceFeed: CONFLICT_COUNT_SOURCE_FEED,
+      };
+      forecasts.push(hard);
+    }
+
+    const pool = selectPublishedForecastPool(forecasts, { targetCount: 10 });
+    const hardCount = pool.filter((pred) => pred.resolution?.kind === 'hard').length;
+    assert.equal(pool.length, 10);
+    assert.ok(hardCount >= 8, `expected >=8 hard forecasts, got ${hardCount}`);
+  });
+
+  it('keeps the hard situation cap while rebalancing for resolution coverage', () => {
+    const deadline = Date.parse('2026-08-01T00:00:00Z');
+    const hormuzState = {
+      id: 'state-hormuz-cap',
+      label: 'Hormuz maritime disruption state',
+      dominantRegion: 'Strait of Hormuz',
+      dominantDomain: 'market',
+      forecastCount: 3,
+      familyId: 'fam-hormuz-cap',
+      topSignals: [{ type: 'shipping_cost_shock' }, { type: 'energy_supply_shock' }],
+    };
+    const hormuzSituation = {
+      id: 'sit-hormuz-cap',
+      label: 'Hormuz maritime disruption situation',
+      forecastCount: 3,
+      topSignals: [{ type: 'shipping_cost_shock', count: 1 }],
+    };
+    const hormuzFamily = {
+      id: 'fam-hormuz-cap',
+      label: 'Hormuz maritime pressure family',
+      forecastCount: 3,
+      situationCount: 1,
+      situationIds: [hormuzSituation.id],
+    };
+
+    function attachSelectionContext(pred, state, family, priority, readiness = 0.74) {
+      pred.traceMeta = { narrativeSource: 'fallback' };
+      pred.readiness = { overall: readiness };
+      pred.analysisPriority = priority;
+      pred.stateContext = state;
+      pred.situationContext = state === hormuzState ? hormuzSituation : {
+        id: `sit-${state.id}`,
+        label: `${state.label} situation`,
+        forecastCount: 1,
+        topSignals: [{ type: 'news_corroboration', count: 1 }],
+      };
+      pred.familyContext = family;
+      pred.caseFile = pred.caseFile || {};
+      pred.caseFile.situationContext = pred.situationContext;
+      pred.caseFile.familyContext = family;
+    }
+
+    const market = makePrediction('market', 'Gulf benchmark', 'Energy repricing risk: Gulf benchmark', 0.76, 0.68, '14d', [
+      { type: 'energy_supply_shock', value: 'Energy repricing persists around Hormuz risk.', weight: 0.36 },
+    ]);
+    market.id = 'hormuz-market-judged';
+    market.marketSelectionContext = {
+      confirmationScore: 0.66,
+      contradictionScore: 0.04,
+      topBucketId: 'energy',
+      topBucketLabel: 'Energy',
+      topBucketPressure: 0.71,
+      transmissionEdgeCount: 3,
+      criticalSignalLift: 0.6,
+      topChannel: 'energy_supply_shock',
+      linkedBucketIds: ['energy', 'freight'],
+    };
+    market.resolution = { kind: 'judged', deadline, question: 'Will Hormuz energy repricing escalate?' };
+    attachSelectionContext(market, hormuzState, hormuzFamily, 0.9, 0.86);
+
+    const supply = makePrediction('supply_chain', 'Strait of Hormuz', 'Shipping disruption: Strait of Hormuz', 0.74, 0.66, '14d', [
+      { type: 'shipping_cost_shock', value: 'Shipping reroutes persist through the Hormuz corridor.', weight: 0.35 },
+    ]);
+    supply.id = 'hormuz-supply-judged';
+    supply.marketSelectionContext = {
+      confirmationScore: 0.62,
+      contradictionScore: 0.04,
+      topBucketId: 'freight',
+      topBucketLabel: 'Freight',
+      topBucketPressure: 0.67,
+      transmissionEdgeCount: 3,
+      criticalSignalLift: 0.58,
+      topChannel: 'shipping_cost_shock',
+      linkedBucketIds: ['freight', 'energy'],
+    };
+    supply.resolution = { kind: 'judged', deadline, question: 'Will Hormuz shipping disruption escalate?' };
+    attachSelectionContext(supply, hormuzState, hormuzFamily, 0.88, 0.84);
+
+    const hardSameState = makePrediction('market', 'Gulf benchmark', 'Hard benchmark trigger: Gulf benchmark', 0.55, 0.6, '14d', [
+      { type: 'energy_supply_shock', value: 'Energy benchmark pressure remains visible around Hormuz.', weight: 0.3 },
+    ]);
+    hardSameState.id = 'hormuz-hard-same-state';
+    hardSameState.marketSelectionContext = {
+      confirmationScore: 0.4,
+      contradictionScore: 0.05,
+      topBucketId: 'energy',
+      topBucketLabel: 'Energy',
+      topBucketPressure: 0.45,
+      transmissionEdgeCount: 1,
+      criticalSignalLift: 0.25,
+      topChannel: 'energy_supply_shock',
+      linkedBucketIds: ['energy'],
+    };
+    hardSameState.resolution = {
+      kind: 'hard',
+      metricKey: 'market|hormuz_energy_benchmark',
+      operator: '>=',
+      threshold: 1,
+      window: 'within-horizon',
+      deadline,
+      sourceFeed: 'market',
+    };
+    attachSelectionContext(hardSameState, hormuzState, hormuzFamily, 0.08, 0.58);
+
+    const otherJudged = Array.from({ length: 3 }, (_, index) => {
+      const pred = makePrediction('military', `Theater ${index}`, `Military posture: Theater ${index}`, 0.73 - (index * 0.01), 0.66, '7d', [
+        { type: 'theater', value: `Theater ${index} posture: elevated`, weight: 0.45 },
+      ]);
+      pred.id = `other-judged-${index}`;
+      pred.resolution = { kind: 'judged', deadline, question: `Will Theater ${index} posture escalate?` };
+      const state = {
+        id: `state-other-${index}`,
+        label: `Other theater ${index}`,
+        dominantRegion: `Theater ${index}`,
+        dominantDomain: 'military',
+        forecastCount: 1,
+        familyId: `fam-other-${index}`,
+        topSignals: [{ type: 'theater' }],
+      };
+      const family = {
+        id: `fam-other-${index}`,
+        label: `Other theater family ${index}`,
+        forecastCount: 1,
+        situationCount: 1,
+        situationIds: [`sit-state-other-${index}`],
+      };
+      attachSelectionContext(pred, state, family, 0.7 - (index * 0.04), 0.76);
+      return pred;
+    });
+
+    const pool = selectPublishedForecastPool([market, supply, hardSameState, ...otherJudged], { targetCount: 5 });
+    const hormuzCount = pool.filter((pred) => pred.stateContext?.id === hormuzState.id).length;
+    assert.equal(pool.length, 5);
+    const poolIds = pool.map((pred) => pred.id).join(', ');
+    const scoreSummary = [market, supply, hardSameState, ...otherJudged]
+      .map((pred) => `${pred.id}:${pred.publishSelectionScore}`)
+      .join(', ');
+    assert.ok(pool.some((pred) => pred.id === market.id), `${poolIds} / ${scoreSummary}`);
+    assert.ok(pool.some((pred) => pred.id === hardSameState.id), `${poolIds} / ${scoreSummary}`);
+    assert.equal(hormuzCount, 2, `${poolIds} / ${scoreSummary}`);
+  });
+
+  it('prefers deferred hard forecasts while backfilling a below-target published set', () => {
+    const deadline = Date.parse('2026-08-01T00:00:00Z');
+    const judged = makePrediction('military', 'Theater', 'Military posture: Theater', 0.7, 0.7, '7d', [
+      { type: 'theater', value: 'Theater posture: elevated', weight: 0.45 },
+    ]);
+    judged.id = 'deferred-judged';
+    judged.resolution = {
+      kind: 'judged',
+      deadline,
+      question: 'Will theater posture escalate?',
+    };
+
+    const hard = makePrediction('conflict', 'Mali', 'Escalation risk: Mali', 0.5, 0.6, '7d', [
+      { type: 'conflict_events', value: '4 cross-border events in Mali', weight: 0.35 },
+    ]);
+    hard.id = 'deferred-hard';
+    hard.resolution = {
+      kind: 'hard',
+      metricKey: `${CONFLICT_COUNT_SOURCE_FEED}|count(country==Mali)`,
+      operator: '>=',
+      threshold: 1,
+      window: 'within-horizon',
+      deadline,
+      sourceFeed: CONFLICT_COUNT_SOURCE_FEED,
+    };
+
+    const published = Array.from({ length: 7 }, (_, index) => {
+      const item = makePrediction('market', `Market ${index}`, `Market repricing: ${index}`, 0.6, 0.6, '7d', []);
+      item.id = `published-judged-${index}`;
+      item.resolution = { kind: 'judged', deadline, question: `Will market ${index} reprice?` };
+      return item;
+    });
+
+    const deferred = [judged, hard];
+    const next = selectDeferredForecastForPublishBackfill(deferred, published, 10);
+    assert.equal(next.id, hard.id);
+    assert.deepEqual(deferred.map((pred) => pred.id), [judged.id]);
   });
 
   it('keeps strategic supply-chain forecasts alive alongside same-state market repricing and reports survival telemetry', () => {
