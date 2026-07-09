@@ -123,6 +123,7 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
     }
   }
 
+  migratePendingCountFeedKeys(ledger);
   return sortLedger(ledger);
 }
 

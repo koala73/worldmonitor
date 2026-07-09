@@ -339,7 +339,14 @@ async function fetchAll() {
 
   // Write secondary keys BEFORE returning (runSeed calls process.exit after primary write)
   if (ha) { for (const [cc, data] of Object.entries(ha)) await writeExtraKeyWithMeta(`${HAPI_CACHE_KEY_PREFIX}:${cc}`, data, HAPI_TTL, 1); }
-  if (acResolution?.events?.length) await writeExtraKeyWithMeta(ACLED_RESOLUTION_CACHE_KEY, acResolution, ACLED_TTL, acResolution.events.length);
+  if (acResolution?.events?.length) {
+    await writeExtraKeyWithMeta(
+      ACLED_RESOLUTION_CACHE_KEY,
+      { events: acResolution.events, clusters: [], pagination: acResolution.pagination },
+      ACLED_TTL,
+      acResolution.events.length,
+    );
+  }
   if (pi) await writeExtraKeyWithMeta('intel:pizzint:v1:base', { pizzint: pi, tensionPairs: [] }, PIZZINT_TTL, pi.locationsMonitored ?? 0);
   if (pi && gd) await writeExtraKeyWithMeta('intel:pizzint:v1:gdelt', { pizzint: pi, tensionPairs: gd }, PIZZINT_TTL, gd.length ?? 0);
 

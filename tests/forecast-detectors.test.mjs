@@ -843,7 +843,7 @@ describe('detectPoliticalScenarios', () => {
     assert.equal(result[0].region, 'Israel');
   });
 
-  it('can generate from unrest event counts even when CII unrest is weak', () => {
+  it('can generate from ACLED unrest event counts even when CII unrest is weak', () => {
     const inputs = {
       ciiScores: {
         ciiScores: [{
@@ -854,12 +854,44 @@ describe('detectPoliticalScenarios', () => {
         }],
       },
       temporalAnomalies: { anomalies: [] },
-      unrestEvents: { events: [{ country: 'India' }, { country: 'India' }, { country: 'India' }] },
+      unrestEvents: {
+        events: [
+          { country: 'India', sourceType: 'UNREST_SOURCE_TYPE_ACLED' },
+          { country: 'India', sourceType: 'UNREST_SOURCE_TYPE_ACLED' },
+          { country: 'India', sourceType: 'UNREST_SOURCE_TYPE_ACLED' },
+        ],
+      },
     };
     const result = detectPoliticalScenarios(inputs);
     assert.equal(result.length, 1);
     assert.equal(result[0].domain, 'political');
     assert.equal(result[0].region, 'India');
+  });
+
+  it('does not derive hard-count unrest signals from GDELT-only events', () => {
+    const inputs = {
+      ciiScores: {
+        ciiScores: [{
+          region: 'IN',
+          combinedScore: 62,
+          trend: 'TREND_DIRECTION_STABLE',
+          components: { ciiContribution: 0, geoConvergence: 63 },
+        }],
+      },
+      temporalAnomalies: { anomalies: [] },
+      unrestEvents: {
+        events: [
+          { country: 'India', sourceType: 'UNREST_SOURCE_TYPE_GDELT' },
+          { country: 'India', sourceType: 'UNREST_SOURCE_TYPE_GDELT' },
+          { country: 'India', sourceType: 'UNREST_SOURCE_TYPE_GDELT' },
+        ],
+      },
+    };
+    const result = detectPoliticalScenarios(inputs);
+    assert.equal(result.length, 1);
+    assert.equal(result[0].domain, 'political');
+    assert.equal(result[0].region, 'India');
+    assert.ok(!result[0].signals.some((signal) => signal.type === 'unrest_events'));
   });
 });
 

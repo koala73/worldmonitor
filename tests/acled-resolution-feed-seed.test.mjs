@@ -35,6 +35,7 @@ describe('ACLED resolution-feed seed contract (#5076)', () => {
     assert.match(conflictSeed, /ACLED_RESOLUTION_PAGE_LIMIT\s*=\s*5000/);
     assert.match(conflictSeed, /ACLED_RESOLUTION_MAX_PAGES\s*=\s*(?:[1-9]\d+)/);
     assert.match(conflictSeed, /writeExtraKeyWithMeta\(\s*ACLED_RESOLUTION_CACHE_KEY/);
+    assert.match(conflictSeed, /ACLED_RESOLUTION_CACHE_KEY,[\s\S]*clusters:\s*\[\],[\s\S]*acResolution\.pagination/);
   });
 
   it('unrest seeder keeps the canonical display feed but also publishes a paginated 60d ACLED resolution feed', () => {

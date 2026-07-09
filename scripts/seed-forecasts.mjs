@@ -1680,23 +1680,31 @@ function deriveStateDrivenForecasts({
     });
 }
 
+function isAcledUnrestCountEvent(event) {
+  const sourceType = String(event?.sourceType || event?.source_type || '').trim().toUpperCase();
+  if (!sourceType) return false;
+  return sourceType.replace(/^UNREST_SOURCE_TYPE_/, '') === 'ACLED';
+}
+
 function detectPoliticalScenarios(inputs) {
   const predictions = [];
   const scores = extractCiiScores(inputs);
   const anomalies = Array.isArray(inputs.temporalAnomalies) ? inputs.temporalAnomalies : inputs.temporalAnomalies?.anomalies || [];
   const unrestEvents = Array.isArray(inputs.unrestEvents) ? inputs.unrestEvents : inputs.unrestEvents?.events || [];
-  const unrestCounts = new Map();
+  const acledUnrestCounts = new Map();
 
   for (const event of unrestEvents) {
+    // Hard-count unrest specs resolve against the ACLED-only resolution feed.
+    if (!isAcledUnrestCountEvent(event)) continue;
     const country = resolveCountryName(event.country || event.country_name || event.region || event.location || '');
     if (!country) continue;
-    unrestCounts.set(country, (unrestCounts.get(country) || 0) + 1);
+    acledUnrestCounts.set(country, (acledUnrestCounts.get(country) || 0) + 1);
   }
 
   for (const c of scores) {
     if (!c.components) continue;
     const unrestComp = c.components.unrest ?? 0;
-    const unrestCount = unrestCounts.get(c.name) || 0;
+    const unrestCount = acledUnrestCounts.get(c.name) || 0;
     if (unrestComp <= 50 && unrestCount < 3) continue;
     if (c.score >= 80) continue;
 
