@@ -12,12 +12,15 @@
  * Usage:
  *   node scripts/measure-dashboard-render-axis.mjs [url] [--settle 10000] [--json]
  *   node scripts/measure-dashboard-render-axis.mjs [url] --trace-out /tmp/dashboard-trace.json
+ *   node scripts/measure-dashboard-render-axis.mjs [url] --interact country --json
  *   node scripts/measure-dashboard-render-axis.mjs --compare before.json after.json --json
  */
 import { readFile, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 
 const TBT_THRESHOLD_MS = 50;
+const DEFAULT_INTERACTION_VIEWPORT = { width: 390, height: 844 };
+const DEFAULT_POST_INTERACT_MS = 1200;
 
 const DEFAULT_TRACE_CATEGORIES = [
   'devtools.timeline',
@@ -50,6 +53,15 @@ const RENDERING_NAMES = new Set([
   'Rasterize Paint',
   'UpdateLayer',
   'UpdateLayerTree',
+]);
+
+const CANVAS_NAMES = new Set([
+  'Canvas2DLayerBridge::FlushCanvas',
+  'Canvas2DLayerBridge::FinalizeFrame',
+  'CanvasResourceProvider::FlushCanvas',
+  'CanvasResourceProvider::RasterRecord',
+  'GLES2DecoderImpl::DoCommands',
+  'WebGLRenderingContextBase::commit',
 ]);
 
 const SCRIPT_EVALUATION_NAMES = new Set([
@@ -91,6 +103,33 @@ const FORCED_MARKER_NAMES = new Set([
   'Blink.ForcedStyleAndLayout.UpdateTime',
 ]);
 
+const NAMED_INTERACTION_TARGETS = Object.freeze({
+  country: {
+    name: 'country',
+    label: 'SVG country path',
+    selector: '#mapSvg path.country',
+    action: 'tap',
+  },
+  base: {
+    name: 'base',
+    label: 'SVG base rect',
+    selector: '#mapSvg > g.map-base > rect',
+    action: 'tap',
+  },
+  nav: {
+    name: 'nav',
+    label: 'mobile panel nav chip',
+    selector: '#main > nav.mobile-panel-nav > button, .mobile-panel-nav-chip',
+    action: 'tap',
+  },
+  'nav-chip': {
+    name: 'nav-chip',
+    label: 'mobile panel nav chip',
+    selector: '#main > nav.mobile-panel-nav > button, .mobile-panel-nav-chip',
+    action: 'tap',
+  },
+});
+
 function round(n) {
   return Math.round((Number(n) || 0) * 10) / 10;
 }
@@ -109,14 +148,36 @@ export function classifyRenderAxisEvent(name) {
   const value = String(name || '');
   if (!value || value === 'LayoutShift') return null;
   if (STYLE_LAYOUT_NAMES.has(value)) return 'styleLayout';
+  if (CANVAS_NAMES.has(value)) return 'canvas';
   if (RENDERING_NAMES.has(value)) return 'rendering';
   if (SCRIPT_EVALUATION_NAMES.has(value)) return 'scriptEvaluation';
   if (/layout|style|recalculate/i.test(value) && !/shift/i.test(value)) return 'styleLayout';
+  if (/canvas|webgl|gles2|skia/i.test(value)) return 'canvas';
   if (/paint|composite|raster|layerize|prepaint/i.test(value)) return 'rendering';
   if (/evaluate|functioncall|eventdispatch|timerfire|microtask|compile|execute|v8/i.test(value)) {
     return 'scriptEvaluation';
   }
   return null;
+}
+
+export function resolveInteractionTarget(raw = 'country') {
+  const value = String(raw || 'country').trim() || 'country';
+  const named = NAMED_INTERACTION_TARGETS[value];
+  if (named) return { ...named };
+  if (value.startsWith('selector:')) {
+    return {
+      name: 'custom',
+      label: 'custom selector',
+      selector: value.slice('selector:'.length).trim(),
+      action: 'tap',
+    };
+  }
+  return {
+    name: 'custom',
+    label: 'custom selector',
+    selector: value,
+    action: 'tap',
+  };
 }
 
 function stackFromUnknown(raw) {
@@ -212,6 +273,7 @@ export function summarizeTraceEvents(trace) {
   const duration = {
     styleLayoutMs: 0,
     renderingMs: 0,
+    canvasMs: 0,
     scriptEvaluationMs: 0,
     topLevelTaskMs: 0,
     tbtMs: 0,
@@ -225,6 +287,7 @@ export function summarizeTraceEvents(trace) {
     const group = classifyRenderAxisEvent(event.name);
     if (group === 'styleLayout') duration.styleLayoutMs += ms;
     else if (group === 'rendering') duration.renderingMs += ms;
+    else if (group === 'canvas') duration.canvasMs += ms;
     else if (group === 'scriptEvaluation') duration.scriptEvaluationMs += ms;
 
     if (TOP_LEVEL_TASK_NAMES.has(String(event.name || ''))) {
@@ -243,24 +306,27 @@ export function summarizeTraceEvents(trace) {
   }
 
   const accountedMs = duration.styleLayoutMs + duration.renderingMs + duration.scriptEvaluationMs;
+  const accountedWithCanvasMs = accountedMs + duration.canvasMs;
   const warnings = [];
   if (events.length === 0) warnings.push('No trace events found.');
-  if (events.length > 0 && accountedMs === 0) warnings.push('No render-axis duration events were recognized.');
+  if (events.length > 0 && accountedWithCanvasMs === 0) warnings.push('No render-axis duration events were recognized.');
 
   return {
     eventCount: events.length,
     durationMs: {
       styleLayout: round(duration.styleLayoutMs),
       rendering: round(duration.renderingMs),
+      canvas: round(duration.canvasMs),
       scriptEvaluation: round(duration.scriptEvaluationMs),
       topLevelTasks: round(duration.topLevelTaskMs),
       estimatedTbt: round(duration.tbtMs),
-      accountedRenderAxis: round(accountedMs),
+      accountedRenderAxis: round(accountedWithCanvasMs),
     },
     sharePct: {
-      styleLayoutOfAccounted: accountedMs ? round((duration.styleLayoutMs / accountedMs) * 100) : 0,
-      renderingOfAccounted: accountedMs ? round((duration.renderingMs / accountedMs) * 100) : 0,
-      scriptEvaluationOfAccounted: accountedMs ? round((duration.scriptEvaluationMs / accountedMs) * 100) : 0,
+      styleLayoutOfAccounted: accountedWithCanvasMs ? round((duration.styleLayoutMs / accountedWithCanvasMs) * 100) : 0,
+      renderingOfAccounted: accountedWithCanvasMs ? round((duration.renderingMs / accountedWithCanvasMs) * 100) : 0,
+      canvasOfAccounted: accountedWithCanvasMs ? round((duration.canvasMs / accountedWithCanvasMs) * 100) : 0,
+      scriptEvaluationOfAccounted: accountedWithCanvasMs ? round((duration.scriptEvaluationMs / accountedWithCanvasMs) * 100) : 0,
     },
     forcedReflows: summarizeForcedReflows(events),
     topEvents: summarizeTopEvents(topEvents),
@@ -268,9 +334,50 @@ export function summarizeTraceEvents(trace) {
   };
 }
 
+export function dominantRenderPhase(duration = {}) {
+  const labels = {
+    styleLayout: 'style/layout',
+    rendering: 'paint/composite/raster',
+    canvas: 'canvas/webgl',
+    scriptEvaluation: 'script/evaluation',
+  };
+  const phases = ['styleLayout', 'rendering', 'canvas', 'scriptEvaluation'];
+  const [phase, ms] = phases
+    .map((key) => [key, Number(duration[key]) || 0])
+    .sort((a, b) => b[1] - a[1])[0] || ['none', 0];
+  return { phase, label: labels[phase] || 'none', ms: round(ms) };
+}
+
+export function summarizeInteractionTimings(entries) {
+  const rows = (Array.isArray(entries) ? entries : [])
+    .map((entry) => {
+      const startTime = Number(entry?.startTime) || 0;
+      const duration = Number(entry?.duration) || 0;
+      const processingStart = Number(entry?.processingStart) || startTime;
+      const processingEnd = Number(entry?.processingEnd) || processingStart;
+      return {
+        name: String(entry?.name || 'event'),
+        selector: String(entry?.selector || ''),
+        startTime: round(startTime),
+        durationMs: round(duration),
+        inputDelayMs: round(Math.max(0, processingStart - startTime)),
+        processingMs: round(Math.max(0, processingEnd - processingStart)),
+        presentationDelayMs: round(Math.max(0, startTime + duration - processingEnd)),
+      };
+    })
+    .filter((row) => row.durationMs > 0 || row.processingMs > 0 || row.presentationDelayMs > 0)
+    .sort((a, b) => b.durationMs - a.durationMs || b.presentationDelayMs - a.presentationDelayMs);
+
+  return {
+    eventCount: rows.length,
+    worst: rows[0] || null,
+    events: rows.slice(0, 8),
+  };
+}
+
 export function buildReport(result) {
   const summary = summarizeTraceEvents(result?.traceEvents || []);
-  return {
+  const report = {
     url: result?.url,
     generatedAt: result?.generatedAt,
     viewport: result?.viewport,
@@ -278,6 +385,14 @@ export function buildReport(result) {
     tracePath: result?.tracePath || null,
     ...summary,
   };
+  if (result?.interaction) {
+    report.interaction = {
+      target: result.interaction,
+      timings: summarizeInteractionTimings(result?.eventTimings),
+      dominantPhase: dominantRenderPhase(summary.durationMs),
+    };
+  }
+  return report;
 }
 
 export function normalizeReport(input) {
@@ -396,7 +511,11 @@ export function parseArgs(argv) {
     json: false,
     traceOut: '',
     compare: null,
+    interact: null,
+    postInteract: DEFAULT_POST_INTERACT_MS,
   };
+  let widthExplicit = false;
+  let heightExplicit = false;
   const rest = argv.slice(2);
   for (let i = 0; i < rest.length; i++) {
     const value = rest[i];
@@ -406,11 +525,20 @@ export function parseArgs(argv) {
     } else if (value === '--width') {
       const n = Number(rest[++i]);
       if (!Number.isNaN(n)) args.width = n;
+      widthExplicit = true;
     } else if (value === '--height') {
       const n = Number(rest[++i]);
       if (!Number.isNaN(n)) args.height = n;
+      heightExplicit = true;
     } else if (value === '--trace-out') {
       args.traceOut = rest[++i] || '';
+    } else if (value === '--interact') {
+      const next = rest[i + 1];
+      const target = next && !next.startsWith('--') ? rest[++i] : 'country';
+      args.interact = resolveInteractionTarget(target);
+    } else if (value === '--post-interact') {
+      const n = Number(rest[++i]);
+      if (!Number.isNaN(n)) args.postInteract = n;
     } else if (value === '--compare') {
       const before = rest[++i];
       const after = rest[++i];
@@ -421,7 +549,18 @@ export function parseArgs(argv) {
       args.url = value;
     }
   }
+  if (args.interact) {
+    if (!widthExplicit) args.width = DEFAULT_INTERACTION_VIEWPORT.width;
+    if (!heightExplicit) args.height = DEFAULT_INTERACTION_VIEWPORT.height;
+  }
   return args;
+}
+
+async function startTracing(client) {
+  await client.send('Tracing.start', {
+    categories: DEFAULT_TRACE_CATEGORIES.join(','),
+    transferMode: 'ReturnAsStream',
+  });
 }
 
 async function readStream(client, stream) {
@@ -447,23 +586,211 @@ async function stopTracing(client) {
   return traceEvents(parsed);
 }
 
-async function captureTrace(url, { settleMs = 10000, width = 1365, height = 768, traceOut = '' } = {}) {
+async function installInteractionTimingObserver(page) {
+  await page.addInitScript(() => {
+    const selectorFor = (node) => {
+      try {
+        if (!(node instanceof Element)) return '';
+        if (node.id) return `#${CSS.escape(node.id)}`;
+        const className = typeof node.className === 'string'
+          ? node.className
+          : (node.className?.baseVal || '');
+        const firstClass = className.trim().split(/\s+/).filter(Boolean)[0];
+        return `${node.tagName.toLowerCase()}${firstClass ? `.${CSS.escape(firstClass)}` : ''}`;
+      } catch {
+        return '';
+      }
+    };
+    window.__wmInteractionTimings = [];
+    try {
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) {
+          window.__wmInteractionTimings.push({
+            name: entry.name,
+            startTime: entry.startTime,
+            duration: entry.duration,
+            processingStart: entry.processingStart,
+            processingEnd: entry.processingEnd,
+            interactionId: entry.interactionId || 0,
+            selector: selectorFor(entry.target),
+          });
+        }
+      }).observe({ type: 'event', buffered: true, durationThreshold: 0 });
+    } catch {
+      /* Event Timing unavailable in this browser — trace phases still work. */
+    }
+  });
+}
+
+async function describeInteractionTarget(page, target) {
+  const first = page.locator(target.selector).first();
+  await first.waitFor({ state: 'visible', timeout: 15000 });
+  await first.scrollIntoViewIfNeeded();
+  const info = await page.evaluate((selector) => {
+    const round1 = (n) => Math.round(Number(n || 0) * 10) / 10;
+    const inViewport = (x, y) => (
+      Number.isFinite(x)
+      && Number.isFinite(y)
+      && x >= 0
+      && y >= 0
+      && x <= window.innerWidth
+      && y <= window.innerHeight
+    );
+    const rectInfo = (el) => {
+      const rect = el.getBoundingClientRect();
+      return {
+        x: round1(rect.x),
+        y: round1(rect.y),
+        width: round1(rect.width),
+        height: round1(rect.height),
+      };
+    };
+    const topMatches = (el, x, y) => {
+      const top = document.elementFromPoint(x, y);
+      if (!top) return false;
+      if (top === el || el.contains(top)) return true;
+      try {
+        return top.closest(selector) === el;
+      } catch {
+        return false;
+      }
+    };
+    const screenPoint = (el, point) => {
+      const ctm = typeof el.getScreenCTM === 'function' ? el.getScreenCTM() : null;
+      if (!ctm) return null;
+      return {
+        x: point.x * ctm.a + point.y * ctm.c + ctm.e,
+        y: point.x * ctm.b + point.y * ctm.d + ctm.f,
+      };
+    };
+    const candidatePoints = (el) => {
+      const points = [];
+      if (typeof el.getTotalLength === 'function' && typeof el.getPointAtLength === 'function') {
+        try {
+          const length = el.getTotalLength();
+          if (Number.isFinite(length) && length > 0) {
+            for (let i = 1; i < 24; i++) {
+              const point = screenPoint(el, el.getPointAtLength((length * i) / 24));
+              if (point) points.push(point);
+            }
+          }
+        } catch {
+          /* Some SVG nodes expose geometry methods but throw for invalid paths. */
+        }
+      }
+      const rect = el.getBoundingClientRect();
+      const visibleLeft = Math.max(0, rect.left);
+      const visibleRight = Math.min(window.innerWidth, rect.right);
+      const visibleTop = Math.max(0, rect.top);
+      const visibleBottom = Math.min(window.innerHeight, rect.bottom);
+      if (visibleRight > visibleLeft && visibleBottom > visibleTop) {
+        for (const xRatio of [0.5, 0.15, 0.3, 0.7, 0.85]) {
+          for (const yRatio of [0.5, 0.15, 0.3, 0.7, 0.85]) {
+            points.push({
+              x: visibleLeft + (visibleRight - visibleLeft) * xRatio,
+              y: visibleTop + (visibleBottom - visibleTop) * yRatio,
+            });
+          }
+        }
+      }
+      return points;
+    };
+    const describe = (el, point, matchedTop) => ({
+      tagName: el.tagName.toLowerCase(),
+      text: (el.textContent || '').trim().slice(0, 80),
+      rect: rectInfo(el),
+      tapPoint: point ? { x: round1(point.x), y: round1(point.y), matchedTop } : null,
+    });
+
+    const candidates = [...document.querySelectorAll(selector)];
+    for (const el of candidates) {
+      const rect = el.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) continue;
+      for (const point of candidatePoints(el)) {
+        if (!inViewport(point.x, point.y)) continue;
+        if (topMatches(el, point.x, point.y)) return describe(el, point, true);
+      }
+    }
+
+    const fallback = candidates.find((el) => {
+      const rect = el.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0;
+    });
+    if (!fallback) return null;
+    const rect = fallback.getBoundingClientRect();
+    const point = {
+      x: Math.min(Math.max(rect.left + rect.width / 2, 1), window.innerWidth - 1),
+      y: Math.min(Math.max(rect.top + rect.height / 2, 1), window.innerHeight - 1),
+    };
+    return describe(fallback, point, false);
+  }, target.selector);
+  if (!info?.tapPoint) {
+    throw new Error(`No visible interaction target matched ${target.selector}`);
+  }
+  return info;
+}
+
+async function performInteraction(page, targetInfo) {
+  const point = targetInfo?.tapPoint;
+  if (!point) throw new Error('Interaction target did not include a tap point');
+  await page.touchscreen.tap(point.x, point.y);
+}
+
+async function readInteractionTimings(page) {
+  return page.evaluate(() => window.__wmInteractionTimings || []);
+}
+
+async function resetInteractionTimings(page) {
+  await page.evaluate(() => {
+    window.__wmInteractionTimings = [];
+  });
+}
+
+async function captureTrace(url, {
+  settleMs = 10000,
+  width = 1365,
+  height = 768,
+  traceOut = '',
+  interaction = null,
+  postInteractMs = DEFAULT_POST_INTERACT_MS,
+} = {}) {
   const { chromium } = await import('@playwright/test');
   const browser = await chromium.launch();
   try {
+    const mobileInteraction = Boolean(interaction);
     const context = await browser.newContext({
       viewport: { width, height },
-      deviceScaleFactor: 1,
-      isMobile: false,
+      deviceScaleFactor: mobileInteraction ? 3 : 1,
+      isMobile: mobileInteraction,
+      hasTouch: mobileInteraction,
     });
     const page = await context.newPage();
+    if (interaction) await installInteractionTimingObserver(page);
     const client = await context.newCDPSession(page);
-    await client.send('Tracing.start', {
-      categories: DEFAULT_TRACE_CATEGORIES.join(','),
-      transferMode: 'ReturnAsStream',
-    });
-    await page.goto(url, { waitUntil: 'load', timeout: 60000 });
-    await page.waitForTimeout(settleMs);
+    let eventTimings = [];
+    let interactionTarget = null;
+
+    if (interaction) {
+      await page.goto(url, { waitUntil: 'load', timeout: 60000 });
+      await page.waitForTimeout(settleMs);
+      const targetInfo = await describeInteractionTarget(page, interaction);
+      interactionTarget = {
+        ...interaction,
+        postInteractMs,
+        targetInfo,
+      };
+      await resetInteractionTimings(page);
+      await startTracing(client);
+      await page.evaluate(() => performance.mark?.('wm-interaction-start'));
+      await performInteraction(page, targetInfo);
+      await page.waitForTimeout(postInteractMs);
+      eventTimings = await readInteractionTimings(page);
+    } else {
+      await startTracing(client);
+      await page.goto(url, { waitUntil: 'load', timeout: 60000 });
+      await page.waitForTimeout(settleMs);
+    }
+
     const events = await stopTracing(client);
     const result = {
       url,
@@ -472,6 +799,8 @@ async function captureTrace(url, { settleMs = 10000, width = 1365, height = 768,
       settleMs,
       tracePath: traceOut || null,
       traceEvents: events,
+      interaction: interactionTarget,
+      eventTimings,
     };
     if (traceOut) {
       await writeFile(traceOut, JSON.stringify(result, null, 2));
@@ -506,8 +835,23 @@ function printHuman(report) {
   const d = report.durationMs;
   console.log(`Style/Layout:     ${d.styleLayout}ms (${report.sharePct.styleLayoutOfAccounted}% of accounted render-axis)`);
   console.log(`Rendering:        ${d.rendering}ms (${report.sharePct.renderingOfAccounted}% of accounted render-axis)`);
+  console.log(`Canvas/WebGL:     ${d.canvas}ms (${report.sharePct.canvasOfAccounted}% of accounted render-axis)`);
   console.log(`Script Evaluation:${String(d.scriptEvaluation).padStart(7)}ms (${report.sharePct.scriptEvaluationOfAccounted}% of accounted render-axis)`);
   console.log(`Estimated TBT:    ${d.estimatedTbt}ms`);
+  if (report.interaction) {
+    const { target, timings, dominantPhase } = report.interaction;
+    console.log(`Interaction:      ${target.name} (${target.selector})`);
+    if (timings.worst) {
+      console.log(
+        `Event Timing:     ${timings.worst.name} ${timings.worst.durationMs}ms `
+        + `(input ${timings.worst.inputDelayMs}ms, processing ${timings.worst.processingMs}ms, `
+        + `presentation ${timings.worst.presentationDelayMs}ms)`,
+      );
+    } else {
+      console.log('Event Timing:     unavailable (browser did not emit Event Timing entries)');
+    }
+    console.log(`Dominant phase:   ${dominantPhase.label} (${dominantPhase.ms}ms)`);
+  }
   console.log(`Forced reflows:   ${report.forcedReflows.eventCount} attributed events, ${report.forcedReflows.totalMs}ms`);
   console.log(`  (Blink.ForcedStyleAndLayout markers: ${report.forcedReflows.markerCount ?? 0}, ${report.forcedReflows.markerTotalMs ?? 0}ms — stackless fallback)`);
   if (report.forcedReflows.stacks.length > 0) {
@@ -540,6 +884,8 @@ async function main() {
       width: args.width,
       height: args.height,
       traceOut: args.traceOut,
+      interaction: args.interact,
+      postInteractMs: args.postInteract,
     }));
   }
   if (args.json) console.log(JSON.stringify(report, null, 2));
