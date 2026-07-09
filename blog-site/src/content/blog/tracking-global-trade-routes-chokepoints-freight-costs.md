@@ -11,7 +11,7 @@ modifiedDate: "2026-06-13"
 
 > **Key Takeaways:** Strait of Hormuz traffic down 94.4%. World Monitor tracks 8 corridors, 9 freight indices, WTO trade policy, and critical mineral concentration across one free dashboard. Data updates in real time.
 
-The Strait of Hormuz carries 20% of the world's oil. Right now, [World Monitor's](https://worldmonitor.app) live chokepoint tracker shows traffic has dropped 94.4% week-over-week. Tanker transits have collapsed from 60+ daily to single digits. The disruption score is 99%.
+The Strait of Hormuz carries 20% of the world's oil. Right now, [World Monitor's](https://www.worldmonitor.app) live chokepoint tracker shows traffic has dropped 94.4% week-over-week. Tanker transits have collapsed from 60+ daily to single digits. The disruption score is 99%.
 
 This is not a hypothetical scenario for a risk assessment deck. This is happening right now, and World Monitor is tracking it live.
 
@@ -152,4 +152,4 @@ The eight most strategically important chokepoints are: Strait of Hormuz (oil/LN
 
 ---
 
-**Open the Supply Chain panel at [worldmonitor.app](https://worldmonitor.app) and click "Chokepoints" for live corridor disruption scores, or "Shipping Rates" to see real-time freight indices. Free for everyone.**
+**Open the Supply Chain panel at [worldmonitor.app](https://www.worldmonitor.app) and click "Chokepoints" for live corridor disruption scores, or "Shipping Rates" to see real-time freight indices. Free for everyone.**

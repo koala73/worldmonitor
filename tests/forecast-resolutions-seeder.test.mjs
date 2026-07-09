@@ -20,6 +20,7 @@ import {
   readDigestAccumulatorArchive,
 } from '../scripts/seed-forecast-resolutions.mjs';
 import { computeScorecard } from '../scripts/_forecast-scorecard.mjs';
+import { CONFLICT_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED } from '../scripts/_forecast-resolution.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const T0 = Date.parse('2026-07-07T00:00:00Z');
@@ -184,6 +185,159 @@ describe('processResolutionCycle', () => {
     assert.equal(row.status, 'pending');
     assert.equal(row.outcome, undefined);
     assert.equal(receipts.length, 0);
+  });
+
+  it('migrates already-open ACLED/unrest count entries from display feeds to resolution feeds', () => {
+    const deadline = T0 + DAY_MS;
+    const oldLedger = {
+      [`fc-mali@${deadline}`]: {
+        id: 'fc-mali',
+        key: `fc-mali@${deadline}`,
+        domain: 'conflict',
+        region: 'Mali',
+        title: 'Conflict events in Mali stay below threshold',
+        timeHorizon: '24h',
+        generationOrigin: 'detector',
+        spec: {
+          kind: 'hard',
+          metricKey: 'conflict:acled:v1:all:0:0|count(country==Mali)',
+          operator: '>=',
+          threshold: 2,
+          window: 'within-horizon',
+          deadline,
+          sourceFeed: 'conflict:acled:v1:all:0:0',
+        },
+        probability: 0.52,
+        firstSeenProbability: 0.52,
+        generatedAt: T0,
+        deadline,
+        firstSeenAt: T0,
+        lastSeenAt: T0,
+        status: 'pending',
+        samples: { count: 0, recent: [] },
+      },
+      [`fc-venezuela@${deadline}`]: {
+        id: 'fc-venezuela',
+        key: `fc-venezuela@${deadline}`,
+        domain: 'political',
+        region: 'Venezuela',
+        title: 'Protests in Venezuela stay below threshold',
+        timeHorizon: '24h',
+        generationOrigin: 'detector',
+        spec: {
+          kind: 'hard',
+          metricKey: 'unrest:events:v1|count(country==Venezuela)',
+          operator: '>=',
+          threshold: 2,
+          window: 'within-horizon',
+          deadline,
+          sourceFeed: 'unrest:events:v1',
+        },
+        probability: 0.55,
+        firstSeenProbability: 0.55,
+        generatedAt: T0,
+        deadline,
+        firstSeenAt: T0,
+        lastSeenAt: T0,
+        status: 'pending',
+        samples: { count: 0, recent: [] },
+      },
+    };
+
+    const { ledger, receipts } = processResolutionCycle(oldLedger, [], {
+      [CONFLICT_COUNT_SOURCE_FEED]: {
+        events: [
+          { country: 'Ghana', occurredAt: T0 - DAY_MS },
+          { country: 'Mali', occurredAt: T0 + 2 * 60 * 60 * 1000 },
+          { country: 'Burkina Faso', occurredAt: deadline },
+        ],
+      },
+      [UNREST_COUNT_SOURCE_FEED]: {
+        events: [
+          { country: 'Colombia', occurredAt: T0 - DAY_MS },
+          { country: 'Venezuela', occurredAt: T0 + 3 * 60 * 60 * 1000 },
+          { country: 'Ecuador', occurredAt: deadline },
+        ],
+      },
+    }, deadline + 3 * DAY_MS);
+
+    const conflictRow = ledger[`fc-mali@${deadline}`];
+    assert.equal(conflictRow.spec.sourceFeed, CONFLICT_COUNT_SOURCE_FEED);
+    assert.equal(conflictRow.spec.metricKey, `${CONFLICT_COUNT_SOURCE_FEED}|count(country==Mali)`);
+    assert.equal(conflictRow.status, 'resolved');
+    assert.equal(conflictRow.outcome, 'NO');
+    assert.equal(conflictRow.evidence.metricValue, 1);
+
+    const unrestRow = ledger[`fc-venezuela@${deadline}`];
+    assert.equal(unrestRow.spec.sourceFeed, UNREST_COUNT_SOURCE_FEED);
+    assert.equal(unrestRow.spec.metricKey, `${UNREST_COUNT_SOURCE_FEED}|count(country==Venezuela)`);
+    assert.equal(unrestRow.status, 'resolved');
+    assert.equal(unrestRow.outcome, 'NO');
+    assert.equal(unrestRow.evidence.metricValue, 1);
+    assert.equal(receipts.length, 2);
+  });
+
+  it('migrates old-key count specs first ingested from history snapshots', () => {
+    const deadline = T0 + DAY_MS;
+    const conflict = forecast({
+      id: 'fc-mali',
+      domain: 'conflict',
+      region: 'Mali',
+      title: 'Conflict events in Mali stay below threshold',
+      deadline,
+      resolution: {
+        kind: 'hard',
+        metricKey: 'conflict:acled:v1:all:0:0|count(country==Mali)',
+        operator: '>=',
+        threshold: 2,
+        window: 'within-horizon',
+        deadline,
+        sourceFeed: 'conflict:acled:v1:all:0:0',
+      },
+    });
+    const unrest = forecast({
+      id: 'fc-venezuela',
+      domain: 'political',
+      region: 'Venezuela',
+      title: 'Protests in Venezuela stay below threshold',
+      deadline,
+      resolution: {
+        kind: 'hard',
+        metricKey: 'unrest:events:v1|count(country==Venezuela)',
+        operator: '>=',
+        threshold: 2,
+        window: 'within-horizon',
+        deadline,
+        sourceFeed: 'unrest:events:v1',
+      },
+    });
+
+    const { ledger, receipts } = processResolutionCycle({}, [snapshot(T0, [conflict, unrest])], {
+      [CONFLICT_COUNT_SOURCE_FEED]: {
+        events: [
+          { country: 'Ghana', occurredAt: T0 - DAY_MS },
+          { country: 'Mali', occurredAt: T0 + 2 * 60 * 60 * 1000 },
+          { country: 'Burkina Faso', occurredAt: deadline },
+        ],
+      },
+      [UNREST_COUNT_SOURCE_FEED]: {
+        events: [
+          { country: 'Colombia', occurredAt: T0 - DAY_MS },
+          { country: 'Venezuela', occurredAt: T0 + 3 * 60 * 60 * 1000 },
+          { country: 'Ecuador', occurredAt: deadline },
+        ],
+      },
+    }, deadline + 3 * DAY_MS);
+
+    assert.equal(ledger[`fc-mali@${deadline}`].spec.sourceFeed, CONFLICT_COUNT_SOURCE_FEED);
+    assert.equal(ledger[`fc-mali@${deadline}`].spec.metricKey, `${CONFLICT_COUNT_SOURCE_FEED}|count(country==Mali)`);
+    assert.equal(ledger[`fc-mali@${deadline}`].status, 'resolved');
+    assert.equal(ledger[`fc-mali@${deadline}`].outcome, 'NO');
+    assert.equal(ledger[`fc-venezuela@${deadline}`].spec.sourceFeed, UNREST_COUNT_SOURCE_FEED);
+    assert.equal(ledger[`fc-venezuela@${deadline}`].spec.metricKey, `${UNREST_COUNT_SOURCE_FEED}|count(country==Venezuela)`);
+    assert.equal(ledger[`fc-venezuela@${deadline}`].status, 'resolved');
+    assert.equal(ledger[`fc-venezuela@${deadline}`].outcome, 'NO');
+    assert.equal(receipts.length, 2);
   });
 
   it('does not resolve stale UCDP count snapshots to NO after the settlement lag', () => {

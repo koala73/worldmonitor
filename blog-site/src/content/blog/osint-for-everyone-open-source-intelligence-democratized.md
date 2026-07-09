@@ -140,4 +140,4 @@ World Monitor consolidates 435+ feeds, live tracking, AI analysis, and 45 data l
 
 ---
 
-**Start your OSINT workflow at [worldmonitor.app](https://worldmonitor.app). Free, open source, and no login required.**
+**Start your OSINT workflow at [worldmonitor.app](https://www.worldmonitor.app). Free, open source, and no login required.**

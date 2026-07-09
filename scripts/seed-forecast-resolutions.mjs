@@ -18,6 +18,7 @@ import { CHROME_UA, loadEnvFile, runSeed } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { resolveR2StorageConfig, putR2JsonObject } from './_r2-storage.mjs';
 import { parseMetricKey, resolveHardSpec, extractMetricValue } from './_forecast-resolution-eval.mjs';
+import { CONFLICT_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED } from './_forecast-resolution.mjs';
 import { computeScorecard, DEFAULT_ROLLING_WINDOW_DAYS } from './_forecast-scorecard.mjs';
 import { callForecastLLM } from './seed-forecasts.mjs';
 
@@ -43,6 +44,10 @@ const JUDGED_TOKEN_STOPWORDS = new Set([
   'into', 'more', 'over', 'than', 'that', 'their', 'there', 'these',
   'this', 'through', 'under', 'until', 'what', 'when', 'where', 'which',
   'while', 'will', 'with', 'within', 'would',
+]);
+const STALE_COUNT_FEED_REPLACEMENTS = new Map([
+  ['conflict:acled:v1:all:0:0', CONFLICT_COUNT_SOURCE_FEED],
+  ['unrest:events:v1', UNREST_COUNT_SOURCE_FEED],
 ]);
 
 // Retention for the persistent working ledger (#5067). A resolved entry only
@@ -646,6 +651,7 @@ function isPrunableTerminalEntry(entry, minResolvedAt) {
 
 export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now()) {
   const ledger = cloneJson(normalizeLedger(existingLedger));
+  migratePendingCountFeedKeys(ledger);
   const snapshots = [...(historySnapshots || [])]
     .filter(Boolean)
     .sort((a, b) => Number(a.generatedAt || 0) - Number(b.generatedAt || 0));
@@ -675,7 +681,21 @@ export function ingestHistory(existingLedger, historySnapshots, nowMs = Date.now
     }
   }
 
+  migratePendingCountFeedKeys(ledger);
   return sortLedger(ledger);
+}
+
+function migratePendingCountFeedKeys(ledger) {
+  for (const entry of Object.values(ledger)) {
+    if (entry?.status !== 'pending' || entry.spec?.kind !== 'hard') continue;
+    const replacement = STALE_COUNT_FEED_REPLACEMENTS.get(entry.spec.sourceFeed);
+    if (!replacement) continue;
+    const parsed = parseMetricKey(entry.spec.metricKey);
+    entry.spec.sourceFeed = replacement;
+    if (parsed?.feedKey && STALE_COUNT_FEED_REPLACEMENTS.get(parsed.feedKey) === replacement) {
+      entry.spec.metricKey = `${replacement}|${entry.spec.metricKey.slice(parsed.feedKey.length + 1)}`;
+    }
+  }
 }
 
 export function samplePendingEntries(ledger, feedsByKey, nowMs) {

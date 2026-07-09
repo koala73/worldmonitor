@@ -187,4 +187,4 @@ It means seeing how a conflict zone overlaps with an undersea cable, how a naval
 
 ---
 
-**Compare for yourself at [worldmonitor.app](https://worldmonitor.app). Free, open source, and ready in seconds.**
+**Compare for yourself at [worldmonitor.app](https://www.worldmonitor.app). Free, open source, and ready in seconds.**

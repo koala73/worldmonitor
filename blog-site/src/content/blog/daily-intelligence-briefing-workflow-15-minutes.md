@@ -85,4 +85,4 @@ Yes. Pro digest settings push scheduled briefs to your channel of choice, and an
 
 ---
 
-**Run the sequence tomorrow at [worldmonitor.app](https://worldmonitor.app): world brief, deltas, watchlist, region, forward look, capture. By Friday it is a habit; by next month it is an edge.**
+**Run the sequence tomorrow at [worldmonitor.app](https://www.worldmonitor.app): world brief, deltas, watchlist, region, forward look, capture. By Friday it is a habit; by next month it is an edge.**

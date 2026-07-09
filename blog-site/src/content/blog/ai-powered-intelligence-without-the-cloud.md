@@ -153,4 +153,4 @@ For most intelligence tasks, local models like Llama 3.1 70B produce comparable 
 
 ---
 
-**Run intelligence analysis on your own terms at [worldmonitor.app](https://worldmonitor.app). Install Ollama for fully private AI. No login, no tracking, no compromise.**
+**Run intelligence analysis on your own terms at [worldmonitor.app](https://www.worldmonitor.app). Install Ollama for fully private AI. No login, no tracking, no compromise.**

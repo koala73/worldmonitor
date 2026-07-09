@@ -166,4 +166,4 @@ The CII scores each country from 0 to 100 using four weighted components: baseli
 
 ---
 
-**Monitor developing situations at [worldmonitor.app](https://worldmonitor.app). Real-time geopolitical intelligence, free and open source.**
+**Monitor developing situations at [worldmonitor.app](https://www.worldmonitor.app). Real-time geopolitical intelligence, free and open source.**

@@ -157,6 +157,74 @@ describe('resolveHardSpec', () => {
     assert.equal(resolved.evidence.comparison, '2 >= 2');
   });
 
+  it('voids a 30d ACLED display feed whose retained window starts after forecast generation', () => {
+    const generatedAt = START;
+    const deadline = generatedAt + 30 * DAY_MS;
+    const sealAt = deadline + ACLED_SETTLEMENT_LAG_MS;
+    const e = entry({
+      id: 'fc-display-window-pruned',
+      generatedAt,
+      deadline,
+      spec: {
+        kind: 'hard',
+        metricKey: 'conflict:acled:v1:all:0:0|count(country==Mali)',
+        operator: '>=',
+        threshold: 2,
+        window: 'within-horizon',
+        deadline,
+        sourceFeed: 'conflict:acled:v1:all:0:0',
+      },
+    });
+    const feed = {
+      events: [
+        { country: 'Mali', occurredAt: generatedAt + 2 * DAY_MS },
+        { country: 'Burkina Faso', occurredAt: deadline },
+      ],
+    };
+
+    const result = resolveHardSpec(e, feed, {}, sealAt);
+
+    assert.equal(result.status, 'resolved');
+    assert.equal(result.outcome, 'VOID');
+    assert.equal(result.evidence.reason, 'count_source_window_not_retained');
+    assert.equal(result.evidence.sourceMinTs, generatedAt + 2 * DAY_MS);
+    assert.equal(result.evidence.partialMetricValue, 1);
+  });
+
+  it('resolves a below-threshold 30d ACLED count when the resolution feed retains pre-generation coverage', () => {
+    const generatedAt = START;
+    const deadline = generatedAt + 30 * DAY_MS;
+    const sealAt = deadline + ACLED_SETTLEMENT_LAG_MS;
+    const e = entry({
+      id: 'fc-resolution-window-retained',
+      generatedAt,
+      deadline,
+      spec: {
+        kind: 'hard',
+        metricKey: 'conflict:acled-resolution:v1:all:0:0|count(country==Mali)',
+        operator: '>=',
+        threshold: 2,
+        window: 'within-horizon',
+        deadline,
+        sourceFeed: 'conflict:acled-resolution:v1:all:0:0',
+      },
+    });
+    const feed = {
+      events: [
+        { country: 'Ghana', occurredAt: generatedAt - DAY_MS },
+        { country: 'Mali', occurredAt: generatedAt + 2 * DAY_MS },
+        { country: 'Burkina Faso', occurredAt: deadline },
+      ],
+    };
+
+    const result = resolveHardSpec(e, feed, {}, sealAt);
+
+    assert.equal(result.status, 'resolved');
+    assert.equal(result.outcome, 'NO');
+    assert.equal(result.evidence.metricValue, 1);
+    assert.equal(result.evidence.sourceCoverage.minTs, generatedAt - DAY_MS);
+  });
+
   it('keeps due count specs pending until the UCDP source has reached the forecast deadline', () => {
     const generatedAt = Date.parse('2026-07-09T00:00:00Z');
     const deadline = Date.parse('2026-08-08T00:00:00Z');

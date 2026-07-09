@@ -110,4 +110,4 @@ World Monitor covers geopolitics, markets, military tracking, and infrastructure
 
 ---
 
-**Try World Monitor now at [worldmonitor.app](https://worldmonitor.app). No signup required.**
+**Try World Monitor now at [worldmonitor.app](https://www.worldmonitor.app). No signup required.**

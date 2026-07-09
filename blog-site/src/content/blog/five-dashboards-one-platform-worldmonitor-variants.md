@@ -201,7 +201,7 @@ No. All five variants are completely free with no time limits, feature gates, or
 
 **Pick your variant and start exploring:**
 
-- [worldmonitor.app](https://worldmonitor.app) for geopolitics
+- [worldmonitor.app](https://www.worldmonitor.app) for geopolitics
 - [tech.worldmonitor.app](https://tech.worldmonitor.app) for technology
 - [finance.worldmonitor.app](https://finance.worldmonitor.app) for markets
 - [commodity.worldmonitor.app](https://commodity.worldmonitor.app) for commodities

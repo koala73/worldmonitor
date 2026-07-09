@@ -178,4 +178,4 @@ Yes. Use Custom Keyword Monitors for terms like "earthquake," "wildfire," or "fl
 
 ---
 
-**Monitor natural disasters in context at [worldmonitor.app](https://worldmonitor.app). USGS, NASA, and AI analysis, all in one free dashboard.**
+**Monitor natural disasters in context at [worldmonitor.app](https://www.worldmonitor.app). USGS, NASA, and AI analysis, all in one free dashboard.**

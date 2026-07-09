@@ -170,4 +170,4 @@ World Monitor provides geographic and geopolitical threat context rather than or
 
 ---
 
-**Add geopolitical context to your threat intelligence at [worldmonitor.app](https://worldmonitor.app). Free, open source, and integrated with the intelligence data that matters.**
+**Add geopolitical context to your threat intelligence at [worldmonitor.app](https://www.worldmonitor.app). Free, open source, and integrated with the intelligence data that matters.**

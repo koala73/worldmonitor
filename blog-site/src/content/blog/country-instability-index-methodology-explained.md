@@ -92,7 +92,7 @@ The decomposition is the analysis. The number is just the index into it.
 
 ## Using the CII
 
-- **Dashboard:** the CII panel at [worldmonitor.app](https://worldmonitor.app) shows all 31 countries with scores, bands, and 24-hour deltas; any country's brief decomposes its score.
+- **Dashboard:** the CII panel at [worldmonitor.app](https://www.worldmonitor.app) shows all 31 countries with scores, bands, and 24-hour deltas; any country's brief decomposes its score.
 - **API:** `get-country-risk` returns the score and component breakdown as JSON for [your own models](/blog/posts/build-on-worldmonitor-developer-api-open-source/).
 - **AI agents:** the `get_country_risk` tool on the [MCP server](/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/) gives Claude and other assistants the same data, so "why did Egypt's risk score move?" becomes a question your agent can actually answer.
 
@@ -112,4 +112,4 @@ Annual indices measure structural conditions with a 12-month cadence; the CII me
 
 ---
 
-**See every score, band, and delta live at [worldmonitor.app](https://worldmonitor.app). When a number surprises you, click into the country brief and take the score apart. That is what it is for.**
+**See every score, band, and delta live at [worldmonitor.app](https://www.worldmonitor.app). When a number surprises you, click into the country brief and take the score apart. That is what it is for.**

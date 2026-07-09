@@ -165,4 +165,4 @@ Yes. World Monitor is open source and uses JSON-based translation files. Bilingu
 
 ---
 
-**Use World Monitor in your language at [worldmonitor.app](https://worldmonitor.app). 21 languages, full RTL support, locale-specific feeds. Free for everyone, everywhere.**
+**Use World Monitor in your language at [worldmonitor.app](https://www.worldmonitor.app). 21 languages, full RTL support, locale-specific feeds. Free for everyone, everywhere.**

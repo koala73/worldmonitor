@@ -91,4 +91,4 @@ Yes. Every score shown in the dashboard is available through the [REST API](/blo
 
 ---
 
-**Open [worldmonitor.app](https://worldmonitor.app), press Cmd+K, and type the name of the country that worries you most. The baseline takes thirty seconds; the workflow takes a habit.**
+**Open [worldmonitor.app](https://www.worldmonitor.app), press Cmd+K, and type the name of the country that worries you most. The baseline takes thirty seconds; the workflow takes a habit.**

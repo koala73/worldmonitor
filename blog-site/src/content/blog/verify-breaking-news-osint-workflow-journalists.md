@@ -73,4 +73,4 @@ Physical signals appear within minutes (AIS behavior, airspace changes, connecti
 
 ---
 
-**Bookmark [worldmonitor.app](https://worldmonitor.app) next to your CMS. The next time a claim breaks, run the ten minutes before the call. Your editor gets "three independent signals corroborate" instead of "Twitter says."**
+**Bookmark [worldmonitor.app](https://www.worldmonitor.app) next to your CMS. The next time a claim breaks, run the ten minutes before the call. Your editor gets "three independent signals corroborate" instead of "Twitter says."**

@@ -20,8 +20,16 @@ import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, loadShar
 
 loadEnvFile(import.meta.url);
 
+const ACLED_API_URL = 'https://acleddata.com/api/acled/read';
 const ACLED_CACHE_KEY = 'conflict:acled:v1:all:0:0';
+const ACLED_RESOLUTION_CACHE_KEY = 'conflict:acled-resolution:v1:all:0:0';
 const ACLED_TTL = 900;
+const ACLED_DISPLAY_LOOKBACK_DAYS = 30;
+const ACLED_DISPLAY_LIMIT = 500;
+const ACLED_RESOLUTION_LOOKBACK_DAYS = 60;
+const ACLED_RESOLUTION_PAGE_LIMIT = 5000;
+const ACLED_RESOLUTION_MAX_PAGES = 20;
+const ACLED_PAGE_DELAY_MS = 250;
 const HAPI_CACHE_KEY_PREFIX = 'conflict:humanitarian:v1';
 const HAPI_TTL = 21600;
 const PIZZINT_TTL = 600;
@@ -62,35 +70,44 @@ async function fetchAcledToken() {
   return null;
 }
 
-async function fetchAcledEvents() {
-  const token = await fetchAcledToken();
-  if (!token) {
-    console.log('  ACLED: no credentials configured, skipping');
-    return null;
-  }
+let acledTokenPromise;
+function getAcledTokenOnce() {
+  if (!acledTokenPromise) acledTokenPromise = fetchAcledToken();
+  return acledTokenPromise;
+}
 
-  const now = Date.now();
-  const startDate = new Date(now - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-  const endDate = new Date(now).toISOString().split('T')[0];
+function acledDateRange(now, lookbackDays) {
+  return {
+    startDate: new Date(now - lookbackDays * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    endDate: new Date(now).toISOString().split('T')[0],
+  };
+}
 
+function buildAcledParams({ startDate, endDate, limit, page }) {
   const params = new URLSearchParams({
     event_type: 'Battles|Explosions/Remote violence|Violence against civilians',
     event_date: `${startDate}|${endDate}`,
     event_date_where: 'BETWEEN',
-    limit: '500',
+    limit: String(limit),
     _format: 'json',
   });
+  if (page) params.set('page', String(page));
+  return params;
+}
 
-  const resp = await fetch(`https://acleddata.com/api/acled/read?${params}`, {
+async function fetchAcledPage(token, params) {
+  const resp = await fetch(`${ACLED_API_URL}?${params}`, {
     headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'User-Agent': CHROME_UA },
     signal: AbortSignal.timeout(15_000),
   });
   if (!resp.ok) throw new Error(`ACLED HTTP ${resp.status}`);
   const data = await resp.json();
   if (data.error || data.message) throw new Error(data.error || data.message);
+  return Array.isArray(data.data) ? data.data : [];
+}
 
-  const rawEvents = data.data || [];
-  const events = rawEvents
+function normalizeAcledConflictEvents(rawEvents) {
+  return rawEvents
     .filter(e => {
       const lat = parseFloat(e.latitude || '');
       const lon = parseFloat(e.longitude || '');
@@ -107,9 +124,56 @@ async function fetchAcledEvents() {
       source: e.source || '',
       admin1: e.admin1 || '',
     }));
+}
 
-  console.log(`  ACLED: ${events.length} events (${startDate} to ${endDate})`);
-  return { events, pagination: undefined };
+async function fetchAcledEvents({
+  lookbackDays = ACLED_DISPLAY_LOOKBACK_DAYS,
+  limit = ACLED_DISPLAY_LIMIT,
+  paginated = false,
+  maxPages = 1,
+  label = 'ACLED',
+} = {}) {
+  const token = await getAcledTokenOnce();
+  if (!token) {
+    console.log(`  ${label}: no credentials configured, skipping`);
+    return null;
+  }
+
+  const now = Date.now();
+  const { startDate, endDate } = acledDateRange(now, lookbackDays);
+  const rawEvents = [];
+  const seen = new Set();
+  let pagesFetched = 0;
+  let lastPageCount = 0;
+  const pageLimit = paginated ? Math.max(1, maxPages) : 1;
+
+  for (let page = 1; page <= pageLimit; page += 1) {
+    const params = buildAcledParams({
+      startDate,
+      endDate,
+      limit,
+      page: paginated ? page : undefined,
+    });
+    const pageEvents = await fetchAcledPage(token, params);
+    pagesFetched = page;
+    lastPageCount = pageEvents.length;
+    const before = rawEvents.length;
+    for (const event of pageEvents) {
+      const id = event.event_id_cnty || `${event.event_date}:${event.country}:${event.latitude}:${event.longitude}:${event.notes || event.source || ''}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      rawEvents.push(event);
+    }
+    if (!paginated || pageEvents.length < limit || rawEvents.length === before) break;
+    await sleep(ACLED_PAGE_DELAY_MS);
+  }
+
+  const events = normalizeAcledConflictEvents(rawEvents);
+  const pagination = paginated
+    ? { lookbackDays, limit, pagesFetched, maxPages, truncated: pagesFetched >= maxPages && lastPageCount >= limit }
+    : undefined;
+  console.log(`  ${label}: ${events.length} events (${startDate} to ${endDate}${paginated ? `, ${pagesFetched} page(s)` : ''})`);
+  return { events, pagination };
 }
 
 // ─── Humanitarian Summary (HAPI) ───
@@ -245,19 +309,28 @@ async function fetchGdeltTensions() {
 // ─── Main ───
 
 async function fetchAll() {
-  const [acled, hapi, pizzint, gdelt] = await Promise.allSettled([
-    fetchAcledEvents(),
+  const [acled, acledResolution, hapi, pizzint, gdelt] = await Promise.allSettled([
+    fetchAcledEvents({ label: 'ACLED display' }),
+    fetchAcledEvents({
+      lookbackDays: ACLED_RESOLUTION_LOOKBACK_DAYS,
+      limit: ACLED_RESOLUTION_PAGE_LIMIT,
+      paginated: true,
+      maxPages: ACLED_RESOLUTION_MAX_PAGES,
+      label: 'ACLED resolution',
+    }),
     fetchAllHumanitarianSummaries(),
     fetchPizzintStatus(),
     fetchGdeltTensions(),
   ]);
 
   const ac = acled.status === 'fulfilled' ? acled.value : null;
+  const acResolution = acledResolution.status === 'fulfilled' ? acledResolution.value : null;
   const ha = hapi.status === 'fulfilled' ? hapi.value : null;
   const pi = pizzint.status === 'fulfilled' ? pizzint.value : null;
   const gd = gdelt.status === 'fulfilled' ? gdelt.value : null;
 
   if (acled.status === 'rejected') console.warn(`  ACLED failed: ${acled.reason?.message || acled.reason}`);
+  if (acledResolution.status === 'rejected') console.warn(`  ACLED resolution failed: ${acledResolution.reason?.message || acledResolution.reason}`);
   if (hapi.status === 'rejected') console.warn(`  HAPI failed: ${hapi.reason?.message || hapi.reason}`);
   if (pizzint.status === 'rejected') console.warn(`  PizzINT failed: ${pizzint.reason?.message || pizzint.reason}`);
   if (gdelt.status === 'rejected') console.warn(`  GDELT failed: ${gdelt.reason?.message || gdelt.reason}`);
@@ -266,6 +339,14 @@ async function fetchAll() {
 
   // Write secondary keys BEFORE returning (runSeed calls process.exit after primary write)
   if (ha) { for (const [cc, data] of Object.entries(ha)) await writeExtraKeyWithMeta(`${HAPI_CACHE_KEY_PREFIX}:${cc}`, data, HAPI_TTL, 1); }
+  if (acResolution?.events?.length) {
+    await writeExtraKeyWithMeta(
+      ACLED_RESOLUTION_CACHE_KEY,
+      { events: acResolution.events, clusters: [], pagination: acResolution.pagination },
+      ACLED_TTL,
+      acResolution.events.length,
+    );
+  }
   if (pi) await writeExtraKeyWithMeta('intel:pizzint:v1:base', { pizzint: pi, tensionPairs: [] }, PIZZINT_TTL, pi.locationsMonitored ?? 0);
   if (pi && gd) await writeExtraKeyWithMeta('intel:pizzint:v1:gdelt', { pizzint: pi, tensionPairs: gd }, PIZZINT_TTL, gd.length ?? 0);
 

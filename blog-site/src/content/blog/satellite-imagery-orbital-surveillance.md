@@ -119,4 +119,4 @@ Yes. Use the time-range query feature to pull imagery from different dates. This
 
 ---
 
-**Explore satellite imagery at [worldmonitor.app](https://worldmonitor.app). Toggle the orbital surveillance layer and see the world from above.**
+**Explore satellite imagery at [worldmonitor.app](https://www.worldmonitor.app). Toggle the orbital surveillance layer and see the world from above.**
