@@ -8302,7 +8302,12 @@ function _attemptOpenSkyTokenFetch(clientId, clientSecret) {
     return _openskyProxyConnect('auth.opensky-network.org', 443).then((tlsSocket) => {
       return new Promise((resolve) => {
         const req = https.request({
-          socket: tlsSocket,
+          // tlsSocket is ALREADY a TLS connection to the target — proxyConnectTunnel
+          // does tls.connect() through the CONNECT tunnel. Reuse it via
+          // createConnection (NOT `socket:`): `socket:` makes https.request wrap it
+          // in a SECOND TLS layer → EPROTO "wrong version number" (double-TLS),
+          // which fails every OpenSky auth attempt. Mirrors proxyFetch(). See #5074.
+          createConnection: () => tlsSocket,
           hostname: 'auth.opensky-network.org',
           path: '/auth/realms/opensky-network/protocol/openid-connect/token',
           method: 'POST',
@@ -8434,7 +8439,10 @@ function _openskyRawFetch(url, token) {
     return _openskyProxyConnect(parsed.hostname, 443, 15000).then((tlsSocket) => {
       return new Promise((resolve) => {
         const request = https.get({
-          socket: tlsSocket,
+          // Reuse the already-TLS tunnel socket via createConnection, not `socket:`
+          // — passing an already-TLS socket as `socket:` double-wraps TLS and throws
+          // EPROTO "wrong version number", failing every OpenSky states fetch. See #5074.
+          createConnection: () => tlsSocket,
           hostname: parsed.hostname,
           path: parsed.pathname + parsed.search,
           headers: reqHeaders,
