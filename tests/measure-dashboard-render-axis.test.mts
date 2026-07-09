@@ -172,8 +172,10 @@ describe('measure-dashboard-render-axis reporting', () => {
       url: 'http://127.0.0.1:4173/dashboard',
       generatedAt: '2026-07-09T00:00:00.000Z',
       viewport: { width: 390, height: 844 },
+      cpuThrottleRate: 4,
       interaction: {
         ...resolveInteractionTarget('country'),
+        postInteractMs: 1500,
         targetInfo: { tapPoint: { x: 120, y: 200, matchedTop: true } },
       },
       eventTimings: [
@@ -194,9 +196,14 @@ describe('measure-dashboard-render-axis reporting', () => {
     });
 
     assert.equal(report.interaction?.target.name, 'country');
+    assert.equal(report.cpuThrottleRate, 4);
     assert.equal(report.interaction?.timings.worst?.presentationDelayMs, 520);
     assert.equal(report.interaction?.dominantPhase.phase, 'rendering');
     assert.equal(report.interaction?.dominantPhase.ms, 250);
+    assert.deepEqual(report.interaction?.traceWindow, {
+      postInteractMs: 1500,
+      dominantPhaseScope: 'full-post-interaction-trace-window',
+    });
     assert.deepEqual(report.interaction?.warnings, []);
   });
 
@@ -271,6 +278,7 @@ describe('measure-dashboard-render-axis reporting', () => {
   it('normalizes raw interaction trace files without dropping timing metadata', () => {
     const report = normalizeReport({
       url: 'http://127.0.0.1:4175/dashboard',
+      cpuThrottleRate: 6,
       interaction: {
         ...resolveInteractionTarget('nav-chip'),
         targetInfo: { tapPoint: { x: 32, y: 48, matchedTop: true } },
@@ -291,6 +299,7 @@ describe('measure-dashboard-render-axis reporting', () => {
     });
 
     assert.equal(report.interaction?.target.name, 'nav-chip');
+    assert.equal(report.cpuThrottleRate, 6);
     assert.equal(report.interaction?.timings.eventCount, 1);
     assert.equal(report.interaction?.timings.worst?.name, 'click');
     assert.equal(report.interaction?.timings.worst?.presentationDelayMs, 260);
@@ -358,6 +367,7 @@ describe('measure-dashboard-render-axis parseArgs', () => {
     assert.equal(args.settle, 10000);
     assert.equal(args.width, 1365);
     assert.equal(args.height, 768);
+    assert.equal(args.cpuThrottleRate, 1);
     assert.equal(args.json, false);
   });
 
@@ -372,6 +382,8 @@ describe('measure-dashboard-render-axis parseArgs', () => {
       '1440',
       '--height',
       '900',
+      '--cpu-throttle',
+      '4',
       '--trace-out',
       '/tmp/trace.json',
       '--json',
@@ -380,6 +392,7 @@ describe('measure-dashboard-render-axis parseArgs', () => {
     assert.equal(args.settle, 250);
     assert.equal(args.width, 1440);
     assert.equal(args.height, 900);
+    assert.equal(args.cpuThrottleRate, 4);
     assert.equal(args.traceOut, '/tmp/trace.json');
     assert.equal(args.json, true);
   });
@@ -435,11 +448,14 @@ describe('measure-dashboard-render-axis parseArgs', () => {
       'notanumber',
       '--height',
       'nope',
+      '--cpu-throttle',
+      'nope',
       '--interact',
       'country',
     ]);
 
     assert.equal(args.width, 390);
     assert.equal(args.height, 844);
+    assert.equal(args.cpuThrottleRate, 1);
   });
 });

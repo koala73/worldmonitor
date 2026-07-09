@@ -12,7 +12,7 @@
  * Usage:
  *   node scripts/measure-dashboard-render-axis.mjs [url] [--settle 10000] [--json]
  *   node scripts/measure-dashboard-render-axis.mjs [url] --trace-out /tmp/dashboard-trace.json
- *   node scripts/measure-dashboard-render-axis.mjs [url] --interact country --json
+ *   node scripts/measure-dashboard-render-axis.mjs [url] --interact country --cpu-throttle 4 --json
  *   node scripts/measure-dashboard-render-axis.mjs --compare before.json after.json --json
  */
 import { readFile, writeFile } from 'node:fs/promises';
@@ -21,12 +21,16 @@ import { pathToFileURL } from 'node:url';
 const TBT_THRESHOLD_MS = 50;
 const DEFAULT_INTERACTION_VIEWPORT = { width: 390, height: 844 };
 const DEFAULT_POST_INTERACT_MS = 1200;
+const DEFAULT_CPU_THROTTLE_RATE = 1;
 
 const DEFAULT_TRACE_CATEGORIES = [
   'devtools.timeline',
   'disabled-by-default-devtools.timeline',
   'disabled-by-default-devtools.timeline.stack',
   'blink',
+  'disabled-by-default-gpu.debug',
+  'disabled-by-default-gpu.service',
+  'gpu',
   'loading',
   'rail',
   'v8',
@@ -383,6 +387,7 @@ export function buildReport(result) {
     generatedAt: result?.generatedAt,
     viewport: result?.viewport,
     settleMs: result?.settleMs,
+    cpuThrottleRate: Number(result?.cpuThrottleRate) || DEFAULT_CPU_THROTTLE_RATE,
     tracePath: result?.tracePath || null,
     ...summary,
   };
@@ -397,6 +402,10 @@ export function buildReport(result) {
       target: result.interaction,
       timings: summarizeInteractionTimings(result?.eventTimings),
       dominantPhase: dominantRenderPhase(summary.durationMs),
+      traceWindow: {
+        postInteractMs: Number(result.interaction?.postInteractMs) || DEFAULT_POST_INTERACT_MS,
+        dominantPhaseScope: 'full-post-interaction-trace-window',
+      },
       warnings: targetWarnings,
     };
     report.warnings = [...report.warnings, ...targetWarnings];
@@ -417,6 +426,7 @@ export function normalizeReport(input) {
     generatedAt: input?.generatedAt,
     viewport: input?.viewport,
     settleMs: input?.settleMs,
+    cpuThrottleRate: input?.cpuThrottleRate,
     tracePath: input?.tracePath || null,
     traceEvents: events,
     interaction: input?.interaction || null,
@@ -528,6 +538,7 @@ export function parseArgs(argv) {
     compare: null,
     interact: null,
     postInteract: DEFAULT_POST_INTERACT_MS,
+    cpuThrottleRate: DEFAULT_CPU_THROTTLE_RATE,
   };
   let widthExplicit = false;
   let heightExplicit = false;
@@ -558,6 +569,9 @@ export function parseArgs(argv) {
     } else if (value === '--post-interact') {
       const n = Number(rest[++i]);
       if (!Number.isNaN(n)) args.postInteract = n;
+    } else if (value === '--cpu-throttle') {
+      const n = Number(rest[++i]);
+      if (Number.isFinite(n) && n >= 1) args.cpuThrottleRate = n;
     } else if (value === '--compare') {
       const before = rest[++i];
       const after = rest[++i];
@@ -580,6 +594,12 @@ async function startTracing(client) {
     categories: DEFAULT_TRACE_CATEGORIES.join(','),
     transferMode: 'ReturnAsStream',
   });
+}
+
+async function setCpuThrottle(client, rate) {
+  const throttleRate = Number(rate) || DEFAULT_CPU_THROTTLE_RATE;
+  if (throttleRate <= DEFAULT_CPU_THROTTLE_RATE) return;
+  await client.send('Emulation.setCPUThrottlingRate', { rate: throttleRate });
 }
 
 async function readStream(client, stream) {
@@ -772,6 +792,7 @@ async function captureTrace(url, {
   traceOut = '',
   interaction = null,
   postInteractMs = DEFAULT_POST_INTERACT_MS,
+  cpuThrottleRate = DEFAULT_CPU_THROTTLE_RATE,
 } = {}) {
   const { chromium } = await import('@playwright/test');
   const browser = await chromium.launch();
@@ -786,6 +807,7 @@ async function captureTrace(url, {
     const page = await context.newPage();
     if (interaction) await installInteractionTimingObserver(page);
     const client = await context.newCDPSession(page);
+    await setCpuThrottle(client, cpuThrottleRate);
     let eventTimings = [];
     let interactionTarget = null;
 
@@ -816,6 +838,7 @@ async function captureTrace(url, {
       generatedAt: new Date().toISOString(),
       viewport: { width, height },
       settleMs,
+      cpuThrottleRate: Number(cpuThrottleRate) || DEFAULT_CPU_THROTTLE_RATE,
       tracePath: traceOut || null,
       traceEvents: events,
       interaction: interactionTarget,
@@ -853,6 +876,9 @@ function printHuman(report) {
     return;
   }
   const d = report.durationMs;
+  if ((report.cpuThrottleRate || DEFAULT_CPU_THROTTLE_RATE) > DEFAULT_CPU_THROTTLE_RATE) {
+    console.log(`CPU Throttle:     ${report.cpuThrottleRate}x`);
+  }
   console.log(`Style/Layout:     ${d.styleLayout}ms (${report.sharePct.styleLayoutOfAccounted}% of accounted render-axis)`);
   console.log(`Rendering:        ${d.rendering}ms (${report.sharePct.renderingOfAccounted}% of accounted render-axis)`);
   console.log(`Canvas/WebGL:     ${d.canvas}ms (${report.sharePct.canvasOfAccounted}% of accounted render-axis)`);
@@ -862,15 +888,16 @@ function printHuman(report) {
     const { target, timings, dominantPhase } = report.interaction;
     console.log(`Interaction:      ${target.name} (${target.selector})`);
     if (timings.worst) {
+      const selector = timings.worst.selector ? ` on ${timings.worst.selector}` : '';
       console.log(
-        `Event Timing:     ${timings.worst.name} ${timings.worst.durationMs}ms `
+        `Event Timing:     ${timings.worst.name}${selector} ${timings.worst.durationMs}ms `
         + `(input ${timings.worst.inputDelayMs}ms, processing ${timings.worst.processingMs}ms, `
         + `presentation ${timings.worst.presentationDelayMs}ms)`,
       );
     } else {
       console.log('Event Timing:     unavailable (browser did not emit Event Timing entries)');
     }
-    console.log(`Dominant phase:   ${dominantPhase.label} (${dominantPhase.ms}ms)`);
+    console.log(`Dominant phase:   ${dominantPhase.label} (${dominantPhase.ms}ms over ${report.interaction.traceWindow.postInteractMs}ms trace window)`);
     for (const warning of report.interaction.warnings || []) console.log(`  ! ${warning}`);
   }
   console.log(`Forced reflows:   ${report.forcedReflows.eventCount} attributed events, ${report.forcedReflows.totalMs}ms`);
@@ -907,6 +934,7 @@ async function main() {
       traceOut: args.traceOut,
       interaction: args.interact,
       postInteractMs: args.postInteract,
+      cpuThrottleRate: args.cpuThrottleRate,
     }));
   }
   if (args.json) console.log(JSON.stringify(report, null, 2));
