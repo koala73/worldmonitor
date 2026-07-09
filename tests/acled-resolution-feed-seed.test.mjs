@@ -15,6 +15,8 @@ describe('ACLED resolution-feed seed contract (#5076)', () => {
   const conflictSeed = source('scripts/seed-conflict-intel.mjs');
   const unrestSeed = source('scripts/seed-unrest-events.mjs');
   const resolutionSpec = source('scripts/_forecast-resolution.mjs');
+  const healthApi = source('api/health.js');
+  const seedHealthApi = source('api/seed-health.js');
 
   it('routes conflict hard counts to a long-window resolution key, not the map display key', () => {
     assert.match(resolutionSpec, /CONFLICT_COUNT_SOURCE_FEED\s*=\s*'conflict:acled-resolution:v1:all:0:0'/);
@@ -45,6 +47,12 @@ describe('ACLED resolution-feed seed contract (#5076)', () => {
     assert.match(conflictSeed, /if\s*\(\s*missingCredentials\s*\|\|\s*acled\.reason\?\.nonRetryable\s*\)\s*err\.nonRetryable\s*=\s*true/);
     assert.match(conflictSeed, /throw err/);
     assert.doesNotMatch(conflictSeed, /return\s+ac\s*\|\|\s*\{\s*events:\s*\[\],\s*pagination:\s*undefined\s*\}/);
+  });
+
+  it('health surfaces the ACLED display cache and seeder heartbeat (#5099)', () => {
+    assert.match(healthApi, /acledIntel:\s*'conflict:acled:v1:all:0:0'/);
+    assert.match(healthApi, /acledIntel:\s*\{\s*key:\s*'seed-meta:conflict:acled-intel',\s*maxStaleMin:\s*38\s*\}/);
+    assert.match(seedHealthApi, /'conflict:acled-intel':\s*\{\s*key:\s*'seed-meta:conflict:acled-intel',\s*intervalMin:\s*19\s*\}/);
   });
 
   it('unrest seeder keeps the canonical display feed but also publishes a paginated 60d ACLED resolution feed', () => {
