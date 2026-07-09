@@ -13838,16 +13838,29 @@ function selectPublishedForecastPool(predictions, options = {}) {
     return true;
   }
 
-  function take(pred) {
+  function updateSelectionCounts(pred, delta) {
     const familyId = getForecastSelectionFamilyId(pred);
     const familyDomainKey = `${familyId}:${pred.domain}`;
     const situationId = getForecastSelectionSituationId(pred);
+    const nextFamilyTotal = (familyCounts.get(familyId) || 0) + delta;
+    const nextFamilyDomainTotal = (familyDomainCounts.get(familyDomainKey) || 0) + delta;
+    const nextSituationTotal = (situationCounts.get(situationId) || 0) + delta;
+    const nextDomainTotal = (domainCounts.get(pred.domain) || 0) + delta;
+
+    if (nextFamilyTotal > 0) familyCounts.set(familyId, nextFamilyTotal);
+    else familyCounts.delete(familyId);
+    if (nextFamilyDomainTotal > 0) familyDomainCounts.set(familyDomainKey, nextFamilyDomainTotal);
+    else familyDomainCounts.delete(familyDomainKey);
+    if (nextSituationTotal > 0) situationCounts.set(situationId, nextSituationTotal);
+    else situationCounts.delete(situationId);
+    if (nextDomainTotal > 0) domainCounts.set(pred.domain, nextDomainTotal);
+    else domainCounts.delete(pred.domain);
+  }
+
+  function take(pred) {
     selected.push(pred);
     selectedIds.add(pred.id);
-    familyCounts.set(familyId, (familyCounts.get(familyId) || 0) + 1);
-    familyDomainCounts.set(familyDomainKey, (familyDomainCounts.get(familyDomainKey) || 0) + 1);
-    situationCounts.set(situationId, (situationCounts.get(situationId) || 0) + 1);
-    domainCounts.set(pred.domain, (domainCounts.get(pred.domain) || 0) + 1);
+    updateSelectionCounts(pred, 1);
   }
 
   function canFitCandidateInSelection(candidate, currentSelection) {
@@ -13870,6 +13883,7 @@ function selectPublishedForecastPool(predictions, options = {}) {
     if (familyTotal >= Math.min(MAX_PUBLISHED_FORECASTS_PER_FAMILY, MAX_PRESELECTED_FORECASTS_PER_FAMILY)) return false;
     if (familyDomainTotal >= MAX_PUBLISHED_FORECASTS_PER_FAMILY_DOMAIN) return false;
     if (situationTotal >= MAX_PRESELECTED_FORECASTS_PER_SITUATION) return false;
+    if (situationTotal >= 1 && !distinctStrategicFollowOn && !isHighLeverageStateFollowOn(candidate)) return false;
     return true;
   }
 
@@ -13898,8 +13912,10 @@ function selectPublishedForecastPool(predictions, options = {}) {
         const selectionWithoutReplacement = selected.filter((_, index) => index !== replacement.index);
         if (!canFitCandidateInSelection(candidate, selectionWithoutReplacement)) continue;
         selectedIds.delete(replacement.pred.id);
+        updateSelectionCounts(replacement.pred, -1);
         selected[replacement.index] = candidate;
         selectedIds.add(candidate.id);
+        updateSelectionCounts(candidate, 1);
         selectedHardCount++;
         break;
       }

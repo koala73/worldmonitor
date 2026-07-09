@@ -3304,9 +3304,127 @@ describe('forecast quality gating', () => {
     const scoreSummary = [market, supply, hardSameState, ...otherJudged]
       .map((pred) => `${pred.id}:${pred.publishSelectionScore}`)
       .join(', ');
-    assert.ok(pool.some((pred) => pred.id === market.id), `${poolIds} / ${scoreSummary}`);
     assert.ok(pool.some((pred) => pred.id === hardSameState.id), `${poolIds} / ${scoreSummary}`);
     assert.equal(hormuzCount, 2, `${poolIds} / ${scoreSummary}`);
+  });
+
+  it('does not add a non-follow-on same-situation hard forecast while rebalancing', () => {
+    const deadline = Date.parse('2026-08-01T00:00:00Z');
+    const sharedState = {
+      id: 'state-shared-soft-guard',
+      label: 'Shared market pressure state',
+      dominantRegion: 'Shared corridor',
+      dominantDomain: 'market',
+      forecastCount: 2,
+      familyId: 'fam-shared-soft-guard',
+      topSignals: [{ type: 'energy_supply_shock' }],
+    };
+    const sharedSituation = {
+      id: 'sit-shared-soft-guard',
+      label: 'Shared market pressure situation',
+      forecastCount: 2,
+      topSignals: [{ type: 'energy_supply_shock', count: 1 }],
+    };
+    const sharedFamily = {
+      id: 'fam-shared-soft-guard',
+      label: 'Shared market pressure family',
+      forecastCount: 2,
+      situationCount: 1,
+      situationIds: [sharedSituation.id],
+    };
+
+    function attachSelectionContext(pred, state, family, priority, readiness = 0.74) {
+      pred.traceMeta = { narrativeSource: 'fallback' };
+      pred.readiness = { overall: readiness };
+      pred.analysisPriority = priority;
+      pred.stateContext = state;
+      pred.situationContext = state === sharedState ? sharedSituation : {
+        id: `sit-${state.id}`,
+        label: `${state.label} situation`,
+        forecastCount: 1,
+        topSignals: [{ type: 'news_corroboration', count: 1 }],
+      };
+      pred.familyContext = family;
+      pred.caseFile = pred.caseFile || {};
+      pred.caseFile.situationContext = pred.situationContext;
+      pred.caseFile.familyContext = family;
+    }
+
+    const judgedShared = makePrediction('market', 'Shared corridor', 'Energy repricing risk: Shared corridor', 0.78, 0.7, '14d', [
+      { type: 'energy_supply_shock', value: 'Energy repricing remains active in the shared corridor.', weight: 0.36 },
+    ]);
+    judgedShared.id = 'shared-market-judged';
+    judgedShared.marketSelectionContext = {
+      confirmationScore: 0.68,
+      contradictionScore: 0.03,
+      topBucketId: 'energy',
+      topBucketLabel: 'Energy',
+      topBucketPressure: 0.72,
+      transmissionEdgeCount: 3,
+      criticalSignalLift: 0.61,
+      topChannel: 'energy_supply_shock',
+      linkedBucketIds: ['energy'],
+    };
+    judgedShared.resolution = { kind: 'judged', deadline, question: 'Will shared corridor repricing escalate?' };
+    attachSelectionContext(judgedShared, sharedState, sharedFamily, 0.92, 0.88);
+
+    const hardSameState = makePrediction('market', 'Shared corridor', 'Hard market trigger: Shared corridor', 0.52, 0.56, '14d', [
+      { type: 'energy_supply_shock', value: 'A hard threshold remains observable for shared corridor pricing.', weight: 0.3 },
+    ]);
+    hardSameState.id = 'shared-hard-same-state';
+    hardSameState.marketSelectionContext = {
+      confirmationScore: 0.38,
+      contradictionScore: 0.05,
+      topBucketId: 'energy',
+      topBucketLabel: 'Energy',
+      topBucketPressure: 0.41,
+      transmissionEdgeCount: 1,
+      criticalSignalLift: 0.2,
+      topChannel: 'energy_supply_shock',
+      linkedBucketIds: ['energy'],
+    };
+    hardSameState.resolution = {
+      kind: 'hard',
+      metricKey: 'market|shared_corridor_trigger',
+      operator: '>=',
+      threshold: 1,
+      window: 'within-horizon',
+      deadline,
+      sourceFeed: 'market',
+    };
+    attachSelectionContext(hardSameState, sharedState, sharedFamily, 0.02, 0.52);
+
+    const otherJudged = Array.from({ length: 4 }, (_, index) => {
+      const pred = makePrediction('military', `Other theater ${index}`, `Military posture: Other theater ${index}`, 0.72 - (index * 0.01), 0.66, '7d', [
+        { type: 'theater', value: `Other theater ${index} posture: elevated`, weight: 0.45 },
+      ]);
+      pred.id = `soft-guard-other-${index}`;
+      pred.resolution = { kind: 'judged', deadline, question: `Will other theater ${index} posture escalate?` };
+      const state = {
+        id: `state-soft-guard-other-${index}`,
+        label: `Soft guard other theater ${index}`,
+        dominantRegion: `Other theater ${index}`,
+        dominantDomain: 'military',
+        forecastCount: 1,
+        familyId: `fam-soft-guard-other-${index}`,
+        topSignals: [{ type: 'theater' }],
+      };
+      const family = {
+        id: `fam-soft-guard-other-${index}`,
+        label: `Soft guard other family ${index}`,
+        forecastCount: 1,
+        situationCount: 1,
+        situationIds: [`sit-state-soft-guard-other-${index}`],
+      };
+      attachSelectionContext(pred, state, family, 0.68 - (index * 0.04), 0.76);
+      return pred;
+    });
+
+    const pool = selectPublishedForecastPool([judgedShared, hardSameState, ...otherJudged], { targetCount: 5 });
+    const sameStatePool = pool.filter((pred) => pred.stateContext?.id === sharedState.id);
+    const poolIds = pool.map((pred) => pred.id).join(', ');
+    assert.equal(pool.length, 5);
+    assert.deepEqual(sameStatePool.map((pred) => pred.id), [hardSameState.id], poolIds);
   });
 
   it('prefers deferred hard forecasts while backfilling a below-target published set', () => {
