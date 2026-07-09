@@ -4,10 +4,21 @@
 // entry, current feed snapshot, observed samples, and nowMs; output is a
 // deterministic pending/resolved result with evidence.
 
+import { readFileSync } from 'node:fs';
+
 const DAY_MS = 24 * 60 * 60 * 1000;
+export const ACLED_SETTLEMENT_LAG_MS = 2 * DAY_MS;
 export const UCDP_SETTLEMENT_LAG_MS = 14 * DAY_MS;
 
 const SUPPORTED_FUNCTIONS = new Set(['count', 'riskScore', 'present', 'yesPrice', 'hexCount', 'price']);
+const COUNTRY_ALIASES = loadCountryAliases();
+
+export function countSettlementLagMs(feedKey) {
+  const key = String(feedKey || '');
+  if (key.includes('ucdp-events')) return UCDP_SETTLEMENT_LAG_MS;
+  if (key.includes('acled')) return ACLED_SETTLEMENT_LAG_MS;
+  return 0;
+}
 
 export function parseMetricKey(metricKey) {
   if (typeof metricKey !== 'string' || !metricKey) return null;
@@ -43,7 +54,7 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
   }
 
   if (parsed.fn === 'count') {
-    const sealAfter = deadline + UCDP_SETTLEMENT_LAG_MS;
+    const sealAfter = deadline + countSettlementLagMs(parsed.feedKey || spec.sourceFeed);
     if (nowMs < sealAfter) {
       return { status: 'pending', evidence: { reason: 'count_settlement_lag', deadline, sealAfter } };
     }
@@ -219,16 +230,33 @@ function firstFinite(...values) {
   return NaN;
 }
 
+function normalizeComparable(value) {
+  return String(value ?? '').trim().toLowerCase();
+}
+
 function valueEquals(actual, expected) {
-  return String(actual ?? '').trim().toLowerCase() === String(expected ?? '').trim().toLowerCase();
+  return normalizeComparable(actual) === normalizeComparable(expected);
+}
+
+function countryValueEquals(actual, expected) {
+  const actualAliases = countryAliases(actual);
+  const expectedAliases = countryAliases(expected);
+  for (const alias of actualAliases) {
+    if (expectedAliases.has(alias)) return true;
+  }
+  return false;
+}
+
+function metricValueEquals(actual, expected, field) {
+  return field === 'country' ? countryValueEquals(actual, expected) : valueEquals(actual, expected);
 }
 
 function findMatchingRecord(feedData, field, value) {
   for (const record of iterateRecords(feedData)) {
-    if (record && typeof record === 'object' && valueEquals(record[field], value)) return record;
+    if (record && typeof record === 'object' && metricValueEquals(record[field], value, field)) return record;
     if (record && typeof record === 'object') {
       const aliases = fieldAliases(field);
-      if (aliases.some((alias) => valueEquals(record[alias], value))) return record;
+      if (aliases.some((alias) => metricValueEquals(record[alias], value, field))) return record;
     }
   }
   return null;
@@ -237,16 +265,47 @@ function findMatchingRecord(feedData, field, value) {
 function fieldAliases(field) {
   if (field === 'market') return ['market', 'title', 'question'];
   if (field === 'route') return ['route', 'name', 'label', 'chokepoint'];
-  if (field === 'country') return ['country', 'country_name', 'countryName', 'location'];
+  if (field === 'country') return ['country', 'country_name', 'countryName', 'countryCode', 'iso2', 'location'];
   if (field === 'region') return ['region', 'name', 'label'];
   return [field];
+}
+
+function loadCountryAliases() {
+  const byToken = new Map();
+  try {
+    const raw = JSON.parse(readFileSync(new URL('../shared/country-names.json', import.meta.url), 'utf8'));
+    for (const [name, code] of Object.entries(raw || {})) {
+      const normalizedName = normalizeComparable(name);
+      const normalizedCode = normalizeComparable(code);
+      if (!normalizedName || !normalizedCode) continue;
+      if (!byToken.has(normalizedName)) byToken.set(normalizedName, new Set());
+      if (!byToken.has(normalizedCode)) byToken.set(normalizedCode, new Set());
+      byToken.get(normalizedName).add(normalizedCode);
+      byToken.get(normalizedCode).add(normalizedName);
+    }
+  } catch {
+    // Country aliases are a best-effort bridge for mixed ISO/name feeds.
+  }
+  return byToken;
+}
+
+function countryAliases(value) {
+  const normalized = normalizeComparable(value);
+  const aliases = new Set();
+  if (!normalized) return aliases;
+  aliases.add(normalized);
+  const direct = COUNTRY_ALIASES.get(normalized);
+  if (direct) {
+    for (const alias of direct) aliases.add(alias);
+  }
+  return aliases;
 }
 
 function countMatchingRecords(feedData, field, value, startMs, endMs) {
   let count = 0;
   for (const record of iterateRecords(feedData)) {
     if (!record || typeof record !== 'object') continue;
-    const matches = [field, ...fieldAliases(field)].some((key) => valueEquals(record[key], value));
+    const matches = [field, ...fieldAliases(field)].some((key) => metricValueEquals(record[key], value, field));
     if (!matches) continue;
     const ts = extractRecordTime(record);
     if (Number.isFinite(ts) && ts >= startMs && ts <= endMs) count += 1;
@@ -286,8 +345,12 @@ function extractRecordTime(record) {
     record.ts,
     record.timestamp,
     record.generatedAt,
+    record.firstSeenAt,
+    record.lastSeenAt,
+    record.occurredAt,
     record.dateStart,
     record.date_start && Date.parse(record.date_start),
+    record.event_date && Date.parse(record.event_date),
     record.date && Date.parse(record.date),
     record.eventDate && Date.parse(record.eventDate),
   );

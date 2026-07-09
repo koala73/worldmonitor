@@ -2,7 +2,9 @@ import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
 import {
+  ACLED_SETTLEMENT_LAG_MS,
   UCDP_SETTLEMENT_LAG_MS,
+  countSettlementLagMs,
   parseMetricKey,
   resolveHardSpec,
 } from '../scripts/_forecast-resolution-eval.mjs';
@@ -42,9 +44,15 @@ function assertNoNullFields(value, path = 'fixture') {
 }
 
 describe('parseMetricKey', () => {
-  it('parses the six emitted function forms with anchored delimiters', () => {
+  it('parses the emitted function forms with anchored delimiters', () => {
     assert.deepEqual(parseMetricKey('conflict:ucdp-events:v1|count(country==Mali)'), {
       feedKey: 'conflict:ucdp-events:v1',
+      fn: 'count',
+      field: 'country',
+      value: 'Mali',
+    });
+    assert.deepEqual(parseMetricKey('conflict:acled:v1:all:0:0|count(country==Mali)'), {
+      feedKey: 'conflict:acled:v1:all:0:0',
       fn: 'count',
       field: 'country',
       value: 'Mali',
@@ -66,6 +74,15 @@ describe('parseMetricKey', () => {
     for (const bad of ['', 'no-pipe', 'feed|fn(field=value)', 'feed|fn(field==value', 'feed|fn()']) {
       assert.equal(parseMetricKey(bad), null, bad);
     }
+  });
+});
+
+describe('countSettlementLagMs', () => {
+  it('uses the long UCDP lag only for legacy UCDP count feeds', () => {
+    assert.equal(countSettlementLagMs('conflict:ucdp-events:v1'), UCDP_SETTLEMENT_LAG_MS);
+    assert.equal(countSettlementLagMs('conflict:acled:v1:all:0:0'), ACLED_SETTLEMENT_LAG_MS);
+    assert.equal(countSettlementLagMs('unrest:events:v1'), 0);
+    assert.equal(countSettlementLagMs('cyber:threats-bootstrap:v2'), 0);
   });
 });
 
@@ -95,6 +112,71 @@ describe('resolveHardSpec', () => {
     assert.equal(resolved.outcome, 'YES');
     assert.equal(resolved.evidence.metricValue, 2);
     assert.equal(resolved.evidence.comparison, '2 >= 2');
+  });
+
+  it('uses the shorter ACLED lag and event_date for fresh conflict counts', () => {
+    const deadline = START + 3 * DAY_MS;
+    const e = entry({
+      deadline,
+      spec: {
+        kind: 'hard',
+        metricKey: 'conflict:acled:v1:all:0:0|count(country==Mali)',
+        operator: '>=',
+        threshold: 2,
+        window: 'within-horizon',
+        deadline,
+        sourceFeed: 'conflict:acled:v1:all:0:0',
+      },
+    });
+    const feed = {
+      events: [
+        { country: 'Mali', event_date: '2026-07-07' },
+        { country: 'Mali', event_date: '2026-07-09' },
+        { country: 'Mali', event_date: '2026-07-11' },
+        { country: 'Burkina Faso', event_date: '2026-07-09' },
+      ],
+    };
+
+    assert.deepEqual(
+      resolveHardSpec(e, feed, {}, deadline + ACLED_SETTLEMENT_LAG_MS - 1),
+      {
+        status: 'pending',
+        evidence: { reason: 'count_settlement_lag', deadline, sealAfter: deadline + ACLED_SETTLEMENT_LAG_MS },
+      },
+    );
+
+    const resolved = resolveHardSpec(e, feed, {}, deadline + ACLED_SETTLEMENT_LAG_MS);
+    assert.equal(resolved.status, 'resolved');
+    assert.equal(resolved.outcome, 'YES');
+    assert.equal(resolved.evidence.metricValue, 2);
+    assert.equal(resolved.evidence.comparison, '2 >= 2');
+  });
+
+  it('matches country display names against ISO-2 country fields for cyber counts', () => {
+    const deadline = START + 1_000;
+    const e = entry({
+      deadline,
+      spec: {
+        kind: 'hard',
+        metricKey: 'cyber:threats-bootstrap:v2|count(country==Estonia)',
+        operator: '>=',
+        threshold: 1,
+        window: 'within-horizon',
+        deadline,
+        sourceFeed: 'cyber:threats-bootstrap:v2',
+      },
+    });
+    const feed = {
+      threats: [
+        { country: 'EE', firstSeenAt: START + 1_000 },
+        { country: 'LV', firstSeenAt: START + 2_000 },
+      ],
+    };
+
+    const resolved = resolveHardSpec(e, feed, {}, deadline);
+    assert.equal(resolved.status, 'resolved');
+    assert.equal(resolved.outcome, 'YES');
+    assert.equal(resolved.evidence.metricValue, 1);
   });
 
   it('keeps due count specs pending until the UCDP source has reached the forecast deadline', () => {
