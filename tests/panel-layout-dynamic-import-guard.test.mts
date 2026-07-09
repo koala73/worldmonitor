@@ -177,17 +177,25 @@ function assertSharedImportPanelGuard(source: string) {
   );
 }
 
+function assertNoDirectComponentConstructors(source: string) {
+  assert.doesNotMatch(
+    source,
+    /import\(['"]@\/components\/[^'"]+['"]\)\.then\(\s*(?:async\s*)?\(?\s*([A-Za-z_$][\w$]*)\s*\)?\s*=>[\s\S]{0,700}\bnew\s+\1\.[A-Za-z0-9_]+/m,
+    'Lazy component constructors must route through importPanel() instead of direct import(...).then(m => new m.Panel()) registrations.',
+  );
+}
+
 function assertChatAnalystLoadsWithoutAgentBusApplier(source: string) {
-  const registrationStart = source.indexOf("this.lazyPanel('chat-analyst'");
+  const registrationStart = source.indexOf("this.lazyImportedPanel('chat-analyst'");
   assert.notEqual(registrationStart, -1, 'chat-analyst lazy panel registration not found');
-  const registrationEnd = source.indexOf("this.lazyPanel('forecast'", registrationStart);
+  const registrationEnd = source.indexOf("this.lazyDefaultPanel(\n      'forecast'", registrationStart);
   assert.ok(registrationEnd > registrationStart, 'chat-analyst lazy panel registration boundary not found');
   const registration = source.slice(registrationStart, registrationEnd);
 
   assert.match(
     registration,
-    /import\('@\/components\/ChatAnalystPanel'\)\.then\(m => \{/,
-    'chat-analyst panel component should load independently',
+    /this\.lazyImportedPanel\('chat-analyst',\s*\(\) => import\('@\/components\/ChatAnalystPanel'\),\s*'ChatAnalystPanel'/,
+    'chat-analyst panel component should load through the guarded helper',
   );
   assert.doesNotMatch(
     registration,
@@ -196,7 +204,7 @@ function assertChatAnalystLoadsWithoutAgentBusApplier(source: string) {
   );
   assert.match(
     registration,
-    /const panel = new m\.ChatAnalystPanel\(\);[\s\S]*?void import\('@\/app\/agent-bus-applier'\)/,
+    /const panel = new ChatAnalystPanel\(\);[\s\S]*?void import\('@\/app\/agent-bus-applier'\)/,
     'chat-analyst should create the panel before loading the optional dashboard action handler',
   );
   assert.match(
@@ -236,6 +244,11 @@ describe('panel-layout lazy dynamic-import guard (WORLDMONITOR-R4)', () => {
     const source = await readFile(filePath, 'utf8');
     assertSharedImportPanelGuard(source);
     assertLazyLoaderHandlesFailedImports(source);
+  });
+
+  it('all lazy component constructors route through the shared guarded helper', async () => {
+    const source = await readFile(filePath, 'utf8');
+    assertNoDirectComponentConstructors(source);
   });
 
   it('split-risk panels are demand-loaded through the guarded helper', async () => {

@@ -99,7 +99,7 @@ function setMetaTag(property: string, content: string): void {
   if (existing) existing.remove();
 
   const meta = document.createElement('meta');
-  if (property.startsWith('og:') || property.startsWith('twitter:')) {
+  if (property.startsWith('og:')) {
     meta.setAttribute('property', property);
   } else {
     meta.setAttribute('name', property);
