@@ -4,9 +4,11 @@ import App, { renderTurnstileWidgets } from './App.tsx';
 import { ensureTurnstileScript } from './turnstile';
 import { initI18n } from './i18n';
 import { initSentry } from './sentry';
+import { initDebugBearRum } from './debugbear-rum';
 import './index.css';
 
 initSentry();
+initDebugBearRum();
 
 initI18n().then(() => {
   createRoot(document.getElementById('root')!).render(
