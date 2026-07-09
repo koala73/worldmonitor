@@ -376,6 +376,16 @@ export class DataLoaderManager implements AppModule {
     enqueuePanelCall(key, method, args);
   }
 
+  private panelHasRetainedData(key: string): boolean {
+    const panel = this.ctx.panels[key] as { hasData?: () => boolean } | undefined;
+    return typeof panel?.hasData === 'function' && panel.hasData();
+  }
+
+  private showColdLoadError(key: string): void {
+    if (this.panelHasRetainedData(key)) return;
+    this.callPanel(key, 'showError');
+  }
+
   private boundMarketWatchlistHandler: (() => void) | null = null;
   private satellitePropagationCleanup: (() => void) | null = null;
   private dailyBriefGeneration = 0;
@@ -848,6 +858,7 @@ export class DataLoaderManager implements AppModule {
           const givingResult = await fetchGivingSummary();
           if (!givingResult.ok) {
             dataFreshness.recordError('giving', 'Giving data unavailable (retaining prior state)');
+            this.showColdLoadError('giving');
             return;
           }
           const data = givingResult.data;
@@ -2634,6 +2645,7 @@ export class DataLoaderManager implements AppModule {
           // listUcdpEvents is a pure Redis-read (gold standard). Retrying returns
           // the same empty result until the Railway seed refreshes the key.
           dataFreshness.recordError('ucdp_events', 'UCDP events unavailable (retaining prior event state)');
+          this.showColdLoadError('ucdp-events');
           return;
         }
         const acledEvents = protestEvents.map(e => ({
@@ -2656,6 +2668,7 @@ export class DataLoaderManager implements AppModule {
         const unhcrResult = await fetchUnhcrPopulation();
         if (!unhcrResult.ok) {
           dataFreshness.recordError('unhcr', 'UNHCR displacement unavailable (retaining prior displacement state)');
+          this.showColdLoadError('displacement');
           return;
         }
         const data = unhcrResult.data;
@@ -2667,7 +2680,7 @@ export class DataLoaderManager implements AppModule {
         if (data.countries.length > 0) dataFreshness.recordUpdate('unhcr', data.countries.length);
       } catch (error) {
         console.error('[Intelligence] UNHCR displacement fetch failed:', error);
-        this.callPanel('displacement', 'showError');
+        this.showColdLoadError('displacement');
         dataFreshness.recordError('unhcr', String(error));
       }
     })());
@@ -2677,6 +2690,7 @@ export class DataLoaderManager implements AppModule {
         const climateResult = await fetchClimateAnomalies();
         if (!climateResult.ok) {
           dataFreshness.recordError('climate', 'Climate anomalies unavailable (retaining prior climate state)');
+          this.showColdLoadError('climate');
           return;
         }
         const anomalies = climateResult.anomalies;
@@ -2688,7 +2702,7 @@ export class DataLoaderManager implements AppModule {
         if (anomalies.length > 0) dataFreshness.recordUpdate('climate', anomalies.length);
       } catch (error) {
         console.error('[Intelligence] Climate anomalies fetch failed:', error);
-        this.callPanel('climate', 'showError');
+        this.showColdLoadError('climate');
         dataFreshness.recordError('climate', String(error));
       }
     })());

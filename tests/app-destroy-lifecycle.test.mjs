@@ -101,6 +101,7 @@ describe('App.destroy lifecycle cleanup contract', () => {
       'this.state.map?.destroy()',
       'disconnectAisStream()',
       'this.webMcpController?.abort()',
+      'mlWorker.terminate()',
     ]) {
       assert.ok(body.includes(expected), `App.destroy() must keep ${expected}`);
     }

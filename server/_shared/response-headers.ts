@@ -21,6 +21,11 @@ export function markNoCacheResponse(req: Request): void {
   setResponseHeader(req, 'X-No-Cache', '1');
 }
 
+export function markNoStoreFallbackResponse<T>(req: Request, payload: T): T {
+  markNoCacheResponse(req);
+  return payload;
+}
+
 export function drainResponseHeaders(req: Request): Record<string, string> | undefined {
   const headers = channel.get(req);
   if (headers) channel.delete(req);

@@ -146,6 +146,26 @@ const EXCLUDED_FROM_MCP = new Map([
     'deferred: recovery pillar scorer input. Future resilience tool will expose recovery dimensions.'],
 
   // ===========================================================================
+  // #5055 health-only seed probes added to strict /api/health monitoring.
+  // ===========================================================================
+  ['economic:energy:v1:all',
+    'deferred: strict health seed probe added by #5055; future economic-data MCP expansion can expose energy prices directly.'],
+  ['shared:fx-rates:v1',
+    'deferred: strict health seed probe added by #5055; FX rates are shared infrastructure consumed by seeders and future economic MCP expansion.'],
+  ['infrastructure:submarine-cables:v1',
+    'deferred: strict health seed probe added by #5055; future infrastructure MCP expansion can expose the cable inventory directly.'],
+  ['patents:defense:latest',
+    'deferred: strict health seed probe added by #5055; future military or defense-innovation MCP expansion can expose patent summaries.'],
+  ['conflict:acled:v1:all:0:0',
+    'deferred: strict health seed probe added by #5055; ACLED aggregate currently feeds downstream intelligence and forecast inputs.'],
+  ['portwatch:disruptions:active:v1',
+    'deferred: strict health seed probe added by #5055; disruptions are consumed by chokepoint hazard scoring until a PortWatch MCP expansion exists.'],
+  ['seed-meta:comtrade:bilateral-hs4',
+    'operational: meta-only aggregate health probe added by #5055 for sharded comtrade:bilateral-hs4:{iso2}:v1 payloads; no queryable data slice lives at this key.'],
+  ['research:arxiv:v1:cs.AI::50',
+    'deferred: strict health seed probe added by #5055; future research MCP expansion can expose the ArXiv/HN trending feed.'],
+
+  // ===========================================================================
   // Deferred follow-up tools (explicit gaps named in the plan or related domain)
   // ===========================================================================
   ['intelligence:gpsjam:v2',

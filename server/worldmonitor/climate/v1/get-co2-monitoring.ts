@@ -7,15 +7,16 @@ import type {
 
 import { CLIMATE_CO2_MONITORING_KEY } from '../../../_shared/cache-keys';
 import { getCachedJson } from '../../../_shared/redis';
+import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 
 export const getCo2Monitoring: ClimateServiceHandler['getCo2Monitoring'] = async (
-  _ctx: ServerContext,
+  ctx: ServerContext,
   _req: GetCo2MonitoringRequest,
 ): Promise<GetCo2MonitoringResponse> => {
   try {
     const cached = await getCachedJson(CLIMATE_CO2_MONITORING_KEY, true);
-    return (cached as GetCo2MonitoringResponse | null) ?? {};
+    return (cached as GetCo2MonitoringResponse | null) ?? markNoStoreFallbackResponse(ctx.request, {});
   } catch {
-    return {};
+    return markNoStoreFallbackResponse(ctx.request, {});
   }
 };

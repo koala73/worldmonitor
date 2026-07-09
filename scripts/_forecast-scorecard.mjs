@@ -3,7 +3,7 @@
 // Input is the Redis working ledger (object or array). Output is a compact,
 // JSON-serializable scorecard. No wall-clock reads: nowMs is injected.
 
-const DEFAULT_ROLLING_WINDOW_DAYS = 180;
+export const DEFAULT_ROLLING_WINDOW_DAYS = 180;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const EPSILON = 1e-6;
 

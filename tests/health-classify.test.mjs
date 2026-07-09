@@ -16,7 +16,7 @@ import assert from 'node:assert/strict';
 
 import { __testing__ } from '../api/health.js';
 
-const { classifyKey, STATUS_COUNTS, BOOTSTRAP_KEYS, STANDALONE_KEYS } = __testing__;
+const { classifyKey, STATUS_COUNTS, BOOTSTRAP_KEYS, STANDALONE_KEYS, SEED_META } = __testing__;
 
 const NOW = 1_700_000_000_000;
 const ONE_MIN_MS = 60_000;
@@ -189,6 +189,49 @@ test('classifyKey: empty bootstrap key (no cascade) → EMPTY (crit)', () => {
     makeCtx({ metaValues: { 'seed-meta:seismology:earthquakes': seedMeta() } }));
   assert.equal(entry.status, 'EMPTY');
   assert.equal(STATUS_COUNTS[entry.status], 'crit');
+});
+
+const ISSUE_5055_HEALTH_REGISTRATIONS = [
+  ['energyPrices', 'economic:energy:v1:all', 'seed-meta:economic:energy-prices', 150],
+  ['researchArxivHnTrending', 'research:arxiv:v1:cs.AI::50', 'seed-meta:research:arxiv-hn-trending', 150],
+  ['defensePatents', 'patents:defense:latest', 'seed-meta:military:defense-patents', 25200],
+  ['acledIntel', 'conflict:acled:v1:all:0:0', 'seed-meta:conflict:acled-intel', 38],
+  ['portwatchDisruptions', 'portwatch:disruptions:active:v1', 'seed-meta:portwatch:disruptions', 150],
+  ['comtradeBilateralHs4', 'seed-meta:comtrade:bilateral-hs4', 'seed-meta:comtrade:bilateral-hs4', 34560],
+  ['sharedFxRates', 'shared:fx-rates:v1', 'seed-meta:shared:fx-rates', 3600],
+  ['submarineCables', 'infrastructure:submarine-cables:v1', 'seed-meta:infrastructure:submarine-cables', 25200],
+];
+
+test('issue #5055: validated seed-meta writers are registered in /api/health', () => {
+  for (const [name, dataKey, metaKey, maxStaleMin] of ISSUE_5055_HEALTH_REGISTRATIONS) {
+    assert.equal(STANDALONE_KEYS[name], dataKey, `${name} data key`);
+    assert.equal(SEED_META[name]?.key, metaKey, `${name} seed-meta key`);
+    assert.equal(SEED_META[name]?.maxStaleMin, maxStaleMin, `${name} maxStaleMin`);
+  }
+});
+
+test('classifyKey: issue #5055 strict seeds surface missing metadata instead of reporting OK', () => {
+  const entry = classifyKey('energyPrices', STANDALONE_KEYS.energyPrices, { allowOnDemand: true },
+    makeCtx({ strens: { [STANDALONE_KEYS.energyPrices]: 2048 } }));
+
+  assert.equal(entry.status, 'STALE_SEED');
+  assert.equal(entry.records, 1);
+  assert.equal(entry.maxStaleMin, 150);
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
+test('classifyKey: issue #5055 Comtrade bilateral probe is explicitly meta-only', () => {
+  const metaKey = 'seed-meta:comtrade:bilateral-hs4';
+  const entry = classifyKey('comtradeBilateralHs4', STANDALONE_KEYS.comtradeBilateralHs4, { allowOnDemand: true },
+    makeCtx({
+      strens: { [metaKey]: 96 },
+      metaValues: { [metaKey]: seedMeta({ recordCount: 180 }) },
+    }));
+
+  assert.equal(STANDALONE_KEYS.comtradeBilateralHs4, metaKey);
+  assert.equal(entry.status, 'OK');
+  assert.equal(entry.records, 180);
+  assert.equal(entry.maxStaleMin, 34560);
 });
 
 test('classifyKey: empty on-demand standalone key → EMPTY_ON_DEMAND (warn)', () => {

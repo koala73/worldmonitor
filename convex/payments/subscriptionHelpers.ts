@@ -10,7 +10,7 @@ import { MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { getFeaturesForPlan } from "../lib/entitlements";
 import { PLAN_PRECEDENCE, LEGACY_PRODUCT_ALIASES } from "../config/productCatalog";
-import { verifyUserId } from "../lib/identitySigning";
+import { ANON_ID_V4_REGEX, verifyUserId } from "../lib/identitySigning";
 import { DEV_USER_ID, isDev } from "../lib/auth";
 
 // ---------------------------------------------------------------------------
@@ -516,6 +516,20 @@ function mergeDodoCustomerId(
   return existing.dodoCustomerId;
 }
 
+function preferExistingCustomerOwner(
+  existingCustomerUserId: string | undefined,
+  resolvedUserId: string,
+): string {
+  if (
+    existingCustomerUserId !== undefined &&
+    ANON_ID_V4_REGEX.test(resolvedUserId) &&
+    !ANON_ID_V4_REGEX.test(existingCustomerUserId)
+  ) {
+    return existingCustomerUserId;
+  }
+  return resolvedUserId;
+}
+
 /**
  * Handles `subscription.active` -- a new subscription has been activated.
  *
@@ -527,11 +541,6 @@ export async function handleSubscriptionActive(
   eventTimestamp: number,
 ): Promise<void> {
   const planKey = await resolvePlanKey(ctx, data.product_id);
-  const userId = await resolveUserId(
-    ctx,
-    data.customer?.customer_id ?? "",
-    data.metadata,
-  );
 
   const currentPeriodStart = toEpochMs(data.previous_billing_date, "previous_billing_date", eventTimestamp);
   const currentPeriodEnd = toEpochMs(data.next_billing_date, "next_billing_date", eventTimestamp);
@@ -554,8 +563,24 @@ export async function handleSubscriptionActive(
       ? data.customer.customer_id
       : undefined;
 
+  if (existing && !isNewerEvent(existing.updatedAt, eventTimestamp)) return;
+
+  const existingCustomer = incomingDodoCustomerId
+    ? await ctx.db
+        .query("customers")
+        .withIndex("by_dodoCustomerId", (q) =>
+          q.eq("dodoCustomerId", incomingDodoCustomerId),
+        )
+        .first()
+    : null;
+  const resolvedUserId = existing
+    ? existing.userId
+    : await resolveUserId(ctx, incomingDodoCustomerId ?? "", data.metadata);
+  const userId = existing
+    ? existing.userId
+    : preferExistingCustomerOwner(existingCustomer?.userId, resolvedUserId);
+
   if (existing) {
-    if (!isNewerEvent(existing.updatedAt, eventTimestamp)) return;
     await ctx.db.patch(existing._id, {
       userId,
       status: "active",
@@ -633,18 +658,10 @@ export async function handleSubscriptionActive(
   await recomputeEntitlementFromAllSubs(ctx, userId, eventTimestamp);
 
   // Upsert customer record so portal session creation can find dodoCustomerId
-  const dodoCustomerId = data.customer?.customer_id;
   const email = data.customer?.email ?? "";
   const normalizedEmail = email.trim().toLowerCase();
 
-  if (dodoCustomerId) {
-    const existingCustomer = await ctx.db
-      .query("customers")
-      .withIndex("by_dodoCustomerId", (q) =>
-        q.eq("dodoCustomerId", dodoCustomerId),
-      )
-      .first();
-
+  if (incomingDodoCustomerId) {
     if (existingCustomer) {
       await ctx.db.patch(existingCustomer._id, {
         userId,
@@ -655,7 +672,7 @@ export async function handleSubscriptionActive(
     } else {
       await ctx.db.insert("customers", {
         userId,
-        dodoCustomerId,
+        dodoCustomerId: incomingDodoCustomerId,
         email,
         normalizedEmail,
         createdAt: eventTimestamp,
@@ -1166,11 +1183,20 @@ export async function handleDisputeEvent(
   eventType: string,
   eventTimestamp: number,
 ): Promise<void> {
-  const userId = await resolveUserId(
-    ctx,
-    data.customer?.customer_id ?? "",
-    data.metadata,
-  );
+  const existingSubscription = data.subscription_id
+    ? await ctx.db
+        .query("subscriptions")
+        .withIndex("by_dodoSubscriptionId", (q) =>
+          q.eq("dodoSubscriptionId", data.subscription_id ?? ""),
+        )
+        .unique()
+    : null;
+  const userId = existingSubscription?.userId
+    ?? await resolveUserId(
+      ctx,
+      data.customer?.customer_id ?? "",
+      data.metadata,
+    );
 
   const disputeStatusMap: Record<string, "dispute_opened" | "dispute_won" | "dispute_lost" | "dispute_closed"> = {
     "dispute.opened": "dispute_opened",
@@ -1198,34 +1224,17 @@ export async function handleDisputeEvent(
 
   if (eventType === "dispute.lost") {
     console.warn(
-      `[subscriptionHelpers] Dispute LOST for user ${userId}, payment ${data.payment_id} — revoking entitlement`,
+      `[subscriptionHelpers] Dispute LOST for user ${userId}, payment ${data.payment_id} — recomputing entitlement`,
     );
-    // Chargeback = no longer entitled. Downgrade to free immediately.
-    // Use eventTimestamp (not Date.now()) to preserve isNewerEvent out-of-order protection.
-    const existing = await ctx.db
-      .query("entitlements")
-      .withIndex("by_userId", (q) => q.eq("userId", userId))
-      .first();
-    if (existing) {
-      const freeFeatures = getFeaturesForPlan("free");
-      await ctx.db.patch(existing._id, {
-        planKey: "free",
-        features: freeFeatures,
-        validUntil: eventTimestamp,
+
+    if (existingSubscription && isNewerEvent(existingSubscription.updatedAt, eventTimestamp)) {
+      await ctx.db.patch(existingSubscription._id, {
+        status: "expired",
+        rawPayload: data,
         updatedAt: eventTimestamp,
       });
-      if (process.env.UPSTASH_REDIS_REST_URL) {
-        await ctx.scheduler.runAfter(
-          0,
-          internal.payments.cacheActions.syncEntitlementCache,
-          {
-            userId,
-            planKey: "free",
-            features: freeFeatures,
-            validUntil: eventTimestamp,
-          },
-        );
-      }
     }
+
+    await recomputeEntitlementFromAllSubs(ctx, userId, eventTimestamp);
   }
 }

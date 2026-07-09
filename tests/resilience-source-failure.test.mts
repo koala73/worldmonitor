@@ -54,10 +54,6 @@ const TRACKED_STANDALONE_META_KEYS_NOT_IN_HEALTH = new Set([
   // does not include a direct SEED_META entry because its data key is
   // parameterized by year.
   'seed-meta:displacement:summary',
-  // api/health.js tracks seed-meta:economic:macro-signals and documents
-  // energy-prices as the primary key with the same 150min threshold, but
-  // it does not classify the energy-prices data key directly.
-  'seed-meta:economic:energy-prices',
   // scripts/seed-supply-chain-trade.mjs writes these via
   // writeExtraKeyWithMeta. They feed scoreTradePolicy directly but are not
   // standalone /api/health probes today.

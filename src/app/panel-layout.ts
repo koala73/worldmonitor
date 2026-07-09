@@ -435,6 +435,13 @@ export class PanelLayoutManager implements AppModule {
     this.proBlockUnsubscribe = null;
     this.proBlockEntitlementUnsubscribe?.();
     this.proBlockEntitlementUnsubscribe = null;
+
+    const destroyedTargets = new Set<{ destroy?: () => void }>();
+    const destroyOnce = (target: { destroy?: () => void } | null | undefined): void => {
+      if (!target || destroyedTargets.has(target)) return;
+      destroyedTargets.add(target);
+      target.destroy?.();
+    };
     if (this.boundWidgetCreatorHandler) {
       this.ctx.container.removeEventListener('wm:open-widget-creator', this.boundWidgetCreatorHandler);
       this.boundWidgetCreatorHandler = null;
@@ -465,20 +472,35 @@ export class PanelLayoutManager implements AppModule {
     this.panelTabBar?.destroy();
     this.panelTabBar = null;
     // Clean up happy variant panels
-    this.ctx.tvMode?.destroy();
+    destroyOnce(this.ctx.tvMode);
     this.ctx.tvMode = null;
-    this.ctx.countersPanel?.destroy();
-    this.ctx.progressPanel?.destroy();
-    this.ctx.breakthroughsPanel?.destroy();
-    this.ctx.heroPanel?.destroy();
-    this.ctx.digestPanel?.destroy();
-    this.ctx.speciesPanel?.destroy();
-    this.ctx.renewablePanel?.destroy();
+    destroyOnce(this.ctx.countersPanel);
+    this.ctx.countersPanel = null;
+    destroyOnce(this.ctx.progressPanel);
+    this.ctx.progressPanel = null;
+    destroyOnce(this.ctx.breakthroughsPanel);
+    this.ctx.breakthroughsPanel = null;
+    destroyOnce(this.ctx.heroPanel);
+    this.ctx.heroPanel = null;
+    destroyOnce(this.ctx.digestPanel);
+    this.ctx.digestPanel = null;
+    destroyOnce(this.ctx.speciesPanel);
+    this.ctx.speciesPanel = null;
+    destroyOnce(this.ctx.renewablePanel);
+    this.ctx.renewablePanel = null;
 
     // Clean up aviation components
-    this.aviationCommandBar?.destroy();
+    destroyOnce(this.aviationCommandBar);
     this.aviationCommandBar = null;
-    this.ctx.panels['airline-intel']?.destroy();
+
+    // Destroy every registered panel exactly once, including lazy-created
+    // and self-fetching panels that own subscriptions, intervals, or aborts.
+    for (const panel of Object.values(this.ctx.panels)) {
+      destroyOnce(panel);
+    }
+    for (const key of Object.keys(this.ctx.panels)) {
+      delete this.ctx.panels[key];
+    }
 
     // Clean up billing subscription watch + entitlement subscription
     destroySubscriptionWatch();

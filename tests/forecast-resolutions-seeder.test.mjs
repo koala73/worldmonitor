@@ -5,13 +5,16 @@ import {
   RESOLUTIONS_KEY,
   SCORECARD_META_KEY,
   SCORECARD_KEY,
+  LEDGER_RETENTION_WINDOW_DAYS,
   appendSample,
   appendR2Receipts,
   collectUnarchivedReceipts,
   declareRecords,
   markReceiptsArchived,
   processResolutionCycle,
+  pruneArchivedTerminalEntries,
 } from '../scripts/seed-forecast-resolutions.mjs';
+import { computeScorecard } from '../scripts/_forecast-scorecard.mjs';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const T0 = Date.parse('2026-07-07T00:00:00Z');
@@ -294,6 +297,14 @@ describe('appendSample and seed contract', () => {
     assert.deepEqual(collectUnarchivedReceipts(ledger), []);
   });
 
+  it('exposes a retention window comfortably larger than the ~8.3d history intake reach', () => {
+    // The forecast-history intake is LRANGE 200 at hourly cadence (~8.3 days).
+    // Retention must be far larger so a pruned window can never be re-ingested
+    // from a stale snapshot still sitting in the intake read.
+    assert.equal(LEDGER_RETENTION_WINDOW_DAYS, 180);
+    assert.ok(LEDGER_RETENTION_WINDOW_DAYS > 30, 'retention must dwarf the intake window');
+  });
+
   it('keeps R2 receipt archival best-effort so one object failure stays retryable', async () => {
     const warnings = [];
     const originalWarn = console.warn;
@@ -322,5 +333,151 @@ describe('appendSample and seed contract', () => {
     } finally {
       console.warn = originalWarn;
     }
+  });
+});
+
+describe('pruneArchivedTerminalEntries', () => {
+  const RETENTION_MS = LEDGER_RETENTION_WINDOW_DAYS * DAY_MS;
+  const NOW = Date.parse('2027-07-07T00:00:00Z');
+
+  function ledgerFixture() {
+    return {
+      // resolved, archived, and older than the retention window → prunable
+      'old-archived@1': {
+        key: 'old-archived@1',
+        id: 'old-archived',
+        status: 'resolved',
+        outcome: 'YES',
+        probability: 0.7,
+        resolvedAt: NOW - RETENTION_MS - DAY_MS,
+        receiptArchivedAt: NOW - RETENTION_MS,
+        receiptArchiveKey: 'receipts/old-archived.json',
+      },
+      // resolved and archived but still inside the rolling window → kept (still scored)
+      'recent-archived@1': {
+        key: 'recent-archived@1',
+        id: 'recent-archived',
+        status: 'resolved',
+        outcome: 'NO',
+        probability: 0.3,
+        resolvedAt: NOW - 10 * DAY_MS,
+        receiptArchivedAt: NOW - 9 * DAY_MS,
+      },
+      // resolved and old but NOT archived to R2 yet → kept (receipt not durably stored)
+      'old-unarchived@1': {
+        key: 'old-unarchived@1',
+        id: 'old-unarchived',
+        status: 'resolved',
+        outcome: 'YES',
+        probability: 0.9,
+        resolvedAt: NOW - RETENTION_MS - DAY_MS,
+      },
+      // pending forever → kept (still needs resolution)
+      'pending@1': { key: 'pending@1', id: 'pending', status: 'pending' },
+      // judged spec awaiting a judge resolver that has not shipped → kept
+      'judge@1': { key: 'judge@1', id: 'judge', status: 'pending-judge' },
+      // resolved+archived but missing resolvedAt → kept (cannot age-check safely)
+      'no-resolvedat@1': {
+        key: 'no-resolvedat@1',
+        id: 'no-resolvedat',
+        status: 'resolved',
+        outcome: 'YES',
+        receiptArchivedAt: NOW - RETENTION_MS,
+      },
+    };
+  }
+
+  it('drops only resolved+archived entries older than the retention window', () => {
+    const pruned = pruneArchivedTerminalEntries(ledgerFixture(), NOW);
+    assert.deepEqual(Object.keys(pruned).sort(), [
+      'judge@1',
+      'no-resolvedat@1',
+      'old-unarchived@1',
+      'pending@1',
+      'recent-archived@1',
+    ]);
+    assert.equal(pruned['old-archived@1'], undefined);
+  });
+
+  it('never mutates the input ledger', () => {
+    const ledger = ledgerFixture();
+    pruneArchivedTerminalEntries(ledger, NOW);
+    assert.ok(ledger['old-archived@1'], 'input must be left intact for the caller');
+  });
+
+  it('normalizes array and seed-envelope ledger inputs before pruning', () => {
+    const ledger = ledgerFixture();
+    const arrayPruned = pruneArchivedTerminalEntries(Object.values(ledger), NOW);
+    assert.equal(arrayPruned['old-archived@1'], undefined);
+    assert.ok(arrayPruned['recent-archived@1'], 'array input keeps in-window archived rows');
+    assert.ok(arrayPruned['old-unarchived@1'], 'array input keeps unarchived retry rows');
+
+    const envelopedPruned = pruneArchivedTerminalEntries({
+      _seed: {
+        fetchedAt: NOW,
+        recordCount: Object.keys(ledger).length,
+        sourceVersion: 'test',
+        schemaVersion: 1,
+        state: 'OK',
+      },
+      data: Object.values(ledger),
+    }, NOW);
+    assert.equal(envelopedPruned['old-archived@1'], undefined);
+    assert.equal(envelopedPruned.data, undefined, 'envelope wrapper must not leak into the pruned ledger');
+    assert.ok(envelopedPruned['recent-archived@1'], 'enveloped input keeps in-window archived rows');
+    assert.ok(envelopedPruned['old-unarchived@1'], 'enveloped input keeps unarchived retry rows');
+  });
+
+  it('honors a custom retention window', () => {
+    const ledger = ledgerFixture();
+    // With a 5-day window, the 10-day-old archived entry is also out of window.
+    const pruned = pruneArchivedTerminalEntries(ledger, NOW, { retentionWindowDays: 5 });
+    assert.equal(pruned['recent-archived@1'], undefined);
+    assert.equal(pruned['old-archived@1'], undefined);
+    assert.ok(pruned['old-unarchived@1'], 'unarchived stays even when out of window');
+  });
+
+  it('does not change the scorecard it is aligned with', () => {
+    const ledger = ledgerFixture();
+    const before = computeScorecard(ledger, NOW);
+    const after = computeScorecard(pruneArchivedTerminalEntries(ledger, NOW), NOW);
+    assert.deepEqual(after, before, 'pruned entries were already outside the rolling scorecard window');
+  });
+});
+
+describe('processResolutionCycle retention', () => {
+  it('prunes prior-cycle archived terminal entries once they age out of the window', () => {
+    const RETENTION_MS = LEDGER_RETENTION_WINDOW_DAYS * DAY_MS;
+    const now = T0 + 2 * RETENTION_MS;
+    const existingLedger = {
+      'stale-archived@1': {
+        key: 'stale-archived@1',
+        id: 'stale-archived',
+        status: 'resolved',
+        outcome: 'YES',
+        probability: 0.55,
+        resolvedAt: T0,
+        receiptArchivedAt: T0 + DAY_MS,
+        receiptArchiveKey: 'receipts/stale-archived.json',
+      },
+    };
+    const fresh = forecast({ generatedAt: now, deadline: now + DAY_MS });
+
+    const { ledger } = processResolutionCycle(existingLedger, [snapshot(now, [fresh])], {
+      'supply_chain:chokepoints:v4': { chokepoints: [{ route: 'Strait of Hormuz', riskScore: 5 }] },
+    }, now);
+
+    assert.equal(ledger['stale-archived@1'], undefined, 'aged-out archived receipt is pruned from the hot ledger');
+    assert.ok(ledger[`fc-hormuz@${now + DAY_MS}`], 'freshly ingested window survives');
+  });
+
+  it('retains a terminal entry that resolved this cycle (not yet archived)', () => {
+    const hard = forecast({ deadline: T0 + DAY_MS });
+    const { ledger, receipts } = processResolutionCycle({}, [snapshot(T0, [hard])], {
+      'supply_chain:chokepoints:v4': { chokepoints: [{ route: 'Strait of Hormuz', riskScore: 61 }] },
+    }, T0 + DAY_MS);
+
+    assert.equal(ledger[`fc-hormuz@${T0 + DAY_MS}`].status, 'resolved');
+    assert.equal(receipts.length, 1, 'the receipt is still emitted for R2 archival');
   });
 });

@@ -80,11 +80,14 @@ async function seedAnonClaimState(
     anonId?: string;
     planKey?: PlanKey;
     validUntil?: number;
+    compUntil?: number;
     existingRealEntitlement?: {
       userId: string;
       planKey: PlanKey;
       validUntil: number;
+      compUntil?: number;
     };
+    includeAnonEntitlement?: boolean;
   } = {},
 ) {
   const anonId = opts.anonId ?? ANON_USER_ID;
@@ -102,13 +105,16 @@ async function seedAnonClaimState(
       rawPayload: { metadata: { wm_anon_claim: "v2" } },
       updatedAt: NOW,
     });
-    await ctx.db.insert("entitlements", {
-      userId: anonId,
-      planKey,
-      features: getFeaturesForPlan(planKey),
-      validUntil: opts.validUntil ?? NOW + 30 * DAY_MS,
-      updatedAt: NOW,
-    });
+    if (opts.includeAnonEntitlement !== false) {
+      await ctx.db.insert("entitlements", {
+        userId: anonId,
+        planKey,
+        features: getFeaturesForPlan(planKey),
+        validUntil: opts.validUntil ?? NOW + 30 * DAY_MS,
+        ...(opts.compUntil !== undefined ? { compUntil: opts.compUntil } : {}),
+        updatedAt: NOW,
+      });
+    }
     await ctx.db.insert("customers", {
       userId: anonId,
       dodoCustomerId: "cus_anon_claim_001",
@@ -136,6 +142,9 @@ async function seedAnonClaimState(
         planKey: opts.existingRealEntitlement.planKey,
         features: getFeaturesForPlan(opts.existingRealEntitlement.planKey),
         validUntil: opts.existingRealEntitlement.validUntil,
+        ...(opts.existingRealEntitlement.compUntil !== undefined
+          ? { compUntil: opts.existingRealEntitlement.compUntil }
+          : {}),
         updatedAt: NOW - DAY_MS,
       });
     }
@@ -253,6 +262,19 @@ describe("claimSubscription anonymous ownership proof", () => {
         validUntil: NOW + 10 * DAY_MS,
       },
     });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: CLAIMANT_A.subject,
+        dodoSubscriptionId: "sub_real_api_business",
+        dodoProductId: PRODUCT_CATALOG.api_business.dodoProductId!,
+        planKey: "api_business",
+        status: "active",
+        currentPeriodStart: NOW - DAY_MS,
+        currentPeriodEnd: NOW + 10 * DAY_MS,
+        rawPayload: {},
+        updatedAt: NOW - DAY_MS,
+      });
+    });
     const claimToken = await signAnonClaimToken(ANON_USER_ID);
 
     await t.withIdentity(CLAIMANT_A).mutation(api.payments.billing.claimSubscription, {
@@ -265,6 +287,50 @@ describe("claimSubscription anonymous ownership proof", () => {
     );
     expect(entitlement?.planKey).toBe("api_business");
     expect(entitlement?.features.tier).toBe(getFeaturesForPlan("api_business").tier);
+  });
+
+  test("does not let a lower-tier anon comp floor suppress a higher real subscription on claim", async () => {
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    const anonCompUntil = NOW + 90 * DAY_MS;
+    const realPaidUntil = NOW + 30 * DAY_MS;
+    await seedAnonClaimState(t, {
+      planKey: "api_starter",
+      validUntil: anonCompUntil,
+      compUntil: anonCompUntil,
+      existingRealEntitlement: {
+        userId: CLAIMANT_A.subject,
+        planKey: "pro_monthly",
+        validUntil: realPaidUntil,
+      },
+    });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: CLAIMANT_A.subject,
+        dodoSubscriptionId: "sub_real_api_business",
+        dodoProductId: PRODUCT_CATALOG.api_business.dodoProductId!,
+        planKey: "api_business",
+        status: "active",
+        currentPeriodStart: NOW - DAY_MS,
+        currentPeriodEnd: realPaidUntil,
+        rawPayload: {},
+        updatedAt: NOW - DAY_MS,
+      });
+    });
+    const claimToken = await signAnonClaimToken(ANON_USER_ID);
+
+    await t.withIdentity(CLAIMANT_A).mutation(api.payments.billing.claimSubscription, {
+      anonId: ANON_USER_ID,
+      claimToken,
+    });
+
+    const entitlement = await t.run(async (ctx) =>
+      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", CLAIMANT_A.subject)).first(),
+    );
+    expect(entitlement?.planKey).toBe("api_business");
+    expect(entitlement?.features.tier).toBe(getFeaturesForPlan("api_business").tier);
+    expect(entitlement?.validUntil).toBe(realPaidUntil);
+    expect(entitlement?.compUntil).toBeUndefined();
   });
 
   test("schedules anon cache delete and real-user cache sync after a proven claim", async () => {
@@ -288,6 +354,56 @@ describe("claimSubscription anonymous ownership proof", () => {
     const urls = fetchMock.mock.calls.map((call) => String(call[0]));
     expect(urls.some((url) => url.includes("/del/") && url.includes(encodeURIComponent(ANON_USER_ID)))).toBe(true);
     expect(urls.some((url) => url.includes("/set/") && url.includes(encodeURIComponent(CLAIMANT_A.subject)))).toBe(true);
+  });
+
+  test("recomputes and syncs real entitlement when the anon entitlement row is missing", async () => {
+    vi.useFakeTimers();
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    process.env.UPSTASH_REDIS_REST_URL = "https://redis.example";
+    process.env.UPSTASH_REDIS_REST_TOKEN = "redis-token";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("OK", { status: 200 }),
+    );
+    const t = convexTest(schema, modules);
+    await seedAnonClaimState(t, {
+      planKey: "api_starter",
+      includeAnonEntitlement: false,
+    });
+    const claimToken = await signAnonClaimToken(ANON_USER_ID);
+
+    const result = await t.withIdentity(CLAIMANT_A).mutation(api.payments.billing.claimSubscription, {
+      anonId: ANON_USER_ID,
+      claimToken,
+    });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    expect(result).toEqual({
+      claimed: { subscriptions: 1, entitlements: 0, customers: 1, payments: 1 },
+    });
+    const rows = await t.run(async (ctx) => {
+      const [sub, entitlement, oldEntitlement] = await Promise.all([
+        ctx.db.query("subscriptions").withIndex("by_userId", (q) => q.eq("userId", CLAIMANT_A.subject)).first(),
+        ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", CLAIMANT_A.subject)).first(),
+        ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", ANON_USER_ID)).first(),
+      ]);
+      return { sub, entitlement, oldEntitlement };
+    });
+    expect(rows.sub?.userId).toBe(CLAIMANT_A.subject);
+    expect(rows.entitlement?.planKey).toBe("api_starter");
+    expect(rows.entitlement?.features.tier).toBe(getFeaturesForPlan("api_starter").tier);
+    expect(rows.oldEntitlement).toBeNull();
+
+    const urls = fetchMock.mock.calls.map((call) => String(call[0]));
+    expect(urls.some((url) => url.includes("/del/") && url.includes(encodeURIComponent(ANON_USER_ID)))).toBe(true);
+    const realUserSetUrl = urls.find((url) =>
+      url.includes("/set/") && url.includes(encodeURIComponent(CLAIMANT_A.subject)),
+    );
+    if (!realUserSetUrl) throw new Error("missing real-user Redis SET");
+    const setPathParts = new URL(realUserSetUrl).pathname.split("/");
+    const cachedEntitlement = JSON.parse(decodeURIComponent(setPathParts[3] ?? "{}"));
+    expect(cachedEntitlement.planKey).toBe("api_starter");
+    expect(cachedEntitlement.validUntil).toBe(NOW + 30 * DAY_MS);
+    expect(cachedEntitlement.features.tier).toBe(getFeaturesForPlan("api_starter").tier);
   });
 
   test("returns a quiet zero claim for bare UUIDs with no payment rows", async () => {

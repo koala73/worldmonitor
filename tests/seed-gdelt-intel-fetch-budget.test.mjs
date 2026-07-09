@@ -16,6 +16,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { fetchAllTopics } from '../scripts/seed-gdelt-intel.mjs';
 
@@ -29,6 +30,15 @@ const cachedSnapshot = () => ({
 });
 
 describe('seed-gdelt-intel fetchAllTopics soft budget (issue #4864)', () => {
+  it('fatal runSeed rejection exits nonzero so Railway/bundles see the failure', () => {
+    const source = readFileSync(new URL('../scripts/seed-gdelt-intel.mjs', import.meta.url), 'utf8');
+    const fatalCatch = source.match(/\.catch\(\(err\) => \{[\s\S]*?console\.error\('FATAL:'[\s\S]*?\n  \}\);/);
+
+    assert.ok(fatalCatch, 'seed-gdelt-intel must keep an explicit fatal catch');
+    assert.match(fatalCatch[0], /process\.exit\(1\)/);
+    assert.doesNotMatch(fatalCatch[0], /process\.exit\(0\)/);
+  });
+
   it('budget spent up front → every topic backfilled from cache, returns immediately (no deadline churn)', async () => {
     const started = Date.now();
     const out = await fetchAllTopics({

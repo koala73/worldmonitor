@@ -50,6 +50,11 @@ const HISTORY_KEY = 'forecast:predictions:history:v1';
 const TTL_SECONDS = 21600; // 6h — 6x the 1h cron interval (was 1.75x; hourly miss → 15 min panel gap)
 const HISTORY_MAX_RUNS = 200;
 const HISTORY_MAX_FORECASTS = 25;
+// This list is the resolver's intake window (LRANGE 200 at hourly cadence ~8.3d,
+// hard-capped at 45d by the TTL below). seed-forecast-resolutions.mjs relies on
+// that reach staying well under LEDGER_RETENTION_WINDOW_DAYS (180d) so pruned
+// terminal windows can never be re-ingested — keep this cadence×count and TTL
+// far below that retention window if you change either.
 const HISTORY_TTL_SECONDS = 45 * 24 * 60 * 60;
 const TRACE_LATEST_KEY = 'forecast:trace:latest:v1';
 const TRACE_RUNS_KEY = 'forecast:trace:runs:v1';
