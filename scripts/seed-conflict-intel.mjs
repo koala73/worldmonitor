@@ -350,14 +350,22 @@ async function fetchAll() {
   if (pi && gd) await writeExtraKeyWithMeta('intel:pizzint:v1:gdelt', { pizzint: pi, tensionPairs: gd }, PIZZINT_TTL, gd.length ?? 0);
 
   if (!ac) {
+    // ACLED credentials are optional. When NONE are configured (fetchAcledEvents
+    // returned null → fulfilled), the seed runs in its long-standing auxiliary-only
+    // mode (#1651/#2288): the auxiliary conflict/intel feeds above are already
+    // published, so return an empty ACLED payload and exit 0 rather than crashing
+    // every cron tick. We only refuse to let auxiliary feeds mask the PRIMARY feed
+    // when ACLED credentials ARE present but the display fetch failed (#5106).
     const missingCredentials = acled.status === 'fulfilled';
-    const reason = acled.status === 'rejected'
-      ? (acled.reason?.message || acled.reason)
-      : 'ACLED credentials not configured (set ACLED_EMAIL + ACLED_PASSWORD or ACLED_ACCESS_TOKEN)';
+    if (missingCredentials) {
+      console.log('  ACLED: no credentials configured — publishing auxiliary feeds only, primary feed left empty');
+      return { events: [], pagination: undefined };
+    }
+    const reason = acled.reason?.message || acled.reason;
     const err = new Error(
       `ACLED display fetch failed for ${ACLED_CACHE_KEY}; refusing to let auxiliary conflict/intel feeds mask the primary feed (${reason})`,
     );
-    if (missingCredentials || acled.reason?.nonRetryable) err.nonRetryable = true;
+    if (acled.reason?.nonRetryable) err.nonRetryable = true;
     throw err;
   }
 

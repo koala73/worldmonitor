@@ -38,13 +38,23 @@ describe('ACLED resolution-feed seed contract (#5076)', () => {
     assert.match(conflictSeed, /ACLED_RESOLUTION_CACHE_KEY,[\s\S]*clusters:\s*\[\],[\s\S]*acResolution\.pagination/);
   });
 
-  it('conflict seeder fails the primary feed when ACLED display data is unavailable', () => {
-    assert.match(conflictSeed, /if\s*\(!ac\)\s*\{[\s\S]*const err = new Error\([\s\S]*ACLED display fetch failed for \$\{ACLED_CACHE_KEY\}[\s\S]*auxiliary conflict\/intel feeds mask the primary feed/);
-    assert.match(conflictSeed, /ACLED credentials not configured \(set ACLED_EMAIL \+ ACLED_PASSWORD or ACLED_ACCESS_TOKEN\)/);
+  it('conflict seeder skips ACLED gracefully when no credentials are configured (auxiliary-only mode, #1651/#2288)', () => {
+    // Regression guard for #5106: a *missing* ACLED credential must NOT crash the
+    // seed every cron tick. When creds are absent the seed runs in its long-standing
+    // auxiliary-only mode — publish an empty ACLED payload and exit 0 rather than throw.
     assert.match(conflictSeed, /missingCredentials\s*=\s*acled\.status\s*===\s*'fulfilled'/);
-    assert.match(conflictSeed, /if\s*\(\s*missingCredentials\s*\|\|\s*acled\.reason\?\.nonRetryable\s*\)\s*err\.nonRetryable\s*=\s*true/);
+    assert.match(
+      conflictSeed,
+      /if\s*\(\s*missingCredentials\s*\)\s*\{[\s\S]*?return\s*\{\s*events:\s*\[\],\s*pagination:\s*undefined\s*\}/,
+    );
+  });
+
+  it('conflict seeder still fails when a CONFIGURED ACLED primary feed is unavailable (no silent masking, #5106)', () => {
+    // #5106's genuine value is preserved: when creds ARE present but the display
+    // fetch fails, refuse to let auxiliary feeds silently mask the broken primary feed.
+    assert.match(conflictSeed, /const err = new Error\([\s\S]*ACLED display fetch failed for \$\{ACLED_CACHE_KEY\}[\s\S]*auxiliary conflict\/intel feeds mask the primary feed/);
+    assert.match(conflictSeed, /if\s*\(\s*acled\.reason\?\.nonRetryable\s*\)\s*err\.nonRetryable\s*=\s*true/);
     assert.match(conflictSeed, /throw err/);
-    assert.doesNotMatch(conflictSeed, /return\s+ac\s*\|\|\s*\{\s*events:\s*\[\],\s*pagination:\s*undefined\s*\}/);
   });
 
   it('unrest seeder keeps the canonical display feed but also publishes a paginated 60d ACLED resolution feed', () => {
