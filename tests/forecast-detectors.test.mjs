@@ -2340,11 +2340,14 @@ describe('validateScenarios', () => {
 // ── Phase 3 Tests ──────────────────────────────────────────
 
 describe('computeProjections', () => {
-  it('anchors projection to timeHorizon', () => {
+  it('anchors projection to the curve peak, which for conflict is d7', () => {
     const p = makePrediction('conflict', 'Iran', 'test', 0.5, 0.5, '7d', []);
     computeProjections([p]);
     assert.ok(p.projections);
-    // probability should equal the d7 projection (anchored to 7d)
+    // conflict's curve peaks at d7 (multiplier 1.0), so the d7 projection
+    // equals the raw probability here. This is a property of conflict's
+    // curve shape, not of the '7d' timeHorizon passed above — see the
+    // '#5103' test below for a domain/horizon combo where they diverge.
     assert.equal(p.projections.d7, p.probability);
   });
 
@@ -2375,6 +2378,22 @@ describe('computeProjections', () => {
     assert.equal(p.projections.h24, 0.5);
     assert.equal(p.projections.d7, 0.5);
     assert.equal(p.projections.d30, 0.5);
+  });
+
+  it('anchors to the curve peak, not the emit horizon, when they differ (#5103)', () => {
+    // conflict's peak horizon is d7 (multiplier 1.0), but UCDP emits conflict
+    // forecasts at '30d' (multiplier 0.78) — the emit horizon must not be
+    // used as the anchor or every other horizon gets inflated.
+    const p = makePrediction('conflict', 'Syria', 'test', 0.6, 0.5, '30d', []);
+    computeProjections([p]);
+    const peakMult = Math.max(PROJECTION_CURVES.conflict.h24, PROJECTION_CURVES.conflict.d7, PROJECTION_CURVES.conflict.d30);
+    const base = 0.6 / peakMult;
+    assert.equal(p.projections.h24, Math.round(base * PROJECTION_CURVES.conflict.h24 * 1000) / 1000);
+    assert.equal(p.projections.d7, Math.round(base * PROJECTION_CURVES.conflict.d7 * 1000) / 1000);
+    assert.equal(p.projections.d30, Math.round(base * PROJECTION_CURVES.conflict.d30 * 1000) / 1000);
+    // Previously (anchored to the emit horizon d30=0.78) h24 came out to
+    // 0.6/0.78*0.91 ≈ 0.7 — well above the correct, non-inflated value.
+    assert.ok(p.projections.h24 < 0.6, `h24 should not be inflated above the base probability, got ${p.projections.h24}`);
   });
 });
 
@@ -2544,6 +2563,22 @@ describe('detectUcdpConflictZones', () => {
 
   it('handles empty input', () => {
     assert.equal(detectUcdpConflictZones({}).length, 0);
+  });
+
+  it('reports a meaningful probability right at the gate, not ~3.7% (#5103)', () => {
+    const events = Array.from({ length: 10 }, () => ({ country: 'Syria' }));
+    const result = detectUcdpConflictZones({ ucdpEvents: { events } });
+    assert.equal(result.length, 1);
+    // count === gate, so normalize(count, gate, 100) is exactly 0 and the
+    // result is exactly the floor — pin the precise value, not just a bound.
+    assert.equal(result[0].probability, 0.3);
+  });
+
+  it('probability rises monotonically with event count and stays capped at 0.85', () => {
+    const low = detectUcdpConflictZones({ ucdpEvents: { events: Array.from({ length: 10 }, () => ({ country: 'Syria' })) } });
+    const high = detectUcdpConflictZones({ ucdpEvents: { events: Array.from({ length: 80 }, () => ({ country: 'Syria' })) } });
+    assert.ok(high[0].probability > low[0].probability);
+    assert.ok(high[0].probability <= 0.85);
   });
 });
 
@@ -4017,5 +4052,22 @@ describe('stable forecast ids: semantic slots, not volatile titles (#4933)', () 
     assert.equal(forecastIdFromKey('military', 'theater:iran-theater'), forecastIdFromKey('military', 'theater:iran-theater'));
     assert.notEqual(forecastIdFromKey('military', 'theater:iran-theater'), forecastIdFromKey('conflict', 'theater:iran-theater'));
     assert.match(forecastIdFromKey('military', 'theater:iran-theater'), /^fc-military-[0-9a-f]{8}$/);
+  });
+
+  it('state-derived forecast probability respects the same 0.85 cap as the legacy market/supply detectors (#5103)', () => {
+    const stateUnit = {
+      id: 'state-max', label: 'Maximal pressure cluster', stateKind: 'market_stress',
+      dominantRegion: 'Middle East', regions: ['Middle East'],
+      avgProbability: 1, avgConfidence: 1,
+      situationCount: 2, forecastCount: 3,
+    };
+    const bucket = { id: 'energy', label: 'Energy', pressureScore: 1, confidence: 1 };
+    const candidate = { score: 1, criticalLift: 1, primarySignalType: 'energy_supply_shock', primaryChannel: 'energy' };
+    // score*0.56 + pressureScore*0.24 + avgProbability*0.18 = 0.98 uncapped,
+    // so the cap must be what brings this down to exactly 0.85.
+    const market = buildStateDerivedForecast(stateUnit, 'market', bucket, candidate, null);
+    const supplyChain = buildStateDerivedForecast(stateUnit, 'supply_chain', bucket, candidate, null);
+    assert.equal(market.probability, 0.85);
+    assert.equal(supplyChain.probability, 0.85);
   });
 });

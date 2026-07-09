@@ -157,6 +157,12 @@ const CYBER_PROB_VOLUME_WEIGHT = 0.5;       // weight of volume in probability f
 const CYBER_PROB_TYPE_WEIGHT = 0.15;        // weight of type diversity in probability formula
 const CONFLICT_BASE_DETECTOR_PROB_MAX = 0.90;
 const UCDP_CONFLICT_ZONE_PROB_MAX = 0.85;
+const UCDP_CONFLICT_ZONE_COUNT_GATE = 10; // matches the `count < 10` skip below
+// Probability at the gate itself, so a zone that just qualifies isn't reported as ~0%.
+// 0.3 matches the baseline confidence floor used throughout this file (see the
+// repeated `Math.max(0.3, normalize(...))` confidence pattern).
+const UCDP_CONFLICT_ZONE_PROB_FLOOR = 0.3;
+const STATE_DERIVED_MARKET_SUPPLY_PROB_MAX = 0.85; // same domain ceiling detectMarketScenarios/detectSupplyChainScenarios enforce
 const VELOCITY_SPIKE_PROBABILITY_LIFT = 0.08;
 const VELOCITY_SPIKE_PROBABILITY_MAX = 0.99;
 const DEFENSE_DIRECT_CONFIRMATION_PRESSURE_LIFT = 0.12;
@@ -1472,10 +1478,13 @@ function computeStateDerivedBucketCandidate(domain, stateUnit, bucket, marketCon
 function buildStateDerivedForecast(stateUnit, domain, bucket, candidate, marketContext) {
   const bucketContext = marketContext?.bucketContexts?.[bucket.id] || null;
   const title = buildStateDerivedForecastTitle(domain, stateUnit, bucket.id, bucket.label);
-  const probability = clampUnitInterval(
-    (candidate.score * 0.56) +
-    (Number(bucket.pressureScore || 0) * 0.24) +
-    (Number(stateUnit?.avgProbability || 0) * 0.18),
+  const probability = Math.min(
+    STATE_DERIVED_MARKET_SUPPLY_PROB_MAX,
+    clampUnitInterval(
+      (candidate.score * 0.56) +
+      (Number(bucket.pressureScore || 0) * 0.24) +
+      (Number(stateUnit?.avgProbability || 0) * 0.18),
+    ),
   );
   const confidence = clampUnitInterval(
     (candidate.score * 0.34) +
@@ -1957,10 +1966,16 @@ function detectUcdpConflictZones(inputs, emaRiskScores) {
   }
 
   for (const [country, count] of Object.entries(byCountry)) {
-    if (count < 10) continue;
+    if (count < UCDP_CONFLICT_ZONE_COUNT_GATE) continue;
 
     const signals = [{ type: 'ucdp', value: `${count} UCDP conflict events`, weight: 0.5 }];
-    let prob = Math.min(UCDP_CONFLICT_ZONE_PROB_MAX, normalize(count, 5, 100) * 0.7);
+    // Normalize from the gate itself (not below it) and scale into
+    // [floor, cap] so a country that just qualifies isn't reported as ~0%.
+    let prob = Math.min(
+      UCDP_CONFLICT_ZONE_PROB_MAX,
+      UCDP_CONFLICT_ZONE_PROB_FLOOR
+        + normalize(count, UCDP_CONFLICT_ZONE_COUNT_GATE, 100) * (UCDP_CONFLICT_ZONE_PROB_MAX - UCDP_CONFLICT_ZONE_PROB_FLOOR),
+    );
 
     const emaRisk = emaRiskScores?.get(country?.toLowerCase?.() ?? '');
     if (emaRisk?.velocitySpike) {
@@ -2423,9 +2438,12 @@ const PROJECTION_PROBABILITY_CAP = 0.95;
 function computeProjections(predictions) {
   for (const pred of predictions) {
     const curve = PROJECTION_CURVES[pred.domain] || { h24: 1, d7: 1, d30: 1 };
-    const anchor = pred.timeHorizon === '24h' ? 'h24' : pred.timeHorizon === '30d' ? 'd30' : 'd7';
-    const anchorMult = curve[anchor] || 1;
-    const base = anchorMult > 0 ? pred.probability / anchorMult : pred.probability;
+    // Anchor to the curve's own peak horizon, not the horizon the forecast
+    // happened to be emitted at — those can differ (e.g. UCDP emits
+    // 'conflict' at 30d while conflict's peak is d7), which previously
+    // de-anchored `base` and inflated other horizons past their curves.
+    const peakMult = Math.max(curve.h24, curve.d7, curve.d30) || 1;
+    const base = pred.probability / peakMult;
     pred.projections = {
       h24: Math.round(Math.min(PROJECTION_PROBABILITY_CAP, Math.max(PROJECTION_PROBABILITY_FLOOR, base * curve.h24)) * 1000) / 1000,
       d7:  Math.round(Math.min(PROJECTION_PROBABILITY_CAP, Math.max(PROJECTION_PROBABILITY_FLOOR, base * curve.d7)) * 1000) / 1000,
