@@ -656,6 +656,31 @@ describe('market transmission macro state', () => {
     assert.ok((marketConsequences?.blockedCount || 0) >= 1);
   });
 
+  it('continues accepting legacy flat FRED observations for macro signals', () => {
+    const worldState = buildForecastRunWorldState({
+      predictions: [],
+      inputs: {
+        fredSeries: {
+          VIXCLS: {
+            seriesId: 'VIXCLS',
+            title: 'VIXCLS',
+            observations: [
+              { date: '2026-02-01', value: 17.9 },
+              { date: '2026-03-01', value: 24.2 },
+            ],
+          },
+        },
+      },
+    });
+
+    const vixSignal = (worldState.worldSignals?.signals || []).find((item) => (
+      item.type === 'volatility_shock' &&
+      item.sourceType === 'fred' &&
+      item.sourceKey === 'VIXCLS'
+    ));
+    assert.ok(vixSignal);
+  });
+
   it('promotes direct core-bucket market consequences when critical signals are strong even if macro coverage is incomplete', () => {
     const consequences = buildSimulationMarketConsequences({
       situationSimulations: [
