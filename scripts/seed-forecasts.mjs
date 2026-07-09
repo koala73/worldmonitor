@@ -231,24 +231,6 @@ const CHOKEPOINT_MARKET_REGIONS = {
   'Cape of Good Hope': 'Southern Africa',
 };
 
-const THEATER_GEO_GROUPS = {
-  'Middle East': 'MENA_Gulf',       // Strait of Hormuz, Persian Gulf, Arabian Sea, Iran
-  'Persian Gulf': 'MENA_Gulf',
-  'Red Sea': 'MENA_RedSea',         // Red Sea, Bab el-Mandeb, Suez Canal
-  'South China Sea': 'AsiaPacific',
-  'Western Pacific': 'AsiaPacific',
-  'Southeast Asia': 'AsiaPacific',
-  'Black Sea': 'EastEurope',
-  'Northern Europe': 'NorthernEurope',
-  'Mediterranean': 'Mediterranean',
-  'Central America': 'LatinAmerica',
-  'Southern Africa': 'SouthernAfrica',
-};
-
-function getTheaterGeoGroup(marketRegion) {
-  return THEATER_GEO_GROUPS[marketRegion] || marketRegion || 'unknown';
-}
-
 const MARKET_INPUT_KEYS = {
   stocks: 'market:stocks-bootstrap:v1',
   commodities: 'market:commodities-bootstrap:v1',
@@ -4828,6 +4810,8 @@ function summarizeImpactPathScore(path = null) {
         channelSource:         d.channelSource,
         invalidatorHit:        Boolean(d.invalidatorHit),
         stabilizerHit:         Boolean(d.stabilizerHit),
+        timingMarkerCount:     Number(d.timingMarkerCount || 0),
+        timingMarkerBonus:     Number(d.timingMarkerBonus || 0),
       };
     }
   }
@@ -11609,6 +11593,11 @@ function matchesChannel(simPath, channel) {
 const NEGATION_TERMS = ['ceasefire', 'reopen', 'reopened', 'resolv', 'diplomatic solution', 'withdrawal', 'de-escalat', 'deescalat', 'restored', 'stabiliz', 'lifted', 'normaliz', 'agreement'];
 const SIMULATION_MERGE_ACCEPT_THRESHOLD = 0.50;
 const SIMULATION_ELIGIBILITY_RANK_THRESHOLD = 0.40;
+const SIMULATION_TIMING_MARKER_BONUS = 0.02;
+const SIMULATION_MAX_POSITIVE_ADJUSTMENT = 0.14;
+const SIMULATION_MAX_NEGATIVE_ADJUSTMENT = 0.27;
+const SIMULATION_RESCORING_PROMOTION_FLOOR = +(SIMULATION_MERGE_ACCEPT_THRESHOLD - SIMULATION_MAX_POSITIVE_ADJUSTMENT).toFixed(2);
+const SIMULATION_RESCORING_DEMOTION_THRESHOLD = +(SIMULATION_MERGE_ACCEPT_THRESHOLD + SIMULATION_MAX_NEGATIVE_ADJUSTMENT).toFixed(2);
 
 /**
  * @param {string} invalidator
@@ -11666,6 +11655,15 @@ function negatesDisruption(stabilizer, candidatePacket) {
   return subjectKeywords.some((kw) => text.includes(kw));
 }
 
+function countUsableTimingMarkers(timingMarkers) {
+  if (!Array.isArray(timingMarkers)) return 0;
+  return timingMarkers.filter((marker) => {
+    const event = String(marker?.event || '').trim();
+    const timing = String(marker?.timing || '').trim();
+    return event.length > 0 && /^T\+\d+h$/i.test(timing);
+  }).length;
+}
+
 /**
  * @param {ExpandedPath} expandedPath
  * @param {TheaterResult} simTheaterResult
@@ -11674,7 +11672,7 @@ function negatesDisruption(stabilizer, candidatePacket) {
  */
 function computeSimulationAdjustment(expandedPath, simTheaterResult, candidatePacket) {
   let adjustment = 0;
-  const details = { bucketChannelMatch: false, actorOverlapCount: 0, roleOverlapCount: 0, keyActorsOverlapCount: 0, invalidatorHit: false, stabilizerHit: false, resolvedChannel: '', channelSource: 'none', candidateActorCount: 0, actorSource: 'none', simPathConfidence: 1.0 };
+  const details = { bucketChannelMatch: false, actorOverlapCount: 0, roleOverlapCount: 0, keyActorsOverlapCount: 0, invalidatorHit: false, stabilizerHit: false, resolvedChannel: '', channelSource: 'none', candidateActorCount: 0, actorSource: 'none', simPathConfidence: 1.0, timingMarkerCount: 0, timingMarkerBonus: 0 };
 
   const { topPaths = [], invalidators = [], stabilizers = [] } = simTheaterResult || {};
   const pathBucket = expandedPath?.direct?.targetBucket
@@ -11731,6 +11729,12 @@ function computeSimulationAdjustment(expandedPath, simTheaterResult, candidatePa
     adjustment += +parseFloat((0.08 * simConf).toFixed(3));
     details.bucketChannelMatch = true;
     details.simPathConfidence = simConf;
+    const timingMarkerCount = countUsableTimingMarkers(bucketChannelMatch.timingMarkers);
+    details.timingMarkerCount = timingMarkerCount;
+    if (timingMarkerCount >= 2 && simConf > 0) {
+      details.timingMarkerBonus = +parseFloat((SIMULATION_TIMING_MARKER_BONUS * simConf).toFixed(3));
+      adjustment += details.timingMarkerBonus;
+    }
     // Role overlap: candidate stateSummary.actors vs sim keyActorRoles (role-category vocabulary).
     // Drives +0.04 bonus when actorSource=stateSummary. keyActorRoles absent → overlap=0 (graceful).
     if (actorSrc === 'stateSummary') {
@@ -12634,8 +12638,13 @@ async function writeDeepForecastSnapshot(snapshot, _context = {}) {
 // Simulation Package Export — theater-agnostic eligibility
 // ---------------------------------------------------------------------------
 
-function isSimulationEligible(candidate) {
+function getSimulationRankingScore(candidate) {
   const score = parseFloat(candidate.rankingScore || 0);
+  return Number.isFinite(score) ? score : 0;
+}
+
+function isSimulationEligible(candidate) {
+  const score = getSimulationRankingScore(candidate);
   if (score < SIMULATION_ELIGIBILITY_RANK_THRESHOLD) return false;
   // Accept both full-candidate shape (marketBucketIds / marketContext.topBucketId)
   // and theater-object shape (topBucketId only) — both appear in call sites.
@@ -13047,19 +13056,14 @@ function buildSimulationStructuralWorld(selectedTheaters, { stateUnits, worldSig
 }
 
 function buildSimulationPackageFromDeepSnapshot(snapshot, priorWorldState = null) {
-  const candidates = (snapshot.impactExpansionCandidates || []).filter(isSimulationEligible);
+  const candidates = (snapshot.impactExpansionCandidates || [])
+    .filter(isSimulationEligible)
+    .sort((a, b) => (
+      getSimulationRankingScore(b) - getSimulationRankingScore(a)
+      || String(a.candidateStateId || '').localeCompare(String(b.candidateStateId || ''))
+    ));
   if (candidates.length === 0) return null;
-  const usedGroups = new Set();
-  const top = [];
-  for (const c of candidates) {
-    const marketRegion = CHOKEPOINT_MARKET_REGIONS[c.routeFacilityKey] || c.dominantRegion || '';
-    const group = getTheaterGeoGroup(marketRegion);
-    if (!usedGroups.has(group)) {
-      usedGroups.add(group);
-      top.push(c);
-      if (top.length === 3) break;
-    }
-  }
+  const top = candidates.slice(0, 3);
   if (top.length === 0) return null;
 
   const selectedTheaters = top.map((c, i) => ({
@@ -17067,6 +17071,8 @@ Return ONLY a JSON object with no markdown fences:
 }`;
 }
 
+const SIMULATION_REQUIRED_PATH_IDS = ['escalation', 'containment', 'market_cascade'];
+
 /**
  * @param {string} text - raw LLM response text (JSON or JSON-with-prefix)
  * @param {1 | 2} round - simulation round number
@@ -17076,9 +17082,14 @@ function tryParseSimulationRoundPayload(text, round) {
   try {
     const parsed = JSON.parse(text);
     if (!Array.isArray(parsed?.paths)) return { paths: null };
-    const expectedIds = new Set(['escalation', 'containment', 'market_cascade']);
-    const paths = parsed.paths.filter((p) => p && expectedIds.has(p.pathId));
-    if (paths.length === 0) return { paths: null };
+    const expectedIds = new Set(SIMULATION_REQUIRED_PATH_IDS);
+    const byPathId = new Map();
+    for (const path of parsed.paths) {
+      if (!path || !expectedIds.has(path.pathId) || byPathId.has(path.pathId)) continue;
+      byPathId.set(path.pathId, path);
+    }
+    const paths = SIMULATION_REQUIRED_PATH_IDS.map((pathId) => byPathId.get(pathId));
+    if (paths.some((path) => !path)) return { paths: null };
     if (round === 2) {
       return {
         paths: paths.map((p) => ({
@@ -17147,9 +17158,10 @@ async function runTheaterSimulation(theater, pkg) {
     userPrompt2,
     { ...getForecastLlmCallOptions('simulation_round_2'), stage: 'simulation_round_2', maxTokens: SIMULATION_ROUND2_MAX_TOKENS, temperature: 0 },
   );
-  if (!r2Raw) return { round1: r1, round2: null, failed: false };
+  if (!r2Raw) return { round1: r1, round2: null, failed: true, reason: 'round2_llm_failed' };
   const r2 = extractSimulationRoundPayload(r2Raw.text, 2);
-  return { round1: r1, round2: r2.paths ? r2 : null, failed: false };
+  if (!r2.paths) return { round1: r1, round2: null, failed: true, reason: 'round2_parse_failed', diagnostics: r2.diagnostics };
+  return { round1: r1, round2: r2, failed: false };
 }
 
 function buildSimulationOutcomeKey(runId, generatedAt) {
@@ -17701,6 +17713,21 @@ async function applySimulationDecorationsToForecasts(predictions) {
   }
 }
 
+function hasSimulationRescoreOpportunity(evalData) {
+  if (evalData?.status === 'completed_no_material_change') return true;
+  const hasDemotionRisk = (evalData?.selectedPaths || []).some(
+    (p) => p.type === 'expanded' && p.acceptanceScore < SIMULATION_RESCORING_DEMOTION_THRESHOLD,
+  );
+  const hasPromotionOpportunity = (evalData?.rejectedPaths || []).some(
+    (p) => (
+      p.type === 'expanded'
+      && p.acceptanceScore >= SIMULATION_RESCORING_PROMOTION_FLOOR
+      && p.acceptanceScore < SIMULATION_MERGE_ACCEPT_THRESHOLD
+    ),
+  );
+  return hasDemotionRisk || hasPromotionOpportunity;
+}
+
 /**
  * Re-apply simulation merge against the just-completed simulation for a run whose deep forecast
  * had already finished with stale (or no) simulation data. Reads forecast-eval.json + snapshot
@@ -17739,16 +17766,10 @@ async function applyPostSimulationRescore(runId, freshOutcome, storageConfig) {
     // - 'completed_no_material_change': always proceed — any simulation evidence could promote a rejected path
     // - 'completed': proceed if (a) a selected expanded path risks demotion, or (b) a rejected expanded
     //   path could be promoted. Thresholds are derived from the max adjustments in computeSimulationAdjustment:
-    //     max positive: +0.08 (bucketChannelMatch) + 0.04 (actor overlap >= 2) = +0.12
-    //     max negative: -0.15 (stabilizer) — larger than invalidator -0.12
-    //   Demotion risk threshold: 0.50 + 0.15 = 0.65. Promotion window: [0.50 - 0.12, 0.50) = [0.38, 0.50).
-    const hasDemotionRisk = (evalData.selectedPaths || []).some(
-      (p) => p.type === 'expanded' && p.acceptanceScore < 0.65,
-    );
-    const hasPromotionOpportunity = (evalData.rejectedPaths || []).some(
-      (p) => p.type === 'expanded' && p.acceptanceScore >= 0.38 && p.acceptanceScore < SIMULATION_MERGE_ACCEPT_THRESHOLD,
-    );
-    if (evalData.status !== 'completed_no_material_change' && !hasDemotionRisk && !hasPromotionOpportunity) {
+    //     max positive: +0.08 (bucketChannelMatch) + 0.04 (actor overlap >= 2) + 0.02 (timing markers) = +0.14
+    //     max negative: -0.12 (invalidator) + -0.15 (stabilizer) = -0.27
+    //   Demotion risk threshold: 0.50 + 0.27 = 0.77. Promotion window: [0.50 - 0.14, 0.50) = [0.36, 0.50).
+    if (!hasSimulationRescoreOpportunity(evalData)) {
       return { skipped: true, reason: 'no_actionable_paths' };
     }
 
@@ -18367,6 +18388,7 @@ export {
   writeDeepForecastSnapshot,
   isSimulationEligible,
   SIMULATION_ELIGIBILITY_RANK_THRESHOLD,
+  SIMULATION_RESCORING_DEMOTION_THRESHOLD,
   inferEntityClassFromName,
   buildSimulationRequirementText,
   buildSimulationPackageConstraints,
@@ -18396,6 +18418,7 @@ export {
   runSimulationWorker,
   fetchSimulationOutcomeForMerge,
   applyPostSimulationRescore,
+  hasSimulationRescoreOpportunity,
   writeSimulationDecorations,
   applySimulationDecorationsToForecasts,
   patchPublishedForecastsWithSimDecorations,
