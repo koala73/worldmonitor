@@ -887,16 +887,6 @@ export class MapComponent {
       );
     };
 
-    // Resume mobile label-overlap measurement on the first direct map interaction.
-    // Mobile-only: on desktop the flag is always armed, so this would only ever
-    // early-return inside resumeMobileLabelVisibility().
-    if (this.isMobile) {
-      this.container.addEventListener('pointerdown', (e) => {
-        if (shouldIgnoreInteractionStart(e.target)) return;
-        this.resumeMobileLabelVisibility();
-      }, { signal });
-    }
-
     // Wheel zoom with smooth delta
     this.container.addEventListener(
       'wheel',
@@ -967,9 +957,10 @@ export class MapComponent {
     const touchHistory: Array<{ x: number; y: number; t: number }> = [];
     let inertiaRaf = 0;
 
+    // Keep tap starts out of the label-collision pass; arm it only once the
+    // gesture actually moves/zooms the viewport.
     this.container.addEventListener('touchstart', (e) => {
       if (shouldIgnoreInteractionStart(e.target)) return;
-      this.resumeMobileLabelVisibility();
       cancelAnimationFrame(inertiaRaf);
       const touch1 = e.touches[0];
       const touch2 = e.touches[1];
@@ -1019,6 +1010,7 @@ export class MapComponent {
         this.state.pan.y += (center.y - lastTouchCenter.y) * panSpeed;
         lastTouchCenter = center;
 
+        this.resumeMobileLabelVisibility();
         this.applyTransform();
       } else if (e.touches.length === 1 && isDragging && touch1) {
         if (!touchDragActive) {
@@ -1026,6 +1018,7 @@ export class MapComponent {
           const dy0 = touch1.clientY - touchStartPos.y;
           if (Math.hypot(dx0, dy0) < TOUCH_DRAG_THRESHOLD) return;
           touchDragActive = true;
+          this.resumeMobileLabelVisibility();
         }
 
         e.preventDefault();
