@@ -335,9 +335,8 @@ async function fetchAll() {
   if (pizzint.status === 'rejected') console.warn(`  PizzINT failed: ${pizzint.reason?.message || pizzint.reason}`);
   if (gdelt.status === 'rejected') console.warn(`  GDELT failed: ${gdelt.reason?.message || gdelt.reason}`);
 
-  if (!ac && !ha && !pi) throw new Error('All conflict/intel fetches failed');
-
-  // Write secondary keys BEFORE returning (runSeed calls process.exit after primary write)
+  // Write secondary keys BEFORE returning or failing the primary feed
+  // (runSeed calls process.exit after primary write).
   if (ha) { for (const [cc, data] of Object.entries(ha)) await writeExtraKeyWithMeta(`${HAPI_CACHE_KEY_PREFIX}:${cc}`, data, HAPI_TTL, 1); }
   if (acResolution?.events?.length) {
     await writeExtraKeyWithMeta(
@@ -350,7 +349,16 @@ async function fetchAll() {
   if (pi) await writeExtraKeyWithMeta('intel:pizzint:v1:base', { pizzint: pi, tensionPairs: [] }, PIZZINT_TTL, pi.locationsMonitored ?? 0);
   if (pi && gd) await writeExtraKeyWithMeta('intel:pizzint:v1:gdelt', { pizzint: pi, tensionPairs: gd }, PIZZINT_TTL, gd.length ?? 0);
 
-  return ac || { events: [], pagination: undefined };
+  if (!ac) {
+    const reason = acled.status === 'rejected'
+      ? (acled.reason?.message || acled.reason)
+      : 'no ACLED display payload returned';
+    throw new Error(
+      `ACLED display fetch failed for ${ACLED_CACHE_KEY}; refusing to let auxiliary conflict/intel feeds mask the primary feed (${reason})`,
+    );
+  }
+
+  return ac;
 }
 
 function validate(data) {

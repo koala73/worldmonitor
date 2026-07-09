@@ -38,6 +38,11 @@ describe('ACLED resolution-feed seed contract (#5076)', () => {
     assert.match(conflictSeed, /ACLED_RESOLUTION_CACHE_KEY,[\s\S]*clusters:\s*\[\],[\s\S]*acResolution\.pagination/);
   });
 
+  it('conflict seeder fails the primary feed when ACLED display data is unavailable', () => {
+    assert.match(conflictSeed, /if\s*\(!ac\)\s*\{[\s\S]*throw new Error\([\s\S]*ACLED display fetch failed for \$\{ACLED_CACHE_KEY\}[\s\S]*auxiliary conflict\/intel feeds mask the primary feed/);
+    assert.doesNotMatch(conflictSeed, /return\s+ac\s*\|\|\s*\{\s*events:\s*\[\],\s*pagination:\s*undefined\s*\}/);
+  });
+
   it('unrest seeder keeps the canonical display feed but also publishes a paginated 60d ACLED resolution feed', () => {
     assert.match(unrestSeed, /CANONICAL_KEY\s*=\s*'unrest:events:v1'/);
     assert.match(unrestSeed, /ACLED_DISPLAY_LOOKBACK_DAYS\s*=\s*30/);
