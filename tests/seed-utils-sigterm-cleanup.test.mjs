@@ -15,8 +15,9 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const SCRIPTS_DIR = new URL('../scripts/', import.meta.url).pathname;
+const SCRIPTS_DIR = fileURLToPath(new URL('../scripts/', import.meta.url));
 
 function runFixture(bodyJs) {
   const path = join(SCRIPTS_DIR, `_sigterm-fixture-${Date.now()}.mjs`);
@@ -53,7 +54,7 @@ function runFixture(bodyJs) {
   });
 }
 
-test('runSeed releases lock and extends existing TTL on SIGTERM', async () => {
+test('runSeed releases lock and extends existing TTL on SIGTERM', { skip: process.platform === 'win32' }, async () => {
   // Fixture logs every Upstash HTTP call (shape + body) on its own
   // line so the test can assert that the SIGTERM cleanup actually
   // emitted (a) an EVAL DEL-on-match for the lock key, and (b) an
@@ -131,7 +132,7 @@ test('runSeed releases lock and extends existing TTL on SIGTERM', async () => {
     `EXPIRE pipeline must include seed-meta key; stderr:\n${stderr}`);
 });
 
-test('runSeed SIGTERM handler fires once even if multiple SIGTERMs arrive', async () => {
+test('runSeed SIGTERM handler fires once even if multiple SIGTERMs arrive', { skip: process.platform === 'win32' }, async () => {
   // Uses process.once under the hood; verify by emitting SIGTERM twice.
   // A second SIGTERM while the handler is mid-cleanup should not trigger
   // re-entry. If the handler was registered with process.on instead of
@@ -191,7 +192,7 @@ test('runSeed SIGTERM handler fires once even if multiple SIGTERMs arrive', asyn
   }
 });
 
-test('publish-phase SIGTERM releases lock but does NOT extend TTL (strict-floor invariant preserved)', async () => {
+test('publish-phase SIGTERM releases lock but does NOT extend TTL (strict-floor invariant preserved)', { skip: process.platform === 'win32' }, async () => {
   // After fetchFn returns, runSeed transitions to publish phase. The
   // SIGTERM handler is now KEPT installed (whole-run scope) so a SIGTERM
   // during atomicPublish/extendExistingTtl/verify still releases the
@@ -327,7 +328,7 @@ test('publish-phase SIGTERM releases lock but does NOT extend TTL (strict-floor 
   }
 });
 
-test('SIGTERM during fetch-failure cleanup still triggers handler (no leak window between catch and process.exit)', async () => {
+test('SIGTERM during fetch-failure cleanup still triggers handler (no leak window between catch and process.exit)', { skip: process.platform === 'win32' }, async () => {
   // Pre-fix code path: the fetch-failure catch block did
   //   process.off('SIGTERM', sigTermHandler);
   //   await releaseLock(...);   ← if SIGTERM lands here, no handler

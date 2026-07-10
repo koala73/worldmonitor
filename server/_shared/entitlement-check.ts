@@ -17,7 +17,7 @@ import { getCachedJson, setCachedJson } from './redis';
 // Types
 // ---------------------------------------------------------------------------
 
-interface CachedEntitlements {
+export interface CachedEntitlements {
   planKey: string;
   features: {
     tier: number;
@@ -34,8 +34,26 @@ interface CachedEntitlements {
      * this on the next subscription event.
      */
     mcpAccess?: boolean;
+    /**
+     * Per-account daily REST allowance (#3199). The rate-limit layer meters
+     * but never rejects at this value; the hard ceiling is 10×. `-1` =
+     * unlimited. Unlike `mcpAccess`, consumers treat `undefined` as
+     * **no daily limit (fail-OPEN)** — a stale/legacy cache must not punish
+     * a paying customer. NOT added to the cache-staleness gate below for
+     * that reason (forcing a re-fetch would contradict fail-open).
+     */
+    apiDailyAllowance?: number;
   };
   validUntil: number;
+}
+
+export interface EntitlementCheckResult {
+  response: Response | null;
+  entitlements: CachedEntitlements | null;
+}
+
+export interface EntitlementCheckOptions {
+  clerkRole?: 'free' | 'pro' | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -56,10 +74,25 @@ interface CachedEntitlements {
  * 403'd real Pro subscribers calling via Clerk session (no tester key).
  */
 const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
+  '/api/forecast/v1/trigger-simulation': 1,
+  '/api/intelligence/v1/classify-event': 1,
   '/api/market/v1/analyze-stock': 1,
   '/api/market/v1/get-stock-analysis-history': 1,
   '/api/market/v1/backtest-stock': 1,
   '/api/market/v1/list-stored-stock-backtests': 1,
+  '/api/sanctions/v1/list-sanctions-pressure': 1,
+  '/api/scenario/v1/run-scenario': 1,
+  '/api/scenario/v1/get-scenario-status': 1,
+  '/api/supply-chain/v1/get-country-chokepoint-index': 1,
+  '/api/supply-chain/v1/get-bypass-options': 1,
+  '/api/supply-chain/v1/get-country-cost-shock': 1,
+  '/api/supply-chain/v1/get-route-explorer-lane': 1,
+  '/api/supply-chain/v1/get-route-impact': 1,
+  '/api/supply-chain/v1/get-country-products': 1,
+  '/api/supply-chain/v1/get-multi-sector-cost-shock': 1,
+  '/api/supply-chain/v1/get-sector-dependency': 1,
+  '/api/trade/v1/list-comtrade-flows': 1,
+  '/api/trade/v1/get-tariff-trends': 1,
 };
 
 const CONVEX_INTERNAL_ENTITLEMENTS_PATH = '/api/internal-entitlements';
@@ -165,6 +198,7 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
         'x-convex-shared-secret': convexSharedSecret,
       },
       body: JSON.stringify({ userId }),
+      signal: AbortSignal.timeout(3_000),
     });
     if (!response.ok) return null;
     const result = await response.json() as CachedEntitlements | null;
@@ -210,45 +244,77 @@ export async function checkEntitlement(
   userId: string | null,
   pathname: string,
   corsHeaders: Record<string, string>,
+  options: EntitlementCheckOptions = {},
 ): Promise<Response | null> {
+  const result = await checkEntitlementDetailed(userId, pathname, corsHeaders, options);
+  return result.response;
+}
+
+/**
+ * Same authorization decision as checkEntitlement(), plus the resolved
+ * entitlement row when one was available. Gateway telemetry uses this so
+ * allow/deny events reflect the exact plan/tier that drove the decision.
+ */
+export async function checkEntitlementDetailed(
+  userId: string | null,
+  pathname: string,
+  corsHeaders: Record<string, string>,
+  options: EntitlementCheckOptions = {},
+): Promise<EntitlementCheckResult> {
   const requiredTier = getRequiredTier(pathname);
   if (requiredTier === null) {
     // Unrestricted endpoint -- no check needed
-    return null;
+    return { response: null, entitlements: null };
   }
 
   if (!userId) {
-    return new Response(
-      JSON.stringify({ error: 'Authentication required', requiredTier }),
-      { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
-    );
+    return {
+      response: new Response(
+        JSON.stringify({ error: 'Authentication required', requiredTier }),
+        { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
+      ),
+      entitlements: null,
+    };
+  }
+
+  // Preserve the legacy Pro bearer contract for tier-1 gates. Complimentary,
+  // tester, and legacy Clerk-role grants can have no Convex entitlement row,
+  // while the frontend still unlocks Pro panels for role='pro'.
+  if (options.clerkRole === 'pro' && requiredTier <= 1) {
+    return { response: null, entitlements: null };
   }
 
   const ent = await getEntitlements(userId);
   if (!ent) {
     // Fail-closed: unable to verify entitlements -> block the request
-    return new Response(
-      JSON.stringify({ error: 'Unable to verify entitlements', requiredTier }),
-      { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
-    );
+    return {
+      response: new Response(
+        JSON.stringify({ error: 'Unable to verify entitlements', requiredTier }),
+        { status: 403, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
+      ),
+      entitlements: null,
+    };
   }
 
   if (ent.features.tier >= requiredTier) {
     // User has sufficient tier -- allow
-    return null;
+    return { response: null, entitlements: ent };
   }
 
   // User lacks required tier -- return 403
-  return new Response(
-    JSON.stringify({
-      error: 'Upgrade required',
-      requiredTier,
-      currentTier: ent.features.tier,
-      planKey: ent.planKey,
-    }),
-    {
-      status: 403,
-      headers: { 'Content-Type': 'application/json', ...corsHeaders },
-    },
-  );
+  return {
+    response: new Response(
+      JSON.stringify({
+        error: 'Upgrade required',
+        requiredTier,
+        currentTier: ent.features.tier,
+        planKey: ent.planKey,
+      }),
+      {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      },
+    ),
+    entitlements: ent,
+  };
 }

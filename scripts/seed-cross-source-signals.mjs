@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, runSeed, getRedisCredentials } from './_seed-utils.mjs';
+import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -30,7 +31,7 @@ const SOURCE_KEYS = [
   'gdelt:intel:tone:nuclear',
   'gdelt:intel:tone:maritime',
   'weather:alerts:v1',
-  'risk:scores:sebuf:stale:v3',
+  CII_RISK_SCORE_CACHE_KEYS.stale,
   'regulatory:actions:v1',
 ];
 
@@ -694,7 +695,7 @@ function extractMediaToneDeterioration(d) {
 }
 
 function extractRiskScoreSpike(d) {
-  const payload = d['risk:scores:sebuf:stale:v3'];
+  const payload = d[CII_RISK_SCORE_CACHE_KEYS.stale];
   if (!payload) return [];
   const ciiScores = Array.isArray(payload.ciiScores) ? payload.ciiScores : [];
   const spiking = ciiScores.filter(s => safeNum(s.combinedScore) > 80 || s.trend === 'TREND_DIRECTION_RISING');

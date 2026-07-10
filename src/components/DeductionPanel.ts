@@ -1,8 +1,8 @@
 import { Panel } from './Panel';
-import { getRpcBaseUrl } from '@/services/rpc-client';
+import { createLazyClient, getRpcBaseUrl } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
-import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { h, replaceChildren, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { yieldToMain } from '@/utils/after-paint';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import type { NewsItem, DeductContextDetail } from '@/types';
@@ -10,9 +10,11 @@ import { buildNewsContext } from '@/utils/news-context';
 import { getActiveFrameworkForPanel } from '@/services/analysis-framework-store';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { FrameworkSelector } from './FrameworkSelector';
+import { extractDeductionProbability } from './deduction-probability';
+import { IntelligenceServiceClient } from '@/services/generated-rpc-clients';
 
 // deduct-situation + list-market-implications are premium-gated.
-const client = new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
+const getIntelligenceClient = createLazyClient(() => new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: premiumFetch }));
 
 const COOLDOWN_MS = 5_000;
 
@@ -156,7 +158,7 @@ export class DeductionPanel extends Panel {
             if (group.cls === 'ds-primary') {
                 const headingNode = group.nodes[0];
                 const fullText = headingNode?.textContent ?? '';
-                const probMatch = /(\d{1,3})\s*%/.exec(fullText);
+                const probability = extractDeductionProbability(fullText);
                 const timeMatch = /\(([^)]+)\)/.exec(fullText);
                 labelEl.textContent = group.label;
                 if (timeMatch) {
@@ -165,10 +167,11 @@ export class DeductionPanel extends Panel {
                     timeSpan.textContent = timeMatch[1] ?? '';
                     labelEl.appendChild(timeSpan);
                 }
-                if (probMatch) {
+                if (probability) {
                     const badge = document.createElement('span');
                     badge.className = 'ds-prob-badge';
-                    badge.textContent = `${probMatch[1]}%`;
+                    badge.textContent = probability.label;
+                    badge.title = probability.isRange ? 'Rough probability range from the source' : 'Approximate probability from the source';
                     labelEl.appendChild(badge);
                 }
             } else {
@@ -195,12 +198,13 @@ export class DeductionPanel extends Panel {
                     bodyNodes.forEach(n => {
                         if (n.tagName === 'UL') {
                             n.querySelectorAll('li').forEach(li => {
-                                const probMatch = /^(\d{1,3})\s*%\s*[:\s]?(.*)/.exec(li.textContent ?? '');
-                                if (probMatch) {
+                                const probability = extractDeductionProbability(li.textContent ?? '', { leadingOnly: true });
+                                if (probability) {
                                     const badge = document.createElement('span');
                                     badge.className = 'ds-alt-prob';
-                                    badge.textContent = `${probMatch[1]}%`;
-                                    li.textContent = (probMatch[2] ?? '').replace(/^\s*[:\s]+/, '').trim();
+                                    badge.textContent = probability.label;
+                                    badge.title = probability.isRange ? 'Rough probability range from the source' : 'Approximate probability from the source';
+                                    li.textContent = probability.remainder;
                                     li.insertBefore(badge, li.firstChild);
                                 }
                             });
@@ -247,7 +251,7 @@ export class DeductionPanel extends Panel {
         );
 
         try {
-            const resp = await client.deductSituation({
+            const resp = await getIntelligenceClient().deductSituation({
                 query,
                 geoContext,
                 framework: fw?.systemPromptAppend ?? '',
@@ -257,6 +261,11 @@ export class DeductionPanel extends Panel {
             this.resultContainer.className = 'deduction-result';
             if (resp.analysis) {
                 const parsed = await marked.parse(resp.analysis);
+                if (!this.element?.isConnected) return;
+                // Yield so the response paint lands before the synchronous DOMPurify
+                // pass (the heavy `sanitize` chunk) — breaks the post-response long
+                // task instead of running parse+purify+innerHTML as one block (#4537).
+                await yieldToMain();
                 if (!this.element?.isConnected) return;
                 const safe = DOMPurify.sanitize(parsed);
                 setTrustedHtml(this.resultContainer, trustedHtml(safe, 'legacy direct innerHTML migration'));

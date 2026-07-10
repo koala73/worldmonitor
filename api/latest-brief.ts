@@ -2,11 +2,14 @@
  * Latest-brief preview endpoint.
  *
  * GET /api/latest-brief (Clerk JWT required, PRO tier gated)
- *   -> 200 { issueDate, dateLong, greeting, threadCount, magazineUrl }
- *      when a composed brief exists for this user.
- *   -> 200 { status: 'composing' }  when the composer has not yet
- *      produced today's brief. The dashboard panel uses this to
- *      render an empty state instead of an error.
+ *   -> 200 { status: 'ready', issueDate, issueSlot, dateLong, greeting,
+ *      threadCount, magazineUrl } when a composed brief exists for this
+ *      user's current/requested slot.
+ *   -> 200 { status: 'composing', issueDate, issueSlot? } when the
+ *      current/requested slot has not been composed yet. `issueSlot` is
+ *      present when the caller requested a specific ?slot= value. The
+ *      dashboard panel uses this to render an empty state instead of an
+ *      error.
  *   -> 401 UNAUTHENTICATED on missing/bad JWT
  *   -> 403 pro_required for non-PRO users
  *   -> 503 if BRIEF_URL_SIGNING_SECRET is not configured

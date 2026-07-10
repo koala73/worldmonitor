@@ -178,15 +178,15 @@
     "apiTier": "CẤP ĐỘ API",
     "title": "Tình báo lập trình",
     "subtitle": "Dành cho nhà phát triển, nhà phân tích và các nhóm xây dựng trên dữ liệu World Monitor. Riêng biệt với Pro — sử dụng cả hai hoặc một trong hai.",
-    "restApi": "REST API trên tất cả 30+ miền dịch vụ",
+    "restApi": "REST API trên tất cả 30+ miền dịch vụ — SDK chính thức cho JavaScript, Python, Ruby, Go",
     "authenticated": "Xác thực theo khóa, rate-limited theo cấp độ",
     "structured": "JSON có cấu trúc với cache headers và tài liệu OpenAPI 3.1",
     "starter": "Starter",
     "starterReqs": "1.000 req/ngày",
     "starterWebhooks": "5 quy tắc webhook",
     "business": "Business",
-    "businessReqs": "50.000 req/ngày",
-    "businessWebhooks": "Webhook không giới hạn + SLA",
+    "businessReqs": "10.000 req/ngày",
+    "businessWebhooks": "Priority support",
     "feedData": "Đưa dữ liệu vào bảng điều khiển của bạn, tự động hóa cảnh báo qua Zapier/n8n/Make, xây dựng mô hình ghi điểm tùy chỉnh trên dữ liệu CII/rủi ro."
   },
   "enterpriseShowcase": {
@@ -374,16 +374,17 @@
           "Tóm tắt thị trường hàng ngày",
           "Theo dõi quân sự & địa chính trị",
           "Trình tạo widget tùy chỉnh",
-          "Trình kết nối dữ liệu MCP",
+          "Quyền truy cập MCP + SDK cho Claude Desktop và các ứng dụng khách AI khác (50 lượt gọi/ngày)",
           "Làm mới dữ liệu ưu tiên"
         ]
       },
       "api": {
         "description": "Truy cập theo chương trình vào dữ liệu trí tuệ",
         "features": [
-          "Truy cập REST API",
+          "REST API + SDK chính thức (npm, PyPI, RubyGems, Go)",
           "Luồng dữ liệu thời gian thực",
-          "1.000 yêu cầu/ngày",
+          "60 yêu cầu/phút",
+          "Bao gồm 1.000 yêu cầu/ngày",
           "Thông báo Webhook",
           "Xuất dữ liệu tùy chỉnh"
         ]

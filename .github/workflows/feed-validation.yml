@@ -24,7 +24,10 @@ on:
     branches: [main]
     paths:
       - 'src/config/feeds.ts'
+      - 'server/worldmonitor/news/v1/_feeds.ts'
       - 'scripts/validate-rss-feeds.mjs'
+      - 'scripts/_feed-health.mjs'
+      - 'scripts/seed-recall-benchmark.mjs'
       - 'api/_rss-allowed-domain-match.js'
       - 'api/_rss-allowed-domains.js'
       - 'shared/rss-allowed-domains.json'
@@ -43,12 +46,35 @@ jobs:
     # nominal, but a hung dependency-install or network stall could otherwise
     # occupy a runner for the default 6h timeout. 15min gives plenty of
     # headroom while avoiding stuck-runner alerts on real outages.
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '22'
+          node-version: '24'
           cache: 'npm'
       - run: npm ci
+      # #4920: with Upstash secrets configured, the run also publishes
+      # per-feed health + silent-zero streaks (news:feed-health:v1) and the
+      # GDELT recall benchmark (news:recall-benchmark:v1). Without secrets
+      # both publishers skip silently — validation output is unchanged.
+      # #4927 review P1: a silent skip must still be VISIBLE on the run —
+      # otherwise green scheduled runs mask never-activated health
+      # publishing (the health endpoints activation-gate these keys, but an
+      # operator scanning workflow runs should see the gap too).
+      - name: Warn when health publishing is not activated
+        env:
+          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+        run: |
+          if [ -z "$UPSTASH_REDIS_REST_URL" ] || [ -z "$UPSTASH_REDIS_REST_TOKEN" ]; then
+            echo "::warning title=feed-health publishing skipped::UPSTASH_REDIS_REST_URL/TOKEN are not configured as repo secrets — news:feed-health:v1 and news:recall-benchmark:v1 will not be published (health endpoints show these as pending-activation)."
+          fi
       - run: npm run test:feeds:ci
+        env:
+          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}
+      - run: node scripts/seed-recall-benchmark.mjs
+        env:
+          UPSTASH_REDIS_REST_URL: ${{ secrets.UPSTASH_REDIS_REST_URL }}
+          UPSTASH_REDIS_REST_TOKEN: ${{ secrets.UPSTASH_REDIS_REST_TOKEN }}

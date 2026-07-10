@@ -63,7 +63,7 @@ export const RESILIENCE_COHORTS: readonly ResilienceCohort[] = [
     label: 'Nuclear-heavy generation mix',
     definition:
       'Countries where nuclear supplied ≥ 15% of electricity generation in the most recent reporting year. Validates that the new lowCarbonGenerationShare indicator correctly rewards firm low-carbon generation (PR 1 §3.3).',
-    source: 'IAEA PRIS (Power Reactor Information System) + World Bank EG.ELC.NUCL.ZS. Curated 2026-04-22.',
+    source: 'IAEA PRIS (Power Reactor Information System) + OWID nuclear_share_elec. Curated 2026-04-22.',
     countryCodes: [
       'FR', 'SK', 'UA', 'HU', 'BE', 'BG', 'SI',  // Central/Eastern Europe heavy adopters
       'CZ', 'FI', 'SE', 'CH',                     // Western/Northern EU adopters

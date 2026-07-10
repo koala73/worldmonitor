@@ -1,94 +1,27 @@
 import type { AppContext, AppModule } from '@/app/app-context';
 import { normalizeExclusiveChoropleths } from '@/components/resilience-choropleth-utils';
 import { replayPendingCalls, clearAllPendingCalls } from '@/app/pending-panel-data';
+import {
+  createDeferredPanelShell,
+  getDeferredPanelShellFootprint as resolveDeferredPanelShellFootprint,
+  reconcileDeferredPanelShellColSpan,
+  shouldDeferInitialPanelMount,
+  type DeferredPanelShellFootprint,
+} from '@/app/panel-mount-deferral';
+import {
+  addResponsiveZoneListener,
+  removeResponsiveZoneListener,
+  type ResponsiveZoneListener,
+} from '@/app/responsive-zone-listener';
 import { getAlertsNearLocation } from '@/services/geo-convergence';
 import { effectivePubDateMs } from '@/services/feed-date';
-import type { ClusteredEvent } from '@/types';
+import type { ClusteredEvent, MapLayers, PanelConfig } from '@/types';
 import type { RelatedAsset } from '@/types';
 import type { TheaterPostureSummary } from '@/services/military-surge';
-import {
-  NewsPanel,
-  MarketPanel,
-  StockAnalysisPanel,
-  StockBacktestPanel,
-  HeatmapPanel,
-  CommoditiesPanel,
-  CryptoPanel,
-  CryptoHeatmapPanel,
-  DefiTokensPanel,
-  AiTokensPanel,
-  OtherTokensPanel,
-  PredictionPanel,
-  MonitorPanel,
-  LatestBriefPanel,
-  EconomicPanel,
-  ConsumerPricesPanel,
-  EnergyComplexPanel,
-  OilInventoriesPanel,
-  GdeltIntelPanel,
-  LiveNewsPanel,
-  getDefaultLiveChannels,
-  loadChannelsFromStorage,
-  LiveWebcamsPanel,
-  PinnedWebcamsPanel,
-  CIIPanel,
-  CascadePanel,
-  StrategicRiskPanel,
-  StrategicPosturePanel,
-  TechEventsPanel,
-  ServiceStatusPanel,
-  InternetDisruptionsPanel,
-  RuntimeConfigPanel,
-  InsightsPanel,
-  MacroSignalsPanel,
-  FearGreedPanel,
-  MarketBreadthPanel,
-  ETFFlowsPanel,
-  StablecoinPanel,
-  UcdpEventsPanel,
-  InvestmentsPanel,
-  TradePolicyPanel,
-  SupplyChainPanel,
-  SanctionsPressurePanel,
-  GulfEconomiesPanel,
-  GroceryBasketPanel,
-  BigMacPanel,
-  FuelPricesPanel,
-  FaoFoodPriceIndexPanel,
-  ClimateNewsPanel,
-  WorldClockPanel,
-  AirlineIntelPanel,
-  AviationCommandBar,
-  MilitaryCorrelationPanel,
-  EscalationCorrelationPanel,
-  EconomicCorrelationPanel,
-  DisasterCorrelationPanel,
-  DefensePatentsPanel,
-  HormuzPanel,
-  ChokepointStripPanel,
-  PipelineStatusPanel,
-  StorageFacilityMapPanel,
-  FuelShortagePanel,
-  EnergyDisruptionsPanel,
-  EnergyRiskOverviewPanel,
-  MacroTilesPanel,
-  FSIPanel,
-  YieldCurvePanel,
-  EarningsCalendarPanel,
-  EconomicCalendarPanel,
-  CotPositioningPanel,
-  LiquidityShiftsPanel,
-  PositioningPanel,
-  GoldIntelligencePanel,
-  DiseaseOutbreaksPanel,
-  SocialVelocityPanel,
-  WsbTickerScannerPanel,
-  AAIISentimentPanel,
-  EnergyCrisisPanel,
-} from '@/components';
-import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
-import { focusInvestmentOnMap } from '@/services/investments-focus';
-import { debounce, saveToStorage, loadFromStorage } from '@/utils';
+import type { NewsPanel } from '@/components/NewsPanel';
+import type { AviationCommandBar } from '@/components/AviationCommandBar';
+import { MobilePanelNav } from '@/components/MobilePanelNav';
+import { debounce, saveToStorage } from '@/utils';
 import { escapeHtml } from '@/utils/sanitize';
 import {
   FEEDS,
@@ -99,31 +32,44 @@ import {
   ALL_PANELS,
   VARIANT_DEFAULTS,
   isPanelInVariantDefaults,
+  getEffectivePanelConfig,
+  isPanelEntitled,
+  enforceFreePanelLimit,
 } from '@/config';
 import { resolveNewsCategories, enabledNewsCategoryKeys } from '@/config/feed-resolution';
 import { BETA_MODE } from '@/config/beta';
 import { t } from '@/services/i18n';
 import { getCurrentTheme } from '@/utils';
-import { trackCriticalBannerAction } from '@/services/analytics';
-import { CustomWidgetPanel } from '@/components/CustomWidgetPanel';
-import { openWidgetChatModal } from '@/components/WidgetChatModal';
-import { loadWidgets, saveWidget } from '@/services/widget-store';
+import { trackCriticalBannerAction, trackCheckoutSuccess, trackCheckoutFailed, replayPendingCheckoutSuccess, replayPendingProFunnelEvents } from '@/services/analytics';
+import { getStoredMapModePreference } from '@/services/map-mode-preference';
+import { loadWidgets, saveWidget, isProUser } from '@/services/widget-store';
 import type { CustomWidgetSpec } from '@/services/widget-store';
 import { initEntitlementSubscription, destroyEntitlementSubscription, isEntitled, hasTier, getEntitlementState, onEntitlementChange, shouldReloadOnEntitlementChange } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
 import { initPaymentFailureBanner } from '@/components/payment-failure-banner';
 import { handleCheckoutReturn } from '@/services/checkout-return';
-import { initCheckoutOverlay, destroyCheckoutOverlay, showCheckoutSuccess, consumePostCheckoutFlag, clearCheckoutAttempt } from '@/services/checkout';
+import { registerCheckoutSuccessCallback, destroyCheckoutOverlay, showCheckoutSuccess, consumePostCheckoutFlag, clearCheckoutAttempt } from '@/services/checkout';
 import { showCheckoutFailureBanner } from '@/components/checkout-failure-banner';
-import { McpDataPanel } from '@/components/McpDataPanel';
-import { openMcpConnectModal } from '@/components/McpConnectModal';
+import { PanelTabBar } from '@/components/PanelTabBar';
+import {
+  loadTabsState,
+  saveTabsState,
+  generateTabId,
+  buildDefaultTabPanels,
+} from '@/services/tab-store';
+import type { PanelTab, TabsState } from '@/services/tab-store';
+import { showToast } from '@/utils';
 import { loadMcpPanels, saveMcpPanel } from '@/services/mcp-store';
 import type { McpPanelSpec } from '@/services/mcp-store';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import type { AuthSession } from '@/services/auth-state';
 import { PanelGateReason, getPanelGateReason, hasPremiumAccess } from '@/services/panel-gating';
+import { markLcpDebug } from '@/utils/lcp-debug';
 import type { Panel } from '@/components/Panel';
+import type { SupplyChainPanel } from '@/components/SupplyChainPanel';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { loadPanelCollapsed, loadPanelColSpans, loadPanelSpans } from '@/utils/panel-storage';
+import { measure, mutate } from '@/utils/layout-batch';
 
 
 /**
@@ -173,21 +119,210 @@ const WEB_CLERK_PRO_ONLY_PANELS = new Set([
   'latest-brief',
 ]);
 
+const COLLIDING_NEWS_PANEL_KEYS = new Set(['markets', 'crypto', 'economic']);
+
+// TEMPORARY MIRROR of each panel constructor's footprint (`defaultRowSpan` /
+// `className: 'panel-wide'`, declared in src/components/*Panel.ts). A deferred
+// shell never instantiates its component, so it cannot read that footprint
+// directly and must reproduce it here to reserve the right grid space.
+//
+// This duplicates the authoritative per-component declaration. Two guards keep
+// it honest: `tests/panel-config-guardrails.test.mjs` fails CI on drift, and
+// `warnOnDeferredFootprintDrift` (below) logs in dev if a hydrated panel ends
+// up wider/taller than its reserved shell. The intended long-term fix is to
+// lift these defaults into one shared table imported by both the `Panel`
+// constructor and this map, removing the duplication entirely (see #4490).
+export const DEFERRED_PANEL_NATURAL_FOOTPRINTS: Readonly<Record<string, DeferredPanelShellFootprint>> = {
+  cii: { rowSpan: 2 },
+  'chat-analyst': { rowSpan: 2 },
+  'consumer-prices': { rowSpan: 2 },
+  displacement: { rowSpan: 2 },
+  economic: { rowSpan: 2 },
+  'energy-complex': { rowSpan: 2 },
+  'energy-crisis': { rowSpan: 2 },
+  'energy-disruptions': { rowSpan: 2 },
+  'fuel-shortages': { rowSpan: 2 },
+  'gdelt-intel': { rowSpan: 2 },
+  'internet-disruptions': { rowSpan: 2 },
+  'live-news': { className: 'panel-wide' },
+  'live-webcams': { className: 'panel-wide' },
+  'oil-inventories': { rowSpan: 2 },
+  'pipeline-status': { rowSpan: 2 },
+  'sanctions-pressure': { rowSpan: 2 },
+  'security-advisories': { rowSpan: 2 },
+  'storage-facility-map': { rowSpan: 2 },
+  'strategic-posture': { rowSpan: 2 },
+  'supply-chain': { rowSpan: 2 },
+  'telegram-intel': { rowSpan: 2 },
+  'threat-timeline': { rowSpan: 2 },
+  'trade-policy': { rowSpan: 2 },
+  'ucdp-events': { rowSpan: 2 },
+  'windy-webcams': { className: 'panel-wide' },
+};
+
+const DEFERRED_DYNAMIC_PANEL_FOOTPRINTS: Readonly<Record<string, DeferredPanelShellFootprint>> = {
+  'cw-': { rowSpan: 2 },
+  'mcp-': { rowSpan: 2 },
+};
+
+const DEFERRED_PANEL_RETRY_DELAY_MS = 1_000;
+const DEFERRED_PANEL_MAX_RETRY_ATTEMPTS = 3;
+
+function readRowSpanClass(element: HTMLElement): number {
+  if (element.classList.contains('span-4')) return 4;
+  if (element.classList.contains('span-3')) return 3;
+  if (element.classList.contains('span-2')) return 2;
+  return 1;
+}
+
+function readColSpanFootprint(element: HTMLElement): number {
+  if (element.classList.contains('col-span-3')) return 3;
+  if (element.classList.contains('col-span-2')) return 2;
+  if (element.classList.contains('col-span-1')) return 1;
+  return element.classList.contains('panel-wide') ? 2 : 1;
+}
+
+// Dev-only guard: if a hydrated panel ends up taller/wider than the shell we
+// reserved for it, the registry above drifted from the panel constructor and
+// the deferred shell just caused the layout shift it exists to prevent. Surface
+// it in the app (CI also catches drift via panel-config-guardrails).
+function warnOnDeferredFootprintDrift(key: string, placeholder: HTMLElement, real: HTMLElement): void {
+  const reservedRows = readRowSpanClass(placeholder);
+  const reservedCols = readColSpanFootprint(placeholder);
+  const realRows = readRowSpanClass(real);
+  const realCols = readColSpanFootprint(real);
+  if (realRows > reservedRows || realCols > reservedCols) {
+    console.warn(
+      `[PanelLayoutManager] Deferred shell footprint drift for "${key}": reserved ` +
+        `${reservedCols}x${reservedRows} (col x row) but panel hydrated to ${realCols}x${realRows}. ` +
+        'Update DEFERRED_PANEL_NATURAL_FOOTPRINTS to match the panel constructor.',
+    );
+  }
+}
+
+type BootShellFootprintKey = 'header' | 'tabs' | 'main' | 'map' | 'grid';
+
+type BootShellFootprintBox = {
+  height: number;
+  width: number;
+  x: number;
+  y: number;
+};
+
+type BootShellFootprintSnapshot = Partial<Record<BootShellFootprintKey, BootShellFootprintBox>>;
+
+const BOOT_SHELL_FOOTPRINT_TARGETS: ReadonlyArray<{
+  key: BootShellFootprintKey;
+  shellSelector: string;
+  appSelector: string;
+}> = [
+  { key: 'header', shellSelector: '.skeleton-header', appSelector: '.header' },
+  { key: 'tabs', shellSelector: '.skeleton-tabs', appSelector: '#panelTabsMount' },
+  { key: 'main', shellSelector: '.skeleton-main', appSelector: '#main' },
+  { key: 'map', shellSelector: '.skeleton-map', appSelector: '#mapSection' },
+  { key: 'grid', shellSelector: '.skeleton-grid', appSelector: '#panelsGrid' },
+];
+
+function readFootprintBox(root: ParentNode, selector: string): BootShellFootprintBox | null {
+  const el = root.querySelector<Element>(selector);
+  if (!el) return null;
+  const rect = el.getBoundingClientRect();
+  return {
+    height: rect.height,
+    width: rect.width,
+    x: rect.x,
+    y: rect.y,
+  };
+}
+
+function captureBootShellFootprint(root: ParentNode): BootShellFootprintSnapshot | null {
+  if (!root.querySelector('.skeleton-shell')) return null;
+  const snapshot: BootShellFootprintSnapshot = {};
+  for (const target of BOOT_SHELL_FOOTPRINT_TARGETS) {
+    const box = readFootprintBox(root, target.shellSelector);
+    if (box) snapshot[target.key] = box;
+  }
+  return Object.keys(snapshot).length > 0 ? snapshot : null;
+}
+
+function formatFootprintDelta(before: BootShellFootprintBox, after: BootShellFootprintBox): string {
+  const delta = (field: keyof BootShellFootprintBox) => Math.round((after[field] - before[field]) * 10) / 10;
+  return `dx=${delta('x')}, dy=${delta('y')}, dw=${delta('width')}, dh=${delta('height')}`;
+}
+
+function warnOnBootShellFootprintDrift(snapshot: BootShellFootprintSnapshot): void {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      const drifts: string[] = [];
+      for (const target of BOOT_SHELL_FOOTPRINT_TARGETS) {
+        const before = snapshot[target.key];
+        const after = readFootprintBox(document, target.appSelector);
+        if (!before || !after) continue;
+        const maxDelta = Math.max(
+          Math.abs(after.x - before.x),
+          Math.abs(after.y - before.y),
+          Math.abs(after.width - before.width),
+          Math.abs(after.height - before.height),
+        );
+        if (maxDelta > 2) {
+          drifts.push(`${target.key} ${formatFootprintDelta(before, after)}`);
+        }
+      }
+      if (drifts.length === 0) return;
+      console.warn(
+        '[PanelLayoutManager] Boot shell footprint drift during skeleton->app swap: ' +
+          `${drifts.join('; ')}. Keep index.html skeleton dimensions in parity with the first hydrated dashboard frame.`,
+      );
+    });
+  });
+}
+
 export interface PanelLayoutManagerCallbacks {
   openCountryStory: (code: string, name: string) => void;
   openCountryBrief: (code: string) => void;
-  loadAllData: () => Promise<void>;
+  loadAllData: (forceAll?: boolean) => Promise<void>;
   updateMonitorResults: () => void;
   loadSecurityAdvisories?: () => Promise<void>;
+  applyMapLayerChange?: (layer: keyof MapLayers, enabled: boolean, source: 'programmatic') => void;
 }
+
+interface DeferredPanelMount {
+  panel: Panel | null;
+  placeholder: HTMLElement | null;
+  observer: IntersectionObserver | null;
+  mounted: boolean;
+  loading: Promise<void> | null;
+  retryTimer: ReturnType<typeof setTimeout> | null;
+  retryAttempts: number;
+  failed: boolean;
+}
+
+interface LazyPanelRegistration {
+  load: () => Promise<Panel | null>;
+  loading: Promise<Panel | null> | null;
+}
+
+type AnyPanelConstructor = new (...args: any[]) => Panel;
+type PanelExport<M, K extends keyof M> = M[K] extends AnyPanelConstructor ? M[K] : never;
+type ImportedPanel<M, K extends keyof M> = InstanceType<PanelExport<M, K>>;
+
+type HydrationSchedulePhase = 'visible' | 'near';
 
 export class PanelLayoutManager implements AppModule {
   private ctx: AppContext;
   private callbacks: PanelLayoutManagerCallbacks;
   private panelDragCleanupHandlers: Array<() => void> = [];
+  private deferredPanelMounts: Map<string, DeferredPanelMount> = new Map();
+  private lazyPanelRegistrations: Map<string, LazyPanelRegistration> = new Map();
+  private observedHydrationPanels = new WeakSet<Panel>();
+  private initiallyMountedEnabledPanelCount = 0;
   private resolvedPanelOrder: string[] = [];
   private bottomSetMemory: Set<string> = new Set();
   private criticalBannerEl: HTMLElement | null = null;
+  private mobilePanelNav: MobilePanelNav | null = null;
+  private mobileMapCollapseBtn: HTMLButtonElement | null = null;
+  private panelTabBar: PanelTabBar | null = null;
+  private tabsState: TabsState | null = null;
   private aviationCommandBar: AviationCommandBar | null = null;
   private readonly applyTimeRangeFilterDebounced: (() => void) & { cancel(): void };
   private unsubscribeAuth: (() => void) | null = null;
@@ -197,6 +332,8 @@ export class PanelLayoutManager implements AppModule {
   private unsubscribeEntitlementChange: (() => void) | null = null;
   private unsubscribePaymentFailureBanner: (() => void) | null = null;
   private scheduledLoadAllRaf: number | null = null;
+  private scheduledLoadAllIdle: number | null = null;
+  private responsiveZoneListener: ResponsiveZoneListener | null = null;
 
   constructor(ctx: AppContext, callbacks: PanelLayoutManagerCallbacks) {
     this.ctx = ctx;
@@ -219,6 +356,9 @@ export class PanelLayoutManager implements AppModule {
     const returnedFromOverlay = consumePostCheckoutFlag();
     const returnedFromCheckout = returnResult.kind === 'success' || returnedFromOverlay;
     if (returnedFromCheckout) {
+      // Funnel (#4931): the purchase-complete signal on the client side.
+      // Queued by the analytics facade until Umami loads after first paint.
+      trackCheckoutSuccess(returnResult.kind === 'success' ? 'url-return' : 'overlay-flag');
       // Full-page return cleared its URL params; belt-and-braces clear
       // of the attempt record here catches the success path where the
       // overlay handler never ran (direct Dodo redirect).
@@ -236,8 +376,22 @@ export class PanelLayoutManager implements AppModule {
         email: getAuthState().user?.email ?? null,
       });
     } else if (returnResult.kind === 'failed') {
+      trackCheckoutFailed(returnResult.rawStatus);
       showCheckoutFailureBanner(returnResult.rawStatus);
     }
+    if (!returnedFromCheckout) {
+      // #4934 round-2 F2: the entitlement watcher reloads the page the
+      // moment Pro lands — often before the deferred Umami queue flushes,
+      // which would silently drop the terminal checkout-success event.
+      // This boot-time replay re-queues it from the durable marker the
+      // pre-reload track left behind (no-op on ordinary loads).
+      replayPendingCheckoutSuccess();
+    }
+    // #4934 round-5: /pro checkout-start events that died with the Dodo
+    // redirect are mirrored in sessionStorage; the buyer lands back here
+    // in the same tab — on BOTH the checkout-return and ordinary branches —
+    // so this replay is unconditional (no-op when nothing is pending).
+    replayPendingProFunnelEvents();
 
     // Always register the payment-failure-banner listener — onSubscriptionChange
     // is an in-memory listener registry, doesn't open any network connection,
@@ -284,7 +438,7 @@ export class PanelLayoutManager implements AppModule {
     // email lazily at fire-time (not at register-time) so a just-signed-
     // in buyer who completes checkout in the same session still sees
     // the receipt acknowledgement.
-    initCheckoutOverlay(() => showCheckoutSuccess({
+    registerCheckoutSuccessCallback(() => showCheckoutSuccess({
       waitForEntitlement: true,
       email: getAuthState().user?.email ?? null,
     }));
@@ -332,6 +486,7 @@ export class PanelLayoutManager implements AppModule {
 
   async init(): Promise<void> {
     await this.renderLayout();
+    if (this.ctx.isDestroyed) return;
 
     // Subscribe to auth state for reactive panel gating on web
     this.unsubscribeAuth = subscribeAuthState((state) => {
@@ -340,12 +495,12 @@ export class PanelLayoutManager implements AppModule {
 
     // Handle analyst action chip "Create chart widget →" click
     this.boundWidgetCreatorHandler = ((e: CustomEvent<{ initialMessage?: string }>) => {
-      openWidgetChatModal({
+      void import('@/components/WidgetChatModal').then((m) => m.openWidgetChatModal({
         mode: 'create',
         tier: 'pro',
         initialMessage: e.detail.initialMessage,
         onComplete: (spec) => this.addCustomWidget(spec),
-      });
+      })).catch((err) => console.error('[widget-chat] failed to lazy-load WidgetChatModal', err));
     }) as EventListener;
     this.ctx.container.addEventListener('wm:open-widget-creator', this.boundWidgetCreatorHandler);
   }
@@ -359,12 +514,37 @@ export class PanelLayoutManager implements AppModule {
     this.proBlockUnsubscribe = null;
     this.proBlockEntitlementUnsubscribe?.();
     this.proBlockEntitlementUnsubscribe = null;
+
+    const destroyedTargets = new Set<{ destroy?: () => void }>();
+    const destroyOnce = (target: { destroy?: () => void } | null | undefined): void => {
+      if (!target || destroyedTargets.has(target)) return;
+      destroyedTargets.add(target);
+      // Isolate each destroy(): teardown runs over every registered panel, so a
+      // single panel throwing must not abort the remaining panel/subscription/
+      // overlay cleanup below (nor the rest of App.destroy(), which iterates
+      // modules without its own try/catch).
+      try {
+        target.destroy?.();
+      } catch (err) {
+        console.error('[panel] destroy() threw during teardown', err);
+      }
+    };
     if (this.boundWidgetCreatorHandler) {
       this.ctx.container.removeEventListener('wm:open-widget-creator', this.boundWidgetCreatorHandler);
       this.boundWidgetCreatorHandler = null;
     }
     this.panelDragCleanupHandlers.forEach((cleanup) => cleanup());
     this.panelDragCleanupHandlers = [];
+    for (const deferred of this.deferredPanelMounts.values()) {
+      deferred.observer?.disconnect();
+      if (deferred.retryTimer !== null) {
+        clearTimeout(deferred.retryTimer);
+      }
+    }
+    this.deferredPanelMounts.clear();
+    this.lazyPanelRegistrations.clear();
+    this.initiallyMountedEnabledPanelCount = 0;
+    this.cancelScheduledLoadAllIdle();
     if (this.scheduledLoadAllRaf !== null) {
       cancelAnimationFrame(this.scheduledLoadAllRaf);
       this.scheduledLoadAllRaf = null;
@@ -373,21 +553,48 @@ export class PanelLayoutManager implements AppModule {
       this.criticalBannerEl.remove();
       this.criticalBannerEl = null;
     }
+    this.mobilePanelNav?.destroy();
+    this.mobilePanelNav = null;
+    this.mobileMapCollapseBtn = null;
+    this.panelTabBar?.destroy();
+    this.panelTabBar = null;
     // Clean up happy variant panels
-    this.ctx.tvMode?.destroy();
+    destroyOnce(this.ctx.tvMode);
     this.ctx.tvMode = null;
-    this.ctx.countersPanel?.destroy();
-    this.ctx.progressPanel?.destroy();
-    this.ctx.breakthroughsPanel?.destroy();
-    this.ctx.heroPanel?.destroy();
-    this.ctx.digestPanel?.destroy();
-    this.ctx.speciesPanel?.destroy();
-    this.ctx.renewablePanel?.destroy();
+    destroyOnce(this.ctx.countersPanel);
+    this.ctx.countersPanel = null;
+    destroyOnce(this.ctx.progressPanel);
+    this.ctx.progressPanel = null;
+    destroyOnce(this.ctx.breakthroughsPanel);
+    this.ctx.breakthroughsPanel = null;
+    destroyOnce(this.ctx.heroPanel);
+    this.ctx.heroPanel = null;
+    destroyOnce(this.ctx.digestPanel);
+    this.ctx.digestPanel = null;
+    destroyOnce(this.ctx.speciesPanel);
+    this.ctx.speciesPanel = null;
+    destroyOnce(this.ctx.positivePanel);
+    this.ctx.positivePanel = null;
+    destroyOnce(this.ctx.renewablePanel);
+    this.ctx.renewablePanel = null;
 
     // Clean up aviation components
-    this.aviationCommandBar?.destroy();
+    destroyOnce(this.aviationCommandBar);
     this.aviationCommandBar = null;
-    this.ctx.panels['airline-intel']?.destroy();
+
+    // Destroy every registered panel exactly once, including lazy-created
+    // and self-fetching panels that own subscriptions, intervals, or aborts.
+    for (const panel of Object.values(this.ctx.panels)) {
+      destroyOnce(panel);
+    }
+    for (const key of Object.keys(this.ctx.panels)) {
+      delete this.ctx.panels[key];
+    }
+    // News panels are the same instances just destroyed above; drop the
+    // secondary index so it never hands out a torn-down panel post-destroy.
+    for (const key of Object.keys(this.ctx.newsPanels)) {
+      delete this.ctx.newsPanels[key];
+    }
 
     // Clean up billing subscription watch + entitlement subscription
     destroySubscriptionWatch();
@@ -404,7 +611,8 @@ export class PanelLayoutManager implements AppModule {
     // Reset checkout overlay so next layout init can register its callback
     destroyCheckoutOverlay();
 
-    window.removeEventListener('resize', this.ensureCorrectZones);
+    removeResponsiveZoneListener(this.responsiveZoneListener);
+    this.responsiveZoneListener = null;
   }
 
   /** Reactively update premium panel gating based on auth state. */
@@ -457,15 +665,22 @@ export class PanelLayoutManager implements AppModule {
       case PanelGateReason.ANONYMOUS:
         return () => this.ctx.authModal?.open();
       case PanelGateReason.FREE_TIER:
-        return () => window.open('https://worldmonitor.app/pro', '_blank');
+        return () => window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
       default:
         return () => {};
     }
   }
 
   async renderLayout(): Promise<void> {
+    const isGlobeMode = getStoredMapModePreference() === 'globe';
+    const bootShellFootprint = import.meta.env.DEV ? captureBootShellFootprint(this.ctx.container) : null;
+
+    markLcpDebug('wm:layout:render-start');
+    document.documentElement.classList.add('wm-layout-hydrated');
     setTrustedHtml(this.ctx.container, trustedHtml(`
       ${this.ctx.isDesktopApp ? '<div class="tauri-titlebar" data-tauri-drag-region></div>' : ''}
+      <a href="#main" class="skip-link">Skip to main content</a>
+      <div id="proBannerSlot" class="pro-banner-slot" aria-live="polite"></div>
       <div class="header">
         <div class="header-left">
           <button class="hamburger-btn" id="hamburgerBtn" aria-label="Menu">
@@ -477,7 +692,7 @@ export class PanelLayoutManager implements AppModule {
         const vHref = (v: string, prod: string) => local || SITE_VARIANT === v ? '#' : prod;
         const vTarget = (v: string) => !local && SITE_VARIANT !== v && inIframe ? 'target="_blank" rel="noopener"' : '';
         return `
-            <a href="${vHref('full', 'https://worldmonitor.app')}"
+            <a href="${vHref('full', 'https://worldmonitor.app/dashboard')}"
                class="variant-option ${SITE_VARIANT === 'full' ? 'active' : ''}"
                data-variant="full"
                ${vTarget('full')}
@@ -547,7 +762,7 @@ export class PanelLayoutManager implements AppModule {
             <span>${t('header.live')}</span>
           </div>
           <div class="region-selector">
-            <select id="regionSelect" class="region-select">
+            <select id="regionSelect" class="region-select" aria-label="${t('header.selectRegion')}">
               <option value="global">${t('components.deckgl.views.global')}</option>
               <option value="america">${t('components.deckgl.views.americas')}</option>
               <option value="mena">${t('components.deckgl.views.mena')}</option>
@@ -558,6 +773,7 @@ export class PanelLayoutManager implements AppModule {
               <option value="oceania">${t('components.deckgl.views.oceania')}</option>
             </select>
           </div>
+          <span id="missionPresetMount" class="mission-preset-mount"></span>
           <button class="mobile-search-btn" id="mobileSearchBtn" aria-label="${t('header.search')}">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           </button>
@@ -565,10 +781,11 @@ export class PanelLayoutManager implements AppModule {
         <div class="header-right">
           <button class="search-btn" id="searchBtn"><kbd>⌘K</kbd> ${t('header.search')}</button>
           ${this.ctx.isDesktopApp ? '' : `<button class="copy-link-btn" id="copyLinkBtn">${t('header.copyLink')}</button>`}
+          ${this.ctx.isDesktopApp ? '' : `<button class="copy-link-btn embed-link-btn" id="embedLinkBtn">${t('header.embed')}</button>`}
           ${this.ctx.isDesktopApp ? '' : `<button class="fullscreen-btn" id="fullscreenBtn" title="${t('header.fullscreen')}">⛶</button>`}
           ${SITE_VARIANT === 'happy' ? `<button class="tv-mode-btn" id="tvModeBtn" title="TV Mode (Shift+T)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></button>` : ''}
           <span id="unifiedSettingsMount"></span>
-          <span id="authWidgetMount" class="auth-widget-mount" style="display:inline-flex;align-items:center;min-width:148px;min-height:32px"></span>
+          <span id="authWidgetMount" class="auth-widget-mount"></span>
         </div>
       </div>
       <div class="mobile-menu-overlay" id="mobileMenuOverlay"></div>
@@ -601,6 +818,11 @@ export class PanelLayoutManager implements AppModule {
         <button class="mobile-menu-item" id="mobileMenuRegion">
           <span class="mobile-menu-item-icon">🌐</span>
           <span class="mobile-menu-item-label">${t('components.deckgl.views.global')}</span>
+          <span class="mobile-menu-chevron">▸</span>
+        </button>
+        <button class="mobile-menu-item" id="mobileMenuMission">
+          <span class="mobile-menu-item-icon">◎</span>
+          <span class="mobile-menu-item-label">Mission</span>
           <span class="mobile-menu-chevron">▸</span>
         </button>
         <div class="mobile-menu-divider"></div>
@@ -645,7 +867,8 @@ export class PanelLayoutManager implements AppModule {
         </button>`
       ).join('')}
       </div>
-      <div class="main-content${this.ctx.isDesktopApp ? ' desktop-grid' : ''}">
+      <div class="dashboard-tabs-mount" id="panelTabsMount"></div>
+      <main id="main" tabindex="-1" class="main-content${this.ctx.isDesktopApp ? ' desktop-grid' : ''}">
         <div class="map-section" id="mapSection">
           <div class="panel-header">
             <div class="panel-header-left">
@@ -654,8 +877,8 @@ export class PanelLayoutManager implements AppModule {
             <span class="header-clock" id="headerClock" translate="no"></span>
             <div class="map-header-actions">
               <div class="map-dimension-toggle" id="mapDimensionToggle">
-                <button class="map-dim-btn${loadFromStorage<string>(STORAGE_KEYS.mapMode, 'flat') === 'globe' ? '' : ' active'}" data-mode="flat" title="2D Map">2D</button>
-                <button class="map-dim-btn${loadFromStorage<string>(STORAGE_KEYS.mapMode, 'flat') === 'globe' ? ' active' : ''}" data-mode="globe" title="3D Globe">3D</button>
+                <button class="map-dim-btn${isGlobeMode ? '' : ' active'}" data-mode="flat" title="2D Map">2D</button>
+                <button class="map-dim-btn${isGlobeMode ? ' active' : ''}" data-mode="globe" title="3D Globe">3D</button>
               </div>
               <button class="map-pin-btn" id="mapFullscreenBtn" title="Fullscreen">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
@@ -673,12 +896,12 @@ export class PanelLayoutManager implements AppModule {
           <div class="map-bottom-grid" id="mapBottomGrid"></div>
         </div>
         <div class="map-width-resize-handle" id="mapWidthResizeHandle"></div>
-        <div class="panels-grid" id="panelsGrid"></div>
+        <div class="panels-grid" id="panelsGrid" role="tabpanel"></div>
         <button class="search-mobile-fab" id="searchMobileFab" aria-label="Search">\u{1F50D}</button>
-      </div>
+      </main>
       <footer class="site-footer">
         <div class="site-footer-brand">
-          <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" class="site-footer-icon" />
+          <img src="/favico/android-chrome-96x96.png" alt="" width="28" height="28" loading="lazy" decoding="async" class="site-footer-icon" />
           <div class="site-footer-brand-text">
             <span class="site-footer-name">WORLD MONITOR</span>
             <span class="site-footer-sub">v${__APP_VERSION__} &middot; <a href="https://x.com/eliehabib" target="_blank" rel="noopener" class="site-footer-credit">@eliehabib</a></span>
@@ -697,15 +920,246 @@ export class PanelLayoutManager implements AppModule {
         <span class="site-footer-copy">&copy; ${new Date().getFullYear()} World Monitor</span>
       </footer>
     `, "legacy direct innerHTML migration"));
+    // Mark AFTER the innerHTML swap so the timestamp reflects when the new shell
+    // DOM is actually live — placing it before setTrustedHtml recorded a time
+    // earlier than any LCP candidate in the new shell, making it useless for
+    // ordering the LCP element against the shell swap (PR #4512 review).
+    markLcpDebug('wm:layout:shell-replaced');
+
+    // Skip link: explicitly move focus to <main> on activation. Native
+    // fragment focus on a tabindex="-1" target is inconsistent across
+    // browsers, so drive it directly to guarantee keyboard users land in the
+    // main content (WCAG 2.4.1).
+    this.ctx.container.querySelector('.skip-link')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      const main = document.getElementById('main');
+      if (main) {
+        main.focus();
+        main.scrollIntoView({ block: 'start' });
+      }
+    });
 
     await this.createPanels();
 
+    this.initPanelTabs();
+    if (import.meta.env.DEV && bootShellFootprint) warnOnBootShellFootprintDrift(bootShellFootprint);
+
     if (this.ctx.isMobile) {
       this.setupMobileMapToggle();
+      this.setupMobilePanelNav();
     }
   }
 
+  // ============================================
+  // Dashboard tabs — named, persistent panel workspaces
+  // ============================================
+
+  private initPanelTabs(): void {
+    const mount = document.getElementById('panelTabsMount');
+    if (!mount) return;
+
+    let state = loadTabsState();
+    if (!state) {
+      // First run — wrap the user's current layout in an initial tab so
+      // nothing changes visually until they create a second tab.
+      const initial: PanelTab = {
+        id: generateTabId(),
+        name: t('dashboardTabs.defaultName'),
+        ...this.captureCurrentTabState(),
+      };
+      state = { activeTabId: initial.id, tabs: [initial] };
+      saveTabsState(state);
+    } else {
+      // Clamp stored snapshots to the current free-tier cap so a workspace
+      // saved while Pro (or persisted before the cap existed) can't re-enable
+      // an over-cap layout when the user later switches to it. applyTabPanelState
+      // re-clamps on apply too; this keeps the persisted store self-healing.
+      const pro = isProUser();
+      let healedSnapshots = false;
+      for (const tab of state.tabs) {
+        const clamped = enforceFreePanelLimit(tab.panelSettings, pro);
+        if (this.panelSettingsEnabledStateChanged(tab.panelSettings, clamped)) {
+          healedSnapshots = true;
+        }
+        tab.panelSettings = clamped;
+      }
+      if (healedSnapshots) saveTabsState(state);
+    }
+    this.tabsState = state;
+
+    this.panelTabBar = new PanelTabBar(() => this.tabsState!, {
+      onSelect: (id) => this.switchToTab(id),
+      onAdd: () => this.addTab(),
+      onRename: (id, name) => this.renameTab(id, name),
+      onDelete: (id) => this.deleteTab(id),
+    });
+    mount.appendChild(this.panelTabBar.getElement());
+  }
+
+  private panelSettingsEnabledStateChanged(
+    before: Record<string, PanelConfig>,
+    after: Record<string, PanelConfig>,
+  ): boolean {
+    const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+    for (const key of keys) {
+      if (before[key]?.enabled !== after[key]?.enabled) return true;
+    }
+    return false;
+  }
+
+  /** Capture the live panel state (settings + order) for a tab snapshot. */
+  private captureCurrentTabState(): Pick<PanelTab, 'panelSettings' | 'panelOrder' | 'bottomSet'> {
+    // Persist the live DOM order first so the snapshot reflects any drags.
+    this.savePanelOrder();
+    return {
+      panelSettings: JSON.parse(JSON.stringify(this.ctx.panelSettings)) as Record<string, PanelConfig>,
+      panelOrder: [...this.resolvedPanelOrder],
+      bottomSet: Array.from(this.bottomSetMemory),
+    };
+  }
+
+  /** Refresh the active tab's snapshot from live state (called on switch-away). */
+  private snapshotActiveTab(): void {
+    if (!this.tabsState) return;
+    const active = this.tabsState.tabs.find((t) => t.id === this.tabsState!.activeTabId);
+    if (!active) return;
+    Object.assign(active, this.captureCurrentTabState());
+  }
+
+  private switchToTab(tabId: string): void {
+    if (!this.tabsState || tabId === this.tabsState.activeTabId) return;
+    const target = this.tabsState.tabs.find((t) => t.id === tabId);
+    if (!target) return;
+
+    this.snapshotActiveTab();
+    this.tabsState.activeTabId = tabId;
+    saveTabsState(this.tabsState);
+
+    this.applyTabPanelState(target.panelSettings, target.panelOrder, target.bottomSet);
+    this.panelTabBar?.refresh();
+  }
+
+  private addTab(): void {
+    if (!this.tabsState) return;
+    this.snapshotActiveTab();
+
+    const defaults = buildDefaultTabPanels(this.ctx.panelSettings);
+    // The variant default set can exceed FREE_MAX_PANELS (e.g. 81 panels in the
+    // full variant); clamp it to the free-tier cap so a new tab can't bypass
+    // the limit that settings/search/boot all enforce.
+    const tab: PanelTab = {
+      id: generateTabId(),
+      name: t('dashboardTabs.newTabName'),
+      panelSettings: enforceFreePanelLimit(defaults.panelSettings, isProUser()),
+      panelOrder: defaults.panelOrder,
+      bottomSet: [],
+    };
+    this.tabsState.tabs.push(tab);
+    this.tabsState.activeTabId = tab.id;
+    saveTabsState(this.tabsState);
+
+    this.applyTabPanelState(tab.panelSettings, tab.panelOrder, tab.bottomSet);
+    this.panelTabBar?.refresh();
+    showToast(t('dashboardTabs.newTabCreated'));
+  }
+
+  private renameTab(tabId: string, name: string): void {
+    if (!this.tabsState) return;
+    const tab = this.tabsState.tabs.find((t) => t.id === tabId);
+    if (!tab) return;
+    tab.name = name;
+    saveTabsState(this.tabsState);
+    this.panelTabBar?.refresh();
+  }
+
+  private deleteTab(tabId: string): void {
+    if (!this.tabsState || this.tabsState.tabs.length <= 1) return;
+    const idx = this.tabsState.tabs.findIndex((t) => t.id === tabId);
+    if (idx === -1) return;
+    const wasActive = this.tabsState.activeTabId === tabId;
+    const [removed] = this.tabsState.tabs.splice(idx, 1);
+
+    if (wasActive) {
+      const fallback = this.tabsState.tabs[Math.max(0, idx - 1)]!;
+      this.tabsState.activeTabId = fallback.id;
+      saveTabsState(this.tabsState);
+      this.applyTabPanelState(fallback.panelSettings, fallback.panelOrder, fallback.bottomSet);
+    } else {
+      saveTabsState(this.tabsState);
+    }
+    this.panelTabBar?.refresh();
+    showToast(t('dashboardTabs.tabDeleted', { name: removed!.name }));
+  }
+
+  /**
+   * Load a tab's panel snapshot into the live global state and re-apply
+   * the layout. Mirrors the mission-preset apply pipeline (panels only —
+   * map layers, view, and time range stay global across tabs).
+   */
+  private applyTabPanelState(
+    panelSettings: Record<string, PanelConfig>,
+    panelOrder: string[],
+    bottomSet: string[],
+  ): void {
+    const isDynamicPanel = (k: string) =>
+      !ALL_PANELS[k] && (k === 'runtime-config' || k.startsWith('cw-') || k.startsWith('mcp-'));
+
+    const next: Record<string, PanelConfig> = {};
+    for (const [key, config] of Object.entries(panelSettings)) {
+      next[key] = { ...config };
+    }
+    // Carry over panels missing from the snapshot: dynamic panels (custom
+    // widgets / MCP / desktop config created after the snapshot) keep their
+    // current config so they don't get orphaned visible-but-untracked;
+    // panels added to the app since the snapshot seed from variant defaults
+    // (same formula as the App.ts settings merge).
+    for (const [key, config] of Object.entries(this.ctx.panelSettings)) {
+      if (next[key]) continue;
+      if (isDynamicPanel(key)) {
+        next[key] = { ...config };
+      } else {
+        const effective = getEffectivePanelConfig(key, SITE_VARIANT);
+        next[key] = { ...effective, enabled: isPanelInVariantDefaults(key) && effective.enabled };
+      }
+    }
+
+    // Final free-tier guarantee: this is the only path that writes a tab's
+    // panel selection into STORAGE_KEYS.panels, so clamping here means no tab
+    // operation (add / switch / delete-fallback) can ever persist an over-cap
+    // workspace, regardless of how the snapshot was produced.
+    const capped = enforceFreePanelLimit(next, isProUser());
+
+    this.ctx.panelSettings = capped;
+    saveToStorage(STORAGE_KEYS.panels, capped);
+    saveToStorage(this.ctx.PANEL_ORDER_KEY, panelOrder);
+    saveToStorage(this.ctx.PANEL_ORDER_KEY + '-bottom-set', bottomSet);
+
+    this.applyPanelSettings();
+    this.applySavedPanelOrder();
+    this.ctx.unifiedSettings?.refreshPanelToggles();
+    this.mountLiveNewsIfReady();
+    this.scheduleLoadAllData();
+  }
+
+  private setupMobilePanelNav(): void {
+    const grid = document.getElementById('panelsGrid');
+    if (!grid) return;
+    this.mobilePanelNav = new MobilePanelNav(() => this.ctx.panelSettings);
+    grid.before(this.mobilePanelNav.getElement());
+    this.mobilePanelNav.refresh();
+  }
+
+  private updateMobileMapCollapseBtn(isCollapsed: boolean): void {
+    if (!this.mobileMapCollapseBtn) return;
+    this.mobileMapCollapseBtn.textContent = isCollapsed
+      ? `▶ ${t('components.map.showMap')}`
+      : `▼ ${t('components.map.hideMap')}`;
+  }
+
   private setupMobileMapToggle(): void {
+    // This is a boot-shell-only marker. The hydrated map owns the persistent
+    // collapsed state on #mapSection, so do not leak it into runtime styling.
+    document.documentElement.classList.remove('wm-map-collapsed');
     const mapSection = document.getElementById('mapSection');
     const headerLeft = mapSection?.querySelector('.panel-header-left');
     if (!mapSection || !headerLeft) return;
@@ -714,33 +1168,38 @@ export class PanelLayoutManager implements AppModule {
     const collapsed = stored === 'true';
     if (collapsed) mapSection.classList.add('collapsed');
 
-    const updateBtn = (btn: HTMLButtonElement, isCollapsed: boolean) => {
-      btn.textContent = isCollapsed ? `▶ ${t('components.map.showMap')}` : `▼ ${t('components.map.hideMap')}`;
-    };
-
     const btn = document.createElement('button');
     btn.className = 'map-collapse-btn';
-    updateBtn(btn, collapsed);
     headerLeft.after(btn);
+    this.mobileMapCollapseBtn = btn;
+    this.updateMobileMapCollapseBtn(collapsed);
 
     btn.addEventListener('click', () => {
       const isCollapsed = mapSection.classList.toggle('collapsed');
-      updateBtn(btn, isCollapsed);
+      this.updateMobileMapCollapseBtn(isCollapsed);
       localStorage.setItem('mobile-map-collapsed', String(isCollapsed));
       if (!isCollapsed) window.dispatchEvent(new Event('resize'));
     });
   }
 
-  renderCriticalBanner(postures: TheaterPostureSummary[]): void {
-    if (this.ctx.isMobile) {
-      if (this.criticalBannerEl) {
-        this.criticalBannerEl.remove();
-        this.criticalBannerEl = null;
-      }
-      document.body.classList.remove('has-critical-banner');
-      return;
+  /** Expand the mobile map (no-op if already expanded) so a banner's
+   *  "View Region" fly-to is actually visible, then scroll it into view. */
+  private revealMobileMap(): void {
+    const mapSection = document.getElementById('mapSection');
+    if (!mapSection) return;
+    // Map panel disabled in settings — nothing to reveal; scrolling to an
+    // empty top would read as the tap doing nothing.
+    if (mapSection.classList.contains('hidden')) return;
+    if (mapSection.classList.contains('collapsed')) {
+      mapSection.classList.remove('collapsed');
+      localStorage.setItem('mobile-map-collapsed', 'false');
+      this.updateMobileMapCollapseBtn(false);
+      window.dispatchEvent(new Event('resize'));
     }
+    document.querySelector('.main-content')?.scrollTo({ top: 0 });
+  }
 
+  renderCriticalBanner(postures: TheaterPostureSummary[]): void {
     const dismissedAt = sessionStorage.getItem('banner-dismissed');
     if (dismissedAt && Date.now() - parseInt(dismissedAt, 10) < 30 * 60 * 1000) {
       return;
@@ -786,6 +1245,7 @@ export class PanelLayoutManager implements AppModule {
       console.log('[Banner] View Region clicked:', top.theaterId, 'lat:', top.centerLat, 'lon:', top.centerLon);
       trackCriticalBannerAction('view', top.theaterId);
       if (typeof top.centerLat === 'number' && typeof top.centerLon === 'number') {
+        if (this.ctx.isMobile) this.revealMobileMap();
         this.ctx.map?.setCenter(top.centerLat, top.centerLon, 4);
       } else {
         console.error('[Banner] Missing coordinates for', top.theaterId);
@@ -814,9 +1274,27 @@ export class PanelLayoutManager implements AppModule {
         }
         return;
       }
+      const deferred = this.deferredPanelMounts.get(key);
+      const placeholderWasHidden = deferred?.placeholder?.classList.contains('hidden') ?? false;
+      let mountedFromDeferred = false;
+      if (config.enabled && deferred && !deferred.mounted && (!deferred.placeholder || placeholderWasHidden)) {
+        mountedFromDeferred = this.mountDeferredPanel(key);
+      } else if (deferred?.placeholder) {
+        deferred.placeholder.classList.toggle('hidden', !config.enabled);
+      }
       const panel = this.ctx.panels[key];
-      panel?.toggle(config.enabled);
+      const liveMediaPanel = panel as { stopLiveMediaForClose?: () => void; resumeLiveMediaForShow?: () => void } | undefined;
+      if (!config.enabled) {
+        liveMediaPanel?.stopLiveMediaForClose?.();
+      }
+      if (!mountedFromDeferred) {
+        panel?.toggle(config.enabled);
+      }
+      if (config.enabled) {
+        liveMediaPanel?.resumeLiveMediaForShow?.();
+      }
     });
+    this.mobilePanelNav?.refresh();
   }
 
   /**
@@ -827,19 +1305,36 @@ export class PanelLayoutManager implements AppModule {
    */
   mountLiveNewsIfReady(): void {
     if (this.ctx.panels['live-news']) return;
-    if (getDefaultLiveChannels().length === 0 && loadChannelsFromStorage().length === 0) return;
-    const panel = new LiveNewsPanel();
-    this.ctx.panels['live-news'] = panel;
-    const el = panel.getElement();
-    this.makeDraggable(el, 'live-news');
     const grid = document.getElementById('panelsGrid');
-    if (grid) {
-      const addBlock = grid.querySelector('.add-panel-block');
-      if (addBlock) grid.insertBefore(el, addBlock);
-      else grid.appendChild(el);
+    if (this.lazyPanelRegistrations.has('live-news') && grid) {
+      this.mountLazyPanel('live-news', grid);
+      return;
     }
-    this.applyPanelSettings();
-    panel.observeNearViewport(() => this.scheduleLoadAllData(), 200);
+    void this.importPanel(
+      'live-news',
+      () => import('@/components/LiveNewsPanel'),
+      'LiveNewsPanel',
+      (LiveNewsPanel, module) => {
+        const liveNewsModule = module as typeof import('@/components/LiveNewsPanel');
+        if (liveNewsModule.getDefaultLiveChannels().length === 0 && liveNewsModule.loadChannelsFromStorage().length === 0) return null;
+        return new LiveNewsPanel();
+      },
+    ).then((panel) => {
+      if (this.ctx.isDestroyed) return;
+      if (this.ctx.panels['live-news'] || !panel) return;
+      this.ctx.panels['live-news'] = panel;
+      const el = panel.getElement();
+      this.makeDraggable(el, 'live-news');
+      if (grid) {
+        const addBlock = grid.querySelector('.add-panel-block');
+        if (addBlock) grid.insertBefore(el, addBlock);
+        else grid.appendChild(el);
+      }
+      this.applyPanelSettings();
+      this.afterPanelMounted('live-news', panel);
+    }).catch((err) => {
+      console.error('[panel] failed to lazy-load "live-news"', err);
+    });
   }
 
   private shouldCreatePanel(key: string): boolean {
@@ -850,14 +1345,33 @@ export class PanelLayoutManager implements AppModule {
     centralbanks: t('components.centralBankWatch.infoTooltip'),
   };
 
-  private createNewsPanel(key: string, labelKey: string): NewsPanel | null {
-    if (!this.shouldCreatePanel(key)) return null;
-    const panel = new NewsPanel(key, t(labelKey), PanelLayoutManager.NEWS_PANEL_TOOLTIPS[key]);
-    this.attachRelatedAssetHandlers(panel);
-    panel.setRiskScoreGetter(PanelLayoutManager.computeEventRisk);
-    this.ctx.newsPanels[key] = panel;
-    this.ctx.panels[key] = panel;
-    return panel;
+  private createNewsPanel(key: string, labelKey: string): void {
+    this.createNewsPanelWithLabel(key, t(labelKey), PanelLayoutManager.NEWS_PANEL_TOOLTIPS[key], key);
+  }
+
+  private createNewsPanelWithLabel(
+    panelKey: string,
+    label: string,
+    tooltip?: string,
+    categoryKey = panelKey,
+  ): void {
+    if (!this.shouldCreatePanel(panelKey)) return;
+    this.lazyImportedPanel(panelKey, () => import('@/components/NewsPanel'), 'NewsPanel', (NewsPanel) => {
+      const panel = new NewsPanel(panelKey, label, tooltip);
+      this.attachRelatedAssetHandlers(panel);
+      panel.setRiskScoreGetter(PanelLayoutManager.computeEventRisk);
+      this.ctx.newsPanels[categoryKey] = panel;
+      const existingItems = this.ctx.newsByCategory[categoryKey];
+      if (existingItems?.length) {
+        const filteredItems = this.filterItemsByTimeRange(existingItems);
+        if (filteredItems.length === 0) {
+          panel.renderFilteredEmpty(`No items in ${this.getTimeRangeLabel()}`);
+        } else {
+          panel.renderNews(filteredItems);
+        }
+      }
+      return panel;
+    });
   }
 
   // 0-100 event risk score: 0.40×severity + 0.30×geoConvergence + 0.30×CII
@@ -876,92 +1390,330 @@ export class PanelLayoutManager implements AppModule {
     return Math.round(0.57 * severity + 0.43 * geoScore);
   }
 
-  private createPanel<T extends import('@/components/Panel').Panel>(key: string, factory: () => T): T | null {
-    if (!this.shouldCreatePanel(key)) return null;
-    const panel = factory();
-    this.ctx.panels[key] = panel;
-    return panel;
+  private shouldMountPanelImmediately(key: string): boolean {
+    const config = this.ctx.panelSettings[key];
+    if (!config?.enabled) return false;
+    if (shouldDeferInitialPanelMount({
+      enabled: config.enabled,
+      mountedEnabledCount: this.initiallyMountedEnabledPanelCount,
+      isMobile: this.ctx.isMobile,
+    })) {
+      return false;
+    }
+    this.initiallyMountedEnabledPanelCount += 1;
+    return true;
+  }
+
+  private insertInitialPanel(grid: HTMLElement, key: string, panel: Panel): void {
+    if (this.shouldMountPanelImmediately(key)) {
+      if (this.mountPanelElement(grid, key, panel)) {
+        this.afterPanelMounted(key, panel);
+      }
+      return;
+    }
+
+    this.deferPanelMount(key, panel, grid, this.ctx.panelSettings[key]?.enabled === true);
+  }
+
+  private insertInitialPanelByKey(grid: HTMLElement, key: string): void {
+    const panel = this.ctx.panels[key];
+    if (panel && !panel.getElement().parentElement) {
+      this.insertInitialPanel(grid, key, panel);
+      return;
+    }
+    if (panel || !this.lazyPanelRegistrations.has(key)) return;
+    if (this.shouldMountPanelImmediately(key)) {
+      this.mountLazyPanel(key, grid);
+      return;
+    }
+    this.deferPanelMount(key, null, grid, this.ctx.panelSettings[key]?.enabled === true);
+  }
+
+  private mountPanelElement(grid: HTMLElement, key: string, panel: Panel, placeholder?: HTMLElement | null): boolean {
+    const el = panel.getElement();
+    if (el.parentElement) return false;
+    this.makeDraggable(el, key);
+    if (placeholder?.parentNode) {
+      if (import.meta.env.DEV) warnOnDeferredFootprintDrift(key, placeholder, el);
+      placeholder.parentNode.replaceChild(el, placeholder);
+    } else {
+      this.insertByOrder(grid, el, key);
+    }
+    this.mobilePanelNav?.applyToNewPanel(el);
+    panel.notifyConnected();
+    return true;
+  }
+
+  private getDeferredPanelShellFootprint(key: string): DeferredPanelShellFootprint {
+    return resolveDeferredPanelShellFootprint({
+      panelId: key,
+      naturalFootprints: DEFERRED_PANEL_NATURAL_FOOTPRINTS,
+      dynamicFootprints: DEFERRED_DYNAMIC_PANEL_FOOTPRINTS,
+      savedRowSpans: loadPanelSpans(),
+      savedColSpans: loadPanelColSpans(),
+      savedCollapsed: loadPanelCollapsed(),
+    });
+  }
+
+  private deferPanelMount(key: string, panel: Panel | null, grid: HTMLElement | null, withShell: boolean): void {
+    const placeholder = withShell && grid
+      ? createDeferredPanelShell(key, this.ctx.panelSettings[key]?.name ?? key, this.getDeferredPanelShellFootprint(key))
+      : null;
+    if (placeholder && grid) {
+      this.insertByOrder(grid, placeholder, key);
+      reconcileDeferredPanelShellColSpan(placeholder);
+      this.mobilePanelNav?.applyToNewPanel(placeholder);
+    }
+    const existing = this.deferredPanelMounts.get(key);
+    existing?.observer?.disconnect();
+    if (existing?.retryTimer !== null && existing?.retryTimer !== undefined) {
+      clearTimeout(existing.retryTimer);
+    }
+    if (existing?.placeholder && existing.placeholder !== placeholder) {
+      existing.placeholder.remove();
+    }
+    const deferred: DeferredPanelMount = {
+      panel,
+      placeholder,
+      observer: null,
+      mounted: false,
+      loading: null,
+      retryTimer: null,
+      retryAttempts: 0,
+      failed: false,
+    };
+    this.deferredPanelMounts.set(key, deferred);
+    if (placeholder) {
+      this.observeDeferredPanelShell(key, deferred);
+    }
+  }
+
+  private observeDeferredPanelShell(key: string, deferred: DeferredPanelMount): void {
+    const { placeholder } = deferred;
+    if (!placeholder) return;
+    if (deferred.retryTimer !== null) {
+      clearTimeout(deferred.retryTimer);
+      deferred.retryTimer = null;
+    }
+    if (typeof window === 'undefined' || typeof IntersectionObserver === 'undefined') {
+      const ric = typeof window !== 'undefined'
+        ? (window as unknown as { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback
+        : undefined;
+      if (typeof ric === 'function') ric(() => this.mountDeferredPanel(key));
+      else setTimeout(() => this.mountDeferredPanel(key), 0);
+      return;
+    }
+
+    const rootMargin = this.ctx.isMobile ? '700px 0px' : '900px 0px';
+    deferred.observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        this.mountDeferredPanel(key);
+      }
+    }, { rootMargin });
+    deferred.observer.observe(placeholder);
+  }
+
+  private getPanelMountGrid(key: string): HTMLElement | null {
+    const bottomGrid = document.getElementById('mapBottomGrid');
+    if (bottomGrid && this.getEffectiveUltraWide() && this.bottomSetMemory.has(key)) {
+      return bottomGrid;
+    }
+    return document.getElementById('panelsGrid');
+  }
+
+  private scheduleDeferredPanelRetry(key: string, deferred: DeferredPanelMount): void {
+    if (this.ctx.isDestroyed || deferred.mounted || deferred.failed || deferred.retryTimer !== null) return;
+    if (!deferred.placeholder?.parentNode) return;
+    if (!deferred.panel && !this.lazyPanelRegistrations.has(key)) return;
+    if (deferred.retryAttempts >= DEFERRED_PANEL_MAX_RETRY_ATTEMPTS) {
+      // Give up after a bounded number of attempts so a permanently failing
+      // dynamic import (offline, stale chunk) cannot spin a 1s retry loop forever.
+      // The shell stays in place as a quiet fallback, matching the prior fail-safe.
+      deferred.failed = true;
+      return;
+    }
+    deferred.retryAttempts += 1;
+    deferred.retryTimer = setTimeout(() => {
+      deferred.retryTimer = null;
+      if (this.deferredPanelMounts.get(key) !== deferred || deferred.mounted || this.ctx.isDestroyed) return;
+      this.observeDeferredPanelShell(key, deferred);
+    }, DEFERRED_PANEL_RETRY_DELAY_MS);
+  }
+
+  private mountDeferredPanel(key: string): boolean {
+    const deferred = this.deferredPanelMounts.get(key);
+    if (!deferred || deferred.mounted || deferred.loading || deferred.failed) return false;
+    const grid = this.getPanelMountGrid(key);
+    if (!grid && !deferred.placeholder?.parentNode) return false;
+
+    markLcpDebug('wm:panel:deferred-mount-start', { panel: key });
+
+    deferred.observer?.disconnect();
+    deferred.observer = null;
+    if (deferred.retryTimer !== null) {
+      clearTimeout(deferred.retryTimer);
+      deferred.retryTimer = null;
+    }
+    const targetGrid = grid ?? (deferred.placeholder!.parentNode as HTMLElement);
+    const finish = (panel: Panel | null): void => {
+      const current = this.deferredPanelMounts.get(key);
+      if (current !== deferred || deferred.mounted) return;
+      deferred.loading = null;
+      if (!panel || this.ctx.isDestroyed) {
+        markLcpDebug('wm:panel:deferred-mount-unavailable', { panel: key });
+        this.scheduleDeferredPanelRetry(key, deferred);
+        return;
+      }
+      const placeholder = deferred.placeholder;
+      const mounted = this.mountPanelElement(targetGrid, key, panel, placeholder);
+      if (mounted) {
+        this.afterPanelMounted(key, panel);
+      }
+      deferred.mounted = true;
+      deferred.placeholder = null;
+      this.deferredPanelMounts.delete(key);
+      markLcpDebug('wm:panel:deferred-mount-ready', { mounted, panel: key });
+    };
+
+    if (deferred.panel) {
+      finish(deferred.panel);
+      return true;
+    }
+    deferred.loading = this.loadRegisteredPanel(key).then(finish, () => finish(null));
+    return true;
+  }
+
+  private mountLazyPanel(key: string, grid: HTMLElement, placeholder?: HTMLElement | null): void {
+    void this.loadRegisteredPanel(key).then((panel) => {
+      if (!panel || this.ctx.isDestroyed) return;
+      const targetGrid = placeholder?.parentNode ? (placeholder.parentNode as HTMLElement) : grid;
+      if (this.mountPanelElement(targetGrid, key, panel, placeholder)) {
+        this.afterPanelMounted(key, panel);
+      }
+    });
+  }
+
+  private scheduleHydrationForPanelElement(element: HTMLElement, fallbackPhase: HydrationSchedulePhase = 'near'): void {
+    if (typeof window === 'undefined') {
+      this.scheduleLoadAllData(fallbackPhase);
+      return;
+    }
+
+    measure(() => {
+      const rect = element.getBoundingClientRect();
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+      const phase: HydrationSchedulePhase = rect.top < viewportHeight && rect.bottom > 0 ? 'visible' : 'near';
+      mutate(() => {
+        if (this.ctx.isDestroyed) return;
+        this.scheduleLoadAllData(phase);
+      });
+    });
+  }
+
+  private observePanelForHydration(panel: Panel): void {
+    if (this.observedHydrationPanels.has(panel)) return;
+    this.observedHydrationPanels.add(panel);
+    panel.observeNearViewport(() => {
+      this.scheduleHydrationForPanelElement(panel.getElement(), 'near');
+    }, 200);
+  }
+
+  private afterPanelMounted(key: string, panel: Panel): void {
+    const config = this.ctx.panelSettings[key];
+    if (config) panel.toggle(config.enabled);
+    this.observePanelForHydration(panel);
+    if (config?.enabled) {
+      this.scheduleHydrationForPanelElement(panel.getElement(), 'near');
+    }
+  }
+
+  private getPanelElementForOrdering(key: string): HTMLElement | null {
+    const deferred = this.deferredPanelMounts.get(key);
+    if (deferred && !deferred.mounted) {
+      if (deferred.placeholder) return deferred.placeholder;
+      if (!this.ctx.panelSettings[key]?.enabled) return null;
+      this.mountDeferredPanel(key);
+    }
+    return this.ctx.panels[key]?.getElement() ?? null;
   }
 
   private async createPanels(): Promise<void> {
     const panelsGrid = document.getElementById('panelsGrid')!;
+    this.initiallyMountedEnabledPanelCount = 0;
 
     const mapContainer = document.getElementById('mapContainer') as HTMLElement;
-    const preferGlobe = loadFromStorage<string>(STORAGE_KEYS.mapMode, 'flat') === 'globe';
-    // Dynamic import: keeps maplibre-gl + @deck.gl/* + @loaders.gl + @luma.gl
-    // out of the entry chunk. Loads in parallel with paint, so the map mounts
-    // a beat after the panel grid renders instead of blocking it.
+    const preferGlobe = getStoredMapModePreference() === 'globe';
+    // Dynamic import: keeps maplibre-gl + @deck.gl/* + @loaders.gl + @luma.gl out of
+    // the entry chunk.
     //
-    // Residual-risk watchpoint (canary): this await also serializes the
-    // ~700 lines of panel construction below behind the map chunk fetch.
-    // Failure mode is covered by the chunk-reload guard at src/main.ts:690-758
-    // (catches `Failed to fetch dynamically imported module` and reloads).
-    // The slow-fetch mode (chunk fetches that succeed but are very slow) is
-    // worth watching in production canaries — if it shows up, restructure to
-    // kick off the import early and run non-map panel construction before the
-    // await (the only direct ctx.map dereferences in this function are
-    // initEscalationGetters / getTimeRange right after construction, plus
-    // onTimeRangeChanged later — every other ctx.map use is `?.`-guarded).
-    const { MapContainer } = await import('@/components/MapContainer');
-    this.ctx.map = new MapContainer(mapContainer, {
-      zoom: this.ctx.isMobile ? 2.5 : 1.0,
-      pan: { x: 0, y: 0 },
-      view: this.ctx.isMobile ? this.ctx.resolvedLocation : 'global',
-      layers: this.ctx.mapLayers,
-      timeRange: '7d',
-    }, preferGlobe);
-
-    if (this.ctx.mapLayers.resilienceScore && !this.ctx.map.isDeckGLActive?.()) {
-      this.ctx.mapLayers = { ...this.ctx.mapLayers, resilienceScore: false };
-      saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
-    }
-
-    this.ctx.map.initEscalationGetters();
-    this.ctx.currentTimeRange = this.ctx.map.getTimeRange();
+    // U3 (#4459): kick off the map chunk fetch HERE but await it only after the ~730
+    // lines of panel registration below, so registration runs concurrently with the
+    // fetch instead of serialized behind it. This is the restructure the prior canary
+    // comment called for: panel setup is map-tolerant: callback uses are `?.`-guarded,
+    // and the one eager bridge (SupplyChainPanel -> MapContainer) is replayed below.
+    // ctx.currentTimeRange already defaults to '7d' (App.ts:899). The map's direct
+    // uses — construction, the supply-chain bridge replay, the resilienceScore tweak,
+    // initEscalationGetters/getTimeRange and onTimeRangeChanged — are grouped together
+    // after the registration block (just before the onTimeRangeChanged wiring).
+    // Failed-fetch reload guard: src/main.ts:285-290 (installChunkReloadGuard).
+    const mapModulePromise = import('@/components/MapContainer');
 
     this.createNewsPanel('politics', 'panels.politics');
     this.createNewsPanel('tech', 'panels.tech');
     this.createNewsPanel('finance', 'panels.finance');
 
-    this.createPanel('heatmap', () => new HeatmapPanel());
-    this.createPanel('markets', () => new MarketPanel());
-    this.createPanel('stock-analysis', () => new StockAnalysisPanel());
-    this.createPanel('stock-backtest', () => new StockBacktestPanel());
+    this.lazyDefaultPanel('heatmap', () => import('@/components/MarketPanel'), 'HeatmapPanel');
+    this.lazyDefaultPanel('markets', () => import('@/components/MarketPanel'), 'MarketPanel');
+    this.lazyDefaultPanel('stock-analysis', () => import('@/components/StockAnalysisPanel'), 'StockAnalysisPanel');
+    this.lazyDefaultPanel('stock-backtest', () => import('@/components/StockBacktestPanel'), 'StockBacktestPanel');
     // Web premium gating for stock-analysis and stock-backtest is handled
     // reactively by updatePanelGating() via auth state subscription.
 
-    const monitorPanel = this.createPanel('monitors', () => new MonitorPanel(this.ctx.monitors));
-    monitorPanel?.onChanged((monitors) => {
-      this.ctx.monitors = monitors;
-      saveToStorage(STORAGE_KEYS.monitors, monitors);
-      this.callbacks.updateMonitorResults();
+    this.lazyImportedPanel('monitors', () => import('@/components/MonitorPanel'), 'MonitorPanel', (MonitorPanel) => {
+      const monitorPanel = new MonitorPanel(this.ctx.monitors);
+      monitorPanel.onChanged((monitors) => {
+        this.ctx.monitors = monitors;
+        saveToStorage(STORAGE_KEYS.monitors, monitors);
+        this.callbacks.updateMonitorResults();
+      });
+      return monitorPanel;
     });
 
     // Latest Brief — reads /api/latest-brief and opens the hosted
     // magazine on click. Self-fetching (no data-loader integration);
     // PRO gating handled by the base Panel class via premium: 'locked'.
-    this.createPanel('latest-brief', () => new LatestBriefPanel());
+    this.lazyDefaultPanel('latest-brief', () => import('@/components/LatestBriefPanel'), 'LatestBriefPanel');
 
-    this.createPanel('commodities', () => new CommoditiesPanel());
-    this.createPanel('energy-complex', () => new EnergyComplexPanel());
-    this.createPanel('oil-inventories', () => new OilInventoriesPanel());
-    this.createPanel('energy-crisis', () => new EnergyCrisisPanel());
-    this.createPanel('chokepoint-strip', () => new ChokepointStripPanel());
-    this.createPanel('pipeline-status', () => new PipelineStatusPanel());
-    this.createPanel('storage-facility-map', () => new StorageFacilityMapPanel());
-    this.createPanel('fuel-shortages', () => new FuelShortagePanel());
-    this.createPanel('energy-disruptions', () => new EnergyDisruptionsPanel());
-    this.createPanel('energy-risk-overview', () => new EnergyRiskOverviewPanel());
-    this.createPanel('polymarket', () => new PredictionPanel());
+    this.lazyDefaultPanel('commodities', () => import('@/components/MarketPanel'), 'CommoditiesPanel');
+    this.lazyDefaultPanel('energy-complex', () => import('@/components/EnergyComplexPanel'), 'EnergyComplexPanel');
+    this.lazyDefaultPanel('oil-inventories', () => import('@/components/OilInventoriesPanel'), 'OilInventoriesPanel');
+    this.lazyDefaultPanel('energy-crisis', () => import('@/components/EnergyCrisisPanel'), 'EnergyCrisisPanel');
+    this.lazyDefaultPanel('chokepoint-strip', () => import('@/components/ChokepointStripPanel'), 'ChokepointStripPanel');
+    this.lazyPanel('pipeline-status', () =>
+      this.importPanel('pipeline-status', () => import('@/components/PipelineStatusPanel'), 'PipelineStatusPanel', (PipelineStatusPanel) => new PipelineStatusPanel()),
+    );
+    this.lazyPanel('storage-facility-map', () =>
+      this.importPanel('storage-facility-map', () => import('@/components/StorageFacilityMapPanel'), 'StorageFacilityMapPanel', (StorageFacilityMapPanel) => new StorageFacilityMapPanel()),
+    );
+    this.lazyPanel('fuel-shortages', () =>
+      this.importPanel('fuel-shortages', () => import('@/components/FuelShortagePanel'), 'FuelShortagePanel', (FuelShortagePanel) => new FuelShortagePanel()),
+    );
+    this.lazyPanel('energy-disruptions', () =>
+      this.importPanel('energy-disruptions', () => import('@/components/EnergyDisruptionsPanel'), 'EnergyDisruptionsPanel', (EnergyDisruptionsPanel) => new EnergyDisruptionsPanel()),
+    );
+    this.lazyPanel('energy-risk-overview', () =>
+      this.importPanel('energy-risk-overview', () => import('@/components/EnergyRiskOverviewPanel'), 'EnergyRiskOverviewPanel', (EnergyRiskOverviewPanel) => new EnergyRiskOverviewPanel()),
+    );
+    this.lazyDefaultPanel('polymarket', () => import('@/components/PredictionPanel'), 'PredictionPanel');
 
     this.createNewsPanel('gov', 'panels.gov');
     this.createNewsPanel('intel', 'panels.intel');
 
-    this.createPanel('crypto', () => new CryptoPanel());
-    this.createPanel('crypto-heatmap', () => new CryptoHeatmapPanel());
-    this.createPanel('defi-tokens', () => new DefiTokensPanel());
-    this.createPanel('ai-tokens', () => new AiTokensPanel());
-    this.createPanel('other-tokens', () => new OtherTokensPanel());
+    this.lazyDefaultPanel('crypto', () => import('@/components/MarketPanel'), 'CryptoPanel');
+    this.lazyDefaultPanel('crypto-heatmap', () => import('@/components/MarketPanel'), 'CryptoHeatmapPanel');
+    this.lazyDefaultPanel('defi-tokens', () => import('@/components/MarketPanel'), 'DefiTokensPanel');
+    this.lazyDefaultPanel('ai-tokens', () => import('@/components/MarketPanel'), 'AiTokensPanel');
+    this.lazyDefaultPanel('other-tokens', () => import('@/components/MarketPanel'), 'OtherTokensPanel');
     this.createNewsPanel('middleeast', 'panels.middleeast');
     this.createNewsPanel('layoffs', 'panels.layoffs');
     this.createNewsPanel('ai', 'panels.ai');
@@ -980,13 +1732,13 @@ export class PanelLayoutManager implements AppModule {
     this.createNewsPanel('github', 'panels.github');
     this.createNewsPanel('ipo', 'panels.ipo');
     this.createNewsPanel('thinktanks', 'panels.thinktanks');
-    this.createPanel('economic', () => new EconomicPanel());
-    this.createPanel('consumer-prices', () => new ConsumerPricesPanel());
+    this.lazyDefaultPanel('economic', () => import('@/components/EconomicPanel'), 'EconomicPanel');
+    this.lazyDefaultPanel('consumer-prices', () => import('@/components/ConsumerPricesPanel'), 'ConsumerPricesPanel');
 
-    this.createPanel('trade-policy', () => new TradePolicyPanel());
-    this.createPanel('sanctions-pressure', () => new SanctionsPressurePanel());
-    const supplyChainPanel = this.createPanel('supply-chain', () => new SupplyChainPanel());
-    if (supplyChainPanel) {
+    this.lazyDefaultPanel('trade-policy', () => import('@/components/TradePolicyPanel'), 'TradePolicyPanel');
+    this.lazyDefaultPanel('sanctions-pressure', () => import('@/components/SanctionsPressurePanel'), 'SanctionsPressurePanel');
+    this.lazyImportedPanel('supply-chain', () => import('@/components/SupplyChainPanel'), 'SupplyChainPanel', (SupplyChainPanel) => {
+      const supplyChainPanel = new SupplyChainPanel();
       supplyChainPanel.setOnScenarioActivate((id, result) => {
         this.ctx.map?.activateScenario(id, result);
       });
@@ -994,7 +1746,8 @@ export class PanelLayoutManager implements AppModule {
         this.ctx.map?.deactivateScenario();
       });
       this.ctx.map?.setSupplyChainPanel(supplyChainPanel);
-    }
+      return supplyChainPanel;
+    });
 
     this.createNewsPanel('africa', 'panels.africa');
     this.createNewsPanel('latam', 'panels.latam');
@@ -1009,7 +1762,15 @@ export class PanelLayoutManager implements AppModule {
     for (const key of Object.keys(CANONICAL_FEEDS)) {
       if (this.ctx.newsPanels[key]) continue;
       if (!Array.isArray((CANONICAL_FEEDS as Record<string, unknown>)[key])) continue;
-      const panelKey = this.ctx.panels[key] && !this.ctx.newsPanels[key] ? `${key}-news` : key;
+      // 'live-news' is the dedicated LiveNewsPanel (24/7 video) key, registered
+      // lazily below — NOT a generic RSS feed panel. CANONICAL_FEEDS['live-news']
+      // exists only to feed the energy variant's headlines; if we let it spawn a
+      // NewsPanel here it registers first and lazyPanel()'s dedup guard then
+      // blocks the real video panel (regression #4382 → "LIVE NEWS / No items in
+      // the last 7 days" on the live dashboard). Skip it so the video panel owns
+      // the key on every variant (happy has no 'live-news' panel at all).
+      if (key === 'live-news') continue;
+      const panelKey = COLLIDING_NEWS_PANEL_KEYS.has(key) && !this.ctx.newsPanels[key] ? `${key}-news` : key;
       if (this.ctx.panels[panelKey]) continue;
       // Gate on panelKey, NOT key. When `key` collided with a non-news data
       // panel (panelKey became `${key}-news` — e.g. `markets`/`crypto`/`economic`
@@ -1020,61 +1781,29 @@ export class PanelLayoutManager implements AppModule {
       if (!panelConfig) continue;
       const label = panelConfig.name ?? key.charAt(0).toUpperCase() + key.slice(1);
       const tooltip = PanelLayoutManager.NEWS_PANEL_TOOLTIPS[panelKey] ?? PanelLayoutManager.NEWS_PANEL_TOOLTIPS[key];
-      const panel = new NewsPanel(panelKey, label, tooltip);
-      this.attachRelatedAssetHandlers(panel);
-      panel.setRiskScoreGetter(PanelLayoutManager.computeEventRisk);
-      this.ctx.newsPanels[key] = panel;
-      this.ctx.panels[panelKey] = panel;
+      this.createNewsPanelWithLabel(panelKey, label, tooltip, key);
     }
 
-    this.createPanel('gdelt-intel', () => new GdeltIntelPanel());
+    this.lazyDefaultPanel('gdelt-intel', () => import('@/components/GdeltIntelPanel'), 'GdeltIntelPanel');
 
-    // Two-arg `.then(onFulfilled, onRejected)` so the rejection handler ONLY catches
-    // the dynamic-import promise itself (already suppressed in main.ts beforeSend) and
-    // does NOT swallow synchronous throws from the callback body (panel construction,
-    // makeDraggable, etc.) — those must continue to surface in Sentry as real bugs.
-    import('@/components/DeductionPanel').then(({ DeductionPanel }) => {
-      if (typeof DeductionPanel !== 'function') return;
-      const deductionPanel = new DeductionPanel(() => this.ctx.allNews);
-      this.ctx.panels['deduction'] = deductionPanel;
-      const el = deductionPanel.getElement();
-      this.makeDraggable(el, 'deduction');
-      const grid = document.getElementById('panelsGrid');
-      if (grid) {
-        const gdeltEl = this.ctx.panels['gdelt-intel']?.getElement();
-        if (gdeltEl?.parentNode === grid && gdeltEl.nextSibling) {
-          grid.insertBefore(el, gdeltEl.nextSibling);
-        } else {
-          grid.appendChild(el);
-        }
-      }
-      this.applyPanelSettings();
-      this.updatePanelGating(getAuthState());
-    }, () => undefined);
+    this.lazyPanel('deduction', () =>
+      this.importPanel(
+        'deduction',
+        () => import('@/components/DeductionPanel'),
+        'DeductionPanel',
+        (DeductionPanel) => new DeductionPanel(() => this.ctx.allNews),
+      ),
+    );
+    this.lazyPanel('regional-intelligence', () =>
+      this.importPanel(
+        'regional-intelligence',
+        () => import('@/components/RegionalIntelligenceBoard'),
+        'RegionalIntelligenceBoard',
+        (RegionalIntelligenceBoard) => new RegionalIntelligenceBoard(),
+      ),
+    );
 
-    // Guard against named-export resolving to undefined (Safari ESM cache / proxy truncation
-    // edge case, WORLDMONITOR-R4): `new undefined` surfaced as
-    // `TypeError: undefined is not a constructor (evaluating 'new m')` from this exact line.
-    import('@/components/RegionalIntelligenceBoard').then(({ RegionalIntelligenceBoard }) => {
-      if (typeof RegionalIntelligenceBoard !== 'function') return;
-      const regionalBoard = new RegionalIntelligenceBoard();
-      this.ctx.panels['regional-intelligence'] = regionalBoard;
-      const el = regionalBoard.getElement();
-      this.makeDraggable(el, 'regional-intelligence');
-      const grid = document.getElementById('panelsGrid');
-      if (grid) {
-        const deductionEl = this.ctx.panels['deduction']?.getElement();
-        if (deductionEl?.parentNode === grid && deductionEl.nextSibling) {
-          grid.insertBefore(el, deductionEl.nextSibling);
-        } else {
-          grid.appendChild(el);
-        }
-      }
-      this.applyPanelSettings();
-      this.updatePanelGating(getAuthState());
-    }, () => undefined);
-
-    if (this.shouldCreatePanel('cii')) {
+    this.lazyImportedPanel('cii', () => import('@/components/CIIPanel'), 'CIIPanel', (CIIPanel) => {
       const ciiPanel = new CIIPanel();
       ciiPanel.setShareStoryHandler((code, name) => {
         this.callbacks.openCountryStory(code, name);
@@ -1082,367 +1811,366 @@ export class PanelLayoutManager implements AppModule {
       ciiPanel.setCountryClickHandler((code) => {
         this.callbacks.openCountryBrief(code);
       });
-      this.ctx.panels['cii'] = ciiPanel;
-    }
+      return ciiPanel;
+    });
 
-    this.createPanel('cascade', () => new CascadePanel());
-    this.createPanel('satellite-fires', () => new SatelliteFiresPanel());
+    this.lazyDefaultPanel('cascade', () => import('@/components/CascadePanel'), 'CascadePanel');
+    this.lazyDefaultPanel('satellite-fires', () => import('@/components/SatelliteFiresPanel'), 'SatelliteFiresPanel');
 
-    this.createPanel('defense-patents', () => new DefensePatentsPanel());
+    this.lazyDefaultPanel('defense-patents', () => import('@/components/DefensePatentsPanel'), 'DefensePatentsPanel');
 
     // Correlation engine panels
-    if (this.shouldCreatePanel('military-correlation')) {
+    this.lazyImportedPanel('military-correlation', () => import('@/components/MilitaryCorrelationPanel'), 'MilitaryCorrelationPanel', (MilitaryCorrelationPanel) => {
       const p = new MilitaryCorrelationPanel();
       p.setMapNavigateHandler((lat, lon) => { this.ctx.map?.setCenter(lat, lon, 6); });
-      this.ctx.panels['military-correlation'] = p;
-    }
-    if (this.shouldCreatePanel('escalation-correlation')) {
+      return p;
+    });
+    this.lazyImportedPanel('escalation-correlation', () => import('@/components/EscalationCorrelationPanel'), 'EscalationCorrelationPanel', (EscalationCorrelationPanel) => {
       const p = new EscalationCorrelationPanel();
       p.setMapNavigateHandler((lat, lon) => { this.ctx.map?.setCenter(lat, lon, 4); });
-      this.ctx.panels['escalation-correlation'] = p;
-    }
-    if (this.shouldCreatePanel('economic-correlation')) {
+      return p;
+    });
+    this.lazyImportedPanel('economic-correlation', () => import('@/components/EconomicCorrelationPanel'), 'EconomicCorrelationPanel', (EconomicCorrelationPanel) => {
       const p = new EconomicCorrelationPanel();
       p.setMapNavigateHandler((lat, lon) => { this.ctx.map?.setCenter(lat, lon, 4); });
-      this.ctx.panels['economic-correlation'] = p;
-    }
-    if (this.shouldCreatePanel('disaster-correlation')) {
+      return p;
+    });
+    this.lazyImportedPanel('disaster-correlation', () => import('@/components/DisasterCorrelationPanel'), 'DisasterCorrelationPanel', (DisasterCorrelationPanel) => {
       const p = new DisasterCorrelationPanel();
       p.setMapNavigateHandler((lat, lon) => { this.ctx.map?.setCenter(lat, lon, 5); });
-      this.ctx.panels['disaster-correlation'] = p;
-    }
+      return p;
+    });
 
-    if (this.shouldCreatePanel('strategic-risk')) {
+    this.lazyImportedPanel('strategic-risk', () => import('@/components/StrategicRiskPanel'), 'StrategicRiskPanel', (StrategicRiskPanel) => {
       const strategicRiskPanel = new StrategicRiskPanel();
       strategicRiskPanel.setLocationClickHandler((lat, lon) => {
         this.ctx.map?.setCenter(lat, lon, 4);
       });
-      this.ctx.panels['strategic-risk'] = strategicRiskPanel;
-    }
+      return strategicRiskPanel;
+    });
 
-    if (this.shouldCreatePanel('strategic-posture')) {
+    this.lazyImportedPanel('strategic-posture', () => import('@/components/StrategicPosturePanel'), 'StrategicPosturePanel', (StrategicPosturePanel) => {
       const strategicPosturePanel = new StrategicPosturePanel(() => this.ctx.allNews);
       strategicPosturePanel.setLocationClickHandler((lat, lon) => {
-        console.log('[App] StrategicPosture handler called:', { lat, lon, hasMap: !!this.ctx.map });
         this.ctx.map?.setCenter(lat, lon, 4);
       });
-      this.ctx.panels['strategic-posture'] = strategicPosturePanel;
-    }
+      return strategicPosturePanel;
+    });
 
-    if (this.shouldCreatePanel('ucdp-events')) {
+    this.lazyImportedPanel('ucdp-events', () => import('@/components/UcdpEventsPanel'), 'UcdpEventsPanel', (UcdpEventsPanel) => {
       const ucdpEventsPanel = new UcdpEventsPanel();
       ucdpEventsPanel.setEventClickHandler((lat, lon) => {
         this.ctx.map?.setCenter(lat, lon, 5);
       });
-      this.ctx.panels['ucdp-events'] = ucdpEventsPanel;
-    }
+      return ucdpEventsPanel;
+    });
 
-    this.createPanel('disease-outbreaks', () => new DiseaseOutbreaksPanel());
-    this.createPanel('social-velocity', () => new SocialVelocityPanel());
-    this.createPanel('wsb-ticker-scanner', () => new WsbTickerScannerPanel());
+    this.lazyDefaultPanel('disease-outbreaks', () => import('@/components/DiseaseOutbreaksPanel'), 'DiseaseOutbreaksPanel');
+    this.lazyDefaultPanel('social-velocity', () => import('@/components/SocialVelocityPanel'), 'SocialVelocityPanel');
+    this.lazyDefaultPanel('wsb-ticker-scanner', () => import('@/components/WsbTickerScannerPanel'), 'WsbTickerScannerPanel');
 
-    this.lazyPanel('displacement', () =>
-      import('@/components/DisplacementPanel').then(m => {
-        const p = new m.DisplacementPanel();
-        p.setCountryClickHandler((lat: number, lon: number) => { this.ctx.map?.setCenter(lat, lon, 4); });
-        return p;
-      }),
-    );
+    this.lazyImportedPanel('displacement', () => import('@/components/DisplacementPanel'), 'DisplacementPanel', (DisplacementPanel) => {
+      const p = new DisplacementPanel();
+      p.setCountryClickHandler((lat: number, lon: number) => { this.ctx.map?.setCenter(lat, lon, 4); });
+      return p;
+    });
 
-    this.lazyPanel('climate', () =>
-      import('@/components/ClimateAnomalyPanel').then(m => {
-        const p = new m.ClimateAnomalyPanel();
-        p.setZoneClickHandler((lat: number, lon: number) => { this.ctx.map?.setCenter(lat, lon, 4); });
-        return p;
-      }),
-    );
+    this.lazyImportedPanel('climate', () => import('@/components/ClimateAnomalyPanel'), 'ClimateAnomalyPanel', (ClimateAnomalyPanel) => {
+      const p = new ClimateAnomalyPanel();
+      p.setZoneClickHandler((lat: number, lon: number) => { this.ctx.map?.setCenter(lat, lon, 4); });
+      return p;
+    });
 
-    this.lazyPanel('population-exposure', () =>
-      import('@/components/PopulationExposurePanel').then(m => new m.PopulationExposurePanel()),
-    );
+    this.lazyDefaultPanel('population-exposure', () => import('@/components/PopulationExposurePanel'), 'PopulationExposurePanel');
 
-    this.lazyPanel('security-advisories', () =>
-      import('@/components/SecurityAdvisoriesPanel').then(m => {
-        const p = new m.SecurityAdvisoriesPanel();
-        p.setRefreshHandler(() => { void this.callbacks.loadSecurityAdvisories?.(); });
-        return p;
-      }),
-    );
+    this.lazyImportedPanel('security-advisories', () => import('@/components/SecurityAdvisoriesPanel'), 'SecurityAdvisoriesPanel', (SecurityAdvisoriesPanel) => {
+      const p = new SecurityAdvisoriesPanel();
+      p.setRefreshHandler(() => { void this.callbacks.loadSecurityAdvisories?.(); });
+      return p;
+    });
 
-    this.lazyPanel('radiation-watch', () =>
-      import('@/components/RadiationWatchPanel').then(m => {
-        const p = new m.RadiationWatchPanel();
-        p.setLocationClickHandler((lat: number, lon: number) => { this.ctx.map?.setCenter(lat, lon, 4); });
-        return p;
-      }),
-    );
+    this.lazyImportedPanel('radiation-watch', () => import('@/components/RadiationWatchPanel'), 'RadiationWatchPanel', (RadiationWatchPanel) => {
+      const p = new RadiationWatchPanel();
+      p.setLocationClickHandler((lat: number, lon: number) => { this.ctx.map?.setCenter(lat, lon, 4); });
+      return p;
+    });
 
-    this.lazyPanel('thermal-escalation', () =>
-      import('@/components/ThermalEscalationPanel').then(m => {
-        const p = new m.ThermalEscalationPanel();
-        p.setLocationClickHandler((lat: number, lon: number) => { this.ctx.map?.setCenter(lat, lon, 4); });
-        return p;
-      }),
-    );
+    this.lazyImportedPanel('thermal-escalation', () => import('@/components/ThermalEscalationPanel'), 'ThermalEscalationPanel', (ThermalEscalationPanel) => {
+      const p = new ThermalEscalationPanel();
+      p.setLocationClickHandler((lat: number, lon: number) => { this.ctx.map?.setCenter(lat, lon, 4); });
+      return p;
+    });
 
     const _lockPanels = this.ctx.isDesktopApp && !hasPremiumAccess();
 
-    this.lazyPanel('daily-market-brief', () =>
-      import('@/components/DailyMarketBriefPanel').then(m => new m.DailyMarketBriefPanel()),
-    );
+    this.lazyDefaultPanel('daily-market-brief', () => import('@/components/DailyMarketBriefPanel'), 'DailyMarketBriefPanel');
 
-    this.lazyPanel('market-implications', () =>
-      import('@/components/MarketImplicationsPanel').then(m => new m.MarketImplicationsPanel()),
-    );
+    this.lazyDefaultPanel('market-implications', () => import('@/components/MarketImplicationsPanel'), 'MarketImplicationsPanel');
     // Gating for daily-market-brief, market-implications, and chat-analyst is handled
     // reactively by updatePanelGating() via auth state subscription (all in WEB_PREMIUM_PANELS).
 
-    this.lazyPanel('chat-analyst', () =>
-      import('@/components/ChatAnalystPanel').then(m => new m.ChatAnalystPanel()),
-    );
+    this.lazyImportedPanel('chat-analyst', () => import('@/components/ChatAnalystPanel'), 'ChatAnalystPanel', (ChatAnalystPanel) => {
+      // agent-bus-applier (and its zod-backed shared/agent-bus-actions schemas, ~69KB)
+      // is only reachable through this lazy panel's action handler. Start loading it
+      // here so it stays off the eager main entry, but do not make plain chat depend
+      // on the optional dashboard-control chunk being available.
+      const panel = new ChatAnalystPanel();
+      void import('@/app/agent-bus-applier')
+        .then(({ applyAgentBusAction }) => {
+          panel.setDashboardActionHandler((action) => applyAgentBusAction(this.ctx, action, {
+            getPanelConfig: (panelId) => getEffectivePanelConfig(panelId, SITE_VARIANT),
+            isPanelAllowed: (panelId, config) => isPanelEntitled(panelId, config, hasPremiumAccess(getAuthState())),
+            hasPremiumAccess: () => hasPremiumAccess(getAuthState()),
+            applyLayerChange: this.callbacks.applyMapLayerChange,
+          }));
+        })
+        .catch((err) => {
+          console.error('[panel] failed to lazy-load "chat-analyst" dashboard action handler', err);
+        });
+      return panel;
+    });
 
-    this.lazyPanel('forecast', () =>
-      import('@/components/ForecastPanel').then(m => new m.ForecastPanel()),
+    this.lazyDefaultPanel(
+      'forecast',
+      () => import('@/components/ForecastPanel'),
+      'ForecastPanel',
       undefined,
       _lockPanels ? ['AI-powered geopolitical forecasts', 'Cross-domain cascade predictions', 'Prediction market calibration'] : undefined,
     );
 
-    this.lazyPanel('oref-sirens', () =>
-      import('@/components/OrefSirensPanel').then(m => new m.OrefSirensPanel()),
+    this.lazyDefaultPanel(
+      'oref-sirens',
+      () => import('@/components/OrefSirensPanel'),
+      'OrefSirensPanel',
       undefined,
       _lockPanels ? [t('premium.features.orefSirens1'), t('premium.features.orefSirens2')] : undefined,
     );
 
-    this.lazyPanel('telegram-intel', () =>
-      import('@/components/TelegramIntelPanel').then(m => new m.TelegramIntelPanel()),
+    this.lazyDefaultPanel(
+      'telegram-intel',
+      () => import('@/components/TelegramIntelPanel'),
+      'TelegramIntelPanel',
       undefined,
       _lockPanels ? [t('premium.features.telegramIntel1'), t('premium.features.telegramIntel2')] : undefined,
     );
 
-    if (this.shouldCreatePanel('gcc-investments')) {
-      const investmentsPanel = new InvestmentsPanel((inv) => {
-        focusInvestmentOnMap(this.ctx.map, this.ctx.mapLayers, inv.lat, inv.lon);
-      });
-      this.ctx.panels['gcc-investments'] = investmentsPanel;
-    }
+    this.lazyPanel('gcc-investments', async () => {
+      const { focusInvestmentOnMap } = await import('@/services/investments-focus');
+      return this.importPanel('gcc-investments', () => import('@/components/InvestmentsPanel'), 'InvestmentsPanel', (InvestmentsPanel) =>
+        new InvestmentsPanel((inv) => {
+          focusInvestmentOnMap(this.ctx.map, this.ctx.mapLayers, inv.lat, inv.lon);
+        }),
+      );
+    });
 
-    if (this.shouldCreatePanel('world-clock')) {
-      this.ctx.panels['world-clock'] = new WorldClockPanel();
-    }
+    this.lazyDefaultPanel('world-clock', () => import('@/components/WorldClockPanel'), 'WorldClockPanel');
 
-    if (this.shouldCreatePanel('airline-intel')) {
-      this.ctx.panels['airline-intel'] = new AirlineIntelPanel();
-      this.aviationCommandBar = new AviationCommandBar();
-    }
+    this.lazyImportedPanel('airline-intel', () => import('@/components/AirlineIntelPanel'), 'AirlineIntelPanel', (AirlineIntelPanel) => {
+      const panel = new AirlineIntelPanel();
+      void import('@/components/AviationCommandBar')
+        .then(({ AviationCommandBar }) => {
+          if (!this.ctx.isDestroyed) this.aviationCommandBar = new AviationCommandBar();
+        })
+        .catch((err) => {
+          console.error('[panel] failed to lazy-load "airline-intel" command bar', err);
+        });
+      return panel;
+    });
 
-    if (this.shouldCreatePanel('gulf-economies') && !this.ctx.panels['gulf-economies']) {
-      this.ctx.panels['gulf-economies'] = new GulfEconomiesPanel();
-    }
-
-    if (this.shouldCreatePanel('grocery-basket') && !this.ctx.panels['grocery-basket']) {
-      this.ctx.panels['grocery-basket'] = new GroceryBasketPanel();
-    }
-
-    if (this.shouldCreatePanel('bigmac') && !this.ctx.panels['bigmac']) {
-      this.ctx.panels['bigmac'] = new BigMacPanel();
-    }
-
-    if (this.shouldCreatePanel('fuel-prices') && !this.ctx.panels['fuel-prices']) {
-      this.ctx.panels['fuel-prices'] = new FuelPricesPanel();
-    }
-
-    if (this.shouldCreatePanel('fao-food-price-index') && !this.ctx.panels['fao-food-price-index']) {
-      this.ctx.panels['fao-food-price-index'] = new FaoFoodPriceIndexPanel();
-    }
-
-    if (this.shouldCreatePanel('climate-news') && !this.ctx.panels['climate-news']) {
-      this.ctx.panels['climate-news'] = new ClimateNewsPanel();
-    }
-
-    if (this.shouldCreatePanel('live-news') &&
-        (getDefaultLiveChannels().length > 0 || loadChannelsFromStorage().length > 0)) {
-      this.ctx.panels['live-news'] = new LiveNewsPanel();
-    }
-
-    if (this.shouldCreatePanel('live-webcams')) {
-      this.ctx.panels['live-webcams'] = new LiveWebcamsPanel();
-    }
-
-    if (this.shouldCreatePanel('windy-webcams')) {
-      this.ctx.panels['windy-webcams'] = new PinnedWebcamsPanel();
-    }
-
-    this.createPanel('events', () => new TechEventsPanel('events', () => this.ctx.allNews));
-    this.createPanel('internet-disruptions', () => new InternetDisruptionsPanel());
-    this.createPanel('service-status', () => new ServiceStatusPanel());
-
-    this.lazyPanel('tech-readiness', () =>
-      import('@/components/TechReadinessPanel').then(m => {
-        const p = new m.TechReadinessPanel();
-        // Only auto-refresh on variants whose bootstrap seeds techReadiness
-        // (full + tech). On commodity/finance/energy the seed key is empty
-        // and the 5s fetch at services/economic/index.ts:694 just times out.
-        // The panel is still created so users who opt-in via settings can
-        // trigger a manual refresh from its UI.
-        if (isPanelInVariantDefaults('tech-readiness')) {
-          void p.refresh();
-        }
-        return p;
-      }),
+    this.lazyPanel('gulf-economies', () =>
+      this.importPanel('gulf-economies', () => import('@/components/GulfEconomiesPanel'), 'GulfEconomiesPanel', (GulfEconomiesPanel) => new GulfEconomiesPanel()),
+    );
+    this.lazyPanel('grocery-basket', () =>
+      this.importPanel('grocery-basket', () => import('@/components/GroceryBasketPanel'), 'GroceryBasketPanel', (GroceryBasketPanel) => new GroceryBasketPanel()),
+    );
+    this.lazyPanel('bigmac', () =>
+      this.importPanel('bigmac', () => import('@/components/BigMacPanel'), 'BigMacPanel', (BigMacPanel) => new BigMacPanel()),
+    );
+    this.lazyPanel('fuel-prices', () =>
+      this.importPanel('fuel-prices', () => import('@/components/FuelPricesPanel'), 'FuelPricesPanel', (FuelPricesPanel) => new FuelPricesPanel()),
+    );
+    this.lazyPanel('fao-food-price-index', () =>
+      this.importPanel('fao-food-price-index', () => import('@/components/FaoFoodPriceIndexPanel'), 'FaoFoodPriceIndexPanel', (FaoFoodPriceIndexPanel) => new FaoFoodPriceIndexPanel()),
+    );
+    this.lazyPanel('climate-news', () =>
+      this.importPanel('climate-news', () => import('@/components/ClimateNewsPanel'), 'ClimateNewsPanel', (ClimateNewsPanel) => new ClimateNewsPanel()),
     );
 
-    this.lazyPanel('national-debt', () =>
-      import('@/components/NationalDebtPanel').then(m => {
-        const p = new m.NationalDebtPanel();
+    this.lazyImportedPanel('live-news', () => import('@/components/LiveNewsPanel'), 'LiveNewsPanel', (LiveNewsPanel, module) => {
+      const liveNewsModule = module as typeof import('@/components/LiveNewsPanel');
+      if (liveNewsModule.getDefaultLiveChannels().length === 0 && liveNewsModule.loadChannelsFromStorage().length === 0) return null;
+      return new LiveNewsPanel();
+    });
+
+    this.lazyDefaultPanel('live-webcams', () => import('@/components/LiveWebcamsPanel'), 'LiveWebcamsPanel');
+    this.lazyDefaultPanel('windy-webcams', () => import('@/components/PinnedWebcamsPanel'), 'PinnedWebcamsPanel');
+
+    this.lazyPanel('events', () =>
+      this.importPanel(
+        'events',
+        () => import('@/components/TechEventsPanel'),
+        'TechEventsPanel',
+        (TechEventsPanel) => new TechEventsPanel('events', () => this.ctx.allNews),
+      ),
+    );
+    this.lazyDefaultPanel('internet-disruptions', () => import('@/components/InternetDisruptionsPanel'), 'InternetDisruptionsPanel');
+    this.lazyDefaultPanel('service-status', () => import('@/components/ServiceStatusPanel'), 'ServiceStatusPanel');
+
+    this.lazyImportedPanel('tech-readiness', () => import('@/components/TechReadinessPanel'), 'TechReadinessPanel', (TechReadinessPanel) => {
+      const p = new TechReadinessPanel();
+      // Only auto-refresh on variants whose bootstrap seeds techReadiness
+      // (full + tech). On commodity/finance/energy the seed key is empty
+      // and the 5s fetch at services/economic/index.ts:694 just times out.
+      // The panel is still created so users who opt-in via settings can
+      // trigger a manual refresh from its UI.
+      if (isPanelInVariantDefaults('tech-readiness')) {
         void p.refresh();
-        return p;
-      }),
-    );
+      }
+      return p;
+    });
 
-    this.lazyPanel('cross-source-signals', () =>
-      import('@/components/CrossSourceSignalsPanel').then(m => new m.CrossSourceSignalsPanel()),
-    );
+    this.lazyImportedPanel('national-debt', () => import('@/components/NationalDebtPanel'), 'NationalDebtPanel', (NationalDebtPanel) => {
+      const p = new NationalDebtPanel();
+      void p.refresh();
+      return p;
+    });
 
-    this.lazyPanel('geo-hubs', () =>
-      import('@/components/GeoHubsPanel').then(m => {
-        const p = new m.GeoHubsPanel();
-        p.setOnHubClick((hub) => { this.ctx.map?.setCenter(hub.lat, hub.lon, 4); });
-        return p;
-      }),
-    );
+    this.lazyDefaultPanel('cross-source-signals', () => import('@/components/CrossSourceSignalsPanel'), 'CrossSourceSignalsPanel');
 
-    this.lazyPanel('tech-hubs', () =>
-      import('@/components/TechHubsPanel').then(m => {
-        const p = new m.TechHubsPanel();
-        p.setOnHubClick((hub) => { this.ctx.map?.setCenter(hub.lat, hub.lon, 4); });
-        return p;
-      }),
-    );
+    this.lazyImportedPanel('geo-hubs', () => import('@/components/GeoHubsPanel'), 'GeoHubsPanel', (GeoHubsPanel) => {
+      const p = new GeoHubsPanel();
+      p.setOnHubClick((hub) => { this.ctx.map?.setCenter(hub.lat, hub.lon, 4); });
+      return p;
+    });
 
-    this.lazyPanel('ai-regulation', () =>
-      import('@/components/RegulationPanel').then(m => new m.RegulationPanel('ai-regulation')),
-    );
+    this.lazyImportedPanel('tech-hubs', () => import('@/components/TechHubsPanel'), 'TechHubsPanel', (TechHubsPanel) => {
+      const p = new TechHubsPanel();
+      p.setOnHubClick((hub) => { this.ctx.map?.setCenter(hub.lat, hub.lon, 4); });
+      return p;
+    });
 
-    this.createPanel('macro-signals', () => new MacroSignalsPanel());
-    this.createPanel('fear-greed', () => new FearGreedPanel());
-    this.createPanel('aaii-sentiment', () => new AAIISentimentPanel());
-    this.createPanel('market-breadth', () => new MarketBreadthPanel());
-    this.createPanel('macro-tiles', () => new MacroTilesPanel());
-    this.createPanel('fsi', () => new FSIPanel());
-    this.createPanel('yield-curve', () => new YieldCurvePanel());
-    this.createPanel('earnings-calendar', () => new EarningsCalendarPanel());
-    this.createPanel('economic-calendar', () => new EconomicCalendarPanel());
-    this.createPanel('cot-positioning', () => new CotPositioningPanel());
-    this.createPanel('liquidity-shifts', () => new LiquidityShiftsPanel());
-    this.createPanel('positioning-247', () => new PositioningPanel());
-    this.createPanel('gold-intelligence', () => new GoldIntelligencePanel());
-    this.createPanel('hormuz-tracker', () => new HormuzPanel());
-    this.createPanel('etf-flows', () => new ETFFlowsPanel());
-    this.createPanel('stablecoins', () => new StablecoinPanel());
+    this.lazyImportedPanel('ai-regulation', () => import('@/components/RegulationPanel'), 'RegulationPanel', (RegulationPanel) => new RegulationPanel('ai-regulation'));
+
+    this.lazyPanel('macro-signals', () =>
+      this.importPanel('macro-signals', () => import('@/components/MacroSignalsPanel'), 'MacroSignalsPanel', (MacroSignalsPanel) => new MacroSignalsPanel()),
+    );
+    this.lazyDefaultPanel('fear-greed', () => import('@/components/FearGreedPanel'), 'FearGreedPanel');
+    this.lazyDefaultPanel('aaii-sentiment', () => import('@/components/AAIISentimentPanel'), 'AAIISentimentPanel');
+    this.lazyDefaultPanel('market-breadth', () => import('@/components/MarketBreadthPanel'), 'MarketBreadthPanel');
+    this.lazyDefaultPanel('macro-tiles', () => import('@/components/MacroTilesPanel'), 'MacroTilesPanel');
+    this.lazyDefaultPanel('fsi', () => import('@/components/FSIPanel'), 'FSIPanel');
+    this.lazyDefaultPanel('yield-curve', () => import('@/components/YieldCurvePanel'), 'YieldCurvePanel');
+    this.lazyDefaultPanel('earnings-calendar', () => import('@/components/EarningsCalendarPanel'), 'EarningsCalendarPanel');
+    this.lazyDefaultPanel('economic-calendar', () => import('@/components/EconomicCalendarPanel'), 'EconomicCalendarPanel');
+    this.lazyDefaultPanel('cot-positioning', () => import('@/components/CotPositioningPanel'), 'CotPositioningPanel');
+    this.lazyDefaultPanel('liquidity-shifts', () => import('@/components/LiquidityShiftsPanel'), 'LiquidityShiftsPanel');
+    this.lazyDefaultPanel('positioning-247', () => import('@/components/PositioningPanel'), 'PositioningPanel');
+    this.lazyDefaultPanel('gold-intelligence', () => import('@/components/GoldIntelligencePanel'), 'GoldIntelligencePanel');
+    this.lazyDefaultPanel('hormuz-tracker', () => import('@/components/HormuzPanel'), 'HormuzPanel');
+    this.lazyDefaultPanel('etf-flows', () => import('@/components/ETFFlowsPanel'), 'ETFFlowsPanel');
+    this.lazyDefaultPanel('stablecoins', () => import('@/components/StablecoinPanel'), 'StablecoinPanel');
 
     if (this.ctx.isDesktopApp) {
-      const runtimeConfigPanel = new RuntimeConfigPanel({ mode: 'alert' });
-      this.ctx.panels['runtime-config'] = runtimeConfigPanel;
+      this.lazyImportedPanel('runtime-config', () => import('@/components/RuntimeConfigPanel'), 'RuntimeConfigPanel', (RuntimeConfigPanel) => new RuntimeConfigPanel({ mode: 'alert' }));
     }
 
-    this.createPanel('insights', () => new InsightsPanel());
+    this.lazyDefaultPanel('insights', () => import('@/components/InsightsPanel'), 'InsightsPanel');
+    if (isPanelInVariantDefaults('threat-timeline')) {
+      this.lazyDefaultPanel('threat-timeline', () => import('@/components/ThreatTimelinePanel'), 'ThreatTimelinePanel');
+    }
 
     // Global Giving panel (all variants)
-    this.lazyPanel('giving', () =>
-      import('@/components/GivingPanel').then(m => new m.GivingPanel()),
-    );
+    this.lazyDefaultPanel('giving', () => import('@/components/GivingPanel'), 'GivingPanel');
 
     // Happy variant panels (lazy-loaded — only relevant for happy variant)
     if (SITE_VARIANT === 'happy') {
-      this.lazyPanel('positive-feed', () =>
-        import('@/components/PositiveNewsFeedPanel').then(m => {
-          const p = new m.PositiveNewsFeedPanel();
-          this.ctx.positivePanel = p;
-          return p;
-        }),
-      );
+      this.lazyImportedPanel('positive-feed', () => import('@/components/PositiveNewsFeedPanel'), 'PositiveNewsFeedPanel', (PositiveNewsFeedPanel) => {
+        const p = new PositiveNewsFeedPanel();
+        this.ctx.positivePanel = p;
+        return p;
+      });
 
-      this.lazyPanel('counters', () =>
-        import('@/components/CountersPanel').then(m => {
-          const p = new m.CountersPanel();
-          p.startTicking();
-          this.ctx.countersPanel = p;
-          return p;
-        }),
-      );
+      this.lazyImportedPanel('counters', () => import('@/components/CountersPanel'), 'CountersPanel', (CountersPanel) => {
+        const p = new CountersPanel();
+        p.startTicking();
+        this.ctx.countersPanel = p;
+        return p;
+      });
 
-      this.lazyPanel('progress', () =>
-        import('@/components/ProgressChartsPanel').then(m => {
-          const p = new m.ProgressChartsPanel();
-          this.ctx.progressPanel = p;
-          return p;
-        }),
-      );
+      this.lazyImportedPanel('progress', () => import('@/components/ProgressChartsPanel'), 'ProgressChartsPanel', (ProgressChartsPanel) => {
+        const p = new ProgressChartsPanel();
+        this.ctx.progressPanel = p;
+        return p;
+      });
 
-      this.lazyPanel('breakthroughs', () =>
-        import('@/components/BreakthroughsTickerPanel').then(m => {
-          const p = new m.BreakthroughsTickerPanel();
-          this.ctx.breakthroughsPanel = p;
-          return p;
-        }),
-      );
+      this.lazyImportedPanel('breakthroughs', () => import('@/components/BreakthroughsTickerPanel'), 'BreakthroughsTickerPanel', (BreakthroughsTickerPanel) => {
+        const p = new BreakthroughsTickerPanel();
+        this.ctx.breakthroughsPanel = p;
+        return p;
+      });
 
-      this.lazyPanel('spotlight', () =>
-        import('@/components/HeroSpotlightPanel').then(m => {
-          const p = new m.HeroSpotlightPanel();
-          p.onLocationRequest = (lat: number, lon: number) => {
-            this.ctx.map?.setCenter(lat, lon, 4);
-            this.ctx.map?.flashLocation(lat, lon, 3000);
-          };
-          this.ctx.heroPanel = p;
-          return p;
-        }),
-      );
+      this.lazyImportedPanel('spotlight', () => import('@/components/HeroSpotlightPanel'), 'HeroSpotlightPanel', (HeroSpotlightPanel) => {
+        const p = new HeroSpotlightPanel();
+        p.onLocationRequest = (lat: number, lon: number) => {
+          this.ctx.map?.setCenter(lat, lon, 4);
+          this.ctx.map?.flashLocation(lat, lon, 3000);
+        };
+        this.ctx.heroPanel = p;
+        return p;
+      });
 
-      this.lazyPanel('digest', () =>
-        import('@/components/GoodThingsDigestPanel').then(m => {
-          const p = new m.GoodThingsDigestPanel();
-          this.ctx.digestPanel = p;
-          return p;
-        }),
-      );
+      this.lazyImportedPanel('digest', () => import('@/components/GoodThingsDigestPanel'), 'GoodThingsDigestPanel', (GoodThingsDigestPanel) => {
+        const p = new GoodThingsDigestPanel();
+        this.ctx.digestPanel = p;
+        return p;
+      });
 
-      this.lazyPanel('species', () =>
-        import('@/components/SpeciesComebackPanel').then(m => {
-          const p = new m.SpeciesComebackPanel();
-          this.ctx.speciesPanel = p;
-          return p;
-        }),
-      );
+      this.lazyImportedPanel('species', () => import('@/components/SpeciesComebackPanel'), 'SpeciesComebackPanel', (SpeciesComebackPanel) => {
+        const p = new SpeciesComebackPanel();
+        this.ctx.speciesPanel = p;
+        return p;
+      });
 
     }
 
     // Renewable Energy is shared by happy and energy variants.
     if (this.shouldCreatePanel('renewable')) {
-      this.lazyPanel('renewable', () =>
-        import('@/components/RenewableEnergyPanel').then(m => {
-          const p = new m.RenewableEnergyPanel();
-          this.ctx.renewablePanel = p;
-          return p;
-        }),
-      );
+      this.lazyImportedPanel('renewable', () => import('@/components/RenewableEnergyPanel'), 'RenewableEnergyPanel', (RenewableEnergyPanel) => {
+        const p = new RenewableEnergyPanel();
+        this.ctx.renewablePanel = p;
+        return p;
+      });
     }
 
     // Always load custom widgets — Pro gating is handled reactively by auth state.
     for (const spec of loadWidgets()) {
-      const panel = new CustomWidgetPanel(spec);
-      this.ctx.panels[spec.id] = panel;
       if (!this.ctx.panelSettings[spec.id]) {
         this.ctx.panelSettings[spec.id] = { name: spec.title, enabled: true, priority: 3 };
       }
+      const capturedSpec = spec;
+      this.lazyPanel(spec.id, () =>
+        this.importPanel(
+          spec.id,
+          () => import('@/components/CustomWidgetPanel'),
+          'CustomWidgetPanel',
+          (CustomWidgetPanel) => new CustomWidgetPanel(capturedSpec),
+        ),
+      );
     }
 
     for (const spec of loadMcpPanels()) {
-      const panel = new McpDataPanel(spec);
-      this.ctx.panels[spec.id] = panel;
       if (!this.ctx.panelSettings[spec.id]) {
         this.ctx.panelSettings[spec.id] = { name: spec.title, enabled: true, priority: 3 };
       }
+      const capturedSpec = spec;
+      this.lazyPanel(spec.id, () =>
+        this.importPanel(
+          spec.id,
+          () => import('@/components/McpDataPanel'),
+          'McpDataPanel',
+          (McpDataPanel) => new McpDataPanel(capturedSpec),
+        ),
+      );
     }
 
     const variantOrder = (VARIANT_DEFAULTS[SITE_VARIANT] ?? VARIANT_DEFAULTS['full'] ?? []).filter(k => k !== 'map');
@@ -1518,12 +2246,7 @@ export class PanelLayoutManager implements AppModule {
       : [];
 
     sidebarOrder.forEach((key: string) => {
-      const panel = this.ctx.panels[key];
-      if (panel && !panel.getElement().parentElement) {
-        const el = panel.getElement();
-        this.makeDraggable(el, key);
-        panelsGrid.appendChild(el);
-      }
+      this.insertInitialPanelByKey(panelsGrid, key);
     });
 
     // "+" Add Panel block at the end of the grid
@@ -1560,11 +2283,11 @@ export class PanelLayoutManager implements AppModule {
     proBlock.appendChild(proLabel);
     proBlock.appendChild(proBadge);
     proBlock.addEventListener('click', () => {
-      openWidgetChatModal({
+      void import('@/components/WidgetChatModal').then((m) => m.openWidgetChatModal({
         mode: 'create',
         tier: 'pro',
         onComplete: (spec) => this.addCustomWidget(spec),
-      });
+      })).catch((err) => console.error('[widget-chat] failed to lazy-load WidgetChatModal', err));
     });
     panelsGrid.appendChild(proBlock);
 
@@ -1584,9 +2307,9 @@ export class PanelLayoutManager implements AppModule {
     mcpBlock.appendChild(mcpLabel);
     mcpBlock.appendChild(mcpBadge);
     mcpBlock.addEventListener('click', () => {
-      openMcpConnectModal({
+      void import('@/components/McpConnectModal').then((m) => m.openMcpConnectModal({
         onComplete: (spec) => this.addMcpPanel(spec),
-      });
+      })).catch((err) => console.error('[mcp-connect] failed to lazy-load McpConnectModal', err));
     });
     panelsGrid.appendChild(mcpBlock);
 
@@ -1620,16 +2343,47 @@ export class PanelLayoutManager implements AppModule {
     const bottomGrid = document.getElementById('mapBottomGrid');
     if (bottomGrid) {
       bottomOrder.forEach(key => {
-        const panel = this.ctx.panels[key];
-        if (panel && !panel.getElement().parentElement) {
-          const el = panel.getElement();
-          this.makeDraggable(el, key);
-          this.insertByOrder(bottomGrid, el, key);
-        }
+        this.insertInitialPanelByKey(bottomGrid, key);
       });
     }
 
-    window.addEventListener('resize', () => this.ensureCorrectZones());
+    removeResponsiveZoneListener(this.responsiveZoneListener);
+    this.responsiveZoneListener = addResponsiveZoneListener(
+      window,
+      this.getUltraWideMinWidth(),
+      () => this.ensureCorrectZones(),
+    );
+
+    // Map's direct-deref block (kept here, after panel registration, by U3 #4459):
+    // awaited only after registration so the chunk fetch overlaps it. Everything above
+    // that touches the map does so via `?.` at mount/click time, so the map can be
+    // constructed here without breaking registration. The responsive zone listener is
+    // wired above (before this await) so a destroy() during the fetch tears it down;
+    // the isDestroyed guard below also stops a destroyed manager from building a map.
+    const { MapContainer } = await mapModulePromise;
+    if (this.ctx.isDestroyed) return;
+    markLcpDebug('wm:map:container-construct');
+    this.ctx.map = new MapContainer(mapContainer, {
+      zoom: this.ctx.isMobile ? 2.5 : 1.0,
+      pan: { x: 0, y: 0 },
+      view: this.ctx.isMobile ? this.ctx.resolvedLocation : 'global',
+      layers: this.ctx.mapLayers,
+      timeRange: '7d',
+    }, preferGlobe);
+
+    const eagerSupplyChainPanel = this.ctx.panels['supply-chain'] as SupplyChainPanel | undefined;
+    if (eagerSupplyChainPanel) {
+      this.ctx.map.setSupplyChainPanel(eagerSupplyChainPanel);
+    }
+
+    if (this.ctx.mapLayers.resilienceScore && !this.ctx.map.isDeckGLActive?.()) {
+      this.ctx.mapLayers = { ...this.ctx.mapLayers, resilienceScore: false };
+      saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
+    }
+
+    this.ctx.map.initEscalationGetters();
+    this.ctx.currentTimeRange = this.ctx.map.getTimeRange();
+    markLcpDebug('wm:map:container-ready');
 
     this.ctx.map.onTimeRangeChanged((range) => {
       this.ctx.currentTimeRange = range;
@@ -1656,22 +2410,51 @@ export class PanelLayoutManager implements AppModule {
     }
   }
 
-  private scheduleLoadAllData(): void {
-    if (this.scheduledLoadAllRaf !== null) return;
+  private cancelScheduledLoadAllIdle(): void {
+    if (this.scheduledLoadAllIdle === null || typeof window === 'undefined') return;
+    const cancelIdle = window.cancelIdleCallback as ((handle: number) => void) | undefined;
+    cancelIdle?.(this.scheduledLoadAllIdle);
+    this.scheduledLoadAllIdle = null;
+  }
+
+  private scheduleLoadAllData(phase: HydrationSchedulePhase = 'near'): void {
     if (typeof window === 'undefined') {
       void this.callbacks.loadAllData();
       return;
     }
+    const mark = (label: string) => {
+      if (typeof performance !== 'undefined' && typeof performance.mark === 'function') {
+        performance.mark(label);
+      }
+    };
+    if (phase === 'near') {
+      if (this.scheduledLoadAllIdle !== null || this.scheduledLoadAllRaf !== null) return;
+      const idle = window.requestIdleCallback as ((cb: IdleRequestCallback, opts?: IdleRequestOptions) => number) | undefined;
+      if (idle) {
+        this.scheduledLoadAllIdle = idle(() => {
+          this.scheduledLoadAllIdle = null;
+          mark('wm:hydration:near-trigger');
+          void this.callbacks.loadAllData();
+        }, { timeout: 300 });
+        return;
+      }
+    } else {
+      this.cancelScheduledLoadAllIdle();
+      if (this.scheduledLoadAllRaf !== null) return;
+    }
+    if (this.scheduledLoadAllRaf !== null) {
+      return;
+    }
     this.scheduledLoadAllRaf = window.requestAnimationFrame(() => {
       this.scheduledLoadAllRaf = null;
+      mark(`wm:hydration:${phase}-trigger`);
       void this.callbacks.loadAllData();
     });
   }
 
   private observePanelsForViewport(): void {
     for (const panel of Object.values(this.ctx.panels)) {
-      const observable = panel as { observeNearViewport?: (cb: () => void, marginPx?: number) => void };
-      observable.observeNearViewport?.(() => this.scheduleLoadAllData(), 200);
+      this.observePanelForHydration(panel);
     }
   }
 
@@ -1688,7 +2471,7 @@ export class PanelLayoutManager implements AppModule {
     });
   }
 
-  private filterItemsByTimeRange(items: import('@/types').NewsItem[], range: import('@/components').TimeRange = this.ctx.currentTimeRange): import('@/types').NewsItem[] {
+  private filterItemsByTimeRange(items: import('@/types').NewsItem[], range: import('@/components/MapContainer').TimeRange = this.ctx.currentTimeRange): import('@/types').NewsItem[] {
     if (range === 'all') return items;
     const ranges: Record<string, number> = {
       '1h': 60 * 60 * 1000, '6h': 6 * 60 * 60 * 1000,
@@ -1756,14 +2539,10 @@ export class PanelLayoutManager implements AppModule {
     }
   }
 
-  addCustomWidget(spec: CustomWidgetSpec): void {
-    saveWidget(spec);
-    const panel = new CustomWidgetPanel(spec);
-    this.ctx.panels[spec.id] = panel;
-    this.ctx.panelSettings[spec.id] = { name: spec.title, enabled: true, priority: 3 };
-    saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
+  private addDynamicPanel(key: string, panel: Panel): void {
+    this.ctx.panels[key] = panel;
     const el = panel.getElement();
-    this.makeDraggable(el, spec.id);
+    this.makeDraggable(el, key);
     const grid = document.getElementById('panelsGrid');
     if (grid) {
       const addBlock = grid.querySelector('.add-panel-block');
@@ -1772,30 +2551,40 @@ export class PanelLayoutManager implements AppModule {
       } else {
         grid.appendChild(el);
       }
+      this.mobilePanelNav?.applyToNewPanel(el);
+      panel.notifyConnected();
+      this.afterPanelMounted(key, panel);
     }
     this.savePanelOrder();
     this.applyPanelSettings();
   }
 
-  addMcpPanel(spec: McpPanelSpec): void {
-    saveMcpPanel(spec);
-    const panel = new McpDataPanel(spec);
-    this.ctx.panels[spec.id] = panel;
+  addCustomWidget(spec: CustomWidgetSpec): void {
+    saveWidget(spec);
     this.ctx.panelSettings[spec.id] = { name: spec.title, enabled: true, priority: 3 };
     saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
-    const el = panel.getElement();
-    this.makeDraggable(el, spec.id);
-    const grid = document.getElementById('panelsGrid');
-    if (grid) {
-      const addBlock = grid.querySelector('.add-panel-block');
-      if (addBlock) {
-        grid.insertBefore(el, addBlock);
-      } else {
-        grid.appendChild(el);
-      }
-    }
-    this.savePanelOrder();
-    this.applyPanelSettings();
+    void this.importPanel(
+      spec.id,
+      () => import('@/components/CustomWidgetPanel'),
+      'CustomWidgetPanel',
+      (CustomWidgetPanel) => new CustomWidgetPanel(spec),
+    ).then((panel) => {
+      if (panel) this.addDynamicPanel(spec.id, panel);
+    });
+  }
+
+  addMcpPanel(spec: McpPanelSpec): void {
+    saveMcpPanel(spec);
+    this.ctx.panelSettings[spec.id] = { name: spec.title, enabled: true, priority: 3 };
+    saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
+    void this.importPanel(
+      spec.id,
+      () => import('@/components/McpDataPanel'),
+      'McpDataPanel',
+      (McpDataPanel) => new McpDataPanel(spec),
+    ).then((panel) => {
+      if (panel) this.addDynamicPanel(spec.id, panel);
+    });
   }
 
   private getSavedPanelOrder(): string[] {
@@ -1808,6 +2597,52 @@ export class PanelLayoutManager implements AppModule {
     } catch {
       return [];
     }
+  }
+
+  public applySavedPanelOrder(panelOrder?: string[]): void {
+    const grid = document.getElementById('panelsGrid');
+    const bottomGrid = document.getElementById('mapBottomGrid');
+    if (!grid || !bottomGrid) return;
+
+    const activePanelKeys = Object.keys(this.ctx.panelSettings).filter(k => k !== 'map');
+    const savedOrder = (panelOrder ?? this.getSavedPanelOrder()).filter(k => activePanelKeys.includes(k));
+    if (savedOrder.length === 0) return;
+
+    const seen = new Set<string>();
+    const allOrder: string[] = [];
+    const appendUnique = (key: string) => {
+      if (seen.has(key) || !activePanelKeys.includes(key)) return;
+      seen.add(key);
+      allOrder.push(key);
+    };
+    savedOrder.forEach(appendUnique);
+    this.resolvedPanelOrder.forEach(appendUnique);
+    activePanelKeys.forEach(appendUnique);
+
+    this.bottomSetMemory = panelOrder ? new Set<string>() : this.getSavedBottomSet();
+    this.resolvedPanelOrder = allOrder;
+
+    const effectiveUltraWide = this.getEffectiveUltraWide();
+    this.wasUltraWide = effectiveUltraWide;
+    const sidebarOrder = effectiveUltraWide
+      ? allOrder.filter(k => !this.bottomSetMemory.has(k))
+      : allOrder;
+    const bottomOrder = effectiveUltraWide
+      ? allOrder.filter(k => this.bottomSetMemory.has(k))
+      : [];
+
+    const firstAddBlock = grid.querySelector('.add-panel-block');
+    sidebarOrder.forEach((key) => {
+      const el = this.getPanelElementForOrdering(key);
+      if (!el) return;
+      if (firstAddBlock) grid.insertBefore(el, firstAddBlock);
+      else grid.appendChild(el);
+    });
+
+    bottomOrder.forEach((key) => {
+      const el = this.getPanelElementForOrdering(key);
+      if (el) bottomGrid.appendChild(el);
+    });
   }
 
   savePanelOrder(): void {
@@ -1935,11 +2770,14 @@ export class PanelLayoutManager implements AppModule {
     return new Set();
   }
 
+  private getUltraWideMinWidth(): number {
+    return this.ctx.isDesktopApp ? 900 : 1600;
+  }
+
   private getEffectiveUltraWide(): boolean {
     const mapSection = document.getElementById('mapSection');
     const mapEnabled = !mapSection?.classList.contains('hidden');
-    const minWidth = this.ctx.isDesktopApp ? 900 : 1600;
-    return window.innerWidth >= minWidth && mapEnabled;
+    return window.innerWidth >= this.getUltraWideMinWidth() && mapEnabled;
   }
 
   private insertByOrder(grid: HTMLElement, el: HTMLElement, key: string): void {
@@ -2035,45 +2873,110 @@ export class PanelLayoutManager implements AppModule {
     }
   }
 
-  private lazyPanel<T extends { getElement(): HTMLElement }>(
+  private importPanel<M extends object, K extends keyof M & string>(
     key: string,
-    loader: () => Promise<T>,
+    importer: () => Promise<M>,
+    exportName: K,
+    createPanel: (PanelClass: PanelExport<M, K>, module: M) => ImportedPanel<M, K> | null,
+  ): Promise<ImportedPanel<M, K> | null> {
+    return importer().then((module) => {
+      const PanelClass = module[exportName];
+      if (typeof PanelClass !== 'function') {
+        console.error(`[panel] ${exportName} export unavailable for "${key}"`);
+        return null;
+      }
+      return createPanel(PanelClass as PanelExport<M, K>, module);
+    }, (err) => {
+      console.error(`[panel] failed to lazy-load "${key}"`, err);
+      return null;
+    });
+  }
+
+  private lazyImportedPanel<M extends object, K extends keyof M & string>(
+    key: string,
+    importer: () => Promise<M>,
+    exportName: K,
+    createPanel: (PanelClass: PanelExport<M, K>, module: M) => ImportedPanel<M, K> | null,
+    setup?: (panel: ImportedPanel<M, K>) => void,
+    lockedFeatures?: string[],
+  ): void {
+    this.lazyPanel(
+      key,
+      () => this.importPanel(key, importer, exportName, createPanel),
+      setup,
+      lockedFeatures,
+    );
+  }
+
+  private lazyDefaultPanel<M extends object, K extends keyof M & string>(
+    key: string,
+    importer: () => Promise<M>,
+    exportName: K,
+    setup?: (panel: ImportedPanel<M, K>) => void,
+    lockedFeatures?: string[],
+  ): void {
+    this.lazyImportedPanel(key, importer, exportName, (PanelClass) => new PanelClass() as ImportedPanel<M, K>, setup, lockedFeatures);
+  }
+
+  private lazyPanel<T extends Panel>(
+    key: string,
+    loader: () => Promise<T | null>,
     setup?: (panel: T) => void,
     lockedFeatures?: string[],
   ): void {
     if (!this.shouldCreatePanel(key)) return;
-    loader().then(async (panel) => {
-      this.ctx.panels[key] = panel as unknown as import('@/components/Panel').Panel;
-      if (lockedFeatures) {
-        (panel as unknown as import('@/components/Panel').Panel).showLocked(lockedFeatures);
-      } else {
-        // Re-apply auth gating for panels that loaded after the initial auth state fire
-        this.updatePanelGating(getAuthState());
-        await replayPendingCalls(key, panel);
-        if (setup) setup(panel);
-      }
-      const el = panel.getElement();
-      this.makeDraggable(el, key);
-
-      const bottomGrid = document.getElementById('mapBottomGrid');
-      if (bottomGrid && this.getEffectiveUltraWide() && this.bottomSetMemory.has(key)) {
-        this.insertByOrder(bottomGrid, el, key);
-      } else {
-        const grid = document.getElementById('panelsGrid');
-        if (!grid) return;
-        this.insertByOrder(grid, el, key);
-      }
-
-      // applyPanelSettings() already ran at startup before this lazy promise resolved.
-      // If the user had this panel disabled, it must be hidden immediately after insertion
-      // or it reappears until the next applyPanelSettings() call.
-      const savedConfig = this.ctx.panelSettings[key];
-      if (savedConfig && !savedConfig.enabled) {
-        this.ctx.panels[key]?.hide();
-      }
-    }).catch((err) => {
-      console.error(`[panel] failed to lazy-load "${key}"`, err);
+    if (this.ctx.panels[key] || this.lazyPanelRegistrations.has(key)) return;
+    this.lazyPanelRegistrations.set(key, {
+      loading: null,
+      load: async () => {
+        if (this.ctx.isDestroyed) return null;
+        const panel = await loader();
+        if (!panel) return null;
+        const basePanel = panel;
+        if (this.ctx.isDestroyed) {
+          basePanel.destroy?.();
+          return null;
+        }
+        this.ctx.panels[key] = basePanel;
+        if (lockedFeatures) {
+          basePanel.showLocked(lockedFeatures);
+        } else {
+          // Re-apply auth gating for panels that load after the initial auth state fire.
+          this.updatePanelGating(getAuthState());
+          await replayPendingCalls(key, panel);
+          if (this.ctx.isDestroyed) {
+            basePanel.destroy?.();
+            return null;
+          }
+          if (setup) setup(panel);
+        }
+        return basePanel;
+      },
     });
+  }
+
+  private async loadRegisteredPanel(key: string): Promise<Panel | null> {
+    const existing = this.ctx.panels[key];
+    if (existing) return existing;
+    const registration = this.lazyPanelRegistrations.get(key);
+    if (!registration) return null;
+    if (!registration.loading) {
+      registration.loading = registration.load()
+        .then((panel) => {
+          if (panel) {
+            this.lazyPanelRegistrations.delete(key);
+          } else {
+            registration.loading = null;
+          }
+          return panel;
+        })
+        .catch((err) => {
+          registration.loading = null;
+          console.error(`[panel] failed to lazy-load "${key}"`, err);
+          return null;
+        });
+    }
+    return registration.loading;
   }
 
   private makeDraggable(el: HTMLElement, key: string): void {
@@ -2325,6 +3228,7 @@ export class PanelLayoutManager implements AppModule {
         dragStarted = true;
         
         // Initialize drag visualization
+        document.body.classList.add('panel-drag-active');
         el.classList.add('dragging-source');
         originalParent = el.parentElement as HTMLElement;
         originalIndex = Array.from(originalParent.children).indexOf(el);
@@ -2334,6 +3238,7 @@ export class PanelLayoutManager implements AppModule {
         onKeyDown = (e: KeyboardEvent) => {
           if (e.key === 'Escape') {
             // Cancel drag and restore original position
+            document.body.classList.remove('panel-drag-active');
             el.classList.remove('dragging-source');
             if (ghostEl) {
               ghostEl.style.opacity = '0';
@@ -2362,7 +3267,7 @@ export class PanelLayoutManager implements AppModule {
               }
             }
 
-            document.removeEventListener('keydown', onKeyDown!);
+            document.removeEventListener('keydown', onKeyDown!, true);
             onKeyDown = null;
             isDragging = false;
             dragStarted = false;
@@ -2370,7 +3275,7 @@ export class PanelLayoutManager implements AppModule {
             if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
           }
         };
-        document.addEventListener('keydown', onKeyDown);
+        document.addEventListener('keydown', onKeyDown, true);
       }
 
       lastX = e.clientX;
@@ -2397,7 +3302,7 @@ export class PanelLayoutManager implements AppModule {
         const dropPos = findDropPosition(lastX, lastY);
         const moved = dropPos ? commitDrop(dropPos, lastX, lastY) : false;
         
-        // Clean up drag visualization
+        // Clean up drag visualization (panel-drag-active is cleared unconditionally below)
         el.classList.remove('dragging-source');
         if (ghostEl) {
           ghostEl.style.opacity = '0';
@@ -2427,9 +3332,10 @@ export class PanelLayoutManager implements AppModule {
         }
       }
       dragStarted = false;
+      document.body.classList.remove('panel-drag-active');
       originalRect = null;
       if (onKeyDown) {
-        document.removeEventListener('keydown', onKeyDown);
+        document.removeEventListener('keydown', onKeyDown, true);
         onKeyDown = null;
       }
     };
@@ -2443,7 +3349,7 @@ export class PanelLayoutManager implements AppModule {
       document.removeEventListener('mousemove', onMouseMove);
       document.removeEventListener('mouseup', onMouseUp);
       if (onKeyDown) {
-        document.removeEventListener('keydown', onKeyDown);
+        document.removeEventListener('keydown', onKeyDown, true);
         onKeyDown = null;
       }
       if (rafId) {
@@ -2454,6 +3360,7 @@ export class PanelLayoutManager implements AppModule {
       if (dropIndicator) dropIndicator.remove();
       isDragging = false;
       dragStarted = false;
+      document.body.classList.remove('panel-drag-active');
       originalRect = null;
       el.classList.remove('dragging-source');
     });
@@ -2473,7 +3380,7 @@ export class PanelLayoutManager implements AppModule {
     const sources = new Set<string>();
     // Preset feeds + sources from any custom news panels the user added, so
     // the source manager stays in sync with what loadNews() actually fetches.
-    const categories = resolveNewsCategories(FEEDS, CANONICAL_FEEDS, enabledNewsCategoryKeys(this.ctx.newsPanels, this.ctx.panels, this.ctx.panelSettings));
+    const categories = resolveNewsCategories(FEEDS, CANONICAL_FEEDS, enabledNewsCategoryKeys(this.ctx.newsPanels, this.ctx.panels, this.ctx.panelSettings, Object.keys(CANONICAL_FEEDS)));
     categories.forEach(({ feeds }) => feeds.forEach(f => sources.add(f.name)));
     INTEL_SOURCES.forEach(f => sources.add(f.name));
     return Array.from(sources).sort((a, b) => a.localeCompare(b));

@@ -53,6 +53,7 @@ export default [
   "taskandpurpose.com",
   "news.usni.org",
   "www.oryxspioenkop.com",
+  "www.smartraveller.gov.au",
   "www.gov.uk",
   "www.foreignaffairs.com",
   "www.atlanticcouncil.org",
@@ -336,5 +337,8 @@ export default [
   "n1info.hr",
   "www.index.hr",
   "www.jutarnji.hr",
-  "balkaninsight.com"
+  "balkaninsight.com",
+  "www.war.gov",
+  "www.thenationalnews.com",
+  "trumpstruth.org"
 ];

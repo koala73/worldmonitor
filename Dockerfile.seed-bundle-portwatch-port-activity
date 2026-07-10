@@ -8,14 +8,14 @@
 # rationale.
 #
 # Runtime deps this image needs:
-#   - node:22-alpine (ESM, AbortSignal.any, fetch)
+#   - Node 22 Alpine (digest-pinned below; ESM, AbortSignal.any, fetch)
 #   - scripts/ tree (seeder + _seed-utils + _proxy-utils + _country-resolver
 #     + _bundle-runner + proxy helpers)
 #   - shared/ (country mappings that _country-resolver depends on)
 #   - .nvmrc? (not needed; node version baked into the base image)
 # =============================================================================
 
-FROM node:22-alpine
+FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd
 
 WORKDIR /app
 

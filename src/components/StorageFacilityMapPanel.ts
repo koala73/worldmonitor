@@ -1,8 +1,8 @@
 import { Panel } from './Panel';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
-import { getRpcBaseUrl } from '@/services/rpc-client';
+import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
-import { SupplyChainServiceClient } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
+
 import type {
   ListStorageFacilitiesResponse,
   StorageFacilityEntry,
@@ -17,10 +17,11 @@ import {
   setCachedStorageFacilityRegistry,
   type RawStorageFacilityRegistry,
 } from '@/shared/storage-facility-registry-store';
+import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
 
-const client = new SupplyChainServiceClient(getRpcBaseUrl(), {
-  fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
-});
+const getSupplyChainClient = createLazyClient(() => new SupplyChainServiceClient(getRpcBaseUrl(), {
+  fetch: rpcFetch,
+}));
 
 const BADGE_COLOR: Record<string, string> = {
   operational: '#2ecc71',
@@ -212,7 +213,7 @@ export class StorageFacilityMapPanel extends Panel {
         // Background RPC refresh for post-deploy classifier-version bumps.
         // When it lands, mirror the fresh shape into the store so the
         // map's next re-render uses the newer stamps too.
-        void client.listStorageFacilities({ facilityType: '' }).then(live => {
+        void getSupplyChainClient().listStorageFacilities({ facilityType: '' }).then(live => {
           if (!this.element?.isConnected || !live?.facilities?.length) return;
           this.data = live;
           this.render();
@@ -227,7 +228,7 @@ export class StorageFacilityMapPanel extends Panel {
         return;
       }
 
-      const live = await client.listStorageFacilities({ facilityType: '' });
+      const live = await getSupplyChainClient().listStorageFacilities({ facilityType: '' });
       if (!this.element?.isConnected) return;
       if (live.upstreamUnavailable || !live.facilities?.length) {
         this.showError('Storage registry unavailable', () => void this.fetchData());
@@ -256,8 +257,8 @@ export class StorageFacilityMapPanel extends Panel {
     this.render();
     try {
       const [d, events] = await Promise.all([
-        client.getStorageFacilityDetail({ facilityId }),
-        client.listEnergyDisruptions({ assetId: facilityId, assetType: 'storage', ongoingOnly: false }),
+        getSupplyChainClient().getStorageFacilityDetail({ facilityId }),
+        getSupplyChainClient().listEnergyDisruptions({ assetId: facilityId, assetType: 'storage', ongoingOnly: false }),
       ]);
       if (!this.element?.isConnected || this.selectedId !== facilityId) return;
       this.detail = d;

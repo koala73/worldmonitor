@@ -178,15 +178,15 @@
     "apiTier": "API SEVİYESİ",
     "title": "Programatik istihbarat",
     "subtitle": "World Monitor verileri üzerine inşa eden geliştiriciler, analistler ve ekipler için. Pro'dan ayrı — ikisini veya birini kullanın.",
-    "restApi": "30+ hizmet alanı için REST API",
+    "restApi": "30+ hizmet alanı için REST API — JavaScript, Python, Ruby ve Go için resmî SDK'lar",
     "authenticated": "Anahtar başına kimlik doğrulamalı, seviye başına rate-limited",
     "structured": "Cache header'ları ve OpenAPI 3.1 dökümantasyonu ile yapılandırılmış JSON",
     "starter": "Starter",
     "starterReqs": "1.000 req/gün",
     "starterWebhooks": "5 webhook kuralı",
     "business": "Business",
-    "businessReqs": "50.000 req/gün",
-    "businessWebhooks": "Sınırsız webhook + SLA",
+    "businessReqs": "10.000 req/gün",
+    "businessWebhooks": "Priority support",
     "feedData": "Verileri kontrol panellerinize besleyin, Zapier/n8n/Make aracılığıyla uyarıları otomatikleştirin, CII/risk verileri üzerine özel puanlama modelleri kurun."
   },
   "enterpriseShowcase": {
@@ -374,16 +374,17 @@
           "Günlük pazar özeti",
           "Askeri ve jeopolitik izleme",
           "Özel widget oluşturucu",
-          "MCP veri bağlayıcıları",
+          "Claude Desktop ve diğer AI istemcileri için MCP + SDK erişimi (50 çağrı/gün)",
           "Öncelikli veri yenileme"
         ]
       },
       "api": {
         "description": "İstihbarat verilerine programlı erişim",
         "features": [
-          "REST API erişimi",
+          "REST API + resmî SDK'lar (npm, PyPI, RubyGems, Go)",
           "Gerçek zamanlı veri akışları",
-          "Günde 1.000 istek",
+          "Dakikada 60 istek",
+          "Günde 1.000 istek dahil",
           "Webhook bildirimleri",
           "Özel veri dışa aktarımı"
         ]

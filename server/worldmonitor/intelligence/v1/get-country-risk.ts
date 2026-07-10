@@ -6,12 +6,14 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
 import { getCachedJson } from '../../../_shared/redis';
+import { CII_RISK_SCORE_CACHE_KEYS } from '../../../_shared/cache-keys';
 import { TIER1_COUNTRIES } from './_shared';
 
-const RISK_SCORES_KEY = 'risk:scores:sebuf:stale:v3';
+const RISK_SCORES_KEY = CII_RISK_SCORE_CACHE_KEYS.stale;
 const ADVISORIES_KEY = 'intelligence:advisories:v1';
 // Full ISO2 → entryCount map across all OFAC entries (not the top-12 summary slice).
 const SANCTIONS_COUNTS_KEY = 'sanctions:country-counts:v1';
+const UNKNOWN_CII_COMPUTED_AT = 0;
 
 function resolveCountryName(
   code: string,
@@ -34,7 +36,7 @@ export async function getCountryRisk(
       advisoryLevel: '',
       sanctionsActive: false,
       sanctionsCount: 0,
-      fetchedAt: Date.now(),
+      fetchedAt: UNKNOWN_CII_COMPUTED_AT,
       upstreamUnavailable: false,
     };
   }
@@ -56,7 +58,7 @@ export async function getCountryRisk(
       advisoryLevel: '',
       sanctionsActive: false,
       sanctionsCount: 0,
-      fetchedAt: Date.now(),
+      fetchedAt: UNKNOWN_CII_COMPUTED_AT,
       upstreamUnavailable: true,
     };
   }
@@ -78,7 +80,7 @@ export async function getCountryRisk(
     advisoryLevel,
     sanctionsActive: sanctionsCount > 0,
     sanctionsCount,
-    fetchedAt: cii?.computedAt ?? Date.now(),
+    fetchedAt: cii?.computedAt ?? UNKNOWN_CII_COMPUTED_AT,
     upstreamUnavailable: false,
   };
 }

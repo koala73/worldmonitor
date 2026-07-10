@@ -1,6 +1,6 @@
 ---
 title: "API Reference"
-description: "Catalog of every WorldMonitor REST service. All endpoints follow /api/<service>/v1/<rpc-name>."
+description: "Catalog of documented World Monitor REST service groups. Every endpoint follows /api/<service>/v1/<rpc-name> and returns consistent envelopes."
 ---
 
 WorldMonitor exposes its data through a family of versioned REST services. Every endpoint follows the same shape:
@@ -9,15 +9,17 @@ WorldMonitor exposes its data through a family of versioned REST services. Every
 https://api.worldmonitor.app/api/<service>/v1/<rpc-name>
 ```
 
-`<rpc-name>` is kebab-case (e.g. `list-acled-events`, `get-resilience-ranking`). Auth is the same on every service — pass `X-WorldMonitor-Key: wm_live_...` (or rely on a trusted browser origin). See [Authentication](/usage-auth) for details.
+`<rpc-name>` is kebab-case (e.g. `list-acled-events`, `get-resilience-ranking`). Auth is the same on every service — pass a user API key such as `X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567`, an operator-issued enterprise key, or use the dashboard's browser session where supported. See [Authentication](/usage-auth) for details.
 
-The grouped pages in the left sidebar render the full OpenAPI spec — request parameters, response schemas, and try-it-out — for each service.
+The grouped pages in the left sidebar render OpenAPI specs — request parameters, response schemas, and try-it-out — for the documented service groups. The bundled spec remains the complete machine-readable source.
+
+Prefer the terminal? The official [`worldmonitor` CLI](/cli) hits any of these paths (`worldmonitor get /api/<service>/v1/<rpc-name>`) and lists the live catalog with `worldmonitor list`.
 
 ## Machine-readable discovery
 
 Building an agent or codegen pipeline? Point at `https://worldmonitor.app/` and follow the `Link:` header — every OpenAPI spec, MCP server card, OAuth endpoint, and agent-skill bundle is discoverable from one root URL via standard `.well-known` paths. See [Agent Discovery](/agent-discovery) for the full walkthrough.
 
-The single bundled spec is at [`/openapi.yaml`](https://www.worldmonitor.app/openapi.yaml) — feed it to any OpenAPI generator to produce typed clients for all 34 services in one pass.
+The single bundled spec is at [`/openapi.yaml`](https://www.worldmonitor.app/openapi.yaml) — feed it to any OpenAPI generator to produce typed clients for all 35 generated services in one pass, including platform services that do not have dedicated sidebar pages.
 
 ## Service catalog
 
@@ -31,41 +33,52 @@ The single bundled spec is at [`/openapi.yaml`](https://www.worldmonitor.app/ope
 
 **Health and environment** — Public Health, Imagery, Webcams
 
-**Other** — News (feed digest, article summaries), Research, Positive Events, Giving
+**Other** — News (feed digest, article summaries), Research, Positive Events, Giving, Batch (bulk read fan-out), Leads (contact and Pro-waitlist mutations documented under Platform Endpoints)
 
 Open any group in the sidebar to browse its operations.
 
+## Batch requests
+
+Acting on many items? `POST /api/batch/v1/execute` accepts an **array of operations** and runs up to 20 documented GET endpoints concurrently in a single request, returning per-operation statuses and bodies:
+
+```bash
+curl -X POST https://api.worldmonitor.app/api/batch/v1/execute \
+  -H "X-WorldMonitor-Key: wm_..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "operations": [
+      { "id": "fear-greed", "path": "/api/market/v1/get-fear-greed-index" },
+      { "id": "risk-de",    "path": "/api/intelligence/v1/get-country-risk?country=DE&jmespath=score" }
+    ]
+  }'
+```
+
+Each operation runs with the batch request's own credentials and counts against your rate limits individually — batching saves round trips, not quota. Query strings pass through untouched, so per-operation [`jmespath` projections](/mcp-jmespath) keep the combined response small. Responses over 1 MB per operation are rejected with `response_too_large`; nested batches are refused.
+
 ## MCP equivalents
 
-If you've been using the [MCP server](/mcp-server) and want REST equivalents, the relationship isn't always 1:1. Most MCP tools fall into one of three buckets:
+If you're moving between REST and the [MCP server](/mcp-overview), treat them as related but distinct catalogs. REST coverage is defined by OpenAPI. MCP coverage is narrower: an endpoint is **MCP-exposed** only when the exact `METHOD /api/...` path is declared in a tool's registry `_apiPaths` entry.
 
-**Bundled cache-reads** — the MCP tool reads multiple Redis keys in one call. There's no single REST RPC that returns the same envelope; instead, REST exposes the underlying domains as fine-grained operations you can mix-and-match. Examples: `get_market_data` (bundles equity / commodity / crypto / sectors / ETF flows / Gulf / fear-greed) → see `list-market-quotes`, `list-commodity-quotes`, `list-crypto-quotes`, `get-sector-summary`, `list-etf-flows`, `list-gulf-quotes`, `get-fear-greed-index` in MarketService. Same shape for `get_economic_data`, `get_country_macro` (IMF WEO macro), and `get_eu_*`.
+Use the [MCP API coverage table](/mcp-overview#api-coverage) as the human-facing reverse lookup. It maps each MCP tool to the REST endpoints it explicitly serves. If a REST route is not in that table, it is REST-only as an API equivalence, even if a cache-backed MCP tool returns similar domain data.
 
-**1:1 RPC tools** — the MCP tool wraps a single REST RPC:
+Common shapes:
 
-| MCP tool | REST endpoint |
+- **Declared REST-backed tools** — the tool's registry names one or more exact REST paths, such as `get_market_data` covering market quote and sector endpoints.
+- **Bundled cache reads** — the tool reads one or more pre-seeded Redis keys and may not have a single REST equivalent, such as `get_country_macro`, the EU macro tools, `get_aviation_status`, and `get_cyber_threats`.
+- **Live/composite tools** — the tool fans out, filters geographically, or invokes LLM analysis; use the coverage table for the exact REST paths it claims.
+
+Important non-equivalences:
+
+| REST endpoint | MCP status |
 |---|---|
-| `get_conflict_events` | `/api/conflict/v1/list-acled-events` (also `list-ucdp-events`, `list-iran-events`) |
-| `get_news_intelligence` | `/api/news/v1/list-feed-digest`, `/api/news/v1/summarize-article` |
-| `get_natural_disasters` | `/api/natural/v1/list-natural-events` |
-| `get_military_posture` | `/api/military/v1/list-military-flights`, `/api/military/v1/get-theater-posture` |
-| `get_cyber_threats` | `/api/cyber/v1/list-cyber-threats` |
-| `get_prediction_markets` | `/api/prediction/v1/list-prediction-markets` |
-| `get_sanctions_data` | `/api/sanctions/v1/list-sanctions-pressure`, `/api/sanctions/v1/lookup-sanction-entity` |
-| `get_climate_data` | `/api/climate/v1/list-climate-anomalies`, `/api/climate/v1/get-co2-monitoring`, `/api/climate/v1/get-ocean-ice-data`, `/api/climate/v1/list-air-quality-data`, … |
-| `get_infrastructure_status` | `/api/infrastructure/v1/list-internet-outages`, `/api/infrastructure/v1/list-service-statuses` |
-| `get_supply_chain_data` | `/api/supply-chain/v1/get-shipping-stress`, `/api/supply-chain/v1/get-chokepoint-status`, `/api/supply-chain/v1/get-critical-minerals`, … |
-| `get_positive_events` | `/api/positive-events/v1/list-positive-geo-events` |
-| `get_radiation_data` | `/api/radiation/v1/list-radiation-observations` |
-| `get_research_signals` | `/api/research/v1/list-arxiv-papers`, `/api/research/v1/list-trending-repos`, `/api/research/v1/list-hackernews-items`, `/api/research/v1/list-tech-events` |
-| `get_forecast_predictions` | `/api/forecast/v1/get-forecasts` |
-| `get_maritime_activity` | `/api/maritime/v1/get-vessel-snapshot` |
-| `get_aviation_status` | `/api/aviation/v1/list-airport-delays`, `/api/aviation/v1/track-aircraft`, `/api/aviation/v1/get-flight-status` |
-| `search_flights` / `search_flight_prices_by_date` | `/api/aviation/v1/search-google-flights`, `/api/aviation/v1/search-google-dates` |
+| `GET /api/conflict/v1/list-acled-events` | REST-only. `get_conflict_events` covers `list-iran-events`, `list-ucdp-events`, and `list-unrest-events`, not ACLED. |
+| `GET /api/cyber/v1/list-cyber-threats` | REST-only for now. `get_cyber_threats` is a cache-backed MCP tool with no declared REST path. |
+| `GET /api/infrastructure/v1/list-service-statuses` | REST-only. `get_infrastructure_status` declares `list-internet-outages` only. |
+| `GET /api/supply-chain/v1/get-critical-minerals` | REST-only. `get_supply_chain_data` declares shipping stress and customs revenue only. |
+| `GET /api/research/v1/list-arxiv-papers`, `GET /api/research/v1/list-trending-repos`, `GET /api/research/v1/list-hackernews-items` | REST-only. `get_research_signals` declares `list-tech-events` only. |
+| `GET /api/aviation/v1/list-airport-delays`, `GET /api/aviation/v1/get-flight-status` | REST-only. MCP aviation coverage is via `get_airspace`, flight-search tools, and cache-backed `get_aviation_status`, not these routes. |
 
-**Composite / LLM tools** — `get_world_brief`, `get_country_brief`, `get_country_risk`, `get_airspace`, `analyze_situation`, `generate_forecasts` fan out to multiple REST RPCs and apply LLM synthesis or geographic filtering. There's no single REST equivalent — call the underlying RPCs and combine client-side.
-
-Always cross-check against [the bundled OpenAPI spec](https://www.worldmonitor.app/openapi.yaml) — that's the source of truth for path names, parameters, and response shapes.
+Always cross-check against [the bundled OpenAPI spec](https://www.worldmonitor.app/openapi.yaml) for REST path names, parameters, and response shapes, and against [MCP API coverage](/mcp-overview#api-coverage) for MCP exposure.
 
 ## Platform endpoints
 

@@ -118,16 +118,25 @@ describe('fetchDividendProfile', () => {
     );
   });
 
-  it('produces a non-zero CAGR for an annual payer with several full calendar years', async () => {
-    // Annual payer = 1 distinct month per year. The pre-fix CAGR gate
-    // required 10 distinct months per year, so annual payers always
-    // collapsed to 0. Post-fix we only care about calendar position.
-    const currentYear = new Date().getFullYear();
+  it('classifies an annual payer between scheduled payments (last payment just past the 1-year mark)', async () => {
+    // Regression for the anniversary-boundary bug: an annual payer whose most
+    // recent payment fell just OUTSIDE the trailing-365-day window — i.e. the
+    // next annual payment is still a few weeks away — must read as 'Annual',
+    // not collapse to '' as if the program were suspended, and must still
+    // produce a positive CAGR across its full prior calendar years.
+    //
+    // Anchored to `now` (last payment 380 days ago) so the recent=0 path is
+    // exercised DETERMINISTICALLY on every run. The previous calendar-year
+    // anchoring made this assertion depend on where today's date sat relative
+    // to a fixed prior-June payment, so it began failing once the real date
+    // rolled >365 days past that synthetic payment.
+    const nowSec = Math.floor(Date.now() / 1000);
+    const DAY = 24 * 3600;
     const divs: Record<string, { amount: number; date: number }> = {};
-    for (let yearIndex = 0; yearIndex < 5; yearIndex++) {
-      const year = currentYear - 5 + yearIndex;
-      const amount = 2.0 + yearIndex * 0.25;
-      const ts = Math.floor(Date.UTC(year, 5, 15) / 1000);
+    for (let k = 0; k < 5; k++) {
+      // newest payment 380d ago (just past the 365d window), then yearly back
+      const ts = nowSec - (380 + k * 365) * DAY;
+      const amount = 2.0 + (4 - k) * 0.25; // newest highest -> positive CAGR
       divs[String(ts)] = { amount, date: ts };
     }
     globalThis.fetch = (async () => {
@@ -138,6 +147,17 @@ describe('fetchDividendProfile', () => {
     assert.ok(
       profile.dividendCagr > 0,
       `annual payer should have non-zero CAGR; got ${profile.dividendCagr}`,
+    );
+    // Coherence: an 'Annual' badge must not ship alongside a $0 rate / 0% yield.
+    // The trailing-12-month window is empty here, so rate/yield must be
+    // backfilled from the indicated annual rate (the most recent payment).
+    assert.ok(
+      profile.trailingAnnualDividendRate > 0,
+      `Annual badge must carry a non-zero rate; got ${profile.trailingAnnualDividendRate}`,
+    );
+    assert.ok(
+      profile.dividendYield > 0,
+      `Annual badge must carry a non-zero yield; got ${profile.dividendYield}`,
     );
   });
 

@@ -209,6 +209,28 @@ export function formatResilienceServerLevel(level: string | null | undefined): s
   return normalized.length > 0 ? normalized.replace(/_/g, ' ') : 'unknown';
 }
 
+function hasAuthoritativeResilienceServerLevel(level: string | null | undefined): boolean {
+  const normalized = String(level || '').trim().toLowerCase();
+  return normalized.length > 0 && normalized !== 'unknown';
+}
+
+export function hasScoredResilienceOverall(
+  data: Pick<ResilienceScoreResponse, 'overallScore' | 'level'> | null | undefined,
+): boolean {
+  if (!data || typeof data.overallScore !== 'number' || !Number.isFinite(data.overallScore) || data.overallScore < 0) {
+    return false;
+  }
+  // Zero is a valid explicit score only when the API also supplies a real level.
+  return data.overallScore !== 0 || hasAuthoritativeResilienceServerLevel(data.level);
+}
+
+export function formatScoredResilienceOverallLabel(score: number): string {
+  const clampedScore = Math.min(100, Math.max(0, score));
+  const roundedScore = Math.round(clampedScore);
+  if (clampedScore > 0 && roundedScore === 0) return '<1';
+  return String(roundedScore);
+}
+
 export interface ResilienceOverallDisplay {
   hasScore: boolean;
   scoreForBar: number;
@@ -221,12 +243,12 @@ export interface ResilienceOverallDisplay {
 export function getResilienceOverallDisplay(data: Pick<ResilienceScoreResponse, 'overallScore' | 'level'>): ResilienceOverallDisplay {
   const rawScore = Number(data.overallScore);
   const visualLevel = getResilienceVisualLevel(rawScore);
-  if (visualLevel === 'unknown') {
+  if (!hasScoredResilienceOverall(data)) {
     return {
       hasScore: false,
       scoreForBar: 0,
       scoreLabel: 'n/a',
-      visualLevel,
+      visualLevel: 'unknown',
       visualLevelLabel: 'Insufficient data',
       serverLevelLabel: `API level: ${formatResilienceServerLevel(data.level)}`,
     };
@@ -236,11 +258,18 @@ export function getResilienceOverallDisplay(data: Pick<ResilienceScoreResponse, 
   return {
     hasScore: true,
     scoreForBar: clampedScore,
-    scoreLabel: String(Math.round(clampedScore)),
+    scoreLabel: formatScoredResilienceOverallLabel(clampedScore),
     visualLevel,
     visualLevelLabel: `Visual band: ${formatResilienceVisualLevel(visualLevel).toUpperCase()}`,
     serverLevelLabel: `API level: ${formatResilienceServerLevel(data.level)}`,
   };
+}
+
+export function shouldRenderResilienceBaselineStress(
+  data: Pick<ResilienceScoreResponse, 'overallScore' | 'level' | 'baselineScore' | 'stressScore'>,
+  overallDisplay: Pick<ResilienceOverallDisplay, 'hasScore'> = getResilienceOverallDisplay(data),
+): boolean {
+  return overallDisplay.hasScore && data.baselineScore != null && data.stressScore != null;
 }
 
 export interface ResilienceMethodologySummary {
@@ -360,6 +389,7 @@ function normalizeScoreInterval(interval: ScoreIntervalDisplayInput): { p05: num
   const p05 = Number(interval.p05);
   const p95 = Number(interval.p95);
   if (!Number.isFinite(p05) || !Number.isFinite(p95)) return null;
+  if (p05 < 0 || p05 > 100 || p95 < 0 || p95 > 100 || p05 > p95) return null;
   return { p05, p95 };
 }
 

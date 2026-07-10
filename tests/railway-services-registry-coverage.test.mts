@@ -55,6 +55,11 @@ const DOCKERFILE_CMD_RE = /^\s*CMD\s+\[\s*"node"\s*,\s*"(scripts\/[^"]+)"\s*\]/m
 // Also tolerates `node` paths without backticks in case the runbook drifts.
 const RUNBOOK_START_RE = /\|\s*\*\*Start command\*\*\s*\|\s*`?node\s+(scripts\/\S+?\.(?:mjs|cjs|js))`?\s*\|/g;
 
+// Match script headers that document a manually provisioned Railway service:
+//   - Service name: seed-bundle-foo
+// The script filename itself is the start command source for this shape.
+const SCRIPT_HEADER_SERVICE_RE = /^\s*\/\/\s*-\s*Service name:\s*([a-z0-9-]+)\s*$/m;
+
 describe('Railway service registry coverage', () => {
   it('every Dockerfile.* CMD has a matching registry entry', () => {
     const dockerfiles = readdirSync(repoRoot)
@@ -120,6 +125,40 @@ describe('Railway service registry coverage', () => {
     }
   });
 
+  it('every script header-documented Railway service is registered', () => {
+    const missing: string[] = [];
+    const scriptFiles = readdirSync(resolve(repoRoot, 'scripts'))
+      .filter((f) => /\.(?:mjs|cjs|js)$/.test(f))
+      .sort();
+
+    for (const file of scriptFiles) {
+      const entry = `scripts/${file}`;
+      const src = readFileSync(resolve(repoRoot, entry), 'utf8');
+      const m = src.match(SCRIPT_HEADER_SERVICE_RE);
+      if (!m) continue;
+
+      const service = m[1]!;
+      const registered = registry.find((r) => r.entry === entry);
+      if (!registered) {
+        missing.push(`${entry} documents Railway service '${service}' but registry has no matching entry`);
+        continue;
+      }
+      if (registered.service !== service) {
+        missing.push(
+          `${entry} documents Railway service '${service}' but registry service is '${registered.service}'`,
+        );
+      }
+    }
+
+    if (missing.length > 0) {
+      assert.fail(
+        `Script header-documented Railway services drift from scripts/railway-services.json:\n` +
+          missing.map((s) => `  - ${s}`).join('\n') +
+          `\n\nAdd the missing entry to the registry or update the documented service header.`,
+      );
+    }
+  });
+
   // Self-fixture: prove BOTH regex shapes match what they're supposed to.
   // Without this, a future "simplification" of either regex could silently
   // stop matching one shape, and the audit above would pass coincidentally
@@ -138,5 +177,16 @@ describe('Railway service registry coverage', () => {
     const m = RUNBOOK_START_RE.exec(sample);
     assert.ok(m, 'RUNBOOK_START_RE failed to match canonical Start command shape');
     assert.equal(m![1], 'scripts/seed-fake.mjs');
+  });
+
+  it('SCRIPT_HEADER_SERVICE_RE matches the documented script service header shape', () => {
+    const sample = [
+      '// Railway service config (set up manually via Railway dashboard or',
+      '// `railway service`):',
+      '//   - Service name: seed-bundle-fake',
+    ].join('\n');
+    const m = sample.match(SCRIPT_HEADER_SERVICE_RE);
+    assert.ok(m, 'SCRIPT_HEADER_SERVICE_RE failed to match canonical service header shape');
+    assert.equal(m![1], 'seed-bundle-fake');
   });
 });

@@ -3,6 +3,20 @@
   "schema_version": 1,
   "exceptions": [
     {
+      "path": "api/ask.ts",
+      "category": "external-protocol",
+      "reason": "NLWeb /ask endpoint (Microsoft NLWeb protocol) — request/response envelope (_meta {response_type, version}, SSE start/result/complete event stream) dictated by the NLWeb spec, not something we can redefine as proto. Anonymous discovery answers over the public MCP tool catalog only; per-IP limit registered in ENDPOINT_RATE_POLICIES and enforced in-handler.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/a2a.ts",
+      "category": "external-protocol",
+      "reason": "A2A (Agent-to-Agent) JSON-RPC 2.0 endpoint behind /.well-known/agent-card.json — envelope and method surface (message/send, tasks/*) dictated by the A2A spec v0.3.0, not something we can redefine as proto. Anonymous concierge over the public MCP tool catalog + public freshness envelope only; per-IP limit registered in ENDPOINT_RATE_POLICIES and enforced in-handler.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp.ts",
       "category": "external-protocol",
       "reason": "MCP streamable-HTTP transport — JSON-RPC 2.0 envelope dictated by the Model Context Protocol spec, not something we can or should redefine as proto. After the api/mcp.ts → api/mcp/ structural split, this file is a thin re-export shim that preserves the Vercel edge route URL and the public export surface; the actual handler and supporting modules live under api/mcp/ (each listed below).",
@@ -34,6 +48,20 @@
       "path": "api/mcp/dispatch.ts",
       "category": "external-protocol",
       "reason": "MCP tools/call dispatcher — executeTool (cache-tool path), dispatchToolsCall, per-tool budget gate, telemetry emission, F6 cache_all_null guard. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/error-fingerprint.ts",
+      "category": "external-protocol",
+      "reason": "MCP Sentry grouping helper for tools/call capture sites. Keeps MCP external-protocol failures grouped by step, tool, and stable inner error signature without introducing a sebuf product API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/usage.ts",
+      "category": "external-protocol",
+      "reason": "MCP wm_api_usage emission (#4866) — phase-to-reason mapper + ctx.waitUntil RequestEvent emitter for the /mcp funnel. Ops/observability plumbing for the same external-protocol handler, not a JSON data API; reuses server/_shared/usage.ts builders.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -131,7 +159,7 @@
     {
       "path": "api/mcp/resources/index.ts",
       "category": "external-protocol",
-      "reason": "MCP RESOURCE_REGISTRY + buildResourceResponse + resources/list public-shape projection. Read-only addressable URIs surfaced via resources/list + resources/read JSON-RPC methods, shape dictated by the MCP spec. Routes resources/read through dispatchToolsCall for auth-symmetric Pro daily-quota deduction.",
+      "reason": "MCP resource registries (PUBLIC_RESOURCE_REGISTRY + TEMPLATE_RESOURCE_REGISTRY) + buildResourceResponse/buildPublicResourceResponse + resources/list + resources/templates/list public-shape projections. Read-only addressable URIs surfaced via the resources/list, resources/templates/list, and resources/read JSON-RPC methods, shape dictated by the MCP spec. Concrete public resources (metadata-only freshness probes) read anonymously + quota-free; data-bearing template instantiations route resources/read through dispatchToolsCall for auth-symmetric Pro daily-quota deduction.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -139,6 +167,55 @@
       "path": "api/mcp/resources/slugs.ts",
       "category": "external-protocol",
       "reason": "Hand-curated kebab-case slug → matcher table for the worldmonitor://chokepoints/{slug}/status MCP resource URI. The stability contract: bookmarked URIs survive cache refreshes / upstream renames. Same external-protocol constraint as the resources index it backs.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/ui/registry.ts",
+      "category": "external-protocol",
+      "reason": "MCP Apps (extension io.modelcontextprotocol/ui) ui:// resource registry + buildUiResourceRead + resources/list public-shape projection. Serves static, data-free HTML app shells whose shape is dictated by the MCP Apps spec (mimeType text/html;profile=mcp-app); linked from tools via _meta.ui.resourceUri. Same external-protocol constraint as the sibling resources/index.ts.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/ui/country-risk-app.ts",
+      "category": "external-protocol",
+      "reason": "MCP Apps (io.modelcontextprotocol/ui) self-contained HTML app shell served verbatim as the ui://worldmonitor/country-risk.html resource. Exports an HTML string constant (no HTTP handler); the postMessage bridge protocol is dictated by the MCP Apps spec. Same external-protocol constraint as the ui/registry.ts it backs.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/ui/shell.ts",
+      "category": "external-protocol",
+      "reason": "MCP Apps (io.modelcontextprotocol/ui) shared app-shell builder — factors the DOCTYPE / 4-category CSP / dark-mode tokens / postMessage bridge every ui:// widget inlines. Exports HTML/meta builder functions (no HTTP handler); the bridge protocol + view CSP shape are dictated by the MCP Apps spec. Same external-protocol constraint as the ui/registry.ts it backs.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/ui/world-brief-app.ts",
+      "category": "external-protocol",
+      "reason": "MCP Apps (io.modelcontextprotocol/ui) self-contained HTML app shell served verbatim as the ui://worldmonitor/world-brief.html resource. Exports an HTML string constant (no HTTP handler); the postMessage bridge protocol is dictated by the MCP Apps spec. Same external-protocol constraint as the ui/registry.ts it backs.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/ui/country-brief-app.ts",
+      "category": "external-protocol",
+      "reason": "MCP Apps (io.modelcontextprotocol/ui) self-contained HTML app shell served verbatim as the ui://worldmonitor/country-brief.html resource. Exports an HTML string constant (no HTTP handler); the postMessage bridge protocol is dictated by the MCP Apps spec. Same external-protocol constraint as the ui/registry.ts it backs.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/ui/market-radar-app.ts",
+      "category": "external-protocol",
+      "reason": "MCP Apps (io.modelcontextprotocol/ui) self-contained HTML app shell served verbatim as the ui://worldmonitor/market-radar.html resource. Exports an HTML string constant (no HTTP handler); the postMessage bridge protocol is dictated by the MCP Apps spec. Same external-protocol constraint as the ui/registry.ts it backs.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/ui/chokepoint-monitor-app.ts",
+      "category": "external-protocol",
+      "reason": "MCP Apps (io.modelcontextprotocol/ui) self-contained HTML app shell served verbatim as the ui://worldmonitor/chokepoint-monitor.html resource. Exports an HTML string constant (no HTTP handler); the postMessage bridge protocol is dictated by the MCP Apps spec. Same external-protocol constraint as the ui/registry.ts it backs.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -181,6 +258,27 @@
       "path": "api/oauth-protected-resource.ts",
       "category": "external-protocol",
       "reason": "RFC 9728 OAuth Protected Resource metadata. Dynamic per-host to satisfy scanner origin-match rules — shape dictated by RFC 9728.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/oauth-authorization-server.ts",
+      "category": "external-protocol",
+      "reason": "RFC 8414 OAuth Authorization Server metadata + WorkOS auth.md agent_auth block. Dynamic per-host so issuer/endpoints match the request origin and align with the host-derived RFC 9728 PRM — shape dictated by RFC 8414 / workos.com/auth-md.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/http-message-signatures-directory.ts",
+      "category": "external-protocol",
+      "reason": "Web Bot Auth key directory (draft-meunier-web-bot-auth-architecture / http-message-signatures-directory). Publishes an Ed25519 JWK Set at /.well-known/http-message-signatures-directory; body shape and application/http-message-signatures-directory+json content-type are dictated by the spec. Dynamic per-request so nbf/exp roll a <=24h validity window.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/agent-auth.ts",
+      "category": "external-protocol",
+      "reason": "RFC 9728 agent-auth discovery challenge at /agent/auth. Returns 401 + WWW-Authenticate: Bearer resource_metadata=... (host-derived PRM pointer) so a GET-probing agent/scanner discovers the auth flow — /mcp's bare GET must stay 405 for the SSE handshake. Response is an auth challenge, not a JSON data API.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -328,6 +426,20 @@
       "removal_issue": null
     },
     {
+      "path": "api/not-found.ts",
+      "category": "ops-admin",
+      "reason": "Structured JSON 404 responder for unmatched /api/* paths (mounted by api/[...notfound].ts). Fixed-shape error envelope for agents/scanners in place of Vercel's native text/plain NOT_FOUND; not a product API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/[...notfound].ts",
+      "category": "ops-admin",
+      "reason": "Filesystem catch-all mount for api/not-found.ts. Exists solely to preserve the structured JSON 404 for genuinely unmatched /api/* paths without using an afterFiles rewrite that can shadow dynamic sebuf gateways; not a product API.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/cache-purge.js",
       "category": "ops-admin",
       "reason": "Admin-gated cache invalidation endpoint. Internal operator action, not a product API.",
@@ -364,8 +476,8 @@
     },
     {
       "path": "api/notify.ts",
-      "category": "ops-admin",
-      "reason": "Outbound notification dispatch (Slack/Discord/email) driven by cron. Internal, not a typed user API.",
+      "category": "internal-helper",
+      "reason": "Authenticated PRO event-publish endpoint that validates Clerk bearer auth, rejects relay-internal control events, and enqueues accepted events outside sebuf because it is queue plumbing rather than a typed domain RPC.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -373,7 +485,7 @@
     {
       "path": "api/bootstrap.js",
       "category": "internal-helper",
-      "reason": "Dashboard-internal config bundle assembled at request time. Exposing as a user-facing API would implicitly commit us to its shape; keep it deliberately unversioned and out of the API surface.",
+      "reason": "Aggregate seeded-cache hydration bundle assembled at request time. Kept outside sebuf because the shape is intentionally unversioned and aggregate, not a typed domain RPC; the added user-API-key validation does not change that shape.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -472,7 +584,7 @@
     {
       "path": "api/brief/[userId]/[issueDate].ts",
       "category": "deferred",
-      "reason": "Fetches a specific brief by user + issue date. Part of the brief/v1 service work.",
+      "reason": "Fetches a specific brief by user + frozen issue slot. Part of the brief/v1 service work.",
       "owner": "@SebastienMelki",
       "removal_issue": "TBD"
     },

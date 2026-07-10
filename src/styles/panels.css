@@ -1176,6 +1176,21 @@
   background: var(--semantic-critical);
   animation: oref-pulse-anim 1.2s ease-in-out infinite;
   flex-shrink: 0;
+  position: relative;
+  overflow: visible;
+}
+
+.oref-pulse::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid color-mix(in srgb, var(--semantic-critical) 60%, transparent);
+  border-radius: inherit;
+  pointer-events: none;
+  transform: scale(1);
+  opacity: 0.6;
+  animation: oref-pulse-ring 1.2s ease-in-out infinite;
+  will-change: transform, opacity;
 }
 
 @keyframes oref-pulse-anim {
@@ -1183,12 +1198,24 @@
   0%,
   100% {
     opacity: 1;
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--semantic-critical) 60%, transparent);
   }
 
   50% {
     opacity: 0.6;
-    box-shadow: 0 0 0 6px transparent;
+  }
+}
+
+@keyframes oref-pulse-ring {
+
+  0%,
+  100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+
+  50% {
+    opacity: 0;
+    transform: scale(2.2);
   }
 }
 
@@ -2211,6 +2238,22 @@
   z-index: 5;
 }
 
+.map-bottom-grid:empty {
+  flex: 0 0 0;
+  min-height: 0;
+  padding: 0;
+  border-top: none;
+  overflow: hidden;
+}
+
+body.panel-drag-active .map-bottom-grid:empty {
+  flex: 0 0 120px;
+  min-height: 120px;
+  padding: 12px;
+  border-top: 1px solid var(--border);
+  overflow-y: auto;
+}
+
 /* Base state for placeholder */
 .map-bottom-grid::after {
   content: 'Drop panels here to move them below the map';
@@ -2233,6 +2276,14 @@
   opacity: 0.4;
   pointer-events: none;
   transition: opacity 0.2s;
+}
+
+.map-bottom-grid:empty::after {
+  opacity: 0;
+}
+
+body.panel-drag-active .map-bottom-grid:empty::after {
+  opacity: 0.4;
 }
 
 /* Hide placeholder if there are panels */
@@ -3097,6 +3148,15 @@ a.hub-top-story {
   border-collapse: collapse;
   font-size: 11px;
 }
+.watchlist-table-scroll {
+  /* Source of truth for the virtual row height. MUST equal
+     VIRTUAL_ROW_HEIGHT_PX in WatchlistTableView.ts — the spacer pixel math and
+     the scroll→index mapping there assume every data row is exactly this tall. */
+  --watchlist-row-height: 33px;
+  max-height: min(58vh, 640px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 .watchlist-table thead th {
   text-align: left;
   color: var(--text-dim);
@@ -3107,6 +3167,10 @@ a.hub-top-story {
   padding: 6px 4px;
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--panel-bg, var(--bg));
 }
 .watchlist-table thead th.watchlist-th-right {
   text-align: right;
@@ -3122,6 +3186,15 @@ a.hub-top-story {
   cursor: pointer;
   border-bottom: 1px solid var(--border-subtle);
   transition: background 0.1s ease;
+  /* Pin each data row to exactly one virtual row height so the virtualization
+     spacer math and scroll→index mapping cannot drift with cell content (e.g.
+     a wrapped long name on a narrow/mobile viewport). */
+  height: var(--watchlist-row-height, 33px);
+}
+.watchlist-table tbody tr.watchlist-row > td {
+  /* Keep cells single-line so a row can never grow past --watchlist-row-height. */
+  white-space: nowrap;
+  overflow: hidden;
 }
 .watchlist-table tbody tr.watchlist-row:hover {
   background: var(--overlay-subtle);
@@ -3139,6 +3212,9 @@ a.hub-top-story {
   padding: 0;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
+}
+.watchlist-table tbody tr.watchlist-virtual-spacer > td {
+  pointer-events: none;
 }
 .watchlist-empty {
   padding: 24px;

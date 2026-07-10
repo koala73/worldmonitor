@@ -19,6 +19,7 @@ import {
   SPR_POLICIES_KEY,
   REFINERY_INPUTS_KEY,
   ENERGY_SPINE_KEY_PREFIX,
+  CII_RISK_SCORE_CACHE_KEYS,
 } from '../../../_shared/cache-keys';
 
 // TODO: multi-language digest search — currently only queries news:digest:v1:full:en.
@@ -798,7 +799,7 @@ export async function assembleAnalystContext(
 ): Promise<AnalystContext> {
   const keys = {
     insights: 'news:insights:v1',
-    riskScores: 'risk:scores:sebuf:stale:v3',
+    riskScores: CII_RISK_SCORE_CACHE_KEYS.stale,
     marketImplications: 'intelligence:market-implications:v1',
     forecasts: 'forecast:predictions:v2',
     stocks: 'market:stocks-bootstrap:v1',

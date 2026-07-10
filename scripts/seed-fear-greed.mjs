@@ -11,7 +11,7 @@ const FEAR_GREED_TTL = 64800; // 18h = 3x 6h interval
 
 const FRED_PREFIX = 'economic:fred:v1';
 
-// --- Yahoo Finance fetching (15 symbols, 150ms gaps) ---
+// --- Yahoo Finance fetching (22 symbols, 150ms gaps) ---
 const YAHOO_SYMBOLS = ['^GSPC','^VIX','^VIX9D','^VIX3M','^SKEW','GLD','TLT','HYG','SPY','RSP','DX-Y.NYB','XLK','XLF','XLE','XLV','XLY','XLP','XLI','XLB','XLU','XLRE','XLC'];
 
 async function fetchYahooSymbol(symbol) {

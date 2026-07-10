@@ -12,6 +12,7 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const MCP_SRC = readFileSync(resolve(HERE, '../api/mcp/registry/cache-tools.ts'), 'utf8')
   + '\n'
   + readFileSync(resolve(HERE, '../api/mcp/registry/rpc-tools.ts'), 'utf8');
+const ENV_EXAMPLE = readFileSync(resolve(HERE, '../.env.example'), 'utf8');
 
 /**
  * MCP schema-vs-behaviour parity test.
@@ -176,6 +177,11 @@ describe('MCP schema-vs-behaviour parity (regression guard)', () => {
       }
       assert.equal(violations.length, 0,
         `Found ${violations.length} cache-tool limit-default mismatches:\n  - ${violations.join('\n  - ')}`);
+    });
+
+    it('.env.example does not advertise stale default-limit toggles', () => {
+      assert.doesNotMatch(ENV_EXAMPLE, /\bMCP_LIMIT_DEFAULT_30\b/,
+        '.env.example must not document MCP_LIMIT_DEFAULT_30; cache tools always use DEFAULT_LIST_LIMIT unless limit:0 opts out');
     });
   });
 });

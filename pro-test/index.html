@@ -3,6 +3,9 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- The app fires a CORS /api/me/entitlement fetch right after boot;
+         warming DNS+TLS here takes the connection setup off that path. -->
+    <link rel="preconnect" href="https://api.worldmonitor.app" crossorigin />
     <!-- Tag <html> with .js so the seo-prerender content (visible by default
          for AEO scanners that don't execute JS) is CSS-hidden for real users.
          Mirrors the same pattern in the SPA's index.html. -->
@@ -15,6 +18,7 @@
     <link rel="alternate" hreflang="x-default" href="https://www.worldmonitor.app/pro" />
     <link rel="alternate" hreflang="en" href="https://www.worldmonitor.app/pro" />
     <link rel="alternate" hreflang="ar" href="https://www.worldmonitor.app/pro?lang=ar" />
+    <link rel="alternate" hreflang="fa" href="https://www.worldmonitor.app/pro?lang=fa" />
     <link rel="alternate" hreflang="de" href="https://www.worldmonitor.app/pro?lang=de" />
     <link rel="alternate" hreflang="es" href="https://www.worldmonitor.app/pro?lang=es" />
     <link rel="alternate" hreflang="fr" href="https://www.worldmonitor.app/pro?lang=fr" />
@@ -59,20 +63,25 @@
       "operatingSystem": "Web, Windows, macOS, Linux, Android TV",
       "url": "https://worldmonitor.app",
       "description": "AI-native global intelligence platform. WM Analyst chat across 30+ live services, an AI digest delivered daily, twice-daily, or weekly to Slack, Discord, Telegram, Email, or webhook, custom widget builder, and MCP connectors for Claude, GPT, and custom LLMs.",
+      "sameAs": ["https://github.com/koala73/worldmonitor", "https://www.npmjs.com/package/worldmonitor"],
       "author": {
         "@type": "Person",
-        "name": "Someone.ceo",
-        "url": "https://someone.ceo",
-        "jobTitle": "CEO of Anghami"
+        "name": "Elie Habib",
+        "url": "https://x.com/eliehabib",
+        "jobTitle": "CEO",
+        "sameAs": ["https://x.com/eliehabib", "https://github.com/koala73", "https://www.linkedin.com/in/elie-habib-7047b931", "https://www.wikidata.org/wiki/Q121365724", "https://www.crunchbase.com/person/elie-habib-2"]
       },
       "screenshot": "https://www.worldmonitor.app/favico/og-image.png",
-      "datePublished": "2024-10-01",
+      "datePublished": "2026-01",
       "offers": [
         { "@type": "Offer", "price": "0", "priceCurrency": "USD", "name": "Free", "description": "Full dashboard with 500+ news feeds, 65+ external data sources, 50+ map layers, BYOK AI" },
         { "@type": "Offer", "price": "39.99", "priceCurrency": "USD", "name": "Pro Monthly", "description": "WM Analyst chat, AI digest (daily/twice-daily/weekly), custom widget builder, MCP connectors, equity research, macro analytics, flight search — 30+ services under one key" },
-        { "@type": "Offer", "price": "399.99", "priceCurrency": "USD", "name": "Pro Annual", "description": "Pro yearly plan — 2 months free vs monthly billing" }
+        { "@type": "Offer", "price": "399.99", "priceCurrency": "USD", "name": "Pro Annual", "description": "Pro yearly plan — 2 months free vs monthly billing" },
+        { "@type": "Offer", "price": "99.99", "priceCurrency": "USD", "name": "API Starter Monthly", "description": "REST API + official SDKs (npm, PyPI, RubyGems, Go), 60 requests/minute, 1,000 requests/day, webhook notifications, custom data exports" },
+        { "@type": "Offer", "price": "999", "priceCurrency": "USD", "name": "API Starter Annual", "description": "API Starter yearly plan — about 17% off vs monthly billing" },
+        { "@type": "Offer", "price": "249.99", "priceCurrency": "USD", "name": "API Business", "description": "Everything in API Starter, 300 requests/minute, 10,000 requests/day, priority support" }
       ],
-      "featureList": "WM Analyst conversational AI, Personalized AI digest with daily/twice-daily/weekly cadence (up to 30 ranked items per send), Real-time alerts for critical events, Custom widget builder (HTML/CSS/JS + AI), MCP connectors for Claude/GPT/custom LLMs, Equity research and stock analysis, Backtesting, Flight search and price comparison, Market watchlist, Macro and central bank tracking, Maritime AIS ship monitoring, Global flight tracking, Infrastructure mapping, Satellite fire detection, Slack/Discord/Telegram/Email/Webhook delivery with AES-256 encryption, Android TV app, 21 language support"
+      "featureList": "WM Analyst conversational AI, Personalized AI digest with daily/twice-daily/weekly cadence (up to 30 ranked items per send), Real-time alerts for critical events, Custom widget builder (HTML/CSS/JS + AI), MCP connectors for Claude/GPT/custom LLMs, Equity research and stock analysis, Backtesting, Flight search and price comparison, Market watchlist, Macro and central bank tracking, Maritime AIS ship monitoring, Global flight tracking, Infrastructure mapping, Satellite fire detection, Slack/Discord/Telegram/Email/Webhook delivery with AES-256 encryption, Android TV app, 22 language support"
     }
     </script>
     <script type="application/ld+json">
@@ -158,7 +167,15 @@
       ]
     }
     </script>
-    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+    <!-- Turnstile is injected on demand by main.tsx when the enterprise
+         contact form nears the viewport — see ensureTurnstile(). No static
+         script tag so the ~100KB challenge JS stays off the common path. -->
+    <!-- Umami (#4931): the /pro page was the one funnel surface with no
+         analytics at all — pageviews + checkout-start now land in the same
+         Umami site as the dashboard so the funnel joins end-to-end.
+         data-domains must list www (exact-hostname match; apex 301s to www).
+         Static nonce satisfies the strict-dynamic CSP. -->
+    <script async defer src="https://abacus.worldmonitor.app/script.js" data-website-id="e8800335-c853-46a8-8497-c993ed2f58bc" data-domains="worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app" data-exclude-search="true" nonce="wm-static-bootstrap"></script>
   </head>
   <body>
     <div id="root"></div>
@@ -166,7 +183,7 @@
       <div style="max-width:800px;margin:0 auto;padding:40px 20px;font-family:system-ui,sans-serif;color:#e5e5e5;background:#0a0a0a;">
         <h2>World Monitor Pro — The Geopolitical AI Layer</h2>
         <p>Ask it, subscribe to it, build on it. WM Analyst chat across 30+ live services, an AI digest delivered daily, twice-daily, or weekly to Slack, Discord, Telegram, Email, or webhook, a custom widget builder, and MCP for Claude and GPT.</p>
-        <p>Pro is built on top of the free <a href="https://www.worldmonitor.app" style="color:#4ade80;">World Monitor</a> dashboard — try it first, then upgrade for the AI analyst layer. You can also explore the specialized variants: <a href="https://tech.worldmonitor.app/" style="color:#4ade80;">Tech Monitor</a>, <a href="https://finance.worldmonitor.app/" style="color:#4ade80;">Finance Monitor</a>, <a href="https://commodity.worldmonitor.app/" style="color:#4ade80;">Commodity Monitor</a>, and <a href="https://happy.worldmonitor.app/" style="color:#4ade80;">Happy Monitor</a>.</p>
+        <p>Pro is built on top of the free <a href="https://www.worldmonitor.app/dashboard" style="color:#4ade80;">World Monitor</a> dashboard — try it first, then upgrade for the AI analyst layer. You can also explore the specialized variants: <a href="https://tech.worldmonitor.app/" style="color:#4ade80;">Tech Monitor</a>, <a href="https://finance.worldmonitor.app/" style="color:#4ade80;">Finance Monitor</a>, <a href="https://commodity.worldmonitor.app/" style="color:#4ade80;">Commodity Monitor</a>, and <a href="https://happy.worldmonitor.app/" style="color:#4ade80;">Happy Monitor</a>.</p>
         <p>Pro ingests data from <a href="https://finnhub.io/" style="color:#4ade80;" rel="noopener noreferrer">Finnhub</a>, <a href="https://fred.stlouisfed.org/" style="color:#4ade80;" rel="noopener noreferrer">FRED</a>, <a href="https://acleddata.com/" style="color:#4ade80;" rel="noopener noreferrer">ACLED</a>, <a href="https://ucdp.uu.se/" style="color:#4ade80;" rel="noopener noreferrer">UCDP</a>, <a href="https://firms.modaps.eosdis.nasa.gov/" style="color:#4ade80;" rel="noopener noreferrer">NASA FIRMS</a>, <a href="https://aisstream.io/" style="color:#4ade80;" rel="noopener noreferrer">AISStream</a>, <a href="https://opensky-network.org/" style="color:#4ade80;" rel="noopener noreferrer">OpenSky</a>, and 25+ other live services. Background and analysis on the <a href="https://www.worldmonitor.app/blog/" style="color:#4ade80;">World Monitor Blog</a>; full source on <a href="https://github.com/koala73/worldmonitor" style="color:#4ade80;" rel="noopener noreferrer">GitHub (AGPL-3.0)</a>.</p>
         <h3>Three pillars</h3>
         <ul>

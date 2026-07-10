@@ -1,0 +1,84 @@
+---
+title: "Official SDKs"
+description: "Zero-dependency SDKs for Python, Ruby, Go, and JavaScript — script country briefs, risk scores, and MCP tools without hand-rolling HTTP calls."
+---
+
+World Monitor ships official client libraries in four language ecosystems. All of them are **zero-dependency**, MCP-first mirrors of the [`worldmonitor` npm CLI](/cli): the [MCP server](/mcp-overview) is the live, documented agent surface (`tools/list` is public; `tools/call` needs a user API key), and a small REST escape hatch rounds each SDK out for host-relative and self-hosted use.
+
+| Language | Package | Install | Source |
+| --- | --- | --- | --- |
+| Python | [`worldmonitor-sdk` on PyPI](https://pypi.org/project/worldmonitor-sdk/) | `pip install worldmonitor-sdk` | [`sdk/python/`](https://github.com/koala73/worldmonitor/tree/main/sdk/python) |
+| Ruby | [`worldmonitor` on RubyGems](https://rubygems.org/gems/worldmonitor) | `gem install worldmonitor` | [`sdk/ruby/`](https://github.com/koala73/worldmonitor/tree/main/sdk/ruby) |
+| Go | [`github.com/koala73/worldmonitor/sdk/go` on pkg.go.dev](https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go) | `go get github.com/koala73/worldmonitor/sdk/go` | [`sdk/go/`](https://github.com/koala73/worldmonitor/tree/main/sdk/go) |
+| JavaScript / CLI | [`worldmonitor` on npm](https://www.npmjs.com/package/worldmonitor) | `npm install worldmonitor` | [`cli/`](https://github.com/koala73/worldmonitor/tree/main/cli) |
+
+Every package sets its homepage to `worldmonitor.app` — that is how you (or your agent) verify it is the official SDK and not a look-alike.
+
+## Shared design
+
+All four clients expose the same surface with language-native naming:
+
+- **Any MCP tool** — `call_tool` / `CallTool` with named arguments; the result is the unwrapped JSON-RPC `result`.
+- **Curated helpers** for the highest-traffic tools: world brief, country brief/risk, markets, conflicts, cyber, news, disasters, sanctions, forecasts, maritime.
+- **Public listings** — `list_tools`, `list_prompts`, `list_resources` need no key.
+- **REST escape hatch** — `get("/api/…")` and `health()` against `api.worldmonitor.app`.
+- **Configuration** via constructor arguments or the `WORLDMONITOR_API_KEY` (alias `WM_API_KEY`), `WORLDMONITOR_BASE_URL`, and `WORLDMONITOR_MCP_URL` environment variables.
+- **Errors** split into an MCP error (JSON-RPC `error` object, auth failures carry a key hint) and an API error (non-2xx transport).
+- A descriptive **User-Agent** (`worldmonitor-<lang>/<version>`) — the API edge challenges generic library agents, so keep it if you fork.
+
+Every tool accepts an optional `jmespath` argument for [server-side projection](/mcp-jmespath) — typically an 80–95% response-size cut.
+
+## Python
+
+```python
+from worldmonitor_sdk import Client
+
+client = Client(api_key="wm_...")  # or set WORLDMONITOR_API_KEY
+client.list_tools()                # public — no key needed
+client.country_risk("IR")
+client.conflict_events(country="IR", limit=5)
+client.call_tool("get_market_data", asset_class="crypto")
+```
+
+## Ruby
+
+```ruby
+require "worldmonitor"
+
+client = WorldMonitor::Client.new(api_key: "wm_...")
+client.list_tools
+client.country_risk("IR")
+client.call_tool("get_market_data", asset_class: "crypto")
+```
+
+## Go
+
+```go
+client := worldmonitor.New("wm_...") // "" reads WORLDMONITOR_API_KEY
+tools, _ := client.ListTools(ctx)
+risk, _ := client.CountryRisk(ctx, "IR", nil)
+quotes, _ := client.CallTool(ctx, "get_market_data", worldmonitor.Args{"asset_class": "crypto"})
+```
+
+## JavaScript
+
+The npm package doubles as the [command-line client](/cli) and a library:
+
+```js
+import { parseArgs, planRequest } from 'worldmonitor';
+import run from 'worldmonitor/run';
+```
+
+## Get a key
+
+Data calls (`tools/call`) need a user API key — issue one at [worldmonitor.app/pro](https://www.worldmonitor.app/pro). See [Authentication](/usage-auth) for how keys, OAuth, and browser sessions differ, and [Rate Limits](/usage-rate-limits) for per-plan allowances.
+
+## Releasing (maintainers)
+
+Each SDK versions and publishes independently via OIDC trusted publishing — no long-lived registry tokens (see the [CLI release runbook](/releasing-cli) for the npm flow):
+
+- **Python:** bump `version` in `sdk/python/pyproject.toml` **and** `__version__` in `sdk/python/src/worldmonitor_sdk/__init__.py`, then tag `py-vX.Y.Z` (workflow `publish-python.yml`).
+- **Ruby:** bump `WorldMonitor::VERSION` in `sdk/ruby/lib/worldmonitor/version.rb`, then tag `gem-vX.Y.Z` (workflow `publish-ruby.yml`).
+- **Go:** bump `Version` in `sdk/go/worldmonitor.go`, then tag `sdk/go/vX.Y.Z` (workflow `publish-go.yml` validates and warms the module proxy).
+
+`tests/sdk-packages.test.mjs` guards the version sync and the `worldmonitor.app` homepage metadata on every package.

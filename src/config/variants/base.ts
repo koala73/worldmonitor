@@ -3,11 +3,10 @@ import type { PanelConfig, MapLayers } from '@/types';
 
 // Shared exports (re-exported by all variants)
 export { SECTORS, COMMODITIES, MARKET_SYMBOLS } from '../markets';
-export { UNDERSEA_CABLES } from '../geo';
-export { AI_DATA_CENTERS } from '../ai-datacenters';
-
-// Idle pause duration - shared across map and stream panels (5 minutes)
-export const IDLE_PAUSE_MS = 5 * 60 * 1000;
+// UNDERSEA_CABLES + AI_DATA_CENTERS intentionally not re-exported (kept off the
+// eager @/config barrel); consumers import directly from '@/config/geo-map' and
+// '@/config/ai-datacenters'. (#4404)
+export { IDLE_PAUSE_MS } from '../idle';
 
 // Refresh intervals (ms) - shared across all variants
 export const REFRESH_INTERVALS = {
@@ -40,6 +39,11 @@ export const REFRESH_INTERVALS = {
   fearGreed: 30 * 60 * 1000,
   strategicPosture: 15 * 60 * 1000,
   strategicRisk: 5 * 60 * 1000,
+  // Seed cadences are 6-24h and badge decay is computed client-side from
+  // lastUpdate, so 5min loses nothing vs 60s; must stay under the 15min
+  // FRESH_THRESHOLD or synthesized-OK sources (compact health carries no age
+  // for healthy checks) would decay to stale between polls (#4907).
+  healthFreshness: 5 * 60 * 1000,
   temporalBaseline: 10 * 60 * 1000,
   tradePolicy: 60 * 60 * 1000,
   supplyChain: 60 * 60 * 1000,
@@ -108,6 +112,9 @@ export const STORAGE_KEYS = {
   activeChannel: 'worldmonitor-active-channel',
   webcamPrefs: 'worldmonitor-webcam-prefs',
 } as const;
+
+export type MapModePreference = 'flat' | 'globe';
+export const DEFAULT_MAP_MODE: MapModePreference = 'flat';
 
 // Type definitions for variant configs
 export interface VariantConfig {

@@ -1,4 +1,5 @@
 import { expect, test, type Request } from '@playwright/test';
+import { assertSignedOutAuthHydrationKeepsHeaderStable } from './header-reservation';
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths';
 
 type VariantName = 'full' | 'tech' | 'finance' | 'commodity' | 'energy' | 'happy';
@@ -173,6 +174,7 @@ test.describe('variant live reliability smoke', () => {
       .toBeGreaterThan(1);
 
     await page.waitForTimeout(10_000);
+    await assertSignedOutAuthHydrationKeepsHeaderStable(page);
 
     const panelDiagnostics = await page.evaluate((ids) => {
       const expected = new Set(ids);

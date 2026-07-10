@@ -178,15 +178,15 @@
     "apiTier": "API-NIVEAU",
     "title": "Programmatische intelligence",
     "subtitle": "Voor ontwikkelaars, analisten en teams die bouwen op World Monitor-data. Apart van Pro — gebruik beide of één.",
-    "restApi": "REST API over alle 30+ dienstdomeinen",
+    "restApi": "REST API over alle 30+ dienstdomeinen — officiële SDK's voor JavaScript, Python, Ruby, Go",
     "authenticated": "Per sleutel geauthenticeerd, rate-limited per niveau",
     "structured": "Gestructureerde JSON met cache-headers en OpenAPI 3.1 docs",
     "starter": "Starter",
     "starterReqs": "1.000 req/dag",
     "starterWebhooks": "5 webhook-regels",
     "business": "Business",
-    "businessReqs": "50.000 req/dag",
-    "businessWebhooks": "Onbeperkte webhooks + SLA",
+    "businessReqs": "10.000 req/dag",
+    "businessWebhooks": "Priority support",
     "feedData": "Voed data in je dashboards, automatiseer alerts via Zapier/n8n/Make, bouw eigen scoring-modellen op CII/risico-data."
   },
   "enterpriseShowcase": {
@@ -374,16 +374,17 @@
           "Dagelijkse marktbriefings",
           "Militair- en geopolitieke tracking",
           "Aangepaste widget builder",
-          "MCP-gegevensconnectoren",
+          "MCP + SDK-toegang voor Claude Desktop en andere AI-clients (50 aanroepen/dag)",
           "Prioriteit gegevensvernieuwing"
         ]
       },
       "api": {
         "description": "Programmatische toegang tot intelligence-gegevens",
         "features": [
-          "REST API-toegang",
+          "REST API + officiële SDK's (npm, PyPI, RubyGems, Go)",
           "Real-time gegevensstromen",
-          "1.000 aanvragen/dag",
+          "60 aanvragen/minuut",
+          "1.000 aanvragen/dag inbegrepen",
           "Webhook-meldingen",
           "Aangepaste gegevensexports"
         ]

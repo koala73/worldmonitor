@@ -1,17 +1,18 @@
 /**
  * HMAC-derived public-share hash for the WorldMonitor Brief.
  *
- * The hosted per-user magazine at /api/brief/{userId}/{issueDate} is
+ * The hosted per-user magazine at /api/brief/{userId}/{issueSlot} is
  * bound to a specific reader via a signed token. Sharing that URL
  * leaks the recipient's identity to whoever reopens the link, so
  * "just copy the URL" is not a viable share action.
  *
  * Instead the Share button generates a separate public URL at
  * /api/brief/public/{hash} where {hash} is a deterministic 12-char
- * HMAC over (userId, issueDate). The unauth'd public route reads a
+ * HMAC over (userId, issueSlot). The unauth'd public route reads a
  * pointer key (brief:public:{hash}) that maps back to the original
- * per-user brief, and renders it in "public mode" — whyMatters and
- * the user's name are stripped before HTML emission.
+ * per-user brief stored at brief:{userId}:{issueSlot}, and renders it
+ * in "public mode" — whyMatters and the user's name are stripped
+ * before HTML emission.
  *
  * Secret hygiene:
  *   - BRIEF_SHARE_SECRET is distinct from BRIEF_URL_SIGNING_SECRET so
@@ -28,9 +29,11 @@
 
 const USER_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
 // YYYY-MM-DD-HHMM issue slot — matches the magazine signer's slot
-// format. deriveShareHash is bound to (userId, slot) so a morning
-// brief and an afternoon brief of the same day produce distinct
-// public share URLs.
+// format. The function parameter is still named issueDate for
+// compatibility with the pre-slot helpers, but the value is the
+// issueSlot. deriveShareHash is bound to (userId, slot) so a morning
+// brief and an afternoon brief of the same day produce distinct public
+// share URLs.
 const ISSUE_DATE_RE = /^\d{4}-\d{2}-\d{2}-\d{4}$/;
 // 12 base64url chars = 72 bits — enough to prevent brute-force
 // enumeration of active share URLs even at aggressive rates.
@@ -74,10 +77,10 @@ async function hmacSha256(secret: string, message: string): Promise<Uint8Array> 
 }
 
 /**
- * Deterministic 12-char base64url hash of (userId, issueDate). Two
+ * Deterministic 12-char base64url hash of (userId, issueSlot). Two
  * calls with the same arguments always return the same hash; an
  * attacker who does not hold BRIEF_SHARE_SECRET cannot guess a valid
- * hash for any {userId, issueDate} pair.
+ * hash for any {userId, issueSlot} pair.
  *
  * The hash is intentionally short (72 bits) so URLs stay copy-paste-
  * friendly on social channels. Given the per-hash pointer has a 7-day
@@ -101,7 +104,7 @@ export async function deriveShareHash(
 /**
  * Shape check only. Cannot validate the hash cryptographically from
  * outside — that requires the secret and the referenced {userId,
- * issueDate}, which the public route recovers from the Redis pointer.
+ * issueSlot}, which the public route recovers from the Redis pointer.
  */
 export function isValidShareHashShape(hash: unknown): hash is string {
   return typeof hash === 'string' && HASH_RE.test(hash);
@@ -114,6 +117,8 @@ export function isValidShareHashShape(hash: unknown): hash is string {
  * and the hash derivation stay in lockstep. The optional `refCode`
  * attaches a referral query parameter for signup attribution when
  * the recipient clicks the magazine's subscribe CTA.
+ * `issueDate` is the legacy parameter name for the slot string
+ * (`YYYY-MM-DD-HHMM`).
  */
 export async function buildPublicBriefUrl({
   userId,
@@ -141,7 +146,8 @@ export async function buildPublicBriefUrl({
  * Opaque pointer value format used in Redis under brief:public:{hash}.
  * Kept as a simple colon-delimited string to mirror other per-user
  * brief key conventions and avoid an envelope round-trip for what is
- * structurally just a pointer.
+ * structurally just a pointer. The second segment is the issueSlot
+ * even though this helper keeps the legacy issueDate parameter name.
  */
 export function encodePublicPointer(userId: string, issueDate: string): string {
   assertShape(userId, issueDate);

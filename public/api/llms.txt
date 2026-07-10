@@ -1,0 +1,58 @@
+# World Monitor API
+
+> Machine-readable entry point for the World Monitor developer surface — the MCP server, REST API, CLI, SDKs, and agent skills that expose the platform's real-time global-intelligence tools as structured JSON.
+
+World Monitor's data is available to agents and applications through five interchangeable surfaces that share one auth model and one tool inventory: an MCP server (Streamable HTTP), a versioned REST API, a zero-dependency CLI, official SDKs (Python, Ruby, Go, JavaScript), and a set of published agent skills. Every surface returns source-attributed structured JSON and supports server-side JMESPath projection to cut response size 80–95%.
+
+This is the API-section companion to the site-wide briefing at https://worldmonitor.app/llms.txt and the human documentation at https://worldmonitor.app/docs/llms.txt.
+
+## Endpoints
+
+- **MCP server (recommended):** `https://worldmonitor.app/mcp` — Streamable HTTP, JSON-RPC 2.0. Issue `tools/list` for the live tool inventory, `prompts/list` for pre-built workflow templates, `resources/list` for read-only resources. Server card: https://worldmonitor.app/.well-known/mcp/server-card.json
+- **Docs MCP server:** `https://www.worldmonitor.app/docs/mcp` — Streamable HTTP, public (no auth); search-and-retrieval tools over the developer documentation. Route "how do I…" questions here; route live-data calls to the product MCP above.
+- **REST API:** base `https://api.worldmonitor.app`. OpenAPI 3.1 spec at https://worldmonitor.app/openapi.yaml (JSON: https://worldmonitor.app/openapi.json). Machine-readable API catalog (RFC 9727): https://worldmonitor.app/.well-known/api-catalog
+- **CLI:** `npx worldmonitor tools` lists every tool with no key; `npm install -g worldmonitor` installs the `worldmonitor` command — a zero-dependency, MCP-first client for the tools and REST API above. https://www.npmjs.com/package/worldmonitor
+- **SDKs:** official zero-dependency client libraries mirroring the CLI — Python `pip install worldmonitor-sdk` (https://pypi.org/project/worldmonitor-sdk/), Ruby `gem install worldmonitor` (https://rubygems.org/gems/worldmonitor), Go `go get github.com/koala73/worldmonitor/sdk/go` (https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go), JavaScript (npm `worldmonitor`). Guide: https://www.worldmonitor.app/docs/sdks
+- **Agent Skills:** discovery manifest at https://worldmonitor.app/.well-known/agent-skills/index.json
+
+## Authentication
+
+- **API key:** send header `X-WorldMonitor-Key: wm_<40-hex>` on both MCP and REST data calls. Issue a key at https://worldmonitor.app/pro
+- **OAuth 2.1:** the MCP server supports OAuth (`scope=mcp`). Authorization-server metadata: https://worldmonitor.app/.well-known/oauth-authorization-server · protected-resource metadata: https://worldmonitor.app/.well-known/oauth-protected-resource
+- **Auth matrix, plans & limits:** https://www.worldmonitor.app/docs/usage-auth · machine-readable pricing: https://worldmonitor.app/pricing.md · human auth guide: https://worldmonitor.app/auth.md
+
+## Common Tasks → Tools
+
+- **Live world brief & signals** — `get_world_brief`, `get_news_intelligence`, `get_natural_disasters`, `get_cyber_threats`, `get_aviation_status`.
+- **Country situation brief** — `get_country_brief`. REST: `GET https://api.worldmonitor.app/api/intelligence/v1/get-country-intel-brief?country_code=IR`.
+- **Country risk & resilience** — `get_country_risk`. REST: `GET https://api.worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=DE`; ranked list at `/api/resilience/v1/get-resilience-ranking`.
+- **"Does this event move markets?"** — `get_conflict_events`, `get_sanctions_data`, `get_chokepoint_status`, `get_market_data`, `get_maritime_activity`.
+- **Commodity & supply-chain disruption** — `get_supply_chain_data`, `get_energy_intelligence`, `get_commodity_geo`, `get_maritime_activity`.
+- **Forecasting & prediction markets** — `generate_forecasts`, `get_forecast_predictions`, `get_prediction_markets`.
+- **Tool discovery** — `describe_tool` returns the full uncompressed definition for any tool name (quota-exempt).
+- **Bulk reads (batch)** — `POST https://api.worldmonitor.app/api/batch/v1/execute` with `{"operations": [{"id": "a", "path": "/api/market/v1/get-fear-greed-index"}]}` runs up to 20 documented GET operations concurrently in one request; add per-operation `?jmespath=` projections to keep each body small.
+
+## Response Shaping
+
+- Every MCP tool and REST GET accepts an optional `jmespath` projection applied server-side after per-tool filtering — typically 80–95% fewer tokens. Guide + 12 worked examples: https://www.worldmonitor.app/docs/mcp-jmespath
+- Bad expressions soft-fail via a `{_jmespath_error, original_keys}` envelope so an agent can self-correct from the returned key list. Full envelope reference: https://www.worldmonitor.app/docs/mcp-error-catalog
+- Full tool reference with uncompressed definitions: https://www.worldmonitor.app/docs/mcp-tools-reference
+
+## Rate Limits & Quota
+
+- Discovery methods (`tools/list`, `prompts/list`, `describe_tool`) are quota-exempt but rate-limited to 60 requests/minute.
+- Data calls consume the plan's daily quota. Free, Pro, API, and Enterprise tier details: https://worldmonitor.app/pricing.md
+
+## Developer Resource Pages
+
+- [World Monitor Developer Portal](https://worldmonitor.app/developers.md): Hub linking every developer resource by name
+- [World Monitor MCP Server](https://worldmonitor.app/mcp-server.md): MCP server endpoint, tools, and auth
+- [World Monitor OpenAPI Specification](https://worldmonitor.app/openapi.md): REST API OpenAPI 3.1 contract (openapi.yaml / openapi.json)
+- [World Monitor SDKs](https://worldmonitor.app/sdks.md): Official Python, Ruby, Go, and JavaScript client libraries
+
+## Optional
+
+- [Site-wide llms.txt](https://worldmonitor.app/llms.txt): Full platform briefing and agent guidance
+- [Extended llms-full.txt](https://worldmonitor.app/llms-full.txt): All data layers, components, and data sources
+- [Human API docs](https://worldmonitor.app/docs/documentation): Mintlify documentation site
+- [Source Code](https://github.com/koala73/worldmonitor): GitHub repository (AGPL-3.0)

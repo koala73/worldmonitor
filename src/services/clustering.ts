@@ -10,8 +10,24 @@ import { clusterNewsCore } from './analysis-core';
 import { mlWorker } from './ml-worker';
 import { ML_THRESHOLDS } from '@/config/ml-config';
 
+export const MAX_SEMANTIC_CLUSTER_INPUT = 250;
+
 export function clusterNews(items: NewsItem[]): ClusteredEvent[] {
   return clusterNewsCore(items, getSourceTier) as ClusteredEvent[];
+}
+
+function compareClustersForSemanticCandidate(a: ClusteredEvent, b: ClusteredEvent): number {
+  const alertDelta = Number(b.isAlert) - Number(a.isAlert);
+  if (alertDelta !== 0) return alertDelta;
+
+  const sourceDelta = b.sourceCount - a.sourceCount;
+  if (sourceDelta !== 0) return sourceDelta;
+
+  const tierDelta = getSourceTier(a.primarySource) - getSourceTier(b.primarySource);
+  if (tierDelta !== 0) return tierDelta;
+
+  return b.lastUpdated.getTime() - a.lastUpdated.getTime()
+    || a.id.localeCompare(b.id);
 }
 
 /**
@@ -27,8 +43,12 @@ export async function clusterNewsHybrid(items: NewsItem[]): Promise<ClusteredEve
   }
 
   try {
+    const rankedSemanticInput = [...jaccardClusters].sort(compareClustersForSemanticCandidate);
+    const semanticCandidates = rankedSemanticInput.slice(0, MAX_SEMANTIC_CLUSTER_INPUT);
+    const overflowClusters = rankedSemanticInput.slice(MAX_SEMANTIC_CLUSTER_INPUT);
+
     // Get cluster primary titles for embedding
-    const clusterTexts = jaccardClusters.map(c => ({
+    const clusterTexts = semanticCandidates.map(c => ({
       id: c.id,
       text: c.primaryTitle,
     }));
@@ -40,7 +60,9 @@ export async function clusterNewsHybrid(items: NewsItem[]): Promise<ClusteredEve
     );
 
     // Merge semantically similar clusters
-    return mergeSemanticallySimilarClusters(jaccardClusters, semanticGroups);
+    const mergedSemanticClusters = mergeSemanticallySimilarClusters(semanticCandidates, semanticGroups);
+    return [...mergedSemanticClusters, ...overflowClusters]
+      .sort((a, b) => b.lastUpdated.getTime() - a.lastUpdated.getTime());
   } catch (error) {
     console.warn('[Clustering] Semantic clustering failed, using Jaccard only:', error);
     return jaccardClusters;

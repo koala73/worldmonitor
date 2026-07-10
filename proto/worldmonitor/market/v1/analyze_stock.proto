@@ -13,17 +13,20 @@ message StockAnalysisHeadline {
 }
 
 message AnalyzeStockRequest {
+  // Stock ticker symbol to analyze.
   string symbol = 1 [(sebuf.http.query) = { name: "symbol" },
     (buf.validate.field).required = true,
     (buf.validate.field).string.min_len = 1,
     (buf.validate.field).string.max_len = 32
   ];
 
+  // Optional company display name used to disambiguate the symbol.
   string name = 2 [
     (sebuf.http.query) = { name: "name" },
     (buf.validate.field).string.max_len = 120
   ];
 
+  // Whether to include recent news in the stock analysis.
   bool include_news = 3 [(sebuf.http.query) = { name: "include_news" }];
 }
 
@@ -91,6 +94,16 @@ message AnalyzeStockResponse {
   reserved "five_year_avg_dividend_yield";
   string dividend_frequency = 55;
   double dividend_cagr = 56;
+
+  // US-equity trading session at analysis time: "regular", "pre", "post" or
+  // "closed". Empty when session detection does not apply (non-US symbols).
+  string market_session = 57;
+  // Latest pre/post-market price from Yahoo extended-hours candles. Only set
+  // when market_session is "pre" or "post" and extended data is available.
+  optional double extended_price = 58;
+  // Extended-hours change % vs the last regular-session close. Only set when
+  // extended_price is set.
+  optional double extended_change_percent = 59;
 }
 
 message AnalystConsensus {

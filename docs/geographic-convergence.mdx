@@ -27,11 +27,19 @@ convergence_score = min(100, type_score + count_boost)
 
 ## Alert Thresholds
 
-| Types Converging | Score Range | Alert Level |
-|-----------------|-------------|-------------|
-| **4 types** | 80-100 | Critical |
-| **3 types** | 60-80 | High |
-| **3 types** (low count) | 40-60 | Medium |
+The detector only emits convergence alerts after **3+ distinct event types** are
+present in a cell. The Strategic Risk alert priority layer then classifies the
+alert using both type diversity and score:
+
+| Types Converging | Score Range | Alert Priority |
+|-----------------|-------------|----------------|
+| **4 types** | 100 | Critical |
+| **3 types** with high event count | 90-100 | Critical |
+| **3 types** with lower event count | 81-89 | High |
+
+The shared priority helper still has a defensive `medium` branch for scores
+`>=50`, but current detector output does not reach it because emitted alerts
+must already have at least 3 event types.
 
 ## Example Scenarios
 
@@ -39,7 +47,8 @@ convergence_score = min(100, type_score + count_boost)
 
 - Cell: `25°N, 121°E`
 - Events: Military flights (3), Naval vessels (2), Protests (1)
-- Score: 75 + 12 = 87 (Critical)
+- Score: 75 + 12 = 87
+- Priority: High
 - Signal: "Geographic Convergence (3 types) - military flights, naval vessels, protests"
 
 **Middle East Flashpoint**
@@ -47,6 +56,7 @@ convergence_score = min(100, type_score + count_boost)
 - Cell: `32°N, 35°E`
 - Events: Military flights (5), Protests (8), Earthquake (1)
 - Score: 75 + 25 = 100 (Critical)
+- Priority: Critical
 - Signal: Multiple activity streams converging on region
 
 ## Why This Matters

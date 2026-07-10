@@ -1,3 +1,5 @@
+import filterParamContracts from '../../../../shared/openapi-filter-param-contracts.json';
+
 // ========================================================================
 // Constants
 // ========================================================================
@@ -11,9 +13,7 @@ export const Z_THRESHOLD_LOW = 1.5;
 export const Z_THRESHOLD_MEDIUM = 2.0;
 export const Z_THRESHOLD_HIGH = 3.0;
 
-export const VALID_BASELINE_TYPES = [
-  'military_flights', 'vessels', 'protests', 'news', 'ais_gaps', 'satellite_fires',
-];
+export const VALID_BASELINE_TYPES = filterParamContracts.infrastructureTemporalBaselineTypes;
 
 // ========================================================================
 // Temporal baseline helpers
@@ -40,7 +40,7 @@ export const COUNT_SOURCE_KEYS: Record<string, string> = {
 };
 
 export const TEMPORAL_ANOMALIES_KEY = 'temporal:anomalies:v1';
-export const TEMPORAL_ANOMALIES_TTL = 900;
+export const TEMPORAL_ANOMALIES_TTL = 3600;
 export const BASELINE_LOCK_KEY = 'baseline:lock';
 export const BASELINE_LOCK_TTL = 30;
 

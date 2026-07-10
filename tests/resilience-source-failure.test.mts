@@ -54,10 +54,6 @@ const TRACKED_STANDALONE_META_KEYS_NOT_IN_HEALTH = new Set([
   // does not include a direct SEED_META entry because its data key is
   // parameterized by year.
   'seed-meta:displacement:summary',
-  // api/health.js tracks seed-meta:economic:macro-signals and documents
-  // energy-prices as the primary key with the same 150min threshold, but
-  // it does not classify the energy-prices data key directly.
-  'seed-meta:economic:energy-prices',
   // scripts/seed-supply-chain-trade.mjs writes these via
   // writeExtraKeyWithMeta. They feed scoreTradePolicy directly but are not
   // standalone /api/health probes today.
@@ -251,6 +247,35 @@ describe('resilience source-failure module', () => {
       );
       assert.equal(result.dimensions.has('importConcentration'), false);
       assert.deepEqual(result.failedMetaKeys, []);
+    });
+
+    it('keeps UCDP annual source cadence separate from the 7-hour seeder liveness budget', async () => {
+      const nowMs = 1_700_000_000_000;
+      const ucdpIndicators = INDICATOR_REGISTRY.filter((indicator) => (
+        indicator.sourceKey === 'conflict:ucdp-events:v1'
+      ));
+      assert.deepEqual(
+        ucdpIndicators.map((indicator) => [indicator.id, indicator.cadence]),
+        [
+          ['ucdpConflict', 'annual'],
+          ['recoveryConflictPressure', 'annual'],
+        ],
+      );
+      assert.equal(resolveSeedMetaKey('conflict:ucdp-events:v1'), 'seed-meta:conflict:ucdp-events');
+      assert.equal(STANDALONE_SOURCE_META_MAX_STALE_MIN['seed-meta:conflict:ucdp-events'], 420);
+
+      const reader = async (key: string): Promise<unknown | null> => {
+        if (key === 'seed-meta:conflict:ucdp-events') {
+          return { status: 'ok', fetchedAt: nowMs - (8 * 60 * 60 * 1000), recordCount: 193 };
+        }
+        return null;
+      };
+
+      const result = await readStandaloneSourceFailureDimensions(reader, nowMs);
+
+      assert.equal(result.dimensions.has('borderSecurity'), true);
+      assert.equal(result.dimensions.has('stateContinuity'), true);
+      assert.deepEqual(result.failedMetaKeys, ['seed-meta:conflict:ucdp-events']);
     });
 
     it('maps non-ok standalone seed-meta to affected dimensions even with a recent fetchedAt', async () => {

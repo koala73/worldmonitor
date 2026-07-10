@@ -1,5 +1,7 @@
 import type { StoryData } from '@/services/story-data';
-import { renderStoryToCanvas } from '@/services/story-renderer';
+// renderStoryToCanvas is dynamic-imported at its call site (#4486) so story-renderer
+// stays off the eager boot graph; this is the second of its two eager edges (the
+// other is country-intel). renderAndDisplay runs on story-modal open (interaction).
 import { generateStoryDeepLink, getShareUrls, shareTexts } from '@/services/story-share';
 import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
@@ -84,6 +86,7 @@ export function openStoryModal(data: StoryData): void {
 }
 
 async function renderAndDisplay(data: StoryData): Promise<void> {
+  const { renderStoryToCanvas } = await import('@/services/story-renderer');
   const canvas = await renderStoryToCanvas(data);
   currentDataUrl = canvas.toDataURL('image/png');
 
@@ -154,18 +157,18 @@ async function shareWhatsApp(data: StoryData): Promise<void> {
     downloadStory();
     flashButton('.story-whatsapp', t('modals.story.saved'), t('modals.story.whatsapp'));
   }
-  window.open(urls.whatsapp, '_blank');
+  window.open(urls.whatsapp, '_blank', 'noopener,noreferrer');
 }
 
 async function shareTwitter(data: StoryData): Promise<void> {
   const urls = getShareUrls(data);
-  window.open(urls.twitter, '_blank');
+  window.open(urls.twitter, '_blank', 'noopener,noreferrer');
   flashButton('.story-twitter', t('modals.story.opening'), t('modals.story.twitter'));
 }
 
 async function shareLinkedIn(data: StoryData): Promise<void> {
   const urls = getShareUrls(data);
-  window.open(urls.linkedin, '_blank');
+  window.open(urls.linkedin, '_blank', 'noopener,noreferrer');
   flashButton('.story-linkedin', t('modals.story.opening'), t('modals.story.linkedin'));
 }
 

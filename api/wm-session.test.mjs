@@ -1,14 +1,55 @@
 import { strict as assert } from 'node:assert';
-import test from 'node:test';
+import { readFileSync } from 'node:fs';
+import { afterEach, beforeEach, test } from 'node:test';
 
 const SECRET = 'test-secret-must-be-at-least-32-chars-long-xxx';
-process.env.WM_SESSION_SECRET = SECRET;
-process.env.WIDGET_AGENT_KEY = 'widget-secret';
-process.env.PRO_WIDGET_KEY = 'pro-secret';
-process.env.WORLDMONITOR_VALID_KEYS = 'enterprise-secret';
+const originalFetch = globalThis.fetch;
+const originalEnv = { ...process.env };
 
 const { default: handler } = await import('./wm-session.js');
 const { validateSessionToken } = await import('./_session.js');
+const { __resetRateLimitForTest } = await import('./_rate-limit.js');
+
+function restoreEnv() {
+  for (const key of Object.keys(process.env)) {
+    if (!(key in originalEnv)) delete process.env[key];
+  }
+  Object.assign(process.env, originalEnv);
+}
+
+function configureDefaultEnv() {
+  process.env.WM_SESSION_SECRET = SECRET;
+  process.env.WIDGET_AGENT_KEY = 'widget-secret';
+  process.env.PRO_WIDGET_KEY = 'pro-secret';
+  process.env.WORLDMONITOR_VALID_KEYS = 'enterprise-secret';
+  process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
+}
+
+function mockUpstashRateLimit({ remaining = 29, limit = 30 } = {}) {
+  globalThis.fetch = async (input, init) => {
+    const url = input instanceof URL ? input.href : typeof input === 'string' ? input : input.url;
+    if (url.includes('fake.upstash.io')) {
+      return new Response(
+        JSON.stringify([{ result: [remaining, limit] }]),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+    return originalFetch(input, init);
+  };
+}
+
+beforeEach(() => {
+  configureDefaultEnv();
+  __resetRateLimitForTest();
+  mockUpstashRateLimit();
+});
+
+afterEach(() => {
+  __resetRateLimitForTest();
+  globalThis.fetch = originalFetch;
+  restoreEnv();
+});
 
 function makeReq(method, { origin } = {}) {
   const headers = new Headers();
@@ -77,10 +118,24 @@ test('localhost session cookie remains host-only for dev', async () => {
 });
 
 test('OPTIONS preflight returns 204 with CORS', async () => {
+  delete process.env.UPSTASH_REDIS_REST_URL;
+  delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  __resetRateLimitForTest();
   const resp = await handler(makeReq('OPTIONS', { origin: 'https://worldmonitor.app' }));
   assert.equal(resp.status, 204);
   assert.equal(resp.headers.get('access-control-allow-methods'), 'POST, OPTIONS');
   assert.equal(resp.headers.get('access-control-allow-credentials'), 'true');
+});
+
+test('POST fail-closed limiter receives Vercel ctx for degraded telemetry', () => {
+  const src = readFileSync(new URL('./wm-session.js', import.meta.url), 'utf8');
+
+  assert.match(src, /export\s+default\s+async\s+function\s+handler\s*\(\s*req\s*,\s*ctx\s*\)/);
+  assert.match(
+    src,
+    /checkRateLimit\(req,\s*cors,\s*\{[\s\S]*?failClosed:\s*true,[\s\S]*?ctx,/,
+    'wm-session must pass Vercel ctx to the fail-closed rate limiter so Sentry delivery can use waitUntil',
+  );
 });
 
 test('GET method is rejected with 405', async () => {
@@ -99,6 +154,34 @@ test('No origin (curl) is allowed (rate limit + token TTL are the throttles)', a
   const body = await resp.json();
   assert.equal(body.token, undefined);
   assert.match(cookieValue(setCookies(resp), 'wm-session'), /^wms_/);
+});
+
+test('POST returns degraded 503 without issuing a token when Redis limiter config is missing', async () => {
+  delete process.env.UPSTASH_REDIS_REST_URL;
+  delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  __resetRateLimitForTest();
+
+  const resp = await handler(makeReq('POST', { origin: 'https://worldmonitor.app' }));
+
+  assert.equal(resp.status, 503);
+  assert.equal(resp.headers.get('X-RateLimit-Mode'), 'degraded');
+  assert.equal(resp.headers.get('Retry-After'), '5');
+  assert.equal(resp.headers.get('access-control-allow-origin'), 'https://worldmonitor.app');
+  assert.equal(cookieValue(setCookies(resp), 'wm-session'), '');
+  const body = await resp.json();
+  assert.match(body.error, /rate-limit service temporarily unavailable/i);
+});
+
+test('POST returns 429 without issuing a token when the wm-session issuance budget is exhausted', async () => {
+  mockUpstashRateLimit({ remaining: -1, limit: 30 });
+  const resp = await handler(makeReq('POST', { origin: 'https://worldmonitor.app' }));
+
+  assert.equal(resp.status, 429);
+  assert.equal(resp.headers.get('X-RateLimit-Limit'), '30');
+  assert.equal(resp.headers.get('X-RateLimit-Remaining'), '0');
+  assert.equal(cookieValue(setCookies(resp), 'wm-session'), '');
+  const body = await resp.json();
+  assert.equal(body.error, 'Too many requests');
 });
 
 test('no-key session refresh preserves existing HttpOnly key cookies', async () => {
@@ -143,6 +226,60 @@ test('enterprise key can be exchanged into a short-lived HttpOnly pro cookie', a
   assert.equal(resp.status, 200);
   const cookies = setCookies(resp);
   assert.match(cookies.join('\n'), /wm-pro-key=enterprise-secret;.*HttpOnly/);
+});
+
+test('legacy widget/pro secret checks reject prefix and length mismatches', async () => {
+  const previousWidget = process.env.WIDGET_AGENT_KEY;
+  const previousPro = process.env.PRO_WIDGET_KEY;
+  const previousEnterprise = process.env.WORLDMONITOR_VALID_KEYS;
+  process.env.WIDGET_AGENT_KEY = 'widget-secret-with-a-distinct-length';
+  process.env.PRO_WIDGET_KEY = 'pro-secret-with-a-longer-distinct-length';
+  process.env.WORLDMONITOR_VALID_KEYS = 'enterprise-short,enterprise-secret-with-a-longer-length';
+
+  try {
+    const accepted = await handler(new Request('https://api.worldmonitor.app/api/wm-session', {
+      method: 'POST',
+      headers: {
+        origin: 'https://worldmonitor.app',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        widgetKey: 'widget-secret-with-a-distinct-length',
+        proKey: 'enterprise-secret-with-a-longer-length',
+      }),
+    }));
+    assert.equal(accepted.status, 200);
+
+    const prefixOnly = await handler(new Request('https://api.worldmonitor.app/api/wm-session', {
+      method: 'POST',
+      headers: {
+        origin: 'https://worldmonitor.app',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        widgetKey: 'widget-secret-with-a-distinct',
+        proKey: 'enterprise-secret-with-a-longer',
+      }),
+    }));
+    assert.equal(prefixOnly.status, 401);
+
+    const differentLength = await handler(new Request('https://api.worldmonitor.app/api/wm-session', {
+      method: 'POST',
+      headers: {
+        origin: 'https://worldmonitor.app',
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        widgetKey: 'widget-secret-with-a-distinct-length-extra',
+        proKey: 'enterprise-short-extra',
+      }),
+    }));
+    assert.equal(differentLength.status, 401);
+  } finally {
+    process.env.WIDGET_AGENT_KEY = previousWidget;
+    process.env.PRO_WIDGET_KEY = previousPro;
+    process.env.WORLDMONITOR_VALID_KEYS = previousEnterprise;
+  }
 });
 
 test('invalid legacy keys are rejected and not persisted as HttpOnly cookies', async () => {

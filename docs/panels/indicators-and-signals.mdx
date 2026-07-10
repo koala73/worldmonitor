@@ -1,6 +1,6 @@
 ---
 title: "Indicators & Signals"
-description: "Catalogue of compact market-indicator panels, correlation panels, and misc signal surfaces — each a tight tile-style read that complements the deep-dive panels."
+description: "Catalogue of compact market-indicator, correlation, and misc signal panels — tight tile-style reads that complement World Monitor's deep-dive panels."
 ---
 
 WorldMonitor ships many **tile-style** indicator, correlation, and signal panels — compact surfaces that show one or two readings each and are designed to be composed alongside the deep-dive panels. This page is the collective reference so each tile is findable without writing a dedicated page per panel.
@@ -81,7 +81,7 @@ These panels visualise cross-domain correlation over a rolling window — useful
 | Panel id | Title | Cross-domain pair |
 |---|---|---|
 | `military-correlation` | Force Posture | Military × events |
-| `escalation-correlation` | Escalation Monitor | Conflict × tone |
+| `escalation-correlation` | Escalation Monitor | Conflict/protest events (45%) + conflict-linked outages (25%) + escalation news severity (30%) over 48h |
 | `economic-correlation` | Economic Warfare | Sanctions × markets |
 | `disaster-correlation` | Disaster Cascade | Natural × infra |
 | `cross-source-signals` | Cross-Source Signals | Multi-source signal agreement |
@@ -101,6 +101,24 @@ These panels visualise cross-domain correlation over a rolling window — useful
 | `live-webcams` | Live Webcams | See [Webcam layer](/webcam-layer) for the map-layer equivalent. |
 | `windy-webcams` | Windy Live Webcam | Windy.com-backed webcam. |
 
+## Infrastructure-backed endpoints
+
+The compact infrastructure tiles use the generated InfrastructureService client. `internet-disruptions`, DDoS summaries, traffic anomalies, `service-status`, and server-computed temporal anomalies read bootstrap data first when available, then call the REST RPC when bootstrap data is absent, filtered, or stale. Utility routes such as IP geolocation, reverse geocoding, bootstrap cache reads, and baseline writes are data-plane routes rather than standalone tiles.
+
+| Method | Route | What it feeds |
+|--------|-------|---------------|
+| `GET` | `/api/infrastructure/v1/list-internet-outages` | Internet Disruptions map/tile data from Cloudflare Radar; `fetchInternetOutages()` uses bootstrap `outages` first, then this RPC. |
+| `GET` | `/api/infrastructure/v1/list-service-statuses` | Service Status tile; `fetchServiceStatuses()` uses bootstrap `serviceStatuses` first, then this RPC with optional status filtering. |
+| `GET` | `/api/infrastructure/v1/get-cable-health` | Cable layer and infrastructure cascade context; see [Infrastructure Cascade Analysis](/infrastructure-cascade) for the cable-specific workflow. |
+| `GET` | `/api/infrastructure/v1/get-temporal-baseline` | Client-side temporal anomaly checks for metrics such as military flights, vessels, protests, AIS gaps, and satellite fires. |
+| `GET` | `/api/infrastructure/v1/list-temporal-anomalies` | Server-computed temporal anomalies for news and satellite fires; bootstrap `temporalAnomalies` is consumed first, then `fetchLiveAnomalies()` can call this route. |
+| `GET` | `/api/infrastructure/v1/list-internet-ddos-attacks` | DDoS attack summaries from Cloudflare Radar; `fetchDdosAttacks()` uses bootstrap `ddosAttacks` first, then this RPC. |
+| `GET` | `/api/infrastructure/v1/list-internet-traffic-anomalies` | Traffic anomaly events from Cloudflare Radar; bootstrap `trafficAnomalies` is used for the unfiltered view, while country-filtered reads call this RPC. |
+| `GET` | `/api/infrastructure/v1/get-ip-geo` | Caller IP geolocation utility for infrastructure-aware experiences; no panel hydrates from it directly. |
+| `GET` | `/api/infrastructure/v1/reverse-geocode` | Coordinate-to-place lookup utility for API consumers and v1 callers; some UI paths still use the legacy thin `/api/reverse-geocode` helper. |
+| `GET` | `/api/infrastructure/v1/get-bootstrap-data` | Batch cache read RPC for selected bootstrap/cache keys; complements the top-level bootstrap hydration path. |
+| `POST` | `/api/infrastructure/v1/record-baseline-snapshot` | Background baseline update used by temporal anomaly tracking; it writes observations and does not render a visible tile by itself. |
+
 ## Shared behaviour
 
 - All panels above are **free** unless noted otherwise — none are `premium: 'locked'` in `src/config/panels.ts`.
@@ -110,6 +128,6 @@ These panels visualise cross-domain correlation over a rolling window — useful
 ## Related
 
 - [Features & Interface](/features) — overview of the panel system, Cmd+K, and layout.
-- [Data Sources](/data-sources) — full upstream source list.
+- [Data Sources](/data-sources) — server digest feed inventory and broader upstream source list.
 - [Finance Data](/finance-data) — deeper reference for the financial tiles as a family.
 - [Country Instability Index](/country-instability-index) and [Country Resilience Index](/methodology/country-resilience-index) — the country-level risk complements.

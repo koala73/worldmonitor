@@ -6,6 +6,7 @@
  */
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import reporterOverrides from '../scripts/shared/comtrade-reporter-overrides.json' with { type: 'json' };
 
 import {
   deriveCoverageLevel,
@@ -257,6 +258,12 @@ describe('ISO2_TO_COMTRADE completeness', () => {
   it('all values are numeric strings', () => {
     for (const [iso2, code] of Object.entries(ISO2_TO_COMTRADE)) {
       assert.ok(/^\d{3}$/.test(code), `${iso2} has non-3-digit code: ${code}`);
+    }
+  });
+
+  it('applies every shared non-M49 reporter override', () => {
+    for (const [iso2, code] of Object.entries(reporterOverrides)) {
+      assert.equal(ISO2_TO_COMTRADE[iso2], code, `${iso2} must resolve through shared Comtrade override metadata`);
     }
   });
 

@@ -15,6 +15,12 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders } from './_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureEdgeException, captureSilentError } from './_sentry-edge.js';
+import {
+  beginStandaloneIdempotency,
+  completeStandaloneIdempotency,
+  getIdempotencyKey,
+} from './_idempotency.js';
+import { blockedNotificationWebhookUrlReason } from './_notification-webhook-ssrf';
 import { validateBearerToken } from '../server/auth-session';
 import { getEntitlements } from '../server/_shared/entitlement-check';
 
@@ -171,6 +177,8 @@ interface PostBody {
   aiDigestEnabled?: boolean;
   // Optional ISO-3166 alpha-2 country-scope; relay re-validates + normalizes.
   countries?: string[];
+  // Optional watchlist ticker-scope (#4922 U3); relay re-validates + normalizes.
+  tickers?: string[];
 }
 
 export default async function handler(req: Request, ctx: { waitUntil: (p: Promise<unknown>) => void }): Promise<Response> {
@@ -182,7 +190,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       headers: {
         ...corsHeaders,
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, Idempotency-Key',
       },
     });
   }
@@ -193,6 +201,8 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
 
   const session = await validateBearerToken(token);
   if (!session.valid || !session.userId) return json({ error: 'Unauthorized' }, 401, corsHeaders);
+
+  const idempotencyRequest = req.method === 'POST' ? req.clone() : null;
 
   if (!CONVEX_SITE_URL || !RELAY_SHARED_SECRET) {
     return json({ error: 'Service unavailable' }, 503, corsHeaders);
@@ -232,6 +242,26 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       return json({ error: 'Invalid JSON body' }, 400, corsHeaders);
     }
 
+    const idempotencyKey = getIdempotencyKey(req);
+    const idempotency = idempotencyKey
+      ? await beginStandaloneIdempotency({
+        request: idempotencyRequest ?? req,
+        pathname: '/api/notification-channels',
+        scope: `user:${session.userId}`,
+        idempotencyKey,
+        corsHeaders,
+      })
+      : null;
+    if (
+      idempotency &&
+      idempotency.kind !== 'proceed' &&
+      idempotency.kind !== 'disabled'
+    ) {
+      return idempotency.response;
+    }
+    const finish = (response: Response): Promise<Response> =>
+      completeStandaloneIdempotency(idempotency, response);
+
     const { action } = body;
 
     try {
@@ -241,26 +271,19 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         const resp = await convexRelay(relayBody);
         if (!resp.ok) {
           console.error('[notification-channels] POST create-pairing-token relay error:', resp.status);
-          return json({ error: 'Operation failed' }, 500, corsHeaders);
+          return finish(json({ error: 'Operation failed' }, 500, corsHeaders));
         }
-        return json(await resp.json(), 200, corsHeaders);
+        return finish(json(await resp.json(), 200, corsHeaders));
       }
 
       if (action === 'set-channel') {
         const { channelType, email, webhookEnvelope, webhookLabel } = body;
-        if (!channelType) return json({ error: 'channelType required' }, 400, corsHeaders);
+        if (!channelType) return finish(json({ error: 'channelType required' }, 400, corsHeaders));
 
         if (channelType === 'webhook' && webhookEnvelope) {
-          try {
-            const parsed = new URL(webhookEnvelope);
-            if (parsed.protocol !== 'https:') {
-              return json({ error: 'Webhook URL must use HTTPS' }, 400, corsHeaders);
-            }
-            if (/^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|::1|0\.0\.0\.0)/.test(parsed.hostname)) {
-              return json({ error: 'Webhook URL must not point to a private/local address' }, 400, corsHeaders);
-            }
-          } catch {
-            return json({ error: 'Invalid webhook URL' }, 400, corsHeaders);
+          const blockedReason = blockedNotificationWebhookUrlReason(webhookEnvelope);
+          if (blockedReason) {
+            return finish(json({ error: blockedReason }, 400, corsHeaders));
           }
         }
 
@@ -271,25 +294,25 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           try {
             relayBody.webhookEnvelope = await encryptSlackWebhook(webhookEnvelope);
           } catch {
-            return json({ error: 'Encryption unavailable' }, 503, corsHeaders);
+            return finish(json({ error: 'Encryption unavailable' }, 503, corsHeaders));
           }
         }
         const resp = await convexRelay(relayBody);
         if (!resp.ok) {
           console.error('[notification-channels] POST set-channel relay error:', resp.status);
-          return json({ error: 'Operation failed' }, 500, corsHeaders);
+          return finish(json({ error: 'Operation failed' }, 500, corsHeaders));
         }
         const setResult = await resp.json() as { ok: boolean; isNew?: boolean };
         console.log(`[notification-channels] set-channel ${channelType}: isNew=${setResult.isNew}`);
         // Only send welcome on first connect, not re-links; use waitUntil so the edge isolate doesn't terminate early
         if (setResult.isNew) ctx.waitUntil(publishWelcome(session.userId, channelType));
-        return json({ ok: true }, 200, corsHeaders);
+        return finish(json({ ok: true }, 200, corsHeaders));
       }
 
       if (action === 'set-web-push') {
         const { endpoint, p256dh, auth, userAgent } = body;
         if (!endpoint || !p256dh || !auth) {
-          return json({ error: 'endpoint, p256dh, auth required' }, 400, corsHeaders);
+          return finish(json({ error: 'endpoint, p256dh, auth required' }, 400, corsHeaders));
         }
         // SSRF defence. The relay later POSTs to whatever endpoint we
         // persist here, so an unvalidated user-submitted URL is a
@@ -302,17 +325,17 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         try {
           const u = new URL(endpoint);
           if (u.protocol !== 'https:') {
-            return json({ error: 'endpoint must be https' }, 400, corsHeaders);
+            return finish(json({ error: 'endpoint must be https' }, 400, corsHeaders));
           }
           if (!isAllowedPushEndpointHost(u.hostname)) {
-            return json(
+            return finish(json(
               { error: 'endpoint host is not a recognised push service' },
               400,
               corsHeaders,
-            );
+            ));
           }
         } catch {
-          return json({ error: 'invalid endpoint' }, 400, corsHeaders);
+          return finish(json({ error: 'invalid endpoint' }, 400, corsHeaders));
         }
         const resp = await convexRelay({
           action: 'set-web-push',
@@ -325,26 +348,29 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         });
         if (!resp.ok) {
           console.error('[notification-channels] POST set-web-push relay error:', resp.status);
-          return json({ error: 'Operation failed' }, 500, corsHeaders);
+          return finish(json({ error: 'Operation failed' }, 500, corsHeaders));
         }
         const wpResult = await resp.json() as { ok: boolean; isNew?: boolean };
         if (wpResult.isNew) ctx.waitUntil(publishWelcome(session.userId, 'web_push'));
-        return json({ ok: true }, 200, corsHeaders);
+        return finish(json({ ok: true }, 200, corsHeaders));
       }
 
       if (action === 'delete-channel') {
         const { channelType } = body;
-        if (!channelType) return json({ error: 'channelType required' }, 400, corsHeaders);
+        if (!channelType) return finish(json({ error: 'channelType required' }, 400, corsHeaders));
         const resp = await convexRelay({ action: 'delete-channel', userId: session.userId, channelType });
         if (!resp.ok) {
           console.error('[notification-channels] POST delete-channel relay error:', resp.status);
-          return json({ error: 'Operation failed' }, 500, corsHeaders);
+          return finish(json({ error: 'Operation failed' }, 500, corsHeaders));
         }
-        return json({ ok: true }, 200, corsHeaders);
+        return finish(json({ ok: true }, 200, corsHeaders));
       }
 
       if (action === 'set-alert-rules') {
-        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, countries } = body;
+        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, countries, tickers } = body;
+        if (tickers !== undefined && !Array.isArray(tickers)) {
+          return finish(json({ error: 'TICKERS_MUST_BE_ARRAY' }, 400, corsHeaders));
+        }
         const resp = await convexRelay({
           action: 'set-alert-rules',
           userId: session.userId,
@@ -355,22 +381,35 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           channels,
           aiDigestEnabled,
           countries,
+          tickers,
         });
         if (!resp.ok) {
+          // A 400 carries a structured validation code (TICKERS_LIMIT_EXCEEDED /
+          // COUNTRIES_LIMIT_EXCEEDED); 402 is the paywall (PRO_REQUIRED). Pass
+          // both through with body intact so the client renders the real reason
+          // instead of a generic toast — mirrors set-notification-config below.
+          if (resp.status === 400 || resp.status === 402) {
+            const text = await resp.text().catch(() => '');
+            let payload: unknown = { error: 'Validation failed' };
+            if (text) {
+              try { payload = JSON.parse(text); } catch { /* keep default */ }
+            }
+            return finish(json(payload, resp.status, corsHeaders));
+          }
           console.error('[notification-channels] POST set-alert-rules relay error:', resp.status);
-          return json({ error: 'Operation failed' }, 500, corsHeaders);
+          return finish(json({ error: 'Operation failed' }, 500, corsHeaders));
         }
-        return json({ ok: true }, 200, corsHeaders);
+        return finish(json({ ok: true }, 200, corsHeaders));
       }
 
       if (action === 'set-quiet-hours') {
         const VALID_OVERRIDE = new Set(['critical_only', 'silence_all', 'batch_on_wake']);
         const { variant, quietHoursEnabled, quietHoursStart, quietHoursEnd, quietHoursTimezone, quietHoursOverride, countries } = body;
         if (!variant || quietHoursEnabled === undefined) {
-          return json({ error: 'variant and quietHoursEnabled required' }, 400, corsHeaders);
+          return finish(json({ error: 'variant and quietHoursEnabled required' }, 400, corsHeaders));
         }
         if (quietHoursOverride !== undefined && !VALID_OVERRIDE.has(quietHoursOverride)) {
-          return json({ error: 'invalid quietHoursOverride' }, 400, corsHeaders);
+          return finish(json({ error: 'invalid quietHoursOverride' }, 400, corsHeaders));
         }
         const resp = await convexRelay({
           action: 'set-quiet-hours',
@@ -385,20 +424,20 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         });
         if (!resp.ok) {
           console.error('[notification-channels] POST set-quiet-hours relay error:', resp.status);
-          return json({ error: 'Operation failed' }, 500, corsHeaders);
+          return finish(json({ error: 'Operation failed' }, 500, corsHeaders));
         }
         // If quiet hours were disabled or override changed away from batch_on_wake,
         // flush any held events so they're delivered rather than expiring silently.
         const abandonsBatch = !quietHoursEnabled || quietHoursOverride !== 'batch_on_wake';
         if (abandonsBatch) ctx.waitUntil(publishFlushHeld(session.userId, variant));
-        return json({ ok: true }, 200, corsHeaders);
+        return finish(json({ ok: true }, 200, corsHeaders));
       }
 
       if (action === 'set-digest-settings') {
         const VALID_DIGEST_MODE = new Set(['realtime', 'daily', 'twice_daily', 'weekly']);
         const { variant, digestMode, digestHour, digestTimezone, countries } = body;
         if (!variant || !digestMode || !VALID_DIGEST_MODE.has(digestMode)) {
-          return json({ error: 'variant and valid digestMode required' }, 400, corsHeaders);
+          return finish(json({ error: 'variant and valid digestMode required' }, 400, corsHeaders));
         }
         const resp = await convexRelay({
           action: 'set-digest-settings',
@@ -411,9 +450,9 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         });
         if (!resp.ok) {
           console.error('[notification-channels] POST set-digest-settings relay error:', resp.status);
-          return json({ error: 'Operation failed' }, 500, corsHeaders);
+          return finish(json({ error: 'Operation failed' }, 500, corsHeaders));
         }
-        return json({ ok: true }, 200, corsHeaders);
+        return finish(json({ ok: true }, 200, corsHeaders));
       }
 
       // Atomic update of (digestMode, sensitivity) and any subset of the alert-rule
@@ -421,20 +460,23 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       // race against the cross-field validator.
       // Critical: 400 responses from the relay must pass through with their body
       // intact so the client can render INCOMPATIBLE_DELIVERY helper text.
-      // See plans/forbid-realtime-all-events.md §1f.
+      // See docs/archive/plans/forbid-realtime-all-events.md §1f.
       if (action === 'set-notification-config') {
         const VALID_SENSITIVITY = new Set(['all', 'high', 'critical']);
         const VALID_DIGEST_MODE = new Set(['realtime', 'daily', 'twice_daily', 'weekly']);
-        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, digestMode, digestHour, digestTimezone, countries } = body;
-        if (!variant) return json({ error: 'variant required' }, 400, corsHeaders);
+        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, digestMode, digestHour, digestTimezone, countries, tickers } = body;
+        if (!variant) return finish(json({ error: 'variant required' }, 400, corsHeaders));
         if (sensitivity !== undefined && !VALID_SENSITIVITY.has(sensitivity)) {
-          return json({ error: 'invalid sensitivity' }, 400, corsHeaders);
+          return finish(json({ error: 'invalid sensitivity' }, 400, corsHeaders));
         }
         if (digestMode !== undefined && !VALID_DIGEST_MODE.has(digestMode)) {
-          return json({ error: 'invalid digestMode' }, 400, corsHeaders);
+          return finish(json({ error: 'invalid digestMode' }, 400, corsHeaders));
         }
         if (countries !== undefined && !Array.isArray(countries)) {
-          return json({ error: 'COUNTRIES_MUST_BE_ARRAY' }, 400, corsHeaders);
+          return finish(json({ error: 'COUNTRIES_MUST_BE_ARRAY' }, 400, corsHeaders));
+        }
+        if (tickers !== undefined && !Array.isArray(tickers)) {
+          return finish(json({ error: 'TICKERS_MUST_BE_ARRAY' }, 400, corsHeaders));
         }
         const resp = await convexRelay({
           action: 'set-notification-config',
@@ -449,6 +491,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           digestHour,
           digestTimezone,
           countries,
+          tickers,
         });
         if (!resp.ok) {
           // 400 from convex/http means user-facing validation failure (e.g.
@@ -462,19 +505,19 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
             if (text) {
               try { payload = JSON.parse(text); } catch { /* keep default */ }
             }
-            return json(payload, resp.status, corsHeaders);
+            return finish(json(payload, resp.status, corsHeaders));
           }
           console.error('[notification-channels] POST set-notification-config relay error:', resp.status);
-          return json({ error: 'Operation failed' }, 500, corsHeaders);
+          return finish(json({ error: 'Operation failed' }, 500, corsHeaders));
         }
-        return json({ ok: true }, 200, corsHeaders);
+        return finish(json({ ok: true }, 200, corsHeaders));
       }
 
-      return json({ error: 'Unknown action' }, 400, corsHeaders);
+      return finish(json({ error: 'Unknown action' }, 400, corsHeaders));
     } catch (err) {
       console.error('[notification-channels] POST error:', err);
       captureEdgeException(err, { handler: 'notification-channels', method: 'POST' }, ctx);
-      return json({ error: 'Operation failed' }, 500, corsHeaders);
+      return finish(json({ error: 'Operation failed' }, 500, corsHeaders));
     }
   }
 

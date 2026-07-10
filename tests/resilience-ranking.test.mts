@@ -657,8 +657,18 @@ describe('resilience ranking contracts', () => {
         _formula: 'd6',
       }),
     );
-    redis.set(`${RESILIENCE_INTERVAL_KEY_PREFIX}NO`, JSON.stringify({ p05: 78, p95: 84, _formula: 'd6' }));
-    redis.set(`${RESILIENCE_INTERVAL_KEY_PREFIX}US`, JSON.stringify({ p05: 50, p95: 72, _formula: 'd6' }));
+    redis.set(`${RESILIENCE_INTERVAL_KEY_PREFIX}NO`, JSON.stringify({
+      p05: 78,
+      p95: 84,
+      _formula: 'd6',
+      methodology: RESILIENCE_INTERVAL_METHODOLOGY,
+    }));
+    redis.set(`${RESILIENCE_INTERVAL_KEY_PREFIX}US`, JSON.stringify({
+      p05: 50,
+      p95: 72,
+      _formula: 'd6',
+      methodology: RESILIENCE_INTERVAL_METHODOLOGY,
+    }));
 
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
@@ -717,7 +727,12 @@ describe('resilience ranking contracts', () => {
         _formula: 'd6',
       }),
     );
-    redis.set(`${RESILIENCE_INTERVAL_KEY_PREFIX}NO`, JSON.stringify({ p05: 78, p95: 84, _formula: 'pc' }));
+    redis.set(`${RESILIENCE_INTERVAL_KEY_PREFIX}NO`, JSON.stringify({
+      p05: 78,
+      p95: 84,
+      _formula: 'pc',
+      methodology: RESILIENCE_INTERVAL_METHODOLOGY,
+    }));
     redis.set(`${RESILIENCE_INTERVAL_KEY_PREFIX}US`, JSON.stringify({ p05: 58, p95: 64 }));
 
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
@@ -726,6 +741,61 @@ describe('resilience ranking contracts', () => {
     const us = response.items.find((item) => item.countryCode === 'US');
     assert.equal(no?.rankStable, false, 'stale pc interval must be ignored under d6');
     assert.equal(us?.rankStable, false, 'untagged interval must be ignored');
+  });
+
+  it('sets rankStable=false for wrong-methodology interval data', async () => {
+    process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'false';
+    const { redis } = installRedis(RESILIENCE_FIXTURES);
+    redis.set(
+      'resilience:static:index:v1',
+      JSON.stringify({
+        countries: ['NO'],
+        recordCount: 1,
+        failedDatasets: [],
+        seedYear: 2026,
+      }),
+    );
+    redis.set(
+      `${RESILIENCE_SCORE_CACHE_PREFIX}NO`,
+      JSON.stringify({
+        countryCode: 'NO',
+        overallScore: 82,
+        level: 'high',
+        domains: [
+          {
+            id: 'political',
+            score: 80,
+            weight: 0.2,
+            dimensions: [
+              {
+                id: 'd1',
+                score: 80,
+                coverage: 0.9,
+                observedWeight: 1,
+                imputedWeight: 0,
+              },
+            ],
+          },
+        ],
+        trend: 'stable',
+        change30d: 1.2,
+        lowConfidence: false,
+        imputationShare: 0.05,
+        headlineEligible: true,
+        _formula: 'd6',
+      }),
+    );
+    redis.set(`${RESILIENCE_INTERVAL_KEY_PREFIX}NO`, JSON.stringify({
+      p05: 78,
+      p95: 84,
+      _formula: 'd6',
+      methodology: 'legacy-weight-perturbation-v2',
+    }));
+
+    const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
+
+    const no = response.items.find((item) => item.countryCode === 'NO');
+    assert.equal(no?.rankStable, false, 'wrong-methodology stable-width interval must be ignored');
   });
 
   it('does not cache the ranking at 80% coverage', async () => {

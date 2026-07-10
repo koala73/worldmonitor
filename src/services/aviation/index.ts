@@ -1,19 +1,8 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import {
-  AviationServiceClient,
-  type AirportDelayAlert as ProtoAlert,
-  type AirportOpsSummary as ProtoOpsSummary,
-  type FlightInstance as ProtoFlight,
-  type CarrierOpsSummary as ProtoCarrierOps,
-  type PositionSample as ProtoPosition,
-  type PriceQuote as ProtoPriceQuote,
-  type AviationNewsItem as ProtoAviationNews,
-  type CabinClass,
-  type GoogleFlightResult as ProtoGoogleFlightResult,
-  type DatePriceEntry as ProtoDatePriceEntry,
-} from '@/generated/client/worldmonitor/aviation/v1/service_client';
+import type { AirportDelayAlert as ProtoAlert, AirportOpsSummary as ProtoOpsSummary, FlightInstance as ProtoFlight, CarrierOpsSummary as ProtoCarrierOps, PositionSample as ProtoPosition, PriceQuote as ProtoPriceQuote, AviationNewsItem as ProtoAviationNews, CabinClass, GoogleFlightResult as ProtoGoogleFlightResult, DatePriceEntry as ProtoDatePriceEntry } from '@/generated/client/worldmonitor/aviation/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
+import { AviationServiceClient } from '@/services/generated-rpc-clients';
 
 // ---- Consumer-friendly display types ----
 

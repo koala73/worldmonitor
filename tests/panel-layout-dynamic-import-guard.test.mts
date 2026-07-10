@@ -2,15 +2,11 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { describe, it } from 'node:test';
 
-// Regression coverage for WORLDMONITOR-R4: dynamic `import(...).then(({ Foo }) => new Foo(...))`
-// must guard against the destructured named export resolving to `undefined`, AND must pass an
-// onRejected handler as the SECOND argument to `.then(...)` so the import-promise rejection is
-// suppressed without swallowing synchronous throws from inside the .then() callback body
-// (panel construction, getElement, makeDraggable, etc.) — those must keep surfacing in Sentry.
-//
-// The two call sites at src/app/panel-layout.ts:1041 (DeductionPanel) and :1059
-// (RegionalIntelligenceBoard) are the only ones in the file that use the destructure-and-
-// construct pattern; any sibling that adopts the same shape should add the same guards.
+// Regression coverage for WORLDMONITOR-R4 adapted to the lazy panel registry:
+// split-risk panels must stay demand-loaded through `lazyPanel(...)`, and their
+// dynamic imports must route through the Safari-safe importPanel helper. The
+// shared lazy loader must also treat failed chunk loads as recoverable instead of
+// letting an absent/offline async panel crash startup.
 
 // Note: we deliberately do NOT strip comments via a naive regex before grepping —
 // panel-layout.ts contains regex literals like `/\/\*.../` that would defeat a naive
@@ -118,17 +114,213 @@ function assertGuardedDynamicImport(source: string, modulePath: string, exportNa
   );
 }
 
-describe('panel-layout dynamic-import guard (WORLDMONITOR-R4)', () => {
+function assertLazyPanelRegistration(
+  source: string,
+  panelKey: string,
+  modulePath: string,
+  exportName: string,
+) {
+  const registration = new RegExp(
+    `this\\.lazyPanel\\(['"]${panelKey}['"],\\s*\\(\\)\\s*=>\\s*(?:\\n\\s*)?this\\.importPanel\\(\\s*['"]${panelKey}['"],\\s*\\(\\)\\s*=>\\s*import\\(['"]${modulePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]\\),\\s*['"]${exportName}['"]`,
+  );
+  assert.match(source, registration, `${exportName} must be registered through lazyPanel(${panelKey}) and importPanel()`);
+  assert.doesNotMatch(
+    source,
+    new RegExp(`^import\\s+\\{[^}]*${exportName}[^}]*\\}\\s+from\\s+['"]${modulePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]`, 'm'),
+    `${exportName} must not be eagerly imported into panel-layout.ts`,
+  );
+}
+
+function assertLazyLoaderHandlesFailedImports(source: string) {
+  const loadRegisteredPanel = source.match(/private async loadRegisteredPanel\([\s\S]*?\n\s*private makeDraggable/);
+  assert.ok(loadRegisteredPanel, 'loadRegisteredPanel helper not found');
+  assert.match(
+    loadRegisteredPanel[0],
+    /registration\.loading = registration\.load\(\)[\s\S]*?\.catch\(\(err\) => \{/,
+    'lazy panel chunk failures must be caught by the shared loader',
+  );
+  assert.match(
+    loadRegisteredPanel[0],
+    /registration\.loading = null;/,
+    'failed lazy panel loads must reset the in-flight promise so the panel can retry',
+  );
+  assert.match(
+    loadRegisteredPanel[0],
+    /return null;/,
+    'failed lazy panel loads must resolve to null instead of crashing startup',
+  );
+}
+
+function assertSharedImportPanelGuard(source: string) {
+  const callback = findCallbackBody(source, /return\s+importer\(\)\.then\(\(module\)\s*=>\s*\{/);
+  assert.ok(callback, 'importPanel helper must call importer().then(onFulfilled, onRejected)');
+  assert.match(
+    callback.body,
+    /const PanelClass = module\[exportName\];/,
+    'importPanel helper must read the requested named export dynamically.',
+  );
+  assert.match(
+    callback.body,
+    /typeof\s+PanelClass\s*!==?\s*['"]function['"]/,
+    'importPanel helper must verify the named export is a constructor function before using it.',
+  );
+  const tail = source.slice(callback.afterIdx, callback.afterIdx + 200);
+  assert.match(
+    tail,
+    /^\s*,\s*\([^)]*\)\s*=>/,
+    'importPanel helper must use two-arg .then(onFulfilled, onRejected), not .then(...).catch(...).',
+  );
+  assert.doesNotMatch(
+    tail,
+    /^\s*\)\s*\.catch\(/,
+    'importPanel helper must not use .then(...).catch(...) for import failures.',
+  );
+}
+
+function assertNoDirectComponentConstructors(source: string) {
+  assert.doesNotMatch(
+    source,
+    /import\(['"]@\/components\/[^'"]+['"]\)\.then\(\s*(?:async\s*)?\(?\s*([A-Za-z_$][\w$]*)\s*\)?\s*=>[\s\S]{0,700}\bnew\s+\1\.[A-Za-z0-9_]+/m,
+    'Lazy component constructors must route through importPanel() instead of direct import(...).then(m => new m.Panel()) registrations.',
+  );
+}
+
+function assertChatAnalystLoadsWithoutAgentBusApplier(source: string) {
+  const registrationStart = source.indexOf("this.lazyImportedPanel('chat-analyst'");
+  assert.notEqual(registrationStart, -1, 'chat-analyst lazy panel registration not found');
+  const registrationEnd = source.indexOf("this.lazyDefaultPanel(\n      'forecast'", registrationStart);
+  assert.ok(registrationEnd > registrationStart, 'chat-analyst lazy panel registration boundary not found');
+  const registration = source.slice(registrationStart, registrationEnd);
+
+  assert.match(
+    registration,
+    /this\.lazyImportedPanel\('chat-analyst',\s*\(\) => import\('@\/components\/ChatAnalystPanel'\),\s*'ChatAnalystPanel'/,
+    'chat-analyst panel component should load through the guarded helper',
+  );
+  assert.doesNotMatch(
+    registration,
+    /Promise\.all\(\s*\[[\s\S]*?@\/components\/ChatAnalystPanel[\s\S]*?@\/app\/agent-bus-applier/,
+    'chat-analyst must not couple panel mounting to agent-bus-applier through Promise.all',
+  );
+  assert.match(
+    registration,
+    /const panel = new ChatAnalystPanel\(\);[\s\S]*?void import\('@\/app\/agent-bus-applier'\)/,
+    'chat-analyst should create the panel before loading the optional dashboard action handler',
+  );
+  assert.match(
+    registration,
+    /\.catch\(\(err\) => \{[\s\S]*?failed to lazy-load "chat-analyst" dashboard action handler/,
+    'agent-bus-applier lazy-load failure should be logged without rejecting the panel loader',
+  );
+  assert.match(
+    registration,
+    /return panel;/,
+    'chat-analyst loader should return the panel even while the optional action handler is loading',
+  );
+}
+
+function assertLiveNewsDirectMountCatchesCallbackErrors(source: string) {
+  const start = source.indexOf('mountLiveNewsIfReady(): void');
+  const end = source.indexOf('\n  private shouldCreatePanel', start);
+  assert.ok(start >= 0 && end > start, 'mountLiveNewsIfReady block not found');
+  const block = source.slice(start, end);
+  assert.match(
+    block,
+    /void this\.importPanel\([\s\S]*?\)\.then\(\(panel\) => \{[\s\S]*?this\.afterPanelMounted\('live-news', panel\);[\s\S]*?\}\)\.catch\(\(err\) => \{[\s\S]*?failed to lazy-load "live-news"/,
+    'direct live-news mount path must catch callback errors as well as import failures',
+  );
+}
+
+function assertGccInvestmentsFocusHelperIsLoadedOnce(source: string) {
+  const start = source.indexOf("this.lazyPanel('gcc-investments'");
+  const end = source.indexOf("this.lazyDefaultPanel('world-clock'", start);
+  assert.ok(start >= 0 && end > start, 'gcc-investments lazy panel registration not found');
+  const registration = source.slice(start, end);
+  assert.match(
+    registration,
+    /const \{ focusInvestmentOnMap \} = await import\('@\/services\/investments-focus'\);[\s\S]*?this\.importPanel\('gcc-investments'/,
+    'gcc-investments should load the map focus helper once during panel load before constructing the click handler',
+  );
+  assert.doesNotMatch(
+    registration,
+    /new InvestmentsPanel\(\(inv\) => \{[\s\S]*?import\('@\/services\/investments-focus'\)/,
+    'gcc-investments click handler must not import investments-focus on every click',
+  );
+}
+
+function assertDestroyOnceIsolatesPanelThrows(source: string) {
+  const start = source.indexOf('const destroyOnce =');
+  assert.notEqual(start, -1, 'destroyOnce helper not found');
+  // Bound the helper body at its arrow closing so the assertion can't match a
+  // try/catch that belongs to some later statement in destroy().
+  const end = source.indexOf('\n    };', start);
+  assert.ok(end > start, 'destroyOnce helper body boundary not found');
+  const body = source.slice(start, end);
+  assert.match(
+    body,
+    /try \{\s*target\.destroy\?\.\(\);\s*\} catch/,
+    'destroyOnce must wrap target.destroy?.() in try/catch so one panel throwing cannot abort the rest of teardown (App.destroy() iterates modules without its own try/catch).',
+  );
+}
+
+const SPLIT_RISK_PANEL_IMPORTS: Array<[string, string, string]> = [
+  ['pipeline-status', '@/components/PipelineStatusPanel', 'PipelineStatusPanel'],
+  ['storage-facility-map', '@/components/StorageFacilityMapPanel', 'StorageFacilityMapPanel'],
+  ['fuel-shortages', '@/components/FuelShortagePanel', 'FuelShortagePanel'],
+  ['energy-disruptions', '@/components/EnergyDisruptionsPanel', 'EnergyDisruptionsPanel'],
+  ['energy-risk-overview', '@/components/EnergyRiskOverviewPanel', 'EnergyRiskOverviewPanel'],
+  ['deduction', '@/components/DeductionPanel', 'DeductionPanel'],
+  ['regional-intelligence', '@/components/RegionalIntelligenceBoard', 'RegionalIntelligenceBoard'],
+  ['gulf-economies', '@/components/GulfEconomiesPanel', 'GulfEconomiesPanel'],
+  ['grocery-basket', '@/components/GroceryBasketPanel', 'GroceryBasketPanel'],
+  ['bigmac', '@/components/BigMacPanel', 'BigMacPanel'],
+  ['fuel-prices', '@/components/FuelPricesPanel', 'FuelPricesPanel'],
+  ['fao-food-price-index', '@/components/FaoFoodPriceIndexPanel', 'FaoFoodPriceIndexPanel'],
+  ['climate-news', '@/components/ClimateNewsPanel', 'ClimateNewsPanel'],
+  ['events', '@/components/TechEventsPanel', 'TechEventsPanel'],
+  ['macro-signals', '@/components/MacroSignalsPanel', 'MacroSignalsPanel'],
+];
+
+describe('panel-layout lazy dynamic-import guard (WORLDMONITOR-R4)', () => {
   const filePath = new URL('../src/app/panel-layout.ts', import.meta.url);
 
-  it('RegionalIntelligenceBoard import has typeof guard + onRejected arg', async () => {
+  it('shared importPanel helper uses Safari-safe dynamic import guards', async () => {
     const source = await readFile(filePath, 'utf8');
-    assertGuardedDynamicImport(source, '@/components/RegionalIntelligenceBoard', 'RegionalIntelligenceBoard');
+    assertSharedImportPanelGuard(source);
+    assertLazyLoaderHandlesFailedImports(source);
   });
 
-  it('DeductionPanel import has typeof guard + onRejected arg', async () => {
+  it('all lazy component constructors route through the shared guarded helper', async () => {
     const source = await readFile(filePath, 'utf8');
-    assertGuardedDynamicImport(source, '@/components/DeductionPanel', 'DeductionPanel');
+    assertNoDirectComponentConstructors(source);
+  });
+
+  it('split-risk panels are demand-loaded through the guarded helper', async () => {
+    const source = await readFile(filePath, 'utf8');
+    for (const [panelKey, modulePath, exportName] of SPLIT_RISK_PANEL_IMPORTS) {
+      assertLazyPanelRegistration(source, panelKey, modulePath, exportName);
+    }
+    assertLazyLoaderHandlesFailedImports(source);
+  });
+
+  it('chat analyst mounts even if the dashboard action handler chunk fails', async () => {
+    const source = await readFile(filePath, 'utf8');
+    assertChatAnalystLoadsWithoutAgentBusApplier(source);
+  });
+
+  it('direct live-news mid-session mount path catches callback errors', async () => {
+    const source = await readFile(filePath, 'utf8');
+    assertLiveNewsDirectMountCatchesCallbackErrors(source);
+  });
+
+  it('GCC investments map focus helper is loaded once during panel load', async () => {
+    const source = await readFile(filePath, 'utf8');
+    assertGccInvestmentsFocusHelperIsLoadedOnce(source);
+  });
+
+  it('destroy() isolates a single panel destroy() throw from the rest of teardown', async () => {
+    const source = await readFile(filePath, 'utf8');
+    assertDestroyOnceIsolatesPanelThrows(source);
   });
 
   it('token-aware brace walker skips strings/templates/comments', () => {

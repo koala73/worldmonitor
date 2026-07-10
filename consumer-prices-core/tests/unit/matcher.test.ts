@@ -41,6 +41,32 @@ describe('scoreMatch', () => {
     );
     expect(result.status).toBe('reject');
   });
+
+  it('does not treat a missing category as an exact category match', () => {
+    // A raw product with no categoryText must not earn the +20 category bonus.
+    // Previously `canonCategory.includes('')` was always true.
+    const nullCategory = scoreMatch(
+      { rawTitle: 'Sunflower Oil 2L', rawBrand: 'Generic', rawSizeText: '2L', categoryText: null },
+      baseCanonical,
+    );
+    expect(nullCategory.evidence.categoryExact).toBe(false);
+
+    const emptyCategory = scoreMatch(
+      { rawTitle: 'Sunflower Oil 2L', rawBrand: 'Generic', rawSizeText: '2L', categoryText: '' },
+      baseCanonical,
+    );
+    expect(emptyCategory.evidence.categoryExact).toBe(false);
+  });
+
+  it('does not treat an empty canonical category as an exact category match', () => {
+    // The symmetric case: a canonical product with an empty category must not
+    // match every categorized raw product via `rawCategory.includes('')`.
+    const emptyCanonical = scoreMatch(
+      { rawTitle: 'Sunflower Oil 2L', rawBrand: 'Generic', rawSizeText: '2L', categoryText: 'oil' },
+      { ...baseCanonical, category: '' },
+    );
+    expect(emptyCanonical.evidence.categoryExact).toBe(false);
+  });
 });
 
 describe('bestMatch', () => {

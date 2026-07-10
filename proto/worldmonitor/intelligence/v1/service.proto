@@ -114,16 +114,24 @@ service IntelligenceService {
     };
   }
 
-  // GetCompanyEnrichment aggregates company data from multiple public sources (GitHub, SEC, HN).
+  // GetCompanyEnrichment is DISABLED and returns an empty stub. The route is preserved
+  // for contract stability, but the handler no longer aggregates any external data
+  // (the prior domain-slug attribution heuristic was unsound). Deprecated pending a
+  // verified attribution model.
   rpc GetCompanyEnrichment(GetCompanyEnrichmentRequest) returns (GetCompanyEnrichmentResponse) {
+    option deprecated = true;
     option (sebuf.http.config) = {
       path: "/get-company-enrichment"
       method: HTTP_METHOD_GET
     };
   }
 
-  // ListCompanySignals discovers activity signals for a company from public sources.
+  // ListCompanySignals is DISABLED and returns an empty stub. The route is preserved
+  // for contract stability, but the handler no longer discovers any signals (the prior
+  // guessed-identity/keyword heuristic was unsound). Deprecated pending a verified
+  // attribution model.
   rpc ListCompanySignals(ListCompanySignalsRequest) returns (ListCompanySignalsResponse) {
+    option deprecated = true;
     option (sebuf.http.config) = {
       path: "/list-company-signals"
       method: HTTP_METHOD_GET

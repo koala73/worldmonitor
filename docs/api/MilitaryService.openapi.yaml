@@ -2,6 +2,11 @@ openapi: 3.1.0
 info:
     title: MilitaryService API
     version: 1.0.0
+security:
+    - WorldMonitorKey: []
+    - ApiKeyHeader: []
+servers:
+    - url: https://api.worldmonitor.app
 paths:
     /api/military/v1/list-military-flights:
         get:
@@ -15,19 +20,24 @@ paths:
                   in: query
                   description: Maximum items per page (1-100).
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "next-page-token"
                   schema:
                     type: string
                 - name: ne_lat
                   in: query
                   description: North-east corner latitude of bounding box.
                   required: false
+                  example: 40.7128
                   schema:
                     type: number
                     format: double
@@ -35,6 +45,7 @@ paths:
                   in: query
                   description: North-east corner longitude of bounding box.
                   required: false
+                  example: -74.006
                   schema:
                     type: number
                     format: double
@@ -42,6 +53,7 @@ paths:
                   in: query
                   description: South-west corner latitude of bounding box.
                   required: false
+                  example: 40.7128
                   schema:
                     type: number
                     format: double
@@ -49,19 +61,62 @@ paths:
                   in: query
                   description: South-west corner longitude of bounding box.
                   required: false
+                  example: -74.006
                   schema:
                     type: number
                     format: double
                 - name: operator
                   in: query
-                  description: Optional operator filter.
+                  description: |-
+                    Optional operator filter.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "MILITARY_OPERATOR_USAF"
                   schema:
                     type: string
+                    enum:
+                        - 'MILITARY_OPERATOR_USAF'
+                        - 'MILITARY_OPERATOR_USN'
+                        - 'MILITARY_OPERATOR_USMC'
+                        - 'MILITARY_OPERATOR_USA'
+                        - 'MILITARY_OPERATOR_RAF'
+                        - 'MILITARY_OPERATOR_RN'
+                        - 'MILITARY_OPERATOR_FAF'
+                        - 'MILITARY_OPERATOR_GAF'
+                        - 'MILITARY_OPERATOR_PLAAF'
+                        - 'MILITARY_OPERATOR_PLAN'
+                        - 'MILITARY_OPERATOR_VKS'
+                        - 'MILITARY_OPERATOR_IAF'
+                        - 'MILITARY_OPERATOR_NATO'
+                        - 'MILITARY_OPERATOR_OTHER'
                 - name: aircraft_type
                   in: query
-                  description: Optional aircraft type filter.
+                  description: |-
+                    Optional aircraft type filter.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "MILITARY_AIRCRAFT_TYPE_FIGHTER"
+                  schema:
+                    type: string
+                    enum:
+                        - 'MILITARY_AIRCRAFT_TYPE_FIGHTER'
+                        - 'MILITARY_AIRCRAFT_TYPE_BOMBER'
+                        - 'MILITARY_AIRCRAFT_TYPE_TRANSPORT'
+                        - 'MILITARY_AIRCRAFT_TYPE_TANKER'
+                        - 'MILITARY_AIRCRAFT_TYPE_AWACS'
+                        - 'MILITARY_AIRCRAFT_TYPE_RECONNAISSANCE'
+                        - 'MILITARY_AIRCRAFT_TYPE_HELICOPTER'
+                        - 'MILITARY_AIRCRAFT_TYPE_DRONE'
+                        - 'MILITARY_AIRCRAFT_TYPE_PATROL'
+                        - 'MILITARY_AIRCRAFT_TYPE_SPECIAL_OPS'
+                        - 'MILITARY_AIRCRAFT_TYPE_VIP'
+                        - 'MILITARY_AIRCRAFT_TYPE_UNKNOWN'
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
                   schema:
                     type: string
             responses:
@@ -69,6 +124,29 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "clusters":
+                                    - "activityType": "MILITARY_ACTIVITY_TYPE_EXERCISE"
+                                      "dominantOperator": "MILITARY_OPERATOR_USAF"
+                                      "flightCount": 1
+                                      "flights":
+                                          - "aircraftModel": "example"
+                                            "aircraftType": "MILITARY_AIRCRAFT_TYPE_FIGHTER"
+                                            "altitude": 1.5
+                                            "callsign": "example"
+                                            "confidence": "MILITARY_CONFIDENCE_LOW"
+                                            "id": "example-id"
+                                      "id": "example-id"
+                                "flights":
+                                    - "aircraftModel": "example"
+                                      "aircraftType": "MILITARY_AIRCRAFT_TYPE_FIGHTER"
+                                      "altitude": 1.5
+                                      "callsign": "example"
+                                      "confidence": "MILITARY_CONFIDENCE_LOW"
+                                      "id": "example-id"
+                                "pagination":
+                                    "nextCursor": "next-page-token"
+                                    "totalCount": 1
                             schema:
                                 $ref: '#/components/schemas/ListMilitaryFlightsResponse'
                 "400":
@@ -76,13 +154,54 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/military/v1/get-theater-posture:
         get:
             tags:
@@ -93,8 +212,19 @@ paths:
             parameters:
                 - name: theater
                   in: query
-                  description: Theater name (e.g., "indo-pacific", "european", "middle-east"). Empty for all theaters.
+                  description: |-
+                    Theater name (e.g., "indo-pacific", "european", "middle-east"). Empty for all theaters.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "indo-pacific"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
                   schema:
                     type: string
             responses:
@@ -102,6 +232,14 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "theaters":
+                                    - "activeFlights": 1
+                                      "activeOperations":
+                                          - "example"
+                                      "assessedAt": 1717200000000
+                                      "postureLevel": "example"
+                                      "theater": "indo-pacific"
                             schema:
                                 $ref: '#/components/schemas/GetTheaterPostureResponse'
                 "400":
@@ -109,13 +247,54 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/military/v1/get-aircraft-details:
         get:
             tags:
@@ -127,7 +306,16 @@ paths:
                 - name: icao24
                   in: query
                   description: ICAO 24-bit hex address (lowercase).
+                  required: true
+                  example: "a835af"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
                   required: false
+                  example: "keys(@)"
                   schema:
                     type: string
             responses:
@@ -135,6 +323,14 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "configured": true
+                                "details":
+                                    "built": "example"
+                                    "categoryDescription": "cs.AI"
+                                    "engines": "example"
+                                    "icao24": "a835af"
+                                    "icaoAircraftType": "all"
                             schema:
                                 $ref: '#/components/schemas/GetAircraftDetailsResponse'
                 "400":
@@ -142,15 +338,67 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/military/v1/get-aircraft-details-batch:
         post:
+            parameters:
+                - name: Idempotency-Key
+                  in: header
+                  description: Optional client-generated idempotency key. Retrying a POST with the same key and an identical request body replays the original response (only the status, body, and Content-Type are reproduced) instead of re-executing; reusing the key with a different body is rejected with 422. For mutations this avoids duplicating the side effect, while for batch-read POSTs it replays a cached snapshot that can be up to 24 hours stale. Keys are scoped per authenticated caller (falling back to the source IP for unauthenticated endpoints) and retained for 24 hours.
+                  required: false
+                  example: "4f8b9c2e-1a3d-4b6f-8e0a-2c5d7f9b1e34"
+                  schema:
+                    type: string
+                    minLength: 1
+                    maxLength: 255
+                    pattern: "^[\\x21-\\x7E]{1,255}$"
             tags:
                 - MilitaryService
             summary: GetAircraftDetailsBatch
@@ -159,28 +407,143 @@ paths:
             requestBody:
                 content:
                     application/json:
+                        example:
+                            "icao24s":
+                                - "a835af"
                         schema:
                             $ref: '#/components/schemas/GetAircraftDetailsBatchRequest'
                 required: true
             responses:
                 "200":
                     description: Successful response
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key echoed from the request. Present only when the client opted into idempotency.
+                        Idempotent-Replayed:
+                            schema:
+                                type: boolean
+                            description: true when this response was replayed from an earlier request with the same key, false on the first (original) request. Present only when the client opted into idempotency.
                     content:
                         application/json:
+                            example:
+                                "configured": true
+                                "fetched": 1
+                                "requested": 1
+                                "results":
+                                    "exampleKey":
+                                        "built": "example"
+                                        "categoryDescription": "cs.AI"
+                                        "engines": "example"
+                                        "icao24": "a835af"
+                                        "icaoAircraftType": "all"
                             schema:
                                 $ref: '#/components/schemas/GetAircraftDetailsBatchResponse'
                 "400":
-                    description: Validation error
+                    description: Validation error, invalid Idempotency-Key header, or malformed JSON request body
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - type: object
+                                      required:
+                                        - error
+                                        - message
+                                      properties:
+                                        error:
+                                            type: string
+                                        message:
+                                            type: string
+                                    - $ref: '#/components/schemas/InvalidRequestBodyError'
+                "409":
+                    description: A request with this Idempotency-Key is still being processed
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                        Retry-After:
+                            schema:
+                                type: string
+                            description: Seconds to wait before retrying the in-flight request.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
+                "422":
+                    description: The Idempotency-Key was already used with a different request body
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
                 default:
-                    description: Error response
+                    description: Gateway or handler error response.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/military/v1/get-wingbits-status:
         get:
             tags:
@@ -188,11 +551,22 @@ paths:
             summary: GetWingbitsStatus
             description: GetWingbitsStatus checks whether the Wingbits enrichment API is configured.
             operationId: GetWingbitsStatus
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "configured": true
                             schema:
                                 $ref: '#/components/schemas/GetWingbitsStatusResponse'
                 "400":
@@ -200,13 +574,54 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/military/v1/get-usni-fleet-report:
         get:
             tags:
@@ -219,13 +634,36 @@ paths:
                   in: query
                   description: When true, bypass cache and fetch fresh data from USNI.
                   required: false
+                  example: true
                   schema:
                     type: boolean
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "cached": true
+                                "error": "example"
+                                "report":
+                                    "articleDate": "2026-01-15"
+                                    "articleTitle": "example"
+                                    "articleUrl": "https://example.com/worldmonitor"
+                                    "battleForceSummary":
+                                        "deployed": 1
+                                        "totalShips": 1
+                                        "underway": 1
+                                    "parsingWarnings":
+                                        - "example"
+                                "stale": true
                             schema:
                                 $ref: '#/components/schemas/GetUSNIFleetReportResponse'
                 "400":
@@ -233,13 +671,54 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/military/v1/list-military-bases:
         get:
             tags:
@@ -250,47 +729,99 @@ paths:
             parameters:
                 - name: ne_lat
                   in: query
+                  description: North-east corner latitude of the map bounding box.
                   required: false
+                  example: 40.7128
                   schema:
                     type: number
                     format: double
                 - name: ne_lon
                   in: query
+                  description: North-east corner longitude of the map bounding box.
                   required: false
+                  example: -74.006
                   schema:
                     type: number
                     format: double
                 - name: sw_lat
                   in: query
+                  description: South-west corner latitude of the map bounding box.
                   required: false
+                  example: 40.7128
                   schema:
                     type: number
                     format: double
                 - name: sw_lon
                   in: query
+                  description: South-west corner longitude of the map bounding box.
                   required: false
+                  example: -74.006
                   schema:
                     type: number
                     format: double
                 - name: zoom
                   in: query
+                  description: Map zoom level used to decide whether to return bases or clusters.
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
                 - name: type
                   in: query
+                  description: Optional military base type filter.
                   required: false
+                  example: "us-nato"
                   schema:
                     type: string
+                    enum:
+                        - 'us-nato'
+                        - 'china'
+                        - 'russia'
+                        - 'uk'
+                        - 'france'
+                        - 'india'
+                        - 'italy'
+                        - 'uae'
+                        - 'turkey'
+                        - 'japan'
+                        - 'other'
                 - name: kind
                   in: query
+                  description: Optional military base kind filter.
                   required: false
+                  example: "base"
                   schema:
                     type: string
+                    enum:
+                        - 'base'
+                        - 'airfield'
+                        - 'naval_base'
+                        - 'military'
+                        - 'barracks'
+                        - 'bunker'
+                        - 'trench'
+                        - 'training_area'
+                        - 'checkpoint'
+                        - 'shelter'
+                        - 'ammunition'
+                        - 'office'
+                        - 'obstacle_course'
+                        - 'nuclear_explosion_site'
+                        - 'range'
                 - name: country
                   in: query
+                  description: Optional country filter for military bases.
                   required: false
+                  example: "US"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
                   schema:
                     type: string
             responses:
@@ -298,6 +829,21 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "bases":
+                                    - "branch": "example"
+                                      "catAirforce": true
+                                      "catNaval": true
+                                      "catNuclear": true
+                                      "catSpace": true
+                                "clusters":
+                                    - "count": 1
+                                      "dominantType": "all"
+                                      "expansionZoom": 1
+                                      "latitude": 40.7128
+                                      "longitude": -74.006
+                                "totalInView": 1
+                                "truncated": true
                             schema:
                                 $ref: '#/components/schemas/ListMilitaryBasesResponse'
                 "400":
@@ -305,13 +851,54 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/military/v1/get-wingbits-live-flight:
         get:
             tags:
@@ -323,7 +910,16 @@ paths:
                 - name: icao24
                   in: query
                   description: ICAO 24-bit hex address (lowercase, 6 characters).
+                  required: true
+                  example: "a835af"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
                   required: false
+                  example: "keys(@)"
                   schema:
                     type: string
             responses:
@@ -331,6 +927,13 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "flight":
+                                    "airlineName": "WorldMonitor Analyst"
+                                    "altitude": 1.5
+                                    "arrDelayedMin": 1
+                                    "arrEstimatedUtc": "example"
+                                    "arrIata": "JFK"
                             schema:
                                 $ref: '#/components/schemas/GetWingbitsLiveFlightResponse'
                 "400":
@@ -338,13 +941,54 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/military/v1/list-defense-patents:
         get:
             tags:
@@ -357,26 +1001,46 @@ paths:
                   in: query
                   description: CPC category filter (e.g. "H04B", "F42B"). Empty returns all categories.
                   required: false
+                  example: "H04B"
                   schema:
                     type: string
                 - name: assignee
                   in: query
                   description: Assignee keyword filter (case-insensitive substring match). Empty returns all.
                   required: false
+                  example: "example"
                   schema:
                     type: string
                 - name: limit
                   in: query
                   description: Maximum results to return (default 20, max 100).
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "patents":
+                                    - "abstract": "example"
+                                      "assignee": "example"
+                                      "cpcCode": "example"
+                                      "cpcDesc": "example"
+                                      "date": "2026-01-15"
+                                "total": 1
                             schema:
                                 $ref: '#/components/schemas/ListDefensePatentsResponse'
                 "400":
@@ -384,15 +1048,91 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
 components:
+    securitySchemes:
+        WorldMonitorKey:
+            type: apiKey
+            in: header
+            name: X-WorldMonitor-Key
+            description: User-issued WorldMonitor API key.
+        ApiKeyHeader:
+            type: apiKey
+            in: header
+            name: X-Api-Key
+            description: Alias header for the WorldMonitor API key (X-WorldMonitor-Key).
     schemas:
+        JmespathProjectionError:
+            description: Returned when a REST jmespath projection is invalid or exceeds the expression/output byte limits.
+            properties:
+                _jmespath_error:
+                    description: Projection error discriminator and details.
+                    type: string
+                original_keys:
+                    description: Top-level keys or shape of the unprojected response.
+                    items:
+                        type: string
+                    type: array
+            required:
+                - _jmespath_error
+                - original_keys
+            type: object
+        UnauthorizedError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable error message.
+            required:
+                - error
+            description: Returned when the API key is missing, malformed, or lacks current API access.
         Error:
             type: object
             properties:
@@ -400,6 +1140,56 @@ components:
                     type: string
                     description: Error message (e.g., 'user not found', 'database connection failed')
             description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        InvalidRequestBodyError:
+            type: object
+            description: Returned when a JSON POST request body is empty or malformed.
+            properties:
+                message:
+                    type: string
+                    description: Invalid request body
+            required:
+                - message
+        GatewayError:
+            type: object
+            description: Returned by gateway infrastructure errors before an RPC handler runs, such as origin, routing, method, authentication, or quota checks.
+            properties:
+                error:
+                    oneOf:
+                        - type: string
+                        - type: object
+                          additionalProperties: true
+                    description: Gateway error reason or structured gateway failure details.
+            required:
+                - error
+        RateLimitError:
+            type: object
+            description: Returned when a gateway or handler rate limit rejects the request.
+            properties:
+                error:
+                    type: string
+                    description: Human-readable rate-limit failure reason.
+            required:
+                - error
+        ForbiddenError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable entitlement failure reason.
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint.
+                currentTier:
+                    type: integer
+                    format: int32
+                    description: Caller entitlement tier when known.
+                planKey:
+                    type: string
+                    description: Caller plan key when known.
+            required:
+                - error
+            description: Returned when a PRO-gated endpoint denies access because the caller has no resolved authenticated user, entitlements cannot be verified, or the caller lacks the required entitlement tier.
         FieldViolation:
             type: object
             properties:
@@ -433,7 +1223,9 @@ components:
                     description: Maximum items per page (1-100).
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 neLat:
                     type: number
                     format: double
@@ -727,7 +1519,9 @@ components:
             properties:
                 theater:
                     type: string
-                    description: Theater name (e.g., "indo-pacific", "european", "middle-east"). Empty for all theaters.
+                    description: |-
+                        Theater name (e.g., "indo-pacific", "european", "middle-east"). Empty for all theaters.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
             description: GetTheaterPostureRequest specifies the theater to assess.
         GetTheaterPostureResponse:
             type: object
@@ -841,7 +1635,9 @@ components:
                         type: string
                         maxItems: 20
                         minItems: 1
-                        description: ICAO 24-bit hex addresses (lowercase). Max 20.
+                        description: |-
+                            ICAO 24-bit hex addresses (lowercase). Up to 20 are accepted by validation, but the
+                             handler de-duplicates, sorts, and processes at most the first 10 addresses.
                     maxItems: 20
                     minItems: 1
             description: GetAircraftDetailsBatchRequest looks up multiple aircraft by ICAO 24-bit hex.
@@ -1034,24 +1830,32 @@ components:
                 neLat:
                     type: number
                     format: double
+                    description: North-east corner latitude of the map bounding box.
                 neLon:
                     type: number
                     format: double
+                    description: North-east corner longitude of the map bounding box.
                 swLat:
                     type: number
                     format: double
+                    description: South-west corner latitude of the map bounding box.
                 swLon:
                     type: number
                     format: double
+                    description: South-west corner longitude of the map bounding box.
                 zoom:
                     type: integer
                     format: int32
+                    description: Map zoom level used to decide whether to return bases or clusters.
                 type:
                     type: string
+                    description: Optional military base type filter.
                 kind:
                     type: string
+                    description: Optional military base kind filter.
                 country:
                     type: string
+                    description: Optional country filter for military bases.
         ListMilitaryBasesResponse:
             type: object
             properties:

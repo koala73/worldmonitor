@@ -44,11 +44,20 @@ export const syncEntitlementCache = internalAction({
       maxDashboards: v.number(),
       apiAccess: v.boolean(),
       apiRateLimit: v.number(),
+      planLimits: v.optional(v.object({
+        apiRequestsPerDay: v.union(v.number(), v.null()),
+        apiBurstRequestsPerMinute: v.union(v.number(), v.null()),
+        mcpCallsPerDay: v.union(v.number(), v.null()),
+        mcpBurstRequestsPerMinute: v.union(v.number(), v.null()),
+      })),
       prioritySupport: v.boolean(),
       exportFormats: v.array(v.string()),
       // Optional — legacy entitlement rows pre-dating plan 2026-05-10-001
       // do not carry mcpAccess. Schema validator must accept their reads.
       mcpAccess: v.optional(v.boolean()),
+      // Optional — per-account daily REST allowance (#3199). Catalog-sourced
+      // writes set it; legacy rows omit it (rate-limit consumer fail-opens).
+      apiDailyAllowance: v.optional(v.number()),
     }),
     validUntil: v.number(),
   },

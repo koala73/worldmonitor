@@ -81,6 +81,26 @@ export function openWatchlistModal(): void {
     const entries = editor.getEntries();
     if (entries.length === 0) resetMarketWatchlist();
     else setMarketWatchlistEntries(entries);
+    // Watchlist story alerts (#4922 U3): if the user's alert rule opted into
+    // watchlist_story_alert, re-sync its server-side ticker-scope to the
+    // just-saved list. Fire-and-forget + dynamically imported so the modal
+    // stays dependency-light; gated on signed-in PRO before any network call
+    // (the notification-channels endpoint 403s free users — avoid the
+    // client-side 4xx flood class). The helper itself additionally no-ops
+    // when the rule is disabled or never opted in.
+    void (async () => {
+      try {
+        const [{ hasTier }, { getCurrentClerkUser }] = await Promise.all([
+          import('@/services/entitlements'),
+          import('@/services/clerk'),
+        ]);
+        if (!getCurrentClerkUser() || !hasTier(1)) return;
+        const { syncWatchlistTickersToAlertRule } = await import('@/services/notification-channels');
+        await syncWatchlistTickersToAlertRule(entries.map((e) => e.symbol));
+      } catch (err) {
+        console.warn('[watchlist] alert-rule ticker re-sync failed (not saved):', err);
+      }
+    })();
     close();
   });
 }

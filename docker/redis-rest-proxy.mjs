@@ -23,10 +23,24 @@ const REDIS_URL = process.env.SRH_CONNECTION_STRING || process.env.REDIS_URL || 
 const TOKEN = process.env.SRH_TOKEN || '';
 const PORT = parseInt(process.env.PORT || '80', 10);
 
+// Redact userinfo before a connection string ever reaches stdout — REDIS_URL
+// carries the Redis password (SRH_CONNECTION_STRING: redis://:<password>@host:port)
+// and docker logs are readable by anyone with docker/compose access.
+function maskRedisUrl(rawUrl) {
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.password) parsed.password = '***';
+    if (parsed.username) parsed.username = '***';
+    return parsed.toString();
+  } catch {
+    return '<unparsable redis URL>';
+  }
+}
+
 const client = createClient({ url: REDIS_URL });
 client.on('error', (err) => console.error('Redis error:', err.message));
 await client.connect();
-console.log(`Connected to Redis at ${REDIS_URL}`);
+console.log(`Connected to Redis at ${maskRedisUrl(REDIS_URL)}`);
 
 function checkAuth(req) {
   if (!TOKEN) return true;

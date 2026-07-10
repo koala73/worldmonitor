@@ -8,7 +8,7 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { runSeed } from '../scripts/_seed-utils.mjs';
+import { GRACEFUL_FETCH_FAILURE_EXIT_CODE, runSeed } from '../scripts/_seed-utils.mjs';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_EXIT = process.exit;
@@ -64,10 +64,49 @@ function countMetaSets(resourceSuffix) {
 async function runWithExitTrap(fn) {
   try {
     await fn();
+    return null;
   } catch (err) {
     if (!String(err.message).startsWith('__test_exit__:')) throw err;
+    return err.exitCode;
   }
 }
+
+function expireKeys() {
+  return recordedCalls
+    .filter(c => Array.isArray(c.body) && Array.isArray(c.body[0]))
+    .flatMap(c => c.body)
+    .filter(cmd => Array.isArray(cmd) && cmd[0] === 'EXPIRE')
+    .map(cmd => cmd[1]);
+}
+
+test('fetch failure extends existing TTL and exits with graceful-failure code', async () => {
+  const exitCode = await runWithExitTrap(() =>
+    runSeed('test', 'fetch-fail', 'test:fetch-fail:v1', async () => {
+      const err = new Error('upstream unavailable');
+      err.nonRetryable = true;
+      throw err;
+    }, {
+      validateFn: (d) => Boolean(d),
+      ttlSeconds: 3600,
+      extraKeys: [{ key: 'test:fetch-fail:extra' }],
+    }),
+  );
+
+  assert.equal(
+    exitCode,
+    GRACEFUL_FETCH_FAILURE_EXIT_CODE,
+    'fetch failure should use the reserved graceful-failure exit code so bundle logs do not report OK',
+  );
+  assert.deepEqual(
+    new Set(expireKeys()),
+    new Set(['test:fetch-fail:v1', 'seed-meta:test:fetch-fail', 'test:fetch-fail:extra']),
+    'fetch failure should still preserve last-good data by extending canonical, seed-meta, and extra-key TTLs',
+  );
+  assert.equal(
+    countMetaSets('fetch-fail'), 0,
+    'fetch failure must not write fresh seed-meta while reporting graceful failure',
+  );
+});
 
 test('validation failure with emptyDataIsFailure:true does NOT refresh seed-meta', async () => {
   await runWithExitTrap(() =>

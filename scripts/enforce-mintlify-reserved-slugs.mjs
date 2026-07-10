@@ -17,7 +17,7 @@ const violations = [];
 
 for (const file of RESERVED_FILES) {
   if (existsSync(file)) {
-    violations.push(`${file}: file uses a slug reserved by Mintlify (rename, e.g. mcp-server.mdx)`);
+    violations.push(`${file}: file uses a slug reserved by Mintlify (rename, e.g. mcp-overview.mdx)`);
   }
 }
 
@@ -39,7 +39,7 @@ if (existsSync(DOCS_JSON)) {
   };
   walk(json, '');
   for (const { slug, path } of seen) {
-    violations.push(`${DOCS_JSON} ${path}: nav entry "${slug}" is reserved by Mintlify (rename to e.g. "mcp-server")`);
+    violations.push(`${DOCS_JSON} ${path}: nav entry "${slug}" is reserved by Mintlify (rename to e.g. "mcp-overview")`);
   }
 }
 

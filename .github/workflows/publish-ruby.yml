@@ -1,0 +1,69 @@
+name: Publish Ruby SDK to RubyGems
+
+# Publishes the `worldmonitor` gem from sdk/ruby/ via RubyGems trusted
+# publishing (OIDC) — NO API-key secret required. Auth is a short-lived OIDC
+# token minted by GitHub Actions (`id-token: write`) and exchanged by
+# rubygems/configure-rubygems-credentials for a scoped RubyGems credential.
+# We call that credential action directly (instead of rubygems/release-gem)
+# because release-gem runs `rake release`, which re-tags the repo — this
+# workflow is already tag-triggered.
+#
+# One-time prerequisite: a (pending) Trusted Publisher must be configured on
+# RubyGems (rubygems.org -> gem `worldmonitor` -> Trusted publishers, or
+# Profile -> Pending trusted publishers while the gem does not exist yet)
+# pointing at this repository and this workflow file (publish-ruby.yml).
+# Until that exists the Publish step fails auth.
+#
+# Triggered by an SDK-specific tag (gem-v1.2.3) so it is independent of the
+# npm CLI and desktop releases, or manually via workflow_dispatch (dry run).
+
+on:
+  push:
+    tags: ['gem-v*']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Build and validate only — do not publish'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write # OIDC trusted publishing
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: sdk/ruby
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - uses: ruby/setup-ruby@d45b1a4e94b71acab930e56e79c6aa188764e7f9 # v1.316.0
+        with:
+          ruby-version: '3.3'
+
+      - name: Test
+        run: ruby test/test_worldmonitor.rb
+
+      - name: Verify gem version matches the tag
+        if: startsWith(github.ref, 'refs/tags/gem-v')
+        run: |
+          GEM_VERSION="$(ruby -r ./lib/worldmonitor/version -e 'puts WorldMonitor::VERSION')"
+          TAG_VERSION="${GITHUB_REF_NAME#gem-v}"
+          if [ "$GEM_VERSION" != "$TAG_VERSION" ]; then
+            echo "::error::WorldMonitor::VERSION ($GEM_VERSION) does not match tag ($TAG_VERSION)"
+            exit 1
+          fi
+
+      - name: Build gem
+        run: gem build worldmonitor.gemspec
+
+      - name: Configure RubyGems trusted publishing credentials
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)
+        uses: rubygems/configure-rubygems-credentials@dc5a8d8553e6ee01fc26761a49e99e733d17954a # v2.1.0
+
+      - name: Publish
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && !inputs.dry_run)
+        run: gem push worldmonitor-*.gem

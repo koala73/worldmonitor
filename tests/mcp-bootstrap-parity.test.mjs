@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 
 import { __testing__ as healthTesting } from '../api/health.js';
 import { __testing__ as mcpTesting } from '../api/mcp.ts';
+import { CII_RISK_SCORE_CACHE_KEYS } from '../api/_cii-risk-cache-keys.js';
 
 const { BOOTSTRAP_KEYS, STANDALONE_KEYS } = healthTesting;
 const { TOOL_REGISTRY } = mcpTesting;
@@ -39,6 +40,14 @@ const { TOOL_REGISTRY } = mcpTesting;
 const EXCLUDED_FROM_MCP = new Map([
 
   // ===========================================================================
+  // #4920 completeness-measurement ops keys (pipeline health, not content)
+  // ===========================================================================
+  ['news:feed-health:v1',
+    'ops surface: per-feed validation status + silent-zero streaks published by the daily feed-validation workflow; consumed by api/health.js + operators, not a queryable news slice (#4920).'],
+  ['news:recall-benchmark:v1',
+    'ops surface: daily GDELT recall percentage + missed headlines for coverage monitoring; consumed by api/health.js + operators, not a queryable news slice (#4920).'],
+
+  // ===========================================================================
   // Intermediate / pipeline keys (data surfaces through a sibling tool)
   // ===========================================================================
   ['supply_chain:corridorrisk:v1',
@@ -55,8 +64,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'cascade-mirror: live counterpart of theater_posture:sebuf:stale:v1 (covered by get_military_posture). CASCADE_GROUPS theaterPosture entry.'],
   ['theater-posture:sebuf:backup:v1',
     'cascade-mirror: backup counterpart of theater_posture:sebuf:stale:v1 (covered by get_military_posture). CASCADE_GROUPS theaterPosture entry.'],
-  ['risk:scores:sebuf:v3',
-    'cascade-mirror: live counterpart of risk:scores:sebuf:stale:v3 (covered by get_conflict_events).'],
+  [CII_RISK_SCORE_CACHE_KEYS.live,
+    `cascade-mirror: live counterpart of ${CII_RISK_SCORE_CACHE_KEYS.stale} (covered by get_conflict_events).`],
   ['military:flights:v1',
     'cascade-mirror: live counterpart of military:flights:stale:v1 — deferred to a future expanded military tool (no current tool exposes either variant).'],
   ['military:flights:stale:v1',
@@ -107,12 +116,14 @@ const EXCLUDED_FROM_MCP = new Map([
     'on-demand: RPC cache populated only after first user query — deferred to a future temporal-analysis tool.'],
   ['news:threat:summary:v1',
     'on-demand: relay-classify-only, written only when classify produces country matches (matches api/health.js:468 ON_DEMAND_KEYS rationale). Underlying news inputs already exposed via get_news_intelligence.'],
-  ['resilience:ranking:v22',
+  ['resilience:ranking:v25',
     'on-demand: RPC cache populated after Pro ranking requests (matches api/health.js:469 ON_DEMAND_KEYS rationale). Deferred to a future resilience tool.'],
   ['forecast:simulation-package:latest',
     'on-demand: written by writeSimulationPackage after deep forecast runs (matches api/health.js:466 ON_DEMAND_KEYS rationale). Internal pipeline artifact, not a queryable slice.'],
   ['forecast:simulation-outcome:latest',
     'on-demand: written by writeSimulationOutcome after simulation runs (matches api/health.js:467 ON_DEMAND_KEYS rationale). Internal pipeline artifact, not a queryable slice.'],
+  ['forecast:resolutions:v1',
+    'operational: persistent forecast resolution working ledger with raw per-forecast evidence and audit receipt state. Exposed through health and summarized by get_forecast_scorecard; raw ledger MCP access deferred until a filtered/sliced tool exists.'],
 
   // ===========================================================================
   // Recovery pillar scorer inputs — no dedicated recovery-data MCP tool yet.
@@ -133,6 +144,26 @@ const EXCLUDED_FROM_MCP = new Map([
     'deferred: recovery pillar scorer input. Future resilience tool will expose recovery dimensions.'],
   ['resilience:recovery:sovereign-wealth:v1',
     'deferred: recovery pillar scorer input. Future resilience tool will expose recovery dimensions.'],
+
+  // ===========================================================================
+  // #5055 health-only seed probes added to strict /api/health monitoring.
+  // ===========================================================================
+  ['economic:energy:v1:all',
+    'deferred: strict health seed probe added by #5055; future economic-data MCP expansion can expose energy prices directly.'],
+  ['shared:fx-rates:v1',
+    'deferred: strict health seed probe added by #5055; FX rates are shared infrastructure consumed by seeders and future economic MCP expansion.'],
+  ['infrastructure:submarine-cables:v1',
+    'deferred: strict health seed probe added by #5055; future infrastructure MCP expansion can expose the cable inventory directly.'],
+  ['patents:defense:latest',
+    'deferred: strict health seed probe added by #5055; future military or defense-innovation MCP expansion can expose patent summaries.'],
+  ['conflict:acled:v1:all:0:0',
+    'deferred: strict health seed probe added by #5055; ACLED aggregate currently feeds downstream intelligence and forecast inputs.'],
+  ['portwatch:disruptions:active:v1',
+    'deferred: strict health seed probe added by #5055; disruptions are consumed by chokepoint hazard scoring until a PortWatch MCP expansion exists.'],
+  ['seed-meta:comtrade:bilateral-hs4',
+    'operational: meta-only aggregate health probe added by #5055 for sharded comtrade:bilateral-hs4:{iso2}:v1 payloads; no queryable data slice lives at this key.'],
+  ['research:arxiv:v1:cs.AI::50',
+    'deferred: strict health seed probe added by #5055; future research MCP expansion can expose the ArXiv/HN trending feed.'],
 
   // ===========================================================================
   // Deferred follow-up tools (explicit gaps named in the plan or related domain)
@@ -157,16 +188,18 @@ const EXCLUDED_FROM_MCP = new Map([
     'deferred to a future region-aware intelligence tool.'],
   ['intelligence:market-implications:v1',
     'deferred: LLM-generated narrative composite; underlying inputs already exposed via existing data tools. A future LLM-narrative tool would bundle this.'],
+  ['webcam:cameras:active',
+    'deferred: Windy webcam active-version pointer for app map markers. A future webcam MCP tool would expose decoded camera entries, not the raw Redis pointer.'],
   ['supply_chain:hormuz_tracker:v1',
     'deferred: specialized Strait-of-Hormuz tracker; broader chokepoint coverage via get_chokepoint_status. Hormuz-specific tool deferred.'],
   ['thermal:escalation:v1',
     'deferred to a future conflict-escalation tool.'],
   ['resilience:static:index:v1',
-    'deferred to a future resilience tool (paired with resilience:ranking:v22).'],
+    'deferred to a future resilience tool (paired with resilience:ranking:v25).'],
   ['resilience:static:fao',
     'deferred to a future resilience tool (FAO Phase 3+ aggregate, paired with resilience:static:index:v1).'],
-  ['resilience:intervals:v6:US',
-    'deferred to a future resilience tool (formula-tagged sensitivity bands on top of resilience:ranking:v22).'],
+  ['resilience:intervals:v9:US',
+    'deferred to a future resilience tool (formula-tagged sensitivity bands on top of resilience:ranking:v25).'],
   ['resilience:low-carbon-generation:v1',
     'deferred to a future resilience tool. Companion data to fossil-electricity-share (already exposed via get_energy_intelligence).'],
   ['resilience:power-losses:v1',
@@ -207,6 +240,24 @@ const EXCLUDED_FROM_MCP = new Map([
     'deferred: derived economic stress composite; underlying inputs already exposed via get_economic_data. A future composite-narrative tool would bundle this.'],
   ['economic:fred:v1:GSCPI:0',
     'deferred: NY Fed Global Supply Chain Pressure Index (single FRED series); supply-chain pressure already broadly covered via get_supply_chain_data + get_chokepoint_status. Future composite supply-chain tool could expose this.'],
+  ['economic:fred:v1:WALCL:0',
+    'forecast-internal: strict health probe added by #5101 for forecast macro inputs. Fed Funds is the canonical FRED MCP surface today; future expanded macro/rates tool can expose this single series directly.'],
+  ['economic:fred:v1:T10Y2Y:0',
+    'forecast-internal: strict health probe added by #5101 for forecast macro inputs. Fed Funds is the canonical FRED MCP surface today; future expanded macro/rates tool can expose this single series directly.'],
+  ['economic:fred:v1:UNRATE:0',
+    'forecast-internal: strict health probe added by #5101 for forecast macro inputs. Fed Funds is the canonical FRED MCP surface today; future expanded macro/rates tool can expose this single series directly.'],
+  ['economic:fred:v1:CPIAUCSL:0',
+    'forecast-internal: strict health probe added by #5101 for forecast macro inputs. Fed Funds is the canonical FRED MCP surface today; future expanded macro/rates tool can expose this single series directly.'],
+  ['economic:fred:v1:DGS10:0',
+    'forecast-internal: strict health probe added by #5101 for forecast macro inputs. Fed Funds is the canonical FRED MCP surface today; future expanded macro/rates tool can expose this single series directly.'],
+  ['economic:fred:v1:VIXCLS:0',
+    'forecast-internal: strict health probe added by #5101 for forecast macro inputs. Fed Funds is the canonical FRED MCP surface today; future expanded macro/rates tool can expose this single series directly.'],
+  ['economic:fred:v1:GDP:0',
+    'forecast-internal: strict health probe added by #5101 for forecast macro inputs. Fed Funds is the canonical FRED MCP surface today; future expanded macro/rates tool can expose this single series directly.'],
+  ['economic:fred:v1:M2SL:0',
+    'forecast-internal: strict health probe added by #5101 for forecast macro inputs. Fed Funds is the canonical FRED MCP surface today; future expanded macro/rates tool can expose this single series directly.'],
+  ['economic:fred:v1:DCOILWTICO:0',
+    'forecast-internal: strict health probe added by #5101 for forecast macro inputs. Fed Funds is the canonical FRED MCP surface today; future expanded macro/rates tool can expose this single series directly.'],
   ['economic:fred:v1:ESTR:0',
     'deferred: ECB €STR short-rate (single FRED series). Future expanded rates tool. Fed Funds (economic:fred:v1:FEDFUNDS:0) already exposed via get_economic_data.'],
   ['economic:fred:v1:EURIBOR3M:0',
@@ -291,6 +342,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'operational: relay loop heartbeat — covered by /api/health, not a user-facing data slice for MCP.'],
   ['relay:heartbeat:climate-news',
     'operational: relay loop heartbeat — covered by /api/health, not a user-facing data slice for MCP.'],
+  ['digest:last-run',
+    'operational: digest-notifications cron heartbeat — covered by /api/health, not a user-facing data slice for MCP.'],
 ]);
 
 // -----------------------------------------------------------------------------

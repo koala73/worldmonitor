@@ -2,6 +2,11 @@ openapi: 3.1.0
 info:
     title: TradeService API
     version: 1.0.0
+security:
+    - WorldMonitorKey: []
+    - ApiKeyHeader: []
+servers:
+    - url: https://api.worldmonitor.app
 paths:
     /api/trade/v1/get-trade-restrictions:
         get:
@@ -13,10 +18,14 @@ paths:
             parameters:
                 - name: countries
                   in: query
-                  description: WTO member codes to filter by. Empty = all.
+                  description: |-
+                    WTO member codes to filter by. Empty = all.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   style: form
                   explode: true
+                  example:
+                      - "840"
                   schema:
                     type: array
                     items:
@@ -25,14 +34,32 @@ paths:
                   in: query
                   description: Max results to return (server caps at 100).
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "restrictions":
+                                    - "affectedCountry": "US"
+                                      "description": "Example WorldMonitor observation."
+                                      "id": "example-id"
+                                      "measureType": "all"
+                                      "notifiedAt": "2026-01-15T12:00:00Z"
+                                "upstreamUnavailable": true
                             schema:
                                 $ref: '#/components/schemas/GetTradeRestrictionsResponse'
                 "400":
@@ -40,51 +67,123 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/trade/v1/get-tariff-trends:
         get:
             tags:
                 - TradeService
             summary: GetTariffTrends
-            description: Get tariff rate timeseries for a country pair.
+            description: Get tariff rate timeseries for a country pair. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetTariffTrends
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: reporting_country
                   in: query
                   description: WTO member code of reporting country (e.g. "840" = US).
                   required: false
+                  example: "840"
                   schema:
                     type: string
                 - name: partner_country
                   in: query
                   description: WTO member code of partner country (e.g. "156" = China).
                   required: false
+                  example: "156"
                   schema:
                     type: string
                 - name: product_sector
                   in: query
                   description: Product sector filter (HS chapter). Empty = aggregate.
                   required: false
+                  example: "diesel"
                   schema:
                     type: string
                 - name: years
                   in: query
                   description: Number of years to look back (default 10, max 30).
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "datapoints":
+                                    - "boundRate": 75.25
+                                      "indicatorCode": "example"
+                                      "partnerCountry": "156"
+                                      "productSector": "diesel"
+                                      "reportingCountry": "840"
+                                "effectiveTariffRate":
+                                    "observationPeriod": "daily"
+                                    "sourceName": "WorldMonitor Analyst"
+                                    "sourceUrl": "https://example.com/worldmonitor"
+                                    "tariffRate": 75.25
+                                    "updatedAt": "2026-01-15"
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "upstreamUnavailable": true
                             schema:
                                 $ref: '#/components/schemas/GetTariffTrendsResponse'
                 "400":
@@ -92,13 +191,54 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/trade/v1/get-trade-flows:
         get:
             tags:
@@ -111,26 +251,46 @@ paths:
                   in: query
                   description: WTO member code of reporting country.
                   required: false
+                  example: "840"
                   schema:
                     type: string
                 - name: partner_country
                   in: query
                   description: WTO member code of partner country.
                   required: false
+                  example: "156"
                   schema:
                     type: string
                 - name: years
                   in: query
                   description: Number of years to look back (default 10, max 30).
                   required: false
+                  example: 1
                   schema:
                     type: integer
                     format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "flows":
+                                    - "exportValueUsd": 1.5
+                                      "importValueUsd": 1.5
+                                      "partnerCountry": "156"
+                                      "productSector": "diesel"
+                                      "reportingCountry": "840"
+                                "upstreamUnavailable": true
                             schema:
                                 $ref: '#/components/schemas/GetTradeFlowsResponse'
                 "400":
@@ -138,13 +298,54 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/trade/v1/get-trade-barriers:
         get:
             tags:
@@ -155,32 +356,57 @@ paths:
             parameters:
                 - name: countries
                   in: query
-                  description: WTO member codes to filter by. Empty = all.
+                  description: |-
+                    WTO member codes to filter by. Empty = all.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
                   style: form
                   explode: true
+                  example:
+                      - "840"
                   schema:
                     type: array
                     items:
                         type: string
                 - name: measure_type
                   in: query
-                  description: 'Filter by measure type: "SPS", "TBT", or empty for both.'
+                  description: |-
+                    Filter by measure type: "SPS", "TBT", or empty for both.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "SPS"
                   schema:
                     type: string
                 - name: limit
                   in: query
                   description: Max results to return (server caps at 100).
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "barriers":
+                                    - "dateDistributed": "2026-01-15"
+                                      "id": "example-id"
+                                      "measureType": "SPS"
+                                      "notifyingCountry": "US"
+                                      "objective": "example"
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "upstreamUnavailable": true
                             schema:
                                 $ref: '#/components/schemas/GetTradeBarriersResponse'
                 "400":
@@ -188,13 +414,54 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/trade/v1/get-customs-revenue:
         get:
             tags:
@@ -202,11 +469,29 @@ paths:
             summary: GetCustomsRevenue
             description: Get US customs duties revenue (Treasury MTS data, seeded by Railway).
             operationId: GetCustomsRevenue
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "months":
+                                    - "calendarMonth": 1
+                                      "calendarYear": 1
+                                      "fiscalYear": 1
+                                      "fytdAmountBillions": 1.5
+                                      "monthlyAmountBillions": 1.5
+                                "upstreamUnavailable": true
                             schema:
                                 $ref: '#/components/schemas/GetCustomsRevenueResponse'
                 "400":
@@ -214,44 +499,110 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/trade/v1/list-comtrade-flows:
         get:
             tags:
                 - TradeService
             summary: ListComtradeFlows
-            description: List UN Comtrade strategic commodity flows with anomaly detection.
+            description: List UN Comtrade strategic commodity flows with anomaly detection. PRO-gated. Requires entitlement tier >= 1.
             operationId: ListComtradeFlows
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: reporter_code
                   in: query
                   description: UN Comtrade reporter code (e.g. "842" = US, "156" = China). Empty returns all reporters.
                   required: false
+                  example: "842"
                   schema:
                     type: string
                 - name: cmd_code
                   in: query
                   description: HS commodity code (e.g. "2709" = crude oil). Empty returns all commodities.
                   required: false
+                  example: "2709"
                   schema:
                     type: string
+                    pattern: '^\d{4,6}$'
                 - name: anomalies_only
                   in: query
                   description: If true, only return flows with a year-over-year change exceeding 30%.
                   required: false
+                  example: true
                   schema:
                     type: boolean
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "flows":
+                                    - "cmdCode": "2709"
+                                      "cmdDesc": "example"
+                                      "isAnomaly": true
+                                      "netWeightKg": 1.5
+                                      "partnerCode": "example"
+                                "upstreamUnavailable": true
                             schema:
                                 $ref: '#/components/schemas/ListComtradeFlowsResponse'
                 "400":
@@ -259,15 +610,95 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
 components:
+    securitySchemes:
+        WorldMonitorKey:
+            type: apiKey
+            in: header
+            name: X-WorldMonitor-Key
+            description: User-issued WorldMonitor API key.
+        ApiKeyHeader:
+            type: apiKey
+            in: header
+            name: X-Api-Key
+            description: Alias header for the WorldMonitor API key (X-WorldMonitor-Key).
+        BearerAuth:
+            type: http
+            scheme: bearer
+            description: 'Bearer token: a Clerk-issued JWT for browser session flows, passed as Authorization: Bearer <token>.'
     schemas:
+        JmespathProjectionError:
+            description: Returned when a REST jmespath projection is invalid or exceeds the expression/output byte limits.
+            properties:
+                _jmespath_error:
+                    description: Projection error discriminator and details.
+                    type: string
+                original_keys:
+                    description: Top-level keys or shape of the unprojected response.
+                    items:
+                        type: string
+                    type: array
+            required:
+                - _jmespath_error
+                - original_keys
+            type: object
+        UnauthorizedError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable error message.
+            required:
+                - error
+            description: Returned when the API key is missing, malformed, or lacks current API access.
         Error:
             type: object
             properties:
@@ -275,6 +706,56 @@ components:
                     type: string
                     description: Error message (e.g., 'user not found', 'database connection failed')
             description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        InvalidRequestBodyError:
+            type: object
+            description: Returned when a JSON POST request body is empty or malformed.
+            properties:
+                message:
+                    type: string
+                    description: Invalid request body
+            required:
+                - message
+        GatewayError:
+            type: object
+            description: Returned by gateway infrastructure errors before an RPC handler runs, such as origin, routing, method, authentication, or quota checks.
+            properties:
+                error:
+                    oneOf:
+                        - type: string
+                        - type: object
+                          additionalProperties: true
+                    description: Gateway error reason or structured gateway failure details.
+            required:
+                - error
+        RateLimitError:
+            type: object
+            description: Returned when a gateway or handler rate limit rejects the request.
+            properties:
+                error:
+                    type: string
+                    description: Human-readable rate-limit failure reason.
+            required:
+                - error
+        ForbiddenError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable entitlement failure reason.
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint.
+                currentTier:
+                    type: integer
+                    format: int32
+                    description: Caller entitlement tier when known.
+                planKey:
+                    type: string
+                    description: Caller plan key when known.
+            required:
+                - error
+            description: Returned when a PRO-gated endpoint denies access because the caller has no resolved authenticated user, entitlements cannot be verified, or the caller lacks the required entitlement tier.
         FieldViolation:
             type: object
             properties:
@@ -306,7 +787,9 @@ components:
                     type: array
                     items:
                         type: string
-                        description: WTO member codes to filter by. Empty = all.
+                        description: |-
+                            WTO member codes to filter by. Empty = all.
+                             Accepted but currently ignored; no-op until this handler supports the parameter.
                 limit:
                     type: integer
                     format: int32
@@ -506,10 +989,14 @@ components:
                     type: array
                     items:
                         type: string
-                        description: WTO member codes to filter by. Empty = all.
+                        description: |-
+                            WTO member codes to filter by. Empty = all.
+                             Accepted but currently ignored; no-op until this handler supports the parameter.
                 measureType:
                     type: string
-                    description: 'Filter by measure type: "SPS", "TBT", or empty for both.'
+                    description: |-
+                        Filter by measure type: "SPS", "TBT", or empty for both.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 limit:
                     type: integer
                     format: int32

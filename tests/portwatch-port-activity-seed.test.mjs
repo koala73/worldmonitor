@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { orderColdFetchQueue } from '../scripts/seed-portwatch-port-activity.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -180,14 +181,15 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /ArcGIS degraded — \$\{_invalidParamsErrorCount\}/);
   });
 
-  it('canonical/seed-meta advance only when coverage >= MIN_CANONICAL_PUBLISH (Greptile PR #3760 P1)', () => {
+  it('canonical/seed-meta advance at the recovery publish floor, below the 174 health target', () => {
     // Gate=5 lets per-country writes through (cache rotation accumulates)
     // but CANONICAL_KEY + META_KEY require a higher coverage floor before
     // they advance — protects consumers from a 5-country canonical
-    // published as "healthy" during a recovery from full outage.
+    // published as fresh during a recovery from full outage.
+    assert.match(src, /export const PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES\s*=\s*174/);
     assert.match(src, /const MIN_CANONICAL_PUBLISH\s*=\s*50/);
     // The gate is evaluated and used to conditionally write canonical/meta:
-    assert.match(src, /const canonicalAdvances = countryData\.size\s*>=\s*MIN_CANONICAL_PUBLISH/);
+    assert.match(src, /const canonicalAdvances = shouldAdvanceCanonical\(countryData\.size\)/);
     assert.match(src, /if\s*\(canonicalAdvances\)\s*\{[\s\S]{0,300}SET',\s*CANONICAL_KEY/);
     // Below the floor, extendExistingTtl preserves canonical + meta +
     // prior per-country keys, and a PARTIAL PERSIST log line surfaces
@@ -504,7 +506,7 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     // Called inside fetchAll before refs/preflight/activity stages.
     assert.match(
       src,
-      /export async function fetchAll[\s\S]{0,400}?resolveArcgisDateField\(/,
+      /export async function fetchAll[\s\S]{0,600}?resolveArcgisDateField\(/,
     );
     // Both per-country fetchers receive dateField from the resolved value.
     assert.match(src, /fetchMaxDate\(iso3,\s*\{\s*signal,\s*dateField\s*\}\)/);
@@ -896,22 +898,40 @@ describe('proxyFetch signal propagation (runtime)', () => {
 });
 
 describe('validateFn', () => {
-  it('returns true when countries array has >= 50 entries', () => {
-    const data = { countries: Array.from({ length: 80 }, (_, i) => `C${i}`), fetchedAt: new Date().toISOString() };
-    const valid = data && Array.isArray(data.countries) && data.countries.length >= 50;
-    assert.equal(valid, true);
+  let validateFn;
+  let shouldAdvanceCanonical;
+  let PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES;
+
+  before(async () => {
+    ({
+      validateFn,
+      shouldAdvanceCanonical,
+      PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES,
+    } = await import('../scripts/seed-portwatch-port-activity.mjs'));
   });
 
-  it('returns false when countries array has < 50 entries', () => {
-    const data = { countries: ['US', 'SA'], fetchedAt: new Date().toISOString() };
-    const valid = data && Array.isArray(data.countries) && data.countries.length >= 50;
-    assert.equal(valid, false);
+  it('keeps the per-country write gate permissive so partial recovery can accumulate', () => {
+    const data = { countries: Array.from({ length: 5 }, (_, i) => `C${i}`), fetchedAt: new Date().toISOString() };
+    assert.equal(validateFn(data), true);
+  });
+
+  it('returns false below the per-country write gate', () => {
+    const data = { countries: ['US', 'SA', 'GB', 'JP'], fetchedAt: new Date().toISOString() };
+    assert.equal(validateFn(data), false);
   });
 
   it('returns false for null data', () => {
-    const data = null;
-    const valid = !!(data && Array.isArray(data.countries) && data.countries.length >= 50);
-    assert.equal(valid, false);
+    assert.equal(validateFn(null), false);
+  });
+
+  it('keeps the 174-country target as a health floor, not the publish cursor', () => {
+    assert.equal(PORTWATCH_PORT_ACTIVITY_TARGET_COUNTRIES, 174);
+    assert.equal(shouldAdvanceCanonical(49), false);
+    assert.equal(shouldAdvanceCanonical(50), true);
+    assert.equal(shouldAdvanceCanonical(139), true);
+    assert.equal(shouldAdvanceCanonical(173), true);
+    assert.equal(shouldAdvanceCanonical(174), true);
+    assert.equal(shouldAdvanceCanonical(175), true);
   });
 });
 
@@ -1102,7 +1122,7 @@ describe('cold-fetch cap prevents 174-country cliff (WM 2026-05-13)', () => {
     // shuffle and the needsFetch reassignment) — using a multi-line regex
     // that requires shuffle → cacheWrittenAt → MAX_CACHE_AGE_MS in order.
     const capBlock = src.match(
-      /needsFetch\.length\s*>\s*MAX_COLD_FETCH_PER_RUN[\s\S]+?needsFetch\s*=\s*shuffled\.slice/,
+      /needsFetch\.length\s*>\s*MAX_COLD_FETCH_PER_RUN[\s\S]+?needsFetch\s*=\s*ordered\.slice/,
     );
     assert.ok(capBlock, 'cap block found');
     assert.match(
@@ -1163,8 +1183,9 @@ describe('cold-fetch cap prevents 174-country cliff (WM 2026-05-13)', () => {
     // Pre-fix needsFetch was const. This regression-guards a future cleanup
     // that switches it back without realizing the cap path mutates it.
     assert.match(src, /let needsFetch\s*=\s*\[\]/);
-    // And the reassignment in the cap path:
-    assert.match(src, /needsFetch\s*=\s*shuffled\.slice\(0,\s*MAX_COLD_FETCH_PER_RUN\)/);
+    // And the reassignment in the cap path (now sourced from the
+    // never-cached-first orderColdFetchQueue instead of a plain shuffle):
+    assert.match(src, /needsFetch\s*=\s*ordered\.slice\(0,\s*MAX_COLD_FETCH_PER_RUN\)/);
   });
 
   it('full rotation is computable: ~ceil(174 / 30) = 6 runs ≈ 3 days at 12h cadence', () => {
@@ -1179,5 +1200,37 @@ describe('cold-fetch cap prevents 174-country cliff (WM 2026-05-13)', () => {
     assert.equal(runs, 6);
     assert.equal(fullRotationHours, 72, 'full rotation must stay under MAX_CACHE_AGE_MS (7d = 168h)');
     assert.ok(fullRotationHours < 168, 'rotation must complete before MAX_CACHE_AGE_MS forces hard drops');
+  });
+});
+
+// ── cold-fetch prioritisation (WM #4293 coverage-freeze fix) ──────────────────
+// Never-cached countries (prevPayload=null) have no served-stale fallback, so if
+// the random cap deferred them they were dropped entirely (droppedNoCache),
+// freezing /api/health coverage below the 174 target (observed stuck at 158).
+// orderColdFetchQueue must sort them ahead of cached-but-stale countries so they
+// always win a cold-fetch slot (uncached count << MAX_COLD_FETCH_PER_RUN).
+describe('orderColdFetchQueue — never-cached-first prioritisation', () => {
+  const noCache = (iso2) => ({ iso2, prevPayload: null });
+  const cached = (iso2) => ({ iso2, prevPayload: { asof: '2026-06-26', cacheWrittenAt: Date.now() } });
+
+  it('places every no-prior-cache country ahead of every cached one', () => {
+    const q = [cached('US'), noCache('MY'), cached('GB'), noCache('IE'), noCache('EC')];
+    const ordered = orderColdFetchQueue(q, () => 0);
+    const firstCachedIdx = ordered.findIndex((it) => it.prevPayload);
+    const noCacheIdxs = ordered.flatMap((it, i) => (it.prevPayload ? [] : [i]));
+    assert.ok(Math.max(...noCacheIdxs) < firstCachedIdx, 'all uncached must sort before all cached');
+    assert.deepEqual(ordered.slice(0, 3).map((it) => it.iso2).sort(), ['EC', 'IE', 'MY']);
+  });
+
+  it('is a permutation and fits all uncached within the 30-slot cap (16 < 30)', () => {
+    const q = Array.from({ length: 16 }, (_, i) => noCache('N' + i))
+      .concat(Array.from({ length: 140 }, (_, i) => cached('C' + i)));
+    const ordered = orderColdFetchQueue(q);
+    assert.equal(ordered.length, q.length, 'no drops');
+    assert.equal(new Set(ordered.map((it) => it.iso2)).size, q.length, 'no dups');
+    const inCap = new Set(ordered.slice(0, 30).map((it) => it.iso2));
+    for (let i = 0; i < 16; i++) {
+      assert.ok(inCap.has('N' + i), `uncached N${i} must be within the cold-fetch cap, not deferred/dropped`);
+    }
   });
 });

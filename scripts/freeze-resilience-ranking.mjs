@@ -5,6 +5,9 @@
 // Usage:
 //   API_BASE=https://api.worldmonitor.app node scripts/freeze-resilience-ranking.mjs
 //   API_BASE=https://api.worldmonitor.app WORLDMONITOR_API_KEY=... node scripts/freeze-resilience-ranking.mjs
+//   API_BASE=https://api.worldmonitor.app WORLDMONITOR_API_KEY=... \
+//     RESILIENCE_RANKING_OUTPUT_BASENAME=resilience-ranking-live-post-pr1-YYYY-MM-DD.json \
+//     node scripts/freeze-resilience-ranking.mjs
 //
 // The script hits GET /api/resilience/v1/get-resilience-ranking, enriches each
 // item with the country name (shared/country-names.json reverse-lookup), and
@@ -50,6 +53,7 @@ const FORMULA_CHECK_COUNTRIES = (process.env.RESILIENCE_RANKING_FORMULA_CHECK_CO
   .map((countryCode) => countryCode.trim().toUpperCase())
   .filter((countryCode) => /^[A-Z]{2}$/.test(countryCode));
 const FORMULA_SCORE_TOLERANCE = Number(process.env.RESILIENCE_RANKING_FORMULA_TOLERANCE || 0.25);
+const OUTPUT_BASENAME = process.env.RESILIENCE_RANKING_OUTPUT_BASENAME || '';
 
 const METHODOLOGY_BY_FORMULA = {
   'domain-weighted-6d': {
@@ -384,6 +388,27 @@ function enrichItems(items, nameMap, startRank) {
   }));
 }
 
+function resolveRankingSnapshotOutputPath(capturedAt, outputBasename = OUTPUT_BASENAME) {
+  const basename = outputBasename || `resilience-ranking-${capturedAt}.json`;
+  if (/[\\/]/.test(basename)) {
+    throw new Error(`RESILIENCE_RANKING_OUTPUT_BASENAME must be a filename only, got ${basename}`);
+  }
+  const match =
+    /^resilience-ranking-(\d{4}-\d{2}-\d{2})\.json$/.exec(basename) ||
+    /^resilience-ranking-live-post-pr1-(\d{4}-\d{2}-\d{2})\.json$/.exec(basename);
+  if (!match) {
+    throw new Error(
+      `RESILIENCE_RANKING_OUTPUT_BASENAME must match resilience-ranking-YYYY-MM-DD.json or resilience-ranking-live-post-pr1-YYYY-MM-DD.json, got ${basename}`,
+    );
+  }
+  if (match[1] !== capturedAt) {
+    throw new Error(
+      `RESILIENCE_RANKING_OUTPUT_BASENAME date ${match[1]} must match capturedAt ${capturedAt}`,
+    );
+  }
+  return path.join(REPO_ROOT, 'docs', 'snapshots', basename);
+}
+
 async function main() {
   if (!API_BASE) {
     console.error('[freeze-resilience-ranking] API_BASE env var required (e.g. https://api.worldmonitor.app)');
@@ -433,12 +458,16 @@ async function main() {
     })),
   };
 
-  const outPath = path.join(REPO_ROOT, 'docs', 'snapshots', `resilience-ranking-${capturedAt}.json`);
+  const outPath = resolveRankingSnapshotOutputPath(capturedAt);
   await fs.mkdir(path.dirname(outPath), { recursive: true });
   await fs.writeFile(outPath, `${JSON.stringify(snapshot, null, 2)}\n`, 'utf8');
   console.log(`[freeze-resilience-ranking] wrote ${outPath}`);
   console.log(`[freeze-resilience-ranking] items=${ranked.length} greyedOut=${greyedOut.length} commit=${snapshot.commitSha.slice(0, 10)}`);
 }
+
+export {
+  resolveRankingSnapshotOutputPath,
+};
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((err) => {

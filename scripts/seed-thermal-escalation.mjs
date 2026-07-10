@@ -9,6 +9,7 @@ const CANONICAL_KEY = 'thermal:escalation:v1';
 const HISTORY_KEY = 'thermal:escalation:history:v1';
 const CACHE_TTL = 6 * 60 * 60; // 6h — cron runs every 2h; 3x interval so one missed run does not expire the key (was 3h = 1.5x, too tight)
 const SOURCE_VERSION = 'thermal-escalation-v1';
+const MIN_THERMAL_ESCALATION_CLUSTERS = 1;
 let latestHistoryPayload = { updatedAt: '', cells: {} };
 
 async function fetchEscalations() {
@@ -39,16 +40,20 @@ export function declareRecords(data) {
   return Array.isArray(data?.clusters) ? data.clusters.length : 0;
 }
 
+export function validateFn(data) {
+  return declareRecords(data) >= MIN_THERMAL_ESCALATION_CLUSTERS;
+}
+
 async function main() {
   await runSeed('thermal', 'escalation', CANONICAL_KEY, async () => {
     const result = await fetchEscalations();
     return result.watch;
   }, {
-    validateFn: (data) => Array.isArray(data?.clusters),
+    validateFn,
     ttlSeconds: CACHE_TTL,
     lockTtlMs: 180_000,
     sourceVersion: SOURCE_VERSION,
-    recordCount: (data) => data?.clusters?.length ?? 0,
+    recordCount: declareRecords,
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 360,
@@ -63,7 +68,9 @@ async function main() {
   });
 }
 
-main().catch((err) => {
-  console.error('FATAL:', err.message || err);
-  process.exit(1);
-});
+if (process.argv[1]?.endsWith('seed-thermal-escalation.mjs')) {
+  main().catch((err) => {
+    console.error('FATAL:', err.message || err);
+    process.exit(1);
+  });
+}

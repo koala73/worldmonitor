@@ -17,12 +17,22 @@
 import Globe from 'globe.gl';
 import { isDesktopRuntime } from '@/services/runtime';
 import type { GlobeInstance, ConfigOptions } from 'globe.gl';
-import { INTEL_HOTSPOTS, CONFLICT_ZONES, MILITARY_BASES, NUCLEAR_FACILITIES, SPACEPORTS, ECONOMIC_CENTERS, STRATEGIC_WATERWAYS, CRITICAL_MINERALS, UNDERSEA_CABLES } from '@/config/geo';
+import { INTEL_HOTSPOTS, CONFLICT_ZONES, STRATEGIC_WATERWAYS } from '@/config/geo';
+import { getCachedMilitaryBases, preloadMilitaryBases } from '@/services/military-base-config';
+import { NUCLEAR_FACILITIES, SPACEPORTS, ECONOMIC_CENTERS, CRITICAL_MINERALS, UNDERSEA_CABLES } from '@/config/geo-map';
 import { PIPELINES } from '@/config/pipelines';
 import { t } from '@/services/i18n';
 import { SITE_VARIANT } from '@/config/variant';
 import { getGlobeRenderScale, resolveGlobePixelRatio, resolvePerformanceProfile, subscribeGlobeRenderScaleChange, getGlobeTexture, GLOBE_TEXTURE_URLS, subscribeGlobeTextureChange, getGlobeVisualPreset, subscribeGlobeVisualPresetChange, type GlobeRenderScale, type GlobePerformanceProfile, type GlobeVisualPreset } from '@/services/globe-render-settings';
-import { getLayersForVariant, resolveLayerLabel, bindLayerSearch, type MapVariant } from '@/config/map-layer-definitions';
+import {
+  getLayerExplanation,
+  getLayersForVariant,
+  hasCuratedLayerExplanation,
+  resolveLayerLabel,
+  bindLayerSearch,
+  type MapVariant,
+} from '@/config/map-layer-definitions';
+import { renderLayerExplanationCard } from '@/utils/layer-explanation-card';
 import { getSecretState } from '@/services/runtime-config';
 import { resolveTradeRouteSegments, type TradeRouteSegment } from '@/config/trade-routes';
 import { GAMMA_IRRADIATORS } from '@/config/irradiators';
@@ -54,6 +64,10 @@ import type { RadiationObservation } from '@/services/radiation';
 import type { ScenarioVisualState } from '@/config/scenario-templates';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
+export interface GlobeMapOptions {
+  onInitError?: (error: unknown) => void;
+  chrome?: boolean;
+}
 
 const SAT_COUNTRY_COLORS: Record<string, string> = { CN: '#ff2020', RU: '#ff8800', US: '#4488ff', EU: '#44cc44', KR: '#aa66ff', IN: '#ff66aa', TR: '#ff4466', OTHER: '#ccccff' };
 const SAT_TYPE_EMOJI: Record<string, string> = { sar: '\u{1F4E1}', optical: '\u{1F4F7}', military: '\u{1F396}', sigint: '\u{1F4FB}' };
@@ -198,7 +212,7 @@ interface GpsJamMarker extends BaseMarker {
   _kind: 'gpsjam';
   id: string;
   level: string;
-  npAvg: number;
+  pct: number;
 }
 interface TechMarker extends BaseMarker {
   _kind: 'tech';
@@ -214,6 +228,10 @@ interface ConflictZoneMarker extends BaseMarker {
   intensity: string;
   parties: string[];
   casualties?: string;
+  center: [number, number];
+  startDate?: string;
+  peaceAgreements?: string[];
+  totalFatalities?: string;
 }
 interface MilBaseMarker extends BaseMarker {
   _kind: 'milbase';
@@ -228,6 +246,10 @@ interface NuclearSiteMarker extends BaseMarker {
   name: string;
   type: string;
   status: string;
+  operationalSince?: string;
+  treaties?: string[];
+  iaeaStatus?: string;
+  keyEvents?: string[];
 }
 interface IrradiatorSiteMarker extends BaseMarker {
   _kind: 'irradiator';
@@ -437,9 +459,15 @@ interface GlobeControlsLike {
   removeEventListener(type: string, listener: () => void): void;
 }
 
+// Duration (ms) of the globe.gl pointOfView rotation used by setCenter(). Shared
+// so callers that must wait for the rotation to settle (e.g. openChokepoint,
+// which opens a popup at container centre) stay in lockstep with the animation.
+const SET_CENTER_ROTATION_MS = 1200;
+
 export class GlobeMap {
   private container: HTMLElement;
   private globe: GlobeInstance | null = null;
+  private initPromise: Promise<void> = Promise.resolve();
   private unsubscribeGlobeQuality: (() => void) | null = null;
   private unsubscribeGlobeTexture: (() => void) | null = null;
   private unsubscribeVisualPreset: (() => void) | null = null;
@@ -493,6 +521,7 @@ export class GlobeMap {
   private techMarkers: TechMarker[] = [];
   private conflictZoneMarkers: ConflictZoneMarker[] = [];
   private milBaseMarkers: MilBaseMarker[] = [];
+  private milBaseMarkersLoadPending = false;
   private nuclearSiteMarkers: NuclearSiteMarker[] = [];
   private irradiatorSiteMarkers: IrradiatorSiteMarker[] = [];
   private spaceportSiteMarkers: SpaceportSiteMarker[] = [];
@@ -547,6 +576,7 @@ export class GlobeMap {
   private tooltipEl: HTMLElement | null = null;
   private tooltipHideTimer: ReturnType<typeof setTimeout> | null = null;
   private satHoverStyle: HTMLStyleElement | null = null;
+  private readonly chrome: boolean;
 
   // Callbacks
   private onLayerChangeCb: ((layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic') => void) | null = null;
@@ -562,8 +592,9 @@ export class GlobeMap {
     this.onMapContextMenuCb({ lat: coords.lat, lon: coords.lng, screenX: e.clientX, screenY: e.clientY });
   };
 
-  constructor(container: HTMLElement, initialState: MapContainerState) {
+  constructor(container: HTMLElement, initialState: MapContainerState, options: GlobeMapOptions = {}) {
     this.container = container;
+    this.chrome = options.chrome ?? true;
     this.popup = new MapPopup(this.container);
     this.layers = { ...initialState.layers };
     this.timeRange = initialState.timeRange;
@@ -572,9 +603,18 @@ export class GlobeMap {
     this.container.classList.add('globe-mode');
     this.container.style.cssText = 'width:100%;height:100%;background:#000;position:relative;';
 
-    this.initGlobe().catch(err => {
+    this.initPromise = this.initGlobe();
+    this.initPromise.catch(err => {
       console.error('[GlobeMap] Init failed:', err);
+      options.onInitError?.(err);
     });
+  }
+
+  // Resolves once initGlobe() has finished (this.globe is set on success). Lets
+  // callers defer work that needs the globe — e.g. a replayed chokepoint deep
+  // link — instead of dropping it during the async init window.
+  public whenReady(): Promise<void> {
+    return this.initPromise;
   }
 
   private async initGlobe(): Promise<void> {
@@ -890,8 +930,10 @@ export class GlobeMap {
     this.applyPerformanceProfile(resolvePerformanceProfile(initialScale));
 
     // Add overlay UI (zoom controls + layer panel)
-    this.createControls();
-    this.createLayerToggles();
+    if (this.chrome) {
+      this.createControls();
+      this.createLayerToggles();
+    }
 
     // Load static datasets
     this.setHotspots(INTEL_HOTSPOTS);
@@ -1459,7 +1501,7 @@ export class GlobeMap {
       const gc = d.level === 'high' ? '#ff2020' : '#ff8800';
       html = `<span style="color:${gc};font-weight:bold;">📡 GPS Jamming</span>` +
              `<br><span style="opacity:.7;">Level: ${esc(d.level)}</span>` +
-             `<br><span style="opacity:.5;">Avg satellites visible: ${d.npAvg.toFixed(1)}</span>`;
+             `<br><span style="opacity:.5;">Aircraft affected: ${d.pct.toFixed(1)}%</span>`;
     } else if (d._kind === 'tech') {
       html = `<span style="color:#44aaff;font-weight:bold;">💻 ${esc(d.title.slice(0, 50))}</span>` +
              `<br><span style="opacity:.7;">${esc(d.country)}</span>` +
@@ -1468,7 +1510,9 @@ export class GlobeMap {
       const ic = d.intensity === 'high' ? '#ff3030' : d.intensity === 'medium' ? '#ff8800' : '#ffcc00';
       html = `<span style="color:${ic};font-weight:bold;">⚔ ${esc(d.name)}</span>` +
              (d.parties.length ? `<br><span style="opacity:.7;">${d.parties.map(esc).join(', ')}</span>` : '') +
-             (d.casualties ? `<br><span style="opacity:.5;">Casualties: ${esc(d.casualties)}</span>` : '');
+             (d.casualties ? `<br><span style="opacity:.5;">Casualties: ${esc(d.casualties)}</span>` : '') +
+             `<details class="conflict-history-details" style="margin-top:6px;"><summary style="cursor:pointer;font-size:9px;opacity:.6;list-style:none;user-select:none;padding:2px 0;">📜 HISTORICAL PROFILE</summary>` +
+             `<div class="conflict-history-content" style="margin-top:4px;"><span style="opacity:.5;font-size:10px;">Loading…</span></div></details>`;
     } else if (d._kind === 'milbase') {
       html = `<span style="color:#4488ff;font-weight:bold;">🏛 ${esc(d.name)}</span>` +
              `<br><span style="opacity:.7;">${esc(d.type)}${d.country ? ' · ' + esc(d.country) : ''}</span>`;
@@ -1476,6 +1520,15 @@ export class GlobeMap {
       const nc = d.status === 'active' ? '#ffd700' : d.status === 'construction' ? '#ff8800' : '#888888';
       html = `<span style="color:${nc};font-weight:bold;">☢ ${esc(d.name)}</span>` +
              `<br><span style="opacity:.7;">${esc(d.type)} · ${esc(d.status)}</span>`;
+      if (d.operationalSince || d.treaties?.length || d.iaeaStatus || d.keyEvents?.length) {
+        html += `<details style="margin-top:6px;"><summary style="cursor:pointer;font-size:9px;opacity:.6;list-style:none;user-select:none;padding:2px 0;">📜 HISTORICAL PROFILE</summary>` +
+          `<div style="margin-top:4px;">` +
+          (d.operationalSince ? `<div style="display:flex;justify-content:space-between;gap:8px;font-size:10px;margin:2px 0;"><span style="opacity:.5;">OPERATIONAL SINCE</span><span>${esc(d.operationalSince)}</span></div>` : '') +
+          (d.treaties?.length ? `<div style="display:flex;justify-content:space-between;gap:8px;font-size:10px;margin:2px 0;"><span style="opacity:.5;">TREATIES</span><span>${d.treaties.map(esc).join(', ')}</span></div>` : '') +
+          (d.iaeaStatus ? `<div style="display:flex;justify-content:space-between;gap:8px;font-size:10px;margin:2px 0;"><span style="opacity:.5;">IAEA STATUS</span><span>${esc(d.iaeaStatus)}</span></div>` : '') +
+          (d.keyEvents?.length ? `<div style="font-size:10px;margin:4px 0 2px;"><span style="opacity:.5;display:block;margin-bottom:2px;">KEY EVENTS</span>${d.keyEvents.map(e => `<div style="opacity:.7;">· ${esc(e)}</div>`).join('')}</div>` : '') +
+          `</div></details>`;
+      }
     } else if (d._kind === 'irradiator') {
       html = `<span style="color:#ff8800;font-weight:bold;">⚠ Gamma Irradiator</span>` +
              `<br><span style="opacity:.7;">${esc(d.city)}, ${esc(d.country)}</span>`;
@@ -1579,9 +1632,42 @@ export class GlobeMap {
       html = '';
     }
     setTrustedHtml(el, trustedHtml(`<div style="padding-right:16px;position:relative;">${closeBtn}${html}</div>`, "legacy direct innerHTML migration"));
-    const wideKinds = new Set(['satellite', 'flightDelay', 'conflictZone', 'cableAdvisory']);
+    const wideKinds = new Set(['satellite', 'flightDelay', 'conflictZone', 'cableAdvisory', 'nuclearSite']);
     if (wideKinds.has(d._kind)) el.style.maxWidth = '300px';
     el.querySelector('button')?.addEventListener('click', () => this.hideTooltip());
+
+    if (d._kind === 'conflictZone') {
+      const details = el.querySelector<HTMLDetailsElement>('.conflict-history-details');
+      const content = el.querySelector('.conflict-history-content');
+      if (details && content) {
+        let loaded = false;
+        details.addEventListener('toggle', async () => {
+          if (!details.open || loaded) return;
+          loaded = true;
+          // Auto-dismiss stays governed by hover: mouseenter already clears the
+          // hide timer while the cursor is over the tooltip, so don't permanently
+          // cancel it here — doing so left the tooltip stuck open forever.
+          try {
+            const { fetchUcdpEvents, deriveConflictHistory } = await import('@/services/conflict');
+            const resp = await fetchUcdpEvents();
+            if (!el.isConnected || !content.isConnected) return;
+            const { conflictSince, recordedFatalities } = deriveConflictHistory(d, resp.data);
+            const rows = [
+              conflictSince ? `<div style="display:flex;justify-content:space-between;gap:8px;font-size:10px;margin:2px 0;"><span style="opacity:.5;">CONFLICT SINCE</span><span>${esc(conflictSince)}</span></div>` : '',
+              d.peaceAgreements?.length ? `<div style="font-size:10px;margin:2px 0;"><span style="opacity:.5;display:block;margin-bottom:1px;">PEACE AGREEMENTS</span>${d.peaceAgreements.map(a => `<div style="opacity:.7;">· ${esc(a)}</div>`).join('')}</div>` : '',
+              recordedFatalities > 0
+                ? `<div style="display:flex;justify-content:space-between;gap:8px;font-size:10px;margin:2px 0;"><span style="opacity:.5;">RECORDED FATALITIES</span><span>~${recordedFatalities.toLocaleString()}</span></div>`
+                : d.totalFatalities ? `<div style="display:flex;justify-content:space-between;gap:8px;font-size:10px;margin:2px 0;"><span style="opacity:.5;">TOTAL FATALITIES</span><span>${esc(d.totalFatalities)}</span></div>` : '',
+            ].filter(Boolean).join('');
+            setTrustedHtml(content, trustedHtml(rows || '<span style="opacity:.5;font-size:10px;">No UCDP data found.</span>', 'legacy direct innerHTML migration'));
+          } catch {
+            if (el.isConnected && content.isConnected) {
+              setTrustedHtml(content, trustedHtml('<span style="opacity:.5;font-size:10px;">Could not load history.</span>', 'legacy direct innerHTML migration'));
+            }
+          }
+        });
+      }
+    }
 
     if (d._kind === 'webcam') {
       const wrapper = el.firstElementChild!;
@@ -1696,7 +1782,7 @@ export class GlobeMap {
 
     this.tooltipEl = el;
     if (this.tooltipHideTimer) clearTimeout(this.tooltipHideTimer);
-    const richKinds = new Set(['satellite', 'flightDelay', 'cableAdvisory', 'conflictZone', 'spaceport', 'economic', 'datacenter', 'imageryScene', 'repairShip', 'aisDisruption']);
+    const richKinds = new Set(['satellite', 'flightDelay', 'cableAdvisory', 'conflictZone', 'nuclearSite', 'spaceport', 'economic', 'datacenter', 'imageryScene', 'repairShip', 'aisDisruption']);
     const hideDelay = d._kind === 'webcam' ? 8000 : d._kind === 'webcam-cluster' ? 12000 : richKinds.has(d._kind) ? 6000 : 3500;
     this.tooltipHideTimer = setTimeout(() => this.hideTooltip(), hideDelay);
 
@@ -1840,12 +1926,17 @@ export class GlobeMap {
         ${layers.map(({ key, label, icon, premium }) => {
           const isLocked = premium === 'locked' && !_wmKey;
           const isEnhanced = premium === 'enhanced' && !_wmKey;
+          const explainLabel = escapeHtml(`Explain ${label} layer`);
+          const hasExplanation = hasCuratedLayerExplanation(key);
           return `
-          <label class="layer-toggle${isLocked ? ' layer-toggle-locked' : ''}" data-layer="${key}">
-            <input type="checkbox" ${this.layers[key] ? 'checked' : ''}${isLocked ? ' disabled' : ''}>
-            <span class="toggle-icon">${icon}</span>
-            <span class="toggle-label">${label}${isLocked ? ' \uD83D\uDD12' : ''}${isEnhanced ? ' <span class="layer-pro-badge">PRO</span>' : ''}</span>
-          </label>`;
+          <div class="layer-toggle-row" data-layer="${key}">
+            <label class="layer-toggle${isLocked ? ' layer-toggle-locked' : ''}" data-layer="${key}">
+              <input type="checkbox" ${this.layers[key] ? 'checked' : ''}${isLocked ? ' disabled' : ''}>
+              <span class="toggle-icon">${icon}</span>
+              <span class="toggle-label">${label}${isLocked ? ' \uD83D\uDD12' : ''}${isEnhanced ? ' <span class="layer-pro-badge">PRO</span>' : ''}</span>
+            </label>
+            <button type="button" class="layer-explain-btn${hasExplanation ? ' has-layer-explanation' : ''}" data-layer="${key}" aria-label="${explainLabel}" title="${explainLabel}">i</button>
+          </div>`;
         }).join('')}
       </div>`, "legacy direct innerHTML migration"));
     const authorBadge = document.createElement('div');
@@ -1869,6 +1960,15 @@ export class GlobeMap {
             if (modeRow) modeRow.style.display = checked ? '' : 'none';
           }
         }
+      });
+    });
+
+    el.querySelectorAll('.layer-explain-btn').forEach(button => {
+      button.addEventListener('click', (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const layer = (button as HTMLElement).getAttribute('data-layer') as keyof MapLayers | null;
+        if (layer) this.showLayerExplanation(layer);
       });
     });
 
@@ -1924,6 +2024,36 @@ export class GlobeMap {
     }, { passive: false });
 
     this.layerTogglesEl = el;
+  }
+
+  private showLayerExplanation(layer: keyof MapLayers): void {
+    const existing = this.container.querySelector('.layer-explanation-popup') as HTMLElement | null;
+    if (existing?.dataset.layer === layer) {
+      existing.remove();
+      this.container.querySelector(`.layer-explain-btn[data-layer="${layer}"]`)?.classList.remove('active');
+      return;
+    }
+    existing?.remove();
+    this.container.querySelectorAll('.layer-explain-btn.active').forEach(btn => btn.classList.remove('active'));
+
+    const def = getLayersForVariant((SITE_VARIANT || 'full') as MapVariant, 'globe').find(item => item.key === layer);
+    const layerLabel = def ? resolveLayerLabel(def, t) : String(layer);
+    const popup = document.createElement('div');
+    popup.className = 'layer-explanation-popup';
+    popup.dataset.layer = layer;
+    setTrustedHtml(popup, trustedHtml(
+      renderLayerExplanationCard(layerLabel, getLayerExplanation(layer)),
+      "static layer explanation metadata",
+    ));
+
+    const closePopup = (): void => {
+      popup.remove();
+      this.container.querySelector(`.layer-explain-btn[data-layer="${layer}"]`)?.classList.remove('active');
+    };
+
+    popup.querySelector('.layer-explanation-close')?.addEventListener('click', closePopup);
+    this.container.appendChild(popup);
+    this.container.querySelector(`.layer-explain-btn[data-layer="${layer}"]`)?.classList.add('active');
   }
 
   // ─── Flush all current data to globe ──────────────────────────────────────
@@ -2162,6 +2292,10 @@ export class GlobeMap {
       intensity: z.intensity ?? 'low',
       parties: z.parties ?? [],
       casualties: z.casualties,
+      center: z.center,
+      startDate: z.startDate,
+      peaceAgreements: z.peaceAgreements,
+      totalFatalities: z.totalFatalities,
     }));
     this.flushMarkers();
   }
@@ -2176,15 +2310,8 @@ export class GlobeMap {
     switch (layer) {
       case 'bases':
         if (!this.milBaseMarkers.length) {
-          this.milBaseMarkers = (MILITARY_BASES as MilitaryBase[]).map(b => ({
-            _kind: 'milbase' as const,
-            _lat: b.lat,
-            _lng: b.lon,
-            id: b.id,
-            name: b.name,
-            type: b.type,
-            country: b.country ?? '',
-          }));
+          this.setMilitaryBaseMarkers(getCachedMilitaryBases());
+          if (!this.milBaseMarkers.length) this.requestMilitaryBaseMarkers();
         }
         break;
       case 'nuclear':
@@ -2199,6 +2326,10 @@ export class GlobeMap {
               name: f.name,
               type: f.type,
               status: f.status,
+              operationalSince: f.operationalSince,
+              treaties: f.treaties,
+              iaeaStatus: f.iaeaStatus,
+              keyEvents: f.keyEvents,
             }));
         }
         break;
@@ -2315,6 +2446,34 @@ export class GlobeMap {
         }
         break;
     }
+  }
+
+  private setMilitaryBaseMarkers(bases: MilitaryBase[]): void {
+    this.milBaseMarkers = bases.map(b => ({
+      _kind: 'milbase' as const,
+      _lat: b.lat,
+      _lng: b.lon,
+      id: b.id,
+      name: b.name,
+      type: b.type,
+      country: b.country ?? '',
+    }));
+  }
+
+  private requestMilitaryBaseMarkers(): void {
+    if (this.milBaseMarkersLoadPending) return;
+    this.milBaseMarkersLoadPending = true;
+    void preloadMilitaryBases()
+      .then((bases) => {
+        this.milBaseMarkersLoadPending = false;
+        if (this.destroyed) return;
+        this.setMilitaryBaseMarkers(bases);
+        this.flushMarkers();
+      })
+      .catch((error) => {
+        this.milBaseMarkersLoadPending = false;
+        console.warn('[GlobeMap] Military base config unavailable:', error);
+      });
   }
 
   public setMilitaryFlights(flights: MilitaryFlight[]): void {
@@ -2608,7 +2767,7 @@ export class GlobeMap {
       else if (zoom >= 3) altitude = 0.8;
       else                altitude = 1.5;
     }
-    this.globe.pointOfView({ lat: preset.lat, lng: preset.lng, altitude }, 1200);
+    this.globe.pointOfView({ lat: preset.lat, lng: preset.lng, altitude }, SET_CENTER_ROTATION_MS);
   }
 
   public setCenter(lat: number, lon: number, zoom?: number): void {
@@ -2626,7 +2785,7 @@ export class GlobeMap {
       else if (zoom >= 3) altitude = 0.8;
       else                altitude = 1.5;
     }
-    this.globe.pointOfView({ lat, lng: lon, altitude }, 1200);
+    this.globe.pointOfView({ lat, lng: lon, altitude }, SET_CENTER_ROTATION_MS);
   }
 
   public getCenter(): { lat: number; lon: number } | null {
@@ -2746,7 +2905,9 @@ export class GlobeMap {
   }
   public setOnTimeRangeChange(_cb: any): void {}
   public hideLayerToggle(layer: keyof MapLayers): void {
-    this.layerTogglesEl?.querySelector(`.layer-toggle[data-layer="${layer}"]`)?.remove();
+    const toggle = this.layerTogglesEl?.querySelector(`.layer-toggle[data-layer="${layer}"]`);
+    toggle?.closest('.layer-toggle-row')?.remove();
+    toggle?.remove();
   }
   public setLayerLoading(layer: keyof MapLayers, loading: boolean): void {
     this.layerTogglesEl?.querySelector(`.layer-toggle[data-layer="${layer}"]`)?.classList.toggle('loading', loading);
@@ -2773,6 +2934,30 @@ export class GlobeMap {
   public triggerDatacenterClick(_id: string): void {}
   public triggerNuclearClick(_id: string): void {}
   public triggerIrradiatorClick(_id: string): void {}
+  // Rotate the globe so the chokepoint/waterway faces front, then open its popup
+  // once it has settled at container centre. The wait is tied to setCenter()'s
+  // rotation duration via SET_CENTER_ROTATION_MS so the two can't drift apart.
+  //
+  // MapContainer can replay a queued chokepoint deep-link right after construction,
+  // before initGlobe() has built the globe (this.globe is still null then), so
+  // defer until whenReady() rather than dropping the pan.
+  public openChokepoint(id: string): void {
+    const waterway = STRATEGIC_WATERWAYS.find(w => w.id === id || w.chokepointId === id);
+    if (!waterway) return;
+    const reveal = () => {
+      if (this.destroyed || !this.globe) return;
+      this.setCenter(waterway.lat, waterway.lon, 5);
+      const rect = this.container.getBoundingClientRect();
+      const x = rect.width / 2;
+      const y = rect.height / 2;
+      window.setTimeout(() => {
+        if (this.destroyed || !this.popup) return;
+        this.popup?.show({ type: 'waterway', data: waterway, x, y });
+      }, SET_CENTER_ROTATION_MS);
+    };
+    if (this.globe) reveal();
+    else void this.whenReady().then(reveal).catch(() => {});
+  }
   public fitCountry(code: string): void {
     if (!this.globe) return;
     const bbox = getCountryBbox(code);
@@ -3140,7 +3325,7 @@ export class GlobeMap {
       _lng: h.lon,
       id: h.h3,
       level: h.level,
-      npAvg: h.npAvg ?? 0,
+      pct: h.pct ?? 0,
     }));
     this.flushMarkers();
   }

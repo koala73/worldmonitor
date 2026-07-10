@@ -1,14 +1,15 @@
 import { Panel } from './Panel';
-import { getRpcBaseUrl } from '@/services/rpc-client';
+import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
 import { t } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { formatPrice, formatChange, getChangeClass } from '@/utils';
 import { miniSparkline } from '@/utils/sparkline';
-import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
+
 import type { ListGulfQuotesResponse, GulfQuote } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { getHydratedData } from '@/services/bootstrap';
+import { MarketServiceClient } from '@/services/generated-rpc-clients';
 
-const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
+const getMarketClient = createLazyClient(() => new MarketServiceClient(getRpcBaseUrl(), { fetch: rpcFetch }));
 
 function renderSection(title: string, quotes: GulfQuote[]): string {
   if (quotes.length === 0) return '';
@@ -39,13 +40,13 @@ export class GulfEconomiesPanel extends Panel {
       if (hydrated?.quotes?.length) {
         if (!this.element?.isConnected) return;
         this.renderGulf(hydrated);
-        void client.listGulfQuotes({}).then(data => {
+        void getMarketClient().listGulfQuotes({}).then(data => {
           if (!this.element?.isConnected || !data.quotes?.length) return;
           this.renderGulf(data);
         }).catch(() => {});
         return;
       }
-      const data = await client.listGulfQuotes({});
+      const data = await getMarketClient().listGulfQuotes({});
       if (!this.element?.isConnected) return;
       this.renderGulf(data);
     } catch (err) {

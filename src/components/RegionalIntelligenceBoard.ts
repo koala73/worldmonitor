@@ -1,19 +1,21 @@
 import { Panel } from './Panel';
-import { getRpcBaseUrl } from '@/services/rpc-client';
+import { createLazyClient, getRpcBaseUrl } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
 import { IS_EMBEDDED_PREVIEW } from '@/utils/embedded-preview';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { subscribeAuthState } from '@/services/auth-state';
-import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import { onEntitlementChange } from '@/services/entitlements';
+
 import type { RegionalSnapshot, RegimeTransition, RegionalBrief } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { h, replaceChildren, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { escapeHtml } from '@/utils/sanitize';
 import { BOARD_REGIONS, DEFAULT_REGION_ID, buildBoardHtml, buildRegimeHistoryBlock, buildWeeklyBriefBlock, isLatestSequence } from './regional-intelligence-board-utils';
+import { IntelligenceServiceClient } from '@/services/generated-rpc-clients';
 
 // get-regional-snapshot + get-regime-history + get-regional-brief are
 // premium-gated. Plain globalThis.fetch skips Clerk/tester/api-key injection
 // and returns 401 for pro users — premiumFetch is the correct fetcher here.
-const client = new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
+const getIntelligenceClient = createLazyClient(() => new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: premiumFetch }));
 
 /**
  * RegionalIntelligenceBoard — premium panel rendering a canonical
@@ -68,6 +70,7 @@ export class RegionalIntelligenceBoard extends Panel {
    * previous "Panel has no destroy hook" comment was wrong.
    */
   private authUnsubscribe: (() => void) | null = null;
+  private entitlementUnsubscribe: (() => void) | null = null;
 
   constructor() {
     super({
@@ -108,20 +111,8 @@ export class RegionalIntelligenceBoard extends Panel {
     // session hasn't resolved at panel-construction time would see
     // renderEmpty() and then stay empty forever even after sign-in, because
     // nothing else triggers loadCurrent for the current region.
-    this.authUnsubscribe = subscribeAuthState(() => {
-      const hasPremium = hasPremiumAccess();
-      if (hasPremium && !this.lastHadPremium) {
-        this.lastHadPremium = true;
-        void this.loadCurrent();
-      } else if (!hasPremium && this.lastHadPremium) {
-        // Entitlement was revoked (sign-out, subscription ended) — blank
-        // the panel so stale data doesn't linger for a user who can no
-        // longer see it. Panel locking separately re-applies via
-        // panel-layout's auth subscription.
-        this.lastHadPremium = false;
-        this.renderEmpty();
-      }
-    });
+    this.authUnsubscribe = subscribeAuthState(() => this.handlePremiumAccessChange());
+    this.entitlementUnsubscribe = onEntitlementChange(() => this.handlePremiumAccessChange());
   }
 
   /** Public API for tests and agent tools: force-load a region directly. */
@@ -134,6 +125,8 @@ export class RegionalIntelligenceBoard extends Panel {
   override destroy(): void {
     this.authUnsubscribe?.();
     this.authUnsubscribe = null;
+    this.entitlementUnsubscribe?.();
+    this.entitlementUnsubscribe = null;
     // Invalidate any in-flight loadCurrent: the existing sequence guard
     // (see `isLatestSequence` checks) drops responses whose sequence no
     // longer matches `latestSequence`. Bumping it here ensures a pending
@@ -143,7 +136,28 @@ export class RegionalIntelligenceBoard extends Panel {
     super.destroy();
   }
 
+  private handlePremiumAccessChange(): void {
+    const hasPremium = hasPremiumAccess();
+    if (hasPremium && !this.lastHadPremium) {
+      this.lastHadPremium = true;
+      void this.loadCurrent();
+    } else if (!hasPremium && this.lastHadPremium) {
+      // Entitlement was revoked (sign-out, subscription ended) — blank
+      // the panel so stale data doesn't linger for a user who can no
+      // longer see it. Panel locking separately re-applies via
+      // panel-layout's auth subscription.
+      this.lastHadPremium = false;
+      this.latestSequence += 1;
+      this.renderEmpty();
+    }
+  }
+
   private async loadCurrent(): Promise<void> {
+    if (!this.element.isConnected) {
+      this.runWhenConnected(() => { void this.loadCurrent(); });
+      return;
+    }
+
     // Skip premium RPCs when this app instance is running inside the /pro
     // marketing page's live-preview iframe — no Clerk session carries across
     // that boundary, so every call would 401. The breaker + renderEmpty path
@@ -181,7 +195,7 @@ export class RegionalIntelligenceBoard extends Panel {
     let actualRegion = myRegion;
     let fallbackFrom: string | null = null;
     try {
-      const resp = await client.getRegionalSnapshot({ regionId: myRegion });
+      const resp = await getIntelligenceClient().getRegionalSnapshot({ regionId: myRegion });
       if (!isLatestSequence(mySequence, this.latestSequence)) return;
       snapshot = resp.snapshot;
     } catch (err) {
@@ -214,7 +228,7 @@ export class RegionalIntelligenceBoard extends Panel {
         };
         const timer = setTimeout(() => settle(null), FALLBACK_TIMEOUT_MS);
         for (const id of fallbackIds) {
-          client.getRegionalSnapshot({ regionId: id })
+          getIntelligenceClient().getRegionalSnapshot({ regionId: id })
             .then(resp => {
               if (resp.snapshot?.regionId) {
                 clearTimeout(timer);
@@ -257,8 +271,8 @@ export class RegionalIntelligenceBoard extends Panel {
 
     // Phase 2: fire history + brief RPCs in background. Use actualRegion so
     // the enrichments match the rendered snapshot when we fell back.
-    const historyPromise = client.getRegimeHistory({ regionId: actualRegion, limit: 20 }).catch(() => null);
-    const briefPromise = client.getRegionalBrief({ regionId: actualRegion }).catch(() => null);
+    const historyPromise = getIntelligenceClient().getRegimeHistory({ regionId: actualRegion, limit: 20 }).catch(() => null);
+    const briefPromise = getIntelligenceClient().getRegionalBrief({ regionId: actualRegion }).catch(() => null);
 
     Promise.allSettled([historyPromise, briefPromise]).then(([hResult, bResult]) => {
       if (!isLatestSequence(mySequence, this.latestSequence)) return;

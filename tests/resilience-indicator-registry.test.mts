@@ -7,6 +7,10 @@ import {
   getIndicatorSourceKeys,
 } from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
 import type { IndicatorSpec } from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
+import {
+  SCORER_DOC_PARITY_NON_LINEAR_IDS,
+  SCORER_DOC_PARITY_SPECS,
+} from './helpers/resilience-scorer-doc-parity-specs.mts';
 
 const ACTIVE_ENERGY_V2_INDICATORS = new Map<string, { weight: number; tier: IndicatorSpec['tier'] }>([
   ['importedFossilDependence', { weight: 0.35, tier: 'core' }],
@@ -23,6 +27,8 @@ const LEGACY_ONLY_ENERGY_INDICATORS = [
   'renewShare',
   'electricityConsumption',
 ] as const;
+
+const SCORER_REGISTRY_PARITY_SPECS = SCORER_DOC_PARITY_SPECS;
 
 describe('indicator registry', () => {
   it('covers all 22 dimensions (20 active + 2 retired)', () => {
@@ -43,7 +49,7 @@ describe('indicator registry', () => {
 
   it('every indicator has valid direction and positive weight', () => {
     for (const spec of INDICATOR_REGISTRY) {
-      assert.ok(['higherBetter', 'lowerBetter'].includes(spec.direction), `${spec.id} has invalid direction: ${spec.direction}`);
+      assert.ok(['higherBetter', 'lowerBetter', 'indicatorSemantics'].includes(spec.direction), `${spec.id} has invalid direction: ${spec.direction}`);
       assert.ok(spec.weight > 0, `${spec.id} has non-positive weight: ${spec.weight}`);
     }
   });
@@ -85,6 +91,22 @@ describe('indicator registry', () => {
       ],
       'importedFossilDependence must audit both fossil-electricity share and static net-import dependency inputs',
     );
+  });
+
+  it('foodWater documents one dynamic AQUASTAT scorer slot, not split phantom rows', () => {
+    const foodWaterIds = INDICATOR_REGISTRY
+      .filter((indicator) => indicator.dimension === 'foodWater' && indicator.tier !== 'experimental')
+      .map((indicator) => indicator.id);
+    assert.deepEqual(
+      foodWaterIds,
+      ['ipcPeopleInCrisis', 'ipcPhase', 'aquastatScore'],
+      'foodWater registry must mirror scoreFoodWater: IPC people, IPC phase, and one dynamic aquastatScore slot',
+    );
+
+    const aquastat = INDICATOR_REGISTRY.find((indicator) => indicator.id === 'aquastatScore');
+    assert.ok(aquastat, 'aquastatScore must exist in registry');
+    assert.equal(aquastat.weight, 0.4, 'aquastatScore weight must mirror scoreFoodWater');
+    assert.equal(aquastat.direction, 'indicatorSemantics', 'aquastatScore direction is routed by scoreAquastatValue indicator tags');
   });
 
   it('goalposts worst != best for every indicator', () => {
@@ -146,6 +168,64 @@ describe('indicator registry', () => {
     assert.ok(
       Math.abs(activeWeight - 1) < 0.001,
       `active energy-v2 registry weights sum to ${activeWeight.toFixed(4)}, expected 1.0`,
+    );
+  });
+
+  it('mirrors scorer-used affected blended inputs', () => {
+    const byId = new Map(INDICATOR_REGISTRY.map((spec) => [spec.id, spec]));
+
+    for (const expected of SCORER_REGISTRY_PARITY_SPECS) {
+      const spec = byId.get(expected.id);
+      assert.ok(spec, `scorer-used indicator ${expected.id} missing from INDICATOR_REGISTRY`);
+      assert.equal(spec.dimension, expected.dimension, `${expected.id} dimension must mirror the scorer dimension`);
+      assert.equal(spec.direction, expected.registryDirection, `${expected.id} direction must mirror scorer normalization`);
+      assert.deepEqual(spec.goalposts, expected.registryGoalposts, `${expected.id} goalposts must mirror scorer normalization anchors`);
+      assert.equal(spec.weight, expected.weight, `${expected.id} weight must mirror weightedBlend input`);
+      assert.equal(spec.sourceKey, expected.sourceKey, `${expected.id} sourceKey must mirror scorer seed source`);
+      assert.equal(spec.tier, expected.tier, `${expected.id} tier must preserve public-score registry parity`);
+    }
+
+    const parityDimensions = [...new Set(SCORER_REGISTRY_PARITY_SPECS.map((spec) => spec.dimension))];
+    for (const dimension of parityDimensions) {
+      const expectedIds = SCORER_REGISTRY_PARITY_SPECS
+        .filter((spec) => spec.dimension === dimension)
+        .map((spec) => spec.id);
+      const expectedIdSet = new Set(expectedIds);
+      const actualIds = INDICATOR_REGISTRY
+        .filter((spec) => spec.dimension === dimension && (spec.tier !== 'experimental' || expectedIdSet.has(spec.id)))
+        .map((spec) => spec.id);
+      assert.deepEqual(
+        actualIds,
+        expectedIds,
+        `${dimension} registry rows must list exactly the scorer-used blended inputs, excluding unrelated experimental rollback rows`,
+      );
+    }
+  });
+
+  it('non-linear scorer indicators carry explicit registry normalization metadata', () => {
+    const byId = new Map(INDICATOR_REGISTRY.map((spec) => [spec.id, spec]));
+    for (const id of SCORER_DOC_PARITY_NON_LINEAR_IDS) {
+      const spec = byId.get(id);
+      assert.ok(spec, `${id} must exist in INDICATOR_REGISTRY`);
+      assert.ok(spec.normalization, `${id} must declare non-linear normalization metadata`);
+      assert.notEqual(spec.normalization.kind, 'linear', `${id} must not be treated as a generic linear goalpost metric`);
+      assert.ok(
+        'disclaimer' in spec.normalization && spec.normalization.disclaimer.length > 20,
+        `${id} non-linear normalization must explain how tooling should interpret goalposts`,
+      );
+    }
+
+    const inflation = byId.get('inflationStability');
+    assert.equal(inflation?.normalization?.kind, 'targetBand');
+    assert.deepEqual(
+      inflation?.normalization.kind === 'targetBand' ? inflation.normalization.targetBand : null,
+      { min: 1, max: 3 },
+      'inflationStability must document the 1-3% target band used by scoreInflationStability',
+    );
+    assert.deepEqual(
+      inflation?.normalization.kind === 'targetBand' ? inflation.normalization.zeroScoreAt : null,
+      { min: -5, max: 50 },
+      'inflationStability must document both deflation and high-inflation zero-score anchors',
     );
   });
 

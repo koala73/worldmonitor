@@ -15,8 +15,9 @@
  * Dockerfile.digest-notifications header for the cherry-pick alternative
  * we explicitly do NOT use for these three.)
  *
- * Approach: BFS from each entry script, follow relative imports, assert no
- * resolved path escapes `scripts/`. Skips bare-package and `node:*` imports.
+ * Approach: BFS from each entry script, follow relative imports and
+ * _bundle-runner section script references, assert no resolved path escapes
+ * `scripts/`. Skips bare-package and `node:*` imports.
  *
  * Companion to the header comment in
  * `scripts/_simulation-queue-constants.mjs`.
@@ -53,8 +54,10 @@ const registry = JSON.parse(
 const ENTRY_POINTS = registry
   .filter((r) => r.deployMode === 'nixpacks-root-scripts')
   .map((r) => r.entry);
+const BUNDLE_ENTRY_FILES = new Set(ENTRY_POINTS.map((entry) => resolve(repoRoot, entry)));
 
 const IMPORT_RE = /(?:^|[\s;])(?:import\b[\s\S]*?\bfrom|import|export\b[\s\S]*?\bfrom)\s+['"]([^'"]+)['"]/gm;
+const BUNDLE_SECTION_SCRIPT_RE = /\bscript\s*:\s*['"]([^'"]+\.(?:mjs|cjs|js))['"]/gm;
 
 function isRelative(spec: string): boolean {
   return spec.startsWith('./') || spec.startsWith('../');
@@ -68,6 +71,38 @@ function collectRelativeImports(filePath: string): string[] {
   while ((m = IMPORT_RE.exec(src)) !== null) {
     const spec = m[1]!;
     if (isRelative(spec)) out.push(spec);
+  }
+  return out;
+}
+
+// Conservative JS comment stripper (same pattern as
+// tests/news-feed-key-parity.test.mts): drop block comments, then line
+// comments anchored at a line start or after whitespace so in-string `//`
+// (e.g. `https://`) survives. Keeps a `script:` literal in a block, trailing,
+// or full-line comment from registering as a real child seeder.
+function stripComments(src: string): string {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/(^|\s)\/\/[^\n]*/g, '$1');
+}
+
+function collectBundleSectionScripts(filePath: string): string[] {
+  // Strip comments first so the gate and the extraction agree on the same
+  // source: `script:` section entries are the _bundle-runner orchestrator
+  // shape, so scan registry entry points AND any nested orchestrator reached
+  // in the BFS (a bundle that spawns a sub-bundle), but skip unrelated files
+  // (and files that mention `_bundle-runner` only in a comment) so a stray
+  // `script: 'x.mjs'` literal can't fake an escape.
+  const src = stripComments(readFileSync(filePath, 'utf8'));
+  if (!BUNDLE_ENTRY_FILES.has(filePath) && !src.includes('_bundle-runner')) {
+    return [];
+  }
+
+  const out: string[] = [];
+  let m: RegExpExecArray | null;
+  BUNDLE_SECTION_SCRIPT_RE.lastIndex = 0;
+  while ((m = BUNDLE_SECTION_SCRIPT_RE.exec(src)) !== null) {
+    out.push(m[1]!);
   }
   return out;
 }
@@ -112,6 +147,19 @@ describe('scripts/ Railway nixpacks packaging — no escape imports', () => {
           if (/\.(mjs|cjs|js)$/.test(resolved)) {
             queue.push(resolved);
           }
+        }
+
+        for (const spec of collectBundleSectionScripts(file)) {
+          const resolved = resolve(scriptsDir, spec);
+          if (escapesScriptsDir(resolved)) {
+            violations.push({
+              from: relative(repoRoot, file),
+              spec,
+              resolved: relative(repoRoot, resolved),
+            });
+            continue;
+          }
+          queue.push(resolved);
         }
       }
 

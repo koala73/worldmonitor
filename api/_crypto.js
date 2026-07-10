@@ -45,3 +45,8 @@ export async function timingSafeIncludes(candidate, validKeys) {
   }
   return found;
 }
+
+export async function timingSafeEqualSecret(candidate, expected) {
+  if (!candidate || !expected) return false;
+  return timingSafeIncludes(candidate, [expected]);
+}

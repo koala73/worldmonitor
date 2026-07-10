@@ -19,12 +19,12 @@ import {
   RESILIENCE_RANKING_META_TTL_SECONDS,
   buildRankingItem,
   getCachedResilienceScores,
-  getCurrentCacheFormula,
   listScorableCountries,
   rankingCacheTagMatches,
   sortRankingItems,
   stampRankingCacheTag,
   scoreCacheKey,
+  toCurrentScoreInterval,
   warmMissingResilienceScores,
   type ScoreInterval,
 } from './_shared';
@@ -112,20 +112,13 @@ async function fetchIntervals(countryCodes: string[]): Promise<Map<string, Score
     true,
   );
   const map = new Map<string, ScoreInterval>();
-  const current = getCurrentCacheFormula();
   for (let i = 0; i < countryCodes.length; i++) {
     const raw = results[i]?.result;
     if (typeof raw !== 'string') continue;
     try {
       // Envelope-aware: interval keys come through seed-resilience-scores' extra-key path.
-      const parsed = unwrapEnvelope(JSON.parse(raw)).data as {
-        p05?: number;
-        p95?: number;
-        _formula?: string;
-      } | null;
-      if (parsed && typeof parsed.p05 === 'number' && typeof parsed.p95 === 'number' && parsed._formula === current) {
-        map.set(countryCodes[i]!, { p05: parsed.p05, p95: parsed.p95 });
-      }
+      const interval = toCurrentScoreInterval(unwrapEnvelope(JSON.parse(raw)).data);
+      if (interval) map.set(countryCodes[i]!, interval);
     } catch {
       /* ignore malformed interval entries */
     }

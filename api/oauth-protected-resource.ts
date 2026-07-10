@@ -14,14 +14,21 @@
  *
  * RFC 9728 §3 permits split origins, but the scanner is stricter — and
  * same-origin by construction is simpler than arguing with scanner authors.
+ *
+ * The Host is client-controlled, so the origin is derived through
+ * `resolveMetadataOrigin` (apex + subdomain allowlist, apex fallback) so a
+ * spoofed Host cannot be reflected into `resource`/`authorization_servers`.
  */
+
+import { guardMetadataMethod, resolveMetadataOrigin } from './_agent-metadata';
 
 export const config = { runtime: 'edge' };
 
 export default function handler(req: Request): Response {
-  const url = new URL(req.url);
-  const host = req.headers.get('host') ?? url.host;
-  const origin = `https://${host}`;
+  const guarded = guardMetadataMethod(req);
+  if (guarded) return guarded;
+
+  const origin = resolveMetadataOrigin(req);
 
   const body = JSON.stringify({
     resource: origin,

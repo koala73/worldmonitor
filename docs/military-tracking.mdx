@@ -8,6 +8,22 @@ WorldMonitor provides specialized tracking of military vessels and aircraft, ide
 The system defines **10 active conflict zones** (Iran, Strait of Hormuz, Ukraine, Gaza, South Lebanon, Red Sea, Sudan, Myanmar, Korean DMZ, Pakistan-Afghanistan Border) and **4 military command hotspots** (INDO-PACIFIC, CENTCOM, EUCOM, ARCTIC). Different subsystems group these into theater lists tailored to their specific analysis, so theater counts vary by context throughout this page.
 </Note>
 
+## Backed by endpoints
+
+The frontend uses generated MilitaryService clients for fresh or scoped reads, while some panels first consume bootstrap or circuit-breaker caches. These are the public REST RPC routes behind the military map layers, posture cards, aircraft enrichment, USNI fleet view, and defense R&D tile.
+
+| Method | Route | What it feeds |
+|--------|-------|---------------|
+| `GET` | `/api/military/v1/list-military-flights` | Military aircraft map layer, surge inputs, and country-risk signals; the frontend calls it by bounding box through the generated client and the handler serves Redis/relay-backed data. |
+| `GET` | `/api/military/v1/get-theater-posture` | AI Strategic Posture cards; `fetchCachedTheaterPosture()` checks bootstrap `theaterPosture`, circuit-breaker cache, and IndexedDB before falling through to this RPC. |
+| `GET` | `/api/military/v1/get-aircraft-details` | Single-aircraft Wingbits enrichment for map popups and aircraft detail lookups. |
+| `POST` | `/api/military/v1/get-aircraft-details-batch` | Batched Wingbits enrichment for visible military aircraft; the browser keeps a local cache so repeat views do not refetch the same ICAO24 records. |
+| `GET` | `/api/military/v1/get-wingbits-status` | Wingbits configuration check used before enabling enrichment-dependent UI. |
+| `GET` | `/api/military/v1/get-wingbits-live-flight` | On-demand Wingbits ECS live-position lookup for a selected aircraft. |
+| `GET` | `/api/military/v1/get-usni-fleet-report` | Parsed USNI Fleet Tracker report used for naval order-of-battle enrichment and weekly fleet context. |
+| `GET` | `/api/military/v1/list-military-bases` | Military bases map layer; viewport, zoom, type, kind, and country filters are clustered server-side. |
+| `GET` | `/api/military/v1/list-defense-patents` | Defense Patents panel and R&D signal tile, with CPC, assignee, and result-limit filters. |
+
 ## Military Vessel Identification
 
 Vessels are identified as military through multiple methods:

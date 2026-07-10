@@ -2,9 +2,11 @@ syntax = "proto3";
 
 package worldmonitor.leads.v1;
 
+import "buf/validate/validate.proto";
+
 // RegisterInterestRequest carries a Pro-waitlist signup.
 message RegisterInterestRequest {
-  string email = 1;
+  string email = 1 [(buf.validate.field).required = true];
   string source = 2;
   string app_version = 3;
   string referred_by = 4;

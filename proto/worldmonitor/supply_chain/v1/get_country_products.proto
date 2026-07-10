@@ -20,6 +20,7 @@ message CountryProduct {
 }
 
 message GetCountryProductsRequest {
+  // ISO 3166-1 alpha-2 country code whose strategic products should be returned.
   string iso2 = 1 [
     (buf.validate.field).required = true,
     (buf.validate.field).string.len = 2,

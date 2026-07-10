@@ -54,6 +54,19 @@ const otherRunIdOutcome = {
   uiTheaters: [],
 };
 
+const allFailedOutcome = {
+  runId: '1734567890999-allfailed',
+  outcomeKey: 'seed-data/forecast-traces/2026/05/19/allfailed/simulation-outcome.json',
+  schemaVersion: 'v1',
+  theaterCount: 0,
+  eligibleTheaterCount: 2,
+  failedTheaterCount: 2,
+  allTheatersFailed: true,
+  completionStatus: 'all_theaters_failed',
+  generatedAt: 1700000002000,
+  uiTheaters: [],
+};
+
 describe('getSimulationOutcome runId filter (#3734 U6)', () => {
   let getSimulationOutcome: typeof import('../server/worldmonitor/forecast/v1/get-simulation-outcome').getSimulationOutcome;
 
@@ -175,6 +188,20 @@ describe('getSimulationOutcome runId filter (#3734 U6)', () => {
     assert.equal(res.runId, VALID_RUN_ID);
     assert.equal(res.note, '');
     assert.equal(res.processing, false);
+  });
+
+  it('surfaces all-failed simulation metadata from the outcome pointer', async () => {
+    installFetch((key) => {
+      if (key === LATEST_KEY) return allFailedOutcome;
+      return null;
+    });
+    const res = await getSimulationOutcome(makeCtx(), { runId: '' });
+    assert.equal(res.found, true);
+    assert.equal(res.theaterCount, 0);
+    assert.equal(res.eligibleTheaterCount, 2);
+    assert.equal(res.failedTheaterCount, 2);
+    assert.equal(res.allTheatersFailed, true);
+    assert.equal(res.completionStatus, 'all_theaters_failed');
   });
 
   it('NOT_FOUND when runId supplied + nothing anywhere + no :latest', async () => {

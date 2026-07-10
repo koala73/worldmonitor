@@ -33,6 +33,7 @@ message ListFuelShortagesResponse {
 // GetFuelShortageDetail returns a single shortage with full evidence
 // bundle + citation timeline. Loaded lazily on drawer open.
 message GetFuelShortageDetailRequest {
+  // Fuel-shortage identifier to load with full evidence details.
   string shortage_id = 1 [
     (buf.validate.field).required = true,
     (sebuf.http.query) = {name: "shortageId"}

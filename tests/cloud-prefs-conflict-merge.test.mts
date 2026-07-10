@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { mergeCloudWithLocalDirty, settledDirtyKeys } from '../src/utils/cloud-prefs-migrations.ts';
+import {
+  mergeCloudWithLocalDirty,
+  parsePersistedDirtyKeys,
+  settledDirtyKeys,
+} from '../src/utils/cloud-prefs-migrations.ts';
 
 describe('mergeCloudWithLocalDirty', () => {
   it('with no dirty keys, returns the cloud blob verbatim (string values only)', () => {
@@ -57,6 +61,17 @@ describe('mergeCloudWithLocalDirty', () => {
     const local = { 'worldmonitor-theme': 'dark', 'wm-market-watchlist-v1': '["TSLA"]' };
     const merged = mergeCloudWithLocalDirty(cloud, local, ['wm-market-watchlist-v1']);
     assert.equal(merged['wm-market-watchlist-v1'], '["TSLA"]');
+  });
+
+  it('REGRESSION: a locally dirty My Monitors edit survives a reload before upload', () => {
+    const monitors = JSON.stringify([
+      { id: 'monitor-1', keywords: ['iran', 'hormuz'], color: '#44ff88' },
+    ]);
+    const cloud = { 'worldmonitor-theme': 'dark' };
+    const local = { 'worldmonitor-theme': 'dark', 'worldmonitor-monitors': monitors };
+    const merged = mergeCloudWithLocalDirty(cloud, local, ['worldmonitor-monitors']);
+    assert.equal(merged['worldmonitor-monitors'], monitors);
+    assert.equal(merged['worldmonitor-theme'], 'dark');
   });
 
   it('drops non-string cloud values', () => {
@@ -118,5 +133,40 @@ describe('settledDirtyKeys', () => {
     const posted = { 'worldmonitor-theme': 'dark' };
     const local = { 'worldmonitor-theme': 'light' };
     assert.deepEqual(settledDirtyKeys(posted, local, []), []);
+  });
+});
+
+describe('parsePersistedDirtyKeys', () => {
+  const allowed = ['worldmonitor-monitors', 'worldmonitor-theme', 'wm-market-watchlist-v1'];
+
+  it('restores a deduped allow-listed dirty key set after reload', () => {
+    const raw = JSON.stringify({
+      userId: 'user-a',
+      keys: [
+        'worldmonitor-monitors',
+        'not-a-sync-key',
+        'worldmonitor-monitors',
+        42,
+        'wm-market-watchlist-v1',
+      ],
+    });
+    assert.deepEqual(
+      parsePersistedDirtyKeys(raw, allowed, 'user-a'),
+      ['worldmonitor-monitors', 'wm-market-watchlist-v1'],
+    );
+  });
+
+  it('rejects persisted dirty keys owned by another signed-in user', () => {
+    const raw = JSON.stringify({
+      userId: 'user-a',
+      keys: ['worldmonitor-monitors'],
+    });
+    assert.deepEqual(parsePersistedDirtyKeys(raw, allowed, 'user-b'), []);
+  });
+
+  it('treats corrupt persisted dirty state as empty', () => {
+    assert.deepEqual(parsePersistedDirtyKeys('{bad json', allowed, 'user-a'), []);
+    assert.deepEqual(parsePersistedDirtyKeys(JSON.stringify({ key: 'worldmonitor-monitors' }), allowed, 'user-a'), []);
+    assert.deepEqual(parsePersistedDirtyKeys(JSON.stringify(['worldmonitor-monitors']), allowed, 'user-a'), []);
   });
 });

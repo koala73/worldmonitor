@@ -170,10 +170,13 @@ async function storeLegacyToken(
 /**
  * Legacy `authorization_code` / `refresh_token` writer.
  *
- * Pipeline values (UNCHANGED — backward compat is load-bearing for any
- * already-issued bearers and refresh tokens still in flight):
+ * Token/refresh record shapes are unchanged (backward compat is load-bearing
+ * for any already-issued bearers and refresh tokens still in flight), but
+ * GHSA-f6gj also writes sibling family pointers used for reuse containment:
  *   oauth:token:<uuid>   = JSON.stringify("<sha256-hex-64>")
  *   oauth:refresh:<uuid> = JSON.stringify({client_id, api_key_hash, scope, family_id})
+ *   oauth:tokenfam:<uuid> = JSON.stringify(family_id)
+ *   oauth:famptr:<uuid>   = JSON.stringify(family_id)
  */
 async function storeNewTokens(
   pipeline: (commands: PipelineCommand[]) => Promise<PipelineResult[] | null>,
@@ -186,6 +189,7 @@ async function storeNewTokens(
 ): Promise<boolean> {
   const results = await pipeline([
     ['SET', `oauth:token:${accessUuid}`, JSON.stringify(apiKeyHash), 'EX', TOKEN_TTL_SECONDS],
+    ['SET', accessTokenFamilyKey(accessUuid), JSON.stringify(familyId), 'EX', TOKEN_TTL_SECONDS],
     [
       'SET',
       `oauth:refresh:${refreshUuid}`,
@@ -193,6 +197,10 @@ async function storeNewTokens(
       'EX',
       REFRESH_TTL_SECONDS,
     ],
+    // Persistent family pointer (GHSA-f6gj): survives the GETDEL of the refresh
+    // record so a later replay of this token can be traced to its family and
+    // trigger family revocation. Same TTL as the refresh token.
+    ['SET', refreshFamilyPointerKey(refreshUuid), JSON.stringify(familyId), 'EX', REFRESH_TTL_SECONDS],
   ]);
   return Array.isArray(results) && results.every((r) => r?.result === 'OK');
 }
@@ -205,9 +213,12 @@ async function storeNewTokens(
  * Pipeline values:
  *   oauth:token:<uuid>   = JSON.stringify({kind:'pro', userId, mcpTokenId})
  *   oauth:refresh:<uuid> = JSON.stringify({kind:'pro', client_id, userId, mcpTokenId, scope, family_id})
+ *   oauth:tokenfam:<uuid> = JSON.stringify(family_id)
+ *   oauth:famptr:<uuid>   = JSON.stringify(family_id)
  *
- * `family_id` is preserved across refresh rotation (same semantic as the
- * legacy writer — protects against refresh-token theft via family-revoke).
+ * `family_id` is preserved across refresh rotation and, together with the
+ * persistent `oauth:famptr:<uuid>` pointer, powers reuse-detection family
+ * revocation (GHSA-f6gj) — replaying a rotated token revokes the whole family.
  */
 async function storeProTokens(
   pipeline: (commands: PipelineCommand[]) => Promise<PipelineResult[] | null>,
@@ -227,6 +238,7 @@ async function storeProTokens(
       'EX',
       TOKEN_TTL_SECONDS,
     ],
+    ['SET', accessTokenFamilyKey(accessUuid), JSON.stringify(familyId), 'EX', TOKEN_TTL_SECONDS],
     [
       'SET',
       `oauth:refresh:${refreshUuid}`,
@@ -234,8 +246,62 @@ async function storeProTokens(
       'EX',
       REFRESH_TTL_SECONDS,
     ],
+    // Persistent family pointer (GHSA-f6gj) — see storeNewTokens.
+    ['SET', refreshFamilyPointerKey(refreshUuid), JSON.stringify(familyId), 'EX', REFRESH_TTL_SECONDS],
   ]);
   return Array.isArray(results) && results.every((r) => r?.result === 'OK');
+}
+
+function accessTokenFamilyKey(accessToken: string): string {
+  return `oauth:tokenfam:${accessToken}`;
+}
+
+function refreshFamilyPointerKey(refreshToken: string): string {
+  return `oauth:famptr:${refreshToken}`;
+}
+
+function refreshFamilyRevocationKey(familyId: string): string {
+  return `oauth:famrev:${familyId}`;
+}
+
+function pipelineOk(results: PipelineResult[] | null): boolean {
+  return Array.isArray(results) && results.every((r) => r?.result === 'OK');
+}
+
+async function persistRefreshFamilyPointer(
+  deps: TokenHandlerDeps,
+  refreshToken: string,
+  familyId: string,
+): Promise<boolean> {
+  return pipelineOk(await deps.redisPipeline([
+    ['SET', refreshFamilyPointerKey(refreshToken), JSON.stringify(familyId), 'EX', REFRESH_TTL_SECONDS],
+  ]));
+}
+
+async function markRefreshFamilyRevoked(deps: TokenHandlerDeps, familyId: string): Promise<boolean> {
+  return pipelineOk(await deps.redisPipeline([
+    ['SET', refreshFamilyRevocationKey(familyId), '1', 'EX', REFRESH_TTL_SECONDS],
+  ]));
+}
+
+async function restoreConsumedRefreshToken(
+  deps: TokenHandlerDeps,
+  refreshToken: string,
+  refreshData: RefreshDataPro | RefreshDataLegacy,
+): Promise<boolean> {
+  const commands: PipelineCommand[] = [
+    ['SET', `oauth:refresh:${refreshToken}`, JSON.stringify(refreshData), 'EX', REFRESH_TTL_SECONDS],
+  ];
+  if (refreshData.family_id) {
+    commands.push([
+      'SET',
+      refreshFamilyPointerKey(refreshToken),
+      JSON.stringify(refreshData.family_id),
+      'EX',
+      REFRESH_TTL_SECONDS,
+    ]);
+  }
+  return pipelineOk(await deps.redisPipeline(commands));
 }
 
 // ---------------------------------------------------------------------------
@@ -245,7 +311,7 @@ async function storeProTokens(
 export interface TokenHandlerDeps {
   /** Atomic GETDEL on `oauth:code:<code>` / `oauth:refresh:<token>`. Throws on transport failure. */
   redisGetDel: (key: string) => Promise<unknown | null>;
-  /** Non-consuming read of `oauth:client:<id>`. Throws on transport failure. */
+  /** Non-consuming parsed read of raw `oauth:*` keys. Throws on transport failure. */
   redisGet: (key: string) => Promise<unknown | null>;
   /** Pipeline writer used by the three storeXxx writers + the sliding TTL EXPIRE. */
   redisPipeline: (commands: PipelineCommand[]) => Promise<PipelineResult[] | null>;
@@ -459,6 +525,33 @@ async function handleRefreshToken(
     );
   }
   if (!refreshData) {
+    // Reuse detection (GHSA-f6gj): a GETDEL-miss on a token that still has a
+    // persistent family pointer means a real, previously-issued token was
+    // presented AFTER it was already consumed — the classic rotation-reuse
+    // signal. Revoke the whole family so both the attacker's rotated token and
+    // the victim's live token are invalidated on their next use (forcing
+    // re-auth). A miss with no famptr is a genuinely expired/garbage token —
+    // nothing to revoke, so an attacker can't revoke a family by guessing
+    // token strings. Redis errors here are retryable security-control
+    // failures: returning invalid_grant without recording famrev would lose
+    // the only reuse signal.
+    try {
+      const familyId = await deps.redisGet(refreshFamilyPointerKey(refreshToken));
+      if (typeof familyId === 'string' && familyId) {
+        const revoked = await markRefreshFamilyRevoked(deps, familyId);
+        if (!revoked) {
+          return jsonResp(
+            { error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' },
+            503,
+          );
+        }
+      }
+    } catch {
+      return jsonResp(
+        { error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' },
+        503,
+      );
+    }
     return jsonResp(
       { error: 'invalid_grant', error_description: 'Refresh token is invalid, expired, or already used' },
       400,
@@ -466,6 +559,45 @@ async function handleRefreshToken(
   }
   if (refreshData.client_id !== clientId) {
     return jsonResp({ error: 'invalid_grant', error_description: 'client_id mismatch' }, 400);
+  }
+
+  // Keep a consumed-token family pointer even for tokens issued before this
+  // patch, and extend old-token pointers so near-expiry replay still revokes
+  // any freshly issued descendant token.
+  if (refreshData.family_id) {
+    const pointerStored = await persistRefreshFamilyPointer(deps, refreshToken, refreshData.family_id);
+    if (!pointerStored) {
+      await restoreConsumedRefreshToken(deps, refreshToken, refreshData).catch(() => false);
+      return jsonResp(
+        { error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' },
+        503,
+      );
+    }
+  }
+
+  // Reuse-detection containment (GHSA-f6gj): if this token's family was revoked
+  // because a sibling token was replayed, refuse to rotate. The GETDEL above
+  // already consumed this token, so a revoked family forces the client to
+  // re-authorize — this is what kills the attacker's rotated token (and the
+  // victim's) once reuse is detected. Unknown revocation state is fail-closed:
+  // restore the consumed token best-effort and ask the client to retry.
+  if (refreshData.family_id) {
+    let familyRevoked = false;
+    try {
+      familyRevoked = (await deps.redisGet(refreshFamilyRevocationKey(refreshData.family_id))) != null;
+    } catch {
+      await restoreConsumedRefreshToken(deps, refreshToken, refreshData).catch(() => false);
+      return jsonResp(
+        { error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' },
+        503,
+      );
+    }
+    if (familyRevoked) {
+      return jsonResp(
+        { error: 'invalid_grant', error_description: 'Refresh token is invalid, expired, or already used' },
+        400,
+      );
+    }
   }
 
   const clientCheck = await checkClientExists(deps, clientId);
@@ -490,17 +622,11 @@ async function handleRefreshToken(
     if (validation.ok === 'transient') {
       // Best-effort restore: the user's refresh token was just consumed
       // by GETDEL but Convex hasn't ruled it revoked. Put it back so the
-      // next attempt can succeed once the blip clears. Failure here is
-      // accepted (the user re-authorizes; not catastrophic, just
-      // operationally noisy).
+      // next attempt can succeed once the blip clears. Restore the family
+      // pointer in the same operation so a restored near-expiry token cannot
+      // outlive its replay-detection pointer.
       try {
-        await deps.redisPipeline([[
-          'SET',
-          `oauth:refresh:${refreshToken}`,
-          JSON.stringify(refreshData),
-          'EX',
-          REFRESH_TTL_SECONDS,
-        ]]);
+        await restoreConsumedRefreshToken(deps, refreshToken, refreshData);
       } catch {
         // Best-effort. If restore fails the user re-authorizes — same
         // outcome as before this fix; we've not made anything worse.

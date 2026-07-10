@@ -18,6 +18,7 @@ service ResilienceService {
     option (sebuf.http.config) = {path: "/get-resilience-ranking", method: HTTP_METHOD_GET};
   }
 
+  // GetResilienceRuntimeManifest returns the public resilience-scoring runtime manifest: manifest version, generation timestamp, active formula tag, cache state, construct versions, and interval availability.
   rpc GetResilienceRuntimeManifest(GetResilienceRuntimeManifestRequest) returns (GetResilienceRuntimeManifestResponse) {
     option (sebuf.http.config) = {path: "/get-runtime-manifest", method: HTTP_METHOD_GET};
   }

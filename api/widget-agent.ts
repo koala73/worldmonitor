@@ -19,21 +19,21 @@ export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+// @ts-expect-error — JS module, no declaration file
+import { timingSafeEqualSecret, timingSafeIncludes } from './_crypto.js';
 import { validateBearerToken } from '../server/auth-session';
 import { getEntitlements } from '../server/_shared/entitlement-check';
 
 const RELAY_BASE = 'https://proxy.worldmonitor.app';
 const WIDGET_AGENT_KEY = process.env.WIDGET_AGENT_KEY ?? '';
 const PRO_WIDGET_KEY = process.env.PRO_WIDGET_KEY ?? '';
-const WORLDMONITOR_VALID_KEY_SET = new Set(
-  (process.env.WORLDMONITOR_VALID_KEYS ?? '')
-    .split(',')
-    .map((v) => v.trim())
-    .filter(Boolean),
-);
+const WORLDMONITOR_VALID_KEYS = (process.env.WORLDMONITOR_VALID_KEYS ?? '')
+  .split(',')
+  .map((v) => v.trim())
+  .filter(Boolean);
 
-function hasValidWorldMonitorKey(key: string): boolean {
-  return Boolean(key) && WORLDMONITOR_VALID_KEY_SET.has(key);
+async function hasValidWorldMonitorKey(key: string): Promise<boolean> {
+  return timingSafeIncludes(key, WORLDMONITOR_VALID_KEYS);
 }
 
 function getCookie(req: Request, name: string): string {
@@ -88,7 +88,7 @@ export default async function handler(req: Request): Promise<Response> {
     headerWorldMonitorKey ||
     getCookie(req, 'wm-pro-key') ||
     getCookie(req, 'wm-widget-key');
-  if (hasValidWorldMonitorKey(worldMonitorKey)) {
+  if (await hasValidWorldMonitorKey(worldMonitorKey)) {
     isPro = true;
   } else {
     const authHeader = req.headers.get('Authorization');
@@ -146,8 +146,8 @@ export default async function handler(req: Request): Promise<Response> {
       // Legacy tester key path (wm-widget-key / wm-pro-key)
       const widgetKey = req.headers.get('X-Widget-Key') || getCookie(req, 'wm-widget-key');
       const proKey = req.headers.get('X-Pro-Key') || getCookie(req, 'wm-pro-key');
-      const hasWidgetKey = Boolean(WIDGET_AGENT_KEY && widgetKey === WIDGET_AGENT_KEY);
-      const hasProKey = Boolean(PRO_WIDGET_KEY && proKey === PRO_WIDGET_KEY);
+      const hasWidgetKey = await timingSafeEqualSecret(widgetKey, WIDGET_AGENT_KEY);
+      const hasProKey = await timingSafeEqualSecret(proKey, PRO_WIDGET_KEY);
       if (!hasWidgetKey && !hasProKey) {
         return json({ error: 'Forbidden' }, 403, corsHeaders);
       }

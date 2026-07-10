@@ -78,7 +78,7 @@ The dashboard serves a surprisingly wide audience:
 - **Journalists** who need instant context for breaking stories
 - **Supply chain managers** monitoring disruption risk at ports and commodity hubs
 - **Policy researchers** studying government spending and trade policy
-- **Developers** who want to build on top of open, typed APIs (92 proto files, 22 services). See the [Developer API and Open Source guide](/blog/posts/build-on-worldmonitor-developer-api-open-source/) for details.
+- **Developers** who want to build on top of open, typed APIs (279 proto files, 35 services). See the [Developer API and Open Source guide](/blog/posts/build-on-worldmonitor-developer-api-open-source/) for details.
 
 ## Available Everywhere
 
@@ -110,4 +110,4 @@ World Monitor covers geopolitics, markets, military tracking, and infrastructure
 
 ---
 
-**Try World Monitor now at [worldmonitor.app](https://worldmonitor.app). No signup required.**
+**Try World Monitor now at [worldmonitor.app](https://www.worldmonitor.app). No signup required.**

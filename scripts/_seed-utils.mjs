@@ -6,9 +6,19 @@ import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { flushPendingLlmEvents } from './lib/llm-telemetry.cjs';
 
 import { buildEnvelope, unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { resolveRecordCount } from './_seed-contract.mjs';
+
+// process.exit does not drain in-flight promises — drain any fire-and-forget
+// llm_call telemetry first (bounded by its 1.5s fetch timeout; a no-op when
+// nothing is pending). Used by every runSeed exit reachable after fetchFn,
+// where seeder LLM calls may have emitted events (#4954 review).
+async function exitAfterTelemetryFlush(code) {
+  try { await flushPendingLlmEvents(); } catch { /* never block exit */ }
+  process.exit(code);
+}
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
 const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024; // 5MB per key
@@ -16,6 +26,40 @@ const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024; // 5MB per key
 const __seed_dirname = dirname(fileURLToPath(import.meta.url));
 
 export { CHROME_UA };
+
+/**
+ * Resolve the CoinGecko base URL + auth header for the configured key tier.
+ *
+ * CoinGecko's free **Demo** plan and paid **Pro** plan share the `CG-` key
+ * prefix but use *different* hosts and auth headers — a Demo key sent to the
+ * Pro host fails with `HTTP 400` (error 10011: "change your root URL from
+ * pro-api.coingecko.com to api.coingecko.com"), and a Pro key on the public
+ * host is unauthenticated. The key string alone can't tell the tiers apart,
+ * so the tier is selected explicitly by which env var is set:
+ *
+ *   - `COINGECKO_API_KEY`      → Pro    (pro-api.coingecko.com, x-cg-pro-api-key)
+ *   - `COINGECKO_DEMO_API_KEY` → Demo   (api.coingecko.com,     x-cg-demo-api-key)
+ *   - neither                  → keyless public endpoint (shared IP, 429-prone)
+ *
+ * Pro takes precedence so existing Pro deployments are unaffected.
+ *
+ * @param {Record<string, string>} [extraHeaders] merged into the returned headers
+ * @returns {{ baseUrl: string, headers: Record<string, string>, tier: 'pro' | 'demo' | 'keyless' }}
+ */
+export function coingeckoEndpoint(extraHeaders = {}) {
+  const proKey = process.env.COINGECKO_API_KEY;
+  const demoKey = process.env.COINGECKO_DEMO_API_KEY;
+  const headers = { Accept: 'application/json', 'User-Agent': CHROME_UA, ...extraHeaders };
+  if (proKey) {
+    headers['x-cg-pro-api-key'] = proKey;
+    return { baseUrl: 'https://pro-api.coingecko.com/api/v3', headers, tier: 'pro' };
+  }
+  if (demoKey) {
+    headers['x-cg-demo-api-key'] = demoKey;
+    return { baseUrl: 'https://api.coingecko.com/api/v3', headers, tier: 'demo' };
+  }
+  return { baseUrl: 'https://api.coingecko.com/api/v3', headers, tier: 'keyless' };
+}
 
 /**
  * Unwrap fetch / network errors so log lines surface the actual cause
@@ -84,10 +128,14 @@ export async function fetchCoinPaprikaTickersById(paprikaIds, options = {}) {
   return tickers;
 }
 
-async function allSettledWithConcurrency(items, concurrency, mapper) {
+export async function allSettledWithConcurrency(items, concurrency, mapper) {
   const results = new Array(items.length);
   let nextIndex = 0;
-  const workerCount = Math.min(concurrency, items.length);
+  // Clamp to a finite integer ≥1 so an invalid concurrency (0, NaN, negative, float)
+  // can't spin up zero workers and silently return a sparse, all-unprocessed array —
+  // it degrades to sequential instead. (items.length===0 → 0 workers → empty result.)
+  const safe = Number.isFinite(concurrency) && concurrency >= 1 ? Math.floor(concurrency) : 1;
+  const workerCount = Math.min(safe, items.length);
 
   await Promise.all(Array.from({ length: workerCount }, async () => {
     while (nextIndex < items.length) {
@@ -460,6 +508,11 @@ export async function readCanonicalEnvelopeMeta(canonicalKey) {
 // fetches like seed-imf-* WEO bundles).
 export const PERMANENT_4XX_STATUSES = new Set([400, 401, 403, 404, 410, 422, 451]);
 
+// sysexits.h EX_TEMPFAIL: fetch failed, last-good TTL was extended, and the
+// bundle runner should retry/report non-OK without treating the seeder as a
+// generic crash.
+export const GRACEFUL_FETCH_FAILURE_EXIT_CODE = 75;
+
 // Cap upstream Retry-After hints so a stuck/abusive header can't park the
 // bundle past its section timeoutMs. Mirrors _yahoo-fetch.mjs convention.
 const MAX_RETRY_AFTER_MS = 60_000;
@@ -508,6 +561,64 @@ export async function withRetry(fn, maxRetries = 3, delayMs = 1000) {
     }
   }
   throw lastErr;
+}
+
+/**
+ * Read a header from either a fetch `Headers` instance or a plain object
+ * (test transports commonly pass `{ 'retry-after': '2' }`). Case-insensitive.
+ */
+export function getResponseHeader(headers, name) {
+  if (!headers) return null;
+  if (typeof headers.get === 'function') return headers.get(name);
+  const lowerName = name.toLowerCase();
+  const foundKey = Object.keys(headers).find((key) => key.toLowerCase() === lowerName);
+  return foundKey ? headers[foundKey] : null;
+}
+
+/** 408 / 429 / 5xx are transient; every other status is a permanent client error. */
+export function isRetryableHttpStatus(status) {
+  return status === 408 || status === 429 || (typeof status === 'number' && status >= 500 && status <= 599);
+}
+
+/**
+ * Build an Error from a non-ok provider response for use with `withRetry`.
+ * Tags `nonRetryable` for permanent statuses and attaches a capped
+ * `retryAfterMs` hint when the server sent one:
+ *   - `maxRetryAfterMs` caps a generous server hint (e.g. a 10s ceiling).
+ *   - `capMs` (the caller's remaining wall-clock budget) caps it further and,
+ *     when <= 0, marks the error non-retryable so the loop stops instead of
+ *     sleeping past its deadline.
+ */
+export function httpRetryError(resp, { maxRetryAfterMs, capMs } = {}) {
+  const status = resp?.status;
+  const err = new Error(`HTTP ${status}`);
+  err.status = status;
+  err.nonRetryable = !isRetryableHttpStatus(status);
+  let retryAfterMs = parseRetryAfterMs(getResponseHeader(resp?.headers, 'Retry-After'));
+  if (retryAfterMs != null) {
+    if (Number.isFinite(maxRetryAfterMs)) retryAfterMs = Math.min(retryAfterMs, maxRetryAfterMs);
+    if (Number.isFinite(capMs)) retryAfterMs = Math.min(retryAfterMs, Math.max(0, capMs));
+    if (retryAfterMs > 0) err.retryAfterMs = retryAfterMs;
+    else err.nonRetryable = true;
+  }
+  return err;
+}
+
+/**
+ * Sentinel error for "the LLM call's time budget is spent". `nonRetryable`
+ * stops `withRetry` immediately; `llmBudgetExhausted` lets the provider loop
+ * distinguish a budget stop (give up, ship degraded) from a provider error
+ * (fall through to the next provider).
+ */
+export function createLlmBudgetError(message = 'llm time budget exhausted') {
+  const err = new Error(message);
+  err.nonRetryable = true;
+  err.llmBudgetExhausted = true;
+  return err;
+}
+
+export function isLlmBudgetError(err) {
+  return Boolean(err?.llmBudgetExhausted);
 }
 
 export function logSeedResult(domain, count, durationMs, extra = {}) {
@@ -560,7 +671,7 @@ export async function writeExtraKey(key, data, ttl, envelopeMeta) {
   const payload = JSON.stringify(value);
   const resp = await fetch(url, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
     body: JSON.stringify(['SET', key, payload, 'EX', ttl]),
     signal: AbortSignal.timeout(10_000),
   });
@@ -575,24 +686,35 @@ export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaT
   const metaTtl = metaTtlSeconds ?? 86400 * 7;
   const resp = await fetch(url, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
     body: JSON.stringify(['SET', metaKey, JSON.stringify(meta), 'EX', metaTtl]),
     signal: AbortSignal.timeout(5_000),
   });
-  if (!resp.ok) console.warn(`  seed-meta ${metaKey}: write failed`);
+  if (!resp.ok) {
+    console.warn(`  seed-meta ${metaKey}: write failed`);
+    return false;
+  }
+  return true;
 }
 
 export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKeyOverride, metaTtlSeconds) {
   await writeExtraKey(key, data, ttl);
-  await writeSeedMeta(key, recordCount, metaKeyOverride, metaTtlSeconds);
+  return writeSeedMeta(key, recordCount, metaKeyOverride, metaTtlSeconds);
 }
 
+// Returns true only when EVERY requested key was actually extended (EXPIRE
+// returned 1 for all). Returns false on missing creds, network/HTTP failure,
+// or any key that was missing/expired (EXPIRE no-op). Existing fire-and-forget
+// callers ignore the return; a caller that treats a successful extension as
+// proof the data is still alive (e.g. a market-closed skip that then reports
+// fresh) MUST gate on this boolean and fall back to a real fetch on false —
+// otherwise a silent extension failure looks green while the key expires.
 export async function extendExistingTtl(keys, ttlSeconds = 600) {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) {
     console.error('  Cannot extend TTL: missing Redis credentials');
-    return;
+    return false;
   }
   try {
     // EXPIRE only refreshes TTL when key already exists (returns 0 on missing keys — no-op).
@@ -604,15 +726,16 @@ export async function extendExistingTtl(keys, ttlSeconds = 600) {
       body: JSON.stringify(pipeline),
       signal: AbortSignal.timeout(10_000),
     });
-    if (resp.ok) {
-      const results = await resp.json();
-      const extended = results.filter(r => r?.result === 1).length;
-      const missing = results.filter(r => r?.result === 0).length;
-      if (extended > 0) console.log(`  Extended TTL on ${extended} key(s) (${ttlSeconds}s)`);
-      if (missing > 0) console.warn(`  WARNING: ${missing} key(s) were expired/missing — EXPIRE was a no-op; manual seed required`);
-    }
+    if (!resp.ok) return false;
+    const results = await resp.json();
+    const extended = results.filter(r => r?.result === 1).length;
+    const missing = results.filter(r => r?.result === 0).length;
+    if (extended > 0) console.log(`  Extended TTL on ${extended} key(s) (${ttlSeconds}s)`);
+    if (missing > 0) console.warn(`  WARNING: ${missing} key(s) were expired/missing — EXPIRE was a no-op; manual seed required`);
+    return missing === 0 && extended === keys.length;
   } catch (e) {
     console.error(`  TTL extension failed: ${e.message}`);
+    return false;
   }
 }
 
@@ -682,6 +805,8 @@ export function isTransientProxyError(message) {
   return /HTTP 5\d{2}|522|timeout|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|EPIPE|socket (disconnected|hang up)|TLS connection|tls_get_more_records|packet length too long|SSL routines|secure TLS connection/i.test(message || '');
 }
 
+const FRED_JSON_HEADERS = { Accept: 'application/json', 'User-Agent': CHROME_UA };
+
 // Fetch JSON from a FRED URL, routing through proxy when available.
 // Proxy-first: FRED consistently blocks/throttles Railway datacenter IPs,
 // so try proxy first to avoid 20s timeout on every direct attempt.
@@ -705,14 +830,14 @@ export async function fredFetchJson(url, proxyAuth) {
     }
     console.warn(`  [fredFetch] proxy failed after retries (${lastProxyErr?.message}) — retrying direct`);
     try {
-      const r = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(20_000) });
+      const r = await fetch(url, { headers: FRED_JSON_HEADERS, signal: AbortSignal.timeout(20_000) });
       if (r.ok) return r.json();
       throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
     } catch (directErr) {
       throw Object.assign(new Error(`direct: ${directErr.message}`), { cause: directErr });
     }
   }
-  const r = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(20_000) });
+  const r = await fetch(url, { headers: FRED_JSON_HEADERS, signal: AbortSignal.timeout(20_000) });
   if (r.ok) return r.json();
   throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
 }
@@ -1123,6 +1248,45 @@ export function parseYahooChart(data, symbol) {
   return { symbol, name: symbol, display: symbol, price, change: +change.toFixed(2), sparkline };
 }
 
+/**
+ * Decide whether an extra-key write should be skipped to preserve last-good
+ * cached data. Opt-in per extra-key via `skipWhenEmpty: true` — when set and the
+ * resolved recordCount is 0, runSeed skips the write (and extends the key's TTL)
+ * instead of clobbering a good cached payload with an empty recordCount=0 one on
+ * a partial upstream fetch. The canonical key is already guarded by validateFn;
+ * this closes the same gap for extra keys. Pure function — extracted for tests.
+ */
+export function shouldSkipEmptyExtraKey(ek, recordCount) {
+  return Boolean(ek && ek.skipWhenEmpty) && recordCount === 0;
+}
+
+// Fleet-wide graceful-degradation backstop (issue #4786). A non-settling
+// await inside a seeder's fetchFn — e.g. an unguarded R2/S3 body stream whose
+// socket is silently reaped — never rejects, so the Phase-1 try/catch can't
+// catch it; the event loop drains and Node exits 13 ("Detected unsettled
+// top-level await"), painting a red Railway badge that is neither a graceful
+// skip nor a catchable failure. Racing the fetch against a wall-clock deadline
+// converts that hang into a normal rejection, which the existing graceful path
+// turns into exit 75 (TTL extended, last-good served, no data lost).
+//
+// The deadline is tied to lockTtlMs — never a fixed value — because seeders
+// legitimately run from ~1min to 40min. A healthy seeder is designed never to
+// outlive its own lock, so lockTtlMs + margin exceeds any legitimate run; the
+// only thing that trips it is a genuine hang. A false trip is itself graceful
+// (exit 75), so the margin errs generous.
+export const FETCH_PHASE_DEADLINE_MARGIN_MS = 120_000;
+
+export function raceFetchDeadline(promise, ms, label) {
+  let timer;
+  const guard = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`${label} fetch phase exceeded ${ms}ms deadline (likely a non-settling await — see issue #4786)`)),
+      ms,
+    );
+  });
+  return Promise.race([promise, guard]).finally(() => clearTimeout(timer));
+}
+
 export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}) {
   const {
     validateFn,
@@ -1139,6 +1303,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     zeroIsValid = false,   // new — when true, recordCount=0 is OK_ZERO, not RETRY
     contentMeta,           // (rawData) => {newestItemAt, oldestItemAt} | null
     maxContentAgeMin,      // positive integer minutes — opts in together with contentMeta
+    fetchPhaseTimeoutMs,   // hard ceiling on the fetch phase; defaults to lockTtlMs + margin (#4786)
   } = opts;
   const contractMode = typeof declareRecords === 'function';
   if (contractMode) {
@@ -1224,15 +1389,25 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     } catch (err) {
       console.error(`  [${domain}:${resource}] SIGTERM cleanup error: ${err?.message || err}`);
     } finally {
+      // process.exit does not drain in-flight promises — flush any
+      // fire-and-forget llm_call telemetry (bounded by its 1.5s fetch
+      // timeout; the runner's 5s SIGKILL grace leaves room).
+      try { await flushPendingLlmEvents(); } catch { /* never block exit */ }
       process.exit(143);
     }
   };
   process.once('SIGTERM', sigTermHandler);
 
-  // Phase 1: Fetch data (graceful on failure — extend TTL on stale data)
+  // Phase 1: Fetch data (graceful on failure — extend TTL on stale data).
+  // Raced against a wall-clock deadline so a non-settling await inside fetchFn
+  // (see raceFetchDeadline above, issue #4786) surfaces as a catchable
+  // rejection instead of hanging the process into an exit-13 red badge.
+  const fetchDeadlineMs = Number.isFinite(fetchPhaseTimeoutMs) && fetchPhaseTimeoutMs > 0
+    ? fetchPhaseTimeoutMs
+    : lockTtlMs + FETCH_PHASE_DEADLINE_MARGIN_MS;
   let data;
   try {
-    data = await withRetry(fetchFn);
+    data = await raceFetchDeadline(withRetry(fetchFn), fetchDeadlineMs, `${domain}:${resource}`);
   } catch (err) {
     // Keep the SIGTERM handler installed across the fetch-failure
     // cleanup. Earlier code did `process.off('SIGTERM', sigTermHandler)`
@@ -1244,8 +1419,8 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     // releases at most once for a given runId, and EXPIRE pipelines on
     // existing keys are safely re-runnable — so a race between the
     // catch path and the handler converges on the correct end state.
-    // process.exit(0) below terminates before any pending SIGTERM can
-    // fire on the success path of cleanup.
+    // process.exit below terminates before any pending SIGTERM can fire
+    // on the success path of cleanup.
     await releaseLock(`${domain}:${resource}`, runId);
     const durationMs = Date.now() - startMs;
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
@@ -1257,7 +1432,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     await extendExistingTtl(keys, ttl);
 
     console.log(`\n=== Failed gracefully (${Math.round(durationMs)}ms) ===`);
-    process.exit(0);
+    await exitAfterTelemetryFlush(GRACEFUL_FETCH_FAILURE_EXIT_CODE);
   }
   // Transition to publish phase — handler stays installed but switches
   // behavior via the phase tracker.
@@ -1306,7 +1481,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
         // Contract violation — declareRecords returned non-int / threw. HARD FAIL.
         await releaseLock(`${domain}:${resource}`, runId);
         console.error(`  CONTRACT VIOLATION: ${err.message || err}`);
-        process.exit(1);
+        await exitAfterTelemetryFlush(1);
       }
       if (contractRecordCount > 0) {
         contractState = 'OK';
@@ -1345,7 +1520,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       console.log(`  RETRY: declareRecords returned 0 (zeroIsValid=false) — envelope unchanged, TTL extended, bundle will retry next cycle`);
       console.log(`\n=== Done (${Math.round(durationMs)}ms, RETRY) ===`);
       await releaseLock(`${domain}:${resource}`, runId);
-      process.exit(0);
+      await exitAfterTelemetryFlush(0);
     }
 
     const publishResult = await atomicPublish(canonicalKey, publishData, validateFn, ttlSeconds, { envelopeMeta });
@@ -1413,7 +1588,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       await releaseLock(`${domain}:${resource}`, runId);
       // Strict path exits non-zero so _bundle-runner counts it as failed++
       // (otherwise the bundle summary hides upstream outages behind ran++).
-      process.exit(strictFailure ? 1 : 0);
+      await exitAfterTelemetryFlush(strictFailure ? 1 : 0);
     }
     const { payloadBytes } = publishResult;
     const topicArticleCount = Array.isArray(data?.topics)
@@ -1433,6 +1608,12 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     // the canonical one.
     if (extraKeys) {
       for (const ek of extraKeys) {
+        // skipWhenEmpty needs a resolved recordCount, which only exists in
+        // contract mode (declareRecords). Warn loudly on misconfig instead of
+        // silently writing the empty payload the flag was meant to guard against.
+        if (ek.skipWhenEmpty && !contractMode) {
+          console.warn(`  [extraKey] ${ek.key} declares skipWhenEmpty but ${domain}:${resource} is not in contract mode (no declareRecords) — guard inactive`);
+        }
         const ekData = ek.transform ? ek.transform(data) : data;
         let ekEnvelope = null;
         if (contractMode) {
@@ -1443,7 +1624,16 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
           } catch (err) {
             await releaseLock(`${domain}:${resource}`, runId);
             console.error(`  CONTRACT VIOLATION on extraKey ${ek.key}: ${err.message || err}`);
-            process.exit(1);
+            await exitAfterTelemetryFlush(1);
+          }
+          // Opt-in skip-empty: don't overwrite a good cached extra-key payload
+          // with a recordCount=0 write on a partial fetch (e.g. a token panel
+          // whose IDs the upstream dropped this cycle). Preserve last-good by
+          // extending the existing key's TTL instead.
+          if (shouldSkipEmptyExtraKey(ek, ekCount)) {
+            await extendExistingTtl([ek.key], ek.ttl || ttlSeconds || 600);
+            console.log(`  [extraKey] ${ek.key} empty (recordCount=0) — skipped write, extended TTL to preserve last-good`);
+            continue;
           }
           ekEnvelope = {
             fetchedAt: envelopeMeta.fetchedAt,
@@ -1454,6 +1644,10 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
           };
         }
         await writeExtraKey(ek.key, ekData, ek.ttl || ttlSeconds, ekEnvelope);
+        if (contractMode && ek.metaKey) {
+          const wroteMeta = await writeSeedMeta(ek.key, ekEnvelope?.recordCount ?? 0, ek.metaKey, ek.metaTtlSeconds);
+          if (!wroteMeta && ek.metaCritical) throw new Error(`Extra key ${ek.key}: seed-meta ${ek.metaKey} write failed`);
+        }
       }
     }
 
@@ -1508,7 +1702,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
 
     console.log(`\n=== Done (${Math.round(durationMs)}ms) ===`);
     await releaseLock(`${domain}:${resource}`, runId);
-    process.exit(0);
+    await exitAfterTelemetryFlush(0);
   } catch (err) {
     await releaseLock(`${domain}:${resource}`, runId);
     throw err;

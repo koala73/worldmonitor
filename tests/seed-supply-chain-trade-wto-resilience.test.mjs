@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   wtoFetch,
+  deriveWtoSeverityStatus,
   fetchTariffTrends,
   _setAllReportersForTesting,
 } from '../scripts/seed-supply-chain-trade.mjs';
@@ -152,5 +153,13 @@ describe('fetchTariffTrends: per-batch isolation under timeout', () => {
       3.4,
       'datapoint from the surviving batch must be intact',
     );
+  });
+});
+
+describe('WTO trade-policy severity contract', () => {
+  it('derives high/moderate/low bands from the seeded WTO values', () => {
+    assert.equal(deriveWtoSeverityStatus(12), 'high');
+    assert.equal(deriveWtoSeverityStatus(7), 'moderate');
+    assert.equal(deriveWtoSeverityStatus(3), 'low');
   });
 });

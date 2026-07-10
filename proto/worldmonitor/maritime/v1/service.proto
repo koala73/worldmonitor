@@ -11,6 +11,8 @@ service MaritimeService {
   option (sebuf.http.service_config) = {base_path: "/api/maritime/v1"};
 
   // GetVesselSnapshot retrieves a point-in-time view of AIS vessel traffic and disruptions.
+  // Empty/absent snapshot with fetched_at=0 or data_available=false means the
+  // relay snapshot is unavailable/degraded, not that traffic is confirmed absent.
   rpc GetVesselSnapshot(GetVesselSnapshotRequest) returns (GetVesselSnapshotResponse) {
     option (sebuf.http.config) = {path: "/get-vessel-snapshot", method: HTTP_METHOD_GET};
   }

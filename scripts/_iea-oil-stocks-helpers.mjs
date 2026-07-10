@@ -64,32 +64,41 @@ export function ieaOilStocksContentMeta(data, nowMs = Date.now()) {
 }
 
 /**
- * Threshold for STALE_CONTENT alerting (120 days).
+ * Threshold for STALE_CONTENT alerting (150 days / ~5 months).
  *
- * IEA monthly oil stocks publish on an M+2 cadence — August data
- * (`dataMonth = "2024-08"`, end-of-month = Aug 31) ships in late Oct
- * / early Nov, which is ~60-65 days AFTER end-of-observation-month.
- * That means at fresh-arrival the helper's `newestItemAt` is already
- * 60d old, before any real staleness has accrued.
+ * IEA monthly net-imports/oil-stocks publish on an observed ~M+4 cadence
+ * (NOT the M+2 the earlier comment assumed). The latest available month is
+ * ~3.5-4 calendar months behind end-of-observation-month, so the helper's
+ * `newestItemAt` is already ~95-100d old at the moment the freshest
+ * snapshot first arrives — before any real staleness has accrued.
  *
- * Budget breakdown: ~60d for the natural M+2 lag + ~60d slack for
- * up-to-two missed publications = 120d total. STALE_CONTENT trips
- * when more than two months are missed (e.g. cache stuck at
- * "2024-08" past mid-Feb when "2024-11" should have landed).
+ * Budget breakdown: ~100d for the natural M+4 lag at fresh-arrival + ~30d
+ * for normal intra-cycle aging (the freshest month must remain the served
+ * value until the NEXT month publishes ~a month later, so a healthy cache
+ * naturally reaches ~128d before the next publication lands) + ~22d grace.
+ * STALE_CONTENT trips only when the cache is frozen ~2 months past the
+ * normal cycle (a genuine multi-month upstream freeze or seeder failure).
  *
  * Iteration history:
  *   - Sprint 3b initial PR (#3599) shipped 45d, which would have
  *     fired STALE_CONTENT on every fresh seed because 45d < natural
  *     lag. Greptile P1 caught it.
- *   - Sprint 3b shipped at 90d (60d M+2 lag + 30d slack for one
+ *   - Sprint 3b shipped at 90d (assumed 60d M+2 lag + 30d slack for one
  *     missed publication).
  *   - 2026-05-09: bumped to 120d after IEA delayed Feb 2026 data by
- *     >24 days past expected mid-April publish window. Direct probe
- *     of `https://api.iea.org/netimports/monthly/?year=2026&month=02`
- *     returned `[]` (no data on the upstream itself), confirming this
- *     was a real publication delay, not a parser/network bug. The 90d
- *     budget was sized for "one missed publication"; IEA's recent
- *     pattern of 1-2 month delays makes 120d a better fit. Real
- *     "IEA went silent" incidents (>2 month gaps) still surface.
+ *     >24 days past expected publish window. Direct probe of
+ *     `https://api.iea.org/netimports/monthly/?year=2026&month=02`
+ *     returned `[]` at that time (no data on the upstream itself).
+ *   - 2026-06-06: bumped to 150d. Live probe of
+ *     `https://api.iea.org/netimports/latest` returned dataMonth
+ *     `2026-02` (end-of-Feb, content age ~97.7d on Jun 6) as the NEWEST
+ *     available month; `2026-03`/`2026-04` monthly endpoints returned
+ *     `[]` (not yet published). So the freshest data the seeder can
+ *     possibly serve is ~98d old, and the prior cached month (`2026-01`,
+ *     ~125.7d) was already breaching the 120d budget despite no seeder or
+ *     parse bug — the upstream simply runs ~M+4. 120d false-fires near
+ *     the end of every normal publication cycle (healthy cache reaches
+ *     ~128d before the next month lands). 150d absorbs the real cadence
+ *     while still catching a genuine ~2-month freeze.
  */
-export const IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN = 120 * 24 * 60;
+export const IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN = 150 * 24 * 60;

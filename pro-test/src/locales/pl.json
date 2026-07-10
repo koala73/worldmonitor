@@ -178,15 +178,15 @@
     "apiTier": "POZIOM API",
     "title": "Wywiad programistyczny",
     "subtitle": "Dla programistów, analityków i zespołów budujących na danych World Monitor. Osobno od Pro — użyj obu lub jednego.",
-    "restApi": "REST API we wszystkich 30+ domenach usług",
+    "restApi": "REST API we wszystkich 30+ domenach usług — oficjalne SDK dla JavaScript, Python, Ruby, Go",
     "authenticated": "Uwierzytelnione kluczem, rate-limited na poziom",
     "structured": "Ustrukturyzowany JSON z nagłówkami cache i dokumentacją OpenAPI 3.1",
     "starter": "Starter",
     "starterReqs": "1 000 req/dzień",
     "starterWebhooks": "5 reguł webhook",
     "business": "Business",
-    "businessReqs": "50 000 req/dzień",
-    "businessWebhooks": "Nielimitowane webhooki + SLA",
+    "businessReqs": "10 000 req/dzień",
+    "businessWebhooks": "Priority support",
     "feedData": "Zasilaj dane w swoich panelach, automatyzuj alerty przez Zapier/n8n/Make, buduj własne modele scoringu na danych CII/ryzyka."
   },
   "enterpriseShowcase": {
@@ -374,16 +374,17 @@
           "Codzienne briefingi rynkowe",
           "Śledzenie geopolityczne i wojskowe",
           "Konstruktor widżetów niestandardowych",
-          "Konektory danych MCP",
+          "Dostęp MCP + SDK dla Claude Desktop i innych klientów AI (50 wywołań/dzień)",
           "Priorytetowe odświeżanie danych"
         ]
       },
       "api": {
         "description": "Programowy dostęp do danych analitycznych",
         "features": [
-          "Dostęp do REST API",
+          "REST API + oficjalne SDK (npm, PyPI, RubyGems, Go)",
           "Strumienie danych w czasie rzeczywistym",
-          "1000 żądań/dzień",
+          "60 żądań/minutę",
+          "1000 żądań/dzień w cenie",
           "Powiadomienia webhook",
           "Niestandardowe eksporty danych"
         ]

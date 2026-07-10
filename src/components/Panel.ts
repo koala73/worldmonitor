@@ -7,6 +7,26 @@ import { trackPanelResized } from '@/services/analytics';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { getSecretState } from '@/services/runtime-config';
 import { PanelGateReason } from '@/services/panel-gating';
+import { dataFreshness, type PanelFreshnessSummary } from '@/services/data-freshness';
+import { formatPanelFreshnessDisplay } from '@/services/panel-freshness-display';
+import {
+  clearPanelColSpan,
+  clearPanelSpan,
+  loadPanelCollapsed,
+  loadPanelColSpans,
+  loadPanelSpans,
+  savePanelCollapsed,
+  savePanelColSpan,
+  savePanelSpan,
+} from '@/utils/panel-storage';
+import {
+  clampColSpan,
+  clearColSpanClass,
+  getExplicitColSpanClass,
+  getMaxColSpan,
+  isPanelGridColumnCountReady,
+  setColSpanClass,
+} from '@/utils/panel-grid';
 
 export type PanelSeverity = 'critical' | 'high' | 'medium' | 'low' | 'none';
 
@@ -27,125 +47,16 @@ const lockSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" 
 
 const upgradeSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="16 12 12 8 8 12"/><line x1="12" y1="16" x2="12" y2="8"/></svg>`;
 
-const PANEL_SPANS_KEY = 'worldmonitor-panel-spans';
-
-function loadPanelSpans(): Record<string, number> {
-  try {
-    const stored = localStorage.getItem(PANEL_SPANS_KEY);
-    return stored ? JSON.parse(stored) : {};
-  } catch {
-    return {};
-  }
-}
-
-function savePanelSpan(panelId: string, span: number): void {
-  const spans = loadPanelSpans();
-  spans[panelId] = span;
-  localStorage.setItem(PANEL_SPANS_KEY, JSON.stringify(spans));
-}
-
-const PANEL_COL_SPANS_KEY = 'worldmonitor-panel-col-spans';
 const ROW_RESIZE_STEP_PX = 80;
 const COL_RESIZE_STEP_PX = 80;
-const PANELS_GRID_MIN_TRACK_PX = 280;
-
-function loadPanelColSpans(): Record<string, number> {
-  try {
-    const stored = localStorage.getItem(PANEL_COL_SPANS_KEY);
-    return stored ? JSON.parse(stored) : {};
-  } catch {
-    return {};
-  }
-}
-
-function savePanelColSpan(panelId: string, span: number): void {
-  const spans = loadPanelColSpans();
-  spans[panelId] = span;
-  localStorage.setItem(PANEL_COL_SPANS_KEY, JSON.stringify(spans));
-}
-
-const PANEL_COLLAPSED_KEY = 'worldmonitor-panel-collapsed';
-
-function loadPanelCollapsed(): Record<string, boolean> {
-  try {
-    const stored = localStorage.getItem(PANEL_COLLAPSED_KEY);
-    return stored ? JSON.parse(stored) : {};
-  } catch {
-    return {};
-  }
-}
-
-function savePanelCollapsed(panelId: string, collapsed: boolean): void {
-  const map = loadPanelCollapsed();
-  if (collapsed) {
-    map[panelId] = true;
-  } else {
-    delete map[panelId];
-  }
-  if (Object.keys(map).length === 0) {
-    localStorage.removeItem(PANEL_COLLAPSED_KEY);
-  } else {
-    localStorage.setItem(PANEL_COLLAPSED_KEY, JSON.stringify(map));
-  }
-}
-
-function clearPanelColSpan(panelId: string): void {
-  const spans = loadPanelColSpans();
-  if (!(panelId in spans)) return;
-  delete spans[panelId];
-  if (Object.keys(spans).length === 0) {
-    localStorage.removeItem(PANEL_COL_SPANS_KEY);
-    return;
-  }
-  localStorage.setItem(PANEL_COL_SPANS_KEY, JSON.stringify(spans));
-}
+const FRESHNESS_BADGE_REFRESH_MS = 60_000;
 
 function getDefaultColSpan(element: HTMLElement): number {
   return element.classList.contains('panel-wide') ? 2 : 1;
 }
 
 function getColSpan(element: HTMLElement): number {
-  if (element.classList.contains('col-span-3')) return 3;
-  if (element.classList.contains('col-span-2')) return 2;
-  if (element.classList.contains('col-span-1')) return 1;
-  return getDefaultColSpan(element);
-}
-
-function getGridColumnCount(element: HTMLElement): number {
-  const grid = (element.closest('.panels-grid') || element.closest('.map-bottom-grid')) as HTMLElement | null;
-  if (!grid) return 3;
-  const style = window.getComputedStyle(grid);
-  const template = style.gridTemplateColumns;
-  if (!template || template === 'none') return 3;
-
-  if (template.includes('repeat(')) {
-    const repeatCountMatch = template.match(/repeat\(\s*(\d+)\s*,/i);
-    if (repeatCountMatch) {
-      const parsed = Number.parseInt(repeatCountMatch[1] ?? '0', 10);
-      if (Number.isFinite(parsed) && parsed > 0) return parsed;
-    }
-
-    // For repeat(auto-fill/auto-fit, minmax(...)), infer count from rendered width.
-    const autoRepeatMatch = template.match(/repeat\(\s*auto-(fill|fit)\s*,/i);
-    if (autoRepeatMatch) {
-      const gap = Number.parseFloat(style.columnGap || '0') || 0;
-      const width = grid.getBoundingClientRect().width;
-      if (width > 0) {
-        return Math.max(1, Math.floor((width + gap) / (PANELS_GRID_MIN_TRACK_PX + gap)));
-      }
-    }
-  }
-
-  const columns = template.trim().split(/\s+/).filter(Boolean);
-  return columns.length > 0 ? columns.length : 3;
-}
-
-function getMaxColSpan(element: HTMLElement): number {
-  return Math.max(1, Math.min(3, getGridColumnCount(element)));
-}
-
-function clampColSpan(span: number, maxSpan: number): number {
-  return Math.max(1, Math.min(maxSpan, span));
+  return getExplicitColSpanClass(element) ?? getDefaultColSpan(element);
 }
 
 function persistPanelColSpan(panelId: string, element: HTMLElement): void {
@@ -166,15 +77,6 @@ function deltaToColSpan(startSpan: number, deltaX: number, maxSpan = 3): number 
     ? Math.floor(deltaX / COL_RESIZE_STEP_PX)
     : Math.ceil(deltaX / COL_RESIZE_STEP_PX);
   return clampColSpan(startSpan + spanDelta, maxSpan);
-}
-
-function clearColSpanClass(element: HTMLElement): void {
-  element.classList.remove('col-span-1', 'col-span-2', 'col-span-3');
-}
-
-function setColSpanClass(element: HTMLElement, span: number): void {
-  clearColSpanClass(element);
-  element.classList.add(`col-span-${span}`);
 }
 
 function getRowSpan(element: HTMLElement): number {
@@ -204,6 +106,9 @@ export class Panel {
   protected countEl: HTMLElement | null = null;
   protected statusBadgeEl: HTMLElement | null = null;
   protected newBadgeEl: HTMLElement | null = null;
+  private freshnessBadgeEl: HTMLElement | null = null;
+  private freshnessUnsubscribe: (() => void) | null = null;
+  private freshnessRefreshTimer: ReturnType<typeof setInterval> | null = null;
   private severityDotEl: HTMLElement | null = null;
   private currentSeverity: PanelSeverity = 'none';
   protected panelId: string;
@@ -251,6 +156,9 @@ export class Panel {
   private _collapseBtn: HTMLButtonElement | null = null;
   private viewportObserver: IntersectionObserver | null = null;
   private viewportObserverRegistered = false;
+  private connectedCallbacks: Array<() => void> = [];
+  private connectedFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+  private destroyed = false;
 
   constructor(options: PanelOptions) {
     this.panelId = options.id;
@@ -273,6 +181,19 @@ export class Panel {
     this.severityDotEl.className = 'panel-severity-dot';
     this.severityDotEl.setAttribute('aria-hidden', 'true');
     headerLeft.appendChild(this.severityDotEl);
+
+    const initialFreshness = dataFreshness.getPanelFreshness(this.panelId);
+    if (initialFreshness) {
+      this.freshnessBadgeEl = document.createElement('span');
+      this.freshnessBadgeEl.className = 'panel-freshness-badge';
+      headerLeft.appendChild(this.freshnessBadgeEl);
+      this.updateFreshnessBadge(initialFreshness);
+      this.freshnessUnsubscribe = dataFreshness.subscribe(() => this.updateFreshnessBadge());
+      this.freshnessRefreshTimer = setInterval(
+        () => this.updateFreshnessBadge(),
+        FRESHNESS_BADGE_REFRESH_MS,
+      );
+    }
 
     if (options.infoTooltip) {
       const infoBtn = h('button', { className: 'panel-info-btn', 'aria-label': t('components.panel.showMethodologyInfo') }, '?');
@@ -406,8 +327,11 @@ export class Panel {
     }
 
     const tryReconcile = (remaining: number) => {
-      if (!this.element.isConnected || !this.element.parentElement) {
-        if (remaining <= 0) return;
+      if (!this.element.isConnected || !this.element.parentElement || !isPanelGridColumnCountReady(this.element)) {
+        if (remaining <= 0) {
+          this.colSpanReconcileRaf = null;
+          return;
+        }
         this.colSpanReconcileRaf = requestAnimationFrame(() => tryReconcile(remaining - 1));
         return;
       }
@@ -705,6 +629,20 @@ export class Panel {
     this.statusBadgeEl.style.display = 'none';
   }
 
+  private updateFreshnessBadge(summary: PanelFreshnessSummary | null = dataFreshness.getPanelFreshness(this.panelId)): void {
+    if (!this.freshnessBadgeEl) return;
+    if (!summary) {
+      this.freshnessBadgeEl.style.display = 'none';
+      return;
+    }
+    const display = formatPanelFreshnessDisplay(summary);
+    this.freshnessBadgeEl.textContent = display.label;
+    this.freshnessBadgeEl.className = `panel-freshness-badge panel-freshness-${summary.status}`;
+    this.freshnessBadgeEl.title = display.title;
+    this.freshnessBadgeEl.setAttribute('aria-label', display.ariaLabel);
+    this.freshnessBadgeEl.style.display = 'inline-flex';
+  }
+
   protected insertLiveCountBadge(count: number): void {
     const headerLeft = this.header.querySelector('.panel-header-left');
     if (!headerLeft) return;
@@ -761,6 +699,73 @@ export class Panel {
 
   public getElement(): HTMLElement {
     return this.element;
+  }
+
+  /**
+   * True when this panel can host live media right now: attached, enabled (not hidden via the
+   * disable path), and expanded (not collapsed). The play-all cascade gates on this so a
+   * collapsed or disabled panel never creates/queues media work inside a hidden content area.
+   */
+  public canHostLiveMedia(): boolean {
+    return this.element.isConnected
+      && !this.element.classList.contains('hidden')
+      && !this._collapsed;
+  }
+
+  protected runWhenConnected(callback: () => void): boolean {
+    if (this.destroyed) return false;
+    if (this.element.isConnected) {
+      callback();
+      return true;
+    }
+
+    this.connectedCallbacks.push(callback);
+    this.scheduleConnectedFallbackIfNeeded();
+    return false;
+  }
+
+  public notifyConnected(): void {
+    this.flushConnectedCallbacks();
+  }
+
+  private scheduleConnectedFallbackIfNeeded(): void {
+    // Modern dashboard mounts call notifyConnected() from panel-layout. The timer is
+    // only for old/no-MutationObserver environments where that signal may not exist.
+    if (this.connectedFallbackTimer !== null || typeof MutationObserver !== 'undefined') return;
+    this.connectedFallbackTimer = globalThis.setTimeout(() => {
+      this.connectedFallbackTimer = null;
+      if (this.destroyed || this.connectedCallbacks.length === 0) return;
+      if (this.element.isConnected) {
+        this.flushConnectedCallbacks();
+        return;
+      }
+      this.scheduleConnectedFallbackIfNeeded();
+    }, 50);
+  }
+
+  private flushConnectedCallbacks(): void {
+    if (this.destroyed || !this.element.isConnected || this.connectedCallbacks.length === 0) return;
+    const callbacks = this.connectedCallbacks.splice(0);
+    if (this.connectedFallbackTimer !== null) {
+      clearTimeout(this.connectedFallbackTimer);
+      this.connectedFallbackTimer = null;
+    }
+
+    const errors: unknown[] = [];
+    for (const cb of callbacks) {
+      try {
+        cb();
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    if (errors.length === 1) {
+      globalThis.setTimeout(() => { throw errors[0]; }, 0);
+    } else if (errors.length > 1) {
+      const error = new Error('Panel connected callbacks failed') as Error & { errors?: unknown[] };
+      error.errors = errors;
+      globalThis.setTimeout(() => { throw error; }, 0);
+    }
   }
 
   /**
@@ -915,11 +920,11 @@ export class Panel {
 
     const ctaBtn = h('button', { type: 'button', className: 'panel-locked-cta' }, 'Upgrade to Pro');
     if (isDesktopRuntime()) {
-      ctaBtn.addEventListener('click', () => void invokeTauri<void>('open_url', { url: 'https://worldmonitor.app/pro' }).catch(() => window.open('https://worldmonitor.app/pro', '_blank')));
+      ctaBtn.addEventListener('click', () => void invokeTauri<void>('open_url', { url: 'https://worldmonitor.app/pro' }).catch(() => window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer')));
     } else {
       ctaBtn.addEventListener('click', () => {
         import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DEFAULT_UPGRADE_PRODUCT))).catch(() => {
-          window.open('https://worldmonitor.app/pro', '_blank');
+          window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
         });
       });
     }
@@ -1201,9 +1206,7 @@ export class Panel {
    */
   public resetHeight(): void {
     this.element.classList.remove('resized', 'span-1', 'span-2', 'span-3', 'span-4');
-    const spans = loadPanelSpans();
-    delete spans[this.panelId];
-    localStorage.setItem(PANEL_SPANS_KEY, JSON.stringify(spans));
+    clearPanelSpan(this.panelId);
   }
 
   public resetWidth(): void {
@@ -1220,9 +1223,23 @@ export class Panel {
   }
 
   public destroy(): void {
+    this.destroyed = true;
     this.abortController.abort();
     this.clearRetryCountdown();
     this.unobserveViewport();
+    if (this.connectedFallbackTimer !== null) {
+      clearTimeout(this.connectedFallbackTimer);
+      this.connectedFallbackTimer = null;
+    }
+    this.connectedCallbacks = [];
+    if (this.freshnessUnsubscribe) {
+      this.freshnessUnsubscribe();
+      this.freshnessUnsubscribe = null;
+    }
+    if (this.freshnessRefreshTimer) {
+      clearInterval(this.freshnessRefreshTimer);
+      this.freshnessRefreshTimer = null;
+    }
     if (this.colSpanReconcileRaf !== null) {
       cancelAnimationFrame(this.colSpanReconcileRaf);
       this.colSpanReconcileRaf = null;

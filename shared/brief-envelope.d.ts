@@ -4,8 +4,9 @@
 // composer (Railway worker, future Phase 3) and every consumer surface:
 // the hosted magazine edge route, the dashboard panel preview RPC, the
 // email teaser renderer, the carousel renderer, and the Tauri in-app
-// reader. All consumers read the same brief:{userId}:{issueDate} Redis
-// key and bind to this contract.
+// reader. All consumers read the same brief:{userId}:{issueSlot} Redis
+// key and bind to this contract. `data.date` remains the display date;
+// the Redis slot key is the frozen edition id (YYYY-MM-DD-HHMM).
 //
 // Intentionally NOT wrapped in the seed-envelope `_seed` frame. A brief
 // is 1 producer -> 1 user -> 1 read (7-day TTL), not a global public
@@ -153,7 +154,7 @@ export interface BriefData {
 }
 
 /**
- * Canonical envelope stored at brief:{userId}:{issueDate} in Redis.
+ * Canonical envelope stored at brief:{userId}:{issueSlot} in Redis.
  * Renderer + future composer + future consumers must all pin to
  * `version === BRIEF_ENVELOPE_VERSION` at runtime — see the consumer
  * drift incident (PR #3139) for why.

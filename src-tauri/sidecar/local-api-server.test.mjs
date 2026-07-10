@@ -696,6 +696,76 @@ test('blocks handler global fetches to private network targets (#3549)', async (
   }
 });
 
+test('allows only Docker mode to fetch configured private Redis REST origin', async () => {
+  const originalRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const originalRedisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+  let upstreamHits = 0;
+
+  const upstream = createServer((_req, res) => {
+    upstreamHits += 1;
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+  });
+  const upstreamPort = await listen(upstream);
+  const redisOrigin = `http://127.0.0.1:${upstreamPort}`;
+
+  const localApi = await setupApiDir({
+    'redis-probe.js': `
+      export default async function handler() {
+        const upstream = await fetch(process.env.UPSTASH_REDIS_REST_URL + '/ping', {
+          headers: { Authorization: 'Bearer ' + process.env.UPSTASH_REDIS_REST_TOKEN },
+        });
+        const payload = await upstream.text();
+        return new Response(payload, {
+          status: upstream.status,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+    `,
+  });
+
+  async function runProbe(mode) {
+    const app = await createLocalApiServer({
+      port: 0,
+      apiDir: localApi.apiDir,
+      mode,
+      logger: { log() { }, warn() { }, error() { } },
+    });
+    const { port } = await app.start();
+    try {
+      return await authFetch(`http://127.0.0.1:${port}/api/redis-probe`);
+    } finally {
+      await app.close();
+    }
+  }
+
+  process.env.UPSTASH_REDIS_REST_URL = redisOrigin;
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+
+  try {
+    const dockerResponse = await runProbe('docker');
+    assert.equal(dockerResponse.status, 200);
+    assert.deepEqual(await dockerResponse.json(), { ok: true });
+    assert.equal(upstreamHits, 1);
+
+    const desktopResponse = await runProbe('desktop-sidecar');
+    assert.equal(desktopResponse.status, 502);
+    const desktopBody = await desktopResponse.json();
+    assert.equal(desktopBody.error, 'Local handler error');
+    assert.match(desktopBody.reason, /SSRF blocked/);
+    assert.equal(upstreamHits, 1);
+  } finally {
+    if (originalRedisUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+    else process.env.UPSTASH_REDIS_REST_URL = originalRedisUrl;
+    if (originalRedisToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    else process.env.UPSTASH_REDIS_REST_TOKEN = originalRedisToken;
+    await localApi.cleanup();
+    await new Promise((resolve, reject) => {
+      upstream.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
 test('blocks handler global fetches to non-global IPv4 special ranges', async () => {
   const originalHttpRequest = http.request;
   const blockedUrls = [
@@ -1739,6 +1809,75 @@ test('allows unauthenticated requests to /api/service-status (health check exemp
   }
 });
 
+test('allows unauthenticated requests to /api/sidecar-health (container healthcheck exempt)', async () => {
+  const localApi = await setupApiDir({});
+  const originalToken = process.env.LOCAL_API_TOKEN;
+  process.env.LOCAL_API_TOKEN = 'security-test-token';
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/sidecar-health`);
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.status, 'ok');
+    assert.equal(body.port, port);
+  } finally {
+    if (originalToken !== undefined) {
+      process.env.LOCAL_API_TOKEN = originalToken;
+    } else {
+      delete process.env.LOCAL_API_TOKEN;
+    }
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('/api/health?compact=1 still dispatches to the bundled health handler', async () => {
+  const localApi = await setupApiDir({
+    'health.js': `
+      export default async function handler(req) {
+        return new Response(JSON.stringify({
+          source: 'bundled-health',
+          url: req.url,
+        }), { headers: { 'content-type': 'application/json' } });
+      }
+    `,
+  });
+  const originalToken = process.env.LOCAL_API_TOKEN;
+  process.env.LOCAL_API_TOKEN = 'security-test-token';
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/health?compact=1`, {
+      headers: { Authorization: 'Bearer security-test-token' },
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.source, 'bundled-health');
+    assert.match(body.url, /\/api\/health\?compact=1$/);
+  } finally {
+    if (originalToken !== undefined) {
+      process.env.LOCAL_API_TOKEN = originalToken;
+    } else {
+      delete process.env.LOCAL_API_TOKEN;
+    }
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
 test('default-deny: rejects every authenticated route when LOCAL_API_TOKEN is unset', async () => {
   // Regression for the security advisory fix: previously, an unset
   // LOCAL_API_TOKEN was treated as "auth disabled", which made any
@@ -1767,7 +1906,7 @@ test('default-deny: rejects every authenticated route when LOCAL_API_TOKEN is un
 
     // Health check is still exempt — it runs before the auth gate so
     // operators can probe a misconfigured sidecar.
-    const health = await fetch(`http://127.0.0.1:${port}/api/service-status`);
+    const health = await fetch(`http://127.0.0.1:${port}/api/sidecar-health`);
     assert.equal(health.status, 200);
   } finally {
     if (originalToken !== undefined) {

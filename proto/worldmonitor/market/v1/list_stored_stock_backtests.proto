@@ -7,7 +7,9 @@ import "sebuf/http/annotations.proto";
 import "worldmonitor/market/v1/backtest_stock.proto";
 
 message ListStoredStockBacktestsRequest {
+  // Stock ticker symbols whose stored backtests should be returned.
   repeated string symbols = 1 [(sebuf.http.query) = { name: "symbols" }];
+  // Evaluation window in days used by stored backtests.
   int32 eval_window_days = 2 [
     (sebuf.http.query) = { name: "eval_window_days" },
     (buf.validate.field).int32.gte = 3,

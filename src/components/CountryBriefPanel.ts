@@ -3,17 +3,19 @@ import type { CountryScore } from '@/services/country-instability';
 import type { PredictionMarket } from '@/services/prediction';
 import type { NewsItem } from '@/types';
 import type { GetCountryChokepointIndexResponse, SectorExposureSummary, CountryProductsResponse, MultiSectorShockResponse } from '@/services/supply-chain';
+import type { BriefSource } from '@/utils/brief-sources';
 
 export interface CountryIntelData {
   brief: string;
   country: string;
   code: string;
   cached?: boolean;
-  generatedAt?: string;
+  generatedAt?: string | number;
   error?: string;
   skipped?: boolean;
   reason?: string;
   fallback?: boolean;
+  sources?: BriefSource[];
 }
 
 export interface StockIndexData {

@@ -1,36 +1,43 @@
-import type { AppContext, AppModule } from '@/app/app-context';
+import type {
+  AppContext,
+  AppModule,
+  UnifiedSettingsController,
+  UnifiedSettingsTabId,
+} from '@/app/app-context';
+import type { UnifiedSettingsConfig } from '@/components/UnifiedSettings';
 import type { AirlineIntelPanel } from '@/components/AirlineIntelPanel';
 import type { CustomWidgetPanel } from '@/components/CustomWidgetPanel';
-import { openWidgetChatModal } from '@/components/WidgetChatModal';
 import { deleteWidget, getWidget, saveWidget, isProUser } from '@/services/widget-store';
-import { FREE_MAX_PANELS, FREE_MAX_SOURCES } from '@/config/panels';
+import {
+  FREE_MAX_PANELS,
+  FREE_MAX_SOURCES,
+  countFreePanelCapUsage,
+  isFreePanelCapCounted,
+} from '@/config/panels';
 import type { McpDataPanel } from '@/components/McpDataPanel';
-import { openMcpConnectModal } from '@/components/McpConnectModal';
 import { deleteMcpPanel, getMcpPanel, saveMcpPanel } from '@/services/mcp-store';
 import type { PanelConfig, MapLayers, MilitaryFlight } from '@/types';
-import type { MapView } from '@/components';
+import type { MapView } from '@/components/MapContainer';
 import type { PositionSample } from '@/services/aviation';
 import type { ClusteredEvent } from '@/types';
 import type { DashboardSnapshot } from '@/services/storage';
-import {
-  PlaybackControl,
-  StatusPanel,
-  PizzIntIndicator,
-  LlmStatusIndicator,
-  CIIPanel,
-  PredictionPanel,
-} from '@/components';
+import { PlaybackControl } from '@/components/PlaybackControl';
+import { PizzIntIndicator } from '@/components/PizzIntIndicator';
+import { LlmStatusIndicator } from '@/components/LlmStatusIndicator';
+import type { PredictionPanel } from '@/components/PredictionPanel';
 import {
   buildMapUrl,
   debounce,
   saveToStorage,
-  ExportPanel,
   getCurrentTheme,
   setTheme,
   showToast,
 } from '@/utils';
+import { clearPanelColSpans, clearPanelSpans } from '@/utils/panel-storage';
 import {
   IDLE_PAUSE_MS,
+  DEFAULT_MAP_LAYERS,
+  MOBILE_DEFAULT_MAP_LAYERS,
   STORAGE_KEYS,
   SITE_VARIANT,
   LAYER_TO_SOURCE,
@@ -42,9 +49,23 @@ import { resolveNewsCategories, enabledNewsCategoryKeys } from '@/config/feed-re
 import { VARIANT_META } from '@/config/variant-meta';
 import { isDesktopRuntime } from '@/services/runtime';
 import {
+  MISSION_PRESETS,
+  applyMissionPresetToState,
+  clearMissionPreset,
+  dismissMissionPresetPrompt,
+  filterMissionLayersForRenderer,
+  isMissionPresetPromptDismissed,
+  loadStoredMissionPreset,
+  resetMissionPresetState,
+  saveMissionPreset,
+  type MissionPreset,
+  type MissionPresetId,
+} from '@/services/mission-presets';
+import {
   saveSnapshot,
   initAisStream,
   disconnectAisStream,
+  isAisConfigured,
 } from '@/services';
 import {
   track,
@@ -63,7 +84,6 @@ import { invokeTauri } from '@/services/tauri-bridge';
 import { getCachedGpsInterference } from '@/services/gps-interference';
 import { dataFreshness } from '@/services/data-freshness';
 import { mlWorker } from '@/services/ml-worker';
-import { UnifiedSettings } from '@/components/UnifiedSettings';
 import { WM_OPEN_NOTIFICATIONS_FOR_COUNTRY } from '@/utils/notify-country-link';
 import { AuthLauncher } from '@/components/AuthLauncher';
 import { AuthHeaderWidget } from '@/components/AuthHeaderWidget';
@@ -71,9 +91,77 @@ import { t } from '@/services/i18n';
 import { TvModeController } from '@/services/tv-mode';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { scheduleAfterFirstPaint } from '@/utils/after-paint';
+import { escapeHtml } from '@/utils/sanitize';
+import { buildEmbedIframeSnippet, buildEmbedMapUrl, type EmbedVariant } from '@/embed/embed-url';
+import { createSettingsButton } from '@/components/settings-button';
+
+type RealUnifiedSettings = import('@/components/UnifiedSettings').UnifiedSettings;
+
+class LazyUnifiedSettings implements UnifiedSettingsController {
+  private readonly button: HTMLButtonElement;
+  private instance: RealUnifiedSettings | null = null;
+  private loadPromise: Promise<RealUnifiedSettings> | null = null;
+  private destroyed = false;
+
+  constructor(private readonly config: UnifiedSettingsConfig) {
+    this.button = createSettingsButton(() => this.open());
+  }
+
+  getButton(): HTMLButtonElement {
+    return this.button;
+  }
+
+  open(tab?: UnifiedSettingsTabId): void {
+    void this.load().then((settings) => {
+      if (!this.destroyed) settings.open(tab);
+    }).catch((error) => {
+      // A rejection because the controller was torn down mid-load is a
+      // deliberate unmount, not a failure the user should be toasted about.
+      if (this.destroyed) return;
+      console.warn('[settings] Failed to load settings window:', error);
+      showToast(t('common.error'));
+    });
+  }
+
+  refreshPanelToggles(): void {
+    this.instance?.refreshPanelToggles();
+  }
+
+  destroy(): void {
+    this.destroyed = true;
+    this.instance?.destroy();
+    this.instance = null;
+  }
+
+  private load(): Promise<RealUnifiedSettings> {
+    if (this.destroyed) {
+      return Promise.reject(new Error('Settings controller destroyed'));
+    }
+    if (this.instance) return Promise.resolve(this.instance);
+    if (this.loadPromise) return this.loadPromise;
+
+    this.loadPromise = import('@/components/UnifiedSettings')
+      .then(({ UnifiedSettings }) => {
+        const settings = new UnifiedSettings(this.config);
+        if (this.destroyed) {
+          settings.destroy();
+          throw new Error('Settings controller destroyed during load');
+        }
+        this.instance = settings;
+        return settings;
+      })
+      .finally(() => {
+        this.loadPromise = null;
+      });
+
+    return this.loadPromise;
+  }
+}
 
 
 export interface EventHandlerCallbacks {
+  openSearch: (options?: { toggle?: boolean }) => void;
   updateSearchIndex: () => void;
   updateFlightSource?: (adsb: PositionSample[], military: MilitaryFlight[]) => void;
   loadAllData: () => Promise<void>;
@@ -83,7 +171,8 @@ export interface EventHandlerCallbacks {
   waitForAisData: () => void;
   syncDataFreshnessWithLayers: () => void;
   ensureCorrectZones: () => void;
-  refreshOpenCountryBrief?: () => void;
+  applySavedPanelOrder?: (panelOrder?: string[]) => void;
+  refreshCiiAfterFocalPointsReady?: () => void;
   stopLayerActivity?: (layer: keyof MapLayers) => void;
   mountLiveNewsIfReady?: () => void;
 }
@@ -109,12 +198,20 @@ export class EventHandlerManager implements AppModule {
   private boundMapWidthResizeMoveHandler: ((e: MouseEvent) => void) | null = null;
   private boundMapWidthEndResizeHandler: (() => void) | null = null;
   private boundMapFullscreenEscHandler: ((e: KeyboardEvent) => void) | null = null;
+  private readonly registeredSearchButtons = new Set<string>();
+  private boundSearchKeyHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundMobileMenuKeyHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundPanelCloseHandler: ((e: Event) => void) | null = null;
   private boundWidgetModifyHandler: ((e: Event) => void) | null = null;
   private boundUndoHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundNotifyForCountryHandler: ((e: Event) => void) | null = null;
+  private boundMissionOutsideHandler: ((e: MouseEvent) => void) | null = null;
+  private boundMissionKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
+  private boundEmbedModalKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
+  private missionPresetPopover: HTMLElement | null = null;
+  private missionDataRefreshTimer: number | null = null;
   private proGateUnsubscribers: Array<() => void> = [];
+  private exportPanelLoad: Promise<NonNullable<AppContext['exportPanel']>> | null = null;
   private closedPanelStack: string[] = []; // max-items: 20
   private idleTimeoutId: ReturnType<typeof setTimeout> | null = null;
   private snapshotIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -139,6 +236,7 @@ export class EventHandlerManager implements AppModule {
   }
 
   init(): void {
+    this.setupSearchControls();
     this.setupEventListeners();
     this.setupIdleDetection();
     this.setupTvMode();
@@ -160,8 +258,8 @@ export class EventHandlerManager implements AppModule {
     const config = this.ctx.panelSettings[panelId];
     if (!config) return false;
     if (config.enabled) return true;
-    if (!isProUser()) {
-      const enabledCount = Object.entries(this.ctx.panelSettings).filter(([k, p]) => p.enabled && !k.startsWith('cw-')).length;
+    if (!isProUser() && isFreePanelCapCounted(panelId)) {
+      const enabledCount = countFreePanelCapUsage(this.ctx.panelSettings);
       if (enabledCount >= FREE_MAX_PANELS) {
         // Tell the user why nothing happened instead of failing silently.
         // (Undo-restore can't reach this branch — closing a panel frees a
@@ -227,6 +325,7 @@ export class EventHandlerManager implements AppModule {
   }
 
   destroy(): void {
+    this.closeEmbedDialog();
     this.debouncedUrlSync.cancel();
     this.debouncedWebcamReload.cancel();
     if (this.boundFullscreenHandler) {
@@ -313,6 +412,10 @@ export class EventHandlerManager implements AppModule {
       document.removeEventListener('keydown', this.boundMapFullscreenEscHandler);
       this.boundMapFullscreenEscHandler = null;
     }
+    if (this.boundSearchKeyHandler) {
+      document.removeEventListener('keydown', this.boundSearchKeyHandler);
+      this.boundSearchKeyHandler = null;
+    }
     if (this.boundMobileMenuKeyHandler) {
       document.removeEventListener('keydown', this.boundMobileMenuKeyHandler);
       this.boundMobileMenuKeyHandler = null;
@@ -336,6 +439,11 @@ export class EventHandlerManager implements AppModule {
       );
       this.boundNotifyForCountryHandler = null;
     }
+    this.closeMissionPresetPopover();
+    if (this.missionDataRefreshTimer) {
+      window.clearTimeout(this.missionDataRefreshTimer);
+      this.missionDataRefreshTimer = null;
+    }
     for (const unsub of this.proGateUnsubscribers) unsub();
     this.proGateUnsubscribers = [];
     this.ctx.tvMode?.destroy();
@@ -348,24 +456,39 @@ export class EventHandlerManager implements AppModule {
     this.ctx.authModal = null;
   }
 
-  private setupEventListeners(): void {
-    const openSearch = () => {
-      this.callbacks.updateSearchIndex();
-      this.ctx.searchModal?.open();
+  setupSearchControls(): void {
+    // Wire each button independently and idempotently. setupSearchControls() is
+    // called across several init phases (buttons are injected at different
+    // times); tracking registered IDs in a Set means a button absent at an
+    // early call still gets wired when it appears, instead of being permanently
+    // skipped by a single latched boolean. (#4403 review)
+    const wireSearchButton = (id: string, source: string) => {
+      if (this.registeredSearchButtons.has(id)) return;
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener('click', () => {
+        track('search-open', { source });
+        this.callbacks.openSearch();
+      });
+      this.registeredSearchButtons.add(id);
     };
-    document.getElementById('searchBtn')?.addEventListener('click', () => {
-      track('search-open', { source: 'desktop' });
-      openSearch();
-    });
-    document.getElementById('mobileSearchBtn')?.addEventListener('click', () => {
-      track('search-open', { source: 'mobile' });
-      openSearch();
-    });
-    document.getElementById('searchMobileFab')?.addEventListener('click', () => {
-      track('search-open', { source: 'fab' });
-      openSearch();
-    });
+    wireSearchButton('searchBtn', 'desktop');
+    wireSearchButton('mobileSearchBtn', 'mobile');
+    wireSearchButton('searchMobileFab', 'fab');
+    if (!this.boundSearchKeyHandler) {
+      this.boundSearchKeyHandler = (e: KeyboardEvent) => {
+        // !e.shiftKey so Cmd/Ctrl+Shift+K (e.g. Firefox web console) doesn't
+        // also toggle search; .toLowerCase() still tolerates CapsLock. (#4403)
+        if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === 'k') {
+          e.preventDefault();
+          this.callbacks.openSearch({ toggle: true });
+        }
+      };
+      document.addEventListener('keydown', this.boundSearchKeyHandler);
+    }
+  }
 
+  private setupEventListeners(): void {
     document.getElementById('copyLinkBtn')?.addEventListener('click', async () => {
       const shareUrl = this.getShareUrl();
       if (!shareUrl) return;
@@ -377,6 +500,10 @@ export class EventHandlerManager implements AppModule {
         console.warn('Failed to copy share link:', error);
         this.setCopyLinkFeedback(button, 'Copy failed');
       }
+    });
+
+    document.getElementById('embedLinkBtn')?.addEventListener('click', () => {
+      this.openEmbedDialog();
     });
 
     this.initDownloadDropdown();
@@ -434,6 +561,9 @@ export class EventHandlerManager implements AppModule {
       const config = this.ctx.panelSettings[panelId];
       if (!config) return;
       config.enabled = false;
+      // Live-media teardown is handled centrally by applyPanelSettings() below, which
+      // calls stopLiveMediaForClose() on every now-disabled panel. Calling it here too
+      // double-fired the lifecycle hook for live-news / live-webcams.
       trackPanelToggled(panelId, false);
       saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
       this.applyPanelSettings();
@@ -447,27 +577,27 @@ export class EventHandlerManager implements AppModule {
     this.boundWidgetModifyHandler = ((e: CustomEvent<{ widgetId: string }>) => {
       const spec = getWidget(e.detail.widgetId);
       if (!spec) return;
-      openWidgetChatModal({
+      void import('@/components/WidgetChatModal').then((m) => m.openWidgetChatModal({
         mode: 'modify',
         existingSpec: spec,
         onComplete: (updated) => {
           saveWidget(updated);
           (this.ctx.panels[updated.id] as CustomWidgetPanel | undefined)?.updateSpec(updated);
         },
-      });
+      })).catch((err) => console.error('[widget-chat] failed to lazy-load WidgetChatModal', err));
     }) as EventListener;
     this.ctx.container.addEventListener('wm:widget-modify', this.boundWidgetModifyHandler);
 
     this.ctx.container.addEventListener('wm:mcp-configure', ((e: CustomEvent<{ panelId: string }>) => {
       const spec = getMcpPanel(e.detail.panelId);
       if (!spec) return;
-      openMcpConnectModal({
+      void import('@/components/McpConnectModal').then((m) => m.openMcpConnectModal({
         existingSpec: spec,
         onComplete: (updated) => {
           saveMcpPanel(updated);
           (this.ctx.panels[updated.id] as McpDataPanel | undefined)?.updateSpec(updated);
         },
-      });
+      })).catch((err) => console.error('[mcp-connect] failed to lazy-load McpConnectModal', err));
     }) as EventListener);
 
     // undo via Ctrl/Cmd+Z
@@ -537,8 +667,7 @@ export class EventHandlerManager implements AppModule {
     document.addEventListener('visibilitychange', this.boundVisibilityHandler);
 
     this.boundFocalPointsReadyHandler = () => {
-      (this.ctx.panels.cii as CIIPanel)?.refresh(true);
-      this.callbacks.refreshOpenCountryBrief?.();
+      this.callbacks.refreshCiiAfterFocalPointsReady?.();
     };
     window.addEventListener('focal-points-ready', this.boundFocalPointsReadyHandler);
 
@@ -549,6 +678,7 @@ export class EventHandlerManager implements AppModule {
     window.addEventListener('theme-changed', this.boundThemeChangedHandler);
 
     this.setupMobileMenu();
+    this.setupMissionPresets();
 
     if (this.ctx.isDesktopApp) {
       if (this.boundDesktopExternalLinkHandler) {
@@ -573,7 +703,7 @@ export class EventHandlerManager implements AppModule {
         e.preventDefault();
         e.stopPropagation();
         void invokeTauri<void>('open_url', { url: url.toString() }).catch(() => {
-          window.open(url.toString(), '_blank');
+          window.open(url.toString(), '_blank', 'noopener,noreferrer');
         });
       };
       document.addEventListener('click', this.boundDesktopExternalLinkHandler, true);
@@ -650,6 +780,342 @@ export class EventHandlerManager implements AppModule {
       }
     };
     document.addEventListener('keydown', this.boundMobileMenuKeyHandler);
+  }
+
+  private setupMissionPresets(): void {
+    this.renderMissionPresetControl();
+
+    document.getElementById('mobileMenuMission')?.addEventListener('click', () => {
+      this.closeMobileMenu();
+      this.openMissionPresetPopover(document.getElementById('hamburgerBtn'), true);
+    });
+
+    const shouldPrompt =
+      !this.ctx.isMobile &&
+      !window.location.search &&
+      !loadStoredMissionPreset() &&
+      !isMissionPresetPromptDismissed();
+    if (shouldPrompt) {
+      // Defer the onboarding auto-open to browser idle after first paint so it
+      // never competes with load or first-interaction work. This replaced a
+      // fixed 700ms timeout that forced layout reads (getBoundingClientRect +
+      // offsetHeight) on the post-load path. Re-check state at fire time since
+      // the idle wait can outlast an early user choice.
+      scheduleAfterFirstPaint(() => {
+        if (this.ctx.isDestroyed) return;
+        if (loadStoredMissionPreset() || isMissionPresetPromptDismissed()) return;
+        this.openMissionPresetPopover(document.getElementById('missionPresetBtn'), false);
+      });
+    }
+  }
+
+  private renderMissionPresetControl(): void {
+    const mount = document.getElementById('missionPresetMount');
+    if (!mount) return;
+
+    const active = loadStoredMissionPreset();
+    const label = active?.shortLabel ?? 'Mission';
+    const icon = active?.icon ?? '◎';
+    const activeClass = active ? ' mission-preset-button--active' : '';
+    const suggestedClass = !active && !isMissionPresetPromptDismissed() ? ' mission-preset-button--suggested' : '';
+
+    setTrustedHtml(mount, trustedHtml(`
+      <button
+        id="missionPresetBtn"
+        class="mission-preset-button${activeClass}${suggestedClass}"
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded="false"
+        title="${escapeHtml(active ? `Mission: ${active.label}` : 'Choose mission preset')}"
+      >
+        <span class="mission-preset-button__icon">${escapeHtml(icon)}</span>
+        <span class="mission-preset-button__label">${escapeHtml(label)}</span>
+      </button>
+    `, 'Mission preset control renders static preset metadata with escaped values'));
+
+    document.getElementById('missionPresetBtn')?.addEventListener('click', () => {
+      this.toggleMissionPresetPopover(document.getElementById('missionPresetBtn'), false);
+    });
+
+    this.updateMobileMissionLabel(active);
+  }
+
+  private updateMobileMissionLabel(active: MissionPreset | null = loadStoredMissionPreset()): void {
+    const item = document.getElementById('mobileMenuMission');
+    const label = item?.querySelector('.mobile-menu-item-label');
+    if (label) label.textContent = active ? `Mission: ${active.shortLabel}` : 'Mission';
+  }
+
+  private toggleMissionPresetPopover(anchor: HTMLElement | null, mobile: boolean): void {
+    if (this.missionPresetPopover) {
+      this.closeMissionPresetPopover();
+      return;
+    }
+    this.openMissionPresetPopover(anchor, mobile);
+  }
+
+  private openMissionPresetPopover(anchor: HTMLElement | null, mobile: boolean): void {
+    this.closeMissionPresetPopover();
+
+    const active = loadStoredMissionPreset();
+    const popover = document.createElement('div');
+    popover.className = `mission-preset-popover${mobile ? ' mission-preset-popover--mobile' : ''}`;
+    popover.setAttribute('role', 'dialog');
+    popover.setAttribute('aria-label', 'Mission presets');
+    popover.tabIndex = -1;
+
+    const cards = MISSION_PRESETS.map((preset) => {
+      const selected = active?.id === preset.id;
+      return `
+        <button
+          type="button"
+          class="mission-preset-card${selected ? ' selected' : ''}"
+          data-mission-id="${escapeHtml(preset.id)}"
+          aria-pressed="${selected ? 'true' : 'false'}"
+        >
+          <span class="mission-preset-card__icon">${escapeHtml(preset.icon)}</span>
+          <span class="mission-preset-card__body">
+            <strong>${escapeHtml(preset.label)}</strong>
+            <small>${escapeHtml(preset.description)}</small>
+          </span>
+          <span class="mission-preset-card__check">${selected ? '✓' : ''}</span>
+        </button>
+      `;
+    }).join('');
+
+    setTrustedHtml(popover, trustedHtml(`
+      <div class="mission-preset-popover__header">
+        <div>
+          <span>Mission</span>
+          <strong>${escapeHtml(active?.label ?? 'Choose Workspace')}</strong>
+        </div>
+        <div class="mission-preset-popover__actions">
+          <button type="button" class="mission-preset-reset" data-mission-reset>Reset</button>
+          <button type="button" class="mission-preset-close" data-mission-close aria-label="Close mission presets">×</button>
+        </div>
+      </div>
+      <div class="mission-preset-popover__list">${cards}</div>
+    `, 'Mission preset popover renders static preset metadata with escaped values'));
+
+    document.body.appendChild(popover);
+    this.missionPresetPopover = popover;
+    document.getElementById('missionPresetBtn')?.setAttribute('aria-expanded', 'true');
+
+    if (!mobile && anchor) {
+      const rect = anchor.getBoundingClientRect();
+      const width = 360;
+      const left = Math.min(Math.max(12, rect.left), Math.max(12, window.innerWidth - width - 12));
+      const height = Math.min(popover.offsetHeight || 620, Math.max(120, window.innerHeight - 24));
+      const top = Math.min(
+        Math.max(12, rect.bottom + 8),
+        Math.max(12, window.innerHeight - height - 12),
+      );
+      popover.style.left = `${left}px`;
+      popover.style.top = `${top}px`;
+    }
+
+    popover.querySelector('[data-mission-close]')?.addEventListener('click', () => {
+      dismissMissionPresetPrompt();
+      this.renderMissionPresetControl();
+      this.closeMissionPresetPopover();
+    });
+    popover.querySelector('[data-mission-reset]')?.addEventListener('click', () => {
+      this.resetMissionPreset();
+    });
+    this.boundMissionKeydownHandler = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.stopPropagation();
+      dismissMissionPresetPrompt();
+      this.renderMissionPresetControl();
+      this.closeMissionPresetPopover();
+    };
+    popover.addEventListener('keydown', this.boundMissionKeydownHandler);
+    popover.querySelectorAll<HTMLButtonElement>('[data-mission-id]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const presetId = button.dataset.missionId as MissionPresetId | undefined;
+        if (presetId) this.applyMissionPreset(presetId);
+      });
+    });
+
+    this.boundMissionOutsideHandler = (e: MouseEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (popover.contains(target) || anchor?.contains(target)) return;
+      dismissMissionPresetPrompt();
+      this.renderMissionPresetControl();
+      this.closeMissionPresetPopover();
+    };
+    window.setTimeout(() => {
+      if (this.missionPresetPopover === popover) {
+        popover.focus({ preventScroll: true });
+      }
+      if (this.boundMissionOutsideHandler) {
+        document.addEventListener('click', this.boundMissionOutsideHandler);
+      }
+    }, 0);
+  }
+
+  private closeMissionPresetPopover(): void {
+    if (this.boundMissionOutsideHandler) {
+      document.removeEventListener('click', this.boundMissionOutsideHandler);
+      this.boundMissionOutsideHandler = null;
+    }
+    if (this.boundMissionKeydownHandler && this.missionPresetPopover) {
+      this.missionPresetPopover.removeEventListener('keydown', this.boundMissionKeydownHandler);
+      this.boundMissionKeydownHandler = null;
+    }
+    this.missionPresetPopover?.remove();
+    this.missionPresetPopover = null;
+    document.getElementById('missionPresetBtn')?.setAttribute('aria-expanded', 'false');
+  }
+
+  private getMissionDefaultLayers(): MapLayers {
+    return this.ctx.isMobile ? MOBILE_DEFAULT_MAP_LAYERS : DEFAULT_MAP_LAYERS;
+  }
+
+  private filterMissionLayersForCurrentRenderer(layers: MapLayers): MapLayers {
+    const renderer = this.ctx.map?.isGlobeMode?.() ? 'globe' : 'flat';
+    const isDeckGLActive = this.ctx.map?.isDeckGLActive?.() ?? !this.ctx.isMobile;
+    return this.filterMissionLayersForAvailableServices(
+      filterMissionLayersForRenderer(layers, renderer, isDeckGLActive, this.getMissionDefaultLayers()),
+    );
+  }
+
+  private filterMissionLayersForAvailableServices(layers: MapLayers): MapLayers {
+    if (layers.ais && !isAisConfigured()) {
+      return { ...layers, ais: false };
+    }
+    return layers;
+  }
+
+  private persistMissionPanelOrder(panelOrder: string[]): void {
+    saveToStorage(this.ctx.PANEL_ORDER_KEY, panelOrder);
+    saveToStorage(this.ctx.PANEL_ORDER_KEY + '-bottom-set', []);
+    try {
+      localStorage.removeItem(this.ctx.PANEL_ORDER_KEY + '-bottom');
+    } catch {
+      // Storage can be unavailable; the current session still applies the in-memory order.
+    }
+  }
+
+  private scheduleMissionDataRefresh(): void {
+    if (this.missionDataRefreshTimer) {
+      window.clearTimeout(this.missionDataRefreshTimer);
+    }
+    this.missionDataRefreshTimer = window.setTimeout(() => {
+      this.missionDataRefreshTimer = null;
+      void this.callbacks.loadAllData();
+    }, 150);
+  }
+
+  private runMapLayerSideEffects(layer: keyof MapLayers, enabled: boolean): void {
+    const sourceIds = LAYER_TO_SOURCE[layer];
+    if (sourceIds) {
+      for (const sourceId of sourceIds) {
+        dataFreshness.setEnabled(sourceId, enabled);
+      }
+    }
+
+    if (layer === 'ais') {
+      if (enabled) {
+        this.ctx.map?.setLayerLoading('ais', true);
+        initAisStream();
+        this.callbacks.waitForAisData();
+      } else {
+        disconnectAisStream();
+      }
+      return;
+    }
+
+    if (layer === 'flights') {
+      const airlineIntel = this.ctx.panels['airline-intel'] as AirlineIntelPanel | undefined;
+      airlineIntel?.setLiveMode(enabled);
+    }
+
+    if (enabled) {
+      this.callbacks.loadDataForLayer(layer);
+    } else {
+      this.callbacks.stopLayerActivity?.(layer as keyof MapLayers);
+    }
+  }
+
+  private applyMissionMapLayerTransitions(previousLayers: MapLayers, nextLayers: MapLayers): void {
+    const layerKeys = new Set([
+      ...Object.keys(previousLayers),
+      ...Object.keys(nextLayers),
+    ] as Array<keyof MapLayers>);
+
+    for (const layer of layerKeys) {
+      const enabled = !!nextLayers[layer];
+      if (!!previousLayers[layer] === enabled) continue;
+      trackMapLayerToggle(layer, enabled, 'programmatic');
+      this.runMapLayerSideEffects(layer, enabled);
+    }
+  }
+
+  private applyMissionPreset(presetId: MissionPresetId): void {
+    const applied = applyMissionPresetToState(
+      presetId,
+      this.ctx.panelSettings,
+      this.getMissionDefaultLayers(),
+      SITE_VARIANT,
+    );
+    const mapLayers = this.filterMissionLayersForCurrentRenderer(applied.mapLayers);
+    const previousMapLayers = { ...this.ctx.mapLayers };
+
+    this.ctx.panelSettings = applied.panelSettings;
+    this.ctx.mapLayers = mapLayers;
+    saveToStorage(STORAGE_KEYS.panels, applied.panelSettings);
+    saveToStorage(STORAGE_KEYS.mapLayers, mapLayers);
+    this.persistMissionPanelOrder(applied.panelOrder);
+    saveMissionPreset(applied.preset.id);
+
+    this.applyPanelSettings();
+    this.callbacks.applySavedPanelOrder?.(applied.panelOrder);
+    this.ctx.unifiedSettings?.refreshPanelToggles();
+    this.ctx.map?.setLayers(mapLayers);
+    this.applyMissionMapLayerTransitions(previousMapLayers, mapLayers);
+    this.ctx.map?.setView(applied.preset.view as MapView, applied.preset.zoom);
+    this.ctx.map?.setTimeRange(applied.preset.timeRange);
+    this.callbacks.mountLiveNewsIfReady?.();
+    this.callbacks.syncDataFreshnessWithLayers();
+    this.scheduleMissionDataRefresh();
+    this.syncUrlState();
+    showToast(`Mission preset applied: ${applied.preset.label}`);
+    this.renderMissionPresetControl();
+    this.closeMissionPresetPopover();
+  }
+
+  private resetMissionPreset(): void {
+    const reset = resetMissionPresetState(
+      this.ctx.panelSettings,
+      this.getMissionDefaultLayers(),
+      SITE_VARIANT,
+    );
+    const mapLayers = this.filterMissionLayersForCurrentRenderer(reset.mapLayers);
+    const previousMapLayers = { ...this.ctx.mapLayers };
+
+    this.ctx.panelSettings = reset.panelSettings;
+    this.ctx.mapLayers = mapLayers;
+    saveToStorage(STORAGE_KEYS.panels, reset.panelSettings);
+    saveToStorage(STORAGE_KEYS.mapLayers, mapLayers);
+    this.persistMissionPanelOrder(reset.panelOrder);
+    clearMissionPreset();
+
+    this.applyPanelSettings();
+    this.callbacks.applySavedPanelOrder?.(reset.panelOrder);
+    this.ctx.unifiedSettings?.refreshPanelToggles();
+    this.ctx.map?.setLayers(mapLayers);
+    this.applyMissionMapLayerTransitions(previousMapLayers, mapLayers);
+    this.ctx.map?.setView('global');
+    this.ctx.map?.setTimeRange('7d');
+    this.callbacks.mountLiveNewsIfReady?.();
+    this.callbacks.syncDataFreshnessWithLayers();
+    this.scheduleMissionDataRefresh();
+    this.syncUrlState();
+    showToast('Mission preset reset');
+    this.renderMissionPresetControl();
+    this.closeMissionPresetPopover();
   }
 
   private openMobileMenu(): void {
@@ -746,10 +1212,11 @@ export class EventHandlerManager implements AppModule {
     // SVG Map fires emitStateChange before the listener is installed — neither
     // can rely on a later onStateChanged to drive the URL write, so they must
     // use the immediate debounce path.
-    const { view, lat, lon, zoom } = this.ctx.initialUrlState ?? {};
+    const { view, lat, lon, zoom, chokepoint } = this.ctx.initialUrlState ?? {};
     const urlHasAsyncFlyTo =
       (lat !== undefined && lon !== undefined) ||   // setCenter → flyTo (requires both)
-      (!view && zoom !== undefined);                // zoom-only → setZoom animated
+      (!view && zoom !== undefined) ||              // zoom-only → setZoom animated
+      chokepoint !== undefined;                     // chokepoint opens after renderer readiness
     if (!urlHasAsyncFlyTo) {
       this.debouncedUrlSync();
     }
@@ -757,6 +1224,43 @@ export class EventHandlerManager implements AppModule {
 
   syncUrlState(): void {
     this.debouncedUrlSync();
+  }
+
+  applyMapLayerChange(layer: keyof MapLayers, enabled: boolean, source: 'user' | 'programmatic'): void {
+    console.log(`[App.onLayerChange] ${layer}: ${enabled} (${source})`);
+    trackMapLayerToggle(layer, enabled, source);
+    this.ctx.mapLayers[layer] = enabled;
+    saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
+    this.syncUrlState();
+
+    const sourceIds = LAYER_TO_SOURCE[layer];
+    if (sourceIds) {
+      for (const sourceId of sourceIds) {
+        dataFreshness.setEnabled(sourceId, enabled);
+      }
+    }
+
+    if (layer === 'ais') {
+      if (enabled) {
+        this.ctx.map?.setLayerLoading('ais', true);
+        initAisStream();
+        this.callbacks.waitForAisData();
+      } else {
+        disconnectAisStream();
+      }
+      return;
+    }
+
+    if (layer === 'flights') {
+      const airlineIntel = this.ctx.panels['airline-intel'] as AirlineIntelPanel | undefined;
+      airlineIntel?.setLiveMode(enabled);
+    }
+
+    if (enabled) {
+      this.callbacks.loadDataForLayer(layer);
+    } else {
+      this.callbacks.stopLayerActivity?.(layer);
+    }
   }
 
   getShareUrl(): string | null {
@@ -774,7 +1278,108 @@ export class EventHandlerManager implements AppModule {
       layers: state.layers,
       country: isCountryVisible ? (briefPage?.getCode() ?? undefined) : undefined,
       expanded: isCountryVisible && briefPage?.getIsMaximized?.() ? true : undefined,
+      chokepoint: !isCountryVisible ? (this.ctx.activeChokepoint ?? undefined) : undefined,
     });
+  }
+
+  private getEmbedUrl(): string | null {
+    if (!this.ctx.map) return null;
+    const state = this.ctx.map.getState();
+    return buildEmbedMapUrl(`${window.location.origin}/embed`, {
+      layers: state.layers,
+      center: this.ctx.map.getCenter(),
+      zoom: state.zoom,
+      theme: getCurrentTheme(),
+      variant: SITE_VARIANT as EmbedVariant,
+    });
+  }
+
+  private openEmbedDialog(): void {
+    const embedUrl = this.getEmbedUrl();
+    if (!embedUrl) return;
+    const snippet = buildEmbedIframeSnippet(embedUrl);
+    this.closeEmbedDialog();
+
+    const overlay = document.createElement('div');
+    overlay.className = 'embed-modal-overlay active';
+    overlay.id = 'embedModalOverlay';
+    overlay.setAttribute('role', 'presentation');
+
+    const dialog = document.createElement('div');
+    dialog.className = 'embed-modal';
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.setAttribute('aria-labelledby', 'embedModalTitle');
+
+    const header = document.createElement('div');
+    header.className = 'embed-modal-header';
+    const title = document.createElement('h2');
+    title.id = 'embedModalTitle';
+    title.textContent = 'Embed this map';
+    const closeButton = document.createElement('button');
+    closeButton.className = 'embed-modal-close';
+    closeButton.type = 'button';
+    closeButton.setAttribute('aria-label', 'Close embed dialog');
+    closeButton.textContent = 'x';
+    header.append(title, closeButton);
+
+    const preview = document.createElement('iframe');
+    preview.className = 'embed-preview-frame';
+    preview.title = 'World Monitor live map preview';
+    preview.loading = 'lazy';
+    preview.referrerPolicy = 'strict-origin-when-cross-origin';
+    preview.src = embedUrl;
+
+    const label = document.createElement('label');
+    label.className = 'embed-snippet-label';
+    label.htmlFor = 'embedSnippetTextarea';
+    label.textContent = 'Iframe snippet';
+
+    const textarea = document.createElement('textarea');
+    textarea.className = 'embed-snippet-textarea';
+    textarea.id = 'embedSnippetTextarea';
+    textarea.readOnly = true;
+    textarea.value = snippet;
+
+    const actions = document.createElement('div');
+    actions.className = 'embed-modal-actions';
+    const copyButton = document.createElement('button');
+    copyButton.className = 'embed-copy-btn';
+    copyButton.type = 'button';
+    copyButton.textContent = 'Copy snippet';
+    actions.append(copyButton);
+
+    dialog.append(header, preview, label, textarea, actions);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    closeButton.addEventListener('click', () => this.closeEmbedDialog());
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay) this.closeEmbedDialog();
+    });
+    copyButton.addEventListener('click', async () => {
+      try {
+        await this.copyToClipboard(snippet);
+        copyButton.textContent = 'Copied!';
+      } catch (error) {
+        console.warn('Failed to copy embed snippet:', error);
+        copyButton.textContent = 'Copy failed';
+      }
+    });
+    this.boundEmbedModalKeydownHandler = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') this.closeEmbedDialog();
+    };
+    document.addEventListener('keydown', this.boundEmbedModalKeydownHandler);
+    textarea.focus();
+    textarea.select();
+  }
+
+  private closeEmbedDialog(): void {
+    document.getElementById('embedModalOverlay')?.remove();
+    if (this.boundEmbedModalKeydownHandler) {
+      document.removeEventListener('keydown', this.boundEmbedModalKeydownHandler);
+      this.boundEmbedModalKeydownHandler = null;
+    }
   }
 
   private async copyToClipboard(text: string): Promise<void> {
@@ -836,7 +1441,7 @@ export class EventHandlerManager implements AppModule {
           e.preventDefault();
           const plat = new URL(a.href, location.origin).searchParams.get('platform') || 'unknown';
           trackDownloadClicked(plat);
-          window.open(a.href, '_blank');
+          window.open(a.href, '_blank', 'noopener,noreferrer');
           dropdown.classList.remove('open');
         });
       });
@@ -890,7 +1495,7 @@ export class EventHandlerManager implements AppModule {
       e.preventDefault();
       const plat = new URL(btn.href, location.origin).searchParams.get('platform') || 'unknown';
       trackDownloadClicked(plat);
-      window.open(btn.href, '_blank');
+      window.open(btn.href, '_blank', 'noopener,noreferrer');
     });
     mount.replaceWith(a);
   }
@@ -1002,7 +1607,14 @@ export class EventHandlerManager implements AppModule {
   }
 
   setupStatusPanel(): void {
-    this.ctx.statusPanel = new StatusPanel();
+    void import('@/components/StatusPanel')
+      .then(({ StatusPanel }) => {
+        if (this.ctx.isDestroyed) return;
+        this.ctx.statusPanel = new StatusPanel();
+      })
+      .catch((err) => {
+        console.error('[status-panel] failed to lazy-load StatusPanel', err);
+      });
   }
 
   setupPizzIntIndicator(): void {
@@ -1025,8 +1637,7 @@ export class EventHandlerManager implements AppModule {
   }
 
   setupExportPanel(): void {
-    // Always create — show/hide reactively via auth state subscription below.
-    this.ctx.exportPanel = new ExportPanel(() => {
+    const getExportData = () => {
       const allCards = this.ctx.correlationEngine?.getAllCards() ?? [];
       const disabledCount = this.ctx.disabledSources.size;
       return {
@@ -1048,24 +1659,66 @@ export class EventHandlerManager implements AppModule {
         convergenceCards: allCards.map(({ assessment: _a, ...card }) => card),
         monitors: this.ctx.monitors.length > 0 ? this.ctx.monitors : undefined,
       };
-    });
-
-    const el = this.ctx.exportPanel.getElement();
-    const headerRight = this.ctx.container.querySelector('.header-right');
-    if (headerRight) {
-      headerRight.insertBefore(el, headerRight.firstChild);
-    }
-
-    const applyProGate = (isPro: boolean, initial = false) => {
-      el.style.display = isPro ? '' : 'none';
-      if (initial && !isPro) trackGateHit('export');
     };
-    applyProGate(getAuthState().user?.role === 'pro', true);
+
+    const attachExportPanel = (panel: NonNullable<AppContext['exportPanel']>): void => {
+      const el = panel.getElement();
+      if (el.parentElement) return;
+      const headerRight = this.ctx.container.querySelector('.header-right');
+      if (headerRight) {
+        headerRight.insertBefore(el, headerRight.firstChild);
+      }
+    };
+
+    const ensureExportPanel = (): Promise<NonNullable<AppContext['exportPanel']>> => {
+      if (this.ctx.exportPanel) {
+        attachExportPanel(this.ctx.exportPanel);
+        return Promise.resolve(this.ctx.exportPanel);
+      }
+      if (this.exportPanelLoad) return this.exportPanelLoad;
+
+      this.exportPanelLoad = import('@/utils/export')
+        .then(({ ExportPanel }) => {
+          if (this.ctx.isDestroyed) {
+            throw new Error('EventHandlerManager destroyed before export panel loaded');
+          }
+          const panel = new ExportPanel(getExportData);
+          this.ctx.exportPanel = panel;
+          attachExportPanel(panel);
+          return panel;
+        })
+        .catch((err) => {
+          this.exportPanelLoad = null;
+          throw err;
+        });
+
+      return this.exportPanelLoad;
+    };
+
+    let currentIsPro = getAuthState().user?.role === 'pro';
+    const applyProGate = (isPro: boolean, initial = false) => {
+      currentIsPro = isPro;
+      if (!isPro) {
+        const el = this.ctx.exportPanel?.getElement();
+        if (el) el.style.display = 'none';
+        if (initial) trackGateHit('export');
+        return;
+      }
+
+      void ensureExportPanel()
+        .then((panel) => {
+          panel.getElement().style.display = currentIsPro ? '' : 'none';
+        })
+        .catch((err) => {
+          console.warn('[export-panel] Failed to lazy-load ExportPanel:', err);
+        });
+    };
+    applyProGate(currentIsPro, true);
     this.proGateUnsubscribers.push(subscribeAuthState(state => applyProGate(state.user?.role === 'pro')));
   }
 
   setupUnifiedSettings(): void {
-    this.ctx.unifiedSettings = new UnifiedSettings({
+    this.ctx.unifiedSettings = new LazyUnifiedSettings({
       getPanelSettings: () => this.ctx.panelSettings,
       savePanelSettings: (panels: Record<string, PanelConfig>) => {
         Object.entries(panels).forEach(([key, nextConfig]) => {
@@ -1121,8 +1774,8 @@ export class EventHandlerManager implements AppModule {
       getAllSourceNames: () => this.getAllSourceNames(),
       getLocalizedPanelName: (key: string, fallback: string) => this.getLocalizedPanelName(key, fallback),
       resetLayout: () => {
-        localStorage.removeItem(this.ctx.PANEL_SPANS_KEY);
-        localStorage.removeItem('worldmonitor-panel-col-spans');
+        clearPanelSpans();
+        clearPanelColSpans();
         localStorage.removeItem(this.ctx.PANEL_ORDER_KEY);
         localStorage.removeItem(this.ctx.PANEL_ORDER_KEY + '-bottom');
         localStorage.removeItem(this.ctx.PANEL_ORDER_KEY + '-bottom-set');
@@ -1258,40 +1911,7 @@ export class EventHandlerManager implements AppModule {
 
   setupMapLayerHandlers(): void {
     this.ctx.map?.setOnLayerChange((layer, enabled, source) => {
-      console.log(`[App.onLayerChange] ${layer}: ${enabled} (${source})`);
-      trackMapLayerToggle(layer, enabled, source);
-      this.ctx.mapLayers[layer] = enabled;
-      saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
-      this.syncUrlState();
-
-      const sourceIds = LAYER_TO_SOURCE[layer];
-      if (sourceIds) {
-        for (const sourceId of sourceIds) {
-          dataFreshness.setEnabled(sourceId, enabled);
-        }
-      }
-
-      if (layer === 'ais') {
-        if (enabled) {
-          this.ctx.map?.setLayerLoading('ais', true);
-          initAisStream();
-          this.callbacks.waitForAisData();
-        } else {
-          disconnectAisStream();
-        }
-        return;
-      }
-
-      if (layer === 'flights') {
-        const airlineIntel = this.ctx.panels['airline-intel'] as AirlineIntelPanel | undefined;
-        airlineIntel?.setLiveMode(enabled);
-      }
-
-      if (enabled) {
-        this.callbacks.loadDataForLayer(layer);
-      } else {
-        this.callbacks.stopLayerActivity?.(layer as keyof MapLayers);
-      }
+      this.applyMapLayerChange(layer, enabled, source);
     });
 
     // Forward live aircraft positions from map to AirlineIntelPanel + cache + search index
@@ -1597,7 +2217,7 @@ export class EventHandlerManager implements AppModule {
     const sources = new Set<string>();
     // Preset feeds + sources from any custom news panels the user added, so
     // the source manager stays in sync with what loadNews() actually fetches.
-    const categories = resolveNewsCategories(FEEDS, CANONICAL_FEEDS, enabledNewsCategoryKeys(this.ctx.newsPanels, this.ctx.panels, this.ctx.panelSettings));
+    const categories = resolveNewsCategories(FEEDS, CANONICAL_FEEDS, enabledNewsCategoryKeys(this.ctx.newsPanels, this.ctx.panels, this.ctx.panelSettings, Object.keys(CANONICAL_FEEDS)));
     categories.forEach(({ feeds }) => feeds.forEach(f => sources.add(f.name)));
     INTEL_SOURCES.forEach(f => sources.add(f.name));
     return Array.from(sources).sort((a, b) => a.localeCompare(b));
@@ -1618,7 +2238,14 @@ export class EventHandlerManager implements AppModule {
         return;
       }
       const panel = this.ctx.panels[key];
+      const liveMediaPanel = panel as { stopLiveMediaForClose?: () => void; resumeLiveMediaForShow?: () => void } | undefined;
+      if (!config.enabled) {
+        liveMediaPanel?.stopLiveMediaForClose?.();
+      }
       panel?.toggle(config.enabled);
+      if (config.enabled) {
+        liveMediaPanel?.resumeLiveMediaForShow?.();
+      }
     });
   }
 }

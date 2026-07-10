@@ -2,7 +2,7 @@
 
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -10,7 +10,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REDIS_KEY = 'conflict:ucdp-events:v1';
 const UCDP_PAGE_SIZE = 1000;
 const MAX_PAGES = 6;
-const MAX_EVENTS = 2000; // TODO: review cap after observing real map density & panel usage
+const MAX_EVENTS = 2000; // Redis payload guard; widening needs live UCDP volume + Upstash payload validation.
+// Retained Redis input window. CII v8's classifier accepts a 2-year window, but
+// this writer fetches the newest pages only and keeps at most MAX_EVENTS from a
+// 365-day trailing slice until retention is deliberately widened.
 const TRAILING_WINDOW_MS = 365 * 24 * 60 * 60 * 1000;
 
 const VIOLENCE_TYPE_MAP = {
@@ -65,14 +68,13 @@ async function fetchGedPage(version, page, token) {
   return resp.json();
 }
 
-async function discoverVersion(token) {
-  const candidates = buildVersionCandidates();
+async function discoverVersion(token, fetchPage = fetchGedPage, candidates = buildVersionCandidates()) {
   console.log(`  Probing versions sequentially: ${candidates.join(', ')}`);
   for (const version of candidates) {
     try {
       console.log(`  Trying v${version}...`);
-      const page0 = await fetchGedPage(version, 0, token);
-      if (!Array.isArray(page0?.Result)) continue;
+      const page0 = await fetchPage(version, 0, token);
+      if (!Array.isArray(page0?.Result) || page0.Result.length === 0) continue;
       console.log(`  Found v${version} with ${page0.Result.length} events on page 0`);
       return { version, page0 };
     } catch (err) {
@@ -266,9 +268,13 @@ async function main() {
   console.log('\n=== Done ===');
 }
 
-main().catch(err => {
-  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
-  // Exit gracefully for cron — crashing restarts the container unnecessarily.
-  // The health endpoint will flag stale data via seed-meta.
-  process.exit(0);
-});
+export { buildVersionCandidates, discoverVersion };
+
+if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) {
+  main().catch(err => {
+    const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
+    // Exit gracefully for cron — crashing restarts the container unnecessarily.
+    // The health endpoint will flag stale data via seed-meta.
+    process.exit(0);
+  });
+}

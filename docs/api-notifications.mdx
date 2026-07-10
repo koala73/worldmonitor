@@ -1,11 +1,14 @@
 ---
 title: "Notifications & Integrations"
-description: "Notification channels, webhook delivery, and Telegram/Slack/Discord/YouTube integration endpoints."
+description: "Notification channels, webhook delivery, and Telegram, Slack, Discord, and YouTube integration endpoints for pushing World Monitor alerts."
 ---
 
 ## Notification channels
 
 Users can register multiple delivery channels (webhook, Telegram, Slack, Discord, email) and bind alert rules to them.
+
+Digest and brief notifications use the same story pool and editorial guardrails
+documented in [News Digest and Briefing Methodology](/methodology/news-digest-and-briefing).
 
 ### `GET /api/notification-channels`
 
@@ -39,6 +42,8 @@ Action-dispatched writer. The body's `action` field selects the mutation:
 
 All actions require Clerk bearer + PRO (`tier >= 1`). Invalid actions return `400 Unknown action`. Requests are forwarded to Convex via `RELAY_SHARED_SECRET`.
 
+- **Idempotency**: optional `Idempotency-Key` supported on `POST /api/notification-channels`. Retrying the same key with an identical body replays the original response instead of applying the channel action again.
+
 ## Webhook delivery contract
 
 When an alert fires, registered webhook URLs receive:
@@ -68,7 +73,9 @@ The envelope version is **shared across two producers** (`notification-relay`, `
 
 ### `POST /api/notify`
 
-Internal ingestion endpoint called by Railway producers to enqueue a notification. Requires `RELAY_SHARED_SECRET`. Not a public API.
+Authenticated event-publish endpoint for PRO callers. Requires Clerk bearer auth and an active PRO entitlement, then enqueues the accepted event into the notification queue. Relay-internal control events such as `flush_quiet_held` and `channel_welcome` are reserved and rejected.
+
+- **Idempotency**: optional `Idempotency-Key` supported. Retrying the same key with an identical body replays the original enqueue response instead of publishing the notification again.
 
 ## Telegram
 

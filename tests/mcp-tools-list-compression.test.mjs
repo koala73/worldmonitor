@@ -2,6 +2,8 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 
+import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
+
 const originalEnv = { ...process.env };
 
 const VALID_KEY = 'wm_test_key_123';
@@ -138,8 +140,11 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
 
     it('compressDescriptions=true returns { name, description, inputSchema, outputSchema, annotations } with no other top-level keys', async () => {
       const tools = await getRegistry();
-      const t = tools.find(t => t.name === 'get_market_data');
-      assert.ok(t, 'get_market_data must be registered');
+      // get_cyber_threats is a cache tool WITHOUT a ui:// surface, so it carries
+      // no `_meta` — the clean 5-key public shape. (get_market_data now links a
+      // Market Radar ui:// app shell and legitimately carries `_meta`.)
+      const t = tools.find(t => t.name === 'get_cyber_threats');
+      assert.ok(t, 'get_cyber_threats must be registered');
       assert.deepEqual(Object.keys(t).sort(), ['annotations', 'description', 'inputSchema', 'name', 'outputSchema']);
     });
 
@@ -253,6 +258,11 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
         } else if (value && typeof value === 'object') {
           for (const k of Object.keys(value)) {
             if (k === 'outputSchema') continue;
+            // `_meta` is the MCP spec-reserved PUBLIC meta field (v1.11.0 MCP
+            // Apps emits `_meta.ui.resourceUri` on UI-linked tools). It is an
+            // intentional wire field, not an internal BaseToolDef leak — skip
+            // its subtree the same way outputSchema is skipped.
+            if (k === '_meta') continue;
             if (k.startsWith('_')) {
               throw new Error(`Internal field leak: tools/list contains key "${k}" at path ${pathStack.join('.')}`);
             }
@@ -263,6 +273,42 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       for (const t of tools) {
         scanForUnderscoreKey(t, [`tools[${t.name}]`]);
       }
+    });
+
+    // ============================================================
+    // MCP Apps (io.modelcontextprotocol/ui) — tool → ui:// linkage (v1.11.0)
+    // ============================================================
+    it('get_country_risk carries _meta.ui.resourceUri + the flat ui/resourceUri alias pointing at the ui:// app shell', async () => {
+      const tools = await getRegistry();
+      const t = tools.find(t => t.name === 'get_country_risk');
+      assert.ok(t, 'get_country_risk must be registered');
+      assert.ok(t._meta && typeof t._meta === 'object', 'UI-linked tool must carry a _meta object');
+      assert.equal(t._meta.ui?.resourceUri, 'ui://worldmonitor/country-risk.html',
+        'nested _meta.ui.resourceUri must point at the registered ui:// resource');
+      assert.equal(t._meta['ui/resourceUri'], 'ui://worldmonitor/country-risk.html',
+        'the deprecated flat ui/resourceUri alias must mirror the nested form');
+    });
+
+    it('a tool WITHOUT a UI surface (get_cyber_threats) omits _meta entirely (no empty object on the wire)', async () => {
+      const tools = await getRegistry();
+      const t = tools.find(t => t.name === 'get_cyber_threats');
+      assert.ok(t, 'get_cyber_threats must be registered');
+      assert.ok(!('_meta' in t), 'non-UI tools must not carry a _meta key at all');
+    });
+
+    it('describe_tool(get_country_risk) carries the same _meta.ui linkage (uncompressed path)', async () => {
+      const res = await mod.default(new Request('https://worldmonitor.app/mcp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': VALID_KEY },
+        body: JSON.stringify({
+          jsonrpc: '2.0', id: 1, method: 'tools/call',
+          params: { name: 'describe_tool', arguments: { tool_name: 'get_country_risk' } },
+        }),
+      }));
+      const body = await res.json();
+      const full = JSON.parse(body.result.content[0].text);
+      assert.equal(full._meta?.ui?.resourceUri, 'ui://worldmonitor/country-risk.html');
+      assert.equal(full._meta?.['ui/resourceUri'], 'ui://worldmonitor/country-risk.html');
     });
   });
 
@@ -295,9 +341,9 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       return JSON.parse(body.result.content[0].text);
     }
 
-    it('tools/list contains 39 tools (38 + describe_tool)', async () => {
+    it('tools/list contains 40 tools (39 + describe_tool)', async () => {
       const tools = await getToolsList();
-      assert.equal(tools.length, 39);
+      assert.equal(tools.length, 40);
     });
 
     it('describe_tool itself appears in tools/list', async () => {
@@ -344,7 +390,7 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       assert.equal(env.error, 'unknown_tool');
       assert.equal(env.requested, 'nonexistent_tool');
       assert.ok(Array.isArray(env.available));
-      assert.equal(env.available.length, 39, 'available should list all 39 tools');
+      assert.equal(env.available.length, 40, 'available should list all 40 tools');
       // Sorted alphabetically
       const sorted = [...env.available].sort();
       assert.deepEqual(env.available, sorted);
@@ -359,14 +405,14 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
     // ============================================================
     // U4: Version bump + SERVER_INSTRUCTIONS + server-card sync
     // ============================================================
-    it('serverInfo.version === "1.10.0"', async () => {
+    it('serverInfo.version === "1.14.0"', async () => {
       const res = await mod.default(new Request('https://worldmonitor.app/mcp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': VALID_KEY },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 't', version: '1' } } }),
       }));
       const body = await res.json();
-      assert.equal(body.result?.serverInfo?.version, '1.10.0');
+      assert.equal(body.result?.serverInfo?.version, '1.14.0');
     });
 
     it('initialize.result.instructions mentions describe_tool AND the TOOL_DESCRIPTION_MAX_BYTES cap value', async () => {
@@ -383,13 +429,51 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
         'instructions should mention the TOOL_DESCRIPTION_MAX_BYTES cap');
     });
 
-    it('server-card.json version matches SERVER_VERSION (1.10.0) AND tools.count matches (39)', () => {
+    it('server-card.json version matches SERVER_VERSION (1.14.0) AND tools[] length matches (40)', () => {
       const card = JSON.parse(readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'));
-      assert.equal(card.serverInfo.version, '1.10.0');
-      assert.equal(card.tools.count, 39);
+      assert.equal(card.serverInfo.version, '1.14.0');
+      // orank (ora.ai) agent-readiness scanner reads the card's `tools` as an
+      // ARRAY (tools[]) for pre-connection preview — not the old {count,categories}
+      // object. Keep it an array; the count now derives from the length.
+      assert.ok(Array.isArray(card.tools), 'server-card tools must be an array (tools[])');
+      assert.equal(card.tools.length, 40);
       assert.equal(card.features?.toolDescriptionCompression, true);
       assert.equal(card.features?.responseProjection, 'jmespath',
         'v1.4.0 feature flag must still be present');
+    });
+
+    // orank / MCP pre-connection discovery contract. The server-card is a
+    // static file; this guard fails loudly if the registry adds/removes/renames
+    // a tool or edits a description without regenerating the card, so scanners
+    // never preview a stale tool inventory. Regenerate with:
+    //   npx tsx -e "import('./api/mcp/registry/index.ts').then(m=>console.log(JSON.stringify(m.TOOL_REGISTRY.map(t=>({name:t.name,description:t.description})),null,2)))"
+    it('server-card.json exposes the orank-required top-level fields AND tools[] mirrors the registry', () => {
+      const card = JSON.parse(readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'));
+
+      // Required top-level fields for full MCP-server-card credit.
+      assert.equal(typeof card.name, 'string');
+      assert.ok(card.name.length > 0, 'top-level name must be non-empty');
+      assert.equal(typeof card.description, 'string');
+      assert.ok(card.description.length > 0, 'top-level description must be non-empty');
+      assert.equal(typeof card.version, 'string');
+      assert.ok(card.version.length > 0, 'top-level version must be non-empty');
+      assert.equal(typeof card.serverUrl, 'string');
+      assert.match(card.serverUrl, /^https:\/\//, 'serverUrl must be an absolute https URL');
+
+      // Top-level mirrors must stay consistent with the nested MCP shapes.
+      assert.equal(card.version, card.serverInfo.version, 'top-level version must mirror serverInfo.version');
+      assert.equal(card.serverUrl, card.transport.endpoint, 'serverUrl must mirror transport.endpoint');
+      assert.equal(card.name, card.serverInfo.name, 'top-level name must mirror serverInfo.name');
+
+      // tools[] must be a name+description projection of the live registry,
+      // in the same order.
+      const expected = TOOL_REGISTRY.map((t) => ({ name: t.name, description: t.description }));
+      assert.deepEqual(
+        card.tools,
+        expected,
+        'server-card tools[] drifted from api/mcp/registry — regenerate the tools array in ' +
+          'public/.well-known/mcp/server-card.json from TOOL_REGISTRY (see comment above this test)',
+      );
     });
 
     // ============================================================
@@ -433,6 +517,9 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
         } else if (value && typeof value === 'object') {
           for (const k of Object.keys(value)) {
             if (k === 'outputSchema') continue;
+            // `_meta` is the MCP spec-reserved PUBLIC meta field (MCP Apps
+            // tool→UI linkage) — intentional wire field, not an internal leak.
+            if (k === '_meta') continue;
             if (k.startsWith('_')) {
               throw new Error(`describe_tool leaked internal key "${k}" at ${pathStack.join('.')}`);
             }

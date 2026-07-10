@@ -6,6 +6,7 @@ import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 
 message GetCountryFactsRequest {
+  // ISO 3166-1 alpha-2 country code for the facts lookup.
   string country_code = 1 [
     (buf.validate.field).required = true,
     (buf.validate.field).string.len = 2,

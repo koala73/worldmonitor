@@ -60,13 +60,13 @@ describe('tech-readiness variant gate', () => {
     );
   });
 
-  it("panel-layout.ts: lazyPanel('tech-readiness') factory only calls p.refresh() under the variant gate", () => {
+  it("panel-layout.ts: tech-readiness lazy factory only calls p.refresh() under the variant gate", () => {
     const lines = readFile('src/app/panel-layout.ts');
-    // Find the lazyPanel registration for tech-readiness.
-    const lazyIdx = lines.findIndex(l => /lazyPanel\(\s*['"]tech-readiness['"]/.test(stripComments(l)));
-    assert.ok(lazyIdx !== -1, "expected lazyPanel('tech-readiness', ...) in panel-layout.ts");
+    // Find the lazy panel registration for tech-readiness.
+    const lazyIdx = lines.findIndex(l => /lazy(?:Imported)?Panel\(\s*['"]tech-readiness['"]/.test(stripComments(l)));
+    assert.ok(lazyIdx !== -1, "expected tech-readiness lazy panel registration in panel-layout.ts");
 
-    // Collect the factory body — walk forward until the call closes at column 0 with `);`.
+    // Collect the factory body - walk forward until the call closes at column 0 with `);`.
     const body: { lineNo: number; text: string }[] = [];
     let depth = 0;
     let started = false;
@@ -79,7 +79,7 @@ describe('tech-readiness variant gate', () => {
       }
       if (started && depth === 0) break;
     }
-    assert.ok(body.length > 1, 'expected to walk the lazyPanel factory body');
+    assert.ok(body.length > 1, 'expected to walk the lazy panel factory body');
 
     // Every line that calls `p.refresh()` must be preceded (within the body) by
     // a conditional that names isPanelInVariantDefaults('tech-readiness').
@@ -93,7 +93,7 @@ describe('tech-readiness variant gate', () => {
     assert.match(
       bodyText,
       /if\s*\(\s*isPanelInVariantDefaults\(\s*['"]tech-readiness['"]\s*\)\s*\)\s*\{[^}]*\bp\.refresh\(\s*\)/s,
-      "panel-layout.ts lazyPanel('tech-readiness', ...) factory must wrap p.refresh() in " +
+      "panel-layout.ts tech-readiness lazy factory must wrap p.refresh() in " +
       "`if (isPanelInVariantDefaults('tech-readiness')) { ... }`. Without the gate, " +
       'the factory fires the 5s /api/bootstrap?keys=techReadiness fetch on every variant ' +
       "regardless of whether the seed key exists.",

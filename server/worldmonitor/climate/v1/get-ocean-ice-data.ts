@@ -9,6 +9,7 @@ import type {
 
 import { CLIMATE_OCEAN_ICE_KEY } from '../../../_shared/cache-keys';
 import { getCachedJson } from '../../../_shared/redis';
+import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 
 type LooseRecord = Record<string, unknown>;
 
@@ -90,13 +91,14 @@ function normalizeOceanIceSeed(value: unknown): GetOceanIceDataResponse {
 }
 
 export const getOceanIceData: ClimateServiceHandler['getOceanIceData'] = async (
-  _ctx: ServerContext,
+  ctx: ServerContext,
   _req: GetOceanIceDataRequest,
 ): Promise<GetOceanIceDataResponse> => {
   try {
     const cached = await getCachedJson(CLIMATE_OCEAN_ICE_KEY, true);
-    return normalizeOceanIceSeed(cached);
+    const normalized = normalizeOceanIceSeed(cached);
+    return normalized.data ? normalized : markNoStoreFallbackResponse(ctx.request, normalized);
   } catch {
-    return {};
+    return markNoStoreFallbackResponse(ctx.request, {});
   }
 };

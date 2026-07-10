@@ -1,11 +1,15 @@
 ---
 title: "Signal Intelligence"
-description: "Signal detection, entity correlation, source ranking, and intelligence aggregation powering World Monitor's analytical engine."
+description: "Signal detection, entity correlation, and source ranking behind World Monitor's aggregation engine — how raw feeds become actionable intelligence."
 ---
 
 ## Signal Intelligence
 
 The dashboard continuously analyzes data streams to detect significant patterns and anomalies. Signals appear in the header badge (⚡) with confidence scores.
+
+For the canonical public methodology behind the news digest, story tracking,
+daily briefing, LLM grounding, and bias controls, see
+[News Digest and Briefing methodology](/methodology/news-digest-and-briefing).
 
 ### Intelligence Findings Badge
 
@@ -28,7 +32,7 @@ This provides a unified command center for all intelligence findings, whether ge
 
 ### Signal Types
 
-The system detects 12 distinct signal types across news, markets, military, and infrastructure domains:
+The system lists 14 distinct signal types across news, markets, military, and infrastructure domains:
 
 **News & Source Signals**
 
@@ -37,6 +41,7 @@ The system detects 12 distinct signal types across news, markets, military, and 
 | **◉ Convergence** | 3+ source types report same story within 30 minutes | Multiple independent channels confirming the same event—higher likelihood of significance |
 | **△ Triangulation** | Wire + Government + Intel sources align | The "authority triangle"—when official channels, wire services, and defense specialists all report the same thing |
 | **🔥 Velocity Spike** | Topic mention rate doubles with 6+ sources/hour | A story is accelerating rapidly across the news ecosystem |
+| **📊 Keyword Spike** | Term frequency rises significantly above baseline | A keyword is breaking out across monitored sources—early indication of a developing story |
 
 **Market Signals**
 
@@ -442,3 +447,12 @@ Convergence Zones: Baltic Sea (military_flight + military_vessel),
 Active Signal Types: 5 of 5
 Total Signals: 47
 ```
+
+### Backed by endpoints
+
+| Signal family | Endpoint | Notes |
+|---|---|---|
+| Company enrichment | `GET /api/intelligence/v1/get-company-enrichment` | Aggregates GitHub, SEC, Hacker News, and inferred stack context for one company. |
+| Company activity signals | `GET /api/intelligence/v1/list-company-signals` | Funding, hiring, expansion, executive, and open-source activity cards. |
+| GDELT topic timeline | `GET /api/intelligence/v1/get-gdelt-topic-timeline` | Tone and volume timeline for an intelligence topic. |
+| Market-implication cards | `GET /api/intelligence/v1/list-market-implications` | AI-generated implication cards from live world state; documented here to avoid duplicating market-domain panel ownership. |

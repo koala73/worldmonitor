@@ -11,6 +11,7 @@ const AI_CRAWLER_UA =
   /gptbot|claudebot|ccbot|google-extended|perplexitybot|anthropic-ai|bytespider|cohere-ai|youbot|applebot-extended|amazonbot/i;
 
 const SOCIAL_PREVIEW_PATHS = new Set(['/api/story', '/api/og-story']);
+const LEGACY_DASHBOARD_ROOT_QUERY_KEYS = ['lat', 'lon', 'zoom', 'view', 'timeRange', 'layers'] as const;
 
 // Paths that bypass bot/script UA filtering below. Each must carry its own
 // auth (API key, shared secret, or intentionally-public semantics) because
@@ -26,11 +27,22 @@ const SOCIAL_PREVIEW_PATHS = new Set(['/api/story', '/api/og-story']);
 //   Node undici default UA, which is short enough to trip the "no UA or
 //   suspiciously short" 403 below (Railway log 2026-04-21 post-#3248 merge:
 //   every cron call returned 403 and silently fell back to legacy Gemini).
+// - /api/llms.txt: static, intentionally-public agent-discovery document
+//   (the section-level llms.txt for the developer/API surface, served from
+//   public/api/llms.txt). It MUST bypass the bot gate — AI crawlers (ClaudeBot,
+//   GPTBot, PerplexityBot, CCBot, …) are the entire audience for an llms.txt,
+//   yet every one of those UAs matches BOT_UA and would otherwise 403.
+// - /api/product-catalog: public read-only pricing catalog (Redis-cached,
+//   keyless, advertised as service-meta in /.well-known/api-catalog). Agents
+//   evaluating the product are a primary audience; an agent-journey run (#4854)
+//   got 403 here and concluded the endpoint didn't exist.
 const PUBLIC_API_PATHS = new Set([
   '/api/version',
   '/api/health',
   '/api/seed-contract-probe',
   '/api/internal/brief-why-matters',
+  '/api/llms.txt',
+  '/api/product-catalog',
 ]);
 
 const SOCIAL_IMAGE_UA =
@@ -64,35 +76,35 @@ const VARIANT_OG: Record<string, { name: string; title: string; description: str
     title: 'Tech Monitor - Real-Time AI & Tech Industry Dashboard',
     description: 'Real-time AI and tech industry dashboard tracking tech giants, AI labs, startup ecosystems, funding rounds, and tech events worldwide.',
     image: 'https://tech.worldmonitor.app/favico/tech/og-image.png',
-    url: 'https://tech.worldmonitor.app/',
+    url: 'https://tech.worldmonitor.app/dashboard',
   },
   finance: {
     name: 'Finance Monitor',
     title: 'Finance Monitor - Real-Time Markets & Trading Dashboard',
     description: 'Real-time finance and trading dashboard tracking global markets, stock exchanges, central banks, commodities, forex, crypto, and economic indicators worldwide.',
     image: 'https://finance.worldmonitor.app/favico/finance/og-image.png',
-    url: 'https://finance.worldmonitor.app/',
+    url: 'https://finance.worldmonitor.app/dashboard',
   },
   commodity: {
     name: 'Commodity Monitor',
     title: 'Commodity Monitor - Real-Time Commodity Markets & Supply Chain Dashboard',
     description: 'Real-time commodity markets dashboard tracking mining sites, processing plants, commodity ports, supply chains, and global commodity trade flows.',
     image: 'https://commodity.worldmonitor.app/favico/commodity/og-image.png',
-    url: 'https://commodity.worldmonitor.app/',
+    url: 'https://commodity.worldmonitor.app/dashboard',
   },
   happy: {
     name: 'Happy Monitor',
     title: 'Happy Monitor - Good News & Global Progress',
     description: 'Curated positive news, progress data, and uplifting stories from around the world.',
     image: 'https://happy.worldmonitor.app/favico/happy/og-image.png',
-    url: 'https://happy.worldmonitor.app/',
+    url: 'https://happy.worldmonitor.app/dashboard',
   },
   energy: {
     name: 'Energy Atlas',
     title: 'Energy Atlas - Real-Time Global Energy Intelligence Dashboard',
     description: 'Real-time global energy atlas tracking oil and gas pipelines, storage facilities, chokepoints, fuel shortages, tanker flows, and disruption events worldwide.',
     image: 'https://energy.worldmonitor.app/favico/energy/og-image.png',
-    url: 'https://energy.worldmonitor.app/',
+    url: 'https://energy.worldmonitor.app/dashboard',
   },
 };
 
@@ -108,6 +120,10 @@ function normalizeHost(raw: string): string {
 
 function isAllowedHost(host: string): boolean {
   return ALLOWED_HOSTS.has(host) || VERCEL_PREVIEW_RE.test(host);
+}
+
+function hasLegacyDashboardRootState(searchParams: URLSearchParams): boolean {
+  return LEGACY_DASHBOARD_ROOT_QUERY_KEYS.some((key) => searchParams.has(key));
 }
 
 // HTML-escape a string for safe interpolation into BOTH text content and
@@ -128,6 +144,12 @@ export default function middleware(request: Request) {
   const ua = request.headers.get('user-agent') ?? '';
   const path = url.pathname;
   const host = normalizeHost(request.headers.get('host') ?? url.hostname);
+
+  if (path === '/' && hasLegacyDashboardRootState(url.searchParams)) {
+    const dashboardUrl = new URL(request.url);
+    dashboardUrl.pathname = '/dashboard';
+    return Response.redirect(dashboardUrl.toString(), 308);
+  }
 
   // Variant-aware crawlable stub for social preview bots AND AI crawlers
   // (GPTBot, ClaudeBot, PerplexityBot, etc.) when hitting variant subdomain
@@ -174,11 +196,11 @@ export default function middleware(request: Request) {
 <p>${eDesc}</p>
 <h2>Explore the platform</h2>
 <ul>
-<li><a href="https://www.worldmonitor.app/">World Monitor — geopolitics &amp; intelligence</a></li>
-<li><a href="https://tech.worldmonitor.app/">Tech Monitor</a></li>
-<li><a href="https://finance.worldmonitor.app/">Finance Monitor</a></li>
-<li><a href="https://commodity.worldmonitor.app/">Commodity Monitor</a></li>
-<li><a href="https://happy.worldmonitor.app/">Happy Monitor</a></li>
+<li><a href="https://www.worldmonitor.app/dashboard">World Monitor — geopolitics &amp; intelligence</a></li>
+<li><a href="https://tech.worldmonitor.app/dashboard">Tech Monitor</a></li>
+<li><a href="https://finance.worldmonitor.app/dashboard">Finance Monitor</a></li>
+<li><a href="https://commodity.worldmonitor.app/dashboard">Commodity Monitor</a></li>
+<li><a href="https://happy.worldmonitor.app/dashboard">Happy Monitor</a></li>
 <li><a href="https://www.worldmonitor.app/pro">World Monitor Pro</a></li>
 <li><a href="https://www.worldmonitor.app/blog/">Blog</a></li>
 <li><a href="https://github.com/koala73/worldmonitor">Open source on GitHub</a></li>
@@ -211,8 +233,17 @@ export default function middleware(request: Request) {
     }
   }
 
-  // Only apply bot filtering to /api/* and /favico/* paths
-  if (!path.startsWith('/api/') && !path.startsWith('/favico/')) {
+  // Only apply bot filtering to /api/* paths.
+  //
+  // /favico/* is deliberately NOT gated: it serves public static brand
+  // assets (favicons, app icons, the email logo) that must be retrievable
+  // by ANY client — browsers, email clients and their image proxies, link
+  // unfurlers, preview scrapers. Bot-gating it broke the logo in
+  // transactional emails when a client/proxy fetched with a script-like UA
+  // (the same reason Cloudflare's "Block API Bots" rule was narrowed to
+  // /api/* only). /favico/* is also removed from the matcher below so the
+  // middleware never runs on it.
+  if (!path.startsWith('/api/')) {
     return;
   }
 
@@ -232,7 +263,6 @@ export default function middleware(request: Request) {
   // this allowlist is defence-in-depth for any well-shaped request
   // whose UA happens to be in SOCIAL_IMAGE_UA.
   if (
-    path.startsWith('/favico/') ||
     path.endsWith('.png') ||
     BRIEF_CAROUSEL_PATH_RE.test(path)
   ) {
@@ -254,11 +284,11 @@ export default function middleware(request: Request) {
   // Authenticated Pro API clients bypass UA filtering. This is a cheap
   // edge heuristic, not auth — real validation (SHA-256 hash vs Convex
   // userApiKeys + entitlement) happens in server/gateway.ts. To keep the
-  // bot-UA shield meaningful, require the exact key shape emitted by
-  // src/services/api-keys.ts:generateKey: `wm_` + 40 lowercase hex chars.
-  // A random scraper would have to guess a specific 43-char format, and
-  // spoofed-but-well-shaped keys still 401 at the gateway.
-  const WM_KEY_SHAPE = /^wm_[a-f0-9]{40}$/;
+  // bot-UA shield meaningful, require the `wm_` prefix plus 40–64 lowercase
+  // hex chars. User keys are 40 hex chars; enterprise keys may be longer.
+  // A random scraper would still have to guess this format, and spoofed-but-
+  // well-shaped keys still 401 at the gateway.
+  const WM_KEY_SHAPE = /^wm_[a-f0-9]{40,64}$/;
   const apiKey =
     request.headers.get('x-worldmonitor-key') ??
     request.headers.get('x-api-key') ??
@@ -285,5 +315,5 @@ export default function middleware(request: Request) {
 }
 
 export const config = {
-  matcher: ['/', '/api/:path*', '/favico/:path*'],
+  matcher: ['/', '/api/:path*'],
 };

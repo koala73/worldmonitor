@@ -87,9 +87,14 @@ The gate path is implemented by `renderFreeGate()` in `src/components/RouteExplo
 
 ## Data behind Route Explorer
 
-- **Route graph** — `/api/supply-chain/v1/get-route-explorer-lane` (generated from `proto/worldmonitor/supply_chain/v1/`). Returns primary route id, chokepoint exposures, bypass corridors, war-risk tier, and disruption score.
-- **Country impact** — `/api/supply-chain/v1/get-route-impact` for the Impact tab.
-- **Chokepoint status** — live dry-bulk congestion, AIS density, dark-ship events, and recent incident feeds.
+Route Explorer calls generated sebuf REST RPCs from `SupplyChainService`. Both lane and impact calls are PRO paths; free users can open the workflow, but fetch-time gating replaces numeric results with the upgrade card. The route-intelligence vendor path is wrapped server-side by `get-route-explorer-lane`; browser code should use the generated REST routes below.
+
+| Workflow area | Method + route | Feeds |
+|---|---|---|
+| Current / Alternatives / Land tabs | `GET /api/supply-chain/v1/get-route-explorer-lane` | Primary route id, route geometry, chokepoint exposures, bypass options with geometry, war-risk tier, and disruption score. |
+| Impact tab | `GET /api/supply-chain/v1/get-route-impact` | Lane value, primary exporter share, strategic products, resilience score, dependency flags, and Comtrade source state. |
+| Public chokepoint context | `GET /api/supply-chain/v1/get-chokepoint-status` | Current chokepoint status, AIS disruption counts, and recent incident context shown elsewhere on the map. |
+| Chokepoint history drill-down | `GET /api/supply-chain/v1/get-chokepoint-history` | Lazy transit-count history for an expanded chokepoint card. |
 
 For the API-level contract, see the [Supply Chain](/api/SupplyChainService.openapi.yaml) and [Shipping v2](/api-shipping-v2) reference pages. For the underlying maritime layer on the map, see [Maritime Intelligence](/maritime-intelligence).
 

@@ -88,6 +88,7 @@ Return: {"level":"...","category":"..."}`;
           temperature: 0,
           maxTokens: 50,
           timeoutMs: UPSTREAM_TIMEOUT_MS,
+          stage: 'classify-event',
           validate: (content) => {
             try {
               let parsed: { level?: string; category?: string };

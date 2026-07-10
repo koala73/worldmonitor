@@ -2,12 +2,21 @@
 
 const { createHash } = require('node:crypto');
 const dns = require('node:dns').promises;
-const { ConvexHttpClient } = require('convex/browser');
 const { Resend } = require('resend');
 const { decrypt } = require('./lib/crypto.cjs');
+const {
+  assertNotificationWebhookDeliveryUrlSafe,
+  isBlockedResolvedAddress,
+  postJsonWithPinnedAddress,
+} = require('./lib/notification-webhook-ssrf.cjs');
 const { callLLM } = require('./lib/llm-chain.cjs');
 const { fetchUserPreferences, extractUserContext, formatUserProfile } = require('./lib/user-context.cjs');
 const { countryNameToIso2 } = require('./shared/country-name-to-iso2.cjs');
+const {
+  buildDedupMaterial,
+  classifySetNxResult,
+  recordDedupOutcome,
+} = require('./shared/notification-dedup.cjs');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -25,13 +34,28 @@ const RESEND_FROM = process.env.RESEND_FROM_EMAIL ?? 'WorldMonitor <alerts@world
 const QUIET_HOURS_BATCH_ENABLED = process.env.QUIET_HOURS_BATCH_ENABLED !== '0';
 const AI_IMPACT_ENABLED = process.env.AI_IMPACT_ENABLED === '1';
 const AI_IMPACT_CACHE_TTL = 1800; // 30 min, matches dedup window
+const DEDUP_TTL_SECONDS = 1800;
 
 if (!UPSTASH_URL || !UPSTASH_TOKEN) { console.error('[relay] UPSTASH_REDIS_REST_URL/TOKEN not set'); process.exit(1); }
 if (!CONVEX_URL) { console.error('[relay] CONVEX_URL not set'); process.exit(1); }
 if (!RELAY_SECRET) { console.error('[relay] RELAY_SHARED_SECRET not set'); process.exit(1); }
 
-const convex = new ConvexHttpClient(CONVEX_URL);
 const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
+
+// Fetch all enabled alertRules via the shared-secret /relay/enabled-rules
+// action. The underlying `alertRules.getByEnabled` is an internalQuery
+// (GHSA-r649-4cqj-w93h) — unreachable via ConvexHttpClient — so we go through
+// the HTTP action, mirroring the other /relay/* service calls. Throws on
+// non-2xx so callers keep their existing try/catch (fail-closed: deliver
+// nothing rather than fan out on a stale/partial rule set).
+async function fetchEnabledRules(enabled = true) {
+  const res = await fetch(`${CONVEX_SITE_URL}/relay/enabled-rules?enabled=${enabled}`, {
+    headers: { Authorization: `Bearer ${RELAY_SECRET}`, 'User-Agent': 'worldmonitor-relay/1.0' },
+    signal: AbortSignal.timeout(10000),
+  });
+  if (!res.ok) throw new Error(`enabled-rules HTTP ${res.status}`);
+  return await res.json();
+}
 
 // ── Upstash REST helpers ──────────────────────────────────────────────────────
 
@@ -48,6 +72,21 @@ async function upstashRest(...args) {
   return json.result;
 }
 
+async function upstashDedupSetNx(key) {
+  try {
+    const res = await fetch(`${UPSTASH_URL}/${['SET', key, '1', 'NX', 'EX', String(DEDUP_TTL_SECONDS)].map(encodeURIComponent).join('/')}`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'User-Agent': 'worldmonitor-relay/1.0' },
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return 'error';
+    const json = await res.json();
+    return classifySetNxResult(json.result);
+  } catch (err) {
+    return 'error';
+  }
+}
+
 // ── Dedup ─────────────────────────────────────────────────────────────────────
 
 function sha256Hex(str) {
@@ -60,12 +99,11 @@ async function checkDedup(userId, eventType, title, coalesceKey) {
   // collapses adjacent-zone NWS alerts (same storm system, different counties)
   // into one notification per user — the title-based dedup misses these
   // because each zone produces a slightly different title.
-  // See plans/forbid-realtime-all-events.md "Out of scope: Slot B".
-  const keyMaterial = coalesceKey ? `coalesce:${coalesceKey}` : `${eventType}:${title}`;
+  // See docs/archive/plans/forbid-realtime-all-events.md "Out of scope: Slot B".
+  const keyMaterial = buildDedupMaterial(eventType, title, coalesceKey);
   const hash = sha256Hex(keyMaterial);
   const key = `wm:notif:dedup:${userId}:${hash}`;
-  const result = await upstashRest('SET', key, '1', 'NX', 'EX', '1800');
-  return result === 'OK'; // true = new, false = duplicate
+  return upstashDedupSetNx(key);
 }
 
 // ── Channel deactivation ──────────────────────────────────────────────────────
@@ -161,7 +199,7 @@ async function isUserPro(userId) {
 // ── Private IP guard ─────────────────────────────────────────────────────────
 
 function isPrivateIP(ip) {
-  return /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|127\.|::1|fc|fd)/.test(ip);
+  return isBlockedResolvedAddress(ip);
 }
 
 // ── Quiet hours ───────────────────────────────────────────────────────────────
@@ -271,7 +309,7 @@ async function drainBatchOnWake() {
   if (!QUIET_HOURS_BATCH_ENABLED) return;
   let allRules;
   try {
-    allRules = await convex.query('alertRules:getByEnabled', { enabled: true });
+    allRules = await fetchEnabledRules(true);
   } catch (err) {
     console.warn('[relay] drainBatchOnWake: failed to fetch rules:', err.message);
     return;
@@ -291,11 +329,12 @@ async function processFlushQuietHeld(event) {
   const { userId, variant = 'full' } = event;
   if (!userId) return;
   console.log(`[relay] flush_quiet_held for ${userId} (${variant})`);
-  // Use the same public query the relay already calls in processEvent.
-  // internalQuery functions are unreachable via ConvexHttpClient.
+  // Fetch enabled rules via the shared-secret /relay/enabled-rules action —
+  // getByEnabled is an internalQuery (GHSA-r649-4cqj-w93h), unreachable via
+  // ConvexHttpClient.
   let allowedChannels = null;
   try {
-    const allRules = await convex.query('alertRules:getByEnabled', { enabled: true });
+    const allRules = await fetchEnabledRules(true);
     const rule = Array.isArray(allRules)
       ? allRules.find(r => r.userId === userId && (r.variant ?? 'full') === variant)
       : null;
@@ -486,28 +525,12 @@ async function sendWebhook(userId, webhookEnvelope, event) {
     return false;
   }
 
-  let parsed;
+  let safeUrl;
+  let resolvedAddresses;
   try {
-    parsed = new URL(url);
-  } catch {
-    console.warn(`[relay] Webhook invalid URL for ${userId}`);
-    await deactivateChannel(userId, 'webhook');
-    return false;
-  }
-
-  if (parsed.protocol !== 'https:') {
-    console.warn(`[relay] Webhook rejected non-HTTPS for ${userId}`);
-    return false;
-  }
-
-  try {
-    const addrs = await dns.resolve4(parsed.hostname);
-    if (addrs.some(isPrivateIP)) {
-      console.warn(`[relay] Webhook SSRF blocked (private IP) for ${userId}`);
-      return false;
-    }
+    ({ url: safeUrl, resolvedAddresses } = await assertNotificationWebhookDeliveryUrlSafe(url));
   } catch (err) {
-    console.warn(`[relay] Webhook DNS resolve failed for ${userId}:`, err.message);
+    console.warn(`[relay] Webhook URL rejected for ${userId}:`, err.message);
     return false;
   }
 
@@ -527,12 +550,12 @@ async function sendWebhook(userId, webhookEnvelope, event) {
   });
 
   try {
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-relay/1.0' },
-      body: payload,
-      signal: AbortSignal.timeout(10000),
-    });
+    const resp = await postJsonWithPinnedAddress(
+      safeUrl,
+      payload,
+      { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-relay/1.0' },
+      resolvedAddresses,
+    );
     if (resp.status === 404 || resp.status === 410 || resp.status === 403) {
       console.warn(`[relay] Webhook ${resp.status} for ${userId} — deactivating`);
       await deactivateChannel(userId, 'webhook');
@@ -669,6 +692,15 @@ function normalizeEventCountryCode(raw) {
   return countryNameToIso2(raw);
 }
 
+const UNATTRIBUTED_GLOBAL_EVENT_TYPES = new Set([
+  'corridor_risk',
+  'shipping_stress',
+]);
+
+function isUnattributedGlobalEvent(event) {
+  return UNATTRIBUTED_GLOBAL_EVENT_TYPES.has(event?.eventType);
+}
+
 /**
  * Score-gated dispatch decision.
  *
@@ -692,20 +724,18 @@ function normalizeEventCountryCode(raw) {
  * `payload.countryCode`, ais-relay sometimes uses `payload.country`, browser-
  * submitted rss_alert events occasionally lift `country` to the event root.
  *
- * PERMISSIVE semantics for unattributed events: when a rule has
- * countries=['US'] and an event has NO country attribution, we deliver it.
- * The publisher didn't give us enough information to filter, so the user
- * receives a global alert that may or may not be about their country.
+ * Known-global semantics for unattributed events: when a rule has
+ * countries=['US'] and a known global event has NO country attribution, do not
+ * deliver it. A populated country scope means "only alerts matching my
+ * selected countries"; delivering global Corridor Risk / Shipping Stress alerts
+ * to a Ukraine/Romania-scoped user is worse than omitting those unscoped alerts.
  *
- * RATIONALE: most publishers today (rss_alert, ais-relay generic events,
- * etc.) do not emit a country code. Strict drop-on-missing semantics would
- * deliver ZERO alerts to a user who set countries=['US'] — strictly worse
- * UX than "occasional unscoped global event slips through." A user opting
- * into country-scope expects to receive AT LEAST events from those
- * countries; permissive delivery on unattributed events meets that
- * expectation. As publishers add country attribution (planned follow-up
- * audit), scoped delivery tightens automatically. A future strict-mode
- * opt-in (e.g. rule.countriesStrict=true) is left to a follow-up UI surface.
+ * RATIONALE: the UI copy says "Restrict alerts to specific countries" and
+ * users now rely on it to narrow noisy global feeds. RSS publishers still lack
+ * reliable country attribution, so they stay permissive until attribution is
+ * available; otherwise a scoped user would lose keyword-relevant news alerts.
+ * Publishers that know a country must emit `payload.countryCode` or
+ * `payload.country` to reach scoped rules reliably.
  *
  * Strict semantics still apply when the event IS attributed but doesn't
  * match: rule.countries=['US'] + event.payload.countryCode='IR' → drop.
@@ -714,8 +744,7 @@ function normalizeEventCountryCode(raw) {
  * matching. Known malformed values emitted by current publishers (for
  * example 'USA', 'United States', 'UAE') are mapped to ISO2 and filtered
  * strictly. Unknown malformed values fall through to the "unattributed"
- * branch and are delivered permissively — the publisher emitted garbage,
- * treat it as if it emitted nothing.
+ * branch and are dropped only for known-global events.
  */
 function eventMatchesCountryScope(event, rule) {
   // Empty/absent countries on the rule → all events (no filter applied).
@@ -727,16 +756,72 @@ function eventMatchesCountryScope(event, rule) {
     ?? event?.country
     ?? null;
 
-  // Unattributed → PERMISSIVE deliver (see RATIONALE above).
+  // Unattributed -> drop only known global/noisy events; keep RSS permissive
+  // until publishers provide reliable country attribution.
   if (typeof eventCountry !== 'string' || eventCountry.trim().length === 0) {
-    return true;
+    return !isUnattributedGlobalEvent(event);
   }
 
   const normalized = normalizeEventCountryCode(eventCountry);
-  // Unknown malformed value → treat as unattributed → PERMISSIVE deliver.
-  if (normalized === null) return true;
+  // Unknown malformed value -> treat as unattributed.
+  if (normalized === null) return !isUnattributedGlobalEvent(event);
 
   return rule.countries.includes(normalized);
+}
+
+// ── Watchlist story alerts (#4922 item e / U3) ───────────────────────────────
+
+const WATCHLIST_STORY_EVENT_TYPE = 'watchlist_story_alert';
+
+/**
+ * Per-rule eventTypes gate, extracted from the inline matching expression so
+ * `watchlist_story_alert` can be OPT-IN ONLY:
+ *
+ *  - Broadcast event types keep the legacy semantics: an empty eventTypes
+ *    list is a wildcard ("all events"), a populated list is a restriction.
+ *  - `watchlist_story_alert` is NEVER covered by the empty wildcard — the
+ *    rule must explicitly list it. Every production rule today carries
+ *    eventTypes: [] (the settings UI hard-coded it), so without this carve-
+ *    out shipping the new event type would blast ticker-scoped alerts at
+ *    every wildcard subscriber who never opted in.
+ *  - Symmetrically, the watchlist opt-in entry does NOT count toward the
+ *    broadcast restriction: eventTypes ['watchlist_story_alert'] still
+ *    behaves as a wildcard for rss_alert & friends. Otherwise the settings
+ *    UI toggling the watchlist row ON would silently unsubscribe the user
+ *    from every other alert.
+ */
+function ruleMatchesEventType(rule, event) {
+  if (event?.eventType === WATCHLIST_STORY_EVENT_TYPE) {
+    return rule.eventTypes.includes(WATCHLIST_STORY_EVENT_TYPE);
+  }
+  const broadcastTypes = rule.eventTypes.filter((t) => t !== WATCHLIST_STORY_EVENT_TYPE);
+  return broadcastTypes.length === 0 || broadcastTypes.includes(event.eventType);
+}
+
+/**
+ * Filter `watchlist_story_alert` events by per-rule ticker-scope.
+ *
+ * ASYMMETRY vs eventMatchesCountryScope (deliberate, documented): for
+ * countries, an empty/absent list means "unscoped — deliver everything".
+ * For tickers, an empty/absent list means "NO watchlist story alerts" —
+ * the feature is opt-in scoped by construction (the alert only makes sense
+ * relative to a user's market watchlist; there is no meaningful "all
+ * tickers" firehose to fall back to).
+ *
+ * Delivery requires a non-empty intersection between `rule.tickers`
+ * (normalized uppercase by convex/alertRules.ts normalizeTickers) and
+ * `payload.tickers` (uppercase by shared/ticker-extract.js). The uppercase
+ * re-normalization here is defensive against unnormalized legacy rows.
+ *
+ * Every other event type passes through untouched.
+ */
+function eventMatchesTickerScope(event, rule) {
+  if (event?.eventType !== WATCHLIST_STORY_EVENT_TYPE) return true;
+  if (!Array.isArray(rule.tickers) || rule.tickers.length === 0) return false;
+  const eventTickers = Array.isArray(event?.payload?.tickers) ? event.payload.tickers : [];
+  if (eventTickers.length === 0) return false;
+  const ruleSet = new Set(rule.tickers.map((t) => String(t).toUpperCase()));
+  return eventTickers.some((t) => ruleSet.has(String(t).toUpperCase()));
 }
 
 function shouldNotify(rule, event) {
@@ -752,7 +837,7 @@ function shouldNotify(rule, event) {
   // Both reads (legacy match below AND the importance threshold lookup) must
   // use the SAME effective value, otherwise the threshold path silently falls
   // through to the looser IMPORTANCE_SCORE_MIN floor.
-  // See plans/forbid-realtime-all-events.md §3.
+  // See docs/archive/plans/forbid-realtime-all-events.md §3.
   const effectiveDigestMode = rule.digestMode ?? 'realtime';
   const effectiveSensitivity =
     effectiveDigestMode === 'realtime' && (rule.sensitivity === 'all' || rule.sensitivity === 'high')
@@ -1001,7 +1086,7 @@ async function processEvent(event) {
 
   let enabledRules;
   try {
-    enabledRules = await convex.query('alertRules:getByEnabled', { enabled: true });
+    enabledRules = await fetchEnabledRules(true);
   } catch (err) {
     console.error('[relay] Failed to fetch alert rules:', err.message);
     return;
@@ -1014,9 +1099,10 @@ async function processEvent(event) {
   // fan out to every other Pro subscriber — see todo #196.
   const matching = enabledRules.filter(r =>
     (!r.digestMode || r.digestMode === 'realtime') &&
-    (r.eventTypes.length === 0 || r.eventTypes.includes(event.eventType)) &&
+    ruleMatchesEventType(r, event) &&
     shouldNotify(r, event) &&
     eventMatchesCountryScope(event, r) &&
+    eventMatchesTickerScope(event, r) &&
     (!event.variant || !r.variant || r.variant === event.variant) &&
     (!event.userId || r.userId === event.userId)
   );
@@ -1051,15 +1137,37 @@ async function processEvent(event) {
     const coalesceKey = typeof event.payload?.coalesceKey === 'string' ? event.payload.coalesceKey : undefined;
 
     if (quietAction === 'hold') {
-      const isNew = await checkDedup(rule.userId, event.eventType, event.payload?.title ?? '', coalesceKey);
-      if (!isNew) { console.log(`[relay] Dedup hit (held) for ${rule.userId}`); continue; }
+      const dedupResult = await checkDedup(rule.userId, event.eventType, event.payload?.title ?? '', coalesceKey);
+      const dedupDecision = recordDedupOutcome(dedupResult, {
+        surface: 'notification-relay-held',
+        eventType: event.eventType,
+        severity: eventSeverity,
+        fallbackKey: `held:${rule.userId}:${event.eventType}:${event.payload?.title ?? ''}:${coalesceKey ?? ''}`,
+        fallbackTtlSeconds: DEDUP_TTL_SECONDS,
+        emitTelemetry: ({ line }) => console.warn(line),
+      });
+      if (!dedupDecision.shouldPublish) {
+        if (dedupDecision.isDuplicate) console.log(`[relay] Dedup hit (held) for ${rule.userId}`);
+        continue;
+      }
       console.log(`[relay] Quiet hours hold for ${rule.userId} — queuing for batch_on_wake`);
       await holdEvent(rule.userId, rule.variant ?? 'full', JSON.stringify(event));
       continue;
     }
 
-    const isNew = await checkDedup(rule.userId, event.eventType, event.payload?.title ?? '', coalesceKey);
-    if (!isNew) { console.log(`[relay] Dedup hit for ${rule.userId}`); continue; }
+    const dedupResult = await checkDedup(rule.userId, event.eventType, event.payload?.title ?? '', coalesceKey);
+    const dedupDecision = recordDedupOutcome(dedupResult, {
+      surface: 'notification-relay',
+      eventType: event.eventType,
+      severity: eventSeverity,
+      fallbackKey: `realtime:${rule.userId}:${event.eventType}:${event.payload?.title ?? ''}:${coalesceKey ?? ''}`,
+      fallbackTtlSeconds: DEDUP_TTL_SECONDS,
+      emitTelemetry: ({ line }) => console.warn(line),
+    });
+    if (!dedupDecision.shouldPublish) {
+      if (dedupDecision.isDuplicate) console.log(`[relay] Dedup hit for ${rule.userId}`);
+      continue;
+    }
 
     let channels = [];
     try {
@@ -1182,4 +1290,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { sendTelegram };
+module.exports = { sendTelegram, checkDedup, upstashDedupSetNx };

@@ -70,12 +70,38 @@ export const MCP_TOOLS_LIST_TELEMETRY_KEYS = Object.freeze([
   'client_user_agent',
 ] as const);
 
+export const MCP_RATE_LIMIT_HIT_TELEMETRY_KEYS = Object.freeze([
+  'tag',
+  'ts',
+  'auth_kind',
+  'user_id',
+  'principal_id',
+  'dimension',
+  'limit',
+  'window_seconds',
+] as const);
+
 // Log-safe principal id derived from the resolved auth context:
-//   - Pro:     raw Clerk `userId` (internal ID, not a secret; matches the
-//              REST gateway's `customer_id` convention).
+//   - Pro / user_key: raw Clerk `userId` (internal ID, not a secret; matches
+//              the REST gateway's `customer_id` convention — user_key carries
+//              the resolved key OWNER, #4859).
 //   - env_key: FNV-64 hash of the API key (secret — never log raw key
 //              material; mirrors `principal_id` in
 //              server/_shared/usage-identity.ts).
 export function principalIdForLog(context: McpAuthContext): string {
-  return context.kind === 'pro' ? context.userId : hashKeySync(context.apiKey);
+  return context.kind === 'env_key' ? hashKeySync(context.apiKey) : context.userId;
+}
+
+export function emitMcpRateLimitHit(
+  context: McpAuthContext,
+  payload: { dimension: 'mcp_minute_burst'; limit: number; windowSeconds: number },
+): void {
+  emitTelemetry('mcp.rate_limit_hit', {
+    auth_kind: context.kind,
+    user_id: context.kind === 'pro' ? context.userId : null,
+    principal_id: principalIdForLog(context),
+    dimension: payload.dimension,
+    limit: payload.limit,
+    window_seconds: payload.windowSeconds,
+  });
 }

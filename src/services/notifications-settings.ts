@@ -20,6 +20,7 @@ import {
 } from '@/services/notification-channels';
 import { getCurrentClerkUser } from '@/services/clerk';
 import { hasTier } from '@/services/entitlements';
+import { getMarketWatchlistEntries } from '@/services/market-watchlist';
 import { SITE_VARIANT } from '@/config/variant';
 import { mountCountryChipPicker, loadFollowedCountriesSafe, type CountryChipPickerHandle } from '@/utils/country-chip-picker';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
@@ -27,6 +28,13 @@ import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
 const QUIET_HOURS_BATCH_ENABLED = import.meta.env.VITE_QUIET_HOURS_BATCH_ENABLED !== '0';
 const DIGEST_CRON_ENABLED = import.meta.env.VITE_DIGEST_CRON_ENABLED !== '0';
+
+// Watchlist story alerts (#4922 U3). Opt-in event type: unlike the broadcast
+// types (covered by the eventTypes:[] wildcard), the relay only delivers this
+// one when the rule explicitly lists it AND rule.tickers intersects the
+// story's extracted tickers. Enabling the toggle sends the current market
+// watchlist symbols as `tickers`; the watchlist-modal save path re-syncs them.
+const WATCHLIST_STORY_EVENT_TYPE = 'watchlist_story_alert';
 
 export interface NotificationsSettingsHost {
   isSignedIn?: boolean;
@@ -67,6 +75,14 @@ function appendNotificationError(rowEl: HTMLElement, message: string): void {
   rowEl.appendChild(errorEl);
 }
 
+function getTelegramBotUsername(): string {
+  try {
+    return import.meta.env.VITE_TELEGRAM_BOT_USERNAME || 'WorldMonitorBot';
+  } catch {
+    return 'WorldMonitorBot';
+  }
+}
+
 export function renderNotificationsSettings(host: NotificationsSettingsHost): NotificationsSettingsResult {
   const isPro = !!host.isSignedIn && hasTier(1);
   const preselectCountry = normalizePreselectCountry(host.preselectCountry);
@@ -96,12 +112,12 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           upgradeBtn.addEventListener('click', () => {
             if (!host.isSignedIn) {
               import('@/services/clerk').then(m => m.openSignIn()).catch(() => {
-                window.open('https://worldmonitor.app/pro', '_blank');
+                window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
               });
               return;
             }
             import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DEFAULT_UPGRADE_PRODUCT))).catch(() => {
-              window.open('https://worldmonitor.app/pro', '_blank');
+              window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
             });
           }, { signal });
         }
@@ -336,7 +352,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             Sensitivity lives OUTSIDE usRealtimeSection so digest-mode users can
             see and change it. The 'all' option is disabled when delivery mode is
             realtime — the (realtime, all) pair is forbidden by the server. See
-            plans/forbid-realtime-all-events.md §2a.
+            docs/archive/plans/forbid-realtime-all-events.md §2a.
           -->
           <div class="ai-flow-section-label" style="margin-top:8px">Sensitivity</div>
           <select class="unified-settings-select" id="usNotifSensitivity">
@@ -354,6 +370,16 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
               </div>
               <label class="ai-flow-switch">
                 <input type="checkbox" id="usNotifEnabled"${alertRule?.enabled ? ' checked' : ''}>
+                <span class="ai-flow-slider"></span>
+              </label>
+            </div>
+            <div class="ai-flow-toggle-row">
+              <div class="ai-flow-toggle-label-wrap">
+                <div class="ai-flow-toggle-label">Watchlist story alerts</div>
+                <div class="ai-flow-toggle-desc">Alert when a high-importance story mentions a company on your market watchlist</div>
+              </div>
+              <label class="ai-flow-switch">
+                <input type="checkbox" id="usWatchlistAlerts"${alertRule?.eventTypes?.includes(WATCHLIST_STORY_EVENT_TYPE) ? ' checked' : ''}>
                 <span class="ai-flow-slider"></span>
               </label>
             </div>
@@ -429,6 +455,17 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       let alertRuleDebounceTimer: ReturnType<typeof setTimeout> | null = null;
       let qhDebounceTimer: ReturnType<typeof setTimeout> | null = null;
       let digestDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+      // Fire-and-forget settings writes MUST NOT surface as unhandled promise
+      // rejections. A debounced auto-save that 401s (expired Clerk session) or
+      // hits a transient network error is expected and non-fatal — swallow it
+      // here so it never reaches window.onunhandledrejection (WORLDMONITOR-SN).
+      // Logged for local debugging only; the setting simply isn't persisted.
+      function fireForgetSave(p: Promise<unknown>, label: string): void {
+        void p.catch((err) => {
+          console.warn(`[notifications] ${label} failed (not saved):`, err);
+        });
+      }
 
       function reloadNotifSection(): void {
         const loadingEl = container.querySelector<HTMLElement>('#usNotifLoading');
@@ -516,10 +553,12 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         channels: ChannelType[];
         aiDigestEnabled: boolean;
         countries: string[] | undefined;
+        tickers: string[];
       } {
         const enabledEl = container.querySelector<HTMLInputElement>('#usNotifEnabled');
         const sensitivityEl = container.querySelector<HTMLSelectElement>('#usNotifSensitivity');
         const aiDigestEl = container.querySelector<HTMLInputElement>('#usAiDigestEnabled');
+        const watchlistEl = container.querySelector<HTMLInputElement>('#usWatchlistAlerts');
         const connectedChannelTypes = Array.from(
           container.querySelectorAll<HTMLElement>('[data-channel-type]'),
         )
@@ -529,13 +568,20 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         // case send undefined so insert-capable APIs preserve-on-omit instead
         // of accidentally clearing the stored country scope.
         const alertRuleCountries = countryPicker ? countryPicker.getValue() : undefined;
+        // Watchlist story alerts (#4922 U3): the toggle is the opt-in — ON
+        // adds the event type AND snapshots the current market watchlist
+        // symbols as `tickers` (re-synced on every save while enabled); OFF
+        // restores the broadcast wildcard ([]) and clears tickers so no
+        // stale scope lingers server-side.
+        const watchlistOn = watchlistEl?.checked ?? false;
         return {
           enabled: enabledEl?.checked ?? false,
-          eventTypes: [],
+          eventTypes: watchlistOn ? [WATCHLIST_STORY_EVENT_TYPE] : [],
           sensitivity: (sensitivityEl?.value ?? 'all') as 'all' | 'high' | 'critical',
           channels: connectedChannelTypes,
           aiDigestEnabled: aiDigestEl?.checked ?? true,
           countries: alertRuleCountries,
+          tickers: watchlistOn ? getMarketWatchlistEntries().map((e) => e.symbol) : [],
         };
       }
 
@@ -544,10 +590,10 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
       // getCurrentAlertRuleFormState so `countries` flows through every time.
       function saveCurrentAlertRule(): void {
         const state = getCurrentAlertRuleFormState();
-        void saveAlertRules({
+        fireForgetSave(saveAlertRules({
           variant: SITE_VARIANT,
           ...state,
-        });
+        }), 'save alert rules');
       }
 
       reloadNotifSection();
@@ -556,11 +602,11 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         const state = getCurrentAlertRuleFormState();
         // Augment channels with the newly connected one (set semantics).
         const channels = [...new Set([...state.channels, newChannel])];
-        void saveAlertRules({
+        fireForgetSave(saveAlertRules({
           variant: SITE_VARIANT,
           ...state,
           channels,
-        });
+        }), 'save alert rules');
       }
 
       signal.addEventListener('abort', () => {
@@ -586,7 +632,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           const endEl = container.querySelector<HTMLSelectElement>('#usQhEnd');
           const tzEl = container.querySelector<HTMLSelectElement>('#usSharedTimezone');
           const overrideEl = container.querySelector<HTMLSelectElement>('#usQhOverride');
-          void setQuietHours({
+          fireForgetSave(setQuietHours({
             variant: SITE_VARIANT,
             quietHoursEnabled: enabledEl?.checked ?? false,
             quietHoursStart: startEl ? Number(startEl.value) : 22,
@@ -594,7 +640,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             quietHoursTimezone: tzEl?.value || detectedTz,
             quietHoursOverride: (overrideEl?.value ?? 'critical_only') as QuietHoursOverride,
             countries: countryPicker ? countryPicker.getValue() : undefined,
-          });
+          }), 'save quiet hours');
         }, 800);
       };
 
@@ -604,13 +650,13 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           const modeEl = container.querySelector<HTMLSelectElement>('#usDigestMode');
           const hourEl = container.querySelector<HTMLSelectElement>('#usDigestHour');
           const tzEl = container.querySelector<HTMLSelectElement>('#usSharedTimezone');
-          void setDigestSettings({
+          fireForgetSave(setDigestSettings({
             variant: SITE_VARIANT,
             digestMode: (modeEl?.value ?? 'realtime') as DigestMode,
             digestHour: hourEl ? Number(hourEl.value) : 8,
             digestTimezone: tzEl?.value || detectedTz,
             countries: countryPicker ? countryPicker.getValue() : undefined,
-          });
+          }), 'save digest settings');
         }, 800);
       };
 
@@ -640,7 +686,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           // server never sees the forbidden pair. When switching AWAY, re-enable
           // 'all'. Save atomically via setNotificationConfig (the legacy
           // setDigestSettings call would race against the cross-field validator).
-          // See plans/forbid-realtime-all-events.md §2c, §2d.
+          // See docs/archive/plans/forbid-realtime-all-events.md §2c, §2d.
           const sensitivityEl = container.querySelector<HTMLSelectElement>('#usNotifSensitivity');
           const allOption = sensitivityEl?.querySelector<HTMLOptionElement>('option[value="all"]');
           const highOption = sensitivityEl?.querySelector<HTMLOptionElement>('option[value="high"]');
@@ -730,23 +776,23 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             // reads from the DOM, which has already been updated by the time
             // the debounce fires, but explicit override avoids any race).
             const state = getCurrentAlertRuleFormState();
-            void saveAlertRules({
+            fireForgetSave(saveAlertRules({
               variant: SITE_VARIANT,
               ...state,
               aiDigestEnabled: target.checked,
-            });
+            }), 'save alert rules');
           }, 500);
           return;
         }
-        if (target.id === 'usNotifEnabled' || target.id === 'usNotifSensitivity') {
+        if (target.id === 'usNotifEnabled' || target.id === 'usNotifSensitivity' || target.id === 'usWatchlistAlerts') {
           if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
           alertRuleDebounceTimer = setTimeout(() => {
             // Source from the centralized helper so `countries` flows through.
             const state = getCurrentAlertRuleFormState();
-            void saveAlertRules({
+            fireForgetSave(saveAlertRules({
               variant: SITE_VARIANT,
               ...state,
-            });
+            }), 'save alert rules');
           }, 1000);
         }
       }, { signal });
@@ -782,7 +828,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           setTrustedHtml(rowEl, trustedHtml(`<div class="us-notif-ch-icon">${channelIcon('telegram')}</div><div class="us-notif-ch-body"><div class="us-notif-ch-name">Telegram</div><div class="us-notif-ch-sub">Generating code…</div></div>`, "legacy direct innerHTML migration"));
           createPairingToken().then(({ token, expiresAt }) => {
             if (signal.aborted) return;
-            const botUsername = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_TELEGRAM_BOT_USERNAME as string | undefined) ?? 'WorldMonitorBot';
+            const botUsername = getTelegramBotUsername();
             const deepLink = `https://t.me/${String(botUsername)}?start=${token}`;
             const startCmd = `/start ${token}`;
             const secsLeft = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));

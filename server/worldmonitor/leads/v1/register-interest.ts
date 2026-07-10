@@ -250,7 +250,7 @@ async function sendConfirmationEmail(email: string, referralCode: string): Promi
                 </table>
               </div>
               <div style="text-align: center; margin-bottom: 36px;">
-                <a href="https://worldmonitor.app" style="display: inline-block; background: #4ade80; color: #0a0a0a; padding: 14px 36px; text-decoration: none; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; border-radius: 2px;">Explore the Free Dashboard</a>
+                <a href="https://worldmonitor.app/dashboard" style="display: inline-block; background: #4ade80; color: #0a0a0a; padding: 14px 36px; text-decoration: none; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; border-radius: 2px;">Explore the Free Dashboard</a>
                 <p style="font-size: 12px; color: #555; margin-top: 12px;">The free dashboard stays free forever. Pro adds intelligence on top.</p>
               </div>
             </div>

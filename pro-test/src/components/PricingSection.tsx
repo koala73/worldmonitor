@@ -6,9 +6,11 @@ import { t, tArray } from '../i18n';
 
 // Static fallback from build-time generation (used while fetching live prices)
 import fallbackTiers from '../generated/tiers.json';
+import { resolveCheckoutProduct } from './pricing-billing-mode';
 
 interface Tier {
   name: string;
+  localeKey?: string;
   description: string;
   features: string[];
   highlighted?: boolean;
@@ -45,12 +47,11 @@ function usePricingData(): Tier[] {
 
 /**
  * Look up localized copy for a catalog tier, falling back to the catalog
- * value when the locale hasn't translated this tier yet. Stable lookup key
- * is the lower-cased English tier name (Free / Pro / API / Enterprise) —
- * the catalog API treats those as identifiers, not display copy.
+ * value when the locale hasn't translated this tier yet. Generated tiers
+ * carry a stable localeKey so display-name changes do not affect lookup.
  */
 function localizeTier(tier: Tier): { description: string; features: string[]; cta?: string } {
-  const key = tier.name.toLowerCase();
+  const key = tier.localeKey ?? tier.name.toLowerCase();
   const description = t(`pricing.tiers.${key}.description`, { defaultValue: tier.description });
   const features = tArray(`pricing.tiers.${key}.features`) ?? tier.features;
   // Resolve CTA priority: locale-specific tier override → catalog tier.cta →
@@ -84,7 +85,7 @@ function formatPrice(tier: Tier, billing: 'monthly' | 'annual'): { amount: strin
 
 type CtaProps =
   | { type: 'link'; label: string; href: string; external: boolean }
-  | { type: 'checkout'; label: string; productId: string };
+  | { type: 'checkout'; label: string; productId: string; billedMonthlyOnly: boolean };
 
 /**
  * Is this href pointing back at our own product surface (so a
@@ -143,12 +144,21 @@ function getCtaProps(tier: Tier, billing: 'monthly' | 'annual'): CtaProps {
       external: !isInProductHref(tier.href),
     };
   }
-  if (tier.monthlyProductId) {
-    const productId = (billing === 'annual' && tier.annualProductId) ? tier.annualProductId : tier.monthlyProductId;
+  const resolved = resolveCheckoutProduct(tier, billing);
+  if (resolved) {
     // Honor per-tier CTA text from the catalog (e.g. "Start Pro",
     // "Subscribe") when present; fall back to a localized generic label
     // so paid checkout buttons aren't English-only on non-English locales.
-    return { type: 'checkout', label: tier.cta ?? t('pricing.cta.checkoutDefault'), productId };
+    // billedMonthlyOnly (#4946 round 4): with the page toggle on Annual, a
+    // monthly-only tier (API Business) still checks out its monthly product
+    // — the card renders an explicit "billed monthly" note so entering
+    // checkout from an annual-selected state is never a silent surprise.
+    return {
+      type: 'checkout',
+      label: tier.cta ?? t('pricing.cta.checkoutDefault'),
+      productId: resolved.productId,
+      billedMonthlyOnly: resolved.billedMonthlyOnly,
+    };
   }
   return { type: 'link', label: t('pricing.cta.learnMore'), href: '#', external: false };
 }
@@ -247,7 +257,9 @@ export function PricingSection({ refCode }: { refCode?: string }) {
         </div>
 
         {/* Tier cards grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* 5 tiers since API Business was published (#4945): 2-up on tablet,
+            3+2 on laptop, all five across on desktop. */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
           {TIERS.map((tier, i) => {
             const price = formatPrice(tier, billing);
             const localized = localizeTier(tier);
@@ -291,6 +303,11 @@ export function PricingSection({ refCode }: { refCode?: string }) {
                 <div className="mb-6">
                   <span className="text-4xl font-display font-bold">{price.amount}</span>
                   <span className="text-sm text-wm-muted ml-1">{price.suffix}</span>
+                  {cta.type === 'checkout' && cta.billedMonthlyOnly && (
+                    <p className="mt-1 text-[11px] font-mono uppercase tracking-wider text-wm-muted">
+                      {t('pricing.billedMonthlyNote', { defaultValue: 'Billed monthly — no annual plan' })}
+                    </p>
+                  )}
                 </div>
 
                 {/* Features */}

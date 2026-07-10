@@ -29,10 +29,10 @@ jobs:
       run:
         working-directory: workers/api-cors-preflight
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '22'
+          node-version: '24'
       - name: Install
         run: npm install --no-audit --no-fund
       - name: Run unit tests
@@ -46,10 +46,10 @@ jobs:
       run:
         working-directory: workers/api-cors-preflight
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '22'
+          node-version: '24'
       - name: Install
         run: npm install --no-audit --no-fund
       - name: Deploy
@@ -63,10 +63,10 @@ jobs:
     needs: deploy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: '22'
+          node-version: '24'
       - name: Wait for Worker propagation
         # Cloudflare documents Workers propagation to the global edge as up
         # to ~30 s, occasionally longer. A 15 s wait races the in-flight

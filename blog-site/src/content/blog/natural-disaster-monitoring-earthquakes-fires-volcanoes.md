@@ -1,5 +1,5 @@
 ---
-title: "Earthquake, Fire, Flood: Real-Time Natural Disaster Monitoring with World Monitor"
+title: "Real-Time Natural Disaster Monitoring with World Monitor"
 description: "Track earthquakes, satellite-detected fires, volcanic eruptions, and floods in real time. Free disaster monitoring with geopolitical context on World Monitor."
 metaTitle: "Natural Disaster Monitoring Dashboard | World Monitor"
 keywords: "real-time earthquake map, natural disaster monitoring dashboard, NASA fire detection map, disaster tracking tool free, earthquake volcano flood tracker"
@@ -178,4 +178,4 @@ Yes. Use Custom Keyword Monitors for terms like "earthquake," "wildfire," or "fl
 
 ---
 
-**Monitor natural disasters in context at [worldmonitor.app](https://worldmonitor.app). USGS, NASA, and AI analysis, all in one free dashboard.**
+**Monitor natural disasters in context at [worldmonitor.app](https://www.worldmonitor.app). USGS, NASA, and AI analysis, all in one free dashboard.**

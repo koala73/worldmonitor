@@ -1,0 +1,76 @@
+name: Security Audit
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '30 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit-lockfile:
+    name: audit-lockfile (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: root
+            path: .
+            package_json: package.json
+            lockfile: package-lock.json
+          - name: scripts
+            path: scripts
+            package_json: scripts/package.json
+            lockfile: scripts/package-lock.json
+          - name: consumer-prices-core
+            path: consumer-prices-core
+            package_json: consumer-prices-core/package.json
+            lockfile: consumer-prices-core/package-lock.json
+          - name: blog-site
+            path: blog-site
+            package_json: blog-site/package.json
+            lockfile: blog-site/package-lock.json
+          - name: pro-test
+            path: pro-test
+            package_json: pro-test/package.json
+            lockfile: pro-test/package-lock.json
+          - name: docker-runtime
+            path: docker
+            package_json: docker/runtime-package.json
+            lockfile: docker/runtime-package-lock.json
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Audit ${{ matrix.lockfile }}
+        run: >
+          node .github/scripts/audit-production-dependencies.mjs
+          --workspace "${{ matrix.path }}"
+          --package-json "${{ matrix.package_json }}"
+          --lockfile "${{ matrix.lockfile }}"
+
+  security-audit:
+    name: security-audit
+    runs-on: ubuntu-latest
+    needs: audit-lockfile
+    if: ${{ always() }}
+    steps:
+      - name: Verify lockfile audits passed
+        env:
+          AUDIT_RESULT: ${{ needs.audit-lockfile.result }}
+        run: |
+          if [ "$AUDIT_RESULT" = "cancelled" ]; then
+            echo "::error::The dependency audit matrix was cancelled before every production lockfile was audited."
+            exit 1
+          fi
+          if [ "$AUDIT_RESULT" != "success" ]; then
+            echo "::error::One or more production dependency audits failed."
+            exit 1
+          fi

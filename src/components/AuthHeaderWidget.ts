@@ -19,7 +19,7 @@ export class AuthHeaderWidget {
 
     this.unsubscribeAuth = subscribeAuthState((state: AuthSession) => {
       if (state.isPending) {
-        setTrustedHtml(this.container, trustedHtml('', "legacy direct innerHTML migration"));
+        this.renderPending();
         return;
       }
       this.render(state);
@@ -42,6 +42,8 @@ export class AuthHeaderWidget {
   private render(state: AuthSession): void {
     this.unmountUserButton?.();
     this.unmountUserButton = null;
+    this.container.classList.remove('auth-header-widget-pending');
+    this.container.removeAttribute('aria-busy');
     setTrustedHtml(this.container, trustedHtml('', "legacy direct innerHTML migration"));
 
     if (!state.user) {
@@ -49,6 +51,24 @@ export class AuthHeaderWidget {
       return;
     }
     this.renderSignedIn();
+  }
+
+  private renderPending(): void {
+    this.unmountUserButton?.();
+    this.unmountUserButton = null;
+    this.container.classList.add('auth-header-widget-pending');
+    this.container.setAttribute('aria-busy', 'true');
+    setTrustedHtml(this.container, trustedHtml('', "legacy direct innerHTML migration"));
+
+    const signInSkeleton = document.createElement('span');
+    signInSkeleton.className = 'auth-header-skeleton auth-header-skeleton-signin';
+    signInSkeleton.setAttribute('aria-hidden', 'true');
+    this.container.appendChild(signInSkeleton);
+
+    const signUpSkeleton = document.createElement('span');
+    signUpSkeleton.className = 'auth-header-skeleton auth-header-skeleton-signup';
+    signUpSkeleton.setAttribute('aria-hidden', 'true');
+    this.container.appendChild(signUpSkeleton);
   }
 
   private renderSignedOut(): void {

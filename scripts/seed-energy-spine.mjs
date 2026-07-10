@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { createRequire } from 'node:module';
+
 import {
   acquireLockSafely,
   extendExistingTtl,
@@ -11,6 +13,9 @@ import {
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
 loadEnvFile(import.meta.url);
+const require = createRequire(import.meta.url);
+const UN_TO_ISO2 = require('./shared/un-to-iso2.json');
+const COMTRADE_REPORTER_OVERRIDES = require('./shared/comtrade-reporter-overrides.json');
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -23,17 +28,15 @@ const LOCK_DOMAIN = 'energy:spine';
 const LOCK_TTL_MS = 20 * 60 * 1000; // 20 min (pipeline write of 200+ countries)
 const MIN_COVERAGE_RATIO = 0.80; // abort if new spine < 80% of previous country count
 
-// Countries with Comtrade reporter codes for shock model inputs.
-// Only these 6 reporters are seeded in comtrade:flows; must stay in sync with
-// compute-energy-shock.ts ISO2_TO_COMTRADE.
-const ISO2_TO_COMTRADE = {
-  US: '842',
-  CN: '156',
-  RU: '643',
-  IR: '364',
-  IN: '699',
-  TW: '490',
-};
+const ISO2_TO_UN = Object.fromEntries(Object.entries(UN_TO_ISO2).map(([unCode, iso2]) => [iso2, unCode]));
+
+// Only these reporters are seeded in comtrade:flows for spine shock inputs.
+// Reporter codes still resolve from shared Comtrade metadata so non-M49 facts
+// such as IN/TW cannot drift into a separate inline map.
+const SHOCK_INPUT_REPORTERS = ['US', 'CN', 'RU', 'IR', 'IN', 'TW'];
+const ISO2_TO_COMTRADE = Object.freeze(Object.fromEntries(
+  SHOCK_INPUT_REPORTERS.map((iso2) => [iso2, COMTRADE_REPORTER_OVERRIDES[iso2] ?? ISO2_TO_UN[iso2]]),
+));
 
 // Chokepoints supported by the shock model for comtrade-mapped countries.
 const SHOCK_CHOKEPOINTS = ['hormuz', 'malacca', 'suez', 'babelm'];

@@ -178,15 +178,15 @@
     "apiTier": "المستوى API",
     "title": "استخبارات برمجية",
     "subtitle": "للمطورين والمحللين والفرق التي تبني على بيانات World Monitor. منفصل عن Pro — استخدم كليهما أو أحدهما.",
-    "restApi": "REST API عبر جميع النطاقات الـ 30+",
+    "restApi": "REST API عبر جميع النطاقات الـ 30+ — حزم SDK رسمية لـ JavaScript وPython وRuby وGo",
     "authenticated": "مُصادق لكل مفتاح، محدود المعدل لكل مستوى",
     "structured": "JSON منظَّم مع cache headers ووثائق OpenAPI 3.1",
     "starter": "Starter",
     "starterReqs": "1,000 طلب/يوم",
     "starterWebhooks": "5 قواعد webhook",
     "business": "Business",
-    "businessReqs": "50,000 طلب/يوم",
-    "businessWebhooks": "webhooks غير محدودة + SLA",
+    "businessReqs": "10,000 طلب/يوم",
+    "businessWebhooks": "Priority support",
     "feedData": "ضخ البيانات إلى لوحاتك، أتمتة التنبيهات عبر Zapier/n8n/Make، بناء نماذج تسجيل مخصصة على بيانات CII/المخاطر."
   },
   "enterpriseShowcase": {
@@ -374,16 +374,17 @@
           "ملخصات السوق اليومية",
           "تتبع العسكرية والجيوسياسية",
           "منشئ الأدوات المخصصة",
-          "موصلات بيانات MCP",
+          "وصول MCP + SDK إلى Claude Desktop وعملاء الذكاء الاصطناعي الآخرين (50 استدعاء/اليوم)",
           "تحديث البيانات ذو الأولوية"
         ]
       },
       "api": {
         "description": "الوصول البرمجي إلى بيانات الذكاء",
         "features": [
-          "وصول REST API",
+          "واجهة REST API + حزم SDK رسمية (npm, PyPI, RubyGems, Go)",
           "تدفقات البيانات في الوقت الفعلي",
-          "1,000 طلب/يوم",
+          "60 طلب/دقيقة",
+          "1,000 طلب/يوم مشمولة",
           "إشعارات Webhook",
           "تصدير البيانات المخصصة"
         ]

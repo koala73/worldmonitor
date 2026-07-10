@@ -22,12 +22,35 @@ The post-flip ranking and acceptance snapshots are still not committed in
 `docs/snapshots/`. They cannot be generated from an unauthenticated shell:
 `scripts/freeze-resilience-ranking.mjs` verifies score anchors through
 `/api/resilience/v1/get-resilience-score`, which returns `401 Pro
-authentication required` without `WORLDMONITOR_API_KEY`. There is also no
-checked-in energy-v2-specific acceptance generator today. Do not use
-`scripts/compare-resilience-current-vs-proposed.mjs` for the
-`resilience-energy-v2-acceptance-*` artifact: that script compares the
-legacy six-domain aggregate against the pillar-combined formula and is not
-an energy-v2 post-flip acceptance harness.
+authentication required` without `WORLDMONITOR_API_KEY`. The dedicated
+energy-v2 acceptance generator now exists at
+`scripts/capture-resilience-energy-v2-acceptance.mjs`, but it requires a real
+post-flip PR1 ranking snapshot before it will write
+`resilience-energy-v2-acceptance-*`. Do not use
+`scripts/compare-resilience-current-vs-proposed.mjs` for the acceptance
+artifact: that script compares the legacy six-domain aggregate against the
+pillar-combined formula and is not an energy-v2 post-flip acceptance harness.
+
+2026-06-04 R7-ACCEPT adjudication update:
+
+- Public runtime evidence remains post-flip: `/api/resilience/v1/get-runtime-manifest`
+  returned HTTP 200 with `formulaTag: "pc"`, `constructVersions.energy: "v2"`,
+  `rankingCache.count == rankingCache.scored == rankingCache.total == 196`, and
+  `intervals.available: true`.
+- `/api/health` returned HTTP 200 with overall status `DEGRADED` due to
+  unrelated checks, while the energy-v2 seed checks remained `OK` for
+  `lowCarbonGeneration`, `fossilElectricityShare`, and `powerLosses`.
+- Credentialed live ranking evidence later on 2026-06-04 showed the stale
+  whole-index anchors explicitly: `DE 62.35 > FR 59.93` and
+  `CH 75.88 > SG 56.74`. Those directions are consistent with the active
+  pillar-combined CRI, where France's energy-dimension advantage and
+  Singapore's SWF buffer are real but do not dominate the six-domain
+  whole-index score.
+- The matched-pair configuration now encodes the current whole-index anchors as
+  `de-vs-fr` and `ch-vs-sg`. If a future audit needs to test the PR 1 energy
+  mechanism directly, use credentialed sampled score-endpoint
+  `domains[].dimensions[]` evidence for the `energy` dimension rather than
+  reversing the overall-score pair direction.
 
 ### What can be verified without secrets
 
@@ -65,40 +88,39 @@ Run from the repo root with production credentials:
 ```bash
 export API_BASE=https://www.worldmonitor.app
 export WORLDMONITOR_API_KEY=<pro-api-key>
+export CAPTURE_DATE=$(date -u +%Y-%m-%d)
+export RESILIENCE_RANKING_OUTPUT_BASENAME=resilience-ranking-live-post-pr1-${CAPTURE_DATE}.json
+# Defaults to FR,DE,SG,CH,NO,CA,AE,BH; set explicitly only to override.
+export RESILIENCE_ENERGY_V2_SAMPLE_COUNTRIES=FR,DE,SG,CH,NO,CA,AE,BH
 
 node scripts/freeze-resilience-ranking.mjs
-mv "docs/snapshots/resilience-ranking-$(date +%Y-%m-%d).json" \
-  "docs/snapshots/resilience-ranking-live-post-pr1-$(date +%Y-%m-%d).json"
 
 jq '.formulaVerification.declaredFormula' \
-  "docs/snapshots/resilience-ranking-live-post-pr1-$(date +%Y-%m-%d).json"
+  "docs/snapshots/resilience-ranking-live-post-pr1-${CAPTURE_DATE}.json"
 
-git add docs/snapshots/resilience-ranking-live-post-pr1-*.json
+node --import tsx/esm scripts/capture-resilience-energy-v2-acceptance.mjs
+
+git add \
+  docs/snapshots/resilience-ranking-live-post-pr1-*.json \
+  docs/snapshots/resilience-energy-v2-acceptance-*.json
 ```
 
 Commit the ranking artifact only if the snapshot verifies the declared
 formula. The matching `resilience-energy-v2-acceptance-{date}.json` artifact
-still requires a dedicated energy-v2 acceptance harness. That harness must
-compare the active post-flip energy-v2 ranking against the pre-flip/prior
-energy baseline using the PR 1 gates (Spearman, country drift, cohort median,
-matched-pair directions, and effective influence), and must verify the live
-manifest/health state above. Until that harness exists and returns `PASS`,
-do not commit a synthetic acceptance JSON; attach the missing-harness status
-to the resilience closeout issue.
-
-If the dedicated acceptance harness reads production Redis directly, keep its
-operator setup separate from the ranking-freeze step above. Expected Redis
-environment names for the shared Upstash client are
-`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`,
-`REDIS_OP_TIMEOUT_MS=10000`, and `REDIS_PIPELINE_TIMEOUT_MS=30000`; the active
-post-flip runtime state still needs to be verified through the public manifest,
-not inferred from a local `RESILIENCE_ENERGY_V2_ENABLED` value.
+is written by `scripts/capture-resilience-energy-v2-acceptance.mjs` only after
+it can read a real `resilience-ranking-live-post-pr1-{date}.json`, compare it
+against the prior ranking baseline using the PR 1 gates (Spearman, country
+drift, cohort median, matched-pair directions, and effective influence), and
+verify the live manifest/health state above. If the script exits non-zero, do
+not commit a synthetic acceptance JSON; attach the emitted gate details to the
+resilience closeout issue.
 
 ### Energy-v2 acceptance artifact contract
 
-Once the dedicated harness exists, the committed JSON must be named
-`docs/snapshots/resilience-energy-v2-acceptance-{date}.json` and must not be
-the output of `scripts/compare-resilience-current-vs-proposed.mjs`. The minimum
+The committed JSON must be named
+`docs/snapshots/resilience-energy-v2-acceptance-{date}.json`, must be written
+by `scripts/capture-resilience-energy-v2-acceptance.mjs`, and must not be the
+output of `scripts/compare-resilience-current-vs-proposed.mjs`. The minimum
 machine-checkable shape is:
 
 ```json
@@ -139,9 +161,9 @@ machine-checkable shape is:
 }
 ```
 
-If the credentialed ranking snapshot or the dedicated acceptance harness is
-still unavailable, attach this exact closeout status to the resilience issue
-instead of committing placeholder JSON:
+If the credentialed ranking snapshot is unavailable or the dedicated
+acceptance harness exits non-zero, attach this exact closeout status to the
+resilience issue instead of committing placeholder JSON:
 
 ```text
 Energy v2 is live: manifest formulaTag=pc, constructVersions.energy=v2,
@@ -151,8 +173,8 @@ fossilElectricityShare, and powerLosses.
 Artifact status: BLOCKED. docs/snapshots/resilience-ranking-live-post-pr1-*.json
 requires WORLDMONITOR_API_KEY because freeze-resilience-ranking verifies score
 anchors through get-resilience-score. docs/snapshots/resilience-energy-v2-acceptance-*.json
-is also blocked until the dedicated energy-v2 acceptance
-harness exists. No synthetic snapshots committed.
+is also blocked until scripts/capture-resilience-energy-v2-acceptance.mjs can
+read that ranking snapshot and return PASS. No synthetic snapshots committed.
 ```
 
 Follow the original gated procedure below for future rollback/replay drills.
@@ -185,7 +207,7 @@ All must be green before flipping `RESILIENCE_ENERGY_V2_ENABLED=true`:
    (scorer throws `ResilienceConfigurationError` → source-failure;
    health reports CRIT; both surface the gap independently).
 4. **Acceptance-gate rerun with flag-off.** Use the dedicated energy-v2
-   acceptance harness once it exists. Do not use
+   acceptance harness. Do not use
    `scripts/compare-resilience-current-vs-proposed.mjs` for this step; that
    script validates pillar-combine activation, not energy-v2 acceptance.
 
@@ -237,20 +259,27 @@ All must be green before flipping `RESILIENCE_ENERGY_V2_ENABLED=true`:
    post-deploy ranking refresh completes (check via
    `GET resilience:ranking:v11` in Redis):
    ```bash
+   CAPTURE_DATE=$(date -u +%Y-%m-%d)
    API_BASE=https://www.worldmonitor.app \
      WORLDMONITOR_API_KEY=<pro-api-key> \
+     RESILIENCE_RANKING_OUTPUT_BASENAME=resilience-ranking-live-post-pr1-${CAPTURE_DATE}.json \
      node scripts/freeze-resilience-ranking.mjs
-   mv "docs/snapshots/resilience-ranking-$(date +%Y-%m-%d).json" \
-     "docs/snapshots/resilience-ranking-live-post-pr1-$(date +%Y-%m-%d).json"
+   jq '.formulaVerification.declaredFormula' \
+     "docs/snapshots/resilience-ranking-live-post-pr1-${CAPTURE_DATE}.json"
    git add docs/snapshots/resilience-ranking-live-post-pr1-*.json
    git commit -m "chore(resilience): post-PR-1 snapshot"
    ```
 
-   Capture the matching acceptance verdict in the same closeout batch after a
-   dedicated energy-v2 acceptance harness exists. Do not use
-   `scripts/compare-resilience-current-vs-proposed.mjs` here; it validates
-   pillar-combine activation, not energy-v2 acceptance. The closeout artifact
-   should be written as
+   Capture the matching acceptance verdict in the same closeout batch:
+   ```bash
+   API_BASE=https://www.worldmonitor.app \
+     WORLDMONITOR_API_KEY=<pro-api-key> \
+     node --import tsx/esm scripts/capture-resilience-energy-v2-acceptance.mjs
+   ```
+
+   Do not use `scripts/compare-resilience-current-vs-proposed.mjs` here; it
+   validates pillar-combine activation, not energy-v2 acceptance. The closeout
+   artifact should be written as
    `docs/snapshots/resilience-energy-v2-acceptance-{date}.json`, report
    `.acceptanceGates.verdict == "PASS"`, and be committed with the post-flip
    ranking snapshot.

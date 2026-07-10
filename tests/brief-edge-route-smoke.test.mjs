@@ -14,10 +14,11 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
 
-const ROOT = resolve(new URL('.', import.meta.url).pathname, '..');
+const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 
 describe('api/brief/[userId]/[issueDate] module resolution', () => {
   it('loads the handler and its renderer dependency without error', async () => {

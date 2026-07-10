@@ -123,6 +123,7 @@ export async function deductSituation(
                 temperature: 0.3,
                 maxTokens: 1500,
                 timeoutMs: DEDUCT_TIMEOUT_MS,
+                stage: 'deduct-situation',
                 systemAppend: framework || undefined,
             });
 

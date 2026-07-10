@@ -12,6 +12,8 @@ export interface GetVesselSnapshotRequest {
 
 export interface GetVesselSnapshotResponse {
   snapshot?: VesselSnapshot;
+  fetchedAt: number;
+  dataAvailable: boolean;
 }
 
 export interface VesselSnapshot {

@@ -37,6 +37,10 @@ function initBody(id = 1) {
   };
 }
 
+function assertNoStore(res, label) {
+  assert.equal(res.headers.get('Cache-Control'), 'no-store', `${label} must include Cache-Control: no-store`);
+}
+
 let handler;
 let evaluateFreshness;
 
@@ -67,15 +71,197 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
   // --- Auth ---
 
-  it('returns HTTP 401 + WWW-Authenticate when no credentials provided', async () => {
+  // A DATA/quota method (tools/call) is the auth wall: unauthenticated → 401.
+  // Discovery methods (initialize / tools/list) are intentionally public — see
+  // the 'public discovery' block below — so they are NOT the probe here.
+  const protectedCallBody = (id = 1) => ({
+    jsonrpc: '2.0', id, method: 'tools/call',
+    params: { name: 'get_market_data', arguments: {} },
+  });
+
+  it('returns HTTP 401 + WWW-Authenticate when no credentials provided (protected method)', async () => {
     const req = new Request(BASE_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(initBody()),
+      body: JSON.stringify(protectedCallBody()),
     });
     const res = await handler(req);
     assert.equal(res.status, 401);
     assert.ok(res.headers.get('www-authenticate')?.includes('Bearer realm="worldmonitor"'), 'must include WWW-Authenticate header');
+    assert.match(res.headers.get('cache-control') || '', /\bno-store\b/i);
+    const body = await res.json();
+    assert.equal(body.error?.code, -32001);
+  });
+
+  // --- Public discovery (initialize + tools/list + resources/list servable without creds) ---
+
+  it('initialize succeeds WITHOUT credentials (public discovery)', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(initBody(1)),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'unauthenticated initialize must be public');
+    const body = await res.json();
+    assert.equal(body.result?.protocolVersion, '2025-03-26');
+    assert.equal(body.result?.serverInfo?.name, 'worldmonitor');
+    assert.ok(res.headers.get('mcp-session-id'), 'Mcp-Session-Id must be issued on the anonymous handshake');
+    assertNoStore(res, 'anonymous initialize');
+  });
+
+  it('tools/list succeeds WITHOUT credentials (public discovery) and returns tools', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'unauthenticated tools/list must be public');
+    const body = await res.json();
+    assert.ok(Array.isArray(body.result?.tools) && body.result.tools.length >= 3, 'must expose the tool catalog anonymously');
+  });
+
+  it('resources/list succeeds WITHOUT credentials (public discovery) and returns resources', async () => {
+    // Mirrors orank's `mcp-resource-listing` check, which drives this
+    // anonymously: `initialize` advertises the `resources` capability, so an
+    // unauthenticated resources/list MUST enumerate the catalog rather than
+    // 401 — otherwise the capability reads as advertised-but-empty.
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 4, method: 'resources/list', params: {} }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'unauthenticated resources/list must be public');
+    const body = await res.json();
+    assert.ok(Array.isArray(body.result?.resources) && body.result.resources.length >= 1,
+      'anonymous resources/list must expose a non-empty resource catalog (advertised `resources` capability)');
+  });
+
+  it('resources/templates/list succeeds WITHOUT credentials (public discovery) and returns URI templates', async () => {
+    // The data-bearing URI templates (country risk, chokepoint, market quote)
+    // moved from resources/list to resources/templates/list — this metadata
+    // method is public so agents can still discover them without auth.
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 5, method: 'resources/templates/list', params: {} }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'unauthenticated resources/templates/list must be public');
+    const body = await res.json();
+    assert.ok(Array.isArray(body.result?.resourceTemplates) && body.result.resourceTemplates.length >= 1,
+      'anonymous resources/templates/list must expose the URI-template catalog');
+    assert.ok(body.result.resourceTemplates.every((r) => typeof r.uriTemplate === 'string'),
+      'each template entry must carry a uriTemplate field');
+  });
+
+  it('resources/read of a PUBLIC resource succeeds WITHOUT credentials + never touches quota (orank mcp-resource-quality)', async () => {
+    // orank reads every resources/list entry via resources/read anonymously.
+    // The concrete PUBLIC resources (freshness/health probes) return
+    // metadata-only content, so they read cleanly without auth or quota.
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 6, method: 'resources/read', params: { uri: 'worldmonitor://seed-meta/freshness' } }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'anonymous resources/read of a public resource must be 200');
+    const body = await res.json();
+    assert.equal(body.error, undefined, `must not error: ${JSON.stringify(body.error)}`);
+    const c = body.result?.contents?.[0];
+    assert.equal(c?.mimeType, 'application/json');
+    assert.ok(typeof c?.text === 'string' && c.text.length > 0, 'content must be non-empty');
+    assertNoStore(res, 'anonymous public resources/read');
+  });
+
+  // Every capability advertised on the ANONYMOUS initialize must be anonymously
+  // exercisable, or an unauthenticated MCP SDK client hangs: a gated method
+  // answers HTTP 401 with JSON-RPC id:null, the SDK transport cannot correlate
+  // a non-200/id:null response to the pending request, and the client times out
+  // 30s later and marks the server unstable (customer-reported via Claude
+  // Desktop + mcp-remote, issue #4937). prompts/* are static workflow templates
+  // and logging/setLevel is a no-op ack — metadata-class, no data, no quota.
+  // ping is a spec-mandated liveness check (SDK keepalives hang the same way).
+  it('prompts/list succeeds WITHOUT credentials and echoes the request id (#4937 — anon hang)', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 2, method: 'prompts/list', params: {} }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'unauthenticated prompts/list must be public — a 401 hangs SDK clients that saw the advertised prompts capability');
+    const body = await res.json();
+    assert.equal(body.id, 2, 'response id must echo the request id (id:null is uncorrelatable)');
+    assert.ok(Array.isArray(body.result?.prompts) && body.result.prompts.length > 0,
+      'anonymous prompts/list must expose the prompt catalog');
+    assertNoStore(res, 'anonymous prompts/list');
+  });
+
+  it('prompts/get succeeds WITHOUT credentials (static template, no data)', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 8, method: 'prompts/get', params: { name: 'country-briefing', arguments: { iso2: 'DE' } } }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'unauthenticated prompts/get must be public — it renders a static workflow template');
+    const body = await res.json();
+    assert.equal(body.id, 8);
+    assert.ok(Array.isArray(body.result?.messages) && body.result.messages.length > 0,
+      'anonymous prompts/get must render the template messages');
+    assertNoStore(res, 'anonymous prompts/get');
+  });
+
+  it('ping succeeds WITHOUT credentials (spec liveness check — SDK keepalives must not hang)', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 9, method: 'ping', params: {} }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'unauthenticated ping must answer — the MCP spec requires ping to be answerable');
+    const body = await res.json();
+    assert.equal(body.id, 9);
+    assert.deepEqual(body.result, {});
+    assertNoStore(res, 'anonymous ping');
+  });
+
+  it('logging/setLevel succeeds WITHOUT credentials (no-op ack for the advertised logging capability)', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 10, method: 'logging/setLevel', params: { level: 'info' } }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 200, 'unauthenticated logging/setLevel must be public — the logging capability is advertised anonymously');
+    const body = await res.json();
+    assert.equal(body.id, 10);
+    assert.deepEqual(body.result, {});
+    assertNoStore(res, 'anonymous logging/setLevel');
+  });
+
+  it('resources/read of a data-bearing TEMPLATE instantiation still requires credentials (no quota bypass)', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 7, method: 'resources/read', params: { uri: 'worldmonitor://countries/de/risk' } }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 401, 'resources/read of a data-bearing template is a data/quota method — must stay gated');
+    const body = await res.json();
+    assert.equal(body.error?.code, -32001);
+  });
+
+  it('tools/call still requires credentials even though discovery is public', async () => {
+    const req = new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(protectedCallBody(3)),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 401, 'tools/call is a data/quota method — must stay gated');
     const body = await res.json();
     assert.equal(body.error?.code, -32001);
   });
@@ -98,6 +284,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const res = await handler(req);
     assert.equal(res.status, 204);
     assert.ok(res.headers.get('access-control-allow-methods'));
+    assert.match(res.headers.get('cache-control') || '', /\bno-store\b/i);
   });
 
   it('initialize returns protocol version and Mcp-Session-Id header', async () => {
@@ -109,6 +296,24 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(body.result?.protocolVersion, '2025-03-26');
     assert.equal(body.result?.serverInfo?.name, 'worldmonitor');
     assert.ok(res.headers.get('mcp-session-id'), 'Mcp-Session-Id header must be present');
+  });
+
+  it('bakes Cache-Control: no-store into JSON-RPC success and SSE-upgraded responses', async () => {
+    // getMcpCorsHeaders() threads no-store into every branch; assert the positive
+    // 200 paths (the #4497 incident class is a CACHED 200), not just the 401/204
+    // negative paths the other two assertions cover.
+    const json = await handler(makeReq('POST', initBody(50)));
+    assert.equal(json.status, 200);
+    assert.match(json.headers.get('cache-control') || '', /\bno-store\b/i, 'JSON-RPC 200 success must be no-store');
+
+    // Accept: text/event-stream upgrades the 200 to SSE; it must keep no-transform
+    // (framing) AND carry no-store (payload), and preserve Mcp-Session-Id.
+    const sse = await handler(makeReq('POST', initBody(51), { Accept: 'text/event-stream' }));
+    assert.equal(sse.status, 200);
+    assert.match(sse.headers.get('content-type') || '', /text\/event-stream/, 'must upgrade to an SSE stream');
+    assert.equal(sse.headers.get('cache-control'), 'no-store, no-transform', 'SSE success must be no-store + no-transform');
+    assert.ok(sse.headers.get('mcp-session-id'), 'Mcp-Session-Id must survive the SSE envelope');
+    await sse.body?.cancel();
   });
 
   it('notifications/initialized returns 202 with no body', async () => {
@@ -132,6 +337,63 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const res = await handler(req);
     const body = await res.json();
     assert.equal(body.error?.code, -32600);
+  });
+
+  it('sets Cache-Control: no-store on representative MCP success and error responses', async () => {
+    const preflight = await handler(new Request(BASE_URL, {
+      method: 'OPTIONS',
+      headers: { origin: 'https://claude.ai' },
+    }));
+    assert.equal(preflight.status, 204);
+    assertNoStore(preflight, 'OPTIONS preflight');
+
+    const unauthenticated = await handler(new Request(BASE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(protectedCallBody()),
+    }));
+    assert.equal(unauthenticated.status, 401);
+    assertNoStore(unauthenticated, 'auth error');
+
+    const initialized = await handler(makeReq('POST', initBody(20)));
+    assert.equal(initialized.status, 200);
+    assertNoStore(initialized, 'initialize success');
+    assert.ok(initialized.headers.get('Mcp-Session-Id'), 'Mcp-Session-Id header must still be present');
+
+    const acknowledged = await handler(makeReq('POST', {
+      jsonrpc: '2.0',
+      method: 'notifications/initialized',
+      params: {},
+    }));
+    assert.equal(acknowledged.status, 202);
+    assertNoStore(acknowledged, 'notification acknowledgement');
+
+    const invalidMethod = await handler(makeReq('POST', {
+      jsonrpc: '2.0',
+      id: 21,
+      method: 'nonexistent/method',
+      params: {},
+    }));
+    assert.equal(invalidMethod.status, 200);
+    assertNoStore(invalidMethod, 'JSON-RPC error');
+  });
+
+  it('SSE-upgraded success carries no-store, no-transform and preserves the session id', async () => {
+    // Accept: text/event-stream makes maybeStreamJsonRpcResponse upgrade the 200
+    // initialize reply to an SSE stream. The streamed reply (which carries the
+    // tool/resource result data on tools/call) must keep no-transform for framing
+    // AND now carry no-store so the payload is not cached, and still expose the
+    // Mcp-Session-Id through the SSE envelope.
+    const res = await handler(makeReq('POST', initBody(40), { Accept: 'text/event-stream' }));
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('Content-Type') ?? '', /text\/event-stream/, 'must upgrade to an SSE stream');
+    assert.equal(
+      res.headers.get('Cache-Control'),
+      'no-store, no-transform',
+      'SSE success must be no-store (payload not cached) + no-transform (SSE framing preserved)',
+    );
+    assert.ok(res.headers.get('mcp-session-id'), 'Mcp-Session-Id must survive the SSE envelope');
+    await res.body?.cancel();
   });
 
   // --- logging/setLevel ---
@@ -170,12 +432,12 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
   // --- tools/list ---
 
-  it('tools/list returns 39 tools with name, description, inputSchema', async () => {
+  it('tools/list returns 40 tools with name, description, inputSchema', async () => {
     const res = await handler(makeReq('POST', { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }));
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.ok(Array.isArray(body.result?.tools), 'result.tools must be an array');
-    assert.equal(body.result.tools.length, 39, `Expected 39 tools, got ${body.result.tools.length}`);
+    assert.equal(body.result.tools.length, 40, `Expected 40 tools, got ${body.result.tools.length}`);
     for (const tool of body.result.tools) {
       assert.ok(tool.name, 'tool.name must be present');
       assert.ok(tool.description, 'tool.description must be present');
@@ -210,10 +472,9 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
   it('tools/call with known tool returns -32603 when EVERY cache read is null (F6: cache_all_null)', async () => {
     // F6 review pass: degenerate-empty result (Redis transient/stampede)
-    // burns Pro quota silently if not surfaced. The env_key path doesn't
-    // have a quota counter, but the throw is uniform so dispatchToolsCall's
-    // catch can fire its DECR rollback when applicable. For env_key callers
-    // this surfaces as the same -32603 as any other tool-execution failure.
+    // must surface as a tool-execution failure instead of a misleading success.
+    // The env_key path doesn't have a quota counter; Pro callers keep the
+    // already-reserved slot charged after this post-execution failure.
     const res = await handler(makeReq('POST', {
       jsonrpc: '2.0', id: 4, method: 'tools/call',
       params: { name: 'get_market_data', arguments: {} },
@@ -265,6 +526,32 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
     assert.equal(freshness.stale, false);
     assert.equal(freshness.cached_at, new Date(now - 24 * 60 * 60_000).toISOString());
+  });
+
+  it('evaluateFreshness marks below-floor recordCount stale even when fetchedAt is fresh', () => {
+    const now = Date.UTC(2026, 5, 11, 12, 0, 0);
+    const freshness = evaluateFreshness(
+      [
+        { key: 'seed-meta:supply_chain:portwatch-ports', maxStaleMin: 2160, minRecordCount: 174 },
+      ],
+      [
+        { fetchedAt: now - 12 * 60 * 60_000, recordCount: 139 },
+      ],
+      now,
+    );
+
+    assert.equal(freshness.stale, true);
+    assert.equal(freshness.cached_at, new Date(now - 12 * 60 * 60_000).toISOString());
+  });
+
+  it('get_chokepoint_status declares the PortWatch 174-country freshness floor', async () => {
+    const { CACHE_TOOLS } = await import(`../api/mcp/registry/cache-tools.ts?t=${Date.now()}`);
+    const tool = CACHE_TOOLS.find((candidate) => candidate.name === 'get_chokepoint_status');
+    const portwatchFreshness = tool?._freshnessChecks?.find(
+      (check) => check.key === 'seed-meta:supply_chain:portwatch-ports',
+    );
+
+    assert.equal(portwatchFreshness?.minRecordCount, 174);
   });
 
   // --- Rate limiting ---
@@ -424,8 +711,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
     // Force the cache-tool fetch path to throw — dispatchToolsCall's outer
-    // catch fires, latency_ms is captured BEFORE rollback, and one
-    // mcp.toolcall line with ok:false must land.
+    // catch fires and one mcp.toolcall line with ok:false must land.
     globalThis.fetch = async () => { throw new TypeError('fetch failed'); };
 
     const captured = [];
@@ -452,7 +738,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(ev.error_kind, 'server_error');
     assert.equal(ev.tool, 'get_market_data');
     assert.equal(typeof ev.latency_ms, 'number');
-    assert.ok(Number.isFinite(ev.latency_ms), 'latency_ms must be finite (captured before rollback)');
+    assert.ok(Number.isFinite(ev.latency_ms), 'latency_ms must be finite on the error path');
     assert.equal(typeof ev.user_id, 'string');
     assert.ok(ev.user_id.length > 0, 'user_id must be present on the error path too');
     assert.notEqual(ev.user_id, VALID_KEY, 'error-path env_key user_id MUST be hashed — the key-never-logged contract holds on the ok:false branch too');
@@ -533,8 +819,8 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     // Regression guard for the round-1 blocker fix at api/mcp.ts:3173-3184.
     // Without the inner try/catch, the telemetry `JSON.stringify(result)`
     // on a circular `result` throws, control jumps to the outer catch, the
-    // request becomes a 5xx + Pro-quota rollback — even though JMESPath
-    // successfully projected a clean subtree. The fix must:
+    // request becomes a 5xx tool error — even though JMESPath successfully
+    // projected a clean subtree. The fix must:
     //   (a) keep the response 200 / ok:true (telemetry must never bubble),
     //   (b) emit `bytes_pre_jmespath: -1` (sentinel: measurement unavailable),
     //   (c) emit `bytes_post_jmespath > 0` (projection succeeded).
@@ -884,40 +1170,21 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(out.data['ucdp-events'].events.length, 50, 'limit: 0 must opt out of the default cap and return the full list');
   });
 
-  // --- limit on country/EU/displacement tools (env-var-gated default cap) ---
+  // --- limit on country/EU/displacement tools ---
   //
   // Five tools — get_country_macro, get_eu_housing_cycle,
   // get_eu_quarterly_gov_debt, get_eu_industrial_production,
   // get_displacement_data — return per-country payloads that can exceed the
-  // per-tool output budget on default args. The four IMF/Eurostat tools cap
-  // their keyed-object country maps via `capNestedMap`, gated by
-  // `MCP_LIMIT_DEFAULT_30=on` (additive-contract: env-var off → no behaviour
-  // change). `limit: 0` is the customer-facing opt-out and always returns
-  // the full payload. `get_displacement_data` has had array-based limit since
-  // v1.3.0 (#3678) — its block is unchanged; the test below pins the
-  // existing default cap and `limit: 0` opt-out so the budget gate's hot
-  // path stays covered.
+  // per-tool output budget on default args. The IMF/Eurostat tools cap their
+  // keyed-object country maps via `capNestedMap`; displacement caps arrays.
+  // `limit: 0` is the customer-facing opt-out and always returns the full
+  // payload.
 
   function makeCountryMap(prefix, n) {
     return Object.fromEntries(Array.from({ length: n }, (_, i) => [`${prefix}${i}`, { value: i }]));
   }
 
-  it('limit: get_country_macro env-var off → no cap (additive contract)', async () => {
-    const macro = { countries: makeCountryMap('C', 60) };
-    const meta = {
-      'seed-meta:economic:imf-macro': { fetchedAt: Date.now() - 60_000, recordCount: 60 },
-      'seed-meta:economic:imf-growth': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
-      'seed-meta:economic:imf-labor': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
-      'seed-meta:economic:imf-external': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
-    };
-    mockCacheKeys({ 'economic:imf:macro:v2': macro }, meta);
-    delete process.env.MCP_LIMIT_DEFAULT_30;
-    const out = await callTool('get_country_macro', {});
-    assert.equal(Object.keys(out.data.macro.countries).length, 60,
-      'env-var off → default args returns the full country map (additive contract)');
-  });
-
-  it('limit: get_country_macro env-var on → caps every IMF dataset to 30', async () => {
+  it('limit: get_country_macro default args → caps every IMF dataset to 30', async () => {
     // Mock all four IMF cache keys with 60 countries each so the test
     // actually verifies the `for (const label of ['macro','growth','labor',
     // 'external'])` capNestedMap loop, not just the macro label.
@@ -934,11 +1201,10 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       'economic:imf:labor:v1': payload,
       'economic:imf:external:v1': payload,
     }, meta);
-    process.env.MCP_LIMIT_DEFAULT_30 = 'on';
     const out = await callTool('get_country_macro', {});
     for (const label of ['macro', 'growth', 'labor', 'external']) {
       assert.equal(Object.keys(out.data[label].countries).length, 30,
-        `env-var on → ${label}.countries capped to DEFAULT_LIST_LIMIT (30)`);
+        `default args → ${label}.countries capped to DEFAULT_LIST_LIMIT (30)`);
     }
   });
 
@@ -956,13 +1222,12 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       'seed-meta:economic:imf-external': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
     };
     mockCacheKeys({ 'economic:imf:macro:v2': payload }, meta);
-    process.env.MCP_LIMIT_DEFAULT_30 = 'on';
     const out = await callTool('get_country_macro', { countries: ['C0', 'C1', 'C2', 'C3', 'C4'], limit: 1 });
     assert.equal(Object.keys(out.data.macro.countries).length, 5,
       'countries filter takes precedence; limit is ignored when countries is supplied');
   });
 
-  it('limit: get_country_macro limit:0 → full payload regardless of env-var', async () => {
+  it('limit: get_country_macro limit:0 → full payload', async () => {
     const macro = { countries: makeCountryMap('C', 60) };
     const meta = {
       'seed-meta:economic:imf-macro': { fetchedAt: Date.now() - 60_000, recordCount: 60 },
@@ -971,63 +1236,44 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       'seed-meta:economic:imf-external': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
     };
     mockCacheKeys({ 'economic:imf:macro:v2': macro }, meta);
-    process.env.MCP_LIMIT_DEFAULT_30 = 'on';
     const out = await callTool('get_country_macro', { limit: 0 });
     assert.equal(Object.keys(out.data.macro.countries).length, 60,
-      'limit: 0 is the customer-facing opt-out — full payload even with env-var on');
+      'limit: 0 is the customer-facing opt-out and returns the full payload');
   });
 
-  it('limit: get_eu_housing_cycle env-var off → no cap, env-var on → cap to 30, limit:0 → full', async () => {
+  it('limit: get_eu_housing_cycle default args → cap to 30, limit:0 → full', async () => {
     const hp = { countries: makeCountryMap('EU', 40) };
     const meta = { 'seed-meta:economic:eurostat-house-prices': { fetchedAt: Date.now() - 60_000, recordCount: 40 } };
 
     mockCacheKeys({ 'economic:eurostat:house-prices:v1': hp }, meta);
-    delete process.env.MCP_LIMIT_DEFAULT_30;
-    const off = await callTool('get_eu_housing_cycle', {});
-    assert.equal(Object.keys(off.data['house-prices'].countries).length, 40, 'env-var off → no cap');
-
-    mockCacheKeys({ 'economic:eurostat:house-prices:v1': hp }, meta);
-    process.env.MCP_LIMIT_DEFAULT_30 = 'on';
-    const on = await callTool('get_eu_housing_cycle', {});
-    assert.equal(Object.keys(on.data['house-prices'].countries).length, 30, 'env-var on → cap to 30');
+    const capped = await callTool('get_eu_housing_cycle', {});
+    assert.equal(Object.keys(capped.data['house-prices'].countries).length, 30, 'default args → cap to 30');
 
     mockCacheKeys({ 'economic:eurostat:house-prices:v1': hp }, meta);
     const optOut = await callTool('get_eu_housing_cycle', { limit: 0 });
     assert.equal(Object.keys(optOut.data['house-prices'].countries).length, 40, 'limit: 0 → full payload');
   });
 
-  it('limit: get_eu_quarterly_gov_debt env-var off → no cap, env-var on → cap to 30, limit:0 → full', async () => {
+  it('limit: get_eu_quarterly_gov_debt default args → cap to 30, limit:0 → full', async () => {
     const gd = { countries: makeCountryMap('EU', 40) };
     const meta = { 'seed-meta:economic:eurostat-gov-debt-q': { fetchedAt: Date.now() - 60_000, recordCount: 40 } };
 
     mockCacheKeys({ 'economic:eurostat:gov-debt-q:v1': gd }, meta);
-    delete process.env.MCP_LIMIT_DEFAULT_30;
-    const off = await callTool('get_eu_quarterly_gov_debt', {});
-    assert.equal(Object.keys(off.data['gov-debt-q'].countries).length, 40, 'env-var off → no cap');
-
-    mockCacheKeys({ 'economic:eurostat:gov-debt-q:v1': gd }, meta);
-    process.env.MCP_LIMIT_DEFAULT_30 = 'on';
-    const on = await callTool('get_eu_quarterly_gov_debt', {});
-    assert.equal(Object.keys(on.data['gov-debt-q'].countries).length, 30, 'env-var on → cap to 30');
+    const capped = await callTool('get_eu_quarterly_gov_debt', {});
+    assert.equal(Object.keys(capped.data['gov-debt-q'].countries).length, 30, 'default args → cap to 30');
 
     mockCacheKeys({ 'economic:eurostat:gov-debt-q:v1': gd }, meta);
     const optOut = await callTool('get_eu_quarterly_gov_debt', { limit: 0 });
     assert.equal(Object.keys(optOut.data['gov-debt-q'].countries).length, 40, 'limit: 0 → full payload');
   });
 
-  it('limit: get_eu_industrial_production env-var off → no cap, env-var on → cap to 30, limit:0 → full', async () => {
+  it('limit: get_eu_industrial_production default args → cap to 30, limit:0 → full', async () => {
     const ip = { countries: makeCountryMap('EU', 40) };
     const meta = { 'seed-meta:economic:eurostat-industrial-production': { fetchedAt: Date.now() - 60_000, recordCount: 40 } };
 
     mockCacheKeys({ 'economic:eurostat:industrial-production:v1': ip }, meta);
-    delete process.env.MCP_LIMIT_DEFAULT_30;
-    const off = await callTool('get_eu_industrial_production', {});
-    assert.equal(Object.keys(off.data['industrial-production'].countries).length, 40, 'env-var off → no cap');
-
-    mockCacheKeys({ 'economic:eurostat:industrial-production:v1': ip }, meta);
-    process.env.MCP_LIMIT_DEFAULT_30 = 'on';
-    const on = await callTool('get_eu_industrial_production', {});
-    assert.equal(Object.keys(on.data['industrial-production'].countries).length, 30, 'env-var on → cap to 30');
+    const capped = await callTool('get_eu_industrial_production', {});
+    assert.equal(Object.keys(capped.data['industrial-production'].countries).length, 30, 'default args → cap to 30');
 
     mockCacheKeys({ 'economic:eurostat:industrial-production:v1': ip }, meta);
     const optOut = await callTool('get_eu_industrial_production', { limit: 0 });
@@ -1451,10 +1697,9 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
 
     // F6 contract parity with the cache-tool path: hybrid _execute mirrors the
-    // executeTool cache_all_null guard so the Pro quota counter is rolled back
-    // on degenerate-empty responses (Redis transient / pre-seed). Without this
-    // guard, every other cache-tool throws on all-null while this one would
-    // return success and silently burn a quota tick.
+    // executeTool cache_all_null guard so degenerate-empty responses surface as
+    // -32603 instead of success. Without this guard, every other cache-tool
+    // throws on all-null while this one would return a misleading success.
     globalThis.fetch = async () => new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
     const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
@@ -2021,8 +2266,8 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
 
-    // F6 contract: degenerate-empty result must surface as -32603 so
-    // dispatchToolsCall's catch fires the proRollback DECR (Pro path).
+    // F6 contract: degenerate-empty result must surface as -32603. For Pro
+    // callers this is a post-execution failure, so the slot remains charged.
     globalThis.fetch = async () => new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
     const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
@@ -2203,16 +2448,28 @@ describe('api/mcp.ts — PRO MCP Server', () => {
   // --- get_maritime_activity ---
 
   it('get_maritime_activity returns zones and disruptions for valid country code', async () => {
+    // Fixture mirrors the REAL wire shape of the generated sebuf handler:
+    // camelCase keys + nested `location` objects. The original fixture used
+    // snake_case (which the wire never produces), so the tool's misread of
+    // density_zones/snapshot_at passed the suite while returning total_zones=0
+    // in production — WORLDMONITOR-T8. Items outside the AE bbox (+3° pad)
+    // must be filtered out tool-side; the inner fetch must carry NO bbox
+    // query (the handler 400s any dimension >10°, and 67 COUNTRY_BBOXES
+    // exceed that).
+    let innerUrl = null;
     globalThis.fetch = async (url) => {
       if (url.toString().includes('/api/maritime/v1/get-vessel-snapshot')) {
+        innerUrl = url.toString();
         return new Response(JSON.stringify({
           snapshot: {
-            snapshot_at: 1711620000000,
-            density_zones: [
-              { name: 'Strait of Hormuz', intensity: 82, ships_per_day: 45, delta_pct: 3.2, note: '' },
+            snapshotAt: 1711620000000,
+            densityZones: [
+              { name: 'Strait of Hormuz', location: { latitude: 26.6, longitude: 56.3 }, intensity: 82, shipsPerDay: 45, deltaPct: 3.2, note: '' },
+              { name: 'Zone 50,4 North Sea', location: { latitude: 51, longitude: 5 }, intensity: 1, shipsPerDay: 114240, deltaPct: 0, note: 'High traffic area' },
             ],
             disruptions: [
-              { name: 'Gulf AIS Gap', type: 'AIS_DISRUPTION_TYPE_GAP_SPIKE', severity: 'AIS_DISRUPTION_SEVERITY_ELEVATED', dark_ships: 3, vessel_count: 12, region: 'Persian Gulf', description: 'Elevated dark-ship activity' },
+              { name: 'Gulf AIS Gap', type: 'AIS_DISRUPTION_TYPE_GAP_SPIKE', severity: 'AIS_DISRUPTION_SEVERITY_ELEVATED', location: { latitude: 25.5, longitude: 54.0 }, darkShips: 3, vesselCount: 12, region: 'Persian Gulf', description: 'Elevated dark-ship activity' },
+              { name: 'Taiwan Strait', type: 'AIS_DISRUPTION_TYPE_CHOKEPOINT_CONGESTION', severity: 'AIS_DISRUPTION_SEVERITY_LOW', location: { latitude: 24.5, longitude: 119.5 }, darkShips: 0, vesselCount: 17, region: 'Taiwan Strait', description: 'Congestion' },
             ],
           },
         }), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -2228,11 +2485,101 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const body = await res.json();
     const data = JSON.parse(body.result.content[0].text);
     assert.equal(data.country_code, 'AE');
-    assert.equal(data.total_zones, 1);
-    assert.equal(data.total_disruptions, 1);
+    assert.ok(innerUrl !== null, 'inner vessel-snapshot fetch must happen');
+    assert.ok(!/sw_lat|ne_lat/.test(innerUrl), 'inner fetch must NOT send a bbox (handler caps at 10°/side)');
+    assert.equal(data.total_zones, 1, 'North Sea zone must be filtered out of AE results');
+    assert.equal(data.total_disruptions, 1, 'Taiwan Strait must be filtered out of AE results');
     assert.equal(data.density_zones[0].name, 'Strait of Hormuz');
+    assert.equal(data.density_zones[0].ships_per_day, 45, 'camelCase wire field must map to snake_case output');
     assert.equal(data.disruptions[0].dark_ships, 3);
+    assert.equal(data.snapshot_at, new Date(1711620000000).toISOString(), 'snapshotAt wire field must populate snapshot_at');
     assert.ok(data.bounding_box?.sw_lat !== undefined, 'bounding_box must be present');
+  });
+
+  it('get_maritime_activity keeps dateline-adjacent results when the pad crosses ±180 (FJ)', async () => {
+    // FJ bbox is [-18.25, 177.34, -16.15, 180]: the +3° pad pushes the east
+    // edge to 183, so a point at -179 sits just across the dateline and MUST
+    // match (it is 1-4° away), while a genuinely distant Pacific point must
+    // not. The original filter only treated sw_lon > ne_lon as wrapped and
+    // silently dropped the -179 point.
+    globalThis.fetch = async (url) => {
+      if (url.toString().includes('/api/maritime/v1/get-vessel-snapshot')) {
+        return new Response(JSON.stringify({
+          snapshot: {
+            snapshotAt: 1711620000000,
+            densityZones: [
+              { name: 'Across the dateline', location: { latitude: -17.5, longitude: -179 }, intensity: 10, shipsPerDay: 20, deltaPct: 0, note: '' },
+              { name: 'West of Fiji in-box', location: { latitude: -17.0, longitude: 178.0 }, intensity: 5, shipsPerDay: 10, deltaPct: 0, note: '' },
+              { name: 'Far Pacific', location: { latitude: -17.5, longitude: -150 }, intensity: 3, shipsPerDay: 5, deltaPct: 0, note: '' },
+            ],
+            disruptions: [],
+          },
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return originalFetch(url);
+    };
+
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 23, method: 'tools/call',
+      params: { name: 'get_maritime_activity', arguments: { country_code: 'FJ' } },
+    }));
+    const body = await res.json();
+    const data = JSON.parse(body.result.content[0].text);
+    const names = data.density_zones.map((z) => z.name).sort();
+    assert.deepEqual(names, ['Across the dateline', 'West of Fiji in-box'], 'dateline-adjacent point must match; far-Pacific point must not');
+  });
+
+  it('get_maritime_activity matches every longitude for full-span bboxes (AQ stored as -180..180)', async () => {
+    globalThis.fetch = async (url) => {
+      if (url.toString().includes('/api/maritime/v1/get-vessel-snapshot')) {
+        return new Response(JSON.stringify({
+          snapshot: {
+            snapshotAt: 1711620000000,
+            densityZones: [
+              { name: 'Drake Passage', location: { latitude: -65, longitude: -62 }, intensity: 4, shipsPerDay: 8, deltaPct: 0, note: '' },
+              { name: 'Ross Sea', location: { latitude: -75, longitude: 175 }, intensity: 1, shipsPerDay: 1, deltaPct: 0, note: '' },
+            ],
+            disruptions: [],
+          },
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return originalFetch(url);
+    };
+
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 24, method: 'tools/call',
+      params: { name: 'get_maritime_activity', arguments: { country_code: 'AQ' } },
+    }));
+    const body = await res.json();
+    const data = JSON.parse(body.result.content[0].text);
+    assert.equal(data.total_zones, 2, 'a full-circle longitude span must not collapse under pad normalization');
+  });
+
+  it('get_maritime_activity works for countries whose bbox exceeds the 10° handler cap (e.g. JP)', async () => {
+    globalThis.fetch = async (url) => {
+      if (url.toString().includes('/api/maritime/v1/get-vessel-snapshot')) {
+        return new Response(JSON.stringify({
+          snapshot: {
+            snapshotAt: 1711620000000,
+            densityZones: [
+              { name: 'Tokyo Bay', location: { latitude: 35.4, longitude: 139.8 }, intensity: 60, shipsPerDay: 500, deltaPct: 1, note: '' },
+            ],
+            disruptions: [],
+          },
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return originalFetch(url);
+    };
+
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 22, method: 'tools/call',
+      params: { name: 'get_maritime_activity', arguments: { country_code: 'JP' } },
+    }));
+    const body = await res.json();
+    assert.equal(body.error, undefined, 'JP (14°×16° bbox) must not error');
+    const data = JSON.parse(body.result.content[0].text);
+    assert.equal(data.total_zones, 1);
+    assert.equal(data.density_zones[0].name, 'Tokyo Bay');
   });
 
   it('get_maritime_activity returns error for unknown country code', async () => {
@@ -2356,14 +2703,14 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     assert.equal(pipe.ops.length, 0, 'no pipeline ops for initialize/tools/list');
   });
 
-  it('edge: tools/call that throws (upstream non-2xx) for Pro at count=10 → counter back at 10', async () => {
+  it('edge: tools/call that throws (upstream non-2xx) for Pro at count=10 → slot stays charged at 11 (GHSA-hcq5, no post-execution refund)', async () => {
     const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 10 } });
     globalThis.fetch = async () => new Response('Service Unavailable', { status: 503 });
     const res = await mcpHandler(proReq('POST', callBody('get_country_risk', { country_code: 'US' })), deps);
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.error?.code, -32603);
-    assert.equal(pipe.count, 10, 'DECR rolled back to 10');
+    assert.equal(pipe.count, 11, 'GHSA-hcq5: the tool executed (incurred upstream cost) before erroring, so the daily slot stays charged — no post-execution refund');
   });
 
   it('edge: 100 concurrent tools/call from Pro user at count=49 → exactly 1 succeeds, 99 reject, final counter 50', async () => {
@@ -2479,9 +2826,10 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     assert.ok(pipe.count <= 51, `F4: counter must clamp back near limit; got ${pipe.count}`);
   });
 
-  it('F6: cache-only tool with all-null reads → DECR rollback fires', async () => {
+  it('F6: cache-only tool with all-null reads → slot stays charged (GHSA-hcq5, no post-execution refund)', async () => {
     // Pro path: starting at 5, every cache read returns null → executeTool
-    // throws cache_all_null → DECR rollback runs → counter returns to 5.
+    // throws cache_all_null AFTER running. Per GHSA-hcq5 the slot is NOT
+    // refunded (the cost is already incurred) → counter stays at 6.
     const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 5 } });
     // Stub Upstash with a result of null (genuine miss).
     process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
@@ -2491,7 +2839,7 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     assert.equal(res.status, 200, 'JSON-RPC error returns HTTP 200');
     const body = await res.json();
     assert.equal(body.error?.code, -32603, 'cache_all_null surfaces as -32603');
-    assert.equal(pipe.count, 5, 'F6: DECR rollback ran, counter back at 5');
+    assert.equal(pipe.count, 6, 'GHSA-hcq5: cache_all_null throws after execution, so the slot stays charged (no DECR refund)');
   });
 
   it('happy: Starter+ env_key bearer → unaffected by daily INCR path; only 60/min sliding limit applies', async () => {
@@ -2523,6 +2871,176 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     // Signature shape: <ts>.<base64url>
     const sig = captured.headers.get('x-wm-mcp-internal');
     assert.match(sig, /^\d{10}\.[A-Za-z0-9_-]+$/, 'signature must be <ts>.<base64url-sig>');
+  });
+
+  it('edge: Pro get_country_brief signs a short URL and sends grounding context in the POST body', async () => {
+    const { deps } = makeProDeps();
+    const captured = [];
+    globalThis.fetch = async (url, init = {}) => {
+      const call = {
+        url: String(url),
+        method: init.method || 'GET',
+        headers: new Headers(init.headers),
+        body: typeof init.body === 'string' ? init.body : '',
+      };
+      captured.push(call);
+      const { pathname } = new URL(call.url);
+
+      if (pathname === '/api/news/v1/list-feed-digest') {
+        const items = Array.from({ length: 15 }, (_, index) => ({
+          title: `Iran ${index} ${'%'.repeat(300)}`,
+          source: 'Context Wire',
+          link: `https://example.com/iran-${index}`,
+          publishedAt: '2026-06-07T00:00:00.000Z',
+          snippet: 'Long Iran grounding item used to keep the MCP signed URL below proxy limits.',
+        }));
+        return new Response(JSON.stringify({ categories: { world: { items } } }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      if (pathname === '/api/intelligence/v1/get-country-intel-brief') {
+        return new Response(JSON.stringify({ brief: 'Grounded country brief.' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      throw new Error(`Unexpected fetch URL: ${call.url}`);
+    };
+
+    const res = await mcpHandler(proReq('POST', callBody('get_country_brief', {
+      country_code: 'IR',
+      framework: 'PMESII-PT',
+    })), deps);
+    assert.equal(res.status, 200);
+    const rpc = await res.json();
+    assert.ok(rpc.result?.content, 'tool call must return content');
+
+    const countryCall = captured.find((call) => new URL(call.url).pathname === '/api/intelligence/v1/get-country-intel-brief');
+    assert.ok(countryCall, 'country brief fetch must run');
+    const countryUrl = new URL(countryCall.url);
+    assert.equal(countryUrl.searchParams.has('context'), false, 'context must not be signed in the URL query');
+    assert.ok(countryCall.url.length < 200, `signed URL should stay short, got ${countryCall.url.length} chars`);
+
+    const body = JSON.parse(countryCall.body);
+    assert.equal(body.country_code, 'IR');
+    assert.equal(body.framework, 'PMESII-PT');
+    assert.match(body.context, /Brief source articles:/);
+    assert.match(body.context, /Headlines:/);
+    assert.match(body.context, /Iran/);
+    assert.ok(body.context.length > 1000, `expected large grounding context, got ${body.context.length} chars`);
+    assert.ok(body.context.length <= 4000, `grounding context should be bounded to 4000 chars, got ${body.context.length}`);
+
+    assert.ok(countryCall.headers.get('x-wm-mcp-internal'), 'X-WM-MCP-Internal must be set');
+    assert.equal(countryCall.headers.get('x-wm-mcp-user-id'), PRO_USER_ID);
+    assert.equal(countryCall.headers.get('x-worldmonitor-key'), null, 'X-WorldMonitor-Key must NOT be set for Pro');
+
+    const { verifyInternalMcpRequest } = await import(`../server/_shared/mcp-internal-hmac.ts?t=${Date.now()}`);
+    const signedReq = new Request(countryCall.url, {
+      method: 'POST',
+      headers: countryCall.headers,
+      body: countryCall.body,
+    });
+    assert.ok(await verifyInternalMcpRequest(signedReq, HMAC_SECRET), 'signature must verify for the short URL plus context body');
+
+    const tamperedUrl = `${countryCall.url}?context=${encodeURIComponent(body.context)}`;
+    const tamperedReq = new Request(tamperedUrl, {
+      method: 'POST',
+      headers: countryCall.headers,
+      body: countryCall.body,
+    });
+    assert.equal(await verifyInternalMcpRequest(tamperedReq, HMAC_SECRET), null, 'same signature must not verify if context is moved back into the URL');
+  });
+
+  it('edge: Pro get_country_brief surfaces gateway error detail for Sentry grouping', async () => {
+    const scenarios = [
+      {
+        name: 'structured HMAC 401',
+        expectedLog: 'warn',
+        makeResponse: () => new Response(
+          JSON.stringify({ error: 'invalid_internal_mcp_signature' }),
+          { status: 401, headers: { 'Content-Type': 'application/json' } },
+        ),
+        assertMessage: (message) => {
+          assert.equal(message, 'get-country-intel-brief HTTP 401: invalid_internal_mcp_signature');
+        },
+      },
+      {
+        name: 'HTML CDN 503',
+        expectedLog: 'error',
+        makeResponse: () => new Response(
+          '<!DOCTYPE html><html><head><title>Bad Gateway</title></head><body>Cloudflare outage</body></html>',
+          { status: 503, headers: { 'Content-Type': 'text/html' } },
+        ),
+        assertMessage: (message) => {
+          assert.equal(message, 'get-country-intel-brief HTTP 503: Bad Gateway Cloudflare outage');
+          assert.doesNotMatch(message, /<[^>]*>/, 'HTML tags must not leak into the Sentry/log title');
+        },
+      },
+      {
+        name: 'unreadable body 503',
+        expectedLog: 'error',
+        makeResponse: () => ({ ok: false, status: 503, text: async () => { throw new Error('body locked'); } }),
+        assertMessage: (message) => {
+          assert.equal(message, 'get-country-intel-brief HTTP 503');
+        },
+      },
+    ];
+
+    for (const scenario of scenarios) {
+      const { deps } = makeProDeps();
+      const warnCalls = [];
+      const errorCalls = [];
+      const origWarn = console.warn;
+      const origError = console.error;
+      console.warn = (...args) => { warnCalls.push(args); };
+      console.error = (...args) => { errorCalls.push(args); };
+      try {
+        globalThis.fetch = async (url) => {
+          const { pathname } = new URL(String(url));
+          if (pathname === '/api/news/v1/list-feed-digest') {
+            return new Response(JSON.stringify({
+              categories: {
+                world: {
+                  items: [{
+                    title: 'Iran headline for failing country brief',
+                    source: 'Context Wire',
+                    link: 'https://example.com/iran-failure',
+                    publishedAt: '2026-06-07T00:00:00.000Z',
+                    snippet: 'Iran context item used before the brief endpoint fails.',
+                  }],
+                },
+              },
+            }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+          }
+          if (pathname === '/api/intelligence/v1/get-country-intel-brief') {
+            return scenario.makeResponse();
+          }
+          return new Response('', { status: 200 });
+        };
+
+        const res = await mcpHandler(proReq('POST', callBody('get_country_brief', {
+          country_code: 'IR',
+          framework: 'PMESII-PT',
+        })), deps);
+        assert.equal(res.status, 200, `${scenario.name}: JSON-RPC tool errors stay HTTP 200`);
+        const rpc = await res.json();
+        assert.equal(rpc.error?.code, -32603, `${scenario.name}: tool failure should be a JSON-RPC internal error`);
+
+        const expectedCalls = scenario.expectedLog === 'warn' ? warnCalls : errorCalls;
+        const unexpectedCalls = scenario.expectedLog === 'warn' ? errorCalls : warnCalls;
+        const mcpLogs = expectedCalls.filter((args) => args[0] === '[mcp] tool execution error:');
+        assert.equal(mcpLogs.length, 1, `${scenario.name}: expected one MCP execution log`);
+        assert.equal(unexpectedCalls.some((args) => args[0] === '[mcp] tool execution error:'), false, `${scenario.name}: wrong console severity`);
+        const loggedError = mcpLogs[0][1];
+        scenario.assertMessage(loggedError instanceof Error ? loggedError.message : String(loggedError));
+      } finally {
+        console.warn = origWarn;
+        console.error = origError;
+      }
+    }
   });
 
   it('edge: cache-only tool for Pro user goes through INCR/DECR path (counts toward 50/day)', async () => {
@@ -2590,7 +3108,7 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     // Sign for digest endpoint.
     const signed = await signInternalMcpRequest({
       method: 'GET',
-      url: 'https://worldmonitor.app/api/news/v1/list-feed-digest?lang=en&variant=geo',
+      url: 'https://worldmonitor.app/api/news/v1/list-feed-digest?lang=en&variant=full',
       body: null,
       userId: PRO_USER_ID,
       secret: HMAC_SECRET,
@@ -2604,6 +3122,7 @@ describe('api/mcp.ts — U7 Pro-path', () => {
       queryHash: await sha256Hex(canonicalQueryString(replayUrl)),
       bodyHash: await sha256Hex(JSON.stringify({ query: 'attacker' })),
       userId: PRO_USER_ID,
+      nonce: signed.nonce,
     });
     const replayExpected = await hmacSha256Base64Url(HMAC_SECRET, replayPayload);
     const replayActual = signed.signature.split('.')[1];

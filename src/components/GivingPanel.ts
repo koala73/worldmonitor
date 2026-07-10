@@ -29,6 +29,10 @@ export class GivingPanel extends Panel {
     this.renderContent();
   }
 
+  public hasData(): boolean {
+    return this.data !== null;
+  }
+
   private renderContent(): void {
     if (!this.data) return;
 

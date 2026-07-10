@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { pathToFileURL } from 'node:url';
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
@@ -191,7 +192,7 @@ function validate(data) {
     && data.monitoring.trend12m.length === 12;
 }
 
-const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^file:\/\//, ''));
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 export function declareRecords(data) {
   return Array.isArray(data?.monitoring?.trend12m) ? data.monitoring.trend12m.length : 0;
 }

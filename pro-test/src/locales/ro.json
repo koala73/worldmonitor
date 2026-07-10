@@ -178,15 +178,15 @@
     "apiTier": "NIVEL API",
     "title": "Intelligence programatic",
     "subtitle": "Pentru dezvoltatori, analiști și echipe care construiesc pe date World Monitor. Separat de Pro — folosește ambele sau unul.",
-    "restApi": "API REST pe toate cele 30+ domenii de servicii",
+    "restApi": "API REST pe toate cele 30+ domenii de servicii — SDK-uri oficiale pentru JavaScript, Python, Ruby, Go",
     "authenticated": "Autentificat per cheie, rate-limited per nivel",
     "structured": "JSON structurat cu header-e de cache și documentație OpenAPI 3.1",
     "starter": "Starter",
     "starterReqs": "1.000 req/zi",
     "starterWebhooks": "5 reguli webhook",
     "business": "Business",
-    "businessReqs": "50.000 req/zi",
-    "businessWebhooks": "Webhook-uri nelimitate + SLA",
+    "businessReqs": "10.000 req/zi",
+    "businessWebhooks": "Priority support",
     "feedData": "Alimentează date în panourile tale, automatizează alerte via Zapier/n8n/Make, construiește modele de scoring personalizate pe date CII/risc."
   },
   "enterpriseShowcase": {
@@ -374,16 +374,17 @@
           "Rezumate zilnice de piață",
           "Urmărirea militară și geopolitică",
           "Constructor de widget-uri personalizate",
-          "Conectoare de date MCP",
+          "Acces MCP + SDK pentru Claude Desktop și alți clienți AI (50 apeluri/zi)",
           "Reîmprospătare prioritară a datelor"
         ]
       },
       "api": {
         "description": "Acces programatic la date de intelligence",
         "features": [
-          "Acces REST API",
+          "API REST + SDK-uri oficiale (npm, PyPI, RubyGems, Go)",
           "Fluxuri de date în timp real",
-          "1.000 de cereri/zi",
+          "60 de cereri/minut",
+          "1.000 de cereri/zi incluse",
           "Notificări webhook",
           "Exporturi de date personalizate"
         ]

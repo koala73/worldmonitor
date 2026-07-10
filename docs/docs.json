@@ -69,7 +69,10 @@
               "usage-quickstart",
               "usage-auth",
               "usage-rate-limits",
-              "usage-errors"
+              "usage-errors",
+              "pricing",
+              "accounts",
+              "support"
             ]
           },
           {
@@ -85,6 +88,7 @@
             "pages": [
               "signal-intelligence",
               "ai-intelligence",
+              "methodology/news-digest-and-briefing",
               "country-instability-index",
               "methodology/country-resilience-index",
               "methodology/chokepoints",
@@ -94,6 +98,7 @@
               "methodology/disruptions",
               "methodology/cii-risk-scores",
               "methodology/disease-alert-level",
+              "methodology/thermal-escalation",
               "corrections",
               "geographic-convergence",
               "strategic-risk",
@@ -103,6 +108,7 @@
           {
             "group": "Workflows",
             "pages": [
+              "embed-live-map",
               "route-explorer",
               "scenario-engine"
             ]
@@ -139,6 +145,7 @@
               "panels/daily-market-brief",
               "panels/regional-intelligence",
               "panels/strategic-posture",
+              "panels/threat-timeline",
               "panels/stock-analysis",
               "panels/stock-backtest",
               "panels/wsb-ticker-scanner"
@@ -182,8 +189,12 @@
             "group": "MCP & Integrations",
             "pages": [
               "agent-discovery",
+              "agent-skills",
               "mcp-quickstart",
-              "mcp-server",
+              "cli",
+              "sdks",
+              "mcp-overview",
+              "mcp-apps",
               "mcp-tools-reference",
               "mcp-jmespath",
               "mcp-error-catalog",
@@ -209,6 +220,7 @@
               "authentication",
               "adding-endpoints",
               "api-key-deployment",
+              "releasing-cli",
               "release-packaging",
               "cors",
               "health-endpoints",
@@ -326,6 +338,10 @@
               {
                 "group": "Forecasts",
                 "openapi": "api/ForecastService.openapi.yaml"
+              },
+              {
+                "group": "Commerce",
+                "openapi": "openapi/CommerceService.openapi.yaml"
               }
             ]
           },
@@ -385,6 +401,10 @@
               {
                 "group": "Giving",
                 "openapi": "api/GivingService.openapi.yaml"
+              },
+              {
+                "group": "Batch",
+                "openapi": "api/BatchService.openapi.yaml"
               }
             ]
           }
@@ -449,5 +469,35 @@
         ]
       }
     ]
-  }
+  },
+  "redirects": [
+    {
+      "source": "/mcp-server",
+      "destination": "/mcp-overview"
+    },
+    {
+      "source": "/plans",
+      "destination": "/pricing"
+    },
+    {
+      "source": "/tiers",
+      "destination": "/pricing"
+    },
+    {
+      "source": "/rate-limit",
+      "destination": "/usage-rate-limits"
+    },
+    {
+      "source": "/rate-limits",
+      "destination": "/usage-rate-limits"
+    },
+    {
+      "source": "/mcp-api-key",
+      "destination": "/usage-auth"
+    },
+    {
+      "source": "/contact",
+      "destination": "/support"
+    }
+  ]
 }

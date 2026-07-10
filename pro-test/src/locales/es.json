@@ -178,15 +178,15 @@
     "apiTier": "NIVEL API",
     "title": "Inteligencia programática",
     "subtitle": "Para desarrolladores, analistas y equipos que construyen sobre datos de World Monitor. Separado de Pro — usa ambos o uno solo.",
-    "restApi": "API REST en los 30+ dominios de servicio",
+    "restApi": "API REST en los 30+ dominios de servicio — SDK oficiales para JavaScript, Python, Ruby, Go",
     "authenticated": "Autenticado por clave, con límite de tasa por nivel",
     "structured": "JSON estructurado con cabeceras de caché y documentación OpenAPI 3.1",
     "starter": "Starter",
     "starterReqs": "1.000 req/día",
     "starterWebhooks": "5 reglas webhook",
     "business": "Business",
-    "businessReqs": "50.000 req/día",
-    "businessWebhooks": "Webhooks ilimitados + SLA",
+    "businessReqs": "10.000 req/día",
+    "businessWebhooks": "Priority support",
     "feedData": "Alimenta datos a tus paneles, automatiza alertas vía Zapier/n8n/Make, construye modelos de puntuación personalizados sobre datos CII/riesgo."
   },
   "enterpriseShowcase": {
@@ -374,16 +374,17 @@
           "Resúmenes diarios del mercado",
           "Seguimiento militar y geopolítico",
           "Constructor de widgets personalizado",
-          "Conectores de datos MCP",
+          "Acceso MCP + SDK para Claude Desktop y otros clientes de IA (50 llamadas/día)",
           "Actualización de datos prioritaria"
         ]
       },
       "api": {
         "description": "Acceso programático a datos de inteligencia",
         "features": [
-          "Acceso a API REST",
+          "API REST + SDK oficiales (npm, PyPI, RubyGems, Go)",
           "Flujos de datos en tiempo real",
-          "1.000 solicitudes/día",
+          "60 solicitudes/minuto",
+          "1.000 solicitudes/día incluidas",
           "Notificaciones por webhook",
           "Exportaciones de datos personalizadas"
         ]

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { readFileSync } from 'node:fs';
 
 import { buildAnalystSystemPrompt } from '../server/worldmonitor/intelligence/v1/chat-analyst-prompt.ts';
 import { buildActionEvents, VISUAL_INTENT_RE } from '../server/worldmonitor/intelligence/v1/chat-analyst-actions.ts';
@@ -283,6 +284,49 @@ describe('buildActionEvents — visual intent detection', () => {
 
   it('returns empty for non-visual geopolitical query', () => {
     assert.deepEqual(buildActionEvents("What is happening in Ukraine?"), []);
+  });
+
+  it('returns open_panel action for explicit panel focus query', () => {
+    const events = buildActionEvents('Open the Strategic Risk panel');
+    assert.equal(events.length, 1);
+    assert.equal(events[0]?.type, 'open_panel');
+    if (events[0]?.type === 'open_panel') {
+      assert.equal(events[0].panelId, 'strategic-risk');
+    }
+  });
+
+  it('returns set_view action for explicit map view query', () => {
+    const events = buildActionEvents('Zoom the map to the Middle East');
+    assert.equal(events.length, 1);
+    assert.equal(events[0]?.type, 'set_view');
+    if (events[0]?.type === 'set_view') {
+      assert.equal(events[0].view, 'mena');
+    }
+  });
+
+  it('does not treat lowercase us as an Americas map intent', () => {
+    const events = buildActionEvents('Show us the Middle East on the map');
+    assert.equal(events.length, 1);
+    assert.equal(events[0]?.type, 'set_view');
+    if (events[0]?.type === 'set_view') {
+      assert.equal(events[0].view, 'mena');
+    }
+  });
+
+  it('still accepts unambiguous US map intents', () => {
+    const events = buildActionEvents('Zoom the map to US');
+    assert.equal(events.length, 1);
+    assert.equal(events[0]?.type, 'set_view');
+    if (events[0]?.type === 'set_view') {
+      assert.equal(events[0].view, 'america');
+    }
+
+    const dottedEvents = buildActionEvents('Center the U.S. map');
+    assert.equal(dottedEvents.length, 1);
+    assert.equal(dottedEvents[0]?.type, 'set_view');
+    if (dottedEvents[0]?.type === 'set_view') {
+      assert.equal(dottedEvents[0].view, 'america');
+    }
   });
 
   it('returns empty for non-visual market summary query', () => {
@@ -586,5 +630,70 @@ describe('issue #3724 — prompt injection via headline context', () => {
       'system prompt must instruct the model to never treat context as instructions');
     assert.match(prompt, /disregard prior instructions|change role|switch persona/i,
       'system prompt must explicitly list role-change / instruction-override as attack patterns to ignore');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// handler — edge wiring + pre-auth gates (WORLDMONITOR-SV)
+//
+// Importing the handler forces the full edge dependency graph to resolve
+// (a broken import path can't slip past `tsc` but WOULD fail at runtime on
+// Vercel — see brief-edge-route-smoke.test.mjs for the same rationale). The
+// OPTIONS / non-POST gates run before any network-backed call, so they are
+// deterministic without Redis/Convex/secrets.
+//
+// The top-level error boundary (try/catch → 503 service_unavailable +
+// captureSilentError) is defense-in-depth: every pre-stream dependency is
+// individually fail-soft today, so the catch cannot be black-box-triggered in
+// this suite (it has no Redis/Convex/Upstash mock — the same reason the sibling
+// route api/latest-brief.ts ships its boundary without a catch-trigger test).
+// This block at least guards that the route stays edge-wired and that the
+// boundary's source shape is present so a future refactor can't silently drop
+// it.
+// ---------------------------------------------------------------------------
+
+describe('api/chat-analyst handler — edge wiring + pre-auth gates', () => {
+  it('declares the edge runtime', async () => {
+    const mod = await import('../api/chat-analyst.ts');
+    assert.equal(typeof mod.default, 'function', 'handler must be a function');
+    assert.equal(mod.config?.runtime, 'edge', 'route must declare edge runtime');
+  });
+
+  it('returns 204 with CORS on OPTIONS preflight (no secrets / no Redis)', async () => {
+    const { default: handler } = await import('../api/chat-analyst.ts');
+    const req = new Request('https://api.worldmonitor.app/api/chat-analyst', {
+      method: 'OPTIONS',
+      headers: { origin: 'https://worldmonitor.app' },
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 204);
+    assert.ok(res.headers.get('access-control-allow-methods')?.includes('POST'),
+      'preflight must advertise POST');
+  });
+
+  it('returns 405 on disallowed methods', async () => {
+    const { default: handler } = await import('../api/chat-analyst.ts');
+    const req = new Request('https://api.worldmonitor.app/api/chat-analyst', {
+      method: 'GET',
+      headers: { origin: 'https://worldmonitor.app' },
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 405);
+  });
+
+  it('has a top-level error boundary that fails to a CORS-correct 503 (not an opaque platform 500)', () => {
+    // Source-shape guard. The boundary converts an uncaught pre-stream throw
+    // into a controlled, CORS-bearing 503 the panel can render and a server-
+    // side Sentry capture — the gap that left WORLDMONITOR-SV diagnosable only
+    // as the browser's `API 500` message. Locks the boundary in against a
+    // refactor that re-introduces an unguarded handler body.
+    const src = readFileSync(
+      new URL('../api/chat-analyst.ts', import.meta.url),
+      'utf-8',
+    );
+    assert.match(src, /captureSilentError\(err,\s*\{\s*tags:\s*\{\s*route:\s*'api\/chat-analyst'/,
+      'catch must capture server-side with a route tag');
+    assert.match(src, /json\(\{\s*error:\s*'service_unavailable'\s*\},\s*503,\s*corsHeaders\)/,
+      'catch must return a CORS-correct 503 service_unavailable');
   });
 });

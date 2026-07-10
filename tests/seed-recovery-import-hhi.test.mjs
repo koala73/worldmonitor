@@ -17,6 +17,7 @@ import {
   runWorker,
   validate,
 } from '../scripts/seed-recovery-import-hhi.mjs';
+import { ISO2_TO_COMTRADE } from '../server/worldmonitor/intelligence/v1/_comtrade-reporters.js';
 
 const seedSrc = readFileSync(new URL('../scripts/seed-recovery-import-hhi.mjs', import.meta.url), 'utf8');
 const reporterOverrides = JSON.parse(
@@ -41,16 +42,8 @@ describe('seed-recovery-import-hhi', () => {
       readFileSync(new URL('../scripts/shared/un-to-iso2.json', import.meta.url), 'utf8'),
     );
     const iso2ToUn = Object.fromEntries(Object.entries(unToIso2).map(([un, iso2]) => [iso2, un]));
-    const canonicalSrc = readFileSync(
-      new URL('../server/worldmonitor/intelligence/v1/_comtrade-reporters.ts', import.meta.url),
-      'utf8',
-    );
-    const canonical = {};
-    for (const match of canonicalSrc.matchAll(/\b([A-Z]{2}): '([0-9]{3})'/g)) {
-      canonical[match[1]] = match[2];
-    }
     const expectedOverrides = {};
-    for (const [iso2, code] of Object.entries(canonical)) {
+    for (const [iso2, code] of Object.entries(ISO2_TO_COMTRADE)) {
       if (iso2ToUn[iso2] && iso2ToUn[iso2] !== code) expectedOverrides[iso2] = code;
     }
     assert.deepEqual(reporterOverrides, expectedOverrides);
@@ -70,13 +63,30 @@ describe('seed-recovery-import-hhi', () => {
 
   it('validate rejects catastrophic partial import-HHI snapshots below the publish floor', () => {
     const partial = Object.fromEntries(
-      Array.from({ length: 134 }, (_, i) => [`T${i}`, { hhi: 0.1 }]),
+      Array.from({ length: 130 }, (_, i) => [`T${i}`, { hhi: 0.1 }]),
     );
     const sufficient = Object.fromEntries(
-      Array.from({ length: 135 }, (_, i) => [`T${i}`, { hhi: 0.1 }]),
+      Array.from({ length: 131 }, (_, i) => [`T${i}`, { hhi: 0.1 }]),
     );
+    for (const iso2 of ['AE', 'RU', 'NO', 'CH']) {
+      partial[iso2] = { hhi: 0.1 };
+      sufficient[iso2] = { hhi: 0.1 };
+    }
     assert.equal(validate({ countries: partial }), false);
     assert.equal(validate({ countries: sufficient }), true);
+  });
+
+  it('validate rejects otherwise sufficient snapshots that still strand watched reporters', () => {
+    const countries = Object.fromEntries(
+      Array.from({ length: 170 }, (_, i) => [`T${i}`, { hhi: 0.1 }]),
+    );
+    countries.AE = { hhi: 0.1 };
+    countries.RU = { hhi: 0.1 };
+    countries.NO = { hhi: 0.1 };
+
+    assert.equal(validate({ countries }), false);
+    countries.CH = { hhi: 0.1 };
+    assert.equal(validate({ countries }), true);
   });
 
   it('treats validation rejects as seed failures so partial runs do not refresh seed-meta', () => {
@@ -429,6 +439,31 @@ describe('seed-recovery-import-hhi — period window + pick-latest', () => {
       assert.deepEqual(parseRecords(null), { rows: [], year: null });
     });
 
+    it('omits responses at the requested maxRecords cap instead of parsing truncated HHI input', () => {
+      const capped = parseRecords({
+        data: [
+          { period: 2024, partnerCode: '156', primaryValue: 100 },
+          { period: 2024, partnerCode: '842', primaryValue: 100 },
+        ],
+      }, { maxRecords: 2 });
+      assert.deepEqual(capped, {
+        rows: [],
+        year: null,
+        truncated: true,
+        rawCount: 2,
+      });
+
+      const belowCap = parseRecords({
+        data: [
+          { period: 2024, partnerCode: '156', primaryValue: 100 },
+          { period: 2024, partnerCode: '842', primaryValue: 100 },
+        ],
+      }, { maxRecords: 3 });
+      assert.equal(belowCap.truncated, undefined);
+      assert.equal(belowCap.rows.length, 2);
+      assert.equal(belowCap.year, 2024);
+    });
+
     it('ignores rows with primaryValue <= 0', () => {
       const data = { data: [
         { period: 2024, partnerCode: '156', primaryValue: 0 },
@@ -597,6 +632,26 @@ describe('seed-recovery-import-hhi — fetch retry hardening (U1, plan v19)', ()
         'motCode must be 0 so HHI fetches stay at total-transport-mode granularity');
       assert.equal(url.searchParams.get('maxRecords'), '250000',
         'maxRecords must be 250000 (mirrors seed-recovery-reexport-share PR #3385)');
+    } finally {
+      restoreAll(mod);
+    }
+  });
+
+  it('omits exact-cap Comtrade responses rather than computing HHI from possibly truncated rows', async () => {
+    const mod = await loadFixture();
+    const cappedRows = Array.from({ length: 250_000 }, (_, i) => ({
+      period: 2024,
+      partnerCode: String(100 + (i % 200)),
+      primaryValue: 100 + i,
+    }));
+    installFetchSequence([makeJsonResponse(200, { data: cappedRows })]);
+    try {
+      const result = await mod.fetchImportsForReporter('784', 'k');
+      assert.equal(result.status, 200);
+      assert.equal(result.truncated, true);
+      assert.equal(result.records.length, 0);
+      assert.equal(result.year, null);
+      assert.match(result.errorMessage, /maxRecords=250000/);
     } finally {
       restoreAll(mod);
     }

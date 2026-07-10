@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { toIso2 } from '../src/utils/country-codes.ts';
+import { iso2ToComtradeReporterCode, toIso2 } from '../src/utils/country-codes.ts';
 
 describe('toIso2 — happy path', () => {
   it('returns alpha-2 unchanged when canonical', () => {
@@ -100,5 +100,22 @@ describe('toIso2 — unrecognized input', () => {
     assert.equal(toIso2('U'), null);
     assert.equal(toIso2('USAA'), null);
     assert.equal(toIso2('not a country'), null);
+  });
+});
+
+describe('iso2ToComtradeReporterCode', () => {
+  it('uses shared non-M49 Comtrade reporter overrides', () => {
+    assert.equal(iso2ToComtradeReporterCode('CH'), '757');
+    assert.equal(iso2ToComtradeReporterCode('FR'), '251');
+    assert.equal(iso2ToComtradeReporterCode('IN'), '699');
+    assert.equal(iso2ToComtradeReporterCode('IT'), '381');
+    assert.equal(iso2ToComtradeReporterCode('NO'), '579');
+    assert.equal(iso2ToComtradeReporterCode('TW'), '490');
+    assert.equal(iso2ToComtradeReporterCode('US'), '842');
+  });
+
+  it('falls back to M49 for standard Comtrade reporter codes', () => {
+    assert.equal(iso2ToComtradeReporterCode('DE'), '276');
+    assert.equal(iso2ToComtradeReporterCode('JP'), '392');
   });
 });

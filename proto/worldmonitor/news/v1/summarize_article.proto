@@ -11,7 +11,9 @@ message SummarizeArticleRequest {
     (buf.validate.field).required = true,
     (buf.validate.field).string.min_len = 1
   ];
-  // Headlines to summarize (max 8 used).
+  // Headlines to summarize. Up to 10 raw headlines are used for request
+  // identity/cache matching; the LLM prompt uses up to 5 unique, non-empty
+  // sanitized headline/body pairs.
   repeated string headlines = 2 [(buf.validate.field).repeated.min_items = 1];
   // Summarization mode: "brief", "analysis", "translate", "" (default).
   string mode = 3;

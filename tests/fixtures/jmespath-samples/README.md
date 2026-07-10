@@ -17,8 +17,10 @@ the committed fixtures produces byte-identical numbers.
 ## How to (re)capture
 
 ```bash
-# Use either a wm_live_... env key or a wm_pro_... Pro MCP token.
-export WM_MCP_BEARER="wm_live_..."
+# Use either a user API key or an OAuth access token from /api/oauth/token.
+export WM_MCP_KEY="wm_0123456789abcdef0123456789abcdef01234567"
+# Or:
+# export WM_MCP_OAUTH_TOKEN="eyJhbGciOi..."
 
 # Fat — no filter args, full bootstrap.
 node scripts/capture-mcp-fixture.mjs --tool get_market_data \

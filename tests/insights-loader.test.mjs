@@ -53,6 +53,7 @@ describe('insights-loader', () => {
     it('validates required fields', () => {
       const valid = {
         worldBrief: 'Test brief',
+        worldBriefSources: [{ title: 'Test', source: 's', url: 'https://example.com/test' }],
         briefProvider: 'groq',
         status: 'ok',
         topStories: [{ primaryTitle: 'Test', sourceCount: 2 }],
@@ -88,6 +89,7 @@ describe('insights-loader', () => {
     function makeValidInsights() {
       return {
         worldBrief: 'Test brief',
+        worldBriefSources: [{ title: 'Test', source: 's', url: 'https://example.com/test' }],
         briefProvider: 'groq',
         status: 'ok',
         topStories: [{

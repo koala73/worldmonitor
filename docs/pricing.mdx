@@ -1,0 +1,48 @@
+---
+title: "Plans & Pricing"
+description: "Free, Pro, API, API Business, and Enterprise plans — prices, what each includes, and the machine-readable pricing surfaces for agents."
+---
+
+World Monitor has a free public dashboard and paid tiers for analyst workflows, API access, and organization deployments.
+
+<Info>
+**Machine-readable sources** (canonical for agents):
+- Markdown: [`/pricing.md`](https://worldmonitor.app/pricing.md)
+- Live JSON (tiers, prices, Dodo product IDs): [`GET /api/product-catalog`](https://www.worldmonitor.app/api/product-catalog) — public, no key required
+</Info>
+
+## Plans
+
+| Plan | Price | Best for |
+|------|-------|----------|
+| **Free** | $0 — no signup required | Public situational awareness, OSINT research, news monitoring |
+| **Pro** | $39.99/month · $399.99/year | WM Analyst chat, Scenario Engine, AI digests, custom widgets, MCP access |
+| **API** | $99.99/month · $999/year | REST API + SDKs, 1,000 requests/day starter limit, webhooks, data exports |
+| **API Business** | $249.99/month | Everything in API Starter, 300 requests/minute, 10,000 requests/day, priority support |
+| **Enterprise** | Custom — [enterprise@worldmonitor.app](mailto:enterprise@worldmonitor.app) | Team workspaces, SSO/MFA/RBAC, white-label, on-premises / air-gapped |
+
+Prices above mirror `convex/config/productCatalog.ts` (the source of truth behind `/api/product-catalog`); a drift guard test keeps this page honest.
+
+## What each plan includes
+
+- **Free** — 56 map layers, 500+ curated feeds, country briefs, hotspots, instability scores, chokepoints, cascade analysis, breaking alerts, and watchlists. Dashboard refresh cadence is typically 5–15 minutes.
+- **Pro** — everything in Free, plus WM Analyst chat across 30+ live services with citations, Scenario Engine, Route Explorer, personal AI digest (daily / twice-daily / weekly via Slack, Discord, Telegram, email, webhook), custom widget builder, and MCP access (40 tools under one key).
+- **API** — programmatic access: REST API with structured JSON and cache headers, official SDKs (npm, PyPI, RubyGems, Go), real-time data streams, webhook notifications (5 rules on Starter), and custom data exports.
+- **API Business** — the high-volume API tier for teams: everything in API Starter with 300 requests/minute and 10,000 requests/day, and priority support. Starter customers upgrade from the billing portal (prorated immediately).
+- **Enterprise** — everything in Pro and API, plus team workspaces, SSO/MFA/RBAC, dedicated support, white-label and embeddable panels, SIEM connectors, bulk export, and cloud / dedicated-tenant / on-premises / air-gapped deployment.
+
+## Limits & overage
+
+Rate limits are hard limits by default: exceeding a plan quota returns HTTP `429` with `Retry-After` and `X-RateLimit-*` headers. Usage above quota is rejected — never silently charged. Per-endpoint budgets: [Rate Limits](/usage-rate-limits).
+
+Need a higher limit? Upgrade at [worldmonitor.app/pro](https://worldmonitor.app/pro) or contact [enterprise@worldmonitor.app](mailto:enterprise@worldmonitor.app).
+
+## Buying and managing a subscription
+
+Checkout runs on [Dodo Payments](https://dodopayments.com); entitlements live in Convex. Subscribe from [worldmonitor.app/pro](https://worldmonitor.app/pro); manage billing (invoices, cancel, renew) via the customer portal on the same page. Endpoint details: [Commerce Endpoints](/api-commerce).
+
+## Related
+
+- [Accounts & Sign-up](/accounts) — the free tier needs no account at all
+- [Authentication & Usage](/usage-auth) — key types and the auth matrix
+- [Rate Limits](/usage-rate-limits) — per-endpoint request budgets

@@ -3,6 +3,7 @@ syntax = "proto3";
 package worldmonitor.forecast.v1;
 
 import "sebuf/http/annotations.proto";
+import "worldmonitor/forecast/v1/get_forecast_scorecard.proto";
 import "worldmonitor/forecast/v1/get_forecasts.proto";
 import "worldmonitor/forecast/v1/get_simulation_package.proto";
 import "worldmonitor/forecast/v1/get_simulation_outcome.proto";
@@ -11,14 +12,22 @@ import "worldmonitor/forecast/v1/trigger_simulation.proto";
 service ForecastService {
   option (sebuf.http.service_config) = {base_path: "/api/forecast/v1"};
 
+  // GetForecasts returns the latest generated probabilistic forecasts; the degraded flag distinguishes a backend outage from a healthy empty set.
   rpc GetForecasts(GetForecastsRequest) returns (GetForecastsResponse) {
     option (sebuf.http.config) = {path: "/get-forecasts", method: HTTP_METHOD_GET};
   }
 
+  // GetForecastScorecard returns the latest forecast resolution scorecard; degraded distinguishes a backend outage from a healthy empty scorecard.
+  rpc GetForecastScorecard(GetForecastScorecardRequest) returns (GetForecastScorecardResponse) {
+    option (sebuf.http.config) = {path: "/get-forecast-scorecard", method: HTTP_METHOD_GET};
+  }
+
+  // GetSimulationPackage returns the latest forecast simulation package; the response note is populated when a supplied runId does not match the returned package.
   rpc GetSimulationPackage(GetSimulationPackageRequest) returns (GetSimulationPackageResponse) {
     option (sebuf.http.config) = {path: "/get-simulation-package", method: HTTP_METHOD_GET};
   }
 
+  // GetSimulationOutcome returns the latest stored forecast simulation outcome; the response note is populated when a supplied runId does not match the returned outcome.
   rpc GetSimulationOutcome(GetSimulationOutcomeRequest) returns (GetSimulationOutcomeResponse) {
     option (sebuf.http.config) = {path: "/get-simulation-outcome", method: HTTP_METHOD_GET};
   }

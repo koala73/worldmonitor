@@ -14,12 +14,13 @@ import assert from 'node:assert/strict';
 // (no DOM, no maplibre). This mirrors the exact condition in setupUrlStateSync.
 // ---------------------------------------------------------------------------
 function urlHasAsyncFlyTo(
-  initialUrlState: { view?: string; lat?: number; lon?: number; zoom?: number } | undefined,
+  initialUrlState: { view?: string; lat?: number; lon?: number; zoom?: number; chokepoint?: string } | undefined,
 ): boolean {
-  const { view, lat, lon, zoom } = initialUrlState ?? {};
+  const { view, lat, lon, zoom, chokepoint } = initialUrlState ?? {};
   return (
     (lat !== undefined && lon !== undefined) || // setCenter → flyTo (both required)
-    (!view && zoom !== undefined)               // zoom-only → setZoom animated
+    (!view && zoom !== undefined) ||            // zoom-only → setZoom animated
+    chokepoint !== undefined                    // chokepoint deep-link opens after renderer readiness
   );
 }
 
@@ -54,6 +55,10 @@ describe('urlHasAsyncFlyTo — suppression guard', () => {
   it('returns true for bare ?zoom without view (animated setZoom)', () => {
     // No view preset means setZoom() is called, which animates the transition.
     assert.equal(urlHasAsyncFlyTo({ zoom: 5 }), true);
+  });
+
+  it('returns true for bare ?chokepoint until the renderer has opened it', () => {
+    assert.equal(urlHasAsyncFlyTo({ chokepoint: 'hormuz_strait' }), true);
   });
 
   it('returns false for ?view=mena&zoom=4 (view+zoom uses setView, synchronous)', () => {

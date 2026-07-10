@@ -9,25 +9,11 @@ import { getCurrentClerkUser } from '@/services/clerk';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { onEntitlementChange } from '@/services/entitlements';
 import { IS_EMBEDDED_PREVIEW } from '@/utils/embedded-preview';
-import {
-  TradeServiceClient,
-  type GetTradeRestrictionsResponse,
-  type GetTariffTrendsResponse,
-  type GetTradeFlowsResponse,
-  type GetTradeBarriersResponse,
-  type GetCustomsRevenueResponse,
-  type ListComtradeFlowsResponse,
-  type ComtradeFlowRecord,
-  type TradeRestriction,
-  type TariffDataPoint,
-  type EffectiveTariffRate,
-  type TradeFlowRecord,
-  type TradeBarrier,
-  type CustomsRevenueMonth,
-} from '@/generated/client/worldmonitor/trade/v1/service_client';
+import type { GetTradeRestrictionsResponse, GetTariffTrendsResponse, GetTradeFlowsResponse, GetTradeBarriersResponse, GetCustomsRevenueResponse, ListComtradeFlowsResponse, ComtradeFlowRecord, TradeRestriction, TariffDataPoint, EffectiveTariffRate, TradeFlowRecord, TradeBarrier, CustomsRevenueMonth } from '@/generated/client/worldmonitor/trade/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { isFeatureAvailable } from '../runtime-config';
 import { getHydratedData } from '@/services/bootstrap';
+import { TradeServiceClient } from '@/services/generated-rpc-clients';
 
 // Re-export types for consumers
 export type { TradeRestriction, TariffDataPoint, EffectiveTariffRate, TradeFlowRecord, TradeBarrier, CustomsRevenueMonth, ComtradeFlowRecord };

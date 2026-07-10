@@ -31,7 +31,7 @@
  * API-key holders (step 1) and tester-key holders (step 2) are unaffected
  * — those keys travel via X-WorldMonitor-Key which works on any path.
  */
-import * as Sentry from '@sentry/browser';
+import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { PREMIUM_RPC_PATHS } from '@/shared/premium-paths';
 
 /**
@@ -42,7 +42,10 @@ let _testProviders: {
   getTesterKey?: () => string;
   getTesterKeys?: () => string[];
   getClerkToken?: () => Promise<string | null>;
+  isClerkUserSignedIn?: () => boolean | Promise<boolean>;
 } | null = null;
+
+type PremiumFetchInit = RequestInit & { forcePremium?: boolean };
 
 export function _setTestProviders(
   p: typeof _testProviders,
@@ -61,11 +64,11 @@ function reportServerError(res: Response, input: RequestInfo | URL): void {
     // transient drowning genuine origin 5xx in the error dashboard
     // (WORLDMONITOR-RG). Genuine origin 5xx (500-511) stay at `error`.
     const isCloudflareEdgeError = res.status >= 520 && res.status <= 527;
-    Sentry.captureMessage(`API ${res.status}: ${path}`, {
-      level: isCloudflareEdgeError ? 'warning' : 'error',
-      tags: { kind: isCloudflareEdgeError ? 'api_cf_5xx' : 'api_5xx' },
-      extra: { path, status: res.status },
-    });
+    const message = `API ${res.status}: ${path}`;
+    const level: 'warning' | 'error' = isCloudflareEdgeError ? 'warning' : 'error';
+    const tags = { kind: isCloudflareEdgeError ? 'api_cf_5xx' : 'api_5xx' };
+    const extra = { path, status: res.status };
+    enqueueSentryCall((s) => s.captureMessage(message, { level, tags, extra }));
   } catch { /* ignore URL parse errors */ }
 }
 
@@ -80,7 +83,8 @@ function withCredentials(init?: RequestInit): RequestInit {
  * are a strict subset of PREMIUM_RPC_PATHS at the time of writing, so this
  * one check covers both.
  */
-function isPremiumRpcTarget(input: RequestInfo | URL): boolean {
+function isPremiumRpcTarget(input: RequestInfo | URL, forcePremium = false): boolean {
+  if (forcePremium) return true;
   try {
     const href = input instanceof Request ? input.url : String(input);
     const path = new URL(href, globalThis.location?.href ?? 'https://worldmonitor.app').pathname;
@@ -120,14 +124,56 @@ async function loadTesterKeys(): Promise<string[]> {
   }
 }
 
+// Delay before the single Clerk-token retry (see step 3 in premiumFetch).
+// Long enough for the boot-window token-generation rotation to settle, short
+// enough to stay imperceptible on the one premium call that loses the race.
+const CLERK_TOKEN_RETRY_DELAY_MS = 300;
+
+async function resolveClerkToken(): Promise<string | null> {
+  if (_testProviders) {
+    return _testProviders.getClerkToken ? _testProviders.getClerkToken() : null;
+  }
+  const { getClerkToken } = await import('@/services/clerk');
+  return getClerkToken();
+}
+
+/**
+ * Whether a Clerk user is currently present. Gates the token retry: a present
+ * user means a null token is a transient boot-window artifact worth retrying;
+ * an absent user means a genuinely anonymous visitor who must NOT pay the
+ * retry delay and should fall through immediately.
+ */
+async function isClerkUserSignedIn(): Promise<boolean> {
+  if (_testProviders) {
+    return (await _testProviders.isClerkUserSignedIn?.()) ?? false;
+  }
+  try {
+    const { getCurrentClerkUser } = await import('@/services/clerk');
+    return getCurrentClerkUser() !== null;
+  } catch {
+    return false;
+  }
+}
+
+function delayBeforeClerkRetry(): Promise<void> {
+  // Test providers stand in for the real Clerk session, so never block the
+  // suite on a real timer.
+  const ms = _testProviders ? 0 : CLERK_TOKEN_RETRY_DELAY_MS;
+  return new Promise((resolve) => { setTimeout(resolve, ms); });
+}
+
 export async function premiumFetch(
   input: RequestInfo | URL,
-  init?: RequestInit,
+  init?: PremiumFetchInit,
 ): Promise<Response> {
+  const forcePremium = init?.forcePremium === true;
+  const requestInit = init ? { ...init } : undefined;
+  if (requestInit) delete requestInit.forcePremium;
+
   // Skip injection if the caller already set an auth header.
-  const existing = new Headers(init?.headers);
+  const existing = new Headers(requestInit?.headers);
   if (existing.has('Authorization') || existing.has('X-WorldMonitor-Key')) {
-    const res = await globalThis.fetch(input, withCredentials(init));
+    const res = await globalThis.fetch(input, withCredentials(requestInit));
     reportServerError(res, input);
     return res;
   }
@@ -138,7 +184,7 @@ export async function premiumFetch(
     const wmKey = getRuntimeConfigSnapshot().secrets['WORLDMONITOR_API_KEY']?.value;
     if (wmKey) {
       existing.set('X-WorldMonitor-Key', wmKey);
-      const res = await globalThis.fetch(input, { ...withCredentials(init), headers: existing });
+      const res = await globalThis.fetch(input, { ...withCredentials(requestInit), headers: existing });
       reportServerError(res, input);
       return res;
     }
@@ -150,7 +196,7 @@ export async function premiumFetch(
   for (const testerKey of testerKeys) {
     const testerHeaders = new Headers(existing);
     testerHeaders.set('X-WorldMonitor-Key', testerKey);
-    const res = await globalThis.fetch(input, { ...withCredentials(init), headers: testerHeaders });
+    const res = await globalThis.fetch(input, { ...withCredentials(requestInit), headers: testerHeaders });
     if (res.status !== 401) {
       reportServerError(res, input);
       return res;
@@ -163,18 +209,25 @@ export async function premiumFetch(
   //    interceptor's wms_ attach and produce a 401 (see the file-level
   //    comment for the full chain). Falling through to step 4 instead lets
   //    the interceptor attach wms_ and the gateway accept it.
-  if (isPremiumRpcTarget(input)) {
+  if (isPremiumRpcTarget(input, forcePremium)) {
     try {
-      let token: string | null = null;
-      if (_testProviders?.getClerkToken) {
-        token = await _testProviders.getClerkToken();
-      } else {
-        const { getClerkToken } = await import('@/services/clerk');
-        token = await getClerkToken();
+      let token = await resolveClerkToken();
+      // Boot-window auth race: while Clerk/Convex bootstrap the session,
+      // clearClerkTokenCache() bumps the token generation (so a rotating
+      // user's stale JWT is never painted), which makes any in-flight
+      // getClerkToken() abandon to null. A signed-in user's premium fetch
+      // that lands in that window would otherwise fall through to an
+      // unauthenticated request and 401 (the FINANCIAL panel firing
+      // analyze-stock per symbol on first paint is the canonical trigger).
+      // Retry the token exactly once after the rotation settles, gated on a
+      // present Clerk user so anonymous visitors fall through immediately.
+      if (!token && await isClerkUserSignedIn()) {
+        await delayBeforeClerkRetry();
+        token = await resolveClerkToken();
       }
       if (token) {
         existing.set('Authorization', `Bearer ${token}`);
-        const res = await globalThis.fetch(input, { ...withCredentials(init), headers: existing });
+        const res = await globalThis.fetch(input, { ...withCredentials(requestInit), headers: existing });
         reportServerError(res, input);
         return res;
       }
@@ -186,7 +239,7 @@ export async function premiumFetch(
   // attaches wms_) → gateway accepts → 200. For premium paths reached here
   // (no API key, no tester key, no Clerk Bearer) the gateway will return
   // 401, which is correct.
-  const res = await globalThis.fetch(input, withCredentials(init));
+  const res = await globalThis.fetch(input, withCredentials(requestInit));
   reportServerError(res, input);
   return res;
 }

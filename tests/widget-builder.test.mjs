@@ -342,15 +342,15 @@ describe('widget-store — constants and logic', () => {
 
   it('deleteWidget cleans worldmonitor-panel-spans (aggregate map)', () => {
     assert.ok(
-      store.includes("'worldmonitor-panel-spans'"),
-      "deleteWidget must clean 'worldmonitor-panel-spans'",
+      store.includes('clearPanelSpanEntry(id)'),
+      'deleteWidget must clean row-span entries through the shared panel storage helper',
     );
   });
 
   it('deleteWidget cleans worldmonitor-panel-col-spans (aggregate map)', () => {
     assert.ok(
-      store.includes("'worldmonitor-panel-col-spans'"),
-      "deleteWidget must clean 'worldmonitor-panel-col-spans'",
+      store.includes('clearPanelColSpanEntry(id)'),
+      'deleteWidget must clean column-span entries through the shared panel storage helper',
     );
   });
 
@@ -993,7 +993,7 @@ describe('PRO widget — relay auth and configuration', () => {
       'getWidgetAgentProvidedProKey function must be defined',
     );
     // The PRO key comparison is near the 403 rejection — find it directly
-    const keyCompareIdx = relay.indexOf('providedProKey !== PRO_WIDGET_KEY');
+    const keyCompareIdx = relay.indexOf('!safeTokenEquals(providedProKey, PRO_WIDGET_KEY)');
     assert.ok(keyCompareIdx !== -1, 'PRO key comparison must be present');
     const region = relay.slice(keyCompareIdx, keyCompareIdx + 200);
     assert.ok(region.includes('403'), 'Wrong PRO key must return 403');
@@ -1113,29 +1113,38 @@ describe('PRO widget — store and sanitizer', () => {
     );
   });
 
-  it('PRO HTML stored in separate wm-pro-html-{id} key', () => {
+  it('legacy wm-pro-html-{id} key remains supported for old PRO widgets', () => {
     assert.ok(
       store.includes('wm-pro-html-'),
-      "PRO HTML must be stored in 'wm-pro-html-{id}' separate localStorage key",
+      "PRO HTML must still know the legacy 'wm-pro-html-{id}' localStorage key",
     );
   });
 
-  it('loadWidgets hydrates PRO HTML from separate key', () => {
+  it('loadWidgets can hydrate legacy PRO HTML from the side key', () => {
     const loadIdx = store.indexOf('function loadWidgets');
     assert.ok(loadIdx !== -1, 'loadWidgets not found');
     const loadBody = store.slice(loadIdx, loadIdx + 600);
     assert.ok(
-      loadBody.includes('proHtml') || loadBody.includes('wm-pro-html'),
-      'loadWidgets must read PRO HTML from separate key',
+      /localStorage\.getItem\(proHtmlKey\(w\.id\)\)/.test(loadBody),
+      'loadWidgets must read legacy PRO HTML from the side key',
     );
   });
 
-  it("loadWidgets drops PRO entry when wm-pro-html-{id} is missing", () => {
+  it('loadWidgets treats canonical PRO HTML as primary before legacy side key', () => {
     const loadIdx = store.indexOf('function loadWidgets');
-    const loadBody = store.slice(loadIdx, loadIdx + 600);
+    const loadBody = store.slice(loadIdx, loadIdx + 900);
     assert.ok(
-      loadBody.includes('continue') || loadBody.includes('skip'),
-      'loadWidgets must skip/drop PRO entries with missing HTML key',
+      loadBody.includes('storedHtml || sideKeyHtml'),
+      'loadWidgets must prefer canonical widget HTML before the legacy side key',
+    );
+  });
+
+  it('loadWidgets drops PRO entry only when no persisted HTML remains', () => {
+    const loadIdx = store.indexOf('function loadWidgets');
+    const loadBody = store.slice(loadIdx, loadIdx + 900);
+    assert.ok(
+      loadBody.includes('if (!proHtml)') && loadBody.includes('continue'),
+      'loadWidgets must skip/drop PRO entries only when no HTML exists in either storage path',
     );
   });
 
@@ -1149,12 +1158,16 @@ describe('PRO widget — store and sanitizer', () => {
     );
   });
 
-  it('saveWidget for PRO rolls back HTML key if metadata write fails', () => {
+  it('saveWidget for PRO does not duplicate HTML into the legacy side key', () => {
     const saveIdx = store.indexOf('function saveWidget');
     const saveBody = store.slice(saveIdx, saveIdx + 800);
     assert.ok(
-      saveBody.includes('removeItem') || saveBody.includes('rollback'),
-      'saveWidget must rollback (removeItem) PRO HTML key if metadata write throws',
+      !saveBody.includes('localStorage.setItem(proHtmlKey'),
+      'saveWidget must not write duplicate PRO HTML to the legacy side key',
+    );
+    assert.ok(
+      saveBody.includes('localStorage.removeItem(proHtmlKey'),
+      'saveWidget should clean up legacy PRO HTML side keys after a canonical save',
     );
   });
 
@@ -1289,35 +1302,41 @@ describe('PRO widget — store and sanitizer', () => {
       .split(',')
       .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
       .filter(Boolean);
-    assert.ok(slugs.includes('elie'), 'project-owner team slug must remain in the allowlist');
+    assert.ok(slugs.includes('eliewm'), 'project-owner team slug must remain in the allowlist');
     for (const slug of slugs) {
       assert.match(slug, /^[a-z0-9-]+$/, `team slug "${slug}" must be url-safe`);
     }
     // Reconstruct the actual match function and exercise it against the
     // production slug list — this is what protects against regex drift
-    // when teammate slugs are added later.
+    // when teammate slugs are added later. The team slug is the LAST hostname
+    // segment before .vercel.app (eliewm team scope); keep this shape in lock-
+    // step with isAllowedVercelPreview in public/wm-widget-sandbox.html.
     const matchesAllowedTeam = (hostname) =>
       slugs.some((team) =>
-        new RegExp('^worldmonitor-[a-z0-9-]+-' + team + '-[a-z0-9]+\\.vercel\\.app$').test(hostname),
+        new RegExp('^worldmonitor-[a-z0-9-]+-' + team + '\\.vercel\\.app$').test(hostname),
       );
-    assert.equal(matchesAllowedTeam('worldmonitor-feature-elie-abc123.vercel.app'), true);
-    assert.equal(matchesAllowedTeam('worldmonitor-feature-attacker-abc123.vercel.app'), false);
-    assert.equal(matchesAllowedTeam('worldmonitor-feature-elie-abc123.vercel.app.evil.com'), false);
+    assert.equal(matchesAllowedTeam('worldmonitor-git-feature-eliewm.vercel.app'), true);
+    assert.equal(matchesAllowedTeam('worldmonitor-abc123-eliewm.vercel.app'), true);
+    assert.equal(matchesAllowedTeam('worldmonitor-feature-attacker.vercel.app'), false);
+    assert.equal(matchesAllowedTeam('worldmonitor-git-feature-eliewm.vercel.app.evil.com'), false);
+    assert.equal(matchesAllowedTeam('worldmonitor-feature-xeliewm.vercel.app'), false);
     assert.equal(matchesAllowedTeam('evilworldmonitor.app'), false);
+    // The retired personal scope (worldmonitor-*-elie-<hash>) must no longer match.
+    assert.equal(matchesAllowedTeam('worldmonitor-feature-elie-abc123.vercel.app'), false);
     // A teammate slug added to the list must extend coverage WITHOUT
     // matching look-alike teams whose slug merely starts with the same
     // letters.
-    const withTeammate = ['elie', 'kieran'];
+    const withTeammate = ['eliewm', 'kieran'];
     const matchesWithTeammate = (hostname) =>
       withTeammate.some((team) =>
-        new RegExp('^worldmonitor-[a-z0-9-]+-' + team + '-[a-z0-9]+\\.vercel\\.app$').test(hostname),
+        new RegExp('^worldmonitor-[a-z0-9-]+-' + team + '\\.vercel\\.app$').test(hostname),
       );
-    assert.equal(matchesWithTeammate('worldmonitor-feature-kieran-abc123.vercel.app'), true);
-    assert.equal(matchesWithTeammate('worldmonitor-feature-kieranfake-abc123.vercel.app'), false);
+    assert.equal(matchesWithTeammate('worldmonitor-feature-kieran.vercel.app'), true);
+    assert.equal(matchesWithTeammate('worldmonitor-feature-kieranfake.vercel.app'), false);
   });
 
   it('widget sandbox behavior accepts Vercel previews and blocks spoofed parents', () => {
-    const script = sandbox.match(/<script>\n([\s\S]*)\n<\/script>/)?.[1];
+    const script = sandbox.match(/<script>\r?\n([\s\S]*?)\r?\n<\/script>/)?.[1];
     assert.ok(script, 'sandbox inline script not found');
 
     function runSandbox(referrer) {
@@ -1354,9 +1373,9 @@ describe('PRO widget — store and sanitizer', () => {
       return { parent, readyMessages, writes, message };
     }
 
-    const allowed = runSandbox('https://worldmonitor-feature-elie-abc123.vercel.app/dashboard');
+    const allowed = runSandbox('https://worldmonitor-git-feature-eliewm.vercel.app/dashboard');
     assert.equal(allowed.readyMessages.length, 1);
-    assert.equal(allowed.readyMessages[0].targetOrigin, 'https://worldmonitor-feature-elie-abc123.vercel.app');
+    assert.equal(allowed.readyMessages[0].targetOrigin, 'https://worldmonitor-git-feature-eliewm.vercel.app');
     assert.deepEqual(JSON.parse(JSON.stringify(allowed.readyMessages[0].payload)), {
       type: 'wm-widget-ready',
       id: 'wm-1',
@@ -1364,16 +1383,16 @@ describe('PRO widget — store and sanitizer', () => {
     });
     allowed.message({
       data: { type: 'wm-html', id: 'wm-1', token: 'test-token', html: '<p>ok</p>' },
-      origin: 'https://worldmonitor-feature-elie-abc123.vercel.app',
+      origin: 'https://worldmonitor-git-feature-eliewm.vercel.app',
       source: allowed.parent,
     });
     assert.deepEqual(allowed.writes, ['<p>ok</p>']);
 
-    const spoofed = runSandbox('https://worldmonitor-feature-elie-abc123.vercel.app.evil.com/');
+    const spoofed = runSandbox('https://worldmonitor-git-feature-eliewm.vercel.app.evil.com/');
     assert.deepEqual(spoofed.readyMessages, []);
     spoofed.message({
       data: { type: 'wm-html', id: 'wm-1', token: 'test-token', html: '<p>bad</p>' },
-      origin: 'https://worldmonitor-feature-elie-abc123.vercel.app.evil.com',
+      origin: 'https://worldmonitor-git-feature-eliewm.vercel.app.evil.com',
       source: spoofed.parent,
     });
     assert.deepEqual(spoofed.writes, []);

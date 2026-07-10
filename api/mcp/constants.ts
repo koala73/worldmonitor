@@ -1,12 +1,15 @@
 // MCP protocol versions this server can speak on the initialize handshake.
 // Bumping the supported set is a wire-visible default-behavior change, so the
-// bumped floor ships behind an env-var gate (`MCP_PROTOCOL_FLOOR_2025_06_18`)
-// per the operational rollout cadence: off default → staging `on` ≥24h →
-// prod `on` ≥48h → follow-up commit flips the default → remove the env var
-// the version after. The published server-card
+// bumped floor shipped behind an env-var gate (`MCP_PROTOCOL_FLOOR_2025_06_18`)
+// and has now completed its rollout (off default → staging `on` → prod `on` →
+// this commit flips the default): 2025-06-18 is negotiated by DEFAULT and the
+// env var survives only as an explicit `=off` kill-switch that pins the server
+// back to the legacy [2025-03-26] floor. The published server-card
 // (public/.well-known/mcp/server-card.json) advertises the bumped floor
 // unconditionally — the card is a static capability declaration; the live
-// initialize handler is what actually negotiates with each client.
+// initialize handler is what actually negotiates with each client. Keeping the
+// default in lock-step with the card is what lets a strict scanner's handshake
+// (which validates the negotiated version against the advertised floor) pass.
 //
 // Negotiation rule (per MCP lifecycle spec): if the client's requested
 // `protocolVersion` is in MCP_SUPPORTED_PROTOCOL_VERSIONS, the server MUST
@@ -17,10 +20,10 @@
 //
 // Version history (protocol floor — distinct from SERVER_VERSION below):
 //   - 2025-03-26 — initial floor; streamable HTTP transport.
-//   - 2025-06-18 (declared 2026-05-23, env-var gated, default off) — unlocks
-//     spec-native `outputSchema` per tool in a follow-up. When the env var
-//     is on, the server supports BOTH 2025-03-26 and 2025-06-18 so old and
-//     new clients are both served correctly during the rollout window.
+//   - 2025-06-18 (declared 2026-05-23; default-on since 2026-07-04) — unlocks
+//     spec-native `outputSchema` per tool. The server supports BOTH
+//     2025-03-26 and 2025-06-18 so old and new clients are both served; set
+//     `MCP_PROTOCOL_FLOOR_2025_06_18=off` to pin back to the legacy floor.
 //
 // Env is read at CALL time (not module-init) so dynamic re-imports of the
 // thin shim under different `process.env` snapshots — see
@@ -30,14 +33,14 @@
 // `mod.MCP_SUPPORTED_PROTOCOL_VERSIONS` / `mod.MCP_PROTOCOL_VERSION`
 // exports also reflect the per-import env state.
 function supportedProtocolVersions(): readonly string[] {
-  return process.env.MCP_PROTOCOL_FLOOR_2025_06_18 === 'on'
-    ? ['2025-03-26', '2025-06-18']
-    : ['2025-03-26'];
+  return process.env.MCP_PROTOCOL_FLOOR_2025_06_18 === 'off'
+    ? ['2025-03-26']
+    : ['2025-03-26', '2025-06-18'];
 }
 function latestProtocolVersion(): string {
-  return process.env.MCP_PROTOCOL_FLOOR_2025_06_18 === 'on'
-    ? '2025-06-18'
-    : '2025-03-26';
+  return process.env.MCP_PROTOCOL_FLOOR_2025_06_18 === 'off'
+    ? '2025-03-26'
+    : '2025-06-18';
 }
 
 // Negotiate the protocol version returned in the initialize response.
@@ -175,7 +178,7 @@ export const SERVER_NAME = 'worldmonitor';
 //     registry entry — same per-tool authorship discipline as
 //     _outputBudgetBytes (v1.6.0 PR 4) and outputSchema (v1.6.0 PR 6).
 //   - Hint shape extends from 2 booleans → 4 booleans per tool. Wire delta
-//     is small (~50 B × 39 tools); hints unchanged for tools that already
+//     is small (~50 B × 40 tools); hints unchanged for tools that already
 //     matched the old blanket. Cache tools + pure-internal RPCs now
 //     correctly advertise `openWorldHint: false` (closed-world like a
 //     memory tool — they read our seeded Redis cache); LLM-synthesized
@@ -203,9 +206,83 @@ export const SERVER_NAME = 'worldmonitor';
 //     change, no envelope-shape change. The constant emitted into
 //     initialize.result.instructions is the only wire-visible diff. The
 //     bump records it in the audit trail; rollback is git revert.
+// Bumped 1.10.0 → 1.11.0 (2026-07-04) reflecting:
+//   - MCP Apps support (extension `io.modelcontextprotocol/ui`, spec
+//     2026-01-26). Adds a `ui://worldmonitor/country-risk.html` app-shell
+//     resource (mimeType `text/html;profile=mcp-app`, served via
+//     resources/list + resources/read) and links it from the
+//     `get_country_risk` tool via `_meta.ui.resourceUri` (+ the deprecated
+//     flat `ui/resourceUri` alias). An MCP-Apps host renders the shell inline
+//     and streams the tool result in via postMessage. resources/read of a
+//     ui:// URI is public + quota-exempt (static, data-free template); DATA
+//     reads (worldmonitor://…) stay gated + Pro-quota-symmetric.
+//   - Additive on the wire: `_meta` appears only on the linked tool. Clients
+//     that don't speak MCP Apps ignore the extra resource + the reserved
+//     `_meta` field. No input/output schema change to any existing tool.
+//     (NOTE: 1.11.0 shipped WITHOUT declaring the extension's initialize
+//     capability key — an incomplete handshake corrected in 1.13.0 below.
+//     Agent-readiness scanners classify an MCP-App surface off the negotiated
+//     `capabilities.extensions` key, so ui:// + `_meta` alone did not register
+//     as MCP Apps support.)
+// Bumped 1.11.0 → 1.12.0 (2026-07-04) reflecting:
+//   - Data resources split into two tiers by sensitivity, and a new
+//     `resources/templates/list` method:
+//       * `resources/list` now surfaces ONLY concrete, metadata-only DATA
+//         resources that are anonymously readable + quota-exempt (v1:
+//         `worldmonitor://seed-meta/freshness`, a market-bootstrap freshness
+//         probe returning only {cached_at, stale}). Alongside the v1.11.0
+//         ui:// app-shell resource, every `resources/list` entry now reads
+//         cleanly for an anonymous agent (or agent-readiness scanner) — a
+//         literal `{iso2}` template URI can never resolve, so the data
+//         templates no longer appear here.
+//       * `resources/templates/list` (new, in PUBLIC_MCP_METHODS, metadata-
+//         class, quota-exempt) surfaces the three data-bearing URI templates
+//         (country risk, chokepoint status, market quote). A concrete
+//         instantiation `resources/read` STILL routes through
+//         dispatchToolsCall and consumes the Pro daily quota symmetrically
+//         with the equivalent tools/call — the data-leak / quota-bypass
+//         protection is unchanged; only its discovery surface moved from
+//         resources/list to resources/templates/list.
+//   - `resources/read` of a PUBLIC (metadata-only) DATA resource is promoted
+//     to the anonymous + quota-exempt path per-request via
+//     `isPublicResourceUri` (parallel to the v1.11.0 `isUiResourceUri`
+//     promotion); data-bearing template reads stay fully gated.
+//   - No initialize capability key added — resources/templates/list is
+//     covered by the existing `resources` capability (the spec has no
+//     separate templates capability flag).
+// Bumped 1.12.0 → 1.13.0 (2026-07-04) reflecting:
+//   - MCP Apps handshake completion: initialize.result.capabilities now
+//     declares `extensions: { 'io.modelcontextprotocol/ui': {} }` (spec
+//     2026-01-26). 1.11.0 shipped the ui:// app-shell resource + tool
+//     `_meta.ui.resourceUri` (the CONTENT of the extension) but never
+//     declared the extension in the capability handshake (the SIGNAL). Hosts
+//     and agent-readiness scanners negotiate/detect MCP Apps off this
+//     `capabilities.extensions` key, so the surface read as a plain MCP server
+//     despite carrying every ui:// artifact. Purely additive: clients that
+//     don't speak the extension ignore the extra capability key; no schema,
+//     envelope, or auth change. Mirrored into
+//     public/.well-known/mcp/server-card.json::capabilities.extensions so the
+//     static card and the live wire stay in parity.
+// Bumped 1.13.0 → 1.14.0 (2026-07-08) reflecting:
+//   - MCP Apps interactive-dashboard fleet: four new ui:// app-shell resources
+//     joining the v1.11.0 country-risk widget —
+//       * ui://worldmonitor/world-brief.html      (get_world_brief)
+//       * ui://worldmonitor/country-brief.html    (get_country_brief)
+//       * ui://worldmonitor/market-radar.html      (get_market_data)
+//       * ui://worldmonitor/chokepoint-monitor.html (get_chokepoint_status)
+//     Each is linked from its backing tool via `_meta.ui.resourceUri` (+ the
+//     deprecated flat `ui/resourceUri` alias) and registered in
+//     api/mcp/ui/registry.ts. A shared shell (api/mcp/ui/shell.ts) factors the
+//     DOCTYPE / 4-category CSP / dark-mode tokens / postMessage bridge so the
+//     fleet can't drift on the orank quality/CSP signals. resources/read of a
+//     ui:// URI stays public + quota-exempt (static, data-free template); DATA
+//     reads (worldmonitor://…) stay gated + Pro-quota-symmetric.
+//   - Purely additive on the wire: `_meta` appears on the four newly-linked
+//     tools; every ui:// read is anonymously servable. No input/output schema
+//     change to any tool, no envelope-shape change, no auth change.
 // Keep aligned with public/.well-known/mcp/server-card.json::serverInfo.version
 // — discovery scanners cross-check both values.
-export const SERVER_VERSION = '1.10.0';
+export const SERVER_VERSION = '1.14.0';
 
 // MCP logging capability — valid severity levels per the 2025-03-26 spec
 // (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not
@@ -251,13 +328,13 @@ export const TOOL_DESCRIPTION_MAX_BYTES = 120;
 export const SERVER_INSTRUCTIONS = [
   'Every tool accepts an optional `jmespath` string. Server-side projection applied AFTER per-tool filter/summary; typical 80-95% token reduction. Grammar: https://jmespath.org/specification.html. Guide + 12 worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.',
   '',
-  `Limits: expr ≤ ${JMESPATH_MAX_EXPR_BYTES}B, output ≤ ${JMESPATH_MAX_OUTPUT_BYTES}B. Bad expressions soft-fail via {_jmespath_error, original_keys} envelope (consumes one daily quota unit on retry — self-correct from original_keys). Full envelope reference: https://www.worldmonitor.app/docs/mcp-error-catalog.`,
+  `Limits: expr ≤ ${JMESPATH_MAX_EXPR_BYTES}B, output ≤ ${JMESPATH_MAX_OUTPUT_BYTES}B. Bad expressions soft-fail via {_jmespath_error, original_keys} envelope (consumes one Pro/OAuth daily quota unit on retry when that quota path applies — self-correct from original_keys). Full envelope reference: https://www.worldmonitor.app/docs/mcp-error-catalog.`,
   '',
   `tools/list ships compressed tool descriptions (≤${TOOL_DESCRIPTION_MAX_BYTES}B). Call describe_tool({tool_name}) for the full uncompressed definition — quota-exempt (still counts toward the 60/min rate limit), so use freely while exploring. describe_tool({tool_name: 'nonexistent'}) returns {error: 'unknown_tool', available: [...]} so you can self-correct. Full reference: https://www.worldmonitor.app/docs/mcp-tools-reference.`,
   '',
   'Issue prompts/list to discover pre-built workflow templates (country-briefing, energy-shock-watch, market-open-prep, conflict-pulse, route-risk-check, freshness-audit). Each prompt pre-bakes a JMESPath projection per step so the first execution lands on the right shape. prompts/list + prompts/get are quota-exempt (per-minute limit only).',
   '',
-  'Issue resources/list to discover four read-only addressable resource URIs (country risk, chokepoint status, seed-meta freshness, market quote). resources/read consumes the Pro daily quota IDENTICALLY to the equivalent tools/call — there is no free path around the cap via resources.',
+  'Issue resources/list for concrete read-only resources (v1: seed-meta freshness — anonymous + quota-free) and resources/templates/list for parameterised URI templates (country risk, chokepoint status, market quote). Substitute the template placeholder, then resources/read the concrete URI; a template read consumes the Pro daily quota IDENTICALLY to the equivalent tools/call — there is no free path around the cap via those resources.',
 ].join('\n');
 
 // Country-code whitelist for get_consumer_prices. The consumer-prices seeder

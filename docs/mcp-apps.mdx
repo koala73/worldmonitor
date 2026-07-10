@@ -1,0 +1,113 @@
+---
+title: "MCP Apps"
+description: "Complete contract for WorldMonitor's MCP Apps interactive ui:// resources, tool links, host flow, security posture, and drift checks."
+---
+
+WorldMonitor supports [MCP Apps](https://modelcontextprotocol.io/extensions/apps/build) through the `io.modelcontextprotocol/ui` extension. The current fleet ships 5 MCP Apps: self-contained `ui://` HTML resources that an MCP Apps host can render inline after a linked tool call.
+
+This page is the source-of-truth guide for the interactive surface. Use it with the [MCP Server overview](/mcp-overview) for auth, quota, transport, and general JSON-RPC behavior.
+
+## Contract
+
+| Field | Value |
+|---|---|
+| Extension | `io.modelcontextprotocol/ui` |
+| Spec version | `2026-01-26` |
+| UI resource MIME type | `text/html;profile=mcp-app` |
+| Transport endpoint | `https://worldmonitor.app/mcp` |
+| UI resource scheme | `ui://worldmonitor/...` |
+| Data path | normal gated `tools/call`, then host `postMessage` into the iframe |
+| Template path | `resources/read` of `ui://...`, public and quota-exempt |
+
+Three discovery signals must stay aligned:
+
+| Signal | Where it appears | Purpose |
+|---|---|---|
+| `initialize.result.capabilities.extensions["io.modelcontextprotocol/ui"]` | `initialize` response | Negotiates MCP Apps support with the host. |
+| `_meta.ui.resourceUri` and `_meta["ui/resourceUri"]` | `tools/list` / `describe_tool` entries for linked tools | Tells the host which app shell should render a tool result. |
+| `ui://...` resources with `_meta.ui.csp` | `resources/list` and `resources/read` | Lets the host discover and fetch the static HTML template plus view policy. |
+
+## Fleet
+
+| UI resource URI | Linked tool | App | Renders |
+|---|---|---|---|
+| `ui://worldmonitor/country-risk.html` | `get_country_risk` | Country Risk (interactive) | Composite Instability Index score, component breakdown, travel advisory, and sanctions exposure. |
+| `ui://worldmonitor/world-brief.html` | `get_world_brief` | World Brief (interactive) | AI-summarised global brief, grounding headlines, and source feed articles. |
+| `ui://worldmonitor/country-brief.html` | `get_country_brief` | Country Brief (interactive) | Per-country intelligence brief, analytical framework lens, and grounding sources. |
+| `ui://worldmonitor/market-radar.html` | `get_market_data` | Market Radar (interactive) | Fear & Greed composite plus equity, commodity, crypto, Gulf, and sector quote tables with signed, colour-coded change. |
+| `ui://worldmonitor/chokepoint-monitor.html` | `get_chokepoint_status` | Chokepoint Monitor (interactive) | Per-chokepoint transit summaries, week-over-week change, tanker split, and risk-level badge. |
+
+## Runtime Flow
+
+1. The host calls `initialize` on `https://worldmonitor.app/mcp`.
+2. WorldMonitor returns the normal MCP capabilities plus `capabilities.extensions["io.modelcontextprotocol/ui"]`.
+3. The host calls `tools/list`. UI-linked tools carry `_meta.ui.resourceUri` and the deprecated flat `_meta["ui/resourceUri"]` alias.
+4. The host calls `resources/list` and sees the `ui://` app resources. Each UI entry includes `mimeType: text/html;profile=mcp-app` and `_meta.ui.csp`.
+5. The host calls `resources/read` for the chosen `ui://` URI. This read is public and quota-exempt because it returns only a static, data-free template.
+6. The host performs the normal authenticated `tools/call` for the linked tool. This is the only step that fetches live data and consumes any applicable quota.
+7. The host embeds the returned HTML in a sandboxed iframe and exchanges MCP Apps messages:
+
+```text
+View -> Host: ui/initialize
+Host -> View: initialize result with hostContext
+View -> Host: ui/notifications/initialized
+Host -> View: ui/notifications/tool-result
+View -> Host: ui/notifications/size-changed
+```
+
+The view never fetches live WorldMonitor data itself. Live data always reaches the app through the host after a normal tool call.
+
+## Resource Reads And Quota
+
+`resources/list` exposes concrete public resources, including all `ui://` templates. `resources/templates/list` exposes parameterised data resources.
+
+| Read kind | Example | Auth | Pro daily quota | Why |
+|---|---|---|---|---|
+| UI template | `resources/read` `ui://worldmonitor/market-radar.html` | No | No | Static HTML shell, no data and no upstream fetch. |
+| Public metadata | `resources/read` `worldmonitor://seed-meta/freshness` | No | No | Metadata-only health/freshness probe. |
+| Data template instantiation | `resources/read` `worldmonitor://countries/de/risk` | Yes | Yes | Routes through the same dispatcher as the equivalent `tools/call`. |
+| Tool data | `tools/call` `get_market_data` | Yes | Yes for OAuth/Pro contexts | Fetches live or cached data. |
+
+All methods still count toward the 60/minute per-key, per-user, or anonymous-IP rate limiter.
+
+## View Security
+
+The app shells are deliberately static and narrow:
+
+- They are self-contained HTML: no external scripts, styles, images, iframes, fonts, or network fetches.
+- Rendering uses DOM construction and `textContent`, never `innerHTML`.
+- Links are admitted only through `http:` or `https:` URL parsing and are rendered with `rel="noopener noreferrer"`.
+- The shared shell reports size after initialization and after every render so hosts can resize the iframe.
+- Soft-error envelopes (`_budget_exceeded`, `_jmespath_error`, and top-level string `error`) render as visible error messages instead of blank success states.
+- The HTML includes a meta CSP with `default-src 'none'`, scoped inline script/style allowances, locked `form-action` and `base-uri`, and a connect-src mirror of the `_meta.ui.csp.connectDomains` policy.
+
+Important limitation: `frame-ancestors` inside a meta CSP is advisory only. Browsers enforce `frame-ancestors` only from an HTTP `Content-Security-Policy` response header. The meta directive remains in the shell for static scanners and intent documentation; do not treat it as browser-level clickjacking protection.
+
+## Adding A New MCP App
+
+1. Add the self-contained app shell under `api/mcp/ui/*-app.ts`.
+2. Reuse `buildAppHtml()` from `api/mcp/ui/shell.ts` unless there is a protocol reason not to.
+3. Add a canonical `*_UI_URI` constant and registry entry in `api/mcp/ui/registry.ts`.
+4. Set `_uiResourceUri` on exactly one backing tool in `api/mcp/registry/rpc-tools.ts` or `api/mcp/registry/cache-tools.ts`.
+5. Update `docs/mcp-apps.mdx`, the short [MCP overview](/mcp-overview#mcp-apps-interactive-ui), and `public/.well-known/mcp/server-card.json`.
+6. Run `npm run docs:stats` to refresh `docs/generated/stats.json`.
+7. Run `npm run docs:check` and the focused MCP resource/tool tests.
+
+The docs-stat gate derives the app inventory from `api/mcp/ui/registry.ts` and the tool registries. It fails when:
+
+- `docs/mcp-apps.mdx`, `docs/mcp-overview.mdx`, or `public/mcp-server.md` omits a linked tool or `ui://` URI.
+- `public/.well-known/mcp/server-card.json.metadata.mcpApps` drifts from the code-derived app list, spec version, or MIME type.
+- `docs/docs.json` drops this page from navigation.
+- The documented MCP tool count drifts from the server-card tool inventory.
+
+## Source Files
+
+| Source | Owns |
+|---|---|
+| `api/mcp/ui/shell.ts` | Shared HTML builder, protocol bridge, MIME type, spec version, CSP, theme, soft-error handling. |
+| `api/mcp/ui/registry.ts` | Canonical `ui://` resource inventory and `resources/read` response builder. |
+| `api/mcp/registry/rpc-tools.ts` | UI links for RPC-backed tools such as `get_world_brief`, `get_country_brief`, and `get_country_risk`. |
+| `api/mcp/registry/cache-tools.ts` | UI links for cache-backed tools such as `get_market_data` and `get_chokepoint_status`. |
+| `api/mcp/handler.ts` | Public `ui://` read promotion, `resources/list`, `resources/read`, and `initialize` capability advertisement. |
+| `public/.well-known/mcp/server-card.json` | Static pre-connection discovery metadata for scanners and agents. |
+| `scripts/docs-stats.mjs` | Drift guard for docs, server-card metadata, navigation, and app inventory. |

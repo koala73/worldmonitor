@@ -7,6 +7,8 @@ loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'correlation:cards-bootstrap:v1';
 const CACHE_TTL = 1200; // 20min — outlives maxStaleMin:15 with buffer (cron runs every 5min)
+const MIN_CORRELATION_CARDS = 1;
+const CORRELATION_CARD_DOMAINS = ['military', 'escalation', 'economic', 'disaster'];
 
 const INPUT_KEYS = [
   'military:flights:v1',
@@ -727,14 +729,27 @@ async function computeCorrelation() {
 }
 
 export function declareRecords(data) {
-  return (data?.military?.length ?? 0) + (data?.escalation?.length ?? 0) + (data?.economic?.length ?? 0) + (data?.disaster?.length ?? 0);
+  return CORRELATION_CARD_DOMAINS.reduce((total, domain) => {
+    const cards = data?.[domain];
+    return total + (Array.isArray(cards) ? cards.length : 0);
+  }, 0);
+}
+
+export function validateFn(data) {
+  return (
+    data != null &&
+    typeof data === 'object' &&
+    CORRELATION_CARD_DOMAINS.every((domain) => Array.isArray(data[domain])) &&
+    declareRecords(data) >= MIN_CORRELATION_CARDS
+  );
 }
 
 if (process.argv[1]?.endsWith('seed-correlation.mjs')) {
   runSeed('correlation', 'cards', CANONICAL_KEY, computeCorrelation, {
     ttlSeconds: CACHE_TTL,
     sourceVersion: 'correlation-engine-v1',
-    recordCount: (data) => (data.military?.length ?? 0) + (data.escalation?.length ?? 0) + (data.economic?.length ?? 0) + (data.disaster?.length ?? 0),
+    validateFn,
+    recordCount: declareRecords,
     extraKeys: [
       { key: 'correlation:military:v1', ttl: CACHE_TTL },
       { key: 'correlation:escalation:v1', ttl: CACHE_TTL },

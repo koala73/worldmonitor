@@ -11,8 +11,8 @@ const seedSrc = readFileSync('scripts/seed-regulatory-actions.mjs', 'utf8');
 
 const pureSrc = seedSrc
   .replace(/^import\s.*$/gm, '')
-  .replace(/loadEnvFile\([^)]+\);\n/, '')
-  .replace(/const isDirectRun[\s\S]*?}\n\nexport\s*{[\s\S]*?};?\s*$/m, '');
+  .replace(/loadEnvFile\([^)]+\);\r?\n/, '')
+  .replace(/const isDirectRun[\s\S]*?}\r?\n\r?\nexport\s*{[\s\S]*?};?\s*$/m, '');
 
 const ctx = vm.createContext({
   console,

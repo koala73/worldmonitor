@@ -5,7 +5,8 @@
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
 import { isCallerPremium } from '../server/_shared/premium-check';
-import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit } from '../server/_shared/rate-limit';
+import { isBlockedResolvedAddress } from '../server/_shared/ip-address-classification';
+import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, getClientIp } from '../server/_shared/rate-limit';
 
 export const config = { runtime: 'edge' };
 
@@ -35,17 +36,6 @@ const RATE_LIMIT_MAX = RATE_LIMIT_POLICY.limit;
 const RATE_LIMIT_WINDOW = RATE_LIMIT_POLICY.window;
 const RATE_LIMIT_ERROR_CODE = -32029; // JSON-RPC code mirrored from api/mcp.ts
 
-function getClientIp(req: Request): string {
-  // cf-connecting-ip is the only header that survives Cloudflare → Vercel
-  // unforged. x-forwarded-for is client-settable and must NOT be trusted
-  // for rate limiting — see api/_rate-limit.js notes (#3721).
-  return (
-    req.headers.get('cf-connecting-ip') ||
-    req.headers.get('x-real-ip') ||
-    '0.0.0.0'
-  );
-}
-
 function logProxyCall(entry: {
   ip: string;
   target_host: string;
@@ -68,20 +58,139 @@ function logProxyCall(entry: {
 
 const TIMEOUT_MS = 15_000;
 const SSE_CONNECT_TIMEOUT_MS = 10_000;
-const SSE_RPC_TIMEOUT_MS = 12_000;
+const DNS_RESOLUTION_TIMEOUT_MS = 3_000;
+const DNS_JSON_ENDPOINT = 'https://cloudflare-dns.com/dns-query';
+// Production waits up to 12s for an SSE RPC response. The node test runner sets
+// NODE_TEST_CONTEXT; an SSE mock that closes its stream before the proxy
+// registers its RPC deferred would otherwise stall the suite for that full
+// window. Shorten it under the test runner only — the routing/SSRF tests still
+// exercise the timeout→reject (504) path, just without the wall-clock stall.
+const SSE_RPC_TIMEOUT_MS = process.env.NODE_TEST_CONTEXT ? 200 : 12_000;
 const MCP_PROTOCOL_VERSION = '2025-03-26';
 
-const BLOCKED_HOST_PATTERNS = [
-  /^localhost$/i,
-  /^127\./,
-  /^10\./,
-  /^172\.(1[6-9]|2\d|3[01])\./,
-  /^192\.168\./,
-  /^169\.254\./,   // link-local + cloud metadata (AWS/GCP/Azure)
-  /^::1$/,
-  /^fd[0-9a-f]{2}:/i,
-  /^fe80:/i,
-];
+function withProxyNoStore(headers: Record<string, string> = {}): Record<string, string> {
+  return { ...headers, 'Cache-Control': 'no-store' };
+}
+
+const BLOCKED_HOSTNAMES = new Set([
+  'localhost',
+  'metadata',
+  'metadata.internal',
+  'metadata.google.internal',
+  'instance-data',
+  'computemetadata',
+  'link-local.s3.amazonaws.com',
+  '169.254.169.254',
+]);
+
+const TEST_RESOLVER_KEY = Symbol.for('worldmonitor.mcpProxy.resolveHostnameForTest');
+
+function getResolveHostnameForTest() {
+  if (!process.env.NODE_TEST_CONTEXT) return null;
+  const resolver = globalThis[TEST_RESOLVER_KEY];
+  return typeof resolver === 'function' ? resolver : null;
+}
+
+class McpProxySsrfError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'McpProxySsrfError';
+  }
+}
+
+// Generic message surfaced to the caller when a serverUrl resolves to a
+// private/reserved address. The specific blocked IP is deliberately NOT echoed
+// back: returning it turns the proxy into an address oracle (the caller could
+// enumerate internal IPs by observing which hostnames get blocked). SSRF review
+// finding — log the concrete IP server-side for debugging, tell the caller only
+// that the host is disallowed.
+const SSRF_BLOCKED_PUBLIC_MESSAGE = 'serverUrl host is not allowed';
+
+function throwBlockedAddress(blockedAddress) {
+  // Server-side audit/debug log with the concrete blocked address. This is the
+  // only place the resolved internal IP appears; it never reaches the response.
+  console.error('[mcp-proxy]', {
+    event: 'mcp_proxy_ssrf_blocked',
+    ts: new Date().toISOString(),
+    blocked_address: blockedAddress,
+  });
+  throw new McpProxySsrfError(SSRF_BLOCKED_PUBLIC_MESSAGE);
+}
+
+async function resolveDnsJson(hostname, recordType) {
+  const url = new URL(DNS_JSON_ENDPOINT);
+  url.searchParams.set('name', hostname);
+  url.searchParams.set('type', recordType);
+  const response = await fetch(url.toString(), {
+    headers: {
+      Accept: 'application/dns-json',
+      'User-Agent': 'WorldMonitor-MCP-Proxy/1.0',
+    },
+    signal: AbortSignal.timeout(DNS_RESOLUTION_TIMEOUT_MS),
+  });
+  if (!response.ok) {
+    throw new Error(`DNS ${recordType} lookup failed: HTTP ${response.status}`);
+  }
+  const data = await response.json();
+  if (data?.Status !== 0) {
+    throw new Error(`DNS ${recordType} lookup failed: status ${data?.Status}`);
+  }
+  const expectedType = recordType === 'A' ? 1 : 28;
+  return (Array.isArray(data?.Answer) ? data.Answer : [])
+    .filter(answer => answer?.type === expectedType && typeof answer?.data === 'string')
+    .map(answer => answer.data);
+}
+
+async function defaultResolveHostname(hostname) {
+  const resolveHostnameForTest = getResolveHostnameForTest();
+  if (resolveHostnameForTest) return resolveHostnameForTest(hostname);
+  const records = await Promise.all([
+    resolveDnsJson(hostname, 'A'),
+    resolveDnsJson(hostname, 'AAAA'),
+  ]);
+  return records.flat();
+}
+
+async function assertServerUrlSafe(url) {
+  const hostname = url.hostname.toLowerCase();
+  if (BLOCKED_HOSTNAMES.has(hostname)) {
+    throw new McpProxySsrfError(`serverUrl hostname is blocked: ${hostname}`);
+  }
+  if (isBlockedResolvedAddress(hostname)) {
+    throwBlockedAddress(hostname);
+  }
+
+  let resolvedAddresses;
+  try {
+    resolvedAddresses = await defaultResolveHostname(hostname);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new McpProxySsrfError(`serverUrl DNS resolution failed: ${message}`);
+  }
+
+  if (!resolvedAddresses.length) {
+    throw new McpProxySsrfError('serverUrl DNS resolution returned no addresses');
+  }
+
+  const blocked = resolvedAddresses.find(isBlockedResolvedAddress);
+  if (blocked) {
+    throwBlockedAddress(blocked);
+  }
+
+  return { url, resolvedAddresses };
+}
+
+// Vercel Edge fetch does not expose a Node-style lookup/socket hook, so this
+// proxy CANNOT pin the TLS connection to a previously vetted address. There is
+// no way to guarantee that the IP we validated is the IP fetch() ultimately
+// connects to; a DNS answer can change between our resolve and fetch's own
+// resolve. This re-resolve-and-recheck immediately before every outbound
+// dispatch NARROWS that DNS-rebinding window but does not close it. The
+// residual rebind window is an ACCEPTED limitation of the Edge runtime (no
+// socket-level pin available) — documented, not fixed here (P1, issue #4674).
+async function revalidateBeforeFetch(url) {
+  await assertServerUrlSafe(url);
+}
 
 function buildInitPayload() {
   return {
@@ -96,14 +205,30 @@ function buildInitPayload() {
   };
 }
 
-function validateServerUrl(raw) {
+async function validateServerUrl(raw) {
   let url;
   try { url = new URL(raw); } catch { return null; }
-  if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
-  const host = url.hostname;
-  if (BLOCKED_HOST_PATTERNS.some(p => p.test(host))) return null;
-  return url;
+  if (url.protocol !== 'https:') return null;
+  try {
+    return (await assertServerUrlSafe(url)).url;
+  } catch {
+    return null;
+  }
 }
+
+// Cloud-metadata gate headers (GHSA-887j, Edge-safe defence-in-depth): GCP
+// `Metadata-Flavor: Google`, Azure `Metadata: true`, AWS IMDSv2
+// `X-aws-ec2-metadata-token[-ttl-seconds]`. The proxy never forwards them, so
+// even if a DNS rebind slipped a fetch onto 169.254.169.254 the credential-less
+// request is refused by the metadata service. Matched case-insensitively. (The
+// full socket-pin fix that closes resolve!=connect is a Node-runtime follow-up;
+// this Edge mitigation kills the demonstrated PoC without a runtime switch.)
+const DENIED_FORWARD_HEADERS = new Set([
+  'metadata-flavor',
+  'metadata',
+  'x-aws-ec2-metadata-token',
+  'x-aws-ec2-metadata-token-ttl-seconds',
+]);
 
 function buildHeaders(customHeaders) {
   const h = {
@@ -117,7 +242,16 @@ function buildHeaders(customHeaders) {
         // Strip CRLF to prevent header injection
         const safeKey = k.replace(/[\r\n]/g, '');
         const safeVal = v.replace(/[\r\n]/g, '');
-        if (safeKey) h[safeKey] = safeVal;
+        // Hop-by-hop / authority headers (Host, Content-Length, Connection, TE,
+        // Trailer, Upgrade, Keep-Alive, Transfer-Encoding, Proxy-*) are NOT
+        // filtered here: on the Edge runtime the spec-compliant `fetch()` treats
+        // them as forbidden header names and silently drops them, so they never
+        // reach the upstream. (The Node-runtime socket-pin follow-up uses raw
+        // `http.request`, which does NOT auto-drop them, so that PR must add an
+        // explicit hop-by-hop filter — see #4674.)
+        if (safeKey && !DENIED_FORWARD_HEADERS.has(safeKey.toLowerCase())) {
+          h[safeKey] = safeVal;
+        }
       }
     }
   }
@@ -129,10 +263,12 @@ function buildHeaders(customHeaders) {
 async function postJson(url, body, headers, sessionId) {
   const h = { ...headers };
   if (sessionId) h['Mcp-Session-Id'] = sessionId;
+  await revalidateBeforeFetch(url);
   const resp = await fetch(url.toString(), {
     method: 'POST',
     headers: h,
     body: JSON.stringify(body),
+    redirect: 'manual',
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
   return resp;
@@ -163,7 +299,10 @@ async function sendInitialized(serverUrl, headers, sessionId) {
       method: 'notifications/initialized',
       params: {},
     }, headers, sessionId);
-  } catch { /* non-fatal */ }
+  } catch (error) {
+    if (error instanceof McpProxySsrfError) throw error;
+    /* non-fatal */
+  }
 }
 
 async function mcpListTools(serverUrl, customHeaders) {
@@ -222,6 +361,8 @@ function makeDeferred() {
 class SseSession {
   constructor(sseUrl, headers) {
     this._sseUrl = sseUrl;
+    this._originHost = new URL(sseUrl).host;
+    this._originProtocol = new URL(sseUrl).protocol;
     this._headers = headers;
     this._endpointUrl = null;
     this._endpointDeferred = makeDeferred();
@@ -230,8 +371,10 @@ class SseSession {
   }
 
   async connect() {
+    await revalidateBeforeFetch(new URL(this._sseUrl));
     const resp = await fetch(this._sseUrl, {
       headers: { ...this._headers, Accept: 'text/event-stream', 'Cache-Control': 'no-cache' },
+      redirect: 'manual',
       signal: AbortSignal.timeout(SSE_CONNECT_TIMEOUT_MS),
     });
     if (!resp.ok) throw new Error(`SSE connect HTTP ${resp.status}`);
@@ -280,8 +423,17 @@ class SseSession {
                   this._endpointDeferred.reject(new Error('SSE endpoint protocol not allowed'));
                   return;
                 }
-                if (BLOCKED_HOST_PATTERNS.some(p => p.test(resolved.hostname))) {
+                if (BLOCKED_HOSTNAMES.has(resolved.hostname.toLowerCase()) || isBlockedResolvedAddress(resolved.hostname)) {
                   this._endpointDeferred.reject(new Error('SSE endpoint host is blocked'));
+                  return;
+                }
+                // Pin endpoint to the same host as the original SSE URL to
+                // prevent a malicious server from redirecting via the endpoint
+                // event to an internal host (DNS rebinding / SSRF).
+                if (resolved.host !== this._originHost || resolved.protocol !== this._originProtocol) {
+                  this._endpointDeferred.reject(
+                    new Error('SSE endpoint host or protocol does not match origin server'),
+                  );
                   return;
                 }
                 this._endpointUrl = resolved.toString();
@@ -316,10 +468,12 @@ class SseSession {
       }
     }, SSE_RPC_TIMEOUT_MS);
     try {
+      await revalidateBeforeFetch(new URL(this._endpointUrl));
       const postResp = await fetch(this._endpointUrl, {
         method: 'POST',
         headers: { ...this._headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
+        redirect: 'manual',
         signal: AbortSignal.timeout(SSE_RPC_TIMEOUT_MS),
       });
       if (!postResp.ok) {
@@ -333,10 +487,12 @@ class SseSession {
   }
 
   async notify(method, params) {
+    await revalidateBeforeFetch(new URL(this._endpointUrl));
     await fetch(this._endpointUrl, {
       method: 'POST',
       headers: { ...this._headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', method, params }),
+      redirect: 'manual',
       signal: AbortSignal.timeout(5_000),
     }).catch(() => {});
   }
@@ -407,7 +563,7 @@ async function handleListTools(req: Request, cors: Record<string, string>, meta:
   const rawServer = url.searchParams.get('serverUrl');
   const rawHeaders = url.searchParams.get('headers');
   if (!rawServer) return jsonResponse({ error: 'Missing serverUrl' }, 400, cors);
-  const serverUrl = validateServerUrl(rawServer);
+  const serverUrl = await validateServerUrl(rawServer);
   if (!serverUrl) return jsonResponse({ error: 'Invalid serverUrl' }, 400, cors);
   let customHeaders = {};
   if (rawHeaders) {
@@ -425,20 +581,20 @@ async function handleCallTool(req: Request, cors: Record<string, string>, meta: 
   const { serverUrl: rawServer, toolName, toolArgs, customHeaders } = body;
   if (!rawServer) return jsonResponse({ error: 'Missing serverUrl' }, 400, cors);
   if (!toolName) return jsonResponse({ error: 'Missing toolName' }, 400, cors);
-  const serverUrl = validateServerUrl(rawServer);
+  const serverUrl = await validateServerUrl(rawServer);
   if (!serverUrl) return jsonResponse({ error: 'Invalid serverUrl' }, 400, cors);
   captureMeta(serverUrl, customHeaders, meta);
   const result = isSseTransport(serverUrl)
     ? await mcpCallToolSse(serverUrl, toolName, toolArgs || {}, customHeaders || {})
     : await mcpCallTool(serverUrl, toolName, toolArgs || {}, customHeaders || {});
-  return jsonResponse({ result }, 200, { ...cors, 'Cache-Control': 'no-store' });
+  return jsonResponse({ result }, 200, cors);
 }
 
 export default async function handler(req) {
   if (isDisallowedOrigin(req))
-    return new Response('Forbidden', { status: 403 });
+    return new Response('Forbidden', { status: 403, headers: withProxyNoStore() });
 
-  const cors = getCorsHeaders(req, 'GET, POST, OPTIONS');
+  const cors = withProxyNoStore(getCorsHeaders(req, 'GET, POST, OPTIONS'));
   if (req.method === 'OPTIONS')
     return new Response(null, { status: 204, headers: cors });
 
@@ -499,14 +655,14 @@ export default async function handler(req) {
       }),
       {
         status: 429,
-        headers: {
+        headers: withProxyNoStore({
           'Content-Type': 'application/json',
           'X-RateLimit-Limit': String(scoped.limit),
           'X-RateLimit-Remaining': '0',
           'X-RateLimit-Reset': String(scoped.reset),
           'Retry-After': String(retryAfter),
           ...cors,
-        },
+        }),
       },
     );
   }

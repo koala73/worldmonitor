@@ -4,6 +4,7 @@
 // short-lived HttpOnly cookies so they stop living in JS-readable storage.
 
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { timingSafeEqualSecret, timingSafeIncludes } from './_crypto.js';
 import { checkRateLimit } from './_rate-limit.js';
 import { issueSessionToken } from './_session.js';
 
@@ -14,6 +15,9 @@ const WIDGET_KEY_COOKIE = 'wm-widget-key';
 const PRO_KEY_COOKIE = 'wm-pro-key';
 const COOKIE_MAX_AGE_SECONDS = 12 * 60 * 60;
 const LEGACY_KEY_MAX_LEN = 512;
+const SESSION_RATE_LIMIT_SCOPE = 'wm-session';
+const SESSION_RATE_LIMIT_PER_MINUTE = 30;
+const SESSION_RATE_LIMIT_WINDOW = '60 s';
 
 function jsonResponse(body, status, headers) {
   const out = headers instanceof Headers ? headers : new Headers(headers);
@@ -65,21 +69,21 @@ function envList(name) {
     .filter(Boolean);
 }
 
-function matchesEnvSecret(key, name) {
+async function matchesEnvSecret(key, name) {
   const secret = process.env[name] || '';
-  return Boolean(key && secret && key === secret);
+  return timingSafeEqualSecret(key, secret);
 }
 
-function isValidEnterpriseKey(key) {
-  return Boolean(key && envList('WORLDMONITOR_VALID_KEYS').includes(key));
+async function isValidEnterpriseKey(key) {
+  return timingSafeIncludes(key, envList('WORLDMONITOR_VALID_KEYS'));
 }
 
-function isValidWidgetKey(key) {
-  return matchesEnvSecret(key, 'WIDGET_AGENT_KEY') || isValidEnterpriseKey(key);
+async function isValidWidgetKey(key) {
+  return (await matchesEnvSecret(key, 'WIDGET_AGENT_KEY')) || await isValidEnterpriseKey(key);
 }
 
-function isValidProKey(key) {
-  return matchesEnvSecret(key, 'PRO_WIDGET_KEY') || isValidEnterpriseKey(key);
+async function isValidProKey(key) {
+  return (await matchesEnvSecret(key, 'PRO_WIDGET_KEY')) || await isValidEnterpriseKey(key);
 }
 
 async function readBody(req) {
@@ -93,7 +97,7 @@ async function readBody(req) {
   }
 }
 
-export default async function handler(req) {
+export default async function handler(req, ctx) {
   if (isDisallowedOrigin(req)) {
     return new Response('Forbidden', { status: 403 });
   }
@@ -109,9 +113,15 @@ export default async function handler(req) {
   }
 
   // Rate-limit per IP. Without this, an attacker can farm tokens cheaply.
-  // Token TTL is 12h, so a sustained ~1 RPS yields 86400 tokens/day per IP —
-  // the existing IP cap (600/min) keeps that bounded.
-  const rl = await checkRateLimit(req, cors);
+  // Token TTL is 12h, so this route uses a lower, fail-closed issuance budget
+  // instead of inheriting the availability-first global fallback.
+  const rl = await checkRateLimit(req, cors, {
+    failClosed: true,
+    ctx,
+    scope: SESSION_RATE_LIMIT_SCOPE,
+    limit: SESSION_RATE_LIMIT_PER_MINUTE,
+    window: SESSION_RATE_LIMIT_WINDOW,
+  });
   if (rl) return rl;
 
   let issued;
@@ -128,8 +138,8 @@ export default async function handler(req) {
   const proKey = normalizeLegacyKey(body.proKey);
 
   if (
-    (submittedLegacyKey(body.widgetKey) && !isValidWidgetKey(widgetKey)) ||
-    (submittedLegacyKey(body.proKey) && !isValidProKey(proKey))
+    (submittedLegacyKey(body.widgetKey) && !(await isValidWidgetKey(widgetKey))) ||
+    (submittedLegacyKey(body.proKey) && !(await isValidProKey(proKey)))
   ) {
     return jsonResponse({ error: 'Invalid session key' }, 401, cors);
   }

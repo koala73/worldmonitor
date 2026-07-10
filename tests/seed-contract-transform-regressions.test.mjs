@@ -65,6 +65,44 @@ test('seed-token-panels: per-extra-key declareRecords gets transformed AI/OTHER 
   assert.equal(declareRecords(otherTransformed), 1, 'OTHER extra must count tokens correctly');
 });
 
+// ─── partial-fetch clobber guard (false-503 root cause) ──────────────────
+// CoinGecko's /coins/markets?ids= returns only the IDs it has data for. A
+// partial response that drops the AI or Other IDs (while DeFi still resolves,
+// so validateFn passes on the canonical panel) would otherwise write an empty
+// recordCount=0 AI/Other panel — blanking the UI AND tripping the seed-contract
+// probe's minRecords:1 floor (recurring false 503). `skipWhenEmpty` prevents it.
+
+test('shouldSkipEmptyExtraKey: skips an opted-in extra key only when recordCount is 0', async () => {
+  const { shouldSkipEmptyExtraKey } = await import('../scripts/_seed-utils.mjs');
+  assert.equal(shouldSkipEmptyExtraKey({ skipWhenEmpty: true }, 0), true);
+  assert.equal(shouldSkipEmptyExtraKey({ skipWhenEmpty: true }, 3), false, 'non-empty must still write');
+  assert.equal(shouldSkipEmptyExtraKey({ skipWhenEmpty: false }, 0), false, 'not opted in → write (legacy)');
+  assert.equal(shouldSkipEmptyExtraKey({}, 0), false, 'no flag → write (legacy)');
+  assert.equal(shouldSkipEmptyExtraKey(undefined, 0), false);
+});
+
+test('seed-token-panels: AI + Other extra keys opt into skipWhenEmpty', async () => {
+  const { TOKEN_PANEL_EXTRA_KEYS } = await import('../scripts/seed-token-panels.mjs');
+  assert.equal(TOKEN_PANEL_EXTRA_KEYS.length, 2);
+  for (const ek of TOKEN_PANEL_EXTRA_KEYS) {
+    assert.equal(ek.skipWhenEmpty, true, `${ek.key} must guard against empty-panel clobber`);
+  }
+});
+
+test('seed-token-panels: an empty AI panel from a partial fetch is skipped, not clobbered', async () => {
+  // End-to-end of the decision: empty transformed panel → declareRecords 0 →
+  // shouldSkipEmptyExtraKey true → runSeed skips the write (preserving last-good).
+  const { declareRecords, TOKEN_PANEL_EXTRA_KEYS } = await import('../scripts/seed-token-panels.mjs');
+  const { shouldSkipEmptyExtraKey } = await import('../scripts/_seed-utils.mjs');
+  const aiEk = TOKEN_PANEL_EXTRA_KEYS.find((ek) => ek.key === 'market:ai-tokens:v1');
+  const emptyAiPanel = aiEk.transform({ ai: { tokens: [] } }); // upstream dropped AI ids
+  assert.equal(declareRecords(emptyAiPanel), 0);
+  assert.equal(shouldSkipEmptyExtraKey(aiEk, declareRecords(emptyAiPanel)), true);
+  // A populated panel still writes.
+  const fullAiPanel = aiEk.transform({ ai: { tokens: [{ symbol: 'FET' }] } });
+  assert.equal(shouldSkipEmptyExtraKey(aiEk, declareRecords(fullAiPanel)), false);
+});
+
 // ─── validateFn also runs on post-transform shape ────────────────────────
 //
 // atomicPublish() calls validateFn(publishData). A validate() written against

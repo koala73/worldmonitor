@@ -16,6 +16,8 @@ import {
   shouldRenderSectionLabels,
 } from './_cii-panel-partition';
 
+export const CII_METHODOLOGY_HREF = '/docs/methodology/cii-risk-scores';
+
 export class CIIPanel extends Panel {
   private scores: CountryScore[] = [];
   private focalPointsReady = false;
@@ -221,6 +223,32 @@ export class CIIPanel extends Panel {
     );
   }
 
+  private buildMethodologyFooter(): HTMLElement {
+    return h('div', { className: 'cii-methodology-footer' },
+      h('a', {
+        href: CII_METHODOLOGY_HREF,
+        target: '_blank',
+        rel: 'noopener noreferrer',
+      }, t('components.cii.methodologyLink')),
+    );
+  }
+
+  private formatCachedSourceDetail(cached: Pick<CachedRiskScores, 'degraded' | 'stale'>): string {
+    const flags: string[] = [];
+    if (cached.degraded) flags.push(t('components.cii.sourceStates.degraded'));
+    if (cached.stale) flags.push(t('components.cii.sourceStates.stale'));
+    return flags.join(' · ');
+  }
+
+  private updateSourceBadge(cached: Pick<CachedRiskScores, 'degraded' | 'stale'> | null): void {
+    if (!cached) {
+      this.clearDataBadge();
+      return;
+    }
+    const detail = this.formatCachedSourceDetail(cached);
+    this.setDataBadge('cached', detail || undefined);
+  }
+
   /**
    * U6 — Cheap re-render path used by the watchlist subscription. Rebuilds
    * the row list from the cached `this.scores` (no re-fetch) so the
@@ -233,7 +261,7 @@ export class CIIPanel extends Panel {
     const withData = this.scores.filter((s) => s.score > 0);
     if (withData.length === 0) return;
     this.tearDownFollowButtons();
-    replaceChildren(this.content, this.buildList(withData));
+    replaceChildren(this.content, this.buildList(withData), this.buildMethodologyFooter());
     this.bindShareButtons();
   }
 
@@ -283,19 +311,21 @@ export class CIIPanel extends Panel {
       this.setCount(withData.length);
 
       if (withData.length === 0) {
+        this.updateSourceBadge(null);
         // Tear down any previously-mounted FollowButtons before swapping
         // the empty-state markup in (otherwise their subscriptions leak).
         this.tearDownFollowButtons();
         this.setErrorState(false);
-        replaceChildren(this.content, h('div', { className: 'empty-state' }, t('components.cii.noSignals')));
+        replaceChildren(this.content, h('div', { className: 'empty-state' }, t('components.cii.noSignals')), this.buildMethodologyFooter());
         return;
       }
 
       this.setErrorState(false);
+      this.updateSourceBadge(null);
       // Tear down the previous batch of FollowButtons BEFORE we
       // construct fresh rows; `buildCountry` will repopulate the map.
       this.tearDownFollowButtons();
-      replaceChildren(this.content, this.buildList(withData));
+      replaceChildren(this.content, this.buildList(withData), this.buildMethodologyFooter());
       this.bindShareButtons();
     } catch (error) {
       console.error('[CIIPanel] Refresh error:', error);
@@ -308,11 +338,12 @@ export class CIIPanel extends Panel {
     if (scores.length === 0) return;
     this.scores = scores;
     this.hasCachedRender = true;
+    this.updateSourceBadge(cached);
     this.setCount(scores.length);
     this.setErrorState(false);
     // Tear down previous FollowButtons before mounting the new batch.
     this.tearDownFollowButtons();
-    replaceChildren(this.content, this.buildList(scores));
+    replaceChildren(this.content, this.buildList(scores), this.buildMethodologyFooter());
     this.bindShareButtons();
     console.log(`[CIIPanel] Rendered ${scores.length} countries from cached/bootstrap data`);
   }

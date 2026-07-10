@@ -9,6 +9,13 @@ import { isEntitled } from '@/services/entitlements';
 
 const _desktop = isDesktopRuntime();
 
+// Iran-events domain sunset (war ended 2026-07). Default OFF: iranAttacks is
+// disabled in every variant default so DEFAULT_MAP_LAYERS agrees with the gated
+// layer registry (getAllowedLayerKeys strips it). Guarded so node:test — where
+// import.meta.env is undefined — resolves it OFF at module load. See
+// map-layer-definitions.ts and tests/browser-bundle-secret-guard (allowlist).
+const IRAN_ATTACKS_ENABLED = typeof window !== 'undefined' && import.meta.env.VITE_ENABLE_IRAN_ATTACKS === 'true';
+
 // ============================================
 // FULL VARIANT (Geopolitical)
 // ============================================
@@ -20,6 +27,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'live-webcams': { name: 'Live Webcams', enabled: true, priority: 1 },
   'windy-webcams': { name: 'Windy Live Webcam', enabled: false, priority: 2 },
   insights: { name: 'AI Insights', enabled: true, priority: 1 },
+  'threat-timeline': { name: 'Threat Timeline', enabled: true, priority: 1 },
   'strategic-posture': { name: 'AI Strategic Posture', enabled: true, priority: 1 },
   forecast: { name: 'AI Forecasts', enabled: true, priority: 1, ...(_desktop && { premium: 'locked' as const }) }, // trial: unlocked on web, locked on desktop
   cii: { name: 'Country Instability', enabled: true, priority: 1, ...(_desktop && { premium: 'enhanced' as const }) },
@@ -119,7 +127,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
 };
 
 const FULL_MAP_LAYERS: MapLayers = {
-  iranAttacks: !_desktop,
+  iranAttacks: IRAN_ATTACKS_ENABLED && !_desktop,
   gpsJamming: false,
   satellites: false,
 
@@ -184,7 +192,7 @@ const FULL_MAP_LAYERS: MapLayers = {
 };
 
 const FULL_MOBILE_MAP_LAYERS: MapLayers = {
-  iranAttacks: true,
+  iranAttacks: IRAN_ATTACKS_ENABLED,
   gpsJamming: false,
   satellites: false,
 
@@ -1184,6 +1192,31 @@ export function isPanelInVariantDefaults(key: string): boolean {
 export const FREE_MAX_PANELS = 40;
 export const FREE_MAX_SOURCES = 80;
 
+export function isFreePanelCapCounted(key: string): boolean {
+  return key !== 'map' && !key.startsWith('cw-');
+}
+
+export function countFreePanelCapUsage(panelSettings: Record<string, PanelConfig>): number {
+  return Object.entries(panelSettings).filter(([key, panel]) =>
+    panel.enabled && isFreePanelCapCounted(key)
+  ).length;
+}
+
+export function restoreFreeMapPanelAccess(
+  panelSettings: Record<string, PanelConfig>,
+): Record<string, PanelConfig> {
+  const next: Record<string, PanelConfig> = {};
+  for (const [key, config] of Object.entries(panelSettings)) {
+    next[key] = { ...config };
+  }
+
+  if (next.map?.enabled === false && countFreePanelCapUsage(next) > FREE_MAX_PANELS) {
+    next.map = { ...next.map, enabled: true };
+  }
+
+  return next;
+}
+
 /**
  * Returns true if the current user is entitled to enable/view this panel.
  * Mirrors the entitlement checks in panel-layout.ts (single source of truth).
@@ -1200,6 +1233,52 @@ export function isPanelEntitled(key: string, config: PanelConfig, isPro = false)
     return isDesktopRuntime();
   }
   return true;
+}
+
+/**
+ * Clamp a panel-settings map to the free-tier panel cap. Single source of
+ * truth for the count limit so App boot, the settings/search add paths, and
+ * the dashboard-tab add/switch/load paths all enforce the SAME ceiling.
+ *
+ * Returns a NEW map; the input is never mutated. Pro users get the same
+ * panel eligibility, but still receive a copied map. For free users: cw-*
+ * custom-widget panels are a pro
+ * feature and are always disabled. The map is free baseline infrastructure
+ * and never consumes a capped panel slot. Among the remaining enabled panels
+ * the lowest-priority ones past FREE_MAX_PANELS are disabled (priority asc,
+ * key tiebreak — identical ordering to App.enforceFreeTierLimits).
+ *
+ * `isPro` is passed in (rather than read here) to keep this a pure config
+ * helper with no service-state dependency, matching isPanelEntitled above.
+ */
+export function enforceFreePanelLimit(
+  panelSettings: Record<string, PanelConfig>,
+  isPro: boolean,
+): Record<string, PanelConfig> {
+  const next: Record<string, PanelConfig> = {};
+  for (const [key, config] of Object.entries(panelSettings)) {
+    next[key] = { ...config };
+  }
+
+  if (isPro) return next;
+
+  // cw-* custom widgets are pro-only — never enabled on the free tier.
+  for (const key of Object.keys(next)) {
+    if (key.startsWith('cw-') && next[key]?.enabled) {
+      next[key] = { ...next[key]!, enabled: false };
+    }
+  }
+
+  const enabledKeys = Object.entries(next)
+    .filter(([k, v]) => v.enabled && isFreePanelCapCounted(k))
+    .sort(([ka, a], [kb, b]) => (a.priority ?? 99) - (b.priority ?? 99) || ka.localeCompare(kb))
+    .map(([k]) => k);
+
+  for (const key of enabledKeys.slice(FREE_MAX_PANELS)) {
+    next[key] = { ...next[key]!, enabled: false };
+  }
+
+  return next;
 }
 
 // ============================================
@@ -1263,74 +1342,91 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
     panelKeys: ['map', 'live-news', 'live-webcams', 'windy-webcams', 'insights', 'strategic-posture', 'latest-brief'],
   },
 
-  // Full (geopolitical) variant
+  // Full (geopolitical) variant — marketsFinance/topical/dataTracking are
+  // shared with the energy variant, which has no dedicated category block.
   intelligence: {
     labelKey: 'header.panelCatIntelligence',
-    panelKeys: ['cii', 'strategic-risk', 'intel', 'gdelt-intel', 'cascade', 'telegram-intel', 'forecast', 'cross-source-signals', 'regional-intelligence', 'deduction', 'chat-analyst', 'thermal-escalation', 'social-velocity', 'geo-hubs'],
+    panelKeys: ['cii', 'strategic-risk', 'threat-timeline', 'intel', 'gdelt-intel', 'cascade', 'telegram-intel', 'forecast', 'cross-source-signals', 'regional-intelligence', 'deduction', 'chat-analyst', 'thermal-escalation', 'social-velocity', 'geo-hubs'],
+    variants: ['full'],
   },
   correlation: {
     labelKey: 'header.panelCatCorrelation',
     panelKeys: ['military-correlation', 'escalation-correlation', 'economic-correlation', 'disaster-correlation'],
+    variants: ['full'],
   },
   regionalNews: {
     labelKey: 'header.panelCatRegionalNews',
     panelKeys: ['politics', 'us', 'europe', 'middleeast', 'africa', 'latam', 'asia'],
+    variants: ['full'],
   },
   marketsFinance: {
     labelKey: 'header.panelCatMarketsFinance',
     panelKeys: ['commodities', 'energy-complex', 'energy-risk-overview', 'pipeline-status', 'storage-facility-map', 'oil-inventories', 'fuel-prices', 'chokepoint-strip', 'fuel-shortages', 'energy-disruptions', 'hormuz-tracker', 'energy-crisis', 'markets', 'economic', 'trade-policy', 'sanctions-pressure', 'supply-chain', 'finance', 'polymarket', 'macro-signals', 'gulf-economies', 'etf-flows', 'stablecoins', 'crypto', 'heatmap', 'aaii-sentiment', 'cot-positioning', 'earnings-calendar', 'economic-calendar', 'fear-greed', 'fsi', 'macro-tiles', 'market-breadth', 'liquidity-shifts', 'national-debt', 'positioning-247', 'wsb-ticker-scanner', 'yield-curve', 'gold-intelligence', 'bigmac', 'market-implications'],
+    variants: ['full', 'energy'],
   },
   topical: {
     labelKey: 'header.panelCatTopical',
     panelKeys: ['energy', 'gov', 'thinktanks', 'tech', 'ai', 'layoffs'],
+    variants: ['full', 'energy'],
   },
   dataTracking: {
     labelKey: 'header.panelCatDataTracking',
     panelKeys: ['monitors', 'satellite-fires', 'ucdp-events', 'displacement', 'climate', 'climate-news', 'population-exposure', 'security-advisories', 'radiation-watch', 'oref-sirens', 'world-clock', 'tech-readiness', 'disease-outbreaks', 'fao-food-price-index', 'grocery-basket', 'defense-patents'],
+    variants: ['full', 'energy'],
   },
 
   // Tech variant
   techAi: {
     labelKey: 'header.panelCatTechAi',
     panelKeys: ['ai', 'tech', 'hardware', 'cloud', 'dev', 'github', 'producthunt', 'events', 'service-status', 'tech-readiness', 'internet-disruptions', 'tech-hubs'],
+    variants: ['tech'],
   },
   startupsVc: {
     labelKey: 'header.panelCatStartupsVc',
     panelKeys: ['startups', 'vcblogs', 'regionalStartups', 'unicorns', 'accelerators', 'funding', 'ipo'],
+    variants: ['tech'],
   },
   securityPolicy: {
     labelKey: 'header.panelCatSecurityPolicy',
     panelKeys: ['security', 'policy', 'ai-regulation'],
+    variants: ['tech'],
   },
   techMarkets: {
     labelKey: 'header.panelCatMarkets',
     panelKeys: ['markets', 'finance', 'crypto', 'economic', 'sanctions-pressure', 'polymarket', 'macro-signals', 'etf-flows', 'stablecoins', 'layoffs', 'monitors', 'world-clock'],
+    variants: ['tech'],
   },
 
   // Finance variant
   finMarkets: {
     labelKey: 'header.panelCatMarkets',
     panelKeys: ['markets', 'stock-analysis', 'stock-backtest', 'daily-market-brief', 'markets-news', 'heatmap', 'macro-signals', 'analysis', 'polymarket'],
+    variants: ['finance'],
   },
   fixedIncomeFx: {
     labelKey: 'header.panelCatFixedIncomeFx',
     panelKeys: ['forex', 'bonds'],
+    variants: ['finance'],
   },
   finCommodities: {
     labelKey: 'header.panelCatCommodities',
     panelKeys: ['commodities', 'energy-complex', 'commodities-news'],
+    variants: ['finance'],
   },
   cryptoDigital: {
     labelKey: 'header.panelCatCryptoDigital',
     panelKeys: ['crypto', 'crypto-heatmap', 'defi-tokens', 'ai-tokens', 'other-tokens', 'crypto-news', 'etf-flows', 'stablecoins', 'fintech'],
+    variants: ['finance'],
   },
   centralBanksEcon: {
     labelKey: 'header.panelCatCentralBanks',
     panelKeys: ['centralbanks', 'economic', 'energy-complex', 'trade-policy', 'sanctions-pressure', 'supply-chain', 'economic-news'],
+    variants: ['finance'],
   },
   dealsInstitutional: {
     labelKey: 'header.panelCatDeals',
     panelKeys: ['ipo', 'derivatives', 'institutional', 'fin-regulation'],
+    variants: ['finance'],
   },
   gulfMena: {
     labelKey: 'header.panelCatGulfMena',
@@ -1342,10 +1438,12 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   commodityPrices: {
     labelKey: 'header.panelCatCommodityPrices',
     panelKeys: ['commodities', 'energy-complex', 'gold-silver', 'energy', 'base-metals', 'critical-minerals', 'markets', 'heatmap', 'macro-signals'],
+    variants: ['commodity'],
   },
   miningIndustry: {
     labelKey: 'header.panelCatMining',
     panelKeys: ['commodity-news', 'mining-news', 'mining-companies', 'supply-chain', 'commodity-regulation'],
+    variants: ['commodity'],
   },
   commodityEcon: {
     labelKey: 'header.panelCatCommodityEcon',
@@ -1365,6 +1463,38 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
     variants: ['happy'],
   },
 };
+
+export interface VariantPanelCategory {
+  key: string;
+  labelKey: string;
+  panelKeys: string[];
+}
+
+// Categories applicable to `variant` that contain at least one enabled panel.
+// Shared by the settings panel-tab filter and the mobile category nav —
+// callers prepend their own "all" entry and localize labelKey via t().
+export function getVariantPanelCategories(
+  panelSettings: Record<string, PanelConfig>,
+  variant: string,
+): VariantPanelCategory[] {
+  return Object.entries(PANEL_CATEGORY_MAP)
+    .filter(([, def]) => !def.variants || def.variants.includes(variant))
+    .filter(([, def]) => def.panelKeys.some((pk) => panelSettings[pk]?.enabled))
+    .map(([key, def]) => ({ key, labelKey: def.labelKey, panelKeys: def.panelKeys }));
+}
+
+// Enabled panels that carry a premium gate on the current surface — drives
+// the mobile nav's PRO chip. getEffectivePanelConfig folds in per-variant
+// premium overrides; unknown keys (custom widgets, MCP panels) resolve to a
+// premium-less stub and drop out.
+export function getProPanelKeys(
+  panelSettings: Record<string, PanelConfig>,
+  variant: string,
+): string[] {
+  return Object.keys(panelSettings).filter((key) =>
+    panelSettings[key]?.enabled && Boolean(getEffectivePanelConfig(key, variant).premium),
+  );
+}
 
 // Monitor palette — fixed category colors persisted to localStorage (not theme-dependent)
 export const MONITOR_COLORS = [

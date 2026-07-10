@@ -10,6 +10,7 @@ import { isInRankableUniverse } from './shared/rankable-universe.mjs';
 import {
   DRAWS,
   RESILIENCE_INTERVAL_KEY_PREFIX as INTERVAL_KEY_PREFIX,
+  RESILIENCE_INTERVAL_METHODOLOGY as INTERVAL_METHODOLOGY,
   buildScoreIntervalPayload,
   computeIntervals,
   createIntervalDiagnostics,
@@ -60,8 +61,20 @@ function requireSeedRefreshKey() {
 // v21 → v22 for country-resilience audit round 2 P2-N2/P2-N3: currencyExternal
 // inflation stability and NaN-safe blend math change published score values, so
 // seeder-written scores and rankings must share the server reader namespace.
-export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v22:';
-export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v22';
+// v22 → v23 batches three same-tag `pc` scorer changes: import-HHI stale /
+// missing source years now derate certainty coverage (#4088), observed
+// zero-outage feeds score as observed-quiet in infrastructure (P3-8), and WTO
+// tradePolicy restriction/barrier rows score one-row-per-reporter severity
+// instead of stale count anchors (P2-1). Seeder-written scores and rankings must
+// share the server reader namespace for the full batch.
+// v23 → v24 for country-resilience audit round 5 R5-2 / PR #4101: governance
+// WGI indicator slot semantics changed under the same `pc` formula tag, so the
+// seeder-written score/ranking namespace must match the server reader bump.
+// v24 → v25 for issue #4009: cyberDigital discovery-day smoothing changes
+// same-tag `pc` score values, so the seeder-written score/ranking namespace
+// must match the server reader bump.
+export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v25:';
+export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v25';
 // Must match the server-side RESILIENCE_RANKING_CACHE_TTL_SECONDS. Extended
 // to 12h (2x the cron interval) so a missed/slow cron can't create an
 // EMPTY_ON_DEMAND gap before the next successful rebuild.
@@ -72,6 +85,7 @@ export const RESILIENCE_SCORE_SECTION_META_TTL_SECONDS = 12 * 60 * 60;
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 
 const INTERVAL_TTL_SECONDS = 7 * 24 * 60 * 60;
+const INTERVAL_SOURCE_VERSION = `resilience-intervals:${INTERVAL_KEY_PREFIX}${INTERVAL_METHODOLOGY}`;
 export { computeIntervals };
 
 function isKnownScoreFormulaTag(value) {
@@ -267,7 +281,7 @@ async function computeAndWriteIntervals(url, token, countryCodes, pipelineResult
     );
   }
 
-  await writeFreshnessMetadata('resilience', 'intervals', commands.length, '', INTERVAL_TTL_SECONDS);
+  await writeFreshnessMetadata('resilience', 'intervals', commands.length, INTERVAL_SOURCE_VERSION, INTERVAL_TTL_SECONDS);
   return { recordCount: commands.length, diagnostics };
 }
 

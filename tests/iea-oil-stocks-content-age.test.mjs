@@ -15,15 +15,17 @@ import {
 
 const FIXED_NOW = 1700000000000;     // 2023-11-14T22:13:20.000Z — stable test "now"
 
-test('IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN is 120 days', () => {
-  // 120d = ~60d natural M+2 lag + ~60d slack for up-to-two missed
-  // publications. See helper module's JSDoc for the iteration history
-  // (45d → 90d → 120d). The 2026-05-09 bump from 90d → 120d followed an
-  // IEA Feb 2026 publication delay confirmed via direct upstream probe:
-  // `https://api.iea.org/netimports/monthly/?year=2026&month=02` returned
-  // `[]`, so the staleness was a real upstream delay rather than a
-  // parser/network bug.
-  assert.equal(IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN, 120 * 24 * 60);
+test('IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN is 150 days', () => {
+  // 150d = ~100d natural ~M+4 lag at fresh-arrival + ~30d normal intra-cycle
+  // aging + ~22d grace. See helper module's JSDoc for the iteration history
+  // (45d → 90d → 120d → 150d). The 2026-06-06 bump from 120d → 150d followed
+  // a live upstream probe: `https://api.iea.org/netimports/latest` returned
+  // dataMonth "2026-02" (~97.7d old) as the NEWEST available month, with
+  // `.../monthly/?year=2026&month=03` and `&month=04` returning `[]` (not yet
+  // published). The prior cached month ("2026-01", ~125.7d) was breaching the
+  // 120d budget despite no seeder/parse bug — IEA simply runs ~M+4, so 120d
+  // false-fired near the end of every normal publication cycle.
+  assert.equal(IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN, 150 * 24 * 60);
 });
 
 // ── dataMonthToEndOfMonthMs ──────────────────────────────────────────────
@@ -107,7 +109,7 @@ test('contentMeta accepts last fully-completed month', () => {
   assert.equal(new Date(cm.newestItemAt).toISOString(), '2023-10-31T23:59:59.999Z');
 });
 
-// ── Pilot threshold sanity (anti-drift on the 90-day budget) ────────────
+// ── Pilot threshold sanity (anti-drift on the 150-day budget) ───────────
 
 test('fresh-arrival regression guard: ~60d-old fresh M+2 data does NOT trip STALE_CONTENT', () => {
   // The exact failure mode caught by Greptile P1 on the initial 45d budget:
@@ -127,24 +129,40 @@ test('fresh-arrival regression guard: ~60d-old fresh M+2 data does NOT trip STAL
   );
 });
 
-test('pilot threshold: dataMonth ~14 days old is within 90-day budget (no false positive)', () => {
+test('pilot threshold: dataMonth ~14 days old is within 150-day budget (no false positive)', () => {
   // FIXED_NOW = 2023-11-14. "2023-10" → end-of-Oct = ~14d ago. Trivially fresh.
   const cm = ieaOilStocksContentMeta({ dataMonth: '2023-10' }, FIXED_NOW);
   const ageMin = (FIXED_NOW - cm.newestItemAt) / 60000;
   assert.ok(
     ageMin < IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN,
-    `${Math.round(ageMin)}min < budget ${IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN}min — STALE_CONTENT does NOT fire on normal M+2 cadence`,
+    `${Math.round(ageMin)}min < budget ${IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN}min — STALE_CONTENT does NOT fire on normal ~M+4 cadence`,
   );
 });
 
-test('threshold: dataMonth ~168d old (multiple missed publications) trips STALE_CONTENT', () => {
-  // FIXED_NOW = 2023-11-14T22:13:20Z. "2023-05" → end-of-May = ~168d ago,
-  // past the 120d budget. Simulates "Jun, Jul AND Aug data all missed" or
-  // "Jun arrived very late" — at least three monthly publications late, on-call
-  // should be paged. Pre-bump this test used "2023-07" (~106d) which was past
-  // the old 90d budget but well WITHIN the new 120d budget; pushed back two
-  // months so the trip remains decisive.
-  const cm = ieaOilStocksContentMeta({ dataMonth: '2023-05' }, FIXED_NOW);
+test('live-cadence regression guard: ~M+4 freshest IEA data does NOT trip STALE_CONTENT', () => {
+  // The exact false-positive the 2026-06-06 120d→150d bump fixed. Live probe
+  // 2026-06-06: `https://api.iea.org/netimports/latest` → dataMonth "2026-02"
+  // (~97.7d old) was the NEWEST available month (2026-03/04 empty upstream).
+  // Worst case under steady cadence: that freshest snapshot must remain the
+  // served value until 2026-03 publishes (~a month later), aging to ~128d.
+  // A healthy cache at the END of its normal cycle MUST NOT page.
+  const NOW = Date.UTC(2026, 6, 6);              // Jul 6 2026 — ~1mo after probe, before 2026-03 lands
+  const cm = ieaOilStocksContentMeta({ dataMonth: '2026-02' }, NOW);
+  const ageMin = (NOW - cm.newestItemAt) / 60000;
+  assert.ok(
+    ageMin < IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN,
+    `2026-02 (freshest IEA month) aged to ${Math.round(ageMin / 60 / 24)}d < ${IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN / 60 / 24}d budget — normal ~M+4 cycle does NOT page`,
+  );
+});
+
+test('threshold: dataMonth ~198d old (multiple missed publications) trips STALE_CONTENT', () => {
+  // FIXED_NOW = 2023-11-14T22:13:20Z. "2023-04" → end-of-Apr = ~198d ago,
+  // past the 150d budget. Simulates a genuine multi-month upstream freeze
+  // (~2 months past the normal ~M+4 cycle) — on-call should be paged.
+  // Pre-bump this test used "2023-05" (~168d) which was decisively past the
+  // old 120d budget but only ~18d past the new 150d budget; pushed back one
+  // month so the trip remains unambiguous.
+  const cm = ieaOilStocksContentMeta({ dataMonth: '2023-04' }, FIXED_NOW);
   const ageMin = (FIXED_NOW - cm.newestItemAt) / 60000;
   assert.ok(
     ageMin > IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN,
@@ -152,18 +170,19 @@ test('threshold: dataMonth ~168d old (multiple missed publications) trips STALE_
   );
 });
 
-test('threshold: M+2 lag scenario — Aug data still in cache by Feb 1 (5+ months later) trips STALE_CONTENT', () => {
-  // Realistic incident pattern: cache holds dataMonth="2023-08" (Aug data,
-  // M+2 publication = late Oct 2023). By Feb 1 2024 — three full months past
-  // expected publication of Sep AND Oct data — staleness is unambiguous.
-  // ~154d > 120d budget: clearly trips. Pre-bump this used dataMonth="2023-09"
-  // (~122d), which was only 2d past the new 120d budget — too close to the
-  // boundary to be a useful regression guard. Pushed back one month.
-  const FIXED_FUTURE = Date.UTC(2024, 1, 1);     // Feb 1 2024 UTC
+test('threshold: ~M+4 data frozen ~2 extra months trips STALE_CONTENT', () => {
+  // Realistic freeze incident: cache holds dataMonth="2023-08" (Aug data).
+  // Under the normal ~M+4 cadence Aug would be the served value through ~Dec,
+  // refreshed to Sep around Jan. By Mar 15 2024 — ~2 months past when Sep/Oct
+  // data should have rolled in — staleness is unambiguous. ~197d > 150d
+  // budget: clearly trips. Pre-bump this used Feb 1 2024 (~154d), only ~4d
+  // past the new 150d budget — too close to the boundary to be a useful
+  // regression guard. Pushed forward six weeks.
+  const FIXED_FUTURE = Date.UTC(2024, 2, 15);    // Mar 15 2024 UTC
   const cm = ieaOilStocksContentMeta({ dataMonth: '2023-08' }, FIXED_FUTURE);
   const ageMin = (FIXED_FUTURE - cm.newestItemAt) / 60000;
   assert.ok(
     ageMin > IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN,
-    `Aug 2023 data on Feb 1 2024: ${Math.round(ageMin / 60 / 24)}d > ${IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN / 60 / 24}d budget — STALE_CONTENT trips`,
+    `Aug 2023 data on Mar 15 2024: ${Math.round(ageMin / 60 / 24)}d > ${IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN / 60 / 24}d budget — STALE_CONTENT trips`,
   );
 });

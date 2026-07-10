@@ -10,14 +10,49 @@ const subscriptionStatus = v.union(
   v.literal("expired"),
 );
 
-// Payment event status enum — covers charge outcomes and dispute lifecycle
+// Payment event status enum — covers charge outcomes and dispute lifecycle.
+// `processing` / `requires_customer_action` are NON-terminal states (3DS/SCA
+// in flight); persisting them gives the app a pending-payment signal for
+// duplicate-prevention (#4438) and reconciliation (#4439). `cancelled` is a
+// terminal-but-uncharged outcome. See convex/payments/webhookMutations.ts.
 const paymentEventStatus = v.union(
   v.literal("succeeded"),
   v.literal("failed"),
+  v.literal("processing"),
+  v.literal("requires_customer_action"),
+  v.literal("cancelled"),
   v.literal("dispute_opened"),
   v.literal("dispute_won"),
   v.literal("dispute_lost"),
   v.literal("dispute_closed"),
+);
+
+const apiPlanLimitDimension = v.union(
+  v.literal("api_daily_requests"),
+  v.literal("api_minute_burst"),
+  v.literal("mcp_daily_calls"),
+  v.literal("mcp_minute_burst"),
+);
+
+const apiPlanLimitNoticeState = v.union(
+  v.literal("warning"),
+  v.literal("over_limit"),
+  v.literal("sustained_burst"),
+);
+
+const apiPlanLimitEmailStatus = v.union(
+  v.literal("pending"),
+  v.literal("sent"),
+  v.literal("skipped"),
+  v.literal("suppressed"),
+  v.literal("failed"),
+);
+
+const apiPlanLimitCtaKind = v.union(
+  v.literal("checkout"),
+  v.literal("billing_portal"),
+  v.literal("contact_support"),
+  v.literal("none"),
 );
 
 export default defineSchema({
@@ -29,6 +64,13 @@ export default defineSchema({
     updatedAt: v.number(),
     syncVersion: v.number(),
   }).index("by_user_variant", ["userId", "variant"]),
+
+  userPreferenceWriteRateLimits: defineTable({
+    userId: v.string(),
+    windowStart: v.number(),
+    count: v.number(),
+    updatedAt: v.number(),
+  }).index("by_user_window", ["userId", "windowStart"]),
 
   notificationChannels: defineTable(
     v.union(
@@ -116,6 +158,11 @@ export default defineSchema({
     aiDigestEnabled: v.optional(v.boolean()), // opt-in AI executive summary in digests (default true for new rules)
     // Optional country-scope (ISO-3166 alpha-2). Empty/absent → all countries (current behavior).
     countries: v.optional(v.array(v.string())),
+    // Optional watchlist ticker-scope (#4922 U3, e.g. ["AAPL", "RELIANCE.NS"]).
+    // Unlike `countries`, this is OPT-IN scoped: empty/absent → the rule
+    // receives NO `watchlist_story_alert` events (the relay requires a
+    // non-empty intersection with the story's tickers).
+    tickers: v.optional(v.array(v.string())),
   })
     .index("by_user", ["userId"])
     .index("by_user_variant", ["userId", "variant"])
@@ -521,12 +568,70 @@ export default defineSchema({
     // may still rely on tiers 2-3 until
     // `backfillSubscriptionDodoCustomerId` lands their values here.
     dodoCustomerId: v.optional(v.string()),
+    // Epoch ms of the event that opened the CURRENT on_hold episode.
+    // Set by handleSubscriptionOnHold only on the active→on_hold
+    // transition (webhook replays while already on_hold keep the
+    // original anchor), and used as the dunning episode key (#4932):
+    // day-3/day-7 reminders compute their age from it, and the
+    // dunningEmails ledger scopes idempotency to it so a NEW payment
+    // failure months later starts a fresh email sequence. Optional —
+    // rows that entered on_hold before this field existed fall back
+    // to `updatedAt` in the dunning scan.
+    onHoldAt: v.optional(v.number()),
     rawPayload: v.any(),
     updatedAt: v.number(),
+    // Renewal-reconciliation bookkeeping (see
+    // `payments/billing:reconcileMissedDodoRenewals`). Orthogonal to
+    // `updatedAt` — these are NEVER bumped on a webhook state change, only
+    // when the reconciliation cron attempts (and fails/skips) a row. Used to
+    // back off permanently-failing rows (e.g. test-mode-era subs that 404
+    // against the live Dodo client) so they stop starving the batch's scan
+    // slots. Cleared on a successful reconcile AND on a webhook that renews the
+    // sub (so a new stale episode starts from a clean slate).
+    lastReconcileAttemptAt: v.optional(v.number()),
+    reconcileFailureCount: v.optional(v.number()),
+    // Count of CONSECUTIVE definitive Dodo 404s (reset by any non-404 reconcile
+    // outcome). Distinct from `reconcileFailureCount` (which counts all failure
+    // kinds for backoff) so the terminal "subscription deleted in Dodo"
+    // downgrade requires repeated 404s specifically, not just any prior failure.
+    reconcileNotFoundCount: v.optional(v.number()),
   })
     .index("by_userId", ["userId"])
     .index("by_dodoSubscriptionId", ["dodoSubscriptionId"])
-    .index("by_dodoCustomerId", ["dodoCustomerId"]),
+    .index("by_dodoCustomerId", ["dodoCustomerId"])
+    // Dunning scan (#4932): on_hold is a small TRANSIENT set (tens of rows),
+    // safe to collect() daily.
+    .index("by_status", ["status"])
+    // Winback scan (#4932): cancelled is an ACCUMULATING terminal status —
+    // it grows with lifetime churn, so a bare by_status collect() would
+    // eventually hit Convex's per-transaction read cap and kill the whole
+    // daily scan (PR #4935 review finding 2). This compound index lets the
+    // scan range-read only a bounded window. Keyed on currentPeriodEnd
+    // (ACCESS end), not cancelledAt: an annual subscriber who cancels
+    // months before expiry would otherwise be paid-through during the
+    // post-cancel window and outside it once access actually ends — never
+    // winback-eligible (review round 2, finding 3). The winback email says
+    // "your access ended ~a month ago", so access end is the right clock.
+    .index("by_status_currentPeriodEnd", ["status", "currentPeriodEnd"]),
+
+  // Dunning/winback send ledger (#4932): one row per email step actually
+  // delivered for a given subscription episode. `episodeAt` is the on_hold
+  // anchor (dunning steps) or `cancelledAt` (winback), so a later, separate
+  // payment-failure episode legitimately re-sends the sequence while webhook
+  // replays and overlapping cron ticks stay idempotent. Growth is bounded by
+  // real billing events (≤4 rows per episode), so no prune cron is needed.
+  dunningEmails: defineTable({
+    dodoSubscriptionId: v.string(),
+    step: v.union(
+      v.literal("dunning_day0"),
+      v.literal("dunning_day3"),
+      v.literal("dunning_day7"),
+      v.literal("winback_day30"),
+    ),
+    episodeAt: v.number(),
+    email: v.string(),
+    sentAt: v.number(),
+  }).index("by_sub_step_episode", ["dodoSubscriptionId", "step", "episodeAt"]),
 
   entitlements: defineTable({
     userId: v.string(),
@@ -536,6 +641,12 @@ export default defineSchema({
       maxDashboards: v.number(),
       apiAccess: v.boolean(),
       apiRateLimit: v.number(),
+      planLimits: v.optional(v.object({
+        apiRequestsPerDay: v.union(v.number(), v.null()),
+        apiBurstRequestsPerMinute: v.union(v.number(), v.null()),
+        mcpCallsPerDay: v.union(v.number(), v.null()),
+        mcpBurstRequestsPerMinute: v.union(v.number(), v.null()),
+      })),
       prioritySupport: v.boolean(),
       exportFormats: v.array(v.string()),
       // Optional for backward-compat with existing rows written before
@@ -543,6 +654,12 @@ export default defineSchema({
       // the next subscription event; legacy rows return undefined and
       // every consumer treats undefined as "no MCP access" (fail-closed).
       mcpAccess: v.optional(v.boolean()),
+      // Optional — per-account daily REST allowance (#3199). Legacy rows
+      // predate it; the rate-limit consumer treats undefined as "no daily
+      // limit" (fail-OPEN). Catalog-sourced writes always set it, so this
+      // validator MUST accept it or the webhook's entitlement write is
+      // rejected (v.object is strict on extra keys).
+      apiDailyAllowance: v.optional(v.number()),
     }),
     validUntil: v.number(),
     // Optional complimentary-entitlement floor. When set and in the future,
@@ -550,7 +667,63 @@ export default defineSchema({
     // goodwill credits outlive Dodo subscription cancellations.
     compUntil: v.optional(v.number()),
     updatedAt: v.number(),
-  }).index("by_userId", ["userId"]),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_validUntil", ["validUntil"]),
+
+  apiUsageRollups: defineTable({
+    userId: v.string(),
+    planKey: v.string(),
+    dimension: apiPlanLimitDimension,
+    windowKey: v.string(),
+    windowStart: v.number(),
+    windowEnd: v.number(),
+    limit: v.union(v.number(), v.null()),
+    usage: v.number(),
+    usageRatio: v.union(v.number(), v.null()),
+    source: v.string(),
+    sourceFreshAt: v.number(),
+    computedAt: v.number(),
+  })
+    .index("by_user_window", ["userId", "windowKey"])
+    .index("by_window_dimension", ["windowKey", "dimension"])
+    // Age-ordered for the retention prune cron (burst mints one rollup per
+    // user per hourly scan, so this table grows without bound otherwise).
+    .index("by_computedAt", ["computedAt"]),
+
+  apiPlanLimitNotices: defineTable({
+    userId: v.string(),
+    planKey: v.string(),
+    dimension: apiPlanLimitDimension,
+    state: apiPlanLimitNoticeState,
+    windowKey: v.string(),
+    usage: v.number(),
+    limit: v.union(v.number(), v.null()),
+    usageRatio: v.union(v.number(), v.null()),
+    current: v.boolean(),
+    firstSeenAt: v.number(),
+    lastSeenAt: v.number(),
+    lastEmailedAt: v.optional(v.number()),
+    acknowledgedAt: v.optional(v.number()),
+    emailStatus: apiPlanLimitEmailStatus,
+    // Number of delivery attempts that ended in `failed`. Bounds retries so a
+    // permanently undeliverable recipient stops being re-sent on every scan.
+    emailAttempts: v.optional(v.number()),
+    upgradeTargetPlanKey: v.optional(v.string()),
+    ctaKind: apiPlanLimitCtaKind,
+    blockedReason: v.optional(v.string()),
+  })
+    .index("by_notice_dedupe", ["userId", "planKey", "dimension", "state", "windowKey"])
+    // `current` first so listEmailDue can exclude superseded rows in the index
+    // (not a post-take filter) -- a dead-pending backlog can't starve live due notices.
+    .index("by_email_due", ["current", "emailStatus", "lastSeenAt"])
+    // Only-`current` scans (readiness gate + stale-notice recovery sweep) query
+    // through this index instead of collecting the whole (ever-growing) table.
+    .index("by_current", ["current", "lastSeenAt"])
+    // Per-user live-notice lookups (supersede loop, recovery clear, Settings
+    // list) query this instead of scanning all per-(user,state) history and
+    // filtering `current` in memory -- bounds the hot path to live rows.
+    .index("by_user_dimension_current", ["userId", "dimension", "current"]),
 
   customers: defineTable({
     userId: v.string(),
@@ -617,11 +790,39 @@ export default defineSchema({
     currency: v.string(),
     status: paymentEventStatus,
     dodoSubscriptionId: v.optional(v.string()),
+    // Plan key (e.g. "pro_monthly") threaded through the checkout-session
+    // metadata bridge (metadata.wm_plan_key) so a pending 3DS payment row can be
+    // resolved to its PRODUCT_CATALOG tierGroup for the duplicate-payment guard
+    // (#4438). Optional: legacy rows and sessions created before the bridge
+    // shipped simply have none (the guard fails open for those — see #4438 plan).
+    planKey: v.optional(v.string()),
     rawPayload: v.any(),
     occurredAt: v.number(),
   })
     .index("by_userId", ["userId"])
-    .index("by_dodoPaymentId", ["dodoPaymentId"]),
+    .index("by_dodoPaymentId", ["dodoPaymentId"])
+    .index("by_occurredAt", ["occurredAt"])
+    // Time-bounded read for the duplicate-payment guard (#4438): it only needs
+    // recent rows (within the staleness window), so it queries this index with a
+    // range on occurredAt instead of collecting the user's whole (unbounded,
+    // rawPayload-carrying) payment history — keeps the guard fail-open.
+    .index("by_userId_occurredAt", ["userId", "occurredAt"]),
+
+  paymentReconciliationAttempts: defineTable({
+    dodoPaymentId: v.string(),
+    userId: v.string(),
+    planKey: v.optional(v.string()),
+    action: v.union(
+      v.literal("terminal_reconciled"),
+      v.literal("customer_notified"),
+      v.literal("ops_notified"),
+    ),
+    observedStatus: v.string(),
+    pendingOccurredAt: v.number(),
+    reconciledAt: v.number(),
+  })
+    .index("by_dodoPaymentId", ["dodoPaymentId"])
+    .index("by_reconciledAt", ["reconciledAt"]),
 
   productPlans: defineTable({
     dodoProductId: v.string(),

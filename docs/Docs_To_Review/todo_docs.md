@@ -128,13 +128,13 @@
 
 ### 4.1 Create `docs/COMPONENTS.md`
 
-- [x] Document all 45+ components in `src/components/`:
+- [x] Document the current panel/component surface in `src/components/`:
   - Purpose and user-facing behavior
   - Constructor parameters and configuration
   - DOM structure and CSS classes
   - Events emitted/consumed
   - Data sources (which services it calls)
-  - Variant visibility (World / Tech / Finance)
+  - Variant visibility (World / Tech / Finance / Commodity / Happy / Energy)
 - [x] Document the `Panel` base class: drag, resize, collapse, persistence
 - [x] Document `DeckGLMap.ts`: layer registration, WebGL rendering, interaction handlers
 - [x] Document `Map.ts` and `MapContainer.ts`: MapLibre setup, region controls, popup system
@@ -178,7 +178,7 @@
 - [ ] **Threat Classification** (`threat-classifier.ts`): hybrid keyword + LLM pipeline
 - [ ] **Signal Correlation** (`correlation.ts`): cross-source pattern matching logic
 - [ ] **Hotspot Escalation** (`hotspot-escalation.ts`): 4-signal scoring methodology
-- [ ] **Country Instability Index** (`country-instability.ts`): 22-country CII computation
+- [ ] **Country Instability Index** (`server/worldmonitor/intelligence/v1/get-risk-scores.ts`, `shared/cii-weights.ts`): server-authoritative CII v8 scoring for 31 Tier-1 countries, with frontend cached risk-score ingestion and `country-instability.ts` retained as the local fallback renderer path
 - [ ] **Temporal Baseline** (`temporal-baseline.ts`): Welford's online algorithm for anomaly detection
 - [ ] **Trending Keywords** (`trending-keywords.ts`): 2h vs 7d window spike detection
 - [ ] **Infrastructure Cascade** (`infrastructure-cascade.ts`): BFS propagation model
@@ -196,7 +196,7 @@
 - [ ] Document config hierarchy: `variants/base.ts` → `variants/full.ts` / `tech.ts` / `finance.ts`
 - [ ] Document all static data configs with entry counts and data structure:
   - `entities.ts` (600+ entries, multi-index)
-  - `feeds.ts` (150+ RSS feeds, tier/type/propaganda risk)
+  - `feeds.ts` (500+ RSS feeds, tier/type/propaganda risk)
   - `geo.ts` (hotspots, conflict zones, nuclear sites, cables, waterways)
   - `bases-expanded.ts` (220+ military bases)
   - `finance-geo.ts` (92 exchanges, 19 centers, 13 CBs, 10 commodity hubs)
@@ -263,7 +263,7 @@
 
 ### 8.1 Create `docs/I18N.md`
 
-- [ ] Document all 14 supported locales: en, fr, de, es, it, pt, nl, sv, pl, ru, ar, zh, ja, he
+- [ ] Document all 24 supported locales from `src/locales/`
 - [ ] Document i18n key structure and naming conventions
 - [ ] Document the translation workflow (how to add/update translations)
 - [ ] Document RTL support (`rtl-overrides.css`) for Arabic 
@@ -380,7 +380,7 @@
 - [ ] Add Finance Monitor variant documentation (panels, features, data sources)
 - [ ] Refresh panel inventory to match current `src/components/` directory
 - [ ] Update entity count (verify 600+ is current)
-- [ ] Update feed count (verify 150+ is current)
+- [ ] Update feed count from generated stats and feed inventory
 - [ ] Verify all code references and file paths are current
 - [ ] Add missing components: `ETFFlowsPanel`, `MacroSignalsPanel`, `StablecoinPanel`, `InvestmentsPanel`, `RegulationPanel`, `TechEventsPanel`, `TechHubsPanel`, `TechReadinessPanel`, `PlaybackControl`, `RuntimeConfigPanel`
 - [ ] Update signal intelligence section with current algorithms

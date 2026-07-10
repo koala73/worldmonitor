@@ -24,7 +24,7 @@
 import { spawn } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadEnvFile } from './_seed-utils.mjs';
+import { GRACEFUL_FETCH_FAILURE_EXIT_CODE, loadEnvFile } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -180,6 +180,13 @@ function spawnSeed(scriptPath, { timeoutMs, label, bundleStartedAtMs }) {
         settle({ elapsed, ok: false, reason: `timeout after ${Math.round(timeoutMs / 1000)}s (signal ${signal || 'SIGTERM'})`, alreadyLogged: true });
       } else if (code === 0) {
         settle({ elapsed, ok: true, seedComplete: lastSeedComplete });
+      } else if (code === GRACEFUL_FETCH_FAILURE_EXIT_CODE) {
+        settle({
+          elapsed,
+          ok: false,
+          status: 'GRACEFUL_FAIL',
+          reason: `graceful fetch failure (exit ${GRACEFUL_FETCH_FAILURE_EXIT_CODE})`,
+        });
       } else {
         settle({ elapsed, ok: false, reason: `exit ${code ?? 'null'}${signal ? ` (signal ${signal})` : ''}` });
       }
@@ -228,7 +235,7 @@ export async function runBundle(label, sections, opts = {}) {
   const budgetLabel = Number.isFinite(maxBundleMs) ? `, budget ${Math.round(maxBundleMs / 1000)}s` : '';
   console.log(`[Bundle:${label}] Starting (${sections.length} sections${budgetLabel})`);
 
-  let ran = 0, skipped = 0, deferred = 0, failed = 0;
+  let ran = 0, skipped = 0, deferred = 0, failed = 0, gracefulFailed = 0;
 
   for (const section of sections) {
     const scriptPath = join(__dirname, section.script);
@@ -284,12 +291,25 @@ export async function runBundle(label, sections, opts = {}) {
       // appear before those stderr lines when consumers concatenate
       // stdout+stderr, breaking tests (and log readers) that rely on
       // signal-escalation ordering.
-      console.error(`[Bundle:${label}] section=${section.label} status=FAILED elapsed=${result.elapsed}s reason=${(result.reason || 'unknown').replace(/\s+/g, ' ')}`);
-      failed++;
+      const status = result.status || 'FAILED';
+      console.error(`[Bundle:${label}] section=${section.label} status=${status} elapsed=${result.elapsed}s reason=${(result.reason || 'unknown').replace(/\s+/g, ' ')}`);
+      // A GRACEFUL_FAIL (child exit 75) extended the last-good TTL and lost no
+      // data — a transient upstream blip (e.g. a rate-limited source). Counting
+      // it as a hard failure would crash the whole bundle (exit 1 → Railway
+      // "Deploy Crashed!") over a benign per-member skip. Track it separately so
+      // only HARD failures gate the exit code; the skip stays fully logged above.
+      if (status === 'GRACEFUL_FAIL') gracefulFailed++;
+      else failed++;
     }
   }
 
   const totalSec = ((Date.now() - t0) / 1000).toFixed(1);
-  console.log(`[Bundle:${label}] Finished in ${totalSec}s, ran:${ran} skipped:${skipped} deferred:${deferred} failed:${failed}`);
+  console.log(`[Bundle:${label}] Finished in ${totalSec}s, ran:${ran} skipped:${skipped} deferred:${deferred} failed:${failed} graceful:${gracefulFailed}`);
+  // Graceful-only run (transient skips, no hard failures): exit 0 so Railway
+  // does not paint CRASHED and fire a spurious alert. Real staleness is caught
+  // independently by the /api/health freshness monitor keyed on seed-meta TTL.
+  if (failed === 0 && gracefulFailed > 0) {
+    console.log(`[Bundle:${label}] ${gracefulFailed} graceful fetch skip(s), no hard failures — no data lost, exiting 0 (not a crash)`);
+  }
   process.exit(failed > 0 ? 1 : 0);
 }

@@ -43,3 +43,17 @@ export function validateNoHallucinatedProperNouns(
   summary: unknown,
   headline: unknown,
 ): { ok: true } | { ok: false; hallucinated: string[] };
+
+// ── Grounding spine (#4921) ────────────────────────────────────────────────
+export function extractAnchorTokens(s: string): string[];
+export function groundingTokenSet(text: string): Set<string>;
+export function checkLeadGrounding(
+  synthesis: { lead?: string; threads?: Array<{ tag?: string; teaser?: string }> },
+  stories: Array<{ headline?: string }>,
+  storyCap?: number,
+): boolean;
+export function leadGroundsAgainstStory(lead: string, headline: string): boolean;
+export function verifyCitationIndexes(
+  text: string,
+  sourceCount: number,
+): { text: string; stripped: number };

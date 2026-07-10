@@ -24,7 +24,10 @@
 // echoed back and fail CORS at the browser.
 const ALLOWED_ORIGIN_PATTERNS = [
   /^https:\/\/(.*\.)?worldmonitor\.app$/,
-  /^https:\/\/worldmonitor-[a-z0-9-]+-elie-[a-z0-9]+\.vercel\.app$/,
+  // Vercel previews under the "eliewm" team scope, e.g.
+  //   worldmonitor-git-<branch>-eliewm.vercel.app / worldmonitor-<hash>-eliewm.vercel.app
+  // Mirror of api/_cors.js + server/cors.ts (see superset note above).
+  /^https:\/\/worldmonitor-[a-z0-9-]+-eliewm\.vercel\.app$/,
   /^https?:\/\/tauri\.localhost(:\d+)?$/,
   /^https?:\/\/[a-z0-9-]+\.tauri\.localhost(:\d+)?$/i,
   /^tauri:\/\/localhost$/,
@@ -32,7 +35,10 @@ const ALLOWED_ORIGIN_PATTERNS = [
 ];
 
 // Keep in sync with api/_cors.js#getCorsHeaders Access-Control-Allow-Headers.
-const ALLOW_HEADERS = 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Key, X-Widget-Key, X-Pro-Key, X-WorldMonitor-Desktop-Timestamp, X-WorldMonitor-Desktop-Signature';
+const ALLOW_HEADERS = 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Key, X-Widget-Key, X-Pro-Key, X-WorldMonitor-Desktop-Timestamp, X-WorldMonitor-Desktop-Signature, Idempotency-Key, Mcp-Session-Id, MCP-Protocol-Version, Last-Event-ID';
+
+// Keep in sync with api/_cors.js#getCorsHeaders Access-Control-Expose-Headers.
+const EXPOSE_HEADERS = 'Mcp-Session-Id, WWW-Authenticate, Retry-After, Idempotency-Key, Idempotent-Replayed, X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset, X-WorldMonitor-Bbox, X-WorldMonitor-Bbox-Missing, X-WorldMonitor-Bbox-Invalid, X-Military-Bbox';
 
 // Superset of every method any api/* route advertises. The Worker stamps ONE
 // fixed Allow-Methods on every preflight, so if a route handles DELETE but
@@ -98,6 +104,7 @@ export function buildCorsHeaders(origin) {
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Methods': ALLOW_METHODS,
     'Access-Control-Allow-Headers': ALLOW_HEADERS,
+    'Access-Control-Expose-Headers': EXPOSE_HEADERS,
     'Access-Control-Max-Age': '3600',
     'Vary': 'Origin',
   };

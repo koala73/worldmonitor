@@ -3,7 +3,7 @@ import type { UserResource } from '@clerk/types';
 import * as Sentry from '@sentry/react';
 import { motion } from 'motion/react';
 import {
-  Globe, Activity, ShieldAlert, Zap, Terminal, Database,
+  Globe, ShieldAlert, Zap, Terminal, Database,
   Send, MessageCircle, Mail, MessageSquare, ChevronDown,
   ArrowRight, Check, Lock, Server, Cpu, Layers,
   Bell, Brain, Key, Plug, PanelTop, ExternalLink,
@@ -14,11 +14,27 @@ import {
   Landmark, Fuel
 } from 'lucide-react';
 import { t } from './i18n';
-import { initOverlay, ensureClerk, tryResumeCheckoutFromUrl } from './services/checkout';
+import { ensureClerk, tryResumeCheckoutFromUrl } from './services/checkout';
+import { scheduleClerkLoad, subscribeClerkLoaded } from './services/clerk';
+import { startClerkUserStateSync, type ClerkUserState } from './services/clerk-user-state';
+import { hasLiveClientSession } from './services/clerk-session';
 import { PricingSection } from './components/PricingSection';
 import { SoonBadge } from './components/SoonBadge';
-import dashboardFallback from './assets/worldmonitor-7-mar-2026.jpg';
+import { Logo } from './components/Logo';
+import { WiredBadge } from './components/WiredBadge';
+import { Footer } from './components/Footer';
+import {
+  DASHBOARD_SCREENSHOT_JPG,
+  DASHBOARD_SCREENSHOT_AVIF_SRCSET,
+  DASHBOARD_SCREENSHOT_WEBP_SRCSET,
+} from './assets/dashboard-screenshot';
+import { ensureTurnstileScript } from './turnstile';
 import wiredLogo from './assets/wired-logo.svg';
+import {
+  DASHBOARD_EMBED_PREVIEW_URL,
+  DASHBOARD_PATH,
+  DASHBOARD_URL,
+} from './routes';
 
 const API_BASE = 'https://api.worldmonitor.app/api';
 const TURNSTILE_SITE_KEY = '0x4AAAAAACnaYgHIyxclu8Tj';
@@ -90,45 +106,35 @@ function openSignIn(): void {
 }
 
 /**
- * Subscribe to Clerk's current user. Returns null while loading or signed out,
- * and the Clerk UserResource when signed in. Re-renders on any auth change
- * (sign-in, sign-out, user switch) via clerk.addListener.
+ * Lightweight /pro auth state. The live __session JWT gives us an immediate
+ * signed-in signal without loading Clerk; the real Clerk user is filled in only
+ * after the SDK is loaded from an auth action or an idle signed-in load.
  *
  * Used by the Navbar to swap the SIGN IN button for Clerk's UserButton avatar
  * once the visitor is authenticated, and by the Hero to hide its redundant
  * SIGN IN CTA. Single source of truth for "is the /pro visitor signed in".
  */
-function useClerkUser(): { user: UserResource | null; isLoaded: boolean } {
-  const [user, setUser] = useState<UserResource | null>(null);
-  const [isLoaded, setIsLoaded] = useState(false);
+function useClerkUser(): ClerkUserState {
+  const [state, setState] = useState<ClerkUserState>(() => ({
+    user: null,
+    isLoaded: true,
+    signedIn: hasLiveClientSession(),
+  }));
 
   useEffect(() => {
-    let mounted = true;
-    let unsubscribe: (() => void) | undefined;
-
-    ensureClerk()
-      .then((clerk) => {
-        if (!mounted) return;
-        setUser(clerk.user ?? null);
-        setIsLoaded(true);
-        unsubscribe = clerk.addListener(() => {
-          if (!mounted) return;
-          setUser(clerk.user ?? null);
-        });
-      })
-      .catch((err) => {
+    return startClerkUserStateSync(setState, {
+      hasLiveClientSession,
+      subscribeClerkLoaded,
+      scheduleClerkLoad,
+      onLoadError(err) {
         console.error('[auth] Failed to load Clerk for nav auth state:', err);
         Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'load-clerk-for-nav' } });
-        if (mounted) setIsLoaded(true); // unblock UI; show signed-out state
-      });
-
-    return () => {
-      mounted = false;
-      unsubscribe?.();
-    };
+        setState({ user: null, isLoaded: true, signedIn: false });
+      },
+    });
   }, []);
 
-  return { user, isLoaded };
+  return state;
 }
 
 /**
@@ -148,13 +154,17 @@ type ProEntitlementState = { isPro: boolean; isChecked: boolean };
 const ProEntitlementContext = createContext<ProEntitlementState>({ isPro: false, isChecked: false });
 
 function ProEntitlementProvider({ children }: { children: ReactNode }): ReactElement {
-  const { user } = useClerkUser();
-  const signedIn = !!user;
+  const { user, signedIn } = useClerkUser();
+  const userId = user?.id ?? null;
   const [state, setState] = useState<ProEntitlementState>({ isPro: false, isChecked: false });
 
   useEffect(() => {
     if (!signedIn) {
       setState({ isPro: false, isChecked: true });
+      return;
+    }
+    if (!userId) {
+      setState({ isPro: false, isChecked: false });
       return;
     }
     let cancelled = false;
@@ -193,7 +203,7 @@ function ProEntitlementProvider({ children }: { children: ReactNode }): ReactEle
       }
     })();
     return () => { cancelled = true; };
-  }, [signedIn]);
+  }, [signedIn, userId]);
 
   return <ProEntitlementContext.Provider value={state}>{children}</ProEntitlementContext.Provider>;
 }
@@ -208,10 +218,11 @@ function useProEntitlement(): ProEntitlementState {
  * a signed-in UI from scratch and inherits theming from the existing
  * clerk.load() appearance options in services/checkout.ts.
  */
-function ClerkUserButton(): ReactElement {
+function ClerkUserButton({ user }: { user: UserResource | null }): ReactElement {
   const ref = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
+    if (!user) return;
     if (!ref.current) return;
     const el = ref.current;
     let unmounted = false;
@@ -234,9 +245,18 @@ function ClerkUserButton(): ReactElement {
         if (el) clerk.unmountUserButton(el);
       }).catch(() => { /* mount path already failed */ });
     };
-  }, []);
+  }, [user]);
 
-  return <div ref={ref} className="flex items-center" />;
+  return (
+    <div ref={ref} className="flex h-8 w-8 items-center justify-center">
+      {!user && (
+        <span
+          className="block h-8 w-8 rounded-full border border-wm-border bg-wm-card shadow-[inset_0_0_0_1px_rgba(255,255,255,0.04)]"
+          aria-hidden="true"
+        />
+      )}
+    </div>
+  );
 }
 
 const SlackIcon = () => (
@@ -245,22 +265,9 @@ const SlackIcon = () => (
   </svg>
 );
 
-const Logo = () => (
-  <a href="https://worldmonitor.app" className="flex items-center gap-2 hover:opacity-80 transition-opacity" aria-label="World Monitor — Home">
-    <div className="relative w-8 h-8 rounded-full bg-wm-card border border-wm-border flex items-center justify-center overflow-hidden">
-      <Globe className="w-5 h-5 text-wm-blue opacity-50 absolute" aria-hidden="true" />
-      <Activity className="w-6 h-6 text-wm-green absolute z-10" aria-hidden="true" />
-    </div>
-    <div className="flex flex-col">
-      <span className="font-display font-bold text-sm leading-none tracking-tight">WORLD MONITOR</span>
-      <span className="text-[9px] text-wm-muted font-mono uppercase tracking-widest leading-none mt-1">by Someone.ceo</span>
-    </div>
-  </a>
-);
-
 /* ─── 0. Navbar ─── */
 const Navbar = () => {
-  const { user, isLoaded } = useClerkUser();
+  const { user, isLoaded, signedIn } = useClerkUser();
   const { isPro, isChecked } = useProEntitlement();
   // Show "Go to Dashboard" instead of "Upgrade to Pro" once we confirm
   // the visitor is already a paying customer. Until the entitlement
@@ -268,7 +275,7 @@ const Navbar = () => {
   // free user would see a one-frame flash otherwise, which is less
   // annoying than showing "Go to Dashboard" for half a second to a
   // visitor who hasn't paid.
-  const showGoToDashboard = isLoaded && !!user && isChecked && isPro;
+  const showGoToDashboard = isLoaded && signedIn && !!user && isChecked && isPro;
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 glass-panel border-b-0 border-x-0 rounded-none" aria-label="Main navigation">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
@@ -280,10 +287,8 @@ const Navbar = () => {
           <a href="#enterprise" className="hover:text-wm-text transition-colors">{t('nav.enterprise')}</a>
         </div>
         <div className="flex items-center gap-2">
-          {/* While Clerk is still loading, render nothing in the auth slot
-              to avoid a SIGN IN → UserButton flicker for returning users. */}
-          {isLoaded && (user
-            ? <ClerkUserButton />
+          {isLoaded && (signedIn
+            ? <ClerkUserButton user={user} />
             : (
               <button
                 type="button"
@@ -295,7 +300,7 @@ const Navbar = () => {
             ))}
           {showGoToDashboard ? (
             <a
-              href="https://worldmonitor.app"
+              href={DASHBOARD_URL}
               className="bg-wm-green text-wm-bg px-4 py-2 rounded-sm font-mono text-xs uppercase tracking-wider font-bold hover:bg-green-400 transition-colors inline-flex items-center gap-1.5"
             >
               {t('nav.goToDashboard')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
@@ -312,21 +317,14 @@ const Navbar = () => {
 };
 
 /* ─── 1. Hero — Less noise, more signal ─── */
-const WiredBadge = () => (
-  <a
-    href="https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map"
-    target="_blank"
-    rel="noreferrer"
-    className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-wm-border bg-wm-card/50 text-wm-muted text-xs font-mono hover:border-wm-green/30 hover:text-wm-text transition-colors"
-  >
-    {t('wired.asFeaturedIn')} <span className="text-wm-text font-bold">WIRED</span> <ExternalLink className="w-3 h-3" aria-hidden="true" />
-  </a>
-);
-
 const SignalBars = () => {
   const total = 60;
   const center = total / 2;
   const signalRadius = 8;
+  const jitter = (index: number, salt: number) => {
+    const x = Math.sin(index * 12.9898 + salt * 78.233) * 43758.5453;
+    return x - Math.floor(x);
+  };
 
   return (
     <div className="relative my-4 md:my-8 -mx-6">
@@ -340,31 +338,47 @@ const SignalBars = () => {
           const signalIntensity = isSignal ? 1 - distFromCenter / signalRadius : 0;
           const peakHeight = 60 + signalIntensity * 110;
           const noiseBase = Math.max(8, 35 - distFromCenter * 0.8);
+          const barHeight = isSignal ? peakHeight : noiseBase;
+          const initialScale = isSignal ? 0.3 : 0.5;
+          const scaleY = isSignal
+            ? [0.5, 1, 0.65, 0.9]
+            : [1, 0.3, 0.7, 0.15, 0.5];
 
           return (
-            <motion.div
+            <div
               key={i}
-              className={`flex-1 max-w-2 md:max-w-3 rounded-sm ${isSignal ? 'bg-wm-green' : 'bg-wm-muted/20'}`}
-              style={isSignal ? { boxShadow: `0 0 ${6 + signalIntensity * 12}px rgba(74,222,128,${signalIntensity * 0.5})` } : undefined}
-              initial={{ height: isSignal ? peakHeight * 0.3 : noiseBase * 0.5, opacity: isSignal ? 0.4 : 0.08 }}
-              animate={isSignal
-                ? {
-                    height: [peakHeight * 0.5, peakHeight, peakHeight * 0.65, peakHeight * 0.9],
-                    opacity: [0.6 + signalIntensity * 0.3, 1, 0.75 + signalIntensity * 0.2, 0.95],
-                  }
-                : {
-                    height: [noiseBase, noiseBase * 0.3, noiseBase * 0.7, noiseBase * 0.15, noiseBase * 0.5],
-                    opacity: [0.2, 0.06, 0.15, 0.04, 0.12],
-                  }
-              }
-              transition={{
-                duration: isSignal ? 2.5 + signalIntensity * 0.5 : 1 + Math.random() * 0.6,
-                repeat: Infinity,
-                repeatType: 'reverse',
-                delay: isSignal ? distFromCenter * 0.07 : Math.random() * 0.6,
-                ease: 'easeInOut',
-              }}
-            />
+              className="flex flex-1 max-w-2 md:max-w-3 items-end"
+              style={{ height: `${barHeight}px` }}
+            >
+              <motion.div
+                className={`w-full rounded-sm ${isSignal ? 'bg-wm-green' : 'bg-wm-muted/20'}`}
+                style={{
+                  height: '100%',
+                  transformOrigin: 'bottom',
+                  ...(isSignal
+                    ? { boxShadow: `0 0 ${6 + signalIntensity * 12}px rgba(74,222,128,${signalIntensity * 0.5})` }
+                    : null),
+                }}
+                initial={{ scaleY: initialScale, opacity: isSignal ? 0.4 : 0.08 }}
+                animate={isSignal
+                  ? {
+                      scaleY,
+                      opacity: [0.6 + signalIntensity * 0.3, 1, 0.75 + signalIntensity * 0.2, 0.95],
+                    }
+                  : {
+                      scaleY,
+                      opacity: [0.2, 0.06, 0.15, 0.04, 0.12],
+                    }
+                }
+                transition={{
+                  duration: isSignal ? 2.5 + signalIntensity * 0.5 : 1 + jitter(i, 1) * 0.6,
+                  repeat: Infinity,
+                  repeatType: 'reverse',
+                  delay: isSignal ? distFromCenter * 0.07 : jitter(i, 2) * 0.6,
+                  ease: 'easeInOut',
+                }}
+              />
+            </div>
           );
         })}
       </div>
@@ -373,17 +387,17 @@ const SignalBars = () => {
 };
 
 const Hero = () => {
-  const { user, isLoaded } = useClerkUser();
+  const { user, isLoaded, signedIn } = useClerkUser();
   const { isPro, isChecked } = useProEntitlement();
   // Showing "Sign In" to an already-signed-in user wastes a CTA slot.
   // Hide it once auth state confirms; falls back to just the "Choose Plan"
   // CTA which is the relevant action for returning users anyway.
-  const showSignIn = isLoaded && !user;
+  const showSignIn = isLoaded && !signedIn;
   // Swap "Choose Plan" for "Go to Dashboard" once we confirm the visitor
   // is already Pro — same reasoning as the nav swap, and also removes
   // the #pricing anchor jump which is actively misleading for a paying
   // customer.
-  const showGoToDashboard = isLoaded && !!user && isChecked && isPro;
+  const showGoToDashboard = isLoaded && signedIn && !!user && isChecked && isPro;
   return (
     <section className="pt-28 pb-12 px-6 relative overflow-hidden">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,rgba(74,222,128,0.08)_0%,transparent_50%)] pointer-events-none" />
@@ -411,7 +425,7 @@ const Hero = () => {
 
           <div className="flex flex-col sm:flex-row gap-3 justify-center mt-8">
             {showGoToDashboard ? (
-              <a href="https://worldmonitor.app" className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2">
+              <a href={DASHBOARD_URL} className="bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors flex items-center justify-center gap-2">
                 {t('hero.goToDashboard')} <ArrowRight className="w-4 h-4" aria-hidden="true" />
               </a>
             ) : (
@@ -427,7 +441,7 @@ const Hero = () => {
           </div>
 
           <div className="flex items-center justify-center mt-4">
-            <a href={appendRefToUrl("https://worldmonitor.app", getRefCode())} className="text-xs text-wm-green font-mono hover:text-green-300 transition-colors flex items-center gap-1">
+            <a href={appendRefToUrl(DASHBOARD_URL, getRefCode())} className="text-xs text-wm-green font-mono hover:text-green-300 transition-colors flex items-center gap-1">
               {t('hero.tryFreeDashboard')} <ArrowRight className="w-3 h-3" aria-hidden="true" />
             </a>
           </div>
@@ -460,7 +474,7 @@ const SocialProof = () => (
         </p>
         <footer className="mt-6 flex items-center justify-center gap-3">
           <a href="https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 text-wm-muted hover:text-wm-text transition-colors">
-            <img src={wiredLogo} alt="WIRED" className="h-5 brightness-0 invert opacity-60 hover:opacity-100 transition-opacity" />
+            <img src={wiredLogo} alt="WIRED" loading="lazy" className="h-5 brightness-0 invert opacity-60 hover:opacity-100 transition-opacity" />
           </a>
         </footer>
       </blockquote>
@@ -586,6 +600,9 @@ const DeliveryDesk = () => (
 );
 
 /* ─── 5. Live Dashboard Embed (current) ─── */
+// max-w-6xl (1152px) container inside px-6 section padding.
+const LIVE_PREVIEW_IMAGE_SIZES = '(min-width: 1200px) 1152px, calc(100vw - 3rem)';
+
 const LivePreview = () => (
   <section className="px-6 py-16">
     <div className="max-w-6xl mx-auto">
@@ -598,7 +615,7 @@ const LivePreview = () => (
           </div>
           <span className="font-mono text-xs text-wm-muted ml-2">{t('livePreview.windowTitle')}</span>
           <a
-            href={appendRefToUrl("https://worldmonitor.app", getRefCode())}
+            href={appendRefToUrl(DASHBOARD_URL, getRefCode())}
             target="_blank"
             rel="noreferrer"
             className="ml-auto text-xs text-wm-green font-mono hover:text-green-300 transition-colors flex items-center gap-1"
@@ -607,11 +624,17 @@ const LivePreview = () => (
           </a>
         </div>
         <div className="relative aspect-[16/9] bg-black">
-          <img
-            src={dashboardFallback}
-            alt="World Monitor Dashboard"
-            className="absolute inset-0 w-full h-full object-cover"
-          />
+          <picture>
+            <source type="image/avif" srcSet={DASHBOARD_SCREENSHOT_AVIF_SRCSET} sizes={LIVE_PREVIEW_IMAGE_SIZES} />
+            <source type="image/webp" srcSet={DASHBOARD_SCREENSHOT_WEBP_SRCSET} sizes={LIVE_PREVIEW_IMAGE_SIZES} />
+            <img
+              src={DASHBOARD_SCREENSHOT_JPG}
+              alt="World Monitor Dashboard"
+              className="absolute inset-0 w-full h-full object-cover"
+              loading="lazy"
+              decoding="async"
+            />
+          </picture>
           <iframe
             // ?embed=pro-preview is the unique marker the main app's
             // IS_EMBEDDED_PREVIEW helper keys off to silence premium-RPC
@@ -619,7 +642,7 @@ const LivePreview = () => (
             // src/utils/embedded-preview.ts. Not a generic iframe gate —
             // enterprise white-label embeds without this marker keep
             // firing premium RPCs normally.
-            src="https://worldmonitor.app?embed=pro-preview"
+            src={DASHBOARD_EMBED_PREVIEW_URL}
             title={t('livePreview.iframeTitle')}
             className="relative w-full h-full border-0"
             loading="lazy"
@@ -628,7 +651,7 @@ const LivePreview = () => (
           <div className="absolute inset-0 pointer-events-none bg-gradient-to-t from-wm-bg/80 via-transparent to-transparent" />
           <div className="absolute bottom-4 left-0 right-0 text-center pointer-events-auto">
             <a
-              href={appendRefToUrl("https://worldmonitor.app", getRefCode())}
+              href={appendRefToUrl(DASHBOARD_URL, getRefCode())}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-2 bg-wm-green text-wm-bg px-6 py-3 rounded-sm font-mono text-sm uppercase tracking-wider font-bold hover:bg-green-400 transition-colors"
@@ -880,6 +903,20 @@ const ApiSection = () => (
             <Database className="w-5 h-5 text-wm-muted shrink-0" aria-hidden="true" />
             <span className="text-sm">{t('apiSection.structured')}</span>
           </li>
+          <li className="flex items-start gap-3">
+            <Terminal className="w-5 h-5 text-wm-muted shrink-0" aria-hidden="true" />
+            <span className="text-sm">
+              {t('apiSection.cli')}{' — '}
+              <a
+                href="https://www.npmjs.com/package/worldmonitor"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-mono text-wm-green hover:underline"
+              >
+                npx worldmonitor
+              </a>
+            </span>
+          </li>
         </ul>
 
         <div className="grid grid-cols-2 gap-4 mb-8 p-4 bg-wm-card border border-wm-border rounded-sm">
@@ -1081,31 +1118,6 @@ const FAQ = () => {
   );
 };
 
-/* ─── 13. Footer ─── */
-const Footer = () => (
-  <footer className="border-t border-wm-border bg-[#020202] pt-8 pb-12 px-6 text-center">
-    <div className="flex flex-col md:flex-row items-center justify-between max-w-7xl mx-auto text-xs text-wm-muted font-mono">
-      <div className="flex items-center gap-3 mb-4 md:mb-0">
-        <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" className="rounded-full" />
-        <div className="flex flex-col">
-          <span className="font-display font-bold text-sm leading-none tracking-tight text-wm-text">WORLD MONITOR</span>
-          <span className="text-[9px] uppercase tracking-[2px] opacity-60 mt-0.5">by Someone.ceo</span>
-        </div>
-      </div>
-      <div className="flex items-center gap-6">
-        <a href="/" className="hover:text-wm-text transition-colors">Dashboard</a>
-        <a href="https://www.worldmonitor.app/blog/" className="hover:text-wm-text transition-colors">Blog</a>
-        <a href="https://www.worldmonitor.app/docs" className="hover:text-wm-text transition-colors">Docs</a>
-        <a href="https://status.worldmonitor.app/" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Status</a>
-        <a href="https://github.com/koala73/worldmonitor" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">GitHub</a>
-        <a href="https://discord.gg/re63kWKxaz" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Discord</a>
-        <a href="https://x.com/worldmonitorai" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">X</a>
-      </div>
-      <span className="text-[10px] opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} WorldMonitor</span>
-    </div>
-  </footer>
-);
-
 /* ─── Enterprise Page (dedicated /pro/#enterprise) ─── */
 const EnterprisePage = () => (
   <div className="min-h-screen selection:bg-wm-green/30 selection:text-wm-green">
@@ -1221,7 +1233,20 @@ const EnterprisePage = () => (
             const fd = new FormData(form);
             const honeypot = (form.querySelector('input[name="website"]') as HTMLInputElement)?.value || '';
             const turnstileWidget = form.querySelector('.cf-turnstile') as HTMLElement | null;
-            const turnstileToken = turnstileWidget?.dataset.token || '';
+            let turnstileToken = turnstileWidget?.dataset.token || '';
+            if (!turnstileToken && turnstileWidget) {
+              // Turnstile loads lazily (viewport-triggered), so a fast or
+              // autofilled submit can arrive before the widget produced a
+              // token. Kick the loader and give the challenge a bounded
+              // window; if it still hasn't resolved, POST anyway — the
+              // server verdict (and the existing failure UX + widget
+              // reset) stays the authority, same as an expired token.
+              if (await ensureTurnstileScript()) renderTurnstileWidgets();
+              for (let i = 0; i < 40 && !turnstileWidget.dataset.token; i++) {
+                await new Promise((resolve) => setTimeout(resolve, 250));
+              }
+              turnstileToken = turnstileWidget.dataset.token || '';
+            }
             try {
               const res = await fetch(`${API_BASE}/leads/v1/submit-contact`, {
                 method: 'POST',
@@ -1286,14 +1311,14 @@ const EnterprisePage = () => (
     <footer className="border-t border-wm-border bg-[#020202] py-8 px-6 text-center">
       <div className="flex flex-col md:flex-row items-center justify-between max-w-7xl mx-auto text-xs text-wm-muted font-mono">
         <div className="flex items-center gap-3 mb-4 md:mb-0">
-          <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" className="rounded-full" />
+          <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" loading="lazy" className="rounded-full" />
           <div className="flex flex-col">
             <span className="font-display font-bold text-sm leading-none tracking-tight text-wm-text">WORLD MONITOR</span>
             <span className="text-[9px] uppercase tracking-[2px] opacity-60 mt-0.5">by Someone.ceo</span>
           </div>
         </div>
         <div className="flex items-center gap-6">
-          <a href="/" className="hover:text-wm-text transition-colors">Dashboard</a>
+          <a href={DASHBOARD_PATH} className="hover:text-wm-text transition-colors">Dashboard</a>
           <a href="https://www.worldmonitor.app/blog/" className="hover:text-wm-text transition-colors">Blog</a>
           <a href="https://www.worldmonitor.app/docs" className="hover:text-wm-text transition-colors">Docs</a>
           <a href="https://status.worldmonitor.app/" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Status</a>
@@ -1327,51 +1352,11 @@ export default function App() {
   //      extended-unlock banner from PR-4, instead of rendering a
   //      default dashboard with no context.
   useEffect(() => {
-    initOverlay(() => {
-      const banner = document.createElement('div');
-      Object.assign(banner.style, {
-        position: 'fixed', top: '0', left: '0', right: '0', zIndex: '99999',
-        padding: '14px 20px', background: 'linear-gradient(135deg, #16a34a, #22c55e)',
-        color: '#fff', fontWeight: '600', fontSize: '14px', textAlign: 'center',
-        boxShadow: '0 2px 12px rgba(0,0,0,0.3)', transition: 'opacity 0.4s ease, transform 0.4s ease',
-        transform: 'translateY(-100%)', opacity: '0',
-        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '14px',
-      });
-
-      const target = 'https://worldmonitor.app/?wm_checkout=success';
-      let navigated = false;
-      const goToDashboard = () => {
-        if (navigated) return;
-        navigated = true;
-        window.location.href = target;
-      };
-
-      const message = document.createElement('span');
-      message.textContent = 'Payment received! Unlocking your premium features…';
-
-      const cta = document.createElement('button');
-      cta.type = 'button';
-      cta.textContent = 'Go to dashboard now →';
-      Object.assign(cta.style, {
-        background: '#ffffff',
-        color: '#16a34a',
-        border: 'none',
-        borderRadius: '4px',
-        padding: '6px 12px',
-        fontSize: '12px',
-        fontWeight: '700',
-        cursor: 'pointer',
-        whiteSpace: 'nowrap',
-      });
-      cta.addEventListener('click', goToDashboard);
-
-      banner.appendChild(message);
-      banner.appendChild(cta);
-      document.body.appendChild(banner);
-      requestAnimationFrame(() => { banner.style.transform = 'translateY(0)'; banner.style.opacity = '1'; });
-
-      setTimeout(goToDashboard, 1500);
-    });
+    // #4449: the Dodo overlay is no longer used — checkout redirects top-level
+    // to the hosted page (see startCheckout). We no longer call initOverlay(),
+    // which dynamically imported the heavy Dodo overlay SDK on /pro mount and
+    // registered a success banner that can never fire (after payment the buyer
+    // lands on the dashboard, not /pro — handleCheckoutReturn owns that UX).
     // Consume checkout intent from URL (set by afterSignInUrl on the
     // checkout-initiated sign-in). No-op for any other /pro entry
     // point; strips params before any await so a reload can't re-fire.

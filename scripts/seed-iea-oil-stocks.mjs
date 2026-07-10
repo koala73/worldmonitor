@@ -273,12 +273,14 @@ if (isMain) {
 
     // ── Content-age contract (Sprint 3b of the 2026-05-04 health-readiness plan) ──
     //
-    // 90-day budget = ~60d natural M+2 lag + ~30d missed-publication slack.
-    // August data (dataMonth="2024-08", end-of-month Aug 31) ships in late
-    // Oct/early Nov, so at fresh-arrival `newestItemAt` is already ~60d
-    // old. STALE_CONTENT trips only when a month is missed entirely (e.g.
-    // cache stuck at "2024-08" past mid-Jan when "2024-10" should have
-    // landed → /api/health surfaces STALE_CONTENT).
+    // 150-day budget = ~100d natural ~M+4 lag at fresh-arrival + ~30d normal
+    // intra-cycle aging + ~22d grace. IEA net-imports run on an observed ~M+4
+    // cadence (live probe 2026-06-06: latest dataMonth="2026-02", ~97.7d old,
+    // with 2026-03/04 still empty upstream), so even the freshest snapshot the
+    // seeder can serve is already ~98d old. STALE_CONTENT trips only when the
+    // cache is frozen ~2 months past the normal cycle (genuine upstream freeze
+    // or seeder failure). See IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN JSDoc for the
+    // full iteration history (45d → 90d → 120d → 150d).
     //
     // ieaOilStocksContentMeta parses data.dataMonth ("YYYY-MM") into
     // end-of-month UTC ms. Single-snapshot shape: newest === oldest.

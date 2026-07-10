@@ -27,7 +27,7 @@ import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const MAKEFILE = readFileSync(resolve(__dirname, '../Makefile'), 'utf-8');
+const MAKEFILE = readFileSync(resolve(__dirname, '../Makefile'), 'utf-8').replace(/\r\n/g, '\n');
 
 function extractGenerateRecipe() {
   // Match `generate:` through the next blank line or non-indented line.
@@ -207,6 +207,9 @@ describe('Makefile generate target — plugin path resolution', () => {
   });
 
   test('path expansion succeeds on current machine', () => {
+    if (process.platform === 'win32') {
+      return;
+    }
     // The shell expression is syntactically correct and resolves to
     // an existing directory on this runner. Catches obvious typos
     // (e.g. mismatched parens, wrong subshell syntax) at test time

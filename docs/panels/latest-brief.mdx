@@ -1,16 +1,18 @@
 ---
 title: "Latest Brief"
-description: "The WorldMonitor daily AI intelligence brief, surfaced in the dashboard as a single card that links to a signed magazine-style reader and shareable public URL."
+description: "The WorldMonitor AI intelligence brief, surfaced in the dashboard as a single card that links to a signed magazine-style reader and shareable public URL."
 ---
 
-The **Latest Brief** panel is the dashboard surface for the WorldMonitor Brief — an AI-generated daily intelligence digest that synthesises the day's most significant events into a structured, source-attributed read. The composer runs as a Railway job once per day per user; the panel simply mirrors whatever brief exists for the signed-in reader at the moment they open the dashboard.
+The **Latest Brief** panel is the dashboard surface for the WorldMonitor Brief — an AI-generated intelligence digest that synthesises the most significant events in the reader's configured digest window into a structured, source-attributed read. The default product cadence is daily, but digest rules can also produce twice-daily or weekly slots through `digestMode`. The panel simply mirrors the latest composed brief for the signed-in reader at the moment they open the dashboard.
+
+For the canonical pipeline details, see [News Digest and Briefing Methodology](/methodology/news-digest-and-briefing).
 
 ## What the panel shows
 
 Three states are rendered, depending on the reader and the composer's progress:
 
-- **Ready** — a cover-card thumbnail, the brief's greeting, the day's thread count, and a **Read brief →** button that opens the signed magazine URL in a new tab.
-- **Composing** — a soft empty state when the composer has not yet produced today's brief. The panel auto-refreshes on the next user-visible interaction; no manual retry is needed.
+- **Ready** — a cover-card thumbnail, the brief's greeting, the edition's thread count, and a **Read brief →** button that opens the signed magazine URL in a new tab.
+- **Composing** — a soft empty state when the composer has not yet produced the current slot. The panel auto-refreshes on the next user-visible interaction; no manual retry is needed.
 - **Locked** — a premium-upgrade overlay drawn by the base panel framework when the reader does not meet the PRO gate.
 
 Panel id is `latest-brief`; canonical component is `src/components/LatestBriefPanel.ts`.
@@ -30,7 +32,7 @@ The brief itself is composed by a Railway job from:
 
 - Curated news aggregates and GDELT signals
 - The intelligence, conflict, and markets caches
-- Per-reader personalisation if the user has configured preferences
+- Per-reader personalisation if the user has configured preferences, including a followed-country lift that only reorders stories inside the same severity lane
 
 **Redis key shape** (for anyone inspecting the feature from the backend):
 
@@ -42,11 +44,28 @@ Reference: `scripts/seed-digest-notifications.mjs` (writer) and `api/latest-brie
 
 ## Refresh cadence
 
-- **Composer**: one run per eligible user per day (Railway cron).
+- **Composer**: the Railway digest cron composes for eligible users when their `digestMode` is due. Default is daily; twice-daily and weekly modes are supported by the same writer.
 - **Panel — ready state**: reads on panel load; subsequent reads happen only on user-visible refresh triggers. No polling timer while the brief is already displayed.
 - **Panel — composing state**: schedules a 60-second re-poll (`COMPOSING_POLL_MS = 60_000` in `src/components/LatestBriefPanel.ts`) so the panel transitions from `composing` to `ready` on the next composer tick without requiring a full page reload. The poll timer is cleared when the panel leaves the composing state.
 
-The brief is explicitly a *daily* product — if the composer has not produced today's brief yet, the panel shows `composing` rather than yesterday's content, and auto-promotes to `ready` once the composer writes today's payload.
+The panel follows the latest slot pointer rather than assuming a strictly
+calendar-daily edition. If the composer has not produced the current/requested
+slot yet, the panel shows `composing` and auto-promotes to `ready` once the
+composer writes the payload.
+
+## Personalisation and editorial exclusions
+
+Followed-country personalisation is a soft lift, not a filter and not a
+cross-severity promotion. The nominal `FOLLOWED_BIAS_MULTIPLIER` is `1.25`
+and is env-tunable, but the live composer applies it as a stable severity-lane
+sort: a followed-country story can move ahead of non-followed stories in the
+same lane, while lower-severity stories never jump above higher-severity
+stories. Free-tier readers can follow up to `3` countries.
+
+The brief excludes op-ed/opinion and analysis columns, feel-good/lifestyle
+items, and ephemeral live-coverage teasers such as "WATCH LIVE" pages. Those
+items can be acceptable in live news surfaces, but delayed briefs are meant to
+summarise durable event-driven intelligence.
 
 ## Tier & gating
 
@@ -54,4 +73,5 @@ Latest Brief is **PRO**. The panel is registered with `premium: 'locked'` in `sr
 
 ## API reference
 
-- [AI Brief Endpoints](/api-brief) — covers `/api/latest-brief`, `/api/brief/share-url`, the public `/api/brief/public/{hash}` read, the per-user per-date read, and the social-ready PNG carousel route.
+- [AI Brief Endpoints](/api-brief) — covers `/api/latest-brief`, `/api/brief/share-url`, the public `/api/brief/public/{hash}` read, the per-user per-slot read, and the social-ready PNG carousel route.
+- [News Digest and Briefing Methodology](/methodology/news-digest-and-briefing) — source selection, deduplication, LLM grounding, and bias controls.

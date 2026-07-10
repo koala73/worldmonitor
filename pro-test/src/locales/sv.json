@@ -178,15 +178,15 @@
     "apiTier": "API-NIVÅ",
     "title": "Programmatisk intelligence",
     "subtitle": "För utvecklare, analytiker och team som bygger på World Monitor-data. Separat från Pro — använd båda eller endera.",
-    "restApi": "REST API över alla 30+ tjänstedomäner",
+    "restApi": "REST API över alla 30+ tjänstedomäner — officiella SDK:er för JavaScript, Python, Ruby, Go",
     "authenticated": "Autentiserat per nyckel, rate-limited per nivå",
     "structured": "Strukturerad JSON med cache-headers och OpenAPI 3.1-dokumentation",
     "starter": "Starter",
     "starterReqs": "1 000 req/dag",
     "starterWebhooks": "5 webhook-regler",
     "business": "Business",
-    "businessReqs": "50 000 req/dag",
-    "businessWebhooks": "Obegränsade webhooks + SLA",
+    "businessReqs": "10 000 req/dag",
+    "businessWebhooks": "Priority support",
     "feedData": "Mata data i dina dashboards, automatisera larm via Zapier/n8n/Make, bygg egna scoring-modeller på CII/riskdata."
   },
   "enterpriseShowcase": {
@@ -374,16 +374,17 @@
           "Dagliga marknadsöversikter",
           "Militär- och geopolitisk spårning",
           "Anpassad widgetbyggare",
-          "MCP-dataanslutningar",
+          "MCP + SDK-åtkomst för Claude Desktop och andra AI-klienter (50 anrop/dag)",
           "Prioriterad datauppdatering"
         ]
       },
       "api": {
         "description": "Programmatisk åtkomst till underrättelsedata",
         "features": [
-          "REST API-åtkomst",
+          "REST-API + officiella SDK:er (npm, PyPI, RubyGems, Go)",
           "Realtidsdataströmmar",
-          "1 000 förfrågningar/dag",
+          "60 förfrågningar/minut",
+          "1 000 förfrågningar/dag ingår",
           "Webhook-meddelanden",
           "Anpassade dataexporter"
         ]

@@ -25,32 +25,32 @@ const root = resolve(__dirname, '..');
 describe('writeSimulationOutcome by-run write structural lock (#3734 U5)', () => {
   const src = readFileSync(resolve(root, 'scripts/seed-forecasts.mjs'), 'utf-8');
 
-  it('writes :latest first (canonical, D10) with the existing TRACE TTL', () => {
-    // The :latest SET must remain awaited (no swallow) so the worker's try/catch
-    // surfaces transport errors as `status: 'failed'`. Locking the EX flag against
-    // TRACE_REDIS_TTL_SECONDS prevents an accidental TTL bump from changing the
-    // observable :latest semantics.
+  it('writes :latest through generatedAt CAS with the existing TRACE TTL', () => {
+    // The :latest write must remain awaited (no swallow) so the worker's try/catch
+    // surfaces transport errors as `status: 'failed'`. It must also use the
+    // generatedAt CAS helper so a late older worker cannot regress the pointer.
     assert.ok(
-      /await redisCommand\([\s\S]*?SIMULATION_OUTCOME_LATEST_KEY[\s\S]*?TRACE_REDIS_TTL_SECONDS/.test(src),
-      'writeSimulationOutcome must await SET on SIMULATION_OUTCOME_LATEST_KEY with TRACE_REDIS_TTL_SECONDS',
+      /await redisAtomicWriteSimulationOutcomePointer\([\s\S]*?SIMULATION_OUTCOME_LATEST_KEY[\s\S]*?TRACE_REDIS_TTL_SECONDS/.test(src),
+      'writeSimulationOutcome must await CAS on SIMULATION_OUTCOME_LATEST_KEY with TRACE_REDIS_TTL_SECONDS',
     );
   });
 
-  it('writes :by-run with the 24h TTL constant + no NX flag (D6)', () => {
-    // SET <byRunKey> <payload> EX SIMULATION_OUTCOME_BY_RUN_TTL_SECONDS.
-    // No NX flag — re-runs (manual --run-id=X) must overwrite cleanly per D6.
-    // The shim's TTL constant is the single source of truth (24h * 3600 = 86400).
+  it('writes :by-run through generatedAt CAS with the 24h TTL constant (D6)', () => {
+    // CAS <byRunKey> <payload> EX SIMULATION_OUTCOME_BY_RUN_TTL_SECONDS.
+    // Equal/newer re-runs (manual --run-id=X) still overwrite cleanly per D6;
+    // older out-of-order workers are skipped by generatedAt.
     assert.ok(
-      /SET[\s\S]{0,40}byRunKey[\s\S]{0,80}EX[\s\S]{0,40}SIMULATION_OUTCOME_BY_RUN_TTL_SECONDS/.test(src),
-      'by-run SET must use SIMULATION_OUTCOME_BY_RUN_TTL_SECONDS from the shim',
+      /redisAtomicWriteSimulationOutcomePointer\([\s\S]*?byRunKey[\s\S]*?SIMULATION_OUTCOME_BY_RUN_TTL_SECONDS/.test(src),
+      'by-run CAS must use SIMULATION_OUTCOME_BY_RUN_TTL_SECONDS from the shim',
     );
-    // No NX flag in the by-run path. The line is short — easiest assertion is
-    // that the by-run SET region doesn't contain 'NX' before the closing `]`.
-    const byRunMatch = src.match(/'SET', byRunKey, outcomePayloadString[^\]]+\]/);
-    assert.ok(byRunMatch, 'by-run SET region not found');
+    // No NX flag in the primary by-run path. The helper call is short enough
+    // to assert its argument region; the tombstone fallback is still allowed
+    // to use NX below.
+    const byRunMatch = src.match(/redisAtomicWriteSimulationOutcomePointer\([\s\S]*?byRunKey[\s\S]*?SIMULATION_OUTCOME_BY_RUN_TTL_SECONDS[\s\S]*?\);/);
+    assert.ok(byRunMatch, 'by-run CAS region not found');
     assert.ok(
       !byRunMatch[0].includes("'NX'"),
-      'by-run SET must NOT use NX flag (D6: re-runs overwrite cleanly)',
+      'primary by-run CAS must NOT use NX flag (D6: equal/newer re-runs overwrite cleanly)',
     );
   });
 
@@ -86,10 +86,38 @@ describe('writeSimulationOutcome by-run write structural lock (#3734 U5)', () =>
     // Slice a generous window from the function start and look for the
     // single occurrence of "return { outcomeKey }". The function ends with
     // exactly that statement.
-    const body = src.slice(startIdx, startIdx + 4000);
+    const body = src.slice(startIdx, startIdx + 7000);
     assert.ok(
       /return\s+\{\s*outcomeKey\s*\}/.test(body),
       'writeSimulationOutcome must return { outcomeKey } at the end of its body',
+    );
+  });
+
+  it('keeps generatedAt CAS centralized for decorations and outcome pointers', () => {
+    assert.equal(
+      (src.match(/const _REDIS_WRITE_IF_NEWER_LUA =/g) || []).length,
+      1,
+      'generatedAt write-if-newer Lua must have one shared implementation',
+    );
+    assert.ok(
+      /async function redisAtomicWriteSimDecorations[\s\S]*?return redisAtomicWriteIfNewer\(/.test(src),
+      'simulation decorations helper must delegate to the shared generatedAt CAS helper',
+    );
+    assert.ok(
+      /async function redisAtomicWriteSimulationOutcomePointer[\s\S]*?return redisAtomicWriteIfNewer\(/.test(src),
+      'simulation outcome pointer helper must delegate to the shared generatedAt CAS helper',
+    );
+  });
+
+  it('extends the simulation task lock before the theater loop and returns explicit lost-lock reasons', () => {
+    const extensionIdx = src.indexOf('extendSimulationTaskLockForTheaters(runId, workerId, eligibleTheaters.length)');
+    const loopIdx = src.indexOf('for (const theater of eligibleTheaters)');
+    assert.ok(extensionIdx >= 0, 'worker must extend the simulation task lock after theater eligibility is known');
+    assert.ok(loopIdx >= 0, 'worker theater loop not found');
+    assert.ok(extensionIdx < loopIdx, 'worker must check lock ownership before starting theater simulation work');
+    assert.ok(
+      /lockStatus !== SIM_LOCK_STATUS_EXTENDED[\s\S]*?reason = lockStatus === SIM_LOCK_STATUS_EXPIRED \? 'lock_expired' : 'lock_ownership_lost'/.test(src),
+      'worker must early-return with distinct expired-vs-owned-by-other lock reasons',
     );
   });
 });

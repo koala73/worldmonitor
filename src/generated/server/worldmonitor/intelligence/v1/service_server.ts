@@ -8,6 +8,8 @@ export interface GetRiskScoresRequest {
 export interface GetRiskScoresResponse {
   ciiScores: CiiScore[];
   strategicRisks: StrategicRisk[];
+  degraded: boolean;
+  stale: boolean;
 }
 
 export interface CiiScore {
@@ -20,6 +22,8 @@ export interface CiiScore {
   computedAt: number;
   methodologyVersion: string;
   eventMultiplier: number;
+  advisoryLevel: string;
+  advisoryProvenance: string;
 }
 
 export interface CiiComponents {
@@ -130,6 +134,14 @@ export interface GetCountryIntelBriefResponse {
   brief: string;
   model: string;
   generatedAt: number;
+  sources: BriefSource[];
+}
+
+export interface BriefSource {
+  title: string;
+  source: string;
+  url: string;
+  publishedAt: string;
 }
 
 export interface SearchGdeltDocumentsRequest {

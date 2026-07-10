@@ -1,0 +1,143 @@
+---
+title: "Command-Line Client"
+description: "Script country briefs, risk scores, and any of the 39 MCP tools from your shell with the official worldmonitor npm CLI — no API integration to write."
+---
+
+[`worldmonitor`](https://www.npmjs.com/package/worldmonitor) is the official command-line client for the World Monitor global-intelligence API. It's a thin, **dependency-free** wrapper over the [MCP server](/mcp-overview) (the recommended agent surface) with a REST escape hatch, so you can pull briefs, risk scores, and conflict / cyber / market / news feeds from a shell script or an agent without writing a single line of HTTP plumbing. It ships as ESM and runs on **Node 18+**.
+
+The source lives in [`cli/`](https://github.com/koala73/worldmonitor/tree/main/cli) in the main repository and is published to npm on every `cli-v*` release tag.
+Maintainers can follow the [CLI release runbook](/releasing-cli) when cutting a new npm version.
+Prefer a library over a shell? The same client ships as [official SDKs](/sdks) for **Python**, **Ruby**, and **Go**.
+
+## Install
+
+```sh
+npm install -g worldmonitor    # installs the `worldmonitor` command (alias: `wm`)
+# or run ad-hoc without installing:
+npx worldmonitor tools
+```
+
+## First call — no key needed
+
+`tools` lists every MCP tool and is **public**, so it's the fastest way to confirm the CLI reaches the API:
+
+```sh
+worldmonitor tools
+```
+
+You'll get all 39 tool definitions back as JSON. Everything else that returns *data* is a `tools/call` and needs a user API key.
+
+## Authenticate
+
+Data commands map to MCP `tools/call` and require a user API key. Grab one at [worldmonitor.app/pro](https://www.worldmonitor.app/pro), then either pass it per-call or export it once:
+
+```sh
+export WORLDMONITOR_API_KEY=wm_xxxxxxxx
+worldmonitor risk IR                       # reads the key from the environment
+# — or —
+worldmonitor risk IR --api-key wm_xxxxxxxx # pass it explicitly
+```
+
+The key is sent as the `X-WorldMonitor-Key` header. See [Authentication](/usage-auth) for how keys, OAuth, and browser sessions differ, and [Rate Limits](/usage-rate-limits) for the per-plan allowances. If you call a data command with no key, the CLI exits `1` and prints a hint telling you exactly which flag to pass.
+
+## Data commands
+
+Ergonomic shortcuts over the highest-traffic tools. Positional arguments (like an ISO country code) and any `--key value` pair flow straight through as tool arguments:
+
+| Command | MCP tool | Notes |
+|---|---|---|
+| `world` | `get_world_brief` | Live global situation brief |
+| `country <ISO>` | `get_country_brief` | AI strategic brief (ISO 3166-1 alpha-2) |
+| `risk <ISO>` | `get_country_risk` | Country risk / resilience scores |
+| `markets` | `get_market_data` | Equities, commodities, crypto, FX |
+| `conflicts` | `get_conflict_events` | `--country`, `--min_fatalities`, `--limit` |
+| `cyber` | `get_cyber_threats` | `--min_severity`, `--threat_type`, `--country` |
+| `news` | `get_news_intelligence` | `--topic`, `--country`, `--alerts_only` |
+| `disasters` | `get_natural_disasters` | `--dataset`, `--active_only`, `--min_magnitude` |
+| `sanctions` | `get_sanctions_data` | `--country`, `--entity_type`, `--query` |
+| `forecasts` | `get_forecast_predictions` | `--domain`, `--region` |
+| `maritime <ISO>` | `get_maritime_activity` | Port / vessel activity for a country |
+
+```sh
+worldmonitor country IR                              # AI strategic brief
+worldmonitor conflicts --country IR --limit 5        # recent conflict events
+worldmonitor markets --asset_class crypto            # crypto quotes
+```
+
+## Any tool, any argument
+
+The curated table stays small on purpose — every one of the 40 tools is reachable via `call`, and any unrecognised `--key value` becomes a tool argument, so nothing needs special wiring:
+
+```sh
+worldmonitor call get_cyber_threats --min_severity 7
+worldmonitor call get_market_data --args '{"symbols":["AAPL","MSFT"]}'   # typed JSON args
+worldmonitor prompts        # list pre-built workflow prompt templates
+worldmonitor resources      # list addressable resource URIs
+```
+
+Use `--args '<json>'` when you need typed (non-string) arguments; otherwise `--key value` pairs are collected as strings.
+
+<Tip>
+Every tool accepts a universal `jmespath` argument that projects the response **server-side** before it crosses the wire — typically 80–95% smaller. The CLI forwards it like any other argument:
+
+```sh
+worldmonitor markets --jmespath 'data."stocks-bootstrap".quotes[?symbol==`AAPL`].{s:symbol,p:price}'
+```
+
+See the [JMESPath guide](/mcp-jmespath) for 12 worked examples.
+</Tip>
+
+## REST escape hatch
+
+For host-relative paths, self-hosted deployments, or the OpenAPI catalog:
+
+```sh
+worldmonitor health --api-key wm_xxx      # API status / health check (needs a key)
+worldmonitor get /api/cyber/v1/list-cyber-threats --api-key wm_xxx
+worldmonitor list cyber                   # list documented REST operations from the live spec
+```
+
+`health` maps to the auth-gated [platform health endpoint](/health-endpoints), so it requires `--api-key`. `list` reads the public [OpenAPI spec](/api-reference) and needs no key.
+
+## Flags
+
+| Flag | Purpose |
+|---|---|
+| `--api-key <key>` | User API key (or env `WORLDMONITOR_API_KEY`) |
+| `--mcp-url <url>` | MCP endpoint (default `https://worldmonitor.app/mcp`) |
+| `--base-url <url>` | REST base (default `https://api.worldmonitor.app`) |
+| `--args <json>` | Typed arguments object for a tool call |
+| `--timeout <ms>` | Request timeout (default `30000`) |
+| `--raw` | Print the response body verbatim |
+| `--compact` | Print single-line JSON |
+| `-h, --help` · `-v, --version` | Help / version |
+
+## Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Success |
+| `1` | Request or transport error (response body written to stderr) |
+| `2` | Usage error (bad command or missing required argument) |
+
+Predictable exit codes make the CLI safe to drive from shell pipelines and CI.
+
+## Programmatic use
+
+The same logic is importable — handy for embedding in a Node script without shelling out:
+
+```js
+import { run } from 'worldmonitor/run';
+
+const code = await run(['risk', 'IR'], { env: process.env });
+```
+
+`run()` takes an injectable IO bag (`fetch`, `env`, `stdout`, `stderr`), so it's fully testable offline, and returns the numeric exit code.
+
+## Where to go next
+
+- **[MCP Quickstart](/mcp-quickstart)** — connect Claude Desktop and make your first tool call over the Model Context Protocol.
+- **[MCP Tools Reference](/mcp-tools-reference)** — per-tool parameters, freshness budgets, and examples for all 40 tools.
+- **[JMESPath guide](/mcp-jmespath)** — projection grammar to shrink responses by 80–95%.
+- **[Authentication](/usage-auth)** — API keys vs. OAuth vs. browser session.
+- **[API Reference](/api-reference)** — the full REST service catalog behind the `get` and `list` commands.

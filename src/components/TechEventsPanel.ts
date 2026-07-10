@@ -1,18 +1,19 @@
 import { Panel } from './Panel';
-import { getRpcBaseUrl } from '@/services/rpc-client';
+import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
 import { t } from '@/services/i18n';
 import { sanitizeUrl } from '@/utils/sanitize';
 import { h, replaceChildren } from '@/utils/dom-utils';
 import { isDesktopRuntime } from '@/services/runtime';
-import { ResearchServiceClient } from '@/generated/client/worldmonitor/research/v1/service_client';
+
 import type { TechEvent, ListTechEventsResponse } from '@/generated/client/worldmonitor/research/v1/service_client';
 import type { NewsItem, DeductContextDetail } from '@/types';
 import { buildNewsContext } from '@/utils/news-context';
 import { getHydratedData } from '@/services/bootstrap';
+import { ResearchServiceClient } from '@/services/generated-rpc-clients';
 
 type ViewMode = 'upcoming' | 'conferences' | 'earnings' | 'all';
 
-const researchClient = new ResearchServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+const getResearchClient = createLazyClient(() => new ResearchServiceClient(getRpcBaseUrl(), { fetch: rpcFetch }));
 
 export class TechEventsPanel extends Panel {
   private viewMode: ViewMode = 'upcoming';
@@ -44,7 +45,7 @@ export class TechEventsPanel extends Panel {
     // Fallback: single RPC call — listTechEvents reads from Redis seed,
     // retrying on empty returns the same stale result each time.
     try {
-      const data = await researchClient.listTechEvents({
+      const data = await getResearchClient().listTechEvents({
         type: '',
         mappable: false,
         days: 180,

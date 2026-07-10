@@ -70,9 +70,32 @@ export type RequestReason =
   // Distinct from auth_401 so telemetry separates malformed requests
   // from auth failures.
   | 'malformed_request'
+  // Fail-closed rejection when the internal-MCP replay-nonce cache (Redis)
+  // is unavailable so an atomic claim can't be made. Distinct from auth_401
+  // so a Redis outage is not conflated with genuine signature/auth failures.
+  | 'replay_cache_unavailable'
   | 'unknown_route'
   | 'method_not_allowed'
-  | 'cors_error';
+  | 'cors_error'
+  // #3199 per-account API rate limit. `_429` = enforced reject; `_shadow` =
+  // would-have-rejected but served (shadow mode), threaded onto the single
+  // terminal success emit so the volume signal isn't double-counted.
+  | 'rl_min_429'
+  | 'rl_ceiling_429'
+  | 'rl_min_shadow'
+  | 'rl_ceiling_shadow'
+  // Idempotency-Key (server/_shared/idempotency.ts): a malformed key (400), a
+  // replayed response, an in-flight duplicate (409), or a key reused with a
+  // different body (422).
+  | 'idempotency_invalid'
+  | 'idempotent_replay'
+  | 'idempotency_conflict'
+  | 'idempotency_mismatch'
+  // #4866 — auth backend (Convex/Redis) unreachable during credential or
+  // entitlement resolution on /mcp: the caller was told 503 + Retry-After.
+  // Distinct from auth_401 so a backend outage never reads as a wave of
+  // invalid credentials.
+  | 'auth_unavailable';
 
 export interface RequestEvent {
   _time: string;
@@ -89,6 +112,11 @@ export interface RequestEvent {
   principal_id: string | null;
   auth_kind: AuthKind;
   tier: number;
+  // #4572 — API plan attribution. planKey of the caller's entitlement
+  // (api_starter / api_business / enterprise / …) or null. Distinguishes
+  // Starter from Business (both tier 2) so the limit-abuse audit can compare
+  // each request to the customer's actual cap without an external lookup.
+  plan_key: string | null;
   country: string | null;
   ip_city: string | null;
   ip_region: string | null;
@@ -123,9 +151,65 @@ export interface UpstreamEvent {
   cache_status: CacheStatus;
 }
 
-export type UsageEvent = RequestEvent | UpstreamEvent;
+// #4895 — per-completion LLM spend attribution. One event per PROVIDER
+// ATTEMPT (not per logical call): a fallback chain that re-sends the prompt
+// shows up as fallback_index 0..n, making retry amplification queryable.
+export interface LlmCallEvent {
+  _time: string;
+  event_type: 'llm_call';
+  provider: string;
+  model: string;
+  /** Caller surface tag, e.g. 'classify-event', 'country-intel-brief'. 'unknown' when untagged. */
+  stage: string;
+  ok: boolean;
+  duration_ms: number;
+  tokens_total: number;
+  tokens_prompt: number;
+  tokens_completion: number;
+  /** Input size in characters — recorded even when the provider omits usage. */
+  prompt_chars: number;
+  max_tokens: number;
+  /** 0 = first provider attempted; 1+ = fallbacks (each re-sends the full prompt). */
+  fallback_index: number;
+  /** '' on success; 'http_<status>' | 'timeout' | 'fetch_error' | 'empty' | 'stripped_empty' | 'validate_reject'. */
+  reason: string;
+}
+
+export type UsageEvent = RequestEvent | UpstreamEvent | LlmCallEvent;
 
 // ---------- Builders (allowlisted primitives only) ----------
+
+export function buildLlmCallEvent(p: {
+  provider: string;
+  model: string;
+  stage: string;
+  ok: boolean;
+  durationMs: number;
+  tokensTotal?: number;
+  tokensPrompt?: number;
+  tokensCompletion?: number;
+  promptChars: number;
+  maxTokens: number;
+  fallbackIndex: number;
+  reason?: string;
+}): LlmCallEvent {
+  return {
+    _time: new Date().toISOString(),
+    event_type: 'llm_call',
+    provider: p.provider,
+    model: p.model,
+    stage: p.stage,
+    ok: p.ok,
+    duration_ms: Math.round(p.durationMs),
+    tokens_total: p.tokensTotal ?? 0,
+    tokens_prompt: p.tokensPrompt ?? 0,
+    tokens_completion: p.tokensCompletion ?? 0,
+    prompt_chars: p.promptChars,
+    max_tokens: p.maxTokens,
+    fallback_index: p.fallbackIndex,
+    reason: p.reason ?? '',
+  };
+}
 
 export function buildRequestEvent(p: {
   requestId: string;
@@ -140,6 +224,7 @@ export function buildRequestEvent(p: {
   principalId: string | null;
   authKind: AuthKind;
   tier: number;
+  planKey: string | null;
   country: string | null;
   ipCity: string | null;
   ipRegion: string | null;
@@ -171,6 +256,7 @@ export function buildRequestEvent(p: {
     principal_id: p.principalId,
     auth_kind: p.authKind,
     tier: p.tier,
+    plan_key: p.planKey,
     country: p.country,
     ip_city: p.ipCity,
     ip_region: p.ipRegion,

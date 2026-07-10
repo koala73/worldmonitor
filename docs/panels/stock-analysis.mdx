@@ -1,6 +1,6 @@
 ---
 title: "Premium Stock Analysis"
-description: "On-demand equity analysis per ticker with buy/hold/sell signal, price targets, analyst consensus, upgrades/downgrades, insider transactions, and price sparklines."
+description: "On-demand equity analysis per ticker — buy/hold/sell signal, price targets, analyst consensus, upgrades, insider transactions, and sparklines."
 ---
 
 The **Premium Stock Analysis** panel (internal id `stock-analysis`) is the dashboard's per-ticker deep-dive: one analysis at a time, with a structured synthesis of signal (buy / hold / sell), price targets, analyst consensus, recent upgrades/downgrades, insider transactions, and a price sparkline. Backed by the Market service's analyst / price-target / insider RPCs.
@@ -28,11 +28,13 @@ Panel id is `stock-analysis`; canonical component is `src/components/StockAnalys
 
 ## Data sources
 
-All fields come from the generated `MarketServiceClient`:
+All fields come from generated `MarketServiceClient` routes. The panel is locked, and the premium stock-analysis calls use `premiumFetch`; the insider-enrichment route is rendered only inside this locked surface.
 
-- `analyst_consensus`, `price_targets`, `upgrade_downgrades` — Market service RPCs.
-- Insider transactions — `@/services/insider-transactions` wrapper, bound via `setInsiderData()`.
-- Price + sparkline — Market service quote/series RPCs.
+| Method + route | Feeds |
+|---|---|
+| `GET /api/market/v1/analyze-stock` | Per-symbol analysis card: current price, sparkline, technical signal, thesis, targets, ratings, headlines, and AI synthesis. |
+| `GET /api/market/v1/get-stock-analysis-history` | Cached/shared previous analyses so the panel can render stored snapshots before recomputing stale symbols. |
+| `GET /api/market/v1/get-insider-transactions` | Insider Activity section attached after the analysis card renders. |
 
 ## Refresh cadence
 
@@ -44,5 +46,5 @@ Analyses are on-demand; no polling. The panel caches previous analyses in `Stock
 
 ## API reference
 
-- [Markets service](/api/MarketService.openapi.yaml) — analyst consensus, price targets, upgrades/downgrades, quote RPCs.
+- [Markets service](/api/MarketService.openapi.yaml) — schemas and parameters for `analyze-stock`, `get-stock-analysis-history`, and `get-insider-transactions`.
 - Related: [Premium Backtesting](/panels/stock-backtest) — the backtest side of the same dataset.

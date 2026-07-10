@@ -178,15 +178,15 @@
     "apiTier": "API ティア",
     "title": "プログラマティックインテリジェンス",
     "subtitle": "World Monitor のデータ上に構築する開発者、アナリスト、チーム向け。Pro と独立 — 両方でも片方でも。",
-    "restApi": "30+ のサービスドメインすべてで REST API",
+    "restApi": "30+ のサービスドメインすべてで REST API — JavaScript・Python・Ruby・Go の公式SDK",
     "authenticated": "キー単位で認証、ティア単位でレート制限",
     "structured": "キャッシュヘッダーと OpenAPI 3.1 ドキュメントを備えた構造化 JSON",
     "starter": "Starter",
     "starterReqs": "1,000 req/日",
     "starterWebhooks": "5 つの Webhook ルール",
     "business": "Business",
-    "businessReqs": "50,000 req/日",
-    "businessWebhooks": "無制限の Webhook + SLA",
+    "businessReqs": "10,000 req/日",
+    "businessWebhooks": "Priority support",
     "feedData": "データをダッシュボードに流し込み、Zapier/n8n/Make でアラートを自動化、CII・リスクデータ上で独自のスコアリングモデルを構築。"
   },
   "enterpriseShowcase": {
@@ -374,16 +374,17 @@
           "日次マーケットブリーフ",
           "軍事・地政学追跡",
           "カスタムウィジェットビルダー",
-          "MCPデータコネクタ",
+          "Claude Desktop などの AI クライアント向け MCP + SDK アクセス (50コール/日)",
           "優先データ更新"
         ]
       },
       "api": {
         "description": "インテリジェンスデータへのプログラマティックアクセス",
         "features": [
-          "REST API アクセス",
+          "REST API + 公式SDK（npm、PyPI、RubyGems、Go）",
           "リアルタイムデータストリーム",
-          "1日1,000リクエスト",
+          "毎分60リクエスト",
+          "1日1,000リクエスト込み",
           "Webhookノーティフィケーション",
           "カスタムデータエクスポート"
         ]

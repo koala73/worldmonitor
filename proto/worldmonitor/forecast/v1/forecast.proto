@@ -29,9 +29,47 @@ message Perspectives {
   string contrarian = 3;
 }
 
+// Machine-checkable resolution spec — makes a forecast a scoreable *bet*.
+// Every forecast carries exactly one spec, either "hard" or "judged":
+//   - "hard":   auto-resolvable by a free metric comparison against a
+//               WorldMonitor feed the detector already scored from. Sets
+//               metric_key (feed + path expression), operator, threshold,
+//               window, and source_feed (a RESOLUTION_FEED_KEYS allowlist
+//               member). baseline_value is set only when operator is
+//               "crosses" (the emission-time metric value the move is
+//               measured from).
+//   - "judged": resolved by a later LLM judge against the question string;
+//               no numeric threshold, but still a resolution deadline.
+// kind and operator are strings, not proto enums, mirroring the trend field
+// above so a new operator/kind never requires a proto migration to land in
+// the 45-day history. Current kind values are "hard" and "judged"; current
+// operator values are ">=", "<=", and "crosses".
+// kind and deadline are always set; every other field is optional and absent
+// (persisted as JSON null) when it does not apply to the kind — a judged spec
+// carries no threshold/baseline_value so "no threshold" is never confused
+// with a real threshold of 0, and a hard spec carries no question.
+message ResolutionSpec {
+  string kind = 1;
+  optional string metric_key = 2;
+  optional string operator = 3;
+  optional double threshold = 4;
+  optional double baseline_value = 5;
+  optional string window = 6;
+  int64 deadline = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  optional string source_feed = 8;
+  optional string question = 9;
+}
+
+// Projections contains bounded presentation-path probabilities derived from
+// domain curves. Market forecasts are peak-anchored, so the projected value at
+// the forecast's own time_horizon can intentionally differ from the headline
+// probability; non-market forecasts preserve their emitted horizon as anchor.
 message Projections {
+  // Projected 24-hour probability after domain-curve normalization.
   double h24 = 1;
+  // Projected 7-day probability after domain-curve normalization.
   double d7 = 2;
+  // Projected 30-day probability after domain-curve normalization.
   double d30 = 3;
 }
 
@@ -103,6 +141,10 @@ message Forecast {
   string time_horizon = 8;
   repeated ForecastSignal signals = 9;
   repeated CascadeEffect cascades = 10;
+  // Forecast trend direction. Current values are "rising", "falling", and
+  // "stable". The seeder compares probability against the prior forecast
+  // snapshot and uses a +/-0.05 deadband: deltas above +0.05 are rising,
+  // below -0.05 are falling, and everything inside the band is stable.
   string trend = 11;
   double prior_probability = 12;
   CalibrationInfo calibration = 13;
@@ -119,4 +161,10 @@ message Forecast {
   double simulation_adjustment = 20;
   double sim_path_confidence = 21;
   bool demoted_by_simulation = 22;
+  // Resolution spec — the machine-checkable outcome contract for this forecast
+  // (see ResolutionSpec). "hard" specs resolve for free by metric comparison
+  // against source_feed; "judged" specs resolve via a later LLM judge against
+  // question. Nullable: a forecast that never passed through the resolution
+  // enrichment pass carries null. deadline is an epoch-milliseconds timestamp.
+  ResolutionSpec resolution = 23;
 }

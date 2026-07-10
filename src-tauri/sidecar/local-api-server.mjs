@@ -1286,6 +1286,15 @@ async function dispatch(requestUrl, req, routes, context) {
     return new Response(null, { status: 204, headers: makeCorsHeaders(req) });
   }
 
+  // Liveness probe — exempt from auth so container/orchestrator healthchecks
+  // can hit it without the per-session LOCAL_API_TOKEN. Deliberately minimal
+  // and dependency-free: a 200 here proves the sidecar process is up and
+  // routing (and, when reached via nginx /api/, that the whole request path
+  // works end-to-end). Does not touch cloud, Redis, or any data source.
+  if (requestUrl.pathname === '/api/sidecar-health') {
+    return json({ status: 'ok', mode: context.mode, port: context.port });
+  }
+
   // Health check — exempt from auth to support external monitoring tools
   if (requestUrl.pathname === '/api/service-status') {
     return handleLocalServiceStatus(context);
@@ -1819,6 +1828,24 @@ export async function createLocalApiServer(options = {}) {
       const boundPort = typeof address === 'object' && address?.port ? address.port : context.port;
       context.port = boundPort;
       const extraAllowedPrivateOrigins = [];
+      // Docker self-host ONLY: the Redis REST proxy (UPSTASH_REDIS_REST_URL)
+      // points at an internal private host (e.g. http://redis-rest:80 on a
+      // docker network). Without trusting it the SSRF guard blocks every Redis
+      // call and all /api/* return 503 REDIS_DOWN. Gated on mode === 'docker'
+      // so desktop/production startup never widens the SSRF boundary via env
+      // — the same containment as the cloudFallback=false docker policy above,
+      // and the programmatic allowPrivateFetchOrigins escape hatch stays
+      // env-free. On desktop UPSTASH_REDIS_REST_URL is a public Upstash https
+      // origin that already passes the SSRF check, so this path is docker-only.
+      if (context.mode === 'docker' && process.env.UPSTASH_REDIS_REST_URL) {
+        try {
+          extraAllowedPrivateOrigins.push(new URL(process.env.UPSTASH_REDIS_REST_URL).origin);
+        } catch (err) {
+          context.logger.warn(
+            `[local-api] UPSTASH_REDIS_REST_URL is not a valid URL; not added to the private-fetch allowlist (Redis calls will be SSRF-blocked): ${err.message}`,
+          );
+        }
+      }
       if (context.allowPrivateRemoteBase) {
         try { extraAllowedPrivateOrigins.push(new URL(context.remoteBase).origin); } catch {}
       }

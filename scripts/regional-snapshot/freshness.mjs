@@ -6,6 +6,8 @@
 // The snapshot writer marks inputs as stale or missing based on this table
 // and feeds those flags into SnapshotMeta.snapshot_confidence.
 
+import { CII_RISK_SCORE_CACHE_KEYS } from '../_cii-risk-cache-keys.mjs';
+
 /**
  * @typedef {object} SourceFreshnessSpec
  * @property {string} key      - Redis key (literal, no template variables)
@@ -28,7 +30,7 @@
  * @type {SourceFreshnessSpec[]}
  */
 export const FRESHNESS_REGISTRY = [
-  { key: 'risk:scores:sebuf:stale:v3',          maxAgeMin: 30,    feedsAxes: ['domestic_fragility', 'coercive_pressure'], metaKey: 'seed-meta:intelligence:risk-scores' },
+  { key: CII_RISK_SCORE_CACHE_KEYS.stale,        maxAgeMin: 30,    feedsAxes: ['domestic_fragility', 'coercive_pressure'], metaKey: 'seed-meta:intelligence:risk-scores' },
   { key: 'forecast:predictions:v2',              maxAgeMin: 180,   feedsAxes: ['scenarios', 'actors'] },
   { key: 'supply_chain:chokepoints:v4',          maxAgeMin: 30,    feedsAxes: ['maritime_access', 'corridors'] },
   { key: 'supply_chain:transit-summaries:v1',    maxAgeMin: 30,    feedsAxes: ['maritime_access'], metaKey: 'seed-meta:supply_chain:transit-summaries' },
@@ -50,7 +52,7 @@ export const FRESHNESS_REGISTRY = [
   { key: 'aviation:delays:faa:v1',               maxAgeMin: 60,    feedsAxes: ['mobility'], metaKey: 'seed-meta:aviation:faa' },
   { key: 'aviation:delays:intl:v3',              maxAgeMin: 90,    feedsAxes: ['mobility'], metaKey: 'seed-meta:aviation:intl' },
   { key: 'aviation:notam:closures:v2',           maxAgeMin: 120,   feedsAxes: ['mobility'], metaKey: 'seed-meta:aviation:notam' },
-  { key: 'intelligence:gpsjam:v2',               maxAgeMin: 240,   feedsAxes: ['mobility', 'airspace'], metaKey: 'seed-meta:intelligence:gpsjam' },
+  { key: 'intelligence:gpsjam:v2',               maxAgeMin: 1440,  feedsAxes: ['mobility', 'airspace'], metaKey: 'seed-meta:intelligence:gpsjam' }, // gpsjam.org is a DAILY source (restored from Wingbits, PR #4987); 1440min matches api/health.js gpsjam.maxStaleMin so snapshots don't mark it stale hours after a healthy daily seed.
   // military:flights:v1 already carries top-level fetchedAt, no metaKey needed.
   { key: 'military:flights:v1',                  maxAgeMin: 30,    feedsAxes: ['mobility', 'reroute_intensity'] },
 ];

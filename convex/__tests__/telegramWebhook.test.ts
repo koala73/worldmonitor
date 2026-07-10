@@ -143,4 +143,25 @@ describe("HTTP route /api/telegram-pair-callback (security #3767)", () => {
     expect(res.status).toBe(200);
     expect(await tokenUsed(t)).toBe(true); // handler ran and claimed the token
   });
+
+  test.each([null, [], "not-an-object", 42, true])(
+    "matching secret with non-object JSON (%j) → 200 without consuming token",
+    async (payload) => {
+      process.env.TELEGRAM_WEBHOOK_SECRET = VALID_SECRET;
+      const t = convexTest(schema, modules);
+      await seedPairingToken(t);
+
+      const res = await t.fetch("/api/telegram-pair-callback", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Telegram-Bot-Api-Secret-Token": VALID_SECRET,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      expect(res.status).toBe(200);
+      expect(await tokenUsed(t)).toBe(false);
+    },
+  );
 });

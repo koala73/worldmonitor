@@ -175,6 +175,10 @@ export class LatestBriefPanel extends Panel {
       this.refreshQueued = true;
       return;
     }
+    if (!this.element.isConnected) {
+      this.runWhenConnected(() => { void this.refresh(); });
+      return;
+    }
     this.clearComposingPoll();
     // Check #1: gate before starting.
     const authState = getAuthState();

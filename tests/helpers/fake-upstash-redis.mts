@@ -133,6 +133,20 @@ export function createRedisFetch(fixtures: Record<string, unknown>): FakeRedisSt
           return { result: redis.delete(redisKey) ? 1 : 0 };
         }
 
+        if (normalizedVerb === 'INCR') {
+          const current = Number(redis.get(redisKey) ?? '0');
+          const next = (Number.isFinite(current) ? current : 0) + 1;
+          redis.set(redisKey, String(next));
+          return { result: next };
+        }
+
+        if (normalizedVerb === 'DECR') {
+          const current = Number(redis.get(redisKey) ?? '0');
+          const next = (Number.isFinite(current) ? current : 0) - 1;
+          redis.set(redisKey, String(next));
+          return { result: next };
+        }
+
         if (normalizedVerb === 'EVALSHA' || normalizedVerb === 'EVALSHA_RO') {
           const numericArgs = args.map(Number).filter((value) => Number.isFinite(value));
           const limit = numericArgs.length > 0 ? Math.max(...numericArgs) : 600;

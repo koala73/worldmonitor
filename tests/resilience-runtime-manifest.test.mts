@@ -66,7 +66,7 @@ describe('resilience runtime manifest', () => {
       [modules.RESILIENCE_INTERVALS_META_KEY]: {
         fetchedAt: Date.parse('2026-05-29T11:45:00.000Z'),
       },
-      'resilience:intervals:v6:US': {
+      'resilience:intervals:v9:US': {
         p05: 65.2,
         p95: 72.8,
         _formula: 'pc',
@@ -140,12 +140,40 @@ describe('resilience runtime manifest', () => {
       [modules.RESILIENCE_INTERVALS_META_KEY]: {
         fetchedAt: Date.parse('2026-05-30T10:00:00.000Z'),
       },
-      'resilience:intervals:v6:US': {
+      'resilience:intervals:v9:US': {
         p05: 65.2,
         p95: 72.8,
         _formula: 'd6',
         computedAt: '2026-05-30T11:00:00.000Z',
         methodology: 'weight-perturbation-sensitivity-v3',
+      },
+    }, { keepVercelEnv: true });
+
+    const response = await modules.getResilienceRuntimeManifest({
+      request: new Request('https://worldmonitor.app/api/resilience/v1/get-runtime-manifest'),
+    } as never);
+
+    assert.deepEqual(response.intervals, {
+      available: false,
+      methodology: 'weight-perturbation-sensitivity-v3',
+      sampleCountry: 'US',
+      lastObservedAt: '2026-05-30T11:00:00.000Z',
+    });
+  });
+
+  it('reports interval metadata unavailable when the sample methodology is stale', async () => {
+    const modules = await loadRuntimeManifestModules();
+    process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'true';
+    installRedis({
+      [modules.RESILIENCE_INTERVALS_META_KEY]: {
+        fetchedAt: Date.parse('2026-05-30T10:00:00.000Z'),
+      },
+      'resilience:intervals:v9:US': {
+        p05: 65.2,
+        p95: 72.8,
+        _formula: 'pc',
+        computedAt: '2026-05-30T11:00:00.000Z',
+        methodology: 'legacy-weight-perturbation-v2',
       },
     }, { keepVercelEnv: true });
 
@@ -220,7 +248,18 @@ describe('resilience runtime manifest gateway auth', () => {
     delete process.env.WORLDMONITOR_VALID_KEYS;
     process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'true';
 
-    assert.deepEqual([...PUBLIC_NO_AUTH_RPC_PATHS], ['/api/resilience/v1/get-runtime-manifest']);
+    assert.deepEqual(
+      [...PUBLIC_NO_AUTH_RPC_PATHS],
+      [
+        '/api/conflict/v1/list-acled-events',
+        '/api/natural/v1/list-natural-events',
+        '/api/resilience/v1/get-runtime-manifest',
+        '/api/seismology/v1/list-earthquakes',
+        '/api/unrest/v1/list-unrest-events',
+        '/api/leads/v1/submit-contact',
+        '/api/leads/v1/register-interest',
+      ],
+    );
     assert.equal(PREMIUM_RPC_PATHS.has('/api/resilience/v1/get-runtime-manifest'), false);
 
     const gateway = createDomainGateway(generated.createResilienceServiceRoutes(resilienceHandler, serverOptions));

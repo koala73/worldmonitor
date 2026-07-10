@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed, sleep, fetchCoinPaprikaTickersById } from './_seed-utils.mjs';
+import { pathToFileURL } from 'node:url';
+import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed, sleep, fetchCoinPaprikaTickersById, coingeckoEndpoint } from './_seed-utils.mjs';
 
 const defiConfig = loadSharedConfig('defi-tokens.json');
 const aiConfig = loadSharedConfig('ai-tokens.json');
@@ -32,11 +33,8 @@ async function fetchWithRateLimitRetry(url, maxAttempts = 5, headers = { Accept:
 }
 
 async function fetchFromCoinGecko() {
-  const apiKey = process.env.COINGECKO_API_KEY;
-  const baseUrl = apiKey ? 'https://pro-api.coingecko.com/api/v3' : 'https://api.coingecko.com/api/v3';
+  const { baseUrl, headers } = coingeckoEndpoint();
   const url = `${baseUrl}/coins/markets?vs_currency=usd&ids=${ALL_IDS.join(',')}&order=market_cap_desc&sparkline=false&price_change_percentage=24h,7d`;
-  const headers = { Accept: 'application/json', 'User-Agent': CHROME_UA };
-  if (apiKey) headers['x-cg-pro-api-key'] = apiKey;
 
   const resp = await fetchWithRateLimitRetry(url, 5, headers);
   const data = await resp.json();
@@ -118,22 +116,29 @@ export function declareRecords(data) {
   return Array.isArray(data?.tokens) ? data.tokens.length : 0;
 }
 
+// Each panel has its own {tokens, ...} shape — reuse canonical declareRecords
+// since the transformed extra-key payloads are structurally identical to the
+// canonical one (a single panel). `skipWhenEmpty` guards against a partial
+// upstream fetch (CoinGecko dropping the AI or Other IDs for a cycle while DeFi
+// still resolves, so validateFn passes on the canonical panel): without it,
+// runSeed would clobber the good cached AI/Other panel with a recordCount=0
+// write — blanking the UI panel and tripping the seed-contract probe's
+// minRecords:1 floor (false 503). Exported so a test can assert the guard.
+export const TOKEN_PANEL_EXTRA_KEYS = [
+  { key: AI_KEY,    transform: (data) => data.ai,    ttl: CACHE_TTL, declareRecords, skipWhenEmpty: true },
+  { key: OTHER_KEY, transform: (data) => data.other, ttl: CACHE_TTL, declareRecords, skipWhenEmpty: true },
+];
+
 // isMain guard — required so tests/agents can `import` declareRecords without
 // firing runSeed on module load (which would touch Redis and process.exit).
-const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^file:\/\//, ''));
+const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) runSeed('market', 'token-panels', DEFI_KEY, fetchTokenPanels, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'coingecko-paprika-fallback',
   recordCount: (data) => data.total,
   publishTransform: (data) => data.defi,
-  extraKeys: [
-    // Each panel has its own {tokens, ...} shape — reuse canonical declareRecords
-    // since the transformed extra-key payloads are structurally identical to the
-    // canonical one (a single panel).
-    { key: AI_KEY,    transform: (data) => data.ai,    ttl: CACHE_TTL, declareRecords },
-    { key: OTHER_KEY, transform: (data) => data.other, ttl: CACHE_TTL, declareRecords },
-  ],
+  extraKeys: TOKEN_PANEL_EXTRA_KEYS,
 
   declareRecords,
   schemaVersion: 1,

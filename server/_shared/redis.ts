@@ -1,4 +1,5 @@
 import { unwrapEnvelope } from './seed-envelope';
+import { getRpcNoStoreReasonFromPayload } from './cache-contract';
 import { buildUpstreamEvent, getUsageScope, sendToAxiom } from './usage';
 
 // Default Upstash REST timeouts are tuned for production (Vercel ↔ Upstash
@@ -22,8 +23,8 @@ export function parseTimeoutEnv(raw: string | undefined, defaultMs: number): num
   const parsed = Number.parseInt(raw ?? '', 10);
   return parsed > 0 ? parsed : defaultMs;
 }
-const REDIS_OP_TIMEOUT_MS = parseTimeoutEnv(process.env.REDIS_OP_TIMEOUT_MS, 1_500);
-const REDIS_PIPELINE_TIMEOUT_MS = parseTimeoutEnv(process.env.REDIS_PIPELINE_TIMEOUT_MS, 5_000);
+export const REDIS_OP_TIMEOUT_MS = parseTimeoutEnv(process.env.REDIS_OP_TIMEOUT_MS, 1_500);
+export const REDIS_PIPELINE_TIMEOUT_MS = parseTimeoutEnv(process.env.REDIS_PIPELINE_TIMEOUT_MS, 5_000);
 
 function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
@@ -37,7 +38,7 @@ function hasRemoteRedisConfig(): boolean {
  * Environment-based key prefix to avoid collisions when multiple deployments
  * share the same Upstash Redis instance (M-6 fix).
  */
-function getKeyPrefix(): string {
+export function getKeyPrefix(): string {
   const env = process.env.VERCEL_ENV; // 'production' | 'preview' | 'development'
   if (!env || env === 'production') return '';
   const sha = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 8) || 'dev';
@@ -287,16 +288,29 @@ function readLocalPositiveFallback(key: string): unknown | undefined {
  * Batch GET using Upstash pipeline API — single HTTP round-trip for N keys.
  * Returns a Map of key → parsed JSON value (missing/failed/sentinel keys omitted).
  */
-export async function getCachedJsonBatch(keys: string[]): Promise<Map<string, unknown>> {
+export async function getCachedJsonBatch(keys: string[], raw = false): Promise<Map<string, unknown>> {
   const result = new Map<string, unknown>();
   if (keys.length === 0) return result;
+
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+    try {
+      const { sidecarCacheGet } = await import('./sidecar-cache');
+      for (const key of keys) {
+        const value = sidecarCacheGet(key);
+        if (value != null) result.set(key, value);
+      }
+    } catch (error) {
+      console.warn('[redis] getCachedJsonBatch failed:', errMsg(error));
+    }
+    return result;
+  }
 
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return result;
 
   try {
-    const pipeline = keys.map((k) => ['GET', prefixKey(k)]);
+    const pipeline = keys.map((k) => ['GET', raw ? k : prefixKey(k)]);
     const resp = await fetch(`${url}/pipeline`, {
       method: 'POST',
       headers: {
@@ -306,14 +320,17 @@ export async function getCachedJsonBatch(keys: string[]): Promise<Map<string, un
       body: JSON.stringify(pipeline),
       signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
     });
-    if (!resp.ok) return result;
+    if (!resp.ok) {
+      console.warn(`[redis] getCachedJsonBatch HTTP ${resp.status}`);
+      return result;
+    }
 
     const data = (await resp.json()) as Array<{ result?: string }>;
     for (let i = 0; i < keys.length; i++) {
-      const raw = data[i]?.result;
-      if (raw) {
+      const rawResult = data[i]?.result;
+      if (rawResult) {
         try {
-          const parsed = JSON.parse(raw);
+          const parsed = JSON.parse(rawResult);
           if (parsed === NEG_SENTINEL) continue;
           // Envelope-aware: unwrap contract-mode canonical keys; legacy values
           // pass through.
@@ -324,7 +341,12 @@ export async function getCachedJsonBatch(keys: string[]): Promise<Map<string, un
       }
     }
   } catch (err) {
-    console.warn('[redis] getCachedJsonBatch failed:', errMsg(err));
+    const isTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
+    if (isTimeout) {
+      console.error(`[REDIS-TIMEOUT] getCachedJsonBatch keys=${keys.length} timeoutMs=${REDIS_PIPELINE_TIMEOUT_MS}`);
+    } else {
+      console.warn('[redis] getCachedJsonBatch failed:', errMsg(err));
+    }
   }
   return result;
 }
@@ -516,12 +538,18 @@ export async function cachedFetchJson<T extends object>(
   const promise = withFetcherTimeout(fetcher(), key, timeoutMs, 'cachedFetchJson')
     .then(async (result) => {
       if (result != null) {
-        const wrote = await setCachedJson(key, result, ttlSeconds);
-        // Remote Redis write/read failures should not force every caller back
-        // upstream while the isolate is still warm. Sidecar/local mode skips
-        // this bridge because hasRemoteRedisConfig() is false there.
-        if (hadCacheReadError || (!wrote && hasRemoteRedisConfig())) {
-          armLocalPositiveFallback(key, result, ttlSeconds);
+        const noStoreReason = getRpcNoStoreReasonFromPayload(result, { includeAvailableFalse: false });
+        if (noStoreReason) {
+          armLocalNegativeCooldown(key, negativeTtlSeconds);
+          await setCachedJson(key, NEG_SENTINEL, negativeTtlSeconds);
+        } else {
+          const wrote = await setCachedJson(key, result, ttlSeconds);
+          // Remote Redis write/read failures should not force every caller back
+          // upstream while the isolate is still warm. Sidecar/local mode skips
+          // this bridge because hasRemoteRedisConfig() is false there.
+          if (hadCacheReadError || (!wrote && hasRemoteRedisConfig())) {
+            armLocalPositiveFallback(key, result, ttlSeconds);
+          }
         }
       } else {
         armLocalNegativeCooldown(key, negativeTtlSeconds);
@@ -574,9 +602,10 @@ export interface UsageHook {
  * Use when callers need to distinguish cache hits from fresh fetches
  * (e.g. to set provider/cached metadata on responses).
  *
- * Returns { data, source } where source is:
+ * Returns { data, source, leader } where source is:
  *   'cache'  — served from Redis
  *   'fresh'  — fetcher ran (leader) or joined an in-flight fetch (follower)
+ * and leader is true only for the caller that actually ran the fetcher.
  *
  * If `opts.usage` is supplied, an upstream event is emitted on the fresh
  * path (issue #3381). Pass-through for callers that don't care about
@@ -588,24 +617,24 @@ export async function cachedFetchJsonWithMeta<T extends object>(
   fetcher: () => Promise<T | null>,
   negativeTtlSeconds = 120,
   opts?: { usage?: UsageHook; timeoutMs?: number },
-): Promise<{ data: T | null; source: 'cache' | 'fresh' }> {
+): Promise<{ data: T | null; source: 'cache' | 'fresh'; leader: boolean }> {
   const cached = await readCachedJson(key);
   if (cached.status === 'hit') {
-    if (cached.value === NEG_SENTINEL) return { data: null, source: 'cache' };
-    return { data: cached.value as T, source: 'cache' };
+    if (cached.value === NEG_SENTINEL) return { data: null, source: 'cache', leader: false };
+    return { data: cached.value as T, source: 'cache', leader: false };
   }
   const localPositive = readLocalPositiveFallback(key);
-  if (localPositive !== undefined) return { data: localPositive as T, source: 'cache' };
+  if (localPositive !== undefined) return { data: localPositive as T, source: 'cache', leader: false };
   const hadCacheReadError = cached.status === 'error';
   if (cached.status === 'error') {
     logCacheReadError(key, cached.error);
-    if (hasLocalNegativeCooldown(key)) return { data: null, source: 'cache' };
+    if (hasLocalNegativeCooldown(key)) return { data: null, source: 'cache', leader: false };
   }
 
   const existing = inflight.get(key);
   if (existing) {
     const data = (await existing) as T | null;
-    return { data, source: 'fresh' };
+    return { data, source: 'fresh', leader: false };
   }
 
   const fetchT0 = Date.now();
@@ -622,12 +651,20 @@ export async function cachedFetchJsonWithMeta<T extends object>(
       // error rates). Use status=0 for the empty branch; cache_status carries
       // the structural detail.
       if (result != null) {
-        upstreamStatus = 200;
-        const wrote = await setCachedJson(key, result, ttlSeconds);
-        // See cachedFetchJson(): this short in-process bridge is only for
-        // remote Redis outages, not local sidecar cache writes.
-        if (hadCacheReadError || (!wrote && hasRemoteRedisConfig())) {
-          armLocalPositiveFallback(key, result, ttlSeconds);
+        const noStoreReason = getRpcNoStoreReasonFromPayload(result, { includeAvailableFalse: false });
+        if (noStoreReason) {
+          upstreamStatus = 0;
+          cacheStatus = 'neg-sentinel';
+          armLocalNegativeCooldown(key, negativeTtlSeconds);
+          await setCachedJson(key, NEG_SENTINEL, negativeTtlSeconds);
+        } else {
+          upstreamStatus = 200;
+          const wrote = await setCachedJson(key, result, ttlSeconds);
+          // See cachedFetchJson(): this short in-process bridge is only for
+          // remote Redis outages, not local sidecar cache writes.
+          if (hadCacheReadError || (!wrote && hasRemoteRedisConfig())) {
+            armLocalPositiveFallback(key, result, ttlSeconds);
+          }
         }
       } else {
         upstreamStatus = 0;
@@ -657,7 +694,7 @@ export async function cachedFetchJsonWithMeta<T extends object>(
   } finally {
     emitUpstreamFromHook(opts?.usage, upstreamStatus, Date.now() - fetchT0, cacheStatus);
   }
-  return { data, source: 'fresh' };
+  return { data, source: 'fresh', leader: true };
 }
 
 function emitUpstreamFromHook(usage: UsageHook | undefined, status: number, durationMs: number, cacheStatus: 'miss' | 'fresh' | 'stale-while-revalidate' | 'neg-sentinel'): void {
@@ -738,7 +775,9 @@ export async function getHashFieldsBatch(key: string, fields: string[], raw = fa
     const values = data[0]?.result;
     if (values) {
       for (let i = 0; i < fields.length; i++) {
-        if (values[i]) result.set(fields[i]!, values[i]!);
+        // Use a null/undefined check rather than a truthy test: "" is a
+        // legitimate Redis hash value and must be preserved (see #3530).
+        if (values[i] != null) result.set(fields[i]!, values[i]!);
       }
     }
   } catch (err) {

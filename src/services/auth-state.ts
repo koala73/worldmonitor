@@ -1,4 +1,4 @@
-import * as Sentry from '@sentry/browser';
+import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { getCurrentClerkUser, scheduleClerkLoad, subscribeClerk } from './clerk';
 
 /** Minimal user profile exposed to UI components. */
@@ -21,10 +21,10 @@ let _currentSession: AuthSession = { user: null, isPending: true };
 function snapshotSession(): AuthSession {
   const cu = getCurrentClerkUser();
   if (!cu) {
-    Sentry.setUser(null);
+    enqueueSentryCall((s) => s.setUser(null));
     return { user: null, isPending: false };
   }
-  Sentry.setUser({ id: cu.id });
+  enqueueSentryCall((s) => s.setUser({ id: cu.id }));
   return {
     user: {
       id: cu.id,

@@ -178,15 +178,15 @@
     "apiTier": "ระดับ API",
     "title": "ข่าวกรองเชิงโปรแกรม",
     "subtitle": "สำหรับนักพัฒนา นักวิเคราะห์ และทีมที่สร้างบนข้อมูล World Monitor แยกจาก Pro — ใช้ทั้งคู่หรืออันใดอันหนึ่ง",
-    "restApi": "REST API ครอบคลุม 30+ โดเมนบริการ",
+    "restApi": "REST API ครอบคลุม 30+ โดเมนบริการ — SDK อย่างเป็นทางการสำหรับ JavaScript, Python, Ruby, Go",
     "authenticated": "รับรองความถูกต้องต่อคีย์ จำกัดอัตราตามระดับ",
     "structured": "JSON มีโครงสร้างพร้อม cache headers และเอกสาร OpenAPI 3.1",
     "starter": "Starter",
     "starterReqs": "1,000 req/วัน",
     "starterWebhooks": "5 กฎ webhook",
     "business": "Business",
-    "businessReqs": "50,000 req/วัน",
-    "businessWebhooks": "webhook ไม่จำกัด + SLA",
+    "businessReqs": "10,000 req/วัน",
+    "businessWebhooks": "Priority support",
     "feedData": "ป้อนข้อมูลเข้าแดชบอร์ด อัตโนมัติการแจ้งเตือนผ่าน Zapier/n8n/Make สร้างโมเดลให้คะแนนบนข้อมูล CII/ความเสี่ยง"
   },
   "enterpriseShowcase": {
@@ -374,16 +374,17 @@
           "บทสรุปตลาดรายวัน",
           "การติดตามทางทหาร และภูมิรัฐศาสตร์",
           "ตัวสร้าง widget ที่กำหนดเอง",
-          "ตัวเชื่อมต่อข้อมูล MCP",
+          "การเข้าถึง MCP + SDK สำหรับ Claude Desktop และไคลเอนต์ AI อื่น ๆ (50 ครั้ง/วัน)",
           "การรีเฟรชข้อมูลที่ได้รับความสำคัญ"
         ]
       },
       "api": {
         "description": "การเข้าถึงข้อมูลข่าวกรรมการแบบโปรแกรม",
         "features": [
-          "การเข้าถึง REST API",
+          "REST API + SDK อย่างเป็นทางการ (npm, PyPI, RubyGems, Go)",
           "สตรีมข้อมูลแบบเรียลไทม์",
-          "คำขอ 1,000 รายการต่อวัน",
+          "60 คำขอต่อนาที",
+          "รวมคำขอ 1,000 รายการต่อวัน",
           "การแจ้งเตือน Webhook",
           "การส่งออกข้อมูลที่กำหนดเอง"
         ]

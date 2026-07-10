@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 //
-// seed-military-cii.mjs — Phase 2 of the CII unification (plans/unify-cii-single-source.md).
+// seed-military-cii.mjs — Phase 2 of the CII unification (docs/archive/plans/unify-cii-single-source.md).
 //
 // Aggregates military activity per country into a single Redis key the CII engine
 // (server/worldmonitor/intelligence/v1/get-risk-scores.ts) reads as one auxiliary source:
@@ -23,6 +23,15 @@
 // Run cadence ~10 min; the output key TTL (3600s) tolerates a few skipped runs.
 // Self-contained by necessity — scripts/ cannot import from server/ or src/ under the
 // Railway nixpacks packaging.
+//
+// Railway service config (set up manually via Railway dashboard or `railway service`):
+//   - Service name: seed-military-cii
+//   - Builder: NIXPACKS (root Dockerfile not used for this seed)
+//   - rootDirectory: scripts
+//   - startCommand: node seed-military-cii.mjs
+//   - Cron schedule: "*/10 * * * *" (every 10min UTC)
+//   - Required env: UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN, WS_RELAY_URL
+//   - Optional env: RELAY_SHARED_SECRET, RELAY_AUTH_HEADER
 
 import { pathToFileURL } from 'node:url';
 import { loadEnvFile, CHROME_UA, getRedisCredentials, acquireLockSafely, releaseLock, withRetry, writeFreshnessMetadata } from './_seed-utils.mjs';
@@ -59,8 +68,8 @@ const COUNTRY_KEYWORDS = {
   UA: ['ukraine', 'kyiv'],
   IR: ['iran', 'tehran'],
   IL: ['israel', 'tel aviv'],
-  TW: ['taiwan', 'taipei'],
-  KP: ['north korea', 'pyongyang'],
+  TW: ['taiwan', 'taiwanese', 'taipei'],
+  KP: ['north korea', 'north korean', 'pyongyang'],
   SA: ['saudi arabia', 'riyadh'],
   TR: ['turkey', 'ankara', 'turkiye'],
   PL: ['poland', 'warsaw'],
@@ -131,21 +140,154 @@ function safeNum(v) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function normalizeForCountryMatch(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+const COUNTRY_KEYWORDS_NORMALIZED = Object.fromEntries(
+  Object.entries(COUNTRY_KEYWORDS).map(([code, keywords]) => [code, keywords.map(normalizeForCountryMatch)]),
+);
+
+function hasCountryPhraseMatch(normalizedText, normalizedKeyword) {
+  if (!normalizedText || !normalizedKeyword) return false;
+  return ` ${normalizedText} `.includes(` ${normalizedKeyword} `);
+}
+
 function normalizeCountryName(text) {
-  const lower = String(text || '').toLowerCase();
-  if (!lower) return null;
-  for (const [code, keywords] of Object.entries(COUNTRY_KEYWORDS)) {
-    if (keywords.some((kw) => lower.includes(kw))) return code;
+  const normalized = normalizeForCountryMatch(text);
+  for (const [code, keywords] of Object.entries(COUNTRY_KEYWORDS_NORMALIZED)) {
+    if (keywords.some((kw) => hasCountryPhraseMatch(normalized, kw))) return code;
   }
+  return null;
+}
+
+function isInsideBBox(b, lat, lon) {
+  return lat >= b.minLat && lat <= b.maxLat && lon >= b.minLon && lon <= b.maxLon;
+}
+
+function isNorthOfApproxUsMxBorder(lat, lon) {
+  if (lon <= -114.70) return lat >= 32.53;
+  if (lon <= -111.05) return lat >= 31.33;
+  if (lon <= -106.45) return lat >= 31.73;
+
+  const rioGrandeChord = [
+    [-106.45, 31.73],
+    [-104.40, 29.60],
+    [-100.95, 29.37],
+    [-100.50, 28.72],
+    [-99.50, 27.50],
+    [-98.20, 26.22],
+    [-97.50, 25.89],
+  ];
+  for (let i = 1; i < rioGrandeChord.length; i++) {
+    const [prevLon, prevLat] = rioGrandeChord[i - 1];
+    const [nextLon, nextLat] = rioGrandeChord[i];
+    if (lon <= nextLon) {
+      const progress = (lon - prevLon) / (nextLon - prevLon);
+      const borderLat = prevLat + progress * (nextLat - prevLat);
+      return lat >= borderLat;
+    }
+  }
+  return lat >= 25.89;
+}
+
+function isWestOfApproxPlUaBorder(lat, lon) {
+  const border = [
+    [22.70, 49.05],
+    [23.05, 50.05],
+    [23.65, 51.50],
+  ];
+  if (lat <= border[0][1]) return lon <= border[0][0];
+  for (let i = 1; i < border.length; i++) {
+    const [prevLon, prevLat] = border[i - 1];
+    const [nextLon, nextLat] = border[i];
+    if (lat <= nextLat) {
+      const progress = (lat - prevLat) / (nextLat - prevLat);
+      const borderLon = prevLon + progress * (nextLon - prevLon);
+      return lon <= borderLon;
+    }
+  }
+  return lon <= border[border.length - 1][0];
+}
+
+function isKnownNonTier1BBoxGap(lat, lon, candidates) {
+  return candidates.length === 1
+    && candidates[0].code === 'SA'
+    && lat >= 30.8
+    && lat <= 32.6
+    && lon >= 35.4
+    && lon <= 37.4;
+}
+
+function resolveKnownBBoxOverlap(lat, lon, candidates) {
+  const codes = new Set(candidates.map((candidate) => candidate.code));
+
+  if (codes.has('KP') && codes.has('CN') && codes.has('RU') && lat < 42.5) return 'KP';
+  if (codes.has('PL') && codes.has('UA')) return isWestOfApproxPlUaBorder(lat, lon) ? 'PL' : 'UA';
+  if (codes.has('CN') && codes.has('IN') && lat >= 28.5 && lat <= 32.0 && lon >= 89.0 && lon <= 93.5) return 'CN';
+  if (codes.has('TR') && codes.has('SY') && lat >= 36.6 && lat <= 37.6 && lon >= 36.0 && lon <= 38.8) return 'TR';
+  if (codes.has('IR') && codes.has('IQ') && lat >= 33.4 && lat <= 35.2 && lon >= 45.5 && lon <= 48.6) return 'IR';
+  if (codes.has('PK') && codes.has('AF') && lat >= 29.4 && lat <= 31.5 && lon >= 65.0 && lon <= 68.2) return 'PK';
+  if (codes.has('SA') && codes.has('EG') && lat >= 27.5 && lat <= 29.6 && lon >= 35.0 && lon <= 37.1) return 'SA';
+  if (codes.has('SA') && codes.has('IR') && lat >= 25.0 && lat <= 27.8 && lon >= 48.0 && lon <= 51.5) return 'SA';
+  if (codes.has('CN') && codes.has('MM') && lat >= 23.5 && lat <= 25.0 && lon >= 97.3 && lon <= 98.4) return 'CN';
+  if (codes.has('CN') && codes.has('RU') && lat >= 50.5 && lat <= 51.5 && lon >= 127.8 && lon <= 129.6) return 'RU';
+
+  if (codes.has('US') && codes.has('MX')) {
+    return isNorthOfApproxUsMxBorder(lat, lon) ? 'US' : 'MX';
+  }
+  if (codes.has('SY') && codes.has('LB')) {
+    if (lon >= 36.35 || (lat <= 33.75 && lon >= 36.05)) return 'SY';
+    return 'LB';
+  }
+  if (codes.has('RU') && codes.has('UA')) {
+    if ((lat >= 50.25 && lon >= 35.6) || (lon >= 38.7 && lat < 47.8)) return 'RU';
+    return 'UA';
+  }
+  if (codes.has('IN') && codes.has('PK')) {
+    if (lon >= 75.20 || (lon >= 74.75 && lat <= 32.10)) return 'IN';
+    return 'PK';
+  }
+  if (codes.has('CN') && codes.has('RU')) {
+    if (lon >= 132.0 && lat >= 42.40) return 'RU';
+    if (lon >= 131.65 && lat <= 44.10) return 'RU';
+    if (lon >= 126.80 && lon <= 128.20 && lat >= 50.27) return 'RU';
+    return 'CN';
+  }
+  if (codes.has('RU') && codes.has('JP')) {
+    return lat >= 45.25 && lon >= 142.00 ? 'RU' : 'JP';
+  }
+  if (codes.has('KP') && codes.has('KR')) {
+    const westernDmzLat = 37.75;
+    const easternDmzLat = 38.35;
+    const progress = Math.min(1, Math.max(0, (lon - 126.0) / 2.5));
+    const borderLat = westernDmzLat + progress * (easternDmzLat - westernDmzLat);
+    return lat >= borderLat ? 'KP' : 'KR';
+  }
+  if (codes.has('JP') && codes.has('KR')) {
+    if (lat <= 34.85 && lon >= 129.20) return 'JP';
+    return 'KR';
+  }
+  if (codes.has('SA') && codes.has('YE')) {
+    return lat >= 17.35 ? 'SA' : 'YE';
+  }
+
   return null;
 }
 
 function geoToCountry(lat, lon) {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-  for (const b of BBOX_BY_AREA) {
-    if (lat >= b.minLat && lat <= b.maxLat && lon >= b.minLon && lon <= b.maxLon) return b.code;
-  }
-  return null;
+  const candidates = BBOX_BY_AREA.filter((b) => isInsideBBox(b, lat, lon));
+  if (candidates.length === 0) return null;
+  if (isKnownNonTier1BBoxGap(lat, lon, candidates)) return null;
+  return resolveKnownBBoxOverlap(lat, lon, candidates) ?? candidates[0].code;
 }
 
 // ── Military vessel classifier (mirror src/config/military.ts + military-vessels.ts) ──
@@ -324,6 +466,29 @@ async function redisSetJson(url, token, key, value, ttl) {
   await redisCommand(url, token, ['SET', key, JSON.stringify(value), 'EX', ttl]);
 }
 
+async function readMilitaryFlights(readJson) {
+  try {
+    const flightsData = await readJson('military:flights:v1');
+    const flights = Array.isArray(flightsData?.flights) ? flightsData.flights : [];
+    return { ok: flights.length > 0, flights };
+  } catch (err) {
+    return { ok: false, flights: [], error: err };
+  }
+}
+
+async function preserveLastGoodMilitaryCii(url, token, reason, missingSuffix = 'skipped publish') {
+  const existing = await redisGetJson(url, token, LIVE_KEY).catch(() => null);
+  if (existing && existing.byCountry) {
+    await withRetry(() => redisSetJson(url, token, LIVE_KEY, existing, LIVE_TTL), 2, 1000);
+    await writeFreshnessMetadata('intelligence', 'military-cii', Object.keys(existing.byCountry).length, 'seed-military-cii', LIVE_TTL);
+    console.warn(`  ${reason} — preserved last-good ${LIVE_KEY}`);
+    return true;
+  }
+
+  console.warn(`  ${reason}, no prior ${LIVE_KEY} — ${missingSuffix}`);
+  return false;
+}
+
 // ── Relay ────────────────────────────────────────────────────────────────────────────
 
 function getRelayBaseUrl() {
@@ -451,13 +616,15 @@ async function main() {
 
   try {
     // Military flights — already classified upstream by seed-military-flights.mjs.
-    let flights = [];
-    try {
-      const flightsData = await redisGetJson(url, token, 'military:flights:v1');
-      flights = Array.isArray(flightsData?.flights) ? flightsData.flights : [];
-    } catch (err) {
-      console.warn(`  military:flights:v1 read failed (${err.message || err}) — flights skipped`);
+    const flightsRead = await readMilitaryFlights((key) => redisGetJson(url, token, key));
+    if (!flightsRead.ok) {
+      const reason = flightsRead.error
+        ? `military:flights:v1 read failed (${flightsRead.error.message || flightsRead.error})`
+        : 'military:flights:v1 read returned no flights';
+      await preserveLastGoodMilitaryCii(url, token, reason);
+      return;
     }
+    const flights = flightsRead.flights;
 
     const relay = await fetchRelaySnapshot();
     console.log(`  inputs: ${flights.length} flights, ${relay.candidateReports.length} vessel candidates, ${relay.disruptions.length} AIS disruptions`);
@@ -467,15 +634,8 @@ async function main() {
     // signal until the relay recovers; fall through to a flights-only publish only when
     // there is no prior key (cold start).
     if (!relay.ok) {
-      const existing = await redisGetJson(url, token, LIVE_KEY).catch(() => null);
-      if (existing && existing.byCountry) {
-        await withRetry(() => redisSetJson(url, token, LIVE_KEY, existing, LIVE_TTL), 2, 1000);
-        // The cron ran successfully (data preserved) — freshness reflects "job alive".
-        await writeFreshnessMetadata('intelligence', 'military-cii', Object.keys(existing.byCountry).length, 'seed-military-cii', LIVE_TTL);
-        console.warn(`  relay unavailable — preserved last-good ${LIVE_KEY} (vessels/AIS not overwritten)`);
-        return;
-      }
-      console.warn(`  relay unavailable, no prior ${LIVE_KEY} — publishing flights-only`);
+      console.warn(`  relay unavailable - preserving last-good complete military CII if present; ${flights.length} freshly read flights will not be published unless this is a cold start`);
+      if (await preserveLastGoodMilitaryCii(url, token, 'relay unavailable (vessels/AIS not overwritten)', 'publishing flights-only')) return;
     }
 
     const { byCountry, militaryVesselCount } = aggregate(
@@ -522,4 +682,4 @@ if (isDirectRun) {
   });
 }
 
-export { aggregate, classifyVessel, analyzeMmsi, geoToCountry, normalizeCountryName, TIER1_COUNTRIES, COUNTRY_BBOX };
+export { aggregate, classifyVessel, analyzeMmsi, geoToCountry, normalizeCountryName, readMilitaryFlights, TIER1_COUNTRIES, COUNTRY_BBOX };

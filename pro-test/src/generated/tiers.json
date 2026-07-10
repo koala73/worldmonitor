@@ -1,6 +1,7 @@
 [
   {
     "name": "Free",
+    "localeKey": "free",
     "price": 0,
     "period": "forever",
     "description": "Get started with the essentials",
@@ -10,12 +11,19 @@
       "Earthquake & weather alerts",
       "Basic map view"
     ],
+    "planLimits": {
+      "apiRequestsPerDay": 0,
+      "apiBurstRequestsPerMinute": 0,
+      "mcpCallsPerDay": 0,
+      "mcpBurstRequestsPerMinute": 0
+    },
     "cta": "Get Started",
-    "href": "https://worldmonitor.app",
+    "href": "https://worldmonitor.app/dashboard",
     "highlighted": false
   },
   {
     "name": "Pro",
+    "localeKey": "pro",
     "monthlyPrice": 39.99,
     "annualPrice": 399.99,
     "description": "Full intelligence dashboard",
@@ -25,31 +33,66 @@
       "Daily market briefs",
       "Military & geopolitical tracking",
       "Custom widget builder",
-      "MCP access for Claude Desktop & other AI clients (50 calls/day)",
+      "MCP + SDK access for Claude Desktop & other AI clients (50 calls/day)",
       "Priority data refresh"
     ],
+    "planLimits": {
+      "apiRequestsPerDay": 0,
+      "apiBurstRequestsPerMinute": 0,
+      "mcpCallsPerDay": 50,
+      "mcpBurstRequestsPerMinute": 60
+    },
     "monthlyProductId": "pdt_0Nbtt71uObulf7fGXhQup",
     "annualProductId": "pdt_0NbttMIfjLWC10jHQWYgJ",
     "highlighted": true
   },
   {
     "name": "API",
+    "localeKey": "api",
     "monthlyPrice": 99.99,
     "annualPrice": 999,
     "description": "Programmatic access to intelligence data",
     "features": [
-      "REST API access",
+      "REST API + official SDKs (npm, PyPI, RubyGems, Go)",
       "Real-time data streams",
-      "1,000 requests/day",
+      "60 requests/minute",
+      "1,000 requests/day included",
       "Webhook notifications",
       "Custom data exports"
     ],
+    "planLimits": {
+      "apiRequestsPerDay": 1000,
+      "apiBurstRequestsPerMinute": 60,
+      "mcpCallsPerDay": 1000,
+      "mcpBurstRequestsPerMinute": 60
+    },
     "monthlyProductId": "pdt_0NbttVmG1SERrxhygbbUq",
     "annualProductId": "pdt_0Nbu2lawHYE3dv2THgSEV",
     "highlighted": false
   },
   {
+    "name": "API Business",
+    "localeKey": "apiBusiness",
+    "monthlyPrice": 249.99,
+    "description": "High-volume API for teams",
+    "features": [
+      "Everything in API Starter",
+      "300 requests/minute",
+      "10,000 requests/day included",
+      "Priority support"
+    ],
+    "planLimits": {
+      "apiRequestsPerDay": 10000,
+      "apiBurstRequestsPerMinute": 300,
+      "mcpCallsPerDay": 10000,
+      "mcpBurstRequestsPerMinute": 300
+    },
+    "monthlyProductId": "pdt_0Nbttg7NuOJrhbyBGCius",
+    "highlighted": false
+  },
+  {
     "name": "Enterprise",
+    "localeKey": "enterprise",
     "price": null,
     "description": "Custom solutions for organizations",
     "features": [
@@ -60,6 +103,12 @@
       "SLA guarantee",
       "On-premise option"
     ],
+    "planLimits": {
+      "apiRequestsPerDay": null,
+      "apiBurstRequestsPerMinute": 1000,
+      "mcpCallsPerDay": null,
+      "mcpBurstRequestsPerMinute": 1000
+    },
     "cta": "Contact Sales",
     "href": "mailto:enterprise@worldmonitor.app",
     "highlighted": false

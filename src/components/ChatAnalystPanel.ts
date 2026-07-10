@@ -3,11 +3,20 @@ import { t } from '@/services/i18n';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { postProcessAnalystHtml } from '@/utils/analyst-markdown';
+import { yieldToMain } from '@/utils/after-paint';
 import { premiumFetch } from '@/services/premium-fetch';
+import { trackAnalystControlAction } from '@/services/analytics';
 import { h, replaceChildren, setTrustedHtml, trustedHtml, type TrustedHtml } from '@/utils/dom-utils';
+import {
+  isDashboardControlAction,
+  parseAgentBusAction,
+  type AgentBusAction,
+  type DashboardControlAction,
+} from '../../shared/agent-bus-actions';
 
 const API_URL = '/api/chat-analyst';
 const MAX_HISTORY = 20;
+const DASHBOARD_CONTROL_STORAGE_KEY = 'wm-analyst-dashboard-control-enabled';
 
 interface QuickAction {
   label: string;
@@ -41,11 +50,19 @@ interface MetaEvent {
   degraded: boolean;
 }
 
-interface ActionEvent {
-  type: string;
-  label: string;
-  prefill?: string;
+type DashboardControlStatus = 'applied' | 'denied' | 'invalid' | 'skipped';
+
+interface DashboardControlResult {
+  ok: boolean;
+  status: DashboardControlStatus;
+  actionType?: DashboardControlAction['type'];
+  label?: string;
+  reason?: string;
+  message: string;
+  targets: Array<{ target: string; status: DashboardControlStatus; reason?: string }>;
 }
+
+type DashboardActionHandler = (action: DashboardControlAction) => DashboardControlResult;
 
 // Narrow allowlist: text formatting + tables only. No img/a/iframe so
 // prompt-injected or hallucinated URLs cannot trigger third-party requests.
@@ -66,13 +83,33 @@ function renderMarkdown(raw: string): TrustedHtml {
   );
 }
 
+function loadDashboardControlEnabled(): boolean {
+  try {
+    return globalThis.localStorage?.getItem(DASHBOARD_CONTROL_STORAGE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function saveDashboardControlEnabled(enabled: boolean): void {
+  try {
+    globalThis.localStorage?.setItem(DASHBOARD_CONTROL_STORAGE_KEY, enabled ? 'true' : 'false');
+  } catch { /* storage unavailable */ }
+}
+
 export class ChatAnalystPanel extends Panel {
   private history: ChatMessage[] = [];
   private domainFocus = 'all';
   private streamAbort: AbortController | null = null;
   private isStreaming = false;
+  private dashboardActionHandler: DashboardActionHandler | null = null;
+  private dashboardControlEnabled = loadDashboardControlEnabled();
+  private dashboardControlPaused = false;
   private messagesEl!: HTMLElement;
   private inputEl: HTMLTextAreaElement | null = null;
+  private controlToggleEl: HTMLInputElement | null = null;
+  private controlStatusEl: HTMLElement | null = null;
+  private controlPauseBtn: HTMLButtonElement | null = null;
   private contentDelegationAttached = false;
 
   constructor() {
@@ -84,6 +121,10 @@ export class ChatAnalystPanel extends Panel {
       infoTooltip: t('components.chatAnalyst.infoTooltip'),
     });
     this.buildUI();
+  }
+
+  public setDashboardActionHandler(handler: DashboardActionHandler): void {
+    this.dashboardActionHandler = handler;
   }
 
   private buildUI(): void {
@@ -98,6 +139,8 @@ export class ChatAnalystPanel extends Panel {
       }, d.label);
       chipBar.appendChild(chip);
     }
+
+    const controlBar = this.createDashboardControlBar();
 
     // Messages container
     const messages = h('div', { className: 'chat-analyst-messages' });
@@ -131,6 +174,7 @@ export class ChatAnalystPanel extends Panel {
     inputRow.appendChild(sendBtn);
 
     wrapper.appendChild(chipBar);
+    wrapper.appendChild(controlBar);
     wrapper.appendChild(messages);
     wrapper.appendChild(quickBar);
     wrapper.appendChild(inputRow);
@@ -138,7 +182,35 @@ export class ChatAnalystPanel extends Panel {
     replaceChildren(this.content, wrapper);
 
     this.showWelcome();
+    this.updateDashboardControlUi();
     this.attachListeners();
+  }
+
+  private createDashboardControlBar(): HTMLElement {
+    const bar = h('div', { className: 'chat-analyst-control-bar' });
+    const label = h('label', { className: 'chat-control-toggle-label' });
+    const toggle = document.createElement('input');
+    toggle.type = 'checkbox';
+    toggle.className = 'chat-control-toggle';
+    toggle.dataset.controlToggle = 'dashboard';
+    this.controlToggleEl = toggle;
+    label.appendChild(toggle);
+    label.appendChild(document.createTextNode('Control dashboard'));
+
+    const status = h('span', { className: 'chat-control-status' });
+    this.controlStatusEl = status;
+
+    const pauseBtn = h('button', {
+      className: 'chat-control-pause',
+      dataset: { action: 'toggle-control-pause' },
+      type: 'button',
+    }, 'Pause') as HTMLButtonElement;
+    this.controlPauseBtn = pauseBtn;
+
+    bar.appendChild(label);
+    bar.appendChild(status);
+    bar.appendChild(pauseBtn);
+    return bar;
   }
 
   private attachListeners(): void {
@@ -171,6 +243,14 @@ export class ChatAnalystPanel extends Panel {
         if (a === 'send') this.sendFromInput();
         else if (a === 'clear') this.clear();
         else if (a === 'export') this.exportChat();
+        else if (a === 'toggle-control-pause') this.toggleDashboardControlPause();
+      }
+    });
+
+    this.content.addEventListener('change', (e) => {
+      const target = e.target as HTMLInputElement | null;
+      if (target?.dataset?.controlToggle === 'dashboard') {
+        this.setDashboardControlEnabled(Boolean(target.checked));
       }
     });
 
@@ -182,6 +262,35 @@ export class ChatAnalystPanel extends Panel {
         this.sendFromInput();
       }
     });
+  }
+
+  private setDashboardControlEnabled(enabled: boolean): void {
+    this.dashboardControlEnabled = enabled;
+    if (!enabled) this.dashboardControlPaused = false;
+    saveDashboardControlEnabled(enabled);
+    this.updateDashboardControlUi();
+  }
+
+  private toggleDashboardControlPause(): void {
+    if (!this.dashboardControlEnabled) return;
+    this.dashboardControlPaused = !this.dashboardControlPaused;
+    this.updateDashboardControlUi();
+  }
+
+  private updateDashboardControlUi(): void {
+    if (this.controlToggleEl) this.controlToggleEl.checked = this.dashboardControlEnabled;
+    if (this.controlStatusEl) {
+      this.controlStatusEl.textContent = this.dashboardControlEnabled
+        ? (this.dashboardControlPaused ? 'Paused' : 'Active')
+        : 'Off';
+      this.controlStatusEl.dataset.state = this.dashboardControlEnabled
+        ? (this.dashboardControlPaused ? 'paused' : 'active')
+        : 'off';
+    }
+    if (this.controlPauseBtn) {
+      this.controlPauseBtn.disabled = !this.dashboardControlEnabled;
+      this.controlPauseBtn.textContent = this.dashboardControlPaused ? 'Resume' : 'Pause';
+    }
   }
 
   private setDomain(domain: string): void {
@@ -215,7 +324,7 @@ export class ChatAnalystPanel extends Panel {
     const label = role === 'user' ? 'YOU' : 'ANALYST';
     const body = h('div', { className: 'chat-msg-body' });
     if (role === 'assistant') {
-      setTrustedHtml(body, renderMarkdown(content));
+      this.renderMarkdownDeferred(body, content);
     } else {
       body.textContent = content;
     }
@@ -224,7 +333,9 @@ export class ChatAnalystPanel extends Panel {
       body,
     );
     this.messagesEl.appendChild(bubble);
-    this.scrollToBottom();
+    // The assistant branch scrolls inside renderMarkdownDeferred (after its DOM
+    // lands); the user branch renders synchronously above, so scroll now.
+    if (role !== 'assistant') this.scrollToBottom();
   }
 
   private appendStreamingBubble(): { bubble: HTMLElement; body: HTMLElement } {
@@ -261,17 +372,81 @@ export class ChatAnalystPanel extends Panel {
     if (body) bubble.insertBefore(chipsRow, body);
   }
 
-  private renderActionChip(bubble: HTMLElement, action: ActionEvent): void {
-    if (action.type !== 'suggest-widget') return;
+  private renderActionChip(bubble: HTMLElement, action: unknown): void {
+    const parsed = parseAgentBusAction(action);
+    if (!parsed.ok) {
+      this.renderDashboardControlStatus(bubble, {
+        ok: false,
+        status: 'invalid',
+        reason: 'invalid_action',
+        message: 'Analyst sent an invalid dashboard action.',
+        targets: [],
+      });
+      return;
+    }
+
+    const parsedAction = parsed.action;
+    if (isDashboardControlAction(parsedAction)) {
+      this.renderDashboardControlAction(bubble, parsedAction);
+      return;
+    }
+    if (parsedAction.type !== 'suggest-widget') return;
+
     const chip = document.createElement('button');
     chip.className = 'chat-action-chip';
-    chip.textContent = `${action.label} →`;
+    chip.textContent = `${parsedAction.label} →`;
     chip.addEventListener('click', () => {
       this.element.dispatchEvent(new CustomEvent('wm:open-widget-creator', {
         bubbles: true,
-        detail: { initialMessage: action.prefill ?? '' },
+        detail: { initialMessage: parsedAction.prefill },
       }));
     });
+    const body = bubble.querySelector('.chat-msg-body');
+    if (body) bubble.insertBefore(chip, body);
+    else bubble.appendChild(chip);
+  }
+
+  private renderDashboardControlAction(bubble: HTMLElement, action: DashboardControlAction): void {
+    let result: DashboardControlResult;
+    if (!this.dashboardControlEnabled) {
+      result = this.skippedDashboardAction(action, 'control_disabled', 'Dashboard control is off.');
+    } else if (this.dashboardControlPaused) {
+      result = this.skippedDashboardAction(action, 'control_paused', 'Dashboard control is paused.');
+    } else if (!this.dashboardActionHandler) {
+      result = this.skippedDashboardAction(action, 'context_unavailable', 'Dashboard context is unavailable.');
+    } else {
+      result = this.dashboardActionHandler(action);
+    }
+
+    if (result.actionType) {
+      trackAnalystControlAction(result.actionType, result.status, result.reason);
+    }
+    this.renderDashboardControlStatus(bubble, result, action);
+  }
+
+  private skippedDashboardAction(action: DashboardControlAction, reason: string, message: string): DashboardControlResult {
+    return {
+      ok: false,
+      status: 'skipped',
+      actionType: action.type,
+      label: action.label,
+      reason,
+      message,
+      targets: [],
+    };
+  }
+
+  private renderDashboardControlStatus(
+    bubble: HTMLElement,
+    result: DashboardControlResult,
+    action?: AgentBusAction,
+  ): void {
+    const chip = document.createElement('span');
+    chip.className = `chat-action-chip chat-action-chip--control chat-action-chip--${result.ok ? 'applied' : result.status}`;
+    chip.textContent = result.ok
+      ? `Applied: ${result.label ?? action?.type ?? 'dashboard action'}`
+      : `${result.label ?? action?.type ?? 'Dashboard action'} not applied`;
+    chip.title = result.message;
     const body = bubble.querySelector('.chat-msg-body');
     if (body) bubble.insertBefore(chip, body);
     else bubble.appendChild(chip);
@@ -402,7 +577,7 @@ export class ChatAnalystPanel extends Panel {
             done?: boolean;
             error?: string;
             meta?: MetaEvent;
-            action?: ActionEvent;
+            action?: unknown;
           };
           if (payload.error) {
             this.finalizeStreamingBubble(bodyEl, '⚠ Analyst unavailable. Try again shortly.', false);
@@ -427,10 +602,25 @@ export class ChatAnalystPanel extends Panel {
     return 'incomplete';
   }
 
+  // Defer the synchronous DOMPurify+marked sanitize off the current task so the
+  // interaction/stream paint lands first — cuts INP processing time (#4537).
+  // Fire-and-forget (no async ripple through the sync streaming call sites);
+  // guarded so a detached bubble (panel closed mid-flight) is skipped.
+  private renderMarkdownDeferred(el: HTMLElement, content: string): void {
+    void yieldToMain().then(() => {
+      if (!el.isConnected) return;
+      setTrustedHtml(el, renderMarkdown(content));
+      // Scroll AFTER the markdown DOM lands — rendered markdown (headers, code
+      // fences, lists) is taller than the raw streaming text, so scrolling before
+      // this undershoots the true bottom on every completion (#4537 follow-up).
+      this.scrollToBottom();
+    });
+  }
+
   private finalizeStreamingBubble(bodyEl: HTMLElement, text: string, success: boolean): void {
-    setTrustedHtml(bodyEl, renderMarkdown(text));
     if (!success) bodyEl.classList.add('chat-msg-error');
-    this.scrollToBottom();
+    // renderMarkdownDeferred scrolls to bottom after the markdown DOM is written.
+    this.renderMarkdownDeferred(bodyEl, text);
   }
 
   clear(): void {

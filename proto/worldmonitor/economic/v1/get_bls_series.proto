@@ -30,7 +30,7 @@ message BlsSeries {
 
 // GetBlsSeriesRequest specifies which BLS series to retrieve.
 message GetBlsSeriesRequest {
-  // BLS series ID (e.g. "CES0500000001", "CIU1010000000000A").
+  // BLS/FRED-backed series ID. Supported values: "USPRIV", "ECIALLCIV".
   string series_id = 1 [(sebuf.http.query) = { name: "series_id" }];
   // Maximum number of observations to return. Defaults to 60.
   int32 limit = 2 [(sebuf.http.query) = { name: "limit" }];

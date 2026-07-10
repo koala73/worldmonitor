@@ -25,9 +25,10 @@
 import { describe, it, before, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
-const ROOT = resolve(new URL('.', import.meta.url).pathname, '..');
+const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 
 // ---------------------------------------------------------------------------
 // Browser-global stubs

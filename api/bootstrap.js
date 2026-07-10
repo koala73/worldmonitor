@@ -1,11 +1,26 @@
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
-import { validateApiKey } from './_api-key.js';
+import {
+  USER_API_KEY_GATEWAY_VALIDATION_ERROR,
+  getHeaderApiKey,
+  validateApiKey,
+} from './_api-key.js';
 import { jsonResponse } from './_json-response.js';
+import {
+  checkBootstrapUserApiKeyRateLimit,
+  isCanonicalUserApiKey,
+  validateBootstrapUserApiAccess,
+  validateBootstrapUserApiKey,
+} from './_user-api-key.js';
 // @ts-expect-error — JS module, no declaration file
 import { redisPipeline } from './_upstash-json.js';
 import { unwrapEnvelope } from './_seed-envelope.js';
+import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.js';
 
 export const config = { runtime: 'edge' };
+
+// Iran-events domain sunset (war ended 2026-07). Default OFF: don't ship the
+// domain to the client. Set IRAN_EVENTS_ENABLED=true to restore. See api/health.js.
+const IRAN_EVENTS_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLowerCase() === 'true';
 
 const BOOTSTRAP_CACHE_KEYS = {
   earthquakes:      'seismology:earthquakes:v1',
@@ -58,7 +73,7 @@ const BOOTSTRAP_CACHE_KEYS = {
   renewableEnergy:  'economic:worldbank-renewable:v1',
   positiveGeoEvents: 'positive_events:geo-bootstrap:v1',
   theaterPosture: 'theater_posture:sebuf:stale:v1',
-  riskScores: 'risk:scores:sebuf:stale:v3',
+  riskScores: CII_RISK_SCORE_CACHE_KEYS.stale,
   naturalEvents: 'natural:events:v1',
   flightDelays: 'aviation:delays-bootstrap:v2',
   insights: 'news:insights:v1',
@@ -187,6 +202,13 @@ const FAST_KEYS = new Set([
   'correlationCards', 'forecasts', 'shippingRates', 'shippingStress', 'socialVelocity', 'wsbTickers',
 ]);
 
+// Iran-events sunset: strip the domain from the bootstrap payload + fast tier
+// when disabled (default), so the client never hydrates it.
+if (!IRAN_EVENTS_ENABLED) {
+  delete BOOTSTRAP_CACHE_KEYS.iranEvents;
+  FAST_KEYS.delete('iranEvents');
+}
+
 // No public/s-maxage: CF (in front of api.worldmonitor.app) ignores Vary: Origin and would
 // pin ACAO: worldmonitor.app on cached responses, breaking CORS for preview deployments.
 // Vercel CDN caching is handled by TIER_CDN_CACHE via CDN-Cache-Control below.
@@ -199,7 +221,70 @@ const TIER_CDN_CACHE = {
   fast: 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900',
 };
 
+export function isPublicWeatherBootstrapRequest(req) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return false;
+
+  const url = new URL(req.url);
+  const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname;
+  if (pathname !== '/api/bootstrap') return false;
+
+  const params = Array.from(url.searchParams.keys());
+  if (params.some((key) => key !== 'keys')) return false;
+
+  const keyParams = url.searchParams.getAll('keys');
+  if (keyParams.length !== 1) return false;
+
+  const requested = keyParams[0].split(',').map((key) => key.trim()).filter(Boolean);
+  return requested.length === 1 && requested[0] === 'weatherAlerts';
+}
+
+const BOOTSTRAP_CREDENTIAL_COOKIES = new Set(['wm-session', 'wm-pro-key', 'wm-widget-key']);
+
+function hasBootstrapCredentialCookie(req) {
+  const raw = req.headers.get('Cookie') || req.headers.get('cookie') || '';
+  if (!raw) return false;
+
+  for (const part of raw.split(';')) {
+    const name = part.trim().split('=', 1)[0];
+    if (BOOTSTRAP_CREDENTIAL_COOKIES.has(name)) return true;
+  }
+  return false;
+}
+
 const NEG_SENTINEL = '__WM_NEG__';
+const WILDFIRE_DASHBOARD_DETECTION_LIMIT = 500;
+
+function numeric(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function confidenceRank(confidence) {
+  switch (confidence) {
+    case 'FIRE_CONFIDENCE_HIGH': return 3;
+    case 'FIRE_CONFIDENCE_NOMINAL': return 2;
+    case 'FIRE_CONFIDENCE_LOW': return 1;
+    default: return 0;
+  }
+}
+
+function compareFireDetectionsForDashboard(a, b) {
+  return Number(Boolean(b?.possibleExplosion)) - Number(Boolean(a?.possibleExplosion))
+    || confidenceRank(b?.confidence) - confidenceRank(a?.confidence)
+    || numeric(b?.brightness) - numeric(a?.brightness)
+    || numeric(b?.frp) - numeric(a?.frp)
+    || numeric(b?.detectedAt) - numeric(a?.detectedAt);
+}
+
+export function compactWildfireBootstrapPayload(value, limit = WILDFIRE_DASHBOARD_DETECTION_LIMIT) {
+  if (!value || typeof value !== 'object' || !Array.isArray(value.fireDetections)) return value;
+  if (value.fireDetections.length <= limit) return value;
+  return {
+    ...value,
+    fireDetections: [...value.fireDetections].sort(compareFireDetectionsForDashboard).slice(0, limit),
+    pagination: { nextCursor: '', totalCount: value.fireDetections.length },
+  };
+}
 
 async function getCachedJsonBatch(keys) {
   const result = new Map();
@@ -228,6 +313,106 @@ async function getCachedJsonBatch(keys) {
   return result;
 }
 
+function authFailure(body, status, cors, extraHeaders = {}) {
+  // no-store is spread last so a caller-supplied Cache-Control in extraHeaders
+  // can never weaken the non-cacheable posture of an auth-failure response.
+  return jsonResponse(body, status, {
+    ...cors,
+    ...extraHeaders,
+    'Cache-Control': 'no-store',
+  });
+}
+
+async function validateBootstrapAuth(req, cors) {
+  const headerKey = getHeaderApiKey(req);
+  if (!headerKey && !hasBootstrapCredentialCookie(req) && isPublicWeatherBootstrapRequest(req)) {
+    return { ok: true, kind: 'public-weather' };
+  }
+
+  const apiKeyResult = await validateApiKey(req);
+  if (!apiKeyResult.required || apiKeyResult.valid) {
+    return { ok: true, kind: apiKeyResult.kind || 'unknown' };
+  }
+
+  if (apiKeyResult.error === USER_API_KEY_GATEWAY_VALIDATION_ERROR && headerKey.startsWith('wm_')) {
+    if (!isCanonicalUserApiKey(headerKey)) {
+      return {
+        ok: false,
+        response: authFailure({ error: 'Invalid API key' }, 401, cors),
+      };
+    }
+
+    const rateLimitResult = await checkBootstrapUserApiKeyRateLimit(req);
+    if (!rateLimitResult.ok) {
+      return {
+        ok: false,
+        response: authFailure(
+          { error: rateLimitResult.error },
+          rateLimitResult.status,
+          cors,
+          rateLimitResult.headers,
+        ),
+      };
+    }
+
+    // Propagate the validation result's status/error/headers (all generic,
+    // leak-free strings) rather than hardcoding 401/403: a Convex outage surfaces
+    // as a retryable 503 + Retry-After (status 503, unavailable:true) instead of
+    // a misleading "Invalid API key" 401, mirroring the rate-limit path above.
+    const userKeyResult = await validateBootstrapUserApiKey(headerKey);
+    if (!userKeyResult.ok) {
+      return {
+        ok: false,
+        response: authFailure(
+          { error: userKeyResult.error },
+          userKeyResult.status,
+          cors,
+          userKeyResult.headers,
+        ),
+      };
+    }
+
+    const entitlementResult = await validateBootstrapUserApiAccess(userKeyResult.userId);
+    if (!entitlementResult.ok) {
+      return {
+        ok: false,
+        response: authFailure(
+          { error: entitlementResult.error },
+          entitlementResult.status,
+          cors,
+          entitlementResult.headers,
+        ),
+      };
+    }
+
+    return { ok: true, kind: 'user' };
+  }
+
+  const error = apiKeyResult.error === USER_API_KEY_GATEWAY_VALIDATION_ERROR
+    ? 'Invalid API key'
+    : apiKeyResult.error;
+  return {
+    ok: false,
+    response: authFailure({ error }, 401, cors),
+  };
+}
+
+function successCacheHeaders(tier, authKind, cors) {
+  if (authKind !== 'public-weather') {
+    return {
+      ...cors,
+      'Cache-Control': 'no-store',
+    };
+  }
+
+  const cacheControl = (tier && TIER_CACHE[tier]) || 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900';
+  return {
+    ...cors,
+    'Cache-Control': cacheControl,
+    'CDN-Cache-Control': (tier && TIER_CDN_CACHE[tier]) || TIER_CDN_CACHE.fast,
+  };
+}
+
 export default async function handler(req) {
   if (isDisallowedOrigin(req))
     return new Response('Forbidden', { status: 403 });
@@ -236,9 +421,8 @@ export default async function handler(req) {
   if (req.method === 'OPTIONS')
     return new Response(null, { status: 204, headers: cors });
 
-  const apiKeyResult = await validateApiKey(req);
-  if (apiKeyResult.required && !apiKeyResult.valid)
-    return jsonResponse({ error: apiKeyResult.error }, 401, cors);
+  const auth = await validateBootstrapAuth(req, cors);
+  if (!auth.ok) return auth.response;
 
   const url = new URL(req.url);
   const tier = url.searchParams.get('tier');
@@ -260,7 +444,10 @@ export default async function handler(req) {
   try {
     cached = await getCachedJsonBatch(keys);
   } catch {
-    return jsonResponse({ data: {}, missing: names }, 200, { ...cors, 'Cache-Control': 'no-cache' });
+    // Only the anonymous weather bootstrap may avoid no-store here; every
+    // other successful bootstrap response can carry session/key scoped data.
+    const cacheControl = auth.kind === 'public-weather' ? 'no-cache' : 'no-store';
+    return jsonResponse({ data: {}, missing: names }, 200, { ...cors, 'Cache-Control': cacheControl });
   }
 
   const data = {};
@@ -268,26 +455,21 @@ export default async function handler(req) {
   for (let i = 0; i < names.length; i++) {
     const val = cached.get(keys[i]);
     if (val !== undefined) {
+      let responseValue = val;
       // Strip seed-internal metadata not intended for API clients
       if (names[i] === 'forecasts' && val != null && 'enrichmentMeta' in val) {
         const { enrichmentMeta: _stripped, ...rest } = val;
-        data[names[i]] = rest;
-      } else {
-        data[names[i]] = val;
+        responseValue = rest;
       }
+      if (names[i] === 'wildfires') responseValue = compactWildfireBootstrapPayload(responseValue);
+      data[names[i]] = responseValue;
     } else {
       missing.push(names[i]);
     }
   }
 
-  const cacheControl = (tier && TIER_CACHE[tier]) || 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900';
-
   // The browser runtime sends API requests with credentials so session and
   // entitlement cookies can ride along. Credentialed requests cannot consume
   // ACAO: * responses, even for public bootstrap data.
-  return jsonResponse({ data, missing }, 200, {
-    ...cors,
-    'Cache-Control': cacheControl,
-    'CDN-Cache-Control': (tier && TIER_CDN_CACHE[tier]) || TIER_CDN_CACHE.fast,
-  });
+  return jsonResponse({ data, missing }, 200, successCacheHeaders(tier, auth.kind, cors));
 }

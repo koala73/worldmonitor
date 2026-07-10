@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import {
   aggregate,
@@ -7,6 +8,7 @@ import {
   analyzeMmsi,
   geoToCountry,
   normalizeCountryName,
+  readMilitaryFlights,
 } from '../scripts/seed-military-cii.mjs';
 
 test('geoToCountry resolves points inside a TIER1 bbox', () => {
@@ -115,6 +117,38 @@ test('aggregate emits a record for every TIER1 country, zeroed by default', () =
     assert.equal(rec.ownFlights + rec.foreignFlights + rec.ownVessels
       + rec.foreignVessels + rec.aisDisruptionHigh, 0);
   }
+});
+
+test('readMilitaryFlights fails closed on missing or empty flights payloads', async () => {
+  assert.deepEqual(
+    await readMilitaryFlights(async () => null),
+    { ok: false, flights: [] },
+    'missing military:flights:v1 must not be treated as a fresh zero-flight payload',
+  );
+  assert.deepEqual(
+    await readMilitaryFlights(async () => ({ flights: [] })),
+    { ok: false, flights: [] },
+    'empty military:flights:v1 must preserve/skip instead of clearing last-good flight counts',
+  );
+});
+
+test('readMilitaryFlights reports thrown Redis reads as not ok', async () => {
+  const result = await readMilitaryFlights(async () => {
+    throw new Error('redis unavailable');
+  });
+
+  assert.equal(result.ok, false);
+  assert.deepEqual(result.flights, []);
+  assert.match(String(result.error), /redis unavailable/);
+});
+
+test('main preserves last-good CII payload before returning on flights-read failure', () => {
+  const source = readFileSync(new URL('../scripts/seed-military-cii.mjs', import.meta.url), 'utf8');
+  assert.match(
+    source,
+    /if \(!flightsRead\.ok\) \{[\s\S]{0,500}?await preserveLastGoodMilitaryCii\(url, token, reason\);[\s\S]{0,80}?return;/,
+    'main must preserve/skip instead of aggregating a zero-flight payload when military:flights:v1 is unavailable',
+  );
 });
 
 test('producer operatorCountry vocabulary: every TIER1-mapped string resolves to its ISO2', () => {

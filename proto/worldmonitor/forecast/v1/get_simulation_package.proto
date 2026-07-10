@@ -5,7 +5,10 @@ package worldmonitor.forecast.v1;
 import "sebuf/http/annotations.proto";
 
 message GetSimulationPackageRequest {
-  // Currently ignored; always returns the latest package. Reserved for Phase 3 per-run lookup.
+  // Optional run identifier. Does not select the package — the latest stored package is
+  // always returned regardless of this value. When supplied and it differs from the
+  // returned package's runId, the response `note` field is populated to warn that per-run
+  // filtering is not yet active. Reserved for Phase 3 per-run lookup.
   string run_id = 1 [(sebuf.http.query) = { name: "runId" }];
 }
 

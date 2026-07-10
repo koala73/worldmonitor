@@ -1,5 +1,7 @@
 // @ts-expect-error — JS module, no declaration file
 import { validateApiKey } from '../../api/_api-key.js';
+// @ts-expect-error — JS module, no declaration file
+import { timingSafeIncludes } from '../../api/_crypto.js';
 import { validateBearerToken } from '../auth-session';
 import { getEntitlements } from './entitlement-check';
 import {
@@ -9,12 +11,16 @@ import {
 } from './mcp-internal-hmac';
 import { validateUserApiKey } from './user-api-key';
 
+export type PremiumCallerIdentity =
+  | { isPremium: true; userId: string; kind: 'internal-mcp'; quotaExempt: true }
+  | { isPremium: true; userId: string; kind: 'user-api-key' | 'bearer'; quotaExempt: false }
+  | { isPremium: true; userId: null; kind: 'enterprise'; quotaExempt: true }
+  | { isPremium: false; userId: null; kind: null; quotaExempt: false };
+
 /**
- * Returns true when the caller has a valid API key OR a PRO bearer token.
- * Used by handlers where the RPC endpoint is public but certain fields
- * (e.g. framework/systemAppend) should only be honored for premium callers.
+ * Resolves premium status and the user-bound identity for spend controls.
  */
-export async function isCallerPremium(request: Request): Promise<boolean> {
+export async function resolvePremiumCallerIdentity(request: Request): Promise<PremiumCallerIdentity> {
   // Internal-MCP context: trusted markers are set by the gateway AFTER an
   // HMAC verification on `X-WM-MCP-Internal` succeeds. Inbound copies of
   // these headers are stripped at the gateway entry (defense-in-depth) so
@@ -55,9 +61,9 @@ export async function isCallerPremium(request: Request): Promise<boolean> {
         // through the internal-MCP path.
         (ent.features as { mcpAccess?: boolean }).mcpAccess === true
       ) {
-        return true;
+        return { isPremium: true, userId: trustedUserId, kind: 'internal-mcp', quotaExempt: true };
       }
-      return false;
+      return { isPremium: false, userId: null, kind: null, quotaExempt: false };
     }
     // Marker present but nonce mismatch: do NOT short-circuit. Fall
     // through to the normal auth flow — an attacker spoofing the marker
@@ -74,34 +80,53 @@ export async function isCallerPremium(request: Request): Promise<boolean> {
   if (wmKey) {
     const validKeys = (process.env.WORLDMONITOR_VALID_KEYS ?? '')
       .split(',').map((k) => k.trim()).filter(Boolean);
-    if (validKeys.length > 0 && validKeys.includes(wmKey)) return true;
+    if (await timingSafeIncludes(wmKey, validKeys)) {
+      return { isPremium: true, userId: null, kind: 'enterprise', quotaExempt: true };
+    }
 
     // Check user-owned API keys (wm_ prefix) via Convex lookup.
     // Key existence alone is not sufficient — verify the owner's entitlement.
     const userKey = await validateUserApiKey(wmKey);
     if (userKey) {
       const ent = await getEntitlements(userKey.userId);
-      if (ent && ent.features.apiAccess === true) return true;
-      return false;
+      if (ent && ent.features.apiAccess === true) {
+        return { isPremium: true, userId: userKey.userId, kind: 'user-api-key', quotaExempt: false };
+      }
+      return { isPremium: false, userId: null, kind: null, quotaExempt: false };
     }
   }
 
   const keyCheck = (await validateApiKey(request, {})) as { valid: boolean; required: boolean };
   // Only treat as premium when an explicit API key was validated (required: true).
   // Trusted-origin short-circuits (required: false) do NOT imply PRO entitlement.
-  if (keyCheck.valid && keyCheck.required) return true;
+  if (keyCheck.valid && keyCheck.required) {
+    return { isPremium: true, userId: null, kind: 'enterprise', quotaExempt: true };
+  }
 
   const authHeader = request.headers.get('Authorization');
   if (authHeader?.startsWith('Bearer ')) {
     const session = await validateBearerToken(authHeader.slice(7));
-    if (!session.valid) return false;
-    if (session.role === 'pro') return true;
+    if (!session.valid) return { isPremium: false, userId: null, kind: null, quotaExempt: false };
+    if (session.role === 'pro' && session.userId) {
+      return { isPremium: true, userId: session.userId, kind: 'bearer', quotaExempt: false };
+    }
     // Clerk role isn't 'pro' — check Dodo entitlement tier as second signal.
     // A Dodo subscriber (tier >= 1) is premium regardless of Clerk role.
     if (session.userId) {
       const ent = await getEntitlements(session.userId);
-      if (ent && ent.features.tier >= 1) return true;
+      if (ent && ent.features.tier >= 1) {
+        return { isPremium: true, userId: session.userId, kind: 'bearer', quotaExempt: false };
+      }
     }
   }
-  return false;
+  return { isPremium: false, userId: null, kind: null, quotaExempt: false };
+}
+
+/**
+ * Returns true when the caller has a valid API key OR a PRO bearer token.
+ * Used by handlers where the RPC endpoint is public but certain fields
+ * (e.g. framework/systemAppend) should only be honored for premium callers.
+ */
+export async function isCallerPremium(request: Request): Promise<boolean> {
+  return (await resolvePremiumCallerIdentity(request)).isPremium;
 }

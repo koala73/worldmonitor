@@ -1,4 +1,11 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync as originalReadFileSync, statSync } from 'node:fs';
+function readFileSync(path, options) {
+  const content = originalReadFileSync(path, options);
+  if (typeof content === 'string') {
+    return content.replace(/\r\n/g, '\n');
+  }
+  return content;
+}
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -274,6 +281,68 @@ describe('Comtrade bilateral HS4 lazy fallback (server/worldmonitor/supply-chain
       !/COMTRADE_REPORTER_OVERRIDES:\s*Record<string,\s*string>\s*=\s*\{\s*IN:\s*'699',\s*TW:\s*'490'\s*\}/.test(src),
       'lazy fallback: must not define an independent IN/TW-only override map',
     );
+  });
+});
+
+describe('Comtrade reporter-code source-of-truth guard', () => {
+  function collectRuntimeSources(dir) {
+    const out = [];
+    for (const name of readdirSync(dir)) {
+      if (name === '_bundle-runner-test-run.mjs' || name.startsWith('_bundle-fixture-')) continue;
+      const filePath = join(dir, name);
+      const stat = statSync(filePath);
+      if (stat.isDirectory()) {
+        if (name === 'generated' || name === 'node_modules' || name === '__tests__') continue;
+        out.push(...collectRuntimeSources(filePath));
+        continue;
+      }
+      if (/\.(?:mjs|js|ts)$/.test(name)) {
+        out.push(filePath);
+      }
+    }
+    return out;
+  }
+
+  const checkedFiles = [
+    ...collectRuntimeSources(join(root, 'scripts')),
+    ...collectRuntimeSources(join(root, 'server')),
+    ...collectRuntimeSources(join(root, 'src')),
+  ];
+  const inlineReporterMapDeclaration =
+    /\b(?:ISO2_TO_COMTRADE(?:_OVERRIDES)?|COMTRADE_REPORTER_OVERRIDES)\b\s*(?::[^=]+)?=\s*\{([\s\S]*?)\}/g;
+  const staleInlineReporterOverride = /\b(?:IN:\s*['"]699['"]|TW:\s*['"]490['"])/;
+
+  function hasStaleInlineReporterMap(src) {
+    for (const match of src.matchAll(inlineReporterMapDeclaration)) {
+      if (staleInlineReporterOverride.test(match[1] ?? '')) return true;
+    }
+    return false;
+  }
+
+  it('catches stale inline maps regardless of key ordering or partial entries', () => {
+    assert.equal(hasStaleInlineReporterMap("const ISO2_TO_COMTRADE = { IN: '699', TW: '490' };"), true);
+    assert.equal(hasStaleInlineReporterMap("const ISO2_TO_COMTRADE = { TW: '490', IN: '699' };"), true);
+    assert.equal(hasStaleInlineReporterMap("const ISO2_TO_COMTRADE_OVERRIDES = { IN: '699' };"), true);
+    assert.equal(hasStaleInlineReporterMap("const COMTRADE_REPORTER_OVERRIDES = { TW: '490' };"), true);
+    assert.equal(hasStaleInlineReporterMap("const OTHER_MAP = { IN: '699', TW: '490' };"), false);
+  });
+
+  it('keeps the committed bundle runner in the runtime-source audit', () => {
+    assert.ok(
+      checkedFiles.includes(join(root, 'scripts', '_bundle-runner.mjs')),
+      'the committed bundle runner must remain covered by the runtime-source audit',
+    );
+  });
+
+  it('does not reintroduce stale inline IN/TW-only reporter maps in runtime sources', () => {
+    for (const filePath of checkedFiles) {
+      const src = readFileSync(filePath, 'utf-8');
+      assert.equal(
+        hasStaleInlineReporterMap(src),
+        false,
+        `${filePath}: Comtrade reporter overrides must come from scripts/shared/comtrade-reporter-overrides.json`,
+      );
+    }
   });
 });
 

@@ -17,7 +17,7 @@
 //   shortTermDebtPctGni = (DT.DOD.DSTC.CD / NY.GNP.MKTP.CD) * 100
 //
 // Coverage: ~125 LMICs (low- and middle-income countries). HIC are not
-// published by WB IDS — those countries fall through to the BIS LBS
+// published by WB IDS — those countries fall through to the BIS CBS
 // structural-exposure component in the resilience scorer (see
 // `scoreFinancialSystemExposure` in `_dimension-scorers.ts`).
 //

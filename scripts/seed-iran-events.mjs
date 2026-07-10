@@ -7,6 +7,15 @@ import { fileURLToPath } from 'node:url';
 
 loadEnvFile(import.meta.url);
 
+// Iran-events domain sunset (war ended 2026-07). Default OFF: this manually
+// re-seeded feed is dormant, so no-op cleanly (exit 0) instead of republishing
+// a stale LiveUAMap dump. Set IRAN_EVENTS_ENABLED=true to reactivate the whole
+// domain (see api/health.js). Nothing imports this module, so the early exit is safe.
+if ((process.env.IRAN_EVENTS_ENABLED ?? 'false').toLowerCase() !== 'true') {
+  console.log('[iran-events] Skipped: IRAN_EVENTS_ENABLED is off (domain sunset 2026-07). Set it to true to reactivate.');
+  process.exit(0);
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const CANONICAL_KEY = 'conflict:iran-events:v1';
 

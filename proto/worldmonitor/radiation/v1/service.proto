@@ -10,6 +10,8 @@ service RadiationService {
   option (sebuf.http.service_config) = {base_path: "/api/radiation/v1"};
 
   // ListRadiationObservations retrieves normalized EPA RadNet and Safecast readings.
+  // Empty observations with fetched_at=0 or data_available=false means the seed
+  // snapshot is unavailable/degraded, not that radiation readings are confirmed absent.
   rpc ListRadiationObservations(ListRadiationObservationsRequest) returns (ListRadiationObservationsResponse) {
     option (sebuf.http.config) = {path: "/list-radiation-observations", method: HTTP_METHOD_GET};
   }

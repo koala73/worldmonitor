@@ -1,0 +1,82 @@
+{
+  "$comment": "Machine-readable homepage view served at /?mode=agent (vercel.json rewrite). Structured summary for AI agents instead of marketing HTML. Parity with the MCP server card and agent card is guarded in tests/agent-mode-view.test.mjs.",
+  "kind": "agent-view",
+  "product": "World Monitor",
+  "url": "https://www.worldmonitor.app",
+  "description": "Live global-intelligence platform: real-time markets, conflict events, country risk and resilience, shipping chokepoints, aviation/maritime activity, energy, climate, health, cyber threats, forecasts and AI-generated briefs — machine-readable JSON, correlated across layers.",
+  "endpoints": {
+    "mcp": {
+      "url": "https://worldmonitor.app/mcp",
+      "transport": "streamable-http",
+      "serverCard": "https://worldmonitor.app/.well-known/mcp/server-card.json",
+      "tools": 40,
+      "note": "tools/list, prompts/list, resources/list and describe_tool are anonymous; data calls need auth."
+    },
+    "rest": {
+      "base": "https://api.worldmonitor.app",
+      "openapi": "https://worldmonitor.app/openapi.json",
+      "note": "Send a descriptive User-Agent; generic UAs are filtered at the edge. Fetch the OpenAPI spec for the full operation list."
+    },
+    "a2a": {
+      "url": "https://www.worldmonitor.app/a2a",
+      "agentCard": "https://worldmonitor.app/.well-known/agent-card.json",
+      "note": "Anonymous concierge: message/send routes a natural-language need to the right tool."
+    },
+    "nlweb": {
+      "url": "https://www.worldmonitor.app/ask",
+      "note": "POST {\"query\": \"...\"} → NLWeb JSON; prefer.streaming=true → SSE (start/result/complete)."
+    },
+    "cli": {
+      "package": "worldmonitor",
+      "install": "npm install -g worldmonitor",
+      "url": "https://www.npmjs.com/package/worldmonitor"
+    }
+  },
+  "authentication": {
+    "summary": "Authentication: OAuth2 (scope=mcp) or an API key header. Discovery surfaces (tools/list, describe_tool, prompts/list, resources/list, /a2a, /ask) are anonymous — no authentication required.",
+    "oauth2": {
+      "authorizationServer": "https://worldmonitor.app/.well-known/oauth-authorization-server",
+      "protectedResource": "https://worldmonitor.app/.well-known/oauth-protected-resource",
+      "scope": "mcp"
+    },
+    "apiKey": {
+      "header": "X-WorldMonitor-Key",
+      "format": "wm_<40 hex>",
+      "issueAt": "https://worldmonitor.app/pro"
+    },
+    "guide": "https://worldmonitor.app/auth.md",
+    "plansAndLimits": "https://worldmonitor.app/pricing.md"
+  },
+  "rateLimits": {
+    "anonymous": "60 requests/min per IP on public MCP methods, /a2a and /ask",
+    "authenticated": "per-plan daily quotas — see https://worldmonitor.app/pricing.md"
+  },
+  "documentation": "https://www.worldmonitor.app/docs/documentation",
+  "capabilities": [
+    "real-time market data (equities, commodities, crypto, FX)",
+    "conflict events and country instability/risk scores (196 countries)",
+    "country resilience scores with domain/pillar breakdown",
+    "13 shipping chokepoints with live AIS transit intelligence",
+    "maritime and aviation activity, airspace status",
+    "energy intelligence (LNG, pipelines, refineries, outages)",
+    "sanctions, supply-chain and tariff data",
+    "cyber threats, natural disasters, health and displacement signals",
+    "AI world/country briefs, scenario forecasts, prediction markets"
+  ],
+  "discovery": {
+    "llmsTxt": "https://worldmonitor.app/llms.txt",
+    "markdownHomepage": "https://worldmonitor.app/index.md",
+    "agentSkills": "https://worldmonitor.app/.well-known/agent-skills/index.json",
+    "apiCatalog": "https://worldmonitor.app/.well-known/api-catalog",
+    "aiCatalog": "https://worldmonitor.app/.well-known/ai-catalog.json",
+    "docs": "https://www.worldmonitor.app/docs/documentation"
+  },
+  "instances": {
+    "geopolitics": "https://www.worldmonitor.app/dashboard",
+    "tech": "https://tech.worldmonitor.app/dashboard",
+    "finance": "https://finance.worldmonitor.app/dashboard",
+    "commodities": "https://commodity.worldmonitor.app/dashboard",
+    "positiveNews": "https://happy.worldmonitor.app/dashboard",
+    "energy": "https://energy.worldmonitor.app/dashboard"
+  }
+}

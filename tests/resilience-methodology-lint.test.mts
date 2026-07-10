@@ -83,6 +83,36 @@ function extractH4Headings(source: string): string[] {
   return headings;
 }
 
+function splitActiveMethodologyClaims(source: string): string[] {
+  return source
+    .split(/(?:\r?\n){2,}/)
+    .flatMap((block) => block.trim().startsWith('|') ? block.split(/\r?\n/) : [block])
+    .map((claim) => claim.trim())
+    .filter(Boolean);
+}
+
+function splitClaimSegments(claim: string): string[] {
+  return claim
+    .split(/\r?\n|(?<=[.!?])\s+/)
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+}
+
+function isOfacRetirementExplanation(claim: string): boolean {
+  const sanctionsPattern = /\bOFAC\b|\bsanctionCount\b|\bsanctions?\b/i;
+  const retirementPattern = /\b(?:dropped|removed|retired|replaces?|rejected)\b|\bno longer read\b/i;
+  const rationalePattern = /\b(?:conflated|penaliz(?:ed|ing)|not a country-resilience indicator|liability metric)\b/i;
+  const relevantSegments = splitClaimSegments(claim).filter((segment) =>
+    sanctionsPattern.test(segment)
+  );
+
+  return relevantSegments.length > 0 && relevantSegments.every((segment) =>
+    retirementPattern.test(segment) ||
+    rationalePattern.test(segment) ||
+    /Renamed from "Trade & Sanctions"/i.test(segment)
+  );
+}
+
 describe('resilience methodology doc linter (T1.8)', () => {
   const methodologyPath = findMethodologyFile();
   const source = readFileSync(methodologyPath, 'utf8');
@@ -230,6 +260,62 @@ describe('resilience methodology doc linter (T1.8)', () => {
       currentStateSource,
       /constructVersions\.energy=`?"v2"`?/i,
       'Current methodology prose should document that live runtime reports energy v2 active.',
+    );
+  });
+
+  it('does not present OFAC or sanctionCount as active scoring inputs', () => {
+    const claims = splitActiveMethodologyClaims(source);
+    const offenders = claims.filter((claim) =>
+      /\bOFAC\b|\bsanctionCount\b|sanctions:country-counts:v1/i.test(claim) &&
+      !isOfacRetirementExplanation(claim)
+    );
+
+    assert.deepEqual(
+      offenders,
+      [],
+      'OFAC/sanctionCount may appear only in explicit dropped/removed/retired/replacement explanations, not as active methodology prose.',
+    );
+  });
+
+  it('requires OFAC/sanctions retirement wording to be local to the matching sentence or line', () => {
+    assert.equal(
+      isOfacRetirementExplanation(
+        'The energy construct replaces the legacy scorer. `sanctionCount` is now refreshed daily.',
+      ),
+      false,
+      'A retirement verb in a neighboring sentence must not exempt an active sanctionCount claim.',
+    );
+
+    assert.equal(
+      isOfacRetirementExplanation(
+        'The OFAC `sanctionCount` component was dropped because it was not a country-resilience indicator.',
+      ),
+      true,
+      'A same-sentence OFAC/sanctionCount retirement explanation should remain allowed.',
+    );
+
+    assert.equal(
+      isOfacRetirementExplanation(
+        'The `financialSystemExposure` dimension replaces the dropped OFAC-domicile signal with structural sanctions exposure.',
+      ),
+      true,
+      'A same-sentence replacement explanation should remain allowed.',
+    );
+  });
+
+  it('does not present generic sanctions signals as active current methodology before the changelog', () => {
+    const changelogIndex = source.indexOf('\n## Changelog');
+    assert.notEqual(changelogIndex, -1, 'Methodology doc should have a Changelog section.');
+    const currentStateSource = source.slice(0, changelogIndex);
+    const offenders = splitActiveMethodologyClaims(currentStateSource).filter((claim) =>
+      /\bsanctions?\b/i.test(claim) &&
+      !isOfacRetirementExplanation(claim)
+    );
+
+    assert.deepEqual(
+      offenders,
+      [],
+      'Current methodology prose must not describe sanctions as an active scoring signal unless the claim is explicitly a retirement/replacement explanation.',
     );
   });
 });

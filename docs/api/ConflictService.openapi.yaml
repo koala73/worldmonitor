@@ -2,6 +2,11 @@ openapi: 3.1.0
 info:
     title: ConflictService API
     version: 1.0.0
+security:
+    - WorldMonitorKey: []
+    - ApiKeyHeader: []
+servers:
+    - url: https://api.worldmonitor.app
 paths:
     /api/conflict/v1/list-acled-events:
         get:
@@ -10,11 +15,13 @@ paths:
             summary: ListAcledEvents
             description: ListAcledEvents retrieves armed conflict events from the ACLED dataset.
             operationId: ListAcledEvents
+            security: []
             parameters:
                 - name: start
                   in: query
                   description: Start of time range (inclusive), Unix epoch milliseconds.
                   required: false
+                  example: "1717200000000"
                   schema:
                     type: string
                     format: int64
@@ -22,26 +29,42 @@ paths:
                   in: query
                   description: End of time range (inclusive), Unix epoch milliseconds.
                   required: false
+                  example: "1717200000000"
                   schema:
                     type: string
                     format: int64
                 - name: page_size
                   in: query
-                  description: Maximum items per page (1-100).
+                  description: |-
+                    Maximum items per page (1-100).
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "next-page-token"
                   schema:
                     type: string
                 - name: country
                   in: query
                   description: Optional country filter (ISO 3166-1 alpha-2).
                   required: false
+                  example: "US"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
                   schema:
                     type: string
             responses:
@@ -49,6 +72,18 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "events":
+                                    - "actors":
+                                        - "example"
+                                      "admin1": "example"
+                                      "country": "US"
+                                      "eventType": "all"
+                                      "fatalities": 1
+                                      "id": "example-id"
+                                "pagination":
+                                    "nextCursor": "next-page-token"
+                                    "totalCount": 1
                             schema:
                                 $ref: '#/components/schemas/ListAcledEventsResponse'
                 "400":
@@ -56,13 +91,42 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/conflict/v1/list-ucdp-events:
         get:
             tags:
@@ -73,35 +137,56 @@ paths:
             parameters:
                 - name: start
                   in: query
-                  description: Start of time range (inclusive), Unix epoch milliseconds.
+                  description: |-
+                    Start of time range (inclusive), Unix epoch milliseconds.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "1717200000000"
                   schema:
                     type: string
                     format: int64
                 - name: end
                   in: query
-                  description: End of time range (inclusive), Unix epoch milliseconds.
+                  description: |-
+                    End of time range (inclusive), Unix epoch milliseconds.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "1717200000000"
                   schema:
                     type: string
                     format: int64
                 - name: page_size
                   in: query
-                  description: Maximum items per page (1-100).
+                  description: |-
+                    Maximum items per page (1-100).
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: 25
                   schema:
                     type: integer
                     format: int32
                 - name: cursor
                   in: query
-                  description: Cursor for next page.
+                  description: |-
+                    Cursor for next page.
+                     Accepted but currently ignored; no-op until this handler supports the parameter.
                   required: false
+                  example: "next-page-token"
                   schema:
                     type: string
                 - name: country
                   in: query
                   description: Optional country filter (ISO 3166-1 alpha-2).
                   required: false
+                  example: "US"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
                   schema:
                     type: string
             responses:
@@ -109,6 +194,17 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "events":
+                                    - "country": "US"
+                                      "dateEnd": 1
+                                      "dateStart": 1
+                                      "deathsBest": 1
+                                      "deathsHigh": 1
+                                      "id": "example-id"
+                                "pagination":
+                                    "nextCursor": "next-page-token"
+                                    "totalCount": 1
                             schema:
                                 $ref: '#/components/schemas/ListUcdpEventsResponse'
                 "400":
@@ -116,13 +212,54 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/conflict/v1/get-humanitarian-summary:
         get:
             tags:
@@ -134,7 +271,256 @@ paths:
                 - name: country_code
                   in: query
                   description: ISO 3166-1 alpha-2 country code (e.g., "YE", "SD", "SO").
+                  required: true
+                  example: "AD"
+                  schema:
+                    type: string
+                    enum:
+                        - 'AD'
+                        - 'AE'
+                        - 'AF'
+                        - 'AG'
+                        - 'AI'
+                        - 'AL'
+                        - 'AM'
+                        - 'AO'
+                        - 'AQ'
+                        - 'AR'
+                        - 'AS'
+                        - 'AT'
+                        - 'AU'
+                        - 'AW'
+                        - 'AX'
+                        - 'AZ'
+                        - 'BA'
+                        - 'BB'
+                        - 'BD'
+                        - 'BE'
+                        - 'BF'
+                        - 'BG'
+                        - 'BH'
+                        - 'BI'
+                        - 'BJ'
+                        - 'BL'
+                        - 'BM'
+                        - 'BN'
+                        - 'BO'
+                        - 'BR'
+                        - 'BS'
+                        - 'BT'
+                        - 'BW'
+                        - 'BY'
+                        - 'BZ'
+                        - 'CA'
+                        - 'CD'
+                        - 'CF'
+                        - 'CG'
+                        - 'CH'
+                        - 'CI'
+                        - 'CK'
+                        - 'CL'
+                        - 'CM'
+                        - 'CN'
+                        - 'CO'
+                        - 'CR'
+                        - 'CU'
+                        - 'CV'
+                        - 'CW'
+                        - 'CY'
+                        - 'CZ'
+                        - 'DE'
+                        - 'DJ'
+                        - 'DK'
+                        - 'DM'
+                        - 'DO'
+                        - 'DZ'
+                        - 'EC'
+                        - 'EE'
+                        - 'EG'
+                        - 'EH'
+                        - 'ER'
+                        - 'ES'
+                        - 'ET'
+                        - 'FI'
+                        - 'FJ'
+                        - 'FK'
+                        - 'FM'
+                        - 'FO'
+                        - 'FR'
+                        - 'GA'
+                        - 'GB'
+                        - 'GD'
+                        - 'GE'
+                        - 'GG'
+                        - 'GH'
+                        - 'GI'
+                        - 'GL'
+                        - 'GM'
+                        - 'GN'
+                        - 'GQ'
+                        - 'GR'
+                        - 'GS'
+                        - 'GT'
+                        - 'GU'
+                        - 'GW'
+                        - 'GY'
+                        - 'HK'
+                        - 'HM'
+                        - 'HN'
+                        - 'HR'
+                        - 'HT'
+                        - 'HU'
+                        - 'ID'
+                        - 'IE'
+                        - 'IL'
+                        - 'IM'
+                        - 'IN'
+                        - 'IO'
+                        - 'IQ'
+                        - 'IR'
+                        - 'IS'
+                        - 'IT'
+                        - 'JE'
+                        - 'JM'
+                        - 'JO'
+                        - 'JP'
+                        - 'KE'
+                        - 'KG'
+                        - 'KH'
+                        - 'KI'
+                        - 'KM'
+                        - 'KN'
+                        - 'KP'
+                        - 'KR'
+                        - 'KW'
+                        - 'KY'
+                        - 'KZ'
+                        - 'LA'
+                        - 'LB'
+                        - 'LC'
+                        - 'LI'
+                        - 'LK'
+                        - 'LR'
+                        - 'LS'
+                        - 'LT'
+                        - 'LU'
+                        - 'LV'
+                        - 'LY'
+                        - 'MA'
+                        - 'MC'
+                        - 'MD'
+                        - 'ME'
+                        - 'MF'
+                        - 'MG'
+                        - 'MH'
+                        - 'MK'
+                        - 'ML'
+                        - 'MM'
+                        - 'MN'
+                        - 'MO'
+                        - 'MP'
+                        - 'MR'
+                        - 'MS'
+                        - 'MT'
+                        - 'MU'
+                        - 'MV'
+                        - 'MW'
+                        - 'MX'
+                        - 'MY'
+                        - 'MZ'
+                        - 'NA'
+                        - 'NC'
+                        - 'NE'
+                        - 'NF'
+                        - 'NG'
+                        - 'NI'
+                        - 'NL'
+                        - 'NO'
+                        - 'NP'
+                        - 'NR'
+                        - 'NU'
+                        - 'NZ'
+                        - 'OM'
+                        - 'PA'
+                        - 'PE'
+                        - 'PF'
+                        - 'PG'
+                        - 'PH'
+                        - 'PK'
+                        - 'PL'
+                        - 'PM'
+                        - 'PN'
+                        - 'PR'
+                        - 'PS'
+                        - 'PT'
+                        - 'PW'
+                        - 'PY'
+                        - 'QA'
+                        - 'RO'
+                        - 'RS'
+                        - 'RU'
+                        - 'RW'
+                        - 'SA'
+                        - 'SB'
+                        - 'SC'
+                        - 'SD'
+                        - 'SE'
+                        - 'SG'
+                        - 'SH'
+                        - 'SI'
+                        - 'SK'
+                        - 'SL'
+                        - 'SM'
+                        - 'SN'
+                        - 'SO'
+                        - 'SR'
+                        - 'SS'
+                        - 'ST'
+                        - 'SV'
+                        - 'SX'
+                        - 'SY'
+                        - 'SZ'
+                        - 'TC'
+                        - 'TD'
+                        - 'TF'
+                        - 'TG'
+                        - 'TH'
+                        - 'TJ'
+                        - 'TL'
+                        - 'TM'
+                        - 'TN'
+                        - 'TO'
+                        - 'TR'
+                        - 'TT'
+                        - 'TV'
+                        - 'TW'
+                        - 'TZ'
+                        - 'UA'
+                        - 'UG'
+                        - 'UM'
+                        - 'US'
+                        - 'UY'
+                        - 'UZ'
+                        - 'VA'
+                        - 'VC'
+                        - 'VE'
+                        - 'VG'
+                        - 'VI'
+                        - 'VN'
+                        - 'VU'
+                        - 'WF'
+                        - 'WS'
+                        - 'XK'
+                        - 'YE'
+                        - 'ZA'
+                        - 'ZM'
+                        - 'ZW'
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
                   required: false
+                  example: "keys(@)"
                   schema:
                     type: string
             responses:
@@ -142,6 +528,13 @@ paths:
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "summary":
+                                    "conflictDemonstrations": 42
+                                    "conflictEventsTotal": 1
+                                    "conflictFatalities": 1
+                                    "conflictPoliticalViolenceEvents": 1
+                                    "countryCode": "US"
                             schema:
                                 $ref: '#/components/schemas/GetHumanitarianSummaryResponse'
                 "400":
@@ -149,13 +542,54 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/conflict/v1/list-iran-events:
         get:
             tags:
@@ -163,11 +597,28 @@ paths:
             summary: ListIranEvents
             description: ListIranEvents retrieves scraped conflict events from LiveUAMap Iran.
             operationId: ListIranEvents
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
             responses:
                 "200":
                     description: Successful response
                     content:
                         application/json:
+                            example:
+                                "events":
+                                    - "category": "cs.AI"
+                                      "id": "example-id"
+                                      "latitude": 40.7128
+                                      "locationName": "WorldMonitor Analyst"
+                                      "longitude": -74.006
+                                "scrapedAt": "1717200000000"
                             schema:
                                 $ref: '#/components/schemas/ListIranEventsResponse'
                 "400":
@@ -175,15 +626,67 @@ paths:
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
-                default:
-                    description: Error response
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/conflict/v1/get-humanitarian-summary-batch:
         post:
+            parameters:
+                - name: Idempotency-Key
+                  in: header
+                  description: Optional client-generated idempotency key. Retrying a POST with the same key and an identical request body replays the original response (only the status, body, and Content-Type are reproduced) instead of re-executing; reusing the key with a different body is rejected with 422. For mutations this avoids duplicating the side effect, while for batch-read POSTs it replays a cached snapshot that can be up to 24 hours stale. Keys are scoped per authenticated caller (falling back to the source IP for unauthenticated endpoints) and retained for 24 hours.
+                  required: false
+                  example: "4f8b9c2e-1a3d-4b6f-8e0a-2c5d7f9b1e34"
+                  schema:
+                    type: string
+                    minLength: 1
+                    maxLength: 255
+                    pattern: "^[\\x21-\\x7E]{1,255}$"
             tags:
                 - ConflictService
             summary: GetHumanitarianSummaryBatch
@@ -192,30 +695,179 @@ paths:
             requestBody:
                 content:
                     application/json:
+                        example:
+                            "countryCodes":
+                                - "US"
                         schema:
                             $ref: '#/components/schemas/GetHumanitarianSummaryBatchRequest'
                 required: true
             responses:
                 "200":
                     description: Successful response
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key echoed from the request. Present only when the client opted into idempotency.
+                        Idempotent-Replayed:
+                            schema:
+                                type: boolean
+                            description: true when this response was replayed from an earlier request with the same key, false on the first (original) request. Present only when the client opted into idempotency.
                     content:
                         application/json:
+                            example:
+                                "fetched": 1
+                                "requested": 1
+                                "results":
+                                    "exampleKey":
+                                        "conflictDemonstrations": 42
+                                        "conflictEventsTotal": 1
+                                        "conflictFatalities": 1
+                                        "conflictPoliticalViolenceEvents": 1
+                                        "countryCode": "US"
                             schema:
                                 $ref: '#/components/schemas/GetHumanitarianSummaryBatchResponse'
                 "400":
-                    description: Validation error
+                    description: Validation error, invalid Idempotency-Key header, or malformed JSON request body
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/ValidationError'
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - type: object
+                                      required:
+                                        - error
+                                        - message
+                                      properties:
+                                        error:
+                                            type: string
+                                        message:
+                                            type: string
+                                    - $ref: '#/components/schemas/InvalidRequestBodyError'
+                "409":
+                    description: A request with this Idempotency-Key is still being processed
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                        Retry-After:
+                            schema:
+                                type: string
+                            description: Seconds to wait before retrying the in-flight request.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
+                "422":
+                    description: The Idempotency-Key was already used with a different request body
+                    headers:
+                        Idempotency-Key:
+                            schema:
+                                type: string
+                            description: The idempotency key supplied by the client.
+                    content:
+                        application/json:
+                            schema:
+                                type: object
+                                required:
+                                    - error
+                                    - message
+                                properties:
+                                    error:
+                                        type: string
+                                    message:
+                                        type: string
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
                 default:
-                    description: Error response
+                    description: Gateway or handler error response.
                     content:
                         application/json:
                             schema:
-                                $ref: '#/components/schemas/Error'
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
 components:
+    securitySchemes:
+        WorldMonitorKey:
+            type: apiKey
+            in: header
+            name: X-WorldMonitor-Key
+            description: User-issued WorldMonitor API key.
+        ApiKeyHeader:
+            type: apiKey
+            in: header
+            name: X-Api-Key
+            description: Alias header for the WorldMonitor API key (X-WorldMonitor-Key).
     schemas:
+        JmespathProjectionError:
+            description: Returned when a REST jmespath projection is invalid or exceeds the expression/output byte limits.
+            properties:
+                _jmespath_error:
+                    description: Projection error discriminator and details.
+                    type: string
+                original_keys:
+                    description: Top-level keys or shape of the unprojected response.
+                    items:
+                        type: string
+                    type: array
+            required:
+                - _jmespath_error
+                - original_keys
+            type: object
+        UnauthorizedError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable error message.
+            required:
+                - error
+            description: Returned when the API key is missing, malformed, or lacks current API access.
         Error:
             type: object
             properties:
@@ -223,6 +875,56 @@ components:
                     type: string
                     description: Error message (e.g., 'user not found', 'database connection failed')
             description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        InvalidRequestBodyError:
+            type: object
+            description: Returned when a JSON POST request body is empty or malformed.
+            properties:
+                message:
+                    type: string
+                    description: Invalid request body
+            required:
+                - message
+        GatewayError:
+            type: object
+            description: Returned by gateway infrastructure errors before an RPC handler runs, such as origin, routing, method, authentication, or quota checks.
+            properties:
+                error:
+                    oneOf:
+                        - type: string
+                        - type: object
+                          additionalProperties: true
+                    description: Gateway error reason or structured gateway failure details.
+            required:
+                - error
+        RateLimitError:
+            type: object
+            description: Returned when a gateway or handler rate limit rejects the request.
+            properties:
+                error:
+                    type: string
+                    description: Human-readable rate-limit failure reason.
+            required:
+                - error
+        ForbiddenError:
+            type: object
+            properties:
+                error:
+                    type: string
+                    description: Human-readable entitlement failure reason.
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint.
+                currentTier:
+                    type: integer
+                    format: int32
+                    description: Caller entitlement tier when known.
+                planKey:
+                    type: string
+                    description: Caller plan key when known.
+            required:
+                - error
+            description: Returned when a PRO-gated endpoint denies access because the caller has no resolved authenticated user, entitlements cannot be verified, or the caller lacks the required entitlement tier.
         FieldViolation:
             type: object
             properties:
@@ -261,10 +963,14 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page (1-100).
+                    description: |-
+                        Maximum items per page (1-100).
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 country:
                     type: string
                     description: Optional country filter (ISO 3166-1 alpha-2).
@@ -349,18 +1055,26 @@ components:
                 start:
                     type: integer
                     format: int64
-                    description: 'Start of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: |-
+                        Start of time range (inclusive), Unix epoch milliseconds.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript
                 end:
                     type: integer
                     format: int64
-                    description: 'End of time range (inclusive), Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: |-
+                        End of time range (inclusive), Unix epoch milliseconds.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.. Warning: Values > 2^53 may lose precision in JavaScript
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page (1-100).
+                    description: |-
+                        Maximum items per page (1-100).
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 cursor:
                     type: string
-                    description: Cursor for next page.
+                    description: |-
+                        Cursor for next page.
+                         Accepted but currently ignored; no-op until this handler supports the parameter.
                 country:
                     type: string
                     description: Optional country filter (ISO 3166-1 alpha-2).

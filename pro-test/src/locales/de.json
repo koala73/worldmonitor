@@ -178,15 +178,15 @@
     "apiTier": "API-STUFE",
     "title": "Programmatische Intelligence",
     "subtitle": "Für Entwickler, Analysten und Teams, die auf World-Monitor-Daten aufbauen. Separat von Pro — nutzen Sie beides oder eines.",
-    "restApi": "REST-API über alle 30+ Dienstdomänen",
+    "restApi": "REST-API über alle 30+ Dienstdomänen — offizielle SDKs für JavaScript, Python, Ruby, Go",
     "authenticated": "Pro Schlüssel authentifiziert, rate-limited pro Stufe",
     "structured": "Strukturiertes JSON mit Cache-Headern und OpenAPI-3.1-Docs",
     "starter": "Starter",
     "starterReqs": "1.000 Req/Tag",
     "starterWebhooks": "5 Webhook-Regeln",
     "business": "Business",
-    "businessReqs": "50.000 Req/Tag",
-    "businessWebhooks": "Unbegrenzte Webhooks + SLA",
+    "businessReqs": "10.000 Req/Tag",
+    "businessWebhooks": "Priority support",
     "feedData": "Füttern Sie Daten in Ihre Dashboards, automatisieren Sie Alerts via Zapier/n8n/Make, bauen Sie eigene Scoring-Modelle auf CII-/Risikodaten."
   },
   "enterpriseShowcase": {
@@ -374,16 +374,17 @@
           "Tägliche Marktübersichten",
           "Militär- & geopolitische Verfolgung",
           "Custom-Widget-Builder",
-          "MCP-Datenconnectors",
+          "MCP + SDK-Zugriff für Claude Desktop und andere KI-Clients (50 Aufrufe/Tag)",
           "Priorisierte Datenaktualisierung"
         ]
       },
       "api": {
         "description": "Programmgesteuerte Zugang zu Intelligence-Daten",
         "features": [
-          "REST-API-Zugriff",
+          "REST-API + offizielle SDKs (npm, PyPI, RubyGems, Go)",
           "Echtzeit-Datenströme",
-          "1.000 Anfragen/Tag",
+          "60 Anfragen/Minute",
+          "1.000 Anfragen/Tag inklusive",
           "Webhook-Benachrichtigungen",
           "Custom-Datenexporte"
         ]

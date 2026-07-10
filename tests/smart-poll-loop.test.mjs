@@ -5,7 +5,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const rawSrc = readFileSync(resolve(__dirname, '..', 'src', 'services', 'runtime.ts'), 'utf-8');
+const rawSrc = readFileSync(resolve(__dirname, '..', 'src', 'services', 'smart-poll-loop.ts'), 'utf-8');
 
 function stripTS(src) {
   let out = src;

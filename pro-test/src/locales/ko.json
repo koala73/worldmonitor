@@ -178,15 +178,15 @@
     "apiTier": "API 티어",
     "title": "프로그래밍 인텔리전스",
     "subtitle": "World Monitor 데이터 위에 구축하는 개발자, 애널리스트, 팀을 위해. Pro와 별도 — 둘 다 또는 하나를 사용.",
-    "restApi": "30+개 서비스 도메인 전반의 REST API",
+    "restApi": "30+개 서비스 도메인 전반의 REST API — JavaScript, Python, Ruby, Go 공식 SDK",
     "authenticated": "키별 인증, 티어별 레이트 제한",
     "structured": "캐시 헤더와 OpenAPI 3.1 문서가 포함된 구조화된 JSON",
     "starter": "Starter",
     "starterReqs": "1,000 req/일",
     "starterWebhooks": "5개 웹훅 규칙",
     "business": "Business",
-    "businessReqs": "50,000 req/일",
-    "businessWebhooks": "무제한 웹훅 + SLA",
+    "businessReqs": "10,000 req/일",
+    "businessWebhooks": "Priority support",
     "feedData": "데이터를 대시보드에 공급, Zapier/n8n/Make로 알림 자동화, CII/리스크 데이터 위에 맞춤형 점수 모델 구축."
   },
   "enterpriseShowcase": {
@@ -374,16 +374,17 @@
           "일일 시장 브리프",
           "군사 및 지정학적 추적",
           "커스텀 위젯 빌더",
-          "MCP 데이터 커넥터",
+          "Claude Desktop 및 기타 AI 클라이언트용 MCP + SDK 액세스 (일 50회 호출)",
           "우선 데이터 새로고침"
         ]
       },
       "api": {
         "description": "인텔리전스 데이터에 대한 프로그래매틱 접근",
         "features": [
-          "REST API 접근",
+          "REST API + 공식 SDK (npm, PyPI, RubyGems, Go)",
           "실시간 데이터 스트림",
-          "일일 1,000개 요청",
+          "분당 60개 요청",
+          "일일 1,000개 요청 포함",
           "웹훅 알림",
           "커스텀 데이터 내보내기"
         ]

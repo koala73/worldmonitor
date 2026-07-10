@@ -15,8 +15,21 @@ export interface ServerInsightStory {
   countryCode: string | null;
 }
 
+export interface ServerBriefSource {
+  title: string;
+  source: string;
+  url: string;
+  publishedAt?: string;
+}
+
 export interface ServerInsights {
   worldBrief: string;
+  /** #4921: one cited line per top story from the synthesis call —
+   * absent on pre-rollout payloads and single-headline (L2) briefs. */
+  briefStoryLines?: Array<{ n: number; text: string }>;
+  /** #4921: age window of the source material behind this brief. */
+  sourceAgeRange?: { newestMs: number; oldestMs: number } | null;
+  worldBriefSources?: ServerBriefSource[];
   briefProvider: string;
   status: 'ok' | 'degraded';
   topStories: ServerInsightStory[];
@@ -24,6 +37,13 @@ export interface ServerInsights {
   clusterCount: number;
   multiSourceCount: number;
   fastMovingCount: number;
+  /** #4920 coverage provenance — present on payloads seeded after the
+   * completeness-measurement rollout; absent on older cached payloads. */
+  provenance?: {
+    storiesConsidered: number;
+    sourcesConsidered: number;
+    selectionDrops?: { admissibility: number; sourceCap: number; overflow: number };
+  };
 }
 
 let cached: ServerInsights | null = null;

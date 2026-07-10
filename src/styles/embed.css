@@ -1,0 +1,168 @@
+html,
+body,
+#embedRoot {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+body {
+  min-width: 0;
+}
+
+#embedRoot {
+  position: relative;
+}
+
+.wm-embed-map {
+  position: absolute;
+  inset: 0;
+}
+
+.wm-embed-map.map-renderer-shell {
+  contain: layout paint;
+  background:
+    radial-gradient(circle at 52% 48%, color-mix(in srgb, var(--map-stroke, #5ea7d7) 46%, transparent) 0 1px, transparent 2px),
+    linear-gradient(180deg, color-mix(in srgb, var(--map-grid, #6da9cc) 40%, transparent), transparent 46%),
+    var(--map-bg, #06111f);
+}
+
+.wm-embed-map .map-renderer-shell-surface {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% 54%, color-mix(in srgb, var(--map-country, #446f8a) 82%, transparent) 0 28%, transparent 29%),
+    linear-gradient(90deg, transparent 0 23%, color-mix(in srgb, var(--map-grid, #6da9cc) 48%, transparent) 24% 24.5%, transparent 25% 49%, color-mix(in srgb, var(--map-grid, #6da9cc) 48%, transparent) 50% 50.5%, transparent 51% 74%, color-mix(in srgb, var(--map-grid, #6da9cc) 48%, transparent) 75% 75.5%, transparent 76%),
+    linear-gradient(0deg, transparent 0 23%, color-mix(in srgb, var(--map-grid, #6da9cc) 48%, transparent) 24% 24.5%, transparent 25% 49%, color-mix(in srgb, var(--map-grid, #6da9cc) 48%, transparent) 50% 50.5%, transparent 51% 74%, color-mix(in srgb, var(--map-grid, #6da9cc) 48%, transparent) 75% 75.5%, transparent 76%);
+  opacity: 0.9;
+}
+
+.wm-embed-map .map-renderer-shell-surface::before,
+.wm-embed-map .map-renderer-shell-surface::after {
+  content: '';
+  position: absolute;
+  inset: 18% 12%;
+  border: 1px solid color-mix(in srgb, var(--map-stroke, #5ea7d7) 62%, transparent);
+  border-radius: 50%;
+}
+
+.wm-embed-map .map-renderer-shell-surface::after {
+  inset: 28% 4%;
+  border-color: color-mix(in srgb, var(--map-grid, #6da9cc) 58%, transparent);
+}
+
+.wm-embed-map .map-wrapper {
+  width: 100%;
+  height: 100%;
+}
+
+.wm-embed-map.deckgl-mode,
+.wm-embed-map.globe-mode,
+.wm-embed-map .deckgl-map-wrapper,
+.wm-embed-map #deckgl-basemap,
+.wm-embed-map .maplibregl-map,
+.wm-embed-map .maplibregl-canvas-container,
+.wm-embed-map .maplibregl-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.wm-embed-map .deckgl-map-wrapper,
+.wm-embed-map #deckgl-basemap {
+  touch-action: none;
+}
+
+.wm-embed-map .map-svg,
+.wm-embed-map .map-cluster-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.wm-embed-map .map-attribution {
+  position: absolute;
+  right: 8px;
+  bottom: 4px;
+  z-index: 20;
+  color: var(--text-dim);
+  font-size: 9px;
+  opacity: 0.65;
+  pointer-events: auto;
+}
+
+.wm-embed-map .map-attribution a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.wm-embed-map .map-attribution a:hover {
+  text-decoration: underline;
+}
+
+.wm-embed-map .deckgl-tooltip {
+  max-width: min(260px, calc(100vw - 24px));
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--panel-bg) 92%, transparent);
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.35;
+  box-shadow: 0 6px 22px var(--shadow-color);
+  pointer-events: none;
+}
+
+.wm-embed-attribution {
+  position: absolute;
+  right: 10px;
+  bottom: 22px;
+  z-index: 50;
+  display: inline-flex;
+  align-items: center;
+  max-width: calc(100% - 20px);
+  min-height: 28px;
+  padding: 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel-bg) 88%, transparent);
+  color: var(--text);
+  box-shadow: 0 4px 18px var(--shadow-color);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.wm-embed-attribution:hover,
+.wm-embed-attribution:focus-visible {
+  color: var(--green);
+  border-color: var(--green);
+  outline: none;
+}
+
+.wm-embed-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  padding: 20px;
+  color: var(--text);
+  background: var(--bg);
+  font: 600 14px/1.4 system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  text-align: center;
+}
+
+@media (max-width: 420px) {
+  .wm-embed-attribution {
+    right: 8px;
+    bottom: 22px;
+    min-height: 24px;
+    padding: 4px 7px;
+    font-size: 10px;
+  }
+}

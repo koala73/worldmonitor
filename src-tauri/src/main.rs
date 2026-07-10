@@ -512,33 +512,29 @@ fn append_desktop_log(app: &AppHandle, level: &str, message: &str) {
 }
 
 fn open_in_shell(arg: &str) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    let mut command = {
-        let mut cmd = Command::new("open");
-        cmd.arg(arg);
-        cmd
-    };
-
-    #[cfg(target_os = "windows")]
-    let mut command = {
-        let mut cmd = Command::new("cmd");
-        cmd.args(["/c", "start", "", arg]);
-        cmd
-    };
-
+    // Linux keeps its own path: spawn xdg-open directly with LD_* scrubbed
+    // (library-injection hardening that a generic opener would drop).
     #[cfg(all(unix, not(target_os = "macos")))]
-    let mut command = {
+    {
         let mut cmd = Command::new("xdg-open");
         cmd.arg(arg);
         cmd.env_remove("LD_LIBRARY_PATH");
         cmd.env_remove("LD_PRELOAD");
-        cmd
-    };
+        cmd.spawn()
+            .map(|_| ())
+            .map_err(|e| format!("Failed to open {}: {e}", arg))
+    }
 
-    command
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| format!("Failed to open {}: {e}", arg))
+    // macOS + Windows: `opener` opens the target with the OS default handler
+    // via `/usr/bin/open` (macOS) and `ShellExecuteW` (Windows). It NEVER routes
+    // through `cmd.exe`, so a URL containing shell metacharacters (`&`, `|`, …)
+    // is passed as a single argument and cannot inject commands. This is the fix
+    // for GHSA-2x6r-qq54-mmhr: the old Windows branch ran `cmd /c start "" <url>`
+    // with the URL unquoted, so `https://x/?a=1&calc` executed `calc` on click.
+    #[cfg(not(all(unix, not(target_os = "macos"))))]
+    {
+        opener::open(arg).map_err(|e| format!("Failed to open {}: {e}", arg))
+    }
 }
 
 fn open_path_in_shell(path: &Path) -> Result<(), String> {

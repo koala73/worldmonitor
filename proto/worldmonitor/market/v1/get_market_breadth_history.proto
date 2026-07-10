@@ -22,5 +22,7 @@ message GetMarketBreadthHistoryResponse {
   optional double current_pct_above_200d = 3;
   string updated_at = 4;
   repeated BreadthSnapshot history = 5;
+  // True when the upstream or seed-backed variant is unavailable; empty payload fields
+  // are graceful degradation, not confirmed zero data.
   bool unavailable = 6;
 }

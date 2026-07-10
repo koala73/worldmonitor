@@ -9,6 +9,9 @@ export interface GetForecastsRequest {
 export interface GetForecastsResponse {
   forecasts: Forecast[];
   generatedAt: number;
+  degraded: boolean;
+  stale: boolean;
+  error: string;
 }
 
 export interface Forecast {
@@ -34,6 +37,7 @@ export interface Forecast {
   simulationAdjustment: number;
   simPathConfidence: number;
   demotedBySimulation: boolean;
+  resolution?: ResolutionSpec;
 }
 
 export interface ForecastSignal {
@@ -123,6 +127,91 @@ export interface ForecastBranchRound {
   probabilityShift: number;
 }
 
+export interface ResolutionSpec {
+  kind: string;
+  metricKey?: string;
+  operator?: string;
+  threshold?: number;
+  baselineValue?: number;
+  window?: string;
+  deadline: number;
+  sourceFeed?: string;
+  question?: string;
+}
+
+export interface GetForecastScorecardRequest {
+}
+
+export interface GetForecastScorecardResponse {
+  schemaVersion: number;
+  generatedAt: number;
+  rollingWindowDays: number;
+  methodology: string;
+  totals?: ScorecardTotals;
+  overall?: ScorecardSummary;
+  byDomain: ScorecardDomainGroup[];
+  byGenerationOrigin: ScorecardGenerationOriginGroup[];
+  calibration: ScorecardCalibrationBucket[];
+  vsMarketSkill?: ScorecardMarketSkill;
+  degraded: boolean;
+  stale: boolean;
+  error: string;
+}
+
+export interface ScorecardTotals {
+  entries: number;
+  resolved: number;
+  pending: number;
+  pendingJudge: number;
+  scored: number;
+  void: number;
+  voidRate: number;
+  publicationCoverage: number;
+}
+
+export interface ScorecardSummary {
+  count: number;
+  brier: number;
+  logScore: number;
+}
+
+export interface ScorecardDomainGroup {
+  domain: string;
+  resolved: number;
+  scored: number;
+  void: number;
+  voidRate: number;
+  brier?: number;
+  logScore?: number;
+}
+
+export interface ScorecardGenerationOriginGroup {
+  generationOrigin: string;
+  resolved: number;
+  scored: number;
+  void: number;
+  voidRate: number;
+  brier?: number;
+  logScore?: number;
+}
+
+export interface ScorecardCalibrationBucket {
+  bucket: string;
+  minProbability: number;
+  maxProbability: number;
+  count: number;
+  predictedMean?: number;
+  realizedRate?: number;
+  brier?: number;
+}
+
+export interface ScorecardMarketSkill {
+  count: number;
+  forecastBrier: number;
+  marketBrier: number;
+  brierDelta: number;
+}
+
 export interface GetSimulationPackageRequest {
   runId: string;
 }
@@ -153,6 +242,10 @@ export interface GetSimulationOutcomeResponse {
   error: string;
   theaterSummariesJson: string;
   processing: boolean;
+  eligibleTheaterCount: number;
+  failedTheaterCount: number;
+  allTheatersFailed: boolean;
+  completionStatus: string;
 }
 
 export interface TriggerSimulationRequest {
@@ -212,6 +305,7 @@ export interface RouteDescriptor {
 
 export interface ForecastServiceHandler {
   getForecasts(ctx: ServerContext, req: GetForecastsRequest): Promise<GetForecastsResponse>;
+  getForecastScorecard(ctx: ServerContext, req: GetForecastScorecardRequest): Promise<GetForecastScorecardResponse>;
   getSimulationPackage(ctx: ServerContext, req: GetSimulationPackageRequest): Promise<GetSimulationPackageResponse>;
   getSimulationOutcome(ctx: ServerContext, req: GetSimulationOutcomeRequest): Promise<GetSimulationOutcomeResponse>;
   triggerSimulation(ctx: ServerContext, req: TriggerSimulationRequest): Promise<TriggerSimulationResponse>;
@@ -249,6 +343,43 @@ export function createForecastServiceRoutes(
 
           const result = await handler.getForecasts(ctx, body);
           return new Response(JSON.stringify(result as GetForecastsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/forecast/v1/get-forecast-scorecard",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetForecastScorecardRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getForecastScorecard(ctx, body);
+          return new Response(JSON.stringify(result as GetForecastScorecardResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

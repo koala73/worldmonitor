@@ -1,5 +1,6 @@
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
+import { USER_API_KEY_GATEWAY_VALIDATION_ERROR, validateApiKey } from './_api-key.js';
 // Seed-envelope helper. PR 1 imports it here so PR 2 can wire envelope-aware
 // reads at specific call sites without further plumbing. It's a no-op on
 // legacy-shape seed-meta values (they have no `_seed` wrapper and pass through
@@ -7,8 +8,14 @@ import { jsonResponse } from './_json-response.js';
 import { unwrapEnvelope } from './_seed-envelope.js';
 // @ts-expect-error — JS module, no declaration file
 import { redisPipeline, getRedisCredentials } from './_upstash-json.js';
+import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.js';
 
 export const config = { runtime: 'edge' };
+
+// Iran-events domain sunset (war ended 2026-07). Default OFF everywhere; set
+// IRAN_EVENTS_ENABLED=true to restore the whole domain. Mirrors the backend
+// *_ENABLED env idiom (server/worldmonitor/resilience/v1/_shared.ts).
+const IRAN_EVENTS_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLowerCase() === 'true';
 
 const BOOTSTRAP_KEYS = {
   earthquakes:       'seismology:earthquakes:v1',
@@ -28,7 +35,7 @@ const BOOTSTRAP_KEYS = {
   progressData:      'economic:worldbank-progress:v1',
   renewableEnergy:   'economic:worldbank-renewable:v1',
   positiveGeoEvents: 'positive_events:geo-bootstrap:v1',
-  riskScores:        'risk:scores:sebuf:stale:v3',
+  riskScores:        CII_RISK_SCORE_CACHE_KEYS.stale,
   naturalEvents:     'natural:events:v1',
   flightDelays:      'aviation:delays-bootstrap:v2',
   newsInsights:      'news:insights:v1',
@@ -106,11 +113,17 @@ const BOOTSTRAP_KEYS = {
 };
 
 const STANDALONE_KEYS = {
+  // #4920 completeness measurement (daily GH Actions publishers) — ops
+  // keys: health-monitored but NOT bootstrap-hydrated into page loads.
+  newsFeedHealth:    'news:feed-health:v1',
+  newsRecallBenchmark: 'news:recall-benchmark:v1',
   serviceStatuses:       'infra:service-statuses:v1',
   macroSignals:          'economic:macro-signals:v1',
+  energyPrices:          'economic:energy:v1:all',
   bisPolicy:             'economic:bis:policy:v1',
   bisExchange:           'economic:bis:eer:v1',
   fxYoy:                 'economic:fx:yoy:v1',
+  sharedFxRates:          'shared:fx-rates:v1',
   bisCredit:             'economic:bis:credit:v1',
   bisDsr:                'economic:bis:dsr:v1',
   bisPropertyResidential: 'economic:bis:property-residential:v1',
@@ -132,7 +145,7 @@ const STANDALONE_KEYS = {
   theaterPosture:        'theater_posture:sebuf:stale:v1',
   theaterPostureLive:    'theater-posture:sebuf:v1',
   theaterPostureBackup:  'theater-posture:sebuf:backup:v1',
-  riskScoresLive:        'risk:scores:sebuf:v3',
+  riskScoresLive:        CII_RISK_SCORE_CACHE_KEYS.live,
   usniFleet:             'usni-fleet:sebuf:v1',
   usniFleetStale:        'usni-fleet:sebuf:stale:v1',
   faaDelays:             'aviation:delays:faa:v1',
@@ -140,6 +153,7 @@ const STANDALONE_KEYS = {
   notamClosures:         'aviation:notam:closures:v2',
   positiveEventsLive:    'positive-events:geo:v1',
   cableHealth:           'cable-health-v1',
+  submarineCables:       'infrastructure:submarine-cables:v1',
   cyberThreatsRpc:       'cyber:threats:v2',
   militaryBases:         'military:bases:active',
   militaryFlights:       'military:flights:v1',
@@ -149,19 +163,34 @@ const STANDALONE_KEYS = {
   // verifies existence + freshness via the matching SEED_META entry. Same
   // shape as militaryFlights above.
   militaryCii:           'intelligence:military-cii:v1',
+  defensePatents:        'patents:defense:latest',
   temporalAnomalies:     'temporal:anomalies:v1',
   displacement:          `displacement:summary:v1:${new Date().getUTCFullYear()}`,
   displacementPrev:      `displacement:summary:v1:${new Date().getUTCFullYear() - 1}`,
+  acledIntel:            'conflict:acled:v1:all:0:0',
   satellites:            'intelligence:satellites:tle:v1',
   portwatch:             'supply_chain:portwatch:v1',
+  portwatchDisruptions:  'portwatch:disruptions:active:v1',
   portwatchPortActivity: 'supply_chain:portwatch-ports:v1:_countries',
   corridorrisk:          'supply_chain:corridorrisk:v1',
   chokepointTransits:    'supply_chain:chokepoint_transits:v1',
   transitSummaries:      'supply_chain:transit-summaries:v1',
+  // Meta-only aggregate: payloads are sharded by country, so use the seed-meta
+  // key as the probe target rather than pretending one country key is global.
+  comtradeBilateralHs4:  'seed-meta:comtrade:bilateral-hs4',
   thermalEscalation:     'thermal:escalation:v1',
   tariffTrendsUs:           'trade:tariffs:v1:840:all:10',
   militaryForecastInputs:   'military:forecast-inputs:stale:v1',
   gscpi:                    'economic:fred:v1:GSCPI:0',
+  forecastFredWalcl:        'economic:fred:v1:WALCL:0',
+  forecastFredT10y2y:       'economic:fred:v1:T10Y2Y:0',
+  forecastFredUnrate:       'economic:fred:v1:UNRATE:0',
+  forecastFredCpiaucsl:     'economic:fred:v1:CPIAUCSL:0',
+  forecastFredDgs10:        'economic:fred:v1:DGS10:0',
+  forecastFredVixcls:       'economic:fred:v1:VIXCLS:0',
+  forecastFredGdp:          'economic:fred:v1:GDP:0',
+  forecastFredM2sl:         'economic:fred:v1:M2SL:0',
+  forecastFredDcoilwtico:   'economic:fred:v1:DCOILWTICO:0',
   marketImplications:       'intelligence:market-implications:v1',
   hormuzTracker:            'supply_chain:hormuz_tracker:v1',
   simulationPackageLatest:  'forecast:simulation-package:latest',
@@ -171,7 +200,7 @@ const STANDALONE_KEYS = {
   pizzint:                  'intelligence:pizzint:seed:v1',
   resilienceStaticIndex:    'resilience:static:index:v1',
   resilienceStaticFao:      'resilience:static:fao',
-  resilienceRanking:        'resilience:ranking:v22',
+  resilienceRanking:        'resilience:ranking:v25',
   productCatalog:           'product-catalog:v2',
   energySpineCountries:     'energy:spine:v1:_countries',
   energyExposure:           'energy:exposure:v1:index',
@@ -188,7 +217,7 @@ const STANDALONE_KEYS = {
   portwatchChokepointsRef:  'portwatch:chokepoints:ref:v1',
   chokepointFlows:          'energy:chokepoint-flows:v1',
   emberElectricity:         'energy:ember:v1:_all',
-  resilienceIntervals:      'resilience:intervals:v6:US',
+  resilienceIntervals:      'resilience:intervals:v9:US',
   sprPolicies:              'energy:spr-policies:v1',
   pipelinesGas:             'energy:pipelines:gas:v1',
   pipelinesOil:             'energy:pipelines:oil:v1',
@@ -232,6 +261,11 @@ const STANDALONE_KEYS = {
   chokepointFlowsRelayHeartbeat: 'relay:heartbeat:chokepoint-flows',
   climateNewsRelayHeartbeat:     'relay:heartbeat:climate-news',
   telegramFeed:                  'intelligence:telegram-feed:v1',
+  digestNotifications:           'digest:last-run',
+  webcams:                       'webcam:cameras:active',
+  forecastResolutions:           'forecast:resolutions:v1',
+  forecastScorecard:             'forecast:scorecard:v1',
+  researchArxivHnTrending:       'research:arxiv:v1:cs.AI::50',
 };
 
 const SEED_META = {
@@ -256,6 +290,9 @@ const SEED_META = {
   notamClosures:    { key: 'seed-meta:aviation:notam',          maxStaleMin: 240 }, // 2h interval; 240min = 2x interval
   predictionMarkets: { key: 'seed-meta:prediction:markets',     maxStaleMin: 90 },
   newsInsights:     { key: 'seed-meta:news:insights',           maxStaleMin: 30 },
+  // #4920: daily GH Actions cadence; 2880 = 2x — one fully missed day alarms
+  newsFeedHealth:   { key: 'seed-meta:news:feed-health',        maxStaleMin: 2880 },
+  newsRecallBenchmark: { key: 'seed-meta:news:recall-benchmark', maxStaleMin: 2880 },
   marketQuotes:     { key: 'seed-meta:market:stocks',         maxStaleMin: 30 },
   commodityQuotes:  { key: 'seed-meta:market:commodities',    maxStaleMin: 30 },
   goldExtended:     { key: 'seed-meta:market:gold-extended',  maxStaleMin: 30 },
@@ -264,7 +301,9 @@ const SEED_META = {
   // RPC/warm-ping keys — seed-meta written by relay loops or handlers
   // serviceStatuses: moved to ON_DEMAND — RPC-populated, no dedicated seed, goes stale when no users visit
   cableHealth:      { key: 'seed-meta:cable-health',              maxStaleMin: 90 }, // ais-relay warm-ping runs every 30min; 90min = 3× interval catches missed pings without false positives
-  macroSignals:     { key: 'seed-meta:economic:macro-signals',    maxStaleMin: 150 }, // seed-economy cron; primary key energy-prices has same 150min threshold
+  submarineCables:  { key: 'seed-meta:infrastructure:submarine-cables', maxStaleMin: 25200 },
+  macroSignals:     { key: 'seed-meta:economic:macro-signals',    maxStaleMin: 150 }, // seed-economy afterPublish-derived stress/macro key
+  energyPrices:     { key: 'seed-meta:economic:energy-prices',    maxStaleMin: 150 }, // seed-economy primary runSeed resource
   bisPolicy:        { key: 'seed-meta:economic:bis',              maxStaleMin: 10080 }, // runSeed('economic','bis',...) writes seed-meta:economic:bis
   // seed-bis-extended.mjs is a child-process section spawned by
   // scripts/seed-bundle-macro.mjs. The bundle's Railway cron fires more
@@ -300,20 +339,28 @@ const SEED_META = {
   // minerals + giving: on-demand cachedFetchJson only, no seed-meta writer — freshness checked via TTL
   // bisExchange + bisCredit: extras written by same BIS script via writeExtraKey, no dedicated seed-meta
   fxYoy:            { key: 'seed-meta:economic:fx-yoy',           maxStaleMin: 1500 }, // daily cron; 25h tolerance + 1h drift
+  sharedFxRates:    { key: 'seed-meta:shared:fx-rates',           maxStaleMin: 3600 }, // daily seed; 60h tolerance covers a missed 25h cache refresh
   gpsjam:           { key: 'seed-meta:intelligence:gpsjam',       maxStaleMin: 1440 }, // Wingbits API (scripts/fetch-gpsjam.mjs); 1440min = 24h tolerance gives operator headroom to handle upstream outages and monthly quota exhaustion (HTTP 402 observed 2026-04-29) without dashboard noise. Seeder catch-block extends TTL on fail without refreshing fetchedAt, so STALE_SEED via age is the only alarm path.
   positiveGeoEvents:{ key: 'seed-meta:positive-events:geo',       maxStaleMin: 60 },
-  riskScores:       { key: 'seed-meta:intelligence:risk-scores',  maxStaleMin: 30 }, // CII warm-ping every 8min; 30min = ~3.5x interval,
+  riskScores:       { key: 'seed-meta:intelligence:risk-scores',  maxStaleMin: 30, minRecordCount: 3 }, // CII warm-ping every 8min; recordCount is realtime signal-density coverage for score-relevant conflict (ACLED or UCDP), news, and cyber families, not raw feed availability; quiet-but-fresh feeds may warn COVERAGE_PARTIAL.
   iranEvents:       { key: 'seed-meta:conflict:iran-events',      maxStaleMin: 20160 }, // manual seed from LiveUAMap; 20160 = 14d = 2× weekly cadence
   ucdpEvents:       { key: 'seed-meta:conflict:ucdp-events',      maxStaleMin: 420 },
+  acledIntel:       { key: 'seed-meta:conflict:acled-intel',      maxStaleMin: 38 }, // conflict:acled:v1:all:0:0, now ACLED-or-GDELT fallback for the forecast EMA input (#5099).
   militaryFlights:  { key: 'seed-meta:military:flights',           maxStaleMin: 30 }, // cron ~10min (LIVE_TTL=600s); 30min = 3x interval,
   militaryCii:      { key: 'seed-meta:intelligence:military-cii',  maxStaleMin: 45 }, // seed-military-cii cron ~10min; 45 = generous grace (relay-dependent; preserve-last-good runs still refresh meta)
+  defensePatents:   { key: 'seed-meta:military:defense-patents',  maxStaleMin: 25200 },
   satellites:       { key: 'seed-meta:intelligence:satellites',    maxStaleMin: 240 }, // CelesTrak every 120min; 240min = absorbs one missed cycle
+  temporalAnomalies:{ key: 'seed-meta:temporal:anomalies',          maxStaleMin: 45 }, // request-driven producer kept warm by seed-infra; data TTL is 60min so health reaches STALE_SEED before EMPTY
   weatherAlerts:    { key: 'seed-meta:weather:alerts',             maxStaleMin: 45 }, // relay loop every 15min; 45 = 3× interval (was 30 = 2×, too tight on relay hiccup)
   spending:         { key: 'seed-meta:economic:spending',          maxStaleMin: 120 },
   techEvents:       { key: 'seed-meta:research:tech-events',       maxStaleMin: 480 },
+  researchArxivHnTrending: { key: 'seed-meta:research:arxiv-hn-trending', maxStaleMin: 150 },
   gdeltIntel:       { key: 'seed-meta:intelligence:gdelt-intel',   maxStaleMin: 720 }, // 6h cron; 12h staleness = 2× cadence = 1 missed tick + cron jitter, alerts at 2 missed ticks. Bumped from 420 (1.16× cadence, virtually zero margin) on 2026-05-12 after the same Railway-deploy-preempted-tick pattern that hit resilienceIntervals on 2026-05-10 (PR #3652): seedAgeMin=467 vs maxStale=420 → ~1min UptimeRobot WARNING flip when a deploy preempted the 15:00 UTC tick. CACHE_TTL is 24h so per-topic merge always has a prior snapshot even at the upper end of the new budget.
   telegramFeed:     { key: 'seed-meta:intelligence:telegram-feed:v1', maxStaleMin: 10 }, // 60s poll interval; 10min grace catches poll failures before they go stale in the panel
+  digestNotifications: { key: 'seed-meta:digest:last-run',          maxStaleMin: 90 }, // Railway digest-notifications cron runs every 30min; 90 = 3x cadence and detects a dead cron before daily digests are missed.
   forecasts:        { key: 'seed-meta:forecast:predictions',       maxStaleMin: 90 },
+  forecastResolutions: { key: 'seed-meta:forecast:resolutions',     maxStaleMin: 2160 }, // daily Bet-2 resolver; 36h catches a missed cron without flapping on normal daily jitter
+  forecastScorecard:   { key: 'seed-meta:forecast:scorecard',       maxStaleMin: 2160 }, // scorecard extra key written by seed-forecast-resolutions
   sectors:          { key: 'seed-meta:market:sectors',             maxStaleMin: 30 },
   techReadiness:    { key: 'seed-meta:economic:worldbank-techreadiness:v1', maxStaleMin: 10080 },
   progressData:     { key: 'seed-meta:economic:worldbank-progress:v1',     maxStaleMin: 10080 },
@@ -323,7 +370,8 @@ const SEED_META = {
   theaterPosture:   { key: 'seed-meta:theater-posture',         maxStaleMin: 60 },
   correlationCards: { key: 'seed-meta:correlation:cards',       maxStaleMin: 30 }, // 5min cron (seed-bundle-derived-signals); 30min = 6× interval. Was 15 (3× = gold-standard floor) — overnight UptimeRobot flips when bundle jitter spaced two consecutive runs ~9-10min apart, producing 15-19min gaps that tripped STALE_SEED briefly. See WM 2026-05-10 health:failure-log.
   portwatch:           { key: 'seed-meta:supply_chain:portwatch',            maxStaleMin: 720 },
-  portwatchPortActivity: { key: 'seed-meta:supply_chain:portwatch-ports',   maxStaleMin: 2160 }, // 12h cron; 2160min = 36h = 3x interval
+  portwatchDisruptions: { key: 'seed-meta:portwatch:disruptions',             maxStaleMin: 150 },
+  portwatchPortActivity: { key: 'seed-meta:supply_chain:portwatch-ports',   maxStaleMin: 2160, minRecordCount: 174 }, // 12h cron; 36h = 3x interval; #3613 requires full 174-country coverage before OK.
   corridorrisk:        { key: 'seed-meta:supply_chain:corridorrisk',         maxStaleMin: 120 },
   chokepointTransits:  { key: 'seed-meta:supply_chain:chokepoint_transits',  maxStaleMin: 30 }, // relay every 10min; 30min = 3x interval,
   transitSummaries:    { key: 'seed-meta:supply_chain:transit-summaries',    maxStaleMin: 30 }, // relay every 10min; 30min = 3x interval,
@@ -331,6 +379,7 @@ const SEED_META = {
   securityAdvisories:  { key: 'seed-meta:intelligence:advisories',           maxStaleMin: 120 },
   customsRevenue:      { key: 'seed-meta:trade:customs-revenue',              maxStaleMin: 1440 },
   comtradeFlows:       { key: 'seed-meta:trade:comtrade-flows',               maxStaleMin: 2880 }, // 24h cron; 2880min = 48h = 2x interval
+  comtradeBilateralHs4: { key: 'seed-meta:comtrade:bilateral-hs4',             maxStaleMin: 34560 }, // 24d freshness gate + 25d meta TTL; meta-only aggregate over sharded country keys
   blsSeries:           { key: 'seed-meta:economic:bls-series',                maxStaleMin: 2880 }, // daily seed; 2880min = 48h = 2x interval
   sanctionsPressure:   { key: 'seed-meta:sanctions:pressure',                 maxStaleMin: 720 },
   crossSourceSignals:  { key: 'seed-meta:intelligence:cross-source-signals',  maxStaleMin: 30 }, // 15min cron; 30min = 2x interval
@@ -356,6 +405,15 @@ const SEED_META = {
   aiTokens:          { key: 'seed-meta:market:token-panels', maxStaleMin: 90 },
   otherTokens:       { key: 'seed-meta:market:token-panels', maxStaleMin: 90 },
   fredBatch:         { key: 'seed-meta:economic:fred:v1:FEDFUNDS:0', maxStaleMin: 1500 }, // daily cron
+  forecastFredWalcl:      { key: 'seed-meta:economic:fred:v1:WALCL:0',      maxStaleMin: 1500 },
+  forecastFredT10y2y:     { key: 'seed-meta:economic:fred:v1:T10Y2Y:0',     maxStaleMin: 1500 },
+  forecastFredUnrate:     { key: 'seed-meta:economic:fred:v1:UNRATE:0',     maxStaleMin: 1500 },
+  forecastFredCpiaucsl:   { key: 'seed-meta:economic:fred:v1:CPIAUCSL:0',   maxStaleMin: 1500 },
+  forecastFredDgs10:      { key: 'seed-meta:economic:fred:v1:DGS10:0',      maxStaleMin: 1500 },
+  forecastFredVixcls:     { key: 'seed-meta:economic:fred:v1:VIXCLS:0',     maxStaleMin: 1500 },
+  forecastFredGdp:        { key: 'seed-meta:economic:fred:v1:GDP:0',        maxStaleMin: 1500 },
+  forecastFredM2sl:       { key: 'seed-meta:economic:fred:v1:M2SL:0',       maxStaleMin: 1500 },
+  forecastFredDcoilwtico: { key: 'seed-meta:economic:fred:v1:DCOILWTICO:0', maxStaleMin: 1500 },
   ecbEstr:           { key: 'seed-meta:economic:ecb-short-rates',   maxStaleMin: 4320 }, // daily ECB publish; 4320min = 3d = TTL/interval
   ecbEuribor3m:      { key: 'seed-meta:economic:ecb-short-rates',   maxStaleMin: 4320 }, // shared meta key with ecbEstr
   ecbEuribor6m:      { key: 'seed-meta:economic:ecb-short-rates',   maxStaleMin: 4320 }, // shared meta key with ecbEstr
@@ -384,8 +442,8 @@ const SEED_META = {
   shippingStress:    { key: 'seed-meta:supply_chain:shipping_stress',  maxStaleMin: 45 }, // relay loop every 15min; 45 = 3x interval (was 30 = 2×, too tight on relay hiccup)
   diseaseOutbreaks:  { key: 'seed-meta:health:disease-outbreaks',      maxStaleMin: 2880 }, // daily seed; 2880 = 48h = 2x interval
   healthAirQuality:  { key: 'seed-meta:health:air-quality',            maxStaleMin: 180 }, // hourly cron; 180 = 3x interval for shared health/climate seed
-  socialVelocity:    { key: 'seed-meta:intelligence:social-reddit',    maxStaleMin: 180 }, // relay loop every 60min (hourly, bumped from 10min to reduce Reddit IP blocking); 180 = 3x interval
-  wsbTickers:        { key: 'seed-meta:intelligence:wsb-tickers',      maxStaleMin: 180 }, // relay loop every 60min; 180 = 3x interval
+  socialVelocity:    { key: 'seed-meta:intelligence:social-reddit',    maxStaleMin: 540 }, // relay loop every 180min (3h; was 60min, dropped now that ScrapeCreators handles Reddit); 540 = 3x interval. Co-pinned with SOCIAL_VELOCITY_TTL=43200 (ais-relay.cjs): the data-key TTL must STRICTLY exceed this (720min > 540min) so a dead relay shows STALE_SEED before the key expires to EMPTY.
+  wsbTickers:        { key: 'seed-meta:intelligence:wsb-tickers',      maxStaleMin: 540 }, // relay loop every 180min (3h); 540 = 3x interval. Co-pinned with WSB_TICKERS_TTL=43200 (ais-relay.cjs); TTL strictly > maxStaleMin (see socialVelocity note).
   pizzint:           { key: 'seed-meta:intelligence:pizzint',          maxStaleMin: 30 }, // relay loop every 10min; 30 = 3x interval
   productCatalog:    { key: 'seed-meta:product-catalog',               maxStaleMin: 1080 }, // relay loop every 6h; 1080 = 18h = 3x interval
   vpdTrackerRealtime:   { key: 'seed-meta:health:vpd-tracker',         maxStaleMin: 2880 }, // daily seed (0 2 * * *); 2880min = 48h = 2x interval
@@ -445,7 +503,16 @@ const SEED_META = {
   lowCarbonGeneration:     { key: 'seed-meta:resilience:low-carbon-generation',     maxStaleMin: 11520 },
   fossilElectricityShare:  { key: 'seed-meta:resilience:fossil-electricity-share',  maxStaleMin: 11520 },
   powerLosses:             { key: 'seed-meta:resilience:power-losses',              maxStaleMin: 11520 },
+  webcams:                 { key: 'seed-meta:webcam:cameras:geo',                   maxStaleMin: 1440 }, // seed-webcams writes 24h geo/meta keys plus a 30h active pointer; stale at 24h before the layer goes blank.
 };
+
+// Iran-events sunset: when disabled (default), drop it from all health
+// classification so the deliberately-dormant manual seed can't raise
+// STALE_SEED (present-but-stale) or EMPTY (absent). Re-enabling restores both.
+if (!IRAN_EVENTS_ENABLED) {
+  delete BOOTSTRAP_KEYS.iranEvents;
+  delete SEED_META.iranEvents;
+}
 
 // Standalone keys that are populated on-demand by RPC handlers (not seeds).
 // Empty = WARN not CRIT since they only exist after first request.
@@ -472,7 +539,7 @@ const ON_DEMAND_KEYS = new Set([
   // bisDsr/bisPropertyResidential/bisPropertyCommercial have dedicated SEED_META
   // entries (seed-bis-extended.mjs), so they are not on-demand.
   'macroSignals', 'shippingRates', 'chokepoints', 'minerals', 'giving',
-  'cyberThreatsRpc', 'militaryBases', 'temporalAnomalies', 'displacement',
+  'cyberThreatsRpc', 'militaryBases', 'displacement',
   'corridorrisk', // intermediate key; data flows through transit-summaries:v1
   'serviceStatuses', // RPC-populated; seed-meta written on fresh fetch only, goes stale between visits
   'militaryForecastInputs', // intermediate seed-to-seed pipeline key; only populated after seed-military-flights runs
@@ -480,6 +547,14 @@ const ON_DEMAND_KEYS = new Set([
   // chronic LLM-provider failures must surface as CRIT.
   'simulationPackageLatest', // written by writeSimulationPackage after deep forecast runs; only present after first successful deep run
   'simulationOutcomeLatest', // written by writeSimulationOutcome after simulation runs; only present after first successful simulation
+  // #4927 review P1: activation-gated on the operator adding UPSTASH_* as GH
+  // Actions secrets — the publishers skip silently without them, so a
+  // never-activated key must read as soft EMPTY_ON_DEMAND, not EMPTY/CRIT,
+  // while the workflow stays green. On-demand softening is REVOKED once the
+  // durable activation marker exists (see ACTIVATION_MARKERS): after the
+  // first publish, missing data/meta is EMPTY/STALE_SEED like any other key.
+  'newsFeedHealth',
+  'newsRecallBenchmark',
   'newsThreatSummary', // relay classify loop — only written when mergedByCountry has entries; absent on quiet news periods
   'resilienceRanking', // on-demand RPC cache populated after ranking requests; missing before first Pro use is expected
   'recoveryFiscalSpace', 'recoveryReserveAdequacy', 'recoveryExternalDebt',
@@ -511,6 +586,11 @@ const ON_DEMAND_KEYS = new Set([
   'climateNewsRelayHeartbeat',     // TRANSITIONAL (PR #3133): same deploy-order rationale.
                                    // 30min initial loop, so window is shorter but still present.
                                    // Remove after ~7 days alongside the chokepoint-flows entry.
+  'digestNotifications',           // TRANSITIONAL (PR #4253): seed-digest-notifications.mjs writes
+                                   // `digest:last-run` on the first cron run after deploy. Vercel
+                                   // can publish this health registry before Railway's 30min cron
+                                   // ticks, so gate only the first absent-key window as WARN. Remove
+                                   // after ~7 days of clean `seed-meta:digest:last-run` writes.
   'eiaPetroleum',                  // TRANSITIONAL: gold-standard migration of /api/eia/petroleum
                                    // from live Vercel fetch to Redis-reader (seed-bundle-energy-sources
                                    // daily cron). SEED_META entry above enforces 72h staleness — this
@@ -526,6 +606,17 @@ const ON_DEMAND_KEYS = new Set([
 // even when the data key has strlen=0. For producer-specific cases where the
 // payload must exist but recordCount=0 is valid, add to ZERO_RECORD_DATA_OK_KEYS
 // only.
+// #4927 re-review P1: "has ever published" must survive the 7d seed-meta
+// TTL — inferring activation from meta existence meant a publisher that ran
+// once and died read as healthy pending-activation again after the meta
+// expired. Publishers SET these markers with NO TTL on every successful
+// publish; when the marker exists the key leaves ON_DEMAND softening and
+// normal EMPTY/STALE_SEED rules apply.
+const ACTIVATION_MARKERS = {
+  newsFeedHealth: 'seed-activated:news:feed-health',
+  newsRecallBenchmark: 'seed-activated:news:recall-benchmark',
+};
+
 const EMPTY_DATA_OK_KEYS = new Set([
   'notamClosures', 'faaDelays', 'intlDelays', 'gpsjam', 'positiveGeoEvents', 'weatherAlerts',
   'earningsCalendar', 'econCalendar', 'cotPositioning',
@@ -552,6 +643,14 @@ const ZERO_RECORD_DATA_OK_KEYS = new Set([
   // published normally. Treat 0 records as OK while fresh; STALE_SEED still
   // fires if the publish job itself stops.
   'consumerPricesSpread',
+  // CF Radar curated outage annotations (seed-internet-outages, zeroIsValid)
+  // are sparse — most 28d windows publish an empty {outages:[]} envelope with
+  // recordCount=0 (hasData=true). NARROW set, not EMPTY_DATA_OK_KEYS: the
+  // seeder always publishes the array, so a MISSING canonical key is a real
+  // publish failure → still EMPTY (crit). Siblings ddosAttacks/trafficAnomalies
+  // sit in the broad set because their data key can be wholly absent on quiet
+  // (writeSeedMeta-only path).
+  'outages',
 ]);
 
 // Cascade groups: if any key in the group has data, all empty siblings are OK.
@@ -656,7 +755,8 @@ function isCascadeCovered(name, hasData, keyStrens, keyErrors) {
 function classifyKey(name, redisKey, opts, ctx) {
   const { keyStrens, keyErrors, keyMetaValues, keyMetaErrors, now } = ctx;
   const seedCfg = SEED_META[name];
-  const isOnDemand = !!opts.allowOnDemand && ON_DEMAND_KEYS.has(name);
+  const isOnDemand = !!opts.allowOnDemand && ON_DEMAND_KEYS.has(name)
+    && !(ctx.activatedNames && ctx.activatedNames.has(name));
 
   const meta = readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now);
 
@@ -759,6 +859,38 @@ export default async function handler(req, ctx) {
     return new Response(null, { status: 204, headers });
   }
 
+  const url = new URL(req.url);
+  const compact = url.searchParams.get('compact') === '1';
+  const wantsHistory = url.searchParams.get('history') === '1';
+
+  if (!compact || wantsHistory) {
+    const keyCheck = await validateApiKey(req, { forceKey: true });
+    if (keyCheck.required && !keyCheck.valid) {
+      const error = keyCheck.error === USER_API_KEY_GATEWAY_VALIDATION_ERROR
+        ? 'Invalid API key'
+        : keyCheck.error;
+      // RFC 7235 §3.1 requires WWW-Authenticate on every 401. The challenge
+      // must reflect what this gate actually accepts: validateApiKey reads the
+      // X-WorldMonitor-Key / X-Api-Key headers (or tester cookies) — never
+      // Authorization: Bearer — so advertising a Bearer/OAuth challenge here
+      // sent agents down a flow that cannot succeed (post-#4867 review). The
+      // hint exists because this URL is what old copies of the api-catalog
+      // linkset advertised as the public status endpoint (#4856) — a keyless
+      // caller landing here should learn the public form, not dead-end.
+      return jsonResponse(
+        {
+          error,
+          hint: 'Detailed health requires an operator/enterprise API key. Public status: /api/health?compact=1',
+        },
+        401,
+        {
+          ...headers,
+          'WWW-Authenticate': 'ApiKey realm="worldmonitor-health", header="X-WorldMonitor-Key"',
+        }
+      );
+    }
+  }
+
   // ?history=1 — fast read of the failure-log persisted by previous /api/health
   // probes. Skips the full freshness check (which is expensive — fetches every
   // bootstrap key) and returns only the last-failure snapshot + the deduped
@@ -768,31 +900,28 @@ export default async function handler(req, ctx) {
   //   health:failure-log    — last 50 deduped incidents (7-day TTL)
   // See WM 2026-05-10 — added after a night of UptimeRobot flips that needed
   // direct Upstash inspection to diagnose.
-  {
-    const earlyUrl = new URL(req.url);
-    if (earlyUrl.searchParams.get('history') === '1') {
-      const results = await redisPipeline(
-        [
-          ['GET', 'health:last-failure'],
-          ['LRANGE', 'health:failure-log', '0', '-1'],
-        ],
-        4_000,
-      );
-      const parseJson = (raw) => {
-        if (typeof raw !== 'string') return null;
-        try { return JSON.parse(raw); } catch { return null; }
-      };
-      const lastFailureRaw = results?.[0]?.result;
-      const failureLogRaw = results?.[1]?.result;
-      const body = {
-        lastFailure: parseJson(lastFailureRaw),
-        failureLog: Array.isArray(failureLogRaw)
-          ? failureLogRaw.map(parseJson).filter((e) => e !== null)
-          : [],
-        checkedAt: new Date().toISOString(),
-      };
-      return new Response(JSON.stringify(body, null, 2), { status: 200, headers });
-    }
+  if (wantsHistory) {
+    const results = await redisPipeline(
+      [
+        ['GET', 'health:last-failure'],
+        ['LRANGE', 'health:failure-log', '0', '-1'],
+      ],
+      4_000,
+    );
+    const parseJson = (raw) => {
+      if (typeof raw !== 'string') return null;
+      try { return JSON.parse(raw); } catch { return null; }
+    };
+    const lastFailureRaw = results?.[0]?.result;
+    const failureLogRaw = results?.[1]?.result;
+    const body = {
+      lastFailure: parseJson(lastFailureRaw),
+      failureLog: Array.isArray(failureLogRaw)
+        ? failureLogRaw.map(parseJson).filter((e) => e !== null)
+        : [],
+      checkedAt: new Date().toISOString(),
+    };
+    return new Response(JSON.stringify(body, null, 2), { status: 200, headers });
   }
 
   const now = Date.now();
@@ -802,6 +931,7 @@ export default async function handler(req, ctx) {
     ...Object.values(STANDALONE_KEYS),
   ];
   const allMetaKeys = Object.values(SEED_META).map(s => s.key);
+  const activationEntries = Object.entries(ACTIVATION_MARKERS);
 
   // STRLEN for data keys avoids loading large blobs into memory (OOM prevention).
   // NEG_SENTINEL ('__WM_NEG__') is 10 bytes — strlenIsData() rejects exactly
@@ -811,6 +941,7 @@ export default async function handler(req, ctx) {
     const commands = [
       ...allDataKeys.map(k => ['STRLEN', k]),
       ...allMetaKeys.map(k => ['GET', k]),
+      ...activationEntries.map(([, marker]) => ['EXISTS', marker]),
     ];
     if (!getRedisCredentials()) throw new Error('Redis not configured');
     results = await redisPipeline(commands, 8_000);
@@ -847,8 +978,16 @@ export default async function handler(req, ctx) {
     if (r?.error) keyMetaErrors.set(allMetaKeys[i], r.error);
     keyMetaValues.set(allMetaKeys[i], r?.result ?? null);
   }
+  // activatedNames: keys whose durable activation marker exists — these
+  // leave ON_DEMAND softening permanently (#4927 re-review P1). A marker
+  // read error degrades to not-activated (soft), never to a false alarm.
+  const activatedNames = new Set();
+  for (let i = 0; i < activationEntries.length; i++) {
+    const r = results[allDataKeys.length + allMetaKeys.length + i];
+    if (!r?.error && Number(r?.result) === 1) activatedNames.add(activationEntries[i][0]);
+  }
 
-  const classifyCtx = { keyStrens, keyErrors, keyMetaValues, keyMetaErrors, now };
+  const classifyCtx = { keyStrens, keyErrors, keyMetaValues, keyMetaErrors, activatedNames, now };
   const checks = {};
   const counts = { ok: 0, warn: 0, onDemandWarn: 0, staleContent: 0, crit: 0 };
   let totalChecks = 0;
@@ -936,9 +1075,6 @@ export default async function handler(req, ctx) {
     if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(clear);
   }
 
-  const url = new URL(req.url);
-  const compact = url.searchParams.get('compact') === '1';
-
   const body = {
     status: overall,
     summary: {
@@ -967,9 +1103,34 @@ export default async function handler(req, ctx) {
     if (Object.keys(problems).length > 0) body.problems = problems;
   }
 
+  // Compact is the public keyless form polled by external uptime MONITORS, so it
+  // must NEVER be edge-cached: the prior `s-maxage=60` (#4907, to collapse
+  // dashboard-tab polling) let a shared CDN entry pin a stale WARNING that kept
+  // UptimeRobot reading "down" long AFTER the seed recovered (2026-07-07 — the
+  // literal `?cb=*cachebuster*` was a constant, so it never busted the entry).
+  // no-store guarantees a monitor sees live recovery on its very next poll. The
+  // origin cost is one 196-key Redis pipeline per request — cheap — so losing
+  // the per-tab poll-collapse is a non-issue. All other responses already carry
+  // the no-store defaults from `headers` (a cached 401 pins an auth failure; a
+  // cached 503 masks REDIS_DOWN recovery).
+  let responseHeaders = headers;
+  if (compact) {
+    const { 'CF-Cache-Status': _bypassMarker, ...base } = headers;
+    responseHeaders = {
+      ...base,
+      // no-store so no CDN or browser ever serves a stale health verdict to a
+      // monitor. Deliberately NOT `public` — `public, no-store` is a
+      // self-contradictory signal (RFC 9111 §5.2.2.5: no-store wins, but a
+      // non-compliant proxy could read `public` as permission to cache — the
+      // exact bug class this closes).
+      'Cache-Control': 'no-store, max-age=0',
+      'CDN-Cache-Control': 'no-store',
+    };
+  }
+
   return new Response(JSON.stringify(body, null, compact ? 0 : 2), {
     status: httpStatus,
-    headers,
+    headers: responseHeaders,
   });
 }
 
@@ -980,10 +1141,12 @@ export default async function handler(req, ctx) {
 export const __testing__ = {
   readSeedMeta,
   classifyKey,
+  ACTIVATION_MARKERS,
   STATUS_COUNTS,
   // U7 (Tier 3 parity test): exposed for tests/mcp-bootstrap-parity.test.mjs
   // to walk the canonical seeded-data inventory. Both consts are unexported
   // at module scope by design — this is the test-only escape hatch.
   BOOTSTRAP_KEYS,
   STANDALONE_KEYS,
+  SEED_META,
 };

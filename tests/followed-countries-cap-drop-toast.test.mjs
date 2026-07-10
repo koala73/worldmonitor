@@ -1,9 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
-const ROOT = resolve(new URL('.', import.meta.url).pathname, '..');
+const ROOT = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
 const appSrc = readFileSync(resolve(ROOT, 'src/App.ts'), 'utf8');
 
 describe('followed countries cap-drop toast wiring', () => {
@@ -48,8 +49,8 @@ describe('followed countries cap-drop toast wiring', () => {
     );
     assert.match(
       appSrc,
-      /window\.open\('\/pro#pricing', '_blank', 'noopener'\)/,
-      'toast must give the user an upgrade action without exposing window.opener',
+      /window\.open\('\/pro#pricing', '_blank', 'noopener,noreferrer'\)/,
+      'toast must give the user an upgrade action without exposing window.opener or referrer',
     );
     assert.match(
       appSrc,

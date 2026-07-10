@@ -1,6 +1,6 @@
 ---
 title: "Disease Outbreak Alert Level"
-description: "How the Disease Outbreaks panel derives its three-level categorical alert (ALERT, WARNING, WATCH) from a keyword classifier over normalized item titles and descriptions. Editorial newsroom-triage signal, not a clinical assessment."
+description: "How World Monitor derives ALERT, WARNING, and WATCH tiers for disease outbreaks using a keyword classifier over item titles and descriptions."
 ---
 
 The "Disease Outbreaks" panel labels each item with one of three categorical
@@ -31,8 +31,8 @@ The classifier sees the item's `title` and `desc` fields after they are
 normalized by the per-source parser:
 
 - WHO Disease Outbreak News (`whoNormalizeItem`)
-- HealthMap / ProMED RSS (`rssNormalizeItem`)
-- TGH (`tghNormalizeItem`)
+- CDC HAN and Outbreak News Today RSS (`rssNormalizeItem`)
+- ThinkGlobalHealth disease tracker, backed by ProMED-sourced real-time alerts (`tghNormalizeItem`)
 
 There are no numeric scoring weights. The label is purely categorical and
 the order shown in the panel is `alert > warning > watch`.

@@ -51,6 +51,24 @@ describe('handler: _state stripping', () => {
       'extraKeys must reference STATE_KEY to write _state separately from canonical payload',
     );
   });
+
+  it('seed writes country counts only through afterPublish metadata path', () => {
+    const extraKeysStart = seedSrc.indexOf('extraKeys: [');
+    const afterPublishStart = seedSrc.indexOf('afterPublish: async');
+    assert.ok(extraKeysStart >= 0 && afterPublishStart > extraKeysStart, 'seed must define extraKeys before afterPublish');
+
+    const extraKeysBlock = seedSrc.slice(extraKeysStart, afterPublishStart);
+    assert.doesNotMatch(
+      extraKeysBlock,
+      /COUNTRY_COUNTS_KEY/,
+      'COUNTRY_COUNTS_KEY must not be duplicated in extraKeys; afterPublish writes it with seed-meta for health',
+    );
+    assert.match(
+      seedSrc.slice(afterPublishStart),
+      /writeExtraKeyWithMeta\(\s*COUNTRY_COUNTS_KEY/s,
+      'afterPublish must keep writing COUNTRY_COUNTS_KEY with freshness metadata',
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------

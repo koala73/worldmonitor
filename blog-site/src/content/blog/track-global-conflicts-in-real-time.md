@@ -1,5 +1,5 @@
 ---
-title: "Track Global Conflicts in Real Time: World Monitor's Geopolitical Intelligence"
+title: "Track Global Conflicts in Real Time with World Monitor"
 description: "Monitor active conflicts, military movements, and geopolitical escalation in real time. World Monitor tracks 210+ bases across 9 theaters with live ADS-B data."
 metaTitle: "Track Global Conflicts in Real Time | World Monitor"
 keywords: "real-time conflict map, geopolitical intelligence map, military tracking dashboard, conflict monitoring tool, global conflict tracker"
@@ -166,4 +166,4 @@ The CII scores each country from 0 to 100 using four weighted components: baseli
 
 ---
 
-**Monitor developing situations at [worldmonitor.app](https://worldmonitor.app). Real-time geopolitical intelligence, free and open source.**
+**Monitor developing situations at [worldmonitor.app](https://www.worldmonitor.app). Real-time geopolitical intelligence, free and open source.**

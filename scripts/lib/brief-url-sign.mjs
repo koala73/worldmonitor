@@ -56,9 +56,12 @@ async function hmacSha256(secret, message) {
 }
 
 /**
- * Deterministically sign `${userId}:${issueDate}` and return a
- * base64url-encoded token (43 chars, no padding).
- * @param {string} userId @param {string} issueDate @param {string} secret
+ * Deterministically sign `${userId}:${issueSlot}` and return a
+ * base64url-encoded token (43 chars, no padding). The parameter is
+ * still named issueDate for parity with the edge helper, but the value
+ * is the frozen issue slot.
+ * @param {string} userId @param {string} issueDate issueSlot-shaped value
+ * @param {string} secret
  * @returns {Promise<string>}
  */
 export async function signBriefToken(userId, issueDate, secret) {
@@ -72,6 +75,8 @@ export async function signBriefToken(userId, issueDate, secret) {
 
 /**
  * @param {{ userId: string; issueDate: string; baseUrl: string; secret: string }} opts
+ *   issueDate is the legacy property name for the issueSlot-shaped
+ *   value (`YYYY-MM-DD-HHMM`).
  * @returns {Promise<string>}
  */
 export async function signBriefUrl({ userId, issueDate, baseUrl, secret }) {

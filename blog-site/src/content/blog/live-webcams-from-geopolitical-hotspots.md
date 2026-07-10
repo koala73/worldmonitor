@@ -145,4 +145,4 @@ Yes. The Tauri desktop app includes staggered iframe loading and a custom sideca
 
 ---
 
-**See the world in real time at [worldmonitor.app](https://worldmonitor.app). 31 live webcams, 30+ news streams, zero login required.**
+**See the world in real time at [worldmonitor.app](https://www.worldmonitor.app). 31 live webcams, 30+ news streams, zero login required.**

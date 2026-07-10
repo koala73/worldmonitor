@@ -136,6 +136,25 @@ Vercel project setup:
 4. Redeploy. Axiom infers schema from the first events — no upfront schema
    work needed.
 
+### Plan-limit scanner configuration
+
+The paid-plan notification scanner reads usage from the same observability surfaces but is not on the request path. It runs as a Convex internal cron and writes only compact rollups/notices to Convex; raw request logs stay in Axiom and raw limiter counters stay in Redis.
+
+| Source | Env vars | Used for | Missing behavior |
+|--------|----------|----------|------------------|
+| Axiom query API | `AXIOM_QUERY_TOKEN` or `AXIOM_API_TOKEN` (`AXIOM_QUERY_URL` optional) | API daily requests and API sustained burst rollups from `wm_api_usage` | Scanner reports `missing_axiom_query_token`; it does not assume zero usage |
+| Upstash Redis | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN` | Existing Pro MCP daily counters | Scanner reports `missing_upstash_credentials`; it does not assume zero usage |
+| MCP limiter-hit telemetry | `mcp.rate_limit_hit` log event from `api/mcp/auth.ts` | MCP sustained burst notices | No notice is emitted without durable hit buckets |
+| Resend | `RESEND_API_KEY`, optional `PLAN_LIMIT_EMAIL_FROM` | Customer notification emails | Notice remains pending/failed; hard enforcement readiness stays blocked |
+
+Operators can inspect the hard-enforcement preflight with the internal Convex query:
+
+```sh
+npx convex run apiPlanLimitNotices:getEnforcementReadiness
+```
+
+Treat `ready: false` as a stop sign for paid-plan hard enforcement. The readiness report blocks on stale sources, failed or pending email, and self-serve upgrade gaps such as API Starter users who need API Business while API Business is not currently checkout-enabled.
+
 ### Failure modes (deploy-with-Axiom-down is safe)
 
 | Scenario                              | Behavior                                             |

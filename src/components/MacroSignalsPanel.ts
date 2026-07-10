@@ -1,10 +1,11 @@
 import { Panel } from './Panel';
-import { getRpcBaseUrl } from '@/services/rpc-client';
+import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
-import { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
+
 import type { GetMacroSignalsResponse } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { getHydratedData } from '@/services/bootstrap';
+import { EconomicServiceClient } from '@/services/generated-rpc-clients';
 
 interface MacroSignalData {
   timestamp: string;
@@ -24,7 +25,7 @@ interface MacroSignalData {
   unavailable?: boolean;
 }
 
-const economicClient = new EconomicServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+const getEconomicClient = createLazyClient(() => new EconomicServiceClient(getRpcBaseUrl(), { fetch: rpcFetch }));
 
 /** Map proto response (optional fields = undefined) to MacroSignalData (null for absent values). */
 function mapProtoToData(r: GetMacroSignalsResponse): MacroSignalData {
@@ -153,7 +154,7 @@ export class MacroSignalsPanel extends Panel {
 
   private async refreshFromRpc(): Promise<boolean> {
     try {
-      const res = await economicClient.getMacroSignals({});
+      const res = await getEconomicClient().getMacroSignals({});
       if (!this.element?.isConnected) return false;
       this.data = mapProtoToData(res);
       this.error = null;

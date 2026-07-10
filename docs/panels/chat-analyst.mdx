@@ -1,6 +1,6 @@
 ---
 title: "WM Analyst"
-description: "A conversational AI analyst that answers ad-hoc questions about the current geopolitical, market, military, and forecast picture using WorldMonitor's live caches."
+description: "Conversational AI analyst that answers ad-hoc questions on geopolitics, markets, military, and forecasts using World Monitor's live cache layer."
 ---
 
 The **WM Analyst** panel (internal id `chat-analyst`) is the dashboard's conversational-intelligence surface: a chat interface you can drop a question into — "what's happening in the Red Sea today?", "which economies are most exposed to a Hormuz closure?" — and get a source-aware, structured answer grounded in the live WorldMonitor caches.
@@ -13,6 +13,7 @@ Panel-level controls:
 
 - **Quick action buttons** at the top of the panel — `Situation` (world brief), `Markets`, `Conflicts`, `Forecasts`, `Risk`. Clicking runs a pre-built query.
 - **Domain selector** — `All` / `Geo` / `Market` / `Military` (+ more). Scopes which caches the analyst draws from.
+- **Dashboard control** — an opt-in `Control dashboard` toggle with a `Pause` control. When enabled, schema-validated Analyst action events can focus an already-live panel, move the map view, or toggle permitted map layers. When off or paused, the answer still streams but dashboard actions are skipped.
 - **Composer** — free-form text input; Enter to send.
 
 Panel id is `chat-analyst`; canonical component is `src/components/ChatAnalystPanel.ts`. Title "WM Analyst" per `src/config/panels.ts:52`.
@@ -28,6 +29,12 @@ The panel POSTs to `/api/chat-analyst` (edge function backed by `api/chat-analys
 
 No separate `/chat-analyst/v1/*` RPC surface — this is a first-class edge endpoint, not a proto-generated RPC.
 
+## Dashboard control actions
+
+Dashboard control v1 is in-app and in-process only. `/api/chat-analyst` may stream validated action events alongside the answer, and `src/app/agent-bus-applier.ts` is the only client write boundary that mutates panels or the map. The applier enforces entitlement checks, live panel existence, map availability, variant-allowed layers, renderer executability, and premium layer gating before applying any action.
+
+External MCP write tools, Convex action queues, and cross-user command delivery are not exposed in this version.
+
 ## Refresh cadence
 
 Each send is a fresh LLM call — no caching of analyst answers. Typical response latency is 3-15s depending on question complexity and upstream cache freshness.
@@ -39,4 +46,4 @@ Each send is a fresh LLM call — no caching of analyst answers. Typical respons
 ## API reference
 
 - [AI Intelligence](/ai-intelligence) — overview of the LLM-backed analyst pipeline.
-- For scripted use, the closest MCP equivalents are [`analyze_situation`](/mcp-server#ai-intelligence-live-llm) and [`get_world_brief`](/mcp-server#ai-intelligence-live-llm).
+- For scripted use, the closest MCP equivalents are [`analyze_situation`](/mcp-overview#ai-intelligence-live-llm) and [`get_world_brief`](/mcp-overview#ai-intelligence-live-llm).

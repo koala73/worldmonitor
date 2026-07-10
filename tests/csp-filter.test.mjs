@@ -96,6 +96,26 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
     });
   });
 
+  describe('media-src tts.baidu.com extension injection — WORLDMONITOR-TW', () => {
+    // Baidu read-aloud / TTS extensions inject `<audio src="http://tts.baidu.com/
+    // text2audio?...&text=...">` to speak page content. http: mixed-content the
+    // CSP correctly blocks; we never load tts.baidu.com, so it is third-party
+    // noise. Host-pinned (not protocol-gated) — works even with cspMediaSrcAllowsHttps
+    // false because the http: block can never originate from our own bundle.
+    it('suppresses http: media-src for tts.baidu.com regardless of policy detection', () => {
+      assert.ok(suppress('enforce', 'media-src', 'http://tts.baidu.com/text2audio?lan=en&text=hello', '', false, null, false));
+      assert.ok(suppress('enforce', 'media-src', 'http://tts.baidu.com/text2audio?lan=en&text=hello', '', false, null, true));
+    });
+
+    it('does NOT suppress a tts.baidu.com.evil.com lookalike host', () => {
+      assert.ok(!suppress('enforce', 'media-src', 'http://tts.baidu.com.evil.com/text2audio?text=x', '', false, null, true));
+    });
+
+    it('does NOT suppress http: media-src for an unrelated host (real mixed-content)', () => {
+      assert.ok(!suppress('enforce', 'media-src', 'http://insecure.example.com/stream.m3u8', '', false, null, true));
+    });
+  });
+
   describe('default-src HTTP mixed-content suppression — WORLDMONITOR-S0', () => {
     // Browser link-prefetch / extension fetching a feed-supplied http article
     // URL; falls to the default-src fallback (no prefetch-src set). HTTPS-only
@@ -193,6 +213,49 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
       assert.ok(suppress('enforce', 'connect-src', 'https://translate.gstatic.com/_/translate_http', '', false));
     });
 
+    it('suppresses Google Fonts font files from stale or injected stylesheets', () => {
+      assert.ok(suppress('enforce', 'font-src', 'https://fonts.gstatic.com/s/mulish/v18/1Ptvg83HX_SGhgqk2wotcqA.woff2', '', false));
+    });
+
+    it('suppresses Google Fonts font files with query params', () => {
+      assert.ok(suppress('enforce', 'font-src', 'https://fonts.gstatic.com/s/mulish/v18/1Ptvg83HX_SGhgqk2wotcqA.woff2?display=swap', '', false));
+    });
+
+    it('does NOT suppress non-woff2 Google Fonts paths with woff2 query values', () => {
+      assert.ok(!suppress('enforce', 'font-src', 'https://fonts.gstatic.com/s/mulish/v18/font.woff?kit=abc.woff2', '', false));
+    });
+
+    it('does NOT suppress arbitrary third-party font-src hosts', () => {
+      assert.ok(!suppress('enforce', 'font-src', 'https://fonts.evil.example/s/mulish/v18/font.woff2', '', false));
+    });
+
+    it('suppresses Perplexity Comet overlay webfont injection (WORLDMONITOR-TR)', () => {
+      assert.ok(suppress('enforce', 'font-src', 'https://frontend-cdn.perplexity.ai/_agi_assets/fonts/FKGroteskNeue.woff2', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://frontend-cdn.perplexity.ai/_agi_assets/fonts/FKGroteskNeue.woff', '', false));
+    });
+
+    it('does NOT suppress a perplexity.ai lookalike host or non-font path', () => {
+      assert.ok(!suppress('enforce', 'font-src', 'https://frontend-cdn.perplexity.ai.evil.com/x.woff2', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://frontend-cdn.perplexity.ai/_agi_assets/app.js', '', false));
+    });
+
+    it('suppresses Doubao AI-assistant overlay KaTeX font injection (WORLDMONITOR-TR round 2)', () => {
+      // ByteDance Doubao extension injects KaTeX fonts with a woff2/woff/ttf
+      // fallback chain — all three extensions must be covered.
+      assert.ok(suppress('enforce', 'font-src', 'https://lf-flow-web-cdn.doubao.com/obj/flow-doubao/flow-ext-doubao/cdn-media-assets/KaTeX_Fraktur-Regular.7c187121.woff', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://lf-flow-web-cdn.doubao.com/obj/flow-doubao/flow-ext-doubao/cdn-media-assets/KaTeX_Fraktur-Regular.d3c882a6.woff2', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://lf-flow-web-cdn.doubao.com/obj/flow-doubao/flow-ext-doubao/cdn-media-assets/KaTeX_Fraktur-Bold.b18f59e1.ttf', '', false));
+    });
+
+    it('does NOT suppress a doubao.com lookalike host or non-font path', () => {
+      assert.ok(!suppress('enforce', 'font-src', 'https://lf-flow-web-cdn.doubao.com.evil.com/x.woff2', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'https://lf-flow-web-cdn.doubao.com/obj/flow-doubao/app.js', '', false));
+    });
+
+    it('does NOT suppress Google Fonts under unrelated directives', () => {
+      assert.ok(!suppress('enforce', 'script-src', 'https://fonts.gstatic.com/s/mulish/v18/1Ptvg83HX_SGhgqk2wotcqA.woff2', '', false));
+    });
+
     it('suppresses Facebook Pixel', () => {
       assert.ok(suppress('enforce', 'connect-src', 'https://connect.facebook.net/en_US/fbevents.js', '', false));
     });
@@ -228,6 +291,31 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
       // vendor-CDN CSP regression we want to see.
       assert.ok(!suppress('enforce', 'script-src', 'https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js', '', false));
       assert.ok(!suppress('enforce', 'connect-src', 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json', '', false));
+    });
+
+    it('suppresses Google Fonts CSS injection under style-src* (WORLDMONITOR-J0 round 2)', () => {
+      // Extensions/user-style themes inject <link> stylesheets for families we
+      // never reference (DM Sans, Syne, Roboto). We self-host all fonts, so a
+      // style-src* block on fonts.googleapis.com/css* is always injection.
+      assert.ok(suppress('enforce', 'style-src-elem', 'https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap', '', false));
+      assert.ok(suppress('enforce', 'style-src', 'https://fonts.googleapis.com/css?family=Roboto:wght@400;500&display=swap', '', false));
+    });
+
+    it('does NOT suppress fonts.googleapis.com under other directives or non-css paths', () => {
+      assert.ok(!suppress('enforce', 'font-src', 'https://fonts.googleapis.com/css2?family=DM+Sans', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://fonts.googleapis.com/icon.js', '', false));
+    });
+
+    it('suppresses 6ppn.com extension stylesheet injection (WORLDMONITOR-J0)', () => {
+      assert.ok(suppress('enforce', 'style-src-elem', 'https://www.6ppn.com/ext/assets/style.CMoYtLrp.css?v=uTaroZOITRdUkyChp', '', false));
+    });
+
+    it('suppresses literal [email] placeholder stylesheet URL from a broken extension template', () => {
+      assert.ok(suppress('enforce', 'style-src-elem', 'https://[email]', '', false));
+    });
+
+    it('does NOT suppress arbitrary third-party style-src hosts', () => {
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://styles.evil.example/inject.css', '', false));
     });
   });
 
@@ -303,6 +391,39 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
 
     it('does NOT suppress connect-src to Zscaler (only frame-src is the injection)', () => {
       assert.ok(!suppress('enforce', 'connect-src', 'https://gateway.zscloud.net/api', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('suppresses frame-src for content-filter/security agent vendor frames (WORLDMONITOR-HT)', () => {
+      // NetSTAR inSITE, Techloq, Trend Micro agents frame their own vendor
+      // hosts into every page. frame-src reports origin-only for cross-origin
+      // frames, so these are origin-shaped blockedURIs.
+      assert.ok(suppress('enforce', 'frame-src', 'https://gw-3z9x.iss.netstar-inc.com', '', false, FIRST_PARTY_CONVEX));
+      assert.ok(suppress('enforce', 'frame-src', 'https://filter.techloq.com', '', false, FIRST_PARTY_CONVEX));
+      assert.ok(suppress('enforce', 'frame-src', 'https://pwm-image.trendmicro.com', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('suppresses frame-src for Google-internal extension API hosts (*.clients6.google.com)', () => {
+      assert.ok(suppress('enforce', 'frame-src', 'https://toolytics.pa.clients6.google.com', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress frame-src for lookalike filter-vendor hosts', () => {
+      assert.ok(!suppress('enforce', 'frame-src', 'https://netstar-inc.com.evil.com', '', false, FIRST_PARTY_CONVEX));
+      assert.ok(!suppress('enforce', 'frame-src', 'https://clients6.google.com.evil.com', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress frame-src for arbitrary third-party hosts (rotating extension long tail stays surfaced)', () => {
+      // WORLDMONITOR-HT's rotating merchant-domain tail is deliberately NOT
+      // blanket-suppressed — a future first-party embed regression must surface.
+      assert.ok(!suppress('enforce', 'frame-src', 'https://www.service.com.au', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress frame-src for accounts.google.com / support.google.com (potential first-party sign-in embeds)', () => {
+      assert.ok(!suppress('enforce', 'frame-src', 'https://accounts.google.com', '', false, FIRST_PARTY_CONVEX));
+      assert.ok(!suppress('enforce', 'frame-src', 'https://support.google.com', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress connect-src to the filter vendors (only frame-src is the injection)', () => {
+      assert.ok(!suppress('enforce', 'connect-src', 'https://filter.techloq.com/api', '', false, FIRST_PARTY_CONVEX));
     });
 
     // First-party img-src suppression — same pattern as connect-src+Convex above.

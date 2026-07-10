@@ -136,6 +136,7 @@ export interface ListClimateNewsRequest {
 export interface ListClimateNewsResponse {
   items: ClimateNewsItem[];
   fetchedAt: number;
+  dataAvailable: boolean;
 }
 
 export interface ClimateNewsItem {

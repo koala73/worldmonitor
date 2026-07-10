@@ -31,6 +31,8 @@ describe('LAYER_REGISTRY — deckGLOnly flag', () => {
       'fuelShortages must be marked deckGLOnly');
     assert.equal(LAYER_REGISTRY.diseaseOutbreaks.deckGLOnly, true,
       'diseaseOutbreaks must be marked deckGLOnly');
+    assert.equal(LAYER_REGISTRY.resilienceScore.deckGLOnly, true,
+      'resilienceScore must be marked deckGLOnly');
   });
 
   test('DeckGL-only layers are flat-only (no globe)', () => {
@@ -40,6 +42,7 @@ describe('LAYER_REGISTRY — deckGLOnly flag', () => {
     assert.deepEqual(LAYER_REGISTRY.storageFacilities.renderers, ['flat']);
     assert.deepEqual(LAYER_REGISTRY.fuelShortages.renderers, ['flat']);
     assert.deepEqual(LAYER_REGISTRY.diseaseOutbreaks.renderers, ['flat']);
+    assert.deepEqual(LAYER_REGISTRY.resilienceScore.renderers, ['flat']);
   });
 
   test('layers without deckGLOnly do not accidentally set the flag to false', () => {
@@ -66,6 +69,15 @@ describe('isLayerExecutable — renderer gate', () => {
       'globe mode must NOT execute (no GlobeMap render path)');
     assert.equal(isLayerExecutable('storageFacilities', 'globe', false), false,
       'globe + SVG is impossible in practice but must also not execute');
+  });
+
+  test('resilienceScore returns false on the SVG/mobile flat renderer', () => {
+    assert.equal(isLayerExecutable('resilienceScore', 'flat', true), true,
+      'flat + DeckGL should execute resilienceScore');
+    assert.equal(isLayerExecutable('resilienceScore', 'flat', false), false,
+      'flat + SVG-fallback must NOT execute resilienceScore');
+    assert.equal(isLayerExecutable('resilienceScore', 'globe', true), false,
+      'globe mode must NOT execute resilienceScore');
   });
 
   test('flat-only non-deckGLOnly layer returns true on flat regardless of DeckGL', () => {

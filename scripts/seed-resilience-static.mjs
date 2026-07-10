@@ -19,6 +19,7 @@ import {
   resolveIso2,
 } from './_country-resolver.mjs';
 import { isInRankableUniverse } from './shared/rankable-universe.mjs';
+import wgiIndicatorKeys from './shared/wgi-indicator-keys.json' with { type: 'json' };
 
 export { createCountryResolvers, resolveIso2 } from './_country-resolver.mjs';
 
@@ -49,7 +50,7 @@ const LOCK_DOMAIN = 'resilience:static';
 const LOCK_TTL_MS = 2 * 60 * 60 * 1000;
 const TOTAL_DATASET_SLOTS = 11;
 const COUNTRY_DATASET_FIELDS = ['wgi', 'infrastructure', 'gpi', 'rsf', 'who', 'fao', 'aquastat', 'iea', 'tradeToGdp', 'fxReservesMonths', 'appliedTariffRate'];
-const WGI_INDICATORS = ['VA.EST', 'PV.EST', 'GE.EST', 'RQ.EST', 'RL.EST', 'CC.EST'];
+export const WGI_INDICATORS = wgiIndicatorKeys;
 const INFRASTRUCTURE_INDICATORS = ['EG.ELC.ACCS.ZS', 'IS.ROD.PAVE.ZS', 'EG.USE.ELEC.KH.PC', 'IT.NET.BBND.P2'];
 const WHO_INDICATORS = {
   hospitalBeds: 'WHS6_102',
@@ -62,6 +63,10 @@ const WHO_INDICATORS = {
 const WORLD_BANK_BASE = 'https://api.worldbank.org/v2';
 const WHO_BASE = 'https://ghoapi.azureedge.net/api';
 const RSF_RANKING_URL = 'https://rsf.org/en/ranking';
+const RSF_TOP_RANK_DIRECTION_GUARD_MAX_RANK = 10;
+// Top-10 RSF countries currently score in the 5-20 range; 30 is a conservative
+// upper bound before treating the feed as direction-inverted.
+const RSF_TOP_RANK_ABUSE_INDEX_MAX_SCORE = 30;
 const EUROSTAT_ENERGY_URL = 'https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/nrg_ind_id?freq=A';
 const WB_ENERGY_IMPORT_INDICATOR = 'EG.IMP.CONS.ZS';
 const COUNTRY_RESOLVERS = createCountryResolvers();
@@ -382,6 +387,24 @@ function parseDecimal(value) {
   return safeNum(String(value || '').replace(',', '.'));
 }
 
+function validateRsfFeedDirection(byCountry) {
+  const topRanked = [...byCountry.values()]
+    .filter((row) => row.rank <= RSF_TOP_RANK_DIRECTION_GUARD_MAX_RANK);
+
+  if (byCountry.size >= 100 && topRanked.length === 0) {
+    throw new Error('RSF ranking feed direction guard found no top-ranked countries');
+  }
+
+  const highScoreTopRanked = topRanked.filter((row) => row.score > RSF_TOP_RANK_ABUSE_INDEX_MAX_SCORE);
+  if (highScoreTopRanked.length === 0) return;
+
+  const examples = highScoreTopRanked
+    .slice(0, 3)
+    .map((row) => `rank ${row.rank} score ${row.score}`)
+    .join(', ');
+  throw new Error(`RSF ranking feed direction guard failed: top-ranked countries must have low lower-is-better abuse-index scores (${examples})`);
+}
+
 export function parseRsfRanking(html) {
   const byCountry = new Map();
   const rowRegex = /^\s*\|(\d+)\|([^|]+)\|([0-9]+(?:[.,][0-9]+)?)\|([^|]+)\|\s*(?:<[^>]+>)?\s*$/gm;
@@ -400,6 +423,7 @@ export function parseRsfRanking(html) {
       year: null,
     });
   }
+  validateRsfFeedDirection(byCountry);
   return byCountry;
 }
 
@@ -947,15 +971,20 @@ async function readJsonKey(key) {
  *   { countries: { [iso2]: { ipcPhase, phase, peopleInCrisis, year, source } },
  *     fetchedAt, source, count, seedYear }
  */
-export function buildFaoAggregate(faoMap, seedYear, seededAt) {
+export function buildFaoAggregate(faoMap, seedYear, seededAt, eligibleCountryCodes = null) {
+  const eligible = eligibleCountryCodes
+    ? new Set([...eligibleCountryCodes].map((code) => String(code).toUpperCase()))
+    : null;
   const countries = {};
   let count = 0;
   for (const [iso2, entry] of faoMap.entries()) {
+    const countryCode = String(iso2).toUpperCase();
+    if (eligible ? !eligible.has(countryCode) : !isInRankableUniverse(countryCode)) continue;
     if (!entry || typeof entry !== 'object') continue;
     const phaseMatch = typeof entry.phase === 'string' ? entry.phase.match(/\d+/) : null;
     const ipcPhase = phaseMatch ? Number(phaseMatch[0]) : null;
     if (ipcPhase == null || ipcPhase < 3) continue;
-    countries[iso2] = {
+    countries[countryCode] = {
       ipcPhase,
       phase: entry.phase,
       peopleInCrisis: entry.peopleInCrisis ?? null,
@@ -970,7 +999,26 @@ export function buildFaoAggregate(faoMap, seedYear, seededAt) {
     fetchedAt: seededAt,
     seedYear,
     source: 'hdx-ipc',
+    status: 'ok',
   };
+}
+
+export function buildFaoAggregateForPublish(datasetMaps, failedDatasets, recovery, seedYear, seededAt, eligibleCountryCodes) {
+  const faoFailed = failedDatasets.includes('fao');
+  const recoveredFaoCount = safeNum(recovery?.recoveredDatasets?.fao?.recordCount) ?? 0;
+  if (faoFailed && recoveredFaoCount <= 0) {
+    return {
+      countries: {},
+      count: 0,
+      fetchedAt: seededAt,
+      seedYear,
+      source: 'hdx-ipc',
+      status: 'error',
+      failed: true,
+      failedDatasets: ['fao'],
+    };
+  }
+  return buildFaoAggregate(datasetMaps.fao ?? new Map(), seedYear, seededAt, eligibleCountryCodes);
 }
 
 async function publishSuccess(countryPayloads, manifest, meta, { faoAggregate } = {}) {
@@ -1144,13 +1192,20 @@ export async function seedResilienceStatic() {
     failedDatasets,
   });
 
-  // Piggyback on the same fetch: the FAO dataset map is already in memory,
-  // just reshape and publish as an aggregate readable by the weekly
-  // validation cron's Outcome-Backtest (resilience:static:fao). Skip when
-  // the FAO fetch itself failed — the rest of the snapshot is still valid.
-  const faoAggregate = failedDatasets.includes('fao')
-    ? null
-    : buildFaoAggregate(datasetMaps.fao ?? new Map(), seedYear, seededAt);
+  // Piggyback on the same fetch/recovery path: the FAO dataset map is
+  // already in memory, just reshape and publish as an aggregate readable by
+  // the weekly validation cron's Outcome-Backtest (resilience:static:fao).
+  // If FAO failed and recovery found no prior FAO rows, publish an explicit
+  // failed/empty aggregate so a prior long-lived FAO key cannot remain fresh
+  // under the shared seed-meta:resilience:static heartbeat.
+  const faoAggregate = buildFaoAggregateForPublish(
+    datasetMaps,
+    failedDatasets,
+    recovery,
+    seedYear,
+    seededAt,
+    countryPayloads.keys(),
+  );
 
   await publishSuccess(countryPayloads, manifest, meta, { faoAggregate });
 

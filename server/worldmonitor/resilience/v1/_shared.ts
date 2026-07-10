@@ -89,7 +89,7 @@ export function isPillarCombineEnabled(): boolean {
 // When on: `scoreEnergy` uses the v2 inputs under the Option B
 // (power-system security) framing:
 //   - importedFossilDependence = EG.ELC.FOSL.ZS × max(EG.IMP.CONS.ZS, 0) / 100   (weight 0.35)
-//   - lowCarbonGenerationShare = EG.ELC.NUCL.ZS + EG.ELC.RNEW.ZS                 (weight 0.20)
+//   - lowCarbonGenerationShare = OWID Grapher share-electricity-low-carbon      (weight 0.20)
 //   - powerLossesPct           = EG.ELC.LOSS.ZS                                  (weight 0.20)
 //   - euGasStorageStress       = legacy gasStorageStress scoped to EU            (weight 0.10)
 //   - energyPriceStress        = legacy energyPriceStress                        (weight 0.15)
@@ -195,7 +195,23 @@ export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 12 * 60 * 60;
 // currencyExternal now scores inflation stability around a low-positive target
 // band instead of treating deflation/0% inflation as perfect, and blend math
 // rejects NaN scores rather than consuming their weights.
-export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v22:';
+// v22→v23 bump batches three same-tag `pc` scorer changes: import-HHI stale /
+// missing source years now derate certainty coverage (#4088), infrastructure
+// treats an observed outage feed with zero outages as observed-quiet (score 100)
+// matching cyberDigital (P3-8), and WTO tradePolicy restriction/barrier rows now
+// score one-row-per-reporter severity instead of stale count anchors (P2-1).
+// Same `pc` formula tag, but recovery, infrastructure, tradePolicy, pillar, and
+// overall scores can move.
+// v23→v24 bump for country-resilience audit round 5 R5-2 / PR #4101:
+// governance WGI indicator slots now preserve each WGI series as its own
+// signal instead of relying on drift-prone slot semantics. The formula tag is
+// still `pc`, but governance, state-continuity, pillar, and overall payloads can
+// move, so cached score entries must not survive the methodology change.
+// v24→v25 bump for issue #4009: cyberDigital now groups cyber threats by
+// stable firstSeenAt discovery day and decays old one-day bursts while
+// allowing sustained multi-day pressure to reach the cap. Same `pc` formula
+// tag, but infrastructure, pillar, and overall payloads can move.
+export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v25:';
 // Bumped from v4 to v5 in the pillar-combined activation PR. Provides
 // a clean slate at PR deploy so pre-PR history points (which were
 // written without a formula tag) do not mix with tagged points. NOTE:
@@ -260,7 +276,18 @@ export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v22:';
 // v16→v17 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX v21→v22 for
 // the inflation-stability scorer change; otherwise old and new currency
 // external baselines would mix inside the rolling 30-day trend window.
-export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v17:';
+// v17→v18 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX v22→v23 for
+// the batched import-HHI certainty derate, P3-8 outage semantics, and WTO
+// severity scoring changes; otherwise pre-change and post-change scores would
+// mix inside the rolling 30-day trend window and manufacture deploy-day trends.
+// v18→v19 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX v23→v24 for
+// the WGI governance indicator-slot semantics change. History points written
+// from pre-change governance/state-continuity scores must not mix with v24
+// scores inside the rolling 30-day trend window.
+// v19→v20 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX v24→v25 for
+// issue #4009 so pre-smoothing cyberDigital history points do not mix with
+// discovery-decayed points inside the rolling 30-day trend window.
+export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v20:';
 // v12 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX (v11 → v12)
 // for PR 3A §net-imports denominator. As with the score prefix, the
 // version bump is a belt — the suspenders are cache-only metadata on
@@ -297,7 +324,18 @@ export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v17:';
 // v21→v22 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX for the
 // inflation-stability scorer change so the public ranking recomputes against
 // v22 score entries instead of serving pre-fix aggregates for 12h.
-export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v22';
+// v22→v23 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX for the batched
+// import-HHI certainty derate, P3-8 outage semantics, and WTO severity scoring
+// changes so the public ranking recomputes against v23 score entries instead
+// of serving pre-fix aggregates for 12h.
+// v23→v24 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX for the PR #4101
+// WGI governance indicator-slot semantics change so the public ranking
+// recomputes against v24 score entries instead of serving pre-change aggregates
+// for 12h.
+// v24→v25 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX for issue #4009
+// so the public ranking recomputes against discovery-decayed cyberDigital score
+// entries instead of serving pre-change aggregates for 12h.
+export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v25';
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 // v2→v3: issue #3967. v2 intervals were still generated by jittering
 // six-domain weights after the pillar-combined score formula activated,
@@ -308,7 +346,16 @@ export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 // perturb around, so old interval bands must not be reused.
 // v5→v6: P2-N2 changes currencyExternal score inputs under the same formula
 // tag, so old sensitivity bands must not be served with v22 scores.
-export const RESILIENCE_INTERVAL_KEY_PREFIX = 'resilience:intervals:v6:';
+// v6→v7: the v23 batch changes same-tag `pc` baselines through import-HHI
+// certainty coverage, P3-8 outage semantics, and WTO severity scoring, so old
+// rank-stability bands must not be served with v23 scores.
+// v7→v8: PR #4101 changes same-tag `pc` baselines through governance WGI
+// indicator-slot semantics, so old rank-stability bands must not be served
+// with v24 scores.
+// v8→v9: issue #4009 changes same-tag `pc` cyberDigital baselines through
+// discovery-day smoothing, so old rank-stability bands must not be served with
+// v25 scores.
+export const RESILIENCE_INTERVAL_KEY_PREFIX = 'resilience:intervals:v9:';
 export const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
 export const RESILIENCE_STATIC_META_KEY = 'seed-meta:resilience:static';
 export const RESILIENCE_RANKING_META_KEY = 'seed-meta:resilience:ranking';
@@ -349,11 +396,13 @@ interface ResilienceHistoryPoint {
   formula: CacheFormulaTag;
 }
 
-interface CachedScoreIntervalPayload extends ScoreInterval {
-  _formula?: CacheFormulaTag;
-  draws?: number;
-  computedAt?: string;
-  methodology?: string;
+export interface ResilienceIntervalPayload {
+  p05?: unknown;
+  p95?: unknown;
+  _formula?: unknown;
+  draws?: unknown;
+  computedAt?: unknown;
+  methodology?: unknown;
 }
 
 interface ResilienceStaticIndex {
@@ -379,10 +428,8 @@ function intervalCacheKey(countryCode: string): string {
 }
 
 async function readScoreInterval(countryCode: string): Promise<ScoreInterval | undefined> {
-  const raw = await getCachedJson(intervalCacheKey(countryCode), true) as CachedScoreIntervalPayload | null;
-  if (!raw || typeof raw.p05 !== 'number' || typeof raw.p95 !== 'number') return undefined;
-  if (raw._formula !== currentCacheFormula()) return undefined;
-  return { p05: raw.p05, p95: raw.p95 };
+  const raw = await getCachedJson(intervalCacheKey(countryCode), true) as ResilienceIntervalPayload | null;
+  return toCurrentScoreInterval(raw);
 }
 
 function historyKey(countryCode: string): string {
@@ -864,6 +911,36 @@ export function rankingCacheTagMatches(payload: unknown): boolean {
   const tag = (payload as { _formula?: unknown })._formula;
   const intervalMethodology = (payload as { _intervalMethodology?: unknown })._intervalMethodology;
   return tag === currentCacheFormula() && intervalMethodology === RESILIENCE_INTERVAL_METHODOLOGY;
+}
+
+export function isCurrentResilienceIntervalPayload(
+  value: unknown,
+): value is ResilienceIntervalPayload & {
+  p05: number;
+  p95: number;
+  _formula: string;
+  methodology: typeof RESILIENCE_INTERVAL_METHODOLOGY;
+} {
+  if (!value || typeof value !== 'object') return false;
+  const payload = value as ResilienceIntervalPayload;
+  return (
+    typeof payload.p05 === 'number' &&
+    Number.isFinite(payload.p05) &&
+    typeof payload.p95 === 'number' &&
+    Number.isFinite(payload.p95) &&
+    payload.p05 >= 0 &&
+    payload.p05 <= 100 &&
+    payload.p95 >= 0 &&
+    payload.p95 <= 100 &&
+    payload.p05 <= payload.p95 &&
+    payload._formula === currentCacheFormula() &&
+    payload.methodology === RESILIENCE_INTERVAL_METHODOLOGY
+  );
+}
+
+export function toCurrentScoreInterval(value: unknown): ScoreInterval | undefined {
+  if (!isCurrentResilienceIntervalPayload(value)) return undefined;
+  return { p05: value.p05, p95: value.p95 };
 }
 
 export async function ensureResilienceScoreCached(countryCode: string, reader?: ResilienceSeedReader): Promise<GetResilienceScoreResponse> {

@@ -22,6 +22,15 @@ const KEYS = {
   customsRevenue: 'trade:customs-revenue:v1',
 };
 
+// NOTE (issue #4864): these TTLs are DELIBERATELY left at 8h. The data-loss fix
+// ("manual seed required" — canonical key lapsed and could not be recreated) is the
+// lockTtlMs bump in runSeed opts below, which lets slow-but-legit runs complete and
+// reach atomicPublish again — restoring republishing every 6h so the key stays alive
+// and, once lost, is RECOVERABLE on the next good run (before, it never republished).
+// Widening these TTLs for extra gap-buffer is a valid follow-up but NOT free: each is
+// co-pinned to a health-check maxStaleMin (see tests/trade-policy-tariffs.test.mjs —
+// data-key TTL must satisfy maxStaleMin ∈ [TTL_min, TTL_min+120] or it opens a silent
+// EMPTY / false-STALE window), so raising a TTL means moving its maxStaleMin in lockstep.
 const SHIPPING_TTL = 28800; // 8h — 2h buffer over 6h cron cadence (was 1h = 5h expired gap)
 const TRADE_TTL = 28800; // 8h — 2h buffer over 6h cron cadence (was 6h = 0 buffer)
 const TARIFF_TTL = 28800; // 8h — 2h buffer over 6h cron cadence (was TRADE_TTL=6h = 0 buffer)
@@ -70,6 +79,10 @@ const WTO_CODE_TO_ISO2 = { ..._un2iso2 };
 
 function getReporterIso2() {
   return ALL_REPORTERS.map(c => WTO_CODE_TO_ISO2[c]).filter(Boolean);
+}
+
+export function deriveWtoSeverityStatus(value) {
+  return value > 10 ? 'high' : value > 5 ? 'moderate' : 'low';
 }
 
 // ─── Shipping Rates (FRED) ───
@@ -501,7 +514,7 @@ async function fetchTradeBarriers() {
       measureType: gap > 10 ? 'High agricultural protection' : gap > 5 ? 'Moderate agricultural protection' : 'Low tariff gap',
       productDescription: 'Agricultural vs Non-agricultural products',
       objective: gap > 0 ? 'Agricultural sector protection' : 'Uniform tariff structure',
-      status: gap > 10 ? 'high' : gap > 5 ? 'moderate' : 'low',
+      status: deriveWtoSeverityStatus(gap),
       dateDistributed: year, sourceUrl: 'https://stats.wto.org',
     });
   }
@@ -550,7 +563,7 @@ async function fetchTradeRestrictions() {
       reportingCountry: String(row.ReportingEconomy ?? cc),
       affectedCountry: 'All trading partners', productSector: 'All products',
       measureType: 'WTO MFN Baseline', description: `WTO MFN baseline: ${value.toFixed(1)}%`,
-      status: value > 10 ? 'high' : value > 5 ? 'moderate' : 'low',
+      status: deriveWtoSeverityStatus(value),
       notifiedAt: year, sourceUrl: 'https://stats.wto.org',
     };
   }).filter(Boolean).sort((a, b) => {
@@ -803,6 +816,15 @@ if (process.argv[1]?.endsWith('seed-supply-chain-trade.mjs')) {
   runSeed('supply_chain', 'shipping', KEYS.shipping, fetchAll, {
     validateFn: validate,
     ttlSeconds: SHIPPING_TTL,
+    // fetchAll runs 9 fetchers via Promise.allSettled, so total = the slowest branch;
+    // the WTO branches (barriers/restrictions/flows over ~239 reporters) were budgeted
+    // for the 6h cron ("~10min worst case") and routinely exceed the default 240s
+    // fetch-phase deadline (lockTtlMs 120s + 120s margin), tripping the #4786 backstop
+    // WITHOUT ever reaching atomicPublish (issue #4864). Every fetch is bounded (15/20/60s
+    // AbortSignal.timeout) — no non-settling await — so this is legitimate cumulative
+    // latency. Size lockTtlMs to the WTO design budget so slow-but-legit runs complete and
+    // republish (which recreates an expired key and restores the graceful self-heal).
+    lockTtlMs: 900_000, // 15min → deadline 17min
     sourceVersion: 'fred-wto-sse-bdi-budgetlab',
 
     declareRecords,

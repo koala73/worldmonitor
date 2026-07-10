@@ -1,9 +1,12 @@
 import type { AppContext, AppModule } from '@/app/app-context';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { enqueuePanelCall } from '@/app/pending-panel-data';
-import type { NewsItem, MapLayers, SocialUnrestEvent } from '@/types';
+import { markLcpDebug } from '@/utils/lcp-debug';
+import { getSignalAggregator, type SignalAggregator } from '@/app/lazy-services';
+import { getMilitaryVesselsModule, isVesselRuntimeStoppedError } from '@/services/military-vessels-lazy';
+import type { NewsItem, MapLayers, SocialUnrestEvent, MilitaryFlight } from '@/types';
 import type { MarketData } from '@/types';
-import type { TimeRange } from '@/components';
+import type { TimeRange } from '@/components/MapContainer';
 import {
   FEEDS,
   CANONICAL_FEEDS,
@@ -16,26 +19,18 @@ import {
   isPanelInVariantDefaults,
 } from '@/config';
 import { resolveNewsCategories, enabledNewsCategoryKeys } from '@/config/feed-resolution';
+import {
+  runNewsLoadPass,
+  type NewsCategoryLoadOptions,
+  type NewsIntelLoadOptions,
+} from '@/app/news-loader-sequencing';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES } from '@/config/geo';
 import { tokenizeForMatch, matchKeyword } from '@/utils/keyword-match';
 import { withTimeout } from '@/utils/with-timeout';
 import {
-  fetchCategoryFeeds,
-  getFeedFailures,
-  fetchMultipleStocks,
-  fetchCommodityQuotes,
-  fetchSectors,
-  warmCommodityCache,
-  warmSectorCache,
-  fetchCrypto,
-  fetchCryptoSectors,
-  fetchDefiTokens,
-  fetchAiTokens,
-  fetchOtherTokens,
   fetchPredictions,
   fetchEarthquakes,
   fetchWeatherAlerts,
-  fetchFredData,
   fetchInternetOutages,
   fetchTrafficAnomalies,
   fetchDdosAttacks,
@@ -43,15 +38,10 @@ import {
   fetchAisSignals,
   getAisStatus,
   isAisConfigured,
-  fetchCableActivity,
   fetchCableHealth,
   fetchProtestEvents,
   getProtestStatus,
-  fetchFlightDelays,
   fetchMilitaryFlights,
-  fetchMilitaryVessels,
-  initMilitaryVesselStream,
-  isMilitaryVesselTrackingConfigured,
   fetchUSNIFleetReport,
   updateBaseline,
   calculateDeviation,
@@ -61,26 +51,6 @@ import {
   fetchGdeltTensions,
   fetchNaturalEvents,
   fetchRecentAwards,
-  fetchOilAnalytics,
-  fetchCrudeInventoriesRpc,
-  fetchNatGasStorageRpc,
-  getEuGasStorageData,
-  getOilStocksAnalysisData,
-  fetchLngVulnerability,
-  getEcbFxRatesData,
-  fetchBisData,
-  fetchBlsData,
-  fetchCyberThreats,
-  drainTrendingSignals,
-  fetchTradeRestrictions,
-  fetchTariffTrends,
-  fetchTradeFlows,
-  fetchComtradeFlows,
-  fetchTradeBarriers,
-  fetchCustomsRevenue,
-  fetchShippingRates,
-  fetchChokepointStatus,
-  fetchCriticalMinerals,
   fetchSanctionsPressure,
   fetchRadiationWatch,
 } from '@/services';
@@ -103,20 +73,20 @@ import {
   type StockAnalysisHistory,
 } from '@/services/stock-analysis-history';
 import { checkBatchForBreakingAlerts, dispatchOrefBreakingAlert } from '@/services/breaking-news-alerts';
-import { effectivePubDateMs } from '@/services/feed-date';
+import { displayPubDateMs, effectivePubDateMs } from '@/services/feed-date';
 import { mlWorker } from '@/services/ml-worker';
 import { clusterNewsHybrid } from '@/services/clustering';
 import { ingestProtests, ingestFlights, ingestVessels, ingestEarthquakes, detectGeoConvergence, geoConvergenceToSignal } from '@/services/geo-convergence';
-import { signalAggregator } from '@/services/signal-aggregator';
 import { updateAndCheck, consumeServerAnomalies, fetchLiveAnomalies } from '@/services/temporal-baseline';
 import { fetchAllFires, flattenFires, computeRegionStats, toMapFires } from '@/services/wildfires';
-import { analyzeFlightsForSurge, surgeAlertToSignal, detectForeignMilitaryPresence, foreignPresenceToSignal, type TheaterPostureSummary } from '@/services/military-surge';
+import type { TheaterPostureSummary } from '@/services/military-surge';
 import { fetchCachedTheaterPosture } from '@/services/cached-theater-posture';
-import { ingestProtestsForCII, ingestMilitaryForCII, ingestNewsForCII, ingestOutagesForCII, ingestConflictsForCII, ingestUcdpForCII, ingestHapiForCII, ingestDisplacementForCII, ingestClimateForCII, ingestStrikesForCII, ingestOrefForCII, ingestAviationForCII, ingestAdvisoriesForCII, ingestGpsJammingForCII, ingestAisDisruptionsForCII, ingestSatelliteFiresForCII, ingestCyberThreatsForCII, ingestTemporalAnomaliesForCII, ingestEarthquakesForCII, ingestSanctionsForCII, isInLearningMode, resetHotspotActivity, setIntelligenceSignalsLoaded, hasAnyIntelligenceData, calculateCII } from '@/services/country-instability';
+import { ingestProtestsForCII, ingestMilitaryForCII, ingestNewsForCII, ingestOutagesForCII, ingestConflictsForCII, ingestUcdpForCII, ingestHapiForCII, ingestDisplacementForCII, ingestClimateForCII, ingestStrikesForCII, ingestOrefForCII, ingestAviationForCII, ingestAdvisoriesForCII, ingestGpsJammingForCII, ingestAisDisruptionsForCII, ingestSatelliteFiresForCII, ingestCyberThreatsForCII, ingestTemporalAnomaliesForCII, ingestEarthquakesForCII, ingestSanctionsForCII, isInLearningMode, resetHotspotActivity, calculateCII, type CountryScore } from '@/services/country-instability';
 import { fetchGpsInterference } from '@/services/gps-interference';
 import { fetchSatelliteTLEs, initSatRecs, propagatePositions, startPropagationLoop } from '@/services/satellites';
 import type { SatRecEntry } from '@/services/satellites';
 import { dataFreshness, type DataSourceId } from '@/services/data-freshness';
+import type { CorrelationSignal } from '@/services/correlation';
 import { fetchConflictEvents, fetchUcdpClassifications, fetchHapiSummary, fetchUcdpEvents, deduplicateAgainstAcled, fetchIranEvents } from '@/services/conflict';
 import { fetchUnhcrPopulation } from '@/services/displacement';
 import { fetchClimateAnomalies } from '@/services/climate';
@@ -135,47 +105,48 @@ import { isDesktopRuntime, toApiUrl } from '@/services/runtime';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { t, getCurrentLanguage } from '@/services/i18n';
 import { getHydratedData } from '@/services/bootstrap';
-import { ingestHeadlines } from '@/services/trending-keywords';
 import type { ListFeedDigestResponse } from '@/generated/client/worldmonitor/news/v1/service_client';
 import type { GetSectorSummaryResponse, ListMarketQuotesResponse, ListCommodityQuotesResponse } from '@/generated/client/worldmonitor/market/v1/service_client';
-import type { SectorValuation } from '@/components/MarketPanel';
-import { mountCommunityWidget } from '@/components/CommunityWidget';
-import { ResearchServiceClient } from '@/generated/client/worldmonitor/research/v1/service_client';
-import {
-  MarketPanel,
-  StockAnalysisPanel,
-  StockBacktestPanel,
-  HeatmapPanel,
-  CommoditiesPanel,
-  CryptoPanel,
-  CryptoHeatmapPanel,
-  DefiTokensPanel,
+import type {
   AiTokensPanel,
+  CommoditiesPanel,
+  CryptoHeatmapPanel,
+  CryptoPanel,
+  DefiTokensPanel,
+  HeatmapPanel,
+  MarketPanel,
   OtherTokensPanel,
-  PredictionPanel,
-  MonitorPanel,
-  InsightsPanel,
-  CIIPanel,
-  InternetDisruptionsPanel,
-  StrategicPosturePanel,
-  EconomicPanel,
-  EnergyComplexPanel,
-  TechReadinessPanel,
-  UcdpEventsPanel,
-  TradePolicyPanel,
-  SupplyChainPanel,
-  DiseaseOutbreaksPanel,
-  SocialVelocityPanel,
-  WsbTickerScannerPanel,
-  AAIISentimentPanel,
-  MarketBreadthPanel,
-} from '@/components';
-import { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
+  SectorValuation,
+} from '@/components/MarketPanel';
+import { mountCommunityWidget } from '@/components/CommunityWidget';
+
+import type { StockAnalysisPanel } from '@/components/StockAnalysisPanel';
+import type { StockBacktestPanel } from '@/components/StockBacktestPanel';
+import type { PredictionPanel } from '@/components/PredictionPanel';
+import type { MonitorPanel } from '@/components/MonitorPanel';
+import type { InsightsPanel } from '@/components/InsightsPanel';
+import type { ThreatTimelinePanel } from '@/components/ThreatTimelinePanel';
+import type { InternetDisruptionsPanel } from '@/components/InternetDisruptionsPanel';
+import type { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
+import type { EconomicPanel } from '@/components/EconomicPanel';
+import type { EnergyComplexPanel } from '@/components/EnergyComplexPanel';
+import type { TechReadinessPanel } from '@/components/TechReadinessPanel';
+import type { UcdpEventsPanel } from '@/components/UcdpEventsPanel';
+import type { TradePolicyPanel } from '@/components/TradePolicyPanel';
+import type { SupplyChainPanel } from '@/components/SupplyChainPanel';
+import type { DiseaseOutbreaksPanel } from '@/components/DiseaseOutbreaksPanel';
+import type { SocialVelocityPanel } from '@/components/SocialVelocityPanel';
+import type { WsbTickerScannerPanel } from '@/components/WsbTickerScannerPanel';
+import type { AAIISentimentPanel } from '@/components/AAIISentimentPanel';
+import type { MarketBreadthPanel } from '@/components/MarketBreadthPanel';
+import type { SatelliteFiresPanel } from '@/components/SatelliteFiresPanel';
 import { classifyNewsItem } from '@/services/positive-classifier';
 import { fetchGivingSummary } from '@/services/giving';
 import { fetchProgressData } from '@/services/progress-data';
 import { fetchConservationWins } from '@/services/conservation-data';
-import { fetchRenewableEnergyData, fetchEnergyCapacity } from '@/services/renewable-energy-data';
+// #4571: renewable-energy-data (+ its transitive economic edge) dynamic-imported
+// inside loadRenewableData so it doesn't parse/execute at boot — the renewable
+// panel is below-fold and its load is viewport-gated (shouldLoad('renewable')).
 import { checkMilestones } from '@/services/celebration';
 import { fetchHappinessScores } from '@/services/happiness-data';
 import { fetchRenewableInstallations } from '@/services/renewable-installations';
@@ -186,26 +157,24 @@ import type { HappyContentCategory } from '@/services/positive-classifier';
 import { fetchKindnessData } from '@/services/kindness-data';
 import { getPersistentCache, setPersistentCache } from '@/services/persistent-cache';
 import { getActiveFrameworkForPanel, subscribeFrameworkChange } from '@/services/analysis-framework-store';
-import {
-  buildDailyMarketBrief,
-  cacheDailyMarketBrief,
-  getCachedDailyMarketBrief,
-  shouldRefreshDailyBrief,
-  type RegimeMacroContext,
-  type YieldCurveContext,
-  type SectorBriefContext,
+import type {
+  RegimeMacroContext,
+  YieldCurveContext,
+  SectorBriefContext,
 } from '@/services/daily-market-brief';
-import { fetchCachedRiskScores } from '@/services/cached-risk-scores';
+import { fetchCachedRiskScores, getCachedScores, toCountryScore, type CachedRiskScores } from '@/services/cached-risk-scores';
 import type { ThreatLevel as ClientThreatLevel } from '@/types';
 import type { NewsItem as ProtoNewsItem, ThreatLevel as ProtoThreatLevel } from '@/generated/client/worldmonitor/news/v1/service_client';
 import { fetchMarketImplications } from '@/services/market-implications';
 import { fetchDiseaseOutbreaks } from '@/services/disease-outbreaks';
 import { fetchSocialVelocity } from '@/services/social-velocity';
-import { fetchShippingStress } from '@/services/supply-chain';
 import { getTopActiveGeoHubs } from '@/services/geo-activity';
-import { getTopActiveHubs } from '@/services/tech-activity';
+// getTopActiveHubs is lazy-imported at its call sites (applyTechHubActivities) so
+// the tech-activity → tech-hub-index → ~62KB tech-geo chain stays off the eager
+// dashboard critical path (#4404).
 import type { GeoHubsPanel } from '@/components/GeoHubsPanel';
 import type { TechHubsPanel } from '@/components/TechHubsPanel';
+import { ResearchServiceClient } from '@/services/generated-rpc-clients';
 
 const PROTO_TO_CLIENT_LEVEL: Record<ProtoThreatLevel, ClientThreatLevel> = {
   THREAT_LEVEL_UNSPECIFIED: 'info',
@@ -253,15 +222,136 @@ function protoItemToNewsItem(p: ProtoNewsItem): NewsItem {
     // empty string otherwise. Consumers render the headline and fall back to
     // snippet as a secondary line when non-empty.
     ...(p.snippet ? { snippet: p.snippet } : {}),
+    // Ingest-extracted tickers (#4922a, proto field 13). Runtime guard on
+    // top of the generated type: persisted last-good digests from before
+    // the rollout carry items without the field.
+    ...(p.tickers && p.tickers.length ? { tickers: p.tickers } : {}),
   };
 }
 
 const CYBER_LAYER_ENABLED = import.meta.env.VITE_ENABLE_CYBER_LAYER === 'true';
+// Iran-events domain sunset (war ended 2026-07). Default OFF: no fetch, even the
+// CII/risk-scoring path. Set VITE_ENABLE_IRAN_ATTACKS=true to restore. Mirrors CYBER_LAYER_ENABLED.
+const IRAN_ATTACKS_ENABLED = import.meta.env.VITE_ENABLE_IRAN_ATTACKS === 'true';
 
 export interface DataLoaderCallbacks {
   renderCriticalBanner: (postures: TheaterPostureSummary[]) => void;
   refreshOpenCountryBrief: () => void;
 }
+
+type HydrationTask = {
+  name: string;
+  task: () => Promise<void>;
+};
+
+type HydrationTier = 1 | 2 | 3 | 4;
+type DailyMarketBriefModule = typeof import('@/services/daily-market-brief');
+type RssModule = Pick<typeof import('@/services/rss'), 'fetchCategoryFeeds' | 'getFeedFailures'>;
+type TrendingHeadlineInput = import('@/services/trending-keywords').TrendingHeadlineInput;
+type DrainTrendingSignals = typeof import('@/services/trending-keywords').drainTrendingSignals;
+
+let dailyMarketBriefModulePromise: Promise<DailyMarketBriefModule> | null = null;
+let rssModulePromise: Promise<RssModule> | null = null;
+let ingestHeadlinesPromise: Promise<(headlines: TrendingHeadlineInput[]) => void> | null = null;
+let drainTrendingSignalsPromise: Promise<DrainTrendingSignals> | null = null;
+
+function getDailyMarketBriefModule(): Promise<DailyMarketBriefModule> {
+  dailyMarketBriefModulePromise ??= import('@/services/daily-market-brief').catch((err) => {
+    dailyMarketBriefModulePromise = null;
+    throw err;
+  });
+  return dailyMarketBriefModulePromise;
+}
+
+function getRssModule(): Promise<RssModule> {
+  rssModulePromise ??= import('@/services/rss').catch((err) => {
+    rssModulePromise = null;
+    throw err;
+  });
+  return rssModulePromise;
+}
+
+async function ingestTrendingHeadlines(headlines: TrendingHeadlineInput[]): Promise<void> {
+  ingestHeadlinesPromise ??= import('@/services/trending-keywords')
+    .then(module => module.ingestHeadlines)
+    .catch((err) => {
+      ingestHeadlinesPromise = null;
+      throw err;
+    });
+  const ingestHeadlines = await ingestHeadlinesPromise;
+  ingestHeadlines(headlines);
+}
+
+async function drainTrendingSignalQueue(): Promise<ReturnType<DrainTrendingSignals>> {
+  try {
+    drainTrendingSignalsPromise ??= import('@/services/trending-keywords')
+      .then(module => module.drainTrendingSignals)
+      .catch((err) => {
+        drainTrendingSignalsPromise = null;
+        throw err;
+      });
+    const drainTrendingSignals = await drainTrendingSignalsPromise;
+    return drainTrendingSignals();
+  } catch (err) {
+    console.warn('[News] drainTrendingSignals failed (chunk load?):', err);
+    return [];
+  }
+}
+
+async function runSignalAggregator(
+  statusPanel: AppContext['statusPanel'] | undefined,
+  context: string,
+  ingest: (aggregator: SignalAggregator) => void,
+): Promise<void> {
+  try {
+    ingest(await getSignalAggregator());
+    statusPanel?.updateApi('Signal Aggregator', { status: 'ok', errorMessage: undefined });
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : String(err);
+    console.warn(`[SignalAggregator] ${context} skipped:`, err);
+    statusPanel?.updateApi('Signal Aggregator', {
+      status: 'error',
+      errorMessage: `${context}: ${errorMessage}`,
+    });
+  }
+}
+
+const HYDRATION_TIER_ONE = new Set(['news', 'markets', 'intelligence']);
+const HYDRATION_TIER_TWO = new Set([
+  'natural',
+  'firms',
+  'weather',
+  'ais',
+  'flights',
+  'cyberThreats',
+  'iranAttacks',
+  'techEvents',
+  'satellites',
+  'webcams',
+  'cables',
+  'cableHealth',
+  'diseaseOutbreaks',
+  'socialVelocity',
+  'economicStress',
+  'sanctions',
+  'resilienceRanking',
+  'radiation',
+]);
+const HYDRATION_TIER_FOUR = new Set([
+  'stockAnalysis',
+  'stockBacktest',
+  'dailyMarketBrief',
+  'predictions',
+  'forecasts',
+  'simulation-outcome',
+  'pizzint',
+  'marketImplications',
+  'wsbTickers',
+  'techReadiness',
+  'thermalEscalation',
+  'crossSourceSignals',
+]);
+const HYDRATION_TIERS: HydrationTier[] = [1, 2, 3, 4];
 
 export class DataLoaderManager implements AppModule {
   private ctx: AppContext;
@@ -286,6 +376,16 @@ export class DataLoaderManager implements AppModule {
     enqueuePanelCall(key, method, args);
   }
 
+  private panelHasRetainedData(key: string): boolean {
+    const panel = this.ctx.panels[key] as { hasData?: () => boolean } | undefined;
+    return typeof panel?.hasData === 'function' && panel.hasData();
+  }
+
+  private showColdLoadError(key: string): void {
+    if (this.panelHasRetainedData(key)) return;
+    this.callPanel(key, 'showError');
+  }
+
   private boundMarketWatchlistHandler: (() => void) | null = null;
   private satellitePropagationCleanup: (() => void) | null = null;
   private dailyBriefGeneration = 0;
@@ -293,9 +393,15 @@ export class DataLoaderManager implements AppModule {
   private dailyBriefFrameworkUnsubscribe: (() => void) | null = null;
   private marketImplicationsFrameworkUnsubscribe: (() => void) | null = null;
   private cachedSatRecs: SatRecEntry[] | null = null;
+  private cachedRiskScores: CachedRiskScores | null = null;
+  private preferLocalCii = false;
+  private loadAllDataPromise: Promise<void> | null = null;
+  private loadAllDataRerunRequested = false;
+  private loadAllDataQueuedForceAll = false;
 
   private digestBreaker = { state: 'closed' as 'closed' | 'open' | 'half-open', failures: 0, cooldownUntil: 0 };
   private readonly digestRequestTimeoutMs = 8000;
+  private readonly digestFirstPaintGraceMs = 1500;
   private readonly digestBreakerCooldownMs = 5 * 60 * 1000;
   private readonly persistedDigestMaxAgeMs = 6 * 60 * 60 * 1000;
   private readonly perFeedFallbackCategoryFeedLimit = 3;
@@ -306,6 +412,69 @@ export class DataLoaderManager implements AppModule {
   constructor(ctx: AppContext, callbacks: DataLoaderCallbacks) {
     this.ctx = ctx;
     this.callbacks = callbacks;
+  }
+
+  private getHydrationTier(name: string): HydrationTier {
+    if (HYDRATION_TIER_ONE.has(name)) return 1;
+    if (HYDRATION_TIER_TWO.has(name)) return 2;
+    if (HYDRATION_TIER_FOUR.has(name)) return 4;
+    return 3;
+  }
+
+  private markHydration(label: string): void {
+    if (typeof performance === 'undefined' || typeof performance.mark !== 'function') return;
+    performance.mark(label);
+  }
+
+  private async yieldHydrationFrame(): Promise<void> {
+    if (typeof window === 'undefined') return;
+    await new Promise<void>(resolve => {
+      const idle = window.requestIdleCallback as ((cb: IdleRequestCallback, opts?: IdleRequestOptions) => number) | undefined;
+      if (idle) {
+        idle(() => resolve(), { timeout: 250 });
+        return;
+      }
+      window.setTimeout(resolve, 16);
+    });
+  }
+
+  private async runHydrationTasks(tasks: HydrationTask[], forceAll: boolean): Promise<void> {
+    const prioritized = tasks
+      .map((task, order) => ({ ...task, order, tier: this.getHydrationTier(task.name) }))
+      .sort((a, b) => a.tier - b.tier || a.order - b.order);
+
+    const maxConcurrency = forceAll ? 6 : 3;
+    const failures: Array<{ name: string; reason: unknown }> = [];
+    let cursor = 0;
+
+    this.markHydration(`wm:hydration:${forceAll ? 'force' : 'viewport'}:start`);
+
+    for (const tier of HYDRATION_TIERS) {
+      const tierTasks = prioritized.filter(task => task.tier === tier);
+      if (tierTasks.length === 0) continue;
+
+      this.markHydration(`wm:hydration:tier-${tier}:start`);
+      cursor = 0;
+      while (cursor < tierTasks.length) {
+        const batch = tierTasks.slice(cursor, cursor + maxConcurrency);
+        const results = await Promise.allSettled(batch.map(item => item.task()));
+        results.forEach((result, idx) => {
+          if (result.status === 'rejected') {
+            failures.push({ name: batch[idx]?.name ?? 'unknown', reason: result.reason });
+          }
+        });
+
+        cursor += batch.length;
+        if (cursor < tierTasks.length) await this.yieldHydrationFrame();
+      }
+      this.markHydration(`wm:hydration:tier-${tier}:end`);
+      if (tier < 4 && prioritized.some(task => task.tier > tier)) await this.yieldHydrationFrame();
+    }
+
+    this.markHydration(`wm:hydration:${forceAll ? 'force' : 'viewport'}:end`);
+    failures.forEach(({ name, reason }) => {
+      console.error(`[App] ${name} load failed:`, reason);
+    });
   }
 
   init(): void {
@@ -343,12 +512,122 @@ export class DataLoaderManager implements AppModule {
     this.marketImplicationsFrameworkUnsubscribe = null;
   }
 
-  private refreshCiiAndBrief(forceLocal = false): void {
-    (this.ctx.panels['cii'] as CIIPanel)?.refresh(forceLocal);
-    this.callbacks.refreshOpenCountryBrief();
-    const scores = calculateCII();
+  private getAuthoritativeCachedRiskScores(forceLocal: boolean): CachedRiskScores | null {
+    if (forceLocal) {
+      this.preferLocalCii = true;
+      this.cachedRiskScores = null;
+      return null;
+    }
+    if (this.preferLocalCii) return null;
+    const cached = this.cachedRiskScores ?? getCachedScores();
+    return cached?.cii.length ? cached : null;
+  }
+
+  private applyCiiScoresToMap(scores: CountryScore[]): void {
     this.ctx.map?.setCIIScores(scores.map(s => ({ code: s.code, score: s.score, level: s.level })));
     this.ctx.map?.setLayerReady('ciiChoropleth', scores.length > 0);
+  }
+
+  private renderCachedCiiScores(cached: CachedRiskScores): void {
+    this.cachedRiskScores = cached;
+    this.callPanel('cii', 'renderFromCached', cached);
+    this.applyCiiScoresToMap(cached.cii.map(toCountryScore));
+  }
+
+  private refreshCiiAndBrief(forceLocal = false): void {
+    const cached = this.getAuthoritativeCachedRiskScores(forceLocal);
+    if (cached) {
+      this.renderCachedCiiScores(cached);
+      this.callbacks.refreshOpenCountryBrief();
+      return;
+    }
+
+    const shouldUseLocalFallback = forceLocal || !this.cachedRiskScores;
+    this.callPanel('cii', 'refresh', shouldUseLocalFallback);
+    this.callbacks.refreshOpenCountryBrief();
+    const scores = calculateCII();
+    this.applyCiiScoresToMap(scores);
+  }
+
+  public refreshCiiAfterFocalPointsReady(): void {
+    this.refreshCiiAndBrief(false);
+  }
+
+  public refreshGeometryDependentCiiAfterCountryGeometry(): void {
+    markLcpDebug('wm:data:country-geometry-replay-start');
+    const cache = this.ctx.intelligenceCache;
+    let replayed = 0;
+
+    if (cache.protests || cache.conflicts || cache.military || cache.iranEvents) {
+      resetHotspotActivity();
+    }
+    if (cache.protests) {
+      ingestProtestsForCII(cache.protests.events);
+      replayed += 1;
+    }
+    if (cache.conflicts) {
+      ingestConflictsForCII(cache.conflicts);
+      replayed += 1;
+    }
+    if (cache.military) {
+      ingestMilitaryForCII(cache.military.flights, cache.military.vessels);
+      replayed += 1;
+    }
+    if (cache.iranEvents) {
+      const coerced = cache.iranEvents.map(e => ({ ...e, timestamp: Number(e.timestamp) || 0 }));
+      ingestStrikesForCII(coerced);
+      replayed += 1;
+    }
+    if (cache.earthquakes) {
+      ingestEarthquakesForCII(cache.earthquakes);
+      replayed += 1;
+    }
+    if (cache.flightDelays) {
+      const severe = cache.flightDelays.filter(d => d.severity === 'major' || d.severity === 'severe' || d.delayType === 'closure');
+      if (severe.length > 0) {
+        ingestAviationForCII(severe);
+        replayed += 1;
+      }
+    }
+    if (cache.outages) {
+      ingestOutagesForCII(cache.outages);
+      replayed += 1;
+    }
+    if (cache.orefAlerts) {
+      ingestOrefForCII(cache.orefAlerts.alertCount, cache.orefAlerts.historyCount24h);
+      replayed += 1;
+    }
+    if (cache.advisories) {
+      ingestAdvisoriesForCII(cache.advisories);
+      replayed += 1;
+    }
+    if (cache.sanctions) {
+      ingestSanctionsForCII(cache.sanctions.countries);
+      replayed += 1;
+    }
+    if (this.ctx.cyberThreatsCache) {
+      ingestCyberThreatsForCII(this.ctx.cyberThreatsCache);
+      replayed += 1;
+    }
+    // Coordinate-only sources (no country hint) that resolve purely via
+    // precision geometry. Without this replay their first-pass attribution —
+    // computed during the fan-out before geometry was ready — stays empty until
+    // the next scheduled refresh (#4512).
+    if (cache.gpsJamming?.length) {
+      ingestGpsJammingForCII(cache.gpsJamming);
+      replayed += 1;
+    }
+    if (cache.aisDisruptions?.length) {
+      ingestAisDisruptionsForCII(cache.aisDisruptions);
+      replayed += 1;
+    }
+    if (cache.satelliteFires?.length) {
+      ingestSatelliteFiresForCII(cache.satelliteFires);
+      replayed += 1;
+    }
+
+    markLcpDebug('wm:data:country-geometry-replay-ready', { replayed });
+    if (replayed > 0) this.refreshCiiAndBrief(false);
   }
 
   private async tryFetchDigest(): Promise<ListFeedDigestResponse | null> {
@@ -362,6 +641,7 @@ export class DataLoaderManager implements AppModule {
     }
 
     try {
+      markLcpDebug('wm:data:feed-digest-start');
       const resp = await fetch(
         toApiUrl(`/api/news/v1/list-feed-digest?variant=${SITE_VARIANT}&lang=${getCurrentLanguage()}`),
         { cache: 'no-cache', signal: AbortSignal.timeout(this.digestRequestTimeoutMs) },
@@ -369,12 +649,14 @@ export class DataLoaderManager implements AppModule {
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const data = await resp.json() as ListFeedDigestResponse;
       const catCount = Object.keys(data.categories ?? {}).length;
+      markLcpDebug('wm:data:feed-digest-ready', { categories: catCount });
       console.info(`[News] Digest fetched: ${catCount} categories`);
       this.lastGoodDigest = data;
       this.persistDigest(data);
       this.digestBreaker = { state: 'closed', failures: 0, cooldownUntil: 0 };
       return data;
     } catch (e) {
+      markLcpDebug('wm:data:feed-digest-error');
       console.warn('[News] Digest fetch failed, using fallback:', e);
       this.digestBreaker.failures++;
       if (this.digestBreaker.failures >= 2) {
@@ -421,6 +703,16 @@ export class DataLoaderManager implements AppModule {
     return !this.ctx.isMobile && !!this.ctx.findingsBadge?.isPopupEnabled();
   }
 
+  private showSignalNotification(signals: CorrelationSignal[], context: string): void {
+    void this.ctx.ensureSignalModal()
+      .then((signalModal) => {
+        if (!this.ctx.isDestroyed) signalModal.show(signals);
+      })
+      .catch((err) => {
+        console.warn(`[SignalModal] ${context} notification skipped:`, err);
+      });
+  }
+
   private isPanelNearViewport(panelId: string, marginPx = 400): boolean {
     const panel = this.ctx.panels[panelId] as { isNearViewport?: (marginPx?: number) => boolean } | undefined;
     return panel?.isNearViewport?.(marginPx) ?? false;
@@ -431,6 +723,34 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadAllData(forceAll = false): Promise<void> {
+    if (this.loadAllDataPromise) {
+      this.loadAllDataRerunRequested = true;
+      this.loadAllDataQueuedForceAll = this.loadAllDataQueuedForceAll || forceAll;
+      return this.loadAllDataPromise;
+    }
+
+    this.loadAllDataRerunRequested = true;
+    this.loadAllDataQueuedForceAll = forceAll;
+    this.loadAllDataPromise = this.drainLoadAllDataQueue();
+    return this.loadAllDataPromise;
+  }
+
+  private async drainLoadAllDataQueue(): Promise<void> {
+    try {
+      while (this.loadAllDataRerunRequested && !this.ctx.isDestroyed) {
+        const forceAll = this.loadAllDataQueuedForceAll;
+        this.loadAllDataRerunRequested = false;
+        this.loadAllDataQueuedForceAll = false;
+        await this.runLoadAllData(forceAll);
+      }
+    } finally {
+      this.loadAllDataPromise = null;
+      this.loadAllDataRerunRequested = false;
+      this.loadAllDataQueuedForceAll = false;
+    }
+  }
+
+  private async runLoadAllData(forceAll: boolean): Promise<void> {
     const runGuarded = async (name: string, fn: () => Promise<void>): Promise<void> => {
       if (this.ctx.isDestroyed || this.ctx.inFlight.has(name)) return;
       this.ctx.inFlight.add(name);
@@ -446,49 +766,49 @@ export class DataLoaderManager implements AppModule {
     const shouldLoad = (id: string): boolean => forceAll || this.isPanelNearViewport(id);
     const shouldLoadAny = (ids: string[]): boolean => forceAll || this.isAnyPanelNearViewport(ids);
 
-    const tasks: Array<{ name: string; task: Promise<void> }> = [
-      { name: 'news', task: runGuarded('news', () => this.loadNews()) },
+    const tasks: HydrationTask[] = [
+      { name: 'news', task: () => runGuarded('news', () => this.loadNews()) },
     ];
 
     // Happy variant only loads news data -- skip all geopolitical/financial/military data
     if (SITE_VARIANT !== 'happy') {
       if (shouldLoadAny(['markets', 'heatmap', 'commodities', 'crypto', 'energy-complex', 'crypto-heatmap', 'defi-tokens', 'ai-tokens', 'other-tokens'])) {
-        tasks.push({ name: 'markets', task: runGuarded('markets', () => this.loadMarkets()) });
+        tasks.push({ name: 'markets', task: () => runGuarded('markets', () => this.loadMarkets()) });
       }
       if (hasPremiumAccess() && shouldLoad('stock-analysis')) {
-        tasks.push({ name: 'stockAnalysis', task: runGuarded('stockAnalysis', () => this.loadStockAnalysis()) });
+        tasks.push({ name: 'stockAnalysis', task: () => runGuarded('stockAnalysis', () => this.loadStockAnalysis()) });
       }
       if (hasPremiumAccess() && shouldLoad('stock-backtest')) {
-        tasks.push({ name: 'stockBacktest', task: runGuarded('stockBacktest', () => this.loadStockBacktest()) });
+        tasks.push({ name: 'stockBacktest', task: () => runGuarded('stockBacktest', () => this.loadStockBacktest()) });
       }
       if (hasPremiumAccess() && shouldLoad('daily-market-brief')) {
-        tasks.push({ name: 'dailyMarketBrief', task: runGuarded('dailyMarketBrief', () => this.loadDailyMarketBrief()) });
+        tasks.push({ name: 'dailyMarketBrief', task: () => runGuarded('dailyMarketBrief', () => this.loadDailyMarketBrief()) });
       }
       if (shouldLoad('polymarket')) {
-        tasks.push({ name: 'predictions', task: runGuarded('predictions', () => this.loadPredictions()) });
+        tasks.push({ name: 'predictions', task: () => runGuarded('predictions', () => this.loadPredictions()) });
       }
       if (shouldLoad('forecast')) {
-        tasks.push({ name: 'forecasts', task: runGuarded('forecasts', () => this.loadForecasts()) });
-        tasks.push({ name: 'simulation-outcome', task: runGuarded('simulation-outcome', () => this.loadSimulationOutcome()) });
+        tasks.push({ name: 'forecasts', task: () => runGuarded('forecasts', () => this.loadForecasts()) });
+        tasks.push({ name: 'simulation-outcome', task: () => runGuarded('simulation-outcome', () => this.loadSimulationOutcome()) });
       }
-      if (SITE_VARIANT === 'full') tasks.push({ name: 'pizzint', task: runGuarded('pizzint', () => this.loadPizzInt()) });
+      if (SITE_VARIANT === 'full') tasks.push({ name: 'pizzint', task: () => runGuarded('pizzint', () => this.loadPizzInt()) });
       if (shouldLoad('economic')) {
-        tasks.push({ name: 'fred', task: runGuarded('fred', () => this.loadFredData()) });
-        tasks.push({ name: 'spending', task: runGuarded('spending', () => this.loadGovernmentSpending()) });
-        tasks.push({ name: 'bis', task: runGuarded('bis', () => this.loadBisData()) });
-        tasks.push({ name: 'bls', task: runGuarded('bls', () => this.loadBlsData()) });
+        tasks.push({ name: 'fred', task: () => runGuarded('fred', () => this.loadFredData()) });
+        tasks.push({ name: 'spending', task: () => runGuarded('spending', () => this.loadGovernmentSpending()) });
+        tasks.push({ name: 'bis', task: () => runGuarded('bis', () => this.loadBisData()) });
+        tasks.push({ name: 'bls', task: () => runGuarded('bls', () => this.loadBlsData()) });
       }
       if (shouldLoad('energy-complex')) {
-        tasks.push({ name: 'oil', task: runGuarded('oil', () => this.loadOilAnalytics()) });
+        tasks.push({ name: 'oil', task: () => runGuarded('oil', () => this.loadOilAnalytics()) });
       }
 
       // Trade policy + supply-chain data (FULL, FINANCE, COMMODITY, ENERGY variants use supply-chain surface)
       if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance' || SITE_VARIANT === 'commodity' || SITE_VARIANT === 'energy') {
         if (shouldLoad('trade-policy')) {
-          tasks.push({ name: 'tradePolicy', task: runGuarded('tradePolicy', () => this.loadTradePolicy()) });
+          tasks.push({ name: 'tradePolicy', task: () => runGuarded('tradePolicy', () => this.loadTradePolicy()) });
         }
         if (shouldLoad('supply-chain')) {
-          tasks.push({ name: 'supplyChain', task: runGuarded('supplyChain', () => this.loadSupplyChain()) });
+          tasks.push({ name: 'supplyChain', task: () => runGuarded('supplyChain', () => this.loadSupplyChain()) });
         }
       }
     }
@@ -498,25 +818,25 @@ export class DataLoaderManager implements AppModule {
       if (shouldLoad('progress')) {
         tasks.push({
           name: 'progress',
-          task: runGuarded('progress', () => this.loadProgressData()),
+          task: () => runGuarded('progress', () => this.loadProgressData()),
         });
       }
       if (shouldLoad('species')) {
         tasks.push({
           name: 'species',
-          task: runGuarded('species', () => this.loadSpeciesData()),
+          task: () => runGuarded('species', () => this.loadSpeciesData()),
         });
       }
       tasks.push({
         name: 'happinessMap',
-        task: runGuarded('happinessMap', async () => {
+        task: () => runGuarded('happinessMap', async () => {
           const data = await fetchHappinessScores();
           this.ctx.map?.setHappinessScores(data);
         }),
       });
       tasks.push({
         name: 'renewableMap',
-        task: runGuarded('renewableMap', async () => {
+        task: () => runGuarded('renewableMap', async () => {
           const installations = await fetchRenewableInstallations();
           this.ctx.map?.setRenewableInstallations(installations);
         }),
@@ -527,17 +847,18 @@ export class DataLoaderManager implements AppModule {
     if (shouldLoad('renewable')) {
       tasks.push({
         name: 'renewable',
-        task: runGuarded('renewable', () => this.loadRenewableData()),
+        task: () => runGuarded('renewable', () => this.loadRenewableData()),
       });
     }
 
     if (shouldLoad('giving')) {
       tasks.push({
         name: 'giving',
-        task: runGuarded('giving', async () => {
+        task: () => runGuarded('giving', async () => {
           const givingResult = await fetchGivingSummary();
           if (!givingResult.ok) {
             dataFreshness.recordError('giving', 'Giving data unavailable (retaining prior state)');
+            this.showColdLoadError('giving');
             return;
           }
           const data = givingResult.data;
@@ -551,48 +872,46 @@ export class DataLoaderManager implements AppModule {
       try {
         const cached = await fetchCachedRiskScores().catch(() => null);
         if (cached && cached.cii.length > 0) {
-          (this.ctx.panels['cii'] as CIIPanel)?.renderFromCached(cached);
-          this.ctx.map?.setCIIScores(cached.cii.map(s => ({ code: s.code, score: s.score, level: s.level })));
-          this.ctx.map?.setLayerReady('ciiChoropleth', true);
+          this.renderCachedCiiScores(cached);
         }
       } catch { /* non-fatal */ }
     }
     // Intelligence signals: run for any variant that shows these panels
     if (shouldLoadAny(['cii', 'strategic-risk', 'strategic-posture', 'climate', 'population-exposure', 'security-advisories', 'radiation-watch', 'displacement', 'ucdp-events', 'satellite-fires', 'oref-sirens'])) {
-      tasks.push({ name: 'intelligence', task: runGuarded('intelligence', () => this.loadIntelligenceSignals()) });
+      tasks.push({ name: 'intelligence', task: () => runGuarded('intelligence', () => this.loadIntelligenceSignals()) });
     }
 
     if (SITE_VARIANT === 'full' && (shouldLoad('satellite-fires') || this.ctx.mapLayers.natural)) {
-      tasks.push({ name: 'firms', task: runGuarded('firms', () => this.loadFirmsData()) });
+      tasks.push({ name: 'firms', task: () => runGuarded('firms', () => this.loadFirmsData()) });
     }
-    if (this.ctx.mapLayers.natural) tasks.push({ name: 'natural', task: runGuarded('natural', () => this.loadNatural()) });
-    if (this.ctx.mapLayers.diseaseOutbreaks || shouldLoad('disease-outbreaks')) tasks.push({ name: 'diseaseOutbreaks', task: runGuarded('diseaseOutbreaks', () => this.loadDiseaseOutbreaks()) });
-    if (shouldLoad('social-velocity')) tasks.push({ name: 'socialVelocity', task: runGuarded('socialVelocity', () => this.loadSocialVelocity()) });
-    if (hasPremiumAccess() && shouldLoad('wsb-ticker-scanner')) tasks.push({ name: 'wsbTickers', task: runGuarded('wsbTickers', () => this.loadWsbTickers()) });
-    if (shouldLoad('economic')) tasks.push({ name: 'economicStress', task: runGuarded('economicStress', () => this.loadEconomicStress()) });
-    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.weather) tasks.push({ name: 'weather', task: runGuarded('weather', () => this.loadWeatherAlerts()) });
-    if (SITE_VARIANT !== 'happy' && !isDesktopRuntime() && this.ctx.mapLayers.ais) tasks.push({ name: 'ais', task: runGuarded('ais', () => this.loadAisSignals()) });
-    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.cables) tasks.push({ name: 'cables', task: runGuarded('cables', () => this.loadCableActivity()) });
-    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.cables) tasks.push({ name: 'cableHealth', task: runGuarded('cableHealth', () => this.loadCableHealth()) });
-    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.flights) tasks.push({ name: 'flights', task: runGuarded('flights', () => this.loadFlightDelays()) });
-    if (SITE_VARIANT !== 'happy' && CYBER_LAYER_ENABLED && this.ctx.mapLayers.cyberThreats) tasks.push({ name: 'cyberThreats', task: runGuarded('cyberThreats', () => this.loadCyberThreats()) });
-    if (SITE_VARIANT !== 'happy' && !isDesktopRuntime() && (this.ctx.mapLayers.iranAttacks || shouldLoadAny(['cii', 'strategic-risk', 'strategic-posture']))) tasks.push({ name: 'iranAttacks', task: runGuarded('iranAttacks', () => this.loadIranEvents()) });
-    if (SITE_VARIANT !== 'happy' && (this.ctx.mapLayers.techEvents || SITE_VARIANT === 'tech')) tasks.push({ name: 'techEvents', task: runGuarded('techEvents', () => this.loadTechEvents()) });
-    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.satellites && this.ctx.map?.isGlobeMode?.()) tasks.push({ name: 'satellites', task: runGuarded('satellites', () => this.loadSatellites()) });
-    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.webcams) tasks.push({ name: 'webcams', task: runGuarded('webcams', () => this.loadWebcams()) });
+    if (this.ctx.mapLayers.natural) tasks.push({ name: 'natural', task: () => runGuarded('natural', () => this.loadNatural()) });
+    if (this.ctx.mapLayers.diseaseOutbreaks || shouldLoad('disease-outbreaks')) tasks.push({ name: 'diseaseOutbreaks', task: () => runGuarded('diseaseOutbreaks', () => this.loadDiseaseOutbreaks()) });
+    if (shouldLoad('social-velocity')) tasks.push({ name: 'socialVelocity', task: () => runGuarded('socialVelocity', () => this.loadSocialVelocity()) });
+    if (hasPremiumAccess() && shouldLoad('wsb-ticker-scanner')) tasks.push({ name: 'wsbTickers', task: () => runGuarded('wsbTickers', () => this.loadWsbTickers()) });
+    if (shouldLoad('economic')) tasks.push({ name: 'economicStress', task: () => runGuarded('economicStress', () => this.loadEconomicStress()) });
+    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.weather) tasks.push({ name: 'weather', task: () => runGuarded('weather', () => this.loadWeatherAlerts()) });
+    if (SITE_VARIANT !== 'happy' && !isDesktopRuntime() && this.ctx.mapLayers.ais) tasks.push({ name: 'ais', task: () => runGuarded('ais', () => this.loadAisSignals()) });
+    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.cables) tasks.push({ name: 'cables', task: () => runGuarded('cables', () => this.loadCableActivity()) });
+    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.cables) tasks.push({ name: 'cableHealth', task: () => runGuarded('cableHealth', () => this.loadCableHealth()) });
+    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.flights) tasks.push({ name: 'flights', task: () => runGuarded('flights', () => this.loadFlightDelays()) });
+    if (SITE_VARIANT !== 'happy' && CYBER_LAYER_ENABLED && this.ctx.mapLayers.cyberThreats) tasks.push({ name: 'cyberThreats', task: () => runGuarded('cyberThreats', () => this.loadCyberThreats()) });
+    if (IRAN_ATTACKS_ENABLED && SITE_VARIANT !== 'happy' && !isDesktopRuntime() && (this.ctx.mapLayers.iranAttacks || shouldLoadAny(['cii', 'strategic-risk', 'strategic-posture']))) tasks.push({ name: 'iranAttacks', task: () => runGuarded('iranAttacks', () => this.loadIranEvents()) });
+    if (SITE_VARIANT !== 'happy' && (this.ctx.mapLayers.techEvents || SITE_VARIANT === 'tech')) tasks.push({ name: 'techEvents', task: () => runGuarded('techEvents', () => this.loadTechEvents()) });
+    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.satellites && this.ctx.map?.isGlobeMode?.()) tasks.push({ name: 'satellites', task: () => runGuarded('satellites', () => this.loadSatellites()) });
+    if (SITE_VARIANT !== 'happy' && this.ctx.mapLayers.webcams) tasks.push({ name: 'webcams', task: () => runGuarded('webcams', () => this.loadWebcams()) });
     if (SITE_VARIANT !== 'happy' && (shouldLoad('sanctions-pressure') || this.ctx.mapLayers.sanctions)) {
-      tasks.push({ name: 'sanctions', task: runGuarded('sanctions', () => this.loadSanctionsPressure()) });
+      tasks.push({ name: 'sanctions', task: () => runGuarded('sanctions', () => this.loadSanctionsPressure()) });
     }
     if (this.ctx.mapLayers.resilienceScore) {
       if (hasPremiumAccess()) {
-        tasks.push({ name: 'resilienceRanking', task: runGuarded('resilienceRanking', () => this.loadResilienceRanking()) });
+        tasks.push({ name: 'resilienceRanking', task: () => runGuarded('resilienceRanking', () => this.loadResilienceRanking()) });
       } else {
         this.ctx.map?.setResilienceRanking([]);
         this.ctx.map?.setLayerReady('resilienceScore', false);
       }
     }
     if (SITE_VARIANT !== 'happy' && (shouldLoad('radiation-watch') || this.ctx.mapLayers.radiationWatch)) {
-      tasks.push({ name: 'radiation', task: runGuarded('radiation', () => this.loadRadiationWatch()) });
+      tasks.push({ name: 'radiation', task: () => runGuarded('radiation', () => this.loadRadiationWatch()) });
     }
 
     // tech-readiness is only seeded on full + tech variants (api/bootstrap.js +
@@ -602,30 +921,16 @@ export class DataLoaderManager implements AppModule {
     // check via forceAll. Gate on variant defaults so this only fires where the
     // seed actually exists.
     if (isPanelInVariantDefaults('tech-readiness') && shouldLoad('tech-readiness')) {
-      tasks.push({ name: 'techReadiness', task: runGuarded('techReadiness', () => (this.ctx.panels['tech-readiness'] as TechReadinessPanel)?.refresh()) });
+      tasks.push({ name: 'techReadiness', task: () => runGuarded('techReadiness', () => (this.ctx.panels['tech-readiness'] as TechReadinessPanel)?.refresh()) });
     }
     if (SITE_VARIANT !== 'happy' && shouldLoad('thermal-escalation')) {
-      tasks.push({ name: 'thermalEscalation', task: runGuarded('thermalEscalation', () => this.loadThermalEscalations()) });
+      tasks.push({ name: 'thermalEscalation', task: () => runGuarded('thermalEscalation', () => this.loadThermalEscalations()) });
     }
     if (SITE_VARIANT !== 'happy' && shouldLoad('cross-source-signals')) {
-      tasks.push({ name: 'crossSourceSignals', task: runGuarded('crossSourceSignals', () => this.loadCrossSourceSignals()) });
+      tasks.push({ name: 'crossSourceSignals', task: () => runGuarded('crossSourceSignals', () => this.loadCrossSourceSignals()) });
     }
 
-    // Stagger startup: run tasks in small batches to avoid hammering upstreams
-    const BATCH_SIZE = 4;
-    const BATCH_DELAY_MS = 300;
-    for (let i = 0; i < tasks.length; i += BATCH_SIZE) {
-      const batch = tasks.slice(i, i + BATCH_SIZE);
-      const results = await Promise.allSettled(batch.map(t => t.task));
-      results.forEach((result, idx) => {
-        if (result.status === 'rejected') {
-          console.error(`[App] ${batch[idx]?.name} load failed:`, result.reason);
-        }
-      });
-      if (i + BATCH_SIZE < tasks.length) {
-        await new Promise(r => setTimeout(r, BATCH_DELAY_MS));
-      }
-    }
+    await this.runHydrationTasks(tasks, forceAll);
 
     this.updateSearchIndex();
 
@@ -638,7 +943,7 @@ export class DataLoaderManager implements AppModule {
 
     const bootstrapTemporal = consumeServerAnomalies();
     if (bootstrapTemporal.anomalies.length > 0 || bootstrapTemporal.trackedTypes.length > 0) {
-      signalAggregator.ingestTemporalAnomalies(bootstrapTemporal.anomalies, bootstrapTemporal.trackedTypes);
+      await runSignalAggregator(this.ctx.statusPanel, 'bootstrap temporal anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(bootstrapTemporal.anomalies, bootstrapTemporal.trackedTypes));
       ingestTemporalAnomaliesForCII(bootstrapTemporal.anomalies);
       this.refreshCiiAndBrief();
     } else {
@@ -648,7 +953,7 @@ export class DataLoaderManager implements AppModule {
 
   async refreshTemporalBaseline(): Promise<void> {
     const { anomalies, trackedTypes } = await fetchLiveAnomalies();
-    signalAggregator.ingestTemporalAnomalies(anomalies, trackedTypes);
+    await runSignalAggregator(this.ctx.statusPanel, 'temporal baseline anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(anomalies, trackedTypes));
     ingestTemporalAnomaliesForCII(anomalies);
     this.refreshCiiAndBrief();
   }
@@ -740,7 +1045,14 @@ export class DataLoaderManager implements AppModule {
     this.stopSatellitePropagation();
     const data = await fetchSatelliteTLEs();
     if (!data || data.length === 0) return;
-    this.cachedSatRecs = initSatRecs(data);
+    try {
+      this.cachedSatRecs = await initSatRecs(data);
+    } catch (err) {
+      console.error('[satellites] failed to initialize satellite propagation', err);
+      this.cachedSatRecs = [];
+      this.ctx.map?.setSatellites([]);
+      return;
+    }
     const positions = propagatePositions(this.cachedSatRecs);
     this.ctx.map?.setSatellites(positions);
     this.satellitePropagationCleanup = startPropagationLoop(this.cachedSatRecs, (pos) => {
@@ -908,7 +1220,13 @@ export class DataLoaderManager implements AppModule {
   // active variant's preset. The per-variant server digest never carries it,
   // so it skips the digest-availability gate and fetches its full feed set
   // directly client-side (the cost is borne only by users who customize).
-  private async loadNewsCategory(category: string, feeds: typeof FEEDS.politics, digest?: ListFeedDigestResponse | null, isCustom = false): Promise<NewsItem[]> {
+  private async loadNewsCategory(
+    category: string,
+    feeds: typeof FEEDS.politics,
+    digest?: ListFeedDigestResponse | null,
+    isCustom = false,
+    options: NewsCategoryLoadOptions = { allowDigestPendingFallback: false, recordBaselineSample: true },
+  ): Promise<NewsItem[]> {
     try {
       const panel = this.ctx.newsPanels[category];
 
@@ -930,7 +1248,10 @@ export class DataLoaderManager implements AppModule {
           .map(protoItemToNewsItem)
           .filter(i => enabledNames.has(i.source));
 
-        ingestHeadlines(items.map(i => ({ title: i.title, pubDate: i.pubDate, source: i.source, link: i.link })));
+        void ingestTrendingHeadlines(items.map(i => ({ title: i.title, pubDate: i.pubDate, source: i.source, link: i.link })))
+          .catch((err) => {
+            console.warn('[News] ingestTrendingHeadlines failed (chunk load?):', err);
+          });
 
         // Skip client-side AI reclassification for digest items.
         // The server already ran enrichWithAiCache() which checks the same Redis keys
@@ -946,7 +1267,7 @@ export class DataLoaderManager implements AppModule {
           itemCount: items.length,
         });
 
-        if (panel) {
+        if (panel && options.recordBaselineSample) {
           try {
             const baseline = await updateBaseline(`news:${category}`, items.length);
             const deviation = calculateDeviation(items.length, baseline);
@@ -1013,7 +1334,7 @@ export class DataLoaderManager implements AppModule {
       // (every preset category fetching at once). It does NOT apply to custom
       // categories: those are NEVER in the digest by design — direct fetch is
       // their only path, and there are only a handful of them per user.
-      if (!isCustom && !this.isPerFeedFallbackEnabled()) {
+      if (!isCustom && !this.isPerFeedFallbackEnabled() && !options.allowDigestPendingFallback) {
         console.warn(`[News] Digest missing for "${category}", limited per-feed fallback disabled`);
         this.renderNewsForCategory(category, []);
         this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
@@ -1030,12 +1351,15 @@ export class DataLoaderManager implements AppModule {
         : this.selectLimitedFeeds(enabledFeeds, this.perFeedFallbackCategoryFeedLimit);
       if (isCustom) {
         console.warn(`[News] Custom category "${category}" (not in variant preset), fetching ${fallbackFeeds.length} feeds directly`);
+      } else if (options.allowDigestPendingFallback) {
+        console.warn(`[News] Digest still pending for "${category}", using limited per-feed fallback (${fallbackFeeds.length}/${enabledFeeds.length} feeds)`);
       } else if (fallbackFeeds.length < enabledFeeds.length) {
         console.warn(`[News] Digest missing for "${category}", using limited per-feed fallback (${fallbackFeeds.length}/${enabledFeeds.length} feeds)`);
       } else {
         console.warn(`[News] Digest missing for "${category}", using per-feed fallback (${fallbackFeeds.length} feeds)`);
       }
 
+      const { fetchCategoryFeeds, getFeedFailures } = await getRssModule();
       const items = await fetchCategoryFeeds(fallbackFeeds, {
         batchSize: this.perFeedFallbackBatchSize,
         onBatch: (partialItems) => {
@@ -1062,11 +1386,13 @@ export class DataLoaderManager implements AppModule {
           }
         }
 
-        try {
-          const baseline = await updateBaseline(`news:${category}`, items.length);
-          const deviation = calculateDeviation(items.length, baseline);
-          panel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
-        } catch (e) { console.warn(`[Baseline] news:${category} write failed:`, e); }
+        if (options.recordBaselineSample) {
+          try {
+            const baseline = await updateBaseline(`news:${category}`, items.length);
+            const deviation = calculateDeviation(items.length, baseline);
+            panel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
+          } catch (e) { console.warn(`[Baseline] news:${category} write failed:`, e); }
+        }
       }
 
       this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
@@ -1087,14 +1413,106 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
+  private async loadIntelNews(
+    digest: ListFeedDigestResponse | null,
+    allowDigestPendingFallback: boolean,
+    options: NewsIntelLoadOptions = { recordBaselineSample: true },
+  ): Promise<NewsItem[]> {
+    const enabledIntelSources = INTEL_SOURCES.filter(f => !this.ctx.disabledSources.has(f.name));
+    const enabledIntelNames = new Set(enabledIntelSources.map(f => f.name));
+    const intelPanel = this.ctx.newsPanels['intel'];
+    if (enabledIntelSources.length === 0) {
+      delete this.ctx.newsByCategory['intel'];
+      if (intelPanel) intelPanel.showError(t('common.allIntelSourcesDisabled'));
+      this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: 0 });
+      return [];
+    }
+
+    if (digest?.categories && 'intel' in digest.categories) {
+      // Digest branch for intel
+      const intel = (digest.categories['intel']?.items ?? [])
+        .map(protoItemToNewsItem)
+        .filter(i => enabledIntelNames.has(i.source));
+      checkBatchForBreakingAlerts(intel);
+      this.renderNewsForCategory('intel', intel);
+      if (intelPanel && options.recordBaselineSample) {
+        try {
+          const baseline = await updateBaseline('news:intel', intel.length);
+          const deviation = calculateDeviation(intel.length, baseline);
+          intelPanel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
+        } catch (e) { console.warn('[Baseline] news:intel write failed:', e); }
+      }
+      this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: intel.length });
+      this.flashMapForNews(intel);
+      return intel;
+    }
+
+    const staleIntel = this.getStaleNewsItems('intel').filter(i => enabledIntelNames.has(i.source));
+    if (staleIntel.length > 0) {
+      console.warn(`[News] Intel digest missing, serving stale headlines (${staleIntel.length})`);
+      this.renderNewsForCategory('intel', staleIntel);
+      if (intelPanel && options.recordBaselineSample) {
+        try {
+          const baseline = await updateBaseline('news:intel', staleIntel.length);
+          const deviation = calculateDeviation(staleIntel.length, baseline);
+          intelPanel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
+        } catch (e) { console.warn('[Baseline] news:intel write failed:', e); }
+      }
+      this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: staleIntel.length });
+      return staleIntel;
+    }
+
+    if (!this.isPerFeedFallbackEnabled() && !allowDigestPendingFallback) {
+      console.warn('[News] Intel digest missing, limited per-feed fallback disabled');
+      delete this.ctx.newsByCategory['intel'];
+      this.ctx.statusPanel?.updateFeed('Intel', { status: 'error', errorMessage: 'Digest unavailable' });
+      return [];
+    }
+
+    const fallbackIntelFeeds = this.selectLimitedFeeds(enabledIntelSources, this.perFeedFallbackIntelFeedLimit);
+    if (allowDigestPendingFallback) {
+      console.warn(`[News] Intel digest still pending, using limited per-feed fallback (${fallbackIntelFeeds.length}/${enabledIntelSources.length} feeds)`);
+    } else if (fallbackIntelFeeds.length < enabledIntelSources.length) {
+      console.warn(`[News] Intel digest missing, using limited per-feed fallback (${fallbackIntelFeeds.length}/${enabledIntelSources.length} feeds)`);
+    }
+
+    let intel: NewsItem[];
+    try {
+      const { fetchCategoryFeeds } = await getRssModule();
+      intel = await fetchCategoryFeeds(fallbackIntelFeeds, { batchSize: this.perFeedFallbackBatchSize });
+    } catch (e) {
+      delete this.ctx.newsByCategory['intel'];
+      console.error('[App] Intel feed failed:', e);
+      return [];
+    }
+
+    checkBatchForBreakingAlerts(intel);
+    this.renderNewsForCategory('intel', intel);
+    if (intelPanel && options.recordBaselineSample) {
+      try {
+        const baseline = await updateBaseline('news:intel', intel.length);
+        const deviation = calculateDeviation(intel.length, baseline);
+        intelPanel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
+      } catch (e) { console.warn('[Baseline] news:intel write failed:', e); }
+    }
+    this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: intel.length });
+    this.flashMapForNews(intel);
+    return intel;
+  }
+
   async loadNews(): Promise<void> {
     // Reset happy variant accumulator for fresh pipeline run
     if (SITE_VARIANT === 'happy') {
       this.ctx.happyAllItems = [];
     }
 
-    // Fire digest fetch early (non-blocking) — await before category loop
-    const digestPromise = this.tryFetchDigest();
+    // Fire digest fetch early, but do not let a slow digest stall the category
+    // first paint. Fast digests still take the optimized digest-backed path.
+    const digestPromise = this.tryFetchDigest().catch((error) => {
+      console.warn('[News] Digest fetch failed before category load:', error);
+      return null;
+    });
+    const fallbackDigest = this.lastGoodDigest ?? await this.loadPersistedDigest();
 
     // Panel-driven, not variant-driven: load the active variant's preset
     // categories PLUS any extra categories required by enabled news panels the
@@ -1104,112 +1522,50 @@ export class DataLoaderManager implements AppModule {
     const categories = resolveNewsCategories(
       FEEDS,
       CANONICAL_FEEDS,
-      enabledNewsCategoryKeys(this.ctx.newsPanels, this.ctx.panels, this.ctx.panelSettings),
+      enabledNewsCategoryKeys(this.ctx.newsPanels, this.ctx.panels, this.ctx.panelSettings, Object.keys(CANONICAL_FEEDS)),
     );
-
-    const digest = await digestPromise;
 
     const maxCategoryConcurrency = SITE_VARIANT === 'tech' ? 4 : 5;
     const categoryConcurrency = Math.max(1, Math.min(maxCategoryConcurrency, categories.length));
-    const categoryResults: PromiseSettledResult<NewsItem[]>[] = [];
-    for (let i = 0; i < categories.length; i += categoryConcurrency) {
-      const chunk = categories.slice(i, i + categoryConcurrency);
-      const chunkResults = await Promise.allSettled(
-        chunk.map(({ key, feeds, isCustom }) => this.loadNewsCategory(key, feeds, digest, isCustom))
-      );
-      categoryResults.push(...chunkResults);
-    }
+    const newsPass = await runNewsLoadPass(
+      {
+        categories,
+        categoryConcurrency,
+        digestPromise,
+        fallbackDigest,
+        digestGraceMs: this.digestFirstPaintGraceMs,
+        allowPendingPerFeedFallback: this.isPerFeedFallbackEnabled(),
+        hasDigestCategory: (digest, key) => Boolean(digest.categories && key in digest.categories),
+        loadCategory: ({ key, feeds, isCustom }, digest, options) => this.loadNewsCategory(key, feeds, digest, isCustom, options),
+        loadIntel: SITE_VARIANT === 'full'
+          ? (digest, allowDigestPendingFallback, options) => this.loadIntelNews(digest, allowDigestPendingFallback, options)
+          : undefined,
+        onCategoryError: (key, reason) => {
+          console.error(`[App] News category ${key ?? 'unknown'} failed:`, reason);
+        },
+        onDigestRefreshError: (key, reason) => {
+          console.error(`[App] Digest refresh for news category ${key ?? 'unknown'} failed:`, reason);
+        },
+      },
+    );
+    const { categoryItemsByKey, intelItems } = newsPass;
 
     const collectedNews: NewsItem[] = [];
-    categoryResults.forEach((result, idx) => {
-      if (result.status === 'fulfilled') {
-        const items = result.value;
-        // Tag items with content categories for happy variant
-        if (SITE_VARIANT === 'happy') {
-          for (const item of items) {
-            item.happyCategory = classifyNewsItem(item.source, item.title);
-          }
-          // Accumulate curated items for the positive news pipeline
-          this.ctx.happyAllItems = this.ctx.happyAllItems.concat(items);
+    for (const { key } of categories) {
+      const items = categoryItemsByKey.get(key) ?? [];
+      // Tag items with content categories for happy variant
+      if (SITE_VARIANT === 'happy') {
+        for (const item of items) {
+          item.happyCategory = classifyNewsItem(item.source, item.title);
         }
-        collectedNews.push(...items);
-      } else {
-        console.error(`[App] News category ${categories[idx]?.key} failed:`, result.reason);
+        // Accumulate curated items for the positive news pipeline
+        this.ctx.happyAllItems = this.ctx.happyAllItems.concat(items);
       }
-    });
+      collectedNews.push(...items);
+    }
 
     if (SITE_VARIANT === 'full') {
-      const enabledIntelSources = INTEL_SOURCES.filter(f => !this.ctx.disabledSources.has(f.name));
-      const enabledIntelNames = new Set(enabledIntelSources.map(f => f.name));
-      const intelPanel = this.ctx.newsPanels['intel'];
-      if (enabledIntelSources.length === 0) {
-        delete this.ctx.newsByCategory['intel'];
-        if (intelPanel) intelPanel.showError(t('common.allIntelSourcesDisabled'));
-        this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: 0 });
-      } else if (digest?.categories && 'intel' in digest.categories) {
-        // Digest branch for intel
-        const intel = (digest.categories['intel']?.items ?? [])
-          .map(protoItemToNewsItem)
-          .filter(i => enabledIntelNames.has(i.source));
-        checkBatchForBreakingAlerts(intel);
-        this.renderNewsForCategory('intel', intel);
-        if (intelPanel) {
-          try {
-            const baseline = await updateBaseline('news:intel', intel.length);
-            const deviation = calculateDeviation(intel.length, baseline);
-            intelPanel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
-          } catch (e) { console.warn('[Baseline] news:intel write failed:', e); }
-        }
-        this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: intel.length });
-        collectedNews.push(...intel);
-        this.flashMapForNews(intel);
-      } else {
-        const staleIntel = this.getStaleNewsItems('intel').filter(i => enabledIntelNames.has(i.source));
-        if (staleIntel.length > 0) {
-          console.warn(`[News] Intel digest missing, serving stale headlines (${staleIntel.length})`);
-          this.renderNewsForCategory('intel', staleIntel);
-          if (intelPanel) {
-            try {
-              const baseline = await updateBaseline('news:intel', staleIntel.length);
-              const deviation = calculateDeviation(staleIntel.length, baseline);
-              intelPanel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
-            } catch (e) { console.warn('[Baseline] news:intel write failed:', e); }
-          }
-          this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: staleIntel.length });
-          collectedNews.push(...staleIntel);
-        } else if (!this.isPerFeedFallbackEnabled()) {
-          console.warn('[News] Intel digest missing, limited per-feed fallback disabled');
-          delete this.ctx.newsByCategory['intel'];
-          this.ctx.statusPanel?.updateFeed('Intel', { status: 'error', errorMessage: 'Digest unavailable' });
-        } else {
-          const fallbackIntelFeeds = this.selectLimitedFeeds(enabledIntelSources, this.perFeedFallbackIntelFeedLimit);
-          if (fallbackIntelFeeds.length < enabledIntelSources.length) {
-            console.warn(`[News] Intel digest missing, using limited per-feed fallback (${fallbackIntelFeeds.length}/${enabledIntelSources.length} feeds)`);
-          }
-
-          const intelResult = await Promise.allSettled([
-            fetchCategoryFeeds(fallbackIntelFeeds, { batchSize: this.perFeedFallbackBatchSize }),
-          ]);
-          if (intelResult[0]?.status === 'fulfilled') {
-            const intel = intelResult[0].value;
-            checkBatchForBreakingAlerts(intel);
-            this.renderNewsForCategory('intel', intel);
-            if (intelPanel) {
-              try {
-                const baseline = await updateBaseline('news:intel', intel.length);
-                const deviation = calculateDeviation(intel.length, baseline);
-                intelPanel.setDeviation(deviation.zScore, deviation.percentChange, deviation.level);
-              } catch (e) { console.warn('[Baseline] news:intel write failed:', e); }
-            }
-            this.ctx.statusPanel?.updateFeed('Intel', { status: 'ok', itemCount: intel.length });
-            collectedNews.push(...intel);
-            this.flashMapForNews(intel);
-          } else {
-            delete this.ctx.newsByCategory['intel'];
-            console.error('[App] Intel feed failed:', intelResult[0]?.reason);
-          }
-        }
-      }
+      collectedNews.push(...intelItems);
     }
 
     this.ctx.allNews = collectedNews;
@@ -1227,11 +1583,14 @@ export class DataLoaderManager implements AppModule {
 
       const insightsPanel = this.ctx.panels['insights'] as InsightsPanel | undefined;
       insightsPanel?.updateInsights(this.ctx.latestClusters);
+      if (isPanelInVariantDefaults('threat-timeline')) {
+        const threatTimelinePanel = this.ctx.panels['threat-timeline'] as ThreatTimelinePanel | undefined;
+        void threatTimelinePanel?.refresh(this.ctx.latestClusters);
+      }
 
       (this.ctx.panels['geo-hubs'] as GeoHubsPanel | undefined)
         ?.setActivities(getTopActiveGeoHubs(this.ctx.latestClusters));
-      (this.ctx.panels['tech-hubs'] as TechHubsPanel | undefined)
-        ?.setActivities(getTopActiveHubs(this.ctx.latestClusters));
+      this.applyTechHubActivities();
 
       const geoLocated = this.ctx.latestClusters
         .filter((c): c is typeof c & { lat: number; lon: number } => c.lat != null && c.lon != null)
@@ -1249,6 +1608,10 @@ export class DataLoaderManager implements AppModule {
       console.error('[App] Clustering failed, clusters unchanged:', error);
       const insightsPanel = this.ctx.panels['insights'] as InsightsPanel | undefined;
       insightsPanel?.updateInsights([]);
+      if (isPanelInVariantDefaults('threat-timeline')) {
+        const threatTimelinePanel = this.ctx.panels['threat-timeline'] as ThreatTimelinePanel | undefined;
+        void threatTimelinePanel?.refresh([]);
+      }
     }
 
     // Happy variant: run multi-stage positive news pipeline + map layers
@@ -1420,6 +1783,35 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadMarkets(): Promise<void> {
+    // Method-scoped so all of loadMarkets' try blocks (stocks/sectors/commodities +
+    // crypto/defi/ai/other) see these; market is dynamic-imported off eager main.js (#4571).
+    // Guarded: loadMarkets must not reject (the init() watchlist handler calls it
+    // unguarded), so a chunk-load failure skips this cycle like the per-block catches do.
+    let marketMod: typeof import('@/services/market');
+    try {
+      marketMod = await import('@/services/market');
+    } catch (e) {
+      // Persistent failure mode: a stale-deploy chunk 404 would otherwise skip the
+      // whole markets/crypto/commodities cycle with no signal. Log so it's traceable,
+      // and mirror the downstream failure states before returning.
+      console.warn('[DataLoader] market chunk load failed', e);
+      this.ctx.statusPanel?.updateApi('Finnhub', { status: 'error' });
+      this.ctx.statusPanel?.updateApi('CoinGecko', { status: 'error' });
+      (this.ctx.panels['markets'] as MarketPanel | undefined)?.showRetrying(t('common.failedMarketData'));
+      (this.ctx.panels['heatmap'] as HeatmapPanel | undefined)?.showRetrying(t('common.failedSectorData'));
+      (this.ctx.panels['commodities'] as CommoditiesPanel | undefined)?.showRetrying(t('common.failedCommodities'));
+      (this.ctx.panels['energy-complex'] as EnergyComplexPanel | undefined)?.showRetrying(t('common.failedCommodities'));
+      (this.ctx.panels['crypto'] as CryptoPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
+      (this.ctx.panels['crypto-heatmap'] as CryptoHeatmapPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
+      (this.ctx.panels['defi-tokens'] as DefiTokensPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
+      (this.ctx.panels['ai-tokens'] as AiTokensPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
+      (this.ctx.panels['other-tokens'] as OtherTokensPanel | undefined)?.showRetrying(t('common.failedCryptoData'));
+      return;
+    }
+    const {
+      fetchMultipleStocks, fetchCommodityQuotes, fetchSectors, warmCommodityCache, warmSectorCache,
+      fetchCrypto, fetchCryptoSectors, fetchDefiTokens, fetchAiTokens, fetchOtherTokens,
+    } = marketMod;
     try {
       const customEntries = getMarketWatchlistEntries();
       const effectiveSymbols = (() => {
@@ -1435,7 +1827,6 @@ export class DataLoaderManager implements AppModule {
         }
         return base;
       })();
-
 
       // Hydrate markets from bootstrap (same pattern as sectors) — instant data on page load
       const hydratedMarkets = getHydratedData('marketQuotes') as ListMarketQuotesResponse | undefined;
@@ -1593,6 +1984,7 @@ export class DataLoaderManager implements AppModule {
       // Load ECB FX rates for CommoditiesPanel FX tab
       if (commoditiesPanel) {
         try {
+          const { getEcbFxRatesData } = await import('@/services/economic');
           const fxResp = await getEcbFxRatesData();
           if (!fxResp.unavailable && fxResp.rates?.length) {
             const EUR_FX_ORDER = ['USD', 'GBP', 'JPY', 'CHF', 'CAD', 'CNY', 'AUD'];
@@ -1656,13 +2048,15 @@ export class DataLoaderManager implements AppModule {
     this.dailyBriefGeneration++;
     const gen = this.dailyBriefGeneration;
     this.ctx.inFlight.add('dailyMarketBrief');
+    let dailyMarketBrief: DailyMarketBriefModule | null = null;
     try {
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      dailyMarketBrief = await getDailyMarketBriefModule();
       // Bound the IndexedDB cache read so a hung persistent-cache layer
       // can't keep the panel on its default Loading state forever — fall
       // through to "build from scratch" instead.
       const cached = await withTimeout(
-        getCachedDailyMarketBrief(timezone),
+        dailyMarketBrief.getCachedDailyMarketBrief(timezone),
         3_000,
         'daily-brief-cache-read',
       ).catch(() => null);
@@ -1671,7 +2065,7 @@ export class DataLoaderManager implements AppModule {
         this.callPanel('daily-market-brief', 'renderBrief', cached, 'cached');
       }
 
-      if (!force && cached && !shouldRefreshDailyBrief(cached, timezone)) {
+      if (!force && cached && !dailyMarketBrief.shouldRefreshDailyBrief(cached, timezone)) {
         return;
       }
 
@@ -1690,14 +2084,16 @@ export class DataLoaderManager implements AppModule {
       // 60s budget for the actual LLM call.
       // `_collectSectorContext` is sync (reads only hydrated data) so it
       // needs no wrapping; allSettled accepts non-promises directly.
-      const [r0, r1, r2] = await Promise.allSettled([
+      const [r0, r1, r2, r3] = await Promise.allSettled([
         withTimeout(this._collectRegimeContext(), 8_000, 'daily-brief-regime-context'),
         withTimeout(this._collectYieldCurveContext(), 8_000, 'daily-brief-yield-context'),
         this._collectSectorContext(),
+        withTimeout(this._collectEarningsContext(), 8_000, 'daily-brief-earnings-context'),
       ]);
       const regimeContext = r0.status === 'fulfilled' ? r0.value : undefined;
       const yieldCurveContext = r1.status === 'fulfilled' ? r1.value : undefined;
       const sectorContext = r2.status === 'fulfilled' ? r2.value : undefined;
+      const earningsContext = r3.status === 'fulfilled' ? r3.value : undefined;
 
       // Wall-clock budget on the whole build. The inner summarizer has its
       // own 45s cap (SUMMARIZER_TIMEOUT_MS in daily-market-brief.ts) and
@@ -1707,13 +2103,14 @@ export class DataLoaderManager implements AppModule {
       // resolves). On timeout the existing catch below serves the cached
       // version or shows an error, never letting the panel stay stuck.
       const brief = await withTimeout(
-        buildDailyMarketBrief({
+        dailyMarketBrief.buildDailyMarketBrief({
           markets: this.ctx.latestMarkets,
           newsByCategory: this.ctx.newsByCategory,
           timezone,
           regimeContext,
           yieldCurveContext,
           sectorContext,
+          earningsContext,
           frameworkAppend: getActiveFrameworkForPanel('daily-market-brief')?.systemPromptAppend,
           newsCategories: SITE_VARIANT === 'commodity'
             ? ['commodity-news', 'gold-silver', 'mining-news', 'energy', 'critical-minerals']
@@ -1735,7 +2132,7 @@ export class DataLoaderManager implements AppModule {
       }
 
       // Render first, persist after. The previous order `await
-      // cacheDailyMarketBrief(brief); render(brief)` meant a hung
+      // dailyMarketBrief.cacheDailyMarketBrief(brief); render(brief)` meant a hung
       // IndexedDB / Tauri-Store write blocked the panel from ever
       // displaying the finished brief — the build budget proved nothing
       // by itself. Now: user sees the brief immediately; the cache write
@@ -1744,7 +2141,7 @@ export class DataLoaderManager implements AppModule {
       // on Building forever."
       this.callPanel('daily-market-brief', 'renderBrief', brief, 'live');
       void withTimeout(
-        cacheDailyMarketBrief(brief),
+        dailyMarketBrief.cacheDailyMarketBrief(brief),
         5_000,
         'daily-brief-cache-write',
       ).catch((err) => {
@@ -1760,11 +2157,13 @@ export class DataLoaderManager implements AppModule {
       // state was. .catch(() => null) absorbs both the TimeoutError and
       // any persistent-cache read failure into the same null-result
       // branch that the existing showError fallback already handles.
-      const cached = await withTimeout(
-        getCachedDailyMarketBrief(timezone),
-        3_000,
-        'daily-brief-cache-read-recovery',
-      ).catch(() => null);
+      const cached = dailyMarketBrief
+        ? await withTimeout(
+          dailyMarketBrief.getCachedDailyMarketBrief(timezone),
+          3_000,
+          'daily-brief-cache-read-recovery',
+        ).catch(() => null)
+        : null;
       if (cached?.available) {
         this.callPanel('daily-market-brief', 'renderBrief', cached, 'cached');
         return;
@@ -1862,6 +2261,30 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
+  /** #4922 (c): recent earnings surprises + upcoming density for the brief.
+   * RPC-backed (earnings are not bootstrap-hydrated); failures degrade to
+   * undefined — the brief simply omits the earnings block. */
+  private async _collectEarningsContext(): Promise<import('@/services/daily-market-brief').EarningsBriefContext | undefined> {
+    try {
+      const { MarketServiceClient } = await import('@/generated/client/worldmonitor/market/v1/service_client');
+      const { getRpcBaseUrl } = await import('@/services/rpc-client');
+      const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
+      const today = new Date();
+      const past = new Date(today.getTime() - 7 * 86400_000);
+      const future = new Date(today.getTime() + 14 * 86400_000);
+      const resp = await client.listEarningsCalendar({
+        fromDate: past.toISOString().slice(0, 10),
+        toDate: future.toISOString().slice(0, 10),
+      });
+      const earnings = resp.earnings ?? [];
+      if (resp.unavailable || earnings.length === 0) return undefined;
+      const { buildEarningsBriefContext } = await import('@/services/daily-market-brief');
+      return buildEarningsBriefContext(earnings, today.toISOString().slice(0, 10));
+    } catch {
+      return undefined;
+    }
+  }
+
   async loadMarketImplications(): Promise<void> {
     if (!hasPremiumAccess()) return;
     if (this.ctx.isDestroyed || this.ctx.inFlight.has('marketImplications')) return;
@@ -1906,15 +2329,32 @@ export class DataLoaderManager implements AppModule {
 
   async loadForecasts(): Promise<void> {
     try {
-      const hydrated = getHydratedData('forecasts') as { predictions?: import('@/generated/client/worldmonitor/forecast/v1/service_client').Forecast[] } | undefined;
+      const hydrated = getHydratedData('forecasts') as { predictions?: import('@/generated/client/worldmonitor/forecast/v1/service_client').Forecast[]; generatedAt?: number } | undefined;
       if (hydrated?.predictions?.length) {
-        this.callPanel('forecast', 'updateForecasts', hydrated.predictions);
+        this.callPanel('forecast', 'updateForecasts', hydrated.predictions, {
+          generatedAt: hydrated.generatedAt || 0,
+          degraded: false,
+          stale: false,
+          error: '',
+        });
         return;
       }
-      const { fetchForecasts } = await import('@/services/forecast');
-      const forecasts = await fetchForecasts();
-      this.callPanel('forecast', 'updateForecasts', forecasts);
-    } catch { /* premium feature, silent fail */ }
+      const { fetchForecastFeed } = await import('@/services/forecast');
+      const feed = await fetchForecastFeed();
+      this.callPanel('forecast', 'updateForecasts', feed.forecasts, {
+        generatedAt: feed.generatedAt,
+        degraded: feed.degraded,
+        stale: feed.stale,
+        error: feed.error,
+      });
+    } catch {
+      this.callPanel('forecast', 'updateForecasts', [], {
+        generatedAt: 0,
+        degraded: false,
+        stale: false,
+        error: 'forecast_request_failed',
+      });
+    }
   }
 
   async loadSimulationOutcome(): Promise<void> {
@@ -2011,20 +2451,15 @@ export class DataLoaderManager implements AppModule {
         daysUntil: Math.ceil((new Date(e.startDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)),
       }));
 
+      this.ctx.latestTechEvents = mapEvents;
       this.ctx.map?.setTechEvents(mapEvents);
       this.ctx.map?.setLayerReady('techEvents', mapEvents.length > 0);
       this.ctx.statusPanel?.updateFeed('Tech Events', { status: 'ok', itemCount: mapEvents.length });
 
-      if (SITE_VARIANT === 'tech' && this.ctx.searchModal) {
-        this.ctx.searchModal.registerSource('techevent', mapEvents.map((e: { id: string; title: string; location: string; startDate: string }) => ({
-          id: e.id,
-          title: e.title,
-          subtitle: `${e.location} • ${new Date(e.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`,
-          data: e,
-        })));
-      }
+      this.updateSearchIndex();
     } catch (error) {
       console.error('[App] Failed to load tech events:', error);
+      this.ctx.latestTechEvents = [];
       this.ctx.map?.setTechEvents([]);
       this.ctx.map?.setLayerReady('techEvents', false);
       this.ctx.statusPanel?.updateFeed('Tech Events', { status: 'error', errorMessage: String(error) });
@@ -2055,7 +2490,7 @@ export class DataLoaderManager implements AppModule {
         const outages = await fetchInternetOutages();
         this.ctx.intelligenceCache.outages = outages;
         ingestOutagesForCII(outages);
-        signalAggregator.ingestOutages(outages);
+        await runSignalAggregator(this.ctx.statusPanel, 'outages', (aggregator) => aggregator.ingestOutages(outages));
         dataFreshness.recordUpdate('outages', outages.length);
         if (this.ctx.mapLayers.outages) {
           this.ctx.map?.setOutages(outages);
@@ -2083,7 +2518,7 @@ export class DataLoaderManager implements AppModule {
         this.ctx.intelligenceCache.protests = protestData;
         ingestProtests(protestData.events);
         ingestProtestsForCII(protestData.events);
-        signalAggregator.ingestProtests(protestData.events);
+        await runSignalAggregator(this.ctx.statusPanel, 'protests', (aggregator) => aggregator.ingestProtests(protestData.events));
         const protestCount = protestData.sources.acled + protestData.sources.gdelt;
         if (protestCount > 0) dataFreshness.recordUpdate('acled', protestCount);
         if (protestData.sources.gdelt > 0) dataFreshness.recordUpdate('gdelt', protestData.sources.gdelt);
@@ -2110,6 +2545,7 @@ export class DataLoaderManager implements AppModule {
     tasks.push((async () => {
       try {
         const conflictData = await fetchConflictEvents();
+        this.ctx.intelligenceCache.conflicts = conflictData.events;
         ingestConflictsForCII(conflictData.events);
         if (conflictData.count > 0) dataFreshness.recordUpdate('acled_conflict', conflictData.count);
       } catch (error) {
@@ -2144,12 +2580,13 @@ export class DataLoaderManager implements AppModule {
 
     tasks.push((async () => {
       try {
-        if (isMilitaryVesselTrackingConfigured()) {
-          initMilitaryVesselStream();
+        const militaryVessels = await getMilitaryVesselsModule();
+        if (militaryVessels.isMilitaryVesselTrackingConfigured()) {
+          militaryVessels.initMilitaryVesselStream();
         }
         const [flightData, vesselData] = await Promise.all([
           fetchMilitaryFlights(),
-          fetchMilitaryVessels(),
+          militaryVessels.fetchMilitaryVessels(),
         ]);
         this.ctx.intelligenceCache.military = {
           flights: flightData.flights,
@@ -2163,15 +2600,17 @@ export class DataLoaderManager implements AppModule {
         ingestFlights(flightData.flights);
         ingestVessels(vesselData.vessels);
         ingestMilitaryForCII(flightData.flights, vesselData.vessels);
-        signalAggregator.ingestFlights(flightData.flights);
-        signalAggregator.ingestVessels(vesselData.vessels);
+        await runSignalAggregator(this.ctx.statusPanel, 'military tracks', (aggregator) => {
+          aggregator.ingestFlights(flightData.flights);
+          aggregator.ingestVessels(vesselData.vessels);
+        });
         dataFreshness.recordUpdate('opensky', flightData.flights.length);
         updateAndCheck([
           { type: 'military_flights', region: 'global', count: flightData.flights.length },
           { type: 'vessels', region: 'global', count: vesselData.vessels.length },
-        ]).then(anomalies => {
+        ]).then(async anomalies => {
           if (anomalies.length > 0) {
-            signalAggregator.ingestTemporalAnomalies(anomalies);
+            await runSignalAggregator(this.ctx.statusPanel, 'temporal anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(anomalies));
             ingestTemporalAnomaliesForCII(anomalies);
             this.refreshCiiAndBrief();
           }
@@ -2187,20 +2626,12 @@ export class DataLoaderManager implements AppModule {
           });
         }
         if (!isInLearningMode()) {
-          const surgeAlerts = analyzeFlightsForSurge(flightData.flights);
-          if (surgeAlerts.length > 0) {
-            const surgeSignals = surgeAlerts.map(surgeAlertToSignal);
-            addToSignalHistory(surgeSignals);
-            if (this.shouldShowIntelligenceNotifications()) this.ctx.signalModal?.show(surgeSignals);
-          }
-          const foreignAlerts = detectForeignMilitaryPresence(flightData.flights);
-          if (foreignAlerts.length > 0) {
-            const foreignSignals = foreignAlerts.map(foreignPresenceToSignal);
-            addToSignalHistory(foreignSignals);
-            if (this.shouldShowIntelligenceNotifications()) this.ctx.signalModal?.show(foreignSignals);
-          }
+          await this.runMilitarySurgeAnalysis(flightData.flights);
         }
       } catch (error) {
+        // A teardown that races an in-flight vessel load is a deliberate
+        // cancellation, not a real fetch failure — don't pollute freshness.
+        if (isVesselRuntimeStoppedError(error)) return;
         console.error('[Intelligence] Military fetch failed:', error);
         dataFreshness.recordError('opensky', String(error));
       }
@@ -2214,6 +2645,7 @@ export class DataLoaderManager implements AppModule {
           // listUcdpEvents is a pure Redis-read (gold standard). Retrying returns
           // the same empty result until the Railway seed refreshes the key.
           dataFreshness.recordError('ucdp_events', 'UCDP events unavailable (retaining prior event state)');
+          this.showColdLoadError('ucdp-events');
           return;
         }
         const acledEvents = protestEvents.map(e => ({
@@ -2236,6 +2668,7 @@ export class DataLoaderManager implements AppModule {
         const unhcrResult = await fetchUnhcrPopulation();
         if (!unhcrResult.ok) {
           dataFreshness.recordError('unhcr', 'UNHCR displacement unavailable (retaining prior displacement state)');
+          this.showColdLoadError('displacement');
           return;
         }
         const data = unhcrResult.data;
@@ -2247,7 +2680,7 @@ export class DataLoaderManager implements AppModule {
         if (data.countries.length > 0) dataFreshness.recordUpdate('unhcr', data.countries.length);
       } catch (error) {
         console.error('[Intelligence] UNHCR displacement fetch failed:', error);
-        this.callPanel('displacement', 'showError');
+        this.showColdLoadError('displacement');
         dataFreshness.recordError('unhcr', String(error));
       }
     })());
@@ -2257,6 +2690,7 @@ export class DataLoaderManager implements AppModule {
         const climateResult = await fetchClimateAnomalies();
         if (!climateResult.ok) {
           dataFreshness.recordError('climate', 'Climate anomalies unavailable (retaining prior climate state)');
+          this.showColdLoadError('climate');
           return;
         }
         const anomalies = climateResult.anomalies;
@@ -2268,7 +2702,7 @@ export class DataLoaderManager implements AppModule {
         if (anomalies.length > 0) dataFreshness.recordUpdate('climate', anomalies.length);
       } catch (error) {
         console.error('[Intelligence] Climate anomalies fetch failed:', error);
-        this.callPanel('climate', 'showError');
+        this.showColdLoadError('climate');
         dataFreshness.recordError('climate', String(error));
       }
     })());
@@ -2314,13 +2748,15 @@ export class DataLoaderManager implements AppModule {
         try {
           const data = await fetchGpsInterference();
           if (!data) {
+            this.ctx.intelligenceCache.gpsJamming = [];
             ingestGpsJammingForCII([]);
             this.ctx.map?.setLayerReady('gpsJamming', false);
             return;
           }
+          this.ctx.intelligenceCache.gpsJamming = data.hexes;
           ingestGpsJammingForCII(data.hexes);
           if (this.ctx.mapLayers.gpsJamming) {
-            this.ctx.map?.setGpsJamming(data.hexes);
+            await this.ctx.map?.setGpsJamming(data.hexes);
             this.ctx.map?.setLayerReady('gpsJamming', data.hexes.length > 0);
           }
           this.ctx.statusPanel?.updateFeed('GPS Jam', { status: 'ok', itemCount: data.hexes.length });
@@ -2358,10 +2794,7 @@ export class DataLoaderManager implements AppModule {
       dataFreshness.recordError('worldpop', String(error));
     }
 
-    if (hasAnyIntelligenceData()) {
-      setIntelligenceSignalsLoaded();
-    }
-    this.refreshCiiAndBrief(true);
+    this.refreshCiiAndBrief();
     console.log('[Intelligence] All signals loaded for CII calculation');
   }
 
@@ -2379,7 +2812,7 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setOutages(outages);
       this.ctx.map?.setLayerReady('outages', outages.length > 0);
       ingestOutagesForCII(outages);
-      signalAggregator.ingestOutages(outages);
+      await runSignalAggregator(this.ctx.statusPanel, 'outages', (aggregator) => aggregator.ingestOutages(outages));
       this.ctx.statusPanel?.updateFeed('NetBlocks', { status: 'ok', itemCount: outages.length });
       dataFreshness.recordUpdate('outages', outages.length);
       (this.ctx.panels['internet-disruptions'] as InternetDisruptionsPanel)?.setOutages(outages);
@@ -2416,6 +2849,7 @@ export class DataLoaderManager implements AppModule {
     }
 
     try {
+      const { fetchCyberThreats } = await import('@/services/cyber');
       const threats = await fetchCyberThreats({ limit: 500, days: 14 });
       this.ctx.cyberThreatsCache = threats;
       this.ctx.map?.setCyberThreats(threats);
@@ -2434,13 +2868,17 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadIranEvents(): Promise<void> {
+    if (!IRAN_ATTACKS_ENABLED) {
+      this.ctx.map?.setLayerReady('iranAttacks', false);
+      return;
+    }
     try {
       const events = await fetchIranEvents();
       this.ctx.intelligenceCache.iranEvents = events;
       this.ctx.map?.setIranEvents(events);
       this.ctx.map?.setLayerReady('iranAttacks', events.length > 0);
       const coerced = events.map(e => ({ ...e, timestamp: Number(e.timestamp) || 0 }));
-      signalAggregator.ingestConflictEvents(coerced);
+      await runSignalAggregator(this.ctx.statusPanel, 'iran conflict events', (aggregator) => aggregator.ingestConflictEvents(coerced));
       ingestStrikesForCII(coerced);
       this.refreshCiiAndBrief();
     } catch {
@@ -2454,14 +2892,15 @@ export class DataLoaderManager implements AppModule {
       const aisStatus = getAisStatus();
       console.log('[Ships] Events:', { disruptions: disruptions.length, density: density.length, vessels: aisStatus.vessels });
       this.ctx.map?.setAisData(disruptions, density);
-      signalAggregator.ingestAisDisruptions(disruptions);
+      this.ctx.intelligenceCache.aisDisruptions = disruptions;
+      await runSignalAggregator(this.ctx.statusPanel, 'AIS disruptions', (aggregator) => aggregator.ingestAisDisruptions(disruptions));
       ingestAisDisruptionsForCII(disruptions);
       this.refreshCiiAndBrief();
       updateAndCheck([
         { type: 'ais_gaps', region: 'global', count: disruptions.length },
-      ]).then(anomalies => {
+      ]).then(async anomalies => {
         if (anomalies.length > 0) {
-          signalAggregator.ingestTemporalAnomalies(anomalies);
+          await runSignalAggregator(this.ctx.statusPanel, 'temporal anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(anomalies));
           ingestTemporalAnomaliesForCII(anomalies);
           this.refreshCiiAndBrief();
         }
@@ -2524,6 +2963,7 @@ export class DataLoaderManager implements AppModule {
 
   async loadCableActivity(): Promise<void> {
     try {
+      const { fetchCableActivity } = await import('@/services/cable-activity');
       const activity = await fetchCableActivity();
       this.ctx.map?.setCableActivity(activity.advisories, activity.repairShips);
       const itemCount = activity.advisories.length + activity.repairShips.length;
@@ -2573,7 +3013,7 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setLayerReady('protests', protestData.events.length > 0);
       ingestProtests(protestData.events);
       ingestProtestsForCII(protestData.events);
-      signalAggregator.ingestProtests(protestData.events);
+      await runSignalAggregator(this.ctx.statusPanel, 'protests', (aggregator) => aggregator.ingestProtests(protestData.events));
       const protestCount = protestData.sources.acled + protestData.sources.gdelt;
       if (protestCount > 0) dataFreshness.recordUpdate('acled', protestCount);
       if (protestData.sources.gdelt > 0) dataFreshness.recordUpdate('gdelt', protestData.sources.gdelt);
@@ -2645,6 +3085,7 @@ export class DataLoaderManager implements AppModule {
 
   async loadFlightDelays(): Promise<void> {
     try {
+      const { fetchFlightDelays } = await import('@/services/aviation');
       const delays = await fetchFlightDelays();
       this.ctx.map?.setFlightDelays(delays);
       this.ctx.map?.setLayerReady('flights', delays.length > 0);
@@ -2684,12 +3125,13 @@ export class DataLoaderManager implements AppModule {
       return;
     }
     try {
-      if (isMilitaryVesselTrackingConfigured()) {
-        initMilitaryVesselStream();
+      const militaryVessels = await getMilitaryVesselsModule();
+      if (militaryVessels.isMilitaryVesselTrackingConfigured()) {
+        militaryVessels.initMilitaryVesselStream();
       }
       const [flightData, vesselData] = await Promise.all([
         fetchMilitaryFlights(),
-        fetchMilitaryVessels(),
+        militaryVessels.fetchMilitaryVessels(),
       ]);
       this.ctx.intelligenceCache.military = {
         flights: flightData.flights,
@@ -2705,14 +3147,16 @@ export class DataLoaderManager implements AppModule {
       ingestFlights(flightData.flights);
       ingestVessels(vesselData.vessels);
       ingestMilitaryForCII(flightData.flights, vesselData.vessels);
-      signalAggregator.ingestFlights(flightData.flights);
-      signalAggregator.ingestVessels(vesselData.vessels);
+      await runSignalAggregator(this.ctx.statusPanel, 'military tracks', (aggregator) => {
+        aggregator.ingestFlights(flightData.flights);
+        aggregator.ingestVessels(vesselData.vessels);
+      });
       updateAndCheck([
         { type: 'military_flights', region: 'global', count: flightData.flights.length },
         { type: 'vessels', region: 'global', count: vesselData.vessels.length },
-      ]).then(anomalies => {
+      ]).then(async anomalies => {
         if (anomalies.length > 0) {
-          signalAggregator.ingestTemporalAnomalies(anomalies);
+          await runSignalAggregator(this.ctx.statusPanel, 'temporal anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(anomalies));
           ingestTemporalAnomaliesForCII(anomalies);
           this.refreshCiiAndBrief();
         }
@@ -2720,18 +3164,7 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.updateMilitaryForEscalation(flightData.flights, vesselData.vessels);
       this.refreshCiiAndBrief();
       if (!isInLearningMode()) {
-        const surgeAlerts = analyzeFlightsForSurge(flightData.flights);
-        if (surgeAlerts.length > 0) {
-          const surgeSignals = surgeAlerts.map(surgeAlertToSignal);
-          addToSignalHistory(surgeSignals);
-          if (this.shouldShowIntelligenceNotifications()) this.ctx.signalModal?.show(surgeSignals);
-        }
-        const foreignAlerts = detectForeignMilitaryPresence(flightData.flights);
-        if (foreignAlerts.length > 0) {
-          const foreignSignals = foreignAlerts.map(foreignPresenceToSignal);
-          addToSignalHistory(foreignSignals);
-          if (this.shouldShowIntelligenceNotifications()) this.ctx.signalModal?.show(foreignSignals);
-        }
+        await this.runMilitarySurgeAnalysis(flightData.flights);
       }
 
       this.loadCachedPosturesForBanner();
@@ -2749,10 +3182,35 @@ export class DataLoaderManager implements AppModule {
       this.ctx.statusPanel?.updateApi('OpenSky', { status: 'ok' });
       dataFreshness.recordUpdate('opensky', flightData.flights.length);
     } catch (error) {
+      // A teardown that races an in-flight vessel load is a deliberate
+      // cancellation, not a real fetch failure — leave feed/api state intact.
+      if (isVesselRuntimeStoppedError(error)) return;
       this.ctx.map?.setLayerReady('military', false);
       this.ctx.statusPanel?.updateFeed('Military', { status: 'error', errorMessage: String(error) });
       this.ctx.statusPanel?.updateApi('OpenSky', { status: 'error' });
       dataFreshness.recordError('opensky', String(error));
+    }
+  }
+
+  private async runMilitarySurgeAnalysis(flights: MilitaryFlight[]): Promise<void> {
+    try {
+      // military-surge pulls bases-expanded, so keep it off the eager boot graph
+      // and make its optional enrichment non-fatal to the military fetch path.
+      const { analyzeFlightsForSurge, surgeAlertToSignal, detectForeignMilitaryPresence, foreignPresenceToSignal } = await import('@/services/military-surge');
+      const surgeAlerts = analyzeFlightsForSurge(flights);
+      if (surgeAlerts.length > 0) {
+        const surgeSignals = surgeAlerts.map(surgeAlertToSignal);
+        addToSignalHistory(surgeSignals);
+        if (this.shouldShowIntelligenceNotifications()) this.showSignalNotification(surgeSignals, 'Military surge');
+      }
+      const foreignAlerts = detectForeignMilitaryPresence(flights);
+      if (foreignAlerts.length > 0) {
+        const foreignSignals = foreignAlerts.map(foreignPresenceToSignal);
+        addToSignalHistory(foreignSignals);
+        if (this.shouldShowIntelligenceNotifications()) this.showSignalNotification(foreignSignals, 'Foreign presence');
+      }
+    } catch (error) {
+      console.warn('[Intelligence] Military surge analysis skipped:', error);
     }
   }
 
@@ -2780,6 +3238,7 @@ export class DataLoaderManager implements AppModule {
 
     try {
       economicPanel?.setLoading(true);
+      const { fetchFredData } = await import('@/services/economic');
       const data = await fetchFredData();
 
       const postInfo = getCircuitBreakerCooldownInfo('FRED Batch');
@@ -2812,6 +3271,10 @@ export class DataLoaderManager implements AppModule {
   async loadOilAnalytics(): Promise<void> {
     const energyPanel = this.ctx.panels['energy-complex'] as EnergyComplexPanel | undefined;
     try {
+      const {
+        fetchOilAnalytics, fetchCrudeInventoriesRpc, fetchNatGasStorageRpc,
+        getEuGasStorageData, getOilStocksAnalysisData, fetchLngVulnerability,
+      } = await import('@/services/economic');
       const [data, crudeResp, natGasResp, euGasResp, oilStocksResp] = await Promise.allSettled([
         fetchOilAnalytics(),
         fetchCrudeInventoriesRpc(),
@@ -2884,6 +3347,7 @@ export class DataLoaderManager implements AppModule {
   async loadBisData(): Promise<void> {
     const economicPanel = this.ctx.panels['economic'] as EconomicPanel;
     try {
+      const { fetchBisData } = await import('@/services/economic');
       const data = await fetchBisData();
       economicPanel?.updateBis(data);
       const hasData = data.policyRates?.length > 0;
@@ -2901,6 +3365,7 @@ export class DataLoaderManager implements AppModule {
   async loadBlsData(): Promise<void> {
     const economicPanel = this.ctx.panels['economic'] as EconomicPanel;
     try {
+      const { fetchBlsData } = await import('@/services/economic');
       const data = await fetchBlsData();
       if (data.length > 0) {
         economicPanel?.updateBls(data);
@@ -2925,6 +3390,10 @@ export class DataLoaderManager implements AppModule {
     if (!tradePanel) return;
 
     try {
+      const {
+        fetchTradeRestrictions, fetchTariffTrends, fetchTradeFlows,
+        fetchTradeBarriers, fetchCustomsRevenue, fetchComtradeFlows,
+      } = await import('@/services/trade');
       const [restrictions, tariffs, flows, barriers, revenue, comtrade] = await Promise.allSettled([
         fetchTradeRestrictions([], 50),
         fetchTariffTrends('840', '156', '', 10),
@@ -2974,6 +3443,9 @@ export class DataLoaderManager implements AppModule {
     if (!scPanel) return;
 
     try {
+      const {
+        fetchShippingRates, fetchChokepointStatus, fetchCriticalMinerals, fetchShippingStress,
+      } = await import('@/services/supply-chain');
       const [shipping, chokepoints, minerals, stress] = await Promise.allSettled([
         fetchShippingRates(),
         fetchChokepointStatus(),
@@ -3073,6 +3545,19 @@ export class DataLoaderManager implements AppModule {
     monitorPanel?.renderResults(this.ctx.allNews);
   }
 
+  // Lazy-load the tech-activity service (→ tech-hub-index → the ~62KB tech-geo
+  // table) only when the lazy tech-hubs panel is mounted, so the table stays off
+  // the eager dashboard critical path. Non-critical panel data — degrade silently
+  // on load failure. (#4404)
+  private applyTechHubActivities(): void {
+    const techHubsPanel = this.ctx.panels['tech-hubs'] as TechHubsPanel | undefined;
+    if (!techHubsPanel) return;
+    const clusters = this.ctx.latestClusters;
+    void import('@/services/tech-activity')
+      .then(({ getTopActiveHubs }) => techHubsPanel.setActivities(getTopActiveHubs(clusters)))
+      .catch(() => { /* non-critical */ });
+  }
+
   async runCorrelationAnalysis(): Promise<void> {
     try {
       if (this.ctx.latestClusters.length === 0 && this.ctx.allNews.length > 0) {
@@ -3087,8 +3572,7 @@ export class DataLoaderManager implements AppModule {
         this.refreshCiiAndBrief();
         (this.ctx.panels['geo-hubs'] as GeoHubsPanel | undefined)
           ?.setActivities(getTopActiveGeoHubs(this.ctx.latestClusters));
-        (this.ctx.panels['tech-hubs'] as TechHubsPanel | undefined)
-          ?.setActivities(getTopActiveHubs(this.ctx.latestClusters));
+        this.applyTechHubActivities();
       }
 
       const signals = await analysisWorker.analyzeCorrelations(
@@ -3103,11 +3587,11 @@ export class DataLoaderManager implements AppModule {
         geoSignals = geoAlerts.map(geoConvergenceToSignal);
       }
 
-      const keywordSpikeSignals = drainTrendingSignals();
+      const keywordSpikeSignals = await drainTrendingSignalQueue();
       const allSignals = [...signals, ...geoSignals, ...keywordSpikeSignals];
       if (allSignals.length > 0) {
         addToSignalHistory(allSignals);
-        if (this.shouldShowIntelligenceNotifications()) this.ctx.signalModal?.show(allSignals);
+        if (this.shouldShowIntelligenceNotifications()) this.showSignalNotification(allSignals, 'Correlation');
       }
     } catch (error) {
       console.error('[App] Correlation analysis failed:', error);
@@ -3135,7 +3619,8 @@ export class DataLoaderManager implements AppModule {
           acq_date: new Date(f.detectedAt).toISOString().slice(0, 10),
         }));
 
-        signalAggregator.ingestSatelliteFires(satelliteFires);
+        this.ctx.intelligenceCache.satelliteFires = satelliteFires;
+        await runSignalAggregator(this.ctx.statusPanel, 'satellite fires', (aggregator) => aggregator.ingestSatelliteFires(satelliteFires));
         ingestSatelliteFiresForCII(satelliteFires);
         this.refreshCiiAndBrief();
 
@@ -3145,6 +3630,7 @@ export class DataLoaderManager implements AppModule {
 
         dataFreshness.recordUpdate('firms', totalCount);
       } else {
+        this.ctx.intelligenceCache.satelliteFires = [];
         ingestSatelliteFiresForCII([]);
         this.refreshCiiAndBrief();
         (this.ctx.panels['satellite-fires'] as SatelliteFiresPanel)?.update([], 0);
@@ -3212,14 +3698,14 @@ export class DataLoaderManager implements AppModule {
 
   async hydrateHappyPanelsFromCache(): Promise<void> {
     try {
-      type CachedItem = Omit<NewsItem, 'pubDate'> & { pubDate: number };
+      type CachedItem = Omit<NewsItem, 'pubDate'> & { pubDate?: number };
       const entry = await getPersistentCache<CachedItem[]>(DataLoaderManager.HAPPY_ITEMS_CACHE_KEY);
       if (!entry || !entry.data || entry.data.length === 0) return;
       if (Date.now() - entry.updatedAt > 24 * 60 * 60 * 1000) return;
 
       const items: NewsItem[] = entry.data.map(item => ({
         ...item,
-        pubDate: new Date(item.pubDate),
+        pubDate: new Date(displayPubDateMs(item)),
       }));
 
       const scienceSources = ['GNN Science', 'ScienceDaily', 'Nature News', 'Live Science', 'New Scientist', 'Singularity Hub', 'Human Progress', 'Greater Good (Berkeley)'];
@@ -3287,7 +3773,10 @@ export class DataLoaderManager implements AppModule {
 
     setPersistentCache(
       DataLoaderManager.HAPPY_ITEMS_CACHE_KEY,
-      this.ctx.happyAllItems.map(item => ({ ...item, pubDate: item.pubDate.getTime() }))
+      this.ctx.happyAllItems.map(item => ({
+        ...item,
+        pubDate: displayPubDateMs(item),
+      }))
     ).catch(() => {});
   }
 
@@ -3346,6 +3835,7 @@ export class DataLoaderManager implements AppModule {
   }
 
   private async loadRenewableData(): Promise<void> {
+    const { fetchRenewableEnergyData, fetchEnergyCapacity } = await import('@/services/renewable-energy-data');
     const data = await fetchRenewableEnergyData();
     this.callPanel('renewable', 'setData', data);
     if (SITE_VARIANT === 'happy' && data?.globalPercentage) {
@@ -3380,7 +3870,7 @@ export class DataLoaderManager implements AppModule {
       const result = await fetchSanctionsPressure();
       this.callPanel('sanctions-pressure', 'setData', result);
       this.ctx.intelligenceCache.sanctions = result;
-      signalAggregator.ingestSanctionsPressure(result.countries);
+      await runSignalAggregator(this.ctx.statusPanel, 'sanctions pressure', (aggregator) => aggregator.ingestSanctionsPressure(result.countries));
       ingestSanctionsForCII(result.countries);
       if (result.totalCount > 0) {
         dataFreshness.recordUpdate('sanctions_pressure', result.totalCount);
@@ -3421,7 +3911,7 @@ export class DataLoaderManager implements AppModule {
       const anomalies = result.observations.filter((observation) => observation.severity !== 'normal');
       this.callPanel('radiation-watch', 'setData', result);
       this.ctx.intelligenceCache.radiation = result;
-      signalAggregator.ingestRadiationObservations(result.observations);
+      await runSignalAggregator(this.ctx.statusPanel, 'radiation observations', (aggregator) => aggregator.ingestRadiationObservations(result.observations));
       this.ctx.map?.setRadiationObservations(anomalies);
       this.ctx.map?.setLayerReady('radiationWatch', anomalies.length > 0);
       if (result.observations.length > 0) {

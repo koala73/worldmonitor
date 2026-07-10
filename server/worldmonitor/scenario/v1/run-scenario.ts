@@ -7,6 +7,7 @@ import { ApiError, ValidationError } from '../../../../src/generated/server/worl
 
 import { isCallerPremium } from '../../../_shared/premium-check';
 import { runRedisPipeline } from '../../../_shared/redis';
+import { setResponseHeader, setSuccessStatusOverride } from '../../../_shared/response-headers';
 import { getScenarioTemplate } from '../../supply-chain/v1/scenario-templates';
 
 const QUEUE_KEY = 'scenario-queue:pending';
@@ -71,9 +72,19 @@ export async function runScenario(
   // /api/scenario/v1/run contract so external callers can keep polling via the
   // response body rather than hardcoding the status path. See the proto comment
   // on RunScenarioResponse for why this matters on a v1 → v1 migration.
+  const statusUrl = `/api/scenario/v1/get-scenario-status?jobId=${encodeURIComponent(jobId)}`;
+
+  // Async-enqueue contract: the job is accepted, not complete. Restore the
+  // legacy 202 Accepted status (lost in the sebuf migration — the generated
+  // server hardcodes 200) and point at the poller via Location. The gateway
+  // applies the override on POST-200 only, so the thrown 403/429/502 paths
+  // above keep their status.
+  setSuccessStatusOverride(ctx.request, 202);
+  setResponseHeader(ctx.request, 'Location', statusUrl);
+
   return {
     jobId,
     status: 'pending',
-    statusUrl: `/api/scenario/v1/get-scenario-status?jobId=${encodeURIComponent(jobId)}`,
+    statusUrl,
   };
 }

@@ -135,6 +135,42 @@ describe('redis caching behavior', { concurrency: 1 }, () => {
     }
   });
 
+  it('does not positive-cache no-store fallback payloads', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    const setValues = [];
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: undefined });
+      if (isSetRequest(url, init)) {
+        const parsed = parseSetRequest(url, init);
+        setValues.push(parsed);
+        return jsonResponse({ result: 'OK' });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const fallback = { items: [], degraded: true, error: 'upstream_unavailable' };
+      const result = await redis.cachedFetchJson('meta:test:no-store', 60, async () => fallback);
+
+      assert.deepEqual(result, fallback);
+      assert.equal(setValues.length, 1);
+      assert.equal(JSON.parse(setValues[0].value), '__WM_NEG__');
+      assert.equal(setValues[0].ttlSeconds, 120);
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
   it('parses pipeline results and skips malformed entries', async () => {
     const redis = await importRedisFresh();
     const restoreEnv = withEnv({
@@ -224,11 +260,12 @@ describe('cachedFetchJsonWithMeta source labeling', { concurrency: 1 }, () => {
     };
 
     try {
-      const { data, source } = await redis.cachedFetchJsonWithMeta('meta:test:miss', 60, async () => {
+      const { data, source, leader } = await redis.cachedFetchJsonWithMeta('meta:test:miss', 60, async () => {
         return { value: 'fresh-data' };
       });
 
       assert.equal(source, 'fresh', 'should report source=fresh on cache miss');
+      assert.equal(leader, true, 'cache miss caller that runs the fetcher should be marked leader');
       assert.deepEqual(data, { value: 'fresh-data' });
     } finally {
       globalThis.fetch = originalFetch;
@@ -236,7 +273,7 @@ describe('cachedFetchJsonWithMeta source labeling', { concurrency: 1 }, () => {
     }
   });
 
-  it('reports source=fresh for ALL coalesced concurrent callers', async () => {
+  it('reports source=fresh for all coalesced callers but marks only the fetch leader', async () => {
     const redis = await importRedisFresh();
     const restoreEnv = withEnv({
       UPSTASH_REDIS_REST_URL: 'https://redis.test',
@@ -271,6 +308,7 @@ describe('cachedFetchJsonWithMeta source labeling', { concurrency: 1 }, () => {
       assert.equal(a.source, 'fresh', 'leader should report fresh');
       assert.equal(b.source, 'fresh', 'follower 1 should report fresh (not cache)');
       assert.equal(c.source, 'fresh', 'follower 2 should report fresh (not cache)');
+      assert.equal([a, b, c].filter((r) => r.leader).length, 1, 'only one coalesced caller should be the write leader');
       assert.deepEqual(a.data, { value: 'coalesced' });
       assert.deepEqual(b.data, { value: 'coalesced' });
       assert.deepEqual(c.data, { value: 'coalesced' });
@@ -796,12 +834,128 @@ describe('cachedFetchJson inflight timeout (#3539)', { concurrency: 1 }, () => {
   });
 });
 
+describe('country risk freshness behavior', { concurrency: 1 }, () => {
+  async function importCountryRisk() {
+    return importPatchedTsModule('server/worldmonitor/intelligence/v1/get-country-risk.ts', {
+      './_shared': resolve(root, 'server/worldmonitor/intelligence/v1/_shared.ts'),
+      '../../../_shared/redis': resolve(root, 'server/_shared/redis.ts'),
+      '../../../_shared/cache-keys': resolve(root, 'server/_shared/cache-keys.ts'),
+      // #4921: citation verification + grounding telemetry import
+      '../../../../shared/brief-llm-core.js': resolve(root, 'shared/brief-llm-core.js'),
+    });
+  }
+
+  function parseGetKey(rawUrl) {
+    return decodeURIComponent(rawUrl.split('/get/').pop() || '');
+  }
+
+  function withMockedNow(nowMs) {
+    const originalDateNow = Date.now;
+    Date.now = () => nowMs;
+    return () => {
+      Date.now = originalDateNow;
+    };
+  }
+
+  it('returns fetchedAt=0 for missing country code instead of fabricating request time', async () => {
+    const { module, cleanup } = await importCountryRisk();
+    const restoreNow = withMockedNow(1_777_000_000_000);
+    const originalFetch = globalThis.fetch;
+    let fetchCalls = 0;
+    globalThis.fetch = async () => {
+      fetchCalls += 1;
+      return jsonResponse({ result: undefined });
+    };
+
+    try {
+      const result = await module.getCountryRisk({}, { countryCode: '' });
+      assert.equal(result.fetchedAt, 0);
+      assert.equal(result.upstreamUnavailable, false);
+      assert.equal(fetchCalls, 0, 'missing-code path must not hit Redis');
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreNow();
+    }
+  });
+
+  it('returns fetchedAt=0 when upstream Redis keys are unavailable', async () => {
+    const { module, cleanup } = await importCountryRisk();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+    });
+    const restoreNow = withMockedNow(1_777_000_000_000);
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: undefined });
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const result = await module.getCountryRisk({}, { countryCode: 'US' });
+      assert.equal(result.fetchedAt, 0);
+      assert.equal(result.upstreamUnavailable, true);
+      assert.equal(result.cii, undefined);
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreNow();
+      restoreEnv();
+    }
+  });
+
+  it('returns fetchedAt=0 for untracked countries with no CII score', async () => {
+    const { module, cleanup } = await importCountryRisk();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+    });
+    const restoreNow = withMockedNow(1_777_000_000_000);
+    const originalFetch = globalThis.fetch;
+    const redisValues = new Map([
+      ['risk:scores:sebuf:stale:v8', JSON.stringify({
+        ciiScores: [{ region: 'US', combinedScore: 10, computedAt: 1_700_000_000_000 }],
+      })],
+      ['intelligence:advisories:v1', JSON.stringify({
+        byCountry: { ZZ: 'caution' },
+        byCountryName: { ZZ: 'Untracked Testland' },
+      })],
+      ['sanctions:country-counts:v1', JSON.stringify({ ZZ: 2 })],
+    ]);
+
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: redisValues.get(parseGetKey(raw)) });
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const result = await module.getCountryRisk({}, { countryCode: 'ZZ' });
+      assert.equal(result.countryName, 'Untracked Testland');
+      assert.equal(result.cii, undefined);
+      assert.equal(result.fetchedAt, 0);
+      assert.equal(result.upstreamUnavailable, false);
+      assert.equal(result.sanctionsActive, true);
+      assert.equal(result.sanctionsCount, 2);
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreNow();
+      restoreEnv();
+    }
+  });
+});
+
 describe('theater posture caching behavior', { concurrency: 1 }, () => {
   async function importTheaterPosture() {
     return importPatchedTsModule('server/worldmonitor/military/v1/get-theater-posture.ts', {
       './_shared': resolve(root, 'server/worldmonitor/military/v1/_shared.ts'),
       '../../../_shared/constants': resolve(root, 'server/_shared/constants.ts'),
       '../../../_shared/redis': resolve(root, 'server/_shared/redis.ts'),
+      '../../../_shared/response-headers': resolve(root, 'server/_shared/response-headers.ts'),
     });
   }
 
@@ -840,7 +994,7 @@ describe('theater posture caching behavior', { concurrency: 1 }, () => {
     };
 
     try {
-      const result = await module.getTheaterPosture({}, {});
+      const result = await module.getTheaterPosture({ request: new Request('https://worldmonitor.app/api/military/v1/get-theater-posture') }, {});
       assert.equal(openskyFetchCount, 0, 'must not call upstream APIs (Redis-read-only)');
       assert.deepEqual(result, liveData, 'should return live Redis data');
     } finally {
@@ -887,7 +1041,7 @@ describe('theater posture caching behavior', { concurrency: 1 }, () => {
     };
 
     try {
-      const result = await module.getTheaterPosture({}, {});
+      const result = await module.getTheaterPosture({ request: new Request('https://worldmonitor.app/api/military/v1/get-theater-posture') }, {});
       assert.deepEqual(result, staleData, 'should return stale cache when upstreams fail');
     } finally {
       cleanup();
@@ -924,7 +1078,7 @@ describe('theater posture caching behavior', { concurrency: 1 }, () => {
     };
 
     try {
-      const result = await module.getTheaterPosture({}, {});
+      const result = await module.getTheaterPosture({ request: new Request('https://worldmonitor.app/api/military/v1/get-theater-posture') }, {});
       assert.deepEqual(result, { theaters: [] }, 'should return empty when all tiers exhausted');
     } finally {
       cleanup();
@@ -955,7 +1109,7 @@ describe('theater posture caching behavior', { concurrency: 1 }, () => {
     };
 
     try {
-      await module.getTheaterPosture({}, {});
+      await module.getTheaterPosture({ request: new Request('https://worldmonitor.app/api/military/v1/get-theater-posture') }, {});
       assert.equal(cacheWrites.length, 0, 'handler must not write to Redis (read-only)');
     } finally {
       cleanup();
@@ -966,17 +1120,23 @@ describe('theater posture caching behavior', { concurrency: 1 }, () => {
 });
 
 describe('country intel brief caching behavior', { concurrency: 1 }, () => {
-  async function importCountryIntelBrief() {
+  async function importCountryIntelBrief({ premium = false } = {}) {
     return importPatchedTsModule('server/worldmonitor/intelligence/v1/get-country-intel-brief.ts', {
       './_shared': resolve(root, 'server/worldmonitor/intelligence/v1/_shared.ts'),
+      './_country-brief-context': resolve(root, 'server/worldmonitor/intelligence/v1/_country-brief-context.ts'),
       '../../../_shared/constants': resolve(root, 'server/_shared/constants.ts'),
       '../../../_shared/redis': resolve(root, 'server/_shared/redis.ts'),
       '../../../_shared/llm-health': resolve(root, 'tests/helpers/llm-health-stub.ts'),
       '../../../_shared/llm': resolve(root, 'server/_shared/llm.ts'),
       '../../../_shared/hash': resolve(root, 'server/_shared/hash.ts'),
-      '../../../_shared/premium-check': resolve(root, 'tests/helpers/premium-check-stub.ts'),
+      '../../../_shared/premium-check': resolve(
+        root,
+        premium ? 'tests/helpers/premium-check-stub-true.ts' : 'tests/helpers/premium-check-stub.ts',
+      ),
       '../../../_shared/llm-sanitize.js': resolve(root, 'server/_shared/llm-sanitize.js'),
       '../../../_shared/cache-keys': resolve(root, 'server/_shared/cache-keys.ts'),
+      // #4921: citation verification + grounding telemetry import
+      '../../../../shared/brief-llm-core.js': resolve(root, 'shared/brief-llm-core.js'),
     });
   }
 
@@ -991,26 +1151,17 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     return { request: new Request(url) };
   }
 
-  it('uses distinct cache keys for distinct context snapshots', async () => {
-    const { module, cleanup } = await importCountryIntelBrief();
-    const restoreEnv = withEnv({
-      GROQ_API_KEY: 'test-key',
-      UPSTASH_REDIS_REST_URL: 'https://redis.test',
-      UPSTASH_REDIS_REST_TOKEN: 'token',
-      VERCEL_ENV: undefined,
-      VERCEL_GIT_COMMIT_SHA: undefined,
-    });
-    const originalFetch = globalThis.fetch;
-
-    const store = new Map();
-    const setKeys = [];
-    const userPrompts = [];
-    let groqCalls = 0;
-
+  function installIntelFetchMock({ store, setKeys, userPrompts, counters }) {
     globalThis.fetch = async (url, init = {}) => {
       const raw = String(url);
       if (raw === 'https://api.groq.com') {
         return jsonResponse({});
+      }
+      if (raw.includes('api.groq.com/openai/v1/chat/completions')) {
+        counters.groqCalls += 1;
+        const body = JSON.parse(String(init.body || '{}'));
+        userPrompts.push(body.messages?.[1]?.content || '');
+        return jsonResponse({ choices: [{ message: { content: `brief-${counters.groqCalls}` } }] });
       }
       if (raw.includes('/get/')) {
         const key = parseRedisKey(raw, 'get');
@@ -1022,14 +1173,76 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
         if (!key.startsWith('seed-meta:')) setKeys.push(key);
         return jsonResponse({ result: 'OK' });
       }
-      if (raw.includes('api.groq.com/openai/v1/chat/completions')) {
-        groqCalls += 1;
-        const body = JSON.parse(String(init.body || '{}'));
-        userPrompts.push(body.messages?.[1]?.content || '');
-        return jsonResponse({ choices: [{ message: { content: `brief-${groqCalls}` } }] });
-      }
       throw new Error(`Unexpected fetch URL: ${raw}`);
     };
+  }
+
+  const INTEL_TEST_ENV = {
+    GROQ_API_KEY: 'test-key',
+    // The default chain is openrouter-first since #4944; clear these so the
+    // groq-only fetch mock deterministically sees groq as the first provider
+    // regardless of ambient shell env.
+    OPENROUTER_API_KEY: undefined,
+    OLLAMA_API_URL: undefined,
+    UPSTASH_REDIS_REST_URL: 'https://redis.test',
+    UPSTASH_REDIS_REST_TOKEN: 'token',
+    VERCEL_ENV: undefined,
+    VERCEL_GIT_COMMIT_SHA: undefined,
+  };
+
+  it('anon callers share one digest-grounded cache entry regardless of client context', async () => {
+    const { module, cleanup } = await importCountryIntelBrief();
+    const restoreEnv = withEnv(INTEL_TEST_ENV);
+    const originalFetch = globalThis.fetch;
+
+    const store = new Map();
+    store.set('news:digest:v1:full:en', JSON.stringify({
+      categories: {
+        conflict: {
+          items: [
+            { title: 'Israel announces new security framework', source: 'Reuters', link: 'https://example.com/il-1', pubDate: '2026-07-05T06:00:00.000Z' },
+            { title: 'Unrelated commodity report', source: 'Bloomberg', link: 'https://example.com/other' },
+          ],
+        },
+      },
+    }));
+    const setKeys = [];
+    const userPrompts = [];
+    const counters = { groqCalls: 0 };
+    installIntelFetchMock({ store, setKeys, userPrompts, counters });
+
+    try {
+      const req = { countryCode: 'IL' };
+      const alpha = await module.getCountryIntelBrief(makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=IL&context=alpha'), req);
+      const beta = await module.getCountryIntelBrief(makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=IL&context=beta'), req);
+
+      assert.equal(counters.groqCalls, 1, 'anon context variations must share one cache entry');
+      assert.equal(setKeys.length, 1, 'one shared cache write');
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v5:IL:en:shared'), `anon key should use the shared v5 namespace, got ${setKeys[0]}`);
+      assert.equal(alpha.brief, 'brief-1');
+      assert.equal(beta.brief, 'brief-1', 'second anon caller must be served from cache');
+      assert.ok(!userPrompts[0]?.includes('alpha'), 'anon caller context must not reach the prompt');
+      assert.match(userPrompts[0], /Israel announces new security framework/, 'prompt should be grounded on the server-side digest');
+      assert.ok(!userPrompts[0]?.includes('Unrelated commodity report'), 'digest grounding should be country-filtered');
+      assert.equal(alpha.sources[0]?.url, 'https://example.com/il-1', 'sources should be server-derived');
+      assert.deepEqual(beta.sources, alpha.sources, 'cached sources are shared');
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('premium callers keep per-context personalized cache keys', async () => {
+    const { module, cleanup } = await importCountryIntelBrief({ premium: true });
+    const restoreEnv = withEnv(INTEL_TEST_ENV);
+    const originalFetch = globalThis.fetch;
+
+    const store = new Map();
+    const setKeys = [];
+    const userPrompts = [];
+    const counters = { groqCalls: 0 };
+    installIntelFetchMock({ store, setKeys, userPrompts, counters });
 
     try {
       const req = { countryCode: 'IL' };
@@ -1037,14 +1250,14 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       const beta = await module.getCountryIntelBrief(makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=IL&context=beta'), req);
       const alphaCached = await module.getCountryIntelBrief(makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=IL&context=alpha'), req);
 
-      assert.equal(groqCalls, 2, 'different contexts should not share one cache entry');
-      assert.equal(setKeys.length, 2, 'one cache write per unique context');
-      assert.notEqual(setKeys[0], setKeys[1], 'context hash should differentiate cache keys');
-      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v3:IL:'), 'cache key should use v3 country-intel namespace');
-      assert.ok(setKeys[1]?.startsWith('ci-sebuf:v3:IL:'), 'cache key should use v3 country-intel namespace');
+      assert.equal(counters.groqCalls, 2, 'different premium contexts should not share one cache entry');
+      assert.equal(setKeys.length, 2, 'one cache write per unique premium context');
+      assert.notEqual(setKeys[0], setKeys[1], 'context hash should differentiate premium cache keys');
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v5:IL:'), 'cache key should use the v5 country-intel namespace');
+      assert.ok(!setKeys[0]?.includes(':shared'), 'premium keys must not use the shared namespace');
       assert.equal(alpha.brief, 'brief-1');
       assert.equal(beta.brief, 'brief-2');
-      assert.equal(alphaCached.brief, 'brief-1', 'same context should hit cache');
+      assert.equal(alphaCached.brief, 'brief-1', 'same premium context should hit cache');
       assert.match(userPrompts[0], /Context snapshot:\s*alpha/);
       assert.match(userPrompts[1], /Context snapshot:\s*beta/);
     } finally {
@@ -1058,6 +1271,10 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     const { module, cleanup } = await importCountryIntelBrief();
     const restoreEnv = withEnv({
       GROQ_API_KEY: 'test-key',
+      // Deterministic groq-first for this groq-only mock (chain is
+      // openrouter-first since #4944).
+      OPENROUTER_API_KEY: undefined,
+      OLLAMA_API_URL: undefined,
       UPSTASH_REDIS_REST_URL: 'https://redis.test',
       UPSTASH_REDIS_REST_TOKEN: 'token',
       VERCEL_ENV: undefined,
@@ -1099,10 +1316,10 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       const first = await module.getCountryIntelBrief(makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=US'), req);
       const second = await module.getCountryIntelBrief(makeCtx('https://example.com/api/intelligence/v1/get-country-intel-brief?country_code=US&context=%20%20%20'), req);
 
-      assert.equal(groqCalls, 1, 'blank context should reuse base cache entry');
+      assert.equal(groqCalls, 1, 'blank context should reuse the shared cache entry');
       assert.equal(setKeys.length, 1);
-      assert.ok(setKeys[0]?.endsWith(':base'), 'missing context should use :base cache suffix');
-      assert.ok(!userPrompts[0]?.includes('Context snapshot:'), 'prompt should omit context block when absent');
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v5:US:en:shared'), `anon callers land on the shared key, got ${setKeys[0]}`);
+      assert.ok(!userPrompts[0]?.includes('Context snapshot:'), 'prompt should omit context block when digest grounding is unavailable');
       assert.equal(first.brief, 'base-brief');
       assert.equal(second.brief, 'base-brief');
     } finally {
@@ -1414,3 +1631,50 @@ describe('setCachedJson wire shape and failure reporting', { concurrency: 1 }, (
     }
   });
 });
+
+describe('getHashFieldsBatch empty-string handling (#3530)', { concurrency: 1 }, () => {
+  it('preserves empty-string values, omits null/missing, and retains real strings', async () => {
+    // Regression: getHashFieldsBatch used a truthy check (`if (values[i])`) that
+    // dropped valid empty-string hash values. Real Redis hash values are
+    // allowed to be the empty string, so a caller that round-trips "" will
+    // silently lose it. The fix switches to a null/undefined check so "" is
+    // preserved.
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    let pipelineCalls = 0;
+    globalThis.fetch = async (_url, init = {}) => {
+      pipelineCalls += 1;
+      const pipeline = JSON.parse(String(init.body));
+      assert.equal(pipeline.length, 1);
+      assert.equal(pipeline[0][0], 'HMGET');
+      assert.deepEqual(pipeline[0].slice(2), ['name', 'empty', 'missing', 'real']);
+      // Upstash HMGET returns an array of (string | null) in field order:
+      //   - real value  -> "alice"
+      //   - valid ""    -> ""
+      //   - missing key -> null
+      //   - real value  -> "ok"
+      return jsonResponse([{ result: ['alice', '', null, 'ok'] }]);
+    };
+
+    try {
+      const map = await redis.getHashFieldsBatch('user:42', ['name', 'empty', 'missing', 'real']);
+      assert.equal(pipelineCalls, 1, 'should batch into one HMGET pipeline call');
+      assert.equal(map.get('name'), 'alice', 'non-empty value is kept');
+      assert.equal(map.get('empty'), '', 'empty-string value must be preserved (this is the bug)');
+      assert.equal(map.has('missing'), false, 'null entries are omitted');
+      assert.equal(map.get('real'), 'ok', 'non-empty value is kept');
+      assert.equal(map.size, 3, 'map should contain only the three resolvable fields');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+});
+

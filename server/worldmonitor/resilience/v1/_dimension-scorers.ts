@@ -1,5 +1,6 @@
 import countryNames from '../../../../shared/country-names.json';
 import iso2ToIso3Json from '../../../../shared/iso2-to-iso3.json';
+import wgiIndicatorKeys from '../../../../shared/wgi-indicator-keys.json';
 import { normalizeCountryToken } from '../../../_shared/country-token';
 import { getCachedJson } from '../../../_shared/redis';
 import { classifyDimensionFreshness, readFreshnessMap, resolveSeedMetaKey } from './_dimension-freshness';
@@ -16,7 +17,7 @@ export type ResilienceDimensionId =
   | 'macroFiscal'
   | 'currencyExternal'
   | 'tradePolicy'
-  | 'financialSystemExposure'  // plan 2026-04-25-004 Phase 2: structural sanctions vulnerability via BIS LBS + WB IDS + FATF
+  | 'financialSystemExposure'  // plan 2026-04-25-004 Phase 2: structural sanctions vulnerability via BIS CBS + WB IDS + FATF
   | 'cyberDigital'
   | 'logisticsSupply'
   | 'infrastructure'
@@ -182,16 +183,14 @@ export const IMPUTE = {
   // reserves through Treasury / central-bank channels).
   recoverySovereignFiscalBuffer: { score: 50, certaintyCoverage: 0.3, imputationClass: 'unmonitored' },
   // Plan 2026-04-26-001 §U2 — gated GPI-only impute for socialCohesion.
-  // These two entries fire ONLY when the dim is operating in degraded
+  // This entry fires ONLY when the dimension is operating in degraded
   // GPI-only mode (i.e. country is absent from the displacement registry).
-  // Both score lower than the GPI-norm output for low-violence countries,
-  // pulling the blend down so tiny peaceful states (TV, PW, NR, MC) don't
-  // ride GPI-only to a near-perfect dim score. For countries WITH observed
-  // displacement and zero unrest events, unrest is imputed at
-  // `unhcrDisplacement.score` (85) instead — preserving Iceland/Norway
-  // scoring (peaceful + fully-monitored should NOT regress).
+  // It pulls tiny peaceful states (TV, PW, NR, MC) down from a near-perfect
+  // GPI-only score. Zero-unrest rows in that same GPI-only mode now use
+  // curated_list_absent (50/0.3) because unrest:events:v1 is not
+  // comprehensive; countries WITH observed displacement and zero unrest
+  // events still use `unhcrDisplacement.score` (85).
   socialCohesionGpiOnlyDisplacement: { score: 70, certaintyCoverage: 0.6, imputationClass: 'stable-absence' },
-  socialCohesionGpiOnlyUnrest:       { score: 70, certaintyCoverage: 0.5, imputationClass: 'stable-absence' },
 } as const satisfies Record<string, ImputationEntry>;
 
 interface StaticIndicatorValue {
@@ -238,11 +237,13 @@ interface TradeRestriction {
 
 interface TradeBarrier {
   notifyingCountry?: string;
+  status?: string;
 }
 
 interface CyberThreat {
   country?: string;
   severity?: string;
+  firstSeenAt?: number | string;
 }
 
 interface InternetOutage {
@@ -311,15 +312,13 @@ const RESILIENCE_FATF_LISTING_KEY = 'economic:fatf-listing:v1';
 const RESILIENCE_CYBER_KEY = 'cyber:threats:v2';
 const RESILIENCE_OUTAGES_KEY = 'infra:outages:v1';
 const RESILIENCE_GPS_KEY = 'intelligence:gpsjam:v2';
-// Issue #3971: bound the severity weight a single `cyber:threats:v2`
-// snapshot can contribute before `normalizeLowerBetter(weightedCount, 0, 25)`.
-// This is a PER-SNAPSHOT cap, not multi-day smoothing: the feed stamps
-// `lastSeenAt` at ~fetch time and never populates `firstSeenAt`, so every
-// refresh is effectively a single observation day with no cross-day spread
-// to average over. Capping the total prevents a same-day burst from
-// saturating the cyber sub-component to 0 and swinging a country 5+ ranks.
-// Exported so tests pin behaviour to the constant, not a literal.
+// Issue #3971: bound the severity weight any one cyber discovery day can
+// contribute before `normalizeLowerBetter(weightedCount, 0, 25)`. Issue #4008
+// later made firstSeenAt stable enough for #4009's discovery-day smoothing: a
+// one-day burst now decays by age, while sustained multi-day pressure can still
+// reach the cap. Exported so tests pin behaviour to constants, not literals.
 export const CYBER_SNAPSHOT_WEIGHT_CAP = 8;
+export const CYBER_DISCOVERY_HALF_LIFE_DAYS = 1;
 const RESILIENCE_UNREST_KEY = 'unrest:events:v1';
 const RESILIENCE_UCDP_KEY = 'conflict:ucdp-events:v1';
 const RESILIENCE_DISPLACEMENT_PREFIX = 'displacement:summary:v1';
@@ -586,7 +585,8 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function roundScore(value: number): number {
+export function roundScore(value: number): number {
+  if (!Number.isFinite(value)) return 0;
   return Math.round(clamp(value, 0, 100));
 }
 
@@ -599,13 +599,19 @@ function safeNum(value: unknown): number | null {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+export function sqrtCount(value: number): number {
+  return Math.sqrt(Math.max(0, Number.isFinite(value) ? value : 0));
+}
+
 function normalizeLowerBetter(value: number, best: number, worst: number): number {
+  if (!Number.isFinite(value)) return Number.NaN;
   if (worst <= best) return 50;
   const ratio = (worst - value) / (worst - best);
   return roundScore(ratio * 100);
 }
 
 function normalizeHigherBetter(value: number, worst: number, best: number): number {
+  if (!Number.isFinite(value)) return Number.NaN;
   if (best <= worst) return 50;
   const ratio = (value - worst) / (best - worst);
   return roundScore(ratio * 100);
@@ -620,7 +626,7 @@ export function scoreInflationStability(inflationPct: number): number {
 }
 
 // U-shaped band normalization. Used by `financialSystemExposure` Component 2
-// (BIS LBS cross-border claims as % of GDP). Both extremes are bad — too
+// (BIS CBS cross-border claims as % of GDP). Both extremes are bad — too
 // little integration suggests financial isolation (sanctions-target
 // jurisdictions; thin correspondent-banking access), too much suggests
 // over-exposure to Western-bank pulls (Iceland-2008 territory). The score
@@ -685,6 +691,7 @@ const IMPUTATION_CLASS_TIE_BREAK: readonly ImputationClass[] = [
 ];
 
 const MINUTE_MS = 60 * 1000;
+const WGI_INDICATOR_KEYS: readonly string[] = wgiIndicatorKeys;
 
 function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionScore {
   const totalWeight = metrics.reduce((sum, metric) => sum + metric.weight, 0);
@@ -903,9 +910,20 @@ function getStaticIndicatorValue(
 
 function getStaticWgiValues(record: ResilienceStaticCountryRecord | null): number[] {
   const indicators = record?.wgi?.indicators ?? {};
-  return Object.values(indicators)
-    .map((entry) => safeNum(entry?.value))
+  return WGI_INDICATOR_KEYS
+    .map((key) => safeNum(indicators[key]?.value))
     .filter((value): value is number => value != null);
+}
+
+function getStaticWgiRows(record: ResilienceStaticCountryRecord | null): WeightedMetric[] {
+  const indicators = record?.wgi?.indicators ?? {};
+  return WGI_INDICATOR_KEYS.map((key) => {
+    const value = safeNum(indicators[key]?.value);
+    return {
+      score: value == null ? null : normalizeHigherBetter(value, -2.5, 2.5),
+      weight: 1,
+    };
+  });
 }
 
 function getImfMacroEntry(raw: unknown, countryCode: string): ImfMacroEntry | null {
@@ -1006,11 +1024,14 @@ export function countTradeRestrictions(raw: unknown, countryCode: string): numbe
   const restrictions: TradeRestriction[] = Array.isArray((raw as { restrictions?: unknown[] } | null)?.restrictions)
     ? ((raw as { restrictions?: TradeRestriction[] }).restrictions ?? [])
     : [];
+  // Current WTO seeds emit at most one latest restriction row per reporter,
+  // but legacy affected-country rows may accumulate above the 0..2 goalpost;
+  // normalizeLowerBetter clamps that overflow to the worst score.
   return restrictions.reduce((count, item) => {
     const matches = matchesCountryIdentifier(item.reportingCountry, countryCode)
       || matchesCountryIdentifier(item.affectedCountry, countryCode);
     if (!matches) return count;
-    return count + (String(item.status || '').toUpperCase() === 'IN_FORCE' ? 3 : 1);
+    return count + tradePolicyStatusSeverity(item.status);
   }, 0);
 }
 
@@ -1018,7 +1039,21 @@ export function countTradeBarriers(raw: unknown, countryCode: string): number {
   const barriers: TradeBarrier[] = Array.isArray((raw as { barriers?: unknown[] } | null)?.barriers)
     ? ((raw as { barriers?: TradeBarrier[] }).barriers ?? [])
     : [];
-  return barriers.reduce((count, item) => count + (matchesCountryIdentifier(item.notifyingCountry, countryCode) ? 1 : 0), 0);
+  return barriers.reduce((count, item) => {
+    if (!matchesCountryIdentifier(item.notifyingCountry, countryCode)) return count;
+    return count + tradePolicyStatusSeverity(item.status);
+  }, 0);
+}
+
+function tradePolicyStatusSeverity(status: unknown): number {
+  const normalized = String(status ?? '').trim().toUpperCase().replace(/[^A-Z0-9]+/g, '_');
+  if (normalized === 'LOW') return 0;
+  if (normalized === 'MODERATE' || normalized === 'MEDIUM' || normalized === 'PLANNED') return 1;
+  if (normalized === 'HIGH' || normalized === 'IN_FORCE') return 2;
+  if (normalized !== '') {
+    console.warn(`[Resilience] tradePolicyStatusSeverity: unrecognized status "${status}", defaulting to moderate`);
+  }
+  return 1;
 }
 
 function isInWtoReporterSet(raw: unknown, countryCode: string): boolean {
@@ -1069,7 +1104,42 @@ export function summarizeGps(raw: unknown, countryCode: string): { high: number;
   }, { high: 0, medium: 0 });
 }
 
-export function summarizeCyber(raw: unknown, countryCode: string): { weightedCount: number } {
+const DAY_MS = 24 * 60 * 60 * 1000;
+// Lower than any WorldMonitor-sourced firstSeenAt; smaller numbers are usually
+// Unix seconds and should fall back to the current bucket.
+const MIN_FIRST_SEEN_EPOCH_MS = 1e11;
+
+interface CyberDiscoveryOptions {
+  nowMs?: number;
+}
+
+function readEpochMs(value: unknown): number | null {
+  const trimmed = typeof value === 'string' ? value.trim() : '';
+  const numeric = typeof value === 'number' ? value : trimmed.length > 0 ? Number(trimmed) : NaN;
+  if (Number.isFinite(numeric)) {
+    return numeric >= MIN_FIRST_SEEN_EPOCH_MS ? numeric : null;
+  }
+  if (trimmed.length === 0) return null;
+  const parsed = Date.parse(trimmed);
+  return Number.isFinite(parsed) && parsed >= MIN_FIRST_SEEN_EPOCH_MS ? parsed : null;
+}
+
+function cyberDiscoveryAgeDays(firstSeenAt: unknown, nowMs: number): number {
+  const firstSeenMs = readEpochMs(firstSeenAt);
+  if (firstSeenMs == null || !Number.isFinite(nowMs) || nowMs <= 0) return 0;
+  return Math.max(0, Math.floor((nowMs - firstSeenMs) / DAY_MS));
+}
+
+function cyberDiscoveryDecay(ageDays: number): number {
+  if (!Number.isFinite(ageDays) || ageDays <= 0) return 1;
+  return 2 ** (-ageDays / CYBER_DISCOVERY_HALF_LIFE_DAYS);
+}
+
+export function summarizeCyber(
+  raw: unknown,
+  countryCode: string,
+  options: CyberDiscoveryOptions = {},
+): { weightedCount: number } {
   const threats: CyberThreat[] = Array.isArray((raw as { threats?: unknown[] } | null)?.threats)
     ? ((raw as { threats?: CyberThreat[] }).threats ?? [])
     : [];
@@ -1080,12 +1150,21 @@ export function summarizeCyber(raw: unknown, countryCode: string): { weightedCou
     CRITICALITY_LEVEL_LOW: 0.5,
   };
 
-  const totalWeight = threats.reduce((sum, threat) => {
-    if (!matchesCountryIdentifier(threat.country, countryCode)) return sum;
-    return sum + (SEVERITY_WEIGHT[String(threat.severity || '')] ?? 1);
-  }, 0);
+  const nowMs = Number.isFinite(options.nowMs) ? Number(options.nowMs) : Date.now();
+  const weightsByAgeDay = new Map<number, number>();
+  for (const threat of threats) {
+    if (!matchesCountryIdentifier(threat.country, countryCode)) continue;
+    const ageDays = cyberDiscoveryAgeDays(threat.firstSeenAt, nowMs);
+    const severityWeight = SEVERITY_WEIGHT[String(threat.severity || '')] ?? 1;
+    weightsByAgeDay.set(ageDays, (weightsByAgeDay.get(ageDays) ?? 0) + severityWeight);
+  }
 
-  return { weightedCount: Math.min(totalWeight, CYBER_SNAPSHOT_WEIGHT_CAP) };
+  let decayedWeight = 0;
+  for (const [ageDays, weight] of weightsByAgeDay) {
+    decayedWeight += Math.min(weight, CYBER_SNAPSHOT_WEIGHT_CAP) * cyberDiscoveryDecay(ageDays);
+  }
+
+  return { weightedCount: Math.min(decayedWeight, CYBER_SNAPSHOT_WEIGHT_CAP) };
 }
 
 export function summarizeUnrest(raw: unknown, countryCode: string): { unrestCount: number; fatalities: number } {
@@ -1351,8 +1430,8 @@ export async function scoreCurrencyExternal(
 // 0.45) was DROPPED — domicile-of-designated-entities is a corporate-finance
 // liability metric, not a country-resilience indicator. The remaining 3
 // trade-policy components are reweighted to total 1.0:
-//   WTO restrictions count → 0.30 (was 0.15)
-//   WTO barriers count     → 0.30 (was 0.15)
+//   WTO restriction severity → 0.30 (was 0.15)
+//   WTO barrier severity     → 0.30 (was 0.15)
 //   applied tariff rate    → 0.40 (was 0.25)
 // The `sanctions:country-counts:v1` seed key is no longer read by this
 // module; only `scripts/seed-sanctions-pressure.mjs` continues to WRITE it
@@ -1360,7 +1439,7 @@ export async function scoreCurrencyExternal(
 // `RESILIENCE_SANCTIONS_KEY` constant and `normalizeSanctionCount` helper
 // were removed in this PR (see retire-tag at lines ~263 and ~542).
 // Phase 2 (Ship 2) adds the `financialSystemExposure` dim built from
-// BIS LBS + WB IDS + FATF status — a structural-exposure construct that
+// BIS CBS + WB IDS + FATF status — a structural-exposure construct that
 // does not rely on the OFAC count.
 export async function scoreTradePolicy(
   countryCode: string,
@@ -1387,12 +1466,12 @@ export async function scoreTradePolicy(
       ? { score: null, weight: 0.30 }
       : !inRestrictionsReporterSet
         ? { score: IMPUTE.wtoData.score, weight: 0.30, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage, imputed: true, imputationClass: IMPUTE.wtoData.imputationClass }
-        : { score: normalizeLowerBetter(restrictionCount, 0, 30), weight: 0.30 },
+        : { score: normalizeLowerBetter(restrictionCount, 0, 2), weight: 0.30 },
     barriersRaw == null
       ? { score: null, weight: 0.30 }
       : !inBarriersReporterSet
         ? { score: IMPUTE.wtoData.score, weight: 0.30, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage, imputed: true, imputationClass: IMPUTE.wtoData.imputationClass }
-        : { score: normalizeLowerBetter(barrierCount, 0, 40), weight: 0.30 },
+        : { score: normalizeLowerBetter(barrierCount, 0, 2), weight: 0.30 },
     { score: tariffRate == null ? null : normalizeLowerBetter(tariffRate, 0, 20), weight: 0.40 },
   ]);
 }
@@ -1405,9 +1484,9 @@ export async function scoreTradePolicy(
 //
 // Components (weights total 1.0):
 //   short_term_external_debt_pct_gni     0.35 (WB IDS — lowerBetter; goalpost worst=15% best=0%)
-//   bis_lbs_xborder_us_eu_uk_pct_gdp     0.30 (BIS LBS by-parent — U-shape band)
+//   bis_lbs_xborder_us_eu_uk_pct_gdp     0.30 (BIS CBS by-parent — U-shape band)
 //   fatf_listing_status                   0.20 (FATF — discrete: black=0, gray=30, compliant=100)
-//   financial_center_redundancy           0.15 (BIS LBS by-parent count — higherBetter; goalpost worst=1 best=10)
+//   financial_center_redundancy           0.15 (BIS CBS by-parent count — higherBetter; goalpost worst=1 best=10)
 //
 // Flag-gated rollout. `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED` defaults off
 // so the dim ships dark until the 3 component seeders (seed-bis-lbs,
@@ -1418,7 +1497,7 @@ export async function scoreTradePolicy(
 // `docs/plans/2026-04-24-001-fix-resilience-v2-fail-closed-on-missing-seeds-plan.md`.
 //
 // Fail-closed preflight (when flag is ON): all 3 required seed
-// envelopes (component 4 shares the BIS LBS seed) MUST be reachable.
+// envelopes (component 4 shares the retained economic:bis-lbs CBS seed) MUST be reachable.
 // Missing seed-meta indicates a Railway bundle/cron failure and is
 // surfaced as `source-failure` via
 // `ResilienceConfigurationError(message, missingKeys)` — caught at
@@ -1486,12 +1565,13 @@ export async function scoreFinancialSystemExposure(
 
   // Component 1: short-term external debt as % of GNI. WB IDS coverage is
   // ~125 LMICs; HIC fall through to per-component-null and the blend
-  // covers the gap via the BIS LBS structural-exposure component.
+  // covers the gap via the BIS CBS structural-exposure component.
   // Payload shape: { countries: { [iso2]: { value: number, year: number } } }.
   const debtPct = readWbExternalDebtPct(debtRaw, countryCode);
 
-  // Component 2 + 4 share the BIS LBS payload. Component 2: sum of
-  // by-parent claims for the enumerated Western parents as % of GDP.
+  // Component 2 + 4 share the retained economic:bis-lbs payload, sourced
+  // from BIS CBS (WS_CBS_PUB). Component 2: sum of by-parent foreign
+  // claims for the enumerated Western parents as % of GDP.
   // Component 4: count of distinct by-parent reporters with non-trivial
   // claims (>1% of GDP).
   // Payload shape: { countries: { [iso2]: { totalXborderPctGdp: number,
@@ -1589,13 +1669,14 @@ function fatfStatusToScore(status: FatfStatus): number {
 export async function scoreCyberDigital(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: CyberDiscoveryOptions,
 ): Promise<ResilienceDimensionScore> {
   const [cyberRaw, outagesRaw, gpsRaw] = await Promise.all([
     reader(RESILIENCE_CYBER_KEY),
     reader(RESILIENCE_OUTAGES_KEY),
     reader(RESILIENCE_GPS_KEY),
   ]);
-  const cyber = summarizeCyber(cyberRaw, countryCode);
+  const cyber = summarizeCyber(cyberRaw, countryCode, options);
   const outages = summarizeOutages(outagesRaw, countryCode);
   const gps = summarizeGps(gpsRaw, countryCode);
   const outagePenalty = outages.total * 4 + outages.major * 2 + outages.partial;
@@ -1660,7 +1741,7 @@ export async function scoreInfrastructure(
   return weightedBlend([
     { score: electricityAccess == null ? null : normalizeHigherBetter(electricityAccess, 40, 100), weight: 0.3 },
     { score: roadsPaved == null ? null : normalizeHigherBetter(roadsPaved, 0, 100), weight: 0.3 },
-    { score: outagesRaw != null && outagePenalty > 0 ? normalizeLowerBetter(outagePenalty, 0, 20) : null, weight: 0.25 },
+    { score: hasNonEmptyArrayField(outagesRaw, 'outages') ? normalizeLowerBetter(outagePenalty, 0, 20) : null, weight: 0.25 },
     { score: broadband == null ? null : normalizeHigherBetter(broadband, 0, 40), weight: 0.15 },
   ]);
 }
@@ -1780,8 +1861,9 @@ async function scoreEnergyV2(
 
   // importedFossilDependence composite. `max(netImports, 0)` collapses
   // net-exporter cases (negative EG.IMP.CONS.ZS) to zero per plan §3.2.
-  // Division by 100 keeps the product in the [0, 100] range expected
-  // by normalizeLowerBetter.
+  // Net-import shares can exceed 100, so the product can also exceed
+  // 100; normalizeLowerBetter(importedFossilDependence, 0, 100) clamps
+  // those extreme importer cases at the worst anchor.
   const importedFossilDependence = fossilElectricityShare != null && netImports != null
     ? fossilElectricityShare * Math.max(netImports, 0) / 100
     : null;
@@ -1862,8 +1944,7 @@ export async function scoreGovernanceInstitutional(
   reader: ResilienceSeedReader = defaultSeedReader,
 ): Promise<ResilienceDimensionScore> {
   const staticRecord = await readStaticCountry(countryCode, reader);
-  const wgiScores = getStaticWgiValues(staticRecord).map((value) => normalizeHigherBetter(value, -2.5, 2.5));
-  return weightedBlend(wgiScores.map((score) => ({ score, weight: 1 })));
+  return weightedBlend(getStaticWgiRows(staticRecord));
 }
 
 export async function scoreSocialCohesion(
@@ -1891,7 +1972,7 @@ export async function scoreSocialCohesion(
   // outliers ≈ 10 events/M (calibrated empirically against the live
   // unrest:events:v1 distribution).
   const popDenominator = readPopulationMillions(imfLaborRaw, countryCode);
-  const unrestMetric = (unrest.unrestCount + Math.sqrt(unrest.fatalities)) / popDenominator;
+  const unrestMetric = (unrest.unrestCount + sqrtCount(unrest.fatalities)) / popDenominator;
 
   // GPI empirical range: 1.1 (Iceland) – 3.4 (Yemen 2024). Anchor worst=3.6 (slightly
   // above observed max) so the worst-peace countries score near 0, not 20.
@@ -1908,7 +1989,8 @@ export async function scoreSocialCohesion(
   //   elif country not in displacement registry:   // GPI-only mode
   //     impute displacement at 70/0.6
   //     if unrestRaw present and zero unrest:
-  //       impute unrest at 70/0.5  (gated to GPI-only mode)
+  //       impute unrest at curated_list_absent (50/0.3) because the
+  //       unrest feed is non-comprehensive
   //   elif displacement metric exists:             // happy path
   //     score directly
   //     if unrest count == 0:
@@ -1954,8 +2036,8 @@ export async function scoreSocialCohesion(
     //       This mirrors the principle in scoreBorderSecurity: outage drops weight
     //       on the affected metric ONLY, not on sibling metrics.
     //   (b) GPI-only mode (displacementRaw present but country absent from
-    //       registry) → impute at 70 (`socialCohesionGpiOnlyUnrest.score`) to
-    //       pull the blend down for tiny peaceful states (TV/PW/NR).
+    //       registry) → impute at curated_list_absent (50/0.3) to pull
+    //       the blend down for tiny peaceful states (TV/PW/NR/MC).
     //   (c) Happy path (displacement observed) → impute at 85
     //       (`unhcrDisplacement.score`) so peaceful + fully-monitored
     //       countries (Iceland, Norway) don't regress.
@@ -2049,7 +2131,7 @@ export async function scoreBorderSecurity(
   // must scale per-capita too. Pre-fix the unnormalized typeWeight could
   // dominate the per-capita metric for high-event countries (US/IN type
   // peaceful but high-volume), defeating §U6's intended scaling.
-  const conflictMetric = (ucdp.eventCount * 2 + ucdp.typeWeight + Math.sqrt(ucdp.deaths)) / popDenominator;
+  const conflictMetric = (ucdp.eventCount * 2 + ucdp.typeWeight + sqrtCount(ucdp.deaths)) / popDenominator;
   const displacementMetric = safeNum(displacement?.hostTotal) ?? safeNum(displacement?.totalDisplaced);
 
   return weightedBlend([
@@ -2197,6 +2279,25 @@ interface RecoveryImportHhiCountry {
   year?: number | null;
 }
 
+const IMPORT_HHI_FULL_CONFIDENCE_MAX_SOURCE_AGE_YEARS = 4;
+const IMPORT_HHI_MIN_STALE_CERTAINTY_COVERAGE = 0.3;
+
+export function computeImportHhiCertaintyCoverage(
+  sourceYear: number | null | undefined,
+  nowYear = new Date().getFullYear(),
+): number {
+  if (!Number.isFinite(sourceYear) || !Number.isFinite(nowYear)) {
+    return IMPORT_HHI_MIN_STALE_CERTAINTY_COVERAGE;
+  }
+  const ageYears = Math.trunc(nowYear) - Math.trunc(sourceYear as number);
+  if (ageYears <= IMPORT_HHI_FULL_CONFIDENCE_MAX_SOURCE_AGE_YEARS) return 1;
+  const staleYears = ageYears - IMPORT_HHI_FULL_CONFIDENCE_MAX_SOURCE_AGE_YEARS;
+  return Math.max(
+    IMPORT_HHI_MIN_STALE_CERTAINTY_COVERAGE,
+    Number((1 - staleYears * 0.2).toFixed(2)),
+  );
+}
+
 // RecoveryFuelStocksCountry interface removed in PR 3 — scoreFuelStockDays
 // no longer reads any payload. Do NOT re-add the type as a reservation;
 // the tsc noUnusedLocals rule rejects unused locals. When a new
@@ -2227,7 +2328,7 @@ export async function scoreFiscalSpace(
   }
 
   // Weight rebalance + new indicator (debtSustainabilityGap) per
-  // plans/add-debt-sustainability-gap-indicator.md. The gap (pb − pb*)
+  // docs/archive/plans/add-debt-sustainability-gap-indicator.md. The gap (pb − pb*)
   // is the most informative single fiscal signal — it integrates pb, r,
   // g, and d with their interaction term — and earns the largest slice.
   // The other three are co-signals confirming the direction.
@@ -2472,7 +2573,16 @@ export async function scoreImportConcentration(
     // HHI is on a 0..1 scale (0 = perfectly diversified, 1 = single partner).
     // Multiply by 10000 to convert to the traditional 0..10000 HHI scale,
     // then normalize against the 0..5000 goalpost range (where 5000+ = max concentration).
-    { score: normalizeLowerBetter(entry.hhi * 10000, 0, 5000), weight: 1.0 },
+    //
+    // The seeder's normal 4-year Comtrade window remains full-confidence:
+    // many late reporters publish 1-3 years behind. Older fallback vintages
+    // still carry a real HHI signal, but coverage is derated so stale source
+    // years reduce certainty instead of looking equivalent to current data.
+    {
+      score: normalizeLowerBetter(entry.hhi * 10000, 0, 5000),
+      weight: 1.0,
+      certaintyCoverage: computeImportHhiCertaintyCoverage(entry.year),
+    },
   ]);
 }
 
@@ -2490,7 +2600,7 @@ export async function scoreStateContinuity(
   const wgiMean = mean(wgiValues);
 
   const ucdpSummary = summarizeUcdp(ucdpRaw, countryCode);
-  const ucdpRawScore = ucdpSummary.eventCount * 2 + ucdpSummary.typeWeight + Math.sqrt(ucdpSummary.deaths);
+  const ucdpRawScore = ucdpSummary.eventCount * 2 + ucdpSummary.typeWeight + sqrtCount(ucdpSummary.deaths);
 
   const displacement = getCountryDisplacement(displacementRaw, countryCode);
   const totalDisplaced = safeNum(displacement?.totalDisplaced);

@@ -4,7 +4,8 @@ import type { NewsItem, ClusteredEvent, DeviationLevel, RelatedAsset, RelatedAss
 import { THREAT_PRIORITY } from '@/services/threat-classifier';
 import { formatTime, getCSSColor } from '@/utils';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
-import { analysisWorker, enrichWithVelocityML, getClusterAssetContext, MAX_DISTANCE_KM, activityTracker, generateSummary, translateText } from '@/services';
+import { computeNewSinceVisit } from '@/utils/new-since-visit';
+import { analysisWorker, enrichWithVelocityML, getClusterAssetContext, MAX_DISTANCE_KM, activityTracker, generateSummary, translateText, preloadRelatedAssetTables } from '@/services';
 import { getSourcePropagandaRisk, getSourceTier, getSourceType } from '@/config/feeds';
 import { SITE_VARIANT } from '@/config';
 import { t, getCurrentLanguage } from '@/services/i18n';
@@ -36,6 +37,9 @@ export class NewsPanel extends Panel {
   private onRelatedAssetsFocus?: (assets: RelatedAsset[], originLabel: string) => void;
   private onRelatedAssetsClear?: () => void;
   private isFirstRender = true;
+  /** Cluster ids that arrived while the user was away (#4923) — their NEW
+   * ribbons persist until seen instead of expiring with the 2-min window. */
+  private newSinceAwayIds = new Set<string>();
   private windowedList: WindowedList<PreparedCluster> | null = null;
   private useVirtualScroll = true;
   private renderRequestId = 0;
@@ -47,6 +51,7 @@ export class NewsPanel extends Panel {
   private sortBtn: HTMLButtonElement | null = null;
   private lastRawClusters: ClusteredEvent[] | null = null;
   private lastRawItems: NewsItem[] | null = null;
+  private relatedAssetTableRefreshPending = false;
 
   // Panel summary feature
   private summaryBtn: HTMLButtonElement | null = null;
@@ -534,10 +539,22 @@ export class NewsPanel extends Panel {
     let newItemIds: Set<string>;
 
     if (this.isFirstRender) {
-      // First render: mark all items as seen
+      // #4923: returning-user continuity. Stories that first appeared
+      // AFTER the previous visit stay NEW on the first render; everything
+      // older is marked seen. First-ever visits (no persisted state)
+      // keep the old mark-everything-seen behavior. Partition logic lives
+      // in computeNewSinceVisit (pure, unit-tested).
       activityTracker.updateItems(this.panelId, clusterIds);
-      activityTracker.markAsSeen(this.panelId);
-      newItemIds = new Set();
+      const { newIds, seenIds } = computeNewSinceVisit(
+        sorted,
+        activityTracker.getPreviousVisitTime(),
+      );
+      newItemIds = new Set(newIds);
+      // Away-item NEW ribbons persist until actually seen — NOT limited to
+      // the 2-minute arrival window that gates streaming-item tags (the
+      // badge and ribbon would otherwise diverge after 2 minutes).
+      for (const id of newIds) this.newSinceAwayIds.add(id);
+      activityTracker.markItemsSeen(this.panelId, seenIds);
       this.isFirstRender = false;
     } else {
       // Subsequent renders: track new items
@@ -549,7 +566,8 @@ export class NewsPanel extends Panel {
     const prepared: PreparedCluster[] = sorted.map(cluster => {
       const isNew = newItemIds.has(cluster.id);
       const shouldHighlight = activityTracker.shouldHighlight(this.panelId, cluster.id);
-      const showNewTag = activityTracker.isNewItem(this.panelId, cluster.id) && isNew;
+      const showNewTag = isNew
+        && (activityTracker.isNewItem(this.panelId, cluster.id) || this.newSinceAwayIds.has(cluster.id));
 
       return {
         cluster,
@@ -569,6 +587,23 @@ export class NewsPanel extends Panel {
         .join('');
       this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
     }
+    this.refreshRelatedAssetsAfterLazyTables(sorted);
+  }
+
+  private refreshRelatedAssetsAfterLazyTables(clusters: ClusteredEvent[]): void {
+    if (this.relatedAssetTableRefreshPending) return;
+    const titles = clusters.flatMap(cluster => cluster.allItems.map(item => item.title));
+    this.relatedAssetTableRefreshPending = true;
+    void preloadRelatedAssetTables(titles)
+      .then((shouldRefresh) => {
+        this.relatedAssetTableRefreshPending = false;
+        if (shouldRefresh && this.lastRawClusters) {
+          this.renderClusters(this.lastRawClusters);
+        }
+      })
+      .catch(() => {
+        this.relatedAssetTableRefreshPending = false;
+      });
   }
 
   private renderClusterHtmlSafely(
@@ -678,7 +713,7 @@ export class NewsPanel extends Panel {
     const threatVarMap: Record<string, string> = { critical: '--threat-critical', high: '--threat-high', medium: '--threat-medium', low: '--threat-low', info: '--threat-info' };
     const catColor = cluster.threat ? getCSSColor(threatVarMap[cluster.threat.level] || '--text-dim') : '';
     const categoryBadge = catLabel
-      ? `<span class="category-tag" style="color:${catColor};border-color:${catColor}40;background:${catColor}20">${catLabel}</span>`
+      ? `<span class="category-tag" style="--category-color:${catColor};--category-background:${catColor}20">${catLabel}</span>`
       : '';
 
     // Numeric risk score badge (0-100): from external getter or fallback to threat-level derivation

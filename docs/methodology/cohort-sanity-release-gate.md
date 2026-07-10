@@ -18,10 +18,8 @@ Cohort-sanity is the test the codebase can't run on its own. It says:
 cohort is defined to probe?" Not "does country A rank above country
 B" — see the anti-pattern section below.
 
-Relevant background in the repository:
+Relevant public background:
 
-- `docs/plans/2026-04-24-002-fix-resilience-cohort-ranking-structural-audit-plan.md` —
-  the audit plan that motivates this gate.
 - Skill `cohort-ranking-sanity-surfaces-hidden-data-gaps` — the general
   diagnostic protocol (data bug / methodology bug / construct limitation
   / value judgment), including the anti-pattern note on rank-targeted

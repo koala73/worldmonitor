@@ -2,61 +2,61 @@ import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
 import { jsonResponse } from './_json-response.js';
 import { captureSilentError } from './_sentry-edge.js';
+import {
+  durationToSeconds,
+  limitWithFallback,
+  resetRateLimitFallbackForTest,
+} from './_rate-limit-fallback.js';
+import {
+  RATE_LIMIT_DEGRADED_HEADERS,
+  getClientIp,
+} from './_client-ip.js';
+export {
+  RATE_LIMIT_DEGRADED_HEADERS,
+  UNKNOWN_CLIENT_IP,
+  getClientIp,
+} from './_client-ip.js';
 
-let ratelimit = null;
+// @upstash/redis defaults to 5 retries with exponential backoff (~4.3s total)
+// before surfacing an unreachable-Redis error. Under the node test runner
+// (NODE_TEST_CONTEXT is set) skip retries so fail-open / fail-closed tests that
+// point UPSTASH_REDIS_REST_URL at a fake host degrade immediately instead of
+// stalling. Production (env unset) keeps the resilient default. Mirrors
+// REDIS_TEST_RETRY_OPTS in server/_shared/rate-limit.ts and PR #3963.
+const REDIS_TEST_RETRY_OPTS = process.env.NODE_TEST_CONTEXT ? { retry: false } : {};
 
-function getRatelimit() {
-  if (ratelimit) return ratelimit;
+const DEFAULT_RATE_LIMIT_SCOPE = 'global';
+const DEFAULT_RATE_LIMIT = 600;
+const DEFAULT_RATE_LIMIT_WINDOW = '60 s';
+
+let ratelimits = new Map();
+
+function getRateLimitPolicy(opts = {}) {
+  return {
+    scope: opts.scope ?? DEFAULT_RATE_LIMIT_SCOPE,
+    limit: opts.limit ?? DEFAULT_RATE_LIMIT,
+    window: opts.window ?? DEFAULT_RATE_LIMIT_WINDOW,
+  };
+}
+
+function getRatelimit(policy) {
+  const cacheKey = `${policy.scope}|${policy.limit}|${policy.window}`;
+  const cached = ratelimits.get(cacheKey);
+  if (cached) return cached;
 
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
 
-  ratelimit = new Ratelimit({
-    redis: new Redis({ url, token }),
-    limiter: Ratelimit.slidingWindow(600, '60 s'),
-    prefix: 'rl',
+  const ratelimit = new Ratelimit({
+    redis: new Redis({ url, token, ...REDIS_TEST_RETRY_OPTS }),
+    limiter: Ratelimit.slidingWindow(policy.limit, policy.window),
+    prefix: policy.scope === DEFAULT_RATE_LIMIT_SCOPE ? 'rl' : `rl:${policy.scope}`,
     analytics: false,
   });
+  ratelimits.set(cacheKey, ratelimit);
 
   return ratelimit;
-}
-
-// Sentinel returned when no trusted client-IP header is present. Routed
-// through the Upstash limiter as a single shared bucket so the entire
-// "no trusted identity" population is naturally rate-limited together —
-// an attacker who strips cf-connecting-ip / x-real-ip can no longer rotate
-// identities by toggling x-forwarded-for. (#3531) Mirrors the constant in
-// server/_shared/rate-limit.ts.
-export const UNKNOWN_CLIENT_IP = 'unknown';
-
-// Marker headers set on every degraded (fail-closed) response so observability
-// can correlate "rate-limit unavailable" windows with downstream behaviour
-// without parsing the JSON body. Mirrors RATE_LIMIT_DEGRADED_HEADERS in
-// server/_shared/rate-limit.ts.
-export const RATE_LIMIT_DEGRADED_HEADERS = Object.freeze({
-  'X-RateLimit-Mode': 'degraded',
-  'Retry-After': '5',
-});
-
-export function getClientIp(request) {
-  // With Cloudflare proxy → Vercel, x-real-ip is the CF edge IP (shared
-  // across users). cf-connecting-ip is the actual client IP set by
-  // Cloudflare — prefer it.
-  //
-  // x-forwarded-for is client-settable and MUST NOT be trusted for rate
-  // limiting (#3531) — without that fallback removed, a caller bypassing
-  // CF entirely (direct request) could rotate identities by toggling the
-  // header and beat the per-IP window. When neither trusted header is
-  // present we return the UNKNOWN_CLIENT_IP sentinel so Upstash treats
-  // the whole untrusted-identity population as one shared bucket.
-  //
-  // Trim each header value before falling through — a whitespace-only
-  // cf-connecting-ip would otherwise short-circuit past x-real-ip.
-  // (Mirrors getClientIp in server/_shared/rate-limit.ts.)
-  const cf = (request.headers.get('cf-connecting-ip') ?? '').trim();
-  const xr = (request.headers.get('x-real-ip') ?? '').trim();
-  return cf || xr || UNKNOWN_CLIENT_IP;
 }
 
 // Decide the Sentry level for a degraded-rate-limit capture. Upstash runtime
@@ -72,7 +72,7 @@ export function getClientIp(request) {
 // Mirrored verbatim in server/_shared/rate-limit.ts.
 function rateLimitErrorLevel(stage, msg) {
   if (stage.includes('missing-config')) return 'error';
-  if (/Error running script|execution timed out|Command failed|ETIMEDOUT|ECONNRESET|ENOTFOUND|fetch failed|network|timed out|socket hang up/i.test(msg)) {
+  if (/Error running script|execution timed out|Command failed|ETIMEDOUT|ECONNRESET|ENOTFOUND|fetch failed|network|timed out|socket hang up|Redis unavailable|Redis unreachable/i.test(msg)) {
     return 'warning';
   }
   return 'error';
@@ -102,7 +102,7 @@ function rateLimitDegradedResponse(corsHeaders) {
 /**
  * @param {Request} request
  * @param {Record<string, string>} corsHeaders
- * @param {{ failClosed?: boolean, ctx?: { waitUntil: (p: Promise<unknown>) => void } }} [opts]
+ * @param {{ failClosed?: boolean, ctx?: { waitUntil: (p: Promise<unknown>) => void }, scope?: string, limit?: number, window?: import('@upstash/ratelimit').Duration }} [opts]
  *   When `failClosed` is true and Redis is unavailable, return a 503 with
  *   the `X-RateLimit-Mode: degraded` marker instead of allowing the
  *   request through. Pass `true` for endpoints where the rate-limit IS
@@ -110,10 +110,13 @@ function rateLimitDegradedResponse(corsHeaders) {
  *   availability-first posture for general traffic so a Redis blip
  *   doesn't black-hole the whole site. `ctx` is the Vercel handler
  *   context — passing it lets the Sentry envelope dispatch survive
- *   isolate teardown. (#3531)
+ *   isolate teardown. Top-level Edge handlers may pass `scope`, `limit`,
+ *   and `window` for explicit endpoint budgets while retaining the shared
+ *   degraded/429 response semantics. (#3531)
  */
 export async function checkRateLimit(request, corsHeaders, opts = {}) {
-  const rl = getRatelimit();
+  const policy = getRateLimitPolicy(opts);
+  const rl = getRatelimit(policy);
   if (!rl) {
     if (opts.failClosed) {
       logRateLimitDegraded('checkRateLimit:missing-config', new Error('Upstash Redis is not configured'), opts.ctx);
@@ -124,14 +127,36 @@ export async function checkRateLimit(request, corsHeaders, opts = {}) {
 
   const ip = getClientIp(request);
   try {
-    const { success, limit, reset } = await rl.limit(ip);
+    const fallbackPrefix = policy.scope === DEFAULT_RATE_LIMIT_SCOPE ? 'rl:fw' : `rl:${policy.scope}:fw`;
+    const { success, limit, reset } = await limitWithFallback(
+      rl,
+      ip,
+      `${fallbackPrefix}:${ip}`,
+      policy.limit,
+      durationToSeconds(policy.window),
+    );
 
     if (!success) {
+      // `reset` is a Unix epoch in MILLISECONDS (Upstash convention). The IETF
+      // RateLimit fields carry a delta-seconds reset (`t` / RateLimit-Reset),
+      // NOT an epoch, so derive the remaining-seconds view for them and for
+      // Retry-After. The legacy X-RateLimit-Reset stays epoch-ms unchanged.
+      const resetSeconds = Math.max(0, Math.ceil((reset - Date.now()) / 1000));
+      const windowSeconds = durationToSeconds(policy.window);
       return jsonResponse({ error: 'Too many requests' }, 429, {
+        // IETF RateLimit fields (draft-ietf-httpapi-ratelimit-headers). The
+        // combined RateLimit member references the "default" policy advertised
+        // on every API response via vercel.json so an agent can self-throttle.
+        'RateLimit-Policy': `"default";q=${limit};w=${windowSeconds}`,
+        'RateLimit-Limit': String(limit),
+        'RateLimit-Remaining': '0',
+        'RateLimit-Reset': String(resetSeconds),
+        RateLimit: `"default";r=0;t=${resetSeconds}`,
+        // Legacy X-RateLimit-* retained for back-compat (Reset is epoch-ms).
         'X-RateLimit-Limit': String(limit),
         'X-RateLimit-Remaining': '0',
         'X-RateLimit-Reset': String(reset),
-        'Retry-After': String(Math.ceil((reset - Date.now()) / 1000)),
+        'Retry-After': String(resetSeconds),
         ...corsHeaders,
       });
     }
@@ -142,4 +167,9 @@ export async function checkRateLimit(request, corsHeaders, opts = {}) {
     if (opts.failClosed) return rateLimitDegradedResponse(corsHeaders);
     return null;
   }
+}
+
+export function __resetRateLimitForTest() {
+  ratelimits = new Map();
+  resetRateLimitFallbackForTest();
 }

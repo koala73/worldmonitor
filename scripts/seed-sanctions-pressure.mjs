@@ -13,6 +13,8 @@ loadEnvFile(import.meta.url);
 const CANONICAL_KEY = 'sanctions:pressure:v1';
 const STATE_KEY = 'sanctions:pressure:state:v1';
 const ENTITY_INDEX_KEY = 'sanctions:entities:v1';
+// Full ISO2 -> count map consumed by CII/country-risk scoring; do not replace
+// with the top-pressure display list written under CANONICAL_KEY.countries.
 const COUNTRY_COUNTS_KEY = 'sanctions:country-counts:v1';
 const CACHE_TTL = 15 * 60 * 60; // 15h — 3h buffer over 12h cron cadence (was 12h = 0 buffer)
 // Compact entity type codes for the lookup index (saves space vs full enum strings)
@@ -565,11 +567,6 @@ runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
       key: STATE_KEY,
       ttl: CACHE_TTL,
       transform: (data) => data._state,
-    },
-    {
-      key: COUNTRY_COUNTS_KEY,
-      ttl: CACHE_TTL,
-      transform: (data) => data._countryCounts,
     },
   ],
   afterPublish: async (data, _ctx) => {

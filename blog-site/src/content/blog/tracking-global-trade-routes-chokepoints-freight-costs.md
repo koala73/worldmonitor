@@ -1,16 +1,17 @@
 ---
-title: "Tracking Global Trade Routes, Chokepoints, and Freight Costs in Real Time"
+title: "Track Trade Routes, Chokepoints, and Freight Costs"
 description: "Track 8 maritime chokepoints, freight indices (BDI, SCFI), trade policy, and critical mineral risks in real time. Free supply chain intelligence dashboard."
-metaTitle: "Real-Time Chokepoint & Freight Index Monitoring | World Monitor"
+metaTitle: "Chokepoint and Freight Index Monitoring | World Monitor"
 keywords: "chokepoint monitoring, Strait of Hormuz shipping, freight index dashboard, BDI Baltic Dry Index, SCFI container rates, supply chain disruption tracker, trade route intelligence"
 audience: "Supply chain professionals, commodity traders, logistics analysts, maritime intelligence, geopolitical risk analysts"
 heroImage: "/blog/images/blog/hormuz-chokepoint-crisis.png"
 pubDate: "2026-03-15"
+modifiedDate: "2026-06-13"
 ---
 
 > **Key Takeaways:** Strait of Hormuz traffic down 94.4%. World Monitor tracks 8 corridors, 9 freight indices, WTO trade policy, and critical mineral concentration across one free dashboard. Data updates in real time.
 
-The Strait of Hormuz carries 20% of the world's oil. Right now, [World Monitor's](https://worldmonitor.app) live chokepoint tracker shows traffic has dropped 94.4% week-over-week. Tanker transits have collapsed from 60+ daily to single digits. The disruption score is 99%.
+The Strait of Hormuz carries 20% of the world's oil. Right now, [World Monitor's](https://www.worldmonitor.app) live chokepoint tracker shows traffic has dropped 94.4% week-over-week. Tanker transits have collapsed from 60+ daily to single digits. The disruption score is 99%.
 
 This is not a hypothetical scenario for a risk assessment deck. This is happening right now, and World Monitor is tracking it live.
 
@@ -118,7 +119,7 @@ Consider the current Hormuz crisis through all four dimensions:
 3. **Trade Policy**: Gulf oil exports affected by the conflict, alternative suppliers face their own trade barriers
 4. **Critical Minerals**: Qatar LNG exports transit Hormuz. Disruption affects downstream petrochemical inputs for battery manufacturing
 
-No single data source shows this full picture. World Monitor puts chokepoint status, freight indices, trade policy, and mineral supply risk in one panel, updated in real time. Combined with [AI-powered forecasting](/blog/posts/prediction-markets-ai-forecasting-geopolitics/), you can see not just what is happening, but where the situation is heading.
+No single data source shows this full picture. World Monitor puts chokepoint status, freight indices, trade policy, and mineral supply risk in one panel, updated in real time. Combined with [AI-powered forecasting](/blog/posts/prediction-markets-ai-forecasting-geopolitics/), you can see not just what is happening, but where the situation is heading. And if you want these signals in your own systems rather than a dashboard, the API exposes the same data: here is [how to build a supply-chain early-warning system](/blog/posts/build-supply-chain-early-warning-system-api/) with route scoring and disruption webhooks.
 
 ## The Data Sources
 
@@ -151,4 +152,4 @@ The eight most strategically important chokepoints are: Strait of Hormuz (oil/LN
 
 ---
 
-**Open the Supply Chain panel at [worldmonitor.app](https://worldmonitor.app) and click "Chokepoints" for live corridor disruption scores, or "Shipping Rates" to see real-time freight indices. Free for everyone.**
+**Open the Supply Chain panel at [worldmonitor.app](https://www.worldmonitor.app) and click "Chokepoints" for live corridor disruption scores, or "Shipping Rates" to see real-time freight indices. Free for everyone.**

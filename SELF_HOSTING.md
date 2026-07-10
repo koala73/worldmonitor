@@ -66,14 +66,16 @@ services:
       EIA_API_KEY: ""             # https://www.eia.gov/opendata/ (free)
 
       # ⚔️ Conflict & Unrest
-      ACLED_ACCESS_TOKEN: ""      # https://acleddata.com (free for researchers)
+      ACLED_EMAIL: ""             # https://acleddata.com (free for researchers)
+      ACLED_PASSWORD: ""          # OAuth flow — tokens auto-refresh (preferred over ACLED_ACCESS_TOKEN)
+      ACLED_ACCESS_TOKEN: ""      # Alternative: static token (expires every 24h)
 
       # 🛰️ Earth Observation
       NASA_FIRMS_API_KEY: ""      # REQUIRED for seed-fire-detections.mjs — https://firms.modaps.eosdis.nasa.gov (free)
 
       # ✈️ Aviation
       AVIATIONSTACK_API: ""       # https://aviationstack.com (free tier)
-
+      TRAVELPAYOUTS_API_TOKEN: "" # https://travelpayouts.com (flight price search — optional)
       # 🚢 Maritime
       AISSTREAM_API_KEY: ""       # https://aisstream.io (free)
 
@@ -116,6 +118,13 @@ To automate, add a cron job:
 # Re-seed every 30 minutes
 */30 * * * * cd /path/to/worldmonitor && ./scripts/run-seeders.sh >> /tmp/wm-seeders.log 2>&1
 ```
+
+**Per-seeder timeout (`SEED_TIMEOUT`):** standalone seeders are each wrapped in a
+wall-clock cap so one hung upstream can't starve the rest of the run. It defaults
+to `1800` (30 min); override with `SEED_TIMEOUT=<seconds>`, or `SEED_TIMEOUT=0` to
+disable. Bundle seeders (`seed-bundle-*.mjs`) are exempt — they already bound each
+section internally. Requires the `timeout` command (GNU coreutils); if it's absent
+the cap is silently skipped.
 
 ### 🔧 Manual seeder invocation
 
@@ -162,6 +171,20 @@ node scripts/seed-military-flights.mjs
 | `worldmonitor-redis-rest` | Upstash-compatible REST proxy | 8079 |
 | `worldmonitor-ais-relay` | Live vessel tracking WebSocket | 3004 (internal) |
 
+> **`redis-rest` command allowlist**: the bundled proxy (`docker/redis-rest-proxy.mjs`) only
+> forwards a fixed allowlist of Redis commands and rejects `EVAL`/`EVALSHA`/`SCRIPT` (no Lua
+> scripting). Two consequences for a self-hosted stack:
+>
+> - `@upstash/ratelimit`'s Lua-based sliding-window limiter (`server/_shared/rate-limit.ts`,
+>   `api/_rate-limit.js`) can't run against it. Both automatically detect the rejection once and
+>   fall back to a non-Lua fixed-window limiter (`INCR` + `EXPIRE NX`) for the rest of the
+>   process — rate limiting still enforces, just with fixed- instead of sliding-window semantics.
+> - `scripts/ais-relay.cjs`'s own in-container seed loops (`UPSTASH_ENABLED`) also require
+>   `UPSTASH_REDIS_REST_URL` to start with `https://` by default, which the plain-HTTP proxy
+>   never satisfies. Set `UPSTASH_ALLOW_INSECURE_HTTP=true` on the `ais-relay` service (already
+>   wired for `redis-rest` in `docker-compose.yml`) to opt into using the proxy from
+>   inside the relay container.
+
 ## 🔨 Building from Source
 
 ```bash
@@ -184,7 +207,7 @@ docker compose down && docker compose up -d
 - Docker nginx mirrors Vercel's `script-src` policy and does not allow `'unsafe-inline'`; hash-pin any custom inline scripts before adding them to a self-hosted build.
 - If you hit `npm ci` sync errors in Docker, regenerate the lockfile with the container's npm version:
   ```bash
-  docker run --rm -v "$(pwd)":/app -w /app node:22-alpine npm install --package-lock-only
+  docker run --rm -v "$(pwd)":/app -w /app node:24-alpine npm install --package-lock-only
   ```
 
 ## 🌐 Connecting to External Infrastructure
@@ -228,7 +251,7 @@ services:
 | 📡 `0/55 OK` on health check | Seeders haven't run — `./scripts/run-seeders.sh` |
 | 🔴 nginx won't start | Check `podman logs worldmonitor` — likely missing `gettext` package |
 | 🔑 Seeders say "Missing UPSTASH_REDIS_REST_URL" | Stack isn't running, or run via `./scripts/run-seeders.sh` (auto-sets env vars) |
-| 📦 `npm ci` fails in Docker build | Lockfile mismatch — regenerate with `docker run --rm -v $(pwd):/app -w /app node:22-alpine npm install --package-lock-only` |
+| 📦 `npm ci` fails in Docker build | Lockfile mismatch — regenerate with `docker run --rm -v $(pwd):/app -w /app node:24-alpine npm install --package-lock-only` |
 | 🚢 No vessel data | Set `AISSTREAM_API_KEY` in both `worldmonitor` and `ais-relay` services |
 | 🔥 No wildfire data | Set `NASA_FIRMS_API_KEY` |
 | 🌐 No outage data | Requires `CLOUDFLARE_API_TOKEN` (paid Radar access) |

@@ -178,15 +178,15 @@
     "apiTier": "API 等级",
     "title": "程序化情报",
     "subtitle": "面向基于 World Monitor 数据构建的开发者、分析师与团队。独立于 Pro — 可同时使用或单独使用。",
-    "restApi": "覆盖 30+ 个服务域的 REST API",
+    "restApi": "覆盖 30+ 个服务域的 REST API——JavaScript、Python、Ruby、Go 官方 SDK",
     "authenticated": "按密钥鉴权、按等级限速",
     "structured": "具 cache header 和 OpenAPI 3.1 文档的结构化 JSON",
     "starter": "Starter",
     "starterReqs": "1,000 次/天",
     "starterWebhooks": "5 条 webhook 规则",
     "business": "Business",
-    "businessReqs": "50,000 次/天",
-    "businessWebhooks": "无限 webhook + SLA",
+    "businessReqs": "10,000 次/天",
+    "businessWebhooks": "Priority support",
     "feedData": "将数据输入您的仪表板,通过 Zapier/n8n/Make 自动化告警,基于 CII/风险数据构建自定义评分模型。"
   },
   "enterpriseShowcase": {
@@ -374,16 +374,17 @@
           "每日市场简报",
           "军事和地缘政治追踪",
           "自定义小部件构建器",
-          "MCP 数据连接器",
+          "面向 Claude Desktop 和其他 AI 客户端的 MCP + SDK 访问权限（50 次调用/天）",
           "优先级数据刷新"
         ]
       },
       "api": {
         "description": "对情报数据的程序化访问",
         "features": [
-          "REST API 访问",
+          "REST API + 官方 SDK（npm、PyPI、RubyGems、Go）",
           "实时数据流",
-          "每天 1,000 个请求",
+          "每分钟 60 个请求",
+          "包含每天 1,000 个请求",
           "Webhook 通知",
           "自定义数据导出"
         ]
