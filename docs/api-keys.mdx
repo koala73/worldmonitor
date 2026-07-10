@@ -1,0 +1,49 @@
+---
+title: "Find or replace your license / API key"
+description: "Where to create the wm_ key requested by the desktop app or API, which plans include one, and what to do if the full key is no longer visible."
+---
+
+World Monitor calls this value a **license key** in some desktop screens and an **API key** elsewhere. They refer to the same user-created value, which starts with `wm_`.
+
+<Info>
+Checkout does not create a reusable key for you. **API Starter and API Business** subscribers create their own keys after signing in. **Dashboard Pro does not include manual API keys**; Pro users can use the signed-in web dashboard and connect supported MCP clients with OAuth instead.
+</Info>
+
+## Create a key
+
+1. Open the [World Monitor dashboard](https://worldmonitor.app/dashboard) and sign in with the account that owns the API subscription.
+2. Select **Settings** in the top-right corner.
+3. Open the **API Keys** tab.
+4. Enter a name such as `desktop` or `my-app`, then select **Create Key**.
+5. Copy the complete `wm_...` value immediately and store it in a password manager or secret manager.
+
+The full key is shown only once. World Monitor stores a one-way hash, not the plaintext key.
+
+## If you can see only the prefix
+
+The API Keys tab lists a short prefix so you can identify each key, but it cannot reveal the complete value again.
+
+1. Revoke the key whose full value you lost.
+2. Create a replacement.
+3. Update every app or script that used the old key.
+
+Revocation is permanent. Applications using the old key will stop working.
+
+## Use the key in the desktop app
+
+In the World Monitor desktop app, open **Settings → Overview**, paste the complete value into **License / API Key**, then select **Save & Close**.
+
+For API requests, send the same value in the `X-WorldMonitor-Key` header. See the [API quickstart](/usage-quickstart) for examples.
+
+## If the API Keys tab asks you to upgrade
+
+Manual keys require an active **API Starter** or **API Business** subscription. A Dashboard Pro subscription unlocks dashboard and MCP features, but it does not include manual API-key creation.
+
+If you already bought an API plan, confirm that you signed in with the account that owns the subscription. If the plan is still not recognized, email [support@worldmonitor.app](mailto:support@worldmonitor.app) from the purchase email address. Include the plan name and, if available, only the short key prefix—**never send a complete key**.
+
+## Related
+
+- [Accounts & Sign-up](/accounts)
+- [Plans & Pricing](/pricing)
+- [Authentication & Usage](/usage-auth)
+- [Support & Contact](/support)
