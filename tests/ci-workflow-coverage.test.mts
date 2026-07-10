@@ -38,6 +38,7 @@ const REQUIRED_TEST_JOBS = [
 ] as const;
 
 const TIMEOUT_CAPPED_TEST_JOBS = [
+  'consumer-prices',
   'sidecar',
   'convex-tests',
   'variant-smoke-full',
