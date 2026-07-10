@@ -18,7 +18,7 @@ Authoritative CII scores come from the server-side `GET /api/intelligence/v1/get
 | **Baseline risk**    | 40%    | Pre-configured per country reflecting structural fragility (0-50 scale) |
 | **Event score**      | 60%    | Blend of Unrest (25%), Conflict (30%), Security (20%), Information (25%) |
 
-**Unrest score** (0-100): Log2 dampening for high-volume low-multiplier countries (`multiplier &lt; 0.7`), linear otherwise. Base capped at 50, plus protest/riot fatality boost (up to 30), plus outage severity boost (TOTAL: 30pts, MAJOR: 15pts, PARTIAL: 5pts, capped at 50).
+**Unrest score** (0-100): Log2 dampening for high-volume low-multiplier countries (`multiplier < 0.7`), linear otherwise. Base capped at 50, plus protest/riot fatality boost (up to 30), plus outage severity boost (TOTAL: 30pts, MAJOR: 15pts, PARTIAL: 5pts, capped at 50).
 
 **Conflict score** (0-100): Weighted ACLED activity (battles x3, explosions x4, civilian violence x5, multiplied by `eventMultiplier`) is log-scaled with the v3 curve `min(70, log1p(rawActivity) / log1p(4000) * 70)` before additional boosts. Sqrt-scaled fatalities contribute up to 40, civilian targeting up to 10, Iran strike severity up to 50, and OREF alerts for Israel add 25 base + 5 per active alert up to 50 total. Rolling 24-hour OREF history contributes through the Israel blend boost described below.
 
