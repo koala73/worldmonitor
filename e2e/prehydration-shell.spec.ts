@@ -298,6 +298,42 @@ test.describe('pre-hydration dashboard shell on mobile', () => {
       releaseMain();
     }
   });
+
+  test('matches the persisted collapsed-map footprint through hydration', async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('mobile-map-collapsed', 'true');
+    });
+    const delayedMain = await delayDashboardMain(page);
+    let released = false;
+    const releaseMain = () => {
+      if (released) return;
+      released = true;
+      delayedMain.release();
+    };
+
+    try {
+      await page.goto('/', { waitUntil: 'commit' });
+      await delayedMain.requested;
+      await expect(page.locator('.skeleton-map')).toBeVisible();
+      await expect(page.locator('.skeleton-map-body')).toBeHidden();
+
+      const shellHeight = await page.locator('.skeleton-map').evaluate((element) => element.getBoundingClientRect().height);
+      expect(shellHeight).toBeGreaterThan(0);
+
+      releaseMain();
+
+      await expect(page.locator('#mapSection.collapsed')).toBeVisible({ timeout: 30000 });
+      await expect(page.locator('.skeleton-shell')).toHaveCount(0);
+      const hydratedHeight = await page.locator('#mapSection').evaluate((element) => element.getBoundingClientRect().height);
+
+      expect(Math.abs(hydratedHeight - shellHeight), 'collapsed map footprint drift').toBeLessThanOrEqual(2);
+      await expect.poll(async () => page.evaluate(() => (
+        document.documentElement.classList.contains('wm-map-collapsed')
+      ))).toBe(false);
+    } finally {
+      releaseMain();
+    }
+  });
 });
 
 test.describe('dashboard shell without JavaScript', () => {
