@@ -51,6 +51,12 @@ function contrastRatio(a: string | [number, number, number], b: string | [number
   return (lighter! + 0.05) / (darker! + 0.05);
 }
 
+function requiredHexColor(vars: Record<string, string>, name: string, theme: string): string {
+  const value = vars[name];
+  assert.ok(value, `${theme} must define ${name} as a hex color for contrast verification`);
+  return value;
+}
+
 describe('Intel Feed category-tag contrast (#5166)', () => {
   it('uses primary text for the generated label while retaining the threat color as the tag treatment', () => {
     assert.match(
@@ -69,7 +75,7 @@ describe('Intel Feed category-tag contrast (#5166)', () => {
     const rootBlocks = [...mainCss.matchAll(/:root\s*\{/g)].map(match => cssBlock(mainCss.slice(match.index), ':root'));
     const base = cssVars(rootBlocks[0]!, rootBlocks[1]!);
     const light = { ...base, ...cssVars(cssBlock(mainCss, '[data-theme="light"]')) };
-    const happyLight = cssVars(cssBlock(happyCss, ':root[data-variant="happy"],'));
+    const happyLight = cssVars(cssBlock(happyCss, ':root[data-variant="happy"]'));
     const happyDark = cssVars(cssBlock(happyCss, ':root[data-variant="happy"][data-theme="dark"]'));
     const themes = [
       ['dark', base],
@@ -81,7 +87,14 @@ describe('Intel Feed category-tag contrast (#5166)', () => {
 
     for (const [name, vars] of themes) {
       for (const threatVar of threatVars) {
-        const ratio = contrastRatio(vars['--text']!, composite(vars[threatVar]!, vars['--surface']!, 0x20 / 0xff));
+        const ratio = contrastRatio(
+          requiredHexColor(vars, '--text', name),
+          composite(
+            requiredHexColor(vars, threatVar, name),
+            requiredHexColor(vars, '--surface', name),
+            0x20 / 0xff,
+          ),
+        );
         assert.ok(ratio >= 4.5, `${name} ${threatVar} category tag is ${ratio.toFixed(2)}:1 (needs 4.5:1)`);
       }
     }
