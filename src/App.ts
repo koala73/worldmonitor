@@ -359,6 +359,8 @@ export class App {
     if (bannerMessage) {
       if (!this.cachedModeBannerEl) {
         this.cachedModeBannerEl = document.createElement('div');
+        // CSS disables pointer events on this status-only container. Keep its descendants
+        // non-interactive unless the banner interaction model is updated with it.
         this.cachedModeBannerEl.className = 'cached-mode-banner';
         this.cachedModeBannerEl.setAttribute('role', 'status');
         this.cachedModeBannerEl.setAttribute('aria-live', 'polite');

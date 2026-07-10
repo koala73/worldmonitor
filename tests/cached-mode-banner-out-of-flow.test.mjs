@@ -48,7 +48,7 @@ describe('#4580 cached-mode banner stays out of flow', () => {
     // stale selector — anchor it to the source that creates the element.
     assert.match(
       appTs,
-      /className = 'cached-mode-banner'/,
+      /['"`]cached-mode-banner['"`]/,
       'App.ts should still create the .cached-mode-banner element (update this guard if renamed)',
     );
   });
