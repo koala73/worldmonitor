@@ -190,7 +190,7 @@ describe('processResolutionCycle', () => {
     assert.equal(receipts.length, 0);
   });
 
-  it('migrates already-open display count entries while moving ACLED conflict rows to judged', () => {
+  it('migrates already-open display count entries — conflict AND unrest rows move to judged (#5091)', () => {
     const deadline = T0 + DAY_MS;
     const oldLedger = {
       [`fc-mali@${deadline}`]: {
@@ -273,13 +273,18 @@ describe('processResolutionCycle', () => {
     assert.match(conflictRow.spec.question, /Mali/);
     assert.equal(conflictRow.outcome, undefined);
 
+    // unrest's resolution feed is empty without ACLED creds (#5091), so the
+    // display-key entry is remapped and then migrated to judged too — even when
+    // this test supplies fake feed data, migration is gated on the flag, not the data.
     const unrestRow = ledger[`fc-venezuela@${deadline}`];
-    assert.equal(unrestRow.spec.sourceFeed, UNREST_COUNT_SOURCE_FEED);
-    assert.equal(unrestRow.spec.metricKey, `${UNREST_COUNT_SOURCE_FEED}|count(country==Venezuela)`);
-    assert.equal(unrestRow.status, 'resolved');
-    assert.equal(unrestRow.outcome, 'NO');
-    assert.equal(unrestRow.evidence.metricValue, 1);
-    assert.equal(receipts.length, 1);
+    assert.equal(unrestRow.status, 'pending-judge');
+    assert.equal(unrestRow.spec.kind, 'judged');
+    assert.equal(unrestRow.spec.sourceFeed, null);
+    assert.equal(unrestRow.spec.metricKey, null);
+    assert.match(unrestRow.spec.question, /Venezuela/);
+    assert.match(unrestRow.spec.question, /unrest|instability/i);
+    assert.equal(unrestRow.outcome, undefined);
+    assert.equal(receipts.length, 0);
   });
 
   it('migrates old-key count specs first ingested from history snapshots', () => {
@@ -339,11 +344,13 @@ describe('processResolutionCycle', () => {
     assert.equal(ledger[`fc-mali@${deadline}`].spec.sourceFeed, null);
     assert.equal(ledger[`fc-mali@${deadline}`].spec.metricKey, null);
     assert.match(ledger[`fc-mali@${deadline}`].spec.question, /Mali/);
-    assert.equal(ledger[`fc-venezuela@${deadline}`].spec.sourceFeed, UNREST_COUNT_SOURCE_FEED);
-    assert.equal(ledger[`fc-venezuela@${deadline}`].spec.metricKey, `${UNREST_COUNT_SOURCE_FEED}|count(country==Venezuela)`);
-    assert.equal(ledger[`fc-venezuela@${deadline}`].status, 'resolved');
-    assert.equal(ledger[`fc-venezuela@${deadline}`].outcome, 'NO');
-    assert.equal(receipts.length, 1);
+    // unrest migrates to judged too (#5091), regardless of any supplied feed data.
+    assert.equal(ledger[`fc-venezuela@${deadline}`].status, 'pending-judge');
+    assert.equal(ledger[`fc-venezuela@${deadline}`].spec.kind, 'judged');
+    assert.equal(ledger[`fc-venezuela@${deadline}`].spec.sourceFeed, null);
+    assert.equal(ledger[`fc-venezuela@${deadline}`].spec.metricKey, null);
+    assert.match(ledger[`fc-venezuela@${deadline}`].spec.question, /Venezuela/);
+    assert.equal(receipts.length, 0);
   });
 
   it('migrates persisted pending ACLED conflict rows to judged without rewriting resolved rows', () => {
@@ -428,6 +435,48 @@ describe('processResolutionCycle', () => {
     assert.equal(resolved.spec.sourceFeed, CONFLICT_COUNT_SOURCE_FEED);
     assert.equal(resolved.outcome, 'YES');
     assert.equal(receipts.length, 0);
+  });
+
+  it('migrates persisted pending unrest count rows to judged too (#5091 — empty unrest:events-resolution feed)', () => {
+    const deadline = T0 + DAY_MS;
+    const oldLedger = {
+      [`fc-unrest@${deadline}`]: {
+        id: 'fc-unrest',
+        key: `fc-unrest@${deadline}`,
+        domain: 'political',
+        region: 'Kenya',
+        title: 'Civil unrest in Kenya escalates',
+        timeHorizon: '7d',
+        generationOrigin: 'detector',
+        spec: {
+          kind: 'hard',
+          metricKey: `${UNREST_COUNT_SOURCE_FEED}|count(country==Kenya)`,
+          operator: '>=',
+          threshold: 3,
+          window: 'within-horizon',
+          deadline,
+          sourceFeed: UNREST_COUNT_SOURCE_FEED,
+        },
+        probability: 0.5,
+        firstSeenProbability: 0.5,
+        generatedAt: T0,
+        deadline,
+        firstSeenAt: T0,
+        lastSeenAt: T0,
+        status: 'pending',
+        samples: { count: 0, recent: [] },
+      },
+    };
+
+    const { ledger } = processResolutionCycle(oldLedger, [], {}, deadline + 3 * DAY_MS);
+    const migrated = ledger[`fc-unrest@${deadline}`];
+    assert.equal(migrated.status, 'pending-judge');
+    assert.equal(migrated.spec.kind, 'judged');
+    assert.equal(migrated.spec.sourceFeed, null);
+    assert.equal(migrated.spec.metricKey, null);
+    assert.equal(migrated.spec.deadline, deadline);
+    assert.match(migrated.spec.question, /Kenya/);
+    assert.match(migrated.spec.question, /unrest|instability/i);
   });
 
   it('does not resolve stale UCDP count snapshots to NO after the settlement lag', () => {
