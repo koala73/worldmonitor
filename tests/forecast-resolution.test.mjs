@@ -906,6 +906,20 @@ describe('#5010 amendment — resolvable windows + horizon-commensurable count',
     assert.notEqual(month.threshold, 175);
     assert.equal(CONFLICT_ESCALATION_RATIO, 1.5);
   });
+
+  it('the unrest count threshold scales with the horizon when the feed is available', () => {
+    const mk = (horizon) => buildResolutionSpec(pred({
+      domain: 'political', region: 'Venezuela', timeHorizon: horizon,
+      signals: [{ type: 'unrest_events', value: '20 unrest events', weight: 0.5 }],
+    }), {}, GENERATED_AT, { unrestCountFeedAvailable: true });
+    const day = mk('24h');
+    const month = mk('30d');
+    // 20 events/30d: 24h -> max(1, round(20 x 1/30 x 0.75)) = 1;
+    // 30d -> max(1, round(20 x 30/30 x 0.75)) = 15. Never the raw tally.
+    assert.equal(day.threshold, 1);
+    assert.equal(month.threshold, 15);
+    assert.notEqual(month.threshold, 20);
+  });
 });
 
 describe('FIX 6 — prediction_market baseline is percent-anchored', () => {
