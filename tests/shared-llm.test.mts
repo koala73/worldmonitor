@@ -145,6 +145,83 @@ describe('callLlm', () => {
     assert.equal(result.finishReason, 'length');
   });
 
+  it('retries the provider chain on token-limited completions only when opted in', async () => {
+    process.env.OPENROUTER_API_KEY = 'or-test-key';
+    process.env.GROQ_API_KEY = 'groq-test-key';
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    const postUrls: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if ((init?.method || 'GET') === 'GET') return new Response('', { status: 200 });
+      postUrls.push(url);
+      if (url.includes('openrouter.ai')) {
+        return new Response(JSON.stringify({
+          choices: [{ message: { content: 'Clipped before completing the thought' }, finish_reason: 'length' }],
+          usage: { total_tokens: 80, completion_tokens: 40 },
+        }), { status: 200 });
+      }
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: 'Complete fallback response.' }, finish_reason: 'stop' }],
+        usage: { total_tokens: 35, completion_tokens: 12 },
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    const result = await callLlm({
+      messages: [{ role: 'user', content: 'Return a bounded response.' }],
+      maxTokens: 40,
+      providerOrder: ['openrouter', 'groq'],
+      retryOnLengthLimit: true,
+    });
+
+    assert.ok(result);
+    assert.equal(result.provider, 'groq');
+    assert.equal(result.content, 'Complete fallback response.');
+    assert.deepEqual(postUrls, [
+      'https://openrouter.ai/api/v1/chat/completions',
+      'https://api.groq.com/openai/v1/chat/completions',
+    ]);
+  });
+
+  it('rejects token-limit aliases and missing or unknown reasons at the requested ceiling', async () => {
+    process.env.OPENROUTER_API_KEY = 'or-test-key';
+    delete process.env.GROQ_API_KEY;
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    const cases: Array<{ finishReason?: string | null; completionTokens: number }> = [
+      { finishReason: 'max_tokens', completionTokens: 10 },
+      { finishReason: 'MAX_TOKENS', completionTokens: 10 },
+      { finishReason: 'max_output_tokens', completionTokens: 10 },
+      { finishReason: null, completionTokens: 20 },
+      { finishReason: 'provider_specific_limit', completionTokens: 20 },
+    ];
+
+    for (const { finishReason, completionTokens } of cases) {
+      globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+        if ((init?.method || 'GET') === 'GET') return new Response('', { status: 200 });
+        return new Response(JSON.stringify({
+          choices: [{
+            message: { content: 'Potentially clipped response.' },
+            ...(finishReason === undefined ? {} : { finish_reason: finishReason }),
+          }],
+          usage: { total_tokens: 30, completion_tokens: completionTokens },
+        }), { status: 200 });
+      }) as typeof fetch;
+
+      const result = await callLlm({
+        messages: [{ role: 'user', content: 'Return a bounded response.' }],
+        provider: 'openrouter',
+        maxTokens: 20,
+        retryOnLengthLimit: true,
+      });
+      assert.equal(result, null, `must reject finish_reason=${String(finishReason)} at ${completionTokens} tokens`);
+    }
+  });
+
   it('omits the reasoning-off body when the reasoning profile opts in', async () => {
     process.env.OPENROUTER_API_KEY = 'or-test-key';
     delete process.env.GROQ_API_KEY;

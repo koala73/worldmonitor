@@ -18,6 +18,10 @@ import { createHash } from 'node:crypto';
 
 import {
   WHY_MATTERS_SYSTEM,
+  WHY_MATTERS_V1_MAX_CHARS,
+  WHY_MATTERS_V1_MIN_CHARS,
+  WHY_MATTERS_V2_MAX_CHARS,
+  WHY_MATTERS_V2_MIN_CHARS,
   briefDateLine,
   buildWhyMattersUserPrompt,
   hasTerminalPunctuation,
@@ -59,6 +63,34 @@ describe('hasTerminalPunctuation — shared wire/cache completion gate', () => {
     assert.equal(hasTerminalPunctuation('With the ceasefire collapsed, the'), false);
     assert.equal(hasTerminalPunctuation('With the ceasefire collapsed, the\u201D'), false);
     assert.equal(hasTerminalPunctuation(null), false);
+  });
+
+  it('rejects ASCII and Unicode ellipses with optional closing quotes', () => {
+    assert.equal(hasTerminalPunctuation('The negotiations remain unresolved...'), false);
+    assert.equal(hasTerminalPunctuation('The negotiations remain unresolved...\u201D'), false);
+    assert.equal(hasTerminalPunctuation('The negotiations remain unresolved\u2026'), false);
+    assert.equal(hasTerminalPunctuation('The negotiations remain unresolved\u2026"'), false);
+  });
+});
+
+describe('whyMatters character bounds — shared parser contracts', () => {
+  it('wires the exported v1 bounds into parseWhyMatters', () => {
+    assert.equal(WHY_MATTERS_V1_MIN_CHARS, 30);
+    assert.equal(WHY_MATTERS_V1_MAX_CHARS, 400);
+    assert.equal(parseWhyMatters(`${'x'.repeat(WHY_MATTERS_V1_MIN_CHARS - 1)}.`)?.length, WHY_MATTERS_V1_MIN_CHARS);
+    assert.equal(parseWhyMatters(`${'x'.repeat(WHY_MATTERS_V1_MIN_CHARS - 2)}.`), null);
+    assert.equal(parseWhyMatters(`${'x'.repeat(WHY_MATTERS_V1_MAX_CHARS - 1)}.`)?.length, WHY_MATTERS_V1_MAX_CHARS);
+    assert.equal(parseWhyMatters(`${'x'.repeat(WHY_MATTERS_V1_MAX_CHARS)}.`), null);
+  });
+
+  it('wires the exported v2 bounds into parseWhyMattersV2', async () => {
+    const { parseWhyMattersV2 } = await import('../shared/brief-llm-core.js');
+    assert.equal(WHY_MATTERS_V2_MIN_CHARS, 100);
+    assert.equal(WHY_MATTERS_V2_MAX_CHARS, 500);
+    assert.equal(parseWhyMattersV2(`${'x'.repeat(WHY_MATTERS_V2_MIN_CHARS - 1)}.`)?.length, WHY_MATTERS_V2_MIN_CHARS);
+    assert.equal(parseWhyMattersV2(`${'x'.repeat(WHY_MATTERS_V2_MIN_CHARS - 2)}.`), null);
+    assert.equal(parseWhyMattersV2(`${'x'.repeat(WHY_MATTERS_V2_MAX_CHARS - 1)}.`)?.length, WHY_MATTERS_V2_MAX_CHARS);
+    assert.equal(parseWhyMattersV2(`${'x'.repeat(WHY_MATTERS_V2_MAX_CHARS)}.`), null);
   });
 });
 

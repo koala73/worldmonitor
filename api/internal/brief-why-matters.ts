@@ -262,6 +262,10 @@ async function runAnalystPath(story: StoryPayload, iso2: string | null): Promise
       // WHY_MATTERS_* constants above. Decoupled from LLM_REASONING_MODEL.
       providerOrder: WHY_MATTERS_PROVIDER_ORDER,
       modelOverrides: WHY_MATTERS_MODEL_OVERRIDES,
+      // A provider's explicit token-limit signal is deterministic, so retry
+      // the next provider in-request. The parser remains post-call because
+      // parse rejection is ambiguous and should not trigger duplicate spend.
+      retryOnLengthLimit: true,
       // Note: no `validate` option. The post-call parseWhyMattersV2
       // check below handles rejection. Using validate inside
       // callLlm would walk the provider chain on parse-reject,
@@ -311,6 +315,9 @@ async function runGeminiPath(story: StoryPayload): Promise<string | null> {
       // WHY_MATTERS_* constants above. Decoupled from LLM_REASONING_MODEL.
       providerOrder: WHY_MATTERS_PROVIDER_ORDER,
       modelOverrides: WHY_MATTERS_MODEL_OVERRIDES,
+      // Match the analyst path: retry only deterministic token-limit signals,
+      // while leaving prose-shape validation outside the provider loop.
+      retryOnLengthLimit: true,
       // Note: no `validate` option. The post-call parseWhyMatters check
       // below handles rejection by returning null. Using validate inside
       // callLlm would walk the provider chain on parse-reject,

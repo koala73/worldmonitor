@@ -18,6 +18,10 @@ export interface BriefStoryPromptInput {
 }
 
 export const WHY_MATTERS_SYSTEM: string;
+export const WHY_MATTERS_V1_MIN_CHARS: number;
+export const WHY_MATTERS_V1_MAX_CHARS: number;
+export const WHY_MATTERS_V2_MIN_CHARS: number;
+export const WHY_MATTERS_V2_MAX_CHARS: number;
 
 export function briefDateLine(todayIso?: string): string;
 

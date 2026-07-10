@@ -38,6 +38,10 @@ import { createHash } from 'node:crypto';
 
 import {
   WHY_MATTERS_SYSTEM,
+  WHY_MATTERS_V1_MAX_CHARS,
+  WHY_MATTERS_V1_MIN_CHARS,
+  WHY_MATTERS_V2_MAX_CHARS,
+  WHY_MATTERS_V2_MIN_CHARS,
   briefDateLine,
   buildWhyMattersUserPrompt,
   hashBriefStory,
@@ -114,7 +118,9 @@ const BRIEF_LLM_SKIP_PROVIDERS = ['ollama', 'groq'];
 function normalizeAnalystWhyMatters(value) {
   if (typeof value !== 'string') return null;
   const normalized = value.trim();
-  if (normalized.length < 30 || normalized.length > 500) return null;
+  const minChars = Math.min(WHY_MATTERS_V1_MIN_CHARS, WHY_MATTERS_V2_MIN_CHARS);
+  const maxChars = Math.max(WHY_MATTERS_V1_MAX_CHARS, WHY_MATTERS_V2_MAX_CHARS);
+  if (normalized.length < minChars || normalized.length > maxChars) return null;
   if (/^story flagged by your sensitivity/i.test(normalized)) return null;
   return hasTerminalPunctuation(normalized) ? normalized : null;
 }

@@ -31,7 +31,11 @@ import {
 } from '../scripts/lib/brief-llm.mjs';
 import { assertBriefEnvelope } from '../server/_shared/brief-render.js';
 import { composeBriefFromDigestStories, digestStoryToSynthesisShape } from '../scripts/lib/brief-compose.mjs';
-import { briefDateLine } from '../shared/brief-llm-core.js';
+import {
+  WHY_MATTERS_V1_MIN_CHARS,
+  WHY_MATTERS_V2_MAX_CHARS,
+  briefDateLine,
+} from '../shared/brief-llm-core.js';
 
 const MAX_TOKEN_CLIP =
   'Marine Le Pen\u2019s conviction on appeal leaves her legally eligible for the 2027 presidential election, creating a high-stakes';
@@ -177,6 +181,23 @@ describe('parseWhyMatters', () => {
 // ── generateWhyMatters ─────────────────────────────────────────────────────
 
 describe('generateWhyMatters', () => {
+  it('accepts analyst endpoint prose across the derived v1/v2 union bounds', async () => {
+    for (const prose of [
+      `${'x'.repeat(WHY_MATTERS_V1_MIN_CHARS - 1)}.`,
+      `${'x'.repeat(WHY_MATTERS_V2_MAX_CHARS - 1)}.`,
+    ]) {
+      const cache = makeCache();
+      const llm = makeLLM(() => { throw new Error('analyst output must short-circuit the fallback'); });
+      const out = await generateWhyMatters(story(), {
+        ...cache,
+        callLLM: llm.callLLM,
+        callAnalystWhyMatters: async () => prose,
+      });
+      assert.equal(out, prose);
+      assert.equal(llm.calls.length, 0);
+    }
+  });
+
   it('returns the cached value without calling the LLM when cache hits', async () => {
     const cache = makeCache();
     const llm = makeLLM(() => 'should not be called');
@@ -223,6 +244,47 @@ describe('generateWhyMatters', () => {
     const llm = makeLLM('too short');
     const out = await generateWhyMatters(story(), { ...cache, callLLM: llm.callLLM });
     assert.equal(out, null);
+  });
+
+  it('revalidates the current v6 cache row and replaces rejected prose', async () => {
+    const cache = makeCache();
+    const hash = await hashBriefStory(story());
+    const key = `brief:llm:whymatters:v6:${hash}`;
+    cache.store.set(key, MAX_TOKEN_CLIP);
+    const fresh = 'Closure of the Strait of Hormuz would spike oil prices globally.';
+    const llm = makeLLM(fresh);
+
+    const out = await generateWhyMatters(story(), { ...cache, callLLM: llm.callLLM });
+
+    assert.equal(out, fresh);
+    assert.equal(llm.calls.length, 1, 'invalid current-v6 prose must not short-circuit regeneration');
+    assert.equal(cache.store.get(key), fresh, 'fresh prose must replace the rejected v6 row');
+  });
+
+  it('returns null and writes no cache for complete-looking v1 prose without terminal punctuation', async () => {
+    const cache = makeCache();
+    const llm = makeLLM(
+      'This development would reshape regional deterrence and force allies to reconsider their security guarantees',
+    );
+
+    const out = await generateWhyMatters(story(), { ...cache, callLLM: llm.callLLM });
+
+    assert.equal(out, null, 'the caller must degrade to the baseline stub');
+    assert.equal(llm.calls.length, 1);
+    assert.equal(cache.store.size, 0, 'incomplete v1 prose must not be cached');
+  });
+
+  it('returns null and writes no cache for an over-400-character v1 output', async () => {
+    const cache = makeCache();
+    const overlong = `${'Regional pressure would force allies to reconsider their security posture. '.repeat(7)}Markets would react.`;
+    assert.ok(overlong.length > 400, 'fixture must exercise the v1 upper bound');
+    const llm = makeLLM(overlong);
+
+    const out = await generateWhyMatters(story(), { ...cache, callLLM: llm.callLLM });
+
+    assert.equal(out, null, 'the caller must degrade to the baseline stub');
+    assert.equal(llm.calls.length, 1);
+    assert.equal(cache.store.size, 0, 'overlong v1 prose must not be cached');
   });
 
   it('ignores a clipped legacy v5 cache row and regenerates it under v6', async () => {

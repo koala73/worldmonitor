@@ -223,6 +223,12 @@ export interface LlmCallOptions {
   stage?: string;
   /** Let reasoning-capable OpenRouter models reason. Set by the reasoning profile; utility calls stay reasoning-off. */
   enableReasoning?: boolean;
+  /**
+   * Treat provider-reported token-limit completions as failed attempts and
+   * continue the configured provider chain. Defaults off so existing callers
+   * retain the historic first-non-empty-completion behavior.
+   */
+  retryOnLengthLimit?: boolean;
 }
 
 export interface LlmCallResult {
@@ -232,6 +238,44 @@ export interface LlmCallResult {
   tokens: number;
   /** Provider-reported completion status; null when the provider omits it. */
   finishReason: string | null;
+}
+
+const TOKEN_LIMIT_FINISH_REASONS = new Set([
+  'length',
+  'max_tokens',
+  'max_output_tokens',
+]);
+
+const KNOWN_NON_LIMIT_FINISH_REASONS = new Set([
+  'stop',
+  'end_turn',
+  'tool_calls',
+  'function_call',
+  'content_filter',
+  'safety',
+  'recitation',
+  'blocklist',
+  'prohibited_content',
+  'spii',
+  'malformed_function_call',
+  'image_safety',
+]);
+
+function normalizeFinishReason(finishReason: string | null): string | null {
+  if (typeof finishReason !== 'string') return null;
+  const normalized = finishReason.trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return normalized || null;
+}
+
+function isLengthLimitedCompletion(
+  finishReason: string | null,
+  completionTokens: number,
+  maxTokens: number,
+): boolean {
+  const normalized = normalizeFinishReason(finishReason);
+  if (normalized && TOKEN_LIMIT_FINISH_REASONS.has(normalized)) return true;
+  if (completionTokens < maxTokens) return false;
+  return normalized === null || !KNOWN_NON_LIMIT_FINISH_REASONS.has(normalized);
 }
 
 function resolveProviderChain(opts: {
@@ -292,7 +336,7 @@ export const callLlmReasoning = (opts: Omit<LlmCallOptions, 'providerOrder' | 'm
 
 // enableReasoning is omitted too: the reasoning stream hardcodes it on —
 // exposing the knob on the stream type would be a silent no-op for callers.
-export type LlmStreamOptions = Omit<LlmCallOptions, 'stripThinkingTags' | 'validate' | 'providerOrder' | 'modelOverrides' | 'provider' | 'enableReasoning'> & {
+export type LlmStreamOptions = Omit<LlmCallOptions, 'stripThinkingTags' | 'validate' | 'providerOrder' | 'modelOverrides' | 'provider' | 'enableReasoning' | 'retryOnLengthLimit'> & {
   /** When fired, aborts the active provider fetch and stops the stream. */
   signal?: AbortSignal;
 };
@@ -500,6 +544,7 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
     validate,
     systemAppend,
     enableReasoning = false,
+    retryOnLengthLimit = false,
   } = opts;
 
   let messages = rawMessages;
@@ -593,17 +638,27 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
           tokensCompletion: data.usage?.completion_tokens ?? 0,
         };
 
+        const tokens = data.usage?.total_tokens ?? 0;
+        const finishReason = typeof data.choices?.[0]?.finish_reason === 'string'
+          ? data.choices[0].finish_reason
+          : null;
+        if (retryOnLengthLimit && isLengthLimitedCompletion(
+          finishReason,
+          tokensExtra.tokensCompletion,
+          maxTokens,
+        )) {
+          console.warn(`[llm:${providerName}] Token-limited completion, trying next`);
+          record(false, { ...tokensExtra, reason: 'length' });
+          if (forcedProvider) return null;
+          continue;
+        }
+
         let content = data.choices?.[0]?.message?.content?.trim() || '';
         if (!content) {
           record(false, { ...tokensExtra, reason: 'empty' });
           if (forcedProvider) return null;
           continue;
         }
-
-        const tokens = data.usage?.total_tokens ?? 0;
-        const finishReason = typeof data.choices?.[0]?.finish_reason === 'string'
-          ? data.choices[0].finish_reason
-          : null;
 
         if (shouldStrip) {
           content = stripThinkingTags(content);

@@ -42,7 +42,12 @@ const HANDLER_ENV_KEYS = [
   'LLM_API_KEY',
 ];
 
-async function invokeHandlerWithCachedEnvelope(envelope, providerCompletion = null, primary = 'gemini') {
+async function invokeHandlerWithCachedEnvelope(
+  envelope,
+  providerCompletion = null,
+  primary = 'gemini',
+  fallbackProviderCompletion = null,
+) {
   const previousEnv = Object.fromEntries(HANDLER_ENV_KEYS.map((key) => [key, process.env[key]]));
   const originalFetch = globalThis.fetch;
   const fetchCalls = [];
@@ -55,6 +60,7 @@ async function invokeHandlerWithCachedEnvelope(envelope, providerCompletion = nu
     delete process.env[key];
   }
   if (providerCompletion) process.env.OPENROUTER_API_KEY = 'or-test-key';
+  if (fallbackProviderCompletion) process.env.GROQ_API_KEY = 'groq-test-key';
   globalThis.fetch = async (input, init) => {
     const url = String(input);
     const method = init?.method || 'GET';
@@ -71,6 +77,12 @@ async function invokeHandlerWithCachedEnvelope(envelope, providerCompletion = nu
     if (method === 'GET') return new Response('', { status: 200 });
     if (url === 'https://openrouter.ai/api/v1/chat/completions' && providerCompletion) {
       return new Response(JSON.stringify(providerCompletion), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (url === 'https://api.groq.com/openai/v1/chat/completions' && fallbackProviderCompletion) {
+      return new Response(JSON.stringify(fallbackProviderCompletion), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -291,6 +303,46 @@ describe('brief-why-matters Edge cache acceptance', () => {
       false,
       'an analyst length-limited response must never be cached',
     );
+  });
+
+  it('walks the configured provider chain after a length-limited completion on both paths', async () => {
+    const fallback =
+      'The ruling changes alliance planning across Europe while forcing policymakers to reassess regional commitments. ' +
+      'That shift could alter near-term diplomatic and defense priorities.';
+    const clippedCompletion = {
+      choices: [{
+        message: { content: ABBREVIATION_LENGTH_CLIP },
+        finish_reason: 'length',
+      }],
+      usage: { total_tokens: 120, completion_tokens: 80 },
+    };
+    const fallbackCompletion = {
+      choices: [{ message: { content: fallback }, finish_reason: 'stop' }],
+      usage: { total_tokens: 75, completion_tokens: 35 },
+    };
+
+    for (const primary of ['gemini', 'analyst']) {
+      const { response, body, fetchCalls } = await invokeHandlerWithCachedEnvelope(
+        null,
+        clippedCompletion,
+        primary,
+        fallbackCompletion,
+      );
+
+      assert.equal(response.status, 200);
+      assert.equal(body.whyMatters, fallback);
+      assert.equal(body.producedBy, primary);
+      assert.deepEqual(
+        fetchCalls
+          .filter(({ url, method }) => method === 'POST' && url.includes('/chat/completions'))
+          .map(({ url }) => url),
+        [
+          'https://openrouter.ai/api/v1/chat/completions',
+          'https://api.groq.com/openai/v1/chat/completions',
+        ],
+        `${primary} must retry the fallback provider in-request`,
+      );
+    }
   });
 });
 
