@@ -130,7 +130,7 @@ export const UI_RESOURCE_REGISTRY: UiResourceDef[] = [
     uri: CONFLICT_EVENTS_UI_URI,
     name: 'Conflict Events (interactive)',
     description:
-      'Interactive in-conversation app shell for get_conflict_events: renders active armed-conflict and unrest events (belligerents, violence type, country, fatalities, date) from the UCDP feed. Linked from the get_conflict_events tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
+      'Interactive in-conversation app shell for get_conflict_events: renders active armed-conflict events (belligerents, violence type, country, fatalities, date) from the UCDP feed. Linked from the get_conflict_events tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
     mimeType: UI_RESOURCE_MIME_TYPE,
     _meta: buildUiMeta(),
     html: CONFLICT_EVENTS_APP_HTML,

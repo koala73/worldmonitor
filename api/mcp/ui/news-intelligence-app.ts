@@ -1,13 +1,17 @@
 // MCP Apps (extension `io.modelcontextprotocol/ui`, spec 2026-01-26) — the
 // interactive app shell for the `get_news_intelligence` tool: a compact news
-// radar rendering AI-classified top stories (title, category, alert flag,
-// country, summary) from WorldMonitor's intelligence layer. Built on the shared
+// radar rendering AI-classified top stories (headline, category, alert flag,
+// country, source) from WorldMonitor's intelligence layer. Built on the shared
 // shell foundation.
 //
-// Tool result shape (cache tool — content[0].text JSON, freshness envelope):
+// Tool result shape (cache tool — content[0].text JSON, freshness envelope).
+// The tool serves the raw `news:insights:v1` cache value under label `insights`;
+// its topStories items are ServerInsightStory (see src/services/insights-loader.ts),
+// which use camelCase `primaryTitle` / `primarySource` (NOT `title`/`summary`):
 //   { cached_at, stale, data: {
-//       insights: { topStories: [{ title, category, countryCode, isAlert, summary }] },
-//       "gdelt-intel": { topics: [...] }, "cross-source-signals": { signals: [...] } } }
+//       insights: { topStories: [{ primaryTitle, primarySource, category,
+//                                  threatLevel, isAlert, countryCode }] },
+//       "gdelt-intel": {...}, "cross-source-signals": {...} } }
 // Any label may be absent (topic/category/country filters narrow the bundle).
 //
 // textContent-only rendering; renderBody stays backtick/`${`/regex-free.
@@ -23,7 +27,7 @@ const STYLES = `
     border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; }
   .chip.alert { color: #fff; background: var(--severe); border-color: var(--severe); font-weight: 600; }
   .story-country { font-size: 11px; color: var(--muted); }
-  .story-sum { margin-top: 4px; font-size: 13px; color: var(--muted); line-height: 1.5; }
+  .story-src { margin-top: 4px; font-size: 12px; color: var(--muted); }
 `;
 
 const BODY = `
@@ -53,15 +57,15 @@ const RENDER = `
       if (!s || typeof s !== "object") continue;
       var row = el("div", "story");
       var head = el("div", "story-head");
-      head.appendChild(el("span", "story-title", collapseWs(s.title) || "Untitled"));
+      head.appendChild(el("span", "story-title", collapseWs(s.primaryTitle) || "Untitled story"));
       var cat = collapseWs(s.category);
       if (cat) head.appendChild(el("span", "chip", cat));
       if (s.isAlert === true) head.appendChild(el("span", "chip alert", "Alert"));
       var cn = countryName(s.countryCode);
       if (cn) head.appendChild(el("span", "story-country", cn));
       row.appendChild(head);
-      var sum = collapseWs(s.summary);
-      if (sum) row.appendChild(el("div", "story-sum", sum));
+      var src = collapseWs(s.primarySource);
+      if (src) row.appendChild(el("div", "story-src", src));
       host.appendChild(row);
     }
     if (!host.childNodes.length) host.appendChild(el("div", "empty", "No news stories available."));

@@ -1,15 +1,19 @@
 // MCP Apps (extension `io.modelcontextprotocol/ui`, spec 2026-01-26) — the
 // interactive app shell for the `get_conflict_events` tool: an active armed-
-// conflict / unrest event list rendering the UCDP events (belligerents, violence
-// type, country, fatalities, date). Built on the shared shell foundation.
+// conflict event list rendering the UCDP events (belligerents, violence type,
+// country, fatalities, date). Built on the shared shell foundation.
 //
-// Tool result shape (cache tool — content[0].text JSON, freshness envelope):
+// Tool result shape (cache tool — content[0].text JSON, freshness envelope).
+// The tool serves the raw UCDP cache value under label `ucdp-events`; each event
+// carries `violenceType` as a UCDP_VIOLENCE_TYPE_* enum constant (see
+// scripts/seed-ucdp-events.mjs), mapped here to a human label:
 //   { cached_at, stale, data: {
 //       "ucdp-events": { events: [{ sideA, sideB, violenceType, country,
-//                                   deathsBest, dateStart, location{latitude,longitude} }] },
-//       "iran-events": { events: [...] },   // sunset, usually absent
-//       events: { ... } } }                 // unrest bundle
-// Any label may be absent (country / min_fatalities filters narrow the bundle).
+//                                   deathsBest, dateStart }] },
+//       events: {...}, scores: {...} } }  // unrest + CII buckets (not rendered here)
+// The tool also returns unrest `events` and CII `scores` buckets in its text
+// response; this widget focuses on the UCDP armed-conflict feed. Any label may
+// be absent (country / min_fatalities filters narrow the bundle).
 //
 // textContent-only rendering; renderBody stays backtick/`${`/regex-free.
 
@@ -45,6 +49,11 @@ const RENDER = `
 
     var uc = d["ucdp-events"] && typeof d["ucdp-events"] === "object" ? d["ucdp-events"] : null;
     var evs = uc && Array.isArray(uc.events) ? uc.events : [];
+    var vtMap = {
+      UCDP_VIOLENCE_TYPE_STATE_BASED: "State-based",
+      UCDP_VIOLENCE_TYPE_NON_STATE: "Non-state",
+      UCDP_VIOLENCE_TYPE_ONE_SIDED: "One-sided"
+    };
     var host = q("list");
     host.textContent = "";
     for (var i = 0; i < evs.length && i < 14; i++) {
@@ -54,12 +63,12 @@ const RENDER = `
       var main = el("div", "evt-main");
       var a = collapseWs(ev.sideA);
       var b = collapseWs(ev.sideB);
-      var sides = a && b ? a + " vs " + b : (a || b || collapseWs(ev.violenceType) || "Event");
+      var vt = vtMap[collapseWs(ev.violenceType)] || "";
+      var sides = a && b ? a + " vs " + b : (a || b || vt || "Event");
       main.appendChild(el("div", "evt-sides", sides));
       var metaParts = [];
       var ct = collapseWs(ev.country);
       if (ct) metaParts.push(ct);
-      var vt = collapseWs(ev.violenceType);
       if (vt && a && b) metaParts.push(vt);
       var dv = ev.dateStart;
       var dt = dv != null ? new Date(typeof dv === "number" ? dv : String(dv)) : null;
@@ -69,8 +78,8 @@ const RENDER = `
       var deaths = num(ev.deathsBest);
       if (deaths != null) {
         var badge = el("span", "evt-deaths", deaths.toLocaleString() + (deaths === 1 ? " death" : " deaths"));
-        var col = deaths >= 100 ? cssVar("--severe") : (deaths >= 10 ? cssVar("--high") : (deaths >= 1 ? cssVar("--moderate") : cssVar("--muted")));
-        badge.style.color = col || "";
+        var dcol = deaths >= 100 ? cssVar("--severe") : (deaths >= 10 ? cssVar("--high") : (deaths >= 1 ? cssVar("--moderate") : cssVar("--muted")));
+        badge.style.color = dcol || "";
         row.appendChild(badge);
       }
       host.appendChild(row);

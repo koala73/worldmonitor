@@ -113,6 +113,8 @@ const SHARED_STYLE_TOKENS = `
   .empty { color: var(--muted); padding: 8px 0; }
   .foot { margin-top: 14px; font-size: 11px; color: var(--muted); }
   a { color: var(--accent); text-decoration: none; }
+  .pbar { height: 6px; border-radius: 999px; background: var(--border); overflow: hidden; margin-top: 5px; }
+  .pbar > span { display: block; height: 100%; width: 0%; background: var(--accent); }
 `;
 
 // The shared bridge + helper library. Injected once per shell. It exposes a
@@ -141,6 +143,17 @@ const SHARED_BRIDGE_HEAD = `
     if (cls) e.className = cls;
     if (text != null) e.textContent = String(text);
     return e;
+  }
+  // Shared 0-100 probability bar: a .pbar node with a filled span, or null when
+  // pct is not a finite number. Callers pass an already-0-100 value and append
+  // the returned node under a market / forecast row.
+  function probabilityBar(pct) {
+    if (typeof pct !== "number" || !isFinite(pct)) return null;
+    var bar = el("div", "pbar");
+    var fill = el("span");
+    fill.style.width = clampPct(pct) + "%";
+    bar.appendChild(fill);
+    return bar;
   }
   function cssVar(name) {
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -313,7 +326,8 @@ export interface AppShellSpec {
   body: string;
   // JS body of `function renderData(data) { ... }`. Runs inside the shared
   // bridge closure with access to q/num/setText/el/cssVar/pctText/clampPct/
-  // levelFor. MUST avoid backticks and `${`.
+  // levelFor/collapseWs/paragraphs/httpUrl/countryName/probabilityBar. MUST
+  // avoid backticks and `${`.
   renderBody: string;
 }
 

@@ -3,13 +3,16 @@
 // AI-generated geopolitical/economic forecasts as probability cards (title,
 // domain + region, probability bar). Built on the shared shell foundation.
 //
-// Tool result shape (cache tool — content[0].text JSON, freshness envelope):
+// Tool result shape (cache tool — content[0].text JSON, freshness envelope).
+// The tool serves the raw `forecast:predictions:v2` cache value under label
+// `predictions`; items carry `probability` as a 0-1 fraction (see
+// src/components/ForecastPanel.ts):
 //   { cached_at, stale, data: {
 //       predictions: { predictions: [{ title, domain, region, probability }] } } }
-// probability is nullable (render "—" and hide the bar when absent) and a 0-1
-// fraction (tolerated as 0-100 defensively). This widget renders forecast titles
-// and probabilities ONLY — no calibration / Brier / scorecard claims (that is the
-// get_forecast_scorecard tool's domain, guarded elsewhere).
+// probability is nullable (render "—" and hide the bar when absent). This widget
+// renders forecast titles and probabilities ONLY — no calibration / Brier /
+// scorecard claims (that is the get_forecast_scorecard tool's domain, guarded
+// elsewhere).
 //
 // textContent-only rendering; renderBody stays backtick/`${`/regex-free.
 
@@ -24,8 +27,6 @@ const STYLES = `
   .fc-meta { margin-top: 3px; display: flex; gap: 6px; flex-wrap: wrap; }
   .chip { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted);
     border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px; }
-  .pbar { height: 6px; border-radius: 999px; background: var(--border); overflow: hidden; margin-top: 6px; }
-  .pbar > span { display: block; height: 100%; width: 0%; background: var(--accent); }
 `;
 
 const BODY = `
@@ -66,13 +67,8 @@ const RENDER = `
       var reg = collapseWs(p.region);
       if (reg) meta.appendChild(el("span", "chip", reg));
       if (meta.childNodes.length) fc.appendChild(meta);
-      if (pct != null) {
-        var bar = el("div", "pbar");
-        var fill = el("span");
-        fill.style.width = clampPct(pct) + "%";
-        bar.appendChild(fill);
-        fc.appendChild(bar);
-      }
+      var bar = probabilityBar(pct);
+      if (bar) fc.appendChild(bar);
       host.appendChild(fc);
     }
     if (!host.childNodes.length) host.appendChild(el("div", "empty", "No forecasts available."));

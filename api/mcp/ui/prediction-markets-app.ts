@@ -3,15 +3,17 @@
 // contract odds grouped by category (geopolitical / tech / finance), each with a
 // probability bar. Built on the shared shell foundation.
 //
-// Tool result shape (cache tool — content[0].text JSON, freshness envelope):
+// Tool result shape (cache tool — content[0].text JSON, freshness envelope).
+// The tool serves the raw `prediction:markets-bootstrap:v1` cache value under
+// label `markets-bootstrap`; bucket items carry `yesPrice` (a 0-100 percentage,
+// see src/components/PredictionPanel.ts) — NOT `probability`:
 //   { cached_at, stale, data: {
 //       "markets-bootstrap": {
-//         geopolitical: [{ title, source, probability }],
-//         tech:         [{ title, source, probability }],
-//         finance:      [{ title, source, probability }] } } }
+//         geopolitical: [{ title, source, yesPrice }],
+//         tech:         [{ title, source, yesPrice }],
+//         finance:      [{ title, source, yesPrice }] } } }
 // A bucket may be empty (category / query / source filters narrow the bundle).
-// probability is a 0-1 fraction (tolerated as 0-100 defensively). Odds are shown
-// as a percentage only — never dollar volume/liquidity.
+// Odds are shown as a percentage only — never dollar volume/liquidity.
 //
 // textContent-only rendering; renderBody stays backtick/`${`/regex-free.
 
@@ -27,8 +29,6 @@ const STYLES = `
   .mkt-title { font-size: 13px; color: var(--fg); min-width: 0; }
   .mkt-prob { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 13px; white-space: nowrap; }
   .mkt-src { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-top: 2px; }
-  .pbar { height: 6px; border-radius: 999px; background: var(--border); overflow: hidden; margin-top: 5px; }
-  .pbar > span { display: block; height: 100%; width: 0%; background: var(--accent); }
 `;
 
 const BODY = `
@@ -69,17 +69,12 @@ const RENDER = `
         var mkt = el("div", "mkt");
         var head = el("div", "mkt-head");
         head.appendChild(el("span", "mkt-title", collapseWs(m.title) || "Market"));
-        var p = num(m.probability);
+        var p = num(m.yesPrice);
         var pct = p == null ? null : (p <= 1 ? p * 100 : p);
         head.appendChild(el("span", "mkt-prob", pct == null ? "—" : Math.round(pct) + "%"));
         mkt.appendChild(head);
-        if (pct != null) {
-          var bar = el("div", "pbar");
-          var fill = el("span");
-          fill.style.width = clampPct(pct) + "%";
-          bar.appendChild(fill);
-          mkt.appendChild(bar);
-        }
+        var bar = probabilityBar(pct);
+        if (bar) mkt.appendChild(bar);
         var src = collapseWs(m.source);
         if (src) mkt.appendChild(el("div", "mkt-src", src));
         sec.appendChild(mkt);

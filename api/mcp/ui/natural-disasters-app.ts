@@ -3,11 +3,17 @@
 // grouping recent earthquakes (USGS) and active wildfires (NASA FIRMS). Built on
 // the shared shell foundation.
 //
-// Tool result shape (cache tool — content[0].text JSON, freshness envelope):
+// Tool result shape (cache tool — content[0].text JSON, freshness envelope).
+// The tool serves the raw seed cache values under labels `earthquakes` / `fires`
+// (see scripts/seed-earthquakes.mjs, scripts/seed-fire-detections.mjs):
 //   { cached_at, stale, data: {
-//       earthquakes: { earthquakes: [{ magnitude, place, time, latitude, longitude, depth }] },
-//       fires: { fireDetections: [{ latitude, longitude, brightness, confidence }] } } }
-// Any dataset may be absent (dataset / min_magnitude / active_only filters narrow it).
+//       earthquakes: { earthquakes: [{ place, magnitude, occurredAt (epoch-ms),
+//                                      location:{latitude,longitude} }] },
+//       fires: { fireDetections: [{ location:{latitude,longitude}, brightness,
+//                                   confidence: "FIRE_CONFIDENCE_*", region }] } } }
+// Timestamp is `occurredAt` (not `time`); fire lat/lng are nested under
+// `location`; fire `confidence` is a FIRE_CONFIDENCE_* enum constant. Any dataset
+// may be absent (dataset / min_magnitude / active_only filters narrow it).
 //
 // textContent-only rendering; renderBody stays backtick/`${`/regex-free.
 
@@ -19,7 +25,7 @@ const STYLES = `
   .sec-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 6px; }
   .drow { display: flex; align-items: baseline; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); }
   .drow:last-child { border-bottom: none; }
-  .mag { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 13px; min-width: 42px; }
+  .mag { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 13px; min-width: 52px; }
   .dplace { flex: 1; font-size: 13px; color: var(--fg); min-width: 0; }
   .dtime { font-size: 11px; color: var(--muted); white-space: nowrap; }
 `;
@@ -60,7 +66,7 @@ const RENDER = `
         mag.style.color = col || "";
         row.appendChild(mag);
         row.appendChild(el("span", "dplace", collapseWs(eq.place) || "Unknown location"));
-        var tv = eq.time;
+        var tv = eq.occurredAt;
         var dt = tv != null ? new Date(typeof tv === "number" ? tv : String(tv)) : null;
         row.appendChild(el("span", "dtime", dt && !isNaN(dt.getTime()) ? dt.toISOString().slice(0, 10) : ""));
         sec.appendChild(row);
@@ -73,15 +79,22 @@ const RENDER = `
     if (fires.length) {
       var fsec = el("div", "dgroup");
       fsec.appendChild(el("div", "sec-label", "Active Wildfires (" + fires.length + ")"));
+      var confMap = {
+        FIRE_CONFIDENCE_HIGH: "High",
+        FIRE_CONFIDENCE_NOMINAL: "Nominal",
+        FIRE_CONFIDENCE_LOW: "Low"
+      };
       for (var k = 0; k < fires.length && k < 6; k++) {
         var fr = fires[k];
         if (!fr || typeof fr !== "object") continue;
         var frow = el("div", "drow");
-        var conf = collapseWs(fr.confidence);
-        frow.appendChild(el("span", "mag", conf ? conf : "fire"));
-        var lat = num(fr.latitude);
-        var lng = num(fr.longitude);
-        frow.appendChild(el("span", "dplace", lat != null && lng != null ? lat.toFixed(2) + ", " + lng.toFixed(2) : "detection"));
+        var confLabel = confMap[collapseWs(fr.confidence)] || "";
+        frow.appendChild(el("span", "mag", confLabel || "Fire"));
+        var loc = fr.location && typeof fr.location === "object" ? fr.location : null;
+        var lat = loc ? num(loc.latitude) : null;
+        var lng = loc ? num(loc.longitude) : null;
+        var place = collapseWs(fr.region) || (lat != null && lng != null ? lat.toFixed(2) + ", " + lng.toFixed(2) : "detection");
+        frow.appendChild(el("span", "dplace", place));
         var bright = num(fr.brightness);
         frow.appendChild(el("span", "dtime", bright != null ? "brightness " + Math.round(bright) : ""));
         fsec.appendChild(frow);
