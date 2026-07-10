@@ -61,9 +61,11 @@ export async function readStoryTracksChunked(
     }
     const failedAt = Math.floor(i / batchSize);
     const got = Array.isArray(partial) ? partial.length : 'non-array';
-    const skippedTick = context === 'digest' ? 'this digest tick' : 'this tick';
+    const failureConsequence = context === 'digest'
+      ? 'skips this digest tick'
+      : 'treats the archive read as failed';
     log(
-      `[${context}] readStoryTracksChunked: chunk ${failedAt} returned ${got} of ${chunk.length} expected — aborting and returning null so caller skips ${skippedTick}`,
+      `[${context}] readStoryTracksChunked: chunk ${failedAt} returned ${got} of ${chunk.length} expected — aborting and returning null so caller ${failureConsequence}`,
     );
     return null;
   }

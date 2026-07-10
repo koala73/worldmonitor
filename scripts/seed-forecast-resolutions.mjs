@@ -343,6 +343,8 @@ function normalizeJudgedArchiveInput(newsArchive) {
   return markNormalizedJudgedArchiveInput({
     items: normalizeJudgedArchiveItems(items),
     available: true,
+    // Hash-cap `truncated` means bounded recency sampling, not a failed window read.
+    // Reserve incompleteness for explicit/missing coverage signals that must fail closed.
     incomplete: Boolean(newsArchive.incomplete || newsArchive.partial || newsArchive.coverageComplete === false),
     coverageStartMs: toFiniteMs(newsArchive.coverageStartMs ?? newsArchive.windowStartMs ?? newsArchive.fromMs),
     coverageEndMs: toFiniteMs(newsArchive.coverageEndMs ?? newsArchive.windowEndMs ?? newsArchive.toMs),
@@ -442,9 +444,17 @@ export function judgedArchiveWindowForEntry(entry, nowMs) {
 }
 
 function resolveJudgedEvidenceLookbackMs() {
-  return envPositiveInt(
+  const configuredLookbackMs = envPositiveInt(
     'FORECAST_RESOLUTION_JUDGE_EVIDENCE_LOOKBACK_MS',
     JUDGED_EVIDENCE_LOOKBACK_MS,
+  );
+  return Math.min(configuredLookbackMs, resolveJudgedEvidenceMaxLookbackMs());
+}
+
+function resolveJudgedEvidenceMaxLookbackMs() {
+  return envPositiveInt(
+    'FORECAST_RESOLUTION_JUDGE_EVIDENCE_MAX_LOOKBACK_MS',
+    JUDGED_EVIDENCE_MAX_LOOKBACK_MS,
   );
 }
 
@@ -1070,10 +1080,7 @@ export async function readDigestAccumulatorArchive(windowStartMs, nowMs, options
   const { url, token } = getArchiveRedisCredentials(options);
   const configuredMaxLookbackMs = Number.isFinite(options.maxLookbackMs)
     ? Math.max(1, Math.floor(options.maxLookbackMs))
-    : envPositiveInt(
-      'FORECAST_RESOLUTION_JUDGE_EVIDENCE_MAX_LOOKBACK_MS',
-      JUDGED_EVIDENCE_MAX_LOOKBACK_MS,
-    );
+    : resolveJudgedEvidenceMaxLookbackMs();
   const coverageStartMs = Math.max(windowStartMs, nowMs - configuredMaxLookbackMs);
   const maxHashes = Number.isFinite(options.maxHashes)
     ? Math.max(1, Math.floor(options.maxHashes))

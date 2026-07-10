@@ -1109,7 +1109,7 @@ describe('readDigestAccumulatorArchive', () => {
     assert.equal(archive.coverageStartMs, nowMs - 3 * DAY_MS);
   });
 
-  it('keeps the configured maximum lookback as a hard read ceiling', async () => {
+  it('clamps the evidence window to the configured maximum lookback', async () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
     delete process.env.FORECAST_RESOLUTION_JUDGE_EVIDENCE_LOOKBACK_MS;
@@ -1130,6 +1130,11 @@ describe('readDigestAccumulatorArchive', () => {
     assert.equal(archive.coverageStartMs, nowMs - DAY_MS);
 
     const deadline = nowMs;
+    assert.deepEqual(judgedArchiveWindowForEntry({ spec: { kind: 'judged', deadline } }, nowMs), {
+      startMs: deadline - DAY_MS,
+      endMs: nowMs,
+    });
+
     const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [forecast({
       id: 'judge-max-lookback',
       domain: 'political',
@@ -1148,9 +1153,10 @@ describe('readDigestAccumulatorArchive', () => {
     });
 
     const row = result.ledger[`judge-max-lookback@${deadline}`];
-    assert.equal(row.status, 'pending-judge');
-    assert.equal(row.judgeLastAttempt.detail, 'archive_window_incomplete');
-    assert.equal(result.receipts.length, 0);
+    assert.equal(row.status, 'resolved');
+    assert.equal(row.outcome, 'VOID');
+    assert.equal(row.evidence.reason, 'no_archive_evidence');
+    assert.equal(result.receipts.length, 1);
   });
 
   it('chunks story-track reads while preserving hash-to-row alignment', async () => {
