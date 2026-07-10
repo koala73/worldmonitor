@@ -4,6 +4,7 @@ import WelcomeApp from './WelcomeApp.tsx';
 import { currentLanguageBase, initI18n } from './i18n';
 import { initSentry } from './sentry';
 import { initDebugBearRum } from './debugbear-rum';
+import { clearWelcomeRoot } from './welcome-root';
 import './index.css';
 
 const WELCOME_HYDRATION_IDLE_TIMEOUT_MS = 2500;
@@ -41,6 +42,6 @@ initI18n({ metaPrefix: 'welcome.meta' }).then(() => {
     scheduleWelcomeHydration(() => hydrateRoot(rootElement, app));
     return;
   }
-  rootElement.replaceChildren();
+  clearWelcomeRoot(rootElement);
   createRoot(rootElement).render(app);
 });
