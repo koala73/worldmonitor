@@ -1543,6 +1543,8 @@ export class PanelLayoutManager implements AppModule {
     const grid = this.getPanelMountGrid(key);
     if (!grid && !deferred.placeholder?.parentNode) return false;
 
+    markLcpDebug('wm:panel:deferred-mount-start', { panel: key });
+
     deferred.observer?.disconnect();
     deferred.observer = null;
     if (deferred.retryTimer !== null) {
@@ -1555,16 +1557,19 @@ export class PanelLayoutManager implements AppModule {
       if (current !== deferred || deferred.mounted) return;
       deferred.loading = null;
       if (!panel || this.ctx.isDestroyed) {
+        markLcpDebug('wm:panel:deferred-mount-unavailable', { panel: key });
         this.scheduleDeferredPanelRetry(key, deferred);
         return;
       }
       const placeholder = deferred.placeholder;
-      if (this.mountPanelElement(targetGrid, key, panel, placeholder)) {
+      const mounted = this.mountPanelElement(targetGrid, key, panel, placeholder);
+      if (mounted) {
         this.afterPanelMounted(key, panel);
       }
       deferred.mounted = true;
       deferred.placeholder = null;
       this.deferredPanelMounts.delete(key);
+      markLcpDebug('wm:panel:deferred-mount-ready', { mounted, panel: key });
     };
 
     if (deferred.panel) {

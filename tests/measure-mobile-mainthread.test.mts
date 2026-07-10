@@ -54,6 +54,7 @@ describe('measure-mobile-mainthread attribution', () => {
       totalMs: 0,
       tbtMs: 0,
       ranked: [],
+      windows: [],
     });
     assert.equal(rankLongTasks([]).length, 0);
     assert.equal(rankLongTasks(undefined).length, 0);
@@ -75,6 +76,7 @@ describe('measure-mobile-mainthread attribution', () => {
         startTime: 987.65,
         url: '',
       }],
+      marks: [{ detail: { panel: 'markets' }, name: 'wm:panel:deferred-mount-start', startTime: 1337.4 }],
       resources: [],
     });
     assert.equal(summary.entryCount, 1);
@@ -83,6 +85,7 @@ describe('measure-mobile-mainthread attribution', () => {
     assert.equal(summary.resources[0].category, 'map-topology');
     assert.equal(summary.resources[0].transferSize, 1200.6);
     assert.equal(summary.context?.variant, 'tech');
+    assert.deepEqual(summary.marks, [{ detail: { panel: 'markets' }, name: 'wm:panel:deferred-mount-start', startTime: 1337.4 }]);
   });
 
   it('summarizes missing LCP debug data without throwing', () => {
@@ -90,6 +93,12 @@ describe('measure-mobile-mainthread attribution', () => {
     assert.equal(summary.candidate, null);
     assert.equal(summary.entryCount, 0);
     assert.deepEqual(summary.resources, []);
+    assert.deepEqual(summary.marks, []);
+  });
+
+  it('keeps long-task timing windows for correlation with debug marks', () => {
+    const summary = summarizeLongTasks([{ duration: 80, name: 'self', startTime: 120 }]);
+    assert.deepEqual(summary.windows, [{ duration: 80, endTime: 200, source: 'self', startTime: 120 }]);
   });
 
   it('attributeDomNodes computes share percentages and sorts by node count desc', () => {

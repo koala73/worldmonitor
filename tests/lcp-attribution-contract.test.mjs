@@ -57,6 +57,13 @@ describe('LCP attribution debug contract', () => {
     assert.ok(layoutSrc.includes("markLcpDebug('wm:layout:shell-replaced'"));
     assert.ok(layoutSrc.includes("markLcpDebug('wm:map:container-construct'"));
     assert.ok(layoutSrc.includes("markLcpDebug('wm:map:container-ready'"));
+    for (const mark of [
+      'wm:panel:deferred-mount-start',
+      'wm:panel:deferred-mount-ready',
+      'wm:panel:deferred-mount-unavailable',
+    ]) {
+      assert.ok(layoutSrc.includes(`markLcpDebug('${mark}'`), `missing deferred panel trace mark ${mark}`);
+    }
 
     for (const mark of [
       'wm:map:shell-shown',
