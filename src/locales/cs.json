@@ -583,15 +583,15 @@
       "logCleared": "Protokol vymazán.",
       "worldMonitor": {
         "apiKey": {
-          "title": "Licenční klíč",
+          "title": "Licenční / API klíč",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Vložte svou licenci a okamžitě odemkněte všechny datové zdroje a AI funkce."
+          "description": "Předplatitelé API Starter a API Business vytvoří tento klíč na webovém panelu v části Settings → API Keys. Pokud celý klíč ztratíte, zrušte jej a vytvořte náhradní."
         },
         "dividerOr": "NEBO",
         "register": {
-          "title": "Rezervujte si své místo",
-          "description": "Připravujeme spuštění licencí World Monitor. Zaregistrujte se nyní a buďte první v řadě — první členové získají prioritní přístup a zakladatelské ceny.",
-          "submitBtn": "Zapsat na čekací listinu"
+          "title": "Potřebujete API klíč?",
+          "description": "Podrobný návod najdete na worldmonitor.app/docs/api-keys. Ruční API klíče vyžadují tarif API Starter nebo API Business.",
+          "submitBtn": "Zobrazit tarify API"
         }
       },
       "table": {

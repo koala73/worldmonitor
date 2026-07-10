@@ -583,15 +583,15 @@
       "logCleared": "Đã xóa log.",
       "worldMonitor": {
         "apiKey": {
-          "title": "Khóa Giấy phép",
+          "title": "Khóa giấy phép / API",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Dán giấy phép của bạn để mở khóa mọi nguồn dữ liệu và tính năng AI ngay lập tức."
+          "description": "Người đăng ký API Starter và API Business tạo khóa này trong bảng điều khiển web tại Settings → API Keys. Nếu mất khóa đầy đủ, hãy thu hồi và tạo khóa thay thế."
         },
         "dividerOr": "HOẶC",
         "register": {
-          "title": "Đặt chỗ của bạn",
-          "description": "Chúng tôi đang chuẩn bị ra mắt giấy phép World Monitor. Đăng ký ngay để được ưu tiên — thành viên sớm được quyền truy cập trước và giá ưu đãi.",
-          "submitBtn": "Tham gia Danh sách Chờ"
+          "title": "Bạn cần khóa API?",
+          "description": "Xem worldmonitor.app/docs/api-keys để được hướng dẫn từng bước. Khóa API thủ công yêu cầu gói API Starter hoặc API Business.",
+          "submitBtn": "Xem các gói API"
         }
       },
       "table": {

@@ -657,15 +657,15 @@
       "logCleared": "Napló törlve.",
       "worldMonitor": {
         "apiKey": {
-          "title": "Licenckulcs",
+          "title": "Licenc- / API-kulcs",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Illessze be licencét az összes adatforrás és AI-funkció azonnali feloldásához."
+          "description": "Az API Starter és API Business előfizetők a webes irányítópult Settings → API Keys részében hozzák létre ezt a kulcsot. Ha a teljes kulcs elveszett, vonja vissza, és hozzon létre újat."
         },
         "dividerOr": "VAGY",
         "register": {
-          "title": "Foglaljon helyet",
-          "description": "Felkészülünk a World Monitor licencek indítására. Regisztráljon most, és legyen az első sorban — a korai tagok prioritás hozzáférést és alapító tagok árazását kapnak.",
-          "submitBtn": "Csatlakozás a várólistához"
+          "title": "API-kulcsra van szüksége?",
+          "description": "A részletes útmutatóért keresse fel a worldmonitor.app/docs/api-keys oldalt. A kézi API-kulcsokhoz API Starter vagy API Business csomag szükséges.",
+          "submitBtn": "API-csomagok megtekintése"
         }
       },
       "table": {

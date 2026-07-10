@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
@@ -37,4 +37,24 @@ test('desktop settings give blocked users an exact help path', () => {
   assert.match(fullCopy.register.description, /worldmonitor\.app\/docs\/api-keys/);
   assert.equal(fullCopy.register.submitBtn, 'View API plans');
   assert.deepEqual(shellCopy, fullCopy);
+});
+
+test('every locale describes the launched API-key flow instead of a waitlist', () => {
+  const localeDir = new URL('../src/locales/', import.meta.url);
+  const localeFiles = readdirSync(localeDir).filter((file) => file.endsWith('.json'));
+
+  for (const file of localeFiles) {
+    const locale = JSON.parse(readFileSync(new URL(file, localeDir), 'utf8'));
+    const copy = locale.modals.settingsWindow.worldMonitor;
+
+    assert.match(copy.apiKey.title, /API/, `${file}: key title must identify the API key`);
+    assert.match(copy.apiKey.description, /API Starter/, `${file}: key description must name API Starter`);
+    assert.match(copy.apiKey.description, /API Business/, `${file}: key description must name API Business`);
+    assert.match(copy.apiKey.description, /Settings → API Keys/, `${file}: key description must give the exact dashboard path`);
+    assert.match(copy.register.title, /API/, `${file}: help title must identify the API key`);
+    assert.match(copy.register.description, /worldmonitor\.app\/docs\/api-keys/, `${file}: help copy must link the guide`);
+    assert.match(copy.register.description, /API Starter/, `${file}: help copy must name API Starter`);
+    assert.match(copy.register.description, /API Business/, `${file}: help copy must name API Business`);
+    assert.match(copy.register.submitBtn, /API/, `${file}: CTA must point to API plans`);
+  }
 });

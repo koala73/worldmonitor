@@ -447,15 +447,15 @@
       "logCleared": "Loggen rensad.",
       "worldMonitor": {
         "apiKey": {
-          "description": "Klistra in din licens för att omedelbart låsa upp alla datakällor och AI-funktioner.",
+          "description": "Prenumeranter på API Starter och API Business skapar nyckeln i webbpanelen via Settings → API Keys. Om den fullständiga nyckeln går förlorad ska du återkalla den och skapa en ny.",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "title": "Licensnyckel"
+          "title": "Licens- / API-nyckel"
         },
         "dividerOr": "ELLER",
         "register": {
-          "description": "Vi förbereder lanseringen av World Monitor-licenser. Registrera dig nu och bli först i kön — tidiga medlemmar får prioriterad tillgång och grundarpriser.",
-          "submitBtn": "Gå med i väntelistan",
-          "title": "Reservera din plats"
+          "description": "Se worldmonitor.app/docs/api-keys för stegvisa instruktioner. Manuella API-nycklar kräver abonnemanget API Starter eller API Business.",
+          "submitBtn": "Visa API-abonnemang",
+          "title": "Behöver du en API-nyckel?"
         }
       },
       "shellTitle": "World Monitor-inställningar",

@@ -447,15 +447,15 @@
       "logCleared": "Logboek gewist.",
       "worldMonitor": {
         "apiKey": {
-          "title": "Licentiesleutel",
+          "title": "Licentie- / API-sleutel",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Plak uw licentie om direct elke gegevensbron en AI-functie te ontgrendelen."
+          "description": "Abonnees van API Starter en API Business maken deze sleutel in het webdashboard via Settings → API Keys. Als u de volledige sleutel kwijt bent, trekt u deze in en maakt u een vervangende sleutel."
         },
         "dividerOr": "OF",
         "register": {
-          "title": "Reserveer uw plek",
-          "description": "We bereiden de lancering van World Monitor-licenties voor. Meld u nu aan en wees de eerste — vroege leden krijgen voorrang en een oprichterstarief.",
-          "submitBtn": "Aanmelden voor wachtlijst"
+          "title": "Een API-sleutel nodig?",
+          "description": "Ga naar worldmonitor.app/docs/api-keys voor stapsgewijze hulp. Handmatige API-sleutels vereisen een API Starter- of API Business-abonnement.",
+          "submitBtn": "API-abonnementen bekijken"
         }
       },
       "shellTitle": "World Monitor-instellingen",

@@ -583,15 +583,15 @@
       "logCleared": "Jurnalul a fost șters.",
       "worldMonitor": {
         "apiKey": {
-          "title": "Cheie de licență",
+          "title": "Cheie de licență / API",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Lipiți-vă licența pentru a debloca instantaneu fiecare sursă de date și funcția AI."
+          "description": "Abonații API Starter și API Business creează această cheie în panoul web din Settings → API Keys. Dacă pierdeți cheia completă, revocați-o și creați una nouă."
         },
         "dividerOr": "SAU",
         "register": {
-          "title": "Rezervă-ți Locul",
-          "description": "Ne pregătim să lansăm licențe World Monitor. Înscrieți-vă acum și fiți pe primul loc – membrii primii au acces prioritar și prețuri pentru membrii fondatori.",
-          "submitBtn": "Alăturați-vă listei de așteptare"
+          "title": "Aveți nevoie de o cheie API?",
+          "description": "Consultați worldmonitor.app/docs/api-keys pentru instrucțiuni pas cu pas. Cheile API manuale necesită un plan API Starter sau API Business.",
+          "submitBtn": "Vedeți planurile API"
         }
       },
       "table": {

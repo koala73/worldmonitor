@@ -583,15 +583,15 @@
       "logCleared": "Журнал очищен.",
       "worldMonitor": {
         "apiKey": {
-          "title": "Лицензионный ключ",
+          "title": "Лицензионный / API-ключ",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Вставьте лицензию, чтобы мгновенно разблокировать все источники данных и ИИ-функции."
+          "description": "Подписчики API Starter и API Business создают этот ключ в веб-панели через Settings → API Keys. Если полный ключ утерян, отзовите его и создайте новый."
         },
         "dividerOr": "ИЛИ",
         "register": {
-          "title": "Забронируйте место",
-          "description": "Мы готовим запуск лицензий World Monitor. Зарегистрируйтесь сейчас — первые участники получат приоритетный доступ и цены для основателей.",
-          "submitBtn": "В лист ожидания"
+          "title": "Нужен API-ключ?",
+          "description": "Пошаговые инструкции доступны на worldmonitor.app/docs/api-keys. Для ручных API-ключей требуется план API Starter или API Business.",
+          "submitBtn": "Посмотреть планы API"
         }
       },
       "table": {

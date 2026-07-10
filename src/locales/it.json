@@ -660,15 +660,15 @@
       "logCleared": "Registro cancellato.",
       "worldMonitor": {
         "apiKey": {
-          "title": "Chiave di licenza",
+          "title": "Chiave di licenza / API",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Incolla la tua licenza per sbloccare istantaneamente tutte le fonti dati e le funzioni IA."
+          "description": "Gli abbonati API Starter e API Business creano questa chiave nel pannello web da Settings → API Keys. Se perdi la chiave completa, revocala e creane una sostitutiva."
         },
         "dividerOr": "OPPURE",
         "register": {
-          "title": "Riserva il tuo posto",
-          "description": "Stiamo preparando il lancio delle licenze World Monitor. Iscriviti ora e sii il primo — i membri iniziali ricevono accesso prioritario e prezzi da membro fondatore.",
-          "submitBtn": "Iscriviti alla lista d'attesa"
+          "title": "Ti serve una chiave API?",
+          "description": "Consulta worldmonitor.app/docs/api-keys per istruzioni dettagliate. Le chiavi API manuali richiedono un piano API Starter o API Business.",
+          "submitBtn": "Vedi i piani API"
         }
       },
       "shellTitle": "Impostazioni World Monitor",

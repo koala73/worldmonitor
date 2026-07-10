@@ -590,15 +590,15 @@
       },
       "worldMonitor": {
         "apiKey": {
-          "title": "مفتاح الترخيص",
+          "title": "مفتاح الترخيص / API",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "الصق ترخيصك لفتح جميع مصادر البيانات وميزات AI فوراً."
+          "description": "ينشئ مشتركو API Starter وAPI Business هذا المفتاح في لوحة الويب ضمن Settings → API Keys. إذا فُقد المفتاح الكامل، فألغِه وأنشئ بديلاً."
         },
         "dividerOr": "أو",
         "register": {
-          "title": "احجز مكانك",
-          "description": "نحن نستعد لإطلاق تراخيص World Monitor. سجّل الآن وكن أول من يحصل على الوصول — الأعضاء الأوائل يحصلون على أولوية الوصول وتسعير المؤسسين.",
-          "submitBtn": "انضم لقائمة الانتظار"
+          "title": "هل تحتاج إلى مفتاح API؟",
+          "description": "راجع worldmonitor.app/docs/api-keys للحصول على إرشادات خطوة بخطوة. تتطلب مفاتيح API اليدوية خطة API Starter أو API Business.",
+          "submitBtn": "عرض خطط API"
         }
       },
       "shellTitle": "إعدادات مراقب العالم",

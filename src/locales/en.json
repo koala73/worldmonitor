@@ -659,12 +659,12 @@
         "apiKey": {
           "title": "License / API Key",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "API Starter and Business subscribers create this key on the web dashboard under Settings → API Keys. If a full key is lost, revoke it and create a replacement."
+          "description": "API Starter and API Business subscribers create this key on the web dashboard under Settings → API Keys. If a full key is lost, revoke it and create a replacement."
         },
         "dividerOr": "OR",
         "register": {
-          "title": "Need a key?",
-          "description": "See worldmonitor.app/docs/api-keys for step-by-step help. Manual API keys require an API Starter or Business plan.",
+          "title": "Need an API key?",
+          "description": "See worldmonitor.app/docs/api-keys for step-by-step help. Manual API keys require an API Starter or API Business plan.",
           "submitBtn": "View API plans"
         }
       },

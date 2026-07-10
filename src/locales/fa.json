@@ -657,15 +657,15 @@
       "logCleared": "Log cleared.",
       "worldMonitor": {
         "apiKey": {
-          "title": "License Key",
+          "title": "کلید مجوز / API",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Paste your license to unlock every data source and AI feature instantly."
+          "description": "مشترکان API Starter و API Business این کلید را در داشبورد وب از مسیر Settings → API Keys ایجاد می‌کنند. اگر کلید کامل گم شد، آن را لغو و یک کلید جایگزین ایجاد کنید."
         },
-        "dividerOr": "OR",
+        "dividerOr": "یا",
         "register": {
-          "title": "Reserve Your Spot",
-          "description": "We're preparing to launch World Monitor licenses. Sign up now and be first in line — early members get priority access and founding-member pricing.",
-          "submitBtn": "Join Waitlist"
+          "title": "به کلید API نیاز دارید؟",
+          "description": "برای راهنمای گام‌به‌گام به worldmonitor.app/docs/api-keys مراجعه کنید. کلیدهای دستی API به طرح API Starter یا API Business نیاز دارند.",
+          "submitBtn": "مشاهده طرح‌های API"
         }
       },
       "table": {

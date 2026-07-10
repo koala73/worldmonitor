@@ -590,15 +590,15 @@
       },
       "worldMonitor": {
         "apiKey": {
-          "title": "Clé de licence",
+          "title": "Clé de licence / API",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Collez votre licence pour débloquer instantanément toutes les sources de données et fonctionnalités IA."
+          "description": "Les abonnés API Starter et API Business créent cette clé dans le tableau de bord web via Settings → API Keys. Si la clé complète est perdue, révoquez-la et créez-en une nouvelle."
         },
         "dividerOr": "OU",
         "register": {
-          "title": "Réservez votre place",
-          "description": "Nous préparons le lancement des licences World Monitor. Inscrivez-vous maintenant pour être en première ligne — les premiers membres bénéficient d'un accès prioritaire et d'un tarif fondateur.",
-          "submitBtn": "Rejoindre la liste d'attente"
+          "title": "Besoin d'une clé API ?",
+          "description": "Consultez worldmonitor.app/docs/api-keys pour obtenir des instructions détaillées. Les clés API manuelles nécessitent un forfait API Starter ou API Business.",
+          "submitBtn": "Voir les forfaits API"
         }
       },
       "shellTitle": "Paramètres de World Monitor",

@@ -583,15 +583,15 @@
       "logCleared": "ログをクリア済。",
       "worldMonitor": {
         "apiKey": {
-          "title": "ライセンスキー",
+          "title": "ライセンス / APIキー",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "ライセンスを貼り付けると、すべてのデータソースとAI機能が即座に利用可能になります。"
+          "description": "API StarterまたはAPI Businessの利用者は、ウェブダッシュボードのSettings → API Keysからこのキーを作成します。完全なキーを紛失した場合は、失効させて新しいキーを作成してください。"
         },
         "dividerOr": "または",
         "register": {
-          "title": "あなたの席を確保",
-          "description": "World Monitorライセンスのローンチ準備中です。今すぐ登録して優先アクセスと創設メンバー価格を手に入れましょう。",
-          "submitBtn": "ウェイトリストに参加"
+          "title": "APIキーが必要ですか？",
+          "description": "手順についてはworldmonitor.app/docs/api-keysをご覧ください。手動APIキーにはAPI StarterまたはAPI Businessプランが必要です。",
+          "submitBtn": "APIプランを見る"
         }
       },
       "table": {

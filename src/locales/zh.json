@@ -583,15 +583,15 @@
       "logCleared": "日志已清除。",
       "worldMonitor": {
         "apiKey": {
-          "title": "许可证密钥",
+          "title": "许可证 / API 密钥",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "粘贴您的许可证，即刻解锁所有数据源和AI功能。"
+          "description": "API Starter 和 API Business 订阅者可在网页控制台的 Settings → API Keys 中创建此密钥。如果完整密钥丢失，请撤销并创建替代密钥。"
         },
         "dividerOr": "或",
         "register": {
-          "title": "预留您的名额",
-          "description": "World Monitor许可证即将上线。立即注册成为首批用户 — 早期会员享有优先访问和创始会员价格。",
-          "submitBtn": "加入候补名单"
+          "title": "需要 API 密钥？",
+          "description": "请访问 worldmonitor.app/docs/api-keys 查看分步说明。手动 API 密钥需要 API Starter 或 API Business 方案。",
+          "submitBtn": "查看 API 方案"
         }
       },
       "table": {

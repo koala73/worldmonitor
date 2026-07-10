@@ -657,15 +657,15 @@
       "logCleared": "लॉग साफ़ किया गया।",
       "worldMonitor": {
         "apiKey": {
-          "title": "लाइसेंस की",
+          "title": "लाइसेंस / API कुंजी",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "अभी अपनी लाइसेंस चिपकाएं और हर डेटा स्रोत और AI फीचर चालू करें।"
+          "description": "API Starter और API Business सदस्य यह कुंजी वेब डैशबोर्ड में Settings → API Keys से बनाते हैं। पूरी कुंजी खो जाने पर उसे रद्द करें और नई कुंजी बनाएँ।"
         },
         "dividerOr": "या",
         "register": {
-          "title": "अपनी जगह आरक्षित करें",
-          "description": "हम World Monitor लाइसेंस लॉन्च करने की तैयारी कर रहे हैं। अभी साइन अप करें और पहले पंक्ति में रहें — शुरुआती सदस्यों को प्राथमिकता और संस्थापक कीमत मिलेगी।",
-          "submitBtn": "इंतजार सूची में जुड़ें"
+          "title": "API कुंजी चाहिए?",
+          "description": "चरण-दर-चरण सहायता के लिए worldmonitor.app/docs/api-keys देखें। मैन्युअल API कुंजियों के लिए API Starter या API Business योजना आवश्यक है।",
+          "submitBtn": "API योजनाएँ देखें"
         }
       },
       "table": {

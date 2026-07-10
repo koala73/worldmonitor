@@ -660,15 +660,15 @@
       "logCleared": "Log wyczyszczony.",
       "worldMonitor": {
         "apiKey": {
-          "description": "Wklej swoją licencję, aby natychmiast odblokować wszystkie źródła danych i funkcje AI.",
+          "description": "Subskrybenci API Starter i API Business tworzą ten klucz w panelu internetowym przez Settings → API Keys. Jeśli pełny klucz zostanie utracony, unieważnij go i utwórz nowy.",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "title": "Klucz licencyjny"
+          "title": "Klucz licencyjny / API"
         },
         "dividerOr": "LUB",
         "register": {
-          "description": "Przygotowujemy się do uruchomienia licencji World Monitor. Zarejestruj się teraz i bądź pierwszy w kolejce — pierwsi członkowie otrzymają priorytetowy dostęp i cenę założycielską.",
-          "submitBtn": "Dołącz do listy oczekujących",
-          "title": "Zarezerwuj swoje miejsce"
+          "description": "Instrukcje krok po kroku znajdziesz na worldmonitor.app/docs/api-keys. Ręczne klucze API wymagają planu API Starter lub API Business.",
+          "submitBtn": "Zobacz plany API",
+          "title": "Potrzebujesz klucza API?"
         }
       },
       "shellTitle": "Ustawienia World Monitor",

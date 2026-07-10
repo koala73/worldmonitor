@@ -583,15 +583,15 @@
       "logCleared": "ล้างบันทึกแล้ว",
       "worldMonitor": {
         "apiKey": {
-          "title": "คีย์ใบอนุญาต",
+          "title": "คีย์ใบอนุญาต / API",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "วางใบอนุญาตของคุณเพื่อปลดล็อกแหล่งข้อมูลและฟีเจอร์ AI ทั้งหมดทันที"
+          "description": "สมาชิก API Starter และ API Business สร้างคีย์นี้ในแดชบอร์ดเว็บที่ Settings → API Keys หากคีย์แบบเต็มสูญหาย ให้เพิกถอนและสร้างคีย์ใหม่"
         },
         "dividerOr": "หรือ",
         "register": {
-          "title": "จองที่ของคุณ",
-          "description": "เรากำลังเตรียมเปิดตัวใบอนุญาต World Monitor ลงทะเบียนตอนนี้เพื่อเป็นคนแรก — สมาชิกรุ่นแรกได้รับสิทธิ์เข้าถึงก่อนและราคาผู้ก่อตั้ง",
-          "submitBtn": "เข้าร่วมรายชื่อรอ"
+          "title": "ต้องการคีย์ API หรือไม่?",
+          "description": "ดูคำแนะนำทีละขั้นตอนได้ที่ worldmonitor.app/docs/api-keys คีย์ API แบบกำหนดเองต้องใช้แผน API Starter หรือ API Business",
+          "submitBtn": "ดูแผน API"
         }
       },
       "table": {

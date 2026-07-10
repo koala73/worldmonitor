@@ -677,18 +677,18 @@
         "heroTitle": "Jedan ključ. Sve uključeno.",
         "heroDescription": "Jedna licenca Svjetskog monitoringa zamjenjuje svaki API ključ i LLM davatelja koji bi inače trebao konfigurirati sam. AI sažetci, obavještenja u realnom vremenu, tržišni podaci, praćenje sukoba, detekcija požara, satelitske slike — sve pokriveno, sve upravljano, bez postave.",
         "apiKey": {
-          "title": "Ključ licence",
+          "title": "Ključ licence / API ključ",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Zalijepi svoju licencu kako bi odmah otključao sve izvore podataka i AI značajke.",
+          "description": "Pretplatnici na API Starter i API Business stvaraju ovaj ključ na web nadzornoj ploči putem Settings → API Keys. Ako izgubiš cijeli ključ, opozovi ga i izradi zamjenski.",
           "statusValid": "LICENCIRANO",
           "statusMissing": "NEMA LICENCE"
         },
         "dividerOr": "ILI",
         "register": {
-          "title": "Rezerviraj svoje mjesto",
-          "description": "Pripremamo lansiranje Svjetskog monitoringa licenci. Registriraj se sada i budi prvi u redu — rani članovi dobivaju prioritetni pristup i cijene za članove osnivače.",
+          "title": "Trebaš API ključ?",
+          "description": "Detaljne upute potraži na worldmonitor.app/docs/api-keys. Ručni API ključevi zahtijevaju plan API Starter ili API Business.",
           "emailPlaceholder": "tvoj@email.com",
-          "submitBtn": "Pridruži se listi čekanja",
+          "submitBtn": "Prikaži API planove",
           "submitting": "Slanje...",
           "success": "Već si na listi! Obavijestit ćemo te prvi.",
           "alreadyRegistered": "Već ste na listi čekanja.",

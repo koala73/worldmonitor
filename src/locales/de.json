@@ -660,15 +660,15 @@
       "logCleared": "Protokoll gelöscht.",
       "worldMonitor": {
         "apiKey": {
-          "title": "Lizenzschlüssel",
+          "title": "Lizenz- / API-Schlüssel",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Fügen Sie Ihre Lizenz ein, um alle Datenquellen und KI-Funktionen sofort freizuschalten."
+          "description": "Abonnenten von API Starter und API Business erstellen diesen Schlüssel im Web-Dashboard unter Settings → API Keys. Wenn der vollständige Schlüssel verloren ist, widerrufen Sie ihn und erstellen Sie einen Ersatz."
         },
         "dividerOr": "ODER",
         "register": {
-          "title": "Reservieren Sie Ihren Platz",
-          "description": "Wir bereiten den Start von World Monitor-Lizenzen vor. Melden Sie sich jetzt an und seien Sie der Erste — frühe Mitglieder erhalten bevorzugten Zugang und Gründermitglied-Preise.",
-          "submitBtn": "Auf die Warteliste setzen"
+          "title": "Benötigen Sie einen API-Schlüssel?",
+          "description": "Eine Schritt-für-Schritt-Anleitung finden Sie unter worldmonitor.app/docs/api-keys. Manuelle API-Schlüssel erfordern einen API Starter- oder API Business-Tarif.",
+          "submitBtn": "API-Tarife ansehen"
         }
       },
       "shellTitle": "World Monitor – Einstellungen",

@@ -583,15 +583,15 @@
       "logCleared": "로그가 삭제되었습니다.",
       "worldMonitor": {
         "apiKey": {
-          "title": "라이선스 키",
+          "title": "라이선스 / API 키",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "라이선스를 붙여넣으면 모든 데이터 소스와 AI 기능이 즉시 활성화됩니다."
+          "description": "API Starter 및 API Business 구독자는 웹 대시보드의 Settings → API Keys에서 이 키를 생성합니다. 전체 키를 분실한 경우 기존 키를 취소하고 새 키를 생성하세요."
         },
         "dividerOr": "또는",
         "register": {
-          "title": "슬롯을 예약하세요",
-          "description": "World Monitor 라이선스 출시를 준비하고 있습니다. 지금 등록하고 가장 먼저 — 초기 회원은 우선 액세스 및 창립 멤버 가격을 받게 됩니다.",
-          "submitBtn": "대기 목록 등록"
+          "title": "API 키가 필요하신가요?",
+          "description": "단계별 안내는 worldmonitor.app/docs/api-keys에서 확인하세요. 수동 API 키에는 API Starter 또는 API Business 요금제가 필요합니다.",
+          "submitBtn": "API 요금제 보기"
         }
       },
       "table": {

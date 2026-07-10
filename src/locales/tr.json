@@ -583,15 +583,15 @@
       "logCleared": "Log temizlendi.",
       "worldMonitor": {
         "apiKey": {
-          "title": "Lisans Anahtarı",
+          "title": "Lisans / API Anahtarı",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Tüm veri kaynaklarını ve AI özelliklerini anında açmak için lisansınızı yapıştırın."
+          "description": "API Starter ve API Business aboneleri bu anahtarı web panosunda Settings → API Keys bölümünden oluşturur. Tam anahtar kaybolursa anahtarı iptal edin ve yenisini oluşturun."
         },
         "dividerOr": "VEYA",
         "register": {
-          "title": "Yerinizi Ayırtın",
-          "description": "World Monitor lisanslarını başlatmaya hazırlanıyoruz. Şimdi kaydolun ve ilk sıraya girin — erken üyeler öncelikli erişim ve kurucu üye fiyatlandırması alır.",
-          "submitBtn": "Bekleme Listesine Katıl"
+          "title": "API anahtarına mı ihtiyacınız var?",
+          "description": "Adım adım yardım için worldmonitor.app/docs/api-keys adresine bakın. Manuel API anahtarları için API Starter veya API Business planı gerekir.",
+          "submitBtn": "API planlarını görüntüle"
         }
       },
       "table": {
