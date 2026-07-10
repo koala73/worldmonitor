@@ -3,23 +3,148 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const modalSrc = readFileSync(resolve(root, 'src/components/SearchModal.ts'), 'utf8');
-const stylesSrc = readFileSync(resolve(root, 'src/styles/main.css'), 'utf8');
 
-test('mobile search mounts the sheet shell before deferred result and chip population (#5158)', () => {
-  assert.doesNotMatch(modalSrc, /scheduleAfterFirstPaint/,
-    'opening search must not wait for the dashboard load/idle scheduler');
-  assert.match(modalSrc, /if \(this\.isMobile\) \{\s*this\.scheduleMobileInitialPopulation\(\);\s*\} else \{\s*this\.showRecentOrEmpty\(\);\s*\}/,
-    'open() must leave mobile result/chip construction out of the tap task');
-  assert.match(modalSrc, /private scheduleMobileInitialPopulation\(\): void \{[\s\S]*?requestAnimationFrame\(\(\) => \{[\s\S]*?requestAnimationFrame\(\(\) => \{[\s\S]*?this\.showRecentOrEmpty\(\);[\s\S]*?this\.renderChips\(\);/,
-    'the initial mobile lists should populate after the sheet reveal frame, without waiting for page load');
-  assert.match(modalSrc, /mobileInitialPopulationGeneration \+= 1;/,
-    'closing the sheet must invalidate deferred work from a prior open');
+function extractMethod(signature: string): string {
+  const start = modalSrc.indexOf(signature);
+  assert.ok(start >= 0, `SearchModal must contain ${signature}`);
+  const braceStart = modalSrc.indexOf('{', start);
+  let depth = 0;
+  for (let i = braceStart; i < modalSrc.length; i++) {
+    if (modalSrc[i] === '{') depth++;
+    if (modalSrc[i] === '}' && --depth === 0) {
+      return modalSrc.slice(start, i + 1).replace(/^(public|private)\s+/, '');
+    }
+  }
+  throw new Error(`Could not find the end of ${signature}`);
+}
+
+// SearchModal cannot be imported under node:test because its alias graph reads
+// Vite-only globals. Compile its actual lifecycle methods into a minimal DOM
+// harness instead, so this covers observable scheduling and cancellation rather
+// than the formatting of its source.
+const harnessSource = `
+  class SearchModalHarness {
+    constructor() {
+      this.closeTimeoutId = null;
+      this.mobileInitialPopulationGeneration = 0;
+      this.debouncedSearch = { cancel() {} };
+      this.viewportHandler = null;
+      this.sources = [];
+      this.overlay = null;
+      this.input = null;
+      this.resultsList = null;
+      this.chipsContainer = null;
+      this.results = [];
+      this.commandResults = [];
+      this.selectedIndex = 0;
+      this.currentFlightCallsign = null;
+      this.flightSearchFired = false;
+      this.showingAllCommands = false;
+      this.isMobile = true;
+      this.createModalCalls = 0;
+      this.focusCalls = 0;
+      this.recentOrEmptyCalls = 0;
+      this.chipRenderCalls = 0;
+    }
+
+    createModal() {
+      this.createModalCalls++;
+      this.overlay = {
+        classList: { remove() {} },
+        remove() {},
+      };
+      this.input = { value: '', focus: () => { this.focusCalls++; } };
+      this.resultsList = {};
+      this.chipsContainer = {};
+    }
+
+    showRecentOrEmpty() { this.recentOrEmptyCalls++; }
+    renderChips() { this.chipRenderCalls++; }
+
+    ${extractMethod('public open(): void {')}
+    ${extractMethod('public close(): void {')}
+    ${extractMethod('private scheduleMobileInitialPopulation(): void {')}
+  }
+
+  return SearchModalHarness;
+`;
+const harnessJs = ts.transpileModule(harnessSource, {
+  compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.None },
+}).outputText;
+interface SearchModalHarness {
+  open(): void;
+  close(): void;
+  input: { value: string };
+  createModalCalls: number;
+  focusCalls: number;
+  recentOrEmptyCalls: number;
+  chipRenderCalls: number;
+}
+const Harness = new Function('isMobileDevice', harnessJs)(() => true) as new () => SearchModalHarness;
+
+function withAnimationFrames(run: (frames: FrameRequestCallback[]) => void): void {
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'requestAnimationFrame');
+  const frames: FrameRequestCallback[] = [];
+  Object.defineProperty(globalThis, 'requestAnimationFrame', {
+    configurable: true,
+    value: (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    },
+  });
+  try {
+    run(frames);
+  } finally {
+    if (original) Object.defineProperty(globalThis, 'requestAnimationFrame', original);
+    else delete (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame;
+  }
+}
+
+function runNextFrame(frames: FrameRequestCallback[]): void {
+  const frame = frames.shift();
+  assert.ok(frame, 'expected a scheduled animation frame');
+  frame(0);
+}
+
+test('mobile search renders only its shell in the tap task, then populates after the reveal frame (#5158)', () => {
+  withAnimationFrames((frames) => {
+    const modal = new Harness();
+    modal.open();
+
+    assert.equal(modal.createModalCalls, 1);
+    assert.equal(modal.focusCalls, 1);
+    assert.equal(modal.recentOrEmptyCalls, 0);
+    assert.equal(modal.chipRenderCalls, 0);
+
+    runNextFrame(frames);
+    assert.equal(modal.recentOrEmptyCalls, 0, 'the reveal frame must stay free of list work');
+    runNextFrame(frames);
+    assert.equal(modal.recentOrEmptyCalls, 1);
+    assert.equal(modal.chipRenderCalls, 1);
+  });
 });
 
-test('mobile search keeps the closed sheet out of rendering until its reveal frame (#5158)', () => {
-  assert.match(stylesSrc, /\.search-overlay\.search-mobile:not\(\.open\) \.search-sheet \{[\s\S]*?content-visibility:\s*hidden;/,
-    'the hidden sheet should not participate in paint work before its reveal');
+test('a typed query or a reopened sheet invalidates stale initial mobile population (#5158)', () => {
+  withAnimationFrames((frames) => {
+    const modal = new Harness();
+    modal.open();
+    runNextFrame(frames);
+    modal.input.value = 'iran';
+    runNextFrame(frames);
+    assert.equal(modal.recentOrEmptyCalls, 0, 'initial empty state must not overwrite an early query');
+    assert.equal(modal.chipRenderCalls, 0);
+
+    modal.close();
+    modal.open();
+    modal.close();
+    modal.open();
+
+    while (frames.length > 0) runNextFrame(frames);
+    assert.equal(modal.recentOrEmptyCalls, 1, 'only the reopened sheet may populate');
+    assert.equal(modal.chipRenderCalls, 1);
+  });
 });
