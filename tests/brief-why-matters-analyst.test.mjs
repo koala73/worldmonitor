@@ -498,6 +498,35 @@ describe('generateWhyMatters — analyst priority', () => {
     assert.equal(callLlmInvoked, true, 'legacy callLLM must fire after analyst miss');
   });
 
+  it('logs an accurate runtime type when analyst returns a non-string value', async () => {
+    const originalWarn = console.warn;
+    const warnings = [];
+    console.warn = (...args) => warnings.push(args.join(' '));
+
+    try {
+      for (const [analystOut, expectedType] of [
+        [null, 'null'],
+        [{ whyMatters: VALID }, 'object'],
+      ]) {
+        warnings.length = 0;
+        const out = await generateWhyMatters(story(), {
+          callAnalystWhyMatters: async () => analystOut,
+          callLLM: async () => VALID,
+          cacheGet: async () => null,
+          cacheSet: async () => {},
+        });
+
+        assert.equal(out, VALID);
+        assert.ok(
+          warnings.some((line) => line.includes(`endpoint returned no usable string (type=${expectedType})`)),
+          `expected a ${expectedType} runtime type tag; got ${JSON.stringify(warnings)}`,
+        );
+      }
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+
   it('falls through when analyst returns out-of-bounds output (too short)', async () => {
     let callLlmInvoked = false;
     const out = await generateWhyMatters(story(), {

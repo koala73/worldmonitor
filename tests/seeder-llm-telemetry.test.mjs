@@ -129,6 +129,35 @@ test('llm-chain: rejects length-limited prose and falls through to the next prov
   assert.equal(captured[1].ok, true);
 });
 
+test('llm-chain: records empty length-limited responses as length before falling back', async () => {
+  baseEnv();
+  const captured = [];
+  global.fetch = async (url, init = {}) => {
+    const raw = String(url);
+    if (raw.includes('api.axiom.co')) {
+      captured.push(...JSON.parse(String(init.body || '[]')));
+      return { ok: true, json: async () => ({}) };
+    }
+    if (raw.includes('api.groq.com')) {
+      return { ok: true, json: async () => llmJson('', undefined, 'length') };
+    }
+    if (raw.includes('openrouter.ai')) {
+      return { ok: true, json: async () => llmJson('Complete fallback prose.') };
+    }
+    throw new Error(`unexpected fetch: ${raw}`);
+  };
+
+  const text = await callLLM('system', 'user prompt', { stage: 'brief-whymatters-cron' });
+
+  assert.equal(text, 'Complete fallback prose.');
+  assert.equal(captured.length, 2);
+  assert.equal(captured[0].provider, 'groq');
+  assert.equal(captured[0].ok, false);
+  assert.equal(captured[0].reason, 'length');
+  assert.equal(captured[1].provider, 'openrouter');
+  assert.equal(captured[1].ok, true);
+});
+
 test('llm-chain: emits nothing when USAGE_TELEMETRY is off', async () => {
   baseEnv();
   delete process.env.USAGE_TELEMETRY;

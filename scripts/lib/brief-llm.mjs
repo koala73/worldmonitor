@@ -161,7 +161,10 @@ export async function generateWhyMatters(story, deps) {
           `[brief-llm] callAnalystWhyMatters → fallback: endpoint returned out-of-bounds, stub, or incomplete prose (len=${analystOut.trim().length})`,
         );
       } else {
-        console.warn('[brief-llm] callAnalystWhyMatters → fallback: null/empty response');
+        const responseType = analystOut === null ? 'null' : typeof analystOut;
+        console.warn(
+          `[brief-llm] callAnalystWhyMatters → fallback: endpoint returned no usable string (type=${responseType})`,
+        );
       }
     } catch (err) {
       console.warn(
