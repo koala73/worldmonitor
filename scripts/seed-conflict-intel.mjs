@@ -41,13 +41,30 @@ const CONFLICT_COUNTRIES = [
   'IQ', 'PS', 'LY', 'ML', 'BF', 'NE', 'NG', 'CM', 'MZ', 'HT',
 ];
 export const GDELT_MIN_SUCCESSFUL_COUNTRIES = Math.ceil(CONFLICT_COUNTRIES.length * 0.8);
-// #5140: wall-clock budget for the whole GDELT fallback sweep. The sweep's worst
-// case must fit runSeed's 240s fetch deadline AFTER the aux Promise.allSettled
-// (~≤60s) and with one in-flight batch allowed to drain past the budget check
-// (~92s OBSERVED for a full-timeout batch at the fetch knobs below — retry math
-// says 75s, curl/DNS overheads add ~17s): 60s + 75s + 95s = 230s ≤ 240s. Without
-// this cap a GDELT brownout ran 5 batches ≈ 375s → deadline breach → exit 75 every tick.
-export const GDELT_SWEEP_BUDGET_MS = 75_000;
+// #5140: the GDELT fallback sweep may not LAUNCH a batch after this much of the
+// fetch phase has elapsed (fetchAll anchors the clock at its own entry and passes
+// an absolute deadline down, so slow aux feeds — HAPI is sequential, ~306s worst —
+// automatically shrink the sweep window instead of stacking on top of it). One
+// in-flight batch may still drain past the cutoff: ≤~100s at the knobs below
+// (15s concurrent direct legs + 4 × 20s SERIALIZED sync proxy curls — curlFetch is
+// execFileSync, so "concurrent" proxy attempts block the event loop one at a time;
+// 92s observed live 2026-07-10). Worst single fetchAll attempt ≈
+// max(HAPI 306s, 120s + 100s) + extra-key writes ≈ ~350s, inside both the 360s
+// lock below and the 480s fetch deadline (lockTtl + margin). Without this cap a
+// GDELT brownout ran 5 batches ≈ 375s+ → deadline breach → exit 75 every tick.
+export const GDELT_SWEEP_BUDGET_MS = 120_000;
+// maxRetries: 0 — a second direct attempt would honor GDELT's Retry-After header
+// (≤60s sleep, _gdelt-fetch.mjs MAX_RETRY_AFTER_MS), blowing any per-batch bound;
+// the proxy leg (IP-rotating) is the designed 429 answer, not a same-IP retry.
+// proxyMaxAttempts: 1 — proxy curls are synchronous (execFileSync, ≤20s each) and
+// serialize across the whole batch: each extra attempt adds 4 × 20s of worst case.
+export const GDELT_COUNTRY_FETCH_OPTS = Object.freeze({ maxRetries: 0, proxyMaxAttempts: 1 });
+// Lock must outlive the worst legitimate run (runSeed's documented invariant —
+// _seed-utils.mjs: "a healthy seeder is designed never to outlive its own lock");
+// it also sets the fetch deadline (lockTtlMs + 120s margin = 480s). The default
+// 120s lock was ALREADY shorter than this seeder's worst case. Cron cadence is
+// 30min, so a hard-crashed run's dangling lock costs at most 6 of those minutes.
+export const ACLED_INTEL_LOCK_TTL_MS = 360_000;
 
 const ISO2_TO_ISO3 = loadSharedConfig('iso2-to-iso3.json');
 
@@ -207,7 +224,7 @@ export async function fetchGdeltCountryEvents(cc) {
   let data;
   try {
     // Runs 20× per cycle — keep each call cheap so the whole sweep fits the run window.
-    data = await fetchGdeltJson(buildGdeltConflictUrl(cc), { label: `conflict:${cc}`, maxRetries: 1, proxyMaxAttempts: 2 });
+    data = await fetchGdeltJson(buildGdeltConflictUrl(cc), { label: `conflict:${cc}`, ...GDELT_COUNTRY_FETCH_OPTS });
   } catch (e) {
     console.warn(`  GDELT ${cc}: ${e.message}`);
     return { country: cc, ok: false, events: [], error: e.message || String(e) };
@@ -219,21 +236,23 @@ export async function fetchGdeltConflictEvents({
   fetchCountryEvents = fetchGdeltCountryEvents,
   pace = sleep,
   now = Date.now,
+  deadlineAt,
 } = {}) {
   const events = [];
   const failedCountries = [];
   let successfulCountries = 0;
   const CONCURRENCY = 4; // bound the run window (20 countries × proxy retries)
-  const budgetSpentAt = now() + GDELT_SWEEP_BUDGET_MS;
+  const launchCutoffAt = deadlineAt ?? now() + GDELT_SWEEP_BUDGET_MS;
   for (let i = 0; i < CONFLICT_COUNTRIES.length; i += CONCURRENCY) {
-    // #5140: stop LAUNCHING batches once the budget is spent or the floor can no
-    // longer be reached — either way the caller degrades to aux-only and exits 0,
+    // #5140: stop LAUNCHING batches once the phase cutoff passes or the floor can
+    // no longer be reached — either way the caller degrades to aux-only and exits 0,
     // instead of grinding retries into the fetch-phase deadline (exit 75).
     const remaining = CONFLICT_COUNTRIES.slice(i);
-    const overBudget = now() >= budgetSpentAt;
+    const overBudget = now() >= launchCutoffAt;
     const floorUnreachable = successfulCountries + remaining.length < GDELT_MIN_SUCCESSFUL_COUNTRIES;
     if (overBudget || floorUnreachable) {
-      const why = overBudget ? 'sweep budget exhausted' : 'coverage floor unreachable';
+      const why = [overBudget && 'sweep budget exhausted', floorUnreachable && 'coverage floor unreachable']
+        .filter(Boolean).join(' + ');
       for (const cc of remaining) failedCountries.push({ country: cc, error: why });
       console.warn(`  [GDELT] conflict sweep stopped early (${why}) with ${i}/${CONFLICT_COUNTRIES.length} countries attempted`);
       break;
@@ -403,6 +422,11 @@ async function fetchGdeltTensions() {
 // ─── Main ───
 
 async function fetchAll() {
+  // #5140: anchor the GDELT-fallback sweep cutoff at the START of the fetch phase,
+  // not at sweep entry — the aux feeds below (HAPI is sequential, ~306s worst) and
+  // the sweep share runSeed's single fetch deadline, so time the aux stage burns
+  // must come out of the sweep's window, not be added to it.
+  const sweepDeadlineAt = Date.now() + GDELT_SWEEP_BUDGET_MS;
   const [acled, acledResolution, hapi, pizzint, gdelt] = await Promise.allSettled([
     fetchAcledEvents({ label: 'ACLED display' }),
     fetchAcledEvents({
@@ -457,7 +481,7 @@ async function fetchAll() {
       // on the no-creds path: a credentialed-but-failed fetch still throws below, and a
       // credentialed-but-empty ACLED result is trusted (returns `ac`) rather than
       // overwritten by GDELT volume.
-      const gdeltEvents = await fetchGdeltConflictEvents().catch((e) => {
+      const gdeltEvents = await fetchGdeltConflictEvents({ deadlineAt: sweepDeadlineAt }).catch((e) => {
         console.warn(`  GDELT conflict-events fallback failed: ${e.message}`);
         return null;
       });
@@ -487,6 +511,7 @@ export function declareRecords(data) {
 if (process.argv[1]?.endsWith('seed-conflict-intel.mjs')) {
   runSeed('conflict', 'acled-intel', ACLED_CACHE_KEY, fetchAll, {
     validateFn: validate,
+    lockTtlMs: ACLED_INTEL_LOCK_TTL_MS,
     ttlSeconds: ACLED_TTL,
     sourceVersion: 'acled-hapi-pizzint',
     declareRecords,
