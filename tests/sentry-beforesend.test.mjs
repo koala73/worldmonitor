@@ -1031,3 +1031,114 @@ describe('ignoreErrors — mainWorldSdk extension global (WORLDMONITOR-TG)', () 
       'pattern must not swallow a longer identifier with the same prefix');
   });
 });
+
+// ─── WORLDMONITOR-VR/VV/VW/VX/VY/VS/VT/VZ: injected browser-automation harness ─
+//
+// An external browser-automation agent (Floot) drove the dashboard on 2026-07-09.
+// Its injected selector-resolution helpers (helperGetStyle et al., <anonymous>
+// script) throw generic `Error`s our bundle never emits: `Element not found:
+// <sel>`, `No element found: <sel>`, `$pressKey(...) was called with no
+// selector`, and references to its own `data-floot-id` attribute. Generic Error
+// type (so the anonymous-script TypeError gate misses them) + <anonymous>-only
+// frames (→ !hasFirstParty). Gated on !hasFirstParty; the `... found:` matches
+// require the trailing colon so the colon-less ambiguous `Element not found`
+// (which needs a confirmed third-party stack) is untouched.
+describe('injected browser-automation harness errors (Floot)', () => {
+  const automationMsgs = [
+    'Element not found: [data-floot-id="307"]',
+    'Element not found: header',
+    'Element not found: null',
+    'Element not found: .bg-orange-500\\/20',
+    'No element found: button, hasText="×", within="[data-floot-id=\\"12\\"]"',
+    'No element found: #intel-feed',
+    '$pressKey("Escape") was called with no selector but no element is focused',
+  ];
+
+  for (const msg of automationMsgs) {
+    it(`suppresses "${msg.slice(0, 40)}..." from an <anonymous> injected script`, () => {
+      // Real shape: generic Error, helperGetStyle in an <anonymous> eval frame.
+      const event = makeEvent(msg, 'Error', [
+        { filename: '<anonymous>', lineno: 91, function: null },
+        { filename: '<anonymous>', lineno: 5, function: 'helperGetStyle' },
+      ]);
+      assert.equal(beforeSend(event), null, `Floot automation error should be suppressed: ${msg}`);
+    });
+
+    it(`suppresses "${msg.slice(0, 40)}..." with an empty stack too`, () => {
+      assert.equal(beforeSend(makeEvent(msg, 'Error', [])), null);
+    });
+  }
+
+  it('does NOT suppress the colon-less ambiguous "Element not found" with empty stack', () => {
+    // Preserves the existing ambiguous-error contract: a bare "Element not found"
+    // (no selector) could be our own code and must surface with an unknown origin.
+    assert.ok(beforeSend(makeEvent('Element not found', 'Error', [])) !== null,
+      'bare colon-less "Element not found" must still surface');
+  });
+
+  it('does NOT suppress a first-party error that happens to say "Element not found: X"', () => {
+    // Defense-in-depth: a genuine first-party frame means our code threw it —
+    // must surface even with the automation-shaped message.
+    const event = makeEvent('Element not found: #someLegitSelector', 'Error', [
+      firstPartyFrame('src/components/SomePanel.ts', 'requireEl'),
+    ]);
+    assert.ok(beforeSend(event) !== null, 'first-party "Element not found: X" must reach Sentry');
+  });
+});
+
+// ─── WORLDMONITOR-VC: bare "Failed to fetch" through DebugBear's fetch wrapper ─
+//
+// DebugBear's RUM collector (cdn.debugbear.com/<id>.js → frame `/lpMwA9KpC6pf.js`)
+// monkeypatches window.fetch to time it. A transient network blip on any app
+// fetch rejects and its wrapper re-surfaces the rejection as an unhandled
+// rejection, injecting its own frames. The only "first-party" frames it carries
+// are `window.fetch` trampolines on Vite chunk names (panel-storage/widget-store
+// — neither module actually fetches). Without DebugBear the identical failure is
+// zero-frame and already suppressed. Suppress only when a DebugBear frame is
+// present AND every non-infra frame is that collector or a bare window.fetch
+// trampoline, so a genuine uncaught first-party fetch rejection still surfaces.
+describe('bare "Failed to fetch" via DebugBear RUM fetch wrapper (WORLDMONITOR-VC)', () => {
+  // Verbatim production stack from WORLDMONITOR-VC.
+  const vcStack = [
+    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 8, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'e' },
+    { filename: '/assets/widget-store-BQi6MP9w.js', lineno: 38, function: 'window.fetch' },
+    { filename: '/assets/panel-storage-DSqo8-tt.js', lineno: 2, function: 'window.fetch' },
+  ];
+
+  it('suppresses the exact VC stack (DebugBear wrapper + window.fetch trampolines)', () => {
+    assert.equal(beforeSend(makeEvent('Failed to fetch', 'TypeError', vcStack)), null,
+      'DebugBear-wrapped transient fetch failure should be suppressed');
+  });
+
+  it('suppresses the type-prefixed value variant', () => {
+    assert.equal(beforeSend(makeEvent('TypeError: Failed to fetch', 'TypeError', vcStack)), null);
+  });
+
+  it('does NOT suppress when a genuine first-party fetch caller frame is present', () => {
+    // A real uncaught first-party fetch rejection carries a real function name
+    // (not a bare window.fetch trampoline) — must surface even with DebugBear on
+    // the stack.
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'e' },
+      { filename: '/assets/panels-DzUv7BBV.js', lineno: 100, function: 'loadCountryGeometry' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'genuine first-party fetch rejection must reach Sentry');
+  });
+
+  it('does NOT suppress a plain first-party "Failed to fetch" with no DebugBear frame', () => {
+    // Regression guard for the existing contract: without DebugBear, a first-party
+    // window.fetch failure still surfaces (it is not this gate's business).
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/assets/panels-wF5GXf0N.js', lineno: 100, function: 'MyApiCall' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'non-DebugBear first-party fetch failure must surface');
+  });
+
+  it('does NOT suppress a non-"Failed to fetch" error that merely has a DebugBear frame', () => {
+    const event = makeEvent('Something else entirely', 'TypeError', vcStack);
+    assert.ok(beforeSend(event) !== null, 'gate is scoped to the bare Failed-to-fetch message');
+  });
+});
