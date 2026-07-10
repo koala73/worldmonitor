@@ -78,13 +78,17 @@ const RENDER = `
     var fires = fireNode && Array.isArray(fireNode.fireDetections) ? fireNode.fireDetections : [];
     if (fires.length) {
       var fsec = el("div", "dgroup");
-      fsec.appendChild(el("div", "sec-label", "Active Wildfires (" + fires.length + ")"));
+      var fireShown = Math.min(fires.length, 6);
+      var fireLabel = fires.length > fireShown
+        ? "Active Wildfires (" + fireShown + " of " + fires.length + ")"
+        : "Active Wildfires (" + fires.length + ")";
+      fsec.appendChild(el("div", "sec-label", fireLabel));
       var confMap = {
         FIRE_CONFIDENCE_HIGH: "High",
         FIRE_CONFIDENCE_NOMINAL: "Nominal",
         FIRE_CONFIDENCE_LOW: "Low"
       };
-      for (var k = 0; k < fires.length && k < 6; k++) {
+      for (var k = 0; k < fireShown; k++) {
         var fr = fires[k];
         if (!fr || typeof fr !== "object") continue;
         var frow = el("div", "drow");

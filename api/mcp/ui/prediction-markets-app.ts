@@ -70,7 +70,7 @@ const RENDER = `
         var head = el("div", "mkt-head");
         head.appendChild(el("span", "mkt-title", collapseWs(m.title) || "Market"));
         var p = num(m.yesPrice);
-        var pct = p == null ? null : (p <= 1 ? p * 100 : p);
+        var pct = p == null ? null : p; // yesPrice is already a 0-100 percentage — no scaling
         head.appendChild(el("span", "mkt-prob", pct == null ? "—" : Math.round(pct) + "%"));
         mkt.appendChild(head);
         var bar = probabilityBar(pct);
