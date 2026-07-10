@@ -37,15 +37,42 @@ const LEGACY_DATE_ONLY_CAROUSEL_PATH = '/api/brief/carousel/user_abc/2026-04-19/
 const OTHER_API_PATH = '/api/notifications';
 const MALFORMED_CAROUSEL_PATH = '/api/brief/carousel/admin/dashboard';
 
-function call(pathOrUrl: string, ua: string): Response | void {
+function call(pathOrUrl: string, ua: string, headers: Record<string, string> = {}): Response | void {
   const url = pathOrUrl.startsWith('http')
     ? pathOrUrl
     : `https://www.worldmonitor.app${pathOrUrl}`;
   const req = new Request(url, {
-    headers: ua ? { 'user-agent': ua } : {},
+    headers: {
+      ...(ua ? { 'user-agent': ua } : {}),
+      ...headers,
+    },
   });
   return middleware(req) as Response | void;
 }
+
+describe('middleware bot gate / keyed API clients', () => {
+  const KEYED_API_PATH = '/api/forecast/v1/get-forecast-scorecard';
+  const USER_API_KEY = `wm_${'a'.repeat(40)}`;
+  const ENTERPRISE_API_KEY = `wm_${'b'.repeat(48)}`;
+
+  it('passes a 40-hex user API key through when curl would otherwise be blocked', () => {
+    const res = call(KEYED_API_PATH, GENERIC_CURL_UA, { 'x-worldmonitor-key': USER_API_KEY });
+    assert.equal(res, undefined, 'the gateway, not the UA gate, must validate a well-shaped user key');
+  });
+
+  it('passes a 48-hex enterprise API key through when curl would otherwise be blocked', () => {
+    const res = call(KEYED_API_PATH, GENERIC_CURL_UA, { 'x-worldmonitor-key': ENTERPRISE_API_KEY });
+    assert.equal(res, undefined, 'the gateway, not the UA gate, must validate a well-shaped enterprise key');
+  });
+
+  it('still blocks malformed and overlong wm_ keys with a curl UA', () => {
+    for (const apiKey of [`wm_${'c'.repeat(39)}`, `wm_${'d'.repeat(65)}`, 'wm_not-hex']) {
+      const res = call(KEYED_API_PATH, GENERIC_CURL_UA, { 'x-worldmonitor-key': apiKey });
+      assert.ok(res instanceof Response, `${apiKey} must not bypass the UA gate`);
+      assert.equal(res.status, 403);
+    }
+  });
+});
 
 describe('middleware bot gate / carousel allowlist', () => {
   it('passes TelegramBot through on the carousel route (the PR #3196 fix)', () => {
