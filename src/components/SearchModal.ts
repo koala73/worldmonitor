@@ -99,6 +99,9 @@ export class SearchModal {
   private resultsList: HTMLElement | null = null;
   private chipsContainer: HTMLElement | null = null;
   private closeTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  // Invalidates deferred mobile list population when the sheet closes before
+  // its first paint (or is immediately reopened).
+  private mobileInitialPopulationGeneration = 0;
   // Debounce the per-keystroke search so fast typing runs the command match +
   // sort once after settle, not on every input event — cuts INP processing
   // time (#4537). Programmatic handleSearch() calls (filters, category select)
@@ -218,13 +221,17 @@ export class SearchModal {
     this.createModal();
     this.input?.focus();
     this.showingAllCommands = false;
-    this.showRecentOrEmpty();
-    if (this.isMobile) this.renderChips();
+    if (this.isMobile) {
+      this.scheduleMobileInitialPopulation();
+    } else {
+      this.showRecentOrEmpty();
+    }
   }
 
   public close(): void {
     // Drop any pending debounced search so it can't fire against a torn-down modal.
     this.debouncedSearch.cancel();
+    this.mobileInitialPopulationGeneration += 1;
     if (this.viewportHandler && window.visualViewport) {
       window.visualViewport.removeEventListener('resize', this.viewportHandler);
       this.viewportHandler = null;
@@ -256,6 +263,27 @@ export class SearchModal {
 
   public isOpen(): boolean {
     return this.overlay !== null;
+  }
+
+  /**
+   * Keep the tap frame limited to the sheet shell. The results list and command
+   * chips can create several nodes plus event listeners, which otherwise makes
+   * the first sheet presentation compete with the FAB interaction (#5158).
+   */
+  private scheduleMobileInitialPopulation(): void {
+    const generation = ++this.mobileInitialPopulationGeneration;
+    // The first frame reveals the sheet; the second runs after that paint. Do
+    // not use the startup after-paint scheduler here: it can wait for load and
+    // idle time even though this is an already-interactive control.
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        // A close/reopen or an immediate keystroke owns the content now; never
+        // overwrite its current results with the initial empty/recent state.
+        if (generation !== this.mobileInitialPopulationGeneration || !this.overlay || this.input?.value) return;
+        this.showRecentOrEmpty();
+        this.renderChips();
+      });
+    });
   }
 
   private createModal(): void {

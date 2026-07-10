@@ -11292,6 +11292,12 @@ a.prediction-link:hover {
   transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* The appended shell starts hidden, so skip its paint work until the reveal
+   frame adds .open. The transform animation remains the visible transition. */
+.search-overlay.search-mobile:not(.open) .search-sheet {
+  content-visibility: hidden;
+}
+
 .search-overlay.search-mobile.open .search-sheet {
   transform: translateY(0);
 }
