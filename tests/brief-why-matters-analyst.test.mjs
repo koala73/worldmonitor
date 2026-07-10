@@ -22,6 +22,83 @@ import {
   WHY_MATTERS_SYSTEM,
 } from '../shared/brief-llm-core.js';
 
+const ANALYST_MAX_TOKEN_CLIP =
+  'Marine Le Pen\u2019s conviction on appeal leaves her legally eligible for the 2027 presidential election. ' +
+  'The ruling reshapes the campaign while leaving debate over democratic norms and';
+const ABBREVIATION_LENGTH_CLIP =
+  'The ruling would reshape alliance planning across Europe and force renewed debate among officials in the U.S.';
+
+const HANDLER_ENV_KEYS = [
+  'RELAY_SHARED_SECRET',
+  'UPSTASH_REDIS_REST_URL',
+  'UPSTASH_REDIS_REST_TOKEN',
+  'BRIEF_WHY_MATTERS_PRIMARY',
+  'BRIEF_WHY_MATTERS_SHADOW',
+  'OLLAMA_API_URL',
+  'OLLAMA_API_KEY',
+  'GROQ_API_KEY',
+  'OPENROUTER_API_KEY',
+  'LLM_API_URL',
+  'LLM_API_KEY',
+];
+
+async function invokeHandlerWithCachedEnvelope(envelope, providerCompletion = null, primary = 'gemini') {
+  const previousEnv = Object.fromEntries(HANDLER_ENV_KEYS.map((key) => [key, process.env[key]]));
+  const originalFetch = globalThis.fetch;
+  const fetchCalls = [];
+  process.env.RELAY_SHARED_SECRET = 'test-relay-secret';
+  process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'test-redis-token';
+  process.env.BRIEF_WHY_MATTERS_PRIMARY = primary;
+  process.env.BRIEF_WHY_MATTERS_SHADOW = '0';
+  for (const key of ['OLLAMA_API_URL', 'OLLAMA_API_KEY', 'GROQ_API_KEY', 'OPENROUTER_API_KEY', 'LLM_API_URL', 'LLM_API_KEY']) {
+    delete process.env[key];
+  }
+  if (providerCompletion) process.env.OPENROUTER_API_KEY = 'or-test-key';
+  globalThis.fetch = async (input, init) => {
+    const url = String(input);
+    const method = init?.method || 'GET';
+    fetchCalls.push({ url, method });
+    if (url.startsWith('https://redis.example.test')) {
+      const result = url.endsWith('/pipeline')
+        ? []
+        : envelope === null ? null : JSON.stringify(envelope);
+      return new Response(JSON.stringify({ result }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (method === 'GET') return new Response('', { status: 200 });
+    if (url === 'https://openrouter.ai/api/v1/chat/completions' && providerCompletion) {
+      return new Response(JSON.stringify(providerCompletion), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    throw new Error(`unexpected fetch ${method} ${url}`);
+  };
+
+  try {
+    const { default: handler } = await import('../api/internal/brief-why-matters.ts');
+    const request = new Request('https://worldmonitor.test/api/internal/brief-why-matters', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer test-relay-secret',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ story: story() }),
+    });
+    const response = await handler(request);
+    return { response, body: await response.json(), fetchCalls };
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
 // ── Story fixture matching the cron's actual payload shape
 // (shared/brief-filter.js:134-135). ────────────────────────────────────
 
@@ -128,6 +205,95 @@ describe('cache key identity', () => {
   });
 });
 
+describe('brief-why-matters Edge cache acceptance', () => {
+  it('serves a complete v10 envelope as a cache hit', async () => {
+    const whyMatters = 'The ruling keeps the 2027 race open while reshaping coalition strategy.';
+    const { response, body, fetchCalls } = await invokeHandlerWithCachedEnvelope({
+      whyMatters,
+      producedBy: 'analyst',
+      at: '2026-07-10T00:00:00.000Z',
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(body.whyMatters, whyMatters);
+    assert.equal(body.source, 'cache');
+    assert.equal(body.producedBy, 'analyst');
+    assert.equal(fetchCalls.length, 1, 'a valid cache hit must not call an LLM provider');
+  });
+
+  it('treats a clipped v10 envelope as a miss when regeneration fails', async () => {
+    const { response, body, fetchCalls } = await invokeHandlerWithCachedEnvelope({
+      whyMatters: ANALYST_MAX_TOKEN_CLIP,
+      producedBy: 'analyst',
+      at: '2026-07-10T00:00:00.000Z',
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(body.whyMatters, null);
+    assert.equal(body.source, 'gemini');
+    assert.equal(body.producedBy, null);
+    assert.equal(fetchCalls.length, 1, 'a failed regeneration must not serve or rewrite clipped prose');
+  });
+
+  it('rejects a length-limited provider response even when it ends in an abbreviation', async () => {
+    const { response, body, fetchCalls } = await invokeHandlerWithCachedEnvelope(null, {
+      choices: [{
+        message: { content: ABBREVIATION_LENGTH_CLIP },
+        finish_reason: 'length',
+      }],
+      usage: { total_tokens: 120, completion_tokens: 80 },
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(body.whyMatters, null);
+    assert.equal(body.source, 'gemini');
+    assert.equal(body.producedBy, null);
+    assert.equal(
+      fetchCalls.some(({ url }) => url.endsWith('/pipeline')),
+      false,
+      'a length-limited response must never be cached',
+    );
+  });
+
+  it('accepts and caches a stop-finished response containing a dotted abbreviation', async () => {
+    const complete = 'The ruling could alter European coordination with the U.S. Navy as regional tensions rise.';
+    const { response, body, fetchCalls } = await invokeHandlerWithCachedEnvelope(null, {
+      choices: [{ message: { content: complete }, finish_reason: 'stop' }],
+      usage: { total_tokens: 80, completion_tokens: 30 },
+    });
+
+    assert.equal(response.status, 200);
+    assert.equal(body.whyMatters, complete);
+    assert.equal(body.source, 'gemini');
+    assert.equal(body.producedBy, 'gemini');
+    assert.equal(
+      fetchCalls.some(({ url }) => url.endsWith('/pipeline')),
+      true,
+      'a stop-finished complete response should populate v10',
+    );
+  });
+
+  it('applies the same length-completion rejection to the analyst path', async () => {
+    const { response, body, fetchCalls } = await invokeHandlerWithCachedEnvelope(null, {
+      choices: [{
+        message: { content: ABBREVIATION_LENGTH_CLIP },
+        finish_reason: 'length',
+      }],
+      usage: { total_tokens: 120, completion_tokens: 80 },
+    }, 'analyst');
+
+    assert.equal(response.status, 200);
+    assert.equal(body.whyMatters, null);
+    assert.equal(body.source, 'analyst');
+    assert.equal(body.producedBy, null);
+    assert.equal(
+      fetchCalls.some(({ url }) => url.endsWith('/pipeline')),
+      false,
+      'an analyst length-limited response must never be cached',
+    );
+  });
+});
+
 // ── parseWhyMattersV2 — analyst-path output validator ───────────────────
 //
 // This is the only output-validation gate between the analyst LLM and
@@ -163,13 +329,17 @@ describe('parseWhyMattersV2 — analyst output validator', () => {
     assert.equal(parseWhyMattersV2('Short sentence under 100 chars.'), null);
     assert.equal(parseWhyMattersV2('x'.repeat(99)), null);
     // Boundary: exactly 100 passes.
-    assert.equal(typeof parseWhyMattersV2('x'.repeat(100)), 'string');
+    assert.equal(typeof parseWhyMattersV2(`${'x'.repeat(99)}.`), 'string');
   });
 
   it('rejects output over the 500-char cap (prevents runaway essays)', () => {
     assert.equal(parseWhyMattersV2('x'.repeat(501)), null);
     // Boundary: exactly 500 passes.
-    assert.equal(typeof parseWhyMattersV2('x'.repeat(500)), 'string');
+    assert.equal(typeof parseWhyMattersV2(`${'x'.repeat(499)}.`), 'string');
+  });
+
+  it('rejects the captured max-token clips from both model eras', () => {
+    assert.equal(parseWhyMattersV2(ANALYST_MAX_TOKEN_CLIP), null);
   });
 
   it('rejects banned preamble phrases (v2-specific)', () => {
@@ -343,11 +513,25 @@ describe('generateWhyMatters — analyst priority', () => {
     assert.equal(callLlmInvoked, true, 'out-of-bounds analyst output must trigger fallback');
   });
 
+  it('falls through when the analyst endpoint returns a max-token clip', async () => {
+    let callLlmInvoked = false;
+    const out = await generateWhyMatters(story(), {
+      callAnalystWhyMatters: async () => ANALYST_MAX_TOKEN_CLIP,
+      callLLM: async () => {
+        callLlmInvoked = true;
+        return VALID;
+      },
+      cacheGet: async () => null,
+      cacheSet: async () => {},
+    });
+    assert.equal(out, VALID);
+    assert.equal(callLlmInvoked, true, 'clipped endpoint output must trigger fallback');
+  });
+
   it('preserves multi-sentence v2 analyst output verbatim (P1 regression guard)', async () => {
     // The endpoint now returns 1–2 sentences validated by parseWhyMattersV2.
-    // The cron MUST NOT reparse with the v1 single-sentence parser, which
-    // would silently truncate the 2nd + 3rd sentences. Caught in PR #3269
-    // review; fixed by trusting the endpoint's own validation and only
+    // The cron MUST NOT reparse with the narrower v1 bounds. Caught in PR
+    // #3269 review; fixed by trusting the endpoint's own validation and only
     // rejecting obvious garbage (length / stub echo) here.
     const multi =
       "Iran's closure of the Strait of Hormuz on April 21 halts roughly 20% of global seaborne oil. " +

@@ -132,6 +132,12 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
         continue;
       }
 
+      if (json.choices?.[0]?.finish_reason === 'length') {
+        console.warn(`[llm-chain] ${provider.name}: length-limited response, trying next provider`);
+        record(false, { ...usage, reason: 'length' });
+        continue;
+      }
+
       const text = stripReasoningPreamble(rawText);
       console.log(`[llm-chain] ${provider.name} OK (${text.length} chars)`);
       record(true, usage);

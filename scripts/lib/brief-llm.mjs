@@ -15,7 +15,7 @@
 //     through to the original stub — the brief must always ship.
 //
 // Cache semantics:
-//   - brief:llm:whymatters:v5:{storyHash} — 24h, shared across users
+//   - brief:llm:whymatters:v6:{storyHash} — 24h, shared across users
 //     for the same story. v4 bumped from v3 alongside the F6
 //     date-grounding line: every v3 row was produced from a prompt
 //     with no notion of "today" and may state a fabricated year, so
@@ -41,6 +41,7 @@ import {
   briefDateLine,
   buildWhyMattersUserPrompt,
   hashBriefStory,
+  hasTerminalPunctuation,
   parseWhyMatters,
   checkLeadGrounding,
   leadGroundsAgainstStory,
@@ -110,16 +111,24 @@ const BRIEF_LLM_SKIP_PROVIDERS = ['ollama', 'groq'];
 // (`api/internal/brief-why-matters.ts`) can import them without pulling in
 // `node:crypto`. See the `shared/` → `scripts/shared/` mirror convention.
 
+function normalizeAnalystWhyMatters(value) {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  if (normalized.length < 30 || normalized.length > 500) return null;
+  if (/^story flagged by your sensitivity/i.test(normalized)) return null;
+  return hasTerminalPunctuation(normalized) ? normalized : null;
+}
+
 /**
  * Resolve a `whyMatters` sentence for one story.
  *
  * Four-layer graceful degradation:
  *   1. `deps.callAnalystWhyMatters(story)` — the analyst-context edge
- *      endpoint (brief:llm:whymatters:v9 cache lives there). Preferred.
- *   2. Direct read of the endpoint's v9 envelope cache (#4914) — the
+ *      endpoint (brief:llm:whymatters:v10 cache lives there). Preferred.
+ *   2. Direct read of the endpoint's v10 envelope cache (#4914) — the
  *      endpoint CALL can fail while its cached envelope is still valid;
  *      reusing it avoids a paid duplicate generation.
- *   3. Legacy direct-Gemini chain: cacheGet (v5) → callLLM → cacheSet.
+ *   3. Legacy direct-Gemini chain: cacheGet (v6) → callLLM → cacheSet.
  *      Runs whenever the analyst call is missing, returns null, or throws.
  *   4. Caller (enrichBriefEnvelopeWithLLM) uses the baseline stub if
  *      this function returns null.
@@ -138,20 +147,18 @@ export async function generateWhyMatters(story, deps) {
   // Priority path: analyst endpoint. It owns its own cache and has
   // ALREADY validated the output via parseWhyMatters (gemini path) or
   // parseWhyMattersV2 (analyst path, multi-sentence). We must NOT
-  // re-parse here with the single-sentence v1 parser — that silently
-  // truncates v2's 2–3-sentence output to the first sentence. Trust
-  // the wire shape; only reject an obviously-bad payload (empty, stub
-  // echo, or length outside the legal bounds for either parser).
+  // re-parse here with the narrower v1 parser — v2 intentionally permits
+  // longer multi-sentence output. Trust the wire shape; only reject an
+  // obviously-bad payload (empty, stub
+  // echo, incomplete sentence, or length outside either parser's bounds).
   if (typeof deps.callAnalystWhyMatters === 'function') {
     try {
       const analystOut = await deps.callAnalystWhyMatters(story);
+      const normalized = normalizeAnalystWhyMatters(analystOut);
+      if (normalized) return normalized;
       if (typeof analystOut === 'string') {
-        const trimmed = analystOut.trim();
-        const lenOk = trimmed.length >= 30 && trimmed.length <= 500;
-        const notStub = !/^story flagged by your sensitivity/i.test(trimmed);
-        if (lenOk && notStub) return trimmed;
         console.warn(
-          `[brief-llm] callAnalystWhyMatters → fallback: endpoint returned out-of-bounds or stub (len=${trimmed.length})`,
+          `[brief-llm] callAnalystWhyMatters → fallback: endpoint returned out-of-bounds, stub, or incomplete prose (len=${analystOut.trim().length})`,
         );
       } else {
         console.warn('[brief-llm] callAnalystWhyMatters → fallback: null/empty response');
@@ -165,24 +172,18 @@ export async function generateWhyMatters(story, deps) {
 
   // #4914: before paying a direct-Gemini generation, check the analyst
   // endpoint's OWN cache namespace. api/internal/brief-why-matters.ts
-  // stores its envelope at brief:llm:whymatters:v9:{hash} under the same
+  // stores its envelope at brief:llm:whymatters:v10:{hash} under the same
   // hashBriefStory identity — when the endpoint CALL failed transiently
   // (or no endpoint is configured), the story may already have a paid,
   // validated envelope sitting in Redis. Read-only: this fallback's own
-  // single-sentence output stays in the legacy v5 namespace below, so the
+  // fallback output stays in the legacy v6 namespace below, so the
   // two prompt contracts never cross-contaminate in the write direction.
   const storyHash = await hashBriefStory(story);
   try {
-    const v9 = await deps.cacheGet(`brief:llm:whymatters:v9:${storyHash}`);
-    if (v9 && typeof v9 === 'object' && typeof v9.whyMatters === 'string') {
-      const v9Trimmed = v9.whyMatters.trim();
-      // Same acceptance bounds as the live-endpoint path above.
-      if (
-        v9Trimmed.length >= 30 && v9Trimmed.length <= 500
-        && !/^story flagged by your sensitivity/i.test(v9Trimmed)
-      ) {
-        return v9Trimmed;
-      }
+    const v10 = await deps.cacheGet(`brief:llm:whymatters:v10:${storyHash}`);
+    if (v10 && typeof v10 === 'object') {
+      const normalized = normalizeAnalystWhyMatters(v10.whyMatters);
+      if (normalized) return normalized;
     }
   } catch { /* treat as miss */ }
 
@@ -201,10 +202,16 @@ export async function generateWhyMatters(story, deps) {
   // persisted on story:track:v1), post-PR carries the per-story
   // Title-Cased EventCategory value. Every v4 cache row is now stale.
   // Bump invalidates them cleanly.
-  const key = `brief:llm:whymatters:v5:${storyHash}`;
+  //
+  // v5→v6: 2026-07-10 issue #5168. v5 rows were written before the Railway
+  // provider chain rejected finish_reason=length, so an abbreviation-ending
+  // token clip could be cached as an apparently complete sentence. The old
+  // rows carry no completion metadata and cannot be distinguished safely.
+  const key = `brief:llm:whymatters:v6:${storyHash}`;
   try {
     const hit = await deps.cacheGet(key);
-    if (typeof hit === 'string' && hit.length > 0) return hit;
+    const parsedHit = parseWhyMatters(hit);
+    if (parsedHit) return parsedHit;
   } catch { /* cache miss is fine */ }
   // Sanitize story fields before interpolating into the prompt. The analyst
   // endpoint already does this; without it the Railway fallback path was an

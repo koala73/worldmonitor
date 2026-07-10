@@ -54,6 +54,7 @@ import { captureSilentError } from '../_sentry-edge.js';
 import {
   buildWhyMattersUserPrompt,
   hashBriefStory,
+  hasTerminalPunctuation,
   parseWhyMatters,
   parseWhyMattersV2,
 } from '../../shared/brief-llm-core.js';
@@ -229,6 +230,12 @@ function validateStoryBody(raw: unknown): ValidationOk | ValidationErr {
 
 // ── LLM paths ─────────────────────────────────────────────────────────
 
+function rejectLengthLimitedCompletion(path: 'analyst' | 'gemini', finishReason: string | null): boolean {
+  if (finishReason !== 'length') return false;
+  console.warn(`[brief-why-matters] ${path} completion_reject reason=length`);
+  return true;
+}
+
 async function runAnalystPath(story: StoryPayload, iso2: string | null): Promise<string | null> {
   try {
     const context = await assembleBriefStoryContext({ iso2, category: story.category });
@@ -261,6 +268,7 @@ async function runAnalystPath(story: StoryPayload, iso2: string | null): Promise
       // causing duplicate openrouter billings (see todo 245).
     });
     if (!result) return null;
+    if (rejectLengthLimitedCompletion('analyst', result.finishReason)) return null;
     // v2 parser accepts multi-sentence output + rejects preamble /
     // leaked section labels and private forecast percentages. Keep public
     // story grounding separate so sourced figures remain publishable.
@@ -310,6 +318,7 @@ async function runGeminiPath(story: StoryPayload): Promise<string | null> {
       // configured in prod. See todo 245.
     });
     if (!result) return null;
+    if (rejectLengthLimitedCompletion('gemini', result.finishReason)) return null;
     return parseWhyMatters(result.content);
   } catch (err) {
     console.warn(`[brief-why-matters] gemini path failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -330,6 +339,7 @@ function isEnvelope(v: unknown): v is WhyMattersEnvelope {
   const e = v as Record<string, unknown>;
   return (
     typeof e.whyMatters === 'string' &&
+    hasTerminalPunctuation(e.whyMatters) &&
     (e.producedBy === 'analyst' || e.producedBy === 'gemini') &&
     typeof e.at === 'string'
   );
@@ -408,6 +418,12 @@ export default async function handler(req: Request, ctx?: EdgeContext): Promise<
 
   // Cache identity.
   const hash = await hashBriefStory(story);
+  // v10 (2026-07-10): responses now preserve the provider finish reason and
+  // reject `length` completions before parsing. v9 rows were written without
+  // that authoritative signal and may contain abbreviation-ending clips that
+  // look sentence-complete to punctuation heuristics, so they must not survive
+  // the deploy.
+  //
   // v9 (2026-07-10): bumped from v8 alongside the analyst output-policy
   // rollout. v8 rows may use the retired formulaic voice, the longer
   // 40–70-word / 2–3-sentence length, or expose raw forecast probabilities,
@@ -431,7 +447,7 @@ export default async function handler(req: Request, ctx?: EdgeContext): Promise<
   //
   // v6 history (kept for reference): category-gated context + prompt-level
   // RELEVANCE RULE (2026-04-22) — those changes remain in v8.
-  const cacheKey = `brief:llm:whymatters:v9:${hash}`;
+  const cacheKey = `brief:llm:whymatters:v10:${hash}`;
   // Shadow v6→v7 for the same reason: a pre-policy v6 record would mix
   // retired and current analyst outputs in the seven-day evaluation cohort.
   const shadowKey = `brief:llm:whymatters:shadow:v7:${hash}`;

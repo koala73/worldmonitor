@@ -230,6 +230,8 @@ export interface LlmCallResult {
   model: string;
   provider: string;
   tokens: number;
+  /** Provider-reported completion status; null when the provider omits it. */
+  finishReason: string | null;
 }
 
 function resolveProviderChain(opts: {
@@ -582,7 +584,7 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
         }
 
         const data = (await resp.json()) as {
-          choices?: Array<{ message?: { content?: string } }>;
+          choices?: Array<{ message?: { content?: string }; finish_reason?: string | null }>;
           usage?: { total_tokens?: number; prompt_tokens?: number; completion_tokens?: number };
         };
         const tokensExtra = {
@@ -599,6 +601,9 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
         }
 
         const tokens = data.usage?.total_tokens ?? 0;
+        const finishReason = typeof data.choices?.[0]?.finish_reason === 'string'
+          ? data.choices[0].finish_reason
+          : null;
 
         if (shouldStrip) {
           content = stripThinkingTags(content);
@@ -620,7 +625,7 @@ export async function callLlm(opts: LlmCallOptions): Promise<LlmCallResult | nul
         }
 
         record(true, tokensExtra);
-        return { content, model: creds.model, provider: providerName, tokens };
+        return { content, model: creds.model, provider: providerName, tokens, finishReason };
       } catch (err) {
         const name = (err as Error).name;
         console.warn(`[llm:${providerName}] ${(err as Error).message}`);

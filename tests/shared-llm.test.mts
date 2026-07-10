@@ -111,11 +111,38 @@ describe('callLlm', () => {
     assert.ok(result);
     assert.equal(result.provider, 'openrouter');
     assert.equal(result.model, 'deepseek/deepseek-v4-flash');
+    assert.equal(result.finishReason, null, 'providers that omit finish_reason normalize to null');
     assert.deepEqual(postUrls.filter(url => url.includes('/chat/completions')), [
       'https://openrouter.ai/api/v1/chat/completions',
     ]);
     // Utility calls must not pay reasoning tokens on hybrid-reasoning models.
     assert.deepEqual(postBodies[0]?.reasoning, { enabled: false });
+  });
+
+  it('preserves the provider finish reason on non-streaming completions', async () => {
+    process.env.OPENROUTER_API_KEY = 'or-test-key';
+    delete process.env.GROQ_API_KEY;
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if ((init?.method || 'GET') === 'GET') return new Response('', { status: 200 });
+      return new Response(JSON.stringify({
+        choices: [{
+          message: { content: 'The response reached its configured token limit.' },
+          finish_reason: 'length',
+        }],
+        usage: { total_tokens: 12 },
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    const result = await callLlm({
+      messages: [{ role: 'user', content: 'Return a bounded response.' }],
+    });
+
+    assert.ok(result);
+    assert.equal(result.finishReason, 'length');
   });
 
   it('omits the reasoning-off body when the reasoning profile opts in', async () => {

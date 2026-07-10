@@ -31,6 +31,8 @@ export function buildWhyMattersUserPrompt(
 
 export function parseWhyMatters(text: unknown): string | null;
 
+export function hasTerminalPunctuation(text: unknown): boolean;
+
 export function hashBriefStory(story: BriefStoryHashInput): Promise<string>;
 
 // ── v2 (analyst path only) ────────────────────────────────────────────────
