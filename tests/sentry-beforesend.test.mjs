@@ -37,9 +37,23 @@ const fnBody = mainSrc.slice(bsStart + 'beforeSend(event) '.length, bsEnd)
 const tpMatch = mainSrc.match(/const THIRD_PARTY_FETCH_HOST_ALLOWLIST = new Set\(\[[^\]]*\]\);/);
 assert.ok(tpMatch, 'THIRD_PARTY_FETCH_HOST_ALLOWLIST must be defined in src/bootstrap/sentry-init.ts');
 
+// beforeSend's DebugBear gate references DEBUGBEAR_RUM_COLLECTOR_FRAME, which
+// sentry-init.ts derives at module scope from DEBUGBEAR_RUM_SCRIPT_SRC (the source
+// of truth in debugbear-rum.ts). Rebuild the identical matcher here from that same
+// constant — reading it from debugbear-rum.ts rather than hardcoding the script id
+// — so the eval'd beforeSend has it and the test tracks a script-id rotation too.
+const debugbearSrc = readFileSync(resolve(__dirname, '../src/bootstrap/debugbear-rum.ts'), 'utf-8');
+const dbUrlMatch = debugbearSrc.match(/DEBUGBEAR_RUM_SCRIPT_SRC\s*=\s*['"]([^'"]+)['"]/);
+assert.ok(dbUrlMatch, 'DEBUGBEAR_RUM_SCRIPT_SRC must be defined in src/bootstrap/debugbear-rum.ts');
+const dbBasename = dbUrlMatch[1].split('/').pop();
+const dbCollectorFrame = dbBasename
+  ? new RegExp(`(?:^|/)${dbBasename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$|debugbear`, 'i')
+  : /debugbear/i;
+const dbFrameInject = `const DEBUGBEAR_RUM_COLLECTOR_FRAME = ${dbCollectorFrame.toString()};`;
+
 // Build a callable version. Input: a Sentry-shaped event object. Returns event or null.
 // eslint-disable-next-line no-new-func
-const beforeSend = new Function('event', `${tpMatch[0]}\n${fnBody}`);
+const beforeSend = new Function('event', `${tpMatch[0]}\n${dbFrameInject}\n${fnBody}`);
 
 // Extract the `ignoreErrors` array literal so tests can assert which messages
 // Sentry's built-in (pre-beforeSend) filter drops. The array body contains
