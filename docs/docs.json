@@ -229,10 +229,18 @@
             ]
           },
           {
+            "group": "Company",
+            "pages": [
+              "about"
+            ]
+          },
+          {
             "group": "Legal",
             "pages": [
               "license",
-              "trademark-policy"
+              "trademark-policy",
+              "privacy",
+              "terms"
             ]
           }
         ]

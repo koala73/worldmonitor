@@ -11,7 +11,13 @@
     { "source": "/reference", "destination": "/reference/changelog/", "permanent": false },
     { "source": "/contact", "destination": "/docs/support", "permanent": false },
     { "source": "/support", "destination": "/docs/support", "permanent": false },
-    { "source": "/help", "destination": "/docs/support", "permanent": false }
+    { "source": "/help", "destination": "/docs/support", "permanent": false },
+    { "source": "/about", "destination": "/docs/about", "permanent": false },
+    { "source": "/privacy", "destination": "/docs/privacy", "permanent": false },
+    { "source": "/privacy-policy", "destination": "/docs/privacy", "permanent": false },
+    { "source": "/terms", "destination": "/docs/terms", "permanent": false },
+    { "source": "/terms-of-service", "destination": "/docs/terms", "permanent": false },
+    { "source": "/tos", "destination": "/docs/terms", "permanent": false }
   ],
   "rewrites": [
     { "source": "/docs/:match*", "destination": "https://worldmonitor.mintlify.dev/docs/:match*" },
