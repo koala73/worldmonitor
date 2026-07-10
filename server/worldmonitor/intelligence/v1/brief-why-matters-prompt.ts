@@ -107,14 +107,6 @@ const CATEGORY_SECTION_POLICY: Array<{ match: RegExp; sections: SectionKey[]; la
     match: /\b(energy|commodit|market|financ|trade|oil|gas|fuel)/i,
     sections: ['worldBrief', 'countryBrief', 'forecasts', 'macroSignals', 'marketData'],
   },
-  // Humanitarian / civil / social / rights — NO market, NO forecasts.
-  // This is the #1 source of the "77% FX stress dragged into a Rwanda
-  // story" pattern from the 2026-04-22 shadow review.
-  {
-    label: 'humanitarian',
-    match: /\b(humanitarian|refuge|civil|social|rights|genocid|aid\b|migrat)/i,
-    sections: ['worldBrief', 'countryBrief', 'riskScores'],
-  },
   // Justice, history, and human-interest stories are usually local to the
   // reported event. Do not feed them the global narrative or forecasts: a
   // country-specific fact can still help, but a live conflict storyline
@@ -123,6 +115,16 @@ const CATEGORY_SECTION_POLICY: Array<{ match: RegExp; sections: SectionKey[]; la
     label: 'local',
     match: /\b(justice|court|legal|law\b|crime|criminal|history|historical|heritage|culture|human.?interest|obituar|celebrity|entertainment)/i,
     sections: ['countryBrief', 'riskScores'],
+  },
+  // Humanitarian / civil / social / rights — NO market, NO forecasts.
+  // This is the #1 source of the "77% FX stress dragged into a Rwanda
+  // story" pattern from the 2026-04-22 shadow review. Keep this after the
+  // local rule so a combined label such as "Civil Rights Court Ruling"
+  // receives the narrower court-story context.
+  {
+    label: 'humanitarian',
+    match: /\b(humanitarian|refuge|civil|social|rights|genocid|aid\b|migrat)/i,
+    sections: ['worldBrief', 'countryBrief', 'riskScores'],
   },
   // Geopolitical risk / conflict / military / security — risk + forecasts
   // but not market data (the LLM would otherwise tack on a VIX reading to

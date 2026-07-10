@@ -162,25 +162,23 @@ export async function hashBriefStory(story) {
 // risk repricing") with no named actors, metrics, or dates. Root cause:
 // the 18–30 word cap compressed the context's specifics out of the LLM's
 // response. v2 loosens to 40–70 words across 2–3 sentences and REQUIRES
-// the LLM to ground at least one specific reference from the live context.
+// the LLM to ground at least one specific reference from the story or
+// materially relevant live context.
 
 /**
  * System prompt for the analyst-path v2 (2–3 sentences, ~40–70 words,
- * grounded in a specific named actor / metric / date / place drawn
- * from the live context). Shape nudged toward the WMAnalyst chat voice
- * (SITUATION → ANALYSIS → optional WATCH) but rendered as plain prose,
- * no section labels in the output.
+ * grounded in a specific named actor / metric / date / place. It uses
+ * varied plain prose rather than a fixed analytic sequence, with no
+ * section labels in the output.
  */
 export const WHY_MATTERS_ANALYST_SYSTEM_V2 =
   'You are the lead analyst at WorldMonitor Brief, a geopolitical intelligence magazine. ' +
-  'Using the Live WorldMonitor Context AND the story, write 2–3 sentences (40–70 words total) ' +
+  'Using the story as the primary source and the optional Live WorldMonitor Context only when it is materially connected, write 2–3 sentences (40–70 words total) ' +
   'on why the story matters.\n\n' +
-  'STRUCTURE:\n' +
-  '1. SITUATION — what is happening right now, grounded in a SPECIFIC named actor, ' +
-  'metric, date, or place relevant to this story.\n' +
-  '2. ANALYSIS — the structural consequence (why this forces a repricing, shifts ' +
-  'the balance, triggers a cascade).\n' +
-  '3. (Optional) WATCH — the threshold or indicator to track, if clear from the context.\n\n' +
+  'VOICE:\n' +
+  '- Vary sentence structure and emphasis across stories; choose the natural angle for this story rather than following a fixed sequence.\n' +
+  '- Do not default to a second sentence beginning "This…" or a "Watch for…" closing construction.\n' +
+  '- Ground the prose in a SPECIFIC named actor, metric, date, or place relevant to this story.\n\n' +
   'HARD CONSTRAINTS:\n' +
   '- Total length 40–70 words across 2–3 sentences.\n' +
   '- MUST reference at least ONE specific: named person / country / organization / ' +
@@ -190,11 +188,12 @@ export const WHY_MATTERS_ANALYST_SYSTEM_V2 =
   '- Editorial, impersonal, serious. No calls to action, no questions, no quotes.\n\n' +
   'RELEVANCE RULE (critical, read carefully):\n' +
   '- The context block may contain facts from world-brief, country-brief, risk scores, ' +
-  'forecasts, macro signals, and market data. These are BACKGROUND — only cite what is ' +
-  "directly relevant to this story's category and country.\n" +
+  'forecasts, macro signals, and market data. These are optional BACKGROUND, not a ' +
+  "mandatory narrative — most stories should not mention the global context. Only cite what is directly relevant to this story's category and country.\n" +
   '- If NO context fact clearly fits, ground instead in a named actor, place, date, ' +
   'or figure drawn from the headline or description. That is a VALID grounding — do ' +
   'NOT invent a market reading, VIX value, or forecast probability to satisfy the rule.\n' +
+  '- Treat internal forecast figures as private reasoning input. Do not quote raw forecast probabilities or present a WorldMonitor forecast as a user-facing fact.\n' +
   '- NEVER drag an off-topic market metric, FX reading, or probability into a ' +
   'humanitarian, aviation, diplomacy, or cyber story. A story about a refugee flow ' +
   'does not need a VIX number; a story about a drone incursion does not need an FX ' +
@@ -228,6 +227,16 @@ export function parseWhyMattersV2(text) {
   // Reject markdown / section-label leakage (we told it to use plain prose).
   if (/^(#|-|\*|\d+\.\s)/.test(s)) return null;
   if (/^(situation|analysis|watch)\s*[:\-–—]/i.test(s)) return null;
+  // The prompt makes forecast figures private reasoning input, but models can
+  // still disobey. Reject only percentages framed as forecasts/probabilities;
+  // ordinary sourced figures such as "20% of seaborne oil" remain valid.
+  const percentage = '\\b\\d{1,3}\\s?(?:%|percent\\b)';
+  const forecastTerm = '\\b(?:forecast|predict(?:ion|s|ed)?|probability|likelihood|chance|odds|likely)\\b';
+  const forecastPercentage = new RegExp(
+    `${forecastTerm}.{0,32}${percentage}|${percentage}.{0,32}${forecastTerm}`,
+    'i',
+  );
+  if (forecastPercentage.test(s)) return null;
   return s;
 }
 
@@ -972,4 +981,3 @@ export function verifyCitationIndexes(text, sourceCount) {
   });
   return { text: cleaned, stripped };
 }
-

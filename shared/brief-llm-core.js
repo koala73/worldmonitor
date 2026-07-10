@@ -55,7 +55,6 @@ export function briefDateLine(todayIso) {
   );
 }
 
-
 /**
  * @param {{
  *   headline: string;
@@ -163,14 +162,14 @@ export async function hashBriefStory(story) {
 // risk repricing") with no named actors, metrics, or dates. Root cause:
 // the 18–30 word cap compressed the context's specifics out of the LLM's
 // response. v2 loosens to 40–70 words across 2–3 sentences and REQUIRES
-// the LLM to ground at least one specific reference from the live context.
+// the LLM to ground at least one specific reference from the story or
+// materially relevant live context.
 
 /**
  * System prompt for the analyst-path v2 (2–3 sentences, ~40–70 words,
- * grounded in a specific named actor / metric / date / place drawn
- * from the live context). Shape nudged toward the WMAnalyst chat voice
- * (SITUATION → ANALYSIS → optional WATCH) but rendered as plain prose,
- * no section labels in the output.
+ * grounded in a specific named actor / metric / date / place. It uses
+ * varied plain prose rather than a fixed analytic sequence, with no
+ * section labels in the output.
  */
 export const WHY_MATTERS_ANALYST_SYSTEM_V2 =
   'You are the lead analyst at WorldMonitor Brief, a geopolitical intelligence magazine. ' +
@@ -228,6 +227,16 @@ export function parseWhyMattersV2(text) {
   // Reject markdown / section-label leakage (we told it to use plain prose).
   if (/^(#|-|\*|\d+\.\s)/.test(s)) return null;
   if (/^(situation|analysis|watch)\s*[:\-–—]/i.test(s)) return null;
+  // The prompt makes forecast figures private reasoning input, but models can
+  // still disobey. Reject only percentages framed as forecasts/probabilities;
+  // ordinary sourced figures such as "20% of seaborne oil" remain valid.
+  const percentage = '\\b\\d{1,3}\\s?(?:%|percent\\b)';
+  const forecastTerm = '\\b(?:forecast|predict(?:ion|s|ed)?|probability|likelihood|chance|odds|likely)\\b';
+  const forecastPercentage = new RegExp(
+    `${forecastTerm}.{0,32}${percentage}|${percentage}.{0,32}${forecastTerm}`,
+    'i',
+  );
+  if (forecastPercentage.test(s)) return null;
   return s;
 }
 

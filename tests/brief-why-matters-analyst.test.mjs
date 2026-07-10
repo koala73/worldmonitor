@@ -192,6 +192,18 @@ describe('parseWhyMattersV2 — analyst output validator', () => {
     }
   });
 
+  it('rejects raw forecast-probability disclosures but preserves ordinary sourced percentages', () => {
+    const forecastLeak =
+      "WorldMonitor's internal forecast assigns an 84% probability to a Strait of Hormuz disruption, which would intensify regional shipping risk. " +
+      'That projection is not a reader-facing fact and must fall through to the next generation layer.';
+    const likelyLeak =
+      'A disruption is 84% likely according to the forecast, creating an immediate risk of higher insurance costs across Gulf shipping routes. ' +
+      'The analyst should not present that internal probability as a published fact.';
+    assert.equal(parseWhyMattersV2(forecastLeak), null);
+    assert.equal(parseWhyMattersV2(likelyLeak), null);
+    assert.equal(parseWhyMattersV2(VALID_MULTI), VALID_MULTI, 'ordinary story percentages must remain valid');
+  });
+
   it('rejects markdown leakage (bullets, headers, numbered lists)', () => {
     for (const md of [
       '# The closure of the Strait of Hormuz is the single most material geopolitical event of the quarter for sovereign credit.',
@@ -804,7 +816,7 @@ describe('sectionsForCategory — structural relevance gating', () => {
   });
 
   it('buildAnalystWhyMattersPrompt — justice/history/human-interest stories do not receive global narrative or forecasts', () => {
-    for (const category of ['Justice', 'Historical Commemoration', 'Human Interest']) {
+    for (const category of ['Justice', 'Historical Commemoration', 'Human Interest', 'Civil Rights Court Ruling']) {
       const { user, policyLabel } = builder(
         {
           headline: 'Court releases reparations funds to a civil-rights plaintiff',
