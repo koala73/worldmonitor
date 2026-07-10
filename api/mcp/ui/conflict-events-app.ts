@@ -48,7 +48,8 @@ const RENDER = `
     q("card").style.display = "block";
 
     var uc = d["ucdp-events"] && typeof d["ucdp-events"] === "object" ? d["ucdp-events"] : null;
-    var evs = uc && Array.isArray(uc.events) ? uc.events : [];
+    var eventState = listState(uc && uc.events);
+    var evs = eventState.items;
     var vtMap = {
       UCDP_VIOLENCE_TYPE_STATE_BASED: "State-based",
       UCDP_VIOLENCE_TYPE_NON_STATE: "Non-state",
@@ -84,7 +85,11 @@ const RENDER = `
       }
       host.appendChild(row);
     }
-    if (!host.childNodes.length) host.appendChild(el("div", "empty", "No conflict events available."));
+    if (!host.childNodes.length) {
+      host.appendChild(el("div", "empty", eventState.available
+        ? "No conflict events available."
+        : "Conflict event data is temporarily unavailable."));
+    }
 
     q("foot").textContent = data.cached_at
       ? "Snapshot: " + collapseWs(data.cached_at) + (data.stale ? " (stale)" : "")

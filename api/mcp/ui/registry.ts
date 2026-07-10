@@ -121,7 +121,7 @@ export const UI_RESOURCE_REGISTRY: UiResourceDef[] = [
     uri: NEWS_INTELLIGENCE_UI_URI,
     name: 'News Intelligence (interactive)',
     description:
-      'Interactive in-conversation app shell for get_news_intelligence: renders AI-classified top stories (title, category, alert flag, country, summary) from WorldMonitor\'s intelligence layer. Linked from the get_news_intelligence tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
+      'Interactive in-conversation app shell for get_news_intelligence: renders AI-classified top stories (title, category, alert flag, country, source) from WorldMonitor\'s intelligence layer. Linked from the get_news_intelligence tool via _meta.ui.resourceUri; an MCP-Apps host renders it inline and streams the tool result in via postMessage. Static, data-free template — public and quota-exempt.',
     mimeType: UI_RESOURCE_MIME_TYPE,
     _meta: buildUiMeta(),
     html: NEWS_INTELLIGENCE_APP_HTML,

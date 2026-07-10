@@ -23,6 +23,7 @@ import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
+import vm from 'node:vm';
 
 import {
   BASE_URL,
@@ -62,6 +63,118 @@ function anonReq(body, headers = {}) {
 // resources/read JSON-RPC body factory.
 function readBody(uri, id = 100) {
   return { jsonrpc: '2.0', id, method: 'resources/read', params: { uri } };
+}
+
+// Execute a served MCP App shell without pulling a browser-DOM dependency into
+// the Edge/API test surface. The widgets only need a deliberately small DOM:
+// id lookup, textContent, appendChild, style, theme attributes, and height
+// reporting. Keeping innerHTML as a throwing setter turns the harness into an
+// executable injection guard rather than another source-regex assertion.
+function mountWidgetHtml(html) {
+  class TestElement {
+    constructor(tagName, id = '') {
+      this.tagName = String(tagName).toUpperCase();
+      this.id = id;
+      this.className = '';
+      this.childNodes = [];
+      this.style = {};
+      this.attributes = {};
+      this._text = '';
+    }
+    appendChild(child) {
+      this.childNodes.push(child);
+      return child;
+    }
+    set textContent(value) {
+      this._text = value == null ? '' : String(value);
+      this.childNodes = [];
+    }
+    get textContent() {
+      return this._text + this.childNodes.map((child) => child.textContent).join('');
+    }
+    set innerHTML(_value) {
+      throw new Error('widget renderers must not write innerHTML');
+    }
+    setAttribute(name, value) {
+      this.attributes[name] = String(value);
+    }
+    getBoundingClientRect() {
+      return { height: 240 };
+    }
+  }
+
+  const byId = new Map();
+  for (const match of html.matchAll(/<([a-z][a-z0-9-]*)\b[^>]*\bid="([^"]+)"[^>]*>/gi)) {
+    byId.set(match[2], new TestElement(match[1], match[2]));
+  }
+  const created = [];
+  const documentElement = new TestElement('html');
+  const document = {
+    documentElement,
+    getElementById: (id) => byId.get(id) ?? null,
+    createElement: (tag) => {
+      const node = new TestElement(tag);
+      created.push(node);
+      return node;
+    },
+  };
+  const listeners = new Map();
+  const posted = [];
+  const parent = { postMessage: (message) => posted.push(message) };
+  const window = {
+    parent,
+    addEventListener: (type, listener) => listeners.set(type, listener),
+    matchMedia: () => ({ matches: false }),
+  };
+  const context = {
+    window,
+    document,
+    URL,
+    Intl,
+    Date,
+    Math,
+    Number,
+    String,
+    Object,
+    Array,
+    JSON,
+    isFinite,
+    isNaN,
+    getComputedStyle: () => ({ getPropertyValue: () => '' }),
+  };
+  const script = html.match(/<script>([\s\S]*)<\/script>/i)?.[1];
+  assert.ok(script, 'served widget HTML must contain an executable script');
+  vm.runInNewContext(script, context, { timeout: 1_000 });
+  assert.equal(typeof listeners.get('message'), 'function', 'widget must register its host message listener');
+
+  return {
+    posted,
+    sendToolResult(structuredContent) {
+      listeners.get('message')({
+        source: parent,
+        data: {
+          jsonrpc: '2.0',
+          method: 'ui/notifications/tool-result',
+          params: { result: { structuredContent } },
+        },
+      });
+    },
+    text(id) {
+      return byId.get(id)?.textContent ?? '';
+    },
+    nodes(id) {
+      const root = byId.get(id);
+      const result = [];
+      const visit = (node) => {
+        if (!node) return;
+        result.push(node);
+        node.childNodes.forEach(visit);
+      };
+      visit(root);
+      return result;
+    },
+    created,
+  };
 }
 
 // Mock fetch covering every read path the four resources can touch:
@@ -491,6 +604,216 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       // blank/empty-success dashboard renders before the error is caught.
       assert.match(html, /softError\(data\)[\s\S]*renderData\(data\)/,
         `${uri}: safeRender must check softError(data) before calling renderData(data)`);
+    }
+  });
+
+  // -------------------------------------------------------------------------
+  // Execute the five expansion widgets against real host tool-result messages.
+  // Static shell checks cannot catch field-name drift or the dispatcher's
+  // `summary:true` array shape ({ count, sample }), because both failures still
+  // leave perfectly valid-looking HTML and bridge source behind.
+  // -------------------------------------------------------------------------
+  it('EXPANSION WIDGETS: execute authoritative payloads and summary samples for all five renderers', async () => {
+    const cases = [
+      {
+        uri: 'ui://worldmonitor/news-intelligence.html',
+        hostId: 'list',
+        raw: { data: { insights: { topStories: [{
+          primaryTitle: 'Port disruption expands', primarySource: 'WorldMonitor Wire',
+          category: 'security', threatLevel: 'high', isAlert: true, countryCode: 'DE',
+        }] } } },
+        summary: { data: { insights: { topStories: { count: 1, sample: [{
+          primaryTitle: 'Summary news headline', primarySource: 'Summary Wire', category: 'politics',
+        }] } } } },
+        rawTokens: [/Port disruption expands/, /WorldMonitor Wire/, /Alert/, /Germany/],
+        summaryTokens: [/Summary news headline/, /Summary Wire/],
+      },
+      {
+        uri: 'ui://worldmonitor/conflict-events.html',
+        hostId: 'list',
+        raw: { data: { 'ucdp-events': { events: [{
+          sideA: 'Government forces', sideB: 'Armed group', country: 'Sudan',
+          violenceType: 'UCDP_VIOLENCE_TYPE_STATE_BASED', dateStart: '2026-07-01', deathsBest: 12,
+        }] } } },
+        summary: { data: { 'ucdp-events': { events: { count: 1, sample: [{
+          sideA: 'Summary side A', sideB: 'Summary side B', country: 'Lebanon', deathsBest: 3,
+        }] } } } },
+        rawTokens: [/Government forces vs Armed group/, /Sudan/, /State-based/, /12 deaths/],
+        summaryTokens: [/Summary side A vs Summary side B/, /Lebanon/, /3 deaths/],
+      },
+      {
+        uri: 'ui://worldmonitor/natural-disasters.html',
+        hostId: 'groups',
+        raw: { data: {
+          earthquakes: { earthquakes: [{ magnitude: 5.4, place: 'Aegean Sea', occurredAt: '2026-07-02T00:00:00Z' }] },
+          fires: { fireDetections: [{
+            confidence: 'FIRE_CONFIDENCE_HIGH', region: 'Attica', brightness: 337,
+            location: { latitude: 37.98, longitude: 23.72 },
+          }] },
+        } },
+        summary: { data: {
+          earthquakes: { earthquakes: { count: 1, sample: [{ magnitude: 4.8, place: 'Summary quake', occurredAt: 1_784_000_000_000 }] } },
+          fires: { fireDetections: { count: 1, sample: [{
+            confidence: 'FIRE_CONFIDENCE_NOMINAL', region: 'Summary fire', brightness: 301,
+            location: { latitude: 1, longitude: 2 },
+          }] } },
+        } },
+        rawTokens: [/Earthquakes/, /M5\.4/, /Aegean Sea/, /Active Wildfires \(1\)/, /High/, /Attica/, /brightness 337/],
+        summaryTokens: [/M4\.8/, /Summary quake/, /Nominal/, /Summary fire/, /brightness 301/],
+      },
+      {
+        uri: 'ui://worldmonitor/prediction-markets.html',
+        hostId: 'groups',
+        raw: { data: { 'markets-bootstrap': {
+          geopolitical: [{ title: 'Ceasefire by September?', yesPrice: 73, source: 'Polymarket' }],
+          tech: [], finance: [],
+        } } },
+        summary: { data: { 'markets-bootstrap': {
+          geopolitical: { count: 1, sample: [{ title: 'Summary market?', yesPrice: 61, source: 'Kalshi' }] },
+          tech: { count: 0, sample: [] }, finance: { count: 0, sample: [] },
+        } } },
+        rawTokens: [/Ceasefire by September\?/, /73%/, /Polymarket/],
+        summaryTokens: [/Summary market\?/, /61%/, /Kalshi/],
+      },
+      {
+        uri: 'ui://worldmonitor/forecasts.html',
+        hostId: 'list',
+        raw: { data: { predictions: { predictions: [{
+          title: 'Oil remains above $70', probability: 0.42, domain: 'energy', region: 'Global',
+        }] } } },
+        summary: { data: { predictions: { predictions: { count: 1, sample: [{
+          title: 'Summary forecast', probability: 67, domain: 'economy', region: 'MENA',
+        }] } } } },
+        rawTokens: [/Oil remains above \$70/, /42%/, /energy/, /Global/],
+        summaryTokens: [/Summary forecast/, /67%/, /economy/, /MENA/],
+      },
+    ];
+
+    for (const entry of cases) {
+      const res = await handler(envKeyReq(readBody(entry.uri)));
+      const html = (await res.json()).result.contents[0].text;
+      const rawView = mountWidgetHtml(html);
+      rawView.sendToolResult(entry.raw);
+      const rawText = rawView.text(entry.hostId);
+      for (const token of entry.rawTokens) assert.match(rawText, token, `${entry.uri}: authoritative payload token ${token}`);
+
+      const summaryView = mountWidgetHtml(html);
+      summaryView.sendToolResult(entry.summary);
+      const summaryText = summaryView.text(entry.hostId);
+      for (const token of entry.summaryTokens) assert.match(summaryText, token, `${entry.uri}: summary sample token ${token}`);
+    }
+  });
+
+  it('EXPANSION WIDGETS: probability nulls remain unknown and visual ranges clamp safely', async () => {
+    const payloads = [
+      {
+        uri: 'ui://worldmonitor/prediction-markets.html', hostId: 'groups',
+        payload: { data: { 'markets-bootstrap': { geopolitical: [
+          { title: 'Unknown market', yesPrice: null },
+          { title: 'Low outlier', yesPrice: -5 },
+          { title: 'High outlier', yesPrice: 130 },
+        ] } } },
+      },
+      {
+        uri: 'ui://worldmonitor/forecasts.html', hostId: 'list',
+        payload: { data: { predictions: { predictions: [
+          { title: 'Unknown forecast', probability: null },
+          { title: 'Fraction forecast', probability: 0.25 },
+          { title: 'High forecast', probability: 140 },
+        ] } } },
+      },
+    ];
+    for (const entry of payloads) {
+      const res = await handler(envKeyReq(readBody(entry.uri)));
+      const view = mountWidgetHtml((await res.json()).result.contents[0].text);
+      view.sendToolResult(entry.payload);
+      const text = view.text(entry.hostId);
+      assert.match(text, /Unknown (market|forecast)—/, `${entry.uri}: null probability must render as unknown`);
+      assert.doesNotMatch(text, /Unknown (market|forecast)0%/, `${entry.uri}: null must not coerce to a definite zero`);
+      const widths = view.nodes(entry.hostId)
+        .filter((node) => node.tagName === 'SPAN' && typeof node.style.width === 'string')
+        .map((node) => node.style.width);
+      assert.ok(widths.includes('100%'), `${entry.uri}: probability bars must clamp values above 100`);
+      if (entry.uri.includes('prediction-markets')) assert.ok(widths.includes('0%'), `${entry.uri}: probability bars must clamp negative values to zero`);
+      else assert.ok(widths.includes('25%'), `${entry.uri}: fractional forecast probability must scale to 0-100`);
+    }
+  });
+
+  it('EXPANSION WIDGETS: hostile tool text stays literal textContent in all five renderers', async () => {
+    const hostile = '<img src=x onerror="globalThis.pwned=true">';
+    const cases = [
+      {
+        uri: 'ui://worldmonitor/news-intelligence.html', hostId: 'list',
+        payload: { data: { insights: { topStories: [{ primaryTitle: hostile, primarySource: hostile }] } } },
+      },
+      {
+        uri: 'ui://worldmonitor/conflict-events.html', hostId: 'list',
+        payload: { data: { 'ucdp-events': { events: [{ sideA: hostile, sideB: 'Other side' }] } } },
+      },
+      {
+        uri: 'ui://worldmonitor/natural-disasters.html', hostId: 'groups',
+        payload: { data: {
+          earthquakes: { earthquakes: [{ place: hostile, magnitude: 4, occurredAt: 0 }] },
+          fires: { fireDetections: [] },
+        } },
+      },
+      {
+        uri: 'ui://worldmonitor/prediction-markets.html', hostId: 'groups',
+        payload: { data: { 'markets-bootstrap': { geopolitical: [{ title: hostile, yesPrice: 50 }] } } },
+      },
+      {
+        uri: 'ui://worldmonitor/forecasts.html', hostId: 'list',
+        payload: { data: { predictions: { predictions: [{ title: hostile, probability: 0.5 }] } } },
+      },
+    ];
+
+    for (const entry of cases) {
+      const res = await handler(envKeyReq(readBody(entry.uri)));
+      const view = mountWidgetHtml((await res.json()).result.contents[0].text);
+      view.sendToolResult(entry.payload);
+      assert.match(view.text(entry.hostId), /<img src=x onerror="globalThis\.pwned=true">/,
+        `${entry.uri}: hostile markup must remain visible literal text`);
+      assert.equal(view.created.some((node) => node.tagName === 'IMG' || node.tagName === 'SCRIPT'), false,
+        `${entry.uri}: tool payload must not manufacture executable DOM nodes`);
+    }
+  });
+
+  it('MULTI-CACHE WIDGETS: missing labels show unavailable while present empty lists show genuine empty copy', async () => {
+    const cases = [
+      {
+        uri: 'ui://worldmonitor/news-intelligence.html', hostId: 'list',
+        missing: { data: { 'gdelt-intel': {} } },
+        empty: { data: { insights: { topStories: [] } } },
+        emptyCopy: /No news stories available\./,
+      },
+      {
+        uri: 'ui://worldmonitor/conflict-events.html', hostId: 'list',
+        missing: { data: { acled: {} } },
+        empty: { data: { 'ucdp-events': { events: [] } } },
+        emptyCopy: /No conflict events available\./,
+      },
+      {
+        uri: 'ui://worldmonitor/natural-disasters.html', hostId: 'groups',
+        missing: { data: { fires: { fireDetections: [] } } },
+        empty: { data: { earthquakes: { earthquakes: [] }, fires: { fireDetections: [] } } },
+        emptyCopy: /No natural-hazard events available\./,
+      },
+    ];
+
+    for (const entry of cases) {
+      const res = await handler(envKeyReq(readBody(entry.uri)));
+      const html = (await res.json()).result.contents[0].text;
+      const missingView = mountWidgetHtml(html);
+      missingView.sendToolResult(entry.missing);
+      const missingText = missingView.text(entry.hostId);
+      assert.match(missingText, /unavailable/i, `${entry.uri}: a missing cache label must be visibly unavailable`);
+      assert.doesNotMatch(missingText, entry.emptyCopy, `${entry.uri}: a cache miss must not masquerade as genuine empty data`);
+
+      const emptyView = mountWidgetHtml(html);
+      emptyView.sendToolResult(entry.empty);
+      const emptyText = emptyView.text(entry.hostId);
+      assert.match(emptyText, entry.emptyCopy, `${entry.uri}: a present empty list must retain genuine-empty copy`);
+      assert.doesNotMatch(emptyText, /unavailable/i, `${entry.uri}: genuine empty data must not be called unavailable`);
     }
   });
 

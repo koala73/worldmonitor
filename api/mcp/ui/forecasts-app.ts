@@ -48,7 +48,7 @@ const RENDER = `
     q("card").style.display = "block";
 
     var node = d.predictions && typeof d.predictions === "object" ? d.predictions : null;
-    var preds = node && Array.isArray(node.predictions) ? node.predictions : [];
+    var preds = listState(node && node.predictions).items;
     var host = q("list");
     host.textContent = "";
     for (var i = 0; i < preds.length && i < 12; i++) {

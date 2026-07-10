@@ -49,7 +49,8 @@ const RENDER = `
     q("card").style.display = "block";
 
     var ins = d.insights && typeof d.insights === "object" ? d.insights : null;
-    var stories = ins && Array.isArray(ins.topStories) ? ins.topStories : [];
+    var storyState = listState(ins && ins.topStories);
+    var stories = storyState.items;
     var host = q("list");
     host.textContent = "";
     for (var i = 0; i < stories.length && i < 12; i++) {
@@ -68,7 +69,11 @@ const RENDER = `
       if (src) row.appendChild(el("div", "story-src", src));
       host.appendChild(row);
     }
-    if (!host.childNodes.length) host.appendChild(el("div", "empty", "No news stories available."));
+    if (!host.childNodes.length) {
+      host.appendChild(el("div", "empty", storyState.available
+        ? "No news stories available."
+        : "News intelligence is temporarily unavailable."));
+    }
 
     q("foot").textContent = data.cached_at
       ? "Snapshot: " + collapseWs(data.cached_at) + (data.stale ? " (stale)" : "")

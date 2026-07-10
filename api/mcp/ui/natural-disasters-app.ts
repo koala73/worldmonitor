@@ -52,7 +52,8 @@ const RENDER = `
     host.textContent = "";
 
     var quakeNode = d.earthquakes && typeof d.earthquakes === "object" ? d.earthquakes : null;
-    var quakes = quakeNode && Array.isArray(quakeNode.earthquakes) ? quakeNode.earthquakes : [];
+    var quakeState = listState(quakeNode && quakeNode.earthquakes);
+    var quakes = quakeState.items;
     if (quakes.length) {
       var sec = el("div", "dgroup");
       sec.appendChild(el("div", "sec-label", "Earthquakes"));
@@ -72,10 +73,16 @@ const RENDER = `
         sec.appendChild(row);
       }
       host.appendChild(sec);
+    } else if (!quakeState.available) {
+      var quakeMissing = el("div", "dgroup");
+      quakeMissing.appendChild(el("div", "sec-label", "Earthquakes"));
+      quakeMissing.appendChild(el("div", "empty", "Earthquake data is temporarily unavailable."));
+      host.appendChild(quakeMissing);
     }
 
     var fireNode = d.fires && typeof d.fires === "object" ? d.fires : null;
-    var fires = fireNode && Array.isArray(fireNode.fireDetections) ? fireNode.fireDetections : [];
+    var fireState = listState(fireNode && fireNode.fireDetections);
+    var fires = fireState.items;
     if (fires.length) {
       var fsec = el("div", "dgroup");
       var fireShown = Math.min(fires.length, 6);
@@ -104,6 +111,11 @@ const RENDER = `
         fsec.appendChild(frow);
       }
       host.appendChild(fsec);
+    } else if (!fireState.available) {
+      var fireMissing = el("div", "dgroup");
+      fireMissing.appendChild(el("div", "sec-label", "Active Wildfires"));
+      fireMissing.appendChild(el("div", "empty", "Wildfire data is temporarily unavailable."));
+      host.appendChild(fireMissing);
     }
 
     if (!host.childNodes.length) host.appendChild(el("div", "empty", "No natural-hazard events available."));

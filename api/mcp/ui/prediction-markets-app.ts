@@ -59,7 +59,7 @@ const RENDER = `
     host.textContent = "";
     for (var g = 0; g < buckets.length; g++) {
       var cfg = buckets[g];
-      var list = mb && Array.isArray(mb[cfg.key]) ? mb[cfg.key] : null;
+      var list = listState(mb && mb[cfg.key]).items;
       if (!list || !list.length) continue;
       var sec = el("div", "mgroup");
       sec.appendChild(el("div", "sec-label", cfg.label));

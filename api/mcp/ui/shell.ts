@@ -118,7 +118,7 @@ const SHARED_STYLE_TOKENS = `
 `;
 
 // The shared bridge + helper library. Injected once per shell. It exposes a
-// small helper set (q/num/clampPct/pctText/setText/el/cssVar) in closure scope
+// small helper set (q/num/listState/clampPct/pctText/setText/el/cssVar) in closure scope
 // that a widget's `renderBody` uses, then calls the widget-defined
 // `renderData(data)` on every tool-result. NOTE: no `${` / backtick here.
 const SHARED_BRIDGE_HEAD = `
@@ -135,7 +135,22 @@ const SHARED_BRIDGE_HEAD = `
 
   // ---- shared render helpers (widget renderBody uses these) ----
   function q(id) { return document.getElementById(id); }
-  function num(v) { var n = typeof v === "number" ? v : Number(v); return isFinite(n) ? n : null; }
+  function num(v) {
+    if (v == null) return null;
+    var n = typeof v === "number" ? v : Number(v);
+    return isFinite(n) ? n : null;
+  }
+  // Normalise both full array fields and summary:true fields shaped as
+  // { count, sample }. The available flag remains false for absent/null/malformed
+  // fields so widgets can distinguish a partial cache miss from a real empty
+  // array (including { count: 0, sample: [] }).
+  function listState(v) {
+    if (Array.isArray(v)) return { available: true, items: v };
+    if (v && typeof v === "object" && Array.isArray(v.sample)) {
+      return { available: true, items: v.sample };
+    }
+    return { available: false, items: [] };
+  }
   function clampPct(n) { return Math.max(0, Math.min(100, n)); }
   function setText(id, text) { var e = q(id); if (e) e.textContent = text == null ? "—" : String(text); }
   function el(tag, cls, text) {
@@ -325,7 +340,7 @@ export interface AppShellSpec {
   // empty-state + card elements.
   body: string;
   // JS body of `function renderData(data) { ... }`. Runs inside the shared
-  // bridge closure with access to q/num/setText/el/cssVar/pctText/clampPct/
+  // bridge closure with access to q/num/listState/setText/el/cssVar/pctText/clampPct/
   // levelFor/collapseWs/paragraphs/httpUrl/countryName/probabilityBar. MUST
   // avoid backticks and `${`.
   renderBody: string;
