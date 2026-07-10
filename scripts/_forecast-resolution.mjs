@@ -192,6 +192,14 @@ export const CONFLICT_ESCALATION_RATIO = 1.5;
 // mis-resolve. Flip to true — and confirm the feed is actually seeded — to
 // re-enable hard-count resolution; the threshold logic below is preserved.
 export const CONFLICT_COUNT_FEED_AVAILABLE = false;
+
+// UNREST_COUNT_SOURCE_FEED (unrest:events-resolution:v1) has the identical
+// problem (#5091): seed-unrest-events only writes it from an ACLED resolution
+// fetch (seed-unrest-events.mjs), which is empty without ACLED credentials, so
+// unrest count specs are unresolvable. Same treatment as conflict — route to
+// judged until a populated event-count feed exists. Flip to true once the feed
+// is actually seeded; the threshold logic below is preserved.
+export const UNREST_COUNT_FEED_AVAILABLE = false;
 const YEAR_MS = 365 * 24 * 60 * 60 * 1000;
 
 // FAMILY_FEED / FAMILY_WINDOW map each hard family to its default sourceFeed
@@ -416,6 +424,11 @@ function deriveHardMetrics(pred, family, inputs, options = {}) {
       };
     }
     case 'unrest': {
+      // #5091: unrest:events-resolution:v1 is empty without ACLED credentials
+      // (same root cause as conflict, #5136) → route to judged. The
+      // `unrestCountFeedAvailable` override forces the hard path for the tests
+      // that lock the preserved threshold logic.
+      if (!(options.unrestCountFeedAvailable ?? UNREST_COUNT_FEED_AVAILABLE)) return null;
       const tally = firstFiniteSignalCount(pred, new Set(['unrest_events']));
       if (!Number.isFinite(tally)) return null;
       const horizonMs = HORIZON_MS[pred.timeHorizon];
@@ -533,11 +546,14 @@ function buildQuestion(pred) {
   const region = pred.region || 'unspecified region';
   const domain = pred.domain || 'unspecified domain';
   const horizon = pred.timeHorizon || 'unspecified horizon';
-  // Conflict forecasts are now judged (#5136). A sharper, escalation-framed
-  // question resolves more reliably against the news archive than the generic
-  // "resolve YES" phrasing.
+  // Conflict (#5136) and unrest/political (#5091) forecasts are now judged. A
+  // sharper, escalation-framed question resolves more reliably against the news
+  // archive than the generic "resolve YES" phrasing.
   if (domain === 'conflict') {
     return `Within the ${horizon} horizon, did ${region} experience a materially escalated level of armed conflict versus its recent baseline, consistent with "${title}"?`;
+  }
+  if (domain === 'political') {
+    return `Within the ${horizon} horizon, did ${region} experience a materially elevated level of civil unrest or political instability versus its recent baseline, consistent with "${title}"?`;
   }
   return `Will "${title}" (${domain}, ${region}) resolve YES within its ${horizon} horizon?`;
 }

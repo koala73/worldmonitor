@@ -145,9 +145,20 @@ describe('buildResolutionSpec — conflict is judged (#5136)', () => {
     assert.match(spec.question, /30d/);
   });
 
-  it('the reclassification is scoped — unrest (political domain) still emits a hard spec', () => {
+  it('unrest is also judged by default (#5091 — same empty-feed root cause as conflict)', () => {
     const spec = buildResolutionSpec(
       pred({ domain: 'political', region: 'Kenya', timeHorizon: '7d', signals: [{ type: 'unrest_events', value: '20 unrest events', weight: 0.5 }] }),
+      {},
+      GENERATED_AT,
+    );
+    assert.equal(spec.kind, 'judged');
+    assert.match(spec.question, /Kenya/);
+    assert.match(spec.question, /unrest|instability/i);
+  });
+
+  it('the reclassification is scoped — cyber (populated feed) still emits a hard spec', () => {
+    const spec = buildResolutionSpec(
+      pred({ domain: 'cyber', region: 'Estonia', timeHorizon: '7d', signals: [{ type: 'cyber', value: '10 threats (malware)', weight: 0.5 }] }),
       {},
       GENERATED_AT,
     );
@@ -262,7 +273,7 @@ describe('buildResolutionSpec — feed mapping per family', () => {
     assert.notEqual(spec.sourceFeed, 'conflict:acled:v1:all:0:0');
   });
 
-  it('a political unrest-events forecast resolves to the unrest count feed', () => {
+  it('a political unrest-events forecast resolves to the unrest count feed (when the feed is available)', () => {
     const forecast = pred({
       domain: 'political',
       region: 'Venezuela',
@@ -272,7 +283,8 @@ describe('buildResolutionSpec — feed mapping per family', () => {
         { type: 'unrest_events', value: '4 unrest events in Venezuela', weight: 0.3 },
       ],
     });
-    const spec = buildResolutionSpec(forecast, {}, GENERATED_AT);
+    // unrest is judged by default (#5091); force the hard path to assert the feed mapping.
+    const spec = buildResolutionSpec(forecast, {}, GENERATED_AT, { unrestCountFeedAvailable: true });
     assert.equal(spec.kind, 'hard');
     assert.equal(spec.sourceFeed, UNREST_COUNT_SOURCE_FEED);
     assert.equal(UNREST_COUNT_SOURCE_FEED, 'unrest:events-resolution:v1');
@@ -552,9 +564,9 @@ describe('R4 — sourceFeed membership over every hard fixture', () => {
     for (const forecast of fixtures) {
       // COMMODITY_INPUTS supplies the commodities feed the market fixture
       // needs; a harmless superset for the other families (they don't read it).
-      // conflict is judged by default (#5136) — force the hard path so the
-      // conflict fixture still exercises the sourceFeed-membership invariant.
-      const spec = buildResolutionSpec(forecast, COMMODITY_INPUTS, GENERATED_AT, { conflictCountFeedAvailable: true });
+      // conflict (#5136) and unrest (#5091) are judged by default — force both
+      // hard so their fixtures still exercise the sourceFeed-membership invariant.
+      const spec = buildResolutionSpec(forecast, COMMODITY_INPUTS, GENERATED_AT, { conflictCountFeedAvailable: true, unrestCountFeedAvailable: true });
       assert.equal(spec.kind, 'hard', `expected fixture ${forecast.id} to resolve hard`);
       assert.ok(
         RESOLUTION_FEED_KEYS.has(spec.sourceFeed),
