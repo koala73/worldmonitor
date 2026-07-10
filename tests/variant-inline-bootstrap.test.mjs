@@ -13,10 +13,7 @@ const csp = vercelConfig.headers
   ?.headers
   ?.find((header) => header.key === 'Content-Security-Policy')
   ?.value ?? '';
-const inlineScripts = [...indexHtml.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((match) => match[1]);
-const variantBootstrapScript = inlineScripts.find(
-  (script) => script.includes('worldmonitor-variant') && script.includes('document.documentElement.dataset.variant'),
-);
+const variantBootstrapScript = indexHtml.match(/<script data-wm-prepaint>([\s\S]*?)<\/script>/)?.[1];
 
 describe('variant inline bootstrap', () => {
   it('detects every public variant host before the app bundle loads', () => {
@@ -30,6 +27,10 @@ describe('variant inline bootstrap', () => {
 
   it('allows the inline variant bootstrap through the CSP', () => {
     assert.ok(variantBootstrapScript, 'index.html must include the inline variant bootstrap script');
+    assert.ok(
+      variantBootstrapScript.includes('worldmonitor-variant') && variantBootstrapScript.includes('document.documentElement.dataset.variant'),
+      'the marked pre-paint script must retain variant bootstrapping',
+    );
 
     const hash = createHash('sha256').update(variantBootstrapScript).digest('base64');
     assert.ok(

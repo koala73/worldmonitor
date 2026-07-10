@@ -24,6 +24,7 @@ const root = resolve(__dirname, '..');
 const html = readFileSync(join(root, 'index.html'), 'utf-8');
 const css = readFileSync(join(root, 'src', 'styles', 'main.css'), 'utf-8');
 const utils = readFileSync(join(root, 'src', 'utils', 'index.ts'), 'utf-8');
+const panelLayout = readFileSync(join(root, 'src', 'app', 'panel-layout.ts'), 'utf-8');
 
 /** Collapse whitespace and drop `!important` so declarations compare structurally. */
 const norm = (v) => v.replace(/!important/g, '').trim().replace(/\s+/g, ' ');
@@ -99,9 +100,18 @@ function mediaRuleAtBreakpoint(source, breakpoint, selectorRe, must) {
   return null;
 }
 
+function classMethodBody(source, signature) {
+  const start = source.indexOf(signature);
+  assert.notEqual(start, -1, `Expected ${signature} in panel-layout.ts`);
+  const openBrace = source.indexOf('{', start);
+  const closeBrace = matchingBraceIndex(source, openBrace);
+  assert.notEqual(closeBrace, -1, `Expected ${signature} to close`);
+  return source.slice(openBrace + 1, closeBrace);
+}
+
 function runPrepaintBootScript(mapCollapsed) {
-  const script = html.match(/<script>\(function\(\)\{try\{var h=location\.hostname;[\s\S]*?<\/script>/);
-  assert.ok(script, 'Expected the inline pre-paint boot script in index.html');
+  const script = html.match(/<script data-wm-prepaint>([\s\S]*?)<\/script>/);
+  assert.ok(script, 'Expected the explicitly marked inline pre-paint boot script in index.html');
 
   const classes = new Set();
   const storage = new Map([['mobile-map-collapsed', String(mapCollapsed)]]);
@@ -109,7 +119,7 @@ function runPrepaintBootScript(mapCollapsed) {
   window.self = window;
   window.top = window;
 
-  runInNewContext(script[0].slice('<script>'.length, -'</script>'.length), {
+  runInNewContext(script[1], {
     document: {
       documentElement: {
         dataset: {},
@@ -206,6 +216,13 @@ describe('#4580 boot skeleton <-> app footprint parity', () => {
     assert.ok(
       !runPrepaintBootScript(false).has('wm-map-collapsed'),
       'the inline pre-paint script must leave the expanded-map cohort unchanged',
+    );
+
+    const mobileMapToggle = classMethodBody(panelLayout, 'private setupMobileMapToggle()');
+    assert.match(
+      mobileMapToggle,
+      /document\.documentElement\.classList\.remove\('wm-map-collapsed'\)/,
+      'hydration must clear the boot-only html class after the skeleton is replaced',
     );
   });
 

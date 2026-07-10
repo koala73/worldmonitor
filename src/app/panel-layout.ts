@@ -1157,6 +1157,9 @@ export class PanelLayoutManager implements AppModule {
   }
 
   private setupMobileMapToggle(): void {
+    // This is a boot-shell-only marker. The hydrated map owns the persistent
+    // collapsed state on #mapSection, so do not leak it into runtime styling.
+    document.documentElement.classList.remove('wm-map-collapsed');
     const mapSection = document.getElementById('mapSection');
     const headerLeft = mapSection?.querySelector('.panel-header-left');
     if (!mapSection || !headerLeft) return;
