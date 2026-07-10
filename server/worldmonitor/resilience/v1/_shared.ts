@@ -47,10 +47,9 @@ export const RESILIENCE_SCHEMA_V2_ENABLED =
 // Phase 2 T2.3 activation: feature flag that switches `overallScore`
 // from the 6-domain weighted aggregate (legacy compensatory form) to
 // the 3-pillar combined form with the min-pillar penalty term defined
-// by `penalizedPillarScore` below. Default is `false` so activation is
-// an explicit operator action; the sensitivity + current-vs-proposed
-// comparison in `docs/snapshots/resilience-pillar-sensitivity-*.json`
-// is the input for that decision. When flipped to `true`:
+// by `penalizedPillarScore` below. The published and production methodology
+// is pillar-combined, so unset defaults to `true`; explicit `false` retains
+// the legacy 6-domain form as an emergency rollback. When enabled:
 //   - `overallScore` = penalizedPillarScore(pillars), α=0.5 (pillar
 //     weights 0.40 / 0.35 / 0.25 per the plan).
 //   - Published numbers drop ~13 points on average across the
@@ -67,7 +66,7 @@ export const RESILIENCE_SCHEMA_V2_ENABLED =
 // prefix or waiting for the 6h TTL to expire — otherwise legacy
 // 6-domain scores will be served from cache after activation.
 export function isPillarCombineEnabled(): boolean {
-  return (process.env.RESILIENCE_PILLAR_COMBINE_ENABLED ?? 'false').toLowerCase() === 'true';
+  return process.env.RESILIENCE_PILLAR_COMBINE_ENABLED?.trim().toLowerCase() !== 'false';
 }
 
 // PR 1 of the resilience repair plan (docs/plans/2026-04-22-001-fix-

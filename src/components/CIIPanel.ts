@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { getCSSColor } from '@/utils';
-import { calculateCII, type CountryScore } from '@/services/country-instability';
+import type { CountryScore } from '@/services/country-instability';
 import { t } from '../services/i18n';
 import { h, replaceChildren, rawHtml, setTrustedHtml, trustedHtml, type TrustedHtml } from '@/utils/dom-utils';
 import type { CachedRiskScores } from '@/services/cached-risk-scores';
@@ -20,8 +20,6 @@ export const CII_METHODOLOGY_HREF = '/docs/methodology/cii-risk-scores';
 
 export class CIIPanel extends Panel {
   private scores: CountryScore[] = [];
-  private focalPointsReady = false;
-  private hasCachedRender = false;
   private onShareStory?: (code: string, name: string) => void;
   private onCountryClick?: (code: string) => void;
   // Per-row FollowButton teardowns. Keyed by ISO code so we can tear
@@ -289,55 +287,23 @@ export class CIIPanel extends Panel {
     });
   }
 
-  public async refresh(forceLocal = false): Promise<void> {
-    if (!this.focalPointsReady && !forceLocal) {
-      return;
-    }
-
-    if (forceLocal) {
-      this.focalPointsReady = true;
-      console.log('[CIIPanel] Focal points ready, calculating scores...');
-    }
-
-    if (!this.hasCachedRender) this.showLoading();
-
-    try {
-      const localScores = calculateCII();
-      const localWithData = localScores.filter(s => s.score > 0).length;
-      this.scores = localScores;
-      console.log(`[CIIPanel] Calculated ${localWithData} countries with focal point intelligence`);
-
-      const withData = this.scores.filter(s => s.score > 0);
-      this.setCount(withData.length);
-
-      if (withData.length === 0) {
-        this.updateSourceBadge(null);
-        // Tear down any previously-mounted FollowButtons before swapping
-        // the empty-state markup in (otherwise their subscriptions leak).
-        this.tearDownFollowButtons();
-        this.setErrorState(false);
-        replaceChildren(this.content, h('div', { className: 'empty-state' }, t('components.cii.noSignals')), this.buildMethodologyFooter());
-        return;
-      }
-
-      this.setErrorState(false);
-      this.updateSourceBadge(null);
-      // Tear down the previous batch of FollowButtons BEFORE we
-      // construct fresh rows; `buildCountry` will repopulate the map.
-      this.tearDownFollowButtons();
-      replaceChildren(this.content, this.buildList(withData), this.buildMethodologyFooter());
-      this.bindShareButtons();
-    } catch (error) {
-      console.error('[CIIPanel] Refresh error:', error);
-      this.showError(t('common.failedCII'), () => void this.refresh());
-    }
+  public renderUnavailable(): void {
+    this.scores = [];
+    this.setCount(0);
+    this.setErrorState(false);
+    this.setDataBadge('unavailable');
+    this.tearDownFollowButtons();
+    replaceChildren(
+      this.content,
+      h('div', { className: 'empty-state' }, t('common.failedCII')),
+      this.buildMethodologyFooter(),
+    );
   }
 
   public renderFromCached(cached: CachedRiskScores): void {
     const scores = cached.cii.map(toCountryScore).filter(s => s.score > 0);
     if (scores.length === 0) return;
     this.scores = scores;
-    this.hasCachedRender = true;
     this.updateSourceBadge(cached);
     this.setCount(scores.length);
     this.setErrorState(false);

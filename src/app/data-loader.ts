@@ -81,7 +81,7 @@ import { updateAndCheck, consumeServerAnomalies, fetchLiveAnomalies } from '@/se
 import { fetchAllFires, flattenFires, computeRegionStats, toMapFires } from '@/services/wildfires';
 import type { TheaterPostureSummary } from '@/services/military-surge';
 import { fetchCachedTheaterPosture } from '@/services/cached-theater-posture';
-import { ingestProtestsForCII, ingestMilitaryForCII, ingestNewsForCII, ingestOutagesForCII, ingestConflictsForCII, ingestUcdpForCII, ingestHapiForCII, ingestDisplacementForCII, ingestClimateForCII, ingestStrikesForCII, ingestOrefForCII, ingestAviationForCII, ingestAdvisoriesForCII, ingestGpsJammingForCII, ingestAisDisruptionsForCII, ingestSatelliteFiresForCII, ingestCyberThreatsForCII, ingestTemporalAnomaliesForCII, ingestEarthquakesForCII, ingestSanctionsForCII, isInLearningMode, resetHotspotActivity, calculateCII, type CountryScore } from '@/services/country-instability';
+import { ingestProtestsForCII, ingestMilitaryForCII, ingestNewsForCII, ingestOutagesForCII, ingestConflictsForCII, ingestUcdpForCII, ingestHapiForCII, ingestDisplacementForCII, ingestClimateForCII, ingestStrikesForCII, ingestOrefForCII, ingestAviationForCII, ingestAdvisoriesForCII, ingestGpsJammingForCII, ingestAisDisruptionsForCII, ingestSatelliteFiresForCII, ingestCyberThreatsForCII, ingestTemporalAnomaliesForCII, ingestEarthquakesForCII, ingestSanctionsForCII, isInLearningMode, resetHotspotActivity, type CountryScore } from '@/services/country-instability';
 import { fetchGpsInterference } from '@/services/gps-interference';
 import { fetchSatelliteTLEs, initSatRecs, propagatePositions, startPropagationLoop } from '@/services/satellites';
 import type { SatRecEntry } from '@/services/satellites';
@@ -394,7 +394,6 @@ export class DataLoaderManager implements AppModule {
   private marketImplicationsFrameworkUnsubscribe: (() => void) | null = null;
   private cachedSatRecs: SatRecEntry[] | null = null;
   private cachedRiskScores: CachedRiskScores | null = null;
-  private preferLocalCii = false;
   private loadAllDataPromise: Promise<void> | null = null;
   private loadAllDataRerunRequested = false;
   private loadAllDataQueuedForceAll = false;
@@ -512,45 +511,43 @@ export class DataLoaderManager implements AppModule {
     this.marketImplicationsFrameworkUnsubscribe = null;
   }
 
-  private getAuthoritativeCachedRiskScores(forceLocal: boolean): CachedRiskScores | null {
-    if (forceLocal) {
-      this.preferLocalCii = true;
-      this.cachedRiskScores = null;
-      return null;
-    }
-    if (this.preferLocalCii) return null;
+  private getAuthoritativeCachedRiskScores(): CachedRiskScores | null {
     const cached = this.cachedRiskScores ?? getCachedScores();
     return cached?.cii.length ? cached : null;
   }
+
+  private appliedCiiState: CachedRiskScores | null | undefined;
 
   private applyCiiScoresToMap(scores: CountryScore[]): void {
     this.ctx.map?.setCIIScores(scores.map(s => ({ code: s.code, score: s.score, level: s.level })));
     this.ctx.map?.setLayerReady('ciiChoropleth', scores.length > 0);
   }
 
-  private renderCachedCiiScores(cached: CachedRiskScores): void {
+  private renderCachedCiiScores(cached: CachedRiskScores): boolean {
     this.cachedRiskScores = cached;
+    if (this.appliedCiiState === cached) return false;
+    this.appliedCiiState = cached;
     this.callPanel('cii', 'renderFromCached', cached);
     this.applyCiiScoresToMap(cached.cii.map(toCountryScore));
+    return true;
   }
 
-  private refreshCiiAndBrief(forceLocal = false): void {
-    const cached = this.getAuthoritativeCachedRiskScores(forceLocal);
+  private refreshCiiAndBrief(): void {
+    const cached = this.getAuthoritativeCachedRiskScores();
     if (cached) {
-      this.renderCachedCiiScores(cached);
-      this.callbacks.refreshOpenCountryBrief();
+      if (this.renderCachedCiiScores(cached)) this.callbacks.refreshOpenCountryBrief();
       return;
     }
 
-    const shouldUseLocalFallback = forceLocal || !this.cachedRiskScores;
-    this.callPanel('cii', 'refresh', shouldUseLocalFallback);
+    if (this.appliedCiiState === null) return;
+    this.appliedCiiState = null;
+    this.callPanel('cii', 'renderUnavailable');
+    this.applyCiiScoresToMap([]);
     this.callbacks.refreshOpenCountryBrief();
-    const scores = calculateCII();
-    this.applyCiiScoresToMap(scores);
   }
 
   public refreshCiiAfterFocalPointsReady(): void {
-    this.refreshCiiAndBrief(false);
+    this.refreshCiiAndBrief();
   }
 
   public refreshGeometryDependentCiiAfterCountryGeometry(): void {
@@ -627,7 +624,7 @@ export class DataLoaderManager implements AppModule {
     }
 
     markLcpDebug('wm:data:country-geometry-replay-ready', { replayed });
-    if (replayed > 0) this.refreshCiiAndBrief(false);
+    if (replayed > 0) this.refreshCiiAndBrief();
   }
 
   private async tryFetchDigest(): Promise<ListFeedDigestResponse | null> {
@@ -2795,7 +2792,7 @@ export class DataLoaderManager implements AppModule {
     }
 
     this.refreshCiiAndBrief();
-    console.log('[Intelligence] All signals loaded for CII calculation');
+    console.log('[Intelligence] All signals loaded; canonical CII state refreshed');
   }
 
   async loadOutages(): Promise<void> {

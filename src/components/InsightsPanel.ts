@@ -5,7 +5,7 @@ import { parallelAnalysis, type AnalyzedHeadline } from '@/services/parallel-ana
 import { signalAggregator, type RegionalConvergence } from '@/services/signal-aggregator';
 import { focalPointDetector } from '@/services/focal-point-detector';
 import { stripOrefLabels } from '@/services/oref-alerts';
-import { ingestNewsForCII, getCountryScore } from '@/services/country-instability';
+import { ingestNewsForCII } from '@/services/country-instability';
 import { getCachedCountryScoreValue } from '@/services/cached-risk-scores';
 import { getTheaterPostureSummaries } from '@/services/military-surge';
 import { getCachedPosture } from '@/services/cached-theater-posture';
@@ -28,9 +28,7 @@ import { getEntityIndex } from '@/services/entity-index';
 
 import type { ClusteredEvent, FocalPoint, MilitaryFlight } from '@/types';
 
-function getAuthoritativeCountryScore(code: string): number | null {
-  return getCachedCountryScoreValue(code) ?? getCountryScore(code);
-}
+const getAuthoritativeCountryScore = getCachedCountryScoreValue;
 
 export class InsightsPanel extends Panel {
   private lastBriefUpdate = 0;

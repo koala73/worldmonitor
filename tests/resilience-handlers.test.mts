@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { afterEach, describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import { getResilienceScore } from '../server/worldmonitor/resilience/v1/get-resilience-score.ts';
 import {
@@ -13,6 +13,11 @@ const originalFetch = globalThis.fetch;
 const originalRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
 const originalRedisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
 const originalVercelEnv = process.env.VERCEL_ENV;
+const originalPillarCombine = process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+
+beforeEach(() => {
+  process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'false';
+});
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -22,6 +27,8 @@ afterEach(() => {
   else process.env.UPSTASH_REDIS_REST_TOKEN = originalRedisToken;
   if (originalVercelEnv == null) delete process.env.VERCEL_ENV;
   else process.env.VERCEL_ENV = originalVercelEnv;
+  if (originalPillarCombine == null) delete process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+  else process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = originalPillarCombine;
 });
 
 describe('resilience handlers', () => {

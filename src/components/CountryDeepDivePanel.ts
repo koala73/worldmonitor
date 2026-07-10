@@ -48,6 +48,7 @@ import { renderFollowButton } from '@/utils/follow-button';
 import { renderNotifyCountryLink } from '@/utils/notify-country-link';
 import { exportCountryEvidenceMarkdown } from '@/utils/export';
 import type { CountryEvidenceBundleInput } from '@/utils/export';
+import { ciiBandForLevel } from './CountryDeepDivePanel-cii';
 
 const DEPENDENCY_FLAG_LABELS: Record<string, { text: string; cls: string }> = {
   DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL:   { text: 'Single Source',   cls: 'cdp-dep-critical' },
@@ -2248,7 +2249,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       if (updatedEl) updatedEl.textContent = `Updated ${score?.lastUpdated ? this.shortDate(score.lastUpdated) : '—'}`;
     }
     if (score) {
-      const band = this.ciiBand(score.score);
+      const band = ciiBandForLevel(score.level);
       const scoreRow = this.el('div', 'cdp-score-row');
       const value = this.el('div', `cdp-score-value cii-${band}`, `${score.score}/100`);
       const trend = this.el('div', 'cdp-trend', `${this.trendArrow(score.trend)} ${score.trend}`);
@@ -2491,7 +2492,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     scoreCard.append(top);
 
     if (score) {
-      const band = this.ciiBand(score.score);
+      const band = ciiBandForLevel(score.level);
       const scoreRow = this.el('div', 'cdp-score-row');
       const value = this.el('div', `cdp-score-value cii-${band}`, `${score.score}/100`);
       const trend = this.el('div', 'cdp-trend', `${this.trendArrow(score.trend)} ${score.trend}`);
@@ -3060,13 +3061,6 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     if (trend === 'up') return '↑';
     if (trend === 'down') return '↓';
     return '→';
-  }
-
-  private ciiBand(score: number): 'stable' | 'elevated' | 'high' | 'critical' {
-    if (score <= 25) return 'stable';
-    if (score <= 50) return 'elevated';
-    if (score <= 75) return 'high';
-    return 'critical';
   }
 
   private decodeEntities(text: string): string {

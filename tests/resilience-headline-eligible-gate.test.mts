@@ -12,7 +12,7 @@
 //    NOT items[] — i.e. the handler's `passesHeadlineGate` actually fires.
 
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import { getResilienceRanking } from '../server/worldmonitor/resilience/v1/get-resilience-ranking.ts';
 import {
@@ -38,6 +38,17 @@ const RANKING_META = {
   coverage: 1,
   partial: false,
 };
+
+const originalPillarCombine = process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+
+beforeEach(() => {
+  process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'false';
+});
+
+afterEach(() => {
+  if (originalPillarCombine == null) delete process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+  else process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = originalPillarCombine;
+});
 
 describe('computeHeadlineEligible truth table (Plan 2026-04-26-002 §U7)', () => {
   it('happy path: high coverage + large population + not lowConfidence → true', () => {

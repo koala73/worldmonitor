@@ -15,11 +15,10 @@ import {
   dataFreshness,
   getStatusColor,
   getStatusIcon,
-  type DataSourceState,
   type DataFreshnessSummary,
 } from '@/services/data-freshness';
-import { getLearningProgress, type CountryScore } from '@/services/country-instability';
-import { fetchCachedRiskScores, toCountryScore, type CachedRiskScores } from '@/services/cached-risk-scores';
+import type { CountryScore } from '@/services/country-instability';
+import { fetchCachedRiskScores, isElevatedCiiScore, toCountryScore, type CachedRiskScores } from '@/services/cached-risk-scores';
 import { getCachedPosture } from '@/services/cached-theater-posture';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
@@ -45,7 +44,6 @@ export class StrategicRiskPanel extends Panel {
   private freshnessSummary: DataFreshnessSummary | null = null;
   private unsubscribeFreshness: (() => void) | null = null;
   private onLocationClick?: (lat: number, lon: number) => void;
-  private usedCachedScores = false;
   private breakingAlerts: Map<string, { threatLevel: 'critical' | 'high'; timestamp: number }> = new Map();
   private boundOnBreaking: ((e: Event) => void) | null = null;
   private breakingExpiryTimer: ReturnType<typeof setTimeout> | null = null;
@@ -136,10 +134,17 @@ export class StrategicRiskPanel extends Panel {
 
     // Prefer server/cached scores before calculating the overview so the
     // cross-module alert baseline is not seeded from local CII on first refresh.
-    const { inLearning } = getLearningProgress();
-    this.usedCachedScores = false;
     const cachedRiskScores = await fetchCachedRiskScores(this.signal);
     if (!this.element?.isConnected) return false;
+
+    if (!cachedRiskScores) {
+      this.overview = null;
+      this.alerts = [];
+      this.setDataBadge('unavailable');
+      this.showError(t('common.failedRiskOverview'), () => void this.refresh());
+      console.warn('[StrategicRiskPanel] Canonical backend risk scores unavailable');
+      return false;
+    }
 
     const localOverview = calculateStrategicRiskOverview(
       this.convergenceAlerts,
@@ -150,13 +155,8 @@ export class StrategicRiskPanel extends Panel {
     this.overview = localOverview;
     this.alerts = getRecentAlerts(24);
 
-    if (cachedRiskScores?.strategicRisk) {
-      this.applyCachedRiskOverview(cachedRiskScores, localOverview);
-      this.usedCachedScores = true;
-      console.log('[StrategicRiskPanel] Using cached scores from backend');
-    } else if (inLearning || this.freshnessSummary.overallStatus === 'insufficient') {
-      console.log('[StrategicRiskPanel] Cached backend scores unavailable; using local fallback');
-    }
+    this.applyCachedRiskOverview(cachedRiskScores, localOverview);
+    console.log('[StrategicRiskPanel] Using cached scores from backend');
 
     const badgeDetail = this.freshnessSummary
       ? t('components.strategicRisk.sourcesDetail', {
@@ -164,13 +164,7 @@ export class StrategicRiskPanel extends Panel {
         total: this.freshnessSummary.totalSources,
       })
       : undefined;
-    if (this.usedCachedScores) {
-      this.setDataBadge('cached', badgeDetail);
-    } else if (!this.freshnessSummary || this.freshnessSummary.activeSources === 0) {
-      this.setDataBadge('unavailable');
-    } else {
-      this.setDataBadge('live', badgeDetail);
-    }
+    this.setDataBadge('cached', badgeDetail);
 
     this.render();
 
@@ -217,7 +211,7 @@ export class StrategicRiskPanel extends Panel {
       compositeScore: Math.max(0, Math.min(100, Math.round(cached.strategicRisk.score))),
       trend: this.cachedTrendToOverviewTrend(cached.strategicRisk.trend),
       topRisks: this.cachedTopRisks(cached, ciiScores),
-      unstableCountries: ciiScores.filter(s => s.score >= 50).slice(0, 5),
+      unstableCountries: ciiScores.filter(s => isElevatedCiiScore(s.score)).slice(0, 5),
       timestamp: this.cachedTimestamp(cached),
       degraded: cached.degraded,
       stale: cached.stale,
@@ -284,52 +278,6 @@ export class StrategicRiskPanel extends Panel {
   }
 
   /**
-   * Render when we have insufficient data - can't assess risk
-   */
-  private renderInsufficientData(): string {
-    const sources = dataFreshness.getAllSources();
-    const riskSources = sources.filter(s => s.requiredForRisk);
-
-    return `
-      <div class="strategic-risk-panel">
-        <div class="risk-no-data">
-          <div class="risk-no-data-icon">⚠️</div>
-          <div class="risk-no-data-title">${t('components.strategicRisk.insufficientData')}</div>
-          <div class="risk-no-data-desc">
-            ${t('components.strategicRisk.unableToAssess')}<br>${t('components.strategicRisk.enableDataSources')}
-          </div>
-        </div>
-
-        <div class="risk-section">
-          <div class="risk-section-title">${t('components.strategicRisk.requiredDataSources')}</div>
-          <div class="risk-sources">
-            ${riskSources.map(source => this.renderSourceRow(source)).join('')}
-          </div>
-        </div>
-
-        <div class="risk-section">
-          <div class="risk-section-title">${t('components.strategicRisk.optionalSources')}</div>
-          <div class="risk-sources">
-            ${sources.filter(s => !s.requiredForRisk).slice(0, 4).map(source => this.renderSourceRow(source)).join('')}
-          </div>
-        </div>
-
-        <div class="risk-actions">
-          <button class="risk-action-btn risk-action-primary" data-action="enable-core">
-            ${t('components.strategicRisk.enableCoreFeeds')}
-          </button>
-        </div>
-
-        <div class="risk-footer">
-          <span class="risk-updated">${t('components.strategicRisk.waitingForData')}</span>
-          <button class="risk-refresh-btn">${t('components.strategicRisk.refresh')}</button>
-        </div>
-      </div>
-    `;
-  }
-
-
-  /**
    * Render full data view - normal operation
    */
   private renderFullData(): string {
@@ -340,24 +288,10 @@ export class StrategicRiskPanel extends Panel {
     const level = this.getScoreLevel(score);
     const scoreDeg = Math.round((score / 100) * 270);
 
-    // Check for learning mode - skip if using cached scores
-    const { inLearning, remainingMinutes, progress } = getLearningProgress();
-    const showLearning = inLearning && !this.usedCachedScores;
-    // Only show status banner when there's something to report (learning mode)
-    const statusBanner = showLearning
-      ? `<div class="risk-status-banner risk-status-learning">
-          <span class="risk-status-icon">📊</span>
-          <span class="risk-status-text">${t('components.strategicRisk.learningMode', { minutes: String(remainingMinutes) })}</span>
-          <div class="learning-progress-mini">
-            <div class="learning-bar" style="width: ${progress}%"></div>
-          </div>
-        </div>`
-      : '';
     const cacheStateBanner = this.renderCachedRiskStateBanner();
 
     return `
       <div class="strategic-risk-panel">
-        ${statusBanner}
         ${cacheStateBanner}
 
         <div class="risk-gauge">
@@ -400,24 +334,6 @@ export class StrategicRiskPanel extends Panel {
       <span class="risk-status-icon">!</span>
       <span class="risk-status-text">${t('components.strategicRisk.cachedCiiStatus', { states: labels.join(' · ') })}</span>
     </div>`;
-  }
-
-  private renderSourceRow(source: DataSourceState): string {
-    const panelId = dataFreshness.getPanelIdForSource(source.id);
-    const timeSince = dataFreshness.getTimeSince(source.id);
-
-    return `
-      <div class="risk-source-row">
-        <span class="risk-source-status" style="color: ${getStatusColor(source.status)}">
-          ${getStatusIcon(source.status)}
-        </span>
-        <span class="risk-source-name">${escapeHtml(source.name)}</span>
-        <span class="risk-source-time">${source.status === 'no_data' ? t('components.strategicRisk.noData') : timeSince}</span>
-        ${panelId && (source.status === 'no_data' || source.status === 'disabled') ? `
-          <button class="risk-source-enable" data-panel="${panelId}">${t('components.strategicRisk.enable')}</button>
-        ` : ''}
-      </div>
-    `;
   }
 
   private renderFreshnessSurface(): string {
@@ -571,15 +487,7 @@ export class StrategicRiskPanel extends Panel {
         return;
       }
 
-      // Render full data view — partial data is handled gracefully by CII baselines
-      // Only show insufficient state if zero sources after 60s (true failure)
-      const uptime = performance.now();
-      const html =
-        this.freshnessSummary.overallStatus === 'insufficient' && uptime > 60_000 && !this.usedCachedScores
-          ? this.renderInsufficientData()
-          : this.renderFullData();
-
-      setTrustedHtml(this.content, trustedHtml(html, "legacy direct innerHTML migration"));
+      setTrustedHtml(this.content, trustedHtml(this.renderFullData(), "legacy direct innerHTML migration"));
       this.attachEventListeners();
     } catch (e: unknown) {
       console.error('[StrategicRiskPanel] Render error:', e);

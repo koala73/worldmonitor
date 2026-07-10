@@ -502,6 +502,22 @@ describe('cached-risk-scores — functional adapter behavior', () => {
     }
   });
 
+  it('rejects localStorage entries without a valid strategic-risk payload', async () => {
+    const invalidStrategicRisks = [
+      undefined,
+      { score: 101, level: 'high', trend: 'stable', lastUpdated: null, contributors: [] },
+      { score: 50, level: 'normal', trend: 'stable', lastUpdated: null, contributors: [{ country: 'Unknown', code: 'ZZ', score: 50, level: 'normal' }] },
+    ];
+
+    for (const strategicRisk of invalidStrategicRisks) {
+      const { getCachedScores, removedKeys } = await loadAdapter({
+        storageValue: makeStoredScores([makeCachedCii()], { strategicRisk }),
+      });
+      assert.equal(getCachedScores(), null);
+      assert.deepEqual(removedKeys, ['wm:risk-scores']);
+    }
+  });
+
   it('toCountryScore returns Date for non-null cached lastUpdated', async () => {
     const { toCountryScore } = await loadAdapter();
     const iso = new Date(1_700_000_000_000).toISOString();

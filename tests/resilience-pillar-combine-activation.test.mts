@@ -3,9 +3,8 @@
 // Exercises the `RESILIENCE_PILLAR_COMBINE_ENABLED` flag: when set,
 // `overallScore` switches from the 6-domain weighted aggregate to the
 // penalized pillar-combined form. The existing release-gate tests
-// (tests/resilience-release-gate.test.mts) cover the default (flag=off)
-// path and pin the anchors for the 6-domain formula; this file covers
-// the re-anchored bands under the pillar combine.
+// (tests/resilience-release-gate.test.mts) pin the legacy rollback anchors;
+// this file covers the published/default pillar-combined methodology.
 //
 // Why separate file: the existing release-gate test imports
 // `getResilienceScore` at the top of the file (captures the legacy
@@ -96,13 +95,20 @@ describe('pillar-combined score activation', () => {
     else process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = originalPillarFlag;
   });
 
-  it('isPillarCombineEnabled reads env dynamically', () => {
-    enablePillarCombine();
-    assert.equal(isPillarCombineEnabled(), true);
-    disablePillarCombine();
-    assert.equal(isPillarCombineEnabled(), false);
-    enablePillarCombine();
-    assert.equal(isPillarCombineEnabled(), true);
+  it('defaults to pillar-combined unless the env is explicitly false', () => {
+    const cases: Array<[string, string | undefined, boolean]> = [
+      ['unset', undefined, true],
+      ['empty', '', true],
+      ['whitespace', '   ', true],
+      ['true', 'true', true],
+      ['case-insensitive false', ' FaLsE ', false],
+    ];
+
+    for (const [label, value, expected] of cases) {
+      if (value == null) delete process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+      else process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = value;
+      assert.equal(isPillarCombineEnabled(), expected, label);
+    }
   });
 
   it('penalizedPillarScore collapses to weighted-sum when all pillars equal (penalty minimal)', () => {
@@ -241,7 +247,7 @@ describe('pillar-combined score activation', () => {
     assert.ok(no.rank < us.rank, `NO rank ${no.rank} must be better than US rank ${us.rank}`);
   });
 
-  it('disabling the flag restores the 6-domain aggregate (regression guard for the default path)', async () => {
+  it('explicitly disabling the flag restores the 6-domain rollback aggregate', async () => {
     installRedisFixtures();
     disablePillarCombine();
 

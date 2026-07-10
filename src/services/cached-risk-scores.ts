@@ -74,6 +74,11 @@ function getScoreLevel(score: number): 'low' | 'normal' | 'elevated' | 'high' | 
   return 'low';
 }
 
+export function isElevatedCiiScore(score: number): boolean {
+  const level = getScoreLevel(score);
+  return level === 'elevated' || level === 'high' || level === 'critical';
+}
+
 function toCachedCII(proto: CiiScore): CachedCIIScore {
   return {
     code: proto.region,
@@ -188,6 +193,25 @@ function isValidCiiEntry(e: unknown): e is CachedCIIScore {
     && isValidCachedCiiTimestamp(o.lastUpdated);
 }
 
+function isValidStrategicRisk(value: unknown): value is CachedStrategicRisk {
+  if (!value || typeof value !== 'object') return false;
+  const risk = value as Record<string, unknown>;
+  if (!isFiniteInRange(risk.score, 0, 100)
+    || typeof risk.level !== 'string'
+    || typeof risk.trend !== 'string'
+    || !isValidCachedCiiTimestamp(risk.lastUpdated)
+    || !Array.isArray(risk.contributors)) return false;
+
+  return risk.contributors.every((value) => {
+    if (!value || typeof value !== 'object') return false;
+    const contributor = value as Record<string, unknown>;
+    return typeof contributor.country === 'string'
+      && isKnownTier1Code(contributor.code)
+      && isFiniteInRange(contributor.score, 0, 100)
+      && typeof contributor.level === 'string';
+  });
+}
+
 function canonicalizeCachedCiiEntry(entry: CachedCIIScore): CachedCIIScore {
   return {
     ...entry,
@@ -214,7 +238,7 @@ function loadFromStorage(): CachedRiskScores | null {
     const raw = localStorage.getItem(LS_KEY);
     if (!raw) return null;
     const { data, savedAt } = JSON.parse(raw);
-    if (!Number.isFinite(savedAt) || !Array.isArray(data?.cii)) {
+    if (!Number.isFinite(savedAt) || !Array.isArray(data?.cii) || !isValidStrategicRisk(data?.strategicRisk)) {
       localStorage.removeItem(LS_KEY);
       return null;
     }

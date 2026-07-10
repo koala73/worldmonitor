@@ -10,7 +10,7 @@ import { getAllowedLayerKeys, isLayerExecutable } from '@/config/map-layer-defin
 import type { MapRenderer } from '@/config/map-layer-definitions';
 import type { MapVariant } from '@/config/map-layer-definitions';
 import { LAYER_PRESETS, LAYER_KEY_MAP } from '@/config/commands';
-import { calculateCII, TIER1_COUNTRIES } from '@/services/country-instability';
+import { TIER1_COUNTRIES } from '@/services/country-instability';
 import { getCachedCountryScores } from '@/services/cached-risk-scores';
 import { CURATED_COUNTRIES } from '@/config/countries';
 import { getCountryBbox } from '@/services/country-geometry';
@@ -781,7 +781,7 @@ export class SearchManager implements AppModule {
     const panelScores = (this.ctx.panels.cii as CIIPanel | undefined)?.getScores() ?? [];
     const scores = cachedScores.length > 0
       ? cachedScores
-      : (panelScores.length > 0 ? panelScores : calculateCII());
+      : panelScores;
     const ciiByCode = new Map(scores.map((score) => [score.code, score]));
     return Object.entries(TIER1_COUNTRIES).map(([code, name]) => {
       const score = ciiByCode.get(code);

@@ -51,7 +51,6 @@ import {
   setCIIGetter,
   setGeoAlertGetter,
 } from '@/services/hotspot-escalation';
-import { getCountryScore } from '@/services/country-instability';
 import { getCachedCountryScoreValue } from '@/services/cached-risk-scores';
 import { getAlertsNearLocation } from '@/services/geo-convergence';
 import { getCountryAtCoordinates, getCountryBbox } from '@/services/country-geometry';
@@ -3667,7 +3666,7 @@ export class MapComponent {
   }
 
   public initEscalationGetters(): void {
-    setCIIGetter((code) => getCachedCountryScoreValue(code) ?? getCountryScore(code));
+    setCIIGetter(getCachedCountryScoreValue);
     setGeoAlertGetter(getAlertsNearLocation);
   }
 

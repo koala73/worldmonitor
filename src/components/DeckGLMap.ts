@@ -135,7 +135,6 @@ import {
   setCIIGetter,
   setGeoAlertGetter,
 } from '@/services/hotspot-escalation';
-import { getCountryScore } from '@/services/country-instability';
 import { getCachedCountryScoreValue } from '@/services/cached-risk-scores';
 import { getAlertsNearLocation } from '@/services/geo-convergence';
 import type { PositiveGeoEvent } from '@/services/positive-events-geo';
@@ -7068,7 +7067,7 @@ export class DeckGLMap {
   }
 
   public initEscalationGetters(): void {
-    setCIIGetter((code) => getCachedCountryScoreValue(code) ?? getCountryScore(code));
+    setCIIGetter(getCachedCountryScoreValue);
     setGeoAlertGetter(getAlertsNearLocation);
   }
 

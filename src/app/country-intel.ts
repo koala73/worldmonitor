@@ -23,7 +23,7 @@ import {
   iso3ToIso2Code,
   nameToCountryCode,
 } from '@/services/country-geometry';
-import { calculateCII, getCountryData, TIER1_COUNTRIES, type CountryScore } from '@/services/country-instability';
+import { getCountryData, TIER1_COUNTRIES, type CountryScore } from '@/services/country-instability';
 import { getCachedCountryScore, normalizeCiiCountryCode } from '@/services/cached-risk-scores';
 import { dataFreshness } from '@/services/data-freshness';
 import { fetchCountryMarkets } from '@/services/prediction';
@@ -297,7 +297,7 @@ export class CountryIntelManager implements AppModule {
       if (canonicalName !== code) country = canonicalName;
 
       const scoreCode = normalizeCiiCountryCode(code);
-      const score = getCachedCountryScore(scoreCode) ?? calculateCII().find((s) => s.code === scoreCode) ?? null;
+      const score = getCachedCountryScore(scoreCode);
 
       const signals = await this.getCountrySignals(code, country);
       if (token !== this.briefRequestToken || this.ctx.isDestroyed || this.ctx.countryBriefPage !== page) return;
@@ -888,7 +888,7 @@ export class CountryIntelManager implements AppModule {
     if (!code || code === '__loading__' || code === '__error__') return;
     const name = TIER1_COUNTRIES[code] ?? CountryIntelManager.resolveCountryName(code);
     const scoreCode = normalizeCiiCountryCode(code);
-    const score = getCachedCountryScore(scoreCode) ?? calculateCII().find((s) => s.code === scoreCode) ?? null;
+    const score = getCachedCountryScore(scoreCode);
     void this.getCountrySignals(code, name)
       .then((signals) => {
         if (page.isVisible() && page.getCode() === code) page.updateScore?.(score, signals);
