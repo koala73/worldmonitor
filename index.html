@@ -366,6 +366,10 @@
         /* Match .main-content .map-section.collapsed: users who collapsed the mobile
            map previously should not reserve the expanded map before hydration. */
         html.wm-map-collapsed .skeleton-map{height:auto;min-height:0;max-height:none}
+        /* The hydrated collapsed map keeps its 47px header plus the section borders.
+           Hide the loading card too: otherwise its intrinsic height still shifts panels. */
+        html.wm-map-collapsed .skeleton-map-bar{height:47px}
+        html.wm-map-collapsed .skeleton-map-body{display:none}
         .skeleton-map-content{max-width:calc(100% - 24px);margin:12px;padding:16px}
         .skeleton-map-title{font-size:22px;line-height:1.15}
         .skeleton-map-copy{font-size:13px;line-height:1.42}

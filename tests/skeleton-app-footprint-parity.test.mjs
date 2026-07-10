@@ -185,6 +185,20 @@ describe('#4580 boot skeleton <-> app footprint parity', () => {
       );
     }
 
+    const collapsedSkeletonBar = mediaRule(html, 'html\\.wm-map-collapsed \\.skeleton-map-bar', 'height:47px');
+    assert.ok(
+      collapsedSkeletonBar,
+      'collapsed skeleton must reserve the real 47px mobile map header (plus the map borders)',
+    );
+    assert.deepEqual(declarations(collapsedSkeletonBar.body, 'height'), ['47px']);
+
+    const collapsedSkeletonBody = mediaRule(html, 'html\\.wm-map-collapsed \\.skeleton-map-body', 'display:none');
+    assert.ok(
+      collapsedSkeletonBody,
+      'collapsed skeleton must hide the loading card so it cannot contribute intrinsic height',
+    );
+    assert.deepEqual(declarations(collapsedSkeletonBody.body, 'display'), ['none']);
+
     assert.ok(
       runPrepaintBootScript(true).has('wm-map-collapsed'),
       'the inline pre-paint script must stamp the matching html class for a persisted collapsed map',
