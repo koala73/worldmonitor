@@ -31,6 +31,17 @@ function ruleBody(source, selectorRe) {
   return m ? m[1] : null;
 }
 
+function declarationValue(body, property) {
+  const re = new RegExp(`(?:^|[;\\s])${property}\\s*:\\s*([^;]+)`);
+  const m = body.match(re);
+  return m ? m[1].trim() : null;
+}
+
+function numericDeclaration(body, property) {
+  const value = declarationValue(body, property);
+  return value === null ? Number.NaN : Number.parseInt(value, 10);
+}
+
 describe('#4580 cached-mode banner stays out of flow', () => {
   it('the App still renders a .cached-mode-banner (guard is not dead)', () => {
     // If the banner element is ever renamed/removed, this test would silently pass on a
@@ -51,12 +62,35 @@ describe('#4580 cached-mode banner stays out of flow', () => {
       'The cached-mode banner must be position:fixed (out of flow). In normal flow its ' +
         'insert/remove during boot reflows #panelsGrid/#main ~83px and regresses field CLS (#4580).',
     );
-    // A fixed element must be pinned, or it collapses to its static position and still
-    // participates visually where it was inserted. Require an explicit anchor edge.
-    assert.match(
-      body,
-      /(?:^|[;{\s])(?:top|bottom)\s*:/,
-      'A fixed .cached-mode-banner needs a top/bottom anchor so it pins to the viewport edge',
+    // A fixed element must be pinned to the intended viewport edge, or it can drift
+    // back toward its static insertion point while still passing a generic top/bottom
+    // presence check.
+    assert.equal(
+      declarationValue(body, 'bottom'),
+      '0',
+      'A fixed .cached-mode-banner must stay pinned to the bottom viewport edge',
+    );
+    assert.equal(declarationValue(body, 'left'), '0', 'The fixed banner must span from the left edge');
+    assert.equal(declarationValue(body, 'right'), '0', 'The fixed banner must span to the right edge');
+  });
+
+  it('.cached-mode-banner is layered above the mobile FAB but below search overlays', () => {
+    const bannerBody = ruleBody(css, '\\.cached-mode-banner');
+    const searchOverlayBody = ruleBody(css, '\\.search-overlay');
+    assert.ok(bannerBody, 'Expected a base .cached-mode-banner rule in main.css');
+    assert.ok(searchOverlayBody, 'Expected a base .search-overlay rule in main.css');
+
+    const bannerZ = numericDeclaration(bannerBody, 'z-index');
+    const searchOverlayZ = numericDeclaration(searchOverlayBody, 'z-index');
+    assert.ok(Number.isFinite(bannerZ), 'Expected .cached-mode-banner to set a numeric z-index');
+    assert.ok(Number.isFinite(searchOverlayZ), 'Expected .search-overlay to set a numeric z-index');
+    assert.ok(
+      bannerZ > 500,
+      'The cached-mode banner must remain above the bottom-right search FAB (z-index 500)',
+    );
+    assert.ok(
+      bannerZ < searchOverlayZ,
+      'The cached-mode banner must stay below search overlays so it does not cover the search sheet/modal',
     );
   });
 });

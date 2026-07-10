@@ -857,8 +857,9 @@ canvas,
    .header and toggled during boot on slow connections (cached -> live), shoving the
    whole column ~83px and generating field CLS (#4580: #panelsGrid/#main top offenders).
    Bottom-fixed matches the .toast-notification convention; the panel nav is top-sticky
-   so there is no persistent bottom bar to collide with. z-index sits below modals but
-   above the bottom search FAB (z 500) / footer, so `pointer-events: none` is required:
+   so there is no persistent bottom bar to collide with. z-index sits above the bottom
+   search FAB (z 500) / footer but below search overlays (z 2000), so
+   `pointer-events: none` is required:
    the banner is purely informational (role=status, no interactive children), so it must
    not trap taps meant for the FAB / open search sheet / footer links it overlaps. */
 .cached-mode-banner {
@@ -866,7 +867,7 @@ canvas,
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 9000;
+  z-index: 900;
   pointer-events: none;
   display: flex;
   align-items: center;
