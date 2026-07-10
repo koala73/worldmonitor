@@ -19,6 +19,7 @@ const ROOT = join(__dirname, '..');
 const PRODUCT_ID_ALLOWED_EXTENSIONS = ['.ts', '.tsx', '.mjs', '.js'];
 const PRODUCT_ID_EXCLUDE_PATTERNS = [
   'node_modules',
+  'dist/',
   '.git',
   '.claude/worktrees/',
   'convex/_generated/',
@@ -464,6 +465,21 @@ describe('Product ID guard', () => {
       }),
       /permission denied/,
     );
+  });
+
+  it('ignores generated build artifacts', () => {
+    const distDir = join(ROOT, 'dist');
+    const builtAsset = join(distDir, 'panel.js');
+    const results = collectRawProductIds(ROOT, {
+      readdir: (path) => path === ROOT ? ['dist'] : ['panel.js'],
+      stat: (path) => ({ isDirectory: () => path === distDir }),
+      readFile: (path) => {
+        assert.equal(path, builtAsset);
+        return "const productId = 'pdt_built_artifact';";
+      },
+    });
+
+    assert.deepEqual(results, []);
   });
 
   it('no raw pdt_ strings outside allowed paths', () => {
