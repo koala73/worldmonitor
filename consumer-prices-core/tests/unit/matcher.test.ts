@@ -57,6 +57,16 @@ describe('scoreMatch', () => {
     );
     expect(emptyCategory.evidence.categoryExact).toBe(false);
   });
+
+  it('does not treat an empty canonical category as an exact category match', () => {
+    // The symmetric case: a canonical product with an empty category must not
+    // match every categorized raw product via `rawCategory.includes('')`.
+    const emptyCanonical = scoreMatch(
+      { rawTitle: 'Sunflower Oil 2L', rawBrand: 'Generic', rawSizeText: '2L', categoryText: 'oil' },
+      { ...baseCanonical, category: '' },
+    );
+    expect(emptyCanonical.evidence.categoryExact).toBe(false);
+  });
 });
 
 describe('bestMatch', () => {
