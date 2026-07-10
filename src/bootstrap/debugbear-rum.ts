@@ -1,5 +1,6 @@
 export const DEBUGBEAR_RUM_SCRIPT_SRC = 'https://cdn.debugbear.com/lpMwA9KpC6pf.js';
 export const DEBUGBEAR_RUM_SAMPLE_RATE = 100;
+const DEBUGBEAR_RUM_SCRIPT_PATHNAME = new URL(DEBUGBEAR_RUM_SCRIPT_SRC).pathname;
 const DEBUGBEAR_RUM_HOSTS = new Set([
   'worldmonitor.app',
   'www.worldmonitor.app',
@@ -22,6 +23,11 @@ let debugBearRumStarted = false;
 
 export function shouldEnableDebugBearRum(hostname: string): boolean {
   return DEBUGBEAR_RUM_HOSTS.has(hostname.toLowerCase());
+}
+
+/** Identifies a Sentry frame emitted by the configured DebugBear collector. */
+export function isDebugBearRumScriptFrame(filename: string): boolean {
+  return filename.endsWith(DEBUGBEAR_RUM_SCRIPT_PATHNAME) || /debugbear/i.test(filename);
 }
 
 function loadDebugBearRumScript(): void {

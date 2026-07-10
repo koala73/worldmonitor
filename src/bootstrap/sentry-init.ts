@@ -6,7 +6,7 @@
  * entry chunk. Keep pre-init queuing in `sentry-defer.ts`; keep SDK setup here.
  */
 
-import { DEBUGBEAR_RUM_SCRIPT_SRC } from './debugbear-rum';
+import { isDebugBearRumScriptFrame } from './debugbear-rum';
 
 type SentryNs = typeof import('@sentry/browser');
 
@@ -42,20 +42,6 @@ const THIRD_PARTY_FETCH_HOST_ALLOWLIST = new Set([
   // surface). WORLDMONITOR-RP.
   'data.debugbear.com',
 ]);
-
-// Frame-filename matcher for the DebugBear RUM collector script. Sentry attributes
-// the collector's window.fetch-monkeypatch frames to the script basename (e.g.
-// `/lpMwA9KpC6pf.js`). Derived from DEBUGBEAR_RUM_SCRIPT_SRC — the single source of
-// truth in debugbear-rum.ts — so a CDN/script-id rotation updates the beforeSend
-// bare-`Failed to fetch` gate in lockstep instead of silently failing open
-// (Greptile P2, #5143). Falls back to a host-only `debugbear` match if the URL ever
-// lacks a basename, so the matcher can never degrade into matching every frame.
-const DEBUGBEAR_RUM_COLLECTOR_FRAME = (() => {
-  const basename = DEBUGBEAR_RUM_SCRIPT_SRC.split('/').pop();
-  if (!basename) return /debugbear/i;
-  const escaped = basename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`(?:^|/)${escaped}$|debugbear`, 'i');
-})();
 
 function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
   const sentryDsn = import.meta.env.VITE_SENTRY_DSN?.trim();
@@ -553,7 +539,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // Bare `Failed to fetch` surfacing through the DebugBear RUM collector's
       // window.fetch monkeypatch. DebugBear (src/bootstrap/debugbear-rum.ts →
       // cdn.debugbear.com/<id>.js; Sentry attributes its frames to the script
-      // basename, e.g. `/lpMwA9KpC6pf.js`) wraps window.fetch to time it, so a
+      // configured script path) wraps window.fetch to time it, so a
       // transient network blip on ANY app fetch rejects and its wrapper
       // re-surfaces the rejection as an unhandled rejection, injecting its own
       // frames. Without DebugBear the identical failure is zero-frame and already
@@ -562,16 +548,18 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // (Vite code-split chunk names, e.g. panel-storage/widget-store, which do
       // not themselves fetch — grep-verified), NOT real callers. Suppress only
       // when a DebugBear collector frame is present AND every non-infra frame is
-      // either that collector or a bare `window.fetch`/`fetch` trampoline, so a
-      // genuine uncaught first-party fetch rejection (which carries a real
-      // function name) still surfaces. Mirrors the SG extension-wrapper gate
-      // above; the collector frame is matched via DEBUGBEAR_RUM_COLLECTOR_FRAME,
-      // derived from DEBUGBEAR_RUM_SCRIPT_SRC. WORLDMONITOR-VC (93ev/69u, 2026-07-04+).
+      // either that collector or the observed caller-free `window.fetch`/`fetch`
+      // trampolines from panel-storage/widget-store. Other first-party fetch
+      // wrappers (notably runtime.ts) must surface. Mirrors the SG
+      // extension-wrapper gate above; collector identity comes from
+      // DEBUGBEAR_RUM_SCRIPT_SRC via the shared predicate.
+      // WORLDMONITOR-VC (93ev/69u, 2026-07-04+).
       if (/^(?:TypeError: )?Failed to fetch$/.test(msg)
-          && frames.some(f => DEBUGBEAR_RUM_COLLECTOR_FRAME.test(f.filename ?? ''))
+          && frames.some(f => isDebugBearRumScriptFrame(f.filename ?? ''))
           && nonInfraFrames.every(f =>
-            DEBUGBEAR_RUM_COLLECTOR_FRAME.test(f.filename ?? '')
-            || /^(?:window\.)?fetch$/.test(f.function ?? ''))) {
+            isDebugBearRumScriptFrame(f.filename ?? '')
+            || (/\/assets\/(?:panel-storage|widget-store)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? '')
+              && /^(?:window\.)?fetch$/.test(f.function ?? '')))) {
         return null;
       }
       // Suppress Sentry SDK DOM breadcrumb null-access on document.activeElement/contains.

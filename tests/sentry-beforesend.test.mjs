@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDebugBearRumScriptFrame } from '../src/bootstrap/debugbear-rum.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -37,23 +38,12 @@ const fnBody = mainSrc.slice(bsStart + 'beforeSend(event) '.length, bsEnd)
 const tpMatch = mainSrc.match(/const THIRD_PARTY_FETCH_HOST_ALLOWLIST = new Set\(\[[^\]]*\]\);/);
 assert.ok(tpMatch, 'THIRD_PARTY_FETCH_HOST_ALLOWLIST must be defined in src/bootstrap/sentry-init.ts');
 
-// beforeSend's DebugBear gate references DEBUGBEAR_RUM_COLLECTOR_FRAME, which
-// sentry-init.ts derives at module scope from DEBUGBEAR_RUM_SCRIPT_SRC (the source
-// of truth in debugbear-rum.ts). Rebuild the identical matcher here from that same
-// constant — reading it from debugbear-rum.ts rather than hardcoding the script id
-// — so the eval'd beforeSend has it and the test tracks a script-id rotation too.
-const debugbearSrc = readFileSync(resolve(__dirname, '../src/bootstrap/debugbear-rum.ts'), 'utf-8');
-const dbUrlMatch = debugbearSrc.match(/DEBUGBEAR_RUM_SCRIPT_SRC\s*=\s*['"]([^'"]+)['"]/);
-assert.ok(dbUrlMatch, 'DEBUGBEAR_RUM_SCRIPT_SRC must be defined in src/bootstrap/debugbear-rum.ts');
-const dbBasename = dbUrlMatch[1].split('/').pop();
-const dbCollectorFrame = dbBasename
-  ? new RegExp(`(?:^|/)${dbBasename.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$|debugbear`, 'i')
-  : /debugbear/i;
-const dbFrameInject = `const DEBUGBEAR_RUM_COLLECTOR_FRAME = ${dbCollectorFrame.toString()};`;
-
 // Build a callable version. Input: a Sentry-shaped event object. Returns event or null.
 // eslint-disable-next-line no-new-func
-const beforeSend = new Function('event', `${tpMatch[0]}\n${dbFrameInject}\n${fnBody}`);
+const rawBeforeSend = new Function('event', 'isDebugBearRumScriptFrame', `${tpMatch[0]}\n${fnBody}`);
+function beforeSend(event) {
+  return rawBeforeSend(event, isDebugBearRumScriptFrame);
+}
 
 // Extract the `ignoreErrors` array literal so tests can assert which messages
 // Sentry's built-in (pre-beforeSend) filter drops. The array body contains
@@ -1066,6 +1056,7 @@ describe('injected browser-automation harness errors (Floot)', () => {
     'No element found: button, hasText="×", within="[data-floot-id=\\"12\\"]"',
     'No element found: #intel-feed',
     '$pressKey("Escape") was called with no selector but no element is focused',
+    'Floot helper failed near [data-floot-id="307"]',
   ];
 
   for (const msg of automationMsgs) {
@@ -1131,6 +1122,38 @@ describe('bare "Failed to fetch" via DebugBear RUM fetch wrapper (WORLDMONITOR-V
     assert.equal(beforeSend(makeEvent('TypeError: Failed to fetch', 'TypeError', vcStack)), null);
   });
 
+  it('derives collector-frame identity from the DebugBear loader module', () => {
+    assert.match(mainSrc, /import \{ isDebugBearRumScriptFrame \} from '\.\/debugbear-rum';/,
+      'beforeSend must use the collector identity exported by the loader module');
+    const debugBearGate = mainSrc.slice(mainSrc.indexOf('// Bare `Failed to fetch` surfacing through the DebugBear'));
+    assert.match(debugBearGate, /isDebugBearRumScriptFrame\(f\.filename \?\? ''\)/,
+      'the DebugBear gate must call the shared collector-frame predicate');
+  });
+
+  it('suppresses a generic DebugBear collector with a bare fetch trampoline', () => {
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: 'https://cdn.debugbear.com/rotated-collector.js', lineno: 1, function: 'e' },
+      { filename: '/assets/widget-store-BQi6MP9w.js', lineno: 38, function: 'fetch' },
+    ]);
+    assert.equal(beforeSend(event), null, 'generic DebugBear collector and bare fetch trampoline should be suppressed');
+  });
+
+  it('does NOT suppress a DebugBear stack with a non-trampoline fetchContent frame', () => {
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'e' },
+      { filename: '/assets/widget-store-BQi6MP9w.js', lineno: 38, function: 'fetchContent' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'a named first-party caller must still reach Sentry');
+  });
+
+  it('does NOT suppress a DebugBear stack with the runtime fetch wrapper', () => {
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'e' },
+      { filename: '/assets/runtime-BQi6MP9w.js', lineno: 38, function: 'window.fetch' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'runtime fetch wrapper failures must still reach Sentry');
+  });
+
   it('does NOT suppress when a genuine first-party fetch caller frame is present', () => {
     // A real uncaught first-party fetch rejection carries a real function name
     // (not a bare window.fetch trampoline) — must surface even with DebugBear on
@@ -1149,6 +1172,14 @@ describe('bare "Failed to fetch" via DebugBear RUM fetch wrapper (WORLDMONITOR-V
       { filename: '/assets/panels-wF5GXf0N.js', lineno: 100, function: 'MyApiCall' },
     ]);
     assert.ok(beforeSend(event) !== null, 'non-DebugBear first-party fetch failure must surface');
+  });
+
+  it('does NOT suppress an observed trampoline without a DebugBear collector', () => {
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/assets/widget-store-BQi6MP9w.js', lineno: 38, function: 'fetch' },
+    ]);
+    assert.ok(beforeSend(event) !== null,
+      'the allowed trampoline alone must not suppress a first-party fetch failure');
   });
 
   it('does NOT suppress a non-"Failed to fetch" error that merely has a DebugBear frame', () => {
