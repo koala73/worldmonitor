@@ -138,7 +138,7 @@ This page is a STABLE entry point that links to the current publication. Each FA
 
 ## Fail-closed preflight
 
-The dim implements the same fail-closed pattern as `scoreEnergy` v2 (plan `2026-04-24-001` — archived; not present in the current docs tree). When `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED=true`, the scorer preflights all 3 required seed envelopes:
+The dim implements the same fail-closed pattern as `scoreEnergy` v2. When `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED=true`, the scorer preflights all 3 required seed envelopes:
 
 ```
 seed-meta:economic:wb-external-debt:v1
@@ -245,9 +245,7 @@ Keep `tradeSanctions` as a retired/compat dimension at coverage=0; add `tradePol
 
 ## References
 
-- Plan: `docs/plans/2026-04-25-004-feat-financial-system-exposure-construct-plan.md` (archived; not present in the current docs tree)
 - Phase 1 (rename + drop OFAC): [`known-limitations.md § tradeSanctions → tradePolicy`](./known-limitations.md#tradesanctions--tradepolicy-ofac-domicile-component-dropped-ship-1-2026-04-25)
-- Energy v2 fail-closed precedent: `docs/plans/2026-04-24-001-fix-resilience-v2-fail-closed-on-missing-seeds-plan.md` (archived; not present in the current docs tree)
 - Scorer: `server/worldmonitor/resilience/v1/_dimension-scorers.ts` (`scoreFinancialSystemExposure`)
 - Indicator registry: `server/worldmonitor/resilience/v1/_indicator-registry.ts` (4 entries with dimension `financialSystemExposure`)
 - Seeders: `scripts/seed-{wb-external-debt,bis-lbs,fatf-listing}.mjs`
