@@ -492,7 +492,7 @@ describe('buildAnalystWhyMattersPrompt — shape and budget', () => {
     assert.ok(typeof builder === 'function');
   });
 
-  it('uses the analyst v2 system prompt (multi-sentence, grounded) + date-grounding line', async () => {
+  it('uses the analyst v2 system prompt (multi-sentence, grounded, varied) + date-grounding line', async () => {
     const { WHY_MATTERS_ANALYST_SYSTEM_V2, briefDateLine } = await import('../shared/brief-llm-core.js');
     const { system } = builder(
       story(),
@@ -513,6 +513,9 @@ describe('buildAnalystWhyMattersPrompt — shape and budget', () => {
     assert.match(system, /40–70 words/);
     assert.match(system, /named person \/ country \/ organization \/ number \/ percentage \/ date \/ city/);
     assert.match(system, /^Today is 2026-05-14\./m);
+    assert.match(system, /vary sentence structure/i);
+    assert.doesNotMatch(system, /STRUCTURE:/);
+    assert.doesNotMatch(system, /SITUATION —/);
   });
 
   it('includes story fields with the multi-sentence footer', () => {
@@ -795,6 +798,36 @@ describe('sectionsForCategory — structural relevance gating', () => {
     assert.match(user, /DO NOT force/i, 'guardrail phrase "DO NOT force" must be in footer');
     assert.match(user, /off-topic market metric|VIX|forecast probability/i);
     assert.match(user, /named actor, place, date, or figure/);
+    assert.match(user, /only when materially connected/i);
+    assert.match(user, /most stories should not mention the global context/i);
+    assert.match(user, /do not quote raw forecast probabilities/i);
+  });
+
+  it('buildAnalystWhyMattersPrompt — justice/history/human-interest stories do not receive global narrative or forecasts', () => {
+    for (const category of ['Justice', 'Historical Commemoration', 'Human Interest']) {
+      const { user, policyLabel } = builder(
+        {
+          headline: 'Court releases reparations funds to a civil-rights plaintiff',
+          source: 'AP',
+          threatLevel: 'medium',
+          category,
+          country: 'US',
+        },
+        {
+          worldBrief: 'US-Iran ceasefire talks remain fragile around the Strait of Hormuz.',
+          countryBrief: 'The plaintiff won a civil case after a federal ruling.',
+          riskScores: 'Domestic stability risk is moderate.',
+          forecasts: 'WorldMonitor forecast: Hormuz traffic disruption remains 84% likely.',
+          marketData: 'Oil trades at $87.',
+          macroSignals: 'FX stress remains elevated.',
+          degraded: false,
+        },
+      );
+      assert.equal(policyLabel, 'local', `${category} should match the local policy`);
+      assert.doesNotMatch(user, /US-Iran ceasefire/);
+      assert.doesNotMatch(user, /84% likely/);
+      assert.match(user, /plaintiff won a civil case/);
+    }
   });
 });
 

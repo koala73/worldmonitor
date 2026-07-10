@@ -115,6 +115,15 @@ const CATEGORY_SECTION_POLICY: Array<{ match: RegExp; sections: SectionKey[]; la
     match: /\b(humanitarian|refuge|civil|social|rights|genocid|aid\b|migrat)/i,
     sections: ['worldBrief', 'countryBrief', 'riskScores'],
   },
+  // Justice, history, and human-interest stories are usually local to the
+  // reported event. Do not feed them the global narrative or forecasts: a
+  // country-specific fact can still help, but a live conflict storyline
+  // should not be shoehorned into a court ruling or historical commemoration.
+  {
+    label: 'local',
+    match: /\b(justice|court|legal|law\b|crime|criminal|history|historical|heritage|culture|human.?interest|obituar|celebrity|entertainment)/i,
+    sections: ['countryBrief', 'riskScores'],
+  },
   // Geopolitical risk / conflict / military / security — risk + forecasts
   // but not market data (the LLM would otherwise tack on a VIX reading to
   // every conflict story).
@@ -239,7 +248,7 @@ export function buildAnalystWhyMattersPrompt(
 
   const parts: string[] = [];
   if (contextBlock) {
-    parts.push('# Live WorldMonitor Context', contextBlock);
+    parts.push('# Optional Live WorldMonitor Context', contextBlock);
   }
   parts.push('# Story', storyLines);
   // Prompt footer restates the grounding requirement inline (models
@@ -260,11 +269,13 @@ export function buildAnalystWhyMattersPrompt(
   // grounding target when no context fact is a clean fit.
   parts.push(
     `Write 2–3 sentences (40–70 words) on why this ${safe.category || 'story'} matters, grounded in at ` +
-      "least ONE specific reference. Prefer a fact drawn from the context block above WHEN it clearly " +
-      "relates to this story's category and country. If no context fact is a clean fit, ground " +
+      "least ONE specific reference. Reference the global context only when materially connected to this " +
+      "story's category and country; most stories should not mention the global context. If no context fact is a clean fit, ground " +
       'instead in a named actor, place, date, or figure from the headline or description. ' +
       'DO NOT force an off-topic market metric, VIX value, FX reading, or forecast probability ' +
-      "into a story where it does not belong. Plain prose, no section labels in the output:",
+      'into a story where it does not belong. Treat forecasts as private reasoning input: do not quote raw ' +
+      'forecast probabilities or present them as user-facing facts. Vary sentence structure; avoid a stock ' +
+      '"This…" second-sentence opener or "Watch for…" closer. Plain prose, no section labels in the output:',
   );
 
   // F6: append the current date so the analyst does not fabricate
