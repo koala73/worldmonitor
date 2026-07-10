@@ -21,7 +21,8 @@ jobs:
 
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
-          go-version: '1.23'
+          # setup-go v6 uses GOTOOLCHAIN=local; match the pinned sebuf toolchain requirement.
+          go-version: '1.26'
           cache: false
 
       - name: Cache Go binaries (buf, protoc plugins)
