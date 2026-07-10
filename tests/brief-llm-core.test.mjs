@@ -211,6 +211,52 @@ describe('parseWhyMattersV2 — multi-sentence, analyst-path only', () => {
     assert.equal(parseWhyMattersV2(good), good);
   });
 
+  it('rejects private forecast percentages regardless of wording, distance, or newlines', async () => {
+    const { parseWhyMattersV2 } = await import('../shared/brief-llm-core.js');
+    const privateForecasts = 'WorldMonitor disruption model: Strait closure remains 84% likely.';
+    const evasive =
+      'WorldMonitor sees shipping pressure rising through the Gulf as insurers reassess the route. ' +
+      'After several unrelated clauses and a line break, the internal outlook puts disruption risk at\n84 percent.';
+    assert.equal(parseWhyMattersV2(evasive, {
+      publicStory: {
+        headline: 'Insurers reassess Gulf shipping routes',
+        description: 'Carriers are reviewing transit plans after new regional threats.',
+        source: 'Reuters',
+      },
+      privateForecasts,
+    }), null);
+  });
+
+  it('accepts sourced public forecast percentages even when private context has the same value', async () => {
+    const { parseWhyMattersV2 } = await import('../shared/brief-llm-core.js');
+    const sourced =
+      'NOAA forecasts an 80% chance of above-normal Atlantic hurricane activity this season, according to its public outlook. ' +
+      'Ports and carriers are bringing contingency planning forward before peak storm months.';
+    assert.equal(parseWhyMattersV2(sourced, {
+      publicStory: {
+        headline: 'NOAA forecasts 80% chance of above-normal Atlantic hurricane season',
+        description: 'The public NOAA outlook assigns an 80 percent chance to above-normal activity.',
+        source: 'Reuters',
+      },
+      privateForecasts: 'WorldMonitor storm disruption forecast: 80.0% probability.',
+    }), sourced);
+  });
+
+  it('accepts output percentages that do not match private forecast context', async () => {
+    const { parseWhyMattersV2 } = await import('../shared/brief-llm-core.js');
+    const sourced =
+      'Reuters reports that the central bank forecasts inflation at 4% next year after the latest policy review. ' +
+      'The revised path gives officials more room to hold rates steady while monitoring wage growth.';
+    assert.equal(parseWhyMattersV2(sourced, {
+      publicStory: {
+        headline: 'Central bank forecasts inflation at 4%',
+        description: 'Reuters reports a revised public inflation projection.',
+        source: 'Reuters',
+      },
+      privateForecasts: 'WorldMonitor political-instability forecast: 84% probability.',
+    }), sourced);
+  });
+
   it('rejects <100 chars (too terse for the analyst contract)', async () => {
     const { parseWhyMattersV2 } = await import('../shared/brief-llm-core.js');
     assert.equal(parseWhyMattersV2('Short.'), null);

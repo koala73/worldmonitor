@@ -199,8 +199,16 @@ describe('parseWhyMattersV2 — analyst output validator', () => {
     const likelyLeak =
       'A disruption is 84% likely according to the forecast, creating an immediate risk of higher insurance costs across Gulf shipping routes. ' +
       'The analyst should not present that internal probability as a published fact.';
-    assert.equal(parseWhyMattersV2(forecastLeak), null);
-    assert.equal(parseWhyMattersV2(likelyLeak), null);
+    const provenance = {
+      publicStory: {
+        headline: 'Insurers reassess Gulf shipping routes',
+        description: 'Carriers are reviewing transit plans after new regional threats.',
+        source: 'Reuters',
+      },
+      privateForecasts: 'WorldMonitor disruption model: Strait closure remains 84% likely.',
+    };
+    assert.equal(parseWhyMattersV2(forecastLeak, provenance), null);
+    assert.equal(parseWhyMattersV2(likelyLeak, provenance), null);
     assert.equal(parseWhyMattersV2(VALID_MULTI), VALID_MULTI, 'ordinary story percentages must remain valid');
   });
 
@@ -815,20 +823,48 @@ describe('sectionsForCategory — structural relevance gating', () => {
     assert.match(user, /do not quote raw forecast probabilities/i);
   });
 
-  it('buildAnalystWhyMattersPrompt — justice/history/human-interest stories do not receive global narrative or forecasts', async (t) => {
-    for (const category of ['Justice', 'Historical Commemoration', 'Human Interest', 'Civil Rights Court Ruling']) {
-      await t.test(category, () => {
+  it('buildAnalystWhyMattersPrompt — production-shaped local stories do not receive global narrative or forecasts', async (t) => {
+    const stories = [
+      {
+        name: 'Srebrenica historical memory',
+        headline: 'Three survivors of the 1995 Srebrenica genocide preserve the memory of those killed',
+        description: 'Their testimony keeps historical memory alive three decades after the massacre.',
+        threatLevel: 'critical',
+        category: 'Conflict',
+        country: 'BA',
+      },
+      {
+        name: 'mass-casualty smuggling prosecution',
+        headline: 'Two Guatemalan nationals extradited to the U.S. admit roles in a 2021 mass casualty smuggling event',
+        description: 'The defendants entered guilty pleas in federal court.',
+        threatLevel: 'critical',
+        category: 'Conflict',
+        country: 'US',
+      },
+      {
+        name: 'civil-rights court ruling',
+        headline: 'Federal judge orders release of $5.8 million to E. Jean Carroll',
+        description: 'The plaintiff won access to funds after a federal civil-rights ruling.',
+        threatLevel: 'medium',
+        category: 'General',
+        country: 'US',
+      },
+    ];
+
+    for (const story of stories) {
+      await t.test(story.name, () => {
         const { user, policyLabel } = builder(
           {
-            headline: 'Court releases reparations funds to a civil-rights plaintiff',
+            headline: story.headline,
+            description: story.description,
             source: 'AP',
-            threatLevel: 'medium',
-            category,
-            country: 'US',
+            threatLevel: story.threatLevel,
+            category: story.category,
+            country: story.country,
           },
           {
             worldBrief: 'US-Iran ceasefire talks remain fragile around the Strait of Hormuz.',
-            countryBrief: 'The plaintiff won a civil case after a federal ruling.',
+            countryBrief: 'Local institutions are handling the reported event.',
             riskScores: 'Domestic stability risk is moderate.',
             forecasts: 'WorldMonitor forecast: Hormuz traffic disruption remains 84% likely.',
             marketData: 'Oil trades at $87.',
@@ -836,12 +872,64 @@ describe('sectionsForCategory — structural relevance gating', () => {
             degraded: false,
           },
         );
-        assert.equal(policyLabel, 'local', `${category} should match the local policy`);
+        assert.equal(policyLabel, 'local', `${story.name} should match the local policy`);
         assert.doesNotMatch(user, /US-Iran ceasefire/);
         assert.doesNotMatch(user, /84% likely/);
-        assert.match(user, /plaintiff won a civil case/);
+        assert.match(user, /Local institutions are handling/);
       });
     }
+  });
+
+  it('buildAnalystWhyMattersPrompt — genuine geopolitical Conflict story retains global narrative and forecasts', () => {
+    const { user, policyLabel } = builder(
+      {
+        headline: 'Mass casualty missile strikes escalate active conflict across the Gulf',
+        description: 'Military forces exchanged strikes overnight as regional tensions rose.',
+        source: 'Reuters',
+        threatLevel: 'critical',
+        category: 'Conflict',
+        country: 'IR',
+      },
+      {
+        worldBrief: 'US-Iran ceasefire talks remain fragile around the Strait of Hormuz.',
+        countryBrief: 'Iranian forces remain on high alert.',
+        riskScores: 'Regional stability risk is severe.',
+        forecasts: 'WorldMonitor forecast: Hormuz traffic disruption remains elevated.',
+        marketData: 'Oil trades at $87.',
+        macroSignals: 'FX stress remains elevated.',
+        degraded: false,
+      },
+    );
+
+    assert.equal(policyLabel, 'geopolitical');
+    assert.match(user, /US-Iran ceasefire/);
+    assert.match(user, /Hormuz traffic disruption remains elevated/);
+  });
+
+  it('buildAnalystWhyMattersPrompt — specific market category outranks a court keyword', () => {
+    const { user, policyLabel } = builder(
+      {
+        headline: 'Court blocks major oil pipeline permit',
+        description: 'The ruling delays a planned expansion of regional crude capacity.',
+        source: 'Reuters',
+        threatLevel: 'medium',
+        category: 'Energy',
+        country: 'US',
+      },
+      {
+        worldBrief: 'Global energy supply remains tight.',
+        countryBrief: 'The permit dispute is proceeding through federal court.',
+        riskScores: 'Domestic stability risk is low.',
+        forecasts: 'Pipeline capacity is expected to remain constrained.',
+        marketData: 'Oil trades at $87.',
+        macroSignals: 'Refining margins remain elevated.',
+        degraded: false,
+      },
+    );
+
+    assert.equal(policyLabel, 'market');
+    assert.match(user, /Pipeline capacity is expected to remain constrained/);
+    assert.match(user, /Oil trades at \$87/);
   });
 });
 

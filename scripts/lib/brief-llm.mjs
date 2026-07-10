@@ -115,8 +115,8 @@ const BRIEF_LLM_SKIP_PROVIDERS = ['ollama', 'groq'];
  *
  * Four-layer graceful degradation:
  *   1. `deps.callAnalystWhyMatters(story)` — the analyst-context edge
- *      endpoint (brief:llm:whymatters:v8 cache lives there). Preferred.
- *   2. Direct read of the endpoint's v8 envelope cache (#4914) — the
+ *      endpoint (brief:llm:whymatters:v9 cache lives there). Preferred.
+ *   2. Direct read of the endpoint's v9 envelope cache (#4914) — the
  *      endpoint CALL can fail while its cached envelope is still valid;
  *      reusing it avoids a paid duplicate generation.
  *   3. Legacy direct-Gemini chain: cacheGet (v5) → callLLM → cacheSet.
@@ -165,7 +165,7 @@ export async function generateWhyMatters(story, deps) {
 
   // #4914: before paying a direct-Gemini generation, check the analyst
   // endpoint's OWN cache namespace. api/internal/brief-why-matters.ts
-  // stores its envelope at brief:llm:whymatters:v8:{hash} under the same
+  // stores its envelope at brief:llm:whymatters:v9:{hash} under the same
   // hashBriefStory identity — when the endpoint CALL failed transiently
   // (or no endpoint is configured), the story may already have a paid,
   // validated envelope sitting in Redis. Read-only: this fallback's own
@@ -173,15 +173,15 @@ export async function generateWhyMatters(story, deps) {
   // two prompt contracts never cross-contaminate in the write direction.
   const storyHash = await hashBriefStory(story);
   try {
-    const v8 = await deps.cacheGet(`brief:llm:whymatters:v8:${storyHash}`);
-    if (v8 && typeof v8 === 'object' && typeof v8.whyMatters === 'string') {
-      const v8Trimmed = v8.whyMatters.trim();
+    const v9 = await deps.cacheGet(`brief:llm:whymatters:v9:${storyHash}`);
+    if (v9 && typeof v9 === 'object' && typeof v9.whyMatters === 'string') {
+      const v9Trimmed = v9.whyMatters.trim();
       // Same acceptance bounds as the live-endpoint path above.
       if (
-        v8Trimmed.length >= 30 && v8Trimmed.length <= 500
-        && !/^story flagged by your sensitivity/i.test(v8Trimmed)
+        v9Trimmed.length >= 30 && v9Trimmed.length <= 500
+        && !/^story flagged by your sensitivity/i.test(v9Trimmed)
       ) {
-        return v8Trimmed;
+        return v9Trimmed;
       }
     }
   } catch { /* treat as miss */ }

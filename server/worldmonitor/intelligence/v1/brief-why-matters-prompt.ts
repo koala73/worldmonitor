@@ -67,10 +67,12 @@ const CONTEXT_BUDGET_CHARS = 1700;
 // stories don't see domestic risk scores; etc. The model physically cannot
 // cite what it wasn't given.
 //
-// Matching is case-insensitive substring on the story's category slug
-// (shared/brief-filter.js:134 — category is free-form like "Humanitarian
-// Crisis", "Geopolitical Risk", "Energy"). First match wins. Unknown →
-// DEFAULT_SECTIONS (all six — same as pre-gating behavior).
+// Category matching is case-insensitive because the production brief
+// envelope carries Title-Cased canonical EventCategory values. A narrow
+// story-text override below handles local stories whose canonical category
+// is necessarily broader (for example a historical genocide retrospective
+// classified as Conflict). First match wins. Unknown → DEFAULT_SECTIONS
+// (all six — same as pre-gating behavior).
 type SectionKey = Exclude<keyof BriefStoryContext, 'degraded'>;
 
 // Per-section caps so no single heavy bundle (e.g. long worldBrief)
@@ -94,6 +96,31 @@ const DEFAULT_SECTIONS: SectionKey[] = [
   'marketData',
 ];
 
+const LOCAL_SECTIONS: SectionKey[] = ['countryBrief', 'riskScores'];
+
+// The production classifier deliberately emits a small canonical category
+// enum, so justice/history/human-interest are often represented as General,
+// Crime, or even Conflict when a phrase such as "genocide" or "mass casualty"
+// wins keyword classification. Use grounded story text to recover that local
+// scope without weakening genuine active-conflict routing.
+const LOCAL_HISTORY_OR_HUMAN_INTEREST_RE =
+  /\b(?:historical memory|anniversar(?:y|ies)|commemorat(?:e|es|ed|ing|ion|ions)|memorials?|retrospective|survivors?\s+of\s+(?:the\s+)?(?:19|20)\d{2}|human[\s-]?interest|obituar(?:y|ies)|celebrit(?:y|ies)|entertainment)\b/i;
+const LOCAL_JUSTICE_RE =
+  /\b(?:court|judge|judicial|plaintiffs?|defendants?|lawsuits?|rulings?|sentenc(?:e|es|ed|ing)|convict(?:ed|ion|ions)?|extradit(?:e|es|ed|ing|ion|ions)|guilty pleas?|pleads? guilty|prosecut(?:e|es|ed|ing|ion|ions|or|ors)|indict(?:ed|ment|ments)?|trials?|appeals?|reparations?)\b/i;
+const ACTIVE_GEOPOLITICAL_RE =
+  /\b(?:airstrikes?|missiles?|troops?|military|war|armed conflict|ceasefires?|invasion|bombing|drone strikes?|nuclear|hostages?|genocides?|ethnic cleansing|terror(?:ism|ists?| attacks?)?)\b/i;
+
+function storyUsesLocalContext(story: StoryForPrompt): boolean {
+  // Only repair the broad classifier buckets that swallowed the reported
+  // local stories. Specific categories (Energy, Economic, Diplomatic, etc.)
+  // already carry stronger editorial intent and must keep their own policy
+  // even when a headline happens to mention a court or ruling.
+  if (!/^(?:conflict|general)$/i.test(story.category)) return false;
+  const text = `${story.headline} ${story.description ?? ''}`;
+  if (LOCAL_HISTORY_OR_HUMAN_INTEREST_RE.test(text)) return true;
+  return LOCAL_JUSTICE_RE.test(text) && !ACTIVE_GEOPOLITICAL_RE.test(text);
+}
+
 // NOTE on regex shape: patterns use a LEADING `\b` (start-of-word
 // anchor) but NO TRAILING `\b`, so they match stems. "Diplomac" must
 // match "Diplomacy" and "Diplomatic"; "migrat" must match "migration"
@@ -114,7 +141,7 @@ const CATEGORY_SECTION_POLICY: Array<{ match: RegExp; sections: SectionKey[]; la
   {
     label: 'local',
     match: /\b(justice|court|legal|law\b|crime|criminal|history|historical|heritage|culture|human.?interest|obituar|celebrity|entertainment)/i,
-    sections: ['countryBrief', 'riskScores'],
+    sections: LOCAL_SECTIONS,
   },
   // Humanitarian / civil / social / rights — NO market, NO forecasts.
   // This is the #1 source of the "77% FX stress dragged into a Rwanda
@@ -165,8 +192,8 @@ const CATEGORY_SECTION_POLICY: Array<{ match: RegExp; sections: SectionKey[]; la
  * story category. Exported for testability — the category → sections
  * map is the main lever for tuning analyst output relevance.
  *
- * @param category — the story's category slug (free-form, from the cron
- *   payload). `""` or unknown categories fall back to DEFAULT_SECTIONS.
+ * @param category — the story's category from the cron payload. `""` or
+ *   unknown categories fall back to DEFAULT_SECTIONS.
  */
 export function sectionsForCategory(category: string): {
   sections: SectionKey[];
@@ -235,7 +262,9 @@ export function buildAnalystWhyMattersPrompt(
   todayIso?: string,
 ): { system: string; user: string; policyLabel: string } {
   const safe = sanitizeStoryFields(story);
-  const { sections: allowedSections, policyLabel } = sectionsForCategory(safe.category);
+  const { sections: allowedSections, policyLabel } = storyUsesLocalContext(safe)
+    ? { sections: LOCAL_SECTIONS, policyLabel: 'local' }
+    : sectionsForCategory(safe.category);
   const contextBlock = buildContextBlock(context, allowedSections);
 
   const storyLineList = [

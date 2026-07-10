@@ -35,7 +35,14 @@ export function hashBriefStory(story: BriefStoryHashInput): Promise<string>;
 
 // ── v2 (analyst path only) ────────────────────────────────────────────────
 export const WHY_MATTERS_ANALYST_SYSTEM_V2: string;
-export function parseWhyMattersV2(text: unknown): string | null;
+export interface WhyMattersV2Provenance {
+  publicStory?: Pick<BriefStoryHashInput, 'headline' | 'description' | 'source'>;
+  privateForecasts?: string;
+}
+export function parseWhyMattersV2(
+  text: unknown,
+  provenance?: WhyMattersV2Provenance,
+): string | null;
 
 // ── Hallucination validator (PR-2 of brief-content-quality regressions) ──
 export function extractProperNounSequences(text: string): string[][];

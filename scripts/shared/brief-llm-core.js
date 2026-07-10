@@ -209,9 +209,13 @@ export const WHY_MATTERS_ANALYST_SYSTEM_V2 =
  * fall through to the next layer.
  *
  * @param {unknown} text
+ * @param {{
+ *   publicStory?: { headline?: string, description?: string, source?: string },
+ *   privateForecasts?: string,
+ * }} [provenance]
  * @returns {string | null}
  */
-export function parseWhyMattersV2(text) {
+export function parseWhyMattersV2(text, provenance) {
   if (typeof text !== 'string') return null;
   let s = text.trim();
   if (!s) return null;
@@ -227,16 +231,32 @@ export function parseWhyMattersV2(text) {
   // Reject markdown / section-label leakage (we told it to use plain prose).
   if (/^(#|-|\*|\d+\.\s)/.test(s)) return null;
   if (/^(situation|analysis|watch)\s*[:\-–—]/i.test(s)) return null;
-  // The prompt makes forecast figures private reasoning input, but models can
-  // still disobey. Reject only percentages framed as forecasts/probabilities;
-  // ordinary sourced figures such as "20% of seaborne oil" remain valid.
-  const percentage = '\\b\\d{1,3}\\s?(?:%|percent\\b)';
-  const forecastTerm = '\\b(?:forecast|predict(?:ion|s|ed)?|probability|likelihood|chance|odds|likely)\\b';
-  const forecastPercentage = new RegExp(
-    `${forecastTerm}.{0,32}${percentage}|${percentage}.{0,32}${forecastTerm}`,
-    'i',
-  );
-  if (forecastPercentage.test(s)) return null;
+  // Forecast context is private reasoning input. Compare normalized percentage
+  // values instead of nearby wording so paraphrases, distance, and newlines do
+  // not bypass the guard. A value present in the public story remains valid
+  // even when the private forecast block happens to contain the same number.
+  const percentageValues = (value) => {
+    if (typeof value !== 'string' || value.length === 0) return new Set();
+    const values = new Set();
+    const percentage = /(?:^|[^\d.])(\d{1,3}(?:\.\d+)?)\s*(?:%|per\s*cent\b)/gi;
+    for (const match of value.matchAll(percentage)) {
+      const number = Number(match[1]);
+      if (Number.isFinite(number)) values.add(String(number));
+    }
+    return values;
+  };
+  const privateValues = percentageValues(provenance?.privateForecasts);
+  if (privateValues.size > 0) {
+    const publicStory = provenance?.publicStory;
+    const publicText = [publicStory?.headline, publicStory?.description, publicStory?.source]
+      .filter((value) => typeof value === 'string')
+      .join('\n');
+    const publicValues = percentageValues(publicText);
+    const outputValues = percentageValues(s);
+    for (const value of outputValues) {
+      if (privateValues.has(value) && !publicValues.has(value)) return null;
+    }
+  }
   return s;
 }
 
