@@ -1,0 +1,105 @@
+// MCP Apps (extension `io.modelcontextprotocol/ui`, spec 2026-01-26) — the
+// interactive app shell for the `get_natural_disasters` tool: a hazard board
+// grouping recent earthquakes (USGS) and active wildfires (NASA FIRMS). Built on
+// the shared shell foundation.
+//
+// Tool result shape (cache tool — content[0].text JSON, freshness envelope):
+//   { cached_at, stale, data: {
+//       earthquakes: { earthquakes: [{ magnitude, place, time, latitude, longitude, depth }] },
+//       fires: { fireDetections: [{ latitude, longitude, brightness, confidence }] } } }
+// Any dataset may be absent (dataset / min_magnitude / active_only filters narrow it).
+//
+// textContent-only rendering; renderBody stays backtick/`${`/regex-free.
+
+import { buildAppHtml } from './shell';
+
+const STYLES = `
+  .dgroup { margin-top: 14px; }
+  .dgroup:first-child { margin-top: 4px; }
+  .sec-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 6px; }
+  .drow { display: flex; align-items: baseline; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .drow:last-child { border-bottom: none; }
+  .mag { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 13px; min-width: 42px; }
+  .dplace { flex: 1; font-size: 13px; color: var(--fg); min-width: 0; }
+  .dtime { font-size: 11px; color: var(--muted); white-space: nowrap; }
+`;
+
+const BODY = `
+  <div class="head">
+    <div class="title">Natural Disasters</div>
+    <div class="badge">WorldMonitor Hazards</div>
+  </div>
+  <div class="empty" id="empty">Waiting for hazard data…</div>
+  <div id="card" style="display:none">
+    <div id="groups"></div>
+    <div class="foot" id="foot"></div>
+  </div>
+`;
+
+const RENDER = `
+    if (!data || typeof data !== "object") return;
+    var d = data.data && typeof data.data === "object" ? data.data : data;
+    q("empty").style.display = "none";
+    q("card").style.display = "block";
+
+    var host = q("groups");
+    host.textContent = "";
+
+    var quakeNode = d.earthquakes && typeof d.earthquakes === "object" ? d.earthquakes : null;
+    var quakes = quakeNode && Array.isArray(quakeNode.earthquakes) ? quakeNode.earthquakes : [];
+    if (quakes.length) {
+      var sec = el("div", "dgroup");
+      sec.appendChild(el("div", "sec-label", "Earthquakes"));
+      for (var i = 0; i < quakes.length && i < 8; i++) {
+        var eq = quakes[i];
+        if (!eq || typeof eq !== "object") continue;
+        var row = el("div", "drow");
+        var m = num(eq.magnitude);
+        var mag = el("span", "mag", m == null ? "—" : "M" + m.toFixed(1));
+        var col = m == null ? cssVar("--muted") : (m >= 6 ? cssVar("--severe") : (m >= 5 ? cssVar("--high") : (m >= 4 ? cssVar("--moderate") : cssVar("--low"))));
+        mag.style.color = col || "";
+        row.appendChild(mag);
+        row.appendChild(el("span", "dplace", collapseWs(eq.place) || "Unknown location"));
+        var tv = eq.time;
+        var dt = tv != null ? new Date(typeof tv === "number" ? tv : String(tv)) : null;
+        row.appendChild(el("span", "dtime", dt && !isNaN(dt.getTime()) ? dt.toISOString().slice(0, 10) : ""));
+        sec.appendChild(row);
+      }
+      host.appendChild(sec);
+    }
+
+    var fireNode = d.fires && typeof d.fires === "object" ? d.fires : null;
+    var fires = fireNode && Array.isArray(fireNode.fireDetections) ? fireNode.fireDetections : [];
+    if (fires.length) {
+      var fsec = el("div", "dgroup");
+      fsec.appendChild(el("div", "sec-label", "Active Wildfires (" + fires.length + ")"));
+      for (var k = 0; k < fires.length && k < 6; k++) {
+        var fr = fires[k];
+        if (!fr || typeof fr !== "object") continue;
+        var frow = el("div", "drow");
+        var conf = collapseWs(fr.confidence);
+        frow.appendChild(el("span", "mag", conf ? conf : "fire"));
+        var lat = num(fr.latitude);
+        var lng = num(fr.longitude);
+        frow.appendChild(el("span", "dplace", lat != null && lng != null ? lat.toFixed(2) + ", " + lng.toFixed(2) : "detection"));
+        var bright = num(fr.brightness);
+        frow.appendChild(el("span", "dtime", bright != null ? "brightness " + Math.round(bright) : ""));
+        fsec.appendChild(frow);
+      }
+      host.appendChild(fsec);
+    }
+
+    if (!host.childNodes.length) host.appendChild(el("div", "empty", "No natural-hazard events available."));
+
+    q("foot").textContent = data.cached_at
+      ? "Snapshot: " + collapseWs(data.cached_at) + (data.stale ? " (stale)" : "")
+      : "";
+`;
+
+export const NATURAL_DISASTERS_APP_HTML = buildAppHtml({
+  title: 'Natural Disasters — WorldMonitor',
+  appName: 'worldmonitor-natural-disasters',
+  styles: STYLES,
+  body: BODY,
+  renderBody: RENDER,
+});

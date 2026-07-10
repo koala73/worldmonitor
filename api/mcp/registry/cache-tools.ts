@@ -23,7 +23,15 @@ import {
   selectDatasets,
 } from '../filters';
 import type { ToolDef } from '../types';
-import { CHOKEPOINT_MONITOR_UI_URI, MARKET_RADAR_UI_URI } from '../ui/registry';
+import {
+  CHOKEPOINT_MONITOR_UI_URI,
+  CONFLICT_EVENTS_UI_URI,
+  FORECASTS_UI_URI,
+  MARKET_RADAR_UI_URI,
+  NATURAL_DISASTERS_UI_URI,
+  NEWS_INTELLIGENCE_UI_URI,
+  PREDICTION_MARKETS_UI_URI,
+} from '../ui/registry';
 
 // Iran-events domain sunset (war ended 2026-07). Default OFF: drop the dormant
 // conflict:iran-events:v1 key from the get_conflict_events cache set so the MCP
@@ -171,6 +179,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_conflict_events',
+    _uiResourceUri: CONFLICT_EVENTS_UI_URI,
     _outputBudgetBytes: 131072,
     description: 'Active armed conflict events (UCDP, Iran), unrest events with geo-coordinates, and country risk scores. Covers ongoing conflicts, protests, and instability indices worldwide.',
     inputSchema: {
@@ -320,6 +329,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_news_intelligence',
+    _uiResourceUri: NEWS_INTELLIGENCE_UI_URI,
     _outputBudgetBytes: 131072,
     description: 'AI-classified geopolitical threat news summaries, GDELT intelligence signals, cross-source signals, and security advisories from WorldMonitor\'s intelligence layer.',
     inputSchema: {
@@ -397,6 +407,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_natural_disasters',
+    _uiResourceUri: NATURAL_DISASTERS_UI_URI,
     _outputBudgetBytes: 131072,
     description: 'Recent earthquakes (USGS), active wildfires (NASA FIRMS), and natural hazard events. Includes magnitude, location, and threat severity.',
     inputSchema: {
@@ -863,6 +874,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_prediction_markets',
+    _uiResourceUri: PREDICTION_MARKETS_UI_URI,
     _outputBudgetBytes: 131072,
     description: 'Active Polymarket event contracts with current probabilities. Covers geopolitical, economic, and election prediction markets.',
     inputSchema: {
@@ -1755,6 +1767,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_forecast_predictions',
+    _uiResourceUri: FORECASTS_UI_URI,
     _outputBudgetBytes: 131072,
     description: 'AI-generated geopolitical and economic forecasts from WorldMonitor\'s predictive models. Covers upcoming risk events and probability assessments.',
     inputSchema: {
