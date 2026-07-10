@@ -270,6 +270,15 @@ export class SearchModal {
    * chips can create several nodes plus event listeners, which otherwise makes
    * the first sheet presentation compete with the FAB interaction (#5158).
    */
+  private scheduleMobileReveal(overlay: HTMLElement): void {
+    requestAnimationFrame(() => {
+      // The sheet can close or be replaced before its queued reveal runs. Do
+      // not let stale work reopen an outgoing or removed overlay.
+      if (this.overlay !== overlay || this.closeTimeoutId !== null) return;
+      overlay.classList.add('open');
+    });
+  }
+
   private scheduleMobileInitialPopulation(): void {
     const generation = ++this.mobileInitialPopulationGeneration;
     // The first frame reveals the sheet; the second runs after that paint. Do
@@ -292,7 +301,7 @@ export class SearchModal {
     this.overlay.setAttribute('aria-modal', 'true');
 
     if (this.isMobile) {
-      this.overlay.className = 'search-overlay search-mobile search-mobile-prerender';
+      this.overlay.className = 'search-overlay search-mobile';
       setTrustedHtml(this.overlay, trustedHtml(`
         <div class="search-sheet">
           <div class="search-sheet-handle"></div>
@@ -315,10 +324,7 @@ export class SearchModal {
       this.chipsContainer = this.overlay.querySelector('.search-sheet-chips');
 
       this.container.appendChild(this.overlay);
-      requestAnimationFrame(() => {
-        this.overlay?.classList.remove('search-mobile-prerender');
-        this.overlay?.classList.add('open');
-      });
+      this.scheduleMobileReveal(this.overlay);
 
       const sheet = this.overlay.querySelector('.search-sheet') as HTMLElement | null;
       if (sheet && window.visualViewport) {

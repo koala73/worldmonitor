@@ -11292,13 +11292,6 @@ a.prediction-link:hover {
   transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-/* The appended shell starts hidden, so skip its paint work until the reveal
-   frame clears the pre-render marker. Closing removes .open but preserves the
-   sheet long enough for its slide-out transform to finish. */
-.search-overlay.search-mobile.search-mobile-prerender .search-sheet {
-  content-visibility: hidden;
-}
-
 .search-overlay.search-mobile.open .search-sheet {
   transform: translateY(0);
 }

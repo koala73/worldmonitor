@@ -7,6 +7,7 @@ import ts from 'typescript';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const modalSrc = readFileSync(resolve(root, 'src/components/SearchModal.ts'), 'utf8');
+const stylesSrc = readFileSync(resolve(root, 'src/styles/main.css'), 'utf8');
 
 function extractMethod(signature: string): string {
   const start = modalSrc.indexOf(signature);
@@ -69,6 +70,7 @@ const harnessSource = `
     ${extractMethod('public open(): void {')}
     ${extractMethod('public close(): void {')}
     ${extractMethod('public refreshSearch(): void {')}
+    ${extractMethod('private scheduleMobileReveal(overlay: HTMLElement): void {')}
     ${extractMethod('private scheduleMobileInitialPopulation(): void {')}
     ${extractMethod('private handleSearch(): void {')}
   }
@@ -167,4 +169,36 @@ test('a direct refresh before the inner reveal frame owns mobile search results 
     assert.equal(modal.recentOrEmptyCalls, 1, 'stale initial population must not overwrite refreshed results');
     assert.equal(modal.chipRenderCalls, 1);
   });
+});
+
+test('a close before the queued reveal frame cannot reopen the outgoing mobile sheet (#5158)', () => {
+  withAnimationFrames((frames) => {
+    const modal = new Harness() as unknown as SearchModalHarness & {
+      overlay: HTMLElement | null;
+      scheduleMobileReveal(overlay: HTMLElement): void;
+    };
+    const classOperations: string[] = [];
+    const overlay = {
+      classList: {
+        add: (name: string) => classOperations.push(`add:${name}`),
+        remove: (name: string) => classOperations.push(`remove:${name}`),
+      },
+      remove() {},
+    } as unknown as HTMLElement;
+    modal.overlay = overlay;
+
+    modal.scheduleMobileReveal(overlay);
+    modal.close();
+    runNextFrame(frames);
+
+    assert.deepEqual(classOperations, ['remove:open']);
+    modal.open(); // Clears close's removal timer before this test returns.
+  });
+});
+
+test('mobile search CSS never hides the sheet or input with content-visibility (#5158)', () => {
+  assert.doesNotMatch(
+    stylesSrc,
+    /\.search-overlay\.search-mobile[^{}]*(?:\.search-sheet|\.search-input)[^{}]*\{[^}]*content-visibility\s*:\s*hidden/i,
+  );
 });
