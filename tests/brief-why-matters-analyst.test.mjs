@@ -815,30 +815,32 @@ describe('sectionsForCategory — structural relevance gating', () => {
     assert.match(user, /do not quote raw forecast probabilities/i);
   });
 
-  it('buildAnalystWhyMattersPrompt — justice/history/human-interest stories do not receive global narrative or forecasts', () => {
+  it('buildAnalystWhyMattersPrompt — justice/history/human-interest stories do not receive global narrative or forecasts', async (t) => {
     for (const category of ['Justice', 'Historical Commemoration', 'Human Interest', 'Civil Rights Court Ruling']) {
-      const { user, policyLabel } = builder(
-        {
-          headline: 'Court releases reparations funds to a civil-rights plaintiff',
-          source: 'AP',
-          threatLevel: 'medium',
-          category,
-          country: 'US',
-        },
-        {
-          worldBrief: 'US-Iran ceasefire talks remain fragile around the Strait of Hormuz.',
-          countryBrief: 'The plaintiff won a civil case after a federal ruling.',
-          riskScores: 'Domestic stability risk is moderate.',
-          forecasts: 'WorldMonitor forecast: Hormuz traffic disruption remains 84% likely.',
-          marketData: 'Oil trades at $87.',
-          macroSignals: 'FX stress remains elevated.',
-          degraded: false,
-        },
-      );
-      assert.equal(policyLabel, 'local', `${category} should match the local policy`);
-      assert.doesNotMatch(user, /US-Iran ceasefire/);
-      assert.doesNotMatch(user, /84% likely/);
-      assert.match(user, /plaintiff won a civil case/);
+      await t.test(category, () => {
+        const { user, policyLabel } = builder(
+          {
+            headline: 'Court releases reparations funds to a civil-rights plaintiff',
+            source: 'AP',
+            threatLevel: 'medium',
+            category,
+            country: 'US',
+          },
+          {
+            worldBrief: 'US-Iran ceasefire talks remain fragile around the Strait of Hormuz.',
+            countryBrief: 'The plaintiff won a civil case after a federal ruling.',
+            riskScores: 'Domestic stability risk is moderate.',
+            forecasts: 'WorldMonitor forecast: Hormuz traffic disruption remains 84% likely.',
+            marketData: 'Oil trades at $87.',
+            macroSignals: 'FX stress remains elevated.',
+            degraded: false,
+          },
+        );
+        assert.equal(policyLabel, 'local', `${category} should match the local policy`);
+        assert.doesNotMatch(user, /US-Iran ceasefire/);
+        assert.doesNotMatch(user, /84% likely/);
+        assert.match(user, /plaintiff won a civil case/);
+      });
     }
   });
 });
