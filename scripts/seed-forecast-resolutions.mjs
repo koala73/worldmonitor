@@ -18,7 +18,7 @@ import { CHROME_UA, loadEnvFile, runSeed } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { resolveR2StorageConfig, putR2JsonObject } from './_r2-storage.mjs';
 import { parseMetricKey, resolveHardSpec, extractMetricValue } from './_forecast-resolution-eval.mjs';
-import { CONFLICT_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED } from './_forecast-resolution.mjs';
+import { CONFLICT_COUNT_FEED_AVAILABLE, CONFLICT_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED } from './_forecast-resolution.mjs';
 import { computeScorecard, DEFAULT_ROLLING_WINDOW_DAYS } from './_forecast-scorecard.mjs';
 import { callForecastLLM } from './seed-forecasts.mjs';
 
@@ -763,13 +763,45 @@ function migratePendingCountFeedKeys(ledger) {
   for (const entry of Object.values(ledger)) {
     if (entry?.status !== 'pending' || entry.spec?.kind !== 'hard') continue;
     const replacement = STALE_COUNT_FEED_REPLACEMENTS.get(entry.spec.sourceFeed);
-    if (!replacement) continue;
-    const parsed = parseMetricKey(entry.spec.metricKey);
-    entry.spec.sourceFeed = replacement;
-    if (parsed?.feedKey && STALE_COUNT_FEED_REPLACEMENTS.get(parsed.feedKey) === replacement) {
-      entry.spec.metricKey = `${replacement}|${entry.spec.metricKey.slice(parsed.feedKey.length + 1)}`;
+    if (replacement) {
+      const parsed = parseMetricKey(entry.spec.metricKey);
+      entry.spec.sourceFeed = replacement;
+      if (parsed?.feedKey && STALE_COUNT_FEED_REPLACEMENTS.get(parsed.feedKey) === replacement) {
+        entry.spec.metricKey = `${replacement}|${entry.spec.metricKey.slice(parsed.feedKey.length + 1)}`;
+      }
     }
+    migratePendingConflictCountEntryToJudged(entry);
   }
+}
+
+function migratePendingConflictCountEntryToJudged(entry) {
+  if (CONFLICT_COUNT_FEED_AVAILABLE) return;
+  if (entry?.status !== 'pending' || entry.spec?.kind !== 'hard') return;
+  if (entry.spec.sourceFeed !== CONFLICT_COUNT_SOURCE_FEED) return;
+  const parsed = parseMetricKey(entry.spec.metricKey);
+  if (parsed?.fn !== 'count') return;
+
+  const deadline = toFiniteNumber(entry.deadline ?? entry.spec.deadline);
+  entry.spec = {
+    kind: 'judged',
+    metricKey: null,
+    operator: null,
+    threshold: null,
+    baselineValue: null,
+    window: null,
+    deadline: deadline ?? entry.spec.deadline,
+    sourceFeed: null,
+    question: buildConflictJudgedQuestionForEntry(entry),
+  };
+  entry.status = 'pending-judge';
+  entry.samples = { count: 0, recent: [] };
+}
+
+function buildConflictJudgedQuestionForEntry(entry) {
+  const title = entry.title || '(untitled forecast)';
+  const region = entry.region || 'unspecified region';
+  const horizon = entry.timeHorizon || 'unspecified horizon';
+  return `Within the ${horizon} horizon, did ${region} experience a materially escalated level of armed conflict versus its recent baseline, consistent with "${title}"?`;
 }
 
 export function samplePendingEntries(ledger, feedsByKey, nowMs) {
