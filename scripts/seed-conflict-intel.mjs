@@ -41,6 +41,13 @@ const CONFLICT_COUNTRIES = [
   'IQ', 'PS', 'LY', 'ML', 'BF', 'NE', 'NG', 'CM', 'MZ', 'HT',
 ];
 export const GDELT_MIN_SUCCESSFUL_COUNTRIES = Math.ceil(CONFLICT_COUNTRIES.length * 0.8);
+// #5140: wall-clock budget for the whole GDELT fallback sweep. The sweep's worst
+// case must fit runSeed's 240s fetch deadline AFTER the aux Promise.allSettled
+// (~≤60s) and with one in-flight batch allowed to drain past the budget check
+// (~92s OBSERVED for a full-timeout batch at the fetch knobs below — retry math
+// says 75s, curl/DNS overheads add ~17s): 60s + 75s + 95s = 230s ≤ 240s. Without
+// this cap a GDELT brownout ran 5 batches ≈ 375s → deadline breach → exit 75 every tick.
+export const GDELT_SWEEP_BUDGET_MS = 75_000;
 
 const ISO2_TO_ISO3 = loadSharedConfig('iso2-to-iso3.json');
 
@@ -211,13 +218,27 @@ export async function fetchGdeltCountryEvents(cc) {
 export async function fetchGdeltConflictEvents({
   fetchCountryEvents = fetchGdeltCountryEvents,
   pace = sleep,
+  now = Date.now,
 } = {}) {
   const events = [];
   const failedCountries = [];
   let successfulCountries = 0;
   const CONCURRENCY = 4; // bound the run window (20 countries × proxy retries)
+  const budgetSpentAt = now() + GDELT_SWEEP_BUDGET_MS;
   for (let i = 0; i < CONFLICT_COUNTRIES.length; i += CONCURRENCY) {
-    const batch = CONFLICT_COUNTRIES.slice(i, i + CONCURRENCY);
+    // #5140: stop LAUNCHING batches once the budget is spent or the floor can no
+    // longer be reached — either way the caller degrades to aux-only and exits 0,
+    // instead of grinding retries into the fetch-phase deadline (exit 75).
+    const remaining = CONFLICT_COUNTRIES.slice(i);
+    const overBudget = now() >= budgetSpentAt;
+    const floorUnreachable = successfulCountries + remaining.length < GDELT_MIN_SUCCESSFUL_COUNTRIES;
+    if (overBudget || floorUnreachable) {
+      const why = overBudget ? 'sweep budget exhausted' : 'coverage floor unreachable';
+      for (const cc of remaining) failedCountries.push({ country: cc, error: why });
+      console.warn(`  [GDELT] conflict sweep stopped early (${why}) with ${i}/${CONFLICT_COUNTRIES.length} countries attempted`);
+      break;
+    }
+    const batch = remaining.slice(0, CONCURRENCY);
     const results = await Promise.all(batch.map(cc => fetchCountryEvents(cc)));
     for (const result of results) {
       if (result?.ok) {

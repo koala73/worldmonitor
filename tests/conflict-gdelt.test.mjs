@@ -10,6 +10,7 @@ import { computeEmaWindows } from '../scripts/_ema-threat-engine.mjs';
 import {
   fetchGdeltConflictEvents,
   GDELT_MIN_SUCCESSFUL_COUNTRIES,
+  GDELT_SWEEP_BUDGET_MS,
 } from '../scripts/seed-conflict-intel.mjs';
 
 test('gdeltSeenDateToIso parses GDELT seendate formats to YYYY-MM-DD', () => {
@@ -107,4 +108,61 @@ test('fetchGdeltConflictEvents treats successful zero-article countries as cover
   assert.equal(result.events.length, 0);
   assert.equal(result.pagination.countriesSucceeded, 20);
   assert.equal(result.pagination.countriesFailed, 0);
+});
+
+// #5140: the sweep's worst case (20 countries × ~75s of direct+proxy retries ÷ 4
+// concurrency ≈ 375s) exceeded runSeed's 240s fetch deadline, so a GDELT brownout
+// crashed the seeder (exit 75) instead of reaching the caught coverage-floor →
+// aux-only → exit 0 path. The sweep must stop launching batches once its wall-clock
+// budget is spent, regardless of per-country outcome.
+test('fetchGdeltConflictEvents stops launching batches once the sweep budget is spent (#5140)', async () => {
+  let calls = 0;
+  let fakeTime = 0;
+  await assert.rejects(
+    fetchGdeltConflictEvents({
+      pace: async () => {},
+      now: () => fakeTime,
+      fetchCountryEvents: async (cc) => {
+        calls += 1;
+        // Each batch of 4 consumes 40s of fake wall clock — a degraded-GDELT batch.
+        fakeTime += 40_000 / 4;
+        return { country: cc, ok: true, events: [] };
+      },
+    }),
+    /coverage below floor.*sweep budget exhausted/s,
+  );
+  // Budget 75s: batch 1 ends at 40s (< 75s → batch 2 launches), batch 2 ends at
+  // 80s (≥ 75s → stop). Only 8 of 20 countries may be attempted.
+  assert.equal(calls, 8);
+});
+
+test('fetchGdeltConflictEvents stops sweeping once the coverage floor is unreachable (#5140)', async () => {
+  let calls = 0;
+  await assert.rejects(
+    fetchGdeltConflictEvents({
+      pace: async () => {},
+      fetchCountryEvents: async (cc) => {
+        calls += 1;
+        return { country: cc, ok: false, events: [], error: 'proxy unavailable' };
+      },
+    }),
+    /coverage below floor/,
+  );
+  // After 2 all-failed batches: 0 successes + 12 remaining < 16 floor → no third batch.
+  assert.equal(calls, 8);
+});
+
+test('GDELT sweep budget + one in-flight batch fits the 240s fetch deadline with aux headroom (#5140)', () => {
+  // Per-country worst case at the seed's knobs (maxRetries:1, proxyMaxAttempts:2,
+  // 15s timeouts, 10s direct backoff, 5s proxy backoff) is 75s by retry math, but
+  // a full-timeout batch measured ~92s live (curl/DNS overheads) — use 95s. A batch
+  // launched at the budget edge may still run that long past it, and the aux
+  // allSettled that precedes the sweep needs headroom inside the same fetch phase.
+  const WORST_IN_FLIGHT_BATCH_MS = 95_000;
+  const AUX_ALLSETTLED_HEADROOM_MS = 60_000;
+  const FETCH_DEADLINE_MS = 240_000;
+  assert.ok(
+    GDELT_SWEEP_BUDGET_MS + WORST_IN_FLIGHT_BATCH_MS + AUX_ALLSETTLED_HEADROOM_MS <= FETCH_DEADLINE_MS,
+    `sweep budget ${GDELT_SWEEP_BUDGET_MS}ms leaves no headroom under the ${FETCH_DEADLINE_MS}ms fetch deadline`,
+  );
 });
