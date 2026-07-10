@@ -154,6 +154,17 @@ describe('buildResolutionSpec — conflict is judged (#5136)', () => {
     assert.equal(spec.kind, 'judged');
     assert.match(spec.question, /Kenya/);
     assert.match(spec.question, /unrest|instability/i);
+    assert.match(spec.question, /7d/); // horizon embedded in the question template
+  });
+
+  it('unrest with the feed forced available but no finite count signal still falls back to judged (tally-null guard)', () => {
+    const spec = buildResolutionSpec(
+      pred({ domain: 'political', region: 'Kenya', timeHorizon: '7d', signals: [{ type: 'unrest_events', value: 'unrest reported (no count)', weight: 0.5 }] }),
+      {},
+      GENERATED_AT,
+      { unrestCountFeedAvailable: true },
+    );
+    assert.equal(spec.kind, 'judged');
   });
 
   it('the reclassification is scoped — cyber (populated feed) still emits a hard spec', () => {
