@@ -174,7 +174,6 @@ const getCachedScores = () => (globalThis as any).__ciiSourceTruthTest.cachedSco
 const toCountryScore = (score: any) => score;
 
 export class DataLoaderCiiHarness {
-  private cachedRiskScores: CachedRiskScores | null = null;
   private appliedCiiState: CachedRiskScores | null | undefined;
   public panelCalls: Array<{ method: string; args: any[] }> = [];
   public mapScoreCalls: any[][] = [];
@@ -194,10 +193,6 @@ export class DataLoaderCiiHarness {
     this.panelCalls.push({ method, args });
   }
 
-  public clearCachedRiskScores(): void {
-    this.cachedRiskScores = null;
-  }
-
   ${methods}
 }
 `;
@@ -213,7 +208,6 @@ export class DataLoaderCiiHarness {
       mapScoreCalls: Array<Array<{ code: string; score: number }>>;
       mapReadyCalls: Array<{ layer: string; ready: boolean }>;
       briefRefreshes: number;
-      clearCachedRiskScores: () => void;
       refreshCiiAfterFocalPointsReady: () => void;
     };
   };
@@ -319,7 +313,7 @@ describe('frontend CII source of truth', () => {
     assert.notEqual(eventHandlerWiringEnd, -1, 'missing EventHandlerManager wiring end marker');
     const eventHandlerWiring = appSrc.slice(eventHandlerWiringStart, eventHandlerWiringEnd);
 
-    assert.match(src, /private cachedRiskScores: CachedRiskScores \| null = null;/);
+    assert.doesNotMatch(src, /private cachedRiskScores:/);
     assert.doesNotMatch(src, /preferLocalCii|forceLocal|calculateCII\(/);
     assert.match(src, /private getAuthoritativeCachedRiskScores\(\): CachedRiskScores \| null/);
     assert.match(src, /public refreshCiiAfterFocalPointsReady\(\): void \{[\s\S]*this\.refreshCiiAndBrief\(\);[\s\S]*\}/);
@@ -374,19 +368,32 @@ describe('frontend CII source of truth', () => {
     loader.refreshCiiAfterFocalPointsReady();
     assert.equal(loader.panelCalls.length, 2, 'same canonical cache object must not re-render');
     assert.equal(loader.mapScoreCalls.length, 2, 'same canonical cache object must not rewrite the map');
-    assert.equal(loader.briefRefreshes, 2, 'same canonical cache object must not refresh an open brief');
+    assert.equal(loader.briefRefreshes, 3, 'same canonical cache object must still refresh an open brief');
 
-    loader.clearCachedRiskScores();
+    const updatedCached = { cii: [makeScore(76)], strategicRisk: { score: 76 }, degraded: false, stale: false };
+    (globalThis as any).__ciiSourceTruthTest.cachedScores = updatedCached;
+    loader.refreshCiiAfterFocalPointsReady();
+    assert.deepEqual(loader.panelCalls.map(call => call.method), [
+      'renderUnavailable',
+      'renderFromCached',
+      'renderFromCached',
+    ]);
+    assert.strictEqual(loader.panelCalls[2]?.args[0], updatedCached);
+    assert.deepEqual(loader.mapScoreCalls[2], [{ code: 'IR', score: 76, level: 'high' }]);
+    assert.deepEqual(loader.mapReadyCalls[2], { layer: 'ciiChoropleth', ready: true });
+    assert.equal(loader.briefRefreshes, 4);
+
     (globalThis as any).__ciiSourceTruthTest.cachedScores = null;
     loader.refreshCiiAfterFocalPointsReady();
     assert.deepEqual(loader.panelCalls.map(call => call.method), [
       'renderUnavailable',
       'renderFromCached',
+      'renderFromCached',
       'renderUnavailable',
     ]);
-    assert.deepEqual(loader.mapScoreCalls[2], []);
-    assert.deepEqual(loader.mapReadyCalls[2], { layer: 'ciiChoropleth', ready: false });
-    assert.equal(loader.briefRefreshes, 3);
+    assert.deepEqual(loader.mapScoreCalls[3], []);
+    assert.deepEqual(loader.mapReadyCalls[3], { layer: 'ciiChoropleth', ready: false });
+    assert.equal(loader.briefRefreshes, 5);
   });
 
   it('renders Strategic Risk from cached strategic risk/CII instead of only marking the badge cached', () => {

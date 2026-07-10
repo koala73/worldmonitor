@@ -60,11 +60,11 @@ export const RESILIENCE_SCHEMA_V2_ENABLED =
 // re-importing the module. Under Node production the env does not
 // change mid-process so the per-call read is a couple of instructions.
 //
-// Cache invalidation: the score cache prefix is bumped on every
-// flag-visible behavior change (see RESILIENCE_SCORE_CACHE_PREFIX
-// above). Do not flip this flag without also bumping the cache
-// prefix or waiting for the 6h TTL to expire — otherwise legacy
-// 6-domain scores will be served from cache after activation.
+// Exact normalized `false` is the only disabling value; unset and values such
+// as `0`, `no`, and `off` keep the pillar-combined formula enabled. Cache
+// admission compares each payload's `_formula` tag, so a flag flip cannot
+// reuse scores from the other formula. Bump RESILIENCE_SCORE_CACHE_PREFIX only
+// when scorer behavior changes without changing that formula tag.
 export function isPillarCombineEnabled(): boolean {
   return process.env.RESILIENCE_PILLAR_COMBINE_ENABLED?.trim().toLowerCase() !== 'false';
 }

@@ -393,7 +393,6 @@ export class DataLoaderManager implements AppModule {
   private dailyBriefFrameworkUnsubscribe: (() => void) | null = null;
   private marketImplicationsFrameworkUnsubscribe: (() => void) | null = null;
   private cachedSatRecs: SatRecEntry[] | null = null;
-  private cachedRiskScores: CachedRiskScores | null = null;
   private loadAllDataPromise: Promise<void> | null = null;
   private loadAllDataRerunRequested = false;
   private loadAllDataQueuedForceAll = false;
@@ -512,7 +511,7 @@ export class DataLoaderManager implements AppModule {
   }
 
   private getAuthoritativeCachedRiskScores(): CachedRiskScores | null {
-    const cached = this.cachedRiskScores ?? getCachedScores();
+    const cached = getCachedScores();
     return cached?.cii.length ? cached : null;
   }
 
@@ -524,7 +523,6 @@ export class DataLoaderManager implements AppModule {
   }
 
   private renderCachedCiiScores(cached: CachedRiskScores): boolean {
-    this.cachedRiskScores = cached;
     if (this.appliedCiiState === cached) return false;
     this.appliedCiiState = cached;
     this.callPanel('cii', 'renderFromCached', cached);
@@ -535,7 +533,8 @@ export class DataLoaderManager implements AppModule {
   private refreshCiiAndBrief(): void {
     const cached = this.getAuthoritativeCachedRiskScores();
     if (cached) {
-      if (this.renderCachedCiiScores(cached)) this.callbacks.refreshOpenCountryBrief();
+      this.renderCachedCiiScores(cached);
+      this.callbacks.refreshOpenCountryBrief();
       return;
     }
 

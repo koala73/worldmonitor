@@ -149,6 +149,7 @@ export function toRiskScores(resp: GetRiskScoresResponse): CachedRiskScores {
 // ---- Shape validator (localStorage is attacker-controlled) ----
 
 const VALID_LEVELS = new Set(['low', 'normal', 'elevated', 'high', 'critical']);
+const VALID_STRATEGIC_RISK_LEVELS = new Set(['low', 'medium', 'high']);
 const VALID_TRENDS = new Set(['rising', 'stable', 'falling']);
 const ISO2_RE = /^[A-Z]{2}$/;
 const COMPONENT_KEYS = ['unrest', 'conflict', 'security', 'information'] as const;
@@ -197,8 +198,8 @@ function isValidStrategicRisk(value: unknown): value is CachedStrategicRisk {
   if (!value || typeof value !== 'object') return false;
   const risk = value as Record<string, unknown>;
   if (!isFiniteInRange(risk.score, 0, 100)
-    || typeof risk.level !== 'string'
-    || typeof risk.trend !== 'string'
+    || !VALID_STRATEGIC_RISK_LEVELS.has(risk.level as string)
+    || !VALID_TRENDS.has(risk.trend as string)
     || !isValidCachedCiiTimestamp(risk.lastUpdated)
     || !Array.isArray(risk.contributors)) return false;
 
@@ -208,7 +209,7 @@ function isValidStrategicRisk(value: unknown): value is CachedStrategicRisk {
     return typeof contributor.country === 'string'
       && isKnownTier1Code(contributor.code)
       && isFiniteInRange(contributor.score, 0, 100)
-      && typeof contributor.level === 'string';
+      && VALID_LEVELS.has(contributor.level as string);
   });
 }
 

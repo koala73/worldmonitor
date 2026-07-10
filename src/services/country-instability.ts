@@ -153,6 +153,10 @@ export function isInLearningMode(): boolean {
   return true;
 }
 
+/**
+ * @deprecated Product code must consume canonical server CII scores through
+ * `cached-risk-scores`. Retained only for legacy local-engine regression tests.
+ */
 export function getLearningProgress(): { inLearning: boolean; remainingMinutes: number; progress: number } {
   if (hasCachedScoresAvailable || isLearningComplete) {
     return { inLearning: false, remainingMinutes: 0, progress: 100 };
@@ -1065,6 +1069,10 @@ function calculateCountryScoreSnapshot(
   return { score, components };
 }
 
+/**
+ * @deprecated Product code must consume canonical server CII scores through
+ * `cached-risk-scores`. Retained only for legacy local-engine regression tests.
+ */
 export function calculateCII(): CountryScore[] {
   const scores: CountryScore[] = [];
   const focalUrgencies = focalPointDetector.getCountryUrgencyMap();
@@ -1098,10 +1106,18 @@ export function calculateCII(): CountryScore[] {
   return scores.sort((a, b) => b.score - a.score);
 }
 
+/**
+ * @deprecated Product code must consume canonical server CII scores through
+ * `cached-risk-scores`. Retained only for legacy local-engine regression tests.
+ */
 export function getTopUnstableCountries(limit = 10): CountryScore[] {
   return calculateCII().slice(0, limit);
 }
 
+/**
+ * @deprecated Product code must consume canonical server CII scores through
+ * `cached-risk-scores`. Retained only for legacy local-engine regression tests.
+ */
 export function getCountryScore(code: string): number | null {
   const normalizedCode = code.toUpperCase();
   const data = countryDataMap.get(normalizedCode);
