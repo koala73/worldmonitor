@@ -4,10 +4,12 @@ import { afterEach, describe, it } from 'node:test';
 
 import {
   DEFAULT_JUDGED_ARCHIVE_HASH_LIMIT,
+  DEFAULT_JUDGED_ARCHIVE_TIMEOUT_MS,
   DEFAULT_JUDGED_MAX_PENDING_AGE_MS,
   DEFAULT_JUDGED_MAX_PENDING_ATTEMPTS,
   JUDGED_ARCHIVE_KEY,
-  JUDGED_ARCHIVE_RETENTION_MS,
+  JUDGED_EVIDENCE_LOOKBACK_MS,
+  JUDGED_EVIDENCE_MAX_LOOKBACK_MS,
   RESOLUTIONS_KEY,
   SCORECARD_META_KEY,
   SCORECARD_KEY,
@@ -21,6 +23,8 @@ import {
   processResolutionCycleWithJudges,
   pruneArchivedTerminalEntries,
   readDigestAccumulatorArchive,
+  judgedArchiveWindowForEntry,
+  selectJudgedArchiveItems,
 } from '../scripts/seed-forecast-resolutions.mjs';
 import { computeScorecard } from '../scripts/_forecast-scorecard.mjs';
 import { CONFLICT_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED } from '../scripts/_forecast-resolution.mjs';
@@ -32,6 +36,8 @@ const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_REDIS_ENV = {
   UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
   UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
+  FORECAST_RESOLUTION_JUDGE_EVIDENCE_LOOKBACK_MS: process.env.FORECAST_RESOLUTION_JUDGE_EVIDENCE_LOOKBACK_MS,
+  FORECAST_RESOLUTION_JUDGE_EVIDENCE_MAX_LOOKBACK_MS: process.env.FORECAST_RESOLUTION_JUDGE_EVIDENCE_MAX_LOOKBACK_MS,
 };
 
 afterEach(() => {
@@ -40,6 +46,10 @@ afterEach(() => {
   else process.env.UPSTASH_REDIS_REST_URL = ORIGINAL_REDIS_ENV.UPSTASH_REDIS_REST_URL;
   if (ORIGINAL_REDIS_ENV.UPSTASH_REDIS_REST_TOKEN === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
   else process.env.UPSTASH_REDIS_REST_TOKEN = ORIGINAL_REDIS_ENV.UPSTASH_REDIS_REST_TOKEN;
+  if (ORIGINAL_REDIS_ENV.FORECAST_RESOLUTION_JUDGE_EVIDENCE_LOOKBACK_MS === undefined) delete process.env.FORECAST_RESOLUTION_JUDGE_EVIDENCE_LOOKBACK_MS;
+  else process.env.FORECAST_RESOLUTION_JUDGE_EVIDENCE_LOOKBACK_MS = ORIGINAL_REDIS_ENV.FORECAST_RESOLUTION_JUDGE_EVIDENCE_LOOKBACK_MS;
+  if (ORIGINAL_REDIS_ENV.FORECAST_RESOLUTION_JUDGE_EVIDENCE_MAX_LOOKBACK_MS === undefined) delete process.env.FORECAST_RESOLUTION_JUDGE_EVIDENCE_MAX_LOOKBACK_MS;
+  else process.env.FORECAST_RESOLUTION_JUDGE_EVIDENCE_MAX_LOOKBACK_MS = ORIGINAL_REDIS_ENV.FORECAST_RESOLUTION_JUDGE_EVIDENCE_MAX_LOOKBACK_MS;
 });
 
 function forecast(overrides = {}) {
@@ -670,31 +680,113 @@ describe('processResolutionCycleWithJudges', () => {
     assert.equal(result.receipts.length, 0);
   });
 
-  it('keeps no-evidence entries pending when the archive read was truncated', async () => {
-    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedForecast()])], {}, {
+  it('seals a long-horizon disagreement when a truncated archive covers the deadline window', async () => {
+    const deadline = T0 + 30 * DAY_MS;
+    const nowMs = deadline + 60 * 60 * 1000;
+    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedForecast({
+      resolution: {
+        kind: 'judged',
+        deadline,
+        question: 'Will the emergency policy change pass before the deadline?',
+      },
+    })])], {}, {
       available: true,
       truncated: true,
-      coverageStartMs: T0 - 6 * 60 * 60 * 1000,
-      coverageEndMs: T0 + DAY_MS + 2,
+      coverageStartMs: deadline - JUDGED_EVIDENCE_LOOKBACK_MS,
+      coverageEndMs: nowMs,
       items: [{
         id: 'N1',
-        title: 'Central bank holds rates unchanged',
-        description: 'Officials said inflation remained steady.',
-        url: 'https://news.example/rates',
-        publishedAt: T0 + DAY_MS + 1,
+        title: 'Parliament votes on the emergency policy change',
+        description: 'The coalition held its final vote before the forecast deadline.',
+        url: 'https://news.example/policy-change',
+        publishedAt: deadline - 1,
       }],
-    }, T0 + DAY_MS + 2, {
+    }, nowMs, {
+      judgeModels: [
+        async () => ({ provider: 'openrouter', outcome: 'YES', citations: [{ id: 'N1', quote: 'The coalition held its final vote before the forecast deadline' }] }),
+        async () => ({ provider: 'groq', outcome: 'NO', citations: [{ id: 'N1', quote: 'The coalition held its final vote before the forecast deadline' }] }),
+      ],
+    });
+
+    const row = result.ledger[`fc-judge@${deadline}`];
+    assert.equal(row.status, 'resolved');
+    assert.equal(row.outcome, 'VOID');
+    assert.equal(row.evidence.reason, 'judge_disagreement');
+    assert.equal(result.receipts.length, 1);
+  });
+
+  it('anchors the evidence window on the deadline instead of forecast generation', () => {
+    const deadline = T0 + 30 * DAY_MS;
+    const nowMs = deadline + 60 * 60 * 1000;
+
+    assert.deepEqual(judgedArchiveWindowForEntry({
+      generatedAt: T0,
+      firstSeenAt: T0,
+      spec: { kind: 'judged', deadline },
+    }, nowMs), {
+      startMs: deadline - JUDGED_EVIDENCE_LOOKBACK_MS,
+      endMs: nowMs,
+    });
+  });
+
+  it('honors the configured deadline evidence lookback', () => {
+    const deadline = T0 + 30 * DAY_MS;
+    const nowMs = deadline + 60 * 60 * 1000;
+    process.env.FORECAST_RESOLUTION_JUDGE_EVIDENCE_LOOKBACK_MS = String(2 * DAY_MS);
+
+    assert.deepEqual(judgedArchiveWindowForEntry({ spec: { kind: 'judged', deadline } }, nowMs), {
+      startMs: deadline - 2 * DAY_MS,
+      endMs: nowMs,
+    });
+  });
+
+  it('keeps a covered no-evidence entry pending when the archive is explicitly incomplete', async () => {
+    const deadline = T0 + DAY_MS;
+    const nowMs = deadline + 2;
+    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedForecast()])], {}, {
+      available: true,
+      coverageComplete: false,
+      coverageStartMs: deadline - JUDGED_EVIDENCE_LOOKBACK_MS,
+      coverageEndMs: nowMs,
+      items: [],
+    }, nowMs, {
       judgeModels: [
         async () => { throw new Error('judge should not be called without relevant archive evidence'); },
         async () => { throw new Error('judge should not be called without relevant archive evidence'); },
       ],
     });
 
-    const row = result.ledger[`fc-judge@${T0 + DAY_MS}`];
+    const row = result.ledger[`fc-judge@${deadline}`];
     assert.equal(row.status, 'pending-judge');
-    assert.equal(row.outcome, undefined);
     assert.equal(row.judgeLastAttempt.reason, 'archive_unavailable');
+    assert.equal(row.judgeLastAttempt.detail, 'archive_window_incomplete');
     assert.equal(result.receipts.length, 0);
+  });
+
+  it('filters shared archive evidence to each entry deadline window', () => {
+    const deadline = T0 + 30 * DAY_MS;
+    const nowMs = deadline + 60 * 60 * 1000;
+    const entry = judgedForecast({
+      resolution: {
+        kind: 'judged',
+        deadline,
+        question: 'Will the emergency policy change pass before the deadline?',
+      },
+    });
+
+    const selected = selectJudgedArchiveItems(entry, [{
+      id: 'N-old',
+      title: 'Emergency policy change passes',
+      description: 'The coalition passed the policy in an earlier session.',
+      publishedAt: deadline - 8 * DAY_MS,
+    }, {
+      id: 'N-current',
+      title: 'Emergency policy change passes',
+      description: 'The coalition passed the policy before the deadline.',
+      publishedAt: deadline - DAY_MS,
+    }], { nowMs });
+
+    assert.deepEqual(selected.map((item) => item.id), ['N-current']);
   });
 
   it('keeps weak judge outcomes pending when matching evidence comes from an incomplete archive', async () => {
@@ -938,13 +1030,14 @@ describe('readDigestAccumulatorArchive', () => {
 
     const archive = await readDigestAccumulatorArchive(T0, T0 + DAY_MS);
 
-    assert.ok(DEFAULT_JUDGED_ARCHIVE_HASH_LIMIT >= 2_500);
+    assert.ok(DEFAULT_JUDGED_ARCHIVE_HASH_LIMIT >= 15_000);
+    assert.ok(DEFAULT_JUDGED_ARCHIVE_TIMEOUT_MS >= 20_000);
     assert.equal(zsetCommand.at(-1), String(DEFAULT_JUDGED_ARCHIVE_HASH_LIMIT));
     assert.equal(archive.truncated, undefined);
     assert.equal(archive.items.length, 0);
   });
 
-  it('bounds the Redis archive query to the retention floor and hash limit', async () => {
+  it('bounds the Redis archive query to the 14-day evidence floor and hash limit', async () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
     let zsetCommand;
@@ -977,7 +1070,7 @@ describe('readDigestAccumulatorArchive', () => {
         'ZREVRANGEBYSCORE',
         JUDGED_ARCHIVE_KEY,
         String(nowMs),
-        String(nowMs - JUDGED_ARCHIVE_RETENTION_MS),
+        String(nowMs - JUDGED_EVIDENCE_MAX_LOOKBACK_MS),
         'LIMIT',
         '0',
         '2',
@@ -986,12 +1079,149 @@ describe('readDigestAccumulatorArchive', () => {
         'story:track:v1:new-hash',
         'story:track:v1:old-hash',
       ]);
-      assert.equal(archive.coverageStartMs, nowMs - JUDGED_ARCHIVE_RETENTION_MS);
+      assert.equal(archive.coverageStartMs, nowMs - JUDGED_EVIDENCE_MAX_LOOKBACK_MS);
       assert.equal(archive.items.length, 2);
       assert.equal(archive.truncated, true);
       assert.ok(warnings.some((line) => line.includes('FORECAST_RESOLUTION_JUDGE_ARCHIVE_HASH_LIMIT')));
     } finally {
       console.warn = originalWarn;
+    }
+  });
+
+  it('honors the configured maximum archive lookback', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    process.env.FORECAST_RESOLUTION_JUDGE_EVIDENCE_LOOKBACK_MS = String(2 * DAY_MS);
+    process.env.FORECAST_RESOLUTION_JUDGE_EVIDENCE_MAX_LOOKBACK_MS = String(3 * DAY_MS);
+    const nowMs = T0 + 5 * DAY_MS;
+    let zsetCommand;
+    globalThis.fetch = async (_url, init) => {
+      zsetCommand = JSON.parse(init.body);
+      return {
+        ok: true,
+        json: async () => ({ result: [] }),
+      };
+    };
+
+    const archive = await readDigestAccumulatorArchive(T0 - 30 * DAY_MS, nowMs);
+
+    assert.equal(zsetCommand[3], String(nowMs - 3 * DAY_MS));
+    assert.equal(archive.coverageStartMs, nowMs - 3 * DAY_MS);
+  });
+
+  it('keeps the configured maximum lookback as a hard read ceiling', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    delete process.env.FORECAST_RESOLUTION_JUDGE_EVIDENCE_LOOKBACK_MS;
+    process.env.FORECAST_RESOLUTION_JUDGE_EVIDENCE_MAX_LOOKBACK_MS = String(DAY_MS);
+    const nowMs = T0 + 5 * DAY_MS;
+    let zsetCommand;
+    globalThis.fetch = async (_url, init) => {
+      zsetCommand = JSON.parse(init.body);
+      return {
+        ok: true,
+        json: async () => ({ result: [] }),
+      };
+    };
+
+    const archive = await readDigestAccumulatorArchive(T0 - 30 * DAY_MS, nowMs);
+
+    assert.equal(zsetCommand[3], String(nowMs - DAY_MS));
+    assert.equal(archive.coverageStartMs, nowMs - DAY_MS);
+
+    const deadline = nowMs;
+    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [forecast({
+      id: 'judge-max-lookback',
+      domain: 'political',
+      region: 'Freedonia',
+      title: 'Policy change passes',
+      resolution: {
+        kind: 'judged',
+        deadline,
+        question: 'Will the emergency policy change pass before the deadline?',
+      },
+    })])], {}, archive, nowMs, {
+      judgeModels: [
+        async () => { throw new Error('judge should not be called without relevant archive evidence'); },
+        async () => { throw new Error('judge should not be called without relevant archive evidence'); },
+      ],
+    });
+
+    const row = result.ledger[`judge-max-lookback@${deadline}`];
+    assert.equal(row.status, 'pending-judge');
+    assert.equal(row.judgeLastAttempt.detail, 'archive_window_incomplete');
+    assert.equal(result.receipts.length, 0);
+  });
+
+  it('chunks story-track reads while preserving hash-to-row alignment', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    const pipelineBatches = [];
+    globalThis.fetch = async (url, init) => {
+      if (String(url).endsWith('/pipeline')) {
+        const commands = JSON.parse(init.body);
+        pipelineBatches.push(commands);
+        return {
+          ok: true,
+          json: async () => commands.map(([, key]) => ({
+            result: ['title', `Story ${key}`, 'description', 'Policy change context', 'publishedAt', String(T0 + 1)],
+          })),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({ result: ['hash-1', 'hash-2', 'hash-3'] }),
+      };
+    };
+
+    const archive = await readDigestAccumulatorArchive(T0, T0 + DAY_MS, {
+      maxHashes: 4,
+      storyTrackBatchSize: 2,
+    });
+
+    assert.deepEqual(pipelineBatches.map((batch) => batch.map(([, key]) => key)), [
+      ['story:track:v1:hash-1', 'story:track:v1:hash-2'],
+      ['story:track:v1:hash-3'],
+    ]);
+    assert.deepEqual(archive.items.map((item) => item.hash), ['hash-1', 'hash-2', 'hash-3']);
+  });
+
+  it('fails closed when the shared archive budget expires between chunks', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    const originalDateNow = Date.now;
+    const clock = [1_000, 1_000, 1_002];
+    let clockIndex = 0;
+    let pipelineCalls = 0;
+    Date.now = () => clock[Math.min(clockIndex++, clock.length - 1)];
+    globalThis.fetch = async (url, init) => {
+      if (String(url).endsWith('/pipeline')) {
+        pipelineCalls += 1;
+        const commands = JSON.parse(init.body);
+        return {
+          ok: true,
+          json: async () => commands.map(() => ({
+            result: ['title', 'Story', 'description', 'Policy context', 'publishedAt', String(T0 + 1)],
+          })),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({ result: ['hash-1', 'hash-2', 'hash-3'] }),
+      };
+    };
+
+    try {
+      await assert.rejects(
+        readDigestAccumulatorArchive(T0, T0 + DAY_MS, {
+          archiveTimeoutMs: 1,
+          storyTrackBatchSize: 2,
+        }),
+        /exceeded 1ms archive budget/,
+      );
+      assert.equal(pipelineCalls, 1);
+    } finally {
+      Date.now = originalDateNow;
     }
   });
 
@@ -1046,7 +1276,8 @@ describe('readDigestAccumulatorArchive', () => {
     const archive = await readDigestAccumulatorArchive(T0, T0 + DAY_MS);
 
     assert.equal(archive.items.length, 1);
-    assert.equal(archive.truncated, true);
+    assert.equal(archive.truncated, undefined);
+    assert.equal(archive.incomplete, true);
     assert.equal(archive.missingRows, 1);
     assert.equal(archive.items[0].hash, 'hash-2');
   });
@@ -1067,7 +1298,7 @@ describe('readDigestAccumulatorArchive', () => {
       };
     };
 
-    const archive = await readDigestAccumulatorArchive(T0, T0 + DAY_MS);
+    const archive = await readDigestAccumulatorArchive(T0 - JUDGED_EVIDENCE_LOOKBACK_MS, T0 + DAY_MS);
     const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [forecast({
       id: 'judge-missing-archive-row',
       domain: 'political',

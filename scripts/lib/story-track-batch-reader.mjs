@@ -47,7 +47,7 @@ export const STORY_TRACK_HGETALL_BATCH = 500;
 export async function readStoryTracksChunked(
   hashes,
   pipelineFn,
-  { batchSize = STORY_TRACK_HGETALL_BATCH, log = console.warn } = {},
+  { batchSize = STORY_TRACK_HGETALL_BATCH, log = console.warn, context = 'digest' } = {},
 ) {
   const out = [];
   for (let i = 0; i < hashes.length; i += batchSize) {
@@ -61,8 +61,9 @@ export async function readStoryTracksChunked(
     }
     const failedAt = Math.floor(i / batchSize);
     const got = Array.isArray(partial) ? partial.length : 'non-array';
+    const skippedTick = context === 'digest' ? 'this digest tick' : 'this tick';
     log(
-      `[digest] readStoryTracksChunked: chunk ${failedAt} returned ${got} of ${chunk.length} expected — aborting and returning null so caller skips this digest tick`,
+      `[${context}] readStoryTracksChunked: chunk ${failedAt} returned ${got} of ${chunk.length} expected — aborting and returning null so caller skips ${skippedTick}`,
     );
     return null;
   }

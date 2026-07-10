@@ -21,6 +21,7 @@ import { parseMetricKey, resolveHardSpec, extractMetricValue } from './_forecast
 import { CONFLICT_COUNT_FEED_AVAILABLE, UNREST_COUNT_FEED_AVAILABLE, CONFLICT_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED } from './_forecast-resolution.mjs';
 import { computeScorecard, DEFAULT_ROLLING_WINDOW_DAYS } from './_forecast-scorecard.mjs';
 import { callForecastLLM } from './seed-forecasts.mjs';
+import { readStoryTracksChunked, STORY_TRACK_HGETALL_BATCH } from './lib/story-track-batch-reader.mjs';
 
 export const HISTORY_KEY = 'forecast:predictions:history:v1';
 export const RESOLUTIONS_KEY = 'forecast:resolutions:v1';
@@ -31,14 +32,15 @@ export const RESOLUTION_SOURCE_VERSION = 'forecast-resolution-engine-v1';
 export const RESOLUTION_SCHEMA_VERSION = 1;
 export const MAX_RECENT_SAMPLES = 40;
 export const JUDGED_ARCHIVE_KEY = 'digest:accumulator:v1:full:en';
-export const JUDGED_ARCHIVE_RETENTION_MS = 48 * 60 * 60 * 1000;
-export const JUDGED_ARCHIVE_LOOKBACK_PAD_MS = 6 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+export const JUDGED_EVIDENCE_LOOKBACK_MS = 7 * DAY_MS;
+export const JUDGED_EVIDENCE_MAX_LOOKBACK_MS = 14 * DAY_MS;
 export const DEFAULT_JUDGED_ARCHIVE_ITEMS = 16;
 export const DEFAULT_JUDGED_MAX_PER_RUN = 12;
 export const DEFAULT_JUDGED_RUN_BUDGET_MS = 110_000;
-export const DEFAULT_JUDGED_ARCHIVE_HASH_LIMIT = 3_000;
+export const DEFAULT_JUDGED_ARCHIVE_HASH_LIMIT = 15_000;
+export const DEFAULT_JUDGED_ARCHIVE_TIMEOUT_MS = 25_000;
 const DEFAULT_MIN_JUDGED_STAGE_BUDGET_MS = 5_000;
-const DAY_MS = 24 * 60 * 60 * 1000;
 export const DEFAULT_JUDGED_MAX_PENDING_ATTEMPTS = 14;
 export const DEFAULT_JUDGED_MAX_PENDING_AGE_MS = 14 * DAY_MS;
 const JUDGED_TOKEN_STOPWORDS = new Set([
@@ -48,6 +50,7 @@ const JUDGED_TOKEN_STOPWORDS = new Set([
   'this', 'through', 'under', 'until', 'what', 'when', 'where', 'which',
   'while', 'will', 'with', 'within', 'would',
 ]);
+const NORMALIZED_JUDGED_ARCHIVE_INPUT = Symbol('normalizedJudgedArchiveInput');
 const STALE_COUNT_FEED_REPLACEMENTS = new Map([
   ['conflict:acled:v1:all:0:0', CONFLICT_COUNT_SOURCE_FEED],
   ['unrest:events:v1', UNREST_COUNT_SOURCE_FEED],
@@ -115,6 +118,8 @@ export async function resolvePendingJudgedEntries(ledger, newsArchive, nowMs, op
   const pendingRows = Object.entries(ledger)
     .filter(([, entry]) => entry?.status === 'pending-judge')
     .sort((left, right) => comparePendingJudgedEntries(left, right, nowMs));
+  if (!pendingRows.length) return receipts;
+  const normalizedNewsArchive = normalizeJudgedArchiveInput(newsArchive);
 
   for (const [key, entry] of pendingRows) {
     if (attempted >= maxEntries) break;
@@ -128,7 +133,7 @@ export async function resolvePendingJudgedEntries(ledger, newsArchive, nowMs, op
       };
     }
 
-    let result = await resolveJudgedEntry(entry, newsArchive, nowMs, entryOptions);
+    let result = await resolveJudgedEntry(entry, normalizedNewsArchive, nowMs, entryOptions);
     if (result.status === 'skip') continue;
     attempted += 1;
 
@@ -234,8 +239,9 @@ export async function resolveJudgedEntry(entry, newsArchive, nowMs, options = {}
     return { status: 'pending', reason: 'archive_unavailable' };
   }
 
-  const archiveItems = selectJudgedArchiveItems(entry, archiveInput.items, {
+  const archiveItems = selectNormalizedJudgedArchiveItems(entry, archiveInput.items, {
     maxItems: options.maxArchiveItems ?? DEFAULT_JUDGED_ARCHIVE_ITEMS,
+    nowMs,
   });
   const archiveComplete = archiveCoversEntryWindow(entry, archiveInput, nowMs);
   if (!archiveItems.length) {
@@ -280,9 +286,23 @@ export async function resolveJudgedEntry(entry, newsArchive, nowMs, options = {}
 }
 
 export function selectJudgedArchiveItems(entry, archiveItems, options = {}) {
+  return selectNormalizedJudgedArchiveItems(entry, normalizeJudgedArchiveItems(archiveItems), options);
+}
+
+function selectNormalizedJudgedArchiveItems(entry, archiveItems, options = {}) {
   const maxItems = Number.isFinite(options.maxItems) ? Math.max(1, Math.floor(options.maxItems)) : DEFAULT_JUDGED_ARCHIVE_ITEMS;
   const tokenPatterns = judgedQueryTokens(entry).map(buildTokenPattern);
-  return normalizeJudgedArchiveItems(archiveItems)
+  const evidenceWindow = Number.isFinite(options.nowMs)
+    ? judgedArchiveWindowForEntry(entry, options.nowMs)
+    : null;
+  return archiveItems
+    .filter((item) => {
+      if (!evidenceWindow) return true;
+      const publishedAt = Number(item.publishedAt);
+      return Number.isFinite(publishedAt)
+        && publishedAt >= evidenceWindow.startMs
+        && publishedAt <= evidenceWindow.endMs;
+    })
     .map((item, index) => ({
       ...item,
       id: item.id || `N${index + 1}`,
@@ -304,14 +324,15 @@ export function selectJudgedArchiveItems(entry, archiveItems, options = {}) {
 }
 
 function normalizeJudgedArchiveInput(newsArchive) {
+  if (newsArchive?.[NORMALIZED_JUDGED_ARCHIVE_INPUT]) return newsArchive;
   if (Array.isArray(newsArchive)) {
-    return { items: normalizeJudgedArchiveItems(newsArchive), available: true };
+    return markNormalizedJudgedArchiveInput({ items: normalizeJudgedArchiveItems(newsArchive), available: true });
   }
   if (!newsArchive || typeof newsArchive !== 'object') {
-    return { items: [], available: false };
+    return markNormalizedJudgedArchiveInput({ items: [], available: false });
   }
   if (newsArchive.available === false) {
-    return { items: [], available: false };
+    return markNormalizedJudgedArchiveInput({ items: [], available: false });
   }
   const items = newsArchive.items
     ?? newsArchive.stories
@@ -319,13 +340,18 @@ function normalizeJudgedArchiveInput(newsArchive) {
     ?? newsArchive.articles
     ?? newsArchive.data
     ?? [];
-  return {
+  return markNormalizedJudgedArchiveInput({
     items: normalizeJudgedArchiveItems(items),
     available: true,
-    truncated: Boolean(newsArchive.truncated || newsArchive.partial || newsArchive.coverageComplete === false),
+    incomplete: Boolean(newsArchive.incomplete || newsArchive.partial || newsArchive.coverageComplete === false),
     coverageStartMs: toFiniteMs(newsArchive.coverageStartMs ?? newsArchive.windowStartMs ?? newsArchive.fromMs),
     coverageEndMs: toFiniteMs(newsArchive.coverageEndMs ?? newsArchive.windowEndMs ?? newsArchive.toMs),
-  };
+  });
+}
+
+function markNormalizedJudgedArchiveInput(archiveInput) {
+  Object.defineProperty(archiveInput, NORMALIZED_JUDGED_ARCHIVE_INPUT, { value: true });
+  return archiveInput;
 }
 
 function normalizeJudgedArchiveItems(value) {
@@ -396,7 +422,7 @@ function scoreArchiveItem(item, tokenPatterns) {
 }
 
 function archiveCoversEntryWindow(entry, archiveInput, nowMs) {
-  if (archiveInput.truncated) return false;
+  if (archiveInput.incomplete) return false;
   const coverageStartMs = Number(archiveInput.coverageStartMs);
   const coverageEndMs = Number(archiveInput.coverageEndMs);
   if (!Number.isFinite(coverageStartMs) && !Number.isFinite(coverageEndMs)) return true;
@@ -405,16 +431,21 @@ function archiveCoversEntryWindow(entry, archiveInput, nowMs) {
     && (!Number.isFinite(coverageEndMs) || coverageEndMs >= endMs);
 }
 
-function judgedArchiveWindowForEntry(entry, nowMs) {
+export function judgedArchiveWindowForEntry(entry, nowMs) {
   const deadline = Number(entry?.deadline ?? entry?.spec?.deadline);
-  const candidates = [entry?.generatedAt, entry?.firstSeenAt, deadline, nowMs]
-    .map(Number)
-    .filter(Number.isFinite);
-  const anchor = candidates.length ? Math.min(...candidates) : nowMs;
+  const anchor = Number.isFinite(deadline) ? deadline : nowMs;
+  const evidenceLookbackMs = resolveJudgedEvidenceLookbackMs();
   return {
-    startMs: Math.max(0, anchor - JUDGED_ARCHIVE_LOOKBACK_PAD_MS),
+    startMs: Math.max(0, anchor - evidenceLookbackMs),
     endMs: nowMs,
   };
+}
+
+function resolveJudgedEvidenceLookbackMs() {
+  return envPositiveInt(
+    'FORECAST_RESOLUTION_JUDGE_EVIDENCE_LOOKBACK_MS',
+    JUDGED_EVIDENCE_LOOKBACK_MS,
+  );
 }
 
 function buildTokenPattern(token) {
@@ -1037,7 +1068,13 @@ async function readJudgedNewsArchiveForLedger(ledger, nowMs, options = {}) {
 
 export async function readDigestAccumulatorArchive(windowStartMs, nowMs, options = {}) {
   const { url, token } = getArchiveRedisCredentials(options);
-  const coverageStartMs = Math.max(windowStartMs, nowMs - JUDGED_ARCHIVE_RETENTION_MS);
+  const configuredMaxLookbackMs = Number.isFinite(options.maxLookbackMs)
+    ? Math.max(1, Math.floor(options.maxLookbackMs))
+    : envPositiveInt(
+      'FORECAST_RESOLUTION_JUDGE_EVIDENCE_MAX_LOOKBACK_MS',
+      JUDGED_EVIDENCE_MAX_LOOKBACK_MS,
+    );
+  const coverageStartMs = Math.max(windowStartMs, nowMs - configuredMaxLookbackMs);
   const maxHashes = Number.isFinite(options.maxHashes)
     ? Math.max(1, Math.floor(options.maxHashes))
     : envPositiveInt('FORECAST_RESOLUTION_JUDGE_ARCHIVE_HASH_LIMIT', DEFAULT_JUDGED_ARCHIVE_HASH_LIMIT);
@@ -1071,18 +1108,30 @@ export async function readDigestAccumulatorArchive(windowStartMs, nowMs, options
   if (truncated) {
     console.warn(`  [forecast-resolutions] judged archive hash cap reached (${selectedHashes.length}/${maxHashes}) for ${new Date(coverageStartMs).toISOString()}..${new Date(nowMs).toISOString()}; increase FORECAST_RESOLUTION_JUDGE_ARCHIVE_HASH_LIMIT or page the archive scan`);
   }
-  const pipelineResp = await fetch(`${url}/pipeline`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
-    body: JSON.stringify(selectedHashes.map((hash) => ['HGETALL', `story:track:v1:${hash}`])),
-    signal: AbortSignal.timeout(options.archiveTimeoutMs ?? 15_000),
-  });
-  if (!pipelineResp.ok) throw new Error(`Redis story-track pipeline failed: HTTP ${pipelineResp.status}`);
-  const pipelinePayload = await pipelineResp.json();
-  if (!Array.isArray(pipelinePayload) || pipelinePayload.length !== selectedHashes.length) {
-    throw new Error(`Redis story-track pipeline returned ${Array.isArray(pipelinePayload) ? pipelinePayload.length : 'non-array'} of ${selectedHashes.length}`);
-  }
-  const rows = pipelinePayload;
+  const archiveTimeoutMs = Number.isFinite(options.archiveTimeoutMs)
+    ? Math.max(1, Math.floor(options.archiveTimeoutMs))
+    : DEFAULT_JUDGED_ARCHIVE_TIMEOUT_MS;
+  const archiveDeadlineMs = Date.now() + archiveTimeoutMs;
+  const storyTrackBatchSize = Number.isFinite(options.storyTrackBatchSize)
+    ? Math.max(1, Math.floor(options.storyTrackBatchSize))
+    : STORY_TRACK_HGETALL_BATCH;
+  const rows = await readStoryTracksChunked(selectedHashes, async (commands) => {
+    const remainingMs = archiveDeadlineMs - Date.now();
+    if (remainingMs <= 0) throw new Error(`Redis story-track pipeline exceeded ${archiveTimeoutMs}ms archive budget`);
+    const pipelineResp = await fetch(`${url}/pipeline`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
+      body: JSON.stringify(commands),
+      signal: AbortSignal.timeout(remainingMs),
+    });
+    if (!pipelineResp.ok) throw new Error(`Redis story-track pipeline failed: HTTP ${pipelineResp.status}`);
+    const pipelinePayload = await pipelineResp.json();
+    if (!Array.isArray(pipelinePayload) || pipelinePayload.length !== commands.length) {
+      throw new Error(`Redis story-track pipeline returned ${Array.isArray(pipelinePayload) ? pipelinePayload.length : 'non-array'} of ${commands.length}`);
+    }
+    return pipelinePayload;
+  }, { batchSize: storyTrackBatchSize, context: 'forecast-resolutions' });
+  if (!rows) throw new Error('Redis story-track pipeline returned incomplete archive data');
   const items = [];
   let missingRows = 0;
   for (let index = 0; index < selectedHashes.length; index += 1) {
@@ -1111,7 +1160,14 @@ export async function readDigestAccumulatorArchive(windowStartMs, nowMs, options
       currentScore: toFiniteNumber(track.currentScore ?? track.score),
     }));
   }
-  return { ...base, items: normalizeJudgedArchiveItems(items), available: true, truncated: truncated || missingRows > 0, missingRows };
+  return {
+    ...base,
+    items: normalizeJudgedArchiveItems(items),
+    available: true,
+    ...(truncated ? { truncated: true } : {}),
+    incomplete: missingRows > 0,
+    missingRows,
+  };
 }
 
 function getArchiveRedisCredentials(options = {}) {
