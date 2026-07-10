@@ -1044,7 +1044,10 @@ ${profile}`;
   let impact;
   try {
     impact = await Promise.race([
-      callLLM(systemPrompt, userPrompt, { maxTokens: 200, temperature: 0.2, timeoutMs: 8000 }),
+      // stage: llm_call telemetry attribution — this transport is shared
+      // with the brief cron, and the #4944 U4 model swap reaches this
+      // surface too (AI-impact notifications).
+      callLLM(systemPrompt, userPrompt, { maxTokens: 200, temperature: 0.2, timeoutMs: 8000, stage: 'notification-ai-impact' }),
       new Promise((_, reject) => setTimeout(() => reject(new Error('global timeout')), 10000)),
     ]);
   } catch {

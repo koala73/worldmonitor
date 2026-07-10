@@ -32,16 +32,16 @@ const LLM_PROVIDERS = [
     extraBody: { think: false },
     timeout: 25_000,
   },
-  // NOTE (#4944): this chain is the brief-prose transport (sole requirer:
-  // seed-digest-notifications → brief-llm, pinned to openrouter via
-  // skipProviders). Its model moves to DeepSeek in the U4 brief-voice
-  // cutover — gated on the U3 shadow evaluation — together with the
-  // brief cache-version bumps. Do not swap it in isolation.
+  // NOTE (#4944 U4): this chain is the brief-prose transport (sole
+  // requirer: seed-digest-notifications → brief-llm, pinned to openrouter
+  // via skipProviders). The openrouter model swap below IS the brief-voice
+  // cutover — it ships together with the brief cache-version bumps and
+  // deploys only after the U3 shadow evaluation passes.
   {
     name: 'groq',
     envKey: 'GROQ_API_KEY',
     apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
-    model: 'llama-3.1-8b-instant',
+    model: 'llama-3.3-70b-versatile',
     headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'User-Agent': SERVICE_UA }),
     timeout: 15_000,
   },
@@ -49,8 +49,9 @@ const LLM_PROVIDERS = [
     name: 'openrouter',
     envKey: 'OPENROUTER_API_KEY',
     apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
-    model: 'google/gemini-2.5-flash',
+    model: 'deepseek/deepseek-v4-flash',
     headers: (key) => ({ 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'HTTP-Referer': 'https://worldmonitor.app', 'X-Title': 'World Monitor', 'User-Agent': SERVICE_UA }),
+    extraBody: { reasoning: { enabled: false } },
     timeout: 20_000,
   },
 ];

@@ -820,7 +820,7 @@ describe('news digest methodology parity', () => {
       'regional weekly brief chain differs from digest prose and whyMatters',
     );
     assertDocMatches(
-      /provider chain to OpenRouter by skipping Ollama and Groq[\s\S]*`google\/gemini-2\.5-flash`/,
+      /provider chain to OpenRouter by skipping Ollama and Groq[\s\S]*`deepseek\/deepseek-v4-flash`/,
       'digest prose and whyMatters OpenRouter-only posture',
     );
   });

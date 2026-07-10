@@ -308,10 +308,10 @@ described above.
 
 WorldMonitor Brief uses two LLM surfaces:
 
-- Digest prose (`brief:llm:digest:v8`) produces a JSON lead, thread list,
+- Digest prose (`brief:llm:digest:v9`) produces a JSON lead, thread list,
   signals, and `rankedStoryHashes` from the visible story pool.
-- Per-story `whyMatters` uses an analyst endpoint first, then a direct Gemini
-  fallback, then the baseline stub if every LLM layer fails.
+- Per-story `whyMatters` uses an analyst endpoint first, then a direct
+  OpenRouter-chain fallback, then the baseline stub if every LLM layer fails.
 
 Both paths are grounded. Prompt inputs are built from story fields that were
 already selected by the deterministic pipeline. The digest prose cache key
@@ -344,8 +344,8 @@ summary; older source-free cache entries are discarded before reuse.
 
 The canonical digest prose and direct fallback `whyMatters` paths pin the
 provider chain to OpenRouter by skipping Ollama and Groq, so the live brief
-uses Gemini 2.5 Flash (`google/gemini-2.5-flash`) for those surfaces when the
-LLM layer is enabled. Digest prose and
+uses DeepSeek V4 Flash (`deepseek/deepseek-v4-flash`, reasoning disabled) for
+those surfaces when the LLM layer is enabled. Digest prose and
 story-description calls use temperature `0.4`. Regional weekly briefs
 intentionally differ from those digest prose and `whyMatters` surfaces:
 `scripts/regional-snapshot/weekly-brief.mjs`

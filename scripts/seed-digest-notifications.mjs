@@ -225,9 +225,10 @@ const FREE_TIER_FOLLOW_LIMIT = 3;
 
 // Phase 3c — analyst-backed whyMatters enrichment via an internal Vercel
 // edge endpoint. When the endpoint is reachable + returns a string, it
-// takes priority over the direct-Gemini path. On any failure the cron
-// falls through to its existing Gemini cache+LLM chain. Env override
-// lets local dev point at a preview deployment or `localhost:3000`.
+// takes priority over the direct OpenRouter-chain fallback. On any failure
+// the cron falls through to its own cache+LLM chain (DeepSeek V4 Flash via
+// llm-chain.cjs since #4944 U4). Env override lets local dev point at a
+// preview deployment or `localhost:3000`.
 const BRIEF_WHY_MATTERS_ENDPOINT_URL =
   process.env.BRIEF_WHY_MATTERS_ENDPOINT_URL ??
   `${WORLDMONITOR_PUBLIC_BASE_URL}/api/internal/brief-why-matters`;
@@ -247,10 +248,12 @@ function normalizeForDescriptionEquality(s) {
  * POST one story to the analyst whyMatters endpoint. Returns the
  * string on success, null on any failure (auth, non-200, parse error,
  * timeout, missing value). The cron's `generateWhyMatters` is
- * responsible for falling through to the direct-Gemini path on null.
+ * responsible for falling through to the direct OpenRouter-chain
+ * fallback on null.
  *
  * Ground-truth signal: logs `source` (cache|analyst|gemini) and
- * `producedBy` (analyst|gemini|null) at the call site so the cron's
+ * `producedBy` (analyst|gemini|null) — 'gemini' is the endpoint's literal
+ * wire-enum name for its stable prompt path — at the call site so the cron's
  * log stream has a forensic trail of which path actually produced each
  * story's whyMatters — needed for shadow-diff review and for the
  * "stop writing v2" decision once analyst coverage is proven.
