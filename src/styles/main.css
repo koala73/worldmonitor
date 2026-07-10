@@ -4304,11 +4304,14 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
 }
 
 .category-tag {
+  color: var(--text);
   font-size: 8px;
   padding: 1px 5px;
   border-radius: 3px;
   font-weight: 600;
   border: 1px solid;
+  border-color: var(--category-color);
+  background: var(--category-background);
   text-transform: uppercase;
   letter-spacing: 0.3px;
 }
