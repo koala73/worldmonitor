@@ -11293,8 +11293,9 @@ a.prediction-link:hover {
 }
 
 /* The appended shell starts hidden, so skip its paint work until the reveal
-   frame adds .open. The transform animation remains the visible transition. */
-.search-overlay.search-mobile:not(.open) .search-sheet {
+   frame clears the pre-render marker. Closing removes .open but preserves the
+   sheet long enough for its slide-out transform to finish. */
+.search-overlay.search-mobile.search-mobile-prerender .search-sheet {
   content-visibility: hidden;
 }
 

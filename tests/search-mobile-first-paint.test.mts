@@ -44,6 +44,7 @@ const harnessSource = `
       this.currentFlightCallsign = null;
       this.flightSearchFired = false;
       this.showingAllCommands = false;
+      this.lastSearchedQuery = '';
       this.isMobile = true;
       this.createModalCalls = 0;
       this.focusCalls = 0;
@@ -67,7 +68,9 @@ const harnessSource = `
 
     ${extractMethod('public open(): void {')}
     ${extractMethod('public close(): void {')}
+    ${extractMethod('public refreshSearch(): void {')}
     ${extractMethod('private scheduleMobileInitialPopulation(): void {')}
+    ${extractMethod('private handleSearch(): void {')}
   }
 
   return SearchModalHarness;
@@ -78,6 +81,7 @@ const harnessJs = ts.transpileModule(harnessSource, {
 interface SearchModalHarness {
   open(): void;
   close(): void;
+  refreshSearch(): void;
   input: { value: string };
   createModalCalls: number;
   focusCalls: number;
@@ -145,6 +149,22 @@ test('a typed query or a reopened sheet invalidates stale initial mobile populat
 
     while (frames.length > 0) runNextFrame(frames);
     assert.equal(modal.recentOrEmptyCalls, 1, 'only the reopened sheet may populate');
+    assert.equal(modal.chipRenderCalls, 1);
+  });
+});
+
+test('a direct refresh before the inner reveal frame owns mobile search results (#5158)', () => {
+  withAnimationFrames((frames) => {
+    const modal = new Harness();
+    modal.open();
+    runNextFrame(frames);
+
+    modal.refreshSearch();
+    assert.equal(modal.recentOrEmptyCalls, 1, 'the direct refresh renders immediately');
+    assert.equal(modal.chipRenderCalls, 1);
+
+    runNextFrame(frames);
+    assert.equal(modal.recentOrEmptyCalls, 1, 'stale initial population must not overwrite refreshed results');
     assert.equal(modal.chipRenderCalls, 1);
   });
 });

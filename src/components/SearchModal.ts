@@ -292,7 +292,7 @@ export class SearchModal {
     this.overlay.setAttribute('aria-modal', 'true');
 
     if (this.isMobile) {
-      this.overlay.className = 'search-overlay search-mobile';
+      this.overlay.className = 'search-overlay search-mobile search-mobile-prerender';
       setTrustedHtml(this.overlay, trustedHtml(`
         <div class="search-sheet">
           <div class="search-sheet-handle"></div>
@@ -315,7 +315,10 @@ export class SearchModal {
       this.chipsContainer = this.overlay.querySelector('.search-sheet-chips');
 
       this.container.appendChild(this.overlay);
-      requestAnimationFrame(() => this.overlay?.classList.add('open'));
+      requestAnimationFrame(() => {
+        this.overlay?.classList.remove('search-mobile-prerender');
+        this.overlay?.classList.add('open');
+      });
 
       const sheet = this.overlay.querySelector('.search-sheet') as HTMLElement | null;
       if (sheet && window.visualViewport) {
@@ -393,6 +396,9 @@ export class SearchModal {
   }
 
   private handleSearch(): void {
+    // A programmatic refresh can render while the mobile sheet's initial
+    // population is still deferred. Its results now own the list.
+    if (this.isMobile) this.mobileInitialPopulationGeneration += 1;
     const rawInput = this.input?.value.toLowerCase() || '';
     const query = rawInput.trim();
     // Record what we actually searched so flushPendingSearch can detect stale results.
