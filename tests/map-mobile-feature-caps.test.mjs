@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 const mapSrc = readFileSync(resolve(root, 'src/components/Map.ts'), 'utf-8');
+const cssSrc = readFileSync(resolve(root, 'src/styles/main.css'), 'utf-8');
 
 function sliceBetween(start, end) {
   const startIdx = mapSrc.indexOf(start);
@@ -62,7 +63,7 @@ describe('mobile SVG map feature caps and label reflow skip (#4463 / U7)', () =>
     assert.match(block, /: this\.iranEvents;/, 'desktop path must keep the full Iran event list');
   });
 
-  it('keeps label overlap measurement disabled on mobile until the first direct map interaction', () => {
+  it('keeps label overlap measurement disabled on mobile until movement or zoom needs it', () => {
     assert.match(mapSrc, /private mobileLabelVisibilityArmed = false/);
     assert.match(mapSrc, /this\.mobileLabelVisibilityArmed = !this\.isMobile/);
     assert.match(
@@ -80,21 +81,73 @@ describe('mobile SVG map feature caps and label reflow skip (#4463 / U7)', () =>
     assert.ok(emitIdx > zoomVisibilityIdx, 'state emission should still run after the label guard');
   });
 
-  it('resumes mobile label measurement once from valid pointer or touch starts', () => {
-    assert.match(
+  it('keeps mobile label measurement out of the tap-start window and resumes it on real movement', () => {
+    assert.doesNotMatch(
       mapSrc,
-      /addEventListener\('pointerdown', \(e\) => \{\s*if \(shouldIgnoreInteractionStart\(e\.target\)\) return;\s*this\.resumeMobileLabelVisibility\(\);\s*\}, \{ signal \}\)/,
-      'pointerdown should resume label visibility only for direct map interactions',
+      /this\.container\.addEventListener\('pointerdown'[\s\S]*?resumeMobileLabelVisibility\(\)/,
+      'pointerdown is part of the tap INP window and must not arm label measurement',
+    );
+    const touchStartBlock = sliceBetween("this.container.addEventListener('touchstart', (e) => {", "this.container.addEventListener('touchmove'");
+    assert.doesNotMatch(
+      touchStartBlock,
+      /resumeMobileLabelVisibility\(\)/,
+      'touchstart is part of the tap INP window and must not arm label measurement',
+    );
+    const touchMoveBlock = sliceBetween("this.container.addEventListener('touchmove', (e) => {", "this.container.addEventListener('touchend'");
+    assert.match(
+      touchMoveBlock,
+      /if \(e\.touches\.length === 2[\s\S]*?this\.resumeMobileLabelVisibility\(\);[\s\S]*?this\.applyTransform\(\);/,
+      'pinch movement should arm label measurement before the transform pass that needs it',
     );
     assert.match(
-      mapSrc,
-      /addEventListener\('touchstart', \(e\) => \{\s*if \(shouldIgnoreInteractionStart\(e\.target\)\) return;\s*this\.resumeMobileLabelVisibility\(\);/,
-      'touchstart should resume label visibility only for direct map interactions',
+      touchMoveBlock,
+      /touchDragActive = true;[\s\S]*?this\.resumeMobileLabelVisibility\(\);[\s\S]*?this\.applyTransform\(\);/,
+      'single-finger panning should arm label measurement only after the drag threshold is crossed',
     );
     assert.match(
       mapSrc,
       /private resumeMobileLabelVisibility\(\): void \{\s*if \(!this\.isMobile \|\| this\.mobileLabelVisibilityArmed\) return;\s*this\.mobileLabelVisibilityArmed = true;\s*this\.updateLabelVisibility\(this\.state\.zoom\);\s*\}/,
-      'resume should be mobile-only, idempotent, and run one immediate label pass',
+      'resume should remain mobile-only, idempotent, and run one label pass when movement/zoom arms it',
+    );
+    const fitCountryBlock = sliceBetween('public fitCountry(code: string): void {', 'public getState(): MapState {');
+    assert.equal(
+      fitCountryBlock.match(/this\.setCenter\(midLat, midLon\);\s*this\.resumeMobileLabelVisibility\(\);/g)?.length,
+      2,
+      'fitCountry should re-arm mobile label measurement after both country-fit center paths',
+    );
+  });
+
+  it('isolates mobile tap paint and removes marker transform transitions in the touch map', () => {
+    assert.match(
+      cssSrc,
+      /\.map-container\s*\{[\s\S]*?contain:\s*layout paint;/,
+      'the map container should contain map-triggered layout and paint work',
+    );
+    assert.match(
+      cssSrc,
+      /#mapOverlays\s*\{[\s\S]*?contain:\s*layout paint;/,
+      'the overlay layer should isolate marker paint from the rest of the page',
+    );
+    const mobileTouchBlock = cssSrc.slice(
+      cssSrc.indexOf('Mobile Touch Optimization'),
+      cssSrc.indexOf('/* Extra small screens */'),
+    );
+    assert.match(
+      mobileTouchBlock,
+      /\.nat-event-marker,\s*\.conflict-click-area\s*\{[\s\S]*?transition:\s*opacity 0\.2s ease;/,
+      'mobile marker tap targets should keep opacity fades while avoiding transform transitions',
+    );
+    const mobileMarkerTransitionBlock =
+      mobileTouchBlock.match(/\.nat-event-marker,\s*\.conflict-click-area\s*\{[\s\S]*?\}/)?.[0] ?? '';
+    assert.doesNotMatch(
+      mobileMarkerTransitionBlock,
+      /transform/,
+      'mobile marker tap target transitions must not include transform',
+    );
+    assert.match(
+      mobileTouchBlock,
+      /\.nat-event-marker:hover\s*\{[\s\S]*?transform:\s*translate\(-50%, -50%\) scale\(var\(--marker-scale, 1\)\);/,
+      'mobile natural-event hover should preserve the current transform instead of scaling on tap',
     );
   });
 });

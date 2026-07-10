@@ -1,6 +1,6 @@
 ---
 title: "CII Risk Scoring Methodology"
-description: "Editorial methodology behind the Composite Instability Index (CII) and Strategic Risk roll-up. Documents per-country baselineRisk, eventMultiplier, the four-component score (Unrest, Conflict, Security, Information), strategic-risk band derivation, and the v8 formula version stamped on every CiiScore."
+description: "Editorial methodology behind the Composite Instability Index — baseline risk, event multiplier, four-component score, and strategic-risk bands."
 ---
 
 Published methodology note for the **Composite Instability Index (CII)** and
@@ -280,7 +280,7 @@ These flags are runtime quality markers and do not change `methodology_version`.
 
 These are the editorial values applied by both server-side API scoring and
 frontend client-side CII rendering. The source of truth is
-[`shared/cii-weights.ts`](../../shared/cii-weights.ts); server and frontend
+[`shared/cii-weights.ts`](https://github.com/koala73/worldmonitor/blob/main/shared/cii-weights.ts); server and frontend
 tables derive from that module so coefficient drift fails in tests instead of
 shipping silently.
 
@@ -392,7 +392,7 @@ overallScore = min(100, round(weightedAvg * 0.70 + 15))             # banded to 
 
 The decay step, top-N window, scale-floor (`15`), and scale-factor (`0.70`)
 are all defined in
-[`server/worldmonitor/intelligence/v1/_risk-config.ts`](../../server/worldmonitor/intelligence/v1/_risk-config.ts).
+[`server/worldmonitor/intelligence/v1/_risk-config.ts`](https://github.com/koala73/worldmonitor/blob/main/server/worldmonitor/intelligence/v1/_risk-config.ts).
 Their **rationale**:
 
 - **`STRATEGIC_RISK_POSITIONAL_DECAY = 0.15`** — the most-affected country

@@ -61,6 +61,8 @@ describe('icaoToIata', () => {
     assert.deepEqual(icaoToIata('UAE'), { iata: 'EK', name: 'Emirates' });
     assert.deepEqual(icaoToIata('BAW'), { iata: 'BA', name: 'British Airways' });
     assert.deepEqual(icaoToIata('EZY'), { iata: 'U2', name: 'easyJet' });
+    assert.deepEqual(icaoToIata('SWR'), { iata: 'LX', name: 'Swiss International Air Lines' });
+    assert.deepEqual(icaoToIata('TGW'), { iata: 'TR', name: 'Scoot' });
   });
 
   it('is case-insensitive', () => {
@@ -70,6 +72,7 @@ describe('icaoToIata', () => {
 
   it('returns undefined for unknown prefixes', () => {
     assert.equal(icaoToIata('DUKE'), undefined);
+    assert.equal(icaoToIata('ELK'), undefined);
     assert.equal(icaoToIata('XYZ'), undefined);
     assert.equal(icaoToIata(''), undefined);
   });
@@ -81,6 +84,8 @@ describe('toIataCallsign', () => {
     assert.deepEqual(toIataCallsign('BAW61'), { callsign: 'BA61', name: 'British Airways' });
     assert.deepEqual(toIataCallsign('EZY13BU'), { callsign: 'U213BU', name: 'easyJet' });
     assert.deepEqual(toIataCallsign('THY123'), { callsign: 'TK123', name: 'Turkish Airlines' });
+    assert.deepEqual(toIataCallsign('SWR42'), { callsign: 'LX42', name: 'Swiss International Air Lines' });
+    assert.deepEqual(toIataCallsign('TGW42'), { callsign: 'TR42', name: 'Scoot' });
   });
 
   it('handles whitespace and lowercase input', () => {

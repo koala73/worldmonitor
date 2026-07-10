@@ -180,6 +180,26 @@ export const MARKET_PRICE_MOVE_RATIO = 1.1;
 // counted over NEW events dated within [emission, deadline]. Like
 // MARKET_PRICE_MOVE_RATIO, this is a named Bet-2 tuning knob.
 export const CONFLICT_ESCALATION_RATIO = 1.5;
+
+// The conflict/ucdp_zone hard-count families resolve against
+// CONFLICT_COUNT_SOURCE_FEED (conflict:acled-resolution:v1), which only
+// populates with ACLED credentials. Without them the feed is empty and every
+// conflict count spec is unresolvable — it sits pending/VOID forever (#5136).
+// Until a populated near-real-time event-count feed exists, route these
+// families to judged resolution (#5087) instead of emitting a dead hard spec.
+// Article volume (GDELT, #5099/#5134) is NOT a substitute: its scale is
+// article count, not event count, so the horizon-scaled thresholds below would
+// mis-resolve. Flip to true — and confirm the feed is actually seeded — to
+// re-enable hard-count resolution; the threshold logic below is preserved.
+export const CONFLICT_COUNT_FEED_AVAILABLE = false;
+
+// UNREST_COUNT_SOURCE_FEED (unrest:events-resolution:v1) has the identical
+// problem (#5091): seed-unrest-events only writes it from an ACLED resolution
+// fetch (seed-unrest-events.mjs), which is empty without ACLED credentials, so
+// unrest count specs are unresolvable. Same treatment as conflict — route to
+// judged until a populated event-count feed exists. Flip to true once the feed
+// is actually seeded; the threshold logic below is preserved.
+export const UNREST_COUNT_FEED_AVAILABLE = false;
 const YEAR_MS = 365 * 24 * 60 * 60 * 1000;
 
 // FAMILY_FEED / FAMILY_WINDOW map each hard family to its default sourceFeed
@@ -368,10 +388,16 @@ function resolveHardFamily(pred) {
 // extraction — pulls the first numeric token out of the matching signal's
 // `value` string (the seeder already renders these as human-readable
 // "N units" strings, e.g. "14 UCDP conflict events").
-function deriveHardMetrics(pred, family, inputs) {
+function deriveHardMetrics(pred, family, inputs, options = {}) {
   switch (family) {
     case 'conflict':
     case 'ucdp_zone': {
+      // #5136: the conflict count feed (conflict:acled-resolution:v1) is empty
+      // without ACLED credentials, so a hard spec here is unresolvable. Return
+      // null → buildHardSpec falls back to buildJudgedSpec (LLM judge, #5087).
+      // The `conflictCountFeedAvailable` override lets callers (and the tests
+      // that lock the preserved #5010 threshold logic) force the hard path.
+      if (!(options.conflictCountFeedAvailable ?? CONFLICT_COUNT_FEED_AVAILABLE)) return null;
       // Count threshold comes ONLY from an actual event-count signal
       // (ucdp / conflict_events). A 'cii' value is a 0-100 composite INDEX,
       // not an event count — using it would emit a semantically wrong
@@ -398,6 +424,11 @@ function deriveHardMetrics(pred, family, inputs) {
       };
     }
     case 'unrest': {
+      // #5091: unrest:events-resolution:v1 is empty without ACLED credentials
+      // (same root cause as conflict, #5136) → route to judged. The
+      // `unrestCountFeedAvailable` override forces the hard path for the tests
+      // that lock the preserved threshold logic.
+      if (!(options.unrestCountFeedAvailable ?? UNREST_COUNT_FEED_AVAILABLE)) return null;
       const tally = firstFiniteSignalCount(pred, new Set(['unrest_events']));
       if (!Number.isFinite(tally)) return null;
       const horizonMs = HORIZON_MS[pred.timeHorizon];
@@ -515,6 +546,15 @@ function buildQuestion(pred) {
   const region = pred.region || 'unspecified region';
   const domain = pred.domain || 'unspecified domain';
   const horizon = pred.timeHorizon || 'unspecified horizon';
+  // Conflict (#5136) and unrest/political (#5091) forecasts are now judged. A
+  // sharper, escalation-framed question resolves more reliably against the news
+  // archive than the generic "resolve YES" phrasing.
+  if (domain === 'conflict') {
+    return `Within the ${horizon} horizon, did ${region} experience a materially escalated level of armed conflict versus its recent baseline, consistent with "${title}"?`;
+  }
+  if (domain === 'political') {
+    return `Within the ${horizon} horizon, did ${region} experience a materially elevated level of civil unrest or political instability versus its recent baseline, consistent with "${title}"?`;
+  }
   return `Will "${title}" (${domain}, ${region}) resolve YES within its ${horizon} horizon?`;
 }
 
@@ -532,8 +572,8 @@ function buildJudgedSpec(pred, generatedAt) {
   };
 }
 
-function buildHardSpec(pred, inputs, family, generatedAt) {
-  const metrics = deriveHardMetrics(pred, family, inputs);
+function buildHardSpec(pred, inputs, family, generatedAt, options = {}) {
+  const metrics = deriveHardMetrics(pred, family, inputs, options);
   if (!metrics || !Number.isFinite(metrics.threshold)) {
     // Threshold fallback (R3/plan step 3): a hard family that cannot derive
     // a finite threshold emits a judged spec rather than an unresolvable
@@ -590,7 +630,7 @@ function buildHardSpec(pred, inputs, family, generatedAt) {
 //  6. Otherwise (no-signal-match/unrecognized domain) -> judged.
 // deriveDeadline is the only call that can throw (an unrecognized horizon);
 // buildResolutionSpec itself never throws.
-export function buildResolutionSpec(pred, inputs, generatedAt) {
+export function buildResolutionSpec(pred, inputs, generatedAt, options = {}) {
   if (pred.generationOrigin === 'state_derived') {
     return buildJudgedSpec(pred, generatedAt);
   }
@@ -600,7 +640,7 @@ export function buildResolutionSpec(pred, inputs, generatedAt) {
     (s) => SIGNAL_TO_HARD_FAMILY[s.type] === 'prediction_market',
   );
   if (hasPredictionMarketSignal) {
-    return buildHardSpec(pred, inputs, 'prediction_market', generatedAt);
+    return buildHardSpec(pred, inputs, 'prediction_market', generatedAt, options);
   }
 
   if (JUDGED_DOMAINS.has(pred.domain)) {
@@ -612,15 +652,15 @@ export function buildResolutionSpec(pred, inputs, generatedAt) {
     return buildJudgedSpec(pred, generatedAt);
   }
 
-  return buildHardSpec(pred, inputs, family, generatedAt);
+  return buildHardSpec(pred, inputs, family, generatedAt, options);
 }
 
 // The seam pass (D1): sets pred.resolution on every prediction in place and
 // returns the (same) array for chaining, mirroring the existing
 // calibrateWithMarkets / computeProjections enrichment-pass convention.
-export function attachResolutionSpecs(predictions, inputs, generatedAt) {
+export function attachResolutionSpecs(predictions, inputs, generatedAt, options = {}) {
   for (const pred of predictions) {
-    pred.resolution = buildResolutionSpec(pred, inputs, generatedAt);
+    pred.resolution = buildResolutionSpec(pred, inputs, generatedAt, options);
   }
   return predictions;
 }

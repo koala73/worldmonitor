@@ -284,11 +284,11 @@ export default function middleware(request: Request) {
   // Authenticated Pro API clients bypass UA filtering. This is a cheap
   // edge heuristic, not auth — real validation (SHA-256 hash vs Convex
   // userApiKeys + entitlement) happens in server/gateway.ts. To keep the
-  // bot-UA shield meaningful, require the exact key shape emitted by
-  // src/services/api-keys.ts:generateKey: `wm_` + 40 lowercase hex chars.
-  // A random scraper would have to guess a specific 43-char format, and
-  // spoofed-but-well-shaped keys still 401 at the gateway.
-  const WM_KEY_SHAPE = /^wm_[a-f0-9]{40}$/;
+  // bot-UA shield meaningful, require the `wm_` prefix plus 40–64 lowercase
+  // hex chars. User keys are 40 hex chars; enterprise keys may be longer.
+  // A random scraper would still have to guess this format, and spoofed-but-
+  // well-shaped keys still 401 at the gateway.
+  const WM_KEY_SHAPE = /^wm_[a-f0-9]{40,64}$/;
   const apiKey =
     request.headers.get('x-worldmonitor-key') ??
     request.headers.get('x-api-key') ??

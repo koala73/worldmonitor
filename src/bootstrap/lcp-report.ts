@@ -17,7 +17,15 @@
  * without the package present.
  */
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
-import { getWebVitalsFormFactor, roundMs, sanitizeWebVitalUrl } from '@/bootstrap/web-vitals-utils';
+import {
+  getWebVitalsFormFactor,
+  roundMs,
+  sanitizeWebVitalUrl,
+  shouldSampleWebVital,
+  WEB_VITAL_SAMPLE_RATE,
+} from '@/bootstrap/web-vitals-utils';
+
+const MAX_LCP_ELEMENT_TAG_LENGTH = 200;
 
 /** Structural subset of web-vitals' LCP attribution (kept local to avoid the dep). */
 export interface LcpAttributionLike {
@@ -36,6 +44,11 @@ export interface LcpMetricLike {
   attribution?: LcpAttributionLike;
 }
 
+function normalizeLcpElementTag(target: string | undefined): string {
+  const normalized = (target ?? '').replace(/\s+/g, ' ').trim();
+  return normalized ? normalized.slice(0, MAX_LCP_ELEMENT_TAG_LENGTH) : 'unknown';
+}
+
 /**
  * Report one field LCP measurement to Sentry. `enqueue` is injectable for tests;
  * in production it defaults to the deferred-Sentry queue.
@@ -43,20 +56,27 @@ export interface LcpMetricLike {
 export function reportLcpMetric(
   metric: LcpMetricLike,
   enqueue: typeof enqueueSentryCall = enqueueSentryCall,
+  keep: () => boolean = shouldSampleWebVital,
 ): void {
   // Volume trim (#4565): skip 'good' (<=2500ms) LCP. Report
   // needs-improvement / poor / unknown only, so Sentry volume stays focused on
   // the bad tail while success is measured by bad-event rate per surface.
   if (metric.rating === 'good') return;
+  // Uniform sample of the surviving bad tail to cut Sentry volume ~80% without
+  // biasing the rating/formFactor/element-target distributions.
+  if (!keep()) return;
   const a = metric.attribution ?? {};
   const formFactor = getWebVitalsFormFactor();
+  const elementTag = normalizeLcpElementTag(a.target);
   enqueue((s) => {
     s.captureMessage('web-vital: LCP', {
       level: 'info',
       tags: {
         webvital: 'lcp',
         formFactor,
+        sampleRate: String(WEB_VITAL_SAMPLE_RATE),
         'lcp.rating': metric.rating ?? 'unknown',
+        'lcp.element': elementTag,
       },
       extra: {
         value: Math.round(metric.value),

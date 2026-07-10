@@ -61,6 +61,18 @@ async function timingSafeEqualStrings(a: string, b: string): Promise<boolean> {
   return diff === 0;
 }
 
+/** Parse a request body only when JSON produced an object (never null or an array). */
+async function parseJsonObjectBody<T extends object>(request: Request): Promise<T | null> {
+  try {
+    const body: unknown = await request.json();
+    return body !== null && typeof body === "object" && !Array.isArray(body)
+      ? body as T
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Extract a stable error `code` from a thrown ConvexError.
  *
@@ -128,10 +140,8 @@ http.route({
       });
     }
 
-    let body: { userId?: unknown };
-    try {
-      body = await request.json() as { userId?: unknown };
-    } catch {
+    const body = await parseJsonObjectBody<{ userId?: unknown }>(request);
+    if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
@@ -184,15 +194,13 @@ http.route({
       });
     }
 
-    let body: {
+    const body = await parseJsonObjectBody<{
       variant?: string;
       data?: unknown;
       expectedSyncVersion?: number;
       schemaVersion?: number;
-    };
-    try {
-      body = await request.json() as typeof body;
-    } catch {
+    }>(request);
+    if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
         headers,
@@ -312,16 +320,14 @@ http.route({
       return new Response("OK", { status: 200 });
     }
 
-    let update: {
+    const update = await parseJsonObjectBody<{
       message?: {
         chat?: { type?: string; id?: number };
         text?: string;
         date?: number;
       };
-    };
-    try {
-      update = await request.json() as typeof update;
-    } catch {
+    }>(request);
+    if (!update) {
       return new Response("OK", { status: 200 });
     }
 
@@ -379,10 +385,8 @@ http.route({
       });
     }
 
-    let body: { userId?: string; channelType?: string };
-    try {
-      body = await request.json() as typeof body;
-    } catch {
+    const body = await parseJsonObjectBody<{ userId?: string; channelType?: string }>(request);
+    if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
@@ -425,10 +429,8 @@ http.route({
       });
     }
 
-    let body: { userId?: string };
-    try {
-      body = await request.json() as typeof body;
-    } catch {
+    const body = await parseJsonObjectBody<{ userId?: string }>(request);
+    if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
@@ -468,7 +470,7 @@ http.route({
       });
     }
 
-    let body: {
+    const body = await parseJsonObjectBody<{
       action?: string;
       userId?: string;
       channelType?: string;
@@ -501,10 +503,8 @@ http.route({
       aiDigestEnabled?: boolean;
       countries?: string[];
       tickers?: string[];
-    };
-    try {
-      body = await request.json() as typeof body;
-    } catch {
+    }>(request);
+    if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
@@ -834,11 +834,9 @@ http.route({
         headers: { "Content-Type": "application/json" },
       });
     }
-    let body: { userId?: string; variant?: string };
-    try {
-      body = await request.json() as typeof body;
-    } catch {
-      return new Response(JSON.stringify({ error: "INVALID_BODY" }), {
+    const body = await parseJsonObjectBody<{ userId?: string; variant?: string }>(request);
+    if (!body) {
+      return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
       });
@@ -877,11 +875,9 @@ http.route({
         headers: { "Content-Type": "application/json" },
       });
     }
-    let body: { userId?: unknown };
-    try {
-      body = await request.json() as typeof body;
-    } catch {
-      return new Response(JSON.stringify({ error: "INVALID_BODY" }), {
+    const body = await parseJsonObjectBody<{ userId?: unknown }>(request);
+    if (!body) {
+      return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
       });
@@ -922,11 +918,9 @@ http.route({
         headers: { "Content-Type": "application/json" },
       });
     }
-    let body: { userId?: string };
-    try {
-      body = await request.json() as typeof body;
-    } catch {
-      return new Response(JSON.stringify({ error: "INVALID_BODY" }), {
+    const body = await parseJsonObjectBody<{ userId?: string }>(request);
+    if (!body) {
+      return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
       });
@@ -971,11 +965,9 @@ http.route({
         headers: { "Content-Type": "application/json" },
       });
     }
-    let body: { userId?: string; code?: string };
-    try {
-      body = await request.json() as typeof body;
-    } catch {
-      return new Response(JSON.stringify({ error: "INVALID_BODY" }), {
+    const body = await parseJsonObjectBody<{ userId?: string; code?: string }>(request);
+    if (!body) {
+      return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
       });
@@ -1018,10 +1010,8 @@ http.route({
       });
     }
 
-    let body: { keyHash?: unknown };
-    try {
-      body = await request.json() as { keyHash?: unknown };
-    } catch {
+    const body = await parseJsonObjectBody<{ keyHash?: unknown }>(request);
+    if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
@@ -1072,10 +1062,8 @@ http.route({
       });
     }
 
-    let body: { keyHash?: unknown };
-    try {
-      body = await request.json() as { keyHash?: unknown };
-    } catch {
+    const body = await parseJsonObjectBody<{ keyHash?: unknown }>(request);
+    if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
@@ -1120,10 +1108,12 @@ http.route({
       });
     }
 
-    let body: { userId?: unknown; clientId?: unknown; name?: unknown };
-    try {
-      body = await request.json() as typeof body;
-    } catch {
+    const body = await parseJsonObjectBody<{
+      userId?: unknown;
+      clientId?: unknown;
+      name?: unknown;
+    }>(request);
+    if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
@@ -1182,10 +1172,8 @@ http.route({
       });
     }
 
-    let body: { tokenId?: unknown };
-    try {
-      body = await request.json() as typeof body;
-    } catch {
+    const body = await parseJsonObjectBody<{ tokenId?: unknown }>(request);
+    if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
@@ -1255,10 +1243,8 @@ http.route({
       });
     }
 
-    let body: { userId?: unknown; tokenId?: unknown };
-    try {
-      body = await request.json() as typeof body;
-    } catch {
+    const body = await parseJsonObjectBody<{ userId?: unknown; tokenId?: unknown }>(request);
+    if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
@@ -1343,7 +1329,7 @@ http.route({
       });
     }
 
-    let body: {
+    const body = await parseJsonObjectBody<{
       userId?: string;
       email?: string;
       name?: string;
@@ -1352,10 +1338,8 @@ http.route({
       discountCode?: string;
       referralCode?: string;
       bypassPendingGuard?: boolean;
-    };
-    try {
-      body = await request.json() as typeof body;
-    } catch {
+    }>(request);
+    if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
@@ -1437,10 +1421,8 @@ http.route({
       });
     }
 
-    let body: { userId?: string };
-    try {
-      body = await request.json() as typeof body;
-    } catch {
+    const body = await parseJsonObjectBody<{ userId?: string }>(request);
+    if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },
@@ -1500,16 +1482,14 @@ http.route({
       });
     }
 
-    let body: {
+    const body = await parseJsonObjectBody<{
       emails: Array<{
         email: string;
         reason: "bounce" | "complaint" | "manual";
         source?: string;
       }>;
-    };
-    try {
-      body = (await request.json()) as typeof body;
-    } catch {
+    }>(request);
+    if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
         status: 400,
         headers: { "Content-Type": "application/json" },

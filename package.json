@@ -13,6 +13,7 @@
     "lint:rate-limit-policies": "tsx scripts/enforce-rate-limit-policies.mjs",
     "lint:premium-fetch": "tsx scripts/enforce-premium-fetch.mjs",
     "lint:mintlify-slugs": "node scripts/enforce-mintlify-reserved-slugs.mjs",
+    "lint:public-docs": "node scripts/check-public-doc-plan-references.mjs",
     "lint:unicode": "node scripts/check-unicode-safety.mjs",
     "lint:unicode:staged": "node scripts/check-unicode-safety.mjs --staged",
     "security:local-env-dumps": "node scripts/check-local-secret-dumps.mjs",

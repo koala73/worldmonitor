@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { isDebugBearRumScriptFrame } from '../src/bootstrap/debugbear-rum.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -39,7 +40,10 @@ assert.ok(tpMatch, 'THIRD_PARTY_FETCH_HOST_ALLOWLIST must be defined in src/boot
 
 // Build a callable version. Input: a Sentry-shaped event object. Returns event or null.
 // eslint-disable-next-line no-new-func
-const beforeSend = new Function('event', `${tpMatch[0]}\n${fnBody}`);
+const rawBeforeSend = new Function('event', 'isDebugBearRumScriptFrame', `${tpMatch[0]}\n${fnBody}`);
+function beforeSend(event) {
+  return rawBeforeSend(event, isDebugBearRumScriptFrame);
+}
 
 // Extract the `ignoreErrors` array literal so tests can assert which messages
 // Sentry's built-in (pre-beforeSend) filter drops. The array body contains
@@ -630,6 +634,39 @@ describe('existing beforeSend filters', () => {
     assert.ok(beforeSend(event) !== null, 'First-party + extension Failed-to-fetch must reach Sentry');
   });
 
+  it('suppresses Firefox "NetworkError ... (data.debugbear.com)" — embedded RUM beacon, zero frames (WORLDMONITOR-RP)', () => {
+    // Firefox's host-suffixed phrasing for a failed fetch. The DebugBear RUM
+    // script (src/bootstrap/debugbear-rum.ts) POSTs field metrics to
+    // data.debugbear.com; a dropped beacon surfaces via onunhandledrejection
+    // with no captured frames. Routed through the same host allowlist as the
+    // Chrome `Failed to fetch (<host>)` shape, so an allowlisted host is
+    // suppressed regardless of stack.
+    const event = makeEvent('NetworkError when attempting to fetch resource. (data.debugbear.com)', 'TypeError', []);
+    assert.equal(beforeSend(event), null, 'DebugBear RUM beacon network failure should be suppressed');
+  });
+
+  it('suppresses Firefox "NetworkError ... (data.debugbear.com)" even with the DebugBear RUM script frame', () => {
+    // The DebugBear collector monkeypatches window.fetch, so the leaked
+    // rejection can carry its own CDN script frame. That chunk is not
+    // first-party (not under /assets/, not .ts), so the host allowlist — not
+    // hasFirstParty — must decide.
+    const event = makeEvent('NetworkError when attempting to fetch resource. (data.debugbear.com)', 'TypeError', [
+      { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'window.fetch' },
+    ]);
+    assert.equal(beforeSend(event), null, 'DebugBear-framed beacon failure should be suppressed');
+  });
+
+  it('does NOT suppress Firefox "NetworkError ... (<host>)" for a NON-allowlisted first-party host', () => {
+    // Safety mirror of the Chrome `Failed to fetch (api.worldmonitor.app)`
+    // guard: the Firefox host-suffixed shape must still surface for our own
+    // API so a real outage isn't silenced just because Firefox phrases the
+    // network error differently.
+    const event = makeEvent('NetworkError when attempting to fetch resource. (api.worldmonitor.app)', 'TypeError', [
+      { filename: '/assets/panels-wF5GXf0N.js', lineno: 100, function: 'MyApiCall' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'Non-allowlisted host Firefox NetworkError must reach Sentry');
+  });
+
   it('suppresses iOS Safari WKWebView "Cannot inject key into script value" regardless of first-party frame', () => {
     // The native throw always lands in a first-party caller; the existing
     // !hasFirstParty gate missed it. `UnknownError` type name is WebKit-only
@@ -996,5 +1033,157 @@ describe('ignoreErrors — mainWorldSdk extension global (WORLDMONITOR-TG)', () 
     // swallowed by this pattern.
     assert.ok(!isIgnored('mainWorldSdkLoader is not defined'),
       'pattern must not swallow a longer identifier with the same prefix');
+  });
+});
+
+// ─── WORLDMONITOR-VR/VV/VW/VX/VY/VS/VT/VZ: injected browser-automation harness ─
+//
+// An external browser-automation agent (Floot) drove the dashboard on 2026-07-09.
+// Its injected selector-resolution helpers (helperGetStyle et al., <anonymous>
+// script) throw generic `Error`s our bundle never emits: `Element not found:
+// <sel>`, `No element found: <sel>`, `$pressKey(...) was called with no
+// selector`, and references to its own `data-floot-id` attribute. Generic Error
+// type (so the anonymous-script TypeError gate misses them) + <anonymous>-only
+// frames (→ !hasFirstParty). Gated on !hasFirstParty; the `... found:` matches
+// require the trailing colon so the colon-less ambiguous `Element not found`
+// (which needs a confirmed third-party stack) is untouched.
+describe('injected browser-automation harness errors (Floot)', () => {
+  const automationMsgs = [
+    'Element not found: [data-floot-id="307"]',
+    'Element not found: header',
+    'Element not found: null',
+    'Element not found: .bg-orange-500\\/20',
+    'No element found: button, hasText="×", within="[data-floot-id=\\"12\\"]"',
+    'No element found: #intel-feed',
+    '$pressKey("Escape") was called with no selector but no element is focused',
+    'Floot helper failed near [data-floot-id="307"]',
+  ];
+
+  for (const msg of automationMsgs) {
+    it(`suppresses "${msg.slice(0, 40)}..." from an <anonymous> injected script`, () => {
+      // Real shape: generic Error, helperGetStyle in an <anonymous> eval frame.
+      const event = makeEvent(msg, 'Error', [
+        { filename: '<anonymous>', lineno: 91, function: null },
+        { filename: '<anonymous>', lineno: 5, function: 'helperGetStyle' },
+      ]);
+      assert.equal(beforeSend(event), null, `Floot automation error should be suppressed: ${msg}`);
+    });
+
+    it(`suppresses "${msg.slice(0, 40)}..." with an empty stack too`, () => {
+      assert.equal(beforeSend(makeEvent(msg, 'Error', [])), null);
+    });
+  }
+
+  it('does NOT suppress the colon-less ambiguous "Element not found" with empty stack', () => {
+    // Preserves the existing ambiguous-error contract: a bare "Element not found"
+    // (no selector) could be our own code and must surface with an unknown origin.
+    assert.ok(beforeSend(makeEvent('Element not found', 'Error', [])) !== null,
+      'bare colon-less "Element not found" must still surface');
+  });
+
+  it('does NOT suppress a first-party error that happens to say "Element not found: X"', () => {
+    // Defense-in-depth: a genuine first-party frame means our code threw it —
+    // must surface even with the automation-shaped message.
+    const event = makeEvent('Element not found: #someLegitSelector', 'Error', [
+      firstPartyFrame('src/components/SomePanel.ts', 'requireEl'),
+    ]);
+    assert.ok(beforeSend(event) !== null, 'first-party "Element not found: X" must reach Sentry');
+  });
+});
+
+// ─── WORLDMONITOR-VC: bare "Failed to fetch" through DebugBear's fetch wrapper ─
+//
+// DebugBear's RUM collector (cdn.debugbear.com/<id>.js → frame `/lpMwA9KpC6pf.js`)
+// monkeypatches window.fetch to time it. A transient network blip on any app
+// fetch rejects and its wrapper re-surfaces the rejection as an unhandled
+// rejection, injecting its own frames. The only "first-party" frames it carries
+// are `window.fetch` trampolines on Vite chunk names (panel-storage/widget-store
+// — neither module actually fetches). Without DebugBear the identical failure is
+// zero-frame and already suppressed. Suppress only when a DebugBear frame is
+// present AND every non-infra frame is that collector or a bare window.fetch
+// trampoline, so a genuine uncaught first-party fetch rejection still surfaces.
+describe('bare "Failed to fetch" via DebugBear RUM fetch wrapper (WORLDMONITOR-VC)', () => {
+  // Verbatim production stack from WORLDMONITOR-VC.
+  const vcStack = [
+    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 8, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'e' },
+    { filename: '/assets/widget-store-BQi6MP9w.js', lineno: 38, function: 'window.fetch' },
+    { filename: '/assets/panel-storage-DSqo8-tt.js', lineno: 2, function: 'window.fetch' },
+  ];
+
+  it('suppresses the exact VC stack (DebugBear wrapper + window.fetch trampolines)', () => {
+    assert.equal(beforeSend(makeEvent('Failed to fetch', 'TypeError', vcStack)), null,
+      'DebugBear-wrapped transient fetch failure should be suppressed');
+  });
+
+  it('suppresses the type-prefixed value variant', () => {
+    assert.equal(beforeSend(makeEvent('TypeError: Failed to fetch', 'TypeError', vcStack)), null);
+  });
+
+  it('derives collector-frame identity from the DebugBear loader module', () => {
+    assert.match(mainSrc, /import \{ isDebugBearRumScriptFrame \} from '\.\/debugbear-rum';/,
+      'beforeSend must use the collector identity exported by the loader module');
+    const debugBearGate = mainSrc.slice(mainSrc.indexOf('// Bare `Failed to fetch` surfacing through the DebugBear'));
+    assert.match(debugBearGate, /isDebugBearRumScriptFrame\(f\.filename \?\? ''\)/,
+      'the DebugBear gate must call the shared collector-frame predicate');
+  });
+
+  it('suppresses a generic DebugBear collector with a bare fetch trampoline', () => {
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: 'https://cdn.debugbear.com/rotated-collector.js', lineno: 1, function: 'e' },
+      { filename: '/assets/widget-store-BQi6MP9w.js', lineno: 38, function: 'fetch' },
+    ]);
+    assert.equal(beforeSend(event), null, 'generic DebugBear collector and bare fetch trampoline should be suppressed');
+  });
+
+  it('does NOT suppress a DebugBear stack with a non-trampoline fetchContent frame', () => {
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'e' },
+      { filename: '/assets/widget-store-BQi6MP9w.js', lineno: 38, function: 'fetchContent' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'a named first-party caller must still reach Sentry');
+  });
+
+  it('does NOT suppress a DebugBear stack with the runtime fetch wrapper', () => {
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'e' },
+      { filename: '/assets/runtime-BQi6MP9w.js', lineno: 38, function: 'window.fetch' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'runtime fetch wrapper failures must still reach Sentry');
+  });
+
+  it('does NOT suppress when a genuine first-party fetch caller frame is present', () => {
+    // A real uncaught first-party fetch rejection carries a real function name
+    // (not a bare window.fetch trampoline) — must surface even with DebugBear on
+    // the stack.
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/lpMwA9KpC6pf.js', lineno: 1, function: 'e' },
+      { filename: '/assets/panels-DzUv7BBV.js', lineno: 100, function: 'loadCountryGeometry' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'genuine first-party fetch rejection must reach Sentry');
+  });
+
+  it('does NOT suppress a plain first-party "Failed to fetch" with no DebugBear frame', () => {
+    // Regression guard for the existing contract: without DebugBear, a first-party
+    // window.fetch failure still surfaces (it is not this gate's business).
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/assets/panels-wF5GXf0N.js', lineno: 100, function: 'MyApiCall' },
+    ]);
+    assert.ok(beforeSend(event) !== null, 'non-DebugBear first-party fetch failure must surface');
+  });
+
+  it('does NOT suppress an observed trampoline without a DebugBear collector', () => {
+    const event = makeEvent('Failed to fetch', 'TypeError', [
+      { filename: '/assets/widget-store-BQi6MP9w.js', lineno: 38, function: 'fetch' },
+    ]);
+    assert.ok(beforeSend(event) !== null,
+      'the allowed trampoline alone must not suppress a first-party fetch failure');
+  });
+
+  it('does NOT suppress a non-"Failed to fetch" error that merely has a DebugBear frame', () => {
+    const event = makeEvent('Something else entirely', 'TypeError', vcStack);
+    assert.ok(beforeSend(event) !== null, 'gate is scoped to the bare Failed-to-fetch message');
   });
 });

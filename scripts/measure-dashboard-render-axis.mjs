@@ -13,6 +13,7 @@
  *   node scripts/measure-dashboard-render-axis.mjs [url] [--settle 10000] [--json]
  *   node scripts/measure-dashboard-render-axis.mjs [url] --trace-out /tmp/dashboard-trace.json
  *   node scripts/measure-dashboard-render-axis.mjs [url] --interact country --cpu-throttle 4 --json
+ *   (use --cpu-throttle 4-6 to approximate mid-tier mobile CPU in local traces)
  *   node scripts/measure-dashboard-render-axis.mjs --compare before.json after.json --json
  */
 import { readFile, writeFile } from 'node:fs/promises';
@@ -22,19 +23,22 @@ const TBT_THRESHOLD_MS = 50;
 const DEFAULT_INTERACTION_VIEWPORT = { width: 390, height: 844 };
 const DEFAULT_POST_INTERACT_MS = 1200;
 const DEFAULT_CPU_THROTTLE_RATE = 1;
+const INTERACTION_TRACE_MARK = 'wm-interaction-start';
 
-const DEFAULT_TRACE_CATEGORIES = [
+export const DEFAULT_TRACE_CATEGORIES = Object.freeze([
   'devtools.timeline',
   'disabled-by-default-devtools.timeline',
+  'disabled-by-default-devtools.timeline.frame',
   'disabled-by-default-devtools.timeline.stack',
   'blink',
+  'blink.user_timing',
   'disabled-by-default-gpu.debug',
   'disabled-by-default-gpu.service',
   'gpu',
   'loading',
   'rail',
   'v8',
-];
+]);
 
 const STYLE_LAYOUT_NAMES = new Set([
   'InvalidateLayout',
@@ -338,6 +342,45 @@ export function summarizeTraceEvents(trace) {
   };
 }
 
+function summarizePhaseDurationsInWindow(trace, traceStartUs, traceEndUs) {
+  const duration = {
+    styleLayout: 0,
+    rendering: 0,
+    canvas: 0,
+    scriptEvaluation: 0,
+  };
+  const startUs = Number(traceStartUs);
+  const endUs = Number(traceEndUs);
+  if (!Number.isFinite(startUs) || !Number.isFinite(endUs) || endUs <= startUs) {
+    return {
+      styleLayout: 0,
+      rendering: 0,
+      canvas: 0,
+      scriptEvaluation: 0,
+    };
+  }
+
+  for (const event of traceEvents(trace)) {
+    if (event?.ph !== 'X') continue;
+    const group = classifyRenderAxisEvent(event.name);
+    if (!group || !hasOwn(duration, group)) continue;
+    const eventStartUs = Number(event.ts);
+    const eventDurationUs = Number(event.dur) || 0;
+    if (!Number.isFinite(eventStartUs) || eventDurationUs <= 0) continue;
+    const eventEndUs = eventStartUs + eventDurationUs;
+    const overlapUs = Math.min(endUs, eventEndUs) - Math.max(startUs, eventStartUs);
+    if (overlapUs <= 0) continue;
+    duration[group] += overlapUs / 1000;
+  }
+
+  return {
+    styleLayout: round(duration.styleLayout),
+    rendering: round(duration.rendering),
+    canvas: round(duration.canvas),
+    scriptEvaluation: round(duration.scriptEvaluation),
+  };
+}
+
 export function dominantRenderPhase(duration = {}) {
   const labels = {
     styleLayout: 'style/layout',
@@ -380,6 +423,61 @@ export function summarizeInteractionTimings(entries) {
   };
 }
 
+function traceMarkerNames(event) {
+  return [
+    event?.name,
+    event?.args?.data?.name,
+    event?.args?.name,
+  ]
+    .map((value) => String(value || ''))
+    .filter(Boolean);
+}
+
+function findTraceMarkerTimeUs(trace, markerName = INTERACTION_TRACE_MARK) {
+  for (const event of traceEvents(trace)) {
+    if (!traceMarkerNames(event).includes(markerName)) continue;
+    const ts = Number(event.ts);
+    if (Number.isFinite(ts)) return ts;
+  }
+  return null;
+}
+
+function resolveInteractionTimeAnchor(trace, anchor) {
+  const performanceTimeMs = Number(anchor?.performanceTimeMs);
+  const markerName = String(anchor?.markName || INTERACTION_TRACE_MARK);
+  const rawTraceTimeUs = anchor?.traceTimeUs;
+  let traceTimeUs = rawTraceTimeUs == null ? NaN : Number(rawTraceTimeUs);
+  if (!Number.isFinite(traceTimeUs)) {
+    const markerTraceTimeUs = findTraceMarkerTimeUs(trace, markerName);
+    traceTimeUs = markerTraceTimeUs == null ? NaN : Number(markerTraceTimeUs);
+  }
+  if (!Number.isFinite(performanceTimeMs) || !Number.isFinite(traceTimeUs)) return null;
+  return { performanceTimeMs, traceTimeUs };
+}
+
+export function summarizeInteractionEventWindow(trace, worstTiming, anchor) {
+  const resolvedAnchor = resolveInteractionTimeAnchor(trace, anchor);
+  const startTime = Number(worstTiming?.startTime);
+  const duration = Number(worstTiming?.durationMs ?? worstTiming?.duration);
+  if (!resolvedAnchor || !Number.isFinite(startTime) || !Number.isFinite(duration) || duration <= 0) {
+    return null;
+  }
+
+  const traceStartUs = Math.round(
+    resolvedAnchor.traceTimeUs + ((startTime - resolvedAnchor.performanceTimeMs) * 1000),
+  );
+  const traceEndUs = Math.round(traceStartUs + (duration * 1000));
+  const durationMsByPhase = summarizePhaseDurationsInWindow(trace, traceStartUs, traceEndUs);
+  return {
+    startTime: round(startTime),
+    durationMs: round(duration),
+    traceStartUs,
+    traceEndUs,
+    dominantPhase: dominantRenderPhase(durationMsByPhase),
+    durationMsByPhase,
+  };
+}
+
 export function buildReport(result) {
   const summary = summarizeTraceEvents(result?.traceEvents || []);
   const report = {
@@ -392,23 +490,33 @@ export function buildReport(result) {
     ...summary,
   };
   if (result?.interaction) {
-    const targetWarnings = [];
+    const interactionWarnings = [];
     if (result.interaction?.targetInfo?.tapPoint?.matchedTop === false) {
-      targetWarnings.push(
+      interactionWarnings.push(
         `Interaction target ${result.interaction.name || 'custom'} used a fallback tap point that did not hit the requested selector.`,
+      );
+    }
+    const timings = summarizeInteractionTimings(result?.eventTimings);
+    const eventWindow = timings.worst
+      ? summarizeInteractionEventWindow(result?.traceEvents || [], timings.worst, result?.interactionTimeAnchor)
+      : null;
+    if (timings.worst && !eventWindow) {
+      interactionWarnings.push(
+        'Unable to scope dominant phase to the worst Event Timing row because the interaction trace clock anchor is unavailable. Re-run with a trace captured by this tool version.',
       );
     }
     report.interaction = {
       target: result.interaction,
-      timings: summarizeInteractionTimings(result?.eventTimings),
+      timings,
       dominantPhase: dominantRenderPhase(summary.durationMs),
+      eventWindow,
       traceWindow: {
         postInteractMs: Number(result.interaction?.postInteractMs) || DEFAULT_POST_INTERACT_MS,
         dominantPhaseScope: 'full-post-interaction-trace-window',
       },
-      warnings: targetWarnings,
+      warnings: interactionWarnings,
     };
-    report.warnings = [...report.warnings, ...targetWarnings];
+    report.warnings = [...report.warnings, ...interactionWarnings];
   }
   return report;
 }
@@ -431,6 +539,7 @@ export function normalizeReport(input) {
     traceEvents: events,
     interaction: input?.interaction || null,
     eventTimings: input?.eventTimings || [],
+    interactionTimeAnchor: input?.interactionTimeAnchor || null,
   });
 }
 
@@ -596,7 +705,7 @@ async function startTracing(client) {
   });
 }
 
-async function setCpuThrottle(client, rate) {
+export async function setCpuThrottle(client, rate) {
   const throttleRate = Number(rate) || DEFAULT_CPU_THROTTLE_RATE;
   if (throttleRate <= DEFAULT_CPU_THROTTLE_RATE) return;
   await client.send('Emulation.setCPUThrottlingRate', { rate: throttleRate });
@@ -810,6 +919,7 @@ async function captureTrace(url, {
     await setCpuThrottle(client, cpuThrottleRate);
     let eventTimings = [];
     let interactionTarget = null;
+    let interactionTimeAnchor = null;
 
     if (interaction) {
       await page.goto(url, { waitUntil: 'load', timeout: 60000 });
@@ -822,10 +932,18 @@ async function captureTrace(url, {
       };
       await resetInteractionTimings(page);
       await startTracing(client);
-      await page.evaluate(() => performance.mark?.('wm-interaction-start'));
+      const performanceTimeMs = await page.evaluate((markName) => {
+        const now = performance.now();
+        performance.mark?.(markName);
+        return now;
+      }, INTERACTION_TRACE_MARK);
       await performInteraction(page, targetInfo);
       await page.waitForTimeout(postInteractMs);
       eventTimings = await readInteractionTimings(page);
+      interactionTimeAnchor = {
+        performanceTimeMs,
+        markName: INTERACTION_TRACE_MARK,
+      };
     } else {
       await startTracing(client);
       await page.goto(url, { waitUntil: 'load', timeout: 60000 });
@@ -833,6 +951,7 @@ async function captureTrace(url, {
     }
 
     const events = await stopTracing(client);
+    const interactionTraceTimeUs = findTraceMarkerTimeUs(events, INTERACTION_TRACE_MARK);
     const result = {
       url,
       generatedAt: new Date().toISOString(),
@@ -843,6 +962,12 @@ async function captureTrace(url, {
       traceEvents: events,
       interaction: interactionTarget,
       eventTimings,
+      interactionTimeAnchor: interactionTimeAnchor
+        ? {
+          ...interactionTimeAnchor,
+          ...(interactionTraceTimeUs == null ? {} : { traceTimeUs: interactionTraceTimeUs }),
+        }
+        : null,
     };
     if (traceOut) {
       await writeFile(traceOut, JSON.stringify(result, null, 2));
@@ -885,7 +1010,7 @@ function printHuman(report) {
   console.log(`Script Evaluation:${String(d.scriptEvaluation).padStart(7)}ms (${report.sharePct.scriptEvaluationOfAccounted}% of accounted render-axis)`);
   console.log(`Estimated TBT:    ${d.estimatedTbt}ms`);
   if (report.interaction) {
-    const { target, timings, dominantPhase } = report.interaction;
+    const { target, timings, dominantPhase, eventWindow } = report.interaction;
     console.log(`Interaction:      ${target.name} (${target.selector})`);
     if (timings.worst) {
       const selector = timings.worst.selector ? ` on ${timings.worst.selector}` : '';
@@ -897,7 +1022,10 @@ function printHuman(report) {
     } else {
       console.log('Event Timing:     unavailable (browser did not emit Event Timing entries)');
     }
-    console.log(`Dominant phase:   ${dominantPhase.label} (${dominantPhase.ms}ms over ${report.interaction.traceWindow.postInteractMs}ms trace window)`);
+    console.log(`Dominant phase:   ${dominantPhase.label} (${dominantPhase.ms}ms over whole ${report.interaction.traceWindow.postInteractMs}ms post-interaction trace window)`);
+    if (eventWindow?.dominantPhase) {
+      console.log(`Worst-event phase: ${eventWindow.dominantPhase.label} (${eventWindow.dominantPhase.ms}ms over ${eventWindow.durationMs}ms Event Timing window)`);
+    }
     for (const warning of report.interaction.warnings || []) console.log(`  ! ${warning}`);
   }
   console.log(`Forced reflows:   ${report.forcedReflows.eventCount} attributed events, ${report.forcedReflows.totalMs}ms`);

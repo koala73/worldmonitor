@@ -1,6 +1,6 @@
 ---
 title: "Desktop Application"
-description: "Tauri desktop architecture, sidecar management, secret storage, cloud fallback, and multi-platform build details."
+description: "Tauri desktop architecture for World Monitor — sidecar process management, secret storage, cloud fallback, and multi-platform build pipelines."
 ---
 
 ## Overview
@@ -210,7 +210,7 @@ When a local API handler is missing, throws an error, or returns a 5xx status, t
 - **Traffic log** — a ring buffer of the last 200 requests with method, path, status, and duration (ms), accessible via `GET /api/local-traffic-log`
 - **Verbose mode** — togglable via `POST /api/local-debug-toggle`, persists across sidecar restarts in `verbose-mode.json`
 - **Dual log files** — `desktop.log` captures Rust-side events (startup, secret injection counts, menu actions), while `local-api.log` captures Node.js stdout/stderr
-- **IPv4-forced fetch** — the sidecar patches `globalThis.fetch` to force IPv4 for all outbound requests. Government APIs (NASA FIRMS, EIA, FRED) publish AAAA DNS records but their IPv6 endpoints frequently timeout. The patch uses `node:https` with `family: 4` to bypass Happy Eyeballs and avoid cascading ETIMEDOUT failures
+- **IPv4-forced fetch** — the sidecar patches `globalThis.fetch` to force IPv4 for all outbound requests. Government APIs (NASA FIRMS, EIA, FRED) publish AAAA DNS records but their IPv6 endpoints frequently time out. The patch uses `node:https` with `family: 4` to bypass Happy Eyeballs and avoid cascading ETIMEDOUT failures
 - **DevTools** — `Cmd+Alt+I` toggles the embedded web inspector
 
 ## Auto-Update

@@ -242,6 +242,10 @@ export interface GetSimulationOutcomeResponse {
   error: string;
   theaterSummariesJson: string;
   processing: boolean;
+  eligibleTheaterCount: number;
+  failedTheaterCount: number;
+  allTheatersFailed: boolean;
+  completionStatus: string;
 }
 
 export interface TriggerSimulationRequest {

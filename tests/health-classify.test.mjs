@@ -220,6 +220,22 @@ test('classifyKey: issue #5055 strict seeds surface missing metadata instead of 
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
 });
 
+test('classifyKey: issue #5099 ACLED display feed is strict, not on-demand softened', () => {
+  const missing = classifyKey('acledIntel', STANDALONE_KEYS.acledIntel, { allowOnDemand: true },
+    makeCtx({}));
+  assert.equal(missing.status, 'EMPTY');
+  assert.equal(missing.records, 0);
+  assert.equal(missing.maxStaleMin, 38);
+  assert.equal(STATUS_COUNTS[missing.status], 'crit');
+
+  const dataWithoutMeta = classifyKey('acledIntel', STANDALONE_KEYS.acledIntel, { allowOnDemand: true },
+    makeCtx({ strens: { [STANDALONE_KEYS.acledIntel]: 2048 } }));
+  assert.equal(dataWithoutMeta.status, 'STALE_SEED');
+  assert.equal(dataWithoutMeta.records, 1);
+  assert.equal(dataWithoutMeta.maxStaleMin, 38);
+  assert.equal(STATUS_COUNTS[dataWithoutMeta.status], 'warn');
+});
+
 test('classifyKey: issue #5055 Comtrade bilateral probe is explicitly meta-only', () => {
   const metaKey = 'seed-meta:comtrade:bilateral-hs4';
   const entry = classifyKey('comtradeBilateralHs4', STANDALONE_KEYS.comtradeBilateralHs4, { allowOnDemand: true },

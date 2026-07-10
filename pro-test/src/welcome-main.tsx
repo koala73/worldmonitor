@@ -3,6 +3,7 @@ import { createRoot, hydrateRoot } from 'react-dom/client';
 import WelcomeApp from './WelcomeApp.tsx';
 import { currentLanguageBase, initI18n } from './i18n';
 import { initSentry } from './sentry';
+import { initDebugBearRum } from './debugbear-rum';
 import './index.css';
 
 const WELCOME_HYDRATION_IDLE_TIMEOUT_MS = 2500;
@@ -24,6 +25,7 @@ function scheduleWelcomeHydration(hydrate: () => void) {
 }
 
 initSentry();
+initDebugBearRum();
 
 initI18n({ metaPrefix: 'welcome.meta' }).then(() => {
   const rootElement = document.getElementById('root')!;

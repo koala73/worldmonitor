@@ -70,6 +70,17 @@ test('/pro and welcome pages load the Umami tracker (www + nonce)', () => {
   }
 });
 
+test('/pro and welcome entries initialize DebugBear RUM', () => {
+  for (const entry of ['pro-test/src/main.tsx', 'pro-test/src/welcome-main.tsx']) {
+    const src = read(entry);
+    assert.ok(
+      src.includes("import { initDebugBearRum } from './debugbear-rum'"),
+      `${entry}: DebugBear RUM import missing`,
+    );
+    assert.ok(src.includes('initDebugBearRum();'), `${entry}: DebugBear RUM init missing`);
+  }
+});
+
 test('/pro checkout service fires checkout-start on both paths', () => {
   const src = read('pro-test/src/services/checkout.ts');
   // Round-2 F4 (Greptile): asserting only the surface labels would still

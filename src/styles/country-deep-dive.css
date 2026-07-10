@@ -1,24 +1,27 @@
 .country-deep-dive {
   position: fixed;
   top: 0;
-  right: -460px;
+  right: 0;
   width: 430px;
   height: 100vh;
   z-index: 5000;
   border-left: 1px solid var(--border);
   background: var(--panel-bg);
   box-shadow: -8px 0 32px color-mix(in srgb, var(--overlay-heavy) 65%, transparent);
-  transition: right 0.28s ease;
+  transform: translateX(calc(100% + 30px));
+  transition: transform 0.28s ease;
+  will-change: transform;
+  contain: layout paint;
 }
 
 .country-deep-dive[aria-hidden="true"] {
-  transition: right 0.28s ease, visibility 0s linear 0.28s;
+  transition: transform 0.28s ease, visibility 0s linear 0.28s;
   visibility: hidden;
 }
 
 .country-deep-dive.active {
-  right: 0;
-  transition: right 0.28s ease;
+  transform: none;
+  transition: transform 0.28s ease;
   visibility: visible;
 }
 
@@ -28,6 +31,7 @@
   width: 100%;
   height: 100%;
   right: 0;
+  transform: none;
   z-index: 10000;
   border-left: none;
   background: color-mix(in srgb, var(--bg) 85%, transparent);
@@ -250,12 +254,14 @@
   display: grid;
   grid-template-columns: 1fr;
   gap: 10px;
+  contain: layout paint;
 }
 
 .cdp-summary-grid {
   display: grid;
   grid-template-columns: 1fr;
   gap: 10px;
+  contain: layout paint;
 }
 
 .cdp-score-top {
@@ -1190,7 +1196,7 @@
 @media (max-width: 767px) {
   .country-deep-dive {
     width: 100vw;
-    right: -100vw;
+    transform: translateX(100%);
   }
 
   .country-deep-dive.maximized .panel-content {

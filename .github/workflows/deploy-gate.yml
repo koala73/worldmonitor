@@ -22,7 +22,7 @@ jobs:
           REPO: ${{ github.repository }}
           SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          required='["changes","docs-stats","unit","sidecar","convex-tests","variant-smoke-full","resilience-validation-smoke","digest-image","typecheck","biome","security-audit"]'
+          required='["changes","docs-stats","unit","consumer-prices","sidecar","convex-tests","variant-smoke-full","resilience-validation-smoke","digest-image","typecheck","biome","public-docs","security-audit"]'
 
           # Poll check-runs for this SHA and find the latest result for each required job.
           # Project to just the three fields the gate logic reads. A SHA can

@@ -1,6 +1,6 @@
 ---
 title: "AI Forecasts"
-description: "AI-generated geopolitical forecasts across conflict, markets, supply chain, political, military, cyber, and infrastructure domains, with prediction-market calibration when an anchor exists."
+description: "AI-generated geopolitical forecasts across conflict, markets, supply chain, cyber, and infrastructure — calibrated against prediction-market anchors."
 ---
 
 The **AI Forecasts** panel (internal id `forecast`) surfaces forecasts produced by WorldMonitor's forecasting pipeline. Each forecast is a structured prediction with a probability, a domain classification, a time horizon, and supporting signals; the panel exposes two axes of filtering (domain and macro-region) so you can home in on the slice that matters to you.
@@ -27,7 +27,7 @@ Forecast probabilities come from deterministic, rule-based signal detectors in `
 
 Forecast probabilities are market-calibrated only when the seeder can match the forecast to a prediction-market anchor. In those cases the `calibration` object includes the market title, market price, drift, and source, and the displayed probability is blended with that market anchor. Forecasts with `calibration: null` are internal/legacy estimates derived from WorldMonitor signal rules rather than externally market-calibrated probabilities.
 
-The seeder also publishes horizon projections (`24h`, `7d`, `30d`) from domain-specific projection curves in `scripts/seed-forecasts.mjs`. Those projected probabilities are clamped to a 1% floor and 95% cap (`0.01` / `0.95`) as a presentation heuristic, so projection endpoints should be interpreted as bounded scenario paths rather than unconstrained calibrated probabilities.
+The seeder also publishes horizon projections (`24h`, `7d`, `30d`) from domain-specific projection curves in `scripts/seed-forecasts.mjs`. Market forecasts are normalized against the strongest multiplier in their domain curve before the three horizons are expanded, so a 30-day market emission does not inflate the 24-hour projection. Other domains preserve the emitted horizon as the semantic anchor. Projected probabilities are then clamped to a 1% floor and 95% cap (`0.01` / `0.95`) as a presentation heuristic, so projection endpoints should be interpreted as bounded scenario paths rather than unconstrained calibrated probabilities.
 
 The `GET /api/forecast/v1/get-forecasts` response includes `degraded`, `stale`, and `error` fields so clients can distinguish a backend/cache outage from a healthy empty forecast set.
 
@@ -60,6 +60,7 @@ Published forecasts are capped and deduplicated before they reach the panel:
 | Forecasts per family/domain pair | 2 |
 | Target published count | 10-14 |
 | Conflict base detector probability ceiling (before velocity spike) | 0.90 |
+| UCDP conflict-zone gate floor at 10 events (before velocity spike) | 0.35 |
 | UCDP conflict-zone base probability ceiling (before velocity spike) | 0.85 |
 | Conflict velocity-spike override ceiling | 0.99 |
 | Market probability ceiling | 0.85 |
@@ -85,11 +86,11 @@ Market-bucket scenario calibration is an editorial calibration layer in `scripts
 | Crypto / stablecoins | `0.11 / 0.07 / 0.08 / 0.12` | `0.03 / 0.05 / 0.02 / -` | Digital-asset stress is useful context but gets a lighter macro lift. |
 | Defense | `0.08 / 0.04 / 0.05 / 0.10` | `-0.03 / 0 / -0.03 / 0.12` | Defense signals are intentionally damped to avoid over-reacting to noisy security headlines. |
 
-The conflict and UCDP conflict-zone rows are base detector caps. When the matching EMA risk score has `velocitySpike`, the seeder adds a `+0.08` probability override after the base cap and clamps the result to `0.99`.
+The conflict and UCDP conflict-zone rows are base detector caps. UCDP conflict-zone counts begin at the 10-event publish gate with a `0.35` base probability and ramp to the `0.85` base cap at 100 events. When the matching EMA risk score has `velocitySpike`, the seeder adds a `+0.08` probability override after the base cap and clamps the result to `0.99`.
 
 Defense state calibration has additional direct-confirmation terms outside the table: each unit of direct `defense_repricing` confirmation adds `+0.12` pressure and `+0.08` confidence. When that direct defense confirmation is absent, pressure subtracts the table-driven `dampener` (`0.12`) and confidence subtracts a separate `0.04` absence penalty.
 
-Probability projections are anchored to the forecast's own time horizon and then expanded to 24h, 7d, and 30d with domain curves:
+Probability projections are expanded to 24h, 7d, and 30d with domain curves. Market projections use the curve's peak multiplier as the anchor; other domains use the forecast's emitted horizon:
 
 | Domain | 24h | 7d | 30d |
 | --- | ---: | ---: | ---: |

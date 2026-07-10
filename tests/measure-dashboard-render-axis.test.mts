@@ -5,12 +5,14 @@ import {
   buildReport,
   classifyRenderAxisEvent,
   compareReports,
+  DEFAULT_TRACE_CATEGORIES,
   dominantRenderPhase,
   extractStackFrames,
   isForcedReflow,
   normalizeReport,
   parseArgs,
   resolveInteractionTarget,
+  setCpuThrottle,
   summarizeForcedReflows,
   summarizeInteractionTimings,
   summarizeTraceEvents,
@@ -22,8 +24,16 @@ describe('measure-dashboard-render-axis trace parsing', () => {
     assert.equal(classifyRenderAxisEvent('UpdateLayoutTree'), 'styleLayout');
     assert.equal(classifyRenderAxisEvent('Paint'), 'rendering');
     assert.equal(classifyRenderAxisEvent('Canvas2DLayerBridge::FlushCanvas'), 'canvas');
+    assert.equal(classifyRenderAxisEvent('GLES2DecoderImpl::DoCommands'), 'canvas');
     assert.equal(classifyRenderAxisEvent('EvaluateScript'), 'scriptEvaluation');
     assert.equal(classifyRenderAxisEvent('LayoutShift'), null);
+  });
+
+  it('captures GPU and frame categories needed for WebGL render-axis attribution', () => {
+    assert.ok(DEFAULT_TRACE_CATEGORIES.includes('gpu'));
+    assert.ok(DEFAULT_TRACE_CATEGORIES.includes('disabled-by-default-gpu.service'));
+    assert.ok(DEFAULT_TRACE_CATEGORIES.includes('disabled-by-default-devtools.timeline.frame'));
+    assert.ok(DEFAULT_TRACE_CATEGORIES.includes('blink.user_timing'));
   });
 
   it('summarizes style/layout, rendering, script, and estimated TBT durations', () => {
@@ -189,10 +199,13 @@ describe('measure-dashboard-render-axis reporting', () => {
         },
       ],
       traceEvents: [
-        { ph: 'X', name: 'Layout', dur: 20_000 },
-        { ph: 'X', name: 'Paint', dur: 250_000 },
-        { ph: 'X', name: 'FunctionCall', dur: 30_000 },
+        { ph: 'I', name: 'UserTiming', ts: 1_000_000, args: { data: { name: 'wm-interaction-start' } } },
+        { ph: 'X', name: 'Layout', ts: 1_020_000, dur: 20_000 },
+        { ph: 'X', name: 'Paint', ts: 1_100_000, dur: 250_000 },
+        { ph: 'X', name: 'FunctionCall', ts: 1_500_000, dur: 30_000 },
+        { ph: 'X', name: 'GLES2DecoderImpl::DoCommands', ts: 1_650_000, dur: 25_000 },
       ],
+      interactionTimeAnchor: { performanceTimeMs: 100 },
     });
 
     assert.equal(report.interaction?.target.name, 'country');
@@ -204,7 +217,90 @@ describe('measure-dashboard-render-axis reporting', () => {
       postInteractMs: 1500,
       dominantPhaseScope: 'full-post-interaction-trace-window',
     });
+    assert.deepEqual(report.interaction?.eventWindow, {
+      startTime: 100,
+      durationMs: 600,
+      traceStartUs: 1_000_000,
+      traceEndUs: 1_600_000,
+      dominantPhase: {
+        phase: 'rendering',
+        label: 'paint/composite/raster',
+        ms: 250,
+      },
+      durationMsByPhase: {
+        styleLayout: 20,
+        rendering: 250,
+        canvas: 0,
+        scriptEvaluation: 30,
+      },
+    });
     assert.deepEqual(report.interaction?.warnings, []);
+  });
+
+  it('scopes the interaction dominant phase to the worst Event Timing window when clocks are anchored', () => {
+    const report = buildReport({
+      interaction: {
+        ...resolveInteractionTarget('country'),
+        postInteractMs: 1200,
+        targetInfo: { tapPoint: { x: 120, y: 200, matchedTop: true } },
+      },
+      interactionTimeAnchor: { performanceTimeMs: 400, traceTimeUs: 10_000_000 },
+      eventTimings: [
+        {
+          name: 'pointerup',
+          startTime: 450,
+          processingStart: 450,
+          processingEnd: 500,
+          duration: 180,
+        },
+      ],
+      traceEvents: [
+        // Whole post-tap window is canvas-dominant...
+        { ph: 'X', name: 'GLES2DecoderImpl::DoCommands', ts: 10_180_000, dur: 500_000 },
+        // ...but the worst event itself is style/layout-dominant.
+        { ph: 'X', name: 'Layout', ts: 10_050_000, dur: 90_000 },
+        { ph: 'X', name: 'Paint', ts: 10_140_000, dur: 20_000 },
+      ],
+    });
+
+    assert.equal(report.interaction?.dominantPhase.phase, 'canvas');
+    assert.equal(report.interaction?.eventWindow?.dominantPhase.phase, 'styleLayout');
+    assert.equal(report.interaction?.eventWindow?.durationMsByPhase.styleLayout, 90);
+    assert.equal(report.interaction?.eventWindow?.durationMsByPhase.canvas, 50);
+  });
+
+  it('warns when an interaction trace cannot anchor Event Timing to trace timestamps', () => {
+    const report = buildReport({
+      interaction: {
+        ...resolveInteractionTarget('country'),
+        targetInfo: { tapPoint: { x: 120, y: 200, matchedTop: true } },
+      },
+      eventTimings: [
+        { name: 'pointerup', startTime: 450, processingStart: 450, processingEnd: 500, duration: 180 },
+      ],
+      traceEvents: [{ ph: 'X', name: 'Paint', ts: 10_140_000, dur: 20_000 }],
+    });
+
+    assert.equal(report.interaction?.eventWindow, null);
+    assert.match(report.interaction?.warnings.join('\n') || '', /Unable to scope dominant phase/);
+    assert.match(report.warnings.join('\n'), /Unable to scope dominant phase/);
+  });
+
+  it('warns when a captured interaction anchor serialized a null trace timestamp', () => {
+    const report = buildReport({
+      interaction: {
+        ...resolveInteractionTarget('country'),
+        targetInfo: { tapPoint: { x: 120, y: 200, matchedTop: true } },
+      },
+      interactionTimeAnchor: { performanceTimeMs: 400, traceTimeUs: null },
+      eventTimings: [
+        { name: 'pointerup', startTime: 450, processingStart: 450, processingEnd: 500, duration: 180 },
+      ],
+      traceEvents: [{ ph: 'X', name: 'Paint', ts: 10_140_000, dur: 20_000 }],
+    });
+
+    assert.equal(report.interaction?.eventWindow, null);
+    assert.match(report.interaction?.warnings.join('\n') || '', /Unable to scope dominant phase/);
   });
 
   it('warns when the tap target falls back to a point that did not hit the selector', () => {
@@ -457,5 +553,21 @@ describe('measure-dashboard-render-axis parseArgs', () => {
     assert.equal(args.width, 390);
     assert.equal(args.height, 844);
     assert.equal(args.cpuThrottleRate, 1);
+  });
+
+  it('applies the CPU throttle rate through CDP only when requested', async () => {
+    const calls: Array<{ method: string; payload: unknown }> = [];
+    const client = {
+      async send(method: string, payload: unknown) {
+        calls.push({ method, payload });
+      },
+    };
+
+    await setCpuThrottle(client, 1);
+    await setCpuThrottle(client, 4);
+
+    assert.deepEqual(calls, [
+      { method: 'Emulation.setCPUThrottlingRate', payload: { rate: 4 } },
+    ]);
   });
 });

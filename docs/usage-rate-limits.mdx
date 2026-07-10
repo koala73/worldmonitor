@@ -1,6 +1,6 @@
 ---
 title: "Rate Limits"
-description: "Per-endpoint, per-key, and per-IP rate limits across the WorldMonitor API surface."
+description: "Per-endpoint, per-key, and per-IP rate limits across the World Monitor API — headers, 429 handling, and backoff guidance for production clients."
 ---
 
 Rate limits are enforced at the Vercel Edge runtime using Upstash Redis counters. All limits are **sliding 60-second windows** unless noted.

@@ -1,6 +1,6 @@
 ---
 title: "Commerce Endpoints"
-description: "Checkout, customer portal, product catalog, and referrals. Thin edge proxies over Convex + Dodo Payments."
+description: "Checkout, customer portal, product catalog, and referral endpoints — thin edge proxies over Convex and Dodo Payments for World Monitor billing."
 ---
 
 WorldMonitor uses [Dodo Payments](https://dodopayments.com) for PRO subscriptions and [Convex](https://convex.dev) as the source-of-truth for entitlements. These edge endpoints are thin auth proxies — they validate the Clerk JWT, then forward to Convex HTTP actions via `RELAY_SHARED_SECRET`.

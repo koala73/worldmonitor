@@ -60,9 +60,16 @@ message ResolutionSpec {
   optional string question = 9;
 }
 
+// Projections contains bounded presentation-path probabilities derived from
+// domain curves. Market forecasts are peak-anchored, so the projected value at
+// the forecast's own time_horizon can intentionally differ from the headline
+// probability; non-market forecasts preserve their emitted horizon as anchor.
 message Projections {
+  // Projected 24-hour probability after domain-curve normalization.
   double h24 = 1;
+  // Projected 7-day probability after domain-curve normalization.
   double d7 = 2;
+  // Projected 30-day probability after domain-curve normalization.
   double d30 = 3;
 }
 

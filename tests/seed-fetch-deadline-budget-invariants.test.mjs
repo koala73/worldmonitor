@@ -57,4 +57,50 @@ describe('seed fetch-phase deadline & TTL invariants (issue #4864)', () => {
     assert.ok(lock, 'supply-chain runSeed must set lockTtlMs (WTO reporter scan far exceeds the 240s default)');
     assert.ok(deadlineFromLock(lock) >= 600_000, `deadline ${deadlineFromLock(lock)}ms must clear the ~10min WTO design budget`);
   });
+
+  it('conflict-intel: GDELT fallback sweep worst case fits its lock and deadline (issue #5140)', async () => {
+    // seed-conflict-intel is import-safe (runSeed is argv-guarded), so unlike the
+    // seeders above we assert against its real exported constants, not source text.
+    const {
+      GDELT_SWEEP_BUDGET_MS,
+      GDELT_COUNTRY_FETCH_OPTS,
+      ACLED_INTEL_LOCK_TTL_MS,
+    } = await import('../scripts/seed-conflict-intel.mjs');
+
+    // maxRetries MUST stay 0: a second direct attempt honors GDELT's Retry-After
+    // header (≤60s sleep, MAX_RETRY_AFTER_MS in _gdelt-fetch.mjs), voiding any
+    // per-batch bound computed below.
+    assert.equal(GDELT_COUNTRY_FETCH_OPTS.maxRetries, 0,
+      'direct retries reintroduce the ≤60s Retry-After sleep into the batch bound');
+
+    // Worst in-flight batch: 4 concurrent direct legs (15s AbortSignal timeout,
+    // _gdelt-fetch.mjs default) + CONCURRENCY × proxyMaxAttempts SERIALIZED sync
+    // proxy curls (curlFetch is execFileSync with a 20s ceiling — proxy attempts
+    // block the event loop one at a time, so they sum across the whole batch).
+    const DIRECT_LEG_MS = 15_000;
+    const PROXY_CURL_CEILING_MS = 20_000;
+    const SWEEP_CONCURRENCY = 4;
+    const worstBatch = DIRECT_LEG_MS
+      + SWEEP_CONCURRENCY * GDELT_COUNTRY_FETCH_OPTS.proxyMaxAttempts * PROXY_CURL_CEILING_MS;
+
+    // HAPI aux worst: 20 sequential countries × (15s timeout + 300ms pace). It
+    // precedes the sweep inside the same fetch phase, and the sweep cutoff is
+    // anchored at phase START — so the two occupy the same window (max), they
+    // do not stack (sum).
+    const HAPI_WORST_MS = 20 * (15_000 + 300);
+    const EXTRA_KEY_WRITE_SLACK_MS = 30_000;
+    const worstFetchAttempt = Math.max(HAPI_WORST_MS, GDELT_SWEEP_BUDGET_MS + worstBatch)
+      + EXTRA_KEY_WRITE_SLACK_MS;
+
+    // runSeed invariant: a healthy seeder never outlives its own lock…
+    assert.ok(worstFetchAttempt <= ACLED_INTEL_LOCK_TTL_MS,
+      `worst fetch attempt ${worstFetchAttempt}ms must fit the ${ACLED_INTEL_LOCK_TTL_MS}ms lock`);
+    // …and the lock-derived deadline (lock + 120s margin) then clears it a fortiori.
+    assert.ok(worstFetchAttempt <= deadlineFromLock(ACLED_INTEL_LOCK_TTL_MS),
+      `worst fetch attempt ${worstFetchAttempt}ms must fit the ${deadlineFromLock(ACLED_INTEL_LOCK_TTL_MS)}ms fetch deadline`);
+    // The runSeed call must actually wire the exported lock value.
+    const src = read('seed-conflict-intel.mjs');
+    assert.ok(/lockTtlMs:\s*ACLED_INTEL_LOCK_TTL_MS/.test(src),
+      'runSeed must pass lockTtlMs: ACLED_INTEL_LOCK_TTL_MS');
+  });
 });

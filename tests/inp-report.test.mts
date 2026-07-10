@@ -10,7 +10,8 @@ function capture(metric: InpMetricLike): { msg: string; ctx: any } {
   const fakeEnqueue = ((fn: (s: any) => void) => {
     fn({ captureMessage: (msg: string, ctx: unknown) => { out = { msg, ctx }; } });
   }) as unknown as typeof import('@/bootstrap/sentry-defer').enqueueSentryCall;
-  reportInpMetric(metric, fakeEnqueue);
+  // Force-keep the sampling gate so distribution-shaping assertions are stable.
+  reportInpMetric(metric, fakeEnqueue, () => true);
   assert.ok(out, 'reportInpMetric must call enqueue exactly once');
   return out!;
 }
@@ -54,7 +55,7 @@ test('reportInpMetric routes through the injected enqueue exactly once (R2 deleg
     calls += 1;
     fn({ captureMessage: () => {} });
   }) as unknown as typeof import('@/bootstrap/sentry-defer').enqueueSentryCall;
-  reportInpMetric({ value: 100 }, fakeEnqueue);
+  reportInpMetric({ value: 100 }, fakeEnqueue, () => true);
   assert.equal(calls, 1, 'delegates to enqueueSentryCall (which buffers until Sentry init)');
 });
 
@@ -64,7 +65,7 @@ test('reportInpMetric captures formFactor before deferred Sentry drain', () => {
     queued = fn;
   }) as unknown as typeof import('@/bootstrap/sentry-defer').enqueueSentryCall;
   const out = withWindow(webVitalsTestWindow(900), () => {
-    reportInpMetric({ value: 350, rating: 'needs-improvement' }, fakeEnqueue);
+    reportInpMetric({ value: 350, rating: 'needs-improvement' }, fakeEnqueue, () => true);
     return { ctx: undefined as any };
   });
 
@@ -97,6 +98,22 @@ test('reportInpMetric still reports unknown/undefined-rated INP (conservative) (
     calls += 1;
     fn({ captureMessage: () => {} });
   }) as unknown as typeof import('@/bootstrap/sentry-defer').enqueueSentryCall;
-  reportInpMetric({ value: 250 }, fakeEnqueue); // no rating field
+  reportInpMetric({ value: 250 }, fakeEnqueue, () => true); // no rating field
   assert.equal(calls, 1, 'unknown/undefined rating still reports — do not drop unknowns');
+});
+
+test('reportInpMetric drops when the sample gate rejects (volume trim)', () => {
+  let calls = 0;
+  const fakeEnqueue = ((fn: (s: any) => void) => {
+    calls += 1;
+    fn({ captureMessage: () => {} });
+  }) as unknown as typeof import('@/bootstrap/sentry-defer').enqueueSentryCall;
+  // poor-rated (would normally report) but the sample gate says drop.
+  reportInpMetric({ value: 900, rating: 'poor', attribution: { interactionTarget: 'x' } }, fakeEnqueue, () => false);
+  assert.equal(calls, 0, 'sampled-out INP is not enqueued even when rating is poor');
+});
+
+test('reportInpMetric tags the configured sampleRate for reweighting', () => {
+  const { ctx } = capture({ value: 350, rating: 'needs-improvement' });
+  assert.equal(ctx.tags.sampleRate, '0.2', 'sampleRate tag lets analysis rescale to true field volume');
 });

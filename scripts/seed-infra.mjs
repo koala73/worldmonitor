@@ -10,6 +10,7 @@
  * Seeded via warm-ping:
  * - list-service-statuses: pings 30 status pages, caches result
  * - get-cable-health: NGA warning analysis, caches cable health map
+ * - list-temporal-anomalies: computes temporal anomaly snapshot for forecasts
  *
  * NOT seeded (inherently on-demand):
  * - search-imagery: per-bbox/datetime STAC query (cache key is hash of params)
@@ -56,7 +57,9 @@ async function warmPing(name, path) {
       return false;
     }
     const data = await resp.json();
-    const count = data.statuses?.length ?? (data.cables ? Object.keys(data.cables).length : 0);
+    const count = data.statuses?.length
+      ?? data.anomalies?.length
+      ?? (data.cables ? Object.keys(data.cables).length : 0);
     console.log(`  ${name}: OK (${count} items)`);
     return true;
   } catch (e) {
@@ -72,6 +75,7 @@ async function main() {
   const results = await Promise.allSettled([
     warmPing('Service Statuses', '/api/infrastructure/v1/list-service-statuses'),
     warmPing('Cable Health', '/api/infrastructure/v1/get-cable-health'),
+    warmPing('Temporal Anomalies', '/api/infrastructure/v1/list-temporal-anomalies'),
   ]);
 
   for (const r of results) { if (r.status === 'rejected') console.warn(`  Warm-ping failed: ${r.reason?.message || r.reason}`); }

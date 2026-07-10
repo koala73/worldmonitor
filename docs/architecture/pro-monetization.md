@@ -2,7 +2,7 @@
 
 **Last verified**: 2026-07-06 (tier model updated for API Business publication, PR #4946).
 
-Factual snapshot of how authentication, payments, entitlements, and billing management work today. Not aspirational. If you're reading this because `docs/roadmap-pro.md` said something different, that document is archived at [`docs/plans/archive/roadmap-pro-HISTORICAL.md`](../plans/archive/roadmap-pro-HISTORICAL.md) — ignore it.
+Factual snapshot of how authentication, payments, entitlements, and billing management work today. This page intentionally describes only current deployed behavior.
 
 ## Stack at a glance
 
@@ -85,30 +85,19 @@ Before creating a session, `getCheckoutBlockingSubscription` checks for active/o
 - **Code generation**: `/api/referral/me.ts` (edge, Clerk-auth'd) returns `{ code, shareUrl }` where `code` is a deterministic 8-char HMAC of the Clerk userId using `BRIEF_URL_SIGNING_SECRET`. Background binding into Convex via `ctx.waitUntil` — non-blocking on purpose (see module docstring for rationale).
 - **Share link**: `https://worldmonitor.app/pro?ref=<code>`.
 - **Attribution point**: recipient's checkout metadata carries `affonso_referral: <code>` (vendor contract — Dodo → Affonso referral tool; **do not rename**). On first `subscription.active` webhook, `subscriptionHelpers.ts:299` looks up the code in `userReferralCodes` and inserts a `userReferralCredits` row crediting the sharer.
-- **Known gap**: referral code propagation from the dashboard-origin checkout path is incomplete (see the current UX hardening plan, PR-14).
+- **Known gap**: referral code propagation from the dashboard-origin checkout path is incomplete.
 
 ## Security & auth surfaces
 
 - **Edge endpoints** that accept Clerk JWTs must go through `validateBearerToken` (`server/auth-session.ts`). Applies to `/api/create-checkout`, `/api/customer-portal`, `/api/referral/me`.
 - **Middleware UA guard** (`middleware.ts`): short-UA guard 403s non-browser fetches by default. New API endpoints called from Railway cron must be added to `PUBLIC_API_PATHS`.
 - **Gateway premium check** (`server/gateway.ts`): accepts either Clerk `publicMetadata.plan === 'pro'` role OR Convex `entitlements.tier >= 1 && validUntil >= now`. Both signals must agree for a request to be treated as paid.
-- **CORS**: Cloudflare Worker `api-cors-preflight` is the source of truth for `api.worldmonitor.app`. Overrides `api/_cors.js` + `vercel.json`. Worker source lives at [`workers/api-cors-preflight/`](../../workers/api-cors-preflight/); it short-circuits OPTIONS preflight at the edge (skipping Vercel) and stamps CORS headers onto non-OPTIONS responses on the way back. Unit-tested in `workers/api-cors-preflight/index.test.mjs`, smoke-tested live in `tests/cors-preflight-live.test.mjs` (gated by `LIVE_SMOKE=1`), and deployed by `.github/workflows/deploy-worker.yml` on changes under `workers/api-cors-preflight/`. The Worker's allowlist + Allow-Headers list MUST stay a superset of `api/_cors.js#getCorsHeaders`; drift breaks credentialed CORS site-wide (2026-05-27 outage post-mortem).
+- **CORS**: Cloudflare Worker `api-cors-preflight` is the source of truth for `api.worldmonitor.app`. Overrides `api/_cors.js` + `vercel.json`. Worker source lives at [`workers/api-cors-preflight/`](https://github.com/koala73/worldmonitor/tree/main/workers/api-cors-preflight); it short-circuits OPTIONS preflight at the edge (skipping Vercel) and stamps CORS headers onto non-OPTIONS responses on the way back. Unit-tested in `workers/api-cors-preflight/index.test.mjs`, smoke-tested live in `tests/cors-preflight-live.test.mjs` (gated by `LIVE_SMOKE=1`), and deployed by `.github/workflows/deploy-worker.yml` on changes under `workers/api-cors-preflight/`. The Worker's allowlist + Allow-Headers list MUST stay a superset of `api/_cors.js#getCorsHeaders`; drift breaks credentialed CORS site-wide (2026-05-27 outage post-mortem).
 - **HMAC identity bridge**: Dodo metadata `wm_user_id` is signed with a server-side key (`convex/lib/identitySigning.ts`) so webhooks can trust the user association without an additional lookup.
 
-## Known gaps & active work
+## Scope
 
-See [`docs/plans/2026-04-21-002-feat-harden-auth-checkout-flow-ux-plan.md`](../plans/2026-04-21-002-feat-harden-auth-checkout-flow-ux-plan.md) for the 14-PR rollout covering:
-
-- Explicit Sign Up entry + Settings button next to header avatar (PR-1)
-- Checkout attempt lifecycle + failed-return banner with retry (PR-2)
-- Error taxonomy + inline error surfaces (PR-3)
-- Reload ownership + extended "still unlocking" state (PR-4)
-- Referral propagation through all entry paths (PR-14)
-- Billing portal tab-behavior unification (PR-7)
-- Declined-payment retry UX
-- First-login welcome flow (deferred — needs server-side `users.welcomeSeenAt`)
-
-See also the complementary plan [`2026-04-18-001-fix-pro-activation-race-and-duplicate-checkout-guard-plan.md`](../plans/2026-04-18-001-fix-pro-activation-race-and-duplicate-checkout-guard-plan.md) for the entitlement-activation race fix that PR-4 hard-depends on.
+This public reference documents current deployed behavior. Internal planning and rollout materials are intentionally excluded.
 
 ## File index (quick reference)
 
