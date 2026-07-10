@@ -141,12 +141,15 @@ describe('parseWhyMattersV2 — analyst output validator', () => {
     "Iran's closure of the Strait of Hormuz on April 21 halts roughly 20% of global seaborne oil. " +
     'The disruption forces an immediate repricing of sovereign risk across Gulf energy exporters.';
 
-  it('accepts a valid 2-sentence, ~40–70 word output', () => {
+  it('accepts a valid 1–2 sentence output', () => {
     const out = parseWhyMattersV2(VALID_MULTI);
     assert.equal(out, VALID_MULTI);
   });
 
-  it('accepts a valid 3-sentence output with optional WATCH arc', () => {
+  it('parser tolerates a longer 3-sentence output (lenient by design; the prompt asks for 1–2)', () => {
+    // The parser only gates 100–500 chars + shape, not sentence count, so an
+    // occasional over-length generation is passed through rather than nuked
+    // to the stub. Conciseness is enforced by the prompt contract, not here.
     const three =
       "Iran's closure of the Strait of Hormuz on April 21 halts roughly 20% of global seaborne oil. " +
       'The disruption forces an immediate repricing of sovereign risk across Gulf energy exporters. ' +
@@ -341,7 +344,7 @@ describe('generateWhyMatters — analyst priority', () => {
   });
 
   it('preserves multi-sentence v2 analyst output verbatim (P1 regression guard)', async () => {
-    // The endpoint now returns 2–3 sentences validated by parseWhyMattersV2.
+    // The endpoint now returns 1–2 sentences validated by parseWhyMattersV2.
     // The cron MUST NOT reparse with the v1 single-sentence parser, which
     // would silently truncate the 2nd + 3rd sentences. Caught in PR #3269
     // review; fixed by trusting the endpoint's own validation and only
@@ -529,8 +532,12 @@ describe('buildAnalystWhyMattersPrompt — shape and budget', () => {
     );
     // F6: system prompt is the static v2 const + an injected date line.
     assert.equal(system, `${WHY_MATTERS_ANALYST_SYSTEM_V2}\n${briefDateLine('2026-05-14')}`);
-    // Contract must still mention the 40–70 word target + grounding rule.
-    assert.match(system, /40–70 words/);
+    // Contract must mention the tightened 25–40 word target + concision +
+    // grounding rule.
+    assert.match(system, /25–40 words/);
+    assert.match(system, /1–2 sentences/);
+    assert.match(system, /be concise/i);
+    assert.doesNotMatch(system, /40–70 words/);
     assert.match(system, /named person \/ country \/ organization \/ number \/ percentage \/ date \/ city/);
     assert.match(system, /^Today is 2026-05-14\./m);
     assert.match(system, /vary sentence structure/i);
@@ -553,7 +560,7 @@ describe('buildAnalystWhyMattersPrompt — shape and budget', () => {
     assert.match(user, /Severity: critical/);
     assert.match(user, /Category: Geopolitical Risk/);
     assert.match(user, /Country: IR/);
-    assert.match(user, /Write 2–3 sentences \(40–70 words\)/);
+    assert.match(user, /Write 1–2 sentences \(25–40 words\)/);
     assert.match(user, /grounded in at least ONE specific/);
   });
 

@@ -161,26 +161,30 @@ export async function hashBriefStory(story) {
 // single-sentence abstraction-speak ("destabilize / systemic / sovereign
 // risk repricing") with no named actors, metrics, or dates. Root cause:
 // the 18–30 word cap compressed the context's specifics out of the LLM's
-// response. v2 loosens to 40–70 words across 2–3 sentences and REQUIRES
-// the LLM to ground at least one specific reference from the story or
-// materially relevant live context.
+// response. v2 first loosened to 40–70 words / 2–3 sentences; 2026-07-10
+// retightens to 25–40 words / 1–2 sentences after the field read found the
+// looser cap produced padded, formulaic prose — "much longer to say almost
+// the same" as the concise stable path. Still REQUIRES the LLM to ground at
+// least one specific reference from the story or materially relevant live
+// context.
 
 /**
- * System prompt for the analyst-path v2 (2–3 sentences, ~40–70 words,
- * grounded in a specific named actor / metric / date / place. It uses
+ * System prompt for the analyst-path v2 (1–2 sentences, ~25–40 words,
+ * grounded in a specific named actor / metric / date / place). It uses
  * varied plain prose rather than a fixed analytic sequence, with no
  * section labels in the output.
  */
 export const WHY_MATTERS_ANALYST_SYSTEM_V2 =
   'You are the lead analyst at WorldMonitor Brief, a geopolitical intelligence magazine. ' +
-  'Using the story as the primary source and the optional Live WorldMonitor Context only when it is materially connected, write 2–3 sentences (40–70 words total) ' +
+  'Using the story as the primary source and the optional Live WorldMonitor Context only when it is materially connected, write 1–2 sentences (25–40 words total) ' +
   'on why the story matters.\n\n' +
   'VOICE:\n' +
+  '- Be concise: high signal density, every word earns its place. Do not pad to fill the range or restate the headline.\n' +
   '- Vary sentence structure and emphasis across stories; choose the natural angle for this story rather than following a fixed sequence.\n' +
   '- Do not default to a second sentence beginning "This…" or a "Watch for…" closing construction.\n' +
   '- Ground the prose in a SPECIFIC named actor, metric, date, or place relevant to this story.\n\n' +
   'HARD CONSTRAINTS:\n' +
-  '- Total length 40–70 words across 2–3 sentences.\n' +
+  '- Total length 25–40 words across 1–2 sentences.\n' +
   '- MUST reference at least ONE specific: named person / country / organization / ' +
   'number / percentage / date / city.\n' +
   '- No preamble ("This matters because…", "The importance of…").\n' +
@@ -201,7 +205,7 @@ export const WHY_MATTERS_ANALYST_SYSTEM_V2 =
 
 /**
  * Parse + validate the analyst-path v2 LLM response. Accepts
- * multi-sentence output (2–3 sentences), 100–500 chars. Otherwise
+ * short multi-sentence output (1–2 sentences), 100–500 chars. Otherwise
  * same rejection semantics as v1 (stub echo, empty) plus explicit
  * rejection of preamble boilerplate and leaked section labels.
  *

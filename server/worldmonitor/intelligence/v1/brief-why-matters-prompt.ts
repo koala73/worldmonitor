@@ -299,13 +299,13 @@ export function buildAnalystWhyMattersPrompt(
   // and that a named actor from the headline / description is a valid
   // grounding target when no context fact is a clean fit.
   parts.push(
-    `Write 2–3 sentences (40–70 words) on why this ${safe.category || 'story'} matters, grounded in at ` +
+    `Write 1–2 sentences (25–40 words) on why this ${safe.category || 'story'} matters, grounded in at ` +
       "least ONE specific reference. Reference the global context only when materially connected to this " +
       "story's category and country; most stories should not mention the global context. If no context fact is a clean fit, ground " +
       'instead in a named actor, place, date, or figure from the headline or description. ' +
       'DO NOT force an off-topic market metric, VIX value, FX reading, or forecast probability ' +
       'into a story where it does not belong. Treat forecasts as private reasoning input: do not quote raw ' +
-      'forecast probabilities or present them as user-facing facts. Vary sentence structure; avoid a stock ' +
+      'forecast probabilities or present them as user-facing facts. Be concise and vary sentence structure; avoid a stock ' +
       '"This…" second-sentence opener or "Watch for…" closer. Plain prose, no section labels in the output:',
   );
 
