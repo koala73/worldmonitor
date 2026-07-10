@@ -106,7 +106,6 @@ import { DataLoaderManager } from '@/app/data-loader';
 import { EventHandlerManager } from '@/app/event-handlers';
 import { replaceRawI18nKeyPlaceholders } from '@/app/i18n-raw-key-healer';
 import { resolveUserRegion, resolvePreciseUserCoordinates, type PreciseCoordinates } from '@/utils/user-location';
-import { showProBanner } from '@/components/ProBanner';
 import { initAuthState, subscribeAuthState } from '@/services/auth-state';
 import {
   CLOUD_PREFS_APPLIED_EVENT,
@@ -1476,7 +1475,6 @@ export class App {
     await this.panelLayout.init();
     markLcpDebug('wm:layout:init-complete');
     this.eventHandlers.setupSearchControls();
-    showProBanner(this.state.container);
     this.updateConnectivityUi();
     window.addEventListener('online', this.handleConnectivityChange);
     window.addEventListener('offline', this.handleConnectivityChange);

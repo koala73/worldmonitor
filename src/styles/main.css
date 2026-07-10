@@ -25,7 +25,7 @@
   --text-muted: #666;
   --text-faint: #555;
   --text-ghost: #444;
-  --accent: #fff;
+  --accent: #a78bfa; /* Arcane purple */
 
   /* Overlays & shadows */
   --overlay-subtle: rgba(255, 255, 255, 0.03);

@@ -1,3 +1,12 @@
+# The Arcane Watchtower
+
+**The Arcane Archives worldwide data centre** — a customised deployment of the open-source
+[World Monitor](https://github.com/koala73/worldmonitor) by Elie Habib, used under the
+AGPL-3.0 license. Original project docs follow below; upstream copyright and license
+notices are preserved in [LICENSE](LICENSE).
+
+---
+
 # World Monitor
 
 **Real-time global intelligence dashboard** — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.

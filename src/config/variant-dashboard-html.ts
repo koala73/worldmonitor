@@ -108,7 +108,8 @@ export function renderVariantDashboardHtml(fullDashboardHtml: string, variant: s
   // preserve the ?lang= suffix per entry.
   html = replaceCounted(
     html,
-    /(<link rel="alternate" hreflang="[^"]+" href=")https:\/\/www\.worldmonitor\.app\/dashboard((?:\?[^"]*)?" \/>)/g,
+    // Domain-agnostic so rebranded deployments (different base origin) keep building.
+    /(<link rel="alternate" hreflang="[^"]+" href=")https:\/\/[^"?]+\/dashboard((?:\?[^"]*)?" \/>)/g,
     (_m, a, b) => `${a}${escHtml(meta.url)}${b}`,
     { min: 1, max: 80 },
     'hreflang alternates',
