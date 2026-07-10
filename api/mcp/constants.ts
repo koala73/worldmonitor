@@ -280,9 +280,22 @@ export const SERVER_NAME = 'worldmonitor';
 //   - Purely additive on the wire: `_meta` appears on the four newly-linked
 //     tools; every ui:// read is anonymously servable. No input/output schema
 //     change to any tool, no envelope-shape change, no auth change.
+// Bumped 1.14.0 → 1.15.0 (2026-07-10) reflecting:
+//   - MCP Apps interactive-dashboard fleet expansion 5 → 10: five new ui://
+//     app-shell resources joining the existing fleet —
+//       * ui://worldmonitor/news-intelligence.html  (get_news_intelligence)
+//       * ui://worldmonitor/conflict-events.html     (get_conflict_events)
+//       * ui://worldmonitor/natural-disasters.html   (get_natural_disasters)
+//       * ui://worldmonitor/prediction-markets.html  (get_prediction_markets)
+//       * ui://worldmonitor/forecasts.html           (get_forecast_predictions)
+//     Each renders through the shared shell (api/mcp/ui/shell.ts) and links from
+//     its backing cache tool via `_meta.ui.resourceUri`. Purely additive: `_meta`
+//     appears on five newly-linked tools; every ui:// read stays anonymously
+//     servable, quota-exempt, and data-free. No input/output schema, envelope,
+//     or auth change.
 // Keep aligned with public/.well-known/mcp/server-card.json::serverInfo.version
 // — discovery scanners cross-check both values.
-export const SERVER_VERSION = '1.14.0';
+export const SERVER_VERSION = '1.15.0';
 
 // MCP logging capability — valid severity levels per the 2025-03-26 spec
 // (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not

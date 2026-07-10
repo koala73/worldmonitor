@@ -28,7 +28,7 @@ Pro subscribers can connect Claude Desktop / Cursor / claude.ai without ever pas
 | `https://api.worldmonitor.app/.well-known/oauth-authorization-server` | AS metadata (RFC 8414) |
 | `https://worldmonitor.app/.well-known/oauth-protected-resource` | Resource server metadata (RFC 9728) |
 
-Server identifier: `worldmonitor` v1.14.0.
+Server identifier: `worldmonitor` v1.15.0.
 
 Registry listings: the server is published in the [official MCP registry](https://registry.modelcontextprotocol.io/v0/servers?search=worldmonitor) as `app.worldmonitor/mcp` — a domain-verified namespace, so clients that resolve servers through the registry get the same endpoint and metadata as the server card above — and listed on [Smithery](https://smithery.ai/servers/worldmonitor/wm-mcp) and [mcp.so](https://mcp.so/server/world-monitor).
 
@@ -411,6 +411,11 @@ The server supports [MCP Apps](https://modelcontextprotocol.io/extensions/apps/b
 | `ui://worldmonitor/country-brief.html` | `get_country_brief` | The AI-synthesised per-country brief as paragraphs, with the analytical framework lens and grounding sources. |
 | `ui://worldmonitor/market-radar.html` | `get_market_data` | The Fear & Greed composite plus per-asset-class quote tables (equities, commodities, crypto, Gulf, sectors) with signed, colour-coded change. |
 | `ui://worldmonitor/chokepoint-monitor.html` | `get_chokepoint_status` | Per-chokepoint rolling transit summaries (today's count, week-over-week change, tanker split) with a risk-level badge. |
+| `ui://worldmonitor/news-intelligence.html` | `get_news_intelligence` | AI-classified top stories with category, alert flag, country, and summary. |
+| `ui://worldmonitor/conflict-events.html` | `get_conflict_events` | Active armed-conflict and unrest events (belligerents, violence type, country, fatalities, date) from the UCDP feed. |
+| `ui://worldmonitor/natural-disasters.html` | `get_natural_disasters` | Recent earthquakes (USGS magnitude, place, time) and active wildfires (NASA FIRMS), grouped. |
+| `ui://worldmonitor/prediction-markets.html` | `get_prediction_markets` | Active event-contract odds grouped by category (geopolitical, tech, finance) with a probability bar per market. |
+| `ui://worldmonitor/forecasts.html` | `get_forecast_predictions` | AI-generated geopolitical and economic forecasts as probability cards (title, domain, region). |
 
 All UI resources share `mimeType: text/html;profile=mcp-app`.
 
