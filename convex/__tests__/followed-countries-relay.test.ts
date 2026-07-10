@@ -173,7 +173,7 @@ describe("/relay/followed-countries HTTP action", () => {
     expect(body.error).toBe("userId required");
   });
 
-  test("invalid JSON body → 400 INVALID_BODY", async () => {
+  test("invalid JSON body → 400 INVALID_JSON", async () => {
     const t = convexTest(schema, modules);
 
     const res = await t.fetch("/relay/followed-countries", {
@@ -187,8 +187,27 @@ describe("/relay/followed-countries HTTP action", () => {
 
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string };
-    expect(body.error).toBe("INVALID_BODY");
+    expect(body.error).toBe("INVALID_JSON");
   });
+
+  test.each([null, [], "not-an-object", 42, true])(
+    "non-object JSON body (%j) → 400 INVALID_JSON",
+    async (payload) => {
+      const t = convexTest(schema, modules);
+      const res = await t.fetch("/relay/followed-countries", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${RELAY_SECRET}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toBe("INVALID_JSON");
+    },
+  );
 
   test("returns countries sorted by addedAt ascending (matches listFollowed convention)", async () => {
     const t = convexTest(schema, modules);

@@ -154,4 +154,20 @@ describe("/api/internal-entitlements HTTP action", () => {
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe("INVALID_JSON");
   });
+
+  test.each([null, [], "not-an-object", 42, true])(
+    "non-object JSON body (%j) → 400 INVALID_JSON",
+    async (payload) => {
+      const t = convexTest(schema, modules);
+      const res = await t.fetch("/api/internal-entitlements", {
+        method: "POST",
+        headers: validHeaders(),
+        body: JSON.stringify(payload),
+      });
+
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toBe("INVALID_JSON");
+    },
+  );
 });
