@@ -1016,6 +1016,9 @@ export default defineConfig(({ mode }) => {
             '**/onnx*.wasm',
             '**/locale-*.js',
             '**/clerk-*.js',
+            // Fonts are fetched only when their stylesheet applies. Precache
+            // would pull every local weight into the first mobile visit.
+            '**/*.woff2',
             // Keep off-page/static-heavy public assets out of the dashboard's
             // first-visit precache. The small root favicons above remain
             // explicit includeAssets entries.
