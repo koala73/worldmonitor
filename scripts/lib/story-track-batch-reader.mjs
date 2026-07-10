@@ -1,6 +1,7 @@
 /**
  * Chunked HGETALL reader for story:track:v1:<hash> rows used by
- * scripts/seed-digest-notifications.mjs::buildDigest.
+ * scripts/seed-digest-notifications.mjs::buildDigest and
+ * scripts/seed-forecast-resolutions.mjs::readDigestAccumulatorArchive.
  *
  * Extracted so the index-alignment-on-partial-failure contract can be
  * unit-tested without dragging the cron's top-level side effects
@@ -36,10 +37,12 @@
  *   next tick. Worse: dropped stories would be silent — no operator
  *   signal that the digest was incomplete.
  *
- *   So we return `null` on any chunk failure. Callers MUST treat
- *   null as "skip this digest tick — Upstash partial outage" rather
- *   than as empty-but-successful. Stops iterating so an outage
- *   doesn't burn the full pipeline budget on N × per-chunk timeouts.
+ *   So we return `null` on any chunk failure. Callers MUST treat null
+ *   as an incomplete read rather than empty-but-successful: digest
+ *   skips the tick, while forecast resolution fails the archive read
+ *   closed so judged entries remain pending. Stops iterating so an
+ *   outage doesn't burn the full pipeline budget on N × per-chunk
+ *   timeouts.
  */
 
 export const STORY_TRACK_HGETALL_BATCH = 500;

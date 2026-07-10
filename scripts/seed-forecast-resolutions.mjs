@@ -1081,14 +1081,14 @@ export async function readDigestAccumulatorArchive(windowStartMs, nowMs, options
   const configuredMaxLookbackMs = Number.isFinite(options.maxLookbackMs)
     ? Math.max(1, Math.floor(options.maxLookbackMs))
     : resolveJudgedEvidenceMaxLookbackMs();
-  const coverageStartMs = Math.max(windowStartMs, nowMs - configuredMaxLookbackMs);
+  const requestedCoverageStartMs = Math.max(windowStartMs, nowMs - configuredMaxLookbackMs);
   const maxHashes = Number.isFinite(options.maxHashes)
     ? Math.max(1, Math.floor(options.maxHashes))
     : envPositiveInt('FORECAST_RESOLUTION_JUDGE_ARCHIVE_HASH_LIMIT', DEFAULT_JUDGED_ARCHIVE_HASH_LIMIT);
   const base = {
     requestedStartMs: windowStartMs,
     requestedEndMs: nowMs,
-    coverageStartMs,
+    coverageStartMs: requestedCoverageStartMs,
     coverageEndMs: nowMs,
   };
   const zsetResp = await fetch(url, {
@@ -1098,22 +1098,47 @@ export async function readDigestAccumulatorArchive(windowStartMs, nowMs, options
       'ZREVRANGEBYSCORE',
       JUDGED_ARCHIVE_KEY,
       String(nowMs),
-      String(coverageStartMs),
+      String(requestedCoverageStartMs),
+      'WITHSCORES',
       'LIMIT',
       '0',
-      String(maxHashes),
+      String(maxHashes + 1),
     ]),
     signal: AbortSignal.timeout(10_000),
   });
   if (!zsetResp.ok) throw new Error(`Redis ZREVRANGEBYSCORE ${JUDGED_ARCHIVE_KEY} failed: HTTP ${zsetResp.status}`);
   const zsetPayload = await zsetResp.json();
-  const hashes = Array.isArray(zsetPayload.result) ? zsetPayload.result.filter(Boolean) : [];
-  if (!hashes.length) return { ...base, items: [], available: true };
+  if (!Array.isArray(zsetPayload?.result)) {
+    throw new Error(`Redis ZREVRANGEBYSCORE ${JUDGED_ARCHIVE_KEY} returned non-array WITHSCORES data`);
+  }
+  const zsetRows = zsetPayload.result;
+  if (zsetRows.length % 2 !== 0) {
+    throw new Error(`Redis ZREVRANGEBYSCORE ${JUDGED_ARCHIVE_KEY} returned malformed WITHSCORES data`);
+  }
+  const hashRows = [];
+  for (let index = 0; index < zsetRows.length; index += 2) {
+    const hash = zsetRows[index];
+    const score = Number(zsetRows[index + 1]);
+    if (!hash || !Number.isFinite(score)) {
+      throw new Error(`Redis ZREVRANGEBYSCORE ${JUDGED_ARCHIVE_KEY} returned malformed member/score pair at index ${index / 2}`);
+    }
+    hashRows.push({ hash, score });
+  }
+  if (!hashRows.length) return { ...base, items: [], available: true };
 
-  const selectedHashes = hashes.slice(0, maxHashes);
-  const truncated = hashes.length >= maxHashes;
+  const selectedHashRows = hashRows.slice(0, maxHashes);
+  const selectedHashes = selectedHashRows.map(({ hash }) => hash);
+  const truncated = hashRows.length > maxHashes;
+  const oldestRetainedScore = selectedHashRows.at(-1)?.score;
+  const firstDroppedScore = hashRows[maxHashes]?.score;
+  const retainedCoverageStartMs = firstDroppedScore === oldestRetainedScore
+    ? oldestRetainedScore + 1
+    : oldestRetainedScore;
+  const coverageStartMs = truncated
+    ? Math.max(requestedCoverageStartMs, retainedCoverageStartMs)
+    : requestedCoverageStartMs;
   if (truncated) {
-    console.warn(`  [forecast-resolutions] judged archive hash cap reached (${selectedHashes.length}/${maxHashes}) for ${new Date(coverageStartMs).toISOString()}..${new Date(nowMs).toISOString()}; increase FORECAST_RESOLUTION_JUDGE_ARCHIVE_HASH_LIMIT or page the archive scan`);
+    console.warn(`  [forecast-resolutions] judged archive hash cap reached (${selectedHashes.length}/${maxHashes}) for ${new Date(requestedCoverageStartMs).toISOString()}..${new Date(nowMs).toISOString()}; retained coverage begins ${new Date(coverageStartMs).toISOString()}; increase FORECAST_RESOLUTION_JUDGE_ARCHIVE_HASH_LIMIT or page the archive scan`);
   }
   const archiveTimeoutMs = Number.isFinite(options.archiveTimeoutMs)
     ? Math.max(1, Math.floor(options.archiveTimeoutMs))
@@ -1132,18 +1157,15 @@ export async function readDigestAccumulatorArchive(windowStartMs, nowMs, options
       signal: AbortSignal.timeout(remainingMs),
     });
     if (!pipelineResp.ok) throw new Error(`Redis story-track pipeline failed: HTTP ${pipelineResp.status}`);
-    const pipelinePayload = await pipelineResp.json();
-    if (!Array.isArray(pipelinePayload) || pipelinePayload.length !== commands.length) {
-      throw new Error(`Redis story-track pipeline returned ${Array.isArray(pipelinePayload) ? pipelinePayload.length : 'non-array'} of ${commands.length}`);
-    }
-    return pipelinePayload;
+    return pipelineResp.json();
   }, { batchSize: storyTrackBatchSize, context: 'forecast-resolutions' });
   if (!rows) throw new Error('Redis story-track pipeline returned incomplete archive data');
   const items = [];
   let missingRows = 0;
   for (let index = 0; index < selectedHashes.length; index += 1) {
     if (rows[index]?.error) {
-      throw new Error(`Redis story-track pipeline row ${index} failed: ${rows[index].error}`);
+      missingRows += 1;
+      continue;
     }
     const raw = rows[index]?.result;
     const flat = normalizeRedisHashResult(raw);
@@ -1169,6 +1191,7 @@ export async function readDigestAccumulatorArchive(windowStartMs, nowMs, options
   }
   return {
     ...base,
+    coverageStartMs,
     items: normalizeJudgedArchiveItems(items),
     available: true,
     ...(truncated ? { truncated: true } : {}),

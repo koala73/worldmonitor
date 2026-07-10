@@ -789,6 +789,61 @@ describe('processResolutionCycleWithJudges', () => {
     assert.deepEqual(selected.map((item) => item.id), ['N-current']);
   });
 
+  it('filters one normalized archive independently for judged entries with different deadlines', async () => {
+    const earlyDeadline = T0 + 10 * DAY_MS;
+    const lateDeadline = T0 + 20 * DAY_MS;
+    const nowMs = lateDeadline + 1;
+    const forecasts = [
+      judgedForecast({
+        id: 'judge-early-window',
+        resolution: {
+          kind: 'judged',
+          deadline: earlyDeadline,
+          question: 'Will the emergency policy change pass before the deadline?',
+        },
+      }),
+      judgedForecast({
+        id: 'judge-late-window',
+        resolution: {
+          kind: 'judged',
+          deadline: lateDeadline,
+          question: 'Will the emergency policy change pass before the deadline?',
+        },
+      }),
+    ];
+    const sharedArchive = {
+      available: true,
+      coverageStartMs: earlyDeadline - JUDGED_EVIDENCE_LOOKBACK_MS,
+      coverageEndMs: nowMs,
+      items: [{
+        id: 'N-early',
+        title: 'Emergency policy change passes early vote',
+        description: 'The policy passed in the early session.',
+        publishedAt: earlyDeadline - DAY_MS,
+      }, {
+        id: 'N-late',
+        title: 'Emergency policy change passes final vote',
+        description: 'The policy passed in the later session.',
+        publishedAt: lateDeadline - DAY_MS,
+      }],
+    };
+    const evidenceByEntry = new Map();
+    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, forecasts)], {}, sharedArchive, nowMs, {
+      judgeModels: [
+        async (entry, items) => {
+          evidenceByEntry.set(entry.id, items.map((item) => item.id));
+          return { provider: 'openrouter', outcome: 'YES', citations: [{ id: items[0].id, quote: items[0].description }] };
+        },
+        async (_entry, items) => ({ provider: 'groq', outcome: 'YES', citations: [{ id: items[0].id, quote: items[0].description }] }),
+      ],
+    });
+
+    assert.deepEqual(evidenceByEntry.get('judge-early-window'), ['N-late', 'N-early']);
+    assert.deepEqual(evidenceByEntry.get('judge-late-window'), ['N-late']);
+    assert.equal(result.ledger[`judge-early-window@${earlyDeadline}`].status, 'resolved');
+    assert.equal(result.ledger[`judge-late-window@${lateDeadline}`].status, 'resolved');
+  });
+
   it('keeps weak judge outcomes pending when matching evidence comes from an incomplete archive', async () => {
     const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [judgedForecast()])], {}, {
       available: true,
@@ -982,7 +1037,7 @@ describe('processResolutionCycleWithJudges', () => {
       }
       return {
         ok: true,
-        json: async () => ({ result: ['old-hash', 'new-hash'] }),
+        json: async () => ({ result: ['new-hash', String(T0 + 2), 'old-hash', String(T0 + 1)] }),
       };
     };
 
@@ -1032,9 +1087,23 @@ describe('readDigestAccumulatorArchive', () => {
 
     assert.ok(DEFAULT_JUDGED_ARCHIVE_HASH_LIMIT >= 15_000);
     assert.ok(DEFAULT_JUDGED_ARCHIVE_TIMEOUT_MS >= 20_000);
-    assert.equal(zsetCommand.at(-1), String(DEFAULT_JUDGED_ARCHIVE_HASH_LIMIT));
+    assert.equal(zsetCommand.at(-1), String(DEFAULT_JUDGED_ARCHIVE_HASH_LIMIT + 1));
     assert.equal(archive.truncated, undefined);
     assert.equal(archive.items.length, 0);
+  });
+
+  it('fails closed when the scored archive response is structurally invalid', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    globalThis.fetch = async () => ({
+      ok: true,
+      json: async () => ({ result: { hash: 'not-a-scored-array' } }),
+    });
+
+    await assert.rejects(
+      readDigestAccumulatorArchive(T0, T0 + DAY_MS),
+      /returned non-array WITHSCORES data/,
+    );
   });
 
   it('bounds the Redis archive query to the 14-day evidence floor and hash limit', async () => {
@@ -1059,7 +1128,11 @@ describe('readDigestAccumulatorArchive', () => {
       zsetCommand = JSON.parse(init.body);
       return {
         ok: true,
-        json: async () => ({ result: ['new-hash', 'old-hash', 'extra-hash'] }),
+        json: async () => ({ result: [
+          'new-hash', String(nowMs - 1),
+          'old-hash', String(nowMs - 2),
+          'extra-hash', String(nowMs - 3),
+        ] }),
       };
     };
 
@@ -1071,15 +1144,17 @@ describe('readDigestAccumulatorArchive', () => {
         JUDGED_ARCHIVE_KEY,
         String(nowMs),
         String(nowMs - JUDGED_EVIDENCE_MAX_LOOKBACK_MS),
+        'WITHSCORES',
         'LIMIT',
         '0',
-        '2',
+        '3',
       ]);
       assert.deepEqual(pipelineCommands.map(([, key]) => key), [
         'story:track:v1:new-hash',
         'story:track:v1:old-hash',
       ]);
-      assert.equal(archive.coverageStartMs, nowMs - JUDGED_EVIDENCE_MAX_LOOKBACK_MS);
+      assert.equal(archive.requestedStartMs, T0 - 30 * DAY_MS);
+      assert.equal(archive.coverageStartMs, nowMs - 2);
       assert.equal(archive.items.length, 2);
       assert.equal(archive.truncated, true);
       assert.ok(warnings.some((line) => line.includes('FORECAST_RESOLUTION_JUDGE_ARCHIVE_HASH_LIMIT')));
@@ -1159,6 +1234,60 @@ describe('readDigestAccumulatorArchive', () => {
     assert.equal(result.receipts.length, 1);
   });
 
+  it('keeps a due judged entry pending when a capped read starts after its required window', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    const deadline = T0 + 10 * DAY_MS;
+    const nowMs = deadline + DAY_MS;
+    globalThis.fetch = async (url, init) => {
+      if (String(url).endsWith('/pipeline')) {
+        return {
+          ok: true,
+          json: async () => [{
+            result: ['title', 'Unrelated market update', 'description', 'Markets were steady.', 'publishedAt', String(deadline + 1)],
+          }],
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({ result: [
+          'retained-hash', String(deadline + 1),
+          'dropped-hash', String(deadline + 1),
+        ] }),
+      };
+    };
+
+    const archive = await readDigestAccumulatorArchive(
+      deadline - JUDGED_EVIDENCE_LOOKBACK_MS,
+      nowMs,
+      { maxHashes: 1 },
+    );
+    assert.equal(archive.truncated, true);
+    assert.equal(archive.coverageStartMs, deadline + 2, 'equal-score cap ties must not over-claim the boundary');
+
+    const result = await processResolutionCycleWithJudges({}, [snapshot(T0, [forecast({
+      id: 'judge-truncated-window',
+      domain: 'political',
+      region: 'Freedonia',
+      title: 'Policy change passes',
+      resolution: {
+        kind: 'judged',
+        deadline,
+        question: 'Will the emergency policy change pass before the deadline?',
+      },
+    })])], {}, archive, nowMs, {
+      judgeModels: [
+        async () => { throw new Error('judge should not be called without relevant archive evidence'); },
+        async () => { throw new Error('judge should not be called without relevant archive evidence'); },
+      ],
+    });
+
+    const row = result.ledger[`judge-truncated-window@${deadline}`];
+    assert.equal(row.status, 'pending-judge');
+    assert.equal(row.judgeLastAttempt.detail, 'archive_window_incomplete');
+    assert.equal(result.receipts.length, 0);
+  });
+
   it('chunks story-track reads while preserving hash-to-row alignment', async () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
@@ -1176,7 +1305,11 @@ describe('readDigestAccumulatorArchive', () => {
       }
       return {
         ok: true,
-        json: async () => ({ result: ['hash-1', 'hash-2', 'hash-3'] }),
+        json: async () => ({ result: [
+          'hash-1', String(T0 + 3),
+          'hash-2', String(T0 + 2),
+          'hash-3', String(T0 + 1),
+        ] }),
       };
     };
 
@@ -1213,7 +1346,11 @@ describe('readDigestAccumulatorArchive', () => {
       }
       return {
         ok: true,
-        json: async () => ({ result: ['hash-1', 'hash-2', 'hash-3'] }),
+        json: async () => ({ result: [
+          'hash-1', String(T0 + 3),
+          'hash-2', String(T0 + 2),
+          'hash-3', String(T0 + 1),
+        ] }),
       };
     };
 
@@ -1249,7 +1386,7 @@ describe('readDigestAccumulatorArchive', () => {
       }
       return {
         ok: true,
-        json: async () => ({ result: ['hash-1'] }),
+        json: async () => ({ result: ['hash-1', String(T0 + 1)] }),
       };
     };
 
@@ -1275,7 +1412,7 @@ describe('readDigestAccumulatorArchive', () => {
       }
       return {
         ok: true,
-        json: async () => ({ result: ['missing-hash', 'hash-2'] }),
+        json: async () => ({ result: ['missing-hash', String(T0 + 2), 'hash-2', String(T0 + 1)] }),
       };
     };
 
@@ -1300,7 +1437,7 @@ describe('readDigestAccumulatorArchive', () => {
       }
       return {
         ok: true,
-        json: async () => ({ result: ['missing-hash'] }),
+        json: async () => ({ result: ['missing-hash', String(T0 + 1)] }),
       };
     };
 
@@ -1328,7 +1465,7 @@ describe('readDigestAccumulatorArchive', () => {
     assert.equal(result.receipts.length, 0);
   });
 
-  it('fails closed when a same-length Redis pipeline response has an invalid story row', async () => {
+  it('keeps good evidence while marking an errored Redis story row incomplete', async () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
     globalThis.fetch = async (url) => {
@@ -1343,14 +1480,48 @@ describe('readDigestAccumulatorArchive', () => {
       }
       return {
         ok: true,
-        json: async () => ({ result: ['hash-1', 'hash-2'] }),
+        json: async () => ({ result: ['hash-1', String(T0 + 2), 'hash-2', String(T0 + 1)] }),
       };
     };
 
-    await assert.rejects(
-      readDigestAccumulatorArchive(T0, T0 + DAY_MS),
-      /story-track pipeline row 1 failed/,
-    );
+    const archive = await readDigestAccumulatorArchive(T0, T0 + DAY_MS);
+
+    assert.equal(archive.items.length, 1);
+    assert.equal(archive.items[0].hash, 'hash-1');
+    assert.equal(archive.incomplete, true);
+    assert.equal(archive.missingRows, 1);
+  });
+
+  it('logs caller context and fails closed when a story-track response is short', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    const warnings = [];
+    const originalWarn = console.warn;
+    console.warn = (...args) => warnings.push(args.join(' '));
+    globalThis.fetch = async (url) => {
+      if (String(url).endsWith('/pipeline')) {
+        return {
+          ok: true,
+          json: async () => [{ result: ['title', 'Only one row'] }],
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({ result: ['hash-1', String(T0 + 2), 'hash-2', String(T0 + 1)] }),
+      };
+    };
+
+    try {
+      await assert.rejects(
+        readDigestAccumulatorArchive(T0, T0 + DAY_MS),
+        /story-track pipeline returned incomplete archive data/,
+      );
+      assert.ok(warnings.some((line) => line.includes('[forecast-resolutions] readStoryTracksChunked')));
+      assert.ok(warnings.some((line) => line.includes('returned 1 of 2 expected')));
+      assert.ok(warnings.some((line) => line.includes('treats the archive read as failed')));
+    } finally {
+      console.warn = originalWarn;
+    }
   });
 });
 
