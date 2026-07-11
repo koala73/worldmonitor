@@ -673,6 +673,15 @@ export class PanelLayoutManager implements AppModule {
 
   async renderLayout(): Promise<void> {
     const isGlobeMode = getStoredMapModePreference() === 'globe';
+    // #5159: the collapsed-map cohort's #mapSection must be CREATED with
+    // .collapsed — main.css sets the expanded mobile height with !important
+    // inside a cascade layer, and layered !important beats any unlayered
+    // pre-paint override (inverse of the normal-declaration rule), so the
+    // html.wm-map-collapsed critical CSS can only cover the boot SKELETON.
+    // Seeding the class here makes the runtime collapsed rule apply from the
+    // section's first frame instead of ~150ms later via setupMobileMapToggle
+    // (which shoved #panelsGrid up 698px, field CLS ~0.62 for this cohort).
+    const mapStartsCollapsed = this.ctx.isMobile && localStorage.getItem('mobile-map-collapsed') === 'true';
     const bootShellFootprint = import.meta.env.DEV ? captureBootShellFootprint(this.ctx.container) : null;
 
     markLcpDebug('wm:layout:render-start');
@@ -869,7 +878,7 @@ export class PanelLayoutManager implements AppModule {
       </div>
       <div class="dashboard-tabs-mount" id="panelTabsMount"></div>
       <main id="main" tabindex="-1" class="main-content${this.ctx.isDesktopApp ? ' desktop-grid' : ''}">
-        <div class="map-section" id="mapSection">
+        <div class="map-section${mapStartsCollapsed ? ' collapsed' : ''}" id="mapSection">
           <div class="panel-header">
             <div class="panel-header-left">
               <span class="panel-title">${SITE_VARIANT === 'tech' ? t('panels.techMap') : SITE_VARIANT === 'happy' ? 'Good News Map' : t('panels.map')}</span>
