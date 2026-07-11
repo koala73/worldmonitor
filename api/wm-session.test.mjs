@@ -318,6 +318,53 @@ test('telemetry stops delivery attempts when the Axiom sink is repeatedly unavai
   assert.equal(axiomAttempts, 20, 'open circuit breaker drops later telemetry delivery attempts');
 });
 
+test('telemetry probes and closes the circuit after the outage window elapses', async () => {
+  process.env.USAGE_TELEMETRY = '1';
+  process.env.AXIOM_API_TOKEN = 'axiom-test-token';
+  const originalDateNow = Date.now;
+  let now = 1_000_000;
+  let axiomAttempts = 0;
+  let axiomAvailable = false;
+  Date.now = () => now;
+  globalThis.fetch = async (input) => {
+    const url = input instanceof URL ? input.href : typeof input === 'string' ? input : input.url;
+    if (url.includes('fake.upstash.io')) {
+      return new Response(JSON.stringify([{ result: [29, 30] }]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (url.includes('axiom.co')) {
+      axiomAttempts += 1;
+      if (!axiomAvailable) throw new Error('Axiom unavailable');
+      return new Response('{}', { status: 200 });
+    }
+    throw new Error(`unexpected telemetry fetch: ${url}`);
+  };
+
+  try {
+    for (let index = 0; index < 20; index += 1) {
+      const { ctx, settle } = makeWaitUntilCtx();
+      await handler(makeReq('POST', { origin: 'https://worldmonitor.app' }), ctx);
+      await settle();
+    }
+    now += 5 * 60 * 1000 + 1;
+    axiomAvailable = true;
+
+    const recovered = makeWaitUntilCtx();
+    await handler(makeReq('POST', { origin: 'https://worldmonitor.app' }), recovered.ctx);
+    await recovered.settle();
+    assert.equal(axiomAttempts, 21, 'a single half-open delivery probes the recovered sink');
+
+    const resumed = makeWaitUntilCtx();
+    await handler(makeReq('POST', { origin: 'https://worldmonitor.app' }), resumed.ctx);
+    await resumed.settle();
+    assert.equal(axiomAttempts, 22, 'a successful probe closes the circuit for later events');
+  } finally {
+    Date.now = originalDateNow;
+  }
+});
+
 test('no-key session refresh preserves existing HttpOnly key cookies', async () => {
   const resp = await handler(makeReq('POST', { origin: 'https://worldmonitor.app' }));
   assert.equal(resp.status, 200);

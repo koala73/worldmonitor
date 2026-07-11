@@ -13,6 +13,8 @@ const CB_MIN_SAMPLES = 20;
 
 const breakerSamples = [];
 let breakerTripped = false;
+let breakerOpenUntil = 0;
+let breakerProbeInFlight = false;
 
 function capHeader(value) {
   if (value == null) return null;
@@ -52,21 +54,43 @@ function originKind(req) {
   }
 }
 
-function recordDelivery(ok) {
+function recordDelivery(ok, isProbe) {
   const now = Date.now();
+  if (isProbe) {
+    breakerProbeInFlight = false;
+    if (ok) {
+      breakerSamples.length = 0;
+      breakerTripped = false;
+      breakerOpenUntil = 0;
+    } else {
+      breakerOpenUntil = now + CB_WINDOW_MS;
+    }
+    return;
+  }
   while (breakerSamples.length > 0 && now - breakerSamples[0].ts > CB_WINDOW_MS) breakerSamples.shift();
   breakerSamples.push({ ts: now, ok });
   if (breakerSamples.length < CB_MIN_SAMPLES) {
     breakerTripped = false;
+    breakerOpenUntil = 0;
     return;
   }
   breakerTripped = breakerSamples.filter((sample) => !sample.ok).length / breakerSamples.length > CB_TRIP_FAILURE_RATIO;
+  breakerOpenUntil = breakerTripped ? now + CB_WINDOW_MS : 0;
+}
+
+function deliveryMode() {
+  if (!breakerTripped) return 'normal';
+  if (Date.now() < breakerOpenUntil || breakerProbeInFlight) return null;
+  breakerProbeInFlight = true;
+  return 'probe';
 }
 
 async function deliver(event) {
   if (process.env.USAGE_TELEMETRY !== '1') return;
   const token = process.env.AXIOM_API_TOKEN;
-  if (!token || breakerTripped) return;
+  if (!token) return;
+  const mode = deliveryMode();
+  if (!mode) return;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TELEMETRY_TIMEOUT_MS);
@@ -80,9 +104,9 @@ async function deliver(event) {
       body: JSON.stringify([event]),
       signal: controller.signal,
     });
-    recordDelivery(response.ok);
+    recordDelivery(response.ok, mode === 'probe');
   } catch {
-    recordDelivery(false);
+    recordDelivery(false, mode === 'probe');
     // Observability must never alter the session-mint response path.
   } finally {
     clearTimeout(timer);
@@ -92,6 +116,8 @@ async function deliver(event) {
 export function __resetWmSessionTelemetryForTests() {
   breakerSamples.length = 0;
   breakerTripped = false;
+  breakerOpenUntil = 0;
+  breakerProbeInFlight = false;
 }
 
 /**
