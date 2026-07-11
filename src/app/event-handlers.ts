@@ -78,6 +78,23 @@ import {
   trackDownloadClicked,
   trackGateHit,
 } from '@/services/analytics';
+import { detectPlatform, allButtons, buttonsForPlatform } from '@/components/DownloadBanner';
+import type { Platform } from '@/components/DownloadBanner';
+import { invokeTauri } from '@/services/tauri-bridge';
+import { getCachedGpsInterference } from '@/services/gps-interference';
+import { dataFreshness } from '@/services/data-freshness';
+import { mlWorker } from '@/services/ml-worker';
+import { WM_OPEN_NOTIFICATIONS_FOR_COUNTRY } from '@/utils/notify-country-link';
+import { AuthLauncher } from '@/components/AuthLauncher';
+import { AuthHeaderWidget } from '@/components/AuthHeaderWidget';
+import { t } from '@/services/i18n';
+import { TvModeController } from '@/services/tv-mode';
+import { getAuthState, subscribeAuthState } from '@/services/auth-state';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { scheduleAfterFirstPaint } from '@/utils/after-paint';
+import { escapeHtml } from '@/utils/sanitize';
+import { buildEmbedIframeSnippet, buildEmbedMapUrl, type EmbedVariant } from '@/embed/embed-url';
+import { createSettingsButton } from '@/components/settings-button';
 
 function readStorageValue(key: string): string | null {
   try {
@@ -102,23 +119,6 @@ function removeStorageValue(key: string): void {
     // Storage is optional for UI preferences.
   }
 }
-import { detectPlatform, allButtons, buttonsForPlatform } from '@/components/DownloadBanner';
-import type { Platform } from '@/components/DownloadBanner';
-import { invokeTauri } from '@/services/tauri-bridge';
-import { getCachedGpsInterference } from '@/services/gps-interference';
-import { dataFreshness } from '@/services/data-freshness';
-import { mlWorker } from '@/services/ml-worker';
-import { WM_OPEN_NOTIFICATIONS_FOR_COUNTRY } from '@/utils/notify-country-link';
-import { AuthLauncher } from '@/components/AuthLauncher';
-import { AuthHeaderWidget } from '@/components/AuthHeaderWidget';
-import { t } from '@/services/i18n';
-import { TvModeController } from '@/services/tv-mode';
-import { getAuthState, subscribeAuthState } from '@/services/auth-state';
-import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
-import { scheduleAfterFirstPaint } from '@/utils/after-paint';
-import { escapeHtml } from '@/utils/sanitize';
-import { buildEmbedIframeSnippet, buildEmbedMapUrl, type EmbedVariant } from '@/embed/embed-url';
-import { createSettingsButton } from '@/components/settings-button';
 
 type RealUnifiedSettings = import('@/components/UnifiedSettings').UnifiedSettings;
 
