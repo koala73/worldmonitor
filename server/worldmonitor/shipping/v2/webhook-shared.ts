@@ -33,6 +33,21 @@ export const BLOCKED_METADATA_HOSTNAMES = new Set([
   'link-local.s3.amazonaws.com',
 ]);
 
+const DNS_RESOLUTION_TIMEOUT_MS = 3_000;
+const DNS_JSON_ENDPOINT = 'https://cloudflare-dns.com/dns-query';
+const TEST_RESOLVER_KEY = Symbol.for('worldmonitor.shippingV2.resolveWebhookHostnameForTest');
+
+type ResolveHostname = (hostname: string) => Promise<string[]>;
+
+function isIpLiteral(hostname: string): boolean {
+  return hostname.includes(':') || /^(?:\d{1,3}\.){3}\d{1,3}$/.test(hostname);
+}
+
+function getResolveHostnameForTest(): ResolveHostname | undefined {
+  const candidate = Reflect.get(globalThis, TEST_RESOLVER_KEY);
+  return typeof candidate === 'function' ? candidate as ResolveHostname : undefined;
+}
+
 export { isBlockedResolvedAddress };
 
 export function isBlockedCallbackUrl(rawUrl: string): string | null {
@@ -64,6 +79,59 @@ export function isBlockedCallbackUrl(rawUrl: string): string | null {
   }
 
   return null;
+}
+
+async function defaultResolveHostname(hostname: string): Promise<string[]> {
+  const resolveHostnameForTest = getResolveHostnameForTest();
+  if (resolveHostnameForTest) return resolveHostnameForTest(hostname);
+
+  const resolveRecordType = async (recordType: 'A' | 'AAAA'): Promise<string[]> => {
+    const url = new URL(DNS_JSON_ENDPOINT);
+    url.searchParams.set('name', hostname);
+    url.searchParams.set('type', recordType);
+    const response = await fetch(url, {
+      headers: {
+        Accept: 'application/dns-json',
+        'User-Agent': 'WorldMonitor-ShippingV2-Webhooks/1.0',
+      },
+      signal: AbortSignal.timeout(DNS_RESOLUTION_TIMEOUT_MS),
+    });
+    if (!response.ok) throw new Error(`DNS ${recordType} lookup failed: HTTP ${response.status}`);
+    const data = await response.json() as { Status?: number; Answer?: Array<{ type?: number; data?: string }> };
+    if (data.Status !== 0) throw new Error(`DNS ${recordType} lookup failed: status ${data.Status}`);
+    const expectedType = recordType === 'A' ? 1 : 28;
+    return (data.Answer ?? [])
+      .filter(answer => answer.type === expectedType && typeof answer.data === 'string')
+      .map(answer => answer.data!);
+  };
+  const records = await Promise.all([resolveRecordType('A'), resolveRecordType('AAAA')]);
+  return records.flat();
+}
+
+/**
+ * Validate the current DNS answer before storing a webhook. Delivery makes the
+ * same check immediately before send and pins the resulting socket, which
+ * keeps this fail-fast check from becoming the only SSRF control.
+ */
+export async function assertCallbackUrlRegistrationSafe(
+  callbackUrl: string,
+  resolveHostname: ResolveHostname = defaultResolveHostname,
+): Promise<void> {
+  const staticError = isBlockedCallbackUrl(callbackUrl);
+  if (staticError) throw new Error(staticError);
+
+  const hostname = new URL(callbackUrl).hostname.toLowerCase();
+  if (isIpLiteral(hostname)) return;
+  let resolvedAddresses: string[];
+  try {
+    resolvedAddresses = await resolveHostname(hostname);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`callbackUrl DNS resolution failed: ${message}`);
+  }
+  if (!resolvedAddresses.length) throw new Error('callbackUrl DNS resolution returned no addresses');
+  const blocked = resolvedAddresses.find(isBlockedResolvedAddress);
+  if (blocked) throw new Error('callbackUrl resolves to a private/reserved address');
 }
 
 export async function generateSecret(): Promise<string> {

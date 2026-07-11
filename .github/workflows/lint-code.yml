@@ -46,6 +46,7 @@ jobs:
       - run: npm run lint:api-contract
       - run: npm run lint:rate-limit-policies
       - run: npm run lint:premium-fetch
+      - run: npm run security:vite-env-secrets
       - name: Markdown lint
         run: npm run lint:md
       - name: Version sync check

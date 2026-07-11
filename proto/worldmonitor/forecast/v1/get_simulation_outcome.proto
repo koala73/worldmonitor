@@ -20,7 +20,8 @@ message GetSimulationOutcomeRequest {
 message GetSimulationOutcomeResponse {
   bool found = 1;
   string run_id = 2;
-  string outcome_key = 3;
+  reserved 3;
+  reserved "outcome_key";
   string schema_version = 4;
   int32 theater_count = 5;
   // Unix timestamp in milliseconds (from Date.now()). Warning: Values > 2^53 may lose precision in JavaScript.

@@ -15,7 +15,7 @@ import { runRedisPipeline } from '../../../_shared/redis';
 import {
   WEBHOOK_TTL,
   VALID_CHOKEPOINT_IDS,
-  isBlockedCallbackUrl,
+  assertCallbackUrlRegistrationSafe,
   generateSecret,
   generateSubscriberId,
   webhookKey,
@@ -53,9 +53,11 @@ export async function registerWebhook(
     throw new ValidationError([{ field: 'callbackUrl', description: 'callbackUrl is required' }]);
   }
 
-  const ssrfError = isBlockedCallbackUrl(callbackUrl);
-  if (ssrfError) {
-    throw new ValidationError([{ field: 'callbackUrl', description: ssrfError }]);
+  try {
+    await assertCallbackUrlRegistrationSafe(callbackUrl);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'callbackUrl is not allowed';
+    throw new ValidationError([{ field: 'callbackUrl', description: message }]);
   }
 
   const chokepointIds = Array.isArray(req.chokepointIds) ? req.chokepointIds : [];

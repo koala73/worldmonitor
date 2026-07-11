@@ -122,6 +122,7 @@ describe('getSimulationOutcome runId filter (#3734 U6)', () => {
     const res = await getSimulationOutcome(makeCtx(), { runId: VALID_RUN_ID });
     assert.equal(res.found, true);
     assert.equal(res.runId, VALID_RUN_ID);
+    assert.ok(!('outcomeKey' in res), 'public outcome response must not disclose its internal storage key');
     assert.equal(res.note, '');
     assert.equal(res.processing, false);
     assert.ok(res.theaterSummariesJson.length > 0, 'theater summaries must be populated');

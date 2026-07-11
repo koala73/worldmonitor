@@ -52,7 +52,6 @@ function isTombstone(v: unknown): v is TombstonePayload {
 const NOT_FOUND: GetSimulationOutcomeResponse = {
   found: false,
   runId: '',
-  outcomeKey: '',
   schemaVersion: '',
   theaterCount: 0,
   generatedAt: 0,
@@ -73,7 +72,6 @@ function outcomeToResponse(pointer: OutcomePointer, note: string): GetSimulation
   return {
     found: true,
     runId: pointer.runId,
-    outcomeKey: pointer.outcomeKey,
     schemaVersion: pointer.schemaVersion,
     theaterCount: pointer.theaterCount,
     generatedAt: pointer.generatedAt,

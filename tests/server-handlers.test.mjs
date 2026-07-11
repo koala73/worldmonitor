@@ -293,12 +293,11 @@ describe('getSimulationOutcome handler', () => {
       'Type guard should verify theaterCount is a number');
   });
 
-  it('returns found:true with all pointer fields on success', () => {
+  it('returns found:true without exposing the internal outcome storage key', () => {
     assert.match(src, /found:\s*true/,
       'Success path should return found: true');
-    // Must propagate all pointer fields
-    assert.match(src, /outcomeKey:\s*pointer\.outcomeKey/,
-      'Success path should include outcomeKey from pointer');
+    assert.doesNotMatch(src, /outcomeKey:\s*pointer\.outcomeKey/,
+      'Public response must not include outcomeKey from pointer');
     assert.match(src, /theaterCount:\s*pointer\.theaterCount/,
       'Success path should include theaterCount from pointer');
   });

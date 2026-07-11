@@ -6860,7 +6860,7 @@ paths:
                                 "found": true
                                 "generatedAt": 1717200000000
                                 "note": "example"
-                                "pkgKey": "example"
+                                "runId": "example-id"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_forecast_v1_GetSimulationPackageResponse'
                 "400":
@@ -26077,8 +26077,6 @@ components:
                     type: boolean
                 runId:
                     type: string
-                pkgKey:
-                    type: string
                 schemaVersion:
                     type: string
                 theaterCount:
@@ -26119,8 +26117,6 @@ components:
                 found:
                     type: boolean
                 runId:
-                    type: string
-                outcomeKey:
                     type: string
                 schemaVersion:
                     type: string

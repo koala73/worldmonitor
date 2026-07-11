@@ -2,6 +2,9 @@
 echo "Checking for local Vercel env dumps..."
 node scripts/check-local-secret-dumps.mjs || exit 1
 
+echo "Checking Vite-prefixed environment variables..."
+node scripts/check-vite-env-secrets.mjs || exit 1
+
 export npm_config_cache="${npm_config_cache:-/tmp/worldmonitor-npm-cache}"
 
 # Ensure dependencies are installed (worktrees start with no node_modules)

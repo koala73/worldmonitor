@@ -15,7 +15,8 @@ message GetSimulationPackageRequest {
 message GetSimulationPackageResponse {
   bool found = 1;
   string run_id = 2;
-  string pkg_key = 3;
+  reserved 3;
+  reserved "pkg_key";
   string schema_version = 4;
   int32 theater_count = 5;
   // Unix timestamp in milliseconds (from Date.now()). Warning: Values > 2^53 may lose precision in JavaScript.

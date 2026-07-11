@@ -20,7 +20,7 @@ import {
   completeStandaloneIdempotency,
   getIdempotencyKey,
 } from './_idempotency.js';
-import { blockedNotificationWebhookUrlReason } from './_notification-webhook-ssrf';
+import { assertNotificationWebhookRegistrationUrlSafe } from './_notification-webhook-ssrf';
 import { validateBearerToken } from '../server/auth-session';
 import { getEntitlements } from '../server/_shared/entitlement-check';
 
@@ -281,9 +281,11 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         if (!channelType) return finish(json({ error: 'channelType required' }, 400, corsHeaders));
 
         if (channelType === 'webhook' && webhookEnvelope) {
-          const blockedReason = blockedNotificationWebhookUrlReason(webhookEnvelope);
-          if (blockedReason) {
-            return finish(json({ error: blockedReason }, 400, corsHeaders));
+          try {
+            await assertNotificationWebhookRegistrationUrlSafe(webhookEnvelope);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : 'Webhook URL is not allowed';
+            return finish(json({ error: message }, 400, corsHeaders));
           }
         }
 

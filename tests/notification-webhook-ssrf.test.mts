@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import {
+  assertNotificationWebhookRegistrationUrlSafe,
   blockedNotificationWebhookUrlReason,
   isBlockedNotificationResolvedAddress,
 } from '../api/_notification-webhook-ssrf';
@@ -131,6 +132,31 @@ describe('notification webhook SSRF guard', () => {
       );
       assert.deepEqual(result.resolvedAddresses, ['93.184.216.34']);
     });
+  });
+
+  test('registration rejects DNS-resolved private or mixed answers before persisting the webhook', async () => {
+    await assert.rejects(
+      () => assertNotificationWebhookRegistrationUrlSafe(
+        'https://webhook.example.test/hook',
+        async () => ['169.254.169.254'],
+      ),
+      /private\/local address/,
+    );
+    await assert.rejects(
+      () => assertNotificationWebhookRegistrationUrlSafe(
+        'https://webhook.example.test/hook',
+        async () => ['93.184.216.34', '10.0.0.1'],
+      ),
+      /private\/local address/,
+    );
+    await assert.doesNotReject(() => assertNotificationWebhookRegistrationUrlSafe(
+      'https://webhook.example.test/hook',
+      async () => ['93.184.216.34'],
+    ));
+    await assert.doesNotReject(() => assertNotificationWebhookRegistrationUrlSafe(
+      'https://93.184.216.34/hook',
+      async () => { throw new Error('public IP literals must not require DNS'); },
+    ));
   });
 
   test('realtime and digest arbitrary webhook senders use pinned delivery helper', () => {
