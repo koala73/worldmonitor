@@ -2,6 +2,8 @@ import type { AppContext, AppModule } from '@/app/app-context';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { enqueuePanelCall } from '@/app/pending-panel-data';
 import { markLcpDebug } from '@/utils/lcp-debug';
+import { runHydrationTier, type HydrationTask } from '@/app/hydration-scheduler';
+import { yieldToMain } from '@/utils/after-paint';
 import { getSignalAggregator, type SignalAggregator } from '@/app/lazy-services';
 import { getMilitaryVesselsModule, isVesselRuntimeStoppedError } from '@/services/military-vessels-lazy';
 import type { NewsItem, MapLayers, SocialUnrestEvent, MilitaryFlight } from '@/types';
@@ -239,11 +241,6 @@ export interface DataLoaderCallbacks {
   refreshOpenCountryBrief: () => void;
 }
 
-type HydrationTask = {
-  name: string;
-  task: () => Promise<void>;
-};
-
 type HydrationTier = 1 | 2 | 3 | 4;
 type DailyMarketBriefModule = typeof import('@/services/daily-market-brief');
 type RssModule = Pick<typeof import('@/services/rss'), 'fetchCategoryFeeds' | 'getFeedFailures'>;
@@ -424,27 +421,17 @@ export class DataLoaderManager implements AppModule {
     performance.mark(label);
   }
 
-  private async yieldHydrationFrame(): Promise<void> {
-    if (typeof window === 'undefined') return;
-    await new Promise<void>(resolve => {
-      const idle = window.requestIdleCallback as ((cb: IdleRequestCallback, opts?: IdleRequestOptions) => number) | undefined;
-      if (idle) {
-        idle(() => resolve(), { timeout: 250 });
-        return;
-      }
-      window.setTimeout(resolve, 16);
-    });
-  }
-
   private async runHydrationTasks(tasks: HydrationTask[], forceAll: boolean): Promise<void> {
     const prioritized = tasks
       .map((task, order) => ({ ...task, order, tier: this.getHydrationTier(task.name) }))
       .sort((a, b) => a.tier - b.tier || a.order - b.order);
 
-    const maxConcurrency = forceAll ? 6 : 3;
+    // On the mobile profile, starting several panel loaders in the same task
+    // lets their dynamic-import evaluation and synchronous render work merge
+    // into one long task. Keep desktop concurrency, but give the browser a
+    // scheduling boundary between every mobile panel in a tier. (#5165)
+    const maxConcurrency = this.ctx.isMobile ? 1 : (forceAll ? 6 : 3);
     const failures: Array<{ name: string; reason: unknown }> = [];
-    let cursor = 0;
-
     this.markHydration(`wm:hydration:${forceAll ? 'force' : 'viewport'}:start`);
 
     for (const tier of HYDRATION_TIERS) {
@@ -452,21 +439,14 @@ export class DataLoaderManager implements AppModule {
       if (tierTasks.length === 0) continue;
 
       this.markHydration(`wm:hydration:tier-${tier}:start`);
-      cursor = 0;
-      while (cursor < tierTasks.length) {
-        const batch = tierTasks.slice(cursor, cursor + maxConcurrency);
-        const results = await Promise.allSettled(batch.map(item => item.task()));
-        results.forEach((result, idx) => {
-          if (result.status === 'rejected') {
-            failures.push({ name: batch[idx]?.name ?? 'unknown', reason: result.reason });
-          }
-        });
-
-        cursor += batch.length;
-        if (cursor < tierTasks.length) await this.yieldHydrationFrame();
-      }
+      await runHydrationTier({
+        tasks: tierTasks,
+        maxConcurrency,
+        yieldToMain,
+        onFailure: (name, reason) => failures.push({ name, reason }),
+      });
       this.markHydration(`wm:hydration:tier-${tier}:end`);
-      if (tier < 4 && prioritized.some(task => task.tier > tier)) await this.yieldHydrationFrame();
+      if (tier < 4 && prioritized.some(task => task.tier > tier)) await yieldToMain();
     }
 
     this.markHydration(`wm:hydration:${forceAll ? 'force' : 'viewport'}:end`);
