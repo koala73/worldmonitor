@@ -270,8 +270,22 @@ describe('#4580 boot skeleton <-> app footprint parity', () => {
     // reproduced 3/3 for the mobile-map-collapsed cohort).
     assert.match(
       panelLayout,
-      /const mapStartsCollapsed = this\.ctx\.isMobile && localStorage\.getItem\('mobile-map-collapsed'\) === 'true';/,
-      'renderLayout must read the collapse pref before building the shell template',
+      /const mapStartsCollapsed = this\.ctx\.isMobile && PanelLayoutManager\.isMobileMapCollapsedPreferred\(\);/,
+      'renderLayout must read the collapse pref (via the guarded helper) before building the shell template',
+    );
+    // #5205 review P1: this read runs BEFORE the shell installs — a bare
+    // localStorage access throws under blocked storage (SecurityError) and
+    // would strand users on the boot skeleton. The helper must route through
+    // the try/catch-guarded loadFromStorage with an expanded default.
+    assert.match(
+      panelLayout,
+      /private static isMobileMapCollapsedPreferred\(\): boolean \{\s*return loadFromStorage<boolean>\('mobile-map-collapsed', false\) === true;/,
+      'the collapse-pref read must use guarded loadFromStorage, defaulting to expanded',
+    );
+    assert.doesNotMatch(
+      panelLayout,
+      /localStorage\.getItem\('mobile-map-collapsed'\)/,
+      'no bare localStorage read of the collapse pref may remain (boot-critical path)',
     );
     assert.match(
       panelLayout,

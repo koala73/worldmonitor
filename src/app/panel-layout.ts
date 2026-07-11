@@ -21,7 +21,7 @@ import type { TheaterPostureSummary } from '@/services/military-surge';
 import type { NewsPanel } from '@/components/NewsPanel';
 import type { AviationCommandBar } from '@/components/AviationCommandBar';
 import { MobilePanelNav } from '@/components/MobilePanelNav';
-import { debounce, saveToStorage } from '@/utils';
+import { debounce, loadFromStorage, saveToStorage } from '@/utils';
 import { escapeHtml } from '@/utils/sanitize';
 import {
   FEEDS,
@@ -671,6 +671,15 @@ export class PanelLayoutManager implements AppModule {
     }
   }
 
+  /** #5159/#5205 review: storage access can throw (blocked cookies, sandboxed
+   *  iframe) and this runs BEFORE the shell installs — an uncaught throw would
+   *  strand users on the boot skeleton. loadFromStorage is try/catch-guarded;
+   *  default is expanded. Wire format stays 'true'/'false' (JSON booleans),
+   *  identical to the previous String(isCollapsed) writes. */
+  private static isMobileMapCollapsedPreferred(): boolean {
+    return loadFromStorage<boolean>('mobile-map-collapsed', false) === true;
+  }
+
   async renderLayout(): Promise<void> {
     const isGlobeMode = getStoredMapModePreference() === 'globe';
     // #5159: the collapsed-map cohort's #mapSection must be CREATED with
@@ -681,7 +690,7 @@ export class PanelLayoutManager implements AppModule {
     // Seeding the class here makes the runtime collapsed rule apply from the
     // section's first frame instead of ~150ms later via setupMobileMapToggle
     // (which shoved #panelsGrid up 698px, field CLS ~0.62 for this cohort).
-    const mapStartsCollapsed = this.ctx.isMobile && localStorage.getItem('mobile-map-collapsed') === 'true';
+    const mapStartsCollapsed = this.ctx.isMobile && PanelLayoutManager.isMobileMapCollapsedPreferred();
     const bootShellFootprint = import.meta.env.DEV ? captureBootShellFootprint(this.ctx.container) : null;
 
     markLcpDebug('wm:layout:render-start');
@@ -1173,8 +1182,7 @@ export class PanelLayoutManager implements AppModule {
     const headerLeft = mapSection?.querySelector('.panel-header-left');
     if (!mapSection || !headerLeft) return;
 
-    const stored = localStorage.getItem('mobile-map-collapsed');
-    const collapsed = stored === 'true';
+    const collapsed = PanelLayoutManager.isMobileMapCollapsedPreferred();
     if (collapsed) mapSection.classList.add('collapsed');
 
     const btn = document.createElement('button');
@@ -1186,7 +1194,7 @@ export class PanelLayoutManager implements AppModule {
     btn.addEventListener('click', () => {
       const isCollapsed = mapSection.classList.toggle('collapsed');
       this.updateMobileMapCollapseBtn(isCollapsed);
-      localStorage.setItem('mobile-map-collapsed', String(isCollapsed));
+      saveToStorage('mobile-map-collapsed', isCollapsed);
       if (!isCollapsed) window.dispatchEvent(new Event('resize'));
     });
   }
@@ -1201,7 +1209,7 @@ export class PanelLayoutManager implements AppModule {
     if (mapSection.classList.contains('hidden')) return;
     if (mapSection.classList.contains('collapsed')) {
       mapSection.classList.remove('collapsed');
-      localStorage.setItem('mobile-map-collapsed', 'false');
+      saveToStorage('mobile-map-collapsed', false);
       this.updateMobileMapCollapseBtn(false);
       window.dispatchEvent(new Event('resize'));
     }
