@@ -7,6 +7,7 @@ import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
 
 let bannerEl: HTMLElement | null = null;
+let dismissedThisSession = false;
 // Cached at first showProBanner() call (App.ts always calls it once at init,
 // regardless of premium state — the early-returns inside decide whether to
 // actually mount). Holding the container reference here lets the entitlement
@@ -30,25 +31,42 @@ function setReservation(active: boolean): void {
 }
 
 function isDismissed(): boolean {
-  localStorage.removeItem(LEGACY_DISMISS_KEY);
-  const ts = localStorage.getItem(DISMISS_KEY);
-  if (!ts) return false;
-  if (Date.now() - Number(ts) > DISMISS_MS) {
-    localStorage.removeItem(DISMISS_KEY);
+  if (dismissedThisSession) return true;
+
+  try {
+    localStorage.removeItem(LEGACY_DISMISS_KEY);
+  } catch {
+    // Legacy cleanup must not hide a valid current dismissal record.
+  }
+
+  try {
+    const ts = localStorage.getItem(DISMISS_KEY);
+    if (!ts) return false;
+    if (Date.now() - Number(ts) > DISMISS_MS) {
+      localStorage.removeItem(DISMISS_KEY);
+      return false;
+    }
+    return true;
+  } catch {
+    // Storage is optional; without persistence, show the banner this session.
     return false;
   }
-  return true;
 }
 
 function dismiss(): void {
   if (!bannerEl) return;
+  dismissedThisSession = true;
   bannerEl.classList.add('pro-banner-out');
   setTimeout(() => {
     bannerEl?.remove();
     bannerEl = null;
     setReservation(false);
   }, 300);
-  localStorage.setItem(DISMISS_KEY, String(Date.now()));
+  try {
+    localStorage.setItem(DISMISS_KEY, String(Date.now()));
+  } catch {
+    // The in-memory dismissal still applies for the current page.
+  }
 }
 
 export function showProBanner(container: HTMLElement): void {

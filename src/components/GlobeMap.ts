@@ -73,7 +73,6 @@ const SAT_COUNTRY_COLORS: Record<string, string> = { CN: '#ff2020', RU: '#ff8800
 const SAT_TYPE_EMOJI: Record<string, string> = { sar: '\u{1F4E1}', optical: '\u{1F4F7}', military: '\u{1F396}', sigint: '\u{1F4FB}' };
 const SAT_TYPE_LABEL: Record<string, string> = { sar: 'SAR Imaging', optical: 'Optical Imaging', military: 'Military', sigint: 'SIGINT' };
 const SAT_OPERATOR_NAME: Record<string, string> = { CN: 'China', RU: 'Russia', US: 'United States', EU: 'ESA / EU', KR: 'South Korea', IN: 'India', TR: 'Turkey', OTHER: 'Other' };
-
 // ─── Marker discriminated union ─────────────────────────────────────────────
 interface BaseMarker {
   _kind: string;
@@ -545,7 +544,13 @@ export class GlobeMap {
   private satelliteFootprintMarkers: SatFootprintMarker[] = [];
   private imagerySceneMarkers: ImagerySceneMarker[] = [];
   private webcamMarkers: (WebcamMarkerData | WebcamClusterData)[] = [];
-  private webcamMarkerMode: string = localStorage.getItem('wm-webcam-marker-mode') || 'icon';
+  private webcamMarkerMode: string = (() => {
+    try {
+      return localStorage.getItem('wm-webcam-marker-mode') || 'icon';
+    } catch {
+      return 'icon';
+    }
+  })();
   private imageryFootprintPolygons: GlobePolygon[] = [];
   private lastImageryCenter: { lat: number; lon: number } | null = null;
   private imageryFetchTimer: ReturnType<typeof setTimeout> | null = null;

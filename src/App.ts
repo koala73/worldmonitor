@@ -626,11 +626,28 @@ export class App {
     // Panels that must survive variant switches: desktop config, user-created widgets, MCP panels.
     const isDynamicPanel = (k: string) => !ALL_PANELS[k] && (k === 'runtime-config' || k.startsWith('cw-') || k.startsWith('mcp-'));
 
-    // Check if variant changed - reset all settings to variant defaults
-    const storedVariant = localStorage.getItem('worldmonitor-variant');
     const currentVariant = SITE_VARIANT;
-    console.log(`[App] Variant check: stored="${storedVariant}", current="${currentVariant}"`);
-    if (storedVariant !== currentVariant) {
+    let storedVariant: string | null = null;
+    let storageAvailable = true;
+    try {
+      storedVariant = localStorage.getItem('worldmonitor-variant');
+      const probeKey = 'wm-storage-capability-probe';
+      localStorage.setItem(probeKey, '1');
+      localStorage.removeItem(probeKey);
+    } catch {
+      storageAvailable = false;
+    }
+
+    // Blocked storage is a supported no-persistence mode. Seed the same
+    // defaults as a first visit and skip migrations that only mutate storage.
+    if (!storageAvailable) {
+      mapLayers = normalizeExclusiveChoropleths(
+        sanitizeLayersForVariant({ ...defaultLayers }, currentVariant as MapVariant), null,
+      );
+      panelSettings = { ...DEFAULT_PANELS };
+    } else if (storedVariant !== currentVariant) {
+      // Variant changed - reset all settings to variant defaults.
+      console.log(`[App] Variant check: stored="${storedVariant}", current="${currentVariant}"`);
       // Variant changed — seed new variant's panels, disable panels not in the new variant
       console.log('[App] Variant changed - seeding new defaults, disabling cross-variant panels');
       localStorage.setItem('worldmonitor-variant', currentVariant);
@@ -792,44 +809,46 @@ export class App {
       }
     }
 
-    // One-time migration: prune removed panel keys from stored settings and order
-    const PANEL_PRUNE_KEY = 'worldmonitor-panel-prune-v1';
-    if (!localStorage.getItem(PANEL_PRUNE_KEY)) {
-      const validKeys = new Set(Object.keys(ALL_PANELS));
-      let pruned = false;
-      for (const key of Object.keys(panelSettings)) {
-        if (!validKeys.has(key) && key !== 'runtime-config') {
-          delete panelSettings[key];
-          pruned = true;
+    if (storageAvailable) {
+      // One-time migration: prune removed panel keys from stored settings and order
+      const PANEL_PRUNE_KEY = 'worldmonitor-panel-prune-v1';
+      if (!localStorage.getItem(PANEL_PRUNE_KEY)) {
+        const validKeys = new Set(Object.keys(ALL_PANELS));
+        let pruned = false;
+        for (const key of Object.keys(panelSettings)) {
+          if (!validKeys.has(key) && key !== 'runtime-config') {
+            delete panelSettings[key];
+            pruned = true;
+          }
         }
+        if (pruned) saveToStorage(STORAGE_KEYS.panels, panelSettings);
+        for (const orderKey of [PANEL_ORDER_KEY, PANEL_ORDER_KEY + '-bottom-set', PANEL_ORDER_KEY + '-bottom']) {
+          try {
+            const raw = localStorage.getItem(orderKey);
+            if (!raw) continue;
+            const arr = JSON.parse(raw);
+            if (!Array.isArray(arr)) continue;
+            const filtered = arr.filter((k: string) => validKeys.has(k));
+            if (filtered.length !== arr.length) localStorage.setItem(orderKey, JSON.stringify(filtered));
+          } catch { localStorage.removeItem(orderKey); }
+        }
+        localStorage.setItem(PANEL_PRUNE_KEY, 'done');
       }
-      if (pruned) saveToStorage(STORAGE_KEYS.panels, panelSettings);
-      for (const orderKey of [PANEL_ORDER_KEY, PANEL_ORDER_KEY + '-bottom-set', PANEL_ORDER_KEY + '-bottom']) {
-        try {
-          const raw = localStorage.getItem(orderKey);
-          if (!raw) continue;
-          const arr = JSON.parse(raw);
-          if (!Array.isArray(arr)) continue;
-          const filtered = arr.filter((k: string) => validKeys.has(k));
-          if (filtered.length !== arr.length) localStorage.setItem(orderKey, JSON.stringify(filtered));
-        } catch { localStorage.removeItem(orderKey); }
-      }
-      localStorage.setItem(PANEL_PRUNE_KEY, 'done');
-    }
 
-    // One-time migration: clear stale panel ordering and sizing state
-    const LAYOUT_RESET_MIGRATION_KEY = 'worldmonitor-layout-reset-v2.5';
-    if (!localStorage.getItem(LAYOUT_RESET_MIGRATION_KEY)) {
-      const hadSavedOrder = !!localStorage.getItem(PANEL_ORDER_KEY);
-      const hadSavedSpans = !!localStorage.getItem(PANEL_SPANS_KEY);
-      if (hadSavedOrder || hadSavedSpans) {
-        localStorage.removeItem(PANEL_ORDER_KEY);
-        localStorage.removeItem(PANEL_ORDER_KEY + '-bottom');
-        localStorage.removeItem(PANEL_ORDER_KEY + '-bottom-set');
-        clearPanelSpans();
-        console.log('[App] Applied layout reset migration (v2.5): cleared panel order/spans');
+      // One-time migration: clear stale panel ordering and sizing state
+      const LAYOUT_RESET_MIGRATION_KEY = 'worldmonitor-layout-reset-v2.5';
+      if (!localStorage.getItem(LAYOUT_RESET_MIGRATION_KEY)) {
+        const hadSavedOrder = !!localStorage.getItem(PANEL_ORDER_KEY);
+        const hadSavedSpans = !!localStorage.getItem(PANEL_SPANS_KEY);
+        if (hadSavedOrder || hadSavedSpans) {
+          localStorage.removeItem(PANEL_ORDER_KEY);
+          localStorage.removeItem(PANEL_ORDER_KEY + '-bottom');
+          localStorage.removeItem(PANEL_ORDER_KEY + '-bottom-set');
+          clearPanelSpans();
+          console.log('[App] Applied layout reset migration (v2.5): cleared panel order/spans');
+        }
+        localStorage.setItem(LAYOUT_RESET_MIGRATION_KEY, 'done');
       }
-      localStorage.setItem(LAYOUT_RESET_MIGRATION_KEY, 'done');
     }
 
     // Desktop key management panel must always remain accessible in Tauri.
@@ -856,7 +875,7 @@ export class App {
       mapLayers.cyberThreats = false;
     }
     // One-time migration: reduce default-enabled sources (full variant only)
-    if (currentVariant === 'full') {
+    if (currentVariant === 'full' && storageAvailable) {
       const baseKey = 'worldmonitor-sources-reduction-v3';
       if (!localStorage.getItem(baseKey)) {
         const defaultDisabled = computeDefaultDisabledSources();
@@ -1689,13 +1708,17 @@ export class App {
     // already short-circuited pro users.
     let panelSettings = loadFromStorage<Record<string, PanelConfig>>(STORAGE_KEYS.panels, {});
     let panelsChanged = false;
-    if (!localStorage.getItem(FREE_MAP_PANEL_ACCESS_KEY)) {
-      const restoredPanels = restoreFreeMapPanelAccess(panelSettings);
-      if (panelSettings.map?.enabled !== restoredPanels.map?.enabled) {
-        panelSettings = restoredPanels;
-        panelsChanged = true;
+    try {
+      if (!localStorage.getItem(FREE_MAP_PANEL_ACCESS_KEY)) {
+        const restoredPanels = restoreFreeMapPanelAccess(panelSettings);
+        if (panelSettings.map?.enabled !== restoredPanels.map?.enabled) {
+          panelSettings = restoredPanels;
+          panelsChanged = true;
+        }
+        localStorage.setItem(FREE_MAP_PANEL_ACCESS_KEY, 'done');
       }
-      localStorage.setItem(FREE_MAP_PANEL_ACCESS_KEY, 'done');
+    } catch {
+      // Persistence-only migration; blocked storage already uses defaults.
     }
     const clampedPanels = enforceFreePanelLimit(panelSettings, false);
     for (const key of Object.keys(panelSettings)) {

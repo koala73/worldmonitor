@@ -9,14 +9,16 @@ import { devices, expect, test } from '@playwright/test';
 // frame from document start: for the seeded collapsed cohort, NO frame may
 // show an attached #mapSection without .collapsed.
 //
-// NOTE (PR #5205 review P1 follow-up): the blocked-storage variant of this
-// contract (boot must complete with throwing localStorage) is NOT testable
-// yet — an unrelated module-level bare localStorage access crashes boot
-// before the shell installs (pre-existing; tracked separately). Add that
-// scenario here once boot is storage-block resilient.
-
 const { defaultBrowserType, ...mobileDevice } = devices['iPhone 14 Pro Max'];
 void defaultBrowserType;
+
+async function expectDashboardBooted(page: import('@playwright/test').Page): Promise<void> {
+  await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true', { timeout: 45_000 });
+  await expect(page.locator('#mapSection')).toBeVisible({ timeout: 45_000 });
+  await expect(page.locator('#panelsGrid')).toBeVisible({ timeout: 45_000 });
+  await expect(page.locator('#panelsGrid > .panel[data-panel]:not(.hidden)').first()).toBeVisible({ timeout: 45_000 });
+  await expect(page.locator('#mapSection')).not.toHaveClass(/collapsed/);
+}
 
 declare global {
   interface Window {
@@ -63,5 +65,52 @@ test.describe('collapsed-map cohort first paint (#5159)', () => {
       uncollapsed,
       `#mapSection was observable WITHOUT .collapsed for the seeded cohort (pre-#5205 bug: expanded-then-snap, CLS 0.617): ${JSON.stringify(uncollapsed)}`,
     ).toEqual([]);
+  });
+
+  test('dashboard boots with defaults when localStorage access is blocked (#5209)', async ({ page }) => {
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(`${error.name}: ${error.message}`));
+
+    await page.addInitScript(() => {
+      Object.defineProperty(window, 'localStorage', {
+        configurable: true,
+        get() {
+          throw new DOMException('storage blocked', 'SecurityError');
+        },
+      });
+    });
+
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+
+    await expectDashboardBooted(page);
+    expect(pageErrors).toEqual([]);
+  });
+
+  test('dashboard boots with defaults when localStorage is read-only (#5209)', async ({ page }) => {
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(`${error.name}: ${error.message}`));
+
+    await page.addInitScript(() => {
+      const storage = window.localStorage;
+      Object.defineProperties(storage, {
+        setItem: {
+          configurable: true,
+          value() {
+            throw new DOMException('storage is read-only', 'QuotaExceededError');
+          },
+        },
+        removeItem: {
+          configurable: true,
+          value() {
+            throw new DOMException('storage is read-only', 'QuotaExceededError');
+          },
+        },
+      });
+    });
+
+    await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
+
+    await expectDashboardBooted(page);
+    expect(pageErrors).toEqual([]);
   });
 });

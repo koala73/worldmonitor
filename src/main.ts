@@ -416,7 +416,12 @@ requestAnimationFrame(() => {
 });
 
 // Clear stale settings-open flag (survives ungraceful shutdown)
-localStorage.removeItem('wm-settings-open');
+try {
+  localStorage.removeItem('wm-settings-open');
+} catch {
+  // Storage may be unavailable (blocked cookies, sandboxed iframe). The flag is
+  // only a convenience hint, so boot must continue with the in-memory default.
+}
 
 // Standalone windows: ?settings=1 = panel display settings, ?live-channels=1 = channel management
 // Both need i18n initialized so t() does not return undefined.

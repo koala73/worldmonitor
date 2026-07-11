@@ -2677,8 +2677,8 @@ export class PanelLayoutManager implements AppModule {
 
     const allOrder = this.buildUnifiedOrder(sidebarIds, bottomIds);
     this.resolvedPanelOrder = allOrder;
-    localStorage.setItem(this.ctx.PANEL_ORDER_KEY, JSON.stringify(allOrder));
-    localStorage.setItem(this.ctx.PANEL_ORDER_KEY + '-bottom-set', JSON.stringify(Array.from(this.bottomSetMemory)));
+    saveToStorage(this.ctx.PANEL_ORDER_KEY, allOrder);
+    saveToStorage(this.ctx.PANEL_ORDER_KEY + '-bottom-set', Array.from(this.bottomSetMemory));
   }
 
   private buildUnifiedOrder(sidebarIds: string[], bottomIds: string[]): string[] {
