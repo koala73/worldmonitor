@@ -28,10 +28,16 @@ describe('map overlay counter-scale var write gate (#5080 slice 2)', () => {
       /const overlayVarZoom = zoom\.toFixed\(4\);\s*if \(this\.lastOverlayVarZoom !== overlayVarZoom\) \{\s*this\.lastOverlayVarZoom = overlayVarZoom;[\s\S]{0,400}?setProperty\('--label-scale'[\s\S]{0,200}?setProperty\('--marker-scale'[\s\S]{0,200}?setProperty\('--zoom'/,
       'the counter-scale vars must be written only when zoom (4dp) changed — a same-value write restyles every marker on every render pass',
     );
-    assert.doesNotMatch(
-      mapSrc.replace(/const overlayVarZoom[\s\S]{0,700}?setProperty\('--zoom'[^;]*;\s*\}/, ''),
-      /setProperty\('--marker-scale'/,
-      'no other call site may write --marker-scale outside the zoom-change gate',
+    const outsideGate = mapSrc.replace(
+      /const overlayVarZoom[\s\S]{0,700}?setProperty\('--zoom'[^;]*;\s*\}/,
+      '',
     );
+    for (const varName of ['--label-scale', '--marker-scale', '--zoom']) {
+      assert.doesNotMatch(
+        outsideGate,
+        new RegExp(`setProperty\\('${varName}'`),
+        `no other call site may write ${varName} outside the zoom-change gate — an ungated write restyles every var() consumer on every render pass`,
+      );
+    }
   });
 });
