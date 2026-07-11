@@ -23,11 +23,11 @@ export const SITE_VARIANT: string = (() => {
   if (h.startsWith('commodity.')) return 'commodity';
   if (h.startsWith('energy.')) return 'energy';
 
-  if (h === 'localhost' || h === '127.0.0.1') {
-    const stored = localStorage.getItem('worldmonitor-variant');
-    if (stored === 'tech' || stored === 'full' || stored === 'finance' || stored === 'happy' || stored === 'commodity' || stored === 'energy') return stored;
-    return buildVariant;
-  }
-
-  return 'full';
+  // Any other hostname is a self-hosted deployment (LAN IPs, AALICE:OpenEYE
+  // iframe) — no variant subdomains exist there, so honor the same stored
+  // override the Tauri/localhost paths use. Hosted worldmonitor.app domains
+  // never reach this branch: their subdomains matched above.
+  const stored = localStorage.getItem('worldmonitor-variant');
+  if (stored === 'tech' || stored === 'full' || stored === 'finance' || stored === 'happy' || stored === 'commodity' || stored === 'energy') return stored;
+  return buildVariant;
 })();

@@ -1,0 +1,153 @@
+/*
+ * AALICE:OpenEYE layout layer (fork-side, AMD-003).
+ *
+ * Sits on top of the WOPR skin (palette/typography) and adds the OpenEYE
+ * workspace structure: the desktop tab bar, per-tab visibility gates, and
+ * header/footer declutter. Like wopr-theme.css it is unlayered on purpose —
+ * unlayered rules beat @layer base, so no !important is needed except where
+ * we must outrank other unlayered inline-style toggles.
+ *
+ * Visibility contract (composes, never fights):
+ *   .hidden            — settings-driven (Panel.toggle)
+ *   .mobile-cat-hidden — MobilePanelNav, ≤768px only
+ *   .oe-tab-hidden     — OpenEyeTabBar, ≥769px only
+ * A panel renders only when every class agrees it should.
+ */
+
+/* ---- Tab bar ---------------------------------------------------------- */
+
+.openeye-tabs {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  padding: 0 10px;
+  background: var(--bg-secondary, #090c0a);
+  border-bottom: 1px solid var(--border, rgba(197, 209, 200, 0.14));
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+/* Eye glyph — the one piece of pure identity. Amber iris, phosphor lids. */
+.openeye-tabs::before {
+  content: '◉';
+  align-self: center;
+  color: var(--accent, #ffb454);
+  font-size: 13px;
+  padding: 0 2px 0 4px;
+  text-shadow: 0 0 10px rgba(255, 180, 84, 0.55);
+}
+
+.openeye-tabs-row {
+  display: flex;
+  flex: 1 1 auto;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.openeye-tabs-row::-webkit-scrollbar {
+  display: none;
+}
+
+.openeye-tab {
+  appearance: none;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin: 0;
+  padding: 9px 13px 7px;
+  color: var(--text-dim, #7d8a81);
+  font: inherit;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease;
+}
+.openeye-tab:hover {
+  color: var(--text, #c5d1c8);
+  background: var(--overlay-light, rgba(197, 209, 200, 0.05));
+}
+.openeye-tab.active {
+  color: var(--accent, #ffb454);
+  border-bottom-color: var(--accent, #ffb454);
+  text-shadow: 0 0 9px rgba(255, 180, 84, 0.45);
+}
+
+.openeye-monitors {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding-right: 4px;
+}
+.openeye-monitors-label {
+  font-size: 9px;
+  letter-spacing: 0.22em;
+  color: var(--text-muted, #5f6b64);
+}
+.openeye-monitor-select {
+  background: var(--input-bg, #0c100e);
+  color: var(--text, #c5d1c8);
+  border: 1px solid var(--border, rgba(197, 209, 200, 0.14));
+  border-radius: 2px;
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 6px;
+  cursor: pointer;
+}
+.openeye-monitor-select:hover {
+  border-color: var(--border-strong, rgba(197, 209, 200, 0.4));
+}
+
+/* ---- Per-tab visibility gates (desktop only) --------------------------- */
+
+@media (min-width: 769px) {
+  /* Outranks the grid/flex display rules on .panel regardless of order. */
+  .oe-tab-hidden {
+    display: none !important;
+  }
+
+  /* Off the WORLD tab the map yields the whole viewport to the section. */
+  .main-content[data-oe-tab]:not([data-oe-tab='world']) .map-section,
+  .main-content[data-oe-tab]:not([data-oe-tab='world']) .map-width-resize-handle {
+    display: none !important;
+  }
+}
+
+@media (min-width: 1600px) {
+  /* Mirror of .main-content.map-hidden for the tab-driven case. */
+  .main-content[data-oe-tab]:not([data-oe-tab='world']) {
+    grid-template-columns: 1fr;
+  }
+  .main-content[data-oe-tab]:not([data-oe-tab='world']) .panels-grid {
+    grid-column: 1;
+  }
+}
+
+@media (max-width: 768px) {
+  /* Mobile keeps upstream's MobilePanelNav; the tab bar is desktop-only. */
+  .openeye-tabs {
+    display: none;
+  }
+}
+
+/* ---- Declutter: retire upstream chrome the tab bar replaces ------------ */
+
+.header .variant-switcher,
+.header .credit-link,
+.header .github-link,
+.copy-link-btn {
+  /* copy-link-btn also covers embed-link-btn (shared class) */
+  display: none !important;
+}
+
+.mobile-menu a[href^='https://x.com'],
+.mobile-menu-footer-links {
+  display: none !important;
+}
+
+/* Community/Discord call-to-action toast — upstream growth chrome. */
+.community-widget {
+  display: none !important;
+}

@@ -4,6 +4,10 @@ import './styles/happy-theme.css';
 // overrides win the cascade over @layer base (main.css). Palette only; no
 // layout changes. See src/styles/wopr-theme.css (AMD-003, fork-side).
 import './styles/wopr-theme.css';
+// AALICE:OpenEYE workspace layer — tab bar, per-tab visibility gates, and
+// header/footer declutter on top of the WOPR palette. See
+// src/styles/openeye.css and docs/plans/2026-07-11-openeye-redesign.md.
+import './styles/openeye.css';
 import * as Sentry from '@sentry/browser';
 import { inject } from '@vercel/analytics';
 import { App } from './App';
