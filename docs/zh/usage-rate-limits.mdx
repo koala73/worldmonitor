@@ -1,0 +1,78 @@
+---
+title: "速率限制"
+description: "WorldMonitor API 接口中按端点、按密钥、按 IP 的速率限制。"
+---
+
+速率限制在 Vercel Edge 运行时上通过 Upstash Redis 滑动窗口计数器进行强制执行。除特别说明外，所有限制均为**60 秒滑动窗口**。
+
+## 默认公开 API 速率限制
+
+| 范围 | 限制 | 窗口 |
+|-------|-------|--------|
+| 按 IP（默认） | **600 次请求** | 60 秒 |
+
+适用于所有没有更严格覆盖规则的 `/api/*` 路由。由 `api/_rate-limit.js` / `api/_ip-rate-limit.js` 实现。
+
+## MCP 服务器
+
+| 范围 | 限制 | 窗口 |
+|-------|-------|--------|
+| 按 API 密钥（MCP 工具） | **60 次请求** | 60 秒 |
+
+详见 [MCP](/zh/mcp-server)。
+
+## OAuth 端点
+
+| 端点 | 限制 | 窗口 | 范围 |
+|----------|-------|--------|-------|
+| `POST /api/oauth/register` | 5 | 60 秒 | 按 IP |
+| `GET /api/oauth/authorize` | 10 | 60 秒 | 按 IP |
+| `POST /api/oauth/token` | 10 | 60 秒 | 按 IP |
+
+与 `api/oauth/{register,authorize,token}.js` 中的实现保持一致。
+
+在 OAuth 流程中超过以上任一限制都会导致 MCP 客户端连接握手失败 — 请等待 60 秒后重试。
+
+## 写入端点
+
+| 端点 | 限制 | 窗口 | 范围 |
+|----------|-------|--------|-------|
+| `POST /api/scenario/v1/run-scenario` | 10 | 60 秒 | 按 IP |
+| `POST /api/scenario/v1/run-scenario`（队列深度） | 100 在处理中 | — | 全局 |
+| `POST /api/leads/v1/register-interest` | 5 | 60 分钟 | 按 IP + Turnstile（桌面来源需要签名 HMAC 绕过） |
+| `POST /api/leads/v1/submit-contact` | 3 | 60 分钟 | 按 IP + Turnstile |
+
+其他写入端点（`/api/brief/share-url`、`/api/notification-channels`、`/api/create-checkout`、`/api/customer-portal` 等）回退使用上面的默认按 IP 限制。
+
+## Bootstrap / 健康
+
+这些端点缓存激进，除默认限制外无自定义限制：
+
+- `GET /api/bootstrap` — `s-maxage=30`
+- `GET /api/health` — `s-maxage=15`
+- `GET /api/version` — `s-maxage=60`
+
+## 被限制时的响应
+
+HTTP 429，响应如下：
+
+```
+Retry-After: <seconds>
+Content-Type: application/json
+
+{ "error": "Rate limit exceeded" }
+```
+
+## 重试指南
+
+- 遵守 `Retry-After`。不要在 429 上反复猛击。
+- 对于批量任务请控制节奏：默认按 IP 600 次/分钟，约为你提供 ~10 次/秒的余量。
+- 对于 MCP，60 次/分钟对对话式使用绰绰有余，但对脚本化批量抓取较为紧张 — 批量任务请优先使用 REST API。
+- 莫名其妙的 429 通常意味着你正在共享一个出口 IP（公司代理、CI runner）。如需提升按密钥的限制，请联系支持团队。
+
+## 硬上限（非软限制）
+
+- Webhook 回调 URL 必须为 HTTPS（localhost 除外）。
+- `api/download` 文件大小限制约为每请求 50 MB。
+- 当待处理队列超过 **100** 时，`POST /api/scenario/v1/run-scenario` 会全局暂停接收新作业 — 返回 429。
+- `api/v2/shipping/webhooks` 的 TTL 为 **30 天** — 需重新注册以延长。

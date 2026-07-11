@@ -1,0 +1,48 @@
+---
+title: "Premium 股票分析"
+description: "按代码的按需股票分析，附带买入/持有/卖出信号、价格目标、分析师共识、评级升降、内部人交易和价格迷你图。"
+---
+
+**Premium Stock Analysis** 面板（内部 id `stock-analysis`）是仪表盘的按代码深度分析：一次一个分析，包含信号的结构化综合（买入/持有/卖出）、价格目标、分析师共识、近期评级升降、内部人交易和价格迷你图。由 Market service 的分析师/价格目标/内部人 RPC 支持。
+
+## 面板显示内容
+
+每个所选代码一张分析卡片。每张卡片渲染：
+
+- **代码 + 价格** — 当前价格，带货币格式化（`formatPrice()`），今日百分比变化（`formatChange()`）。
+- **信号徽章** — `Buy` / `Hold` / `Watch` / `Sell`，通过 `stockSignalClass()` 分类为看涨/中性/看跌视觉桶。
+- **论点要点** — 通过 `list()` 渲染为消毒后的 `<ul>`。
+- **分析师共识** — 来自生成的 Market service 客户端的 `AnalystConsensus` 形状。
+- **价格目标** — 来自 `PriceTarget[]` 的低/平均/高。
+- **近期评级升降** — `UpgradeDowngrade[]` 列表。
+- **内部人交易** — 来自 `InsiderTransactionsResult` 的文件，通过 `setInsiderData(symbol, data)` 单独附加。
+- **迷你图** — 通过 `@/utils/sparkline` 渲染的价格历史。
+- **历史** — 同一代码的先前分析保存在 `StockAnalysisHistory` 中。
+
+面板 id 为 `stock-analysis`；规范组件为 `src/components/StockAnalysisPanel.ts`。标题 "Premium Stock Analysis" 来自面板自身的 `super({...})` 调用。
+
+## 如何访问
+
+- **Cmd+K**：输入 *stock* 或代码符号。
+- **按变体的可用性**：在 **full/geopolitical** 和 **finance** 变体中注册并默认启用 — 两者均锁定。在 tech、commodity 或 happy 变体中不存在。来源：`src/config/panels.ts:49` 和 `:422` 处 `FULL_PANELS` 和 `FINANCE_PANELS` 中的 `'stock-analysis'` 条目。
+
+## 数据来源
+
+所有字段来自生成的 `MarketServiceClient`：
+
+- `analyst_consensus`、`price_targets`、`upgrade_downgrades` — Market service RPC。
+- 内部人交易 — `@/services/insider-transactions` 包装器，通过 `setInsiderData()` 绑定。
+- 价格 + 迷你图 — Market service 报价/序列 RPC。
+
+## 刷新频率
+
+分析按需进行；无轮询。面板在 `StockAnalysisHistory` 中缓存先前分析，因此重新打开一个代码会立即显示上次分析，同时获取新的分析。
+
+## 层级与门控
+
+**PRO（硬锁定）。** 两个变体注册中的 `premium: 'locked'`。当存在有效的 `WORLDMONITOR_API_KEY` **或** `isPro` 为 true 时，`isPanelEntitled` 解锁该面板（`stock-analysis` 在 `src/config/panels.ts:973` 的 `apiKeyPanels` 允许列表中）。
+
+## API 参考
+
+- [Markets service](/api/MarketService.openapi.yaml) — 分析师共识、价格目标、评级升降、报价 RPC。
+- 相关：[Premium 回测](/zh/panels/stock-backtest) — 同一数据集的回测面。

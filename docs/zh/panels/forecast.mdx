@@ -1,0 +1,51 @@
+---
+title: "AI 预测"
+description: "AI 生成的地缘政治预测 — 跨冲突、市场、供应链、政治、军事、网络和基础设施领域的概率校准预测，可按宏观区域筛选。"
+---
+
+**AI Forecasts** 面板（内部 id `forecast`）展示 WorldMonitor 预测管道产出的概率校准预测。每条预测是一个结构化的预言，包含概率、领域分类、时间范围和支持信号；面板提供两个筛选维度（领域和宏观区域），让你聚焦于关心的切片。
+
+## 面板显示内容
+
+一个活动预测列表，通过两行标签筛选：
+
+### 领域筛选
+
+`All` / `Conflict` / `Market` / `Supply Chain` / `Political` / `Military` / `Cyber` / `Infrastructure`
+
+### 区域筛选
+
+`All Regions` / `MENA` / `East Asia` / `Europe` / `South Asia` / `Africa` / `LatAm` / `N. America`
+
+区域无法归类（未知或 `global`）的预测仅出现在 **All Regions** 下。面板的最低概率阈值为 `0.1`（10%）— 低于该阈值的预测不在面板视图中显示。
+
+每条预测行显示预测文本、概率、领域（颜色编码）、时间范围和精简的来源溯源链。
+
+面板 id 为 `forecast`；规范组件为 `src/components/ForecastPanel.ts`。
+
+## 如何访问
+
+- **Cmd+K**：输入 *forecast*、*ai forecast* 或 *predictions ai*。命令面板标签为 "AI Forecasts"，尽管内部面板 id 为 `forecast`。
+- **按变体的可用性**：仅在 **full/geopolitical** 变体中注册并默认启用。在 tech、finance、commodity 或 happy 变体中不存在。来源：`src/config/panels.ts` 中的 `FULL_PANELS`。
+
+## 数据来源
+
+主要 RPC：`GET /api/forecast/v1/get-forecasts`。面板还消费两个相邻 RPC 以支持更丰富的深度模拟界面：
+
+- `GET /api/forecast/v1/get-simulation-package` — 最近的模拟输入包。
+- `GET /api/forecast/v1/get-simulation-outcome` — 最近的模拟结果。
+
+预测管道作为 Railway cron 运行，拉取最近的冲突、情报、市场和供应链信号，通过预测模型运行，并将聚合结果写入 Redis 中的 `forecast:predictions:v2`。宏观区域分类来自 `shared/forecast-macro-regions.js`。
+
+## 刷新频率
+
+种子器大约每小时运行一次。该键在 `api/health.js` 中允许最多 **90 分钟**（`maxStaleMin: 90`）后健康面才会升级告警。
+
+## 层级与门控
+
+在 **Web** 端，AI Forecasts 目前处于 **试用** 阶段 — 对所有人免费，包括未认证读者。在 **桌面** 端，同一面板在 `src/config/panels.ts` 中以 `premium: 'locked'` 发布，因此在那里是门控的。此拆分反映了产品当前的试用定位；预计 Web 端门控将随时间收紧。
+
+## API 参考
+
+- [Forecast service](/api/ForecastService.openapi.yaml) — 涵盖 `get-forecasts`、`get-simulation-outcome` 和 `get-simulation-package`。
+- 关于**程序化预测生成**（在缓存的 cron 输出之外生成新概率），请参见 [MCP `generate_forecasts` 工具](/zh/mcp-server#ai-intelligence-live-llm)。

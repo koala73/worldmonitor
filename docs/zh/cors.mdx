@@ -1,0 +1,91 @@
+---
+title: "CORS"
+description: "跨域请求保护的工作原理以及添加新 API 端点时的注意事项。"
+---
+
+---
+
+## 概述
+
+每个 API 响应都必须包含 CORS 头，以便浏览器允许前端读取响应。系统存在两套并行实现——一套用于独立 edge functions，一套用于 sebuf gateway——但它们共享相同的源允许列表和逻辑。
+
+| 文件 | 使用方 | 方法 |
+| --- | --- | --- |
+| `api/_cors.js` | 独立 edge functions（`api/*.js`） | `GET, OPTIONS`（可配置） |
+| `server/cors.ts` | Sebuf gateway（`api/[domain]/v1/[rpc].ts`） | `GET, POST, OPTIONS` |
+
+## 允许的源
+
+两个文件使用相同的正则表达式模式：
+
+| 模式 | 匹配 |
+| --- | --- |
+| `(*.)?worldmonitor.app` | 生产环境 + 子域名（`tech.`、`finance.` 等） |
+| `worldmonitor-*-elie-*.vercel.app` | Vercel 预览部署 |
+| `localhost:*` / `127.0.0.1:*` | 本地开发 |
+| `tauri.localhost:*` / `*.tauri.localhost:*` | 桌面应用（Tauri v2） |
+| `tauri://localhost` / `asset://localhost` | 桌面应用（Tauri v2 资源协议） |
+
+来自任何其他源的请求会收到 403 响应。**没有** `Origin` 头的请求（服务器到服务器、curl）会被放行——`isDisallowedOrigin` 检查仅在源存在且不在允许列表中时才拦截。
+
+## 为新 Edge Function 添加 CORS
+
+`api/` 中的每个独立 edge function 都必须手动处理 CORS。请遵循以下模式：
+
+```js
+import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+
+export default async function handler(req) {
+  const cors = getCorsHeaders(req);
+
+  // 1. Block disallowed origins
+  if (isDisallowedOrigin(req)) {
+    return new Response(JSON.stringify({ error: 'Forbidden' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json', ...cors },
+    });
+  }
+
+  // 2. Handle preflight
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: cors });
+  }
+
+  // 3. Spread cors into every response
+  return new Response(JSON.stringify(data), {
+    headers: { 'Content-Type': 'application/json', ...cors },
+  });
+}
+```
+
+关键规则：
+
+1. **每个响应**都必须在其头中包含 `...cors`——包括错误、限流 429 和 500 响应。
+2. **预检**（`OPTIONS`）必须返回 `204`，带 CORS 头且无响应体。
+3. **`getCorsHeaders(req, methods)`** ——如果端点支持 `GET, OPTIONS` 之外的方法（例如 `'POST, OPTIONS'`），请传入自定义方法字符串。
+
+## Sebuf Gateway（RPC 端点）
+
+在 `.proto` 文件中定义的 RPC 端点**不需要**手动处理 CORS。gateway（`server/gateway.ts`）会自动为每个请求调用 `server/cors.ts` 中的 `getCorsHeaders()` 和 `isDisallowedOrigin()`。CORS 头会被注入到所有响应中，包括错误边界。
+
+## 添加新的允许源
+
+要允许新的源：
+
+1. 在 `api/_cors.js` 和 `server/cors.ts` **两个文件**中的 `ALLOWED_ORIGIN_PATTERNS` 里添加正则表达式模式。
+2. 更新 `api/_cors.test.mjs` 中的测试。
+3. 如果该源是新的生产子域名，还需将其添加到 Cloudflare R2 CORS 规则中（参见仓库根目录中 MEMORY.md 关于 R2 CORS 的说明）。
+
+## 允许的请求头
+
+两套实现都允许以下请求头：
+
+- `Content-Type`
+- `Authorization`
+- `X-WorldMonitor-Key`（用于桌面/第三方访问的 API key）。密钥管理详情请参见 [API Key 门控](/zh/api-key-deployment)。
+
+要允许额外的头，请更新两个文件中的 `Access-Control-Allow-Headers`。
+
+## Railway Relay CORS
+
+Railway relay（`scripts/ais-relay.cjs`）有自己的 CORS 处理，使用 `ALLOW_VERCEL_PREVIEW_ORIGINS` 环境变量。详情请参见 [RELAY_PARAMETERS.md](/zh/relay-parameters)。

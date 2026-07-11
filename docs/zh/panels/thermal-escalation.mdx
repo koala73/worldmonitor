@@ -1,0 +1,49 @@
+---
+title: "热力升级"
+description: "FIRMS/VIIRS 热力异常聚类，附基线比较、持续性追踪和冲突邻近标记 — 用于发现可能表示冲突、工业中断或升级的异常热力活动。"
+---
+
+**Thermal Escalation** 面板将原始热力卫星探测（热点）转化为聚类事件，并根据每个聚类的局部基线和上下文进行评估。它回答两个问题：哪里热力活动**异常**，以及哪些聚类**具有战略相关性** — 邻近冲突、关键基础设施或其他高信号上下文。
+
+## 面板显示内容
+
+一个热力聚类卡片列表，包含：
+
+- 每个聚类的**状态标签**：`normal`、`elevated`、`spike` 或 `persistent`。
+- **基线比较** — 当前探测密度与聚类基线的差异。
+- **持续性追踪** — 在连续窗口中重复出现的聚类被标记为 `persistent`。
+- **冲突邻近标记** — 邻近活跃冲突事件的聚类。
+- **高相关性标记** — 邻近关键基础设施或其他战略上下文的聚类。
+
+顶部摘要栏计数：总聚类数、升高、峰值、持续、冲突邻近和高相关性。
+
+**行交互**：
+- 点击聚类卡片将地图跳转到该聚类的坐标。
+
+面板 id 为 `thermal-escalation`；规范组件为 `src/components/ThermalEscalationPanel.ts`。
+
+## 如何访问
+
+- **Cmd+K**：输入 *thermal* 或 *escalation*。
+- **按变体的可用性**：仅在 **full/geopolitical** 变体中注册并默认启用。在 tech、finance、commodity 或 happy 变体中不存在。来源：`src/config/panels.ts` 中的 `FULL_PANELS`。
+
+## 数据来源
+
+根据面板内的信息工具提示，Thermal Escalation 的种子来自：
+
+- **FIRMS / VIIRS** — NASA 的 Fire Information for Resource Management System 和 Visible Infrared Imaging Radiometer Suite 热力异常数据源。
+
+单个 RPC 支持该面板：`GET /api/thermal/v1/list-thermal-escalations`。后端种子器对原始探测进行聚类、与基线比较、应用持续性和邻近逻辑，将结果写入 Redis 中的 `thermal:escalation:v1`。
+
+## 刷新频率
+
+种子器以约 **2 小时** 的 cron 运行。该键在 `api/health.js` 中允许最多 **6 小时**（`maxStaleMin: 360`）— 标称间隔的 3 倍 — 后健康面才会升级。较长的宽限窗口适应 FIRMS 刷新周期和聚类步骤的运行时间。
+
+## 层级与门控
+
+Thermal Escalation 是**免费的**。`src/config/panels.ts` 中无 `premium` 标志；RPC 是公开的。
+
+## API 参考
+
+- [Thermal service](/api/ThermalService.openapi.yaml) — `list-thermal-escalations`。
+- 相关：[自然灾害/野火](/zh/natural-disasters) 了解为该聚类提供数据的原始探测地图图层。

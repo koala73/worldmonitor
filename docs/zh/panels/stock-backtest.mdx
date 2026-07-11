@@ -1,0 +1,36 @@
+---
+title: "Premium 回测"
+description: "之前分析过的代码的历史回报和百分比变化可视化，让你了解面板过去的信号表现如何。"
+---
+
+**Premium Backtesting** 面板（内部 id `stock-backtest`）渲染一个紧凑的回测结果列表 — 每个代码一行 — 展示先前的 Stock Analysis 信号在其时间范围内的表现如何。它是 [Premium 股票分析](/zh/panels/stock-analysis) 时间点视图的纵向补充。
+
+## 面板显示内容
+
+一个 `StockBacktestResult[]` 行列表 — 每个代码一行。每行显示代码和通过 `fmtPct()` 格式化的百分比变化/回报数值，正值以看涨色调（`#8df0b2`）渲染，负值以看跌色调（`#ff8c8c`）通过 `tone()` 渲染。
+
+来源状态被跟踪 — `'live' | 'cached'` — 使面板的数据徽章显示渲染来自新鲜获取还是缓存快照。空结果集通过 `showRetrying()` 渲染 "No stock backtests available yet." 重试状态。
+
+面板 id 为 `stock-backtest`；规范组件为 `src/components/StockBacktestPanel.ts`。标题 "Premium Backtesting" 来自面板的 `super({...})` 调用。
+
+## 如何访问
+
+- **Cmd+K**：输入 *backtest* 或 *backtesting*。
+- **按变体的可用性**：在 **full/geopolitical** 和 **finance** 变体中注册并默认启用 — 两者均锁定。在 tech、commodity 或 happy 变体中不存在。来源：`FULL_PANELS`（`:50`）和 `FINANCE_PANELS` 中的 `'stock-backtest'` 条目。
+
+## 数据来源
+
+回测由 Railway cron 产出，将先前的分析信号对历史价格序列重放。结果存储在 premium-stock store 中，通过 `@/services/stock-backtest` 获取。面板通过 `renderBacktests(items, source)` 消费 `StockBacktestResult[]`。
+
+## 刷新频率
+
+回测结果随 premium-stock cron 更新。新鲜度由数据徽章（`live` vs `cached`）标示。
+
+## 层级与门控
+
+**PRO（硬锁定）。** 面板构造函数和变体注册中的 `premium: 'locked'`。当存在有效的 `WORLDMONITOR_API_KEY` **或** `isPro` 为 true 时，`isPanelEntitled` 解锁该面板（`stock-backtest` 在 `src/config/panels.ts:973` 的 `apiKeyPanels` 允许列表中）。
+
+## API 参考
+
+- [Markets service](/api/MarketService.openapi.yaml) — 底层价格序列和股票分析 RPC。
+- 相关：[Premium 股票分析](/zh/panels/stock-analysis) — 为回测输入提供种子的按代码深度分析。

@@ -1,0 +1,163 @@
+---
+title: "平台端点"
+description: "引导、健康检查、版本管理、缓存清理和用户偏好设置 —— 每个 WorldMonitor 客户端都会调用的基础设施端点。"
+---
+
+这些端点不属于任何领域 RPC 服务 —— 它们位于 API 表面的根层,负责处理平台层面的关注点。
+
+## 引导
+
+### `GET /api/bootstrap`
+
+为仪表盘提供单次往返的初始数据加载。在单次响应中返回**所有已注册引导的 Redis 缓存键**,从其 seed 封装中解包出来。
+
+- **认证**:浏览器 origin 或 `X-WorldMonitor-Key`
+- **缓存**:`Cache-Control: public, max-age=30, s-maxage=30`
+- **结构**:`{ earthquakes, outages, marketQuotes, commodityQuotes, imfMacro, bisPolicy, ... }` —— 约 40+ 个顶层字段,每个对应一个已 seed 领域的解包负载。
+
+在页面初始加载时使用此端点,可避免 40 个并行的 RPC 调用。
+
+## 版本
+
+### `GET /api/version`
+
+返回 `koala73/worldmonitor` 的最新 **GitHub Release**。桌面应用使用此端点检测是否有更新的发布版本,并提示用户升级。它**不是**当前部署的 Vercel commit。
+
+```json
+{
+  "version": "2.6.7",
+  "tag": "v2.6.7",
+  "url": "https://github.com/koala73/worldmonitor/releases/tag/v2.6.7",
+  "prerelease": false
+}
+```
+
+缓存策略为 `public, s-maxage=300, stale-while-revalidate=60, stale-if-error=3600`。当 GitHub API 不可达时,返回 `502 { "error": "upstream" }` 或 `502 { "error": "fetch_failed" }`。
+
+## 缓存清理
+
+### `POST /api/cache-purge`
+
+内部端点。通过显式列表或 glob 模式使 Redis 缓存键失效。
+
+- **认证**:`Authorization: Bearer $RELAY_SHARED_SECRET`(使用 timing-safe 比较)。其他任何凭据返回 `401`。
+- **请求体**(`keys` / `patterns` 至少需要其一):
+  ```json
+  {
+    "keys":     ["market:stocks-bootstrap:v1", "infra:outages:v1"],
+    "patterns": ["market:sectors:*"],
+    "dryRun":   false
+  }
+  ```
+- **限制**:最多 20 个显式键,最多 3 个模式(每个必须以 `*` 结尾,裸 `*` 会被拒绝),总共最多 200 次删除,每个模式最多 5 次 SCAN 迭代。
+- **安全**:前缀为 `rl:` / `__` 的键始终被跳过;会匹配 `military:bases:*`、`conflict:iran-events:*`、`conflict:ucdp-events:*`(持久 seed)的模式会被跳过。
+- **非生产环境**:在 preview / development 部署上,键会自动加上 `{env}:{git-sha}:` 前缀,因此清理操作不会影响生产数据。
+- **响应**:
+  ```json
+  { "matched": 4, "deleted": 4, "keys": ["..."], "dryRun": false, "truncated": false }
+  ```
+
+## 健康检查
+
+### `GET /api/health`
+
+针对**所有已注册 seed 键**的聚合新鲜度报告。返回 `HEALTHY`、`WARNING`(过期)或 `CRIT`(缺失 / 为空且 `emptyDataIsFailure` 为真)。
+
+通过 UptimeRobot / Better Stack 进行监控 —— 任何非 `HEALTHY` 状态都应触发告警。
+
+```json
+{
+  "status": "HEALTHY",
+  "checkedAt": "2026-04-19T12:00:00Z",
+  "keys": {
+    "market:stocks-bootstrap:v1": { "status": "HEALTHY", "fetchedAt": "...", "recordCount": 78 },
+    "seismology:earthquakes:v1":  { "status": "WARNING", "staleMin": 12 }
+  }
+}
+```
+
+### `GET /api/seed-health`
+
+针对由 Railway cron 驱动的 seeder 的并行注册表,具有各自的节奏阈值。与 `/api/health` 不同 —— 当节奏变化时两者都必须更新。参见[健康检查端点](/zh/health-endpoints)。
+
+### `POST /api/seed-contract-probe`
+
+内部探针,用于验证每个 seed 生产者的封装结构是否与其消费者匹配。如果任何消费者读取了生产者不再输出的字段,则返回违规。
+
+## 用户偏好设置
+
+### `GET /api/user-prefs`
+
+### `POST /api/user-prefs`
+
+每用户仪表盘偏好设置(布局、开关、过滤器)。需要 Clerk bearer 凭据。由 Convex 提供支持。
+
+```json
+{
+  "layout": "classic",
+  "enabledLayers": ["conflict", "aviation", "maritime"],
+  "defaultCountry": "US"
+}
+```
+
+## API key 缓存失效
+
+### `POST /api/invalidate-user-api-key-cache`
+
+在订阅变更后(Dodo webhook → Convex → 此端点)使用户的权益(entitlement)缓存失效。内部端点 —— 需要 `RELAY_SHARED_SECRET`。
+
+## 地理工具
+
+### `GET /api/geo?iso2=US`
+
+返回国家元数据:质心、bbox、首都、ISO 代码。
+
+### `GET /api/reverse-geocode?lat=40.7&lon=-74.0`
+
+使用内置坐标数据集将 lat/lon 反向地理编码为最近的国家 + 城市。
+
+### `GET /api/data/city-coords?q=Tokyo`
+
+城市名 → 坐标查询。
+
+## 实用工具
+
+### `GET /api/download?platform=<id>&variant=<id>`
+
+重定向到 `koala73/worldmonitor` 最新 GitHub release 中匹配的资产。成功时返回 `302` 指向资产 URL,任何失败时(未知平台、无匹配、GitHub 错误)返回 `302` 指向 [releases/latest](https://github.com/koala73/worldmonitor/releases/latest)。
+
+**`platform`**(必填,精确字符串):
+
+| 值 | 匹配 |
+|-------|---------|
+| `windows-exe` | `*_x64-setup.exe` |
+| `windows-msi` | `*_x64_en-US.msi` |
+| `macos-arm64` | `*_aarch64.dmg` |
+| `macos-x64` | `*_x64.dmg`(排除 `*setup*`) |
+| `linux-appimage` | `*_amd64.AppImage` |
+| `linux-appimage-arm64` | `*_aarch64.AppImage` |
+
+**`variant`**(可选):
+
+| 值 | 将资产名称过滤为 |
+|-------|-----------------------|
+| `full` / `world` | `worldmonitor` |
+| `tech` | `techmonitor` |
+| `finance` | `financemonitor` |
+
+将 302 缓存 5 分钟(`s-maxage=300`、`stale-while-revalidate=60`、`stale-if-error=600`)。
+
+### `POST /api/leads/v1/submit-contact`
+
+公开的企业联系表单。通过 Turnstile 验证,按 IP 限流。属于 `LeadsService` 的一部分。
+
+### `POST /api/leads/v1/register-interest`
+
+捕获邮箱用于 Pro 候补名单注册。写入 Convex 并发送确认邮件。属于 `LeadsService` 的一部分。
+
+浏览器调用方必须通过 Turnstile。使用 `source: "desktop-settings"` 的桌面调用方仅当请求使用共享的桌面密钥进行身份验证时,才能绕过 Turnstile:
+
+- `X-WorldMonitor-Desktop-Timestamp`:Unix epoch 毫秒,与服务器时间相差不超过 5 分钟。
+- `X-WorldMonitor-Desktop-Signature`:`sha256=<hex HMAC-SHA256>`。
+
+HMAC 输入为 `<timestamp>\n<canonical JSON>`,其中 canonical JSON 按顺序包含 `email`、`source`、`appVersion`、`referredBy`、`website` 和 `turnstileToken`。在桌面 sidecar 和云 API 上都要配置 `WM_DESKTOP_SHARED_SECRET`。在滚动推出期间,`WM_DESKTOP_AUTH_ALLOW_LEGACY=true` 仅在云 API 未配置 `WM_DESKTOP_SHARED_SECRET` 时接受未签名的旧版桌面请求。一旦设置了云密钥,桌面请求在缺少有效签名时将拒绝访问(fail closed),且仍受更严格的桌面限流约束。

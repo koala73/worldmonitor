@@ -1,0 +1,48 @@
+---
+title: "贸易政策"
+description: "六标签页贸易政策面，涵盖限制措施、关税趋势、贸易流、非关税壁垒、美国海关收入和双边 Comtrade 流。"
+---
+
+**Trade Policy** 面板（内部 id `trade-policy`）是仪表盘上获取实时贸易政策上下文的首选面 — 什么正在被限制、关税走向如何、流如何变化、存在哪些壁垒，以及美国海关收入如何作为关税传导的实时信号。
+
+## 面板显示内容
+
+一个数据密集型面板（`defaultRowSpan: 2`）的六个标签页：
+
+| 标签页 id | 显示内容 |
+|---|---|
+| `restrictions` | 活跃贸易限制 — 挂载时的默认标签页。 |
+| `tariffs` | 关税趋势（`TariffDataPoint[]`）和 `EffectiveTariffRate` 序列。 |
+| `flows` | 双边贸易流 — `GetTradeFlowsResponse`。 |
+| `barriers` | 非关税壁垒 — `GetTradeBarriersResponse`。 |
+| `revenue` | 美国财政部海关收入 — 月度数据，附 FYTD 同比比较和峰值高亮。 |
+| `comtrade` | 完整 Comtrade 双边流搜索 — `ListComtradeFlowsResponse`。 |
+
+`TabId` 是联合类型 `'restrictions' | 'tariffs' | 'flows' | 'barriers' | 'revenue' | 'comtrade'`（`src/components/TradePolicyPanel.ts:17`）。
+
+面板 id 为 `trade-policy`；规范组件为 `src/components/TradePolicyPanel.ts`。标题从 i18n 解析（`panels.tradePolicy`）。
+
+## 如何访问
+
+- **Cmd+K**：输入 *trade*、*tariff* 或 *customs*。
+- **按变体的可用性**：在 **full/geopolitical**（`priority: 1`）、**finance**（`priority: 1`）和 **commodity**（`priority: 1`）变体中注册并默认启用。在 tech 或 happy 变体中不存在。来源：`src/config/panels.ts` 中 `FULL_PANELS`、`FINANCE_PANELS`、`COMMODITY_PANELS` 的 `'trade-policy'` 条目。
+
+## 数据来源
+
+来自 `@/services/trade` 的六种响应形状，均由 Trade service 支持：
+
+- `GetTradeRestrictionsResponse` / `GetTariffTrendsResponse` / `GetTradeFlowsResponse` / `GetTradeBarriersResponse` / `GetCustomsRevenueResponse` / `ListComtradeFlowsResponse`。
+
+`revenue` 标签页的美国财政部数据源特别敏感 — 请参见更新日志中 "US Treasury customs revenue in Trade Policy panel" 条目（`#1663`）。
+
+## 刷新频率
+
+挂载和标签页切换时按标签页获取；无轮询。上游种子器按各数据集的不同频率运行（关税每日，Comtrade 每月）。
+
+## 层级与门控
+
+**免费。** 变体注册中无 `premium` 标志。Trade service RPC 是公开的。
+
+## API 参考
+
+- [Trade service](/api/TradeService.openapi.yaml) — 所有六个标签页支持 RPC 的完整 OpenAPI。

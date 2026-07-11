@@ -1,0 +1,171 @@
+---
+title: "场景 API"
+description: "针对任意国家运行预定义的供应链中断场景，并轮询获取 worker 计算的结果。"
+---
+
+The **scenarios** API 是建立在 WorldMonitor 咽喉点 + 贸易数据集之上的 PRO 专属、作业排队接口。调用方将命名的场景模板加入队列（可选国家），然后轮询 job-id 直到 worker 完成。
+
+<Info>
+本服务由 proto 支持 — 参见 `proto/worldmonitor/scenario/v1/service.proto`。当场景服务被纳入已发布的 OpenAPI 包后，自动生成的参考文档将替换本页。
+</Info>
+
+<Note>
+**旧版 v1 URL 别名** — sebuf 迁移 (#3207) 重命名了三个 v1 端点以与 proto RPC 名称对齐。旧 URL 作为轻量别名保留，以便现有集成继续工作：
+
+| 旧 URL | 规范 URL |
+|---|---|
+| `POST /api/scenario/v1/run` | `POST /api/scenario/v1/run-scenario` |
+| `GET /api/scenario/v1/status` | `GET /api/scenario/v1/get-scenario-status` |
+| `GET /api/scenario/v1/templates` | `GET /api/scenario/v1/list-scenario-templates` |
+
+在新代码中请优先使用规范 URL — 别名将在下一次 v1→v2 中断时废弃（追踪于 [#3282](https://github.com/koala73/worldmonitor/issues/3282)）。
+</Note>
+
+## 列出模板
+
+### `GET /api/scenario/v1/list-scenario-templates`
+
+返回预定义场景模板的目录。缓存 `public, max-age=3600`。
+
+**响应** — 使用已上线的模板之一（`server/worldmonitor/supply-chain/v1/scenario-templates.ts`）的简略示例：
+```json
+{
+  "templates": [
+    {
+      "id": "hormuz-tanker-blockade",
+      "name": "Hormuz Strait Tanker Blockade",
+      "affectedChokepointIds": ["hormuz_strait"],
+      "disruptionPct": 100,
+      "durationDays": 14,
+      "affectedHs2": ["27", "29"],
+      "costShockMultiplier": 2.10
+    }
+  ]
+}
+```
+
+撰写本文时其他已上线的模板包括：`taiwan-strait-full-closure`、`suez-bab-simultaneous`、`panama-drought-50pct`、`russia-baltic-grain-suspension`、`us-tariff-escalation-electronics`。请以实时的 `/list-scenario-templates` 响应作为权威来源 — 该集合会随时间增长。传输中的 `affectedHs2: []` 表示该场景影响所有行业（即注册表中的 `null` 哨兵值，`repeated string` 无法直接承载）。
+
+## 运行场景
+
+### `POST /api/scenario/v1/run-scenario`
+
+将作业加入队列。返回调用方必须轮询的 `jobId`。
+
+- **鉴权**：需要 PRO 权限。可通过以下任一方式授予：(a) 有效的 `X-WorldMonitor-Key`（来自 `WORLDMONITOR_VALID_KEYS` 的环境密钥，或所有者拥有 `apiAccess` 权限的用户专属 `wm_` 前缀密钥），**或** (b) 用户角色为 `pro` 或 Dodo 权限层级 ≥ 1 的 Clerk bearer token。仅凭受信任的浏览器 Origin **不足以**通过鉴权 — `server/_shared/premium-check.ts` 中的 `isCallerPremium()` 仅认可显式凭证。浏览器调用可用，是因为 `premiumFetch()`（`src/services/premium-fetch.ts`）代表调用方注入了上述两种凭证形式之一。
+- **速率限制**：
+  - 每个 IP 每分钟 10 个作业（由网关通过 `server/_shared/rate-limit.ts` 中的 `ENDPOINT_RATE_POLICIES` 强制执行）
+  - 全局队列上限为 100 个进行中的作业；超出部分以 `429` 拒绝
+
+**请求**：
+```json
+{
+  "scenarioId": "hormuz-tanker-blockade",
+  "iso2": "SG"
+}
+```
+
+- `scenarioId` — 来自 `/list-scenario-templates` 的 id。必填。
+- `iso2` — 可选的 ISO-3166-1 alpha-2（大写）。将场景限定于某个国家。空字符串 = 全部范围。
+
+**响应 (`200`)**：
+```json
+{
+  "jobId": "scenario:1713456789012:a1b2c3d4",
+  "status": "pending",
+  "statusUrl": "/api/scenario/v1/get-scenario-status?jobId=scenario%3A1713456789012%3Aa1b2c3d4"
+}
+```
+
+- `statusUrl` — 服务端计算的便捷 URL。不想硬编码状态路径的调用方可直接跟随此 URL（它对 `jobId` 进行了 URL 编码）。
+
+<Warning>
+**线上契约变更 (v1 → v1)** — sebuf 迁移前的端点在成功入队时返回 `202 Accepted`；迁移后的端点返回 `200 OK`。目前 sebuf 的 HTTP 注解不支持逐 RPC 的状态码配置，而为单一状态码变更引入 `/v2` 被认为比中断本身更重。
+
+如果你的集成分支基于 `response.status === 202`，请改为基于响应体结构分支（`response.body.status === "pending"` 表示入队成功）。`statusUrl` 完全保留原样，是可安全依赖的信号。
+</Warning>
+
+**错误**：
+
+| 状态码 | `message` | 原因 |
+|--------|-----------|-------|
+| 400 | `Validation failed` (包含 `scenarioId`) | 缺失或未知的 `scenarioId` |
+| 400 | `Validation failed` (包含 `iso2`) | 格式错误的 `iso2` |
+| 403 | `PRO subscription required` | 非 PRO |
+| 405 | — | 非 `POST` 方法（由 sebuf service-config 强制） |
+| 429 | `Too many requests` | 每 IP 10 次/分钟的网关速率限制 |
+| 429 | `Scenario queue is at capacity, please try again later` | 全局队列 > 100 |
+| 502 | `Failed to enqueue scenario job` | Redis 入队失败 |
+
+## 轮询作业状态
+
+### `GET /api/scenario/v1/get-scenario-status?jobId=<jobId>`
+
+返回 worker 写入的作业当前状态，或在作业仍在队列中时返回合成的 `pending` 桩。
+
+- **鉴权**：同 `/run-scenario`
+- **jobId 格式**：`scenario:{unix-ms}:{8-char-suffix}` — 严格校验以防路径遍历
+
+**状态生命周期**：
+
+| `status` | 何时发生 |
+|---|---|
+| `pending` | 作业已入队但 worker 尚未处理。当无 Redis 记录时由状态处理器合成。 |
+| `processing` | Worker 已取出作业并开始计算。 |
+| `done` | Worker 成功完成；`result` 已填充。 |
+| `failed` | Worker 遇到计算错误；`error` 已填充。 |
+
+**等待中响应 (`200`)**：
+```json
+{ "status": "pending", "error": "" }
+```
+
+**处理中响应 (`200`)**：
+```json
+{ "status": "processing", "error": "" }
+```
+
+**完成响应 (`200`)** — `result` 携带 worker 计算的载荷：
+
+```json
+{
+  "status": "done",
+  "error": "",
+  "result": {
+    "affectedChokepointIds": ["hormuz_strait"],
+    "topImpactCountries": [
+      { "iso2": "JP", "totalImpact": 1500.0, "impactPct": 100 }
+    ],
+    "template": {
+      "name": "hormuz_strait",
+      "disruptionPct": 100,
+      "durationDays": 14,
+      "costShockMultiplier": 2.10
+    }
+  }
+}
+```
+
+**失败响应 (`200`)**：
+
+```json
+{ "status": "failed", "error": "computation_error" }
+```
+
+轮询循环：将 `pending` 和 `processing` 视为非终态；只有 `done` 和 `failed` 是终态。在负载下，pending 和 processing 都可能合理地持续数秒。
+
+**错误**：
+
+| 状态码 | `message` | 原因 |
+|--------|-----------|-------|
+| 400 | `Validation failed` (包含 `jobId`) | 缺失或格式错误的 `jobId` |
+| 403 | `PRO subscription required` | 非 PRO |
+| 405 | — | 非 `GET` 方法（由 sebuf service-config 强制） |
+| 502 | `Failed to fetch job status` | Redis 读取失败 |
+
+## 轮询策略
+
+- 首次轮询：入队后约 1 秒。
+- 后续轮询：指数退避（1s → 2s → 4s，上限 10s）。
+- Worker 通常在 5-30 秒内完成，具体取决于场景复杂度。
+- 如果 2 分钟后仍处于 pending，作业可能已失效 — 请重新入队。

@@ -1,0 +1,397 @@
+---
+title: "AI 情报"
+description: "World Monitor 所使用的 LLM 链、RAG 流水线、威胁分类、推演引擎以及浏览器端 ML。"
+---
+
+## AI 摘要
+
+### AI 摘要链
+
+世界简报由一个 4 层提供商链生成，该链优先使用本地算力，在云端 API 之间逐级回退，并以浏览器端推理作为最后手段：
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                   Summarization Request                        │
+│  (headlines deduplicated by Jaccard similarity > 0.6)          │
+└───────────────────────┬─────────────────────────────────────────┘
+                        │
+                        ▼
+┌─────────────────────────────────┐    timeout/error
+│  Tier 1: Ollama / LM Studio    │──────────────┐
+│  Local endpoint, no cloud       │               │
+│  Auto-discovered model          │               │
+└─────────────────────────────────┘               │
+                                                  ▼
+                                   ┌─────────────────────────────┐    timeout/error
+                                   │  Tier 2: Groq               │──────────────┐
+                                   │  Llama 3.1 8B, temp 0.3     │               │
+                                   │  Fast cloud inference        │               │
+                                   └─────────────────────────────┘               │
+                                                                                   ▼
+                                                                  ┌─────────────────────────────┐    timeout/error
+                                                                  │  Tier 3: OpenRouter          │──────────────┐
+                                                                  │  Multi-model fallback        │               │
+                                                                  └─────────────────────────────┘               │
+                                                                                                                ▼
+                                                                                                 ┌──────────────────────────┐
+                                                                                                 │  Tier 4: Browser T5      │
+                                                                                                 │  Transformers.js (ONNX)  │
+                                                                                                 │  No network required     │
+                                                                                                 └──────────────────────────┘
+```
+
+所有三个 API 层级（Ollama、Groq、OpenRouter）共享同一个处理器工厂（`_summarize-handler.js`），行为完全一致：
+
+- **标题去重** —— 在发送给任何 LLM 之前，标题会使用词重叠相似度进行两两比较。近乎重复的标题（重叠度 > 60%）会被合并，从而将提示词缩减 20–40%，避免 LLM 在重复报道上浪费 token
+- **变体感知提示** —— 系统提示会根据当前激活的仪表盘变体自适应调整。地缘政治摘要强调冲突升级与外交动向；科技摘要聚焦融资轮次与 AI 突破；金融摘要突出市场走势与央行信号
+- **语言感知输出** —— 当 UI 语言为非英语时，提示会指示 LLM 以该语言生成摘要
+- **Redis 去重** —— 摘要使用复合键（`summary:v3:{mode}:{variant}:{lang}:{hash}`）缓存，因此 1,000 名并发用户查看相同标题时只会触发一次 LLM 调用。缓存 TTL 为 24 小时
+- **优雅回退** —— 若某提供商返回 `{fallback: true}`（缺少 API 密钥或端点不可达），该链会静默前进至下一层级。进度回调会更新 UI，显示当前正在尝试哪个提供商
+
+Ollama 层通过 OpenAI 兼容的 `/v1/chat/completions` 端点通信，因此兼容任何实现了此标准的本地推理服务器（Ollama、LM Studio、llama.cpp server、vLLM 等）。
+
+### 国家简报页
+
+在地图上点击任意国家会打开一个整页情报档案 —— 在单屏内综合呈现该国所有情报模块。简报采用双栏布局：
+
+**左栏**：
+
+- **动荡指数** —— 动画 SVG 评分环（0–100），含四个组成分项条（动荡、冲突、安全、信息）、严重度徽章和趋势指示器
+- **情报简报** —— AI 生成的分析（Ollama 本地 / Groq / OpenRouter，取决于已配置的提供商），含内联引用锚点 `[1]`–`[8]`，点击可滚动至对应新闻来源
+- **头条新闻** —— 该国 8 条最相关标题，按威胁等级着色，附带来源与"多久前"元数据
+
+**右栏**：
+
+- **活跃信号** —— 抗议、军机、军舰、互联网中断、地震、人口流动、气候压力、冲突事件，以及该国股指（1 周变化）的实时芯片式指标
+- **7 天时间线** —— D3.js 渲染的事件图表，含 4 条按严重度分色的泳道（抗议、冲突、自然、军事），支持交互式 tooltip 和响应式重排
+- **预测市场** —— 按成交量排名的前 3 个 Polymarket 合约，附带概率条与外部链接
+- **基础设施暴露** —— 距该国质心 600km 半径内的管道、海底光缆、数据中心、军事基地、核设施和港口，按距离排序
+
+**标题相关性过滤**：每个国家都有一张别名映射（例如 `US → ["united states", "american", "washington", "pentagon", "biden", "trump"]`）。标题使用负匹配算法过滤 —— 若另一国家的别名在标题中出现得比目标国家别名更早，该标题会被排除。这能防止交叉污染（例如一篇关于委内瑞拉、提及"Washington sanctions"的标题出现在美国简报中）。
+
+**导出选项**：简报可导出为 JSON（包含所有评分、信号和标题的结构化数据）、CSV（扁平表格格式）或 PNG 图片。打印按钮会调用浏览器原生打印对话框以导出 PDF。
+
+### 本地优先的国家检测
+
+地图点击通过本地几何服务解析为国家，而非依赖网络反向地理编码（Nominatim）。系统加载一个包含约 200 个国家多边形边界的 GeoJSON 文件，并构建带索引的空间查找结构：
+
+1. **包围盒预筛选** —— 每个国家的多边形都包裹在一个包围盒（`[minLon, minLat, maxLon, maxLat]`）内。包围盒之外的点无需多边形相交测试即被拒绝。
+2. **射线投射算法** —— 对于包围盒内的点，从该点沿正 x 轴方向投射一条射线。多边形边的相交次数决定内外状态（奇数次 = 在内）。边界情况已处理：位于线段边界上的点返回 `true`，多边形孔洞会被扣除（位于外环内但同时在孔洞内的点会被排除）。
+3. **MultiPolygon 支持** —— 拥有不连续领土的国家（例如美国的阿拉斯加与夏威夷、印度尼西亚的数千个岛屿）使用 MultiPolygon 几何，每个多边形独立测试。
+
+此方法在浏览器内即可实现亚毫秒级国家检测，无网络延迟。几何数据在应用启动时预加载并按会话缓存。对于 GeoJSON 中未包含的国家（罕见），系统回退至硬编码的矩形包围盒，最终以网络反向地理编码作为最后手段。
+
+## 推演与预测
+
+### AI 推演与预测
+
+推演面板是一款交互式 AI 地缘政治分析工具，基于实时情报数据生成近期时间线预测。
+
+**请求流水线**：
+
+1. 分析师输入自由文本查询（例如"未来 24 小时中东会发生什么？"）以及可选的地理上下文字段
+2. 提交前，`buildNewsContext()` 从实时信息流中拉取最近的 15 条 `NewsItem` 标题，并将它们作为结构化上下文前置（`"Recent News:\n- Headline (Source)"`）—— 确保 LLM 始终具备当前态势感知
+3. 查询被发送至 `deductSituation` RPC 端点，该端点调用 `callLlm()` 并使用提供商回退链（Groq、OpenRouter，或任何通过 `LLM_API_URL`/`LLM_API_KEY`/`LLM_MODEL` 环境变量配置的 OpenAI 兼容端点），系统提示要求其扮演"资深地缘政治情报分析师与预测员"
+4. 温度为 0.3（偏低，以保证分析一致性），最多 1,500 tokens。思维链 `think` 标签会作为纵深防御被剥离
+5. 结果按 `deduct:situation:v1:{hash(query|geoContext)}` 在 Redis 中缓存 1 小时 —— 相同查询直接从缓存返回
+
+**跨面板集成**：任何面板都可派发一个 `wm:deduct-context` 自定义 DOM 事件（携带 `{ query, geoContext, autoSubmit }`），它会预填推演面板并可选地自动提交。这使仪表盘任意位置都能发起情境化预测 —— 点击某战区态势卡上的"分析"可自动触发区域推演。5 秒冷却时间防止快速重复提交。
+
+该面板采用懒加载（`import()`），除非面板被实际访问，否则 DOMPurify 不会进入主包，从而保持 Web 包精简。
+
+## 记忆与分类
+
+### 客户端标题记忆（RAG）
+
+标题记忆系统提供浏览器本地的检索增强生成 —— 一个完全在用户设备上运行的、持久化的新闻标题语义索引。
+
+**摄入流水线**：
+
+```
+RSS Feed Parse → isHeadlineMemoryEnabled()? → ML Worker (Web Worker)
+                                                    │
+                                          ┌─────────┴──────────┐
+                                          │  ONNX Embeddings   │
+                                          │  all-MiniLM-L6-v2  │
+                                          │  384-dim float32   │
+                                          └─────────┬──────────┘
+                                                    │
+                                          ┌─────────┴──────────┐
+                                          │  IndexedDB Store   │
+                                          │  5,000 vector cap  │
+                                          │  LRU by ingestAt   │
+                                          └────────────────────┘
+```
+
+1. 每次 RSS feed 抓取并解析后，若标题记忆已启用且嵌入模型已加载，每条标题的标题、发布日期、来源、URL 与位置标签会被发送至 ML Worker
+2. Worker 对文本做净化处理（剥离控制字符、截断至 200 字符），通过 ONNX 流水线嵌入（`pooling: 'mean', normalize: true`），并按内容哈希去重
+3. 向量通过串行化 promise 队列写入 IndexedDB（防止并发事务冲突）。当超过 5,000 向量上限时，按 `ingestedAt` 最旧的条目会被驱逐
+
+**搜索**：查询使用同一模型嵌入，随后进行一次全游标扫描，对所有存储向量计算余弦相似度。结果按分数排序，上限为 `topK`（1–20），并通过 `minScore`（0–1）过滤。可同时搜索多个查询字符串（最多 5 个），每条记录在所有查询中的最高分用于排序。
+
+**Opt-in 机制**：该设置默认为 `false`（在 localStorage 中存储为 `wm-headline-memory`）。启用时会触发 `mlWorker.init()` → `loadModel('embeddings')`。禁用时会卸载模型，且若无其他 ML 功能活跃，可选择终止整个 Worker。`ai-flow-changed` CustomEvent 将开关变更传播至所有相关组件。
+
+### 威胁分类流水线
+
+每条新闻项都会经过一个三阶段分类流水线：
+
+1. **关键词分类器**（即时，`source: 'keyword'`）—— 对约 120 个威胁关键词进行模式匹配，这些关键词按严重度层级（critical → high → medium → low → info）和 14 个事件类别（conflict、protest、disaster、diplomatic、economic、terrorism、cyber、health、environmental、military、crime、infrastructure、tech、general）组织。关键词使用词边界正则匹配以避免误报（例如 "war" 不会匹配 "award"）。每次匹配返回一个严重度级别、类别与置信度分数。变体专属的关键词集确保科技变体不会在非地缘政治语境下标记 "sanctions"。
+
+2. **浏览器端 ML**（异步，`source: 'ml'`）—— Transformers.js 在浏览器内直接运行 NER、情感分析与主题分类，无需任何服务器依赖。在不发起任何 API 调用的前提下提供第二分类意见。
+
+3. **LLM 分类器**（批处理异步，`source: 'llm'`）—— 标题被收集进批处理队列，通过 sebuf proto 客户端以并行 `classifyEvent` RPC 发出。每个 RPC 调用已配置的 LLM 提供商（温度 0 的 Groq Llama 3.1 8B，或用于本地推理的 Ollama）。结果按标题哈希在 Redis 中缓存（24h TTL）。当发生 500 系错误时，LLM 分类器会自动暂停队列以避免浪费 API 配额，并在指数退避延时后恢复。当 LLM 结果到达时，仅在其置信度更高时才会覆盖关键词结果。
+
+此混合方法意味着 UI 永远不会因等待 AI 而阻塞 —— 用户即时看到关键词结果，ML 与 LLM 精修在数秒内到达，并持久化供所有后续访客使用。每次分类都携带其 `source` 标签（`keyword`、`ml` 或 `llm`），下游消费者可据此加权置信度。
+
+## 警报
+
+### 突发新闻警报流水线
+
+仪表盘监控五个独立的警报来源，并将它们融合为统一的突发新闻流，具备分层去重、冷却和来源质量门控：
+
+| 来源                 | 触发条件                                                       | 示例                                         |
+| -------------------- | -------------------------------------------------------------- | -------------------------------------------- |
+| **RSS 警报**         | 含 `isAlert: true` 且威胁等级为 critical/high 的新闻项         | 路透社快讯：确认遭导弹袭击                       |
+| **关键词激增**       | 趋势关键词超过激增阈值                                          | "nuclear" 在 2 小时内跨 8+ 个 feed 激增        |
+| **热点升级**         | 热点升级分数超过 critical 阈值                                 | 台海紧张度突破 80/100                          |
+| **军事集结**         | 战区态势评估检测到打击包装                                       | 中东同现加油机 + AWACS + 战斗机                 |
+| **OREF 警报**        | 以色列后方司令部发布火箭/导弹来袭警报                           | 以色列北部检测到火箭齐射                       |
+
+**防噪声保障**：
+
+- **按事件去重** —— 每条警报以内容哈希为键；同一事件的重复警报在 30 分钟内被抑制
+- **全局冷却** —— 任何警报触发后，60 秒全局冷却防止快速连发的通知冲击
+- **时效门控** —— 处理时已超过 15 分钟的项目会被静默丢弃，防止陈旧事件在重连后产生警报
+- **来源层级门控** —— Tier 3+ 来源（小众媒体、聚合器）必须具备 LLM 确认的分类（`threat.source !== 'keyword'`）才能触发警报；Tier 1–2 来源绕过此门
+- **用户灵敏度控制** —— 可在 `critical-only`（仅 critical 严重度触发）与 `critical-and-high`（critical 与 high 严重度均触发）之间配置
+
+当警报通过所有门控时，系统会在 `document` 上派发 `wm:breaking-news` CustomEvent，突发新闻横幅消费该事件以在屏幕顶部显示持久通知。可选的浏览器 Notification API 弹窗与提示音作为用户设置提供。点击横幅会滚动至来源警报的 RSS 面板，并应用 1.5 秒闪烁高亮动画。
+
+## 浏览器端 ML
+
+### 浏览器端 ML 流水线
+
+仪表盘通过 Transformers.js 在浏览器内运行完整 ML 流水线，核心情报不依赖任何服务器。为节省内存，该功能在移动设备上自动禁用。
+
+| 能力                        | 模型               | 用途                                              |
+| --------------------------- | ------------------ | ------------------------------------------------- |
+| **文本嵌入**                | sentence-similarity | 新闻标题的语义聚类                                 |
+| **序列分类**                | threat-classifier   | 威胁严重度与类别检测                               |
+| **摘要**                    | T5-small            | Ollama、Groq、OpenRouter 全部不可用时的最后回退     |
+| **命名实体识别**            | NER pipeline        | 国家、组织与领导人抽取                             |
+
+**混合聚类** 结合了快速的 Jaccard 相似度（n-gram 重叠，阈值 0.4）与 ML 精修的语义相似度（余弦相似度，阈值 0.78）。Jaccard 在每次刷新时即时运行；语义精修在 ML Worker 加载后运行，合并文本不同但语义相同的聚类（例如"NATO expands missile shield"与"Alliance deploys new air defense systems"）。
+
+每个聚类的新闻速度会被跟踪 —— 当多个 Tier 1–2 来源在短窗口内汇聚于同一报道时，该聚类会被标记为突发警报，`sourcesPerHour` 作为速度指标。
+
+---
+
+## 基于浏览器的机器学习
+
+为提升离线韧性并降低 API 成本，系统包含基于 ONNX Runtime Web 的浏览器端 ML 能力。
+
+### 可用模型
+
+| 模型 | 任务 | 大小 | 用例 |
+|-------|------|------|----------|
+| **T5-small** | 文本摘要 | ~60MB | 离线简报生成 |
+| **DistilBERT** | 情感分析 | ~67MB | 新闻基调分类 |
+
+### 回退策略
+
+浏览器 ML 作为云端 API 不可用时的最终回退：
+
+```
+User requests summary
+    ↓
+1. Try Groq API (fast, free tier)
+    ↓ (rate limited or error)
+2. Try OpenRouter API (fallback provider)
+    ↓ (unavailable)
+3. Use Browser T5 (offline, always available)
+```
+
+### 懒加载
+
+模型按需加载以最小化初始页面加载：
+
+- 模型仅在首次需要时下载
+- 进度指示器显示下载状态
+- 缓存后模型可从 IndexedDB 即时加载
+
+### Worker 隔离
+
+所有 ML 推理在专用 Web Worker 中运行：
+
+- 主线程在推理期间保持响应
+- 30 秒超时防止挂起
+- 出错时自动清理
+
+### 局限性
+
+相比云端模型，浏览器 ML 有以下约束：
+
+| 方面 | 云端 (Llama 3.3) | 浏览器 (T5) |
+|--------|-------------------|--------------|
+| 上下文窗口 | 128K tokens | 512 tokens |
+| 输出质量 | 高 | 中等 |
+| 推理速度 | 2-3 秒 | 5-10 秒 |
+| 离线支持 | 否 | 是 |
+
+浏览器摘要有意限制在 6 条标题 × 80 字符，以保持在模型约束之内。
+
+---
+
+## AI 洞察面板
+
+洞察面板提供对当前新闻格局的 AI 驱动分析，将原始标题转化为可操作的情报简报。
+
+### 世界简报生成
+
+每 2 分钟（含限流），系统使用多提供商回退链生成一份精炼态势简报：
+
+| 优先级 | 提供商 | 模型 | 延迟 | 用例 |
+|----------|----------|-------|---------|----------|
+| 1 | Groq | Llama 3.3 70B | ~2s | 主提供商（快速推理） |
+| 2 | OpenRouter | Llama 3.3 70B | ~3s | Groq 被限流时的回退 |
+| 3 | Browser | T5 (ONNX) | ~5s | 离线回退（本地 ML） |
+
+**缓存策略**：Redis 服务端缓存防止冗余 API 调用。当相同标题集近期已被摘要时，缓存结果会立即返回。
+
+### 焦点检测
+
+AI 接收关于**焦点**的富化上下文 —— 即同时出现在新闻报道与地图信号中的实体。这支持情报级分析：
+
+```
+[INTELLIGENCE SYNTHESIS]
+FOCAL POINTS (entities across news + signals):
+- IRAN [CRITICAL]: 12 news mentions + 5 map signals (military_flight, protest, internet_outage)
+  KEY: "Iran protests continue..." | SIGNALS: military activity, outage detected
+- TAIWAN [ELEVATED]: 8 news mentions + 3 map signals (military_vessel, military_flight)
+  KEY: "Taiwan tensions rise..." | SIGNALS: naval vessels detected
+```
+
+### 标题评分算法
+
+并非所有新闻同等重要。标题会被评分以识别对简报最具意义的报道：
+
+**加分项**（高权重）：
+
+- 军事关键词：war、invasion、airstrike、missile、deployment、mobilization
+- 暴力指标：killed、casualties、clashes、massacre、crackdown
+- 民间动荡：protest、uprising、coup、riot、martial law
+
+**地缘政治乘数**：
+
+- 热点地区：Iran、Russia、China、Taiwan、Ukraine、North Korea、Gaza
+- 关键行为体：NATO、Pentagon、Kremlin、Hezbollah、Hamas、Wagner
+
+**减分项**（降权）：
+
+- 商业语境：CEO、earnings、stock、revenue、startup、data center
+- 娱乐：celebrity、movie、streaming
+
+这确保军事冲突与人道主义危机优先于常规商业新闻呈现。
+
+### 情感分析
+
+标题按整体情感分布进行分析：
+
+| 情感 | 检测方法 | 显示 |
+|-----------|------------------|---------|
+| **负面** | 危机、冲突、死亡关键词 | 红色百分比 |
+| **正面** | 协议、增长、和平关键词 | 绿色百分比 |
+| **中性** | 两者均未检测到 | 灰色百分比 |
+
+整体情感平衡提供了一个快速判断 —— 新闻周期是趋于升级还是缓和。
+
+### 速度检测
+
+当同一主题出现在多条近期标题中时，快速演进的报道会被标记：
+
+- 标题按共享关键词与实体分组
+- 6 小时内出现 3 次及以上的主题被标记为"高速"
+- 单独显示以突出发展中态势
+
+---
+
+## 焦点检测器
+
+焦点检测器是情报综合层，将新闻实体与地图信号关联以识别驱动当前事件的"主角"。
+
+### 它解决的问题
+
+缺乏综合时，情报流各自为政：
+
+- 新闻 feed 显示 500+ 来源的数千条标题
+- 地图图层独立显示军机、抗议、中断
+- 无法自动看出 IRAN 既出现在新闻中，又有军事活动，还发生了互联网中断
+
+### 工作原理
+
+1. **实体抽取**：使用实体注册表（含别名的 66 个实体）从所有新闻聚类中抽取国家、公司与组织
+
+2. **信号聚合**：收集所有地图信号（军机、抗议、中断、舰船）并按国家分组
+
+3. **交叉引用**：将新闻实体与信号国家匹配
+
+4. **评分与排序**：基于关联强度计算焦点分数
+
+### 焦点评分
+
+```
+FocalScore = NewsScore + SignalScore + CorrelationBonus
+
+NewsScore (0-40):
+  base = min(20, mentionCount × 4)
+  velocity = min(10, newsVelocity × 2)
+  confidence = avgConfidence × 10
+
+SignalScore (0-40):
+  types = signalTypes.count × 10
+  count = min(15, signalCount × 3)
+  severity = highSeverityCount × 5
+
+CorrelationBonus (0-20):
+  +10 if entity appears in BOTH news AND signals
+  +5 if news keywords match signal types (e.g., "military" + military_flight)
+  +5 if related entities also have signals
+```
+
+### 紧急度分类
+
+| 紧急度 | 标准 | 视觉 |
+|---------|----------|--------|
+| **Critical** | 分数 > 70 或 3+ 种信号类型 | 红色徽章 |
+| **Elevated** | 分数 > 50 或 2+ 种信号类型 | 橙色徽章 |
+| **Watch** | 默认 | 黄色徽章 |
+
+### 信号类型图标
+
+焦点显示指示当前激活信号类型的图标：
+
+| 图标 | 信号类型 | 含义 |
+|------|-------------|---------|
+| ✈️ | military_flight | 附近检测到军机 |
+| ⚓ | military_vessel | 水域内有军舰 |
+| 📢 | protest | 民间动荡事件 |
+| 🌐 | internet_outage | 网络中断 |
+| 🚢 | ais_disruption | 航运异常 |
+
+### 输出示例
+
+IRAN 的焦点可能显示：
+
+- **显示**："Iran [CRITICAL] ✈️📢🌐"
+- **新闻**：12 次提及，速度 0.5/小时
+- **信号**：5 次军机、3 次抗议、1 次中断
+- **叙述**："12 news mentions | 5 military flights, 3 protests, 1 internet outage | 'Iran protests continue amid...'"
+- **关联证据**："Iran appears in both news (12) and map signals (9)"
+
+### 与 CII 的集成
+
+焦点紧急度输入国家动荡指数（CII）：
+
+- **Critical** 焦点 → 该国 CII 分数提升
+- 确保多源汇聚的国家被正确标记
+- 防止单凭新闻不足以触发警报时的"静默"动荡

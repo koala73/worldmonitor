@@ -1,0 +1,448 @@
+---
+title: "数据源"
+description: "WorldMonitor 所使用的全部数据源、信息源分级及采集方法的完整文档。"
+---
+
+---
+
+## 数据图层
+
+### 实时数据图层
+
+<details>
+<summary><strong>地缘政治</strong></summary>
+
+- 正在发生的冲突区域并跟踪局势升级（UCDP + ACLED）
+- 情报热点并关联新闻
+- 社会动荡事件（双源：ACLED 抗议 + GDELT 地理事件，经 Haversine 半正矢公式去重）
+- 来自 3 个数据源的自然灾害（USGS M4.5+ 地震、GDACS 警报、NASA EONET 事件）
+- 制裁机制
+- 网络威胁 IOC（C2 服务器、恶意软件宿主、钓鱼、恶意 URL）地理定位到地球上
+- 基于 ADS-B 应答机分析的 GPS/GNSS 干扰区域（H3 六边形网格，干扰百分比分级）
+- 地缘政治边界叠加层 — 朝鲜 DMZ（基于《朝鲜停战协定》的 43 点闭合环多边形），并带有类型的边界类别（非军事区、停火、争议、停战）和信息弹窗
+- 伊朗冲突事件 — 来自 LiveUAMap 的地理编码袭击、打击和军事事件，并带严重性分级
+- 天气警报和恶劣天气状况
+
+</details>
+
+<details>
+<summary><strong>军事与战略</strong></summary>
+
+- 来自 9 个运营方的 226 个军事基地
+- 实时军事航班跟踪（ADS-B）
+- 海军舰船监测（AIS）
+- 核设施与伽马辐照装置
+- APT 网络威胁行为者归因
+- 航天发射场与发射设施
+- **轨道监视** — 通过 CelesTrak TLE 数据和客户端 SGP4 传播（satellite.js）实时跟踪约 80–120 颗情报相关卫星。按国家编码的标记显示在轨道高度，15 分钟轨道轨迹，地面覆盖范围。仅限地球视图。[详情 →](/zh/orbital-surveillance)
+
+</details>
+
+<details>
+<summary><strong>基础设施</strong></summary>
+
+- 海底光缆及其登陆点、光缆健康公告（NGA 航海警告）及光缆维修船跟踪
+- 石油与天然气管道
+- AI 数据中心（来自 Epoch AI 数据集的 313 个集群）
+- 跨 6 种类型的 62 个战略港口（集装箱、石油、LNG、海军、混合、散货），含吞吐量排名
+- 互联网中断（Cloudflare Radar）
+- 关键矿产矿藏
+- NASA FIRMS 卫星火灾探测（VIIRS 热点）
+- 19 条全球贸易路线（集装箱、能源、散货），通过战略咽喉的多段弧线
+- 跨 107 个受监测机场的航班延误和关闭（FAA + AviationStack + ICAO NOTAM）
+- **航空情报** — 6 标签页航空情报面板（运营、航班、航空公司、跟踪、新闻、价格），支持可自定义的机场/航空公司关注列表、实时 ADS-B 航班跟踪和机票价格搜索
+
+</details>
+
+<details>
+<summary><strong>市场与加密情报</strong></summary>
+
+- 7 信号宏观雷达，带综合 BUY/CASH 判定
+- **可自定义的市场关注列表** — 用户定义的股票/大宗商品/加密货币代码列表（最多 50 个代码），可带友好名称标签，持久化到 localStorage，通过 CustomEvent 在各面板间同步
+- **海湾经济体面板** — 跨三个板块提供 GCC 金融市场实时数据：**指数**（沙特 Tadawul/沙特阿拉伯、迪拜金融市场、阿布扎比、卡塔尔、WisdomTree 海湾股息、马斯喀特 MSM 30）、**货币**（SAR、AED、QAR、KWD、BHD、OMR 对 USD）以及**石油**（WTI 原油、布伦特原油）。所有报价均来自 Yahoo Finance 并采用错峰批量获取，Redis 缓存 8 分钟，每条报价带迷你迷你图，轮询间隔 60 秒
+- 通过 CoinGecko 获取实时加密货币价格（BTC、ETH、SOL、XRP 等）
+- **预测市场** — Polymarket 地缘政治合约，采用 4 级获取（bootstrap → RPC → 浏览器直连 → Tauri 原生 TLS），按国家匹配市场，并按交易量加权排名
+- BTC 现货 ETF 流向跟踪（IBIT、FBTC、GBTC 等 10 只）
+- 稳定币锚定健康度监测（USDT、USDC、DAI、FDUSD、USDe）
+- 恐惧与贪婪指数，含 30 天历史
+- 比特币技术趋势（SMA50、SMA200、VWAP、Mayer Multiple）
+- 日元流动性信号、QQQ/XLP 宏观体制、BTC 算力
+- 内联 SVG 迷你图和环形仪表，用于可视化趋势
+
+</details>
+
+<details>
+<summary><strong>科技生态</strong>（Tech 变体）</summary>
+
+- 科技公司总部（Big Tech、独角兽、上市公司）
+- 创业中心及融资数据
+- 云区域（AWS、Azure、GCP）
+- 加速器（YC、Techstars、500）
+- 即将举行的科技会议
+
+</details>
+
+<details>
+<summary><strong>金融与市场</strong>（Finance 变体）</summary>
+
+- 92 个全球证券交易所 — 超大型（NYSE、NASDAQ、上海、泛欧交易所、东京）、主要（香港、伦敦、NSE/BSE、多伦多、韩国、沙特 Tadawul）以及新兴市场 — 含市值和交易时间
+- 19 个金融中心 — 按全球金融中心指数排名（纽约 #1 直到离岸中心：开曼群岛、卢森堡、百慕大、海峡群岛）
+- 13 家央行 — 美联储、ECB、日本央行、英国央行、中国人民银行、瑞士国家银行、澳洲联储、加拿大央行、印度储备银行、韩国银行、巴西央行、SAMA，以及超国家机构（BIS、IMF）
+- BIS 央行数据 — 来自国际清算银行的主要经济体政策利率、实际有效汇率（REER）和信贷/GDP 比率
+- 10 个大宗商品枢纽 — 交易所（CME Group、ICE、LME、SHFE、DCE、TOCOM、DGCX、MCX）和实体枢纽（鹿特丹、休斯敦）
+- 海湾 FDI 投资图层 — 64 项沙特/阿联酋对外直接投资在全球范围内标点，按状态（运营中、在建、已公布）着色，按投资额标注尺寸
+- WTO 贸易政策情报 — 来自世界贸易组织的现行贸易限制、关税趋势、双边贸易流向和 SPS/TBT 壁垒
+
+</details>
+
+---
+
+## 情报源
+
+### Telegram OSINT 情报源
+
+26 个精选 Telegram 频道提供了一个原始、低延迟的情报源，覆盖冲突区域、OSINT 分析和突发新闻 — 在快速演变的事件中，这些来源通常比传统通讯社早数分钟。
+
+| 分级       | 频道                                                                                                                  |
+| ---------- | --------------------------------------------------------------------------------------------------------------------- |
+| **Tier 1** | VahidOnline（伊朗政治）                                                                                               |
+| **Tier 2** | Abu Ali Express、Aurora Intel、BNO News、Clash Report、DeepState、Defender Dome、Iran International、LiveUAMap、OSINTdefender、OSINT Updates、Ukraine Air Force (kpzsu)、Povitryani Tryvoha |
+| **Tier 3** | Bellingcat、CyberDetective、GeopoliticalCenter、Middle East Spectator、Middle East Now Breaking、NEXTA、OSINT Industries、OsintOps News、OSINT Live、OsintTV、The Spectator Index、War Monitor、WFWWitness |
+
+**架构**：运行在 Railway 中继上的 GramJS MTProto 客户端以 60 秒为周期顺序轮询所有频道。每个频道有 15 秒超时（GramJS 的 `getEntity`/`getMessages` 在 FLOOD_WAIT 或 MTProto 卡顿时可能无限挂起），整个周期有 3 分钟的硬超时。卡死轮询保护器会在 3.5 分钟后强制清除互斥锁，而来自 Telegram API 的 FLOOD_WAIT 错误会提前停止整个周期，而不是传播到剩余的每个频道。
+
+消息按 ID 去重，过滤掉纯媒体帖子（无文字的图片），截断为 800 字符，并存入一个滚动 200 条的缓冲区。中继以 60 秒启动延迟连接，以防止 Railway 容器重启期间出现 `AUTH_KEY_DUPLICATED` 错误（旧容器必须在新容器认证之前完全断开）。主题分类（突发、冲突、警报、osint、政治、中东）和基于频道的过滤在查询时通过 `/telegram/feed` 中继端点完成。
+
+### OREF 火箭警报集成
+
+仪表盘监测以色列后方司令部（Pikud HaOref）警报系统，获取来袭火箭弹、导弹和无人机警报 — 这是一个难以通过编程方式获取的实时信号，因受 Akamai WAF 保护而难以直连。
+
+**数据流**：Railway 中继通过住宅代理（以色列出口 IP）使用 `curl` 轮询 `oref.org.il`（而非 Node.js fetch，后者会被 JA3 阻断）。启动时，中继采用两阶段策略引导历史数据：阶段 1 从 Redis 加载（过滤 7 天前的记录）；若 Redis 为空，阶段 2 通过指数退避重试（最多 3 次，延迟 3 秒/6 秒/12 秒 + 抖动）从上游 OREF API 获取。警报历史以脏标记去重方式持久化到 Redis，避免冗余写入。实时警报每 5 分钟轮询一次。波次检测按时间戳将单条警报记录分组，以识别不同的攻击波。以色列本地时间戳通过 DST 感知的偏移计算转换为 UTC。**1,480 条希伯来语→英语地名翻译** — 一份自动生成的字典（源自 pikud-haoref-api 的 `cities.json`）支持对警报数据中希伯来语城市名的自动翻译。在翻译查找前，通过 `sanitizeHebrew()` 剥除 Unicode 双向控制字符，以防止匹配失败。
+
+**CII 集成**：活跃的 OREF 警报会将以色列的 CII 冲突分项最高提升 50 分（`25 + min(25, alertCount × 5)`）。滚动 24 小时历史提供二次加成：窗口内 3–9 次警报贡献 +5，10+ 次贡献 +10，计入综合分。这意味着持续的多波次火箭弹齐射会将以色列的 CII 推得远高于单次孤立警报。
+
+### GPS/GNSS 干扰检测
+
+GPS 干扰和欺骗 — 在冲突区域越来越多地被用作电子战 — 通过分析报告 GPS 异常的飞机的 ADS-B 应答机数据来检测。数据来自 [gpsjam.org](https://gpsjam.org)，该网站将 ADS-B Exchange 数据聚合到 H3 分辨率-4 的六边形网格单元中。
+
+**分级**：每个 H3 单元报告 GPS 异常飞机数与总飞机数之比。飞机数少于 3 架的单元因统计噪声过大而被排除。其余单元分级如下：
+
+| 干扰级别 | 异常飞机占比 | 地图颜色 |
+| -------- | ------------ | -------- |
+| **低**   | 0–2%         | 隐藏     |
+| **中**   | 2–10%        | 琥珀色   |
+| **高**   | > 10%        | 红色     |
+
+**区域标签**：每个六边形单元通过外接框分类标注到 12 个命名冲突区域之一（伊朗-伊拉克、黎凡特、乌克兰-俄罗斯、波罗的海、地中海、黑海、北极、高加索、中亚、非洲之角、朝鲜半岛、南海），以支持按区域筛选视图。
+
+**CII 集成**：`ingestGpsJammingForCII` 通过本地几何服务将每个 H3 六边形中心映射到一个国家，然后累加各国的干扰计数。在 CII 安全分项中，GPS 干扰最多贡献 35 分：`min(35, highCount × 5 + mediumCount × 2)`。
+
+### 安全公告聚合
+
+政府旅行公告由国家情报机构出具，是专家级的风险评估 — 当美国国务院发布"切勿前往"公告时，它反映的是机密威胁情报，任何开源算法都无法复现。
+
+**数据源**：4 个政府公告源（美国国务院、澳大利亚 DFAT Smartraveller、英国 FCDO、新西兰 MFAT）、13 个美国大使馆国别警报源（泰国、阿联酋、德国、乌克兰、墨西哥、印度、巴基斯坦、哥伦比亚、波兰、孟加拉国、意大利、多米尼加共和国、缅甸），以及卫生机构源（CDC 旅行通告、ECDC 流行病学更新、WHO 新闻、WHO 非洲紧急事件）。
+
+**公告级别**（由高到低）：切勿前往（4）→ 重新考虑（3）→ 谨慎前往（2）→ 正常（1）→ 信息（0）。RSS（item）和 Atom（entry）格式均会解析。国家提取使用一份 265 条目的国名映射表（由 GeoJSON + 别名生成），以准确匹配复合名称和替代拼写。
+
+**架构**：公告遵循黄金标准模式。一个 Railway 定时种子脚本（`seed-security-advisories.mjs`）每小时通过中继 RSS 代理获取全部 24 个源，按标题去重，构建 `byCountry` 风险等级映射，并写入 Redis。Vercel 的 `ListSecurityAdvisories` RPC 仅读取 Redis（无外部调用）。Bootstrap 水合在页面加载时即时提供公告数据。
+
+**CII 集成** — 公告通过两种机制进入动荡评分：
+
+- **评分加成**：切勿前往 → +15 分，重新考虑 → +10，谨慎前往 → +5。多源一致时加共识奖励：≥3 个政府一致 → +5，≥2 个 → +3
+- **评分下限**：任何政府的切勿前往公告都会强制 CII 最低分为 60；重新考虑强制最低 50。这防止事件数据稀少但有活跃切勿前往警告的国家显示虚假的平静评分
+
+安全公告面板显示公告及其彩色级别徽章和来源国国旗，可按严重性（严重、全部）和发布政府（US、AU、UK、NZ、卫生）筛选。
+
+### 机场延误与 NOTAM 监测
+
+跨 5 个区域（美洲、欧洲、亚太、MENA、非洲）的 111 个机场通过三个独立数据源持续监测延误、地面停留和关闭：
+
+| 数据源             | 覆盖范围                  | 方法                                                                                                  |
+| ------------------ | ------------------------- | ----------------------------------------------------------------------------------------------------- |
+| **FAA ASWS**       | 14 个美国枢纽机场        | 来自 `nasstatus.faa.gov` 的实时 XML 源 — 地面延误、地面停留、到达/出发延误、关闭 |
+| **AviationStack**  | 40 个国际机场  | 每个机场最近 100 架航班 — 根据航班记录计算取消率和平均延误时长  |
+| **ICAO NOTAM API** | 46 个 MENA 机场           | 实时 NOTAM（Notice to Air Missions）查询，用于活跃的机场/空域关闭                      |
+
+**NOTAM 关闭检测**针对 MENA 机场，因军事活动或安全事件导致的空域关闭具有战略意义。检测使用两种方法：ICAO Q 码匹配（机场/空域关闭代码 `FA`、`AH`、`AL`、`AW`、`AC`、`AM` 结合关闭限定符 `LC`、`AS`、`AU`、`XX`、`AW`）和闭包关键词的自由文本正则扫描（`AD CLSD`、`AIRPORT CLOSED`、`AIRSPACE CLOSED`）。当检测到 NOTAM 关闭时，它会以 `severe/closure` 分级覆盖该机场已有的任何延误警报。
+
+**严重性阈值**：平均延误 ≥15 分钟或 ≥15% 航班延误 = 轻微；≥30 分钟/30% = 中度；≥45 分钟/45% = 重大；≥60 分钟/60% = 严重。取消率 ≥80% 且航班 ≥10 = 关闭。所有结果在 Redis 中缓存 30 分钟。当未配置 AviationStack API key 时，系统会生成概率性模拟延误以供演示 — 高峰时段和高流量机场获得更高的延误概率。
+
+### 航空情报面板
+
+航空情报面板提供了一个 6 标签页的航空监测界面，覆盖运营、航班、航空公司、跟踪、新闻和价格：
+
+| 标签页 | 数据 | 数据源 |
+| --- | --- | --- |
+| **运营** | 延误百分比、取消率、NOTAM 关闭、地面停留 | FAA ASWS、AviationStack、ICAO |
+| **航班** | 特定航班状态及计划时间与实际时间对比、备降/取消标志 | AviationStack 航班查询 |
+| **航空公司** | 受监测机场的各航司统计（延误率、取消率、航班数） | AviationStack 航司运营 |
+| **跟踪** | 实时 ADS-B 飞机位置，含高度、地速、航向、地面状态 | OpenSky / Wingbits |
+| **新闻** | 20+ 条近期航空新闻，带实体匹配（航空公司、机场、机型） | 标记为 `aviation` 的 RSS 源 |
+| **价格** | 多航司报价，可选舱位（经济舱/商务舱）、货币换算、直飞筛选 | Travelpayouts 缓存数据 |
+
+**航空关注列表** — 用户可自定义机场（IATA 代码）、航空公司和航线的个人列表，持久化到 `localStorage` 的 `aviation:watchlist:v1`。默认关注列表包含 IST、ESB、SAW、LHR、FRA、CDG 机场和 TK 航司，反映常见监测需求。关注列表决定运营标签页中显示的机场和航空公司标签页中跟踪的航司。
+
+延误严重性分为五级 — 正常、轻微、中度、重大、严重 — 每条警报带有严重性来源（FAA、Eurocontrol 或由航班数据计算）。面板以 5 分钟轮询周期自动刷新，带实时指示徽章，并在失败时使用带自适应退避的 `SmartPollLoop`。
+
+---
+
+## 网络与自然事件
+
+### 网络威胁情报图层
+
+六个威胁情报源提供活跃的命令控制服务器、恶意软件分发主机、钓鱼活动、恶意 URL 和勒索软件活动的危害指标（IOC）：
+
+| 源                            | IOC 类型      | 覆盖范围                        |
+| ---------------------------- | ------------- | ------------------------------- |
+| **Feodo Tracker**（abuse.ch） | C2 服务器     | 僵尸网络 C&C 基础设施       |
+| **URLhaus**（abuse.ch）       | 恶意软件宿主  | 恶意软件分发 URL       |
+| **C2IntelFeeds**             | C2 服务器     | 社区贡献的 C2 指标 |
+| **AlienVault OTX**           | 混合         | 开放威胁交换 pulse IOC |
+| **AbuseIPDB**                | 恶意 IP      | 众包滥用举报     |
+| **Ransomware.live**          | 勒索软件     | 活跃勒索团伙源   |
+
+每个基于 IP 的 IOC 使用 ipinfo.io 进行地理富化，以 freeipapi.com 作为回退。地理定位结果在 Redis 中缓存 24 小时。富化并发执行 — 16 个并行查询，12 秒超时，每次采集运行处理最多 250 个 IP。
+
+IOC 分为四种类型（`c2_server`、`malware_host`、`phishing`、`malicious_url`），四个严重性级别，以彩色散点形式呈现在地球上。该图层使用 10 分钟缓存、14 天滚动窗口，并将显示上限设为 500 个 IOC 以保持渲染性能。
+
+### 自然灾害监测
+
+三个独立来源被合并为统一的灾害图景，然后在 0.1° 地理网格上去重：
+
+| 数据源         | 覆盖范围                       | 类型                                                         | 更新频率 |
+| -------------- | ------------------------------ | ------------------------------------------------------------- | -------- |
+| **USGS**       | 全球 M4.5+ 地震       | 地震                                                   | 5 分钟   |
+| **GDACS**      | 联合国协调的灾害警报 | 地震、洪水、气旋、火山、野火、干旱 | 实时     |
+| **NASA EONET** | 地球观测事件       | 13 个自然事件类别（30 天开放事件）              | 实时     |
+
+GDACS 事件带有彩色编码的警报级别（红色 = 严重，橙色 = 高），并过滤掉低严重性的绿色警报。EONET 野火过滤为 48 小时内的事件，以防止数据陈旧。EONET 的地震被排除，因为 USGS 提供更高质量的地震学数据。
+
+合并后的输出送入信号聚合器，用于地理汇聚检测 — 例如，管道附近发生的地震会触发基础设施级联警报。
+
+### 双源抗议跟踪
+
+抗议数据来自两个独立提供商，以降低单一来源的偏差：
+
+1. **ACLED**（武装冲突地点与事件数据）— 30 天窗口，令牌化 API 并带 Redis 缓存（10 分钟 TTL）。覆盖抗议、骚乱、罢工和示威，并带行为者归因和死亡人数。
+2. **GDELT**（全球事件、语言与语调数据库）— 7 天地理空间事件源，过滤为抗议关键词。提及次数 ≥5 的事件被纳入；高于 30 的标记为 `validated`。
+
+两个来源的事件在 0.1° 网格（约 10 公里）上经 **Haversine 半正矢去重**，并按同日匹配。ACLED 事件因更高的编辑置信度而优先。严重性分级如下：
+
+- **高** — 存在死亡或骚乱/冲突关键词
+- **中** — 标准抗议/示威
+- **低** — 默认
+
+抗议评分是体制感知的：民主国家使用对数缩放（常规抗议不会触发动荡），而威权国家使用线性评分（每次抗议都很重要）。死亡人数和并发互联网中断应用严重性加成。
+
+### 气候异常检测
+
+15 个冲突和灾害高发区域使用 Open-Meteo ERA5 再分析数据持续监测温度和降水异常。计算 30 天基线，并将当前状况与基线比较以确定严重性：
+
+| 严重性       | 温度偏差           | 降水偏差             |
+| ------------ | ------------------- | -------------------- |
+| **极端**     | 高于基线 > 5°C      | 高于基线 > 80 毫米/天 |
+| **中度**     | 高于基线 > 3°C      | 高于基线 > 40 毫米/天 |
+| **正常**     | 在预期范围内        | 在预期范围内         |
+
+异常送入信号聚合器，在其中放大受影响国家的 CII 评分（气候压力是公认的冲突加速因素）。气候异常面板以按严重性排序的列表展示这些偏差。
+
+### 流离失所跟踪
+
+难民和流离失所数据来自联合国 OCHA 人道主义 API（HAPI），提供难民、寻求庇护者和境内流离失所者（IDP）的人口级计数。流离失所面板提供两个视角：
+
+- **来源地** — 人们逃离的国家，按流出量排名
+- **接收地** — 吸收流离失所人口的国家，按接收量排名
+
+危机徽章标记极端流离失所国家：> 100 万流离失所（红色）、> 50 万（橙色）。流离失所流出量作为组成信号进入 CII — 高流离失所是动荡的滞后指标，即使头条新闻已转移，它仍会持续。
+
+### 人口暴露估计
+
+人口暴露估计计算事件特定半径内受影响的人口。完整方法论见 [算法 - 人口暴露](/zh/algorithms#population-exposure-estimation)。
+
+---
+
+## 基础设施监测
+
+### 战略港口基础设施
+
+62 个战略港口按六种类型编目，反映其在全球贸易和军事部署中的作用：
+
+| 类型           | 数量 | 示例                                             |
+| -------------- | ---- | ---------------------------------------------------- |
+| **集装箱**     | 21   | 上海（#1，4700 万+ TEU）、新加坡、宁波、深圳 |
+| **石油/LNG**   | 8    | 拉斯塔努拉（沙特）、萨宾帕斯（美国）、富查伊拉（阿联酋） |
+| **咽喉要道**   | 9    | 苏伊士运河、巴拿马运河、马六甲海峡、直布罗陀、博斯普鲁斯、达达尼尔 |
+| **海军**       | 6    | 湛江、榆林（中国）、符拉迪沃斯托克（俄罗斯）       |
+| **混合**       | 15+  | 承担多重角色的港口（贸易 + 军事）      |
+| **散货**       | 20+  | 区域大宗商品港口                             |
+
+港口按吞吐量排名，并在基础设施级联模型中按战略重要性加权：石油/LNG 终端的临界度为 0.9，集装箱港口为 0.7，海军基地为 0.4。港口邻近度出现在国家简报的基础设施暴露部分。
+
+### 实时网络摄像头监视网格
+
+来自 5 个地区地缘政治热点的 22 路 YouTube 直播流提供持续的视觉态势感知：
+
+| 区域               | 城市                                                           |
+| ------------------ | ---------------------------------------------------------------- |
+| **伊朗/袭击**      | 德黑兰、特拉维夫、耶路撒冷（西墙）                       |
+| **中东**           | 耶路撒冷（西墙）、德黑兰、特拉维夫、麦加（禁寺） |
+| **欧洲**           | 基辅、敖德萨、巴黎、圣彼得堡、伦敦                      |
+| **美洲**           | 华盛顿特区、纽约、洛杉矶、迈阿密                      |
+| **亚太**           | 台北、上海、东京、首尔、悉尼                           |
+
+网络摄像头面板支持两种查看模式：4 路网格（默认战略选择：耶路撒冷、德黑兰、基辅、华盛顿特区）和单路放大视图。区域标签页（全部/伊朗/中东/欧洲/美洲/亚洲）筛选可用源。伊朗/袭击标签页提供一个专门的 2×2 网格，用于伊朗和以色列之间局势升级事件期间的实时视觉监视。
+
+资源管理非常激进 — iframe 通过 Intersection Observer 懒加载（仅在面板滚动到视图时才渲染），用户不活动 5 分钟后暂停，浏览器标签页隐藏时从 DOM 中完全销毁。在 Tauri 桌面端，YouTube 嵌入通过云代理路由，以绕过 WKWebView 的自动播放限制。每个源都带有一个备用视频 ID，以防主直播流下线。
+
+---
+
+## 服务端聚合
+
+### 服务端源聚合
+
+`listFeedDigest` RPC 端点将所有源在服务端聚合成单个分类响应，而不是让每个客户端浏览器通过单独的边缘函数调用独立获取数十个 RSS 源。
+
+**架构**：
+
+```
+Client (1 RPC call) → listFeedDigest → Redis check (digest:v1:{variant}:{lang})
+                                              │
+                                    ┌─────────┴─── HIT → return cached digest
+                                    │
+                                    ▼ MISS
+                           ┌─────────────────────────┐
+                           │  buildDigest()           │
+                           │  20 concurrent fetches   │
+                           │  8s per-feed timeout     │
+                           │  25s overall deadline    │
+                           └────────┬────────────────┘
+                                    │
+                              ┌─────┴─────┐
+                              │ Per-feed   │ ← cached 600s per URL
+                              │ Redis      │
+                              └─────┬─────┘
+                                    │
+                                    ▼
+                           ┌─────────────────────────┐
+                           │  Categorized digest      │
+                           │  Cached 900s (15 min)    │
+                           │  Per-item keyword class.  │
+                           └─────────────────────────┘
+```
+
+摘要缓存键为 `news:digest:v1:{variant}:{lang}`，TTL 为 900 秒。单个源结果按 URL 分别缓存 600 秒。每个源的项目上限为 5，每个类别上限为 20 项。XML 解析与边缘运行时兼容（基于正则，无 DOM 解析器），同时处理 RSS item 和 Atom entry 格式。每个项目在聚合时进行关键词分类。内存回退缓存（上限 50 条）在 Redis 失败时提供最后已知良好数据。
+
+这消除了每客户端的源扇出 — 1,000 个并发用户各自轮询 25 个源类别，本会在每个轮询周期产生 25,000 次边缘调用。通过服务端聚合，他们恰好产生 1 次（若摘要已缓存则为 0 次）。
+
+---
+
+## 来源可信度与源分级
+
+每个 RSS 源都分配了一个反映编辑可靠性的来源分级：
+
+| 分级       | 描述                                | 示例                                    |
+| ---------- | ----------------------------------- | --------------------------------------- |
+| **Tier 1** | 通讯社、官方政府来源                | Reuters、AP、BBC、DOD                       |
+| **Tier 2** | 主要老牌媒体                        | CNN、NYT、The Guardian、Al Jazeera          |
+| **Tier 3** | 专业/垂直媒体                       | Defense One、Breaking Defense、The War Zone |
+| **Tier 4** | 聚合器和博客                        | Google News、个人分析师博客       |
+
+源还带有**宣传风险评级**和**国家关联标志**。国家关联来源（RT、新华社、IRNA）为完整性而被纳入，但会以视觉标记标出，以便分析师考虑编辑偏见。威胁分类置信度按来源分级加权 — 在焦点检测算法中，Tier 1 的突发警报比 Tier 4 的博客帖子权重更高。
+
+---
+
+## 数据新鲜度与情报缺口
+
+### 数据新鲜度与情报缺口
+
+一个单例跟踪器监测 35 个数据源（GDELT、GDELT Doc、RSS、AIS、OpenSky、Wingbits、USGS、天气、中断、ACLED、ACLED 冲突、Polymarket、预测、PizzINT、经济、石油、支出、NASA FIRMS、网络威胁、UCDP、UCDP 事件、HAPI、UNHCR、气候、WorldPop、捐赠、BIS、BLS、WTO 贸易、供应链、安全公告、制裁压力、辐射、GPS 干扰、财政部收入），并按状态分类：新鲜（&lt;15 分钟）、陈旧（2 小时）、非常陈旧（6 小时）、无数据、错误、已禁用。两个来源（GDELT、RSS）被标记为 `requiredForRisk` — 它们的缺失直接影响 CII 评分质量。该跟踪器显式报告**情报缺口** — 分析师看不到的内容 — 在关键数据源下线或降级时防止虚假信心。
+
+---
+
+## 预测市场
+
+### 预测市场作为先行指标
+
+Polymarket 地缘政治市场使用基于标签的过滤器（乌克兰、伊朗、中国、台湾等）查询，缓存 5 分钟。市场概率变化与新闻量相关联：如果预测市场在匹配新闻到达之前显著变动，则被标记为潜在的早期预警信号。
+
+**4 级获取策略** — 预测市场使用级联获取链以最大化数据可用性：
+
+1. **Bootstrap 水合** — 零网络、页面加载时嵌入的数据，来自 Redis 缓存的 `predictions` 键。若新鲜（&lt;20 分钟），面板无需任何 API 调用即可即时渲染
+2. **Sebuf RPC** — `POST /api/prediction/v1/list-prediction-markets` 查询 Redis 中由种子脚本维护的缓存。单次请求，冷启动低于 100 毫秒
+3. **浏览器直连 Polymarket** — 浏览器直接获取 Polymarket 的 Gamma API，绕过 JA3 指纹识别（浏览器 TLS 可通过 Cloudflare）
+4. **Sidecar 原生 TLS** — 在 Tauri 桌面端，Rust 的 `reqwest` TLS 指纹与 Node.js 不同，提供另一条绕过路径
+
+**按国家匹配市场** — `fetchCountryMarkets(country)` 将 40+ 个国家映射到 Polymarket 标签变体（例如，"Russia" 匹配 ["russia"、"russian"、"moscow"、"kremlin"、"putin"]），使国家简报能够显示与任何国家相关的预测合约。
+
+**智能筛选** — 市场按 24 小时交易量排名，过滤掉体育和娱乐（100+ 个排除关键词：NBA、NFL、Oscar、Grammy 等），并要求与 50% 的价格偏离显著或交易量高于 50,000 美元以抑制噪声。每个变体获得不同的标签集 — 地缘政治查询 politics/world/ukraine/middle-east 标签，科技查询 ai/crypto/business 标签。
+
+**Cloudflare JA3 绕过** — Polymarket 的 API 受 Cloudflare TLS 指纹识别（JA3）保护，会阻断所有服务端请求。系统使用 3 级回退：
+
+| 级别  | 方法                     | 适用场景                                           |
+| ----- | ------------------------ | -------------------------------------------------- |
+| **1** | 浏览器直连获取           | 始终（浏览器 TLS 可通过 Cloudflare）                  |
+| **2** | Tauri 原生 TLS（reqwest） | 桌面应用（Rust TLS 指纹与 Node.js 不同） |
+| **3** | Vercel 边缘代理           | 较少（边缘运行时有时可通过）                  |
+
+一旦浏览器直连成功，系统会缓存此状态并在后续请求中跳过回退层级。按国家匹配的市场通过将国家映射到 Polymarket 标签并使用名称变体匹配来获取（例如，"Russia" 匹配包含 "Russian"、"Moscow"、"Kremlin"、"Putin" 的标题）。
+
+市场被过滤以排除体育和娱乐（100+ 个排除关键词），要求与 50% 的价格偏离显著或交易量高于 50,000 美元，并按交易量排名。每个变体获得不同的标签集 — 地缘政治侧重查询 politics/world/ukraine/middle-east 标签，而科技侧重查询 ai/crypto/business 标签。
+
+---
+
+## 数据提供商致谢
+
+WorldMonitor 感谢以下组织将其数据公开可访问。
+
+### 能源与大宗商品
+| 提供商 | 数据 | 链接 |
+|----------|------|------|
+| GIE AGSI+ | 欧盟天然气储存水平 | [agsi.gie.eu](https://agsi.gie.eu) |
+| U.S. EIA | 原油库存、燃料价格、能源数据 | [eia.gov/opendata](https://www.eia.gov/opendata) |
+
+### 金融与经济
+| 提供商 | 数据 | 链接 |
+|----------|------|------|
+| ECB Data Portal | 外汇参考汇率、收益率曲线、ESTR/EURIBOR、金融压力指数 | [data-api.ecb.europa.eu](https://data-api.ecb.europa.eu) |
+| Eurostat | 欧元区 CPI、GDP、失业率、经济指标 | [ec.europa.eu/eurostat](https://ec.europa.eu/eurostat) |
+| FRED — St. Louis Fed | 美国/全球利率、宏观经济序列 | [fred.stlouisfed.org](https://fred.stlouisfed.org) |
+| World Bank Open Data | 发展指标、可再生能源、技术准备度 | [data.worldbank.org](https://data.worldbank.org) |
+| BIS Statistics | 央行政策利率、REER、信贷/GDP | [stats.bis.org](https://stats.bis.org) |
+| U.S. BLS | 美国劳工统计 | [bls.gov/developers](https://www.bls.gov/developers) |
+| USA Spending | 美国联邦支出和合同 | [api.usaspending.gov](https://api.usaspending.gov) |
+| UN Comtrade | 全球商品贸易流向 | [comtradeapi.un.org](https://comtradeapi.un.org) |
+| CoinGecko | 加密货币价格和市场数据 | [coingecko.com](https://www.coingecko.com) |
+
+### 地缘政治与冲突
+| 提供商 | 数据 | 链接 |
+|----------|------|------|
+| ACLED | 武装冲突和抗议事件数据 | [acleddata.com](https://acleddata.com) |
+| UCDP | 乌普萨拉冲突数据项目 — 冲突事件 | [ucdp.uu.se](https://ucdp.uu.se) |
+| GDELT | 全球事件、语言和语调数据库 | [gdeltproject.org](https://www.gdeltproject.org) |
+| IMF PortWatch | 咽喉要道过境情报 | [portwatch.imf.org](https://portwatch.imf.org) |
+
+### 环境与灾害
+| 提供商 | 数据 | 链接 |
+|----------|------|------|
+| USGS Earthquake Hazards | 全球地震活动 | [earthquake.usgs.gov](https://earthquake.usgs.gov) |
+| NASA FIRMS | 近实时野火/火灾探测（VIIRS） | [firms.modaps.eosdis.nasa.gov](https://firms.modaps.eosdis.nasa.gov) |
+| NASA EONET | 自然事件 — 风暴、火山、洪水 | [eonet.gsfc.nasa.gov](https://eonet.gsfc.nasa.gov) |
+| GDACS | 联合国协调的全球灾害警报 | [gdacs.org](https://www.gdacs.org) |
+| Open-Meteo | ERA5 再分析气候数据 | [open-meteo.com](https://open-meteo.com) |
+
+### 基础设施与网络安全
+| 提供商 | 数据 | 链接 |
+|----------|------|------|
+| Cloudflare Radar | 互联网中断和流量异常 | [radar.cloudflare.com](https://radar.cloudflare.com) |
+| Submarine Cable Map | 全球海底光缆基础设施 | [submarinecablemap.com](https://www.submarinecablemap.com) |
+| AbuseIPDB | 众包恶意 IP 举报 | [abuseipdb.com](https://www.abuseipdb.com) |
+| CelesTrak | 用于轨道跟踪的卫星 TLE 数据 | [celestrak.org](https://celestrak.org) |
+
+### 航空
+| 提供商 | 数据 | 链接 |
+|----------|------|------|
+| Wingbits | 实时 ADS-B 航班数据 | [wingbits.com](https://wingbits.com) |
+| OpenSky Network | ADS-B 航班跟踪（回退） | [opensky-network.org](https://opensky-network.org) |
+| FAA ASWS | 美国机场延误和地面停留数据 | [nasstatus.faa.gov](https://nasstatus.faa.gov) |
+| ICAO | NOTAM 空域关闭数据 | [icao.int](https://www.icao.int) |

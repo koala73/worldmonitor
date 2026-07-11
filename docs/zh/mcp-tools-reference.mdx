@@ -1,0 +1,1211 @@
+---
+title: "MCP 工具参考"
+description: "WorldMonitor 暴露的每个 MCP 工具的逐工具参考 — 参数、新鲜度、API 端点和示例调用。"
+---
+
+每个 MCP 工具的完整参考。请配合 [MCP Server 概览](/zh/mcp-server)（连接、认证、套餐、错误）一起使用。
+
+每个工具都返回标准 MCP 内容块格式：
+
+```json
+{ "jsonrpc": "2.0", "id": 1, "result": { "content": [{ "type": "text", "text": "{...json payload...}" }], "isError": false } }
+```
+
+缓存支持的工具（大多数）在其 JSON 负载中包含 `cached_at`（ISO 时间戳）和 `stale: boolean`，以便您评估数据新鲜度。
+
+下方的 `curl` 示例均假设您已导出 API 密钥：
+
+```bash
+export WM_KEY="wm_live_..."  # or use the OAuth bearer token instead — see /mcp-server#authentication
+```
+
+如果您已完成 OAuth 流程，请在每个示例中将 `-H "X-WorldMonitor-Key: $WM_KEY"` 替换为 `-H "Authorization: Bearer $TOKEN"`。
+
+<Tip>
+**近期新增**（2026 年 5 月）：`get_displacement_data`、`get_health_signals`、`get_energy_intelligence`、`get_consumer_prices`、`get_tariff_trends`、`get_chokepoint_status` — 六个新的捆绑工具，通过 MCP 暴露了此前缓存的领域。
+</Tip>
+
+## 发现工具
+
+在深入逐工具参考之前，两种机制使发现工具的成本低于从头到尾阅读本页。
+
+### `describe_tool` — 按需获取完整未压缩定义
+
+自 v1.5.0 起，`tools/list` 返回每个工具的 `description`，截断为第一句（≤120 UTF-8 字节）。当 LLM 只需扫描名称时，这能保持每个会话的输入 token 成本较低 — 而且同一个 `tools/list` 条目现在附带 `outputSchema`（v1.6.0），使模型能在首次调用时编写 JMESPath 投影。当压缩描述存在歧义时，调用 `describe_tool` 获取完整版本：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": { "name": "describe_tool", "arguments": { "tool_name": "get_chokepoint_status" } }
+}
+```
+
+响应 — 与 `tools/list` 条目形状相同，包含完整未压缩的 `description` 和完整的 `inputSchema.properties` 文本：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"name\":\"get_chokepoint_status\",\"description\":\"Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc.\",\"inputSchema\":{ /* full properties with full descriptions */ },\"outputSchema\":{ /* … */ },\"annotations\":{\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false}}"
+      }
+    ]
+  }
+}
+```
+
+`describe_tool` **豁免 Pro 每日配额**（每分钟速率限制仍然适用）。此豁免是有意为之 — 将元数据查询计入 50/天 的上限会阻碍探索，违背压缩的初衷。两种常见工作流：
+
+- **压缩条目对行为或参数语义存在歧义。** 调用 `describe_tool` 查看完整的长格式描述以及每个属性的完整描述。
+- **针对不熟悉的响应首次编写 JMESPath。** 调用 `describe_tool` 读取 `outputSchema`（见下一节），无需为真正的 `tools/call` 消耗配额槽位。
+
+`describe_tool` 在正常的 `content[0].text` 内返回两种软错误信封：
+
+- `{ "error": "missing_tool_name", "hint": "Pass tool_name as a non-empty string matching a tool from tools/list." }` — `tool_name` 被省略、为空或非字符串。
+- `{ "error": "unknown_tool", "requested": "<the bad name>", "available": [...sorted list of all tool names...] }` — `tool_name` 不匹配。`available` 数组让 LLM 能在额外一次调用中自我纠正。
+
+`describe_tool` 的完整逐工具参考（参数、响应形状、配额策略）位于 Meta 部分的 [`describe_tool`](#describe_tool)。
+
+### `outputSchema` — 无需示例调用的类型化解析
+
+自 v1.6.0 起，每个工具的 `tools/list` 条目都声明了规范定义的 [MCP 2025-06-18 `Tool.outputSchema`](https://modelcontextprotocol.io/specification/2025-06-18/server/tools#tool-result-schema)。该 schema 描述了该工具 `result.content[0].text` 内部 JSON 的形状 — 让客户端无需发起真正的 `tools/call` 即可编写投影、验证响应或生成类型。
+
+Schemas 在每次 `tools/list` 时**无条件**输出，无论协商的 `protocolVersion` 如何。处于较早 `2025-03-26` 基线的客户端仍会收到它们，并且（根据规范）应忽略未知字段而不是报错。
+
+示例 — `get_country_risk` 的 `outputSchema`：
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "country_code": { "type": "string" },
+    "cii": { "type": ["number", "null"], "description": "Composite Instability Index 0-100." },
+    "components": {
+      "type": "object",
+      "properties": {
+        "unrest":   { "type": ["number", "null"] },
+        "conflict": { "type": ["number", "null"] },
+        "security": { "type": ["number", "null"] },
+        "news":     { "type": ["number", "null"] }
+      }
+    },
+    "travelAdvisory":    { "type": ["object", "string", "null"] },
+    "sanctionsExposure": { "type": ["object", "array", "null"] }
+  }
+}
+```
+
+缓存工具将其声明的 `data` 形状包装在标准的新鲜度信封中：
+
+```json
+{
+  "type": "object",
+  "required": ["cached_at", "stale", "data"],
+  "properties": {
+    "cached_at": { "type": ["string", "null"], "description": "ISO-8601 timestamp of the OLDEST contributing cache key." },
+    "stale":     { "type": "boolean", "description": "True when any contributing cache key is older than its per-key maxStaleMin freshness budget." },
+    "data":      { "type": "object", "properties": { /* per-tool fields */ } }
+  }
+}
+```
+
+使用 schema 作为编译时提示的 TypeScript 类型化解析草图：
+
+```ts
+// Synthesise types from the schema once (e.g. with json-schema-to-typescript).
+type CountryRisk = {
+  country_code: string;
+  cii: number | null;
+  components: { unrest: number | null; conflict: number | null; security: number | null; news: number | null };
+  travelAdvisory: object | string | null;
+  sanctionsExposure: object | unknown[] | null;
+};
+
+const reply = await callTool('get_country_risk', { country_code: 'IR' });
+const text = reply.result?.content?.[0]?.text;
+if (typeof text !== 'string') throw new Error('no text payload');
+
+type SoftEnvelope =
+  | { _budget_exceeded: true; budget_bytes: number; actual_bytes: number; hint: string }
+  | { _jmespath_error: string; original_keys: string[] };
+
+const parsed = JSON.parse(text) as CountryRisk | SoftEnvelope;
+// Check for BOTH soft-envelope discriminators BEFORE consuming sibling fields as data.
+// A `_jmespath_error` payload that falls through to the success branch would silently
+// dereference undefined — the exact anti-pattern the catalog warns against.
+if ('_budget_exceeded' in parsed) {
+  // narrow with jmespath / filters and retry — see /mcp-error-catalog
+} else if ('_jmespath_error' in parsed) {
+  // fix the projection using `original_keys` as the schema hint — see /mcp-error-catalog
+} else {
+  console.log(parsed.cii, parsed.components.conflict);
+}
+```
+
+须知事项：
+
+- 每个 schema 的 `additionalProperties` 都隐式保留（= true），因此生产者侧的前向兼容新增不会突然导致验证失败。
+- 每个数组的 `items.properties` 列出已知字段，但不会枚举每个观察到的键 — schema 是 JMESPath 编写的**提示界面**，而非字节码级别的契约。
+- Schemas 仅描述成功路径的负载。两种目录级软错误信封（`_budget_exceeded`、`_jmespath_error`）不在逐工具 schema 中 — 它们完全替换负载并拥有自己的形状。两种信封请参见 [MCP 错误目录](/zh/mcp-error-catalog)。
+
+## 市场与经济
+
+### `get_market_data`
+
+来自 WorldMonitor 精选引导缓存的实时股票报价、大宗商品价格（包括黄金期货 GC=F）、加密货币价格、外汇汇率（USD/EUR、USD/JPY 等）、板块表现、ETF 资金流和海湾市场报价。
+
+**参数：** 无
+
+- **API 端点：** `GET /api/market/v1/get-fear-greed-index`, `GET /api/market/v1/get-sector-summary`, `GET /api/market/v1/list-commodity-quotes`, `GET /api/market/v1/list-crypto-quotes`, `GET /api/market/v1/list-etf-flows`, `GET /api/market/v1/list-gulf-quotes`, `GET /api/market/v1/list-market-quotes`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_market_data","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_economic_data`
+
+宏观经济指标：联邦基金利率（FRED）、经济日历事件、燃料价格、ECB 外汇汇率、EU 收益率曲线、财报日历、COT 持仓、能源存储数据、BIS 家庭偿债比率（DSR，季度，约 40 个发达经济体家庭财务压力的领先指标），以及 BIS 住宅 + 商业地产价格指数（实际值，季度）。
+
+**参数：** 无
+
+- **API 端点：** `GET /api/economic/v1/get-ecb-fx-rates`, `GET /api/economic/v1/get-economic-calendar`, `GET /api/economic/v1/get-eu-yield-curve`, `GET /api/economic/v1/list-fuel-prices`, `GET /api/market/v1/get-cot-positioning`, `GET /api/market/v1/list-earnings-calendar`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **1 天**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_economic_data","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_country_macro`
+
+来自 IMF WEO 的逐国宏观经济指标（约 210 个国家，月度节奏）。捆绑财政/外部平衡（通胀、经常账户、政府收入/支出/初级余额、CPI）、增长与人均（实际 GDP 增长、人均 GDP 美元和 PPP、储蓄和投资率、储蓄-投资缺口）、劳动力和人口统计（失业率、人口），以及对外贸易（经常账户美元、进口/出口量百分比变化）。每个序列取最新可用年份。用于国家级经济筛选、同侪基准对比和滞胀/失衡标志。注意：以美元计的出口/进口水平（exportsUsd、importsUsd、tradeBalanceUsd）返回 null — WEO 在 2026-04 收回了 BX/BM 指标的广泛覆盖；请改用 currentAccountUsd 或量变化（import/exportVolumePctChg）。
+
+**参数：** 无
+
+- **API 端点：** 无直接端点 — 从引导聚合缓存键读取（无 1:1 REST 端点）。
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **70 天**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_country_macro","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_eu_housing_cycle`
+
+Eurostat 年度房价指数（prc_hpi_a，基准 2015=100），覆盖所有 27 个欧盟成员国以及 EA20 和 EU27_2020 汇总。每个国家条目包含最新值、前值、日期、单位和 10 年迷你图序列。以更广泛的 EU 覆盖补充 BIS WS_SPP，用于 Housing 周期磁贴。
+
+**参数：** 无
+
+- **API 端点：** 无直接端点 — 从引导聚合缓存键读取（无 1:1 REST 端点）。
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **50 天**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_eu_housing_cycle","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_eu_quarterly_gov_debt`
+
+Eurostat 季度一般政府总债务（gov_10q_ggdebt，%GDP），覆盖所有 27 个欧盟成员国以及 EA20 和 EU27_2020 汇总。每个国家条目包含最新值、前值、季度标签和 8 季度迷你图序列。为 EU 面板提供比年度 IMF GGXWDG_NGDP 更新的债务轨迹信号。
+
+**参数：** 无
+
+- **API 端点：** 无直接端点 — 从引导聚合缓存键读取（无 1:1 REST 端点）。
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **14 天**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_eu_quarterly_gov_debt","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_eu_industrial_production`
+
+Eurostat 月度工业生产指数（sts_inpr_m，NACE B-D 工业，不含建筑业，SCA，基准 2021=100），覆盖所有 27 个欧盟成员国以及 EA20 和 EU27_2020 汇总。每个国家条目包含最新值、前值、月份标签和 12 个月迷你图序列。作为实体经济活动的领先指标，被 "Real economy pulse" 迷你图使用。
+
+**参数：** 无
+
+- **API 端点：** 无直接端点 — 从引导聚合缓存键读取（无 1:1 REST 端点）。
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **5 天**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_eu_industrial_production","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_tariff_trends`
+
+全球贸易和价格指标：美国关税趋势（HTS 编码）、巨无霸指数、FAO 食品价格指数和各国国家债务水平。
+
+**参数：** 无
+
+- **API 端点：** `GET /api/economic/v1/get-fao-food-price-index`, `GET /api/economic/v1/get-national-debt`, `GET /api/economic/v1/list-bigmac-prices`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **9 小时**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_tariff_trends","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_consumer_prices`
+
+逐国消费价格情报：30 天概览、类别级通胀、零售商价差（必需品篮子）、涨跌榜和来源新鲜度。需要 country_code（当前仅播种 'ae'）。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|---------:|-------------|
+| `country_code` | string | **是** | ISO 3166-1 alpha-2 国家代码。当前支持：AE（不区分大小写）。 |
+
+- **API 端点：** `GET /api/consumer-prices/v1/get-consumer-price-freshness`, `GET /api/consumer-prices/v1/get-consumer-price-overview`, `GET /api/consumer-prices/v1/list-consumer-price-categories`, `GET /api/consumer-prices/v1/list-consumer-price-movers`, `GET /api/consumer-prices/v1/list-retailer-price-spreads`
+- **类型：** 混合 — 直接读取缓存键（亚秒级），但需要输入参数来选择切片。
+- **新鲜度预算：** 每个切片最多 **25 小时**（24 小时 cron + 1 小时宽限）后标记 `stale: true`。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_consumer_prices","arguments":{"country_code":"AE"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_commodity_geo`
+
+全球矿业地点，含坐标、运营商、矿产类型和生产状态。覆盖全球 71 座主要矿山，涵盖黄金、白银、铜、锂、铀、煤和其他矿物。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|---------:|-------------|
+| `mineral` | string | 否 | 按矿产类型筛选（例如 "Gold"、"Copper"、"Lithium"） |
+| `country` | string | 否 | 按国家名称筛选（例如 "Australia"、"Chile"） |
+
+- **API 端点：** 无 — 此工具不读取缓存也不发起 HTTP 请求。
+- **类型：** 静态注册表 — 筛选捆绑的 `MINING_SITES_RAW` 常量（内存中，随 MCP server 的边缘捆绑包发布）。亚毫秒级，无上游调用。数据集仅在 MCP server 重新部署并刷新注册表时更新。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_commodity_geo","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_prediction_markets`
+
+带有当前概率的活跃 Polymarket 事件合约。涵盖地缘政治、经济和选举预测市场。
+
+**参数：** 无
+
+- **API 端点：** `GET /api/prediction/v1/list-prediction-markets`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **1.5 小时**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_prediction_markets","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+## 能源
+
+### `get_energy_intelligence`
+
+能源供应、价格、存储、中断和政策：EIA 石油库存、电力价格（Ember）、天然气存储（GIE）、燃料短缺、化石和可再生能源份额、活跃能源中断、政府危机政策。
+
+**参数：** 无
+
+- **API 端点：** `GET /api/economic/v1/get-energy-crisis-policies`, `GET /api/supply-chain/v1/get-fuel-shortage-detail`, `GET /api/supply-chain/v1/list-energy-disruptions`, `GET /api/supply-chain/v1/list-fuel-shortages`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **3 天**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_energy_intelligence","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+## 地缘政治与安全
+
+### `get_conflict_events`
+
+活跃武装冲突事件（UCDP、伊朗）、带地理坐标的动荡事件和国家风险评分。涵盖全球正在进行的冲突、抗议和不稳定指数。
+
+**参数：** 无
+
+- **API 端点：** `GET /api/conflict/v1/list-iran-events`, `GET /api/conflict/v1/list-ucdp-events`, `GET /api/unrest/v1/list-unrest-events`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_conflict_events","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_country_risk`
+
+特定国家的结构化风险情报：综合不稳定指数（CII）评分 0-100、组成部分细分（动荡/冲突/安全/新闻）、旅行警示级别和 OFAC 制裁风险敞口。快速 Redis 读取 — 无 LLM。用于量化风险筛选或回答"X 现在有多危险？"
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|---------:|-------------|
+| `country_code` | string | **是** | ISO 3166-1 alpha-2 国家代码，例如 "RU"、"IR"、"CN"、"UA" |
+
+- **API 端点：** `GET /api/intelligence/v1/get-country-risk`
+- **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。Edge 运行时超时：**8.0s**。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_country_risk","arguments":{"country_code":"US"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_country_brief`
+
+AI 生成的逐国情报简报。为给定国家生成 LLM 分析的地缘政治和经济评估。支持分析框架以提供结构化视角。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|---------:|-------------|
+| `country_code` | string | **是** | ISO 3166-1 alpha-2 国家代码，例如 "US"、"DE"、"CN"、"IR" |
+| `framework` | string | 否 | 可选的分析框架指令，用于塑造分析视角（例如 Ray Dalio 债务周期、PMESII-PT） |
+
+- **API 端点：** `GET /api/intelligence/v1/get-country-intel-brief`
+- **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。最坏情况总预算 **~24s**（2s 上下文摘要抓取 + 22s 简报生成，顺序执行）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_country_brief","arguments":{"country_code":"US"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_news_intelligence`
+
+来自 WorldMonitor 情报层的 AI 分类地缘政治威胁新闻摘要、GDELT 情报信号、跨源信号和安全公告。
+
+**参数：** 无
+
+- **API 端点：** `GET /api/intelligence/v1/list-cross-source-signals`, `GET /api/intelligence/v1/search-gdelt-documents`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_news_intelligence","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_cyber_threats`
+
+活跃网络威胁情报：恶意软件 IOC（URLhaus、Feodotracker）、CISA 已知被利用漏洞和活跃的命令与控制基础设施。
+
+**参数：** 无
+
+- **API 端点：** 无直接端点 — 从引导聚合缓存键读取（无 1:1 REST 端点）。
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **4 小时**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_cyber_threats","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_sanctions_data`
+
+OFAC SDN 制裁实体列表和按国家分列的制裁压力评分。适用于合规筛选和地缘政治压力分析。
+
+**参数：** 无
+
+- **API 端点：** `GET /api/sanctions/v1/list-sanctions-pressure`, `GET /api/sanctions/v1/lookup-sanction-entity`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **1 天**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_sanctions_data","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_social_velocity`
+
+Reddit 地缘政治社交速度：来自 worldnews、geopolitics 及相关子版块的顶级帖子，含互动评分和趋势信号。
+
+**参数：** 无
+
+- **API 端点：** `GET /api/intelligence/v1/get-social-velocity`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_social_velocity","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_military_posture`
+
+战区态势评估和军事风险评分。反映全球各战区的聚合军事定位和升级信号。
+
+**参数：** 无
+
+- **API 端点：** `GET /api/military/v1/get-theater-posture`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **2 小时**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_military_posture","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_chokepoint_status`
+
+实时海上咽喉状态：每个咽喉的船只通行计数（10 分钟节奏）、滚动通行汇总、按港口的活动，以及静态参考数据（咽喉几何、规范 13 咽喉注册表）和流量汇总。覆盖苏伊士、霍尔木兹、马六甲、曼德海峡、巴拿马等。
+
+**参数：** 无
+
+- **API 端点：** `GET /api/intelligence/v1/get-country-port-activity`, `GET /api/supply-chain/v1/get-chokepoint-status`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算（按切片）：** 当任意贡献切片超过其单独预算时标记 `stale: true` — 实时通行汇总（中继）**30 分钟**、PortWatch 港口活动 **36 小时**、咽喉流量 **14 天**，静态咽喉注册表/地理基准线最多 **~400 天**。捆绑包的 `cached_at` 反映最旧的贡献种子；`stale: true` 并不意味着所有数据都过时。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_chokepoint_status","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_positive_events`
+
+积极的地缘政治事件：外交协议、人道主义援助、发展里程碑和全球和平倡议。
+
+**参数：** 无
+
+- **API 端点：** `GET /api/positive-events/v1/list-positive-geo-events`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **1 小时**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_positive_events","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+## 交通与基础设施
+
+### `get_aviation_status`
+
+机场延误、NOTAM 空域关闭和被追踪的军用飞机。涵盖 FAA 延误数据和活跃空域限制。
+
+**参数：** 无
+
+- **API 端点：** 无直接端点 — 从引导聚合缓存键读取（无 1:1 REST 端点）。
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **1.5 小时**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_aviation_status","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_airspace`
+
+某国上空的实时 ADS-B 航空器。返回民用航班（OpenSky）和识别出的军用飞机，含呼号、位置、高度和航向。回答诸如"现在阿联酋上空有多少架飞机？"或"台湾上空有军用飞机吗？"之类的问题。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|---------:|-------------|
+| `country_code` | string | **是** | ISO 3166-1 alpha-2 国家代码（例如 "AE"、"US"、"GB"、"JP"） |
+| `type` | string (all / civilian / military) | 否 | 筛选：所有航班（默认）、仅民用或仅军用 |
+
+- **API 端点：** `GET /api/aviation/v1/track-aircraft`, `GET /api/military/v1/list-military-flights`
+- **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。Edge 运行时超时：**8.0s**。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_airspace","arguments":{"country_code":"US"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_maritime_activity`
+
+某国海域的实时船舶交通和海上中断。返回 AIS 密度区（每日船只数、强度评分）、暗船事件和来自 AIS 追踪的咽喉拥堵。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|---------:|-------------|
+| `country_code` | string | **是** | ISO 3166-1 alpha-2 国家代码（例如 "AE"、"SA"、"JP"、"EG"） |
+
+- **API 端点：** `GET /api/maritime/v1/get-vessel-snapshot`
+- **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。Edge 运行时超时：**8.0s**。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_maritime_activity","arguments":{"country_code":"US"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_supply_chain_data`
+
+干散货航运压力指数、海关收入流和 COMTRADE 双边贸易数据。追踪全球供应链压力和贸易中断。
+
+**参数：** 无
+
+- **API 端点：** `GET /api/supply-chain/v1/get-shipping-stress`, `GET /api/trade/v1/get-customs-revenue`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **2 天**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_supply_chain_data","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_infrastructure_status`
+
+互联网基础设施健康：Cloudflare Radar 故障和主要云提供商及互联网服务的服务状态。
+
+**参数：** 无
+
+- **API 端点：** `GET /api/infrastructure/v1/list-internet-outages`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_infrastructure_status","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `search_flights`
+
+在 Google Flights 上搜索特定日期两个机场之间的实时航班选项。返回可用航班，含价格、经停、航空公司和航段详情。使用 IATA 机场代码（例如 "JFK"、"LHR"、"DXB"）。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|---------:|-------------|
+| `origin` | string | **是** | 出发机场的 IATA 代码，例如 "JFK" |
+| `destination` | string | **是** | 到达机场的 IATA 代码，例如 "LHR" |
+| `departure_date` | string | **是** | 出发日期，格式为 YYYY-MM-DD |
+| `return_date` | string | 否 | 往返行程的返程日期，格式为 YYYY-MM-DD（可选） |
+| `cabin_class` | string | 否 | 舱位等级："economy"、"premium_economy"、"business" 或 "first"（可选，默认 economy） |
+| `max_stops` | string | 否 | 最大经停数："0" 或 "non_stop" 表示直飞，"1" 或 "one_stop" 表示最多一次经停，省略表示不限（可选） |
+| `passengers` | number | 否 | 乘客人数（1-9，默认 1） |
+| `sort_by` | string | 否 | 排序方式："price"（最便宜）、"duration"、"departure" 或 "arrival"（可选） |
+
+- **API 端点：** `GET /api/aviation/v1/search-google-flights`
+- **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。Edge 运行时超时：**25.0s**。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"search_flights","arguments":{"origin":"JFK","destination":"LHR","departure_date":"2026-08-15"}}
+  }'
+```
+
+</CodeGroup>
+
+### `search_flight_prices_by_date`
+
+在 Google Flights 上搜索日期范围内日期网格的定价。返回两个机场之间每个出发日期的最便宜价格。适用于寻找最便宜的飞行日期。使用 IATA 机场代码。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|---------:|-------------|
+| `origin` | string | **是** | 出发机场的 IATA 代码，例如 "JFK" |
+| `destination` | string | **是** | 到达机场的 IATA 代码，例如 "LHR" |
+| `start_date` | string | **是** | 日期范围起始，格式为 YYYY-MM-DD |
+| `end_date` | string | **是** | 日期范围结束，格式为 YYYY-MM-DD |
+| `is_round_trip` | boolean | 否 | 是否搜索往返价格（默认 false）。为 true 时需要 trip_duration。 |
+| `trip_duration` | number | 否 | 行程天数 — is_round_trip 为 true 时必填（例如 7 表示一周行程） |
+| `cabin_class` | string | 否 | 舱位等级："economy"、"premium_economy"、"business" 或 "first"（可选） |
+| `passengers` | number | 否 | 乘客人数（1-9，默认 1） |
+| `sort_by_price` | boolean | 否 | 按价格升序排序结果（默认 false，按日期排序） |
+
+- **API 端点：** `GET /api/aviation/v1/search-google-dates`
+- **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。Edge 运行时超时：**25.0s**。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"search_flight_prices_by_date","arguments":{"origin":"JFK","destination":"LHR","start_date":"2026-08-01","end_date":"2026-08-31"}}
+  }'
+```
+
+</CodeGroup>
+
+## 环境与科学
+
+### `get_climate_data`
+
+气候情报：温度/降水异常（对比 30 年 WMO 常态）、气候相关灾害警报（ReliefWeb/GDACS/FIRMS）、大气 CO2 趋势（NOAA Mauna Loa）、空气质量（OpenAQ/WAQI PM2.5 站点）、北极海冰范围和海洋热指标（NSIDC/NOAA）、天气警报和气候新闻。
+
+**参数：** 无
+
+- **API 端点：** `GET /api/climate/v1/get-co2-monitoring`, `GET /api/climate/v1/get-ocean-ice-data`, `GET /api/climate/v1/list-air-quality-data`, `GET /api/climate/v1/list-climate-anomalies`, `GET /api/climate/v1/list-climate-disasters`, `GET /api/climate/v1/list-climate-news`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **2 天**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_climate_data","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_natural_disasters`
+
+近期地震（USGS）、活跃野火（NASA FIRMS）和自然灾害事件。包含震级、位置和威胁严重程度。
+
+**参数：** 无
+
+- **API 端点：** `GET /api/natural/v1/list-natural-events`, `GET /api/seismology/v1/list-earthquakes`, `GET /api/wildfire/v1/list-fire-detections`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_natural_disasters","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_radiation_data`
+
+来自全球监测站的辐射观测水平。标记可能表明核事件的异常读数。
+
+**参数：** 无
+
+- **API 端点：** `GET /api/radiation/v1/list-radiation-observations`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_radiation_data","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_research_signals`
+
+技术和研究事件信号：来自精选研究源的新兴技术事件引导数据。
+
+**参数：** 无
+
+- **API 端点：** `GET /api/research/v1/list-tech-events`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **8 小时**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_research_signals","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+## 健康
+
+### `get_health_signals`
+
+活跃疾病暴发（WHO/ECDC 等）和全球空气质量站点读数（OpenAQ/WAQI PM2.5）。用于健康风险筛选。
+
+**参数：** 无
+
+- **API 端点：** `GET /api/health/v1/list-air-quality-alerts`, `GET /api/health/v1/list-disease-outbreaks`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **2 天**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_health_signals","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+## 人道主义与流离失所
+
+### `get_displacement_data`
+
+按国家分列的难民和国内流离失所者计数（UNHCR 年度数据）。
+
+**参数：** 无
+
+- **API 端点：** `GET /api/displacement/v1/get-displacement-summary`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **2.5 天**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_displacement_data","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+## AI 情报（实时 LLM）
+
+### `get_world_brief`
+
+AI 生成的世界情报简报。抓取最新地缘政治头条及其 RSS 文章正文，生成有据可依的 LLM 摘要简报。提供可选的 geo_context 以聚焦某个地区或主题。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|---------:|-------------|
+| `geo_context` | string | 否 | 可选的聚焦上下文（例如 "Middle East tensions"、"US-China trade war"） |
+
+- **API 端点：** `GET /api/news/v1/list-feed-digest`, `POST /api/news/v1/summarize-article`
+- **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。最坏情况总预算 **~24s**（6s 摘要抓取 + 18s LLM 摘要，顺序执行）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_world_brief","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `analyze_situation`
+
+AI 地缘政治局势分析（DeductionPanel）。提供查询和可选的地缘政治上下文；返回带置信度和支持信号的 LLM 驱动的分析推演。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|---------:|-------------|
+| `query` | string | **是** | 要分析的问题或局势，例如 "What are the implications of the Taiwan strait escalation for semiconductor supply chains?" |
+| `context` | string | 否 | 可选的额外地缘政治上下文，纳入分析 |
+| `framework` | string | 否 | 可选的分析框架指令，用于塑造分析视角（例如 Ray Dalio 债务周期、PMESII-PT、Porter's Five Forces） |
+
+- **API 端点：** `POST /api/intelligence/v1/deduct-situation`
+- **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。Edge 运行时超时：**25.0s**。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"analyze_situation","arguments":{"query":"What are the implications of the Taiwan strait escalation for semiconductor supply chains?"}}
+  }'
+```
+
+</CodeGroup>
+
+### `generate_forecasts`
+
+生成实时 AI 地缘政治和经济预测。与 get_forecast_predictions（预计算缓存）不同，此工具直接调用预测模型以获取新的概率估计。注意：比缓存工具慢。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|---------:|-------------|
+| `domain` | string | 否 | 预测领域："geopolitical"、"economic"、"military"、"climate"，或留空表示所有领域 |
+| `region` | string | 否 | 地理区域筛选，例如 "Middle East"、"Europe"、"Asia Pacific"，或留空表示全球 |
+
+- **API 端点：** 无公开 OpenAPI 行；运行时代理 `POST /api/forecast/v1/get-forecasts`（OpenAPI 规范仅在该路径上声明 `GET`，由 `get_forecast_predictions` 覆盖 — 此工具的 POST 变体运行新的预测）。
+- **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。Edge 运行时超时：**25.0s**。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"generate_forecasts","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_forecast_predictions`
+
+来自 WorldMonitor 预测模型的 AI 生成地缘政治和经济预测。涵盖即将到来的风险事件和概率评估。
+
+**参数：** 无
+
+- **API 端点：** `GET /api/forecast/v1/get-forecasts`
+- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **1.5 小时**（由 seeder cron 的预期间隔设定）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_forecast_predictions","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+## 元工具
+
+### `describe_tool`
+
+按名称返回任何其他工具的完整未压缩定义。当压缩的 `tools/list` 条目对行为或参数语义存在歧义时使用 — 自 v1.5.0 起，`tools/list` 返回每个工具的 `description`，截断为第一句（≤120 UTF-8 字节）；`describe_tool` 返回完整的长格式文本以及相同的 `inputSchema`（每个属性的完整描述）。
+
+| 参数 | 类型 | 必填 | 描述 |
+|-----------|------|----------|-------------|
+| `tool_name` | string | **是** | 来自 `tools/list` 的确切工具名称（例如 `"get_market_data"`）。 |
+
+**响应形状：** 与单个 `tools/list` 条目相同 — `{ name, description, inputSchema, annotations }` — 含完整未压缩的 `description` 和相同的 `inputSchema.properties`（包括缓存工具注入的 `summary` 和每个工具的 `jmespath`）。
+
+**软错误**（HTTP 200，在正常的 `content[0].text` 信封内返回 — 非 JSON-RPC 错误）：
+
+- `{ "error": "missing_tool_name", "hint": "Pass tool_name as a non-empty string matching a tool from tools/list." }` — `tool_name` 被省略、为空或非字符串。
+- `{ "error": "unknown_tool", "requested": "<the bad name>", "available": [...sorted list of all tool names...] }` — `tool_name` 不匹配任何已注册工具。`available` 数组让 LLM 能在额外一次调用中自我纠正。
+
+- **API 端点：** 无 — 服务器本地查询，无上游调用。
+- **类型：** 元数据查询 — 亚毫秒级，无 Redis、无 LLM。
+- **配额：** **豁免** Pro 每日配额（50/天）。每分钟速率限制（60/分钟）仍然适用。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"describe_tool","arguments":{"tool_name":"get_market_data"}}
+  }'
+```
+
+</CodeGroup>

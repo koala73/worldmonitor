@@ -1,0 +1,75 @@
+---
+title: "快速开始"
+description: "一分钟内完成你的第一次 WorldMonitor API 调用 — curl、JavaScript 和 Python。"
+---
+
+## 1. 获取 API 密钥
+
+PRO 订阅用户可从 [worldmonitor.app/pro](https://www.worldmonitor.app/pro) 获取 API 密钥。密钥形如 `wm_live_...`，长度至少为 16 个字符。
+
+<Tip>
+来自 `worldmonitor.app` / `localhost` 的浏览器来源无需密钥即可受信任。只有在服务器到服务器调用或来自不受信任来源时才需要密钥。
+</Tip>
+
+## 2. 调用端点
+
+### curl
+
+```bash
+curl -s 'https://api.worldmonitor.app/api/conflict/v1/list-conflict-events?limit=5' \
+  -H 'X-WorldMonitor-Key: wm_live_...'
+```
+
+### JavaScript（Node 或浏览器）
+
+```js
+const res = await fetch(
+  'https://api.worldmonitor.app/api/market/v1/get-quotes?symbols=AAPL,TSLA',
+  { headers: { 'X-WorldMonitor-Key': process.env.WM_KEY } }
+);
+const data = await res.json();
+console.log(data);
+```
+
+### Python
+
+```python
+import os, httpx
+
+r = httpx.get(
+    "https://api.worldmonitor.app/api/economic/v1/get-fred-series",
+    params={"series_id": "FEDFUNDS"},
+    headers={"X-WorldMonitor-Key": os.environ["WM_KEY"]},
+)
+r.raise_for_status()
+print(r.json())
+```
+
+## 3. 一次性全量水合
+
+对于仪表盘场景，可使用 `/api/bootstrap` 通过一次请求拉取所有已播种的缓存数据：
+
+```bash
+curl -s 'https://api.worldmonitor.app/api/bootstrap' \
+  -H 'X-WorldMonitor-Key: wm_live_...'
+```
+
+响应结构详见 [平台端点](/zh/api-platform#bootstrap)。
+
+## 4. 接入 MCP 客户端
+
+将任意兼容 MCP 的客户端指向服务器 URL — 客户端会自动处理 OAuth：
+
+```
+https://api.worldmonitor.app/api/mcp
+```
+
+针对具体客户端的配置详见 [MCP](/zh/mcp-server)。
+
+## 下一步
+
+- [身份验证](/zh/usage-auth) — 三种认证模式详解
+- [速率限制](/zh/usage-rate-limits) — 各端点配额
+- [错误](/zh/usage-errors) — 响应结构与重试指南
+- [API 参考](/zh/api-reference) — 每个服务、RPC 及请求/响应 schema
+- [Agent 发现](/zh/agent-discovery) — 面向 AI agent 与代码生成工具：从一个根 URL 发现所有 OpenAPI / MCP / OAuth 接口

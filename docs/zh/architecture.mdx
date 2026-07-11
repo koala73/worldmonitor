@@ -1,0 +1,962 @@
+---
+title: "设计哲学"
+description: "World Monitor 背后的设计原则、情报工艺、算法决策与实现模式。"
+---
+
+> **在找系统参考？** 请参阅 [`ARCHITECTURE.md`](https://github.com/koala73/worldmonitor/blob/main/ARCHITECTURE.md)，了解部署拓扑、目录结构、缓存层、CI/CD 以及贡献者操作指南。
+
+---
+
+## 设计原则
+
+| 原则                           | 实现                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **速度优先于完美**           | 关键词分类器即时响应；LLM 异步细化。用户无需等待。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **假设会失败**                  | 每个数据源配备独立熔断器，5 分钟冷却期。AI 回退链：Ollama（本地）→ Groq → OpenRouter → 浏览器端 T5。Redis 缓存失败时降级为内存回退并返回过期数据。负缓存（上游失败后 5 分钟退避）防止对宕机 API 的反复轰炸。每个边缘函数在上游 API 不可用时返回过期的缓存数据。**缓存击穿预防** — `cachedFetchJson` 使用一个进行中的 Promise 映射，将并发的缓存未命中合并为单次上游抓取：第一个请求创建并注册一个 Promise，所有对相同 key 的并发请求 await 同一个 Promise，而不是各自独立命中上游。对速率敏感的 API（Yahoo Finance）使用错峰顺序请求，请求间隔 150ms，避免 429 限流。UCDP 冲突数据使用自动版本发现（并行探测多个 API 版本）、已发现版本缓存（1 小时 TTL）以及出错时返回过期数据的回退策略。 |
+| **展示你无法看到的内容**         | 情报缺口追踪器显式报告数据源中断，而不是静默隐藏。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **浏览器优先计算**           | 分析（聚类、不稳定性评分、激增检测）在客户端运行 — 核心情报不依赖后端计算。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| **本地优先地理定位**         | 国家检测使用浏览器端对 GeoJSON 多边形的射线投射，而非网络反向地理编码。亚毫秒级响应，零 API 依赖，离线可用。网络地理编码作为回退，而非主路径。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **多信号关联**        | 不单独信任任何单一数据源。焦点事件需要新闻 + 军事 + 市场 + 抗议活动相互收敛后才会升级为关键级别。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| **地缘政治锚定**          | 硬编码的冲突区、基线国家风险和战略咽喉点，防止统计噪声在低数据地区产生误报。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **纵深防御**                | CORS 来源白名单、域名白名单 RSS 代理、服务端 API 密钥隔离、令牌认证的桌面 sidecar、输入净化与输出编码、AI 端点的 IP 限流。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| **缓存一切，不信任任何** | 三层缓存（内存 → Redis → 上游），带版本化缓存键和出错时返回过期数据的回退。每个 API 响应包含 `X-Cache` 头用于调试。CDN 层（`s-maxage`）在请求到达边缘函数之前吸收重复请求。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **带宽效率**            | 所有中继响应启用 Gzip 压缩（减少 80%）。内容哈希静态资源配 1 年不可变缓存。错峰轮询间隔防止同步 API 风暴。动画和轮询在隐藏标签页时暂停。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **基线感知告警**         | 趋势关键词检测使用 2 小时滚动窗口对比 7 天基线，配合每词激增倍率、冷却期和来源多样性要求 — 突出真实激增同时抑制噪声。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| **契约优先 API**             | 每个领域情报端点都以 `.proto` 定义开始，包含字段校验、HTTP 注解和示例。代码生成产出带类型的 TypeScript 客户端和服务端，消除 schema 漂移。运维端点（认证、计费、MCP、健康、引导、通知、用户工作流）保留手写于 `api/` 下。契约 API 的破坏性变更在 CI 时被自动捕获。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| **随处运行**                    | 同一代码库从单一 Vercel 部署产出六个专用变体（地缘政治、科技、金融、大宗商品、正能量、能源），并部署到 Vercel（Web）、Railway（中继）、Tauri（桌面）和 PWA（可安装）。桌面 sidecar 在本地镜像所有云端 API 处理器。Service worker 缓存地图瓦片以供离线使用，同时保持情报数据始终新鲜（NetworkOnly）。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| **优雅降级**            | 每个功能在依赖不可用时都能优雅降级。缺失的 API 密钥会跳过相关数据源 — 不会导致应用崩溃。上游 API 失败时提供过期缓存数据。浏览器端 ML 无需任何服务器即可工作。仪表盘在未配置任何 API 密钥时仍可使用（静态图层、地图、ML 模型均可离线工作）。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **多源佐证**      | 关键情报信号使用多个独立来源以减少单一来源偏差。抗议数据合并 ACLED + GDELT 并进行 Haversine 去重。国家风险融合新闻速率 + 军事活动 + 动荡事件 + 基线风险。灾害数据在 0.1° 地理网格上合并 USGS + GDACS + NASA EONET。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| **无框架开销**           | 原生 TypeScript，直接操作 DOM，事件委托，自定义 `Panel`/`VirtualList` 类。无虚拟 DOM diff，无框架运行时，无适配器库。整个应用外壳的体积小于 React 的运行时。浏览器标准（Web Workers、IndexedDB、Intersection Observer、ResizeObserver、CustomEvent）充当响应式和组件模型。                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **类型安全数据流**             | 可辨识联合标记（`_kind` 字段）、proto 生成的带类型客户端/服务端，以及穷尽式 `switch` 匹配，确保 15+ 种标记类型、34 个服务领域和 56 个地图图层的编译时安全。添加新数据类型会在每个未处理位置产生编译错误。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+
+### 情报分析工艺
+
+仪表盘的设计借鉴了成熟的情报分析方法论，并针对自动化开源情报进行了调整：
+
+**结构化分析技术（SATs）** — 系统不直接呈现原始数据，而是应用结构化框架以减少认知偏差。国家不稳定性指数（CII）将"不稳定性"分解为四个加权分量（动荡、冲突、安全、信息速率）— 迫使分析师独立考虑每个维度，而不是锚定在最显眼的头条新闻上。战略风险评分同样将地缘政治风险分解为收敛性、CII、基础设施、战区和突发新闻分量。
+
+**竞争假设分析（ACH）** — 多源佐证要求（新闻 + 军事 + 市场 + 抗议活动相互收敛后才升级为关键）是 ACH 的自动化形式。任何单一数据流都无法单独触发关键告警 — 系统要求跨独立数据流的收敛，从而降低单一来源报告错误或宣传运动的影响。
+
+**情报缺口意识** — 专业情报评估总是注明它们*不知道*的内容。数据新鲜度追踪器显式报告"无法看到的内容" — 31 个来源及其状态分类（新鲜、过期、非常过期、无数据、错误、已禁用）。两个来源（GDELT、RSS）被标记为 `requiredForRisk`，意味着它们的缺失会直接影响 CII 评分质量。当关键数据源宕机时，系统显著展示该缺口，而不是静默省略，防止因数据不全而产生虚假信心。
+
+**来源可信度加权** — 四级来源层级（通讯社 → 主要媒体 → 专业媒体 → 聚合器）对应情报界的来源评估（A–F 可靠性，1–6 置信度）。国家附属来源出于完整性被纳入，但带有宣传风险指标标记，使分析师能够将编辑偏差纳入考量。较高层级的来源在焦点事件检测和告警生成中具有更高权重。
+
+**时间上下文** — Welford 在线基线计算提供了原始计数所缺乏的时间上下文。"50 架军事航班"本身没有意义，除非知道该星期几和月份的平均值是 15 — 这使观测值高于正常水平 3.3σ。系统自动为每种信号类型提供此上下文。
+
+**击杀链意识** — 突发新闻告警管道的 5 来源设计对应情报击杀链概念。RSS 告警提供初始检测；关键词激增确认新兴叙事；热点升级和军事激增提供佐证信号；OREF 警报提供地面真相。每个来源都增加了评估的可信度。
+
+### 算法设计决策
+
+几个不那么显而易见的算法选择值得说明：
+
+**对数 vs. 线性抗议评分** — 民主体制中经常发生不表明不稳定的例行抗议（法国黄背心运动、美国校园抗议）。威权国家很少看到公开抗议，因此每个事件都很重要。CII 对民主体制使用 `log(protestCount)`，对威权国家使用线性缩放，防止民主噪声淹没真正的威权动荡信号。
+
+**Welford 在线算法用于基线** — 传统的均值/方差计算需要存储所有历史数据点。Welford 方法维护一个滚动均值和 M2（平方偏差之和），可以用 O(1) 时间和 O(1) 空间随每个新观测更新。这使得在 Redis 中追踪数百个事件类型 × 地区 × 星期 × 月份组合的基线成为可能，而无需存储原始观测。
+
+**H3 六边形网格用于 GPS 干扰** — 使用六边形网格（H3 分辨率 4，边长约 22km）而非矩形经纬度网格，因为六边形具有均匀邻接（6 个邻居 vs. 正方形的 4/8 个）、任意纬度等面积，且无子午线收敛畸变。这对于干扰区检测很重要，因为空间均匀性会影响聚类准确性。
+
+**余纬度修正距离** — 电缆健康度匹配和多个邻近度计算使用等距矩形近似配合 `cos(lat)` 经度修正，而非完整 Haversine。在涉及的距离（50–600km）下，误差 &lt;0.5%，但速度约快 10 倍 — 在对每个事件计算 500+ 个基础设施资产的距离时很重要。
+
+**负缓存** — 当上游 API 返回错误时，系统在定义的时间段内缓存失败状态（UCDP 为 5 分钟，Polymarket 队列拒绝为 30 秒），而不是立即重试。这防止了数百个并发用户同时轰炸宕机 API 的惊群效应，并向情报缺口追踪器提供清晰信号表明某来源不可用。
+
+**O(1) 屈折后缀匹配** — 关键词匹配管道对每个摄入标题中的每个单词检查一组英语屈折后缀（`-ing`、`-ed`、`-tion`、`-ment` 等）以进行词形归一化。后缀列表从 `Array`（每词 O(n) `.some()` 扫描）改为 `Set`（O(1) `.has()` 查找），消除了对每条标题每个单词执行的线性扫描 — 鉴于系统每个刷新周期处理数千条标题，这是一个有意义的热路径优化。
+
+**栈安全数组操作** — `Math.min(...array)` 和 `Math.max(...array)` 展开模式受 V8 参数栈限制（约 65,535 个条目）。对于大型新闻聚类（突发事件中常见），展开会静默溢出并返回 `Infinity` / `-Infinity`，破坏 `firstSeen` 和 `lastUpdated` 时间戳。这些被替换为 `Array.prototype.reduce` 循环，无论数组大小均在 O(1) 栈空间内操作。
+
+---
+
+## TypeScript 架构
+
+### 原生 TypeScript 架构
+
+World Monitor 使用原生 TypeScript 编写 — 不使用任何前端框架（React、Vue、Svelte、Angular）。这是一个刻意的架构决策，而非疏忽。
+
+**为什么不用框架：**
+
+- **包体积** — 仪表盘加载数十个数据图层、地图渲染器、ML 模型和实时视频流。框架开销的每一 KB 都在与实际情报数据竞争空间。整个应用外壳（面板系统、路由、状态管理）编译后的 JavaScript 体积小于 React 的运行时
+- **DOM 控制** — 面板系统通过防抖内容替换（`setContent()`）和稳定容器元素上的事件委托直接操作 `innerHTML`。框架的虚拟 DOM diff 会与此模式冲突，增加开销却无收益 — 仪表盘没有框架所优化的细粒度响应式状态更新
+- **WebView 兼容性** — Tauri 桌面应用在 WKWebView（macOS）和 WebKitGTK（Linux）中运行，它们在拖放、剪贴板、自动播放和内存管理方面有特殊行为。直接 DOM 操作使得绕过这些平台怪癖成为可能，而无需与框架抽象抗争
+- **长期简洁性** — 没有框架版本升级，没有破坏性 API 迁移，没有适配器库。代码库依赖于浏览器标准（DOM、Web Workers、IndexedDB、Intersection Observer、ResizeObserver），这些标准在各引擎更新中保持稳定
+
+**填补框架空白的方案：**
+
+| 关注点 | 解决方案 |
+| --- | --- |
+| 组件模型 | `Panel` 基类，带生命周期方法（`render`、`destroy`）、防抖内容更新和事件委托 |
+| 状态管理 | `localStorage` 存储用户偏好，`CustomEvent` 派发用于面板间通信（`wm:breaking-news`、`wm:deduct-context`、`theme-changed`、`ai-flow-changed`），以及集中式信号聚合器管理情报状态 |
+| 路由 | URL 查询参数（`?view=`、`?c=`、`?layers=`）在启动时解析；`history.pushState` 用于可分享的深链接 |
+| 响应式 | `SmartPollLoop` 和 `RefreshScheduler` 类，带命名刷新运行器、可见性感知调度和进行中去重 |
+| 虚拟滚动 | 自定义 `VirtualList`，带 DOM 元素池、上下占位 div 和 `requestAnimationFrame` 批处理的滚动处理 |
+
+### 可辨识联合标记系统
+
+所有地图标记 — 在 globe.gl 和 deck.gl 两种引擎中 — 都携带一个 `_kind` 判别字段，用于在运行时识别其类型。每个标记是一个带有字面量 `_kind` 字符串的普通 TypeScript 对象，而非使用类继承（后者需要 `instanceof` 检查且阻止标记数据成为普通可序列化对象）：
+
+```typescript
+type MapMarker =
+  | { _kind: 'conflict'; lat: number; lon: number; severity: string; ... }
+  | { _kind: 'flight'; lat: number; lon: number; callsign: string; ... }
+  | { _kind: 'vessel'; lat: number; lon: number; mmsi: number; ... }
+  | { _kind: 'protest'; lat: number; lon: number; crowd_size: number; ... }
+  // ... 15+ additional marker kinds
+```
+
+这使得渲染管道中的穷尽式 `switch` 匹配成为可能 — TypeScript 编译器验证每种标记类型都被处理，添加新类型会在每个未处理位置产生编译错误。标记数据可以序列化到/自 JSON（用于 IndexedDB 持久化和 Web Worker 传输）而无需自定义序列化逻辑。相同的标记对象流经聚类、工具提示生成和图层过滤，无需类型转换。
+
+### 面板事件委托模式
+
+`Panel` 基类使用防抖的 `setContent(html)` 方法（150ms 延迟）来批量处理快速 DOM 更新。这带来了一个微妙但关键的问题：附加到面板 `innerHTML` 内元素上的任何事件监听器在防抖触发并替换内容时都会被销毁。
+
+解决方案是**事件委托** — 所有 click、change 和 input 处理器绑定到稳定的外部 `this.content` 容器元素（它从不被替换，只有其 `innerHTML` 变化），使用 `event.target.closest('.selector')` 匹配目标元素：
+
+```typescript
+// WRONG — listener destroyed on next setContent()
+this.content.querySelector('.btn')?.addEventListener('click', handler);
+
+// CORRECT — survives innerHTML replacement
+this.content.addEventListener('click', (e) => {
+  if (e.target.closest('.btn')) handler(e);
+});
+```
+
+此模式在所有面板子类中全项目强制执行。在 E2E 测试中，元素引用在防抖渲染后也会失效 — 测试代码必须在每次渲染周期后重新查询 DOM，而不是持有缓存的元素引用。
+
+---
+
+## API 与数据管道
+
+> **CORS** — 所有 API 端点强制执行来源白名单。请参阅 [CORS.md](/zh/cors) 了解允许的来源、实现细节以及如何为新端点添加 CORS。
+
+### Proto 优先 API 契约
+
+整个 API 接口在 Protocol Buffer（`.proto`）文件中使用 [sebuf](https://github.com/SebastienMelki/sebuf) HTTP 注解定义。代码生成从单一事实来源产出 TypeScript 客户端、服务端处理器桩代码和 OpenAPI 3.1.0 文档 — 消除前后端之间的请求/响应 schema 漂移。
+
+**34 个服务领域**覆盖每个数据垂直：
+
+| 领域           | RPC                                             |
+| ---------------- | ------------------------------------------------ |
+| `aviation`       | 机场延误（FAA、AviationStack、ICAO NOTAM）  |
+| `climate`        | 气候异常                                |
+| `conflict`       | ACLED 事件、UCDP 事件、人道主义摘要|
+| `cyber`          | 网络威胁 IOC                                |
+| `displacement`   | 人口流离失所、暴露数据           |
+| `economic`       | 能源价格、FRED 序列、宏观信号、World Bank、BIS 政策利率、汇率、信贷/GDP |
+| `infrastructure` | 互联网中断、服务状态、时间基线 |
+| `intelligence`   | 事件分类、国家简报、风险评分|
+| `maritime`       | 船舶快照、航行警告          |
+| `market`         | 股票指数、加密/大宗商品报价、ETF 资金流|
+| `military`       | 飞机详情、战区态势、USNI 舰队    |
+| `news`           | 新闻条目、文章摘要                |
+| `prediction`     | 预测市场                               |
+| `research`       | arXiv 论文、HackerNews、科技事件            |
+| `seismology`     | 地震                                      |
+| `supply-chain`   | 咽喉点中断评分、航运费率、关键矿产集中度 |
+| `trade`          | WTO 贸易限制、关税趋势、贸易流、贸易壁垒 |
+| `unrest`         | 抗议/动荡事件                            |
+| `wildfire`       | 火灾检测                                  |
+| `giving`         | 捐赠平台交易量、加密捐赠、ODA    |
+| `positive-events`| 正面新闻分类、保护数据  |
+| `consumer-prices`| 消费者价格概览、篮子序列、零售商价差、通胀变动 |
+| `forecast`       | 情景预测、模拟包与结果 |
+| `health`         | 疫情爆发、空气质量警报            |
+| `imagery`        | 卫星影像搜索                         |
+| `leads`          | 联系提交、意向登记        |
+| `natural`        | 自然灾害事件（USGS、GDACS、EONET）     |
+| `radiation`      | 辐射观测（RadNet、Safecast）        |
+| `resilience`     | 国家韧性评分与排名           |
+| `sanctions`      | 制裁压力、实体查询                |
+| `scenario`       | 情景模拟、模板、运行状态      |
+| `shipping`       | 航线风险情报、配送 Webhook       |
+| `thermal`        | 热力升级检测                    |
+| `webcam`         | 实时网络摄像头目录与影像                |
+
+**代码生成管道** — 一个 `Makefile` 驱动 `buf generate` 配合三个自定义 sebuf protoc 插件：
+
+1. `protoc-gen-ts-client` → 带类型的基于 fetch 的客户端类（`src/generated/client/`）
+2. `protoc-gen-ts-server` → 处理器接口和路由描述符（`src/generated/server/`）
+3. `protoc-gen-openapiv3` → YAML 和 JSON 格式的 OpenAPI 3.1.0 规范（`docs/api/`）
+
+Proto 定义包含 `buf.validate` 字段约束（例如，纬度 ∈ [−90, 90]），因此请求校验是自动生成的 — 处理器接收预校验数据。破坏性变更通过 `buf breaking` 对比 main 分支在 CI 时被捕获。
+
+**边缘网关** — 单个 Vercel Edge Function（`api/[domain]/v1/[rpc].ts`）将所有 22 个 `createServiceRoutes()` 函数导入为一个扁平的 `Map<string, handler>` 路由器。每个 RPC 是一个静态路径上的 POST 端点（例如，`POST /api/aviation/v1/list-airport-delays`），带 CORS 强制执行、隐藏 5xx 响应内部细节的顶层错误边界，以及限流支持（429 时 `retryAfter`）。同一个路由器通过 Vite dev-server 插件（`vite.config.ts` 中的 `sebufApiPlugin`）在本地运行，并在处理器变更时进行 HMR 失效。
+
+### 引导水合
+
+仪表盘通过在任何面板渲染前于单次 Redis pipeline 调用中预抓取 38 个常用数据集，消除了冷启动延迟。页面加载时，客户端并行发起两个请求 — 一个**快速层**和一个**慢速层** — 到 `/api/bootstrap` 边缘函数，两者均带 800ms 中止超时以避免阻塞首次渲染。
+
+```
+Page Load → parallel fetch ─┬─ /api/bootstrap?tier=fast  (s-maxage=1200)
+                              │    earthquakes, outages, serviceStatuses,
+                              │    macroSignals, chokepoints, marketQuotes,
+                              │    commodityQuotes, positiveGeoEvents,
+                              │    riskScores, flightDelays, insights,
+                              │    predictions, iranEvents
+                              │
+                              └─ /api/bootstrap?tier=slow  (s-maxage=7200)
+                                   bisPolicy, bisExchange, bisCredit,
+                                   minerals, giving, sectors, etfFlows,
+                                   shippingRates, wildfires, climateAnomalies,
+                                   cyberThreats, techReadiness, theaterPosture,
+                                   naturalEvents, cryptoQuotes, gulfQuotes,
+                                   stablecoinMarkets, unrestEvents, ucdpEvents
+```
+
+边缘函数在单次 Upstash Redis pipeline 中读取所有键 — 一次 HTTP 往返最多 38 个键。结果存储在内存中的 `hydrationCache` Map 里。面板初始化时调用 `getHydratedData(key)`，返回预抓取的数据并从缓存中驱逐（一次性读取）以释放内存。找到水合数据的面板完全跳过其初始 API 调用，使用预加载内容即时渲染。在水合数据已被消费后挂载的面板回退到其正常抓取周期。
+
+**负哨兵缓存** — 当 Redis 键中无数据时，引导端点在响应中存储一个 `__WM_NEG__` 哨兵值，而不是省略该键。这使消费者能够区分"数据尚未加载"（水合中不存在该键）和"数据源无内容"（负哨兵），防止对空数据源进行不必要的 RPC 回退调用。
+
+**分层 CDN 缓存** — 快速层使用 `s-maxage=1200`（20 分钟）配合 `stale-while-revalidate=300`，适用于地震和行情报价等近实时数据。慢速层使用 `s-maxage=7200`（2 小时）配合 `stale-while-revalidate=1800`，适用于 BIS 政策利率和气候异常等不常变化的数据。两层均包含 `stale-if-error` 指令，在源站暂时不可达时提供缓存响应。
+
+**选择性抓取** — 客户端可通过 `?keys=earthquakes,flightDelays,insights` 请求自定义键子集进行定向水合，在特定面板需要重新初始化时实现部分引导恢复。
+
+这将 38 次独立 API 调用（每次都有 DNS 查询、TLS 握手和 Redis 往返）减少为恰好 2 次，在典型连接上将首次有意义渲染时间缩短 2–4 秒。
+
+### SmartPollLoop — 自适应数据刷新
+
+`SmartPollLoop` 是所有数据抓取面板使用的核心刷新编排原语。它不采用固定间隔轮询，而是根据网络条件、标签页可见性、面板可见性和失败历史进行适配：
+
+**自适应行为**：
+
+- **指数退避** — 连续失败将轮询间隔乘以可配置的 `backoffMultiplier`（默认 2×），最高到基础间隔的 4×。一次成功的抓取将乘数重置为 1×
+- **隐藏标签页节流** — 当 `document.visibilityState` 为 `hidden` 时，轮询间隔乘以 `hiddenMultiplier`（默认 5×）。前台每 60 秒轮询的面板在标签页后台化后放慢到每 5 分钟一次
+- **手动触发** — `handle.triggerNow()` 无论当前间隔如何都强制立即轮询，在用户明确请求刷新或相关面板数据变化时使用
+- **尝试追踪** — 连续失败计数器接入熔断器集成。`maxAttempts` 次失败后，轮询循环完全停止，熔断器提供缓存数据
+- **原因标记** — 每次轮询携带一个 `SmartPollReason`（`'interval'`、`'resume'`、`'manual'`、`'startup'`），以便处理器调整行为（例如，`startup` 轮询可抓取更大数据集）
+
+**面板集成** — 面板在其构造函数中以基础间隔和回调创建 `SmartPollLoop`，在挂载时调用 `handle.start()`，在销毁时调用 `handle.stop()`。面板折叠或滚动出视图（通过 Intersection Observer）时循环自动暂停，重新出现时恢复。
+
+### Railway 种子数据管道
+
+21 个 Railway 定时任务持续用从外部 API 预计算的数据刷新 Redis 缓存。种子按可配置计划运行（通常每 5–15 分钟），同时写入规范域名键（用于 RPC 处理器查找）和引导键（用于页面加载水合）。这种双键策略确保引导水合和 RPC 处理器在数据格式和新鲜度上始终一致。
+
+| 种子脚本 | 数据来源 | 更新频率 | 引导键 |
+| --- | --- | --- | --- |
+| `seed-earthquakes` | USGS M4.5+ | 5 分钟 | `seismology:earthquakes:v1` |
+| `seed-market-quotes` | Yahoo Finance（错峰批量） | 5 分钟 | `market:stocks-bootstrap:v1` |
+| `seed-commodity-quotes` | Yahoo Finance（WTI、Brent、金属） | 5 分钟 | `market:commodities-bootstrap:v1` |
+| `seed-crypto-quotes` | CoinGecko（BTC、ETH、SOL、XRP+） | 5 分钟 | `market:crypto:v1` |
+| `seed-cyber-threats` | Feodo、URLhaus、C2Intel、OTX、AbuseIPDB | 10 分钟 | `cyber:threats-bootstrap:v2` |
+| `seed-internet-outages` | Cloudflare Radar | 5 分钟 | `infra:outages:v1` |
+| `seed-fire-detections` | NASA FIRMS VIIRS | 10 分钟 | `wildfire:fires:v1` |
+| `seed-climate-anomalies` | Open-Meteo ERA5 | 15 分钟 | `climate:anomalies:v2` |
+| `seed-natural-events` | USGS + GDACS + NASA EONET | 10 分钟 | `natural:events:v1` |
+| `seed-airport-delays` | FAA + AviationStack + ICAO NOTAM | 10 分钟 | `aviation:delays-bootstrap:v1` |
+| `seed-insights` | Groq LLM 世界简报 + 头条 | 10 分钟 | `news:insights:v1` |
+| `seed-prediction-markets` | Polymarket Gamma API | 10 分钟 | `prediction:markets-bootstrap:v1` |
+| `seed-etf-flows` | Yahoo Finance（IBIT、FBTC、GBTC+） | 15 分钟 | `market:etf-flows:v1` |
+| `seed-stablecoin-markets` | CoinGecko（USDT、USDC、DAI+） | 10 分钟 | `market:stablecoins:v1` |
+| `seed-gulf-quotes` | Yahoo Finance（Tadawul、DFM、ADX） | 10 分钟 | `market:gulf-quotes:v1` |
+| `seed-unrest-events` | ACLED 抗议 + GDELT | 45 分钟 | `unrest:events:v1` |
+| `seed-ucdp-events` | UCDP GED API | 15 分钟 | `conflict:ucdp-events:v1` |
+| `seed-iran-events` | LiveUAMap 地理编码事件 | 10 分钟 | `conflict:iran-events:v1` |
+| `seed-displacement-summary` | UNHCR / IOM | 30 分钟 | N/A |
+| `seed-military-bases` | 策划的 210+ 基地数据库 | 每日 | N/A |
+| `seed-wb-indicators` | World Bank 技术准备度 | 每日 | `economic:worldbank-techreadiness:v1` |
+| `seed-forecasts` | Groq LLM + 多领域信号 | 15 分钟 | `forecast:predictions:v2` |
+| `seed-conflict-intel` | ACLED + HAPI + PizzINT + GDELT | 15 分钟 | `conflict:acled:v1:all:0:0` |
+| `seed-economy` | EIA 能源 + FRED 宏观 + 支出 | 15 分钟 | N/A（额外键） |
+| `seed-supply-chain-trade` | FRED 航运 + WTO + US Treasury | 6 小时 | `supply_chain:shipping:v2` |
+| `seed-security-advisories` | 通过中继代理的 24 个政府 RSS 源 | 1 小时 | `intelligence:advisories-bootstrap:v1` |
+| `seed-usni-fleet` | USNI News WP-JSON（curl 绕过 JA3） | 6 小时 | `usni-fleet:sebuf:v1` |
+| `seed-gdelt-intel` | GDELT 2.0 Doc API（8 个主题） | 1 小时 | `intelligence:gdelt-intel:v1` |
+| `seed-research` | arXiv + HN + 科技事件 + GitHub | 6 小时 | N/A（额外键） |
+| `seed-correlation` | 跨领域关联引擎 | 5 分钟 | `correlation:cards-bootstrap:v1` |
+| `seed-gpsjam` | GPSJam.org H3 干扰六边形 | 6 小时 | N/A |
+| `seed-aviation` | 机场运营摘要 + 航空新闻 | 30 分钟 | N/A（warm-ping） |
+
+种子使用 `cachedFetchJson` 配合进行中 Promise 合并 — 如果种子运行与前一次仍在写入的运行重叠，并发写入会被去重。每个种子脚本都是自包含的（单个 `.mjs` 文件，无构建步骤），在 Node.js 20+ 上运行，并通过 REST API 连接到 Upstash Redis。失败的种子运行会记录错误但绝不破坏现有缓存数据 — 之前的缓存条目会保留直到成功运行替换它。
+
+---
+
+## 边缘函数与部署
+
+### 边缘函数架构
+
+World Monitor 使用 60+ 个 Vercel Edge Functions 作为轻量 API 层，分为两代。`api/*.js` 中的遗留端点各自处理单一数据源问题 — 代理、缓存或转换外部 API。较新的 proto 优先端点使用**每领域薄入口点** — 34 个独立的边缘函数，每个仅导入其自身的处理器模块。这取代了原来在每次冷启动时加载全部 34 个领域的单体网关。每个领域的函数经 tree-shaking 仅包含其依赖，将冷启动时间减少约 85%（大多数端点低于 100ms，而单体处理器需 500ms+）。共享的 `server/gateway.ts` 提供通用路由逻辑。两代共存，新功能以 proto 优先方式构建。此架构避免了单体后端同时保持 API 密钥服务端：
+
+- **RSS 代理** — 域名白名单代理，支持 500+ 订阅源，防止 CORS 问题并隐藏源服务器。来自屏蔽 Vercel IP 的域名的订阅源自动通过 Railway 中继路由。
+- **AI 管道** — Groq 和 OpenRouter 边缘函数配 Redis 去重，使并发用户间的相同标题仅触发一次 LLM 调用。classify-event 端点在 500 错误时暂停其队列以避免浪费 API 配额。
+- **数据适配器** — GDELT、ACLED、OpenSky、USGS、NASA FIRMS、FRED、Yahoo Finance、CoinGecko、mempool.space、BIS、WTO 等各自有专用边缘函数将响应归一化为一致 schema
+- **市场情报** — 宏观信号、ETF 资金流和稳定币监控在服务端计算衍生分析（VWAP、SMA、peg 偏差、资金流估算）并将结果缓存到 Redis
+- **时间基线** — Welford 算法状态在跨请求间持久化到 Redis，无需传统数据库即可构建统计基线
+- **自定义抓取器** — 没有 RSS 订阅源的来源（FwdStart、GitHub Trending、科技事件）被抓取并转换为 RSS 兼容格式
+- **金融地理数据** — 证券交易所（92 个）、金融中心（19 个）、央行（13 个）和大宗商品枢纽（10 个）作为带类型的静态数据集提供，含市值、GFCI 排名、交易时间和大宗商品专长
+- **BIS 集成** — 来自国际清算银行的政策利率、实际有效汇率和信贷/GDP 比率，缓存 30 分钟 TTL
+- **WTO 贸易政策** — 来自世界贸易组织的贸易限制、关税趋势、双边贸易流和 SPS/TBT 壁垒
+- **供应链情报** — 海运咽喉点中断评分（交叉引用 NGA 警告 + AIS 数据）、带激增检测的 FRED 航运货运指数，以及通过 Herfindahl-Hirschman 指数分析的关键矿产供应集中度
+- **公司丰富化** — `IntelligenceService.GetCompanyEnrichment` 将 GitHub 组织数据、推断的技术栈（由按星数加权的仓库语言分布得出）、SEC EDGAR 公开文件（10-K、10-Q、8-K）和 Hacker News 提及聚合到单一响应中。`IntelligenceService.ListCompanySignals` 呈现实时公司活动信号 — 融资事件、招聘激增、高管变动和扩张公告 — 来源于 Hacker News 和 GitHub，每个按信号类型分类并基于参与度、评论量和时效性评分
+
+所有边缘函数均包含熔断器逻辑，在上游 API 不可用时返回缓存过期数据，确保仪表盘从不显示空白面板。
+
+### 冷启动优化 — 每领域边缘函数拆分
+
+原来的单体边缘网关（`api/[domain]/v1/[rpc].ts`）将每个服务领域处理器导入到单个函数中。调用任何 RPC 时，边缘运行时加载整个处理器图 — 即使只需要 1 个领域，也要为每个领域初始化 Redis 客户端、解析配置和导入工具模块。
+
+这被拆分为每领域薄入口点 — 每个服务领域一个 — 每个仅导入其自身的处理器模块。共享网关（`server/gateway.ts`）提供通用路由逻辑，但每个领域的边缘函数经 tree-shaking 仅包含其依赖。
+
+**影响**：冷启动时间下降约 85% — 行情报价请求不再加载网络威胁情报解析器、OREF 告警处理器或气候异常检测器。在 Vercel 边缘运行时上，这转化为大多数端点低于 100ms 的冷启动，而单体处理器需 500ms+。
+
+### 单一部署变体合并
+
+所有五个仪表盘变体（World Monitor、Tech Monitor、Finance Monitor、Commodity Monitor、Happy Monitor）从**单一 Vercel 部署**提供服务。变体在运行时通过主机名检测确定：
+
+| 主机名 | 变体 |
+| --- | --- |
+| `tech.worldmonitor.app` | `tech` |
+| `finance.worldmonitor.app` | `finance` |
+| `commodity.worldmonitor.app` | `commodity` |
+| `happy.worldmonitor.app` | `happy` |
+| `worldmonitor.app`（默认） | `full` |
+
+在桌面应用上，变体存储在 `localStorage['worldmonitor-variant']` 中，可在不重新构建的情况下切换。标题栏中的变体选择器在 Web 上在已部署域名间导航，或在桌面端切换 localStorage 值。
+
+此架构取代了原来的多部署方式（每个变体一个独立 Vercel 项目），并提供以下优势：
+
+- **即时切换** — 用户在标题栏切换变体，无需整页导航或 DNS 查询
+- **共享 CDN 缓存** — 静态 SPA 资源在各变体间相同；只有运行时配置不同。CDN 缓存命中率比独立部署高 4 倍
+- **单一 CI 管道** — 一次构建、一次部署、一套边缘函数。无跨部署配置漂移
+- **社交机器人路由** — OG 图片端点根据请求主机名生成变体专属预览卡片，因此分享 Tech Monitor 链接会生成科技品牌社交预览
+
+---
+
+## 实时系统
+
+### AIS 中继背压架构
+
+AIS 船舶追踪中继维护到 AISStream.io 的持久 WebSocket 连接，在高峰海运流量时每秒可投递数百条位置报告。如果没有流控，慢消费者（例如网络状况差的客户端）会导致中继消息队列的无界内存增长。
+
+中继实现了**三水位背压系统**：
+
+| 水位 | 阈值 | 行为 |
+| --- | --- | --- |
+| **低** | 1,000 条消息 | 正常运行 — 所有消息入队 |
+| **高** | 4,000 条消息 | 警告状态 — 驱逐最旧消息腾出空间 |
+| **硬上限** | 8,000 条消息 | 溢出 — 丢弃新消息直到队列排至高水位以下 |
+
+此外，中继将追踪船舶总数上限设为 20,000 个位置（每个 MMSI 的最新位置）。辅助**密度单元**系统将位置聚合到 2°×2° 地理网格单元（最多 5,000 个单元）中，在完整船舶列表超出渲染能力时提供概览可视化。
+
+船舶历史轨迹上限为每船 30 个位置点。新位置到达时，最旧轨迹点被驱逐。这创建了"彗尾"可视化，展示近期移动方向而无无界内存增长。
+
+中继还在前端和中继服务器之间实现 HMAC 认证，防止未授权客户端消费昂贵的 AIS 数据流。
+
+### ONNX Runtime 能力检测
+
+浏览器端 ML 管道（嵌入、NER、情感、摘要）使用 ONNX Runtime Web 进行推理。模型执行速度因浏览器和设备及可用硬件加速而异。
+
+系统在初始化时使用级联能力检测策略：
+
+```
+WebGPU (fastest)  →  WebGL (fast)  →  WASM + SIMD (baseline)
+```
+
+1. **WebGPU** — 通过 `navigator.gpu` 存在性检测。提供 GPU 加速推理，延迟最低。Chrome 113+ 和 Edge 113+ 可用
+2. **WebGL** — WebGPU 不可用时的回退。通过 WebGL 计算着色器使用现有 GPU。所有现代浏览器可用
+3. **WASM + SIMD** — 仅 CPU 回退。探测 `SharedArrayBuffer` 和 WASM SIMD 可用性。SIMD 对向量操作比普通 WASM 快约 2–4 倍
+
+`deviceMemory` API 守卫在低内存设备（RAM &lt;4GB 的手机）上完全排除 ML 管道，防止加载 384 维 float32 嵌入模型与地图渲染器和实时视频流并发时的内存溢出崩溃。
+
+---
+
+## 地图与可视化
+
+### 地缘政治边界叠加
+
+地图支持带关联元数据的类型化地缘政治边界多边形。每个边界携带一个 `boundaryType` 判别字段（`demilitarized`、`ceasefire`、`disputed`、`armistice`），控制渲染样式和弹窗内容。
+
+**朝鲜非军事区** — 第一个实现的边界是朝鲜非军事区，定义为源自 OpenStreetMap Way 369265305 和《朝鲜停战协定》第一条分界线的 43 点闭合环多边形。在平面地图上，它以 `GeoJsonLayer` 渲染，带半透明蓝色填充和带标签的工具提示。在 3D 地球仪上，它作为冲突图层下的 `polygonsData` 渲染。该边界有专门的帮助条目和图层开关，仅默认在 `full` 变体上启用。
+
+边界系统设计为可扩展 — 额外的地缘政治边界（克什米尔实际控制线、戈兰高地、北塞浦路斯绿线）可添加到 `GEOPOLITICAL_BOUNDARIES` 常量并配以适当类型，将自动在两种地图引擎上渲染。
+
+### CII 等值线热力图
+
+国家不稳定性指数可在两种地图引擎上投影为全覆盖等值线图层，根据每个国家的实时 CII 评分（0–100）以五段色阶为每个国家多边形着色：
+
+| 评分范围 | 等级     | 颜色     |
+| ----------- | --------- | --------- |
+| 0–30        | 低       | 绿色     |
+| 31–50       | 正常    | 黄色    |
+| 51–65       | 升高  | 橙色  |
+| 66–80       | 高      | 红色       |
+| 81–100      | 关键  | 深红  |
+
+在**平面地图**（deck.gl）上，`GeoJsonLayer` 通过 `getLevel()` 阈值函数将 ISO 3166-1 alpha-2 国家代码映射为固定 RGBA 值。更新由单调版本计数器（`ciiScoresVersion`）触发 — 图层在每次渲染传递时比较计数器，仅在其递增时重新计算填充色，避免 O(n) 数据展开。
+
+在 **3D 地球仪**（globe.gl）上，CII 国家多边形与地缘政治边界合并到同一个 `polygonsData` 数组中。每个多边形对象中的 `_kind` 判别字段（`'boundary' | 'cii'`）让单个 `.polygonCapColor()` 回调为两种类型分发渲染逻辑。CII 多边形以 `polygonAltitude: 0.002` 渲染（低于冲突区轮廓使用的 `0.006` 高度），防止视觉 Z-fighting。
+
+国家 GeoJSON 从共享的 `getCountriesGeoJson()` 函数惰性加载，首次抓取后缓存，并在 CII 图层和国家检测射线投射服务间共享。
+
+### 统一图层开关目录
+
+所有 56 个地图图层开关定义 — 图标、本地化键、回退显示标签和支持的渲染器类型 — 合并到单一共享注册表（`src/config/map-layer-definitions.ts`）。每个条目通过 `renderers: MapRenderer[]` 字段声明其支持的地图渲染器（例如，`dayNight` 仅平面，`ciiChoropleth` 平面和地球仪均支持），防止两个地图组件显示不一致的图层选项。
+
+`def()` 工厂函数减少了每条目的样板代码。变体特定的图层排序（`VARIANT_LAYER_ORDER`）为五个仪表盘变体定义显示顺序，而无需重复定义本身。添加新地图图层只需一条注册表条目 — 平面地图和 3D 地球仪均自动从此目录派生其开关面板。
+
+---
+
+## 带宽与缓存
+
+### Vercel CDN 头
+
+每个 API 边缘函数包含 `Cache-Control` 头，使 Vercel 的 CDN 能在不命中源站的情况下提供缓存响应：
+
+| 数据类型              | `s-maxage`   | `stale-while-revalidate` | 理由                        |
+| ---------------------- | ------------ | ------------------------ | -------------------------------- |
+| 分类结果 | 3600s（1 小时）   | 600s（10 分钟）             | 标题不会频繁重新分类 |
+| 国家情报   | 3600s（1 小时）   | 600s（10 分钟）             | 简报变化缓慢             |
+| 风险评分            | 300s（5 分钟）  | 60s（1 分钟）               | 近实时，低延迟      |
+| 市场数据            | 3600s（1 小时）   | 600s（10 分钟）             | 日内粒度已足够  |
+| 火灾检测         | 600s（10 分钟） | 120s（2 分钟）              | VIIRS 约每 12 小时更新    |
+| 经济指标    | 3600s（1 小时）   | 600s（10 分钟）             | 月度/季度发布       |
+
+静态资源使用内容哈希文件名配 1 年不可变缓存头。Service worker 文件（`sw.js`）从不缓存（`max-age=0, must-revalidate`）以确保更新检测。
+
+### 客户端熔断器
+
+每个数据抓取面板使用熔断器，防止级联故障拖垮整个仪表盘。该模式在两个层面工作：
+
+**每订阅源熔断器**（RSS） — 每个 RSS 订阅源 URL 有独立失败计数器。连续 2 次失败后，订阅源进入 5 分钟冷却期，期间不进行任何抓取尝试。冷却到期后订阅源自动重新进入池。这防止单个配置错误或宕机的订阅源消耗抓取预算并拖慢整个新闻刷新周期。
+
+**每面板熔断器**（数据面板） — 从 API 端点抓取的面板使用 IndexedDB 支持的持久缓存（`worldmonitor_persistent_cache` 存储）配 TTL 包络。抓取成功时，结果带过期时间戳存储。后续加载时，熔断器立即提供缓存结果并尝试后台刷新。如果后台刷新失败，过期的缓存数据继续显示 — 面板不会因瞬时 API 故障而空白。缓存条目在页面重载和浏览器重启后保留。
+
+熔断器跨存储层优雅降级：IndexedDB（主要，至设备配额）→ localStorage 回退（5MB 限制）→ 内存 Map（仅会话）。当设备存储配额耗尽时（移动版 Safari 常见），全局 `_storageQuotaExceeded` 标志禁用所有后续写入，同时读取正常继续。
+
+### Brotli 预压缩（构建时）
+
+`vite build` 现在为大于 1KB 的静态资源（JS、CSS、HTML、SVG、JSON、XML、TXT、WASM）输出预压缩 Brotli 产物（`*.br`）。当边缘可直接提供 Brotli 时，这比仅 gzip 投递减少约 20–30% 的传输体积。
+
+对于 Hetzner Nginx 源站，启用静态压缩文件服务，使 `dist/*.br` 文件无需运行时重新压缩即可返回：
+
+```nginx
+gzip on;
+gzip_static on;
+
+brotli on;
+brotli_static on;
+```
+
+当源站/边缘有 Brotli 资源可用时，Cloudflare 会自动为兼容客户端协商 Brotli。
+
+### Railway 中继压缩
+
+当客户端接受 gzip 且负载超过 1KB 时，所有中继服务器响应都通过 `gzipSync` 处理。Sidecar API 响应优先 Brotli，并使用 gzip 回退，配合正确的 `Content-Encoding`/`Vary` 头，阈值相同。这适用于 OpenSky 飞机 JSON、RSS XML 订阅源、UCDP 事件数据、AIS 快照和健康检查 — 将传输体积减少约 50–80%。
+
+### 进行中请求去重
+
+当多个连接的客户端同时轮询时（中继的多租户 WebSocket 架构中常见），相同的上游请求在中继层去重。对给定资源键（例如 RSS 订阅源 URL 或 OpenSky 边界框）的第一个请求创建一个存储在进行中 Map 中的 Promise。所有对相同键的并发请求 await 那个单一 Promise，而非冲击上游 API。后续请求从缓存提供，带 `X-Cache: DEDUP` 头。这防止了如 53 个并发 RSS 缓存未命中或 5 个对同一地理区域的同步 OpenSky 请求的场景 — 全部由单次上游抓取解决。
+
+### 自适应刷新调度
+
+仪表盘不采用固定间隔轮询，而是使用响应网络条件、标签页可见性和数据新鲜度的自适应刷新调度器：
+
+- **失败时指数退避** — 当刷新失败或未返回新数据时，下次轮询间隔加倍，最高至基础间隔的 4×。成功抓取到新数据将乘数重置为 1×
+- **隐藏标签页节流** — 当 `document.visibilityState` 为 `hidden` 时，所有轮询间隔乘以 10×。前台每 60 秒轮询的标签页在后台放慢到每 10 分钟，大幅减少非活跃标签页的浪费请求
+- **抖动** — 每个计算间隔随机化 ±10%，防止多个标签页或用户共享同一服务器时的同步 API 风暴。无抖动时，同时打开的两个标签页将永远同步轮询
+- **可见性恢复时过期刷新** — 当隐藏标签页变为可见时，调度器识别所有数据已超过其基础间隔的刷新任务并立即重新运行，间隔 150ms 错开以避免请求突发。这确保用户返回后台标签页时在几秒内看到新鲜数据
+- **进行中去重** — 对同一命名刷新的并发调用被合并；同时只允许一个进行中
+- **条件注册** — 刷新任务可包含一个 `condition` 函数，在每次轮询前求值；条件不再满足的任务（例如已折叠的面板）完全跳过其抓取周期
+
+### 前端轮询间隔
+
+面板以错峰间隔刷新以避免同步 API 风暴：
+
+| 面板                              | 间隔    | 理由                      |
+| ---------------------------------- | ----------- | ------------------------------ |
+| AIS 海事快照              | 10s         | 实时船舶位置     |
+| 服务状态                     | 60s         | 健康检查节奏           |
+| 市场信号 / ETF / 稳定币 | 180s（3 分钟） | 市场时段粒度       |
+| 风险评分 / 战区态势      | 300s（5 分钟） | 复合评分变化缓慢 |
+
+标签页隐藏或 2 分钟不活动后，所有动画和轮询暂停，防止后台标签页的浪费请求。
+
+### 缓存架构
+
+每个外部 API 调用都经过带出错返回过期数据回退的三层缓存：
+
+```
+Request → [1] In-Memory Cache → [2] Redis (Upstash) → [3] Upstream API
+                                                              │
+             ◄──── stale data served on error ────────────────┘
+```
+
+| 层                | 范围                      | TTL                | 用途                                       |
+| ------------------- | -------------------------- | ------------------ | --------------------------------------------- |
+| **内存**       | 每边缘函数实例 | 不同（60s–900s）  | 消除热路径的 Redis 往返    |
+| **Redis (Upstash)** | 跨用户、跨实例 | 不同（120s–900s） | 跨所有访客去重 API 调用    |
+| **上游**        | 事实来源            | N/A                | 外部 API（Yahoo Finance、CoinGecko 等） |
+
+缓存键是版本化的（`opensky:v2:lamin=...`、`macro-signals:v2:default`），因此 schema 变更不会提供过期格式。每个响应包含 `X-Cache` 头（`HIT`、`REDIS-HIT`、`MISS`、`REDIS-STALE`、`REDIS-ERROR-FALLBACK`）用于调试。
+
+**共享缓存层** — 所有 sebuf 处理器实现共享统一的 Upstash Redis 缓存模块（`_upstash-cache.js`），提供一致 API：`getCachedOrFetch(cacheKey, ttlSeconds, fetchFn)`。这消除了每处理器的缓存样板，确保每个 RPC 端点都受益于三层策略。缓存键包含随请求变化的参数（例如，请求的标的代码、国家代码、边界框）以防止不同输入调用者间的缓存污染。在桌面端，当 Redis 不可用时，同一模块在 sidecar 中以内存 + 持久文件后端运行。
+
+**进行中 Promise 去重** — `server/_shared/redis.ts` 中的 `cachedFetchJson` 函数维护一个活动上游请求的内存 `Map<string, Promise>`。缓存未命中时，第一个调用者的抓取在 map 中创建并注册一个 Promise。所有对相同缓存键的并发调用者 await 那个单一 Promise，而非独立命中上游 API。这消除了多个边缘函数实例同时竞争重新填充过期缓存条目的"惊群"问题 — 此场景此前在热门端点约 15 秒的重新填充窗口期间导致 50+ 个并发上游请求。
+
+**负缓存** — 当上游 API 返回错误时，系统缓存一个哨兵值（`__WM_NEG__`）120 秒，而非让缓存为空。这防止了数百个并发请求各自独立发现缓存为空并同时轰炸宕机 API 的失败级联。负哨兵对消费者透明 — `cachedFetchJson` 对负缓存键返回 `null`，面板回退到过期数据或显示适当的空状态。特定 API 使用更长的负 TTL：UCDP 使用 5 分钟退避，Polymarket 队列拒绝使用 30 秒退避。
+
+AI 摘要管道添加了基于内容的去重：标题在调用 Groq 前进行哈希并对照 Redis 检查，因此 1,000 个并发用户查看的同一条突发新闻恰好触发一次 LLM 调用。
+
+---
+
+## 错误追踪
+
+### Sentry 错误噪声过滤
+
+Sentry SDK 初始化包含 `beforeSend` 钩子和 `ignoreErrors` 列表，抑制已知的不可操作错误来源 — 完全发生在无 source-map 帧的压缩代码中的 Three.js WebGL 遍历崩溃、来自浏览器扩展的跨域 Web Worker 构建失败、iOS 媒体元素崩溃，以及扩展注入的 jQuery `$`。Three.js 过滤器特别避免一刀切抑制：仅丢弃*所有*栈帧都是匿名或来自压缩 bundle 的事件。如果哪怕有一帧具有 source-map 的 `.ts` 文件名，该事件将被保留以供调查。
+
+### 错误追踪与生产强化
+
+Sentry 在生产环境中捕获未处理异常和 Promise 拒绝，具备环境感知路由（生产环境在 `worldmonitor.app`，预览环境在 `*.vercel.app`，localhost 和 Tauri 桌面端禁用）。
+
+配置包含 30+ 个 `ignoreErrors` 模式，抑制以下噪声：
+
+- **第三方 WebView 注入** — Twitter、Facebook 和 Instagram 内嵌浏览器注入引用未定义变量（`CONFIG`、`currentInset`）的脚本
+- **浏览器扩展** — 失败 `importScripts` 或违反 CSP 策略的 Chrome/Firefox 扩展
+- **WebGL 上下文丢失** — MapLibre/deck.gl 中可自恢复的瞬时 GPU 崩溃
+- **iOS Safari 怪癖** — 后台标签页被杀导致的 IndexedDB 连接断开、自动播放策略导致的 `NotAllowedError`
+- **网络瞬时问题** — `TypeError: Failed to fetch`、`TypeError: Load failed`、`TypeError: cancelled`
+- **MapLibre 内部崩溃** — 源自地图分块的 style layers、light 和 placement 中的空访问
+
+自定义 `beforeSend` 钩子提供第二阶段过滤：抑制单字符错误消息（压缩产物）、来自浏览器扩展的 `Importing a module script failed` 错误（通过栈跟踪中的 `chrome-extension:` 或 `moz-extension:` 识别），以及栈跟踪源自地图分块文件时的 MapLibre 内部空访问崩溃。
+
+**分块重载守卫** — 部署后，持有过期浏览器标签页的用户在动态导入的分块具有新内容哈希文件名时可能遇到 `vite:preloadError` 事件。守卫监听此事件并执行一次性页面重载，使用 `sessionStorage` 防止无限重载循环。如果重载成功（应用完全初始化），守卫标志被清除。这从过期资源 404 中优雅恢复，无需用户手动刷新。
+
+**存储配额管理** — 当设备的 localStorage 或 IndexedDB 配额耗尽时（移动版 Safari 5MB 限制常见），全局 `_storageQuotaExceeded` 标志禁用持久缓存（IndexedDB + localStorage 回退）和工具 `saveToStorage()` 函数的所有后续写入尝试。该标志在首次 `name === 'QuotaExceededError'` 或 `code === 22` 的 `DOMException` 时设置，防止重复失败写入导致的级联错误。读取操作继续正常 — 缓存数据仍可访问，仅新写入被抑制。
+
+事务以 10% 采样以在可观测性与成本间平衡。发布追踪（`worldmonitor@{version}`）支持跨部署的回归检测。
+
+---
+
+## 容错
+
+外部 API 不可靠。速率限制、中断和网络错误不可避免。系统实现**熔断器**模式以维持可用性。
+
+### 熔断器模式
+
+每个外部服务都包装在追踪失败的熔断器中：
+
+```
+Normal → Failure #1 → Failure #2 → OPEN (cooldown)
+                                       ↓
+                               5 minutes pass
+                                       ↓
+                                    CLOSED
+```
+
+**冷却期间行为：**
+
+- 新请求返回缓存数据（如可用）
+- UI 显示"暂时不可用"状态
+- 不进行 API 调用（防止轰炸）
+
+### 受保护服务
+
+| 服务 | 冷却 | 缓存 TTL |
+|---------|----------|-----------|
+| Yahoo Finance | 5 分钟 | 10 分钟 |
+| Polymarket | 5 分钟 | 10 分钟 |
+| USGS 地震 | 5 分钟 | 10 分钟 |
+| NWS 天气 | 5 分钟 | 10 分钟 |
+| FRED 经济 | 5 分钟 | 10 分钟 |
+| Cloudflare Radar | 5 分钟 | 10 分钟 |
+| ACLED | 5 分钟 | 10 分钟 |
+| GDELT | 5 分钟 | 10 分钟 |
+| FAA 状态 | 5 分钟 | 5 分钟 |
+| RSS 订阅源 | 每源 5 分钟 | 10 分钟 |
+
+RSS 订阅源使用每源独立熔断器 — 一个失败订阅源不影响其他。
+
+### 优雅降级
+
+当服务进入冷却时：
+
+1. 缓存数据继续显示（过期但可用）
+2. 状态面板显示服务健康度
+3. 冷却到期时自动恢复
+4. 无需用户干预
+
+---
+
+## 系统健康监控
+
+状态面板（通过标题栏健康指示器访问）提供数据源状态和系统健康度的实时可见性。
+
+### 健康指示器
+
+标题栏显示系统健康徽章：
+
+| 状态 | 视觉 | 含义 |
+|-------|--------|---------|
+| **健康** | 绿点 | 所有数据源正常运行 |
+| **降级** | 黄点 | 部分来源处于冷却 |
+| **不健康** | 红点 | 多个来源失败 |
+
+点击指示器展开完整状态面板。
+
+### 数据源状态
+
+状态面板列出所有数据订阅源及其当前状态：
+
+| 状态 | 图标 | 描述 |
+|--------|------|-------------|
+| **活跃** | ● 绿 | 正常抓取数据 |
+| **冷却** | ● 黄 | 暂时暂停（熔断器） |
+| **已禁用** | ○ 灰 | 图层未启用 |
+| **错误** | ● 红 | 持续失败 |
+
+### 每订阅源信息
+
+每条订阅源显示：
+
+- **来源名称** - 数据提供商
+- **上次更新** - 距上次成功抓取的时间
+- **下次刷新** - 距下次计划抓取的倒计时
+- **冷却剩余** - 距熔断器重置的时间（如处于冷却）
+
+### 为何重要
+
+外部 API 不可靠。状态面板帮助你了解：
+
+- **数据新鲜度** - 新闻订阅源是最新的还是过期的？
+- **覆盖缺口** - 哪些来源当前不可用？
+- **恢复时间线** - 失败来源何时重试？
+
+这种透明性使你能知情解读仪表盘数据。
+
+---
+
+## 数据新鲜度追踪
+
+除简单的"在线/离线"状态外，系统为每个数据源追踪细粒度新鲜度，以指示数据可靠性和陈旧度。
+
+### 新鲜度等级
+
+| 状态 | 颜色 | 标准 | 含义 |
+|--------|-------|----------|---------|
+| **新鲜** | 绿 | 在预期间隔内更新 | 数据为最新 |
+| **老化** | 黄 | 过去 1-2× 预期间隔 | 数据可能略过期 |
+| **过期** | 橙 | 过去 2-4× 预期间隔 | 数据已过时 |
+| **关键** | 红 | 过去 >4× 预期间隔 | 数据不可靠 |
+| **已禁用** | 灰 | 图层已关闭 | 不抓取 |
+
+### 来源专属阈值
+
+每个数据源有校准的新鲜度预期：
+
+| 来源 | 预期间隔 | "新鲜"阈值 |
+|--------|------------------|-------------------|
+| 新闻订阅源 | 5 分钟 | &lt;10 分钟 |
+| 股票报价 | 1 分钟 | &lt;5 分钟 |
+| 地震 | 5 分钟 | &lt;15 分钟 |
+| 天气 | 10 分钟 | &lt;30 分钟 |
+| 航班延误 | 10 分钟 | &lt;20 分钟 |
+| AIS 船舶 | 实时 | &lt;1 分钟 |
+
+### 视觉指示器
+
+状态面板为每个来源显示新鲜度：
+
+- **彩色点** 指示新鲜度等级
+- **距更新时间** 显示确切陈旧度
+- **下次刷新倒计时** 显示数据何时更新
+
+### 为何重要
+
+理解数据新鲜度对决策至关重要：
+
+- "新鲜"的地震订阅源意味着显示了近期事件
+- "过期"的新闻订阅源意味着你可能错过突发报道
+- "关键"的 AIS 流意味着船舶位置不可靠
+
+这种可见性使你在解读仪表盘时能适当校准置信度。
+
+### 核心 vs. 可选来源
+
+数据源按其对风险评估的重要性分类：
+
+| 分类 | 来源 | 影响 |
+|----------------|---------|--------|
+| **核心** | GDELT、RSS 订阅源 | 风险评分所需 |
+| **可选** | ACLED、军事、AIS、天气、经济 | 增强但非必需 |
+
+战略风险概览面板根据核心来源可用性调整其显示：
+
+| 状态 | 显示模式 | 行为 |
+|--------|--------------|----------|
+| **充足** | 完整数据视图 | 所有指标带置信度显示 |
+| **有限** | 有限数据视图 | 显示"数据有限"警告横幅 |
+| **不足** | 不足数据视图 | "数据不足"消息，无风险评分 |
+
+### 新鲜度感知风险评估
+
+复合风险评分根据数据新鲜度调整：
+
+```
+If core sources fresh:
+  → Full confidence in risk score
+  → "All data sources active" indicator
+
+If core sources stale:
+  → Display warning: "Limited Data - [active sources]"
+  → Score shown but flagged as potentially unreliable
+
+If core sources unavailable:
+  → "Insufficient data for risk assessment"
+  → No score displayed
+```
+
+这防止了系统实际缺乏数据做出判断时发出虚假"全部安全"信号。
+
+---
+
+## 条件数据加载
+
+API 调用成本高昂。系统仅对**已启用图层**抓取数据，减少不必要的网络流量和速率限制消耗。
+
+### 图层感知加载
+
+当图层关闭时：
+
+- 不对该数据源进行 API 调用
+- 不调度刷新间隔
+- WebSocket 连接关闭（AIS）
+
+当图层开启时：
+
+- 立即抓取数据
+- 开始刷新间隔
+- 切换按钮上显示加载指示器
+
+### 未配置服务
+
+某些数据源需要 API 密钥（AIS 中继、Cloudflare Radar）。如果未配置凭证：
+
+- 图层开关完全隐藏
+- 无失败请求污染控制台
+- 用户只看到可用的图层
+
+这在未配置完整 API 访问权限部署时防止混淆。
+
+---
+
+## 性能优化
+
+仪表盘实时处理数千数据点。多种技术保持 UI 在重数据负载下仍响应。
+
+### 用于分析的 Web Worker
+
+CPU 密集操作在专用 Web Worker 中运行以避免阻塞主线程：
+
+| 操作 | 复杂度 | Worker？ |
+|-----------|------------|---------|
+| 新闻聚类（Jaccard） | O(n²) | 是 |
+| 关联检测 | O(n × m) | 是 |
+| DOM 渲染 | O(n) | 主线程 |
+
+Worker 管理器实现：
+
+- **惰性初始化**：首次使用时生成 Worker
+- **10 秒就绪超时**：Worker 初始化失败则拒绝
+- **30 秒请求超时**：防止卡住操作挂起
+- **自动清理**：致命错误时终止 Worker
+
+### 虚拟滚动
+
+大型列表（100+ 新闻条目）使用虚拟化渲染：
+
+**固定高度模式**（VirtualList）：
+
+- 仅渲染视口中可见条目 + 3 条目 overscan 缓冲
+- 元素池化 — 复用 DOM 节点而非创建新节点
+- 不可见占位器维持滚动位置而无需渲染所有条目
+
+**可变高度模式**（WindowedList）：
+
+- 基于分块的渲染（每块 10 条目）
+- 滚动时渲染分块，带 1 分块缓冲
+- CSS containment 用于性能隔离
+
+这将 DOM 节点数从数千减少到约 30，显著提升滚动性能。
+
+### 请求去重
+
+短窗口内的相同请求被去重：
+
+- 行情报价将多个标的代码批量到单次 API 调用
+- 并发图层切换不会产生重复抓取
+- `Promise.allSettled` 确保一个失败请求不会阻塞其他
+
+### 高效数据更新
+
+刷新数据时：
+
+- **增量更新**：仅变化条目触发重新渲染
+- **过期同时重新验证**：抓取完成前显示旧数据
+- **增量压缩**：基线存储 7 天/30 天增量，而非原始历史
+
+---
+
+## 跨模块集成
+
+情报模块不孤立运行。数据在系统间流动以实现复合分析。
+
+### 数据流架构
+
+```
+News Feeds → Clustering → Velocity Analysis → Hotspot Correlation
+                ↓                                    ↓
+         Topic Extraction                    CII Information Score
+                ↓                                    ↓
+         Keyword Monitors              Strategic Risk Overview
+                                                     ↑
+Military Flights → Near-Hotspot Detection ──────────┤
+                                                     ↑
+AIS Vessels → Chokepoint Monitoring ────────────────┤
+                                                     ↑
+ACLED/GDELT → Protest Events ───────────────────────┤
+                       ↓
+                CII Unrest Score
+```
+
+### 模块依赖
+
+| 消费模块 | 数据来源 | 集成 |
+|----------------|-------------|-------------|
+| **CII 动荡评分** | ACLED、GDELT 抗议 | 事件计数、伤亡 |
+| **CII 安全评分** | 军事航班、船舶 | 热点附近活动 |
+| **CII 信息评分** | 新闻聚类 | 速率、关键词匹配 |
+| **战略风险** | CII、收敛性、级联 | 复合评分 |
+| **相关资产** | 新闻位置推断 | 管道/电缆邻近度 |
+| **地理收敛** | 所有地理定位事件 | 多类型聚类 |
+
+### 告警传播
+
+当阈值被跨越时：
+
+1. **来源模块** 生成告警（例如 CII 激增）
+2. **告警合并** 与相关告警（相同国家/地区）
+3. **战略风险** 接收复合告警
+4. **UI 更新** 标题栏徽章和面板指示器
+
+这确保单一升级（例如乌克兰军事航班 + 抗议 + 新闻激增）作为一个连贯信号呈现，而非三个独立告警。
+
+---
+
+## 服务状态监控
+
+服务状态面板追踪 WorldMonitor 用户可能依赖的外部服务的运行健康度。
+
+### 受监控服务
+
+| 服务 | 状态端点 | 解析器 |
+|---------|-----------------|--------|
+| Anthropic (Claude) | status.claude.com | Statuspage.io |
+| OpenAI | status.openai.com | Statuspage.io |
+| Vercel | vercel-status.com | Statuspage.io |
+| Cloudflare | cloudflarestatus.com | Statuspage.io |
+| AWS | health.aws.amazon.com | 自定义 |
+| GitHub | githubstatus.com | Statuspage.io |
+
+### 状态等级
+
+| 状态 | 颜色 | 含义 |
+|--------|-------|---------|
+| **正常运行** | 绿 | 所有系统功能正常 |
+| **降级** | 黄 | 部分中断或性能问题 |
+| **部分中断** | 橙 | 部分组件不可用 |
+| **重大中断** | 红 | 重大服务中断 |
+
+### 为何重要
+
+外部服务中断可能影响：
+
+- AI 摘要（Groq、OpenRouter 中断）
+- 部署管道（Vercel、GitHub 中断）
+- API 可用性（Cloudflare、AWS 中断）
+
+监控这些服务在仪表盘功能异常时提供上下文。
+
+---
+
+## 刷新间隔
+
+不同数据源基于波动性和 API 约束以不同频率更新。
+
+### 轮询计划
+
+| 数据类型 | 间隔 | 理由 |
+|-----------|----------|-----------|
+| **新闻订阅源** | 5 分钟 | 平衡新鲜度与速率限制 |
+| **股票报价** | 1 分钟 | 市场时段需近实时 |
+| **加密价格** | 1 分钟 | 24/7 市场，高波动 |
+| **预测** | 5 分钟 | 概率缓慢变化 |
+| **地震** | 5 分钟 | USGS 每 5 分钟更新 |
+| **天气警报** | 10 分钟 | NWS 警报频率 |
+| **航班延误** | 10 分钟 | FAA 状态更新节奏 |
+| **互联网中断** | 60 分钟 | BGP 事件罕见 |
+| **经济数据** | 30 分钟 | FRED 数据日内很少变化 |
+| **军事追踪** | 5 分钟 | 活动模式需及时更新 |
+| **PizzINT** | 10 分钟 | 客流变化缓慢 |
+
+### 实时流
+
+AIS 船舶追踪使用 WebSocket 实现真正实时：
+
+- **连接**：到 Railway 中继的持久 WebSocket
+- **消息**：船舶发射时的位置更新
+- **重连**：自动配合指数退避（5s → 10s → 20s）
+
+### 用户控制
+
+时间范围选择器影响显示数据，不影响抓取频率：
+
+| 选择 | 效果 |
+|-----------|--------|
+| **1 小时** | 仅显示过去 60 分钟事件 |
+| **6 小时** | 显示过去 6 小时事件 |
+| **24 小时** | 显示过去一天事件 |
+| **7 天** | 显示所有近期事件 |
+
+历史筛选在客户端 — 所有数据均已抓取，仅用于显示筛选。
+
+---
+
+## 设计哲学
+
+**信息密度优先于美学。** 每个像素都应传递信号。深色界面在长时间监控会话中最小化眼疲劳。面板可折叠、可拖动、可隐藏 — 自定义以仅显示重要内容。
+
+**权威性很重要。** 来源并非平等。通讯社和官方政府渠道优先于聚合器和博客。当多个来源报道同一故事时，最具权威性的来源作为主要来源显示。
+
+**关联优先于累积。** 原始新闻流是噪声。价值在于聚类相关故事、检测速率变化和识别跨来源模式。单个"Broadcom +2.5% 由 AI 芯片新闻解释"信号比单独显示两个数据点更有价值。
+
+**信号而非噪声。** 去重是激进的。同一市场走势不会产生重复告警。信号包含置信度评分以便你优先关注。告警疲劳是态势感知的敌人。
+
+**知识优先匹配。** 简单关键词匹配产生误报。实体知识库理解 AVGO 是 Broadcom，Broadcom 与 Nvidia 竞争，两者都在半导体领域。此语义层将朴素字符串匹配转化为智能关联。
+
+**优雅失败。** 外部 API 不可靠。熔断器防止级联故障。中断期间显示缓存数据。状态面板准确显示什么在工作、什么不工作 — 无静默失败。
+
+**本地优先。** 无账户、无云同步。所有偏好和历史本地存储。唯一网络流量是抓取公开数据。你的监控配置只属于你。
+
+**在关键处计算。** CPU 密集操作（聚类、关联）在 Web Workers 中运行以保持 UI 响应。主线程仅处理渲染和用户交互。
+
+---
+
+## 新闻接地管道
+
+每个消费新闻的 LLM 相邻界面（简短杂志描述卡、简短 whyMatters 分析师解说、仪表盘新闻摘要、邮件摘要、通知中继、MCP world-brief 工具）都接地于文章清洗后的 RSS 描述，使模型转述文章实际内容而非从其参数先验中填充标题角色标签。
+
+```
+RSS <description>/<content:encoded>/<summary>/<content>
+  └─► parser (list-feed-digest.ts): strip HTML, decode entities, clip 400,
+      reject <40 chars / dup-of-headline
+      └─► story:track:v1.description  (HSET additive, empty → absent)
+          └─► NewsItem.snippet        (proto field 12)
+              ├─► brief adapter → buildStoryDescriptionPrompt `Context: <body>`
+              ├─► brief whyMatters → buildWhyMattersUserPrompt `description` field
+              ├─► SummarizeArticleRequest.bodies → buildArticlePrompts `    Context:`
+              ├─► client NewsItem.snippet → NewsPanel render + summarizeHeadlines bodies
+              ├─► BreakingAlert.description → /api/notify payload.description
+              │     └─► relay formatMessage (NOTIFY_RELAY_INCLUDE_SNIPPET-gated)
+              ├─► email digest: snippet line under each headline
+              └─► MCP world-brief: bodies[] paired with headlines[]
+```
+
+到处都是回退规则：空描述 → 消费者行为与仅标题字节级一致。无回归路径。通知中继审计（`tests/notification-relay-payload-audit.test.mjs`）强制 RSS 来源生产者设置 `payload.description`，而域名来源生产者不设置。

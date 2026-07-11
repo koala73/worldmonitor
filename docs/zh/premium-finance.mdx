@@ -1,0 +1,244 @@
+---
+title: "高级金融"
+description: "高级金融是 World Monitor 中提供股票分析能力的金融变体层，最初灵感来源于一个独立的 daily_stock_analysis 项目，现已完全集成。"
+---
+高级金融是 World Monitor 中提供股票分析能力的金融变体层。这些功能最初灵感来源于一个独立的 `daily_stock_analysis` 项目，现已完全集成到 World Monitor 代码库中。
+
+该层被有意拆分为：
+
+- `核心高级金融`
+- `额外增强层`
+
+核心层是高级功能正常运行所必需的部分。额外层可提升输出质量或效率，但并非数据来源。
+
+---
+
+## 核心范围
+
+当前高级金融范围包括：
+
+- 高级股票分析
+- 共享分析历史
+- 存储的回测摘要
+- 定时每日市场简报生成
+- 金融变体高级面板
+- 基于 Redis 的共享后端持久化（用于分析历史和回测）
+
+原始独立项目中包含的功能被有意保留未迁移：
+
+- 独立 Web 应用
+- 关系型数据库模型
+- 通知系统
+- 代理/聊天工作流
+- 机器人集成
+- 图片行情提取
+- 中国特定提供商网格
+
+---
+
+## 核心架构
+
+### 请求流
+
+1. 金融高级面板通过常规应用外壳和面板加载器加载。
+2. 高级股票 RPC 通过 `MarketService` 调用。
+3. 高级端点在服务端需要 `WORLDMONITOR_API_KEY`，而非仅 UI 层面的锁定。
+4. 结果持久化到基于 Redis 的共享存储中。
+5. 面板优先使用已存储的共享结果，再重新计算新的分析或回测。
+
+### 核心后端接口
+
+主要处理器：
+
+- [analyze-stock.ts](https://github.com/koala73/worldmonitor/blob/main/server/worldmonitor/market/v1/analyze-stock.ts)
+- [get-stock-analysis-history.ts](https://github.com/koala73/worldmonitor/blob/main/server/worldmonitor/market/v1/get-stock-analysis-history.ts)
+- [backtest-stock.ts](https://github.com/koala73/worldmonitor/blob/main/server/worldmonitor/market/v1/backtest-stock.ts)
+- [list-stored-stock-backtests.ts](https://github.com/koala73/worldmonitor/blob/main/server/worldmonitor/market/v1/list-stored-stock-backtests.ts)
+- [premium-stock-store.ts](https://github.com/koala73/worldmonitor/blob/main/server/worldmonitor/market/v1/premium-stock-store.ts)
+
+主要契约：
+
+- [analyze_stock.proto](https://github.com/koala73/worldmonitor/blob/main/proto/worldmonitor/market/v1/analyze_stock.proto)
+- [get_stock_analysis_history.proto](https://github.com/koala73/worldmonitor/blob/main/proto/worldmonitor/market/v1/get_stock_analysis_history.proto)
+- [backtest_stock.proto](https://github.com/koala73/worldmonitor/blob/main/proto/worldmonitor/market/v1/backtest_stock.proto)
+- [list_stored_stock_backtests.proto](https://github.com/koala73/worldmonitor/blob/main/proto/worldmonitor/market/v1/list_stored_stock_backtests.proto)
+- [service.proto](https://github.com/koala73/worldmonitor/blob/main/proto/worldmonitor/market/v1/service.proto)
+
+### 前端接口
+
+面板：
+
+- [StockAnalysisPanel.ts](https://github.com/koala73/worldmonitor/blob/main/src/components/StockAnalysisPanel.ts)
+- [StockBacktestPanel.ts](https://github.com/koala73/worldmonitor/blob/main/src/components/StockBacktestPanel.ts)
+- [DailyMarketBriefPanel.ts](https://github.com/koala73/worldmonitor/blob/main/src/components/DailyMarketBriefPanel.ts)
+
+服务和加载：
+
+- [stock-analysis.ts](https://github.com/koala73/worldmonitor/blob/main/src/services/stock-analysis.ts)
+- [stock-analysis-history.ts](https://github.com/koala73/worldmonitor/blob/main/src/services/stock-analysis-history.ts)
+- [stock-backtest.ts](https://github.com/koala73/worldmonitor/blob/main/src/services/stock-backtest.ts)
+- [daily-market-brief.ts](https://github.com/koala73/worldmonitor/blob/main/src/services/daily-market-brief.ts)
+- [data-loader.ts](https://github.com/koala73/worldmonitor/blob/main/src/app/data-loader.ts)
+
+---
+
+## 股票分析
+
+高级股票分析引擎最初是独立项目核心逻辑的 TypeScript 移植版本，现已完全原生于 World Monitor。
+
+它计算：
+
+- 移动平均线堆栈和趋势状态
+- 相对短期和中期移动平均线的偏离度
+- 成交量模式评分
+- MACD 状态
+- RSI 状态
+- 看涨因素和风险因素
+- 复合信号和信号得分
+- 配置时使用共享 LLM 链的 AI 覆盖层
+
+每条存储的分析记录包含稳定的回放字段，以便日后复用：
+
+- `analysisId`
+- `analysisAt`
+- `signal`
+- `currentPrice`
+- `stopLoss`
+- `takeProfit`
+- `engineVersion`
+
+这些字段很重要，因为回测现在会验证已存储的分析记录，而非在之后重新推导出不同的策略视图。
+
+---
+
+## 共享存储
+
+World Monitor 仍缺少通用的关系型后端，因此高级金融当前使用 Redis 作为后端拥有的数据来源。
+
+### Redis 存储的内容
+
+- 最新的共享股票分析快照
+- 每个标的的分析历史索引
+- 回测使用的历史分析账本
+- 存储的回测摘要快照
+
+### 与早期应用层版本的区别
+
+早期迭代在每台设备本地存储历史，并按需重新计算回测。强化版将这些工件提升到后端层，因此：
+
+- 多个用户可以共享相同的分析结果
+- 多个用户可以共享相同的回测摘要
+- 浏览器或桌面缓存不再是规范的历史记录
+
+### 当前存储模型
+
+Redis 用作：
+
+- 共享产品记忆
+- 基于缓存的持久化
+- 高级金融工件的当前数据来源
+
+它目前**并非**关系型金融账本。长期查询、丰富的分页和完整的可审计性仍然更适合由未来的数据库层提供服务。
+
+---
+
+## 回测
+
+World Monitor 中的回测有意与已存储的分析记录关联，而非仅仅是原始信号回放。
+
+当前流程：
+
+1. 从 Yahoo 日线数据构建或刷新历史存储分析账本。
+2. 使用稳定的 ID 和时间戳持久化这些记录。
+3. 从每条存储记录的已保存信号和目标水平评估前瞻表现。
+4. 将生成的回测摘要存入 Redis 以供共享复用。
+
+这使得该功能更接近于"验证先前的高级分析"，而非"重新运行最新策略代码恰好产生的结果"。
+
+---
+
+## 每日市场简报
+
+每日市场简报是一个高级金融面板，叠加在项目现有市场和新闻基础设施之上。
+
+它：
+
+- 每个本地日构建一次
+- 使用跟踪的观察列表和可用的市场/新闻上下文
+- 缓存简报
+- 在下一个本地早晨计划之前避免不必要的重新生成
+
+这是 World Monitor 原生功能，并非原始项目调度器/自动化系统的直接移植。
+
+---
+
+## 高级访问控制
+
+高级金融端点在服务端强制执行。
+
+高级 RPC 路径在以下文件中进行门控：
+
+- [gateway.ts](https://github.com/koala73/worldmonitor/blob/main/server/gateway.ts)
+- [api/_api-key.js](https://github.com/koala73/worldmonitor/blob/main/api/_api-key.js)
+
+这很重要，因为仅 UI 层面的锁定仍会允许从受信任的浏览器来源直接调用 API。
+
+---
+
+## 数据源
+
+核心高级金融当前依赖于：
+
+- Yahoo Finance 图表/历史端点
+- Finnhub，提供 World Monitor 其他地方已使用的更广泛市场数据
+- Google News RSS，作为基准股票新闻后备
+- [llm.ts](https://github.com/koala73/worldmonitor/blob/main/server/_shared/llm.ts) 中的共享 LLM 提供商链
+
+由提供商支持的定向股票新闻层在 [PREMIUM_FINANCE_SEARCH.md](/zh/premium-finance-search) 中单独文档说明。
+
+---
+
+## 缓存与新鲜度
+
+存在三种不同的缓存或持久化行为：
+
+- Redis 共享存储，用于高级分析历史和回测
+- Redis 响应缓存，用于昂贵的服务端重新计算
+- 客户端缓存仅作为渲染/性能层
+
+数据加载器会单独刷新过期的标的，而非在仅有一个标的缺失或过期时重新计算整个观察列表。
+
+---
+
+## 层级分离
+
+### 核心高级金融
+
+核心层包括：
+
+- 分析引擎
+- 存储的历史
+- 存储的回测
+- 高级认证
+- 高级 UI 面板
+- 每日简报
+
+### 额外层：定向搜索增强
+
+基于搜索的股票新闻层被有意分离，因为它能提升分析质量但并非功能正常运行的必需。如果所有搜索提供商都不可用，高级股票分析仍可使用 Google News RSS 后备正常运行。
+
+参见 [PREMIUM_FINANCE_SEARCH.md](/zh/premium-finance-search)。
+
+---
+
+## 当前边界
+
+该功能在 World Monitor 当前架构内有效且可用于生产环境，但一些边界仍然明确：
+
+- Redis 目前是规范存储
+- 没有独立的金融数据库
+- 尚无代理/聊天或通知集成
+- 原始项目中更广泛的提供商堆栈未被迁移
+- 面向中国的市场数据/搜索层被有意排除
+
+这些边界使该功能与 World Monitor 的架构保持一致。

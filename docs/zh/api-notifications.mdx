@@ -1,0 +1,115 @@
+---
+title: "通知与集成"
+description: "通知渠道、webhook 投递,以及 Telegram/Slack/Discord/YouTube 集成端点。"
+---
+
+## 通知渠道
+
+用户可注册多个投递渠道(webhook、Telegram、Slack、Discord、电子邮件),并将告警规则绑定到这些渠道上。
+
+### `GET /api/notification-channels`
+
+列出调用方已注册的渠道和告警规则。
+
+```json
+{
+  "channels": [
+    { "id": "chn_01", "type": "webhook", "url": "https://hooks.example.com/...", "active": true },
+    { "id": "chn_02", "type": "telegram", "chatId": "@alerts_xyz", "active": true }
+  ],
+  "alertRules": [
+    { "id": "rul_01", "channelId": "chn_01", "trigger": "brief_ready", "filter": null }
+  ]
+}
+```
+
+### `POST /api/notification-channels`
+
+基于 action 分发的写入端点。请求体中的 `action` 字段决定执行哪一类变更:
+
+| action | 用途 |
+|--------|---------|
+| `create-pairing-token` | 生成一次性配对令牌(可选 `variant`),供移动端 / Tauri 客户端绑定推送渠道。 |
+| `set-channel` | 注册或更新渠道。对于 `webhook` 渠道,`webhookEnvelope` URL 仅接受 HTTPS,不得解析到私有/回环地址,并在存储前使用 AES-256-GCM 加密。可选字段:`email`、`webhookLabel`(截断至 100 字符)。 |
+| `set-web-push` | 为已登录用户注册浏览器 Web Push 订阅。 |
+| `delete-channel` | 按类型移除渠道(`email`、`webhook`、`telegram`、`web-push` 等)。 |
+| `set-alert-rules` | 一次性替换调用方的告警规则集合。 |
+| `set-quiet-hours` | 设置"勿扰"时间窗口。 |
+| `set-digest-settings` | 配置摘要发送节奏和渠道路由。 |
+
+所有 action 均要求 Clerk bearer + PRO(`tier >= 1`)。无效的 action 返回 `400 Unknown action`。请求通过 `RELAY_SHARED_SECRET` 转发至 Convex。
+
+## Webhook 投递契约
+
+当告警触发时,已注册的 webhook URL 将收到:
+
+- **Method**: `POST`
+- **Headers**:
+  - `Content-Type: application/json`
+  - `X-WM-Signature: sha256=<HMAC-SHA256(body, channelSecret)>`
+  - `X-WM-Delivery-Id: <ulid>`
+  - `X-WM-Event: <event-name>`
+- **Body**(信封 v1):
+  ```json
+  {
+    "envelope": 1,
+    "event": "brief_ready",
+    "deliveryId": "01HX...",
+    "occurredAt": "2026-04-19T06:00:00Z",
+    "data": { "issueDate": "2026-04-19", "magazineUrl": "..." }
+  }
+  ```
+
+签名校验:`hmac_sha256(rawBody, channelSecret) == X-WM-Signature[7:]`。
+
+<Warning>
+信封版本在**两个生产者之间共享**(`notification-relay`、`seed-digest-notifications`)。升级版本需协同更新。
+</Warning>
+
+### `POST /api/notify`
+
+内部接收端点,由 Railway 生产者调用以将通知入队。要求 `RELAY_SHARED_SECRET`。非公开 API。
+
+## Telegram
+
+### `GET /api/telegram-feed?userId=...`
+
+返回指定 Telegram 关联用户已预渲染的简报流。供 Telegram mini-app 使用。
+
+## YouTube
+
+### `GET /api/youtube/embed?videoId=...`
+
+带 CSP 兼容封装的 SSR YouTube embed iframe。用于绕过桌面应用中的 WKWebView 自动播放限制。
+
+### `GET /api/youtube/live?channel=<handle>` 或 `?videoId=<11-char-id>`
+
+返回 YouTube 频道(`channel` — 带/不带 `@` 前缀的 handle)或指定视频(`videoId` — 11 字符 YouTube id)的直播元数据。两个参数至少需提供其一;否则返回 `400 Missing channel or videoId parameter`。频道查询响应缓存 10 分钟,videoId 查询缓存 1 小时。
+
+首先通过 Railway 中继代理(用于 YouTube 抓取的住宅代理)。中继失败时,回退到 YouTube oEmbed(用于 `videoId`)或直接频道抓取 — 两者从数据中心 IP 均不可靠。
+
+## Slack 集成
+
+### `POST /api/slack/oauth/start`
+
+需认证(Clerk JWT + PRO)。请求体为空。服务端生成一次性 CSRF state token,以该 state 为键将调用方的 userId 存入 Upstash(10 分钟 TTL),并返回 Slack 授权 URL,供前端在弹窗中打开。
+
+```json
+{ "oauthUrl": "https://slack.com/oauth/v2/authorize?client_id=...&scope=incoming-webhook&..." }
+```
+
+错误码:401(缺少/无效 JWT)、403 `pro_required`、503(OAuth 未配置或 Upstash 不可用)。
+
+### `GET /api/slack/oauth/callback`
+
+无需认证 — Slack 重定向后弹窗会跳转到此。校验 state token,用 `code` 换取 incoming-webhook URL,使用 AES-256-GCM 加密该 webhook 并存入 Convex。返回一段极简 HTML 页面,通过 `postMessage` 通知 opener 并关闭。
+
+## Discord 集成
+
+### `POST /api/discord/oauth/start`
+
+需认证(Clerk JWT + PRO)。与 Slack 的 start 路由形态一致 — 返回 `{ oauthUrl }` 供弹窗使用。
+
+### `GET /api/discord/oauth/callback`
+
+无需认证。用 `code` 换取信息,存储 guild webhook,并通过 `postMessage` 通知 opener。

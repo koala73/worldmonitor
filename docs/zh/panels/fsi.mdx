@@ -1,0 +1,49 @@
+---
+title: "金融压力"
+description: "堪萨斯城联储金融压力指数（KCFSI）+ 欧央行欧盟金融压力指标 — 11 指标压力复合，附按级别着色的解读。"
+---
+
+**Financial Stress** 面板（内部 id `fsi`）在单次读取中展示两个平行压力复合 — 一个面向美国，一个面向欧盟 — 让分析师看到金融市场压力何时在两个锚点间共同运动。
+
+## 面板显示内容
+
+两个并排读取：
+
+- **US KCFSI** — 堪萨斯城联储金融压力指数：由收益率利差、波动率和交叉相关性构建的 11 指标复合。正值表示高于平均压力；负值表示低于平均。
+- **EU FSI** — 欧央行的欧盟金融压力指标。
+
+每次读取包含：
+
+- **当前水平**，带标签（`Low Stress` / `Moderate Stress` / `Elevated Stress` / `High Stress`）。
+- **颜色分桶指示器** — 低位绿色（`#27ae60`），中位橙色（`#f39c12`），升高焦橙色（`#e67e22`），高位深红色（`#c0392b`）（`src/components/FSIPanel.ts` 中的 `fsiLabelColor()`）。
+- **解读字符串**，解释当前水平对金融状况的含义（`fsiInterpretation()`）。
+
+面板 id 为 `fsi`；规范组件为 `src/components/FSIPanel.ts`。标题来自 i18n；配置名："Financial Stress"。
+
+## 如何访问
+
+- **Cmd+K**：输入 *fsi*、*financial stress* 或 *kcfsi*。
+- **按变体的可用性**：在 **full/geopolitical** 变体中注册（默认禁用 — 需手动启用，`enabled: false, priority: 2`），在 **finance** 变体中默认启用（`priority: 1`）。在 tech、commodity 或 happy 变体中不存在。来源：`src/config/panels.ts` 中 `FULL_PANELS`（`:108` 附近）和 `FINANCE_PANELS` 的 `'fsi'` 条目。
+
+## 数据来源
+
+面板直接使用生成的 RPC 客户端：
+
+- **Market service**（`MarketServiceClient`）— KCFSI 序列。
+- **Economic service**（`EconomicServiceClient.getEuFsi()`）— EU FSI（`GetEuFsiResponse`）。
+- **Bootstrap 水合数据** — 面板优先使用 `getHydratedData(...)`，回退到新的 RPC 调用（标准水合模式）。
+
+上游 KCFSI 数据来自堪萨斯城联邦储备银行；EU FSI 来自欧央行。
+
+## 刷新频率
+
+KCFSI（由 KC 联储发布）和 EU FSI（由欧央行发布）均为每周。面板在挂载时读取水合快照；无轮询。
+
+## 层级与门控
+
+**免费。** 两个变体注册中均无 `premium` 标志。两个后端 RPC 均为公开的。
+
+## API 参考
+
+- [Economic service](/api/EconomicService.openapi.yaml) — 包括 `GetEuFsi` 和更广泛的宏观族。
+- [Markets service](/api/MarketService.openapi.yaml) — 包括 KCFSI 序列。

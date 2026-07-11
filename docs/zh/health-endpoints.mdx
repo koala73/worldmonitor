@@ -1,0 +1,235 @@
+---
+title: "健康检查端点"
+description: "World Monitor 暴露两个健康检查端点，用于监控数据管道的完整性。两者都在 Vercel Edge Runtime 上运行，并查询 Redis（Upstash）以评估系统状态。"
+---
+
+## `/api/health`
+
+主要健康检查端点。在单个管道调用中检查所有 Redis 支持的数据键和种子新鲜度元数据。
+
+**身份验证：** 无需身份验证。对所有来源开放（`Access-Control-Allow-Origin: *`）。
+
+**HTTP 方法：** `GET`
+
+### 查询参数
+
+| 参数 | 取值 | 说明 |
+|-----------|--------|-------------|
+| `compact` | `1` | 省略每个键的详细信息；仅返回有问题的键 |
+
+### 响应状态码
+
+| HTTP 状态 | 总体状态 | 含义 |
+|-------------|---------------|---------|
+| `200` | `HEALTHY` | 所有检查正常，无警告 |
+| `200` | `WARNING` | 某些键过期或按需键为空，但无严重故障 |
+| `200` | `DEGRADED` | 关键键为空，但 ≤3% 的所有探测键 |
+| `200` | `UNHEALTHY` | 关键键为空，>3% 的所有探测键 |
+| `503` | `REDIS_DOWN` | 无法连接到 Redis —— 这是**唯一**返回非 200 状态码的状态 |
+
+> 总体健康判定位于 JSON 的 `status` 字段中，而非 HTTP 状态码。除 `REDIS_DOWN` 外的每种状态都返回 `200`，这样警告级别的种子抖动不会触发 HTTP 状态监控器的抖动（参见 PR #2699）。`REDIS_DOWN` 返回 `503`，因为当 Redis 不可达时，端点无法评估任何内容，所以普通的 HTTP 探测必须看到失败。
+
+### 响应体
+
+```json
+{
+  "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN",
+  "summary": {
+    "total": 194,
+    "ok": 180,
+    "warn": 5,
+    "onDemandWarn": 9,
+    "staleContent": 0,
+    "crit": 0
+  },
+  "checkedAt": "2026-03-11T14:00:00.000Z",
+  "checks": {
+    "earthquakes": {
+      "status": "OK",
+      "records": 142,
+      "seedAgeMin": 8,
+      "maxStaleMin": 30
+    }
+  }
+}
+```
+
+`summary` 字段：`total` 是每个探测键的一个条目（目前约 194 个，并随面板增加而增长）。`warn` **不包括**按需为空的键 —— 这些键作为 `onDemandWarn` 单独显示，因此它们不会将总体判定推向 `WARNING`。`staleContent` 是 `warn` 的一个**子集**（种子器新鲜但上游订阅源停止推进）。只有 `crit`（`EMPTY`/`EMPTY_DATA`）会驱动 `DEGRADED`/`UNHEALTHY`。
+
+使用 `?compact=1` 时，`checks` 对象会被 `problems` 替换，仅包含非 OK 的键。
+
+### 键分类
+
+键被分为三个层级，决定告警严重程度：
+
+| 层级 | 为空时的严重程度 | 说明 |
+|------|-------------------|-------------|
+| **Bootstrap** | CRIT | 启动时所需的种子数据。为空表示仪表板缺少关键数据 |
+| **Standalone** | CRIT（种子填充）/ WARN（按需） | 由种子循环或 RPC 处理器填充。按需键在首次请求之前预期为空 |
+| **On-demand** | WARN | 由 RPC 调用懒加载填充。如果尚未有人请求数据，则为空是正常的 |
+
+### 每个键的状态
+
+| 状态 | 严重程度 | 含义 |
+|--------|----------|---------|
+| `OK` | 绿色 | 数据存在，种子新鲜 |
+| `OK_CASCADE` | 绿色 | 键为空但级联组中的同级键有数据（例如，战区态势后备链） |
+| `STALE_SEED` | 警告 | 数据存在但 `seed-meta` 年龄超过 `maxStaleMin` |
+| `STALE_CONTENT` | 警告 | 种子器新鲜但上游内容停止推进（冻结的订阅源）；计入 `summary.staleContent` |
+| `COVERAGE_PARTIAL` | 警告 | 记录数低于该键声明的 `minRecordCount`（例如 10/13 个咽喉点） |
+| `SEED_ERROR` | 警告 | `seed-meta` 报告上次种子运行的 `status: "error"` |
+| `REDIS_PARTIAL` | 警告 | 该键的 STRLEN/GET 上出现单个每命令 Redis 错误（非完全中断） |
+| `EMPTY_ON_DEMAND` | 警告 | 按需键尚无数据（在首次请求之前为预期情况）；计入 `summary.onDemandWarn` |
+| `EMPTY` | 严重 | Bootstrap 或种子填充的独立键无数据 |
+| `EMPTY_DATA` | 严重 | 键存在但包含零条记录（且 0 对它来说不是有效状态） |
+
+### 级联组
+
+某些键使用后备链。如果任何同级键有数据，空的同类键报告 `OK_CASCADE`：
+
+- **战区态势：** `theaterPostureLive` -> `theaterPosture`（过期）-> `theaterPostureBackup`
+- **军事航班：** `militaryFlights` -> `militaryFlightsStale`
+- **流离失所：** `displacement`（当前 UTC 年）-> `displacementPrev`（上一年，覆盖新年种子运行之前的 1 月 1 日窗口）
+
+`riskScores` 有意比原始订阅源心跳更严格。其
+`recordCount` 是实时信号密度覆盖：CII 刷新期间存在的与评分相关的 Tier-1 ACLED、新闻和网络信号系列的数量。
+当这些订阅源可达但安静时，`riskScores` 仍可报告
+`COVERAGE_PARTIAL`；底层订阅源的新鲜度由订阅源特定健康条目跟踪，这些订阅源在这些条目中发布种子元数据。
+
+### 过期阈值（maxStaleMin）
+
+`SEED_META` 中的部分阈值：
+
+| 领域 | 最大过期时间（分钟） | 说明 |
+|--------|----------------|-------|
+| 市场报价、加密货币、行业、地震、洞察 | 30 | 高频中继循环 / 关键事件数据 |
+| 军事航班 | 30 | 近实时跟踪 |
+| 预测、航班延误（FAA） | 90 | Polymarket / 机场快照 |
+| 动乱 | 120 | 45 分钟 cron，2 小时宽限期 |
+| 网络威胁 | 240 | APT 数据更新频率较低 |
+| 野火 | 360 | FIRMS NRT 在数小时内累积 |
+| 气候异常 | 540 | 3 小时 cron，3 倍节奏 |
+| BIS 扩展、World Bank、IMF | 2160-100800 | 机构数据，每周/每月/每年 |
+
+> 这些仅供参考；`api/health.js` 中的 `SEED_META` 是事实来源，每个条目都记录了其自身节奏的依据。
+
+### 示例请求
+
+```bash
+# 完整健康检查
+curl -s https://api.worldmonitor.app/api/health | jq .
+
+# 紧凑模式（仅问题）
+curl -s "https://api.worldmonitor.app/api/health?compact=1" | jq .
+
+# UptimeRobot / 监控：检查 HTTP 状态码
+curl -o /dev/null -s -w "%{http_code}" https://api.worldmonitor.app/api/health
+# 仅在 Redis 不可达时返回 503（REDIS_DOWN）；其他所有状态均返回 200
+# 判定（HEALTHY/WARNING/DEGRADED/UNHEALTHY）位于响应体的 `status` 字段中。
+```
+
+## `/api/seed-health`
+
+用于种子循环新鲜度的专用端点。仅检查 `seed-meta:*` 键，不获取实际数据负载。
+
+**身份验证：** 需要有效的 API 密钥或允许的来源。
+
+**HTTP 方法：** `GET`
+
+### 响应状态码
+
+| HTTP 状态 | 总体状态 | 含义 |
+|-------------|---------------|---------|
+| `200` | `healthy` | 所有种子循环按时报告 |
+| `200` | `warning` | 某些种子过期（年龄 > 2 倍间隔） |
+| `200` | `degraded` | 某些种子完全缺失 |
+| `401` | - | 无效或缺失的 API 密钥 |
+| `503` | - | Redis 不可用 |
+
+### 响应体
+
+```json
+{
+  "overall": "healthy | warning | degraded",
+  "checkedAt": 1710158400000,
+  "seeds": {
+    "seismology:earthquakes": {
+      "status": "ok",
+      "fetchedAt": 1710158100000,
+      "recordCount": 142,
+      "sourceVersion": null,
+      "ageMinutes": 5,
+      "stale": false
+    },
+    "market:stocks": {
+      "status": "stale",
+      "fetchedAt": 1710150000000,
+      "recordCount": 85,
+      "sourceVersion": null,
+      "ageMinutes": 140,
+      "stale": true
+    }
+  }
+}
+```
+
+### 过期逻辑
+
+当种子的年龄超过**配置间隔的 2 倍**时，即被视为过期。这考虑了 cron/中继计时的正常抖动。
+
+| 领域 | 间隔（分钟） | 过期阈值（分钟） |
+|--------|---------------|-------------------|
+| 预测、军事航班 | 8 | 16 |
+| 市场报价、地震、动乱 | 15 | 30 |
+| ETF 资金流、稳定币、咽喉点 | 30 | 60 |
+| 服务状态、支出、野火 | 60 | 120 |
+| 航运费率、卫星 | 90-120 | 180-240 |
+| GPS 干扰、流离失所 | 360 | 720 |
+| 伊朗事件、UCDP | 210-5040 | 420-10080 |
+
+### 示例请求
+
+```bash
+curl -s https://api.worldmonitor.app/api/seed-health \
+  -H "Origin: https://worldmonitor.app" | jq .
+```
+
+## 与监控工具的集成
+
+### UptimeRobot
+
+使用 `/api/health` 作为监控器 URL。HTTP 状态码仅区分 Redis 完全中断与其他所有情况：
+
+- `503` = `REDIS_DOWN`（Redis 不可达 —— 真正的硬中断）
+- `200` = 其他所有状态，包括 `DEGRADED` 和 `UNHEALTHY`
+
+因此，仅基于 HTTP 状态的监控器能捕获完全的后端中断，但**不能**捕获降级/不健康的数据。对于这些情况，请添加关键字监控器。
+
+将关键字监控器指向 `https://api.worldmonitor.app/api/health?compact=1`，并在紧凑令牌 `"status":"HEALTHY"`（冒号后无空格）从响应体中**缺失**时告警。紧凑模式序列化时不带缩进，因此无论格式如何，此确切令牌都是稳定的。
+
+> 裸 `/api/health` URL 会对响应体进行美化打印，因此其中的健康令牌是 `"status": "HEALTHY"`，冒号后**带空格**。如果您监控非紧凑 URL，请匹配该带空格的令牌 —— 无空格的 `"status":"HEALTHY"` 即使在健康时也不存在，会导致误报告警。优先使用 `?compact=1`，或解析 `summary.crit > 0`。
+
+### 自定义告警
+
+解析 JSON 响应以构建细粒度告警：
+
+```bash
+# 对任何关键键告警
+STATUS=$(curl -s "https://api.worldmonitor.app/api/health?compact=1")
+CRIT=$(echo "$STATUS" | jq '.summary.crit')
+if [ "$CRIT" -gt 0 ]; then
+  echo "CRITICAL: $CRIT data keys empty"
+  echo "$STATUS" | jq '.problems'
+fi
+```
+
+## 端点之间的差异
+
+| 方面 | `/api/health` | `/api/seed-health` |
+|--------|--------------|-------------------|
+| **范围** | 数据键 + 种子元数据 | 仅种子元数据 |
+| **身份验证** | 无（公开） | API 密钥或允许的来源 |
+| **获取的数据** | 完整 Redis 值（用于计数记录） | 仅 `seed-meta:*` 键 |
+| **HTTP 503** | 仅 `REDIS_DOWN`（DEGRADED/UNHEALTHY 返回 200） | 否（除非 Redis 宕机，否则始终为 200） |
+| **最适合** | 正常运行时间监控、仪表板健康状态 | 调试种子循环问题 |
+| **响应大小** | 较大（约 194 个键及记录计数） | 较小（仅 seed-meta 领域） |

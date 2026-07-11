@@ -1,0 +1,95 @@
+---
+title: "身份验证"
+description: "三种认证模式 — 浏览器来源、API 密钥与 OAuth bearer — 以及服务端强制校验的工作方式。"
+---
+
+WorldMonitor 有**三种**身份验证模式。具体使用哪一种取决于你的调用方式。
+
+## 认证矩阵
+
+| 模式 | 请求头 | 使用方 | 在哪些端点上受信任？ |
+|------|--------|---------|------------------------------|
+| **浏览器来源** | `Origin: https://www.worldmonitor.app`（浏览器自动设置） | 仪表盘、桌面应用 | 大多数公开端点 — 但**不包括** `forceKey: true` 路由。 |
+| **API 密钥** | `X-WorldMonitor-Key: wm_live_...` | 服务器到服务器、脚本、SDK | 所有端点，包括 `forceKey: true`。 |
+| **OAuth bearer** | `Authorization: Bearer <oauth-token>` | MCP 客户端（Claude、Cursor、Inspector） | `/api/mcp`。处理器也接受直接的 `X-WorldMonitor-Key` 替代 OAuth 令牌 — 详见 [MCP](/zh/mcp-server#authentication)。 |
+| **Clerk 会话 JWT** | `Authorization: Bearer <clerk-jwt>` | 已认证的浏览器用户 | 用户专属路由：`/api/latest-brief`、`/api/user-prefs`、`/api/notification-channels`、`/api/brief/share-url` 等。 |
+
+## `forceKey: true` — 哪些端点会忽略浏览器来源？
+
+部分端点会明确拒绝"受信任浏览器来源"这一快捷方式，即使在仪表盘内部也要求使用真正的 API 密钥：
+
+- `/api/v2/shipping/route-intelligence`
+- `/api/v2/shipping/webhooks`
+- `/api/widget-agent`
+- 供应商 / 合作伙伴端点
+
+对于这些端点，你**必须**发送 `X-WorldMonitor-Key`。
+
+## 浏览器来源模式
+
+CORS 与 `validateApiKey` 共同决定某个 `Origin` 是否受信任。允许列表集中维护在 `api/_cors.js` 中。
+
+- 允许的来源会收到 `Access-Control-Allow-Origin: <echoed>` 并通过密钥校验。
+- 不允许的来源不会收到 CORS 头（浏览器会拒绝），并且无法通过密钥校验。
+
+来源模式详见 [CORS](/zh/cors)。
+
+<Warning>
+**一个 Cloudflare Worker**（`api-cors-preflight`）是 `api.worldmonitor.app` 的权威 CORS 处理器 — 它会覆盖 `_cors.js` 与 `vercel.json`。若要修改来源规则，请在 Cloudflare 仪表盘中修改。
+</Warning>
+
+## API 密钥模式
+
+### 生成密钥
+
+PRO 订阅用户在订阅时会自动获得密钥。如需轮换，请联系支持团队。
+
+### 使用方式
+
+```
+X-WorldMonitor-Key: wm_live_abcdef0123456789...
+```
+
+长度至少为 16 个字符。请勿将密钥放入客户端代码 — 如需从浏览器调用 `forceKey` 端点，请使用服务端代理。
+
+### 服务端校验
+
+Edge Function 会调用 `validateApiKey(req, { forceKey?: boolean })`：
+
+1. 若 `forceKey` 为 false 且来源受信任 → 通过。
+2. 否则，将 `X-WorldMonitor-Key` 与 `WORLDMONITOR_VALID_KEYS`（环境变量）进行比对。
+3. 同时校验调用者的权益缓存（`invalidate-user-api-key-cache` 会清空该缓存）。
+4. 若以上均未通过 → 返回 401。
+
+## OAuth bearer（仅限 MCP）
+
+完整流程见 [OAuth 2.1 Server](/zh/api-oauth)。客户端配置详见 [MCP](/zh/mcp-server)。
+
+## Clerk 会话（已认证的仪表盘）
+
+仪表盘会将 Clerk 的 `__session` cookie 换取 JWT，并在用户专属 API 调用中带上：
+
+```
+Authorization: Bearer eyJhbGc...
+```
+
+服务端校验使用 `jose` 与缓存的 JWKS — 无需每次请求都回访 Clerk。实现位于 `server/auth-session.ts`。完整细节详见 [身份验证概览](/zh/authentication)。
+
+## 权益 / 分层门控
+
+**有效的密钥 ≠ PRO。** 身份验证与权益是正交的。每个 PRO 门控的端点都会额外运行一次 `isCallerPremium(req)` 校验（`server/_shared/premium-check.ts`），该校验**不接受**受信任的浏览器 Origin 作为 PRO 的凭证 — 即便它对匿名/公开访问允许使用 Origin。
+
+`isCallerPremium` 仅在以下任一条件成立时返回 true：
+
+- 一个有效的 `X-WorldMonitor-Key`（来自 `WORLDMONITOR_VALID_KEYS` 的环境变量允许列表，或某个用户自有的、Convex 记录中带有 `apiAccess` 权益的 `wm_` 前缀密钥），**或者**
+- 一个 Clerk `Authorization: Bearer …` 令牌，且用户角色为 `pro` 或 Dodo 权益分层 ≥ 1。
+
+在浏览器端，`premiumFetch()`（`src/services/premium-fetch.ts`）会在每次请求中自动注入其中一种凭证。桌面应用使用运行时配置中的 `WORLDMONITOR_API_KEY`。服务器到服务器调用方必须显式发送该请求头。
+
+| 分层 | 访问权限 |
+|------|--------|
+| 匿名 | 仅公开读取（冲突、自然灾害、市场基础数据） |
+| 已登录免费版 | 同匿名 + 用户偏好设置 |
+| PRO | 所有端点、MCP、AI Brief、Shipping v2、Scenarios |
+
+分层在每次调用时从 Convex 解析，因此订阅状态变更会在下一次请求时生效（在缓存失效之后）。

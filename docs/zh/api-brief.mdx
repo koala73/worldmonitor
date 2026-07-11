@@ -1,0 +1,81 @@
+---
+title: "AI 简报端点"
+description: "读取、分享和渲染 AI 生成的每日情报简报。"
+---
+
+WorldMonitor 在 Railway 上为每个用户生成**每日情报简报**，存储在 Redis 的 `brief:{userId}:{issueDate}` 中，并暴露以下路由用于仪表盘回读、公开分享以及 Telegram/Slack 轮播渲染。
+
+<Info>
+所有读取路由都需要有效的 Clerk 会话和 PRO 层级，公开分享路由（`/api/brief/public/{hash}`）除外。
+</Info>
+
+## 最新简报（已认证）
+
+### `GET /api/latest-brief`
+
+返回调用者最近生成简报的摘要，如果今天的运行尚未生成简报，则返回 `{ status: "composing" }`。
+
+| 状态 | 响应 |
+|--------|----------|
+| 200 OK | `{ issueDate, dateLong, greeting, threadCount, magazineUrl }` |
+| 200 OK | `{ status: "composing" }` — 今天尚无简报 |
+| 401 | 缺失/无效的 Clerk JWT |
+| 403 | `pro_required` |
+| 503 | `BRIEF_URL_SIGNING_SECRET` 未配置 |
+
+`magazineUrl` 是一个新签名的 URL — HMAC 绑定 `{userId, issueDate}`，因此仅对已认证的所有者有效。
+
+### `GET /api/brief/{userId}/{issueDate}`
+
+`issueDate`（YYYY-MM-DD）的完整简报正文。需要 HMAC 签名 URL。返回杂志阅读器视图使用的结构化简报 JSON。
+
+## 分享
+
+### `POST /api/brief/share-url?date=YYYY-MM-DD`
+
+为调用者在 `date` 的简报创建公开分享指针。幂等 — hash 是 `{userId, issueDate, BRIEF_SHARE_SECRET}` 的纯函数。
+
+| 状态 | 响应 |
+|--------|----------|
+| 200 | `{ shareUrl, hash, issueDate }` |
+| 400 | `invalid_date_shape` / `invalid_payload` |
+| 401 | `UNAUTHENTICATED` |
+| 403 | `pro_required` |
+| 404 | `brief_not_found` — 阅读器无法分享不存在的内容 |
+| 503 | `service_unavailable` |
+
+### `GET /api/brief/public/{hash}`
+
+**无需认证**的公开读取，用于之前分享的简报。该 hash 解析为 `brief:public:{hash} → {userId, issueDate}` Redis 指针；如果不存在，则该简报从未被分享。分享指针是惰性写入的（在分享时，而非生成时）。
+
+## 轮播（社交媒体图片）
+
+### `GET /api/brief/carousel/{userId}/{issueDate}/{page}.png`
+
+服务器渲染的简报 PNG 页面（`page` = 1..N），用于 Telegram `sendMediaGroup`、Slack `chat.postMessage`、LinkedIn 等。
+
+- 通过 `@resvg/resvg-js` 及捆绑的 Linux 原生绑定渲染。
+- `Content-Type: image/png`，1080×1350（4:5 竖版）。
+- 不设门禁 — 使用 HMAC 签名的路径作为能力凭证。
+
+## 辅助
+
+### `GET /api/story?date=YYYY-MM-DD`
+
+用于分享简报的公开只读"故事视图"（Web 阅读器）。SEO 友好的 HTML 响应。
+
+### `GET /api/og-story?date=YYYY-MM-DD`
+
+`/api/story` 的 Open Graph 预览图。返回 `image/png`，激进缓存。
+
+### `POST /api/chat-analyst`
+
+仪表盘内"询问分析师"助手的流式聊天端点。接收用户提示+近期信号上下文；返回 SSE token。
+
+- 认证：Clerk JWT + PRO
+- 流式：`text/event-stream`
+- 后端：`intelligence/v1/chat-analyst-*` 处理器组合上下文+提示
+
+### `POST /api/widget-agent`
+
+嵌入式 widget iframe 使用的单次完成端点。通过 `X-WorldMonitor-Key`（合作伙伴密钥）认证。按密钥限流。

@@ -1,0 +1,72 @@
+---
+title: "错误"
+description: "标准错误结构、常见状态码与重试策略。"
+---
+
+## 错误结构
+
+所有错误响应均为 JSON，`Content-Type: application/json`：
+
+```json
+{ "error": "brief_not_found" }
+```
+
+部分端点会包含额外字段：
+
+```json
+{
+  "error": "invalid_request",
+  "error_description": "iso2 must be a 2-letter uppercase country code",
+  "field": "iso2"
+}
+```
+
+OAuth 端点遵循 [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rfc6749#section-5.2) 错误码：`invalid_request`、`invalid_client`、`invalid_grant`、`unsupported_grant_type`、`invalid_scope`。
+
+## 状态码
+
+| 状态码 | 含义 | 是否重试？ |
+|------|---------|--------|
+| `200` | OK | — |
+| `202` | 已接受 — 作业已入队。轮询以获取最终状态。 | — |
+| `304` | 未修改（条件缓存命中） | — |
+| `400` | 错误请求 — 校验错误 | 否 — 修正输入 |
+| `401` | 缺失 / 无效的认证 | 否 — 修正认证 |
+| `403` | 已认证但无权限（通常为 `pro_required`） | 否 — 升级订阅 |
+| `404` | 资源 / 工具 / brief / 实体未找到 | 否 |
+| `405` | 方法不允许 | 否 |
+| `409` | 冲突（重复的 webhook 注册等） | 否 |
+| `413` | 请求体过大 | 否 |
+| `429` | 触发速率限制 | 是 — 遵守 `Retry-After` |
+| `500` | 服务器 bug | 是 — 退避后重试，再上报 |
+| `502` | 上游 / Convex / Dodo 故障 | 是 — 指数退避 |
+| `503` | 服务不可用 — 缺失环境变量或依赖不可用 | 是 — 指数退避 |
+| `504` | 上游超时 | 是 — 退避后重试 |
+
+## 常见错误字符串
+
+| `error` 值 | 含义 |
+|---------------|---------|
+| `UNAUTHENTICATED` | 无有效的 Clerk JWT 或 API 密钥。 |
+| `pro_required` | 已认证，但账户非 PRO。 |
+| `invalid_payload` | 请求体未通过 schema 校验。 |
+| `invalid_date_shape` | 日期参数非 `YYYY-MM-DD`。 |
+| `brief_not_found` | 所请求的 `{userId, issueDate}` 没有已生成的 brief。 |
+| `Rate limit exceeded` | 触发 429；遵守 `Retry-After`。 |
+| `Service temporarily unavailable` | Upstash 或其他硬依赖在请求时不可用。 |
+| `service_unavailable` | 签名密钥 / 必需的环境变量未配置。 |
+| `Failed to enqueue scenario job` | `/api/scenario/v1/run-scenario` 上的 Redis 管道故障。 |
+
+## 重试策略
+
+**幂等读**（`GET`）：对 429/5xx 使用指数退避重试（1 秒、2 秒、4 秒，上限 30 秒，共 5 次）。大多数 GET 响应在边缘已缓存，因此重试通常更快完成。
+
+**写入**：切勿自动重试 4xx。对于写入时的 5xx，需甄别：`POST /api/brief/share-url` 与 `POST /api/v2/shipping/webhooks` 是幂等的；`POST /api/scenario/v1/run-scenario` **不**幂等 — 每次调用都会入队一个新作业。对 `run-scenario` 重试 5xx 可能会使速率限制计数翻倍。
+
+**MCP**：服务器在 JSON-RPC 结果中以 `isError: true` 和文本说明返回工具错误 — 这些并非 HTTP 错误。请在工具调用层进行处理。
+
+## 调试
+
+- 每个 Edge 响应都包含 `x-vercel-id` 与 `x-worldmonitor-deploy` 头 — 上报问题时请一并提供。
+- Sentry 告警会转发到 [status.worldmonitor.app](https://status.worldmonitor.app/)。
+- `GET /api/health` 与 `GET /api/seed-health` 显示各 seed 的数据新鲜度；某个 seed 过期是出现意外空载荷的最常见根因。
