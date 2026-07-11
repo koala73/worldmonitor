@@ -1,0 +1,49 @@
+---
+title: "查找或替换你的许可证 / API 密钥"
+description: "在哪里创建桌面应用或 API 所需的 wm_ 密钥、哪些套餐包含密钥，以及当完整密钥不再可见时该怎么办。"
+---
+
+World Monitor 在某些桌面界面中将此值称为**许可证密钥（license key）**，在其他地方称为 **API 密钥（API key）**。它们指的是同一个由用户创建的值，以 `wm_` 开头。
+
+<Info>
+结账不会为你创建可复用的密钥。**API Starter 和 API Business** 订阅用户在登录后自行创建密钥。**Dashboard Pro 不包含手动 API 密钥**；Pro 用户可以使用已登录的网页版仪表盘，并改用 OAuth 连接受支持的 MCP 客户端。
+</Info>
+
+## 创建密钥
+
+1. 打开 [World Monitor 仪表盘](https://worldmonitor.app/dashboard)，使用拥有该 API 订阅的账户登录。
+2. 点击右上角的 **Settings（设置）**。
+3. 打开 **API Keys（API 密钥）** 标签页。
+4. 输入名称，例如 `desktop` 或 `my-app`，然后点击 **Create Key（创建密钥）**。
+5. 立即复制完整的 `wm_...` 值，并将其保存到密码管理器或密钥管理器中。
+
+完整密钥仅显示一次。World Monitor 存储的是单向哈希，而非明文密钥。
+
+## 如果你只能看到前缀
+
+API Keys 标签页会列出一个简短前缀，方便你识别每个密钥，但它无法再次显示完整的值。
+
+1. 吊销你丢失了完整值的那个密钥。
+2. 创建一个替换密钥。
+3. 更新所有使用旧密钥的应用或脚本。
+
+吊销是永久性的。使用旧密钥的应用将停止工作。
+
+## 在桌面应用中使用密钥
+
+在 World Monitor 桌面应用中，打开 **Settings → Overview（设置 → 概览）**，将完整的值粘贴到 **License / API Key（许可证 / API 密钥）** 字段中，然后点击 **Save & Close（保存并关闭）**。
+
+对于 API 请求，请在 `X-WorldMonitor-Key` 标头中发送相同的值。示例请参见 [API 快速开始](/zh/usage-quickstart)。
+
+## 如果 API Keys 标签页提示你升级
+
+手动密钥需要有效的 **API Starter** 或 **API Business** 订阅。Dashboard Pro 订阅可解锁仪表盘和 MCP 功能，但不包含手动创建 API 密钥。
+
+如果你已经购买了 API 套餐，请确认你是使用拥有该订阅的账户登录的。如果套餐仍未被识别，请从购买时使用的邮箱地址发送邮件至 [support@worldmonitor.app](mailto:support@worldmonitor.app)。请附上套餐名称，如有可能，仅提供简短的密钥前缀——**切勿发送完整密钥**。
+
+## 相关
+
+- [账户与注册](/zh/accounts)
+- [套餐与价格](/zh/pricing)
+- [身份验证与使用](/zh/usage-auth)
+- [支持与联系](/zh/support)

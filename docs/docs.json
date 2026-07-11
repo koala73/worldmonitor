@@ -72,7 +72,11 @@
                   "usage-quickstart",
                   "usage-auth",
                   "usage-rate-limits",
-                  "usage-errors"
+                  "usage-errors",
+                  "pricing",
+                  "accounts",
+                  "api-keys",
+                  "support"
                 ]
               },
               {
@@ -88,6 +92,7 @@
                 "pages": [
                   "signal-intelligence",
                   "ai-intelligence",
+                  "methodology/news-digest-and-briefing",
                   "country-instability-index",
                   "methodology/country-resilience-index",
                   "methodology/chokepoints",
@@ -97,6 +102,7 @@
                   "methodology/disruptions",
                   "methodology/cii-risk-scores",
                   "methodology/disease-alert-level",
+                  "methodology/thermal-escalation",
                   "corrections",
                   "geographic-convergence",
                   "strategic-risk",
@@ -106,6 +112,7 @@
               {
                 "group": "Workflows",
                 "pages": [
+                  "embed-live-map",
                   "route-explorer",
                   "scenario-engine"
                 ]
@@ -142,6 +149,7 @@
                   "panels/daily-market-brief",
                   "panels/regional-intelligence",
                   "panels/strategic-posture",
+                  "panels/threat-timeline",
                   "panels/stock-analysis",
                   "panels/stock-backtest",
                   "panels/wsb-ticker-scanner"
@@ -185,8 +193,12 @@
                 "group": "MCP & Integrations",
                 "pages": [
                   "agent-discovery",
+                  "agent-skills",
                   "mcp-quickstart",
-                  "mcp-server",
+                  "cli",
+                  "sdks",
+                  "mcp-overview",
+                  "mcp-apps",
                   "mcp-tools-reference",
                   "mcp-jmespath",
                   "mcp-error-catalog",
@@ -212,6 +224,7 @@
                   "authentication",
                   "adding-endpoints",
                   "api-key-deployment",
+                  "releasing-cli",
                   "release-packaging",
                   "cors",
                   "health-endpoints",
@@ -220,10 +233,18 @@
                 ]
               },
               {
+                "group": "Company",
+                "pages": [
+                  "about"
+                ]
+              },
+              {
                 "group": "Legal",
                 "pages": [
                   "license",
-                  "trademark-policy"
+                  "trademark-policy",
+                  "privacy",
+                  "terms"
                 ]
               }
             ]
@@ -329,6 +350,10 @@
                   {
                     "group": "Forecasts",
                     "openapi": "api/ForecastService.openapi.yaml"
+                  },
+                  {
+                    "group": "Commerce",
+                    "openapi": "openapi/CommerceService.openapi.yaml"
                   }
                 ]
               },
@@ -388,6 +413,10 @@
                   {
                     "group": "Giving",
                     "openapi": "api/GivingService.openapi.yaml"
+                  },
+                  {
+                    "group": "Batch",
+                    "openapi": "api/BatchService.openapi.yaml"
                   }
                 ]
               }
@@ -498,7 +527,11 @@
                   "zh/usage-quickstart",
                   "zh/usage-auth",
                   "zh/usage-rate-limits",
-                  "zh/usage-errors"
+                  "zh/usage-errors",
+                  "zh/pricing",
+                  "zh/accounts",
+                  "zh/api-keys",
+                  "zh/support"
                 ]
               },
               {
@@ -514,6 +547,7 @@
                 "pages": [
                   "zh/signal-intelligence",
                   "zh/ai-intelligence",
+                  "zh/methodology/news-digest-and-briefing",
                   "zh/country-instability-index",
                   "zh/methodology/country-resilience-index",
                   "zh/methodology/chokepoints",
@@ -523,6 +557,7 @@
                   "zh/methodology/disruptions",
                   "zh/methodology/cii-risk-scores",
                   "zh/methodology/disease-alert-level",
+                  "zh/methodology/thermal-escalation",
                   "zh/corrections",
                   "zh/geographic-convergence",
                   "zh/strategic-risk",
@@ -532,6 +567,7 @@
               {
                 "group": "工作流",
                 "pages": [
+                  "zh/embed-live-map",
                   "zh/route-explorer",
                   "zh/scenario-engine"
                 ]
@@ -568,6 +604,7 @@
                   "zh/panels/daily-market-brief",
                   "zh/panels/regional-intelligence",
                   "zh/panels/strategic-posture",
+                  "zh/panels/threat-timeline",
                   "zh/panels/stock-analysis",
                   "zh/panels/stock-backtest",
                   "zh/panels/wsb-ticker-scanner"
@@ -611,8 +648,12 @@
                 "group": "MCP 与集成",
                 "pages": [
                   "zh/agent-discovery",
+                  "zh/agent-skills",
                   "zh/mcp-quickstart",
-                  "zh/mcp-server",
+                  "zh/cli",
+                  "zh/sdks",
+                  "zh/mcp-overview",
+                  "zh/mcp-apps",
                   "zh/mcp-tools-reference",
                   "zh/mcp-jmespath",
                   "zh/mcp-error-catalog",
@@ -638,6 +679,7 @@
                   "zh/authentication",
                   "zh/adding-endpoints",
                   "zh/api-key-deployment",
+                  "zh/releasing-cli",
                   "zh/release-packaging",
                   "zh/cors",
                   "zh/health-endpoints",
@@ -646,10 +688,18 @@
                 ]
               },
               {
+                "group": "公司",
+                "pages": [
+                  "zh/about"
+                ]
+              },
+              {
                 "group": "法律",
                 "pages": [
                   "zh/license",
-                  "zh/trademark-policy"
+                  "zh/trademark-policy",
+                  "zh/privacy",
+                  "zh/terms"
                 ]
               }
             ]
@@ -755,6 +805,10 @@
                   {
                     "group": "预报",
                     "openapi": "api/ForecastService.openapi.yaml"
+                  },
+                  {
+                    "group": "商业",
+                    "openapi": "openapi/CommerceService.openapi.yaml"
                   }
                 ]
               },
@@ -814,6 +868,10 @@
                   {
                     "group": "捐赠",
                     "openapi": "api/GivingService.openapi.yaml"
+                  },
+                  {
+                    "group": "批量",
+                    "openapi": "api/BatchService.openapi.yaml"
                   }
                 ]
               }
@@ -880,5 +938,35 @@
         ]
       }
     ]
-  }
+  },
+  "redirects": [
+    {
+      "source": "/mcp-server",
+      "destination": "/mcp-overview"
+    },
+    {
+      "source": "/plans",
+      "destination": "/pricing"
+    },
+    {
+      "source": "/tiers",
+      "destination": "/pricing"
+    },
+    {
+      "source": "/rate-limit",
+      "destination": "/usage-rate-limits"
+    },
+    {
+      "source": "/rate-limits",
+      "destination": "/usage-rate-limits"
+    },
+    {
+      "source": "/mcp-api-key",
+      "destination": "/usage-auth"
+    },
+    {
+      "source": "/contact",
+      "destination": "/support"
+    }
+  ]
 }

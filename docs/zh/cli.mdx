@@ -1,0 +1,143 @@
+---
+title: "命令行客户端"
+description: "使用官方 worldmonitor npm CLI，从你的 shell 脚本化国家简报、风险评分以及全部 39 个 MCP 工具中的任意一个——无需编写任何 API 集成。"
+---
+
+[`worldmonitor`](https://www.npmjs.com/package/worldmonitor) 是 World Monitor 全球情报 API 的官方命令行客户端。它是对 [MCP 服务器](/zh/mcp-overview)（推荐的智能体接口）的一层轻薄、**无依赖**封装，并带有 REST 备用通道，因此你无需编写一行 HTTP 底层代码，即可从 shell 脚本或智能体拉取简报、风险评分以及冲突/网络/市场/新闻数据源。它以 ESM 形式发布，运行于 **Node 18+**。
+
+源码位于主仓库的 [`cli/`](https://github.com/koala73/worldmonitor/tree/main/cli)，并在每个 `cli-v*` 发布标签上发布到 npm。
+维护者在发布新的 npm 版本时可遵循 [CLI 发布手册](/zh/releasing-cli)。
+相比 shell 更喜欢库？同一客户端也以[官方 SDK](/zh/sdks) 的形式提供 **Python**、**Ruby** 和 **Go** 版本。
+
+## 安装
+
+```sh
+npm install -g worldmonitor    # installs the `worldmonitor` command (alias: `wm`)
+# or run ad-hoc without installing:
+npx worldmonitor tools
+```
+
+## 首次调用——无需密钥
+
+`tools` 会列出每个 MCP 工具，且是**公开的**，因此它是确认 CLI 能够访问 API 的最快方式：
+
+```sh
+worldmonitor tools
+```
+
+你会收到全部 39 个工具定义，格式为 JSON。其他所有返回*数据*的操作都是 `tools/call`，需要用户 API 密钥。
+
+## 身份验证
+
+数据命令映射到 MCP `tools/call`，需要用户 API 密钥。在 [worldmonitor.app/pro](https://www.worldmonitor.app/pro) 获取一个，然后可以每次调用时传入，或一次性导出它：
+
+```sh
+export WORLDMONITOR_API_KEY=wm_xxxxxxxx
+worldmonitor risk IR                       # reads the key from the environment
+# — or —
+worldmonitor risk IR --api-key wm_xxxxxxxx # pass it explicitly
+```
+
+密钥作为 `X-WorldMonitor-Key` 头发送。有关密钥、OAuth 和浏览器会话的区别，请参见[身份验证](/zh/usage-auth)；各套餐的额度请参见[速率限制](/zh/usage-rate-limits)。如果你在调用数据命令时未提供密钥，CLI 会以 `1` 退出，并打印一条提示，准确告诉你应传入哪个标志。
+
+## 数据命令
+
+针对流量最高的工具的便捷快捷方式。位置参数（如 ISO 国家代码）以及任意 `--key value` 对都会直接作为工具参数传入：
+
+| 命令 | MCP 工具 | 说明 |
+|---|---|---|
+| `world` | `get_world_brief` | 实时全球态势简报 |
+| `country <ISO>` | `get_country_brief` | AI 战略简报（ISO 3166-1 alpha-2） |
+| `risk <ISO>` | `get_country_risk` | 国家风险/韧性评分 |
+| `markets` | `get_market_data` | 股票、大宗商品、加密货币、外汇 |
+| `conflicts` | `get_conflict_events` | `--country`、`--min_fatalities`、`--limit` |
+| `cyber` | `get_cyber_threats` | `--min_severity`、`--threat_type`、`--country` |
+| `news` | `get_news_intelligence` | `--topic`、`--country`、`--alerts_only` |
+| `disasters` | `get_natural_disasters` | `--dataset`、`--active_only`、`--min_magnitude` |
+| `sanctions` | `get_sanctions_data` | `--country`、`--entity_type`、`--query` |
+| `forecasts` | `get_forecast_predictions` | `--domain`、`--region` |
+| `maritime <ISO>` | `get_maritime_activity` | 某国的港口/船舶活动 |
+
+```sh
+worldmonitor country IR                              # AI strategic brief
+worldmonitor conflicts --country IR --limit 5        # recent conflict events
+worldmonitor markets --asset_class crypto            # crypto quotes
+```
+
+## 任意工具，任意参数
+
+精选表格刻意保持精简——全部 40 个工具中的每一个都可通过 `call` 访问，任何未识别的 `--key value` 都会成为工具参数，因此无需任何特殊接线：
+
+```sh
+worldmonitor call get_cyber_threats --min_severity 7
+worldmonitor call get_market_data --args '{"symbols":["AAPL","MSFT"]}'   # typed JSON args
+worldmonitor prompts        # list pre-built workflow prompt templates
+worldmonitor resources      # list addressable resource URIs
+```
+
+当你需要有类型的（非字符串）参数时，使用 `--args '<json>'`；否则 `--key value` 对会被作为字符串收集。
+
+<Tip>
+每个工具都接受一个通用的 `jmespath` 参数，它在响应通过网络传输之前于**服务端**进行投影——通常可缩小 80–95%。CLI 会像转发任何其他参数一样转发它：
+
+```sh
+worldmonitor markets --jmespath 'data."stocks-bootstrap".quotes[?symbol==`AAPL`].{s:symbol,p:price}'
+```
+
+12 个实例请参见 [JMESPath 指南](/zh/mcp-jmespath)。
+</Tip>
+
+## REST 备用通道
+
+适用于主机相对路径、自托管部署或 OpenAPI 目录：
+
+```sh
+worldmonitor health --api-key wm_xxx      # API status / health check (needs a key)
+worldmonitor get /api/cyber/v1/list-cyber-threats --api-key wm_xxx
+worldmonitor list cyber                   # list documented REST operations from the live spec
+```
+
+`health` 映射到需要认证的[平台健康端点](/zh/health-endpoints)，因此它需要 `--api-key`。`list` 读取公开的 [OpenAPI 规范](/zh/api-reference)，无需密钥。
+
+## 标志
+
+| 标志 | 用途 |
+|---|---|
+| `--api-key <key>` | 用户 API 密钥（或环境变量 `WORLDMONITOR_API_KEY`） |
+| `--mcp-url <url>` | MCP 端点（默认 `https://worldmonitor.app/mcp`） |
+| `--base-url <url>` | REST 基础地址（默认 `https://api.worldmonitor.app`） |
+| `--args <json>` | 工具调用的有类型参数对象 |
+| `--timeout <ms>` | 请求超时（默认 `30000`） |
+| `--raw` | 原样打印响应体 |
+| `--compact` | 打印单行 JSON |
+| `-h, --help` · `-v, --version` | 帮助/版本 |
+
+## 退出码
+
+| 代码 | 含义 |
+|---|---|
+| `0` | 成功 |
+| `1` | 请求或传输错误（响应体写入 stderr） |
+| `2` | 用法错误（命令错误或缺少必需参数） |
+
+可预测的退出码使得从 shell 管道和 CI 驱动该 CLI 是安全的。
+
+## 编程式使用
+
+相同的逻辑可以导入——便于嵌入 Node 脚本而无需启动子 shell：
+
+```js
+import { run } from 'worldmonitor/run';
+
+const code = await run(['risk', 'IR'], { env: process.env });
+```
+
+`run()` 接受一个可注入的 IO 集合（`fetch`、`env`、`stdout`、`stderr`），因此它完全可以离线测试，并返回数字退出码。
+
+## 接下来去哪里
+
+- **[MCP 快速入门](/zh/mcp-quickstart)**——连接 Claude Desktop 并通过 Model Context Protocol 进行你的首次工具调用。
+- **[MCP 工具参考](/zh/mcp-tools-reference)**——全部 40 个工具的逐工具参数、新鲜度预算和示例。
+- **[JMESPath 指南](/zh/mcp-jmespath)**——用于将响应缩小 80–95% 的投影语法。
+- **[身份验证](/zh/usage-auth)**——API 密钥 vs. OAuth vs. 浏览器会话。
+- **[API 参考](/zh/api-reference)**——`get` 和 `list` 命令背后的完整 REST 服务目录。

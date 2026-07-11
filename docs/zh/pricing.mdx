@@ -1,0 +1,48 @@
+---
+title: "套餐与价格"
+description: "Free、Pro、API、API Business 和 Enterprise 套餐 — 价格、各套餐所含内容，以及面向 agent 的机器可读价格接口。"
+---
+
+World Monitor 提供一个免费的公开仪表盘，以及面向分析师工作流、API 访问和组织部署的付费层级。
+
+<Info>
+**机器可读来源**（面向 agent 的规范来源）：
+- Markdown：[`/pricing.md`](https://worldmonitor.app/pricing.md)
+- 实时 JSON（层级、价格、Dodo 产品 ID）：[`GET /api/product-catalog`](https://www.worldmonitor.app/api/product-catalog) — 公开，无需密钥
+</Info>
+
+## 套餐
+
+| 套餐 | 价格 | 最适合 |
+|------|-------|----------|
+| **Free** | $0 — 无需注册 | 公开态势感知、OSINT 研究、新闻监测 |
+| **Pro** | $39.99/月 · $399.99/年 | WM Analyst 聊天、Scenario Engine（场景引擎）、AI 摘要、自定义小部件、MCP 访问 |
+| **API** | $99.99/月 · $999/年 | REST API + SDK、1,000 请求/天起始限额、webhook、数据导出 |
+| **API Business** | $249.99/月 | 涵盖 API Starter 的全部内容、300 请求/分钟、10,000 请求/天、优先支持 |
+| **Enterprise** | 定制 — [enterprise@worldmonitor.app](mailto:enterprise@worldmonitor.app) | 团队工作区、SSO/MFA/RBAC、白标、本地部署 / 气隙隔离 |
+
+上述价格与 `convex/config/productCatalog.ts`（`/api/product-catalog` 背后的唯一可信来源）保持一致；一项漂移防护测试确保本页面内容准确。
+
+## 各套餐包含的内容
+
+- **Free** — 56 个地图图层、500+ 精选数据源、国家简报、热点、不稳定性评分、咽喉要道、级联分析、突发警报和监视列表。仪表盘的刷新频率通常为 5–15 分钟。
+- **Pro** — 涵盖 Free 的全部内容，外加跨 30+ 实时服务并带引用的 WM Analyst 聊天、Scenario Engine、Route Explorer（路线探索器）、个人 AI 摘要（每日 / 每日两次 / 每周，通过 Slack、Discord、Telegram、邮件、webhook 发送）、自定义小部件构建器，以及 MCP 访问（一个密钥下 40 个工具）。
+- **API** — 编程式访问：带结构化 JSON 和缓存标头的 REST API、官方 SDK（npm、PyPI、RubyGems、Go）、实时数据流、webhook 通知（Starter 提供 5 条规则），以及自定义数据导出。
+- **API Business** — 面向团队的高流量 API 层级：涵盖 API Starter 的全部内容，提供 300 请求/分钟和 10,000 请求/天，以及优先支持。Starter 客户可从账单门户升级（立即按比例计费）。
+- **Enterprise** — 涵盖 Pro 和 API 的全部内容，外加团队工作区、SSO/MFA/RBAC、专属支持、白标和可嵌入面板、SIEM 连接器、批量导出，以及云 / 专用租户 / 本地部署 / 气隙隔离部署。
+
+## 限额与超量
+
+速率限制默认是硬性限制：超出套餐配额会返回 HTTP `429`，并带有 `Retry-After` 和 `X-RateLimit-*` 标头。超出配额的用量会被拒绝 — 绝不会在你不知情的情况下计费。各端点的预算：[速率限制](/zh/usage-rate-limits)。
+
+需要更高的限额？请在 [worldmonitor.app/pro](https://worldmonitor.app/pro) 升级，或联系 [enterprise@worldmonitor.app](mailto:enterprise@worldmonitor.app)。
+
+## 购买和管理订阅
+
+结账通过 [Dodo Payments](https://dodopayments.com) 完成；权益数据存储在 Convex 中。可从 [worldmonitor.app/pro](https://worldmonitor.app/pro) 订阅；在同一页面的客户门户中管理账单（发票、取消、续订）。端点详情：[商务端点](/zh/api-commerce)。
+
+## 相关
+
+- [账户与注册](/zh/accounts) — 免费层完全无需账户
+- [身份验证与使用](/zh/usage-auth) — 密钥类型和认证矩阵
+- [速率限制](/zh/usage-rate-limits) — 各端点的请求预算

@@ -1,0 +1,510 @@
+---
+title: "WorldMonitor MCP 服务器：接入 Claude、Cursor 和 agent"
+description: "通过 Model Context Protocol 将 Claude、Cursor 及其他兼容 MCP 的客户端接入 WorldMonitor 的实时全球情报数据。"
+---
+
+WorldMonitor 将其情报栈作为 [Model Context Protocol](https://modelcontextprotocol.io) 服务器对外开放，因此任何兼容 MCP 的客户端（Claude Desktop、Claude web、Cursor、MCP Inspector、自定义 agent）都可以将实时冲突、市场、航空、海事、经济和预测数据直接拉取到模型上下文中。
+
+<Tip>
+**初次使用？** [MCP 快速入门](/zh/mcp-quickstart) 是一条从零到在 Claude Desktop 中完成真实工具调用的五分钟路径。如需认证模式、套餐、OAuth 配置和完整工具目录，请回到本页查看。
+</Tip>
+
+<Info>
+**Pro 和 API 套餐均可通过 OAuth 接入 —— 无需 API key。** Pro 订阅者只需在授权页点击 _"Sign in with WorldMonitor Pro"_；API Starter / Business / Enterprise 用户可以同样的方式登录，或者粘贴 `wm_…` key。Free 套餐用户在 OAuth 步骤会看到 401。
+</Info>
+
+所有付费套餐共享同一个 MCP 服务器和同样的 40 个工具。当前的硬性 MCP 每日预留仅针对 OAuth 上下文在 Pro 计数器上强制执行：**每个 UTC 日 50 次消耗配额的 `tools/call` / `resources/read` 调用**。使用 API key（`wm_…`）的 MCP 客户端受本 handler 中 **60 次请求/分钟/key** 限流器的保护；更宽松的 API Starter / Business REST 额度在 MCP 每日预留路径之外强制执行。（`describe_tool`，即 v1.5.0 的元数据查询辅助工具，不计入 Pro 每日配额。）
+
+Pro 订阅者无需粘贴任何 API key 即可接入 Claude Desktop / Cursor / claude.ai —— 参见下方的 [Pro 登录流程](#pro-sign-in-flow)。API Starter+ 用户可继续在授权页粘贴 `wm_…` key（原始流程），也可使用与 Pro 相同的 OAuth 路径。
+
+## 端点
+
+| 端点 | 用途 |
+|----------|---------|
+| `https://worldmonitor.app/mcp` | JSON-RPC 服务器（Streamable HTTP 传输；默认返回 JSON 响应，当客户端声明 `text/event-stream` 时返回 SSE 响应；`initialize` 默认使用协议 `2025-03-26`） |
+| `https://api.worldmonitor.app/api/oauth/register` | 动态客户端注册（RFC 7591） |
+| `https://api.worldmonitor.app/api/oauth/authorize` | OAuth 2.1 授权端点（要求 PKCE） |
+| `https://api.worldmonitor.app/api/oauth/token` | Token 端点（authorization_code + refresh_token） |
+| `https://api.worldmonitor.app/.well-known/oauth-authorization-server` | AS 元数据（RFC 8414） |
+| `https://worldmonitor.app/.well-known/oauth-protected-resource` | 资源服务器元数据（RFC 9728） |
+
+服务器标识：`worldmonitor` v1.15.0。
+
+注册表登记：该服务器以 `app.worldmonitor/mcp` 之名发布于[官方 MCP 注册表](https://registry.modelcontextprotocol.io/v0/servers?search=worldmonitor) —— 这是一个经过域名验证的命名空间，因此通过注册表解析服务器的客户端获得的端点和元数据与上方的服务器卡片一致 —— 并在 [Smithery](https://smithery.ai/servers/worldmonitor/wm-mcp) 和 [mcp.so](https://mcp.so/server/world-monitor) 上列出。
+
+### 协议协商
+
+WorldMonitor 位于 `/.well-known/mcp/server-card.json` 的静态服务器卡片声明协议版本 `2025-06-18`，而实时的 `initialize` 握手默认会协商该版本 —— 因此所声明的底线版本与实际协商出的版本保持一致：
+
+- 默认情况下，`initialize` 同时支持 `2025-03-26` 和 `2025-06-18`。
+- 请求 `2025-06-18` 的客户端会得到 `2025-06-18`；固定使用 `2025-03-26` 的客户端继续得到 `2025-03-26`。
+- 设置 `MCP_PROTOCOL_FLOOR_2025_06_18=off` 会将服务器固定回仅支持 `2025-03-26` 的旧版底线；此后请求 `2025-06-18` 的客户端会收到安全默认值 `2025-03-26`。
+
+无论协商出的协议版本如何，工具的 `outputSchema` 元数据都会在 `tools/list` 中发出。较旧的 `2025-03-26` 客户端应忽略未知字段，而较新的客户端可以立即使用该 schema。
+
+### Streamable HTTP 响应
+
+WorldMonitor 支持 Streamable HTTP POST 流程，可返回 JSON 或 SSE 响应：
+
+- 在 `Accept` 中省略 `text/event-stream` 的客户端会收到标准的 JSON-RPC JSON 响应体。
+- 发送 `Accept: application/json, text/event-stream` 的客户端在 JSON-RPC POST 成功时可收到 `text/event-stream` 响应。
+- `initialize` 的 SSE 响应包含 `Mcp-Session-Id`；后续的 POST 应发送相同的 `Mcp-Session-Id` 头。
+- 每个 SSE 响应以带有事件 `id` 的单个 `message` 事件承载 JSON-RPC 结果。不存在开头的空预热事件 —— 根据 WHATWG SSE 规范，空的 `data:` 字段仍会派发一个 `message`（其 `data === ""`），这会导致严格的握手扫描器在 `JSON.parse("")` 上失败。
+- 如果客户端在唯一的那个事件之后断开连接，可以通过发送带有 `Accept: text/event-stream`、相同 `Mcp-Session-Id` 和 `Last-Event-ID` 的 `GET /mcp` 来重新连接；在已投递的事件之后恢复会返回一个空流。在收到该事件之前就断开的客户端没有已确认的 `Last-Event-ID`，因此会改为重新发起该 POST。
+- **裸 `GET /mcp`** —— 即**不带** `Last-Event-ID` 的请求 —— 是客户端在开启可选的服务器→客户端独立 SSE 流。这条无状态的 edge 路由不提供任何由服务器发起的流，因此它以 `405 Method Not Allowed` 应答（并声明 `Allow`），MCP 规范将其定义为优雅的"无独立流"信号。MCP SDK 客户端会透明地处理它并完成握手；`GET` 动词本身保留给上文提到的经过认证的 `Last-Event-ID` 重放。
+
+重放缓冲区在内存中，且按每个 edge 实例设有上限。请将 `Last-Event-ID` 恢复视为容忍丢失的传输层恢复，而非持久化的消息存储。
+
+## 认证
+
+**发现是公开的。** `initialize`、`tools/list`、`prompts/list`、`prompts/get`、`resources/list`、`resources/templates/list`、`ping`、`logging/setLevel` 以及 `notifications/initialized` 握手都可**无需凭据**提供服务，因此任何 agent（或 agent 就绪性扫描器）都可以连接到 `https://worldmonitor.app/mcp`、读取服务器身份，并在认证之前枚举完整的工具、prompt 和资源目录 —— 这与静态[服务器卡片](https://worldmonitor.app/.well-known/mcp/server-card.json)中已发布的元数据相同。这些方法只返回公开的目录元数据（名称、描述、URI / URI 模板、静态工作流模板文案 —— 不含数据，不计配额）；匿名 `initialize` 所声明的每一项能力都可匿名调用，因此严格的 MCP 客户端（Claude Desktop、`mcp-remote`、参考 SDK）能够完成其连接后的完整枚举，而不会卡在认证墙上。对**公开**资源的 `resources/read`（由 `resources/list` 暴露的具体的、仅含元数据的新鲜度/健康探针，例如 `worldmonitor://seed-meta/freshness`）**同样是公开且不计配额的** —— 匿名 agent 可以顺畅读取它。匿名发现按每个客户端 IP 限流为 60 次请求/分钟。所有返回数据或消耗配额的操作（`tools/call`，以及对承载数据的 **URI 模板实例化**的 `resources/read` —— 国家风险、咽喉要道状态、市场报价）仍需使用下方两种认证模式之一。在发现方法上出示的凭据仍会被校验（错误的 key 会返回 `401`，绝不会静默降级为匿名）。
+
+MCP handler 按优先级顺序接受两种认证模式：
+
+1. **OAuth 2.1 bearer** —— `Authorization: Bearer <token>`，其中 `<token>` 由 `/api/oauth/token` 颁发。这是 Claude Desktop、claude.ai、Cursor 和 MCP Inspector 自动使用的方式。任何从浏览器源访问 MCP 的客户端都必须使用此方式。
+2. **直接 API key** —— 对于用户颁发的 key 使用 `X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567`，或使用由运营方颁发的不透明企业 key。适用于服务端脚本、`curl` 和自定义集成。**不要**把 API key 当作 `Bearer` token 发送 —— 它会通过 OAuth 解析失败并返回 `401 invalid_token`。
+
+OAuth bearer 请求在分发之前会重新检查解析出的 MCP token、用户绑定和有效权益，因此订阅降级会在下一次请求时撤销 OAuth MCP 访问权限。直接的 `X-WorldMonitor-Key` 请求会校验所配置的 API key，然后使用按 key 的限流器；它们的 REST/API 套餐额度在 Pro/OAuth MCP 每日预留路径之外强制执行。
+
+### Redirect URI 允许列表
+
+动态客户端注册**不**对任意 HTTPS 重定向开放。仅接受以下前缀：
+
+- `https://claude.ai/api/mcp/auth_callback`
+- `https://claude.com/api/mcp/auth_callback`
+- `http://localhost:<port>` / `http://127.0.0.1:<port>`（任意端口） —— 适用于 Claude Code、MCP Inspector、本地开发
+
+其他客户端必须通过这些重定向之一代理，或在本地运行。
+
+### Token 生命周期
+
+| 项目 | TTL |
+|----------|-----|
+| 授权码 | 10 分钟 |
+| Access token | 1 小时 |
+| Refresh token | 7 天 |
+| 已注册客户端记录 | 90 天（滑动） |
+
+## Pro 登录流程
+
+Pro 订阅者（以及不愿粘贴 key 的 API Starter+ 用户）可通过其已有的 WorldMonitor 账户授权 MCP 客户端 —— 无需 API key。
+
+1. **在 MCP 客户端中添加服务器 URL**。规范入口为：
+
+   ```
+   https://api.worldmonitor.app/mcp
+   ```
+
+   （`https://worldmonitor.app/mcp` 也可用 —— 它代理同一个 handler。）
+
+2. **在授权页点击 "Sign in with WorldMonitor Pro"**。这是默认 CTA。你会跳转到 `worldmonitor.app/mcp-grant`（受 Clerk 保护 —— 如需登录请先登录），然后回到 `api.worldmonitor.app/oauth/authorize-pro`，最后跳转到你客户端的 redirect。
+
+3. **完成。** 你的机器上不会创建或存储任何 `wm_…` key。客户端会收到一个标准 OAuth 2.1 access token（1 小时 TTL，7 天 refresh）。
+
+如果你更愿意粘贴 API key（Starter+ / 脚本化客户端），可在授权页展开 "Use API key instead" 并提交你的 `wm_` 用户 key 或由运营方颁发的企业 key —— 该路径保持不变。
+
+### 每日额度（Pro 套餐）
+
+- **每个 UTC 日 50 次消耗配额的调用**，在 UTC 00:00 重置。
+- `tools/call` 以及对承载数据的 **URI 模板实例化**的 `resources/read` 会消耗 Pro 每日配额，元数据辅助工具 `describe_tool` 除外。
+- `initialize`、`tools/list`、`prompts/list`、`prompts/get`、`resources/list`、`resources/templates/list`、`logging/setLevel`、`notifications/initialized`、`ping` 和 `describe_tool` **不**计入每日上限。对**公开**资源的 `resources/read`（仅含元数据的新鲜度/健康探针，例如 `worldmonitor://seed-meta/freshness`）同样豁免 —— 它不承载任何可计费的数据。
+- 达到上限会返回 JSON-RPC 错误 `-32029` 以及 HTTP `429`，并附带指向下一个 UTC 午夜的 `Retry-After` 头。
+- 该上限是硬性限制：接近边界时的并发 `tools/call` 或 `resources/read` 请求使用原子 Redis 预留，因此恰好跨越 50 的那次调用会被拒绝。
+
+需要更高吞吐量的脚本化访问？**API Starter** 和 **API Business** 增加了 `wm_…` key 选项以及 REST/API 套餐额度，但 `wm_…` MCP 调用不由 MCP 每日预留计数器计量；它们仍受 60 次/分钟/key 的 MCP 限流。对于批量或高吞吐量工作流，请优先使用 REST/API 端点或联系 Enterprise —— 参见[套餐与限制](#plans--limits)。
+
+### 已连接的 MCP 客户端
+
+每次授权都会生成一条独立记录，因此撤销 Claude Desktop 不会影响 Cursor。
+
+- 在 **[Settings → Connected MCP clients](https://worldmonitor.app/settings)** 管理已连接的客户端。
+- 可查看每个 token 的实时 `clientName`（例如 "Claude"、"Cursor"）、`lastUsedAt` 和 `createdAt`。
+- 撤销会在下一次 MCP 请求时生效（无正向缓存）。
+- 每个用户最多 **5 个活跃 token**。第 6 次授权会静默撤销最久未使用的现有 token。
+
+## 套餐与限制
+
+| 套餐 | MCP 访问 | 认证模式 | MCP 每日预留 | 备注 |
+|------|------------|------------|-----------------------|-------|
+| **Free** | ❌ 否 | — | — | OAuth 流程返回 401 `INSUFFICIENT_TIER`。请在 [worldmonitor.app/pro](https://www.worldmonitor.app/pro) 升级。 |
+| **Pro** | ✅ 是 | 仅 OAuth | **50 次消耗配额的调用 / UTC 日** | 经由 apex Clerk 登录跳转。无需或存储 `wm_…` key。 |
+| **API Starter** | ✅ 是 | OAuth **或** `wm_…` key | OAuth 上下文使用 Pro 计数器；`wm_…` MCP 调用**无 MCP 每日预留** | 标准开发者层 REST/API 访问。 |
+| **API Business** | ✅ 是 | OAuth **或** `wm_…` key | OAuth 上下文使用 Pro 计数器；`wm_…` MCP 调用**无 MCP 每日预留** | 更高的 REST/API 吞吐量。 |
+| **Enterprise** | ✅ 是 | OAuth **或** `wm_…` key | 自定义；`wm_…` MCP 调用**无默认 MCP 每日预留** | 可提供自定义 SLA。 |
+
+所有付费套餐都通过每分钟 60 次调用/分钟/key（API key 客户端）或 60/分钟/用户（OAuth 上下文）的限流来防御突发流量风暴。**每分钟限流器在方法分发之前运行，因此每个方法（包括 `initialize`、`tools/list`、`prompts/list`、`resources/list`、`describe_tool` 等）都计入 60/分钟。** 只有 Pro/OAuth 每日配额上限是有选择性的 —— 它仅由 `tools/call` 和 `resources/read` 预留消耗（参见上方的[每日额度（Pro 套餐）](#daily-limit-pro-tier)，以及[错误目录](/zh/mcp-error-catalog#-32029--rate-limited-per-minute-or-daily)中关于两种限制的完整方法豁免表）。
+
+OAuth 的 60/分钟是按用户计算（一个拥有 3 个 Claude 安装的用户共享一个 60/分钟池）；API key 的 60/分钟是按 key 计算（多个 key = 更高吞吐量）。
+
+达到 Pro/OAuth 每日配额会返回 JSON-RPC 错误 `-32029` 以及 HTTP `429`，并附带指向下一个 UTC 午夜的 `Retry-After` 头。达到每分钟限制会返回相同的错误码，但 `Retry-After` 较短。
+
+WorldMonitor 还会在 Settings 中显示当前的 MCP 套餐限额通知，并在付费用户接近或超出其套餐额度时以受限频率发送邮件。这些通知以信息告知和行动引导为目的：它们提供重试/重置指引、在下一套餐可自助购买时提供结账入口，或在不可自助时提供支持联系方式。它们不会自动升级账户，也不会产生超额费用。
+
+### 其他速率限制
+
+- **OAuth authorize**：10 次请求 / 分钟 / IP
+- **OAuth token**：10 次请求 / 分钟 / IP
+- **动态注册**：5 次注册 / 分钟 / IP
+
+超过任何限制都会返回 HTTP `429`，并附带 `Retry-After` 头。
+
+## 客户端配置
+
+### Claude Desktop
+
+`~/Library/Application Support/Claude/claude_desktop_config.json`（macOS） —— 使用远程 MCP 条目：
+
+```json
+{
+  "mcpServers": {
+    "worldmonitor": {
+      "url": "https://worldmonitor.app/mcp"
+    }
+  }
+}
+```
+
+Claude Desktop 会在首次连接时自动处理 OAuth 流程。
+
+### Claude web (claude.ai)
+
+通过 **Settings → Connectors → Add custom connector** 添加：
+
+- 名称：`WorldMonitor`
+- URL：`https://worldmonitor.app/mcp`
+
+### Cursor
+
+`~/.cursor/mcp.json`：
+
+```json
+{
+  "mcpServers": {
+    "worldmonitor": {
+      "url": "https://worldmonitor.app/mcp"
+    }
+  }
+}
+```
+
+### MCP Inspector（调试）
+
+```bash
+npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
+```
+
+## 工具目录
+
+服务器暴露 40 个工具。大多数是对预填充 Redis key 的缓存读取（亚秒级）。较慢的非缓存路径包括六个实时 LLM/外部 API 工具（`get_world_brief`、`get_country_brief`、`analyze_situation`、`generate_forecasts`、`search_flights`、`search_flight_prices_by_date`），以及实时地理 RPC 工具（`get_airspace`、`get_maritime_activity`），后者会带 edge 超时代理实时的航空/海事 API 调用。有一个工具（`describe_tool`，v1.5.0 新增）返回任何其他工具的完整未压缩定义 —— 在压缩后的 `tools/list` 描述含糊不清时很有用；不计入 Pro 每日配额。
+
+<Tip>
+如需各工具的参数、新鲜度预算、超时以及具体的 `curl` 示例，请参阅 [MCP 工具参考](/zh/mcp-tools-reference)。关于 payload 投影 —— 每个工具都接受一个可选的 `jmespath` 参数，通常可将响应大小缩减 80-95% —— 请参阅 [JMESPath 指南](/zh/mcp-jmespath)。
+</Tip>
+
+### 市场与经济
+
+| 工具 | 描述 |
+|------|-------------|
+| `get_market_data` | 股票报价、商品价格（含黄金 GC=F）、加密货币、外汇、板块表现、ETF 资金流、海湾市场。 |
+| `get_economic_data` | Fed Funds、经济日历、燃料价格、ECB 外汇、欧盟收益率曲线、财报、COT、能源库存、BIS DSR + 房价。 |
+| `get_country_macro` | 每个国家一份的 IMF WEO 数据包：通胀、经常账户、人均 GDP、失业率、储蓄-投资缺口（约 210 个国家）。 |
+| `get_eu_housing_cycle` | Eurostat 年度房价指数（prc_hpi_a），每个欧盟成员国 + EA20/EU27 的 10 年迷你图。 |
+| `get_eu_quarterly_gov_debt` | Eurostat 季度政府总债务（占 GDP 比例），8 个季度迷你图。 |
+| `get_eu_industrial_production` | Eurostat 月度工业生产指数，12 个月迷你图。 |
+| `get_prediction_markets` | 活跃的 Polymarket 事件合约及实时概率。 |
+| `get_supply_chain_data` | 干散货航运压力指数、海关流量、COMTRADE 双边贸易。 |
+| `get_tariff_trends` | 全球贸易和定价指标：美国关税趋势（HTS 编码）、巨无霸指数、FAO 食品价格指数以及各国国债水平。 |
+| `get_chokepoint_status` | 实时海上咽喉要道状态：每个咽喉要道的船舶过境计数（10 分钟节奏）、滚动过境摘要、每个港口的活动，以及静态参考数据和流量汇总。覆盖苏伊士、霍尔木兹、马六甲、曼德海峡、巴拿马等。 |
+| `get_consumer_prices` | 各国消费者价格情报：30 天概览、品类级通胀、零售商价差（必需品篮子）、热门变动以及来源新鲜度。需要 `country_code`（目前仅填充了 `ae`）。 |
+| `get_commodity_geo` | 全球 71 个主要矿场（金、银、铜、锂、铀、煤）。 |
+
+### 能源
+
+| 工具 | 描述 |
+|------|-------------|
+| `get_energy_intelligence` | 能源供应、价格、库存、中断和政策：EIA 石油库存、电力价格（Ember）、天然气库存（GIE）、燃料短缺、化石与可再生能源占比、活跃能源中断、政府危机政策。 |
+
+### 地缘与安全
+
+| 工具 | 描述 |
+|------|-------------|
+| `get_conflict_events` | 活跃的 UCDP/伊朗冲突、带地理坐标的动荡、各国风险评分。 |
+| `get_country_risk` | CII 评分 0-100、组成部分分解、旅行警示、各国 OFAC 敞口。快速，无需 LLM。 |
+| `get_military_posture` | 战区姿态 + 军事风险评分。 |
+| `get_cyber_threats` | URLhaus/Feodotracker 恶意软件 IOC、CISA KEV 目录、活跃 C2 基础设施。 |
+| `get_sanctions_data` | OFAC SDN 实体 + 各国制裁压力评分。 |
+| `get_news_intelligence` | AI 分类的威胁新闻、GDELT 信号、跨来源情报。 |
+| `get_positive_events` | 外交协议、人道主义援助、和平倡议。 |
+| `get_social_velocity` | Reddit r/worldnews + r/geopolitics 热门帖、互动评分。 |
+
+### 移动与基础设施
+
+| 工具 | 描述 |
+|------|-------------|
+| `get_airspace` | 某个国家上空的实时 ADS-B。参数：`country_code`（2 字母代码）、`type`（`all`/`civilian`/`military`）。 |
+| `get_maritime_activity` | 各国 AIS 密度区域、暗船事件、咽喉要道拥堵。参数：`country_code`。 |
+| `get_aviation_status` | FAA 机场延误、NOTAM 关闭、被跟踪的军用飞机。 |
+| `get_infrastructure_status` | Cloudflare Radar 中断、主要云/互联网服务状态。 |
+| `search_flights` | Google Flights 在指定日期在 IATA 机场代码之间的实时搜索。 |
+| `search_flight_prices_by_date` | 跨日期范围的日期网格最便宜日定价。 |
+
+### 环境与科学
+
+| 工具 | 描述 |
+|------|-------------|
+| `get_natural_disasters` | USGS 地震、NASA FIRMS 野火、灾害事件。 |
+| `get_climate_data` | 相对 WMO 常态的气温/降水异常、GDACS/FIRMS 警报、Mauna Loa CO2、OpenAQ PM2.5、海冰、海洋热含量。 |
+| `get_radiation_data` | 全球辐射监测站读数 + 异常标记。 |
+| `get_research_signals` | 来自精选研究源的新兴技术事件。 |
+
+### 健康
+
+| 工具 | 描述 |
+|------|-------------|
+| `get_health_signals` | 活跃疾病暴发（WHO/ECDC 等）和全球空气质量站点读数（OpenAQ/WAQI PM2.5）。用于健康风险筛查。 |
+
+### 人道主义与流离失所
+
+| 工具 | 描述 |
+|------|-------------|
+| `get_displacement_data` | 按国家统计的难民和 IDP 数量（UNHCR 年度数据）。 |
+
+### AI 情报（实时 LLM）
+
+| 工具 | 描述 | 成本 |
+|------|-------------|------|
+| `get_world_brief` | 带结构化来源链接的 AI 摘要世界情报简报。可选 `geo_context` 参数。 | LLM |
+| `get_country_brief` | 带结构化来源链接的各国地缘 + 经济评估。支持分析框架。 | LLM |
+| `analyze_situation` | 基于查询 + 上下文的临时地缘推断推理。返回置信度 + 支撑信号。 | LLM |
+| `generate_forecasts` | 新鲜概率估计（绕过缓存）。 | LLM |
+| `get_forecast_predictions` | 预计算的缓存预测。快速。 | 缓存 |
+| `get_forecast_scorecard` | 缓存的预测结算校准与记分卡。 | 缓存 |
+
+## API 覆盖
+
+只有当确切的 `METHOD /api/...` 路径声明在某个工具的注册表 `_apiPaths` 条目中时，该 API 端点才算**由 MCP 暴露**。下表是这些声明来自 `api/mcp/registry/cache-tools.ts` 和 `api/mcp/registry/rpc-tools.ts` 的面向人类的呈现；它比公共 OpenAPI 目录更窄。
+
+一个 REST 路由可以存在于 OpenAPI 中，但仍然是仅限 REST 的。parity 测试将这一区别保持明确：每个公共 OpenAPI 操作要么出现在 `_apiPaths` 中，要么在 `tests/mcp-api-parity.test.mjs` 中列出并附带一个已分类的排除原因。
+
+当前的规范划分即以下命令所打印的内容：
+
+```bash
+./node_modules/.bin/tsx --test tests/mcp-api-parity.test.mjs
+```
+
+该输出包含已覆盖、已排除和操作总数的计数。请将这些计数视为动态清单，而非产品文案；测试和注册表才是事实来源。
+
+反向查询工作流：
+
+1. 从 OpenAPI 页面复制确切的方法和路径，例如 `GET /api/research/v1/list-tech-events`。
+2. 搜索此表。如果该路由出现，则调用所列的 MCP 工具。
+3. 如果它未出现，则该 REST 路由未作为 API 等价路径通过 MCP 暴露。仅缓存的 MCP 工具可能仍返回相关领域数据，但它并不声称覆盖该 REST 路由。
+4. 如需代码级验证，请在 `api/mcp/registry/cache-tools.ts` 和 `api/mcp/registry/rpc-tools.ts` 中搜索 `_apiPaths`；parity 测试会解释有意的仅限 REST 排除项。
+
+| MCP 工具 | 服务的 API 端点 |
+|----------|---------------------|
+| `get_market_data` | `GET /api/market/v1/get-fear-greed-index`<br/>`GET /api/market/v1/get-sector-summary`<br/>`GET /api/market/v1/list-commodity-quotes`<br/>`GET /api/market/v1/list-crypto-quotes`<br/>`GET /api/market/v1/list-etf-flows`<br/>`GET /api/market/v1/list-gulf-quotes`<br/>`GET /api/market/v1/list-market-quotes` |
+| `get_economic_data` | `GET /api/economic/v1/get-ecb-fx-rates`<br/>`GET /api/economic/v1/get-economic-calendar`<br/>`GET /api/economic/v1/get-eu-yield-curve`<br/>`GET /api/economic/v1/list-fuel-prices`<br/>`GET /api/market/v1/get-cot-positioning`<br/>`GET /api/market/v1/list-earnings-calendar` |
+| `get_tariff_trends` | `GET /api/economic/v1/get-fao-food-price-index`<br/>`GET /api/economic/v1/get-national-debt`<br/>`GET /api/economic/v1/list-bigmac-prices` |
+| `get_energy_intelligence` | `GET /api/economic/v1/get-energy-crisis-policies`<br/>`GET /api/supply-chain/v1/get-fuel-shortage-detail`<br/>`GET /api/supply-chain/v1/list-energy-disruptions`<br/>`GET /api/supply-chain/v1/list-fuel-shortages` |
+| `get_consumer_prices` | `GET /api/consumer-prices/v1/get-consumer-price-freshness`<br/>`GET /api/consumer-prices/v1/get-consumer-price-overview`<br/>`GET /api/consumer-prices/v1/list-consumer-price-categories`<br/>`GET /api/consumer-prices/v1/list-consumer-price-movers`<br/>`GET /api/consumer-prices/v1/list-retailer-price-spreads` |
+| `get_supply_chain_data` | `GET /api/supply-chain/v1/get-shipping-stress`<br/>`GET /api/trade/v1/get-customs-revenue` |
+| `get_chokepoint_status` | `GET /api/intelligence/v1/get-country-port-activity`<br/>`GET /api/supply-chain/v1/get-chokepoint-status` |
+| `get_climate_data` | `GET /api/climate/v1/get-co2-monitoring`<br/>`GET /api/climate/v1/get-ocean-ice-data`<br/>`GET /api/climate/v1/list-air-quality-data`<br/>`GET /api/climate/v1/list-climate-anomalies`<br/>`GET /api/climate/v1/list-climate-disasters`<br/>`GET /api/climate/v1/list-climate-news` |
+| `get_health_signals` | `GET /api/health/v1/list-air-quality-alerts`<br/>`GET /api/health/v1/list-disease-outbreaks` |
+| `get_conflict_events` | `GET /api/conflict/v1/list-iran-events`<br/>`GET /api/conflict/v1/list-ucdp-events`<br/>`GET /api/unrest/v1/list-unrest-events` |
+| `get_news_intelligence` | `GET /api/intelligence/v1/list-cross-source-signals`<br/>`GET /api/intelligence/v1/search-gdelt-documents` |
+| `get_country_risk` | `GET /api/intelligence/v1/get-country-risk` |
+| `get_country_brief` | `GET /api/intelligence/v1/get-country-intel-brief` |
+| `get_social_velocity` | `GET /api/intelligence/v1/get-social-velocity` |
+| `get_natural_disasters` | `GET /api/natural/v1/list-natural-events`<br/>`GET /api/seismology/v1/list-earthquakes`<br/>`GET /api/wildfire/v1/list-fire-detections` |
+| `get_radiation_data` | `GET /api/radiation/v1/list-radiation-observations` |
+| `get_infrastructure_status` | `GET /api/infrastructure/v1/list-internet-outages` |
+| `get_airspace` | `GET /api/aviation/v1/track-aircraft`<br/>`GET /api/military/v1/list-military-flights` |
+| `get_maritime_activity` | `GET /api/maritime/v1/get-vessel-snapshot` |
+| `get_military_posture` | `GET /api/military/v1/get-theater-posture` |
+| `get_displacement_data` | `GET /api/displacement/v1/get-displacement-summary` |
+| `get_positive_events` | `GET /api/positive-events/v1/list-positive-geo-events` |
+| `get_sanctions_data` | `GET /api/sanctions/v1/list-sanctions-pressure`<br/>`GET /api/sanctions/v1/lookup-sanction-entity` |
+| `get_research_signals` | `GET /api/research/v1/list-tech-events` |
+| `get_prediction_markets` | `GET /api/prediction/v1/list-prediction-markets` |
+| `get_forecast_predictions` | `GET /api/forecast/v1/get-forecasts` |
+| `get_forecast_scorecard` | `GET /api/forecast/v1/get-forecast-scorecard` |
+| `get_world_brief` | `GET /api/news/v1/list-feed-digest`<br/>`POST /api/news/v1/summarize-article` |
+| `analyze_situation` | `POST /api/intelligence/v1/deduct-situation` |
+| `search_flights` | `GET /api/aviation/v1/search-google-flights` |
+| `search_flight_prices_by_date` | `GET /api/aviation/v1/search-google-dates` |
+
+没有声明 API 路径的工具仍通过 `tools/call` 返回数据，但不应将它们视为 REST 等价物：
+
+- **缓存支撑的 bootstrap 聚合** —— 读取由 Railway cron 直接填充的 Redis key（例如 `get_aviation_status`、`get_cyber_threats`、`get_country_macro`，以及三个 EU Eurostat 工具）。
+- **静态内存注册表** —— 过滤随 MCP 服务器 edge 二进制文件一起打包的一个常量，完全无需上游调用（例如 `get_commodity_geo`）。
+- **没有公共 OpenAPI 行的实时工具** —— 运行时代理一次 HTTP 调用，其方法偏离公共规范，由一个同类工具覆盖规范声明的方法（例如 `generate_forecasts` 以 POST 方式请求 `/api/forecast/v1/get-forecasts`，而 `get_forecast_predictions` 拥有该 GET）。
+
+在此表中，`covered` 意味着某个工具在 `_apiPaths` 中声明了确切的操作。`tests/mcp-api-parity.test.mjs` 中常见的仅限 REST 排除项：
+
+- **`mutating`** —— 写入、队列、webhook、缓存刷新或持久化副作用。示例：`GET /api/aviation/v1/list-airport-delays` 有意仅限 REST，因为其 GET handler 会刷新/持久化机场延误缓存状态；`get_aviation_status` 转而暴露已填充的缓存支撑快照。
+- **`llm-passthrough`** —— 每次调用直接进行的 LLM 工作，在通过 MCP 暴露之前需要专门设计的成本/威胁模型。
+- **`fetch-on-miss`** —— 在缓存为冷时可能调用付费或受限流的上游，或接受不适合缓存打包的高基数标识符。排除原因必须包含一个强制的次要信号：`high-cardinality-input`、`paid-upstream` 或 `llm-cost`。示例：`GET /api/conflict/v1/list-acled-events`、`GET /api/infrastructure/v1/list-service-statuses`、`GET /api/supply-chain/v1/get-critical-minerals` 以及 `GET /api/aviation/v1/get-flight-status`。
+- **`admin`** —— 位于明确管理员边界之后的仅限内部操作，例如管理员 key、仅限内部的中间件或仅限 cron 的路径。
+- **`manual-mapping`** —— 参数化的缓存 key 或内联的 Redis/Convex handler 需要人工分诊。示例：`GET /api/research/v1/list-arxiv-papers`、`GET /api/research/v1/list-trending-repos` 以及 `GET /api/research/v1/list-hackernews-items`；`get_research_signals` 仅声明 `GET /api/research/v1/list-tech-events`。
+- **`deferred-to-future-tool`** —— 其缓存 key 尚未被某个 MCP bundle 暴露的纯读取。示例：`GET /api/cyber/v1/list-cyber-threats` 计划用于未来的扩展领域工具，而非由如今缓存支撑的 `get_cyber_threats` 认领。
+
+当前的后续跟踪项：
+
+- [#4525](https://github.com/koala73/worldmonitor/issues/4525) —— 延后的纯读取 MCP 覆盖候选项。
+- [#4526](https://github.com/koala73/worldmonitor/issues/4526) —— 手动映射和 fetch-on-miss 分诊。
+
+有关完整的 40 个工具列表，请参见上方的[工具目录](#tool-catalog)；有关各工具详情，请参阅 [MCP 工具参考](/zh/mcp-tools-reference)。
+
+## Prompt 与资源
+
+除了 40 个工具之外，WorldMonitor 还暴露 MCP prompt 和资源，使客户端无需从零编排工具计划即可发现常见工作流并寻址稳定的数据切片。
+
+### Prompt
+
+`prompts/list` 返回六个工作流模板。`prompts/get` 会将所选模板渲染为一条用户消息，其中包含正确的 `tools/call` 序列和预置的 JMESPath 投影。
+
+| Prompt | 用途 |
+|--------|---------|
+| `country-briefing` | 针对一个 ISO 3166-1 alpha-2 国家的国家风险、AI 情报简报和宏观指标。 |
+| `energy-shock-watch` | 活跃能源中断、燃料短缺和政府危机政策；可选按国家聚焦。 |
+| `market-open-prep` | 用于开盘扫描的轻量级股票、大宗商品和加密货币异动简报。 |
+| `conflict-pulse` | 活跃的 UCDP 冲突事件以及带警报标记的热门新闻，可全球或针对一个国家。 |
+| `route-risk-check` | 针对一个咽喉要道的海上过境摘要与风险态势。 |
+| `freshness-audit` | 跨市场、能源和咽喉要道 bootstrap 信封的缓存新鲜度检查。 |
+
+`prompts/list` 和 `prompts/get` 是元数据/工作流发现方法：它们不计入 Pro 每日配额，但仍计入 60/分钟的每分钟限流器。
+
+### 资源
+
+资源分为两个层级。**具体资源**由 `resources/list` 暴露，可匿名且不计配额地读取；**URI 模板**（参数化、承载数据）由 `resources/templates/list` 暴露，每次具体实例化都需在认证下读取并消耗 Pro 每日配额。
+
+`resources/list` —— 具体、可匿名读取、不计配额：
+
+| 资源 URI | 支撑数据 |
+|--------------|--------------|
+| `worldmonitor://seed-meta/freshness` | 仅市场数据 bootstrap 的新鲜度信封：`cached_at` 和 `stale`。一个用于检测卡住的 seeder 的廉价健康探针 —— 无需认证，不计配额。 |
+
+`resources/templates/list` —— 参数化的 URI 模板。替换占位符，然后 `resources/read` 具体的 URI（需要认证；消耗 Pro 每日配额的方式与等价的 `tools/call` 对称）：
+
+| 资源 URI 模板 | 支撑数据 |
+|-----------------------|--------------|
+| `worldmonitor://countries/{iso2}/risk` | 国家风险评分、组成部分分解、旅行警示和制裁敞口。`{iso2}` 是小写的 alpha-2，例如 `de` 或 `us`。 |
+| `worldmonitor://chokepoints/{slug}/status` | 咽喉要道过境摘要和风险叙述。`{slug}` 是已发布的 kebab-case 咽喉要道 slug 之一，例如 `suez`、`strait-of-hormuz` 或 `bab-el-mandeb`。 |
+| `worldmonitor://markets/{symbol}/quote` | 单一符号的市场报价切片。`{symbol}` 是大写，例如 `AAPL`、`GC=F` 或 `BTC-USD`。 |
+
+`resources/list` 和 `resources/templates/list` 是元数据，不消耗 Pro 每日配额。对模板实例化的 `resources/read` 有意消耗与等价 `tools/call` 相同的每日配额额度；它通过同一个分发器路由，因此承载数据的资源无法绕过 Pro 上限。对公开（具体）资源的 `resources/read` 不计配额 —— 它只返回元数据。与每个 MCP 方法一样，所有这些仍计入 60/分钟限流器。有关每分钟限流与每日配额耗尽之间确切的 `-32029` 状态/头差异，请参阅 [MCP 错误目录](/zh/mcp-error-catalog#-32029--rate-limited-per-minute-or-daily)。
+
+### MCP Apps（交互式 UI）
+
+该服务器支持 [MCP Apps](https://modelcontextprotocol.io/extensions/apps/build)（扩展 `io.modelcontextprotocol/ui`，规范 `2026-01-26`）—— 即当调用某个关联工具时由宿主在沙箱化 iframe 中渲染的交互式视图。三个线路信号驱动它：
+
+- **`initialize`** 在握手中声明支持。响应的 `capabilities.extensions` 会命名该扩展：`{"io.modelcontextprotocol/ui": {}}`。这是宿主（或 agent 就绪性扫描器）读取以将该端点归类为 MCP App 界面的协商信号 —— 下方的 `tools/list` 和 `resources/list` 条目就是它随后渲染的内容。
+- **`tools/list`** 在工具上声明这种关联。每个关联了 UI 的工具都携带指向其 UI 资源的 `_meta.ui.resourceUri`（以及已弃用的扁平别名 `ui/resourceUri`）。
+- **`resources/list`** 暴露 UI 资源本身，以及具体的数据资源（参数化的数据模板位于 `resources/templates/list`）：
+
+| UI 资源 URI | 关联工具 | 渲染内容 |
+|-----------------|-------------|---------|
+| `ui://worldmonitor/country-risk.html` | `get_country_risk` | CII 评分、动荡/冲突/安全/新闻组成部分分解、旅行警示级别，以及 OFAC 制裁敞口。 |
+| `ui://worldmonitor/world-brief.html` | `get_world_brief` | 以可读段落呈现的 AI 摘要全球情报简报，外加支撑性头条和来源文章。 |
+| `ui://worldmonitor/country-brief.html` | `get_country_brief` | 以段落呈现的 AI 合成各国简报，附带分析框架视角和支撑来源。 |
+| `ui://worldmonitor/market-radar.html` | `get_market_data` | Fear & Greed 综合指标，外加各资产类别的报价表（股票、大宗商品、加密货币、海湾、板块），带有带符号、色彩编码的涨跌。 |
+| `ui://worldmonitor/chokepoint-monitor.html` | `get_chokepoint_status` | 各咽喉要道的滚动过境摘要（今日计数、周环比变化、油轮占比），并带有风险级别标记。 |
+| `ui://worldmonitor/news-intelligence.html` | `get_news_intelligence` | AI 分类的热门报道，带有类别、警报标记、国家和来源。 |
+| `ui://worldmonitor/conflict-events.html` | `get_conflict_events` | 来自 UCDP 源的活跃武装冲突事件（交战方、暴力类型、国家、伤亡、日期）。 |
+| `ui://worldmonitor/natural-disasters.html` | `get_natural_disasters` | 近期地震（USGS 震级、地点、时间）和活跃野火（NASA FIRMS），分组显示。 |
+| `ui://worldmonitor/prediction-markets.html` | `get_prediction_markets` | 按类别（地缘政治、科技、金融）分组的活跃事件合约赔率，每个市场带有一个概率条。 |
+| `ui://worldmonitor/forecasts.html` | `get_forecast_predictions` | 以概率卡片（标题、领域、区域）呈现的 AI 生成地缘政治和经济预测。 |
+
+所有 UI 资源共享 `mimeType: text/html;profile=mcp-app`。
+
+对 `ui://` URI 的 `resources/read` 返回自包含的 HTML 视图。与数据资源不同，`ui://` 读取是**公开且豁免配额的** —— 该模板不承载数据，也不产生上游调用，因此宿主可以在无凭据、不触及 Pro 每日上限的情况下预加载它（agent 就绪性扫描器也可以获取它）。该视图完全自包含（无外部资源），并通过标准的 MCP Apps `postMessage` 桥（`ui/initialize` → `ui/notifications/tool-result` → `ui/notifications/size-changed`）与宿主通信。
+
+有关完整的 MCP Apps 契约 —— 宿主流程、安全态势、各小部件清单、源文件以及 docs-stat 漂移检查 —— 请参阅 [MCP Apps](/zh/mcp-apps)。
+
+## JSON-RPC 示例
+
+服务端使用直接 API key —— 将其作为 `X-WorldMonitor-Key` 发送，**不要**作为 bearer token。
+
+```bash
+WM_KEY="wm_0123456789abcdef0123456789abcdef01234567"
+
+# 1. List tools
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+
+# 2. Call a cache tool
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":2,
+    "method":"tools/call",
+    "params":{"name":"get_country_risk","arguments":{"country_code":"IR"}}
+  }'
+```
+
+如果你已完成 OAuth 流程并持有来自 `/api/oauth/token` 的 access token，则将其作为 `Authorization: Bearer $TOKEN` 传入。
+
+## 响应结构
+
+工具响应使用标准 MCP content block 格式：
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "content": [
+      { "type": "text", "text": "{...json payload...}" }
+    ],
+    "isError": false
+  }
+}
+```
+
+对于缓存工具，JSON payload 包含 `cached_at`（最旧贡献数据点的 ISO 时间戳）和 `stale`（布尔值 —— 当任意贡献 seed 超出其 per-key 新鲜度预算时为 `true`），以便模型可对新鲜度进行推理。
+
+## 数据新鲜度
+
+所有缓存工具都从由 Railway cron seeder 写入的 Redis key 读取。典型新鲜度：
+
+| 领域 | 典型新鲜度 |
+|--------|-------------------|
+| 市场（盘中） | 1–5 分钟 |
+| 航班（ADS-B） | 1–3 分钟 |
+| 海事（AIS） | 5–15 分钟 |
+| 冲突 / 动荡 | 15–60 分钟 |
+| 宏观 / BIS / Eurostat | 每日–每周 |
+| IMF WEO | 每月 |
+
+每个 key 的 seed 级健康状态：[status.worldmonitor.app](https://status.worldmonitor.app/)。
+
+## 错误
+
+MCP handler 在三个独立层次上发出失败信号 —— **HTTP 状态**、**JSON-RPC `error.code`**，以及 **`result.content[0].text` 内部的 soft-behavior envelope** —— 一次失败可能触及任意组合。
+
+| 层次        | 常见形态                                                    | 查看位置       |
+|--------------|------------------------------------------------------------------|---------------------|
+| HTTP 状态  | `200`（JSON-RPC 默认）、`401`、`429`、`503`                | `WWW-Authenticate` / `Retry-After` 头 |
+| JSON-RPC     | `-32001` 认证 · `-32029` 速率受限 · `-32602` 参数错误 · `-32603` 内部错误 | `error.code` + `error.message`           |
+| Soft envelope | `_budget_exceeded`（响应过大）、`_jmespath_error`（投影失败） | 将 `result.content[0].text` 解析为 JSON |
+
+由外向内分诊：HTTP 状态 → JSON-RPC 错误码 → soft envelope。完整的每种形态参考（触发条件、配对状态、恢复方式、示例 payload）位于 [MCP 错误目录](/zh/mcp-error-catalog)。几个高频要点：
+
+- **401 + `-32001`** 携带一个 `WWW-Authenticate` 头，其 `resource_metadata` 指向 `/.well-known/oauth-protected-resource`。支持 RFC 9728 的客户端会在此头上自动重新运行 OAuth 流程。
+- **429 + `-32029`** 是 Pro 每日上限（`Retry-After: <距离 UTC 午夜的秒数>`）。每分钟速率限制在 HTTP 200 内返回 `-32029`，而不是 429 —— 区别请见错误目录。
+- **Soft envelope 返回 HTTP 200** 且没有 JSON-RPC `error` 字段 —— 仅检查 JSON-RPC 层的客户端会静默地将它们视为成功。务必解析 `result.content[0].text` 并在将 payload 当作数据消费前检查带前导下划线的判别 key（`_budget_exceeded`、`_jmespath_error`）。
+
+## 相关
+
+- [MCP 快速入门](/zh/mcp-quickstart) —— 五分钟从零到首次调用的演练
+- [JMESPath 指南](/zh/mcp-jmespath) —— 投影语法 + 12 个实例
+- [MCP 工具参考](/zh/mcp-tools-reference) —— 各工具参数和 `curl` 示例
+- [MCP 错误目录](/zh/mcp-error-catalog) —— 服务器发出的每个 JSON-RPC 错误码、HTTP 状态和 soft envelope
+- [认证概览](/zh/authentication) —— 浏览器 vs bearer vs OAuth
+- [API 参考](/zh/api-reference) —— 通过 REST 获取同样的数据
+- [Pro 功能](https://www.worldmonitor.app/pro)

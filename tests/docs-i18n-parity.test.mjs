@@ -30,7 +30,8 @@ function collectPagePaths(node, pages = []) {
         else if (p && typeof p === 'object') collectPagePaths(p, pages);
       }
     }
-    for (const v of Object.values(node)) {
+    for (const [key, v] of Object.entries(node)) {
+      if (key === 'pages') continue; // already traversed above
       if (v && typeof v === 'object') collectPagePaths(v, pages);
     }
   }

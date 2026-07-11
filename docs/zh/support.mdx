@@ -1,0 +1,40 @@
+---
+title: "支持与联系"
+description: "World Monitor 的所有支持渠道 — 邮件、GitHub issues、Discord 和状态页面 — 以及各套餐层级的响应时间预期。"
+---
+
+<Info>
+面向 agent 的机器可读版本：[`/support.md`](https://worldmonitor.app/support.md)
+</Info>
+
+## 渠道
+
+| 事项 | 渠道 |
+|---------|---------|
+| 一般支持、账户或账单问题 | [support@worldmonitor.app](mailto:support@worldmonitor.app) |
+| 企业、销售、定制配额 | [enterprise@worldmonitor.app](mailto:enterprise@worldmonitor.app) |
+| 错误报告与功能请求 | [GitHub issues](https://github.com/koala73/worldmonitor/issues)（公开，开源） |
+| 社区与快速提问 | [Discord](https://discord.gg/re63kWKxaz) |
+| 服务状态与事故 | [status.worldmonitor.app](https://status.worldmonitor.app) — 提供邮件订阅 |
+| 安全漏洞 | 参见 [security.txt](https://www.worldmonitor.app/.well-known/security.txt) |
+
+[/pro](https://worldmonitor.app/pro) 上的应用内联系表单（`POST /api/leads/v1/submit-contact`）受 Turnstile 保护，面向浏览器中的人类用户；agent 应改用邮件。
+
+## 响应预期
+
+- **Free / Pro / API** — 通过邮件、GitHub 和 Discord 提供尽力而为的支持。无正式 SLA。
+- **Enterprise** — 专属支持，提供承诺的响应时间，按合同约定。
+
+在反馈 API 问题时，请附上你的密钥前缀（切勿提供完整密钥）、端点，以及你收到的任何请求 ID 或 `X-RateLimit-*` 标头值。
+
+## 联系我们之前
+
+- **是服务中断吗？** 请查看 [status.worldmonitor.app](https://status.worldmonitor.app) 和公开的健康探测 `GET /api/health?compact=1`。
+- **查找、创建或替换 `wm_` 密钥** — 请遵循[查找或替换你的许可证 / API 密钥](/zh/api-keys)。完整密钥仅显示一次且无法恢复；请吊销丢失的密钥并创建替换密钥。
+- **密钥轮换 / 提升限额** — 参见[身份验证与使用](/zh/usage-auth)、[速率限制](/zh/usage-rate-limits)，或发邮件联系支持。
+- **账单自助服务** — 发票、取消和续订均可在 [worldmonitor.app/pro](https://worldmonitor.app/pro) 的客户门户中处理。
+
+## 相关
+
+- [套餐与价格](/zh/pricing)
+- [账户与注册](/zh/accounts)

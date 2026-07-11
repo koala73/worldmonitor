@@ -1,0 +1,34 @@
+---
+title: "账户与注册"
+description: "账户创建的工作原理：免费仪表盘无需账户；Pro/API 账户通过浏览器中的 Clerk 注册流程创建。"
+---
+
+<Info>
+**免费仪表盘无需账户。** Free 套餐下列出的所有功能 — 56 个地图图层、500+ 数据源、国家简报、监视列表 — 均可在 [worldmonitor.app](https://worldmonitor.app) 匿名使用。仅当你需要 Pro/API 功能或需要生成 API 密钥时才需创建账户。
+</Info>
+
+## 注册流程如何运作
+
+账户创建是一个交互式的浏览器流程，而非 API：
+
+1. 打开 [worldmonitor.app/pro](https://worldmonitor.app/pro) 并点击 **Sign up（注册）**（或使用仪表盘的登录按钮）。页面内会打开一个 [Clerk](https://clerk.com) 模态框 — 不存在独立的 `/sign-up` 表单页面；该 URL 提供的是应用外壳。
+2. 使用邮箱 + 密码或某个 OAuth 提供方（Google、GitHub）注册。邮箱注册会收到一个验证码；模态框会引导你完成整个过程。
+3. 免费账户本身不会在仪表盘上解锁任何额外功能 — 它是 Pro/API 订阅和 API 密钥所依附的身份标识。
+
+## 注册之后
+
+- **升级到 Pro 或 API** — 前往 [worldmonitor.app/pro](https://worldmonitor.app/pro)；结账通过 Dodo Payments 完成；参见[套餐与价格](/zh/pricing)。
+- **创建 API 密钥** — 订阅 API Starter 或 API Business 后，从 **Dashboard → Settings → API Keys（仪表盘 → 设置 → API 密钥）** 创建（`wm_` + 40 个十六进制字符）。完整的值仅显示一次；准确的步骤和恢复说明请参见[查找或替换你的许可证 / API 密钥](/zh/api-keys)。
+- **通过 OAuth 连接 agent**（而非使用密钥）：MCP 客户端（Claude Desktop 等）使用 OAuth 2.1 + PKCE 和动态客户端注册 — 无需手动折腾账户；自举式的发现链请参见 [auth.md](https://worldmonitor.app/auth.md)。
+
+## 面向 agent
+
+- 你无法通过抓取页面来代表用户完成浏览器注册 — 该流程存在于客户端的 Clerk 模态框中。请引导用户前往 [worldmonitor.app/pro](https://worldmonitor.app/pro)。
+- 若要以 *agent* 身份使用你自己的凭证进行操作，请使用 [auth.md](https://worldmonitor.app/auth.md) 中的 OAuth 路径（匿名动态客户端注册，然后由人类在授权时同意）。
+- 价格、套餐门槛和配额均可机器读取：[`/pricing.md`](https://worldmonitor.app/pricing.md) 和 [`GET /api/product-catalog`](https://www.worldmonitor.app/api/product-catalog)。
+
+## 相关
+
+- [套餐与价格](/zh/pricing)
+- [身份验证与使用](/zh/usage-auth)
+- [支持与联系](/zh/support)

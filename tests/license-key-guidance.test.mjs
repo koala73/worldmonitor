@@ -18,7 +18,9 @@ test('license-key help documents the real creation and recovery flow', () => {
 
 test('license-key help is discoverable from docs navigation and support', () => {
   const docsConfig = JSON.parse(read('docs/docs.json'));
-  const documentationTab = docsConfig.navigation.tabs.find((tab) => tab.tab === 'Documentation');
+  const navigation = docsConfig.navigation;
+  const englishTabs = navigation.tabs ?? navigation.languages.find((lang) => lang.language === 'en').tabs;
+  const documentationTab = englishTabs.find((tab) => tab.tab === 'Documentation');
   const usageGroup = documentationTab.groups.find((group) => group.group === 'Usage');
 
   assert.ok(usageGroup.pages.includes('api-keys'));
