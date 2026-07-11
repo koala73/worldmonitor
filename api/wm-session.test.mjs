@@ -179,6 +179,66 @@ test('POST emits one anonymous mint usage event without exposing cookie material
   assert.equal(JSON.stringify(events[0]).includes('wms_'), false, 'never telemeter the minted session token');
 });
 
+test('session usage telemetry records verified Cloudflare client attribution and rejects forged headers', async () => {
+  process.env.USAGE_TELEMETRY = '1';
+  process.env.AXIOM_API_TOKEN = 'axiom-test-token';
+  process.env.CF_EDGE_PROOF_SECRET = 'edge-secret-xyz';
+  const events = [];
+  globalThis.fetch = async (input, init) => {
+    const url = input instanceof URL ? input.href : typeof input === 'string' ? input : input.url;
+    if (url.includes('fake.upstash.io')) {
+      return new Response(JSON.stringify([{ result: [29, 30] }]), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
+    if (url.includes('axiom.co')) {
+      events.push(...JSON.parse(init.body));
+      return new Response('{}', { status: 200 });
+    }
+    throw new Error(`unexpected telemetry fetch: ${url}`);
+  };
+
+  const verified = makeReq('POST', { origin: 'https://worldmonitor.app' });
+  verified.headers.set('cf-connecting-ip', '203.0.113.7');
+  verified.headers.set('cf-ipcountry', 'FR');
+  verified.headers.set('x-real-ip', '192.0.2.5');
+  verified.headers.set('x-vercel-ip-country', 'ZA');
+  verified.headers.set('x-wm-edge-proof', 'edge-secret-xyz');
+  const verifiedCtx = makeWaitUntilCtx();
+  assert.equal((await handler(verified, verifiedCtx.ctx)).status, 200);
+  await verifiedCtx.settle();
+
+  const forged = makeReq('POST', { origin: 'https://worldmonitor.app' });
+  forged.headers.set('cf-connecting-ip', '203.0.113.7');
+  forged.headers.set('cf-ipcountry', 'FR');
+  forged.headers.set('x-real-ip', '192.0.2.5');
+  forged.headers.set('x-vercel-ip-country', 'ZA');
+  const forgedCtx = makeWaitUntilCtx();
+  assert.equal((await handler(forged, forgedCtx.ctx)).status, 200);
+  await forgedCtx.settle();
+
+  const tor = makeReq('POST', { origin: 'https://worldmonitor.app' });
+  tor.headers.set('cf-connecting-ip', '203.0.113.7');
+  tor.headers.set('cf-ipcountry', 'T1');
+  tor.headers.set('x-real-ip', '192.0.2.5');
+  tor.headers.set('x-vercel-ip-country', 'ZA');
+  tor.headers.set('x-wm-edge-proof', 'edge-secret-xyz');
+  const torCtx = makeWaitUntilCtx();
+  assert.equal((await handler(tor, torCtx.ctx)).status, 200);
+  await torCtx.settle();
+
+  assert.equal(events.length, 3);
+  assert.deepEqual(
+    events.map(({ ip, country }) => ({ ip, country })),
+    [
+      { ip: '203.0.113.7', country: 'FR' },
+      { ip: '192.0.2.5', country: 'ZA' },
+      { ip: '203.0.113.7', country: 'ZA' },
+    ],
+  );
+});
+
 test('localhost session cookie remains host-only for dev', async () => {
   const resp = await handler(makeLocalReq('POST', { origin: 'http://localhost:5173' }));
   assert.equal(resp.status, 200);

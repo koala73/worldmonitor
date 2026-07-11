@@ -20,6 +20,7 @@ import { afterEach, before, after, describe, it } from 'node:test';
 import { generateKeyPair, exportJWK, SignJWT } from 'jose';
 
 import { createDomainGateway, type GatewayCtx } from '../server/gateway.ts';
+import { deriveCountry } from '../server/_shared/usage.ts';
 import { issueSessionToken } from '../api/_session.js';
 import { createRedisFetch } from './helpers/fake-upstash-redis.mts';
 
@@ -38,6 +39,8 @@ interface CapturedEvent {
   auth_kind: string;
   tier: number;
   plan_key: string | null;
+  country: string | null;
+  ip: string | null;
   reason: string;
 }
 
@@ -108,6 +111,7 @@ const ORIGINAL_CONVEX_SITE_URL = process.env.CONVEX_SITE_URL;
 const ORIGINAL_CONVEX_SHARED_SECRET = process.env.CONVEX_SERVER_SHARED_SECRET;
 const ORIGINAL_REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
 const ORIGINAL_REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+const ORIGINAL_CF_EDGE_PROOF_SECRET = process.env.CF_EDGE_PROOF_SECRET;
 
 afterEach(() => {
   globalThis.fetch = ORIGINAL_FETCH;
@@ -125,6 +129,8 @@ afterEach(() => {
   else process.env.UPSTASH_REDIS_REST_URL = ORIGINAL_REDIS_URL;
   if (ORIGINAL_REDIS_TOKEN == null) delete process.env.UPSTASH_REDIS_REST_TOKEN;
   else process.env.UPSTASH_REDIS_REST_TOKEN = ORIGINAL_REDIS_TOKEN;
+  if (ORIGINAL_CF_EDGE_PROOF_SECRET == null) delete process.env.CF_EDGE_PROOF_SECRET;
+  else process.env.CF_EDGE_PROOF_SECRET = ORIGINAL_CF_EDGE_PROOF_SECRET;
 });
 
 describe('gateway telemetry payload — domain extraction', () => {
@@ -262,6 +268,103 @@ describe('gateway telemetry payload — domain extraction', () => {
     assert.equal(ev.status, 400);
     assert.equal(ev.reason, 'malformed_request');
     assert.equal(ev.domain, 'market');
+  });
+});
+
+describe('gateway telemetry payload — trusted client attribution (#5228)', () => {
+  it('records Cloudflare client IP and country only when the edge proof is valid', async () => {
+    process.env.USAGE_TELEMETRY = '1';
+    process.env.AXIOM_API_TOKEN = 'test-token';
+    process.env.CF_EDGE_PROOF_SECRET = 'edge-secret-xyz';
+    const spy = installAxiomFetchSpy(ORIGINAL_FETCH);
+
+    const handler = createDomainGateway([
+      {
+        method: 'GET',
+        path: '/api/market/v1/list-market-quotes',
+        handler: async () => new Response('{"ok":true}', { status: 200 }),
+      },
+    ]);
+    const recorder = makeRecordingCtx();
+    const response = await handler(
+      new Request('https://worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL', {
+        headers: {
+          Origin: 'https://worldmonitor.app',
+          'X-WorldMonitor-Key': SESSION_TOKEN,
+          'cf-connecting-ip': '203.0.113.7',
+          'cf-ipcountry': 'FR',
+          'x-real-ip': '192.0.2.5',
+          'x-vercel-ip-country': 'ZA',
+          'x-wm-edge-proof': 'edge-secret-xyz',
+        },
+      }),
+      recorder.ctx,
+    );
+    assert.equal(response.status, 200);
+    await recorder.settled;
+    spy.restore();
+
+    assert.equal(spy.events.length, 1);
+    assert.equal(spy.events[0]!.ip, '203.0.113.7');
+    assert.equal(spy.events[0]!.country, 'FR');
+  });
+
+  it('rejects forged Cloudflare client attribution without the edge proof', async () => {
+    process.env.USAGE_TELEMETRY = '1';
+    process.env.AXIOM_API_TOKEN = 'test-token';
+    process.env.CF_EDGE_PROOF_SECRET = 'edge-secret-xyz';
+    const spy = installAxiomFetchSpy(ORIGINAL_FETCH);
+
+    const handler = createDomainGateway([
+      {
+        method: 'GET',
+        path: '/api/market/v1/list-market-quotes',
+        handler: async () => new Response('{"ok":true}', { status: 200 }),
+      },
+    ]);
+    const recorder = makeRecordingCtx();
+    const response = await handler(
+      new Request('https://worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL', {
+        headers: {
+          Origin: 'https://worldmonitor.app',
+          'X-WorldMonitor-Key': SESSION_TOKEN,
+          'cf-connecting-ip': '203.0.113.7',
+          'cf-ipcountry': 'FR',
+          'x-real-ip': '192.0.2.5',
+          'x-vercel-ip-country': 'ZA',
+        },
+      }),
+      recorder.ctx,
+    );
+    assert.equal(response.status, 200);
+    await recorder.settled;
+    spy.restore();
+
+    assert.equal(spy.events.length, 1);
+    assert.equal(spy.events[0]!.ip, '192.0.2.5');
+    assert.equal(spy.events[0]!.country, 'ZA');
+  });
+
+  it('never falls back to an unproven Cloudflare country header', () => {
+    process.env.CF_EDGE_PROOF_SECRET = 'edge-secret-xyz';
+    const request = new Request('https://worldmonitor.app/api/market/v1/list-market-quotes', {
+      headers: { 'cf-ipcountry': 'FR' },
+    });
+
+    assert.equal(deriveCountry(request), null);
+  });
+
+  it('falls back from Cloudflare’s T1 pseudo-country to Vercel geography', () => {
+    process.env.CF_EDGE_PROOF_SECRET = 'edge-secret-xyz';
+    const request = new Request('https://worldmonitor.app/api/market/v1/list-market-quotes', {
+      headers: {
+        'cf-ipcountry': 'T1',
+        'x-vercel-ip-country': 'ZA',
+        'x-wm-edge-proof': 'edge-secret-xyz',
+      },
+    });
+
+    assert.equal(deriveCountry(request), 'ZA');
   });
 });
 

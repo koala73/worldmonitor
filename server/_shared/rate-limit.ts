@@ -110,7 +110,7 @@ function constantTimeEqual(a: string, b: string): boolean {
 // CF_EDGE_PROOF_SECRET is unset, do not trust cf-connecting-ip; fall back to
 // x-real-ip/UNKNOWN so a missing deployment secret cannot silently reopen
 // GHSA-c267.
-function cfTransitProven(request: Request): boolean {
+export function hasCloudflareTransitProof(request: Request): boolean {
   const secret = (process.env.CF_EDGE_PROOF_SECRET ?? '').trim();
   if (!secret) return false;
   return constantTimeEqual((request.headers.get(CF_EDGE_PROOF_HEADER) ?? '').trim(), secret);
@@ -130,7 +130,7 @@ export function getClientIp(request: Request): string {
   // cf-connecting-ip would otherwise short-circuit past x-real-ip.
   const cf = (request.headers.get('cf-connecting-ip') ?? '').trim();
   const xr = (request.headers.get('x-real-ip') ?? '').trim();
-  if (cf && cfTransitProven(request)) return cf;
+  if (cf && hasCloudflareTransitProof(request)) return cf;
   return xr || UNKNOWN_CLIENT_IP;
 }
 

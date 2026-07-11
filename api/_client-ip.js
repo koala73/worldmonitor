@@ -26,7 +26,7 @@ function constantTimeEqual(a, b) {
 // CF_EDGE_PROOF_SECRET is unset, do not trust cf-connecting-ip; fall back to
 // x-real-ip/UNKNOWN so a missing deployment secret cannot silently reopen
 // GHSA-c267.
-function cfTransitProven(request) {
+export function hasCloudflareTransitProof(request) {
   const secret = (process.env.CF_EDGE_PROOF_SECRET ?? '').trim();
   if (!secret) return false;
   return constantTimeEqual((request.headers.get(CF_EDGE_PROOF_HEADER) ?? '').trim(), secret);
@@ -43,6 +43,6 @@ export function getClientIp(request) {
   // real peer IP) then the shared UNKNOWN bucket; the spoofable cf-connecting-ip
   // and the client-settable x-forwarded-for (#3531) are deliberately NOT
   // fallbacks here.
-  if (cf && cfTransitProven(request)) return cf;
+  if (cf && hasCloudflareTransitProof(request)) return cf;
   return xr || UNKNOWN_CLIENT_IP;
 }

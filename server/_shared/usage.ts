@@ -14,6 +14,7 @@
  */
 
 import type { AuthKind } from './usage-identity';
+import { getClientIp, hasCloudflareTransitProof, UNKNOWN_CLIENT_IP } from './rate-limit';
 
 const AXIOM_DATASET = 'wm_api_usage';
 // US region endpoint. EU workspaces would use api.eu.axiom.co.
@@ -333,11 +334,14 @@ export function deriveExecutionRegion(req: Request): string | null {
 }
 
 export function deriveCountry(req: Request): string | null {
-  return (
-    req.headers.get('x-vercel-ip-country') ??
-    req.headers.get('cf-ipcountry') ??
-    null
-  );
+  // Cloudflare's client-country header is trustworthy only when the transform
+  // rule proves the request transited Cloudflare. Without that proof it is
+  // caller-controlled, so retain Vercel's connection-country fallback.
+  if (hasCloudflareTransitProof(req)) {
+    const country = req.headers.get('cf-ipcountry');
+    return (country && country !== 'T1' ? country : null) ?? req.headers.get('x-vercel-ip-country') ?? null;
+  }
+  return req.headers.get('x-vercel-ip-country') ?? null;
 }
 
 export function deriveIpCity(req: Request): string | null {
@@ -355,24 +359,12 @@ export function deriveIpRegion(req: Request): string | null {
   return req.headers.get('x-vercel-ip-country-region') ?? null;
 }
 
-// Client IP. Order matches Vercel's documented precedence; cf-connecting-ip is
-// only present when the request transited Cloudflare. x-forwarded-for is the
-// last-resort hop list — we take the *rightmost* entry, since Vercel/proxies
-// append the real socket IP on the right while clients can inject arbitrary
-// values on the left. On Vercel this branch should be unreachable; the safer
-// choice matters in local dev or non-Vercel deploys.
+// Reuse the same Cloudflare-proof gate as rate limiting: the client IP is only
+// trusted when the Transform Rule proves CF transit. Never use x-forwarded-for
+// for telemetry, as direct callers can forge it.
 export function deriveIp(req: Request): string | null {
-  const real = req.headers.get('x-real-ip');
-  if (real) return real;
-  const cf = req.headers.get('cf-connecting-ip');
-  if (cf) return cf;
-  const xff = req.headers.get('x-forwarded-for');
-  if (xff) {
-    const parts = xff.split(',');
-    const last = parts[parts.length - 1]?.trim();
-    if (last) return last;
-  }
-  return null;
+  const ip = getClientIp(req);
+  return ip === UNKNOWN_CLIENT_IP ? null : ip;
 }
 
 export function deriveUserAgent(req: Request): string | null {

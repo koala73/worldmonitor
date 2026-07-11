@@ -2,7 +2,7 @@
 // through server/gateway.ts. Keep this helper in api/: root-level .js Edge
 // functions cannot import server/_shared modules at runtime.
 
-import { getClientIp, UNKNOWN_CLIENT_IP } from './_client-ip.js';
+import { getClientIp, hasCloudflareTransitProof, UNKNOWN_CLIENT_IP } from './_client-ip.js';
 
 const AXIOM_INGEST_URL = 'https://api.axiom.co/v1/datasets/wm_api_usage/ingest';
 const MAX_HEADER_FIELD_LEN = 512;
@@ -52,6 +52,17 @@ function originKind(req) {
   } catch {
     return 'browser-cross-origin';
   }
+}
+
+function deriveCountry(req) {
+  // cf-ipcountry is client geography only on requests proved to have
+  // transited Cloudflare; otherwise it is forgeable and Vercel's peer-country
+  // metadata remains the safe fallback.
+  if (hasCloudflareTransitProof(req)) {
+    const country = req.headers.get('cf-ipcountry');
+    return (country && country !== 'T1' ? country : null) ?? req.headers.get('x-vercel-ip-country') ?? null;
+  }
+  return req.headers.get('x-vercel-ip-country') ?? null;
 }
 
 function recordDelivery(ok, isProbe) {
@@ -145,7 +156,7 @@ export function emitWmSessionUsage(ctx, req, res, startedAt, reason) {
       auth_kind: 'anon',
       tier: 0,
       plan_key: null,
-      country: req.headers.get('x-vercel-ip-country') ?? req.headers.get('cf-ipcountry') ?? null,
+      country: deriveCountry(req),
       ip_city: req.headers.get('x-vercel-ip-city') ?? null,
       ip_region: req.headers.get('x-vercel-ip-country-region') ?? null,
       execution_region: executionRegion,

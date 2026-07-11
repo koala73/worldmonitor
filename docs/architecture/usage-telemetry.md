@@ -37,7 +37,10 @@ Two event types in dataset `wm_api_usage`:
 | `auth_kind`        | `clerk_jwt` \| `user_api_key` \| `enterprise_api_key` \| `widget_key` \| `anon` | |
 | `tier`             | `0` free / `1` pro / `2` api / `3` enterprise | `0` if unknown                          |
 | `cache_tier`       | `fast` \| `medium` \| `slow` \| `slow-browser` \| `static` \| `daily` \| `no-store` | only on 200/304 |
-| `country`, `execution_region` | `"US"`, `"iad1"`               | Vercel-provided                              |
+| `ip`                 | `"203.0.113.7"`                         | Cloudflare client IP only when the edge-proof header is valid; otherwise Vercel's peer IP |
+| `country`            | `"US"`                                  | Cloudflare client country only when edge transit is proven; otherwise Vercel connection country |
+| `ip_city`, `ip_region` | `"Johannesburg"`, `"WC"`            | Vercel connection/edge geography, not verified client location |
+| `execution_region`   | `"iad1"`                                | Vercel execution region                      |
 | `execution_plane`  | `"vercel-edge"`                           |                                              |
 | `origin_kind`      | `api-key` \| `oauth` \| `browser-same-origin` \| `browser-cross-origin` \| `null` | derived from headers by `deriveOriginKind()` — `mcp` and `internal-cron` exist in the `OriginKind` type for upstream/future use but are not currently emitted on the request path |
 | `ua_hash`          | SHA-256 of the UA                         | hashed so PII doesn't land in Axiom          |
