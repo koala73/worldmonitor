@@ -28,11 +28,15 @@ vi.mock("../_shared/api-key-rate-limit", () => ({
 
 // --- Stub the per-IP layer: spy whether checkRateLimit runs ------------------
 const checkRateLimit = vi.fn().mockResolvedValue(null);
-vi.mock("../_shared/rate-limit", () => ({
-  checkRateLimit: (...a: unknown[]) => checkRateLimit(...a),
-  checkEndpointRateLimit: vi.fn().mockResolvedValue(null),
-  hasEndpointRatePolicy: () => false,
-}));
+vi.mock("../_shared/rate-limit", async (importActual) => {
+  const actual = await importActual<typeof import("../_shared/rate-limit")>();
+  return {
+    ...actual,
+    checkRateLimit: (...a: unknown[]) => checkRateLimit(...a),
+    checkEndpointRateLimit: vi.fn().mockResolvedValue(null),
+    hasEndpointRatePolicy: () => false,
+  };
+});
 
 // --- Stub entitlement resolution: a Starter user, non-tier-gated route -------
 const STARTER = {

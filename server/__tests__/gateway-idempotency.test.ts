@@ -21,11 +21,15 @@ vi.mock('../_shared/redis', async (importActual) => {
 // Per-IP / per-endpoint rate limits are irrelevant here — pass them through.
 const checkRateLimit = vi.fn();
 const checkEndpointRateLimit = vi.fn();
-vi.mock('../_shared/rate-limit', () => ({
-  checkRateLimit: (...a: unknown[]) => checkRateLimit(...a),
-  checkEndpointRateLimit: (...a: unknown[]) => checkEndpointRateLimit(...a),
-  hasEndpointRatePolicy: () => false,
-}));
+vi.mock('../_shared/rate-limit', async (importActual) => {
+  const actual = await importActual<typeof import('../_shared/rate-limit')>();
+  return {
+    ...actual,
+    checkRateLimit: (...a: unknown[]) => checkRateLimit(...a),
+    checkEndpointRateLimit: (...a: unknown[]) => checkEndpointRateLimit(...a),
+    hasEndpointRatePolicy: () => false,
+  };
+});
 
 import { createDomainGateway } from '../gateway';
 import { IDEMPOTENCY_HEADER, IDEMPOTENT_REPLAYED_HEADER } from '../_shared/idempotency';
