@@ -22,7 +22,11 @@ import { fileURLToPath } from 'node:url';
 import {
   canAttemptServerSummarization,
   configureSummarizeGate,
+  parseSummarizeRetryAfterMs,
   suppressServerSummarization,
+  suppressServerSummarizationFor,
+  SUMMARIZE_RETRY_AFTER_MAX_MS,
+  SUMMARIZE_RETRY_AFTER_MIN_MS,
   SUMMARIZE_SUPPRESS_MS,
   __resetSummarizeGateForTests,
 } from '../src/services/summarize-gate.ts';
@@ -77,6 +81,52 @@ describe('summarize-gate — entitlement probe + timed suppression', () => {
     assert.ok(SUMMARIZE_SUPPRESS_MS >= 5 * 60_000, `window too short: ${SUMMARIZE_SUPPRESS_MS}`);
   });
 
+  it('parses Retry-After delta-seconds and HTTP dates deterministically', () => {
+    const t0 = Date.parse('2026-07-11T12:00:00.000Z');
+    assert.equal(parseSummarizeRetryAfterMs('90', t0), 90_000);
+    assert.equal(
+      parseSummarizeRetryAfterMs('Sat, 11 Jul 2026 12:02:00 GMT', t0),
+      120_000,
+    );
+  });
+
+  it('rejects malformed/expired Retry-After values and clamps untrusted extremes', () => {
+    const t0 = Date.parse('2026-07-11T12:00:00.000Z');
+    for (const value of [null, '', '-1', '1.5', 'not-a-date']) {
+      assert.equal(parseSummarizeRetryAfterMs(value, t0), null, String(value));
+    }
+    assert.equal(parseSummarizeRetryAfterMs('0', t0), SUMMARIZE_RETRY_AFTER_MIN_MS);
+    assert.equal(
+      parseSummarizeRetryAfterMs('999999999999999999999999', t0),
+      SUMMARIZE_RETRY_AFTER_MAX_MS,
+    );
+    assert.equal(
+      parseSummarizeRetryAfterMs('Sat, 11 Jul 2026 11:59:59 GMT', t0),
+      null,
+    );
+  });
+
+  it('never shortens an existing server-directed suppression window', () => {
+    configureSummarizeGate(() => true);
+    const t0 = 1_000_000;
+    suppressServerSummarizationFor(60_000, t0);
+    suppressServerSummarizationFor(5_000, t0 + 1_000);
+
+    assert.equal(canAttemptServerSummarization(t0 + 59_999), false);
+    assert.equal(canAttemptServerSummarization(t0 + 60_000), true);
+  });
+
+  it('bounds direct suppression inputs as defense in depth', () => {
+    configureSummarizeGate(() => true);
+    const t0 = 1_000_000;
+    suppressServerSummarizationFor(1, t0);
+    assert.equal(canAttemptServerSummarization(t0 + SUMMARIZE_RETRY_AFTER_MIN_MS - 1), false);
+    assert.equal(canAttemptServerSummarization(t0 + SUMMARIZE_RETRY_AFTER_MIN_MS), true);
+
+    suppressServerSummarizationFor(Number.POSITIVE_INFINITY, t0);
+    assert.equal(canAttemptServerSummarization(t0 + SUMMARIZE_RETRY_AFTER_MIN_MS), true);
+  });
+
   it('keeps state separate from classify-gate — a summarize 403 must not silence classification', async () => {
     const classifyGate = await import('../src/services/classify-gate.ts');
     classifyGate.__resetClassifyGateForTests();
@@ -111,6 +161,29 @@ describe('summarization.ts wiring (source-grep — module not loadable under nod
     assert.ok(
       branch.indexOf('suppressServerSummarization()') > -1,
       '403 branch must call suppressServerSummarization()',
+    );
+  });
+
+  it('a premium 429 consumes Retry-After at the fetch boundary before provider fan-out continues', () => {
+    const clientInit = src.slice(
+      src.indexOf('const premiumNewsClient'),
+      src.indexOf('// #4913'),
+    );
+    assert.match(clientInit, /response\.status === 429/, 'premium fetch boundary must inspect 429 responses');
+    assert.match(
+      clientInit,
+      /parseSummarizeRetryAfterMs\(response\.headers\.get\('Retry-After'\)\)/,
+      '429 path must parse the server Retry-After header',
+    );
+    assert.match(
+      clientInit,
+      /suppressServerSummarizationFor\(retryAfterMs\)/,
+      'valid Retry-After must suppress future premium dispatches',
+    );
+    assert.match(
+      clientInit,
+      /retryAfterMs === null[\s\S]*suppressServerSummarization\(\)/,
+      'malformed/missing Retry-After must still stop the current provider fan-out',
     );
   });
 

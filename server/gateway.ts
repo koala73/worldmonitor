@@ -1293,6 +1293,10 @@ export function createDomainGateway(
       // bucket. Keep the exact same fail-closed endpoint policy, but isolate
       // confirmed active paid principals. Signed-in free, anonymous, expired,
       // and unresolvable callers deliberately retain the per-IP bucket.
+      // requiresDirectLlmQuota intentionally limits this exception to
+      // spend-bearing summarize requests: translate/malformed requests do not
+      // spend direct LLM quota and keep ordinary per-IP behavior, while cache
+      // lookup is handled by its distinct route.
       if (
         pathname === '/api/news/v1/summarize-article' &&
         requiresDirectLlmQuota &&

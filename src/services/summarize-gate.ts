@@ -36,6 +36,8 @@
  */
 
 export const SUMMARIZE_SUPPRESS_MS = 15 * 60 * 1000;
+export const SUMMARIZE_RETRY_AFTER_MIN_MS = 1_000;
+export const SUMMARIZE_RETRY_AFTER_MAX_MS = 24 * 60 * 60 * 1000;
 
 type EntitlementProbe = () => boolean;
 
@@ -61,9 +63,56 @@ export function canAttemptServerSummarization(now: number = Date.now()): boolean
   }
 }
 
+/**
+ * Parse an HTTP Retry-After value into a bounded delay.
+ *
+ * Both RFC delta-seconds and HTTP-date forms are accepted. The header is
+ * untrusted input, so malformed, negative, non-finite, or already-expired
+ * values are rejected and excessively large hints are capped at one day.
+ */
+export function parseSummarizeRetryAfterMs(
+  value: string | null,
+  now: number = Date.now(),
+): number | null {
+  if (value === null) return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+
+  let delayMs: number;
+  if (/^\d+$/.test(trimmed)) {
+    delayMs = Number(trimmed) * 1_000;
+  } else {
+    const retryAt = Date.parse(trimmed);
+    if (!Number.isFinite(retryAt)) return null;
+    delayMs = retryAt - now;
+  }
+
+  if (!Number.isFinite(delayMs) || delayMs < 0) return null;
+  return Math.min(
+    Math.max(delayMs, SUMMARIZE_RETRY_AFTER_MIN_MS),
+    SUMMARIZE_RETRY_AFTER_MAX_MS,
+  );
+}
+
+/**
+ * Suppress server attempts for a bounded delay without shortening an active
+ * suppression window. Used for server-directed 429 cooldowns.
+ */
+export function suppressServerSummarizationFor(
+  delayMs: number,
+  now: number = Date.now(),
+): void {
+  if (!Number.isFinite(delayMs) || delayMs <= 0) return;
+  const boundedDelayMs = Math.min(
+    Math.max(delayMs, SUMMARIZE_RETRY_AFTER_MIN_MS),
+    SUMMARIZE_RETRY_AFTER_MAX_MS,
+  );
+  suppressedUntil = Math.max(suppressedUntil, now + boundedDelayMs);
+}
+
 /** Suppress all attempts for SUMMARIZE_SUPPRESS_MS (called on a server 403). */
 export function suppressServerSummarization(now: number = Date.now()): void {
-  suppressedUntil = now + SUMMARIZE_SUPPRESS_MS;
+  suppressServerSummarizationFor(SUMMARIZE_SUPPRESS_MS, now);
 }
 
 export function __resetSummarizeGateForTests(): void {

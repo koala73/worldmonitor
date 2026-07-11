@@ -22,7 +22,9 @@ import { premiumFetch } from '@/services/premium-fetch';
 import {
   canAttemptServerSummarization,
   configureSummarizeGate,
+  parseSummarizeRetryAfterMs,
   suppressServerSummarization,
+  suppressServerSummarizationFor,
 } from '@/services/summarize-gate';
 import { hasPremiumAccess } from '@/services/panel-gating';
 
@@ -53,7 +55,20 @@ export interface SummarizeOptions {
 
 const newsClient = new NewsServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 const premiumNewsClient = new NewsServiceClient(getRpcBaseUrl(), {
-  fetch: (input, init) => premiumFetch(input, { ...init, forcePremium: true }),
+  fetch: async (input, init) => {
+    const response = await premiumFetch(input, { ...init, forcePremium: true });
+    if (response.status === 429) {
+      const retryAfterMs = parseSummarizeRetryAfterMs(response.headers.get('Retry-After'));
+      if (retryAfterMs === null) {
+        // The server normally supplies Retry-After. A malformed/missing value
+        // must still stop this provider chain from multiplying the same 429.
+        suppressServerSummarization();
+      } else {
+        suppressServerSummarizationFor(retryAfterMs);
+      }
+    }
+    return response;
+  },
 });
 
 // #4913: summarize-article LLM spend is premium-gated server-side (#4687).
