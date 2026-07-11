@@ -16,12 +16,12 @@ describe('cloud prefs panel sync guardrails', () => {
 
     assert.match(
       panelLayoutSrc,
-      /localStorage\.setItem\(this\.ctx\.PANEL_ORDER_KEY,\s*JSON\.stringify\(allOrder\)\)/,
+      /saveToStorage\(this\.ctx\.PANEL_ORDER_KEY,\s*allOrder\)/,
       'panel layout must persist unified order at PANEL_ORDER_KEY',
     );
     assert.match(
       panelLayoutSrc,
-      /localStorage\.setItem\(this\.ctx\.PANEL_ORDER_KEY \+ '-bottom-set',\s*JSON\.stringify\(Array\.from\(this\.bottomSetMemory\)\)\)/,
+      /saveToStorage\(this\.ctx\.PANEL_ORDER_KEY \+ '-bottom-set',\s*Array\.from\(this\.bottomSetMemory\)\)/,
       'panel layout must persist bottom placement at PANEL_ORDER_KEY + -bottom-set',
     );
     assert.match(
