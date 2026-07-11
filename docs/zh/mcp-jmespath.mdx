@@ -1,6 +1,6 @@
 ---
 title: "JMESPath 投影指南"
-description: "用 JMESPath 投影将 MCP 响应载荷缩减 80-95% —— 基于真实 World Monitor 响应结构的十二个实例解析。"
+description: "使用 JMESPath 投影表达式将 MCP 响应载荷体积精简 80-95%，显著降低 LLM 上下文占用与 token 成本。基于真实 WorldMonitor 响应结构的十二个完整实战示例解析，涵盖新闻、市场、海事等常见查询，帮助 Agent 开发者优化提示与工具调用效率。"
 ---
 
 每个 WorldMonitor MCP 工具都接受一个可选的 `jmespath` 字符串参数。服务端会在任意工具级过滤器和 `summary` 参数**之后**应用该表达式，然后在序列化之前投影响应。一个选得好的投影通常能把载荷大小削减 **80–95%**——这是你在保持长 agent 循环不超出上下文窗口方面最有效的手段。

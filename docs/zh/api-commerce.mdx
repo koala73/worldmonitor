@@ -1,6 +1,6 @@
 ---
 title: "商务端点"
-description: "结账、客户门户、产品目录和推荐端点 — 用于 World Monitor 计费、基于 Convex 和 Dodo Payments 的轻量边缘代理。"
+description: "World Monitor 计费与商业化 API 完整参考：涵盖结账流程、客户门户、产品目录、优惠券与推荐奖励端点，基于 Convex 数据库与 Dodo Payments 构建的轻量边缘代理层，为 Pro 订阅、API 密钥额度、团队席位与年度计划提供安全的支付集成。"
 ---
 
 WorldMonitor 使用 [Dodo Payments](https://dodopayments.com) 处理 PRO 订阅，并使用 [Convex](https://convex.dev) 作为权益的事实来源。这些边缘端点是轻量的认证代理 —— 它们验证 Clerk JWT，然后通过 `RELAY_SHARED_SECRET` 转发到 Convex HTTP actions。

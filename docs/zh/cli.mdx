@@ -1,6 +1,6 @@
 ---
 title: "命令行客户端"
-description: "使用官方 worldmonitor npm CLI，从 shell 脚本化调用国家简报、风险评分和全部 39 个 MCP 工具 —— 无需编写任何 API 集成。"
+description: "使用官方 worldmonitor npm CLI 直接从 shell 脚本化调用国家简报、风险评分、监视列表与全部 39 个 MCP 工具，无需编写任何自定义 API 集成代码即可完成自动化，非常适合运维脚本、CI/CD 流水线、本地情报工作流与临时数据分析。"
 ---
 
 [`worldmonitor`](https://www.npmjs.com/package/worldmonitor) 是 World Monitor 全球情报 API 的官方命令行客户端。它是对 [MCP 服务器](/zh/mcp-overview)（推荐的智能体接口）的一层轻薄、**无依赖**封装，并带有 REST 备用通道，因此你无需编写一行 HTTP 底层代码，即可从 shell 脚本或智能体拉取简报、风险评分以及冲突/网络/市场/新闻数据源。它以 ESM 形式发布，运行于 **Node 18+**。

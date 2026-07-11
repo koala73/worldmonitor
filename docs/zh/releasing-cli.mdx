@@ -1,6 +1,6 @@
 ---
 title: "CLI 发布运行手册"
-description: "维护者如何使用 cli-v* 标签、npm Trusted Publishing 以及发布工作流的 dry-run 门控，从 cli/ 发布 worldmonitor npm CLI。"
+description: "维护者如何使用 cli-v* 标签、npm Trusted Publishing 以及发布工作流中的 dry-run 门控，从 cli/ 目录发布 worldmonitor npm CLI 的完整流程 —— 涵盖版本号约定、变更日志、令牌无关的可信发布链路、回滚策略以及针对预发布通道与稳定通道的差异化处理。"
 ---
 本运行手册涵盖维护者从 `cli/` 发布官方 [`worldmonitor`](https://www.npmjs.com/package/worldmonitor) npm CLI 的流程。CLI 发布有意与桌面应用发布相互独立：一个 `cli-vX.Y.Z` Git 标签会触发 `.github/workflows/publish-cli.yml`。
 Python、Ruby 和 Go SDK 以相同方式发布，各自使用自己的标签（`py-v*`、`gem-v*`、`sdk/go/v*`）——参见[官方 SDK → 发布](/zh/sdks#releasing-maintainers)。

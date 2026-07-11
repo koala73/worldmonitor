@@ -1,6 +1,6 @@
 ---
 title: "身份验证与面板门控"
-description: "World Monitor 中的用户身份验证、高级面板门控以及服务端会话强制执行机制如何工作 — Clerk、cookie 和权益检查。"
+description: "World Monitor 中用户身份验证、高级面板门控与服务端会话强制执行机制的完整技术说明：涵盖 Clerk 集成、加密 Cookie 会话、JWT 令牌校验、权益检查、多设备登录与 Pro 订阅门控逻辑，确保仪表盘、API 与桌面应用的访问控制稳固可靠。"
 ---
 
 WorldMonitor 使用 [Clerk](https://clerk.com) 进行身份验证。认证系统将高级面板置于登录与层级检查之后，并通过本地 JWT 验证在服务端 API 端点上强制执行基于会话的访问控制。

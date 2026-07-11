@@ -1,6 +1,6 @@
 ---
 title: "添加 API 端点"
-description: "World Monitor 中所有 JSON API 端点必须使用 sebuf。本指南介绍如何为现有服务添加新 RPC，以及如何添加一个全新的服务。"
+description: "在 World Monitor 中扩展 JSON API 的完整开发指南：所有端点必须使用 sebuf 定义类型安全的请求与响应契约。本文分步演示如何在现有服务中添加新 RPC、创建全新的服务模块、注册路由与生成客户端，并保持与 CLI、SDK、OpenAPI 与 MCP 工具生态的一致性。"
 ---
 World Monitor 中的所有 JSON API 端点**必须**使用 sebuf。不要为新的数据 API 创建独立的 `api/*.js` 或 `api/*.ts` 文件——这一旧模式已被弃用并正在被移除。
 

@@ -1,6 +1,6 @@
 ---
 title: "场景 API"
-description: "针对指定国家或 v1 种子报告器集合运行预定义供应链中断场景，并轮询 worker 计算的结果 —— Scenarios API 的完整端点参考。"
+description: "针对指定国家或 v1 种子报告器集合运行预定义供应链中断场景，并轮询后台 worker 计算结果的 Scenarios API 完整端点参考，涵盖场景触发、参数配置、任务状态查询、中间进度事件、结果导出、历史回放与订阅通知端点，适用于风险推演、桌面演习与压力测试。"
 ---
 
 The **scenarios** API 是建立在 WorldMonitor 咽喉点 + 贸易数据集之上的 PRO 专属、作业排队接口。调用方将命名的场景模板加入队列（可选国家），然后轮询 job-id 直到 worker 完成。若未提供国家，v1 仅在种子报告集上计算：`US`、`CN`、`RU`、`IR`、`IN` 和 `TW`。
