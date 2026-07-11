@@ -221,6 +221,10 @@ export class MapComponent {
   private labelVisibilityScheduled = false;
   private pendingLabelVisibilityZoom = 1;
   private lastContainerSize = { width: 0, height: 0 };
+  // #5080 slice 2: last zoom (4dp) whose overlay counter-scale CSS vars were
+  // written — lets applyTransform() skip same-value setProperty calls that
+  // would restyle every marker on every render pass.
+  private lastOverlayVarZoom = '';
   // Desktop measures label overlap from the start; mobile defers until the first
   // interaction. The effective value is set in the constructor (= !this.isMobile);
   // false here documents the mobile-off default.
@@ -4032,11 +4036,22 @@ export class MapComponent {
     // Set CSS variable for counter-scaling labels/markers
     // Labels: max 1.5x scale, so counter-scale = min(1.5, zoom) / zoom
     // Markers: fixed size, so counter-scale = 1 / zoom
-    const labelScale = Math.min(1.5, zoom) / zoom;
-    const markerScale = 1 / zoom;
-    this.wrapper.style.setProperty('--label-scale', String(labelScale));
-    this.wrapper.style.setProperty('--marker-scale', String(markerScale));
-    this.wrapper.style.setProperty('--zoom', String(zoom));
+    // #5080 slice 2: write the vars ONLY when zoom actually changed.
+    // applyTransform() also runs on every render/data pass at unchanged zoom,
+    // and each setProperty — even with an identical value — invalidates every
+    // var() consumer: invalidation tracking measured thousands of per-marker
+    // style recalcs in a single tap window (earthquake-marker 4356,
+    // hotspot-marker 1694, conflict-zone 1210) — the dominant mobile tap
+    // presentation cost.
+    const overlayVarZoom = zoom.toFixed(4);
+    if (this.lastOverlayVarZoom !== overlayVarZoom) {
+      this.lastOverlayVarZoom = overlayVarZoom;
+      const labelScale = Math.min(1.5, zoom) / zoom;
+      const markerScale = 1 / zoom;
+      this.wrapper.style.setProperty('--label-scale', String(labelScale));
+      this.wrapper.style.setProperty('--marker-scale', String(markerScale));
+      this.wrapper.style.setProperty('--zoom', String(zoom));
+    }
 
     // Smart label hiding based on zoom level and overlap
     if (this.shouldUpdateLabelVisibility()) this.updateLabelVisibility(zoom);
