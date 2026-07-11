@@ -3108,6 +3108,7 @@
     "serverError": "خطأ الخادم: {{status}}",
     "unknownError": "خطأ غير معروف",
     "generatedWidget": "أداة معاد إنشاؤها: {{title}}",
+    "saveFailed": "تعذر حفظ الأداة. حاول مرة أخرى.",
     "checkingConnection": "التحقق من وصول الأداة…",
     "preflightConnected": "تم الاتصال بوكيل الأداة",
     "preflightInvalidKey": "مفتاح الأداة مرفوض. حدّث wm-widget-key وأعد التحميل.",

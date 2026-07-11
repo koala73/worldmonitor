@@ -515,7 +515,10 @@ export class PanelLayoutManager implements AppModule {
         tier: 'pro',
         initialMessage: e.detail.initialMessage,
         onComplete: (spec) => {
-          void this.addCustomWidget(spec).catch((error) => console.error('[widget-builder] failed to add widget', error));
+          void this.addCustomWidget(spec).catch((error) => {
+            console.error('[widget-builder] failed to add widget', error);
+            showToast(t('widgets.saveFailed'));
+          });
         },
       })).catch((err) => console.error('[widget-chat] failed to lazy-load WidgetChatModal', err));
     }) as EventListener;
@@ -2321,7 +2324,10 @@ export class PanelLayoutManager implements AppModule {
         mode: 'create',
         tier: 'pro',
         onComplete: (spec) => {
-          void this.addCustomWidget(spec).catch((error) => console.error('[widget-builder] failed to add widget', error));
+          void this.addCustomWidget(spec).catch((error) => {
+            console.error('[widget-builder] failed to add widget', error);
+            showToast(t('widgets.saveFailed'));
+          });
         },
       })).catch((err) => console.error('[widget-chat] failed to lazy-load WidgetChatModal', err));
     });

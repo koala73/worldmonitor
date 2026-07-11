@@ -3060,6 +3060,7 @@
     "serverError": "Eroare server: {{status}}",
     "unknownError": "Eroare necunoscută",
     "generatedWidget": "Widget generat: {{title}}",
+    "saveFailed": "Widgetul nu a putut fi salvat. Încercați din nou.",
     "checkingConnection": "Se verifică accesul la widget...",
     "preflightConnected": "Conectat la agentul widget",
     "preflightInvalidKey": "Cheia widget respingă. Actualizează wm-widget-key și reîncarcă.",

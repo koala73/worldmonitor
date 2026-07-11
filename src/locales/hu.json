@@ -21,6 +21,7 @@
     "serverError": "Szerverhiba: {{status}}",
     "unknownError": "Ismeretlen hiba",
     "generatedWidget": "Generált widget: {{title}}",
+    "saveFailed": "A widgetet nem sikerült menteni. Próbáld újra.",
     "checkingConnection": "Widget hozzáférés ellenőrzése…",
     "preflightConnected": "Csatlakozva a widget ügynökhöz",
     "preflightInvalidKey": "Widget kulcs elutasítva. Frissítse a wm-widget-key kulcsot és töltse újra az oldalt.",

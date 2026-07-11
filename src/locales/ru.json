@@ -3076,6 +3076,7 @@
     "serverError": "Ошибка сервера: {{status}}",
     "unknownError": "Неизвестная ошибка",
     "generatedWidget": "Созданный виджет: {{title}}",
+    "saveFailed": "Не удалось сохранить виджет. Попробуйте ещё раз.",
     "checkingConnection": "Проверка доступа к виджету…",
     "preflightConnected": "Подключено к агенту виджетов",
     "preflightInvalidKey": "Ключ виджета отклонен. Обновите wm-widget-key и перезагрузите.",

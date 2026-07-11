@@ -3044,6 +3044,7 @@
     "serverError": "Serverfout: {{status}}",
     "unknownError": "Onbekende fout",
     "generatedWidget": "Gegenereerd widget: {{title}}",
+    "saveFailed": "De widget kon niet worden opgeslagen. Probeer het opnieuw.",
     "checkingConnection": "Widget-toegang controleren…",
     "preflightConnected": "Verbonden met de widget-agent",
     "preflightInvalidKey": "Widget-sleutel afgewezen. Werk wm-widget-key bij en herlaad.",

@@ -3076,6 +3076,7 @@
     "serverError": "Chyba serveru: {{status}}",
     "unknownError": "Neznámá chyba",
     "generatedWidget": "Vygenerovaný widget: {{title}}",
+    "saveFailed": "Widget se nepodařilo uložit. Zkuste to prosím znovu.",
     "checkingConnection": "Ověřování přístupu k widgetu…",
     "preflightConnected": "Připojeno k agentovi widgetu",
     "preflightInvalidKey": "Klíč widgetu odmítnut. Aktualizujte wm-widget-key a načtěte znovu.",

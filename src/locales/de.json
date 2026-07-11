@@ -3044,6 +3044,7 @@
     "serverError": "Serverfehler: {{status}}",
     "unknownError": "Unbekannter Fehler",
     "generatedWidget": "Generiertes Widget: {{title}}",
+    "saveFailed": "Widget konnte nicht gespeichert werden. Bitte versuche es erneut.",
     "checkingConnection": "Prüfe Widget-Zugriff…",
     "preflightConnected": "Mit Widget-Agent verbunden",
     "preflightInvalidKey": "Widget-Schlüssel abgelehnt. Aktualisieren Sie wm-widget-key und laden Sie neu.",

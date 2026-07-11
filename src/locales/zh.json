@@ -3044,6 +3044,7 @@
     "serverError": "服务器错误: {{status}}",
     "unknownError": "未知错误",
     "generatedWidget": "生成的小组件: {{title}}",
+    "saveFailed": "无法保存小组件。请重试。",
     "checkingConnection": "检查小组件访问权限中…",
     "preflightConnected": "已连接到小组件代理",
     "preflightInvalidKey": "小组件密钥被拒绝。请更新 wm-widget-key 并重新加载。",

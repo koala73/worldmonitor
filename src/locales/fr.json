@@ -3060,6 +3060,7 @@
     "serverError": "Erreur serveur : {{status}}",
     "unknownError": "Erreur inconnue",
     "generatedWidget": "Widget généré : {{title}}",
+    "saveFailed": "Impossible d’enregistrer le widget. Réessayez.",
     "checkingConnection": "Vérification de l'accès au widget...",
     "preflightConnected": "Connecté à l'agent widget",
     "preflightInvalidKey": "Clé widget rejetée. Mettez à jour wm-widget-key et rechargez.",

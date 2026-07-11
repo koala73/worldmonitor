@@ -3044,6 +3044,7 @@
     "serverError": "Грешка на сървъра: {{status}}",
     "unknownError": "Неизвестна грешка",
     "generatedWidget": "Генериран уиджет: {{title}}",
+    "saveFailed": "Приспособлението не можа да бъде запазено. Опитайте отново.",
     "checkingConnection": "Проверка на достъп до уиджет…",
     "preflightConnected": "Свързан със агент за уиджети",
     "preflightInvalidKey": "Ключ на уиджет отхвърлен. Актуализирай wm-widget-key и презареди.",

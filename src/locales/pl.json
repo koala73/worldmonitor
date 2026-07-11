@@ -3076,6 +3076,7 @@
     "serverError": "Błąd serwera: {{status}}",
     "unknownError": "Nieznany błąd",
     "generatedWidget": "Wygenerowany widget: {{title}}",
+    "saveFailed": "Nie udało się zapisać widżetu. Spróbuj ponownie.",
     "checkingConnection": "Sprawdzanie dostępu do widgetu…",
     "preflightConnected": "Połączono z agentem widgetu",
     "preflightInvalidKey": "Klucz widgetu odrzucony. Zaktualizuj wm-widget-key i przeładuj.",

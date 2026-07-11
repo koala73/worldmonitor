@@ -3044,6 +3044,7 @@
     "serverError": "Serverfel: {{status}}",
     "unknownError": "Okänt fel",
     "generatedWidget": "Genererad widget: {{title}}",
+    "saveFailed": "Det gick inte att spara widgeten. Försök igen.",
     "checkingConnection": "Kontrollerar widgetåtkomst…",
     "preflightConnected": "Ansluten till widgetagenten",
     "preflightInvalidKey": "Widgetnyckel avvisad. Uppdatera wm-widget-key och ladda om.",

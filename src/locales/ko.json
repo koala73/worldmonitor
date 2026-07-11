@@ -3044,6 +3044,7 @@
     "serverError": "서버 오류: {{status}}",
     "unknownError": "알 수 없는 오류",
     "generatedWidget": "생성된 위젯: {{title}}",
+    "saveFailed": "위젯을 저장하지 못했습니다. 다시 시도해 주세요.",
     "checkingConnection": "위젯 액세스 확인 중…",
     "preflightConnected": "위젯 에이전트에 연결됨",
     "preflightInvalidKey": "위젯 키가 거부되었습니다. wm-widget-key를 업데이트하고 다시 로드하세요.",

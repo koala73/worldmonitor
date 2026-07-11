@@ -3044,6 +3044,7 @@
     "serverError": "Sunucu hatası: {{status}}",
     "unknownError": "Bilinmeyen hata",
     "generatedWidget": "Oluşturulan widget: {{title}}",
+    "saveFailed": "Widget kaydedilemedi. Lütfen tekrar deneyin.",
     "checkingConnection": "Widget erişimi kontrol ediliyor…",
     "preflightConnected": "Widget ajanına bağlandı",
     "preflightInvalidKey": "Widget anahtarı reddedildi. wm-widget-key'i güncelleyin ve yeniden yükleyin.",

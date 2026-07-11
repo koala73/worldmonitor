@@ -1,6 +1,6 @@
 import type { Feed, NewsItem } from '@/types';
 import { SITE_VARIANT } from '@/config';
-import { chunkArray, fetchWithProxy } from '@/utils';
+import { chunkArray, fetchWithProxy, isMobileDevice } from '@/utils';
 import { classifyByKeyword, classifyWithAI } from './threat-classifier';
 import { inferGeoHubsFromTitle } from './geo-hub-index';
 import { getPersistentCache, setPersistentCache } from './persistent-cache';
@@ -23,7 +23,11 @@ const feedCache = new Map<string, { items: NewsItem[]; timestamp: number }>();
 const CACHE_TTL = 30 * 60 * 1000;
 const enqueueFeedParse = createYieldingWorkQueue(yieldToMain);
 
-function parseFeedXml(text: string): Promise<Document> {
+function parseFeedXml(text: string, isMobile: boolean): Promise<Document> {
+  // Desktop keeps its established concurrent feed path. The queue is only a
+  // mobile guard against several completed requests synchronously parsing XML
+  // in the same post-hydration task. (#5165)
+  if (!isMobile) return Promise.resolve(new DOMParser().parseFromString(text, 'text/xml'));
   return enqueueFeedParse(() => new DOMParser().parseFromString(text, 'text/xml'));
 }
 
@@ -244,12 +248,14 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
     const response = await fetchWithProxy(url);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const text = await response.text();
-    const doc = await parseFeedXml(text);
+    const isMobile = isMobileDevice();
+    const doc = await parseFeedXml(text, isMobile);
 
     // XML parsing is synchronous. It is serialized behind a yield so several
-    // completed feed requests cannot parse back-to-back in one post-hydration
-    // task; yield again before querying and mapping entries. (#5165)
-    await yieldToMain();
+    // completed mobile feed requests cannot parse back-to-back in one
+    // post-hydration task; yield again before querying and mapping entries.
+    // (#5165)
+    if (isMobile) await yieldToMain();
 
     const parseError = doc.querySelector('parsererror');
     if (parseError) {
@@ -312,7 +318,7 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
       // Each item performs DOM queries, date normalization, classification,
       // and geo inference. Let paint/input run before the next item instead
       // of concatenating all five into the same task on mobile. (#5165)
-      if (index < itemNodes.length - 1) await yieldToMain();
+      if (isMobile && index < itemNodes.length - 1) await yieldToMain();
     }
 
     feedCache.set(feedScope, { items: parsed, timestamp: Date.now() });

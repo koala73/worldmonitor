@@ -3044,6 +3044,7 @@
     "serverError": "Lỗi máy chủ: {{status}}",
     "unknownError": "Lỗi không xác định",
     "generatedWidget": "Tiện ích được tạo: {{title}}",
+    "saveFailed": "Không thể lưu tiện ích. Vui lòng thử lại.",
     "checkingConnection": "Đang kiểm tra quyền truy cập tiện ích…",
     "preflightConnected": "Đã kết nối với đại lý tiện ích",
     "preflightInvalidKey": "Khóa tiện ích bị từ chối. Cập nhật wm-widget-key và tải lại.",

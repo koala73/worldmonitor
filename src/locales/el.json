@@ -3044,6 +3044,7 @@
     "serverError": "Σφάλμα διακομιστή: {{status}}",
     "unknownError": "Άγνωστο σφάλμα",
     "generatedWidget": "Δημιουργημένο widget: {{title}}",
+    "saveFailed": "Δεν ήταν δυνατή η αποθήκευση του γραφικού στοιχείου. Δοκιμάστε ξανά.",
     "checkingConnection": "Έλεγχος πρόσβασης widget…",
     "preflightConnected": "Συνδεδεμένο με τον παράγοντα widget",
     "preflightInvalidKey": "Κλειδί widget απορρίφθηκε. Ενημερώστε wm-widget-key και επαναφορτώστε.",

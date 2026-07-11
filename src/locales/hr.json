@@ -27,6 +27,7 @@
     "serverError": "Greška servera: {{status}}",
     "unknownError": "Nepoznata greška",
     "generatedWidget": "Generirani widget: {{title}}",
+    "saveFailed": "Widget nije moguće spremiti. Pokušajte ponovno.",
     "checkingConnection": "Provjera pristupa widgetu…",
     "preflightConnected": "Povezano s agentom widgeta",
     "preflightInvalidKey": "Ključ widgeta odbijen. Ažuriraj wm-widget-key i ponovno učitaj.",

@@ -3044,6 +3044,7 @@
     "serverError": "ข้อผิดพลาดของเซิร์ฟเวอร์: {{status}}",
     "unknownError": "ข้อผิดพลาดที่ไม่ทราบ",
     "generatedWidget": "วิดเจ็ตที่สร้างขึ้น: {{title}}",
+    "saveFailed": "ไม่สามารถบันทึกวิดเจ็ตได้ โปรดลองอีกครั้ง",
     "checkingConnection": "ตรวจสอบการเข้าถึงวิดเจ็ต…",
     "preflightConnected": "เชื่อมต่อกับเอเจนต์วิดเจ็ต",
     "preflightInvalidKey": "ปฏิเสธคีย์วิดเจ็ต อัปเดต wm-widget-key แล้วโหลดใหม่",

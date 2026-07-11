@@ -21,6 +21,7 @@
     "serverError": "सर्वर त्रुटि: {{status}}",
     "unknownError": "अज्ञात त्रुटि",
     "generatedWidget": "बनाया गया विजेट: {{title}}",
+    "saveFailed": "विजेट सहेजा नहीं जा सका. कृपया पुनः प्रयास करें.",
     "checkingConnection": "विजेट का संबंध जांच रहे हैं…",
     "preflightConnected": "विजेट एजेंट से जुड़ा हुआ है",
     "preflightInvalidKey": "विजेट की अस्वीकृत। wm-widget-key अपडेट करें और पेज रीलोड करें।",

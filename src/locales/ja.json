@@ -3044,6 +3044,7 @@
     "serverError": "サーバーエラー: {{status}}",
     "unknownError": "不明なエラー",
     "generatedWidget": "生成されたウィジェット: {{title}}",
+    "saveFailed": "ウィジェットを保存できませんでした。もう一度お試しください。",
     "checkingConnection": "ウィジェットアクセスを確認中…",
     "preflightConnected": "ウィジェットエージェントに接続しました",
     "preflightInvalidKey": "ウィジェットキーが拒否されました。wm-widget-keyを更新して再読み込みしてください。",

@@ -48,7 +48,7 @@ interface AllowEntry {
 const ALLOW_LIST: AllowEntry[] = [
   {
     file: 'src/services/rss.ts',
-    line: 315,
+    line: 337,
     reason: 'mlWorker.vectorStoreIngest stores pubDate as embedding metadata; not used as a freshness comparator.',
   },
   {
