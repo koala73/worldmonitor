@@ -522,11 +522,12 @@
     (function(){
       if(!('serviceWorker' in navigator))return;
       var key='wm-sw-nuke';
-      if(sessionStorage.getItem(key))return;
+      var attempted=false;
+      try{if(sessionStorage.getItem(key))return}catch(e){}
       window.addEventListener('error',function(e){
         var u=e.target&&(e.target.src||e.target.href)||'';
         if(u&&/\/assets\//.test(u)){
-          sessionStorage.setItem(key,'1');
+          try{sessionStorage.setItem(key,'1')}catch(err){if(attempted)return;attempted=true}
           navigator.serviceWorker.getRegistrations().then(function(regs){
             var p=regs.map(function(r){return r.unregister()});
             Promise.all(p).then(function(){

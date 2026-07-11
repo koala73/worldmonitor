@@ -67,17 +67,19 @@ test.describe('collapsed-map cohort first paint (#5159)', () => {
     ).toEqual([]);
   });
 
-  test('dashboard boots with defaults when localStorage access is blocked (#5209)', async ({ page }) => {
+  test('dashboard boots with defaults when browser storage access is blocked (#5209)', async ({ page }) => {
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(`${error.name}: ${error.message}`));
 
     await page.addInitScript(() => {
-      Object.defineProperty(window, 'localStorage', {
-        configurable: true,
-        get() {
-          throw new DOMException('storage blocked', 'SecurityError');
-        },
-      });
+      for (const storageName of ['localStorage', 'sessionStorage'] as const) {
+        Object.defineProperty(window, storageName, {
+          configurable: true,
+          get() {
+            throw new DOMException('storage blocked', 'SecurityError');
+          },
+        });
+      }
     });
 
     await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });
@@ -86,26 +88,27 @@ test.describe('collapsed-map cohort first paint (#5159)', () => {
     expect(pageErrors).toEqual([]);
   });
 
-  test('dashboard boots with defaults when localStorage is read-only (#5209)', async ({ page }) => {
+  test('dashboard boots with defaults when browser storage is read-only (#5209)', async ({ page }) => {
     const pageErrors: string[] = [];
     page.on('pageerror', (error) => pageErrors.push(`${error.name}: ${error.message}`));
 
     await page.addInitScript(() => {
-      const storage = window.localStorage;
-      Object.defineProperties(storage, {
-        setItem: {
-          configurable: true,
-          value() {
-            throw new DOMException('storage is read-only', 'QuotaExceededError');
+      for (const storage of [window.localStorage, window.sessionStorage]) {
+        Object.defineProperties(storage, {
+          setItem: {
+            configurable: true,
+            value() {
+              throw new DOMException('storage is read-only', 'QuotaExceededError');
+            },
           },
-        },
-        removeItem: {
-          configurable: true,
-          value() {
-            throw new DOMException('storage is read-only', 'QuotaExceededError');
+          removeItem: {
+            configurable: true,
+            value() {
+              throw new DOMException('storage is read-only', 'QuotaExceededError');
+            },
           },
-        },
-      });
+        });
+      }
     });
 
     await page.goto('/dashboard', { waitUntil: 'domcontentloaded' });

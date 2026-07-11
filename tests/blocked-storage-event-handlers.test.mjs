@@ -11,6 +11,10 @@ const globeMapSrc = readFileSync(
   resolve(import.meta.dirname, '../src/components/GlobeMap.ts'),
   'utf-8',
 );
+const panelLayoutSrc = readFileSync(
+  resolve(import.meta.dirname, '../src/app/panel-layout.ts'),
+  'utf-8',
+);
 
 describe('blocked-storage event handlers', () => {
   it('reloads local variant navigation after a guarded storage write', () => {
@@ -39,5 +43,16 @@ describe('blocked-storage event handlers', () => {
     assert.ok(webcamControl, 'GlobeMap must define the webcam marker-mode control');
     assert.doesNotMatch(webcamControl, /localStorage\./);
     assert.match(webcamControl, /this\.webcamMarkerMode/);
+  });
+
+  it('keeps critical posture banner rendering and dismissal functional without session persistence', () => {
+    const criticalBanner = panelLayoutSrc.match(
+      /renderCriticalBanner\(postures: TheaterPostureSummary\[\]\): void \{([\s\S]*?)\n {2}\}\n\n {2}applyPanelSettings/,
+    )?.[1];
+
+    assert.ok(criticalBanner, 'PanelLayout must define the critical posture banner');
+    assert.doesNotMatch(criticalBanner, /sessionStorage\./);
+    assert.match(criticalBanner, /readSessionStorageValue\('banner-dismissed'\)/);
+    assert.match(criticalBanner, /writeSessionStorageValue\('banner-dismissed', Date\.now\(\)\.toString\(\)\)/);
   });
 });
