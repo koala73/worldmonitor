@@ -9,7 +9,7 @@ import { scheduleAfterFirstPaint } from '@/utils/after-paint';
 import { subscribeAuthState, type AuthSession } from './auth-state';
 import { onSubscriptionChange, type SubscriptionInfo } from './billing';
 import { getClerkUserCreatedAt } from './clerk';
-import { DODO_PRODUCTS } from '@/config/products.generated';
+import { DODO_PRODUCT_IDS } from '@/config/product-ids.generated';
 
 const UMAMI_SCRIPT_SRC = 'https://abacus.worldmonitor.app/script.js';
 const UMAMI_WEBSITE_ID = 'e8800335-c853-46a8-8497-c993ed2f58bc';
@@ -442,9 +442,11 @@ export function trackGateHit(feature: string): void {
  * through URL/sessionStorage, so a crafted value must not inject unbounded
  * cardinality into Umami. Unknown ids collapse to 'unknown'; the checkout
  * flow itself still passes the raw id through (backend validates).
- * Auto-fresh: DODO_PRODUCTS is generated from the catalog.
+ * Auto-fresh: DODO_PRODUCT_IDS is generated from the catalog. Keeping this
+ * small allowlist separate means analytics does not pull the checkout config
+ * into the post-hydration module graph. (#5165)
  */
-const KNOWN_PRODUCT_IDS: ReadonlySet<string> = new Set(Object.values(DODO_PRODUCTS));
+const KNOWN_PRODUCT_IDS = DODO_PRODUCT_IDS;
 
 export function bucketProductIdForAnalytics(productId: string): string {
   return KNOWN_PRODUCT_IDS.has(productId) ? productId : 'unknown';

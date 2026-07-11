@@ -11,6 +11,8 @@ import { parseFeedDate, effectivePubDateMs } from './feed-date';
 import { canQueueAiClassification, AI_CLASSIFY_MAX_PER_FEED } from './ai-classify-queue';
 import { mlWorker } from './ml-worker';
 import { isHeadlineMemoryEnabled } from './ai-flow-settings';
+import { yieldToMain } from '@/utils/after-paint';
+import { createYieldingWorkQueue } from '@/utils/yielding-work-queue';
 
 const FEED_COOLDOWN_MS = 5 * 60 * 1000;
 const MAX_FAILURES = 2;
@@ -19,6 +21,11 @@ const FEED_SCOPE_SEPARATOR = '::';
 const feedFailures = new Map<string, { count: number; cooldownUntil: number }>();
 const feedCache = new Map<string, { items: NewsItem[]; timestamp: number }>();
 const CACHE_TTL = 30 * 60 * 1000;
+const enqueueFeedParse = createYieldingWorkQueue(yieldToMain);
+
+function parseFeedXml(text: string): Promise<Document> {
+  return enqueueFeedParse(() => new DOMParser().parseFromString(text, 'text/xml'));
+}
 
 function toSerializable(items: NewsItem[]): Array<Omit<NewsItem, 'pubDate'> & { pubDate: string }> {
   return items.map(item => ({ ...item, pubDate: item.pubDate.toISOString() }));
@@ -237,8 +244,12 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
     const response = await fetchWithProxy(url);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const text = await response.text();
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(text, 'text/xml');
+    const doc = await parseFeedXml(text);
+
+    // XML parsing is synchronous. It is serialized behind a yield so several
+    // completed feed requests cannot parse back-to-back in one post-hydration
+    // task; yield again before querying and mapping entries. (#5165)
+    await yieldToMain();
 
     const parseError = doc.querySelector('parsererror');
     if (parseError) {
@@ -252,52 +263,57 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
     const isAtom = items.length === 0;
     if (isAtom) items = doc.querySelectorAll('entry');
 
-    const parsed = Array.from(items)
-      .slice(0, 5)
-      .map((item) => {
-        const title = item.querySelector('title')?.textContent || '';
-        let link = '';
-        if (isAtom) {
-          const linkEl = item.querySelector('link[href]');
-          link = linkEl?.getAttribute('href') || '';
-        } else {
-          link = item.querySelector('link')?.textContent || '';
-        }
+    const itemNodes = Array.from(items).slice(0, 5);
+    const parsed: Array<NewsItem & { threat: ReturnType<typeof classifyByKeyword> }> = [];
+    for (const [index, item] of itemNodes.entries()) {
+      const title = item.querySelector('title')?.textContent || '';
+      let link = '';
+      if (isAtom) {
+        const linkEl = item.querySelector('link[href]');
+        link = linkEl?.getAttribute('href') || '';
+      } else {
+        link = item.querySelector('link')?.textContent || '';
+      }
 
-        // Dublin Core (<dc:date>) fallback for RSS feeds. ArXiv RSS (already
-        // in the feed registry as "ArXiv AI", "ArXiv ML") ships dc:date with
-        // no <pubDate>; without this fallback every ArXiv item would land
-        // with pubDateMissing=true and get demoted in every freshness ranking.
-        // Prior precedent: PR #3417. querySelector('dc\\:date') escapes the
-        // CSS-selector colon so the XML qname matches; getElementsByTagName
-        // is an alternative that also works under browser DOMParser in XML
-        // mode. textContent reads the element's inner text without namespace
-        // gymnastics.
-        const pubDateStr = isAtom
-          ? (item.querySelector('published')?.textContent || item.querySelector('updated')?.textContent || '')
-          : (item.querySelector('pubDate')?.textContent
-            || item.querySelector('dc\\:date')?.textContent
-            || item.getElementsByTagName('dc:date')[0]?.textContent
-            || '');
-        const { date: pubDate, missing: pubDateMissing } = parseFeedDate(pubDateStr);
-        const threat = classifyByKeyword(title, SITE_VARIANT);
-        const isAlert = threat.level === 'critical' || threat.level === 'high';
-        const geoMatches = inferGeoHubsFromTitle(title);
-        const topGeo = geoMatches[0];
+      // Dublin Core (<dc:date>) fallback for RSS feeds. ArXiv RSS (already
+      // in the feed registry as "ArXiv AI", "ArXiv ML") ships dc:date with
+      // no <pubDate>; without this fallback every ArXiv item would land
+      // with pubDateMissing=true and get demoted in every freshness ranking.
+      // Prior precedent: PR #3417. querySelector('dc\\:date') escapes the
+      // CSS-selector colon so the XML qname matches; getElementsByTagName
+      // is an alternative that also works under browser DOMParser in XML
+      // mode. textContent reads the element's inner text without namespace
+      // gymnastics.
+      const pubDateStr = isAtom
+        ? (item.querySelector('published')?.textContent || item.querySelector('updated')?.textContent || '')
+        : (item.querySelector('pubDate')?.textContent
+          || item.querySelector('dc\\:date')?.textContent
+          || item.getElementsByTagName('dc:date')[0]?.textContent
+          || '');
+      const { date: pubDate, missing: pubDateMissing } = parseFeedDate(pubDateStr);
+      const threat = classifyByKeyword(title, SITE_VARIANT);
+      const isAlert = threat.level === 'critical' || threat.level === 'high';
+      const geoMatches = inferGeoHubsFromTitle(title);
+      const topGeo = geoMatches[0];
 
-        return {
-          source: feed.name,
-          title,
-          link,
-          pubDate,
-          pubDateMissing,
-          isAlert,
-          threat,
-          ...(topGeo && { lat: topGeo.hub.lat, lon: topGeo.hub.lon, locationName: topGeo.hub.name }),
-          lang: feed.lang,
-          ...(SITE_VARIANT === 'happy' && { imageUrl: extractImageUrl(item) }),
-        };
+      parsed.push({
+        source: feed.name,
+        title,
+        link,
+        pubDate,
+        pubDateMissing,
+        isAlert,
+        threat,
+        ...(topGeo && { lat: topGeo.hub.lat, lon: topGeo.hub.lon, locationName: topGeo.hub.name }),
+        lang: feed.lang,
+        ...(SITE_VARIANT === 'happy' && { imageUrl: extractImageUrl(item) }),
       });
+
+      // Each item performs DOM queries, date normalization, classification,
+      // and geo inference. Let paint/input run before the next item instead
+      // of concatenating all five into the same task on mobile. (#5165)
+      if (index < itemNodes.length - 1) await yieldToMain();
+    }
 
     feedCache.set(feedScope, { items: parsed, timestamp: Date.now() });
     void setPersistentCache(getPersistentFeedKey(feedScope), toSerializable(parsed));

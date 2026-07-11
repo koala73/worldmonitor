@@ -126,8 +126,8 @@ test('checkout-start product ids are bucketed on both surfaces (round-4 F2)', ()
   const analytics = read('src/services/analytics.ts');
   assert.ok(analytics.includes('bucketProductIdForAnalytics(productId)'),
     'dashboard trackCheckoutStart no longer buckets the (resume-path URL-derived) productId');
-  assert.ok(analytics.includes('Object.values(DODO_PRODUCTS)'),
-    'dashboard product allowlist no longer derives from the generated catalog');
+  assert.ok(analytics.includes("from '@/config/product-ids.generated'") && analytics.includes('DODO_PRODUCT_IDS'),
+    'dashboard product allowlist must keep deriving from the generated catalog');
   const pro = read('pro-test/src/services/checkout.ts');
   const emissions = pro.match(/trackFunnelEvent\(\s*'checkout-start'[\s\S]{0,300}?\}\s*\)/g) ?? [];
   assert.equal(emissions.length, 2, 'expected exactly two /pro checkout-start emissions');

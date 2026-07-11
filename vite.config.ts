@@ -1272,6 +1272,16 @@ export default defineConfig(({ mode }) => {
             // Post-paint service tail split (#4487). These files are dynamic-imported
             // from data-loader/country-intel/SignalModal; stable names let the
             // dist guard prove they stay out of main rather than merely grepping src.
+            // Keep the product catalog independent from its shared cache and
+            // entitlement dependencies. Before this split, Rollup named the shared
+            // cache group `products`, making the post-hydration product task parse
+            // unrelated IndexedDB code alongside the tiny checkout catalog. (#5165)
+            if (id.endsWith('/src/config/products.ts') || id.endsWith('/src/config/products.generated.ts')) {
+              return 'products';
+            }
+            if (id.endsWith('/src/services/persistent-cache.ts')) {
+              return 'persistent-cache';
+            }
             if (id.endsWith('/src/services/rss.ts')) {
               return 'rss';
             }

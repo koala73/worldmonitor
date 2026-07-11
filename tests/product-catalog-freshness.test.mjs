@@ -1,7 +1,7 @@
 /**
  * Product catalog freshness tests.
  *
- * Verifies that generated files (products.generated.ts, tiers.json)
+ * Verifies that generated files (products.generated.ts, product-ids.generated.ts, tiers.json)
  * match the canonical catalog in convex/config/productCatalog.ts.
  * Bidirectional: checks generated→catalog AND catalog→generated.
  */
@@ -27,6 +27,7 @@ const PRODUCT_ID_EXCLUDE_PATTERNS = [
   'api/product-catalog',
   'api/_product-fallback-prices',
   'src/config/products.generated',
+  'src/config/product-ids.generated',
   'pro-test/src/generated/',
   'public/pro/',
   'tests/',
@@ -354,6 +355,7 @@ describe('Product catalog freshness', () => {
   it('generated files and pro locale placeholders are fresh (re-running generator produces same output)', () => {
     // Capture current generated content
     const currentProducts = readFileSync(join(ROOT, 'src/config/products.generated.ts'), 'utf8');
+    const currentProductIds = readFileSync(join(ROOT, 'src/config/product-ids.generated.ts'), 'utf8');
     const currentTiers = readFileSync(join(ROOT, 'pro-test/src/generated/tiers.json'), 'utf8');
     const currentFallback = readFileSync(join(ROOT, 'api/_product-fallback-prices.js'), 'utf8');
     const currentLocales = readProLocaleFiles();
@@ -363,11 +365,13 @@ describe('Product catalog freshness', () => {
 
     // Compare
     const freshProducts = readFileSync(join(ROOT, 'src/config/products.generated.ts'), 'utf8');
+    const freshProductIds = readFileSync(join(ROOT, 'src/config/product-ids.generated.ts'), 'utf8');
     const freshTiers = readFileSync(join(ROOT, 'pro-test/src/generated/tiers.json'), 'utf8');
     const freshFallback = readFileSync(join(ROOT, 'api/_product-fallback-prices.js'), 'utf8');
     const freshLocales = readProLocaleFiles();
 
     assert.equal(currentProducts, freshProducts, 'products.generated.ts is stale — run: npx tsx scripts/generate-product-config.mjs');
+    assert.equal(currentProductIds, freshProductIds, 'product-ids.generated.ts is stale — run: npx tsx scripts/generate-product-config.mjs');
     assert.equal(currentTiers, freshTiers, 'tiers.json is stale — run: npx tsx scripts/generate-product-config.mjs');
 
     assert.equal(currentFallback, freshFallback, '_product-fallback-prices.js is stale — run: npx tsx scripts/generate-product-config.mjs');

@@ -65,7 +65,7 @@ async function loadWidgetStore(): Promise<WidgetStore> {
         globalThis.__clearedPanelColSpans.push(id);
       }
     `],
-    ['widget-sanitizer-stub', `export function sanitizeWidgetHtml(html) { return String(html); }`],
+    ['widget-sanitizer-stub', `export function sanitizeWidgetHtml(html) { return 'sanitized:' + String(html); }`],
     ['auth-state-stub', `export function getAuthState() { return { user: { role: 'pro' } }; }`],
     ['entitlements-stub', `export function isEntitled() { return true; }`],
     ['browser-key-session-stub', `
@@ -159,12 +159,25 @@ describe('widget-store PRO persistence', () => {
     const storage = installLocalStorage();
     const { saveWidget } = await loadWidgetStore();
 
-    saveWidget(makeProWidget());
+    const save = saveWidget(makeProWidget());
+    assert.ok(save instanceof Promise, 'saving a widget should defer optional sanitizer loading');
+    await save;
 
     const stored = JSON.parse(localStorage.getItem('wm-custom-widgets') ?? '[]') as Array<{ html?: string }>;
     assert.equal(stored.length, 1);
     assert.match(stored[0]?.html ?? '', /reload-marker/);
     assert.equal(storage.has(proHtmlKey('cw-pro-reload')), false);
+  });
+
+  it('loads the sanitizer only when persisting a basic widget', async () => {
+    installLocalStorage();
+    const { saveWidget } = await loadWidgetStore();
+    const basic = makeProWidget({ id: 'cw-basic', tier: 'basic', html: '<div>basic</div>' });
+
+    await saveWidget(basic);
+
+    const stored = JSON.parse(localStorage.getItem('wm-custom-widgets') ?? '[]') as Array<{ html?: string }>;
+    assert.equal(stored[0]?.html, 'sanitized:<div>basic</div>');
   });
 
   it('loadWidgets restores PRO HTML from the canonical entry when the side key is absent', async () => {

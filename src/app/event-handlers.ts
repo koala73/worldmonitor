@@ -605,8 +605,9 @@ export class EventHandlerManager implements AppModule {
         mode: 'modify',
         existingSpec: spec,
         onComplete: (updated) => {
-          saveWidget(updated);
-          (this.ctx.panels[updated.id] as CustomWidgetPanel | undefined)?.updateSpec(updated);
+          void saveWidget(updated).then(() => {
+            (this.ctx.panels[updated.id] as CustomWidgetPanel | undefined)?.updateSpec(updated);
+          }).catch((error) => console.error('[widget-chat] failed to save widget', error));
         },
       })).catch((err) => console.error('[widget-chat] failed to lazy-load WidgetChatModal', err));
     }) as EventListener;

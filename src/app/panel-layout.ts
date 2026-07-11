@@ -514,7 +514,9 @@ export class PanelLayoutManager implements AppModule {
         mode: 'create',
         tier: 'pro',
         initialMessage: e.detail.initialMessage,
-        onComplete: (spec) => this.addCustomWidget(spec),
+        onComplete: (spec) => {
+          void this.addCustomWidget(spec).catch((error) => console.error('[widget-builder] failed to add widget', error));
+        },
       })).catch((err) => console.error('[widget-chat] failed to lazy-load WidgetChatModal', err));
     }) as EventListener;
     this.ctx.container.addEventListener('wm:open-widget-creator', this.boundWidgetCreatorHandler);
@@ -2318,7 +2320,9 @@ export class PanelLayoutManager implements AppModule {
       void import('@/components/WidgetChatModal').then((m) => m.openWidgetChatModal({
         mode: 'create',
         tier: 'pro',
-        onComplete: (spec) => this.addCustomWidget(spec),
+        onComplete: (spec) => {
+          void this.addCustomWidget(spec).catch((error) => console.error('[widget-builder] failed to add widget', error));
+        },
       })).catch((err) => console.error('[widget-chat] failed to lazy-load WidgetChatModal', err));
     });
     panelsGrid.appendChild(proBlock);
@@ -2591,8 +2595,8 @@ export class PanelLayoutManager implements AppModule {
     this.applyPanelSettings();
   }
 
-  addCustomWidget(spec: CustomWidgetSpec): void {
-    saveWidget(spec);
+  async addCustomWidget(spec: CustomWidgetSpec): Promise<void> {
+    await saveWidget(spec);
     this.ctx.panelSettings[spec.id] = { name: spec.title, enabled: true, priority: 3 };
     saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
     void this.importPanel(
