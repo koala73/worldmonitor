@@ -7,6 +7,7 @@ import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { timingSafeEqualSecret, timingSafeIncludes } from './_crypto.js';
 import { checkRateLimit } from './_rate-limit.js';
 import { issueSessionToken } from './_session.js';
+import { emitWmSessionUsage } from './_usage-telemetry.js';
 
 export const config = { runtime: 'edge' };
 
@@ -98,8 +99,17 @@ async function readBody(req) {
 }
 
 export default async function handler(req, ctx) {
+  const startedAt = Date.now();
+  const respond = (body, status, headers, reason) => {
+    const response = jsonResponse(body, status, headers);
+    emitWmSessionUsage(ctx, req, response, startedAt, reason);
+    return response;
+  };
+
   if (isDisallowedOrigin(req)) {
-    return new Response('Forbidden', { status: 403 });
+    const response = new Response('Forbidden', { status: 403 });
+    emitWmSessionUsage(ctx, req, response, startedAt, 'origin_403');
+    return response;
   }
 
   const cors = getCorsHeaders(req, 'POST, OPTIONS');
@@ -109,7 +119,7 @@ export default async function handler(req, ctx) {
   }
 
   if (req.method !== 'POST') {
-    return jsonResponse({ error: 'Method not allowed' }, 405, cors);
+    return respond({ error: 'Method not allowed' }, 405, cors, 'method_not_allowed');
   }
 
   // Rate-limit per IP. Without this, an attacker can farm tokens cheaply.
@@ -122,7 +132,10 @@ export default async function handler(req, ctx) {
     limit: SESSION_RATE_LIMIT_PER_MINUTE,
     window: SESSION_RATE_LIMIT_WINDOW,
   });
-  if (rl) return rl;
+  if (rl) {
+    emitWmSessionUsage(ctx, req, rl, startedAt, rl.status === 429 ? 'rate_limit_429' : 'rate_limit_degraded');
+    return rl;
+  }
 
   let issued;
   try {
@@ -130,7 +143,7 @@ export default async function handler(req, ctx) {
   } catch {
     // WM_SESSION_SECRET missing — fail closed. 503 signals "configure me",
     // not "you're rejected." Operator-visible.
-    return jsonResponse({ error: 'Session service not configured' }, 503, cors);
+    return respond({ error: 'Session service not configured' }, 503, cors, 'auth_unavailable');
   }
 
   const body = await readBody(req);
@@ -141,7 +154,7 @@ export default async function handler(req, ctx) {
     (submittedLegacyKey(body.widgetKey) && !(await isValidWidgetKey(widgetKey))) ||
     (submittedLegacyKey(body.proKey) && !(await isValidProKey(proKey)))
   ) {
-    return jsonResponse({ error: 'Invalid session key' }, 401, cors);
+    return respond({ error: 'Invalid session key' }, 401, cors, 'auth_401');
   }
 
   let headers = appendHeader(cors, 'Set-Cookie', sessionCookie(req, SESSION_COOKIE, issued.token));
@@ -157,5 +170,5 @@ export default async function handler(req, ctx) {
     headers = appendHeader(headers, 'Set-Cookie', sessionCookie(req, PRO_KEY_COOKIE, proKey));
   }
 
-  return jsonResponse({ ok: true, exp: issued.exp }, 200, headers);
+  return respond({ ok: true, exp: issued.exp }, 200, headers, 'ok');
 }

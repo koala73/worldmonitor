@@ -92,7 +92,7 @@ import {
   waitForBootstrapSlowTier,
   type BootstrapHydrationState,
 } from '@/services/bootstrap';
-import { ensureWmSession, installWmSessionFetchInterceptor } from '@/services/wm-session';
+import { ensureWmSession, installWmSessionFetchInterceptor, WM_SESSION_DEGRADED_EVENT } from '@/services/wm-session';
 import { describeFreshness } from '@/services/persistent-cache';
 import { DesktopUpdater } from '@/app/desktop-updater';
 import { CountryIntelManager } from '@/app/country-intel';
@@ -191,6 +191,11 @@ export class App {
   private followedCountriesCapDropToastTimer: number | null = null;
   private bootstrapHydrationState: BootstrapHydrationState = getBootstrapHydrationState();
   private cachedModeBannerEl: HTMLElement | null = null;
+  private readonly handleWmSessionDegraded = (): void => {
+    if (!this.state.isDestroyed) {
+      showToast('Anonymous data is temporarily unavailable. Check your cookie settings, then reload.');
+    }
+  };
   private readonly handleViewportPrime = (): void => {
     if (this.visiblePanelPrimeRaf !== null) return;
     this.visiblePanelPrimeRaf = window.requestAnimationFrame(() => {
@@ -1354,6 +1359,7 @@ export class App {
     // API key path and doesn't need this; Clerk-authenticated users will pass
     // their JWT in a Bearer header and the interceptor steps aside.
     if (!isDesktopRuntime()) {
+      window.addEventListener(WM_SESSION_DEGRADED_EVENT, this.handleWmSessionDegraded);
       installWmSessionFetchInterceptor();
       await ensureWmSession();
       markLcpDebug('wm:boot:session-ready');
@@ -1816,6 +1822,7 @@ export class App {
     destroyBreakingNewsAlerts();
     this.cachedModeBannerEl?.remove();
     this.cachedModeBannerEl = null;
+    window.removeEventListener(WM_SESSION_DEGRADED_EVENT, this.handleWmSessionDegraded);
     if (this.followedCountriesCapDropToastTimer !== null) {
       window.clearTimeout(this.followedCountriesCapDropToastTimer);
       this.followedCountriesCapDropToastTimer = null;

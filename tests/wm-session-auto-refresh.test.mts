@@ -366,12 +366,11 @@ describe('wm-session refresh-on-401 (Layer 2)', () => {
     assert.equal(lastSeenAuth, 'Bearer caller-supplied-jwt', 'caller Authorization must pass through untouched');
   });
 
-  it('returns the second 401 if the retry also fails (no infinite loop)', async () => {
+  it('suppresses later anonymous API calls when a refreshed session is still rejected', async () => {
     // No cached expiry and no stored expiry. Server 401s, the interceptor
     // mints a fresh cookie, replays with credentials, server 401s again.
-    // The second 401 must be returned as-is (no further retry) — the
-    // retryGuard semantics are encoded by `fresh === token`-bail and by the
-    // structural fact that the retry path is never re-entered.
+    // The second 401 must be returned as-is (no further retry); later calls
+    // are suppressed by the dead-session cooldown.
     memoryStorage.clear();
 
     let bootstrapAttempts = 0;
@@ -396,14 +395,95 @@ describe('wm-session refresh-on-401 (Layer 2)', () => {
     console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')); };
     try {
       const resp = await wrappedFetch('https://api.worldmonitor.app/api/bootstrap');
-      assert.equal(resp.status, 401, 'returns second 401 instead of looping');
+      assert.equal(resp.status, 401, 'the failed recovery returns the server response');
+
+      const suppressed = await wrappedFetch('https://api.worldmonitor.app/api/infrastructure/v1/list-service-statuses');
+      assert.equal(suppressed.status, 503, 'the dead session suppresses later gated calls during the cooldown');
+      assert.equal(suppressed.headers.get('x-wm-session-degraded'), '1');
     } finally {
       console.warn = originalWarn;
     }
-    assert.equal(bootstrapAttempts, 2, 'exactly one retry — no infinite loop');
-    assert.equal(mintCalls, 2, 'initial preflight mint plus one refresh mint after the first 401');
+    assert.equal(bootstrapAttempts, 2, 'exactly one retry — later calls must not reach the API');
+    assert.equal(mintCalls, 2, 'initial preflight mint plus one recovery mint; no later remints');
     assert.deepEqual(warnings, [
-      '[wm-session] API request still returned 401 after refreshing HttpOnly session cookie',
+      '[wm-session] refreshed HttpOnly session cookie was still rejected; suppressing anonymous API calls briefly',
     ]);
+  });
+
+  it('single-flights concurrent 401 recovery so only one retry verifies the mint', async () => {
+    memoryStorage.clear();
+    let gatedAttempts = 0;
+    let mintCalls = 0;
+    currentFetchHandler = (input) => {
+      const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
+      if (url.includes('/api/wm-session')) {
+        mintCalls += 1;
+        return Promise.resolve(new Response(JSON.stringify({ exp: FAR_FUTURE }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }));
+      }
+      gatedAttempts += 1;
+      return Promise.resolve(new Response('still-rejected', { status: 401 }));
+    };
+
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      const responses = await Promise.all([
+        wrappedFetch('https://api.worldmonitor.app/api/bootstrap'),
+        wrappedFetch('https://api.worldmonitor.app/api/infrastructure/v1/list-service-statuses'),
+        wrappedFetch('https://api.worldmonitor.app/api/infrastructure/v1/get-cable-health'),
+      ]);
+      assert.deepEqual(responses.map((response) => response.status), [401, 401, 401]);
+    } finally {
+      console.warn = originalWarn;
+    }
+    assert.equal(mintCalls, 2, 'all callers share the initial mint and one recovery mint');
+    assert.equal(gatedAttempts, 4, 'three initial 401s plus one verifier retry, never one retry per caller');
+  });
+
+  it('replays a delayed stale 401 after another caller has refreshed the session', async () => {
+    memoryStorage.clear();
+    let mintCalls = 0;
+    let bootstrapAttempts = 0;
+    let cableAttempts = 0;
+    let releaseDelayed401: (() => void) | null = null;
+    currentFetchHandler = (input) => {
+      const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
+      if (url.includes('/api/wm-session')) {
+        mintCalls += 1;
+        return Promise.resolve(new Response(JSON.stringify({ exp: FAR_FUTURE }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }));
+      }
+      if (url.includes('/api/bootstrap')) {
+        bootstrapAttempts += 1;
+        return Promise.resolve(new Response(bootstrapAttempts === 1 ? 'stale' : 'recovered', {
+          status: bootstrapAttempts === 1 ? 401 : 200,
+        }));
+      }
+      cableAttempts += 1;
+      if (cableAttempts === 1) {
+        return new Promise((resolve) => {
+          releaseDelayed401 = () => resolve(new Response('stale', { status: 401 }));
+        });
+      }
+      return Promise.resolve(new Response('recovered', { status: 200 }));
+    };
+
+    const first = wrappedFetch('https://api.worldmonitor.app/api/bootstrap');
+    const delayed = wrappedFetch('https://api.worldmonitor.app/api/infrastructure/v1/get-cable-health');
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.ok(releaseDelayed401, 'the second request should already be awaiting its stale response');
+    releaseDelayed401?.();
+
+    const [firstResponse, delayedResponse] = await Promise.all([first, delayed]);
+    assert.equal(firstResponse.status, 200);
+    assert.equal(delayedResponse.status, 200);
+    assert.equal(mintCalls, 2, 'one initial mint plus one recovery mint');
+    assert.equal(bootstrapAttempts, 2, 'the first caller verifies the reminted cookie once');
+    assert.equal(cableAttempts, 2, 'the delayed stale response replays without invalidating the fresh session');
   });
 });

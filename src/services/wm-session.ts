@@ -22,6 +22,11 @@ const REFRESH_MARGIN_MS = 5 * 60 * 1000;
 // 12-hour token expires. Long-lived tabs (overnight, multi-day) lose the
 // token without this; the original implementation had no auto-refresh.
 const PERIODIC_REFRESH_MS = 30 * 60 * 1000;
+// A rejected retry means the browser cannot currently deliver the HttpOnly
+// cookie (for example, strict cookie settings). Avoid amplifying that into a
+// request + mint + retry loop for every panel refresh.
+const SESSION_DEAD_COOLDOWN_MS = 15 * 60 * 1000;
+export const WM_SESSION_DEGRADED_EVENT = 'wm-session-degraded';
 
 interface StoredSession {
   exp: number;
@@ -29,9 +34,41 @@ interface StoredSession {
 
 let cached: StoredSession | null = null;
 let inflight: Promise<boolean> | null = null;
+let recoveryInFlight: Promise<Response | null> | null = null;
+let sessionGeneration = 0;
 let interceptorInstalled = false;
 let nativeSessionFetch: typeof fetch | null = null;
-let retryRejectedWarned = false;
+let sessionDeadUntil = 0;
+
+export function isWmSessionDead(): boolean {
+  if (sessionDeadUntil <= Date.now()) {
+    sessionDeadUntil = 0;
+    return false;
+  }
+  return true;
+}
+
+function markWmSessionDead(): void {
+  const alreadyDead = isWmSessionDead();
+  sessionDeadUntil = Date.now() + SESSION_DEAD_COOLDOWN_MS;
+  cached = null;
+  try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
+  if (alreadyDead) return;
+  console.warn('[wm-session] refreshed HttpOnly session cookie was still rejected; suppressing anonymous API calls briefly');
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+    window.dispatchEvent(new Event(WM_SESSION_DEGRADED_EVENT));
+  }
+}
+
+function sessionDegradedResponse(): Response {
+  return new Response(JSON.stringify({ error: 'Anonymous session temporarily unavailable' }), {
+    status: 503,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Wm-Session-Degraded': '1',
+    },
+  });
+}
 
 function isFresh(s: StoredSession | null): s is StoredSession {
   return !!s && s.exp - REFRESH_MARGIN_MS > Date.now();
@@ -70,6 +107,7 @@ async function fetchNewSession(body?: { widgetKey?: string; proKey?: string }): 
 }
 
 export async function ensureWmSession(): Promise<boolean> {
+  if (isWmSessionDead()) return false;
   if (isFresh(cached)) return true;
   if (inflight) return inflight;
 
@@ -83,6 +121,7 @@ export async function ensureWmSession(): Promise<boolean> {
     const fresh = await fetchNewSession();
     if (fresh) {
       cached = fresh;
+      sessionGeneration += 1;
       saveToStorage(fresh);
       return true;
     }
@@ -102,6 +141,8 @@ export async function establishWmKeySession(keys: { widgetKey?: string; proKey?:
   const fresh = await fetchNewSession(keys);
   if (!fresh) return false;
   cached = fresh;
+  sessionGeneration += 1;
+  sessionDeadUntil = 0;
   saveToStorage(fresh);
   return true;
 }
@@ -123,8 +164,10 @@ function withCredentials(init?: RequestInit): RequestInit {
 export function __resetWmSessionForTests(): void {
   cached = null;
   inflight = null;
+  recoveryInFlight = null;
+  sessionGeneration = 0;
   interceptorInstalled = false;
-  retryRejectedWarned = false;
+  sessionDeadUntil = 0;
 }
 
 // Install a one-shot fetch wrapper that includes HttpOnly session cookies on
@@ -236,7 +279,11 @@ export function installWmSessionFetchInterceptor(): void {
       return original(input, withCredentials(init));
     }
 
+    if (isWmSessionDead()) return sessionDegradedResponse();
+
     await ensureWmSession().catch(() => false);
+
+    if (isWmSessionDead()) return sessionDegradedResponse();
 
     // A Request body is a one-shot stream — clone BEFORE the first send so
     // the refresh-on-401 retry below has an intact body to replay. For
@@ -251,6 +298,7 @@ export function installWmSessionFetchInterceptor(): void {
       return original(src, { ...withCredentials(init), headers: h });
     };
 
+    const requestSessionGeneration = sessionGeneration;
     const resp = await sendWith(headers, input);
 
     // Layer 2 — refresh-on-401. A single transient blip (HMAC-key rotation,
@@ -260,6 +308,13 @@ export function installWmSessionFetchInterceptor(): void {
     // wms_ token is irrelevant there.
     if (resp.status !== 401) return resp;
 
+    // A slower initial request can report the old cookie after another caller
+    // already recovered it. Replay with the newer cookie instead of clearing
+    // that success and spending another mint.
+    if (sessionGeneration !== requestSessionGeneration) {
+      return sendWith(new Headers(headers), requestClone ?? input);
+    }
+
     // Invalidate the cached expiry (and its sessionStorage twin) before
     // re-minting. ensureWmSession() is opportunistic — without invalidation,
     // it would return the same not-yet-clock-expired token that the server
@@ -268,16 +323,33 @@ export function installWmSessionFetchInterceptor(): void {
     cached = null;
     try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
 
-    const fresh = await ensureWmSession().catch(() => false);
-    if (!fresh) return resp;
-
-    const retryHeaders = new Headers(headers);
-    const retryResp = await sendWith(retryHeaders, requestClone ?? input);
-    if (retryResp.status === 401 && !retryRejectedWarned) {
-      retryRejectedWarned = true;
-      console.warn('[wm-session] API request still returned 401 after refreshing HttpOnly session cookie');
+    // One request verifies the reminted cookie. Other simultaneous 401s wait
+    // for that result instead of each multiplying the failed retry.
+    if (!recoveryInFlight) {
+      const recovery = (async (): Promise<Response | null> => {
+        const fresh = await ensureWmSession().catch(() => false);
+        if (!fresh) {
+          markWmSessionDead();
+          return null;
+        }
+        const retryResp = await sendWith(new Headers(headers), requestClone ?? input);
+        if (retryResp.status === 401) {
+          markWmSessionDead();
+          return null;
+        }
+        return retryResp;
+      })();
+      recoveryInFlight = recovery;
+      void recovery.then(
+        () => { if (recoveryInFlight === recovery) recoveryInFlight = null; },
+        () => { if (recoveryInFlight === recovery) recoveryInFlight = null; },
+      );
+      return (await recovery) ?? resp;
     }
-    return retryResp;
+
+    const verified = await recoveryInFlight;
+    if (!verified) return resp;
+    return sendWith(new Headers(headers), requestClone ?? input);
   };
 
   // Layer 1 — periodic refresh. The token is short-lived (12h server-side)
