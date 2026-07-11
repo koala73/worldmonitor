@@ -430,7 +430,7 @@ export async function checkEndpointRateLimit(request: Request, pathname: string,
 
   const identifier = opts.principalUserId
     ? `user:${opts.principalUserId}`
-    : getClientIp(request);
+    : `ip:${getClientIp(request)}`;
   const policy = ENDPOINT_RATE_POLICIES[pathname];
   // hasEndpointRatePolicy(pathname) above already guarantees this — the
   // extra check exists only to satisfy noUncheckedIndexedAccess, since TS

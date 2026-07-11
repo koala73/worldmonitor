@@ -604,6 +604,16 @@ describe('EVALSHA-unsupported fallback (#7c — self-hosted redis-rest proxy blo
     assert.equal(blocked?.status, 429, 'one Pro principal must still be capped at 30/min');
 
     assert.equal(
+      await mod.checkEndpointRateLimit(
+        makeRequest({ 'x-real-ip': 'user:pro-a' }),
+        pathname,
+        {},
+      ),
+      null,
+      'an IP-shaped caller value must not collide with the user namespace',
+    );
+
+    assert.equal(
       await mod.checkEndpointRateLimit(req, pathname, {}, { principalUserId: 'pro-b' }),
       null,
       'a second Pro principal behind the same IP must receive an independent bucket',

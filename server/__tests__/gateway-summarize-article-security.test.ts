@@ -297,6 +297,16 @@ describe("summarize-article gateway spend controls", () => {
       SUMMARIZE_PATH,
       expect.any(Object),
     );
+    expect(checkFailClosedScopedIpRateLimit).toHaveBeenCalledWith(
+      expect.any(Request),
+      "summarize-article:principal-attribution",
+      600,
+      "60 s",
+      expect.any(Object),
+    );
+    expect(checkFailClosedScopedIpRateLimit.mock.invocationCallOrder[0]).toBeLessThan(
+      getEntitlements.mock.invocationCallOrder[0]!,
+    );
     expect(calls.summarize).toBe(0);
   });
 
@@ -317,6 +327,16 @@ describe("summarize-article gateway spend controls", () => {
       expect.any(Request),
       SUMMARIZE_PATH,
       expect.any(Object),
+    );
+    expect(checkFailClosedScopedIpRateLimit).toHaveBeenCalledWith(
+      expect.any(Request),
+      "summarize-article:principal-attribution",
+      600,
+      "60 s",
+      expect.any(Object),
+    );
+    expect(checkFailClosedScopedIpRateLimit.mock.invocationCallOrder[0]).toBeLessThan(
+      getEntitlements.mock.invocationCallOrder[0]!,
     );
     expect(calls.summarize).toBe(0);
   });
@@ -343,6 +363,16 @@ describe("summarize-article gateway spend controls", () => {
       expect.any(Request),
       SUMMARIZE_PATH,
       expect.any(Object),
+    );
+    expect(checkFailClosedScopedIpRateLimit).toHaveBeenCalledWith(
+      expect.any(Request),
+      "summarize-article:principal-attribution",
+      600,
+      "60 s",
+      expect.any(Object),
+    );
+    expect(checkFailClosedScopedIpRateLimit.mock.invocationCallOrder[0]).toBeLessThan(
+      getEntitlements.mock.invocationCallOrder[0]!,
     );
   });
 
