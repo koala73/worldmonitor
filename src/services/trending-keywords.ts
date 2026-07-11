@@ -118,7 +118,12 @@ function asDisplayTerm(term: string): string {
 }
 
 function isStorageAvailable(): boolean {
-  return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
+  if (typeof window === 'undefined') return false;
+  try {
+    return typeof window.localStorage !== 'undefined';
+  } catch {
+    return false;
+  }
 }
 
 function uniqueBlockedTerms(terms: string[]): string[] {

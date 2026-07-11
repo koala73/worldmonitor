@@ -7,6 +7,10 @@ const eventHandlersSrc = readFileSync(
   resolve(import.meta.dirname, '../src/app/event-handlers.ts'),
   'utf-8',
 );
+const globeMapSrc = readFileSync(
+  resolve(import.meta.dirname, '../src/components/GlobeMap.ts'),
+  'utf-8',
+);
 
 describe('blocked-storage event handlers', () => {
   it('reloads local variant navigation after a guarded storage write', () => {
@@ -25,5 +29,15 @@ describe('blocked-storage event handlers', () => {
     assert.doesNotMatch(resetLayout, /localStorage\./);
     assert.match(resetLayout, /removeStorageValue\(this\.ctx\.PANEL_ORDER_KEY\)/);
     assert.match(resetLayout, /removeStorageValue\('map-height'\)/);
+  });
+
+  it('keeps the globe webcam marker control functional without persistence', () => {
+    const webcamControl = globeMapSrc.match(
+      /\/\/ ── Webcam marker-mode sub-toggle ─+([\s\S]*?)this\.enforceLayerLimit\(\);/,
+    )?.[1];
+
+    assert.ok(webcamControl, 'GlobeMap must define the webcam marker-mode control');
+    assert.doesNotMatch(webcamControl, /localStorage\./);
+    assert.match(webcamControl, /this\.webcamMarkerMode/);
   });
 });
