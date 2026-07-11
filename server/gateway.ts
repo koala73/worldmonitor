@@ -18,7 +18,12 @@ import { timingSafeEqualSecret } from '../api/_crypto.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../api/_sentry-edge.js';
 import { mapErrorToResponse } from './error-mapper';
-import { checkRateLimit, checkEndpointRateLimit, hasEndpointRatePolicy } from './_shared/rate-limit';
+import {
+  checkRateLimit,
+  checkEndpointRateLimit,
+  checkFailClosedScopedIpRateLimit,
+  hasEndpointRatePolicy,
+} from './_shared/rate-limit';
 import { drainResponseHeaders, drainSuccessStatusOverride } from './_shared/response-headers';
 import { projectJsonResponse } from './_shared/response-projection';
 import { getRpcNoStoreReasonFromJson } from './_shared/cache-contract';
@@ -1067,6 +1072,7 @@ export function createDomainGateway(
     const requiresDirectLlmQuota = !internalMcpVerified && await shouldReserveGatewayDirectLlmQuota(request, pathname);
     const isTierGated = !internalMcpVerified && !isPublicNoAuthRpc && !seedRefreshVerified && !relayWarmPingVerified && getRequiredTier(pathname) !== null;
     const needsLegacyProBearerGate = !internalMcpVerified && !isPublicNoAuthRpc && PREMIUM_RPC_PATHS.has(pathname) && !isTierGated;
+    let endpointRateLimitPrincipalUserId: string | undefined;
 
     // Session resolution — extract userId from bearer token (Clerk JWT) if present.
     // Only runs for tier-gated or direct-LLM endpoints to avoid JWKS lookup on every request.
@@ -1281,6 +1287,49 @@ export function createDomainGateway(
           ? markAuthErrorNoStore(entitlementResponse)
           : entitlementResponse;
       }
+
+      // #5206: summarize refreshes from multiple active Pro users can share a
+      // NAT/public IP and collectively exhaust the endpoint's 30/min abuse
+      // bucket. Keep the exact same fail-closed endpoint policy, but isolate
+      // confirmed active paid principals. Signed-in free, anonymous, expired,
+      // and unresolvable callers deliberately retain the per-IP bucket.
+      if (
+        pathname === '/api/news/v1/summarize-article' &&
+        requiresDirectLlmQuota &&
+        sessionUserId
+      ) {
+        // This guard runs before the entitlement lookup needed to choose the
+        // final endpoint bucket. Its distinct 600/min IP namespace matches the
+        // repo-wide global ceiling (20x the endpoint's 30/min spend cap): enough
+        // NAT headroom for legitimate Pro refreshes, while bounding per-IP
+        // entitlement-I/O amplification and failing closed when Redis degrades.
+        const attributionGuardResponse = await checkFailClosedScopedIpRateLimit(
+          request,
+          'summarize-article:principal-attribution',
+          600,
+          '60 s',
+          corsHeaders,
+        );
+        if (attributionGuardResponse) {
+          const reason =
+            attributionGuardResponse.status === 503 &&
+            attributionGuardResponse.headers.get('X-RateLimit-Mode') === 'degraded'
+              ? 'rate_limit_degraded'
+              : 'rate_limit_429';
+          emitRequest(attributionGuardResponse.status, reason, null);
+          return attributionGuardResponse;
+        }
+
+        const ent = entitlementCheck.entitlements ?? (
+          userKeyEntitlement !== undefined
+            ? userKeyEntitlement
+            : await getEntitlements(sessionUserId)
+        );
+        recordUsageEntitlement(ent);
+        if (ent && ent.features.tier >= 1 && ent.validUntil >= Date.now()) {
+          endpointRateLimitPrincipalUserId = sessionUserId;
+        }
+      }
     }
 
     // Route matching — if POST doesn't match, convert to GET for stale clients
@@ -1392,7 +1441,11 @@ export function createDomainGateway(
     // limiter here would create misleading double-counting and could 429
     // legitimate Pro tool fetches that pass the upstream cap.
     if (!internalMcpVerified) {
-      const endpointRlResponse = await checkEndpointRateLimit(request, pathname, corsHeaders);
+      const endpointRlResponse = endpointRateLimitPrincipalUserId
+        ? await checkEndpointRateLimit(request, pathname, corsHeaders, {
+            principalUserId: endpointRateLimitPrincipalUserId,
+          })
+        : await checkEndpointRateLimit(request, pathname, corsHeaders);
       if (endpointRlResponse) {
         const reason =
           endpointRlResponse.status === 503 &&

@@ -18,6 +18,7 @@ import {
   UNKNOWN_CLIENT_IP,
   __resetRateLimitForTest,
   checkEndpointRateLimit,
+  checkFailClosedScopedIpRateLimit,
   checkRateLimit,
   checkScopedRateLimit,
   getClientIp,
@@ -374,6 +375,20 @@ describe('rate-limit fail-open / fail-closed posture (#3531 M9)', () => {
     assert.equal(result.allowed, true, 'preserve availability-first default');
     assert.equal(result.degraded, true, 'flag the degraded path so callers can escalate');
   });
+
+  it('checkFailClosedScopedIpRateLimit converts scoped degradation to the standard 503 contract', async () => {
+    const res = await checkFailClosedScopedIpRateLimit(
+      makeRequest({ 'x-real-ip': '203.0.113.14' }),
+      'pre-attribution-test',
+      600,
+      '60 s',
+      { 'Access-Control-Allow-Origin': 'https://worldmonitor.app' },
+    );
+
+    assert.equal(res?.status, 503);
+    assert.equal(res.headers.get('X-RateLimit-Mode'), 'degraded');
+    assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app');
+  });
 });
 
 describe('rate-limit fail-closed call-site policy (#3531)', () => {
@@ -568,6 +583,38 @@ describe('EVALSHA-unsupported fallback (#7c — self-hosted redis-rest proxy blo
     assert.equal(luaAttempts, 1, 'endpoint fallback must not retry Lua after it is known unsupported');
   });
 
+  it('checkEndpointRateLimit isolates trusted principals sharing one IP while preserving the IP default', async () => {
+    const pipelineHandler = makeProxyPipelineHandler();
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      const commands = JSON.parse(String(init?.body)) as unknown[][];
+      return new Response(JSON.stringify(pipelineHandler(commands)), { status: 200 });
+    }) as typeof fetch;
+
+    const mod = await importFreshRateLimitModule();
+    const req = makeRequest({ 'x-real-ip': '203.0.113.12' });
+    const pathname = '/api/news/v1/summarize-article';
+
+    for (let i = 0; i < 30; i++) {
+      assert.equal(
+        await mod.checkEndpointRateLimit(req, pathname, {}, { principalUserId: 'pro-a' }),
+        null,
+      );
+    }
+    const blocked = await mod.checkEndpointRateLimit(req, pathname, {}, { principalUserId: 'pro-a' });
+    assert.equal(blocked?.status, 429, 'one Pro principal must still be capped at 30/min');
+
+    assert.equal(
+      await mod.checkEndpointRateLimit(req, pathname, {}, { principalUserId: 'pro-b' }),
+      null,
+      'a second Pro principal behind the same IP must receive an independent bucket',
+    );
+    assert.equal(
+      await mod.checkEndpointRateLimit(req, pathname, {}),
+      null,
+      'callers without a trusted principal must continue using the original IP bucket',
+    );
+  });
+
   it('degrades instead of creating a permanent counter when EXPIRE NX is unsupported', async () => {
     const pipelineHandler = makeProxyPipelineHandler({ expireNxUnsupported: true });
     globalThis.fetch = (async (_url: string, init?: RequestInit) => {
@@ -627,5 +674,30 @@ describe('EVALSHA-unsupported fallback (#7c — self-hosted redis-rest proxy blo
     // A different identifier gets its own independent window.
     const otherCaller = await mod.checkScopedRateLimit('fallback-scope', 2, '60 s', 'caller-2');
     assert.equal(otherCaller.allowed, true, 'a different identifier has its own fixed-window counter');
+  });
+
+  it('checkFailClosedScopedIpRateLimit converts an enforced scoped limit to a standard 429', async () => {
+    const pipelineHandler = makeProxyPipelineHandler();
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      const commands = JSON.parse(String(init?.body)) as unknown[][];
+      return new Response(JSON.stringify(pipelineHandler(commands)), { status: 200 });
+    }) as typeof fetch;
+
+    const mod = await importFreshRateLimitModule();
+    const req = makeRequest({ 'x-real-ip': '203.0.113.15' });
+
+    assert.equal(
+      await mod.checkFailClosedScopedIpRateLimit(req, 'pre-attribution-fallback', 1, '60 s', {}),
+      null,
+    );
+    const blocked = await mod.checkFailClosedScopedIpRateLimit(
+      req,
+      'pre-attribution-fallback',
+      1,
+      '60 s',
+      {},
+    );
+    assert.equal(blocked?.status, 429);
+    assert.equal(blocked.headers.get('X-RateLimit-Limit'), '1');
   });
 });

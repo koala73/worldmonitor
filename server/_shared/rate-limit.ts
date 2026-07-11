@@ -185,6 +185,16 @@ export interface RateLimitOptions {
   failClosed?: boolean;
 }
 
+export interface EndpointRateLimitOptions extends RateLimitOptions {
+  /**
+   * Optional trusted server-derived user ID for endpoint policies that should
+   * isolate authenticated principals sharing one public IP. Callers must never
+   * pass a raw client-controlled header here. The limiter owns the namespace
+   * prefix so user IDs cannot collide with anonymous IP buckets.
+   */
+  principalUserId?: string;
+}
+
 export async function checkRateLimit(request: Request, corsHeaders: Record<string, string>, opts: RateLimitOptions = {}): Promise<Response | null> {
   const rl = getRatelimit();
   if (!rl) {
@@ -405,7 +415,7 @@ export function hasEndpointRatePolicy(pathname: string): boolean {
   return pathname in ENDPOINT_RATE_POLICIES;
 }
 
-export async function checkEndpointRateLimit(request: Request, pathname: string, corsHeaders: Record<string, string>, opts: RateLimitOptions = {}): Promise<Response | null> {
+export async function checkEndpointRateLimit(request: Request, pathname: string, corsHeaders: Record<string, string>, opts: EndpointRateLimitOptions = {}): Promise<Response | null> {
   if (!hasEndpointRatePolicy(pathname)) return null;
 
   const rl = getEndpointRatelimit(pathname);
@@ -418,7 +428,9 @@ export async function checkEndpointRateLimit(request: Request, pathname: string,
     return null;
   }
 
-  const ip = getClientIp(request);
+  const identifier = opts.principalUserId
+    ? `user:${opts.principalUserId}`
+    : getClientIp(request);
   const policy = ENDPOINT_RATE_POLICIES[pathname];
   // hasEndpointRatePolicy(pathname) above already guarantees this — the
   // extra check exists only to satisfy noUncheckedIndexedAccess, since TS
@@ -426,7 +438,7 @@ export async function checkEndpointRateLimit(request: Request, pathname: string,
   if (!policy) return null;
 
   try {
-    const { success, limit, reset } = await limitWithFallback(rl, `${pathname}:${ip}`, `rl:ep:fw:${pathname}:${ip}`, policy.limit, durationToSeconds(policy.window));
+    const { success, limit, reset } = await limitWithFallback(rl, `${pathname}:${identifier}`, `rl:ep:fw:${pathname}:${identifier}`, policy.limit, durationToSeconds(policy.window));
 
     if (!success) {
       return tooManyRequestsResponse(limit, reset, corsHeaders, durationToSeconds(policy.window));
@@ -513,6 +525,27 @@ export async function checkScopedRateLimit(scope: string, limit: number, window:
     logRateLimitDegraded(`checkScopedRateLimit:${scope}`, err);
     return { allowed: true, limit, reset: 0, degraded: true };
   }
+}
+
+/**
+ * Applies a distinct, fail-closed per-IP scoped guard and converts its result
+ * into the gateway's standard 429/503 response contract. Use this ahead of
+ * expensive identity-attribution lookups that cannot yet use the endpoint's
+ * final principal-scoped bucket.
+ */
+export async function checkFailClosedScopedIpRateLimit(
+  request: Request,
+  scope: string,
+  limit: number,
+  window: Duration,
+  corsHeaders: Record<string, string>,
+): Promise<Response | null> {
+  const result = await checkScopedRateLimit(scope, limit, window, getClientIp(request));
+  if (result.degraded) return rateLimitDegradedResponse(corsHeaders);
+  if (!result.allowed) {
+    return tooManyRequestsResponse(result.limit, result.reset, corsHeaders, durationToSeconds(window));
+  }
+  return null;
 }
 
 export function __resetRateLimitForTest(): void {
