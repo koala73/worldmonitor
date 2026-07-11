@@ -280,7 +280,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         const { channelType, email, webhookEnvelope, webhookLabel } = body;
         if (!channelType) return finish(json({ error: 'channelType required' }, 400, corsHeaders));
 
-        if (channelType === 'webhook' && webhookEnvelope) {
+        if (webhookEnvelope) {
           try {
             await assertNotificationWebhookRegistrationUrlSafe(webhookEnvelope);
           } catch (error) {

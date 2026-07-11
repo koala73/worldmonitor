@@ -159,6 +159,15 @@ describe('notification webhook SSRF guard', () => {
     ));
   });
 
+  test('notification channel registration validates every persisted webhook envelope', () => {
+    const source = readFileSync(resolve(process.cwd(), 'api/notification-channels.ts'), 'utf8');
+    assert.doesNotMatch(source, /channelType === 'webhook' && webhookEnvelope/);
+    assert.match(
+      source,
+      /if \(webhookEnvelope\) \{\s*try \{\s*await assertNotificationWebhookRegistrationUrlSafe\(webhookEnvelope\)/,
+    );
+  });
+
   test('realtime and digest arbitrary webhook senders use pinned delivery helper', () => {
     for (const relPath of ['scripts/notification-relay.cjs', 'scripts/seed-digest-notifications.mjs']) {
       const source = readFileSync(resolve(process.cwd(), relPath), 'utf8');
