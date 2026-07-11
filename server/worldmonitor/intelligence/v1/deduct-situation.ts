@@ -77,7 +77,19 @@ function buildPredictionContext(query: string, bootstrap: PredictionBootstrap): 
   return `## Prediction Market Odds (crowd-calibrated)\n${lines.join('\n')}`;
 }
 
-const DEDUCT_TIMEOUT_MS = 120_000;
+// This route runs on the Vercel Edge gateway (api/intelligence/v1/[rpc].ts →
+// runtime: 'edge'), which enforces a 25s initial-response ceiling — same
+// constraint list-feed-digest budgets under. The LLM reasoning budget must
+// fail closed to the graceful `provider: 'error'` degradation below BEFORE
+// the platform kills the invocation: the previous 120s budget was
+// unreachable (7d of Axiom route telemetry shows no success past 23.6s),
+// so every slower run surfaced as a client 504 with the LLM spend wasted
+// and nothing cached (WORLDMONITOR-VP, #5147). 22s keeps the budget above
+// the observed reasoning p95 (~17.5s) while leaving a 3s guard band for
+// pre-LLM context assembly and response serialization.
+const VERCEL_INITIAL_RESPONSE_LIMIT_MS = 25_000;
+const RESPONSE_GUARD_BAND_MS = 3_000;
+const DEDUCT_TIMEOUT_MS = VERCEL_INITIAL_RESPONSE_LIMIT_MS - RESPONSE_GUARD_BAND_MS;
 const DEDUCT_CACHE_TTL = 3600;
 
 export async function deductSituation(
