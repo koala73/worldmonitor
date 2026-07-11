@@ -1,6 +1,6 @@
 ---
 title: "AI 简报端点"
-description: "读取、分享和渲染 AI 生成的每日情报简报。"
+description: "读取、分享、渲染并分页 AI 生成的 World Monitor 每日情报简报 —— 涵盖公开分享、轮播卡片与分享 URL 端点。"
 ---
 
 WorldMonitor 在 Railway 上为每个用户生成**每日情报简报**，存储在 Redis 的 `brief:{userId}:{issueDate}` 中，并暴露以下路由用于仪表盘回读、公开分享以及 Telegram/Slack 轮播渲染。

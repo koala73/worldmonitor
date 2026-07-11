@@ -11,7 +11,7 @@ WorldMonitor 有**三种**身份验证模式。具体使用哪一种取决于你
 |------|--------|---------|------------------------------|
 | **浏览器来源** | `Origin: https://www.worldmonitor.app`（浏览器自动设置） | 仪表盘、桌面应用 | 大多数公开端点 — 但**不包括** `forceKey: true` 路由。 |
 | **API 密钥** | `X-WorldMonitor-Key: wm_live_...` | 服务器到服务器、脚本、SDK | 所有端点，包括 `forceKey: true`。 |
-| **OAuth bearer** | `Authorization: Bearer <oauth-token>` | MCP 客户端（Claude、Cursor、Inspector） | `/api/mcp`。处理器也接受直接的 `X-WorldMonitor-Key` 替代 OAuth 令牌 — 详见 [MCP](/zh/mcp-server#authentication)。 |
+| **OAuth bearer** | `Authorization: Bearer <oauth-token>` | MCP 客户端（Claude、Cursor、Inspector） | `/api/mcp`。处理器也接受直接的 `X-WorldMonitor-Key` 替代 OAuth 令牌 — 详见 [MCP](/zh/mcp-overview)。 |
 | **Clerk 会话 JWT** | `Authorization: Bearer <clerk-jwt>` | 已认证的浏览器用户 | 用户专属路由：`/api/latest-brief`、`/api/user-prefs`、`/api/notification-channels`、`/api/brief/share-url` 等。 |
 
 ## `forceKey: true` — 哪些端点会忽略浏览器来源？
@@ -63,7 +63,7 @@ Edge Function 会调用 `validateApiKey(req, { forceKey?: boolean })`：
 
 ## OAuth bearer（仅限 MCP）
 
-完整流程见 [OAuth 2.1 Server](/zh/api-oauth)。客户端配置详见 [MCP](/zh/mcp-server)。
+完整流程见 [OAuth 2.1 Server](/zh/api-oauth)。客户端配置详见 [MCP](/zh/mcp-overview)。
 
 ## Clerk 会话（已认证的仪表盘）
 

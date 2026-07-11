@@ -37,7 +37,7 @@ https://api.worldmonitor.app/api/<service>/v1/<rpc-name>
 
 ## MCP 等价项
 
-如果你一直在使用 [MCP server](/zh/mcp-server)，并希望找到对应的 REST 等价项，二者关系并非总是 1:1。大多数 MCP 工具可归入三类之一：
+如果你一直在使用 [MCP server](/zh/mcp-overview)，并希望找到对应的 REST 等价项，二者关系并非总是 1:1。大多数 MCP 工具可归入三类之一：
 
 **打包缓存读取** — MCP 工具在一次调用中读取多个 Redis 键。没有单个 REST RPC 会返回相同的载荷结构；相反，REST 将底层领域暴露为可自由组合的细粒度操作。示例：`get_market_data`（打包股票 / 大宗商品 / 加密货币 / 板块 / ETF 资金流 / 海湾 / 恐慌贪婪指数）→ 参见 MarketService 中的 `list-market-quotes`、`list-commodity-quotes`、`list-crypto-quotes`、`get-sector-summary`、`list-etf-flows`、`list-gulf-quotes`、`get-fear-greed-index`。`get_economic_data`、`get_country_macro`（IMF WEO 宏观数据）以及 `get_eu_*` 同此结构。
 

@@ -1,6 +1,6 @@
 ---
 title: "CII 风险评分方法论"
-description: "综合不稳定指数（CII）与战略风险汇总背后的编辑性方法论。文档化各国 baselineRisk、eventMultiplier、四分量评分（Unrest、Conflict、Security、Information）、战略风险分档推导，以及戳记在每个 CiiScore 上的 v7 公式版本。"
+description: "综合不稳定指数（CII）与战略风险汇总背后的方法论：baselineRisk、eventMultiplier、四分量评分与戳记在 CiiScore 上的 v7 公式版本。"
 ---
 
 `GET /api/intelligence/v1/get-risk-scores`（proto `worldmonitor.intelligence.v1.GetRiskScoresResponse`）暴露的 **综合不稳定指数（CII）** 和 **战略风险** 汇总的已发布方法论说明。
@@ -77,7 +77,7 @@ composite = baseline * 0.4
 
 ## 2. 各国 `baselineRisk` 和 `eventMultiplier`
 
-这些是服务端 API 评分和前端客户端 CII 渲染都应用的编辑值。真相源是 [`shared/cii-weights.ts`](../../shared/cii-weights.ts)；服务端和前端表从该模块派生，因此系数漂移在测试中失败而非静默发布。
+这些是服务端 API 评分和前端客户端 CII 渲染都应用的编辑值。真相源是 [`shared/cii-weights.ts`](https://github.com/koala73/worldmonitor/blob/main/shared/cii-weights.ts)；服务端和前端表从该模块派生，因此系数漂移在测试中失败而非静默发布。
 
 | 代码 | 国家 | `baselineRisk` | `eventMultiplier` |
 |------|---------|---------------:|------------------:|
@@ -142,7 +142,7 @@ overallScore = min(100, round(weightedAvg * 0.70 + 15))             # banded to 
 ```
 
 衰减步长、top-N 窗口、尺度下限（`15`）和尺度因子（`0.70`）都定义在
-[`server/worldmonitor/intelligence/v1/_risk-config.ts`](../../server/worldmonitor/intelligence/v1/_risk-config.ts)。
+[`server/worldmonitor/intelligence/v1/_risk-config.ts`](https://github.com/koala73/worldmonitor/blob/main/server/worldmonitor/intelligence/v1/_risk-config.ts)。
 它们的**理由**：
 
 - **`STRATEGIC_RISK_POSITIONAL_DECAY = 0.15`** — 受影响最大的国家获得完整权重；权重在第 6 位降为零。选择使得切片大小为 5 自然产生。

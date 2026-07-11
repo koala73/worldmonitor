@@ -1,6 +1,6 @@
 ---
 title: "速率限制"
-description: "WorldMonitor API 接口中按端点、按密钥、按 IP 的速率限制。"
+description: "World Monitor API 中按端点、按密钥、按 IP 的速率限制 —— 响应头、429 处理，以及生产客户端的退避与重试指南。"
 ---
 
 速率限制在 Vercel Edge 运行时上通过 Upstash Redis 滑动窗口计数器进行强制执行。除特别说明外，所有限制均为**60 秒滑动窗口**。
@@ -19,7 +19,7 @@ description: "WorldMonitor API 接口中按端点、按密钥、按 IP 的速率
 |-------|-------|--------|
 | 按 API 密钥（MCP 工具） | **60 次请求** | 60 秒 |
 
-详见 [MCP](/zh/mcp-server)。
+详见 [MCP](/zh/mcp-overview)。
 
 ## OAuth 端点
 
