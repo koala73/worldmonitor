@@ -1575,7 +1575,7 @@ export class EventHandlerManager implements AppModule {
     await this.exitFullscreenForNavigation();
 
     if (this.ctx.isDesktopApp || options.isLocalDev) {
-      localStorage.setItem('worldmonitor-variant', variant);
+      writeStorageValue('worldmonitor-variant', variant);
       window.location.reload();
       return;
     }
@@ -1800,10 +1800,10 @@ export class EventHandlerManager implements AppModule {
       resetLayout: () => {
         clearPanelSpans();
         clearPanelColSpans();
-        localStorage.removeItem(this.ctx.PANEL_ORDER_KEY);
-        localStorage.removeItem(this.ctx.PANEL_ORDER_KEY + '-bottom');
-        localStorage.removeItem(this.ctx.PANEL_ORDER_KEY + '-bottom-set');
-        localStorage.removeItem('map-height');
+        removeStorageValue(this.ctx.PANEL_ORDER_KEY);
+        removeStorageValue(this.ctx.PANEL_ORDER_KEY + '-bottom');
+        removeStorageValue(this.ctx.PANEL_ORDER_KEY + '-bottom-set');
+        removeStorageValue('map-height');
         window.location.reload();
       },
       isDesktopApp: this.ctx.isDesktopApp,
