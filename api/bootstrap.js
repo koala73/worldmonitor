@@ -238,6 +238,33 @@ export function isPublicWeatherBootstrapRequest(req) {
   return requested.length === 1 && requested[0] === 'weatherAlerts';
 }
 
+const PUBLIC_BOOTSTRAP_TIERS = new Set(['fast', 'slow']);
+
+// A tier bootstrap read (?tier=fast|slow, no other params) returns the shared
+// production seed payload — identical for every caller (see PR #4499 non-goals:
+// only static transforms like wildfire compaction / enrichmentMeta strip apply,
+// never per-user variance). When such a request carries no credentials it is
+// therefore safe to serve from the shared CDN, restoring the s-maxage shield
+// that #4499 inadvertently removed for cookie-bearing dashboard boots (#5249).
+// Scoped to the two fixed tier shapes (not arbitrary ?keys= combinations) so
+// the CDN key space stays tiny and hit rate high; credentialed / API-key /
+// arbitrary-key reads keep the no-store posture below.
+export function isPublicTierBootstrapRequest(req) {
+  if (req.method !== 'GET' && req.method !== 'HEAD') return false;
+
+  const url = new URL(req.url);
+  const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname;
+  if (pathname !== '/api/bootstrap') return false;
+
+  const params = Array.from(url.searchParams.keys());
+  if (params.some((key) => key !== 'tier')) return false;
+
+  const tierParams = url.searchParams.getAll('tier');
+  if (tierParams.length !== 1) return false;
+
+  return PUBLIC_BOOTSTRAP_TIERS.has(tierParams[0]);
+}
+
 const BOOTSTRAP_CREDENTIAL_COOKIES = new Set(['wm-session', 'wm-pro-key', 'wm-widget-key']);
 
 function hasBootstrapCredentialCookie(req) {
@@ -325,8 +352,16 @@ function authFailure(body, status, cors, extraHeaders = {}) {
 
 async function validateBootstrapAuth(req, cors) {
   const headerKey = getHeaderApiKey(req);
-  if (!headerKey && !hasBootstrapCredentialCookie(req) && isPublicWeatherBootstrapRequest(req)) {
-    return { ok: true, kind: 'public-weather' };
+  if (!headerKey && !hasBootstrapCredentialCookie(req)) {
+    if (isPublicWeatherBootstrapRequest(req)) {
+      return { ok: true, kind: 'public-weather' };
+    }
+    // Credential-less tier reads serve the same public seed payload and are
+    // CDN-cacheable — restores the shared-cache shield for dashboard boots
+    // (client now sends these with credentials: 'omit'; see #5249).
+    if (isPublicTierBootstrapRequest(req)) {
+      return { ok: true, kind: 'public-tier' };
+    }
   }
 
   const apiKeyResult = await validateApiKey(req);
@@ -397,8 +432,12 @@ async function validateBootstrapAuth(req, cors) {
   };
 }
 
+function isPublicBootstrapKind(authKind) {
+  return authKind === 'public-weather' || authKind === 'public-tier';
+}
+
 function successCacheHeaders(tier, authKind, cors) {
-  if (authKind !== 'public-weather') {
+  if (!isPublicBootstrapKind(authKind)) {
     return {
       ...cors,
       'Cache-Control': 'no-store',
@@ -444,9 +483,12 @@ export default async function handler(req) {
   try {
     cached = await getCachedJsonBatch(keys);
   } catch {
-    // Only the anonymous weather bootstrap may avoid no-store here; every
-    // other successful bootstrap response can carry session/key scoped data.
-    const cacheControl = auth.kind === 'public-weather' ? 'no-cache' : 'no-store';
+    // Only the anonymous public bootstrap paths (weather probe + credential-less
+    // tier reads) may avoid no-store here; every other successful bootstrap
+    // response can carry session/key scoped data. no-cache (revalidate) rather
+    // than a cacheable posture so a transient empty/error payload is never
+    // pinned in the shared CDN.
+    const cacheControl = isPublicBootstrapKind(auth.kind) ? 'no-cache' : 'no-store';
     return jsonResponse({ data: {}, missing: names }, 200, { ...cors, 'Cache-Control': cacheControl });
   }
 

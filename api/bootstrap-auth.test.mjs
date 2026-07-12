@@ -158,6 +158,21 @@ function makeWeatherBootstrapRequest(headers = {}) {
   });
 }
 
+function makeTierBootstrapRequest(tier = 'fast', headers = {}) {
+  return new Request(`https://api.worldmonitor.app/api/bootstrap?tier=${tier}`, {
+    method: 'GET',
+    headers,
+  });
+}
+
+function assertSharedCacheHeaders(resp) {
+  // Tier responses intentionally avoid public/s-maxage in Cache-Control (CF in
+  // front of api.worldmonitor.app would mispin ACAO) and shield via Vercel's
+  // CDN-Cache-Control instead.
+  assert.ok(resp.headers.get('cdn-cache-control'));
+  assert.match(resp.headers.get('cdn-cache-control') || '', /\b(public|s-maxage)\b/i);
+}
+
 function assertNonSharedCacheHeaders(resp) {
   assert.equal(resp.headers.get('cdn-cache-control'), null);
   assert.equal(resp.headers.get('vercel-cdn-cache-control'), null);
@@ -401,5 +416,79 @@ test('anonymous weather-only bootstrap (no key header) keeps the shared public c
     assert.match(resp.headers.get('cache-control') || '', /\bpublic\b/);
     assert.match(resp.headers.get('cache-control') || '', /s-maxage/);
     assert.ok(resp.headers.get('cdn-cache-control'));
+  });
+});
+
+test('anonymous fast-tier bootstrap (no credentials) is CDN-cacheable — restores the #5249 shield', async () => {
+  // The regression: dashboard boots carry an anonymous wm-session cookie, so
+  // successful tier reads returned no-store and every boot re-read the full
+  // registry from Upstash. A credential-less tier read serves the shared public
+  // seed payload and MUST carry the CDN shared-cache shield.
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async (calls) => {
+    const resp = await handler(makeTierBootstrapRequest('fast'));
+
+    assert.equal(resp.status, 200);
+    assert.deepEqual(Object.keys(await resp.json()).sort(), ['data', 'missing']);
+    assertSharedCacheHeaders(resp);
+    // fast tier shields at s-maxage=600; browser Cache-Control stays private
+    // (max-age only — no public/s-maxage) to avoid CF ACAO mispinning.
+    assert.match(resp.headers.get('cdn-cache-control') || '', /s-maxage=600/);
+    assert.doesNotMatch(resp.headers.get('cache-control') || '', /\bpublic\b/);
+    // Public path short-circuits before any key/entitlement validation.
+    assert.equal(calls.some((call) => call.url.endsWith('/api/internal-validate-api-key')), false);
+    assert.equal(calls.some((call) => call.url.endsWith('/api/internal-entitlements')), false);
+  });
+});
+
+test('anonymous slow-tier bootstrap (no credentials) is CDN-cacheable with the slow TTL', async () => {
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
+    const resp = await handler(makeTierBootstrapRequest('slow'));
+
+    assert.equal(resp.status, 200);
+    assertSharedCacheHeaders(resp);
+    assert.match(resp.headers.get('cdn-cache-control') || '', /s-maxage=7200/);
+  });
+});
+
+test('session-cookie tier bootstrap stays no-store (cookie disqualifies the public path)', async () => {
+  // A cookie-bearing tier read can carry session scope, so it keeps no-store —
+  // this is exactly why the client now sends tier fetches with credentials:'omit'.
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
+    const { token } = await issueSessionToken();
+    const resp = await handler(makeTierBootstrapRequest('fast', { Cookie: `wm-session=${token}` }));
+
+    assert.equal(resp.status, 200);
+    assertNonSharedCacheHeaders(resp);
+  });
+});
+
+test('enterprise-key tier bootstrap stays no-store (key auth is never shared-cacheable)', async () => {
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
+    const resp = await handler(makeTierBootstrapRequest('fast', { 'X-WorldMonitor-Key': ENTERPRISE_KEY }));
+
+    assert.equal(resp.status, 200);
+    assertNonSharedCacheHeaders(resp);
+  });
+});
+
+test('tier bootstrap with extra params is not treated as the public path', async () => {
+  // Only the two fixed tier shapes qualify; an arbitrary extra param must fall
+  // back to key auth (401 here) so we never widen the cacheable key space.
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
+    const resp = await handler(
+      new Request('https://api.worldmonitor.app/api/bootstrap?tier=fast&keys=marketQuotes', { method: 'GET' }),
+    );
+
+    assert.equal(resp.status, 401);
+    assert.equal(resp.headers.get('cache-control'), 'no-store');
+  });
+});
+
+test('unknown tier value does not qualify for the public path', async () => {
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
+    const resp = await handler(makeTierBootstrapRequest('bogus'));
+
+    assert.equal(resp.status, 401);
+    assert.equal(resp.headers.get('cache-control'), 'no-store');
   });
 });
