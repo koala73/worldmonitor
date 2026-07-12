@@ -10,7 +10,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export const ACLED_SETTLEMENT_LAG_MS = 2 * DAY_MS;
 export const UCDP_SETTLEMENT_LAG_MS = 14 * DAY_MS;
 
-const SUPPORTED_FUNCTIONS = new Set(['count', 'riskScore', 'present', 'yesPrice', 'hexCount', 'price']);
+const SUPPORTED_FUNCTIONS = new Set(['count', 'riskScore', 'present', 'yesPrice', 'hexCount', 'price', 'value']);
 const COUNTRY_ALIASES = loadCountryAliases();
 
 export function countSettlementLagMs(feedKey) {
@@ -169,6 +169,11 @@ export function extractMetricValue(parsed, feedData) {
       return firstFinite(record.hexCount, record.hex_count, record.hexes, record.count);
     case 'price':
       return firstFinite(record.price, record.last, record.value);
+    case 'value':
+      // Generic scalar read for numeric feeds (energy/economic bet engine,
+      // #5233). Feed loaders shape a metric snapshot into records carrying
+      // `value` (with `current` as the natural fallback for period feeds).
+      return firstFinite(record.value, record.current, record.last, record.price);
     default:
       return NaN;
   }

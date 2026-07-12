@@ -88,6 +88,10 @@ export const RESOLUTION_FEED_KEYS = new Set([
   'economic:bis:policy:v1',
   'supply_chain:shipping:v2',
   'correlation:cards-bootstrap:v1',
+  // Energy bet-engine pilot (#5233): eia-petroleum stocks/prices. The resolver
+  // seeder shapes {wti,brent,production,inventory} into records carrying
+  // {metric, value}; bets read via `...|value(metric==<name>)`.
+  'energy:eia-petroleum:v1',
 ]);
 
 // ── Signal type -> hard family (D3) ──────────────────────────────────────
