@@ -18,18 +18,20 @@ const ORIGINAL_ENV = {
 };
 
 let recordedCalls;
+let expireResult;
 
 beforeEach(() => {
   process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.example.com';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
   recordedCalls = [];
+  expireResult = 0;
 
   globalThis.fetch = async (url, opts = {}) => {
     const body = opts?.body ? (() => { try { return JSON.parse(opts.body); } catch { return opts.body; } })() : null;
     recordedCalls.push({ url: String(url), method: opts?.method || 'GET', body });
     // Lock acquire: SET NX returns OK. Pipeline (EXPIRE) returns array. Default: OK.
     if (Array.isArray(body) && Array.isArray(body[0])) {
-      return new Response(JSON.stringify(body.map(() => ({ result: 0 }))), { status: 200 });
+      return new Response(JSON.stringify(body.map(() => ({ result: expireResult }))), { status: 200 });
     }
     return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
   };
@@ -79,6 +81,19 @@ function expireKeys() {
     .map(cmd => cmd[1]);
 }
 
+function runEmptyContractRetry(resource) {
+  return runWithExitTrap(() =>
+    runSeed('test', resource, `test:${resource}:v1`, async () => ({ items: [] }), {
+      validateFn: (d) => Array.isArray(d?.items),
+      ttlSeconds: 3600,
+      sourceVersion: 'test-v1',
+      schemaVersion: 1,
+      maxStaleMin: 120,
+      declareRecords: (d) => d.items.length,
+    }),
+  );
+}
+
 test('fetch failure extends existing TTL and exits with graceful-failure code', async () => {
   const exitCode = await runWithExitTrap(() =>
     runSeed('test', 'fetch-fail', 'test:fetch-fail:v1', async () => {
@@ -106,6 +121,29 @@ test('fetch failure extends existing TTL and exits with graceful-failure code', 
     countMetaSets('fetch-fail'), 0,
     'fetch failure must not write fresh seed-meta while reporting graceful failure',
   );
+});
+
+test('contract RETRY hard-fails when expired keys make last-good preservation impossible', async () => {
+  expireResult = 0;
+  const exitCode = await runEmptyContractRetry('retry-missing');
+
+  assert.equal(exitCode, 1,
+    'zero-yield RETRY must be a hard failure when EXPIRE confirms the last-good keys are gone');
+  assert.deepEqual(
+    new Set(expireKeys()),
+    new Set(['test:retry-missing:v1', 'seed-meta:test:retry-missing']),
+    'RETRY must attempt to preserve both canonical and seed-meta keys before deciding its exit state',
+  );
+  assert.equal(countMetaSets('retry-missing'), 0,
+    'a failed RETRY must not write fresh seed-meta and mask the outage');
+});
+
+test('contract RETRY remains graceful when every last-good key is preserved', async () => {
+  expireResult = 1;
+  const exitCode = await runEmptyContractRetry('retry-preserved');
+
+  assert.equal(exitCode, 0,
+    'zero-yield RETRY may remain exit 0 when every last-good key was actually preserved');
 });
 
 test('validation failure with emptyDataIsFailure:true does NOT refresh seed-meta', async () => {

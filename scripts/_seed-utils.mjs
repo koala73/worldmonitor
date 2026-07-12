@@ -1511,12 +1511,21 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       }
     }
 
-    // Contract RETRY on empty (no zeroIsValid) — skip publish, extend TTL, exit 0.
+    // Contract RETRY on empty (no zeroIsValid) — skip publish and preserve the
+    // last-good keys. Exit 0 only when Redis confirms every key was actually
+    // extended; otherwise the data is already gone (or preservation could not
+    // be verified), so a green process would hide a live outage indefinitely.
     if (contractState === 'RETRY') {
       const durationMs = Date.now() - startMs;
       const keys = [canonicalKey, `seed-meta:${domain}:${resource}`];
       if (extraKeys) keys.push(...extraKeys.map(ek => ek.key));
-      await extendExistingTtl(keys, ttlSeconds || 600);
+      const preserved = await extendExistingTtl(keys, ttlSeconds || 600);
+      if (!preserved) {
+        console.error(`  FAILURE: declareRecords returned 0 and last-good preservation failed — one or more keys are missing or could not be extended`);
+        console.log(`\n=== Done (${Math.round(durationMs)}ms, RETRY FAILED) ===`);
+        await releaseLock(`${domain}:${resource}`, runId);
+        await exitAfterTelemetryFlush(1);
+      }
       console.log(`  RETRY: declareRecords returned 0 (zeroIsValid=false) — envelope unchanged, TTL extended, bundle will retry next cycle`);
       console.log(`\n=== Done (${Math.round(durationMs)}ms, RETRY) ===`);
       await releaseLock(`${domain}:${resource}`, runId);
