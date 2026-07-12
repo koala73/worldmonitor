@@ -1,4 +1,4 @@
-import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { getCorsHeaders, getPublicCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import {
   USER_API_KEY_GATEWAY_VALIDATION_ERROR,
   getHeaderApiKey,
@@ -249,8 +249,20 @@ const PUBLIC_BOOTSTRAP_TIERS = new Set(['fast', 'slow']);
 // Scoped to the two fixed tier shapes (not arbitrary ?keys= combinations) so
 // the CDN key space stays tiny and hit rate high; credentialed / API-key /
 // arbitrary-key reads keep the no-store posture below.
+//
+// INVARIANT — do not break: the shared CDN caches these by URL only; it does
+// NOT vary on Cookie, so a cached public-tier entry can be served to a later
+// cookie-bearing request for the same ?tier URL (and vice-versa). That is safe
+// ONLY because the tier payload is byte-identical for every caller. Any future
+// change that makes tier output vary by session/entitlement/user MUST stop
+// classifying these as public (or add a Vary the CDN honors) or it will
+// cross-serve one caller's snapshot to another.
+//
+// GET only: a HEAD here would still run the full registry Redis read to build a
+// body it must not return — the exact unshielded egress this path exists to
+// avoid. HEAD tier reads have no client and fall through to the no-store path.
 export function isPublicTierBootstrapRequest(req) {
-  if (req.method !== 'GET' && req.method !== 'HEAD') return false;
+  if (req.method !== 'GET') return false;
 
   const url = new URL(req.url);
   const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname;
@@ -444,9 +456,16 @@ function successCacheHeaders(tier, authKind, cors) {
     };
   }
 
+  // Public seed payload with no per-user variation: serve with ACAO:* (no
+  // Vary: Origin, no Access-Control-Allow-Credentials) so the shared CDN stores
+  // ONE entry per URL instead of one per Origin, and no preview/embed origin can
+  // pin an echoed ACAO onto a cached response. Safe because isDisallowedOrigin()
+  // already rejected unauthorized origins at the handler entry (this is exactly
+  // the contract getPublicCorsHeaders documents).
+  const publicCors = getPublicCorsHeaders();
   const cacheControl = (tier && TIER_CACHE[tier]) || 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900';
   return {
-    ...cors,
+    ...publicCors,
     'Cache-Control': cacheControl,
     'CDN-Cache-Control': (tier && TIER_CDN_CACHE[tier]) || TIER_CDN_CACHE.fast,
   };
@@ -487,9 +506,12 @@ export default async function handler(req) {
     // tier reads) may avoid no-store here; every other successful bootstrap
     // response can carry session/key scoped data. no-cache (revalidate) rather
     // than a cacheable posture so a transient empty/error payload is never
-    // pinned in the shared CDN.
-    const cacheControl = isPublicBootstrapKind(auth.kind) ? 'no-cache' : 'no-store';
-    return jsonResponse({ data: {}, missing: names }, 200, { ...cors, 'Cache-Control': cacheControl });
+    // pinned in the shared CDN. Public paths also emit ACAO:* (getPublicCorsHeaders)
+    // to match the success path and avoid per-Origin ACAO pinning.
+    const isPublic = isPublicBootstrapKind(auth.kind);
+    const cacheControl = isPublic ? 'no-cache' : 'no-store';
+    const errorCors = isPublic ? getPublicCorsHeaders() : cors;
+    return jsonResponse({ data: {}, missing: names }, 200, { ...errorCors, 'Cache-Control': cacheControl });
   }
 
   const data = {};

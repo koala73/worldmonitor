@@ -173,6 +173,14 @@ function assertSharedCacheHeaders(resp) {
   assert.match(resp.headers.get('cdn-cache-control') || '', /\b(public|s-maxage)\b/i);
 }
 
+function assertPublicCorsHeaders(resp) {
+  // Public seed payload → ACAO:* with no Vary: Origin and no credentials, so the
+  // shared CDN stores one entry per URL and no origin can pin an echoed ACAO.
+  assert.equal(resp.headers.get('access-control-allow-origin'), '*');
+  assert.equal(resp.headers.get('access-control-allow-credentials'), null);
+  assert.equal(resp.headers.get('vary'), null);
+}
+
 function assertNonSharedCacheHeaders(resp) {
   assert.equal(resp.headers.get('cdn-cache-control'), null);
   assert.equal(resp.headers.get('vercel-cdn-cache-control'), null);
@@ -430,6 +438,7 @@ test('anonymous fast-tier bootstrap (no credentials) is CDN-cacheable — restor
     assert.equal(resp.status, 200);
     assert.deepEqual(Object.keys(await resp.json()).sort(), ['data', 'missing']);
     assertSharedCacheHeaders(resp);
+    assertPublicCorsHeaders(resp);
     // fast tier shields at s-maxage=600; browser Cache-Control stays private
     // (max-age only — no public/s-maxage) to avoid CF ACAO mispinning.
     assert.match(resp.headers.get('cdn-cache-control') || '', /s-maxage=600/);
@@ -437,6 +446,21 @@ test('anonymous fast-tier bootstrap (no credentials) is CDN-cacheable — restor
     // Public path short-circuits before any key/entitlement validation.
     assert.equal(calls.some((call) => call.url.endsWith('/api/internal-validate-api-key')), false);
     assert.equal(calls.some((call) => call.url.endsWith('/api/internal-entitlements')), false);
+  });
+});
+
+test('HEAD tier bootstrap is not the public path (no unshielded Redis read)', async () => {
+  // A HEAD read must not qualify for the cacheable public-tier path, or it would
+  // run the full registry Redis pipeline to build a body it cannot return.
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async (calls) => {
+    const resp = await handler(
+      new Request('https://api.worldmonitor.app/api/bootstrap?tier=fast', { method: 'HEAD' }),
+    );
+
+    assert.equal(resp.status, 401);
+    assert.equal(resp.headers.get('cache-control'), 'no-store');
+    // Rejected before any Redis GET pipeline runs.
+    assert.equal(calls.some((call) => call.url.startsWith('https://upstash.test')), false);
   });
 });
 
