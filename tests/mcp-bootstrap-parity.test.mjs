@@ -124,6 +124,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'on-demand: written by writeSimulationOutcome after simulation runs (matches api/health.js:467 ON_DEMAND_KEYS rationale). Internal pipeline artifact, not a queryable slice.'],
   ['forecast:resolutions:v1',
     'operational: persistent forecast resolution working ledger with raw per-forecast evidence and audit receipt state. Exposed through health and summarized by get_forecast_scorecard; raw ledger MCP access deferred until a filtered/sliced tool exists.'],
+  ['forecast:funnel:health:v1',
+    'operational: funnel-diversity guardrail signal (#5233) written by seed-forecasts afterPublish. Internal health/ops metric surfaced via /api/health (collapse → SEED_ERROR); not a queryable user-facing slice, so no MCP tool.'],
 
   // ===========================================================================
   // Recovery pillar scorer inputs — no dedicated recovery-data MCP tool yet.
