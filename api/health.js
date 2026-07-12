@@ -690,6 +690,24 @@ function strlenIsData(strlen) {
   return strlen > 0 && strlen !== NEG_SENTINEL.length;
 }
 
+// Data keys whose Redis value is a LIST rather than a string. STRLEN against a
+// list returns WRONGTYPE, which lands in keyErrors and pins the key at
+// REDIS_PARTIAL forever even though its seeder is healthy — measure these with
+// LLEN instead. Presence is then simply `len > 0`: the NEG_SENTINEL
+// byte-length rule above is a STRING concept, and applying it to a list would
+// declare a 10-ELEMENT history empty.
+const LIST_DATA_KEYS = new Set([
+  STANDALONE_KEYS.forecastBets, // LPUSH/LTRIM — scripts/seed-forecast-bets.mjs
+]);
+
+function dataLenCommand(redisKey) {
+  return [LIST_DATA_KEYS.has(redisKey) ? 'LLEN' : 'STRLEN', redisKey];
+}
+
+function keyHasData(redisKey, len) {
+  return LIST_DATA_KEYS.has(redisKey) ? len > 0 : strlenIsData(len);
+}
+
 function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   if (!seedCfg) {
     return { seedAge: null, seedStale: null, seedError: false, metaReadFailed: false, metaCount: null, contentAge: null };
@@ -753,7 +771,7 @@ function isCascadeCovered(name, hasData, keyStrens, keyErrors) {
     const sibKey = STANDALONE_KEYS[sibling] ?? BOOTSTRAP_KEYS[sibling];
     if (!sibKey) continue;
     if (keyErrors.get(sibKey)) continue;
-    if (strlenIsData(keyStrens.get(sibKey) ?? 0)) return true;
+    if (keyHasData(sibKey, keyStrens.get(sibKey) ?? 0)) return true;
   }
   return false;
 }
@@ -776,7 +794,7 @@ function classifyKey(name, redisKey, opts, ctx) {
   }
 
   const strlen = keyStrens.get(redisKey) ?? 0;
-  const hasData = strlenIsData(strlen);
+  const hasData = keyHasData(redisKey, strlen);
   const { seedAge, seedStale, seedError, metaCount, contentAge } = meta;
 
   // When the data key is gone the meta count is meaningless; force records=0
@@ -941,11 +959,12 @@ export default async function handler(req, ctx) {
 
   // STRLEN for data keys avoids loading large blobs into memory (OOM prevention).
   // NEG_SENTINEL ('__WM_NEG__') is 10 bytes — strlenIsData() rejects exactly
-  // that length while accepting any other non-zero strlen as data.
+  // that length while accepting any other non-zero strlen as data. List-typed
+  // keys (LIST_DATA_KEYS) take LLEN instead; STRLEN would WRONGTYPE on them.
   let results;
   try {
     const commands = [
-      ...allDataKeys.map(k => ['STRLEN', k]),
+      ...allDataKeys.map(dataLenCommand),
       ...allMetaKeys.map(k => ['GET', k]),
       ...activationEntries.map(([, marker]) => ['EXISTS', marker]),
     ];
@@ -1149,6 +1168,10 @@ export const __testing__ = {
   classifyKey,
   ACTIVATION_MARKERS,
   STATUS_COUNTS,
+  // List-typed data keys + the command builder that measures them with LLEN
+  // instead of STRLEN (tests/health-list-data-keys.test.mjs).
+  LIST_DATA_KEYS,
+  dataLenCommand,
   // U7 (Tier 3 parity test): exposed for tests/mcp-bootstrap-parity.test.mjs
   // to walk the canonical seeded-data inventory. Both consts are unexported
   // at module scope by design — this is the test-only escape hatch.
