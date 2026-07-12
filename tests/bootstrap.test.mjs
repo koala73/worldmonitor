@@ -244,6 +244,8 @@ describe('Frontend hydration (src/services/bootstrap.ts)', () => {
 
   it('fetches tiered bootstrap URLs', () => {
     assert.ok(src.includes('/api/bootstrap?tier='), 'Missing tiered bootstrap fetch URLs');
+    assert.ok(src.includes('&public=1'), 'Tiered bootstrap fetches must use the isolated public cache URL');
+    assert.ok(src.includes("credentials: 'omit'"), 'Public tier fetches must omit credentials');
   });
 
   it('handles fetch failure silently', () => {

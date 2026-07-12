@@ -410,6 +410,64 @@ describe('wm-session refresh-on-401 (Layer 2)', () => {
     ]);
   });
 
+  it('forwards only explicit credential-less public tier reads during the dead-session cooldown', async () => {
+    memoryStorage.clear();
+
+    const forwarded: Array<{ url: string; credentials: RequestCredentials | undefined }> = [];
+    currentFetchHandler = (input, init) => {
+      const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
+      if (url.includes('/api/wm-session')) {
+        return Promise.resolve(new Response(JSON.stringify({ exp: FAR_FUTURE }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }));
+      }
+      const credentials = init?.credentials ?? (input instanceof Request ? input.credentials : undefined);
+      forwarded.push({ url, credentials });
+      if (url.includes('public=1')) return Promise.resolve(new Response('public-tier', { status: 200 }));
+      return Promise.resolve(new Response('still-rejected', { status: 401 }));
+    };
+
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      const failed = await wrappedFetch('https://api.worldmonitor.app/api/infrastructure/v1/list-service-statuses');
+      assert.equal(failed.status, 401, 'failed recovery should enter the dead-session cooldown');
+
+      const fast = await wrappedFetch('https://api.worldmonitor.app/api/bootstrap?tier=fast&public=1', {
+        credentials: 'omit',
+      });
+      assert.equal(fast.status, 200, 'string input should reach the public tier while the session is dead');
+
+      const slowRequest = new Request('https://api.worldmonitor.app/api/bootstrap?public=1&tier=slow', {
+        credentials: 'omit',
+      });
+      const slow = await wrappedFetch(slowRequest);
+      assert.equal(slow.status, 200, 'Request input should preserve its effective omit credentials');
+
+      const missingPublicFlag = await wrappedFetch('https://api.worldmonitor.app/api/bootstrap?tier=fast', {
+        credentials: 'omit',
+      });
+      assert.equal(missingPublicFlag.status, 503, 'ordinary tier reads must remain session-gated');
+
+      const credentialed = await wrappedFetch('https://api.worldmonitor.app/api/bootstrap?tier=fast&public=1', {
+        credentials: 'include',
+      });
+      assert.equal(credentialed.status, 503, 'credentialed tier reads must remain session-gated');
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    assert.deepEqual(
+      forwarded.slice(-2),
+      [
+        { url: 'https://api.worldmonitor.app/api/bootstrap?tier=fast&public=1', credentials: 'omit' },
+        { url: 'https://api.worldmonitor.app/api/bootstrap?public=1&tier=slow', credentials: 'omit' },
+      ],
+      'only the two explicit public tier requests should reach native fetch during cooldown',
+    );
+  });
+
   it('captures ONE wm_session_dead Sentry warning per degraded episode, not one per suppressed call', async () => {
     // reportServerError (premium-fetch.ts) deliberately skips the synthetic
     // X-Wm-Session-Degraded 503s, so this once-per-episode capture is the

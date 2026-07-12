@@ -240,23 +240,17 @@ export function isPublicWeatherBootstrapRequest(req) {
 
 const PUBLIC_BOOTSTRAP_TIERS = new Set(['fast', 'slow']);
 
-// A tier bootstrap read (?tier=fast|slow, no other params) returns the shared
+// An explicit public tier bootstrap read (?tier=fast|slow&public=1, no other
+// params) returns the shared
 // production seed payload — identical for every caller (see PR #4499 non-goals:
 // only static transforms like wildfire compaction / enrichmentMeta strip apply,
-// never per-user variance). When such a request carries no credentials it is
-// therefore safe to serve from the shared CDN, restoring the s-maxage shield
-// that #4499 inadvertently removed for cookie-bearing dashboard boots (#5249).
-// Scoped to the two fixed tier shapes (not arbitrary ?keys= combinations) so
-// the CDN key space stays tiny and hit rate high; credentialed / API-key /
-// arbitrary-key reads keep the no-store posture below.
-//
-// INVARIANT — do not break: the shared CDN caches these by URL only; it does
-// NOT vary on Cookie, so a cached public-tier entry can be served to a later
-// cookie-bearing request for the same ?tier URL (and vice-versa). That is safe
-// ONLY because the tier payload is byte-identical for every caller. Any future
-// change that makes tier output vary by session/entitlement/user MUST stop
-// classifying these as public (or add a Vary the CDN honors) or it will
-// cross-serve one caller's snapshot to another.
+// never per-user variance). The explicit marker gives the shared response its
+// own CDN cache key; the legacy ?tier=fast|slow URLs remain credentialed and
+// no-store, so a warmed public response cannot bypass their auth/CORS contract.
+// The public URL is public regardless of request credentials because a CDN hit
+// occurs before handler auth. Callers that need credential processing must use
+// the legacy URL. Scoped to the two fixed public shapes so the CDN key space
+// stays tiny and hit rate high.
 //
 // GET only: a HEAD here would still run the full registry Redis read to build a
 // body it must not return — the exact unshielded egress this path exists to
@@ -269,10 +263,11 @@ export function isPublicTierBootstrapRequest(req) {
   if (pathname !== '/api/bootstrap') return false;
 
   const params = Array.from(url.searchParams.keys());
-  if (params.some((key) => key !== 'tier')) return false;
+  if (params.some((key) => key !== 'tier' && key !== 'public')) return false;
 
   const tierParams = url.searchParams.getAll('tier');
-  if (tierParams.length !== 1) return false;
+  const publicParams = url.searchParams.getAll('public');
+  if (tierParams.length !== 1 || publicParams.length !== 1 || publicParams[0] !== '1') return false;
 
   return PUBLIC_BOOTSTRAP_TIERS.has(tierParams[0]);
 }
@@ -334,10 +329,21 @@ async function getCachedJsonBatch(keys) {
   // populate prefixed keys, so prefixing would always miss.
   const pipeline = keys.map((k) => ['GET', k]);
   const data = await redisPipeline(pipeline, 3000);
-  if (!data) return result;
+  if (!Array.isArray(data) || data.length !== keys.length) {
+    throw new Error('Bootstrap Redis pipeline unavailable');
+  }
 
   for (let i = 0; i < keys.length; i++) {
-    const raw = data[i]?.result;
+    const entry = data[i];
+    if (
+      !entry
+      || typeof entry !== 'object'
+      || !('result' in entry)
+      || entry.error != null
+    ) {
+      throw new Error('Bootstrap Redis pipeline command failed');
+    }
+    const raw = entry.result;
     if (raw) {
       try {
         const parsed = JSON.parse(raw);
@@ -364,15 +370,14 @@ function authFailure(body, status, cors, extraHeaders = {}) {
 
 async function validateBootstrapAuth(req, cors) {
   const headerKey = getHeaderApiKey(req);
+  // The explicit public URL must have one response contract for every request:
+  // Vercel may serve it from cache before cookie/header auth reaches this code.
+  if (isPublicTierBootstrapRequest(req)) {
+    return { ok: true, kind: 'public-tier' };
+  }
   if (!headerKey && !hasBootstrapCredentialCookie(req)) {
     if (isPublicWeatherBootstrapRequest(req)) {
       return { ok: true, kind: 'public-weather' };
-    }
-    // Credential-less tier reads serve the same public seed payload and are
-    // CDN-cacheable — restores the shared-cache shield for dashboard boots
-    // (client now sends these with credentials: 'omit'; see #5249).
-    if (isPublicTierBootstrapRequest(req)) {
-      return { ok: true, kind: 'public-tier' };
     }
   }
 
@@ -502,16 +507,22 @@ export default async function handler(req) {
   try {
     cached = await getCachedJsonBatch(keys);
   } catch {
-    // Only the anonymous public bootstrap paths (weather probe + credential-less
-    // tier reads) may avoid no-store here; every other successful bootstrap
-    // response can carry session/key scoped data. no-cache (revalidate) rather
-    // than a cacheable posture so a transient empty/error payload is never
-    // pinned in the shared CDN. Public paths also emit ACAO:* (getPublicCorsHeaders)
-    // to match the success path and avoid per-Origin ACAO pinning.
     const isPublic = isPublicBootstrapKind(auth.kind);
-    const cacheControl = isPublic ? 'no-cache' : 'no-store';
-    const errorCors = isPublic ? getPublicCorsHeaders() : cors;
-    return jsonResponse({ data: {}, missing: names }, 200, { ...errorCors, 'Cache-Control': cacheControl });
+    if (isPublic) {
+      // Infrastructure failure is not an empty registry. Make it retryable and
+      // omit every CDN cache header so the outage response cannot replace a
+      // healthy public snapshot at the shared cache key.
+      return jsonResponse(
+        { error: 'Bootstrap service temporarily unavailable' },
+        503,
+        {
+          ...getPublicCorsHeaders(),
+          'Cache-Control': 'no-store',
+          'Retry-After': '5',
+        },
+      );
+    }
+    return jsonResponse({ data: {}, missing: names }, 200, { ...cors, 'Cache-Control': 'no-store' });
   }
 
   const data = {};

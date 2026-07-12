@@ -231,6 +231,35 @@ export function isApiCallTarget(url: string, apiOrigin: string): boolean {
   return parsed.origin === apiOrigin && parsed.pathname.startsWith('/api/');
 }
 
+function isCredentiallessPublicTierRequest(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  url: string,
+): boolean {
+  const credentials = init?.credentials ?? (input instanceof Request ? input.credentials : undefined);
+  if (credentials !== 'omit') return false;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url, typeof location === 'undefined' ? 'http://localhost' : location.href);
+  } catch {
+    return false;
+  }
+
+  const pathname = parsed.pathname.length > 1 ? parsed.pathname.replace(/\/+$/, '') : parsed.pathname;
+  if (pathname !== '/api/bootstrap') return false;
+
+  const params = Array.from(parsed.searchParams.keys());
+  if (params.some((key) => key !== 'tier' && key !== 'public')) return false;
+
+  const tiers = parsed.searchParams.getAll('tier');
+  const publicFlags = parsed.searchParams.getAll('public');
+  return tiers.length === 1
+    && (tiers[0] === 'fast' || tiers[0] === 'slow')
+    && publicFlags.length === 1
+    && publicFlags[0] === '1';
+}
+
 // If a caller already set Authorization / X-WorldMonitor-Key / X-Api-Key, we
 // don't override — Clerk Bearer JWT and explicit user keys still take
 // precedence over the anonymous session token.
@@ -268,6 +297,14 @@ export function installWmSessionFetchInterceptor(): void {
     })();
 
     if (!isApiCallTarget(url, apiOrigin)) return original(input, init);
+
+    // Public tier hydration is intentionally credential-less and does not rely
+    // on the anonymous wm-session cookie. Let this exact request shape reach
+    // the native fetch even while session recovery is cooling down; otherwise
+    // the interceptor's synthetic 503 prevents the public CDN path from
+    // restoring the dashboard. Keep the bypass narrow so arbitrary bootstrap
+    // reads cannot opt out of the normal session machinery.
+    if (isCredentiallessPublicTierRequest(input, init, url)) return original(input, init);
 
     // Premium routes have a dedicated auth-injection layer
     // (`installWebApiRedirect`'s `enrichInitForPremium` adds Clerk Bearer JWT,

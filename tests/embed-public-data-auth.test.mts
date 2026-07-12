@@ -64,7 +64,11 @@ describe('embed public data auth', () => {
     assert.equal(isPublicWeatherBootstrapRequest(publicReq), true);
 
     const publicRes = await bootstrapHandler(publicReq);
-    assert.equal(publicRes.status, 200);
+    // This test intentionally has no Redis credentials. The public route still
+    // bypasses auth, then reports the unavailable cache as a retryable outage
+    // instead of turning it into a cacheable empty success.
+    assert.equal(publicRes.status, 503);
+    assert.equal(publicRes.headers.get('cache-control'), 'no-store');
 
     const rejected = [
       'https://worldmonitor.app/api/bootstrap',

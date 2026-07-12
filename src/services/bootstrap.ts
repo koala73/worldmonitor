@@ -116,13 +116,10 @@ async function fetchTier(
   let missingKeys: string[] = [];
 
   try {
-    // credentials: 'omit' — the tier payload is the shared public seed bundle
-    // (no per-session/per-user variance), so we deliberately drop the anonymous
-    // wm-session cookie. Without a credential cookie the server serves the
-    // CDN-cacheable public-tier path, restoring the shared-cache shield in
-    // front of Upstash (see #5249); sending the cookie forced no-store and made
-    // every boot re-read the full registry from Redis.
-    const resp = await fetch(toApiUrl(`/api/bootstrap?tier=${tier}`), { signal, credentials: 'omit' });
+    // public=1 gives the shared seed bundle a cache key distinct from the legacy
+    // credentialed tier URL. credentials:'omit' also avoids sending cookies to
+    // a route whose contract is explicitly public (see #5249).
+    const resp = await fetch(toApiUrl(`/api/bootstrap?tier=${tier}&public=1`), { signal, credentials: 'omit' });
     if (resp.ok) {
       const payload = (await resp.json()) as {
         data?: Record<string, unknown>;
