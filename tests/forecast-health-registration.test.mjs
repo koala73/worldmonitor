@@ -11,6 +11,16 @@ describe('forecast resolution health registration', () => {
     assert.equal(__testing__.SEED_META.forecastScorecard.key, 'seed-meta:forecast:scorecard');
   });
 
+  it('registers the funnel-diversity guardrail (#5233) as a standalone health check', () => {
+    // data key + companion seed-meta must stay paired so a collapsed funnel
+    // (seed-meta status:'error') surfaces via classifyKey's seedError path.
+    assert.equal(__testing__.STANDALONE_KEYS.forecastFunnel, 'forecast:funnel:health:v1');
+    assert.equal(__testing__.SEED_META.forecastFunnel.key, 'seed-meta:forecast:funnel:health:v1');
+    // absent-key window (before the first generator run ships it) must be
+    // tolerated as warn, never a hard EMPTY crit.
+    assert.ok(__testing__.EMPTY_DATA_OK_KEYS.has('forecastFunnel'));
+  });
+
   it('keeps forecast input feeds visible in strict health monitoring', () => {
     assert.equal(__testing__.STANDALONE_KEYS.temporalAnomalies, 'temporal:anomalies:v1');
     assert.equal(__testing__.SEED_META.temporalAnomalies.key, 'seed-meta:temporal:anomalies');
@@ -92,5 +102,62 @@ describe('forecast resolution health registration', () => {
     );
 
     assert.equal(entry.status, 'OK');
+  });
+});
+
+// The load-bearing claims of the funnel guardrail (#5233) driven through
+// classifyKey — not just constant presence — so a future refactor of the
+// EMPTY_DATA_OK_KEYS / seedError paths can't silently regress them.
+describe('funnel-diversity guardrail health classification', () => {
+  const NOW = 1_700_000_000_000;
+  const DATA_KEY = 'forecast:funnel:health:v1';
+  const META_KEY = 'seed-meta:forecast:funnel:health:v1';
+
+  function classify(ctxOverrides) {
+    return __testing__.classifyKey('forecastFunnel', DATA_KEY, { allowOnDemand: true }, {
+      keyStrens: new Map(),
+      keyErrors: new Map(),
+      keyMetaValues: new Map(),
+      keyMetaErrors: new Map(),
+      now: NOW,
+      ...ctxOverrides,
+    });
+  }
+
+  it('surfaces a collapsed funnel (seed-meta status:error) as SEED_ERROR → warn', () => {
+    const entry = classify({
+      keyStrens: new Map([[DATA_KEY, 120]]),
+      keyMetaValues: new Map([[META_KEY, JSON.stringify({
+        fetchedAt: NOW - 60_000, recordCount: 2, status: 'error', reasons: ['only 2 distinct domain(s) (min 4)'],
+      })]]),
+    });
+    assert.equal(entry.status, 'SEED_ERROR');
+    assert.equal(__testing__.STATUS_COUNTS[entry.status], 'warn');
+  });
+
+  it('tolerates the absent-key window (before the cron ships it) as warn, never a crit EMPTY', () => {
+    const entry = classify({}); // no data, no meta
+    assert.notEqual(__testing__.STATUS_COUNTS[entry.status], 'crit');
+    assert.equal(entry.status, 'STALE_SEED');
+  });
+
+  it('reports a fresh, diverse funnel as OK', () => {
+    const entry = classify({
+      keyStrens: new Map([[DATA_KEY, 120]]),
+      keyMetaValues: new Map([[META_KEY, JSON.stringify({
+        fetchedAt: NOW - 60_000, recordCount: 6, status: 'ok',
+      })]]),
+    });
+    assert.equal(entry.status, 'OK');
+  });
+
+  it('does not false-crit an empty (recordCount 0) run while the seed is fresh', () => {
+    const entry = classify({
+      keyStrens: new Map([[DATA_KEY, 40]]),
+      keyMetaValues: new Map([[META_KEY, JSON.stringify({
+        fetchedAt: NOW - 60_000, recordCount: 0, status: 'ok',
+      })]]),
+    });
+    assert.notEqual(__testing__.STATUS_COUNTS[entry.status], 'crit');
   });
 });

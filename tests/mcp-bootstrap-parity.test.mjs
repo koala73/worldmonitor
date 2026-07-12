@@ -126,6 +126,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'operational: persistent forecast resolution working ledger with raw per-forecast evidence and audit receipt state. Exposed through health and summarized by get_forecast_scorecard; raw ledger MCP access deferred until a filtered/sliced tool exists.'],
   ['forecast:bets:history:v1',
     'operational: shadow bet-engine stream (#5233) written by seed-forecast-bets and ingested by the resolver into the get_forecast_scorecard bet_engine slice. Not a user-facing queryable slice (shadow, never in forecast:predictions:v2), so no MCP tool.'],
+  ['forecast:funnel:health:v1',
+    'operational: funnel-diversity guardrail signal (#5233) written by seed-forecasts afterPublish. Internal health/ops metric surfaced via /api/health (collapse → SEED_ERROR); not a queryable user-facing slice, so no MCP tool.'],
 
   // ===========================================================================
   // Recovery pillar scorer inputs — no dedicated recovery-data MCP tool yet.

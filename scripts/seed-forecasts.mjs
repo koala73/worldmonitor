@@ -8,6 +8,7 @@ import { loadEnvFile, runSeed, CHROME_UA, withRetry, parseRetryAfterMs, getRespo
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { tagRegions } from './_prediction-scoring.mjs';
 import { attachResolutionSpecs } from './_forecast-resolution.mjs';
+import { assessFunnelDiversity } from './_forecast-funnel.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-storage.mjs';
 import { extractFirstJsonObject, extractFirstJsonArray, cleanJsonText } from './_llm-json.mjs';
 import { loadTickerSet } from './_ticker-validation.mjs';
@@ -58,6 +59,12 @@ const HISTORY_MAX_FORECASTS = 25;
 const HISTORY_TTL_SECONDS = 45 * 24 * 60 * 60;
 const TRACE_LATEST_KEY = 'forecast:trace:latest:v1';
 const TRACE_RUNS_KEY = 'forecast:trace:runs:v1';
+// Funnel-diversity guardrail (#5233, Phase 0). Records how diverse and how
+// synthetic the published funnel is each run so a collapsed funnel (too few
+// domains / mostly state_derived padding) surfaces in /api/health instead of
+// silently invalidating the verification pipeline's Brier.
+const FUNNEL_HEALTH_KEY = 'forecast:funnel:health:v1';
+const FUNNEL_HEALTH_TTL_SECONDS = 6 * 60 * 60; // 6h — 6x the hourly cron, mirrors TTL_SECONDS
 const TRACE_RUNS_MAX = 50;
 const TRACE_REDIS_TTL_SECONDS = 60 * 24 * 60 * 60;
 const WORLD_STATE_HISTORY_LIMIT = 6;
@@ -4918,6 +4925,40 @@ async function appendHistorySnapshot(data, options = {}) {
   await redisCommand(url, token, ['LTRIM', key, 0, maxRuns - 1]);
   await redisCommand(url, token, ['EXPIRE', key, ttlSeconds]);
   return snapshot;
+}
+
+// Assess the published funnel's diversity, WARN on a collapse, and persist the
+// signal to FUNNEL_HEALTH_KEY for /api/health. Best-effort: a write failure
+// here must never fail the run (the canonical set is already published).
+async function seedForecastFunnelHealth(predictions) {
+  const assessment = assessFunnelDiversity(predictions);
+  if (assessment.collapsed) {
+    console.warn(
+      `  [FunnelHealth] COLLAPSED funnel: ${assessment.reasons.join('; ')} `
+      + `(domains=${assessment.domainCount}, synthetic=${assessment.syntheticShare}, n=${assessment.total})`,
+    );
+  } else {
+    console.log(
+      `  [FunnelHealth] OK: ${assessment.domainCount} domains, `
+      + `synthetic share ${assessment.syntheticShare} (n=${assessment.total})`,
+    );
+  }
+  const { url, token } = getRedisCredentials();
+  await redisSet(url, token, FUNNEL_HEALTH_KEY, assessment, FUNNEL_HEALTH_TTL_SECONDS);
+  // Companion seed-meta so /api/health surfaces a collapse via its existing
+  // freshness+status machinery: status:'error' → SEED_ERROR (warn), recordCount
+  // = distinct domain count. A healthy run writes status:'ok' and stays fresh.
+  const meta = {
+    fetchedAt: Date.now(),
+    recordCount: assessment.domainCount,
+    sourceVersion: 'funnel-guardrail:v1',
+    status: assessment.collapsed ? 'error' : 'ok',
+    reasons: assessment.reasons,
+  };
+  await redisCommand(url, token, [
+    'SET', `seed-meta:${FUNNEL_HEALTH_KEY}`, JSON.stringify(meta), 'EX', FUNNEL_HEALTH_TTL_SECONDS,
+  ]).catch((err) => console.warn(`  [FunnelHealth] seed-meta write failed: ${err.message}`));
+  return assessment;
 }
 
 function getTraceMaxForecasts(totalForecasts = 0) {
@@ -17268,6 +17309,12 @@ if (_isDirectRun) {
         console.log(`  History appended: ${snapshot.predictions.length} forecasts -> ${HISTORY_KEY}`);
       } catch (err) {
         console.warn(`  [History] Append failed: ${err.message}`);
+      }
+
+      try {
+        await seedForecastFunnelHealth(data.predictions || []);
+      } catch (err) {
+        console.warn(`  [FunnelHealth] Assessment/write failed: ${err.message}`);
       }
 
       try {

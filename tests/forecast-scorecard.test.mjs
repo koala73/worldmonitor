@@ -91,6 +91,65 @@ describe('computeScorecard', () => {
     assert.ok(!JSON.stringify(scorecard).includes('NaN'));
   });
 
+  it('reports a skill block that excludes synthetic and shadow origins from the headline', () => {
+    const ledger = {
+      // real generator entries — these count toward skill
+      a: resolved({ probability: 0.8, outcome: 'YES', generationOrigin: 'detector' }),
+      b: resolved({ probability: 0.4, outcome: 'NO', generationOrigin: 'detector' }),
+      // synthetic backfill — inflates overall, must be held out of skill
+      c: resolved({ probability: 0.9, outcome: 'YES', generationOrigin: 'state_derived' }),
+      // shadow bet-engine — scored for evidence but not promoted to the headline
+      d: resolved({ probability: 0.2, outcome: 'NO', generationOrigin: 'bet_engine' }),
+    };
+
+    const scorecard = computeScorecard(ledger, NOW);
+
+    // overall still counts everything for continuity
+    assert.equal(scorecard.overall.count, 4);
+    // skill counts only the two real-generator entries
+    assert.equal(scorecard.skill.count, 2);
+    assert.equal(scorecard.skill.excludedScored, 2);
+    assert.deepEqual(scorecard.skill.excludedOrigins, ['bet_engine', 'state_derived']);
+    // Brier over the two detector entries only: ((0.8-1)^2 + (0.4-0)^2)/2 = 0.1
+    assert.equal(scorecard.skill.brier, 0.1);
+  });
+
+  it('always emits skill.excludedOrigins as an array (empty on a healthy scorecard)', () => {
+    // No synthetic/shadow origins → excludedOrigins must be [], not omitted, so
+    // a typed client (proto `repeated string`) can read .length on this path.
+    const scorecard = computeScorecard({
+      a: resolved({ probability: 0.8, outcome: 'YES', generationOrigin: 'detector' }),
+      b: resolved({ probability: 0.4, outcome: 'NO', generationOrigin: 'detector' }),
+    }, NOW);
+
+    assert.equal(scorecard.skill.count, 2);
+    assert.equal(scorecard.skill.excludedScored, 0);
+    assert.ok(Array.isArray(scorecard.skill.excludedOrigins));
+    assert.deepEqual(scorecard.skill.excludedOrigins, []);
+  });
+
+  it('surfaces a fully synthetic funnel as skill.count 0 without NaN', () => {
+    const scorecard = computeScorecard({
+      a: resolved({ probability: 0.9, outcome: 'YES', generationOrigin: 'state_derived' }),
+      b: resolved({ probability: 0.3, outcome: 'NO', generationOrigin: 'state_derived' }),
+    }, NOW);
+
+    // overall reports data, but skill loudly shows none of it is real skill
+    assert.equal(scorecard.overall.count, 2);
+    assert.equal(scorecard.skill.count, 0);
+    assert.equal(scorecard.skill.excludedScored, 2);
+    assert.ok(!Object.hasOwn(scorecard.skill, 'brier'));
+    assert.ok(!JSON.stringify(scorecard).includes('NaN'));
+  });
+
+  it('omits the skill block entirely when nothing is scored', () => {
+    const scorecard = computeScorecard({
+      a: resolved({ outcome: 'VOID' }),
+    }, NOW);
+
+    assert.ok(!Object.hasOwn(scorecard, 'skill'));
+  });
+
   it('uses resolvedAt for rolling windows and is deterministic', () => {
     const ledger = {
       old: resolved({ probability: 0.9, outcome: 'NO', resolvedAt: NOW - 200 * DAY_MS }),

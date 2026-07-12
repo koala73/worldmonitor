@@ -156,6 +156,7 @@ export interface GetForecastScorecardResponse {
   degraded: boolean;
   stale: boolean;
   error: string;
+  skill?: ScorecardSkill;
 }
 
 export interface ScorecardTotals {
@@ -210,6 +211,14 @@ export interface ScorecardMarketSkill {
   forecastBrier: number;
   marketBrier: number;
   brierDelta: number;
+}
+
+export interface ScorecardSkill {
+  count: number;
+  brier?: number;
+  logScore?: number;
+  excludedScored: number;
+  excludedOrigins: string[];
 }
 
 export interface GetSimulationPackageRequest {

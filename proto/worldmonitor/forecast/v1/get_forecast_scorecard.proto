@@ -60,6 +60,18 @@ message ScorecardMarketSkill {
   double brier_delta = 4;
 }
 
+// Headline "real skill" summary: Brier/log score over scored entries whose
+// generation origin is NOT synthetic backfill or an unpromoted shadow stream.
+// count 0 with excluded_scored > 0 means the headline is unmeasurable because
+// everything scored was synthetic — the honest signal for a collapsed funnel.
+message ScorecardSkill {
+  int32 count = 1;
+  optional double brier = 2;
+  optional double log_score = 3;
+  int32 excluded_scored = 4;
+  repeated string excluded_origins = 5;
+}
+
 message GetForecastScorecardResponse {
   int32 schema_version = 1;
   int64 generated_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
@@ -74,4 +86,5 @@ message GetForecastScorecardResponse {
   bool degraded = 11;
   bool stale = 12;
   string error = 13;
+  ScorecardSkill skill = 14;
 }
