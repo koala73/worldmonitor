@@ -1,24 +1,10 @@
-// client-ip (NOT rate-limit): the constant's home is dependency-free; going
-// through rate-limit's re-export would needlessly weight this module's import
-// graph with @upstash packages (#5231's exact failure shape).
-import { UNKNOWN_CLIENT_IP } from './client-ip';
+// Keep this module's public helper surface for its lead-handler consumers, but
+// use the dependency-free canonical client-IP implementation. This preserves
+// Cloudflare transit-proof validation for the scoped rate-limit identity
+// instead of maintaining a divergent local copy (#5235, GHSA-c267).
+export { getClientIp } from './client-ip';
 
 const TURNSTILE_VERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
-
-export function getClientIp(request: Request): string {
-  // cf-connecting-ip is the trusted client IP set by Cloudflare; x-real-ip
-  // is the CF edge IP (shared across users) — kept as a secondary because
-  // some non-CF deploys set it directly. x-forwarded-for is client-settable
-  // and MUST NOT be used as a rate-limit / abuse-defence identifier (#3531).
-  // Trim each value so a whitespace-only header doesn't short-circuit past
-  // the next fallback. Named after getClientIp in server/_shared/client-ip.ts
-  // but deliberately WITHOUT its CF transit-proof gate — this value feeds the
-  // Turnstile siteverify remoteip hint. Hardening the rate-limit call sites
-  // that also consume it is tracked in #5235.
-  const cf = (request.headers.get('cf-connecting-ip') ?? '').trim();
-  const xr = (request.headers.get('x-real-ip') ?? '').trim();
-  return cf || xr || UNKNOWN_CLIENT_IP;
-}
 
 export type TurnstileMissingSecretPolicy = 'allow' | 'allow-in-development' | 'deny';
 
