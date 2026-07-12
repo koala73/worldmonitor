@@ -18,9 +18,13 @@ const EIA_HORIZON_MS = 7 * DAY_MS;
 // non-trivial bet instead of "value >= current" (~coin-flip, uninformative).
 const MIN_MOVE_FRACTION = 0.005;
 
+// EIA petroleum figures are reported in thousand barrels (stocks) / thousand
+// barrels per day (production); the feed leaves `unit` empty, so these
+// fallbacks must match the raw magnitude (e.g. 411357 = 411M bbl = 411357 kbbl)
+// — a fabricated "Mbbl" here would make the question absurd.
 const METRICS = [
-  { name: 'inventory', subject: 'US commercial crude oil inventories', fallbackUnit: 'Mbbl' },
-  { name: 'production', subject: 'US crude oil production', fallbackUnit: 'Mbbl/d' },
+  { name: 'inventory', subject: 'US commercial crude oil inventories', fallbackUnit: 'kbbl' },
+  { name: 'production', subject: 'US crude oil production', fallbackUnit: 'kbbl/d' },
   { name: 'wti', subject: 'the WTI crude oil price', fallbackUnit: 'USD/bbl' },
   { name: 'brent', subject: 'the Brent crude oil price', fallbackUnit: 'USD/bbl' },
 ];

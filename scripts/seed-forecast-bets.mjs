@@ -30,9 +30,15 @@ const ENERGY_FEEDS = [EIA_PETROLEUM_FEED];
 
 // Pure: turn a feed snapshot into a resolver-ingestible bets snapshot with
 // base-rate probabilities attached. Exported for tests (no I/O here).
+// Unwraps the WM seed envelope ({_seed, data}) at this boundary so templates
+// always read canonical feed data regardless of how Redis stored it.
 export function buildBetsSnapshot(feedsByKey, nowMs) {
-  const bets = generateBets(ENERGY_BET_TEMPLATES, feedsByKey, nowMs);
-  for (const bet of bets) attachBaseRateProbability(bet, feedsByKey);
+  const unwrapped = {};
+  for (const [key, value] of Object.entries(feedsByKey || {})) {
+    unwrapped[key] = value && typeof value === 'object' && value.data != null ? value.data : value;
+  }
+  const bets = generateBets(ENERGY_BET_TEMPLATES, unwrapped, nowMs);
+  for (const bet of bets) attachBaseRateProbability(bet, unwrapped);
   return { generatedAt: nowMs, predictions: bets };
 }
 
