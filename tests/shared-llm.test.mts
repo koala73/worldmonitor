@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
-import { callLlm, callLlmReasoning } from '../server/_shared/llm.ts';
+import { callLlm, callLlmReasoning, getLlmAttemptTimeoutMs } from '../server/_shared/llm.ts';
 
 const originalFetch = globalThis.fetch;
+const originalAbortSignalTimeout = AbortSignal.timeout;
 const originalGroqApiKey = process.env.GROQ_API_KEY;
 const originalOpenRouterApiKey = process.env.OPENROUTER_API_KEY;
 const originalOllamaApiUrl = process.env.OLLAMA_API_URL;
@@ -14,6 +15,7 @@ const originalLlmReasoningModel = process.env.LLM_REASONING_MODEL;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  AbortSignal.timeout = originalAbortSignalTimeout;
 
   if (originalLlmReasoningProvider === undefined) delete process.env.LLM_REASONING_PROVIDER;
   else process.env.LLM_REASONING_PROVIDER = originalLlmReasoningProvider;
@@ -38,6 +40,42 @@ afterEach(() => {
 });
 
 describe('callLlm', () => {
+  it('fails stalled DeepSeek V4 Flash calls over to the next provider after 15s', () => {
+    assert.equal(getLlmAttemptTimeoutMs('deepseek/deepseek-v4-flash', 25_000), 15_000);
+    assert.equal(getLlmAttemptTimeoutMs('deepseek/deepseek-v4-flash', 8_000), 8_000);
+    assert.equal(getLlmAttemptTimeoutMs('deepseek/deepseek-v4-pro', 25_000), 25_000);
+    assert.equal(getLlmAttemptTimeoutMs('google/gemini-2.5-flash', 25_000), 25_000);
+  });
+
+  it('wires the DeepSeek Flash deadline into the shared chat-completion request', async () => {
+    process.env.OPENROUTER_API_KEY = 'or-test-key';
+    delete process.env.GROQ_API_KEY;
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    const timeoutBySignal = new Map<AbortSignal, number>();
+    const postTimeouts: number[] = [];
+    AbortSignal.timeout = ((delay: number) => {
+      const signal = new AbortController().signal;
+      timeoutBySignal.set(signal, delay);
+      return signal;
+    }) as typeof AbortSignal.timeout;
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      if ((init?.method || 'GET') === 'GET') return new Response('', { status: 200 });
+      postTimeouts.push(timeoutBySignal.get(init?.signal as AbortSignal) ?? -1);
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: 'bounded response' } }],
+        usage: { total_tokens: 5 },
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    const result = await callLlm({ messages: [{ role: 'user', content: 'x' }] });
+
+    assert.equal(result?.provider, 'openrouter');
+    assert.deepEqual(postTimeouts, [15_000]);
+  });
+
   it('excludes China-hosted providers and sorts by throughput on every OpenRouter call', async () => {
     process.env.OPENROUTER_API_KEY = 'or-test-key';
     delete process.env.GROQ_API_KEY;

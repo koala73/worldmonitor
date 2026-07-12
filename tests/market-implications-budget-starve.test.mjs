@@ -2,7 +2,7 @@
 //
 // market_implications is the LAST forecast LLM stage (afterPublish) and shares
 // the single 150s run budget with every upstream stage. When upstream stages
-// are slow (e.g. deepseek-v4-flash 30s timeouts, #4944) they drain that budget
+// are slow (e.g. repeated LLM provider stalls, #4944) they drain that budget
 // before this stage runs; callForecastLLM then throws a budget error and
 // returns null. The bug: the caller treated that starve identically to a real
 // LLM failure and wrote a `status:'error'` seed-meta, so /api/health flipped to
@@ -155,8 +155,9 @@ test('a genuine provider failure that drains the run deadline still writes a SEE
   process.env.OPENROUTER_API_KEY = 'test-key';
   process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER = 'openrouter';
   // 40s: the resolved chain here is openrouter-only (pinned below), so the
-  // reservation is just 25s + 5s guard = 30s — a 40s budget admits it (the static
-  // all-provider 50s reservation would have wrongly skipped). The mock then drains
+  // reservation is just 15s + 5s guard = 20s — a 40s budget admits it (the static
+  // all-provider 40s reservation would also admit, but the test still proves the
+  // resolved provider chain drives admission). The mock then drains
   // the deadline mid-flight to prove a real failure is not reclassified as a starve.
   __setForecastLlmRunDeadlineForTests(Date.now() + 40_000);
 
@@ -181,15 +182,15 @@ test('pre-call guard skips when the run budget cannot cover the full provider ch
   const store = {};
   __setRedisStoreForTests(store);
   seedLastGood(store);
-  // Default chain, both providers runnable → reservation is openrouter 25s + groq
-  // 20s + 5s guard = 50s. Real keys so a broken/too-low guard would actually invoke
+  // Default chain, both providers runnable → reservation is openrouter 15s + groq
+  // 20s + 5s guard = 40s. Real keys so a broken/too-low guard would actually invoke
   // the transport rather than short-circuit on a missing key.
   process.env.OPENROUTER_API_KEY = 'test-key';
   process.env.GROQ_API_KEY = 'test-key';
   delete process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER;
   delete process.env.FORECAST_LLM_PROVIDER_ORDER;
 
-  // 25s run budget: well below the 50s two-provider reservation, so it must SKIP
+  // 25s run budget: below the 40s two-provider reservation, so it must SKIP
   // cleanly and preserve last-good instead of attempting an ambiguous, doomed call.
   __setForecastLlmRunDeadlineForTests(Date.now() + 25_000);
 
@@ -212,7 +213,7 @@ test('mid-call budget_exhausted result preserves last-good, no SEED_ERROR (#5 de
   __setRedisStoreForTests(store);
   seedLastGood(store);
 
-  // Admit the call (>= the 50s full-chain reservation), then have callForecastLLM
+  // Admit the call (>= the 40s full-chain reservation), then have callForecastLLM
   // report a run-budget exhaustion mid-flight. This drives the caller's mid-call
   // preserve branch (result.failureReason === BUDGET_EXHAUSTED) directly via the
   // call-override seam — retained as defense-in-depth for env-overridden provider
@@ -263,13 +264,12 @@ test('a budget covering only the primary — not the fallback — skips instead 
   delete process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER;
   delete process.env.FORECAST_LLM_PROVIDER_ORDER;
 
-  // 40s budget: enough for the primary openrouter attempt (25s) + guard — the OLD
-  // 30s threshold admitted this — but NOT the full openrouter→groq chain (50s). The
-  // reported bug: admitted, deepseek-v4-flash timed out (~25s), the run budget was
-  // drained, the groq fallback was stranded ("groq llm budget exhausted"), and a
-  // recoverable timeout was misreported as SEED_ERROR (health WARNING). The full-
+  // 30s budget: enough for the primary openrouter attempt (15s) + guard, but NOT
+  // the full openrouter→groq chain (40s). The reported bug class is unchanged:
+  // admitting only the primary can strand Groq ("groq llm budget exhausted")
+  // after a timeout and misreport a recoverable timeout as SEED_ERROR. The full-
   // chain reservation makes this SKIP and preserve last-good (green) instead.
-  __setForecastLlmRunDeadlineForTests(Date.now() + 40_000);
+  __setForecastLlmRunDeadlineForTests(Date.now() + 30_000);
 
   let providerCalls = 0;
   __setForecastLlmTransportForTests({
@@ -294,7 +294,7 @@ test('an admitted primary timeout falls through to the fallback in ONE attempt e
   delete process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER;
   delete process.env.FORECAST_LLM_PROVIDER_ORDER;
 
-  // 60s admits the full two-provider chain (50s). Every attempt times out. PRE-FIX,
+  // 60s admits the full two-provider chain (40s). Every attempt times out. PRE-FIX,
   // openrouter's 3 retries (4 attempts) drained the run budget and groq was NEVER
   // reached — a recoverable timeout became a SEED_ERROR without trying the fallback.
   // With maxRetries:0 each provider gets exactly ONE attempt, so groq IS reached.
@@ -325,12 +325,12 @@ test('a single-provider override reserves only that provider — admitted where 
   seedLastGood(store);
   process.env.OPENROUTER_API_KEY = 'test-key';
   process.env.GROQ_API_KEY = 'test-key';
-  // Pin to openrouter only → resolved chain reserves just 25s + 5s = 30s.
+  // Pin to openrouter only → resolved chain reserves just 15s + 5s = 20s.
   process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER = 'openrouter';
 
-  // 40s: below the 2-provider 50s reservation (would skip) but above the pinned
-  // single-provider 30s reservation — so this MUST be admitted, not skipped.
-  __setForecastLlmRunDeadlineForTests(Date.now() + 40_000);
+  // 25s: below the 2-provider 40s reservation (would skip) but above the pinned
+  // single-provider 20s reservation — so this MUST be admitted, not skipped.
+  __setForecastLlmRunDeadlineForTests(Date.now() + 25_000);
 
   let providerCalls = 0;
   __setForecastLlmTransportForTests({
@@ -340,5 +340,5 @@ test('a single-provider override reserves only that provider — admitted where 
 
   await buildAndSeedMarketImplications({});
 
-  assert.equal(providerCalls, 1, 'a pinned single-provider chain needs only 30s, so a 40s budget must ADMIT it (and try it once)');
+  assert.equal(providerCalls, 1, 'a pinned single-provider chain needs only 20s, so a 25s budget must ADMIT it (and try it once)');
 });

@@ -1631,8 +1631,10 @@ describe('forecast llm overrides', () => {
     assert.deepEqual(options.providerOrder, ['openrouter', 'groq']);
     assert.equal(providers[0]?.name, 'openrouter');
     assert.equal(providers[0]?.model, 'deepseek/deepseek-v4-flash');
+    assert.equal(providers[0]?.timeout, 15_000, 'stalled DeepSeek Flash calls must fall through before the 25s clamp');
     assert.equal(providers[1]?.name, 'groq');
     assert.equal(providers[1]?.model, 'llama-3.3-70b-versatile');
+    assert.equal(providers[1]?.timeout, 20_000, 'the fallback keeps its provider-specific window');
   });
 
   it('pins critical_signals to the pre-#4944 chain (probability-coupled stage)', () => {
@@ -1652,6 +1654,7 @@ describe('forecast llm overrides', () => {
     assert.equal(providers[0]?.model, 'llama-3.1-8b-instant');
     assert.equal(providers[1]?.name, 'openrouter');
     assert.equal(providers[1]?.model, 'google/gemini-2.5-flash');
+    assert.equal(providers[1]?.timeout, 25_000, 'the DeepSeek stall cutoff must not change the pinned Gemini fallback');
     assert.equal(providers[1]?.extraBody, undefined, 'pinned openrouter entry must keep the legacy request body (no reasoning field)');
   });
 
@@ -1723,10 +1726,12 @@ describe('forecast llm overrides', () => {
     assert.equal(combinedProviders.length, 1);
     assert.equal(combinedProviders[0]?.name, 'openrouter');
     assert.equal(combinedProviders[0]?.model, 'google/gemini-2.5-pro');
+    assert.equal(combinedProviders[0]?.timeout, 25_000, 'model overrides outside DeepSeek Flash keep the original timeout');
 
     assert.deepEqual(scenarioOptions.providerOrder, ['openrouter', 'groq']);
     assert.equal(scenarioProviders[0]?.name, 'openrouter');
     assert.equal(scenarioProviders[0]?.model, 'deepseek/deepseek-v4-flash');
+    assert.equal(scenarioProviders[0]?.timeout, 15_000);
     assert.equal(scenarioProviders[1]?.model, 'llama-3.3-70b-versatile');
   });
 
@@ -1741,6 +1746,38 @@ describe('forecast llm overrides', () => {
     assert.equal(providers.length, 1);
     assert.equal(providers[0]?.name, 'openrouter');
     assert.equal(providers[0]?.model, 'google/gemini-2.5-flash-lite-preview');
+  });
+
+  it('falls through immediately after a DeepSeek Flash stall instead of retrying the hung provider', async () => {
+    process.env.GROQ_API_KEY = 'groq-test-key';
+    process.env.OPENROUTER_API_KEY = 'openrouter-test-key';
+    const calls = [];
+
+    __setForecastLlmTransportForTests({
+      fetch: async (url) => {
+        calls.push(String(url));
+        if (String(url).includes('openrouter.ai')) {
+          const error = new Error('The operation was aborted due to timeout');
+          error.name = 'TimeoutError';
+          throw error;
+        }
+        return {
+          ok: true,
+          status: 200,
+          headers: { get: () => null },
+          json: async () => ({
+            model: 'llama-3.3-70b-versatile',
+            choices: [{ message: { content: 'Groq fallback returned a complete narrative.' } }],
+          }),
+        };
+      },
+    });
+
+    const result = await __callForecastLlmForTests('system', 'user', { stage: 'scenario', retryDelayMs: 0 });
+
+    assert.equal(result?.provider, 'groq');
+    assert.equal(calls.filter((url) => url.includes('openrouter.ai')).length, 1);
+    assert.equal(calls.filter((url) => url.includes('api.groq.com')).length, 1);
   });
 
   it('retries a 429 Retry-After response on the same provider and returns groq', async () => {

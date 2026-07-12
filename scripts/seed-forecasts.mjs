@@ -14684,6 +14684,10 @@ const FORECAST_LLM_PROVIDERS = [
   { name: 'openrouter', envKey: 'OPENROUTER_API_KEY', apiUrl: 'https://openrouter.ai/api/v1/chat/completions', model: 'deepseek/deepseek-v4-flash', timeout: 25_000, extraBody: { reasoning: { enabled: false } } },
   { name: 'groq', envKey: 'GROQ_API_KEY', apiUrl: 'https://api.groq.com/openai/v1/chat/completions', model: 'llama-3.3-70b-versatile', timeout: 20_000 },
 ];
+const DEEPSEEK_V4_FLASH_MODEL_PREFIX = 'deepseek/deepseek-v4-flash';
+// This is a non-streaming completion deadline, not a first-token deadline.
+// Keep it above the pinned endpoint's observed p50 while cutting off the 25s stall tail.
+const DEEPSEEK_V4_FLASH_COMPLETION_TIMEOUT_MS = 15_000;
 const FORECAST_LLM_PROVIDER_NAMES = new Set(FORECAST_LLM_PROVIDERS.map(provider => provider.name));
 // 3 retries (=4 attempts/provider): during an OpenRouter slowdown 2 retries all timed
 // out and market_implications wrote an error seed-meta. Bounded by the per-stage /
@@ -14799,9 +14803,17 @@ function resolveForecastLlmProviders(options = {}) {
     const provider = FORECAST_LLM_PROVIDERS.find(item => item.name === providerName);
     if (!provider) continue;
     seen.add(providerName);
+    const model = options.modelOverrides?.[provider.name] || provider.model;
+    const failFastOnTimeout = model.startsWith(DEEPSEEK_V4_FLASH_MODEL_PREFIX);
     providers.push({
       ...provider,
-      model: options.modelOverrides?.[provider.name] || provider.model,
+      model,
+      // #5246: cut off Flash's 25s stall tail while preserving enough room for
+      // the pinned endpoint's observed median completion. Other models are unchanged.
+      timeout: failFastOnTimeout
+        ? Math.min(provider.timeout, DEEPSEEK_V4_FLASH_COMPLETION_TIMEOUT_MS)
+        : provider.timeout,
+      failFastOnTimeout,
       // `null` explicitly clears the table entry's extraBody (R13 pin);
       // undefined leaves it untouched.
       extraBody: options.extraBodyOverrides?.[provider.name] !== undefined
@@ -15099,8 +15111,8 @@ function getUsableForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs) {
 // Remaining RUN-level LLM budget in ms (Infinity when no run deadline is set —
 // tests and the deep-forecast worker, which have only the per-stage budget).
 // market_implications runs LAST in afterPublish, so this is the budget that
-// starves it when upstream stages are slow (e.g. deepseek-v4-flash 30s
-// timeouts drain the shared 150s run budget before the tail stage runs). #4978.
+// starves it when upstream stages are slow (e.g. repeated provider stalls drain
+// the shared 150s run budget before the tail stage runs). #4978.
 function getRemainingForecastLlmRunBudgetMs() {
   return forecastLlmRunDeadlineMs == null ? Infinity : forecastLlmRunDeadlineMs - Date.now();
 }
@@ -15266,6 +15278,12 @@ async function callForecastLLM(systemPrompt, userPrompt, options = {}) {
               err.__llmAttemptRecorded = true;
               const name = err?.name;
               const timedOut = name === 'TimeoutError' || name === 'AbortError';
+              // A Flash timeout represents the observed provider stall mode,
+              // not a transient response worth replaying four times. Move on
+              // to the fallback provider after the first full 15s window.
+              if (timedOut && provider.failFastOnTimeout && attemptTimeoutMs >= provider.timeout) {
+                err.nonRetryable = true;
+              }
               // Attribute a timeout to the run budget (not the provider) ONLY when
               // this attempt's timeout was itself CAPPED below the provider's own
               // timeout (attemptTimeoutMs < provider.timeout) AND the run budget is
@@ -17025,7 +17043,7 @@ const MARKET_IMPLICATIONS_STAGE_CACHE_PREFIX = 'forecast:llm-market-implications
 // overridden) order that actually has an API key, ONE attempt each (market_implications
 // forces maxRetries:0), summed with the 5s stage guard that getUsableForecastLlmBudgetMs
 // subtracts. Reserving only the PRIMARY timeout (the original 30_000) was a latent bug:
-// with the default openrouter→groq order a 25s deepseek-v4-flash timeout drained the
+// with the default openrouter→groq order a DeepSeek Flash timeout drained the
 // budget so the groq FALLBACK was stranded and a recoverable timeout was misreported as
 // SEED_ERROR (health WARNING). Reserving the full chain means an admitted call can exhaust
 // the primary AND still run the fallback; below that we skip and preserve last-good (green,
@@ -17150,7 +17168,7 @@ async function buildAndSeedMarketImplications(inputs) {
 
   // Tail-stage budget guard (#4978): market_implications is the LAST forecast
   // LLM stage under the shared 150s run budget. When upstream stages are slow
-  // (e.g. deepseek-v4-flash 30s timeouts) they drain that budget before this
+  // (e.g. repeated provider stalls) they drain that budget before this
   // stage runs; callForecastLLM would then throw a budget error, return null,
   // and we'd (mis)write a SEED_ERROR for benign, self-healing resource
   // contention. Skip gracefully and preserve last-good instead.
