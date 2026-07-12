@@ -1,206 +1,213 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { PerspectiveCamera } from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { guardOrbitControlsPointerTracking } from '../src/utils/orbit-controls-pointer-guard.ts';
 
-// Replicates the pointer-tracking internals of three.js r183 OrbitControls
-// (examples/jsm/controls/OrbitControls.js). Handlers are stored as instance
-// fields and internal calls dispatch through the CURRENT field value — same
-// semantics as three's `this._onTouchStart(...)` calls — so field-level
-// wrapping in the guard is exercised exactly as in production.
-//
-// Crash sites replicated verbatim from upstream:
-//  1. onPointerUp case 1: `position.x` of the surviving pointer (WORLDMONITOR-QD)
-//  2. _handleTouchStartDolly / _handleTouchMoveDolly: `_getSecondPointerPosition().x`
-// Only touch pointers are position-tracked (`_trackPointer` runs solely in the
-// touch branches), so any mouse/pen pointer in a multi-pointer gesture leaves
-// `_pointerPositions[id]` undefined.
-function createFakeOrbitControls(log) {
-  const controls = {
-    _pointers: [],
-    _pointerPositions: {},
-  };
+// Exercises the REAL three OrbitControls (the version globe.gl instantiates —
+// globe.gl passes controlType:'orbit'), driven through the listeners three
+// itself registers. Nothing about three's internals is re-implemented here, so
+// a three upgrade that changes pointer tracking or handler dispatch fails this
+// suite instead of silently un-guarding production (Sentry WORLDMONITOR-QD).
 
-  controls._addPointer = (event) => {
-    controls._pointers.push(event.pointerId);
+// Minimal DOM element: only the surface OrbitControls.connect() touches. The
+// repo's unit tests run under tsx --test with no jsdom.
+function createFakeElement() {
+  const listeners = new Map();
+  const doc = {
+    addEventListener: (type, fn) => {
+      if (!listeners.has(type)) listeners.set(type, new Set());
+      listeners.get(type).add(fn);
+    },
+    removeEventListener: (type, fn) => listeners.get(type)?.delete(fn),
   };
-
-  controls._removePointer = (event) => {
-    delete controls._pointerPositions[event.pointerId];
-    const i = controls._pointers.indexOf(event.pointerId);
-    if (i !== -1) controls._pointers.splice(i, 1);
+  const element = {
+    style: {},
+    listeners,
+    ownerDocument: doc,
+    getRootNode: () => doc,
+    addEventListener: doc.addEventListener,
+    removeEventListener: doc.removeEventListener,
+    setPointerCapture: () => {},
+    releasePointerCapture: () => {},
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 }),
+    clientWidth: 800,
+    clientHeight: 600,
   };
-
-  controls._trackPointer = (event) => {
-    let position = controls._pointerPositions[event.pointerId];
-    if (position === undefined) {
-      position = { x: 0, y: 0, set(x, y) { this.x = x; this.y = y; return this; } };
-      controls._pointerPositions[event.pointerId] = position;
-    }
-    position.set(event.pageX, event.pageY);
-  };
-
-  controls._getSecondPointerPosition = (event) => {
-    const pointerId = event.pointerId === controls._pointers[0]
-      ? controls._pointers[1]
-      : controls._pointers[0];
-    return controls._pointerPositions[pointerId];
-  };
-
-  controls._onMouseDown = (event) => {
-    log.push(['mouseDown', event.pageX, event.pageY]);
-  };
-
-  controls._onTouchStart = (event) => {
-    controls._trackPointer(event);
-    if (controls._pointers.length === 2) {
-      // touches.TWO → DOLLY_PAN → _handleTouchStartDolly (crash site 2)
-      const position = controls._getSecondPointerPosition(event);
-      const dx = event.pageX - position.x;
-      const dy = event.pageY - position.y;
-      log.push(['touchStartDolly', dx, dy]);
-    } else {
-      log.push(['touchStartRotate', event.pageX, event.pageY]);
-    }
-  };
-
-  controls._onTouchMove = (event) => {
-    controls._trackPointer(event);
-    if (controls._pointers.length === 2) {
-      // _handleTouchMoveDolly (crash site 2, move variant)
-      const position = controls._getSecondPointerPosition(event);
-      log.push(['touchMoveDolly', (event.pageX + position.x) * 0.5]);
-    } else {
-      log.push(['touchMoveRotate', event.pageX, event.pageY]);
-    }
-  };
-
-  controls._onPointerDown = (event) => {
-    controls._addPointer(event);
-    if (event.pointerType === 'touch') {
-      controls._onTouchStart(event);
-    } else {
-      controls._onMouseDown(event);
-    }
-  };
-
-  controls._onPointerUp = (event) => {
-    controls._removePointer(event);
-    switch (controls._pointers.length) {
-      case 0:
-        log.push(['end']);
-        break;
-      case 1: {
-        const pointerId = controls._pointers[0];
-        const position = controls._pointerPositions[pointerId];
-        // crash site 1: `position` is undefined for an untracked survivor
-        controls._onTouchStart({ pointerId, pageX: position.x, pageY: position.y });
-        break;
-      }
-    }
-  };
-
-  return controls;
+  return element;
 }
 
-const touch = (id, x, y) => ({ pointerId: id, pointerType: 'touch', pageX: x, pageY: y });
-const mouse = (id, x, y) => ({ pointerId: id, pointerType: 'mouse', pageX: x, pageY: y });
+function createControls({ guarded }) {
+  const element = createFakeElement();
+  const controls = new OrbitControls(new PerspectiveCamera(50, 4 / 3, 0.1, 1000), element);
+  if (guarded) assert.equal(guardOrbitControlsPointerTracking(controls), true);
 
-describe('unguarded three r183 replica reproduces the crash class', () => {
-  it('throws on pointerup when the surviving pointer is a mouse (WORLDMONITOR-QD)', () => {
-    const controls = createFakeOrbitControls([]);
-    controls._onPointerDown(touch(1, 10, 10));
-    controls._onPointerDown(mouse(2, 20, 20));
-    assert.throws(
-      () => controls._onPointerUp(touch(1, 10, 10)),
-      /Cannot read properties of undefined \(reading 'x'\)/,
-    );
+  // Dispatch through three's own registered listeners — the production path.
+  // Handlers are re-read from the listener set on every fire, so a listener
+  // registered later (pointermove/pointerup are added on first pointerdown) is
+  // picked up exactly as the DOM would.
+  const fire = (type, event) => {
+    const fns = element.listeners.get(type);
+    assert.ok(fns?.size, `no listener registered for "${type}"`);
+    for (const fn of [...fns]) fn(event);
+  };
+  return { controls, fire };
+}
+
+const evt = (pointerType, pointerId, x, y) => ({
+  pointerType,
+  pointerId,
+  pageX: x,
+  pageY: y,
+  clientX: x,
+  clientY: y,
+  button: 0,
+  ctrlKey: false,
+  metaKey: false,
+  shiftKey: false,
+  preventDefault: () => {},
+});
+const touch = (id, x, y) => evt('touch', id, x, y);
+const mouse = (id, x, y) => evt('mouse', id, x, y);
+
+const READS_UNDEFINED_X = /Cannot read properties of undefined \(reading 'x'\)|undefined is not an object/;
+
+describe('three OrbitControls mixed mouse+touch crash (WORLDMONITOR-QD)', () => {
+  it('crashes unguarded on pointerup when the surviving pointer is a mouse', () => {
+    const { fire } = createControls({ guarded: false });
+    fire('pointerdown', touch(1, 10, 10));
+    fire('pointerdown', mouse(2, 20, 20));
+    assert.throws(() => fire('pointerup', touch(1, 15, 15)), READS_UNDEFINED_X);
   });
 
-  it('throws on second-finger touch start when the first pointer is a mouse', () => {
-    const controls = createFakeOrbitControls([]);
-    controls._onPointerDown(mouse(1, 10, 10));
-    assert.throws(
-      () => controls._onPointerDown(touch(2, 20, 20)),
-      /Cannot read properties of undefined \(reading 'x'\)/,
-    );
+  it('crashes unguarded when a finger joins an in-progress mouse drag', () => {
+    const { fire } = createControls({ guarded: false });
+    fire('pointerdown', mouse(1, 10, 10));
+    assert.throws(() => fire('pointerdown', touch(2, 20, 20)), READS_UNDEFINED_X);
+  });
+
+  // pointercancel (palm rejection, system gesture) routes to the same
+  // onPointerUp. three registers it at CONSTRUCTION time bound to the original
+  // handler, so it is guarded only because the guard re-registers the DOM
+  // listeners — wrapping the fields alone would leave this path crashing.
+  it('crashes unguarded on pointercancel with a surviving mouse pointer', () => {
+    const { fire } = createControls({ guarded: false });
+    fire('pointerdown', touch(1, 10, 10));
+    fire('pointerdown', mouse(2, 20, 20));
+    assert.throws(() => fire('pointercancel', touch(1, 15, 15)), READS_UNDEFINED_X);
   });
 });
 
 describe('guardOrbitControlsPointerTracking', () => {
   it('survives pointerup with an untracked surviving mouse pointer', () => {
-    const log = [];
-    const controls = createFakeOrbitControls(log);
-    assert.equal(guardOrbitControlsPointerTracking(controls), true);
-
-    controls._onPointerDown(touch(1, 10, 10));
-    controls._onPointerDown(mouse(2, 20, 20));
-    controls._onPointerUp(touch(1, 15, 15));
-
-    // The placeholder touch-start for the surviving pointer ran instead of throwing,
-    // anchored at the seeded position (the triggering event's coords).
-    assert.deepEqual(log.at(-1), ['touchStartRotate', 15, 15]);
+    const { fire } = createControls({ guarded: true });
+    fire('pointerdown', touch(1, 10, 10));
+    fire('pointerdown', mouse(2, 20, 20));
+    fire('pointerup', touch(1, 15, 15));
   });
 
-  it('survives a second-finger touch start alongside an untracked mouse pointer', () => {
-    const log = [];
-    const controls = createFakeOrbitControls(log);
-    guardOrbitControlsPointerTracking(controls);
-
-    controls._onPointerDown(mouse(1, 10, 10));
-    controls._onPointerDown(touch(2, 20, 20));
-
-    // Dolly start computed against the seeded position — no throw.
-    assert.equal(log.at(-1)[0], 'touchStartDolly');
+  it('survives a finger joining an in-progress mouse drag', () => {
+    const { fire } = createControls({ guarded: true });
+    fire('pointerdown', mouse(1, 10, 10));
+    fire('pointerdown', touch(2, 20, 20));
   });
 
-  it('survives two-pointer touch move alongside an untracked mouse pointer', () => {
-    const log = [];
-    const controls = createFakeOrbitControls(log);
-    guardOrbitControlsPointerTracking(controls);
-
-    controls._onPointerDown(mouse(1, 10, 10));
-    controls._onPointerDown(touch(2, 20, 20));
-    controls._onTouchMove(touch(2, 30, 30));
-
-    assert.equal(log.at(-1)[0], 'touchMoveDolly');
+  it('survives pointercancel with an untracked surviving mouse pointer', () => {
+    const { fire } = createControls({ guarded: true });
+    fire('pointerdown', touch(1, 10, 10));
+    fire('pointerdown', mouse(2, 20, 20));
+    fire('pointercancel', touch(1, 15, 15));
   });
 
-  it('leaves ordinary two-finger touch gestures untouched', () => {
-    const log = [];
-    const controls = createFakeOrbitControls(log);
-    guardOrbitControlsPointerTracking(controls);
+  // The guard wraps handler FIELDS, which only holds if three dispatches through
+  // them (`this._onTouchMove(event)`) rather than through a closure captured at
+  // construction. Prove it via the DOM listener three registered, not by calling
+  // the field: reach the two-pointer dolly state (only reachable once the guard
+  // has seeded the mouse), then strip the mouse's tracked position so the move
+  // handler faces the untracked-pointer condition. Only the guard's wrapper can
+  // re-seed it — if a three upgrade moves to closure dispatch, no re-seed happens
+  // and _handleTouchMoveDolly throws right here.
+  it('reaches _onTouchMove through the DOM pointermove listener (field-dispatch assumption)', () => {
+    const { controls, fire } = createControls({ guarded: true });
+    fire('pointerdown', mouse(1, 10, 10));
+    fire('pointerdown', touch(2, 20, 20));
 
-    controls._onPointerDown(touch(1, 10, 10));
-    controls._onPointerDown(touch(2, 20, 20));
-    controls._onTouchMove(touch(2, 30, 30));
-    controls._onPointerUp(touch(2, 30, 30));
-    controls._onPointerUp(touch(1, 10, 10));
+    delete controls._pointerPositions[1];
+    fire('pointermove', touch(2, 30, 30));
 
-    assert.deepEqual(log, [
-      ['touchStartRotate', 10, 10],
-      ['touchStartDolly', 20 - 10, 20 - 10],
-      ['touchMoveDolly', (30 + 10) * 0.5],
-      // pointer 2 lifted → placeholder touch-start re-anchors on pointer 1's tracked position
-      ['touchStartRotate', 10, 10],
-      ['end'],
-    ]);
+    const reseeded = controls._pointerPositions[1];
+    assert.ok(reseeded, 'the guard must re-seed via the DOM pointermove path');
+    assert.deepEqual(
+      { x: reseeded.x, y: reseeded.y },
+      { x: 10, y: 10 },
+      "re-seeded at the mouse's last-known position",
+    );
   });
 
-  it('keeps seeded positions compatible with later _trackPointer set() calls', () => {
-    const log = [];
-    const controls = createFakeOrbitControls(log);
-    guardOrbitControlsPointerTracking(controls);
+  it('seeds the untracked pointer at ITS OWN last-known position, not the triggering event', () => {
+    const { controls, fire } = createControls({ guarded: true });
+    fire('pointerdown', touch(1, 10, 10));
+    fire('pointerdown', mouse(2, 20, 20));
+    fire('pointermove', mouse(2, 55, 65)); // mouse moves; touch does not
+    fire('pointerup', touch(1, 15, 15)); // triggering event is at (15,15)
 
-    controls._onPointerDown(mouse(1, 10, 10));
-    controls._onPointerDown(touch(2, 20, 20)); // seeds position for pointer 1
-    // placeholder touch-start on the seeded pointer must not crash on position.set
-    controls._onPointerUp(touch(2, 20, 20));
-    assert.equal(log.at(-1)[0], 'touchStartRotate');
+    const seeded = controls._pointerPositions[2];
+    assert.ok(seeded, 'surviving mouse pointer must have a seeded position');
+    assert.deepEqual(
+      { x: seeded.x, y: seeded.y },
+      { x: 55, y: 65 },
+      'seeded from the mouse\'s real position, not the lifted finger\'s (15,15)',
+    );
+  });
+
+  it('does not alter ordinary two-finger touch gestures', () => {
+    const sequence = (fire) => {
+      fire('pointerdown', touch(1, 10, 10));
+      fire('pointerdown', touch(2, 20, 20));
+      fire('pointermove', touch(2, 30, 30));
+      fire('pointerup', touch(2, 30, 30));
+      fire('pointerup', touch(1, 10, 10));
+    };
+    const plain = createControls({ guarded: false });
+    const guarded = createControls({ guarded: true });
+    sequence(plain.fire);
+    sequence(guarded.fire);
+
+    // Same camera state and same tracked-pointer bookkeeping: on the all-touch
+    // path every pointer is already tracked, so the guard has nothing to seed.
+    assert.deepEqual(
+      guarded.controls.object.position.toArray(),
+      plain.controls.object.position.toArray(),
+    );
+    assert.deepEqual(guarded.controls._pointers, plain.controls._pointers);
+    assert.deepEqual(
+      Object.keys(guarded.controls._pointerPositions),
+      Object.keys(plain.controls._pointerPositions),
+    );
+  });
+
+  it('drops lifted pointers so a long session cannot accumulate stale IDs', () => {
+    const { controls, fire } = createControls({ guarded: true });
+    for (let id = 1; id <= 50; id++) {
+      fire('pointerdown', touch(id, id, id));
+      fire('pointerup', touch(id, id, id));
+    }
+    assert.deepEqual(controls._pointers, []);
+    assert.deepEqual(Object.keys(controls._pointerPositions), []);
   });
 
   it('fails soft when the private internals are missing (future three upgrade)', () => {
     assert.equal(guardOrbitControlsPointerTracking({}), false);
-    const noHandlers = { _pointers: [], _pointerPositions: {} };
-    assert.equal(guardOrbitControlsPointerTracking(noHandlers), false);
+    // Internals present but no handler fields to wrap.
+    assert.equal(guardOrbitControlsPointerTracking({ _pointers: [], _pointerPositions: {} }), false);
+    // TrackballControls stores whole events in _pointers, not IDs — bail rather than mis-seed.
+    assert.equal(
+      guardOrbitControlsPointerTracking({
+        _pointers: [{ pointerId: 1 }],
+        _pointerPositions: {},
+        _onPointerUp: () => {},
+      }),
+      false,
+    );
   });
 });
