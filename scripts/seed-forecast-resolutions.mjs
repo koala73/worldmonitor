@@ -1043,6 +1043,48 @@ async function readForecastHistory(limit = 200) {
     .filter(Boolean);
 }
 
+// Shadow bet-engine stream (Phase 1 / #5233). Bets carry #4976 specs and
+// generationOrigin 'bet_engine'; ingested alongside forecast history so they
+// resolve + score into the scorecard's byGenerationOrigin='bet_engine' slice.
+// Users never see them (not in forecast:predictions:v2).
+export const BETS_HISTORY_KEY = 'forecast:bets:history:v1';
+
+async function readBetsHistory(limit = 200) {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) throw new Error('Missing UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN');
+  const resp = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
+    body: JSON.stringify(['LRANGE', BETS_HISTORY_KEY, 0, Math.max(0, limit - 1)]),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!resp.ok) throw new Error(`Redis LRANGE ${BETS_HISTORY_KEY} failed: HTTP ${resp.status}`);
+  const payload = await resp.json();
+  return (Array.isArray(payload.result) ? payload.result : [])
+    .map((row) => { try { return JSON.parse(row); } catch { return null; } })
+    .filter(Boolean);
+}
+
+// Feed loaders shape a raw feed snapshot into the record collection the eval's
+// metricKey path expression reads. energy:eia-petroleum:v1 stores a flat
+// {wti,brent,production,inventory} each {current,...}; bets read it as
+// `value(metric==<name>)`, so expose one record per metric carrying `value`.
+export function shapeResolutionFeed(key, data) {
+  if (key === 'energy:eia-petroleum:v1') {
+    const d = data?.data ?? data;
+    if (!d || typeof d !== 'object') return data;
+    const records = [];
+    for (const metric of ['wti', 'brent', 'production', 'inventory']) {
+      const m = d[metric];
+      const value = Number(m?.current);
+      if (Number.isFinite(value)) records.push({ metric, value, unit: m?.unit, asOf: m?.date });
+    }
+    return records;
+  }
+  return data;
+}
+
 async function readResolutionFeeds(ledger) {
   const keys = [...new Set(Object.values(ledger)
     .filter((entry) => entry.status === 'pending')
@@ -1053,7 +1095,8 @@ async function readResolutionFeeds(ledger) {
   for (let index = 0; index < results.length; index += 1) {
     const result = results[index];
     if (result.status === 'fulfilled') {
-      pairs.push(result.value);
+      const [key, data] = result.value;
+      pairs.push([key, shapeResolutionFeed(key, data)]);
     } else {
       console.warn(`  [forecast-resolutions] feed ${keys[index]} unavailable: ${result.reason?.message || result.reason}`);
     }
@@ -1233,11 +1276,15 @@ function buildLiveJudgedOptions(nowMs = Date.now()) {
 
 async function buildLedgerForRun() {
   const nowMs = Date.now();
-  const [existingLedger, history] = await Promise.all([
+  const [existingLedger, history, betsHistory] = await Promise.all([
     readRedisJson(RESOLUTIONS_KEY),
     readForecastHistory(200),
+    readBetsHistory(200).catch((err) => {
+      console.warn(`  [forecast-resolutions] bets shadow stream unavailable: ${err?.message || err}`);
+      return [];
+    }),
   ]);
-  const preLedger = ingestHistory(existingLedger || {}, history, nowMs);
+  const preLedger = ingestHistory(existingLedger || {}, [...history, ...betsHistory], nowMs);
   const feeds = await readResolutionFeeds(preLedger);
   const judgedOptions = buildLiveJudgedOptions(nowMs);
   const judgedArchive = await readJudgedNewsArchiveForLedger(preLedger, nowMs, judgedOptions);
@@ -1254,11 +1301,12 @@ async function buildLedgerForRun() {
 
 async function dryRun() {
   const nowMs = Date.now();
-  const [existingLedger, history] = await Promise.all([
+  const [existingLedger, history, betsHistory] = await Promise.all([
     readRedisJson(RESOLUTIONS_KEY).catch(() => null),
     readForecastHistory(200),
+    readBetsHistory(200).catch(() => []),
   ]);
-  const preLedger = ingestHistory(existingLedger || {}, history, nowMs);
+  const preLedger = ingestHistory(existingLedger || {}, [...history, ...betsHistory], nowMs);
   const feeds = await readResolutionFeeds(preLedger);
   const judgedOptions = buildLiveJudgedOptions(nowMs);
   const judgedArchive = await readJudgedNewsArchiveForLedger(preLedger, nowMs, judgedOptions);
