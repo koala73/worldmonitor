@@ -126,7 +126,9 @@ function summarizeSkill(scored, excludeSet) {
   return pruneUndefined({
     count: real.length,
     excludedScored: excludedEntries.length,
-    excludedOrigins: excludedOrigins.length ? excludedOrigins : undefined,
+    // Always an array (proto `repeated string` is non-optional): a typed client
+    // reads skill.excludedOrigins.length on the healthy path, where it is [].
+    excludedOrigins,
     brier: summary?.brier,
     logScore: summary?.logScore,
   });

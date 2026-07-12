@@ -114,6 +114,20 @@ describe('computeScorecard', () => {
     assert.equal(scorecard.skill.brier, 0.1);
   });
 
+  it('always emits skill.excludedOrigins as an array (empty on a healthy scorecard)', () => {
+    // No synthetic/shadow origins → excludedOrigins must be [], not omitted, so
+    // a typed client (proto `repeated string`) can read .length on this path.
+    const scorecard = computeScorecard({
+      a: resolved({ probability: 0.8, outcome: 'YES', generationOrigin: 'detector' }),
+      b: resolved({ probability: 0.4, outcome: 'NO', generationOrigin: 'detector' }),
+    }, NOW);
+
+    assert.equal(scorecard.skill.count, 2);
+    assert.equal(scorecard.skill.excludedScored, 0);
+    assert.ok(Array.isArray(scorecard.skill.excludedOrigins));
+    assert.deepEqual(scorecard.skill.excludedOrigins, []);
+  });
+
   it('surfaces a fully synthetic funnel as skill.count 0 without NaN', () => {
     const scorecard = computeScorecard({
       a: resolved({ probability: 0.9, outcome: 'YES', generationOrigin: 'state_derived' }),
