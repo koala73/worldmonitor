@@ -19,11 +19,12 @@ import { generateBets } from './_bet-templates.mjs';
 import { ENERGY_BET_TEMPLATES, EIA_PETROLEUM_FEED } from './_bet-templates-energy.mjs';
 import { baseRateProbability } from './_bet-baserate.mjs';
 import { parseMetricKey } from './_forecast-resolution-eval.mjs';
+import { BETS_HISTORY_KEY } from './_forecast-bets-keys.mjs';
 
 const DIRECT_RUN = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/'));
 if (DIRECT_RUN) loadEnvFile(import.meta.url);
 
-export const BETS_HISTORY_KEY = 'forecast:bets:history:v1';
+export { BETS_HISTORY_KEY };
 // Rolling per-metric observation series that the base rate is computed over.
 // Deduped by the feed's own `asOf` release date so a daily cron on a weekly
 // feed accumulates ONE point per real EIA release (not seven zero-deltas).

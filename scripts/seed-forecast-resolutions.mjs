@@ -20,6 +20,7 @@ import { resolveR2StorageConfig, putR2JsonObject } from './_r2-storage.mjs';
 import { parseMetricKey, resolveHardSpec, extractMetricValue } from './_forecast-resolution-eval.mjs';
 import { CONFLICT_COUNT_FEED_AVAILABLE, UNREST_COUNT_FEED_AVAILABLE, CONFLICT_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED } from './_forecast-resolution.mjs';
 import { computeScorecard, DEFAULT_ROLLING_WINDOW_DAYS } from './_forecast-scorecard.mjs';
+import { BETS_HISTORY_KEY } from './_forecast-bets-keys.mjs';
 import { callForecastLLM } from './seed-forecasts.mjs';
 import { readStoryTracksChunked, STORY_TRACK_HGETALL_BATCH } from './lib/story-track-batch-reader.mjs';
 
@@ -1046,8 +1047,9 @@ async function readForecastHistory(limit = 200) {
 // Shadow bet-engine stream (Phase 1 / #5233). Bets carry #4976 specs and
 // generationOrigin 'bet_engine'; ingested alongside forecast history so they
 // resolve + score into the scorecard's byGenerationOrigin='bet_engine' slice.
-// Users never see them (not in forecast:predictions:v2).
-export const BETS_HISTORY_KEY = 'forecast:bets:history:v1';
+// Users never see them (not in forecast:predictions:v2). The key is shared with
+// the writer (seed-forecast-bets) via _forecast-bets-keys.mjs so it can't drift.
+export { BETS_HISTORY_KEY };
 
 async function readBetsHistory(limit = 200) {
   const url = process.env.UPSTASH_REDIS_REST_URL;
