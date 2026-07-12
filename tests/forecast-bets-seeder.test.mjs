@@ -1,13 +1,14 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
-import { buildBetsSnapshot } from '../scripts/seed-forecast-bets.mjs';
+import { buildBetsSnapshot, computeNextSeries } from '../scripts/seed-forecast-bets.mjs';
 import { ingestHistory, shapeResolutionFeed } from '../scripts/seed-forecast-resolutions.mjs';
 import { EIA_PETROLEUM_FEED } from '../scripts/_bet-templates-energy.mjs';
 import { resolveHardSpec } from '../scripts/_forecast-resolution-eval.mjs';
 
 const NOW = Date.parse('2026-07-12T00:00:00Z');
 const DAY_MS = 24 * 60 * 60 * 1000;
+const DEADLINE = NOW + 7 * DAY_MS; // energy horizon; 2026-07-19
 
 function eiaFixture(overrides = {}) {
   return {
@@ -19,39 +20,65 @@ function eiaFixture(overrides = {}) {
   };
 }
 
-describe('buildBetsSnapshot (shadow seeder)', () => {
-  it('generates a resolver-ingestible snapshot with base-rate probabilities', () => {
-    const snap = buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: eiaFixture() }, NOW);
-    assert.equal(snap.generatedAt, NOW);
+describe('buildBetsSnapshot base rate', () => {
+  it('falls back to an honest thin-history prior when no series has accumulated', () => {
+    // Empty prior series → only the current reading → 0 deltas → directional prior,
+    // NOT a fabricated empirical number.
+    const snap = buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: eiaFixture() }, NOW, {});
     assert.equal(snap.predictions.length, 4);
     for (const bet of snap.predictions) {
       assert.equal(bet.generationOrigin, 'bet_engine');
-      assert.ok(bet.resolution && bet.resolution.kind === 'hard');
-      // base-rate must have set a real, non-null probability in (0,1)
-      assert.ok(Number.isFinite(bet.probability) && bet.probability > 0 && bet.probability < 1, `p=${bet.probability}`);
+      assert.equal(bet.probability, 0.4); // prior_directional, honest placeholder
     }
   });
 
-  it('sets a non-50% base rate from the metric\'s own last move', () => {
-    const snap = buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: eiaFixture() }, NOW);
+  it('computes a real empirical base rate over an accumulated multi-release series', () => {
+    // Prior inventory releases; appended current (390) gives deltas +3,-2,+5,-2,+6.
+    const priorSeries = {
+      inventory: [
+        { d: '2026-05-01', v: 380 }, { d: '2026-05-08', v: 383 },
+        { d: '2026-05-15', v: 381 }, { d: '2026-05-22', v: 386 },
+        { d: '2026-05-29', v: 384 },
+      ],
+    };
+    const snap = buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: eiaFixture() }, NOW, priorSeries);
     const inv = snap.predictions.find((b) => b.resolution.metricKey.includes('inventory'));
-    // series [388,390], requiredDelta +2, one delta +2 crosses → (1+1)/(1+1+1)
-    assert.equal(inv.probability, 0.666667);
+    // requiredDelta +2 (threshold 392, baseline 390); deltas >= +2: +3,+5,+6 = 3 of 5
+    // → (3+1)/(5+1+1) = 0.571429 — a genuine frequency, not the momentum coin-flip.
+    assert.equal(inv.probability, 0.571429);
+    // metrics without history still get the thin-history prior
+    const brent = snap.predictions.find((b) => b.resolution.metricKey.includes('brent'));
+    assert.equal(brent.probability, 0.4);
   });
+});
 
-  it('returns an empty snapshot (no publish) when the feed is absent', () => {
-    const snap = buildBetsSnapshot({}, NOW);
-    assert.deepEqual(snap.predictions, []);
+describe('computeNextSeries (asOf-deduped accumulator)', () => {
+  it('appends one point per real release and dedupes repeated ticks on the same asOf', () => {
+    const first = computeNextSeries({ [EIA_PETROLEUM_FEED]: eiaFixture() }, {});
+    assert.equal(first.inventory.length, 1);
+    assert.deepEqual(first.inventory[0], { d: '2026-07-09', v: 390 });
+
+    // A second daily tick with the SAME release date must not add a duplicate.
+    const second = computeNextSeries({ [EIA_PETROLEUM_FEED]: eiaFixture() }, first);
+    assert.equal(second.inventory.length, 1);
+
+    // A genuinely new release appends.
+    const third = computeNextSeries(
+      { [EIA_PETROLEUM_FEED]: eiaFixture({ inventory: { current: 393, previous: 390, date: '2026-07-16', unit: '' } }) },
+      second,
+    );
+    assert.equal(third.inventory.length, 2);
+    assert.deepEqual(third.inventory[1], { d: '2026-07-16', v: 393 });
   });
 });
 
 describe('shapeResolutionFeed (eia-petroleum loader)', () => {
-  it('shapes the flat petroleum snapshot into one record per metric', () => {
+  it('shapes the flat petroleum snapshot into one record per metric, carrying asOf', () => {
     const records = shapeResolutionFeed(EIA_PETROLEUM_FEED, eiaFixture());
-    assert.ok(Array.isArray(records));
     assert.equal(records.length, 4);
     const inv = records.find((r) => r.metric === 'inventory');
     assert.equal(inv.value, 390);
+    assert.equal(inv.asOf, '2026-07-09');
   });
 
   it('unwraps a seed envelope and passes other feeds through untouched', () => {
@@ -62,27 +89,67 @@ describe('shapeResolutionFeed (eia-petroleum loader)', () => {
   });
 });
 
-describe('bet-engine shadow bets flow through ingest → resolve → scored slice', () => {
-  it('ingests a bets snapshot into a bet_engine ledger entry', () => {
-    const snap = buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: eiaFixture() }, NOW);
+describe('bet-engine shadow bets flow through ingest → resolve', () => {
+  function betEntry(metricSubstr) {
+    const snap = buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: eiaFixture() }, NOW, {});
     const ledger = ingestHistory({}, [snap], NOW);
-    const entry = Object.values(ledger).find((e) => e.spec?.metricKey?.includes('inventory'));
-    assert.ok(entry, 'inventory bet not ingested');
+    return Object.values(ledger).find((e) => e.spec?.metricKey?.includes(metricSubstr));
+  }
+
+  it('ingests a bets snapshot into a bet_engine ledger entry', () => {
+    const entry = betEntry('inventory');
+    assert.ok(entry);
     assert.equal(entry.generationOrigin, 'bet_engine');
     assert.equal(entry.status, 'pending');
     assert.equal(entry.spec.kind, 'hard');
-    assert.equal(entry.probability, 0.666667);
   });
 
-  it('resolves the ingested bet YES when the shaped feed crosses the threshold', () => {
-    const snap = buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: eiaFixture() }, NOW);
-    const ledger = ingestHistory({}, [snap], NOW);
-    const entry = Object.values(ledger).find((e) => e.spec?.metricKey?.includes('inventory'));
-    const feedData = shapeResolutionFeed(EIA_PETROLEUM_FEED, eiaFixture({
-      inventory: { current: 396, previous: 390, date: '2026-07-19', unit: 'Mbbl' },
+  it('resolves an up-bet YES when the settled feed crosses the threshold', () => {
+    const entry = betEntry('inventory');
+    // reading dated on the deadline day (settled) and above threshold 392
+    const feed = shapeResolutionFeed(EIA_PETROLEUM_FEED, eiaFixture({
+      inventory: { current: 396, previous: 390, date: '2026-07-19', unit: '' },
     }));
-    const res = resolveHardSpec(entry, feedData, [], entry.deadline + DAY_MS);
+    const res = resolveHardSpec(entry, feed, [], DEADLINE + DAY_MS);
     assert.equal(res.status, 'resolved');
-    assert.equal(res.outcome, 'YES'); // 396 >= threshold 392
+    assert.equal(res.outcome, 'YES');
+  });
+
+  it('resolves a down-bet YES via the direction-aware crosses path', () => {
+    const entry = betEntry('production'); // "fall to at most 13.1", baseline 13.2
+    const feed = shapeResolutionFeed(EIA_PETROLEUM_FEED, eiaFixture({
+      production: { current: 13.0, previous: 13.2, date: '2026-07-19', unit: '' },
+    }));
+    const res = resolveHardSpec(entry, feed, [], DEADLINE + DAY_MS);
+    assert.equal(res.status, 'resolved');
+    assert.equal(res.outcome, 'YES'); // 13.0 <= 13.1, falling from baseline 13.2
+  });
+});
+
+describe('value settlement gate (#2 — no false NO on a stale pre-release read)', () => {
+  function inventoryEntry() {
+    const snap = buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: eiaFixture() }, NOW, {});
+    const ledger = ingestHistory({}, [snap], NOW);
+    return Object.values(ledger).find((e) => e.spec?.metricKey?.includes('inventory'));
+  }
+
+  it('pends when the feed reading predates the deadline (release not out yet)', () => {
+    const entry = inventoryEntry();
+    // feed still holds a pre-deadline reading (2026-07-12 < deadline 2026-07-19)
+    const staleFeed = shapeResolutionFeed(EIA_PETROLEUM_FEED, eiaFixture({
+      inventory: { current: 390, previous: 388, date: '2026-07-12', unit: '' },
+    }));
+    const res = resolveHardSpec(entry, staleFeed, [], DEADLINE + DAY_MS);
+    assert.equal(res.status, 'pending');
+    assert.equal(res.evidence.reason, 'value_source_not_settled');
+  });
+
+  it('VOIDs once the settlement grace elapses and the feed never caught up', () => {
+    const entry = inventoryEntry();
+    const staleFeed = shapeResolutionFeed(EIA_PETROLEUM_FEED, eiaFixture({
+      inventory: { current: 390, previous: 388, date: '2026-07-12', unit: '' },
+    }));
+    const res = resolveHardSpec(entry, staleFeed, [], DEADLINE + 11 * DAY_MS);
+    assert.equal(res.outcome, 'VOID');
   });
 });

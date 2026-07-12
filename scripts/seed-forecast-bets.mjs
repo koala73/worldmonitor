@@ -4,14 +4,17 @@
 // Shadow bet-engine seeder (Phase 1 / #5233 re-engine).
 //
 // Reads resolvable energy feeds, generates crisp resolution-bound bets via the
-// template registry, attaches an honest base-rate probability, and appends them
-// to a SHADOW stream `forecast:bets:history:v1` tagged generationOrigin
-// 'bet_engine'. It NEVER writes the user-facing canonical (forecast:predictions:
-// v2) — shadow bets are invisible to users but ingested by the resolver so they
-// score into the scorecard's byGenerationOrigin='bet_engine' slice (the Gate-1
-// evidence). Railway cron; mirrors the seed-forecast-resolutions service.
+// template registry, attaches a base-rate probability, and appends them to a
+// SHADOW stream `forecast:bets:history:v1` tagged generationOrigin 'bet_engine'.
+// It NEVER writes the user-facing canonical (forecast:predictions:v2) — shadow
+// bets are invisible to users but ingested by the resolver so they score into
+// the scorecard's byGenerationOrigin='bet_engine' slice (the Gate-1 evidence).
+// Railway cron; mirrors the seed-forecast-resolutions service.
 
-import { loadEnvFile, getRedisCredentials, CHROME_UA, writeFreshnessMetadata } from './_seed-utils.mjs';
+import {
+  loadEnvFile, getRedisCredentials, CHROME_UA, writeFreshnessMetadata,
+  GRACEFUL_FETCH_FAILURE_EXIT_CODE,
+} from './_seed-utils.mjs';
 import { generateBets } from './_bet-templates.mjs';
 import { ENERGY_BET_TEMPLATES, EIA_PETROLEUM_FEED } from './_bet-templates-energy.mjs';
 import { baseRateProbability } from './_bet-baserate.mjs';
@@ -21,39 +24,68 @@ const DIRECT_RUN = process.argv[1] && import.meta.url.endsWith(process.argv[1].r
 if (DIRECT_RUN) loadEnvFile(import.meta.url);
 
 export const BETS_HISTORY_KEY = 'forecast:bets:history:v1';
+// Rolling per-metric observation series that the base rate is computed over.
+// Deduped by the feed's own `asOf` release date so a daily cron on a weekly
+// feed accumulates ONE point per real EIA release (not seven zero-deltas).
+export const BETS_SERIES_KEY = 'forecast:bets:eia-series:v1';
 const BETS_MAX_RUNS = 200;
 // 45d TTL mirrors the predictions-history reach so the resolver's LRANGE 200
 // window can always find a bet before it rolls out; well under the ledger's
 // 180d retention (no re-ingest of pruned terminal windows).
 const BETS_TTL_SECONDS = 45 * 24 * 60 * 60;
+// The observation series is a long-lived accumulator (base-rate needs many
+// releases to be meaningful) — keep it well beyond the bets TTL.
+const SERIES_TTL_SECONDS = 400 * 24 * 60 * 60;
+const SERIES_CAP = 104; // ~2 years of weekly EIA releases
+const EIA_METRICS = ['inventory', 'production', 'wti', 'brent'];
 const ENERGY_FEEDS = [EIA_PETROLEUM_FEED];
 
-// Pure: turn a feed snapshot into a resolver-ingestible bets snapshot with
-// base-rate probabilities attached. Exported for tests (no I/O here).
-// Unwraps the WM seed envelope ({_seed, data}) at this boundary so templates
-// always read canonical feed data regardless of how Redis stored it.
-export function buildBetsSnapshot(feedsByKey, nowMs) {
+function unwrapFeeds(feedsByKey) {
   const unwrapped = {};
   for (const [key, value] of Object.entries(feedsByKey || {})) {
     unwrapped[key] = value && typeof value === 'object' && value.data != null ? value.data : value;
   }
-  const bets = generateBets(ENERGY_BET_TEMPLATES, unwrapped, nowMs);
-  for (const bet of bets) attachBaseRateProbability(bet, unwrapped);
-  return { generatedAt: nowMs, predictions: bets };
+  return unwrapped;
 }
 
-function attachBaseRateProbability(bet, feedsByKey) {
-  const parsed = parseMetricKey(bet.resolution?.metricKey);
-  const feed = feedsByKey?.[bet.feedKey];
-  const data = feed?.data ?? feed;
-  const metric = parsed ? data?.[parsed.value] : null;
-  const series = [];
-  const previous = Number(metric?.previous);
-  if (Number.isFinite(previous)) series.push(previous);
-  const baseline = Number(bet.resolution?.baselineValue);
-  if (Number.isFinite(baseline)) series.push(baseline);
-  const { probability } = baseRateProbability(series, bet.resolution);
-  bet.probability = probability;
+// Pure: append this run's readings to the rolling series, deduped by asOf date.
+// A run whose feed hasn't published a new release (same asOf as the last point)
+// updates that point in place instead of adding a duplicate — so consecutive
+// daily ticks on a weekly feed never inject spurious zero-move deltas.
+export function computeNextSeries(feedsByKey, priorSeries = {}, cap = SERIES_CAP) {
+  const data = unwrapFeeds(feedsByKey)[EIA_PETROLEUM_FEED];
+  const next = {};
+  for (const name of EIA_METRICS) {
+    const prior = Array.isArray(priorSeries?.[name])
+      ? priorSeries[name].filter((p) => p && Number.isFinite(Number(p.v)))
+      : [];
+    const current = Number(data?.[name]?.current);
+    if (!Number.isFinite(current)) { next[name] = prior.slice(-cap); continue; }
+    const point = { d: data?.[name]?.date || null, v: current };
+    const last = prior[prior.length - 1];
+    if (last && last.d && point.d && last.d === point.d) {
+      next[name] = [...prior.slice(0, -1), point].slice(-cap); // same release → replace
+    } else {
+      next[name] = [...prior, point].slice(-cap);
+    }
+  }
+  return next;
+}
+
+// Pure: generate bets and attach a base-rate probability computed over the REAL
+// accumulated observation series (thin history honestly falls back to a
+// directional prior inside baseRateProbability). Exported for tests (no I/O).
+export function buildBetsSnapshot(feedsByKey, nowMs, priorSeries = {}) {
+  const unwrapped = unwrapFeeds(feedsByKey);
+  const series = computeNextSeries(unwrapped, priorSeries);
+  const bets = generateBets(ENERGY_BET_TEMPLATES, unwrapped, nowMs);
+  for (const bet of bets) {
+    const parsed = parseMetricKey(bet.resolution?.metricKey);
+    const values = (series[parsed?.value] || []).map((p) => Number(p.v)).filter(Number.isFinite);
+    const { probability } = baseRateProbability(values, bet.resolution);
+    bet.probability = probability;
+  }
+  return { generatedAt: nowMs, predictions: bets };
 }
 
 async function redisPipeline(command) {
@@ -84,25 +116,32 @@ async function main() {
     }
   }
 
-  const snapshot = buildBetsSnapshot(feedsByKey, Date.now());
+  const priorSeries = (await readRedisJson(BETS_SERIES_KEY).catch(() => null)) || {};
+  const nowMs = Date.now();
+  const snapshot = buildBetsSnapshot(feedsByKey, nowMs, priorSeries);
+  const nextSeries = computeNextSeries(feedsByKey, priorSeries);
   const count = snapshot.predictions.length;
 
-  if (count > 0) {
-    await redisPipeline(['LPUSH', BETS_HISTORY_KEY, JSON.stringify(snapshot)]);
-    await redisPipeline(['LTRIM', BETS_HISTORY_KEY, 0, BETS_MAX_RUNS - 1]);
-    await redisPipeline(['EXPIRE', BETS_HISTORY_KEY, BETS_TTL_SECONDS]);
-    console.log(`  [bets] published ${count} shadow energy bet(s) -> ${BETS_HISTORY_KEY}`);
-    for (const bet of snapshot.predictions) {
-      console.log(`    - ${bet.question} (p=${bet.probability})`);
+  // Redis writes are best-effort for a non-user-facing shadow seeder: a
+  // transient Upstash blip must exit graceful (self-heals next run), not page.
+  try {
+    if (count > 0) {
+      await redisPipeline(['LPUSH', BETS_HISTORY_KEY, JSON.stringify(snapshot)]);
+      await redisPipeline(['LTRIM', BETS_HISTORY_KEY, 0, BETS_MAX_RUNS - 1]);
+      await redisPipeline(['EXPIRE', BETS_HISTORY_KEY, BETS_TTL_SECONDS]);
+      await redisPipeline(['SET', BETS_SERIES_KEY, JSON.stringify(nextSeries), 'EX', SERIES_TTL_SECONDS]);
+      console.log(`  [bets] published ${count} shadow energy bet(s) -> ${BETS_HISTORY_KEY}`);
+      for (const bet of snapshot.predictions) {
+        console.log(`    - ${bet.question} (p=${bet.probability})`);
+      }
+    } else {
+      console.warn('  [bets] no energy bets generated (feeds absent/unusable); nothing appended');
     }
-  } else {
-    console.warn('  [bets] no energy bets generated (feeds absent/unusable); nothing appended');
+    await writeFreshnessMetadata('forecast', 'bets', count, 'bet-engine:v1', BETS_TTL_SECONDS);
+  } catch (err) {
+    console.warn(`  [bets] redis write failed (transient — graceful exit): ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(GRACEFUL_FETCH_FAILURE_EXIT_CODE);
   }
-
-  // Seed-meta so /api/health can monitor the shadow seeder's freshness.
-  await writeFreshnessMetadata('forecast', 'bets', count, 'bet-engine:v1', BETS_TTL_SECONDS).catch((err) => {
-    console.warn(`  [bets] seed-meta write failed: ${err instanceof Error ? err.message : String(err)}`);
-  });
 }
 
 if (DIRECT_RUN) {

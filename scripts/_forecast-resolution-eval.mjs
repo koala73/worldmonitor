@@ -9,6 +9,9 @@ import { readFileSync } from 'node:fs';
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const ACLED_SETTLEMENT_LAG_MS = 2 * DAY_MS;
 export const UCDP_SETTLEMENT_LAG_MS = 14 * DAY_MS;
+// Grace window for a `value` feed to publish the deadline period's reading
+// before we give up and VOID (EIA weekly releases can slip on holidays).
+export const VALUE_SETTLEMENT_MAX_LAG_MS = 10 * DAY_MS;
 
 const SUPPORTED_FUNCTIONS = new Set(['count', 'riskScore', 'present', 'yesPrice', 'hexCount', 'price', 'value']);
 const COUNTRY_ALIASES = loadCountryAliases();
@@ -56,6 +59,16 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
   const deadline = Number(spec.deadline ?? entry.deadline);
   if (nowMs < deadline) {
     return { status: 'pending', evidence: { reason: 'deadline_not_reached', deadline } };
+  }
+
+  // Settlement gate for scalar `value` reads (energy/economic bet engine). Like
+  // count(), a premature read scores a false NO: period feeds (e.g. EIA's weekly
+  // release, dated by `asOf`) may still hold the PRIOR period's value when the
+  // resolver ticks on the deadline. Only resolve once the feed carries a reading
+  // dated on/after the deadline day; pend until then, VOID if it never settles.
+  if (parsed.fn === 'value') {
+    const settle = valueSettlementResult(parsed, feedData, deadline, nowMs, entry, spec);
+    if (settle) return settle;
   }
 
   if (parsed.fn === 'count') {
@@ -153,6 +166,29 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
   }
 
   return voidResult('unsupported_window', entry, spec, parsed, nowMs);
+}
+
+// Freshness gate for a scalar `value` read: is the matched record dated on or
+// after the deadline day? Returns null when settled (or when the record carries
+// no usable timestamp, so we can't gate — fall through to normal resolution),
+// a pending result while within the grace window, or VOID once grace elapses.
+function valueSettlementResult(parsed, feedData, deadline, nowMs, entry, spec) {
+  const record = findMatchingRecord(feedData, parsed.field, parsed.value);
+  const asOf = parseAsOfMs(record?.asOf ?? record?.date);
+  if (!Number.isFinite(asOf)) return null; // no timestamp → cannot gate
+  const deadlineDay = Math.floor(deadline / DAY_MS) * DAY_MS;
+  if (asOf >= deadlineDay) return null; // feed has caught up to the deadline period
+  if (nowMs < deadline + VALUE_SETTLEMENT_MAX_LAG_MS) {
+    return { status: 'pending', evidence: { reason: 'value_source_not_settled', deadline, asOf } };
+  }
+  return voidResult('value_source_never_settled', entry, spec, parsed, nowMs);
+}
+
+function parseAsOfMs(value) {
+  if (value == null) return NaN;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : NaN;
+  const parsed = Date.parse(String(value));
+  return Number.isFinite(parsed) ? parsed : NaN;
 }
 
 export function extractMetricValue(parsed, feedData) {

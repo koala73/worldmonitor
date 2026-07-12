@@ -111,6 +111,28 @@ describe('energy bet templates (eia-petroleum pilot)', () => {
     assert.equal(bets.length, 1);
     assert.ok(bets[0].resolution.metricKey.includes('metric==inventory'));
   });
+
+  it('emits no bet for a zero/negative reading (broken feed → no guaranteed-YES)', () => {
+    const bets = generateBets(
+      ENERGY_BET_TEMPLATES,
+      { [EIA_PETROLEUM_FEED]: { inventory: { current: 0, previous: 0, date: '2026-07-09', unit: '' } } },
+      NOW,
+    );
+    assert.equal(bets.length, 0);
+  });
+
+  it('uses the fallback unit + floor move for the real feed shape (empty unit, large magnitude)', () => {
+    // Mirrors prod: unit is '' and inventory is in thousand barrels (~411357).
+    const bets = generateBets(
+      ENERGY_BET_TEMPLATES,
+      { [EIA_PETROLEUM_FEED]: { inventory: { current: 411357, previous: 411357, date: '2026-07-09', unit: '' } } },
+      NOW,
+    );
+    assert.equal(bets.length, 1);
+    // flat week → floor move 0.5%·411357 ≈ 2056.8 → threshold 413413.785, labelled kbbl (not Mbbl)
+    assert.match(bets[0].question, /US commercial crude oil inventories rise to at least 413413\.785 kbbl/);
+    assert.notEqual(bets[0].resolution.threshold, bets[0].resolution.baselineValue);
+  });
 });
 
 describe('energy bets resolve end-to-end through the existing resolver (KTD2)', () => {

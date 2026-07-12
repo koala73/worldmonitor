@@ -38,7 +38,10 @@ function buildMetricTemplate({ name, subject, fallbackUnit }) {
     extractMetric(feed) {
       const m = feed?.[name];
       const current = Number(m?.current);
-      if (!m || !Number.isFinite(current)) return null;
+      // EIA stocks/production/prices are strictly positive; a 0/negative
+      // reading is a broken feed. Skip it — otherwise a zero baseline yields
+      // magnitude 0 → threshold==baseline → `value >= 0` → a guaranteed-YES bet.
+      if (!m || !Number.isFinite(current) || current <= 0) return null;
       const previous = Number(m?.previous);
       return {
         subject,
@@ -59,6 +62,9 @@ function buildMetricTemplate({ name, subject, fallbackUnit }) {
       const lastMove = Number.isFinite(previous) ? value - previous : 0;
       const floor = Math.abs(value) * MIN_MOVE_FRACTION;
       const magnitude = Math.max(Math.abs(lastMove), floor);
+      // Defense-in-depth against a degenerate (threshold==baseline) bet: a
+      // non-positive magnitude has no resolvable YES criterion, so emit no bet.
+      if (!(magnitude > 0)) return null;
       // Direction = continuation of the latest observed move (default up on a flat week).
       const wantUp = lastMove >= 0;
       const threshold = round(wantUp ? value + magnitude : value - magnitude);
