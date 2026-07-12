@@ -33,6 +33,7 @@ import {
   type MapVariant,
 } from '@/config/map-layer-definitions';
 import { renderLayerExplanationCard } from '@/utils/layer-explanation-card';
+import { guardOrbitControlsPointerTracking } from '@/utils/orbit-controls-pointer-guard';
 import { getSecretState } from '@/services/runtime-config';
 import { resolveTradeRouteSegments, type TradeRouteSegment } from '@/config/trade-routes';
 import { GAMMA_IRRADIATORS } from '@/config/irradiators';
@@ -684,6 +685,10 @@ export class GlobeMap {
     // Orbit controls — match Sentinel's settings
     const controls = globe.controls() as GlobeControlsLike;
     this.controls = controls;
+    // three r183 OrbitControls only position-tracks touch pointers but reads the
+    // surviving/second pointer's position in mixed mouse|pen + touch gestures —
+    // crashes reading undefined.x on touchscreen laptops (WORLDMONITOR-QD).
+    guardOrbitControlsPointerTracking(controls);
     controls.autoRotate = !desktop;
     controls.autoRotateSpeed = 0.3;
     controls.enablePan = false;
