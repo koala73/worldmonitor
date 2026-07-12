@@ -11,6 +11,7 @@ import { attachResolutionSpecs } from './_forecast-resolution.mjs';
 import { assessFunnelDiversity } from './_forecast-funnel.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-storage.mjs';
 import { extractFirstJsonObject, extractFirstJsonArray, cleanJsonText } from './_llm-json.mjs';
+import { getLlmAttemptTimeoutMs, isDeepseekV4FlashModel } from './_llm-model-timeouts.mjs';
 import { loadTickerSet } from './_ticker-validation.mjs';
 import { computeEmaWindows, computeRisk24h } from './_ema-threat-engine.mjs';
 import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.mjs';
@@ -14684,10 +14685,6 @@ const FORECAST_LLM_PROVIDERS = [
   { name: 'openrouter', envKey: 'OPENROUTER_API_KEY', apiUrl: 'https://openrouter.ai/api/v1/chat/completions', model: 'deepseek/deepseek-v4-flash', timeout: 25_000, extraBody: { reasoning: { enabled: false } } },
   { name: 'groq', envKey: 'GROQ_API_KEY', apiUrl: 'https://api.groq.com/openai/v1/chat/completions', model: 'llama-3.3-70b-versatile', timeout: 20_000 },
 ];
-const DEEPSEEK_V4_FLASH_MODEL_PREFIX = 'deepseek/deepseek-v4-flash';
-// This is a non-streaming completion deadline, not a first-token deadline.
-// Keep it above the pinned endpoint's observed p50 while cutting off the 25s stall tail.
-const DEEPSEEK_V4_FLASH_COMPLETION_TIMEOUT_MS = 15_000;
 const FORECAST_LLM_PROVIDER_NAMES = new Set(FORECAST_LLM_PROVIDERS.map(provider => provider.name));
 // 3 retries (=4 attempts/provider): during an OpenRouter slowdown 2 retries all timed
 // out and market_implications wrote an error seed-meta. Bounded by the per-stage /
@@ -14804,15 +14801,13 @@ function resolveForecastLlmProviders(options = {}) {
     if (!provider) continue;
     seen.add(providerName);
     const model = options.modelOverrides?.[provider.name] || provider.model;
-    const failFastOnTimeout = model.startsWith(DEEPSEEK_V4_FLASH_MODEL_PREFIX);
+    const failFastOnTimeout = isDeepseekV4FlashModel(model);
     providers.push({
       ...provider,
       model,
       // #5246: cut off Flash's 25s stall tail while preserving enough room for
       // the pinned endpoint's observed median completion. Other models are unchanged.
-      timeout: failFastOnTimeout
-        ? Math.min(provider.timeout, DEEPSEEK_V4_FLASH_COMPLETION_TIMEOUT_MS)
-        : provider.timeout,
+      timeout: getLlmAttemptTimeoutMs(model, provider.timeout),
       failFastOnTimeout,
       // `null` explicitly clears the table entry's extraBody (R13 pin);
       // undefined leaves it untouched.

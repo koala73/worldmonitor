@@ -2,6 +2,9 @@ import { CHROME_UA } from './constants';
 import { isProviderAvailable } from './llm-health';
 import { sanitizeForPrompt } from './llm-sanitize.js';
 import { buildLlmCallEvent, deliverUsageEvents, type LlmCallEvent } from './usage';
+import { getLlmAttemptTimeoutMs } from '../../scripts/_llm-model-timeouts.mjs';
+
+export { getLlmAttemptTimeoutMs } from '../../scripts/_llm-model-timeouts.mjs';
 
 function promptChars(messages: Array<{ role: string; content: string }>): number {
   return messages.reduce((sum, m) => sum + (m.content?.length ?? 0), 0);
@@ -204,16 +207,6 @@ export function stripThinkingTags(text: string): string {
 // it is skipped in cloud where OLLAMA_API_URL is unset.
 const PROVIDER_CHAIN = ['ollama', 'openrouter', 'groq', 'generic'] as const;
 const PROVIDER_SET = new Set<string>(PROVIDER_CHAIN);
-const DEEPSEEK_V4_FLASH_MODEL_PREFIX = 'deepseek/deepseek-v4-flash';
-// This is a non-streaming completion deadline, not a first-token deadline.
-// Keep it above the pinned endpoint's observed p50 while cutting off the 25s stall tail.
-const DEEPSEEK_V4_FLASH_COMPLETION_TIMEOUT_MS = 15_000;
-
-export function getLlmAttemptTimeoutMs(model: string, requestedTimeoutMs: number): number {
-  return model.startsWith(DEEPSEEK_V4_FLASH_MODEL_PREFIX)
-    ? Math.min(requestedTimeoutMs, DEEPSEEK_V4_FLASH_COMPLETION_TIMEOUT_MS)
-    : requestedTimeoutMs;
-}
 
 export interface LlmCallOptions {
   messages: Array<{ role: string; content: string }>;
