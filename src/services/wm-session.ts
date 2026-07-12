@@ -29,6 +29,8 @@ const PERIODIC_REFRESH_MS = 30 * 60 * 1000;
 const SESSION_DEAD_COOLDOWN_MS = 15 * 60 * 1000;
 export const WM_SESSION_DEGRADED_EVENT = 'wm-session-degraded';
 
+type WmSessionDeadReason = 'mint_failed' | 'retry_401';
+
 interface StoredSession {
   exp: number;
 }
@@ -50,7 +52,7 @@ export function isWmSessionDead(): boolean {
   return true;
 }
 
-function markWmSessionDead(): void {
+function markWmSessionDead(reason: WmSessionDeadReason): void {
   const alreadyDead = isWmSessionDead();
   sessionDeadUntil = Date.now() + SESSION_DEAD_COOLDOWN_MS;
   cached = null;
@@ -65,7 +67,7 @@ function markWmSessionDead(): void {
   try {
     sentryEnqueue((s) => s.captureMessage(
       'wm-session dead: anonymous API calls suppressed',
-      { level: 'warning', tags: { kind: 'wm_session_dead' } },
+      { level: 'warning', tags: { kind: 'wm_session_dead', reason } },
     ));
   } catch { /* best-effort telemetry */ }
   if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
@@ -349,12 +351,12 @@ export function installWmSessionFetchInterceptor(): void {
       const recovery = (async (): Promise<Response | null> => {
         const fresh = await ensureWmSession().catch(() => false);
         if (!fresh) {
-          markWmSessionDead();
+          markWmSessionDead('mint_failed');
           return null;
         }
         const retryResp = await sendWith(new Headers(headers), requestClone ?? input);
         if (retryResp.status === 401) {
-          markWmSessionDead();
+          markWmSessionDead('retry_401');
           return null;
         }
         return retryResp;

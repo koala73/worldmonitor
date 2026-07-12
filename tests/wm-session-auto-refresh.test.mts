@@ -450,6 +450,40 @@ describe('wm-session refresh-on-401 (Layer 2)', () => {
     assert.equal(captures[0].msg, 'wm-session dead: anonymous API calls suppressed');
     assert.equal(captures[0].ctx.level, 'warning');
     assert.equal(captures[0].ctx.tags?.kind, 'wm_session_dead');
+    assert.equal(captures[0].ctx.tags?.reason, 'retry_401');
+  });
+
+  it('tags wm_session_dead as mint_failed when recovery cannot mint a session', async () => {
+    memoryStorage.clear();
+
+    const captures: Array<{ msg: string; ctx: { level?: string; tags?: Record<string, string> } }> = [];
+    mod.__setWmSessionSentryEnqueueForTests(((fn: (s: unknown) => void) => {
+      fn({ captureMessage: (msg: string, ctx: { level?: string; tags?: Record<string, string> }) => { captures.push({ msg, ctx }); } });
+    }) as Parameters<typeof mod.__setWmSessionSentryEnqueueForTests>[0]);
+
+    let mintCalls = 0;
+    currentFetchHandler = (input) => {
+      const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
+      if (url.includes('/api/wm-session')) {
+        mintCalls += 1;
+        return Promise.resolve(new Response('mint unavailable', { status: 503 }));
+      }
+      return Promise.resolve(new Response('unauthorized', { status: 401 }));
+    };
+
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      const resp = await wrappedFetch('https://api.worldmonitor.app/api/bootstrap');
+      assert.equal(resp.status, 401, 'failed recovery returns the original server response');
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    assert.equal(mintCalls, 2, 'initial preflight and recovery mint both fail');
+    assert.equal(captures.length, 1, 'the failed mint starts one degraded episode');
+    assert.equal(captures[0].ctx.tags?.kind, 'wm_session_dead');
+    assert.equal(captures[0].ctx.tags?.reason, 'mint_failed');
   });
 
   it('a throwing Sentry enqueue never skips the degraded-event dispatch nor rejects the recovery return', async () => {
