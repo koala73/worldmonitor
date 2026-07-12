@@ -11,6 +11,16 @@ describe('forecast resolution health registration', () => {
     assert.equal(__testing__.SEED_META.forecastScorecard.key, 'seed-meta:forecast:scorecard');
   });
 
+  it('registers the funnel-diversity guardrail (#5233) as a standalone health check', () => {
+    // data key + companion seed-meta must stay paired so a collapsed funnel
+    // (seed-meta status:'error') surfaces via classifyKey's seedError path.
+    assert.equal(__testing__.STANDALONE_KEYS.forecastFunnel, 'forecast:funnel:health:v1');
+    assert.equal(__testing__.SEED_META.forecastFunnel.key, 'seed-meta:forecast:funnel:health:v1');
+    // absent-key window (before the first generator run ships it) must be
+    // tolerated as warn, never a hard EMPTY crit.
+    assert.ok(__testing__.EMPTY_DATA_OK_KEYS.has('forecastFunnel'));
+  });
+
   it('keeps forecast input feeds visible in strict health monitoring', () => {
     assert.equal(__testing__.STANDALONE_KEYS.temporalAnomalies, 'temporal:anomalies:v1');
     assert.equal(__testing__.SEED_META.temporalAnomalies.key, 'seed-meta:temporal:anomalies');

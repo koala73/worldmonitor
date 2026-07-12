@@ -7,6 +7,17 @@ export const DEFAULT_ROLLING_WINDOW_DAYS = 180;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const EPSILON = 1e-6;
 
+// Origins whose scored entries are held OUT of the headline skill Brier:
+// `state_derived` = synthetic count-padding backfill (not a real prediction);
+// `bet_engine`    = shadow bets scored for evidence but not yet promoted.
+// The all-origins `overall` block still counts them for continuity.
+export const SYNTHETIC_GENERATION_ORIGINS = ['state_derived'];
+export const SHADOW_GENERATION_ORIGINS = ['bet_engine'];
+const DEFAULT_SKILL_EXCLUDED_ORIGINS = [
+  ...SYNTHETIC_GENERATION_ORIGINS,
+  ...SHADOW_GENERATION_ORIGINS,
+];
+
 export function computeScorecard(ledger, nowMs, options = {}) {
   const rollingWindowDays = options.rollingWindowDays ?? DEFAULT_ROLLING_WINDOW_DAYS;
   const minResolvedAt = nowMs - rollingWindowDays * DAY_MS;
@@ -45,6 +56,9 @@ export function computeScorecard(ledger, nowMs, options = {}) {
 
   const overall = summarizeScored(scored);
   if (overall) scorecard.overall = overall;
+  const excludeOrigins = new Set(options.skillExcludeOrigins ?? DEFAULT_SKILL_EXCLUDED_ORIGINS);
+  const skill = summarizeSkill(scored, excludeOrigins);
+  if (skill) scorecard.skill = skill;
   const marketSkill = summarizeMarketSkill(scored);
   if (marketSkill) scorecard.vsMarketSkill = marketSkill;
   return scorecard;
@@ -96,6 +110,26 @@ function summarizeScored(entries) {
     brier: round(mean(entries.map((entry) => brier(entry)))),
     logScore: round(mean(entries.map((entry) => logScore(entry)))),
   };
+}
+
+// Headline "real skill" summary: Brier/log score over scored entries whose
+// generationOrigin is NOT in the exclude set. Present whenever anything is
+// scored — a fully synthetic funnel surfaces as count 0 with excludedScored>0,
+// which is the honest signal that the headline is unmeasurable.
+function summarizeSkill(scored, excludeSet) {
+  if (!scored.length) return null;
+  const originOf = (entry) => entry?.generationOrigin || 'unknown';
+  const real = scored.filter((entry) => !excludeSet.has(originOf(entry)));
+  const excludedEntries = scored.filter((entry) => excludeSet.has(originOf(entry)));
+  const excludedOrigins = [...new Set(excludedEntries.map(originOf))].sort();
+  const summary = summarizeScored(real);
+  return pruneUndefined({
+    count: real.length,
+    excludedScored: excludedEntries.length,
+    excludedOrigins: excludedOrigins.length ? excludedOrigins : undefined,
+    brier: summary?.brier,
+    logScore: summary?.logScore,
+  });
 }
 
 function summarizeGroups(scored, resolved, key, label) {

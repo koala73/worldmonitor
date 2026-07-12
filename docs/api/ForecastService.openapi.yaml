@@ -1102,6 +1102,8 @@ components:
                     type: boolean
                 error:
                     type: string
+                skill:
+                    $ref: '#/components/schemas/ScorecardSkill'
         ScorecardTotals:
             type: object
             properties:
@@ -1225,6 +1227,30 @@ components:
                 brierDelta:
                     type: number
                     format: double
+        ScorecardSkill:
+            type: object
+            properties:
+                count:
+                    type: integer
+                    format: int32
+                brier:
+                    type: number
+                    format: double
+                logScore:
+                    type: number
+                    format: double
+                excludedScored:
+                    type: integer
+                    format: int32
+                excludedOrigins:
+                    type: array
+                    items:
+                        type: string
+            description: |-
+                Headline "real skill" summary: Brier/log score over scored entries whose
+                 generation origin is NOT synthetic backfill or an unpromoted shadow stream.
+                 count 0 with excluded_scored > 0 means the headline is unmeasurable because
+                 everything scored was synthetic — the honest signal for a collapsed funnel.
         GetSimulationPackageRequest:
             type: object
             properties:

@@ -1852,6 +1852,7 @@ export const CACHE_TOOLS: ToolDef[] = [
           rollingWindowDays: { type: ['number', 'null'] },
           totals: { type: ['object', 'null'] },
           overall: { type: ['object', 'null'] },
+          skill: { type: ['object', 'null'] },
           byDomain: { type: 'array', items: { type: 'object' } },
           byGenerationOrigin: { type: 'array', items: { type: 'object' } },
           calibration: { type: 'array', items: { type: 'object' } },
