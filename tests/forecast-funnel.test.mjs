@@ -59,18 +59,30 @@ describe('assessFunnelDiversity', () => {
     assert.deepEqual(result.reasons, []);
   });
 
-  it('honors custom thresholds and synthetic-origin sets', () => {
+  it('counts bet_engine shadow bets as non-real coverage by default (matches skill-Brier exclusion)', () => {
     const predictions = [pred('market'), pred('energy', 'bet_engine')];
-    // default synthetic set excludes bet_engine → 0% synthetic, 2 domains
+    // default non-real set = state_derived + bet_engine → shadow bet counted, 50% synthetic
     const withDefault = assessFunnelDiversity(predictions, { minDistinctDomains: 2 });
-    assert.equal(withDefault.collapsed, false);
-    assert.equal(withDefault.syntheticShare, 0);
-    // treat bet_engine as synthetic → 50% synthetic, still <= 0.5 so not collapsed
-    const strict = assessFunnelDiversity(predictions, {
+    assert.equal(withDefault.syntheticShare, 0.5);
+    assert.equal(withDefault.collapsed, false); // 0.5 is not > 0.5
+
+    // a bet_engine-heavy funnel now trips the guardrail instead of reading healthy
+    const shadowHeavy = assessFunnelDiversity(
+      [pred('energy', 'bet_engine'), pred('energy', 'bet_engine'), pred('market', 'bet_engine'), pred('market')],
+      { minDistinctDomains: 2 },
+    );
+    assert.equal(shadowHeavy.syntheticShare, 0.75);
+    assert.equal(shadowHeavy.collapsed, true);
+  });
+
+  it('honors an explicit custom synthetic-origin override', () => {
+    const predictions = [pred('market'), pred('energy', 'bet_engine')];
+    // override to state_derived only → bet_engine no longer counted
+    const custom = assessFunnelDiversity(predictions, {
       minDistinctDomains: 2,
-      syntheticOrigins: ['state_derived', 'bet_engine'],
+      syntheticOrigins: ['state_derived'],
     });
-    assert.equal(strict.syntheticShare, 0.5);
-    assert.equal(strict.collapsed, false);
+    assert.equal(custom.syntheticShare, 0);
+    assert.equal(custom.collapsed, false);
   });
 });

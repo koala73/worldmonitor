@@ -6,15 +6,20 @@
 // domains, or too high a synthetic share — so the generator can WARN and a
 // health check can surface it. Pure + injected: no wall-clock, no I/O.
 
-import { SYNTHETIC_GENERATION_ORIGINS } from './_forecast-scorecard.mjs';
+import { SYNTHETIC_GENERATION_ORIGINS, SHADOW_GENERATION_ORIGINS } from './_forecast-scorecard.mjs';
 
 export const DEFAULT_MIN_DISTINCT_DOMAINS = 4;
 export const DEFAULT_MAX_SYNTHETIC_SHARE = 0.5;
+// Origins that are NOT real user-facing coverage: synthetic count-padding
+// (state_derived) AND unpromoted shadow bets (bet_engine). Kept in lock-step
+// with the scorecard's skill-Brier exclusion set so a bet_engine-heavy funnel
+// can't read "diverse/healthy" here while skill.count stays near zero there.
+export const NON_REAL_FUNNEL_ORIGINS = [...SYNTHETIC_GENERATION_ORIGINS, ...SHADOW_GENERATION_ORIGINS];
 
 export function assessFunnelDiversity(predictions, options = {}) {
   const minDistinctDomains = options.minDistinctDomains ?? DEFAULT_MIN_DISTINCT_DOMAINS;
   const maxSyntheticShare = options.maxSyntheticShare ?? DEFAULT_MAX_SYNTHETIC_SHARE;
-  const syntheticOrigins = new Set(options.syntheticOrigins ?? SYNTHETIC_GENERATION_ORIGINS);
+  const syntheticOrigins = new Set(options.syntheticOrigins ?? NON_REAL_FUNNEL_ORIGINS);
 
   const list = Array.isArray(predictions) ? predictions.filter(Boolean) : [];
   const total = list.length;

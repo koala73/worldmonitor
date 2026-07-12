@@ -118,6 +118,15 @@ function summarizeScored(entries) {
 // which is the honest signal that the headline is unmeasurable.
 function summarizeSkill(scored, excludeSet) {
   if (!scored.length) return null;
+  // KNOWN-GAP (#5233 follow-up, tracked in #5240): entries whose generationOrigin
+  // is absent fall back to 'unknown', which is NOT in the exclude set, so they
+  // count toward real skill. Deliberately conservative — untagged is not the same
+  // as synthetic, and dropping genuinely-real entries would understate skill.
+  // The live history payload already tags entries (buildHistoryForecastEntry
+  // defaults to 'legacy_detector'), so the ~52% 'unknown' in the ledger are
+  // LEGACY entries created before that default and age out over the 180d
+  // retention (0 are yet scored). Residual risk only if a legacy 'unknown' entry
+  // scores before aging out; #5240 tracks a one-time backfill/monitor.
   const originOf = (entry) => entry?.generationOrigin || 'unknown';
   const real = scored.filter((entry) => !excludeSet.has(originOf(entry)));
   const excludedEntries = scored.filter((entry) => excludeSet.has(originOf(entry)));
