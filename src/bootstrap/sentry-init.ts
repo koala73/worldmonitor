@@ -41,6 +41,17 @@ const THIRD_PARTY_FETCH_HOST_ALLOWLIST = new Set([
   // above. NOT `api.worldmonitor.app` (stays off so real API regressions
   // surface). WORLDMONITOR-RP.
   'data.debugbear.com',
+  // Self-hosted Umami analytics collector (`src/services/analytics.ts` loads
+  // `abacus.worldmonitor.app/script.js`, whose tracker POSTs events to
+  // `/api/send`). Same disposition as the DebugBear beacon above: a dropped
+  // analytics beacon is invisible to the user and unactionable — typically an
+  // ad-blocker or a fetch-wrapping extension killing the POST. It reaches
+  // Sentry despite the extension gate because the leaked rejection carries our
+  // Vite `window.fetch` trampolines, which make hasFirstParty true. Serves no
+  // product data, so an abacus outage belongs to uptime monitoring, not a
+  // per-user Sentry error. NOT `api.worldmonitor.app` (stays off so real API
+  // regressions surface). WORLDMONITOR-WH/WJ.
+  'abacus.worldmonitor.app',
 ]);
 
 function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
@@ -554,12 +565,18 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // extension-wrapper gate above; collector identity comes from
       // DEBUGBEAR_RUM_SCRIPT_SRC via the shared predicate.
       // WORLDMONITOR-VC (93ev/69u, 2026-07-04+).
+      // The optional `\w{1,3}.` receiver prefix is WORLDMONITOR-VQ: a later Vite
+      // build emits the same trampoline as `Rt.window.fetch` rather than a bare
+      // `window.fetch`, and the anchored match rejected it, so the identical
+      // wrapper class re-surfaced as a new issue. The prefix is bounded to a
+      // minified identifier (≤3 chars) so a real named receiver — e.g.
+      // `apiClient.fetch` — is still read as a genuine caller and surfaces.
       if (/^(?:TypeError: )?Failed to fetch$/.test(msg)
           && frames.some(f => isDebugBearRumScriptFrame(f.filename ?? ''))
           && nonInfraFrames.every(f =>
             isDebugBearRumScriptFrame(f.filename ?? '')
             || (/\/assets\/(?:panel-storage|widget-store)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? '')
-              && /^(?:window\.)?fetch$/.test(f.function ?? '')))) {
+              && /^(?:\w{1,3}\.)?(?:window\.)?fetch$/.test(f.function ?? '')))) {
         return null;
       }
       // Suppress Sentry SDK DOM breadcrumb null-access on document.activeElement/contains.
