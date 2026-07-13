@@ -4,6 +4,9 @@ import { createRequire } from 'node:module';
 
 import { buildSpineEntry } from '../scripts/seed-energy-spine.mjs';
 import {
+  buildResponseFromSpine,
+  getObservedJodiGasMeasurements,
+  getObservedJodiOilMeasurements,
   hasJodiGasMeasurements,
   hasJodiOilMeasurements,
 } from '../server/worldmonitor/intelligence/v1/get-country-energy-profile.ts';
@@ -109,6 +112,28 @@ describe('China JODI content validation', () => {
     );
   });
 
+  it('drives the seeder gates from the public-profile measurement catalogue', () => {
+    const now = new Date('2026-07-13T00:00:00.000Z');
+
+    for (const path of measurementFields.oil) {
+      const record = { iso2: 'CN', ...recordWithMeasurement(path, 0) };
+      assert.equal(oilModule.assessChinaOilCoverage([record], now).ok, true, `oil field ${path}`);
+    }
+    for (const path of measurementFields.gas) {
+      const record = { iso2: 'CN', ...recordWithMeasurement(path, 0) };
+      assert.equal(gasModule.assessChinaGasCoverage([record], now).ok, true, `gas field ${path}`);
+    }
+
+    assert.equal(
+      oilModule.assessChinaOilCoverage([{ iso2: 'CN', dataMonth: '2026-05', crude: { productionKbd: 1 } }], now).reason,
+      'china-no-measurements',
+    );
+    assert.equal(
+      gasModule.assessChinaGasCoverage([{ iso2: 'CN', dataMonth: '2026-05', productionTj: 1 }], now).reason,
+      'china-no-measurements',
+    );
+  });
+
   it('reports global and China oil coverage failures together', () => {
     const reason = oilModule.formatCoverageFailureReason({
       hasGlobalCoverage: false,
@@ -196,6 +221,29 @@ describe('China energy spine availability', () => {
     assert.equal(hasJodiGasMeasurements(null), false);
     assert.equal(hasJodiGasMeasurements({ dataMonth: '2026-05', totalDemandTj: null }), false);
     assert.equal(hasJodiGasMeasurements({ dataMonth: '2026-05', lngImportsTj: 0 }), true);
+
+    assert.deepEqual(
+      getObservedJodiOilMeasurements({ dataMonth: '2026-05', crude: { importsKbd: 0 }, gasoline: { demandKbd: null } }),
+      ['crude.importsKbd'],
+    );
+    assert.deepEqual(
+      getObservedJodiGasMeasurements({ dataMonth: '2026-05', lngImportsTj: 0, totalDemandTj: null }),
+      ['lngImportsTj'],
+    );
+  });
+
+  it('exposes per-field presence for partial API responses without breaking scalar defaults', () => {
+    const response = buildResponseFromSpine({
+      coverage: { hasJodiOil: true, hasJodiGas: true },
+      sources: { jodiOilMonth: '2026-05', jodiGasMonth: '2026-05' },
+      oil: { crudeImportsKbd: 0, gasolineDemandKbd: null },
+      gas: { lngImportsTj: 0, totalDemandTj: null },
+    }, null, null, null, null);
+
+    assert.equal(response.crudeImportsKbd, 0, 'legitimate zero remains a numeric zero');
+    assert.equal(response.gasolineDemandKbd, 0, 'legacy scalar default remains backward-compatible');
+    assert.deepEqual(response.jodiOilObservedMeasurements, ['crude.importsKbd']);
+    assert.deepEqual(response.jodiGasObservedMeasurements, ['lngImportsTj']);
   });
 
   it('derives both spine and API availability from the shared measurement field catalogue', () => {

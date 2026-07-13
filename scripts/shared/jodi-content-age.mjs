@@ -1,5 +1,23 @@
 export const MAX_JODI_CONTENT_AGE_MONTHS = 6;
 
+function readPath(value, path) {
+  return path.split('.').reduce((current, part) => {
+    if (current == null || typeof current !== 'object') return undefined;
+    return current[part];
+  }, value);
+}
+
+/**
+ * Return true when at least one public-profile measurement is present.
+ * Zero is a valid observation; null, undefined, and non-finite values are not.
+ */
+export function hasFiniteMeasurementAtPaths(value, paths) {
+  return paths.some((path) => {
+    const measurement = readPath(value, path);
+    return typeof measurement === 'number' && Number.isFinite(measurement);
+  });
+}
+
 function parseMonthIndex(dataMonth) {
   const match = /^(\d{4})-(0[1-9]|1[0-2])$/.exec(dataMonth ?? '');
   if (!match) return null;

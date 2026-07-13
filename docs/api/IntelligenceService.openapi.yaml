@@ -4272,6 +4272,20 @@ components:
                     type: string
                 sprAvailable:
                     type: boolean
+                jodiOilObservedMeasurements:
+                    type: array
+                    items:
+                        type: string
+                        description: |-
+                            Per-field presence for partial JODI payloads. Existing numeric fields keep
+                             their proto3 zero defaults for compatibility; a path appears here only
+                             when that source measurement was actually observed, including valid zeroes.
+                             Values use the stable source paths from jodi-measurement-fields.json.
+                jodiGasObservedMeasurements:
+                    type: array
+                    items:
+                        type: string
+                        description: Same presence contract for JODI gas source paths.
         ComputeEnergyShockScenarioRequest:
             type: object
             properties:

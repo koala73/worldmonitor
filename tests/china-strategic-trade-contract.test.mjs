@@ -7,8 +7,10 @@ import {
   INTER_REQUEST_DELAY_MS,
   KEY_PREFIX,
   TRADE_FLOW_FETCH_PHASE_TIMEOUT_MS,
+  TRADE_FLOW_COVERAGE_CODES,
   TRADE_FLOW_LOCK_TTL_MS,
   TRADE_FLOW_MATRIX_SIZE,
+  TRADE_FLOW_RATE_LIMIT_RETRY_BUDGET,
 } from '../scripts/seed-trade-flows.mjs';
 import { CACHE_TOOLS } from '../api/mcp/registry/cache-tools.ts';
 
@@ -58,15 +60,27 @@ describe('shared China strategic-product metadata', () => {
     for (const code of ['2711', '271111', '854142', '854143']) {
       assert.ok(tradeFlowCodes.has(code), `missing compatibility or HS2022 strategic code ${code}`);
     }
+
+    const tradeFlowProducts = metadata.products.filter((product) => product.tradeFlowCode);
+    assert.ok(
+      tradeFlowProducts.every((product) => [1, 2].includes(product.tradeFlowCoverageStage)),
+      'every trade-flow product must declare its rollout coverage stage',
+    );
+    assert.deepEqual(
+      new Set(TRADE_FLOW_COVERAGE_CODES),
+      new Set(['2709', '2711', '7108', '8542', '9301']),
+      'stage 1 must preserve the proven five-product coverage baseline',
+    );
   });
 
-  it('budgets the two-period matrix below the fetch deadline and lock TTL', () => {
+  it('budgets two-period pacing and the matrix-wide 429 waits below the fetch deadline', () => {
     const twoPassPacingFloorMs = (TRADE_FLOW_MATRIX_SIZE - 1) * INTER_REQUEST_DELAY_MS * 2
       + INTER_REQUEST_DELAY_MS;
+    const boundedRateLimitWaitMs = TRADE_FLOW_RATE_LIMIT_RETRY_BUDGET * 60_000;
 
     assert.ok(
-      TRADE_FLOW_FETCH_PHASE_TIMEOUT_MS > twoPassPacingFloorMs,
-      `fetch timeout must exceed the two-pass pacing floor (${twoPassPacingFloorMs}ms)`,
+      TRADE_FLOW_FETCH_PHASE_TIMEOUT_MS > twoPassPacingFloorMs + boundedRateLimitWaitMs,
+      `fetch timeout must exceed pacing plus bounded 429 waits (${twoPassPacingFloorMs + boundedRateLimitWaitMs}ms)`,
     );
     assert.ok(
       TRADE_FLOW_LOCK_TTL_MS > TRADE_FLOW_FETCH_PHASE_TIMEOUT_MS,

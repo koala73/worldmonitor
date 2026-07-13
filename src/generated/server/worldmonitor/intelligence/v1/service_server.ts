@@ -560,6 +560,8 @@ export interface GetCountryEnergyProfileResponse {
   sprSource: string;
   sprAsOf: string;
   sprAvailable: boolean;
+  jodiOilObservedMeasurements: string[];
+  jodiGasObservedMeasurements: string[];
 }
 
 export interface ComputeEnergyShockScenarioRequest {

@@ -14,6 +14,7 @@ const COMTRADE_BASE = 'https://comtradeapi.un.org/public/v1';
 export const INTER_REQUEST_DELAY_MS = 3_000;
 export const TRADE_FLOW_FETCH_PHASE_TIMEOUT_MS = 25 * 60 * 1000;
 export const TRADE_FLOW_LOCK_TTL_MS = 30 * 60 * 1000;
+export const TRADE_FLOW_RATE_LIMIT_RETRY_BUDGET = 3;
 const ANOMALY_THRESHOLD = 0.30; // 30% YoY change
 const CHINA_REPORTER_CODE = '156';
 // Require at least this fraction of (reporter × commodity) pairs to return
@@ -27,7 +28,9 @@ const MIN_COVERAGE_RATIO = 0.70;
 // its zero-coverage reporter result blocks publish here.
 const MIN_PER_REPORTER_RATIO = 0.40;
 
-// Strategic reporters: US, China, Russia, Iran, India, Taiwan.
+// Strategic reporters: required reporters first, then best-effort reporters.
+// This order is load-bearing: a best-effort 429 circuit must never prevent a
+// required reporter from being queried during the baseline stage.
 // `required: false` reporters are best-effort: still fetched and published when
 // they return data, but excluded from BOTH coverage floors. Russia (suspended
 // UN Comtrade reporting post-2022) and Iran (sporadic) return 0 as reporters for
@@ -36,11 +39,13 @@ const MIN_PER_REPORTER_RATIO = 0.40;
 const REPORTERS = [
   { code: '842', name: 'USA' },
   { code: '156', name: 'China' },
-  { code: '643', name: 'Russia', required: false },
-  { code: '364', name: 'Iran', required: false },
   { code: '699', name: 'India' },
   { code: '490', name: 'Taiwan' },
+  { code: '643', name: 'Russia', required: false },
+  { code: '364', name: 'Iran', required: false },
 ];
+const REQUIRED_REPORTERS = REPORTERS.filter((reporter) => reporter.required !== false);
+const BEST_EFFORT_REPORTERS = REPORTERS.filter((reporter) => reporter.required === false);
 
 // Comtrade annual data lags. The preview endpoint accepts a SINGLE period and,
 // when given NONE, defaults to the most-recent year present GLOBALLY — currently
@@ -69,7 +74,14 @@ const STRATEGIC_PRODUCT_METADATA = require('./shared/comtrade-strategic-products
 const COMTRADE_CLASSIFICATION_CODE = STRATEGIC_PRODUCT_METADATA.classification.code;
 const COMMODITIES = STRATEGIC_PRODUCT_METADATA.products
   .filter((product) => product.tradeFlowCode)
-  .map((product) => ({ code: product.tradeFlowCode, desc: product.label }));
+  .map((product) => ({
+    code: product.tradeFlowCode,
+    desc: product.label,
+    coverageStage: product.tradeFlowCoverageStage,
+  }));
+const BASELINE_COMMODITIES = COMMODITIES.filter((product) => product.coverageStage === 1);
+const EXPANSION_COMMODITIES = COMMODITIES.filter((product) => product.coverageStage !== 1);
+export const TRADE_FLOW_COVERAGE_CODES = BASELINE_COMMODITIES.map((product) => product.code);
 export const TRADE_FLOW_MATRIX_SIZE = REPORTERS.length * COMMODITIES.length;
 
 // Comtrade preview regularly hits transient 5xx (500/502/503/504). Without
@@ -83,7 +95,7 @@ export function isTransientComtrade(status) {
 let _retrySleep = sleep;
 export function __setSleepForTests(fn) { _retrySleep = typeof fn === 'function' ? fn : sleep; }
 
-export async function fetchFlows(reporter, commodity, period = recentPeriod()) {
+export async function fetchFlows(reporter, commodity, period = recentPeriod(), opts = {}) {
   const url = new URL(`${COMTRADE_BASE}/preview/C/A/${COMTRADE_CLASSIFICATION_CODE}`);
   url.searchParams.set('reporterCode', reporter.code);
   url.searchParams.set('cmdCode', commodity.code);
@@ -106,6 +118,15 @@ export async function fetchFlows(reporter, commodity, period = recentPeriod()) {
   while (true) {
     resp = await once();
     if (resp.status === 429 && !rateLimitedOnce) {
+      const rateLimitBudget = opts.rateLimitBudget;
+      if (rateLimitBudget && rateLimitBudget.remaining <= 0) {
+        rateLimitBudget.exhausted = true;
+        const error = new Error('Comtrade run-level 429 retry budget exhausted');
+        error.code = 'COMTRADE_RATE_LIMIT_BUDGET_EXHAUSTED';
+        error.nonRetryable = true;
+        throw error;
+      }
+      if (rateLimitBudget) rateLimitBudget.remaining--;
       console.warn(`  HTTP 429 for reporter ${reporter.code} cmd ${commodity.code}, retrying in 60s...`);
       await _retrySleep(60_000);
       rateLimitedOnce = true;
@@ -177,27 +198,29 @@ export async function fetchFlows(reporter, commodity, period = recentPeriod()) {
   return flows;
 }
 
-// Fetch every (reporter × commodity) pair for one annual `period`.
-// `pace` is the inter-request delay (injectable so tests skip the real 3s waits).
-async function fetchFlowsForPeriod(period, pace) {
+// Fetch one commodity stage for one annual `period`. The shared pacing state
+// keeps the inter-request gap across stage and fallback-period boundaries.
+async function fetchCommodityStage(period, reporters, commodities, pace, rateLimitBudget, pacingState) {
   const allFlows = [];
   const perKeyFlows = {};
 
-  for (let ri = 0; ri < REPORTERS.length; ri++) {
-    for (let ci = 0; ci < COMMODITIES.length; ci++) {
-      const reporter = REPORTERS[ri];
-      const commodity = COMMODITIES[ci];
+  for (const reporter of reporters) {
+    for (const commodity of commodities) {
       const label = `${reporter.name}/${commodity.desc}`;
 
-      if (ri > 0 || ci > 0) await pace(INTER_REQUEST_DELAY_MS);
+      if (pacingState.requestCount > 0) await pace(INTER_REQUEST_DELAY_MS);
+      pacingState.requestCount++;
       console.log(`  Fetching ${label} (period ${period})...`);
 
       let flows = [];
       try {
-        flows = await fetchFlows(reporter, commodity, period);
+        flows = await fetchFlows(reporter, commodity, period, { rateLimitBudget });
         console.log(`    ${flows.length} records`);
       } catch (err) {
         console.warn(`    ${label}: failed (${err.message})`);
+        if (err?.code === 'COMTRADE_RATE_LIMIT_BUDGET_EXHAUSTED') {
+          return { allFlows, perKeyFlows, rateLimitBudgetExhausted: true };
+        }
       }
 
       allFlows.push(...flows);
@@ -206,29 +229,37 @@ async function fetchFlowsForPeriod(period, pace) {
     }
   }
 
-  return { allFlows, perKeyFlows };
+  return { allFlows, perKeyFlows, rateLimitBudgetExhausted: false };
 }
 
 export async function fetchAllFlows(opts = {}) {
   const periods = opts.periods ?? candidatePeriods();
   const pace = opts.pace ?? sleep;
+  const rateLimitBudget = opts.rateLimitBudget ?? {
+    remaining: TRADE_FLOW_RATE_LIMIT_RETRY_BUDGET,
+    exhausted: false,
+  };
+  const pacingState = { requestCount: 0 };
 
   let lastGate = null;
   for (let pi = 0; pi < periods.length; pi++) {
     const period = periods[pi];
     if (pi > 0) {
       console.log(`  Prior period failed coverage — falling back to period ${period}...`);
-      // Keep the inter-request gap across the pass boundary: the fresh
-      // fetchFlowsForPeriod loop skips its delay on the first pair (ri=ci=0),
-      // so without this the first fallback call fires immediately after the
-      // prior pass's last response — right when the rate-limited preview
-      // endpoint is most likely to return a transient 5xx.
-      await pace(INTER_REQUEST_DELAY_MS);
     }
 
-    const { allFlows, perKeyFlows } = await fetchFlowsForPeriod(period, pace);
+    // Gate the proven baseline before any expansion probe can consume quota or
+    // prevent the older fallback period from running.
+    const requiredBaseline = await fetchCommodityStage(
+      period,
+      REQUIRED_REPORTERS,
+      BASELINE_COMMODITIES,
+      pace,
+      rateLimitBudget,
+      pacingState,
+    );
 
-    const gate = checkCoverage(perKeyFlows, REPORTERS, COMMODITIES);
+    const gate = checkCoverage(requiredBaseline.perKeyFlows, REPORTERS, BASELINE_COMMODITIES);
     lastGate = gate;
     console.log(`  Coverage (period ${period}): ${gate.populated}/${gate.total} (${(gate.globalRatio * 100).toFixed(0)}%) required reporter×commodity pairs populated`);
     for (const r of gate.perReporter) {
@@ -239,9 +270,80 @@ export async function fetchAllFlows(opts = {}) {
       }
     }
 
-    if (gate.ok) {
-      return { flows: allFlows, perKeyFlows, fetchedAt: new Date().toISOString(), period };
+    if (!gate.ok && requiredBaseline.rateLimitBudgetExhausted) {
+      const error = new Error(`Comtrade rate-limit budget exhausted before baseline coverage passed: ${gate.reason}`);
+      error.code = 'COMTRADE_RATE_LIMIT_BUDGET_EXHAUSTED';
+      error.nonRetryable = true;
+      throw error;
     }
+    if (!gate.ok) continue;
+
+    if (requiredBaseline.rateLimitBudgetExhausted) {
+      return {
+        flows: requiredBaseline.allFlows,
+        perKeyFlows: requiredBaseline.perKeyFlows,
+        fetchedAt: new Date().toISOString(),
+        period,
+      };
+    }
+
+    const bestEffortBaseline = await fetchCommodityStage(
+      period,
+      BEST_EFFORT_REPORTERS,
+      BASELINE_COMMODITIES,
+      pace,
+      rateLimitBudget,
+      pacingState,
+    );
+    const baselineFlows = [...requiredBaseline.allFlows, ...bestEffortBaseline.allFlows];
+    const baselinePerKeyFlows = {
+      ...requiredBaseline.perKeyFlows,
+      ...bestEffortBaseline.perKeyFlows,
+    };
+    if (bestEffortBaseline.rateLimitBudgetExhausted) {
+      return {
+        flows: baselineFlows,
+        perKeyFlows: baselinePerKeyFlows,
+        fetchedAt: new Date().toISOString(),
+        period,
+      };
+    }
+
+    const requiredExpansion = await fetchCommodityStage(
+      period,
+      REQUIRED_REPORTERS,
+      EXPANSION_COMMODITIES,
+      pace,
+      rateLimitBudget,
+      pacingState,
+    );
+    if (requiredExpansion.rateLimitBudgetExhausted) {
+      return {
+        flows: [...baselineFlows, ...requiredExpansion.allFlows],
+        perKeyFlows: { ...baselinePerKeyFlows, ...requiredExpansion.perKeyFlows },
+        fetchedAt: new Date().toISOString(),
+        period,
+      };
+    }
+
+    const bestEffortExpansion = await fetchCommodityStage(
+      period,
+      BEST_EFFORT_REPORTERS,
+      EXPANSION_COMMODITIES,
+      pace,
+      rateLimitBudget,
+      pacingState,
+    );
+    return {
+      flows: [...baselineFlows, ...requiredExpansion.allFlows, ...bestEffortExpansion.allFlows],
+      perKeyFlows: {
+        ...baselinePerKeyFlows,
+        ...requiredExpansion.perKeyFlows,
+        ...bestEffortExpansion.perKeyFlows,
+      },
+      fetchedAt: new Date().toISOString(),
+      period,
+    };
   }
 
   throw new Error(lastGate?.reason ?? 'no candidate period produced sufficient coverage');

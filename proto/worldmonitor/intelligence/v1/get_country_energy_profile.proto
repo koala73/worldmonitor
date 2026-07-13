@@ -83,4 +83,12 @@ message GetCountryEnergyProfileResponse {
   string spr_source            = 57;  // data source citation
   string spr_as_of             = 58;  // date string (YYYY-MM)
   bool   spr_available         = 59;  // true when registry has classified data (not 'unknown')
+
+  // Per-field presence for partial JODI payloads. Existing numeric fields keep
+  // their proto3 zero defaults for compatibility; a path appears here only
+  // when that source measurement was actually observed, including valid zeroes.
+  // Values use the stable source paths from jodi-measurement-fields.json.
+  repeated string jodi_oil_observed_measurements = 60;
+  // Same presence contract for JODI gas source paths.
+  repeated string jodi_gas_observed_measurements = 61;
 }

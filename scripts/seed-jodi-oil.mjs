@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { createRequire } from 'node:module';
+
 import {
   loadEnvFile,
   CHROME_UA,
@@ -11,9 +13,14 @@ import {
   withRetry,
   readSeedSnapshot,
 } from './_seed-utils.mjs';
-import { assessChinaJodiCoverage } from './shared/jodi-content-age.mjs';
+import {
+  assessChinaJodiCoverage,
+  hasFiniteMeasurementAtPaths,
+} from './shared/jodi-content-age.mjs';
 
 loadEnvFile(import.meta.url);
+const require = createRequire(import.meta.url);
+const JODI_MEASUREMENT_FIELDS = require('./shared/jodi-measurement-fields.json');
 
 export const CANONICAL_KEY = 'energy:jodi-oil:v1:_countries';
 export const COUNTRY_KEY_PREFIX = 'energy:jodi-oil:v1:';
@@ -186,8 +193,7 @@ export function validateCoverage(countries) {
 }
 
 function hasOilMeasurements(record) {
-  const groups = [record?.gasoline, record?.diesel, record?.jet, record?.fuelOil, record?.lpg, record?.crude];
-  return groups.some((group) => group && Object.values(group).some((value) => Number.isFinite(value)));
+  return hasFiniteMeasurementAtPaths(record, JODI_MEASUREMENT_FIELDS.oil);
 }
 
 export function assessChinaOilCoverage(countries, now = new Date()) {

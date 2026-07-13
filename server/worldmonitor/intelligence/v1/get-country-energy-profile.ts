@@ -180,6 +180,8 @@ const EMPTY: GetCountryEnergyProfileResponse = {
   sprSource: '',
   sprAsOf: '',
   sprAvailable: false,
+  jodiOilObservedMeasurements: [],
+  jodiGasObservedMeasurements: [],
 };
 
 function n(v: number | null | undefined): number {
@@ -197,19 +199,41 @@ function readPath(value: unknown, path: string): unknown {
   }, value);
 }
 
-function hasFiniteMeasurementAtPaths(value: unknown, paths: readonly string[]): boolean {
-  return paths.some((path) => {
+function observedMeasurementPaths(value: unknown, paths: readonly string[]): string[] {
+  return paths.filter((path) => {
     const measurement = readPath(value, path);
     return typeof measurement === 'number' && Number.isFinite(measurement);
   });
 }
 
 export function hasJodiOilMeasurements(jodiOil: JodiOil | null): boolean {
-  return jodiOil != null && hasFiniteMeasurementAtPaths(jodiOil, jodiMeasurementFields.oil);
+  return getObservedJodiOilMeasurements(jodiOil).length > 0;
 }
 
 export function hasJodiGasMeasurements(jodiGas: JodiGas | null): boolean {
-  return jodiGas != null && hasFiniteMeasurementAtPaths(jodiGas, jodiMeasurementFields.gas);
+  return getObservedJodiGasMeasurements(jodiGas).length > 0;
+}
+
+export function getObservedJodiOilMeasurements(jodiOil: JodiOil | null): string[] {
+  return jodiOil == null ? [] : observedMeasurementPaths(jodiOil, jodiMeasurementFields.oil);
+}
+
+export function getObservedJodiGasMeasurements(jodiGas: JodiGas | null): string[] {
+  return jodiGas == null ? [] : observedMeasurementPaths(jodiGas, jodiMeasurementFields.gas);
+}
+
+function flattenMeasurementPath(path: string): string {
+  const [head = '', ...tail] = path.split('.');
+  return head + tail.map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join('');
+}
+
+function observedSpineMeasurementPaths(value: unknown, paths: readonly string[]): string[] {
+  if (value == null || typeof value !== 'object') return [];
+  const record = value as Record<string, unknown>;
+  return paths.filter((path) => {
+    const measurement = record[flattenMeasurementPath(path)];
+    return typeof measurement === 'number' && Number.isFinite(measurement);
+  });
 }
 
 interface SprPolicy {
@@ -261,7 +285,7 @@ function buildSprFields(sprPolicy: SprPolicy | null | undefined): Pick<
   };
 }
 
-function buildResponseFromSpine(
+export function buildResponseFromSpine(
   spine: EnergySpine,
   gasStorage: GasStorage | null,
   electricity: ElectricityEntry | null,
@@ -322,6 +346,8 @@ function buildResponseFromSpine(
     gasLngImportsTj: n(gas.lngImportsTj),
     gasPipeImportsTj: n(gas.pipeImportsTj),
     gasLngShare: n(gas.lngShareOfImports != null ? gas.lngShareOfImports * 100 : null),
+    jodiOilObservedMeasurements: observedSpineMeasurementPaths(oil, jodiMeasurementFields.oil),
+    jodiGasObservedMeasurements: observedSpineMeasurementPaths(gas, jodiMeasurementFields.gas),
 
     ieaStocksAvailable: cov.hasIeaStocks === true,
     ieaStocksDataMonth: s(src.ieaStocksMonth),
@@ -435,6 +461,8 @@ export async function getCountryEnergyProfile(
     gasLngImportsTj: n(jodiGas?.lngImportsTj),
     gasPipeImportsTj: n(jodiGas?.pipeImportsTj),
     gasLngShare: n(jodiGas?.lngShareOfImports != null ? jodiGas.lngShareOfImports * 100 : null),
+    jodiOilObservedMeasurements: getObservedJodiOilMeasurements(jodiOil),
+    jodiGasObservedMeasurements: getObservedJodiGasMeasurements(jodiGas),
 
     ieaStocksAvailable: ieaStocks != null && (ieaStocks.netExporter === true || (ieaStocks.daysOfCover != null && ieaStocks.anomaly !== true)),
     ieaStocksDataMonth: s(ieaStocks?.dataMonth),

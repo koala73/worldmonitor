@@ -2,6 +2,7 @@
 // @ts-check
 
 import { inflateRaw } from 'node:zlib';
+import { createRequire } from 'node:module';
 import { promisify } from 'node:util';
 import {
   loadEnvFile,
@@ -11,9 +12,14 @@ import {
   readSeedSnapshot,
   extendExistingTtl,
 } from './_seed-utils.mjs';
-import { assessChinaJodiCoverage } from './shared/jodi-content-age.mjs';
+import {
+  assessChinaJodiCoverage,
+  hasFiniteMeasurementAtPaths,
+} from './shared/jodi-content-age.mjs';
 
 loadEnvFile(import.meta.url);
+const require = createRequire(import.meta.url);
+const JODI_MEASUREMENT_FIELDS = require('./shared/jodi-measurement-fields.json');
 
 const inflateRawAsync = promisify(inflateRaw);
 
@@ -142,16 +148,7 @@ export function validateGasCountries(iso2Array) {
 }
 
 function hasGasMeasurements(record) {
-  return [
-    record?.productionTj,
-    record?.lngImportsTj,
-    record?.pipeImportsTj,
-    record?.lngExportsTj,
-    record?.pipeExportsTj,
-    record?.totalImportsTj,
-    record?.totalDemandTj,
-    record?.closingStockTj,
-  ].some((value) => Number.isFinite(value));
+  return hasFiniteMeasurementAtPaths(record, JODI_MEASUREMENT_FIELDS.gas);
 }
 
 export function assessChinaGasCoverage(records, now = new Date()) {
