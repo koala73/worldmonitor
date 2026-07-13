@@ -7,9 +7,12 @@ import {
   normalizeTedNotice,
   normalizeContractsFinderRelease,
   normalizeWorldBankNotice,
+  normalizeGetsNotice,
   dedupeTenders,
   isOpenOpportunity,
   buildSnapshot,
+  mergeTenderSourceResults,
+  safeOfficialUrl,
 } from '../scripts/_global-tenders.mjs';
 
 test('normalizes official notices with stable provenance and typed money', () => {
@@ -46,8 +49,8 @@ test('normalizes TED and World Bank records without inventing unavailable values
     'main-classification-proc': ['72200000'],
   });
   const wb = normalizeWorldBankNotice({
-    id: 'WB-99', bid_description: 'Climate information system', country_code: 'KE',
-    project_name: 'Climate information modernization', noticedate: '2026-07-09', submission_date: '2026-07-29',
+    id: 'WB-99', bid_description: 'Climate information system', project_ctry_code: 'KE',
+    project_name: 'Climate information modernization', publication_date: '2026-07-09', submission_deadline_date: '2026-07-29',
     procurement_method_code: 'QCBS', notice_status: 'Published', borrower: 'Kenya Ministry of Environment',
   });
 
@@ -60,7 +63,26 @@ test('normalizes TED and World Bank records without inventing unavailable values
   assert.equal(wb.description, 'Climate information modernization');
   assert.equal(wb.buyer, 'Kenya Ministry of Environment');
   assert.equal(wb.status, 'published');
-  assert.equal(wb.officialUrl, 'https://projects.worldbank.org/en/projects-operations/procurement/notices/notice-detail/WB-99');
+  assert.equal(wb.officialUrl, 'https://projects.worldbank.org/en/projects-operations/procurement-detail/WB-99');
+});
+
+test('normalizes the official GETS feed as Oceania coverage', () => {
+  const tender = normalizeGetsNotice({
+    id: '34394762',
+    title: 'Cloud security platform',
+    link: 'https://www.gets.govt.nz/MBIE/ExternalTenderDetails.htm?id=34394762',
+    buyer: 'Ministry of Business, Innovation and Employment',
+    publishedAt: '2026-07-10T00:00:00Z',
+    deadline: '2026-08-17T04:00:00Z',
+    categories: ['81110000 - Computer services'],
+    description: 'Official open tender',
+  });
+
+  assert.equal(tender.id, 'gets:34394762');
+  assert.equal(tender.countryCode, 'NZ');
+  assert.equal(tender.region, 'Oceania');
+  assert.equal(tender.buyer, 'Ministry of Business, Innovation and Employment');
+  assert.equal(tender.deadline, '2026-08-17T04:00:00.000Z');
 });
 
 test('normalizes a UK OCDS tender with official provenance and its typed value', () => {
@@ -100,6 +122,118 @@ test('deduplicates source notice revisions and reports partial source failure ex
   assert.equal(snapshot.dataAvailable, true);
   assert.equal(snapshot.tenders.length, 1);
   assert.equal(snapshot.sourceStatuses[1].state, 'error');
+});
+
+test('distinguishes valid-empty and fully unavailable snapshots', () => {
+  const validEmpty = buildSnapshot({
+    results: [],
+    sourceStatuses: [{ source: 'ted', state: 'ok', recordCount: 0, fetchedAt: '2026-07-13T12:00:00Z' }],
+  });
+  const unavailable = buildSnapshot({
+    results: [],
+    sourceStatuses: [{ source: 'ted', state: 'error', recordCount: 0, fetchedAt: '2026-07-13T12:00:00Z', error: 'down' }],
+  });
+
+  assert.equal(validEmpty.dataAvailable, true);
+  assert.equal(validEmpty.availability, 'empty');
+  assert.equal(unavailable.dataAvailable, false);
+  assert.equal(unavailable.availability, 'unavailable');
+});
+
+test('preserves failed-source last-good records and exposes stale source state', () => {
+  const previousTed = normalizeTedNotice({
+    'notice-identifier': 'ted-last-good',
+    'title-lot': 'Last good TED opportunity',
+    'deadline-receipt-tender-date-lot': '2026-08-20T00:00:00Z',
+  });
+  const currentSam = normalizeSamOpportunity({
+    noticeId: 'sam-current', title: 'Current SAM opportunity',
+    responseDeadLine: '2026-08-21T00:00:00Z', uiLink: 'https://sam.gov/opp/sam-current/view',
+  });
+  const snapshot = mergeTenderSourceResults({
+    settled: [
+      { status: 'fulfilled', value: { records: [currentSam], status: { source: 'sam', state: 'ok', recordCount: 1, fetchedAt: '2026-07-13T12:00:00Z', lastSuccessfulAt: '2026-07-13T12:00:00Z', stale: false } } },
+      { status: 'rejected', reason: new Error('timeout') },
+    ],
+    sourceNames: ['sam', 'ted'],
+    previousSnapshot: {
+      fetchedAt: Date.parse('2026-07-13T11:00:00Z'),
+      tenders: [previousTed],
+      sourceStatuses: [{ source: 'ted', state: 'ok', recordCount: 1, fetchedAt: '2026-07-13T11:00:00Z', lastSuccessfulAt: '2026-07-13T11:00:00Z', stale: false }],
+    },
+    attemptedAt: '2026-07-13T12:00:00Z',
+  });
+
+  assert.deepEqual(snapshot.tenders.map((item) => item.id).sort(), ['sam:sam-current', 'ted:ted-last-good']);
+  assert.equal(snapshot.availability, 'partial');
+  assert.deepEqual(snapshot.sourceStatuses[1], {
+    source: 'ted', state: 'stale', recordCount: 1,
+    fetchedAt: '2026-07-13T12:00:00Z', lastSuccessfulAt: '2026-07-13T11:00:00Z', stale: true, error: 'timeout',
+  });
+});
+
+test('reports an all-source outage with retained data as stale', () => {
+  const previous = normalizeSamOpportunity({
+    noticeId: 'last-good', title: 'Last good opportunity',
+    responseDeadLine: '2026-08-21T00:00:00Z', uiLink: 'https://sam.gov/opp/last-good/view',
+  });
+  const snapshot = mergeTenderSourceResults({
+    settled: [{ status: 'rejected', reason: new Error('down') }],
+    sourceNames: ['sam'],
+    previousSnapshot: {
+      fetchedAt: '2026-07-13T10:00:00Z', tenders: [previous],
+      sourceStatuses: [{ source: 'sam', state: 'ok', recordCount: 1, fetchedAt: '2026-07-13T10:00:00Z' }],
+    },
+    attemptedAt: '2026-07-13T12:00:00Z',
+  });
+
+  assert.equal(snapshot.availability, 'stale');
+  assert.equal(snapshot.dataAvailable, true);
+  assert.equal(snapshot.fetchedAt, Date.parse('2026-07-13T10:00:00Z'));
+  assert.equal(snapshot.sourceStatuses[0].state, 'stale');
+});
+
+test('does not retain a failed source record after its submission deadline', () => {
+  const expired = normalizeSamOpportunity({
+    noticeId: 'expired', title: 'Expired opportunity',
+    responseDeadLine: '2026-07-13T11:00:00Z', uiLink: 'https://sam.gov/opp/expired/view',
+  });
+  const snapshot = mergeTenderSourceResults({
+    settled: [{ status: 'rejected', reason: new Error('down') }],
+    sourceNames: ['sam'],
+    previousSnapshot: {
+      fetchedAt: '2026-07-13T10:00:00Z', tenders: [expired],
+      sourceStatuses: [{ source: 'sam', state: 'ok', recordCount: 1, fetchedAt: '2026-07-13T10:00:00Z' }],
+    },
+    attemptedAt: '2026-07-13T12:00:00Z',
+  });
+
+  assert.equal(snapshot.tenders.length, 0);
+  assert.equal(snapshot.availability, 'unavailable');
+  assert.equal(snapshot.sourceStatuses[0].state, 'error');
+});
+
+test('malformed previous freshness metadata cannot sink source-failure degradation', () => {
+  const previous = normalizeSamOpportunity({
+    noticeId: 'last-good', title: 'Last good opportunity',
+    responseDeadLine: '2026-08-21T00:00:00Z', uiLink: 'https://sam.gov/opp/last-good/view',
+  });
+  const snapshot = mergeTenderSourceResults({
+    settled: [{ status: 'rejected', reason: new Error('down') }],
+    sourceNames: ['sam'],
+    previousSnapshot: { fetchedAt: 'not-a-date', tenders: [previous], sourceStatuses: [] },
+    attemptedAt: '2026-07-13T12:00:00Z',
+  });
+
+  assert.equal(snapshot.availability, 'stale');
+  assert.equal(snapshot.sourceStatuses[0]?.lastSuccessfulAt, '');
+});
+
+test('official URLs are HTTPS and restricted to the source host', () => {
+  assert.equal(safeOfficialUrl('https://sam.gov/opp/abc/view', 'sam'), 'https://sam.gov/opp/abc/view');
+  assert.equal(safeOfficialUrl('http://sam.gov/opp/abc/view', 'sam'), '');
+  assert.equal(safeOfficialUrl('https://attacker.example/notice', 'sam'), '');
+  assert.equal(safeOfficialUrl('https://sam.gov.attacker.example/notice', 'sam'), '');
 });
 
 test('keeps historical awards and records with unknown closing dates out of the open-opportunity feed', () => {

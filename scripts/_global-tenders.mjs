@@ -7,20 +7,37 @@ const TECHNOLOGY_TERMS = [
 export const GLOBAL_TENDER_KEY = 'economic:global-tenders:v1';
 export const GLOBAL_TENDER_META_KEY = 'seed-meta:economic:global-tenders';
 
+const OFFICIAL_SOURCE_HOSTS = {
+  sam: ['sam.gov'],
+  ted: ['ted.europa.eu'],
+  'contracts-finder': ['contractsfinder.service.gov.uk'],
+  // CanadaBuys' official open-data feed currently delegates notices to these
+  // three named procurement platforms. Keep the list exact and source-scoped.
+  'canada-buys': ['canadabuys.canada.ca', 'www.merx.com', 'portal.us.bn.cloud.ariba.com', 'discovery.ariba.com'],
+  gets: ['gets.govt.nz'],
+  'world-bank': ['worldbank.org'],
+};
+
 function string(value) { return typeof value === 'string' ? value.trim() : ''; }
 function firstString(...values) { return values.map(string).find(Boolean) || ''; }
 function array(value) { return Array.isArray(value) ? value.map(string).filter(Boolean) : string(value) ? [string(value)] : []; }
 function date(value) { const raw = string(value); return raw && Number.isFinite(Date.parse(raw)) ? new Date(raw).toISOString() : ''; }
+function isoTimestamp(value) {
+  const parsed = typeof value === 'number' ? value : Date.parse(string(value));
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : '';
+}
 function number(value) {
   if (value === null || value === undefined || (typeof value === 'string' && value.trim() === '')) return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
-export function safeOfficialUrl(value) {
+export function safeOfficialUrl(value, source) {
   try {
     const url = new URL(string(value));
-    return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : '';
+    const allowed = OFFICIAL_SOURCE_HOSTS[source] || [];
+    const officialHost = allowed.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`));
+    return url.protocol === 'https:' && officialHost && !url.username && !url.password ? url.toString() : '';
   } catch { return ''; }
 }
 
@@ -43,7 +60,8 @@ export function classifyAutomationFit({ title = '', description = '', categories
 
 function normalize({ source, sourceNoticeId, officialUrl, countryCode = '', region = '', title, description = '', buyer = '', publishedAt = '', updatedAt = '', deadline = '', status = 'open', noticeType = '', moneyAmount, currency = '', categoryCodes = [], sectors = [] }) {
   const id = string(sourceNoticeId);
-  if (!id || !string(title) || !safeOfficialUrl(officialUrl)) return null;
+  const normalizedOfficialUrl = safeOfficialUrl(officialUrl, source);
+  if (!id || !string(title) || !normalizedOfficialUrl) return null;
   const normalizedCategories = array(categoryCodes);
   const normalizedSectors = array(sectors);
   const amount = number(moneyAmount);
@@ -52,7 +70,7 @@ function normalize({ source, sourceNoticeId, officialUrl, countryCode = '', regi
     id: `${source}:${id}`,
     source,
     sourceNoticeId: id,
-    officialUrl: safeOfficialUrl(officialUrl),
+    officialUrl: normalizedOfficialUrl,
     countryCode: string(countryCode).toUpperCase(),
     region: string(region),
     title: string(title),
@@ -112,18 +130,38 @@ export function normalizeContractsFinderRelease(raw) {
   });
 }
 
+export function normalizeCanadaBuysNotice(raw) {
+  return normalize({
+    source: 'canada-buys', sourceNoticeId: raw?.referenceNumber, officialUrl: raw?.noticeUrl,
+    countryCode: 'CA', region: 'North America', title: raw?.title, description: raw?.description,
+    buyer: raw?.buyer, publishedAt: raw?.publishedAt, updatedAt: raw?.updatedAt,
+    deadline: raw?.deadline, status: raw?.status || 'open', noticeType: raw?.noticeType,
+    categoryCodes: [raw?.unspsc, raw?.procurementCategory], sectors: raw?.sector,
+  });
+}
+
 export function normalizeWorldBankNotice(raw) {
   const id = firstString(raw?.id, raw?.notice_id);
   return normalize({
     source: 'world-bank', sourceNoticeId: id,
-    officialUrl: firstString(raw?.url, raw?.notice_url, id && `https://projects.worldbank.org/en/projects-operations/procurement/notices/notice-detail/${encodeURIComponent(id)}`),
-    countryCode: firstString(raw?.country_code, raw?.countrycode), region: firstString(raw?.region, 'Multilateral'),
+    officialUrl: firstString(raw?.url, raw?.notice_url, id && `https://projects.worldbank.org/en/projects-operations/procurement-detail/${encodeURIComponent(id)}`),
+    countryCode: firstString(raw?.project_ctry_code, raw?.country_code, raw?.countrycode), region: firstString(raw?.region, 'Multilateral'),
     title: firstString(raw?.bid_description, raw?.title, raw?.project_name), description: firstString(raw?.description, raw?.project_name),
-    buyer: firstString(raw?.borrower), publishedAt: firstString(raw?.publication_date, raw?.noticedate), updatedAt: raw?.updated_date,
-    deadline: firstString(raw?.deadline_date, raw?.submission_date), status: firstString(raw?.notice_status, raw?.status, 'open'), noticeType: raw?.notice_type,
+    buyer: firstString(raw?.borrower, raw?.implementing_agency), publishedAt: firstString(raw?.publication_date, raw?.noticedate), updatedAt: raw?.updated_date,
+    deadline: firstString(raw?.submission_deadline_date, raw?.deadline_date, raw?.submission_date), status: firstString(raw?.notice_status, raw?.status, 'open'), noticeType: raw?.notice_type,
     moneyAmount: firstString(raw?.amount, raw?.estimated_value), currency: raw?.currency,
     categoryCodes: raw?.procurement_category || raw?.procurement_method_code,
     sectors: Array.isArray(raw?.sector) ? raw.sector.map((sector) => firstString(sector?.sector_code, sector?.sector_description)) : raw?.sector,
+  });
+}
+
+export function normalizeGetsNotice(raw) {
+  return normalize({
+    source: 'gets', sourceNoticeId: raw?.id, officialUrl: raw?.link,
+    countryCode: 'NZ', region: 'Oceania', title: raw?.title, description: raw?.description,
+    buyer: raw?.buyer, publishedAt: raw?.publishedAt, updatedAt: raw?.updatedAt,
+    deadline: raw?.deadline, status: 'open', noticeType: raw?.noticeType,
+    categoryCodes: raw?.categories,
   });
 }
 
@@ -147,14 +185,71 @@ export function isOpenOpportunity(tender, now = Date.now()) {
 
 export function buildSnapshot({ results, sourceStatuses, fetchedAt = Date.now() }) {
   const successes = sourceStatuses.filter((source) => source.state === 'ok');
+  const staleSources = sourceStatuses.filter((source) => source.state === 'stale');
   const degraded = sourceStatuses.filter((source) => source.state !== 'ok');
   const tenders = dedupeTenders(results);
+  const dataAvailable = tenders.length > 0 || successes.length > 0;
   return {
     schemaVersion: 1,
     fetchedAt,
-    dataAvailable: successes.length > 0,
-    availability: successes.length === 0 ? 'unavailable' : degraded.length > 0 ? 'partial' : tenders.length === 0 ? 'empty' : 'available',
+    dataAvailable,
+    availability: successes.length === 0
+      ? (staleSources.length > 0 && tenders.length > 0 ? 'stale' : 'unavailable')
+      : degraded.length > 0 ? 'partial' : tenders.length === 0 ? 'empty' : 'available',
     tenders,
     sourceStatuses,
   };
+}
+
+export function mergeTenderSourceResults({ settled, sourceNames, previousSnapshot, attemptedAt = new Date().toISOString() }) {
+  const previousTenders = Array.isArray(previousSnapshot?.tenders) ? previousSnapshot.tenders : [];
+  const previousStatuses = new Map((previousSnapshot?.sourceStatuses || []).map((status) => [status.source, status]));
+  const records = [];
+  const sourceStatuses = [];
+
+  for (let index = 0; index < settled.length; index += 1) {
+    const source = sourceNames[index];
+    const result = settled[index];
+    if (result.status === 'fulfilled' && result.value?.status?.state === 'ok') {
+      records.push(...result.value.records);
+      sourceStatuses.push({
+        ...result.value.status,
+        fetchedAt: result.value.status.fetchedAt || attemptedAt,
+        lastSuccessfulAt: result.value.status.lastSuccessfulAt || result.value.status.fetchedAt || attemptedAt,
+        stale: false,
+      });
+      continue;
+    }
+
+    const attemptedAtMs = Date.parse(attemptedAt);
+    const priorRecords = previousTenders.filter((tender) => tender.source === source && isOpenOpportunity(tender, attemptedAtMs));
+    const priorStatus = previousStatuses.get(source);
+    const fulfilledStatus = result.status === 'fulfilled' ? result.value?.status : null;
+    const error = string(fulfilledStatus?.error || result.reason?.message || 'upstream request failed').slice(0, 200);
+    if (priorRecords.length > 0) {
+      const lastSuccessfulAt = firstString(priorStatus?.lastSuccessfulAt, priorStatus?.fetchedAt,
+        isoTimestamp(previousSnapshot?.fetchedAt));
+      records.push(...priorRecords);
+      sourceStatuses.push({
+        source, state: 'stale', recordCount: priorRecords.length, fetchedAt: attemptedAt,
+        lastSuccessfulAt, stale: true, ...(error ? { error } : {}),
+      });
+    } else {
+      sourceStatuses.push({
+        source, state: fulfilledStatus?.state || 'error', recordCount: 0, fetchedAt: attemptedAt,
+        lastSuccessfulAt: firstString(priorStatus?.lastSuccessfulAt, priorStatus?.fetchedAt), stale: false,
+        ...(error ? { error } : {}),
+      });
+    }
+  }
+
+  const hasCurrentSuccess = sourceStatuses.some((status) => status.state === 'ok');
+  const hasStaleData = sourceStatuses.some((status) => status.state === 'stale');
+  const previousFetchedAt = typeof previousSnapshot?.fetchedAt === 'number'
+    ? previousSnapshot.fetchedAt
+    : Date.parse(previousSnapshot?.fetchedAt || '');
+  const fetchedAt = !hasCurrentSuccess && hasStaleData && Number.isFinite(previousFetchedAt)
+    ? previousFetchedAt
+    : Date.parse(attemptedAt);
+  return buildSnapshot({ results: records, sourceStatuses, fetchedAt });
 }

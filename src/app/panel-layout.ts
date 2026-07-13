@@ -115,6 +115,7 @@ const WEB_PREMIUM_PANELS = new Set([
   'latest-brief',
   'regional-intelligence',
   'trade-policy',
+  'global-procurement',
 ]);
 
 /**
@@ -153,6 +154,7 @@ export const DEFERRED_PANEL_NATURAL_FOOTPRINTS: Readonly<Record<string, Deferred
   'consumer-prices': { rowSpan: 2 },
   displacement: { rowSpan: 2 },
   economic: { rowSpan: 2 },
+  'global-procurement': { rowSpan: 2 },
   'energy-complex': { rowSpan: 2 },
   'energy-crisis': { rowSpan: 2 },
   'energy-disruptions': { rowSpan: 2 },
@@ -1770,6 +1772,7 @@ export class PanelLayoutManager implements AppModule {
     this.createNewsPanel('ipo', 'panels.ipo');
     this.createNewsPanel('thinktanks', 'panels.thinktanks');
     this.lazyDefaultPanel('economic', () => import('@/components/EconomicPanel'), 'EconomicPanel');
+    this.lazyDefaultPanel('global-procurement', () => import('@/components/GlobalProcurementPanel'), 'GlobalProcurementPanel');
     this.lazyDefaultPanel('consumer-prices', () => import('@/components/ConsumerPricesPanel'), 'ConsumerPricesPanel');
 
     this.lazyDefaultPanel('trade-policy', () => import('@/components/TradePolicyPanel'), 'TradePolicyPanel');

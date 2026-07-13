@@ -6595,8 +6595,12 @@ paths:
             tags:
                 - EconomicService
             summary: ListGlobalTenders
-            description: ListGlobalTenders returns the paginated, seed-backed canonical public procurement feed.
+            description: ListGlobalTenders returns the Pro-gated, paginated, seed-backed canonical procurement feed. Requires entitlement tier >= 1.
             operationId: ListGlobalTenders
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: country
                   in: query
@@ -6626,7 +6630,7 @@ paths:
                     type: string
                 - name: source
                   in: query
-                  description: 'Source adapter identifier: sam, ted, contracts-finder, or world-bank.'
+                  description: 'Source adapter identifier: sam, ted, contracts-finder, canada-buys, gets, or world-bank.'
                   required: false
                   example: "example"
                   schema:
@@ -6711,6 +6715,27 @@ paths:
                   example: "example"
                   schema:
                     type: string
+                - name: buyer
+                  in: query
+                  description: Case-insensitive buyer or contracting-authority text to match.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: published_from
+                  in: query
+                  description: Include opportunities published on or after this ISO-8601 timestamp.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: published_to
+                  in: query
+                  description: Include opportunities published on or before this ISO-8601 timestamp.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
                 - name: jmespath
                   in: query
                   description: |-
@@ -6748,7 +6773,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: PRO entitlement access denied.
                     content:
                         application/json:
                             schema:
@@ -25762,7 +25787,7 @@ components:
                     description: Geographic region label to match, such as Europe or North America.
                 source:
                     type: string
-                    description: 'Source adapter identifier: sam, ted, contracts-finder, or world-bank.'
+                    description: 'Source adapter identifier: sam, ted, contracts-finder, canada-buys, gets, or world-bank.'
                 status:
                     type: string
                     description: Source-provided tender status to match, such as open or published.
@@ -25799,6 +25824,15 @@ components:
                 sort:
                     type: string
                     description: 'Result ordering: newest, closing_soon, estimated_value, or relevance.'
+                buyer:
+                    type: string
+                    description: Case-insensitive buyer or contracting-authority text to match.
+                publishedFrom:
+                    type: string
+                    description: Include opportunities published on or after this ISO-8601 timestamp.
+                publishedTo:
+                    type: string
+                    description: Include opportunities published on or before this ISO-8601 timestamp.
         worldmonitor_economic_v1_ListGlobalTendersResponse:
             type: object
             properties:
@@ -25921,8 +25955,14 @@ components:
                     format: int32
                 fetchedAt:
                     type: string
+                    description: Time of the most recent retrieval attempt for this source.
                 error:
                     type: string
+                lastSuccessfulAt:
+                    type: string
+                    description: Time of the most recent successful retrieval; preserved across failures.
+                stale:
+                    type: boolean
         worldmonitor_forecast_v1_GetForecastsRequest:
             type: object
             properties:

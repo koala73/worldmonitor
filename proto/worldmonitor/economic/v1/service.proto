@@ -171,7 +171,7 @@ service EconomicService {
     option (sebuf.http.config) = {path: "/get-energy-crisis-policies", method: HTTP_METHOD_GET};
   }
 
-  // ListGlobalTenders returns the paginated, seed-backed canonical public procurement feed.
+  // ListGlobalTenders returns the Pro-gated, paginated, seed-backed canonical procurement feed.
   rpc ListGlobalTenders(ListGlobalTendersRequest) returns (ListGlobalTendersResponse) {
     option (sebuf.http.config) = {path: "/list-global-tenders", method: HTTP_METHOD_GET};
   }

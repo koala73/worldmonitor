@@ -318,8 +318,8 @@ All new services share these settings:
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 4 services |
 | **Net savings** | 3 slots |
-| **Members** | Climate News (30min), USA Spending (hourly), UCDP Events (6h), WB Indicators (daily) |
-| **Note** | These are BACKUP for ais-relay inline loops/child spawns. Each seed's freshness gate skips if the relay already refreshed the data recently. |
+| **Members** | Climate News (30min), USA Spending (hourly), Global Tenders (hourly), UCDP Events (6h), WB Indicators (daily) |
+| **Note** | Existing members are backups for ais-relay inline loops/child spawns; Global Tenders is hosted directly in this bundle. Each seed's freshness gate skips when the canonical data is already fresh. |
 
 ---
 
@@ -518,6 +518,7 @@ Each bundle service inherits the same env vars as the individual seeds it replac
 - `UPSTASH_REDIS_REST_TOKEN`
 - `NODE_OPTIONS=--dns-result-order=ipv4first`
 - Plus any API keys used by member seeds (GIE_API_KEY, ICAO_API_KEY, etc.)
+- `SAM_GOV_API_KEY` for the Global Tenders SAM.gov adapter. The other initial procurement adapters do not require credentials.
 
 The simplest approach: use Railway's "shared variables" or copy all env vars from the `worldmonitor` (ais-relay) service, which has a superset of all API keys.
 

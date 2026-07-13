@@ -997,6 +997,22 @@ export class Panel {
     }
   }
 
+  /**
+   * Remove sensitive panel payloads from both the visible DOM and the
+   * pre-lock restoration snapshot. Pro panels call this on sign-out or
+   * downgrade so unlockPanel() cannot resurrect data captured before the
+   * entitlement changed.
+   */
+  protected clearSensitiveContent(): void {
+    this._savedContent = null;
+    this.pendingContentHtml = null;
+    if (this.contentDebounceTimer) {
+      clearTimeout(this.contentDebounceTimer);
+      this.contentDebounceTimer = null;
+    }
+    if (!this._locked) replaceChildren(this.content);
+  }
+
   // Capture this.content's current child nodes so unlockPanel can put them
   // back. Only snapshots on the FIRST transition into a lock state — a
   // re-entrant showLocked / showGatedCta must not overwrite the cache with

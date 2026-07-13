@@ -45,8 +45,12 @@ message TenderSourceStatus {
   string source = 1;
   string state = 2;
   int32 record_count = 3;
+  // Time of the most recent retrieval attempt for this source.
   string fetched_at = 4;
   optional string error = 5;
+  // Time of the most recent successful retrieval; preserved across failures.
+  string last_successful_at = 6;
+  bool stale = 7;
 }
 
 message ListGlobalTendersRequest {
@@ -56,7 +60,7 @@ message ListGlobalTendersRequest {
   repeated string countries = 2 [(sebuf.http.query) = {name: "countries"}];
   // Geographic region label to match, such as Europe or North America.
   string region = 3 [(sebuf.http.query) = {name: "region"}];
-  // Source adapter identifier: sam, ted, contracts-finder, or world-bank.
+  // Source adapter identifier: sam, ted, contracts-finder, canada-buys, gets, or world-bank.
   string source = 4 [(sebuf.http.query) = {name: "source"}];
   // Source-provided tender status to match, such as open or published.
   string status = 5 [(sebuf.http.query) = {name: "status"}];
@@ -80,6 +84,12 @@ message ListGlobalTendersRequest {
   string cursor = 14 [(sebuf.http.query) = {name: "cursor"}];
   // Result ordering: newest, closing_soon, estimated_value, or relevance.
   string sort = 15 [(sebuf.http.query) = {name: "sort"}];
+  // Case-insensitive buyer or contracting-authority text to match.
+  string buyer = 16 [(sebuf.http.query) = {name: "buyer"}];
+  // Include opportunities published on or after this ISO-8601 timestamp.
+  string published_from = 17 [(sebuf.http.query) = {name: "published_from"}];
+  // Include opportunities published on or before this ISO-8601 timestamp.
+  string published_to = 18 [(sebuf.http.query) = {name: "published_to"}];
 }
 
 message ListGlobalTendersResponse {

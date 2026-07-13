@@ -46,6 +46,18 @@ const EXCLUDED_FROM_MCP = new Map([
     'ops surface: per-feed validation status + silent-zero streaks published by the daily feed-validation workflow; consumed by api/health.js + operators, not a queryable news slice (#4920).'],
   ['news:recall-benchmark:v1',
     'ops surface: daily GDELT recall percentage + missed headlines for coverage monitoring; consumed by api/health.js + operators, not a queryable news slice (#4920).'],
+  ['economic:global-tenders:v1:source:sam',
+    'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the paginated economic RPC.'],
+  ['economic:global-tenders:v1:source:ted',
+    'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the paginated economic RPC.'],
+  ['economic:global-tenders:v1:source:contracts-finder',
+    'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the paginated economic RPC.'],
+  ['economic:global-tenders:v1:source:canada-buys',
+    'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the paginated economic RPC.'],
+  ['economic:global-tenders:v1:source:gets',
+    'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the paginated economic RPC.'],
+  ['economic:global-tenders:v1:source:world-bank',
+    'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the paginated economic RPC.'],
 
   // ===========================================================================
   // Intermediate / pipeline keys (data surfaces through a sibling tool)

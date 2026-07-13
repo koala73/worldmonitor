@@ -196,6 +196,12 @@ const STANDALONE_KEYS = {
   // verifies existence + freshness via the matching SEED_META entry. Same
   // shape as militaryFlights above.
   militaryCii:           'intelligence:military-cii:v1',
+  globalTendersSam:             'economic:global-tenders:v1:source:sam',
+  globalTendersTed:             'economic:global-tenders:v1:source:ted',
+  globalTendersContractsFinder: 'economic:global-tenders:v1:source:contracts-finder',
+  globalTendersCanadaBuys:      'economic:global-tenders:v1:source:canada-buys',
+  globalTendersGets:            'economic:global-tenders:v1:source:gets',
+  globalTendersWorldBank:       'economic:global-tenders:v1:source:world-bank',
   defensePatents:        'patents:defense:latest',
   temporalAnomalies:     'temporal:anomalies:v1',
   displacement:          `displacement:summary:v1:${new Date().getUTCFullYear()}`,
@@ -390,6 +396,12 @@ const SEED_META = {
   weatherAlerts:    { key: 'seed-meta:weather:alerts',             maxStaleMin: 45 }, // relay loop every 15min; 45 = 3× interval (was 30 = 2×, too tight on relay hiccup)
   spending:         { key: 'seed-meta:economic:spending',          maxStaleMin: 120 },
   globalTenders:    { key: 'seed-meta:economic:global-tenders',   maxStaleMin: 180 },
+  globalTendersSam:             { key: 'seed-meta:economic:global-tenders:sam',              maxStaleMin: 180 },
+  globalTendersTed:             { key: 'seed-meta:economic:global-tenders:ted',              maxStaleMin: 180 },
+  globalTendersContractsFinder: { key: 'seed-meta:economic:global-tenders:contracts-finder', maxStaleMin: 180 },
+  globalTendersCanadaBuys:      { key: 'seed-meta:economic:global-tenders:canada-buys',      maxStaleMin: 180 },
+  globalTendersGets:            { key: 'seed-meta:economic:global-tenders:gets',             maxStaleMin: 180 },
+  globalTendersWorldBank:       { key: 'seed-meta:economic:global-tenders:world-bank',       maxStaleMin: 180 },
   techEvents:       { key: 'seed-meta:research:tech-events',       maxStaleMin: 480 },
   researchArxivHnTrending: { key: 'seed-meta:research:arxiv-hn-trending', maxStaleMin: 150 },
   gdeltIntel:       { key: 'seed-meta:intelligence:gdelt-intel',   maxStaleMin: 720 }, // 6h cron; 12h staleness = 2× cadence = 1 missed tick + cron jitter, alerts at 2 missed ticks. Bumped from 420 (1.16× cadence, virtually zero margin) on 2026-05-12 after the same Railway-deploy-preempted-tick pattern that hit resilienceIntervals on 2026-05-10 (PR #3652): seedAgeMin=467 vs maxStale=420 → ~1min UptimeRobot WARNING flip when a deploy preempted the 15:00 UTC tick. CACHE_TTL is 24h so per-topic merge always has a prior snapshot even at the upper end of the new budget.
@@ -674,6 +686,7 @@ const EMPTY_DATA_OK_KEYS = new Set([
 // key itself must still exist. Do not use this set in the missing-key branch.
 const ZERO_RECORD_DATA_OK_KEYS = new Set([
   ...EMPTY_DATA_OK_KEYS,
+  'globalTendersSam', 'globalTendersTed', 'globalTendersContractsFinder', 'globalTendersCanadaBuys', 'globalTendersGets', 'globalTendersWorldBank',
   // retailer-spread is SUPPRESSED to an explicit 0 by the aggregate job when a
   // market's retailers share < MIN_SPREAD_ITEMS (4) common basket items —
   // consumer-prices-core/src/jobs/aggregate.ts writes `retailer_spread_pct: 0`
@@ -769,6 +782,10 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     seedStale = seedAge > seedCfg.maxStaleMin;
   }
   const metaCount = meta?.count ?? meta?.recordCount ?? null;
+  // Source-specific producers can preserve usable last-good records while a
+  // current upstream attempt is degraded. Surface that state immediately as a
+  // warning without discarding the retained record count from health output.
+  const sourceDegraded = typeof meta?.sourceState === 'string' && meta.sourceState !== 'ok';
   // Content-age trio (2026-05-04 health-readiness plan). Presence of
   // maxContentAgeMin is the opt-in signal — legacy seeders without it
   // get contentAge: null and skip the STALE_CONTENT branch in classifyKey.
@@ -796,7 +813,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
       contentStale: contentAgeMin == null || isFutureDated || contentAgeMin > meta.maxContentAgeMin,
     };
   }
-  return { seedAge, seedStale, seedError: false, metaReadFailed: false, metaCount, contentAge };
+  return { seedAge, seedStale, seedError: sourceDegraded, metaReadFailed: false, metaCount, contentAge };
 }
 
 function isCascadeCovered(name, hasData, keyStrens, keyErrors) {
@@ -1349,4 +1366,5 @@ export const __testing__ = {
   STANDALONE_KEYS,
   SEED_META,
   EMPTY_DATA_OK_KEYS,
+  ZERO_RECORD_DATA_OK_KEYS,
 };

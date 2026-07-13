@@ -707,6 +707,9 @@ export interface ListGlobalTendersRequest {
   pageSize: number;
   cursor: string;
   sort: string;
+  buyer: string;
+  publishedFrom: string;
+  publishedTo: string;
 }
 
 export interface ListGlobalTendersResponse {
@@ -764,6 +767,8 @@ export interface TenderSourceStatus {
   recordCount: number;
   fetchedAt: string;
   error?: string;
+  lastSuccessfulAt: string;
+  stale: boolean;
 }
 
 export interface FieldViolation {
@@ -1477,6 +1482,9 @@ export class EconomicServiceClient {
     if (req.pageSize != null && req.pageSize !== 0) params.set("page_size", String(req.pageSize));
     if (req.cursor != null && req.cursor !== "") params.set("cursor", String(req.cursor));
     if (req.sort != null && req.sort !== "") params.set("sort", String(req.sort));
+    if (req.buyer != null && req.buyer !== "") params.set("buyer", String(req.buyer));
+    if (req.publishedFrom != null && req.publishedFrom !== "") params.set("published_from", String(req.publishedFrom));
+    if (req.publishedTo != null && req.publishedTo !== "") params.set("published_to", String(req.publishedTo));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {

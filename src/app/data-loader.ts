@@ -132,6 +132,8 @@ import type { ThreatTimelinePanel } from '@/components/ThreatTimelinePanel';
 import type { InternetDisruptionsPanel } from '@/components/InternetDisruptionsPanel';
 import type { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
 import type { EconomicPanel } from '@/components/EconomicPanel';
+import type { GlobalProcurementPanel } from '@/components/GlobalProcurementPanel';
+import type { GlobalTenderFilters } from '@/services/global-tenders';
 import type { EnergyComplexPanel } from '@/components/EnergyComplexPanel';
 import type { TechReadinessPanel } from '@/components/TechReadinessPanel';
 import type { UcdpEventsPanel } from '@/components/UcdpEventsPanel';
@@ -388,6 +390,8 @@ export class DataLoaderManager implements AppModule {
   private satellitePropagationCleanup: (() => void) | null = null;
   private dailyBriefGeneration = 0;
   private _stockAnalysisGeneration = 0;
+  private globalTenderGeneration = 0;
+  private globalTenderFilters: GlobalTenderFilters = {};
   private dailyBriefFrameworkUnsubscribe: (() => void) | null = null;
   private marketImplicationsFrameworkUnsubscribe: (() => void) | null = null;
   private cachedSatRecs: SatRecEntry[] | null = null;
@@ -772,9 +776,11 @@ export class DataLoaderManager implements AppModule {
       if (shouldLoad('economic')) {
         tasks.push({ name: 'fred', task: () => runGuarded('fred', () => this.loadFredData()) });
         tasks.push({ name: 'spending', task: () => runGuarded('spending', () => this.loadGovernmentSpending()) });
-        tasks.push({ name: 'global-tenders', task: () => runGuarded('global-tenders', () => this.loadGlobalTenders()) });
         tasks.push({ name: 'bis', task: () => runGuarded('bis', () => this.loadBisData()) });
         tasks.push({ name: 'bls', task: () => runGuarded('bls', () => this.loadBlsData()) });
+      }
+      if (hasPremiumAccess() && shouldLoad('global-procurement')) {
+        tasks.push({ name: 'global-tenders', task: () => runGuarded('global-tenders', () => this.loadGlobalTenders()) });
       }
       if (shouldLoad('energy-complex')) {
         tasks.push({ name: 'oil', task: () => runGuarded('oil', () => this.loadOilAnalytics()) });
@@ -3322,20 +3328,47 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
-  async loadGlobalTenders(): Promise<void> {
-    const economicPanel = this.ctx.panels['economic'] as EconomicPanel;
+  async loadGlobalTenders(filters?: GlobalTenderFilters, append = false): Promise<void> {
+    const procurementPanel = this.ctx.panels['global-procurement'] as GlobalProcurementPanel | undefined;
+    if (!procurementPanel) return;
+    const requestGeneration = ++this.globalTenderGeneration;
+    const requestFilters = filters ?? this.globalTenderFilters;
+    this.globalTenderFilters = { ...requestFilters, cursor: '' };
+    procurementPanel.setRequestHandler((nextFilters, shouldAppend) => {
+      void this.loadGlobalTenders(nextFilters, shouldAppend);
+    });
+    if (!hasPremiumAccess()) {
+      procurementPanel?.clear();
+      return;
+    }
+    procurementPanel.setLoading(true, append);
     try {
       const { fetchGlobalTenders } = await import('@/services/global-tenders');
-      const data = await fetchGlobalTenders();
-      economicPanel?.updateTenders(data);
+      const data = await fetchGlobalTenders(requestFilters);
+      if (requestGeneration !== this.globalTenderGeneration) return;
+      if (!hasPremiumAccess()) {
+        procurementPanel.clear();
+        return;
+      }
+      procurementPanel.update(data, append);
       this.ctx.statusPanel?.updateApi('Global Procurement', {
-        status: !data.dataAvailable ? 'error' : data.availability === 'partial' ? 'warning' : 'ok',
+        status: !data.dataAvailable ? 'error' : ['partial', 'stale'].includes(data.availability) ? 'warning' : 'ok',
       });
     } catch (error) {
+      if (requestGeneration !== this.globalTenderGeneration || !hasPremiumAccess()) return;
       console.warn('[App] Global tenders failed:', error);
-      economicPanel?.updateTenders({ tenders: [], nextCursor: '', fetchedAt: '', dataAvailable: false, availability: 'unavailable', sourceStatuses: [], total: 0, appliedFilters: [], countryCoverage: 'unknown' });
+      procurementPanel.showUnavailable();
       this.ctx.statusPanel?.updateApi('Global Procurement', { status: 'error' });
     }
+  }
+
+  async clearGlobalTenders(): Promise<void> {
+    this.globalTenderGeneration += 1;
+    this.globalTenderFilters = {};
+    const procurementPanel = this.ctx.panels['global-procurement'] as GlobalProcurementPanel | undefined;
+    procurementPanel?.clear();
+    const { clearGlobalTenderCache } = await import('@/services/global-tenders');
+    clearGlobalTenderCache();
   }
 
   async loadBisData(): Promise<void> {

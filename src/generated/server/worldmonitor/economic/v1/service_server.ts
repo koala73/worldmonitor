@@ -707,6 +707,9 @@ export interface ListGlobalTendersRequest {
   pageSize: number;
   cursor: string;
   sort: string;
+  buyer: string;
+  publishedFrom: string;
+  publishedTo: string;
 }
 
 export interface ListGlobalTendersResponse {
@@ -764,6 +767,8 @@ export interface TenderSourceStatus {
   recordCount: number;
   fetchedAt: string;
   error?: string;
+  lastSuccessfulAt: string;
+  stale: boolean;
 }
 
 export interface FieldViolation {
@@ -1954,6 +1959,9 @@ export function createEconomicServiceRoutes(
             pageSize: Number(params.get("page_size") ?? "0"),
             cursor: params.get("cursor") ?? "",
             sort: params.get("sort") ?? "",
+            buyer: params.get("buyer") ?? "",
+            publishedFrom: params.get("published_from") ?? "",
+            publishedTo: params.get("published_to") ?? "",
           };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listGlobalTenders", body);
