@@ -570,6 +570,9 @@ export class App {
       primeTask('spending', () => this.dataLoader.loadGovernmentSpending());
       primeTask('bis', () => this.dataLoader.loadBisData());
     }
+    if (shouldPrime('global-procurement') && hasPremiumAccess()) {
+      primeTask('global-tenders', () => this.dataLoader.loadGlobalTenders());
+    }
     if (shouldPrime('energy-complex')) {
       primeTask('oil', () => this.dataLoader.loadOilAnalytics());
     }
@@ -1425,6 +1428,11 @@ export class App {
         void this.dataLoader.loadMarketImplications();
         void this.dataLoader.loadWsbTickers();
         void this.dataLoader.loadResilienceRanking();
+        void this.dataLoader.loadGlobalTenders();
+      } else if (!nowPremium && hadPremium) {
+        // Pro data must not remain visible or available from the client cache
+        // after sign-out, expiry, or downgrade.
+        void this.dataLoader.clearGlobalTenders();
       }
       _prevHadPremium = nowPremium;
     };
@@ -2066,6 +2074,7 @@ export class App {
         { name: 'weather', fn: () => this.dataLoader.loadWeatherAlerts(), intervalMs: REFRESH_INTERVALS.weather, condition: () => this.state.mapLayers.weather },
         { name: 'fred', fn: () => this.dataLoader.loadFredData(), intervalMs: REFRESH_INTERVALS.fred, condition: () => this.isPanelNearViewport('economic') },
         { name: 'spending', fn: () => this.dataLoader.loadGovernmentSpending(), intervalMs: REFRESH_INTERVALS.spending, condition: () => this.isPanelNearViewport('economic') },
+        { name: 'global-tenders', fn: () => this.dataLoader.loadGlobalTenders(), intervalMs: REFRESH_INTERVALS.spending, condition: () => hasPremiumAccess() && this.isPanelNearViewport('global-procurement') },
         { name: 'bis', fn: () => this.dataLoader.loadBisData(), intervalMs: REFRESH_INTERVALS.bis, condition: () => this.isPanelNearViewport('economic') },
         { name: 'oil', fn: () => this.dataLoader.loadOilAnalytics(), intervalMs: REFRESH_INTERVALS.oil, condition: () => this.isPanelNearViewport('energy-complex') },
         { name: 'firms', fn: () => this.dataLoader.loadFirmsData(), intervalMs: REFRESH_INTERVALS.firms, condition: () => this.shouldRefreshFirms() },

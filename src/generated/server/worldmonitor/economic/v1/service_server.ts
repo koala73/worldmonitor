@@ -691,6 +691,86 @@ export interface EnergyCrisisPolicy {
   status: string;
 }
 
+export interface ListGlobalTendersRequest {
+  country: string;
+  countries: string[];
+  region: string;
+  source: string;
+  status: string;
+  deadlineFrom: string;
+  deadlineTo: string;
+  minValue: number;
+  maxValue: number;
+  currency: string;
+  category: string;
+  query: string;
+  pageSize: number;
+  cursor: string;
+  sort: string;
+  buyer: string;
+  publishedFrom: string;
+  publishedTo: string;
+}
+
+export interface ListGlobalTendersResponse {
+  tenders: GlobalTender[];
+  nextCursor: string;
+  fetchedAt: string;
+  dataAvailable: boolean;
+  availability: string;
+  sourceStatuses: TenderSourceStatus[];
+  total: number;
+  appliedFilters: string[];
+  countryCoverage: string;
+}
+
+export interface GlobalTender {
+  id: string;
+  source: string;
+  sourceNoticeId: string;
+  officialUrl: string;
+  countryCode?: string;
+  region?: string;
+  title: string;
+  description?: string;
+  buyer?: string;
+  publishedAt?: string;
+  updatedAt?: string;
+  deadline?: string;
+  status: string;
+  noticeType?: string;
+  money?: TenderMoney;
+  categoryCodes: string[];
+  sectors: string[];
+  eligibilityRequirements: string[];
+  submissionUrls: string[];
+  participationMode: string;
+  automationFit?: AutomationFit;
+}
+
+export interface TenderMoney {
+  amount?: number;
+  currency?: string;
+}
+
+export interface AutomationFit {
+  level: string;
+  score: number;
+  classificationVersion: string;
+  matchReasons: string[];
+  evidence: string[];
+}
+
+export interface TenderSourceStatus {
+  source: string;
+  state: string;
+  recordCount: number;
+  fetchedAt: string;
+  error?: string;
+  lastSuccessfulAt: string;
+  stale: boolean;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -763,6 +843,7 @@ export interface EconomicServiceHandler {
   getOilStocksAnalysis(ctx: ServerContext, req: GetOilStocksAnalysisRequest): Promise<GetOilStocksAnalysisResponse>;
   getOilInventories(ctx: ServerContext, req: GetOilInventoriesRequest): Promise<GetOilInventoriesResponse>;
   getEnergyCrisisPolicies(ctx: ServerContext, req: GetEnergyCrisisPoliciesRequest): Promise<GetEnergyCrisisPoliciesResponse>;
+  listGlobalTenders(ctx: ServerContext, req: ListGlobalTendersRequest): Promise<ListGlobalTendersResponse>;
 }
 
 export function createEconomicServiceRoutes(
@@ -1833,6 +1914,70 @@ export function createEconomicServiceRoutes(
 
           const result = await handler.getEnergyCrisisPolicies(ctx, body);
           return new Response(JSON.stringify(result as GetEnergyCrisisPoliciesResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/economic/v1/list-global-tenders",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListGlobalTendersRequest = {
+            country: params.get("country") ?? "",
+            countries: params.getAll("countries"),
+            region: params.get("region") ?? "",
+            source: params.get("source") ?? "",
+            status: params.get("status") ?? "",
+            deadlineFrom: params.get("deadline_from") ?? "",
+            deadlineTo: params.get("deadline_to") ?? "",
+            minValue: Number(params.get("min_value") ?? "0"),
+            maxValue: Number(params.get("max_value") ?? "0"),
+            currency: params.get("currency") ?? "",
+            category: params.get("category") ?? "",
+            query: params.get("query") ?? "",
+            pageSize: Number(params.get("page_size") ?? "0"),
+            cursor: params.get("cursor") ?? "",
+            sort: params.get("sort") ?? "",
+            buyer: params.get("buyer") ?? "",
+            publishedFrom: params.get("published_from") ?? "",
+            publishedTo: params.get("published_to") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listGlobalTenders", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listGlobalTenders(ctx, body);
+          return new Response(JSON.stringify(result as ListGlobalTendersResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

@@ -1,0 +1,59 @@
+---
+title: "Global Procurement Intelligence"
+description: "How WorldMonitor aggregates active public tender opportunities, communicates source health, and exposes the paginated procurement API."
+---
+
+WorldMonitor separates **open opportunities** from historical **recent awards**. Open opportunities live in the dedicated **Global Procurement** panel as a forward-looking, seed-backed feed; awards remain sourced from USASpending in the Economic panel.
+
+Global Procurement is a **Pro feature**. The panel shows the standard sign-in or upgrade gate to free users, and the RPC independently enforces an active tier-1 subscription server-side. The browser only requests and retains tender data while Pro access is active; sign-out or downgrade clears both the panel payload and its in-memory response cache. Recent awards remain part of the free Economic panel behavior.
+
+Pro users can search titles and descriptions, filter by buyer, two-letter country code, and source, choose a supported sort, and page through the complete result set. The panel never reads Upstash directly: it calls the paginated RPC, which reads the canonical seeded snapshot.
+
+## Coverage and freshness
+
+The initial adapters read official public procurement sources:
+
+| Source | Coverage | Notes |
+| --- | --- | --- |
+| SAM.gov | United States | Requires the deployment's `SAM_GOV_API_KEY`; an unconfigured adapter is reported as unavailable, not as zero results. |
+| TED | European Union | Published public procurement notices from the public TED Search API. |
+| Contracts Finder | United Kingdom | Published OCDS tender releases. |
+| CanadaBuys | Canada | Official federal open-tender CSV, refreshed daily by CanadaBuys. |
+| GETS | New Zealand / Oceania | Current open tenders from the official public GETS RSS feed. |
+| World Bank Procurement Notices | Multilateral / global | World Bank-financed opportunity notices across borrower countries. |
+
+The Railway seeder runs hourly and stores a canonical snapshot at `economic:global-tenders:v1`. Its TTL is three hours so the prior successful snapshot survives a missed run. If one adapter fails, healthy-source results remain available, that source's last-good records are retained, and the response reports `availability: "partial"`. If every adapter fails, the previous records remain available with `availability: "stale"`.
+
+`availability` has five meanings:
+
+- `available`: all configured adapters succeeded and returned one or more notices.
+- `empty`: configured adapters succeeded but returned no notices.
+- `partial`: at least one adapter is unavailable or failed while another succeeded.
+- `stale`: all current source attempts failed, so retained last-good records are being served.
+- `unavailable`: no fresh canonical snapshot is available.
+
+Per-source state, record counts, retrieval-attempt time, last-success time, and stale flag are included in the feed response. Every per-source seed key is independently registered in `/api/health`. Unsupported country filters are never treated as a confirmed zero-result source.
+
+## Deployment configuration
+
+Only the U.S. SAM.gov adapter needs a new credential:
+
+1. Sign in to [SAM.gov](https://sam.gov/), open **Account Details**, and enter your account password to view the API-key controls.
+2. Request a **Public API Key**. SAM.gov displays the generated key on the Account Details page.
+3. Add it to the Railway service running `node scripts/seed-bundle-relay-backup.mjs` as `SAM_GOV_API_KEY`. Do not expose it through a `VITE_` variable or commit it to the repository.
+
+The official setup and request-limit details are in the [GSA Get Opportunities Public API guide](https://open.gsa.gov/api/get-opportunities-public-api/). TED, Contracts Finder, CanadaBuys, GETS, and World Bank do not require API keys. If `SAM_GOV_API_KEY` is absent, only the SAM source reports `unavailable`; the other adapters continue normally.
+
+## API
+
+`GET /api/economic/v1/list-global-tenders` is Pro-gated, deliberately paginated, and is **not** part of the bootstrap payload. It supports `country`, repeated `countries`, `region`, `source`, `status`, `buyer`, `published_from`, `published_to`, `deadline_from`, `deadline_to`, `min_value`, `max_value`, `currency`, `category`, `query`, `page_size`, `cursor`, and `sort`.
+
+Supported sorts are `newest`, `closing_soon`, `estimated_value`, and `relevance`. `page_size` is bounded to 100. The response includes applied filters, a cursor, snapshot time, availability, and source-health summaries.
+
+Every record contains a stable WorldMonitor ID (`source:sourceNoticeId`), its official notice URL, source notice ID, typed money fields when supplied, source timestamps, category data, and a provenance-preserving source name. Missing upstream fields remain absent rather than being inferred.
+
+## Technology relevance
+
+`automationFit` is a transparent keyword-based relevance signal for software, AI, data, cybersecurity, automation, cloud, and related terms. It contains a score, classification version, match reasons, and text evidence. It is **not** a legal or procurement-eligibility determination: `participationMode` remains `unknown` unless an upstream source explicitly supports it.
+
+The dashboard renders official notice links only after URL sanitization and exposes the relevance reason alongside the source-provided opportunity details.

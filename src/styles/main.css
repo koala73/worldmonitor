@@ -10498,6 +10498,84 @@ a.prediction-link:hover {
   line-height: 1.3;
 }
 
+/* Global Procurement */
+.global-procurement-controls {
+  display: grid;
+  grid-template-columns: minmax(150px, 2fr) minmax(110px, 1fr) 72px minmax(110px, 1fr) minmax(120px, 1fr) auto auto;
+  gap: 6px;
+  padding: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.global-procurement-input,
+.global-procurement-select {
+  min-width: 0;
+  padding: 6px 7px;
+  color: var(--text);
+  background: var(--overlay-subtle);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 10px;
+}
+
+.global-procurement-input:focus,
+.global-procurement-select:focus {
+  outline: 1px solid var(--green);
+  border-color: var(--green);
+}
+
+.global-procurement-apply,
+.global-procurement-reset {
+  padding: 6px 9px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  background: var(--overlay-light);
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.global-procurement-apply {
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 40%, var(--border));
+}
+
+.global-procurement-apply:disabled,
+.global-procurement-reset:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.global-procurement-summary {
+  padding: 8px 10px 4px;
+  color: var(--text-dim);
+  font-size: 9px;
+}
+
+.global-procurement-list {
+  padding: 4px 8px 8px;
+}
+
+.global-procurement-card .award-recipient {
+  white-space: normal;
+}
+
+.global-procurement-card a.award-agency {
+  display: inline-block;
+  color: var(--green);
+}
+
+@media (max-width: 900px) {
+  .global-procurement-controls {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .global-procurement-input:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
 /* Trade Policy Panel */
 .economic-warning {
   padding: 6px 10px;

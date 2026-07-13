@@ -2608,6 +2608,227 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/economic/v1/list-global-tenders:
+        get:
+            tags:
+                - EconomicService
+            summary: ListGlobalTenders
+            description: ListGlobalTenders returns the Pro-gated, paginated, seed-backed canonical procurement feed. Requires entitlement tier >= 1.
+            operationId: ListGlobalTenders
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            parameters:
+                - name: country
+                  in: query
+                  description: ISO 3166-1 alpha-2 country code to match.
+                  required: false
+                  example: "US"
+                  schema:
+                    type: string
+                - name: countries
+                  in: query
+                  description: One or more ISO 3166-1 alpha-2 country codes to match.
+                  required: false
+                  style: form
+                  explode: true
+                  example:
+                      - "US"
+                  schema:
+                    type: array
+                    items:
+                        type: string
+                - name: region
+                  in: query
+                  description: Geographic region label to match, such as Europe or North America.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: source
+                  in: query
+                  description: 'Source adapter identifier: sam, ted, contracts-finder, canada-buys, gets, or world-bank.'
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: status
+                  in: query
+                  description: Source-provided tender status to match, such as open or published.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: deadline_from
+                  in: query
+                  description: Include opportunities whose deadline is on or after this ISO-8601 timestamp.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: deadline_to
+                  in: query
+                  description: Include opportunities whose deadline is on or before this ISO-8601 timestamp.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: min_value
+                  in: query
+                  description: Include opportunities with a stated estimated value at or above this amount.
+                  required: false
+                  example: 1.5
+                  schema:
+                    type: number
+                    format: double
+                - name: max_value
+                  in: query
+                  description: Include opportunities with a stated estimated value at or below this amount.
+                  required: false
+                  example: 1.5
+                  schema:
+                    type: number
+                    format: double
+                - name: currency
+                  in: query
+                  description: ISO 4217 currency code used with min_value and max_value.
+                  required: false
+                  example: "USD"
+                  schema:
+                    type: string
+                - name: category
+                  in: query
+                  description: Procurement category or classification code to match.
+                  required: false
+                  example: "cs.AI"
+                  schema:
+                    type: string
+                - name: query
+                  in: query
+                  description: Case-insensitive search text matched against tender titles and descriptions.
+                  required: false
+                  example: "supply chain risk"
+                  schema:
+                    type: string
+                - name: page_size
+                  in: query
+                  description: Maximum number of tenders to return per page; capped at 100.
+                  required: false
+                  example: 25
+                  schema:
+                    type: integer
+                    format: int32
+                - name: cursor
+                  in: query
+                  description: Opaque cursor from a previous response's next_cursor field.
+                  required: false
+                  example: "next-page-token"
+                  schema:
+                    type: string
+                - name: sort
+                  in: query
+                  description: 'Result ordering: newest, closing_soon, estimated_value, or relevance.'
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: buyer
+                  in: query
+                  description: Case-insensitive buyer or contracting-authority text to match.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: published_from
+                  in: query
+                  description: Include opportunities published on or after this ISO-8601 timestamp.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: published_to
+                  in: query
+                  description: Include opportunities published on or before this ISO-8601 timestamp.
+                  required: false
+                  example: "example"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "appliedFilters":
+                                    - "example"
+                                "availability": "example"
+                                "countryCoverage": "US"
+                                "dataAvailable": true
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                            schema:
+                                $ref: '#/components/schemas/ListGlobalTendersResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
 components:
     securitySchemes:
         WorldMonitorKey:
@@ -4308,3 +4529,195 @@ components:
                     type: string
                     description: 'Status of the policy: active, planned, or ended.'
             description: EnergyCrisisPolicy represents a single government policy response to the 2026 energy crisis.
+        ListGlobalTendersRequest:
+            type: object
+            properties:
+                country:
+                    type: string
+                    description: ISO 3166-1 alpha-2 country code to match.
+                countries:
+                    type: array
+                    items:
+                        type: string
+                        description: One or more ISO 3166-1 alpha-2 country codes to match.
+                region:
+                    type: string
+                    description: Geographic region label to match, such as Europe or North America.
+                source:
+                    type: string
+                    description: 'Source adapter identifier: sam, ted, contracts-finder, canada-buys, gets, or world-bank.'
+                status:
+                    type: string
+                    description: Source-provided tender status to match, such as open or published.
+                deadlineFrom:
+                    type: string
+                    description: Include opportunities whose deadline is on or after this ISO-8601 timestamp.
+                deadlineTo:
+                    type: string
+                    description: Include opportunities whose deadline is on or before this ISO-8601 timestamp.
+                minValue:
+                    type: number
+                    format: double
+                    description: Include opportunities with a stated estimated value at or above this amount.
+                maxValue:
+                    type: number
+                    format: double
+                    description: Include opportunities with a stated estimated value at or below this amount.
+                currency:
+                    type: string
+                    description: ISO 4217 currency code used with min_value and max_value.
+                category:
+                    type: string
+                    description: Procurement category or classification code to match.
+                query:
+                    type: string
+                    description: Case-insensitive search text matched against tender titles and descriptions.
+                pageSize:
+                    type: integer
+                    format: int32
+                    description: Maximum number of tenders to return per page; capped at 100.
+                cursor:
+                    type: string
+                    description: Opaque cursor from a previous response's next_cursor field.
+                sort:
+                    type: string
+                    description: 'Result ordering: newest, closing_soon, estimated_value, or relevance.'
+                buyer:
+                    type: string
+                    description: Case-insensitive buyer or contracting-authority text to match.
+                publishedFrom:
+                    type: string
+                    description: Include opportunities published on or after this ISO-8601 timestamp.
+                publishedTo:
+                    type: string
+                    description: Include opportunities published on or before this ISO-8601 timestamp.
+        ListGlobalTendersResponse:
+            type: object
+            properties:
+                tenders:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GlobalTender'
+                nextCursor:
+                    type: string
+                fetchedAt:
+                    type: string
+                dataAvailable:
+                    type: boolean
+                availability:
+                    type: string
+                sourceStatuses:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TenderSourceStatus'
+                total:
+                    type: integer
+                    format: int32
+                appliedFilters:
+                    type: array
+                    items:
+                        type: string
+                countryCoverage:
+                    type: string
+                    description: |-
+                        `unknown` means the snapshot contains no record for a requested country;
+                         it must not be interpreted as a confirmed no-opportunity or unsupported-country result.
+        GlobalTender:
+            type: object
+            properties:
+                id:
+                    type: string
+                source:
+                    type: string
+                sourceNoticeId:
+                    type: string
+                officialUrl:
+                    type: string
+                countryCode:
+                    type: string
+                region:
+                    type: string
+                title:
+                    type: string
+                description:
+                    type: string
+                buyer:
+                    type: string
+                publishedAt:
+                    type: string
+                updatedAt:
+                    type: string
+                deadline:
+                    type: string
+                status:
+                    type: string
+                noticeType:
+                    type: string
+                money:
+                    $ref: '#/components/schemas/TenderMoney'
+                categoryCodes:
+                    type: array
+                    items:
+                        type: string
+                sectors:
+                    type: array
+                    items:
+                        type: string
+                eligibilityRequirements:
+                    type: array
+                    items:
+                        type: string
+                submissionUrls:
+                    type: array
+                    items:
+                        type: string
+                participationMode:
+                    type: string
+                automationFit:
+                    $ref: '#/components/schemas/AutomationFit'
+        TenderMoney:
+            type: object
+            properties:
+                amount:
+                    type: number
+                    format: double
+                currency:
+                    type: string
+        AutomationFit:
+            type: object
+            properties:
+                level:
+                    type: string
+                score:
+                    type: integer
+                    format: int32
+                classificationVersion:
+                    type: string
+                matchReasons:
+                    type: array
+                    items:
+                        type: string
+                evidence:
+                    type: array
+                    items:
+                        type: string
+        TenderSourceStatus:
+            type: object
+            properties:
+                source:
+                    type: string
+                state:
+                    type: string
+                recordCount:
+                    type: integer
+                    format: int32
+                fetchedAt:
+                    type: string
+                    description: Time of the most recent retrieval attempt for this source.
+                error:
+                    type: string
+                lastSuccessfulAt:
+                    type: string
+                    description: Time of the most recent successful retrieval; preserved across failures.
+                stale:
+                    type: boolean

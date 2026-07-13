@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, runSeed, CHROME_UA, sleep } from './_seed-utils.mjs';
-import { compactWildfireDashboardPayload } from '../api/_wildfire-dashboard.js';
+import { compactWildfireDashboardPayload } from './_wildfire-dashboard.mjs';
 
 loadEnvFile(import.meta.url);
 

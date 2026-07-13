@@ -92,7 +92,7 @@ World Monitor is a real-time global intelligence dashboard built as a TypeScript
 
 ### Component Model
 
-All panels extend the `Panel` base class (104 classes across `src/components`). Panels render via `setContent(html)` (debounced 150ms) and use event delegation on a stable `this.content` element. Panels support resizable row/col spans persisted to localStorage.
+All panels extend the `Panel` base class (105 classes across `src/components`). Panels render via `setContent(html)` (debounced 150ms) and use event delegation on a stable `this.content` element. Panels support resizable row/col spans persisted to localStorage.
 
 ### Dual Map System
 

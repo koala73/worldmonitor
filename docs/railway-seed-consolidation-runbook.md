@@ -10,8 +10,9 @@
 > registry before merging. Both `tests/scripts-railway-nixpacks-no-escape-import.test.mts`
 > and `tests/dockerfile-digest-notifications-imports.test.mjs` derive their entry
 > lists from the registry, and `tests/railway-services-registry-coverage.test.mts`
-> fails if a `Dockerfile.*` CMD or a runbook "Start command:" entry references a
-> script the registry doesn't know about.
+> fails if a `Dockerfile.*` CMD, runbook "Start command:" entry, or standalone
+> service row references a script the registry doesn't know about. The
+> scripts-root guard also conservatively scans unregistered legacy seeders.
 
 ---
 
@@ -318,8 +319,8 @@ All new services share these settings:
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 4 services |
 | **Net savings** | 3 slots |
-| **Members** | Climate News (30min), USA Spending (hourly), UCDP Events (6h), WB Indicators (daily) |
-| **Note** | These are BACKUP for ais-relay inline loops/child spawns. Each seed's freshness gate skips if the relay already refreshed the data recently. |
+| **Members** | Climate News (30min), USA Spending (hourly), Global Tenders (hourly), UCDP Events (6h), WB Indicators (daily) |
+| **Note** | Existing members are backups for ais-relay inline loops/child spawns; Global Tenders is hosted directly in this bundle. Each seed's freshness gate skips when the canonical data is already fresh. |
 
 ---
 
@@ -442,9 +443,9 @@ entries.
 > runs as its own Railway nixpacks cron service (root directory `.`, start
 > command `node scripts/<file>`, watch paths `scripts/**`, `shared/**`). They
 > are intentionally **not** part of the 100-service inventory count above and
-> are not in `scripts/railway-services.json` (the registry only covers bundles,
-> Dockerfile services, and long-running workers — standalone crons live here in
-> the runbook, like the 43 above).
+> are registered in `scripts/railway-services.json` with deploy mode
+> `nixpacks-root-repo`, so scripts-root packaging checks do not misclassify
+> their valid imports outside `scripts/`.
 >
 > **Cadence below is inferred from each seed's cache TTL** as a documentation
 > aid; confirm the live cron schedule and Service ID against the Railway
@@ -518,6 +519,7 @@ Each bundle service inherits the same env vars as the individual seeds it replac
 - `UPSTASH_REDIS_REST_TOKEN`
 - `NODE_OPTIONS=--dns-result-order=ipv4first`
 - Plus any API keys used by member seeds (GIE_API_KEY, ICAO_API_KEY, etc.)
+- `SAM_GOV_API_KEY` for the Global Tenders SAM.gov adapter. The other initial procurement adapters do not require credentials.
 
 The simplest approach: use Railway's "shared variables" or copy all env vars from the `worldmonitor` (ais-relay) service, which has a superset of all API keys.
 

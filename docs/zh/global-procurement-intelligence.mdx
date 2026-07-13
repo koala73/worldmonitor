@@ -1,0 +1,59 @@
+---
+title: "全球采购情报"
+description: "WorldMonitor 如何汇聚活跃公共招标机会、说明来源健康状态，并提供分页采购 API。"
+---
+
+WorldMonitor 将**开放机会**与历史**近期授标**分开处理。开放机会显示在独立的 **Global Procurement** 面板中，是面向未来、由定时种子任务维护的数据流；授标记录仍在 Economic 面板中来自 USASpending。
+
+Global Procurement 是 **Pro 功能**。免费用户会看到标准登录或升级门槛，RPC 还会在服务器端独立验证有效的一级订阅。浏览器仅在 Pro 权限有效时请求并保留招标数据；退出登录或降级会清除面板数据及其内存响应缓存。近期授标仍保留在免费的 Economic 面板中。
+
+Pro 用户可以搜索标题和描述，按买方、两位国家代码和来源筛选，选择排序方式，并分页浏览完整结果集。面板不会直接读取 Upstash，而是调用分页 RPC，由 RPC 读取规范化的种子快照。
+
+## 覆盖范围与新鲜度
+
+初始适配器读取官方公开采购来源：
+
+| 来源 | 覆盖范围 | 说明 |
+| --- | --- | --- |
+| SAM.gov | 美国 | 需要部署环境中的 `SAM_GOV_API_KEY`；未配置会显示为不可用，而不是零结果。 |
+| TED | 欧盟 | 来自 TED Search API 的公开采购公告。 |
+| Contracts Finder | 英国 | 已发布的 OCDS 招标记录。 |
+| CanadaBuys | 加拿大 | CanadaBuys 每日更新的官方联邦开放招标 CSV。 |
+| GETS | 新西兰 / 大洋洲 | 官方 GETS RSS 中当前开放的招标。 |
+| 世界银行采购公告 | 多边 / 全球 | 面向借款国的世界银行资助机会公告。 |
+
+Railway 种子任务每小时运行一次，并把规范快照写入 `economic:global-tenders:v1`。其三小时 TTL 能在单次任务失败时保留最近一次成功结果。若某个适配器失败，该来源最后一次成功的数据会与其他健康来源的结果一起保留，响应会报告 `availability: "partial"`；若全部适配器失败，则以 `availability: "stale"` 提供最后一次成功的数据。
+
+`availability` 的含义如下：
+
+- `available`：所有已配置适配器均成功且至少返回一条公告。
+- `empty`：已配置适配器均成功，但没有返回公告。
+- `partial`：至少一个适配器不可用或失败，另一个适配器成功。
+- `stale`：当前所有来源请求均失败，因此正在提供最后一次成功的数据。
+- `unavailable`：没有可用的新鲜规范快照。
+
+数据流响应会包含每个来源的状态、记录数、最近请求时间、最近成功时间和过期标记。每个来源的种子键也会独立注册到 `/api/health`。对未覆盖国家的筛选绝不会被解释为确认的零机会。
+
+## 部署配置
+
+只有美国 SAM.gov 适配器需要新凭据：
+
+1. 登录 [SAM.gov](https://sam.gov/)，打开 **Account Details**，输入账户密码以查看 API 密钥控件。
+2. 请求 **Public API Key**；SAM.gov 会在 Account Details 页面显示生成的密钥。
+3. 在运行 `node scripts/seed-bundle-relay-backup.mjs` 的 Railway 服务中添加 `SAM_GOV_API_KEY`。不要通过 `VITE_` 变量公开，也不要提交到仓库。
+
+官方步骤和请求限制见 [GSA Get Opportunities Public API 指南](https://open.gsa.gov/api/get-opportunities-public-api/)。TED、Contracts Finder、CanadaBuys、GETS 和世界银行无需 API 密钥。若未配置 `SAM_GOV_API_KEY`，只有 SAM 来源会显示为 `unavailable`，其他适配器仍会正常运行。
+
+## API
+
+`GET /api/economic/v1/list-global-tenders` 仅向 Pro 开放、有意采用分页，且**不会**进入启动批量载荷。它支持 `country`、重复的 `countries`、`region`、`source`、`status`、`buyer`、`published_from`、`published_to`、`deadline_from`、`deadline_to`、`min_value`、`max_value`、`currency`、`category`、`query`、`page_size`、`cursor` 和 `sort`。
+
+支持的排序方式为 `newest`、`closing_soon`、`estimated_value` 和 `relevance`。`page_size` 最大为 100。响应包含已应用的筛选条件、游标、快照时间、可用性和各来源健康摘要。
+
+每条记录都含有稳定的 WorldMonitor ID（`source:sourceNoticeId`）、官方公告链接、来源公告 ID、上游提供时的金额字段、时间戳、分类数据和可追溯的来源名称。缺失的上游字段保持缺失，不会被推断填补。
+
+## 技术相关性
+
+`automationFit` 是针对软件、AI、数据、网络安全、自动化、云服务及相关术语的透明关键词相关性信号。它包含评分、分类版本、匹配理由和文本证据，**不是**法律意见或采购资格判断；除非上游来源明确提供，`participationMode` 始终为 `unknown`。
+
+仪表板只会在 URL 通过安全处理后显示官方公告链接，并会同时展示与来源提供机会详情对应的相关性理由。

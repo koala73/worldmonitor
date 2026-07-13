@@ -28,6 +28,66 @@
     "documentedAt": "Dockerfile.seed-bundle-resilience-validation"
   },
   {
+    "entry": "scripts/seed-aaii-sentiment.mjs",
+    "deployMode": "nixpacks-root-repo",
+    "service": "seed-aaii-sentiment",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
+  },
+  {
+    "entry": "scripts/seed-market-quotes.mjs",
+    "deployMode": "nixpacks-root-repo",
+    "service": "seed-market-quotes",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
+  },
+  {
+    "entry": "scripts/seed-commodity-quotes.mjs",
+    "deployMode": "nixpacks-root-repo",
+    "service": "seed-commodity-quotes",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
+  },
+  {
+    "entry": "scripts/seed-crypto-sectors.mjs",
+    "deployMode": "nixpacks-root-repo",
+    "service": "seed-crypto-sectors",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
+  },
+  {
+    "entry": "scripts/seed-market-breadth.mjs",
+    "deployMode": "nixpacks-root-repo",
+    "service": "seed-market-breadth",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
+  },
+  {
+    "entry": "scripts/seed-weather-alerts.mjs",
+    "deployMode": "nixpacks-root-repo",
+    "service": "seed-weather-alerts",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
+  },
+  {
+    "entry": "scripts/seed-fx-yoy.mjs",
+    "deployMode": "nixpacks-root-repo",
+    "service": "seed-fx-yoy",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
+  },
+  {
+    "entry": "scripts/seed-comtrade-bilateral-hs4.mjs",
+    "deployMode": "nixpacks-root-repo",
+    "service": "seed-comtrade-bilateral-hs4",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
+  },
+  {
+    "entry": "scripts/seed-hs2-chokepoint-exposure.mjs",
+    "deployMode": "nixpacks-root-repo",
+    "service": "seed-hs2-chokepoint-exposure",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
+  },
+  {
+    "entry": "scripts/seed-service-statuses.mjs",
+    "deployMode": "nixpacks-root-repo",
+    "service": "seed-service-statuses",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-added-after-this-snapshot"
+  },
+  {
     "entry": "scripts/seed-forecasts.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-forecasts",

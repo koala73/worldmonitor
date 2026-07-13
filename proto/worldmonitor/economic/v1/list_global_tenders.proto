@@ -1,0 +1,107 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "sebuf/http/annotations.proto";
+
+message AutomationFit {
+  string level = 1;
+  int32 score = 2;
+  string classification_version = 3;
+  repeated string match_reasons = 4;
+  repeated string evidence = 5;
+}
+
+message TenderMoney {
+  optional double amount = 1;
+  optional string currency = 2;
+}
+
+message GlobalTender {
+  string id = 1;
+  string source = 2;
+  string source_notice_id = 3;
+  string official_url = 4;
+  optional string country_code = 5;
+  optional string region = 6;
+  string title = 7;
+  optional string description = 8;
+  optional string buyer = 9;
+  optional string published_at = 10;
+  optional string updated_at = 11;
+  optional string deadline = 12;
+  string status = 13;
+  optional string notice_type = 14;
+  TenderMoney money = 15;
+  repeated string category_codes = 16;
+  repeated string sectors = 17;
+  repeated string eligibility_requirements = 18;
+  repeated string submission_urls = 19;
+  string participation_mode = 20;
+  AutomationFit automation_fit = 21;
+}
+
+message TenderSourceStatus {
+  string source = 1;
+  string state = 2;
+  int32 record_count = 3;
+  // Time of the most recent retrieval attempt for this source.
+  string fetched_at = 4;
+  optional string error = 5;
+  // Time of the most recent successful retrieval; preserved across failures.
+  string last_successful_at = 6;
+  bool stale = 7;
+}
+
+message ListGlobalTendersRequest {
+  // ISO 3166-1 alpha-2 country code to match.
+  string country = 1 [(sebuf.http.query) = {name: "country"}];
+  // One or more ISO 3166-1 alpha-2 country codes to match.
+  repeated string countries = 2 [(sebuf.http.query) = {name: "countries"}];
+  // Geographic region label to match, such as Europe or North America.
+  string region = 3 [(sebuf.http.query) = {name: "region"}];
+  // Source adapter identifier: sam, ted, contracts-finder, canada-buys, gets, or world-bank.
+  string source = 4 [(sebuf.http.query) = {name: "source"}];
+  // Source-provided tender status to match, such as open or published.
+  string status = 5 [(sebuf.http.query) = {name: "status"}];
+  // Include opportunities whose deadline is on or after this ISO-8601 timestamp.
+  string deadline_from = 6 [(sebuf.http.query) = {name: "deadline_from"}];
+  // Include opportunities whose deadline is on or before this ISO-8601 timestamp.
+  string deadline_to = 7 [(sebuf.http.query) = {name: "deadline_to"}];
+  // Include opportunities with a stated estimated value at or above this amount.
+  double min_value = 8 [(sebuf.http.query) = {name: "min_value"}];
+  // Include opportunities with a stated estimated value at or below this amount.
+  double max_value = 9 [(sebuf.http.query) = {name: "max_value"}];
+  // ISO 4217 currency code used with min_value and max_value.
+  string currency = 10 [(sebuf.http.query) = {name: "currency"}];
+  // Procurement category or classification code to match.
+  string category = 11 [(sebuf.http.query) = {name: "category"}];
+  // Case-insensitive search text matched against tender titles and descriptions.
+  string query = 12 [(sebuf.http.query) = {name: "query"}];
+  // Maximum number of tenders to return per page; capped at 100.
+  int32 page_size = 13 [(sebuf.http.query) = {name: "page_size"}];
+  // Opaque cursor from a previous response's next_cursor field.
+  string cursor = 14 [(sebuf.http.query) = {name: "cursor"}];
+  // Result ordering: newest, closing_soon, estimated_value, or relevance.
+  string sort = 15 [(sebuf.http.query) = {name: "sort"}];
+  // Case-insensitive buyer or contracting-authority text to match.
+  string buyer = 16 [(sebuf.http.query) = {name: "buyer"}];
+  // Include opportunities published on or after this ISO-8601 timestamp.
+  string published_from = 17 [(sebuf.http.query) = {name: "published_from"}];
+  // Include opportunities published on or before this ISO-8601 timestamp.
+  string published_to = 18 [(sebuf.http.query) = {name: "published_to"}];
+}
+
+message ListGlobalTendersResponse {
+  repeated GlobalTender tenders = 1;
+  string next_cursor = 2;
+  string fetched_at = 3;
+  bool data_available = 4;
+  string availability = 5;
+  repeated TenderSourceStatus source_statuses = 6;
+  int32 total = 7;
+  repeated string applied_filters = 8;
+  // `unknown` means the snapshot contains no record for a requested country;
+  // it must not be interpreted as a confirmed no-opportunity or unsupported-country result.
+  string country_coverage = 9;
+}

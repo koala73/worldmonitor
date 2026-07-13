@@ -132,6 +132,15 @@ describe('wildfire dashboard payload cap', () => {
     assert.doesNotMatch(bootstrap, /wildfires:\s*'wildfire:fires:v1'/);
   });
 
+  it('packages the shared compactor with the seeder and keeps the Edge mirror in sync', () => {
+    const seeder = readFileSync(new URL('../scripts/seed-fire-detections.mjs', import.meta.url), 'utf8');
+    const scriptsHelper = readFileSync(new URL('../scripts/_wildfire-dashboard.mjs', import.meta.url), 'utf8');
+    const edgeHelper = readFileSync(new URL('../api/_wildfire-dashboard.js', import.meta.url), 'utf8');
+
+    assert.match(seeder, /from '\.\/_wildfire-dashboard\.mjs'/);
+    assert.equal(edgeHelper, scriptsHelper, 'Edge helper mirror must match the scripts-packaged source');
+  });
+
   it('caps response detections without mutating the seed array and keeps highest-signal detections', () => {
     const lowSignal = Array.from({ length: WILDFIRE_DASHBOARD_DETECTION_LIMIT + 25 }, (_, index) =>
       fireDetection(index, {

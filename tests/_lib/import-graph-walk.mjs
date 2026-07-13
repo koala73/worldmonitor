@@ -107,17 +107,17 @@ export function extractEdges(src) {
 
   // import ... from '...' (multi-line safe; skips `import type` and clauses
   // whose named bindings are all inline `type` modifiers — tsx erases both)
-  for (const m of src.matchAll(/^[ \t]*import\s+(?!type\s)([^'";]*?)\bfrom\s*['"]([^'"]+)['"]/gms)) {
+  for (const m of src.matchAll(/(?:^|;)[ \t]*import\s+(?!type\s)([^'";]*?)\bfrom\s*['"]([^'"]+)['"]/gms)) {
     if (isAllTypeNamedClause(m[1])) continue;
     staticSpecs.push(m[2]);
   }
   // side-effect: import '...'
-  for (const m of src.matchAll(/^[ \t]*import\s*['"]([^'"]+)['"]/gm)) {
+  for (const m of src.matchAll(/(?:^|;)[ \t]*import\s*['"]([^'"]+)['"]/gm)) {
     staticSpecs.push(m[1]);
   }
   // export { ... } from '...' / export * from '...' (skips `export type` and
   // all-inline-type clauses)
-  for (const m of src.matchAll(/^[ \t]*export\s+(?!type\b)(\*(?:\s+as\s+\w+)?|\{[^}]*\})\s*from\s*['"]([^'"]+)['"]/gms)) {
+  for (const m of src.matchAll(/(?:^|;)[ \t]*export\s+(?!type\b)(\*(?:\s+as\s+\w+)?|\{[^}]*\})\s*from\s*['"]([^'"]+)['"]/gms)) {
     if (m[1].startsWith('{') && isAllTypeNamedClause(m[1])) continue;
     staticSpecs.push(m[2]);
   }
@@ -210,6 +210,20 @@ export function collectRelativeImports(filePath) {
   const { staticSpecs, requireSpecs } = extractEdges(src);
   const imports = new Set();
   for (const spec of [...staticSpecs, ...requireSpecs]) {
+    if (spec.startsWith('.')) imports.add(spec);
+  }
+  return imports;
+}
+
+// Scripts-only packaging guards must cover every literal runtime edge. Unlike
+// Dockerfile COPY-closure callers, they cannot safely ignore dynamic imports:
+// a conditional import that escapes scripts/ still crashes when that branch
+// executes in Railway's /app scripts root.
+export function collectRelativeRuntimeImports(filePath) {
+  const src = stripComments(readFileSync(filePath, 'utf-8'));
+  const { staticSpecs, dynamicSpecs, requireSpecs } = extractEdges(src);
+  const imports = new Set();
+  for (const spec of [...staticSpecs, ...dynamicSpecs, ...requireSpecs]) {
     if (spec.startsWith('.')) imports.add(spec);
   }
   return imports;

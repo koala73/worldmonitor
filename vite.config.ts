@@ -119,7 +119,7 @@ const PANEL_CLUSTER: Record<string, PanelChunkName> = {
   PositiveNewsFeed: 'panels-news', TelegramIntel: 'panels-news',
   // Macro / prices / trade
   BigMac: 'panels-economy', ConsumerPrices: 'panels-economy',
-  Economic: 'panels-economy',
+  Economic: 'panels-economy', GlobalProcurement: 'panels-economy',
   FaoFoodPriceIndex: 'panels-economy', FSI: 'panels-economy',
   GroceryBasket: 'panels-economy', GulfEconomies: 'panels-economy',
   Investments: 'panels-economy', MacroTiles: 'panels-economy',
