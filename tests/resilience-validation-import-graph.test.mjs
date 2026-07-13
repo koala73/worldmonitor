@@ -61,7 +61,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { parseDockerfileCopy, walkContainerGraph } from './_lib/import-graph-walk.mjs';
+import { extractBundleMembers, parseDockerfileCopy, walkContainerGraph } from './_lib/import-graph-walk.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -199,10 +199,11 @@ function buildContract(container) {
 
 function walkRootsFor(container) {
   const bundleSrc = readFileSync(join(scriptsDir, container.bundleScript), 'utf-8');
-  // Quote-agnostic: a member added with double quotes or a template literal
-  // must not silently escape the walk (minMembers is only a floor, so an
-  // unmatched ADDED member would otherwise pass the count assertion unwalked).
-  const members = [...bundleSrc.matchAll(/script:\s*(["'`])([^"'`]+)\1/g)].map((m) => m[2]);
+  // Shared with the nixpacks guard (#5289): quote-agnostic (an ADDED member in
+  // double quotes must not escape the walk — minMembers is only a floor) and
+  // comment-stripped (a DISABLED member must not be walked, nor abort the
+  // suite via the existsSync assert below).
+  const members = extractBundleMembers(bundleSrc);
   assert.ok(
     members.length >= container.minMembers,
     `${container.bundleScript}: expected >=${container.minMembers} member scripts, found ${members.length} — bundle definition or the member regex drifted`,

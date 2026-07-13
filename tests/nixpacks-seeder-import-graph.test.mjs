@@ -46,7 +46,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { walkContainerGraph } from './_lib/import-graph-walk.mjs';
+import { extractBundleMembers, walkContainerGraph } from './_lib/import-graph-walk.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -83,8 +83,7 @@ const contract = {
 function walkRootsFor(entry) {
   const entryPath = join(root, entry);
   assert.ok(existsSync(entryPath), `railway-services.json entry missing on disk: ${entry}`);
-  const src = readFileSync(entryPath, 'utf-8');
-  const members = [...src.matchAll(/script:\s*(["'`])([^"'`]+)\1/g)].map((m) => m[2]);
+  const members = extractBundleMembers(readFileSync(entryPath, 'utf-8'));
   const roots = [entryPath];
   for (const m of members) {
     const memberPath = join(scriptsDir, m);
@@ -93,6 +92,43 @@ function walkRootsFor(entry) {
   }
   return roots;
 }
+
+// --- extractBundleMembers self-test (synthetic bundle source) ---------------
+//
+// The member list decides what the guard walks, so a regression here silently
+// shrinks coverage (or aborts the suite) rather than failing loudly. Both
+// container guards share this extractor, so both depend on these invariants.
+
+describe('extractBundleMembers self-test (#5289)', () => {
+  const SYNTH = [
+    "await runBundle('synthetic', [",
+    "  { label: 'Single', script: 'seed-single.mjs', intervalMs: HOUR },",
+    '  { label: "Double", script: "seed-double.mjs", intervalMs: HOUR },',
+    "  // { label: 'Disabled', script: 'seed-deleted.mjs' },  <- temporarily disabled",
+    '  /* { label: "BlockDisabled", script: "seed-block-gone.mjs" }, */',
+    ']);',
+  ].join('\n');
+
+  it('finds members regardless of quote style', () => {
+    const members = extractBundleMembers(SYNTH);
+    assert.ok(members.includes('seed-single.mjs'), "single-quoted member missing");
+    assert.ok(members.includes('seed-double.mjs'), 'double-quoted member missing');
+  });
+
+  it('ignores commented-out members (line and block)', () => {
+    // A disabled member is the natural way to park a section. Left unstripped,
+    // its path hits the existsSync assert in walkRootsFor while the describe()
+    // tree is being built — aborting every service's suite, not just one — and
+    // if the file still exists it gets walked and can raise a violation for
+    // code the container never loads.
+    const members = extractBundleMembers(SYNTH);
+    assert.deepEqual(
+      members,
+      ['seed-single.mjs', 'seed-double.mjs'],
+      'commented-out members must not be extracted',
+    );
+  });
+});
 
 describe('nixpacks-root-scripts seeder import graphs (#5266)', () => {
   it('deploy config still yields the service list the guard is meant to cover', () => {

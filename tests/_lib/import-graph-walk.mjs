@@ -167,6 +167,24 @@ export function parseDockerfileCopy(src) {
   return { files, directories };
 }
 
+// --- Bundle-member parsing ---------------------------------------------------
+
+// Extract the member scripts a bundle entry declares (`script: 'seed-x.mjs'`).
+// Each member is spawned as its OWN process by _bundle-runner.mjs, so every one
+// is an independent resolution root for the container guards.
+//
+// Comments are stripped FIRST (#5289 review). A commented-out member — the
+// natural way to temporarily disable a section — otherwise still matches the
+// regex, and the callers' `existsSync` assert then throws while the describe()
+// tree is being built, aborting the whole suite instead of failing one service.
+// A disabled member whose file still exists would be walked and could raise a
+// violation for code the container never loads. Quote-agnostic on purpose: a
+// member added with double quotes or a template literal must not silently
+// escape the walk.
+export function extractBundleMembers(src) {
+  return [...stripComments(src).matchAll(/script:\s*(["'`])([^"'`]+)\1/g)].map((m) => m[2]);
+}
+
 // --- Resolution ---------------------------------------------------------------
 
 // Source extensions plain node can load when written explicitly. The runtime-
