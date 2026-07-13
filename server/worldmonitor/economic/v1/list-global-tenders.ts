@@ -106,8 +106,11 @@ export function filterAndPaginateTenders(tenders: GlobalTender[], req: ListGloba
   const maxValue = req.maxValue > 0 ? req.maxValue : null;
   // Evidence-backed relevance threshold; disabled unless a positive bounded
   // value is supplied so unfiltered callers keep the complete open feed.
+  // Ceiling keeps fractional inputs honest: a stated minimum of 90.5 must not
+  // admit a score of 90, and sub-1 values become an active >=1 threshold
+  // rather than a no-op that still reports itself in appliedFilters.
   const minAutomationScore = Number.isFinite(req.minAutomationScore) && req.minAutomationScore > 0
-    ? Math.min(100, Math.floor(req.minAutomationScore))
+    ? Math.min(100, Math.ceil(req.minAutomationScore))
     : null;
   const sort = ['newest', 'closing_soon', 'estimated_value', 'relevance'].includes(req.sort) ? req.sort : 'newest';
 
