@@ -65,11 +65,12 @@
     "publish-python.yml",
     "publish-ruby.yml",
     "security-audit.yml",
+    "seed-freshness-monitor.yml",
     "test-linux-app.yml",
     "test.yml",
     "typecheck.yml"
   ],
-  "workflowCount": 20,
+  "workflowCount": 21,
   "freshnessSources": 35,
   "freshnessRequiredForRisk": 2,
   "feedDefinitions": 567,
