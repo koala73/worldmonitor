@@ -30,19 +30,24 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { collectRelativeImports, stripComments } from './_lib/import-graph-walk.mjs';
+import {
+  collectRelativeRuntimeImports,
+  extractEdges,
+  parseDockerfileCopy,
+  stripComments,
+} from './_lib/import-graph-walk.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
 const scriptsDir = resolve(repoRoot, 'scripts');
 
-// Registry-derived entry points cover bundles and workers. Standalone cron
-// seeders historically live outside that registry, so conservatively include
-// every seed-* script unless its registry entry names a Dockerfile whose COPY
-// closure is checked separately.
+// Registry-derived entry points cover bundles and workers. Conservatively scan
+// unregistered seed-* scripts as scripts-root services too, but exclude entries
+// the registry explicitly classifies as repo-root or Dockerfile deployments,
+// plus exact child scripts COPY'd into a registered Dockerfile image.
 interface RailwayServiceEntry {
   entry: string;
-  deployMode: 'nixpacks-root-scripts' | 'dockerfile';
+  deployMode: 'nixpacks-root-scripts' | 'nixpacks-root-repo' | 'dockerfile';
   dockerfile?: string;
   service: string;
   documentedAt: string;
@@ -55,15 +60,28 @@ const registry = JSON.parse(
 const REGISTERED_NIXPACKS_ENTRY_POINTS = registry
   .filter((r) => r.deployMode === 'nixpacks-root-scripts')
   .map((r) => r.entry);
-const DOCKERFILE_ENTRY_FILES = new Set(
+const NON_SCRIPTS_ROOT_ENTRY_FILES = new Set(
   registry
-    .filter((r) => r.deployMode === 'dockerfile')
+    .filter((r) => r.deployMode !== 'nixpacks-root-scripts')
     .map((r) => resolve(repoRoot, r.entry)),
+);
+const DOCKERFILE_COPIED_SCRIPT_FILES = new Set(
+  registry
+    .filter((r) => r.deployMode === 'dockerfile' && r.dockerfile)
+    .flatMap((r) => {
+      const dockerfile = readFileSync(resolve(repoRoot, r.dockerfile!), 'utf8');
+      return [...parseDockerfileCopy(dockerfile).files]
+        .filter((file) => file.startsWith('scripts/'))
+        .map((file) => resolve(repoRoot, file));
+    }),
 );
 const STANDALONE_SEED_ENTRY_POINTS = readdirSync(scriptsDir)
   .filter((file) => /^seed-.*\.(?:mjs|cjs|js)$/.test(file))
   .map((file) => `scripts/${file}`)
-  .filter((entry) => !DOCKERFILE_ENTRY_FILES.has(resolve(repoRoot, entry)));
+  .filter((entry) => {
+    const absEntry = resolve(repoRoot, entry);
+    return !NON_SCRIPTS_ROOT_ENTRY_FILES.has(absEntry) && !DOCKERFILE_COPIED_SCRIPT_FILES.has(absEntry);
+  });
 const ENTRY_POINTS = [...new Set([...REGISTERED_NIXPACKS_ENTRY_POINTS, ...STANDALONE_SEED_ENTRY_POINTS])];
 const BUNDLE_ENTRY_FILES = new Set(
   REGISTERED_NIXPACKS_ENTRY_POINTS.map((entry) => resolve(repoRoot, entry)),
@@ -98,6 +116,29 @@ function escapesScriptsDir(absResolved: string): boolean {
 }
 
 describe('scripts/ Railway nixpacks packaging — no escape imports', () => {
+  it('classifies scripts-root, repo-root, and Dockerfile child seeders correctly', () => {
+    assert.ok(ENTRY_POINTS.includes('scripts/seed-fire-detections.mjs'));
+    assert.ok(!ENTRY_POINTS.includes('scripts/seed-market-quotes.mjs'));
+    assert.ok(!ENTRY_POINTS.includes('scripts/seed-chokepoint-flows.mjs'));
+  });
+
+  it('scanner recognizes every supported literal runtime import form', () => {
+    const edges = extractEdges([
+      "const ready = true; import value from './same-line.mjs';",
+      "import './side-effect.mjs';",
+      "export { value } from './exported.mjs';",
+      "await import('./dynamic.mjs');",
+      "const required = require('./required.cjs');",
+    ].join('\n'));
+
+    assert.deepEqual(
+      new Set(edges.staticSpecs),
+      new Set(['./same-line.mjs', './side-effect.mjs', './exported.mjs']),
+    );
+    assert.deepEqual(new Set(edges.dynamicSpecs), new Set(['./dynamic.mjs']));
+    assert.deepEqual(new Set(edges.requireSpecs), new Set(['./required.cjs']));
+  });
+
   for (const entry of ENTRY_POINTS) {
     it(`entry ${entry} and its transitive scripts/ deps never import outside scripts/`, () => {
       const visited = new Set<string>();
@@ -111,7 +152,7 @@ describe('scripts/ Railway nixpacks packaging — no escape imports', () => {
 
         let imports: Set<string>;
         try {
-          imports = collectRelativeImports(file);
+          imports = collectRelativeRuntimeImports(file);
         } catch (err) {
           assert.fail(`Could not read ${file}: ${(err as Error).message}`);
         }
@@ -151,7 +192,7 @@ describe('scripts/ Railway nixpacks packaging — no escape imports', () => {
       if (violations.length > 0) {
         const lines = violations.map(
           (v) =>
-            `  ${v.from}\n    imports '${v.spec}'\n    → ${v.resolved} (escapes scripts/)`,
+            `  ${v.from}\n    imports '${v.spec}'\n    -> ${v.resolved} (escapes scripts/)`,
         );
         assert.fail(
           `Found ${violations.length} import(s) that escape scripts/ in the ` +

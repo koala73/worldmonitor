@@ -1,8 +1,9 @@
 /**
  * Coverage guardrail for scripts/railway-services.json — the single source
  * of truth for every script that runs as a Railway service. This test fails
- * if a deployment artifact in the repo (Dockerfile.* CMD line or runbook
- * "Start command:" entry) references a script not present in the registry.
+ * if a deployment artifact in the repo (Dockerfile.* CMD line, runbook
+ * "Start command:" entry, or standalone-service row) references a script not
+ * present in the registry.
  *
  * Two BFS-style tests derive their entry lists from the registry:
  *   - tests/scripts-railway-nixpacks-no-escape-import.test.mts (nixpacks)
@@ -30,7 +31,7 @@ const repoRoot = resolve(__dirname, '..');
 
 interface RailwayServiceEntry {
   entry: string;
-  deployMode: 'nixpacks-root-scripts' | 'dockerfile';
+  deployMode: 'nixpacks-root-scripts' | 'nixpacks-root-repo' | 'dockerfile';
   dockerfile?: string;
   service: string;
   documentedAt: string;
@@ -54,6 +55,10 @@ const DOCKERFILE_CMD_RE = /^\s*CMD\s+\[\s*"node"\s*,\s*"(scripts\/[^"]+)"\s*\]/m
 // (table-cell shape — multiple spaces, backtick quoting around the command).
 // Also tolerates `node` paths without backticks in case the runbook drifts.
 const RUNBOOK_START_RE = /\|\s*\*\*Start command\*\*\s*\|\s*`?node\s+(scripts\/\S+?\.(?:mjs|cjs|js))`?\s*\|/g;
+
+// Match standalone-service rows like:
+//   | seed-fake | `node scripts/seed-fake.mjs` | hourly | Domain |
+const RUNBOOK_SERVICE_ROW_RE = /^\|\s*seed-[a-z0-9-]+\s*\|\s*`node\s+(scripts\/[^`]+\.(?:mjs|cjs|js))`\s*\|/gm;
 
 // Match script headers that document a manually provisioned Railway service:
 //   - Service name: seed-bundle-foo
@@ -92,7 +97,7 @@ describe('Railway service registry coverage', () => {
     }
   });
 
-  it('every runbook "Start command" references a registered script', () => {
+  it('every runbook Railway command references a registered script', () => {
     const runbookPath = resolve(repoRoot, 'docs/railway-seed-consolidation-runbook.md');
     const src = readFileSync(runbookPath, 'utf8');
 
@@ -102,10 +107,14 @@ describe('Railway service registry coverage', () => {
     while ((m = RUNBOOK_START_RE.exec(src)) !== null) {
       referenced.add(m[1]!);
     }
+    RUNBOOK_SERVICE_ROW_RE.lastIndex = 0;
+    while ((m = RUNBOOK_SERVICE_ROW_RE.exec(src)) !== null) {
+      referenced.add(m[1]!);
+    }
     assert.ok(
       referenced.size > 0,
       `Runbook regex matched zero entries — runbook format may have drifted. ` +
-        `Update RUNBOOK_START_RE.`,
+        `Update RUNBOOK_START_RE or RUNBOOK_SERVICE_ROW_RE.`,
     );
 
     const missing: string[] = [];
@@ -120,7 +129,7 @@ describe('Railway service registry coverage', () => {
         `Runbook entries drift from scripts/railway-services.json:\n` +
           missing.map((s) => `  - ${s}`).join('\n') +
           `\n\nAdd the missing entry to the registry (deployMode: ` +
-          `"nixpacks-root-scripts") or update the runbook.`,
+          `"nixpacks-root-scripts" or "nixpacks-root-repo") or update the runbook.`,
       );
     }
   });
@@ -176,6 +185,14 @@ describe('Railway service registry coverage', () => {
     RUNBOOK_START_RE.lastIndex = 0;
     const m = RUNBOOK_START_RE.exec(sample);
     assert.ok(m, 'RUNBOOK_START_RE failed to match canonical Start command shape');
+    assert.equal(m![1], 'scripts/seed-fake.mjs');
+  });
+
+  it('RUNBOOK_SERVICE_ROW_RE matches the documented standalone-service shape', () => {
+    const sample = '| seed-fake | `node scripts/seed-fake.mjs` | hourly | Fake data |\n';
+    RUNBOOK_SERVICE_ROW_RE.lastIndex = 0;
+    const m = RUNBOOK_SERVICE_ROW_RE.exec(sample);
+    assert.ok(m, 'RUNBOOK_SERVICE_ROW_RE failed to match canonical standalone-service shape');
     assert.equal(m![1], 'scripts/seed-fake.mjs');
   });
 

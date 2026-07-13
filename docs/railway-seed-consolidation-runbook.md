@@ -10,8 +10,9 @@
 > registry before merging. Both `tests/scripts-railway-nixpacks-no-escape-import.test.mts`
 > and `tests/dockerfile-digest-notifications-imports.test.mjs` derive their entry
 > lists from the registry, and `tests/railway-services-registry-coverage.test.mts`
-> fails if a `Dockerfile.*` CMD or a runbook "Start command:" entry references a
-> script the registry doesn't know about.
+> fails if a `Dockerfile.*` CMD, runbook "Start command:" entry, or standalone
+> service row references a script the registry doesn't know about. The
+> scripts-root guard also conservatively scans unregistered legacy seeders.
 
 ---
 
@@ -442,9 +443,9 @@ entries.
 > runs as its own Railway nixpacks cron service (root directory `.`, start
 > command `node scripts/<file>`, watch paths `scripts/**`, `shared/**`). They
 > are intentionally **not** part of the 100-service inventory count above and
-> are not in `scripts/railway-services.json` (the registry only covers bundles,
-> Dockerfile services, and long-running workers — standalone crons live here in
-> the runbook, like the 43 above).
+> are registered in `scripts/railway-services.json` with deploy mode
+> `nixpacks-root-repo`, so scripts-root packaging checks do not misclassify
+> their valid imports outside `scripts/`.
 >
 > **Cadence below is inferred from each seed's cache TTL** as a documentation
 > aid; confirm the live cron schedule and Service ID against the Railway
