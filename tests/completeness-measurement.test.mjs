@@ -151,6 +151,18 @@ describe('server catalog extraction (#4920a)', () => {
     const feeds = extractServerFeeds();
     assert.ok(feeds.some((f) => f.name === "Tom's Hardware"), 'double-quoted names must not be skipped');
   });
+
+  it('uses the direct Nature RSS endpoint in both feed catalogs', () => {
+    const directNatureUrl = 'https://www.nature.com/nature.rss?error=cookies_not_supported';
+    const natureFeed = extractServerFeeds().find((feed) => feed.name === 'Nature News');
+    assert.equal(natureFeed?.url, directNatureUrl, 'server digest must avoid Nature\'s redirect-heavy legacy URL');
+
+    const clientFeeds = readSrc('src/config/feeds.ts');
+    assert.ok(
+      clientFeeds.includes(`{ name: 'Nature News', url: rss('${directNatureUrl}') }`),
+      'client catalog must use the same direct Nature RSS endpoint',
+    );
+  });
 });
 
 describe('coverage-ledger and provenance wiring (source-textual)', () => {
