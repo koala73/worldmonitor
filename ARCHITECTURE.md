@@ -368,6 +368,7 @@ Runs before every `git push`:
 | `feed-validation.yml` | PR (feed changes), daily cron | RSS feed reachability and validation |
 | `mcp-live-smoke.yml` | 6-hourly cron, push to main (smoke paths), manual | Anonymous strict-client walk of the production MCP surface on apex + www (capability walk, auth wall, OAuth endpoint routing — #4937/#4938 regression net) |
 | `security-audit.yml` | PR, push to main, daily cron, manual | Production dependency audits for every tracked `package-lock.json` workspace, failing on unbaselined high/critical advisories |
+| `seed-freshness-monitor.yml` | 15-minute cron, manual | Checks production seed metadata freshness after a green main gate and fails on stale seed sources |
 | `contributor-trust.yml` | PR | Gates untrusted first-time-contributor runs |
 | `deploy-gate.yml` | After Test/Typecheck/Security Audit complete | Aggregates required smoke-gate statuses onto the head SHA for branch protection |
 | `convex-deploy.yml` | Push to main, manual | Deploys Convex backend functions |
