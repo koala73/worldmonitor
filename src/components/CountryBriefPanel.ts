@@ -69,6 +69,28 @@ export interface CountryDeepDiveEconomicIndicator {
   source?: string;
 }
 
+export type ChinaCountrySummaryGroupId = 'macro-policy' | 'market-credit' | 'trade-supply' | 'energy' | 'availability';
+export type ChinaCountrySummaryState = 'loading' | 'available' | 'partial' | 'stale' | 'unavailable';
+
+export interface ChinaCountrySummarySignal {
+  label: string;
+  value: string;
+  source: string;
+  observedAt: string;
+  stale: boolean;
+}
+
+export interface ChinaCountrySummaryGroup {
+  id: ChinaCountrySummaryGroupId;
+  state: ChinaCountrySummaryState;
+  signals: ChinaCountrySummarySignal[];
+  unavailableReason?: string;
+}
+
+export interface ChinaCountrySummaryData {
+  groups: ChinaCountrySummaryGroup[];
+}
+
 export interface CountryFactsData {
   headOfState: string;
   headOfStateTitle: string;
@@ -182,6 +204,7 @@ export interface CountryBriefPanel {
   updateSignalDetails?(details: CountryDeepDiveSignalDetails): void;
   updateMilitaryActivity?(summary: CountryDeepDiveMilitarySummary): void;
   updateEconomicIndicators?(indicators: CountryDeepDiveEconomicIndicator[]): void;
+  updateChinaCountrySummary?(data: ChinaCountrySummaryData): void;
   updateCountryFacts?(data: CountryFactsData): void;
   updateEnergyProfile?(data: CountryEnergyProfileData): void;
   updateMaritimeActivity?(data: CountryPortActivityData): void;

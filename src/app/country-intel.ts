@@ -10,6 +10,10 @@ import type {
   CountryDeepDiveEconomicIndicator,
   CountryDeepDiveMilitarySummary,
   CountryDeepDiveSignalDetails,
+  ChinaCountrySummaryData,
+  ChinaCountrySummaryGroup,
+  ChinaCountrySummaryGroupId,
+  ChinaCountrySummarySignal,
 } from '@/components/CountryBriefPanel';
 import { reverseGeocode } from '@/utils/reverse-geocode';
 import { yieldToMain } from '@/utils/after-paint';
@@ -56,7 +60,7 @@ import { toFlagEmoji } from '@/utils/country-flag';
 import { iso2ToIso3, iso2ToComtradeReporterCode } from '@/utils/country-codes';
 import { buildDependencyGraph } from '@/services/infrastructure-cascade';
 import { getActiveFrameworkForPanel, subscribeFrameworkChange } from '@/services/analysis-framework-store';
-import { fetchMultiSectorExposure, fetchCountryProducts, fetchMultiSectorCostShock } from '@/services/supply-chain';
+import { fetchMultiSectorExposure, fetchCountryProducts, fetchMultiSectorCostShock, fetchShippingRates } from '@/services/supply-chain';
 import { getImfCountryBundle, buildImfEconomicIndicators, type ImfCountryBundle } from '@/services/imf-country-data';
 import { EconomicServiceClient, IntelligenceServiceClient, MarketServiceClient, TradeServiceClient } from '@/services/generated-rpc-clients';
 
@@ -78,7 +82,22 @@ type CountryStockSnapshot = {
   price: string;
   weekChangePercent: string;
   currency: string;
+  fetchedAt: string;
 };
+
+const CHINA_SUMMARY_GROUP_IDS: ChinaCountrySummaryGroupId[] = [
+  'macro-policy',
+  'market-credit',
+  'trade-supply',
+  'energy',
+  'availability',
+];
+
+function chinaSummaryState(signals: ChinaCountrySummarySignal[], expectedSignals: number): ChinaCountrySummaryGroup['state'] {
+  if (signals.length === 0) return 'unavailable';
+  if (signals.every((signal) => signal.stale)) return 'stale';
+  return signals.length < expectedSignals || signals.some((signal) => signal.stale) ? 'partial' : 'available';
+}
 
 type CountryIntelBriefResult = {
   brief: string;
@@ -295,6 +314,7 @@ export class CountryIntelManager implements AppModule {
 
       const canonicalName = TIER1_COUNTRIES[code] || CountryIntelManager.resolveCountryName(code);
       if (canonicalName !== code) country = canonicalName;
+      const isChina = code.toUpperCase() === 'CN';
 
       const scoreCode = normalizeCiiCountryCode(code);
       const score = getCachedCountryScore(scoreCode);
@@ -304,6 +324,45 @@ export class CountryIntelManager implements AppModule {
 
       page.show(country, code, score, signals);
       pageShown = true;
+      const chinaSummaryGroups = new Map<ChinaCountrySummaryGroupId, ChinaCountrySummaryGroup>();
+      const updateChinaSummaryGroup = (group: ChinaCountrySummaryGroup): void => {
+        if (!isChina || token !== this.briefRequestToken || this.ctx.countryBriefPage?.getCode()?.toUpperCase() !== 'CN') return;
+        chinaSummaryGroups.set(group.id, group);
+        const data: ChinaCountrySummaryData = {
+          groups: CHINA_SUMMARY_GROUP_IDS.map((id) => chinaSummaryGroups.get(id) ?? {
+            id,
+            state: 'loading',
+            signals: [],
+          }),
+        };
+        this.ctx.countryBriefPage.updateChinaCountrySummary?.(data);
+      };
+      if (isChina) {
+        const availabilityObservedAt = new Date().toISOString();
+        const hazardSignals = signals.satelliteFires + signals.earthquakes + signals.climateStress;
+        updateChinaSummaryGroup({
+          id: 'availability',
+          state: 'available',
+          signals: [
+            {
+              label: t('countryBrief.china.aviationAvailability'),
+              value: signals.aviationDisruptions > 0
+                ? t('countryBrief.china.activeDisruptions', { count: signals.aviationDisruptions })
+                : t('countryBrief.china.noMajorDisruptions'),
+              source: t('countryBrief.china.aviationSource'),
+              observedAt: availabilityObservedAt,
+              stale: false,
+            },
+            {
+              label: t('countryBrief.china.hazardAvailability'),
+              value: t('countryBrief.china.activeSignals', { count: hazardSignals }),
+              source: t('countryBrief.china.hazardSource'),
+              observedAt: availabilityObservedAt,
+              stale: false,
+            },
+          ],
+        });
+      }
       // Yield so the deep-dive panel paint lands before the map catch-up
       // (highlightCountry deck rebuild + fitCountry fitBounds animation) — country
       // click is the field #1 INP offender, presentation-delay-dominated (#4617).
@@ -344,11 +403,13 @@ export class CountryIntelManager implements AppModule {
           price: String(resp.price),
           weekChangePercent: String(resp.weekChangePercent),
           currency: resp.currency,
+          fetchedAt: resp.fetchedAt,
         }))
-        .catch(() => ({ available: false as const, code: '', symbol: '', indexName: '', price: '0', weekChangePercent: '0', currency: '' }));
+        .catch(() => ({ available: false as const, code: '', symbol: '', indexName: '', price: '0', weekChangePercent: '0', currency: '', fetchedAt: '' }));
 
       let latestStock: CountryStockSnapshot | null = null;
       let latestImf: ImfCountryBundle | null = null;
+      const imfPromise = getImfCountryBundle(code);
 
       stockPromise.then((stock) => {
         latestStock = stock;
@@ -359,11 +420,100 @@ export class CountryIntelManager implements AppModule {
 
       // IMF WEO bundle (issue #3027): macro / growth / labor / external from
       // the SDMX-3.0 seeded keys. Tolerant: missing data leaves card unchanged.
-      getImfCountryBundle(code).then((bundle) => {
+      imfPromise.then((bundle) => {
         latestImf = bundle;
         if (this.ctx.countryBriefPage?.getCode() !== code) return;
         this.ctx.countryBriefPage.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, latestStock, bundle));
       }).catch(() => { /* non-fatal */ });
+
+      if (isChina) {
+        const chinaEconomicClient = new EconomicServiceClient(getRpcBaseUrl(), {
+          fetch: (...args: Parameters<typeof globalThis.fetch>) => globalThis.fetch(...args),
+        });
+
+        Promise.allSettled([
+          chinaEconomicClient.getChinaMacroSnapshot({}),
+          imfPromise,
+        ]).then(([macroResult, imfResult]) => {
+          const summarySignals: ChinaCountrySummarySignal[] = [];
+          if (macroResult?.status === 'fulfilled') {
+            for (const indicator of macroResult.value.indicators) {
+              if (!indicator.hasValue || !Number.isFinite(indicator.value) || !indicator.observationDate) continue;
+              const value = indicator.unit === '%'
+                ? `${indicator.value.toFixed(1)}%`
+                : `${indicator.value.toLocaleString(undefined, { maximumFractionDigits: 2 })}${indicator.unit ? ` ${indicator.unit}` : ''}`;
+              summarySignals.push({
+                label: indicator.label,
+                value,
+                source: indicator.source || t('countryBrief.china.sourceUnavailable'),
+                observedAt: indicator.observationDate,
+                stale: indicator.stale,
+              });
+              if (summarySignals.length === 2) break;
+            }
+          }
+          if (imfResult?.status === 'fulfilled') {
+            const growth = imfResult.value.growth;
+            if (growth?.realGdpGrowthPct != null && Number.isFinite(growth.realGdpGrowthPct) && growth.year != null) {
+              summarySignals.push({
+                label: t('countryBrief.china.imfGrowth'),
+                value: `${growth.realGdpGrowthPct >= 0 ? '+' : ''}${growth.realGdpGrowthPct.toFixed(1)}%`,
+                source: 'IMF WEO',
+                observedAt: String(growth.year),
+                stale: false,
+              });
+            }
+          }
+          updateChinaSummaryGroup({
+            id: 'macro-policy',
+            state: chinaSummaryState(summarySignals, 2),
+            signals: summarySignals,
+            unavailableReason: summarySignals.length === 0 ? t('countryBrief.china.macroUnavailable') : undefined,
+          });
+        }).catch(() => {
+          updateChinaSummaryGroup({
+            id: 'macro-policy', state: 'unavailable', signals: [], unavailableReason: t('countryBrief.china.macroUnavailable'),
+          });
+        });
+
+        Promise.allSettled([
+          stockPromise,
+          chinaEconomicClient.getBisCredit({}),
+        ]).then(([stockResult, creditResult]) => {
+          const summarySignals: ChinaCountrySummarySignal[] = [];
+          if (stockResult?.status === 'fulfilled' && stockResult.value.available && stockResult.value.fetchedAt) {
+            summarySignals.push({
+              label: stockResult.value.indexName,
+              value: `${stockResult.value.price} ${stockResult.value.currency}`,
+              source: t('countryBrief.china.marketSource'),
+              observedAt: stockResult.value.fetchedAt,
+              stale: false,
+            });
+          }
+          if (creditResult?.status === 'fulfilled') {
+            const credit = creditResult.value.entries.find((entry) => entry.countryCode === 'CN');
+            if (credit && Number.isFinite(credit.creditGdpRatio) && credit.date) {
+              summarySignals.push({
+                label: t('countryBrief.china.creditGdp'),
+                value: `${credit.creditGdpRatio.toFixed(1)}%`,
+                source: 'BIS',
+                observedAt: credit.date,
+                stale: false,
+              });
+            }
+          }
+          updateChinaSummaryGroup({
+            id: 'market-credit',
+            state: chinaSummaryState(summarySignals, 2),
+            signals: summarySignals,
+            unavailableReason: summarySignals.length === 0 ? t('countryBrief.china.marketUnavailable') : undefined,
+          });
+        }).catch(() => {
+          updateChinaSummaryGroup({
+            id: 'market-credit', state: 'unavailable', signals: [], unavailableReason: t('countryBrief.china.marketUnavailable'),
+          });
+        });
+      }
 
       fetchCountryMarkets(country)
         .then((markets) => {
@@ -435,6 +585,42 @@ export class CountryIntelManager implements AppModule {
       intelClient.getCountryEnergyProfile({ countryCode: code })
         .then((profile) => {
           if (this.ctx.countryBriefPage?.getCode() !== code) return;
+          if (isChina) {
+            const summarySignals: ChinaCountrySummarySignal[] = [];
+            if (profile.jodiOilAvailable && profile.jodiOilDataMonth) {
+              summarySignals.push({
+                label: t('countryBrief.china.oilSupply'),
+                value: `${Math.round(profile.crudeImportsKbd).toLocaleString()} kbd`,
+                source: 'JODI / Energy Spine',
+                observedAt: profile.jodiOilDataMonth,
+                stale: false,
+              });
+            }
+            if (profile.jodiGasAvailable && profile.jodiGasDataMonth) {
+              summarySignals.push({
+                label: t('countryBrief.china.gasSupply'),
+                value: `${Math.round(profile.gasTotalDemandTj).toLocaleString()} TJ`,
+                source: 'JODI / Energy Spine',
+                observedAt: profile.jodiGasDataMonth,
+                stale: false,
+              });
+            }
+            if (profile.mixAvailable && profile.mixYear > 0) {
+              summarySignals.push({
+                label: t('countryBrief.china.energyMix'),
+                value: `${profile.coalShare.toFixed(0)}% ${t('countryBrief.china.coal')}`,
+                source: 'Energy Spine / OWID Energy',
+                observedAt: String(profile.mixYear),
+                stale: false,
+              });
+            }
+            updateChinaSummaryGroup({
+              id: 'energy',
+              state: chinaSummaryState(summarySignals, 2),
+              signals: summarySignals,
+              unavailableReason: summarySignals.length === 0 ? t('countryBrief.china.energyUnavailable') : undefined,
+            });
+          }
           this.ctx.countryBriefPage.updateEnergyProfile?.({
             mixAvailable: profile.mixAvailable,
             mixYear: profile.mixYear,
@@ -499,6 +685,11 @@ export class CountryIntelManager implements AppModule {
         })
         .catch(() => {
           if (this.ctx.countryBriefPage?.getCode() !== code) return;
+          if (isChina) {
+            updateChinaSummaryGroup({
+              id: 'energy', state: 'unavailable', signals: [], unavailableReason: t('countryBrief.china.energyUnavailable'),
+            });
+          }
           this.ctx.countryBriefPage.updateEnergyProfile?.({
             mixAvailable: false, mixYear: 0, coalShare: 0, gasShare: 0, oilShare: 0,
             nuclearShare: 0, renewShare: 0, windShare: 0, solarShare: 0, hydroShare: 0,
@@ -546,7 +737,49 @@ export class CountryIntelManager implements AppModule {
         });
 
       // Fetch multi-sector exposure (all 10 seeded HS2 codes in parallel)
-      fetchMultiSectorExposure(code)
+      const sectorExposurePromise = fetchMultiSectorExposure(code);
+      if (isChina) {
+        Promise.allSettled([fetchShippingRates(), sectorExposurePromise]).then(([shippingResult, sectorsResult]) => {
+          const summarySignals: ChinaCountrySummarySignal[] = [];
+          if (shippingResult?.status === 'fulfilled') {
+            const ccfi = shippingResult.value.indices.find((index) => index.indexId === 'CCFI');
+            const observedAt = ccfi?.history[ccfi.history.length - 1]?.date || shippingResult.value.fetchedAt;
+            if (ccfi && observedAt) {
+              summarySignals.push({
+                label: ccfi.name || 'CCFI',
+                value: `${ccfi.currentValue.toFixed(0)} ${ccfi.unit}`,
+                source: t('countryBrief.china.ccfiSource'),
+                observedAt,
+                stale: false,
+              });
+            }
+          }
+          if (sectorsResult?.status === 'fulfilled') {
+            const sector = sectorsResult.value[0];
+            if (sector?.fetchedAt) {
+              summarySignals.push({
+                label: t('countryBrief.china.strategicTrade'),
+                value: `${sector.label} · ${Math.round(sector.vulnerabilityIndex)}/100`,
+                source: t('countryBrief.china.comtradeSource'),
+                observedAt: sector.fetchedAt,
+                stale: false,
+              });
+            }
+          }
+          updateChinaSummaryGroup({
+            id: 'trade-supply',
+            state: chinaSummaryState(summarySignals, 2),
+            signals: summarySignals,
+            unavailableReason: summarySignals.length === 0 ? t('countryBrief.china.tradeUnavailable') : undefined,
+          });
+        }).catch(() => {
+          updateChinaSummaryGroup({
+            id: 'trade-supply', state: 'unavailable', signals: [], unavailableReason: t('countryBrief.china.tradeUnavailable'),
+          });
+        });
+      }
+
+      sectorExposurePromise
         .then((sectors) => {
           if (this.ctx.countryBriefPage?.getCode() !== code) return;
           if (sectors.length === 0) {

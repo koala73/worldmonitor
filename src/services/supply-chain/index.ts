@@ -172,6 +172,7 @@ export interface SectorExposureSummary {
   dependencyFlag: string;
   primaryExporterIso2: string;
   primaryExporterShare: number;
+  fetchedAt?: string;
 }
 
 /**
@@ -203,6 +204,7 @@ export async function fetchMultiSectorExposure(iso2: string): Promise<SectorExpo
         dependencyFlag: dep?.flags?.[0] ?? '',
         primaryExporterIso2: dep?.primaryExporterIso2 ?? '',
         primaryExporterShare: dep?.primaryExporterShare ?? 0,
+        fetchedAt: r.fetchedAt,
       };
     })
     .sort((a, b) => b.vulnerabilityIndex - a.vulnerabilityIndex);
