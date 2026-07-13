@@ -66,6 +66,7 @@ describe('seed fetch-phase deadline & TTL invariants (issue #4864)', () => {
       GDELT_COUNTRY_FETCH_OPTS,
       ACLED_INTEL_LOCK_TTL_MS,
     } = await import('../scripts/seed-conflict-intel.mjs');
+    const { GDELT_BULK_WORST_NETWORK_MS } = await import('../scripts/_conflict-gdelt-bulk.mjs');
 
     // maxRetries MUST stay 0: a second direct attempt honors GDELT's Retry-After
     // header (≤60s sleep, MAX_RETRY_AFTER_MS in _gdelt-fetch.mjs), voiding any
@@ -90,6 +91,7 @@ describe('seed fetch-phase deadline & TTL invariants (issue #4864)', () => {
     const HAPI_WORST_MS = 20 * (15_000 + 300);
     const EXTRA_KEY_WRITE_SLACK_MS = 30_000;
     const worstFetchAttempt = Math.max(HAPI_WORST_MS, GDELT_SWEEP_BUDGET_MS + worstBatch)
+      + GDELT_BULK_WORST_NETWORK_MS
       + EXTRA_KEY_WRITE_SLACK_MS;
 
     // runSeed invariant: a healthy seeder never outlives its own lock…

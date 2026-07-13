@@ -19,6 +19,7 @@
 import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, loadSharedConfig } from './_seed-utils.mjs';
 import { fetchGdeltJson } from './_gdelt-fetch.mjs';
 import { buildGdeltConflictUrl, mapGdeltArticlesToEvents, GDELT_COUNTRY_NAMES } from './_conflict-gdelt.mjs';
+import { fetchGdeltBulkConflictEvents } from './_conflict-gdelt-bulk.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -48,10 +49,11 @@ export const GDELT_MIN_SUCCESSFUL_COUNTRIES = Math.ceil(CONFLICT_COUNTRIES.lengt
 // in-flight batch may still drain past the cutoff: ≤~100s at the knobs below
 // (15s concurrent direct legs + 4 × 20s SERIALIZED sync proxy curls — curlFetch is
 // execFileSync, so "concurrent" proxy attempts block the event loop one at a time;
-// 92s observed live 2026-07-10). Worst single fetchAll attempt ≈
-// max(HAPI 306s, 120s + 100s) + extra-key writes ≈ ~350s, inside both the 360s
-// lock below and the 480s fetch deadline (lockTtl + margin). Without this cap a
+// 92s observed live 2026-07-10). Worst single fetchAll attempt before the bulk
+// fallback ≈ max(HAPI 306s, 120s + 100s). Without this cap a
 // GDELT brownout ran 5 batches ≈ 375s+ → deadline breach → exit 75 every tick.
+// The bulk fallback runs after those parallel feeds settle, so its 60s bound
+// and 30s publish slack are additive: max(306s, 220s) + 60s + 30s = 396s.
 export const GDELT_SWEEP_BUDGET_MS = 120_000;
 // maxRetries: 0 — a second direct attempt would honor GDELT's Retry-After header
 // (≤60s sleep, _gdelt-fetch.mjs MAX_RETRY_AFTER_MS), blowing any per-batch bound;
@@ -61,10 +63,10 @@ export const GDELT_SWEEP_BUDGET_MS = 120_000;
 export const GDELT_COUNTRY_FETCH_OPTS = Object.freeze({ maxRetries: 0, proxyMaxAttempts: 1 });
 // Lock must outlive the worst legitimate run (runSeed's documented invariant —
 // _seed-utils.mjs: "a healthy seeder is designed never to outlive its own lock");
-// it also sets the fetch deadline (lockTtlMs + 120s margin = 480s). The default
+// it also sets the fetch deadline (lockTtlMs + 120s margin = 540s). The default
 // 120s lock was ALREADY shorter than this seeder's worst case. Cron cadence is
-// 30min, so a hard-crashed run's dangling lock costs at most 6 of those minutes.
-export const ACLED_INTEL_LOCK_TTL_MS = 360_000;
+// 30min, so a hard-crashed run's dangling lock costs at most 7 of those minutes.
+export const ACLED_INTEL_LOCK_TTL_MS = 420_000;
 
 const ISO2_TO_ISO3 = loadSharedConfig('iso2-to-iso3.json');
 
@@ -209,14 +211,11 @@ async function fetchAcledEvents({
 
 // ─── GDELT conflict-events fallback (used when ACLED has no credentials) ───
 // ACLED requires a registered account. When its credentials are absent, keep a
-// near-real-time conflict signal by proxying GDELT DOC 2.0 coverage volume: per
-// priority country, count recent conflict-tagged articles and emit them as synthetic
-// events in the SAME {country, event_date} shape the EMA engine reads
-// (_ema-threat-engine.mjs). Article volume is a coarser proxy than ACLED event counts,
-// but it is keyless, near-real-time, and directionally valid for the per-country
-// escalation EMA. URL/query + article→event mapping live in the import-safe,
-// unit-tested _conflict-gdelt.mjs; this fn owns the throttle-aware fetch via
-// fetchGdeltJson's proxy path (GDELT is per-IP 429-throttled).
+// near-real-time conflict signal from GDELT. The DOC 2.0 path counts recent
+// conflict-tagged articles per priority country and emits synthetic events in the
+// SAME {country, event_date} shape the EMA engine reads (_ema-threat-engine.mjs).
+// When DOC coverage is throttled or yields no events, the official 15-minute bulk
+// event export supplies material-conflict records instead.
 export async function fetchGdeltCountryEvents(cc) {
   if (!GDELT_COUNTRY_NAMES[cc]) {
     return { country: cc, ok: false, events: [], error: 'unknown country code' };
@@ -234,6 +233,7 @@ export async function fetchGdeltCountryEvents(cc) {
 
 export async function fetchGdeltConflictEvents({
   fetchCountryEvents = fetchGdeltCountryEvents,
+  fetchBulkEvents = fetchGdeltBulkConflictEvents,
   pace = sleep,
   now = Date.now,
   deadlineAt,
@@ -269,12 +269,34 @@ export async function fetchGdeltConflictEvents({
     }
     if (i + CONCURRENCY < CONFLICT_COUNTRIES.length) await pace(500); // inter-batch only; no trailing wait
   }
-  if (successfulCountries < GDELT_MIN_SUCCESSFUL_COUNTRIES) {
+  if (successfulCountries < GDELT_MIN_SUCCESSFUL_COUNTRIES || events.length === 0) {
     const sample = failedCountries.slice(0, 6).map(({ country, error }) => `${country}:${error}`).join(', ');
-    throw new Error(
-      `GDELT conflict-events coverage below floor: ${successfulCountries}/${CONFLICT_COUNTRIES.length} countries succeeded ` +
-      `(min ${GDELT_MIN_SUCCESSFUL_COUNTRIES})${sample ? `; failures: ${sample}` : ''}`,
-    );
+    const docFailure = successfulCountries < GDELT_MIN_SUCCESSFUL_COUNTRIES
+      ? `GDELT conflict-events coverage below floor: ${successfulCountries}/${CONFLICT_COUNTRIES.length} countries succeeded ` +
+        `(min ${GDELT_MIN_SUCCESSFUL_COUNTRIES})${sample ? `; failures: ${sample}` : ''}`
+      : `GDELT conflict-events returned zero events across ${successfulCountries}/${CONFLICT_COUNTRIES.length} successful countries`;
+    console.warn(`  ${docFailure}; trying official bulk event export`);
+    try {
+      const bulk = await fetchBulkEvents();
+      if (!bulk?.events?.length) throw new Error('latest export contained no priority-country material-conflict events');
+      console.log(`  GDELT bulk conflict-events fallback: ${bulk.events.length} events from export ${bulk.exportTimestamp}`);
+      return {
+        events: bulk.events,
+        pagination: {
+          countriesTotal: CONFLICT_COUNTRIES.length,
+          countriesSucceeded: CONFLICT_COUNTRIES.length,
+          countriesFailed: 0,
+          minSuccessfulCountries: GDELT_MIN_SUCCESSFUL_COUNTRIES,
+          exportTimestamp: bulk.exportTimestamp,
+          exportsRequested: bulk.exportsRequested,
+          exportsSucceeded: bulk.exportsSucceeded,
+          countriesWithEvents: new Set(bulk.events.map(event => event.country)).size,
+        },
+        source: 'gdelt-bulk',
+      };
+    } catch (bulkError) {
+      throw new Error(`${docFailure}; bulk fallback failed: ${bulkError?.message || bulkError}`);
+    }
   }
   console.log(`  GDELT conflict-events (ACLED fallback): ${events.length} events across ${successfulCountries}/${CONFLICT_COUNTRIES.length} successful country fetches`);
   return {

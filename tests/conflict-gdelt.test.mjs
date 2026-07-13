@@ -86,6 +86,7 @@ test('fetchGdeltConflictEvents fails closed when too many country fetches fail',
   await assert.rejects(
     fetchGdeltConflictEvents({
       pace: async () => {},
+      fetchBulkEvents: async () => { throw new Error('bulk unavailable'); },
       fetchCountryEvents: async (cc) => {
         calls += 1;
         if (calls < GDELT_MIN_SUCCESSFUL_COUNTRIES) {
@@ -98,15 +99,58 @@ test('fetchGdeltConflictEvents fails closed when too many country fetches fail',
   );
 });
 
-test('fetchGdeltConflictEvents treats successful zero-article countries as coverage', async () => {
+test('fetchGdeltConflictEvents falls through to bulk when the DOC sweep succeeds but yields zero events', async () => {
   const result = await fetchGdeltConflictEvents({
     pace: async () => {},
     fetchCountryEvents: async (cc) => ({ country: cc, ok: true, events: [] }),
+    fetchBulkEvents: async () => ({
+      events: [{ id: 'gdelt-event-empty-doc', country: 'Sudan' }],
+      exportTimestamp: '20260713110000',
+      exportsRequested: 8,
+      exportsSucceeded: 8,
+    }),
   });
 
-  assert.equal(result.events.length, 0);
+  assert.equal(result.source, 'gdelt-bulk');
+  assert.equal(result.events.length, 1);
   assert.equal(result.pagination.countriesSucceeded, 20);
   assert.equal(result.pagination.countriesFailed, 0);
+});
+
+test('fetchGdeltConflictEvents recovers from a throttled DOC sweep with the bulk event feed', async () => {
+  const result = await fetchGdeltConflictEvents({
+    pace: async () => {},
+    fetchCountryEvents: async (cc) => ({
+      country: cc,
+      ok: false,
+      events: [],
+      error: 'HTTP 429',
+    }),
+    fetchBulkEvents: async () => ({
+      events: [{
+        id: 'gdelt-event-1',
+        country: 'Sudan',
+        event_date: '2026-07-13',
+        occurredAt: Date.parse('2026-07-13'),
+        source: 'example.com',
+        url: 'https://example.com/conflict',
+      }],
+      exportTimestamp: '20260713110000',
+      exportsRequested: 8,
+      exportsSucceeded: 8,
+    }),
+  });
+
+  assert.equal(result.source, 'gdelt-bulk');
+  assert.equal(result.events.length, 1);
+  assert.equal(result.events[0].country, 'Sudan');
+  assert.equal(result.pagination.countriesTotal, Object.keys(GDELT_COUNTRY_NAMES).length);
+  assert.equal(result.pagination.countriesSucceeded, Object.keys(GDELT_COUNTRY_NAMES).length);
+  assert.equal(result.pagination.countriesFailed, 0);
+  assert.equal(result.pagination.exportTimestamp, '20260713110000');
+  assert.equal(result.pagination.exportsRequested, 8);
+  assert.equal(result.pagination.exportsSucceeded, 8);
+  assert.equal(result.pagination.countriesWithEvents, 1);
 });
 
 // #5140: the sweep's worst case (20 countries × direct+proxy retries ÷ 4
@@ -123,6 +167,7 @@ test('fetchGdeltConflictEvents stops launching batches once the launch cutoff pa
       pace: async () => {},
       now: () => fakeTime,
       deadlineAt: 75_000,
+      fetchBulkEvents: async () => { throw new Error('bulk unavailable'); },
       fetchCountryEvents: async (cc) => {
         calls += 1;
         // Each batch of 4 consumes 40s of fake wall clock — a degraded-GDELT batch.
@@ -146,6 +191,7 @@ test('fetchGdeltConflictEvents launches nothing when the phase cutoff already pa
     fetchGdeltConflictEvents({
       pace: async () => {},
       deadlineAt: Date.now() - 1,
+      fetchBulkEvents: async () => { throw new Error('bulk unavailable'); },
       fetchCountryEvents: async (cc) => {
         calls += 1;
         return { country: cc, ok: true, events: [] };
@@ -161,6 +207,7 @@ test('fetchGdeltConflictEvents stops sweeping once the coverage floor is unreach
   await assert.rejects(
     fetchGdeltConflictEvents({
       pace: async () => {},
+      fetchBulkEvents: async () => { throw new Error('bulk unavailable'); },
       fetchCountryEvents: async (cc) => {
         calls += 1;
         return { country: cc, ok: false, events: [], error: 'proxy unavailable' };
@@ -182,6 +229,7 @@ test('early-stop reason names BOTH conditions when budget and floor trip togethe
       pace: async () => {},
       now: () => fakeTime,
       deadlineAt: 115_000,
+      fetchBulkEvents: async () => { throw new Error('bulk unavailable'); },
       fetchCountryEvents: async (cc) => {
         calls += 1;
         fakeTime += 10_000;
