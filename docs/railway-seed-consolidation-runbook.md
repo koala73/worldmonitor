@@ -24,6 +24,66 @@
 
 ---
 
+## Deployment safety guardrails
+
+### Watch paths are a live contract
+
+Railway stores watch paths in each service's environment configuration, not in
+the repository. The repo-side contract is
+`scripts/audit-railway-watch-paths.mjs`: every WorldMonitor Railway seeder,
+including Dockerfile and repo-root services, must either have no watch filter
+(watch the whole repo) or include both `scripts/**` and `shared/**`. Enumerating
+the current entry file and known helpers is unsafe because the next helper can
+be added without updating the dashboard list.
+
+After linking the CLI to the `world-monitor` production environment, audit the
+live settings with:
+
+```bash
+node scripts/audit-railway-watch-paths.mjs
+```
+
+To reconcile only drifted seeders and verify the read-back:
+
+```bash
+node scripts/audit-railway-watch-paths.mjs --apply
+```
+
+The apply mode changes only `build.watchPatterns`, preserves any existing paths
+outside those broad directories, uses one environment config commit, and waits
+for Railway's eventually consistent config read-back before reporting success.
+Run the audit after adding or replacing a standalone seeder.
+
+### Merged does not mean deployed
+
+`.github/workflows/seed-freshness-monitor.yml` runs every 15 minutes on the
+default branch. It first requires the latest `main` commit's `gate` status to
+be green, then checks public compact health and fails when any seed metadata is
+older than its `maxStaleMin` threshold (`STALE_SEED`). This is the alert for the
+"green main, stale Railway image" gap; the existing compact health monitor
+continues to cover critical `EMPTY`/`EMPTY_DATA` and Redis failures.
+
+Do not use `railway redeploy` to recover a bad or stale source deployment.
+Railway documents redeploy as rebuilding the most recent deployment with the
+same code, so it cannot pick up a newer fixed commit. From a clean checkout
+whose `HEAD` equals current `origin/main`, upload the current source instead:
+
+```bash
+git fetch origin
+git rev-parse HEAD
+git rev-parse origin/main
+railway up --service <service-name> --environment production --detach
+```
+
+Alternatively, Railway's dashboard **Deploy Latest Commit** action deploys the
+latest commit from the service's default GitHub branch. After either recovery
+path, verify the deployment commit SHA and the relevant compact-health problem
+have both advanced. See Railway's official
+[redeploy CLI reference](https://docs.railway.com/cli/redeploy) and
+[deployment actions reference](https://docs.railway.com/deployments/deployment-actions).
+
+---
+
 ## How It Works
 
 Each "bundle" is a single Railway cron service that replaces N individual services. The bundle script spawns each member seed sequentially via `child_process.execFile`, checking Redis `seed-meta:` timestamps to skip seeds that ran recently. Original seed scripts are unchanged.

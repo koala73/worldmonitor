@@ -1,0 +1,37 @@
+name: Seed Freshness Monitor
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  statuses: read
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require green main for scheduled alerts
+        id: gate
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gate_state=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/status" \
+            --jq '[.statuses[] | select(.context == "gate")] | sort_by(.updated_at) | last | .state // "missing"')
+          echo "gate_state=$gate_state"
+          if [ "$gate_state" = "success" ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping seed freshness alert because main gate is $gate_state."
+          fi
+
+      - name: Check seed metadata freshness
+        if: github.event_name == 'workflow_dispatch' || steps.gate.outputs.should_run == 'true'
+        run: node scripts/check-seed-freshness.mjs
