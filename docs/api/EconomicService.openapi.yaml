@@ -2737,7 +2737,7 @@ paths:
                     type: string
                 - name: source
                   in: query
-                  description: 'Source adapter identifier: sam, ted, contracts-finder, canada-buys, gets, austender, or world-bank.'
+                  description: 'Source adapter identifier: sam, ted, contracts-finder, canada-buys, gets, or world-bank.'
                   required: false
                   example: "example"
                   schema:
@@ -4755,7 +4755,7 @@ components:
                     description: Geographic region label to match, such as Europe or North America.
                 source:
                     type: string
-                    description: 'Source adapter identifier: sam, ted, contracts-finder, canada-buys, gets, austender, or world-bank.'
+                    description: 'Source adapter identifier: sam, ted, contracts-finder, canada-buys, gets, or world-bank.'
                 status:
                     type: string
                     description: Source-provided tender status to match, such as open or published.

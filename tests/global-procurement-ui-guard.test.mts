@@ -29,7 +29,6 @@ test('dedicated procurement panel supports discovery controls, pagination, and s
   assert.match(panel, /href="\$\{safeUrl\}" target="_blank" rel="noopener noreferrer nofollow"/);
   assert.match(panel, /Technology relevance \(keyword evidence, not bidding eligibility\):/);
   assert.match(panel, /CLOSING SOON/);
-  assert.match(panel, /\['austender', 'AusTender'\]/);
   assert.doesNotMatch(economicPanel, /procurement|GlobalTender|tenderData|updateTenders|clearTenders/i);
 });
 
@@ -71,7 +70,16 @@ test('procurement is Pro-enforced and free clients neither fetch nor retain its 
 test('procurement deployment documentation identifies the sole optional source credential', () => {
   assert.match(envExample, /SAM_GOV_API_KEY=/);
   assert.match(docs, /SAM_GOV_API_KEY/);
-  assert.match(docs, /TED, Contracts Finder, CanadaBuys, GETS, AusTender, and World Bank do not require API keys/);
+  assert.match(docs, /TED, Contracts Finder, CanadaBuys, GETS, and World Bank do not require API keys/);
+});
+
+test('the documented AusTender blocker stays documented and no scraper ships in its place', () => {
+  const seeder = readFileSync(resolve(import.meta.dirname, '../scripts/seed-global-tenders.mjs'), 'utf8');
+  assert.match(docs, /### Australia: AusTender adapter is blocked/);
+  assert.match(docs, /no close|closing date/i);
+  assert.match(seeder, /austender.*BLOCKED on the provider/s);
+  assert.doesNotMatch(seeder, /fetchAusTender|Atm\/Show/);
+  assert.doesNotMatch(panel, /austender/i);
 });
 
 test('technology-relevance control filters by evidence and never claims bidding eligibility', () => {

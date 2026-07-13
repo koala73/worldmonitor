@@ -207,7 +207,6 @@ const STANDALONE_KEYS = {
   globalTendersContractsFinder: 'economic:global-tenders:v1:source:contracts-finder',
   globalTendersCanadaBuys:      'economic:global-tenders:v1:source:canada-buys',
   globalTendersGets:            'economic:global-tenders:v1:source:gets',
-  globalTendersAustender:       'economic:global-tenders:v1:source:austender',
   globalTendersWorldBank:       'economic:global-tenders:v1:source:world-bank',
   defensePatents:        'patents:defense:latest',
   temporalAnomalies:     'temporal:anomalies:v1',
@@ -411,7 +410,6 @@ const SEED_META = {
   globalTendersContractsFinder: { key: 'seed-meta:economic:global-tenders:contracts-finder', maxStaleMin: 180 },
   globalTendersCanadaBuys:      { key: 'seed-meta:economic:global-tenders:canada-buys',      maxStaleMin: 180 },
   globalTendersGets:            { key: 'seed-meta:economic:global-tenders:gets',             maxStaleMin: 180 },
-  globalTendersAustender:       { key: 'seed-meta:economic:global-tenders:austender',        maxStaleMin: 180 },
   globalTendersWorldBank:       { key: 'seed-meta:economic:global-tenders:world-bank',       maxStaleMin: 180 },
   techEvents:       { key: 'seed-meta:research:tech-events',       maxStaleMin: 480 },
   researchArxivHnTrending: { key: 'seed-meta:research:arxiv-hn-trending', maxStaleMin: 150 },
@@ -703,7 +701,7 @@ const EMPTY_DATA_OK_KEYS = new Set([
 // key itself must still exist. Do not use this set in the missing-key branch.
 const ZERO_RECORD_DATA_OK_KEYS = new Set([
   ...EMPTY_DATA_OK_KEYS,
-  'globalTendersSam', 'globalTendersTed', 'globalTendersContractsFinder', 'globalTendersCanadaBuys', 'globalTendersGets', 'globalTendersAustender', 'globalTendersWorldBank',
+  'globalTendersSam', 'globalTendersTed', 'globalTendersContractsFinder', 'globalTendersCanadaBuys', 'globalTendersGets', 'globalTendersWorldBank',
   // retailer-spread is SUPPRESSED to an explicit 0 by the aggregate job when a
   // market's retailers share < MIN_SPREAD_ITEMS (4) common basket items —
   // consumer-prices-core/src/jobs/aggregate.ts writes `retailer_spread_pct: 0`

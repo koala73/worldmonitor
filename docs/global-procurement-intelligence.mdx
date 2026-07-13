@@ -20,7 +20,6 @@ The initial adapters read official public procurement sources:
 | Contracts Finder | United Kingdom | Published OCDS tender releases. |
 | CanadaBuys | Canada | Official federal open-tender CSV, refreshed daily by CanadaBuys. |
 | GETS | New Zealand / Oceania | Current open tenders from the official public GETS RSS feed. |
-| AusTender | Australia | Current Approaches to Market from the official AusTender ATM feed registered on data.gov.au by the Department of Finance. |
 | World Bank Procurement Notices | Multilateral / global | World Bank-financed opportunity notices across borrower countries. |
 
 The Railway seeder runs hourly and stores a canonical snapshot at `economic:global-tenders:v1`. Its TTL is three hours so the prior successful snapshot survives a missed run. If one adapter fails, healthy-source results remain available, that source's last-good records are retained, and the response reports `availability: "partial"`. If every adapter fails, the previous records remain available with `availability: "stale"`.
@@ -43,7 +42,18 @@ Only the U.S. SAM.gov adapter needs a new credential:
 2. Request a **Public API Key**. SAM.gov displays the generated key on the Account Details page.
 3. Add it to the Railway service running `node scripts/seed-bundle-relay-backup.mjs` as `SAM_GOV_API_KEY`. Do not expose it through a `VITE_` variable or commit it to the repository.
 
-The official setup and request-limit details are in the [GSA Get Opportunities Public API guide](https://open.gsa.gov/api/get-opportunities-public-api/). TED, Contracts Finder, CanadaBuys, GETS, AusTender, and World Bank do not require API keys. If `SAM_GOV_API_KEY` is absent, only the SAM source reports `unavailable`; the other adapters continue normally.
+The official setup and request-limit details are in the [GSA Get Opportunities Public API guide](https://open.gsa.gov/api/get-opportunities-public-api/). TED, Contracts Finder, CanadaBuys, GETS, and World Bank do not require API keys. If `SAM_GOV_API_KEY` is absent, only the SAM source reports `unavailable`; the other adapters continue normally.
+
+### Australia: AusTender adapter is blocked
+
+An official Australian `austender` adapter cannot ship safely today, because no permitted machine-readable AusTender interface publishes the closing date that an open-opportunity record requires. Evidence, current as of 2026-07-13:
+
+- The official AusTender current-ATM RSS feed (`https://www.tenders.gov.au/public_data/rss/rss.xml`, registered on [data.gov.au](https://data.gov.au/data/dataset/latest-approaches-to-markets-listed-on-austender) by the Department of Finance) publishes only a notice title, official link, free-text description, and publish date. It carries no closing date, buyer, or category fields.
+- The official [AusTender OCDS API](https://github.com/austender/austender-ocds-api) exposes awarded contract notices from 2013 onward, not open Approaches to Market.
+- data.gov.au's machine-readable open-ATM exports ended in June 2014.
+- Closing dates are published only on per-notice HTML pages; harvesting them would mean scraping the AusTender website, which is not a documented machine-readable reuse interface and is excluded by this feed's non-goals.
+
+This feed never represents a record without a verifiable future closing date, so Australian coverage remains absent rather than inferred, and New Zealand GETS coverage is not substituted for it. Filtering on `country=AU` keeps the standard `countryCoverage: "unknown"` semantics for unobserved countries. If AusTender begins publishing closing dates through a machine-readable channel, the adapter can ship without pipeline changes.
 
 ## API
 

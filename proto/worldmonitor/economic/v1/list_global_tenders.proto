@@ -60,7 +60,7 @@ message ListGlobalTendersRequest {
   repeated string countries = 2 [(sebuf.http.query) = {name: "countries"}];
   // Geographic region label to match, such as Europe or North America.
   string region = 3 [(sebuf.http.query) = {name: "region"}];
-  // Source adapter identifier: sam, ted, contracts-finder, canada-buys, gets, austender, or world-bank.
+  // Source adapter identifier: sam, ted, contracts-finder, canada-buys, gets, or world-bank.
   string source = 4 [(sebuf.http.query) = {name: "source"}];
   // Source-provided tender status to match, such as open or published.
   string status = 5 [(sebuf.http.query) = {name: "status"}];

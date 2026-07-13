@@ -12,7 +12,6 @@ import {
   normalizeSamOpportunity,
   normalizeTedNotice,
   normalizeContractsFinderRelease,
-  normalizeAusTenderNotice,
   normalizeCanadaBuysNotice,
   normalizeGetsNotice,
   normalizeWorldBankNotice,
@@ -22,9 +21,6 @@ const CACHE_TTL_SECONDS = 10_800; // 3h, safely beyond the hourly Railway cadenc
 const SOURCE_STATUS_TTL_SECONDS = CACHE_TTL_SECONDS;
 const MAX_PER_SOURCE = 100;
 const GETS_FEED_URL = 'https://www.gets.govt.nz/ExternalRSSFeed.htm';
-// Official AusTender current-ATM feed, registered on data.gov.au by the
-// Department of Finance ("Latest Approaches to Markets listed on AusTender").
-const AUSTENDER_FEED_URL = 'https://www.tenders.gov.au/public_data/rss/rss.xml';
 const CANADA_BUYS_OPEN_CSV_URL = 'https://canadabuys.canada.ca/opendata/pub/openTenderNotice-ouvertAvisAppelOffres.csv';
 
 async function fetchResponse(url, options = {}) {
@@ -194,92 +190,6 @@ export async function fetchGets({ now = Date.now(), fetchTextFn = fetchText } = 
   return { records, status: sourceStatus('gets', 'ok', records, '', now) };
 }
 
-// AusTender item descriptions are HTML-encoded "Label: value" lines. Preserve
-// line boundaries (unlike decodeHtml) so each labeled field can be extracted.
-function austenderFields(description) {
-  const text = String(description || '')
-    .replace(/<br\s*\/?\s*>/gi, '\n')
-    .replace(/<\/(?:p|div|li|tr|table|h\d)>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/[ \t]+/g, ' ');
-  const fields = {};
-  for (const line of text.split('\n')) {
-    const match = line.match(/^\s*([A-Za-z][A-Za-z &/]{1,40}?)\s*:\s*(.+?)\s*$/);
-    if (match) fields[match[1].toLowerCase().replace(/\s+/g, ' ')] ??= match[2];
-  }
-  return fields;
-}
-
-function canberraOffsetMs(utcMs) {
-  const zoneName = new Intl.DateTimeFormat('en-US', { timeZone: 'Australia/Canberra', timeZoneName: 'longOffset' })
-    .formatToParts(utcMs).find((part) => part.type === 'timeZoneName')?.value || '';
-  const match = zoneName.match(/GMT([+-])(\d{2}):(\d{2})/);
-  if (!match) return 10 * 3600_000;
-  return (match[1] === '-' ? -1 : 1) * ((Number(match[2]) * 60 + Number(match[3])) * 60_000);
-}
-
-const AUSTENDER_MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
-
-// Close times such as "21-Aug-2026 2:00 pm (ACT Local Time)" are published in
-// Canberra local time; convert via the IANA zone so DST is honoured. A missing
-// time-of-day resolves to start of day so a tender is never shown as open past
-// its actual close.
-export function parseAusTenderCloseDate(raw) {
-  const match = String(raw || '').match(/(\d{1,2})[-\s]([A-Za-z]{3})[A-Za-z]*[-.\s](\d{4})(?:[,\s]+(\d{1,2}):(\d{2})\s*(am|pm)?)?/i);
-  if (!match) return '';
-  const month = AUSTENDER_MONTHS[match[2].toLowerCase()];
-  if (month === undefined) return '';
-  let hour = match[4] === undefined ? 0 : Number(match[4]);
-  const minute = match[5] === undefined ? 0 : Number(match[5]);
-  const meridiem = (match[6] || '').toLowerCase();
-  if (meridiem === 'pm' && hour < 12) hour += 12;
-  if (meridiem === 'am' && hour === 12) hour = 0;
-  if (hour > 23 || minute > 59) return '';
-  const guess = Date.UTC(Number(match[3]), month, Number(match[1]), hour, minute);
-  // Two-pass zone resolution: recompute the offset at the corrected instant so
-  // close times right at a DST transition land on the correct UTC moment.
-  const utc = guess - canberraOffsetMs(guess);
-  return new Date(guess - canberraOffsetMs(utc)).toISOString();
-}
-
-export async function fetchAusTender({ now = Date.now(), fetchTextFn = fetchText } = {}) {
-  const xml = await fetchTextFn(AUSTENDER_FEED_URL);
-  const parsed = new XMLParser({ ignoreAttributes: false, processEntities: true }).parse(xml);
-  const channel = parsed?.rss?.channel;
-  if (!channel || typeof channel !== 'object') throw new Error('AusTender response is not the documented ATM RSS feed');
-  const items = asItems(channel.item).slice(0, MAX_PER_SOURCE);
-  const records = items.map((item) => {
-    const fields = austenderFields(item?.description);
-    const link = typeof item?.link === 'string' ? item.link
-      : typeof item?.guid === 'string' ? item.guid : item?.guid?.['#text'];
-    const id = fields['atm id'] || String(link || '').match(/\/atm\/show\/([0-9a-z-]+)/i)?.[1] || '';
-    return normalizeAusTenderNotice({
-      id,
-      title: item?.title,
-      link,
-      buyer: fields.agency,
-      publishedAt: item?.pubDate || item?.['dc:date'] || parseAusTenderCloseDate(fields['publish date']),
-      deadline: parseAusTenderCloseDate(fields['close date & time'] || fields['close date and time'] || fields['close date']),
-      categories: [fields.category, ...asItems(item?.category)].filter(Boolean),
-      description: fields.description,
-      noticeType: fields['atm type'],
-    });
-  }).filter((tender) => isOpenOpportunity(tender, now));
-  // The feed lists only current (open) ATMs, so a populated feed that yields
-  // zero open records means the item format drifted. Fail loudly so the merge
-  // layer retains last-good Australian data instead of recording valid-empty.
-  if (items.length > 0 && records.length === 0) {
-    throw new Error('AusTender ATM items no longer match the documented format (no parseable open close dates)');
-  }
-  return { records, status: sourceStatus('austender', 'ok', records, '', now) };
-}
-
 export async function fetchWorldBank({ now = Date.now(), fetchJsonFn = fetchJson } = {}) {
   const url = new URL('https://search.worldbank.org/api/v2/procnotices');
   url.searchParams.set('format', 'json');
@@ -302,13 +212,23 @@ export async function fetchWorldBank({ now = Date.now(), fetchJsonFn = fetchJson
   return { records, status: sourceStatus('world-bank', 'ok', records, '', now) };
 }
 
+// An Australian `austender` adapter is BLOCKED on the provider (#5286): no
+// permitted machine-readable AusTender interface publishes the closing date
+// that isOpenOpportunity requires. As of 2026-07-13 (checked against a
+// same-day capture of the feed, corroborated by its independent consumers):
+// the official current-ATM RSS (https://www.tenders.gov.au/public_data/rss/rss.xml,
+// registered on data.gov.au) carries only title/link/description/pubDate —
+// no close date, buyer, or category; the official OCDS API
+// (api.tenders.gov.au/ocds/*) exposes awarded contract notices, not open
+// ATMs; data.gov.au's machine-readable open-ATM exports ended June 2014.
+// Closing dates exist only on per-notice HTML pages, and scraping them is an
+// explicit non-goal. Do not substitute GETS (NZ) for Australian coverage.
 const SOURCE_ADAPTERS = [
   ['sam', fetchSam],
   ['ted', fetchTed],
   ['contracts-finder', fetchContractsFinder],
   ['canada-buys', fetchCanadaBuys],
   ['gets', fetchGets],
-  ['austender', fetchAusTender],
   ['world-bank', fetchWorldBank],
 ];
 
@@ -369,7 +289,7 @@ async function main() {
     validateFn: validate,
     ttlSeconds: CACHE_TTL_SECONDS,
     declareRecords,
-    sourceVersion: 'sam-ted-contractsfinder-canadabuys-gets-austender-worldbank-v3',
+    sourceVersion: 'sam-ted-contractsfinder-canadabuys-gets-worldbank-v2',
     schemaVersion: 1,
     maxStaleMin: 180,
     zeroIsValid: true,

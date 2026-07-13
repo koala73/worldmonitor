@@ -27,7 +27,6 @@ const SOURCES = [
   ['contracts-finder', 'Contracts Finder'],
   ['canada-buys', 'CanadaBuys'],
   ['gets', 'GETS'],
-  ['austender', 'AusTender'],
   ['world-bank', 'World Bank'],
 ] as const;
 

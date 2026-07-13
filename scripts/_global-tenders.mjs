@@ -17,7 +17,6 @@ const OFFICIAL_SOURCE_HOSTS = {
   // three named procurement platforms. Keep the list exact and source-scoped.
   'canada-buys': ['canadabuys.canada.ca', 'www.merx.com', 'portal.us.bn.cloud.ariba.com', 'discovery.ariba.com'],
   gets: ['gets.govt.nz'],
-  austender: ['tenders.gov.au'],
   'world-bank': ['worldbank.org'],
 };
 
@@ -187,16 +186,6 @@ export function normalizeGetsNotice(raw) {
   return normalize({
     source: 'gets', sourceNoticeId: raw?.id, officialUrl: raw?.link,
     countryCode: 'NZ', region: 'Oceania', title: raw?.title, description: raw?.description,
-    buyer: raw?.buyer, publishedAt: raw?.publishedAt, updatedAt: raw?.updatedAt,
-    deadline: raw?.deadline, status: 'open', noticeType: raw?.noticeType,
-    categoryCodes: raw?.categories,
-  });
-}
-
-export function normalizeAusTenderNotice(raw) {
-  return normalize({
-    source: 'austender', sourceNoticeId: raw?.id, officialUrl: raw?.link,
-    countryCode: 'AU', region: 'Oceania', title: raw?.title, description: raw?.description,
     buyer: raw?.buyer, publishedAt: raw?.publishedAt, updatedAt: raw?.updatedAt,
     deadline: raw?.deadline, status: 'open', noticeType: raw?.noticeType,
     categoryCodes: raw?.categories,
