@@ -183,7 +183,12 @@ export async function enforceChinaGasCoverage(records, now = new Date(), deps = 
     await extendTtl(previousCountryKeys, GAS_TTL).catch(() => {});
   }
 
-  throw new Error(`China JODI gas coverage failed: ${chinaCoverage.reason} (dataMonth=${chinaCoverage.dataMonth ?? 'missing'})`);
+  const error = new Error(`China JODI gas coverage failed: ${chinaCoverage.reason} (dataMonth=${chinaCoverage.dataMonth ?? 'missing'})`);
+  // The coverage result is deterministic for the downloaded snapshot. Tell
+  // runSeed's outer withRetry loop not to download and parse the same ZIP
+  // again after last-good country TTLs have already been preserved.
+  error.nonRetryable = true;
+  throw error;
 }
 
 function findZipEntry(buf, filename) {

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
 import { buildSpineEntry } from '../scripts/seed-energy-spine.mjs';
+import { withRetry } from '../scripts/_seed-utils.mjs';
 import {
   buildResponseFromSpine,
   getObservedJodiGasMeasurements,
@@ -145,21 +146,34 @@ describe('China JODI content validation', () => {
     assert.match(reason, /China JODI oil coverage failed: china-stale \(dataMonth=2025-12\)/);
   });
 
-  it('preserves prior gas country keys before rejecting China coverage', async () => {
+  it('preserves prior gas country keys and does not retry deterministic China rejection', async () => {
     const ttlExtensions = [];
+    let attempts = 0;
 
     await assert.rejects(
-      () => gasModule.enforceChinaGasCoverage(
-        [gasRecord({ iso2: 'US' })],
-        new Date('2026-07-13T00:00:00.000Z'),
-        {
-          readSnapshot: async () => ['US', 'CN', 'invalid'],
-          extendTtl: async (keys, ttlSeconds) => { ttlExtensions.push({ keys, ttlSeconds }); },
+      () => withRetry(
+        async () => {
+          attempts++;
+          return gasModule.enforceChinaGasCoverage(
+            [gasRecord({ iso2: 'US' })],
+            new Date('2026-07-13T00:00:00.000Z'),
+            {
+              readSnapshot: async () => ['US', 'CN', 'invalid'],
+              extendTtl: async (keys, ttlSeconds) => { ttlExtensions.push({ keys, ttlSeconds }); },
+            },
+          );
         },
+        3,
+        0,
       ),
-      /China JODI gas coverage failed: china-missing/,
+      (error) => {
+        assert.match(error.message, /China JODI gas coverage failed: china-missing/);
+        assert.equal(error.nonRetryable, true);
+        return true;
+      },
     );
 
+    assert.equal(attempts, 1, 'deterministic coverage rejection must not redownload the JODI ZIP');
     assert.deepEqual(ttlExtensions, [{
       keys: ['energy:jodi-gas:v1:US', 'energy:jodi-gas:v1:CN'],
       ttlSeconds: gasModule.GAS_TTL,
