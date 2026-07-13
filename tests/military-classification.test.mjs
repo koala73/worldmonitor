@@ -48,6 +48,7 @@ function isMilitaryCallsign(callsign) {
 // Extract client-side hex ranges from military.ts
 // ---------------------------------------------------------------------------
 const clientSrc = readFileSync(join(root, 'src/config/military.ts'), 'utf-8');
+const seederSrc = readFileSync(join(root, 'scripts/seed-military-flights.mjs'), 'utf-8');
 
 function extractHexRanges(src) {
   const ranges = [];
@@ -233,6 +234,7 @@ describe('Military hex range classifier (client-side)', () => {
       { country: 'UK', start: '400000', end: '43FFFF' },
       { country: 'Canada', start: 'C00000', end: 'C3FFFF' },
       { country: 'Australia', start: '7C0000', end: '7FFFFF' },
+      { country: 'China', start: '780000', end: '7BFFFF' },
     ];
     for (const alloc of countryAllocations) {
       it(`no single range covers all of ${alloc.country} (${alloc.start}-${alloc.end})`, () => {
@@ -244,6 +246,18 @@ describe('Military hex range classifier (client-side)', () => {
           `Range ${fullRange?.start}-${fullRange?.end} spans entire ${alloc.country} allocation`,
         );
       });
+    }
+  });
+
+  it('does not use civilian Chinese airline codes as PLA callsign patterns', () => {
+    assert.doesNotMatch(clientSrc, /pattern:\s*'\^CCA'/, 'Air China must not be a PLA pattern');
+    assert.doesNotMatch(clientSrc, /pattern:\s*'\^CHH'/, 'Hainan Airlines must not be a PLAN pattern');
+  });
+
+  it('keeps the exact PLA aircraft registry aligned between client and seeder classifiers', () => {
+    for (const hex of ['7A4262', '7A444F', '7A446F', '7A4403']) {
+      assert.match(clientSrc, new RegExp(`'${hex}'`), `${hex} must exist in the client registry`);
+      assert.match(seederSrc, new RegExp(`'${hex}'`), `${hex} must exist in the seeder registry`);
     }
   });
 });

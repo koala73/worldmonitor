@@ -228,7 +228,7 @@ function determineAircraftInfo(
     return { type: csMatch.aircraftType || 'unknown', operator: csMatch.operator, country: countryMap[csMatch.operator], confidence: 'high' };
   }
   const hexMatch = isKnownMilitaryHex(icao24);
-  if (hexMatch) return { type: 'unknown', operator: hexMatch.operator, country: hexMatch.country, confidence: 'medium' };
+  if (hexMatch) return { type: hexMatch.aircraftType || 'unknown', operator: hexMatch.operator, country: hexMatch.country, confidence: 'medium' };
   return { type: 'unknown', operator: 'other', country: 'Unknown', confidence: 'low' };
 }
 

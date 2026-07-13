@@ -3,7 +3,7 @@
 /**
  * Consolidated aviation seeder. Writes four Redis keys from one cron tick:
  *
- *   aviation:delays:intl:v3      — AviationStack per-airport delay aggregates (51 intl)
+ *   aviation:delays:intl:v3      — AviationStack per-airport delay aggregates (56 intl)
  *   aviation:delays:faa:v1       — FAA ASWS XML delays (30 US)
  *   aviation:notam:closures:v2   — ICAO NOTAM closures (60 global)
  *   aviation:news::24:v1         — RSS news prewarmer (list-aviation-news.ts cache)
@@ -113,6 +113,20 @@ const PREV_STATE_TTL            = 86_400; // 24h — longer than any realistic c
 // lat/lon/city are only required for rows with 'aviationstack' (feed the
 // AirportDelayAlert envelope).
 
+// Keep this provider contract narrow and evidence-backed: these are individual
+// hubs AviationStack is expected to return, not a claim that every airport in
+// China's ICAO allocation is covered.
+export const CHINA_AVIATIONSTACK_HUBS = [
+  { iata: 'PEK', icao: 'ZBAA', name: 'Beijing Capital',                 city: 'Beijing',   country: 'China', lat: 40.0799, lon: 116.6031, region: 'apac', sources: ['aviationstack', 'notam'] },
+  { iata: 'PVG', icao: 'ZSPD', name: 'Shanghai Pudong',                 city: 'Shanghai',  country: 'China', lat: 31.1443, lon: 121.8083, region: 'apac', sources: ['aviationstack'] },
+  { iata: 'CAN', icao: 'ZGGG', name: 'Guangzhou Baiyun International', city: 'Guangzhou', country: 'China', lat: 23.3924, lon: 113.2988, region: 'apac', sources: ['aviationstack'] },
+  { iata: 'SZX', icao: 'ZGSZ', name: "Shenzhen Bao'an International", city: 'Shenzhen',  country: 'China', lat: 22.6393, lon: 113.8107, region: 'apac', sources: ['aviationstack'] },
+  { iata: 'CTU', icao: 'ZUUU', name: 'Chengdu Shuangliu International', city: 'Chengdu',  country: 'China', lat: 30.5785, lon: 103.9471, region: 'apac', sources: ['aviationstack'] },
+  { iata: 'KMG', icao: 'ZPPP', name: 'Kunming Changshui',              city: 'Kunming',   country: 'China', lat: 25.1019, lon: 102.9292, region: 'apac', sources: ['aviationstack', 'notam'] },
+  { iata: 'URC', icao: 'ZWWW', name: 'Urumqi Diwopu International',    city: 'Urumqi',    country: 'China', lat: 43.9071, lon: 87.4742,  region: 'apac', sources: ['aviationstack'] },
+  { iata: 'HKG', icao: 'VHHH', name: 'Hong Kong International',        city: 'Hong Kong', country: 'China', lat: 22.3080, lon: 113.9185, region: 'apac', sources: ['aviationstack', 'notam'] },
+];
+
 const AIRPORTS = [
   // ── Americas — AviationStack + NOTAM ──
   { iata: 'YYZ', icao: 'CYYZ', name: 'Toronto Pearson',           city: 'Toronto',      country: 'Canada',   lat: 43.6777,  lon: -79.6248, region: 'americas', sources: ['aviationstack', 'notam'] },
@@ -180,9 +194,7 @@ const AIRPORTS = [
   // ── APAC — AviationStack + NOTAM ──
   { iata: 'HND', icao: 'RJTT', name: 'Tokyo Haneda',                 city: 'Tokyo',        country: 'Japan',       lat: 35.5494, lon: 139.7798, region: 'apac', sources: ['aviationstack', 'notam'] },
   { iata: 'NRT', icao: 'RJAA', name: 'Narita International',         city: 'Tokyo',        country: 'Japan',       lat: 35.7720, lon: 140.3929, region: 'apac', sources: ['aviationstack'] },
-  { iata: 'PEK', icao: 'ZBAA', name: 'Beijing Capital',              city: 'Beijing',      country: 'China',       lat: 40.0799, lon: 116.6031, region: 'apac', sources: ['aviationstack', 'notam'] },
-  { iata: 'PVG', icao: 'ZSPD', name: 'Shanghai Pudong',              city: 'Shanghai',     country: 'China',       lat: 31.1443, lon: 121.8083, region: 'apac', sources: ['aviationstack'] },
-  { iata: 'HKG', icao: 'VHHH', name: 'Hong Kong International',      city: 'Hong Kong',    country: 'China',       lat: 22.3080, lon: 113.9185, region: 'apac', sources: ['aviationstack', 'notam'] },
+  ...CHINA_AVIATIONSTACK_HUBS,
   { iata: 'SIN', icao: 'WSSS', name: 'Singapore Changi',             city: 'Singapore',    country: 'Singapore',   lat: 1.3644,  lon: 103.9915, region: 'apac', sources: ['aviationstack', 'notam'] },
   { iata: 'ICN', icao: 'RKSI', name: 'Incheon International',        city: 'Seoul',        country: 'South Korea', lat: 37.4602, lon: 126.4407, region: 'apac', sources: ['aviationstack', 'notam'] },
   { iata: 'BKK', icao: 'VTBS', name: 'Suvarnabhumi Airport',         city: 'Bangkok',      country: 'Thailand',    lat: 13.6900, lon: 100.7501, region: 'apac', sources: ['aviationstack', 'notam'] },
@@ -190,11 +202,8 @@ const AIRPORTS = [
   { iata: 'DEL', icao: 'VIDP', name: 'Indira Gandhi International',  city: 'Delhi',        country: 'India',       lat: 28.5562, lon: 77.1000,  region: 'apac', sources: ['aviationstack', 'notam'] },
   { iata: 'BOM', icao: 'VABB', name: 'Chhatrapati Shivaji Maharaj',  city: 'Mumbai',       country: 'India',       lat: 19.0896, lon: 72.8656,  region: 'apac', sources: ['aviationstack'] },
   { iata: 'KUL', icao: 'WMKK', name: 'Kuala Lumpur International',   city: 'Kuala Lumpur', country: 'Malaysia',    lat: 2.7456,  lon: 101.7099, region: 'apac', sources: ['aviationstack', 'notam'] },
-  { iata: 'CAN', icao: 'ZGGG', name: 'Guangzhou Baiyun International', city: 'Guangzhou',  country: 'China',       lat: 23.3924, lon: 113.2988, region: 'apac', sources: ['aviationstack'] },
   { iata: 'TPE', icao: 'RCTP', name: 'Taiwan Taoyuan International', city: 'Taipei',       country: 'Taiwan',      lat: 25.0797, lon: 121.2342, region: 'apac', sources: ['aviationstack'] },
   { iata: 'MNL', icao: 'RPLL', name: 'Ninoy Aquino International',   city: 'Manila',       country: 'Philippines', lat: 14.5086, lon: 121.0197, region: 'apac', sources: ['aviationstack'] },
-  // APAC NOTAM-only
-  { iata: 'KMG', icao: 'ZPPP', name: 'Kunming Changshui',            city: 'Kunming',      country: 'China',       region: 'apac', sources: ['notam'] },
 
   // ── MENA — AviationStack + NOTAM ──
   { iata: 'DXB', icao: 'OMDB', name: 'Dubai International',          city: 'Dubai',       country: 'UAE',         lat: 25.2532, lon: 55.3657, region: 'mena', sources: ['aviationstack', 'notam'] },
@@ -397,29 +406,39 @@ function aviationDetermineSeverity(avgDelay, delayedPct) {
   return 'normal';
 }
 
-async function fetchAviationStackSingle(apiKey, iata) {
+async function fetchAviationStackSingle(apiKey, airport, fetchFn = globalThis.fetch, logger = console) {
+  const { iata } = airport;
   const today = new Date().toISOString().slice(0, 10);
   const url = `${AVIATIONSTACK_URL}?access_key=${apiKey}&dep_iata=${iata}&flight_date=${today}&limit=100`;
   try {
-    const resp = await fetch(url, {
+    const resp = await fetchFn(url, {
       headers: { 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(10_000),
     });
     if (!resp.ok) {
-      console.warn(`[Aviation] ${iata}: HTTP ${resp.status}`);
-      return { ok: false, alert: null };
+      logger.warn(`[Aviation] ${iata}: HTTP ${resp.status}`);
+      return { iata, status: 'failed', alert: null, flightCount: 0 };
     }
     const json = await resp.json();
     if (json.error) {
-      console.warn(`[Aviation] ${iata}: ${json.error.message}`);
-      return { ok: false, alert: null };
+      logger.warn(`[Aviation] ${iata}: ${json.error.message}`);
+      return { iata, status: 'failed', alert: null, flightCount: 0 };
     }
-    const flights = json?.data ?? [];
+    const flights = Array.isArray(json?.data) ? json.data : [];
+    if (flights.length === 0) {
+      logger.warn(`[Aviation] ${iata}: provider omitted hub (0 flight records)`);
+      return { iata, status: 'omitted', alert: null, flightCount: 0 };
+    }
     const alert = aviationAggregateFlights(iata, flights);
-    return { ok: true, alert };
+    return {
+      iata,
+      status: alert ? 'disruption' : 'normal',
+      alert,
+      flightCount: flights.length,
+    };
   } catch (err) {
-    console.warn(`[Aviation] ${iata}: fetch error: ${err?.message || err}`);
-    return { ok: false, alert: null };
+    logger.warn(`[Aviation] ${iata}: fetch error: ${err?.message || err}`);
+    return { iata, status: 'failed', alert: null, flightCount: 0 };
   }
 }
 
@@ -486,35 +505,73 @@ function aviationAggregateFlights(iata, flights) {
   };
 }
 
-async function seedIntlDelays() {
-  const apiKey = process.env.AVIATIONSTACK_API;
+export async function seedIntlDelays({
+  apiKey = process.env.AVIATIONSTACK_API,
+  airports = AVIATIONSTACK_LIST,
+  fetchFn = globalThis.fetch,
+  logger = console,
+} = {}) {
   if (!apiKey) {
-    console.log('[Intl] No AVIATIONSTACK_API key — skipping');
-    return { alerts: [], healthy: false, skipped: true };
+    logger.log('[Intl] No AVIATIONSTACK_API key — skipping');
+    return { alerts: [], coverage: [], healthy: false, skipped: true };
   }
 
   const t0 = Date.now();
   const alerts = [];
-  let succeeded = 0, failed = 0;
+  const coverage = [];
+  let succeeded = 0, failed = 0, omitted = 0;
 
-  for (let i = 0; i < AVIATIONSTACK_LIST.length; i += AVIATION_BATCH_CONCURRENCY) {
-    const chunk = AVIATIONSTACK_LIST.slice(i, i + AVIATION_BATCH_CONCURRENCY);
+  for (let i = 0; i < airports.length; i += AVIATION_BATCH_CONCURRENCY) {
+    const chunk = airports.slice(i, i + AVIATION_BATCH_CONCURRENCY);
     const results = await Promise.allSettled(
-      chunk.map(a => fetchAviationStackSingle(apiKey, a.iata)),
+      chunk.map(a => fetchAviationStackSingle(apiKey, a, fetchFn, logger)),
     );
-    for (const r of results) {
+    for (let j = 0; j < results.length; j++) {
+      const r = results[j];
       if (r.status === 'fulfilled') {
-        if (r.value.ok) { succeeded++; if (r.value.alert) alerts.push(r.value.alert); }
-        else failed++;
+        coverage.push({
+          iata: r.value.iata,
+          status: r.value.status,
+          flightCount: r.value.flightCount,
+        });
+        if (r.value.status === 'failed') failed++;
+        else if (r.value.status === 'omitted') omitted++;
+        else succeeded++;
+        if (r.value.alert) alerts.push(r.value.alert);
       } else {
         failed++;
+        coverage.push({ iata: chunk[j].iata, status: 'failed', flightCount: 0 });
       }
     }
   }
 
-  const healthy = AVIATIONSTACK_LIST.length < 5 || failed <= succeeded;
-  console.log(`[Intl] ${alerts.length} alerts (${succeeded} ok, ${failed} failed, healthy: ${healthy}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-  return { alerts, healthy, skipped: false };
+  const unavailable = failed + omitted;
+  const healthy = airports.length < 5 || unavailable <= succeeded;
+  logger.log(`[Intl] ${alerts.length} alerts (${succeeded} covered, ${omitted} omitted, ${failed} failed, healthy: ${healthy}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  return { alerts, coverage, healthy, skipped: false };
+}
+
+export async function runChinaAviationStackSmoke({
+  apiKey = process.env.AVIATIONSTACK_API,
+  fetchFn = globalThis.fetch,
+  logger = console,
+} = {}) {
+  const result = await seedIntlDelays({
+    apiKey,
+    airports: CHINA_AVIATIONSTACK_HUBS,
+    fetchFn,
+    logger,
+  });
+  const statusByIata = new Map(result.coverage.map((hub) => [hub.iata, hub.status]));
+  const summary = CHINA_AVIATIONSTACK_HUBS
+    .map((hub) => `${hub.iata}=${statusByIata.get(hub.iata) || 'failed'}`)
+    .join(' ');
+  const ok = !result.skipped && CHINA_AVIATIONSTACK_HUBS.every((hub) => {
+    const status = statusByIata.get(hub.iata);
+    return status === 'normal' || status === 'disruption';
+  });
+  logger.log(`[China aviation smoke] ${summary} result=${ok ? 'PASS' : 'FAIL'}`);
+  return { ok, ...result };
 }
 
 // ─── Section 2: FAA delays (XML) ─────────────────────────────────────────────
@@ -1010,20 +1067,21 @@ function buildFillerRegistry() {
   return [...byIata.values()];
 }
 
-// Build + write the page-load bootstrap aggregate. Pass `intlAlertsOverride` to
-// use this-tick's intl from afterPublish (skips the Redis round-trip and avoids
+// Build + write the page-load bootstrap aggregate. Pass `intlOverride` to use
+// this-tick's intl from afterPublish (skips the Redis round-trip and avoids
 // a one-tick lag); omit to fall back to the last-good intl in Redis (used by
 // the pre-runSeed call so a current-tick intl failure still refreshes bootstrap).
-async function writeDelaysBootstrap(intlAlertsOverride) {
+async function writeDelaysBootstrap(intlOverride) {
   try {
     const [faaPayload, intlPayload, notamPayload] = await Promise.all([
       upstashGetUnwrapped(FAA_KEY),
-      intlAlertsOverride ? Promise.resolve({ alerts: intlAlertsOverride }) : upstashGetUnwrapped(INTL_KEY),
+      intlOverride ? Promise.resolve(intlOverride) : upstashGetUnwrapped(INTL_KEY),
       upstashGetUnwrapped(NOTAM_KEY),
     ]);
 
     const faaAlerts  = Array.isArray(faaPayload?.alerts)  ? faaPayload.alerts  : [];
     const intlAlerts = Array.isArray(intlPayload?.alerts) ? intlPayload.alerts : [];
+    const intlCoverage = Array.isArray(intlPayload?.coverage) ? intlPayload.coverage : [];
     const closedIcaos     = Array.isArray(notamPayload?.closedIcaos)     ? notamPayload.closedIcaos     : [];
     const restrictedIcaos = Array.isArray(notamPayload?.restrictedIcaos) ? notamPayload.restrictedIcaos : [];
     const reasons = (notamPayload?.reasons && typeof notamPayload.reasons === 'object') ? notamPayload.reasons : {};
@@ -1053,7 +1111,7 @@ async function writeDelaysBootstrap(intlAlertsOverride) {
       if (!alertedIatas.has(airport.iata)) allAlerts.push(buildNormalOpsAlert(airport));
     }
 
-    const ok = await upstashSet(BOOTSTRAP_KEY, { alerts: allAlerts }, BOOTSTRAP_TTL);
+    const ok = await upstashSet(BOOTSTRAP_KEY, { alerts: allAlerts, coverage: intlCoverage }, BOOTSTRAP_TTL);
     if (ok) {
       console.log(`[Bootstrap] wrote ${allAlerts.length} alerts to ${BOOTSTRAP_KEY} (faa=${faaAlerts.length}, intl=${intlAlerts.length}, notam-closed=${closedIcaos.length}, notam-restricted=${restrictedIcaos.length})`);
     } else {
@@ -1279,31 +1337,42 @@ export function declareRecords(data) {
 }
 
 // publishTransform reshapes seedIntlDelays' output into the canonical envelope
-// shape consumers read ({ alerts: AirportDelayAlert[] }). declareRecords sees
-// this transformed shape; afterPublish still receives the raw fetchIntl result.
-function publishTransform(data) {
-  return { alerts: data?.alerts ?? [] };
+// consumers read. Coverage makes provider omission distinguishable from a
+// successful hub response with no current disruption.
+export function publishTransform(data) {
+  return {
+    alerts: data?.alerts ?? [],
+    coverage: data?.coverage ?? [],
+  };
 }
 
 async function afterPublishIntl(data) {
   // CONTRACT: runSeed forwards the RAW fetchIntl() result here, NOT the
   // publishTransform()'d shape. fetchIntl returns seedIntlDelays' output
-  // ({ alerts, healthy, skipped, ... }), so data.alerts is the same array
-  // publishTransform wraps into INTL_KEY. If publishTransform ever filters
-  // or mutates alerts (today it's a pass-through wrapper), this bootstrap
-  // write would silently diverge from INTL_KEY — keep them in lockstep.
+  // ({ alerts, coverage, healthy, skipped, ... }). Keep the bootstrap's intl
+  // envelope in lockstep with INTL_KEY so provider omissions stay observable.
   try { await dispatchAviationNotifications(data.alerts); }
   catch (e) { console.warn(`[Intl] notify error: ${e?.message || e}`); }
   // Refresh the page-load bootstrap with this-tick intl. The pre-runSeed call
   // in main() already wrote a bootstrap using last-good intl; this overwrite
   // upgrades it to current.
-  await writeDelaysBootstrap(data?.alerts);
+  await writeDelaysBootstrap(publishTransform(data));
 }
 
-function validate(publishData) {
+export function validate(publishData) {
   // Zero alerts is a valid steady state (no current airport disruptions) —
-  // but shape must be { alerts: [] } regardless.
-  return !!(publishData && Array.isArray(publishData.alerts));
+  // but alerts and per-hub provider coverage must both retain their shape.
+  return !!(
+    publishData
+    && Array.isArray(publishData.alerts)
+    && Array.isArray(publishData.coverage)
+    && publishData.coverage.every((hub) => (
+      typeof hub?.iata === 'string'
+      && ['normal', 'disruption', 'omitted', 'failed'].includes(hub.status)
+      && Number.isInteger(hub.flightCount)
+      && hub.flightCount >= 0
+    ))
+  );
 }
 
 // Entry point: run the three independent side-cars sequentially, then hand off
@@ -1371,7 +1440,11 @@ async function main() {
 // Railway still runs the seed via `node scripts/seed-aviation.mjs` because
 // argv[1] resolves to this file.
 const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^.*[\\/]/, ''));
-if (isMain) main().catch((err) => {
+if (isMain) (process.argv.includes('--smoke-china')
+  ? runChinaAviationStackSmoke().then((result) => {
+    process.exit(result.ok ? 0 : 1);
+  })
+  : main()).catch((err) => {
   const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
   console.error('FATAL:', (err.message || err) + cause);
   process.exit(1);

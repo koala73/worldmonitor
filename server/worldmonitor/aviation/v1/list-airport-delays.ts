@@ -25,6 +25,7 @@ const INTL_CACHE_KEY = 'aviation:delays:intl:v3';
 
 const FAA_AIRPORT_SET = new Set(FAA_AIRPORTS);
 const INTL_AIRPORT_SET = new Set(AVIATIONSTACK_AIRPORTS);
+type IntlCoverage = { iata: string; status: 'normal' | 'disruption' | 'omitted' | 'failed'; flightCount: number };
 
 export async function listAirportDelays(
   _ctx: ServerContext,
@@ -54,15 +55,26 @@ export async function listAirportDelays(
   } catch {}
 
   // 2. International — read-only from Redis (Railway relay seeds the cache)
-  // intlSourceCovered = the seed cache hit AND returned a valid alerts array.
-  // Same rule as FAA: cache miss → uncovered → no synthetic "normal" rows.
+  // A cache hit alone does not prove every configured hub was covered. The
+  // seeder records each hub as normal/disruption/omitted/failed so an omitted
+  // hub remains UNKNOWN instead of being synthesized as normal.
   let intlAlerts: AirportDelayAlert[] = [];
-  let intlSourceCovered = false;
+  let intlCoverage: IntlCoverage[] = [];
+  let intlCoveredIatas = new Set<string>();
   try {
-    const cached = await getCachedJson(INTL_CACHE_KEY) as { alerts: AirportDelayAlert[] } | null;
+    const cached = await getCachedJson(INTL_CACHE_KEY) as { alerts: AirportDelayAlert[]; coverage?: IntlCoverage[] } | null;
     if (cached && Array.isArray(cached.alerts)) {
-      intlSourceCovered = true;
       intlAlerts = cached.alerts;
+      if (Array.isArray(cached.coverage)) {
+        intlCoverage = cached.coverage;
+        intlCoveredIatas = new Set(cached.coverage
+          .filter((hub) => hub.status === 'normal' || hub.status === 'disruption')
+          .map((hub) => hub.iata));
+      } else {
+        // Rollout compatibility for a last-good snapshot written before the
+        // per-hub coverage contract existed.
+        intlCoveredIatas = new Set(INTL_AIRPORT_SET);
+      }
     }
   } catch (err) {
     console.warn(`[Aviation] Intl fetch failed: ${err instanceof Error ? err.message : 'unknown'}`);
@@ -115,7 +127,7 @@ export async function listAirportDelays(
     if (alertedIatas.has(airport.iata)) continue;
 
     const isFaaCovered = FAA_AIRPORT_SET.has(airport.iata) && faaSourceCovered;
-    const isIntlCovered = INTL_AIRPORT_SET.has(airport.iata) && intlSourceCovered;
+    const isIntlCovered = INTL_AIRPORT_SET.has(airport.iata) && intlCoveredIatas.has(airport.iata);
     const covered = isFaaCovered || isIntlCovered;
 
     if (covered) {
@@ -167,7 +179,7 @@ export async function listAirportDelays(
   // doesn't shorten the seeder's expiry and re-create the EMPTY-on-quiet-traffic
   // failure mode that motivated the canonical seeder write.
   try {
-    await setCachedJson('aviation:delays-bootstrap:v2', { alerts: allAlerts }, 7200);
+    await setCachedJson('aviation:delays-bootstrap:v2', { alerts: allAlerts, coverage: intlCoverage }, 7200);
   } catch { /* non-critical */ }
 
   return { alerts: allAlerts };

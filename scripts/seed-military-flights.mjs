@@ -81,9 +81,21 @@ const HEX_RANGES = [
   { start: 'E40000', end: 'E41FFF', operator: 'other', country: 'Brazil' },
 ];
 
+// Individually observed PLA aircraft only. These records are intentionally
+// exact matches: China's 780000-7BFFFF national allocation also contains civil
+// traffic and must never become a military range. Evidence snapshots:
+// - 7A4262: PLAAF Y-8G 30518 (Taiwan News, 2021-01-26)
+// - 7A444F/7A446F/7A4403: PLAAF YY-20/Y-20A aircraft observed in 2025
+const EXACT_MILITARY_AIRCRAFT = new Map([
+  ['7A4262', { operator: 'plaaf', country: 'China', aircraftType: 'reconnaissance', aircraftModel: 'Y-8G' }],
+  ['7A444F', { operator: 'plaaf', country: 'China', aircraftType: 'tanker', aircraftModel: 'YY-20' }],
+  ['7A446F', { operator: 'plaaf', country: 'China', aircraftType: 'transport', aircraftModel: 'Y-20A' }],
+  ['7A4403', { operator: 'plaaf', country: 'China', aircraftType: 'transport', aircraftModel: 'Y-20A' }],
+]);
+
 // ── Commercial ICAO 3-letter codes (blocklist for ambiguous patterns) ────
 const COMMERCIAL_CALLSIGNS = new Set([
-  'CCA', 'CHH', 'SVA', 'THY', 'THK', 'TUR', 'ELY', 'ELAL',
+  'CCA', 'CSN', 'CHH', 'SVA', 'THY', 'THK', 'TUR', 'ELY', 'ELAL',
   'UAE', 'QTR', 'ETH', 'SAA', 'PAK', 'AME', 'RED',
 ]);
 
@@ -96,6 +108,7 @@ const COMMERCIAL_CALLSIGN_PATTERNS = [
   /^THY\d/i,
   /^SVA\d/i,
   /^CCA\d/i,
+  /^CSN\d/i,
   /^CHH\d/i,
   /^ELY\d/i,
   /^ELAL/i,
@@ -193,7 +206,7 @@ const CALLSIGN_PATTERNS = [
   { re: /^RFF\d/i, operator: 'vks', aircraftType: null },
   { re: /^RSD\d/i, operator: 'vks', aircraftType: null },
   { re: /^RUSSIAN/i, operator: 'vks', aircraftType: null },
-  // China — CCA removed (China Airlines ICAO), CHH removed (Hainan Airlines ICAO)
+  // China — CCA removed (Air China ICAO), CHH removed (Hainan Airlines ICAO)
   { re: /^PLAAF/i, operator: 'plaaf', aircraftType: null },
   { re: /^PLA\d/i, operator: 'plaaf', aircraftType: null },
   { re: /^CHINA\s?(AIR\s?FORCE|MIL|NAVY)/i, operator: 'plaaf', aircraftType: null },
@@ -229,6 +242,8 @@ const POSTURE_THEATERS = [
 // ── Detection Functions ────────────────────────────────────
 function isKnownHex(hexCode) {
   const hex = hexCode.toUpperCase();
+  const exact = EXACT_MILITARY_AIRCRAFT.get(hex);
+  if (exact) return { ...exact, exact: true };
   for (const r of HEX_RANGES) {
     if (hex >= r.start && hex <= r.end) return r;
   }
@@ -475,6 +490,25 @@ function deriveOperatorFromSourceMeta(sourceMeta = {}) {
   if (/RUSSIAN AEROSPACE FORCES|\bVKS\b/.test(hintText)) return { operator: 'vks', operatorCountry: 'Russia', reason: 'source_operator', confidence: 'high' };
   if (/ROYAL AUSTRALIAN AIR FORCE|\bRAAF\b/.test(hintText)) return { operator: 'raaf', operatorCountry: 'Australia', reason: 'source_operator', confidence: 'high' };
   if (/ROYAL CANADIAN AIR FORCE|\bRCAF\b|CANADIAN ARMED FORCES/.test(hintText)) return { operator: 'rcaf', operatorCountry: 'Canada', reason: 'source_operator', confidence: 'high' };
+  return null;
+}
+
+function deriveTrustedPlaOperatorFromSourceMeta(sourceMeta = {}) {
+  const operatorCode = String(sourceMeta.operatorCode || '').toUpperCase().trim();
+  if (operatorCode === 'PLAAF') {
+    return { operator: 'plaaf', operatorCountry: 'China', reason: 'source_operator', confidence: 'high' };
+  }
+  if (operatorCode === 'PLAN' || operatorCode === 'PLANAF') {
+    return { operator: 'plan', operatorCountry: 'China', reason: 'source_operator', confidence: 'high' };
+  }
+
+  const operatorName = String(sourceMeta.operatorName || '').toUpperCase().trim();
+  if (/^(PEOPLE'?S LIBERATION ARMY AIR FORCE|CHINESE AIR FORCE)$/.test(operatorName)) {
+    return { operator: 'plaaf', operatorCountry: 'China', reason: 'source_operator', confidence: 'high' };
+  }
+  if (/^(PEOPLE'?S LIBERATION ARMY NAVY|PEOPLE'?S LIBERATION ARMY NAVAL AIR FORCE)$/.test(operatorName)) {
+    return { operator: 'plan', operatorCountry: 'China', reason: 'source_operator', confidence: 'high' };
+  }
   return null;
 }
 
@@ -1006,9 +1040,9 @@ function classifyHexMatchedFlight({ state, hexMatch, callsign, sourceMeta, sourc
   }
 
   const sourceOperator = deriveOperatorFromSourceMeta(sourceMeta);
-  let aircraftType = detectAircraftType(callsign);
-  let classificationReason = sourceOperator ? 'source_metadata' : 'untyped';
-  let aircraftTypeInferenceReason = 'untyped';
+  let aircraftType = hexMatch.aircraftType || detectAircraftType(callsign);
+  let classificationReason = hexMatch.exact ? 'hex_exact' : (sourceOperator ? 'source_metadata' : 'untyped');
+  let aircraftTypeInferenceReason = hexMatch.exact ? 'hex_exact' : 'untyped';
   if (aircraftType === 'unknown') {
     const sourceType = detectAircraftTypeFromSourceMeta(sourceMeta);
     if (sourceType !== 'unknown') {
@@ -1027,11 +1061,25 @@ function classifyHexMatchedFlight({ state, hexMatch, callsign, sourceMeta, sourc
     operator: sourceOperator?.operator || hexMatch.operator,
     operatorCountry: sourceOperator?.operatorCountry || hexMatch.country,
     aircraftType,
-    confidence: trustedHex ? 'medium' : 'low',
-    admissionReason: trustedHex ? 'hex_trusted' : 'hex_supported_by_source',
+    confidence: hexMatch.exact ? 'high' : (trustedHex ? 'medium' : 'low'),
+    admissionReason: hexMatch.exact ? 'hex_exact' : (trustedHex ? 'hex_trusted' : 'hex_supported_by_source'),
     classificationReason,
     aircraftTypeInferenceReason,
-    operatorInferenceReason: sourceOperator ? 'source_metadata' : 'hex_range',
+    operatorInferenceReason: sourceOperator ? 'source_metadata' : (hexMatch.exact ? 'hex_exact' : 'hex_range'),
+  };
+}
+
+function classifyTrustedPlaSourceFlight(sourceOperator, sourceMeta) {
+  const aircraftType = detectAircraftTypeFromSourceMeta(sourceMeta);
+  return {
+    operator: sourceOperator.operator,
+    operatorCountry: sourceOperator.operatorCountry,
+    aircraftType,
+    confidence: 'high',
+    admissionReason: 'source_operator_trusted',
+    classificationReason: 'source_metadata',
+    aircraftTypeInferenceReason: aircraftType === 'unknown' ? 'untyped' : 'source_metadata',
+    operatorInferenceReason: 'source_metadata',
   };
 }
 
@@ -1091,6 +1139,7 @@ function filterMilitaryFlights(allStates) {
     const sourceMeta = state[15] || {};
     const sourceHints = deriveSourceHints(sourceMeta);
     const sourceOperator = deriveOperatorFromSourceMeta(sourceMeta);
+    const trustedPlaSourceOperator = deriveTrustedPlaOperatorFromSourceMeta(sourceMeta);
     const sourceType = detectAircraftTypeFromSourceMeta(sourceMeta);
     recordSourceCoverage(stageCounters, sourceMeta, sourceHints, sourceOperator, sourceType, callsign);
     if (callsign) stageCounters.callsignPresent += 1;
@@ -1099,21 +1148,23 @@ function filterMilitaryFlights(allStates) {
     const hexMatch = isKnownHex(icao24);
     if (csMatch) stageCounters.callsignMatched += 1;
     if (hexMatch) stageCounters.hexMatched += 1;
-    if (csMatch || hexMatch) stageCounters.candidateStates += 1;
+    if (csMatch || hexMatch || trustedPlaSourceOperator) stageCounters.candidateStates += 1;
 
-    if (!csMatch && commercialMatch && !sourceHints.militaryHint) {
+    if (!csMatch && commercialMatch && !trustedPlaSourceOperator && !sourceHints.militaryHint) {
       pushRejectedFlight(rejected, state, 'commercial_callsign_override');
       continue;
     }
 
-    if (!csMatch && !hexMatch) {
+    if (!csMatch && !hexMatch && !trustedPlaSourceOperator) {
       pushRejectedFlight(rejected, state, 'no_military_signal');
       continue;
     }
 
     const classified = csMatch
       ? classifyCallsignMatchedFlight({ csMatch, hexMatch, callsign, sourceMeta })
-      : classifyHexMatchedFlight({ state, hexMatch, callsign, sourceMeta, sourceHints, rejected });
+      : hexMatch
+        ? classifyHexMatchedFlight({ state, hexMatch, callsign, sourceMeta, sourceHints, rejected })
+        : classifyTrustedPlaSourceFlight(trustedPlaSourceOperator, sourceMeta);
     if (!classified) continue;
 
     const flight = buildMilitaryFlightRecord(state, {
@@ -1380,5 +1431,6 @@ export {
   detectAircraftTypeFromSourceMeta,
   deriveSourceHints,
   deriveOperatorFromSourceMeta,
+  deriveTrustedPlaOperatorFromSourceMeta,
   filterMilitaryFlights,
 };
