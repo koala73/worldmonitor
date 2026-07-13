@@ -532,7 +532,7 @@ export const MILITARY_QUERY_REGIONS: QueryRegion[] = [
   { name: 'WESTERN', lamin: 13, lamax: 85, lomin: -10, lomax: 57 },
 ];
 
-if (import.meta.env?.DEV) {
+if (import.meta.env.DEV) {
   for (const h of MILITARY_HOTSPOTS) {
     const hbox = { lamin: h.lat - h.radius, lamax: h.lat + h.radius, lomin: h.lon - h.radius, lomax: h.lon + h.radius };
     const covered = MILITARY_QUERY_REGIONS.some(r =>
