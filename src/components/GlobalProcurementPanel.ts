@@ -13,7 +13,12 @@ const DEFAULT_FILTERS: GlobalTenderFilters = {
   sort: 'closing_soon',
   pageSize: 25,
   cursor: '',
+  minAutomationScore: 0,
 };
+
+// Any evidence-backed keyword match (automationFit level "low" scores 30), so
+// the toggle means "has technology-relevance evidence", nothing stronger.
+const TECH_RELEVANCE_MIN_SCORE = 30;
 
 const SOURCES = [
   ['', 'All sources'],
@@ -22,6 +27,7 @@ const SOURCES = [
   ['contracts-finder', 'Contracts Finder'],
   ['canada-buys', 'CanadaBuys'],
   ['gets', 'GETS'],
+  ['austender', 'AusTender'],
   ['world-bank', 'World Bank'],
 ] as const;
 
@@ -139,6 +145,7 @@ export class GlobalProcurementPanel extends Panel {
       sort: String(formData.get('sort') || 'closing_soon'),
       pageSize: 25,
       cursor: '',
+      minAutomationScore: formData.get('techRelevant') ? TECH_RELEVANCE_MIN_SCORE : 0,
     };
   }
 
@@ -190,6 +197,10 @@ export class GlobalProcurementPanel extends Panel {
       <select class="global-procurement-select" name="sort" data-procurement-sort aria-label="Sort opportunities">
         ${SORTS.map(([value, label]) => `<option value="${value}"${selected(this.filters.sort, value)}>${label}</option>`).join('')}
       </select>
+      <label class="global-procurement-toggle" title="Shows only opportunities whose title, description, or categories matched technology keywords. Keyword relevance evidence only — not an indication of bidding eligibility.">
+        <input type="checkbox" name="techRelevant" data-procurement-tech-relevant${(this.filters.minAutomationScore || 0) > 0 ? ' checked' : ''}${this.loading ? ' disabled' : ''}>
+        Technology relevant only
+      </label>
       <button type="submit" class="global-procurement-apply"${this.loading ? ' disabled' : ''}>Apply</button>
       <button type="button" class="global-procurement-reset" data-procurement-reset${this.loading ? ' disabled' : ''}>Reset</button>
     </form>`;
@@ -208,7 +219,7 @@ export class GlobalProcurementPanel extends Panel {
       .map((value) => escapeHtml(value))
       .join(' · ');
     const relevance = tender.automationFit?.matchReasons?.length
-      ? `<div class="award-agency">Technology relevance: ${escapeHtml(tender.automationFit.matchReasons.join(', '))}</div>`
+      ? `<div class="award-agency">Technology relevance (keyword evidence, not bidding eligibility): ${escapeHtml(tender.automationFit.matchReasons.join(', '))}</div>`
       : '';
     return `<article class="spending-award global-procurement-card">
       <div class="award-header"><span class="award-amount">${escapeHtml(tender.status.toUpperCase())}</span><span class="award-icon">${closingSoon ? '⏰' : '📄'}</span></div>

@@ -5,7 +5,7 @@ import { __testing__ } from '../api/health.js';
 
 test('health registers and classifies per-source global tender freshness', () => {
   const { classifyKey, SEED_META, STANDALONE_KEYS, ZERO_RECORD_DATA_OK_KEYS } = __testing__;
-  const sources = ['Sam', 'Ted', 'ContractsFinder', 'CanadaBuys', 'Gets', 'WorldBank'];
+  const sources = ['Sam', 'Ted', 'ContractsFinder', 'CanadaBuys', 'Gets', 'Austender', 'WorldBank'];
 
   for (const source of sources) {
     const name = `globalTenders${source}`;

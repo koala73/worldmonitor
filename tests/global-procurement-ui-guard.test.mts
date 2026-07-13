@@ -27,8 +27,9 @@ test('dedicated procurement panel supports discovery controls, pagination, and s
   assert.match(panel, /nextCursor/);
   assert.match(panel, /const safeUrl = sanitizeUrl\(tender\.officialUrl\)/);
   assert.match(panel, /href="\$\{safeUrl\}" target="_blank" rel="noopener noreferrer nofollow"/);
-  assert.match(panel, /Technology relevance:/);
+  assert.match(panel, /Technology relevance \(keyword evidence, not bidding eligibility\):/);
   assert.match(panel, /CLOSING SOON/);
+  assert.match(panel, /\['austender', 'AusTender'\]/);
   assert.doesNotMatch(economicPanel, /procurement|GlobalTender|tenderData|updateTenders|clearTenders/i);
 });
 
@@ -70,5 +71,18 @@ test('procurement is Pro-enforced and free clients neither fetch nor retain its 
 test('procurement deployment documentation identifies the sole optional source credential', () => {
   assert.match(envExample, /SAM_GOV_API_KEY=/);
   assert.match(docs, /SAM_GOV_API_KEY/);
-  assert.match(docs, /TED, Contracts Finder, CanadaBuys, GETS, and World Bank do not require API keys/);
+  assert.match(docs, /TED, Contracts Finder, CanadaBuys, GETS, AusTender, and World Bank do not require API keys/);
+});
+
+test('technology-relevance control filters by evidence and never claims bidding eligibility', () => {
+  assert.match(panel, /data-procurement-tech-relevant/);
+  assert.match(panel, /Technology relevant only/);
+  assert.match(panel, /TECH_RELEVANCE_MIN_SCORE = 30/);
+  assert.match(panel, /minAutomationScore: formData\.get\('techRelevant'\) \? TECH_RELEVANCE_MIN_SCORE : 0/);
+  assert.match(panel, /Keyword relevance evidence only — not an indication of bidding eligibility/);
+  assert.doesNotMatch(panel, /eligible to bid|bidding eligibility confirmed|qualified to bid/i);
+  assert.match(service, /minAutomationScore: 0/);
+  assert.match(docs, /min_automation_score/);
+  assert.match(docs, /Technology relevant only/);
+  assert.match(docs, /never assert that an AI system, agent, or vendor is eligible to bid/);
 });

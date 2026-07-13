@@ -766,6 +766,7 @@ export interface ListGlobalTendersRequest {
   buyer: string;
   publishedFrom: string;
   publishedTo: string;
+  minAutomationScore: number;
 }
 
 export interface ListGlobalTendersResponse {
@@ -2056,6 +2057,7 @@ export function createEconomicServiceRoutes(
             buyer: params.get("buyer") ?? "",
             publishedFrom: params.get("published_from") ?? "",
             publishedTo: params.get("published_to") ?? "",
+            minAutomationScore: Number(params.get("min_automation_score") ?? "0"),
           };
           if (options?.validateRequest) {
             const bodyViolations = options.validateRequest("listGlobalTenders", body);

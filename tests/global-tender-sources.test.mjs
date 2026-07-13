@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { declareRecords, fetchCanadaBuys, fetchContractsFinder, fetchGets, fetchSam, fetchTed, fetchWorldBank } from '../scripts/seed-global-tenders.mjs';
+import { declareRecords, fetchAusTender, fetchCanadaBuys, fetchContractsFinder, fetchGets, fetchSam, fetchTed, fetchWorldBank, parseAusTenderCloseDate } from '../scripts/seed-global-tenders.mjs';
 
 const NOW = Date.parse('2026-07-13T12:00:00Z');
 
@@ -28,6 +28,7 @@ test('adapters reject drifted success payloads instead of erasing last-good data
   await assert.rejects(() => fetchTed({ now: NOW, fetchJsonFn: async () => ({ message: 'changed' }) }), /notices/);
   await assert.rejects(() => fetchContractsFinder({ now: NOW, fetchJsonFn: async () => ({ message: 'changed' }) }), /releases/);
   await assert.rejects(() => fetchWorldBank({ now: NOW, fetchJsonFn: async () => ({ message: 'changed' }) }), /procnotices/);
+  await assert.rejects(() => fetchAusTender({ now: NOW, fetchTextFn: async () => '<html><body>maintenance page</body></html>' }), /documented ATM RSS feed/);
 });
 
 test('TED adapter executes a bounded active-notice query with supported field identifiers', async () => {
@@ -101,6 +102,62 @@ test('GETS adapter parses the official RSS feed into Oceania opportunities', asy
   assert.equal(result.records[0].countryCode, 'NZ');
   assert.equal(result.records[0].region, 'Oceania');
   assert.equal(result.records[0].buyer, 'MBIE');
+});
+
+test('AusTender adapter parses the official ATM RSS feed into Australian coverage', async () => {
+  const xml = `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel>
+    <title>AusTender - Current ATMs</title><link>https://www.tenders.gov.au/atm</link>
+    <item>
+      <title>RFT-2026-041 - Cloud security platform</title>
+      <link>https://www.tenders.gov.au/Atm/Show/6ff98150-e73b-47c3-b972-b03eec356d6f</link>
+      <description>&lt;p&gt;ATM ID: RFT-2026-041&lt;br /&gt;Agency: Digital Transformation Agency&lt;br /&gt;Category: 81110000 - Computer services&lt;br /&gt;Close Date &amp;amp; Time: 21-Aug-2026 2:00 pm (ACT Local Time)&lt;br /&gt;ATM Type: Request for Tender&lt;br /&gt;Description: Managed cloud security platform services&lt;/p&gt;</description>
+      <pubDate>Fri, 10 Jul 2026 08:00:00 GMT</pubDate>
+      <guid>https://www.tenders.gov.au/Atm/Show/6ff98150-e73b-47c3-b972-b03eec356d6f</guid>
+    </item>
+    <item>
+      <title>Closed notice without a parseable close date keeps the drift guard honest per-item</title>
+      <link>https://www.tenders.gov.au/Atm/Show/998e15fe-ea59-434c-9b12-cf38ae0b49d2</link>
+      <description>&lt;p&gt;ATM ID: RFT-2026-040&lt;br /&gt;Agency: Example Agency&lt;br /&gt;Close Date &amp;amp; Time: 01-Jul-2026 2:00 pm (ACT Local Time)&lt;/p&gt;</description>
+    </item>
+  </channel></rss>`;
+  const result = await fetchAusTender({ now: NOW, fetchTextFn: async () => xml });
+
+  assert.equal(result.records.length, 1);
+  assert.equal(result.records[0].id, 'austender:RFT-2026-041');
+  assert.equal(result.records[0].countryCode, 'AU');
+  assert.equal(result.records[0].region, 'Oceania');
+  assert.equal(result.records[0].buyer, 'Digital Transformation Agency');
+  assert.equal(result.records[0].title, 'RFT-2026-041 - Cloud security platform');
+  assert.equal(result.records[0].description, 'Managed cloud security platform services');
+  assert.equal(result.records[0].noticeType, 'Request for Tender');
+  assert.equal(result.records[0].officialUrl, 'https://www.tenders.gov.au/Atm/Show/6ff98150-e73b-47c3-b972-b03eec356d6f');
+  // 2:00 pm Canberra winter time (AEST, +10:00) is 04:00 UTC.
+  assert.equal(result.records[0].deadline, '2026-08-21T04:00:00.000Z');
+  assert.ok(result.records[0].categoryCodes.includes('81110000 - Computer services'));
+  assert.equal(result.status.state, 'ok');
+});
+
+test('AusTender adapter treats an empty feed as valid-empty but rejects format drift', async () => {
+  const emptyXml = '<?xml version="1.0"?><rss version="2.0"><channel><title>AusTender</title></channel></rss>';
+  const empty = await fetchAusTender({ now: NOW, fetchTextFn: async () => emptyXml });
+  assert.equal(empty.records.length, 0);
+  assert.equal(empty.status.state, 'ok');
+
+  const driftedXml = `<?xml version="1.0"?><rss version="2.0"><channel><item>
+    <title>Notice</title><link>https://www.tenders.gov.au/Atm/Show/abc</link>
+    <description>Redesigned layout without labeled close dates</description>
+  </item></channel></rss>`;
+  await assert.rejects(() => fetchAusTender({ now: NOW, fetchTextFn: async () => driftedXml }), /no longer match the documented format/);
+});
+
+test('AusTender close dates convert Canberra local time across DST', () => {
+  // August = AEST (+10:00); November = AEDT (+11:00).
+  assert.equal(parseAusTenderCloseDate('21-Aug-2026 2:00 pm (ACT Local Time)'), '2026-08-21T04:00:00.000Z');
+  assert.equal(parseAusTenderCloseDate('20-Nov-2026 2:00 pm (ACT Local Time)'), '2026-11-20T03:00:00.000Z');
+  assert.equal(parseAusTenderCloseDate('20-Nov-2026 12:00 am'), '2026-11-19T13:00:00.000Z');
+  // A missing time-of-day resolves to start of day, never extending openness.
+  assert.equal(parseAusTenderCloseDate('21-Aug-2026'), '2026-08-20T14:00:00.000Z');
+  assert.equal(parseAusTenderCloseDate('no date here'), '');
 });
 
 test('CanadaBuys adapter parses the official open-tender CSV as North America coverage', async () => {

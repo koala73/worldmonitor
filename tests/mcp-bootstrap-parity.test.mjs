@@ -58,6 +58,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the paginated economic RPC.'],
   ['economic:global-tenders:v1:source:gets',
     'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the paginated economic RPC.'],
+  ['economic:global-tenders:v1:source:austender',
+    'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the paginated economic RPC.'],
   ['economic:global-tenders:v1:source:world-bank',
     'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the paginated economic RPC.'],
 

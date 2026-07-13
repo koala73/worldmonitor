@@ -10501,10 +10501,26 @@ a.prediction-link:hover {
 /* Global Procurement */
 .global-procurement-controls {
   display: grid;
-  grid-template-columns: minmax(150px, 2fr) minmax(110px, 1fr) 72px minmax(110px, 1fr) minmax(120px, 1fr) auto auto;
+  grid-template-columns: minmax(150px, 2fr) minmax(110px, 1fr) 72px minmax(110px, 1fr) minmax(120px, 1fr) auto auto auto;
   gap: 6px;
   padding: 8px;
   border-bottom: 1px solid var(--border);
+}
+
+.global-procurement-toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--text-dim);
+  font-size: 10px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.global-procurement-toggle input {
+  margin: 0;
+  accent-color: var(--green);
 }
 
 .global-procurement-input,

@@ -766,6 +766,7 @@ export interface ListGlobalTendersRequest {
   buyer: string;
   publishedFrom: string;
   publishedTo: string;
+  minAutomationScore: number;
 }
 
 export interface ListGlobalTendersResponse {
@@ -1564,6 +1565,7 @@ export class EconomicServiceClient {
     if (req.buyer != null && req.buyer !== "") params.set("buyer", String(req.buyer));
     if (req.publishedFrom != null && req.publishedFrom !== "") params.set("published_from", String(req.publishedFrom));
     if (req.publishedTo != null && req.publishedTo !== "") params.set("published_to", String(req.publishedTo));
+    if (req.minAutomationScore != null && req.minAutomationScore !== 0) params.set("min_automation_score", String(req.minAutomationScore));
     const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
 
     const headers: Record<string, string> = {

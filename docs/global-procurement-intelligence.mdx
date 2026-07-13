@@ -20,6 +20,7 @@ The initial adapters read official public procurement sources:
 | Contracts Finder | United Kingdom | Published OCDS tender releases. |
 | CanadaBuys | Canada | Official federal open-tender CSV, refreshed daily by CanadaBuys. |
 | GETS | New Zealand / Oceania | Current open tenders from the official public GETS RSS feed. |
+| AusTender | Australia | Current Approaches to Market from the official AusTender ATM feed registered on data.gov.au by the Department of Finance. |
 | World Bank Procurement Notices | Multilateral / global | World Bank-financed opportunity notices across borrower countries. |
 
 The Railway seeder runs hourly and stores a canonical snapshot at `economic:global-tenders:v1`. Its TTL is three hours so the prior successful snapshot survives a missed run. If one adapter fails, healthy-source results remain available, that source's last-good records are retained, and the response reports `availability: "partial"`. If every adapter fails, the previous records remain available with `availability: "stale"`.
@@ -42,11 +43,11 @@ Only the U.S. SAM.gov adapter needs a new credential:
 2. Request a **Public API Key**. SAM.gov displays the generated key on the Account Details page.
 3. Add it to the Railway service running `node scripts/seed-bundle-relay-backup.mjs` as `SAM_GOV_API_KEY`. Do not expose it through a `VITE_` variable or commit it to the repository.
 
-The official setup and request-limit details are in the [GSA Get Opportunities Public API guide](https://open.gsa.gov/api/get-opportunities-public-api/). TED, Contracts Finder, CanadaBuys, GETS, and World Bank do not require API keys. If `SAM_GOV_API_KEY` is absent, only the SAM source reports `unavailable`; the other adapters continue normally.
+The official setup and request-limit details are in the [GSA Get Opportunities Public API guide](https://open.gsa.gov/api/get-opportunities-public-api/). TED, Contracts Finder, CanadaBuys, GETS, AusTender, and World Bank do not require API keys. If `SAM_GOV_API_KEY` is absent, only the SAM source reports `unavailable`; the other adapters continue normally.
 
 ## API
 
-`GET /api/economic/v1/list-global-tenders` is Pro-gated, deliberately paginated, and is **not** part of the bootstrap payload. It supports `country`, repeated `countries`, `region`, `source`, `status`, `buyer`, `published_from`, `published_to`, `deadline_from`, `deadline_to`, `min_value`, `max_value`, `currency`, `category`, `query`, `page_size`, `cursor`, and `sort`.
+`GET /api/economic/v1/list-global-tenders` is Pro-gated, deliberately paginated, and is **not** part of the bootstrap payload. It supports `country`, repeated `countries`, `region`, `source`, `status`, `buyer`, `published_from`, `published_to`, `deadline_from`, `deadline_to`, `min_value`, `max_value`, `currency`, `category`, `query`, `min_automation_score`, `page_size`, `cursor`, and `sort`.
 
 Supported sorts are `newest`, `closing_soon`, `estimated_value`, and `relevance`. `page_size` is bounded to 100. The response includes applied filters, a cursor, snapshot time, availability, and source-health summaries.
 
@@ -55,5 +56,7 @@ Every record contains a stable WorldMonitor ID (`source:sourceNoticeId`), its of
 ## Technology relevance
 
 `automationFit` is a transparent keyword-based relevance signal for software, AI, data, cybersecurity, automation, cloud, and related terms. It contains a score, classification version, match reasons, and text evidence. It is **not** a legal or procurement-eligibility determination: `participationMode` remains `unknown` unless an upstream source explicitly supports it.
+
+The optional `min_automation_score` query parameter (1–100, clamped server-side) returns only opportunities whose `automationFit.score` meets the threshold. It is disabled by default, so existing callers keep receiving every matching open opportunity, and when active it appears in the response's `appliedFilters`. The dedicated panel exposes it as a **Technology relevant only** checkbox. Both the filter and the per-record match reasons express keyword relevance evidence only — they never assert that an AI system, agent, or vendor is eligible to bid.
 
 The dashboard renders official notice links only after URL sanitization and exposes the relevance reason alongside the source-provided opportunity details.

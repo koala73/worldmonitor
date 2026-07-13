@@ -2737,7 +2737,7 @@ paths:
                     type: string
                 - name: source
                   in: query
-                  description: 'Source adapter identifier: sam, ted, contracts-finder, canada-buys, gets, or world-bank.'
+                  description: 'Source adapter identifier: sam, ted, contracts-finder, canada-buys, gets, austender, or world-bank.'
                   required: false
                   example: "example"
                   schema:
@@ -2843,6 +2843,19 @@ paths:
                   example: "example"
                   schema:
                     type: string
+                - name: min_automation_score
+                  in: query
+                  description: |-
+                    Include only opportunities whose keyword-based automation_fit score is at
+                     or above this value (1-100; values above 100 are clamped). Disabled when
+                     0 or unset, which preserves the default all-open-opportunities behavior.
+                     This is an evidence-backed text-relevance threshold only; it does not
+                     assert that any party is eligible to bid.
+                  required: false
+                  example: 42
+                  schema:
+                    type: integer
+                    format: int32
                 - name: jmespath
                   in: query
                   description: |-
@@ -4742,7 +4755,7 @@ components:
                     description: Geographic region label to match, such as Europe or North America.
                 source:
                     type: string
-                    description: 'Source adapter identifier: sam, ted, contracts-finder, canada-buys, gets, or world-bank.'
+                    description: 'Source adapter identifier: sam, ted, contracts-finder, canada-buys, gets, austender, or world-bank.'
                 status:
                     type: string
                     description: Source-provided tender status to match, such as open or published.
@@ -4788,6 +4801,15 @@ components:
                 publishedTo:
                     type: string
                     description: Include opportunities published on or before this ISO-8601 timestamp.
+                minAutomationScore:
+                    type: integer
+                    format: int32
+                    description: |-
+                        Include only opportunities whose keyword-based automation_fit score is at
+                         or above this value (1-100; values above 100 are clamped). Disabled when
+                         0 or unset, which preserves the default all-open-opportunities behavior.
+                         This is an evidence-backed text-relevance threshold only; it does not
+                         assert that any party is eligible to bid.
         ListGlobalTendersResponse:
             type: object
             properties:

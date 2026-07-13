@@ -8,6 +8,7 @@ import {
   normalizeContractsFinderRelease,
   normalizeWorldBankNotice,
   normalizeGetsNotice,
+  normalizeAusTenderNotice,
   dedupeTenders,
   isOpenOpportunity,
   buildSnapshot,
@@ -87,6 +88,61 @@ test('normalizes the official GETS feed as Oceania coverage', () => {
   assert.equal(tender.region, 'Oceania');
   assert.equal(tender.buyer, 'Ministry of Business, Innovation and Employment');
   assert.equal(tender.deadline, '2026-08-17T04:00:00.000Z');
+});
+
+test('normalizes the official AusTender ATM feed as Australian coverage', () => {
+  const tender = normalizeAusTenderNotice({
+    id: 'RFT-2026-041',
+    title: 'Cloud security platform',
+    link: 'https://www.tenders.gov.au/Atm/Show/6ff98150-e73b-47c3-b972-b03eec356d6f',
+    buyer: 'Digital Transformation Agency',
+    publishedAt: '2026-07-10T00:00:00Z',
+    deadline: '2026-08-21T04:00:00Z',
+    categories: ['81110000 - Computer services'],
+    description: 'Managed cloud security services',
+    noticeType: 'Request for Tender',
+  });
+
+  assert.equal(tender.id, 'austender:RFT-2026-041');
+  assert.equal(tender.countryCode, 'AU');
+  assert.equal(tender.region, 'Oceania');
+  assert.equal(tender.buyer, 'Digital Transformation Agency');
+  assert.equal(tender.deadline, '2026-08-21T04:00:00.000Z');
+  assert.equal(tender.money, undefined);
+  assert.equal(tender.participationMode, 'unknown');
+
+  const offHost = normalizeAusTenderNotice({ id: 'x', title: 'Notice', link: 'https://tenders.gov.au.attacker.example/Atm/Show/x', deadline: '2026-08-21T04:00:00Z' });
+  assert.equal(offHost, null);
+});
+
+test('a failed AusTender refresh keeps healthy sources and retained Australian last-good data', () => {
+  const previousAu = normalizeAusTenderNotice({
+    id: 'au-last-good', title: 'Last good Australian opportunity',
+    link: 'https://www.tenders.gov.au/Atm/Show/au-last-good', deadline: '2026-08-20T00:00:00Z',
+  });
+  const currentSam = normalizeSamOpportunity({
+    noticeId: 'sam-current', title: 'Current SAM opportunity',
+    responseDeadLine: '2026-08-21T00:00:00Z', uiLink: 'https://sam.gov/opp/sam-current/view',
+  });
+  const snapshot = mergeTenderSourceResults({
+    settled: [
+      { status: 'fulfilled', value: { records: [currentSam], status: { source: 'sam', state: 'ok', recordCount: 1, fetchedAt: '2026-07-13T12:00:00Z', lastSuccessfulAt: '2026-07-13T12:00:00Z', stale: false } } },
+      { status: 'rejected', reason: new Error('AusTender ATM items no longer match the documented format (no parseable open close dates)') },
+    ],
+    sourceNames: ['sam', 'austender'],
+    previousSnapshot: {
+      fetchedAt: Date.parse('2026-07-13T11:00:00Z'),
+      tenders: [previousAu],
+      sourceStatuses: [{ source: 'austender', state: 'ok', recordCount: 1, fetchedAt: '2026-07-13T11:00:00Z', lastSuccessfulAt: '2026-07-13T11:00:00Z', stale: false }],
+    },
+    attemptedAt: '2026-07-13T12:00:00Z',
+  });
+
+  assert.deepEqual(snapshot.tenders.map((item) => item.id).sort(), ['austender:au-last-good', 'sam:sam-current']);
+  assert.equal(snapshot.availability, 'partial');
+  assert.equal(snapshot.sourceStatuses[1].source, 'austender');
+  assert.equal(snapshot.sourceStatuses[1].state, 'stale');
+  assert.equal(snapshot.sourceStatuses[1].lastSuccessfulAt, '2026-07-13T11:00:00Z');
 });
 
 test('normalizes a UK OCDS tender with official provenance and its typed value', () => {

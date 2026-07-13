@@ -20,7 +20,7 @@ test('filters by country, query, category, money and deadline without treating m
   ], {
     country: 'US', countries: [], region: '', source: '', status: 'open', deadlineFrom: '2026-07-15', deadlineTo: '2026-07-30',
     minValue: 500, maxValue: 2000, currency: 'USD', category: '5415', query: 'cybersecurity', pageSize: 20, cursor: '', sort: 'closing_soon',
-    buyer: 'buy', publishedFrom: '2026-07-01', publishedTo: '2026-07-15',
+    buyer: 'buy', publishedFrom: '2026-07-01', publishedTo: '2026-07-15', minAutomationScore: 0,
   });
 
   assert.equal(result.total, 1);
@@ -35,7 +35,7 @@ test('uses bounded cursor pagination and stable sorting', () => {
     tender('a', { deadline: '2026-07-20T00:00:00.000Z' }),
     tender('b', { deadline: '2026-07-21T00:00:00.000Z' }),
   ];
-  const request = { country: '', countries: [], region: '', source: '', status: '', deadlineFrom: '', deadlineTo: '', minValue: 0, maxValue: 0, currency: '', category: '', query: '', pageSize: 2, cursor: '', sort: 'closing_soon', buyer: '', publishedFrom: '', publishedTo: '' };
+  const request = { country: '', countries: [], region: '', source: '', status: '', deadlineFrom: '', deadlineTo: '', minValue: 0, maxValue: 0, currency: '', category: '', query: '', pageSize: 2, cursor: '', sort: 'closing_soon', buyer: '', publishedFrom: '', publishedTo: '', minAutomationScore: 0 };
   const first = filterAndPaginateTenders(source, request);
   const second = filterAndPaginateTenders(source, { ...request, cursor: first.nextCursor });
   const invalid = filterAndPaginateTenders(source, { ...request, cursor: '999999' });
@@ -47,6 +47,41 @@ test('uses bounded cursor pagination and stable sorting', () => {
   assert.deepEqual(invalid.tenders, []);
   const unknownCountry = filterAndPaginateTenders(source, { ...request, country: 'ZZ' });
   assert.equal(unknownCountry.countryCoverage, 'unknown');
+});
+
+test('technology-relevance threshold is optional, bounded, and composes with other filters', () => {
+  const source = [
+    tender('a', { automationFit: { level: 'high', score: 90, classificationVersion: 'keyword-v1', matchReasons: ['software', 'cloud', 'cybersecurity'], evidence: [] } }),
+    tender('b', { automationFit: { level: 'low', score: 30, classificationVersion: 'keyword-v1', matchReasons: ['software'], evidence: [] } }),
+    tender('c', { countryCode: 'GB', automationFit: { level: 'none', score: 0, classificationVersion: 'keyword-v1', matchReasons: [], evidence: [] } }),
+    tender('d', { automationFit: undefined }),
+  ];
+  const request = { country: '', countries: [], region: '', source: '', status: '', deadlineFrom: '', deadlineTo: '', minValue: 0, maxValue: 0, currency: '', category: '', query: '', pageSize: 20, cursor: '', sort: 'relevance', buyer: '', publishedFrom: '', publishedTo: '', minAutomationScore: 0 };
+
+  const unfiltered = filterAndPaginateTenders(source, request);
+  assert.equal(unfiltered.total, 4);
+  assert.deepEqual(unfiltered.appliedFilters, []);
+
+  const filtered = filterAndPaginateTenders(source, { ...request, minAutomationScore: 30 });
+  assert.deepEqual(filtered.tenders.map((item) => item.id), ['a', 'b']);
+  assert.deepEqual(filtered.appliedFilters, ['min_automation_score']);
+
+  const composed = filterAndPaginateTenders(source, { ...request, minAutomationScore: 30, country: 'US' });
+  assert.deepEqual(composed.tenders.map((item) => item.id), ['a', 'b']);
+  assert.deepEqual(composed.appliedFilters, ['country', 'min_automation_score']);
+
+  // Out-of-range and malformed values are bounded or ignored, never trusted.
+  assert.equal(filterAndPaginateTenders(source, { ...request, minAutomationScore: 10_000 }).total, 0);
+  assert.equal(filterAndPaginateTenders(source, { ...request, minAutomationScore: Number.NaN }).total, 4);
+  assert.equal(filterAndPaginateTenders(source, { ...request, minAutomationScore: -5 }).total, 4);
+  assert.equal(filterAndPaginateTenders(source, { ...request, minAutomationScore: 30.9 }).tenders.length, 2);
+
+  // Pagination stays cursor-stable under the active threshold.
+  const firstPage = filterAndPaginateTenders(source, { ...request, minAutomationScore: 1, pageSize: 1 });
+  const secondPage = filterAndPaginateTenders(source, { ...request, minAutomationScore: 1, pageSize: 1, cursor: firstPage.nextCursor });
+  assert.deepEqual(firstPage.tenders.map((item) => item.id), ['a']);
+  assert.deepEqual(secondPage.tenders.map((item) => item.id), ['b']);
+  assert.equal(secondPage.nextCursor, '');
 });
 
 test('marks retained snapshots and source statuses stale after the freshness budget', () => {
