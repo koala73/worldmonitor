@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
+import { readFileSync } from 'node:fs';
 
 import { publicRpcFetch } from '../src/services/public-rpc-fetch.ts';
 
@@ -10,6 +11,14 @@ afterEach(() => {
 });
 
 describe('publicRpcFetch', () => {
+  it('keeps the allowlist-only transport scoped to the displacement summary call', () => {
+    const source = readFileSync(new URL('../src/services/displacement/index.ts', import.meta.url), 'utf8');
+
+    assert.doesNotMatch(source, /const client = new DisplacementServiceClient[^;]+publicRpcFetch/);
+    assert.match(source, /async function fetchPublicDisplacementSummary/);
+    assert.match(source, /new DisplacementServiceClient[^;]+publicRpcFetch/);
+  });
+
   it('adds the isolated public cache marker and strips credential-bearing request state', async () => {
     let capturedUrl = '';
     let capturedInit: RequestInit | undefined;

@@ -37,6 +37,7 @@ describe('wildfire dashboard payload cap', () => {
 
     assert.match(seeder, /wildfire:fires-bootstrap:v1/);
     assert.match(seeder, /extraKeys\s*:/);
+    assert.match(seeder, /metaKey:\s*'seed-meta:wildfire:fires-bootstrap'/);
     assert.match(bootstrap, /wildfires:\s*'wildfire:fires-bootstrap:v1'/);
     assert.doesNotMatch(bootstrap, /wildfires:\s*'wildfire:fires:v1'/);
   });

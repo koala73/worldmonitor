@@ -113,7 +113,14 @@ function toDisplayFlow(proto: ProtoFlow): DisplacementFlow {
 
 // ─── Client + circuit breaker ───
 
-const client = new DisplacementServiceClient(getRpcBaseUrl(), { fetch: publicRpcFetch });
+async function fetchPublicDisplacementSummary(): Promise<ProtoResponse> {
+  return new DisplacementServiceClient(getRpcBaseUrl(), { fetch: publicRpcFetch })
+    .getDisplacementSummary({
+      year: 0,          // 0 = handler uses year fallback
+      countryLimit: 0,  // 0 = all countries
+      flowLimit: 50,    // top 50 flows (matching legacy)
+    });
+}
 
 const breaker = createCircuitBreaker<UnhcrSummary>({
   name: 'UNHCR Displacement',
@@ -125,11 +132,7 @@ const breaker = createCircuitBreaker<UnhcrSummary>({
 
 export async function fetchUnhcrPopulation(): Promise<UnhcrFetchResult> {
   const data = await breaker.execute(async () => {
-    const response = await client.getDisplacementSummary({
-      year: 0,          // 0 = handler uses year fallback
-      countryLimit: 0,  // 0 = all countries
-      flowLimit: 50,    // top 50 flows (matching legacy)
-    });
+    const response = await fetchPublicDisplacementSummary();
     return toDisplaySummary(response);
   }, emptyResult, { shouldCache: (r) => r.countries.length > 0 });
 

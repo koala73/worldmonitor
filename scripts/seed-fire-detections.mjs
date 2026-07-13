@@ -140,6 +140,7 @@ async function main() {
       key: BOOTSTRAP_KEY,
       transform: compactWildfireDashboardPayload,
       declareRecords,
+      metaKey: 'seed-meta:wildfire:fires-bootstrap',
     }],
     declareRecords,
     schemaVersion: 1,
