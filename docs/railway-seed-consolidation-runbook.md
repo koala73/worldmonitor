@@ -486,7 +486,7 @@ Start with lowest-risk, highest-savings bundles.
 | 5 | seed-bundle-climate | 4 | Medium (3h, 5 members) | 3h |
 | 6 | seed-bundle-energy-sources | 5 | Medium (daily, 6 members) | Daily |
 | 7 | seed-bundle-macro | 5 | Medium (daily, 6 members) | Daily |
-| 8 | seed-bundle-health | 3 | Medium (hourly, 4 members) | Hourly |
+| 8 | seed-bundle-health | 3 | Medium (hourly, 5 members) | Hourly |
 | 9 | seed-bundle-derived-signals | 1 | Low (5min, Redis-only) | 5min |
 | 10 | seed-bundle-market-backup | 4 | Low (backup for relay) | 5min |
 | 11 | seed-bundle-relay-backup | 3 | Low (backup for relay) | 30min |

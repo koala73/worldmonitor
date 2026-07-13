@@ -913,6 +913,71 @@ const STATUS_COUNTS = {
   EMPTY_DATA: 'crit',
 };
 
+function isValidChinaCoverageSummary(candidate) {
+  if (
+    !candidate
+    || typeof candidate !== 'object'
+    || candidate.schemaVersion !== 1
+    || candidate.countryCode !== 'CN'
+    || !['healthy', 'degraded', 'unavailable'].includes(candidate.status)
+    || typeof candidate.evaluatedAt !== 'string'
+    || !Number.isFinite(Date.parse(candidate.evaluatedAt))
+    || !Array.isArray(candidate.entries)
+    || candidate.entries.length === 0
+    || candidate.entries.length > 100
+    || !candidate.counts
+    || typeof candidate.counts !== 'object'
+  ) {
+    return false;
+  }
+
+  const ids = new Set();
+  const actual = {
+    total: candidate.entries.length,
+    launched: 0,
+    planned: 0,
+    blocked: 0,
+    healthy: 0,
+    degraded: 0,
+    unavailable: 0,
+  };
+  for (const entry of candidate.entries) {
+    if (
+      !entry
+      || typeof entry !== 'object'
+      || typeof entry.id !== 'string'
+      || entry.id.length === 0
+      || entry.id.length > 100
+      || ids.has(entry.id)
+      || !['launched', 'planned', 'blocked'].includes(entry.launchStatus)
+      || !Array.isArray(entry.reasonCodes)
+      || entry.reasonCodes.length > 16
+      || entry.reasonCodes.some((reason) => typeof reason !== 'string' || reason.length > 64)
+    ) {
+      return false;
+    }
+    ids.add(entry.id);
+    actual[entry.launchStatus]++;
+    if (entry.launchStatus === 'launched') {
+      if (!['healthy', 'degraded', 'unavailable'].includes(entry.status)) return false;
+      actual[entry.status]++;
+    } else if (entry.status !== entry.launchStatus) {
+      return false;
+    }
+  }
+
+  if (actual.launched === 0) return false;
+  for (const [name, value] of Object.entries(actual)) {
+    if (candidate.counts[name] !== value) return false;
+  }
+  const expectedStatus = actual.unavailable === actual.launched
+    ? 'unavailable'
+    : actual.degraded > 0 || actual.unavailable > 0
+      ? 'degraded'
+      : 'healthy';
+  return candidate.status === expectedStatus;
+}
+
 function projectChinaCoverageStatus(raw, readError = false) {
   if (readError) {
     return { status: 'REDIS_PARTIAL', chinaStatus: null, reason: 'SUMMARY_READ_FAILED' };
@@ -920,16 +985,7 @@ function projectChinaCoverageStatus(raw, readError = false) {
   const candidate = typeof raw === 'string'
     ? unwrapEnvelope(parseRedisValue(raw)).data
     : unwrapEnvelope(raw).data;
-  if (
-    !candidate
-    || typeof candidate !== 'object'
-    || candidate.schemaVersion !== 1
-    || candidate.countryCode !== 'CN'
-    || !['healthy', 'degraded', 'unavailable'].includes(candidate.status)
-    || !Array.isArray(candidate.entries)
-    || !candidate.counts
-    || typeof candidate.counts !== 'object'
-  ) {
+  if (!isValidChinaCoverageSummary(candidate)) {
     return { status: 'CHINA_UNAVAILABLE', chinaStatus: 'unavailable', reason: 'SUMMARY_INVALID' };
   }
 

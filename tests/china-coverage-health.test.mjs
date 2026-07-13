@@ -112,12 +112,36 @@ describe('China coverage manifest', () => {
 
   it('keeps the Edge health key and status projection aligned with the manifest', () => {
     assert.equal(healthTesting.CHINA_COVERAGE_SUMMARY_KEY, CHINA_COVERAGE_SUMMARY_KEY);
-    const base = { schemaVersion: 1, countryCode: 'CN', entries: [], counts: {} };
-    assert.equal(healthTesting.projectChinaCoverageStatus({ ...base, status: 'healthy' }).status, 'OK');
-    assert.equal(healthTesting.projectChinaCoverageStatus({ ...base, status: 'degraded' }).status, 'CHINA_DEGRADED');
-    assert.equal(healthTesting.projectChinaCoverageStatus({ ...base, status: 'unavailable' }).status, 'CHINA_UNAVAILABLE');
-    assert.equal(healthTesting.projectChinaCoverageStatus({ countryCode: 'CN', status: 'healthy' }).status, 'CHINA_UNAVAILABLE');
-    assert.equal(healthTesting.projectChinaCoverageStatus(base, true).status, 'REDIS_PARTIAL');
+    const projected = (status) => ({
+      schemaVersion: 1,
+      countryCode: 'CN',
+      status,
+      evaluatedAt: '2026-07-13T12:00:00.000Z',
+      entries: [{
+        id: 'test.china-row',
+        launchStatus: 'launched',
+        status,
+        reasonCodes: status === 'healthy' ? [] : ['CHINA_ROW_MISSING'],
+      }],
+      counts: {
+        total: 1,
+        launched: 1,
+        planned: 0,
+        blocked: 0,
+        healthy: status === 'healthy' ? 1 : 0,
+        degraded: status === 'degraded' ? 1 : 0,
+        unavailable: status === 'unavailable' ? 1 : 0,
+      },
+    });
+    assert.equal(healthTesting.projectChinaCoverageStatus(projected('healthy')).status, 'OK');
+    assert.equal(healthTesting.projectChinaCoverageStatus(projected('degraded')).status, 'CHINA_DEGRADED');
+    assert.equal(healthTesting.projectChinaCoverageStatus(projected('unavailable')).status, 'CHINA_UNAVAILABLE');
+    assert.equal(healthTesting.projectChinaCoverageStatus({
+      ...projected('healthy'),
+      entries: [],
+      counts: {},
+    }).reason, 'SUMMARY_INVALID');
+    assert.equal(healthTesting.projectChinaCoverageStatus(projected('healthy'), true).status, 'REDIS_PARTIAL');
   });
 
   it('fails read-only audits cleanly on missing credentials and partial pipelines', async () => {
@@ -131,11 +155,16 @@ describe('China coverage manifest', () => {
 
       process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
       process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
-      globalThis.fetch = async () => new Response(JSON.stringify([
-        { result: null },
-        { error: 'ERR injected' },
-      ]), { status: 200 });
+      let requestInit;
+      globalThis.fetch = async (_url, init) => {
+        requestInit = init;
+        return new Response(JSON.stringify([
+          { result: null },
+          { error: 'ERR injected' },
+        ]), { status: 200 });
+      };
       await assert.rejects(readChinaCoverageInputs([singleEntry()]), /1 command error/);
+      assert.equal(new Headers(requestInit.headers).get('User-Agent'), 'worldmonitor-ops/1.0 (+https://worldmonitor.app)');
 
       globalThis.fetch = async () => new Response(JSON.stringify([
         { result: '{not-json' },
@@ -194,6 +223,21 @@ describe('China coverage evaluator', () => {
 
     assert.equal(result.entries[0].transport.status, 'fresh');
     assert.equal(result.entries[0].content.status, 'stale');
+    assert.ok(result.entries[0].reasonCodes.includes(CHINA_COVERAGE_REASON_CODES.CONTENT_STALE));
+  });
+
+  it('treats future-dated transport and content timestamps as stale', () => {
+    const result = evaluate(
+      singleEntry(),
+      { 'data:test': { rows: [{ countryCode: 'CN', observedAt: NOW + 5 * 60_000, value: 7 }] } },
+      { 'seed-meta:test': { fetchedAt: NOW + 5 * 60_000, status: 'ok' } },
+    );
+
+    assert.equal(result.entries[0].transport.status, 'stale');
+    assert.equal(result.entries[0].transport.ageMin, -5);
+    assert.equal(result.entries[0].content.status, 'stale');
+    assert.equal(result.entries[0].content.ageMin, -5);
+    assert.ok(result.entries[0].reasonCodes.includes(CHINA_COVERAGE_REASON_CODES.TRANSPORT_STALE));
     assert.ok(result.entries[0].reasonCodes.includes(CHINA_COVERAGE_REASON_CODES.CONTENT_STALE));
   });
 

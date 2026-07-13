@@ -105,8 +105,12 @@ function evaluateTransport(entry, data, meta, now) {
   if (source.status === 'error') return { status: 'error', ageMin: null, maxAgeMin: cfg.maxAgeMin };
   const fetchedAt = newestTimestamp([source], cfg.timestampPaths);
   if (fetchedAt == null) return { status: 'missing', ageMin: null, maxAgeMin: cfg.maxAgeMin };
-  const ageMin = Math.max(0, Math.round((now - fetchedAt) / MINUTE_MS));
-  return { status: ageMin > cfg.maxAgeMin ? 'stale' : 'fresh', ageMin, maxAgeMin: cfg.maxAgeMin };
+  const ageMin = Math.round((now - fetchedAt) / MINUTE_MS);
+  return {
+    status: ageMin < 0 || ageMin > cfg.maxAgeMin ? 'stale' : 'fresh',
+    ageMin,
+    maxAgeMin: cfg.maxAgeMin,
+  };
 }
 
 function evaluateContent(entry, data, now) {
@@ -130,8 +134,8 @@ function evaluateContent(entry, data, now) {
 
   const observedAt = newestTimestamp(probed.rows, cfg.probe.timestampPaths);
   if (observedAt == null) return { ...result, status: 'timestamp_missing' };
-  const ageMin = Math.max(0, Math.round((now - observedAt) / MINUTE_MS));
-  return { ...result, status: ageMin > cfg.maxAgeMin ? 'stale' : 'fresh', ageMin };
+  const ageMin = Math.round((now - observedAt) / MINUTE_MS);
+  return { ...result, status: ageMin < 0 || ageMin > cfg.maxAgeMin ? 'stale' : 'fresh', ageMin };
 }
 
 function reasonCodesFor(transport, content) {
@@ -224,7 +228,11 @@ export async function readChinaCoverageInputs(entries = CHINA_COVERAGE_ENTRIES) 
   const ordered = [...keys.data, ...keys.meta];
   const response = await fetch(`${credentials.restUrl}/pipeline`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${credentials.token}`, 'Content-Type': 'application/json' },
+    headers: {
+      Authorization: `Bearer ${credentials.token}`,
+      'Content-Type': 'application/json',
+      'User-Agent': 'worldmonitor-ops/1.0 (+https://worldmonitor.app)',
+    },
     body: JSON.stringify(chinaCoverageReadCommands(ordered)),
     signal: AbortSignal.timeout(15_000),
   });
