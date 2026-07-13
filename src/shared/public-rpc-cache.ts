@@ -9,17 +9,10 @@ const NEWS_LANGUAGES = new Set([
   'sv', 'ru', 'ar', 'fa', 'zh', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi',
 ]);
 const NEWS_QUERY_KEYS = new Set(['variant', 'lang', 'public']);
-const DISPLACEMENT_QUERY_KEYS = new Set(['year', 'country_limit', 'flow_limit', 'public']);
-const DISPLACEMENT_INTEGER_KEYS = ['year', 'country_limit', 'flow_limit'] as const;
+const DISPLACEMENT_PUBLIC_SEARCH = '?flow_limit=50&public=1';
 
 function hasSingleValue(params: URLSearchParams, key: string): boolean {
   return params.getAll(key).length === 1;
-}
-
-function isBoundedInteger(value: string | null, min: number, max: number): boolean {
-  if (value === null || !/^\d+$/.test(value)) return false;
-  const parsed = Number(value);
-  return Number.isSafeInteger(parsed) && parsed >= min && parsed <= max;
 }
 
 function hasOnlyKeys(params: URLSearchParams, allowed: Set<string>): boolean {
@@ -32,18 +25,6 @@ function isNewsDigestShape(params: URLSearchParams): boolean {
     && hasSingleValue(params, 'lang')
     && NEWS_VARIANTS.has(params.get('variant') ?? '')
     && NEWS_LANGUAGES.has(params.get('lang') ?? '');
-}
-
-function isDisplacementShape(params: URLSearchParams): boolean {
-  if (!hasOnlyKeys(params, DISPLACEMENT_QUERY_KEYS)) return false;
-
-  for (const key of DISPLACEMENT_INTEGER_KEYS) {
-    if (params.has(key) && !hasSingleValue(params, key)) return false;
-  }
-  if (params.has('year') && !isBoundedInteger(params.get('year'), 1950, 2100)) return false;
-  if (params.has('country_limit') && !isBoundedInteger(params.get('country_limit'), 1, 500)) return false;
-  if (params.has('flow_limit') && !isBoundedInteger(params.get('flow_limit'), 1, 500)) return false;
-  return true;
 }
 
 export function isPublicSharedRpcRequest(urlLike: string | URL, method = 'GET'): boolean {
@@ -63,7 +44,7 @@ export function isPublicSharedRpcRequest(urlLike: string | URL, method = 'GET'):
   if (!hasSingleValue(url.searchParams, 'public') || url.searchParams.get('public') !== '1') return false;
 
   if (pathname === '/api/news/v1/list-feed-digest') return isNewsDigestShape(url.searchParams);
-  return isDisplacementShape(url.searchParams);
+  return url.search === DISPLACEMENT_PUBLIC_SEARCH;
 }
 
 export function addPublicSharedRpcMarker(urlLike: string | URL): string {

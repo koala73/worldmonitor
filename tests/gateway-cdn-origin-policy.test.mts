@@ -166,7 +166,16 @@ describe('gateway CDN origin policy', () => {
     for (const path of [
       '/api/news/v1/list-feed-digest?variant=full&lang=en',
       '/api/news/v1/list-feed-digest?variant=full&lang=en&public=1&jmespath=categories',
+      '/api/displacement/v1/get-displacement-summary?flow_limit=49&public=1',
+      '/api/displacement/v1/get-displacement-summary?flow_limit=500&public=1',
+      '/api/displacement/v1/get-displacement-summary?flow_limit=50&public=1&year=2026',
+      '/api/displacement/v1/get-displacement-summary?flow_limit=50&public=1&country_limit=50',
+      '/api/displacement/v1/get-displacement-summary?public=1',
       '/api/displacement/v1/get-displacement-summary?flow_limit=50&public=1&unexpected=1',
+      '/api/displacement/v1/get-displacement-summary?flow_limit=50&flow_limit=50&public=1',
+      '/api/displacement/v1/get-displacement-summary?flow_limit=50&public=1&public=1',
+      '/api/displacement/v1/get-displacement-summary?public=1&flow_limit=50',
+      '/api/displacement/v1/get-displacement-summary?flow_limit=%35%30&public=1',
     ]) {
       const res = await handler(new Request(`https://worldmonitor.app${path}`, {
         headers: { Origin: 'https://worldmonitor.app' },
