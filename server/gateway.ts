@@ -327,6 +327,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/economic/v1/get-oil-stocks-analysis': 'static',
   '/api/economic/v1/get-oil-inventories': 'slow',
   '/api/economic/v1/get-energy-crisis-policies': 'static',
+  '/api/economic/v1/list-global-tenders': 'medium',
   '/api/economic/v1/get-eu-fsi': 'slow',
   '/api/economic/v1/get-economic-stress': 'slow',
   '/api/supply-chain/v1/get-shipping-stress': 'medium',

@@ -772,6 +772,7 @@ export class DataLoaderManager implements AppModule {
       if (shouldLoad('economic')) {
         tasks.push({ name: 'fred', task: () => runGuarded('fred', () => this.loadFredData()) });
         tasks.push({ name: 'spending', task: () => runGuarded('spending', () => this.loadGovernmentSpending()) });
+        tasks.push({ name: 'global-tenders', task: () => runGuarded('global-tenders', () => this.loadGlobalTenders()) });
         tasks.push({ name: 'bis', task: () => runGuarded('bis', () => this.loadBisData()) });
         tasks.push({ name: 'bls', task: () => runGuarded('bls', () => this.loadBlsData()) });
       }
@@ -3318,6 +3319,22 @@ export class DataLoaderManager implements AppModule {
       console.error('[App] Government spending failed:', e);
       this.ctx.statusPanel?.updateApi('USASpending', { status: 'error' });
       dataFreshness.recordError('spending', String(e));
+    }
+  }
+
+  async loadGlobalTenders(): Promise<void> {
+    const economicPanel = this.ctx.panels['economic'] as EconomicPanel;
+    try {
+      const { fetchGlobalTenders } = await import('@/services/global-tenders');
+      const data = await fetchGlobalTenders();
+      economicPanel?.updateTenders(data);
+      this.ctx.statusPanel?.updateApi('Global Procurement', {
+        status: !data.dataAvailable ? 'error' : data.availability === 'partial' ? 'warning' : 'ok',
+      });
+    } catch (error) {
+      console.warn('[App] Global tenders failed:', error);
+      economicPanel?.updateTenders({ tenders: [], nextCursor: '', fetchedAt: '', dataAvailable: false, availability: 'unavailable', sourceStatuses: [], total: 0, appliedFilters: [], countryCoverage: 'unknown' });
+      this.ctx.statusPanel?.updateApi('Global Procurement', { status: 'error' });
     }
   }
 

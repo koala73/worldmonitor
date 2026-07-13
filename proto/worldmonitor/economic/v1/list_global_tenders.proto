@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "sebuf/http/annotations.proto";
+
+message AutomationFit {
+  string level = 1;
+  int32 score = 2;
+  string classification_version = 3;
+  repeated string match_reasons = 4;
+  repeated string evidence = 5;
+}
+
+message TenderMoney {
+  optional double amount = 1;
+  optional string currency = 2;
+}
+
+message GlobalTender {
+  string id = 1;
+  string source = 2;
+  string source_notice_id = 3;
+  string official_url = 4;
+  optional string country_code = 5;
+  optional string region = 6;
+  string title = 7;
+  optional string description = 8;
+  optional string buyer = 9;
+  optional string published_at = 10;
+  optional string updated_at = 11;
+  optional string deadline = 12;
+  string status = 13;
+  optional string notice_type = 14;
+  TenderMoney money = 15;
+  repeated string category_codes = 16;
+  repeated string sectors = 17;
+  repeated string eligibility_requirements = 18;
+  repeated string submission_urls = 19;
+  string participation_mode = 20;
+  AutomationFit automation_fit = 21;
+}
+
+message TenderSourceStatus {
+  string source = 1;
+  string state = 2;
+  int32 record_count = 3;
+  string fetched_at = 4;
+  optional string error = 5;
+}
+
+message ListGlobalTendersRequest {
+  string country = 1 [(sebuf.http.query) = {name: "country"}];
+  repeated string countries = 2 [(sebuf.http.query) = {name: "countries"}];
+  string region = 3 [(sebuf.http.query) = {name: "region"}];
+  string source = 4 [(sebuf.http.query) = {name: "source"}];
+  string status = 5 [(sebuf.http.query) = {name: "status"}];
+  string deadline_from = 6 [(sebuf.http.query) = {name: "deadline_from"}];
+  string deadline_to = 7 [(sebuf.http.query) = {name: "deadline_to"}];
+  double min_value = 8 [(sebuf.http.query) = {name: "min_value"}];
+  double max_value = 9 [(sebuf.http.query) = {name: "max_value"}];
+  string currency = 10 [(sebuf.http.query) = {name: "currency"}];
+  string category = 11 [(sebuf.http.query) = {name: "category"}];
+  string query = 12 [(sebuf.http.query) = {name: "query"}];
+  int32 page_size = 13 [(sebuf.http.query) = {name: "page_size"}];
+  string cursor = 14 [(sebuf.http.query) = {name: "cursor"}];
+  string sort = 15 [(sebuf.http.query) = {name: "sort"}];
+}
+
+message ListGlobalTendersResponse {
+  repeated GlobalTender tenders = 1;
+  string next_cursor = 2;
+  string fetched_at = 3;
+  bool data_available = 4;
+  string availability = 5;
+  repeated TenderSourceStatus source_statuses = 6;
+  int32 total = 7;
+  repeated string applied_filters = 8;
+  // `unknown` means the snapshot contains no record for a requested country;
+  // it must not be interpreted as a confirmed no-opportunity or unsupported-country result.
+  string country_coverage = 9;
+}

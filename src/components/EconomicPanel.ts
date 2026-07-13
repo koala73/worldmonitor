@@ -2,7 +2,7 @@ import { Panel } from './Panel';
 import type { FredSeries, BisData } from '@/services/economic';
 import { BLS_METRO_IDS } from '@/services/economic';
 import { t } from '@/services/i18n';
-import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
+import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
 import { isDesktopRuntime } from '@/services/runtime';
 import { isFeatureAvailable } from '@/services/runtime-config';
 import type { SpendingSummary } from '@/services/usa-spending';
@@ -10,8 +10,9 @@ import { formatAwardAmount, getAwardTypeIcon } from '@/services/usa-spending';
 import { getCSSColor } from '@/utils';
 import { sparkline } from '@/utils/sparkline';
 import type { GetEconomicStressResponse, EconomicStressComponent } from '@/generated/client/worldmonitor/economic/v1/service_client';
+import type { ListGlobalTendersResponse, GlobalTender } from '@/generated/client/worldmonitor/economic/v1/service_client';
 
-type TabId = 'indicators' | 'spending' | 'centralBanks' | 'labor' | 'stress';
+type TabId = 'indicators' | 'procurement' | 'spending' | 'centralBanks' | 'labor' | 'stress';
 
 function stressScoreColor(score: number): string {
   if (score < 20) return '#27ae60';
@@ -138,6 +139,7 @@ export class EconomicPanel extends Panel {
   private fredData: FredSeries[] = [];
   private blsData: FredSeries[] = [];
   private spendingData: SpendingSummary | null = null;
+  private tenderData: ListGlobalTendersResponse | null = null;
   private bisData: BisData | null = null;
   private stressData: GetEconomicStressResponse | null = null;
   private lastUpdate: Date | null = null;
@@ -188,6 +190,11 @@ export class EconomicPanel extends Panel {
     this.render();
   }
 
+  public updateTenders(data: ListGlobalTendersResponse): void {
+    this.tenderData = data;
+    this.render();
+  }
+
   public updateBis(data: BisData): void {
     this.bisData = data;
     this.render();
@@ -213,6 +220,7 @@ export class EconomicPanel extends Panel {
 
   private render(): void {
     const hasSpending = this.spendingData && this.spendingData.awards?.length > 0;
+    const hasTenders = this.tenderData !== null;
     const hasBis = this.bisData && this.bisData.policyRates?.length > 0;
     const hasBls = this.blsData.length > 0;
 
@@ -223,7 +231,12 @@ export class EconomicPanel extends Panel {
         </button>
         ${hasSpending ? `
           <button class="panel-tab ${this.activeTab === 'spending' ? 'active' : ''}" data-tab="spending">
-            ${t('components.economic.gov')}
+            Recent awards
+          </button>
+        ` : ''}
+        ${hasTenders ? `
+          <button class="panel-tab ${this.activeTab === 'procurement' ? 'active' : ''}" data-tab="procurement">
+            Open opportunities
           </button>
         ` : ''}
         ${hasBis ? `
@@ -249,6 +262,9 @@ export class EconomicPanel extends Panel {
         break;
       case 'spending':
         contentHtml = this.renderSpending();
+        break;
+      case 'procurement':
+        contentHtml = this.renderProcurement();
         break;
       case 'centralBanks':
         contentHtml = this.renderCentralBanks();
@@ -280,6 +296,7 @@ export class EconomicPanel extends Panel {
     switch (this.activeTab) {
       case 'indicators': return 'FRED';
       case 'spending': return 'USASpending.gov';
+      case 'procurement': return 'Global Procurement Intelligence';
       case 'centralBanks': return 'BIS';
       case 'labor': return 'BLS';
       case 'stress': return 'FRED';
@@ -383,6 +400,46 @@ export class EconomicPanel extends Panel {
         `).join('')}
       </div>
     `;
+  }
+
+  private renderProcurement(): string {
+    const data = this.tenderData;
+    if (!data || !data.dataAvailable) {
+      return `<div class="economic-empty">Procurement opportunities are currently unavailable. Source coverage is shown when the next seed succeeds.</div>`;
+    }
+    const sourceSummary = data.sourceStatuses.map((source) => `${source.source}: ${source.state}${source.recordCount ? ` (${source.recordCount})` : ''}`).join(' · ');
+    const availability = data.availability === 'partial'
+      ? `<div class="economic-empty" style="margin-bottom:8px">Partial coverage — one or more official sources are unavailable; healthy-source results remain visible.</div>`
+      : data.availability === 'empty'
+        ? `<div class="economic-empty">Official sources returned a valid empty result for this snapshot.</div>`
+        : '';
+    const cards = data.tenders.slice(0, 12).map((tender) => this.renderTenderCard(tender)).join('');
+    return `${availability}
+      ${cards ? `<div class="spending-list">${cards}</div>` : ''}
+      <div class="economic-footer" style="padding:8px 0 0"><span class="economic-source">${escapeHtml(sourceSummary)}${data.fetchedAt ? ` · ${escapeHtml(new Date(data.fetchedAt).toLocaleString())}` : ''}</span></div>`;
+  }
+
+  private renderTenderCard(tender: GlobalTender): string {
+    const safeUrl = sanitizeUrl(tender.officialUrl);
+    const deadline = tender.deadline ? new Date(tender.deadline) : null;
+    const daysUntilDeadline = deadline && Number.isFinite(deadline.getTime()) ? Math.ceil((deadline.getTime() - Date.now()) / 86400_000) : null;
+    const closingSoon = daysUntilDeadline !== null && daysUntilDeadline >= 0 && daysUntilDeadline <= 3;
+    const amount = tender.money?.amount && tender.money.amount > 0
+      ? `${tender.money.currency || ''} ${tender.money.amount.toLocaleString()}`.trim()
+      : '';
+    const meta = [tender.buyer, tender.countryCode, amount, deadline ? `Closes ${deadline.toLocaleDateString()}` : '', closingSoon ? 'CLOSING SOON' : '']
+      .filter((value): value is string => Boolean(value)).map((value) => escapeHtml(value)).join(' · ');
+    const relevance = tender.automationFit?.matchReasons?.length
+      ? `<div class="award-agency">Technology relevance: ${escapeHtml(tender.automationFit.matchReasons.join(', '))}</div>`
+      : '';
+    return `<div class="spending-award">
+      <div class="award-header"><span class="award-amount">${escapeHtml(tender.status.toUpperCase())}</span><span class="award-icon">${closingSoon ? '⏰' : '📄'}</span></div>
+      <div class="award-recipient">${escapeHtml(tender.title)}</div>
+      <div class="award-agency">${meta}</div>
+      ${tender.description ? `<div class="award-desc">${escapeHtml(tender.description.slice(0, 180))}${tender.description.length > 180 ? '...' : ''}</div>` : ''}
+      ${relevance}
+      ${safeUrl ? `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer nofollow" class="award-agency">Official notice ↗</a>` : ''}
+    </div>`;
   }
 
   private renderCentralBanks(): string {

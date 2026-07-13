@@ -27,6 +27,7 @@ import { getFaoFoodPriceIndex } from './get-fao-food-price-index';
 import { getOilStocksAnalysis } from './get-oil-stocks-analysis';
 import { getOilInventories } from './get-oil-inventories';
 import { getEnergyCrisisPolicies } from './get-energy-crisis-policies';
+import { listGlobalTenders } from './list-global-tenders';
 
 export const economicHandler: EconomicServiceHandler = {
   getFredSeries,
@@ -56,4 +57,5 @@ export const economicHandler: EconomicServiceHandler = {
   getOilStocksAnalysis,
   getOilInventories,
   getEnergyCrisisPolicies,
+  listGlobalTenders,
 };

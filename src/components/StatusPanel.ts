@@ -40,6 +40,7 @@ const WORLD_FEEDS = new Set([
 const WORLD_APIS = new Set([
   'RSS2JSON', 'Finnhub', 'CoinGecko', 'Polymarket', 'USGS', 'FRED',
   'AISStream', 'GDELT Doc', 'EIA', 'USASpending', 'PizzINT', 'FIRMS',
+  'Global Procurement',
   'Cyber Threats API', 'BIS', 'WTO', 'SupplyChain', 'OFAC', 'Signal Aggregator'
 ]);
 
