@@ -24,6 +24,10 @@ const HEALTH_VERDICT_REFRESH_LOCK_KEY = `${HEALTH_VERDICT_SNAPSHOT_KEY}:refresh-
 const HEALTH_VERDICT_REFRESH_LOCK_TTL_SECONDS = 30;
 const HEALTH_VERDICT_REFRESH_WAIT_ATTEMPTS = 45;
 const HEALTH_VERDICT_REFRESH_WAIT_MS = 10_000;
+// Avoid starting a Redis HTTP request that cannot realistically complete
+// inside the remaining contention budget. The direct-sweep fallback below is
+// preferable to turning a deadline-boundary timeout into false REDIS_DOWN.
+const HEALTH_VERDICT_MIN_REDIS_TIMEOUT_MS = 100;
 const HEALTH_VERDICT_RELEASE_LOCK_SCRIPT = [
   "if redis.call('get', KEYS[1]) == ARGV[1] then",
   "  return redis.call('del', KEYS[1])",
@@ -1074,7 +1078,7 @@ export default async function handler(req, ctx) {
         const sleepMs = Math.min(backoffMs + jitterMs, Math.max(0, waitDeadline - Date.now()));
         await new Promise((resolve) => setTimeout(resolve, sleepMs));
         const remainingMs = waitDeadline - Date.now();
-        if (remainingMs <= 0) break;
+        if (remainingMs < HEALTH_VERDICT_MIN_REDIS_TIMEOUT_MS) break;
         const redisTimeoutMs = Math.min(4_000, remainingMs);
         const refreshedResult = await redisPipeline([['GET', HEALTH_VERDICT_SNAPSHOT_KEY]], redisTimeoutMs);
         if (!refreshedResult || refreshedResult[0]?.error) throw new Error('Redis snapshot wait failed');
@@ -1220,7 +1224,7 @@ export default async function handler(req, ctx) {
       .map(([k, c]) => `${k}:${c.status}`)
       .sort();
     console.log('[health] %s problems=[%s]', overall, problemKeys.join(', '));
-    const snapshot = {
+    const failureLogEntry = {
       at: new Date(now).toISOString(),
       status: overall,
       critCount,
@@ -1236,11 +1240,11 @@ export default async function handler(req, ctx) {
     const prevSigResult = await redisPipeline([['GET', 'health:failure-log-sig']], 4_000).catch(() => null);
     const prevSig = prevSigResult?.[0]?.result ?? '';
     const persistCmds = [
-      ['SET', 'health:last-failure', JSON.stringify(snapshot), 'EX', 86400],
+      ['SET', 'health:last-failure', JSON.stringify(failureLogEntry), 'EX', 86400],
     ];
     if (sig !== prevSig) {
       persistCmds.push(
-        ['LPUSH', 'health:failure-log', JSON.stringify(snapshot)],
+        ['LPUSH', 'health:failure-log', JSON.stringify(failureLogEntry)],
         ['LTRIM', 'health:failure-log', 0, 49],
         ['EXPIRE', 'health:failure-log', 86400 * 7],
         ['SET', 'health:failure-log-sig', sig, 'EX', 86400],
@@ -1256,7 +1260,7 @@ export default async function handler(req, ctx) {
     if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(clear);
   }
 
-  const snapshot = {
+  const verdictSnapshot = {
     status: overall,
     summary: {
       total: totalChecks,
@@ -1282,7 +1286,7 @@ export default async function handler(req, ctx) {
     [
       'SET',
       HEALTH_VERDICT_SNAPSHOT_KEY,
-      JSON.stringify(snapshot),
+      JSON.stringify(verdictSnapshot),
       'EX',
       String(HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS),
     ],
@@ -1303,7 +1307,7 @@ export default async function handler(req, ctx) {
   // only the verdict payload is reused, for at most 60 seconds. All other
   // responses already carry the no-store defaults from `headers` (a cached
   // 401 pins an auth failure; a cached 503 masks REDIS_DOWN recovery).
-  return healthResponse(snapshot, compact, headers);
+  return healthResponse(verdictSnapshot, compact, headers);
 }
 
 // Test-only exports. Not part of the public edge handler surface — Vercel's

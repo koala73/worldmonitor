@@ -254,6 +254,46 @@ test('does not report REDIS_DOWN when a healthy Redis lock stays contended', asy
   assert.equal(sweepCount, 1, 'bounded contention fallback performs one direct sweep');
 });
 
+test('does not start a doomed Redis request at the contention deadline', async () => {
+  let fakeNow = realDateNow();
+  let snapshotReads = 0;
+  let sweepCount = 0;
+  Date.now = () => fakeNow;
+  globalThis.setTimeout = (resolve) => {
+    fakeNow += 9_999;
+    resolve();
+    return 0;
+  };
+  globalThis.fetch = async (_url, init) => {
+    const commands = JSON.parse(init.body);
+    if (commands.some(([op]) => op === 'STRLEN' || op === 'LLEN')) sweepCount++;
+    if (commands.length === 1 && commands[0][0] === 'GET' && commands[0][1] === HEALTH_SNAPSHOT_KEY) {
+      snapshotReads++;
+      if (snapshotReads > 1) {
+        return new Response(null, { status: 504 });
+      }
+      return new Response(JSON.stringify([{ result: null }]), { status: 200 });
+    }
+    const results = commands.map(([op, key]) => {
+      if (op === 'SET' && key === HEALTH_REFRESH_LOCK_KEY) return { result: null };
+      if (op === 'STRLEN') return { result: 100 };
+      if (op === 'LLEN') return { result: 1 };
+      if (op === 'GET') return { result: JSON.stringify({ fetchedAt: Date.now(), recordCount: 1 }) };
+      if (op === 'EXISTS') return { result: 0 };
+      return { result: 'OK' };
+    });
+    return new Response(JSON.stringify(results), { status: 200 });
+  };
+
+  const response = await handler(new Request('https://api.worldmonitor.app/api/health?compact=1'));
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.notEqual(body.status, 'REDIS_DOWN');
+  assert.equal(snapshotReads, 1, 'near-deadline contention must skip a doomed Redis HTTP request');
+  assert.equal(sweepCount, 1, 'near-deadline contention falls back to one direct sweep');
+});
+
 test('releases its refresh lock when snapshot persistence fails', async () => {
   let storedSnapshot = null;
   let refreshLockToken = null;
