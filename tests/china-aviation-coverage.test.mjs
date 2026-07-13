@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
+  buildDelaysBootstrapPayload,
   CHINA_AVIATIONSTACK_HUBS,
   publishTransform,
   runChinaAviationStackSmoke,
@@ -77,6 +78,24 @@ describe('China AviationStack hub contract', () => {
     assert.equal(validate(published), true);
     assert.equal(validate({ alerts: published.alerts }), false, 'coverage is part of the canonical contract');
     assert.equal(validate({ alerts: [], coverage: [{ iata: 'PEK', status: 'unknown', flightCount: 0 }] }), false);
+
+    const bootstrap = buildDelaysBootstrapPayload({
+      faaPayload: null,
+      intlPayload: published,
+      notamPayload: null,
+      fillerRegistry: CHINA_AVIATIONSTACK_HUBS,
+    });
+    assert.equal(bootstrap.alerts.find((alert) => alert.iata === 'CAN')?.severity, 'FLIGHT_DELAY_SEVERITY_SEVERE');
+    for (const iata of ['KMG', 'URC']) {
+      const unavailable = bootstrap.alerts.find((alert) => alert.iata === iata);
+      assert.equal(unavailable?.severity, 'FLIGHT_DELAY_SEVERITY_UNKNOWN');
+      assert.equal(unavailable?.source, 'FLIGHT_DELAY_SOURCE_UNSPECIFIED');
+    }
+    for (const iata of ['PEK', 'PVG', 'SZX', 'CTU', 'HKG']) {
+      const covered = bootstrap.alerts.find((alert) => alert.iata === iata);
+      assert.equal(covered?.severity, 'FLIGHT_DELAY_SEVERITY_NORMAL');
+      assert.equal(covered?.source, 'FLIGHT_DELAY_SOURCE_AVIATIONSTACK');
+    }
   });
 
   it('prints Railway-safe smoke evidence for every hub without exposing the credential', async () => {

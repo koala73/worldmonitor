@@ -247,6 +247,8 @@ const AIRPORTS = [
 const AVIATIONSTACK_LIST = AIRPORTS.filter(a => a.sources.includes('aviationstack'));
 const FAA_LIST           = AIRPORTS.filter(a => a.sources.includes('faa')).map(a => a.iata);
 const NOTAM_LIST         = AIRPORTS.filter(a => a.sources.includes('notam')).map(a => a.icao);
+const AVIATIONSTACK_IATAS = new Set(AVIATIONSTACK_LIST.map(a => a.iata));
+const FAA_IATAS = new Set(FAA_LIST);
 
 // iata → aviationstack-enriched meta (for building AirportDelayAlert envelopes
 // with coordinates — aviationstack rows are the only ones with lat/lon).
@@ -558,7 +560,7 @@ export async function seedIntlDelays({
 
 export async function runChinaAviationStackSmoke({
   apiKey = process.env.AVIATIONSTACK_API,
-  fetchFn = globalThis.fetch,
+  fetchFn = (...args) => globalThis.fetch(...args),
   logger = console,
 } = {}) {
   const result = await seedIntlDelays({
@@ -926,7 +928,7 @@ async function dispatchNotamNotifications(closedIcaos, reasons) {
 
 const SEV_ORDER = ['normal', 'minor', 'moderate', 'major', 'severe'];
 
-function buildNormalOpsAlert(airport) {
+function buildNormalOpsAlert(airport, source = 'FLIGHT_DELAY_SOURCE_COMPUTED') {
   return {
     id: `status-${airport.iata}`,
     iata: airport.iata,
@@ -943,7 +945,29 @@ function buildNormalOpsAlert(airport) {
     cancelledFlights: 0,
     totalFlights: 0,
     reason: 'Normal operations',
-    source: 'FLIGHT_DELAY_SOURCE_COMPUTED',
+    source,
+    updatedAt: Date.now(),
+  };
+}
+
+function buildUnknownOpsAlert(airport) {
+  return {
+    id: `unknown-${airport.iata}`,
+    iata: airport.iata,
+    icao: airport.icao,
+    name: airport.name,
+    city: airport.city ?? '',
+    country: airport.country,
+    location: { latitude: airport.lat ?? 0, longitude: airport.lon ?? 0 },
+    region: REGION_MAP[airport.region] ?? 'AIRPORT_REGION_AMERICAS',
+    delayType: 'FLIGHT_DELAY_TYPE_GENERAL',
+    severity: 'FLIGHT_DELAY_SEVERITY_UNKNOWN',
+    avgDelayMinutes: 0,
+    delayedFlightsPct: 0,
+    cancelledFlights: 0,
+    totalFlights: 0,
+    reason: 'Coverage unavailable',
+    source: 'FLIGHT_DELAY_SOURCE_UNSPECIFIED',
     updatedAt: Date.now(),
   };
 }
@@ -1072,6 +1096,64 @@ function buildFillerRegistry() {
   return [...byIata.values()];
 }
 
+export function buildDelaysBootstrapPayload({
+  faaPayload,
+  intlPayload,
+  notamPayload,
+  fillerRegistry = buildFillerRegistry(),
+} = {}) {
+  const faaSourceCovered = !!faaPayload && Array.isArray(faaPayload.alerts);
+  const intlSourceCovered = !!intlPayload && Array.isArray(intlPayload.alerts);
+  const faaAlerts = faaSourceCovered ? faaPayload.alerts : [];
+  const intlAlerts = intlSourceCovered ? intlPayload.alerts : [];
+  const hasIntlCoverage = Array.isArray(intlPayload?.coverage);
+  const intlCoverage = hasIntlCoverage ? intlPayload.coverage : [];
+  const intlCoveredIatas = new Set(
+    hasIntlCoverage
+      ? intlCoverage
+        .filter((hub) => hub.status === 'normal' || hub.status === 'disruption')
+        .map((hub) => hub.iata)
+      : (intlSourceCovered ? AVIATIONSTACK_LIST.map((airport) => airport.iata) : []),
+  );
+  const closedIcaos = Array.isArray(notamPayload?.closedIcaos) ? notamPayload.closedIcaos : [];
+  const restrictedIcaos = Array.isArray(notamPayload?.restrictedIcaos) ? notamPayload.restrictedIcaos : [];
+  const reasons = (notamPayload?.reasons && typeof notamPayload.reasons === 'object') ? notamPayload.reasons : {};
+
+  const allAlerts = [...faaAlerts, ...intlAlerts];
+  const existingIatas = new Set(allAlerts.map(a => a.iata));
+  const applyNotam = (icao, severity, delayType, fallback) => {
+    const airport = fillerRegistry.find(a => a.icao === icao);
+    if (!airport) return;
+    const reason = reasons[icao] || fallback;
+    if (existingIatas.has(airport.iata)) {
+      const idx = allAlerts.findIndex(a => a.iata === airport.iata);
+      if (idx >= 0) allAlerts[idx] = mergeNotamWithExistingAlert(airport, reason, allAlerts[idx], severity, delayType);
+    } else {
+      allAlerts.push(buildNotamAlert(airport, reason, severity, delayType));
+      existingIatas.add(airport.iata);
+    }
+  };
+  for (const icao of closedIcaos) applyNotam(icao, 'severe', 'closure', 'Airport closure (NOTAM)');
+  for (const icao of restrictedIcaos) applyNotam(icao, 'major', 'general', 'Airspace restriction (NOTAM)');
+
+  const alertedIatas = new Set(allAlerts.map(a => a.iata));
+  for (const airport of fillerRegistry) {
+    if (alertedIatas.has(airport.iata)) continue;
+    const isFaaCovered = FAA_IATAS.has(airport.iata) && faaSourceCovered;
+    const isIntlCovered = AVIATIONSTACK_IATAS.has(airport.iata) && intlCoveredIatas.has(airport.iata);
+    if (isFaaCovered || isIntlCovered) {
+      allAlerts.push(buildNormalOpsAlert(
+        airport,
+        isFaaCovered ? 'FLIGHT_DELAY_SOURCE_FAA' : 'FLIGHT_DELAY_SOURCE_AVIATIONSTACK',
+      ));
+    } else {
+      allAlerts.push(buildUnknownOpsAlert(airport));
+    }
+  }
+
+  return { alerts: allAlerts, coverage: intlCoverage };
+}
+
 // Build + write the page-load bootstrap aggregate. Pass `intlOverride` to use
 // this-tick's intl from afterPublish (skips the Redis round-trip and avoids
 // a one-tick lag); omit to fall back to the last-good intl in Redis (used by
@@ -1084,41 +1166,10 @@ async function writeDelaysBootstrap(intlOverride) {
       upstashGetUnwrapped(NOTAM_KEY),
     ]);
 
-    const faaAlerts  = Array.isArray(faaPayload?.alerts)  ? faaPayload.alerts  : [];
-    const intlAlerts = Array.isArray(intlPayload?.alerts) ? intlPayload.alerts : [];
-    const intlCoverage = Array.isArray(intlPayload?.coverage) ? intlPayload.coverage : [];
-    const closedIcaos     = Array.isArray(notamPayload?.closedIcaos)     ? notamPayload.closedIcaos     : [];
-    const restrictedIcaos = Array.isArray(notamPayload?.restrictedIcaos) ? notamPayload.restrictedIcaos : [];
-    const reasons = (notamPayload?.reasons && typeof notamPayload.reasons === 'object') ? notamPayload.reasons : {};
-
-    const allAlerts = [...faaAlerts, ...intlAlerts];
-    // Union of seeder AIRPORTS + RPC MONITORED_AIRPORTS so the bootstrap matches
-    // what the live RPC produces even when registries drift.
-    const fillerRegistry = buildFillerRegistry();
-    const existingIatas = new Set(allAlerts.map(a => a.iata));
-    const applyNotam = (icao, severity, delayType, fallback) => {
-      const airport = fillerRegistry.find(a => a.icao === icao);
-      if (!airport) return;
-      const reason = reasons[icao] || fallback;
-      if (existingIatas.has(airport.iata)) {
-        const idx = allAlerts.findIndex(a => a.iata === airport.iata);
-        if (idx >= 0) allAlerts[idx] = mergeNotamWithExistingAlert(airport, reason, allAlerts[idx], severity, delayType);
-      } else {
-        allAlerts.push(buildNotamAlert(airport, reason, severity, delayType));
-        existingIatas.add(airport.iata);
-      }
-    };
-    for (const icao of closedIcaos)     applyNotam(icao, 'severe', 'closure', 'Airport closure (NOTAM)');
-    for (const icao of restrictedIcaos) applyNotam(icao, 'major',  'general', 'Airspace restriction (NOTAM)');
-
-    const alertedIatas = new Set(allAlerts.map(a => a.iata));
-    for (const airport of fillerRegistry) {
-      if (!alertedIatas.has(airport.iata)) allAlerts.push(buildNormalOpsAlert(airport));
-    }
-
-    const ok = await upstashSet(BOOTSTRAP_KEY, { alerts: allAlerts, coverage: intlCoverage }, BOOTSTRAP_TTL);
+    const payload = buildDelaysBootstrapPayload({ faaPayload, intlPayload, notamPayload });
+    const ok = await upstashSet(BOOTSTRAP_KEY, payload, BOOTSTRAP_TTL);
     if (ok) {
-      console.log(`[Bootstrap] wrote ${allAlerts.length} alerts to ${BOOTSTRAP_KEY} (faa=${faaAlerts.length}, intl=${intlAlerts.length}, notam-closed=${closedIcaos.length}, notam-restricted=${restrictedIcaos.length})`);
+      console.log(`[Bootstrap] wrote ${payload.alerts.length} alerts to ${BOOTSTRAP_KEY} (faa=${Array.isArray(faaPayload?.alerts) ? faaPayload.alerts.length : 0}, intl=${Array.isArray(intlPayload?.alerts) ? intlPayload.alerts.length : 0}, notam-closed=${Array.isArray(notamPayload?.closedIcaos) ? notamPayload.closedIcaos.length : 0}, notam-restricted=${Array.isArray(notamPayload?.restrictedIcaos) ? notamPayload.restrictedIcaos.length : 0})`);
     } else {
       console.warn(`[Bootstrap] SET ${BOOTSTRAP_KEY} returned false`);
     }
