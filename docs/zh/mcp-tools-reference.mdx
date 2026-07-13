@@ -910,6 +910,7 @@ curl -s https://worldmonitor.app/mcp \
 |------|------|-------------|
 | `dataset` | `array<string: shipping_stress / customs-revenue / flows>` | 将响应限制为一个或多个子数据集（干散货航运压力 / 海关收入 / COMTRADE 流）。省略则返回全部。 |
 | `commodity` | string | 将 COMTRADE 流筛选为一种大宗商品 — 精确匹配 HS 代码或按子串匹配大宗商品描述（例如 "2709" 或 "crude"）。 |
+| `reporter` | string | 按数字报告方代码或报告方名称筛选 COMTRADE 流（例如 "156" 或 "China"）。 |
 | `limit` | number | 将每个列表数据集（承运商、月份、流）限制为最多这么多项（默认 30，传 0 表示不限）。 |
 
 - **API 端点：** `GET /api/supply-chain/v1/get-shipping-stress`, `GET /api/trade/v1/get-customs-revenue`

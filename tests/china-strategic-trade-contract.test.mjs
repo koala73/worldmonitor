@@ -2,13 +2,22 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { checkCoverage, KEY_PREFIX } from '../scripts/seed-trade-flows.mjs';
+import {
+  checkCoverage,
+  INTER_REQUEST_DELAY_MS,
+  KEY_PREFIX,
+  TRADE_FLOW_FETCH_PHASE_TIMEOUT_MS,
+  TRADE_FLOW_LOCK_TTL_MS,
+  TRADE_FLOW_MATRIX_SIZE,
+} from '../scripts/seed-trade-flows.mjs';
+import { CACHE_TOOLS } from '../api/mcp/registry/cache-tools.ts';
 
 const requiredStrategicProducts = [
   'semiconductors',
   'batteries',
   'electric_vehicles',
   'rare_earth_inputs',
+  'solar_cells',
   'solar_products',
   'crude_oil',
   'lng',
@@ -44,6 +53,25 @@ describe('shared China strategic-product metadata', () => {
         assert.match(byId.get(id).bilateralHs4Code, /^\d{4}$/, `${id} has an invalid HS4 bilateral code`);
       }
     }
+
+    const tradeFlowCodes = new Set(metadata.products.map((product) => product.tradeFlowCode).filter(Boolean));
+    for (const code of ['2711', '271111', '854142', '854143']) {
+      assert.ok(tradeFlowCodes.has(code), `missing compatibility or HS2022 strategic code ${code}`);
+    }
+  });
+
+  it('budgets the two-period matrix below the fetch deadline and lock TTL', () => {
+    const twoPassPacingFloorMs = (TRADE_FLOW_MATRIX_SIZE - 1) * INTER_REQUEST_DELAY_MS * 2
+      + INTER_REQUEST_DELAY_MS;
+
+    assert.ok(
+      TRADE_FLOW_FETCH_PHASE_TIMEOUT_MS > twoPassPacingFloorMs,
+      `fetch timeout must exceed the two-pass pacing floor (${twoPassPacingFloorMs}ms)`,
+    );
+    assert.ok(
+      TRADE_FLOW_LOCK_TTL_MS > TRADE_FLOW_FETCH_PHASE_TIMEOUT_MS,
+      'lock TTL must outlive the fetch-phase deadline',
+    );
   });
 
   it('preserves the existing major China import/export dependency products', () => {
@@ -132,5 +160,25 @@ describe('existing access and China freight paths', () => {
     const seeder = read('../scripts/seed-supply-chain-trade.mjs');
     assert.match(seeder, /fetchCCFI\(\)/);
     assert.match(seeder, /CCFI_T/);
+  });
+});
+
+describe('agent access to expanded China trade coverage', () => {
+  it('filters MCP Comtrade flows by reporter before applying the default cap', () => {
+    const tool = CACHE_TOOLS.find((candidate) => candidate.name === 'get_supply_chain_data');
+    assert.equal(typeof tool?._postFilter, 'function');
+
+    const usa = Array.from({ length: 24 }, (_, index) => ({
+      reporterCode: '842', reporterName: 'USA', cmdCode: String(1000 + index), cmdDesc: `USA ${index}`,
+    }));
+    const china = Array.from({ length: 24 }, (_, index) => ({
+      reporterCode: '156', reporterName: 'China', cmdCode: String(2000 + index), cmdDesc: `China ${index}`,
+    }));
+    const data = { flows: { flows: [...usa, ...china] } };
+
+    tool._postFilter(data, { reporter: '156' });
+
+    assert.equal(data.flows.flows.length, 24, 'reporter filtering must happen before the default 30-row cap');
+    assert.ok(data.flows.flows.every((flow) => flow.reporterCode === '156'));
   });
 });

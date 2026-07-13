@@ -1399,6 +1399,10 @@ export const CACHE_TOOLS: ToolDef[] = [
           type: 'string',
           description: 'Filter COMTRADE flows to one commodity — matches the HS code exactly or the commodity description by substring (e.g. "2709" or "crude").',
         },
+        reporter: {
+          type: 'string',
+          description: 'Filter COMTRADE flows to one reporter by numeric reporter code or reporter name (e.g. "156" or "China").',
+        },
         limit: { type: 'number', description: 'Cap each list dataset (carriers, months, flows) to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
@@ -1427,9 +1431,13 @@ export const CACHE_TOOLS: ToolDef[] = [
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
       const commodity = argStr(params.commodity);
+      const reporter = argStr(params.reporter);
       const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       if (commodity) {
         narrowNested(data, 'flows', 'flows', (f) => argStr(f.cmdCode) === commodity || ciIncludes(f.cmdDesc, commodity));
+      }
+      if (reporter) {
+        narrowNested(data, 'flows', 'flows', (f) => argStr(f.reporterCode) === reporter || ciIncludes(f.reporterName ?? f.reporter, reporter));
       }
       capNested(data, 'shipping_stress', 'carriers', limit);
       capNested(data, 'customs-revenue', 'months', limit);

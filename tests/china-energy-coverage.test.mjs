@@ -119,6 +119,27 @@ describe('China JODI content validation', () => {
     assert.match(reason, /only 50 countries, need >=40/);
     assert.match(reason, /China JODI oil coverage failed: china-stale \(dataMonth=2025-12\)/);
   });
+
+  it('preserves prior gas country keys before rejecting China coverage', async () => {
+    const ttlExtensions = [];
+
+    await assert.rejects(
+      () => gasModule.enforceChinaGasCoverage(
+        [gasRecord({ iso2: 'US' })],
+        new Date('2026-07-13T00:00:00.000Z'),
+        {
+          readSnapshot: async () => ['US', 'CN', 'invalid'],
+          extendTtl: async (keys, ttlSeconds) => { ttlExtensions.push({ keys, ttlSeconds }); },
+        },
+      ),
+      /China JODI gas coverage failed: china-missing/,
+    );
+
+    assert.deepEqual(ttlExtensions, [{
+      keys: ['energy:jodi-gas:v1:US', 'energy:jodi-gas:v1:CN'],
+      ttlSeconds: gasModule.GAS_TTL,
+    }]);
+  });
 });
 
 describe('China energy spine availability', () => {

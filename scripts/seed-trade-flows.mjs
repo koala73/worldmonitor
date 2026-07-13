@@ -11,7 +11,9 @@ const CANONICAL_KEY = 'comtrade:flows:v1';
 const CACHE_TTL = 259200; // 72h = 3× daily interval
 export const KEY_PREFIX = 'comtrade:flows';
 const COMTRADE_BASE = 'https://comtradeapi.un.org/public/v1';
-const INTER_REQUEST_DELAY_MS = 3_000;
+export const INTER_REQUEST_DELAY_MS = 3_000;
+export const TRADE_FLOW_FETCH_PHASE_TIMEOUT_MS = 25 * 60 * 1000;
+export const TRADE_FLOW_LOCK_TTL_MS = 30 * 60 * 1000;
 const ANOMALY_THRESHOLD = 0.30; // 30% YoY change
 const CHINA_REPORTER_CODE = '156';
 // Require at least this fraction of (reporter × commodity) pairs to return
@@ -68,6 +70,7 @@ const COMTRADE_CLASSIFICATION_CODE = STRATEGIC_PRODUCT_METADATA.classification.c
 const COMMODITIES = STRATEGIC_PRODUCT_METADATA.products
   .filter((product) => product.tradeFlowCode)
   .map((product) => ({ code: product.tradeFlowCode, desc: product.label }));
+export const TRADE_FLOW_MATRIX_SIZE = REPORTERS.length * COMMODITIES.length;
 
 // Comtrade preview regularly hits transient 5xx (500/502/503/504). Without
 // retry each (reporter,commodity) pair that drew a 5xx is silently lost.
@@ -341,6 +344,8 @@ if (process.argv[1]?.endsWith('seed-trade-flows.mjs')) {
   runSeed('trade', 'comtrade-flows', CANONICAL_KEY, fetchAllFlows, {
     validateFn: validate,
     ttlSeconds: CACHE_TTL,
+    lockTtlMs: TRADE_FLOW_LOCK_TTL_MS,
+    fetchPhaseTimeoutMs: TRADE_FLOW_FETCH_PHASE_TIMEOUT_MS,
     sourceVersion: 'comtrade-preview-v1',
     publishTransform,
     afterPublish,

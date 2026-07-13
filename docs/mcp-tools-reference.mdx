@@ -910,6 +910,7 @@ Dry bulk shipping stress index, customs revenue flows, and COMTRADE bilateral tr
 |------|------|-------------|
 | `dataset` | `array<string: shipping_stress / customs-revenue / flows>` | Restrict the response to one or more sub-datasets (dry-bulk shipping stress / customs revenue / COMTRADE flows). Omit for all. |
 | `commodity` | string | Filter COMTRADE flows to one commodity — matches the HS code exactly or the commodity description by substring (e.g. "2709" or "crude"). |
+| `reporter` | string | Filter COMTRADE flows to one reporter by numeric reporter code or reporter name (e.g. "156" or "China"). |
 | `limit` | number | Cap each list dataset (carriers, months, flows) to at most this many items (default 30, pass 0 for no cap). |
 
 - **API endpoints:** `GET /api/supply-chain/v1/get-shipping-stress`, `GET /api/trade/v1/get-customs-revenue`
