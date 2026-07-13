@@ -50,20 +50,35 @@ message TenderSourceStatus {
 }
 
 message ListGlobalTendersRequest {
+  // ISO 3166-1 alpha-2 country code to match.
   string country = 1 [(sebuf.http.query) = {name: "country"}];
+  // One or more ISO 3166-1 alpha-2 country codes to match.
   repeated string countries = 2 [(sebuf.http.query) = {name: "countries"}];
+  // Geographic region label to match, such as Europe or North America.
   string region = 3 [(sebuf.http.query) = {name: "region"}];
+  // Source adapter identifier: sam, ted, contracts-finder, or world-bank.
   string source = 4 [(sebuf.http.query) = {name: "source"}];
+  // Source-provided tender status to match, such as open or published.
   string status = 5 [(sebuf.http.query) = {name: "status"}];
+  // Include opportunities whose deadline is on or after this ISO-8601 timestamp.
   string deadline_from = 6 [(sebuf.http.query) = {name: "deadline_from"}];
+  // Include opportunities whose deadline is on or before this ISO-8601 timestamp.
   string deadline_to = 7 [(sebuf.http.query) = {name: "deadline_to"}];
+  // Include opportunities with a stated estimated value at or above this amount.
   double min_value = 8 [(sebuf.http.query) = {name: "min_value"}];
+  // Include opportunities with a stated estimated value at or below this amount.
   double max_value = 9 [(sebuf.http.query) = {name: "max_value"}];
+  // ISO 4217 currency code used with min_value and max_value.
   string currency = 10 [(sebuf.http.query) = {name: "currency"}];
+  // Procurement category or classification code to match.
   string category = 11 [(sebuf.http.query) = {name: "category"}];
+  // Case-insensitive search text matched against tender titles and descriptions.
   string query = 12 [(sebuf.http.query) = {name: "query"}];
+  // Maximum number of tenders to return per page; capped at 100.
   int32 page_size = 13 [(sebuf.http.query) = {name: "page_size"}];
+  // Opaque cursor from a previous response's next_cursor field.
   string cursor = 14 [(sebuf.http.query) = {name: "cursor"}];
+  // Result ordering: newest, closing_soon, estimated_value, or relevance.
   string sort = 15 [(sebuf.http.query) = {name: "sort"}];
 }
 

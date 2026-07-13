@@ -1,0 +1,42 @@
+---
+title: "全球采购情报"
+description: "WorldMonitor 如何汇聚活跃公共招标机会、说明来源健康状态，并提供分页采购 API。"
+---
+
+WorldMonitor 的采购视图将**开放机会**与历史**近期授标**分开处理。开放机会是面向未来、由定时种子任务维护的数据流；授标记录仍来自 USASpending。
+
+## 覆盖范围与新鲜度
+
+初始适配器读取官方公开采购来源：
+
+| 来源 | 覆盖范围 | 说明 |
+| --- | --- | --- |
+| SAM.gov | 美国 | 需要部署环境中的 `SAM_GOV_API_KEY`；未配置会显示为不可用，而不是零结果。 |
+| TED | 欧盟 | 来自 TED Search API 的公开采购公告。 |
+| Contracts Finder | 英国 | 已发布的 OCDS 招标记录。 |
+| 世界银行采购公告 | 多边 / 全球 | 面向借款国的世界银行资助机会公告。 |
+
+Railway 种子任务每小时运行一次，并把规范快照写入 `economic:global-tenders:v1`。其三小时 TTL 能在单次任务失败时保留最近一次成功结果。若某个适配器失败，其他健康来源的结果仍会返回，响应会报告 `availability: "partial"`；若全部适配器失败，旧快照会继续保留，失败任务绝不会用空数据覆盖它。
+
+`availability` 的含义如下：
+
+- `available`：所有已配置适配器均成功且至少返回一条公告。
+- `empty`：已配置适配器均成功，但没有返回公告。
+- `partial`：至少一个适配器不可用或失败，另一个适配器成功。
+- `unavailable`：没有可用的新鲜规范快照。
+
+每个来源的状态、记录数和新鲜度都会出现在数据流响应和健康元数据中。对未覆盖国家的筛选绝不会被解释为确认的零机会。
+
+## API
+
+`GET /api/economic/v1/list-global-tenders` 有意采用分页，且**不会**进入启动批量载荷。它支持 `country`、重复的 `countries`、`region`、`source`、`status`、`deadline_from`、`deadline_to`、`min_value`、`max_value`、`currency`、`category`、`query`、`page_size`、`cursor` 和 `sort`。
+
+支持的排序方式为 `newest`、`closing_soon`、`estimated_value` 和 `relevance`。`page_size` 最大为 100。响应包含已应用的筛选条件、游标、快照时间、可用性和各来源健康摘要。
+
+每条记录都含有稳定的 WorldMonitor ID（`source:sourceNoticeId`）、官方公告链接、来源公告 ID、上游提供时的金额字段、时间戳、分类数据和可追溯的来源名称。缺失的上游字段保持缺失，不会被推断填补。
+
+## 技术相关性
+
+`automationFit` 是针对软件、AI、数据、网络安全、自动化、云服务及相关术语的透明关键词相关性信号。它包含评分、分类版本、匹配理由和文本证据，**不是**法律意见或采购资格判断；除非上游来源明确提供，`participationMode` 始终为 `unknown`。
+
+仪表板只会在 URL 通过安全处理后显示官方公告链接，并会同时展示与来源提供机会详情对应的相关性理由。

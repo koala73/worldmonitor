@@ -2618,53 +2618,61 @@ paths:
             parameters:
                 - name: country
                   in: query
+                  description: ISO 3166-1 alpha-2 country code to match.
                   required: false
                   example: "US"
                   schema:
                     type: string
                 - name: countries
                   in: query
+                  description: One or more ISO 3166-1 alpha-2 country codes to match.
                   required: false
                   style: form
                   explode: true
                   example:
-                      - "example"
+                      - "US"
                   schema:
                     type: array
                     items:
                         type: string
                 - name: region
                   in: query
+                  description: Geographic region label to match, such as Europe or North America.
                   required: false
                   example: "example"
                   schema:
                     type: string
                 - name: source
                   in: query
+                  description: 'Source adapter identifier: sam, ted, contracts-finder, or world-bank.'
                   required: false
                   example: "example"
                   schema:
                     type: string
                 - name: status
                   in: query
+                  description: Source-provided tender status to match, such as open or published.
                   required: false
                   example: "example"
                   schema:
                     type: string
                 - name: deadline_from
                   in: query
+                  description: Include opportunities whose deadline is on or after this ISO-8601 timestamp.
                   required: false
                   example: "example"
                   schema:
                     type: string
                 - name: deadline_to
                   in: query
+                  description: Include opportunities whose deadline is on or before this ISO-8601 timestamp.
                   required: false
                   example: "example"
                   schema:
                     type: string
                 - name: min_value
                   in: query
+                  description: Include opportunities with a stated estimated value at or above this amount.
                   required: false
                   example: 1.5
                   schema:
@@ -2672,6 +2680,7 @@ paths:
                     format: double
                 - name: max_value
                   in: query
+                  description: Include opportunities with a stated estimated value at or below this amount.
                   required: false
                   example: 1.5
                   schema:
@@ -2679,24 +2688,28 @@ paths:
                     format: double
                 - name: currency
                   in: query
+                  description: ISO 4217 currency code used with min_value and max_value.
                   required: false
                   example: "USD"
                   schema:
                     type: string
                 - name: category
                   in: query
+                  description: Procurement category or classification code to match.
                   required: false
                   example: "cs.AI"
                   schema:
                     type: string
                 - name: query
                   in: query
+                  description: Case-insensitive search text matched against tender titles and descriptions.
                   required: false
                   example: "supply chain risk"
                   schema:
                     type: string
                 - name: page_size
                   in: query
+                  description: Maximum number of tenders to return per page; capped at 100.
                   required: false
                   example: 25
                   schema:
@@ -2704,12 +2717,14 @@ paths:
                     format: int32
                 - name: cursor
                   in: query
+                  description: Opaque cursor from a previous response's next_cursor field.
                   required: false
                   example: "next-page-token"
                   schema:
                     type: string
                 - name: sort
                   in: query
+                  description: 'Result ordering: newest, closing_soon, estimated_value, or relevance.'
                   required: false
                   example: "example"
                   schema:
@@ -4494,39 +4509,54 @@ components:
             properties:
                 country:
                     type: string
+                    description: ISO 3166-1 alpha-2 country code to match.
                 countries:
                     type: array
                     items:
                         type: string
+                        description: One or more ISO 3166-1 alpha-2 country codes to match.
                 region:
                     type: string
+                    description: Geographic region label to match, such as Europe or North America.
                 source:
                     type: string
+                    description: 'Source adapter identifier: sam, ted, contracts-finder, or world-bank.'
                 status:
                     type: string
+                    description: Source-provided tender status to match, such as open or published.
                 deadlineFrom:
                     type: string
+                    description: Include opportunities whose deadline is on or after this ISO-8601 timestamp.
                 deadlineTo:
                     type: string
+                    description: Include opportunities whose deadline is on or before this ISO-8601 timestamp.
                 minValue:
                     type: number
                     format: double
+                    description: Include opportunities with a stated estimated value at or above this amount.
                 maxValue:
                     type: number
                     format: double
+                    description: Include opportunities with a stated estimated value at or below this amount.
                 currency:
                     type: string
+                    description: ISO 4217 currency code used with min_value and max_value.
                 category:
                     type: string
+                    description: Procurement category or classification code to match.
                 query:
                     type: string
+                    description: Case-insensitive search text matched against tender titles and descriptions.
                 pageSize:
                     type: integer
                     format: int32
+                    description: Maximum number of tenders to return per page; capped at 100.
                 cursor:
                     type: string
+                    description: Opaque cursor from a previous response's next_cursor field.
                 sort:
                     type: string
+                    description: 'Result ordering: newest, closing_soon, estimated_value, or relevance.'
         ListGlobalTendersResponse:
             type: object
             properties:

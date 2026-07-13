@@ -199,6 +199,8 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
   ["GET /api/economic/v1/get-fred-series",
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
+  ["GET /api/economic/v1/list-global-tenders",
+    "manual-mapping: paginated, high-cardinality filter and cursor surface has no bounded cache-tool equivalent; expose through a dedicated procurement tool only after its query and output budget are designed"],
   ["GET /api/infrastructure/v1/get-bootstrap-data",
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
   ["GET /api/infrastructure/v1/get-ip-geo",
