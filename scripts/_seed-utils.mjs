@@ -759,6 +759,13 @@ export function resolveProxyForConnect() {
 // NOTE: requires curl binary — available in Dockerfile.relay (apk add curl) and Railway.
 // Prefer httpsProxyFetchJson (pure Node.js) when possible; use curlFetch when curl-specific
 // features are needed (e.g. --compressed, -L redirect following with proxy).
+// Scrub `scheme://user:pass@host` credentials out of anything we surface. Proxy auth
+// strings are the only place seeders carry inline credentials, and they end up embedded
+// in curl argv — see the execFileSync catch below.
+export function redactProxyCredentials(text) {
+  return String(text ?? '').replace(/(\w+:\/\/)[^/\s:@]+:[^/\s@]+@/g, '$1***:***@');
+}
+
 export function curlFetch(url, proxyAuth, headers = {}) {
   const args = ['-sS', '--compressed', '--max-time', '15', '-L'];
   if (proxyAuth) {
@@ -768,7 +775,22 @@ export function curlFetch(url, proxyAuth, headers = {}) {
   for (const [k, v] of Object.entries(headers)) args.push('-H', `${k}: ${v}`);
   args.push('-w', '\n%{http_code}');
   args.push(url);
-  const raw = execFileSync('curl', args, { encoding: 'utf8', timeout: 20000, stdio: ['pipe', 'pipe', 'pipe'] });
+  let raw;
+  try {
+    raw = execFileSync('curl', args, { encoding: 'utf8', timeout: 20000, stdio: ['pipe', 'pipe', 'pipe'] });
+  } catch (err) {
+    // SECURITY: when curl itself exits non-zero (SSL_ERROR_SYSCALL, "CONNECT tunnel
+    // failed", DNS), execFileSync builds an Error whose message is the ENTIRE argv —
+    // including `-x http://user:pass@proxy-host`. Seeders log that message, so the proxy
+    // credentials were being written verbatim into Railway logs on every curl-level
+    // failure (observed continuously during the 2026-07-13 GDELT 429 storm). Re-throw
+    // with curl's own stderr, which names the failure without echoing the command.
+    const stderr = redactProxyCredentials(err?.stderr || '').trim().split('\n').filter(Boolean).pop();
+    throw Object.assign(
+      new Error(`curl failed: ${stderr || redactProxyCredentials(err?.message) || 'unknown error'}`),
+      { curlFailed: true },
+    );
+  }
   const nl = raw.lastIndexOf('\n');
   const status = parseInt(raw.slice(nl + 1).trim(), 10);
   if (status < 200 || status >= 300) throw Object.assign(new Error(`HTTP ${status}`), { status });
@@ -1527,6 +1549,23 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       if (extraKeys) keys.push(...extraKeys.map(ek => ek.key));
       const preserved = await extendExistingTtl(keys, ttlSeconds || 600);
       if (!preserved) {
+        // #5256: exiting 1 here assumes a LATER TICK CAN RESTORE THE DATA. When the seeder
+        // reports it had no usable source at all (primary unconfigured AND every fallback
+        // down), no tick ever can — seed-conflict-intel crash-looped every ~15min forever,
+        // firing "Deploy Crashed!" each time while /api/health already reported the domain
+        // EMPTY/crit. The crash added nothing over health; it only trained us to ignore the
+        // crash channel. Stay green, publish NOTHING (an empty envelope would overwrite
+        // last-good the moment the source blips), and leave the data alarm to /api/health.
+        //
+        // This is deliberately NOT `zeroIsValid`: a seeder must opt in per-run, on the exact
+        // code path where it knows it has no source. A zero-yield run that does not declare
+        // sourceUnavailable is still a dead feed and still exits 1 — #5258 stands.
+        if (data?.sourceUnavailable) {
+          console.warn(`  NO SOURCE: declareRecords returned 0 and no usable upstream was available — published nothing, last-good left untouched. /api/health reports ${domain}:${resource} EMPTY.`);
+          console.log(`\n=== Done (${Math.round(durationMs)}ms, NO SOURCE) ===`);
+          await releaseLock(`${domain}:${resource}`, runId);
+          await exitAfterTelemetryFlush(0);
+        }
         console.error(`  FAILURE: declareRecords returned 0 and last-good preservation failed — one or more keys are missing or could not be extended`);
         console.log(`\n=== Done (${Math.round(durationMs)}ms, RETRY FAILED) ===`);
         await releaseLock(`${domain}:${resource}`, runId);

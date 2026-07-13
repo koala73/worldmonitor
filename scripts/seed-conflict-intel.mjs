@@ -37,11 +37,14 @@ const HAPI_CACHE_KEY_PREFIX = 'conflict:humanitarian:v1';
 const HAPI_TTL = 21600;
 const PIZZINT_TTL = 600;
 
-const CONFLICT_COUNTRIES = [
+export const CONFLICT_COUNTRIES = [
   'AF', 'SY', 'UA', 'SD', 'SS', 'SO', 'CD', 'MM', 'YE', 'ET',
   'IQ', 'PS', 'LY', 'ML', 'BF', 'NE', 'NG', 'CM', 'MZ', 'HT',
 ];
 export const GDELT_MIN_SUCCESSFUL_COUNTRIES = Math.ceil(CONFLICT_COUNTRIES.length * 0.8);
+// A throttled failure, as it reaches us: fetchGdeltCountryEvents flattens the direct and
+// proxy attempts into one message, e.g. "...(last direct: HTTP 429) (last proxy: HTTP 429)".
+const RATE_LIMIT_ERROR = /\b429\b|rate.?limit|too many requests/i;
 // #5140: the GDELT fallback sweep may not LAUNCH a batch after this much of the
 // fetch phase has elapsed (fetchAll anchors the clock at its own entry and passes
 // an absolute deadline down, so slow aux feeds — HAPI is sequential, ~306s worst —
@@ -268,6 +271,19 @@ export async function fetchGdeltConflictEvents({
         failedCountries.push({ country: result?.country || 'unknown', error: result?.error || 'unknown failure' });
       }
     }
+    // #5256: back off out of a rate-limit storm instead of grinding into it. On
+    // 2026-07-13 GDELT 429'd every country, direct AND through the proxy — reproducible
+    // off-Railway, so it is a GLOBAL throttle, not our egress. Once a whole batch comes
+    // back throttled with zero successes anywhere, the remaining batches cannot succeed
+    // either; they just burn the run window and deepen the limit we are already hitting.
+    // (The floor check above would stop us eventually, but only after ~2× the requests.)
+    const rateLimited = results.every(r => !r?.ok && RATE_LIMIT_ERROR.test(String(r?.error ?? '')));
+    if (rateLimited && successfulCountries === 0) {
+      const why = 'GDELT rate-limit storm (batch fully throttled, 0 successes)';
+      for (const cc of remaining.slice(CONCURRENCY)) failedCountries.push({ country: cc, error: why });
+      console.warn(`  [GDELT] conflict sweep backed off (${why}) after ${i + batch.length}/${CONFLICT_COUNTRIES.length} countries`);
+      break;
+    }
     if (i + CONCURRENCY < CONFLICT_COUNTRIES.length) await pace(500); // inter-batch only; no trailing wait
   }
   if (successfulCountries < GDELT_MIN_SUCCESSFUL_COUNTRIES || events.length === 0) {
@@ -462,7 +478,10 @@ async function fetchGdeltTensions() {
 
 // ─── Main ───
 
-async function fetchAll() {
+// runSeed invokes this as `fetchFn()` with no arguments, so the injected dep is for tests
+// only — the GDELT fallback reaches its proxy through a `curl` child process, which no
+// global-fetch stub can intercept, so it must be injectable to keep tests hermetic.
+export async function fetchAll({ fetchGdeltFallback = fetchGdeltConflictEvents } = {}) {
   // #5140: anchor the GDELT-fallback sweep cutoff at the START of the fetch phase,
   // not at sweep entry — the aux feeds below (HAPI is sequential, ~306s worst) and
   // the sweep share runSeed's single fetch deadline, so time the aux stage burns
@@ -522,13 +541,24 @@ async function fetchAll() {
       // on the no-creds path: a credentialed-but-failed fetch still throws below, and a
       // credentialed-but-empty ACLED result is trusted (returns `ac`) rather than
       // overwritten by GDELT volume.
-      const gdeltEvents = await fetchGdeltConflictEvents({ deadlineAt: sweepDeadlineAt }).catch((e) => {
+      const gdeltEvents = await fetchGdeltFallback({ deadlineAt: sweepDeadlineAt }).catch((e) => {
         console.warn(`  GDELT conflict-events fallback failed: ${e.message}`);
         return null;
       });
       if (gdeltEvents?.events?.length) return gdeltEvents;
-      console.log('  ACLED: no credentials + GDELT fallback empty — publishing auxiliary feeds only, primary feed left empty');
-      return { events: [], pagination: undefined };
+      // #5256: we have NO usable primary source this tick — ACLED is unconfigured and the
+      // only fallback errored (fetchGdeltConflictEvents throws on floor-miss/zero/bulk
+      // failure; it never resolves to a legitimate empty). Say so explicitly.
+      //
+      // Returning a bare `{ events: [] }` here laundered an upstream OUTAGE into a
+      // "0 records" result, which runSeed reads as contract RETRY -> and once the
+      // last-good keys had expired, #5258's guard exited 1. With no source configured no
+      // retry can ever fix that, so it crash-looped every tick forever while /api/health
+      // already reported acledIntel EMPTY. sourceUnavailable tells runSeed to publish
+      // nothing (an empty envelope would wipe last-good the moment GDELT merely blips)
+      // and exit 0, leaving the data alarm to health where it belongs.
+      console.warn('  ACLED: no credentials + GDELT fallback unavailable — no usable conflict source; publishing auxiliary feeds only, primary feed left untouched (health reports acledIntel EMPTY)');
+      return { events: [], pagination: undefined, sourceUnavailable: true };
     }
     const reason = acled.reason?.message || acled.reason;
     const err = new Error(
