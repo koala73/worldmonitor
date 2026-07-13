@@ -1394,7 +1394,7 @@ test.describe('desktop runtime routing guardrails', () => {
         };
       };
 
-      const marketRenders: number[] = [];
+      const marketRenders: Array<Array<{ symbol?: string }>> = [];
       const marketConfigErrors: string[] = [];
       const heatmapRenders: number[] = [];
       const heatmapConfigErrors: string[] = [];
@@ -1403,20 +1403,23 @@ test.describe('desktop runtime routing guardrails', () => {
       const cryptoRenders: number[] = [];
       const apiStatuses: Array<{ name: string; status: string }> = [];
 
-      // Yahoo-only symbols (same set as server handler)
-      const yahooOnly = new Set(['^GSPC', '^DJI', '^IXIC', '^VIX', 'GC=F', 'CL=F', 'NG=F', 'SI=F', 'HG=F']);
+      // Representative Yahoo-only symbols, including exchange-qualified China
+      // entries from the default basket. Omit SMIC below to prove one missing
+      // quote does not blank the available Shanghai/Hong Kong rows.
+      const yahooOnly = new Set([
+        '^GSPC', '^DJI', '^IXIC', '^VIX', 'GC=F', 'CL=F', 'NG=F', 'SI=F', 'HG=F',
+        '600519.SS', '0700.HK', '688981.SS',
+      ]);
 
-      window.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      window.fetch = (async (input: RequestInfo | URL) => {
         const url = toUrl(input);
         calls.push(url);
         const parsed = new URL(url);
 
-        // Sebuf proto: POST /api/market/v1/list-market-quotes
         if (parsed.pathname === '/api/market/v1/list-market-quotes') {
-          const body = init?.body ? JSON.parse(String(init.body)) : {};
-          const symbols: string[] = body.symbols || [];
+          const symbols = parsed.searchParams.getAll('symbols');
           const quotes = symbols
-            .filter((s: string) => yahooOnly.has(s))
+            .filter((s: string) => yahooOnly.has(s) && s !== '688981.SS')
             .map((s: string) => {
               const base = s.length * 100;
               return { symbol: s, name: s, display: s, price: base + 1, change: ((base + 1) - base) / base * 100, sparkline: [base - 2, base - 1, base, base + 1] };
@@ -1425,6 +1428,20 @@ test.describe('desktop runtime routing guardrails', () => {
             quotes,
             finnhubSkipped: true,
             skipReason: 'FINNHUB_API_KEY not configured',
+          });
+        }
+
+        if (parsed.pathname === '/api/market/v1/list-commodity-quotes') {
+          const symbols = parsed.searchParams.getAll('symbols');
+          return responseJson({
+            quotes: symbols.map((symbol) => ({
+              symbol,
+              name: symbol,
+              display: symbol,
+              price: symbol.length * 100 + 1,
+              change: 0.25,
+              sparkline: [1, 2, 3],
+            })),
           });
         }
 
@@ -1447,7 +1464,7 @@ test.describe('desktop runtime routing guardrails', () => {
           latestMarkets: [] as Array<unknown>,
           panels: {
             markets: {
-              renderMarkets: (data: Array<unknown>) => marketRenders.push(data.length),
+              renderMarkets: (data: Array<{ symbol?: string }>) => marketRenders.push(data),
               showConfigError: (message: string) => marketConfigErrors.push(message),
             },
             heatmap: {
@@ -1476,9 +1493,11 @@ test.describe('desktop runtime routing guardrails', () => {
         await (DataLoaderManager.prototype as unknown as { loadMarkets: () => Promise<void> })
           .loadMarkets.call(fakeApp);
 
-        // Commodities now go through listMarketQuotes (batch), not individual Yahoo calls
         const marketQuoteCalls = calls.filter((url) =>
           new URL(url).pathname === '/api/market/v1/list-market-quotes'
+        );
+        const commodityQuoteCalls = calls.filter((url) =>
+          new URL(url).pathname === '/api/market/v1/list-commodity-quotes'
         );
 
         return {
@@ -1491,15 +1510,20 @@ test.describe('desktop runtime routing guardrails', () => {
           cryptoRenders,
           apiStatuses,
           latestMarketsCount: fakeApp.ctx.latestMarkets.length,
+          latestMarketSymbols: (fakeApp.ctx.latestMarkets as Array<{ symbol?: string }>).map((entry) => entry.symbol),
           marketQuoteCalls: marketQuoteCalls.length,
+          commodityQuoteCalls: commodityQuoteCalls.length,
         };
       } finally {
         window.fetch = originalFetch;
       }
     });
 
-    expect(result.marketRenders.some((count) => count > 0)).toBe(true);
+    expect(result.marketRenders.some((render) => render.length > 0)).toBe(true);
     expect(result.latestMarketsCount).toBeGreaterThan(0);
+    expect(result.latestMarketSymbols).toContain('600519.SS');
+    expect(result.latestMarketSymbols).toContain('0700.HK');
+    expect(result.latestMarketSymbols).not.toContain('688981.SS');
     expect(result.marketConfigErrors.length).toBe(0);
 
     expect(result.heatmapRenders.length).toBe(0);
@@ -1507,8 +1531,8 @@ test.describe('desktop runtime routing guardrails', () => {
 
     expect(result.commoditiesRenders.some((count) => count > 0)).toBe(true);
     expect(result.commoditiesConfigErrors.length).toBe(0);
-    // Commodities go through listMarketQuotes batch (at least 2 calls: stocks + commodities)
-    expect(result.marketQuoteCalls).toBeGreaterThanOrEqual(2);
+    expect(result.marketQuoteCalls).toBeGreaterThanOrEqual(1);
+    expect(result.commodityQuoteCalls).toBeGreaterThanOrEqual(1);
 
     expect(result.cryptoRenders.some((count) => count > 0)).toBe(true);
     expect(result.apiStatuses.some((entry) => entry.name === 'Finnhub' && entry.status === 'error')).toBe(true);

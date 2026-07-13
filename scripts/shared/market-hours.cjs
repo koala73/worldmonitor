@@ -28,6 +28,11 @@ const ET_PARTS_FMT = new Intl.DateTimeFormat('en-US', {
   minute: '2-digit',
 });
 
+const SHANGHAI_WEEKDAY_FMT = new Intl.DateTimeFormat('en-US', {
+  timeZone: 'Asia/Shanghai',
+  weekday: 'short',
+});
+
 function etParts(date) {
   const out = {};
   for (const part of ET_PARTS_FMT.formatToParts(date)) out[part.type] = part.value;
@@ -177,4 +182,18 @@ function isUsEquityTradingDay(date = new Date()) {
   return !isFullHoliday(p.year, p.month, p.day);
 }
 
-module.exports = { getUsEquitySession, isUsEquityMarketOpen, isUsEquityTradingDay };
+// The shared stock basket spans the US, India, mainland China, and Hong Kong.
+// A full NYSE holiday cannot suppress Asian weekday refreshes, so the mixed
+// seeder only skips when both the US and Shanghai calendars are on dead days.
+function isMultiMarketEquityTradingDay(date = new Date()) {
+  if (isUsEquityTradingDay(date)) return true;
+  const shanghaiWeekday = SHANGHAI_WEEKDAY_FMT.format(date);
+  return shanghaiWeekday !== 'Sat' && shanghaiWeekday !== 'Sun';
+}
+
+module.exports = {
+  getUsEquitySession,
+  isUsEquityMarketOpen,
+  isUsEquityTradingDay,
+  isMultiMarketEquityTradingDay,
+};

@@ -143,6 +143,9 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'South China Morning Post', url: gn('site:scmp.com when:2d') },
       { name: 'The Hindu', url: 'https://www.thehindu.com/feeder/default.rss' },
       { name: 'Asia News', url: gn('site:asianews.it when:3d') },
+      { name: 'Xinhua', url: gn('site:xinhuanet.com OR Xinhua when:1d') },
+      { name: 'MIIT (China)', url: gnLocale('site:miit.gov.cn when:7d', 'zh-CN', 'CN', 'CN:zh-Hans'), lang: 'zh' },
+      { name: 'MOFCOM (China)', url: gnLocale('site:mofcom.gov.cn when:7d', 'zh-CN', 'CN', 'CN:zh-Hans'), lang: 'zh' },
       // Hindi (HI) — mainstream national coverage boosted for Hindi locale users
       { name: 'BBC Hindi', url: 'https://feeds.bbci.co.uk/hindi/rss.xml', lang: 'hi' },
       { name: 'Aaj Tak', url: 'https://www.aajtak.in/rssfeeds/?id=home', lang: 'hi' },
@@ -307,6 +310,7 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
     ],
     centralbanks: [
       { name: 'Federal Reserve', url: 'https://www.federalreserve.gov/feeds/press_all.xml' },
+      { name: 'PBoC Watch', url: gn('("People\'s Bank of China" OR PBoC OR PBOC) when:7d') },
     ],
     economic: [
       { name: 'Economic Data', url: gn('(CPI OR inflation OR GDP OR "economic data" OR "jobs report") when:2d') },

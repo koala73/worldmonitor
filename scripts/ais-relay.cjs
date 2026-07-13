@@ -34,7 +34,7 @@ const {
   recordDedupOutcome,
 } = require('./shared/notification-dedup.cjs');
 const { maintainClosedMarketEquityKeys: maintainClosedMarketEquityKeysWithDeps } = require('./shared/closed-market-equity-maintenance.cjs');
-const { getUsEquitySession, isUsEquityTradingDay } = require('./shared/market-hours.cjs');
+const { getUsEquitySession, isMultiMarketEquityTradingDay } = require('./shared/market-hours.cjs');
 const parseProxyUrl = parseProxyConfig;
 
 const httpsKeepAliveAgent = new https.Agent({ keepAlive: true, maxSockets: 6, timeout: 60_000 });
@@ -1896,13 +1896,9 @@ const FINNHUB_API_KEY = process.env.FINNHUB_API_KEY || '';
 const MARKET_SEED_INTERVAL_MS = 300_000; // 5 min
 const MARKET_SEED_TTL = 7200; // 2h — survive extended Yahoo/upstream outages
 
-// Must match src/config/markets.ts MARKET_SYMBOLS — update both when changing
-const MARKET_SYMBOLS = [
-  'AAPL', 'AMZN', 'AVGO', 'BAC', 'BRK-B', 'COST', 'GOOGL', 'HD',
-  'JNJ', 'JPM', 'LLY', 'MA', 'META', 'MSFT', 'NFLX', 'NVO', 'NVDA',
-  'ORCL', 'PG', 'TSLA', 'TSM', 'UNH', 'V', 'WMT', 'XOM',
-  '^DJI', '^GSPC', '^IXIC', '^RUT',
-];
+const _stockCfg = requireShared('stocks.json');
+const MARKET_SYMBOLS = _stockCfg.symbols.map((s) => s.symbol);
+const MARKET_META = new Map(_stockCfg.symbols.map((s) => [s.symbol, { name: s.name, display: s.display }]));
 
 const _commodityCfg = requireShared('commodities.json');
 const COMMODITY_SYMBOLS = _commodityCfg.commodities.map(c => c.symbol);
@@ -1910,11 +1906,10 @@ const COMMODITY_META = new Map(_commodityCfg.commodities.map(c => [c.symbol, { n
 
 const SECTOR_SYMBOLS = ['XLK', 'XLF', 'XLE', 'XLV', 'XLY', 'XLI', 'XLP', 'XLU', 'XLB', 'XLRE', 'XLC', 'SMH'];
 
-// Symbols that must come from Yahoo — Finnhub doesn't carry futures (=F) or major indices.
-// ^GSPC/^DJI/^IXIC live in MARKET_SYMBOLS (not COMMODITY_SYMBOLS) so they must be listed
-// explicitly; commodity ETFs (URA, LIT) also go through Yahoo since they have no Finnhub feed.
+// Symbols that must come from Yahoo — Finnhub doesn't carry futures (=F),
+// major indices, or the exchange-qualified Asian symbols in stocks.json.
 const YAHOO_ONLY = new Set([
-  '^GSPC', '^DJI', '^IXIC', '^RUT',
+  ..._stockCfg.yahooOnly,
   ...COMMODITY_SYMBOLS.filter(s => s.endsWith('=F') || s.startsWith('^')),
   'URA', 'LIT',
   // Spot gold and forex pairs (=X suffix) — not on Finnhub
@@ -2145,9 +2140,8 @@ let _lastEquityQuoteCount = 0;
 // Log once per open↔closed transition, not every 5-minute cycle.
 let _equityGateLoggedClosed = false;
 
-// While the US market is fully closed (weekend / NYSE holiday — NOT weekday
-// overnight: the MARKET_SYMBOLS list mixes NSE tickers whose IST session sits
-// inside the US overnight window), skip the equity fetch+publish and instead
+// When every tracked equity market is on a non-trading day, skip the equity
+// fetch+publish and instead
 // keep the last-good keys alive: extend TTL on both published keys and
 // refresh seed-meta:market:stocks fetchedAt so /api/health (maxStaleMin 30)
 // stays green across a 60h+ weekend. Returns true when last-good was
@@ -2174,7 +2168,9 @@ async function seedMarketQuotes() {
     const results = await Promise.all(finnhubSymbols.map((s) => fetchFinnhubQuoteDirect(s, FINNHUB_API_KEY)));
     for (let i = 0; i < finnhubSymbols.length; i++) {
       const r = results[i];
-      if (r) quotes.push({ symbol: finnhubSymbols[i], name: finnhubSymbols[i], display: finnhubSymbols[i], price: r.price, change: r.changePercent, sparkline: [] });
+      const symbol = finnhubSymbols[i];
+      const meta = MARKET_META.get(symbol);
+      if (r) quotes.push({ symbol, name: meta?.name || symbol, display: meta?.display || symbol, price: r.price, change: r.changePercent, sparkline: [] });
     }
   }
 
@@ -2186,7 +2182,8 @@ async function seedMarketQuotes() {
   for (const s of allYahoo) {
     if (quotes.some((q) => q.symbol === s)) continue;
     const yahoo = await fetchYahooChartDirect(s);
-    if (yahoo) quotes.push({ symbol: s, name: s, display: s, price: yahoo.price, change: yahoo.change, sparkline: yahoo.sparkline });
+    const meta = MARKET_META.get(s);
+    if (yahoo) quotes.push({ symbol: s, name: meta?.name || s, display: meta?.display || s, price: yahoo.price, change: yahoo.change, sparkline: yahoo.sparkline });
     await sleep(150);
   }
 
@@ -2759,24 +2756,35 @@ async function seedTokenPanels() {
   return total;
 }
 
-async function seedAllMarketData() {
+let _marketSeedRun = null;
+
+function seedAllMarketData() {
+  if (_marketSeedRun) {
+    console.warn('[Market] Prior seed still running — joining it instead of starting an overlapping refresh');
+    return _marketSeedRun;
+  }
+  _marketSeedRun = seedAllMarketDataOnce().finally(() => { _marketSeedRun = null; });
+  return _marketSeedRun;
+}
+
+async function seedAllMarketDataOnce() {
   const t0 = Date.now();
-  // Equity gate (#4922d): weekends/holidays skip the stocks fetch+publish.
+  // Equity gate (#4922d): shared dead days skip the stocks fetch+publish.
   // Crypto (24/7), commodities, gulf, ETF and token panels are untouched.
   let q = 0;
   let equitySkipped = false;
-  if (!isUsEquityTradingDay()) {
+  if (!isMultiMarketEquityTradingDay()) {
     equitySkipped = await maintainClosedMarketEquityKeys();
     if (equitySkipped) {
       if (!_equityGateLoggedClosed) {
-        console.log(`[Market] US market closed (session=${getUsEquitySession()}) — skipping equity fetch, extended TTL on last-good keys`);
+        console.log(`[Market] Tracked equity markets closed (US session=${getUsEquitySession()}) — skipping equity fetch, extended TTL on last-good keys`);
         _equityGateLoggedClosed = true;
       }
     } else {
-      console.warn('[Market] US market closed but last-good equity keys missing — fetching anyway');
+      console.warn('[Market] Tracked equity markets closed but last-good equity keys missing — fetching anyway');
     }
   } else if (_equityGateLoggedClosed) {
-    console.log(`[Market] US market session now ${getUsEquitySession()} — resuming equity fetch`);
+    console.log(`[Market] Tracked equity refresh resumed (US session=${getUsEquitySession()})`);
     _equityGateLoggedClosed = false;
   }
   if (!equitySkipped) q = await seedMarketQuotes();
