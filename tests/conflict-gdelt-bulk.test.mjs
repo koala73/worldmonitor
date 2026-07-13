@@ -141,7 +141,7 @@ test('fetchGdeltBulkConflictEvents verifies the manifest and returns mapped even
   const manifest = `${zip.length} ${md5} http://data.gdeltproject.org/gdeltv2/20260713110000.export.CSV.zip\n`;
   const requests = [];
   const responses = [
-    new Response(manifest, { headers: { 'content-length': String(Buffer.byteLength(manifest)) } }),
+    new Response(manifest, { status: 206, headers: { 'content-length': String(Buffer.byteLength(manifest)) } }),
     new Response(zip, { headers: { 'content-length': String(zip.length) } }),
   ];
   const fetchImpl = async (url, options) => {
@@ -164,7 +164,7 @@ test('fetchGdeltBulkConflictEvents fails closed on checksum mismatch', async () 
   const csv = gdeltRow();
   const zip = makeStoredZip('20260713110000.export.CSV', csv);
   const manifest = `${zip.length} 00000000000000000000000000000000 http://data.gdeltproject.org/gdeltv2/20260713110000.export.CSV.zip\n`;
-  const responses = [new Response(manifest), new Response(zip)];
+  const responses = [new Response(manifest, { status: 206 }), new Response(zip)];
 
   await assert.rejects(
     fetchGdeltBulkConflictEvents({ fetchImpl: async () => responses.shift() }),
@@ -181,7 +181,7 @@ test('fetchGdeltBulkConflictEvents reports the newest successful export when a l
     `${zip.length} 00000000000000000000000000000000 http://data.gdeltproject.org/gdeltv2/20260713111500.export.CSV.zip`,
   ].join('\n');
   const fetchImpl = async (url) => String(url).endsWith('masterfilelist.txt')
-    ? new Response(manifest)
+    ? new Response(manifest, { status: 206 })
     : new Response(zip);
 
   const result = await fetchGdeltBulkConflictEvents({ fetchImpl });
@@ -194,7 +194,14 @@ test('fetchGdeltBulkConflictEvents reports the newest successful export when a l
 test('fetchGdeltBulkConflictEvents bounds streamed responses without content-length', async () => {
   const oversizedManifest = 'x'.repeat(16_385);
   await assert.rejects(
-    fetchGdeltBulkConflictEvents({ fetchImpl: async () => new Response(oversizedManifest) }),
+    fetchGdeltBulkConflictEvents({ fetchImpl: async () => new Response(oversizedManifest, { status: 206 }) }),
     /GDELT bulk response exceeds 16384 bytes/,
+  );
+});
+
+test('fetchGdeltBulkConflictEvents rejects a manifest response that ignores the suffix range', async () => {
+  await assert.rejects(
+    fetchGdeltBulkConflictEvents({ fetchImpl: async () => new Response('full manifest') }),
+    /expected HTTP 206, got 200/,
   );
 });

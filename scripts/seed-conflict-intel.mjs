@@ -284,8 +284,8 @@ export async function fetchGdeltConflictEvents({
         events: bulk.events,
         pagination: {
           countriesTotal: CONFLICT_COUNTRIES.length,
-          countriesSucceeded: CONFLICT_COUNTRIES.length,
-          countriesFailed: 0,
+          countriesSucceeded: successfulCountries,
+          countriesFailed: failedCountries.length,
           minSuccessfulCountries: GDELT_MIN_SUCCESSFUL_COUNTRIES,
           exportTimestamp: bulk.exportTimestamp,
           exportsRequested: bulk.exportsRequested,

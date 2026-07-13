@@ -145,12 +145,38 @@ test('fetchGdeltConflictEvents recovers from a throttled DOC sweep with the bulk
   assert.equal(result.events.length, 1);
   assert.equal(result.events[0].country, 'Sudan');
   assert.equal(result.pagination.countriesTotal, Object.keys(GDELT_COUNTRY_NAMES).length);
-  assert.equal(result.pagination.countriesSucceeded, Object.keys(GDELT_COUNTRY_NAMES).length);
-  assert.equal(result.pagination.countriesFailed, 0);
+  assert.equal(result.pagination.countriesSucceeded, 0);
+  assert.equal(result.pagination.countriesFailed, Object.keys(GDELT_COUNTRY_NAMES).length);
   assert.equal(result.pagination.exportTimestamp, '20260713110000');
   assert.equal(result.pagination.exportsRequested, 8);
   assert.equal(result.pagination.exportsSucceeded, 8);
   assert.equal(result.pagination.countriesWithEvents, 1);
+});
+
+test('fetchGdeltConflictEvents preserves partial DOC coverage telemetry after bulk recovery', async () => {
+  let calls = 0;
+  const result = await fetchGdeltConflictEvents({
+    pace: async () => {},
+    fetchCountryEvents: async (cc) => {
+      calls += 1;
+      return calls <= GDELT_MIN_SUCCESSFUL_COUNTRIES
+        ? { country: cc, ok: true, events: [] }
+        : { country: cc, ok: false, events: [], error: 'HTTP 429' };
+    },
+    fetchBulkEvents: async () => ({
+      events: [{ id: 'gdelt-event-partial-doc', country: 'Sudan' }],
+      exportTimestamp: '20260713110000',
+      exportsRequested: 8,
+      exportsSucceeded: 8,
+    }),
+  });
+
+  assert.equal(result.source, 'gdelt-bulk');
+  assert.equal(result.pagination.countriesSucceeded, GDELT_MIN_SUCCESSFUL_COUNTRIES);
+  assert.equal(
+    result.pagination.countriesFailed,
+    Object.keys(GDELT_COUNTRY_NAMES).length - GDELT_MIN_SUCCESSFUL_COUNTRIES,
+  );
 });
 
 // #5140: the sweep's worst case (20 countries × direct+proxy retries ÷ 4

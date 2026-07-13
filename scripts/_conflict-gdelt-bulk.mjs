@@ -163,12 +163,15 @@ export function mapGdeltExportToConflictEvents(csv) {
   return events;
 }
 
-async function fetchBoundedBuffer(fetchImpl, url, maxBytes, extraHeaders = {}) {
+async function fetchBoundedBuffer(fetchImpl, url, maxBytes, expectedStatus, extraHeaders = {}) {
   const response = await fetchImpl(url, {
     headers: { Accept: '*/*', 'User-Agent': USER_AGENT, ...extraHeaders },
     signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
   });
   if (!response.ok) throw new Error(`GDELT bulk HTTP ${response.status} for ${url}`);
+  if (expectedStatus && response.status !== expectedStatus) {
+    throw new Error(`GDELT bulk expected HTTP ${expectedStatus}, got ${response.status} for ${url}`);
+  }
   const declaredLength = Number(response.headers.get('content-length'));
   if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
     throw new Error(`GDELT bulk response exceeds ${maxBytes} bytes`);
@@ -191,6 +194,7 @@ export async function fetchGdeltBulkConflictEvents({ fetchImpl = globalThis.fetc
     fetchImpl,
     GDELT_MASTER_FILELIST_URL,
     MASTER_TAIL_BYTES,
+    206,
     { Range: `bytes=-${MASTER_TAIL_BYTES}` },
   );
   const descriptors = parseGdeltRecentExports(manifestBytes.toString('utf8'));
