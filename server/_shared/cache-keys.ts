@@ -82,6 +82,7 @@ export const CLIMATE_CO2_MONITORING_KEY = 'climate:co2-monitoring:v1';
 export const CLIMATE_OCEAN_ICE_KEY = 'climate:ocean-ice:v1';
 export const CLIMATE_NEWS_KEY = 'climate:news-intelligence:v1';
 export const HEALTH_AIR_QUALITY_KEY = 'health:air-quality:v1';
+export const CHINA_COVERAGE_HEALTH_KEY = 'health:china-coverage:v1';
 
 export const ENERGY_MIX_KEY_PREFIX = 'energy:mix:v1:';
 export const ENERGY_EXPOSURE_INDEX_KEY = 'energy:exposure:v1:index';

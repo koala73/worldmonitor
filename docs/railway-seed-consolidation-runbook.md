@@ -291,9 +291,9 @@ All new services share these settings:
 | **Start command** | `node scripts/seed-bundle-health.mjs` |
 | **Cron schedule** | `0 */1 * * *` (hourly) |
 | **Watch paths** | `scripts/**`, `shared/**` |
-| **Replaces** | 4 services |
+| **Replaces** | 4 services plus the China control-plane evaluator |
 | **Net savings** | 3 slots |
-| **Members** | Air Quality (hourly), Disease Outbreaks (daily), VPD Tracker (daily), Displacement (daily) |
+| **Members** | China Coverage (hourly), Air Quality (hourly), Disease Outbreaks (daily), VPD Tracker (daily), Displacement (daily) |
 
 ### Bundle 10: seed-bundle-market-backup
 

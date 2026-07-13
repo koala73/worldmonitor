@@ -17,6 +17,7 @@ const RESILIENCE_INTERVAL_SCORE_MIN = 0;
 const RESILIENCE_INTERVAL_SCORE_MAX = 100;
 
 const SEED_DOMAINS = {
+  'health:china-coverage':    { key: 'seed-meta:health:china-coverage',    intervalMin: 60, activationKey: 'seed-activated:health:china-coverage' },
   // Phase 1 — Snapshot endpoints
   'seismology:earthquakes':   { key: 'seed-meta:seismology:earthquakes',   intervalMin: 15 },
   'wildfire:fires':           { key: 'seed-meta:wildfire:fires',           intervalMin: 60 },
