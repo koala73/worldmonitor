@@ -12,6 +12,25 @@ import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.js';
 
 export const config = { runtime: 'edge' };
 
+// HTTP responses stay `no-store`, but the expensive Redis-wide verdict is
+// shared briefly at the origin. At the measured browser poll rate this turns
+// ~390 Redis commands per request into one GET, plus one sweep per minute.
+const HEALTH_VERDICT_SNAPSHOT_KEY = 'health:verdict:v1';
+const HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS = 60;
+const HEALTH_VERDICT_SNAPSHOT_TTL_MS = HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS * 1_000;
+const HEALTH_VERDICT_REFRESH_LOCK_KEY = `${HEALTH_VERDICT_SNAPSHOT_KEY}:refresh-lock`;
+// The sweep can consume its full 8s timeout, followed by a 4s failure-log read
+// and 4s snapshot write. Keep the lease comfortably above that worst case.
+const HEALTH_VERDICT_REFRESH_LOCK_TTL_SECONDS = 30;
+const HEALTH_VERDICT_REFRESH_WAIT_ATTEMPTS = 45;
+const HEALTH_VERDICT_REFRESH_WAIT_MS = 10_000;
+const HEALTH_VERDICT_RELEASE_LOCK_SCRIPT = [
+  "if redis.call('get', KEYS[1]) == ARGV[1] then",
+  "  return redis.call('del', KEYS[1])",
+  'end',
+  'return 0',
+].join('\n');
+
 // Iran-events domain sunset (war ended 2026-07). Default OFF everywhere; set
 // IRAN_EVENTS_ENABLED=true to restore the whole domain. Mirrors the backend
 // *_ENABLED env idiom (server/worldmonitor/resilience/v1/_shared.ts).
@@ -865,6 +884,70 @@ const STATUS_COUNTS = {
   EMPTY_DATA: 'crit',
 };
 
+function parseHealthVerdictSnapshot(raw, now) {
+  if (typeof raw !== 'string') return null;
+  const snapshot = parseRedisValue(raw);
+  if (!snapshot || typeof snapshot !== 'object') return null;
+  if (typeof snapshot.status !== 'string' || typeof snapshot.checkedAt !== 'string') return null;
+  if (!snapshot.summary || typeof snapshot.summary !== 'object') return null;
+  if (!snapshot.checks || typeof snapshot.checks !== 'object') return null;
+
+  const checkedAtMs = Date.parse(snapshot.checkedAt);
+  const ageMs = now - checkedAtMs;
+  // Redis expiry is the primary bound; this is a defensive guard against a
+  // malformed/manual snapshot write or a future TTL regression.
+  if (!Number.isFinite(checkedAtMs) || ageMs < 0 || ageMs > HEALTH_VERDICT_SNAPSHOT_TTL_MS) return null;
+  return snapshot;
+}
+
+async function releaseHealthVerdictRefreshLock(lockToken) {
+  if (!lockToken) return;
+  await redisPipeline([[
+    'EVAL',
+    HEALTH_VERDICT_RELEASE_LOCK_SCRIPT,
+    '1',
+    HEALTH_VERDICT_REFRESH_LOCK_KEY,
+    lockToken,
+  ]], 4_000).catch(() => null);
+}
+
+function healthResponseBody(snapshot, compact) {
+  const body = {
+    status: snapshot.status,
+    summary: snapshot.summary,
+    checkedAt: snapshot.checkedAt,
+  };
+
+  if (!compact) {
+    body.checks = snapshot.checks;
+    return body;
+  }
+
+  const problems = {};
+  for (const [name, check] of Object.entries(snapshot.checks)) {
+    if (check.status !== 'OK' && check.status !== 'OK_CASCADE') problems[name] = check;
+  }
+  if (Object.keys(problems).length > 0) body.problems = problems;
+  return body;
+}
+
+function healthResponse(snapshot, compact, headers) {
+  let responseHeaders = headers;
+  if (compact) {
+    const { 'CF-Cache-Status': _bypassMarker, ...base } = headers;
+    responseHeaders = {
+      ...base,
+      'Cache-Control': 'no-store, max-age=0',
+      'CDN-Cache-Control': 'no-store',
+    };
+  }
+
+  return new Response(JSON.stringify(healthResponseBody(snapshot, compact), null, compact ? 0 : 2), {
+    status: 200,
+    headers: responseHeaders,
+  });
+}
+
 export default async function handler(req, ctx) {
   if (isDisallowedOrigin(req)) {
     return new Response('Forbidden', { status: 403 });
@@ -950,6 +1033,80 @@ export default async function handler(req, ctx) {
 
   const now = Date.now();
 
+  // A snapshot hit is one Redis command instead of the ~390-command registry
+  // sweep below. A failed snapshot read is a real Redis outage, not a cache
+  // miss: returning 503 preserves UptimeRobot's hard-down signal.
+  let refreshLockToken = null;
+  let ownsSnapshotRefreshLock = false;
+  try {
+    if (!getRedisCredentials()) throw new Error('Redis not configured');
+    const snapshotResult = await redisPipeline([['GET', HEALTH_VERDICT_SNAPSHOT_KEY]], 4_000);
+    if (!snapshotResult) throw new Error('Redis request failed');
+    if (snapshotResult[0]?.error) throw new Error('Redis snapshot read failed');
+    const cachedSnapshot = parseHealthVerdictSnapshot(snapshotResult[0]?.result, Date.now());
+    if (cachedSnapshot) return healthResponse(cachedSnapshot, compact, headers);
+
+    refreshLockToken = `${now}:${crypto.randomUUID()}`;
+    let lockResult = await redisPipeline([[
+      'SET',
+      HEALTH_VERDICT_REFRESH_LOCK_KEY,
+      refreshLockToken,
+      'EX',
+      String(HEALTH_VERDICT_REFRESH_LOCK_TTL_SECONDS),
+      'NX',
+    ]], 4_000);
+    if (!lockResult || lockResult[0]?.error) throw new Error('Redis snapshot lock failed');
+    ownsSnapshotRefreshLock = lockResult[0]?.result === 'OK';
+
+    if (!ownsSnapshotRefreshLock) {
+      // Another edge invocation is already refreshing. Wait briefly for its
+      // snapshot instead of multiplying the ~390-command sweep during a cold
+      // burst. If the holder dies, retry SET NX until its lease expires; only
+      // a lock owner may proceed to the sweep.
+      const waitDeadline = Date.now() + HEALTH_VERDICT_REFRESH_WAIT_MS;
+      for (
+        let attempt = 0;
+        attempt < HEALTH_VERDICT_REFRESH_WAIT_ATTEMPTS && Date.now() < waitDeadline;
+        attempt++
+      ) {
+        const backoffMs = Math.min(100 * (2 ** attempt), 1_000);
+        const jitterMs = Math.floor(Math.random() * 50);
+        const sleepMs = Math.min(backoffMs + jitterMs, Math.max(0, waitDeadline - Date.now()));
+        await new Promise((resolve) => setTimeout(resolve, sleepMs));
+        const remainingMs = waitDeadline - Date.now();
+        if (remainingMs <= 0) break;
+        const redisTimeoutMs = Math.min(4_000, remainingMs);
+        const refreshedResult = await redisPipeline([['GET', HEALTH_VERDICT_SNAPSHOT_KEY]], redisTimeoutMs);
+        if (!refreshedResult || refreshedResult[0]?.error) throw new Error('Redis snapshot wait failed');
+        const refreshedSnapshot = parseHealthVerdictSnapshot(refreshedResult[0]?.result, Date.now());
+        if (refreshedSnapshot) return healthResponse(refreshedSnapshot, compact, headers);
+
+        lockResult = await redisPipeline([[
+          'SET',
+          HEALTH_VERDICT_REFRESH_LOCK_KEY,
+          refreshLockToken,
+          'EX',
+          String(HEALTH_VERDICT_REFRESH_LOCK_TTL_SECONDS),
+          'NX',
+        ]], redisTimeoutMs);
+        if (!lockResult || lockResult[0]?.error) throw new Error('Redis snapshot lock retry failed');
+        ownsSnapshotRefreshLock = lockResult[0]?.result === 'OK';
+        if (ownsSnapshotRefreshLock) break;
+      }
+      // Redis stayed reachable but another refresher held the lock through our
+      // request budget. Fall back to one direct sweep rather than mislabeling
+      // healthy Redis as REDIS_DOWN. This path is bounded and should be rare;
+      // the normal cold-burst path still permits only the elected owner.
+    }
+  } catch (err) {
+    if (ownsSnapshotRefreshLock) await releaseHealthVerdictRefreshLock(refreshLockToken);
+    return jsonResponse({
+      status: 'REDIS_DOWN',
+      error: err.message,
+      checkedAt: new Date(now).toISOString(),
+    }, 503, headers);
+  }
+
   const allDataKeys = [
     ...Object.values(BOOTSTRAP_KEYS),
     ...Object.values(STANDALONE_KEYS),
@@ -972,6 +1129,7 @@ export default async function handler(req, ctx) {
     results = await redisPipeline(commands, 8_000);
     if (!results) throw new Error('Redis request failed');
   } catch (err) {
+    if (ownsSnapshotRefreshLock) await releaseHealthVerdictRefreshLock(refreshLockToken);
     // REDIS_DOWN is the one hard-down state that returns 503: with Redis
     // unreachable the endpoint can assess nothing, so a plain HTTP-status
     // monitor (UptimeRobot, k8s probe, LB) must see a failure. DEGRADED/
@@ -1050,8 +1208,6 @@ export default async function handler(req, ctx) {
   else if (critCount / totalChecks <= 0.03) overall = 'DEGRADED';
   else overall = 'UNHEALTHY';
 
-  const httpStatus = 200;
-
   if (overall !== 'HEALTHY') {
     // problemKeys includes seedAgeMin for the snapshot (useful for post-mortem),
     // but the dedupe signature uses only key:status (no age) so a long STALE_SEED
@@ -1100,7 +1256,7 @@ export default async function handler(req, ctx) {
     if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(clear);
   }
 
-  const body = {
+  const snapshot = {
     status: overall,
     summary: {
       total: totalChecks,
@@ -1116,47 +1272,38 @@ export default async function handler(req, ctx) {
       crit: critCount,
     },
     checkedAt: new Date(now).toISOString(),
+    checks,
   };
 
-  if (!compact) {
-    body.checks = checks;
-  } else {
-    const problems = {};
-    for (const [name, check] of Object.entries(checks)) {
-      if (check.status !== 'OK' && check.status !== 'OK_CASCADE') problems[name] = check;
-    }
-    if (Object.keys(problems).length > 0) body.problems = problems;
-  }
+  // Await the write so the next request cannot race an unstarted background
+  // SET and repeat the full sweep. A write failure does not invalidate the
+  // live verdict just computed; the next request will retry by sweeping.
+  const snapshotWriteResult = await redisPipeline([
+    [
+      'SET',
+      HEALTH_VERDICT_SNAPSHOT_KEY,
+      JSON.stringify(snapshot),
+      'EX',
+      String(HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS),
+    ],
+  ], 4_000).catch(() => null);
+  const snapshotWriteFailed = !snapshotWriteResult || snapshotWriteResult[0]?.error;
+  if (ownsSnapshotRefreshLock) await releaseHealthVerdictRefreshLock(refreshLockToken);
+  // A failed cache write does not invalidate the live verdict. Releasing only
+  // this request's token lets the next caller retry immediately without ever
+  // deleting a successor's lock after a slow sweep outlives its lease.
+  if (snapshotWriteFailed) console.warn('[health] verdict snapshot write failed');
 
   // Compact is the public keyless form polled by external uptime MONITORS, so it
   // must NEVER be edge-cached: the prior `s-maxage=60` (#4907, to collapse
   // dashboard-tab polling) let a shared CDN entry pin a stale WARNING that kept
   // UptimeRobot reading "down" long AFTER the seed recovered (2026-07-07 — the
   // literal `?cb=*cachebuster*` was a constant, so it never busted the entry).
-  // no-store guarantees a monitor sees live recovery on its very next poll. The
-  // origin cost is one 196-key Redis pipeline per request — cheap — so losing
-  // the per-tab poll-collapse is a non-issue. All other responses already carry
-  // the no-store defaults from `headers` (a cached 401 pins an auth failure; a
-  // cached 503 masks REDIS_DOWN recovery).
-  let responseHeaders = headers;
-  if (compact) {
-    const { 'CF-Cache-Status': _bypassMarker, ...base } = headers;
-    responseHeaders = {
-      ...base,
-      // no-store so no CDN or browser ever serves a stale health verdict to a
-      // monitor. Deliberately NOT `public` — `public, no-store` is a
-      // self-contradictory signal (RFC 9111 §5.2.2.5: no-store wins, but a
-      // non-compliant proxy could read `public` as permission to cache — the
-      // exact bug class this closes).
-      'Cache-Control': 'no-store, max-age=0',
-      'CDN-Cache-Control': 'no-store',
-    };
-  }
-
-  return new Response(JSON.stringify(body, null, compact ? 0 : 2), {
-    status: httpStatus,
-    headers: responseHeaders,
-  });
+  // no-store guarantees that Redis reachability is checked on every request;
+  // only the verdict payload is reused, for at most 60 seconds. All other
+  // responses already carry the no-store defaults from `headers` (a cached
+  // 401 pins an auth failure; a cached 503 masks REDIS_DOWN recovery).
+  return healthResponse(snapshot, compact, headers);
 }
 
 // Test-only exports. Not part of the public edge handler surface — Vercel's
@@ -1172,6 +1319,10 @@ export const __testing__ = {
   // instead of STRLEN (tests/health-list-data-keys.test.mjs).
   LIST_DATA_KEYS,
   dataLenCommand,
+  HEALTH_VERDICT_SNAPSHOT_KEY,
+  HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS,
+  HEALTH_VERDICT_REFRESH_LOCK_KEY,
+  parseHealthVerdictSnapshot,
   // U7 (Tier 3 parity test): exposed for tests/mcp-bootstrap-parity.test.mjs
   // to walk the canonical seeded-data inventory. Both consts are unexported
   // at module scope by design — this is the test-only escape hatch.
