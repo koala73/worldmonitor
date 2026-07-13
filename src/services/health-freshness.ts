@@ -64,6 +64,10 @@ function statusRank(status: string): number {
     case 'OK_CASCADE':
       return 1;
     case 'OK':
+    // An optional source adapter this deployment never configured. Ranks with OK
+    // on purpose: it is not a degradation, so it must never outrank a real signal
+    // when picking the worst status for a data source.
+    case 'NOT_CONFIGURED':
       return 0;
     default:
       return 0;

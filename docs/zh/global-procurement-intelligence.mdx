@@ -44,6 +44,8 @@ Railway 种子任务每小时运行一次，并把规范快照写入 `economic:g
 
 官方步骤和请求限制见 [GSA Get Opportunities Public API 指南](https://open.gsa.gov/api/get-opportunities-public-api/)。TED、Contracts Finder、CanadaBuys、GETS 和世界银行无需 API 密钥。若未配置 `SAM_GOV_API_KEY`，只有 SAM 来源会显示为 `unavailable`，其他适配器仍会正常运行。
 
+不配置 SAM 是受支持的状态，而非降级：`/api/health` 会将该来源报告为 [`NOT_CONFIGURED`](/docs/health-endpoints)（绿色，不计入 `problems`），而不是错误。因此，从未申请 GSA 密钥的部署仍会得到干净的健康端点。添加密钥后，下一次种子运行即自动转为 `OK`，无需修改任何健康配置。
+
 ## API
 
 `GET /api/economic/v1/list-global-tenders` 仅向 Pro 开放、有意采用分页，且**不会**进入启动批量载荷。它支持 `country`、重复的 `countries`、`region`、`source`、`status`、`buyer`、`published_from`、`published_to`、`deadline_from`、`deadline_to`、`min_value`、`max_value`、`currency`、`category`、`query`、`page_size`、`cursor` 和 `sort`。

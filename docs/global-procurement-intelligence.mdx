@@ -44,6 +44,8 @@ Only the U.S. SAM.gov adapter needs a new credential:
 
 The official setup and request-limit details are in the [GSA Get Opportunities Public API guide](https://open.gsa.gov/api/get-opportunities-public-api/). TED, Contracts Finder, CanadaBuys, GETS, and World Bank do not require API keys. If `SAM_GOV_API_KEY` is absent, only the SAM source reports `unavailable`; the other adapters continue normally.
 
+Leaving SAM unconfigured is a supported state, not a degradation: `/api/health` reports that source as [`NOT_CONFIGURED`](/docs/health-endpoints) (green, excluded from `problems`) rather than as an error, so a deployment that never obtains a GSA key still reports a clean health endpoint. Adding the key flips it to `OK` on the next seed run with no health-config change.
+
 ## API
 
 `GET /api/economic/v1/list-global-tenders` is Pro-gated, deliberately paginated, and is **not** part of the bootstrap payload. It supports `country`, repeated `countries`, `region`, `source`, `status`, `buyer`, `published_from`, `published_to`, `deadline_from`, `deadline_to`, `min_value`, `max_value`, `currency`, `category`, `query`, `page_size`, `cursor`, and `sort`.
