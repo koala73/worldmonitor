@@ -54,5 +54,7 @@ message GetChinaMacroSnapshotResponse {
   repeated ChinaMacroIndicator indicators = 7;
   repeated ChinaMacroSourceDecision source_decisions = 8;
   repeated ChinaReleaseEvent release_events = 9;
+  // True when the seeded snapshot or release calendar is unavailable; callers
+  // should render the response as degraded rather than treating it as current.
   bool unavailable = 10;
 }

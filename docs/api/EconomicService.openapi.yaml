@@ -3433,6 +3433,9 @@ components:
                         $ref: '#/components/schemas/ChinaReleaseEvent'
                 unavailable:
                     type: boolean
+                    description: |-
+                        True when the seeded snapshot or release calendar is unavailable; callers
+                         should render the response as degraded rather than treating it as current.
         ChinaMacroIndicator:
             type: object
             properties:
