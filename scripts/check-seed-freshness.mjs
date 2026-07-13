@@ -41,7 +41,7 @@ async function main() {
   const payload = await response.json();
   const staleSeeds = findStaleSeedProblems(payload);
   if (staleSeeds.length === 0) {
-    console.log(`Seed freshness healthy at ${payload.checkedAt || 'unknown time'}: no STALE_SEED checks.`);
+    console.log(`Seed freshness healthy at ${payload.checkedAt || 'unknown time'}: no STALE_SEED problems.`);
     return;
   }
 

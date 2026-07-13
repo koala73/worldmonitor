@@ -48,6 +48,8 @@ describe('scheduled seed freshness monitor', () => {
 
     assert.match(workflow, /schedule:/);
     assert.match(workflow, /cron:\s*['"]\*\/15 \* \* \* \*['"]/);
+    assert.match(workflow, /actions\/setup-node@[a-f0-9]+/);
+    assert.match(workflow, /node-version:\s*['"]24['"]/);
     assert.match(workflow, /context\s*==\s*"gate"/);
     assert.match(workflow, /gate_state.*success/s);
     assert.match(workflow, /node scripts\/check-seed-freshness\.mjs/);
