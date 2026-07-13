@@ -96,9 +96,13 @@ export class GlobalProcurementPanel extends Panel {
 
   public update(data: ListGlobalTendersResponse, append = false): void {
     this.loading = false;
-    this.data = append && this.data
-      ? { ...data, tenders: [...this.data.tenders, ...data.tenders] }
-      : data;
+    if (append && this.data) {
+      const tenders = new Map(this.data.tenders.map((tender) => [tender.id, tender]));
+      data.tenders.forEach((tender) => tenders.set(tender.id, tender));
+      this.data = { ...data, tenders: [...tenders.values()] };
+    } else {
+      this.data = data;
+    }
     this.setCount(this.data.total);
     this.render();
   }

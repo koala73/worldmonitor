@@ -1,4 +1,4 @@
-import iso3ToIso2 from '../shared/iso3-to-iso2.json' with { type: 'json' };
+import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 
 const TECHNOLOGY_TERMS = [
   ['artificial intelligence', 'AI'], ['machine learning', 'machine learning'], ['cybersecurity', 'cybersecurity'],
