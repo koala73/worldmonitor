@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, loadSharedConfig, sleep, CHROME_UA, runSeed, parseYahooChart, writeExtraKey, extendExistingTtl, readCanonicalEnvelopeMeta, writeFreshnessMetadata } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, sleep, CHROME_UA, runSeed, parseYahooChart, writeExtraKey, extendExistingTtl, readCanonicalEnvelopeMeta, readSeedSnapshot, writeFreshnessMetadata } from './_seed-utils.mjs';
 import { fetchYahooJson } from './_yahoo-fetch.mjs';
 import { fetchAvBulkQuotes } from './_shared-av.mjs';
 import { getUsEquitySession, isMultiMarketEquityTradingDay } from './shared/market-hours.cjs';
+import { mergeLastGoodQuotes } from './shared/market-quote-refresh.cjs';
 
 const stocksConfig = loadSharedConfig('stocks.json');
 
@@ -47,6 +48,7 @@ async function fetchYahooQuote(symbol) {
 }
 
 async function fetchMarketQuotes() {
+  const previousPayloadPromise = readSeedSnapshot(CANONICAL_KEY);
   const quotes = [];
   const avKey = process.env.ALPHA_VANTAGE_API_KEY;
   const finnhubKey = process.env.FINNHUB_API_KEY;
@@ -97,8 +99,14 @@ async function fetchMarketQuotes() {
     throw new Error('All market quote fetches failed');
   }
 
+  const previousPayload = await previousPayloadPromise;
+  const previousQuotes = Array.isArray(previousPayload?.quotes) ? previousPayload.quotes : [];
+  const mergedQuotes = mergeLastGoodQuotes(MARKET_SYMBOLS, quotes, previousQuotes);
+  const retainedCount = mergedQuotes.length - quotes.length;
+  if (retainedCount > 0) console.log(`  [last-good] Retained ${retainedCount} quotes missing from this refresh`);
+
   return {
-    quotes,
+    quotes: mergedQuotes,
     finnhubSkipped: !finnhubKey && !avKey,
     skipReason: (!finnhubKey && !avKey) ? 'ALPHA_VANTAGE_API_KEY and FINNHUB_API_KEY not configured' : '',
     rateLimited: false,

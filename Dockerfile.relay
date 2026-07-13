@@ -39,6 +39,9 @@ COPY scripts/shared/notification-dedup.cjs ./scripts/shared/notification-dedup.c
 # market-hours.cjs gates the equity portion of the relay market seed loop on
 # the US-equity session (#4922d). Missing it = ERR_MODULE_NOT_FOUND at startup.
 COPY scripts/shared/market-hours.cjs ./scripts/shared/market-hours.cjs
+# market-quote-refresh.cjs prevents partial upstream success from shrinking the
+# bootstrap basket and bounds Yahoo fallback cadence.
+COPY scripts/shared/market-quote-refresh.cjs ./scripts/shared/market-quote-refresh.cjs
 # closed-market-equity-maintenance.cjs keeps the closed-market TTL refresh
 # logic importable/testable for ais-relay.cjs. Missing it = startup crash.
 COPY scripts/shared/closed-market-equity-maintenance.cjs ./scripts/shared/closed-market-equity-maintenance.cjs
