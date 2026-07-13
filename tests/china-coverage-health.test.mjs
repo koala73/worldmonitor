@@ -91,6 +91,11 @@ describe('China coverage manifest', () => {
       CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === 'aviation.china-hubs')?.transport.key,
       'seed-meta:aviation:intl',
     );
+    assert.equal(
+      CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === 'aviation.china-hubs')?.launchStatus,
+      'planned',
+      'synthetic bootstrap alert rows are not truthful provider coverage',
+    );
   });
 
   it('builds a read-only Redis audit pipeline', () => {
@@ -142,6 +147,53 @@ describe('China coverage manifest', () => {
       counts: {},
     }).reason, 'SUMMARY_INVALID');
     assert.equal(healthTesting.projectChinaCoverageStatus(projected('healthy'), true).status, 'REDIS_PARTIAL');
+
+    const staleHealthy = healthTesting.composeChinaCoverageStatus(
+      { status: 'STALE_SEED', records: 14, seedAgeMin: 181 },
+      projected('healthy'),
+    );
+    assert.equal(staleHealthy.status, 'STALE_SEED');
+    assert.equal(staleHealthy.chinaStatus, 'healthy');
+    assert.equal(staleHealthy.seedStatus, 'STALE_SEED');
+
+    const staleUnavailable = healthTesting.composeChinaCoverageStatus(
+      { status: 'STALE_SEED', records: 14, seedAgeMin: 181 },
+      projected('unavailable'),
+    );
+    assert.equal(staleUnavailable.status, 'CHINA_UNAVAILABLE');
+    assert.equal(staleUnavailable.seedStatus, 'STALE_SEED');
+
+    const failedDegraded = healthTesting.composeChinaCoverageStatus(
+      { status: 'SEED_ERROR', records: 14 },
+      projected('degraded'),
+    );
+    assert.equal(failedDegraded.status, 'CHINA_DEGRADED');
+    assert.equal(failedDegraded.seedStatus, 'SEED_ERROR');
+
+    const missing = healthTesting.composeChinaCoverageStatus(
+      { status: 'EMPTY', records: 0 },
+      projected('healthy'),
+    );
+    assert.deepEqual(missing, { status: 'EMPTY', records: 0 });
+  });
+
+  it('does not count synthetic aviation bootstrap filler as launched China coverage', () => {
+    const aviation = CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === 'aviation.china-hubs');
+    const alerts = ['PEK', 'PVG', 'CAN', 'HKG'].map((iata) => ({
+      iata,
+      severity: 'FLIGHT_DELAY_SEVERITY_NORMAL',
+      updatedAt: NOW,
+    }));
+    const result = evaluate(
+      aviation,
+      { 'aviation:delays-bootstrap:v2': { alerts } },
+      { 'seed-meta:aviation:intl': { fetchedAt: NOW, status: 'ok' } },
+    );
+
+    assert.equal(result.entries[0].launchStatus, 'planned');
+    assert.equal(result.entries[0].status, 'planned');
+    assert.equal(result.counts.launched, 0);
+    assert.equal(result.counts.planned, 1);
   });
 
   it('fails read-only audits cleanly on missing credentials and partial pipelines', async () => {

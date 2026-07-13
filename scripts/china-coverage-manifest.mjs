@@ -148,7 +148,11 @@ export const CHINA_COVERAGE_ENTRIES = Object.freeze([
     id: 'aviation.china-hubs',
     label: 'China aviation hubs',
     ownerIssue: 5273,
-    launchStatus: 'launched',
+    // The current bootstrap fills every monitored IATA with NORMAL/UNKNOWN
+    // presentation rows, so alerts[] presence is not provider-coverage proof.
+    // Keep this lane planned until issue #5273's per-hub coverage[] contract is
+    // merged and the manifest can require normal/disruption provider statuses.
+    launchStatus: 'planned',
     transport: metaTransport('seed-meta:aviation:intl', 90),
     content: {
       key: 'aviation:delays-bootstrap:v2',

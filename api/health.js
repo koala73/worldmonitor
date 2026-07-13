@@ -1008,6 +1008,23 @@ function projectChinaCoverageStatus(raw, readError = false) {
   };
 }
 
+function composeChinaCoverageStatus(entry, raw, readError = false) {
+  if (!entry || !['OK', 'STALE_SEED', 'SEED_ERROR'].includes(entry.status)) return entry;
+
+  const seedStatus = entry.status;
+  const projected = projectChinaCoverageStatus(raw, readError);
+  if (seedStatus === 'OK') return { ...entry, ...projected };
+
+  // Preserve writer-health failures when the last summary was healthy, but do
+  // not let a stale/error seed downgrade a known China content outage from
+  // critical to warning. For degraded/unavailable summaries, surface the
+  // content verdict and retain the independent writer signal as seedStatus.
+  if (projected.status === 'OK') {
+    return { ...entry, ...projected, status: seedStatus, seedStatus };
+  }
+  return { ...entry, ...projected, seedStatus };
+}
+
 function parseHealthVerdictSnapshot(raw, now) {
   if (typeof raw !== 'string') return null;
   const snapshot = parseRedisValue(raw);
@@ -1310,8 +1327,8 @@ export default async function handler(req, ctx) {
     for (const [name, redisKey] of Object.entries(registry)) {
       totalChecks++;
       let entry = classifyKey(name, redisKey, opts, classifyCtx);
-      if (name === 'chinaCoverage' && entry.status === 'OK') {
-        entry = { ...entry, ...projectChinaCoverageStatus(chinaCoverageRaw, Boolean(chinaCoverageResult?.error)) };
+      if (name === 'chinaCoverage') {
+        entry = composeChinaCoverageStatus(entry, chinaCoverageRaw, Boolean(chinaCoverageResult?.error));
       }
       checks[name] = entry;
       const bucket = STATUS_COUNTS[entry.status] ?? 'warn';
@@ -1455,6 +1472,7 @@ export const __testing__ = {
   HEALTH_VERDICT_REFRESH_WAIT_MS,
   CHINA_COVERAGE_SUMMARY_KEY,
   projectChinaCoverageStatus,
+  composeChinaCoverageStatus,
   healthVerdictRedisKey,
   parseHealthVerdictSnapshot,
   // U7 (Tier 3 parity test): exposed for tests/mcp-bootstrap-parity.test.mjs
