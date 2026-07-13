@@ -9,10 +9,45 @@ const NEWS_LANGUAGES = new Set([
   'sv', 'ru', 'ar', 'fa', 'zh', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi',
 ]);
 const NEWS_QUERY_KEYS = new Set(['variant', 'lang', 'public']);
-const DISPLACEMENT_PUBLIC_SEARCH = '?flow_limit=50&public=1';
+// Exact raw-query contract (no leading `?`): exactly one public displacement shape,
+// so the CDN key space stays at one entry. Compared against the raw search string —
+// order- and encoding-sensitive by design (see stripRouterInjectedRpcEcho).
+const DISPLACEMENT_PUBLIC_SEARCH = 'flow_limit=50&public=1';
 
 function hasSingleValue(params: URLSearchParams, key: string): boolean {
   return params.getAll(key).length === 1;
+}
+
+/**
+ * Vercel serves these routes through `api/<domain>/v1/[rpc].ts` and its filesystem router
+ * echoes the matched segment back as `?rpc=<lastPathSegment>`. The function therefore
+ * sees a query the caller never sent, which fails the exhaustive shape checks below
+ * and silently 401'd every public RPC in production (#5285). `server/_shared/
+ * mcp-internal-hmac.ts` strips the same echo before signing, for the same reason.
+ *
+ * Returns the RAW search string (no leading `?`) with the echo removed. Raw, not a
+ * re-serialised URLSearchParams, because the displacement contract is an exact-string
+ * compare: re-encoding would normalise `flow_limit=%35%30` into `flow_limit=50` and
+ * silently widen the accepted shape.
+ *
+ * Strips `rpc` ONLY when every value equals the final path segment — i.e. only the
+ * router's own echo. A caller-appended `?rpc=<anything-else>` is left in place and
+ * still fails the shape check, so this is not a bypass vector.
+ */
+function stripRouterInjectedRpcEcho(url: URL): string {
+  const raw = url.search.startsWith('?') ? url.search.slice(1) : url.search;
+  if (!raw) return '';
+
+  const segments = url.pathname.split('/').filter(Boolean);
+  const lastSegment = segments[segments.length - 1] ?? '';
+  const echo = `rpc=${lastSegment}`;
+
+  const parts = raw.split('&');
+  const rpcParts = parts.filter((part) => part === 'rpc' || part.startsWith('rpc='));
+  if (rpcParts.length === 0) return raw;
+  if (!rpcParts.every((part) => part === echo)) return raw;
+
+  return parts.filter((part) => part !== echo).join('&');
 }
 
 function hasOnlyKeys(params: URLSearchParams, allowed: Set<string>): boolean {
@@ -41,10 +76,14 @@ export function isPublicSharedRpcRequest(urlLike: string | URL, method = 'GET'):
 
   const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname;
   if (!PUBLIC_SHARED_RPC_PATHS.has(pathname)) return false;
-  if (!hasSingleValue(url.searchParams, 'public') || url.searchParams.get('public') !== '1') return false;
 
-  if (pathname === '/api/news/v1/list-feed-digest') return isNewsDigestShape(url.searchParams);
-  return url.search === DISPLACEMENT_PUBLIC_SEARCH;
+  // Shape-check the caller's query, not the router's echo of the path segment.
+  const search = stripRouterInjectedRpcEcho(url);
+  const params = new URLSearchParams(search);
+  if (!hasSingleValue(params, 'public') || params.get('public') !== '1') return false;
+
+  if (pathname === '/api/news/v1/list-feed-digest') return isNewsDigestShape(params);
+  return search === DISPLACEMENT_PUBLIC_SEARCH;
 }
 
 export function addPublicSharedRpcMarker(urlLike: string | URL): string {

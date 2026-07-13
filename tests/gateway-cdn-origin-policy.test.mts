@@ -161,6 +161,25 @@ describe('gateway CDN origin policy', () => {
     });
   }
 
+  // Vercel's filesystem router serves these through api/**/[rpc].ts and echoes the
+  // matched segment back as ?rpc=<lastPathSegment>. Production therefore sees a query
+  // the hand-built URLs in these tests never had — which silently 401'd every public
+  // RPC (#5285). server/_shared/mcp-internal-hmac.ts strips the same echo for signing.
+  for (const [path, rpc] of [
+    ['/api/news/v1/list-feed-digest?variant=full&lang=en&public=1', 'list-feed-digest'],
+    ['/api/displacement/v1/get-displacement-summary?flow_limit=50&public=1', 'get-displacement-summary'],
+  ] as const) {
+    it(`CDN-shields the public RPC variant when the router echoes ?rpc=: ${path}`, async () => {
+      const handler = createHandler();
+      const res = await handler(new Request(`https://worldmonitor.app${path}&rpc=${rpc}`, {
+        headers: { Origin: 'https://worldmonitor.app' },
+      }));
+
+      assert.equal(res.status, 200);
+      assert.match(res.headers.get('CDN-Cache-Control') ?? '', /s-maxage=/);
+    });
+  }
+
   it('does not widen the public RPC cache contract to legacy or arbitrary query shapes', async () => {
     const handler = createHandler();
     for (const path of [
@@ -176,6 +195,11 @@ describe('gateway CDN origin policy', () => {
       '/api/displacement/v1/get-displacement-summary?flow_limit=50&public=1&public=1',
       '/api/displacement/v1/get-displacement-summary?public=1&flow_limit=50',
       '/api/displacement/v1/get-displacement-summary?flow_limit=%35%30&public=1',
+      // A caller-supplied ?rpc= that is NOT the router's echo of the final path
+      // segment must still fail the shape check — stripping is not a bypass vector.
+      '/api/news/v1/list-feed-digest?variant=full&lang=en&public=1&rpc=bogus',
+      '/api/displacement/v1/get-displacement-summary?flow_limit=50&public=1&rpc=bogus',
+      '/api/displacement/v1/get-displacement-summary?flow_limit=50&public=1&rpc=list-feed-digest',
     ]) {
       const res = await handler(new Request(`https://worldmonitor.app${path}`, {
         headers: { Origin: 'https://worldmonitor.app' },
