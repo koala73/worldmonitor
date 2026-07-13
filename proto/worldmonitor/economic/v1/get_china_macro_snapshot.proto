@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+message GetChinaMacroSnapshotRequest {}
+
+message ChinaMacroIndicator {
+  string id = 1;
+  string label = 2;
+  string category = 3;
+  double value = 4;
+  bool has_value = 5;
+  double prior_value = 6;
+  bool has_prior_value = 7;
+  string unit = 8;
+  string observation_date = 9;
+  string source = 10;
+  string source_url = 11;
+  bool stale = 12;
+  string unavailable_reason = 13;
+  bool context_only = 14;
+}
+
+message ChinaMacroSourceDecision {
+  string source = 1;
+  string host = 2;
+  string status = 3;
+  string reason = 4;
+  string checked_at = 5;
+  bool optional = 6;
+  int32 request_count = 7;
+}
+
+message ChinaReleaseEvent {
+  string id = 1;
+  string event = 2;
+  string country_code = 3;
+  string release_date = 4;
+  string release_time = 5;
+  string timezone = 6;
+  string kind = 7;
+  string status = 8;
+  string source = 9;
+  string source_url = 10;
+}
+
+message GetChinaMacroSnapshotResponse {
+  string country_code = 1;
+  string generated_at = 2;
+  string status = 3;
+  bool launch_ready = 4;
+  string content_observation_date = 5;
+  string latest_observation_date = 6;
+  repeated ChinaMacroIndicator indicators = 7;
+  repeated ChinaMacroSourceDecision source_decisions = 8;
+  repeated ChinaReleaseEvent release_events = 9;
+  bool unavailable = 10;
+}

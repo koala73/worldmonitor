@@ -81,7 +81,11 @@ describe('China coverage manifest', () => {
 
     assert.equal(
       CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === 'macro.china-snapshot')?.launchStatus,
-      'planned',
+      'launched',
+    );
+    assert.equal(
+      CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === 'macro.china-release-calendar')?.launchStatus,
+      'launched',
     );
     assert.equal(
       CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === 'hazards.hko-warnings')?.launchStatus,

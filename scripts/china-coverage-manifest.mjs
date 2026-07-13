@@ -170,24 +170,26 @@ export const CHINA_COVERAGE_ENTRIES = Object.freeze([
     id: 'macro.china-snapshot',
     label: 'Normalized China macro snapshot',
     ownerIssue: 5275,
-    launchStatus: 'planned',
-    transport: metaTransport('seed-meta:economic:china-macro', 2_160),
+    launchStatus: 'launched',
+    transport: metaTransport('seed-meta:economic:china-macro', 4_320),
     content: {
       key: 'economic:china:macro:v1',
       maxAgeMin: 120 * 1_440,
-      probe: { kind: 'object', timestampPaths: [['observationDate'], ['latestObservationDate']] },
+      // contentObservationDate is the OLDEST required launch indicator, so a
+      // fresh FX tick cannot mask stale price/activity content.
+      probe: { kind: 'object', timestampPaths: [['contentObservationDate']] },
     },
   },
   {
     id: 'macro.china-release-calendar',
     label: 'China release calendar',
     ownerIssue: 5275,
-    launchStatus: 'planned',
-    transport: metaTransport('seed-meta:economic:china-release-calendar', 2_160),
+    launchStatus: 'launched',
+    transport: metaTransport('seed-meta:economic:china-release-calendar', 4_320),
     content: {
       key: 'economic:china:release-calendar:v1',
       maxAgeMin: 45 * 1_440,
-      probe: { kind: 'array-match', path: ['events'], field: 'countryCode', values: ['CN'], timestampPaths: [['releaseDate']] },
+      probe: { kind: 'object', requiredTruthyPaths: [['countryCode'], ['events']], timestampPaths: [['generatedAt']] },
     },
   },
   {

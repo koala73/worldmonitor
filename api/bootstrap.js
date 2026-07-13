@@ -44,6 +44,8 @@ const BOOTSTRAP_CACHE_KEYS = {
   imfGrowth:        'economic:imf:growth:v1',
   imfLabor:         'economic:imf:labor:v1',
   imfExternal:      'economic:imf:external:v1',
+  chinaMacro:       'economic:china:macro:v1',
+  chinaReleaseCalendar: 'economic:china:release-calendar:v1',
   // plan 2026-04-25-004 Phase 2 (financialSystemExposure data keys):
   // intentionally NOT added here. The 3 new keys
   // (economic:wb-external-debt:v1, economic:bis-lbs:v1,
@@ -147,7 +149,7 @@ const BOOTSTRAP_CACHE_KEYS = {
 const SLOW_KEYS = new Set([
   'bisPolicy', 'bisExchange', 'bisCredit',
   'bisDsr', 'bisPropertyResidential', 'bisPropertyCommercial',
-  'imfMacro', 'imfGrowth', 'imfLabor', 'imfExternal', 'minerals', 'giving',
+  'imfMacro', 'imfGrowth', 'imfLabor', 'imfExternal', 'chinaMacro', 'chinaReleaseCalendar', 'minerals', 'giving',
   'sectors', 'etfFlows', 'wildfires', 'climateAnomalies', 'climateDisasters', 'co2Monitoring', 'oceanIce', 'climateNews',
   'radiationWatch', 'thermalEscalation', 'crossSourceSignals',
   'cyberThreats', 'techReadiness', 'progressData', 'renewableEnergy',

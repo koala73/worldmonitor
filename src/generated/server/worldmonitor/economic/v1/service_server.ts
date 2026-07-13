@@ -142,6 +142,62 @@ export interface MacroMeta {
   qqqSparkline: number[];
 }
 
+export interface GetChinaMacroSnapshotRequest {
+}
+
+export interface GetChinaMacroSnapshotResponse {
+  countryCode: string;
+  generatedAt: string;
+  status: string;
+  launchReady: boolean;
+  contentObservationDate: string;
+  latestObservationDate: string;
+  indicators: ChinaMacroIndicator[];
+  sourceDecisions: ChinaMacroSourceDecision[];
+  releaseEvents: ChinaReleaseEvent[];
+  unavailable: boolean;
+}
+
+export interface ChinaMacroIndicator {
+  id: string;
+  label: string;
+  category: string;
+  value: number;
+  hasValue: boolean;
+  priorValue: number;
+  hasPriorValue: boolean;
+  unit: string;
+  observationDate: string;
+  source: string;
+  sourceUrl: string;
+  stale: boolean;
+  unavailableReason: string;
+  contextOnly: boolean;
+}
+
+export interface ChinaMacroSourceDecision {
+  source: string;
+  host: string;
+  status: string;
+  reason: string;
+  checkedAt: string;
+  optional: boolean;
+  requestCount: number;
+}
+
+export interface ChinaReleaseEvent {
+  id: string;
+  event: string;
+  countryCode: string;
+  releaseDate: string;
+  releaseTime: string;
+  timezone: string;
+  kind: string;
+  status: string;
+  source: string;
+  sourceUrl: string;
+}
+
 export interface GetEnergyCapacityRequest {
   energySources: string[];
   years: number;
@@ -820,6 +876,7 @@ export interface EconomicServiceHandler {
   listWorldBankIndicators(ctx: ServerContext, req: ListWorldBankIndicatorsRequest): Promise<ListWorldBankIndicatorsResponse>;
   getEnergyPrices(ctx: ServerContext, req: GetEnergyPricesRequest): Promise<GetEnergyPricesResponse>;
   getMacroSignals(ctx: ServerContext, req: GetMacroSignalsRequest): Promise<GetMacroSignalsResponse>;
+  getChinaMacroSnapshot(ctx: ServerContext, req: GetChinaMacroSnapshotRequest): Promise<GetChinaMacroSnapshotResponse>;
   getEnergyCapacity(ctx: ServerContext, req: GetEnergyCapacityRequest): Promise<GetEnergyCapacityResponse>;
   getBisPolicyRates(ctx: ServerContext, req: GetBisPolicyRatesRequest): Promise<GetBisPolicyRatesResponse>;
   getBisExchangeRates(ctx: ServerContext, req: GetBisExchangeRatesRequest): Promise<GetBisExchangeRatesResponse>;
@@ -1013,6 +1070,43 @@ export function createEconomicServiceRoutes(
 
           const result = await handler.getMacroSignals(ctx, body);
           return new Response(JSON.stringify(result as GetMacroSignalsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/economic/v1/get-china-macro-snapshot",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetChinaMacroSnapshotRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getChinaMacroSnapshot(ctx, body);
+          return new Response(JSON.stringify(result as GetChinaMacroSnapshotResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

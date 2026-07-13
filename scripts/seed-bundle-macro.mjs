@@ -3,6 +3,10 @@ import { runBundle, HOUR, DAY } from './_bundle-runner.mjs';
 
 await runBundle('macro', [
   { label: 'BIS-Data', script: 'seed-bis-data.mjs', seedMetaKey: 'economic:bis', canonicalKey: 'economic:bis:policy:v1', intervalMs: 12 * HOUR, timeoutMs: 300_000 },
+  // OECD is capped at 60 downloads/hour. Each China macro run performs two
+  // consolidated dataflow requests, and the 36h gate stays far below budget.
+  { label: 'China-Macro', script: 'seed-china-macro.mjs', seedMetaKey: 'economic:china-macro', canonicalKey: 'economic:china:macro:v1', intervalMs: 36 * HOUR, timeoutMs: 240_000 },
+  { label: 'China-Release-Calendar', script: 'seed-china-release-calendar.mjs', seedMetaKey: 'economic:china-release-calendar', canonicalKey: 'economic:china:release-calendar:v1', intervalMs: 36 * HOUR, timeoutMs: 240_000 },
   { label: 'BIS-Extended', script: 'seed-bis-extended.mjs', seedMetaKey: 'economic:bis-extended', canonicalKey: 'economic:bis:dsr:v1', intervalMs: 12 * HOUR, timeoutMs: 300_000 },
   { label: 'BLS-Series', script: 'seed-bls-series.mjs', seedMetaKey: 'economic:bls-series', canonicalKey: 'bls:series:v1', intervalMs: DAY, timeoutMs: 120_000 },
   { label: 'Eurostat', script: 'seed-eurostat-country-data.mjs', seedMetaKey: 'economic:eurostat-country-data', canonicalKey: 'economic:eurostat-country-data:v1', intervalMs: DAY, timeoutMs: 300_000 },

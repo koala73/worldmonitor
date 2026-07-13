@@ -438,6 +438,95 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/economic/v1/get-china-macro-snapshot:
+        get:
+            tags:
+                - EconomicService
+            summary: GetChinaMacroSnapshot
+            description: |-
+                GetChinaMacroSnapshot reads the normalized China macro and official release
+                 calendar seeds. It never fans out to upstream providers on a cache miss.
+            operationId: GetChinaMacroSnapshot
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "contentObservationDate": "2026-01-15"
+                                "countryCode": "US"
+                                "generatedAt": "2026-01-15T12:00:00Z"
+                                "indicators":
+                                    - "category": "cs.AI"
+                                      "contextOnly": true
+                                      "hasPriorValue": true
+                                      "hasValue": true
+                                      "id": "example-id"
+                                "latestObservationDate": "40.7128"
+                            schema:
+                                $ref: '#/components/schemas/GetChinaMacroSnapshotResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
     /api/economic/v1/get-energy-capacity:
         get:
             tags:
@@ -3313,6 +3402,111 @@ components:
                         format: double
                         description: Last 30 QQQ close prices for sparkline.
             description: MacroMeta contains supplementary chart data.
+        GetChinaMacroSnapshotRequest:
+            type: object
+        GetChinaMacroSnapshotResponse:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                generatedAt:
+                    type: string
+                status:
+                    type: string
+                launchReady:
+                    type: boolean
+                contentObservationDate:
+                    type: string
+                latestObservationDate:
+                    type: string
+                indicators:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ChinaMacroIndicator'
+                sourceDecisions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ChinaMacroSourceDecision'
+                releaseEvents:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ChinaReleaseEvent'
+                unavailable:
+                    type: boolean
+        ChinaMacroIndicator:
+            type: object
+            properties:
+                id:
+                    type: string
+                label:
+                    type: string
+                category:
+                    type: string
+                value:
+                    type: number
+                    format: double
+                hasValue:
+                    type: boolean
+                priorValue:
+                    type: number
+                    format: double
+                hasPriorValue:
+                    type: boolean
+                unit:
+                    type: string
+                observationDate:
+                    type: string
+                source:
+                    type: string
+                sourceUrl:
+                    type: string
+                stale:
+                    type: boolean
+                unavailableReason:
+                    type: string
+                contextOnly:
+                    type: boolean
+        ChinaMacroSourceDecision:
+            type: object
+            properties:
+                source:
+                    type: string
+                host:
+                    type: string
+                status:
+                    type: string
+                reason:
+                    type: string
+                checkedAt:
+                    type: string
+                optional:
+                    type: boolean
+                requestCount:
+                    type: integer
+                    format: int32
+        ChinaReleaseEvent:
+            type: object
+            properties:
+                id:
+                    type: string
+                event:
+                    type: string
+                countryCode:
+                    type: string
+                releaseDate:
+                    type: string
+                releaseTime:
+                    type: string
+                timezone:
+                    type: string
+                kind:
+                    type: string
+                status:
+                    type: string
+                source:
+                    type: string
+                sourceUrl:
+                    type: string
         GetEnergyCapacityRequest:
             type: object
             properties:

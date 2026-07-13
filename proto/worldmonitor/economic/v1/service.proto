@@ -7,6 +7,7 @@ import "worldmonitor/economic/v1/get_fred_series.proto";
 import "worldmonitor/economic/v1/list_world_bank_indicators.proto";
 import "worldmonitor/economic/v1/get_energy_prices.proto";
 import "worldmonitor/economic/v1/get_macro_signals.proto";
+import "worldmonitor/economic/v1/get_china_macro_snapshot.proto";
 import "worldmonitor/economic/v1/get_energy_capacity.proto";
 import "worldmonitor/economic/v1/get_bis_policy_rates.proto";
 import "worldmonitor/economic/v1/get_bis_exchange_rates.proto";
@@ -54,6 +55,12 @@ service EconomicService {
   // GetMacroSignals computes 7 macro signals from 6 upstream sources with BUY/CASH verdict.
   rpc GetMacroSignals(GetMacroSignalsRequest) returns (GetMacroSignalsResponse) {
     option (sebuf.http.config) = {path: "/get-macro-signals", method: HTTP_METHOD_GET};
+  }
+
+  // GetChinaMacroSnapshot reads the normalized China macro and official release
+  // calendar seeds. It never fans out to upstream providers on a cache miss.
+  rpc GetChinaMacroSnapshot(GetChinaMacroSnapshotRequest) returns (GetChinaMacroSnapshotResponse) {
+    option (sebuf.http.config) = {path: "/get-china-macro-snapshot", method: HTTP_METHOD_GET};
   }
 
   // GetEnergyCapacity retrieves installed capacity data (solar, wind, coal) from EIA.

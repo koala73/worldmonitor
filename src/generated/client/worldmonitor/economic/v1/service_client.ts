@@ -142,6 +142,62 @@ export interface MacroMeta {
   qqqSparkline: number[];
 }
 
+export interface GetChinaMacroSnapshotRequest {
+}
+
+export interface GetChinaMacroSnapshotResponse {
+  countryCode: string;
+  generatedAt: string;
+  status: string;
+  launchReady: boolean;
+  contentObservationDate: string;
+  latestObservationDate: string;
+  indicators: ChinaMacroIndicator[];
+  sourceDecisions: ChinaMacroSourceDecision[];
+  releaseEvents: ChinaReleaseEvent[];
+  unavailable: boolean;
+}
+
+export interface ChinaMacroIndicator {
+  id: string;
+  label: string;
+  category: string;
+  value: number;
+  hasValue: boolean;
+  priorValue: number;
+  hasPriorValue: boolean;
+  unit: string;
+  observationDate: string;
+  source: string;
+  sourceUrl: string;
+  stale: boolean;
+  unavailableReason: string;
+  contextOnly: boolean;
+}
+
+export interface ChinaMacroSourceDecision {
+  source: string;
+  host: string;
+  status: string;
+  reason: string;
+  checkedAt: string;
+  optional: boolean;
+  requestCount: number;
+}
+
+export interface ChinaReleaseEvent {
+  id: string;
+  event: string;
+  countryCode: string;
+  releaseDate: string;
+  releaseTime: string;
+  timezone: string;
+  kind: string;
+  status: string;
+  source: string;
+  sourceUrl: string;
+}
+
 export interface GetEnergyCapacityRequest {
   energySources: string[];
   years: number;
@@ -920,6 +976,29 @@ export class EconomicServiceClient {
     }
 
     return await resp.json() as GetMacroSignalsResponse;
+  }
+
+  async getChinaMacroSnapshot(_req: GetChinaMacroSnapshotRequest, options?: EconomicServiceCallOptions): Promise<GetChinaMacroSnapshotResponse> {
+    let path = "/api/economic/v1/get-china-macro-snapshot";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetChinaMacroSnapshotResponse;
   }
 
   async getEnergyCapacity(req: GetEnergyCapacityRequest, options?: EconomicServiceCallOptions): Promise<GetEnergyCapacityResponse> {

@@ -2169,7 +2169,7 @@
       "infoTooltip": "<strong>Live Webcams</strong> Live feeds from geopolitically significant locations worldwide: conflict zones, capital cities, border crossings, and strategic chokepoints. Streams sourced from YouTube and public networks."
     },
     "macroTiles": {
-      "infoTooltip": "<strong>Macro Indicators</strong> Key macroeconomic indicators for the US and Euro Area: CPI, unemployment, GDP, and central bank rates. Values shown with prior period delta. Source: FRED (Federal Reserve Economic Data)."
+      "infoTooltip": "<strong>Macro Indicators</strong> Key macroeconomic indicators for the US, Euro Area, and China. China appears only when current price, activity, policy, and FX coverage passes the launch gate; each China tile keeps its source and observation date visible. Sources: FRED, Eurostat, ECB, OECD, BIS, and HKMA."
     },
     "monitors": {
       "infoTooltip": "<strong>Keyword Monitors</strong> Add any term to track live news mentions across all WorldMonitor sources. Results update in real time as matching articles are ingested."

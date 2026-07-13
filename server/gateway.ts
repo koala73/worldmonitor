@@ -320,6 +320,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/market/v1/get-hyperliquid-flow': 'medium',
   '/api/market/v1/get-insider-transactions': 'slow',
   '/api/economic/v1/get-economic-calendar': 'slow',
+  '/api/economic/v1/get-china-macro-snapshot': 'slow',
   '/api/intelligence/v1/list-market-implications': 'slow',
   '/api/economic/v1/get-ecb-fx-rates': 'slow',
   '/api/economic/v1/get-eurostat-country-data': 'slow',

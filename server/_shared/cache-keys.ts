@@ -83,6 +83,8 @@ export const CLIMATE_OCEAN_ICE_KEY = 'climate:ocean-ice:v1';
 export const CLIMATE_NEWS_KEY = 'climate:news-intelligence:v1';
 export const HEALTH_AIR_QUALITY_KEY = 'health:air-quality:v1';
 export const CHINA_COVERAGE_HEALTH_KEY = 'health:china-coverage:v1';
+export const CHINA_MACRO_KEY = 'economic:china:macro:v1';
+export const CHINA_RELEASE_CALENDAR_KEY = 'economic:china:release-calendar:v1';
 
 export const ENERGY_MIX_KEY_PREFIX = 'energy:mix:v1:';
 export const ENERGY_EXPOSURE_INDEX_KEY = 'energy:exposure:v1:index';

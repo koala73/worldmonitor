@@ -28,6 +28,7 @@ import { getOilStocksAnalysis } from './get-oil-stocks-analysis';
 import { getOilInventories } from './get-oil-inventories';
 import { getEnergyCrisisPolicies } from './get-energy-crisis-policies';
 import { listGlobalTenders } from './list-global-tenders';
+import { getChinaMacroSnapshot } from './get-china-macro-snapshot';
 
 export const economicHandler: EconomicServiceHandler = {
   getFredSeries,
@@ -58,4 +59,5 @@ export const economicHandler: EconomicServiceHandler = {
   getOilInventories,
   getEnergyCrisisPolicies,
   listGlobalTenders,
+  getChinaMacroSnapshot,
 };

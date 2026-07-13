@@ -1,0 +1,63 @@
+import { strict as assert } from 'node:assert';
+import { describe, it } from 'node:test';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+import {
+  buildLprCandidates,
+  fetchChinaReleaseCalendar,
+  mergeVerifiedLprDates,
+  parseChinaMoneyLprNotices,
+  parseNbsReleaseCalendar,
+} from '../scripts/china-macro/calendar.mjs';
+
+const fixture = (name) => readFileSync(resolve(import.meta.dirname, 'fixtures/china-macro', name), 'utf8');
+
+describe('China official release calendar', () => {
+  it('keeps blank NBS months empty and captures quarterly plus Spring Festival-shifted releases', () => {
+    const events = parseNbsReleaseCalendar(fixture('nbs-calendar.html'), 2026, 'https://www.stats.gov.cn/english/PressRelease/ReleaseCalendar/202512/t20251226_1962154.html');
+    assert.equal(events.some((event) => event.event === 'National Economic Performance' && event.releaseDate.startsWith('2026-02')), false);
+    assert.deepEqual(
+      events.filter((event) => event.event.startsWith('Preliminary Accounting')).map((event) => event.releaseDate),
+      ['2026-01-20', '2026-04-17', '2026-07-16', '2026-10-20'],
+    );
+    assert.ok(events.some((event) => event.event.includes('Purchasing Managers') && event.releaseDate === '2026-03-04'));
+    assert.ok(events.some((event) => event.event.includes('Purchasing Managers') && event.releaseDate === '2026-03-31'));
+  });
+
+  it('moves LPR candidates over weekends and official holidays, then marks only realized dates verified', () => {
+    const candidates = buildLprCandidates(2026);
+    assert.equal(candidates.find((event) => event.releaseDate.startsWith('2026-02')).releaseDate, '2026-02-24');
+    assert.equal(candidates.find((event) => event.releaseDate.startsWith('2026-06')).releaseDate, '2026-06-22');
+    assert.ok(candidates.every((event) => event.status === 'provisional'));
+
+    const realized = parseChinaMoneyLprNotices(JSON.parse(fixture('chinamoney-lpr.json')));
+    const merged = mergeVerifiedLprDates(candidates, realized);
+    assert.equal(merged.find((event) => event.releaseDate === '2026-02-24').status, 'verified');
+    assert.equal(merged.find((event) => event.releaseDate === '2026-06-22').status, 'verified');
+    assert.equal(merged.find((event) => event.releaseDate === '2026-07-20').status, 'provisional');
+  });
+
+  it('records the actual NBS and ChinaMoney preflight request decisions', async () => {
+    const decisions = [];
+    const calendar = await fetchChinaReleaseCalendar({
+      now: Date.parse('2026-07-13T00:00:00Z'),
+      fetchFn: async (url) => {
+        if (String(url).includes('ReleaseCalendar') && !String(url).endsWith('calendar.html')) {
+          return new Response('<a href="calendar.html">2026 release calendar</a>');
+        }
+        if (String(url).endsWith('calendar.html')) return new Response(fixture('nbs-calendar.html'));
+        return new Response(fixture('chinamoney-lpr.json'), { headers: { 'Content-Type': 'application/json' } });
+      },
+      onDecision: (decision) => decisions.push(decision),
+    });
+    assert.ok(calendar.events.length > 0);
+    assert.deepEqual(
+      decisions.map(({ source, status, requestCount }) => ({ source, status, requestCount })),
+      [
+        { source: 'NBS release calendar', status: 'accepted', requestCount: 2 },
+        { source: 'PBoC/ChinaMoney LPR verification', status: 'accepted', requestCount: 1 },
+      ],
+    );
+  });
+});
