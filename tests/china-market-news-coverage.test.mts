@@ -35,19 +35,33 @@ const CHINA_BASKET: StockEntry[] = [
   { symbol: '0857.HK', name: 'PetroChina', display: 'PETROCHINA-H' },
 ];
 
-function clientCategoryBlock(category: string): string {
+const CLIENT_VARIANT_BLOCKS: Record<string, string> = {
+  full: 'FULL_FEEDS',
+  finance: 'FINANCE_FEEDS',
+};
+
+function clientCategoryBlock(variant: string, category: string): string | null {
   const src = readText('src/config/feeds.ts');
+  const variantBlock = CLIENT_VARIANT_BLOCKS[variant];
+  assert.ok(variantBlock, `client variant ${variant} must have a feed block mapping`);
+  const variantMarker = `const ${variantBlock}: Record<string, Feed[]> = {`;
+  const variantStart = src.indexOf(variantMarker);
+  assert.notEqual(variantStart, -1, `client variant block ${variantBlock} must exist`);
+  const variantRest = src.slice(variantStart + variantMarker.length);
+  const nextVariant = variantRest.search(/^const [A-Z_]+_FEEDS:/m);
+  const variantBody = nextVariant === -1 ? variantRest : variantRest.slice(0, nextVariant);
   const marker = `  ${category}: [`;
-  const start = src.indexOf(marker);
-  assert.notEqual(start, -1, `client category ${category} must exist`);
+  const start = variantBody.indexOf(marker);
+  if (start === -1) return null;
   const bodyStart = start + marker.length;
-  const rest = src.slice(bodyStart);
+  const rest = variantBody.slice(bodyStart);
   const nextCategory = rest.search(/^ {2}[A-Za-z][\w-]*:\s*\[/m);
   return nextCategory === -1 ? rest : rest.slice(0, nextCategory);
 }
 
-function clientRouteClass(category: string, name: string): 'google-news' | 'direct' | null {
-  const block = clientCategoryBlock(category);
+function clientRouteClass(variant: string, category: string, name: string): 'google-news' | 'direct' | null {
+  const block = clientCategoryBlock(variant, category);
+  if (!block) return null;
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const match = block.match(new RegExp(`name:\\s*['"]${escaped}['"][^\\n]*url:\\s*([^\\n]+)`));
   if (!match) return null;
@@ -111,11 +125,17 @@ describe('China client/server news digest parity (#5272)', () => {
 
   for (const [name, { variant, category }] of expectedMembership) {
     it(`${name} matches client/server ${variant}.${category} membership and routing class`, () => {
-      const clientRoute = clientRouteClass(category, name);
+      const clientRoute = clientRouteClass(variant, category, name);
       const serverRoute = serverRouteClass(variant, category, name);
       assert.notEqual(clientRoute, null, `${name} must remain in client ${category}`);
       assert.notEqual(serverRoute, null, `${name} must be present in server ${category}`);
       assert.equal(serverRoute, clientRoute, `${name} client/server routing class drifted`);
+      const otherVariant = variant === 'full' ? 'finance' : 'full';
+      assert.equal(
+        clientRouteClass(otherVariant, category, name),
+        null,
+        `${name} must not be found in client ${otherVariant}.${category}`,
+      );
     });
   }
 
