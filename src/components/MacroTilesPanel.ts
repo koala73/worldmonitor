@@ -117,6 +117,24 @@ function chinaTileHtml(indicator: ChinaMacroIndicator): string {
   </div>`;
 }
 
+function normalizeChinaReleaseEvent(entry: unknown): ChinaReleaseEvent {
+  const event = entry && typeof entry === 'object' && !Array.isArray(entry)
+    ? entry as Record<string, unknown>
+    : {};
+  return {
+    id: String(event.id ?? ''),
+    event: String(event.event ?? ''),
+    countryCode: String(event.countryCode ?? ''),
+    releaseDate: String(event.releaseDate ?? ''),
+    releaseTime: String(event.releaseTime ?? ''),
+    timezone: String(event.timezone ?? ''),
+    kind: String(event.kind ?? ''),
+    status: String(event.status ?? ''),
+    source: String(event.source ?? ''),
+    sourceUrl: String(event.sourceUrl ?? ''),
+  };
+}
+
 function normalizeHydratedChina(
   macro: unknown,
   calendar: unknown,
@@ -149,7 +167,7 @@ function normalizeHydratedChina(
     : [];
   const calendarRecord = calendar as Record<string, unknown>;
   const releaseEvents = Array.isArray(calendarRecord.events)
-    ? calendarRecord.events as ChinaReleaseEvent[]
+    ? calendarRecord.events.map(normalizeChinaReleaseEvent)
     : [];
   if (releaseEvents.length === 0) return null;
 

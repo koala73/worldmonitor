@@ -15,6 +15,9 @@ const HOLIDAYS_2026 = new Set([
   '2026-10-01', '2026-10-02', '2026-10-03', '2026-10-04', '2026-10-05', '2026-10-06', '2026-10-07',
 ]);
 const ADJUSTED_WORKDAYS_2026 = new Set(['2026-01-04', '2026-02-14', '2026-02-28', '2026-05-09', '2026-09-20', '2026-10-10']);
+const CHINA_BUSINESS_CALENDARS = new Map([
+  [2026, { holidays: HOLIDAYS_2026, adjustedWorkdays: ADJUSTED_WORKDAYS_2026 }],
+]);
 
 function isoDate(year, month, day) {
   return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
@@ -67,21 +70,28 @@ export function parseNbsReleaseCalendar(html, year, sourceUrl = NBS_CALENDAR_IND
   return events.sort((a, b) => a.releaseDate.localeCompare(b.releaseDate) || a.event.localeCompare(b.event));
 }
 
-function isChinaBusinessDay(date) {
+function businessCalendar(year) {
+  const calendar = CHINA_BUSINESS_CALENDARS.get(year);
+  if (calendar) return calendar;
+  throw Object.assign(new Error(`CHINA_HOLIDAY_CALENDAR_UNAVAILABLE:${year}`), {
+    reason: 'CHINA_HOLIDAY_CALENDAR_UNAVAILABLE',
+  });
+}
+
+function isChinaBusinessDay(date, calendar) {
   const iso = date.toISOString().slice(0, 10);
-  if (date.getUTCFullYear() === 2026) {
-    if (ADJUSTED_WORKDAYS_2026.has(iso)) return true;
-    if (HOLIDAYS_2026.has(iso)) return false;
-  }
+  if (calendar.adjustedWorkdays.has(iso)) return true;
+  if (calendar.holidays.has(iso)) return false;
   const weekday = date.getUTCDay();
   return weekday !== 0 && weekday !== 6;
 }
 
 export function buildLprCandidates(year) {
+  const calendar = businessCalendar(year);
   const events = [];
   for (let month = 0; month < 12; month++) {
     const date = new Date(Date.UTC(year, month, 20));
-    while (!isChinaBusinessDay(date)) date.setUTCDate(date.getUTCDate() + 1);
+    while (!isChinaBusinessDay(date, calendar)) date.setUTCDate(date.getUTCDate() + 1);
     const releaseDate = date.toISOString().slice(0, 10);
     events.push({
       id: `pboc-lpr-${releaseDate.slice(0, 7)}`,
@@ -121,6 +131,7 @@ function sourceDecision(source, host, status, reason, checkedAt, requestCount = 
 }
 
 function reasonFor(error) {
+  if (typeof error?.reason === 'string' && error.reason) return error.reason;
   if (Number.isInteger(error?.status)) return `HTTP_${error.status}`;
   if (error?.name === 'TimeoutError' || /timeout/i.test(String(error?.message))) return 'TIMEOUT';
   return 'FETCH_FAILED';
@@ -175,14 +186,23 @@ export async function fetchChinaReleaseCalendar({
     if (calendarUrl !== NBS_CALENDAR_INDEX_URL) nbsRequestCount += 1;
     const calendarHtml = calendarUrl === NBS_CALENDAR_INDEX_URL ? indexHtml : await fetchText(fetchFn, calendarUrl);
     nbsEvents = parseNbsReleaseCalendar(calendarHtml, year, calendarUrl);
-    if (nbsEvents.length === 0) throw new Error('NO_NBS_EVENTS');
+    if (nbsEvents.length === 0) {
+      throw Object.assign(new Error('NO_NBS_EVENTS'), { reason: 'NO_NBS_EVENTS' });
+    }
     record(sourceDecision('NBS release calendar', 'www.stats.gov.cn', 'accepted', 'OK', checkedAt, nbsRequestCount));
   } catch (error) {
     record(sourceDecision('NBS release calendar', 'www.stats.gov.cn', 'blocked', reasonFor(error), checkedAt, nbsRequestCount));
     throw new Error(`NBS_REQUIRED_SOURCE_UNAVAILABLE:${reasonFor(error)}`);
   }
 
-  let lprEvents = buildLprCandidates(year);
+  let lprEvents = [];
+  try {
+    lprEvents = buildLprCandidates(year);
+  } catch (error) {
+    const reason = reasonFor(error);
+    record(sourceDecision('PBoC/ChinaMoney LPR verification', 'www.chinamoney.com.cn', 'blocked', reason, checkedAt, 0));
+    throw new Error(`LPR_CALENDAR_SOURCE_UNAVAILABLE:${reason}`);
+  }
   try {
     const chinaMoneyNotices = await fetchChinaMoneyNotices(fetchFn);
     lprEvents = mergeVerifiedLprDates(lprEvents, parseChinaMoneyLprNotices(chinaMoneyNotices));

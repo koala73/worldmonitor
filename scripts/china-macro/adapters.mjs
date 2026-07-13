@@ -9,7 +9,7 @@ export const FRED_DEXCHUS_URL = 'https://api.stlouisfed.org/fred/series/observat
 
 const REQUIRED_CATEGORIES = ['price', 'activity', 'policy', 'fx'];
 
-function dateMs(value) {
+export function observationDateMs(value) {
   if (typeof value !== 'string' || !value) return null;
   const month = /^(\d{4})-(\d{2})$/.exec(value);
   const parsed = month
@@ -19,7 +19,7 @@ function dateMs(value) {
 }
 
 function isStale(observationDate, maxAgeDays, now) {
-  const observedAt = dateMs(observationDate);
+  const observedAt = observationDateMs(observationDate);
   return observedAt == null || now - observedAt > maxAgeDays * 86_400_000;
 }
 

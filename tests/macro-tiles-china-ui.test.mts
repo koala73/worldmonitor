@@ -11,6 +11,7 @@ describe('MacroTilesPanel China launch surface', () => {
     assert.match(source, /getHydratedData\('chinaReleaseCalendar'\)/);
     assert.match(source, /launchReady === true/);
     assert.match(source, /client\.getChinaMacroSnapshot\(\{\}\)/);
+    assert.match(source, /calendarRecord\.events\.map\(normalizeChinaReleaseEvent\)/);
   });
 
   it('renders permanently attributed mixed-state China tiles', () => {

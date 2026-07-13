@@ -38,6 +38,29 @@ describe('China official release calendar', () => {
     assert.equal(merged.find((event) => event.releaseDate === '2026-07-20').status, 'provisional');
   });
 
+  it('fails closed when the official holiday calendar has not been configured for the requested year', () => {
+    assert.throws(
+      () => buildLprCandidates(2027),
+      (error) => error?.reason === 'CHINA_HOLIDAY_CALENDAR_UNAVAILABLE',
+    );
+  });
+
+  it('reports an NBS parse failure distinctly from a network failure', async () => {
+    const decisions = [];
+    await assert.rejects(
+      fetchChinaReleaseCalendar({
+        now: Date.parse('2026-07-13T00:00:00Z'),
+        fetchFn: async (url) => {
+          if (String(url).endsWith('calendar.html')) return new Response('<table><tr><td>changed format</td></tr></table>');
+          return new Response('<a href="calendar.html">2026 release calendar</a>');
+        },
+        onDecision: (decision) => decisions.push(decision),
+      }),
+      /NBS_REQUIRED_SOURCE_UNAVAILABLE:NO_NBS_EVENTS/,
+    );
+    assert.equal(decisions[0]?.reason, 'NO_NBS_EVENTS');
+  });
+
   it('records the actual NBS and ChinaMoney preflight request decisions', async () => {
     const decisions = [];
     const calendar = await fetchChinaReleaseCalendar({

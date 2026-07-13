@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { loadEnvFile, runSeed } from './_seed-utils.mjs';
-import { fetchChinaMacroSnapshot } from './china-macro/adapters.mjs';
+import { fetchChinaMacroSnapshot, observationDateMs } from './china-macro/adapters.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -10,11 +10,8 @@ export const CHINA_MACRO_MAX_CONTENT_AGE_MIN = 120 * 24 * 60;
 
 export function chinaMacroContentMeta(snapshot) {
   if (!snapshot?.launchReady || !snapshot.contentObservationDate) return null;
-  const month = /^(\d{4})-(\d{2})$/.exec(snapshot.contentObservationDate);
-  const observedAt = month
-    ? Date.UTC(Number(month[1]), Number(month[2]), 0, 23, 59, 59)
-    : Date.parse(`${snapshot.contentObservationDate}${/^\d{4}-\d{2}-\d{2}$/.test(snapshot.contentObservationDate) ? 'T23:59:59Z' : ''}`);
-  if (!Number.isFinite(observedAt)) return null;
+  const observedAt = observationDateMs(snapshot.contentObservationDate);
+  if (observedAt == null) return null;
   return { newestItemAt: observedAt, oldestItemAt: observedAt };
 }
 
