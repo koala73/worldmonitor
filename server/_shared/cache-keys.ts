@@ -184,7 +184,7 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   radiationWatch:  'radiation:observations:v1',
   thermalEscalation: 'thermal:escalation:v1',
   crossSourceSignals: 'intelligence:cross-source-signals:v1',
-  wildfires:        'wildfire:fires:v1',
+  wildfires:        'wildfire:fires-bootstrap:v1',
   marketQuotes:     'market:stocks-bootstrap:v1',
   commodityQuotes:  'market:commodities-bootstrap:v1',
   cyberThreats:     'cyber:threats-bootstrap:v2',

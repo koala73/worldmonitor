@@ -11,6 +11,7 @@
 
 import { createRouter, type RouteDescriptor } from './router';
 import { getCorsHeaders, isDisallowedOrigin, isAllowedOrigin } from './cors';
+import { isPublicSharedRpcRequest } from '../src/shared/public-rpc-cache';
 // @ts-expect-error — JS module, no declaration file
 import { USER_API_KEY_GATEWAY_VALIDATION_ERROR, validateApiKey } from '../api/_api-key.js';
 // @ts-expect-error — JS module, no declaration file
@@ -1066,7 +1067,14 @@ export function createDomainGateway(
     // entirely: we already resolved the userId via HMAC verify and confirmed
     // tier ≥ 1 + mcpAccess === true. Re-running the JWT path on a request
     // that has no Authorization header would just no-op anyway.
-    const isPublicNoAuthRpc = PUBLIC_NO_AUTH_RPC_PATHS.has(pathname);
+    // Two high-volume, caller-invariant dashboard reads expose an exact
+    // `public=1` URL shape. The marker creates a CDN key separate from the
+    // legacy credentialed URL, which remains session/key gated and no-store.
+    // Classification ignores attached credentials because a Vercel cache hit
+    // happens before this function sees them; the public URL must therefore
+    // have one response contract for every caller.
+    const isPublicNoAuthRpc = PUBLIC_NO_AUTH_RPC_PATHS.has(pathname)
+      || isPublicSharedRpcRequest(request.url, request.method);
     const seedRefreshVerified = await isResilienceRankingSeedRefreshRequest(request, pathname);
     const relayWarmPingVerified = await isRelayWarmPingRequest(request, pathname);
     const requiresDirectLlmQuota = !internalMcpVerified && await shouldReserveGatewayDirectLlmQuota(request, pathname);

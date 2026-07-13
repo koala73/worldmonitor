@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, runSeed, CHROME_UA, sleep } from './_seed-utils.mjs';
+import { compactWildfireDashboardPayload } from '../api/_wildfire-dashboard.js';
 
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'wildfire:fires:v1';
+const BOOTSTRAP_KEY = 'wildfire:fires-bootstrap:v1';
 const FIRMS_SOURCES = ['VIIRS_SNPP_NRT', 'VIIRS_NOAA20_NRT', 'VIIRS_NOAA21_NRT'];
 
 const MONITORED_REGIONS = {
@@ -134,6 +136,11 @@ async function main() {
     ttlSeconds: 7200,
     lockTtlMs: 2_400_000, // 40 min — 27 slots × ~72s worst case (30s timeout + 6s backoff + 30s retry + 6s pace) ≈ 32.4 min; pad headroom. Next cron tick sees lock held and safely skips.
     sourceVersion: FIRMS_SOURCES.join('+'),
+    extraKeys: [{
+      key: BOOTSTRAP_KEY,
+      transform: compactWildfireDashboardPayload,
+      declareRecords,
+    }],
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 360,

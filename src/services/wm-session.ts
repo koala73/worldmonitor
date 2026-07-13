@@ -14,6 +14,7 @@
 
 import { getCanonicalApiOrigin, toApiUrl } from './runtime';
 import { PREMIUM_RPC_PATHS } from '@/shared/premium-paths';
+import { isPublicSharedRpcRequest } from '@/shared/public-rpc-cache';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 
 const STORAGE_KEY = 'wm-session-exp';
@@ -233,7 +234,7 @@ export function isApiCallTarget(url: string, apiOrigin: string): boolean {
   return parsed.origin === apiOrigin && parsed.pathname.startsWith('/api/');
 }
 
-function isCredentiallessPublicTierRequest(
+function isCredentiallessPublicDataRequest(
   input: RequestInfo | URL,
   init: RequestInit | undefined,
   url: string,
@@ -249,7 +250,9 @@ function isCredentiallessPublicTierRequest(
   }
 
   const pathname = parsed.pathname.length > 1 ? parsed.pathname.replace(/\/+$/, '') : parsed.pathname;
-  if (pathname !== '/api/bootstrap') return false;
+  const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
+  if (isPublicSharedRpcRequest(parsed, method)) return true;
+  if (pathname !== '/api/bootstrap' || method.toUpperCase() !== 'GET') return false;
 
   const params = Array.from(parsed.searchParams.keys());
   if (params.some((key) => key !== 'tier' && key !== 'public')) return false;
@@ -306,7 +309,7 @@ export function installWmSessionFetchInterceptor(): void {
     // the interceptor's synthetic 503 prevents the public CDN path from
     // restoring the dashboard. Keep the bypass narrow so arbitrary bootstrap
     // reads cannot opt out of the normal session machinery.
-    if (isCredentiallessPublicTierRequest(input, init, url)) return original(input, init);
+    if (isCredentiallessPublicDataRequest(input, init, url)) return original(input, init);
 
     // Premium routes have a dedicated auth-injection layer
     // (`installWebApiRedirect`'s `enrichInitForPremium` adds Clerk Bearer JWT,

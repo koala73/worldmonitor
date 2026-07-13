@@ -15,6 +15,7 @@ import {
 import { redisPipeline } from './_upstash-json.js';
 import { unwrapEnvelope } from './_seed-envelope.js';
 import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.js';
+import { compactWildfireDashboardPayload } from './_wildfire-dashboard.js';
 
 export const config = { runtime: 'edge' };
 
@@ -66,7 +67,7 @@ const BOOTSTRAP_CACHE_KEYS = {
   radiationWatch: 'radiation:observations:v1',
   thermalEscalation: 'thermal:escalation:v1',
   crossSourceSignals: 'intelligence:cross-source-signals:v1',
-  wildfires:        'wildfire:fires:v1',
+  wildfires:        'wildfire:fires-bootstrap:v1',
   cyberThreats:     'cyber:threats-bootstrap:v2',
   techReadiness:    'economic:worldbank-techreadiness:v1',
   progressData:     'economic:worldbank-progress:v1',
@@ -286,39 +287,7 @@ function hasBootstrapCredentialCookie(req) {
 }
 
 const NEG_SENTINEL = '__WM_NEG__';
-const WILDFIRE_DASHBOARD_DETECTION_LIMIT = 500;
-
-function numeric(value) {
-  const n = Number(value);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function confidenceRank(confidence) {
-  switch (confidence) {
-    case 'FIRE_CONFIDENCE_HIGH': return 3;
-    case 'FIRE_CONFIDENCE_NOMINAL': return 2;
-    case 'FIRE_CONFIDENCE_LOW': return 1;
-    default: return 0;
-  }
-}
-
-function compareFireDetectionsForDashboard(a, b) {
-  return Number(Boolean(b?.possibleExplosion)) - Number(Boolean(a?.possibleExplosion))
-    || confidenceRank(b?.confidence) - confidenceRank(a?.confidence)
-    || numeric(b?.brightness) - numeric(a?.brightness)
-    || numeric(b?.frp) - numeric(a?.frp)
-    || numeric(b?.detectedAt) - numeric(a?.detectedAt);
-}
-
-export function compactWildfireBootstrapPayload(value, limit = WILDFIRE_DASHBOARD_DETECTION_LIMIT) {
-  if (!value || typeof value !== 'object' || !Array.isArray(value.fireDetections)) return value;
-  if (value.fireDetections.length <= limit) return value;
-  return {
-    ...value,
-    fireDetections: [...value.fireDetections].sort(compareFireDetectionsForDashboard).slice(0, limit),
-    pagination: { nextCursor: '', totalCount: value.fireDetections.length },
-  };
-}
+export const compactWildfireBootstrapPayload = compactWildfireDashboardPayload;
 
 async function getCachedJsonBatch(keys) {
   const result = new Map();

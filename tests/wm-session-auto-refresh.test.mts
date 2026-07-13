@@ -445,6 +445,16 @@ describe('wm-session refresh-on-401 (Layer 2)', () => {
       const slow = await wrappedFetch(slowRequest);
       assert.equal(slow.status, 200, 'Request input should preserve its effective omit credentials');
 
+      const digest = await wrappedFetch('https://api.worldmonitor.app/api/news/v1/list-feed-digest?variant=full&lang=en&public=1', {
+        credentials: 'omit',
+      });
+      assert.equal(digest.status, 200, 'public digest should bypass dead-session suppression');
+
+      const displacement = await wrappedFetch('https://api.worldmonitor.app/api/displacement/v1/get-displacement-summary?flow_limit=50&public=1', {
+        credentials: 'omit',
+      });
+      assert.equal(displacement.status, 200, 'public displacement should bypass dead-session suppression');
+
       const missingPublicFlag = await wrappedFetch('https://api.worldmonitor.app/api/bootstrap?tier=fast', {
         credentials: 'omit',
       });
@@ -459,12 +469,14 @@ describe('wm-session refresh-on-401 (Layer 2)', () => {
     }
 
     assert.deepEqual(
-      forwarded.slice(-2),
+      forwarded.slice(-4),
       [
         { url: 'https://api.worldmonitor.app/api/bootstrap?tier=fast&public=1', credentials: 'omit' },
         { url: 'https://api.worldmonitor.app/api/bootstrap?public=1&tier=slow', credentials: 'omit' },
+        { url: 'https://api.worldmonitor.app/api/news/v1/list-feed-digest?variant=full&lang=en&public=1', credentials: 'omit' },
+        { url: 'https://api.worldmonitor.app/api/displacement/v1/get-displacement-summary?flow_limit=50&public=1', credentials: 'omit' },
       ],
-      'only the two explicit public tier requests should reach native fetch during cooldown',
+      'only exact credential-less public data requests should reach native fetch during cooldown',
     );
   });
 

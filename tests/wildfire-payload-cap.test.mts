@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
+import { readFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 
 import { compactWildfireBootstrapPayload } from '../api/bootstrap.js';
@@ -30,6 +31,16 @@ function fireDetection(index: number, overrides: Partial<FireDetection> = {}): F
 }
 
 describe('wildfire dashboard payload cap', () => {
+  it('publishes and hydrates a dedicated pre-compacted bootstrap key', () => {
+    const seeder = readFileSync(new URL('../scripts/seed-fire-detections.mjs', import.meta.url), 'utf8');
+    const bootstrap = readFileSync(new URL('../api/bootstrap.js', import.meta.url), 'utf8');
+
+    assert.match(seeder, /wildfire:fires-bootstrap:v1/);
+    assert.match(seeder, /extraKeys\s*:/);
+    assert.match(bootstrap, /wildfires:\s*'wildfire:fires-bootstrap:v1'/);
+    assert.doesNotMatch(bootstrap, /wildfires:\s*'wildfire:fires:v1'/);
+  });
+
   it('caps response detections without mutating the seed array and keeps highest-signal detections', () => {
     const lowSignal = Array.from({ length: WILDFIRE_DASHBOARD_DETECTION_LIMIT + 25 }, (_, index) =>
       fireDetection(index, {
