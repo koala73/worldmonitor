@@ -152,15 +152,23 @@ describe('server catalog extraction (#4920a)', () => {
     assert.ok(feeds.some((f) => f.name === "Tom's Hardware"), 'double-quoted names must not be skipped');
   });
 
-  it('uses the direct Nature RSS endpoint in both feed catalogs', () => {
-    const directNatureUrl = 'https://www.nature.com/nature.rss?error=cookies_not_supported';
+  it('uses Nature\'s canonical RSS endpoint with the runtime redirect budget', () => {
+    const canonicalNatureUrl = 'https://www.nature.com/nature.rss';
     const natureFeed = extractServerFeeds().find((feed) => feed.name === 'Nature News');
-    assert.equal(natureFeed?.url, directNatureUrl, 'server digest must avoid Nature\'s redirect-heavy legacy URL');
+    assert.equal(natureFeed?.url, canonicalNatureUrl, 'server digest must use Nature\'s canonical RSS URL');
 
     const clientFeeds = readSrc('src/config/feeds.ts');
     assert.ok(
-      clientFeeds.includes(`{ name: 'Nature News', url: rss('${directNatureUrl}') }`),
-      'client catalog must use the same direct Nature RSS endpoint',
+      clientFeeds.includes(`{ name: 'Nature News', url: rss('${canonicalNatureUrl}') }`),
+      'client catalog must use the same canonical Nature RSS endpoint',
+    );
+
+    const validator = readSrc('scripts/validate-rss-feeds.mjs');
+    assert.match(validator, /const MAX_REDIRECTS = 3;/);
+    assert.match(
+      validator,
+      /for \(let redirectCount = 0; redirectCount <= MAX_REDIRECTS; redirectCount\+\+\)/,
+      'CI validator must allow the same three redirects as the runtime RSS proxy',
     );
   });
 });

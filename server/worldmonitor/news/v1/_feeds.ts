@@ -467,7 +467,7 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
     ],
     science: [
       { name: 'ScienceDaily', url: 'https://www.sciencedaily.com/rss/all.xml' },
-      { name: 'Nature News', url: 'https://www.nature.com/nature.rss?error=cookies_not_supported' },
+      { name: 'Nature News', url: 'https://www.nature.com/nature.rss' },
       { name: 'Singularity Hub', url: 'https://singularityhub.com/feed/' },
       { name: 'Human Progress', url: 'https://humanprogress.org/feed/' },
     ],

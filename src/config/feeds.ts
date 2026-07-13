@@ -816,7 +816,7 @@ const HAPPY_FEEDS: Record<string, Feed[]> = {
   science: [
     { name: 'GNN Science', url: rss('https://www.goodnewsnetwork.org/category/news/science/feed/') },
     { name: 'ScienceDaily', url: rss('https://www.sciencedaily.com/rss/all.xml') },
-    { name: 'Nature News', url: rss('https://www.nature.com/nature.rss?error=cookies_not_supported') },
+    { name: 'Nature News', url: rss('https://www.nature.com/nature.rss') },
     { name: 'Live Science', url: rss('https://www.livescience.com/feeds.xml') },
     { name: 'New Scientist', url: rss('https://www.newscientist.com/feed/home/') },
     { name: 'Singularity Hub', url: rss('https://singularityhub.com/feed/') },
