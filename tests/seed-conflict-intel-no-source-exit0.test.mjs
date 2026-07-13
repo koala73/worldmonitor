@@ -24,7 +24,7 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { runSeed, redactProxyCredentials } from '../scripts/_seed-utils.mjs';
+import { runSeed, redactProxyCredentials, curlFetch } from '../scripts/_seed-utils.mjs';
 import { fetchAll, fetchGdeltConflictEvents, CONFLICT_COUNTRIES } from '../scripts/seed-conflict-intel.mjs';
 
 const ORIGINAL_FETCH = globalThis.fetch;
@@ -213,6 +213,77 @@ test('redactProxyCredentials leaves credential-free text untouched', () => {
   assert.equal(redactProxyCredentials(clean), clean);
 });
 
+// The helper tests above are NOT enough: the scrubbing that actually protects us lives in a
+// catch inside curlFetch. PR#5290 review caught that reverting that catch to a bare
+// `throw err` left the whole suite green — the security fix was guarded by nothing. These
+// drive the real branch through curlFetch's `exec` seam.
+
+const PROXY_AUTH = 'spp5user:s3cr3tPassw0rd@us.decodo.com:10001';
+
+// Exactly what Node builds when the curl BINARY exits non-zero: the entire argv in .message,
+// curl's diagnostic in .stderr, and .status set to curl's EXIT CODE (not an HTTP status).
+function execFileSyncFailure({ stderr }) {
+  return () => {
+    throw Object.assign(
+      new Error(
+        'Command failed: curl -sS --compressed --max-time 15 -L '
+        + `-x http://${PROXY_AUTH} -H Accept: application/json `
+        + 'https://api.gdeltproject.org/api/v2/doc/doc?query=x',
+      ),
+      { status: 35, stderr, stdout: '' },
+    );
+  };
+}
+
+function curlFetchExpectingThrow(exec) {
+  try {
+    curlFetch('https://api.gdeltproject.org/api/v2/doc/doc?query=x', PROXY_AUTH, {}, { exec });
+  } catch (err) {
+    return err;
+  }
+  throw new Error('curlFetch should have thrown');
+}
+
+test('curlFetch: a curl-level failure never leaks proxy credentials into the error', () => {
+  const err = curlFetchExpectingThrow(execFileSyncFailure({
+    stderr: 'curl: (35) OpenSSL SSL_connect: SSL_ERROR_SYSCALL in connection to api.gdeltproject.org:443\n',
+  }));
+
+  assert.equal(err.message.includes('s3cr3tPassw0rd'), false, 'password must never reach the logs');
+  assert.equal(err.message.includes('spp5user'), false, 'username must never reach the logs');
+  assert.match(err.message, /^curl failed: /);
+  assert.equal(err.curlFailed, true);
+  assert.match(err.message, /SSL_ERROR_SYSCALL/, "curl's own diagnostic is kept — it is the useful part");
+});
+
+test('curlFetch: credentials are scrubbed even when curl produced no stderr (message fallback)', () => {
+  // The fallback path interpolates err.message — the argv-bearing string itself. If it is
+  // not redacted on the way through, this is where the credentials escape.
+  const err = curlFetchExpectingThrow(execFileSyncFailure({ stderr: '' }));
+
+  assert.equal(err.message.includes('s3cr3tPassw0rd'), false);
+  assert.equal(err.message.includes('spp5user'), false);
+  assert.match(err.message, /\*\*\*:\*\*\*@us\.decodo\.com/, 'redacted, but the proxy host is still named');
+});
+
+test('curlFetch: a curl-level failure must NOT carry .status (it is an exit code, not HTTP)', () => {
+  // _gdelt-fetch.mjs discriminates "upstream returned non-2xx" from "network/curl failure"
+  // purely on `typeof status === 'number'`. execFileSync sets .status to curl's EXIT code
+  // (35 here), so leaking it through made the retry logic read exit-35 as an HTTP status,
+  // miss RETRYABLE_STATUSES, and refuse to retry the proxy — killing the Decodo IP rotation
+  // on exactly the TLS tears it exists to survive.
+  const err = curlFetchExpectingThrow(execFileSyncFailure({ stderr: 'curl: (35) SSL_ERROR_SYSCALL\n' }));
+  assert.equal(err.status, undefined, 'curl exit code must not masquerade as an HTTP status');
+});
+
+test('curlFetch: a genuine non-2xx HTTP response still carries .status (contract intact)', () => {
+  // The other half of the discriminator: when curl SUCCEEDS but the upstream returns 429,
+  // .status must still be set, or the retry logic loses the HTTP case entirely.
+  const err = curlFetchExpectingThrow(() => 'rate limited\n429');
+  assert.equal(err.status, 429);
+  assert.equal(err.curlFailed, undefined, 'an HTTP error is not a curl-level failure');
+});
+
 // ─── GDELT 429-storm: back off instead of hammering ───
 
 test('GDELT 429 storm: sweep aborts after the first all-throttled batch', async () => {
@@ -265,6 +336,33 @@ test('GDELT storm: aborts on a MIXED throttled batch (429 + SSL tear), not just 
   assert.ok(
     attempted.length <= 4,
     `a mixed 429/SSL storm must abort on the first batch too: attempted ${attempted.length}/${CONFLICT_COUNTRIES.length}`,
+  );
+});
+
+test('GDELT storm abort does NOT fire on an all-failed batch with NO rate-limit (SSL/timeout only)', async () => {
+  // PR#5290 review: without this, deleting `anyRateLimited` from the abort condition still
+  // passed every test. It is the clause that distinguishes "we are being throttled — backing
+  // off helps" from "transient per-country network failures — backing off just gives up
+  // early". A pure SSL/timeout wipeout must keep sweeping and let floorUnreachable decide.
+  const attempted = [];
+  await fetchGdeltConflictEvents({
+    fetchCountryEvents: async (cc) => {
+      attempted.push(cc);
+      return {
+        country: cc, ok: false, events: [],
+        error: 'curl failed: curl: (35) OpenSSL SSL_connect: SSL_ERROR_SYSCALL', // no 429 anywhere
+      };
+    },
+    fetchBulkEvents: async () => { throw new Error('bulk unused'); },
+    pace: async () => {},
+    now: () => 0,
+    deadlineAt: 10_000_000,
+    loadPreviousSnapshot: async () => null,
+  }).catch(() => {});
+
+  assert.ok(
+    attempted.length > 4,
+    `a non-throttled wipeout must not be mislabelled a rate-limit storm and cut short: attempted ${attempted.length}`,
   );
 });
 

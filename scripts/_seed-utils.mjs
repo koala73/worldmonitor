@@ -755,18 +755,21 @@ export function resolveProxyForConnect() {
   return resolveProxyStringConnect();
 }
 
-// curl-based fetch; throws on non-2xx. Returns response body as string.
-// NOTE: requires curl binary — available in Dockerfile.relay (apk add curl) and Railway.
-// Prefer httpsProxyFetchJson (pure Node.js) when possible; use curlFetch when curl-specific
-// features are needed (e.g. --compressed, -L redirect following with proxy).
 // Scrub `scheme://user:pass@host` credentials out of anything we surface. Proxy auth
 // strings are the only place seeders carry inline credentials, and they end up embedded
-// in curl argv — see the execFileSync catch below.
+// in curl argv — see the execFileSync catch in curlFetch below.
 export function redactProxyCredentials(text) {
   return String(text ?? '').replace(/(\w+:\/\/)[^/\s:@]+:[^/\s@]+@/g, '$1***:***@');
 }
 
-export function curlFetch(url, proxyAuth, headers = {}) {
+// curl-based fetch; throws on non-2xx. Returns response body as string.
+// NOTE: requires curl binary — available in Dockerfile.relay (apk add curl) and Railway.
+// Prefer httpsProxyFetchJson (pure Node.js) when possible; use curlFetch when curl-specific
+// features are needed (e.g. --compressed, -L redirect following with proxy).
+//
+// `exec` is an injection seam for tests ONLY — the credential scrubbing below lives in a
+// catch around execFileSync, and there is no other way to drive that branch deterministically.
+export function curlFetch(url, proxyAuth, headers = {}, { exec = execFileSync } = {}) {
   const args = ['-sS', '--compressed', '--max-time', '15', '-L'];
   if (proxyAuth) {
     const proxyUrl = /^https?:\/\//i.test(proxyAuth) ? proxyAuth : `http://${proxyAuth}`;
@@ -777,7 +780,7 @@ export function curlFetch(url, proxyAuth, headers = {}) {
   args.push(url);
   let raw;
   try {
-    raw = execFileSync('curl', args, { encoding: 'utf8', timeout: 20000, stdio: ['pipe', 'pipe', 'pipe'] });
+    raw = exec('curl', args, { encoding: 'utf8', timeout: 20000, stdio: ['pipe', 'pipe', 'pipe'] });
   } catch (err) {
     // SECURITY: when curl itself exits non-zero (SSL_ERROR_SYSCALL, "CONNECT tunnel
     // failed", DNS), execFileSync builds an Error whose message is the ENTIRE argv —
@@ -785,6 +788,14 @@ export function curlFetch(url, proxyAuth, headers = {}) {
     // credentials were being written verbatim into Railway logs on every curl-level
     // failure (observed continuously during the 2026-07-13 GDELT 429 storm). Re-throw
     // with curl's own stderr, which names the failure without echoing the command.
+    //
+    // Dropping `.status` is load-bearing, not incidental: execFileSync sets it to curl's
+    // EXIT CODE (35, 56, 7…). _gdelt-fetch.mjs discriminates "upstream returned non-2xx"
+    // from "network/curl failure" purely on `typeof status === 'number'`, so leaking the
+    // exit code through made it read curl exit 35 as an HTTP status, find it absent from
+    // RETRYABLE_STATUSES, and refuse to retry the proxy — defeating the Decodo per-attempt
+    // IP rotation on exactly the TLS tears it exists to survive. Only a genuine HTTP
+    // status may carry `.status`.
     const stderr = redactProxyCredentials(err?.stderr || '').trim().split('\n').filter(Boolean).pop();
     throw Object.assign(
       new Error(`curl failed: ${stderr || redactProxyCredentials(err?.message) || 'unknown error'}`),
