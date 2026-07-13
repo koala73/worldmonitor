@@ -1548,24 +1548,37 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       const keys = [canonicalKey, `seed-meta:${domain}:${resource}`];
       if (extraKeys) keys.push(...extraKeys.map(ek => ek.key));
       const preserved = await extendExistingTtl(keys, ttlSeconds || 600);
+
+      // #5256: the RETRY-FAILED exit below assumes A LATER TICK CAN RESTORE THE DATA. When
+      // the seeder reports it had no usable source at all (primary unconfigured AND every
+      // fallback down), no tick ever can — seed-conflict-intel crash-looped every ~15min
+      // forever, firing "Deploy Crashed!" each time while /api/health already reported the
+      // domain EMPTY/crit. The crash added nothing over health; it only trained us to ignore
+      // the crash channel. Stay green, publish NOTHING (an empty envelope would overwrite
+      // last-good the moment the source blips), and leave the data alarm to /api/health.
+      //
+      // This is deliberately NOT `zeroIsValid`: a seeder must opt in per-run, on the exact
+      // code path where it knows it has no source. A zero-yield run that does not declare
+      // sourceUnavailable is still a dead feed and still exits 1 — #5258 stands.
+      //
+      // Checked BEFORE `preserved`, not inside `!preserved`: the outcome is exit 0 either
+      // way, but an operator must see the REAL reason on every tick. Falling through to the
+      // generic "TTL extended, bundle will retry next cycle" message while last-good is
+      // still alive would hide the no-source condition for however many cycles the keys
+      // survive, and only surface it once they expire.
+      if (data?.sourceUnavailable) {
+        console.warn(
+          `  NO SOURCE: declareRecords returned 0 and no usable upstream was available — published nothing, `
+          + (preserved
+            ? `last-good TTL extended (data still served, but it is no longer being refreshed).`
+            : `and last-good has already expired — /api/health reports ${domain}:${resource} EMPTY.`),
+        );
+        console.log(`\n=== Done (${Math.round(durationMs)}ms, NO SOURCE) ===`);
+        await releaseLock(`${domain}:${resource}`, runId);
+        await exitAfterTelemetryFlush(0);
+      }
+
       if (!preserved) {
-        // #5256: exiting 1 here assumes a LATER TICK CAN RESTORE THE DATA. When the seeder
-        // reports it had no usable source at all (primary unconfigured AND every fallback
-        // down), no tick ever can — seed-conflict-intel crash-looped every ~15min forever,
-        // firing "Deploy Crashed!" each time while /api/health already reported the domain
-        // EMPTY/crit. The crash added nothing over health; it only trained us to ignore the
-        // crash channel. Stay green, publish NOTHING (an empty envelope would overwrite
-        // last-good the moment the source blips), and leave the data alarm to /api/health.
-        //
-        // This is deliberately NOT `zeroIsValid`: a seeder must opt in per-run, on the exact
-        // code path where it knows it has no source. A zero-yield run that does not declare
-        // sourceUnavailable is still a dead feed and still exits 1 — #5258 stands.
-        if (data?.sourceUnavailable) {
-          console.warn(`  NO SOURCE: declareRecords returned 0 and no usable upstream was available — published nothing, last-good left untouched. /api/health reports ${domain}:${resource} EMPTY.`);
-          console.log(`\n=== Done (${Math.round(durationMs)}ms, NO SOURCE) ===`);
-          await releaseLock(`${domain}:${resource}`, runId);
-          await exitAfterTelemetryFlush(0);
-        }
         console.error(`  FAILURE: declareRecords returned 0 and last-good preservation failed — one or more keys are missing or could not be extended`);
         console.log(`\n=== Done (${Math.round(durationMs)}ms, RETRY FAILED) ===`);
         await releaseLock(`${domain}:${resource}`, runId);

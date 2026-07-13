@@ -115,6 +115,36 @@ test('sourceUnavailable never publishes an empty envelope over last-good', async
   );
 });
 
+test('sourceUnavailable while last-good is STILL ALIVE: exits 0 and still says NO SOURCE', async () => {
+  // PR#5290 review (Greptile P2): the outcome is exit 0 whether or not last-good survived,
+  // but the REASON must be visible on every tick. Falling through to the generic
+  // "TTL extended, bundle will retry next cycle" message would hide the no-source condition
+  // for however many cycles the keys survive — an operator would only learn the feed had no
+  // source once it had already gone EMPTY.
+  expireResult = 1; // every key still present — TTL extension succeeds
+
+  const lines = [];
+  const [origLog, origWarn] = [console.log, console.warn];
+  console.log = (...a) => lines.push(a.join(' '));
+  console.warn = (...a) => lines.push(a.join(' '));
+  let exitCode;
+  try {
+    exitCode = await runSeedReturning({ events: [], sourceUnavailable: true }, 'no-source-alive');
+  } finally {
+    console.log = origLog;
+    console.warn = origWarn;
+  }
+  const out = lines.join('\n');
+
+  assert.equal(exitCode, 0);
+  assert.match(out, /NO SOURCE/, 'the no-source reason must be logged even while last-good is alive');
+  assert.match(out, /=== Done \(\d+ms, NO SOURCE\) ===/, 'terminal marker must name the real outcome');
+  assert.doesNotMatch(
+    out, /bundle will retry next cycle/,
+    'the generic RETRY message implies a source may come back — misleading when there is none',
+  );
+});
+
 // ─── #5258 must NOT be weakened ───
 
 test('plain zero-yield with expired last-good STILL exits 1 (#5258 intact)', async () => {
@@ -203,5 +233,61 @@ test('GDELT 429 storm: sweep aborts after the first all-throttled batch', async 
   assert.ok(
     attempted.length <= 4,
     `must stop after the first all-429 batch, not grind the limiter: attempted ${attempted.length}/${CONFLICT_COUNTRIES.length}`,
+  );
+});
+
+test('GDELT storm: aborts on a MIXED throttled batch (429 + SSL tear), not just a uniform one', async () => {
+  // PR#5290 review (Greptile P2): a real storm is rarely uniformly 429 — under load GDELT
+  // also times out and tears TLS. Requiring EVERY result to be a 429 missed that and ground
+  // on for a second batch. The signal is: whole batch failed, nothing succeeded anywhere,
+  // and at least one failure is an explicit rate-limit.
+  const attempted = [];
+  const errors = [
+    'GDELT retries exhausted (last direct: HTTP 429) (last proxy: HTTP 429)',
+    'GDELT retries exhausted (last direct: HTTP 429) (last proxy: HTTP 429)',
+    'GDELT retries exhausted (last direct: HTTP 429) (last proxy: HTTP 429)',
+    'curl failed: curl: (35) OpenSSL SSL_connect: SSL_ERROR_SYSCALL', // no 429 in this one
+  ];
+  const result = await fetchGdeltConflictEvents({
+    fetchCountryEvents: async (cc) => {
+      const error = errors[attempted.length % errors.length];
+      attempted.push(cc);
+      return { country: cc, ok: false, events: [], error };
+    },
+    fetchBulkEvents: async () => { throw new Error('bulk export also throttled'); },
+    pace: async () => {},
+    now: () => 0,
+    deadlineAt: 10_000_000,
+    loadPreviousSnapshot: async () => null,
+  }).catch((e) => e);
+
+  assert.ok(result instanceof Error);
+  assert.ok(
+    attempted.length <= 4,
+    `a mixed 429/SSL storm must abort on the first batch too: attempted ${attempted.length}/${CONFLICT_COUNTRIES.length}`,
+  );
+});
+
+test('GDELT storm abort does NOT fire when a country in the batch succeeds', async () => {
+  // The abort must never cut short a sweep that is actually working. One success in the
+  // batch means we are not being uniformly throttled — keep going.
+  const attempted = [];
+  await fetchGdeltConflictEvents({
+    fetchCountryEvents: async (cc) => {
+      attempted.push(cc);
+      // First country of every batch succeeds; the rest are throttled.
+      if (attempted.length % 4 === 1) return { country: cc, ok: true, events: [{ country: cc, event_date: '2026-07-13' }] };
+      return { country: cc, ok: false, events: [], error: 'HTTP 429' };
+    },
+    fetchBulkEvents: async () => { throw new Error('bulk unused'); },
+    pace: async () => {},
+    now: () => 0,
+    deadlineAt: 10_000_000,
+    loadPreviousSnapshot: async () => null,
+  }).catch(() => {});
+
+  assert.ok(
+    attempted.length > 4,
+    'a batch containing a success must not trip the storm abort',
   );
 });

@@ -277,8 +277,14 @@ export async function fetchGdeltConflictEvents({
     // back throttled with zero successes anywhere, the remaining batches cannot succeed
     // either; they just burn the run window and deepen the limit we are already hitting.
     // (The floor check above would stop us eventually, but only after ~2× the requests.)
-    const rateLimited = results.every(r => !r?.ok && RATE_LIMIT_ERROR.test(String(r?.error ?? '')));
-    if (rateLimited && successfulCountries === 0) {
+    // A throttled batch rarely comes back UNIFORMLY 429: under load GDELT also times out and
+    // tears TLS mid-handshake, so a real storm looks like 3×429 + 1×SSL. Requiring every
+    // result to be a 429 would miss that and grind on for another batch. Trigger on the
+    // honest signal instead — the whole batch failed, nothing has succeeded anywhere, and at
+    // least one failure is an explicit rate-limit.
+    const batchAllFailed = results.every(r => !r?.ok);
+    const anyRateLimited = results.some(r => RATE_LIMIT_ERROR.test(String(r?.error ?? '')));
+    if (batchAllFailed && anyRateLimited && successfulCountries === 0) {
       const why = 'GDELT rate-limit storm (batch fully throttled, 0 successes)';
       for (const cc of remaining.slice(CONCURRENCY)) failedCountries.push({ country: cc, error: why });
       console.warn(`  [GDELT] conflict sweep backed off (${why}) after ${i + batch.length}/${CONFLICT_COUNTRIES.length} countries`);
