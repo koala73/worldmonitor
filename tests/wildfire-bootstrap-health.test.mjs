@@ -35,11 +35,19 @@ test('health monitors the compact wildfire publish independently of canonical fa
   );
   assert.equal(healthy.status, 'OK');
 
-  const missingCompact = classifyKey(
+  const missingBeforeFirstSeed = classifyKey(
     'wildfiresBootstrap',
     BOOTSTRAP_KEYS.wildfiresBootstrap,
     { allowOnDemand: false },
-    makeCtx({ canonicalBytes: 1_360_000, meta: freshMeta }),
+    makeCtx({ canonicalBytes: 1_360_000 }),
   );
-  assert.equal(missingCompact.status, 'EMPTY');
+  assert.equal(missingBeforeFirstSeed.status, 'STALE_SEED');
+
+  const missingCanonical = classifyKey(
+    'wildfires',
+    BOOTSTRAP_KEYS.wildfires,
+    { allowOnDemand: false },
+    makeCtx(),
+  );
+  assert.equal(missingCanonical.status, 'EMPTY');
 });
