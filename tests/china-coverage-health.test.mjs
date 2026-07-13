@@ -72,6 +72,7 @@ describe('China coverage manifest', () => {
       'news.china',
       'aviation.china-hubs',
       'macro.china-snapshot',
+      'macro.china-release-calendar',
       'hazards.western-pacific-cyclones',
       'hazards.hko-warnings',
     ]) {
@@ -194,6 +195,24 @@ describe('China coverage evaluator', () => {
     assert.equal(result.entries[0].transport.status, 'fresh');
     assert.equal(result.entries[0].content.status, 'stale');
     assert.ok(result.entries[0].reasonCodes.includes(CHINA_COVERAGE_REASON_CODES.CONTENT_STALE));
+  });
+
+  it('treats intermediate timestamp-path containers as substantive content', () => {
+    const entry = singleEntry({
+      content: {
+        key: 'data:test',
+        maxAgeMin: 400 * 1_440,
+        probe: { kind: 'object', timestampPaths: [['sources', '*']] },
+      },
+    });
+    const result = evaluate(
+      entry,
+      { 'data:test': { sources: { jodi: '2026-06', eia: '2026-05' } } },
+      { 'seed-meta:test': { fetchedAt: NOW - 5 * 60_000, status: 'ok' } },
+    );
+
+    assert.equal(result.entries[0].content.status, 'fresh');
+    assert.equal(result.entries[0].status, 'healthy');
   });
 
   it('reports partial required coverage with the missing member count', () => {

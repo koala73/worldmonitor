@@ -122,7 +122,9 @@ function evaluateContent(entry, data, now) {
 
   const ignored = new Set([
     cfg.probe.field,
-    ...(cfg.probe.timestampPaths ?? []).flat().filter((part) => part !== '*'),
+    ...(cfg.probe.timestampPaths ?? [])
+      .map((path) => path[path.length - 1])
+      .filter((part) => part && part !== '*'),
   ]);
   if (!probed.rows.some((row) => hasSubstantiveValue(row, ignored))) return { ...result, status: 'empty' };
 
