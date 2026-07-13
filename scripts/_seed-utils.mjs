@@ -1540,9 +1540,12 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     }
 
     // Contract RETRY on empty (no zeroIsValid) — skip publish and preserve the
-    // last-good keys. Exit 0 only when Redis confirms every key was actually
-    // extended; otherwise the data is already gone (or preservation could not
-    // be verified), so a green process would hide a live outage indefinitely.
+    // last-good keys. Exit 0 when Redis confirms every key was actually extended;
+    // otherwise the data is already gone (or preservation could not be verified), so a
+    // green process would hide a live outage indefinitely — EXCEPT when the seeder
+    // declared `sourceUnavailable`, which also exits 0 (see #5256 below: with no source
+    // configured, no retry can ever restore the data, so exiting 1 crash-loops forever
+    // and /api/health already carries the alarm).
     if (contractState === 'RETRY') {
       const durationMs = Date.now() - startMs;
       const keys = [canonicalKey, `seed-meta:${domain}:${resource}`];
