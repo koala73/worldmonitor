@@ -48,7 +48,7 @@ test('normalizes TED and World Bank records without inventing unavailable values
   const wb = normalizeWorldBankNotice({
     id: 'WB-99', bid_description: 'Climate information system', country_code: 'KE',
     project_name: 'Climate information modernization', noticedate: '2026-07-09', submission_date: '2026-07-29',
-    procurement_method_code: 'QCBS', notice_status: 'Published',
+    procurement_method_code: 'QCBS', notice_status: 'Published', borrower: 'Kenya Ministry of Environment',
   });
 
   assert.equal(ted.id, 'ted:123-2026');
@@ -58,8 +58,9 @@ test('normalizes TED and World Bank records without inventing unavailable values
   assert.equal(wb.countryCode, 'KE');
   assert.equal(wb.money, undefined);
   assert.equal(wb.description, 'Climate information modernization');
+  assert.equal(wb.buyer, 'Kenya Ministry of Environment');
   assert.equal(wb.status, 'published');
-  assert.equal(wb.officialUrl, 'https://search.worldbank.org/api/procnotices?format=json&qterm=WB-99');
+  assert.equal(wb.officialUrl, 'https://projects.worldbank.org/en/projects-operations/procurement/notices/notice-detail/WB-99');
 });
 
 test('normalizes a UK OCDS tender with official provenance and its typed value', () => {

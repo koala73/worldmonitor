@@ -116,7 +116,7 @@ export function normalizeWorldBankNotice(raw) {
   const id = firstString(raw?.id, raw?.notice_id);
   return normalize({
     source: 'world-bank', sourceNoticeId: id,
-    officialUrl: firstString(raw?.url, raw?.notice_url, id && `https://search.worldbank.org/api/procnotices?format=json&qterm=${encodeURIComponent(id)}`),
+    officialUrl: firstString(raw?.url, raw?.notice_url, id && `https://projects.worldbank.org/en/projects-operations/procurement/notices/notice-detail/${encodeURIComponent(id)}`),
     countryCode: firstString(raw?.country_code, raw?.countrycode), region: firstString(raw?.region, 'Multilateral'),
     title: firstString(raw?.bid_description, raw?.title, raw?.project_name), description: firstString(raw?.description, raw?.project_name),
     buyer: firstString(raw?.borrower), publishedAt: firstString(raw?.publication_date, raw?.noticedate), updatedAt: raw?.updated_date,

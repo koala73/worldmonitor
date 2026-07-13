@@ -87,7 +87,7 @@ async function fetchContractsFinder() {
 }
 
 async function fetchWorldBank() {
-  const url = 'https://search.worldbank.org/api/procnotices?format=json&rows=100&os=0&fl=id,url,notice_type,publication_date,project_id,bid_description,procurement_category,procurement_method,deadline_date,country_code,country_name,sector&sort=publication_date&order=desc';
+  const url = 'https://search.worldbank.org/api/procnotices?format=json&rows=100&os=0&fl=id,url,notice_type,publication_date,project_id,bid_description,procurement_category,procurement_method,deadline_date,country_code,country_name,sector,borrower&sort=publication_date&order=desc';
   const payload = await fetchJson(url);
   const rawNotices = payload?.procnotices;
   const notices = Array.isArray(rawNotices) ? rawNotices : Object.values(rawNotices || {});

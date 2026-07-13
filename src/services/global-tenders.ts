@@ -1,4 +1,5 @@
 import type { ListGlobalTendersRequest, ListGlobalTendersResponse } from '@/generated/client/worldmonitor/economic/v1/service_client';
+import { getHydratedData } from '@/services/bootstrap';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
 import { EconomicServiceClient } from '@/services/generated-rpc-clients';
@@ -19,6 +20,19 @@ export async function fetchGlobalTenders(filters: GlobalTenderFilters = {}): Pro
     country: '', countries: [], region: '', source: '', status: '', deadlineFrom: '', deadlineTo: '', minValue: 0, maxValue: 0,
     currency: '', category: '', query: '', pageSize: 25, cursor: '', sort: 'closing_soon', ...filters,
   };
+  if (Object.keys(filters).length === 0) {
+    const hydrated = getHydratedData('globalTenders') as Partial<ListGlobalTendersResponse> | undefined;
+    if (hydrated?.dataAvailable && Array.isArray(hydrated.tenders)) {
+      return {
+        ...EMPTY_TENDERS,
+        ...hydrated,
+        nextCursor: '',
+        total: hydrated.tenders.length,
+        appliedFilters: [],
+        countryCoverage: 'all',
+      };
+    }
+  }
   return tenderBreaker.execute(
     () => client.listGlobalTenders(request, { signal: AbortSignal.timeout(20_000) }),
     EMPTY_TENDERS,
