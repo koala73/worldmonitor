@@ -12,6 +12,7 @@ const GDELT_STORAGE_ORIGIN = 'https://storage.googleapis.com/data.gdeltproject.o
 export const GDELT_MASTER_FILELIST_URL = `${GDELT_STORAGE_ORIGIN}/gdeltv2/masterfilelist.txt`;
 export const GDELT_MAX_EXPORT_ZIP_BYTES = 5_000_000;
 export const GDELT_MAX_EXPORT_CSV_BYTES = 30_000_000;
+export const GDELT_ROLLING_WINDOW_MAX_EVENTS = 5_000;
 
 const MASTER_TAIL_BYTES = 16_384;
 const RECENT_EXPORT_COUNT = 8;
@@ -220,13 +221,16 @@ export function mergeGdeltBulkRollingWindow(bulk, previousSnapshot, nowMs = Date
     ? Math.min(...coverageCandidates)
     : nowMs;
   const rollingWindowStartedAt = Math.max(cutoff, earliestCoverage);
+  const events = [...byId.values()]
+    .sort((a, b) => b.gdeltAddedAt - a.gdeltAddedAt)
+    .slice(0, GDELT_ROLLING_WINDOW_MAX_EVENTS);
 
   return {
-    events: [...byId.values()].sort((a, b) => b.gdeltAddedAt - a.gdeltAddedAt),
+    events,
     rollingWindowStartedAt,
     rollingWindowComplete: rollingWindowStartedAt <= cutoff,
     retainedPreviousEvents: previousIsBulk
-      ? [...byId.values()].filter(event => event.gdeltAddedAt < currentCoverageStart).length
+      ? events.filter(event => event.gdeltAddedAt < currentCoverageStart).length
       : 0,
   };
 }

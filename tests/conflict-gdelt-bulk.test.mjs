@@ -6,6 +6,7 @@ import {
   extractGdeltExportCsv,
   fetchGdeltBulkConflictEvents,
   GDELT_ROLLING_WINDOW_MS,
+  GDELT_ROLLING_WINDOW_MAX_EVENTS,
   mapGdeltExportToConflictEvents,
   mergeGdeltBulkRollingWindow,
   parseGdeltRecentExports,
@@ -206,6 +207,26 @@ test('mergeGdeltBulkRollingWindow reaches a bounded complete window and never mi
     pagination: undefined,
   }, now);
   assert.deepEqual(sourceIsolated.events.map(item => item.id), ['current-bulk']);
+});
+
+test('mergeGdeltBulkRollingWindow caps the newest events to protect the publish budget', () => {
+  const now = Date.parse('2026-07-14T18:00:00Z');
+  const events = Array.from({ length: GDELT_ROLLING_WINDOW_MAX_EVENTS + 2 }, (_, index) => ({
+    id: `event-${index}`,
+    country: 'Sudan',
+    event_date: '2026-07-14',
+    gdeltAddedAt: now - index,
+  }));
+
+  const result = mergeGdeltBulkRollingWindow({
+    events,
+    oldestExportTimestamp: '20260714160000',
+    exportTimestamp: '20260714170000',
+  }, null, now);
+
+  assert.equal(result.events.length, GDELT_ROLLING_WINDOW_MAX_EVENTS);
+  assert.equal(result.events[0].id, 'event-0');
+  assert.equal(result.events.at(-1).id, `event-${GDELT_ROLLING_WINDOW_MAX_EVENTS - 1}`);
 });
 
 test('extractGdeltExportCsv reads the bounded single-file ZIP payload', () => {

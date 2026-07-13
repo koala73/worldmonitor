@@ -280,7 +280,15 @@ export async function fetchGdeltConflictEvents({
     try {
       const bulk = await fetchBulkEvents();
       if (!bulk?.events?.length) throw new Error('latest export contained no priority-country material-conflict events');
-      const previousSnapshot = await loadPreviousSnapshot();
+      let previousSnapshot = null;
+      try {
+        previousSnapshot = await loadPreviousSnapshot();
+      } catch (snapshotError) {
+        console.warn(
+          '  GDELT bulk previous snapshot unavailable; publishing current exports only:'
+          + ` ${snapshotError?.message || snapshotError}`,
+        );
+      }
       const rolling = mergeGdeltBulkRollingWindow(bulk, previousSnapshot, now());
       if (!rolling.events.length) throw new Error('rolling bulk window contained no priority-country material-conflict events');
       console.log(

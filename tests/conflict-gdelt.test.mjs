@@ -197,6 +197,36 @@ test('fetchGdeltConflictEvents carries prior bulk events through the EMA 24h win
   assert.equal(windows.get('sudan').window.at(-1), 2);
 });
 
+test('fetchGdeltConflictEvents publishes fresh bulk events when the previous snapshot read fails', async () => {
+  const now = Date.parse('2026-07-13T18:00:00Z');
+  const result = await fetchGdeltConflictEvents({
+    pace: async () => {},
+    now: () => now,
+    fetchCountryEvents: async (cc) => ({ country: cc, ok: false, events: [], error: 'HTTP 429' }),
+    fetchBulkEvents: async () => ({
+      events: [{
+        id: 'fresh-after-redis-blip',
+        country: 'Sudan',
+        event_date: '2026-07-13',
+        occurredAt: now - 60 * 60 * 1000,
+        gdeltAddedAt: now - 60 * 60 * 1000,
+      }],
+      oldestExportTimestamp: '20260713160000',
+      exportTimestamp: '20260713170000',
+      exportsRequested: 8,
+      exportsSucceeded: 8,
+    }),
+    loadPreviousSnapshot: async () => {
+      throw new Error('Redis snapshot read failed: HTTP 503');
+    },
+  });
+
+  assert.equal(result.source, 'gdelt-bulk');
+  assert.deepEqual(result.events.map(event => event.id), ['fresh-after-redis-blip']);
+  assert.equal(result.pagination.retainedPreviousEvents, 0);
+  assert.equal(result.pagination.rollingWindowComplete, false);
+});
+
 test('fetchGdeltConflictEvents preserves partial DOC coverage telemetry after bulk recovery', async () => {
   let calls = 0;
   const result = await fetchGdeltConflictEvents({
