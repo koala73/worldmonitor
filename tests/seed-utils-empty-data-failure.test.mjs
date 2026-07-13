@@ -144,6 +144,11 @@ test('contract RETRY remains graceful when every last-good key is preserved', as
 
   assert.equal(exitCode, 0,
     'zero-yield RETRY may remain exit 0 when every last-good key was actually preserved');
+  assert.deepEqual(
+    new Set(expireKeys()),
+    new Set(['test:retry-preserved:v1', 'seed-meta:test:retry-preserved']),
+    'RETRY must attempt to preserve both keys before treating the zero-yield run as graceful',
+  );
 });
 
 test('validation failure with emptyDataIsFailure:true does NOT refresh seed-meta', async () => {
