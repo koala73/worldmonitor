@@ -48,7 +48,8 @@ test("every renderer-callable UX and log command requires a trusted window", () 
     const start = mainRs.indexOf(`fn ${command}(`);
     assert.ok(start >= 0, `${command} must remain registered in main.rs`);
     const nextCommand = mainRs.indexOf("#[tauri::command]", start);
-    const body = mainRs.slice(start, nextCommand >= 0 ? nextCommand : undefined);
+    assert.ok(nextCommand >= 0, `${command} must have an explicit command boundary`);
+    const body = mainRs.slice(start, nextCommand);
     assert.match(body, /webview: Webview/, `${command} must receive Tauri's calling webview`);
     assert.match(
       body,

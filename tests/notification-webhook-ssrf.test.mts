@@ -221,9 +221,11 @@ describe('notification webhook SSRF guard', () => {
     assert.match(source, /clearTimeout\(hardDeadline\)/);
   });
 
-  test('pinned delivery helper preserves null-body HTTP statuses', async () => {
-    const response = scriptSsrf.responseFromNode(204, 'No Content', {}, new Uint8Array());
-    assert.equal(response.status, 204);
-    assert.equal(await response.text(), '');
+  test('pinned delivery helper preserves every null-body HTTP status', async () => {
+    for (const status of [204, 205, 304]) {
+      const response = scriptSsrf.responseFromNode(status, 'No Content', {}, new Uint8Array());
+      assert.equal(response.status, status);
+      assert.equal(await response.text(), '');
+    }
   });
 });
