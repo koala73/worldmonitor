@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 
 import { buildSpineEntry } from '../scripts/seed-energy-spine.mjs';
 import {
@@ -9,6 +10,20 @@ import {
 
 const oilModule = await import('../scripts/seed-jodi-oil.mjs');
 const gasModule = await import('../scripts/seed-jodi-gas.mjs');
+const require = createRequire(import.meta.url);
+const measurementFields = require('../scripts/shared/jodi-measurement-fields.json');
+
+function recordWithMeasurement(path, value = 1) {
+  const record = { dataMonth: '2026-05' };
+  const parts = path.split('.');
+  let current = record;
+  for (const part of parts.slice(0, -1)) {
+    current[part] = {};
+    current = current[part];
+  }
+  current[parts.at(-1)] = value;
+  return record;
+}
 
 function oilRecord(overrides = {}) {
   return {
@@ -93,6 +108,17 @@ describe('China JODI content validation', () => {
       'china-no-measurements',
     );
   });
+
+  it('reports global and China oil coverage failures together', () => {
+    const reason = oilModule.formatCoverageFailureReason({
+      hasGlobalCoverage: false,
+      countryCount: 50,
+      chinaCoverage: { ok: false, reason: 'china-stale', dataMonth: '2025-12' },
+    });
+
+    assert.match(reason, /only 50 countries, need >=40/);
+    assert.match(reason, /China JODI oil coverage failed: china-stale \(dataMonth=2025-12\)/);
+  });
 });
 
 describe('China energy spine availability', () => {
@@ -149,5 +175,21 @@ describe('China energy spine availability', () => {
     assert.equal(hasJodiGasMeasurements(null), false);
     assert.equal(hasJodiGasMeasurements({ dataMonth: '2026-05', totalDemandTj: null }), false);
     assert.equal(hasJodiGasMeasurements({ dataMonth: '2026-05', lngImportsTj: 0 }), true);
+  });
+
+  it('derives both spine and API availability from the shared measurement field catalogue', () => {
+    for (const path of measurementFields.oil) {
+      const record = recordWithMeasurement(path);
+      const spine = buildSpineEntry('CN', { mix: null, jodiOil: record, jodiGas: null, ieaStocks: null });
+      assert.equal(spine.coverage.hasJodiOil, true, `spine oil field ${path}`);
+      assert.equal(hasJodiOilMeasurements(record), true, `API oil field ${path}`);
+    }
+
+    for (const path of measurementFields.gas) {
+      const record = recordWithMeasurement(path, 0);
+      const spine = buildSpineEntry('CN', { mix: null, jodiOil: null, jodiGas: record, ieaStocks: null });
+      assert.equal(spine.coverage.hasJodiGas, true, `spine gas field ${path}`);
+      assert.equal(hasJodiGasMeasurements(record), true, `API gas field ${path}`);
+    }
   });
 });

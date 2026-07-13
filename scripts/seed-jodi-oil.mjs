@@ -250,6 +250,17 @@ async function redisPipeline(commands) {
   return resp.json();
 }
 
+export function formatCoverageFailureReason({ hasGlobalCoverage, countryCount, chinaCoverage }) {
+  const reasons = [];
+  if (!hasGlobalCoverage) {
+    reasons.push(`only ${countryCount} countries, need >=${MIN_VALID_COUNTRIES}`);
+  }
+  if (!chinaCoverage.ok) {
+    reasons.push(`China JODI oil coverage failed: ${chinaCoverage.reason} (dataMonth=${chinaCoverage.dataMonth ?? 'missing'})`);
+  }
+  return reasons.join('; ');
+}
+
 async function main() {
   const startedAt = Date.now();
   const runId = `jodi-oil:${startedAt}`;
@@ -281,9 +292,11 @@ async function main() {
     const chinaCoverage = assessChinaOilCoverage(countries);
     const hasGlobalCoverage = validateCoverage(countries);
     if (!hasGlobalCoverage || !chinaCoverage.ok) {
-      const reason = !hasGlobalCoverage
-        ? `only ${countries.length} countries, need >=${MIN_VALID_COUNTRIES}`
-        : `${chinaCoverage.reason} (dataMonth=${chinaCoverage.dataMonth ?? 'missing'})`;
+      const reason = formatCoverageFailureReason({
+        hasGlobalCoverage,
+        countryCount: countries.length,
+        chinaCoverage,
+      });
       console.error(`  COVERAGE GATE FAILED: ${reason}`);
       const prevIso2List = await readSeedSnapshot(CANONICAL_KEY).catch(() => null);
       const prevCountryKeys = Array.isArray(prevIso2List)

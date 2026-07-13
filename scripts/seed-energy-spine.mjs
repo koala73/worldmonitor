@@ -16,6 +16,7 @@ loadEnvFile(import.meta.url);
 const require = createRequire(import.meta.url);
 const UN_TO_ISO2 = require('./shared/un-to-iso2.json');
 const COMTRADE_REPORTER_OVERRIDES = require('./shared/comtrade-reporter-overrides.json');
+const JODI_MEASUREMENT_FIELDS = require('./shared/jodi-measurement-fields.json');
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -129,33 +130,25 @@ function checkIeaAvailability(ieaStocks) {
     (ieaStocks.daysOfCover != null && ieaStocks.anomaly !== true);
 }
 
-function hasFiniteMeasurement(values) {
-  return values.some((value) => Number.isFinite(value));
+function readPath(value, path) {
+  return path.split('.').reduce((current, part) => {
+    if (current == null || typeof current !== 'object') return undefined;
+    return current[part];
+  }, value);
+}
+
+function hasFiniteMeasurementAtPaths(value, paths) {
+  return paths.some((path) => Number.isFinite(readPath(value, path)));
 }
 
 function checkJodiOilAvailability(jodiOil) {
   if (!jodiOil) return false;
-  return hasFiniteMeasurement([
-    jodiOil.crude?.importsKbd,
-    jodiOil.gasoline?.demandKbd,
-    jodiOil.gasoline?.importsKbd,
-    jodiOil.diesel?.demandKbd,
-    jodiOil.diesel?.importsKbd,
-    jodiOil.jet?.demandKbd,
-    jodiOil.jet?.importsKbd,
-    jodiOil.lpg?.demandKbd,
-    jodiOil.lpg?.importsKbd,
-  ]);
+  return hasFiniteMeasurementAtPaths(jodiOil, JODI_MEASUREMENT_FIELDS.oil);
 }
 
 function checkJodiGasAvailability(jodiGas) {
   if (!jodiGas) return false;
-  return hasFiniteMeasurement([
-    jodiGas.lngImportsTj,
-    jodiGas.pipeImportsTj,
-    jodiGas.totalDemandTj,
-    jodiGas.lngShareOfImports,
-  ]);
+  return hasFiniteMeasurementAtPaths(jodiGas, JODI_MEASUREMENT_FIELDS.gas);
 }
 
 function buildOilFields(jodiOil, ieaStocks, hasIeaStocks) {

@@ -3,6 +3,7 @@ import type {
   GetCountryEnergyProfileRequest,
   GetCountryEnergyProfileResponse,
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
+import jodiMeasurementFields from '../../../../scripts/shared/jodi-measurement-fields.json';
 
 import { getCachedJson } from '../../../_shared/redis';
 import { ENERGY_SPINE_KEY_PREFIX, EMBER_ELECTRICITY_KEY_PREFIX, SPR_POLICIES_KEY } from '../../../_shared/cache-keys';
@@ -189,29 +190,26 @@ function s(v: string | null | undefined): string {
   return typeof v === 'string' ? v : '';
 }
 
+function readPath(value: unknown, path: string): unknown {
+  return path.split('.').reduce<unknown>((current, part) => {
+    if (current == null || typeof current !== 'object') return undefined;
+    return (current as Record<string, unknown>)[part];
+  }, value);
+}
+
+function hasFiniteMeasurementAtPaths(value: unknown, paths: readonly string[]): boolean {
+  return paths.some((path) => {
+    const measurement = readPath(value, path);
+    return typeof measurement === 'number' && Number.isFinite(measurement);
+  });
+}
+
 export function hasJodiOilMeasurements(jodiOil: JodiOil | null): boolean {
-  if (!jodiOil) return false;
-  return [
-    jodiOil.crude?.importsKbd,
-    jodiOil.gasoline?.demandKbd,
-    jodiOil.gasoline?.importsKbd,
-    jodiOil.diesel?.demandKbd,
-    jodiOil.diesel?.importsKbd,
-    jodiOil.jet?.demandKbd,
-    jodiOil.jet?.importsKbd,
-    jodiOil.lpg?.demandKbd,
-    jodiOil.lpg?.importsKbd,
-  ].some((value) => typeof value === 'number' && Number.isFinite(value));
+  return jodiOil != null && hasFiniteMeasurementAtPaths(jodiOil, jodiMeasurementFields.oil);
 }
 
 export function hasJodiGasMeasurements(jodiGas: JodiGas | null): boolean {
-  if (!jodiGas) return false;
-  return [
-    jodiGas.totalDemandTj,
-    jodiGas.lngImportsTj,
-    jodiGas.pipeImportsTj,
-    jodiGas.lngShareOfImports,
-  ].some((value) => typeof value === 'number' && Number.isFinite(value));
+  return jodiGas != null && hasFiniteMeasurementAtPaths(jodiGas, jodiMeasurementFields.gas);
 }
 
 interface SprPolicy {
