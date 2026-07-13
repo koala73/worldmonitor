@@ -406,7 +406,12 @@ function aviationDetermineSeverity(avgDelay, delayedPct) {
   return 'normal';
 }
 
-async function fetchAviationStackSingle(apiKey, airport, fetchFn = globalThis.fetch, logger = console) {
+async function fetchAviationStackSingle(
+  apiKey,
+  airport,
+  fetchFn = (...args) => globalThis.fetch(...args),
+  logger = console,
+) {
   const { iata } = airport;
   const today = new Date().toISOString().slice(0, 10);
   const url = `${AVIATIONSTACK_URL}?access_key=${apiKey}&dep_iata=${iata}&flight_date=${today}&limit=100`;
@@ -508,7 +513,7 @@ function aviationAggregateFlights(iata, flights) {
 export async function seedIntlDelays({
   apiKey = process.env.AVIATIONSTACK_API,
   airports = AVIATIONSTACK_LIST,
-  fetchFn = globalThis.fetch,
+  fetchFn = (...args) => globalThis.fetch(...args),
   logger = console,
 } = {}) {
   if (!apiKey) {

@@ -532,7 +532,7 @@ export const MILITARY_QUERY_REGIONS: QueryRegion[] = [
   { name: 'WESTERN', lamin: 13, lamax: 85, lomin: -10, lomax: 57 },
 ];
 
-if (import.meta.env.DEV) {
+if (import.meta.env?.DEV) {
   for (const h of MILITARY_HOTSPOTS) {
     const hbox = { lamin: h.lat - h.radius, lamax: h.lat + h.radius, lomin: h.lon - h.radius, lomax: h.lon + h.radius };
     const covered = MILITARY_QUERY_REGIONS.some(r =>
@@ -727,13 +727,14 @@ export function isKnownMilitaryHex(hexCode: string): {
   operator: MilitaryOperator;
   country: string;
   aircraftType?: MilitaryAircraftType;
+  confidence: 'high' | 'medium';
 } | undefined {
   const hex = hexCode.toUpperCase();
   const exact = KNOWN_MILITARY_AIRCRAFT[hex];
-  if (exact) return exact;
+  if (exact) return { ...exact, confidence: 'high' };
   for (const range of MILITARY_HEX_RANGES) {
     if (hex >= range.start && hex <= range.end) {
-      return { operator: range.operator, country: range.country };
+      return { operator: range.operator, country: range.country, confidence: 'medium' };
     }
   }
   return undefined;
