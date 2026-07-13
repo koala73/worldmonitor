@@ -86,7 +86,6 @@ const summary = {
         label: 'Aviation availability',
         value: '3 aircraft tracked',
         source: 'Country intelligence',
-        observedAt: '2026-07-14',
         stale: false,
       }],
     },
@@ -119,6 +118,12 @@ test('China summary is scoped to China, exposes per-group states, and safely att
     assert.match(card?.textContent ?? '', /countryBrief\.china\.status\.stale/);
     assert.match(card?.textContent ?? '', /OECD <img src=x>/, 'source attribution is retained as text');
     assert.equal(card?.querySelector('img'), null, 'source attribution is never interpreted as markup');
+    const availability = Array.from(card?.querySelectorAll<HTMLElement>('.cdp-china-summary-group') ?? []).at(-1);
+    assert.doesNotMatch(
+      availability?.textContent ?? '',
+      /countryBrief\.china\.observed|undefined/,
+      'signals without a source timestamp do not display a fabricated observation time',
+    );
 
     panel.show('Japan', 'JP', null, emptySignals);
     await waitForResilienceWidget(harness);

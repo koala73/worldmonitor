@@ -34,7 +34,7 @@ function chinaSummaryState(signals, expectedSignals) {
 }
 ```
 
-In `src/app/country-intel.ts`, reuse the existing IMF and stock promises, then compose the dedicated groups from the already established China macro, BIS credit, shipping, sector-exposure, energy, aviation, and hazard paths. Every displayed signal keeps its source and its observation or retrieval time; the card must not turn a data freshness timestamp into a health claim.
+In `src/app/country-intel.ts`, reuse the existing IMF and stock promises, then compose the dedicated groups from the already established China macro, BIS credit, shipping, sector-exposure, energy, aviation, and hazard paths. Every displayed signal keeps its source and preserves an observation or retrieval time only when its contract supplies one; the card must not fabricate one from the brief-open time or turn a freshness timestamp into a health claim.
 
 Guard asynchronous updates with both the request token and the current country code before rendering. `CountryIntelManager` only publishes China groups while the same request is current and the active panel still represents `CN`; `CountryDeepDivePanel.updateChinaCountrySummary` applies the same code check. This prevents a late China request from populating a country selected afterward.
 

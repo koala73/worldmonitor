@@ -2932,9 +2932,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
           item.append(
             this.el('div', 'cdp-china-summary-signal-label', signal.label),
             this.el('div', 'cdp-china-summary-signal-value', signal.value),
-            this.el('div', 'cdp-china-summary-attribution', `${t('countryBrief.china.observed')} ${signal.observedAt}`),
-            this.el('div', 'cdp-china-summary-attribution', `${t('countryBrief.china.source')} ${signal.source}`),
           );
+          if (signal.observedAt) {
+            item.append(this.el('div', 'cdp-china-summary-attribution', `${t('countryBrief.china.observed')} ${signal.observedAt}`));
+          }
+          item.append(this.el('div', 'cdp-china-summary-attribution', `${t('countryBrief.china.source')} ${signal.source}`));
           section.append(item);
         }
         if (group.unavailableReason) {

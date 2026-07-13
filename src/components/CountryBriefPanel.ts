@@ -76,7 +76,7 @@ export interface ChinaCountrySummarySignal {
   label: string;
   value: string;
   source: string;
-  observedAt: string;
+  observedAt?: string;
   stale: boolean;
 }
 

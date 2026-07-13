@@ -338,7 +338,6 @@ export class CountryIntelManager implements AppModule {
         this.ctx.countryBriefPage.updateChinaCountrySummary?.(data);
       };
       if (isChina) {
-        const availabilityObservedAt = new Date().toISOString();
         const hazardSignals = signals.satelliteFires + signals.earthquakes + signals.climateStress;
         updateChinaSummaryGroup({
           id: 'availability',
@@ -350,14 +349,12 @@ export class CountryIntelManager implements AppModule {
                 ? t('countryBrief.china.activeDisruptions', { count: signals.aviationDisruptions })
                 : t('countryBrief.china.noMajorDisruptions'),
               source: t('countryBrief.china.aviationSource'),
-              observedAt: availabilityObservedAt,
               stale: false,
             },
             {
               label: t('countryBrief.china.hazardAvailability'),
               value: t('countryBrief.china.activeSignals', { count: hazardSignals }),
               source: t('countryBrief.china.hazardSource'),
-              observedAt: availabilityObservedAt,
               stale: false,
             },
           ],
