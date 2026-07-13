@@ -33,6 +33,8 @@ describe('MacroTilesPanel China launch surface', () => {
     assert.match(source, /ArrowLeft/);
     assert.match(source, /Home/);
     assert.match(source, /End/);
+    assert.match(source, /this\._render\(\(\) =>/);
+    assert.match(source, /setSafeContent\([\s\S]*afterUpdate/);
     assert.match(source, /repeat\(auto-fit,minmax\(130px,1fr\)\)/);
   });
 });

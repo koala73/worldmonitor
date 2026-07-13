@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import {
+  NBS_CALENDAR_INDEX_URL,
   buildLprCandidates,
   fetchChinaReleaseCalendar,
   mergeVerifiedLprDates,
@@ -47,6 +48,7 @@ describe('China official release calendar', () => {
 
   it('reports an NBS parse failure distinctly from a network failure', async () => {
     const decisions = [];
+    let rejectedError;
     await assert.rejects(
       fetchChinaReleaseCalendar({
         now: Date.parse('2026-07-13T00:00:00Z'),
@@ -56,9 +58,37 @@ describe('China official release calendar', () => {
         },
         onDecision: (decision) => decisions.push(decision),
       }),
-      /NBS_REQUIRED_SOURCE_UNAVAILABLE:NO_NBS_EVENTS/,
+      (error) => {
+        rejectedError = error;
+        return /NBS_REQUIRED_SOURCE_UNAVAILABLE:NO_NBS_EVENTS/.test(error.message);
+      },
     );
     assert.equal(decisions[0]?.reason, 'NO_NBS_EVENTS');
+    assert.equal(rejectedError.nonRetryable, true);
+  });
+
+  it('rejects an off-origin NBS calendar link without fetching it', async () => {
+    const decisions = [];
+    const requests = [];
+    let rejectedError;
+    await assert.rejects(
+      fetchChinaReleaseCalendar({
+        now: Date.parse('2026-07-13T00:00:00Z'),
+        fetchFn: async (url) => {
+          requests.push(String(url));
+          return new Response('<a href="https://attacker.example/calendar.html">2026 release calendar</a>');
+        },
+        onDecision: (decision) => decisions.push(decision),
+      }),
+      (error) => {
+        rejectedError = error;
+        return /NBS_REQUIRED_SOURCE_UNAVAILABLE:UNTRUSTED_NBS_CALENDAR_URL/.test(error.message);
+      },
+    );
+    assert.deepEqual(requests, [NBS_CALENDAR_INDEX_URL]);
+    assert.equal(decisions[0]?.reason, 'UNTRUSTED_NBS_CALENDAR_URL');
+    assert.equal(decisions[0]?.requestCount, 1);
+    assert.equal(rejectedError.nonRetryable, true);
   });
 
   it('records the actual NBS and ChinaMoney preflight request decisions', async () => {

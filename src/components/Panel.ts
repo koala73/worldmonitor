@@ -139,6 +139,7 @@ export class Panel {
   private readonly contentDebounceMs = 150;
   private pendingContentHtml: string | null = null;
   private contentDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private pendingContentCallback: (() => void) | null = null;
   private retryCallback: (() => void) | null = null;
   private retryCountdownTimer: ReturnType<typeof setInterval> | null = null;
   private retryAttempt = 0;
@@ -1006,6 +1007,7 @@ export class Panel {
   protected clearSensitiveContent(): void {
     this._savedContent = null;
     this.pendingContentHtml = null;
+    this.pendingContentCallback = null;
     if (this.contentDebounceTimer) {
       clearTimeout(this.contentDebounceTimer);
       this.contentDebounceTimer = null;
@@ -1113,20 +1115,26 @@ export class Panel {
     }
   }
 
-  public setSafeContent(html: SafeHtml): void {
-    this.setContentHtml(safeHtmlToString(html));
+  public setSafeContent(html: SafeHtml, afterUpdate?: () => void): void {
+    this.setContentHtml(safeHtmlToString(html), afterUpdate);
   }
 
-  private setContentHtml(html: string): void {
+  private setContentHtml(html: string, afterUpdate?: () => void): void {
     if (this._locked) return;
     this.setErrorState(false);
     this.clearRetryCountdown();
     this.retryAttempt = 0;
-    if (this.pendingContentHtml === html || this.content.innerHTML === html) {
+    if (this.pendingContentHtml === html) {
+      if (afterUpdate) this.pendingContentCallback = afterUpdate;
+      return;
+    }
+    if (this.content.innerHTML === html) {
+      afterUpdate?.();
       return;
     }
 
     this.pendingContentHtml = html;
+    this.pendingContentCallback = afterUpdate ?? null;
     if (this.contentDebounceTimer) {
       clearTimeout(this.contentDebounceTimer);
     }
@@ -1145,9 +1153,12 @@ export class Panel {
     }
 
     this.pendingContentHtml = null;
+    const afterUpdate = this.pendingContentCallback;
+    this.pendingContentCallback = null;
     if (this.content.innerHTML !== html) {
       setTrustedHtml(this.content, trustedHtml(html, 'legacy direct innerHTML migration'));
     }
+    afterUpdate?.();
   }
 
   public show(): void {
@@ -1265,6 +1276,7 @@ export class Panel {
       this.contentDebounceTimer = null;
     }
     this.pendingContentHtml = null;
+    this.pendingContentCallback = null;
     // Drop the snapshot of pre-lock children so a panel destroyed while
     // still in the locked state doesn't retain the detached DOM subtree
     // for the lifetime of the Panel instance. PR #3814 review (Greptile P2).

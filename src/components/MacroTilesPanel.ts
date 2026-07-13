@@ -270,8 +270,9 @@ export class MacroTilesPanel extends Panel {
           : tabs[(current + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length];
       if (!next) return;
       this._tab = next;
-      this._render();
-      this.content.querySelector<HTMLElement>(`[data-tab="${next}"]`)?.focus();
+      this._render(() => {
+        this.content.querySelector<HTMLElement>(`[data-tab="${next}"]`)?.focus();
+      });
     });
   }
 
@@ -330,7 +331,7 @@ export class MacroTilesPanel extends Panel {
     }
   }
 
-  private _render(): void {
+  private _render(afterUpdate?: () => void): void {
     const tabs = this._availableTabs();
     const labels: Record<Tab, string> = { us: 'US', eu: 'Euro Area', cn: 'China' };
     const tabBar = `<div role="tablist" aria-label="Macro economy" style="display:flex;gap:4px;margin-bottom:10px;overflow-x:auto">
@@ -347,7 +348,10 @@ export class MacroTilesPanel extends Panel {
     }
 
     const labelledBy = `macro-tiles-tab-${this._tab}`;
-    this.setSafeContent(unsafeRawHtml(`${tabBar}<div id="macro-tiles-tabpanel" role="tabpanel" aria-labelledby="${labelledBy}">${body}</div>`, 'legacy Panel.setContent() migration'));
+    this.setSafeContent(
+      unsafeRawHtml(`${tabBar}<div id="macro-tiles-tabpanel" role="tabpanel" aria-labelledby="${labelledBy}">${body}</div>`, 'legacy Panel.setContent() migration'),
+      afterUpdate,
+    );
   }
 
   private _availableTabs(): Tab[] {

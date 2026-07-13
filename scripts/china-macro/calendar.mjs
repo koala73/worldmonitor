@@ -137,6 +137,10 @@ function reasonFor(error) {
   return 'FETCH_FAILED';
 }
 
+function requiredSourceError(prefix, reason) {
+  return Object.assign(new Error(`${prefix}:${reason}`), { reason, nonRetryable: true });
+}
+
 async function fetchText(fetchFn, url) {
   const response = await fetchFn(url, {
     headers: { Accept: 'text/html,application/xhtml+xml', 'User-Agent': 'WorldMonitor/2.10 (+https://worldmonitor.app)' },
@@ -161,10 +165,23 @@ async function fetchChinaMoneyNotices(fetchFn) {
   return response.json();
 }
 
-function currentCalendarLink(indexHtml, year) {
+export function currentCalendarLink(indexHtml, year) {
   const pattern = new RegExp(`href=["']([^"']+)["'][^>]*>[^<]*${year}[^<]*<`, 'i');
   const href = pattern.exec(indexHtml)?.[1];
-  return href ? new URL(href, NBS_CALENDAR_INDEX_URL).toString() : NBS_CALENDAR_INDEX_URL;
+  if (!href) return NBS_CALENDAR_INDEX_URL;
+
+  let calendarUrl;
+  try {
+    calendarUrl = new URL(href, NBS_CALENDAR_INDEX_URL);
+  } catch {
+    throw requiredSourceError('NBS_CALENDAR_LINK_REJECTED', 'UNTRUSTED_NBS_CALENDAR_URL');
+  }
+  const trustedOrigin = calendarUrl.origin === 'https://www.stats.gov.cn';
+  const trustedPath = calendarUrl.pathname.startsWith('/english/PressRelease/ReleaseCalendar/');
+  if (!trustedOrigin || !trustedPath) {
+    throw requiredSourceError('NBS_CALENDAR_LINK_REJECTED', 'UNTRUSTED_NBS_CALENDAR_URL');
+  }
+  return calendarUrl.toString();
 }
 
 export async function fetchChinaReleaseCalendar({
@@ -191,8 +208,9 @@ export async function fetchChinaReleaseCalendar({
     }
     record(sourceDecision('NBS release calendar', 'www.stats.gov.cn', 'accepted', 'OK', checkedAt, nbsRequestCount));
   } catch (error) {
-    record(sourceDecision('NBS release calendar', 'www.stats.gov.cn', 'blocked', reasonFor(error), checkedAt, nbsRequestCount));
-    throw new Error(`NBS_REQUIRED_SOURCE_UNAVAILABLE:${reasonFor(error)}`);
+    const reason = reasonFor(error);
+    record(sourceDecision('NBS release calendar', 'www.stats.gov.cn', 'blocked', reason, checkedAt, nbsRequestCount));
+    throw requiredSourceError('NBS_REQUIRED_SOURCE_UNAVAILABLE', reason);
   }
 
   let lprEvents = [];
@@ -201,7 +219,7 @@ export async function fetchChinaReleaseCalendar({
   } catch (error) {
     const reason = reasonFor(error);
     record(sourceDecision('PBoC/ChinaMoney LPR verification', 'www.chinamoney.com.cn', 'blocked', reason, checkedAt, 0));
-    throw new Error(`LPR_CALENDAR_SOURCE_UNAVAILABLE:${reason}`);
+    throw requiredSourceError('LPR_CALENDAR_SOURCE_UNAVAILABLE', reason);
   }
   try {
     const chinaMoneyNotices = await fetchChinaMoneyNotices(fetchFn);

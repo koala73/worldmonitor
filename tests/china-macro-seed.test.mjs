@@ -12,7 +12,7 @@ import {
   parseHkmaCnyContext,
   parseOecdCsvIndicator,
 } from '../scripts/china-macro/adapters.mjs';
-import { chinaMacroContentMeta } from '../scripts/seed-china-macro.mjs';
+import { chinaMacroContentMeta, validateChinaMacroSnapshot } from '../scripts/seed-china-macro.mjs';
 
 const fixture = (name) => readFileSync(resolve(import.meta.dirname, 'fixtures/china-macro', name), 'utf8');
 const now = Date.parse('2026-07-13T00:00:00Z');
@@ -69,10 +69,13 @@ describe('China macro source adapters', () => {
     });
     assert.equal(snapshot.launchReady, true);
     assert.equal(snapshot.status, 'ready');
+    assert.equal(validateChinaMacroSnapshot(snapshot), true);
     assert.equal(snapshot.indicators.at(-1).unavailableReason, 'HOST_BLOCKED');
 
     snapshot.indicators.find((item) => item.category === 'activity').stale = true;
-    assert.equal(buildChinaMacroSnapshot({ indicators: snapshot.indicators, sourceDecisions: [], generatedAt: snapshot.generatedAt }).launchReady, false);
+    const degradedSnapshot = buildChinaMacroSnapshot({ indicators: snapshot.indicators, sourceDecisions: [], generatedAt: snapshot.generatedAt });
+    assert.equal(degradedSnapshot.launchReady, false);
+    assert.equal(validateChinaMacroSnapshot(degradedSnapshot), false);
   });
 
   it('bounds OECD to consolidated dataset requests and rejects rate limits so runSeed preserves last-good', async () => {
