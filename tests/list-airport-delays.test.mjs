@@ -287,7 +287,7 @@ describe('listAirportDelays handler — coverage gating (#3707)', () => {
       `${NOTAM_ONLY_SAMPLE}: NOTAM-only airport with no NOTAM and neither source → UNKNOWN`);
   });
 
-  it('both caches HIT, one airport in alerts list → alerted airport keeps alert, peers = NORMAL with right source', async () => {
+  it('both valid caches HIT, one airport in alerts list → alerted airport keeps alert, covered peers = NORMAL with right source', async () => {
     const jfkAlert = {
       id: 'faa-JFK',
       iata: 'JFK',
@@ -308,7 +308,10 @@ describe('listAirportDelays handler — coverage gating (#3707)', () => {
       updatedAt: Date.now(),
     };
     cacheStore.set('aviation:delays:faa:v1', { alerts: [jfkAlert] });
-    cacheStore.set('aviation:delays:intl:v3', { alerts: [] });
+    cacheStore.set('aviation:delays:intl:v3', {
+      alerts: [],
+      coverage: [{ iata: INTL_SAMPLE, status: 'normal', flightCount: 12 }],
+    });
 
     const resp = await listAirportDelays({}, {});
 
@@ -359,6 +362,17 @@ describe('listAirportDelays handler — coverage gating (#3707)', () => {
     const covered = resp.alerts.find(a => a.iata === 'PEK');
     assert.equal(covered.severity, 'FLIGHT_DELAY_SEVERITY_NORMAL');
     assert.equal(covered.source, 'FLIGHT_DELAY_SOURCE_AVIATIONSTACK');
+  });
+
+  it('legacy INTL cache HIT without coverage fails closed instead of assuming every hub is healthy', async () => {
+    cacheStore.set('aviation:delays:faa:v1', { alerts: [] });
+    cacheStore.set('aviation:delays:intl:v3', { alerts: [] });
+
+    const resp = await listAirportDelays({}, {});
+    const intl = resp.alerts.find(a => a.iata === INTL_SAMPLE);
+    assert.ok(intl, `must include ${INTL_SAMPLE} row`);
+    assert.equal(intl.severity, 'FLIGHT_DELAY_SEVERITY_UNKNOWN');
+    assert.equal(intl.source, 'FLIGHT_DELAY_SOURCE_UNSPECIFIED');
   });
 
   it('a malformed FAA cache payload (missing alerts array) is treated as a MISS', async () => {

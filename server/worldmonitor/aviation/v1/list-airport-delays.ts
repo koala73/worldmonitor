@@ -70,10 +70,6 @@ export async function listAirportDelays(
         intlCoveredIatas = new Set(cached.coverage
           .filter((hub) => hub.status === 'normal' || hub.status === 'disruption')
           .map((hub) => hub.iata));
-      } else {
-        // Rollout compatibility for a last-good snapshot written before the
-        // per-hub coverage contract existed.
-        intlCoveredIatas = new Set(INTL_AIRPORT_SET);
       }
     }
   } catch (err) {

@@ -96,6 +96,17 @@ describe('China AviationStack hub contract', () => {
       assert.equal(covered?.severity, 'FLIGHT_DELAY_SEVERITY_NORMAL');
       assert.equal(covered?.source, 'FLIGHT_DELAY_SOURCE_AVIATIONSTACK');
     }
+
+    const legacyBootstrap = buildDelaysBootstrapPayload({
+      faaPayload: null,
+      intlPayload: { alerts: [] },
+      notamPayload: null,
+      fillerRegistry: CHINA_AVIATIONSTACK_HUBS,
+    });
+    for (const alert of legacyBootstrap.alerts) {
+      assert.equal(alert.severity, 'FLIGHT_DELAY_SEVERITY_UNKNOWN');
+      assert.equal(alert.source, 'FLIGHT_DELAY_SOURCE_UNSPECIFIED');
+    }
   });
 
   it('prints Railway-safe smoke evidence for every hub without exposing the credential', async () => {

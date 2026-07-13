@@ -60,6 +60,21 @@ function extractHexRanges(src) {
   return ranges;
 }
 
+function extractExactAircraftRegistry(src, blockPattern) {
+  const block = src.match(blockPattern)?.[1] ?? '';
+  const records = {};
+  const rowRe = /'([0-9A-F]{6})'\s*[:,]\s*\{\s*operator:\s*'([^']+)',\s*country:\s*'([^']+)',\s*aircraftType:\s*'([^']+)'/g;
+  let match;
+  while ((match = rowRe.exec(block)) !== null) {
+    records[match[1]] = {
+      operator: match[2],
+      country: match[3],
+      aircraftType: match[4],
+    };
+  }
+  return records;
+}
+
 const HEX_RANGES = extractHexRanges(clientSrc);
 
 function isKnownMilitaryHex(hexCode) {
@@ -255,9 +270,17 @@ describe('Military hex range classifier (client-side)', () => {
   });
 
   it('keeps the exact PLA aircraft registry aligned between client and seeder classifiers', () => {
-    for (const hex of ['7A4262', '7A444F', '7A446F', '7A4403']) {
-      assert.match(clientSrc, new RegExp(`'${hex}'`), `${hex} must exist in the client registry`);
-      assert.match(seederSrc, new RegExp(`'${hex}'`), `${hex} must exist in the seeder registry`);
-    }
+    const clientRegistry = extractExactAircraftRegistry(
+      clientSrc,
+      /KNOWN_MILITARY_AIRCRAFT[^=]*=\s*\{([\s\S]*?)\n\};/,
+    );
+    const seederRegistry = extractExactAircraftRegistry(
+      seederSrc,
+      /EXACT_MILITARY_AIRCRAFT\s*=\s*new Map\(\[([\s\S]*?)\n\]\);/,
+    );
+
+    assert.deepEqual(Object.keys(clientRegistry).sort(), ['7A4262', '7A4403', '7A444F', '7A446F']);
+    assert.deepEqual(seederRegistry, clientRegistry,
+      'client and seeder exact matches must agree on operator, country, and aircraft type');
   });
 });

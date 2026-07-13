@@ -1113,7 +1113,7 @@ export function buildDelaysBootstrapPayload({
       ? intlCoverage
         .filter((hub) => hub.status === 'normal' || hub.status === 'disruption')
         .map((hub) => hub.iata)
-      : (intlSourceCovered ? AVIATIONSTACK_LIST.map((airport) => airport.iata) : []),
+      : [],
   );
   const closedIcaos = Array.isArray(notamPayload?.closedIcaos) ? notamPayload.closedIcaos : [];
   const restrictedIcaos = Array.isArray(notamPayload?.restrictedIcaos) ? notamPayload.restrictedIcaos : [];
