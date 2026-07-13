@@ -10,14 +10,25 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Last commit](https://img.shields.io/github/last-commit/koala73/worldmonitor)](https://github.com/koala73/worldmonitor/commits/main)
 [![Latest release](https://img.shields.io/github/v/release/koala73/worldmonitor?style=flat)](https://github.com/koala73/worldmonitor/releases/latest)
+[![npm: worldmonitor](https://img.shields.io/npm/v/worldmonitor?logo=npm&label=npm)](https://www.npmjs.com/package/worldmonitor)
+[![smithery badge](https://smithery.ai/badge/worldmonitor/wm-mcp)](https://smithery.ai/servers/worldmonitor/wm-mcp)
+[![skills.sh](https://skills.sh/b/koala73/worldmonitor)](https://skills.sh/koala73/worldmonitor)
 
 <p align="center">
-  <a href="https://worldmonitor.app"><img src="https://img.shields.io/badge/Web_App-worldmonitor.app-blue?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Web 应用"></a>&nbsp;
+  <a href="https://www.worldmonitor.app"><img src="https://img.shields.io/badge/Web_App-worldmonitor.app-blue?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Web 应用"></a>&nbsp;
   <a href="https://tech.worldmonitor.app"><img src="https://img.shields.io/badge/Tech_Variant-tech.worldmonitor.app-0891b2?style=for-the-badge&logo=googlechrome&logoColor=white" alt="科技变体"></a>&nbsp;
   <a href="https://finance.worldmonitor.app"><img src="https://img.shields.io/badge/Finance_Variant-finance.worldmonitor.app-059669?style=for-the-badge&logo=googlechrome&logoColor=white" alt="金融变体"></a>&nbsp;
   <a href="https://commodity.worldmonitor.app"><img src="https://img.shields.io/badge/Commodity_Variant-commodity.worldmonitor.app-b45309?style=for-the-badge&logo=googlechrome&logoColor=white" alt="大宗商品变体"></a>&nbsp;
   <a href="https://happy.worldmonitor.app"><img src="https://img.shields.io/badge/Happy_Variant-happy.worldmonitor.app-f59e0b?style=for-the-badge&logo=googlechrome&logoColor=white" alt="正能量变体"></a>&nbsp;
   <a href="https://energy.worldmonitor.app"><img src="https://img.shields.io/badge/Energy_Variant-energy.worldmonitor.app-eab308?style=for-the-badge&logo=googlechrome&logoColor=white" alt="能源变体"></a>
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/worldmonitor"><img src="https://img.shields.io/npm/v/worldmonitor?style=for-the-badge&logo=npm&logoColor=white&label=npm%20i%20worldmonitor&color=CB3837" alt="npm i worldmonitor"></a>&nbsp;
+  <a href="https://www.npmjs.com/package/worldmonitor"><img src="https://img.shields.io/badge/CLI-npx%20worldmonitor-CB3837?style=for-the-badge&logo=npm&logoColor=white" alt="npx worldmonitor"></a>&nbsp;
+  <a href="https://pypi.org/project/worldmonitor-sdk/"><img src="https://img.shields.io/pypi/v/worldmonitor-sdk?style=for-the-badge&logo=pypi&logoColor=white&label=pip%20install%20worldmonitor-sdk&color=3775A9" alt="pip install worldmonitor-sdk"></a>&nbsp;
+  <a href="https://rubygems.org/gems/worldmonitor"><img src="https://img.shields.io/gem/v/worldmonitor?style=for-the-badge&logo=rubygems&logoColor=white&label=gem%20install%20worldmonitor&color=E9573F" alt="gem install worldmonitor"></a>&nbsp;
+  <a href="https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go"><img src="https://img.shields.io/badge/go%20get-sdk%2Fgo-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="go get github.com/koala73/worldmonitor/sdk/go"></a>
 </p>
 
 <p align="center">
@@ -42,12 +53,12 @@
 - **500+ 精选新闻源**，覆盖 15 个类别，并由 AI 综合生成简报
 - **双地图引擎** — 3D 地球仪（globe.gl）和 WebGL 平面地图（deck.gl），提供 56 种地图图层
 - **跨信息流关联** — 汇聚军事、经济、灾害和升级信号
-- **国家情报指数** — 覆盖 12 个信号类别的综合风险评分
-- **金融雷达** — 92 家证券交易所、大宗商品、加密货币，以及 7 信号市场综合指标
+- **国家不稳定指数（CII）** — 面向 31 个一级国家的服务器权威 CII v8 压力评分
+- **金融雷达** — 29 家证券交易所、大宗商品、加密货币，以及 7 信号市场综合指标
 - **本地 AI** — 通过 Ollama 运行全部功能，无需 API 密钥
 - **6 个站点变体**，均来自同一代码库（World Monitor、Tech Monitor、Finance Monitor、Commodity Monitor、Happy Monitor、Energy Monitor）
 - **原生桌面应用**（Tauri 2），支持 macOS、Windows 和 Linux
-- **24 种语言**，提供本地语言信息流和 RTL 支持
+- **25 种语言**，提供本地语言信息流和 RTL 支持
 
 完整的功能清单、架构、数据源和算法，请参阅**[文档](https://www.worldmonitor.app/docs/zh/documentation)**。
 
@@ -75,9 +86,9 @@ npm install
 npm run dev
 ```
 
-打开 [localhost:5173](http://localhost:5173)。应用无需环境变量即可运行。
+打开 [localhost:3000](http://localhost:3000)（可在 `.env.local` 中通过 `DEV_PORT` 覆盖端口）。应用无需环境变量即可运行。
 
-特定功能的数据源可能需要凭据。例如，航班价格命令（`fly LON DXB`）需要 `TRAVELPAYOUTS_API_TOKEN` 才能返回实时报价；未配置时，该命令会显示“需要凭据”的提示，而不会返回合成数据。完整列表请参阅 `.env.example`。
+特定功能的数据源可能需要凭据。完整列表请参阅 `.env.example`。
 
 针对特定变体进行开发：
 
@@ -86,6 +97,7 @@ npm run dev:tech       # tech.worldmonitor.app
 npm run dev:finance    # finance.worldmonitor.app
 npm run dev:commodity  # commodity.worldmonitor.app
 npm run dev:happy      # happy.worldmonitor.app
+npm run dev:energy     # energy.worldmonitor.app
 ```
 
 部署选项（Vercel、Docker、静态托管）请参阅**[自托管指南](https://www.worldmonitor.app/docs/zh/getting-started)**。
@@ -189,7 +201,7 @@ npm run build:full       # Production build
 ---
 
 <p align="center">
-  <a href="https://worldmonitor.app">worldmonitor.app</a> &nbsp;·&nbsp;
+  <a href="https://www.worldmonitor.app">worldmonitor.app</a> &nbsp;·&nbsp;
   <a href="https://www.worldmonitor.app/docs/zh/documentation">docs.worldmonitor.app</a> &nbsp;·&nbsp;
   <a href="https://finance.worldmonitor.app">finance.worldmonitor.app</a> &nbsp;·&nbsp;
   <a href="https://commodity.worldmonitor.app">commodity.worldmonitor.app</a>
@@ -199,7 +211,7 @@ npm run build:full       # Production build
 
 <a href="https://api.star-history.com/svg?repos=koala73/worldmonitor&type=Date">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=koala73/worldmonitor&type=Date&type=Date&theme=dark" />
-   <img alt="星标历史图表" src="https://api.star-history.com/svg?repos=koala73/worldmonitor&type=Date&type=Date" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=koala73/worldmonitor&type=Date&theme=dark" />
+   <img alt="星标历史图表" src="https://api.star-history.com/svg?repos=koala73/worldmonitor&type=Date" />
  </picture>
 </a>
