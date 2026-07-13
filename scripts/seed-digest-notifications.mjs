@@ -12,7 +12,6 @@
  *   7. Updates digest:last-sent:v1:${userId}:${variant}
  */
 import { createRequire } from 'node:module';
-import dns from 'node:dns/promises';
 import {
   escapeHtml,
   escapeTelegramHtml,
@@ -32,7 +31,6 @@ const WATCHLIST_STOCKS_DATA = require('../shared/stocks.json');
 const { decrypt } = require('./lib/crypto.cjs');
 const {
   assertNotificationWebhookDeliveryUrlSafe,
-  isBlockedResolvedAddress,
   postJsonWithPinnedAddress,
 } = require('./lib/notification-webhook-ssrf.cjs');
 const { callLLM } = require('./lib/llm-chain.cjs');
@@ -1307,10 +1305,6 @@ async function deactivateChannel(userId, channelType) {
   }
 }
 
-function isPrivateIP(ip) {
-  return isBlockedResolvedAddress(ip);
-}
-
 // ── Send functions ────────────────────────────────────────────────────────────
 
 const TELEGRAM_MAX_LEN = 4096;
@@ -1449,18 +1443,21 @@ async function sendSlack(userId, webhookEnvelope, text) {
     console.warn(`[digest] Slack decrypt failed for ${userId}:`, err.message); return false;
   }
   if (!SLACK_RE.test(webhookUrl)) { console.warn(`[digest] Slack URL invalid for ${userId}`); return false; }
+  let safeUrl;
+  let resolvedAddresses;
   try {
-    const hostname = new URL(webhookUrl).hostname;
-    const addrs = await dns.resolve4(hostname).catch(() => []);
-    if (addrs.some(isPrivateIP)) { console.warn(`[digest] Slack SSRF blocked for ${userId}`); return false; }
-  } catch { return false; }
+    ({ url: safeUrl, resolvedAddresses } = await assertNotificationWebhookDeliveryUrlSafe(webhookUrl));
+  } catch (err) {
+    console.warn(`[digest] Slack URL rejected for ${userId}:`, err.message);
+    return false;
+  }
   try {
-    const res = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-digest/1.0' },
-      body: JSON.stringify({ text, unfurl_links: false }),
-      signal: AbortSignal.timeout(10000),
-    });
+    const res = await postJsonWithPinnedAddress(
+      safeUrl,
+      JSON.stringify({ text, unfurl_links: false }),
+      { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-digest/1.0' },
+      resolvedAddresses,
+    );
     if (res.status === 404 || res.status === 410) {
       console.warn(`[digest] Slack webhook gone for ${userId}, deactivating`);
       await deactivateChannel(userId, 'slack');
@@ -1483,19 +1480,22 @@ async function sendDiscord(userId, webhookEnvelope, text) {
     console.warn(`[digest] Discord decrypt failed for ${userId}:`, err.message); return false;
   }
   if (!DISCORD_RE.test(webhookUrl)) { console.warn(`[digest] Discord URL invalid for ${userId}`); return false; }
+  let safeUrl;
+  let resolvedAddresses;
   try {
-    const hostname = new URL(webhookUrl).hostname;
-    const addrs = await dns.resolve4(hostname).catch(() => []);
-    if (addrs.some(isPrivateIP)) { console.warn(`[digest] Discord SSRF blocked for ${userId}`); return false; }
-  } catch { return false; }
+    ({ url: safeUrl, resolvedAddresses } = await assertNotificationWebhookDeliveryUrlSafe(webhookUrl));
+  } catch (err) {
+    console.warn(`[digest] Discord URL rejected for ${userId}:`, err.message);
+    return false;
+  }
   const content = text.length > 2000 ? text.slice(0, 1999) + '\u2026' : text;
   try {
-    const res = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-digest/1.0' },
-      body: JSON.stringify({ content }),
-      signal: AbortSignal.timeout(10000),
-    });
+    const res = await postJsonWithPinnedAddress(
+      safeUrl,
+      JSON.stringify({ content }),
+      { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-digest/1.0' },
+      resolvedAddresses,
+    );
     if (res.status === 404 || res.status === 410) {
       console.warn(`[digest] Discord webhook gone for ${userId}, deactivating`);
       await deactivateChannel(userId, 'discord');

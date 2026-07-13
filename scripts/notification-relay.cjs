@@ -1,12 +1,10 @@
 'use strict';
 
 const { createHash } = require('node:crypto');
-const dns = require('node:dns').promises;
 const { Resend } = require('resend');
 const { decrypt } = require('./lib/crypto.cjs');
 const {
   assertNotificationWebhookDeliveryUrlSafe,
-  isBlockedResolvedAddress,
   postJsonWithPinnedAddress,
 } = require('./lib/notification-webhook-ssrf.cjs');
 const { callLLM } = require('./lib/llm-chain.cjs');
@@ -194,12 +192,6 @@ async function isUserPro(userId) {
     try { await upstashRest('SET', cacheKey, '0', 'EX', String(ENTITLEMENT_FAILCLOSED_CACHE_TTL)); } catch { /* cache write best-effort */ }
     return false;
   }
-}
-
-// ── Private IP guard ─────────────────────────────────────────────────────────
-
-function isPrivateIP(ip) {
-  return isBlockedResolvedAddress(ip);
 }
 
 // ── Quiet hours ───────────────────────────────────────────────────────────────
@@ -416,24 +408,26 @@ async function sendSlack(userId, webhookEnvelope, text) {
     console.warn(`[relay] Slack URL invalid for ${userId}`);
     return false;
   }
-  // SSRF prevention: resolve hostname and check for private IPs
+  let safeUrl;
+  let resolvedAddresses;
   try {
-    const hostname = new URL(webhookUrl).hostname;
-    const addresses = await dns.resolve4(hostname);
-    if (addresses.some(isPrivateIP)) {
-      console.warn(`[relay] Slack URL resolves to private IP for ${userId}`);
-      return false;
-    }
-  } catch {
-    console.warn(`[relay] Slack DNS resolution failed for ${userId}`);
+    ({ url: safeUrl, resolvedAddresses } = await assertNotificationWebhookDeliveryUrlSafe(webhookUrl));
+  } catch (err) {
+    console.warn(`[relay] Slack URL rejected for ${userId}:`, err.message);
     return false;
   }
-  const res = await fetch(webhookUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-relay/1.0' },
-    body: JSON.stringify({ text, unfurl_links: false }),
-    signal: AbortSignal.timeout(10000),
-  });
+  let res;
+  try {
+    res = await postJsonWithPinnedAddress(
+      safeUrl,
+      JSON.stringify({ text, unfurl_links: false }),
+      { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-relay/1.0' },
+      resolvedAddresses,
+    );
+  } catch (err) {
+    console.warn(`[relay] Slack send error for ${userId}:`, err.message);
+    return false;
+  }
   if (res.status === 404 || res.status === 410) {
     console.warn(`[relay] Slack webhook gone for ${userId} — deactivating`);
     await deactivateChannel(userId, 'slack');
@@ -461,27 +455,29 @@ async function sendDiscord(userId, webhookEnvelope, text, retryCount = 0) {
     console.warn(`[relay] Discord URL invalid for ${userId}`);
     return false;
   }
-  // SSRF prevention: resolve hostname and check for private IPs
+  let safeUrl;
+  let resolvedAddresses;
   try {
-    const hostname = new URL(webhookUrl).hostname;
-    const addresses = await dns.resolve4(hostname);
-    if (addresses.some(isPrivateIP)) {
-      console.warn(`[relay] Discord URL resolves to private IP for ${userId}`);
-      return false;
-    }
-  } catch {
-    console.warn(`[relay] Discord DNS resolution failed for ${userId}`);
+    ({ url: safeUrl, resolvedAddresses } = await assertNotificationWebhookDeliveryUrlSafe(webhookUrl));
+  } catch (err) {
+    console.warn(`[relay] Discord URL rejected for ${userId}:`, err.message);
     return false;
   }
   const content = text.length > DISCORD_MAX_CONTENT
     ? text.slice(0, DISCORD_MAX_CONTENT - 1) + '…'
     : text;
-  const res = await fetch(webhookUrl, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-relay/1.0' },
-    body: JSON.stringify({ content }),
-    signal: AbortSignal.timeout(10000),
-  });
+  let res;
+  try {
+    res = await postJsonWithPinnedAddress(
+      safeUrl,
+      JSON.stringify({ content }),
+      { 'Content-Type': 'application/json', 'User-Agent': 'worldmonitor-relay/1.0' },
+      resolvedAddresses,
+    );
+  } catch (err) {
+    console.warn(`[relay] Discord send error for ${userId}:`, err.message);
+    return false;
+  }
   if (res.status === 404 || res.status === 410) {
     console.warn(`[relay] Discord webhook gone for ${userId} — deactivating`);
     await deactivateChannel(userId, 'discord');

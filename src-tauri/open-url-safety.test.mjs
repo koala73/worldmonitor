@@ -33,3 +33,27 @@ test("open_in_shell opens URLs/paths via the opener crate (ShellExecuteW on Wind
       "on Windows (no shell interpretation of the URL).",
   );
 });
+
+test("every renderer-callable UX and log command requires a trusted window", () => {
+  const commands = [
+    "list_supported_secret_keys",
+    "open_logs_folder",
+    "open_sidecar_log_file",
+    "open_settings_window_command",
+    "close_settings_window",
+    "close_live_channels_window",
+  ];
+
+  for (const command of commands) {
+    const start = mainRs.indexOf(`fn ${command}(`);
+    assert.ok(start >= 0, `${command} must remain registered in main.rs`);
+    const nextCommand = mainRs.indexOf("#[tauri::command]", start);
+    const body = mainRs.slice(start, nextCommand >= 0 ? nextCommand : undefined);
+    assert.match(body, /webview: Webview/, `${command} must receive Tauri's calling webview`);
+    assert.match(
+      body,
+      /require_trusted_window\(webview\.label\(\)\)\?/,
+      `${command} must reject calls from untrusted windows`,
+    );
+  }
+});
