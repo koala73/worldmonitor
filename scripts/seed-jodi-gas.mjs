@@ -4,6 +4,7 @@
 import { inflateRaw } from 'node:zlib';
 import { promisify } from 'node:util';
 import { loadEnvFile, CHROME_UA, runSeed, writeExtraKey } from './_seed-utils.mjs';
+import { assessChinaJodiCoverage } from './shared/jodi-content-age.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -133,6 +134,23 @@ export function validateGasCountries(iso2Array) {
   return Array.isArray(iso2Array) && iso2Array.length >= MIN_COUNTRIES;
 }
 
+function hasGasMeasurements(record) {
+  return [
+    record?.productionTj,
+    record?.lngImportsTj,
+    record?.pipeImportsTj,
+    record?.lngExportsTj,
+    record?.pipeExportsTj,
+    record?.totalImportsTj,
+    record?.totalDemandTj,
+    record?.closingStockTj,
+  ].some((value) => Number.isFinite(value));
+}
+
+export function assessChinaGasCoverage(records, now = new Date()) {
+  return assessChinaJodiCoverage(records, now, hasGasMeasurements);
+}
+
 function findZipEntry(buf, filename) {
   const LOCAL_SIG = 0x04034b50;
   let offset = 0;
@@ -200,6 +218,10 @@ async function fetchJodiGas() {
   console.log(`  Rows after TJ/flow/assessment filter: ${rows.length}`);
   const records = buildCountryRecords(rows);
   console.log(`  Countries with gas data: ${records.length}`);
+  const chinaCoverage = assessChinaGasCoverage(records);
+  if (!chinaCoverage.ok) {
+    throw new Error(`China JODI gas coverage failed: ${chinaCoverage.reason} (dataMonth=${chinaCoverage.dataMonth ?? 'missing'})`);
+  }
   return records;
 }
 

@@ -11,6 +11,7 @@ import {
   withRetry,
   readSeedSnapshot,
 } from './_seed-utils.mjs';
+import { assessChinaJodiCoverage } from './shared/jodi-content-age.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -184,6 +185,15 @@ export function validateCoverage(countries) {
   return countries.length >= MIN_VALID_COUNTRIES;
 }
 
+function hasOilMeasurements(record) {
+  const groups = [record?.gasoline, record?.diesel, record?.jet, record?.fuelOil, record?.lpg, record?.crude];
+  return groups.some((group) => group && Object.values(group).some((value) => Number.isFinite(value)));
+}
+
+export function assessChinaOilCoverage(countries, now = new Date()) {
+  return assessChinaJodiCoverage(countries, now, hasOilMeasurements);
+}
+
 async function fetchCsv(url) {
   const resp = await fetch(url, {
     headers: { 'User-Agent': CHROME_UA, Accept: 'text/csv,text/plain,*/*' },
@@ -268,8 +278,13 @@ async function main() {
     const countries = buildAllCountries(allRows);
     console.log(`  Built ${countries.length} country payloads`);
 
-    if (!validateCoverage(countries)) {
-      console.error(`  COVERAGE GATE FAILED: only ${countries.length} countries, need >=${MIN_VALID_COUNTRIES}`);
+    const chinaCoverage = assessChinaOilCoverage(countries);
+    const hasGlobalCoverage = validateCoverage(countries);
+    if (!hasGlobalCoverage || !chinaCoverage.ok) {
+      const reason = !hasGlobalCoverage
+        ? `only ${countries.length} countries, need >=${MIN_VALID_COUNTRIES}`
+        : `${chinaCoverage.reason} (dataMonth=${chinaCoverage.dataMonth ?? 'missing'})`;
+      console.error(`  COVERAGE GATE FAILED: ${reason}`);
       const prevIso2List = await readSeedSnapshot(CANONICAL_KEY).catch(() => null);
       const prevCountryKeys = Array.isArray(prevIso2List)
         ? prevIso2List.map(iso2 => `${COUNTRY_KEY_PREFIX}${iso2}`)
@@ -279,7 +294,7 @@ async function main() {
     }
 
     const iso2List = countries.map(c => c.iso2);
-    const metaPayload = { fetchedAt: Date.now(), recordCount: countries.length };
+    const metaPayload = { fetchedAt: Date.now(), recordCount: countries.length, chinaDataMonth: chinaCoverage.dataMonth };
 
     const commands = [];
     for (const payload of countries) {

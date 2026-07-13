@@ -2,6 +2,7 @@
 // Seed UN Comtrade strategic commodity trade flows (issue #2045).
 // Uses the public preview endpoint — no auth required.
 
+import { createRequire } from 'node:module';
 import { loadEnvFile, CHROME_UA, runSeed, sleep, writeExtraKey } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
@@ -12,6 +13,7 @@ export const KEY_PREFIX = 'comtrade:flows';
 const COMTRADE_BASE = 'https://comtradeapi.un.org/public/v1';
 const INTER_REQUEST_DELAY_MS = 3_000;
 const ANOMALY_THRESHOLD = 0.30; // 30% YoY change
+const CHINA_REPORTER_CODE = '156';
 // Require at least this fraction of (reporter × commodity) pairs to return
 // non-empty flows. Guards against an entire reporter silently flatlining
 // (e.g., wrong reporterCode → HTTP 200 with count:0 for every commodity).
@@ -20,8 +22,8 @@ const MIN_COVERAGE_RATIO = 0.70;
 // Per-reporter coverage floor — each REQUIRED reporter must have ≥ this fraction
 // of its commodities populated. Prevents the "India/Taiwan flatlines entirely"
 // failure mode: losing one full required reporter passes the global ratio but
-// its 0/5 per-reporter coverage blocks publish here.
-const MIN_PER_REPORTER_RATIO = 0.40; // at least 2 of 5 commodities per reporter
+// its zero-coverage reporter result blocks publish here.
+const MIN_PER_REPORTER_RATIO = 0.40;
 
 // Strategic reporters: US, China, Russia, Iran, India, Taiwan.
 // `required: false` reporters are best-effort: still fetched and published when
@@ -60,14 +62,12 @@ export function candidatePeriods(now = new Date()) {
   return [recentPeriod(now, 2), recentPeriod(now, 3)];
 }
 
-// Strategic HS commodity codes
-const COMMODITIES = [
-  { code: '2709', desc: 'Crude oil' },
-  { code: '2711', desc: 'LNG / natural gas' },
-  { code: '7108', desc: 'Gold' },
-  { code: '8542', desc: 'Semiconductors' },
-  { code: '9301', desc: 'Arms / military equipment' },
-];
+const require = createRequire(import.meta.url);
+const STRATEGIC_PRODUCT_METADATA = require('./shared/comtrade-strategic-products.json');
+const COMTRADE_CLASSIFICATION_CODE = STRATEGIC_PRODUCT_METADATA.classification.code;
+const COMMODITIES = STRATEGIC_PRODUCT_METADATA.products
+  .filter((product) => product.tradeFlowCode)
+  .map((product) => ({ code: product.tradeFlowCode, desc: product.label }));
 
 // Comtrade preview regularly hits transient 5xx (500/502/503/504). Without
 // retry each (reporter,commodity) pair that drew a 5xx is silently lost.
@@ -81,7 +81,7 @@ let _retrySleep = sleep;
 export function __setSleepForTests(fn) { _retrySleep = typeof fn === 'function' ? fn : sleep; }
 
 export async function fetchFlows(reporter, commodity, period = recentPeriod()) {
-  const url = new URL(`${COMTRADE_BASE}/preview/C/A/HS`);
+  const url = new URL(`${COMTRADE_BASE}/preview/C/A/${COMTRADE_CLASSIFICATION_CODE}`);
   url.searchParams.set('reporterCode', reporter.code);
   url.searchParams.set('cmdCode', commodity.code);
   url.searchParams.set('flowCode', 'X,M'); // exports + imports
@@ -94,12 +94,20 @@ export async function fetchFlows(reporter, commodity, period = recentPeriod()) {
     });
   }
 
-  // Classification loop: up to two transient-5xx retries (5s, 15s) then give up.
+  // Classification loop: one bounded 429 wait plus up to two transient-5xx
+  // retries (5s, 15s), reclassifying every response before giving up.
+  let rateLimitedOnce = false;
   let transientRetries = 0;
   const MAX_TRANSIENT_RETRIES = 2;
   let resp;
   while (true) {
     resp = await once();
+    if (resp.status === 429 && !rateLimitedOnce) {
+      console.warn(`  HTTP 429 for reporter ${reporter.code} cmd ${commodity.code}, retrying in 60s...`);
+      await _retrySleep(60_000);
+      rateLimitedOnce = true;
+      continue;
+    }
     if (isTransientComtrade(resp.status) && transientRetries < MAX_TRANSIENT_RETRIES) {
       const delay = transientRetries === 0 ? 5_000 : 15_000;
       console.warn(`  transient HTTP ${resp.status} for reporter ${reporter.code} cmd ${commodity.code}, retrying in ${delay / 1000}s...`);
@@ -238,7 +246,8 @@ export async function fetchAllFlows(opts = {}) {
 
 /**
  * Pure coverage gate. Returns pass/fail + per-reporter breakdown.
- * Exported for unit testing — mocking 30+ fetches in fetchAllFlows is fragile,
+ * Exported for unit testing — mocking the full reporter-product matrix in
+ * fetchAllFlows is fragile,
  * and the failure mode the PR is trying to block lives here, not in fetchFlows.
  *
  * Blocks publish when EITHER: global ratio < MIN_COVERAGE_RATIO, OR any single
@@ -270,6 +279,31 @@ export function checkCoverage(perKeyFlows, reporters, commodities) {
   const total = gated.length * commTotal;
   const populated = gated.reduce((n, r) => n + r.populated, 0);
   const globalRatio = total > 0 ? populated / total : 0;
+
+  const chinaReporter = perReporter.find((r) => r.code === CHINA_REPORTER_CODE);
+  // China is independently load-bearing for this strategic-dependency feed.
+  // Keep this separate from `required` so a future reporter policy change
+  // cannot silently turn reporter 156 into best-effort coverage.
+  if (!chinaReporter) {
+    return {
+      ok: false,
+      populated,
+      total,
+      globalRatio,
+      perReporter,
+      reason: 'China reporter 156 missing from reporter coverage set',
+    };
+  }
+  if (chinaReporter.ratio < MIN_PER_REPORTER_RATIO) {
+    return {
+      ok: false,
+      populated,
+      total,
+      globalRatio,
+      perReporter,
+      reason: `China reporter 156 below per-reporter independent coverage floor: ${chinaReporter.populated}/${chinaReporter.total}`,
+    };
+  }
 
   if (globalRatio < MIN_COVERAGE_RATIO) {
     return { ok: false, populated, total, globalRatio, perReporter, reason: `coverage ${populated}/${total} below global floor ${MIN_COVERAGE_RATIO}; refusing to publish partial snapshot` };

@@ -79,24 +79,24 @@ interface EnergySpine {
     hasIeaStocks?: boolean;
   };
   oil?: {
-    crudeImportsKbd?: number;
-    gasolineDemandKbd?: number;
-    gasolineImportsKbd?: number;
-    dieselDemandKbd?: number;
-    dieselImportsKbd?: number;
-    jetDemandKbd?: number;
-    jetImportsKbd?: number;
-    lpgDemandKbd?: number;
-    lpgImportsKbd?: number;
+    crudeImportsKbd?: number | null;
+    gasolineDemandKbd?: number | null;
+    gasolineImportsKbd?: number | null;
+    dieselDemandKbd?: number | null;
+    dieselImportsKbd?: number | null;
+    jetDemandKbd?: number | null;
+    jetImportsKbd?: number | null;
+    lpgDemandKbd?: number | null;
+    lpgImportsKbd?: number | null;
     daysOfCover?: number;
     netExporter?: boolean;
     belowObligation?: boolean;
   };
   gas?: {
-    lngImportsTj?: number;
-    pipeImportsTj?: number;
-    totalDemandTj?: number;
-    lngShareOfImports?: number;
+    lngImportsTj?: number | null;
+    pipeImportsTj?: number | null;
+    totalDemandTj?: number | null;
+    lngShareOfImports?: number | null;
   };
   mix?: {
     coalShare?: number;
@@ -187,6 +187,31 @@ function n(v: number | null | undefined): number {
 
 function s(v: string | null | undefined): string {
   return typeof v === 'string' ? v : '';
+}
+
+export function hasJodiOilMeasurements(jodiOil: JodiOil | null): boolean {
+  if (!jodiOil) return false;
+  return [
+    jodiOil.crude?.importsKbd,
+    jodiOil.gasoline?.demandKbd,
+    jodiOil.gasoline?.importsKbd,
+    jodiOil.diesel?.demandKbd,
+    jodiOil.diesel?.importsKbd,
+    jodiOil.jet?.demandKbd,
+    jodiOil.jet?.importsKbd,
+    jodiOil.lpg?.demandKbd,
+    jodiOil.lpg?.importsKbd,
+  ].some((value) => typeof value === 'number' && Number.isFinite(value));
+}
+
+export function hasJodiGasMeasurements(jodiGas: JodiGas | null): boolean {
+  if (!jodiGas) return false;
+  return [
+    jodiGas.totalDemandTj,
+    jodiGas.lngImportsTj,
+    jodiGas.pipeImportsTj,
+    jodiGas.lngShareOfImports,
+  ].some((value) => typeof value === 'number' && Number.isFinite(value));
 }
 
 interface SprPolicy {
@@ -394,7 +419,7 @@ export async function getCountryEnergyProfile(
     electricitySource: electricityAvailable ? s(electricity?.source) : '',
     electricityDate: electricityAvailable ? s(electricity?.date) : '',
 
-    jodiOilAvailable: jodiOil != null,
+    jodiOilAvailable: hasJodiOilMeasurements(jodiOil),
     jodiOilDataMonth: s(jodiOil?.dataMonth),
     gasolineDemandKbd: n(jodiOil?.gasoline?.demandKbd),
     gasolineImportsKbd: n(jodiOil?.gasoline?.importsKbd),
@@ -406,7 +431,7 @@ export async function getCountryEnergyProfile(
     lpgImportsKbd: n(jodiOil?.lpg?.importsKbd),
     crudeImportsKbd: n(jodiOil?.crude?.importsKbd),
 
-    jodiGasAvailable: jodiGas != null,
+    jodiGasAvailable: hasJodiGasMeasurements(jodiGas),
     jodiGasDataMonth: s(jodiGas?.dataMonth),
     gasTotalDemandTj: n(jodiGas?.totalDemandTj),
     gasLngImportsTj: n(jodiGas?.lngImportsTj),

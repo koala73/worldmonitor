@@ -158,6 +158,30 @@ test('fetchFlows: retries twice on 503s, succeeds on third', async () => {
   assert.deepEqual(sleepCalls, [5_000, 15_000]);
 });
 
+test('fetchFlows: waits once on 429 and then recovers', async () => {
+  fetchResponses = [
+    { status: 429, body: {} },
+    { status: 200, body: { data: [{ period: 2024, flowCode: 'M', primaryValue: 100, partnerCode: '156' }] } },
+  ];
+  const result = await fetchFlows({ code: '156', name: 'China' }, { code: '8542', desc: 'Semiconductors' });
+  assert.equal(fetchCalls.length, 2, 'one initial request plus one bounded rate-limit retry');
+  assert.ok(result.length >= 1, 'recovers China flow data after the rate-limit wait');
+  assert.deepEqual(sleepCalls, [60_000]);
+});
+
+test('fetchFlows: a second 429 fails without another wait', async () => {
+  fetchResponses = [
+    { status: 429, body: {} },
+    { status: 429, body: {} },
+  ];
+  await assert.rejects(
+    () => fetchFlows({ code: '156', name: 'China' }, { code: '8542', desc: 'Semiconductors' }),
+    /HTTP 429/,
+  );
+  assert.equal(fetchCalls.length, 2, 'caps the rate-limit retry at one additional request');
+  assert.deepEqual(sleepCalls, [60_000], 'waits at most once for a rate-limited pair');
+});
+
 test('fetchFlows: throws after 3 consecutive 5xx (caller catches via allSettled)', async () => {
   fetchResponses = [{ status: 503 }, { status: 502 }, { status: 500 }];
   await assert.rejects(

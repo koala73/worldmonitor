@@ -16,6 +16,8 @@ import {
 
 loadEnvFile(import.meta.url);
 
+const require = createRequire(import.meta.url);
+
 const META_KEY = 'seed-meta:comtrade:bilateral-hs4';
 const KEY_PREFIX = 'comtrade:bilateral-hs4:';
 const TTL_SECONDS = 259200; // 72h
@@ -53,44 +55,23 @@ function getNextKey() {
 }
 
 const usePublicApi = COMTRADE_KEYS.length === 0;
+const STRATEGIC_PRODUCT_METADATA = require('./shared/comtrade-strategic-products.json');
+const COMTRADE_CLASSIFICATION_CODE = STRATEGIC_PRODUCT_METADATA.classification.code;
 const COMTRADE_FETCH_URL = usePublicApi
-  ? 'https://comtradeapi.un.org/public/v1/preview/C/A/HS'
-  : 'https://comtradeapi.un.org/data/v1/get/C/A/HS';
+  ? `https://comtradeapi.un.org/public/v1/preview/C/A/${COMTRADE_CLASSIFICATION_CODE}`
+  : `https://comtradeapi.un.org/data/v1/get/C/A/${COMTRADE_CLASSIFICATION_CODE}`;
 const INTER_REQUEST_DELAY_MS = usePublicApi ? 3500 : 1500;
 
-const HS4_CODES = [
-  '2709', '2711', '8542', '8517', '8703', '3004', '7108', '2710',
-  '8471', '8411', '7601', '7202', '3901', '2902', '1001', '1201',
-  '6204', '0203', '8704', '8708',
-];
-
-const HS4_LABELS = {
-  '2709': 'Crude Petroleum',
-  '2711': 'LNG & Petroleum Gas',
-  '8542': 'Semiconductors',
-  '8517': 'Smartphones & Telecom',
-  '8703': 'Passenger Vehicles',
-  '3004': 'Pharmaceuticals',
-  '7108': 'Gold',
-  '2710': 'Refined Petroleum',
-  '8471': 'Computers',
-  '8411': 'Turbojets & Turbines',
-  '7601': 'Aluminium',
-  '7202': 'Ferroalloys (Steel)',
-  '3901': 'Plastics (Polyethylene)',
-  '2902': 'Chemicals (Hydrocarbons)',
-  '1001': 'Wheat',
-  '1201': 'Soybeans',
-  '6204': 'Garments',
-  '0203': 'Pork',
-  '8704': 'Trucks',
-  '8708': 'Vehicle Parts',
-};
+const BILATERAL_PRODUCTS = STRATEGIC_PRODUCT_METADATA.products.filter((product) => product.bilateralHs4Code);
+const HS4_CODES = Array.from(new Set(BILATERAL_PRODUCTS.map((product) => product.bilateralHs4Code)));
+const HS4_LABELS = Object.fromEntries(BILATERAL_PRODUCTS.map((product) => [
+  product.bilateralHs4Code,
+  product.bilateralLabel ?? product.label,
+]));
 
 const BATCH_1 = HS4_CODES.slice(0, 10);
 const BATCH_2 = HS4_CODES.slice(10);
 
-const require = createRequire(import.meta.url);
 /** @type {Record<string, {nearestRouteIds: string[], coastSide: string}>} */
 const COUNTRY_PORT_CLUSTERS = require('./shared/country-port-clusters.json');
 /** @type {Record<string, string>} */
