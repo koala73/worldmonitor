@@ -11,6 +11,7 @@ const {
   HEALTH_VERDICT_SNAPSHOT_KEY: HEALTH_SNAPSHOT_KEY,
   HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS,
   HEALTH_VERDICT_REFRESH_LOCK_KEY: HEALTH_REFRESH_LOCK_KEY,
+  HEALTH_VERDICT_REFRESH_WAIT_MS,
 } = __testing__;
 const realFetch = globalThis.fetch;
 const realSetTimeout = globalThis.setTimeout;
@@ -30,6 +31,25 @@ function healthySnapshot(checkedAt = new Date().toISOString()) {
     checks: { example: { status: 'OK', records: 1 } },
   };
 }
+
+test('scopes health verdict Redis keys to non-production deployments', () => {
+  const baseKey = 'health:verdict:v1';
+  const lockBaseKey = `${baseKey}:refresh-lock`;
+
+  assert.equal(__testing__.healthVerdictRedisKey(baseKey, undefined, undefined), baseKey);
+  assert.equal(
+    __testing__.healthVerdictRedisKey(baseKey, 'production', '1234567890abcdef'),
+    baseKey,
+  );
+  assert.equal(
+    __testing__.healthVerdictRedisKey(baseKey, 'preview', '1234567890abcdef'),
+    'preview:12345678:health:verdict:v1',
+  );
+  assert.equal(
+    __testing__.healthVerdictRedisKey(lockBaseKey, 'preview', undefined),
+    'preview:dev:health:verdict:v1:refresh-lock',
+  );
+});
 
 test('reuses one Redis verdict snapshot across compact and detailed callers', async () => {
   let storedSnapshot = null;
@@ -260,7 +280,7 @@ test('does not start a doomed Redis request at the contention deadline', async (
   let sweepCount = 0;
   Date.now = () => fakeNow;
   globalThis.setTimeout = (resolve) => {
-    fakeNow += 9_999;
+    fakeNow += HEALTH_VERDICT_REFRESH_WAIT_MS - 1;
     resolve();
     return 0;
   };

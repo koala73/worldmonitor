@@ -15,7 +15,16 @@ export const config = { runtime: 'edge' };
 // HTTP responses stay `no-store`, but the expensive Redis-wide verdict is
 // shared briefly at the origin. At the measured browser poll rate this turns
 // ~390 Redis commands per request into one GET, plus one sweep per minute.
-const HEALTH_VERDICT_SNAPSHOT_KEY = 'health:verdict:v1';
+const HEALTH_VERDICT_SNAPSHOT_BASE_KEY = 'health:verdict:v1';
+function healthVerdictRedisKey(baseKey, vercelEnv, commitSha) {
+  if (!vercelEnv || vercelEnv === 'production') return baseKey;
+  return `${vercelEnv}:${commitSha?.slice(0, 8) || 'dev'}:${baseKey}`;
+}
+const HEALTH_VERDICT_SNAPSHOT_KEY = healthVerdictRedisKey(
+  HEALTH_VERDICT_SNAPSHOT_BASE_KEY,
+  process.env.VERCEL_ENV,
+  process.env.VERCEL_GIT_COMMIT_SHA,
+);
 const HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS = 60;
 const HEALTH_VERDICT_SNAPSHOT_TTL_MS = HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS * 1_000;
 const HEALTH_VERDICT_REFRESH_LOCK_KEY = `${HEALTH_VERDICT_SNAPSHOT_KEY}:refresh-lock`;
@@ -23,7 +32,7 @@ const HEALTH_VERDICT_REFRESH_LOCK_KEY = `${HEALTH_VERDICT_SNAPSHOT_KEY}:refresh-
 // and 4s snapshot write. Keep the lease comfortably above that worst case.
 const HEALTH_VERDICT_REFRESH_LOCK_TTL_SECONDS = 30;
 const HEALTH_VERDICT_REFRESH_WAIT_ATTEMPTS = 45;
-const HEALTH_VERDICT_REFRESH_WAIT_MS = 10_000;
+const HEALTH_VERDICT_REFRESH_WAIT_MS = 3_000;
 // Avoid starting a Redis HTTP request that cannot realistically complete
 // inside the remaining contention budget. The direct-sweep fallback below is
 // preferable to turning a deadline-boundary timeout into false REDIS_DOWN.
@@ -1326,6 +1335,8 @@ export const __testing__ = {
   HEALTH_VERDICT_SNAPSHOT_KEY,
   HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS,
   HEALTH_VERDICT_REFRESH_LOCK_KEY,
+  HEALTH_VERDICT_REFRESH_WAIT_MS,
+  healthVerdictRedisKey,
   parseHealthVerdictSnapshot,
   // U7 (Tier 3 parity test): exposed for tests/mcp-bootstrap-parity.test.mjs
   // to walk the canonical seeded-data inventory. Both consts are unexported
