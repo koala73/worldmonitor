@@ -5,7 +5,9 @@ import assert from 'node:assert/strict';
 import {
   extractGdeltExportCsv,
   fetchGdeltBulkConflictEvents,
+  GDELT_ROLLING_WINDOW_MS,
   mapGdeltExportToConflictEvents,
+  mergeGdeltBulkRollingWindow,
   parseGdeltRecentExports,
 } from '../scripts/_conflict-gdelt-bulk.mjs';
 
@@ -118,8 +120,92 @@ test('mapGdeltExportToConflictEvents maps strong material conflict and filters n
   assert.equal(events.length, 2);
   assert.deepEqual(events.map(event => event.country), ['Sudan', 'Ukraine']);
   assert.equal(events[0].event_date, '2026-07-13');
+  assert.equal(events[0].gdeltAddedAt, Date.parse('2026-07-13T11:00:00Z'));
+  assert.equal(events[0].occurredAt, Date.parse('2026-07-13T11:00:00Z'));
   assert.equal(events[0].source, 'example.com');
   assert.equal(events[0].id, 'gdelt-event-1');
+});
+
+test('mergeGdeltBulkRollingWindow retains the prior 24h, prunes stale events, and prefers current duplicates', () => {
+  const now = Date.parse('2026-07-13T18:00:00Z');
+  const event = (id, hoursAgo, url = `https://example.com/${id}`) => {
+    const gdeltAddedAt = now - hoursAgo * 60 * 60 * 1000;
+    return {
+      id,
+      country: 'Sudan',
+      event_date: new Date(gdeltAddedAt).toISOString().slice(0, 10),
+      occurredAt: gdeltAddedAt,
+      gdeltAddedAt,
+      url,
+    };
+  };
+  const previousSnapshot = {
+    source: 'gdelt-bulk',
+    events: [
+      event('prior-12h', 12),
+      event('stale-25h', 25),
+      event('duplicate', 1.5, 'https://example.com/old'),
+    ],
+    pagination: {
+      exportTimestamp: '20260713163000',
+      rollingWindowStartedAt: now - 14 * 60 * 60 * 1000,
+    },
+  };
+  const bulk = {
+    events: [event('current-1h', 1), event('duplicate', 1, 'https://example.com/new')],
+    oldestExportTimestamp: '20260713160000',
+    exportTimestamp: '20260713170000',
+  };
+
+  const result = mergeGdeltBulkRollingWindow(bulk, previousSnapshot, now);
+
+  assert.deepEqual(result.events.map(item => item.id), ['duplicate', 'current-1h', 'prior-12h']);
+  assert.equal(result.events.find(item => item.id === 'duplicate').url, 'https://example.com/new');
+  assert.equal(result.events.some(item => item.id === 'stale-25h'), false);
+  assert.equal(result.rollingWindowStartedAt, now - 14 * 60 * 60 * 1000);
+  assert.equal(result.rollingWindowComplete, false);
+  assert.equal(result.retainedPreviousEvents, 1);
+});
+
+test('mergeGdeltBulkRollingWindow reaches a bounded complete window and never mixes prior ACLED data', () => {
+  const now = Date.parse('2026-07-14T18:00:00Z');
+  const cutoff = now - GDELT_ROLLING_WINDOW_MS;
+  const previousEvent = {
+    id: 'prior-bulk',
+    country: 'Sudan',
+    event_date: '2026-07-14',
+    gdeltAddedAt: now - 12 * 60 * 60 * 1000,
+  };
+  const currentEvent = {
+    id: 'current-bulk',
+    country: 'Sudan',
+    event_date: '2026-07-14',
+    gdeltAddedAt: now - 60 * 60 * 1000,
+  };
+  const bulk = {
+    events: [currentEvent],
+    oldestExportTimestamp: '20260714160000',
+    exportTimestamp: '20260714170000',
+  };
+
+  const complete = mergeGdeltBulkRollingWindow(bulk, {
+    source: 'gdelt-bulk',
+    events: [previousEvent],
+    pagination: {
+      exportTimestamp: '20260714153000',
+      rollingWindowStartedAt: cutoff - 60 * 60 * 1000,
+    },
+  }, now);
+  assert.equal(complete.rollingWindowStartedAt, cutoff);
+  assert.equal(complete.rollingWindowComplete, true);
+  assert.deepEqual(complete.events.map(item => item.id), ['current-bulk', 'prior-bulk']);
+
+  const sourceIsolated = mergeGdeltBulkRollingWindow(bulk, {
+    source: 'acled',
+    events: [{ id: 'acled-event', country: 'Sudan', event_date: '2026-07-14' }],
+    pagination: undefined,
+  }, now);
+  assert.deepEqual(sourceIsolated.events.map(item => item.id), ['current-bulk']);
 });
 
 test('extractGdeltExportCsv reads the bounded single-file ZIP payload', () => {

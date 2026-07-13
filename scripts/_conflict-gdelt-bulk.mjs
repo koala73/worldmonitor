@@ -17,6 +17,7 @@ const MASTER_TAIL_BYTES = 16_384;
 const RECENT_EXPORT_COUNT = 8;
 const EXPORT_FETCH_CONCURRENCY = 4;
 const REQUEST_TIMEOUT_MS = 20_000;
+export const GDELT_ROLLING_WINDOW_MS = 24 * 60 * 60 * 1000;
 export const GDELT_BULK_WORST_NETWORK_MS = REQUEST_TIMEOUT_MS
   * (1 + Math.ceil(RECENT_EXPORT_COUNT / EXPORT_FETCH_CONCURRENCY));
 const USER_AGENT = 'WorldMonitor/1.0 (+https://www.worldmonitor.app)';
@@ -133,6 +134,15 @@ function sourceDomain(sourceUrl) {
   }
 }
 
+export function gdeltTimestampToMs(value) {
+  const digits = String(value || '').replace(/[^0-9]/g, '');
+  if (digits.length < 14) return Number.NaN;
+  return Date.parse(
+    `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`
+      + `T${digits.slice(8, 10)}:${digits.slice(10, 12)}:${digits.slice(12, 14)}Z`,
+  );
+}
+
 export function mapGdeltExportToConflictEvents(csv) {
   const events = [];
   const seen = new Set();
@@ -146,7 +156,8 @@ export function mapGdeltExportToConflictEvents(csv) {
     const country = GDELT_COUNTRY_NAMES[iso2];
     const id = fields[0];
     const eventDate = gdeltSeenDateToIso(fields[59]);
-    if (!id || seen.has(id) || !country || !eventDate) continue;
+    const gdeltAddedAt = gdeltTimestampToMs(fields[59]);
+    if (!id || seen.has(id) || !country || !eventDate || !Number.isFinite(gdeltAddedAt)) continue;
     seen.add(id);
 
     const url = fields[60] || '';
@@ -155,12 +166,69 @@ export function mapGdeltExportToConflictEvents(csv) {
       eventType: `GDELT ${fields[26] || fields[28] || 'material conflict'}`,
       country,
       event_date: eventDate,
-      occurredAt: Date.parse(eventDate) || 0,
+      occurredAt: gdeltAddedAt,
+      gdeltAddedAt,
       source: sourceDomain(url),
       url,
     });
   }
   return events;
+}
+
+function eventAddedAt(event, fallbackTimestamp) {
+  const exact = Number(event?.gdeltAddedAt);
+  if (Number.isFinite(exact) && exact > 0) return exact;
+  return gdeltTimestampToMs(fallbackTimestamp);
+}
+
+export function mergeGdeltBulkRollingWindow(bulk, previousSnapshot, nowMs = Date.now()) {
+  const cutoff = nowMs - GDELT_ROLLING_WINDOW_MS;
+  const previousIsBulk = previousSnapshot?.source === 'gdelt-bulk'
+    && Array.isArray(previousSnapshot.events);
+  const previousExportTimestamp = previousSnapshot?.pagination?.exportTimestamp;
+  const currentExportTimestamp = bulk?.exportTimestamp;
+  const byId = new Map();
+
+  const addEvents = (events, fallbackTimestamp) => {
+    for (const event of Array.isArray(events) ? events : []) {
+      const addedAt = eventAddedAt(event, fallbackTimestamp);
+      if (!event?.id || !Number.isFinite(addedAt) || addedAt < cutoff) continue;
+      byId.set(event.id, { ...event, occurredAt: addedAt, gdeltAddedAt: addedAt });
+    }
+  };
+
+  if (previousIsBulk) addEvents(previousSnapshot.events, previousExportTimestamp);
+  // Current exports win on duplicate IDs, though GDELT event IDs are normally
+  // first-seen-only and therefore unique across 15-minute export files.
+  addEvents(bulk?.events, currentExportTimestamp);
+
+  const currentCoverageStart = gdeltTimestampToMs(
+    bulk?.oldestExportTimestamp || currentExportTimestamp,
+  );
+  const previousCoverageStart = previousIsBulk
+    ? Number(previousSnapshot.pagination?.rollingWindowStartedAt)
+    : Number.NaN;
+  const legacyPreviousCoverageStart = previousIsBulk
+    ? gdeltTimestampToMs(previousExportTimestamp) - (RECENT_EXPORT_COUNT * 15 * 60 * 1000)
+    : Number.NaN;
+  const coverageCandidates = [
+    currentCoverageStart,
+    previousCoverageStart,
+    legacyPreviousCoverageStart,
+  ].filter(value => Number.isFinite(value) && value > 0);
+  const earliestCoverage = coverageCandidates.length
+    ? Math.min(...coverageCandidates)
+    : nowMs;
+  const rollingWindowStartedAt = Math.max(cutoff, earliestCoverage);
+
+  return {
+    events: [...byId.values()].sort((a, b) => b.gdeltAddedAt - a.gdeltAddedAt),
+    rollingWindowStartedAt,
+    rollingWindowComplete: rollingWindowStartedAt <= cutoff,
+    retainedPreviousEvents: previousIsBulk
+      ? [...byId.values()].filter(event => event.gdeltAddedAt < currentCoverageStart).length
+      : 0,
+  };
 }
 
 async function fetchBoundedBuffer(fetchImpl, url, maxBytes, expectedStatus, extraHeaders = {}) {
@@ -231,6 +299,10 @@ export async function fetchGdeltBulkConflictEvents({ fetchImpl = globalThis.fetc
   }
   return {
     events,
+    oldestExportTimestamp: successful
+      .map(result => result.value.exportTimestamp)
+      .sort()
+      .at(0),
     exportTimestamp: successful
       .map(result => result.value.exportTimestamp)
       .sort()

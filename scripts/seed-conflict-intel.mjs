@@ -16,10 +16,10 @@
  * - searchGdeltDocuments: per-query GDELT search
  */
 
-import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, loadSharedConfig } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, loadSharedConfig, readSeedSnapshot } from './_seed-utils.mjs';
 import { fetchGdeltJson } from './_gdelt-fetch.mjs';
 import { buildGdeltConflictUrl, mapGdeltArticlesToEvents, GDELT_COUNTRY_NAMES } from './_conflict-gdelt.mjs';
-import { fetchGdeltBulkConflictEvents } from './_conflict-gdelt-bulk.mjs';
+import { fetchGdeltBulkConflictEvents, GDELT_ROLLING_WINDOW_MS, mergeGdeltBulkRollingWindow } from './_conflict-gdelt-bulk.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -237,6 +237,7 @@ export async function fetchGdeltConflictEvents({
   pace = sleep,
   now = Date.now,
   deadlineAt,
+  loadPreviousSnapshot = () => readSeedSnapshot(ACLED_CACHE_KEY, { strict: true }),
 } = {}) {
   const events = [];
   const failedCountries = [];
@@ -279,9 +280,15 @@ export async function fetchGdeltConflictEvents({
     try {
       const bulk = await fetchBulkEvents();
       if (!bulk?.events?.length) throw new Error('latest export contained no priority-country material-conflict events');
-      console.log(`  GDELT bulk conflict-events fallback: ${bulk.events.length} events from export ${bulk.exportTimestamp}`);
+      const previousSnapshot = await loadPreviousSnapshot();
+      const rolling = mergeGdeltBulkRollingWindow(bulk, previousSnapshot, now());
+      if (!rolling.events.length) throw new Error('rolling bulk window contained no priority-country material-conflict events');
+      console.log(
+        `  GDELT bulk conflict-events fallback: ${rolling.events.length} events through export ${bulk.exportTimestamp}`
+        + ` (${rolling.retainedPreviousEvents} retained from prior runs)`,
+      );
       return {
-        events: bulk.events,
+        events: rolling.events,
         pagination: {
           countriesTotal: CONFLICT_COUNTRIES.length,
           countriesSucceeded: successfulCountries,
@@ -290,7 +297,11 @@ export async function fetchGdeltConflictEvents({
           exportTimestamp: bulk.exportTimestamp,
           exportsRequested: bulk.exportsRequested,
           exportsSucceeded: bulk.exportsSucceeded,
-          countriesWithEvents: new Set(bulk.events.map(event => event.country)).size,
+          countriesWithEvents: new Set(rolling.events.map(event => event.country)).size,
+          rollingWindowHours: GDELT_ROLLING_WINDOW_MS / (60 * 60 * 1000),
+          rollingWindowStartedAt: rolling.rollingWindowStartedAt,
+          rollingWindowComplete: rolling.rollingWindowComplete,
+          retainedPreviousEvents: rolling.retainedPreviousEvents,
         },
         source: 'gdelt-bulk',
       };

@@ -102,6 +102,7 @@ test('fetchGdeltConflictEvents fails closed when too many country fetches fail',
 test('fetchGdeltConflictEvents falls through to bulk when the DOC sweep succeeds but yields zero events', async () => {
   const result = await fetchGdeltConflictEvents({
     pace: async () => {},
+    loadPreviousSnapshot: async () => null,
     fetchCountryEvents: async (cc) => ({ country: cc, ok: true, events: [] }),
     fetchBulkEvents: async () => ({
       events: [{ id: 'gdelt-event-empty-doc', country: 'Sudan' }],
@@ -120,6 +121,7 @@ test('fetchGdeltConflictEvents falls through to bulk when the DOC sweep succeeds
 test('fetchGdeltConflictEvents recovers from a throttled DOC sweep with the bulk event feed', async () => {
   const result = await fetchGdeltConflictEvents({
     pace: async () => {},
+    loadPreviousSnapshot: async () => null,
     fetchCountryEvents: async (cc) => ({
       country: cc,
       ok: false,
@@ -153,10 +155,53 @@ test('fetchGdeltConflictEvents recovers from a throttled DOC sweep with the bulk
   assert.equal(result.pagination.countriesWithEvents, 1);
 });
 
+test('fetchGdeltConflictEvents carries prior bulk events through the EMA 24h window', async () => {
+  const now = Date.parse('2026-07-13T18:00:00Z');
+  const makeEvent = (id, hoursAgo) => {
+    const gdeltAddedAt = now - hoursAgo * 60 * 60 * 1000;
+    return {
+      id,
+      country: 'Sudan',
+      event_date: new Date(gdeltAddedAt).toISOString().slice(0, 10),
+      occurredAt: gdeltAddedAt,
+      gdeltAddedAt,
+      source: 'example.com',
+      url: `https://example.com/${id}`,
+    };
+  };
+  const result = await fetchGdeltConflictEvents({
+    pace: async () => {},
+    now: () => now,
+    fetchCountryEvents: async (cc) => ({ country: cc, ok: false, events: [], error: 'HTTP 429' }),
+    fetchBulkEvents: async () => ({
+      events: [makeEvent('current-1h', 1)],
+      oldestExportTimestamp: '20260713160000',
+      exportTimestamp: '20260713170000',
+      exportsRequested: 8,
+      exportsSucceeded: 8,
+    }),
+    loadPreviousSnapshot: async () => ({
+      source: 'gdelt-bulk',
+      events: [makeEvent('prior-12h', 12), makeEvent('stale-25h', 25)],
+      pagination: {
+        exportTimestamp: '20260713153000',
+        rollingWindowStartedAt: now - 14 * 60 * 60 * 1000,
+      },
+    }),
+  });
+
+  assert.deepEqual(result.events.map(event => event.id), ['current-1h', 'prior-12h']);
+  assert.equal(result.pagination.rollingWindowHours, 24);
+  assert.equal(result.pagination.retainedPreviousEvents, 1);
+  const windows = computeEmaWindows(new Map(), result.events, [], now);
+  assert.equal(windows.get('sudan').window.at(-1), 2);
+});
+
 test('fetchGdeltConflictEvents preserves partial DOC coverage telemetry after bulk recovery', async () => {
   let calls = 0;
   const result = await fetchGdeltConflictEvents({
     pace: async () => {},
+    loadPreviousSnapshot: async () => null,
     fetchCountryEvents: async (cc) => {
       calls += 1;
       return calls <= GDELT_MIN_SUCCESSFUL_COUNTRIES

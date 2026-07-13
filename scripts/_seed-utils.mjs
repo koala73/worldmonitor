@@ -1175,9 +1175,11 @@ export async function fetchYahooFxRates(fxSymbols, fallbacks) {
 /**
  * Read the current canonical snapshot from Redis before a seed run overwrites it.
  * Used by seed scripts that compute WoW deltas (bigmac, grocery-basket).
- * Returns null on any error — scripts must handle first-run (no prev data).
+ * Returns null on any error by default — scripts must handle first-run (no prev
+ * data). Pass strict:true when overwriting without the prior snapshot would lose
+ * accumulated state; missing keys still return null, while read failures throw.
  */
-export async function readSeedSnapshot(canonicalKey) {
+export async function readSeedSnapshot(canonicalKey, { strict = false } = {}) {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
@@ -1186,14 +1188,18 @@ export async function readSeedSnapshot(canonicalKey) {
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(5_000),
     });
-    if (!resp.ok) return null;
+    if (!resp.ok) {
+      if (strict) throw new Error(`Redis snapshot read failed: HTTP ${resp.status}`);
+      return null;
+    }
     const { result } = await resp.json();
     if (!result) return null;
     // Envelope-aware: WoW/prev baselines (bigmac, grocery-basket, fear-greed)
     // must see bare legacy-shape data whether the last write was pre- or post-
     // contract-migration. unwrapEnvelope is a no-op on legacy values.
     return unwrapEnvelope(JSON.parse(result)).data;
-  } catch {
+  } catch (error) {
+    if (strict) throw error;
     return null;
   }
 }
