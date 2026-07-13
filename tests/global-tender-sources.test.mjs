@@ -30,7 +30,7 @@ test('adapters reject drifted success payloads instead of erasing last-good data
   await assert.rejects(() => fetchWorldBank({ now: NOW, fetchJsonFn: async () => ({ message: 'changed' }) }), /procnotices/);
 });
 
-test('TED adapter requests only supported field identifiers', async () => {
+test('TED adapter executes a bounded active-notice query with supported field identifiers', async () => {
   let request;
   await fetchTed({
     now: NOW,
@@ -38,6 +38,11 @@ test('TED adapter requests only supported field identifiers', async () => {
   });
 
   assert.equal(request.url, 'https://api.ted.europa.eu/v3/notices/search');
+  assert.match(request.body.query, /^deadline-receipt-tender-date-lot >= 20260713 SORT BY publication-date DESC$/);
+  assert.equal(request.body.scope, 'ACTIVE');
+  assert.equal(request.body.onlyLatestVersions, true);
+  assert.notEqual(request.body.checkQuerySyntax, true, 'syntax-check mode does not execute the search');
+  assert.ok(request.body.fields.includes('publication-number'));
   assert.ok(request.body.fields.includes('notice-type'));
   assert.ok(!request.body.fields.includes('notice-type (form-type)'));
 });

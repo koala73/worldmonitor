@@ -60,6 +60,10 @@ function utcDate(value) {
   return `${String(date.getUTCMonth() + 1).padStart(2, '0')}/${String(date.getUTCDate()).padStart(2, '0')}/${date.getUTCFullYear()}`;
 }
 
+function tedDate(value) {
+  return new Date(value).toISOString().slice(0, 10).replaceAll('-', '');
+}
+
 export async function fetchSam({ apiKey = process.env.SAM_GOV_API_KEY, now = Date.now(), fetchJsonFn = fetchJson } = {}) {
   if (!apiKey) return { records: [], status: sourceStatus('sam', 'unavailable', [], 'SAM_GOV_API_KEY is not configured', now) };
   const url = new URL('https://api.sam.gov/opportunities/v2/search');
@@ -78,13 +82,13 @@ export async function fetchTed({ now = Date.now(), fetchJsonFn = fetchJson } = {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      query: 'OJ = ()',
-      fields: ['notice-identifier', 'title-lot', 'publication-date', 'deadline-receipt-tender-date-lot', 'organisation-name-buyer', 'organisation-country-buyer', 'main-classification-proc', 'notice-type'],
+      query: `deadline-receipt-tender-date-lot >= ${tedDate(now)} SORT BY publication-date DESC`,
+      fields: ['publication-number', 'title-lot', 'publication-date', 'deadline-receipt-tender-date-lot', 'organisation-name-buyer', 'organisation-country-buyer', 'main-classification-proc', 'notice-type'],
       page: 1,
       limit: MAX_PER_SOURCE,
       scope: 'ACTIVE',
-      checkQuerySyntax: true,
       paginationMode: 'PAGE_NUMBER',
+      onlyLatestVersions: true,
     }),
   });
   const notices = payload?.notices ?? payload?.results;

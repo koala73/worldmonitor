@@ -1,3 +1,5 @@
+import iso3ToIso2 from '../shared/iso3-to-iso2.json' with { type: 'json' };
+
 const TECHNOLOGY_TERMS = [
   ['artificial intelligence', 'AI'], ['machine learning', 'machine learning'], ['cybersecurity', 'cybersecurity'],
   ['cyber security', 'cybersecurity'], ['software', 'software'], ['data platform', 'data platform'],
@@ -21,7 +23,32 @@ const OFFICIAL_SOURCE_HOSTS = {
 function string(value) { return typeof value === 'string' ? value.trim() : ''; }
 function firstString(...values) { return values.map(string).find(Boolean) || ''; }
 function array(value) { return Array.isArray(value) ? value.map(string).filter(Boolean) : string(value) ? [string(value)] : []; }
-function date(value) { const raw = string(value); return raw && Number.isFinite(Date.parse(raw)) ? new Date(raw).toISOString() : ''; }
+function strings(value) {
+  if (typeof value === 'string') return string(value) ? [string(value)] : [];
+  if (Array.isArray(value)) return value.flatMap(strings);
+  if (!value || typeof value !== 'object') return [];
+  const localized = value.eng ?? value.ENG;
+  return [...strings(localized), ...Object.entries(value).filter(([key]) => key !== 'eng' && key !== 'ENG').flatMap(([, nested]) => strings(nested))];
+}
+function firstText(...values) { return values.flatMap(strings).find(Boolean) || ''; }
+function parseDate(value) {
+  const raw = string(value);
+  if (!raw) return NaN;
+  const tedDate = raw.match(/^(\d{4}-\d{2}-\d{2})(Z|[+-]\d{2}:\d{2})$/);
+  return Date.parse(tedDate ? `${tedDate[1]}T00:00:00${tedDate[2]}` : raw);
+}
+function date(value) {
+  const parsed = strings(value).map(parseDate).find(Number.isFinite);
+  return Number.isFinite(parsed) ? new Date(parsed).toISOString() : '';
+}
+function latestDate(value) {
+  const parsed = strings(value).map(parseDate).filter(Number.isFinite);
+  return parsed.length ? new Date(Math.max(...parsed)).toISOString() : '';
+}
+function normalizeCountryCode(value) {
+  const code = firstText(value).toUpperCase();
+  return code.length === 3 ? (iso3ToIso2[code] || code) : code;
+}
 function isoTimestamp(value) {
   const parsed = typeof value === 'number' ? value : Date.parse(string(value));
   return Number.isFinite(parsed) ? new Date(parsed).toISOString() : '';
@@ -71,7 +98,7 @@ function normalize({ source, sourceNoticeId, officialUrl, countryCode = '', regi
     source,
     sourceNoticeId: id,
     officialUrl: normalizedOfficialUrl,
-    countryCode: string(countryCode).toUpperCase(),
+    countryCode: normalizeCountryCode(countryCode),
     region: string(region),
     title: string(title),
     description: string(description),
@@ -107,10 +134,10 @@ export function normalizeTedNotice(raw) {
   return normalize({
     source: 'ted', sourceNoticeId: noticeId,
     officialUrl: firstString(raw?.['notice-url'], raw?.url, noticeId && `https://ted.europa.eu/en/notice/-/detail/${encodeURIComponent(noticeId)}`),
-    countryCode: firstString(raw?.['organisation-country-buyer'], raw?.['country'], raw?.countryCode), region: 'Europe',
-    title: firstString(raw?.['title-lot'], raw?.['notice-title'], raw?.title), description: firstString(raw?.['notice-description'], raw?.description),
-    buyer: firstString(raw?.['organisation-name-buyer'], raw?.['buyer-name'], raw?.buyer), publishedAt: firstString(raw?.['publication-date'], raw?.publicationDate),
-    updatedAt: firstString(raw?.['last-modification-date'], raw?.updatedAt), deadline: firstString(raw?.['deadline-receipt-tender-date-lot'], raw?.['deadline-date'], raw?.deadline),
+    countryCode: normalizeCountryCode(raw?.['organisation-country-buyer'] || raw?.['country'] || raw?.countryCode), region: 'Europe',
+    title: firstText(raw?.['title-lot'], raw?.['notice-title'], raw?.title), description: firstText(raw?.['notice-description'], raw?.description),
+    buyer: firstText(raw?.['organisation-name-buyer'], raw?.['buyer-name'], raw?.buyer), publishedAt: date(raw?.['publication-date'] || raw?.publicationDate),
+    updatedAt: date(raw?.['last-modification-date'] || raw?.updatedAt), deadline: latestDate(raw?.['deadline-receipt-tender-date-lot'] || raw?.['deadline-date'] || raw?.deadline),
     status: firstString(raw?.status, 'open'), noticeType: firstString(raw?.['notice-type (form-type)'], raw?.['notice-type'], raw?.noticeType),
     moneyAmount: firstString(raw?.['estimated-value'], raw?.estimatedValue), currency: firstString(raw?.['currency'], raw?.currency),
     categoryCodes: raw?.['main-classification-proc'] || raw?.['cpv-code'] || raw?.cpvCodes, sectors: raw?.['main-nature'],

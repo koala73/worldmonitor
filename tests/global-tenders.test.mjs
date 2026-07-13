@@ -40,12 +40,12 @@ test('normalizes official notices with stable provenance and typed money', () =>
 
 test('normalizes TED and World Bank records without inventing unavailable values', () => {
   const ted = normalizeTedNotice({
-    'notice-identifier': '123-2026',
-    'title-lot': 'Data platform',
-    'publication-date': '2026-07-10',
-    'deadline-receipt-tender-date-lot': '2026-07-18T12:00:00Z',
-    'organisation-name-buyer': 'City of Paris',
-    'organisation-country-buyer': 'FR',
+    'publication-number': '123-2026',
+    'title-lot': { fra: ['Plateforme de donnees'], eng: ['Data platform'] },
+    'publication-date': '2026-07-10+02:00',
+    'deadline-receipt-tender-date-lot': ['2026-07-18+02:00', '2026-07-20+02:00'],
+    'organisation-name-buyer': { fra: ['Ville de Paris'], eng: ['City of Paris'] },
+    'organisation-country-buyer': ['FRA'],
     'main-classification-proc': ['72200000'],
   });
   const wb = normalizeWorldBankNotice({
@@ -56,7 +56,11 @@ test('normalizes TED and World Bank records without inventing unavailable values
 
   assert.equal(ted.id, 'ted:123-2026');
   assert.equal(ted.money, undefined);
+  assert.equal(ted.title, 'Data platform');
   assert.equal(ted.buyer, 'City of Paris');
+  assert.equal(ted.countryCode, 'FR');
+  assert.equal(ted.publishedAt, '2026-07-09T22:00:00.000Z');
+  assert.equal(ted.deadline, '2026-07-19T22:00:00.000Z');
   assert.equal(wb.id, 'world-bank:WB-99');
   assert.equal(wb.countryCode, 'KE');
   assert.equal(wb.money, undefined);
