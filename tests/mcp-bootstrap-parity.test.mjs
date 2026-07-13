@@ -46,6 +46,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'ops surface: per-feed validation status + silent-zero streaks published by the daily feed-validation workflow; consumed by api/health.js + operators, not a queryable news slice (#4920).'],
   ['news:recall-benchmark:v1',
     'ops surface: daily GDELT recall percentage + missed headlines for coverage monitoring; consumed by api/health.js + operators, not a queryable news slice (#4920).'],
+  ['health:china-coverage:v1',
+    'operational: bounded China coverage verdict and reason codes consumed by api/health.js and the read-only operator audit; source content remains available through its domain tools, so this summary is not a queryable MCP slice (#5271).'],
 
   // ===========================================================================
   // Intermediate / pipeline keys (data surfaces through a sibling tool)
