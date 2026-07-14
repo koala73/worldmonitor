@@ -76,6 +76,43 @@ test('an unconfigured source adapter is moot, not a health problem', () => {
   assert.equal(body.problems, undefined);
 });
 
+// The exemption must hold on EVERY problem surface, not just the compact
+// `problems` map. The console failure log and the ?history=1 incident signature
+// only run when overall !== 'HEALTHY' — which is precisely the state a real,
+// UNRELATED crit puts the fleet in. So a NOT_CONFIGURED key that is correctly
+// absent from `problems` can still be reported as a permanent problem in the
+// failure log the moment anything else breaks. This mirrors production: a
+// defensePatents crit holds the fleet DEGRADED while SAM is unconfigured.
+test('NOT_CONFIGURED stays out of the failure log even when the fleet is degraded', () => {
+  const { collectFailureLogProblems, healthResponseBody, STATUS_COUNTS } = __testing__;
+
+  const checks = {
+    globalTendersSam: { status: 'NOT_CONFIGURED', records: 0, seedAgeMin: 103 },
+    defensePatents: { status: 'EMPTY', records: 0 },                 // real crit
+    newsRecallBenchmark: { status: 'EMPTY_ON_DEMAND', records: 0 },  // warn-for-visibility only
+    seedEarthquakes: { status: 'OK', records: 42 },
+  };
+
+  const { problemKeys, sigKeys } = collectFailureLogProblems(checks);
+
+  // The real fault is reported...
+  assert.deepEqual(problemKeys, ['defensePatents:EMPTY']);
+  // ...and the dedupe signature must not carry SAM either, or every incident
+  // signature is permanently salted with a non-problem.
+  assert.deepEqual(sigKeys, ['defensePatents:EMPTY']);
+
+  // EMPTY_ON_DEMAND keeps its existing asymmetry: suppressed in the failure log,
+  // but still surfaced in the compact problems map (prod reports it there today).
+  const body = healthResponseBody({
+    status: 'DEGRADED',
+    checkedAt: new Date(Date.parse('2026-07-14T00:00:00Z')).toISOString(),
+    summary: { total: 4, ok: 2, warn: 1, crit: 1 },
+    checks,
+  }, true);
+  assert.deepEqual(Object.keys(body.problems).sort(), ['defensePatents', 'newsRecallBenchmark']);
+  assert.equal(STATUS_COUNTS.EMPTY_ON_DEMAND, 'warn');
+});
+
 // Guard the exemption's blast radius: only 'unavailable' (= never configured) is
 // exempt. A source that was configured and then broke must still warn.
 test('a source that actually failed still reports SEED_ERROR', () => {

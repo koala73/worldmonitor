@@ -1094,6 +1094,33 @@ async function releaseHealthVerdictRefreshLock(lockToken) {
   ]], 4_000).catch(() => null);
 }
 
+// Single source of truth for "is this check a problem?", shared by the compact
+// `problems` map and the failure log. Derived from STATUS_COUNTS rather than a
+// hardcoded status list: any status that buckets to `ok` is by definition not a
+// problem, so adding a new ok-bucket status (NOT_CONFIGURED) can never again
+// leave one problem surface silently reporting it. An unregistered status is
+// treated as a problem, matching the summary's `STATUS_COUNTS[s] ?? 'warn'`.
+function isProblemStatus(status) {
+  return STATUS_COUNTS[status] !== 'ok';
+}
+
+// Failure-log / ?history=1 problem set. Distinct from the compact `problems` map
+// in exactly one way: EMPTY_ON_DEMAND is suppressed here. It is warn-level for
+// visibility only (realWarnCount subtracts it, it never flips `overall`), so an
+// unrequested on-demand key must not pollute the incident signature and cause a
+// spurious failure-log append. That single exception is the ONLY divergence —
+// everything else defers to isProblemStatus.
+function collectFailureLogProblems(checks) {
+  const entries = Object.entries(checks)
+    .filter(([, c]) => isProblemStatus(c.status) && c.status !== 'EMPTY_ON_DEMAND');
+  return {
+    problemKeys: entries.map(([k, c]) => `${k}:${c.status}${c.seedAgeMin != null ? `(${c.seedAgeMin}min)` : ''}`),
+    // The dedupe signature uses only key:status (no age) so a long STALE_SEED
+    // window doesn't produce a new log entry on every poll.
+    sigKeys: entries.map(([k, c]) => `${k}:${c.status}`).sort(),
+  };
+}
+
 function healthResponseBody(snapshot, compact) {
   const body = {
     status: snapshot.status,
@@ -1108,7 +1135,7 @@ function healthResponseBody(snapshot, compact) {
 
   const problems = {};
   for (const [name, check] of Object.entries(snapshot.checks)) {
-    if (STATUS_COUNTS[check.status] !== 'ok') problems[name] = check;
+    if (isProblemStatus(check.status)) problems[name] = check;
   }
   if (Object.keys(problems).length > 0) body.problems = problems;
   return body;
@@ -1401,13 +1428,7 @@ export default async function handler(req, ctx) {
     // problemKeys includes seedAgeMin for the snapshot (useful for post-mortem),
     // but the dedupe signature uses only key:status (no age) so a long STALE_SEED
     // window doesn't produce a new log entry on every poll.
-    const problemKeys = Object.entries(checks)
-      .filter(([, c]) => c.status !== 'OK' && c.status !== 'OK_CASCADE' && c.status !== 'EMPTY_ON_DEMAND')
-      .map(([k, c]) => `${k}:${c.status}${c.seedAgeMin != null ? `(${c.seedAgeMin}min)` : ''}`);
-    const sigKeys = Object.entries(checks)
-      .filter(([, c]) => c.status !== 'OK' && c.status !== 'OK_CASCADE' && c.status !== 'EMPTY_ON_DEMAND')
-      .map(([k, c]) => `${k}:${c.status}`)
-      .sort();
+    const { problemKeys, sigKeys } = collectFailureLogProblems(checks);
     console.log('[health] %s problems=[%s]', overall, problemKeys.join(', '));
     const failureLogEntry = {
       at: new Date(now).toISOString(),
@@ -1503,6 +1524,7 @@ export const __testing__ = {
   readSeedMeta,
   classifyKey,
   healthResponseBody,
+  collectFailureLogProblems,
   ACTIVATION_MARKERS,
   STATUS_COUNTS,
   // List-typed data keys + the command builder that measures them with LLEN
