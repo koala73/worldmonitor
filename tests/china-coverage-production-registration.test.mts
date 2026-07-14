@@ -46,6 +46,7 @@ describe('China coverage production registration', () => {
     assert.match(insightsSeed, /buildChinaNewsCoverage\(\{/);
     assert.match(insightsSeed, /CHINA_NEWS_DIGEST_LANGUAGE = 'zh'/);
     assert.match(insightsSeed, /readChinaNewsDigest\(\)/);
+    assert.match(insightsSeed, /\[CHINA_NEWS_DIGEST_LANGUAGE\]: await readChinaNewsDigest\(\)/);
     assert.match(insightsSeed, /digest coverage check failed/);
     assert.match(insightsSeed, /preserveKeys: \[CHINA_COVERAGE_KEY\]/);
     assert.match(insightsSeed, /return preserveChinaNewsCoverageInLkg\(existing, chinaNewsCoverage\)/);

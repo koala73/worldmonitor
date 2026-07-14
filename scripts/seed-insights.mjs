@@ -512,7 +512,7 @@ async function fetchInsights() {
   // a compact, audit-only projection before the global ranking can discard it.
   const chinaNewsCoverage = buildChinaNewsCoverage({
     en: digest,
-    zh: await readChinaNewsDigest(),
+    [CHINA_NEWS_DIGEST_LANGUAGE]: await readChinaNewsDigest(),
   });
 
   // Digest shape: { categories: { politics: { items: [...] }, ... }, feedStatuses, generatedAt }
