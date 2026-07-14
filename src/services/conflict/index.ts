@@ -54,18 +54,7 @@ export interface ConflictData {
   count: number;
 }
 
-export type ConflictIntensity = 'none' | 'minor' | 'war';
 
-export interface UcdpConflictStatus {
-  location: string;
-  intensity: ConflictIntensity;
-  conflictId?: number;
-  conflictName?: string;
-  year: number;
-  typeOfConflict?: number;
-  sideA?: string;
-  sideB?: string;
-}
 
 export interface HapiConflictSummary {
   iso2: string;
@@ -155,69 +144,26 @@ function toHapiSummary(proto: ProtoHumanSummary): HapiConflictSummary {
   };
 }
 
-// ---- UCDP classification derivation heuristic ----
+/**
+ * The bootstrap-hydrated UCDP payload. It is a dashboard PROJECTION of
+ * conflict:ucdp-events:v1 (#5300): `events` is capped to the rows the panel
+ * renders, and the numbers the UI derives from the full 2,000-event set —
+ * per-country classifications and per-tab aggregates — arrive precomputed.
+ * The RPC still returns the full, unprojected response.
+ */
+export interface UcdpTabAggregate { count: number; totalDeaths: number }
+export type HydratedUcdpPayload = ListUcdpEventsResponse & {
+  classifications?: Record<string, UcdpConflictStatus>;
+  aggregates?: Record<string, UcdpTabAggregate>;
+  totalEvents?: number;
+};
 
-function isRecentUcdpClassificationDate(dateStart: unknown, now: number, windowMs: number): boolean {
-  const eventMs = Number(dateStart);
-  return Number.isFinite(eventMs)
-    && Number.isFinite(now)
-    && eventMs <= now
-    && now - eventMs < windowMs;
-}
-
-function deriveUcdpClassifications(events: ProtoUcdpEvent[]): Map<string, UcdpConflictStatus> {
-  const byCountry = new Map<string, ProtoUcdpEvent[]>();
-  for (const e of events) {
-    const country = e.country;
-    if (!byCountry.has(country)) byCountry.set(country, []);
-    byCountry.get(country)!.push(e);
-  }
-
-  const now = Date.now();
-  const twoYearsMs = 2 * 365 * 24 * 60 * 60 * 1000;
-  const result = new Map<string, UcdpConflictStatus>();
-
-  for (const [country, countryEvents] of byCountry) {
-    // Filter to trailing 2-year window
-    const recentEvents = countryEvents.filter(e => isRecentUcdpClassificationDate(e.dateStart, now, twoYearsMs));
-    const totalDeaths = recentEvents.reduce((sum, e) => sum + e.deathsBest, 0);
-    const eventCount = recentEvents.length;
-
-    let intensity: ConflictIntensity;
-    if (totalDeaths > 1000 || eventCount > 100) {
-      intensity = 'war';
-    } else if (eventCount > 10) {
-      intensity = 'minor';
-    } else {
-      intensity = 'none';
-    }
-
-    // Find the highest-death event for sideA/sideB
-    let maxDeathEvent: ProtoUcdpEvent | undefined;
-    for (const e of recentEvents) {
-      if (!maxDeathEvent || e.deathsBest > maxDeathEvent.deathsBest) {
-        maxDeathEvent = e;
-      }
-    }
-
-    // Most recent event year
-    const mostRecentEvent = recentEvents.reduce<ProtoUcdpEvent | undefined>(
-      (latest, e) => (!latest || e.dateStart > latest.dateStart) ? e : latest,
-      undefined,
-    );
-    const year = mostRecentEvent ? new Date(mostRecentEvent.dateStart).getFullYear() : new Date().getFullYear();
-
-    result.set(country, {
-      location: country,
-      intensity,
-      year,
-      sideA: maxDeathEvent?.sideA,
-      sideB: maxDeathEvent?.sideB,
-    });
-  }
-
-  return result;
-}
+// UCDP classification derivation lives in ./ucdp-classify (leaf module, no
+// runtime imports) so the seeder's parity test can load it without Vite.
+import { deriveUcdpClassifications } from './ucdp-classify';
+import type { UcdpConflictStatus } from './ucdp-classify';
+export { deriveUcdpClassifications } from './ucdp-classify';
+export type { ConflictIntensity, UcdpConflictStatus } from './ucdp-classify';
 
 // ---- Haversine helper (ported exactly from legacy ucdp-events.ts) ----
 
@@ -275,7 +221,14 @@ export async function fetchConflictEvents(): Promise<ConflictData> {
   };
 }
 
-export async function fetchUcdpClassifications(hydrated?: ListUcdpEventsResponse): Promise<Map<string, UcdpConflictStatus>> {
+export async function fetchUcdpClassifications(hydrated?: HydratedUcdpPayload): Promise<Map<string, UcdpConflictStatus>> {
+  // The bootstrap payload is a dashboard projection (#5300): it carries only the
+  // 150 rows the panel renders, so deriving classifications from its `events`
+  // would score CII against a truncated set. The seeder precomputes them over all
+  // 2,000 events instead — use those when present.
+  if (hydrated?.classifications) {
+    return new Map(Object.entries(hydrated.classifications));
+  }
   if (hydrated?.events?.length) return deriveUcdpClassifications(hydrated.events);
 
   const resp = await ucdpBreaker.execute(async () => {
@@ -337,7 +290,7 @@ interface UcdpEventsResponse {
   cached_at: string;
 }
 
-export async function fetchUcdpEvents(hydrated?: ListUcdpEventsResponse): Promise<UcdpEventsResponse> {
+export async function fetchUcdpEvents(hydrated?: HydratedUcdpPayload): Promise<UcdpEventsResponse> {
   if (hydrated?.events?.length) {
     const events = hydrated.events.map(toUcdpGeoEvent);
     return { success: true, count: events.length, data: events, cached_at: '' };

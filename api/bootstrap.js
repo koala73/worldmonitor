@@ -90,7 +90,7 @@ const BOOTSTRAP_CACHE_KEYS = {
   stablecoinMarkets: 'market:stablecoins:v1',
   unrestEvents: 'unrest:events:v1',
   iranEvents: 'conflict:iran-events:v1',
-  ucdpEvents: 'conflict:ucdp-events:v1',
+  ucdpEvents: 'conflict:ucdp-events-bootstrap:v1',
   temporalAnomalies: 'temporal:anomalies:v1',
   weatherAlerts:     'weather:alerts:v1',
   spending:          'economic:spending:v1',

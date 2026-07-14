@@ -4,10 +4,17 @@ import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
+import { compactUcdpDashboardPayload } from './_ucdp-dashboard.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const REDIS_KEY = 'conflict:ucdp-events:v1';
+// Dashboard-sized projection. The bootstrap slow tier hydrates from THIS key so
+// every client stops downloading 2,000 events (662 KB) to render 150 rows and a
+// handful of derived numbers (#5300). The canonical key above is untouched and
+// still serves the RPC, MCP and the map layer.
+const BOOTSTRAP_KEY = 'conflict:ucdp-events-bootstrap:v1';
+const BOOTSTRAP_META_KEY = 'seed-meta:conflict:ucdp-events-bootstrap';
 const UCDP_PAGE_SIZE = 1000;
 const MAX_PAGES = 6;
 const MAX_EVENTS = 2000; // Redis payload guard; widening needs live UCDP volume + Upstash payload validation.
@@ -239,6 +246,33 @@ async function main() {
 
   const result = await resp.json();
   console.log('  Redis SET result:', result);
+
+  // Compact dashboard projection (#5300): rows the panel renders + aggregates and
+  // classifications it derives from the full set. Best-effort — a failure here
+  // must not fail the canonical publish; bootstrap falls back to reporting the key
+  // missing and the client re-fetches from the RPC.
+  try {
+    const compact = compactUcdpDashboardPayload(payload);
+    const compactBody = JSON.stringify(['SET', BOOTSTRAP_KEY, JSON.stringify(compact), 'EX', 86400]);
+    const compactResp = await fetch(redisUrl, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${redisToken}`, 'Content-Type': 'application/json' },
+      body: compactBody,
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!compactResp.ok) throw new Error(`HTTP ${compactResp.status}`);
+
+    const compactMeta = JSON.stringify({ fetchedAt: Date.now(), recordCount: compact.events.length });
+    await fetch(redisUrl, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${redisToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(['SET', BOOTSTRAP_META_KEY, compactMeta, 'EX', 604800]),
+      signal: AbortSignal.timeout(5_000),
+    });
+    console.log(`  Wrote ${BOOTSTRAP_KEY}: ${compact.events.length} rows, ${Object.keys(compact.classifications).length} classifications (from ${compact.totalEvents} events)`);
+  } catch (e) {
+    console.error(`  Compact projection write failed: ${e.message} — canonical key is published, dashboard will fall back to the RPC`);
+  }
 
   // Write seed-meta for health endpoint freshness tracking
   const metaKey = 'seed-meta:conflict:ucdp-events';

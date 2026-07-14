@@ -98,6 +98,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'cascade-mirror: RPC variant of aviation:delays-bootstrap:v2 (covered by get_aviation_status). Same seed-meta key (seed-meta:aviation:faa).'],
   ['cyber:threats:v2',
     'cascade-mirror: RPC variant of cyber:threats-bootstrap:v2 (covered by get_cyber_threats). Same seed-meta key (seed-meta:cyber:threats).'],
+  ['conflict:ucdp-events-bootstrap:v1',
+    'cascade-mirror: pre-compacted dashboard view of conflict:ucdp-events:v1 (covered by get_conflict_events). Carries the 150 rows the panel renders plus precomputed classifications/aggregates; agents must read the canonical key, which carries all 2,000 events (#5300).'],
   ['wildfire:fires-bootstrap:v1',
     'cascade-mirror: pre-compacted dashboard/RPC variant of wildfire:fires:v1 (covered by get_natural_events). It preserves the same top-500 response while avoiding canonical-payload Redis egress.'],
   ['thermal:escalation-bootstrap:v1',

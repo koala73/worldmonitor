@@ -2538,7 +2538,7 @@ export class DataLoaderManager implements AppModule {
       }
     })());
 
-    const hydratedUcdp = getHydratedData('ucdpEvents') as import('@/generated/client/worldmonitor/conflict/v1/service_client').ListUcdpEventsResponse | undefined;
+    const hydratedUcdp = getHydratedData('ucdpEvents') as import('@/services/conflict').HydratedUcdpPayload | undefined;
 
     tasks.push((async () => {
       try {
@@ -2624,7 +2624,13 @@ export class DataLoaderManager implements AppModule {
     tasks.push((async () => {
       try {
         const protestEvents = await protestsTask;
-        const result = await fetchUcdpEvents(hydratedUcdp);
+        // The bootstrap payload is a dashboard projection (#5300) — 150 rows, not
+        // 2,000. The panel is fine with that (it renders 50/tab and takes its
+        // counts from the precomputed aggregates), but the map draws every event.
+        // When its layer is on, skip hydration so fetchUcdpEvents goes to the RPC
+        // and returns the full set.
+        const wantsFullUcdpSet = this.ctx.mapLayers.ucdpEvents;
+        const result = await fetchUcdpEvents(wantsFullUcdpSet ? undefined : hydratedUcdp);
         if (!result.success) {
           // listUcdpEvents is a pure Redis-read (gold standard). Retrying returns
           // the same empty result until the Railway seed refreshes the key.
@@ -2636,7 +2642,10 @@ export class DataLoaderManager implements AppModule {
           latitude: e.lat, longitude: e.lon, event_date: e.time.toISOString(), fatalities: e.fatalities ?? 0,
         }));
         const events = deduplicateAgainstAcled(result.data, acledEvents);
-        (this.ctx.panels['ucdp-events'] as UcdpEventsPanel)?.setEvents(events);
+        (this.ctx.panels['ucdp-events'] as UcdpEventsPanel)?.setEvents(
+          events,
+          wantsFullUcdpSet ? undefined : hydratedUcdp?.aggregates,
+        );
         if (this.ctx.mapLayers.ucdpEvents) {
           this.ctx.map?.setUcdpEvents(events);
         }

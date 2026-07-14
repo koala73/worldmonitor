@@ -98,6 +98,7 @@ const BOOTSTRAP_KEYS = {
   unrestEvents:      'unrest:events:v1',
   iranEvents:        'conflict:iran-events:v1',
   ucdpEvents:        'conflict:ucdp-events:v1',
+  ucdpEventsBootstrap: 'conflict:ucdp-events-bootstrap:v1',
   weatherAlerts:     'weather:alerts:v1',
   spending:          'economic:spending:v1',
   techEvents:        'research:tech-events-bootstrap:v1',
@@ -415,6 +416,7 @@ const SEED_META = {
   riskScores:       { key: 'seed-meta:intelligence:risk-scores',  maxStaleMin: 30, minRecordCount: 3 }, // CII warm-ping every 8min; recordCount is realtime signal-density coverage for score-relevant conflict (ACLED or UCDP), news, and cyber families, not raw feed availability; quiet-but-fresh feeds may warn COVERAGE_PARTIAL.
   iranEvents:       { key: 'seed-meta:conflict:iran-events',      maxStaleMin: 20160 }, // manual seed from LiveUAMap; 20160 = 14d = 2× weekly cadence
   ucdpEvents:       { key: 'seed-meta:conflict:ucdp-events',      maxStaleMin: 420 },
+  ucdpEventsBootstrap: { key: 'seed-meta:conflict:ucdp-events-bootstrap', maxStaleMin: 420 }, // Same cron. Monitored separately because the bootstrap tier now hydrates from the compact projection, and a transform/write failure there must not hide behind a healthy canonical key (#5300).
   acledIntel:       { key: 'seed-meta:conflict:acled-intel',      maxStaleMin: 38 }, // conflict:acled:v1:all:0:0, now ACLED-or-GDELT fallback for the forecast EMA input (#5099).
   militaryFlights:  { key: 'seed-meta:military:flights',           maxStaleMin: 30 }, // cron ~10min (LIVE_TTL=600s); 30min = 3x interval,
   militaryCii:      { key: 'seed-meta:intelligence:military-cii',  maxStaleMin: 45 }, // seed-military-cii cron ~10min; 45 = generous grace (relay-dependent; preserve-last-good runs still refresh meta)
@@ -715,6 +717,7 @@ const EMPTY_DATA_OK_KEYS = new Set([
   'forecastBets', // #5233 shadow bet-engine stream; absent before the cron ships it and empty on weeks the energy feed yields no bet — tolerate as STALE_SEED (warn), not EMPTY (crit).
   'forecastFunnel', // #5233 funnel guardrail is a new afterPublish side-write; before the first seed-forecasts run ships it the key is absent — tolerate as STALE_SEED (warn), not EMPTY (crit). A COLLAPSED funnel still surfaces via seed-meta status:'error' → SEED_ERROR, which classifyKey checks before this branch.
   'thermalEscalationBootstrap', // Compact dashboard projection is absent until the first thermal seeder tick after deploy — tolerate as STALE_SEED (warn), not EMPTY (crit). Once published, seed-meta staleness still catches a stopped writer.
+  'ucdpEventsBootstrap', // Compact dashboard projection is absent until the first ucdp seeder tick after deploy — tolerate as STALE_SEED (warn), not EMPTY (crit). Once published, seed-meta staleness still catches a stopped writer.
   'wildfiresBootstrap', // Compact dashboard side-write is absent until the first fire seeder tick after deploy — tolerate as STALE_SEED (warn), not EMPTY (crit). Once published, seed-meta staleness still catches a stopped writer.
 ]);
 
