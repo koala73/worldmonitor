@@ -93,6 +93,8 @@ for both a fresh producer heartbeat and fresh, substantive China content; a
 fresh seed cannot hide stale or missing source content. `CHINA_DEGRADED` is a
 warning projection for partial or stale coverage, while `CHINA_UNAVAILABLE` is
 critical when the summary is invalid or the launched content is unavailable.
+Blocked China contracts remain visible in the audit with their stable reason
+code but are excluded from the strict launched-entry health count.
 
 Operators can obtain the same sanitized, read-only audit with
 `node scripts/audit-china-coverage.mjs --json`; add `--strict` to return a

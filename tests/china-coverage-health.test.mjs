@@ -104,6 +104,13 @@ describe('China coverage manifest', () => {
       'launched',
       'the canonical per-hub coverage contract is now provider-backed',
     );
+    for (const id of ['energy.jodi-oil', 'energy.jodi-gas', 'news.china']) {
+      assert.equal(
+        CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === id)?.launchStatus,
+        'blocked',
+        `${id} must remain explicit until its source-specific China contract is available`,
+      );
+    }
     assert.deepEqual(
       CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === 'aviation.china-hubs')?.content.probe,
       {
@@ -335,6 +342,19 @@ describe('China coverage evaluator', () => {
     assert.ok(result.entries[0].reasonCodes.includes(CHINA_COVERAGE_REASON_CODES.CONTENT_STALE));
   });
 
+  it('uses the IMF WEO forecast-year freshness convention for China macro', () => {
+    const imfEntry = CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === 'economic.imf-macro');
+    const result = evaluate(
+      imfEntry,
+      { 'economic:imf:macro:v2': { countries: { CN: { latestYear: 2026, inflationPct: 1.2 } } } },
+      { 'seed-meta:economic:imf-macro': { fetchedAt: NOW - 5 * 60_000, status: 'ok' } },
+    );
+
+    assert.equal(result.entries[0].transport.status, 'fresh');
+    assert.equal(result.entries[0].content.status, 'fresh');
+    assert.equal(result.entries[0].status, 'healthy');
+  });
+
   it('treats future-dated transport and content timestamps as stale', () => {
     const result = evaluate(
       singleEntry(),
@@ -403,6 +423,17 @@ describe('China coverage evaluator', () => {
     assert.equal(result.status, 'healthy');
     assert.equal(result.entries[0].status, 'planned');
     assert.deepEqual(result.entries[0].reasonCodes, [CHINA_COVERAGE_REASON_CODES.NOT_LAUNCHED]);
+  });
+
+  it('reports a stable reason when a China contract is blocked', () => {
+    const blocked = CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === 'news.china');
+    const result = evaluate(blocked);
+
+    assert.equal(result.entries[0].status, 'blocked');
+    assert.deepEqual(result.entries[0].reasonCodes, [
+      CHINA_COVERAGE_REASON_CODES.NOT_LAUNCHED,
+      CHINA_COVERAGE_REASON_CODES.CHINA_COVERAGE_PROJECTION_UNAVAILABLE,
+    ]);
   });
 
   it('renders a bounded human-readable audit without raw upstream data', () => {

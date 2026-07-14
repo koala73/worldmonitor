@@ -25,7 +25,15 @@ function valuesAtPath(root, path = []) {
   return values;
 }
 
-function timestampMs(value) {
+function timestampMs(value, semantics) {
+  if (semantics === 'imf-weo-forecast-year') {
+    const year = typeof value === 'string' ? Number(value) : value;
+    if (Number.isInteger(year) && year >= 1900 && year <= 2200) {
+      // Matches imfForecastYearToMs(): a WEO horizon for N is backed by the
+      // most recently observed period at the end of N - 1.
+      return Date.UTC(year - 1, 11, 31, 23, 59, 59, 999);
+    }
+  }
   if (typeof value === 'number' && Number.isFinite(value)) {
     if (value >= 1_000_000_000_000) return value;
     if (value >= 1_000_000_000) return value * 1_000;
@@ -42,12 +50,12 @@ function timestampMs(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function newestTimestamp(items, timestampPaths) {
+function newestTimestamp(items, timestampPaths, semantics) {
   const timestamps = [];
   for (const item of items) {
     for (const path of timestampPaths ?? []) {
       for (const value of valuesAtPath(item, path)) {
-        const parsed = timestampMs(value);
+        const parsed = timestampMs(value, semantics);
         if (parsed != null) timestamps.push(parsed);
       }
     }
@@ -135,7 +143,7 @@ function evaluateContent(entry, data, now) {
   ]);
   if (!probed.rows.some((row) => hasSubstantiveValue(row, ignored))) return { ...result, status: 'empty' };
 
-  const observedAt = newestTimestamp(probed.rows, cfg.probe.timestampPaths);
+  const observedAt = newestTimestamp(probed.rows, cfg.probe.timestampPaths, cfg.probe.timestampSemantics);
   if (observedAt == null) return { ...result, status: 'timestamp_missing' };
   const ageMin = Math.round((now - observedAt) / MINUTE_MS);
   return { ...result, status: ageMin < 0 || ageMin > cfg.maxAgeMin ? 'stale' : 'fresh', ageMin };
@@ -170,7 +178,7 @@ export function evaluateChinaCoverage({
         status: entry.launchStatus,
         transport: { status: 'not_applicable', ageMin: null, maxAgeMin: null },
         content: { status: 'not_applicable', ageMin: null, maxAgeMin: null },
-        reasonCodes: [REASON.NOT_LAUNCHED],
+        reasonCodes: [REASON.NOT_LAUNCHED, ...(entry.blockedReason ? [entry.blockedReason] : [])],
       };
     }
 

@@ -18,6 +18,8 @@ export const CHINA_COVERAGE_REASON_CODES = Object.freeze({
   CHINA_ROW_MISSING: 'CHINA_ROW_MISSING',
   CHINA_ROW_EMPTY: 'CHINA_ROW_EMPTY',
   CHINA_COVERAGE_PARTIAL: 'CHINA_COVERAGE_PARTIAL',
+  CHINA_UPSTREAM_ROW_UNAVAILABLE: 'CHINA_UPSTREAM_ROW_UNAVAILABLE',
+  CHINA_COVERAGE_PROJECTION_UNAVAILABLE: 'CHINA_COVERAGE_PROJECTION_UNAVAILABLE',
   CONTENT_TIMESTAMP_MISSING: 'CONTENT_TIMESTAMP_MISSING',
   CONTENT_STALE: 'CONTENT_STALE',
   NOT_LAUNCHED: 'NOT_LAUNCHED',
@@ -51,14 +53,25 @@ export const CHINA_COVERAGE_ENTRIES = Object.freeze([
     content: {
       key: 'economic:imf:macro:v2',
       maxAgeMin: 800 * 1_440,
-      probe: { kind: 'object-property', path: ['countries', 'CN'], timestampPaths: [['latestYear'], ['year']] },
+      // IMF WEO years are forecast horizons, not observation dates. The
+      // seeder maps 2026 forecasts to the end of 2025 for content freshness.
+      probe: {
+        kind: 'object-property',
+        path: ['countries', 'CN'],
+        timestampPaths: [['latestYear'], ['year']],
+        timestampSemantics: 'imf-weo-forecast-year',
+      },
     },
   },
   {
     id: 'energy.jodi-oil',
     label: 'JODI oil',
     ownerIssue: 5271,
-    launchStatus: 'launched',
+    // JODI remains a global source, but its current published country index
+    // has no substantive CN row. Do not advertise China coverage until that
+    // upstream contract recovers.
+    launchStatus: 'blocked',
+    blockedReason: CHINA_COVERAGE_REASON_CODES.CHINA_UPSTREAM_ROW_UNAVAILABLE,
     transport: metaTransport('seed-meta:energy:jodi-oil', 57_600),
     content: {
       key: 'energy:jodi-oil:v1:CN',
@@ -70,7 +83,8 @@ export const CHINA_COVERAGE_ENTRIES = Object.freeze([
     id: 'energy.jodi-gas',
     label: 'JODI gas',
     ownerIssue: 5271,
-    launchStatus: 'launched',
+    launchStatus: 'blocked',
+    blockedReason: CHINA_COVERAGE_REASON_CODES.CHINA_UPSTREAM_ROW_UNAVAILABLE,
     transport: metaTransport('seed-meta:energy:jodi-gas', 57_600),
     content: {
       key: 'energy:jodi-gas:v1:CN',
@@ -130,7 +144,12 @@ export const CHINA_COVERAGE_ENTRIES = Object.freeze([
     id: 'news.china',
     label: 'China news digest',
     ownerIssue: 5272,
-    launchStatus: 'launched',
+    // `news:insights:v1` stores only the globally ranked top stories. It
+    // cannot prove that a China source was reachable when other news ranks
+    // higher, so keep this contract blocked until a source-specific metric is
+    // persisted alongside the digest.
+    launchStatus: 'blocked',
+    blockedReason: CHINA_COVERAGE_REASON_CODES.CHINA_COVERAGE_PROJECTION_UNAVAILABLE,
     transport: metaTransport('seed-meta:news:insights', 30),
     content: {
       key: 'news:insights:v1',

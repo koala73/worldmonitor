@@ -193,6 +193,16 @@ Every displayed signal carries its source and observation or release date; a
 missing, stale, or partial source is shown as unavailable or degraded rather
 than as a zero value.
 
+JODI remains enabled for its existing global energy product, but the China
+contract stays explicitly blocked until a reviewed update verifies that JODI
+publishes a substantive `CN` row for the relevant oil or gas dataset. This
+prevents a global JODI heartbeat from being presented as China coverage.
+
+The globally ranked insights payload is likewise not used as China feed-health
+evidence: a current top-eight can legitimately contain no China story. The
+China news contract stays blocked until a source-specific coverage metric is
+persisted with the digest.
+
 The hourly Railway China coverage evaluator checks the transport heartbeat and
 content freshness independently for every launched contract. It uses the
 canonical eight-hub AviationStack `coverage` records—not the bootstrap's
