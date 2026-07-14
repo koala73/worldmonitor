@@ -16,7 +16,7 @@ import {
 } from '../scripts/seed-forecasts.mjs';
 import { __testing__ as healthTesting } from '../api/health.js';
 import { isPublicSharedRpcRequest } from '../src/shared/public-rpc-cache.ts';
-import { mergeCachedCaseFiles, needsCaseFileRefetch } from '../src/components/forecast-case-files.ts';
+import { mergeCachedCaseFiles, needsCaseFileRefetch, shouldFetchCaseFile } from '../src/components/forecast-case-files.ts';
 
 const root = join(fileURLToPath(new URL('.', import.meta.url)), '..');
 
@@ -189,6 +189,27 @@ test('simulation decorations reach BOTH published keys, not just the canonical o
   assert.equal(store[DASHBOARD_KEY].predictions[0].caseFile, undefined);
 });
 
+test('a failed canonical patch does not skip the dashboard projection patch', async () => {
+  const GENERATED_AT = 1_700_000_000_000;
+  const prediction = () => ({ id: 'f1', simulationAdjustment: 0, simPathConfidence: 0, demotedBySimulation: false });
+  const store = {
+    [CANONICAL_KEY]: { generatedAt: GENERATED_AT, predictions: [prediction()] },
+    [DASHBOARD_KEY]: { generatedAt: GENERATED_AT, predictions: [prediction()] },
+  };
+
+  __setRedisStoreForTests(store, { failPatchKeys: [CANONICAL_KEY] });
+  try {
+    await patchPublishedForecastsWithSimDecorations({
+      f1: { simulationAdjustment: -0.12, simPathConfidence: 0.8, demotedBySimulation: true },
+    }, GENERATED_AT);
+  } finally {
+    __setRedisStoreForTests(null);
+  }
+
+  assert.equal(store[CANONICAL_KEY].predictions[0].simulationAdjustment, 0, 'the injected canonical failure leaves its key untouched');
+  assert.equal(store[DASHBOARD_KEY].predictions[0].simulationAdjustment, -0.12, 'the dashboard key is patched independently');
+});
+
 // ─── Panel lifecycle across refresh ticks ──────────────────────────────────────
 // Lazy-loading the dossiers makes the panel stateful, and the state only misbehaves
 // ~30 minutes in — when a refresh tick re-hydrates from the bootstrap feed. These
@@ -229,6 +250,13 @@ test('a forecast with genuinely no dossier does NOT re-arm the fetch', () => {
   // feed on every single click of that pane.
   const fetched = new Set(['f1', 'f2']);
   assert.equal(needsCaseFileRefetch([{ id: 'f1' }, { id: 'f2' }], fetched, true), false);
+});
+
+test('only a stripped row marked with hasCaseFile triggers the dossier fetch', () => {
+  assert.equal(shouldFetchCaseFile({ id: 'f1', hasCaseFile: true }, true, true), true);
+  assert.equal(shouldFetchCaseFile({ id: 'f1' }, true, true), false, 'a forecast without a dossier must not load the full feed');
+  assert.equal(shouldFetchCaseFile({ id: 'f1', hasCaseFile: true }, false, true), false);
+  assert.equal(shouldFetchCaseFile({ id: 'f1', hasCaseFile: true }, true, false), false);
 });
 
 test('a refresh mid-fetch never cancels the in-flight one', () => {

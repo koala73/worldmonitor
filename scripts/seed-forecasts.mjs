@@ -819,7 +819,11 @@ async function redisCommand(url, token, command) {
 
 /** In-memory Redis store injected by tests. When set, redisGet/redisSet skip network calls. */
 let _testRedisStore = null;
-function __setRedisStoreForTests(store) { _testRedisStore = store; }
+let _testRedisPatchFailures = new Set();
+function __setRedisStoreForTests(store, { failPatchKeys = [] } = {}) {
+  _testRedisStore = store;
+  _testRedisPatchFailures = new Set(failPatchKeys);
+}
 
 async function redisGet(url, token, key) {
   if (_testRedisStore) return _testRedisStore[key] ?? null;
@@ -18163,6 +18167,9 @@ async function redisAtomicPatchSimDecorations(url, token, canonicalKey, byForeca
   // Mirror the production Lua's envelope-aware unwrap/rewrap so test fixtures
   // can exercise both legacy bare and PR-#3097 enveloped canonical shapes.
   if (_testRedisStore) {
+    if (_testRedisPatchFailures.has(canonicalKey)) {
+      throw new Error(`Injected Redis patch failure for ${canonicalKey}`);
+    }
     const published = _testRedisStore[canonicalKey] ?? null;
     if (!published || typeof published !== 'object') return 'MISSING';
     // Match Lua's strict `type(payload._seed) == 'table'` / `type(payload.data)
@@ -18238,9 +18245,17 @@ async function redisAtomicPatchSimDecorations(url, token, canonicalKey, byForeca
  * @param {number} [runGeneratedAt] — generatedAt from the snapshot that produced byForecastId
  */
 async function patchPublishedForecastsWithSimDecorations(byForecastId, runGeneratedAt) {
+  let credentials;
   try {
-    const { url, token } = getRedisCredentials();
-    for (const key of [CANONICAL_KEY, DASHBOARD_KEY]) {
+    credentials = getRedisCredentials();
+  } catch (err) {
+    console.warn(`  [SimulationDecorations] Published key patch failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
+    return;
+  }
+
+  for (const key of [CANONICAL_KEY, DASHBOARD_KEY]) {
+    try {
+      const { url, token } = credentials;
       const status = await redisAtomicPatchSimDecorations(url, token, key, byForecastId, runGeneratedAt, TTL_SECONDS);
       if (status.startsWith('PATCHED:')) {
         console.log(`  [SimulationDecorations] Patched ${status.slice(8)} forecasts in ${key} (atomic)`);
@@ -18250,9 +18265,9 @@ async function patchPublishedForecastsWithSimDecorations(byForecastId, runGenera
         console.warn(`  [SimulationDecorations] Cannot patch ${key} — predictions missing or not an array`);
       }
       // UNCHANGED: no-op, no log needed
+    } catch (err) {
+      console.warn(`  [SimulationDecorations] Cannot patch ${key} (non-fatal): ${err instanceof Error ? err.message : String(err)}`);
     }
-  } catch (err) {
-    console.warn(`  [SimulationDecorations] Published key patch failed (non-fatal): ${err.message}`);
   }
 }
 

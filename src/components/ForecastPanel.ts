@@ -5,7 +5,7 @@ import { t } from '@/services/i18n';
 import { getForecastMacroRegion } from '../../shared/forecast-macro-regions.js';
 import { unsafeRawHtml } from '@/utils/sanitize';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
-import { mergeCachedCaseFiles, needsCaseFileRefetch } from './forecast-case-files';
+import { mergeCachedCaseFiles, needsCaseFileRefetch, shouldFetchCaseFile } from './forecast-case-files';
 
 const DOMAINS = ['all', 'conflict', 'market', 'supply_chain', 'political', 'military', 'cyber', 'infrastructure'] as const;
 const PANEL_MIN_PROBABILITY = 0.1;
@@ -327,7 +327,9 @@ export class ForecastPanel extends Panel {
         // The bootstrap payload carries the LIST, not the dossiers — 78% of the old
         // key was caseFile prose nobody expands (#5300). Fetch them the first time
         // someone actually opens one; the feed is CDN-shielded, so this is cheap.
-        if (detail && panelId?.startsWith('detail-') && !detail.classList.contains('fc-hidden') && !detail.innerHTML.trim()) {
+        const forecastId = panelId?.startsWith('detail-') ? panelId.slice('detail-'.length) : '';
+        const forecast = forecastId ? this.forecasts.find((f) => f.id === forecastId) : undefined;
+        if (detail && shouldFetchCaseFile(forecast, !detail.classList.contains('fc-hidden'), !detail.innerHTML.trim())) {
           void this.loadCaseFiles();
         }
         return;

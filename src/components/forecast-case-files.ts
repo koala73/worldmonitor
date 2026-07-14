@@ -23,6 +23,7 @@
 interface HasCaseFile<C> {
   id: string;
   caseFile?: C;
+  hasCaseFile?: boolean;
 }
 
 /**
@@ -53,4 +54,16 @@ export function needsCaseFileRefetch<C>(
 ): boolean {
   if (!settled) return false;
   return forecasts.some((f) => !fetchedIds.has(f.id));
+}
+
+/**
+ * A stripped dashboard row carries this marker only when the canonical feed has
+ * a dossier for it. Do not download the full feed for an intentionally empty pane.
+ */
+export function shouldFetchCaseFile<C>(
+  forecast: HasCaseFile<C> | undefined,
+  detailIsOpen: boolean,
+  detailIsEmpty: boolean,
+): boolean {
+  return detailIsOpen && detailIsEmpty && forecast?.hasCaseFile === true;
 }
