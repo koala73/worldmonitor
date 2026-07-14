@@ -3,6 +3,7 @@
 import { loadEnvFile, loadSharedConfig, sleep, CHROME_UA, runSeed, parseYahooChart, writeExtraKey, extendExistingTtl, readCanonicalEnvelopeMeta, readSeedSnapshot, writeFreshnessMetadata } from './_seed-utils.mjs';
 import { fetchYahooJson } from './_yahoo-fetch.mjs';
 import { fetchAvBulkQuotes } from './_shared-av.mjs';
+import { CHINA_COUNTRY_STOCK_INDEX_KEY, buildCountryStockIndexSnapshot } from './_country-stock-index.mjs';
 import { getUsEquitySession, isMultiMarketEquityTradingDay } from './shared/market-hours.cjs';
 import { mergeLastGoodQuotes } from './shared/market-quote-refresh.cjs';
 
@@ -138,7 +139,7 @@ export function declareRecords(data) {
 if (!isMultiMarketEquityTradingDay()) {
   const lastGood = await readCanonicalEnvelopeMeta(CANONICAL_KEY);
   if (lastGood) {
-    const extended = await extendExistingTtl([CANONICAL_KEY, 'seed-meta:market:stocks', RPC_KEY], CACHE_TTL);
+    const extended = await extendExistingTtl([CANONICAL_KEY, 'seed-meta:market:stocks', RPC_KEY, CHINA_COUNTRY_STOCK_INDEX_KEY], CACHE_TTL);
     if (extended) {
       await writeFreshnessMetadata('market', 'stocks', lastGood.recordCount, lastGood.sourceVersion || 'alphavantage+finnhub+yahoo', CACHE_TTL);
       console.log(`[seed-market-quotes] Tracked equity markets closed (US session=${getUsEquitySession()}) — skipping upstream fetch, extended TTL`);
@@ -153,6 +154,26 @@ if (!isMultiMarketEquityTradingDay()) {
 async function writeRequiredCompanionKeys(data) {
   if (!data) return;
   await writeExtraKey(RPC_KEY, data, CACHE_TTL);
+  try {
+    await writeChinaCountryStockIndex();
+  } catch (err) {
+    // A China-specific source failure must remain visible to its audit without
+    // turning an otherwise successful global market seed into a false outage.
+    console.warn(`[seed-market-quotes] China country index refresh failed: ${err.message}`);
+  }
+}
+
+async function writeChinaCountryStockIndex() {
+  // Keep the China deep-dive cache Railway-backed. The RPC may still refresh
+  // on demand, but audit health cannot depend on someone opening the panel.
+  await sleep(YAHOO_DELAY_MS);
+  const chart = await fetchYahooJson(
+    'https://query1.finance.yahoo.com/v8/finance/chart/000001.SS?range=1mo&interval=1d',
+    { label: 'China country index' },
+  );
+  const snapshot = buildCountryStockIndexSnapshot(chart);
+  if (!snapshot) throw new Error('China country index returned insufficient closes');
+  await writeExtraKey(CHINA_COUNTRY_STOCK_INDEX_KEY, snapshot, CACHE_TTL);
 }
 
 runSeed('market', 'stocks', CANONICAL_KEY, fetchMarketQuotes, {
@@ -162,6 +183,10 @@ runSeed('market', 'stocks', CANONICAL_KEY, fetchMarketQuotes, {
   declareRecords,
   schemaVersion: 1,
   maxStaleMin: 30,
+  // This companion payload is written after the global market publish because
+  // it needs a different Yahoo chart shape. Preserve its last-good TTL across
+  // every runSeed graceful path, just like normal extra keys.
+  preserveKeys: [CHINA_COUNTRY_STOCK_INDEX_KEY],
   afterPublish: async (data) => {
     // runSeed exits the process on success; required companion writes must be
     // awaited here so the RPC key is published before the terminal exit.

@@ -116,6 +116,7 @@ test('fetch failure extends existing TTL and exits with graceful-failure code', 
       validateFn: (d) => Boolean(d),
       ttlSeconds: 3600,
       extraKeys: [{ key: 'test:fetch-fail:extra' }],
+      preserveKeys: ['test:fetch-fail:preserve-only'],
     }),
   );
 
@@ -126,8 +127,8 @@ test('fetch failure extends existing TTL and exits with graceful-failure code', 
   );
   assert.deepEqual(
     new Set(expireKeys()),
-    new Set(['test:fetch-fail:v1', 'seed-meta:test:fetch-fail', 'test:fetch-fail:extra']),
-    'fetch failure should still preserve last-good data by extending canonical, seed-meta, and extra-key TTLs',
+    new Set(['test:fetch-fail:v1', 'seed-meta:test:fetch-fail', 'test:fetch-fail:extra', 'test:fetch-fail:preserve-only']),
+    'fetch failure should still preserve canonical, seed-meta, extra-key, and explicitly preserved last-good TTLs',
   );
   assert.equal(
     countMetaSets('fetch-fail'), 0,

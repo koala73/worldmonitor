@@ -260,6 +260,30 @@ describe('China coverage manifest', () => {
     assert.ok(providerOmission.entries[0].reasonCodes.includes(CHINA_COVERAGE_REASON_CODES.CHINA_COVERAGE_PARTIAL));
   });
 
+  it('uses Railway market transport plus the seeded CN index payload for China market coverage', () => {
+    const market = CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === 'market.china-index');
+    const data = {
+      'market:stock-index:v1:CN': {
+        available: true,
+        price: 3355,
+        fetchedAt: NOW,
+      },
+    };
+
+    const healthy = evaluate(market, data, { 'seed-meta:market:stocks': { fetchedAt: NOW, status: 'ok' } });
+    assert.equal(healthy.entries[0].status, 'healthy');
+
+    const staleTransport = evaluate(market, data, {
+      'seed-meta:market:stocks': { fetchedAt: NOW - 1_441 * 60_000, status: 'ok' },
+    });
+    assert.equal(staleTransport.entries[0].status, 'degraded');
+    assert.ok(staleTransport.entries[0].reasonCodes.includes(CHINA_COVERAGE_REASON_CODES.TRANSPORT_STALE));
+
+    const missingTransport = evaluate(market, data);
+    assert.equal(missingTransport.entries[0].status, 'degraded');
+    assert.ok(missingTransport.entries[0].reasonCodes.includes(CHINA_COVERAGE_REASON_CODES.TRANSPORT_MISSING));
+  });
+
   it('fails read-only audits cleanly on missing credentials and partial pipelines', async () => {
     const priorUrl = process.env.UPSTASH_REDIS_REST_URL;
     const priorToken = process.env.UPSTASH_REDIS_REST_TOKEN;

@@ -133,7 +133,11 @@ export const CHINA_COVERAGE_ENTRIES = Object.freeze([
     label: 'China country market index',
     ownerIssue: 5271,
     launchStatus: 'launched',
-    transport: { key: 'market:stock-index:v1:CN', maxAgeMin: 1_440, timestampPaths: [['fetchedAt']] },
+    // The country-index RPC cache is a user-facing read-through cache. Railway
+    // seeds the same CN Yahoo source through the market bundle, so its seed
+    // metadata is the transport proof; the CN cache below proves the actual
+    // country-index payload remains available without waiting for a user read.
+    transport: metaTransport('seed-meta:market:stocks', 1_440),
     content: {
       key: 'market:stock-index:v1:CN',
       maxAgeMin: 7 * 1_440,
