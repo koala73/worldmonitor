@@ -235,6 +235,22 @@ describe('China coverage manifest', () => {
       status: 'partial', ageMin: null, maxAgeMin: 120, required: 8, present: 7,
     });
     assert.ok(providerFailure.entries[0].reasonCodes.includes(CHINA_COVERAGE_REASON_CODES.CHINA_COVERAGE_PARTIAL));
+
+    const providerOmission = evaluate(
+      aviation,
+      {
+        'aviation:delays-bootstrap:v2': {
+          alerts,
+          coverage: coverage.map((hub) => (hub.iata === 'KMG' ? { ...hub, status: 'omitted' } : hub)),
+        },
+      },
+      { 'seed-meta:aviation:intl': { fetchedAt: NOW, status: 'ok' } },
+    );
+    assert.equal(providerOmission.entries[0].status, 'degraded');
+    assert.deepEqual(providerOmission.entries[0].content, {
+      status: 'partial', ageMin: null, maxAgeMin: 120, required: 8, present: 7,
+    });
+    assert.ok(providerOmission.entries[0].reasonCodes.includes(CHINA_COVERAGE_REASON_CODES.CHINA_COVERAGE_PARTIAL));
   });
 
   it('fails read-only audits cleanly on missing credentials and partial pipelines', async () => {
