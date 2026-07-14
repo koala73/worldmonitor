@@ -36,7 +36,9 @@ const {
 const { maintainClosedMarketEquityKeys: maintainClosedMarketEquityKeysWithDeps } = require('./shared/closed-market-equity-maintenance.cjs');
 const { getUsEquitySession, isMultiMarketEquityTradingDay } = require('./shared/market-hours.cjs');
 const { mergeLastGoodQuotes, planYahooRefresh } = require('./shared/market-quote-refresh.cjs');
+const chinaCountryStockIndexHelpersPromise = import('./_country-stock-index.mjs');
 const parseProxyUrl = parseProxyConfig;
+const CHINA_COUNTRY_STOCK_INDEX_KEY = 'market:stock-index:v1:CN';
 
 const httpsKeepAliveAgent = new https.Agent({ keepAlive: true, maxSockets: 6, timeout: 60_000 });
 
@@ -1948,9 +1950,9 @@ let _yahooConnectProxyCooldownUntil = 0;
 let _yahooCurlProxyFailCount = 0;      // fetchYahooQuoteSummary via us.decodo.com (curl)
 let _yahooCurlProxyCooldownUntil = 0;
 
-function _fetchYahooChartNoProxy(symbol) {
+function _fetchYahooChartNoProxy(symbol, query = '') {
   return new Promise((resolve) => {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}${query}`;
     const req = https.get(url, {
       headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
       timeout: 10000,
@@ -1969,13 +1971,13 @@ function _fetchYahooChartNoProxy(symbol) {
   });
 }
 
-function fetchYahooChartDirect(symbol) {
-  return _fetchYahooChartNoProxy(symbol).then((result) => {
+function fetchYahooChartDirect(symbol, query = '') {
+  return _fetchYahooChartNoProxy(symbol, query).then((result) => {
     if (result) return result;
     if (!PROXY_URL) return null;
     if (Date.now() < _yahooConnectProxyCooldownUntil) return null;
     const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}${query}`;
     return ytFetchViaProxy(url, proxy).then((resp) => {
       if (!resp?.ok) {
         _yahooConnectProxyFailCount++;
@@ -2148,10 +2150,11 @@ let _lastEquityQuoteCount = 0;
 let _lastYahooMarketRefreshAt = 0;
 // Log once per open↔closed transition, not every 5-minute cycle.
 let _equityGateLoggedClosed = false;
+const CHINA_COUNTRY_STOCK_SYMBOL = '000001.SS';
 
 // When every tracked equity market is on a non-trading day, skip the equity
 // fetch+publish and instead
-// keep the last-good keys alive: extend TTL on both published keys and
+// keep the last-good equity and companion keys alive: extend their TTLs and
 // refresh seed-meta:market:stocks fetchedAt so /api/health (maxStaleMin 30)
 // stays green across a 60h+ weekend. Returns true when last-good was
 // preserved; false means the keys are missing/expired and the caller must
@@ -2165,7 +2168,19 @@ async function maintainClosedMarketEquityKeys() {
     upstashGet,
     upstashSet,
     nowMs: () => Date.now(),
+    preserveKeys: [CHINA_COUNTRY_STOCK_INDEX_KEY],
   });
+}
+
+async function writeChinaCountryStockIndex() {
+  const {
+    buildCountryStockIndexSnapshotFromCloses,
+  } = await chinaCountryStockIndexHelpersPromise;
+  const chart = await fetchYahooChartDirect(CHINA_COUNTRY_STOCK_SYMBOL, '?range=1mo&interval=1d');
+  const snapshot = buildCountryStockIndexSnapshotFromCloses(chart?.sparkline, 'CNY');
+  if (!snapshot) throw new Error('China country index returned insufficient daily closes');
+  const written = await upstashSet(CHINA_COUNTRY_STOCK_INDEX_KEY, snapshot, MARKET_SEED_TTL);
+  if (!written) throw new Error('China country index Redis write failed');
 }
 
 async function seedMarketQuotes() {
@@ -2224,6 +2239,13 @@ async function seedMarketQuotes() {
   // Bootstrap-friendly fixed key — frontend hydrates from /api/bootstrap without RPC
   const ok2 = await envelopeWrite('market:stocks-bootstrap:v1', payload, MARKET_SEED_TTL, { recordCount: quotes.length, sourceVersion: 'market-stocks' });
   const ok3 = await upstashSet('seed-meta:market:stocks', { fetchedAt: Date.now(), recordCount: quotes.length }, 604800);
+  if (freshQuotes.some((quote) => quote.symbol === CHINA_COUNTRY_STOCK_SYMBOL)) {
+    try {
+      await writeChinaCountryStockIndex();
+    } catch (err) {
+      console.warn(`[Market] China country index refresh failed: ${err.message}`);
+    }
+  }
   _lastEquityQuoteCount = quotes.length;
   console.log(`[Market] Seeded ${quotes.length}/${MARKET_SYMBOLS.length} quotes (${freshQuotes.length} fresh, ${retainedCount} retained; Yahoo ${yahooSuccessCount}/${allYahoo.length}, cadence ${MARKET_YAHOO_REFRESH_INTERVAL_MS / 60000}min; redis: ${ok && ok2 && ok3 ? 'OK' : 'PARTIAL'})`);
   const movingStocks = quotes.filter(q => Math.abs(q.change ?? 0) >= 5).sort((a, b) => Math.abs(b.change) - Math.abs(a.change));

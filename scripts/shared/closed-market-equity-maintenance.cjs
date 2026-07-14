@@ -11,6 +11,7 @@ async function maintainClosedMarketEquityKeys({
   upstashSet,
   nowMs = () => Date.now(),
   metaTtlSeconds = 604800,
+  preserveKeys = [],
 }) {
   if (!marketSymbols || typeof marketSymbols[Symbol.iterator] !== 'function') {
     throw new Error('marketSymbols iterable is required');
@@ -18,13 +19,14 @@ async function maintainClosedMarketEquityKeys({
   if (typeof upstashExpire !== 'function') throw new Error('upstashExpire dependency is required');
   if (typeof upstashGet !== 'function') throw new Error('upstashGet dependency is required');
   if (typeof upstashSet !== 'function') throw new Error('upstashSet dependency is required');
+  if (!preserveKeys || typeof preserveKeys[Symbol.iterator] !== 'function') {
+    throw new Error('preserveKeys iterable is required');
+  }
 
   const redisKey = marketQuotesKey(marketSymbols);
-  const [ok1, ok2] = await Promise.all([
-    upstashExpire(redisKey, marketSeedTtl),
-    upstashExpire('market:stocks-bootstrap:v1', marketSeedTtl),
-  ]);
-  if (!ok1 || !ok2) return false;
+  const keys = [...new Set([redisKey, 'market:stocks-bootstrap:v1', ...preserveKeys])];
+  const results = await Promise.all(keys.map((key) => upstashExpire(key, marketSeedTtl)));
+  if (results.some((ok) => !ok)) return false;
 
   let count = lastEquityQuoteCount;
   if (!count) {

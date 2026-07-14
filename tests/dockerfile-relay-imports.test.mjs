@@ -39,6 +39,10 @@ describe('Dockerfile.relay — transitive-import closure', () => {
     assert.ok(copied.size > 0, 'Dockerfile.relay has no COPY scripts/*.mjs|cjs lines');
   });
 
+  it('copies the China country-index helper that ais-relay loads dynamically', () => {
+    assert.ok(copied.has('scripts/_country-stock-index.mjs'));
+  });
+
   it('scanner catches both ESM imports and CJS require/createRequire', () => {
     // Regression guard for the scanner itself: _seed-utils.mjs has both
     // `import { ... } from './_seed-envelope-source.mjs'` (ESM) AND
