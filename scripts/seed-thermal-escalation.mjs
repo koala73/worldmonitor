@@ -2,10 +2,16 @@
 
 import { loadEnvFile, runSeed, verifySeedKey, writeExtraKeyWithMeta } from './_seed-utils.mjs';
 import { computeThermalEscalationWatch, emptyThermalEscalationWatch } from './lib/thermal-escalation.mjs';
+import { compactThermalDashboardPayload } from './_thermal-dashboard.mjs';
 
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'thermal:escalation:v1';
+// Dashboard-sized projection of the canonical watch. The bootstrap slow tier
+// hydrates from THIS key so every client stops downloading ~117 clusters to
+// render 12 (#5300). The canonical key above is untouched and still serves the
+// RPC and analytical consumers.
+const BOOTSTRAP_KEY = 'thermal:escalation-bootstrap:v1';
 const HISTORY_KEY = 'thermal:escalation:history:v1';
 const CACHE_TTL = 6 * 60 * 60; // 6h — cron runs every 2h; 3x interval so one missed run does not expire the key (was 3h = 1.5x, too tight)
 const SOURCE_VERSION = 'thermal-escalation-v1';
@@ -57,6 +63,12 @@ async function main() {
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 360,
+    extraKeys: [{
+      key: BOOTSTRAP_KEY,
+      transform: compactThermalDashboardPayload,
+      declareRecords,
+      metaKey: 'seed-meta:thermal:escalation-bootstrap',
+    }],
     afterPublish: async () => {
       await writeExtraKeyWithMeta(
         HISTORY_KEY,

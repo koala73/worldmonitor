@@ -67,7 +67,7 @@ const BOOTSTRAP_CACHE_KEYS = {
   oceanIce: 'climate:ocean-ice:v1',
   climateNews:      'climate:news-intelligence:v1',
   radiationWatch: 'radiation:observations:v1',
-  thermalEscalation: 'thermal:escalation:v1',
+  thermalEscalation: 'thermal:escalation-bootstrap:v1',
   crossSourceSignals: 'intelligence:cross-source-signals:v1',
   wildfires:        'wildfire:fires-bootstrap:v1',
   cyberThreats:     'cyber:threats-bootstrap:v2',
