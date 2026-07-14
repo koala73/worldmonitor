@@ -246,7 +246,7 @@ curl -s https://worldmonitor.app/mcp \
 
 - **API 端点：** `GET /api/economic/v1/list-global-tenders`
 - **类型：** 受预算约束的规范路由代理——Pro 权益仍由下游路由强制执行；不暴露 bootstrap 或直接缓存读取。
-- **输出预算：** 默认 10 条紧凑记录，最多 25 条。结果保留 `nextCursor`、`total`、`appliedFilters`、`countryCoverage`、`availability`、快照时间和各来源健康摘要。
+- **输出预算：** 默认 10 条紧凑记录，最多 25 条。结果保留 `nextCursor`、`total`、`appliedFilters`、`countryCoverage`、`availability`、快照时间和各来源健康摘要。空字符串 `nextCursor` 表示没有更多页面。
 
 无筛选调用保持标准的所有开放机会行为；绝不会隐式启用 `min_automation_score`。`automationFit` 仅是关键词相关性证据，绝不是代理或供应商可否投标的法律判断。`participationMode: "unknown"` 的含义不变——上游并未确定参与方式。
 

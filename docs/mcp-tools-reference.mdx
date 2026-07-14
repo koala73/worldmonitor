@@ -246,7 +246,7 @@ Search active global public-procurement opportunities through the canonical Pro-
 
 - **API endpoint:** `GET /api/economic/v1/list-global-tenders`
 - **Kind:** bounded canonical-route proxy — Pro entitlement remains enforced by the downstream route; no bootstrap or direct-cache exposure.
-- **Output budget:** 10 compact records by default, at most 25. The result retains `nextCursor`, `total`, `appliedFilters`, `countryCoverage`, `availability`, snapshot time, and per-source health summaries.
+- **Output budget:** 10 compact records by default, at most 25. The result retains `nextCursor`, `total`, `appliedFilters`, `countryCoverage`, `availability`, snapshot time, and per-source health summaries. An empty `nextCursor` means there are no further pages.
 
 Unfiltered calls preserve the standard all-open-opportunities behavior; `min_automation_score` is never implied. `automationFit` is keyword relevance evidence only, never a legal determination of whether an agent or vendor may bid. `participationMode: "unknown"` means exactly that — no participation mode was established upstream.
 

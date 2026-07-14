@@ -146,10 +146,10 @@ function procurementPageSize(value: unknown): number {
 }
 
 /**
- * MCP's input schema advertises the same relevance-filter semantics as the
- * canonical route: malformed/non-positive values disable the filter; values
- * above 100 are deliberately passed through so the route remains the sole
- * authority that clamps its documented upper bound.
+ * The MCP tool preserves the canonical relevance-filter semantics:
+ * malformed/non-positive values disable the filter; values above 100 are
+ * deliberately passed through so the route remains the sole authority that
+ * clamps its documented upper bound.
  */
 function procurementAutomationThreshold(value: unknown): number | null {
   return Number.isInteger(value) && (value as number) > 0 ? value as number : null;
@@ -199,7 +199,7 @@ export const RPC_TOOLS: ToolDef[] = [
         deadline_from: { type: 'string', description: 'Include deadlines on or after this ISO-8601 timestamp.' },
         deadline_to: { type: 'string', description: 'Include deadlines on or before this ISO-8601 timestamp.' },
         sort: { type: 'string', enum: ['newest', 'closing_soon', 'estimated_value', 'relevance'], description: 'Result ordering. Defaults to newest.' },
-        min_automation_score: { type: 'integer', minimum: 1, maximum: 100, description: 'Optional 1-100 keyword-relevance threshold. Non-integer or non-positive values are ignored; values above 100 keep the canonical route clamp. This is not bidding-eligibility evidence.' },
+        min_automation_score: { type: 'integer', minimum: 1, description: 'Optional positive keyword-relevance threshold. Non-integer or non-positive values are ignored; the canonical route clamps values above 100. This is not bidding-eligibility evidence.' },
         page_size: { type: 'integer', minimum: 1, maximum: PROCUREMENT_TOOL_MAX_PAGE_SIZE, description: 'Records per call. Defaults to 10; capped at 25 to protect agent context.' },
         cursor: { type: 'string', description: 'Opaque nextCursor from the prior result; keep the same filters and sort when continuing.' },
       },
@@ -216,7 +216,7 @@ export const RPC_TOOLS: ToolDef[] = [
           categoryCodes: { type: 'array', items: { type: 'string' } }, sectors: { type: 'array', items: { type: 'string' } }, participationMode: { type: 'string' },
           automationFit: { type: 'object', properties: { score: { type: 'number' }, level: { type: 'string' }, classificationVersion: { type: 'string' }, matchReasons: { type: 'array', items: { type: 'string' } } } },
         } } },
-        nextCursor: { type: 'string' }, fetchedAt: { type: 'string' }, dataAvailable: { type: 'boolean' }, availability: { type: 'string' },
+        nextCursor: { type: 'string', description: 'Opaque pagination cursor. An empty string means no further pages are available.' }, fetchedAt: { type: 'string' }, dataAvailable: { type: 'boolean' }, availability: { type: 'string' },
         sourceStatuses: { type: 'array', items: { type: 'object' } }, total: { type: 'number' }, appliedFilters: { type: 'array', items: { type: 'string' } },
         countryCoverage: { type: 'string', description: 'unknown means the requested country has not been observed in this snapshot, not that there are confirmed zero results.' },
       },
