@@ -12,6 +12,8 @@ import {
   GDELT_MIN_SUCCESSFUL_COUNTRIES,
 } from '../scripts/seed-conflict-intel.mjs';
 
+const BULK_FIXTURE_NOW = Date.parse('2026-07-13T12:00:00Z');
+
 test('gdeltSeenDateToIso parses GDELT seendate formats to YYYY-MM-DD', () => {
   assert.equal(gdeltSeenDateToIso('20260709T140000Z'), '2026-07-09');
   assert.equal(gdeltSeenDateToIso('20260709140000'), '2026-07-09');
@@ -102,6 +104,7 @@ test('fetchGdeltConflictEvents fails closed when too many country fetches fail',
 test('fetchGdeltConflictEvents falls through to bulk when the DOC sweep succeeds but yields zero events', async () => {
   const result = await fetchGdeltConflictEvents({
     pace: async () => {},
+    now: () => BULK_FIXTURE_NOW,
     loadPreviousSnapshot: async () => null,
     fetchCountryEvents: async (cc) => ({ country: cc, ok: true, events: [] }),
     fetchBulkEvents: async () => ({
@@ -121,6 +124,7 @@ test('fetchGdeltConflictEvents falls through to bulk when the DOC sweep succeeds
 test('fetchGdeltConflictEvents recovers from a throttled DOC sweep with the bulk event feed', async () => {
   const result = await fetchGdeltConflictEvents({
     pace: async () => {},
+    now: () => BULK_FIXTURE_NOW,
     loadPreviousSnapshot: async () => null,
     fetchCountryEvents: async (cc) => ({
       country: cc,
@@ -231,6 +235,7 @@ test('fetchGdeltConflictEvents preserves partial DOC coverage telemetry after bu
   let calls = 0;
   const result = await fetchGdeltConflictEvents({
     pace: async () => {},
+    now: () => BULK_FIXTURE_NOW,
     loadPreviousSnapshot: async () => null,
     fetchCountryEvents: async (cc) => {
       calls += 1;
