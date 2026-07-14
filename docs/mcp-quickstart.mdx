@@ -3,7 +3,7 @@ title: "MCP Quickstart"
 description: "Connect Claude Desktop to World Monitor via MCP and make your first real intelligence call in five minutes — install, auth, and first query."
 ---
 
-WorldMonitor exposes 40 live tools — markets, conflict events, maritime chokepoints, aviation, climate, AI briefs — over the [Model Context Protocol](https://modelcontextprotocol.io). This page is the shortest path from zero to a useful response inside Claude. Everything else in the [MCP Server reference](/mcp-overview) is optional reading once this works.
+WorldMonitor exposes 41 live tools — markets, conflict events, maritime chokepoints, aviation, climate, AI briefs — over the [Model Context Protocol](https://modelcontextprotocol.io). This page is the shortest path from zero to a useful response inside Claude. Everything else in the [MCP Server reference](/mcp-overview) is optional reading once this works.
 
 ## 1. Pick a tier and grab credentials
 
@@ -137,7 +137,7 @@ To discover what MCP can call from your client:
 The MCP handshake is invisible from the chat side, but here's the sequence so you know where to look if something breaks:
 
 1. Claude Desktop reads `claude_desktop_config.json`, sees the WorldMonitor server, and on first use POSTs `initialize` to `https://worldmonitor.app/mcp`. The server responds with its capabilities, the negotiated protocol version (default `2025-06-18`, matching the static server card; clients pinned to `2025-03-26` still get `2025-03-26`), and a session-level `instructions` string that tells the model about the universal `jmespath` argument. Clients that advertise `text/event-stream` may receive this response as SSE with a resumable `Mcp-Session-Id` / `Last-Event-ID` cursor; clients that do not advertise SSE receive JSON. See [protocol negotiation](/mcp-overview#protocol-negotiation) and [Streamable HTTP responses](/mcp-overview#streamable-http-responses) for the rollout details.
-2. Claude Desktop calls `tools/list` and receives 40 compressed tool descriptions (`≤120` bytes per tool). The compressed form keeps `tools/list` cheap; `describe_tool` returns the full definition on demand.
+2. Claude Desktop calls `tools/list` and receives 41 compressed tool descriptions (`≤120` bytes per tool). The compressed form keeps `tools/list` cheap; `describe_tool` returns the full definition on demand.
 3. When you ask a question that needs live data, Claude picks a tool, calls `tools/call`, and inlines the response into its reply. Cache tools return in under a second; LLM-backed tools (`get_world_brief`, `analyze_situation`, etc.) take 1–4 s.
 
 ## Server-side curl
