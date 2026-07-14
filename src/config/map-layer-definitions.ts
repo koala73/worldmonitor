@@ -188,7 +188,7 @@ export const LAYER_EXPLANATIONS: Partial<Record<keyof MapLayers, LayerExplanatio
     category: 'Natural Disasters',
     purpose: 'Shows earthquakes, severe disaster alerts, and active Earth-observation events for situational awareness.',
     source: 'USGS earthquakes, GDACS alerts, and NASA EONET events merged into the natural events service.',
-    freshness: 'Natural events are seeded every 2 hours; USGS earthquake expectations are documented at roughly 5-minute source cadence.',
+    freshness: 'Natural events are seeded every 3 hours; USGS earthquake expectations are documented at roughly 5-minute source cadence.',
     confidence: 'Strong for detected public disaster signals; confidence varies by hazard type and upstream reporting latency.',
     limitations: [
       'Low-severity GDACS alerts are filtered out to keep the map readable.',

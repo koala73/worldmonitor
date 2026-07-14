@@ -324,9 +324,9 @@ continuous metric.
 | **Start command** | `node scripts/seed-bundle-climate.mjs` |
 | **Cron schedule** | `0 */3 * * *` (every 3h) |
 | **Watch paths** | `scripts/**`, `shared/**` |
-| **Replaces** | 5 services |
-| **Net savings** | 4 slots |
-| **Members** | Zone Normals (monthly, skips ~359/360), Anomalies (3h, depends on zone-normals), Disasters (6h), Ocean Ice (daily), CO2 Monitoring (3 days) |
+| **Replaces** | 6 services |
+| **Net savings** | 5 slots |
+| **Members** | Natural Events (3h, EONET/GDACS/NHC/HKO), Zone Normals (monthly, skips ~359/360), Anomalies (3h, depends on zone-normals), Disasters (6h), Ocean Ice (daily), CO2 Monitoring (3 days) |
 | **Note** | Zone-normals runs before anomalies (dependency ordering) |
 
 ### Bundle 7: seed-bundle-energy-sources

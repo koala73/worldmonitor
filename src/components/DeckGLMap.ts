@@ -4758,7 +4758,7 @@ export class DeckGLMap {
       case 'natural-events-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.title)}</strong><br/>${text(obj.category || t('components.deckgl.tooltip.naturalEvent'))}</div>` };
       case 'storm-centers-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName || obj.title)}</strong><br/>${text(obj.classification || '')} ${obj.windKt ? obj.windKt + ' kt' : ''}</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName || obj.title)}</strong><br/>${text(obj.classification || '')} ${obj.windKt ? obj.windKt + ` kt${obj.windAveragingPeriodMinutes ? ` (${obj.windAveragingPeriodMinutes}-minute mean)` : ''}` : ''}</div>` };
       case 'storm-forecast-track-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName)}</strong><br/>${t('popups.naturalEvent.classification')}: Forecast Track</div>` };
       case 'storm-past-track-layer':

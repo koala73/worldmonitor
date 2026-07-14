@@ -3160,7 +3160,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
           </div>
           ` : ''}
         </div>
-        ${event.stormName || event.windKt ? this.renderTcDetails(event) : ''}
+        ${event.stormName || event.windKt || event.agencyObservations?.length ? this.renderTcDetails(event) : ''}
         ${event.description && !event.windKt ? `<p class="popup-description">${escapeHtml(event.description)}</p>` : ''}
         ${event.sourceUrl ? `<a href="${sanitizeUrl(event.sourceUrl)}" target="_blank" class="popup-link">${t('popups.naturalEvent.viewOnSource', { source: escapeHtml(event.sourceName || t('popups.source')) })} →</a>` : ''}
         <div class="popup-attribution">${t('popups.naturalEvent.attribution')}</div>
@@ -3175,6 +3175,16 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
     const cat = event.stormCategory ?? 0;
     const color = TC_COLORS[cat] || TC_COLORS[0];
     const catLabel = event.classification || (cat > 0 ? `Category ${cat}` : t('popups.naturalEvent.tropicalSystem'));
+    const agencyObservations = event.agencyObservations ?? [];
+    const agencyObservationRows = agencyObservations.map((observation) => {
+      const wind = observation.windKt != null
+        ? `${observation.windKt} kt${observation.windAveragingPeriodMinutes ? ` (${observation.windAveragingPeriodMinutes}-minute mean)` : ''}`
+        : 'Wind not reported';
+      const name = observation.sourceName || observation.agency;
+      const agencyId = observation.agencyId ? ` · ${observation.agencyId}` : '';
+      const status = observation.status ? ` · ${observation.status}` : '';
+      return `<div class="popup-stat" style="grid-column: 1 / -1"><span class="stat-label">${escapeHtml(name)}${escapeHtml(agencyId)}</span><span class="stat-value">${escapeHtml(wind + status)}</span></div>`;
+    }).join('');
 
     return `
       <div class="popup-stats">
@@ -3192,6 +3202,16 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
           <span class="stat-label">${t('popups.naturalEvent.maxWind')}</span>
           <span class="stat-value">${event.windKt} kt (${Math.round(event.windKt * 1.15078)} mph)</span>
         </div>` : ''}
+        ${event.windAveragingPeriodMinutes != null ? `
+        <div class="popup-stat">
+          <span class="stat-label">Wind average</span>
+          <span class="stat-value">${event.windAveragingPeriodMinutes}-minute mean</span>
+        </div>` : ''}
+        ${event.canonicalId ? `
+        <div class="popup-stat">
+          <span class="stat-label">Canonical match</span>
+          <span class="stat-value">${escapeHtml(event.matchingConfidence || 'Agency identifier')}</span>
+        </div>` : ''}
         ${event.pressureMb != null ? `
         <div class="popup-stat">
           <span class="stat-label">${t('popups.naturalEvent.pressure')}</span>
@@ -3202,6 +3222,12 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
           <span class="stat-label">${t('popups.naturalEvent.movement')}</span>
           <span class="stat-value">${event.movementDir != null ? event.movementDir + '° at ' : ''}${event.movementSpeedKt} kt</span>
         </div>` : ''}
+        ${agencyObservations.length > 0 ? `
+        <div class="popup-stat" style="grid-column: 1 / -1">
+          <span class="stat-label">Agency observations</span>
+          <span class="stat-value">${agencyObservations.length}</span>
+        </div>
+        ${agencyObservationRows}` : ''}
       </div>
     `;
   }

@@ -5,9 +5,11 @@ import { resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
 const bundle = readFileSync(resolve(root, 'scripts/seed-bundle-health.mjs'), 'utf8');
+const climateBundle = readFileSync(resolve(root, 'scripts/seed-bundle-climate.mjs'), 'utf8');
 const runbook = readFileSync(resolve(root, 'docs/railway-seed-consolidation-runbook.md'), 'utf8');
 const cacheKeys = readFileSync(resolve(root, 'server/_shared/cache-keys.ts'), 'utf8');
 const seedHealth = readFileSync(resolve(root, 'api/seed-health.js'), 'utf8');
+const naturalSeed = readFileSync(resolve(root, 'scripts/seed-natural-events.mjs'), 'utf8');
 
 describe('China coverage production registration', () => {
   it('runs the compact evaluator in the hourly Railway health bundle', () => {
@@ -20,6 +22,14 @@ describe('China coverage production registration', () => {
     assert.match(cacheKeys, /CHINA_COVERAGE_HEALTH_KEY\s*=\s*'health:china-coverage:v1'/);
     assert.match(seedHealth, /'health:china-coverage'.*seed-meta:health:china-coverage/);
     assert.match(seedHealth, /seed-activated:health:china-coverage/);
+  });
+
+  it('runs western-Pacific hazards in the Railway climate bundle with their real health keys', () => {
+    assert.match(climateBundle, /script:\s*'seed-natural-events\.mjs'/);
+    assert.match(climateBundle, /seedMetaKey:\s*'natural:events'/);
+    assert.match(seedHealth, /'weather:hko-warnings'.*seed-meta:weather:hko-warnings/);
+    assert.match(naturalSeed, /'natural:western-pacific-cyclones:v1'/);
+    assert.match(naturalSeed, /'weather:hko-warnings:v1'/);
   });
 
   it('keeps the audit read-only unless the dedicated seeder is invoked', () => {

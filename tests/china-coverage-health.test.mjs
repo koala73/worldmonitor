@@ -89,7 +89,11 @@ describe('China coverage manifest', () => {
     );
     assert.equal(
       CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === 'hazards.hko-warnings')?.launchStatus,
-      'planned',
+      'launched',
+    );
+    assert.equal(
+      CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === 'hazards.western-pacific-cyclones')?.launchStatus,
+      'launched',
     );
     assert.equal(
       CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === 'aviation.china-hubs')?.transport.key,

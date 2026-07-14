@@ -75,6 +75,7 @@ Keys are grouped into three tiers that determine alert severity:
 |--------|----------|---------|
 | `OK` | Green | Data present, seed fresh |
 | `OK_CASCADE` | Green | Key empty but a sibling in the cascade group has data (e.g., theater posture fallback chain) |
+| `NOT_CONFIGURED` | Green | An optional source adapter this deployment never supplied a credential for (producer wrote `sourceState: "unavailable"`, e.g. the Global Tenders SAM.gov adapter without `SAM_GOV_API_KEY`). Not a fault and not counted as a problem; flips to `OK` on the first run after the credential is added |
 | `STALE_SEED` | Warn | Data present but `seed-meta` age exceeds `maxStaleMin` |
 | `STALE_CONTENT` | Warn | Seeder is fresh but the upstream content stopped advancing (frozen feed); counted in `summary.staleContent` |
 | `COVERAGE_PARTIAL` | Warn | Record count is below the key's declared `minRecordCount` (e.g. 10/13 chokepoints or 139/174 PortWatch port-activity countries) |

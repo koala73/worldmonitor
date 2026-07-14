@@ -1111,6 +1111,22 @@ export interface PastTrackPoint {
   timestamp: number;
 }
 
+/** A single agency report retained on a canonical tropical cyclone event. */
+export interface CycloneAgencyObservation {
+  agency: string;
+  agencyId: string;
+  observedAt: number;
+  lat: number;
+  lon: number;
+  windKt?: number;
+  windAveragingPeriodMinutes?: number;
+  pressureMb?: number;
+  classification?: string;
+  status: string;
+  sourceName?: string;
+  sourceUrl?: string;
+}
+
 export interface NaturalEvent {
   id: string;
   title: string;
@@ -1137,6 +1153,11 @@ export interface NaturalEvent {
   forecastTrack?: ForecastPoint[];
   conePolygon?: number[][][];
   pastTrack?: PastTrackPoint[];
+  canonicalId?: string;
+  matchingConfidence?: string;
+  canonicalAliases?: string[];
+  windAveragingPeriodMinutes?: number;
+  agencyObservations?: CycloneAgencyObservation[];
 }
 
 // Infrastructure Cascade Types

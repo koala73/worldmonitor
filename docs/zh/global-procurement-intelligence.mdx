@@ -44,6 +44,8 @@ Railway 种子任务每小时运行一次，并把规范快照写入 `economic:g
 
 官方步骤和请求限制见 [GSA Get Opportunities Public API 指南](https://open.gsa.gov/api/get-opportunities-public-api/)。TED、Contracts Finder、CanadaBuys、GETS 和世界银行无需 API 密钥。若未配置 `SAM_GOV_API_KEY`，只有 SAM 来源会显示为 `unavailable`，其他适配器仍会正常运行。
 
+不配置 SAM 是受支持的状态，而非降级：`/api/health` 会将该来源报告为 [`NOT_CONFIGURED`](/docs/health-endpoints)（绿色，不计入 `problems`），而不是错误。因此，从未申请 GSA 密钥的部署仍会得到干净的健康端点。添加密钥后，下一次种子运行即自动转为 `OK`，无需修改任何健康配置。
+
 ### 澳大利亚：AusTender 适配器目前被上游阻塞
 
 目前无法安全地上线官方澳大利亚 `austender` 适配器：没有任何允许自动复用的 AusTender 机器可读接口发布开放机会记录所必需的截止时间。以下为截至 2026-07-13 的证据：
