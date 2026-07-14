@@ -162,20 +162,27 @@ test('only the first shadow probe in an isolate is marked cold', async () => {
   assert.deepEqual(calls.events.map(event => event.execution_cold), [true, false]);
 });
 
-test('shadow ignores on-demand and public-tier requests without waitUntil', async () => {
+test('shadow ignores on-demand requests but uses the Vercel scheduler without handler context', async () => {
   process.env.BOOTSTRAP_R2_SHADOW_MEASURE = '1';
   const calls = installFetchHarness();
   const onDemand = makeWaitUntilCtx();
+  const background = makeWaitUntilCtx();
+  __testing__.setWaitUntilForTests(background.ctx.waitUntil);
 
   const onDemandResponse = await handler(makeRequest('keys=bisDsr&public=1'), onDemand.ctx);
   const noContextResponse = await handler(makeRequest('tier=fast&public=1'));
+  await background.settle();
 
   assert.equal(onDemandResponse.headers.get('server-timing'), null);
-  assert.equal(noContextResponse.headers.get('server-timing'), null);
+  assert.match(
+    noContextResponse.headers.get('server-timing') ?? '',
+    /^wm_bootstrap_redis;dur=\d+(?:\.\d+)?$/,
+  );
   assert.equal(calls.redis, 2);
-  assert.equal(calls.r2, 0);
-  assert.equal(calls.axiom, 0);
+  assert.equal(calls.r2, 1);
+  assert.equal(calls.axiom, 1);
   assert.equal(onDemand.pending.length, 0);
+  assert.equal(background.pending.length, 1);
 });
 
 test('shadow source pins the uncensored probe ceiling and cannot consume serving timeouts', () => {

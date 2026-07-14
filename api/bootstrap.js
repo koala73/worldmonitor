@@ -1,3 +1,5 @@
+import { waitUntil as vercelWaitUntil } from '@vercel/functions';
+
 import { getCorsHeaders, getPublicCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import {
   USER_API_KEY_GATEWAY_VALIDATION_ERROR,
@@ -66,13 +68,13 @@ export function isPublicWeatherBootstrapRequest(req) {
 
 const PUBLIC_BOOTSTRAP_TIERS = new Set(['fast', 'slow']);
 let nextBootstrapR2ShadowProbeIsCold = true;
+let scheduleBootstrapR2Shadow = vercelWaitUntil;
 
-function shouldMeasureBootstrapR2Shadow(authKind, tier, ctx) {
+function shouldMeasureBootstrapR2Shadow(authKind, tier) {
   return process.env.BOOTSTRAP_R2_SHADOW_MEASURE === '1'
     && process.env.VERCEL_ENV === 'production'
     && authKind === 'public-tier'
-    && PUBLIC_BOOTSTRAP_TIERS.has(tier)
-    && typeof ctx?.waitUntil === 'function';
+    && PUBLIC_BOOTSTRAP_TIERS.has(tier);
 }
 
 function finishBootstrapR2ShadowResponse(req, ctx, tier, response, redisDurationMs) {
@@ -110,7 +112,12 @@ function finishBootstrapR2ShadowResponse(req, ctx, tier, response, redisDuration
       status: response.status,
     });
   });
-  ctx.waitUntil(probe);
+  try {
+    if (typeof ctx?.waitUntil === 'function') ctx.waitUntil(probe);
+    else scheduleBootstrapR2Shadow(probe);
+  } catch {
+    // Background measurement must never alter the Redis response path.
+  }
   return response;
 }
 
@@ -385,7 +392,7 @@ export default async function handler(req, ctx) {
 
   const keys = Object.values(registry);
   const names = Object.keys(registry);
-  const measureR2Shadow = shouldMeasureBootstrapR2Shadow(auth.kind, tier, ctx);
+  const measureR2Shadow = shouldMeasureBootstrapR2Shadow(auth.kind, tier);
   const redisStartedAt = measureR2Shadow ? performance.now() : null;
 
   let cached;
@@ -459,5 +466,9 @@ export default async function handler(req, ctx) {
 export const __testing__ = {
   resetBootstrapR2ShadowForTests() {
     nextBootstrapR2ShadowProbeIsCold = true;
+    scheduleBootstrapR2Shadow = vercelWaitUntil;
+  },
+  setWaitUntilForTests(waitUntil) {
+    scheduleBootstrapR2Shadow = waitUntil;
   },
 };
