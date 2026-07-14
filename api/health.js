@@ -730,7 +730,9 @@ const EMPTY_DATA_OK_KEYS = new Set([
 // These compact projections must leave a payload on every successful publish.
 // This is deliberately narrower than EMPTY_DATA_OK_KEYS: DDoS, traffic, and
 // weather refresh only their seed metadata during quiet periods, so an absent
-// payload is valid for those sources.
+// payload is valid for those sources. Every entry here must also be in
+// EMPTY_DATA_OK_KEYS so a pre-first-publish absence remains STALE_SEED rather
+// than a false-critical EMPTY; tests/health-empty-data-ok.test.mjs enforces it.
 const MISSING_DATA_IS_FAILURE_KEYS = new Set([
   'thermalEscalationBootstrap',
   'ucdpEventsBootstrap',
@@ -1622,5 +1624,6 @@ export const __testing__ = {
   STANDALONE_KEYS,
   SEED_META,
   EMPTY_DATA_OK_KEYS,
+  MISSING_DATA_IS_FAILURE_KEYS,
   ZERO_RECORD_DATA_OK_KEYS,
 };

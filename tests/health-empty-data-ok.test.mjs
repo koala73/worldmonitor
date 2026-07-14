@@ -6,6 +6,7 @@ import { __testing__ as healthTesting } from '../api/health.js';
 const {
   BOOTSTRAP_KEYS,
   EMPTY_DATA_OK_KEYS,
+  MISSING_DATA_IS_FAILURE_KEYS,
   SEED_META,
   STANDALONE_KEYS,
   STATUS_COUNTS,
@@ -15,13 +16,7 @@ const NOW = 1_700_000_000_000;
 
 // Successful publishers for these compact projections always leave a payload. A
 // missing key after a fresh meta is therefore a failed publish, not quiet data.
-const STRICT_PROJECTIONS = [
-  'thermalEscalationBootstrap',
-  'ucdpEventsBootstrap',
-  'wildfiresBootstrap',
-  'forecastsBootstrap',
-  'positiveGeoEvents',
-];
+const STRICT_PROJECTIONS = [...MISSING_DATA_IS_FAILURE_KEYS];
 
 // These sources intentionally refresh only metadata on quiet cycles, so a missing
 // payload with fresh metadata remains healthy rather than generating a false alarm.
