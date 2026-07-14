@@ -9,6 +9,7 @@ import {
   compactThermalDashboardPayload,
 } from '../scripts/_thermal-dashboard.mjs';
 import { __testing__ as healthTesting } from '../api/health.js';
+import { BOOTSTRAP_CACHE_KEYS } from '../shared/bootstrap-tier-keys.js';
 
 const root = join(fileURLToPath(new URL('.', import.meta.url)), '..');
 
@@ -106,8 +107,5 @@ test('a not-yet-published compact key warns, it does not CRIT', () => {
 });
 
 test('bootstrap hydrates thermalEscalation from the compact key', () => {
-  const src = readFileSync(join(root, 'api', 'bootstrap.js'), 'utf-8');
-  assert.match(src, /thermalEscalation:\s*'thermal:escalation-bootstrap:v1'/);
-  const cacheKeys = readFileSync(join(root, 'server', '_shared', 'cache-keys.ts'), 'utf-8');
-  assert.match(cacheKeys, /thermalEscalation:\s*'thermal:escalation-bootstrap:v1'/);
+  assert.equal(BOOTSTRAP_CACHE_KEYS.thermalEscalation, 'thermal:escalation-bootstrap:v1');
 });

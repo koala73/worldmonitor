@@ -16,6 +16,11 @@ import { redisPipeline } from './_upstash-json.js';
 import { unwrapEnvelope } from './_seed-envelope.js';
 import { bootstrapTierKeyNames, resolveBootstrapRegistry } from './_bootstrap-tier-keys.js';
 import { compactWildfireDashboardPayload } from './_wildfire-dashboard.js';
+import {
+  BOOTSTRAP_R2_PROBE_CEILING_MS,
+  readBootstrapTierObject,
+} from './_bootstrap-r2.js';
+import { deliverBootstrapR2Shadow } from './_usage-telemetry.js';
 
 export const config = { runtime: 'edge' };
 
@@ -60,6 +65,62 @@ export function isPublicWeatherBootstrapRequest(req) {
 }
 
 const PUBLIC_BOOTSTRAP_TIERS = new Set(['fast', 'slow']);
+let nextBootstrapR2ShadowProbeIsCold = true;
+
+function shadowExecutionRegion(req) {
+  const requestId = req.headers.get('x-vercel-id') ?? '';
+  return (requestId.includes('::') ? requestId.split('::', 1)[0] : null)
+    ?? process.env.VERCEL_REGION
+    ?? 'unknown';
+}
+
+function shouldMeasureBootstrapR2Shadow(authKind, tier, ctx) {
+  return process.env.BOOTSTRAP_R2_SHADOW_MEASURE === '1'
+    && process.env.VERCEL_ENV === 'production'
+    && authKind === 'public-tier'
+    && PUBLIC_BOOTSTRAP_TIERS.has(tier)
+    && typeof ctx?.waitUntil === 'function';
+}
+
+function finishBootstrapR2ShadowResponse(req, ctx, tier, response, redisStartedAt) {
+  const redisDurationMs = Math.max(0, performance.now() - redisStartedAt);
+  response.headers.set('Server-Timing', `wm_bootstrap_redis;dur=${redisDurationMs.toFixed(3)}`);
+  const exposedHeaders = response.headers.get('Access-Control-Expose-Headers');
+  response.headers.set(
+    'Access-Control-Expose-Headers',
+    [exposedHeaders, 'Server-Timing', 'Age', 'X-Vercel-Cache', 'CF-Cache-Status']
+      .filter(Boolean)
+      .join(', '),
+  );
+
+  const executionCold = nextBootstrapR2ShadowProbeIsCold;
+  nextBootstrapR2ShadowProbeIsCold = false;
+  const probe = readBootstrapTierObject(tier, {
+    timeoutMs: BOOTSTRAP_R2_PROBE_CEILING_MS,
+  }).then((result) => deliverBootstrapR2Shadow({
+      r2Outcome: result.status === 'ok' ? 'r2' : 'fallback',
+      r2Reason: result.status === 'fallback' ? result.reason : null,
+      bootstrapTier: tier,
+      r2DurationMs: result.durationMs,
+      executionRegion: shadowExecutionRegion(req),
+      executionCold,
+      status: response.status,
+    })).catch(() => {
+    // readBootstrapTierObject is fail-soft by contract. Preserve that contract
+    // if a future implementation accidentally throws before producing a result.
+    return deliverBootstrapR2Shadow({
+      r2Outcome: 'fallback',
+      r2Reason: 'unreadable',
+      bootstrapTier: tier,
+      r2DurationMs: 0,
+      executionRegion: shadowExecutionRegion(req),
+      executionCold,
+      status: response.status,
+    });
+  });
+  ctx.waitUntil(probe);
+  return response;
+}
 
 // An explicit public tier bootstrap read (?tier=fast|slow&public=1, no other
 // params) returns the shared
@@ -141,7 +202,7 @@ function hasBootstrapCredentialCookie(req) {
 const NEG_SENTINEL = '__WM_NEG__';
 export const compactWildfireBootstrapPayload = compactWildfireDashboardPayload;
 
-async function getCachedJsonBatch(keys) {
+async function getCachedJsonBatch(keys, shadowMarkerTier = null) {
   const result = new Map();
   if (keys.length === 0) return result;
 
@@ -149,8 +210,14 @@ async function getCachedJsonBatch(keys) {
   // production cache data. Preview/branch deploys don't run handlers that
   // populate prefixed keys, so prefixing would always miss.
   const pipeline = keys.map((k) => ['GET', k]);
+  if (shadowMarkerTier) {
+    // This intentionally-missing marker makes shadow origin requests uniquely
+    // countable in Redis MONITOR. The publisher reads the same tier registry,
+    // so canonical GET counts alone no longer distinguish it from serving.
+    pipeline.push(['GET', `bootstrap:r2-shadow-origin-marker:${shadowMarkerTier}`]);
+  }
   const data = await redisPipeline(pipeline, 3000);
-  if (!Array.isArray(data) || data.length !== keys.length) {
+  if (!Array.isArray(data) || data.length !== pipeline.length) {
     throw new Error('Bootstrap Redis pipeline unavailable');
   }
 
@@ -300,7 +367,7 @@ function successCacheHeaders(tier, authKind, cors) {
   };
 }
 
-export default async function handler(req) {
+export default async function handler(req, ctx) {
   if (isDisallowedOrigin(req))
     return new Response('Forbidden', { status: 403 });
 
@@ -326,17 +393,19 @@ export default async function handler(req) {
 
   const keys = Object.values(registry);
   const names = Object.keys(registry);
+  const measureR2Shadow = shouldMeasureBootstrapR2Shadow(auth.kind, tier, ctx);
+  const redisStartedAt = measureR2Shadow ? performance.now() : null;
 
   let cached;
   try {
-    cached = await getCachedJsonBatch(keys);
+    cached = await getCachedJsonBatch(keys, measureR2Shadow ? tier : null);
   } catch {
     const isPublic = isPublicBootstrapKind(auth.kind);
     if (isPublic) {
       // Infrastructure failure is not an empty registry. Make it retryable and
       // omit every CDN cache header so the outage response cannot replace a
       // healthy public snapshot at the shared cache key.
-      return jsonResponse(
+      const response = jsonResponse(
         { error: 'Bootstrap service temporarily unavailable' },
         503,
         {
@@ -345,6 +414,9 @@ export default async function handler(req) {
           'Retry-After': '5',
         },
       );
+      return measureR2Shadow
+        ? finishBootstrapR2ShadowResponse(req, ctx, tier, response, redisStartedAt)
+        : response;
     }
     return jsonResponse({ data: {}, missing: names }, 200, { ...cors, 'Cache-Control': 'no-store' });
   }
@@ -374,5 +446,17 @@ export default async function handler(req) {
   // profile (s-maxage=7200) rather than the 600s default that a tier-less
   // `?keys=` request would otherwise fall back to.
   const cacheTier = tier ?? (auth.kind === 'public-on-demand' ? 'slow' : null);
-  return jsonResponse({ data, missing }, 200, successCacheHeaders(cacheTier, auth.kind, cors));
+  const response = jsonResponse({ data, missing }, 200, successCacheHeaders(cacheTier, auth.kind, cors));
+  return measureR2Shadow
+    ? finishBootstrapR2ShadowResponse(req, ctx, tier, response, redisStartedAt)
+    : response;
 }
+
+export const __testing__ = {
+  resetBootstrapR2ShadowForTests() {
+    nextBootstrapR2ShadowProbeIsCold = true;
+  },
+  bootstrapR2ShadowSourceForTests() {
+    return finishBootstrapR2ShadowResponse.toString();
+  },
+};

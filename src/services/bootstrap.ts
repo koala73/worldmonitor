@@ -1,5 +1,13 @@
 import { getPersistentCache, setPersistentCache } from '@/services/persistent-cache';
 import { isDesktopRuntime, toApiUrl } from '@/services/runtime';
+import {
+  buildBootstrapR2RumSample,
+  selectBootstrapR2RumTier,
+  type BootstrapR2RumOutcome,
+  type BootstrapR2RumTier,
+} from '@/bootstrap/bootstrap-r2-rum';
+import { reportBootstrapR2Rum } from '@/bootstrap/debugbear-rum';
+import { getWebVitalsFormFactor } from '@/bootstrap/web-vitals-utils';
 
 const hydrationCache = new Map<string, unknown>();
 const BOOTSTRAP_CACHE_PREFIX = 'bootstrap:tier:';
@@ -32,6 +40,29 @@ let lastHydrationState: BootstrapHydrationState = {
 let bootstrapGeneration = 0;
 let activeSlowCtrl: AbortController | null = null;
 let slowTierSettled: Promise<void> | null = null;
+let bootstrapR2RumTier: BootstrapR2RumTier | null = null;
+
+function selectedBootstrapR2RumTier(): BootstrapR2RumTier {
+  bootstrapR2RumTier ??= selectBootstrapR2RumTier();
+  return bootstrapR2RumTier;
+}
+
+function maybeReportBootstrapR2Rum(
+  tier: BootstrapR2RumTier,
+  outcome: BootstrapR2RumOutcome,
+  startedAt: number,
+  response: Response,
+): void {
+  if (selectedBootstrapR2RumTier() !== tier) return;
+  const result = buildBootstrapR2RumSample(
+    tier,
+    outcome,
+    Math.max(0, performance.now() - startedAt),
+    response.headers,
+    getWebVitalsFormFactor(),
+  );
+  if (result.accepted) reportBootstrapR2Rum(result.sample);
+}
 
 export function getHydratedData(key: string): unknown | undefined {
   const val = hydrationCache.get(key);
@@ -159,12 +190,15 @@ async function fetchTier(
 
   let liveData: Record<string, unknown> = {};
   let missingKeys: string[] = [];
+  const requestStartedAt = performance.now();
+  let rumResponse: Response | null = null;
 
   try {
     // public=1 gives the shared seed bundle a cache key distinct from the legacy
     // credentialed tier URL. credentials:'omit' also avoids sending cookies to
     // a route whose contract is explicitly public (see #5249).
     const resp = await fetch(toApiUrl(`/api/bootstrap?tier=${tier}&public=1`), { signal, credentials: 'omit' });
+    rumResponse = resp;
     if (resp.ok) {
       const payload = (await resp.json()) as {
         data?: Record<string, unknown>;
@@ -172,8 +206,12 @@ async function fetchTier(
       };
       liveData = payload.data ?? {};
       missingKeys = Array.isArray(payload.missing) ? payload.missing : [];
+      maybeReportBootstrapR2Rum(tier, 'success', requestStartedAt, resp);
     }
   } catch {
+    if (signal.aborted && rumResponse) {
+      maybeReportBootstrapR2Rum(tier, 'abort', requestStartedAt, rumResponse);
+    }
     // Fall through to cached tier.
   }
 
@@ -375,6 +413,7 @@ export const __testing__ = {
   resetBootstrapForTests(): void {
     cancelBootstrapSlowTier();
     hydrationCache.clear();
+    bootstrapR2RumTier = null;
     lastHydrationState = {
       source: 'none',
       tiers: {

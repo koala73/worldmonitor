@@ -8,6 +8,7 @@ import {
   DEBUGBEAR_RUM_SAMPLE_RATE,
   DEBUGBEAR_RUM_SCRIPT_SRC,
   initDebugBearRum,
+  reportBootstrapR2Rum,
   resetDebugBearRumForTesting,
   shouldEnableDebugBearRum,
 } from '../src/bootstrap/debugbear-rum.ts';
@@ -137,6 +138,34 @@ describe('DebugBear RUM loader', () => {
         ['error', errorEvent],
         ['unhandledrejection', rejectionEvent],
       ]);
+    } finally {
+      h.restore();
+    }
+  });
+
+  it('queues only numeric U3a durations and closed low-cardinality tags', () => {
+    const h = installDebugBearHarness('www.worldmonitor.app');
+    try {
+      initDebugBearRum();
+      reportBootstrapR2Rum({
+        bootstrap_tier: 'slow',
+        device_class: 'mobile',
+        total_duration_ms: 880,
+        redis_duration_ms: 310,
+        non_r2_overhead_ms: 570,
+        outcome: 'abort',
+      });
+
+      assert.deepEqual(h.win.dbbRum?.slice(1), [
+        ['metric1', 880],
+        ['metric2', 310],
+        ['metric3', 570],
+        ['tag1', 'slow'],
+        ['tag2', 'abort'],
+        ['tag3', 'mobile'],
+      ]);
+      assert.equal(JSON.stringify(h.win.dbbRum).includes('request'), false);
+      assert.equal(JSON.stringify(h.win.dbbRum).includes('user'), false);
     } finally {
       h.restore();
     }

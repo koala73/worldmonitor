@@ -19,6 +19,7 @@ import {
 import { __testing__ as healthTesting } from '../api/health.js';
 import { isPublicSharedRpcRequest } from '../src/shared/public-rpc-cache.ts';
 import { mergeCachedCaseFiles, needsCaseFileRefetch, shouldFetchCaseFile } from '../src/components/forecast-case-files.ts';
+import { BOOTSTRAP_CACHE_KEYS } from '../shared/bootstrap-tier-keys.js';
 
 const root = join(fileURLToPath(new URL('.', import.meta.url)), '..');
 
@@ -145,10 +146,7 @@ test('a not-yet-published dashboard list warns, it does not CRIT', () => {
 });
 
 test('the fast tier hydrates from the dashboard list', () => {
-  const src = readFileSync(join(root, 'api', 'bootstrap.js'), 'utf-8');
-  assert.match(src, /forecasts:\s*'forecast:predictions-bootstrap:v1'/);
-  const cacheKeys = readFileSync(join(root, 'server', '_shared', 'cache-keys.ts'), 'utf-8');
-  assert.match(cacheKeys, /forecasts:\s*'forecast:predictions-bootstrap:v1'/);
+  assert.equal(BOOTSTRAP_CACHE_KEYS.forecasts, 'forecast:predictions-bootstrap:v1');
 });
 
 // Regression guard. runSeed writes extraKeys during publish and calls afterPublish
