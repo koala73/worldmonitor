@@ -52,8 +52,9 @@ const dockerfileMap = new Map(
     .map((r) => [r.dockerfile!, r.entry]),
 );
 
-// Match `CMD ["node", "scripts/<file>"]`. Captures the script path.
-const DOCKERFILE_CMD_RE = /^\s*CMD\s+\[\s*"node"\s*,\s*"(scripts\/[^"]+)"\s*\]/m;
+// Match `CMD ["node", "scripts/<file>", ...]`. Captures the script path and
+// permits fixed script arguments such as the publisher's required `--loop`.
+const DOCKERFILE_CMD_RE = /^\s*CMD\s+\[\s*"node"\s*,\s*"(scripts\/[^"]+)"(?:\s*,\s*"[^"]*")*\s*\]/m;
 
 // Match runbook lines like `| **Start command** | \`node scripts/foo.mjs\` |`
 // (table-cell shape — multiple spaces, backtick quoting around the command).
@@ -76,7 +77,18 @@ describe('Railway service registry coverage', () => {
     );
 
     assert.ok(publisher, 'bootstrap publisher must be registered as a Railway service');
-    assert.equal(publisher.deployMode, 'nixpacks-root-repo');
+    assert.equal(publisher.deployMode, 'dockerfile');
+    assert.equal(publisher.dockerfile, 'Dockerfile.publish-bootstrap-tiers');
+    const publisherDockerfile = readFileSync(
+      resolve(repoRoot, publisher.dockerfile),
+      'utf8',
+    );
+    assert.match(publisherDockerfile, /^COPY scripts\/ \.\/scripts\/$/m);
+    assert.match(publisherDockerfile, /^COPY shared\/ \.\/shared\/$/m);
+    assert.match(
+      publisherDockerfile,
+      /^CMD \["node", "scripts\/publish-bootstrap-tiers\.mjs", "--loop"\]$/m,
+    );
     assert.equal(publisher.service, 'publish-bootstrap-tiers');
     assert.equal(publisher.startCommand, 'node scripts/publish-bootstrap-tiers.mjs --loop');
     assert.deepEqual(publisher.requiredEnv, [
@@ -220,6 +232,13 @@ describe('Railway service registry coverage', () => {
     const m = sample.match(DOCKERFILE_CMD_RE);
     assert.ok(m, 'DOCKERFILE_CMD_RE failed to match canonical CMD shape');
     assert.equal(m![1], 'scripts/seed-fake.mjs');
+  });
+
+  it('DOCKERFILE_CMD_RE accepts fixed script arguments', () => {
+    const sample = 'CMD ["node", "scripts/publish-bootstrap-tiers.mjs", "--loop"]\n';
+    const m = sample.match(DOCKERFILE_CMD_RE);
+    assert.ok(m, 'DOCKERFILE_CMD_RE failed to match CMD with a fixed argument');
+    assert.equal(m![1], 'scripts/publish-bootstrap-tiers.mjs');
   });
 
   it('RUNBOOK_START_RE matches the documented runbook Start command shape', () => {

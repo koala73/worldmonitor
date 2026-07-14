@@ -62,8 +62,9 @@ has no custom domain; clients continue to enter through `/api/bootstrap` so the
 WAF, origin policy, rate limits, telemetry, and future access controls remain in
 the request path.
 
-This service is an always-on publisher, not a Railway cron. Configure it as a
-`nixpacks-root-repo` service with start command
+This service is an always-on publisher, not a Railway cron. Configure it with
+`Dockerfile.publish-bootstrap-tiers` (the root application Dockerfile does not
+contain the publisher) and start command
 `node scripts/publish-bootstrap-tiers.mjs --loop`, **no cron schedule**, and
 watch paths `scripts/**`, `shared/**`. It publishes both tiers on startup, then
 fast every two minutes and slow every ten minutes. Keep Redis authoritative:

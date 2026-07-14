@@ -216,7 +216,8 @@
   },
   {
     "entry": "scripts/publish-bootstrap-tiers.mjs",
-    "deployMode": "nixpacks-root-repo",
+    "deployMode": "dockerfile",
+    "dockerfile": "Dockerfile.publish-bootstrap-tiers",
     "service": "publish-bootstrap-tiers",
     "startCommand": "node scripts/publish-bootstrap-tiers.mjs --loop",
     "requiredEnv": [

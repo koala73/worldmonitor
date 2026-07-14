@@ -7,7 +7,7 @@ export const REQUIRED_WATCH_PATTERNS = Object.freeze(['scripts/**', 'shared/**']
 
 const REPOSITORY = 'koala73/worldmonitor';
 const SEED_COMMAND_RE = /^node\s+(?:\.\/)?(?:scripts\/)?(?:seed-[^\s]+|fetch-gpsjam\.mjs|publish-bootstrap-tiers\.mjs)(?:\s|$)/;
-const SEED_DOCKERFILE_RE = /(?:^|\/)Dockerfile\.(?:seed-[^/\s]+|digest-notifications)$/;
+const SEED_DOCKERFILE_RE = /(?:^|\/)Dockerfile\.(?:seed-[^/\s]+|digest-notifications|publish-bootstrap-tiers)$/;
 
 function normalizeRootDirectory(value) {
   return typeof value === 'string' ? value.replace(/^\/+|\/+$/g, '') : '';
