@@ -65,6 +65,14 @@ Railway 种子任务每小时运行一次，并把规范快照写入 `economic:g
 
 每条记录都含有稳定的 WorldMonitor ID（`source:sourceNoticeId`）、官方公告链接、来源公告 ID、上游提供时的金额字段、时间戳、分类数据和可追溯的来源名称。缺失的上游字段保持缺失，不会被推断填补。
 
+## MCP 工具
+
+`get_procurement_opportunities` 向已认证的 MCP 客户端暴露同一条规范路由；它绝不直接读取 `economic:global-tenders:v1`。其上下文预算有意设为**默认 10 条紧凑机会，最多 25 条**。它公开 `country`、重复的 `countries`、`source`、`query`、`buyer`、`deadline_from`、`deadline_to`、`sort`、`min_automation_score`、`page_size` 和 `cursor`。
+
+紧凑投影省略描述文本、资格要求和提交 URL，同时保留每条机会的官方 URL、来源、标题、买方、日期、金额、分类、领域、`participationMode` 和精简的 `automationFit`。它还保留游标分页、`total`、`appliedFilters`、`countryCoverage`、可用性、快照时间和来源健康摘要。25 条的 MCP 上限有意小于 REST 路由 100 条的上限。
+
+MCP 工具与 HTTP 路由一样仅限 Pro，且不属于 bootstrap。无筛选工具调用会保留所有开放机会；`min_automation_score` 始终是可选项。完整参数契约见 [MCP 工具参考](/zh/mcp-tools-reference#get_procurement_opportunities)。
+
 ## 技术相关性
 
 `automationFit` 是针对软件、AI、数据、网络安全、自动化、云服务及相关术语的透明关键词相关性信号。它包含评分、分类版本、匹配理由和文本证据，**不是**法律意见或采购资格判断；除非上游来源明确提供，`participationMode` 始终为 `unknown`。

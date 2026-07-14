@@ -341,9 +341,9 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       return JSON.parse(body.result.content[0].text);
     }
 
-    it('tools/list contains 40 tools (39 + describe_tool)', async () => {
+    it('tools/list contains 41 tools (40 + describe_tool)', async () => {
       const tools = await getToolsList();
-      assert.equal(tools.length, 40);
+      assert.equal(tools.length, 41);
     });
 
     it('describe_tool itself appears in tools/list', async () => {
@@ -390,7 +390,7 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       assert.equal(env.error, 'unknown_tool');
       assert.equal(env.requested, 'nonexistent_tool');
       assert.ok(Array.isArray(env.available));
-      assert.equal(env.available.length, 40, 'available should list all 40 tools');
+      assert.equal(env.available.length, 41, 'available should list all 41 tools');
       // Sorted alphabetically
       const sorted = [...env.available].sort();
       assert.deepEqual(env.available, sorted);
@@ -429,14 +429,14 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
         'instructions should mention the TOOL_DESCRIPTION_MAX_BYTES cap');
     });
 
-    it('server-card.json version matches SERVER_VERSION (1.15.0) AND tools[] length matches (40)', () => {
+    it('server-card.json version matches SERVER_VERSION (1.15.0) AND tools[] length matches (41)', () => {
       const card = JSON.parse(readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'));
       assert.equal(card.serverInfo.version, '1.15.0');
       // orank (ora.ai) agent-readiness scanner reads the card's `tools` as an
       // ARRAY (tools[]) for pre-connection preview — not the old {count,categories}
       // object. Keep it an array; the count now derives from the length.
       assert.ok(Array.isArray(card.tools), 'server-card tools must be an array (tools[])');
-      assert.equal(card.tools.length, 40);
+      assert.equal(card.tools.length, 41);
       assert.equal(card.features?.toolDescriptionCompression, true);
       assert.equal(card.features?.responseProjection, 'jmespath',
         'v1.4.0 feature flag must still be present');

@@ -49,17 +49,17 @@ const EXCLUDED_FROM_MCP = new Map([
   ['health:china-coverage:v1',
     'operational: bounded China coverage verdict and reason codes consumed by api/health.js and the read-only operator audit; source content remains available through its domain tools, so this summary is not a queryable MCP slice (#5271).'],
   ['economic:global-tenders:v1:source:sam',
-    'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the paginated economic RPC.'],
+    'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
   ['economic:global-tenders:v1:source:ted',
-    'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the paginated economic RPC.'],
+    'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
   ['economic:global-tenders:v1:source:contracts-finder',
-    'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the paginated economic RPC.'],
+    'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
   ['economic:global-tenders:v1:source:canada-buys',
-    'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the paginated economic RPC.'],
+    'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
   ['economic:global-tenders:v1:source:gets',
-    'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the paginated economic RPC.'],
+    'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
   ['economic:global-tenders:v1:source:world-bank',
-    'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the paginated economic RPC.'],
+    'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
 
   // ===========================================================================
   // Intermediate / pipeline keys (data surfaces through a sibling tool)

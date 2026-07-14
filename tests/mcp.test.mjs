@@ -432,12 +432,12 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
   // --- tools/list ---
 
-  it('tools/list returns 40 tools with name, description, inputSchema', async () => {
+  it('tools/list returns 41 tools with name, description, inputSchema', async () => {
     const res = await handler(makeReq('POST', { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }));
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.ok(Array.isArray(body.result?.tools), 'result.tools must be an array');
-    assert.equal(body.result.tools.length, 40, `Expected 40 tools, got ${body.result.tools.length}`);
+    assert.equal(body.result.tools.length, 41, `Expected 41 tools, got ${body.result.tools.length}`);
     for (const tool of body.result.tools) {
       assert.ok(tool.name, 'tool.name must be present');
       assert.ok(tool.description, 'tool.description must be present');
@@ -456,6 +456,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.ok(toolNames.includes('get_consumer_prices'), 'get_consumer_prices must be registered (U4)');
     assert.ok(toolNames.includes('get_tariff_trends'), 'get_tariff_trends must be registered (U5)');
     assert.ok(toolNames.includes('get_chokepoint_status'), 'get_chokepoint_status must be registered (U6)');
+    assert.ok(toolNames.includes('get_procurement_opportunities'), 'get_procurement_opportunities must be registered (#5301)');
     assert.ok(toolNames.includes('describe_tool'), 'describe_tool must be registered (v1.5.0 schema compression)');
   });
 

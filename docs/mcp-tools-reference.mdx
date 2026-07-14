@@ -225,6 +225,46 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_procurement_opportunities`
+
+Search active global public-procurement opportunities through the canonical Pro-gated tender API. The tool never reads Upstash directly. It returns a compact projection of the canonical records: official notice URL, source, title, buyer, timing, money, categories, sectors, `participationMode`, and compact `automationFit`; it deliberately omits descriptions, eligibility requirements, and submission URLs.
+
+**Parameters (tool-specific):**
+
+| Name | Type | Description |
+|------|------|-------------|
+| `country` | string | One ISO 3166-1 alpha-2 country code. |
+| `countries` | `array<string>` | Additional country codes; combines with `country`. |
+| `source` | string | Official source adapter, such as `sam`, `ted`, `contracts-finder`, `canada-buys`, `gets`, or `world-bank`. |
+| `query` | string | Case-insensitive text search across titles and descriptions. |
+| `buyer` | string | Case-insensitive buyer or contracting-authority text. |
+| `deadline_from` / `deadline_to` | string | ISO-8601 inclusive deadline range. |
+| `sort` | `string: newest / closing_soon / estimated_value / relevance` | Result ordering; defaults to `newest`. |
+| `min_automation_score` | integer | Optional keyword-relevance score threshold. Positive integers are passed to the canonical route (which clamps values above 100); non-integer and non-positive values are ignored. It is opt-in and is **not** bidding-eligibility evidence. |
+| `page_size` | integer | Default **10**, maximum **25** records. This is the MCP output budget; the REST route itself permits up to 100. |
+| `cursor` | string | Opaque `nextCursor` from the preceding result; keep the same filters and sort while paging. |
+
+- **API endpoint:** `GET /api/economic/v1/list-global-tenders`
+- **Kind:** bounded canonical-route proxy — Pro entitlement remains enforced by the downstream route; no bootstrap or direct-cache exposure.
+- **Output budget:** 10 compact records by default, at most 25. The result retains `nextCursor`, `total`, `appliedFilters`, `countryCoverage`, `availability`, snapshot time, and per-source health summaries.
+
+Unfiltered calls preserve the standard all-open-opportunities behavior; `min_automation_score` is never implied. `automationFit` is keyword relevance evidence only, never a legal determination of whether an agent or vendor may bid. `participationMode: "unknown"` means exactly that — no participation mode was established upstream.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_procurement_opportunities","arguments":{"country":"US","min_automation_score":70,"page_size":10,"sort":"relevance"}}
+  }'
+```
+
+</CodeGroup>
+
 ### `get_country_macro`
 
 Per-country macroeconomic indicators from IMF WEO (~210 countries, monthly cadence). Bundles fiscal/external balance (inflation, current account, gov revenue/expenditure/primary balance, CPI), growth & per-capita (real GDP growth, GDP/capita USD & PPP, savings & investment rates, savings-investment gap), labor & demographics (unemployment, population), and external trade (current account USD, import/export volume % changes). Latest available year per series. Use for country-level economic screening, peer benchmarking, and stagflation/imbalance flags. NOTE: export/import LEVELS in USD (exportsUsd, importsUsd, tradeBalanceUsd) are returned as null — WEO retracted broad coverage for BX/BM indicators in 2026-04; use currentAccountUsd or volume changes (import/exportVolumePctChg) instead.

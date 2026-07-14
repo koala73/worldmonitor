@@ -13,7 +13,7 @@ WorldMonitor exposes its intelligence stack as a [Model Context Protocol](https:
 **Pro and API tiers can both connect via OAuth — no API key required.** Pro subscribers click _"Sign in with WorldMonitor Pro"_ on the consent page; API Starter / Business / Enterprise users may sign in the same way OR paste a `wm_…` key. Free-tier users see a 401 at the OAuth step.
 </Info>
 
-All paid tiers share the same MCP server and the same 40 tools. The current hard MCP daily reservation is enforced only for OAuth contexts at the Pro counter: **50 quota-consuming `tools/call` / `resources/read` calls per UTC day**. API-key (`wm_…`) MCP clients are protected by the **60 requests/minute/key** limiter in this handler; broader API Starter / Business REST allowances are enforced outside the MCP daily reservation path. (`describe_tool`, the v1.5.0 metadata-lookup helper, is exempt from the Pro daily quota.)
+All paid tiers share the same MCP server and the same 41 tools. The current hard MCP daily reservation is enforced only for OAuth contexts at the Pro counter: **50 quota-consuming `tools/call` / `resources/read` calls per UTC day**. API-key (`wm_…`) MCP clients are protected by the **60 requests/minute/key** limiter in this handler; broader API Starter / Business REST allowances are enforced outside the MCP daily reservation path. (`describe_tool`, the v1.5.0 metadata-lookup helper, is exempt from the Pro daily quota.)
 
 Pro subscribers can connect Claude Desktop / Cursor / claude.ai without ever pasting an API key — see [Pro sign-in flow](#pro-sign-in-flow) below. API Starter+ holders may continue to paste a `wm_…` key on the consent page (the original flow), or use the same OAuth path as Pro.
 
@@ -195,7 +195,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 ## Tool catalog
 
-The server exposes 40 tools. Most are cache-reads over pre-seeded Redis keys (sub-second). The slower, non-cache paths are the six live LLM/external-API tools (`get_world_brief`, `get_country_brief`, `analyze_situation`, `generate_forecasts`, `search_flights`, `search_flight_prices_by_date`) plus the live geo RPC tools (`get_airspace`, `get_maritime_activity`), which proxy fresh aviation/maritime API calls with edge timeouts. One (`describe_tool`, added v1.5.0) returns the full uncompressed definition of any other tool — useful when the compressed `tools/list` description is ambiguous; exempt from the Pro daily quota.
+The server exposes 41 tools. Most are cache-reads over pre-seeded Redis keys (sub-second). The slower, non-cache paths are the six live LLM/external-API tools (`get_world_brief`, `get_country_brief`, `analyze_situation`, `generate_forecasts`, `search_flights`, `search_flight_prices_by_date`) plus the live geo RPC tools (`get_airspace`, `get_maritime_activity`) and the bounded canonical procurement proxy (`get_procurement_opportunities`). One (`describe_tool`, added v1.5.0) returns the full uncompressed definition of any other tool — useful when the compressed `tools/list` description is ambiguous; exempt from the Pro daily quota.
 
 <Tip>
 For per-tool parameters, freshness budgets, timeouts, and concrete `curl` examples, see the [MCP Tools Reference](/mcp-tools-reference). For payload projection — every tool accepts an optional `jmespath` argument that typically cuts response size by 80-95% — see the [JMESPath guide](/mcp-jmespath).
@@ -216,6 +216,7 @@ For per-tool parameters, freshness budgets, timeouts, and concrete `curl` exampl
 | `get_tariff_trends` | Global trade and pricing indicators: US tariff trends (HTS-coded), BigMac index, FAO Food Price Index, and per-country national debt levels. |
 | `get_chokepoint_status` | Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc. |
 | `get_consumer_prices` | Per-country consumer-prices intelligence: 30-day overview, category-level inflation, retailer spread (essentials basket), top movers, and source freshness. Requires `country_code` (currently only `ae` is seeded). |
+| `get_procurement_opportunities` | Pro-gated canonical global procurement search; compact output defaults to 10 records and caps at 25. Keyword relevance is never bidding eligibility. |
 | `get_commodity_geo` | 71 major mining sites worldwide (gold, silver, copper, lithium, uranium, coal). |
 
 ### Energy
@@ -355,11 +356,11 @@ Current follow-up trackers:
 - [#4525](https://github.com/koala73/worldmonitor/issues/4525) — pure-read deferred MCP coverage candidates.
 - [#4526](https://github.com/koala73/worldmonitor/issues/4526) — manual mapping and fetch-on-miss triage.
 
-See the [Tool catalog](#tool-catalog) above for the complete list of 40 tools, or the [MCP Tools Reference](/mcp-tools-reference) for per-tool details.
+See the [Tool catalog](#tool-catalog) above for the complete list of 41 tools, or the [MCP Tools Reference](/mcp-tools-reference) for per-tool details.
 
 ## Prompts and resources
 
-In addition to the 40 tools, WorldMonitor exposes MCP prompts and resources so clients can discover common workflows and address stable data slices without inventing tool plans from scratch.
+In addition to the 41 tools, WorldMonitor exposes MCP prompts and resources so clients can discover common workflows and address stable data slices without inventing tool plans from scratch.
 
 ### Prompts
 

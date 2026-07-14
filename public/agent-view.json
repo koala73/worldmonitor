@@ -3,13 +3,13 @@
   "kind": "agent-view",
   "product": "World Monitor",
   "url": "https://www.worldmonitor.app",
-  "description": "Live global-intelligence platform: real-time markets, conflict events, country risk and resilience, shipping chokepoints, aviation/maritime activity, energy, climate, health, cyber threats, forecasts and AI-generated briefs — machine-readable JSON, correlated across layers.",
+  "description": "Live global-intelligence platform: real-time markets, conflict events, country risk and resilience, global procurement opportunities, shipping chokepoints, aviation/maritime activity, energy, climate, health, cyber threats, forecasts and AI-generated briefs — machine-readable JSON, correlated across layers.",
   "endpoints": {
     "mcp": {
       "url": "https://worldmonitor.app/mcp",
       "transport": "streamable-http",
       "serverCard": "https://worldmonitor.app/.well-known/mcp/server-card.json",
-      "tools": 40,
+      "tools": 41,
       "note": "tools/list, prompts/list, resources/list and describe_tool are anonymous; data calls need auth."
     },
     "rest": {

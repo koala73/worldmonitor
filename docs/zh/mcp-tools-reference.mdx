@@ -225,6 +225,46 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_procurement_opportunities`
+
+通过规范的、仅限 Pro 的招标 API 搜索活跃的全球公共采购机会。此工具绝不直接读取 Upstash。它返回规范记录的紧凑投影：官方公告 URL、来源、标题、买方、时间、金额、分类、领域、`participationMode` 与精简的 `automationFit`；有意省略描述、资格要求和提交 URL。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `country` | string | 一个 ISO 3166-1 alpha-2 国家代码。 |
+| `countries` | `array<string>` | 额外国家代码；与 `country` 合并。 |
+| `source` | string | 官方来源适配器，例如 `sam`、`ted`、`contracts-finder`、`canada-buys`、`gets` 或 `world-bank`。 |
+| `query` | string | 对标题和描述进行不区分大小写的文本搜索。 |
+| `buyer` | string | 不区分大小写的买方或采购机构文本。 |
+| `deadline_from` / `deadline_to` | string | ISO-8601 的包含式截止日期范围。 |
+| `sort` | `string: newest / closing_soon / estimated_value / relevance` | 排序方式；默认为 `newest`。 |
+| `min_automation_score` | integer | 可选关键词相关性评分阈值。正整数会传给规范路由（大于 100 时由其截断）；非整数和非正值会被忽略。该筛选为可选，**不是**投标资格证据。 |
+| `page_size` | integer | 默认 **10** 条，最多 **25** 条。这是 MCP 输出预算；REST 路由本身最多允许 100 条。 |
+| `cursor` | string | 上一页结果的非透明 `nextCursor`；翻页时保持相同筛选和排序。 |
+
+- **API 端点：** `GET /api/economic/v1/list-global-tenders`
+- **类型：** 受预算约束的规范路由代理——Pro 权益仍由下游路由强制执行；不暴露 bootstrap 或直接缓存读取。
+- **输出预算：** 默认 10 条紧凑记录，最多 25 条。结果保留 `nextCursor`、`total`、`appliedFilters`、`countryCoverage`、`availability`、快照时间和各来源健康摘要。
+
+无筛选调用保持标准的所有开放机会行为；绝不会隐式启用 `min_automation_score`。`automationFit` 仅是关键词相关性证据，绝不是代理或供应商可否投标的法律判断。`participationMode: "unknown"` 的含义不变——上游并未确定参与方式。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_procurement_opportunities","arguments":{"country":"US","min_automation_score":70,"page_size":10,"sort":"relevance"}}
+  }'
+```
+
+</CodeGroup>
+
 ### `get_country_macro`
 
 来自 IMF WEO 的逐国宏观经济指标（约 210 个国家，月度节奏）。捆绑财政/外部平衡（通胀、经常账户、政府收入/支出/初级余额、CPI）、增长与人均（实际 GDP 增长、人均 GDP 美元和 PPP、储蓄和投资率、储蓄-投资缺口）、劳动力和人口统计（失业率、人口），以及对外贸易（经常账户美元、进口/出口量百分比变化）。每个序列取最新可用年份。用于国家级经济筛选、同侪基准对比和滞胀/失衡标志。注意：以美元计的出口/进口水平（exportsUsd、importsUsd、tradeBalanceUsd）返回 null — WEO 在 2026-04 收回了 BX/BM 指标的广泛覆盖；请改用 currentAccountUsd 或量变化（import/exportVolumePctChg）。

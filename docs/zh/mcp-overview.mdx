@@ -13,7 +13,7 @@ WorldMonitor 将其情报栈作为 [Model Context Protocol](https://modelcontext
 **Pro 和 API 套餐均可通过 OAuth 接入 —— 无需 API key。** Pro 订阅者只需在授权页点击 _"Sign in with WorldMonitor Pro"_；API Starter / Business / Enterprise 用户可以同样的方式登录，或者粘贴 `wm_…` key。Free 套餐用户在 OAuth 步骤会看到 401。
 </Info>
 
-所有付费套餐共享同一个 MCP 服务器和同样的 40 个工具。当前的硬性 MCP 每日预留仅针对 OAuth 上下文在 Pro 计数器上强制执行：**每个 UTC 日 50 次消耗配额的 `tools/call` / `resources/read` 调用**。使用 API key（`wm_…`）的 MCP 客户端受本 handler 中 **60 次请求/分钟/key** 限流器的保护；更宽松的 API Starter / Business REST 额度在 MCP 每日预留路径之外强制执行。（`describe_tool`，即 v1.5.0 的元数据查询辅助工具，不计入 Pro 每日配额。）
+所有付费套餐共享同一个 MCP 服务器和同样的 41 个工具。当前的硬性 MCP 每日预留仅针对 OAuth 上下文在 Pro 计数器上强制执行：**每个 UTC 日 50 次消耗配额的 `tools/call` / `resources/read` 调用**。使用 API key（`wm_…`）的 MCP 客户端受本 handler 中 **60 次请求/分钟/key** 限流器的保护；更宽松的 API Starter / Business REST 额度在 MCP 每日预留路径之外强制执行。（`describe_tool`，即 v1.5.0 的元数据查询辅助工具，不计入 Pro 每日配额。）
 
 Pro 订阅者无需粘贴任何 API key 即可接入 Claude Desktop / Cursor / claude.ai —— 参见下方的 [Pro 登录流程](#pro-sign-in-flow)。API Starter+ 用户可继续在授权页粘贴 `wm_…` key（原始流程），也可使用与 Pro 相同的 OAuth 路径。
 
@@ -195,7 +195,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 ## 工具目录
 
-服务器暴露 40 个工具。大多数是对预填充 Redis key 的缓存读取（亚秒级）。较慢的非缓存路径包括六个实时 LLM/外部 API 工具（`get_world_brief`、`get_country_brief`、`analyze_situation`、`generate_forecasts`、`search_flights`、`search_flight_prices_by_date`），以及实时地理 RPC 工具（`get_airspace`、`get_maritime_activity`），后者会带 edge 超时代理实时的航空/海事 API 调用。有一个工具（`describe_tool`，v1.5.0 新增）返回任何其他工具的完整未压缩定义 —— 在压缩后的 `tools/list` 描述含糊不清时很有用；不计入 Pro 每日配额。
+服务器暴露 41 个工具。大多数是对预填充 Redis key 的缓存读取（亚秒级）。较慢的非缓存路径包括六个实时 LLM/外部 API 工具（`get_world_brief`、`get_country_brief`、`analyze_situation`、`generate_forecasts`、`search_flights`、`search_flight_prices_by_date`）、实时地理 RPC 工具（`get_airspace`、`get_maritime_activity`）以及受预算约束的规范采购代理（`get_procurement_opportunities`）。有一个工具（`describe_tool`，v1.5.0 新增）返回任何其他工具的完整未压缩定义 —— 在压缩后的 `tools/list` 描述含糊不清时很有用；不计入 Pro 每日配额。
 
 <Tip>
 如需各工具的参数、新鲜度预算、超时以及具体的 `curl` 示例，请参阅 [MCP 工具参考](/zh/mcp-tools-reference)。关于 payload 投影 —— 每个工具都接受一个可选的 `jmespath` 参数，通常可将响应大小缩减 80-95% —— 请参阅 [JMESPath 指南](/zh/mcp-jmespath)。
@@ -216,6 +216,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `get_tariff_trends` | 全球贸易和定价指标：美国关税趋势（HTS 编码）、巨无霸指数、FAO 食品价格指数以及各国国债水平。 |
 | `get_chokepoint_status` | 实时海上咽喉要道状态：每个咽喉要道的船舶过境计数（10 分钟节奏）、滚动过境摘要、每个港口的活动，以及静态参考数据和流量汇总。覆盖苏伊士、霍尔木兹、马六甲、曼德海峡、巴拿马等。 |
 | `get_consumer_prices` | 各国消费者价格情报：30 天概览、品类级通胀、零售商价差（必需品篮子）、热门变动以及来源新鲜度。需要 `country_code`（目前仅填充了 `ae`）。 |
+| `get_procurement_opportunities` | 仅限 Pro 的规范全球采购搜索；紧凑输出默认 10 条、最多 25 条。关键词相关性绝不表示投标资格。 |
 | `get_commodity_geo` | 全球 71 个主要矿场（金、银、铜、锂、铀、煤）。 |
 
 ### 能源
@@ -355,11 +356,11 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 - [#4525](https://github.com/koala73/worldmonitor/issues/4525) —— 延后的纯读取 MCP 覆盖候选项。
 - [#4526](https://github.com/koala73/worldmonitor/issues/4526) —— 手动映射和 fetch-on-miss 分诊。
 
-有关完整的 40 个工具列表，请参见上方的[工具目录](#tool-catalog)；有关各工具详情，请参阅 [MCP 工具参考](/zh/mcp-tools-reference)。
+有关完整的 41 个工具列表，请参见上方的[工具目录](#tool-catalog)；有关各工具详情，请参阅 [MCP 工具参考](/zh/mcp-tools-reference)。
 
 ## Prompt 与资源
 
-除了 40 个工具之外，WorldMonitor 还暴露 MCP prompt 和资源，使客户端无需从零编排工具计划即可发现常见工作流并寻址稳定的数据切片。
+除了 41 个工具之外，WorldMonitor 还暴露 MCP prompt 和资源，使客户端无需从零编排工具计划即可发现常见工作流并寻址稳定的数据切片。
 
 ### Prompt
 

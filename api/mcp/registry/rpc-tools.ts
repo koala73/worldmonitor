@@ -101,7 +101,172 @@ function countryBriefSearchTerms(countryCode: string): string[] {
   return [...new Set(terms.filter(Boolean))];
 }
 
+const PROCUREMENT_TOOL_DEFAULT_PAGE_SIZE = 10;
+const PROCUREMENT_TOOL_MAX_PAGE_SIZE = 25;
+
+type ProcurementRouteTender = {
+  id: string;
+  source: string;
+  officialUrl: string;
+  countryCode?: string;
+  region?: string;
+  title: string;
+  buyer?: string;
+  publishedAt?: string;
+  deadline?: string;
+  status: string;
+  noticeType?: string;
+  money?: { amount?: number; currency?: string };
+  categoryCodes: string[];
+  sectors: string[];
+  participationMode: string;
+  automationFit?: { level: string; score: number; classificationVersion: string; matchReasons: string[] };
+};
+
+type ProcurementRouteResponse = {
+  tenders?: ProcurementRouteTender[];
+  nextCursor?: string;
+  fetchedAt?: string;
+  dataAvailable?: boolean;
+  availability?: string;
+  sourceStatuses?: unknown[];
+  total?: number;
+  appliedFilters?: string[];
+  countryCoverage?: string;
+};
+
+function addProcurementStringParam(query: URLSearchParams, name: string, value: unknown): void {
+  if (typeof value === 'string' && value.trim()) query.set(name, value.trim());
+}
+
+function procurementPageSize(value: unknown): number {
+  return Number.isInteger(value) && (value as number) > 0
+    ? Math.min(PROCUREMENT_TOOL_MAX_PAGE_SIZE, value as number)
+    : PROCUREMENT_TOOL_DEFAULT_PAGE_SIZE;
+}
+
+/**
+ * MCP's input schema advertises the same relevance-filter semantics as the
+ * canonical route: malformed/non-positive values disable the filter; values
+ * above 100 are deliberately passed through so the route remains the sole
+ * authority that clamps its documented upper bound.
+ */
+function procurementAutomationThreshold(value: unknown): number | null {
+  return Number.isInteger(value) && (value as number) > 0 ? value as number : null;
+}
+
+function compactProcurementOpportunity(tender: ProcurementRouteTender) {
+  return {
+    id: tender.id,
+    source: tender.source,
+    officialUrl: tender.officialUrl,
+    countryCode: tender.countryCode,
+    region: tender.region,
+    title: tender.title,
+    buyer: tender.buyer,
+    publishedAt: tender.publishedAt,
+    deadline: tender.deadline,
+    status: tender.status,
+    noticeType: tender.noticeType,
+    money: tender.money,
+    categoryCodes: tender.categoryCodes,
+    sectors: tender.sectors,
+    // This remains upstream evidence, not a claim about a caller's legal
+    // ability to participate in a procurement process.
+    participationMode: tender.participationMode,
+    automationFit: tender.automationFit && {
+      score: tender.automationFit.score,
+      level: tender.automationFit.level,
+      classificationVersion: tender.automationFit.classificationVersion,
+      matchReasons: tender.automationFit.matchReasons,
+    },
+  };
+}
+
 export const RPC_TOOLS: ToolDef[] = [
+  {
+    name: 'get_procurement_opportunities',
+    _outputBudgetBytes: 65536,
+    description: 'Search open global public-procurement opportunities through the canonical Pro route. Default output is 10 compact records (maximum 25), without descriptions or submission/eligibility payloads. automationFit is keyword relevance evidence only, never bidding eligibility; participationMode "unknown" remains unknown.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        country: { type: 'string', description: 'One ISO 3166-1 alpha-2 country code.' },
+        countries: { type: 'array', items: { type: 'string' }, description: 'Additional ISO 3166-1 alpha-2 country codes. Combined with country.' },
+        source: { type: 'string', description: 'Official source adapter, such as sam, ted, contracts-finder, canada-buys, gets, or world-bank.' },
+        query: { type: 'string', description: 'Case-insensitive text search across procurement titles and descriptions.' },
+        buyer: { type: 'string', description: 'Case-insensitive buyer or contracting-authority text.' },
+        deadline_from: { type: 'string', description: 'Include deadlines on or after this ISO-8601 timestamp.' },
+        deadline_to: { type: 'string', description: 'Include deadlines on or before this ISO-8601 timestamp.' },
+        sort: { type: 'string', enum: ['newest', 'closing_soon', 'estimated_value', 'relevance'], description: 'Result ordering. Defaults to newest.' },
+        min_automation_score: { type: 'integer', minimum: 1, maximum: 100, description: 'Optional 1-100 keyword-relevance threshold. Non-integer or non-positive values are ignored; values above 100 keep the canonical route clamp. This is not bidding-eligibility evidence.' },
+        page_size: { type: 'integer', minimum: 1, maximum: PROCUREMENT_TOOL_MAX_PAGE_SIZE, description: 'Records per call. Defaults to 10; capped at 25 to protect agent context.' },
+        cursor: { type: 'string', description: 'Opaque nextCursor from the prior result; keep the same filters and sort when continuing.' },
+      },
+      required: [],
+    },
+    outputSchema: {
+      type: 'object',
+      required: ['opportunities', 'nextCursor', 'fetchedAt', 'dataAvailable', 'availability', 'sourceStatuses', 'total', 'appliedFilters', 'countryCoverage'],
+      properties: {
+        opportunities: { type: 'array', items: { type: 'object', properties: {
+          id: { type: 'string' }, source: { type: 'string' }, officialUrl: { type: 'string' }, countryCode: { type: 'string' }, region: { type: 'string' },
+          title: { type: 'string' }, buyer: { type: 'string' }, publishedAt: { type: 'string' }, deadline: { type: 'string' }, status: { type: 'string' }, noticeType: { type: 'string' },
+          money: { type: 'object', properties: { amount: { type: 'number' }, currency: { type: 'string' } } },
+          categoryCodes: { type: 'array', items: { type: 'string' } }, sectors: { type: 'array', items: { type: 'string' } }, participationMode: { type: 'string' },
+          automationFit: { type: 'object', properties: { score: { type: 'number' }, level: { type: 'string' }, classificationVersion: { type: 'string' }, matchReasons: { type: 'array', items: { type: 'string' } } } },
+        } } },
+        nextCursor: { type: 'string' }, fetchedAt: { type: 'string' }, dataAvailable: { type: 'boolean' }, availability: { type: 'string' },
+        sourceStatuses: { type: 'array', items: { type: 'object' } }, total: { type: 'number' }, appliedFilters: { type: 'array', items: { type: 'string' } },
+        countryCoverage: { type: 'string', description: 'unknown means the requested country has not been observed in this snapshot, not that there are confirmed zero results.' },
+      },
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _execute: async (params, base, context) => {
+      const query = new URLSearchParams();
+      addProcurementStringParam(query, 'country', params.country);
+      if (Array.isArray(params.countries)) {
+        for (const country of params.countries) {
+          if (typeof country === 'string' && country.trim()) query.append('countries', country.trim());
+        }
+      }
+      for (const [name, value] of Object.entries({
+        source: params.source,
+        query: params.query,
+        buyer: params.buyer,
+        deadline_from: params.deadline_from,
+        deadline_to: params.deadline_to,
+        sort: params.sort,
+        cursor: params.cursor,
+      })) addProcurementStringParam(query, name, value);
+      query.set('page_size', String(procurementPageSize(params.page_size)));
+      const threshold = procurementAutomationThreshold(params.min_automation_score);
+      if (threshold !== null) query.set('min_automation_score', String(threshold));
+
+      const url = `${base}/api/economic/v1/list-global-tenders?${query}`;
+      const auth = await buildAuthHeaders(context, 'GET', url, null);
+      const response = await fetch(url, {
+        headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
+        signal: AbortSignal.timeout(8_000),
+      });
+      if (!response.ok) throw new Error(`list-global-tenders HTTP ${response.status}`);
+      const result = await response.json() as ProcurementRouteResponse;
+      return {
+        opportunities: (result.tenders || []).map(compactProcurementOpportunity),
+        nextCursor: result.nextCursor || '',
+        fetchedAt: result.fetchedAt || '',
+        dataAvailable: result.dataAvailable === true,
+        availability: result.availability || 'unavailable',
+        sourceStatuses: result.sourceStatuses || [],
+        total: typeof result.total === 'number' ? result.total : 0,
+        appliedFilters: result.appliedFilters || [],
+        countryCoverage: result.countryCoverage || 'unknown',
+      };
+    },
+    _apiPaths: [
+      'GET /api/economic/v1/list-global-tenders',
+    ],
+  },
   {
     name: 'get_world_brief',
     _outputBudgetBytes: 65536,

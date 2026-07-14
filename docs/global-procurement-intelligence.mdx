@@ -65,6 +65,14 @@ Supported sorts are `newest`, `closing_soon`, `estimated_value`, and `relevance`
 
 Every record contains a stable WorldMonitor ID (`source:sourceNoticeId`), its official notice URL, source notice ID, typed money fields when supplied, source timestamps, category data, and a provenance-preserving source name. Missing upstream fields remain absent rather than being inferred.
 
+## MCP tool
+
+`get_procurement_opportunities` exposes this same canonical route to authenticated MCP clients; it never reads `economic:global-tenders:v1` directly. Its intentional context budget is **10 compact opportunities by default, 25 maximum**. It exposes `country`, repeated `countries`, `source`, `query`, `buyer`, `deadline_from`, `deadline_to`, `sort`, `min_automation_score`, `page_size`, and `cursor`.
+
+The compact projection omits description text, eligibility requirements, and submission URLs while retaining each opportunity's official URL, source, title, buyer, dates, money, categories, sectors, `participationMode`, and compact `automationFit`. It also retains cursor pagination, `total`, `appliedFilters`, `countryCoverage`, availability, snapshot time, and source-health summaries. The 25-record MCP maximum is deliberately tighter than the REST route's 100-record maximum.
+
+The MCP tool is Pro-gated exactly like the HTTP route and is not part of bootstrap. An unfiltered tool call preserves all open opportunities; `min_automation_score` remains opt-in. See the [MCP tool reference](/mcp-tools-reference#get_procurement_opportunities) for the complete parameter contract.
+
 ## Technology relevance
 
 `automationFit` is a transparent keyword-based relevance signal for software, AI, data, cybersecurity, automation, cloud, and related terms. It contains a score, classification version, match reasons, and text evidence. It is **not** a legal or procurement-eligibility determination: `participationMode` remains `unknown` unless an upstream source explicitly supports it.

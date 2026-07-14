@@ -142,6 +142,10 @@
       "description": "Reddit geopolitical social velocity: top posts from worldnews, geopolitics, and related subreddits with engagement scores and trend signals."
     },
     {
+      "name": "get_procurement_opportunities",
+      "description": "Search open global public-procurement opportunities through the canonical Pro route. Default output is 10 compact records (maximum 25), without descriptions or submission/eligibility payloads. automationFit is keyword relevance evidence only, never bidding eligibility; participationMode \"unknown\" remains unknown."
+    },
+    {
       "name": "get_world_brief",
       "description": "AI-generated world intelligence brief. Fetches the latest geopolitical headlines along with their RSS article bodies and produces a grounded LLM-summarized brief. Supply an optional geo_context to focus on a region or topic."
     },
