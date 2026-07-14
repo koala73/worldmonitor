@@ -66,6 +66,15 @@ const KNOWN_VIOLATIONS = new Set([
   'seed-eurostat-house-prices.mjs',
   'seed-eurostat-industrial-production.mjs',
   'seed-fire-detections.mjs',
+  // extraKey. The wildfire dashboard projection is a panel PRIMARY source
+  // (api/bootstrap.js) and expires at 2h while health tolerates 6h of lateness — and
+  // wildfiresBootstrap sits in the tolerate-as-STALE_SEED list, so a dead fire feed can
+  // leave the panel with NO data while health reports only a warn.
+  // Deliberately not "fixed" here: the cron is */30, so a 2h TTL is 4x the interval and
+  // carries no data-loss risk in normal operation. The real defect is a 6h staleness gate
+  // (12x the cadence) on a safety-relevant feed — tightening that changes alerting
+  // sensitivity and is a human decision, not a mechanical TTL bump.
+  'seed-fire-detections.mjs::seed-meta:wildfire:fires-bootstrap',
   'seed-fsi-eu.mjs',
   'seed-fx-rates.mjs',
   'seed-fx-yoy.mjs',
@@ -111,7 +120,20 @@ function resolveValue(expr, src, depth = 0) {
   return m ? resolveValue(m[1], src, depth + 1) : Number.NaN;
 }
 
+// health.js is the source of truth for a key's staleness gate: metaKey -> maxStaleMin.
+// An extraKey's gate is NOT the seeder's own canonical maxStaleMin — it is whatever
+// health registered for that projection's metaKey, which is frequently different.
+function readHealthStalenessGates() {
+  const health = readFileSync(join(SCRIPTS, '..', 'api', 'health.js'), 'utf8');
+  const gates = {};
+  for (const m of health.matchAll(/key:\s*'(seed-meta:[^']+)'\s*,\s*maxStaleMin:\s*([\d_]+)/g)) {
+    gates[m[1]] = Number(m[2].replace(/_/g, ''));
+  }
+  return gates;
+}
+
 function auditSeeders() {
+  const gates = readHealthStalenessGates();
   const violations = [];
   const audited = [];
   for (const file of readdirSync(SCRIPTS).filter((f) => /^seed-.*\.mjs$/.test(f))) {
@@ -121,12 +143,37 @@ function auditSeeders() {
     // read the comment and silently skip the seeder when it is not parseable.
     const ttlM = src.match(/^\s*ttlSeconds:\s*([^,\n]+)/m);
     const staleM = src.match(/^\s*maxStaleMin:\s*([^,\n]+)/m);
-    if (!ttlM || !staleM) continue;                     // seeder declares only one — out of scope
-    const ttl = resolveValue(ttlM[1], src);
-    const maxStaleMin = resolveValue(staleM[1], src);
-    if (!Number.isFinite(ttl) || !Number.isFinite(maxStaleMin)) continue;
-    audited.push(file);
-    if (ttl <= maxStaleMin * 60) violations.push({ file, ttl, maxStaleMin });
+
+    // (a) the canonical key
+    if (ttlM && staleM) {
+      const ttl = resolveValue(ttlM[1], src);
+      const maxStaleMin = resolveValue(staleM[1], src);
+      if (Number.isFinite(ttl) && Number.isFinite(maxStaleMin)) {
+        audited.push(file);
+        if (ttl <= maxStaleMin * 60) violations.push({ file, ttl, maxStaleMin });
+      }
+    }
+
+    // (b) each health-monitored extraKey (side-write). These carry their OWN ttl and
+    // their OWN metaKey, and several are a dashboard panel's PRIMARY source
+    // (api/bootstrap.js) — so an expired projection blanks the panel even while the
+    // canonical key is alive. runSeed resolves an extraKey's TTL as `ek.ttl || ttlSeconds`
+    // (scripts/_seed-utils.mjs), so one that declares no ttl INHERITS the canonical's.
+    for (const m of src.matchAll(/^\s*metaKey:\s*'(seed-meta:[^']+)'/gm)) {
+      const gate = gates[m[1]];
+      if (gate === undefined) continue;                  // not health-monitored
+      // Scope to THIS extraKey's object literal, so a sibling's ttl is never
+      // misattributed, and strip comments so prose cannot be read as config.
+      const objSrc = src.slice(src.lastIndexOf('{', m.index), m.index).replace(/\/\/[^\n]*/g, '');
+      const ownTtl = [...objSrc.matchAll(/\bttl(?:Seconds)?:\s*([^,\n}]+)/g)].pop();
+      const ttlExpr = ownTtl ? ownTtl[1] : (ttlM ? ttlM[1] : null);   // ek.ttl || ttlSeconds
+      if (!ttlExpr) continue;
+      const ttl = resolveValue(ttlExpr, src);
+      if (!Number.isFinite(ttl)) continue;
+      const id = `${file}::${m[1]}`;
+      audited.push(id);
+      if (ttl <= gate * 60) violations.push({ file: id, ttl, maxStaleMin: gate });
+    }
   }
   return { audited, violations };
 }
