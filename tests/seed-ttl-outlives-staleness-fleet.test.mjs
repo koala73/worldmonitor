@@ -45,6 +45,30 @@ const SCRIPTS = join(dirname(fileURLToPath(import.meta.url)), '..', 'scripts');
 
 // Known violations, frozen. Shrink this list; never grow it without a reason in review.
 const KNOWN_VIOLATIONS = new Set([
+  // seed-fire-detections (canonical + its wildfire dashboard projection, which inherits
+  // the same TTL). FROZEN ON PURPOSE — and NOT for the reason you would guess.
+  //
+  // Satisfying the invariant here means raising ttlSeconds above the 6h gate, and that
+  // DOWNGRADES A SAFETY ALARM. Verified against classifyKey with the seeder dead 3h:
+  //
+  //   ttl 2h (today): wildfires -> EMPTY (crit)   — ops is paged the moment the panel blanks
+  //   ttl 7h:         wildfires -> OK    (green)  — 3h-old fire data served, silently
+  //   ttl 7h, 6.5h:   wildfires -> STALE_SEED (warn)  — the crit becomes a warn
+  //
+  // The canonical `wildfires` is NOT in EMPTY_DATA_OK_KEYS, so its 2h expiry is precisely
+  // what makes a dead fire feed loud. Nor can the gate be tightened instead: 360 is sized
+  // to FIRMS NRT (resets midnight UTC, new-day data takes 3-6h), and with no zeroIsValid a
+  // zero-fire run takes the RETRY path and does not advance seed-meta.fetchedAt — a tighter
+  // gate would alarm every night.
+  //
+  // The REAL defect is underneath and is tracked separately: wildfiresBootstrap is in
+  // EMPTY_DATA_OK_KEYS, so an ABSENT key + still-fresh seed-meta classifies as OK. In the
+  // very scenario its separate registration exists for (health.js:342 — "monitor it so
+  // canonical fallback cannot hide transform/write failures"), the panel is blank and the
+  // projection reports GREEN. Today the canonical's crit masks that; fixing the TTL would
+  // remove the mask AND the alarm.
+  'seed-fire-detections.mjs',
+  'seed-fire-detections.mjs::seed-meta:wildfire:fires-bootstrap',
   'seed-aaii-sentiment.mjs',
   'seed-bis-data.mjs',
   'seed-china-coverage-health.mjs',
@@ -117,13 +141,37 @@ function readHealthStalenessGates() {
   const health = readFileSync(join(SCRIPTS, '..', 'api', 'health.js'), 'utf8');
   const gates = {};
   for (const m of health.matchAll(/key:\s*'(seed-meta:[^']+)'\s*,\s*maxStaleMin:\s*([\d_]+)/g)) {
-    gates[m[1]] = Number(m[2].replace(/_/g, ''));
+    const key = m[1];
+    const gate = Number(m[2].replace(/_/g, ''));
+    // A seed-meta key can be registered under more than one health name (7 are today).
+    // Take the LARGEST gate: that is the binding constraint for "the data must outlive
+    // the gate", so a future divergence cannot silently pick the laxer one.
+    gates[key] = Math.max(gates[key] ?? 0, gate);
   }
-  return gates;
+  // Coverage must not rot silently. The regex needs `key: '…', maxStaleMin: <digits>`
+  // adjacent, so a constant, a reordered field, or an interposed property would be
+  // skipped WITHOUT failing — and a gate we cannot see is a gate we cannot enforce.
+  // Compare against UNIQUE declared keys, not raw occurrences (those 7 duplicates).
+  const declared = new Set([...health.matchAll(/key:\s*'(seed-meta:[^']+)'/g)].map((m) => m[1])).size;
+  return { gates, parsed: Object.keys(gates).length, declared };
+}
+
+// Walk backwards to the `{` that ENCLOSES idx at depth 0, stepping over nested literals.
+function enclosingObjectStart(src, idx) {
+  let depth = 0;
+  for (let i = idx - 1; i >= 0; i -= 1) {
+    const c = src[i];
+    if (c === '}') depth += 1;
+    else if (c === '{') {
+      if (depth === 0) return i;
+      depth -= 1;
+    }
+  }
+  return 0;
 }
 
 function auditSeeders() {
-  const gates = readHealthStalenessGates();
+  const { gates } = readHealthStalenessGates();
   const violations = [];
   const audited = [];
   for (const file of readdirSync(SCRIPTS).filter((f) => /^seed-.*\.mjs$/.test(f))) {
@@ -154,7 +202,11 @@ function auditSeeders() {
       if (gate === undefined) continue;                  // not health-monitored
       // Scope to THIS extraKey's object literal, so a sibling's ttl is never
       // misattributed, and strip comments so prose cannot be read as config.
-      const objSrc = src.slice(src.lastIndexOf('{', m.index), m.index).replace(/\/\/[^\n]*/g, '');
+      // Brace-BALANCED: a nested literal before metaKey (e.g. `transform: (d) => ({…})`)
+      // would make a naive lastIndexOf('{') open the window inside that nested object and
+      // pick up ITS ttl. Correct for all extraKeys today, fragile in principle — so don't
+      // rely on the shape.
+      const objSrc = src.slice(enclosingObjectStart(src, m.index), m.index).replace(/\/\/[^\n]*/g, '');
       const ownTtl = [...objSrc.matchAll(/\bttl(?:Seconds)?:\s*([^,\n}]+)/g)].pop();
       const ttlExpr = ownTtl ? ownTtl[1] : (ttlM ? ttlM[1] : null);   // ek.ttl || ttlSeconds
       if (!ttlExpr) continue;
@@ -199,4 +251,10 @@ test('the allowlist does not rot — every frozen entry is still a real violatio
   const actual = new Set(violations.map((v) => v.file));
   const retired = [...KNOWN_VIOLATIONS].filter((f) => !actual.has(f));
   assert.deepEqual(retired, [], 'these seeders now satisfy the invariant — delete them from KNOWN_VIOLATIONS');
+});
+
+test('every health staleness gate is actually parsed — coverage cannot rot', () => {
+  // A gate the extractor cannot see is a gate it cannot enforce, and it fails SILENTLY.
+  const { parsed, declared } = readHealthStalenessGates();
+  assert.equal(parsed, declared, `parsed ${parsed} of ${declared} seed-meta gates in health.js — the rest are silently unguarded`);
 });
