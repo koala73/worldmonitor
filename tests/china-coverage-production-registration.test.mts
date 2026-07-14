@@ -10,6 +10,7 @@ const runbook = readFileSync(resolve(root, 'docs/railway-seed-consolidation-runb
 const cacheKeys = readFileSync(resolve(root, 'server/_shared/cache-keys.ts'), 'utf8');
 const seedHealth = readFileSync(resolve(root, 'api/seed-health.js'), 'utf8');
 const naturalSeed = readFileSync(resolve(root, 'scripts/seed-natural-events.mjs'), 'utf8');
+const insightsSeed = readFileSync(resolve(root, 'scripts/seed-insights.mjs'), 'utf8');
 const dataSources = readFileSync(resolve(root, 'docs/data-sources.mdx'), 'utf8');
 const healthDocs = readFileSync(resolve(root, 'docs/health-endpoints.mdx'), 'utf8');
 
@@ -38,6 +39,16 @@ describe('China coverage production registration', () => {
     const audit = readFileSync(resolve(root, 'scripts/audit-china-coverage.mjs'), 'utf8');
     assert.doesNotMatch(audit, /runSeed|writeExtraKey|\['SET'/);
     assert.match(audit, /--json/);
+  });
+
+  it('persists China feed availability beside the global insights ranking', () => {
+    assert.match(insightsSeed, /const CHINA_COVERAGE_KEY = 'news:insights:v1:CN'/);
+    assert.match(insightsSeed, /buildChinaNewsCoverage\(\{/);
+    assert.match(insightsSeed, /CHINA_NEWS_DIGEST_LANGUAGE = 'zh'/);
+    assert.match(insightsSeed, /readChinaNewsDigest\(\)/);
+    assert.match(insightsSeed, /digest coverage check failed/);
+    assert.match(insightsSeed, /preserveKeys: \[CHINA_COVERAGE_KEY\]/);
+    assert.match(insightsSeed, /writeExtraKey\(CHINA_COVERAGE_KEY, data\.chinaNewsCoverage, CACHE_TTL\)/);
   });
 
   it('documents the public China source contract and its operator health projection', () => {

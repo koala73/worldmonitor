@@ -104,13 +104,18 @@ describe('China coverage manifest', () => {
       'launched',
       'the canonical per-hub coverage contract is now provider-backed',
     );
-    for (const id of ['energy.jodi-oil', 'energy.jodi-gas', 'news.china']) {
+    for (const id of ['energy.jodi-oil', 'energy.jodi-gas']) {
       assert.equal(
         CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === id)?.launchStatus,
         'blocked',
         `${id} must remain explicit until its source-specific China contract is available`,
       );
     }
+    assert.equal(
+      CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === 'news.china')?.launchStatus,
+      'launched',
+      'China news is now backed by a source-specific projection, not global ranking',
+    );
     assert.deepEqual(
       CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === 'aviation.china-hubs')?.content.probe,
       {
@@ -284,6 +289,36 @@ describe('China coverage manifest', () => {
     assert.ok(missingTransport.entries[0].reasonCodes.includes(CHINA_COVERAGE_REASON_CODES.TRANSPORT_MISSING));
   });
 
+  it('uses the source-specific China news projection rather than global top stories', () => {
+    const news = CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === 'news.china');
+    const data = {
+      'news:insights:v1:CN': {
+        countryCode: 'CN',
+        sources: ['Xinhua', 'MIIT (China)', 'MOFCOM (China)'].map((source) => ({
+          source,
+          status: 'available',
+          observedAt: new Date(NOW).toISOString(),
+        })),
+      },
+    };
+    const healthy = evaluate(news, data, { 'seed-meta:news:insights': { fetchedAt: NOW, status: 'ok' } });
+    assert.equal(healthy.entries[0].status, 'healthy');
+
+    const sourceOutage = evaluate(news, {
+      'news:insights:v1:CN': {
+        countryCode: 'CN',
+        sources: data['news:insights:v1:CN'].sources.map((row) => (
+          row.source === 'MIIT (China)' ? { source: row.source, status: 'unavailable', reason: 'timeout' } : row
+        )),
+      },
+    }, { 'seed-meta:news:insights': { fetchedAt: NOW, status: 'ok' } });
+    assert.equal(sourceOutage.entries[0].status, 'degraded');
+    assert.deepEqual(sourceOutage.entries[0].content, {
+      status: 'partial', ageMin: null, maxAgeMin: 10_080, required: 3, present: 2,
+    });
+    assert.ok(sourceOutage.entries[0].reasonCodes.includes(CHINA_COVERAGE_REASON_CODES.CHINA_COVERAGE_PARTIAL));
+  });
+
   it('fails read-only audits cleanly on missing credentials and partial pipelines', async () => {
     const priorUrl = process.env.UPSTASH_REDIS_REST_URL;
     const priorToken = process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -450,13 +485,13 @@ describe('China coverage evaluator', () => {
   });
 
   it('reports a stable reason when a China contract is blocked', () => {
-    const blocked = CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === 'news.china');
+    const blocked = CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === 'energy.jodi-oil');
     const result = evaluate(blocked);
 
     assert.equal(result.entries[0].status, 'blocked');
     assert.deepEqual(result.entries[0].reasonCodes, [
       CHINA_COVERAGE_REASON_CODES.NOT_LAUNCHED,
-      CHINA_COVERAGE_REASON_CODES.CHINA_COVERAGE_PROJECTION_UNAVAILABLE,
+      CHINA_COVERAGE_REASON_CODES.CHINA_UPSTREAM_ROW_UNAVAILABLE,
     ]);
   });
 

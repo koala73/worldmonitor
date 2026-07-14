@@ -2,6 +2,8 @@
 // change their domain implementations, but they extend this manifest only after
 // the serialized shared-registry frontier reaches them (issue #5271).
 
+import { CHINA_NEWS_SOURCE_NAMES } from './_china-news-coverage.mjs';
+
 export const CHINA_COVERAGE_SUMMARY_KEY = 'health:china-coverage:v1';
 export const CHINA_COVERAGE_SEED_META_KEY = 'seed-meta:health:china-coverage';
 export const CHINA_COVERAGE_ACTIVATION_KEY = 'seed-activated:health:china-coverage';
@@ -148,22 +150,22 @@ export const CHINA_COVERAGE_ENTRIES = Object.freeze([
     id: 'news.china',
     label: 'China news digest',
     ownerIssue: 5272,
-    // `news:insights:v1` stores only the globally ranked top stories. It
-    // cannot prove that a China source was reachable when other news ranks
-    // higher, so keep this contract blocked until a source-specific metric is
-    // persisted alongside the digest.
-    launchStatus: 'blocked',
-    blockedReason: CHINA_COVERAGE_REASON_CODES.CHINA_COVERAGE_PROJECTION_UNAVAILABLE,
+    launchStatus: 'launched',
     transport: metaTransport('seed-meta:news:insights', 30),
     content: {
-      key: 'news:insights:v1',
+      // The canonical digest remains globally ranked. The insights seeder
+      // writes this source-status projection before ranking, so a China feed
+      // that is merely outranked cannot look like a China coverage outage.
+      key: 'news:insights:v1:CN',
       maxAgeMin: 7 * 1_440,
       probe: {
-        kind: 'array-match',
-        path: ['topStories'],
-        field: 'countryCode',
-        values: ['CN'],
-        timestampPaths: [['pubDate'], ['lastUpdated']],
+        kind: 'array-coverage',
+        path: ['sources'],
+        field: 'source',
+        values: CHINA_NEWS_SOURCE_NAMES,
+        validField: 'status',
+        validValues: ['available'],
+        timestampPaths: [['observedAt']],
       },
     },
   },

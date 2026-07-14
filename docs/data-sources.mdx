@@ -200,8 +200,10 @@ prevents a global JODI heartbeat from being presented as China coverage.
 
 The globally ranked insights payload is likewise not used as China feed-health
 evidence: a current top-eight can legitimately contain no China story. The
-China news contract stays blocked until a source-specific coverage metric is
-persisted with the digest.
+insights seeder persists a separate China-source projection for Xinhua, MIIT,
+and MOFCOM. It records each source as available only when the digest fetch
+completed with dated content; a timeout, empty response, or undated feed stays
+visible as degraded coverage.
 
 The hourly Railway China coverage evaluator checks the transport heartbeat and
 content freshness independently for every launched contract. It uses the
