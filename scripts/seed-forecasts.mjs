@@ -14715,7 +14715,7 @@ const FORECAST_FLASH_REQUESTED_TIMEOUT_MS = 45_000;
 const FORECAST_LLM_PROVIDER_NAMES = new Set(FORECAST_LLM_PROVIDERS.map(provider => provider.name));
 // 3 retries (=4 attempts/provider): during an OpenRouter slowdown 2 retries all timed
 // out and market_implications wrote an error seed-meta. Bounded by the per-stage /
-// per-run LLM budgets below, so extra attempts can't blow the 180s seed lock.
+// per-run LLM budgets below, so extra attempts can't blow the 240s seed lock.
 const FORECAST_LLM_PROVIDER_MAX_RETRIES = 3;
 const FORECAST_LLM_RETRY_BASE_MS = 1_000;
 const FORECAST_LLM_RETRY_AFTER_MAX_MS = 10_000;
@@ -14726,8 +14726,8 @@ const FORECAST_LLM_STAGE_BUDGET_GUARD_MS = 5_000;
 // call, but a run makes ~10 LLM calls (scenario/combined/critique/impact +
 // market-implications in afterPublish) — all under the same 240s lock with no
 // lock renewal. Without a run-level cap, several degraded stages still serialize
-// past 180s and the lock expires mid-run, letting the next cron tick start a
-// duplicate. 150s leaves ~30s for input reads, publish, and cleanup.
+// past 240s and the lock expires mid-run, letting the next cron tick start a
+// duplicate. 200s leaves 40s for input reads, publish, and cleanup.
 // The seed lock bounds the WHOLE run (fetch + publish + afterPublish tail).
 // FORECAST_LLM_RUN_BUDGET_MS must stay strictly below it with cleanup headroom;
 // tests/forecast-llm-flash-routing-and-timeout pins that invariant.
@@ -17353,7 +17353,7 @@ if (_isDirectRun) {
         await clearForecastRefreshRequestIfUnchanged(triggerContext.triggerRequest);
       }
 
-      // market_implications is the last remaining LLM stage and shares the 150s
+      // market_implications is the last remaining LLM stage and shares the 200s
       // run budget (#4978). Run it BEFORE the best-effort telemetry below
       // (history + deep-forecast snapshots, ~20s R2 trace export) so their
       // wall-clock can't push the tail stage past the run deadline and starve

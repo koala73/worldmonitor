@@ -1,7 +1,7 @@
 // market_implications budget-starve handling (#4978).
 //
 // market_implications is the LAST forecast LLM stage (afterPublish) and shares
-// the single 150s run budget with every upstream stage. When upstream stages
+// the single 200s run budget with every upstream stage. When upstream stages
 // are slow (e.g. repeated LLM provider stalls, #4944) they drain that budget
 // before this stage runs; callForecastLLM then throws a budget error and
 // returns null. The bug: the caller treated that starve identically to a real
@@ -65,7 +65,7 @@ test('run-budget starve preserves last-good and does NOT write a SEED_ERROR', as
   process.env.OPENROUTER_API_KEY = 'test-key';
   process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER = 'openrouter';
 
-  // Shared 150s run budget already blown before this tail stage runs.
+  // Shared 200s run budget already blown before this tail stage runs.
   __setForecastLlmRunDeadlineForTests(Date.now() - 1000);
 
   let llmCalls = 0;
