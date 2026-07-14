@@ -499,6 +499,28 @@ describe('Bootstrap tier definitions', () => {
     );
   });
 
+  it('keeps PENDING_CONSUMERS in sync with real hydration call sites', () => {
+    const srcFiles = [];
+    function walk(dir) {
+      for (const entry of readdirSync(dir)) {
+        const full = join(dir, entry);
+        if (statSync(full).isDirectory()) walk(full);
+        else if (entry.endsWith('.ts') && !full.includes('/generated/')) srcFiles.push(full);
+      }
+    }
+    walk(join(root, 'src'));
+    const allSrc = srcFiles.map((f) => readFileSync(f, 'utf-8')).join('\n');
+
+    const stale = [...PENDING_CONSUMERS].filter((key) =>
+      allSrc.includes(`getHydratedData('${key}')`) || allSrc.includes(`ensureHydrated('${key}')`));
+
+    assert.deepEqual(
+      stale,
+      [],
+      `PENDING_CONSUMERS entries have real hydration consumers and must be removed: ${stale.join(', ')}`,
+    );
+  });
+
   it('on-demand keys are NOT served by the tier bundles every client downloads', () => {
     const slow = extractSetKeys(bootstrapSrc, 'SLOW_KEYS');
     const fast = extractSetKeys(bootstrapSrc, 'FAST_KEYS');

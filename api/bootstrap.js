@@ -210,7 +210,7 @@ const ON_DEMAND_KEYS = new Set([
   // Registered bootstrap keys with NO tier consumer — every one of them is already
   // listed in tests/bootstrap.test.mjs's PENDING_CONSUMERS, i.e. the repo already
   // knew nothing reads their hydration. They were still being shipped in the slow
-  // tier to every visitor on every boot: ~0.26 MB per origin miss, ~1.6 GB/day of
+  // tier to every visitor on every boot: ~0.37 MB per origin miss, ~2.2 GB/day of
   // Redis egress for bytes no client ever looks at (#5300).
   //
   // They stay registered in BOOTSTRAP_CACHE_KEYS, so the consumers that DO want them
