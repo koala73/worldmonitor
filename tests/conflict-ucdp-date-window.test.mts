@@ -13,6 +13,10 @@ import { transformSync } from 'esbuild';
 
 const root = resolve(import.meta.dirname, '..');
 const conflictServiceSource = readFileSync(resolve(root, 'src/services/conflict/index.ts'), 'utf8');
+// index.ts delegates the UCDP classifier to a leaf module with no runtime imports
+// (#5300), so the seeder's drift-parity test can load it without Vite. This harness
+// evaluates index.ts as ONE self-contained module, so inline the leaf back in.
+const ucdpClassifySource = readFileSync(resolve(root, 'src/services/conflict/ucdp-classify.ts'), 'utf8');
 
 let moduleCounter = 0;
 
@@ -79,6 +83,16 @@ type ListIranEventsResponse = any;`,
     'const toApiUrl = (path: string) => path;',
     'runtime',
   );
+  const inlinedClassifier = ucdpClassifySource
+    .replace(/^import type .*$/m, '')   // type-only import — nothing to resolve
+    .replace(/^export /gm, '');          // the harness re-exports the deriver below
+  patched = replaceRequired(
+    patched,
+    /import \{ deriveUcdpClassifications \} from '\.\/ucdp-classify';\nimport type \{ UcdpConflictStatus \} from '\.\/ucdp-classify';\nexport \{ deriveUcdpClassifications \} from '\.\/ucdp-classify';\nexport type \{ ConflictIntensity, UcdpConflictStatus \} from '\.\/ucdp-classify';/,
+    inlinedClassifier,
+    'ucdp-classify leaf',
+  );
+
   patched = `${patched}\nexport { deriveUcdpClassifications };\n`;
 
   const transformed = transformSync(patched, {
