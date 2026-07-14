@@ -4,7 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { XMLParser } from 'fast-xml-parser';
 import Papa from 'papaparse';
 
-import { loadEnvFile, CHROME_UA, readCanonicalValue, runSeed, withRetry, writeExtraKey } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, httpRetryError, readCanonicalValue, runSeed, withRetry, writeExtraKey } from './_seed-utils.mjs';
 import {
   GLOBAL_TENDER_KEY,
   isOpenOpportunity,
@@ -42,15 +42,9 @@ async function fetchResponse(url, options = {}) {
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!response.ok) {
-      const err = new Error(`HTTP ${response.status}`);
-      // A 4xx will not fix itself — retrying only burns the section budget before
-      // failing anyway. 429 is the exception: it is explicitly "try again later".
-      if (response.status >= 400 && response.status < 500 && response.status !== 429) {
-        err.nonRetryable = true;
-      }
-      const retryAfter = Number(response.headers?.get?.('retry-after'));
-      if (Number.isFinite(retryAfter) && retryAfter > 0) err.retryAfterMs = retryAfter * 1000;
-      throw err;
+      // Reuse the repository retry contract: 408 and 429 remain retryable, permanent
+      // 4xx responses fail fast, and Retry-After is capped before it reaches withRetry.
+      throw httpRetryError(response);
     }
     return response;
   }, maxRetries, 1000);

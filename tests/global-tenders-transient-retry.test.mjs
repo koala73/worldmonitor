@@ -39,7 +39,7 @@ function stubFetch(responses) {
     return {
       ok: next.status >= 200 && next.status < 300,
       status: next.status,
-      headers: { get: () => null },
+      headers: { get: (name) => next.headers?.[name.toLowerCase()] ?? null },
       text: async () => next.body ?? '',
       json: async () => ({}),
     };
@@ -73,6 +73,18 @@ test('a permanent 4xx is NOT retried — it would only burn the section timeout'
       /HTTP 404/,
     );
     assert.equal(calls.length, 1, 'a permanent 4xx must fail fast, not retry');
+  } finally {
+    globalThis.fetch = realFetch;
+  }
+});
+
+test('HTTP 408 is retried because it is a transient upstream timeout', async () => {
+  const calls = stubFetch([{ status: 408, body: '' }, { status: 200, body: CSV }]);
+  try {
+    const { records, status } = await fetchCanadaBuys({ now: Date.parse('2026-07-14T00:00:00Z') });
+    assert.equal(calls.length, 2, '408 must get the configured retry rather than fail as a permanent 4xx');
+    assert.equal(status.state, 'ok');
+    assert.equal(records.length, 1);
   } finally {
     globalThis.fetch = realFetch;
   }
