@@ -11,6 +11,8 @@ import {
 import {
   CANONICAL_KEY,
   DASHBOARD_KEY,
+  FORECAST_EXTRA_KEYS,
+  buildPublishedSeedPayload,
   patchPublishedForecastsWithSimDecorations,
   __setRedisStoreForTests,
 } from '../scripts/seed-forecasts.mjs';
@@ -208,6 +210,91 @@ test('a failed canonical patch does not skip the dashboard projection patch', as
 
   assert.equal(store[CANONICAL_KEY].predictions[0].simulationAdjustment, 0, 'the injected canonical failure leaves its key untouched');
   assert.equal(store[DASHBOARD_KEY].predictions[0].simulationAdjustment, -0.12, 'the dashboard key is patched independently');
+});
+
+// ─── The 11.5 MB incident ──────────────────────────────────────────────────────
+// runSeed feeds `publishTransform(data)` to the CANONICAL key but feeds RAW `data`
+// to every extraKey transform (scripts/_seed-utils.mjs: `publishData` at the canonical
+// write vs `ekData` in the extraKeys loop). For seed-forecasts, raw `data` is the full
+// internal pipeline state — fullRunPredictions, inputs, publishSelectionPool,
+// situationClusters, stateUnits, telemetry — and the original transform SPREAD it
+// (`{...payload}`), stripping only caseFile. It published an 11.5 MB dashboard key:
+// 66x LARGER than the 172 KB canonical key it was supposed to compact, with every
+// bootstrap origin miss pulling all of it.
+//
+// These exercise the REAL transform the seeder registers, not a reimplementation.
+
+/** A seeder `data` object shaped like the real one: a small list buried in a big trace. */
+function rawPipelineData() {
+  const bulk = (n) => Array.from({ length: n }, (_, i) => ({ i, blob: 'x'.repeat(400) }));
+  return {
+    generatedAt: 1_700_000_000_000,
+    predictions: [
+      { id: 'f1', title: 'Forecast 1', probability: 0.4, caseFile: { baseCase: 'prose'.repeat(50) } },
+      { id: 'f2', title: 'Forecast 2', probability: 0.6, caseFile: { baseCase: 'prose'.repeat(50) } },
+    ],
+    // Everything below is internal trace that must NEVER reach the dashboard key.
+    fullRunPredictions: bulk(60),
+    inputs: bulk(40),
+    publishSelectionPool: bulk(40),
+    situationClusters: bulk(30),
+    situationFamilies: bulk(30),
+    stateUnits: bulk(30),
+    fullRunSituationClusters: bulk(30),
+    fullRunSituationFamilies: bulk(30),
+    fullRunStateUnits: bulk(30),
+    enrichmentMeta: bulk(20),
+    publishTelemetry: bulk(20),
+    selectionWorldSignals: bulk(20),
+    selectionMarketTransmission: bulk(20),
+  };
+}
+
+const dashboardExtraKey = () => {
+  const entry = FORECAST_EXTRA_KEYS.find((ek) => ek.key === DASHBOARD_KEY);
+  assert.ok(entry, 'seed-forecasts must register the dashboard key as an extra key');
+  return entry;
+};
+
+test('the dashboard key never carries the seeder internal pipeline trace', () => {
+  const raw = rawPipelineData();
+  const published = dashboardExtraKey().transform(raw);
+
+  for (const leaked of [
+    'fullRunPredictions', 'inputs', 'publishSelectionPool', 'situationClusters',
+    'situationFamilies', 'stateUnits', 'fullRunSituationClusters', 'fullRunSituationFamilies',
+    'fullRunStateUnits', 'enrichmentMeta', 'publishTelemetry', 'selectionWorldSignals',
+    'selectionMarketTransmission',
+  ]) {
+    assert.equal(published[leaked], undefined, `${leaked} must not reach the dashboard key`);
+  }
+});
+
+test('the dashboard key is SMALLER than the canonical key it compacts', () => {
+  // The invariant that was violated in production: 11.5 MB vs 172 KB. A projection
+  // that is bigger than its source is not a projection.
+  const raw = rawPipelineData();
+  const canonical = buildPublishedSeedPayload(raw);
+  const dashboard = dashboardExtraKey().transform(raw);
+
+  const canonicalBytes = JSON.stringify(canonical).length;
+  const dashboardBytes = JSON.stringify(dashboard).length;
+  assert.ok(
+    dashboardBytes < canonicalBytes,
+    `dashboard key (${dashboardBytes} B) must be smaller than canonical (${canonicalBytes} B)`,
+  );
+  // And drastically smaller than the raw pipeline object it is transformed FROM.
+  assert.ok(dashboardBytes * 10 < JSON.stringify(raw).length);
+});
+
+test('the dashboard key holds no top-level field the canonical key lacks', () => {
+  const raw = rawPipelineData();
+  const canonicalKeys = new Set(Object.keys(buildPublishedSeedPayload(raw)));
+  canonicalKeys.add('detailStripped'); // the one marker the projection adds
+
+  for (const key of Object.keys(dashboardExtraKey().transform(raw))) {
+    assert.ok(canonicalKeys.has(key), `dashboard key must not introduce top-level '${key}'`);
+  }
 });
 
 // ─── Panel lifecycle across refresh ticks ──────────────────────────────────────

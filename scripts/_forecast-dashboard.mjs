@@ -28,6 +28,24 @@
 /** Fields dropped from the dashboard list. Only `caseFile` today — it is 78% of the payload. */
 export const FORECAST_DETAIL_FIELDS = ['caseFile'];
 
+/**
+ * Top-level fields the dashboard key may carry. An ALLOWLIST, deliberately.
+ *
+ * This is the whole lesson of the incident below: `runSeed` feeds `publishTransform(data)`
+ * to the canonical key but feeds RAW `data` to every extraKey transform
+ * (scripts/_seed-utils.mjs — `publishData` at the canonical write vs `ekData` in the
+ * extraKeys loop). For seed-forecasts, raw `data` is the full internal pipeline state:
+ * fullRunPredictions, inputs, publishSelectionPool, situationClusters, situationFamilies,
+ * stateUnits, enrichmentMeta, publishTelemetry, selection* — ~11 MB of trace.
+ *
+ * The first version of this function spread that object (`{ ...payload }`) and merely
+ * deleted `caseFile` from each prediction. It therefore published an 11.5 MB dashboard
+ * key — 66x LARGER than the 172 KB canonical key it was supposed to compact — and every
+ * bootstrap origin miss pulled all of it. A denylist cannot be safe against an input
+ * whose shape you do not control. Name what you keep, never what you drop.
+ */
+export const FORECAST_DASHBOARD_TOP_LEVEL_FIELDS = ['generatedAt', 'predictions'];
+
 export function compactForecastDashboardPayload(payload) {
   if (!payload || typeof payload !== 'object' || !Array.isArray(payload.predictions)) return payload;
 
@@ -48,5 +66,9 @@ export function compactForecastDashboardPayload(payload) {
     return touched ? { ...next, hasCaseFile: true } : next;
   });
 
-  return { ...payload, predictions, detailStripped: stripped };
+  const compact = { predictions, detailStripped: stripped };
+  for (const field of FORECAST_DASHBOARD_TOP_LEVEL_FIELDS) {
+    if (field !== 'predictions' && payload[field] !== undefined) compact[field] = payload[field];
+  }
+  return compact;
 }

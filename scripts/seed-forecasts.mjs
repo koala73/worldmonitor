@@ -17323,7 +17323,15 @@ export function declareRecords(data) {
 export const FORECAST_EXTRA_KEYS = [
   {
     key: DASHBOARD_KEY,
-    transform: compactForecastDashboardPayload,
+    // Compose with buildPublishedSeedPayload — the SAME projection the canonical key
+    // gets via `publishTransform`. runSeed hands extraKey transforms the RAW `data`
+    // (the full internal pipeline state: fullRunPredictions, inputs, situationClusters,
+    // stateUnits, publishSelectionPool, telemetry...), NOT the published projection.
+    // Transforming raw `data` directly published an 11.5 MB dashboard key — 66x larger
+    // than the 172 KB canonical key it compacts. Projecting first makes the dashboard key
+    // "canonical minus the dossiers" BY CONSTRUCTION, so it cannot drift from the shape
+    // the panel actually consumes.
+    transform: (data) => compactForecastDashboardPayload(buildPublishedSeedPayload(data)),
     // TTL_SECONDS (6h), NOT the 2h the other extra keys use. This key is the
     // panel's PRIMARY source now, so it needs the canonical key's durability:
     // at 2h, two missed hourly crons expire it and the panel goes blank, while
