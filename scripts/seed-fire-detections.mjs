@@ -133,7 +133,21 @@ async function main() {
 
   await runSeed('wildfire', 'fires', CANONICAL_KEY, () => fetchAllRegions(apiKey), {
     validateFn: (data) => Array.isArray(data?.fireDetections) && data.fireDetections.length > 0,
-    ttlSeconds: 7200,
+    // 7h. MUST outlive the 6h health staleness gate (maxStaleMin 360), or a seeder that
+    // is merely DOWN loses its data before health is even willing to call it stale: the
+    // canonical goes EMPTY (crit) and the wildfire dashboard projection — a panel PRIMARY
+    // source via api/bootstrap.js, which inherits this TTL (`ek.ttl || ttlSeconds`) —
+    // vanishes, blanking the panel while health reports only a warn.
+    //
+    // Do NOT "fix" this by tightening maxStaleMin instead. The 6h gate is deliberate:
+    // FIRMS NRT resets at midnight UTC and new-day data takes 3-6h to accumulate. With no
+    // zeroIsValid, a zero-fire run takes the RETRY path and does NOT advance seed-meta
+    // fetchedAt, so the age legitimately grows through that window — a tighter gate would
+    // fire a false STALE_SEED every night. (The RETRY path DOES extend the TTL, so the
+    // keys survive that window; they only expire if the seeder itself stops running.)
+    //
+    // Was 7200 (2h) — below the gate. Pinned by tests/seed-ttl-outlives-staleness-fleet.
+    ttlSeconds: 25200,
     lockTtlMs: 2_400_000, // 40 min — 27 slots × ~72s worst case (30s timeout + 6s backoff + 30s retry + 6s pace) ≈ 32.4 min; pad headroom. Next cron tick sees lock held and safely skips.
     sourceVersion: FIRMS_SOURCES.join('+'),
     extraKeys: [{

@@ -65,16 +65,6 @@ const KNOWN_VIOLATIONS = new Set([
   'seed-eurostat-gov-debt-q.mjs',
   'seed-eurostat-house-prices.mjs',
   'seed-eurostat-industrial-production.mjs',
-  'seed-fire-detections.mjs',
-  // extraKey. The wildfire dashboard projection is a panel PRIMARY source
-  // (api/bootstrap.js) and expires at 2h while health tolerates 6h of lateness — and
-  // wildfiresBootstrap sits in the tolerate-as-STALE_SEED list, so a dead fire feed can
-  // leave the panel with NO data while health reports only a warn.
-  // Deliberately not "fixed" here: the cron is */30, so a 2h TTL is 4x the interval and
-  // carries no data-loss risk in normal operation. The real defect is a 6h staleness gate
-  // (12x the cadence) on a safety-relevant feed — tightening that changes alerting
-  // sensitivity and is a human decision, not a mechanical TTL bump.
-  'seed-fire-detections.mjs::seed-meta:wildfire:fires-bootstrap',
   'seed-fsi-eu.mjs',
   'seed-fx-rates.mjs',
   'seed-fx-yoy.mjs',
