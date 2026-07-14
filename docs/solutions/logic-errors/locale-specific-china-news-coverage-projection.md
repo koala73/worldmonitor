@@ -1,6 +1,7 @@
 ---
 title: Keep China news coverage projections locale-aware
 date: 2026-07-14
+last_updated: 2026-07-14
 category: logic-errors
 module: News insights seeder and China coverage audit
 problem_type: logic_error
@@ -44,18 +45,19 @@ export const CHINA_NEWS_SOURCES = Object.freeze([
 
 `scripts/seed-insights.mjs` reads the normal English digest, reads or warms the supplemental Chinese digest, and passes both to `buildChinaNewsCoverage`. The helper emits `available` only for a digest with a valid `generatedAt` timestamp and no exceptional feed status; absent, timeout, all-undated, and missing-locale cases remain unavailable.
 
-Publish the projection separately at `news:insights:v1:CN`. Strip it from the canonical `news:insights:v1` payload, so the user-facing global digest contract remains unchanged. The China manifest requires all three named sources to be available and timestamped before `news.china` is healthy.
+Publish the projection separately at `news:insights:v1:CN`. Strip it from the canonical `news:insights:v1` payload, so the user-facing global digest contract remains unchanged. When a fresh digest run retains a last-known-good global brief, carry the fresh projection through that return solely for `afterPublish`; the transform still removes it before the public payload is written. The China manifest requires all three named sources to be available and timestamped before `news.china` is healthy.
 
 ## Why This Works
 
 `list-feed-digest` stores results under `news:digest:v1:${variant}:${lang}`, so its per-feed status is authoritative only for the requested locale. Evaluating each source against its own locale prevents missing Chinese feeds from being interpreted as normal absent-status entries.
 
-The Chinese check is supplemental: its failure is caught and produces an unavailable projection rather than preventing the existing global insights seed from publishing. If the global seed falls back to last-known-good data with no new projection, the old projection is only TTL-extended and the audit eventually reports it stale instead of green.
+The Chinese check is supplemental: its failure is caught and produces an unavailable projection rather than preventing the existing global insights seed from publishing. A brief-only degradation can retain the last-known-good global payload while still publishing fresh source evidence. If the English digest itself is unavailable, there is no new projection, so the old projection is only TTL-extended and the audit eventually reports it stale instead of green.
 
 ## Prevention
 
 - For a country-specific audit built from locale-filtered inputs, record the locale beside every source and test a missing supplemental digest explicitly.
 - Keep audit-only projections separate from ranked or public payloads, then make the audit require the projection's per-source timestamps and statuses.
+- Test the last-known-good branch separately: preserve fresh audit-only evidence when the public payload falls back for an unrelated brief-generation failure.
 
 ## Related Issues
 
