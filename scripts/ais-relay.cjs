@@ -38,7 +38,6 @@ const { getUsEquitySession, isMultiMarketEquityTradingDay } = require('./shared/
 const { mergeLastGoodQuotes, planYahooRefresh } = require('./shared/market-quote-refresh.cjs');
 const chinaCountryStockIndexHelpersPromise = import('./_country-stock-index.mjs');
 const parseProxyUrl = parseProxyConfig;
-const CHINA_COUNTRY_STOCK_INDEX_KEY = 'market:stock-index:v1:CN';
 
 const httpsKeepAliveAgent = new https.Agent({ keepAlive: true, maxSockets: 6, timeout: 60_000 });
 
@@ -2160,6 +2159,7 @@ const CHINA_COUNTRY_STOCK_SYMBOL = '000001.SS';
 // preserved; false means the keys are missing/expired and the caller must
 // fall back to a real fetch to repopulate.
 async function maintainClosedMarketEquityKeys() {
+  const { CHINA_COUNTRY_STOCK_INDEX_KEY } = await chinaCountryStockIndexHelpersPromise;
   return maintainClosedMarketEquityKeysWithDeps({
     marketSymbols: MARKET_SYMBOLS,
     marketSeedTtl: MARKET_SEED_TTL,
@@ -2174,6 +2174,7 @@ async function maintainClosedMarketEquityKeys() {
 
 async function writeChinaCountryStockIndex() {
   const {
+    CHINA_COUNTRY_STOCK_INDEX_KEY,
     buildCountryStockIndexSnapshotFromCloses,
   } = await chinaCountryStockIndexHelpersPromise;
   const chart = await fetchYahooChartDirect(CHINA_COUNTRY_STOCK_SYMBOL, '?range=1mo&interval=1d');
