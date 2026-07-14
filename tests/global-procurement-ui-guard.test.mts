@@ -75,11 +75,33 @@ test('procurement deployment documentation identifies the sole optional source c
 
 test('the documented AusTender blocker stays documented and no scraper ships in its place', () => {
   const seeder = readFileSync(resolve(import.meta.dirname, '../scripts/seed-global-tenders.mjs'), 'utf8');
+  const normalizer = readFileSync(resolve(import.meta.dirname, '../scripts/_global-tenders.mjs'), 'utf8');
   assert.match(docs, /### Australia: AusTender adapter is blocked/);
   assert.match(docs, /no close|closing date/i);
   assert.match(seeder, /austender.*BLOCKED on the provider/s);
-  assert.doesNotMatch(seeder, /fetchAusTender|Atm\/Show/);
-  assert.doesNotMatch(panel, /austender/i);
+
+  // Any AusTender identifier, host, or notice-path reference in CODE (the
+  // blocker comment legitimately cites the feed URLs, so comments are
+  // stripped first) means a scraper or adapter is being reintroduced without
+  // going through the documented unblock path.
+  const scraperPattern = /austender|tenders\.gov\.au|atm\/(show|searchdescription|docshow)/i;
+  const stripComments = (source: string) => source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '');
+  assert.doesNotMatch(stripComments(seeder), scraperPattern);
+  assert.doesNotMatch(stripComments(normalizer), scraperPattern);
+  assert.doesNotMatch(panel, /austender|tenders\.gov\.au/i);
+
+  // Self-test: the pattern must catch casing and naming evasions, so a green
+  // guard cannot coexist with a renamed or relocated scraper.
+  for (const evasion of [
+    'function scrapeAusTender() {}',
+    "fetch('https://www.TENDERS.gov.au/Atm/Show/abc')",
+    'const url = `${base}/ATM/SHOW/${id}`',
+    'AUSTENDER_FEED_URL',
+  ]) {
+    assert.match(evasion, scraperPattern, `guard pattern must catch: ${evasion}`);
+  }
 });
 
 test('technology-relevance control filters by evidence and never claims bidding eligibility', () => {
