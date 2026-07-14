@@ -33,11 +33,17 @@ test('buildCountryStockIndexSnapshot rejects incomplete Yahoo charts instead of 
 
 test('the Railway market seed maintains the China cache alongside its public stock bootstrap contract', () => {
   const source = readFileSync(new URL('../scripts/seed-market-quotes.mjs', import.meta.url), 'utf8');
+  const handlerSource = readFileSync(new URL('../server/worldmonitor/market/v1/get-country-stock-index.ts', import.meta.url), 'utf8');
 
   assert.match(source, /CHINA_COUNTRY_STOCK_INDEX_KEY/);
   assert.match(source, /writeChinaCountryStockIndex/);
   assert.match(source, /preserveKeys:\s*\[CHINA_COUNTRY_STOCK_INDEX_KEY\]/);
   assert.match(source, /China country index refresh failed/);
+  assert.match(source, /await extendExistingTtl\(\[CHINA_COUNTRY_STOCK_INDEX_KEY\], CACHE_TTL\)/);
   assert.match(source, /await writeExtraKey\(CHINA_COUNTRY_STOCK_INDEX_KEY, snapshot, CACHE_TTL\)/);
   assert.match(source, /extendExistingTtl\(\[CANONICAL_KEY, 'seed-meta:market:stocks', RPC_KEY, CHINA_COUNTRY_STOCK_INDEX_KEY\]/);
+  assert.match(handlerSource, /const REDIS_CACHE_KEY = 'market:stock-index:rpc:v1';/);
+  assert.match(handlerSource, /const RAILWAY_SEEDED_COUNTRY_INDEX_KEY = 'market:stock-index:v1:CN';/);
+  assert.match(handlerSource, /getCachedJson\(RAILWAY_SEEDED_COUNTRY_INDEX_KEY, true\)/);
+  assert.doesNotMatch(handlerSource, /const REDIS_CACHE_KEY = 'market:stock-index:v1';/);
 });

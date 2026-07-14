@@ -11,7 +11,7 @@ import type {
 import filterParamContracts from '../../../../shared/openapi-filter-param-contracts.json';
 import { UPSTREAM_TIMEOUT_MS, type YahooChartResponse } from './_shared';
 import { CHROME_UA, yahooGate } from '../../../_shared/constants';
-import { cachedFetchJson } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 
 // ========================================================================
 // Country-to-index mapping
@@ -23,11 +23,24 @@ const COUNTRY_INDEX = filterParamContracts.marketCountryStockIndexes as Record<s
 // Cache
 // ========================================================================
 
-const REDIS_CACHE_KEY = 'market:stock-index:v1';
+// Railway owns `market:stock-index:v1:<country>` for audit-backed snapshots.
+// Keep request-driven cachedFetchJson writes separate: a slow request that
+// ends in a negative sentinel must never overwrite the seed's last-good data.
+const REDIS_CACHE_KEY = 'market:stock-index:rpc:v1';
+const RAILWAY_SEEDED_COUNTRY_INDEX_KEY = 'market:stock-index:v1:CN';
 const REDIS_CACHE_TTL = 1800; // 30 min — weekly data, slow-moving
 
 const stockIndexCache: Record<string, { data: GetCountryStockIndexResponse; ts: number }> = {};
 const STOCK_INDEX_CACHE_TTL = 3_600_000; // 1 hour (in-memory fallback)
+
+function isAvailableCountryStockIndex(value: unknown): value is GetCountryStockIndexResponse {
+  return Boolean(
+    value
+    && typeof value === 'object'
+    && (value as GetCountryStockIndexResponse).available
+    && (value as GetCountryStockIndexResponse).code === 'CN',
+  );
+}
 
 // ========================================================================
 // Handler
@@ -46,6 +59,18 @@ export async function getCountryStockIndex(
 
   const index = COUNTRY_INDEX[code];
   if (!index) return notAvailable;
+
+  // Railway owns the CN snapshot and writes it without the Vercel environment
+  // prefix. Prefer that raw last-good payload before serving the RPC cache.
+  // The fallback cache below intentionally uses a separate key so a failed
+  // request cannot replace this seed-owned record with a negative sentinel.
+  if (code === 'CN') {
+    const railwaySnapshot = await getCachedJson(RAILWAY_SEEDED_COUNTRY_INDEX_KEY, true);
+    if (isAvailableCountryStockIndex(railwaySnapshot)) {
+      stockIndexCache[code] = { data: railwaySnapshot, ts: Date.now() };
+      return railwaySnapshot;
+    }
+  }
 
   const cached = stockIndexCache[code];
   if (cached && Date.now() - cached.ts < STOCK_INDEX_CACHE_TTL) return cached.data;

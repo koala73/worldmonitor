@@ -159,7 +159,13 @@ async function writeRequiredCompanionKeys(data) {
   } catch (err) {
     // A China-specific source failure must remain visible to its audit without
     // turning an otherwise successful global market seed into a false outage.
-    console.warn(`[seed-market-quotes] China country index refresh failed: ${err.message}`);
+    // Preserve last-good long enough for the audit's content-age budget to
+    // distinguish a transient provider error from a missing cache.
+    const preserved = await extendExistingTtl([CHINA_COUNTRY_STOCK_INDEX_KEY], CACHE_TTL);
+    console.warn(
+      `[seed-market-quotes] China country index refresh failed: ${err.message}; `
+      + (preserved ? 'preserved last-good cache TTL' : 'no last-good cache TTL to preserve'),
+    );
   }
 }
 
