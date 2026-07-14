@@ -9,6 +9,25 @@ import { __testing__ as healthTesting } from '../api/health.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
+// Keys the repo already knows nothing consumes: planned-but-unwired, or fetched by
+// some route other than tier hydration. Module-scoped so BOTH guards can use it —
+// the hydration-coverage test (which allows them) and the tier-freeloader test
+// (which forbids them from riding in a bundle every client downloads). #5300.
+const PENDING_CONSUMERS = new Set([ 'chokepointBaselines', 'imfMacro',
+      'imfGrowth', 'imfLabor', 'imfExternal',
+      'portwatchChokepointsRef', 'portwatchPortActivity', 'sprPolicies', 'electricityPrices', 'jodiOil',
+      'eurostatHousePrices', 'eurostatGovDebtQ', 'eurostatIndProd',
+      // BIS extended dataflows are consumed via a direct scoped bootstrap
+      // fetch in CountryDeepDivePanel (housing cycle tile), not through the
+      // getHydratedData session cache — fetched on-click per country.
+      'bisDsr', 'bisPropertyResidential', 'bisPropertyCommercial',
+      // energyDisruptions is bootstrap-hydrated so the RPC handler has
+      // warm data, but panel drawers fetch events lazily via
+      // listEnergyDisruptions() on drawer open — no getHydratedData()
+      // call site. Classifier extends this post-launch.
+      'energyDisruptions',
+]);
+
 describe('Bootstrap cache key registry', () => {
   const cacheKeysPath = join(root, 'server', '_shared', 'cache-keys.ts');
   const cacheKeysSrc = readFileSync(cacheKeysPath, 'utf-8');
@@ -357,23 +376,6 @@ describe('Bootstrap key hydration coverage', () => {
     walk(join(root, 'src'));
     const allSrc = srcFiles.map(f => readFileSync(f, 'utf-8')).join('\n');
 
-    // Keys with planned but not-yet-wired consumers
-    const PENDING_CONSUMERS = new Set([
-      'correlationCards', 'euGasStorage', 'chokepointBaselines', 'imfMacro',
-      'imfGrowth', 'imfLabor', 'imfExternal',
-      'portwatchChokepointsRef', 'portwatchPortActivity', 'sprPolicies',
-      'wsbTickers', 'electricityPrices', 'jodiOil',
-      'eurostatHousePrices', 'eurostatGovDebtQ', 'eurostatIndProd',
-      // BIS extended dataflows are consumed via a direct scoped bootstrap
-      // fetch in CountryDeepDivePanel (housing cycle tile), not through the
-      // getHydratedData session cache — fetched on-click per country.
-      'bisDsr', 'bisPropertyResidential', 'bisPropertyCommercial',
-      // energyDisruptions is bootstrap-hydrated so the RPC handler has
-      // warm data, but panel drawers fetch events lazily via
-      // listEnergyDisruptions() on drawer open — no getHydratedData()
-      // call site. Classifier extends this post-launch.
-      'energyDisruptions',
-    ]);
     for (const key of keys) {
       if (PENDING_CONSUMERS.has(key)) continue;
       // Two valid consumer forms. `getHydratedData(k)` reads a key delivered by a
@@ -463,6 +465,38 @@ describe('Bootstrap tier definitions', () => {
     const tierKeys = new Set(Object.keys(tiers));
     const setKeys = new Set([...slow, ...fast, ...onDemand]);
     assert.deepEqual([...tierKeys].sort(), [...setKeys].sort(), 'BOOTSTRAP_TIERS keys must match SLOW ∪ FAST ∪ ON_DEMAND');
+  });
+
+  // The structural guard. A tier bundle is downloaded by EVERY client on EVERY boot,
+  // so a key earns its place there only if a client actually reads its hydration.
+  // Scan the source for real consumers — do NOT trust PENDING_CONSUMERS here: it is
+  // an allow-list that goes stale the moment a consumer is wired up (euGasStorage,
+  // correlationCards and wsbTickers were all still on it long after they had one).
+  // A key with no getHydratedData/ensureHydrated call site is freight: ship it
+  // on demand instead (#5300).
+  it('every tier key has a hydration consumer — a tier is not a dumping ground', () => {
+    const slow = extractSetKeys(bootstrapSrc, 'SLOW_KEYS');
+    const fast = extractSetKeys(bootstrapSrc, 'FAST_KEYS');
+
+    const srcFiles = [];
+    function walk(dir) {
+      for (const entry of readdirSync(dir)) {
+        const full = join(dir, entry);
+        if (statSync(full).isDirectory()) walk(full);
+        else if (entry.endsWith('.ts') && !full.includes('/generated/')) srcFiles.push(full);
+      }
+    }
+    walk(join(root, 'src'));
+    const allSrc = srcFiles.map((f) => readFileSync(f, 'utf-8')).join('\n');
+
+    const freight = [...slow, ...fast].filter((k) =>
+      !allSrc.includes(`getHydratedData('${k}')`) && !allSrc.includes(`ensureHydrated('${k}')`));
+
+    assert.deepEqual(
+      freight,
+      [],
+      `these keys ride in a tier every client downloads but no client reads their hydration — move them to ON_DEMAND_KEYS: ${freight.join(', ')}`,
+    );
   });
 
   it('on-demand keys are NOT served by the tier bundles every client downloads', () => {

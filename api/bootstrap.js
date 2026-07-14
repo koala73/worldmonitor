@@ -147,9 +147,7 @@ const BOOTSTRAP_CACHE_KEYS = {
 };
 
 const SLOW_KEYS = new Set([
-  'bisPolicy', 'bisExchange', 'bisCredit',
-  'bisDsr', 'bisPropertyResidential', 'bisPropertyCommercial',
-  'imfMacro', 'imfGrowth', 'imfLabor', 'imfExternal', 'chinaMacro', 'chinaReleaseCalendar', 'minerals', 'giving',
+  'bisPolicy', 'bisExchange', 'bisCredit', 'chinaMacro', 'chinaReleaseCalendar', 'minerals', 'giving',
   'sectors', 'etfFlows', 'wildfires', 'climateAnomalies', 'climateDisasters', 'co2Monitoring', 'oceanIce', 'climateNews',
   'radiationWatch', 'thermalEscalation', 'crossSourceSignals',
   'techReadiness', 'progressData', 'renewableEnergy',
@@ -168,9 +166,6 @@ const SLOW_KEYS = new Set([
   'nationalDebt',
   'euGasStorage',
   'eurostatCountryData',
-  'eurostatHousePrices',
-  'eurostatGovDebtQ',
-  'eurostatIndProd',
   'marketImplications',
   'fearGreedIndex',
   'hyperliquidFlow',
@@ -181,19 +176,12 @@ const SLOW_KEYS = new Set([
   'diseaseOutbreaks',
   'economicStress',
   'pizzint',
-  'electricityPrices',
-  'jodiOil',
-  'chokepointBaselines',
-  'portwatchChokepointsRef',
-  'portwatchPortActivity',
   'oilStocksAnalysis',
   'lngVulnerability',
-  'sprPolicies',
   'pipelinesGas',
   'pipelinesOil',
   'storageFacilities',
   'fuelShortages',
-  'energyDisruptions',
   'energyCrisisPolicies',
   'aaiiSentiment',
   'breadthHistory',
@@ -218,6 +206,26 @@ const FAST_KEYS = new Set([
 // bytes nobody consumed.
 const ON_DEMAND_KEYS = new Set([
   'cyberThreats',
+
+  // Registered bootstrap keys with NO tier consumer — every one of them is already
+  // listed in tests/bootstrap.test.mjs's PENDING_CONSUMERS, i.e. the repo already
+  // knew nothing reads their hydration. They were still being shipped in the slow
+  // tier to every visitor on every boot: ~0.26 MB per origin miss, ~1.6 GB/day of
+  // Redis egress for bytes no client ever looks at (#5300).
+  //
+  // They stay registered in BOOTSTRAP_CACHE_KEYS, so the consumers that DO want them
+  // keep working exactly as today — they already fetch on demand and never touched
+  // the tier copy:
+  //   imf*        -> src/services/imf-country-data.ts fetches ?keys=imfMacro,imfGrowth,...
+  //   bis*/jodiOil-> src/app/country-intel.ts builds a scoped ?keys= per country on click
+  //   energyDisruptions -> panel drawers call listEnergyDisruptions() (RPC) on open
+  // The remaining eight have no reference anywhere in src/ at all.
+  'bisDsr', 'bisPropertyResidential', 'bisPropertyCommercial',
+  'imfMacro', 'imfGrowth', 'imfLabor', 'imfExternal',
+  'eurostatHousePrices', 'eurostatGovDebtQ', 'eurostatIndProd',
+  'electricityPrices', 'jodiOil', 'chokepointBaselines',
+  'portwatchChokepointsRef', 'portwatchPortActivity', 'sprPolicies',
+  'energyDisruptions',
 ]);
 
 // Iran-events sunset: strip the domain from the bootstrap payload + fast tier
