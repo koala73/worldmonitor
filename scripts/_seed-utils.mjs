@@ -667,8 +667,7 @@ export function shouldEnvelopeKey(key) {
 
 export async function writeExtraKey(key, data, ttl, envelopeMeta) {
   const { url, token } = getRedisCredentials();
-  const value = envelopeMeta && shouldEnvelopeKey(key) ? buildEnvelope({ ...envelopeMeta, data }) : data;
-  const payload = JSON.stringify(value);
+  const payload = serializeExtraKeyValue(key, data, envelopeMeta);
   const resp = await fetch(url, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
@@ -677,6 +676,17 @@ export async function writeExtraKey(key, data, ttl, envelopeMeta) {
   });
   if (!resp.ok) throw new Error(`Extra key ${key}: write failed (HTTP ${resp.status})`);
   console.log(`  Extra key ${key}: written`);
+}
+
+/** Serialize an extra key exactly as it is persisted to Redis. */
+export function serializeExtraKeyValue(key, data, envelopeMeta) {
+  const value = envelopeMeta && shouldEnvelopeKey(key) ? buildEnvelope({ ...envelopeMeta, data }) : data;
+  return JSON.stringify(value);
+}
+
+/** Return the UTF-8 size of an extra-key value as Redis receives it. */
+export function extraKeyPayloadBytes(key, data, envelopeMeta) {
+  return Buffer.byteLength(serializeExtraKeyValue(key, data, envelopeMeta), 'utf8');
 }
 
 export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaTtlSeconds) {
@@ -1771,18 +1781,6 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
           await exitAfterTelemetryFlush(1);
         }
 
-        // Guard 2 — blunt backstop. Catches a monstrous payload whatever the cause,
-        // including one this codebase has not seen yet.
-        const ekBytes = JSON.stringify(ekData ?? null).length;
-        if (ekBytes > MAX_SEEDED_VALUE_BYTES) {
-          await releaseLock(`${domain}:${resource}`, runId);
-          console.error(
-            `  CONTRACT VIOLATION on extraKey ${ek.key}: payload is ${ekBytes} bytes, above the `
-            + `${MAX_SEEDED_VALUE_BYTES}-byte ceiling for a seeded value. Refusing to publish.`,
-          );
-          await exitAfterTelemetryFlush(1);
-        }
-
         let ekEnvelope = null;
         if (contractMode) {
           const ekDeclare = typeof ek.declareRecords === 'function' ? ek.declareRecords : declareRecords;
@@ -1810,6 +1808,19 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
             schemaVersion: schemaVersion || 1,
             state: ekCount > 0 ? 'OK' : (zeroIsValid ? 'OK_ZERO' : 'OK'),
           };
+        }
+
+        // Guard 2 — blunt backstop. Catches a monstrous payload whatever the cause,
+        // including one this codebase has not seen yet. Measure the serialized UTF-8
+        // value (including a contract envelope), which is what Redis actually stores.
+        const ekBytes = extraKeyPayloadBytes(ek.key, ekData, ekEnvelope);
+        if (ekBytes > MAX_SEEDED_VALUE_BYTES) {
+          await releaseLock(`${domain}:${resource}`, runId);
+          console.error(
+            `  CONTRACT VIOLATION on extraKey ${ek.key}: payload is ${ekBytes} bytes, above the `
+            + `${MAX_SEEDED_VALUE_BYTES}-byte ceiling for a seeded value. Refusing to publish.`,
+          );
+          await exitAfterTelemetryFlush(1);
         }
         await writeExtraKey(ek.key, ekData, ek.ttl || ttlSeconds, ekEnvelope);
         if (contractMode && ek.metaKey) {

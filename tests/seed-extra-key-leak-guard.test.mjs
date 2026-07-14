@@ -14,6 +14,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  extraKeyPayloadBytes,
   findLeakedPrePublishFields,
   MAX_SEEDED_VALUE_BYTES,
 } from '../scripts/_seed-utils.mjs';
@@ -120,4 +121,11 @@ test('the byte ceiling sits above every real payload and below the incident', ()
 
   assert.ok(MAX_SEEDED_VALUE_BYTES > LARGEST_REAL * 2, 'must leave headroom for normal growth');
   assert.ok(MAX_SEEDED_VALUE_BYTES < INCIDENT, 'must still refuse the 11.5 MB payload');
+});
+
+test('the byte ceiling measures the UTF-8 value Redis receives, not JavaScript code units', () => {
+  const payload = { prose: '漢'.repeat(3_000_000) };
+
+  assert.ok(JSON.stringify(payload).length < MAX_SEEDED_VALUE_BYTES, 'fixture stays below the ceiling in UTF-16 code units');
+  assert.ok(extraKeyPayloadBytes('test:unicode:v1', payload) > MAX_SEEDED_VALUE_BYTES, 'fixture exceeds the ceiling in UTF-8 bytes');
 });
