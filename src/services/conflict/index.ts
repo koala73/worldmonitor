@@ -5,6 +5,10 @@ import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
 import { toApiUrl } from '@/services/runtime';
 import { ConflictServiceClient } from '@/services/generated-rpc-clients';
+import { isDuplicatedByAcled } from './ucdp-dedupe';
+import type { AcledDedupEvent, UcdpDedupeIndexEntry, UcdpTabAggregate } from './ucdp-dedupe';
+export { deduplicateUcdpProjectionAggregates } from './ucdp-dedupe';
+export type { UcdpDedupeIndexEntry, UcdpTabAggregate } from './ucdp-dedupe';
 
 // ---- Client + Circuit Breakers (per-RPC; HAPI uses per-country map) ----
 
@@ -151,10 +155,10 @@ function toHapiSummary(proto: ProtoHumanSummary): HapiConflictSummary {
  * per-country classifications and per-tab aggregates — arrive precomputed.
  * The RPC still returns the full, unprojected response.
  */
-export interface UcdpTabAggregate { count: number; totalDeaths: number }
 export type HydratedUcdpPayload = ListUcdpEventsResponse & {
   classifications?: Record<string, UcdpConflictStatus>;
   aggregates?: Record<string, UcdpTabAggregate>;
+  dedupeIndex?: UcdpDedupeIndexEntry[];
   totalEvents?: number;
 };
 
@@ -165,26 +169,9 @@ import type { UcdpConflictStatus } from './ucdp-classify';
 export { deriveUcdpClassifications } from './ucdp-classify';
 export type { ConflictIntensity, UcdpConflictStatus } from './ucdp-classify';
 
-// ---- Haversine helper (ported exactly from legacy ucdp-events.ts) ----
-
-function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
-  const R = 6371;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a = Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) *
-    Math.sin(dLon / 2) ** 2;
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
 // ---- AcledEvent interface for deduplication (ported from legacy) ----
 
-interface AcledEvent {
-  latitude: string | number;
-  longitude: string | number;
-  event_date: string;
-  fatalities: string | number;
-}
+type AcledEvent = AcledDedupEvent;
 
 // ---- Empty fallbacks ----
 
@@ -310,38 +297,14 @@ export async function fetchUcdpEvents(hydrated?: HydratedUcdpPayload): Promise<U
   };
 }
 
-export function deduplicateAgainstAcled(
-  ucdpEvents: UcdpGeoEvent[],
-  acledEvents: AcledEvent[],
-): UcdpGeoEvent[] {
+export function deduplicateAgainstAcled(ucdpEvents: UcdpGeoEvent[], acledEvents: AcledEvent[]): UcdpGeoEvent[] {
   if (!acledEvents.length) return ucdpEvents;
-
-  return ucdpEvents.filter(ucdp => {
-    const uLat = ucdp.latitude;
-    const uLon = ucdp.longitude;
-    const uDate = new Date(ucdp.date_start).getTime();
-    const uDeaths = ucdp.deaths_best;
-
-    for (const acled of acledEvents) {
-      const aLat = Number(acled.latitude);
-      const aLon = Number(acled.longitude);
-      const aDate = new Date(acled.event_date).getTime();
-      const aDeaths = Number(acled.fatalities) || 0;
-
-      const dayDiff = Math.abs(uDate - aDate) / (1000 * 60 * 60 * 24);
-      if (dayDiff > 7) continue;
-
-      const dist = haversineKm(uLat, uLon, aLat, aLon);
-      if (dist > 50) continue;
-
-      if (uDeaths === 0 && aDeaths === 0) return false;
-      if (uDeaths > 0 && aDeaths > 0) {
-        const ratio = uDeaths / aDeaths;
-        if (ratio >= 0.5 && ratio <= 2.0) return false;
-      }
-    }
-    return true;
-  });
+  return ucdpEvents.filter((ucdp) => !isDuplicatedByAcled({
+    latitude: ucdp.latitude,
+    longitude: ucdp.longitude,
+    dateMs: new Date(ucdp.date_start).getTime(),
+    deathsBest: ucdp.deaths_best,
+  }, acledEvents));
 }
 
 const CONFLICT_HISTORY_RADIUS_DEG = 3;

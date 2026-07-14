@@ -89,7 +89,7 @@ import { fetchSatelliteTLEs, initSatRecs, propagatePositions, startPropagationLo
 import type { SatRecEntry } from '@/services/satellites';
 import { dataFreshness, type DataSourceId } from '@/services/data-freshness';
 import type { CorrelationSignal } from '@/services/correlation';
-import { fetchConflictEvents, fetchUcdpClassifications, fetchHapiSummary, fetchUcdpEvents, deduplicateAgainstAcled, fetchIranEvents } from '@/services/conflict';
+import { fetchConflictEvents, fetchUcdpClassifications, fetchHapiSummary, fetchUcdpEvents, deduplicateAgainstAcled, deduplicateUcdpProjectionAggregates, fetchIranEvents } from '@/services/conflict';
 import { fetchUnhcrPopulation } from '@/services/displacement';
 import { fetchClimateAnomalies } from '@/services/climate';
 import { fetchSecurityAdvisories } from '@/services/security-advisories';
@@ -2642,9 +2642,12 @@ export class DataLoaderManager implements AppModule {
           latitude: e.lat, longitude: e.lon, event_date: e.time.toISOString(), fatalities: e.fatalities ?? 0,
         }));
         const events = deduplicateAgainstAcled(result.data, acledEvents);
+        const aggregates = !wantsFullUcdpSet && hydratedUcdp?.aggregates && hydratedUcdp.dedupeIndex
+          ? deduplicateUcdpProjectionAggregates(hydratedUcdp.aggregates, hydratedUcdp.dedupeIndex, acledEvents)
+          : undefined;
         (this.ctx.panels['ucdp-events'] as UcdpEventsPanel)?.setEvents(
           events,
-          wantsFullUcdpSet ? undefined : hydratedUcdp?.aggregates,
+          aggregates,
         );
         if (this.ctx.mapLayers.ucdpEvents) {
           this.ctx.map?.setUcdpEvents(events);

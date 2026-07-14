@@ -136,6 +136,22 @@ export function selectUcdpPanelRows(events, rowsPerTab = UCDP_PANEL_ROWS_PER_TAB
   return kept;
 }
 
+/**
+ * Compact attributes needed to replay the existing client-side ACLED de-duplication
+ * against the full UCDP set. The panel only renders 150 rows, but its tab totals
+ * are calculated after that dynamic de-duplication; carrying this small numeric
+ * index keeps the precomputed totals faithful without restoring every raw field.
+ */
+export function buildUcdpDedupeIndex(events) {
+  return events.map((event) => [
+    UCDP_VIOLENCE_TYPES.indexOf(event.violenceType),
+    Number(event.dateStart),
+    Number(event.location?.latitude),
+    Number(event.location?.longitude),
+    Number(event.deathsBest) || 0,
+  ]);
+}
+
 export function compactUcdpDashboardPayload(payload, nowMs = Date.now(), rowsPerTab = UCDP_PANEL_ROWS_PER_TAB) {
   if (!payload || typeof payload !== 'object' || !Array.isArray(payload.events)) return payload;
 
@@ -147,6 +163,7 @@ export function compactUcdpDashboardPayload(payload, nowMs = Date.now(), rowsPer
     // array cannot change what the user sees.
     classifications: classifyUcdpEvents(events, nowMs),
     aggregates: summarizeUcdpEvents(events),
+    dedupeIndex: buildUcdpDedupeIndex(events),
     totalEvents: events.length,
   };
 }
