@@ -104,6 +104,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'cascade-mirror: pre-compacted dashboard/RPC variant of wildfire:fires:v1 (covered by get_natural_events). It preserves the same top-500 response while avoiding canonical-payload Redis egress.'],
   ['thermal:escalation-bootstrap:v1',
     'cascade-mirror: pre-compacted dashboard view of thermal:escalation:v1 (the canonical key remains the tool/RPC source). Capped to the top-24 ranked clusters the dashboard renders — agents should read the canonical key, which carries the full cluster set (#5300).'],
+  ['forecast:predictions-bootstrap:v1',
+    'cascade-mirror: dashboard list projection of forecast:predictions:v2 (covered by get_forecast_predictions). It is the same predictions minus the caseFile dossiers — MCP callers want the dossiers, so the tool keeps reading the canonical key.'],
   ['aviation:delays:intl:v3',
     'cascade-mirror: international delays sibling of aviation:delays-bootstrap:v2 (covered by get_aviation_status) — deferred to a future expanded aviation tool that exposes the intl variant directly.'],
   ['aviation:notam:closures:v2',

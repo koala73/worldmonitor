@@ -5,6 +5,7 @@
 import crypto from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { loadEnvFile, runSeed, CHROME_UA, withRetry, parseRetryAfterMs, getResponseHeader, isRetryableHttpStatus } from './_seed-utils.mjs';
+import { compactForecastDashboardPayload } from './_forecast-dashboard.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { tagRegions } from './_prediction-scoring.mjs';
 import { attachResolutionSpecs } from './_forecast-resolution.mjs';
@@ -47,6 +48,11 @@ const _isDirectRun = process.argv[1] && import.meta.url.endsWith(process.argv[1]
 if (_isDirectRun) loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'forecast:predictions:v2';
+// Dashboard list: the same predictions with the caseFile dossiers stripped (78% of
+// the payload). The bootstrap fast tier hydrates from THIS key so every visitor
+// stops downloading ~19,000 words of analysis prose they never open (#5300). The
+// canonical key above keeps the dossiers for the RPC, MCP and chat-analyst.
+const DASHBOARD_KEY = 'forecast:predictions-bootstrap:v1';
 const PRIOR_KEY = 'forecast:predictions:prior:v2';
 // Iran-events domain sunset (war ended 2026-07). Default OFF: the strike feed
 // no longer seeds forecast inputs or critical signals (even while the canonical
@@ -17312,6 +17318,21 @@ export function declareRecords(data) {
 
 export const FORECAST_EXTRA_KEYS = [
   {
+    key: DASHBOARD_KEY,
+    transform: compactForecastDashboardPayload,
+    // TTL_SECONDS (6h), NOT the 2h the other extra keys use. This key is the
+    // panel's PRIMARY source now, so it needs the canonical key's durability:
+    // at 2h, two missed hourly crons expire it and the panel goes blank, while
+    // the canonical it used to read would have survived (see TTL_SECONDS above —
+    // 1.75x cron was already enough to open a panel gap). 6h also outlives the
+    // 90min seed-meta staleness gate, so a stopped writer surfaces as STALE_SEED
+    // rather than the key vanishing into EMPTY.
+    ttl: TTL_SECONDS,
+    declareRecords,
+    metaKey: 'seed-meta:forecast:predictions-bootstrap',
+    skipWhenEmpty: true,
+  },
+  {
     key: PRIOR_KEY,
     transform: (data) => ({
       predictions: data.predictions.map(buildPriorForecastSnapshot),
@@ -18188,17 +18209,28 @@ async function redisAtomicPatchSimDecorations(url, token, canonicalKey, byForeca
 }
 
 /**
- * Patch forecast:predictions:v2 in-place with simulation decoration fields.
- * Called immediately after writeSimulationDecorations to update the canonical key
- * for same-run consumers — without this, ForecastPanel only sees the prior run's
- * simulation data until the next fast-path seed re-applies decorations.
+ * Patch the published prediction keys in-place with simulation decoration fields.
+ * Called immediately after writeSimulationDecorations to update them for same-run
+ * consumers — without this, ForecastPanel only sees the prior run's simulation data
+ * until the next fast-path seed re-applies decorations.
+ *
+ * BOTH keys are patched, not just the canonical one. runSeed writes extraKeys during
+ * publish and calls afterPublish (where this runs) afterwards, so DASHBOARD_KEY is
+ * written BEFORE the decorations exist. It is the key the fast tier hydrates
+ * ForecastPanel from, and the panel's list rows render all three fields (the sim bar,
+ * the sim chip, and the demoted row-dimming) — so skipping it here would reintroduce
+ * exactly the stale-decoration bug this function was written to prevent, just one key
+ * over (#5300).
+ *
+ * Each key gets its own atomic EVAL. They don't need to be atomic *together*: readers
+ * fetch them independently, and each script re-applies the same generatedAt guard
+ * against whatever is actually published under that key. The compacted dashboard
+ * payload preserves `generatedAt` and `predictions`, so the guard and the field
+ * mutations behave identically on both.
  *
  * Forecasts present in byForecastId get updated sim fields.
  * Forecasts NOT in byForecastId have their sim fields reset to 0 / false, so that
  * any stale values from a prior run are cleared at the same time.
- *
- * The patch is atomic via Lua EVAL: the read, generatedAt guard, mutations, and write
- * happen in a single Redis operation so a concurrent fast-path seed cannot be overwritten.
  *
  * Non-fatal: any failure is logged as a warning and the function returns.
  *
@@ -18208,17 +18240,19 @@ async function redisAtomicPatchSimDecorations(url, token, canonicalKey, byForeca
 async function patchPublishedForecastsWithSimDecorations(byForecastId, runGeneratedAt) {
   try {
     const { url, token } = getRedisCredentials();
-    const status = await redisAtomicPatchSimDecorations(url, token, CANONICAL_KEY, byForecastId, runGeneratedAt, TTL_SECONDS);
-    if (status.startsWith('PATCHED:')) {
-      console.log(`  [SimulationDecorations] Patched ${status.slice(8)} forecasts in ${CANONICAL_KEY} (atomic)`);
-    } else if (isRedisWriteSkippedStatus(status)) {
-      console.log(`  [SimulationDecorations] Skipping patch — canonical key is from a newer run (published=${redisWriteSkippedGeneratedAt(status)}, sim_run=${runGeneratedAt})`);
-    } else if (status === 'MISSING') {
-      console.warn('  [SimulationDecorations] Cannot patch canonical key — predictions missing or not an array');
+    for (const key of [CANONICAL_KEY, DASHBOARD_KEY]) {
+      const status = await redisAtomicPatchSimDecorations(url, token, key, byForecastId, runGeneratedAt, TTL_SECONDS);
+      if (status.startsWith('PATCHED:')) {
+        console.log(`  [SimulationDecorations] Patched ${status.slice(8)} forecasts in ${key} (atomic)`);
+      } else if (isRedisWriteSkippedStatus(status)) {
+        console.log(`  [SimulationDecorations] Skipping patch of ${key} — key is from a newer run (published=${redisWriteSkippedGeneratedAt(status)}, sim_run=${runGeneratedAt})`);
+      } else if (status === 'MISSING') {
+        console.warn(`  [SimulationDecorations] Cannot patch ${key} — predictions missing or not an array`);
+      }
+      // UNCHANGED: no-op, no log needed
     }
-    // UNCHANGED: no-op, no log needed
   } catch (err) {
-    console.warn(`  [SimulationDecorations] Canonical key patch failed (non-fatal): ${err.message}`);
+    console.warn(`  [SimulationDecorations] Published key patch failed (non-fatal): ${err.message}`);
   }
 }
 
@@ -18822,6 +18856,7 @@ async function runSimulationWorker({ once = false, runId = '' } = {}) {
 
 export {
   CANONICAL_KEY,
+  DASHBOARD_KEY,
   PRIOR_KEY,
   HISTORY_KEY,
   HISTORY_MAX_RUNS,

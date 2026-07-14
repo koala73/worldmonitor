@@ -105,6 +105,7 @@ const BOOTSTRAP_KEYS = {
   gdeltIntel:        'intelligence:gdelt-intel:v1',
   correlationCards:   'correlation:cards-bootstrap:v1',
   forecasts:         'forecast:predictions:v2',
+  forecastsBootstrap: 'forecast:predictions-bootstrap:v1',
   securityAdvisories: 'intelligence:advisories-bootstrap:v1',
   customsRevenue:    'trade:customs-revenue:v1',
   comtradeFlows:     'comtrade:flows:v1',
@@ -438,6 +439,7 @@ const SEED_META = {
   telegramFeed:     { key: 'seed-meta:intelligence:telegram-feed:v1', maxStaleMin: 10 }, // 60s poll interval; 10min grace catches poll failures before they go stale in the panel
   digestNotifications: { key: 'seed-meta:digest:last-run',          maxStaleMin: 90 }, // Railway digest-notifications cron runs every 30min; 90 = 3x cadence and detects a dead cron before daily digests are missed.
   forecasts:        { key: 'seed-meta:forecast:predictions',       maxStaleMin: 90 },
+  forecastsBootstrap: { key: 'seed-meta:forecast:predictions-bootstrap', maxStaleMin: 90 }, // Same cron. Monitored separately: the fast tier now hydrates from the dashboard list, and a transform/write failure there must not hide behind a healthy canonical key (#5300).
   forecastResolutions: { key: 'seed-meta:forecast:resolutions',     maxStaleMin: 2160 }, // daily Bet-2 resolver; 36h catches a missed cron without flapping on normal daily jitter
   forecastScorecard:   { key: 'seed-meta:forecast:scorecard',       maxStaleMin: 2160 }, // scorecard extra key written by seed-forecast-resolutions
   forecastBets:        { key: 'seed-meta:forecast:bets',            maxStaleMin: 2880 }, // #5233 shadow bet-engine seeder; daily cron (05:00 UTC), 48h = 2× interval
@@ -718,6 +720,7 @@ const EMPTY_DATA_OK_KEYS = new Set([
   'forecastFunnel', // #5233 funnel guardrail is a new afterPublish side-write; before the first seed-forecasts run ships it the key is absent — tolerate as STALE_SEED (warn), not EMPTY (crit). A COLLAPSED funnel still surfaces via seed-meta status:'error' → SEED_ERROR, which classifyKey checks before this branch.
   'thermalEscalationBootstrap', // Compact dashboard projection is absent until the first thermal seeder tick after deploy — tolerate as STALE_SEED (warn), not EMPTY (crit). Once published, seed-meta staleness still catches a stopped writer.
   'ucdpEventsBootstrap', // Compact dashboard projection is absent until the first ucdp seeder tick after deploy — tolerate as STALE_SEED (warn), not EMPTY (crit). Once published, seed-meta staleness still catches a stopped writer.
+  'forecastsBootstrap', // Dashboard list is absent until the first seed-forecasts tick after deploy — tolerate as STALE_SEED (warn), not EMPTY (crit).
   'wildfiresBootstrap', // Compact dashboard side-write is absent until the first fire seeder tick after deploy — tolerate as STALE_SEED (warn), not EMPTY (crit). Once published, seed-meta staleness still catches a stopped writer.
 ]);
 
