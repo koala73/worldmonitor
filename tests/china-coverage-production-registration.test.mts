@@ -48,6 +48,7 @@ describe('China coverage production registration', () => {
     assert.match(insightsSeed, /readChinaNewsDigest\(\)/);
     assert.match(insightsSeed, /digest coverage check failed/);
     assert.match(insightsSeed, /preserveKeys: \[CHINA_COVERAGE_KEY\]/);
+    assert.match(insightsSeed, /return preserveChinaNewsCoverageInLkg\(existing, chinaNewsCoverage\)/);
     assert.match(insightsSeed, /writeExtraKey\(CHINA_COVERAGE_KEY, data\.chinaNewsCoverage, CACHE_TTL\)/);
   });
 

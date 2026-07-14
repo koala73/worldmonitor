@@ -4,6 +4,7 @@ import {
   CHINA_NEWS_SOURCE_NAMES,
   buildChinaNewsCoverage,
 } from '../scripts/_china-news-coverage.mjs';
+import { preserveChinaNewsCoverageInLkg } from '../scripts/seed-insights.mjs';
 
 const GENERATED_AT = '2026-07-14T12:00:00.000Z';
 
@@ -67,4 +68,18 @@ test('China news coverage marks Chinese-language sources unavailable when their 
     { source: 'MIIT (China)', status: 'unavailable', reason: 'digest_unavailable' },
     { source: 'MOFCOM (China)', status: 'unavailable', reason: 'digest_unavailable' },
   ]);
+});
+
+test('LKG global brief preservation still publishes fresh China source evidence', () => {
+  const existing = { status: 'ok', topStories: [{ primaryTitle: 'Last-known-good brief' }] };
+  const chinaNewsCoverage = buildChinaNewsCoverage({
+    en: { generatedAt: GENERATED_AT, feedStatuses: {} },
+    zh: { generatedAt: GENERATED_AT, feedStatuses: {} },
+  });
+
+  assert.deepEqual(preserveChinaNewsCoverageInLkg(existing, chinaNewsCoverage), {
+    ...existing,
+    chinaNewsCoverage,
+  });
+  assert.deepEqual(existing, { status: 'ok', topStories: [{ primaryTitle: 'Last-known-good brief' }] });
 });

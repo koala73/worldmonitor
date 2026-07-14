@@ -487,6 +487,14 @@ async function readChinaNewsDigest() {
   }
 }
 
+// A degraded global brief may reuse the last known-good public payload even
+// though this run obtained fresh per-source digest evidence. Keep that audit
+// projection attached for afterPublish; publishTransform still prevents it
+// from entering the public insights cache.
+export function preserveChinaNewsCoverageInLkg(existing, chinaNewsCoverage) {
+  return chinaNewsCoverage ? { ...existing, chinaNewsCoverage } : existing;
+}
+
 async function fetchInsights() {
   const digest = await readOrWarmDigest('en');
   if (!digest) {
@@ -703,7 +711,7 @@ async function fetchInsights() {
     const existing = await readExistingInsights();
     if (existing?.status === 'ok') {
       console.log('  LKG preservation: existing payload is "ok", skipping degraded overwrite');
-      return existing;
+      return preserveChinaNewsCoverageInLkg(existing, chinaNewsCoverage);
     }
   }
 
