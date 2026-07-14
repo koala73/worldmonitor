@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, test } from 'node:test';
 
 import handler, { __testing__ } from '../api/bootstrap.js';
@@ -178,7 +179,7 @@ test('shadow ignores on-demand and public-tier requests without waitUntil', asyn
 });
 
 test('shadow source pins the uncensored probe ceiling and cannot consume serving timeouts', () => {
-  const source = __testing__.bootstrapR2ShadowSourceForTests();
+  const source = readFileSync(new URL('../api/bootstrap.js', import.meta.url), 'utf8');
   assert.match(source, /readBootstrapTierObject\(tier,\s*\{\s*timeoutMs:\s*BOOTSTRAP_R2_PROBE_CEILING_MS,?\s*\}\)/);
   assert.doesNotMatch(source, /bootstrapR2ServingTimeoutMs|BOOTSTRAP_R2_TIMEOUT_MS_FAST|BOOTSTRAP_R2_TIMEOUT_MS_SLOW/);
 });

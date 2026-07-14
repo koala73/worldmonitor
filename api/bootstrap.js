@@ -20,7 +20,7 @@ import {
   BOOTSTRAP_R2_PROBE_CEILING_MS,
   readBootstrapTierObject,
 } from './_bootstrap-r2.js';
-import { deliverBootstrapR2Shadow } from './_usage-telemetry.js';
+import { deliverBootstrapR2Shadow, deriveExecutionRegion } from './_usage-telemetry.js';
 
 export const config = { runtime: 'edge' };
 
@@ -67,13 +67,6 @@ export function isPublicWeatherBootstrapRequest(req) {
 const PUBLIC_BOOTSTRAP_TIERS = new Set(['fast', 'slow']);
 let nextBootstrapR2ShadowProbeIsCold = true;
 
-function shadowExecutionRegion(req) {
-  const requestId = req.headers.get('x-vercel-id') ?? '';
-  return (requestId.includes('::') ? requestId.split('::', 1)[0] : null)
-    ?? process.env.VERCEL_REGION
-    ?? 'unknown';
-}
-
 function shouldMeasureBootstrapR2Shadow(authKind, tier, ctx) {
   return process.env.BOOTSTRAP_R2_SHADOW_MEASURE === '1'
     && process.env.VERCEL_ENV === 'production'
@@ -102,7 +95,7 @@ function finishBootstrapR2ShadowResponse(req, ctx, tier, response, redisStartedA
       r2Reason: result.status === 'fallback' ? result.reason : null,
       bootstrapTier: tier,
       r2DurationMs: result.durationMs,
-      executionRegion: shadowExecutionRegion(req),
+      executionRegion: deriveExecutionRegion(req) ?? process.env.VERCEL_REGION ?? 'unknown',
       executionCold,
       status: response.status,
     })).catch(() => {
@@ -113,7 +106,7 @@ function finishBootstrapR2ShadowResponse(req, ctx, tier, response, redisStartedA
       r2Reason: 'unreadable',
       bootstrapTier: tier,
       r2DurationMs: 0,
-      executionRegion: shadowExecutionRegion(req),
+      executionRegion: deriveExecutionRegion(req) ?? process.env.VERCEL_REGION ?? 'unknown',
       executionCold,
       status: response.status,
     });
@@ -455,8 +448,5 @@ export default async function handler(req, ctx) {
 export const __testing__ = {
   resetBootstrapR2ShadowForTests() {
     nextBootstrapR2ShadowProbeIsCold = true;
-  },
-  bootstrapR2ShadowSourceForTests() {
-    return finishBootstrapR2ShadowResponse.toString();
   },
 };

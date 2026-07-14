@@ -54,6 +54,11 @@ function originKind(req) {
   }
 }
 
+export function deriveExecutionRegion(req) {
+  const requestId = req.headers.get('x-vercel-id') ?? '';
+  return requestId.includes('::') ? requestId.split('::', 1)[0] : null;
+}
+
 function deriveCountry(req) {
   // cf-ipcountry is client geography only on requests proved to have
   // transited Cloudflare; otherwise it is forgeable and Vercel's peer-country
@@ -205,7 +210,6 @@ export function emitWmSessionUsage(ctx, req, res, startedAt, reason) {
   if (!ctx?.waitUntil || process.env.USAGE_TELEMETRY !== '1') return;
   try {
     const requestId = req.headers.get('x-vercel-id') ?? '';
-    const executionRegion = requestId.includes('::') ? requestId.split('::', 1)[0] : null;
     ctx.waitUntil(deliver({
       _time: new Date().toISOString(),
       event_type: 'request',
@@ -225,7 +229,7 @@ export function emitWmSessionUsage(ctx, req, res, startedAt, reason) {
       country: deriveCountry(req),
       ip_city: req.headers.get('x-vercel-ip-city') ?? null,
       ip_region: req.headers.get('x-vercel-ip-country-region') ?? null,
-      execution_region: executionRegion,
+      execution_region: deriveExecutionRegion(req),
       execution_plane: 'vercel-edge',
       origin_kind: originKind(req),
       cache_tier: 'no-store',
