@@ -67,7 +67,7 @@ test('seeder classifier is identical to the client classifier (drift guard)', ()
   const events = fixture();
 
   const fromSeeder = classifyUcdpEvents(events, NOW);
-  const fromClient = deriveUcdpClassifications(events as never);
+  const fromClient = deriveUcdpClassifications(events as never, NOW);
 
   assert.deepEqual(
     Object.keys(fromSeeder).sort(),

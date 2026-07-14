@@ -263,12 +263,13 @@ async function main() {
     if (!compactResp.ok) throw new Error(`HTTP ${compactResp.status}`);
 
     const compactMeta = JSON.stringify({ fetchedAt: Date.now(), recordCount: compact.events.length });
-    await fetch(redisUrl, {
+    const compactMetaResp = await fetch(redisUrl, {
       method: 'POST',
       headers: { Authorization: `Bearer ${redisToken}`, 'Content-Type': 'application/json' },
       body: JSON.stringify(['SET', BOOTSTRAP_META_KEY, compactMeta, 'EX', 604800]),
       signal: AbortSignal.timeout(5_000),
     });
+    if (!compactMetaResp.ok) throw new Error(`seed-meta HTTP ${compactMetaResp.status}`);
     console.log(`  Wrote ${BOOTSTRAP_KEY}: ${compact.events.length} rows, ${Object.keys(compact.classifications).length} classifications (from ${compact.totalEvents} events)`);
   } catch (e) {
     console.error(`  Compact projection write failed: ${e.message} — canonical key is published, dashboard will fall back to the RPC`);

@@ -27,7 +27,7 @@ function isRecentUcdpClassificationDate(dateStart: unknown, now: number, windowM
 // Exported for tests/ucdp-dashboard-projection.test.mts: scripts/_ucdp-dashboard.mjs
 // carries a mirror of this function (it cannot import from src/ — Railway builds
 // seeders from a scripts-only root, #5268), and the parity test pins them equal.
-export function deriveUcdpClassifications(events: ProtoUcdpEvent[]): Map<string, UcdpConflictStatus> {
+export function deriveUcdpClassifications(events: ProtoUcdpEvent[], now = Date.now()): Map<string, UcdpConflictStatus> {
   const byCountry = new Map<string, ProtoUcdpEvent[]>();
   for (const e of events) {
     const country = e.country;
@@ -35,7 +35,6 @@ export function deriveUcdpClassifications(events: ProtoUcdpEvent[]): Map<string,
     byCountry.get(country)!.push(e);
   }
 
-  const now = Date.now();
   const twoYearsMs = 2 * 365 * 24 * 60 * 60 * 1000;
   const result = new Map<string, UcdpConflictStatus>();
 
@@ -67,7 +66,7 @@ export function deriveUcdpClassifications(events: ProtoUcdpEvent[]): Map<string,
       (latest, e) => (!latest || e.dateStart > latest.dateStart) ? e : latest,
       undefined,
     );
-    const year = mostRecentEvent ? new Date(mostRecentEvent.dateStart).getFullYear() : new Date().getFullYear();
+    const year = mostRecentEvent ? new Date(mostRecentEvent.dateStart).getFullYear() : new Date(now).getFullYear();
 
     result.set(country, {
       location: country,
