@@ -11,7 +11,12 @@ import { attachResolutionSpecs } from './_forecast-resolution.mjs';
 import { assessFunnelDiversity } from './_forecast-funnel.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-storage.mjs';
 import { extractFirstJsonObject, extractFirstJsonArray, cleanJsonText } from './_llm-json.mjs';
-import { getLlmAttemptTimeoutMs, isDeepseekV4FlashModel } from './_llm-model-timeouts.mjs';
+import {
+  getLlmAttemptTimeoutMs,
+  isDeepseekV4FlashModel,
+  OPENROUTER_PROVIDER_ROUTING,
+  DEEPSEEK_V4_FLASH_LONG_COMPLETION_TIMEOUT_MS,
+} from './_llm-model-timeouts.mjs';
 import { loadTickerSet } from './_ticker-validation.mjs';
 import { computeEmaWindows, computeRisk24h } from './_ema-threat-engine.mjs';
 import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.mjs';
@@ -14682,9 +14687,31 @@ function selectForecastsForEnrichment(predictions, options = {}) {
 // llama-3.3-70b-versatile is the free-tier/outage fallback. Per-stage
 // FORECAST_LLM_*_PROVIDER_ORDER env still overrides.
 const FORECAST_LLM_PROVIDERS = [
-  { name: 'openrouter', envKey: 'OPENROUTER_API_KEY', apiUrl: 'https://openrouter.ai/api/v1/chat/completions', model: 'deepseek/deepseek-v4-flash', timeout: 25_000, extraBody: { reasoning: { enabled: false } } },
+  // `provider.sort: 'throughput'` makes OpenRouter dispatch to its fastest backend
+  // instead of free-routing. Without it the SAME model lands on backends spanning
+  // an order of magnitude (17s .. 110s), and no completion timeout is reliable —
+  // this is the routing that DEEPSEEK_V4_FLASH_COMPLETION_TIMEOUT_MS has always
+  // assumed but never had. Fallbacks stay enabled, so a fast backend going down
+  // degrades latency rather than hard-failing the call.
+  // This 25s timeout governs NON-Flash models only (critical_signals overrides this
+  // same entry onto google/gemini-2.5-flash and must keep its 25s window). Flash uses
+  // its own completion deadline via getLlmAttemptTimeoutMs — see _llm-model-timeouts.
+  { name: 'openrouter', envKey: 'OPENROUTER_API_KEY', apiUrl: 'https://openrouter.ai/api/v1/chat/completions', model: 'deepseek/deepseek-v4-flash', timeout: 25_000, extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING } },
   { name: 'groq', envKey: 'GROQ_API_KEY', apiUrl: 'https://api.groq.com/openai/v1/chat/completions', model: 'llama-3.3-70b-versatile', timeout: 20_000 },
 ];
+
+// market_implications does NOT fall back to groq. Groq's free tier caps at 100k
+// tokens/day and this stage alone needs ~114k (4,749 tokens x 24 hourly runs), so
+// the fallback 429s for most of the day. Reserving 20s of run budget for a provider
+// that returns 429 in 86ms only raises the admission bar and starves the stage.
+// OpenRouter is the primary and, with throughput routing, succeeds 100% of measured
+// runs. Still overridable via FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER.
+const MARKET_IMPLICATIONS_DEFAULT_PROVIDER_ORDER = ['openrouter'];
+
+// Requested window for DeepSeek-Flash in forecast stages. Kept above the Flash
+// completion cap so the cap (not this) is the binding constraint; the provider
+// entry's own 25s stays reserved for the non-Flash models stages pin onto it.
+const FORECAST_FLASH_REQUESTED_TIMEOUT_MS = 45_000;
 const FORECAST_LLM_PROVIDER_NAMES = new Set(FORECAST_LLM_PROVIDERS.map(provider => provider.name));
 // 3 retries (=4 attempts/provider): during an OpenRouter slowdown 2 retries all timed
 // out and market_implications wrote an error seed-meta. Bounded by the per-stage /
@@ -14692,16 +14719,20 @@ const FORECAST_LLM_PROVIDER_NAMES = new Set(FORECAST_LLM_PROVIDERS.map(provider 
 const FORECAST_LLM_PROVIDER_MAX_RETRIES = 3;
 const FORECAST_LLM_RETRY_BASE_MS = 1_000;
 const FORECAST_LLM_RETRY_AFTER_MAX_MS = 10_000;
-// The forecast seed lock is 180s; leave headroom for non-LLM work and cleanup.
+// The forecast seed lock is 240s; leave headroom for non-LLM work and cleanup.
 const FORECAST_LLM_STAGE_BUDGET_MS = 120_000;
 const FORECAST_LLM_STAGE_BUDGET_GUARD_MS = 5_000;
 // Cumulative LLM ceiling for one seed run. The per-stage budget bounds a single
 // call, but a run makes ~10 LLM calls (scenario/combined/critique/impact +
-// market-implications in afterPublish) — all under the same 180s lock with no
+// market-implications in afterPublish) — all under the same 240s lock with no
 // lock renewal. Without a run-level cap, several degraded stages still serialize
 // past 180s and the lock expires mid-run, letting the next cron tick start a
 // duplicate. 150s leaves ~30s for input reads, publish, and cleanup.
-const FORECAST_LLM_RUN_BUDGET_MS = 150_000;
+// The seed lock bounds the WHOLE run (fetch + publish + afterPublish tail).
+// FORECAST_LLM_RUN_BUDGET_MS must stay strictly below it with cleanup headroom;
+// tests/forecast-llm-flash-routing-and-timeout pins that invariant.
+const FORECAST_SEED_LOCK_TTL_MS = 240_000;
+const FORECAST_LLM_RUN_BUDGET_MS = 200_000;
 // Anchored at the start of the direct seed run; null in tests and the deep-forecast
 // worker (separate entry/lock) so only the per-stage budget applies there.
 let forecastLlmRunDeadlineMs = null;
@@ -14743,8 +14774,12 @@ function getForecastLlmCallOptions(stage = 'default') {
       ? (criticalProviderOrder || globalProviderOrder || defaultProviderOrder)
       : stage === 'impact_expansion'
         ? (impactProviderOrder || globalProviderOrder || defaultProviderOrder)
+      // Deliberately does NOT fall through to globalProviderOrder: that env is set
+      // to `openrouter,groq` in production, which would re-add the groq fallback
+      // this stage must not depend on (see MARKET_IMPLICATIONS_DEFAULT_PROVIDER_ORDER).
+      // Its own stage env still overrides.
       : stage === 'market_implications'
-        ? (marketImplicationsProviderOrder || globalProviderOrder || defaultProviderOrder)
+        ? (marketImplicationsProviderOrder || MARKET_IMPLICATIONS_DEFAULT_PROVIDER_ORDER)
       : (globalProviderOrder || defaultProviderOrder);
 
   const openrouterModel = stage === 'combined'
@@ -14807,7 +14842,16 @@ function resolveForecastLlmProviders(options = {}) {
       model,
       // #5246: cut off Flash's 25s stall tail while preserving enough room for
       // the pinned endpoint's observed median completion. Other models are unchanged.
-      timeout: getLlmAttemptTimeoutMs(model, provider.timeout),
+      // Flash is a LONG generation here (max_tokens 2500 => ~1.2-1.9k completion
+      // tokens, p90 22.4s) and needs its own requested window: the entry's 25s is
+      // calibrated for the NON-Flash models stages override onto it (Gemini), so
+      // reusing it would re-clamp Flash to 25s. getLlmAttemptTimeoutMs still MINs
+      // this against the Flash cap, and leaves non-Flash models on provider.timeout.
+      timeout: getLlmAttemptTimeoutMs(
+        model,
+        isDeepseekV4FlashModel(model) ? FORECAST_FLASH_REQUESTED_TIMEOUT_MS : provider.timeout,
+        DEEPSEEK_V4_FLASH_LONG_COMPLETION_TIMEOUT_MS,
+      ),
       failFastOnTimeout,
       // `null` explicitly clears the table entry's extraBody (R13 pin);
       // undefined leaves it untouched.
@@ -15093,7 +15137,7 @@ function getForecastLlmStageBudgetMs(options = {}) {
 function getRemainingForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs) {
   const stageRemaining = budgetStartedAtMs + stageBudgetMs - Date.now();
   // The run deadline (when set) caps cumulative LLM time across all stages so
-  // the seed can't outlive its 180s lock; whichever budget is tighter wins.
+  // the seed can't outlive its 240s lock; whichever budget is tighter wins.
   // Single source of truth for run-remaining lives in getRemainingForecastLlmRunBudgetMs.
   const runRemaining = getRemainingForecastLlmRunBudgetMs();
   return Math.max(0, Math.min(stageRemaining, runRemaining));
@@ -15107,7 +15151,7 @@ function getUsableForecastLlmBudgetMs(budgetStartedAtMs, stageBudgetMs) {
 // tests and the deep-forecast worker, which have only the per-stage budget).
 // market_implications runs LAST in afterPublish, so this is the budget that
 // starves it when upstream stages are slow (e.g. repeated provider stalls drain
-// the shared 150s run budget before the tail stage runs). #4978.
+// the shared 200s run budget before the tail stage runs). #4978.
 function getRemainingForecastLlmRunBudgetMs() {
   return forecastLlmRunDeadlineMs == null ? Infinity : forecastLlmRunDeadlineMs - Date.now();
 }
@@ -17100,7 +17144,7 @@ async function writeMarketImplicationsFailureMeta(reason) {
 }
 
 // A budget-starve is NOT a producer failure — it's resource contention from
-// slow upstream stages consuming the shared 150s run budget before this tail
+// slow upstream stages consuming the shared 200s run budget before this tail
 // stage runs (#4978). Unlike writeMarketImplicationsFailureMeta, this preserves
 // last-good seed-meta without advancing fetchedAt: existing OK meta is TTL-
 // refreshed, and stale error meta is replaced only when the canonical payload
@@ -17162,7 +17206,7 @@ async function buildAndSeedMarketImplications(inputs) {
   } catch { /* guard is best-effort — fall through to live generation */ }
 
   // Tail-stage budget guard (#4978): market_implications is the LAST forecast
-  // LLM stage under the shared 150s run budget. When upstream stages are slow
+  // LLM stage under the shared 200s run budget. When upstream stages are slow
   // (e.g. repeated provider stalls) they drain that budget before this
   // stage runs; callForecastLLM would then throw a budget error, return null,
   // and we'd (mis)write a SEED_ERROR for benign, self-healing resource
@@ -17282,7 +17326,9 @@ if (_isDirectRun) {
   console.log(`  [Trigger] source=${triggerContext.triggerSource}${triggerContext.triggerRequest?.requester ? ` requester=${triggerContext.triggerRequest.requester}` : ''}`);
 
   // Bound cumulative LLM time across every stage of this run (fetchForecasts +
-  // afterPublish market-implications) so the seed can't outlive its 180s lock.
+  // afterPublish market-implications) so the seed can't outlive its 240s lock.
+  // 200s run budget < 240s lock: upstream would have to burn >155s to starve the
+  // ~45s market_implications tail, which throughput-routed stages (p90 26s) cannot.
   beginForecastLlmRunBudget();
 
   await runSeed('forecast', 'predictions', CANONICAL_KEY, async () => {
@@ -17293,7 +17339,7 @@ if (_isDirectRun) {
     };
   }, {
     ttlSeconds: TTL_SECONDS,
-    lockTtlMs: 180_000,
+    lockTtlMs: FORECAST_SEED_LOCK_TTL_MS,
     validateFn: (data) => Array.isArray(data?.predictions) && data.predictions.length > 0,
     declareRecords,
     sourceVersion: 'detectors+llm-pipeline',
@@ -18853,6 +18899,9 @@ export {
   selectForecastsForEnrichment,
   parseForecastProviderOrder,
   getForecastLlmCallOptions,
+  getMarketImplicationsMinRunBudgetMs,
+  FORECAST_LLM_RUN_BUDGET_MS,
+  FORECAST_SEED_LOCK_TTL_MS,
   resolveForecastLlmProviders,
   resolveScenarioLlmResult,
   buildFallbackScenario,

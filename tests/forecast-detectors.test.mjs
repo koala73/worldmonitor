@@ -1631,7 +1631,14 @@ describe('forecast llm overrides', () => {
     assert.deepEqual(options.providerOrder, ['openrouter', 'groq']);
     assert.equal(providers[0]?.name, 'openrouter');
     assert.equal(providers[0]?.model, 'deepseek/deepseek-v4-flash');
-    assert.equal(providers[0]?.timeout, 15_000, 'stalled DeepSeek Flash calls must fall through before the 25s clamp');
+    // Was 15_000: a 'stall cutoff' that treated the SYMPTOM of unrouted OpenRouter
+    // requests landing on slow backends. The cause is now fixed at the source (the
+    // openrouter entry carries OPENROUTER_PROVIDER_ROUTING, so calls go to the
+    // fastest non-China-hosted backend). Under that routing Flash completes at p90
+    // 22.4s, so a 15s cutoff did not prevent stalls — it GUARANTEED failure, and
+    // every market_implications run wrote a SEED_ERROR. Flash now gets a completion
+    // deadline that covers its measured distribution.
+    assert.equal(providers[0]?.timeout, 40_000, 'Flash gets its measured completion deadline under pinned routing');
     assert.equal(providers[1]?.name, 'groq');
     assert.equal(providers[1]?.model, 'llama-3.3-70b-versatile');
     assert.equal(providers[1]?.timeout, 20_000, 'the fallback keeps its provider-specific window');
@@ -1731,7 +1738,7 @@ describe('forecast llm overrides', () => {
     assert.deepEqual(scenarioOptions.providerOrder, ['openrouter', 'groq']);
     assert.equal(scenarioProviders[0]?.name, 'openrouter');
     assert.equal(scenarioProviders[0]?.model, 'deepseek/deepseek-v4-flash');
-    assert.equal(scenarioProviders[0]?.timeout, 15_000);
+    assert.equal(scenarioProviders[0]?.timeout, 40_000, 'Flash completion deadline (see above); non-Flash overrides keep 25s');
     assert.equal(scenarioProviders[1]?.model, 'llama-3.3-70b-versatile');
   });
 

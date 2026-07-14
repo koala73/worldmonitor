@@ -159,7 +159,10 @@ test('a genuine provider failure that drains the run deadline still writes a SEE
   // all-provider 40s reservation would also admit, but the test still proves the
   // resolved provider chain drives admission). The mock then drains
   // the deadline mid-flight to prove a real failure is not reclassified as a starve.
-  __setForecastLlmRunDeadlineForTests(Date.now() + 40_000);
+  // 50s > the openrouter-only reservation (40s Flash + 5s guard = 45s), so the call
+  // is ADMITTED. (Was 40s against a 15s-Flash chain; the Flash completion deadline is
+  // now 40s — see _llm-model-timeouts.)
+  __setForecastLlmRunDeadlineForTests(Date.now() + 50_000);
 
   let providerCalls = 0;
   __setForecastLlmTransportForTests({
@@ -260,8 +263,12 @@ test('a budget covering only the primary — not the fallback — skips instead 
   seedLastGood(store);
   process.env.OPENROUTER_API_KEY = 'test-key';
   process.env.GROQ_API_KEY = 'test-key';
-  // DEFAULT chain (openrouter → groq); do NOT pin to a single provider.
-  delete process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER;
+  // The 2-provider chain is no longer the market_implications DEFAULT (it is now
+  // openrouter-only — groq's free tier 429s for most of the day). Pin it explicitly:
+  // the stranded-fallback logic still exists and must stay correct for any deployment
+  // that configures a fallback. Without this the test would skip for the WRONG reason
+  // and silently stop covering #4978.
+  process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER = 'openrouter,groq';
   delete process.env.FORECAST_LLM_PROVIDER_ORDER;
 
   // 30s budget: enough for the primary openrouter attempt (15s) + guard, but NOT
@@ -269,7 +276,9 @@ test('a budget covering only the primary — not the fallback — skips instead 
   // admitting only the primary can strand Groq ("groq llm budget exhausted")
   // after a timeout and misreport a recoverable timeout as SEED_ERROR. The full-
   // chain reservation makes this SKIP and preserve last-good (green) instead.
-  __setForecastLlmRunDeadlineForTests(Date.now() + 30_000);
+  // 50s covers the primary (40s Flash + 5s guard = 45s) but NOT the full
+  // openrouter→groq chain (40 + 20 + 5 = 65s) => must SKIP rather than strand groq.
+  __setForecastLlmRunDeadlineForTests(Date.now() + 50_000);
 
   let providerCalls = 0;
   __setForecastLlmTransportForTests({
@@ -291,14 +300,20 @@ test('an admitted primary timeout falls through to the fallback in ONE attempt e
   seedLastGood(store);
   process.env.OPENROUTER_API_KEY = 'test-key';
   process.env.GROQ_API_KEY = 'test-key';
-  delete process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER;
+  // Pin the 2-provider chain explicitly: it is no longer the market_implications
+  // default, but the one-attempt-per-provider machinery must stay correct for any
+  // deployment that configures a fallback. Deleting the env here would leave an
+  // openrouter-only chain and the test could never reach groq — it would assert
+  // nothing about the #5003 regression.
+  process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER = 'openrouter,groq';
   delete process.env.FORECAST_LLM_PROVIDER_ORDER;
 
-  // 60s admits the full two-provider chain (40s). Every attempt times out. PRE-FIX,
-  // openrouter's 3 retries (4 attempts) drained the run budget and groq was NEVER
-  // reached — a recoverable timeout became a SEED_ERROR without trying the fallback.
-  // With maxRetries:0 each provider gets exactly ONE attempt, so groq IS reached.
-  __setForecastLlmRunDeadlineForTests(Date.now() + 60_000);
+  // 70s admits the full two-provider chain (40s Flash + 20s groq + 5s guard = 65s).
+  // Every attempt times out. PRE-FIX, openrouter's 3 retries (4 attempts) drained the
+  // run budget and groq was NEVER reached — a recoverable timeout became a SEED_ERROR
+  // without trying the fallback. With maxRetries:0 each provider gets exactly ONE
+  // attempt, so groq IS reached.
+  __setForecastLlmRunDeadlineForTests(Date.now() + 70_000);
 
   const calls = { openrouter: 0, groq: 0 };
   __setForecastLlmTransportForTests({
@@ -325,12 +340,12 @@ test('a single-provider override reserves only that provider — admitted where 
   seedLastGood(store);
   process.env.OPENROUTER_API_KEY = 'test-key';
   process.env.GROQ_API_KEY = 'test-key';
-  // Pin to openrouter only → resolved chain reserves just 15s + 5s = 20s.
+  // Pin to openrouter only → resolved chain reserves just 40s Flash + 5s guard = 45s.
   process.env.FORECAST_LLM_MARKET_IMPLICATIONS_PROVIDER_ORDER = 'openrouter';
 
-  // 25s: below the 2-provider 40s reservation (would skip) but above the pinned
-  // single-provider 20s reservation — so this MUST be admitted, not skipped.
-  __setForecastLlmRunDeadlineForTests(Date.now() + 25_000);
+  // 50s: below the 2-provider 65s reservation (would skip) but above the pinned
+  // single-provider 45s reservation — so this MUST be admitted, not skipped.
+  __setForecastLlmRunDeadlineForTests(Date.now() + 50_000);
 
   let providerCalls = 0;
   __setForecastLlmTransportForTests({
@@ -340,5 +355,5 @@ test('a single-provider override reserves only that provider — admitted where 
 
   await buildAndSeedMarketImplications({});
 
-  assert.equal(providerCalls, 1, 'a pinned single-provider chain needs only 20s, so a 25s budget must ADMIT it (and try it once)');
+  assert.equal(providerCalls, 1, 'a pinned single-provider chain needs only 45s, so a 50s budget must ADMIT it (and try it once)');
 });
