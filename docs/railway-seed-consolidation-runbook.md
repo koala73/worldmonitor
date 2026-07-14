@@ -54,6 +54,55 @@ outside those broad directories, uses one environment config commit, and waits
 for Railway's eventually consistent config read-back before reporting success.
 Run the audit after adding or replacing a standalone seeder.
 
+### Bootstrap R2 publisher contract
+
+The public bootstrap tiers use the dedicated private bucket
+`worldmonitor-bootstrap`. Managed `r2.dev` access stays disabled and the bucket
+has no custom domain; clients continue to enter through `/api/bootstrap` so the
+WAF, origin policy, rate limits, telemetry, and future access controls remain in
+the request path.
+
+This service is an always-on publisher, not a Railway cron. Configure it as a
+`nixpacks-root-repo` service with start command
+`node scripts/publish-bootstrap-tiers.mjs --loop`, **no cron schedule**, and
+watch paths `scripts/**`, `shared/**`. It publishes both tiers on startup, then
+fast every two minutes and slow every ten minutes. Keep Redis authoritative:
+until the publisher and later rollout gates pass, `/api/bootstrap` continues to
+serve its existing Redis assembly.
+
+The environment contract is deliberately split by consumer:
+
+| Scope | Variables | Install in | Capability |
+|---|---|---|---|
+| Shared routing | `R2_ACCOUNT_ID`, optional `R2_ENDPOINT`, `R2_BOOTSTRAP_BUCKET=worldmonitor-bootstrap` | Railway production and Vercel production | Names only; no object permission |
+| Publisher | `R2_BOOTSTRAP_ACCESS_KEY_ID`, `R2_BOOTSTRAP_SECRET_ACCESS_KEY` | Railway production publisher only | Publisher can PUT and GET only in `worldmonitor-bootstrap` |
+| Edge reader | `R2_BOOTSTRAP_READ_KEY_ID`, `R2_BOOTSTRAP_READ_SECRET` | Vercel production only | Edge can GET; it cannot PUT or DELETE, and cannot read `worldmonitor-data` |
+
+Preview and development do not receive either credential; missing credentials
+must use the Redis path. The publisher must not fall back to any
+`CLOUDFLARE_R2_*` account, bucket, key, secret, or API token. Never copy the
+publisher credential into Vercel or the edge credential into Railway, and never
+add a `VITE_` alias for any bootstrap R2 credential.
+
+Provision and release in this order:
+
+1. Create the repo-root Railway service, install only the shared and publisher
+   variables above, and confirm the live watch paths and lack of a cron schedule.
+2. Deploy the publisher before enabling shadow measurement or serving from R2.
+3. Parse both `fast.json` and `slow.json`, then verify `generatedAt` advances in
+   two successive publishes for each tier.
+4. Install only the shared and read-only variables in Vercel production. Keep
+   them absent from preview and development.
+5. Run the negative permission probes: publisher cannot access
+   `worldmonitor-data`; edge cannot write/delete in `worldmonitor-bootstrap` and
+   cannot read `worldmonitor-data`.
+
+Rotate one consumer at a time: create a replacement token, update that consumer,
+verify its publish or read with the replacement, then revoke the old token. On
+suspected compromise, revoke first; Redis fallback preserves availability while
+a replacement is issued. Never log, commit, or copy credential values into an
+incident note.
+
 ### Merged does not mean deployed
 
 `.github/workflows/seed-freshness-monitor.yml` runs every 15 minutes on the
