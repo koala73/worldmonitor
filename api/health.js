@@ -724,6 +724,18 @@ const EMPTY_DATA_OK_KEYS = new Set([
   'wildfiresBootstrap', // Compact dashboard side-write is absent until the first fire seeder tick after deploy — tolerate as STALE_SEED (warn), not EMPTY (crit). Once published, seed-meta staleness still catches a stopped writer.
 ]);
 
+// These compact projections must leave a payload on every successful publish.
+// This is deliberately narrower than EMPTY_DATA_OK_KEYS: DDoS, traffic, and
+// weather refresh only their seed metadata during quiet periods, so an absent
+// payload is valid for those sources.
+const MISSING_DATA_IS_FAILURE_KEYS = new Set([
+  'thermalEscalationBootstrap',
+  'ucdpEventsBootstrap',
+  'wildfiresBootstrap',
+  'forecastsBootstrap',
+  'positiveGeoEvents',
+]);
+
 // Keys where a present payload with meta recordCount=0 is valid, but the data
 // key itself must still exist. Do not use this set in the missing-key branch.
 const ZERO_RECORD_DATA_OK_KEYS = new Set([
@@ -801,12 +813,12 @@ function keyHasData(redisKey, len) {
 
 function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   if (!seedCfg) {
-    return { seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, metaReadFailed: false, metaCount: null, contentAge: null };
+    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, metaReadFailed: false, metaCount: null, contentAge: null };
   }
   // Per-command Redis errors on the GET seed-meta half of the pipeline must
   // not silently fall through to STALE_SEED — promote to REDIS_PARTIAL.
   if (keyMetaErrors.get(seedCfg.key)) {
-    return { seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, metaReadFailed: true, metaCount: null, contentAge: null };
+    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, metaReadFailed: true, metaCount: null, contentAge: null };
   }
   // Unwrap through the envelope helper. Legacy seed-meta is a bare
   // `{ fetchedAt, recordCount, sourceVersion, status? }` object with no `_seed`
@@ -815,7 +827,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   // the dependency so behavior stays byte-identical in PR 1.
   const meta = unwrapEnvelope(parseRedisValue(keyMetaValues.get(seedCfg.key))).data;
   if (meta?.status === 'error') {
-    return { seedAge: null, seedStale: true, seedError: true, sourceUnavailable: false, metaReadFailed: false, metaCount: null, contentAge: null };
+    return { hasMeta: true, seedAge: null, seedStale: true, seedError: true, sourceUnavailable: false, metaReadFailed: false, metaCount: null, contentAge: null };
   }
   let seedAge = null;
   let seedStale = true;
@@ -863,7 +875,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
       contentStale: contentAgeMin == null || isFutureDated || contentAgeMin > meta.maxContentAgeMin,
     };
   }
-  return { seedAge, seedStale, seedError: sourceDegraded, sourceUnavailable, metaReadFailed: false, metaCount, contentAge };
+  return { hasMeta: meta != null, seedAge, seedStale, seedError: sourceDegraded, sourceUnavailable, metaReadFailed: false, metaCount, contentAge };
 }
 
 function isCascadeCovered(name, hasData, keyStrens, keyErrors) {
@@ -898,7 +910,7 @@ function classifyKey(name, redisKey, opts, ctx) {
 
   const strlen = keyStrens.get(redisKey) ?? 0;
   const hasData = keyHasData(redisKey, strlen);
-  const { seedAge, seedStale, seedError, sourceUnavailable, metaCount, contentAge } = meta;
+  const { hasMeta, seedAge, seedStale, seedError, sourceUnavailable, metaCount, contentAge } = meta;
 
   // When the data key is gone the meta count is meaningless; force records=0
   // so we never display the contradictory "EMPTY records=N>0" pair (item 1).
@@ -915,6 +927,7 @@ function classifyKey(name, redisKey, opts, ctx) {
   else if (seedError) status = 'SEED_ERROR';
   else if (!hasData) {
     if (cascadeCovered) status = 'OK_CASCADE';
+    else if (MISSING_DATA_IS_FAILURE_KEYS.has(name) && hasMeta && seedStale !== true) status = 'EMPTY';
     else if (EMPTY_DATA_OK_KEYS.has(name)) status = seedStale === true ? 'STALE_SEED' : 'OK';
     else if (isOnDemand) status = 'EMPTY_ON_DEMAND';
     else status = 'EMPTY';
