@@ -6829,8 +6829,9 @@ paths:
                   in: query
                   description: |-
                     Include only opportunities whose keyword-based automation_fit score is at
-                     or above this value (1-100; values above 100 are clamped). Disabled when
-                     0 or unset, which preserves the default all-open-opportunities behavior.
+                     or above this integer value (1-100; values above 100 are clamped, and
+                     non-integer or non-positive values disable the filter). Disabled when 0
+                     or unset, which preserves the default all-open-opportunities behavior.
                      This is an evidence-backed text-relevance threshold only; it does not
                      assert that any party is eligible to bid.
                   required: false
@@ -26048,8 +26049,9 @@ components:
                     format: int32
                     description: |-
                         Include only opportunities whose keyword-based automation_fit score is at
-                         or above this value (1-100; values above 100 are clamped). Disabled when
-                         0 or unset, which preserves the default all-open-opportunities behavior.
+                         or above this integer value (1-100; values above 100 are clamped, and
+                         non-integer or non-positive values disable the filter). Disabled when 0
+                         or unset, which preserves the default all-open-opportunities behavior.
                          This is an evidence-backed text-relevance threshold only; it does not
                          assert that any party is eligible to bid.
         worldmonitor_economic_v1_ListGlobalTendersResponse:

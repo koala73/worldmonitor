@@ -74,12 +74,14 @@ test('technology-relevance threshold is optional, bounded, and composes with oth
   assert.equal(filterAndPaginateTenders(source, { ...request, minAutomationScore: 10_000 }).total, 0);
   assert.equal(filterAndPaginateTenders(source, { ...request, minAutomationScore: Number.NaN }).total, 4);
   assert.equal(filterAndPaginateTenders(source, { ...request, minAutomationScore: -5 }).total, 4);
-  // Fractional thresholds round up: a stated minimum never admits lower scores,
-  // and sub-1 values become an active >=1 threshold instead of a reported no-op.
-  assert.equal(filterAndPaginateTenders(source, { ...request, minAutomationScore: 30.9 }).tenders.length, 1);
-  const fractional = filterAndPaginateTenders(source, { ...request, minAutomationScore: 0.5 });
-  assert.deepEqual(fractional.tenders.map((item) => item.id), ['a', 'b']);
-  assert.deepEqual(fractional.appliedFilters, ['min_automation_score']);
+  // The contract field is int32, so non-integer input is malformed: it
+  // disables the filter and never appears in appliedFilters (like page_size,
+  // and matching the integer type the OpenAPI schema advertises).
+  for (const malformed of [30.9, 0.5]) {
+    const result = filterAndPaginateTenders(source, { ...request, minAutomationScore: malformed });
+    assert.equal(result.total, 4);
+    assert.deepEqual(result.appliedFilters, []);
+  }
 
   // Pagination stays cursor-stable under the active threshold.
   const firstPage = filterAndPaginateTenders(source, { ...request, minAutomationScore: 1, pageSize: 1 });
