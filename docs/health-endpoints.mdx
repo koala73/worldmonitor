@@ -85,6 +85,21 @@ Keys are grouped into three tiers that determine alert severity:
 | `EMPTY` | Crit | Bootstrap or seeded standalone key has no data |
 | `EMPTY_DATA` | Crit | Key exists but contains zero records (and 0 is not a valid state for it) |
 
+### China Coverage Projection
+
+`chinaCoverage` projects the hourly Railway summary at
+`health:china-coverage:v1`. The evaluator checks each launched China contract
+for both a fresh producer heartbeat and fresh, substantive China content; a
+fresh seed cannot hide stale or missing source content. `CHINA_DEGRADED` is a
+warning projection for partial or stale coverage, while `CHINA_UNAVAILABLE` is
+critical when the summary is invalid or the launched content is unavailable.
+
+Operators can obtain the same sanitized, read-only audit with
+`node scripts/audit-china-coverage.mjs --json`; add `--strict` to return a
+nonzero exit code unless every launched entry is healthy. The audit reads only
+the compact Redis contracts and emits status, age, and reason-code summaries—
+never credentials or raw upstream payloads.
+
 ### Cascade Groups
 
 Some keys use fallback chains. If any sibling has data, empty siblings report `OK_CASCADE`:

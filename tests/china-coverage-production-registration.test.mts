@@ -10,6 +10,8 @@ const runbook = readFileSync(resolve(root, 'docs/railway-seed-consolidation-runb
 const cacheKeys = readFileSync(resolve(root, 'server/_shared/cache-keys.ts'), 'utf8');
 const seedHealth = readFileSync(resolve(root, 'api/seed-health.js'), 'utf8');
 const naturalSeed = readFileSync(resolve(root, 'scripts/seed-natural-events.mjs'), 'utf8');
+const dataSources = readFileSync(resolve(root, 'docs/data-sources.mdx'), 'utf8');
+const healthDocs = readFileSync(resolve(root, 'docs/health-endpoints.mdx'), 'utf8');
 
 describe('China coverage production registration', () => {
   it('runs the compact evaluator in the hourly Railway health bundle', () => {
@@ -36,5 +38,15 @@ describe('China coverage production registration', () => {
     const audit = readFileSync(resolve(root, 'scripts/audit-china-coverage.mjs'), 'utf8');
     assert.doesNotMatch(audit, /runSeed|writeExtraKey|\['SET'/);
     assert.match(audit, /--json/);
+  });
+
+  it('documents the public China source contract and its operator health projection', () => {
+    assert.match(dataSources, /### China Coverage, Attribution, and Freshness/);
+    assert.match(dataSources, /BIS, IMF, JODI, UN Comtrade, CCFI, AviationStack, NBS\/PBoC, JMA, and HKO/);
+    assert.match(dataSources, /detailed bilateral trade data remains\s+Pro-only/i);
+    assert.match(healthDocs, /### China Coverage Projection/);
+    assert.match(healthDocs, /CHINA_DEGRADED/);
+    assert.match(healthDocs, /CHINA_UNAVAILABLE/);
+    assert.match(healthDocs, /read-only audit/i);
   });
 });

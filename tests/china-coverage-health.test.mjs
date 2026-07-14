@@ -101,8 +101,20 @@ describe('China coverage manifest', () => {
     );
     assert.equal(
       CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === 'aviation.china-hubs')?.launchStatus,
-      'planned',
-      'synthetic bootstrap alert rows are not truthful provider coverage',
+      'launched',
+      'the canonical per-hub coverage contract is now provider-backed',
+    );
+    assert.deepEqual(
+      CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === 'aviation.china-hubs')?.content.probe,
+      {
+        kind: 'array-coverage',
+        path: ['coverage'],
+        field: 'iata',
+        values: ['PEK', 'PVG', 'CAN', 'SZX', 'CTU', 'KMG', 'URC', 'HKG'],
+        validField: 'status',
+        validValues: ['normal', 'disruption'],
+        timestampPaths: [['updatedAt']],
+      },
     );
   });
 
@@ -185,23 +197,44 @@ describe('China coverage manifest', () => {
     assert.deepEqual(missing, { status: 'EMPTY', records: 0 });
   });
 
-  it('does not count synthetic aviation bootstrap filler as launched China coverage', () => {
+  it('counts canonical provider coverage rather than synthetic aviation bootstrap filler', () => {
     const aviation = CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === 'aviation.china-hubs');
     const alerts = ['PEK', 'PVG', 'CAN', 'HKG'].map((iata) => ({
       iata,
       severity: 'FLIGHT_DELAY_SEVERITY_NORMAL',
       updatedAt: NOW,
     }));
+    const coverage = ['PEK', 'PVG', 'CAN', 'SZX', 'CTU', 'KMG', 'URC', 'HKG'].map((iata) => ({
+      iata,
+      status: 'normal',
+      updatedAt: NOW,
+    }));
     const result = evaluate(
       aviation,
-      { 'aviation:delays-bootstrap:v2': { alerts } },
+      { 'aviation:delays-bootstrap:v2': { alerts, coverage } },
       { 'seed-meta:aviation:intl': { fetchedAt: NOW, status: 'ok' } },
     );
 
-    assert.equal(result.entries[0].launchStatus, 'planned');
-    assert.equal(result.entries[0].status, 'planned');
-    assert.equal(result.counts.launched, 0);
-    assert.equal(result.counts.planned, 1);
+    assert.equal(result.entries[0].launchStatus, 'launched');
+    assert.equal(result.entries[0].status, 'healthy');
+    assert.equal(result.counts.launched, 1);
+    assert.equal(result.counts.planned, 0);
+
+    const providerFailure = evaluate(
+      aviation,
+      {
+        'aviation:delays-bootstrap:v2': {
+          alerts,
+          coverage: coverage.map((hub) => (hub.iata === 'URC' ? { ...hub, status: 'failed' } : hub)),
+        },
+      },
+      { 'seed-meta:aviation:intl': { fetchedAt: NOW, status: 'ok' } },
+    );
+    assert.equal(providerFailure.entries[0].status, 'degraded');
+    assert.deepEqual(providerFailure.entries[0].content, {
+      status: 'partial', ageMin: null, maxAgeMin: 120, required: 8, present: 7,
+    });
+    assert.ok(providerFailure.entries[0].reasonCodes.includes(CHINA_COVERAGE_REASON_CODES.CHINA_COVERAGE_PARTIAL));
   });
 
   it('fails read-only audits cleanly on missing credentials and partial pipelines', async () => {

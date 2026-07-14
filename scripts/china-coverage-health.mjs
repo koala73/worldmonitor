@@ -87,12 +87,15 @@ function probeContent(payload, probe) {
   const matched = source.filter((row) => wanted.has(String(row?.[probe.field] ?? '')));
 
   if (probe.kind === 'array-coverage') {
-    const presentValues = new Set(matched.map((row) => String(row?.[probe.field] ?? '')));
+    const validRows = probe.validValues
+      ? matched.filter((row) => probe.validValues.includes(String(row?.[probe.validField ?? 'status'] ?? '')))
+      : matched;
+    const presentValues = new Set(validRows.map((row) => String(row?.[probe.field] ?? '')));
     if (presentValues.size === 0) return { status: 'missing', rows: [], required: wanted.size, present: 0 };
     if (presentValues.size < wanted.size) {
-      return { status: 'partial', rows: matched, required: wanted.size, present: presentValues.size };
+      return { status: 'partial', rows: validRows, required: wanted.size, present: presentValues.size };
     }
-    return { status: 'present', rows: matched, required: wanted.size, present: presentValues.size };
+    return { status: 'present', rows: validRows, required: wanted.size, present: presentValues.size };
   }
 
   return matched.length > 0 ? { status: 'present', rows: matched } : { status: 'missing', rows: [] };

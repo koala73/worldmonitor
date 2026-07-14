@@ -75,9 +75,11 @@ describe('China AviationStack hub contract', () => {
     const published = publishTransform(result);
     assert.deepEqual(published.alerts.map((alert) => alert.iata), ['CAN']);
     assert.deepEqual(published.coverage, result.coverage);
+    assert.ok(published.coverage.every((hub) => Number.isFinite(hub.updatedAt)), 'coverage rows retain their observation timestamp');
     assert.equal(validate(published), true);
     assert.equal(validate({ alerts: published.alerts }), false, 'coverage is part of the canonical contract');
     assert.equal(validate({ alerts: [], coverage: [{ iata: 'PEK', status: 'unknown', flightCount: 0 }] }), false);
+    assert.equal(validate({ alerts: [], coverage: [{ iata: 'PEK', status: 'normal', flightCount: 0 }] }), false, 'coverage timestamps are required');
 
     const bootstrap = buildDelaysBootstrapPayload({
       faaPayload: null,

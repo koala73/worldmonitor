@@ -184,6 +184,23 @@ The Security Advisories panel displays advisories with colored level badges and 
 
 **Severity thresholds**: Average delay ≥15min or ≥15% delayed flights = minor; ≥30min/30% = moderate; ≥45min/45% = major; ≥60min/60% = severe. Cancellation rate ≥80% with ≥10 flights = closure. All results are cached for 30 minutes in Redis. When no AviationStack API key is configured, the system generates probabilistic simulated delays for demonstration — rush-hour windows and high-traffic airports receive higher delay probability.
 
+### China Coverage, Attribution, and Freshness
+
+The China country deep-dive composes existing global product contracts rather
+than operating a China-only fetch path. Its attributable signals come from
+BIS, IMF, JODI, UN Comtrade, CCFI, AviationStack, NBS/PBoC, JMA, and HKO.
+Every displayed signal carries its source and observation or release date; a
+missing, stale, or partial source is shown as unavailable or degraded rather
+than as a zero value.
+
+The hourly Railway China coverage evaluator checks the transport heartbeat and
+content freshness independently for every launched contract. It uses the
+canonical eight-hub AviationStack `coverage` records—not the bootstrap's
+presentation-only airport rows—so an upstream omission remains observable.
+The audit records aggregate status and reason codes only: it never logs
+credentials or raw upstream payloads. Detailed bilateral trade data remains
+Pro-only and is not included in the public China summary.
+
 ### Aviation Intelligence Panel
 
 The Airline Intel panel provides a comprehensive 6-tab aviation monitoring interface covering operations, flights, carriers, tracking, news, and pricing:
@@ -503,6 +520,8 @@ WorldMonitor is grateful to the following organizations for making their data pu
 | USA Spending | US federal spending and contracts | [api.usaspending.gov](https://api.usaspending.gov) |
 | Global procurement opportunities | US SAM.gov, EU TED, UK Contracts Finder, CanadaBuys, New Zealand GETS, and World Bank procurement notices | [Coverage and freshness](/global-procurement-intelligence) |
 | UN Comtrade | Global merchandise trade flows | [comtradeapi.un.org](https://comtradeapi.un.org) |
+| National Bureau of Statistics of China | China release-calendar context | [stats.gov.cn](https://www.stats.gov.cn/english/) |
+| People's Bank of China | Loan-prime-rate calendar context | [pbc.gov.cn](http://www.pbc.gov.cn/en/3688110/index.html) |
 | CoinGecko | Cryptocurrency prices and market data | [coingecko.com](https://www.coingecko.com) |
 
 ### Geopolitics & Conflict
@@ -523,6 +542,7 @@ WorldMonitor is grateful to the following organizations for making their data pu
 | NASA EONET | Natural events — storms, volcanoes, floods | [eonet.gsfc.nasa.gov](https://eonet.gsfc.nasa.gov) |
 | GDACS | UN-coordinated global disaster alerts | [gdacs.org](https://www.gdacs.org) |
 | Hong Kong Observatory | Local tropical-cyclone warning signals | [data.weather.gov.hk](https://data.weather.gov.hk/weatherAPI/opendata/weather.php?dataType=warnsum&lang=en) |
+| Japan Meteorological Agency | Western North Pacific tropical-cyclone observations | [jma.go.jp](https://www.jma.go.jp/bosai/map.html#contents=typhoon) |
 | Open-Meteo | ERA5 reanalysis climate data | [open-meteo.com](https://open-meteo.com) |
 
 ### Infrastructure & Cyber
@@ -542,3 +562,4 @@ WorldMonitor is grateful to the following organizations for making their data pu
 | OpenSky Network | ADS-B flight tracking (fallback) | [opensky-network.org](https://opensky-network.org) |
 | FAA ASWS | US airport delay and ground stop data | [nasstatus.faa.gov](https://nasstatus.faa.gov) |
 | ICAO | NOTAM airspace closure data | [icao.int](https://www.icao.int) |
+| AviationStack | International airport delay coverage | [aviationstack.com](https://aviationstack.com/) |

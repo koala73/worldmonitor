@@ -540,6 +540,7 @@ export async function seedIntlDelays({
           iata: r.value.iata,
           status: r.value.status,
           flightCount: r.value.flightCount,
+          updatedAt: Date.now(),
         });
         if (r.value.status === 'failed') failed++;
         else if (r.value.status === 'omitted') omitted++;
@@ -547,7 +548,7 @@ export async function seedIntlDelays({
         if (r.value.alert) alerts.push(r.value.alert);
       } else {
         failed++;
-        coverage.push({ iata: chunk[j].iata, status: 'failed', flightCount: 0 });
+        coverage.push({ iata: chunk[j].iata, status: 'failed', flightCount: 0, updatedAt: Date.now() });
       }
     }
   }
@@ -1427,6 +1428,7 @@ export function validate(publishData) {
       && ['normal', 'disruption', 'omitted', 'failed'].includes(hub.status)
       && Number.isInteger(hub.flightCount)
       && hub.flightCount >= 0
+      && Number.isFinite(hub.updatedAt)
     ))
   );
 }
