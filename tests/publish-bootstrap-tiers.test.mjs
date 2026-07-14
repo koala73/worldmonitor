@@ -110,6 +110,13 @@ describe('publishBootstrapTier', () => {
   it('rejects an unknown tier before reading or writing', async () => {
     await assert.rejects(publishBootstrapTier('medium', {}), /unknown tier/i);
   });
+
+  it('fails closed when the shared tier-shape flag is not explicit', async () => {
+    await assert.rejects(
+      publishBootstrapTier('fast', { env: TEST_ENV }),
+      /requires explicit IRAN_EVENTS_ENABLED=true\|false/,
+    );
+  });
 });
 
 describe('runPublisherLoop', () => {

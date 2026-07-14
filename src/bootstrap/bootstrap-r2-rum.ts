@@ -65,8 +65,10 @@ export function buildBootstrapR2RumSample(
 
   const rawAge = headers.get('age');
   if (rawAge != null && rawAge.trim() !== '') {
-    const age = Number(rawAge);
-    if (!Number.isFinite(age) || age > 0) return { accepted: false, reason: 'cached-age' };
+    const age = rawAge.trim();
+    if (!/^\d+$/.test(age) || Number(age) !== 0) {
+      return { accepted: false, reason: 'cached-age' };
+    }
   }
 
   if (

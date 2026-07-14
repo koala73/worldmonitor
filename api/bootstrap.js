@@ -75,8 +75,7 @@ function shouldMeasureBootstrapR2Shadow(authKind, tier, ctx) {
     && typeof ctx?.waitUntil === 'function';
 }
 
-function finishBootstrapR2ShadowResponse(req, ctx, tier, response, redisStartedAt) {
-  const redisDurationMs = Math.max(0, performance.now() - redisStartedAt);
+function finishBootstrapR2ShadowResponse(req, ctx, tier, response, redisDurationMs) {
   response.headers.set('Server-Timing', `wm_bootstrap_redis;dur=${redisDurationMs.toFixed(3)}`);
   const exposedHeaders = response.headers.get('Access-Control-Expose-Headers');
   response.headers.set(
@@ -408,7 +407,13 @@ export default async function handler(req, ctx) {
         },
       );
       return measureR2Shadow
-        ? finishBootstrapR2ShadowResponse(req, ctx, tier, response, redisStartedAt)
+        ? finishBootstrapR2ShadowResponse(
+            req,
+            ctx,
+            tier,
+            response,
+            Math.max(0, performance.now() - redisStartedAt),
+          )
         : response;
     }
     return jsonResponse({ data: {}, missing: names }, 200, { ...cors, 'Cache-Control': 'no-store' });
@@ -432,6 +437,12 @@ export default async function handler(req, ctx) {
     }
   }
 
+  // Stop before jsonResponse serializes the final body. That serialization also
+  // exists on the future R2 serving path, so counting it as Redis-replaceable
+  // work would make C_happy optimistic, especially for the larger slow tier.
+  const redisDurationMs = measureR2Shadow
+    ? Math.max(0, performance.now() - redisStartedAt)
+    : null;
   // The browser runtime sends API requests with credentials so session and
   // entitlement cookies can ride along. Credentialed requests cannot consume
   // ACAO: * responses, even for public bootstrap data.
@@ -441,7 +452,7 @@ export default async function handler(req, ctx) {
   const cacheTier = tier ?? (auth.kind === 'public-on-demand' ? 'slow' : null);
   const response = jsonResponse({ data, missing }, 200, successCacheHeaders(cacheTier, auth.kind, cors));
   return measureR2Shadow
-    ? finishBootstrapR2ShadowResponse(req, ctx, tier, response, redisStartedAt)
+    ? finishBootstrapR2ShadowResponse(req, ctx, tier, response, redisDurationMs)
     : response;
 }
 

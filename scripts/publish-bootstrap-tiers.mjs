@@ -29,7 +29,11 @@ function assertTier(tier) {
 }
 
 function canonicalRegistries(env = process.env) {
-  const iranEventsEnabled = String(env.IRAN_EVENTS_ENABLED ?? 'false').toLowerCase() === 'true';
+  const rawIranEventsEnabled = env.IRAN_EVENTS_ENABLED;
+  if (!/^(?:true|false)$/i.test(rawIranEventsEnabled ?? '')) {
+    throw new Error('Bootstrap publisher requires explicit IRAN_EVENTS_ENABLED=true|false');
+  }
+  const iranEventsEnabled = rawIranEventsEnabled.toLowerCase() === 'true';
   return Object.fromEntries(TIER_ORDER.map(tier => [
     tier,
     Object.fromEntries(bootstrapTierKeyNames(tier, { iranEventsEnabled }).map(name => [

@@ -338,8 +338,7 @@ No period, invoice, or eligibility value is inferred from credentials or the cur
 
 ## Sources
 
-- WorldMonitor implementation plan and its live 2026-07-14 MONITOR/`STRLEN` attribution:
-  `docs/plans/2026-07-14-001-perf-bootstrap-r2-origin-plan.md` in the planning worktree.
+- Live 2026-07-14 Redis MONITOR/`STRLEN` attribution recorded in the measurements above.
 - [PR #5319](https://github.com/koala73/worldmonitor/pull/5319), merged 2026-07-14: modeled
   approximately 8.3 GB/day sparkline-precision reduction.
 - [Upstash Redis pricing](https://upstash.com/pricing/redis), checked 2026-07-14.

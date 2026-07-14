@@ -182,4 +182,12 @@ test('shadow source pins the uncensored probe ceiling and cannot consume serving
   const source = readFileSync(new URL('../api/bootstrap.js', import.meta.url), 'utf8');
   assert.match(source, /readBootstrapTierObject\(tier,\s*\{\s*timeoutMs:\s*BOOTSTRAP_R2_PROBE_CEILING_MS,?\s*\}\)/);
   assert.doesNotMatch(source, /bootstrapR2ServingTimeoutMs|BOOTSTRAP_R2_TIMEOUT_MS_FAST|BOOTSTRAP_R2_TIMEOUT_MS_SLOW/);
+
+  const timerStop = source.indexOf('const redisDurationMs = measureR2Shadow');
+  const responseSerialization = source.indexOf('const response = jsonResponse({ data, missing }');
+  assert.ok(timerStop >= 0 && responseSerialization >= 0);
+  assert.ok(
+    timerStop < responseSerialization,
+    'the replaceable Redis assembly timer must stop before final response serialization',
+  );
 });

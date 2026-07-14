@@ -2501,9 +2501,9 @@ describe('CII scoring', () => {
       {
         relPath: 'server/_shared/cache-keys.ts',
         expectedKeys: [expectedLiveKey, expectedStaleKey, expectedTrendPrefix],
-        expectedRefs: ['riskScores:       CII_RISK_SCORE_CACHE_KEYS.stale'],
       },
-      { relPath: 'api/bootstrap.js', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.stale'] },
+      { relPath: 'shared/bootstrap-tier-keys.js', expectedKeys: [expectedStaleKey] },
+      { relPath: 'api/bootstrap.js', expectedRefs: ['BOOTSTRAP_CACHE_KEYS'] },
       { relPath: 'api/health.js', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.stale', 'CII_RISK_SCORE_CACHE_KEYS.live'] },
       { relPath: 'api/mcp/registry/cache-tools.ts', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.stale'] },
       { relPath: 'server/worldmonitor/intelligence/v1/brief-story-context.ts', expectedRefs: ['CII_RISK_SCORE_CACHE_KEYS.stale'] },

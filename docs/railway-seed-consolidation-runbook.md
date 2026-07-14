@@ -74,7 +74,7 @@ The environment contract is deliberately split by consumer:
 
 | Scope | Variables | Install in | Capability |
 |---|---|---|---|
-| Shared routing | `R2_ACCOUNT_ID`, optional `R2_ENDPOINT`, `R2_BOOTSTRAP_BUCKET=worldmonitor-bootstrap` | Railway production and Vercel production | Names only; no object permission |
+| Shared routing and tier shape | `R2_ACCOUNT_ID`, optional `R2_ENDPOINT`, `R2_BOOTSTRAP_BUCKET=worldmonitor-bootstrap`, `IRAN_EVENTS_ENABLED` | Railway production and Vercel production | Names plus the feature flag that controls `iranEvents` tier membership; values must match |
 | Publisher | `R2_BOOTSTRAP_ACCESS_KEY_ID`, `R2_BOOTSTRAP_SECRET_ACCESS_KEY` | Railway production publisher only | Publisher can PUT and GET only in `worldmonitor-bootstrap` |
 | Edge reader | `R2_BOOTSTRAP_READ_KEY_ID`, `R2_BOOTSTRAP_READ_SECRET` | Vercel production only | Edge can GET; it cannot PUT or DELETE, and cannot read `worldmonitor-data` |
 
@@ -82,7 +82,9 @@ Preview and development do not receive either credential; missing credentials
 must use the Redis path. The publisher must not fall back to any
 `CLOUDFLARE_R2_*` account, bucket, key, secret, or API token. Never copy the
 publisher credential into Vercel or the edge credential into Railway, and never
-add a `VITE_` alias for any bootstrap R2 credential.
+add a `VITE_` alias for any bootstrap R2 credential. Set
+`IRAN_EVENTS_ENABLED` explicitly to the same value in both production services;
+otherwise the publisher and edge handler resolve different tier contents.
 
 Provision and release in this order:
 

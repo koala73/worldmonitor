@@ -2,6 +2,7 @@ import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { BOOTSTRAP_CACHE_KEYS } from '../shared/bootstrap-tier-keys.js';
 
 const root = resolve(import.meta.dirname, '..');
 const read = (path: string) => readFileSync(resolve(root, path), 'utf8');
@@ -22,8 +23,8 @@ describe('China macro production registration', () => {
   });
 
   it('registers bootstrap, health, seed-health, cache-key, and slow gateway surfaces', () => {
-    assert.match(read('api/bootstrap.js'), /chinaMacro:\s*'economic:china:macro:v1'/);
-    assert.match(read('api/bootstrap.js'), /chinaReleaseCalendar:\s*'economic:china:release-calendar:v1'/);
+    assert.equal(BOOTSTRAP_CACHE_KEYS.chinaMacro, 'economic:china:macro:v1');
+    assert.equal(BOOTSTRAP_CACHE_KEYS.chinaReleaseCalendar, 'economic:china:release-calendar:v1');
     assert.match(read('api/health.js'), /chinaMacro:\s*\{ key: 'seed-meta:economic:china-macro'/);
     assert.match(read('api/health.js'), /chinaMacro:\s*\{[^\n]*maxStaleMin:\s*4_320/);
     assert.match(read('api/seed-health.js'), /'economic:china-macro'/);

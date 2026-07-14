@@ -8,7 +8,7 @@ const envExample = readFileSync(resolve(root, '.env.example'), 'utf8');
 const runbook = readFileSync(resolve(root, 'docs/railway-seed-consolidation-runbook.md'), 'utf8');
 const normalizedRunbook = runbook.replace(/\s+/g, ' ');
 
-const SHARED_ENV = ['R2_ACCOUNT_ID', 'R2_ENDPOINT', 'R2_BOOTSTRAP_BUCKET'];
+const SHARED_ENV = ['R2_ACCOUNT_ID', 'R2_ENDPOINT', 'R2_BOOTSTRAP_BUCKET', 'IRAN_EVENTS_ENABLED'];
 const PUBLISHER_ENV = ['R2_BOOTSTRAP_ACCESS_KEY_ID', 'R2_BOOTSTRAP_SECRET_ACCESS_KEY'];
 const EDGE_ENV = ['R2_BOOTSTRAP_READ_KEY_ID', 'R2_BOOTSTRAP_READ_SECRET'];
 
@@ -20,6 +20,7 @@ describe('bootstrap R2 environment documentation', () => {
     }
 
     assert.match(envExample, /^R2_BOOTSTRAP_BUCKET=worldmonitor-bootstrap$/m);
+    assert.match(envExample, /^IRAN_EVENTS_ENABLED=false$/m);
     assert.match(envExample, /^BOOTSTRAP_R2_SHADOW_MEASURE=$/m);
     for (const name of [...PUBLISHER_ENV, ...EDGE_ENV]) {
       assert.match(envExample, new RegExp(`^${name}=$`, 'm'), `${name} must not contain a credential value`);

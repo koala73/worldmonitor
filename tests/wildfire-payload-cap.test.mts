@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 
 import { compactWildfireBootstrapPayload } from '../api/bootstrap.js';
+import { resolveBootstrapRegistry } from '../api/_bootstrap-tier-keys.js';
 import {
   WILDFIRE_DASHBOARD_DETECTION_LIMIT,
   listFireDetections,
@@ -123,13 +124,13 @@ describe('wildfire dashboard payload cap', () => {
 
   it('publishes and hydrates a dedicated pre-compacted bootstrap key', () => {
     const seeder = readFileSync(new URL('../scripts/seed-fire-detections.mjs', import.meta.url), 'utf8');
-    const bootstrap = readFileSync(new URL('../api/bootstrap.js', import.meta.url), 'utf8');
+    const { cacheKeys } = resolveBootstrapRegistry({ iranEventsEnabled: false });
 
     assert.match(seeder, /wildfire:fires-bootstrap:v1/);
     assert.match(seeder, /extraKeys\s*:/);
     assert.match(seeder, /metaKey:\s*'seed-meta:wildfire:fires-bootstrap'/);
-    assert.match(bootstrap, /wildfires:\s*'wildfire:fires-bootstrap:v1'/);
-    assert.doesNotMatch(bootstrap, /wildfires:\s*'wildfire:fires:v1'/);
+    assert.equal(cacheKeys.wildfires, 'wildfire:fires-bootstrap:v1');
+    assert.notEqual(cacheKeys.wildfires, 'wildfire:fires:v1');
   });
 
   it('packages the shared compactor with the seeder and keeps the Edge mirror in sync', () => {

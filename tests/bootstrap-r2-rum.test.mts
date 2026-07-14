@@ -62,6 +62,9 @@ describe('bootstrap R2 client RUM', () => {
     ['missing Vercel state', { 'x-vercel-cache': '' }, 'missing-vercel-cache-status'],
     ['conflicting Cloudflare HIT', { 'cf-cache-status': 'HIT' }, 'cloudflare-cache-hit'],
     ['positive cached age', { age: '3' }, 'cached-age'],
+    ['negative cache age', { age: '-1' }, 'cached-age'],
+    ['non-decimal zero cache age', { age: '0x0' }, 'cached-age'],
+    ['fractional zero cache age', { age: '0.0' }, 'cached-age'],
     ['unknown cache age', { age: 'unknown' }, 'cached-age'],
     ['malformed Redis timing', { 'server-timing': 'wm_bootstrap_redis;dur=nope' }, 'invalid-server-timing'],
   ] as const) {

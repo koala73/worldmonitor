@@ -26,11 +26,15 @@ calibration and independent validation windows pass every gate below. The servin
 
 1. Restore Railway CLI write authentication and create `publish-bootstrap-tiers` in production.
 2. Install only the scoped publisher credentials in Railway and verify two successive advancing
-   objects for both tiers.
+   objects for both tiers. Set `IRAN_EVENTS_ENABLED` explicitly to the same value in Railway and
+   Vercel so the publisher and serving registry cannot resolve different tier shapes.
 3. Merge and deploy the disabled instrumentation.
 4. In DebugBear RUM settings, map the currently unused custom slots:
    `metric1=bootstrap total`, `metric2=bootstrap Redis`, `metric3=bootstrap non-R2 overhead`,
-   `tag1=bootstrap tier`, `tag2=bootstrap outcome`, and `tag3=device class`.
+   `tag1=bootstrap tier`, `tag2=bootstrap outcome`, and `tag3=device class`. Use a project with
+   session tracking disabled (or disable it for this window) and record that setting below; the
+   existing project currently reports sessions enabled, which would violate U3a's no-stable-ID
+   evidence contract even though the six custom fields themselves contain no identifier.
 5. Confirm `USAGE_TELEMETRY=1`, `AXIOM_API_TOKEN`, the scoped R2 read credentials, and the shared
    bucket routing values are present in Vercel production. Do not install them in preview.
 6. Purge the two public bootstrap CDN objects, capture the first MISS and following HIT, and record
@@ -41,8 +45,11 @@ calibration and independent validation windows pass every gate below. The servin
 DebugBear documents five programmatic numeric metric slots and five string tag slots through its
 snippet API. The public WorldMonitor snippet inspected on 2026-07-14 reported no configured custom
 mappings. Adding the six bootstrap values does not add a request, user, or device ID to the
-page-level custom fields; DebugBear's existing project-level privacy/session configuration remains
-an independent account setting.
+page-level custom fields. That is not sufficient by itself: the collector's project-level session
+setting applies to the resulting page view. Record proof that sessions are disabled before treating
+any sample as U3a evidence; otherwise use a dedicated privacy-minimal project or collector.
+
+DebugBear session tracking disabled for the measurement window: **pending — blocked**.
 
 ## Controlled cache-classifier proof
 
