@@ -8,7 +8,7 @@
 // Root cause was NOT a slow model — it was a timeout that assumed a pinning
 // which was never implemented:
 //
-//   _llm-model-timeouts.mjs: DEEPSEEK_V4_FLASH_LONG_COMPLETION_TIMEOUT_MS = 15_000
+//   _llm-model-timeouts.mjs: DEEPSEEK_V4_FLASH_COMPLETION_TIMEOUT_MS = 15_000
 //   "Keep it above the pinned endpoint's observed p50"   <-- nothing pinned it
 //
 // OpenRouter free-routes `deepseek/deepseek-v4-flash` across backends whose

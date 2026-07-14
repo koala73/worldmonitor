@@ -85,6 +85,7 @@ import {
   __setForecastLlmTransportForTests,
   __setForecastLlmRunDeadlineForTests,
 } from '../scripts/seed-forecasts.mjs';
+import { OPENROUTER_PROVIDER_ROUTING } from '../scripts/_llm-model-timeouts.mjs';
 import { CONFLICT_COUNT_SOURCE_FEED } from '../scripts/_forecast-resolution.mjs';
 
 const originalForecastEnv = {
@@ -1662,7 +1663,11 @@ describe('forecast llm overrides', () => {
     assert.equal(providers[1]?.name, 'openrouter');
     assert.equal(providers[1]?.model, 'google/gemini-2.5-flash');
     assert.equal(providers[1]?.timeout, 25_000, 'the DeepSeek stall cutoff must not change the pinned Gemini fallback');
-    assert.equal(providers[1]?.extraBody, undefined, 'pinned openrouter entry must keep the legacy request body (no reasoning field)');
+    assert.deepEqual(
+      providers[1]?.extraBody,
+      { provider: OPENROUTER_PROVIDER_ROUTING },
+      'pinned OpenRouter fallback keeps the mandatory provider policy without adding a reasoning override',
+    );
   });
 
   it('lets ONLY the stage-scoped env override unpin critical_signals', () => {
@@ -1709,7 +1714,7 @@ describe('forecast llm overrides', () => {
 
     assert.equal(providers[0]?.model, 'llama-3.1-8b-instant');
     assert.equal(providers[1]?.model, 'google/gemini-2.5-flash');
-    assert.equal(providers[1]?.extraBody, undefined);
+    assert.deepEqual(providers[1]?.extraBody, { provider: OPENROUTER_PROVIDER_ROUTING });
 
     // The stage-scoped model env DOES reach the pinned fallback slot.
     process.env.FORECAST_LLM_CRITICAL_MODEL_OPENROUTER = 'google/gemini-2.5-pro';

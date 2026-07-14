@@ -14812,8 +14812,10 @@ function getForecastLlmCallOptions(stage = 'default') {
         openrouter: process.env.FORECAST_LLM_CRITICAL_MODEL_OPENROUTER || 'google/gemini-2.5-flash',
       },
       // Legacy request-body parity: the pinned models predate the
-      // reasoning-off extraBody on the table's openrouter entry.
-      extraBodyOverrides: { openrouter: null },
+      // reasoning-off extraBody on the table's openrouter entry. Keep that
+      // omission, but never drop the mandatory provider-routing policy: a
+      // Groq fallback still sends this probability-bearing prompt to OpenRouter.
+      extraBodyOverrides: { openrouter: { provider: OPENROUTER_PROVIDER_ROUTING } },
     };
   }
 
