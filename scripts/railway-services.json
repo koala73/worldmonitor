@@ -213,5 +213,22 @@
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-bundle-regional",
     "documentedAt": "scripts/seed-bundle-regional.mjs (header docblock declares rootDirectory: scripts)"
+  },
+  {
+    "entry": "scripts/publish-bootstrap-tiers.mjs",
+    "deployMode": "nixpacks-root-repo",
+    "service": "publish-bootstrap-tiers",
+    "startCommand": "node scripts/publish-bootstrap-tiers.mjs --loop",
+    "requiredEnv": [
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN",
+      "R2_ACCOUNT_ID",
+      "R2_BOOTSTRAP_BUCKET",
+      "R2_BOOTSTRAP_ACCESS_KEY_ID",
+      "R2_BOOTSTRAP_SECRET_ACCESS_KEY"
+    ],
+    "watchPatterns": ["scripts/**", "shared/**"],
+    "cronSchedule": null,
+    "documentedAt": "issue #5300 U3 Railway provisioning contract"
   }
 ]

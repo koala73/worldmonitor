@@ -85,6 +85,38 @@ describe('Railway watch-path audit', () => {
     );
   });
 
+  it('audits the bootstrap publisher command with or without the scripts prefix', () => {
+    const config = {
+      services: {
+        publisherRootRepoNarrow: service({
+          rootDirectory: '',
+          startCommand: 'node scripts/publish-bootstrap-tiers.mjs --loop',
+          watchPatterns: ['scripts/**'],
+        }),
+        publisherScriptsRootNarrow: service({
+          startCommand: 'node publish-bootstrap-tiers.mjs --loop',
+          watchPatterns: ['shared/**'],
+        }),
+        publisherBroad: service({
+          rootDirectory: '',
+          startCommand: 'node scripts/publish-bootstrap-tiers.mjs --loop',
+          watchPatterns: ['scripts/**', 'shared/**'],
+        }),
+      },
+    };
+
+    assert.deepEqual(
+      auditRailwayWatchPaths(config).map(({ serviceId, missingPatterns }) => ({
+        serviceId,
+        missingPatterns,
+      })),
+      [
+        { serviceId: 'publisherRootRepoNarrow', missingPatterns: ['shared/**'] },
+        { serviceId: 'publisherScriptsRootNarrow', missingPatterns: ['scripts/**'] },
+      ],
+    );
+  });
+
   it('builds a minimal service-config patch for only the drifted services', () => {
     const config = {
       services: {

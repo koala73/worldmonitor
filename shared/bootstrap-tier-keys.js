@@ -1,0 +1,210 @@
+/**
+ * Canonical bootstrap cache-key registry.
+ *
+ * This module is the authored source for the server, the bootstrap-tier
+ * publisher, and the generated Edge-safe mirror in api/. Keep the object in
+ * response insertion order: the publisher and /api/bootstrap must assemble
+ * byte-equivalent payloads for identical Redis contents.
+ */
+
+export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
+  earthquakes: 'seismology:earthquakes:v1',
+  outages: 'infra:outages:v1',
+  serviceStatuses: 'infra:service-statuses:v1',
+  ddosAttacks: 'cf:radar:ddos:v1',
+  trafficAnomalies: 'cf:radar:traffic-anomalies:v1',
+  marketQuotes: 'market:stocks-bootstrap:v1',
+  commodityQuotes: 'market:commodities-bootstrap:v1',
+  sectors: 'market:sectors:v2',
+  etfFlows: 'market:etf-flows:v1',
+  macroSignals: 'economic:macro-signals:v1',
+  bisPolicy: 'economic:bis:policy:v1',
+  bisExchange: 'economic:bis:eer:v1',
+  bisCredit: 'economic:bis:credit:v1',
+  bisDsr: 'economic:bis:dsr:v1',
+  bisPropertyResidential: 'economic:bis:property-residential:v1',
+  bisPropertyCommercial: 'economic:bis:property-commercial:v1',
+  imfMacro: 'economic:imf:macro:v2',
+  imfGrowth: 'economic:imf:growth:v1',
+  imfLabor: 'economic:imf:labor:v1',
+  imfExternal: 'economic:imf:external:v1',
+  chinaMacro: 'economic:china:macro:v1',
+  chinaReleaseCalendar: 'economic:china:release-calendar:v1',
+  shippingRates: 'supply_chain:shipping:v2',
+  chokepoints: 'supply_chain:chokepoints:v4',
+  minerals: 'supply_chain:minerals:v2',
+  giving: 'giving:summary:v1',
+  climateAnomalies: 'climate:anomalies:v2',
+  climateDisasters: 'climate:disasters:v1',
+  co2Monitoring: 'climate:co2-monitoring:v1',
+  oceanIce: 'climate:ocean-ice:v1',
+  climateNews: 'climate:news-intelligence:v1',
+  radiationWatch: 'radiation:observations:v1',
+  thermalEscalation: 'thermal:escalation-bootstrap:v1',
+  crossSourceSignals: 'intelligence:cross-source-signals:v1',
+  wildfires: 'wildfire:fires-bootstrap:v1',
+  cyberThreats: 'cyber:threats-bootstrap:v2',
+  techReadiness: 'economic:worldbank-techreadiness:v1',
+  progressData: 'economic:worldbank-progress:v1',
+  renewableEnergy: 'economic:worldbank-renewable:v1',
+  positiveGeoEvents: 'positive_events:geo-bootstrap:v1',
+  theaterPosture: 'theater_posture:sebuf:stale:v1',
+  riskScores: 'risk:scores:sebuf:stale:v8',
+  naturalEvents: 'natural:events:v1',
+  flightDelays: 'aviation:delays-bootstrap:v2',
+  insights: 'news:insights:v1',
+  predictions: 'prediction:markets-bootstrap:v1',
+  cryptoQuotes: 'market:crypto:v1',
+  cryptoSectors: 'market:crypto-sectors:v1',
+  defiTokens: 'market:defi-tokens:v1',
+  aiTokens: 'market:ai-tokens:v1',
+  otherTokens: 'market:other-tokens:v1',
+  gulfQuotes: 'market:gulf-quotes:v1',
+  stablecoinMarkets: 'market:stablecoins:v1',
+  unrestEvents: 'unrest:events:v1',
+  iranEvents: 'conflict:iran-events:v1',
+  ucdpEvents: 'conflict:ucdp-events-bootstrap:v1',
+  temporalAnomalies: 'temporal:anomalies:v1',
+  weatherAlerts: 'weather:alerts:v1',
+  spending: 'economic:spending:v1',
+  techEvents: 'research:tech-events-bootstrap:v1',
+  gdeltIntel: 'intelligence:gdelt-intel:v1',
+  correlationCards: 'correlation:cards-bootstrap:v1',
+  forecasts: 'forecast:predictions-bootstrap:v1',
+  securityAdvisories: 'intelligence:advisories-bootstrap:v1',
+  customsRevenue: 'trade:customs-revenue:v1',
+  sanctionsPressure: 'sanctions:pressure:v1',
+  consumerPricesOverview: 'consumer-prices:overview:ae',
+  consumerPricesCategories: 'consumer-prices:categories:ae:30d',
+  consumerPricesMovers: 'consumer-prices:movers:ae:30d',
+  consumerPricesSpread: 'consumer-prices:retailer-spread:ae:essentials-ae',
+  groceryBasket: 'economic:grocery-basket:v1',
+  bigmac: 'economic:bigmac:v1',
+  fuelPrices: 'economic:fuel-prices:v1',
+  faoFoodPriceIndex: 'economic:fao-ffpi:v1',
+  nationalDebt: 'economic:national-debt:v1',
+  euGasStorage: 'economic:eu-gas-storage:v1',
+  eurostatCountryData: 'economic:eurostat-country-data:v1',
+  eurostatHousePrices: 'economic:eurostat:house-prices:v1',
+  eurostatGovDebtQ: 'economic:eurostat:gov-debt-q:v1',
+  eurostatIndProd: 'economic:eurostat:industrial-production:v1',
+  marketImplications: 'intelligence:market-implications:v1',
+  fearGreedIndex: 'market:fear-greed:v1',
+  hyperliquidFlow: 'market:hyperliquid:flow:v1',
+  crudeInventories: 'economic:crude-inventories:v1',
+  natGasStorage: 'economic:nat-gas-storage:v1',
+  ecbFxRates: 'economic:ecb-fx-rates:v1',
+  euFsi: 'economic:fsi-eu:v1',
+  shippingStress: 'supply_chain:shipping_stress:v1',
+  socialVelocity: 'intelligence:social:reddit:v1',
+  wsbTickers: 'intelligence:wsb-tickers:v1',
+  pizzint: 'intelligence:pizzint:seed:v1',
+  diseaseOutbreaks: 'health:disease-outbreaks:v1',
+  economicStress: 'economic:stress-index:v1',
+  electricityPrices: 'energy:electricity:v1:index',
+  jodiOil: 'energy:jodi-oil:v1:_countries',
+  chokepointBaselines: 'energy:chokepoint-baselines:v1',
+  portwatchChokepointsRef: 'portwatch:chokepoints:ref:v1',
+  portwatchPortActivity: 'supply_chain:portwatch-ports:v1:_countries',
+  oilStocksAnalysis: 'energy:oil-stocks-analysis:v1',
+  lngVulnerability: 'energy:lng-vulnerability:v1',
+  sprPolicies: 'energy:spr-policies:v1',
+  pipelinesGas: 'energy:pipelines:gas:v1',
+  pipelinesOil: 'energy:pipelines:oil:v1',
+  storageFacilities: 'energy:storage-facilities:v1',
+  fuelShortages: 'energy:fuel-shortages:v1',
+  energyDisruptions: 'energy:disruptions:v1',
+  energyCrisisPolicies: 'energy:crisis-policies:v1',
+  aaiiSentiment: 'market:aaii-sentiment:v1',
+  breadthHistory: 'market:breadth-history:v1',
+});
+
+const SLOW_KEY_NAMES = new Set([
+  'bisPolicy', 'bisExchange', 'bisCredit', 'chinaMacro', 'chinaReleaseCalendar', 'minerals', 'giving',
+  'sectors', 'etfFlows', 'wildfires', 'climateAnomalies', 'climateDisasters', 'co2Monitoring', 'oceanIce', 'climateNews',
+  'radiationWatch', 'thermalEscalation', 'crossSourceSignals',
+  'techReadiness', 'progressData', 'renewableEnergy',
+  'naturalEvents',
+  'cryptoQuotes', 'cryptoSectors', 'defiTokens', 'aiTokens', 'otherTokens',
+  'gulfQuotes', 'stablecoinMarkets', 'unrestEvents', 'ucdpEvents',
+  'techEvents',
+  'securityAdvisories',
+  'customsRevenue',
+  'sanctionsPressure',
+  'consumerPricesOverview', 'consumerPricesCategories', 'consumerPricesMovers', 'consumerPricesSpread',
+  'groceryBasket',
+  'bigmac',
+  'fuelPrices',
+  'faoFoodPriceIndex',
+  'nationalDebt',
+  'euGasStorage',
+  'eurostatCountryData',
+  'marketImplications',
+  'fearGreedIndex',
+  'hyperliquidFlow',
+  'crudeInventories',
+  'natGasStorage',
+  'ecbFxRates',
+  'euFsi',
+  'diseaseOutbreaks',
+  'economicStress',
+  'pizzint',
+  'oilStocksAnalysis',
+  'lngVulnerability',
+  'pipelinesGas',
+  'pipelinesOil',
+  'storageFacilities',
+  'fuelShortages',
+  'energyCrisisPolicies',
+  'aaiiSentiment',
+  'breadthHistory',
+]);
+
+const FAST_KEY_NAMES = new Set([
+  'earthquakes', 'outages', 'serviceStatuses', 'ddosAttacks', 'trafficAnomalies', 'macroSignals', 'chokepoints',
+  'marketQuotes', 'commodityQuotes', 'positiveGeoEvents', 'riskScores', 'flightDelays', 'insights', 'predictions',
+  'iranEvents', 'temporalAnomalies', 'weatherAlerts', 'spending', 'theaterPosture', 'gdeltIntel',
+  'correlationCards', 'forecasts', 'shippingRates', 'shippingStress', 'socialVelocity', 'wsbTickers',
+]);
+
+const ON_DEMAND_KEY_NAMES = new Set([
+  'cyberThreats',
+  'bisDsr', 'bisPropertyResidential', 'bisPropertyCommercial',
+  'imfMacro', 'imfGrowth', 'imfLabor', 'imfExternal',
+  'eurostatHousePrices', 'eurostatGovDebtQ', 'eurostatIndProd',
+  'electricityPrices', 'jodiOil', 'chokepointBaselines',
+  'portwatchChokepointsRef', 'portwatchPortActivity', 'sprPolicies',
+  'energyDisruptions',
+]);
+
+function tierForKey(name) {
+  if (FAST_KEY_NAMES.has(name)) return 'fast';
+  if (SLOW_KEY_NAMES.has(name)) return 'slow';
+  if (ON_DEMAND_KEY_NAMES.has(name)) return 'on-demand';
+  throw new Error(`Bootstrap cache key "${name}" has no tier assignment`);
+}
+
+export const BOOTSTRAP_TIERS = Object.freeze(Object.fromEntries(
+  Object.keys(BOOTSTRAP_CACHE_KEYS).map((name) => [name, tierForKey(name)]),
+));
+
+/** Return registered logical names in canonical response insertion order. */
+export function bootstrapTierKeyNames(tier, { iranEventsEnabled = true } = {}) {
+  if (tier !== 'fast' && tier !== 'slow' && tier !== 'on-demand') {
+    throw new TypeError(`Unknown bootstrap tier: ${tier}`);
+  }
+  return Object.keys(BOOTSTRAP_CACHE_KEYS).filter((name) => (
+    BOOTSTRAP_TIERS[name] === tier && (iranEventsEnabled || name !== 'iranEvents')
+  ));
+}
+
+/** Return a mutable runtime registry with the Iran sunset gate applied. */
+export function resolveBootstrapRegistry({ iranEventsEnabled = true } = {}) {
+  const cacheKeys = { ...BOOTSTRAP_CACHE_KEYS };
+  const tiers = { ...BOOTSTRAP_TIERS };
+  if (!iranEventsEnabled) {
+    delete cacheKeys.iranEvents;
+    delete tiers.iranEvents;
+  }
+  return { cacheKeys, tiers };
+}

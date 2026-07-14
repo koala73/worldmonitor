@@ -34,7 +34,10 @@ interface RailwayServiceEntry {
   deployMode: 'nixpacks-root-scripts' | 'nixpacks-root-repo' | 'dockerfile';
   dockerfile?: string;
   service: string;
+  startCommand?: string;
   requiredEnv?: string[];
+  watchPatterns?: string[];
+  cronSchedule?: string | null;
   documentedAt: string;
 }
 
@@ -67,6 +70,27 @@ const RUNBOOK_SERVICE_ROW_RE = /^\|\s*seed-[a-z0-9-]+\s*\|\s*`node\s+(scripts\/[
 const SCRIPT_HEADER_SERVICE_RE = /^\s*\/\/\s*-\s*Service name:\s*([a-z0-9-]+)\s*$/m;
 
 describe('Railway service registry coverage', () => {
+  it('pins the bootstrap publisher deployment contract', () => {
+    const publisher = registry.find(
+      (entry) => entry.entry === 'scripts/publish-bootstrap-tiers.mjs',
+    );
+
+    assert.ok(publisher, 'bootstrap publisher must be registered as a Railway service');
+    assert.equal(publisher.deployMode, 'nixpacks-root-repo');
+    assert.equal(publisher.service, 'publish-bootstrap-tiers');
+    assert.equal(publisher.startCommand, 'node scripts/publish-bootstrap-tiers.mjs --loop');
+    assert.deepEqual(publisher.requiredEnv, [
+      'UPSTASH_REDIS_REST_URL',
+      'UPSTASH_REDIS_REST_TOKEN',
+      'R2_ACCOUNT_ID',
+      'R2_BOOTSTRAP_BUCKET',
+      'R2_BOOTSTRAP_ACCESS_KEY_ID',
+      'R2_BOOTSTRAP_SECRET_ACCESS_KEY',
+    ]);
+    assert.deepEqual(publisher.watchPatterns, ['scripts/**', 'shared/**']);
+    assert.equal(publisher.cronSchedule, null, 'publisher must be always-on, never a Railway cron');
+  });
+
   it('required environment declarations use canonical unique variable names', () => {
     for (const entry of registry) {
       if (entry.requiredEnv == null) continue;
