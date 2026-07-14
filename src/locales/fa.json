@@ -213,8 +213,8 @@
       "imfGrowth": "IMF growth forecast",
       "creditGdp": "Credit to GDP",
       "strategicTrade": "Strategic trade exposure",
-      "oilSupply": "Oil product supply",
-      "gasSupply": "Gas supply",
+      "crudeImports": "Crude oil imports",
+      "gasDemand": "Gas demand",
       "energyMix": "Power mix",
       "coal": "coal",
       "aviationAvailability": "Aviation availability",
@@ -234,6 +234,7 @@
       "marketUnavailable": "Market and credit data are currently unavailable.",
       "tradeUnavailable": "Trade and supply-chain data are currently unavailable.",
       "energyUnavailable": "Energy data are currently unavailable.",
+      "availabilityUnavailable": "Hazard and aviation availability data are currently unavailable.",
       "status": {
         "loading": "Loading",
         "available": "Available",

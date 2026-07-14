@@ -111,11 +111,27 @@ test('China summary is scoped to China, exposes per-group states, and safely att
     assert.equal(card?.getAttribute('aria-label'), 'countryBrief.china.title');
     assert.equal(card?.querySelectorAll('.cdp-china-summary-group').length, 5);
     assert.equal(card?.querySelector('[role="status"]')?.getAttribute('aria-live'), 'polite');
+    assert.match(card?.textContent ?? '', /countryBrief\.china\.status\.loading/, 'groups start in an explicit loading state');
 
+    const sectionsBeforeUpdate = Array.from(card?.querySelectorAll<HTMLElement>('.cdp-china-summary-group') ?? []);
     panel.updateChinaCountrySummary(summary);
+    const sectionsAfterUpdate = Array.from(card?.querySelectorAll<HTMLElement>('.cdp-china-summary-group') ?? []);
+    assert.equal(sectionsAfterUpdate.length, 5);
+    for (let i = 0; i < sectionsBeforeUpdate.length; i += 1) {
+      assert.equal(
+        sectionsAfterUpdate[i],
+        sectionsBeforeUpdate[i],
+        'live-region sections persist across updates so state changes are announced',
+      );
+    }
 
     assert.match(card?.textContent ?? '', /countryBrief\.china\.status\.partial/);
     assert.match(card?.textContent ?? '', /countryBrief\.china\.status\.stale/);
+    assert.match(
+      card?.textContent ?? '',
+      /One policy source is temporarily unavailable\./,
+      'a partial group surfaces its degradation reason',
+    );
     assert.match(card?.textContent ?? '', /OECD <img src=x>/, 'source attribution is retained as text');
     assert.equal(card?.querySelector('img'), null, 'source attribution is never interpreted as markup');
     const availability = Array.from(card?.querySelectorAll<HTMLElement>('.cdp-china-summary-group') ?? []).at(-1);
@@ -125,9 +141,31 @@ test('China summary is scoped to China, exposes per-group states, and safely att
       'signals without a source timestamp do not display a fabricated observation time',
     );
 
+    const unavailableSummary = {
+      groups: summary.groups.map((group) => (group.id === 'energy'
+        ? { id: group.id, state: 'unavailable', signals: [], unavailableReason: 'Energy data are currently unavailable.' }
+        : group)),
+    };
+    panel.updateChinaCountrySummary(unavailableSummary);
+    const unavailableGroup = card?.querySelector<HTMLElement>('.cdp-china-summary-group--unavailable');
+    assert.ok(unavailableGroup, 'an empty group renders the explicit unavailable state');
+    assert.match(unavailableGroup?.textContent ?? '', /countryBrief\.china\.status\.unavailable/);
+    assert.match(
+      unavailableGroup?.textContent ?? '',
+      /Energy data are currently unavailable\./,
+      'an unavailable group surfaces its outage reason instead of a blank card',
+    );
+
     panel.show('Japan', 'JP', null, emptySignals);
     await waitForResilienceWidget(harness);
     assert.equal(harness.getPanelRoot()?.querySelector('.cdp-china-summary'), null, 'the summary clears when the country changes');
+
+    panel.updateChinaCountrySummary(summary);
+    assert.equal(
+      harness.getPanelRoot()?.querySelector('.cdp-china-summary'),
+      null,
+      'a late China update while another country is displayed is dropped by the panel guard',
+    );
 
     panel.show('China', 'cn', null, emptySignals);
     await waitForResilienceWidget(harness);

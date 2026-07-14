@@ -2587,6 +2587,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.infrastructureBody = infraBody;
     this.economicBody = economicBody;
     let chinaSummaryCard: HTMLElement | null = null;
+    // Drop any body left over from a previous China render so a non-China
+    // country never keeps a detached summary body reachable.
+    this.chinaSummaryBody = null;
     if (code.toUpperCase() === 'CN') {
       const [card, body] = this.sectionCard(t('countryBrief.china.title'), t('countryBrief.china.description'));
       card.classList.add('cdp-china-summary');
@@ -2901,15 +2904,39 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
   private renderChinaCountrySummary(groups: ChinaCountrySummaryGroup[]): void {
     if (!this.chinaSummaryBody) return;
-    this.chinaSummaryBody.replaceChildren();
 
-    const grid = this.el('div', 'cdp-china-summary-grid');
+    // The group <section>s are aria-live regions. They must stay in the DOM
+    // across updates — screen readers only announce mutations *inside* an
+    // existing live region, so tearing the sections down and rebuilding them
+    // (the old replaceChildren-the-card approach) meant state transitions
+    // like loading→stale were never announced.
+    let grid = this.chinaSummaryBody.querySelector<HTMLElement>('.cdp-china-summary-grid');
+    if (!grid) {
+      this.chinaSummaryBody.replaceChildren();
+      grid = this.el('div', 'cdp-china-summary-grid');
+      this.chinaSummaryBody.append(grid);
+    }
+
     for (const group of groups) {
-      const section = this.el('section', `cdp-china-summary-group cdp-china-summary-group--${group.state}`);
+      let section = grid.querySelector<HTMLElement>(`[data-group-id="${group.id}"]`);
+      if (!section) {
+        section = this.el('section', 'cdp-china-summary-group');
+        section.setAttribute('data-group-id', group.id);
+        section.setAttribute('role', 'status');
+        section.setAttribute('aria-live', 'polite');
+        grid.append(section);
+      }
+
+      // Manager updates push the full five-group snapshot each time any one
+      // group resolves; skip untouched groups so unchanged content is not
+      // re-announced on every sibling resolution.
+      const revision = JSON.stringify(group);
+      if (section.dataset.revision === revision) continue;
+      section.dataset.revision = revision;
+
       const groupLabel = this.chinaSummaryGroupLabel(group.id);
       const stateLabel = t(`countryBrief.china.status.${group.state}`);
-      section.setAttribute('role', 'status');
-      section.setAttribute('aria-live', 'polite');
+      section.className = `cdp-china-summary-group cdp-china-summary-group--${group.state}`;
       section.setAttribute('aria-label', `${groupLabel}: ${stateLabel}`);
 
       const heading = this.el('div', 'cdp-china-summary-heading');
@@ -2917,10 +2944,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         this.el('h4', 'cdp-china-summary-title', groupLabel),
         this.el('span', 'cdp-china-summary-state', stateLabel),
       );
-      section.append(heading);
+      const children: HTMLElement[] = [heading];
 
       if (group.signals.length === 0) {
-        section.append(this.el(
+        children.push(this.el(
           'div',
           'cdp-china-summary-empty',
           group.unavailableReason || t(`countryBrief.china.status.${group.state}`),
@@ -2937,15 +2964,14 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
             item.append(this.el('div', 'cdp-china-summary-attribution', `${t('countryBrief.china.observed')} ${signal.observedAt}`));
           }
           item.append(this.el('div', 'cdp-china-summary-attribution', `${t('countryBrief.china.source')} ${signal.source}`));
-          section.append(item);
+          children.push(item);
         }
         if (group.unavailableReason) {
-          section.append(this.el('div', 'cdp-china-summary-note', group.unavailableReason));
+          children.push(this.el('div', 'cdp-china-summary-note', group.unavailableReason));
         }
       }
-      grid.append(section);
+      section.replaceChildren(...children);
     }
-    this.chinaSummaryBody.append(grid);
   }
 
   private chinaSummaryGroupLabel(id: ChinaCountrySummaryGroupId): string {

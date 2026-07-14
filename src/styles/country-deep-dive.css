@@ -266,7 +266,7 @@
 
 .cdp-china-summary-group--partial,
 .cdp-china-summary-group--stale {
-  border-color: color-mix(in srgb, var(--semantic-warning) 50%, var(--border-subtle));
+  border-color: color-mix(in srgb, var(--semantic-warning, #f59e0b) 50%, var(--border-subtle));
 }
 
 .cdp-china-summary-group--unavailable {
@@ -305,7 +305,7 @@
 }
 
 .cdp-china-summary-signal[data-stale="true"] .cdp-china-summary-signal-value {
-  color: var(--semantic-warning);
+  color: var(--semantic-warning, #f59e0b);
 }
 
 .cdp-china-summary-signal-value {

@@ -9,7 +9,7 @@
 
 import { getRpcBaseUrl, getRpcErrorStatusCode } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
-import type { GetFredSeriesResponse, GetFredSeriesBatchResponse, ListWorldBankIndicatorsResponse, WorldBankCountryData as ProtoWorldBankCountryData, GetEnergyPricesResponse, EnergyPrice as ProtoEnergyPrice, GetEnergyCapacityResponse, GetBisPolicyRatesResponse, GetBisExchangeRatesResponse, GetBisCreditResponse, BisPolicyRate, BisExchangeRate, BisCreditToGdp, GetNationalDebtResponse, NationalDebtEntry, GetBlsSeriesResponse, GetCrudeInventoriesResponse, CrudeInventoryWeek, GetNatGasStorageResponse, NatGasStorageWeek, GetEcbFxRatesResponse, EcbFxRate, GetEuGasStorageResponse, EuGasStorageHistoryEntry, GetEurostatCountryDataResponse, EurostatCountryEntry, GetOilStocksAnalysisResponse, OilStocksAnalysisMember, OilStocksRegionalSummary, OilStocksRegionalSummaryEurope, OilStocksRegionalSummaryAsiaPacific, OilStocksRegionalSummaryNorthAmerica } from '@/generated/client/worldmonitor/economic/v1/service_client';
+import type { GetFredSeriesResponse, GetFredSeriesBatchResponse, ListWorldBankIndicatorsResponse, WorldBankCountryData as ProtoWorldBankCountryData, GetEnergyPricesResponse, EnergyPrice as ProtoEnergyPrice, GetEnergyCapacityResponse, GetBisPolicyRatesResponse, GetBisExchangeRatesResponse, GetBisCreditResponse, GetChinaMacroSnapshotResponse, BisPolicyRate, BisExchangeRate, BisCreditToGdp, GetNationalDebtResponse, NationalDebtEntry, GetBlsSeriesResponse, GetCrudeInventoriesResponse, CrudeInventoryWeek, GetNatGasStorageResponse, NatGasStorageWeek, GetEcbFxRatesResponse, EcbFxRate, GetEuGasStorageResponse, EuGasStorageHistoryEntry, GetEurostatCountryDataResponse, EurostatCountryEntry, GetOilStocksAnalysisResponse, OilStocksAnalysisMember, OilStocksRegionalSummary, OilStocksRegionalSummaryEurope, OilStocksRegionalSummaryAsiaPacific, OilStocksRegionalSummaryNorthAmerica } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getCSSColor } from '@/utils';
 import { isFeatureAvailable } from '../runtime-config';
@@ -51,6 +51,7 @@ const capacityBreaker = createCircuitBreaker<GetEnergyCapacityResponse>({ name: 
 const bisPolicyBreaker = createCircuitBreaker<GetBisPolicyRatesResponse>({ name: 'BIS Policy', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 const bisEerBreaker = createCircuitBreaker<GetBisExchangeRatesResponse>({ name: 'BIS EER', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 const bisCreditBreaker = createCircuitBreaker<GetBisCreditResponse>({ name: 'BIS Credit', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
+const chinaMacroBreaker = createCircuitBreaker<GetChinaMacroSnapshotResponse>({ name: 'China Macro Snapshot', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 
 const emptyBlsFallback: GetBlsSeriesResponse = { series: undefined };
 const blsBreaker = createCircuitBreaker<FredSeries[]>({ name: 'BLS Batch', cacheTtlMs: 15 * 60 * 1000, persistCache: true });
@@ -747,6 +748,45 @@ export interface BisData {
   exchangeRates: BisExchangeRate[];
   creditToGdp: BisCreditToGdp[];
   fetchedAt: Date;
+}
+
+const emptyChinaMacroFallback: GetChinaMacroSnapshotResponse = {
+  countryCode: 'CN',
+  generatedAt: '',
+  status: 'unavailable',
+  launchReady: false,
+  contentObservationDate: '',
+  latestObservationDate: '',
+  indicators: [],
+  sourceDecisions: [],
+  releaseEvents: [],
+  unavailable: true,
+};
+
+export async function getChinaMacroSnapshotData(): Promise<GetChinaMacroSnapshotResponse> {
+  try {
+    return await chinaMacroBreaker.execute(
+      () => client.getChinaMacroSnapshot({}, { signal: AbortSignal.timeout(20_000) }),
+      emptyChinaMacroFallback,
+      { shouldCache: (r) => !r.unavailable && (r.indicators?.length ?? 0) > 0 },
+    );
+  } catch {
+    return emptyChinaMacroFallback;
+  }
+}
+
+export async function getBisCreditData(): Promise<GetBisCreditResponse> {
+  const hydrated = getHydratedData('bisCredit') as GetBisCreditResponse | undefined;
+  if (hydrated?.entries?.length) return hydrated;
+  try {
+    return await bisCreditBreaker.execute(
+      () => client.getBisCredit({}, { signal: AbortSignal.timeout(20_000) }),
+      emptyBisCreditFallback,
+      { shouldCache: (r) => (r.entries?.length ?? 0) > 0 },
+    );
+  } catch {
+    return emptyBisCreditFallback;
+  }
 }
 
 export async function fetchBisData(): Promise<BisData> {
