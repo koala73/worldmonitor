@@ -25,6 +25,22 @@ const HEALTH_VERDICT_SNAPSHOT_KEY = healthVerdictRedisKey(
   process.env.VERCEL_ENV,
   process.env.VERCEL_GIT_COMMIT_SHA,
 );
+// The memoized verdict is stored TWICE, and the difference is the whole point.
+// The full snapshot carries the entire `checks` map (~228 entries, ~20 KB). The
+// compact snapshot carries what `?compact=1` actually returns — status, summary,
+// checkedAt and the handful of problem entries — about 1 KB.
+//
+// `?compact=1` is the browser poll: every client hits it every 5 minutes (~115k
+// times/day). Before this split each of those reads pulled the full 20 KB blob out
+// of Redis to render ~1 KB of it, which is ~2.2 GB/day of egress for bytes the
+// caller throws away (#5300). One sweep writes both keys, so they can never
+// disagree.
+const HEALTH_VERDICT_COMPACT_SNAPSHOT_BASE_KEY = 'health:verdict:compact:v1';
+const HEALTH_VERDICT_COMPACT_SNAPSHOT_KEY = healthVerdictRedisKey(
+  HEALTH_VERDICT_COMPACT_SNAPSHOT_BASE_KEY,
+  process.env.VERCEL_ENV,
+  process.env.VERCEL_GIT_COMMIT_SHA,
+);
 const HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS = 60;
 // Edge runtime mirror of scripts/china-coverage-manifest.mjs. Edge functions
 // cannot import scripts/; tests enforce key and status-projection parity.
@@ -1068,13 +1084,15 @@ function composeChinaCoverageStatus(entry, raw, readError = false) {
   return { ...entry, ...projected, seedStatus };
 }
 
-function parseHealthVerdictSnapshot(raw, now) {
+function parseHealthVerdictSnapshot(raw, now, { requireChecks = true } = {}) {
   if (typeof raw !== 'string') return null;
   const snapshot = parseRedisValue(raw);
   if (!snapshot || typeof snapshot !== 'object') return null;
   if (typeof snapshot.status !== 'string' || typeof snapshot.checkedAt !== 'string') return null;
   if (!snapshot.summary || typeof snapshot.summary !== 'object') return null;
-  if (!snapshot.checks || typeof snapshot.checks !== 'object') return null;
+  // The compact snapshot deliberately has no `checks` map — that omission IS the
+  // 20 KB saving. Only the full snapshot must carry one.
+  if (requireChecks && (!snapshot.checks || typeof snapshot.checks !== 'object')) return null;
 
   const checkedAtMs = Date.parse(snapshot.checkedAt);
   const ageMs = now - checkedAtMs;
@@ -1134,12 +1152,25 @@ function healthResponseBody(snapshot, compact) {
     return body;
   }
 
-  const problems = {};
-  for (const [name, check] of Object.entries(snapshot.checks)) {
-    if (isProblemStatus(check.status)) problems[name] = check;
-  }
+  // Two shapes reach here. A freshly-swept verdict (and the full cached snapshot)
+  // carries `checks`, so derive `problems` from it. The compact snapshot key stores
+  // `problems` already computed — that is why a browser poll reads ~1 KB instead of
+  // the full 20 KB check map. Passing a compact snapshot back through here is a
+  // no-op, which is what makes buildCompactVerdictSnapshot() below safe.
+  const problems = snapshot.checks
+    ? Object.fromEntries(Object.entries(snapshot.checks).filter(([, check]) => isProblemStatus(check.status)))
+    : (snapshot.problems ?? {});
   if (Object.keys(problems).length > 0) body.problems = problems;
   return body;
+}
+
+/**
+ * The compact snapshot stored in Redis is byte-for-byte the body a `?compact=1`
+ * request returns. Deriving it from the same function that renders the response
+ * means the cached form can never drift from the live form.
+ */
+function buildCompactVerdictSnapshot(snapshot) {
+  return healthResponseBody(snapshot, true);
 }
 
 function healthResponse(snapshot, compact, headers) {
@@ -1251,10 +1282,14 @@ export default async function handler(req, ctx) {
   let ownsSnapshotRefreshLock = false;
   try {
     if (!getRedisCredentials()) throw new Error('Redis not configured');
-    const snapshotResult = await redisPipeline([['GET', HEALTH_VERDICT_SNAPSHOT_KEY]], 4_000);
+    // Read the snapshot this request will actually render. `?compact=1` — the
+    // browser poll, ~115k/day — reads the ~1 KB compact key instead of dragging the
+    // full ~20 KB check map out of Redis to show a tenth of it (#5300).
+    const snapshotKey = compact ? HEALTH_VERDICT_COMPACT_SNAPSHOT_KEY : HEALTH_VERDICT_SNAPSHOT_KEY;
+    const snapshotResult = await redisPipeline([['GET', snapshotKey]], 4_000);
     if (!snapshotResult) throw new Error('Redis request failed');
     if (snapshotResult[0]?.error) throw new Error('Redis snapshot read failed');
-    const cachedSnapshot = parseHealthVerdictSnapshot(snapshotResult[0]?.result, Date.now());
+    const cachedSnapshot = parseHealthVerdictSnapshot(snapshotResult[0]?.result, Date.now(), { requireChecks: !compact });
     if (cachedSnapshot) return healthResponse(cachedSnapshot, compact, headers);
 
     refreshLockToken = `${now}:${crypto.randomUUID()}`;
@@ -1287,9 +1322,9 @@ export default async function handler(req, ctx) {
         const remainingMs = waitDeadline - Date.now();
         if (remainingMs < HEALTH_VERDICT_MIN_REDIS_TIMEOUT_MS) break;
         const redisTimeoutMs = Math.min(4_000, remainingMs);
-        const refreshedResult = await redisPipeline([['GET', HEALTH_VERDICT_SNAPSHOT_KEY]], redisTimeoutMs);
+        const refreshedResult = await redisPipeline([['GET', snapshotKey]], redisTimeoutMs);
         if (!refreshedResult || refreshedResult[0]?.error) throw new Error('Redis snapshot wait failed');
-        const refreshedSnapshot = parseHealthVerdictSnapshot(refreshedResult[0]?.result, Date.now());
+        const refreshedSnapshot = parseHealthVerdictSnapshot(refreshedResult[0]?.result, Date.now(), { requireChecks: !compact });
         if (refreshedSnapshot) return healthResponse(refreshedSnapshot, compact, headers);
 
         lockResult = await redisPipeline([[
@@ -1489,6 +1524,8 @@ export default async function handler(req, ctx) {
   // Await the write so the next request cannot race an unstarted background
   // SET and repeat the full sweep. A write failure does not invalidate the
   // live verdict just computed; the next request will retry by sweeping.
+  // Both snapshots are written by the SAME sweep, in one pipeline, so the compact
+  // form can never disagree with the full one or outlive it.
   const snapshotWriteResult = await redisPipeline([
     [
       'SET',
@@ -1497,8 +1534,17 @@ export default async function handler(req, ctx) {
       'EX',
       String(HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS),
     ],
+    [
+      'SET',
+      HEALTH_VERDICT_COMPACT_SNAPSHOT_KEY,
+      JSON.stringify(buildCompactVerdictSnapshot(verdictSnapshot)),
+      'EX',
+      String(HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS),
+    ],
   ], 4_000).catch(() => null);
-  const snapshotWriteFailed = !snapshotWriteResult || snapshotWriteResult[0]?.error;
+  const snapshotWriteFailed = !snapshotWriteResult
+    || snapshotWriteResult.length !== 2
+    || snapshotWriteResult.some((entry) => entry?.error);
   if (ownsSnapshotRefreshLock) await releaseHealthVerdictRefreshLock(refreshLockToken);
   // A failed cache write does not invalidate the live verdict. Releasing only
   // this request's token lets the next caller retry immediately without ever
@@ -1533,6 +1579,8 @@ export const __testing__ = {
   LIST_DATA_KEYS,
   dataLenCommand,
   HEALTH_VERDICT_SNAPSHOT_KEY,
+  HEALTH_VERDICT_COMPACT_SNAPSHOT_KEY,
+  buildCompactVerdictSnapshot,
   HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS,
   HEALTH_VERDICT_REFRESH_LOCK_KEY,
   HEALTH_VERDICT_REFRESH_WAIT_MS,

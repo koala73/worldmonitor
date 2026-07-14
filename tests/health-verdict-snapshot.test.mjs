@@ -9,6 +9,8 @@ const { default: handler, __testing__ } = await import('../api/health.js');
 
 const {
   HEALTH_VERDICT_SNAPSHOT_KEY: HEALTH_SNAPSHOT_KEY,
+  HEALTH_VERDICT_COMPACT_SNAPSHOT_KEY: HEALTH_COMPACT_SNAPSHOT_KEY,
+  buildCompactVerdictSnapshot,
   HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS,
   HEALTH_VERDICT_REFRESH_LOCK_KEY: HEALTH_REFRESH_LOCK_KEY,
   HEALTH_VERDICT_REFRESH_WAIT_MS,
@@ -51,8 +53,10 @@ test('scopes health verdict Redis keys to non-production deployments', () => {
   );
 });
 
-test('reuses one Redis verdict snapshot across compact and detailed callers', async () => {
-  let storedSnapshot = null;
+test('one sweep serves both callers, each from its own snapshot', async () => {
+  // #5300: one sweep writes TWO snapshots — the full check map (operator reads) and
+  // the compact body (?compact=1, the browser poll). Mock both.
+  const snapshotStore = { [HEALTH_SNAPSHOT_KEY]: null, [HEALTH_COMPACT_SNAPSHOT_KEY]: null };
   const pipelineCalls = [];
 
   globalThis.fetch = async (_url, init) => {
@@ -60,8 +64,8 @@ test('reuses one Redis verdict snapshot across compact and detailed callers', as
     pipelineCalls.push(commands);
 
     const results = commands.map(([op, key, value]) => {
-      if (op === 'GET' && key === HEALTH_SNAPSHOT_KEY) {
-        return { result: storedSnapshot };
+      if (op === 'GET' && key in snapshotStore) {
+        return { result: snapshotStore[key] };
       }
       if (op === 'STRLEN') return { result: 100 };
       if (op === 'LLEN') return { result: 1 };
@@ -69,8 +73,8 @@ test('reuses one Redis verdict snapshot across compact and detailed callers', as
         return { result: JSON.stringify({ fetchedAt: Date.now(), recordCount: 1 }) };
       }
       if (op === 'EXISTS') return { result: 0 };
-      if (op === 'SET' && key === HEALTH_SNAPSHOT_KEY) {
-        storedSnapshot = value;
+      if (op === 'SET' && key in snapshotStore) {
+        snapshotStore[key] = value;
         return { result: 'OK' };
       }
       return { result: 'OK' };
@@ -95,16 +99,33 @@ test('reuses one Redis verdict snapshot across compact and detailed callers', as
     commands.some(([op]) => op === 'STRLEN' || op === 'LLEN'));
   assert.equal(sweepCalls.length, 1, 'two callers inside the TTL must share one full health sweep');
 
-  const snapshotReads = pipelineCalls.filter((commands) =>
-    commands.length === 1
-      && commands[0][0] === 'GET'
-      && commands[0][1] === HEALTH_SNAPSHOT_KEY);
-  assert.equal(snapshotReads.length, 2, 'each response should need only one small snapshot GET');
+  // Each caller reads ONLY the snapshot it will render. The browser poll
+  // (?compact=1) must not drag the full ~20 KB check map out of Redis to show a
+  // tenth of it — that was ~2.2 GB/day of wasted egress (#5300).
+  const readsOf = (key) => pipelineCalls.filter((commands) =>
+    commands.length === 1 && commands[0][0] === 'GET' && commands[0][1] === key);
+  assert.equal(readsOf(HEALTH_COMPACT_SNAPSHOT_KEY).length, 1, 'the compact caller reads the compact snapshot');
+  assert.equal(readsOf(HEALTH_SNAPSHOT_KEY).length, 1, 'the detailed caller reads the full snapshot');
 
-  const snapshotWrites = pipelineCalls.flat().filter((command) =>
-    command[0] === 'SET' && command[1] === HEALTH_SNAPSHOT_KEY);
-  assert.equal(snapshotWrites.length, 1);
-  assert.deepEqual(snapshotWrites[0].slice(3), ['EX', String(HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS)]);
+  // ...and ONE sweep persists both, in a single pipeline, so they cannot disagree.
+  const writesOf = (key) => pipelineCalls.flat().filter((command) => command[0] === 'SET' && command[1] === key);
+  assert.equal(writesOf(HEALTH_SNAPSHOT_KEY).length, 1);
+  assert.equal(writesOf(HEALTH_COMPACT_SNAPSHOT_KEY).length, 1);
+  for (const key of [HEALTH_SNAPSHOT_KEY, HEALTH_COMPACT_SNAPSHOT_KEY]) {
+    assert.deepEqual(writesOf(key)[0].slice(3), ['EX', String(HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS)]);
+  }
+  const persistPipeline = pipelineCalls.find((commands) =>
+    commands.some(([op, key]) => op === 'SET' && key === HEALTH_SNAPSHOT_KEY));
+  assert.ok(
+    persistPipeline.some(([op, key]) => op === 'SET' && key === HEALTH_COMPACT_SNAPSHOT_KEY),
+    'both snapshots must be written by the same sweep, in one pipeline',
+  );
+
+  // The stored compact snapshot is a fraction of the full one — the whole point.
+  const storedFull = writesOf(HEALTH_SNAPSHOT_KEY)[0][2];
+  const storedCompact = writesOf(HEALTH_COMPACT_SNAPSHOT_KEY)[0][2];
+  assert.ok(storedCompact.length < storedFull.length, 'the compact snapshot must be smaller than the full one');
+  assert.equal(JSON.parse(storedCompact).checks, undefined, 'the compact snapshot must not carry the check map');
 
   assert.equal(compactResponse.headers.get('Cache-Control'), 'no-store, max-age=0');
   assert.equal(detailedResponse.headers.get('Cache-Control'), 'private, no-store, max-age=0');
@@ -138,7 +159,9 @@ test('rejects malformed or older-than-TTL snapshots', () => {
 });
 
 test('coalesces concurrent cache misses into one full sweep', async () => {
-  let storedSnapshot = null;
+  // #5300: one sweep writes TWO snapshots — the full check map (operator reads) and
+  // the compact body (?compact=1, the browser poll). Mock both.
+  const snapshotStore = { [HEALTH_SNAPSHOT_KEY]: null, [HEALTH_COMPACT_SNAPSHOT_KEY]: null };
   let refreshLocked = false;
   const pipelineCalls = [];
 
@@ -153,7 +176,7 @@ test('coalesces concurrent cache misses into one full sweep', async () => {
     }
 
     const results = commands.map(([op, key, value]) => {
-      if (op === 'GET' && key === HEALTH_SNAPSHOT_KEY) return { result: storedSnapshot };
+      if (op === 'GET' && key in snapshotStore) return { result: snapshotStore[key] };
       if (op === 'SET' && key === HEALTH_REFRESH_LOCK_KEY) {
         if (refreshLocked) return { result: null };
         refreshLocked = true;
@@ -165,8 +188,8 @@ test('coalesces concurrent cache misses into one full sweep', async () => {
         return { result: JSON.stringify({ fetchedAt: Date.now(), recordCount: 1 }) };
       }
       if (op === 'EXISTS') return { result: 0 };
-      if (op === 'SET' && key === HEALTH_SNAPSHOT_KEY) {
-        storedSnapshot = value;
+      if (op === 'SET' && key in snapshotStore) {
+        snapshotStore[key] = value;
         return { result: 'OK' };
       }
       return { result: 'OK' };
@@ -198,10 +221,15 @@ test('projects only failing checks from a cached compact snapshot', async () => 
       delayed: { status: 'STALE_SEED', seedAgeMin: 30 },
     },
   };
+  // The problems are now projected ONCE, at sweep time, into the compact snapshot —
+  // so the browser poll reads ~1 KB instead of the full check map (#5300). A compact
+  // caller must therefore read the compact key, and must never touch the full one.
+  const compactSnapshot = buildCompactVerdictSnapshot(snapshot);
   globalThis.fetch = async (_url, init) => {
     const commands = JSON.parse(init.body);
-    assert.deepEqual(commands, [['GET', HEALTH_SNAPSHOT_KEY]]);
-    return new Response(JSON.stringify([{ result: JSON.stringify(snapshot) }]), { status: 200 });
+    assert.deepEqual(commands, [['GET', HEALTH_COMPACT_SNAPSHOT_KEY]],
+      'a ?compact=1 caller must read the compact snapshot, never the full check map');
+    return new Response(JSON.stringify([{ result: JSON.stringify(compactSnapshot) }]), { status: 200 });
   };
 
   const response = await handler(new Request('https://api.worldmonitor.app/api/health?compact=1'));
@@ -211,6 +239,9 @@ test('projects only failing checks from a cached compact snapshot', async () => 
   assert.deepEqual(body.problems, { delayed: snapshot.checks.delayed });
   assert.ok(!Object.hasOwn(body, 'checks'));
   assert.equal(body.checkedAt, snapshot.checkedAt);
+  // The stored form carries only the problems, not all three checks.
+  assert.equal(compactSnapshot.checks, undefined);
+  assert.deepEqual(Object.keys(compactSnapshot.problems), ['delayed']);
 });
 
 test('takes over refresh after the prior lock owner disappears', async () => {
@@ -287,7 +318,7 @@ test('does not start a doomed Redis request at the contention deadline', async (
   globalThis.fetch = async (_url, init) => {
     const commands = JSON.parse(init.body);
     if (commands.some(([op]) => op === 'STRLEN' || op === 'LLEN')) sweepCount++;
-    if (commands.length === 1 && commands[0][0] === 'GET' && commands[0][1] === HEALTH_SNAPSHOT_KEY) {
+    if (commands.length === 1 && commands[0][0] === 'GET' && (commands[0][1] === HEALTH_SNAPSHOT_KEY || commands[0][1] === HEALTH_COMPACT_SNAPSHOT_KEY)) {
       snapshotReads++;
       if (snapshotReads > 1) {
         return new Response(null, { status: 504 });
@@ -315,15 +346,29 @@ test('does not start a doomed Redis request at the contention deadline', async (
 });
 
 test('releases its refresh lock when snapshot persistence fails', async () => {
-  let storedSnapshot = null;
+  // #5300: one sweep writes TWO snapshots — the full check map (operator reads) and
+  // the compact body (?compact=1, the browser poll). Mock both.
+  const snapshotStore = { [HEALTH_SNAPSHOT_KEY]: null, [HEALTH_COMPACT_SNAPSHOT_KEY]: null };
   let refreshLockToken = null;
   let snapshotWriteAttempts = 0;
   let sweepCount = 0;
   globalThis.fetch = async (_url, init) => {
     const commands = JSON.parse(init.body);
     if (commands.some(([op]) => op === 'STRLEN' || op === 'LLEN')) sweepCount++;
+
+    // A sweep persists BOTH snapshots in one pipeline (#5300), so a failed
+    // persistence attempt fails the pair. Failing only one would leave a usable
+    // compact snapshot behind, and the next caller would rightly serve it instead
+    // of re-sweeping — which is not the path this test is probing.
+    const isSnapshotPersist = commands.some(([op, key]) => op === 'SET' && key === HEALTH_SNAPSHOT_KEY);
+    let failThisWriteAttempt = false;
+    if (isSnapshotPersist) {
+      snapshotWriteAttempts++;
+      failThisWriteAttempt = snapshotWriteAttempts === 1;
+    }
+
     const results = commands.map(([op, key, value]) => {
-      if (op === 'GET' && key === HEALTH_SNAPSHOT_KEY) return { result: storedSnapshot };
+      if (op === 'GET' && key in snapshotStore) return { result: snapshotStore[key] };
       if (op === 'SET' && key === HEALTH_REFRESH_LOCK_KEY) {
         if (refreshLockToken) return { result: null };
         refreshLockToken = value;
@@ -333,10 +378,9 @@ test('releases its refresh lock when snapshot persistence fails', async () => {
         if (commands[0][4] === refreshLockToken) refreshLockToken = null;
         return { result: 1 };
       }
-      if (op === 'SET' && key === HEALTH_SNAPSHOT_KEY) {
-        snapshotWriteAttempts++;
-        if (snapshotWriteAttempts === 1) return { error: 'transient write failure' };
-        storedSnapshot = value;
+      if (op === 'SET' && key in snapshotStore) {
+        if (failThisWriteAttempt) return { error: 'transient write failure' };
+        snapshotStore[key] = value;
         return { result: 'OK' };
       }
       if (op === 'STRLEN') return { result: 100 };
