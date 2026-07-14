@@ -271,7 +271,7 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
 export const PORTWATCH_PORT_ACTIVITY_KEY_PREFIX = 'supply_chain:portwatch-ports:v1:';
 export const PORTWATCH_PORT_ACTIVITY_COUNTRIES_KEY = 'supply_chain:portwatch-ports:v1:_countries';
 
-export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
+export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast' | 'on-demand'> = {
   bisPolicy: 'slow', bisExchange: 'slow', bisCredit: 'slow',
   bisDsr: 'slow', bisPropertyResidential: 'slow', bisPropertyCommercial: 'slow',
   imfMacro: 'slow', imfGrowth: 'slow', imfLabor: 'slow', imfExternal: 'slow',
@@ -279,7 +279,7 @@ export const BOOTSTRAP_TIERS: Record<string, 'slow' | 'fast'> = {
   minerals: 'slow', giving: 'slow', sectors: 'slow',
   progressData: 'slow', renewableEnergy: 'slow',
   etfFlows: 'slow', shippingRates: 'fast', wildfires: 'slow',
-  climateAnomalies: 'slow', climateDisasters: 'slow', co2Monitoring: 'slow', oceanIce: 'slow', climateNews: 'slow', sanctionsPressure: 'slow', radiationWatch: 'slow', thermalEscalation: 'slow', crossSourceSignals: 'slow', cyberThreats: 'slow', techReadiness: 'slow',
+  climateAnomalies: 'slow', climateDisasters: 'slow', co2Monitoring: 'slow', oceanIce: 'slow', climateNews: 'slow', sanctionsPressure: 'slow', radiationWatch: 'slow', thermalEscalation: 'slow', crossSourceSignals: 'slow', cyberThreats: 'on-demand', techReadiness: 'slow',
   theaterPosture: 'fast', naturalEvents: 'slow',
   cryptoQuotes: 'slow', gulfQuotes: 'slow', stablecoinMarkets: 'slow',
   unrestEvents: 'slow', ucdpEvents: 'slow', techEvents: 'slow',

@@ -39,6 +39,51 @@ export function getHydratedData(key: string): unknown | undefined {
   return val;
 }
 
+// In-flight coalescing for on-demand keys: a panel and a map layer can both ask
+// for the same key in the same tick, and we want one request, not two.
+const onDemandInflight = new Map<string, Promise<unknown | undefined>>();
+
+/**
+ * Hydration for keys that ride in NEITHER bootstrap tier (#5300).
+ *
+ * Returns the tier-hydrated value if one is present (so a key promoted back into
+ * a tier keeps working unchanged), otherwise fetches it through its own
+ * CDN-shielded public URL — `?keys=<name>&public=1`, one key per URL, one CDN
+ * entry per key.
+ *
+ * This must NOT fall back to the domain RPC: the RPC reads the same Redis key
+ * with no CDN in front of it, so routing misses there would relocate the egress
+ * rather than remove it — the trap that made #5263's RPC work a no-op until
+ * #5287. Callers keep their existing RPC fallback for the failure case; this
+ * simply gives them a cached path to try first.
+ */
+export async function ensureHydrated(key: string): Promise<unknown | undefined> {
+  const hydrated = getHydratedData(key);
+  if (hydrated !== undefined) return hydrated;
+
+  const existing = onDemandInflight.get(key);
+  if (existing) return existing;
+
+  const promise = (async () => {
+    try {
+      const resp = await fetch(
+        toApiUrl(`/api/bootstrap?keys=${encodeURIComponent(key)}&public=1`),
+        { credentials: 'omit', signal: AbortSignal.timeout(10_000) },
+      );
+      if (!resp.ok) return undefined;
+      const payload = (await resp.json()) as { data?: Record<string, unknown> };
+      return payload.data?.[key];
+    } catch {
+      return undefined;
+    } finally {
+      onDemandInflight.delete(key);
+    }
+  })();
+
+  onDemandInflight.set(key, promise);
+  return promise;
+}
+
 export function markBootstrapAsLive(): void {
   if (lastHydrationState.source === 'cached' || lastHydrationState.source === 'mixed') {
     const now = Date.now();

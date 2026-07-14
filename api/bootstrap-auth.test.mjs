@@ -602,3 +602,57 @@ test('unknown tier value does not qualify for the public path', async () => {
     assert.equal(resp.headers.get('cache-control'), 'no-store');
   });
 });
+
+// ── On-demand keys: the per-key public URL (#5300) ──────────────────────────
+// `cyberThreats` no longer rides in the slow tier — its layer is off by default
+// in every variant, so the tier was shipping 364 KB to every visitor that no
+// default visitor ever read. It now has its own CDN-shielded per-key URL,
+// fetched only by the clients that actually turn the layer on.
+
+function makePublicOnDemandRequest(keys = 'cyberThreats', headers = {}) {
+  return new Request(`https://api.worldmonitor.app/api/bootstrap?keys=${keys}&public=1`, {
+    method: 'GET',
+    headers,
+  });
+}
+
+test('public on-demand key URL is CDN-shielded and anonymous', async () => {
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
+    const resp = await handler(makePublicOnDemandRequest('cyberThreats'));
+
+    assert.equal(resp.status, 200);
+    assertSharedCacheHeaders(resp);
+    assertPublicCorsHeaders(resp);
+  });
+});
+
+test('public on-demand URL keeps ONE contract even when credentials are attached', async () => {
+  // A CDN hit precedes handler auth, so the response must not vary by caller —
+  // same invariant the tier URLs carry (#5250).
+  await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async () => {
+    const resp = await handler(makePublicOnDemandRequest('cyberThreats', { Cookie: 'wm-session=whatever' }));
+
+    assert.equal(resp.status, 200);
+    assertSharedCacheHeaders(resp);
+  });
+});
+
+test('public on-demand URL does not widen into a CDN-amplification vector', async () => {
+  // Every shape below must fall through to the credentialed, no-store path. A
+  // multi-key or unlisted-key public URL would make the CDN key space
+  // combinatorial, and each distinct miss re-reads the registry from Redis —
+  // the exact amplification the public URLs exist to prevent (#5259).
+  await withMockedBootstrapAuth({ entitlement: null }, async () => {
+    for (const keys of [
+      'cyberThreats,marketQuotes',   // multi-key
+      'marketQuotes',                // a real key, but not on-demand
+      'wildfires',                   // slow-tier key, not on-demand
+      'notARealKey',                 // unknown
+      '',                            // empty
+    ]) {
+      const resp = await handler(makePublicOnDemandRequest(keys));
+      assert.equal(resp.status, 401, `keys=${keys} must not qualify for the public path`);
+      assert.equal(resp.headers.get('cache-control'), 'no-store', `keys=${keys} must stay no-store`);
+    }
+  });
+});

@@ -376,9 +376,14 @@ describe('Bootstrap key hydration coverage', () => {
     ]);
     for (const key of keys) {
       if (PENDING_CONSUMERS.has(key)) continue;
+      // Two valid consumer forms. `getHydratedData(k)` reads a key delivered by a
+      // tier bundle. `ensureHydrated(k)` (#5300) reads a key that rides in no
+      // tier: it returns the tier value if one is present and otherwise fetches
+      // the key through its own CDN-shielded `?keys=<k>&public=1` URL. Both prove
+      // the key is actually consumed — which is what this guard is for.
       assert.ok(
-        allSrc.includes(`getHydratedData('${key}')`),
-        `Bootstrap key '${key}' has no getHydratedData('${key}') consumer in src/ — data is fetched but never used`,
+        allSrc.includes(`getHydratedData('${key}')`) || allSrc.includes(`ensureHydrated('${key}')`),
+        `Bootstrap key '${key}' has no getHydratedData('${key}') or ensureHydrated('${key}') consumer in src/ — data is fetched but never used`,
       );
     }
   });
@@ -415,27 +420,35 @@ describe('Bootstrap tier definitions', () => {
     const block = src.match(/BOOTSTRAP_TIERS[^{]*\{([^}]+)\}/);
     if (!block) return {};
     const result = {};
-    for (const m of block[1].matchAll(/(\w+):\s+'(slow|fast)'/g)) {
+    for (const m of block[1].matchAll(/(\w+):\s+'(slow|fast|on-demand)'/g)) {
       result[m[1]] = m[2];
     }
     return result;
   }
 
-  it('SLOW_KEYS + FAST_KEYS cover all BOOTSTRAP_CACHE_KEYS with no overlap', () => {
+  // Every registered key must be classified exactly once: it rides in the fast
+  // tier, the slow tier, or neither (ON_DEMAND_KEYS — fetched per-key, only by
+  // the clients that render it; #5300). "Neither" is now a deliberate state, not
+  // an omission, so it needs a home in the invariant rather than a hole in it.
+  it('SLOW_KEYS + FAST_KEYS + ON_DEMAND_KEYS cover all BOOTSTRAP_CACHE_KEYS with no overlap', () => {
     const slow = extractSetKeys(bootstrapSrc, 'SLOW_KEYS');
     const fast = extractSetKeys(bootstrapSrc, 'FAST_KEYS');
+    const onDemand = extractSetKeys(bootstrapSrc, 'ON_DEMAND_KEYS');
     const all = extractBootstrapKeys(bootstrapSrc);
 
-    const union = new Set([...slow, ...fast]);
-    assert.deepEqual([...union].sort(), [...all].sort(), 'SLOW_KEYS ∪ FAST_KEYS must equal BOOTSTRAP_CACHE_KEYS');
+    const union = new Set([...slow, ...fast, ...onDemand]);
+    assert.deepEqual([...union].sort(), [...all].sort(), 'SLOW ∪ FAST ∪ ON_DEMAND must equal BOOTSTRAP_CACHE_KEYS');
 
-    const intersection = [...slow].filter(k => fast.has(k));
-    assert.equal(intersection.length, 0, `Overlap between tiers: ${intersection.join(', ')}`);
+    for (const [a, b, label] of [[slow, fast, 'slow/fast'], [slow, onDemand, 'slow/on-demand'], [fast, onDemand, 'fast/on-demand']]) {
+      const overlap = [...a].filter(k => b.has(k));
+      assert.equal(overlap.length, 0, `Overlap between ${label}: ${overlap.join(', ')}`);
+    }
   });
 
-  it('tier sets in bootstrap.js match BOOTSTRAP_TIERS in cache-keys.ts', () => {
+  it('key sets in bootstrap.js match BOOTSTRAP_TIERS in cache-keys.ts', () => {
     const slow = extractSetKeys(bootstrapSrc, 'SLOW_KEYS');
     const fast = extractSetKeys(bootstrapSrc, 'FAST_KEYS');
+    const onDemand = extractSetKeys(bootstrapSrc, 'ON_DEMAND_KEYS');
     const tiers = extractTierKeys(cacheKeysSrc);
 
     for (const k of slow) {
@@ -444,9 +457,21 @@ describe('Bootstrap tier definitions', () => {
     for (const k of fast) {
       assert.equal(tiers[k], 'fast', `FAST_KEYS has '${k}' but BOOTSTRAP_TIERS says '${tiers[k]}'`);
     }
+    for (const k of onDemand) {
+      assert.equal(tiers[k], 'on-demand', `ON_DEMAND_KEYS has '${k}' but BOOTSTRAP_TIERS says '${tiers[k]}'`);
+    }
     const tierKeys = new Set(Object.keys(tiers));
-    const setKeys = new Set([...slow, ...fast]);
-    assert.deepEqual([...tierKeys].sort(), [...setKeys].sort(), 'BOOTSTRAP_TIERS keys must match SLOW_KEYS ∪ FAST_KEYS');
+    const setKeys = new Set([...slow, ...fast, ...onDemand]);
+    assert.deepEqual([...tierKeys].sort(), [...setKeys].sort(), 'BOOTSTRAP_TIERS keys must match SLOW ∪ FAST ∪ ON_DEMAND');
+  });
+
+  it('on-demand keys are NOT served by the tier bundles every client downloads', () => {
+    const slow = extractSetKeys(bootstrapSrc, 'SLOW_KEYS');
+    const fast = extractSetKeys(bootstrapSrc, 'FAST_KEYS');
+    const onDemand = extractSetKeys(bootstrapSrc, 'ON_DEMAND_KEYS');
+
+    assert.ok(onDemand.has('cyberThreats'), 'cyberThreats must stay on-demand: its layer is off by default in every variant');
+    assert.ok(!slow.has('cyberThreats') && !fast.has('cyberThreats'), 'cyberThreats must not ride in a tier');
   });
 });
 
