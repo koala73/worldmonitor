@@ -79,7 +79,7 @@ export function diffPanelGeometry(
 
 /**
  * Pure: compact per-record strings for the Sentry extra, largest shift first,
- * capped at three. Example: "t=1240 v=0.31 grew:threat-timeline+180 moved:2".
+ * capped at three. Example: "t=1240 v=0.31 sized:threat-timeline+180 moved:2".
  */
 export function formatMoverRecords(records: MoverRecord[]): string[] {
   return [...records]
