@@ -1660,6 +1660,44 @@ canvas,
   min-height: var(--dashboard-first-grid-reservation) !important;
 }
 
+/* #5332: eager always-full panels grow their grid row when populated content
+   replaces the loading state — rows are minmax(--dashboard-panel-row-min,
+   --dashboard-panel-row-max) sized from the panel's intrinsic content height,
+   so the growth shoves every row below (field: div.panel shift p75 0.244 on
+   9% of desktop views; the dominant remaining desktop CLS mechanism, #4580).
+   Pin the known always-full panels to the row max so their row lands at its
+   final height from first paint; .panel-content already scrolls. User-set
+   spans (.span-N) keep their own min-height reservation contract and are
+   excluded. Keep this key list in sync with the ranked offenders in #5332. */
+.panel[data-panel="threat-timeline"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide),
+.panel[data-panel="gdelt-intel"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide),
+.panel[data-panel="intel"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide),
+.panel[data-panel="live-news"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide),
+.panel[data-panel="politics"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide),
+.panel[data-panel="energy-complex"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide),
+.panel[data-panel="global-procurement"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide),
+.panel[data-panel="strategic-posture"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide),
+.panel[data-panel="cascade"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide),
+.panel[data-panel="live-webcams"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide) {
+  height: var(--dashboard-panel-row-max);
+}
+
+/* Offenders that are two-row by default — span-2 defaults and the 2x2
+   .panel-wide pair — get the populated two-row max (2 rows + gap) so their
+   footprint is identical loading vs populated, INCLUDING the deferred-shell
+   phase (the shell carries the same classes, so shell->panel swap is
+   shift-free). A user demoting one to span-1 drops the class and lands in
+   the rule above. */
+.panel[data-panel="threat-timeline"].span-2,
+.panel[data-panel="gdelt-intel"].span-2,
+.panel[data-panel="energy-complex"].span-2,
+.panel[data-panel="strategic-posture"].span-2,
+.panel[data-panel="global-procurement"].span-2,
+.panel[data-panel="live-news"].panel-wide,
+.panel[data-panel="live-webcams"].panel-wide {
+  height: calc(var(--dashboard-panel-row-max) * 2 + var(--dashboard-grid-gap));
+}
+
 .panel.span-3 {
   grid-row: span 3 !important;
   min-height: 600px !important;
