@@ -722,6 +722,10 @@ async function buildDigest(rule, windowStartMs) {
     // This is cheap and gives rule changes immediate read-path coverage for
     // every row still inside the accumulator window. See
     // docs/plans/2026-05-14-001-…-plan.md (F3, Phase 3).
+    // This is intentionally asymmetric: the historical-explainer policy
+    // needs retroactive coverage for explicit "0" rows, while feel-good and
+    // ephemeral-live below retain their established missing-stamp-only
+    // residue checks until a policy change needs the same treatment.
     const stampedOpinion = track.isOpinion === '1';
     if (
       stampedOpinion ||
