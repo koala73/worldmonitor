@@ -677,6 +677,7 @@ describe('extractMetricObservation present() semantics (#void-triage)', () => {
     const feed = { outages: [{ country: 'Cuba', date: '2026-07-14' }] };
     const obs = extractMetricObservation(parsed, feed);
     assert.equal(obs.value, 1);
+    assert.equal(obs.asOf, Date.parse('2026-07-14'));
   });
 
   it('lets a within-horizon present spec resolve NO on a sampled absence (not VOID)', () => {
