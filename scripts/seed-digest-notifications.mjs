@@ -42,9 +42,9 @@ const { fetchFollowedCountries } = require('./lib/followed-countries-fetch.cjs')
 const { Resend } = require('resend');
 const { normalizeResendSender } = require('./lib/resend-from.cjs');
 import { readRawJsonFromUpstash, redisPipeline } from '../api/_upstash-json.js';
-import { classifyOpinion } from '../server/_shared/opinion-classifier.js';
 import { classifyFeelGood } from '../server/_shared/feelgood-classifier.js';
 import { classifyEphemeralLiveCoverage } from '../shared/ephemeral-live-classifier.js';
+import { shouldDropOpinionTrack } from './lib/digest-opinion-track-filter.mjs';
 import {
   composeBriefFromDigestStories,
   compareRules,
@@ -716,25 +716,10 @@ async function buildDigest(rule, windowStartMs) {
 
     // Non-event brief exclusion (F3). The brief is event-driven intelligence
     // — an op-ed or historical explainer is not an event.
-    // Ingest stamps `isOpinion` on the story:track:v1 row. Re-check the
-    // shared classifier too, so an older explicit "0" stamp cannot keep a
-    // story in the pool after the classifier learns a new exclusion shape.
-    // This is cheap and gives rule changes immediate read-path coverage for
-    // every row still inside the accumulator window. See
-    // docs/plans/2026-05-14-001-…-plan.md (F3, Phase 3).
-    // This is intentionally asymmetric: the historical-explainer policy
-    // needs retroactive coverage for explicit "0" rows, while feel-good and
-    // ephemeral-live below retain their established missing-stamp-only
-    // residue checks until a policy change needs the same treatment.
-    const stampedOpinion = track.isOpinion === '1';
-    if (
-      stampedOpinion ||
-      classifyOpinion({
-        title: track.title,
-        link: track.link ?? '',
-        description: typeof track.description === 'string' ? track.description : '',
-      })
-    ) {
+    // Ingest stamps `isOpinion` on the story:track:v1 row. Explicit "1" and
+    // "0" are authoritative; only unstamped legacy rows are classified at
+    // read time by the pure helper below.
+    if (shouldDropOpinionTrack(track)) {
       droppedOpinion++;
       continue;
     }

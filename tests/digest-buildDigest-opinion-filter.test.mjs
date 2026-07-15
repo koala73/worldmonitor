@@ -1,38 +1,42 @@
-// Source-level regression guard for the digest read-path opinion exclusion.
+// Behavioral coverage for digest story:track opinion stamp handling.
 //
-// A classifier rule can be tightened while a story:track row with
-// isOpinion="0" is still inside the accumulator window. Re-checking the
-// cheap shared classifier on read keeps that in-flight residue out of the
-// very next brief instead of waiting for a later feed poll to overwrite the
-// stamp.
+// buildDigest uses this pure helper so the policy is executable without
+// loading cron configuration or a Redis accumulator harness.
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { resolve, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { shouldDropOpinionTrack } from '../scripts/lib/digest-opinion-track-filter.mjs';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const seedSrc = readFileSync(
-  resolve(__dirname, '..', 'scripts', 'seed-digest-notifications.mjs'),
-  'utf-8',
-);
+const DW_RETROSPECTIVE = {
+  title: "How Turkey's 2016 coup attempt changed the country for good",
+  link: 'https://amp.dw.com/en/how-turkeys-2016-coup-attempt-changed-the-country-for-good/a-77955154',
+  description: 'A reported look back at the coup and its lasting political consequences.',
+  publishedAt: String(Date.UTC(2026, 6, 14)),
+};
 
-const buildDigestStart = seedSrc.indexOf('async function buildDigest(rule, windowStartMs)');
-const afterBuildDigest = seedSrc.indexOf('\nfunction ', buildDigestStart + 1);
-const afterBuildDigestAsync = seedSrc.indexOf('\nasync function ', buildDigestStart + 1);
-const buildDigestEnd = Math.min(
-  afterBuildDigest === -1 ? Number.POSITIVE_INFINITY : afterBuildDigest,
-  afterBuildDigestAsync === -1 ? Number.POSITIVE_INFINITY : afterBuildDigestAsync,
-);
-const buildDigestBody = seedSrc.slice(buildDigestStart, buildDigestEnd);
+describe('shouldDropOpinionTrack — digest read-path stamp policy', () => {
+  it('drops an ingest-stamped historical explainer', () => {
+    assert.equal(shouldDropOpinionTrack({ ...DW_RETROSPECTIVE, isOpinion: '1' }), true);
+  });
 
-describe('buildDigest opinion filter — current classifier rule changes', () => {
-  it('re-checks classifyOpinion even when Redis has an explicit non-opinion stamp', () => {
-    assert.match(
-      buildDigestBody,
-      /stampedOpinion\s*\|\|\s*classifyOpinion\(\{[\s\S]*?title:\s*track\.title/,
-      'must calculate the current shared classifier verdict for every non-opinion row',
+  it('keeps hard news with an explicit non-opinion stamp', () => {
+    assert.equal(
+      shouldDropOpinionTrack({
+        title: 'Iran launches missiles at UAE oil tankers in Strait of Hormuz',
+        link: 'https://example.com/world/hormuz-tankers',
+        description: 'The attacks escalated a regional confrontation overnight.',
+        publishedAt: String(Date.UTC(2026, 6, 15)),
+        isOpinion: '0',
+      }),
+      false,
     );
+  });
+
+  it('drops an unstamped legacy historical explainer', () => {
+    assert.equal(shouldDropOpinionTrack(DW_RETROSPECTIVE), true);
+  });
+
+  it('trusts an explicit legacy non-opinion stamp until the next ingest poll', () => {
+    assert.equal(shouldDropOpinionTrack({ ...DW_RETROSPECTIVE, isOpinion: '0' }), false);
   });
 });

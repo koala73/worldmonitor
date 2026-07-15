@@ -106,10 +106,10 @@ describe('U3: feel-good filter block trusts stamp + re-classifies residue', () =
 });
 
 describe('U3: feel-good filter runs AFTER opinion filter (M6 asymmetry)', () => {
-  it('classifyFeelGood call appears after classifyOpinion call in buildDigest', () => {
-    const opinionIdx = buildDigestBody.indexOf('classifyOpinion(');
+  it('classifyFeelGood call appears after the opinion-track policy in buildDigest', () => {
+    const opinionIdx = buildDigestBody.indexOf('shouldDropOpinionTrack(');
     const feelGoodIdx = buildDigestBody.indexOf('classifyFeelGood(');
-    assert.ok(opinionIdx !== -1, 'classifyOpinion call must exist in buildDigest');
+    assert.ok(opinionIdx !== -1, 'opinion-track policy call must exist in buildDigest');
     assert.ok(feelGoodIdx !== -1, 'classifyFeelGood call must exist in buildDigest');
     assert.ok(
       feelGoodIdx > opinionIdx,

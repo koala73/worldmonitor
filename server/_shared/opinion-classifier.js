@@ -106,33 +106,51 @@ const CORROBORATING_DESCRIPTION_RE = /\b(?:columnist|op-?ed|opinion piece|our co
 // publishers do not mark these pieces as opinion in either their URL or RSS
 // metadata, but their headline has a distinctive explanatory shape:
 // "How <past event> changed/became/shaped …". Require BOTH that shape and a
-// clearly historical anchor in the title/description so ordinary current
-// explainers (or ordinary reporting that merely references an old year) keep
-// flowing. This caught the July 2026 DW ten-year Turkey coup retrospective.
+// clearly historical anchor so ordinary current explainers (or ordinary
+// reporting that merely references an old year) keep flowing. The anchor is
+// deliberately conservative: a false positive silently removes a live event.
+// This caught the July 2026 DW ten-year Turkey coup retrospective.
 const HISTORICAL_EXPLAINER_HEADLINE_RE =
   /^(?:how|why)\b[\s\S]{0,180}\b(?:changed|shaped|transformed|altered|became|remade|defined)\b/i;
-const HISTORICAL_EXPLAINER_TIME_RE =
+const HISTORICAL_EXPLAINER_TITLE_TIME_RE =
   /\b(?:(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(?:years?|decades?)\s+(?:ago|after|later)|anniversary|retrospective|(?:a|this)\s+look back)\b/i;
-const PAST_YEAR_RE = /\b((?:19|20)\d{2})\b/g;
+const HISTORICAL_EXPLAINER_DESCRIPTION_LOOKBACK_RE = /\b(?:a|this)\s+look[-\s]?back\b/i;
+const HISTORICAL_EXPLAINER_LIVE_EVENT_RE = /\b(?:today|overnight|this morning|an?\s+hour ago|hours ago|breaking)\b/i;
+// A four-digit number alone is not an event year: it can be a troop count,
+// dollar amount, or capacity. Require a nearby historic-event noun instead.
+const HISTORICAL_EVENT_YEAR_RE =
+  /\b((?:19|20)\d{2})\s+(?:coup(?:\s+attempt)?|war|invasion|election|referendum|uprising|protests?|crackdown|attack|crisis|conflict|earthquake|disaster)\b/gi;
 
-function hasPastYear(text, nowMs) {
-  const currentYear = new Date(nowMs).getUTCFullYear();
-  for (const match of text.matchAll(PAST_YEAR_RE)) {
-    if (Number.parseInt(match[1], 10) < currentYear - 1) return true;
+function publishedYear(publishedAt) {
+  if (typeof publishedAt !== 'number' && typeof publishedAt !== 'string') return null;
+  const timestamp = typeof publishedAt === 'string' && /^\d+$/.test(publishedAt)
+    ? Number(publishedAt)
+    : publishedAt;
+  const date = new Date(timestamp);
+  const year = date.getUTCFullYear();
+  return Number.isNaN(date.getTime()) ? null : year;
+}
+
+function hasHistoricalEventYear(title, publishedAt) {
+  const storyYear = publishedYear(publishedAt);
+  if (storyYear === null) return false;
+  for (const match of title.matchAll(HISTORICAL_EVENT_YEAR_RE)) {
+    // Preserve the prior one-calendar-year grace, but derive it from the
+    // article's persisted publication time rather than read-time Date.now().
+    if (Number.parseInt(match[1], 10) < storyYear - 1) return true;
   }
   return false;
 }
 
-function isHistoricalExplainer(title, description, nowMs = Date.now()) {
-  if (!HISTORICAL_EXPLAINER_HEADLINE_RE.test(title)) return false;
-  const text = `${title} ${description}`;
-  if (HISTORICAL_EXPLAINER_TIME_RE.test(text)) return true;
-
-  // A summary can mention an old year as background for a live explainer.
-  // Treat a bare past year as an anchor only when the headline itself carries
-  // it; description-only matches need the explicit retrospective wording
-  // above.
-  return hasPastYear(title, nowMs);
+function isHistoricalExplainer(title, description, publishedAt) {
+  const headline = title.trim();
+  if (!HISTORICAL_EXPLAINER_HEADLINE_RE.test(headline)) return false;
+  if (HISTORICAL_EXPLAINER_LIVE_EVENT_RE.test(`${headline} ${description}`)) return false;
+  if (HISTORICAL_EXPLAINER_TITLE_TIME_RE.test(headline)) return true;
+  // Descriptions can corroborate only an explicit look-back label. Broad
+  // anniversary wording in article copy is common in live coverage.
+  if (HISTORICAL_EXPLAINER_DESCRIPTION_LOOKBACK_RE.test(description)) return true;
+  return hasHistoricalEventYear(headline, publishedAt);
 }
 
 // ── CORROBORATING: whole-headline quote wrap ─────────────────────────
@@ -153,42 +171,21 @@ function isWholeHeadlineQuoted(title) {
 }
 
 /**
- * Parse the URL pathname defensively. Malformed URL → empty string
- * (skip URL signal entirely; do not throw). Closes the tracking-param
+ * Parse URL pathname and hostname defensively. Malformed URL → empty parts
+ * (skip URL signals entirely; do not throw). Closes the tracking-param
  * injection vector — aggregator tracking params (?utm=/opinion/promo)
  * and URL fragments (#/opinion/footer) live OUTSIDE the pathname and
  * must not trigger STRONG (or CORROBORATING) via raw-string includes()
  * matching on the full link. Backport of the same helper added in
  * feelgood-classifier.js (PR #3748 / adv-002).
  */
-function safePathname(link) {
-  if (typeof link !== 'string' || link.length === 0) return '';
+function safeUrlParts(link) {
+  if (typeof link !== 'string' || link.length === 0) return { pathname: '', hostname: '' };
   try {
-    return new URL(link).pathname.toLowerCase();
+    const url = new URL(link);
+    return { pathname: url.pathname.toLowerCase(), hostname: url.hostname.toLowerCase() };
   } catch {
-    return '';
-  }
-}
-
-/**
- * Parse the URL hostname defensively. Same shape as safePathname but
- * for the host portion — closes the same tracking-param / fragment
- * injection vector. A raw-string `link.includes('thebulletin.org')`
- * would false-positive on `https://nytimes.com/article?ref=thebulletin.org`
- * (tracking param) or `https://evil.com#thebulletin.org` (fragment).
- * Hostname comes from the parsed URL only.
- *
- * Suffix-anchored match: hostname `=== entry` OR hostname `.endsWith('.' + entry)`.
- * This catches subdomain variants (`newsletter.thebulletin.org`,
- * `m.thebulletin.org`) while rejecting typo-domains (`evilthebulletin.org`).
- * The plan's subdomain-policy decision (F12 in PR #3828's doc review).
- */
-function safeHostname(link) {
-  if (typeof link !== 'string' || link.length === 0) return '';
-  try {
-    return new URL(link).hostname.toLowerCase();
-  } catch {
-    return '';
+    return { pathname: '', hostname: '' };
   }
 }
 
@@ -203,7 +200,7 @@ function matchesCommentaryHost(hostname) {
 /**
  * Classify a story as non-event brief content vs hard news.
  *
- * @param {{ title?: unknown; link?: unknown; description?: unknown }} story
+ * @param {{ title?: unknown; link?: unknown; description?: unknown; publishedAt?: unknown }} story
  * @returns {boolean} true = opinion/analysis or historical explainer
  *   (exclude from the brief)
  */
@@ -211,13 +208,14 @@ export function classifyOpinion(story) {
   const title = typeof story?.title === 'string' ? story.title : '';
   const link = typeof story?.link === 'string' ? story.link : '';
   const description = typeof story?.description === 'string' ? story.description : '';
+  const publishedAt = story?.publishedAt;
 
   // Non-event historical explainers share the brief-exclusion contract with
   // opinion/analysis: do not let a retrospective rank like a live crisis.
-  if (isHistoricalExplainer(title, description)) return true;
+  if (isHistoricalExplainer(title, description, publishedAt)) return true;
 
-  // Parse pathname once; reused by STRONG #1 and CORROBORATING URL check.
-  const pathname = safePathname(link);
+  // Parse once; path and host signals share the same defensive URL boundary.
+  const { pathname, hostname } = safeUrlParts(link);
 
   // STRONG #1 — URL section. Matches a path segment on the parsed
   // pathname (NOT raw link), so tracking params / fragments can't
@@ -235,7 +233,7 @@ export function classifyOpinion(story) {
   // section to distinguish from. Hostname match on the parsed URL
   // only, suffix-anchored to permit `newsletter.<host>` and `m.<host>`
   // while rejecting typo-domains.
-  if (matchesCommentaryHost(safeHostname(link))) return true;
+  if (matchesCommentaryHost(hostname)) return true;
 
   // CORROBORATING — need at least TWO.
   let corroborating = 0;

@@ -425,7 +425,11 @@ async function fetchAndParseRss(
   // shape changes.)
   // v5→v6 (#4920 review): ParseResult gained droppedFeedCap; warm v5 rows
   // lack it and would undercount the coverage ledger for their whole TTL.
-  const cacheKey = `rss:feed:v6:${variant}:${feed.url}`;
+  // v6→v7: ParsedItems now stamp historical explainers using their persisted
+  // publishedAt. Digest reads deliberately trust explicit isOpinion stamps,
+  // so warm v6 rows could retain an earlier "0" verdict for one cache TTL.
+  // Force a cold parse to stamp the stable ingest-time verdict immediately.
+  const cacheKey = `rss:feed:v7:${variant}:${feed.url}`;
 
   try {
     // Read cache unconditionally — the v5 prefix guarantees pre-fix
@@ -604,7 +608,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
       entityCorroborationCount: 0,
       lang: feed.lang ?? 'en',
       description,
-      isOpinion: classifyOpinion({ title, link, description }),
+      isOpinion: classifyOpinion({ title, link, description, publishedAt }),
       isFeelGood: classifyFeelGood({ title, link, description }),
       isEphemeralLiveCoverage: classifyEphemeralLiveCoverage({ title, link, description }),
       tickers: extractTickers(`${title} ${description}`, TICKER_DICTIONARY),

@@ -5,7 +5,7 @@
  * the read path (buildDigest). Uses title, link (URL), and description.
  * See docs/plans/2026-05-14-001-…-plan.md (F3, Phase 3).
  *
- * @param story - { title, link, description } — any may be missing.
+ * @param story - { title, link, description, publishedAt } — any may be missing.
  * @returns true = opinion/analysis or historical explainer (exclude from
  *   the brief).
  */
@@ -13,4 +13,5 @@ export function classifyOpinion(story: {
   title?: unknown;
   link?: unknown;
   description?: unknown;
+  publishedAt?: unknown;
 }): boolean;
