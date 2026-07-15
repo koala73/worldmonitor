@@ -63,6 +63,17 @@ test('fetchFlows pins an explicit lagged period (not the bleeding-edge default)'
   assert.ok(url.includes(lagYear), `period window should include the newest safely-published year (${lagYear}); got: ${url}`);
 });
 
+test('fetchFlows uses the stable HS preview route while product metadata tracks HS2022', async () => {
+  await fetchFlows({ code: '156', name: 'China' }, { code: '8542', desc: 'Semiconductors' }, '2024');
+  const url = new URL(fetchCalls[0]);
+
+  assert.equal(
+    url.pathname,
+    '/public/v1/preview/C/A/HS',
+    'the preview API route classifier is HS; H6 is the HS2022 dataset revision and returns HTTP 500 when used in this path',
+  );
+});
+
 // --- Defect 2: structurally-absent reporters must not block publish ---
 const REQUIRED_FOUR = [
   { code: '842', name: 'USA' },

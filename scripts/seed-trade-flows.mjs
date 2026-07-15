@@ -11,6 +11,7 @@ const CANONICAL_KEY = 'comtrade:flows:v1';
 const CACHE_TTL = 259200; // 72h = 3× daily interval
 export const KEY_PREFIX = 'comtrade:flows';
 const COMTRADE_BASE = 'https://comtradeapi.un.org/public/v1';
+const COMTRADE_PREVIEW_CLASSIFIER = 'HS'; // API route family; metadata tracks the active H6/HS2022 revision separately.
 export const INTER_REQUEST_DELAY_MS = 3_000;
 export const TRADE_FLOW_FETCH_PHASE_TIMEOUT_MS = 25 * 60 * 1000;
 export const TRADE_FLOW_LOCK_TTL_MS = 30 * 60 * 1000;
@@ -71,7 +72,6 @@ export function candidatePeriods(now = new Date()) {
 
 const require = createRequire(import.meta.url);
 const STRATEGIC_PRODUCT_METADATA = require('./shared/comtrade-strategic-products.json');
-const COMTRADE_CLASSIFICATION_CODE = STRATEGIC_PRODUCT_METADATA.classification.code;
 const COMMODITIES = STRATEGIC_PRODUCT_METADATA.products
   .filter((product) => product.tradeFlowCode)
   .map((product) => ({
@@ -96,7 +96,7 @@ let _retrySleep = sleep;
 export function __setSleepForTests(fn) { _retrySleep = typeof fn === 'function' ? fn : sleep; }
 
 export async function fetchFlows(reporter, commodity, period = recentPeriod(), opts = {}) {
-  const url = new URL(`${COMTRADE_BASE}/preview/C/A/${COMTRADE_CLASSIFICATION_CODE}`);
+  const url = new URL(`${COMTRADE_BASE}/preview/C/A/${COMTRADE_PREVIEW_CLASSIFIER}`);
   url.searchParams.set('reporterCode', reporter.code);
   url.searchParams.set('cmdCode', commodity.code);
   url.searchParams.set('flowCode', 'X,M'); // exports + imports
