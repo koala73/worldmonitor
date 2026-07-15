@@ -3,6 +3,9 @@ import { describe, it } from 'node:test';
 import {
   diffPanelGeometry,
   formatMoverRecords,
+  getMoverRecordStrings,
+  resetClsMoverTrackingForTesting,
+  startClsMoverTracking,
   type PanelRect,
 } from '../src/bootstrap/cls-mover-tracker';
 
@@ -15,6 +18,99 @@ import {
 // insertion. The diff core is pure and tested here without DOM.
 
 const r = (top: number, height: number): PanelRect => ({ top, height });
+
+function withGlobals<T>(values: Record<string, unknown>, fn: () => T): T {
+  const descriptors = new Map<string, PropertyDescriptor | undefined>();
+  for (const [key, value] of Object.entries(values)) {
+    descriptors.set(key, Object.getOwnPropertyDescriptor(globalThis, key));
+    Object.defineProperty(globalThis, key, { configurable: true, value });
+  }
+  try {
+    return fn();
+  } finally {
+    for (const [key, descriptor] of descriptors) {
+      if (descriptor) Object.defineProperty(globalThis, key, descriptor);
+      else delete (globalThis as Record<string, unknown>)[key];
+    }
+  }
+}
+
+interface FakePanel {
+  dataset: { panel?: string; clsMover?: string };
+  top: number;
+  height: number;
+  getBoundingClientRect: () => { top: number; height: number };
+}
+
+function fakePanel(key: string, top: number, height: number, kind: 'panel' | 'mover' = 'panel'): FakePanel {
+  const panel: FakePanel = {
+    dataset: kind === 'panel' ? { panel: key } : { clsMover: key },
+    top,
+    height,
+    getBoundingClientRect: () => ({ top: panel.top, height: panel.height }),
+  };
+  return panel;
+}
+
+function withTrackerHarness<T>(
+  initialGrid: FakePanel[] | null,
+  fn: (harness: {
+    setGrid: (panels: FakePanel[] | null) => void;
+    deliver: (entries: Array<{ startTime: number; value: number; hadRecentInput: boolean }>) => void;
+    restoreFromBfcache: () => void;
+    observeCalls: () => number;
+  }) => T,
+): T {
+  let panelsGrid = initialGrid;
+  let callback: ((list: { getEntries: () => unknown[] }) => void) | undefined;
+  let observeCount = 0;
+  const pageShowListeners = new Set<(event: { persisted: boolean }) => void>();
+  const grid = {
+    querySelectorAll: () => panelsGrid ?? [],
+  };
+  const fakeDocument = {
+    getElementById: (id: string) => id === 'panelsGrid' && panelsGrid !== null ? grid : null,
+  };
+  const fakeWindow = {
+    scrollY: 0,
+    addEventListener: (type: string, listener: (event: { persisted: boolean }) => void) => {
+      if (type === 'pageshow') pageShowListeners.add(listener);
+    },
+    removeEventListener: (type: string, listener: (event: { persisted: boolean }) => void) => {
+      if (type === 'pageshow') pageShowListeners.delete(listener);
+    },
+  };
+  class FakePerformanceObserver {
+    constructor(cb: (list: { getEntries: () => unknown[] }) => void) {
+      callback = cb;
+    }
+    observe(): void {
+      observeCount += 1;
+    }
+    disconnect(): void {}
+  }
+
+  return withGlobals({
+    document: fakeDocument,
+    window: fakeWindow,
+    performance: { now: () => 1_000 },
+    PerformanceObserver: FakePerformanceObserver,
+  }, () => {
+    resetClsMoverTrackingForTesting();
+    try {
+      return fn({
+        setGrid: (panels) => { panelsGrid = panels; },
+        deliver: (entries) => callback?.({ getEntries: () => entries }),
+        restoreFromBfcache: () => {
+          for (const listener of pageShowListeners) listener({ persisted: true });
+        },
+        observeCalls: () => observeCount,
+      });
+    } finally {
+      resetClsMoverTrackingForTesting();
+    }
+  });
+}
 
 describe('diffPanelGeometry (#5332 mover attribution)', () => {
   it('classifies height changes as movers with signed deltas', () => {
@@ -87,5 +183,66 @@ describe('removed-panel detection (review P2)', () => {
     );
     assert.deepEqual(d.removed, ['live-news']);
     assert.deepEqual(d.heightChangers, []);
+  });
+});
+
+describe('startClsMoverTracking observer lifecycle', () => {
+  it('refreshes after input shifts and attributes one combined observer delivery', () => {
+    const intel = fakePanel('intel', 100, 200);
+    const politics = fakePanel('politics', 320, 200);
+    withTrackerHarness([intel, politics], ({ deliver, observeCalls }) => {
+      startClsMoverTracking();
+      startClsMoverTracking();
+      assert.equal(observeCalls(), 1, 'tracker startup is idempotent');
+
+      intel.height = 300;
+      politics.top = 420;
+      deliver([{ startTime: 100, value: 0.03, hadRecentInput: true }]);
+      assert.deepEqual(getMoverRecordStrings(), [], 'input-driven shifts only refresh the baseline');
+
+      politics.top = 450;
+      deliver([
+        { startTime: 200, value: 0.03, hadRecentInput: false },
+        { startTime: 220, value: 0.03, hadRecentInput: false },
+      ]);
+      assert.deepEqual(getMoverRecordStrings(), ['t=220 v=0.06 moved:1 n=2']);
+    });
+  });
+
+  it('tracks stable CTA mover keys and clears the ring on bfcache restore', () => {
+    const intel = fakePanel('intel', 100, 200);
+    const proCta = fakePanel('pro-widget-cta', 320, 200, 'mover');
+    withTrackerHarness([intel], ({ setGrid, deliver, restoreFromBfcache }) => {
+      startClsMoverTracking();
+      setGrid([intel, proCta]);
+      deliver([{ startTime: 300, value: 0.1, hadRecentInput: false }]);
+      assert.deepEqual(getMoverRecordStrings(), ['t=300 v=0.1 ins:pro-widget-cta']);
+
+      restoreFromBfcache();
+      assert.deepEqual(getMoverRecordStrings(), []);
+      proCta.height = 260;
+      deliver([{ startTime: 900, value: 0.12, hadRecentInput: false }]);
+      assert.deepEqual(getMoverRecordStrings(), ['t=900 v=0.12 sized:pro-widget-cta+60']);
+    });
+  });
+
+  it('records all tracked children disappearing as removals', () => {
+    const intel = fakePanel('intel', 100, 200);
+    withTrackerHarness([intel], ({ setGrid, deliver }) => {
+      startClsMoverTracking();
+      setGrid([]);
+      deliver([{ startTime: 500, value: 0.1, hadRecentInput: false }]);
+      assert.deepEqual(getMoverRecordStrings(), ['t=500 v=0.1 rem:intel']);
+    });
+  });
+
+  it('marks the first qualifying shift cold when registration precedes the grid', () => {
+    const intel = fakePanel('intel', 100, 200);
+    withTrackerHarness(null, ({ setGrid, deliver }) => {
+      startClsMoverTracking();
+      setGrid([intel]);
+      deliver([{ startTime: 120, value: 0.2, hadRecentInput: false }]);
+      assert.deepEqual(getMoverRecordStrings(), ['t=120 v=0.2 cold']);
+    });
   });
 });

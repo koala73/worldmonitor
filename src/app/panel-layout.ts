@@ -2292,6 +2292,7 @@ export class PanelLayoutManager implements AppModule {
     // "+" Add Panel block at the end of the grid
     const addPanelBlock = document.createElement('button');
     addPanelBlock.className = 'add-panel-block';
+    addPanelBlock.dataset.clsMover = 'add-panel';
     addPanelBlock.setAttribute('aria-label', t('components.panel.addPanel'));
     const addIcon = document.createElement('span');
     addIcon.className = 'add-panel-block-icon';
@@ -2309,6 +2310,7 @@ export class PanelLayoutManager implements AppModule {
     // Always create Pro and MCP add-panel blocks — show/hide reactively via auth state.
     const proBlock = document.createElement('button');
     proBlock.className = 'add-panel-block ai-widget-block ai-widget-block-pro';
+    proBlock.dataset.clsMover = 'pro-widget-cta';
     proBlock.setAttribute('aria-label', t('widgets.createInteractive'));
     const proIcon = document.createElement('span');
     proIcon.className = 'add-panel-block-icon';
@@ -2338,6 +2340,7 @@ export class PanelLayoutManager implements AppModule {
 
     const mcpBlock = document.createElement('button');
     mcpBlock.className = 'add-panel-block mcp-panel-block';
+    mcpBlock.dataset.clsMover = 'mcp-cta';
     mcpBlock.setAttribute('aria-label', t('mcp.connectPanel'));
     const mcpIcon = document.createElement('span');
     mcpIcon.className = 'add-panel-block-icon';

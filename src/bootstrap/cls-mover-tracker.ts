@@ -8,12 +8,12 @@
  * left field CLS unmoved because the pinned panels were themselves victims.
  *
  * This tracker names movers directly. It keeps a per-panel geometry cache
- * (`data-panel` → {top, height}) and, on every qualifying layout-shift entry,
+ * (stable mover key -> {top, height}) and, on every qualifying layout-shift delivery,
  * diffs the current geometry against the cache: a panel whose HEIGHT changed
  * is a mover; a panel whose position changed at constant height is a victim;
  * a panel present now but absent from the cache is an insertion (mount-order
- * suspects). The most recent records ride the CLS Sentry report (bad-tail
- * only, same volume policy) as compact strings.
+ * suspects). The six-record ring's three largest deliveries ride the CLS
+ * Sentry report (bad-tail only, same volume policy) as compact strings.
  *
  * The diff core is pure and unit-tested without DOM (tests/cls-mover-tracker).
  */
@@ -33,10 +33,12 @@ export interface PanelGeometryDiff {
 }
 
 export interface MoverRecord extends PanelGeometryDiff {
-  /** performance.now() of the triggering layout-shift entry, rounded. */
+  /** startTime of the latest layout-shift entry in this delivery, rounded. */
   t: number;
-  /** The layout-shift entry's value. */
+  /** Sum of the non-input layout-shift values delivered together. */
   value: number;
+  /** Number of layout-shift entries represented when a delivery was batched. */
+  entryCount?: number;
   /** The shift arrived before any baseline snapshot existed — the mover is
    *  unattributable, but the report should still show a big shift happened. */
   coldStart?: boolean;
@@ -99,6 +101,7 @@ export function formatMoverRecords(records: MoverRecord[]): string[] {
       if (r.inserted.length > 0) parts.push(`ins:${r.inserted.join(',')}`);
       if (r.removed.length > 0) parts.push(`rem:${r.removed.join(',')}`);
       if (r.movedOnly.length > 0) parts.push(`moved:${r.movedOnly.length}`);
+      if ((r.entryCount ?? 1) > 1) parts.push(`n=${r.entryCount}`);
       if (r.coldStart) parts.push('cold');
       return parts.join(' ');
     });
@@ -108,18 +111,30 @@ let records: MoverRecord[] = [];
 let cache: Record<string, PanelRect> | null = null;
 let lastRefresh = 0;
 let started = false;
+let observer: PerformanceObserver | null = null;
+let onPageShow: ((event: PageTransitionEvent) => void) | null = null;
 
 function snapshotPanels(): Record<string, PanelRect> | null {
-  const grid = document.getElementById('panelsGrid');
-  if (!grid) return null;
+  const grids = ['panelsGrid', 'mapBottomGrid']
+    .map((id) => document.getElementById(id))
+    .filter((grid): grid is HTMLElement => grid !== null);
+  if (grids.length === 0) return null;
   const out: Record<string, PanelRect> = {};
-  for (const el of grid.querySelectorAll<HTMLElement>(':scope > [data-panel]')) {
-    const key = el.dataset.panel;
-    if (!key) continue;
-    const rect = el.getBoundingClientRect();
-    out[key] = { top: Math.round(rect.top + window.scrollY), height: Math.round(rect.height) };
+  for (const grid of grids) {
+    for (const el of grid.querySelectorAll<HTMLElement>(':scope > [data-panel], :scope > [data-cls-mover]')) {
+      const key = el.dataset.panel ?? el.dataset.clsMover;
+      if (!key) continue;
+      const rect = el.getBoundingClientRect();
+      out[key] = { top: Math.round(rect.top + window.scrollY), height: Math.round(rect.height) };
+    }
   }
-  return Object.keys(out).length > 0 ? out : null;
+  return out;
+}
+
+function resetMoverState(): void {
+  records = [];
+  cache = snapshotPanels();
+  lastRefresh = cache ? performance.now() : 0;
 }
 
 /** Records captured at shift time, for the CLS report to attach at hide time. */
@@ -129,6 +144,10 @@ export function getMoverRecordStrings(): string[] {
 
 /** Test hook: reset module state. */
 export function resetClsMoverTrackingForTesting(): void {
+  observer?.disconnect();
+  observer = null;
+  if (onPageShow && typeof window !== 'undefined') window.removeEventListener('pageshow', onPageShow);
+  onPageShow = null;
   records = [];
   cache = null;
   lastRefresh = 0;
@@ -144,48 +163,60 @@ export function resetClsMoverTrackingForTesting(): void {
 export function startClsMoverTracking(): void {
   if (started || typeof window === 'undefined' || typeof PerformanceObserver === 'undefined') return;
   started = true;
-  cache = snapshotPanels();
-  if (cache) lastRefresh = performance.now();
+  resetMoverState();
   try {
-    new PerformanceObserver((list) => {
-      for (const entry of list.getEntries() as Array<PerformanceEntry & { value: number; hadRecentInput: boolean }>) {
-        if (entry.hadRecentInput) continue;
-        const now = performance.now();
-        if (entry.value >= RECORD_SHIFT_THRESHOLD && !cache) {
-          // Cold cache: the mover is unattributable (no baseline), but a big
-          // shift before first snapshot is exactly the boot/skeleton-swap
-          // class — record its existence and seed the cache (review P2).
-          const current = snapshotPanels();
-          if (current) {
-            records.push({
-              t: Math.round(entry.startTime),
-              value: Math.round(entry.value * 1000) / 1000,
-              heightChangers: [], movedOnly: [], inserted: [], removed: [],
-              coldStart: true,
-            });
-            cache = current;
-            lastRefresh = now;
-          }
-        } else if (entry.value >= RECORD_SHIFT_THRESHOLD && cache) {
-          const current = snapshotPanels();
-          if (current) {
-            const diff = diffPanelGeometry(cache, current);
-            if (diff.heightChangers.length > 0 || diff.inserted.length > 0 || diff.removed.length > 0 || diff.movedOnly.length > 0) {
-              records.push({ t: Math.round(entry.startTime), value: Math.round(entry.value * 1000) / 1000, ...diff });
-              if (records.length > MAX_RECORDS) records = records.slice(-MAX_RECORDS);
-            }
-            cache = current;
-            lastRefresh = now;
-          }
-        } else if (now - lastRefresh > CACHE_REFRESH_MIN_MS) {
-          const current = snapshotPanels();
-          if (current) {
-            cache = current;
-            lastRefresh = now;
+    observer = new PerformanceObserver((list) => {
+      const entries = list.getEntries() as Array<PerformanceEntry & { value: number; hadRecentInput: boolean }>;
+      if (entries.length === 0) return;
+      const now = performance.now();
+
+      // Callback-time geometry cannot be separated when input and non-input
+      // entries are delivered together. Refresh the baseline once and skip
+      // attribution rather than charging input-driven movement to a later CLS.
+      if (entries.some((entry) => entry.hadRecentInput)) {
+        const current = snapshotPanels();
+        if (current) {
+          cache = current;
+          lastRefresh = now;
+        }
+        return;
+      }
+
+      const value = entries.reduce((sum, entry) => sum + entry.value, 0);
+      const latest = entries[entries.length - 1]!;
+      if (value >= RECORD_SHIFT_THRESHOLD) {
+        const current = snapshotPanels();
+        if (!current) return;
+        const roundedValue = Math.round(value * 1000) / 1000;
+        const entryCount = entries.length > 1 ? entries.length : undefined;
+        if (!cache) {
+          records.push({
+            t: Math.round(latest.startTime), value: roundedValue, entryCount,
+            heightChangers: [], movedOnly: [], inserted: [], removed: [],
+            coldStart: true,
+          });
+        } else {
+          const diff = diffPanelGeometry(cache, current);
+          if (diff.heightChangers.length > 0 || diff.inserted.length > 0 || diff.removed.length > 0 || diff.movedOnly.length > 0) {
+            records.push({ t: Math.round(latest.startTime), value: roundedValue, entryCount, ...diff });
           }
         }
+        if (records.length > MAX_RECORDS) records = records.slice(-MAX_RECORDS);
+        cache = current;
+        lastRefresh = now;
+      } else if (now - lastRefresh > CACHE_REFRESH_MIN_MS) {
+        const current = snapshotPanels();
+        if (current) {
+          cache = current;
+          lastRefresh = now;
+        }
       }
-    }).observe({ type: 'layout-shift', buffered: true });
+    });
+    observer.observe({ type: 'layout-shift', buffered: true });
+    onPageShow = (event: PageTransitionEvent): void => {
+      if (event.persisted) resetMoverState();
+    };
+    window.addEventListener('pageshow', onPageShow);
   } catch {
     /* layout-shift unsupported (Safari/Firefox) — CLS reporting is Chromium-sourced anyway. */
   }

@@ -93,6 +93,9 @@ export function reportClsMetric(
   if (!keep()) return;
   const a = metric.attribution ?? {};
   const formFactor = getWebVitalsFormFactor();
+  // Snapshot at metric-report time. The Sentry closure may drain ~12s later,
+  // after more shifts or a bfcache lifecycle reset have changed tracker state.
+  const moverRecords = [...movers()];
   enqueue((s) => {
     s.captureMessage('web-vital: CLS', {
       level: 'info',
@@ -117,7 +120,7 @@ export function reportClsMetric(
         // (movers) vs merely moved (victims) vs got inserted, captured by
         // cls-mover-tracker at the moment of each qualifying shift. The
         // victim-only largestShiftTarget cannot distinguish these.
-        movers: movers(),
+        movers: moverRecords,
       },
     });
   });
