@@ -53,8 +53,10 @@ Real-time global intelligence dashboard. TypeScript SPA (Vite + Preact) with 163
 ├── e2e/                    # Playwright E2E specs
 ├── pro-test/               # Standalone Pro QA app (separate package)
 ├── docs/                   # Mintlify documentation site
+│   └── solutions/          # Documented solutions to past problems (bugs, patterns, practices) — YAML frontmatter (module, tags, problem_type)
 ├── docker/                 # Docker build for Railway services
 ├── deploy/                 # Deployment configs (nginx)
+├── CONCEPTS.md             # Shared domain vocabulary (entities, named processes, status concepts)
 └── blog-site/              # Static blog (built into public/blog/)
 ```
 
