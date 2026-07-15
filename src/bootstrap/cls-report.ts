@@ -14,6 +14,7 @@
  * the reportable logic free of that import so it builds and is unit-tested
  * without the package present.
  */
+import { getMoverRecordStrings, startClsMoverTracking } from '@/bootstrap/cls-mover-tracker';
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import {
   getWebVitalsFormFactor,
@@ -82,6 +83,7 @@ export function reportClsMetric(
   enqueue: typeof enqueueSentryCall = enqueueSentryCall,
   env: ClsReportEnv = collectClsReportEnv(),
   keep: () => boolean = shouldSampleWebVital,
+  movers: () => string[] = getMoverRecordStrings,
 ): void {
   // Volume trim: skip 'good' (<0.1) CLS and report needs-improvement / poor /
   // unknown only, so field attribution stays focused on actionable shifts.
@@ -111,6 +113,11 @@ export function reportClsMetric(
         visibilityState: env.visibilityState,
         scrollY: env.scrollY,
         viewport: env.viewport,
+        // #5332: shift-time mover attribution — which panels CHANGED HEIGHT
+        // (movers) vs merely moved (victims) vs got inserted, captured by
+        // cls-mover-tracker at the moment of each qualifying shift. The
+        // victim-only largestShiftTarget cannot distinguish these.
+        movers: movers(),
       },
     });
   });
@@ -132,6 +139,10 @@ export function registerClsReporting(): void {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') hadHiddenPeriod = true;
   });
+  // #5332: shift-time geometry tracking must start now — the CLS report fires
+  // at hide time, long after the shifts, so movers are only nameable if the
+  // per-panel cache diffs were captured when each shift happened.
+  startClsMoverTracking();
   void import('web-vitals/attribution')
     .then(({ onCLS }) => {
       onCLS((metric) => reportClsMetric(metric as unknown as ClsMetricLike));
