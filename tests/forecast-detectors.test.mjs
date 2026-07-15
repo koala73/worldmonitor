@@ -15,7 +15,6 @@ import {
   detectSupplyChainScenarios,
   detectPoliticalScenarios,
   detectMilitaryScenarios,
-  detectInfraScenarios,
   detectUcdpConflictZones,
   detectCyberScenarios,
   detectGpsJammingScenarios,
@@ -474,36 +473,6 @@ describe('word-boundary term matching: no substring false positives (#4933)', ()
     assert.equal(pred.probability, 0.7);
   });
 
-  it('detectInfraScenarios: Somalia cyber threat does not boost a Mali outage', () => {
-    const preds = detectInfraScenarios({
-      outages: [{ country: 'Mali', severity: 'major' }],
-      cyberThreats: [{ country: 'Somalia', type: 'ddos' }],
-      gpsJamming: [],
-    });
-    assert.equal(preds.length, 1);
-    assert.equal(preds[0].probability, 0.4);
-    assert.deepEqual(preds[0].signals.map(s => s.type), ['outage']);
-  });
-
-  it('detectInfraScenarios: same-country cyber threat still boosts (positive control)', () => {
-    const preds = detectInfraScenarios({
-      outages: [{ country: 'Mali', severity: 'major' }],
-      cyberThreats: [{ country: 'Mali', type: 'ddos' }],
-      gpsJamming: [],
-    });
-    assert.equal(preds[0].probability, 0.55);
-    assert.ok(preds[0].signals.some(s => s.type === 'cyber'));
-  });
-
-  it('detectInfraScenarios: possessive form still matches across the boundary', () => {
-    const preds = detectInfraScenarios({
-      outages: [{ country: 'Mali', severity: 'major' }],
-      cyberThreats: [{ target: "Mali's banking sector", type: 'ddos' }],
-      gpsJamming: [],
-    });
-    assert.ok(preds[0].signals.some(s => s.type === 'cyber'));
-  });
-
   it('detectPoliticalScenarios: Nigeria protest anomaly does not boost a Niger forecast', () => {
     const preds = detectPoliticalScenarios({
       ciiScores: [{ code: 'NE', name: 'Niger', score: 70, level: 'high', trend: 'rising', components: { unrest: 60 } }],
@@ -815,10 +784,6 @@ describe('detector smoke tests: null/empty inputs', () => {
     assert.deepEqual(detectMilitaryScenarios({}), []);
   });
 
-  it('detectInfraScenarios({}) returns []', () => {
-    assert.deepEqual(detectInfraScenarios({}), []);
-  });
-
   it('detectors handle null arrays gracefully', () => {
     const inputs = {
       ciiScores: null,
@@ -837,7 +802,6 @@ describe('detector smoke tests: null/empty inputs', () => {
     assert.deepEqual(detectSupplyChainScenarios(inputs), []);
     assert.deepEqual(detectPoliticalScenarios(inputs), []);
     assert.deepEqual(detectMilitaryScenarios(inputs), []);
-    assert.deepEqual(detectInfraScenarios(inputs), []);
   });
 });
 
@@ -921,46 +885,6 @@ describe('detectMarketScenarios', () => {
       ciiScores: [],
     };
     assert.deepEqual(detectMarketScenarios(inputs), []);
-  });
-});
-
-describe('detectInfraScenarios', () => {
-  it('major outage produces infra prediction', () => {
-    const inputs = {
-      outages: [{ country: 'Syria', severity: 'major' }],
-      cyberThreats: [],
-      gpsJamming: [],
-    };
-    const result = detectInfraScenarios(inputs);
-    assert.ok(result.length >= 1);
-    assert.equal(result[0].domain, 'infrastructure');
-    assert.ok(result[0].title.includes('Syria'));
-  });
-
-  it('minor outage is ignored', () => {
-    const inputs = {
-      outages: [{ country: 'Test', severity: 'minor' }],
-      cyberThreats: [],
-      gpsJamming: [],
-    };
-    assert.deepEqual(detectInfraScenarios(inputs), []);
-  });
-
-  it('cyber threats boost probability', () => {
-    const base = {
-      outages: [{ country: 'Syria', severity: 'total' }],
-      cyberThreats: [],
-      gpsJamming: [],
-    };
-    const withCyber = {
-      outages: [{ country: 'Syria', severity: 'total' }],
-      cyberThreats: [{ country: 'Syria', type: 'ddos' }],
-      gpsJamming: [],
-    };
-    const baseResult = detectInfraScenarios(base);
-    const cyberResult = detectInfraScenarios(withCyber);
-    assert.ok(cyberResult[0].probability > baseResult[0].probability,
-      'cyber threats should boost probability');
   });
 });
 

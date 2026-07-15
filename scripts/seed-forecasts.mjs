@@ -196,7 +196,7 @@ const MARKET_DETECTOR_PROB_MAX = 0.85;
 const SUPPLY_CHAIN_DETECTOR_PROB_MAX = 0.85;
 const POLITICAL_DETECTOR_PROB_MAX = 0.80;
 const MILITARY_DETECTOR_PROB_MAX = 0.90;
-const INFRASTRUCTURE_DETECTOR_PROB_MAX = 0.85;
+const INFRASTRUCTURE_FORECAST_PROB_MAX = 0.85;
 const VELOCITY_SPIKE_PROBABILITY_LIFT = 0.08;
 const VELOCITY_SPIKE_PROBABILITY_MAX = 0.99;
 const DEFENSE_DIRECT_CONFIRMATION_PRESSURE_LIFT = 0.12;
@@ -2006,63 +2006,6 @@ function detectMilitaryScenarios(inputs) {
   return predictions;
 }
 
-function detectInfraScenarios(inputs) {
-  const predictions = [];
-  const outages = Array.isArray(inputs.outages) ? inputs.outages : inputs.outages?.outages || [];
-  const cyber = Array.isArray(inputs.cyberThreats) ? inputs.cyberThreats : inputs.cyberThreats?.threats || [];
-  const jamming = Array.isArray(inputs.gpsJamming) ? inputs.gpsJamming : inputs.gpsJamming?.zones || [];
-
-  for (const o of outages) {
-    const rawSev = (o.severity || o.type || '').toLowerCase();
-    // Handle both plain strings and proto enums (SEVERITY_LEVEL_HIGH, SEVERITY_LEVEL_CRITICAL)
-    const severity = rawSev.includes('critical') ? 'critical'
-      : rawSev.includes('high') ? 'major'
-      : rawSev.includes('total') ? 'total'
-      : rawSev.includes('major') ? 'major'
-      : rawSev;
-    if (severity !== 'major' && severity !== 'total' && severity !== 'critical') continue;
-
-    const country = resolveCountryName(o.country || o.region || o.name || '');
-    if (!country) continue;
-
-    const countryLower = country.toLowerCase();
-    const signals = [
-      { type: 'outage', value: `${country} ${severity} outage`, weight: 0.4 },
-    ];
-    let sourceCount = 1;
-
-    const relatedCyber = cyber.filter(t =>
-      textIncludesTerm((t.country || t.target || t.region || '').toLowerCase(), countryLower),
-    );
-    if (relatedCyber.length > 0) {
-      signals.push({ type: 'cyber', value: `${relatedCyber.length} cyber threats targeting ${country}`, weight: 0.3 });
-      sourceCount++;
-    }
-
-    const nearbyJam = jamming.filter(j =>
-      textIncludesTerm((j.country || j.region || j.name || '').toLowerCase(), countryLower),
-    );
-    if (nearbyJam.length > 0) {
-      signals.push({ type: 'gps_jamming', value: `GPS interference in ${country}`, weight: 0.2 });
-      sourceCount++;
-    }
-
-    const cyberBoost = relatedCyber.length > 0 ? 0.15 : 0;
-    const jamBoost = nearbyJam.length > 0 ? 0.05 : 0;
-    const baseLine = severity === 'total' ? 0.55 : 0.4;
-    const prob = Math.min(INFRASTRUCTURE_DETECTOR_PROB_MAX, baseLine + cyberBoost + jamBoost);
-    const confidence = Math.max(0.3, normalize(sourceCount, 0, 4));
-
-    predictions.push(makePrediction(
-      'infrastructure', country,
-      `Infrastructure cascade risk: ${country}`,
-      prob, confidence, '24h', signals,
-    ));
-  }
-
-  return predictions;
-}
-
 // ── Phase 4: Standalone detectors ───────────────────────────
 function detectUcdpConflictZones(inputs, emaRiskScores) {
   const predictions = [];
@@ -2210,7 +2153,7 @@ const MARKET_CALIBRATION_DOMAIN_CAPS = {
   political: POLITICAL_DETECTOR_PROB_MAX,
   military: MILITARY_DETECTOR_PROB_MAX,
   cyber: CYBER_PROB_MAX,
-  infrastructure: INFRASTRUCTURE_DETECTOR_PROB_MAX,
+  infrastructure: INFRASTRUCTURE_FORECAST_PROB_MAX,
 };
 const MARKET_DE_ESCALATION_OUTCOME_TERMS = [
   'ceasefire', 'truce', 'peace', 'peaceful', 'agreement', 'diplomatic solution',
@@ -16088,7 +16031,6 @@ async function fetchForecasts() {
     ...detectSupplyChainScenarios(inputs),
     ...detectPoliticalScenarios(inputs),
     ...detectMilitaryScenarios(inputs),
-    ...detectInfraScenarios(inputs),
     ...detectUcdpConflictZones(inputs, emaRiskScores),
     ...detectCyberScenarios(inputs),
     ...detectGpsJammingScenarios(inputs),
@@ -18901,7 +18843,6 @@ export {
   detectSupplyChainScenarios,
   detectPoliticalScenarios,
   detectMilitaryScenarios,
-  detectInfraScenarios,
   attachNewsContext,
   computeConfidence,
   sanitizeForPrompt,

@@ -316,15 +316,21 @@ describe('buildResolutionSpec — feed mapping per family', () => {
     assert.equal(spec.metricKey, `${CYBER_COUNT_SOURCE_FEED}|count(country==Estonia)`);
   });
 
-  it('an infrastructure forecast resolves to infra:outages:v1', () => {
+  it('the legacy infrastructure cascade detector is retired from publication', () => {
+    assert.doesNotMatch(seederSource, /Infrastructure cascade risk/);
+    assert.doesNotMatch(seederSource, /detectInfraScenarios/);
+  });
+
+  it('an infrastructure outage forecast no longer uses the present() hard family', () => {
     const forecast = pred({
       domain: 'infrastructure',
       timeHorizon: '24h',
       signals: [{ type: 'outage', value: '3 active outages', weight: 0.5 }],
     });
     const spec = buildResolutionSpec(forecast, {}, GENERATED_AT);
-    assert.equal(spec.kind, 'hard');
-    assert.equal(spec.sourceFeed, 'infra:outages:v1');
+    assert.equal(spec.kind, 'judged');
+    assert.equal(spec.sourceFeed, null);
+    assert.equal(spec.metricKey, null);
   });
 
   it('a prediction_market forecast resolves to prediction:markets-bootstrap:v1', () => {
@@ -480,7 +486,7 @@ describe('buildResolutionSpec — domain-specific hard and judged families', () 
 
 describe('buildResolutionSpec — domain constraints win over hard-mapped signals (R3 by-domain)', () => {
   it('JUDGED_DOMAINS only retains domains without a stable hard metric identity', () => {
-    assert.deepEqual([...JUDGED_DOMAINS].sort(), ['military']);
+    assert.deepEqual([...JUDGED_DOMAINS].sort(), ['infrastructure', 'military']);
   });
 
   it('a political-domain forecast carrying a cii signal yields judged, never a hard conflict spec', () => {
@@ -557,7 +563,6 @@ describe('R4 — sourceFeed membership over every hard fixture', () => {
     pred({ id: 'cyber', domain: 'cyber', region: 'Estonia', signals: [{ type: 'cyber', value: '10 threats', weight: 0.5 }] }),
     pred({ id: 'supply_chain', domain: 'supply_chain', timeHorizon: '7d', signals: [{ type: 'chokepoint', value: 'disruption', weight: 0.5 }] }),
     pred({ id: 'gps', domain: 'supply_chain', timeHorizon: '7d', signals: [{ type: 'gps_jamming', value: '5 jamming hexes', weight: 0.5 }] }),
-    pred({ id: 'infra', domain: 'infrastructure', timeHorizon: '24h', signals: [{ type: 'outage', value: '2 outages', weight: 0.5 }] }),
     pred({ id: 'pm', domain: 'market', signals: [{ type: 'prediction_market', value: 'Polymarket: 40%', weight: 0.8 }] }),
     pred({
       id: 'market',
@@ -646,7 +651,6 @@ describe('edge cases', () => {
     assert.equal(SIGNAL_TO_HARD_FAMILY.unrest_events, 'unrest');
     assert.equal(SIGNAL_TO_HARD_FAMILY.cyber, 'cyber');
     assert.equal(SIGNAL_TO_HARD_FAMILY.gps_jamming, 'gps');
-    assert.equal(SIGNAL_TO_HARD_FAMILY.outage, 'infrastructure');
     assert.equal(SIGNAL_TO_HARD_FAMILY.conflict_events, 'conflict');
     assert.equal(SIGNAL_TO_HARD_FAMILY.cii, 'conflict');
   });
@@ -658,7 +662,6 @@ describe('FIX 1 — domain constrains the hard family (DOMAIN_TO_HARD_FAMILIES)'
       conflict: ['conflict', 'ucdp_zone'],
       market: ['market', 'prediction_market'],
       supply_chain: ['supply_chain', 'gps'],
-      infrastructure: ['infrastructure'],
       political: ['unrest'],
       cyber: ['cyber'],
     });
@@ -761,18 +764,12 @@ describe('FIX 2 — metricKey embeds real values with unified "==" grammar', () 
     assert.ok(!spec.metricKey.includes('<region>'));
   });
 
-  it('supply_chain, infrastructure, gps, and prediction_market metricKeys are all real-value == form', () => {
+  it('supply_chain, gps, and prediction_market metricKeys are all real-value == form', () => {
     const sc = buildResolutionSpec(pred({
       domain: 'supply_chain', region: 'Strait of Hormuz', timeHorizon: '7d',
       signals: [{ type: 'chokepoint', value: 'disruption', weight: 0.5 }],
     }), {}, GENERATED_AT);
     assert.equal(sc.metricKey, 'supply_chain:chokepoints:v4|riskScore(route==Strait of Hormuz)');
-
-    const infra = buildResolutionSpec(pred({
-      domain: 'infrastructure', region: 'Cuba', timeHorizon: '24h',
-      signals: [{ type: 'outage', value: '3 outages', weight: 0.5 }],
-    }), {}, GENERATED_AT);
-    assert.equal(infra.metricKey, 'infra:outages:v1|present(country==Cuba)');
 
     const gps = buildResolutionSpec(pred({
       domain: 'supply_chain', region: 'Black Sea', timeHorizon: '7d',
@@ -786,7 +783,7 @@ describe('FIX 2 — metricKey embeds real values with unified "==" grammar', () 
     }), {}, GENERATED_AT);
     assert.equal(pm.metricKey, 'prediction:markets-bootstrap:v1|yesPrice(market==Will the Fed cut rates in July 2026?)');
 
-    for (const spec of [sc, infra, gps, pm]) {
+    for (const spec of [sc, gps, pm]) {
       assert.ok(!/[^=]=[^=]/.test(spec.metricKey.split('|')[1]), `metricKey must use ==: ${spec.metricKey}`);
     }
   });
@@ -877,12 +874,6 @@ describe('#5010 amendment — resolvable windows + horizon-commensurable count',
       signals: [{ type: 'conflict_events', value: '12 cross-border events', weight: 0.4 }],
     }), {}, GENERATED_AT, { conflictCountFeedAvailable: true }); // judged by default (#5136); force hard to assert the window
     assert.equal(conflict.window, 'within-horizon');
-
-    const infra = buildResolutionSpec(pred({
-      domain: 'infrastructure', region: 'Cuba',
-      signals: [{ type: 'outage', value: 'Cuba major outage', weight: 0.4 }],
-    }), {}, GENERATED_AT);
-    assert.equal(infra.window, 'within-horizon');
 
     const market = buildResolutionSpec(pred({
       domain: 'market', region: 'Middle East', title: 'Oil price impact',
