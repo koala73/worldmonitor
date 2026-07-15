@@ -363,7 +363,6 @@ function buildForecastInputFeedDefinitions() {
     { key: 'conflict:iran-events:v1', label: 'iranEvents', countRecords: (value) => countArrayField(value, 'events'), enabled: iranEventsEnabled },
     { key: 'conflict:ucdp-events:v1', label: 'ucdpEvents', countRecords: (value) => countArrayField(value, 'events') },
     { key: 'unrest:events:v1', label: 'unrestEvents', countRecords: (value) => countArrayField(value, 'events') },
-    { key: 'infra:outages:v1', label: 'outages', countRecords: (value) => countArrayField(value, 'outages') },
     { key: 'cyber:threats-bootstrap:v2', label: 'cyberThreats', countRecords: (value) => countArrayField(value, 'threats') || countObjectCollection(value) },
     { key: 'intelligence:gpsjam:v2', label: 'gpsJamming', countRecords: countObjectCollection },
     { key: 'news:insights:v1', label: 'newsInsights', countRecords: (value) => countArrayField(value, 'topStories') || countObjectCollection(value) },
@@ -889,23 +888,18 @@ async function readInputKeys() {
   const keys = buildForecastInputFetchKeys();
   // Sized for Upstash REST /pipeline payload limits.
   //
-  // STRLEN audit 2026-04-14: 40 input keys total ~2.27 MB; top 5 keys
-  // (ucdp 657KB + chokepoints 500KB + cyber 390KB + commodities 192KB +
-  // gpsjam 174KB) = 90% of payload. Because BATCH_SIZE divides the keys
-  // array deterministically by index, the worst batch is fixed by array
-  // order — currently batch 2 (indices 5-9: chokepoints + iran + ucdp +
-  // unrest + outages) at **1.17 MB** verified live. Not random
-  // co-location — deterministic.
+  // STRLEN audit 2026-04-14: the largest inputs were UCDP, chokepoints,
+  // cyber, commodities, and GPS jamming. Batch membership is deterministic
+  // from buildForecastInputFeedDefinitions(), except for time-gated inputs
+  // such as conflict:iran-events:v1. Re-audit neighboring batches whenever a
+  // definition is added, removed, or reordered; retiring the outage detector
+  // also removed infra:outages:v1 from this hot-path fetch list (#5330).
   //
-  // The original 10s timeout deterministically failed every retry on this
-  // batch at Upstash REST's observed slow-spike floor of ~100 KB/s
-  // (Railway log 2026-04-14 10:01 UTC: 12 consecutive abort-timeouts).
-  // At 100 KB/s, 1.17 MB takes ~12s. 45s gives ~3.7× headroom.
-  //
-  // Future improvement: interleave heavy keys (chokepoints + ucdp) with
-  // smalls in the keys array above. Would split the deterministic
-  // worst-case across two batches, halving the per-request payload.
-  // Tracked as follow-up; not in scope for this hotfix.
+  // The original 10s timeout deterministically failed large response batches
+  // at Upstash REST's observed slow-spike floor of ~100 KB/s (Railway log
+  // 2026-04-14 10:01 UTC: 12 consecutive abort-timeouts). Keep 45s headroom;
+  // if the neighboring payloads grow materially, rebalance the definition
+  // order or reduce BATCH_SIZE rather than extending the timeout again.
   const BATCH_SIZE = 5;
   const results = [];
   for (let i = 0; i < keys.length; i += BATCH_SIZE) {
@@ -951,7 +945,6 @@ async function readInputKeys() {
     iranEvents: iranEventsEnabled() ? parsedByKey['conflict:iran-events:v1'] : [],
     ucdpEvents: parsedByKey['conflict:ucdp-events:v1'],
     unrestEvents: parsedByKey['unrest:events:v1'],
-    outages: parsedByKey['infra:outages:v1'],
     cyberThreats: parsedByKey['cyber:threats-bootstrap:v2'],
     gpsJamming: normalizeGpsJamming(parsedByKey['intelligence:gpsjam:v2']),
     newsInsights: parsedByKey['news:insights:v1'],

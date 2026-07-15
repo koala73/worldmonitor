@@ -134,6 +134,8 @@ describe('forecast input observability', () => {
 
     assert.deepEqual(fetchKeys, presenceKeys);
     assert.equal(new Set(fetchKeys).size, fetchKeys.length);
+    assert.equal(fetchKeys.includes('infra:outages:v1'), false,
+      'the retired infrastructure detector must not keep its unused Redis input in the forecast hot path');
   });
 
   it('warns once per zero-record forecast input with feed key and count', () => {
