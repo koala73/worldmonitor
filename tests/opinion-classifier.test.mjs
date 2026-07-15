@@ -1,10 +1,11 @@
-// Unit tests for the opinion/analysis classifier (F3, Phase 3).
+// Unit tests for the non-event brief classifier (F3, Phase 3).
 //
 // classifyOpinion is the single shared classifier — imported by the
 // ingest path (list-feed-digest.ts, stamps `isOpinion` on the
 // story:track:v1 row) and the read path (buildDigest, re-classifies
-// residue). The brief is event-driven intelligence; an op-ed column
-// is not an event. See docs/plans/2026-05-14-001-…-plan.md.
+// residue). The brief is event-driven intelligence; an op-ed column or
+// historical explainer is not an event. See
+// docs/plans/2026-05-14-001-…-plan.md.
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -229,6 +230,58 @@ describe('classifyOpinion — URL match uses parsed pathname, not raw .includes(
         description: 'A straightforward report with no framing words.',
       }),
       true,
+    );
+  });
+});
+
+describe('classifyOpinion — historical explainers are not digest events', () => {
+  it('REGRESSION (July 15): DW ten-year Turkey coup retrospective → exclude', () => {
+    assert.equal(
+      classifyOpinion({
+        title: "How Turkey's 2016 coup attempt changed the country for good",
+        link: 'https://amp.dw.com/en/how-turkeys-2016-coup-attempt-changed-the-country-for-good/a-77955154',
+        description: 'Ten years after the failed coup, the events of that night continue to shape Turkey. A look back.',
+      }),
+      true,
+    );
+  });
+
+  it('excludes an explanatory human-interest retrospective when its historic anchor is in the description', () => {
+    assert.equal(
+      classifyOpinion({
+        title: 'How an unwitting cadet became a victim of Turkiye’s anti-coup crackdown',
+        link: 'https://example.com/features/cadet-anti-coup-crackdown',
+        description: 'The cadet was imprisoned following the 2016 coup attempt, a decade before this look back.',
+      }),
+      true,
+    );
+  });
+
+  it('does not suppress a current-event explainer or ordinary historical reference', () => {
+    const currentYear = new Date().getUTCFullYear();
+    assert.equal(
+      classifyOpinion({
+        title: `How Turkey's ${currentYear} election could reshape the country`,
+        link: 'https://example.com/news/turkey-election',
+        description: 'Officials announced the election timetable today.',
+      }),
+      false,
+    );
+    assert.equal(
+      classifyOpinion({
+        title: 'Turkey arrests suspects over the 2016 coup attempt',
+        link: 'https://example.com/news/turkey-arrests',
+        description: 'Authorities announced the arrests today.',
+      }),
+      false,
+    );
+    assert.equal(
+      classifyOpinion({
+        title: `How the ${currentYear} Iran war changed global shipping`,
+        link: 'https://example.com/world/iran-shipping',
+        description: 'Shipping routes are increasingly vulnerable, as they were during the 2016 regional crisis.',
+      }),
+      false,
     );
   });
 });

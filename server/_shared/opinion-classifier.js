@@ -1,4 +1,4 @@
-// Opinion / analysis classifier for the WorldMonitor brief pipeline.
+// Brief-exclusion classifier for the WorldMonitor pipeline.
 //
 // The brief is event-driven intelligence — an op-ed column is not an
 // event. On 2026-05-14 a Le Monde opinion column ("'Russia's invasion
@@ -18,7 +18,7 @@
 // metadata, and the parsed RSS item does not carry them either — so
 // there is no richer ingest-time signal to exploit.
 //
-// Tiering (conservative — a false negative ships one opinion piece;
+// Tiering (conservative — a false negative ships one non-event piece;
 // a false positive silently drops a real event):
 //   STRONG       — sufficient alone to classify as opinion
 //   CORROBORATING — needs a STRONG signal OR two CORROBORATING signals
@@ -100,6 +100,41 @@ const COMMENTARY_HOSTNAMES = new Set([
 // only count toward a 2-signal threshold.
 const CORROBORATING_DESCRIPTION_RE = /\b(?:columnist|op-?ed|opinion piece|our columnist|argues that|posits that|makes the case|the case for|guest essay|editorial board)\b/i;
 
+// ── STRONG: historical explainer framing ─────────────────────────────
+//
+// A daily brief is an event feed, not an anniversary explainer. Some
+// publishers do not mark these pieces as opinion in either their URL or RSS
+// metadata, but their headline has a distinctive explanatory shape:
+// "How <past event> changed/became/shaped …". Require BOTH that shape and a
+// clearly historical anchor in the title/description so ordinary current
+// explainers (or ordinary reporting that merely references an old year) keep
+// flowing. This caught the July 2026 DW ten-year Turkey coup retrospective.
+const HISTORICAL_EXPLAINER_HEADLINE_RE =
+  /^(?:how|why)\b[\s\S]{0,180}\b(?:changed|shaped|transformed|altered|became|remade|defined)\b/i;
+const HISTORICAL_EXPLAINER_TIME_RE =
+  /\b(?:(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(?:years?|decades?)\s+(?:ago|after|later)|anniversary|retrospective|(?:a|this)\s+look back)\b/i;
+const PAST_YEAR_RE = /\b((?:19|20)\d{2})\b/g;
+
+function hasPastYear(text, nowMs) {
+  const currentYear = new Date(nowMs).getUTCFullYear();
+  for (const match of text.matchAll(PAST_YEAR_RE)) {
+    if (Number.parseInt(match[1], 10) < currentYear - 1) return true;
+  }
+  return false;
+}
+
+function isHistoricalExplainer(title, description, nowMs = Date.now()) {
+  if (!HISTORICAL_EXPLAINER_HEADLINE_RE.test(title)) return false;
+  const text = `${title} ${description}`;
+  if (HISTORICAL_EXPLAINER_TIME_RE.test(text)) return true;
+
+  // A summary can mention an old year as background for a live explainer.
+  // Treat a bare past year as an anchor only when the headline itself carries
+  // it; description-only matches need the explicit retrospective wording
+  // above.
+  return hasPastYear(title, nowMs);
+}
+
 // ── CORROBORATING: whole-headline quote wrap ─────────────────────────
 // An entire headline wrapped in quotation marks is the classic op-ed
 // headline format (the May 14 Le Monde column). But a hard-news
@@ -166,15 +201,20 @@ function matchesCommentaryHost(hostname) {
 }
 
 /**
- * Classify a story as opinion/analysis vs hard news.
+ * Classify a story as non-event brief content vs hard news.
  *
  * @param {{ title?: unknown; link?: unknown; description?: unknown }} story
- * @returns {boolean} true = opinion/analysis (exclude from the brief)
+ * @returns {boolean} true = opinion/analysis or historical explainer
+ *   (exclude from the brief)
  */
 export function classifyOpinion(story) {
   const title = typeof story?.title === 'string' ? story.title : '';
   const link = typeof story?.link === 'string' ? story.link : '';
   const description = typeof story?.description === 'string' ? story.description : '';
+
+  // Non-event historical explainers share the brief-exclusion contract with
+  // opinion/analysis: do not let a retrospective rank like a live crisis.
+  if (isHistoricalExplainer(title, description)) return true;
 
   // Parse pathname once; reused by STRONG #1 and CORROBORATING URL check.
   const pathname = safePathname(link);

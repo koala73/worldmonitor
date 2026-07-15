@@ -714,23 +714,22 @@ async function buildDigest(rule, windowStartMs) {
       continue;
     }
 
-    // Opinion / analysis exclusion (F3). The brief is event-driven
-    // intelligence — an op-ed column is not an event. Ingest stamps
-    // `isOpinion` on the story:track:v1 row; trust that stamp when
-    // present ('1' | '0'). Pre-stamp residue rows (ingested before the
-    // ingest-side stamp shipped) have NO `isOpinion` field at all — for
-    // those, re-classify from the persisted title/link/description so
-    // residue is still excluded for the row's TTL window. See
+    // Non-event brief exclusion (F3). The brief is event-driven intelligence
+    // — an op-ed or historical explainer is not an event.
+    // Ingest stamps `isOpinion` on the story:track:v1 row. Re-check the
+    // shared classifier too, so an older explicit "0" stamp cannot keep a
+    // story in the pool after the classifier learns a new exclusion shape.
+    // This is cheap and gives rule changes immediate read-path coverage for
+    // every row still inside the accumulator window. See
     // docs/plans/2026-05-14-001-…-plan.md (F3, Phase 3).
     const stampedOpinion = track.isOpinion === '1';
-    const stampMissing = typeof track.isOpinion !== 'string' || track.isOpinion.length === 0;
     if (
       stampedOpinion ||
-      (stampMissing && classifyOpinion({
+      classifyOpinion({
         title: track.title,
         link: track.link ?? '',
         description: typeof track.description === 'string' ? track.description : '',
-      }))
+      })
     ) {
       droppedOpinion++;
       continue;

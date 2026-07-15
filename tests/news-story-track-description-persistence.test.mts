@@ -67,7 +67,7 @@ describe('buildStoryTrackHsetFields — story:track:v1 HSET contract', () => {
     assert.ok(m.has('lang'));
   });
 
-  it('writes isOpinion as "1" / "0" — stamps the opinion verdict on the row (F3)', () => {
+  it('writes isOpinion as "1" / "0" — stamps the non-event brief verdict on the row (F3)', () => {
     // The brief's read path (buildDigest) excludes isOpinion="1" rows.
     // Written unconditionally for the same shared-row reason as
     // `description`: a stale "1" from an earlier mention must be

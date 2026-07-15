@@ -183,10 +183,11 @@ interface ParsedItem {
   // absent, too short, or indistinguishable from the headline. Grounding input
   // for brief / whyMatters / SummarizeArticle LLMs.
   description: string;
-  // Opinion / analysis classification (classifyOpinion over title + link +
-  // description). Persisted on the story:track:v1 row as `isOpinion` so the
-  // brief's read path (buildDigest) can exclude op-ed/column content — the
-  // brief is event-driven intelligence, a column is not an event. See
+  // Non-event brief classification (classifyOpinion over title + link +
+  // description). Persisted on the legacy `isOpinion` story:track:v1 field
+  // so buildDigest can exclude op-ed/column and historical-explainer content
+  // — the brief is event-driven intelligence, not an editorial or look-back
+  // feed. See
   // docs/plans/2026-05-14-001-…-plan.md (F3). story:track rows feed more
   // than the brief, so this STAMPS rather than drops — only buildDigest
   // filters on it.
@@ -1106,8 +1107,9 @@ function buildStoryTrackHsetFields(
     'entityCorroborationCount', Number.isFinite(item.entityCorroborationCount)
       ? String(item.entityCorroborationCount)
       : '0',
-    // Opinion/analysis flag (classifyOpinion). '1' = op-ed/column,
-    // '0' = hard news. buildDigest's read-path filter excludes '1' rows
+    // Non-event brief flag (classifyOpinion). '1' = op-ed/column or
+    // historical explainer, '0' = hard news. The legacy `isOpinion` field
+    // name remains for cache compatibility; buildDigest excludes '1' rows
     // from the brief pool. Written unconditionally for the same
     // shared-row reason as `description` above: story:track rows are
     // collapsed by normalised-title hash, so a stale '1' from an earlier
