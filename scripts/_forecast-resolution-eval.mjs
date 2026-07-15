@@ -242,10 +242,18 @@ export function extractMetricValue(parsed, feedData) {
 // over the fresh feed (#5243 P1). asOf is null when the record has no timestamp.
 export function extractMetricObservation(parsed, feedData) {
   const record = findMatchingRecord(feedData, parsed.field, parsed.value);
+  // present() is a boolean existence check: a missing matched record means the
+  // event did NOT occur → observe 0, NOT NaN. Returning NaN here (as the initial
+  // refactor did) makes a quiet subject store an error sample instead of a valid
+  // 0, so a legitimately-NO within-horizon spec strands with an empty timeline
+  // and VOIDs. Mirror extractMetricValue's `record ? 1 : 0`.
+  if (parsed.fn === 'present') {
+    const asOf = record ? parseAsOfMs(record.asOf ?? record.date) : NaN;
+    return { value: record ? 1 : 0, asOf: Number.isFinite(asOf) ? asOf : null };
+  }
   if (!record) return { value: NaN, asOf: null };
   const asOf = parseAsOfMs(record.asOf ?? record.date);
-  const value = parsed.fn === 'present' ? 1 : valueFromRecord(parsed.fn, record);
-  return { value, asOf: Number.isFinite(asOf) ? asOf : null };
+  return { value: valueFromRecord(parsed.fn, record), asOf: Number.isFinite(asOf) ? asOf : null };
 }
 
 function compareResult(value, spec, entry, parsed, nowMs, extraEvidence = {}) {
