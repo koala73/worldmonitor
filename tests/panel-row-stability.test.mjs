@@ -8,60 +8,76 @@ import { fileURLToPath } from 'node:url';
 // populated content replaces the loading state (rows are minmax-sized from
 // intrinsic content height), shoving every row below — the dominant remaining
 // desktop CLS mechanism (field: div.panel shift p75 0.244 on 9% of views).
-// The fix pins the ranked offender panels to the row max so the row height is
-// deterministic from first paint. This guard keeps the pin present, keyed to
-// the ranked offender list, and excluded for user-set spans.
+// The fix pins the ranked offenders to their populated max so row height is
+// deterministic from first paint. PR #5333 review hardened the contract:
+// pins apply to NATURAL footprints only (user-resized .resized/.span-N
+// panels keep the resize contract) and only inside #panelsGrid (panels
+// dragged to the ultra-wide .map-bottom-grid keep that grid's sizing).
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const css = readFileSync(resolve(root, 'src/styles/main.css'), 'utf-8');
 const panels = readFileSync(resolve(root, 'src/config/panels.ts'), 'utf-8');
 
-const OFFENDER_KEYS = [
+const SPAN1_KEYS = [
   'threat-timeline', 'gdelt-intel', 'intel', 'live-news', 'politics',
   'energy-complex', 'global-procurement', 'strategic-posture', 'cascade',
   'live-webcams',
 ];
+const SPAN2_DEFAULT_KEYS = ['threat-timeline', 'gdelt-intel', 'energy-complex', 'strategic-posture', 'global-procurement'];
+const WIDE_KEYS = ['live-news', 'live-webcams'];
+
+// The two pin blocks, extracted by their shared height declarations. Regex
+// anchors on a line START so `min-height:` can never satisfy it (review P2).
+const pinBlocks = [...css.matchAll(/(^|\n)([^{}]*?)\{\s*\n\s*height:\s*(var\(--dashboard-panel-row-max\)|calc\(var\(--dashboard-panel-row-max\) \* 2 \+ var\(--dashboard-grid-gap\)\));\s*\n\}/g)]
+  .map((m) => ({ selectors: m[2].replace(/\/\*[\s\S]*?\*\//g, '').trim(), value: m[3] }));
 
 describe('always-full panel row stability (#5332)', () => {
-  it('pins every ranked offender panel to the row max, excluding user spans', () => {
-    for (const key of OFFENDER_KEYS) {
-      assert.match(
-        css,
-        new RegExp(`\\.panel\\[data-panel="${key}"\\]:not\\(\\.span-2\\):not\\(\\.span-3\\):not\\(\\.span-4\\):not\\(\\.panel-wide\\)`),
-        `.panel[data-panel="${key}"] must carry the fixed-row pin — without it the panel's row grows on content arrival and shifts every row below`,
-      );
-    }
-    const block = css.slice(css.indexOf('.panel[data-panel="threat-timeline"]'));
-    assert.match(
-      block.slice(0, block.indexOf('}')),
-      /height:\s*var\(--dashboard-panel-row-max\)/,
-      'the pin must be a fixed height at the row max (min-height would still allow growth)',
-    );
+  it('has exactly two pin blocks with FIXED height (not min-height)', () => {
+    assert.equal(pinBlocks.length, 2, 'expected the span-1 pin block and the two-row pin block, each declaring a bare `height:` line');
+    const values = pinBlocks.map((b) => b.value).sort();
+    assert.match(values[0], /^calc/, 'one block must pin the two-row populated max');
+    assert.match(values[1], /^var/, 'one block must pin the single-row max');
   });
 
-  it('pins the two-row-default offenders (span-2 + panel-wide) at the populated two-row max', () => {
-    for (const key of ['threat-timeline', 'gdelt-intel', 'energy-complex', 'strategic-posture', 'global-procurement']) {
+  it('pins every ranked offender in its natural footprint, scoped to #panelsGrid', () => {
+    const single = pinBlocks.find((b) => b.value.startsWith('var'));
+    const double = pinBlocks.find((b) => b.value.startsWith('calc'));
+    assert.ok(single && double, 'both pin blocks must exist');
+    for (const key of SPAN1_KEYS) {
       assert.match(
-        css,
-        new RegExp(`\\.panel\\[data-panel="${key}"\\]\\.span-2`),
-        `span-2 default '${key}' needs its own pin — the span-1 rule excludes .span-2 and these grow 404px toward ~764px in the field`,
+        single.selectors,
+        new RegExp(`#panelsGrid > \\.panel\\[data-panel="${key}"\\]:not\\(\\.span-2\\):not\\(\\.span-3\\):not\\(\\.span-4\\):not\\(\\.panel-wide\\):not\\(\\.resized\\)`),
+        `'${key}' must carry the #panelsGrid-scoped natural-footprint pin`,
       );
     }
-    for (const key of ['live-news', 'live-webcams']) {
+    for (const key of SPAN2_DEFAULT_KEYS) {
       assert.match(
-        css,
-        new RegExp(`\\.panel\\[data-panel="${key}"\\]\\.panel-wide`),
-        `'${key}' uses .panel-wide (2x2 grid area), not .span-2 — it needs the panel-wide pin or it keeps growing 404px toward ~764px`,
+        double.selectors,
+        new RegExp(`#panelsGrid > \\.panel\\[data-panel="${key}"\\]\\.span-2:not\\(\\.resized\\)`),
+        `span-2 default '${key}' must be pinned at the two-row max for its NATURAL state only`,
       );
     }
-    assert.match(
-      css,
-      /\.panel\[data-panel="live-webcams"\]\.panel-wide \{\s*height:\s*calc\(var\(--dashboard-panel-row-max\) \* 2 \+ var\(--dashboard-grid-gap\)\)/,
-      'the two-row pin must be the populated two-row max (2 x row-max + gap)',
-    );
+    for (const key of WIDE_KEYS) {
+      assert.match(
+        double.selectors,
+        new RegExp(`#panelsGrid > \\.panel\\[data-panel="${key}"\\]\\.panel-wide:not\\(\\.resized\\):not\\(\\.span-1\\)`),
+        `'${key}' uses .panel-wide (2x2), needs the wide pin excluding user-resized span states (review P1: a .panel-wide.span-1.resized panel must NOT stay 764px)`,
+      );
+    }
+  });
+
+  it('never pins a resized panel or a panel outside #panelsGrid', () => {
+    for (const block of pinBlocks) {
+      for (const selector of block.selectors.split(',')) {
+        const sel = selector.trim();
+        if (!sel) continue;
+        assert.ok(sel.startsWith('#panelsGrid > '), `pin selector must be scoped to #panelsGrid (review P1 bottom-grid leak): ${sel}`);
+        assert.ok(sel.includes(':not(.resized)'), `pin selector must exclude user-resized panels (review P1): ${sel}`);
+      }
+    }
   });
 
   it('every pinned key still exists in the panel config (rename guard)', () => {
-    for (const key of OFFENDER_KEYS) {
+    for (const key of SPAN1_KEYS) {
       assert.match(
         panels,
         new RegExp(`(?:'${key}'|(?<![\\w-])${key}):\\s*\\{`),

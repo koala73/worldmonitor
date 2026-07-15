@@ -1669,16 +1669,16 @@ canvas,
    final height from first paint; .panel-content already scrolls. User-set
    spans (.span-N) keep their own min-height reservation contract and are
    excluded. Keep this key list in sync with the ranked offenders in #5332. */
-.panel[data-panel="threat-timeline"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide),
-.panel[data-panel="gdelt-intel"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide),
-.panel[data-panel="intel"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide),
-.panel[data-panel="live-news"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide),
-.panel[data-panel="politics"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide),
-.panel[data-panel="energy-complex"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide),
-.panel[data-panel="global-procurement"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide),
-.panel[data-panel="strategic-posture"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide),
-.panel[data-panel="cascade"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide),
-.panel[data-panel="live-webcams"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide) {
+#panelsGrid > .panel[data-panel="threat-timeline"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide):not(.resized),
+#panelsGrid > .panel[data-panel="gdelt-intel"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide):not(.resized),
+#panelsGrid > .panel[data-panel="intel"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide):not(.resized),
+#panelsGrid > .panel[data-panel="live-news"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide):not(.resized),
+#panelsGrid > .panel[data-panel="politics"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide):not(.resized),
+#panelsGrid > .panel[data-panel="energy-complex"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide):not(.resized),
+#panelsGrid > .panel[data-panel="global-procurement"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide):not(.resized),
+#panelsGrid > .panel[data-panel="strategic-posture"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide):not(.resized),
+#panelsGrid > .panel[data-panel="cascade"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide):not(.resized),
+#panelsGrid > .panel[data-panel="live-webcams"]:not(.span-2):not(.span-3):not(.span-4):not(.panel-wide):not(.resized) {
   height: var(--dashboard-panel-row-max);
 }
 
@@ -1686,15 +1686,18 @@ canvas,
    .panel-wide pair — get the populated two-row max (2 rows + gap) so their
    footprint is identical loading vs populated, INCLUDING the deferred-shell
    phase (the shell carries the same classes, so shell->panel swap is
-   shift-free). A user demoting one to span-1 drops the class and lands in
-   the rule above. */
-.panel[data-panel="threat-timeline"].span-2,
-.panel[data-panel="gdelt-intel"].span-2,
-.panel[data-panel="energy-complex"].span-2,
-.panel[data-panel="strategic-posture"].span-2,
-.panel[data-panel="global-procurement"].span-2,
-.panel[data-panel="live-news"].panel-wide,
-.panel[data-panel="live-webcams"].panel-wide {
+   shift-free). The pins apply to NATURAL footprints only: user-resized
+   panels (.resized, PR #5333 review P1) and explicit .span-N overrides keep
+   the resize contract, and the #panelsGrid scope keeps panels dragged into
+   the ultra-wide .map-bottom-grid (height:100%/1fr tracks) on that grid's
+   own sizing contract. */
+#panelsGrid > .panel[data-panel="threat-timeline"].span-2:not(.resized),
+#panelsGrid > .panel[data-panel="gdelt-intel"].span-2:not(.resized),
+#panelsGrid > .panel[data-panel="energy-complex"].span-2:not(.resized),
+#panelsGrid > .panel[data-panel="strategic-posture"].span-2:not(.resized),
+#panelsGrid > .panel[data-panel="global-procurement"].span-2:not(.resized),
+#panelsGrid > .panel[data-panel="live-news"].panel-wide:not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4),
+#panelsGrid > .panel[data-panel="live-webcams"].panel-wide:not(.resized):not(.span-1):not(.span-2):not(.span-3):not(.span-4) {
   height: calc(var(--dashboard-panel-row-max) * 2 + var(--dashboard-grid-gap));
 }
 
