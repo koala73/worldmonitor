@@ -208,6 +208,57 @@ test('GET response from origin has CORS headers stamped by the Worker', async ()
   }
 });
 
+test('GET response preserves function-specific exposed headers (bootstrap U3a regression)', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ ok: true }), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Expose-Headers': [
+        'Server-Timing',
+        'X-WorldMonitor-Bootstrap-Redis-Duration',
+        'Age',
+        'X-Vercel-Cache',
+        'CF-Cache-Status',
+        // A baseline name must not be duplicated when the lists are merged.
+        'Retry-After',
+      ].join(', '),
+    },
+  });
+  try {
+    const req = makeRequest('GET', 'https://api.worldmonitor.app/api/bootstrap?tier=slow&public=1', {
+      Origin: KNOWN_GOOD,
+    });
+    const resp = await worker.fetch(req);
+    assert.equal(
+      resp.headers.get('access-control-expose-headers'),
+      `${ACEH_EXPECTED}, Server-Timing, X-WorldMonitor-Bootstrap-Redis-Duration, Age, X-Vercel-Cache, CF-Cache-Status`,
+    );
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('GET response does not preserve function-specific exposed headers outside bootstrap', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ ok: true }), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      'Access-Control-Expose-Headers': 'X-Internal-Diagnostic',
+    },
+  });
+  try {
+    const req = makeRequest('GET', 'https://api.worldmonitor.app/api/health', {
+      Origin: KNOWN_GOOD,
+    });
+    const resp = await worker.fetch(req);
+    assert.equal(resp.headers.get('access-control-expose-headers'), ACEH_EXPECTED);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
 // --- public-CORS path bypass (MCP / OAuth / discovery / public utilities) ----
 
 test('hasPublicCorsPolicy: exact-match paths', () => {

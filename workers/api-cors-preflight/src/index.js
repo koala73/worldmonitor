@@ -110,6 +110,21 @@ export function buildCorsHeaders(origin) {
   };
 }
 
+function mergeHeaderNames(...values) {
+  const seen = new Set();
+  const merged = [];
+  for (const value of values) {
+    for (const name of (value || '').split(',')) {
+      const trimmed = name.trim();
+      const normalized = trimmed.toLowerCase();
+      if (!trimmed || seen.has(normalized)) continue;
+      seen.add(normalized);
+      merged.push(trimmed);
+    }
+  }
+  return merged.join(', ');
+}
+
 export default {
   async fetch(request) {
     const url = new URL(request.url);
@@ -143,8 +158,19 @@ export default {
     try {
       const response = await fetch(request);
       const newHeaders = new Headers(response.headers);
+      const originExposedHeaders = newHeaders.get('Access-Control-Expose-Headers');
       for (const [k, v] of Object.entries(corsHeaders)) {
         newHeaders.set(k, v);
+      }
+      // Bootstrap temporarily exposes U3a timing and cache-classifier headers.
+      // Preserve only that route's function-owned additions while retaining
+      // the Worker's canonical baseline. Replacing this header outright made
+      // those diagnostics invisible to browser JavaScript in production.
+      if (url.pathname === '/api/bootstrap' && originExposedHeaders) {
+        newHeaders.set(
+          'Access-Control-Expose-Headers',
+          mergeHeaderNames(EXPOSE_HEADERS, originExposedHeaders),
+        );
       }
       return new Response(response.body, {
         status: response.status,
