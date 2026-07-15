@@ -27,6 +27,9 @@ export interface PanelGeometryDiff {
   heightChangers: Array<{ key: string; delta: number }>;
   movedOnly: string[];
   inserted: string[];
+  /** Panels in the cache but gone from the layout — removal collapses their
+   *  occupied height and pulls siblings up, a mover class of its own. */
+  removed: string[];
 }
 
 export interface MoverRecord extends PanelGeometryDiff {
@@ -34,6 +37,9 @@ export interface MoverRecord extends PanelGeometryDiff {
   t: number;
   /** The layout-shift entry's value. */
   value: number;
+  /** The shift arrived before any baseline snapshot existed — the mover is
+   *  unattributable, but the report should still show a big shift happened. */
+  coldStart?: boolean;
 }
 
 /** Ignore sub-pixel/jitter deltas — real row growth is tens of pixels. */
@@ -53,6 +59,7 @@ export function diffPanelGeometry(
   const heightChangers: Array<{ key: string; delta: number }> = [];
   const movedOnly: string[] = [];
   const inserted: string[] = [];
+  const removed = Object.keys(cache).filter((key) => !(key in current));
   for (const [key, rect] of Object.entries(current)) {
     const prev = cache[key];
     if (!prev) {
@@ -67,7 +74,7 @@ export function diffPanelGeometry(
       movedOnly.push(key);
     }
   }
-  return { heightChangers, movedOnly, inserted };
+  return { heightChangers, movedOnly, inserted, removed };
 }
 
 /**
@@ -81,14 +88,18 @@ export function formatMoverRecords(records: MoverRecord[]): string[] {
     .map((r) => {
       const parts = [`t=${r.t} v=${r.value}`];
       if (r.heightChangers.length > 0) {
+        // 'sized:' not 'grew:' — the signed delta carries direction, and a
+        // shrinking panel that pulled space away is a mover too (review P2).
         parts.push(
-          `grew:${r.heightChangers
+          `sized:${r.heightChangers
             .map((c) => `${c.key}${c.delta >= 0 ? '+' : ''}${c.delta}`)
             .join(',')}`,
         );
       }
       if (r.inserted.length > 0) parts.push(`ins:${r.inserted.join(',')}`);
+      if (r.removed.length > 0) parts.push(`rem:${r.removed.join(',')}`);
       if (r.movedOnly.length > 0) parts.push(`moved:${r.movedOnly.length}`);
+      if (r.coldStart) parts.push('cold');
       return parts.join(' ');
     });
 }
@@ -133,16 +144,33 @@ export function resetClsMoverTrackingForTesting(): void {
 export function startClsMoverTracking(): void {
   if (started || typeof window === 'undefined' || typeof PerformanceObserver === 'undefined') return;
   started = true;
+  cache = snapshotPanels();
+  if (cache) lastRefresh = performance.now();
   try {
     new PerformanceObserver((list) => {
       for (const entry of list.getEntries() as Array<PerformanceEntry & { value: number; hadRecentInput: boolean }>) {
         if (entry.hadRecentInput) continue;
         const now = performance.now();
-        if (entry.value >= RECORD_SHIFT_THRESHOLD && cache) {
+        if (entry.value >= RECORD_SHIFT_THRESHOLD && !cache) {
+          // Cold cache: the mover is unattributable (no baseline), but a big
+          // shift before first snapshot is exactly the boot/skeleton-swap
+          // class — record its existence and seed the cache (review P2).
+          const current = snapshotPanels();
+          if (current) {
+            records.push({
+              t: Math.round(entry.startTime),
+              value: Math.round(entry.value * 1000) / 1000,
+              heightChangers: [], movedOnly: [], inserted: [], removed: [],
+              coldStart: true,
+            });
+            cache = current;
+            lastRefresh = now;
+          }
+        } else if (entry.value >= RECORD_SHIFT_THRESHOLD && cache) {
           const current = snapshotPanels();
           if (current) {
             const diff = diffPanelGeometry(cache, current);
-            if (diff.heightChangers.length > 0 || diff.inserted.length > 0 || diff.movedOnly.length > 0) {
+            if (diff.heightChangers.length > 0 || diff.inserted.length > 0 || diff.removed.length > 0 || diff.movedOnly.length > 0) {
               records.push({ t: Math.round(entry.startTime), value: Math.round(entry.value * 1000) / 1000, ...diff });
               if (records.length > MAX_RECORDS) records = records.slice(-MAX_RECORDS);
             }
