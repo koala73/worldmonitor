@@ -17,6 +17,8 @@
 //      ~/.claude/skills/worldmonitor-architecture-gotchas/reference/
 //        cloudflare-worker-overrides-vercel-cors-for-preflight.md
 
+import { maybeShadowKvRead } from './kv-shadow.js';
+
 // Keep in sync with api/_cors.js#ALLOWED_ORIGIN_PATTERNS and
 // server/cors.ts#PRODUCTION_PATTERNS. The Worker's allowlist must be a
 // superset of (or identical to) the function-side allowlist; if it's narrower,
@@ -126,8 +128,14 @@ function mergeHeaderNames(...values) {
 }
 
 export default {
-  async fetch(request) {
+  async fetch(request, env, ctx) {
     const url = new URL(request.url);
+
+    // KV shadow measurement (U-K2, #5338). Self-gating: no-op unless BOOTSTRAP_KV_SHADOW==='1'
+    // and this is a public-tier bootstrap GET. Runs in ctx.waitUntil — never touches the
+    // response or the CORS logic below. Kept entirely in kv-shadow.js so CORS stays untouched.
+    maybeShadowKvRead(request, url, env, ctx);
+
     if (!url.pathname.startsWith('/api/')) {
       return fetch(request);
     }

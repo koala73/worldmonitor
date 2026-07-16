@@ -7,7 +7,7 @@
   "scripts": {
     "deploy": "wrangler deploy",
     "deploy:dry-run": "wrangler deploy --dry-run --outdir=dist",
-    "test": "node --test index.test.mjs"
+    "test": "node --test index.test.mjs kv-shadow.test.mjs"
   },
   "devDependencies": {
     "wrangler": "^3.95.0"

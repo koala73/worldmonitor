@@ -16,3 +16,16 @@ zone_name = "worldmonitor.app"
 # Observability: surface Worker errors in CF dashboard logs.
 [observability]
 enabled = true
+
+# Bootstrap tier objects on Workers KV — read-only, for the U-K2 shadow measurement (#5338).
+# The publisher (Railway) writes these keys; here the Worker only reads them to time the read
+# per POP. Namespace id is config, not a secret.
+[[kv_namespaces]]
+binding = "BOOTSTRAP_KV"
+id = "40d42ec8064b4813ac87e61b43fb697f"
+
+# Shadow flag — "0" = inert (Worker behaves exactly as the CORS-only version). Flip to "1" to
+# start measuring (a one-line change + CI redeploy, or a dashboard var override). AXIOM_API_TOKEN
+# is set as a Worker secret (never committed) and is only needed once the flag is on.
+[vars]
+BOOTSTRAP_KV_SHADOW = "0"
