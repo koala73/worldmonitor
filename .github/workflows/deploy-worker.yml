@@ -15,6 +15,7 @@ on:
     branches: [main]
     paths:
       - 'workers/api-cors-preflight/**'
+      - 'api/_bootstrap-public-tier.js'
       - '.github/workflows/deploy-worker.yml'
   workflow_dispatch:
 
@@ -36,7 +37,7 @@ jobs:
       - name: Install
         run: npm install --no-audit --no-fund
       - name: Run unit tests
-        run: node --test index.test.mjs
+        run: npm test
 
   deploy:
     name: Wrangler deploy

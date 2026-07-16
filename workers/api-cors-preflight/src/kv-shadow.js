@@ -12,31 +12,26 @@
 // deploys inert and the measurement is flipped on/off by a single var. Privacy: the emitted event
 // is a fixed allowlist — never a request, user, credential, or header field.
 
-const PUBLIC_TIERS = new Set(['fast', 'slow']);
+import { bootstrapTierFromPublicRequest } from '../../../api/_bootstrap-public-tier.js';
+
+export { bootstrapTierFromPublicRequest } from '../../../api/_bootstrap-public-tier.js';
+
 // Staleness thresholds mirror KTD4 of the serving plan (fast 15 min, slow 60 min): a value older
 // than this would fall through to origin at serve time, so it counts as a non-serving read here.
 export const TIER_MAX_AGE_MS = Object.freeze({ fast: 15 * 60_000, slow: 60 * 60_000 });
 const PROBE_CEILING_MS = 5_000; // bounds a pathological read; NOT a serving budget (this is waitUntil)
+const AXIOM_TIMEOUT_MS = 1_500;
 const AXIOM_INGEST_URL = 'https://api.axiom.co/v1/datasets/wm_api_usage/ingest';
 const PROBE_TIMEOUT = Symbol('kv-probe-timeout');
+const MAX_FUTURE_SKEW_MS = 5 * 60_000;
 
 let isolateCold = true; // true until the first probe in this isolate — gives explicit cold/warm split
+const loggedDeliveryFailures = new Set();
 
-/**
- * The bare tier name for a public-tier bootstrap GET, else null. Mirrors
- * api/bootstrap.js#isPublicTierBootstrapRequest exactly: GET /api/bootstrap with precisely
- * `tier=fast|slow` and `public=1` and no other params.
- */
-export function bootstrapTierFromPublicRequest(request, url) {
-  if (request.method !== 'GET') return null;
-  const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname;
-  if (pathname !== '/api/bootstrap') return null;
-  const keys = [...url.searchParams.keys()];
-  if (keys.some((k) => k !== 'tier' && k !== 'public')) return null;
-  const tiers = url.searchParams.getAll('tier');
-  const pub = url.searchParams.getAll('public');
-  if (tiers.length !== 1 || pub.length !== 1 || pub[0] !== '1') return null;
-  return PUBLIC_TIERS.has(tiers[0]) ? tiers[0] : null;
+function isPlainObject(value) {
+  if (value === null || typeof value !== 'object' || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 /** Classify a raw KV value the way the serving path would decide to serve vs fall through. */
@@ -48,24 +43,53 @@ export function classifyKvEnvelope(tier, raw, now) {
   } catch {
     return { outcome: 'fallback', reason: 'invalid' };
   }
-  if (!envelope || envelope.tier !== tier || typeof envelope.generatedAt !== 'number' || !envelope.payload) {
+  if (!isPlainObject(envelope)
+    || envelope.tier !== tier
+    || !Number.isFinite(envelope.generatedAt)
+    || !Number.isInteger(envelope.generatedAt)
+    || envelope.generatedAt > now + MAX_FUTURE_SKEW_MS
+    || !isPlainObject(envelope.payload)
+    || !isPlainObject(envelope.payload.data)
+    || !Array.isArray(envelope.payload.missing)) {
     return { outcome: 'fallback', reason: 'invalid' };
   }
   if (now - envelope.generatedAt > TIER_MAX_AGE_MS[tier]) return { outcome: 'fallback', reason: 'stale' };
   return { outcome: 'kv', reason: null };
 }
 
+function warnDeliveryFailure(failureClass) {
+  if (loggedDeliveryFailures.has(failureClass)) return;
+  loggedDeliveryFailures.add(failureClass);
+  console.warn(JSON.stringify({
+    event_type: 'bootstrap_kv_shadow_delivery',
+    failure_class: failureClass,
+  }));
+}
+
 async function emit(env, event) {
   const token = env?.AXIOM_API_TOKEN;
-  if (!token) return; // no token (e.g. inert deploy) → measured silently, never throws
+  if (!token) {
+    warnDeliveryFailure('missing_token');
+    return;
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), AXIOM_TIMEOUT_MS);
   try {
-    await fetch(AXIOM_INGEST_URL, {
+    const response = await fetch(AXIOM_INGEST_URL, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'WorldMonitor Bootstrap KV Shadow/1.0',
+      },
       body: JSON.stringify([{ _time: new Date().toISOString(), ...event }]),
+      signal: controller.signal,
     });
+    if (!response.ok) warnDeliveryFailure('http_error');
   } catch {
-    // Observability must never surface into the request path.
+    warnDeliveryFailure(controller.signal.aborted ? 'timeout' : 'network_error');
+  } finally {
+    clearTimeout(timer);
   }
 }
 
@@ -75,14 +99,19 @@ async function probeAndEmit(tier, env, cf) {
   const started = Date.now();
   let outcome = 'fallback';
   let reason = 'error';
+  let ceilingTimer;
   try {
     const raw = await Promise.race([
       env.BOOTSTRAP_KV.get(tier, { type: 'text' }),
-      new Promise((_, reject) => setTimeout(() => reject(PROBE_TIMEOUT), PROBE_CEILING_MS)),
+      new Promise((_, reject) => {
+        ceilingTimer = setTimeout(() => reject(PROBE_TIMEOUT), PROBE_CEILING_MS);
+      }),
     ]);
     ({ outcome, reason } = classifyKvEnvelope(tier, raw, Date.now()));
   } catch (err) {
     reason = err === PROBE_TIMEOUT ? 'timeout' : 'error';
+  } finally {
+    clearTimeout(ceilingTimer);
   }
   const kvDurationMs = Date.now() - started;
   // Fixed allowlist — no request/user/credential/header fields can appear here.
@@ -107,4 +136,9 @@ export function maybeShadowKvRead(request, url, env, ctx) {
   const tier = bootstrapTierFromPublicRequest(request, url);
   if (!tier) return;
   ctx.waitUntil(probeAndEmit(tier, env, request.cf));
+}
+
+export function __resetKvShadowForTests() {
+  isolateCold = true;
+  loggedDeliveryFailures.clear();
 }

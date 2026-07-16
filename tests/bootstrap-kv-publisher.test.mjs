@@ -76,6 +76,7 @@ describe('putKvJsonValue', () => {
     assert.equal(seen.init.method, 'PUT');
     assert.equal(seen.url, 'https://api.cloudflare.com/client/v4/accounts/A/storage/kv/namespaces/N/values/fast');
     assert.equal(seen.init.headers.Authorization, 'Bearer T');
+    assert.equal(seen.init.headers['User-Agent'], 'WorldMonitor Bootstrap Publisher/1.0');
     assert.equal(seen.init.body, JSON.stringify(value), 'writes the exact serialized envelope');
     assert.equal(out.bytes, Buffer.byteLength(JSON.stringify(value), 'utf8'));
   });
@@ -97,6 +98,21 @@ describe('putKvJsonValue', () => {
     await assert.rejects(
       putKvJsonValue({ accountId: 'A', namespaceId: 'N', token: 'T' }, 'fast', { a: 1 }, { fetchFn }),
       /KV write 'fast' failed: HTTP 404/,
+    );
+  });
+
+  it('aborts a KV write that exceeds its deadline', async () => {
+    const fetchFn = async (_url, { signal }) => new Promise((resolve, reject) => {
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    });
+    await assert.rejects(
+      putKvJsonValue(
+        { accountId: 'A', namespaceId: 'N', token: 'T' },
+        'fast',
+        { a: 1 },
+        { fetchFn, timeoutMs: 5 },
+      ),
+      { name: 'AbortError' },
     );
   });
 });
@@ -147,6 +163,18 @@ describe('publishBootstrapTier — KV parity', () => {
     assert.equal(result.bytes, 10, 'R2 write still succeeded');
     assert.equal(result.kv.ok, false);
     assert.ok(logs.some((l) => /bootstrap-kv/.test(l)));
+  });
+
+  it('never attempts the best-effort KV mirror when the canonical R2 write fails', async () => {
+    let kvCalled = false;
+    await assert.rejects(
+      runPublish({
+        putObject: async () => { throw new Error('r2 down'); },
+        putKv: async () => { kvCalled = true; return { bytes: 1 }; },
+      }),
+      /r2 down/,
+    );
+    assert.equal(kvCalled, false);
   });
 
   it('skips KV entirely when unconfigured, leaving the R2-only path intact', async () => {

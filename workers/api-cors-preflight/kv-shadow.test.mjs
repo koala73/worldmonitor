@@ -9,6 +9,7 @@ import test from 'node:test';
 
 import worker from './src/index.js';
 import {
+  __resetKvShadowForTests,
   bootstrapTierFromPublicRequest,
   classifyKvEnvelope,
   maybeShadowKvRead,
@@ -20,13 +21,14 @@ const freshEnvelope = (tier = 'fast', ageMs = 0) =>
   JSON.stringify({ tier, generatedAt: Date.now() - ageMs, payload: { data: {}, missing: [] } });
 
 // Route global fetch: Axiom POSTs are captured; everything else is a canned "origin" response.
-function installFetch(onAxiom) {
+function installFetch(onAxiom, { axiomStatus = 200, axiomError = null } = {}) {
   const real = globalThis.fetch;
   globalThis.fetch = async (input, init) => {
     const u = typeof input === 'string' ? input : input?.url ?? '';
     if (u.includes('api.axiom.co')) {
-      onAxiom?.(JSON.parse(init.body));
-      return new Response('{}', { status: 200 });
+      onAxiom?.(JSON.parse(init.body), init);
+      if (axiomError) throw axiomError;
+      return new Response('{}', { status: axiomStatus });
     }
     return new Response('{"data":{}}', { status: 200, headers: { 'X-Origin': 'vercel' } });
   };
@@ -47,19 +49,26 @@ function makeCtx() {
 const bootReq = () => new Request(BOOT_URL, { method: 'GET', headers: { Origin: 'https://worldmonitor.app' } });
 
 test('CORS response is byte-identical whether the KV shadow is on or off', async () => {
+  __resetKvShadowForTests();
   const restore = installFetch(() => {});
   try {
     const c1 = makeCtx();
     const off = await worker.fetch(bootReq(), makeEnv({ shadow: '0' }), c1.ctx);
 
+    let probes = 0;
+    const onEnv = makeEnv({ shadow: '1', kvValue: freshEnvelope() });
+    const readKv = onEnv.BOOTSTRAP_KV.get;
+    onEnv.BOOTSTRAP_KV.get = async (...args) => { probes += 1; return readKv(...args); };
     const c2 = makeCtx();
-    const on = await worker.fetch(bootReq(), makeEnv({ shadow: '1', kvValue: freshEnvelope() }), c2.ctx);
+    const on = await worker.fetch(bootReq(), onEnv, c2.ctx);
+    assert.equal(c2.waits.length, 1, 'shadow on schedules exactly one probe');
     await Promise.all(c2.waits);
 
     assert.equal(off.status, on.status);
     assert.deepEqual([...off.headers].sort(), [...on.headers].sort(), 'headers identical');
     assert.equal(await off.text(), await on.text(), 'body identical');
     assert.equal(c1.waits.length, 0, 'shadow off => no waitUntil work');
+    assert.equal(probes, 1, 'the scheduled shadow work reads KV exactly once');
   } finally { restore(); }
 });
 
@@ -86,7 +95,8 @@ test('a non-bootstrap request never probes KV', async () => {
 
 test('emits an allowlisted event with outcome kv on a fresh value', async () => {
   let event;
-  const restore = installFetch((body) => { event = body[0]; });
+  let requestInit;
+  const restore = installFetch((body, init) => { event = body[0]; requestInit = init; });
   try {
     const env = makeEnv({ kvValue: freshEnvelope('fast') });
     const { ctx, waits } = makeCtx();
@@ -101,6 +111,7 @@ test('emits an allowlisted event with outcome kv on a fresh value', async () => 
     assert.equal(typeof event.kv_duration_ms, 'number');
     assert.equal(event.cf_colo, 'SIN');
     assert.equal(event.cf_country, 'SG');
+    assert.equal(requestInit.headers['User-Agent'], 'WorldMonitor Bootstrap KV Shadow/1.0');
     // Privacy: EXACTLY the allowlist (+ _time). No ip/user_agent/customer_id/etc. can appear.
     assert.deepEqual(
       Object.keys(event).sort(),
@@ -115,6 +126,9 @@ test('failure modes map to the right reason and never throw', async () => {
     [{ kvValue: '{not json' }, { outcome: 'fallback', reason: 'invalid' }],
     [{ kvValue: freshEnvelope('fast', TIER_MAX_AGE_MS.fast + 60_000) }, { outcome: 'fallback', reason: 'stale' }],
     [{ kvValue: JSON.stringify({ tier: 'slow', generatedAt: Date.now(), payload: {} }) }, { outcome: 'fallback', reason: 'invalid' }], // wrong tier
+    [{ kvValue: JSON.stringify({ tier: 'fast', generatedAt: Date.now(), payload: { missing: [] } }) }, { outcome: 'fallback', reason: 'invalid' }], // missing data
+    [{ kvValue: JSON.stringify({ tier: 'fast', generatedAt: Date.now() + 6 * 60_000, payload: { data: {}, missing: [] } }) }, { outcome: 'fallback', reason: 'invalid' }], // future skew
+    [{ kvValue: JSON.stringify({ tier: 'fast', generatedAt: Date.now() + 0.5, payload: { data: {}, missing: [] } }) }, { outcome: 'fallback', reason: 'invalid' }], // non-integer timestamp
     [{ kvThrows: true }, { outcome: 'fallback', reason: 'error' }],
   ]) {
     let event;
@@ -130,6 +144,7 @@ test('failure modes map to the right reason and never throw', async () => {
 });
 
 test('execution_cold is a boolean and a consecutive probe is warm', async () => {
+  __resetKvShadowForTests();
   const events = [];
   const restore = installFetch((body) => { events.push(body[0]); });
   try {
@@ -138,7 +153,7 @@ test('execution_cold is a boolean and a consecutive probe is warm', async () => 
       maybeShadowKvRead({ method: 'GET', cf: {} }, new URL(BOOT_URL), makeEnv({ kvValue: freshEnvelope() }), ctx);
       await Promise.all(waits);
     }
-    assert.equal(typeof events[0].execution_cold, 'boolean');
+    assert.equal(events[0].execution_cold, true, 'the first probe in a fresh isolate is cold');
     assert.equal(events[1].execution_cold, false, 'the second consecutive probe in an isolate is warm');
   } finally { restore(); }
 });
@@ -154,10 +169,41 @@ test('bootstrapTierFromPublicRequest mirrors the public-tier contract', () => {
   assert.equal(tier('https://api.worldmonitor.app/api/other?tier=fast&public=1'), null, 'wrong path');
 });
 
+test('Axiom delivery failures produce bounded operator-visible warnings', async () => {
+  const warnings = [];
+  const realWarn = console.warn;
+  console.warn = (message) => warnings.push(JSON.parse(message));
+  const restore = installFetch(() => {}, { axiomStatus: 503 });
+  try {
+    __resetKvShadowForTests();
+    for (let i = 0; i < 2; i++) {
+      const { ctx, waits } = makeCtx();
+      maybeShadowKvRead({ method: 'GET', cf: {} }, new URL(BOOT_URL), makeEnv({ token: '' }), ctx);
+      await Promise.all(waits);
+    }
+    assert.equal(
+      warnings.filter((event) => event.failure_class === 'missing_token').length,
+      1,
+      'each failure class is logged at most once per isolate',
+    );
+
+    __resetKvShadowForTests();
+    const { ctx, waits } = makeCtx();
+    maybeShadowKvRead({ method: 'GET', cf: {} }, new URL(BOOT_URL), makeEnv(), ctx);
+    await Promise.all(waits);
+    assert.ok(warnings.some((event) => event.failure_class === 'http_error'));
+  } finally {
+    restore();
+    console.warn = realWarn;
+  }
+});
+
 test('classifyKvEnvelope decides serve-vs-fallback like the serving path', () => {
   const now = Date.now();
   assert.deepEqual(classifyKvEnvelope('fast', null, now), { outcome: 'fallback', reason: 'miss' });
   assert.deepEqual(classifyKvEnvelope('fast', freshEnvelope('fast'), now), { outcome: 'kv', reason: null });
   assert.equal(classifyKvEnvelope('fast', freshEnvelope('fast', TIER_MAX_AGE_MS.fast + 1000), now).reason, 'stale');
   assert.equal(classifyKvEnvelope('fast', 'garbage{', now).reason, 'invalid');
+  assert.equal(classifyKvEnvelope('fast', JSON.stringify({ tier: 'fast', generatedAt: now, payload: [] }), now).reason, 'invalid');
+  assert.equal(classifyKvEnvelope('fast', JSON.stringify({ tier: 'fast', generatedAt: now + 6 * 60_000, payload: { data: {}, missing: [] } }), now).reason, 'invalid');
 });
