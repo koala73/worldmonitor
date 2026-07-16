@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, test } from 'node:test';
 
 import handler, { __testing__ } from '../api/bootstrap.js';
+import { BOOTSTRAP_R2_PROBE_CEILING_MS } from '../api/_bootstrap-r2.js';
 
 const originalEnv = { ...process.env };
 const originalFetch = globalThis.fetch;
@@ -32,7 +33,7 @@ function makeWaitUntilCtx() {
   };
 }
 
-function installFetchHarness({ r2Status = 200 } = {}) {
+function installFetchHarness({ r2Status = 200, redisFailure = null } = {}) {
   const calls = { redis: 0, redisCommands: [], r2: 0, axiom: 0, events: [] };
   globalThis.fetch = async (input, init = {}) => {
     const url = input instanceof Request ? input.url : input instanceof URL ? input.href : String(input);
@@ -40,6 +41,12 @@ function installFetchHarness({ r2Status = 200 } = {}) {
       calls.redis += 1;
       const commands = JSON.parse(init.body);
       calls.redisCommands.push(commands);
+      if (redisFailure === 'http') return new Response(null, { status: 503 });
+      if (redisFailure === 'command') {
+        return new Response(JSON.stringify(commands.map((_, index) => (
+          index === 0 ? { error: 'ERR test failure' } : { result: null }
+        ))), { status: 200 });
+      }
       return new Response(JSON.stringify(commands.map((_, index) => ({
         result: JSON.stringify({ value: index }),
       }))), { status: 200 });
@@ -62,6 +69,14 @@ function installFetchHarness({ r2Status = 200 } = {}) {
     throw new Error(`unexpected fetch ${url}`);
   };
   return calls;
+}
+
+function assertRedisDurationMatchesHeader(response, event) {
+  const header = response.headers.get('x-worldmonitor-bootstrap-redis-duration');
+  assert.match(header ?? '', /^\d+(?:\.\d+)?$/);
+  assert.equal(typeof event.redis_duration_ms, 'number');
+  assert.ok(event.redis_duration_ms >= 0);
+  assert.equal(event.redis_duration_ms.toFixed(3), header);
 }
 
 beforeEach(() => {
@@ -144,6 +159,7 @@ for (const [label, r2Status, expectedOutcome, expectedReason] of [
     assert.equal(calls.events[0].r2_outcome, expectedOutcome);
     assert.equal(calls.events[0].r2_reason, expectedReason);
     assert.equal(calls.events[0].bootstrap_tier, 'slow');
+    assertRedisDurationMatchesHeader(response, calls.events[0]);
     assert.equal(calls.events[0].execution_region, 'iad1');
     assert.equal(calls.events[0].status, 200);
     assert.deepEqual(
@@ -156,6 +172,64 @@ for (const [label, r2Status, expectedOutcome, expectedReason] of [
     assert.match(exposed, /X-WorldMonitor-Bootstrap-Redis-Duration/i);
     assert.match(exposed, /X-Vercel-Cache/i);
     assert.match(exposed, /CF-Cache-Status/i);
+  });
+}
+
+test('a rejected shadow reader emits unreadable fallback telemetry without altering Redis', async () => {
+  process.env.BOOTSTRAP_R2_SHADOW_MEASURE = '1';
+  const calls = installFetchHarness();
+  const wait = makeWaitUntilCtx();
+  let readerInput;
+  __testing__.setBootstrapR2ShadowReaderForTests(async (tier, options) => {
+    readerInput = { tier, options };
+    throw new Error('rejected test probe');
+  });
+
+  const response = await handler(makeRequest('tier=slow&public=1'), wait.ctx);
+  const body = await response.json();
+  await wait.settle();
+
+  assert.equal(response.status, 200);
+  assert.equal(calls.redis, 1);
+  assert.equal(calls.r2, 0);
+  assert.equal(calls.axiom, 1);
+  assert.equal(wait.pending.length, 1);
+  assert.equal(body.data.ignored, undefined, 'the rejected R2 probe must not alter the Redis response');
+  assert.equal(calls.events[0].r2_outcome, 'fallback');
+  assert.equal(calls.events[0].r2_reason, 'unreadable');
+  assert.equal(calls.events[0].r2_duration_ms, 0);
+  assert.equal(calls.events[0].status, 200);
+  assert.deepEqual(readerInput, {
+    tier: 'slow',
+    options: { timeoutMs: BOOTSTRAP_R2_PROBE_CEILING_MS },
+  });
+  assertRedisDurationMatchesHeader(response, calls.events[0]);
+});
+
+for (const [label, redisFailure] of [
+  ['HTTP', 'http'],
+  ['command', 'command'],
+]) {
+  test(`a Redis ${label} failure preserves the 503 response and records its timer`, async () => {
+    process.env.BOOTSTRAP_R2_SHADOW_MEASURE = '1';
+    const calls = installFetchHarness({ redisFailure });
+    const wait = makeWaitUntilCtx();
+
+    const response = await handler(makeRequest('tier=fast&public=1'), wait.ctx);
+    const body = await response.json();
+    await wait.settle();
+
+    assert.equal(response.status, 503);
+    assert.deepEqual(body, { error: 'Bootstrap service temporarily unavailable' });
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.equal(response.headers.get('cdn-cache-control'), null);
+    assert.equal(response.headers.get('retry-after'), '5');
+    assert.equal(calls.redis, 1);
+    assert.equal(calls.r2, 1);
+    assert.equal(calls.axiom, 1);
+    assert.equal(wait.pending.length, 1);
+    assert.equal(calls.events[0].status, 503);
+    assertRedisDurationMatchesHeader(response, calls.events[0]);
   });
 }
 
@@ -196,7 +270,6 @@ test('shadow ignores on-demand requests but uses the Vercel scheduler without ha
 
 test('shadow source pins the uncensored probe ceiling and cannot consume serving timeouts', () => {
   const source = readFileSync(new URL('../api/bootstrap.js', import.meta.url), 'utf8');
-  assert.match(source, /readBootstrapTierObject\(tier,\s*\{\s*timeoutMs:\s*BOOTSTRAP_R2_PROBE_CEILING_MS,?\s*\}\)/);
   assert.doesNotMatch(source, /bootstrapR2ServingTimeoutMs|BOOTSTRAP_R2_TIMEOUT_MS_FAST|BOOTSTRAP_R2_TIMEOUT_MS_SLOW/);
 
   const timerStop = source.indexOf('const redisDurationMs = measureR2Shadow');

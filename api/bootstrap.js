@@ -69,6 +69,7 @@ export function isPublicWeatherBootstrapRequest(req) {
 const PUBLIC_BOOTSTRAP_TIERS = new Set(['fast', 'slow']);
 let nextBootstrapR2ShadowProbeIsCold = true;
 let scheduleBootstrapR2Shadow = vercelWaitUntil;
+let readBootstrapR2ShadowTier = readBootstrapTierObject;
 
 function shouldMeasureBootstrapR2Shadow(authKind, tier) {
   return process.env.BOOTSTRAP_R2_SHADOW_MEASURE === '1'
@@ -105,27 +106,25 @@ function finishBootstrapR2ShadowResponse(req, ctx, tier, response, redisDuration
 
   const executionCold = nextBootstrapR2ShadowProbeIsCold;
   nextBootstrapR2ShadowProbeIsCold = false;
-  const probe = readBootstrapTierObject(tier, {
+  const deliverProbeResult = (result) => deliverBootstrapR2Shadow({
+    r2Outcome: result.status === 'ok' ? 'r2' : 'fallback',
+    r2Reason: result.status === 'fallback' ? result.reason : null,
+    bootstrapTier: tier,
+    r2DurationMs: result.durationMs,
+    redisDurationMs,
+    executionRegion: deriveExecutionRegion(req) ?? process.env.VERCEL_REGION ?? 'unknown',
+    executionCold,
+    status: response.status,
+  });
+  const probe = readBootstrapR2ShadowTier(tier, {
     timeoutMs: BOOTSTRAP_R2_PROBE_CEILING_MS,
-  }).then((result) => deliverBootstrapR2Shadow({
-      r2Outcome: result.status === 'ok' ? 'r2' : 'fallback',
-      r2Reason: result.status === 'fallback' ? result.reason : null,
-      bootstrapTier: tier,
-      r2DurationMs: result.durationMs,
-      executionRegion: deriveExecutionRegion(req) ?? process.env.VERCEL_REGION ?? 'unknown',
-      executionCold,
-      status: response.status,
-    })).catch(() => {
+  }).then(deliverProbeResult).catch(() => {
     // readBootstrapTierObject is fail-soft by contract. Preserve that contract
     // if a future implementation accidentally throws before producing a result.
-    return deliverBootstrapR2Shadow({
-      r2Outcome: 'fallback',
-      r2Reason: 'unreadable',
-      bootstrapTier: tier,
-      r2DurationMs: 0,
-      executionRegion: deriveExecutionRegion(req) ?? process.env.VERCEL_REGION ?? 'unknown',
-      executionCold,
-      status: response.status,
+    return deliverProbeResult({
+      status: 'fallback',
+      reason: 'unreadable',
+      durationMs: 0,
     });
   });
   try {
@@ -483,8 +482,12 @@ export const __testing__ = {
   resetBootstrapR2ShadowForTests() {
     nextBootstrapR2ShadowProbeIsCold = true;
     scheduleBootstrapR2Shadow = vercelWaitUntil;
+    readBootstrapR2ShadowTier = readBootstrapTierObject;
   },
   setWaitUntilForTests(waitUntil) {
     scheduleBootstrapR2Shadow = waitUntil;
+  },
+  setBootstrapR2ShadowReaderForTests(reader) {
+    readBootstrapR2ShadowTier = reader;
   },
 };

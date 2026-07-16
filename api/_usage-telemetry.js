@@ -182,6 +182,7 @@ function bootstrapR2ShadowDelivery(input) {
     r2_reason: input.r2Reason,
     bootstrap_tier: input.bootstrapTier,
     r2_duration_ms: input.r2DurationMs,
+    redis_duration_ms: input.redisDurationMs,
     execution_region: input.executionRegion,
     execution_cold: input.executionCold,
     status: input.status,
