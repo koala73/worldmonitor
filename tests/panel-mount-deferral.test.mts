@@ -472,4 +472,28 @@ describe('panel mount deferral', () => {
       'mountPanelElement must flush runWhenConnected callbacks after inserting the panel element',
     );
   });
+
+  it('reserves a grid slot for immediate-tier lazy panels before their chunk loads (#5332)', async () => {
+    const source = await readFile(new URL('../src/app/panel-layout.ts', import.meta.url), 'utf8');
+    const method = source.match(/private\s+insertInitialPanelByKey\([\s\S]*?\n {2}\}/);
+
+    assert.ok(method, 'insertInitialPanelByKey method not found');
+    assert.doesNotMatch(
+      method[0],
+      /mountLazyPanel\(/,
+      'immediate-tier boot mounts must not use the placeholder-less mountLazyPanel path: the async '
+        + 'chunk arrival inserts a brand-new grid item and shoves every panel below it — field mover '
+        + 'data (#5332) named these insertions as the dominant desktop CLS mechanism',
+    );
+    assert.match(
+      method[0],
+      /this\.deferPanelMount\(key,/,
+      'insertInitialPanelByKey must reserve the panel slot with a deferred shell during the synchronous boot pass',
+    );
+    assert.match(
+      method[0],
+      /this\.mountDeferredPanel\(key\);/,
+      'immediate-tier panels must still start loading right away by triggering the deferred mount synchronously',
+    );
+  });
 });

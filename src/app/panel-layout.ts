@@ -1461,11 +1461,16 @@ export class PanelLayoutManager implements AppModule {
       return;
     }
     if (panel || !this.lazyPanelRegistrations.has(key)) return;
-    if (this.shouldMountPanelImmediately(key)) {
-      this.mountLazyPanel(key, grid);
-      return;
-    }
+    // Immediate-tier lazy panels go through the same slot-reserving shell
+    // contract as deferred ones (#5332): the shell occupies the panel's grid
+    // slot during this synchronous boot pass and the async chunk arrival
+    // replaces it in place. The previous placeholder-less mountLazyPanel path
+    // inserted a brand-new grid item whenever the import resolved — field
+    // mover data named those insertions as the dominant desktop CLS source.
     this.deferPanelMount(key, null, grid, this.ctx.panelSettings[key]?.enabled === true);
+    if (this.shouldMountPanelImmediately(key)) {
+      this.mountDeferredPanel(key);
+    }
   }
 
   private mountPanelElement(grid: HTMLElement, key: string, panel: Panel, placeholder?: HTMLElement | null): boolean {
