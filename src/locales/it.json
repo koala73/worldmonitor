@@ -36,7 +36,7 @@
       "displaced": "sfollati",
       "climate": "Stress climatico",
       "conflictEvents": "eventi di conflitto",
-      "gpsJammingZones": "GPS Jamming Zones",
+      "gpsJammingZones": "Zone di disturbo GPS",
       "activeStrikes": "scioperi attivi",
       "aviationDisruptions": "interruzioni aeroportuali"
     },
@@ -646,7 +646,7 @@
         "displaced": "spostato",
         "climate": "Stress climatico",
         "conflictEvents": "eventi di conflitto",
-        "gpsJammingZones": "GPS Jamming Zones",
+        "gpsJammingZones": "Zone di disturbo GPS",
         "activeStrikes": "scioperi attivi",
         "aviationDisruptions": "interruzioni aeroportuali"
       },
@@ -1736,7 +1736,7 @@
         "geolocation": "Posizione verificata",
         "source": "Fonte primaria identificata",
         "crossref": "Confrontato con altre fonti",
-        "noAi": "Nessuna artefatto di generazione IA",
+        "noAi": "Nessun artefatto di generazione IA",
         "noRecrop": "Non riciclato/vecchie immagini",
         "metadata": "Metadati verificati",
         "context": "Contesto stabilito"
