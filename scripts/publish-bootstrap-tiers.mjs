@@ -13,6 +13,10 @@ import {
   putR2JsonObject,
   resolveR2StorageConfig,
 } from './_r2-storage.mjs';
+import {
+  putKvJsonValue,
+  resolveKvStorageConfig,
+} from './_kv-storage.mjs';
 
 const NEG_SENTINEL = '__WM_NEG__';
 const REDIS_PIPELINE_TIMEOUT_MS = 30_000;
@@ -148,7 +152,35 @@ export async function publishBootstrapTier(tier, options = {}) {
     tier,
     generatedAt: String(generatedAt),
   });
-  return { tier, generatedAt, missing: payload.missing.length, bytes: write?.bytes ?? null };
+
+  // KV parity write (#5300 KV serving plan). The SAME envelope, keyed by bare tier name
+  // (`fast`/`slow`) so the serving Worker reads `env.KV.get(tier)`. Best-effort and gated by
+  // credential presence: a KV failure — including the 25 MiB guard tripping — must never abort
+  // the canonical R2 publish, but it is logged loudly so a chronic failure is visible.
+  const kv = await publishTierToKv(tier, envelope, { ...options, env, logger: options.logger });
+
+  return { tier, generatedAt, missing: payload.missing.length, bytes: write?.bytes ?? null, kv };
+}
+
+/**
+ * Best-effort KV write of a tier envelope. Skips silently when KV is unconfigured (so R2-only
+ * deploys are unaffected); on failure, logs and returns `{ ok: false }` without throwing.
+ */
+export async function publishTierToKv(tier, envelope, options = {}) {
+  const env = options.env ?? process.env;
+  const resolveKv = options.resolveKvStorage ?? resolveKvStorageConfig;
+  const config = resolveKv(env);
+  if (!config) return { skipped: true };
+
+  const putKv = options.putKv ?? putKvJsonValue;
+  const logger = options.logger ?? console;
+  try {
+    const result = await putKv(config, tier, envelope, { fetchFn: options.kvFetchFn });
+    return { ok: true, bytes: result?.bytes ?? null };
+  } catch (err) {
+    logger.error?.(`[bootstrap-kv] tier=${tier} KV write failed: ${err?.message ?? err}`);
+    return { ok: false, error: err?.message ?? String(err) };
+  }
 }
 
 function defaultSleep(ms, signal) {
@@ -192,7 +224,10 @@ export async function runPublisherLoop(options = {}) {
     const tier = due[0];
     try {
       const result = await publishTier(tier);
-      logger.info?.(`[bootstrap-r2] published tier=${tier} generatedAt=${result?.generatedAt ?? 'unknown'} bytes=${result?.bytes ?? 'unknown'} missing=${result?.missing ?? 'unknown'}`);
+      const kvStatus = result?.kv?.skipped ? 'skipped'
+        : result?.kv?.ok ? `${result.kv.bytes}b`
+        : `FAILED(${result?.kv?.error ?? 'unknown'})`;
+      logger.info?.(`[bootstrap-r2] published tier=${tier} generatedAt=${result?.generatedAt ?? 'unknown'} bytes=${result?.bytes ?? 'unknown'} missing=${result?.missing ?? 'unknown'} kv=${kvStatus}`);
     } catch (error) {
       logger.warn?.(`[bootstrap-r2] publish failed tier=${tier}: ${error?.message ?? String(error)}`);
     } finally {
