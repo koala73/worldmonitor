@@ -1318,7 +1318,14 @@ export class PanelLayoutManager implements AppModule {
       let mountedFromDeferred = false;
       if (config.enabled && deferred && !deferred.mounted && (!deferred.placeholder || placeholderWasHidden)) {
         mountedFromDeferred = this.mountDeferredPanel(key);
-      } else if (deferred?.placeholder) {
+      }
+      // Reconcile placeholder visibility even when the mount attempt no-ops
+      // (an in-flight load sets deferred.loading, so mountDeferredPanel
+      // returns false): a re-enable during that window must unhide the shell
+      // or the panel vanishes until the chunk resolves — and forever if the
+      // load then fails, since a hidden shell can never intersect the retry
+      // observer.
+      if (!mountedFromDeferred && deferred?.placeholder) {
         deferred.placeholder.classList.toggle('hidden', !config.enabled);
       }
       const panel = this.ctx.panels[key];
@@ -1572,8 +1579,19 @@ export class PanelLayoutManager implements AppModule {
     if (deferred.retryAttempts >= DEFERRED_PANEL_MAX_RETRY_ATTEMPTS) {
       // Give up after a bounded number of attempts so a permanently failing
       // dynamic import (offline, stale chunk) cannot spin a 1s retry loop forever.
-      // The shell stays in place as a quiet fallback, matching the prior fail-safe.
+      // The shell stays in place as a quiet fallback, and a one-shot 'online'
+      // listener re-arms the retry budget so a connectivity blip during boot
+      // doesn't strand the skeleton until a manual reload — a genuinely broken
+      // chunk fails its retries again and lands back here.
       deferred.failed = true;
+      if (typeof window !== 'undefined') {
+        window.addEventListener('online', () => {
+          if (this.deferredPanelMounts.get(key) !== deferred || deferred.mounted || this.ctx.isDestroyed) return;
+          deferred.failed = false;
+          deferred.retryAttempts = 0;
+          this.observeDeferredPanelShell(key, deferred);
+        }, { once: true });
+      }
       return;
     }
     deferred.retryAttempts += 1;
@@ -1627,11 +1645,10 @@ export class PanelLayoutManager implements AppModule {
     return true;
   }
 
-  private mountLazyPanel(key: string, grid: HTMLElement, placeholder?: HTMLElement | null): void {
+  private mountLazyPanel(key: string, grid: HTMLElement): void {
     void this.loadRegisteredPanel(key).then((panel) => {
       if (!panel || this.ctx.isDestroyed) return;
-      const targetGrid = placeholder?.parentNode ? (placeholder.parentNode as HTMLElement) : grid;
-      if (this.mountPanelElement(targetGrid, key, panel, placeholder)) {
+      if (this.mountPanelElement(grid, key, panel)) {
         this.afterPanelMounted(key, panel);
       }
     });

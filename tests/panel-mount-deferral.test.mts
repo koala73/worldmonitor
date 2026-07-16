@@ -487,13 +487,11 @@ describe('panel mount deferral', () => {
     );
     assert.match(
       method[0],
-      /this\.deferPanelMount\(key,/,
-      'insertInitialPanelByKey must reserve the panel slot with a deferred shell during the synchronous boot pass',
-    );
-    assert.match(
-      method[0],
-      /this\.mountDeferredPanel\(key\);/,
-      'immediate-tier panels must still start loading right away by triggering the deferred mount synchronously',
+      /this\.deferPanelMount\(key, null, grid, this\.ctx\.panelSettings\[key\]\?\.enabled === true\);\s*if \(this\.shouldMountPanelImmediately\(key\)\) \{\s*this\.mountDeferredPanel\(key\);\s*\}/,
+      'insertInitialPanelByKey must reserve the slot first (withShell tied to the enabled flag), with the '
+        + 'immediate mount nested inside the shouldMountPanelImmediately budget gate and running after '
+        + 'deferPanelMount — hoisting, reordering, or dropping the enabled arg defeats the immediate-tier '
+        + 'budget or the shell reservation (#5332)',
     );
   });
 });
