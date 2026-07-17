@@ -21,7 +21,8 @@ const envelopeFor = (tier, ageMs = 0) =>
 
 // Route global fetch: Axiom POSTs captured; everything else is a canned "origin" response tagged
 // X-Origin: vercel so a test can tell served-from-KV (source marker) from origin pass-through.
-function installFetch(onAxiom, onOrigin) {
+// originDelayMs (with mock timers) lets a test make origin lose a hedge race to a slower-but-valid KV.
+function installFetch(onAxiom, onOrigin, { originDelayMs = 0 } = {}) {
   const real = globalThis.fetch;
   globalThis.fetch = async (input, init) => {
     const u = typeof input === 'string' ? input : input?.url ?? '';
@@ -30,10 +31,13 @@ function installFetch(onAxiom, onOrigin) {
       return new Response('{}', { status: 200 });
     }
     onOrigin?.(input, init);
+    if (originDelayMs) await new Promise((r) => setTimeout(r, originDelayMs));
     return new Response('{"data":{"origin":1},"missing":[]}', { status: 200, headers: { 'X-Origin': 'vercel' } });
   };
   return () => { globalThis.fetch = real; };
 }
+// Resolve KV after `ms` on the mock clock (a slow-but-under-budget read that outruns the hedge window).
+const slowGet = (ms) => (tier) => new Promise((r) => setTimeout(() => r(envelopeFor(tier)), ms));
 
 function makeEnv({ serve = 'all', shadow = '0', kvValue = null, get, token = 'axiom-tok', binding = true } = {}) {
   const env = { BOOTSTRAP_KV_SERVE: serve, BOOTSTRAP_KV_SHADOW: shadow, AXIOM_API_TOKEN: token };
@@ -174,25 +178,58 @@ test('emits an allowlisted bootstrap_kv_serve event for served and fallback', as
   } finally { restore(); }
 });
 
-test('a hung KV read starts origin fallback within the fast-tier reserve and emits timeout', async (t) => {
+test('a fast KV read is served without ever enlisting origin (no hedge)', async () => {
+  let originCalls = 0;
+  const restore = installFetch(undefined, () => { originCalls += 1; });
+  try {
+    const env = makeEnv({ serve: 'all', get: async (tier) => envelopeFor(tier) });
+    const { ctx, waits } = makeCtx();
+    const res = await worker.fetch(req(FAST_URL), env, ctx);
+    assert.equal(res.headers.get('X-WorldMonitor-Bootstrap-Source'), 'kv');
+    assert.equal(originCalls, 0, 'KV won inside the hedge window; origin never fetched');
+    await Promise.all(waits);
+  } finally { restore(); }
+});
+
+test('a hung KV read hedges to origin after the delay and records reason=hedged', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   let event;
   let originCalls = 0;
-  const restore = installFetch(
-    (body) => { event = body[0]; },
-    () => { originCalls += 1; },
-  );
+  const restore = installFetch((body) => { event = body[0]; }, () => { originCalls += 1; });
   try {
-    const env = makeEnv({ serve: 'all', get: () => new Promise(() => {}) });
+    const env = makeEnv({ serve: 'all', get: () => new Promise(() => {}) }); // never resolves
     const { ctx, waits } = makeCtx();
     const pending = worker.fetch(req(FAST_URL), env, ctx);
-    t.mock.timers.tick(501);
+    t.mock.timers.tick(501); // fire the hedge; origin (immediate) wins the race vs the hung read
     const res = await pending;
-    assert.equal(res.headers.get('X-Origin'), 'vercel', 'timeout reaches origin');
-    assert.equal(originCalls, 1, 'origin starts within the 700 ms fast-tier reserve');
+    assert.equal(res.headers.get('X-Origin'), 'vercel', 'hedge falls back to origin');
+    assert.equal(res.headers.get('X-WorldMonitor-Bootstrap-Source'), null, 'not served from the hung KV');
+    assert.equal(originCalls, 1, 'origin enlisted exactly once, at the hedge boundary');
     await Promise.all(waits);
     assert.equal(event.kv_outcome, 'fallback');
-    assert.equal(event.kv_reason, 'timeout');
+    assert.equal(event.kv_reason, 'hedged');
+  } finally { restore(); }
+});
+
+test('a slow-but-valid KV read still wins the hedge race and is served (not abandoned)', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let event;
+  let originCalls = 0;
+  // KV answers at 600ms (past the 500ms hedge, under the 1200ms budget); origin, once enlisted, is
+  // slower (400ms). The point of the hedge: this read is SERVED, where a hard timeout would drop it.
+  const restore = installFetch((body) => { event = body[0]; }, () => { originCalls += 1; }, { originDelayMs: 400 });
+  try {
+    const env = makeEnv({ serve: 'all', get: slowGet(600) });
+    const { ctx, waits } = makeCtx();
+    const pending = worker.fetch(req(FAST_URL), env, ctx);
+    t.mock.timers.tick(500); // hedge fires -> origin enlisted (will resolve at 900ms)
+    t.mock.timers.tick(100); // t=600 -> KV resolves first, wins the race
+    const res = await pending;
+    assert.equal(res.headers.get('X-WorldMonitor-Bootstrap-Source'), 'kv', 'slow-but-valid KV is served');
+    assert.deepEqual(JSON.parse(await res.text()), payloadFor('fast'));
+    assert.equal(originCalls, 1, 'origin was enlisted by the hedge but lost the race');
+    await Promise.all(waits);
+    assert.equal(event.kv_outcome, 'served');
   } finally { restore(); }
 });
 

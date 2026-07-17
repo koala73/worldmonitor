@@ -128,6 +128,40 @@ function mergeHeaderNames(...values) {
   return merged.join(', ');
 }
 
+// The single origin path: fetch Vercel, stamp the Worker's canonical CORS onto the response, and
+// preserve the bootstrap route's function-owned exposed headers. Shared by the normal pass-through
+// AND the U-K4 hedge, so there is exactly one origin+CORS implementation to keep correct.
+async function passThroughToOrigin(request, url, corsHeaders) {
+  try {
+    const response = await fetch(request);
+    const newHeaders = new Headers(response.headers);
+    const originExposedHeaders = newHeaders.get('Access-Control-Expose-Headers');
+    for (const [k, v] of Object.entries(corsHeaders)) {
+      newHeaders.set(k, v);
+    }
+    // Bootstrap temporarily exposes U3a timing and cache-classifier headers.
+    // Preserve only that route's function-owned additions while retaining
+    // the Worker's canonical baseline. Replacing this header outright made
+    // those diagnostics invisible to browser JavaScript in production.
+    if (url.pathname === '/api/bootstrap' && originExposedHeaders) {
+      newHeaders.set(
+        'Access-Control-Expose-Headers',
+        mergeHeaderNames(EXPOSE_HEADERS, originExposedHeaders),
+      );
+    }
+    return new Response(response.body, {
+      status: response.status,
+      statusText: response.statusText,
+      headers: newHeaders,
+    });
+  } catch (err) {
+    return new Response(JSON.stringify({ error: 'Origin unavailable' }), {
+      status: 502,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders },
+    });
+  }
+}
+
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -160,45 +194,20 @@ export default {
       return new Response(null, { status: 204, headers: corsHeaders });
     }
 
-    // KV serving (U-K4, #5338): serve a public-tier bootstrap GET straight from KV when
-    // BOOTSTRAP_KV_SERVE enables the tier and the value is fresh + valid — never touching Vercel/
-    // Redis. Any miss/stale/invalid/error/timeout returns null and falls through to the origin
-    // pass-through below (KTD3), so this is strictly additive: worst case is today's behaviour.
-    // Inert until the flag is flipped, exactly like the shadow.
-    const kvServed = await maybeServeBootstrapFromKv(request, url, env, ctx, corsHeaders);
-    if (kvServed) return kvServed;
+    // The single origin path for this request. maybeServeBootstrapFromKv (U-K4) may invoke it once
+    // internally when it hedges/falls back; every other request runs it directly below. Either way
+    // origin is fetched at most once.
+    const fetchOrigin = () => passThroughToOrigin(request, url, corsHeaders);
 
-    // All other methods — pass through to Vercel, then stamp CORS headers
-    // onto the response on the way back. The .set() loop intentionally
-    // overrides any function-set CORS headers so the Worker is the single
-    // source of truth.
-    try {
-      const response = await fetch(request);
-      const newHeaders = new Headers(response.headers);
-      const originExposedHeaders = newHeaders.get('Access-Control-Expose-Headers');
-      for (const [k, v] of Object.entries(corsHeaders)) {
-        newHeaders.set(k, v);
-      }
-      // Bootstrap temporarily exposes U3a timing and cache-classifier headers.
-      // Preserve only that route's function-owned additions while retaining
-      // the Worker's canonical baseline. Replacing this header outright made
-      // those diagnostics invisible to browser JavaScript in production.
-      if (url.pathname === '/api/bootstrap' && originExposedHeaders) {
-        newHeaders.set(
-          'Access-Control-Expose-Headers',
-          mergeHeaderNames(EXPOSE_HEADERS, originExposedHeaders),
-        );
-      }
-      return new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: newHeaders,
-      });
-    } catch (err) {
-      return new Response(JSON.stringify({ error: 'Origin unavailable' }), {
-        status: 502,
-        headers: { 'Content-Type': 'application/json', ...corsHeaders },
-      });
-    }
+    // KV serving (U-K4, #5338): for a public-tier bootstrap GET with BOOTSTRAP_KV_SERVE on, serve
+    // the tier straight from KV (never touching Vercel/Redis). A slow KV read is hedged against
+    // origin and any non-servable outcome uses the origin response — strictly additive (KTD3), so
+    // the worst case is today's behaviour. Returns null for non-servable requests (flag off, not a
+    // bootstrap GET), which then run the normal pass-through. Inert until the flag is flipped.
+    const bootstrapKv = await maybeServeBootstrapFromKv(request, url, env, ctx, corsHeaders, fetchOrigin);
+    if (bootstrapKv) return bootstrapKv;
+
+    // All other methods/paths — pass through to Vercel with the Worker's canonical CORS stamped.
+    return fetchOrigin();
   },
 };
