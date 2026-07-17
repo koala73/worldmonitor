@@ -556,7 +556,7 @@
       "opening": "Apertura...",
       "error": "Impossibile generare la storia.",
       "shareTitle": "Condividi la storia",
-      "close": "Vicino"
+      "close": "Chiudi"
     },
     "mobileWarning": {
       "title": "Visualizzazione mobile",
@@ -791,7 +791,7 @@
       "laborMarket": "Mercato del lavoro",
       "metroUnemployment": "Disoccupazione metropolitana",
       "noBisData": "Dati BIS temporaneamente non disponibili — nuovo tentativo a breve",
-      "policyRate": "Tasso di politica",
+      "policyRate": "Tasso di riferimento",
       "creditToGdp": "Credito / PIL",
       "realEer": "Tasso di cambio reale effettivo",
       "cut": "taglio",
@@ -1130,7 +1130,7 @@
       "infoTooltip": "<strong>Monitor delle anomalie climatiche</strong> Deviazioni di temperatura e precipitazioni rispetto al riferimento di 30 giorni. Dati da Open-Meteo (rianalisi ERA5).<ul><li><strong>Estremo</strong>: deviazione >5°C o >80 mm/giorno</li><li><strong>Moderato</strong>: deviazione >3°C o >40 mm/giorno</li></ul>Monitor 15 zone soggette a conflitti/disastri."
     },
     "newsPanel": {
-      "close": "Vicino",
+      "close": "Chiudi",
       "summarize": "Riassumi questo pannello",
       "generatingSummary": "Generazione riassunto...",
       "sources": "{{count}} fonti",
@@ -1191,7 +1191,7 @@
       "toggleMode": "Attiva/disattiva la modalità di riproduzione",
       "historicalPlayback": "Riproduzione storica",
       "live": "IN DIRETTA",
-      "close": "Vicino",
+      "close": "Chiudi",
       "skipToStart": "Vai all'inizio",
       "previous": "Precedente",
       "next": "Successivo",
@@ -1254,8 +1254,8 @@
       },
       "trendStable": "stabile",
       "domains": {
-        "air": "ARIA",
-        "sea": "MARE"
+        "air": "AEREO",
+        "sea": "NAVALE"
       },
       "strike": "ATTACCO",
       "staleWarning": "Utilizzo dati in cache — feed in tempo reale temporaneamente non disponibile",
@@ -1490,7 +1490,7 @@
       "operational": "Operativo",
       "underConstruction": "In costruzione",
       "announced": "Annunciato",
-      "rumoured": "Rumoreggiato",
+      "rumoured": "Vociferato",
       "divested": "Disinvestito",
       "asset": "Asset",
       "country": "Paese",
@@ -1501,7 +1501,7 @@
       "undisclosed": "Non divulgato",
       "sectors": {
         "ports": "Porti",
-        "pipelines": "Oleodotti",
+        "pipelines": "Condotte",
         "energy": "Energia",
         "datacenters": "Data center",
         "airports": "Aeroporti",
@@ -1799,10 +1799,10 @@
     },
     "orefSirens": {
       "checking": "Verifica avvisi sirene...",
-      "noAlerts": "Nessuna sirena attiva — tutto chiaro",
+      "noAlerts": "Nessuna sirena attiva — cessato allarme",
       "notConfigured": "Servizio sirene non configurato",
       "activeSirens": "{{count}} sirena/e attiva/e",
-      "justNow": "proprio adesso",
+      "justNow": "adesso",
       "historySummary": "{{count}} allerte in 24h — {{waves}} ondate",
       "loadingHistory": "Caricamento cronologia...",
       "infoTooltip": "<strong>Sirene Israele</strong><br>Avvisi in tempo reale di sirene per razzi e missili dal Comando del Fronte Interno israeliano.<br><br>I dati vengono interrogati ogni 10 secondi. Un indicatore rosso pulsante significa che le sirene sono attive."
@@ -2446,9 +2446,9 @@
     },
     "gpsJamming": {
       "title": "Interferenza GPS/GNSS",
-      "navPerformance": "Prestazioni di navigazione",
-      "samples": "Campioni ADS-B",
-      "aircraft": "Aeromobile",
+      "navPerformance": "Aeromobili interessati",
+      "samples": "Numero interessati",
+      "aircraft": "Aeromobili rilevati",
       "h3Hex": "Esagono H3"
     },
     "flight": {
@@ -2627,7 +2627,7 @@
     "cableAdvisory": {
       "reported": "SEGNALATO",
       "impact": "IMPATTO",
-      "eta": "ETA ARRIVO"
+      "eta": "ETA"
     },
     "outage": {
       "levels": {
@@ -2733,7 +2733,7 @@
       "altitude": "ALTITUDINE",
       "ground": "Terra",
       "speed": "VELOCITÀ",
-      "heading": "INTESTAZIONE",
+      "heading": "ROTTA",
       "hexCode": "CODICE ESAGONALE",
       "squawk": "SQUAWK",
       "attribution": "Fonte: rete OpenSky"
@@ -2742,7 +2742,7 @@
       "aisDark": "AIS OSCURO",
       "vessel": "Nave",
       "speed": "VELOCITÀ",
-      "heading": "INTESTAZIONE",
+      "heading": "ROTTA",
       "mmsi": "MMSI",
       "region": "REGIONE",
       "strikeGroup": "GRUPPO D'ATTACCO",
@@ -3058,7 +3058,7 @@
     "cancel": "Annulla"
   },
   "preferences": {
-    "display": "Schermata",
+    "display": "Visualizzazione",
     "intelligence": "Intelligenza",
     "media": "Media",
     "panels": "Pannelli",
