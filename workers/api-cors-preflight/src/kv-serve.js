@@ -15,6 +15,7 @@
 
 import { bootstrapTierFromPublicRequest } from '../../../api/_bootstrap-public-tier.js';
 import { classifyKvEnvelope, emit } from './kv-shadow.js';
+import { isBootstrapKvServingTier } from './kv-serve-mode.js';
 
 // Per-tier read cacheTtl (seconds): keep low-traffic POPs hot, trading a little staleness.
 // fast=60 is the KV floor; with a 120s publish cadence that is <=3 min served worst-case (product
@@ -22,22 +23,11 @@ import { classifyKvEnvelope, emit } from './kv-shadow.js';
 // evict between reads regardless and stay cold-ish — still faster than Redis there.
 const TIER_CACHE_TTL_S = Object.freeze({ fast: 60, slow: 300 });
 
-// Bound a hung KV read so a stuck get() can never hang the response; on timeout we fall through to
-// origin. Generous vs the measured p99 (~0.8s global, ~4s worst remote-POP cell) so a legitimately
-// slow read still serves rather than bouncing to (also-slow) Redis.
-const SERVE_READ_TIMEOUT_MS = 3_000;
+// Bound a hung KV read so origin fallback begins well before the fast-tier client's 1200 ms abort.
+// This leaves a 700 ms reserve for the established origin path; a value that reaches the client
+// deadline before beginning fallback would turn a KV incident into a new blackout path.
+const SERVE_READ_TIMEOUT_MS = 500;
 const READ_TIMEOUT = Symbol('kv-serve-timeout');
-
-/**
- * Staged serving flag. `off`/unset => serve nothing (Phase-A shadow-only, deploy is inert).
- * `slow` => serve the slow tier only (safest first cutover). `all` => serve both public tiers.
- */
-function serveEnabledForTier(env, tier) {
-  const mode = env?.BOOTSTRAP_KV_SERVE;
-  if (mode === 'all') return true;
-  if (mode === 'slow') return tier === 'slow';
-  return false;
-}
 
 // Fire-and-forget serving metric — fixed allowlist, mirroring the U-K2 shadow's privacy discipline:
 // no request/user/credential/header field can appear. Lets us gate the fallback rate post-cutover.
@@ -62,7 +52,7 @@ function recordServe(env, ctx, { tier, outcome, reason, durationMs, cf }) {
 export async function maybeServeBootstrapFromKv(request, url, env, ctx, corsHeaders) {
   if (!env?.BOOTSTRAP_KV) return null;
   const tier = bootstrapTierFromPublicRequest(request, url);
-  if (!tier || !serveEnabledForTier(env, tier)) return null;
+  if (!tier || !isBootstrapKvServingTier(env, tier)) return null;
 
   const cf = request.cf;
   let raw = null;

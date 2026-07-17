@@ -10,7 +10,6 @@ import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
 import worker from './src/index.js';
-import { maybeServeBootstrapFromKv } from './src/kv-serve.js';
 import { TIER_MAX_AGE_MS } from './src/kv-shadow.js';
 
 const FAST_URL = 'https://api.worldmonitor.app/api/bootstrap?tier=fast&public=1';
@@ -22,7 +21,7 @@ const envelopeFor = (tier, ageMs = 0) =>
 
 // Route global fetch: Axiom POSTs captured; everything else is a canned "origin" response tagged
 // X-Origin: vercel so a test can tell served-from-KV (source marker) from origin pass-through.
-function installFetch(onAxiom) {
+function installFetch(onAxiom, onOrigin) {
   const real = globalThis.fetch;
   globalThis.fetch = async (input, init) => {
     const u = typeof input === 'string' ? input : input?.url ?? '';
@@ -30,6 +29,7 @@ function installFetch(onAxiom) {
       onAxiom?.(JSON.parse(init.body), init);
       return new Response('{}', { status: 200 });
     }
+    onOrigin?.(input, init);
     return new Response('{"data":{"origin":1},"missing":[]}', { status: 200, headers: { 'X-Origin': 'vercel' } });
   };
   return () => { globalThis.fetch = real; };
@@ -174,17 +174,68 @@ test('emits an allowlisted bootstrap_kv_serve event for served and fallback', as
   } finally { restore(); }
 });
 
-test('a hung KV read times out and falls through with reason timeout', async (t) => {
+test('a hung KV read starts origin fallback within the fast-tier reserve and emits timeout', async (t) => {
   t.mock.timers.enable({ apis: ['setTimeout'] });
   let event;
-  const restore = installFetch((body) => { event = body[0]; });
+  let originCalls = 0;
+  const restore = installFetch(
+    (body) => { event = body[0]; },
+    () => { originCalls += 1; },
+  );
   try {
-    const env = makeEnv({ serve: 'all', get: () => new Promise(() => {}), token: '' }); // never resolves; no token => emit no-ops cleanly
+    const env = makeEnv({ serve: 'all', get: () => new Promise(() => {}) });
     const { ctx, waits } = makeCtx();
-    const pending = maybeServeBootstrapFromKv(req(SLOW_URL), new URL(SLOW_URL), env, ctx, {});
-    t.mock.timers.tick(3001);
+    const pending = worker.fetch(req(FAST_URL), env, ctx);
+    t.mock.timers.tick(501);
     const res = await pending;
-    assert.equal(res, null, 'timeout must fall through to origin');
+    assert.equal(res.headers.get('X-Origin'), 'vercel', 'timeout reaches origin');
+    assert.equal(originCalls, 1, 'origin starts within the 700 ms fast-tier reserve');
     await Promise.all(waits);
+    assert.equal(event.kv_outcome, 'fallback');
+    assert.equal(event.kv_reason, 'timeout');
+  } finally { restore(); }
+});
+
+test('a served tier skips the redundant shadow read during cutover', async () => {
+  let reads = 0;
+  const events = [];
+  const restore = installFetch((body) => { events.push(body[0]); });
+  try {
+    const env = makeEnv({
+      serve: 'all',
+      shadow: '1',
+      get: async (tier) => {
+        reads += 1;
+        return envelopeFor(tier);
+      },
+    });
+    const { ctx, waits } = makeCtx();
+    const res = await worker.fetch(req(FAST_URL), env, ctx);
+    assert.equal(res.headers.get('X-WorldMonitor-Bootstrap-Source'), 'kv');
+    await Promise.all(waits);
+    assert.equal(reads, 1, 'serve telemetry replaces the same-tier shadow read');
+    assert.deepEqual(events.map((event) => event.event_type), ['bootstrap_kv_serve']);
+  } finally { restore(); }
+});
+
+test('serve=slow keeps the unserved fast tier on the shadow path', async () => {
+  let reads = 0;
+  const events = [];
+  const restore = installFetch((body) => { events.push(body[0]); });
+  try {
+    const env = makeEnv({
+      serve: 'slow',
+      shadow: '1',
+      get: async (tier) => {
+        reads += 1;
+        return envelopeFor(tier);
+      },
+    });
+    const { ctx, waits } = makeCtx();
+    const res = await worker.fetch(req(FAST_URL), env, ctx);
+    assert.equal(res.headers.get('X-Origin'), 'vercel');
+    await Promise.all(waits);
+    assert.equal(reads, 1, 'fast remains shadowed until it is served');
+    assert.deepEqual(events.map((event) => event.event_type), ['bootstrap_kv_shadow']);
   } finally { restore(); }
 });
