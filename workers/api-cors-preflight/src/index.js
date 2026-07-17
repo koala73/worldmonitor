@@ -18,6 +18,7 @@
 //        cloudflare-worker-overrides-vercel-cors-for-preflight.md
 
 import { maybeShadowKvRead } from './kv-shadow.js';
+import { maybeServeBootstrapFromKv } from './kv-serve.js';
 
 // Keep in sync with api/_cors.js#ALLOWED_ORIGIN_PATTERNS and
 // server/cors.ts#PRODUCTION_PATTERNS. The Worker's allowlist must be a
@@ -158,6 +159,14 @@ export default {
     if (request.method === 'OPTIONS') {
       return new Response(null, { status: 204, headers: corsHeaders });
     }
+
+    // KV serving (U-K4, #5338): serve a public-tier bootstrap GET straight from KV when
+    // BOOTSTRAP_KV_SERVE enables the tier and the value is fresh + valid — never touching Vercel/
+    // Redis. Any miss/stale/invalid/error/timeout returns null and falls through to the origin
+    // pass-through below (KTD3), so this is strictly additive: worst case is today's behaviour.
+    // Inert until the flag is flipped, exactly like the shadow.
+    const kvServed = await maybeServeBootstrapFromKv(request, url, env, ctx, corsHeaders);
+    if (kvServed) return kvServed;
 
     // All other methods — pass through to Vercel, then stamp CORS headers
     // onto the response on the way back. The .set() loop intentionally

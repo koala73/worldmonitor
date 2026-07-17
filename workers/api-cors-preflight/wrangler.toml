@@ -27,5 +27,13 @@ id = "40d42ec8064b4813ac87e61b43fb697f"
 # Shadow flag — "1" = measuring. The Worker shadow-reads BOOTSTRAP_KV per POP on public-tier
 # bootstrap GETs (in ctx.waitUntil; response untouched) and emits per-region latency to Axiom.
 # CORS behaviour is provably identical to "0" (byte-identical test). Flip back to "0" to stop.
+#
+# Serve flag (U-K4) — staged cutover of serving the public tier FROM KV via this Worker:
+#   "off"/unset = serve nothing (Phase-A shadow-only; deploy is inert).
+#   "slow"      = serve the slow tier only (safest first cutover).
+#   "all"       = serve both public tiers.
+# Any miss/stale/invalid/error/timeout falls through to the Vercel/Redis origin (strictly additive).
+# Kill-switch = set back to "off" and redeploy. Once "all" is proven, flip BOOTSTRAP_KV_SHADOW to "0".
 [vars]
 BOOTSTRAP_KV_SHADOW = "1"
+BOOTSTRAP_KV_SERVE = "off"

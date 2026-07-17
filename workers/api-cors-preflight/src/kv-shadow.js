@@ -66,7 +66,9 @@ function warnDeliveryFailure(failureClass) {
   }));
 }
 
-async function emit(env, event) {
+// Exported so the U-K4 serving path (kv-serve.js) emits through the same Axiom client + delivery-
+// failure dedup; the event_type field distinguishes bootstrap_kv_serve from bootstrap_kv_shadow.
+export async function emit(env, event) {
   const token = env?.AXIOM_API_TOKEN;
   if (!token) {
     warnDeliveryFailure('missing_token');
