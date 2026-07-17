@@ -435,7 +435,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             </div>
           </div>
           <div class="ai-flow-section-label" style="margin-top:8px">Country scope</div>
-          <div class="ai-flow-toggle-desc" style="margin-bottom:6px">Restrict alerts to specific countries (ISO-3166 alpha-2). Leave empty to receive alerts from all countries.</div>
+          <div class="ai-flow-toggle-desc" style="margin-bottom:6px">Restrict alerts to specific countries (ISO-3166 alpha-2). Leave empty to receive alerts from all countries. When set, global alerts without a country (markets, shipping) are excluded; breaking-news alerts are still delivered.</div>
           <div id="usNotifCountryPicker"></div>
           <div class="ai-flow-section-label" style="margin-top:8px">Timezone</div>
           <select class="unified-settings-select" id="usSharedTimezone" style="width:100%">${makeTzOptions(sharedTz)}</select>`;

@@ -39,6 +39,7 @@ import {
   readCanonicalValue,
 } from './_seed-utils.mjs';
 import notificationDedup from './shared/notification-dedup.cjs';
+import countryNameMap from './shared/country-name-to-iso2.cjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
 const {
@@ -46,6 +47,7 @@ const {
   classifySetNxResult,
   recordDedupOutcome,
 } = notificationDedup;
+const { countryNameToIso2 } = countryNameMap;
 
 loadEnvFile(import.meta.url);
 
@@ -878,11 +880,16 @@ async function dispatchAviationNotifications(alerts) {
 
   for (const a of newAlerts.slice(0, 3)) {
     const severity = aviationSeverityBand(a);
+    // Alert rows carry the registry's country NAME ('Brazil', 'China');
+    // normalize so country-scoped rules can filter (#5359 — GRU/HKG/KUL/CAN
+    // criticals leaked to an Eastern-Europe-scoped user as unattributed).
+    const countryCode = countryNameToIso2(a.country);
     await publishNotificationEvent({
       eventType: 'aviation_closure',
       payload: {
         title: `${a.iata}${a.city ? ` (${a.city})` : ''}: ${a.reason || 'Airport disruption'}`,
         source: 'AviationStack',
+        ...(countryCode ? { countryCode } : {}),
         // Coalesce by airport + severity band: repeated same-band disruptions
         // collapse, but a MAJOR->SEVERE escalation produces a distinct key — and
         // the prev-state diff above uses the SAME identity, so the escalation is
@@ -905,12 +912,16 @@ async function dispatchNotamNotifications(closedIcaos, reasons) {
   await upstashSet(NOTAM_PREV_CLOSED_KEY, closedIcaos, PREV_STATE_TTL);
 
   for (const icao of newClosures.slice(0, 3)) {
+    // NOTAM rows are keyed by ICAO; resolve country through the airport
+    // registry so country-scoped rules can filter (#5359).
+    const countryCode = countryNameToIso2(AIRPORTS.find(a => a.icao === icao)?.country);
     await publishNotificationEvent({
       eventType: 'notam_closure',
       payload: {
         title: `NOTAM: ${icao} — ${reasons[icao] || 'Airport closure'}`,
         source: 'ICAO NOTAM',
         coalesceKey: `notam:closure:${icao}`,
+        ...(countryCode ? { countryCode } : {}),
       },
       severity: 'high',
       variant: undefined,

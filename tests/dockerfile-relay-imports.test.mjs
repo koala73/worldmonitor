@@ -24,10 +24,13 @@ const root = resolve(__dirname, '..');
 
 // This guard tracks file-level `COPY scripts/foo.mjs ...` lines only; the
 // COPY grammar itself is parsed by the shared tests/_lib parser so all three
-// container guards read Dockerfiles identically.
+// container guards read Dockerfiles identically. `.json` is included because
+// require()'d data files (e.g. country-names.json behind
+// country-name-to-iso2.cjs, #5359) crash the container at startup when
+// missing, exactly like a missing .cjs.
 function readCopyList(dockerfilePath) {
   const { files } = parseDockerfileCopy(readFileSync(dockerfilePath, 'utf-8'));
-  return new Set([...files].filter((f) => /^scripts\/.+\.(mjs|cjs)$/.test(f)));
+  return new Set([...files].filter((f) => /^scripts\/.+\.(mjs|cjs|json)$/.test(f)));
 }
 
 describe('Dockerfile.relay — transitive-import closure', () => {

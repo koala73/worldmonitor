@@ -39,19 +39,25 @@ function normalizeEventCountryCode(raw) {
   return countryNameToIso2(raw);
 }
 
-const UNATTRIBUTED_GLOBAL_EVENT_TYPES = new Set([
-  'corridor_risk',
-  'shipping_stress',
+// Since #5359 the default for unattributed events is DROP; only news-origin
+// types stay permissive (mirrors PERMISSIVE_UNATTRIBUTED_EVENT_TYPES in the
+// relay — the source-grep below keeps this in sync).
+const PERMISSIVE_UNATTRIBUTED_EVENT_TYPES = new Set([
+  'rss_alert',
+  'keyword_spike',
+  'hotspot_escalation',
+  'military_surge',
+  'watchlist_story_alert',
 ]);
 
-function isUnattributedGlobalEvent(event) {
-  return UNATTRIBUTED_GLOBAL_EVENT_TYPES.has(event?.eventType);
+function isPermissiveUnattributedEvent(event) {
+  return PERMISSIVE_UNATTRIBUTED_EVENT_TYPES.has(event?.eventType);
 }
 
-// Mirror the relay's eventMatchesCountryScope so we can run behavioural
-// assertions without requiring the .cjs module export. The relay file is a
-// runtime script (no exports) — we validate via source-grep AND a parallel
-// implementation that the source-grep ensures stays in sync.
+// Mirror the relay's eventMatchesCountryScope (regional_* branch omitted —
+// covered against the REAL export in
+// tests/notification-relay-country-scope-5359.test.mjs). The source-grep
+// contract keeps this mirror in sync.
 function eventMatchesCountryScope(event, rule) {
   if (!Array.isArray(rule.countries) || rule.countries.length === 0) return true;
   const eventCountry =
@@ -59,13 +65,13 @@ function eventMatchesCountryScope(event, rule) {
     ?? event?.payload?.country
     ?? event?.country
     ?? null;
-  // Unattributed → drop known-global events, keep RSS permissive.
+  // Unattributed → drop unless explicitly news-permissive.
   if (typeof eventCountry !== 'string' || eventCountry.trim().length === 0) {
-    return !isUnattributedGlobalEvent(event);
+    return isPermissiveUnattributedEvent(event);
   }
   const normalized = normalizeEventCountryCode(eventCountry);
-  // Unknown malformed → treat as unattributed.
-  if (normalized === null) return !isUnattributedGlobalEvent(event);
+  // Unresolvable → treat as unattributed.
+  if (normalized === null) return isPermissiveUnattributedEvent(event);
   return rule.countries.includes(normalized);
 }
 
@@ -121,27 +127,32 @@ describe('notification-relay eventMatchesCountryScope — source-grep contract',
     );
   });
 
-  it('known global unattributed events return false for country-scoped rules', () => {
-    // A populated country scope is a user opt-in to narrower delivery. Global
-    // corridor-risk events that carry no country attribution must not leak to
-    // Europe/Ukraine/Romania-scoped users.
+  it('unattributed events default to DROP with an explicit news-permissive allowlist (#5359)', () => {
+    // A populated country scope is a user opt-in to narrower delivery. Any
+    // event without country attribution must not leak to scoped users unless
+    // its type is explicitly news-permissive.
     assert.match(
       relaySrc,
-      /UNATTRIBUTED_GLOBAL_EVENT_TYPES/,
-      'relay must define known global unattributed event types',
+      /PERMISSIVE_UNATTRIBUTED_EVENT_TYPES/,
+      'relay must define the permissive-unattributed allowlist',
     );
     assert.match(
       relaySrc,
-      /return\s+!\s*isUnattributedGlobalEvent\(event\)/,
-      'missing/empty country attribution must drop only known global events',
+      /return\s+isPermissiveUnattributedEvent\(event\)/,
+      'missing/empty country attribution must drop unless news-permissive',
+    );
+    assert.doesNotMatch(
+      relaySrc,
+      /UNATTRIBUTED_GLOBAL_EVENT_TYPES/,
+      'the pre-#5359 global denylist must not come back (default is DROP now)',
     );
   });
 
-  it('unknown malformed country (non-2-letter) follows the known-global unattributed gate', () => {
+  it('unknown malformed country (non-2-letter) follows the same permissive-unattributed gate', () => {
     assert.match(
       relaySrc,
-      /if\s*\(\s*normalized\s*===\s*null\s*\)\s*return\s+!\s*isUnattributedGlobalEvent\(event\)/,
-      'unknown malformed country must use the same known-global unattributed gate',
+      /if\s*\(\s*normalized\s*===\s*null\s*\)\s*return\s+isPermissiveUnattributedEvent\(event\)/,
+      'unknown malformed country must use the same permissive-unattributed gate',
     );
   });
 
