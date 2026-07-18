@@ -720,6 +720,14 @@ function isPermissiveUnattributedEvent(event) {
  * belongs to the event's region (shared/iso2-to-region.json, World Bank
  * taxonomy). Missing/unknown region_id — including the 'global' region, which
  * has no member countries — drops for scoped rules.
+ *
+ * PRECEDENCE (intentional): regional_* events are routed here BEFORE the
+ * countryCode/country extraction in eventMatchesCountryScope, so any
+ * payload.countryCode on a regional event is ignored. region_id is the sole
+ * scope identity for these events — a region-wide regime shift is not "about"
+ * one member country, and letting a stray countryCode narrow it would hide
+ * the event from the rest of the region's subscribers. Do not "fix" this by
+ * consulting countryCode first.
  */
 function regionalEventMatchesCountryScope(event, rule) {
   const regionId = event?.payload?.region_id;
@@ -1132,6 +1140,25 @@ async function processEvent(event) {
     (!event.variant || !r.variant || r.variant === event.variant) &&
     (!event.userId || r.userId === event.userId)
   );
+
+  // Deploy observability for the #5359 default-DROP change: count rules that
+  // passed every OTHER gate but were excluded by country scope, so support can
+  // distinguish "working as intended" from "delivery bug" for scoped users.
+  // No userIds in the line — event identity + count is enough to correlate.
+  const countryScopeDrops = enabledRules.filter(r =>
+    (!r.digestMode || r.digestMode === 'realtime') &&
+    ruleMatchesEventType(r, event) &&
+    shouldNotify(r, event) &&
+    !eventMatchesCountryScope(event, r) &&
+    eventMatchesTickerScope(event, r) &&
+    (!event.variant || !r.variant || r.variant === event.variant) &&
+    (!event.userId || r.userId === event.userId)
+  ).length;
+  if (countryScopeDrops > 0) {
+    const rawAttribution = event?.payload?.countryCode ?? event?.payload?.country ?? event?.country ?? '(unattributed)';
+    const attribution = String(rawAttribution).replace(/[\r\n]/g, ' ').slice(0, 60);
+    console.log(`[relay] Country-scope drop: ${event.eventType} attribution=${attribution} excluded ${countryScopeDrops} scoped rule(s)`);
+  }
 
   if (matching.length === 0) return;
 

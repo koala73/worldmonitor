@@ -883,7 +883,12 @@ async function dispatchAviationNotifications(alerts) {
     // Alert rows carry the registry's country NAME ('Brazil', 'China');
     // normalize so country-scoped rules can filter (#5359 — GRU/HKG/KUL/CAN
     // criticals leaked to an Eastern-Europe-scoped user as unattributed).
+    // A miss means scoped users never see this airport's alerts (relay drops
+    // unattributed non-news events) — warn so it reads as a data-quality bug,
+    // not silent filtering. tests/notification-relay-country-scope-5359.test.mjs
+    // asserts every registry country name currently normalizes.
     const countryCode = countryNameToIso2(a.country);
+    if (!countryCode) console.warn(`[Notify] aviation_closure ${a.iata}: registry country ${JSON.stringify(a.country ?? null)} did not normalize — publishing unattributed (invisible to country-scoped rules)`);
     await publishNotificationEvent({
       eventType: 'aviation_closure',
       payload: {
@@ -913,8 +918,10 @@ async function dispatchNotamNotifications(closedIcaos, reasons) {
 
   for (const icao of newClosures.slice(0, 3)) {
     // NOTAM rows are keyed by ICAO; resolve country through the airport
-    // registry so country-scoped rules can filter (#5359).
+    // registry so country-scoped rules can filter (#5359). Same miss-warn
+    // rationale as dispatchAviationNotifications above.
     const countryCode = countryNameToIso2(AIRPORTS.find(a => a.icao === icao)?.country);
+    if (!countryCode) console.warn(`[Notify] notam_closure ${icao}: no registry country normalized — publishing unattributed (invisible to country-scoped rules)`);
     await publishNotificationEvent({
       eventType: 'notam_closure',
       payload: {

@@ -237,6 +237,90 @@ describe('#5359 — aviation publisher attaches countryCode (source-grep contrac
   });
 });
 
+describe('#5359 — browser-submitted origins stay deliverable to scoped users (allowlist contract)', () => {
+  // Fail-closed default means a NEW browser origin added without country
+  // attribution silently disappears for country-scoped users. This contract
+  // makes that a red test instead: every origin in the BreakingAlert union
+  // must either be in the relay's permissive allowlist or have countryCode
+  // attached at its dispatch site.
+  const alertsSrc = readFileSync(
+    resolve(__dirname, '..', 'src', 'services', 'breaking-news-alerts.ts'),
+    'utf-8',
+  );
+  const relaySrc = readFileSync(
+    resolve(__dirname, '..', 'scripts', 'notification-relay.cjs'),
+    'utf-8',
+  );
+
+  it('every BreakingAlert origin is allowlisted or attributed', () => {
+    const unionMatch = alertsSrc.match(/origin:\s*((?:'[a-z_]+'\s*\|\s*)+'[a-z_]+');/);
+    assert.ok(unionMatch, 'BreakingAlert origin union not found in breaking-news-alerts.ts');
+    const origins = [...unionMatch[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]);
+    assert.ok(origins.length >= 5, `expected ≥5 origins, parsed: ${origins.join(',')}`);
+
+    const allowlistMatch = relaySrc.match(/PERMISSIVE_UNATTRIBUTED_EVENT_TYPES = new Set\(\[([\s\S]*?)\]\)/);
+    assert.ok(allowlistMatch, 'PERMISSIVE_UNATTRIBUTED_EVENT_TYPES not found in relay');
+    const allowlist = new Set([...allowlistMatch[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1]));
+
+    for (const origin of origins) {
+      if (allowlist.has(origin)) continue;
+      // Not allowlisted → its dispatch object literal must carry countryCode
+      // (e.g. oref_siren sets IL). Scan the object literal around the origin.
+      const dispatchRe = new RegExp(`origin:\\s*'${origin}'[^}]*countryCode|countryCode[^}]*origin:\\s*'${origin}'`);
+      assert.match(
+        alertsSrc,
+        dispatchRe,
+        `browser origin '${origin}' is neither in PERMISSIVE_UNATTRIBUTED_EVENT_TYPES nor dispatched with countryCode — ` +
+        'country-scoped users would silently never receive it. Either attach countryCode at the dispatch site ' +
+        'or add it to the allowlist in scripts/notification-relay.cjs with a justification comment.',
+      );
+    }
+  });
+});
+
+describe('#5359 — duplicate shared copies must stay byte-identical', () => {
+  // scripts/shared/ and root shared/ both carry the country helper + data
+  // (the relay container COPYs scripts/shared/; edge/server code reads root
+  // shared/). Divergence would mean the relay and the rest of the platform
+  // normalize the same country name differently.
+  for (const file of ['country-name-to-iso2.cjs', 'country-names.json']) {
+    it(`scripts/shared/${file} === shared/${file}`, () => {
+      const a = readFileSync(resolve(__dirname, '..', 'scripts', 'shared', file), 'utf-8');
+      const b = readFileSync(resolve(__dirname, '..', 'shared', file), 'utf-8');
+      assert.equal(a, b, `scripts/shared/${file} and shared/${file} have diverged — sync them (they are duplicate copies, not independent files)`);
+    });
+  }
+});
+
+describe('#5359 — aviation registry country names all normalize', () => {
+  // A registry row whose country name misses the map publishes unattributed
+  // and becomes invisible to scoped users (the seeder warns at runtime; this
+  // catches it at PR time instead).
+  it('every AIRPORTS country name resolves to ISO2', () => {
+    const src = readFileSync(resolve(__dirname, '..', 'scripts', 'seed-aviation.mjs'), 'utf-8');
+    const code = src.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+    const names = [...new Set([...code.matchAll(/country:\s*'([^']+)'/g)].map((m) => m[1]))];
+    assert.ok(names.length >= 50, `expected ≥50 registry country entries, parsed ${names.length}`);
+    const misses = names.filter((n) => countryNameToIso2(n) === null);
+    assert.deepEqual(misses, [], `aviation registry country names that fail to normalize: ${misses.join(', ')} — add them to shared/country-names.json`);
+  });
+});
+
+describe('#5359 — region taxonomy parity between emitter and scope matcher', () => {
+  it('iso2-to-region.json values ⊆ REGION_IDS; every region except global has members', async () => {
+    const { REGION_IDS } = await import('../shared/geography.js');
+    const regionMap = JSON.parse(
+      readFileSync(resolve(__dirname, '..', 'scripts', 'shared', 'iso2-to-region.json'), 'utf-8'),
+    );
+    const emitted = new Set(REGION_IDS);
+    const mappedValues = new Set(Object.values(regionMap));
+    const unknownRegions = [...mappedValues].filter((r) => !emitted.has(r));
+    assert.deepEqual(unknownRegions, [], `iso2-to-region.json maps countries to regions the emitter never uses: ${unknownRegions.join(', ')}`);
+    const memberless = REGION_IDS.filter((r) => r !== 'global' && !mappedValues.has(r));
+    assert.deepEqual(memberless, [], `regions with zero member countries would drop for ALL scoped rules: ${memberless.join(', ')}`);
+  });
+});
+
 describe('#5359 — regional_* events match through their region membership', () => {
   it('europe-region event reaches a rule scoped to European countries', () => {
     const event = {
