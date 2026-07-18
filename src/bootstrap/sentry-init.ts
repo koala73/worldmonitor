@@ -759,6 +759,14 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
           // mirrors the EOF gate above: some engines embed the type in the
           // `value` field (WORLDMONITOR-TY).
           || /^(?:SyntaxError: )?Unexpected token '<'/.test(msg)
+          // Bare `Unexpected token '<keyword>'` with zero captured frames on ancient
+          // Android WebView (Chrome 98) — injected bridge/extension script or a
+          // browser-internal parse failure, not our already-parsed bundle. A genuine
+          // first-party SyntaxError carries a source-mapped .ts frame or an owned
+          // hashed-chunk URL in the message (handled above). The `hasAnyStack`-gated
+          // token gate below misses this zero-frame variant (WORLDMONITOR-??:
+          // Unexpected token 'else' / 'for', 2026-07-18).
+          || /^(?:SyntaxError: )?Unexpected token '(?:else|for)'$/.test(msg)
           // Firefox's wording for a failed `fetch()` — the engine-emitted
           // equivalent of Chrome's bare `Failed to fetch` (above) and Safari's
           // `Load failed`. Surfaces via `onunhandledrejection` with zero captured

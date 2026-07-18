@@ -380,6 +380,14 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
     // is engine-emitted only.
     ['Unexpected EOF', 'SyntaxError'],
     ['SyntaxError: Unexpected EOF', 'SyntaxError'],
+    // Ancient Android WebView (Chrome 98) parse failures from injected
+    // bridge/extension scripts — zero captured frames, bare keyword token.
+    // Our compiled bundle cannot emit runtime SyntaxErrors without a source-
+    // mapped .ts frame or an owned hashed-chunk URL (handled above).
+    ["Unexpected token 'else'", 'SyntaxError'],
+    ["Unexpected token 'for'", 'SyntaxError'],
+    ['SyntaxError: Unexpected token \'else\'', 'SyntaxError'],
+    ['SyntaxError: Unexpected token \'for\'', 'SyntaxError'],
     // Firefox's wording for a failed `fetch()` (WORLDMONITOR-RK) — the
     // engine-equivalent of Chrome's bare `Failed to fetch` above. Zero frames
     // via `onunhandledrejection` = background / service-worker / extension /
