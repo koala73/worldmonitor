@@ -55,10 +55,11 @@
 // instead of re-fetching it per sub-walk. Current shape: ≤16 /mcp POSTs per
 // host (≤32 total) + 3 non-/mcp OAuth probes per host — comfortable headroom
 // under the bucket even as the prompt/resource catalogs grow. The discovery
-// probes (5) add 4 GETs per host that cost NOTHING against the bucket: both
+// probes (5) add 5 GETs per host that cost NOTHING against the bucket: both
 // the discovery branch and the transport 405 return ahead of
-// applyAnonDiscoveryLimit. The variant probes (6) add one limiter-counted
-// ping per variant host (5) plus 5 redirect GETs that never reach the origin.
+// applyAnonDiscoveryLimit (the replay-shaped GET stops at auth). The variant
+// probes (6) add one limiter-counted ping plus three GETs per variant host;
+// redirect, stream-open, and unauthenticated replay all stop before a limiter.
 //
 // Usage: node scripts/mcp-live-smoke.mjs
 //   MCP_SMOKE_HOSTS=https://a,https://b  overrides the default host list.
@@ -302,6 +303,12 @@ async function probeDiscovery(host) {
       fail(host, 'GET /mcp (crawler)', `expected 200, got ${res.status} — Search Console reports this shape as "cannot access"`);
     } else if (!/text\/markdown/i.test(res.headers.get('content-type') ?? '')) {
       fail(host, 'GET /mcp (crawler)', `expected the markdown guide, got content-type ${res.headers.get('content-type')}`);
+    } else if (!/\bno-store\b/i.test(res.headers.get('cache-control') ?? '')) {
+      fail(host, 'GET /mcp (crawler)', `transport URL guide must be no-store (got "${res.headers.get('cache-control')}")`);
+    } else if (!/\bAccept\b(?!-)/i.test(res.headers.get('vary') ?? '')) {
+      fail(host, 'GET /mcp (crawler)', `guide lacks "Vary: Accept" (got "${res.headers.get('vary')}")`);
+    } else if (!/\bLast-Event-ID\b/i.test(res.headers.get('vary') ?? '')) {
+      fail(host, 'GET /mcp (crawler)', `guide lacks "Vary: Last-Event-ID" (got "${res.headers.get('vary')}")`);
     } else if (!text.includes('World Monitor MCP Server')) {
       fail(host, 'GET /mcp (crawler)', 'body is not the mcp-server.md guide');
     } else {
@@ -339,6 +346,8 @@ async function probeDiscovery(host) {
     // check passes against an origin that sends no Vary at all.
     } else if (!/\bAccept\b(?!-)/i.test(res.headers.get('vary') ?? '')) {
       fail(host, 'GET /.well-known/mcp', `cacheable manifest 200 lacks "Vary: Accept" (got "${res.headers.get('vary')}") — a shared cache will serve it to an SSE GET`);
+    } else if (!/\bLast-Event-ID\b/i.test(res.headers.get('vary') ?? '')) {
+      fail(host, 'GET /.well-known/mcp', `cacheable manifest 200 lacks "Vary: Last-Event-ID" (got "${res.headers.get('vary')}") — a shared cache will serve it to a replay GET`);
     } else {
       JSON.parse(text);
       ok(host, 'GET /.well-known/mcp', 'cacheable card, correctly varied');
@@ -361,6 +370,21 @@ async function probeDiscovery(host) {
   } catch (err) {
     fail(host, '/.well-known/mcp (SSE stream open)', `HANG/transport error: ${err?.name ?? err}`);
   }
+
+  checks += 1;
+  try {
+    const { res } = await timedFetch(`${host}/.well-known/mcp`, {
+      headers: { Accept: 'application/json', 'Last-Event-ID': 'smoke-canary' },
+    });
+    if (res.status !== 401 || !/^Bearer\b/i.test(res.headers.get('www-authenticate') ?? '')) {
+      const cached = res.headers.get('x-vercel-cache') === 'HIT' ? ' from a CDN cache HIT' : '';
+      fail(host, '/.well-known/mcp (replay-shaped GET)', `expected origin 401 with Bearer challenge, got ${res.status}${cached}`);
+    } else {
+      ok(host, '/.well-known/mcp (replay-shaped GET)', '401 preserved after a manifest GET');
+    }
+  } catch (err) {
+    fail(host, '/.well-known/mcp (replay-shaped GET)', `HANG/transport error: ${err?.name ?? err}`);
+  }
 }
 
 // Variant subdomains: crawler GETs canonicalize to apex, POST never does.
@@ -376,11 +400,43 @@ async function probeVariantCanonical(host) {
     const location = res.headers.get('location');
     if (res.status !== 308 || location !== 'https://worldmonitor.app/mcp') {
       fail(host, 'GET /mcp → apex canonical', `expected 308 → https://worldmonitor.app/mcp, got ${res.status} → ${location}`);
+    } else if (!/\bAccept\b(?!-)/i.test(res.headers.get('vary') ?? '')) {
+      fail(host, 'GET /mcp → apex canonical', `cacheable 308 lacks "Vary: Accept" (got "${res.headers.get('vary')}")`);
+    } else if (!/\bLast-Event-ID\b/i.test(res.headers.get('vary') ?? '')) {
+      fail(host, 'GET /mcp → apex canonical', `cacheable 308 lacks "Vary: Last-Event-ID" (got "${res.headers.get('vary')}")`);
     } else {
       ok(host, 'GET /mcp → apex canonical', '308');
     }
   } catch (err) {
     fail(host, 'GET /mcp → apex canonical', `HANG/transport error: ${err?.name ?? err}`);
+  }
+
+  checks += 1;
+  try {
+    const { res } = await timedFetch(`${host}/mcp`, { headers: { Accept: 'Text/Event-Stream' } });
+    if (res.status !== 405) {
+      const cached = res.headers.get('x-vercel-cache') === 'HIT' ? ' from a CDN cache HIT' : '';
+      fail(host, 'GET /mcp SSE stays on variant', `expected 405, got ${res.status}${cached}`);
+    } else {
+      ok(host, 'GET /mcp SSE stays on variant', '405 preserved after cached canonical redirect');
+    }
+  } catch (err) {
+    fail(host, 'GET /mcp SSE stays on variant', `HANG/transport error: ${err?.name ?? err}`);
+  }
+
+  checks += 1;
+  try {
+    const { res } = await timedFetch(`${host}/mcp`, {
+      headers: { Accept: 'application/json', 'Last-Event-ID': 'smoke-canary' },
+    });
+    if (res.status !== 401 || !/^Bearer\b/i.test(res.headers.get('www-authenticate') ?? '')) {
+      const cached = res.headers.get('x-vercel-cache') === 'HIT' ? ' from a CDN cache HIT' : '';
+      fail(host, 'GET /mcp replay stays on variant', `expected origin 401 with Bearer challenge, got ${res.status}${cached}`);
+    } else {
+      ok(host, 'GET /mcp replay stays on variant', '401 preserved after cached canonical redirect');
+    }
+  } catch (err) {
+    fail(host, 'GET /mcp replay stays on variant', `HANG/transport error: ${err?.name ?? err}`);
   }
 
   checks += 1;

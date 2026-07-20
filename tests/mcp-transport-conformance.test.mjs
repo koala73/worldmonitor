@@ -460,6 +460,7 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
   let deps;
   let server;
   let aliasUrl;
+  let staticFetchCalls;
   const realFetch = globalThis.fetch;
   const cardText = readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8');
   const guideText = readFileSync(new URL('../public/mcp-server.md', import.meta.url), 'utf8');
@@ -475,15 +476,18 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
     deps = makeProDeps().deps;
     server = await startMcpServer(mcpHandler, deps);
     aliasUrl = server.url.replace('/mcp', '/.well-known/mcp');
+    staticFetchCalls = [];
     // The handler self-fetches the static card asset; the localhost harness
     // has no static file server, so serve the on-disk card for that one URL
     // and delegate everything else (including the test's own requests).
     globalThis.fetch = (input, init) => {
       const href = typeof input === 'string' ? input : input.url ?? String(input);
       if (href.endsWith('/.well-known/mcp/server-card.json')) {
+        staticFetchCalls.push({ href, init });
         return Promise.resolve(new Response(cardText, { status: 200, headers: { 'Content-Type': 'application/json' } }));
       }
       if (href.endsWith('/mcp-server.md')) {
+        staticFetchCalls.push({ href, init });
         return Promise.resolve(new Response(guideText, { status: 200, headers: { 'Content-Type': 'text/markdown' } }));
       }
       return realFetch(input, init);
@@ -513,6 +517,13 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
     assert.equal(card.kind, 'product');
     assert.equal(card.serverUrl, 'https://worldmonitor.app/mcp');
     assert.equal(card.remotes?.[0]?.url, 'https://worldmonitor.app/mcp');
+    const cardFetch = staticFetchCalls.find(({ href }) => href.endsWith('/.well-known/mcp/server-card.json'));
+    assert.ok(cardFetch, 'server card must be loaded through the deployment self-fetch');
+    assert.equal(
+      new Headers(cardFetch.init?.headers).get('user-agent'),
+      'WorldMonitor-MCP/1.0 (+https://worldmonitor.app)',
+      'server-side fetches must identify WorldMonitor to the deployment edge',
+    );
     // The manifest is a static, immutable-per-deploy asset — it must stay
     // cacheable (it was `public, max-age=3600` as a static file). The MCP
     // no-store CORS bundle must NOT clobber that on the manifest GET, or every
@@ -577,6 +588,15 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
     assert.equal(res.status, 405, 'standalone SSE stream open must keep its graceful 405 signal');
     assert.match(res.headers.get('allow') ?? '', /\bPOST\b/);
     assert.doesNotMatch(res.headers.get('content-type') ?? '', /text\/markdown/i);
+  });
+
+  it('classifies SSE Accept values case-insensitively and honors q=0', async () => {
+    const mixedCaseSse = await fetch(server.url, { headers: { Accept: 'Text/Event-Stream' } });
+    assert.equal(mixedCaseSse.status, 405, 'media types are case-insensitive, so mixed-case SSE remains transport');
+
+    const rejectedSse = await fetch(server.url, { headers: { Accept: 'text/event-stream;q=0, text/html' } });
+    assert.equal(rejectedSse.status, 200, 'q=0 explicitly rejects SSE and must select the discovery guide');
+    assert.match(rejectedSse.headers.get('content-type') ?? '', /text\/markdown/i);
   });
 
   it('HEAD /mcp advertises the same representation the GET returns', async () => {

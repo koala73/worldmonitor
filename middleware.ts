@@ -126,6 +126,18 @@ function hasLegacyDashboardRootState(searchParams: URLSearchParams): boolean {
   return LEGACY_DASHBOARD_ROOT_QUERY_KEYS.some((key) => searchParams.has(key));
 }
 
+function clientAcceptsSse(request: Request): boolean {
+  const accept = request.headers.get('accept') ?? '';
+  return accept.split(',').some((entry) => {
+    const [type, ...params] = entry.split(';').map((part) => part.trim().toLowerCase());
+    if (type !== 'text/event-stream') return false;
+    const qParam = params.find((part) => part.startsWith('q='));
+    if (!qParam) return true;
+    const q = Number(qParam.slice(2));
+    return Number.isFinite(q) && q > 0;
+  });
+}
+
 // HTML-escape a string for safe interpolation into BOTH text content and
 // double-quoted attribute values. Required because VARIANT_OG values are
 // hand-edited prose and a future double-quote, ampersand, or angle bracket
@@ -248,7 +260,7 @@ export default function middleware(request: Request) {
     (request.method === 'GET' || request.method === 'HEAD') &&
     VARIANT_HOST_MAP[host] &&
     !request.headers.get('last-event-id') &&
-    !(request.headers.get('accept') ?? '').includes('text/event-stream')
+    !clientAcceptsSse(request)
   ) {
     // Built by hand rather than via Response.redirect() so the response can
     // carry Vary. This redirect is decided by Accept and Last-Event-ID, and a

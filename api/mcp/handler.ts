@@ -334,6 +334,8 @@ const MCP_TRANSPORT_PATH = '/mcp';
 // contract requires 405. Never emit a cacheable discovery 200 on these paths
 // without this Vary.
 const DISCOVERY_VARY = 'Accept, Last-Event-ID';
+const STATIC_ASSET_FETCH_TIMEOUT_MS = 5_000;
+const STATIC_ASSET_USER_AGENT = 'WorldMonitor-MCP/1.0 (+https://worldmonitor.app)';
 
 // Module-scope caches: both documents are static assets, immutable per deployment.
 let serverCardCache: string | null = null;
@@ -345,12 +347,19 @@ let mcpGuideCache: string | null = null;
 // resolves. Returns null on any failure so the caller can fall back rather
 // than cache a failure.
 async function fetchStaticAsset(req: Request, path: string): Promise<string | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), STATIC_ASSET_FETCH_TIMEOUT_MS);
   try {
-    const res = await fetch(new URL(path, req.url));
+    const res = await fetch(new URL(path, req.url), {
+      headers: { 'User-Agent': STATIC_ASSET_USER_AGENT },
+      signal: controller.signal,
+    });
     if (!res.ok) return null;
     return await res.text();
   } catch {
     return null;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 
@@ -480,7 +489,7 @@ async function mcpHandlerInner(
   if (
     req.method === 'GET' &&
     !req.headers.get('last-event-id') &&
-    !(req.headers.get('accept') ?? '').includes('text/event-stream')
+    !clientAcceptsSse(req)
   ) {
     const pathname = new URL(req.url).pathname;
     if (WELL_KNOWN_MCP_PATHS.has(pathname)) {

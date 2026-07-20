@@ -340,4 +340,26 @@ describe('middleware /mcp — variant subdomains redirect to apex, POST stays', 
     const res = middleware(req) as Response | void;
     assert.equal(res, undefined, 'OPTIONS /mcp must fall through to the /api/mcp rewrite');
   });
+
+  it('does NOT redirect variant transport GETs with SSE or replay headers', () => {
+    const mixedCaseSse = new Request('https://tech.worldmonitor.app/mcp', {
+      headers: { Accept: 'Text/Event-Stream' },
+    });
+    assert.equal(middleware(mixedCaseSse), undefined, 'mixed-case SSE Accept must fall through to the transport');
+
+    const replay = new Request('https://tech.worldmonitor.app/mcp', {
+      headers: { Accept: 'application/json', 'Last-Event-ID': 'stream:0' },
+    });
+    assert.equal(middleware(replay), undefined, 'Last-Event-ID replay must stay on the session host');
+  });
+
+  it('redirects when SSE is explicitly unacceptable', () => {
+    const req = new Request('https://tech.worldmonitor.app/mcp', {
+      headers: { Accept: 'text/event-stream;q=0, text/html' },
+    });
+    const res = middleware(req) as Response | void;
+    assert.ok(res instanceof Response);
+    assert.equal(res.status, 308);
+    assert.equal(res.headers.get('location'), 'https://worldmonitor.app/mcp');
+  });
 });
