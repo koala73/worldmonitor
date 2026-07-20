@@ -243,7 +243,7 @@ async function maybeStreamJsonRpcResponse(req: Request, response: Response): Pro
   });
 }
 
-function handleSseReplay(req: Request, corsHeaders: Record<string, string>): Response {
+function handleSseReplay(req: Request, corsHeaders: Record<string, string>, headOnly = false): Response {
   const lastEventId = req.headers.get('last-event-id');
   if (!clientAcceptsSse(req)) {
     return new Response(
@@ -287,13 +287,43 @@ function handleSseReplay(req: Request, corsHeaders: Record<string, string>): Res
     );
   }
 
-  return new Response(createSseStream(events), {
+  return new Response(headOnly ? null : createSseStream(events), {
     status: 200,
     // corsHeaders is getMcpCorsHeaders() (MCP_CACHE_CONTROL = no-store, no-transform):
     // the replay carries previously-streamed tool-result data, so no-store forbids
     // caching it and no-transform preserves SSE framing.
     headers: { 'Content-Type': SSE_CONTENT_TYPE, ...corsHeaders },
   });
+}
+
+async function handleAuthenticatedSseReplay(
+  req: Request,
+  deps: McpHandlerDeps,
+  resourceMetadataUrl: string,
+  corsHeaders: Record<string, string>,
+  usage: McpUsage,
+  ctx: { waitUntil: (p: Promise<unknown>) => void } | undefined,
+  headOnly = false,
+): Promise<Response> {
+  const auth = await resolveAuthContext(req, deps, resourceMetadataUrl, corsHeaders);
+  if (!auth.ok) {
+    usage.phase = 'auth';
+    return auth.response;
+  }
+  setUsageContext(usage, auth.context);
+  const getPreCheck = await runContextPreChecks(auth.context, deps, resourceMetadataUrl, corsHeaders, ctx);
+  if (getPreCheck) {
+    usage.phase = 'precheck';
+    return getPreCheck;
+  }
+  const getLimited = await applyPerMinuteLimit(auth.context, corsHeaders);
+  if (getLimited) {
+    usage.phase = 'limit';
+    return getLimited;
+  }
+  const replay = handleSseReplay(req, corsHeaders, headOnly);
+  if (replay.status !== 200) usage.phase = 'transport';
+  return replay;
 }
 
 // ---------------------------------------------------------------------------
@@ -467,7 +497,25 @@ async function mcpHandlerInner(
     usage.skip = true;
     return new Response(null, { status: 204, headers: withMcpNoStore(corsHeaders) });
   }
+
+  // Host-derived resource_metadata pointer matches api/oauth-protected-resource.ts.
+  const requestHost = req.headers.get('host') ?? new URL(req.url).host;
+  const resourceMetadataUrl = `https://${requestHost}/.well-known/oauth-protected-resource`;
+
   if (req.method === 'HEAD') {
+    // HEAD is GET without a response body. Preserve transport-shaped GET
+    // semantics before serving the plain discovery representation metadata.
+    if (req.headers.get('last-event-id')) {
+      return handleAuthenticatedSseReplay(req, deps, resourceMetadataUrl, corsHeaders, usage, ctx, true);
+    }
+    if (clientAcceptsSse(req)) {
+      usage.phase = 'transport';
+      return new Response(null, {
+        status: 405,
+        headers: withMcpNoStore({ Allow: 'POST, GET, HEAD, OPTIONS', ...corsHeaders }),
+      });
+    }
+
     usage.skip = true;
     // HEAD must advertise the representation the matching GET would return:
     // markdown at the transport URL, JSON at the well-known manifest aliases.
@@ -514,10 +562,6 @@ async function mcpHandlerInner(
     return new Response(null, { status: 405, headers: withMcpNoStore({ Allow: 'POST, GET, HEAD, OPTIONS', ...corsHeaders }) });
   }
 
-  // Host-derived resource_metadata pointer matches api/oauth-protected-resource.ts.
-  const requestHost = req.headers.get('host') ?? new URL(req.url).host;
-  const resourceMetadataUrl = `https://${requestHost}/.well-known/oauth-protected-resource`;
-
   // GET has three roles on the MCP endpoint:
   //   1. A plain GET (no `text/event-stream` Accept, no `Last-Event-ID`) is a
   //      discovery read and has already been answered above — the markdown
@@ -542,25 +586,7 @@ async function mcpHandlerInner(
         headers: withMcpNoStore({ Allow: 'POST, GET, HEAD, OPTIONS', ...corsHeaders }),
       });
     }
-    const auth = await resolveAuthContext(req, deps, resourceMetadataUrl, corsHeaders);
-    if (!auth.ok) {
-      usage.phase = 'auth';
-      return auth.response;
-    }
-    setUsageContext(usage, auth.context);
-    const getPreCheck = await runContextPreChecks(auth.context, deps, resourceMetadataUrl, corsHeaders, ctx);
-    if (getPreCheck) {
-      usage.phase = 'precheck';
-      return getPreCheck;
-    }
-    const getLimited = await applyPerMinuteLimit(auth.context, corsHeaders);
-    if (getLimited) {
-      usage.phase = 'limit';
-      return getLimited;
-    }
-    const replay = handleSseReplay(req, corsHeaders);
-    if (replay.status !== 200) usage.phase = 'transport';
-    return replay;
+    return handleAuthenticatedSseReplay(req, deps, resourceMetadataUrl, corsHeaders, usage, ctx);
   }
 
   // Parse body BEFORE auth: the method decides whether credentials are required

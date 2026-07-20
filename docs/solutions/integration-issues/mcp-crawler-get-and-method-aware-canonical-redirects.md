@@ -74,6 +74,8 @@ Extending the same cacheable-200 pattern to `/mcp` would have moved this onto th
 
 The well-known aliases keep serving the **JSON server card** (machine discovery). `/mcp` itself serves the **markdown server guide** — the same document already published at `/mcp-server.md` — so a human or crawler opening the endpoint gets something readable:
 
+Both the handler and middleware use `clientAcceptsSse`, the shared parser that treats media types case-insensitively and honors `q=0`. A raw substring check does neither.
+
 ```ts
 const WELL_KNOWN_MCP_PATHS = new Set(['/.well-known/mcp', '/.well-known/mcp.json']);
 const MCP_TRANSPORT_PATH = '/mcp';
@@ -81,7 +83,7 @@ const MCP_TRANSPORT_PATH = '/mcp';
 if (
   req.method === 'GET' &&
   !req.headers.get('last-event-id') &&
-  !(req.headers.get('accept') ?? '').includes('text/event-stream')
+  !clientAcceptsSse(req)
 ) {
   const pathname = new URL(req.url).pathname;
   if (WELL_KNOWN_MCP_PATHS.has(pathname)) return serveServerCard(req, corsHeaders);
@@ -114,7 +116,7 @@ if (
   (request.method === 'GET' || request.method === 'HEAD') &&
   VARIANT_HOST_MAP[host] &&
   !request.headers.get('last-event-id') &&
-  !(request.headers.get('accept') ?? '').includes('text/event-stream')
+  !clientAcceptsSse(request)
 ) {
   return new Response(null, {
     status: 308,

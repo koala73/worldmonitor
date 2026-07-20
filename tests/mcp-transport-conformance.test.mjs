@@ -553,6 +553,49 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
       'discovery representation must declare the apex endpoint canonical');
   });
 
+  it('redirects discovery reads when deployment static-asset self-fetches fail', async () => {
+    // Import the implementation directly with a unique query so its module-scope
+    // document caches start empty; api/mcp.ts re-exports a shared handler module.
+    const fresh = await import(`../api/mcp/handler.ts?fallback=${Date.now()}-${Math.random()}`);
+    const fallbackServer = await startMcpServer(fresh.mcpHandler, deps);
+    const fallbackAliasUrl = fallbackServer.url.replace('/mcp', '/.well-known/mcp');
+    const successfulStaticFetch = globalThis.fetch;
+
+    globalThis.fetch = (input, init) => {
+      const href = typeof input === 'string' ? input : input.url ?? String(input);
+      if (href.endsWith('/.well-known/mcp/server-card.json')) {
+        return Promise.reject(new Error('deployment self-fetch failed'));
+      }
+      if (href.endsWith('/mcp-server.md')) {
+        return Promise.resolve(new Response(null, { status: 503 }));
+      }
+      return realFetch(input, init);
+    };
+
+    try {
+      const cardFallback = await fetch(fallbackAliasUrl, {
+        headers: { Accept: 'application/json' },
+        redirect: 'manual',
+      });
+      assert.equal(cardFallback.status, 302);
+      assert.equal(cardFallback.headers.get('location'), '/.well-known/mcp/server-card.json');
+      assert.match(cardFallback.headers.get('vary') ?? '', /\bAccept\b(?!-)/i);
+      assert.match(cardFallback.headers.get('vary') ?? '', /\bLast-Event-ID\b/i);
+
+      const guideFallback = await fetch(fallbackServer.url, {
+        headers: { Accept: 'text/html,*/*' },
+        redirect: 'manual',
+      });
+      assert.equal(guideFallback.status, 302);
+      assert.equal(guideFallback.headers.get('location'), '/mcp-server.md');
+      assert.match(guideFallback.headers.get('vary') ?? '', /\bAccept\b(?!-)/i);
+      assert.match(guideFallback.headers.get('vary') ?? '', /\bLast-Event-ID\b/i);
+    } finally {
+      globalThis.fetch = successfulStaticFetch;
+      await fallbackServer.close();
+    }
+  });
+
   // ── cache-key contract ────────────────────────────────────────────────────
   // Regression net for a bug reproduced on production: /.well-known/mcp served
   // a `public, max-age=3600` card with no Vary, and Vercel's edge (which keys
@@ -599,11 +642,25 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
     assert.match(rejectedSse.headers.get('content-type') ?? '', /text\/markdown/i);
   });
 
-  it('HEAD /mcp advertises the same representation the GET returns', async () => {
-    const res = await fetch(server.url, { method: 'HEAD' });
-    assert.equal(res.status, 200);
-    assert.match(res.headers.get('content-type') ?? '', /text\/markdown/i,
+  it('HEAD /mcp preserves discovery, stream-open, and replay GET semantics', async () => {
+    const discovery = await fetch(server.url, { method: 'HEAD' });
+    assert.equal(discovery.status, 200);
+    assert.match(discovery.headers.get('content-type') ?? '', /text\/markdown/i,
       'HEAD must not claim application/json when GET returns markdown');
+
+    const streamOpen = await fetch(server.url, {
+      method: 'HEAD',
+      headers: { Accept: 'text/event-stream' },
+    });
+    assert.equal(streamOpen.status, 405, 'HEAD must preserve the equivalent standalone-stream GET status');
+    assert.match(streamOpen.headers.get('allow') ?? '', /\bPOST\b/);
+
+    const replay = await fetch(server.url, {
+      method: 'HEAD',
+      headers: { Accept: 'application/json', 'Last-Event-ID': 'smoke-canary' },
+    });
+    assert.equal(replay.status, 401, 'HEAD must preserve the equivalent authenticated replay GET status');
+    assert.match(replay.headers.get('www-authenticate') ?? '', /^Bearer\b/i);
   });
 
   it('POST initialize completes the live Streamable HTTP handshake at the well-known URL', async () => {
