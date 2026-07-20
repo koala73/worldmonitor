@@ -462,6 +462,7 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
   let aliasUrl;
   const realFetch = globalThis.fetch;
   const cardText = readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8');
+  const guideText = readFileSync(new URL('../public/mcp-server.md', import.meta.url), 'utf8');
 
   beforeEach(async () => {
     process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
@@ -481,6 +482,9 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
       const href = typeof input === 'string' ? input : input.url ?? String(input);
       if (href.endsWith('/.well-known/mcp/server-card.json')) {
         return Promise.resolve(new Response(cardText, { status: 200, headers: { 'Content-Type': 'application/json' } }));
+      }
+      if (href.endsWith('/mcp-server.md')) {
+        return Promise.resolve(new Response(guideText, { status: 200, headers: { 'Content-Type': 'text/markdown' } }));
       }
       return realFetch(input, init);
     };
@@ -523,6 +527,63 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
     assert.equal(res.status, 200);
     const card = await res.json();
     assert.equal(card.url, 'https://worldmonitor.app/mcp');
+  });
+
+  it('plain GET /mcp serves the human-readable server guide (crawler-accessible discovery)', async () => {
+    const res = await fetch(server.url, {
+      headers: { Accept: 'text/html,application/xhtml+xml,*/*' },
+    });
+    assert.equal(res.status, 200, 'a plain GET /mcp must not be the transport 405 (Search Console reads it as "cannot access")');
+    assert.match(res.headers.get('content-type') ?? '', /text\/markdown/i);
+    const body = await res.text();
+    assert.match(body, /# World Monitor MCP Server/, 'must be the mcp-server.md guide, not the JSON card');
+    assert.match(body, /https:\/\/worldmonitor\.app\/mcp/, 'guide must advertise the apex transport URL');
+    assert.match(res.headers.get('link') ?? '', /<https:\/\/worldmonitor\.app\/mcp>;\s*rel="canonical"/,
+      'discovery representation must declare the apex endpoint canonical');
+  });
+
+  // ── cache-key contract ────────────────────────────────────────────────────
+  // Regression net for a bug reproduced on production: /.well-known/mcp served
+  // a `public, max-age=3600` card with no Vary, and Vercel's edge (which keys
+  // on URL alone) replayed that stored 200 to a subsequent
+  // `Accept: text/event-stream` GET — handing an SDK client a JSON body where
+  // the transport contract requires 405. Any cacheable discovery 200 on these
+  // URLs MUST carry Vary; the transport URL must not be cacheable at all.
+  it('server card 200 is cacheable ONLY because it varies on the negotiating headers', async () => {
+    const res = await fetch(aliasUrl, { headers: { Accept: 'application/json' } });
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('cache-control') ?? '', /max-age=3600/,
+      'server card GET must stay cacheable');
+    const vary = res.headers.get('vary') ?? '';
+    // `(?!-)` is load-bearing: `-` is a word boundary, so a naive /\bAccept\b/
+    // also matches the `accept-encoding` an edge adds on its own — the check
+    // would pass against an origin sending no Vary at all.
+    assert.match(vary, /\bAccept\b(?!-)/i,
+      'a cacheable 200 negotiated on Accept MUST Vary on Accept, or a shared cache serves it to an SSE GET');
+    assert.match(vary, /\bLast-Event-ID\b/i,
+      'the same URL branches on Last-Event-ID into authenticated replay — that must be part of the cache key too');
+  });
+
+  it('the /mcp transport URL never emits a cacheable 200 body', async () => {
+    const res = await fetch(server.url, { headers: { Accept: '*/*' } });
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('cache-control') ?? '', /no-store/,
+      '/mcp is the live transport URL — a stored 200 here can be replayed to an SSE or replay GET');
+    assert.match(res.headers.get('vary') ?? '', /\bAccept\b(?!-)/i);
+  });
+
+  it('an SSE-flavoured GET /mcp still gets the transport 405, never the guide', async () => {
+    const res = await fetch(server.url, { headers: { Accept: 'text/event-stream' } });
+    assert.equal(res.status, 405, 'standalone SSE stream open must keep its graceful 405 signal');
+    assert.match(res.headers.get('allow') ?? '', /\bPOST\b/);
+    assert.doesNotMatch(res.headers.get('content-type') ?? '', /text\/markdown/i);
+  });
+
+  it('HEAD /mcp advertises the same representation the GET returns', async () => {
+    const res = await fetch(server.url, { method: 'HEAD' });
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('content-type') ?? '', /text\/markdown/i,
+      'HEAD must not claim application/json when GET returns markdown');
   });
 
   it('POST initialize completes the live Streamable HTTP handshake at the well-known URL', async () => {
