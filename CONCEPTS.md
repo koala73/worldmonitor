@@ -59,3 +59,23 @@ An element that browser and RUM layout-shift attribution names because its *posi
 ### Shift Mover
 
 The element that *causes* a layout shift by changing its own footprint — growing, shrinking, materializing (insertion), or disappearing (removal). Movers are not reported by shift-attribution APIs; naming one requires diffing element geometry across the shift itself (a cached top/height baseline compared at shift delivery). The victim/mover distinction is load-bearing for all layout-stability work in this project: two shipped fixes aimed at victims had null field effect before mover instrumentation named the true mechanism. See also: Shift Victim, Deferred-Shell Contract.
+
+## MCP & Agent Discovery
+
+### MCP Server Card
+
+A static JSON discovery document that describes the MCP server: its name, version, supported transport, endpoint URL, authentication requirements, and tool/resource/prompt catalogs. It is served at `/.well-known/mcp/server-card.json` and returned by a plain `GET` to the well-known aliases (`/.well-known/mcp`, `/.well-known/mcp.json`). It is the *machine* discovery representation; the *human* one is the server guide. Clients performing a live MCP handshake still `POST` to the transport endpoint.
+
+### Discovery Read vs. Transport Operation
+
+The distinction that lets one URL serve both crawlers and MCP clients. A `GET` carrying neither `Last-Event-ID` nor an `Accept: text/event-stream` is a **discovery read** — a human or crawler opening the endpoint — and receives a document (the markdown server guide at `/mcp`, the JSON card at the well-known aliases). Every other `GET` is a **transport operation**: an SSE stream-open, which must receive the spec-correct `405`, or an authenticated `Last-Event-ID` replay. Request semantics, never user-agent sniffing, decide which. The consequence for caching is load-bearing: because these URLs negotiate on request headers, any cacheable response must declare `Vary: Accept, Last-Event-ID`, or a shared cache keyed on URL alone will replay a stored discovery body to a transport client. The live transport URL goes further and stays `no-store`, so its correctness never depends on an intermediary honoring `Vary`.
+
+### Streamable HTTP Transport
+
+The MCP transport this server implements over HTTP: JSON-RPC 2.0 requests via `POST`, with optional Server-Sent Events when the client advertises `Accept: text/event-stream`. Its `405` on a standalone stream-open is not an error but a contract — MCP SDK clients read it as the graceful "no standalone stream" signal and complete the handshake. Anything that converts that `405` into a `200` (including a CDN replaying a cached discovery response) breaks the handshake.
+
+## Routing & Hosts
+
+### Variant Host
+
+One of the product-variant subdomains (`tech`, `finance`, `commodity`, `happy`, `energy`) that serves a themed dashboard entry and metadata. The middleware and Vercel config recognize these hosts explicitly; canonical discovery URLs for shared surfaces (such as `/mcp`) redirect retrieval-method requests from variant hosts to the apex host so discovery signals do not fragment.
