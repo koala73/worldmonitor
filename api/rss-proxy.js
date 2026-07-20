@@ -20,7 +20,6 @@ const RELAY_ONLY_DOMAINS = new Set([
   'www.who.int',
   'www.crisisgroup.org',
   'english.alarabiya.net',
-  'www.arabnews.com',
   'www.timesofisrael.com',
   'www.scmp.com',
   'kyivindependent.com',
@@ -235,3 +234,12 @@ export default async function handler(req, ctx) {
     }, isTimeout ? 504 : 502, corsHeaders);
   }
 }
+
+// Test-only exports. Not part of the public edge handler surface — Vercel's
+// runtime invokes only `default export`. Exposed so api/rss-proxy.test.mjs can
+// assert the config-drift invariant that every relay-only host is also in the
+// RSS allowlist: the allowlist check runs first, so an unlisted relay-only host
+// would 403 before the relay routing it exists for is ever consulted.
+export const __testing__ = {
+  RELAY_ONLY_DOMAINS,
+};
