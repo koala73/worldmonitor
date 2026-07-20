@@ -109,7 +109,7 @@ const MAX_SSE_SESSIONS = 500;
 const MAX_SSE_STREAMS_PER_SESSION = 25;
 const mcpSseStreamsBySession = new Map<string, Map<string, StoredSseEvent[]>>();
 
-function getMcpCorsHeaders(methods = 'POST, GET, OPTIONS'): Record<string, string> {
+function getMcpCorsHeaders(methods = 'POST, GET, HEAD, OPTIONS'): Record<string, string> {
   return {
     ...getPublicCorsHeaders(methods),
     'Cache-Control': MCP_CACHE_CONTROL,
@@ -393,7 +393,7 @@ async function fetchStaticAsset(req: Request, path: string): Promise<string | nu
   }
 }
 
-async function serveServerCard(req: Request, corsHeaders: Record<string, string>): Promise<Response> {
+async function serveServerCard(req: Request, corsHeaders: Record<string, string>, headOnly = false): Promise<Response> {
   if (serverCardCache === null) {
     const text = await fetchStaticAsset(req, '/.well-known/mcp/server-card.json');
     if (text === null) {
@@ -406,7 +406,7 @@ async function serveServerCard(req: Request, corsHeaders: Record<string, string>
     }
     serverCardCache = text;
   }
-  return new Response(serverCardCache, {
+  return new Response(headOnly ? null : serverCardCache, {
     status: 200,
     // Cache-Control comes AFTER the ...corsHeaders spread: getMcpCorsHeaders()
     // carries MCP_CACHE_CONTROL (`no-store`) for the live JSON-RPC/SSE endpoint,
@@ -431,7 +431,7 @@ async function serveServerCard(req: Request, corsHeaders: Record<string, string>
 // if every cache in the path honored it; no-store means correctness does not
 // depend on that. The cost is one function invocation per crawler GET — the
 // cacheable copy of this document still lives at `/mcp-server.md`.
-async function serveMcpGuide(req: Request, corsHeaders: Record<string, string>): Promise<Response> {
+async function serveMcpGuide(req: Request, corsHeaders: Record<string, string>, headOnly = false): Promise<Response> {
   if (mcpGuideCache === null) {
     const text = await fetchStaticAsset(req, '/mcp-server.md');
     if (text === null) {
@@ -442,7 +442,7 @@ async function serveMcpGuide(req: Request, corsHeaders: Record<string, string>):
     }
     mcpGuideCache = text;
   }
-  return new Response(mcpGuideCache, {
+  return new Response(headOnly ? null : mcpGuideCache, {
     status: 200,
     // corsHeaders (getMcpCorsHeaders) already carries `no-store, no-transform`
     // — deliberately NOT overridden here. The canonical link keeps discovery
@@ -517,14 +517,19 @@ async function mcpHandlerInner(
     }
 
     usage.skip = true;
-    // HEAD must advertise the representation the matching GET would return:
-    // markdown at the transport URL, JSON at the well-known manifest aliases.
-    const headContentType = new URL(req.url).pathname === MCP_TRANSPORT_PATH
-      ? 'text/markdown; charset=utf-8'
-      : 'application/json; charset=utf-8';
+    // HEAD is the matching GET with the body suppressed. Reuse the discovery
+    // helpers so cache policy, canonical Link, and static-asset fallback status
+    // cannot drift between the two methods.
+    const pathname = new URL(req.url).pathname;
+    if (WELL_KNOWN_MCP_PATHS.has(pathname)) {
+      return serveServerCard(req, corsHeaders, true);
+    }
+    if (pathname === MCP_TRANSPORT_PATH) {
+      return serveMcpGuide(req, corsHeaders, true);
+    }
     return new Response(null, {
       status: 200,
-      headers: withMcpNoStore({ 'Content-Type': headContentType, Vary: DISCOVERY_VARY, ...corsHeaders }),
+      headers: withMcpNoStore({ 'Content-Type': 'application/json; charset=utf-8', ...corsHeaders }),
     });
   }
 

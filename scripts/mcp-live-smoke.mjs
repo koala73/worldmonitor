@@ -55,10 +55,10 @@
 // instead of re-fetching it per sub-walk. Current shape: ≤16 /mcp POSTs per
 // host (≤32 total) + 3 non-/mcp OAuth probes per host — comfortable headroom
 // under the bucket even as the prompt/resource catalogs grow. The discovery
-// probes (5) add 5 GETs per host that cost NOTHING against the bucket: both
+// probes (5) add 6 GET/HEAD requests per host that cost NOTHING against the bucket: both
 // the discovery branch and the transport 405 return ahead of
 // applyAnonDiscoveryLimit (the replay-shaped GET stops at auth). The variant
-// probes (6) add one limiter-counted ping plus three GETs per variant host;
+// probes (6) add one limiter-counted ping plus four GET/HEADs per variant host;
 // redirect, stream-open, and unauthenticated replay all stop before a limiter.
 //
 // Usage: node scripts/mcp-live-smoke.mjs
@@ -318,6 +318,34 @@ async function probeDiscovery(host) {
     fail(host, 'GET /mcp (crawler)', `HANG/transport error: ${err?.name ?? err}`);
   }
 
+  // HEAD must expose the same discovery metadata without a response body.
+  // This is a separate deployed method path, so unit coverage cannot prove
+  // that the CDN and routing layers preserve it.
+  checks += 1;
+  try {
+    const { res } = await timedFetch(`${host}/mcp`, {
+      method: 'HEAD',
+      headers: { Accept: 'text/html,*/*' },
+    });
+    if (res.status !== 200) {
+      fail(host, 'HEAD /mcp (crawler)', `expected 200, got ${res.status}`);
+    } else if (!/text\/markdown/i.test(res.headers.get('content-type') ?? '')) {
+      fail(host, 'HEAD /mcp (crawler)', `expected markdown metadata, got content-type ${res.headers.get('content-type')}`);
+    } else if (!/\bno-store\b/i.test(res.headers.get('cache-control') ?? '')) {
+      fail(host, 'HEAD /mcp (crawler)', `transport URL guide must be no-store (got "${res.headers.get('cache-control')}")`);
+    } else if (!/\bAccept\b(?!-)/i.test(res.headers.get('vary') ?? '')) {
+      fail(host, 'HEAD /mcp (crawler)', `guide lacks "Vary: Accept" (got "${res.headers.get('vary')}")`);
+    } else if (!/\bLast-Event-ID\b/i.test(res.headers.get('vary') ?? '')) {
+      fail(host, 'HEAD /mcp (crawler)', `guide lacks "Vary: Last-Event-ID" (got "${res.headers.get('vary')}")`);
+    } else if (!/<https:\/\/worldmonitor\.app\/mcp>;\s*rel="canonical"/i.test(res.headers.get('link') ?? '')) {
+      fail(host, 'HEAD /mcp (crawler)', `guide lacks the apex canonical Link (got "${res.headers.get('link')}")`);
+    } else {
+      ok(host, 'HEAD /mcp (crawler)', '200 markdown metadata');
+    }
+  } catch (err) {
+    fail(host, 'HEAD /mcp (crawler)', `HANG/transport error: ${err?.name ?? err}`);
+  }
+
   // The canary: an SSE stream-open on the URL just warmed must still be 405.
   checks += 1;
   try {
@@ -409,6 +437,26 @@ async function probeVariantCanonical(host) {
     }
   } catch (err) {
     fail(host, 'GET /mcp → apex canonical', `HANG/transport error: ${err?.name ?? err}`);
+  }
+
+  checks += 1;
+  try {
+    const { res } = await timedFetch(`${host}/mcp`, {
+      method: 'HEAD',
+      headers: { Accept: 'text/html,*/*' },
+    });
+    const location = res.headers.get('location');
+    if (res.status !== 308 || location !== 'https://worldmonitor.app/mcp') {
+      fail(host, 'HEAD /mcp → apex canonical', `expected 308 → https://worldmonitor.app/mcp, got ${res.status} → ${location}`);
+    } else if (!/\bAccept\b(?!-)/i.test(res.headers.get('vary') ?? '')) {
+      fail(host, 'HEAD /mcp → apex canonical', `cacheable 308 lacks "Vary: Accept" (got "${res.headers.get('vary')}")`);
+    } else if (!/\bLast-Event-ID\b/i.test(res.headers.get('vary') ?? '')) {
+      fail(host, 'HEAD /mcp → apex canonical', `cacheable 308 lacks "Vary: Last-Event-ID" (got "${res.headers.get('vary')}")`);
+    } else {
+      ok(host, 'HEAD /mcp → apex canonical', '308');
+    }
+  } catch (err) {
+    fail(host, 'HEAD /mcp → apex canonical', `HANG/transport error: ${err?.name ?? err}`);
   }
 
   checks += 1;

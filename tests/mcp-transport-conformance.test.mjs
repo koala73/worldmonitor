@@ -590,6 +590,22 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
       assert.equal(guideFallback.headers.get('location'), '/mcp-server.md');
       assert.match(guideFallback.headers.get('vary') ?? '', /\bAccept\b(?!-)/i);
       assert.match(guideFallback.headers.get('vary') ?? '', /\bLast-Event-ID\b/i);
+
+      const cardHeadFallback = await fetch(fallbackAliasUrl, {
+        method: 'HEAD',
+        headers: { Accept: 'application/json' },
+        redirect: 'manual',
+      });
+      assert.equal(cardHeadFallback.status, cardFallback.status);
+      assert.equal(cardHeadFallback.headers.get('location'), cardFallback.headers.get('location'));
+
+      const guideHeadFallback = await fetch(fallbackServer.url, {
+        method: 'HEAD',
+        headers: { Accept: 'text/html,*/*' },
+        redirect: 'manual',
+      });
+      assert.equal(guideHeadFallback.status, guideFallback.status);
+      assert.equal(guideHeadFallback.headers.get('location'), guideFallback.headers.get('location'));
     } finally {
       globalThis.fetch = successfulStaticFetch;
       await fallbackServer.close();
@@ -647,6 +663,20 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
     assert.equal(discovery.status, 200);
     assert.match(discovery.headers.get('content-type') ?? '', /text\/markdown/i,
       'HEAD must not claim application/json when GET returns markdown');
+    assert.match(discovery.headers.get('cache-control') ?? '', /\bno-store\b/i);
+    assert.match(discovery.headers.get('vary') ?? '', /\bAccept\b(?!-)/i);
+    assert.match(discovery.headers.get('vary') ?? '', /\bLast-Event-ID\b/i);
+    assert.match(discovery.headers.get('link') ?? '', /<https:\/\/worldmonitor\.app\/mcp>;\s*rel="canonical"/,
+      'HEAD must retain the matching guide GET canonical link');
+
+    const manifest = await fetch(aliasUrl, { method: 'HEAD', headers: { Accept: 'application/json' } });
+    assert.equal(manifest.status, 200);
+    assert.match(manifest.headers.get('content-type') ?? '', /application\/json/i);
+    assert.match(manifest.headers.get('cache-control') ?? '', /max-age=3600/,
+      'HEAD must advertise the matching manifest GET cache policy');
+    assert.doesNotMatch(manifest.headers.get('cache-control') ?? '', /no-store/);
+    assert.match(manifest.headers.get('vary') ?? '', /\bAccept\b(?!-)/i);
+    assert.match(manifest.headers.get('vary') ?? '', /\bLast-Event-ID\b/i);
 
     const streamOpen = await fetch(server.url, {
       method: 'HEAD',
@@ -661,6 +691,22 @@ describe('api/mcp.ts — /.well-known/mcp dual-role alias', () => {
     });
     assert.equal(replay.status, 401, 'HEAD must preserve the equivalent authenticated replay GET status');
     assert.match(replay.headers.get('www-authenticate') ?? '', /^Bearer\b/i);
+  });
+
+  it('advertises transport-aware HEAD through CORS preflight', async () => {
+    const res = await fetch(server.url, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://claude.ai',
+        'Access-Control-Request-Method': 'HEAD',
+        'Access-Control-Request-Headers': 'Last-Event-ID, Mcp-Session-Id',
+      },
+    });
+    assert.equal(res.status, 204);
+    assert.match(res.headers.get('access-control-allow-methods') ?? '', /\bHEAD\b/,
+      'cross-origin replay-shaped HEAD must pass preflight');
+    assert.match(res.headers.get('access-control-allow-headers') ?? '', /\bLast-Event-ID\b/i);
+    assert.match(res.headers.get('access-control-allow-headers') ?? '', /\bMcp-Session-Id\b/i);
   });
 
   it('POST initialize completes the live Streamable HTTP handshake at the well-known URL', async () => {
