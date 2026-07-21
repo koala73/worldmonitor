@@ -223,6 +223,8 @@ test('preserves Railway relay fallback for direct-fetch transport failures', asy
     });
   };
 
+
+
   const feedUrl = 'https://techcrunch.com/feed';
   const res = await handler(makeRequest(feedUrl));
 
@@ -232,6 +234,35 @@ test('preserves Railway relay fallback for direct-fetch transport failures', asy
   assert.equal(calls[0].url, feedUrl);
   assert.equal(calls[1].url, `https://relay.example.com/rss?url=${encodeURIComponent(feedUrl)}`);
   assert.equal(calls[1].headers['x-relay-key'], 'relay-secret');
+});
+
+test('preserves original direct-fetch error when relay fallback also throws', async () => {
+  process.env.WS_RELAY_URL = 'wss://relay.example.com';
+  process.env.RELAY_SHARED_SECRET = 'relay-secret';
+  const calls = [];
+
+  globalThis.fetch = async (input, init = {}) => {
+    calls.push({ url: String(input), headers: init.headers });
+    if (calls.length === 1) {
+      throw new Error('original direct-fetch failure');
+    }
+    // Ye throw test karega hamara naya try-catch block
+    throw new Error('secondary relay failure');
+  };
+
+  const feedUrl = 'https://techcrunch.com/feed';
+  const res = await handler(makeRequest(feedUrl));
+  const body = await res.json();
+
+  assert.equal(res.status, 502);
+  assert.equal(body.error, 'Failed to fetch feed');
+  // Sabse main line: Ye ensure karti hai ki original error overwrite nahi hua
+  assert.equal(body.details, 'original direct-fetch failure');
+  
+  // Verify karte hain ki dono fetch attempts try hue the
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].url, feedUrl);
+  assert.equal(calls[1].url, `https://relay.example.com/rss?url=${encodeURIComponent(feedUrl)}`);
 });
 
 // ---------------------------------------------------------------------------
