@@ -324,6 +324,13 @@ const server = createServer(async (req, res) => {
   return sendJson(res, 404, { error: { message: 'not found' } });
 });
 
+// Node's 5s keep-alive default races pooled client connections (undici/fetch
+// reuses an idle socket exactly as the server closes it → ECONNRESET, and the
+// caller's provider chain treats the shim as failed). Outlive typical client
+// idle-reuse windows instead.
+server.keepAliveTimeout = 65_000;
+server.headersTimeout = 66_000;
+
 server.listen(PORT, HOST, () => {
   console.log(`claude-code-shim listening on http://127.0.0.1:${server.address().port}`);
 });
