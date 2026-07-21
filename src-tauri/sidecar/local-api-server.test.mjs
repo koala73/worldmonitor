@@ -766,6 +766,72 @@ test('allows only Docker mode to fetch configured private Redis REST origin', as
   }
 });
 
+test('allows only Docker mode to fetch configured private LLM origin', async () => {
+  const originalLlmUrl = process.env.LLM_API_URL;
+  let upstreamHits = 0;
+
+  const upstream = createServer((_req, res) => {
+    upstreamHits += 1;
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+  });
+  const upstreamPort = await listen(upstream);
+
+  const localApi = await setupApiDir({
+    'llm-probe.js': `
+      export default async function handler() {
+        const upstream = await fetch(process.env.LLM_API_URL);
+        const payload = await upstream.text();
+        return new Response(payload, {
+          status: upstream.status,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+    `,
+  });
+
+  async function runProbe(mode) {
+    const app = await createLocalApiServer({
+      port: 0,
+      apiDir: localApi.apiDir,
+      mode,
+      logger: { log() { }, warn() { }, error() { } },
+    });
+    const { port } = await app.start();
+    try {
+      return await authFetch(`http://127.0.0.1:${port}/api/llm-probe`);
+    } finally {
+      await app.close();
+    }
+  }
+
+  process.env.LLM_API_URL = `http://127.0.0.1:${upstreamPort}/v1/chat/completions`;
+
+  try {
+    const dockerResponse = await runProbe('docker');
+    assert.equal(dockerResponse.status, 200);
+    assert.deepEqual(await dockerResponse.json(), { ok: true });
+    // No exact hit-count assertions: server boot warms the llm-health cache
+    // with its own (unguarded, server-internal) probe of the LLM origin in
+    // both modes. The handler responses below carry the security semantics —
+    // the guarded handler fetch succeeds only in docker mode.
+    assert.ok(upstreamHits >= 1, `expected upstream hits, got ${upstreamHits}`);
+
+    const desktopResponse = await runProbe('desktop-sidecar');
+    assert.equal(desktopResponse.status, 502);
+    const desktopBody = await desktopResponse.json();
+    assert.equal(desktopBody.error, 'Local handler error');
+    assert.match(desktopBody.reason, /SSRF blocked/);
+  } finally {
+    if (originalLlmUrl === undefined) delete process.env.LLM_API_URL;
+    else process.env.LLM_API_URL = originalLlmUrl;
+    await localApi.cleanup();
+    await new Promise((resolve, reject) => {
+      upstream.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
 test('blocks handler global fetches to non-global IPv4 special ranges', async () => {
   const originalHttpRequest = http.request;
   const blockedUrls = [
