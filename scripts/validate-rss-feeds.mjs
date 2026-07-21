@@ -384,10 +384,11 @@ async function main() {
   if (configDrift.length) {
     console.error(
       `\nFAIL: ${configDrift.length} feed(s) violate the CI guardrails ` +
-      `(allowlist drift or plaintext URL). Fix src/config/feeds.ts and/or the 5 ` +
+      `(allowlist drift or plaintext URL). Fix src/config/feeds.ts and/or the 4 ` +
       `allowlist mirrors (shared/rss-allowed-domains.json, .cjs, ` +
       `scripts/shared/rss-allowed-domains.json, ` +
-      `api/_rss-allowed-domains.js, vite.config.ts:RSS_PROXY_ALLOWED_DOMAINS).`
+      `api/_rss-allowed-domains.js). vite.config.ts now imports isAllowedDomain ` +
+      `from api/_rss-allowed-domain-match.js — no separate dev mirror to sync.`
     );
     process.exit(1);
   }

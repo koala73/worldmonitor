@@ -350,7 +350,6 @@ function parseChangelog(source) {
       } else if (currentBullet && /^\s{2,}\S/.test(line)) {
         currentBullet.push(line.trim());
       } else if (currentBullet && line.trim() === '') {
-        continue;
       } else if (currentBullet) {
         bulletItems.push(currentBullet.join(' '));
         currentBullet = null;

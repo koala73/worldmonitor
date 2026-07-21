@@ -2171,13 +2171,13 @@ const MARKET_ADVERSE_OUTCOME_PATTERNS = [
   /(?:^|[^a-z0-9])renew(?:s|ed|ing|al|als)?(?:[^a-z0-9]|$)/,
   /(?:^|[^a-z0-9])collaps(?:e|es|ed|ing)?(?:[^a-z0-9]|$)/,
 ];
-const MARKET_DE_ESCALATION_ANCHOR_PATTERN = String.raw`(?:ceasefire|truce|peace(?: agreement| deal)?|agreement)`;
+const MARKET_DE_ESCALATION_ANCHOR_PATTERN = '(?:ceasefire|truce|peace(?: agreement| deal)?|agreement)';
 const MARKET_DE_ESCALATION_FAILURE_PATTERN = String.raw`(?:fail(?:s|ed|ing|ure|ures)?|collaps(?:e|es|ed|ing)?|break(?:s|ing)? down|breakdown|breach(?:es|ed|ing)?|violat(?:e|es|ed|ing|ion|ions)?|reject(?:s|ed|ing|ion|ions)?|expire(?:s|d|ing)?|ends?\b(?!\s+of\b))`;
 const MARKET_FAILED_DE_ESCALATION_PATTERNS = [
   new RegExp(String.raw`\b${MARKET_DE_ESCALATION_ANCHOR_PATTERN}\b.{0,40}\b${MARKET_DE_ESCALATION_FAILURE_PATTERN}\b`),
   new RegExp(String.raw`\b${MARKET_DE_ESCALATION_FAILURE_PATTERN}\b.{0,40}\b${MARKET_DE_ESCALATION_ANCHOR_PATTERN}\b`),
 ];
-const MARKET_ADVERSE_CONDITION_PATTERN = String.raw`(?:war|conflict|fighting|hostilities|violence|offensive|attacks?)`;
+const MARKET_ADVERSE_CONDITION_PATTERN = '(?:war|conflict|fighting|hostilities|violence|offensive|attacks?)';
 const MARKET_ADVERSE_CONDITION_END_PATTERNS = [
   new RegExp(String.raw`\b${MARKET_ADVERSE_CONDITION_PATTERN}\b.{0,40}\bend(?:s|ed|ing)?\b(?!\s+of\b)`),
   new RegExp(String.raw`\bend(?:s|ed|ing)?\b(?:\s+of)?.{0,40}\b${MARKET_ADVERSE_CONDITION_PATTERN}\b`),
@@ -3576,7 +3576,7 @@ async function extractCriticalSignalBundle(inputs) {
     (criticalLlmOptions.providerOrder || []).join('-') || 'default',
     criticalLlmOptions.modelOverrides?.openrouter || 'table',
     criticalLlmOptions.modelOverrides?.groq || 'table',
-  ].join('_').replace(/[^a-zA-Z0-9._\/-]/g, '-');
+  ].join('_').replace(/[^a-zA-Z0-9._/-]/g, '-');
   const cacheKey = `forecast:critical-signals:llm:${criticalRouteTag}:${buildCriticalSignalCandidateHash(candidates)}`;
   const fallbackSignalsFromCandidates = (coveredIndexes = new Set()) =>
     extractRegexCriticalNewsSignals(inputs, candidates.filter((item) => !coveredIndexes.has(item.candidateIndex)));

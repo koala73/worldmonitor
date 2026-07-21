@@ -78,7 +78,7 @@ function buildCommodityTemplate({ symbol, subject, unit }) {
       };
     },
 
-    buildQuestion({ metric, spec }) {
+    buildQuestion({ spec }) {
       return spec.question;
     },
 

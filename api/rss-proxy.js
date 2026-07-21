@@ -2,7 +2,7 @@ import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
 import { checkRateLimit } from './_rate-limit.js';
 import { getRelayBaseUrl, getRelayHeaders, fetchWithTimeout } from './_relay.js';
-import { isAllowedDomain } from './_rss-allowed-domain-match.js';
+import { isAllowedDomain, hostMatchForms } from './_rss-allowed-domain-match.js';
 import { jsonResponse } from './_json-response.js';
 import { captureSilentError } from './_sentry-edge.js';
 
@@ -20,7 +20,6 @@ const RELAY_ONLY_DOMAINS = new Set([
   'www.who.int',
   'www.crisisgroup.org',
   'english.alarabiya.net',
-  'www.arabnews.com',
   'www.timesofisrael.com',
   'www.scmp.com',
   'kyivindependent.com',
@@ -138,7 +137,11 @@ export default async function handler(req, ctx) {
       return jsonResponse({ error: 'Domain not allowed' }, 403, corsHeaders);
     }
 
-    const isRelayOnly = RELAY_ONLY_DOMAINS.has(hostname);
+    // Match relay-only hosts with the same www-tolerance as the allowlist:
+    // a host allowed via its apex form must still route to the relay when only
+    // its www. form is registered (and vice versa), otherwise it falls through
+    // to a direct Vercel-edge fetch these hosts block.
+    const isRelayOnly = hostMatchForms(hostname).some((form) => RELAY_ONLY_DOMAINS.has(form));
 
     // Google News is slow - use longer timeout
     const isGoogleNews = isGoogleNewsFeedUrl(feedUrl);
@@ -235,3 +238,12 @@ export default async function handler(req, ctx) {
     }, isTimeout ? 504 : 502, corsHeaders);
   }
 }
+
+// Test-only exports. Not part of the public edge handler surface — Vercel's
+// runtime invokes only `default export`. Exposed so api/rss-proxy.test.mjs can
+// assert the config-drift invariant that every relay-only host is also in the
+// RSS allowlist: the allowlist check runs first, so an unlisted relay-only host
+// would 403 before the relay routing it exists for is ever consulted.
+export const __testing__ = {
+  RELAY_ONLY_DOMAINS,
+};

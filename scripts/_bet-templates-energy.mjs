@@ -87,7 +87,7 @@ function buildMetricTemplate({ name, subject, fallbackUnit }) {
       };
     },
 
-    buildQuestion({ metric, spec }) {
+    buildQuestion({ spec }) {
       return spec.question;
     },
 
@@ -96,7 +96,7 @@ function buildMetricTemplate({ name, subject, fallbackUnit }) {
       return `${capitalize(metric.subject)}: ${dir} to ${spec.threshold} ${metric.unit}?`;
     },
 
-    userValueScore({ metric }) {
+    userValueScore() {
       // Prices are higher-interest than raw stock levels; nudge accordingly.
       return name === 'wti' || name === 'brent' ? 0.75 : 0.6;
     },
