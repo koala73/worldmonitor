@@ -112,6 +112,31 @@ test('rejects allowlisted redirect chains that escape the RSS domain allowlist o
   assert.deepEqual(calls.map((call) => call.redirect), ['manual', 'manual']);
 });
 
+test('rejects a redirect whose later hop targets a plain non-allowlisted host', async () => {
+  const calls = [];
+  globalThis.fetch = async (input, init = {}) => {
+    calls.push({ url: String(input), redirect: init.redirect });
+    // First hop is an allowlisted canonical redirect; the second escapes to an
+    // ordinary STRANGER host (not an IP, not a lookalike). Pins that
+    // assertAllowedRedirect rejects unrelated hosts, not just the metadata IP —
+    // otherwise loosening it to admit any `.com` on a redirect hop stays green.
+    if (calls.length === 1) {
+      return new Response('', { status: 302, headers: { Location: 'https://www.techcrunch.com/feed' } });
+    }
+    return new Response('', { status: 302, headers: { Location: 'https://evil.example.com/feed' } });
+  };
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+
+  assert.equal(res.status, 403);
+  assert.equal((await res.json()).error, 'Redirect to disallowed domain');
+  // The attacker host is never fetched — the chain stops at the disallowed hop.
+  assert.deepEqual(calls.map((call) => call.url), [
+    'https://techcrunch.com/feed',
+    'https://www.techcrunch.com/feed',
+  ]);
+});
+
 test('allows legitimate apex to www RSS canonical redirects', async () => {
   const calls = [];
   globalThis.fetch = async (input, init = {}) => {
@@ -265,6 +290,22 @@ test('rejects link-local metadata addresses supplied as the initial url', async 
   assert.deepEqual(calls, [], 'metadata endpoint must never be fetched');
 });
 
+test('rejects a plain, unrelated host that is simply not on the allowlist', async () => {
+  const calls = spyFetch();
+
+  // The other negative cases are all lookalikes of an allowlisted name (suffix/
+  // userinfo/trailing-dot confusion) or a raw IP — so they only prove the guard
+  // rejects IMPOSTORS. This pins that it also rejects a STRANGER: an ordinary,
+  // well-formed host with no relationship to any allowlisted domain. Without it,
+  // loosening the guard to `!isAllowedDomain(host) && !host.endsWith('.com')`
+  // (admit any .com) stays green.
+  const res = await handler(makeRequest('https://evil.example.com/feed'));
+
+  assert.equal(res.status, 403);
+  assert.equal((await res.json()).error, 'Domain not allowed');
+  assert.deepEqual(calls, [], 'a non-allowlisted stranger host must never be fetched');
+});
+
 test('allows an allowlisted host supplied in mixed case (URL normalizes it)', async () => {
   const calls = spyFetch(() => new Response('<rss><channel/></rss>', {
     status: 200,
@@ -279,9 +320,10 @@ test('allows an allowlisted host supplied in mixed case (URL normalizes it)', as
 });
 
 test('every relay-only domain is also in the RSS allowlist', () => {
-  // Drift guard: RELAY_ONLY_DOMAINS is matched with exact `.has(hostname)`,
-  // but the allowlist check runs FIRST. A relay-only host missing from the
-  // allowlist would 403 before the relay routing it exists for is ever used.
+  // Drift guard: the allowlist check runs FIRST, so a relay-only host missing
+  // from the allowlist would 403 before the relay routing it exists for is ever
+  // used. Both checks now share hostMatchForms() www-tolerance, so membership is
+  // tested through the same predicate the handler uses.
   const orphans = [...RELAY_ONLY_DOMAINS].filter((host) => !isAllowedDomain(host));
   assert.deepEqual(orphans, [], `relay-only hosts missing from the RSS allowlist: ${orphans.join(', ')}`);
 });
@@ -335,6 +377,9 @@ test('returns 429 and skips the feed fetch when the rate limit is exhausted', as
   assert.equal(res.headers.get('X-RateLimit-Limit'), '600');
   assert.equal(res.headers.get('X-RateLimit-Remaining'), '0');
   assert.match(res.headers.get('Retry-After') ?? '', /^\d+$/);
+  // The 429 must still carry CORS headers, or the browser client sees an opaque
+  // network error instead of a readable rate-limit response.
+  assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app');
   assert.deepEqual(
     feedCalls(calls).map((c) => c.url),
     [],
@@ -360,10 +405,26 @@ test('allows the request through when the rate limiter reports headroom', async 
       })
   ));
 
-  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+  // A malformed Upstash reply also yields 200 — checkRateLimit catches the parse
+  // error and fail-opens (`return null`) — so status alone can't tell "limiter
+  // granted headroom" from "limiter threw and failed open". Capture the degraded
+  // log and assert it never fired, so this positive control has real teeth.
+  const errorLogs = [];
+  const originalConsoleError = console.error;
+  console.error = (...args) => { errorLogs.push(args.join(' ')); };
+  let res;
+  try {
+    res = await handler(makeRequest('https://techcrunch.com/feed'));
+  } finally {
+    console.error = originalConsoleError;
+  }
 
   assert.equal(res.status, 200);
   assert.deepEqual(feedCalls(calls).map((c) => c.url), ['https://techcrunch.com/feed']);
+  assert.ok(
+    !errorLogs.some((l) => l.includes('[rate-limit] redis-error')),
+    `limiter degraded (fail-open) instead of granting headroom: ${errorLogs.join(' | ')}`,
+  );
 });
 
 test('rejects a non-http initial url with 400, not the 403 domain verdict', async () => {
@@ -413,7 +474,9 @@ test('answers CORS preflight with 204 and no upstream call', async () => {
 
   assert.equal(res.status, 204);
   assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app');
-  assert.match(res.headers.get('Access-Control-Allow-Methods') ?? '', /GET/);
+  // Exact match, not a substring — pins the advertised verb set so widening it
+  // (e.g. to include POST/PUT/DELETE) can't slip through unnoticed.
+  assert.equal(res.headers.get('Access-Control-Allow-Methods'), 'GET, OPTIONS');
   assert.deepEqual(calls, []);
 });
 
@@ -430,7 +493,14 @@ test('rejects non-GET methods with 405', async () => {
 test('rejects a disallowed Origin before auth, method, or fetch', async () => {
   const calls = spyFetch();
 
-  const res = await handler(makeRequest('https://techcrunch.com/feed', { origin: 'https://evil.example' }));
+  // Fail ALL THREE early gates at once (bad Origin + no key + non-GET) so only
+  // the ORDERING explains a 403 'Origin not allowed' verdict — if the Origin
+  // gate ran after auth or method, this would be 401 or 405 instead.
+  const res = await handler(makeRequest('https://techcrunch.com/feed', {
+    origin: 'https://evil.example',
+    apiKey: null,
+    method: 'POST',
+  }));
 
   assert.equal(res.status, 403);
   assert.equal((await res.json()).error, 'Origin not allowed');
@@ -573,8 +643,11 @@ test('falls back to application/xml when upstream sends no content-type', async 
 
 test('maps a direct-fetch AbortError to 504 Feed timeout', async () => {
   // No WS_RELAY_URL, so the relay fallback returns null and the AbortError is
-  // rethrown into the outer catch — which must classify it as a timeout (504)
-  // and skip the Sentry capture that routine upstream timeouts would flood.
+  // rethrown into the outer catch, which classifies it as a timeout (504). Note:
+  // this asserts only the 504 mapping. The `if (!isTimeout)` Sentry-suppression
+  // gate is NOT verified here — captureSilentError is a no-op under
+  // NODE_TEST_CONTEXT, so a spy-free test can't distinguish "capture skipped"
+  // from "capture ran but no-op'd". Left unasserted deliberately.
   const calls = spyFetch(() => {
     const err = new Error('The operation was aborted');
     err.name = 'AbortError';
@@ -590,7 +663,38 @@ test('maps a direct-fetch AbortError to 504 Feed timeout', async () => {
   assert.equal(calls.length, 1);
 });
 
-test('gives Google News a 20s deadline and other feeds 12s', async () => {
+test('maps a generic direct-fetch error to 502 Failed to fetch feed when no relay is configured', async () => {
+  // Non-Abort throw + WS_RELAY_URL unset -> fetchViaRailway returns null ->
+  // directError rethrows into the outer catch: the handler's generic-failure
+  // branch and the ONLY captureSilentError call site. Untested before this.
+  const calls = spyFetch(() => { throw new Error('boom direct fetch'); });
+
+  const res = await handler(makeRequest('https://techcrunch.com/feed'));
+  const body = await res.json();
+
+  assert.equal(res.status, 502);
+  assert.equal(body.error, 'Failed to fetch feed');
+  assert.equal(body.details, 'boom direct fetch');
+  assert.equal(body.url, 'https://techcrunch.com/feed');
+});
+
+test('maps a relay-only host to 502 when the relay is unavailable', async () => {
+  // Relay-only domain + WS_RELAY_URL unset -> fetchViaRailway returns null ->
+  // handler throws 'Railway relay unavailable ...' into the same 502 branch.
+  const calls = spyFetch();
+
+  const res = await handler(makeRequest('https://rss.cnn.com/rss/edition.rss'));
+  const body = await res.json();
+
+  assert.equal(res.status, 502);
+  assert.equal(body.error, 'Failed to fetch feed');
+  assert.match(body.details, /Railway relay unavailable for relay-only domain: rss\.cnn\.com/);
+  // No relay configured and direct fetch is skipped for relay-only hosts, so
+  // nothing was ever fetched.
+  assert.deepEqual(calls, []);
+});
+
+test('gives Google News a 20s deadline and other feeds 12s', { timeout: 5000 }, async () => {
   // The timeout is only observable through the AbortSignal that
   // fetchWithTimeout arms, and it is cleared as soon as fetch settles — so the
   // fetch is held pending while the fake clock is advanced across each
@@ -610,8 +714,14 @@ test('gives Google News a 20s deadline and other feeds 12s', async () => {
       };
 
       const pending = handler(makeRequest(feedUrl));
-      // Yield until the handler has entered fetch and armed the signal.
-      while (!signal) await new Promise((resolve) => setImmediate(resolve));
+      // Yield until the handler has entered fetch and armed the signal — BOUNDED
+      // so a regression that stops the handler from reaching fetch fails fast
+      // with a clear message instead of spinning until the runner's timeout.
+      // (setImmediate is unfaked here; only setTimeout is mocked.)
+      for (let i = 0; !signal && i < 1000; i += 1) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+      assert.ok(signal, `${label} feed: handler never reached fetch (signal never armed)`);
 
       mock.timers.tick(deadlineMs - 1);
       assert.equal(signal.aborted, false, `${label} feed aborted before its ${deadlineMs}ms deadline`);
