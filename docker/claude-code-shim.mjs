@@ -4,6 +4,7 @@
 // LLM provider (LLM_API_URL/LLM_API_KEY) with zero app changes.
 // Zero-dependency by design, matching docker/redis-rest-proxy.mjs.
 // See SELF_HOSTING.md "Claude Code (use your Claude subscription)".
+// Contributed by Will Kemp — liftedholdings.com
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';

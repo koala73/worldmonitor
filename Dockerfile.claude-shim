@@ -1,0 +1,22 @@
+# Claude Code shim — OpenAI-compatible /v1/chat/completions backed by headless
+# Claude Code, so a Claude subscription can serve as the self-host LLM backend.
+# See SELF_HOSTING.md "Claude Code (use your Claude subscription)".
+FROM node:22-alpine
+
+RUN npm install -g @anthropic-ai/claude-code && npm cache clean --force
+
+# Claude Code wants a writable home for session state.
+RUN addgroup -S shim && adduser -S -G shim -h /home/shim shim
+USER shim
+ENV HOME=/home/shim
+
+WORKDIR /app
+COPY docker/claude-code-shim.mjs ./claude-code-shim.mjs
+
+ENV PORT=8383
+EXPOSE 8383
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:8383/ || exit 1
+
+CMD ["node", "/app/claude-code-shim.mjs"]

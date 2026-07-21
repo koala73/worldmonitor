@@ -10,6 +10,7 @@ public/crawlable-corpus.json
 *.log
 .env
 .env.local
+docker-compose.override.yml
 .playwright-mcp/
 *-network.txt
 .vercel

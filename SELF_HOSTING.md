@@ -244,6 +244,56 @@ services:
       - "your-host:192.168.1.100"  # if not DNS-resolvable
 ```
 
+### Claude Code (use your Claude subscription)
+
+If you have a Claude Pro/Max subscription, the bundled shim (`Dockerfile.claude-shim`)
+exposes headless Claude Code as an OpenAI-compatible endpoint, so the dashboard's AI
+features run against your subscription instead of a metered API key. The shim strips
+Claude Code's session context per call (settings, skills, tools), so a request costs
+little more than its own prompt.
+
+1. On a machine with a browser, run `claude setup-token` (requires Claude Code ≥1.0.90)
+   and copy the long-lived OAuth token.
+2. Add to `.env`: `CLAUDE_CODE_OAUTH_TOKEN=<token>` and `SHIM_API_KEY=$(openssl rand -hex 32)`
+   (the shim key just authenticates the app→shim hop).
+3. Wire it up in `docker-compose.override.yml`:
+
+```yaml
+# docker-compose.override.yml
+services:
+  claude-shim:
+    build:
+      context: .
+      dockerfile: Dockerfile.claude-shim
+    environment:
+      CLAUDE_CODE_OAUTH_TOKEN: ${CLAUDE_CODE_OAUTH_TOKEN:?}
+      SHIM_API_KEY: ${SHIM_API_KEY:?}
+      SHIM_DAILY_CAP: "300"        # calls/day, then 429 (protects your subscription quota)
+      SHIM_MAX_CONCURRENCY: "2"
+      SHIM_CACHE_TTL_MS: "900000"  # identical requests served from cache for 15 min
+    restart: unless-stopped
+  worldmonitor:
+    environment:
+      LLM_API_URL: "http://claude-shim:8383/v1/chat/completions"  # full path — used verbatim
+      LLM_API_KEY: ${SHIM_API_KEY:?}   # required, or the generic provider is skipped
+      LLM_MODEL: "claude-haiku"
+      LLM_TOOL_PROVIDER: "generic"      # prefer the shim over groq/openrouter…
+      LLM_TOOL_MODEL: "claude-haiku"    # …for extraction/classification stages
+      LLM_REASONING_PROVIDER: "generic"
+      LLM_REASONING_MODEL: "claude-sonnet"  # briefs + chat analyst
+```
+
+Model names containing `haiku`/`sonnet`/`opus` map to those Claude tiers; anything else
+falls back to `CLAUDE_SHIM_DEFAULT_MODEL` (default `haiku`). Notes:
+
+- `LLM_API_URL` must include the full `/v1/chat/completions` path (it is not appended).
+- Leave `GROQ_API_KEY`/`OPENROUTER_API_KEY` unset (or keep the `LLM_*_PROVIDER: generic`
+  pins) — `generic` is last in the fallback chain.
+- The token draws down your personal subscription quota. Keep the daily cap conservative,
+  keep the deployment private, and don't share the endpoint: Anthropic's terms cover
+  personal use of your own subscription through Claude Code.
+- Rotate the token by re-running `claude setup-token` and restarting the shim container.
+
 ## 🐛 Troubleshooting
 
 | Issue | Fix |
