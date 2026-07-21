@@ -134,6 +134,67 @@ function readBody(req) {
   });
 }
 
+// Streams claude stream-json events to the client as OpenAI SSE chunks.
+// If no partial text deltas arrive (older CLI without --include-partial-messages
+// support), the final result text is emitted as a single delta instead.
+function streamChat(res, args, prompt, model) {
+  res.writeHead(200, {
+    'content-type': 'text/event-stream',
+    'cache-control': 'no-cache',
+    connection: 'keep-alive',
+  });
+  const id = `chatcmpl-${randomUUID()}`;
+  const chunk = (delta, finish = null) => {
+    res.write(`data: ${JSON.stringify({
+      id,
+      object: 'chat.completion.chunk',
+      created: Math.floor(Date.now() / 1000),
+      model,
+      choices: [{ index: 0, delta, finish_reason: finish }],
+    })}\n\n`);
+  };
+  const child = spawnClaude(args);
+  let streamedText = false;
+  let buf = '';
+  let done = false;
+  const timer = setTimeout(() => child.kill('SIGKILL'), TIMEOUT_MS);
+  const finish = (finishReasonValue) => {
+    if (done) return;
+    done = true;
+    clearTimeout(timer);
+    chunk({}, finishReasonValue);
+    res.write('data: [DONE]\n\n');
+    res.end();
+  };
+  chunk({ role: 'assistant' });
+  child.stdout.on('data', (d) => {
+    buf += d;
+    let nl;
+    while ((nl = buf.indexOf('\n')) >= 0) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (!line) continue;
+      let evt;
+      try { evt = JSON.parse(line); } catch { continue; }
+      const deltaText = evt?.event?.delta?.type === 'text_delta' ? evt.event.delta.text : null;
+      if (evt.type === 'stream_event' && deltaText) {
+        streamedText = true;
+        chunk({ content: deltaText });
+      } else if (evt.type === 'result') {
+        if (!streamedText && !evt.is_error && evt.result) chunk({ content: String(evt.result) });
+        finish(finishReason(evt.stop_reason));
+      }
+    }
+  });
+  child.on('close', () => finish('stop'));
+  child.on('error', (err) => {
+    console.error(`claude-code-shim: stream spawn failed: ${err.message}`);
+    finish('stop');
+  });
+  res.on('close', () => { clearTimeout(timer); child.kill('SIGKILL'); });
+  child.stdin.end(prompt);
+}
+
 async function handleChat(req, res) {
   let body;
   try {
@@ -147,6 +208,9 @@ async function handleChat(req, res) {
   }
   const model = mapModel(body.model);
   const { system, prompt } = splitMessages(messages);
+  if (body.stream === true) {
+    return streamChat(res, claudeArgs({ model, system, stream: true }), prompt, model);
+  }
   const args = claudeArgs({ model, system, stream: false });
   try {
     const result = await runClaude(args, prompt);

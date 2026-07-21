@@ -93,3 +93,26 @@ test('length stop reason maps to finish_reason length', async (t) => {
   const j = await r.json();
   assert.equal(j.choices[0].finish_reason, 'length');
 });
+
+test('stream:true emits SSE deltas and [DONE]', async (t) => {
+  const log = path.join(logDir(), 'calls.jsonl');
+  const { base } = await startShim(t, { STUB_LOG: log });
+  const r = await chat(base, {
+    model: 'claude-sonnet',
+    stream: true,
+    messages: [{ role: 'user', content: 'stream please' }],
+  });
+  assert.equal(r.status, 200);
+  assert.match(r.headers.get('content-type'), /text\/event-stream/);
+  const raw = await r.text();
+  const datas = raw.split('\n\n').filter(Boolean)
+    .map((b) => b.replace(/^data: /, '').trim()).filter(Boolean);
+  assert.equal(datas[datas.length - 1], '[DONE]');
+  const parsed = datas.slice(0, -1).map((d) => JSON.parse(d));
+  const text = parsed.map((p) => p.choices?.[0]?.delta?.content || '').join('');
+  assert.equal(text, 'STUB STREAM');
+  const last = parsed[parsed.length - 1];
+  assert.equal(last.choices[0].finish_reason, 'stop');
+  const [call] = readLog(log);
+  assert.ok(call.argv.includes('stream-json'));
+});
