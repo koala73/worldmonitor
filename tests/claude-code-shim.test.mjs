@@ -148,3 +148,20 @@ test('concurrency limit serializes claude invocations', async (t) => {
   assert.equal(b.status, 200);
   assert.ok(elapsed >= 550, `expected serialized execution, took ${elapsed}ms`);
 });
+
+test('queued requests past the queue deadline fail fast without spawning', async (t) => {
+  const log = path.join(logDir(), 'calls.jsonl');
+  const { base } = await startShim(t, {
+    STUB_LOG: log,
+    SHIM_MAX_CONCURRENCY: '1',
+    STUB_SLEEP_MS: '800',
+    SHIM_QUEUE_TIMEOUT_MS: '200',
+  });
+  const mk = (s) => chat(base, { model: 'claude-haiku', messages: [{ role: 'user', content: s }] });
+  const [a, b] = await Promise.all([mk('runs'), mk('rejected')]);
+  assert.equal(a.status, 200);
+  assert.equal(b.status, 503);
+  const j = await b.json();
+  assert.match(j.error.message, /queue/i);
+  assert.equal(readLog(log).length, 1); // second request never spawned claude
+});

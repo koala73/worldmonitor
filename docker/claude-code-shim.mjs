@@ -22,9 +22,10 @@ if (!API_KEY) {
   process.exit(1);
 }
 
-const MAX_CONCURRENCY = Number(process.env.SHIM_MAX_CONCURRENCY ?? 2);
+const MAX_CONCURRENCY = Number(process.env.SHIM_MAX_CONCURRENCY ?? 4);
 const DAILY_CAP = Number(process.env.SHIM_DAILY_CAP ?? 300);
 const CACHE_TTL_MS = Number(process.env.SHIM_CACHE_TTL_MS ?? 900_000);
+const QUEUE_TIMEOUT_MS = Number(process.env.SHIM_QUEUE_TIMEOUT_MS ?? 15_000);
 
 const MODELS = ['haiku', 'sonnet', 'opus'];
 
@@ -40,15 +41,29 @@ const countCall = () => { capCount += 1; };
 
 let running = 0;
 const waiters = [];
-async function withSlot(fn) {
-  if (running >= MAX_CONCURRENCY) await new Promise((r) => waiters.push(r));
+// Callers (server/_shared/llm.ts) abort at ~25s. A request that cannot start
+// promptly must fail fast — otherwise it spawns claude after the caller has
+// already given up, burning subscription quota for a discarded result.
+class QueueTimeoutError extends Error {}
+async function withSlot(fn, { queueTimeoutMs = QUEUE_TIMEOUT_MS, isAbandoned = () => false } = {}) {
+  if (running >= MAX_CONCURRENCY) {
+    await new Promise((resolve, reject) => {
+      const waiter = { resolve, timer: setTimeout(() => {
+        const i = waiters.indexOf(waiter);
+        if (i >= 0) waiters.splice(i, 1);
+        reject(new QueueTimeoutError(`queue wait exceeded ${queueTimeoutMs}ms`));
+      }, queueTimeoutMs) };
+      waiters.push(waiter);
+    });
+  }
   running += 1;
   try {
+    if (isAbandoned()) throw new QueueTimeoutError('client disconnected while queued');
     return await fn();
   } finally {
     running -= 1;
     const next = waiters.shift();
-    if (next) next();
+    if (next) { clearTimeout(next.timer); next.resolve(); }
   }
 }
 
@@ -260,20 +275,30 @@ async function handleChat(req, res) {
   }
   const model = mapModel(body.model);
   const { system, prompt } = splitMessages(messages);
+  let clientGone = false;
+  res.on('close', () => { clientGone = !res.writableEnded; });
+  const slotOpts = { isAbandoned: () => clientGone };
   if (body.stream === true) {
     if (!underCap()) return sendJson(res, 429, { error: { message: 'daily cap reached' } });
-    countCall();
-    return withSlot(async () =>
-      streamChatAwaited(res, claudeArgs({ model, system, stream: true }), prompt, model));
+    return withSlot(async () => {
+      countCall();
+      return streamChatAwaited(res, claudeArgs({ model, system, stream: true }), prompt, model);
+    }, slotOpts).catch((err) => {
+      if (err instanceof QueueTimeoutError && !res.headersSent) {
+        sendJson(res, 503, { error: { message: `busy: ${err.message}` } });
+      }
+    });
   }
   const key = cacheKey(model, messages);
   const cached = cacheGet(key);
   if (cached) return sendJson(res, 200, { ...cached, id: `chatcmpl-${randomUUID()}` });
   if (!underCap()) return sendJson(res, 429, { error: { message: 'daily cap reached' } });
-  countCall();
   const args = claudeArgs({ model, system, stream: false });
   try {
-    const result = await withSlot(() => runClaude(args, prompt));
+    const result = await withSlot(() => {
+      countCall();
+      return runClaude(args, prompt);
+    }, slotOpts);
     const payload = {
       id: `chatcmpl-${randomUUID()}`,
       object: 'chat.completion',
@@ -289,6 +314,9 @@ async function handleChat(req, res) {
     cacheSet(key, payload);
     return sendJson(res, 200, payload);
   } catch (err) {
+    if (err instanceof QueueTimeoutError) {
+      return sendJson(res, 503, { error: { message: `busy: ${err.message}` } });
+    }
     console.error(`claude-code-shim: completion failed: ${err.message}`);
     return sendJson(res, 502, { error: { message: err.message } });
   }
