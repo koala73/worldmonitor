@@ -127,7 +127,7 @@ In a world of conflict feeds and crisis dashboards, Happy Monitor exists to trac
 ## 6. Energy Atlas: The Global Power Infrastructure
 
 **URL:** energy.worldmonitor.app
-**Panels:** [19] 
+**Panels:** 26
 **Focus:** Chokepoints, pipelines, storage, and energy risks
 
 Energy Atlas tracks the critical infrastructure that keeps the world powered, providing real-time data on supply chain vulnerabilities and fuel logistics.
@@ -185,9 +185,9 @@ Install on any device from the browser. Includes offline map caching (500 tiles)
 
 In the web app, switch variants via the header navigation. Your preferences, language settings, and AI configuration carry across variants.
 
-The variants share a single codebase. Every improvement to the core engine benefits all five dashboards simultaneously. A map performance optimization for World Monitor automatically makes Commodity Monitor faster too.
+The variants share a single codebase. Every improvement to the core engine benefits all six dashboards simultaneously. A map performance optimization for World Monitor automatically makes Commodity Monitor faster too.
 
-## Why six Variants Instead of One?
+## Why Six Variants Instead of One?
 
 **Signal-to-noise ratio.**
 
