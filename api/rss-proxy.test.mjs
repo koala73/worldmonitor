@@ -471,6 +471,34 @@ test('routes relay-only domains straight to Railway with the long cache policy',
   );
 });
 
+test('routes the apex form of a www-registered relay-only host to Railway (www-tolerant match)', async () => {
+  process.env.WS_RELAY_URL = 'wss://relay.example.com';
+
+  // 'www.cisa.gov' is relay-only; a request for the bare apex 'cisa.gov' is
+  // still allowlisted (www-tolerant) and MUST route to the relay. With an
+  // exact-match relay-only check it would fall through to a direct Vercel-edge
+  // fetch that cisa.gov blocks — the exact class of drift the shared
+  // hostMatchForms() normalization closes.
+  const feedUrl = 'https://cisa.gov/uscert/ncas/all.xml';
+  const calls = spyFetch(() => new Response('<rss><channel><title>cisa</title></channel></rss>', {
+    status: 200,
+    headers: { 'Content-Type': 'application/rss+xml' },
+  }));
+
+  const res = await handler(makeRequest(feedUrl));
+
+  assert.equal(res.status, 200);
+  // Exactly one call, to the relay — no direct fetch to cisa.gov.
+  assert.deepEqual(calls.map((c) => c.url), [
+    `https://relay.example.com/rss?url=${encodeURIComponent(feedUrl)}`,
+  ]);
+  // And the long relay-only cache policy applies, confirming isRelayOnly is set.
+  assert.equal(
+    res.headers.get('CDN-Cache-Control'),
+    'public, s-maxage=3600, stale-while-revalidate=7200, stale-if-error=14400',
+  );
+});
+
 test('applies the short cache policy to a successful non-relay-only feed', async () => {
   const calls = spyFetch(() => new Response('<rss><channel/></rss>', {
     status: 200,

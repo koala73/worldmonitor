@@ -2,7 +2,7 @@ import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
 import { checkRateLimit } from './_rate-limit.js';
 import { getRelayBaseUrl, getRelayHeaders, fetchWithTimeout } from './_relay.js';
-import { isAllowedDomain } from './_rss-allowed-domain-match.js';
+import { isAllowedDomain, hostMatchForms } from './_rss-allowed-domain-match.js';
 import { jsonResponse } from './_json-response.js';
 import { captureSilentError } from './_sentry-edge.js';
 
@@ -137,7 +137,11 @@ export default async function handler(req, ctx) {
       return jsonResponse({ error: 'Domain not allowed' }, 403, corsHeaders);
     }
 
-    const isRelayOnly = RELAY_ONLY_DOMAINS.has(hostname);
+    // Match relay-only hosts with the same www-tolerance as the allowlist:
+    // a host allowed via its apex form must still route to the relay when only
+    // its www. form is registered (and vice versa), otherwise it falls through
+    // to a direct Vercel-edge fetch these hosts block.
+    const isRelayOnly = hostMatchForms(hostname).some((form) => RELAY_ONLY_DOMAINS.has(form));
 
     // Google News is slow - use longer timeout
     const isGoogleNews = isGoogleNewsFeedUrl(feedUrl);
