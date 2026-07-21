@@ -165,3 +165,112 @@ test('queued requests past the queue deadline fail fast without spawning', async
   assert.match(j.error.message, /queue/i);
   assert.equal(readLog(log).length, 1); // second request never spawned claude
 });
+
+// --- Failure-path coverage (added after the adversarial review flagged that a
+// truncated stream was delivered as a complete success).
+
+async function collectStream(base, body) {
+  const res = await fetch(`${base}/v1/chat/completions`, {
+    method: 'POST',
+    headers: { authorization: 'Bearer test-key', 'content-type': 'application/json' },
+    body: JSON.stringify({ ...body, stream: true }),
+  });
+  let text = '';
+  let threw = false;
+  try {
+    for await (const chunk of res.body) text += Buffer.from(chunk).toString('utf8');
+  } catch { threw = true; }
+  return { status: res.status, text, threw };
+}
+
+test('non-stream: is_error result returns 502 with a generic message and no stderr leak', async (t) => {
+  const { base } = await startShim(t, { STUB_MODE: 'error' });
+  const r = await chat(base, { model: 'claude-haiku', messages: [{ role: 'user', content: 'x' }] });
+  assert.equal(r.status, 502);
+  const j = await r.json();
+  assert.doesNotMatch(j.error.message, /stubbed claude error/); // detail stays server-side
+});
+
+test('non-stream: unparseable output returns 502, not a fake 200', async (t) => {
+  const { base } = await startShim(t, { STUB_MODE: 'garbage' });
+  const r = await chat(base, { model: 'claude-haiku', messages: [{ role: 'user', content: 'x' }] });
+  assert.equal(r.status, 502);
+});
+
+test('non-stream: is_error result is NOT cached', async (t) => {
+  const log = path.join(logDir(), 'calls.jsonl');
+  const { base } = await startShim(t, { STUB_MODE: 'error', STUB_LOG: log });
+  const body = { model: 'claude-haiku', messages: [{ role: 'user', content: 'same' }] };
+  assert.equal((await chat(base, body)).status, 502);
+  assert.equal((await chat(base, body)).status, 502);
+  assert.equal(readLog(log).length, 2); // both spawned — no poisoned cache entry
+});
+
+test('stream: child crash after partial deltas does NOT end with a clean [DONE]', async (t) => {
+  const { base } = await startShim(t, { STUB_MODE: 'crash' });
+  const { text, threw } = await collectStream(base, {
+    model: 'claude-sonnet', messages: [{ role: 'user', content: 'x' }],
+  });
+  // The partial text may arrive, but the stream must be severed — never a
+  // finish_reason:"stop" + [DONE] that the consumer would treat as complete.
+  assert.ok(threw || !text.includes('[DONE]'),
+    `truncated stream must not deliver [DONE]; got: ${text.slice(-120)}`);
+  assert.doesNotMatch(text, /"finish_reason":"stop"/);
+});
+
+test('stream: timeout SIGKILL severs the connection, no synthetic stop', async (t) => {
+  const { base } = await startShim(t, { STUB_MODE: 'hang', SHIM_TIMEOUT_MS: '400' });
+  const { text, threw } = await collectStream(base, {
+    model: 'claude-sonnet', messages: [{ role: 'user', content: 'x' }],
+  });
+  assert.ok(threw || !text.includes('[DONE]'), 'hung stream must not deliver [DONE]');
+});
+
+test('stream: is_error result severs instead of completing', async (t) => {
+  const { base } = await startShim(t, { STUB_MODE: 'error' });
+  const { text, threw } = await collectStream(base, {
+    model: 'claude-sonnet', messages: [{ role: 'user', content: 'x' }],
+  });
+  assert.ok(threw || !text.includes('[DONE]'), 'errored stream must not deliver [DONE]');
+});
+
+test('the spawned CLI does not inherit SHIM_API_KEY', async (t) => {
+  const log = path.join(logDir(), 'calls.jsonl');
+  const { base } = await startShim(t, { STUB_LOG: log });
+  await chat(base, { model: 'claude-haiku', messages: [{ role: 'user', content: 'x' }] });
+  const [call] = readLog(log);
+  assert.equal(call.sawShimKey, false);
+});
+
+test('unsupported role and prefill continuation are rejected with 400', async (t) => {
+  const { base } = await startShim(t);
+  const toolRole = await chat(base, { model: 'claude-haiku', messages: [{ role: 'tool', content: 'x' }] });
+  assert.equal(toolRole.status, 400);
+  const prefill = await chat(base, { model: 'claude-haiku', messages: [
+    { role: 'user', content: 'hi' }, { role: 'assistant', content: 'partial' },
+  ] });
+  assert.equal(prefill.status, 400);
+  const systemOnly = await chat(base, { model: 'claude-haiku', messages: [{ role: 'system', content: 'x' }] });
+  assert.equal(systemOnly.status, 400);
+});
+
+test('oversized body returns 413, not a connection reset', async (t) => {
+  const { base } = await startShim(t);
+  const big = 'x'.repeat(1_100_000);
+  const r = await fetch(`${base}/v1/chat/completions`, {
+    method: 'POST',
+    headers: { authorization: 'Bearer test-key', 'content-type': 'application/json' },
+    body: JSON.stringify({ model: 'claude-haiku', messages: [{ role: 'user', content: big }] }),
+  });
+  assert.equal(r.status, 413);
+});
+
+test('cache hit re-stamps created', async (t) => {
+  const { base } = await startShim(t);
+  const body = { model: 'claude-haiku', messages: [{ role: 'user', content: 'ts' }] };
+  const a = await (await chat(base, body)).json();
+  await new Promise((r) => setTimeout(r, 1100));
+  const b = await (await chat(base, body)).json();
+  assert.notEqual(a.id, b.id);
+  assert.ok(b.created >= a.created);
+});

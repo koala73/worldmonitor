@@ -7,7 +7,7 @@
 // Contributed by Will Kemp — liftedholdings.com
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomUUID, timingSafeEqual } from 'node:crypto';
 
 const PORT = Number(process.env.PORT ?? 8383);
 const HOST = process.env.SHIM_HOST || '0.0.0.0';
@@ -29,9 +29,20 @@ const QUEUE_TIMEOUT_MS = Number(process.env.SHIM_QUEUE_TIMEOUT_MS ?? 15_000);
 
 const MODELS = ['haiku', 'sonnet', 'opus'];
 
+const AUTH_HEADER = `Bearer ${API_KEY}`;
+// Constant-time compare, matching docker/redis-rest-proxy.mjs's checkAuth so the
+// subscription-backing key can't be probed by response timing. timingSafeEqual
+// throws on unequal-length buffers, so the length pre-check gates it.
+function authOk(header) {
+  if (typeof header !== 'string' || header.length !== AUTH_HEADER.length) return false;
+  return timingSafeEqual(Buffer.from(header), Buffer.from(AUTH_HEADER));
+}
+
 // --- Quota guards: keep a runaway client from draining the Claude subscription.
 let capDay = '';
 let capCount = 0;
+// Rolls the UTC-day window and reports headroom. Call before counting so a
+// request queued across midnight lands on the correct day's budget.
 function underCap() {
   const today = new Date().toISOString().slice(0, 10);
   if (today !== capDay) { capDay = today; capCount = 0; }
@@ -41,10 +52,12 @@ const countCall = () => { capCount += 1; };
 
 let running = 0;
 const waiters = [];
-// Callers (server/_shared/llm.ts) abort at ~25s. A request that cannot start
-// promptly must fail fast — otherwise it spawns claude after the caller has
-// already given up, burning subscription quota for a discarded result.
+// Callers (server/_shared/llm.ts) abort after their own timeout. A request that
+// cannot start promptly must fail fast — otherwise it spawns claude after the
+// caller has already given up, burning subscription quota for a discarded
+// result. Cap re-checks and client-disconnect checks also run at slot entry.
 class QueueTimeoutError extends Error {}
+class CapError extends Error {}
 async function withSlot(fn, { queueTimeoutMs = QUEUE_TIMEOUT_MS, isAbandoned = () => false } = {}) {
   if (running >= MAX_CONCURRENCY) {
     await new Promise((resolve, reject) => {
@@ -59,6 +72,10 @@ async function withSlot(fn, { queueTimeoutMs = QUEUE_TIMEOUT_MS, isAbandoned = (
   running += 1;
   try {
     if (isAbandoned()) throw new QueueTimeoutError('client disconnected while queued');
+    // Re-check under the slot: many requests can pass the pre-queue underCap()
+    // while slots are full, so the count is only authoritative here.
+    if (!underCap()) throw new CapError('daily cap reached');
+    countCall();
     return await fn();
   } finally {
     running -= 1;
@@ -98,18 +115,41 @@ function contentText(c) {
   return String(c ?? '');
 }
 
+// Line-leading "User:" / "Assistant:" markers inside message content would be
+// indistinguishable from real transcript turns after flattening. Neutralize
+// them so caller content can't forge turns.
+function neutralizeRoleMarkers(text) {
+  return text.replace(/^(User|Assistant):/gm, '$1​:');
+}
+
+class BadRequestError extends Error {}
+
 // OpenAI messages[] -> { system, prompt }. System turns become --system-prompt
 // (replacing Claude Code's own system prompt — the big per-call token saving);
-// conversation turns are flattened into a single transcript prompt.
+// remaining turns are flattened into a single transcript prompt. Supported
+// shapes are documented in SELF_HOSTING.md: system + a user/assistant
+// transcript. Tool/function roles and assistant-prefill continuation are not
+// supported and are rejected rather than silently mislabeled.
 function splitMessages(messages) {
+  for (const m of messages) {
+    if (!['system', 'user', 'assistant'].includes(m.role)) {
+      throw new BadRequestError(`unsupported message role: ${m.role}`);
+    }
+  }
   const system = messages
     .filter((m) => m.role === 'system')
     .map((m) => contentText(m.content))
     .join('\n\n');
   const turns = messages.filter((m) => m.role !== 'system');
+  if (turns.length === 0) {
+    throw new BadRequestError('at least one user or assistant message is required');
+  }
+  if (turns.length > 1 && turns[turns.length - 1].role === 'assistant') {
+    throw new BadRequestError('assistant-prefill continuation is not supported');
+  }
   const prompt = turns.length === 1
     ? contentText(turns[0].content)
-    : `${turns.map((m) => `${m.role === 'assistant' ? 'Assistant' : 'User'}: ${contentText(m.content)}`).join('\n\n')}\n\nAssistant:`;
+    : `${turns.map((m) => `${m.role === 'assistant' ? 'Assistant' : 'User'}: ${neutralizeRoleMarkers(contentText(m.content))}`).join('\n\n')}\n\nAssistant:`;
   return { system, prompt };
 }
 
@@ -130,41 +170,88 @@ function claudeArgs({ model, system, stream }) {
   return args;
 }
 
+// Explicit child env: the spawned CLI needs its OAuth credential and a working
+// PATH/HOME, but NOT the shim's own secrets (SHIM_API_KEY) or the app's LLM/DB
+// env. The prompt is fully attacker-influenced (it embeds third-party feed
+// content), so even with tools disabled we don't hand the child anything it
+// doesn't need. STUB_* passes through only for the test stub (a local .mjs).
+function childEnv() {
+  const allow = [
+    'PATH', 'HOME', 'LANG', 'LC_ALL', 'TZ',
+    'SYSTEMROOT', 'USERPROFILE', 'TEMP', 'TMP', 'TMPDIR',
+  ];
+  const env = {};
+  for (const k of allow) if (process.env[k] !== undefined) env[k] = process.env[k];
+  for (const [k, v] of Object.entries(process.env)) {
+    if (k.startsWith('CLAUDE_') || k.startsWith('ANTHROPIC_')) env[k] = v;
+  }
+  const viaNode = /\.(mjs|cjs|js)$/i.test(CLAUDE_BIN);
+  if (viaNode) {
+    for (const [k, v] of Object.entries(process.env)) if (k.startsWith('STUB_')) env[k] = v;
+  }
+  return env;
+}
+
 // The stub CLI used in tests is a .mjs; run scripts through the current node.
 function spawnClaude(args) {
   const viaNode = /\.(mjs|cjs|js)$/i.test(CLAUDE_BIN);
   const bin = viaNode ? process.execPath : CLAUDE_BIN;
   const argv = viaNode ? [CLAUDE_BIN, ...args] : args;
-  return spawn(bin, argv, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+  return spawn(bin, argv, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true, env: childEnv() });
 }
 
-function runClaude(args, prompt) {
+// Error thrown to the client carries only a coarse class; the full stderr/stdout
+// is logged server-side, never reflected in the HTTP body.
+class ClaudeError extends Error {
+  constructor(clientMessage, detail) {
+    super(clientMessage);
+    this.detail = detail;
+  }
+}
+
+function runClaude(args, prompt, { isAbandoned = () => false } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawnClaude(args);
     let stdout = '';
     let stderr = '';
     let settled = false;
+    const done = (fn, arg) => { if (!settled) { settled = true; clearTimeout(timer); fn(arg); } };
     const timer = setTimeout(() => {
-      settled = true;
       child.kill('SIGKILL');
-      reject(new Error(`claude timed out after ${TIMEOUT_MS}ms`));
+      done(reject, new ClaudeError('upstream claude invocation timed out', `timeout after ${TIMEOUT_MS}ms`));
     }, TIMEOUT_MS);
+    // Abort the child if the caller hangs up — no point finishing a discarded
+    // generation, and it frees the concurrency slot immediately.
+    const abortPoll = setInterval(() => {
+      if (isAbandoned()) {
+        clearInterval(abortPoll);
+        child.kill('SIGKILL');
+        done(reject, new ClaudeError('client disconnected', 'client aborted'));
+      }
+    }, 250);
     child.stdout.on('data', (d) => { stdout += d; });
     child.stderr.on('data', (d) => { stderr += d; });
-    child.on('error', (err) => { if (!settled) { clearTimeout(timer); reject(err); } });
+    child.on('error', (err) => {
+      clearInterval(abortPoll);
+      done(reject, new ClaudeError('upstream claude invocation failed', err.message));
+    });
     child.on('close', (code) => {
+      clearInterval(abortPoll);
       if (settled) return;
-      clearTimeout(timer);
       const lines = stdout.trim().split('\n').filter(Boolean);
       const last = lines[lines.length - 1];
       let parsed;
       try {
         parsed = JSON.parse(last);
       } catch {
-        return reject(new Error(`claude exited ${code}, unparseable output: ${(stderr || stdout).slice(0, 500)}`));
+        return done(reject, new ClaudeError('upstream claude invocation failed',
+          `exit ${code}, unparseable output: ${(stderr || stdout).slice(0, 500)}`));
       }
-      if (parsed.is_error) return reject(new Error(`claude error: ${String(parsed.result).slice(0, 500)}`));
-      resolve(parsed);
+      if (parsed.is_error) {
+        return done(reject, new ClaudeError('upstream claude returned an error',
+          String(parsed.result).slice(0, 500)));
+      }
+      done(resolve, parsed);
     });
     child.stdin.end(prompt);
   });
@@ -187,13 +274,19 @@ function sendJson(res, status, obj) {
   res.end(body);
 }
 
+class BodyTooLargeError extends Error {}
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let size = 0;
     const chunks = [];
     req.on('data', (c) => {
       size += c.length;
-      if (size > MAX_BODY_BYTES) { reject(new Error('body too large')); req.destroy(); return; }
+      if (size > MAX_BODY_BYTES) {
+        req.removeAllListeners('data');
+        req.resume(); // drain rather than destroy, so the 413 can flush
+        reject(new BodyTooLargeError('request body too large'));
+        return;
+      }
       chunks.push(c);
     });
     req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
@@ -202,9 +295,13 @@ function readBody(req) {
 }
 
 // Streams claude stream-json events to the client as OpenAI SSE chunks.
-// If no partial text deltas arrive (older CLI without --include-partial-messages
-// support), the final result text is emitted as a single delta instead.
-function streamChat(res, args, prompt, model) {
+// A clean stop (a result event with no error) is the ONLY path that writes a
+// finish_reason chunk + [DONE]. Any abnormal end — timeout SIGKILL, spawn
+// error, is_error result, or the child closing before a clean result —
+// destroys the socket mid-body instead, so the consumer's stream reader throws
+// and records the turn as truncated (server/_shared/llm.ts) rather than
+// treating a cut-off brief as a complete answer.
+function streamChat(res, args, prompt, model, { isAbandoned = () => false } = {}) {
   res.writeHead(200, {
     'content-type': 'text/event-stream',
     'cache-control': 'no-cache',
@@ -222,18 +319,32 @@ function streamChat(res, args, prompt, model) {
   };
   const child = spawnClaude(args);
   let streamedText = false;
-  let buf = '';
-  let done = false;
-  const timer = setTimeout(() => child.kill('SIGKILL'), TIMEOUT_MS);
-  const finish = (finishReasonValue) => {
-    if (done) return;
-    done = true;
+  let ended = false;
+  const timer = setTimeout(() => {
+    if (!ended) { ended = true; child.kill('SIGKILL'); res.destroy(); }
+  }, TIMEOUT_MS);
+  const abortPoll = setInterval(() => {
+    if (isAbandoned() && !ended) { ended = true; clearInterval(abortPoll); child.kill('SIGKILL'); }
+  }, 250);
+  const finishClean = (finishReasonValue) => {
+    if (ended) return;
+    ended = true;
     clearTimeout(timer);
+    clearInterval(abortPoll);
     chunk({}, finishReasonValue);
     res.write('data: [DONE]\n\n');
     res.end();
   };
+  const abort = (why) => {
+    if (ended) return;
+    ended = true;
+    clearTimeout(timer);
+    clearInterval(abortPoll);
+    console.error(`claude-code-shim: stream aborted: ${why}`);
+    res.destroy(); // sever mid-body → caller sees a truncated stream, not success
+  };
   chunk({ role: 'assistant' });
+  let buf = '';
   child.stdout.on('data', (d) => {
     buf += d;
     let nl;
@@ -248,24 +359,35 @@ function streamChat(res, args, prompt, model) {
         streamedText = true;
         chunk({ content: deltaText });
       } else if (evt.type === 'result') {
-        if (!streamedText && !evt.is_error && evt.result) chunk({ content: String(evt.result) });
-        finish(finishReason(evt.stop_reason));
+        if (evt.is_error) { abort(`result is_error: ${String(evt.result).slice(0, 200)}`); return; }
+        // If the CLI buffered its whole answer (no incremental deltas), emit it
+        // as one delta before closing cleanly.
+        if (!streamedText && evt.result) chunk({ content: String(evt.result) });
+        finishClean(finishReason(evt.stop_reason));
       }
     }
   });
-  child.on('close', () => finish('stop'));
-  child.on('error', (err) => {
-    console.error(`claude-code-shim: stream spawn failed: ${err.message}`);
-    finish('stop');
-  });
-  res.on('close', () => { clearTimeout(timer); child.kill('SIGKILL'); });
+  // The child closing WITHOUT having produced a clean result event is a crash
+  // or a kill — abort rather than synthesize a clean stop.
+  child.on('close', () => abort('child closed before a clean result'));
+  child.on('error', (err) => abort(`spawn error: ${err.message}`));
+  res.on('close', () => { if (!ended) { ended = true; clearTimeout(timer); clearInterval(abortPoll); child.kill('SIGKILL'); } });
   child.stdin.end(prompt);
 }
 
 async function handleChat(req, res) {
+  let raw;
+  try {
+    raw = await readBody(req);
+  } catch (err) {
+    if (err instanceof BodyTooLargeError) {
+      return sendJson(res, 413, { error: { message: 'request body too large' } });
+    }
+    return sendJson(res, 400, { error: { message: 'could not read request body' } });
+  }
   let body;
   try {
-    body = JSON.parse((await readBody(req)) || '{}');
+    body = JSON.parse(raw || '{}');
   } catch {
     return sendJson(res, 400, { error: { message: 'invalid JSON body' } });
   }
@@ -274,31 +396,45 @@ async function handleChat(req, res) {
     return sendJson(res, 400, { error: { message: 'messages[] required' } });
   }
   const model = mapModel(body.model);
-  const { system, prompt } = splitMessages(messages);
+  let system;
+  let prompt;
+  try {
+    ({ system, prompt } = splitMessages(messages));
+  } catch (err) {
+    if (err instanceof BadRequestError) return sendJson(res, 400, { error: { message: err.message } });
+    throw err;
+  }
   let clientGone = false;
   res.on('close', () => { clientGone = !res.writableEnded; });
-  const slotOpts = { isAbandoned: () => clientGone };
+  const isAbandoned = () => clientGone;
+  const slotOpts = { isAbandoned };
+
   if (body.stream === true) {
     if (!underCap()) return sendJson(res, 429, { error: { message: 'daily cap reached' } });
-    return withSlot(async () => {
-      countCall();
-      return streamChatAwaited(res, claudeArgs({ model, system, stream: true }), prompt, model);
-    }, slotOpts).catch((err) => {
-      if (err instanceof QueueTimeoutError && !res.headersSent) {
-        sendJson(res, 503, { error: { message: `busy: ${err.message}` } });
+    return withSlot(
+      () => streamChatAwaited(res, claudeArgs({ model, system, stream: true }), prompt, model, isAbandoned),
+      slotOpts,
+    ).catch((err) => {
+      if ((err instanceof QueueTimeoutError || err instanceof CapError) && !res.headersSent) {
+        const status = err instanceof CapError ? 429 : 503;
+        sendJson(res, status, { error: { message: err.message } });
       }
     });
   }
+
   const key = cacheKey(model, messages);
   const cached = cacheGet(key);
-  if (cached) return sendJson(res, 200, { ...cached, id: `chatcmpl-${randomUUID()}` });
+  if (cached) {
+    return sendJson(res, 200, {
+      ...cached,
+      id: `chatcmpl-${randomUUID()}`,
+      created: Math.floor(Date.now() / 1000),
+    });
+  }
   if (!underCap()) return sendJson(res, 429, { error: { message: 'daily cap reached' } });
   const args = claudeArgs({ model, system, stream: false });
   try {
-    const result = await withSlot(() => {
-      countCall();
-      return runClaude(args, prompt);
-    }, slotOpts);
+    const result = await withSlot(() => runClaude(args, prompt, { isAbandoned }), slotOpts);
     const payload = {
       id: `chatcmpl-${randomUUID()}`,
       object: 'chat.completion',
@@ -314,19 +450,20 @@ async function handleChat(req, res) {
     cacheSet(key, payload);
     return sendJson(res, 200, payload);
   } catch (err) {
-    if (err instanceof QueueTimeoutError) {
-      return sendJson(res, 503, { error: { message: `busy: ${err.message}` } });
-    }
-    console.error(`claude-code-shim: completion failed: ${err.message}`);
-    return sendJson(res, 502, { error: { message: err.message } });
+    if (err instanceof CapError) return sendJson(res, 429, { error: { message: err.message } });
+    if (err instanceof QueueTimeoutError) return sendJson(res, 503, { error: { message: err.message } });
+    // ClaudeError carries a client-safe message; detail is logged, not returned.
+    const detail = err instanceof ClaudeError ? err.detail : err.message;
+    console.error(`claude-code-shim: completion failed: ${err.message}${detail ? ` (${detail})` : ''}`);
+    if (!res.headersSent) sendJson(res, 502, { error: { message: err.message } });
   }
 }
 
 // Wraps streamChat so the concurrency slot is held until the SSE stream ends.
-function streamChatAwaited(res, args, prompt, model) {
+function streamChatAwaited(res, args, prompt, model, isAbandoned) {
   return new Promise((resolve) => {
     res.on('close', resolve);
-    streamChat(res, args, prompt, model);
+    streamChat(res, args, prompt, model, { isAbandoned });
   });
 }
 
@@ -336,8 +473,7 @@ const server = createServer(async (req, res) => {
     underCap(); // roll the day window so `today` is current
     return sendJson(res, 200, { ok: true, today: capCount, cap: DAILY_CAP });
   }
-  const auth = req.headers.authorization || '';
-  if (auth !== `Bearer ${API_KEY}`) {
+  if (!authOk(req.headers.authorization)) {
     return sendJson(res, 401, { error: { message: 'unauthorized' } });
   }
   if (req.method === 'GET' && url.pathname === '/v1/models') {
@@ -360,5 +496,6 @@ server.keepAliveTimeout = 65_000;
 server.headersTimeout = 66_000;
 
 server.listen(PORT, HOST, () => {
-  console.log(`claude-code-shim listening on http://127.0.0.1:${server.address().port}`);
+  const addr = server.address();
+  console.log(`claude-code-shim listening on http://${addr.address}:${addr.port}`);
 });

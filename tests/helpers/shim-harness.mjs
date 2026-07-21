@@ -28,7 +28,7 @@ export async function startShim(t, env = {}) {
     const timer = setTimeout(() => reject(new Error(`shim did not start: ${stderr}`)), 10_000);
     child.stdout.on('data', (d) => {
       buf += d;
-      const m = buf.match(/listening on http:\/\/127\.0\.0\.1:(\d+)/);
+      const m = buf.match(/listening on http:\/\/[^:]+:(\d+)/);
       if (m) { clearTimeout(timer); resolve(`http://127.0.0.1:${m[1]}`); }
     });
     child.on('exit', (code) => { clearTimeout(timer); reject(new Error(`shim exited ${code}: ${stderr}`)); });

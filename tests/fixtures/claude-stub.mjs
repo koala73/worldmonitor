@@ -1,6 +1,7 @@
 // Fake `claude` CLI for shim tests. Records each invocation (argv + stdin) to
 // STUB_LOG as JSON lines, then prints either a `--output-format json` result or
 // `stream-json` events, mirroring the real headless Claude Code output shapes.
+// STUB_MODE drives failure paths: error | crash | hang | garbage.
 import { appendFileSync } from 'node:fs';
 
 const argv = process.argv.slice(2);
@@ -8,9 +9,11 @@ let stdin = '';
 for await (const chunk of process.stdin) stdin += chunk;
 
 if (process.env.STUB_LOG) {
-  appendFileSync(process.env.STUB_LOG, JSON.stringify({ argv, stdin }) + '\n');
+  appendFileSync(process.env.STUB_LOG, JSON.stringify({ argv, stdin, sawShimKey: !!process.env.SHIM_API_KEY }) + '\n');
 }
 
+const mode = process.env.STUB_MODE || 'ok';
+const streaming = argv.includes('stream-json');
 const sleepMs = Number(process.env.STUB_SLEEP_MS || 0);
 if (sleepMs) await new Promise((r) => setTimeout(r, sleepMs));
 
@@ -21,14 +24,30 @@ const usage = {
   output_tokens: 7,
 };
 
-if (argv.includes('stream-json')) {
+if (mode === 'hang') {
+  // Never emit a result — the shim's SHIM_TIMEOUT_MS must SIGKILL us.
+  await new Promise(() => {});
+} else if (mode === 'garbage') {
+  process.stdout.write('this is not json\n');
+  process.exit(0);
+} else if (mode === 'crash') {
+  // Emit partial output (streaming: real text deltas) then die with no result.
+  if (streaming) {
+    process.stdout.write(JSON.stringify({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'PARTIAL ' } } }) + '\n');
+    process.stdout.write(JSON.stringify({ type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'TEXT' } } }) + '\n');
+  } else {
+    process.stdout.write('partial non-final line\n');
+  }
+  process.exit(1);
+} else if (mode === 'error') {
+  const err = { type: 'result', subtype: 'error', is_error: true, result: 'stubbed claude error', stop_reason: 'error', usage };
+  process.stdout.write(JSON.stringify(err) + '\n');
+  process.exit(0);
+} else if (streaming) {
   const events = [
     { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'STUB ' } } },
     { type: 'stream_event', event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'STREAM' } } },
-    {
-      type: 'result', subtype: 'success', is_error: false,
-      result: 'STUB STREAM', stop_reason: 'end_turn', usage,
-    },
+    { type: 'result', subtype: 'success', is_error: false, result: 'STUB STREAM', stop_reason: 'end_turn', usage },
   ];
   for (const e of events) process.stdout.write(JSON.stringify(e) + '\n');
 } else {
