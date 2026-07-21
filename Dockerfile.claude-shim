@@ -3,7 +3,11 @@
 # See SELF_HOSTING.md "Claude Code (use your Claude subscription)".
 FROM node:22-alpine
 
-RUN npm install -g @anthropic-ai/claude-code && npm cache clean --force
+# Pin the CLI so a breaking upstream release (changed --output-format schema,
+# removed flags the shim relies on) can't silently break builds — upgrades are
+# a deliberate, reviewable bump of this line.
+ARG CLAUDE_CODE_VERSION=2.1.216
+RUN npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" && npm cache clean --force
 
 # Claude Code wants a writable home for session state.
 RUN addgroup -S shim && adduser -S -G shim -h /home/shim shim

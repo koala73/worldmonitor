@@ -320,12 +320,10 @@ function streamChat(res, args, prompt, model, { isAbandoned = () => false } = {}
   const child = spawnClaude(args);
   let streamedText = false;
   let ended = false;
-  const timer = setTimeout(() => {
-    if (!ended) { ended = true; child.kill('SIGKILL'); res.destroy(); }
-  }, TIMEOUT_MS);
-  const abortPoll = setInterval(() => {
-    if (isAbandoned() && !ended) { ended = true; clearInterval(abortPoll); child.kill('SIGKILL'); }
-  }, 250);
+  let timer;
+  let abortPoll;
+  // Every terminal path routes through finishClean or abort; both clear BOTH
+  // the timeout and the abandon-poll interval, so no exit can leak a handle.
   const finishClean = (finishReasonValue) => {
     if (ended) return;
     ended = true;
@@ -340,9 +338,12 @@ function streamChat(res, args, prompt, model, { isAbandoned = () => false } = {}
     ended = true;
     clearTimeout(timer);
     clearInterval(abortPoll);
+    child.kill('SIGKILL'); // no-op if already dead (child close path)
     console.error(`claude-code-shim: stream aborted: ${why}`);
     res.destroy(); // sever mid-body → caller sees a truncated stream, not success
   };
+  timer = setTimeout(() => abort(`timeout after ${TIMEOUT_MS}ms`), TIMEOUT_MS);
+  abortPoll = setInterval(() => { if (isAbandoned()) abort('client disconnected'); }, 250);
   chunk({ role: 'assistant' });
   let buf = '';
   child.stdout.on('data', (d) => {
@@ -371,7 +372,7 @@ function streamChat(res, args, prompt, model, { isAbandoned = () => false } = {}
   // or a kill — abort rather than synthesize a clean stop.
   child.on('close', () => abort('child closed before a clean result'));
   child.on('error', (err) => abort(`spawn error: ${err.message}`));
-  res.on('close', () => { if (!ended) { ended = true; clearTimeout(timer); clearInterval(abortPoll); child.kill('SIGKILL'); } });
+  res.on('close', () => abort('client closed'));
   child.stdin.end(prompt);
 }
 
