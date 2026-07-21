@@ -1,0 +1,5 @@
+# Shell scripts must stay LF — they are COPYed into Linux images at build
+# time and a CRLF shebang breaks the container entrypoint (built on Windows).
+*.sh text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
