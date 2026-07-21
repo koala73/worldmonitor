@@ -246,7 +246,7 @@ test('preserves original direct-fetch error when relay fallback also throws', as
     if (calls.length === 1) {
       throw new Error('original direct-fetch failure');
     }
-    // Ye throw test karega hamara naya try-catch block
+    
     throw new Error('secondary relay failure');
   };
 
@@ -256,10 +256,10 @@ test('preserves original direct-fetch error when relay fallback also throws', as
 
   assert.equal(res.status, 502);
   assert.equal(body.error, 'Failed to fetch feed');
-  // Sabse main line: Ye ensure karti hai ki original error overwrite nahi hua
+ 
   assert.equal(body.details, 'original direct-fetch failure');
   
-  // Verify karte hain ki dono fetch attempts try hue the
+  
   assert.equal(calls.length, 2);
   assert.equal(calls[0].url, feedUrl);
   assert.equal(calls[1].url, `https://relay.example.com/rss?url=${encodeURIComponent(feedUrl)}`);

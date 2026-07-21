@@ -192,7 +192,7 @@ export default async function handler(req, ctx) {
         try {
           response = await fetchViaRailway(feedUrl, timeout);
         } catch (relayFallbackError) {
-          // If relay throws during fallback, suppress it and throw the original direct error
+          console.error('Relay fallback also failed:', relayFallbackError);
           throw directError;
         }
         
@@ -207,7 +207,7 @@ export default async function handler(req, ctx) {
             response = relayResponse;
           }
         } catch (relayRetryError) {
-          // Ignore relay errors on non-2xx retries; keep the original non-2xx response
+          console.error('Relay retry failed:', relayRetryError);
         }
       }
     }
