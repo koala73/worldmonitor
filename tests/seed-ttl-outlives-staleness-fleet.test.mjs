@@ -110,7 +110,6 @@ const KNOWN_VIOLATIONS = new Set([
   'seed-recovery-external-debt.mjs',
   'seed-recovery-fiscal-space.mjs',
   'seed-recovery-reserve-adequacy.mjs',
-  'seed-research.mjs',
   'seed-sovereign-wealth.mjs',
   'seed-spr-policies.mjs',
   'seed-submarine-cables.mjs',
