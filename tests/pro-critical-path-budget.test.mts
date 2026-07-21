@@ -38,7 +38,7 @@ interface CriticalRefs {
 /** Pure: extract local pre-FCP asset refs (entry script, modulepreloads,
  *  preloads, stylesheets) from the page HTML. External hosts (analytics) and
  *  async/defer scripts are not part of the critical path. */
-export function parseCriticalRefs(html: string): CriticalRefs {
+function parseCriticalRefs(html: string): CriticalRefs {
   const refs = new Set<string>();
   let entry = '';
   for (const tag of html.match(/<(?:script|link)\b[^>]*>/g) ?? []) {
@@ -60,7 +60,7 @@ export function parseCriticalRefs(html: string): CriticalRefs {
 
 /** Pure: throws when a Clerk chunk is referenced from the page HTML — the
  *  3MB bundle must never be script-src'd, preloaded, or modulepreloaded. */
-export function assertClerkNotOnCriticalPath(refs: string[]): void {
+function assertClerkNotOnCriticalPath(refs: string[]): void {
   const clerkRef = refs.find((r) => /\/clerk-[^/]*\.js$/.test(r));
   assert.equal(
     clerkRef,
@@ -73,7 +73,7 @@ export function assertClerkNotOnCriticalPath(refs: string[]): void {
 /** Pure: throws when the entry chunk stops importing Clerk dynamically —
  *  either the split was removed (inlined: catastrophic for parse cost) or the
  *  import became static (eager fetch). */
-export function assertClerkStaysLazy(entrySource: string): void {
+function assertClerkStaysLazy(entrySource: string): void {
   assert.doesNotMatch(
     entrySource,
     /(?:from\s*"\.\/clerk-|import"\.\/clerk-)/,
@@ -88,7 +88,7 @@ export function assertClerkStaysLazy(entrySource: string): void {
 }
 
 /** Pure: throws when the summed critical-path bytes exceed the budget. */
-export function assertCriticalPathBudget(refs: string[], sizeOf: (ref: string) => number): void {
+function assertCriticalPathBudget(refs: string[], sizeOf: (ref: string) => number): void {
   const total = refs.reduce((sum, r) => sum + sizeOf(r), 0);
   assert.ok(
     total <= CRITICAL_PATH_BUDGET_BYTES,
