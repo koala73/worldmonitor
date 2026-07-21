@@ -1,2 +1,2 @@
-const sw: typeof import('./en.json');
-export default sw;
+declare const data: Record<string, any>;
+export default data;
