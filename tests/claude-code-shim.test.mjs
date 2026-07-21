@@ -116,3 +116,35 @@ test('stream:true emits SSE deltas and [DONE]', async (t) => {
   const [call] = readLog(log);
   assert.ok(call.argv.includes('stream-json'));
 });
+
+test('daily cap returns 429 once exceeded', async (t) => {
+  const { base } = await startShim(t, { SHIM_DAILY_CAP: '1' });
+  const body = { model: 'claude-haiku', messages: [{ role: 'user', content: 'one' }] };
+  assert.equal((await chat(base, body)).status, 200);
+  const second = await chat(base, { ...body, messages: [{ role: 'user', content: 'two' }] });
+  assert.equal(second.status, 429);
+  const health = await (await fetch(`${base}/`)).json();
+  assert.equal(health.today, 1);
+  assert.equal(health.cap, 1);
+});
+
+test('identical non-stream requests are served from cache', async (t) => {
+  const log = path.join(logDir(), 'calls.jsonl');
+  const { base } = await startShim(t, { STUB_LOG: log });
+  const body = { model: 'claude-haiku', messages: [{ role: 'user', content: 'cached?' }] };
+  const a = await (await chat(base, body)).json();
+  const b = await (await chat(base, body)).json();
+  assert.equal(a.choices[0].message.content, b.choices[0].message.content);
+  assert.equal(readLog(log).length, 1);
+});
+
+test('concurrency limit serializes claude invocations', async (t) => {
+  const { base } = await startShim(t, { SHIM_MAX_CONCURRENCY: '1', STUB_SLEEP_MS: '300' });
+  const mk = (s) => chat(base, { model: 'claude-haiku', messages: [{ role: 'user', content: s }] });
+  const t0 = Date.now();
+  const [a, b] = await Promise.all([mk('p1'), mk('p2')]);
+  const elapsed = Date.now() - t0;
+  assert.equal(a.status, 200);
+  assert.equal(b.status, 200);
+  assert.ok(elapsed >= 550, `expected serialized execution, took ${elapsed}ms`);
+});

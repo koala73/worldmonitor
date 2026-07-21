@@ -6,7 +6,7 @@
 // See SELF_HOSTING.md "Claude Code (use your Claude subscription)".
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 const PORT = Number(process.env.PORT ?? 8383);
 const HOST = process.env.SHIM_HOST || '0.0.0.0';
@@ -21,7 +21,54 @@ if (!API_KEY) {
   process.exit(1);
 }
 
+const MAX_CONCURRENCY = Number(process.env.SHIM_MAX_CONCURRENCY ?? 2);
+const DAILY_CAP = Number(process.env.SHIM_DAILY_CAP ?? 300);
+const CACHE_TTL_MS = Number(process.env.SHIM_CACHE_TTL_MS ?? 900_000);
+
 const MODELS = ['haiku', 'sonnet', 'opus'];
+
+// --- Quota guards: keep a runaway client from draining the Claude subscription.
+let capDay = '';
+let capCount = 0;
+function underCap() {
+  const today = new Date().toISOString().slice(0, 10);
+  if (today !== capDay) { capDay = today; capCount = 0; }
+  return capCount < DAILY_CAP;
+}
+const countCall = () => { capCount += 1; };
+
+let running = 0;
+const waiters = [];
+async function withSlot(fn) {
+  if (running >= MAX_CONCURRENCY) await new Promise((r) => waiters.push(r));
+  running += 1;
+  try {
+    return await fn();
+  } finally {
+    running -= 1;
+    const next = waiters.shift();
+    if (next) next();
+  }
+}
+
+const cache = new Map(); // key -> { expires, payload }
+function cacheKey(model, messages) {
+  return createHash('sha256').update(model + JSON.stringify(messages)).digest('hex');
+}
+function cacheGet(key) {
+  const hit = cache.get(key);
+  if (!hit) return null;
+  if (hit.expires < Date.now()) { cache.delete(key); return null; }
+  return hit.payload;
+}
+function cacheSet(key, payload) {
+  if (CACHE_TTL_MS <= 0) return;
+  if (cache.size > 500) {
+    for (const [k, v] of cache) if (v.expires < Date.now()) cache.delete(k);
+    if (cache.size > 500) cache.delete(cache.keys().next().value);
+  }
+  cache.set(key, { expires: Date.now() + CACHE_TTL_MS, payload });
+}
 
 function mapModel(name) {
   const n = String(name || '').toLowerCase();
@@ -209,12 +256,20 @@ async function handleChat(req, res) {
   const model = mapModel(body.model);
   const { system, prompt } = splitMessages(messages);
   if (body.stream === true) {
-    return streamChat(res, claudeArgs({ model, system, stream: true }), prompt, model);
+    if (!underCap()) return sendJson(res, 429, { error: { message: 'daily cap reached' } });
+    countCall();
+    return withSlot(async () =>
+      streamChatAwaited(res, claudeArgs({ model, system, stream: true }), prompt, model));
   }
+  const key = cacheKey(model, messages);
+  const cached = cacheGet(key);
+  if (cached) return sendJson(res, 200, { ...cached, id: `chatcmpl-${randomUUID()}` });
+  if (!underCap()) return sendJson(res, 429, { error: { message: 'daily cap reached' } });
+  countCall();
   const args = claudeArgs({ model, system, stream: false });
   try {
-    const result = await runClaude(args, prompt);
-    return sendJson(res, 200, {
+    const result = await withSlot(() => runClaude(args, prompt));
+    const payload = {
       id: `chatcmpl-${randomUUID()}`,
       object: 'chat.completion',
       created: Math.floor(Date.now() / 1000),
@@ -225,17 +280,28 @@ async function handleChat(req, res) {
         finish_reason: finishReason(result.stop_reason),
       }],
       usage: toUsage(result.usage),
-    });
+    };
+    cacheSet(key, payload);
+    return sendJson(res, 200, payload);
   } catch (err) {
     console.error(`claude-code-shim: completion failed: ${err.message}`);
     return sendJson(res, 502, { error: { message: err.message } });
   }
 }
 
+// Wraps streamChat so the concurrency slot is held until the SSE stream ends.
+function streamChatAwaited(res, args, prompt, model) {
+  return new Promise((resolve) => {
+    res.on('close', resolve);
+    streamChat(res, args, prompt, model);
+  });
+}
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, 'http://localhost');
   if (req.method === 'GET' && url.pathname === '/') {
-    return sendJson(res, 200, { ok: true });
+    underCap(); // roll the day window so `today` is current
+    return sendJson(res, 200, { ok: true, today: capCount, cap: DAILY_CAP });
   }
   const auth = req.headers.authorization || '';
   if (auth !== `Bearer ${API_KEY}`) {
