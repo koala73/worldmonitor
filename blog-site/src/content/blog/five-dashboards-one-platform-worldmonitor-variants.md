@@ -1,7 +1,7 @@
 ---
-title: "Five Intelligence Dashboards on One Platform"
-description: "World Monitor offers 5 free intelligence dashboards: geopolitical, tech, finance, commodity, and positive news. Switch between them instantly from one platform."
-metaTitle: "5 Intelligence Dashboards, One Platform | World Monitor"
+title: "Six Intelligence Dashboards on One Platform"
+description: "World Monitor offers 6 free intelligence dashboards: geopolitical, tech, finance, commodity, positive news, and energy. Switch between them instantly from one platform."
+metaTitle: "6 Intelligence Dashboards, One Platform | World Monitor"
 keywords: "intelligence dashboard variants, tech monitoring dashboard, positive news dashboard, multi-purpose intelligence platform, specialized monitoring tools"
 audience: "General tech audience, product managers, developers, knowledge workers, content creators"
 heroImage: "/blog/images/blog/five-dashboards-one-platform-worldmonitor-variants.jpg"
@@ -10,7 +10,7 @@ pubDate: "2026-02-12"
 
 Most intelligence platforms force you into a single vertical. A financial terminal. A cybersecurity feed. A conflict tracker. If your work spans multiple domains, you're left juggling subscriptions.
 
-World Monitor runs **five specialized dashboards** from a single codebase. Switch between them with one click. Each variant curates panels, layers, and data feeds for its specific audience while sharing the same underlying intelligence engine, map infrastructure, and AI capabilities.
+World Monitor runs **six specialized dashboards** from a single codebase. Switch between them with one click. Each variant curates panels, layers, and data feeds for its specific audience while sharing the same underlying intelligence engine, map infrastructure, and AI capabilities.
 
 ## 1. World Monitor: The Geopolitical Command Center
 
@@ -124,6 +124,23 @@ In a world of conflict feeds and crisis dashboards, Happy Monitor exists to trac
 
 **Who it's for:** Educators, content creators, mental health-conscious users, impact investors, anyone who wants evidence that progress is real.
 
+## 6. Energy Atlas: The Global Power Infrastructure
+
+**URL:** energy.worldmonitor.app
+**Panels:** [19] 
+**Focus:** Chokepoints, pipelines, storage, and energy risks
+
+Energy Atlas tracks the critical infrastructure that keeps the world powered, providing real-time data on supply chain vulnerabilities and fuel logistics.
+
+**Key features:**
+- Global chokepoint strip monitoring
+- Live pipeline status and flow data
+- Global energy storage atlas
+- Real-time fuel shortage alerts
+- Comprehensive energy risk overview
+
+**Who it's for:** Energy analysts, commodity traders, supply chain managers, and policymakers monitoring energy security.
+
 ## Shared Capabilities Across All Variants
 
 Regardless of which variant you use, you get the full platform engine:
@@ -170,7 +187,7 @@ In the web app, switch variants via the header navigation. Your preferences, lan
 
 The variants share a single codebase. Every improvement to the core engine benefits all five dashboards simultaneously. A map performance optimization for World Monitor automatically makes Commodity Monitor faster too.
 
-## Why Five Variants Instead of One?
+## Why six Variants Instead of One?
 
 **Signal-to-noise ratio.**
 
@@ -182,7 +199,7 @@ But when you need to cross domains (the commodity trader wants to check if a con
 
 ## One Platform, Zero Cost
 
-All five variants are completely free. No freemium gates. No "contact sales" buttons. No feature tiers. The same platform, the same data, the same AI. Available to a solo researcher in Nairobi and a hedge fund analyst in New York.
+All Six variants are completely free. No freemium gates. No "contact sales" buttons. No feature tiers. The same platform, the same data, the same AI. Available to a solo researcher in Nairobi and a hedge fund analyst in New York.
 
 Open source under AGPL-3.0. Deploy it yourself, contribute to it, or just use it.
 
@@ -192,10 +209,10 @@ Open source under AGPL-3.0. Deploy it yourself, contribute to it, or just use it
 Yes. Each variant runs at its own URL, so you can open several in separate browser tabs. Your preferences and language settings carry across all of them.
 
 **Do the variants share the same data, or are they separate platforms?**
-All five variants share a single codebase and the same underlying data engine. The difference is which panels, layers, and feeds are pre-selected for each audience.
+All six variants share a single codebase and the same underlying data engine. The difference is which panels, layers, and feeds are pre-selected for each audience.
 
 **Is there a limit on how long I can use the dashboards for free?**
-No. All five variants are completely free with no time limits, feature gates, or usage caps.
+No. All six variants are completely free with no time limits, feature gates, or usage caps.
 
 ---
 
@@ -206,3 +223,4 @@ No. All five variants are completely free with no time limits, feature gates, or
 - [finance.worldmonitor.app](https://finance.worldmonitor.app) for markets
 - [commodity.worldmonitor.app](https://commodity.worldmonitor.app) for commodities
 - [happy.worldmonitor.app](https://happy.worldmonitor.app) for good news
+- [energy.worldmonitor.app](https://energy.worldmonitor.app) for energy
