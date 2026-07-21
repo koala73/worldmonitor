@@ -98,12 +98,16 @@ function splitMessages(messages) {
 }
 
 function claudeArgs({ model, system, stream }) {
+  // --setting-sources '' + --tools '' + a replaced --system-prompt strip the
+  // Claude Code session context (user settings, skills, MCP, tool schemas) so a
+  // call costs little more than the caller's own prompt.
   const args = [
     '-p',
     '--output-format', stream ? 'stream-json' : 'json',
     '--model', model,
     '--max-turns', '1',
     '--setting-sources', '',
+    '--tools', '',
   ];
   if (stream) args.push('--verbose', '--include-partial-messages');
   if (system) args.push('--system-prompt', system);
