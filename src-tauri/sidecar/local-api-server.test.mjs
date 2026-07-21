@@ -766,71 +766,91 @@ test('allows only Docker mode to fetch configured private Redis REST origin', as
   }
 });
 
-test('allows only Docker mode to fetch configured private LLM origin', async () => {
-  const originalLlmUrl = process.env.LLM_API_URL;
-  let upstreamHits = 0;
+// Parametrized over both self-hosted LLM env keys the docker allowlist covers,
+// so a typo in either branch (or a regression in the invalid-URL warn path)
+// fails the suite. Uses a localhost HOSTNAME origin (not a bare IP literal) to
+// match the documented http://claude-shim:8383 production shape, which resolves
+// through the real DNS lookup path in the allowlist.
+for (const envKey of ['LLM_API_URL', 'OLLAMA_API_URL']) {
+  test(`docker mode fetches the configured ${envKey} origin AND still blocks a non-allowlisted private origin`, async () => {
+    const original = process.env[envKey];
+    let allowedHits = 0;
+    let blockedHits = 0;
 
-  const upstream = createServer((_req, res) => {
-    upstreamHits += 1;
-    res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ ok: true }));
-  });
-  const upstreamPort = await listen(upstream);
+    const allowedUpstream = createServer((_req, res) => {
+      allowedHits += 1;
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ ok: true }));
+    });
+    // A SECOND private origin that is NOT placed in any allowlist env — docker
+    // mode must still block it, proving the allowlist is scoped to exactly the
+    // configured origins and does not disable the SSRF guard wholesale.
+    const blockedUpstream = createServer((_req, res) => {
+      blockedHits += 1;
+      res.writeHead(200);
+      res.end('should-never-be-reached');
+    });
+    const allowedPort = await listen(allowedUpstream);
+    const blockedPort = await listen(blockedUpstream);
 
-  const localApi = await setupApiDir({
-    'llm-probe.js': `
-      export default async function handler() {
-        const upstream = await fetch(process.env.LLM_API_URL);
-        const payload = await upstream.text();
-        return new Response(payload, {
-          status: upstream.status,
-          headers: { 'content-type': 'application/json' },
-        });
+    const localApi = await setupApiDir({
+      'llm-probe.js': `
+        export default async function handler(request) {
+          const target = new URL(request.url).searchParams.get('target');
+          const url = target === 'blocked'
+            ? 'http://localhost:${blockedPort}/'
+            : process.env.${envKey};
+          const upstream = await fetch(url);
+          const payload = await upstream.text();
+          return new Response(payload, { status: upstream.status });
+        }
+      `,
+    });
+
+    async function runProbe(mode, target) {
+      const app = await createLocalApiServer({
+        port: 0,
+        apiDir: localApi.apiDir,
+        mode,
+        logger: { log() { }, warn() { }, error() { } },
+      });
+      const { port } = await app.start();
+      try {
+        const q = target ? `?target=${target}` : '';
+        return await authFetch(`http://127.0.0.1:${port}/api/llm-probe${q}`);
+      } finally {
+        await app.close();
       }
-    `,
-  });
-
-  async function runProbe(mode) {
-    const app = await createLocalApiServer({
-      port: 0,
-      apiDir: localApi.apiDir,
-      mode,
-      logger: { log() { }, warn() { }, error() { } },
-    });
-    const { port } = await app.start();
-    try {
-      return await authFetch(`http://127.0.0.1:${port}/api/llm-probe`);
-    } finally {
-      await app.close();
     }
-  }
 
-  process.env.LLM_API_URL = `http://127.0.0.1:${upstreamPort}/v1/chat/completions`;
+    process.env[envKey] = `http://localhost:${allowedPort}/v1/chat/completions`;
 
-  try {
-    const dockerResponse = await runProbe('docker');
-    assert.equal(dockerResponse.status, 200);
-    assert.deepEqual(await dockerResponse.json(), { ok: true });
-    // No exact hit-count assertions: server boot warms the llm-health cache
-    // with its own (unguarded, server-internal) probe of the LLM origin in
-    // both modes. The handler responses below carry the security semantics —
-    // the guarded handler fetch succeeds only in docker mode.
-    assert.ok(upstreamHits >= 1, `expected upstream hits, got ${upstreamHits}`);
+    try {
+      // Allow side: docker reaches the configured origin.
+      const dockerAllowed = await runProbe('docker', 'allowed');
+      assert.equal(dockerAllowed.status, 200);
+      assert.deepEqual(await dockerAllowed.json(), { ok: true });
+      assert.ok(allowedHits >= 1, `expected allowed hits, got ${allowedHits}`);
 
-    const desktopResponse = await runProbe('desktop-sidecar');
-    assert.equal(desktopResponse.status, 502);
-    const desktopBody = await desktopResponse.json();
-    assert.equal(desktopBody.error, 'Local handler error');
-    assert.match(desktopBody.reason, /SSRF blocked/);
-  } finally {
-    if (originalLlmUrl === undefined) delete process.env.LLM_API_URL;
-    else process.env.LLM_API_URL = originalLlmUrl;
-    await localApi.cleanup();
-    await new Promise((resolve, reject) => {
-      upstream.close((error) => (error ? reject(error) : resolve()));
-    });
-  }
-});
+      // Block side (scoping): docker still blocks a non-allowlisted origin.
+      const dockerBlocked = await runProbe('docker', 'blocked');
+      assert.equal(dockerBlocked.status, 502);
+      assert.match((await dockerBlocked.json()).reason, /SSRF blocked/);
+      assert.equal(blockedHits, 0, 'non-allowlisted origin must never be reached');
+
+      // Desktop mode blocks even the configured origin.
+      const desktopBlocked = await runProbe('desktop-sidecar', 'allowed');
+      assert.equal(desktopBlocked.status, 502);
+      assert.match((await desktopBlocked.json()).reason, /SSRF blocked/);
+    } finally {
+      if (original === undefined) delete process.env[envKey];
+      else process.env[envKey] = original;
+      await localApi.cleanup();
+      await new Promise((resolve, reject) => allowedUpstream.close((e) => (e ? reject(e) : resolve())));
+      await new Promise((resolve, reject) => blockedUpstream.close((e) => (e ? reject(e) : resolve())));
+    }
+  });
+}
 
 test('blocks handler global fetches to non-global IPv4 special ranges', async () => {
   const originalHttpRequest = http.request;
