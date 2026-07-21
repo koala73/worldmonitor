@@ -2,10 +2,11 @@
 title: "Six Intelligence Dashboards on One Platform"
 description: "World Monitor offers 6 free intelligence dashboards: geopolitical, tech, finance, commodity, positive news, and energy. Switch between them instantly from one platform."
 metaTitle: "6 Intelligence Dashboards, One Platform | World Monitor"
-keywords: "intelligence dashboard variants, tech monitoring dashboard, positive news dashboard, multi-purpose intelligence platform, specialized monitoring tools"
+keywords: "intelligence dashboard variants, tech monitoring dashboard, positive news dashboard, energy security dashboard, multi-purpose intelligence platform, specialized monitoring tools"
 audience: "General tech audience, product managers, developers, knowledge workers, content creators"
 heroImage: "/blog/images/blog/five-dashboards-one-platform-worldmonitor-variants.jpg"
 pubDate: "2026-02-12"
+modifiedDate: "2026-07-22"
 ---
 
 Most intelligence platforms force you into a single vertical. A financial terminal. A cybersecurity feed. A conflict tracker. If your work spans multiple domains, you're left juggling subscriptions.
@@ -15,7 +16,7 @@ World Monitor runs **six specialized dashboards** from a single codebase. Switch
 ## 1. World Monitor: The Geopolitical Command Center
 
 **URL:** worldmonitor.app
-**Panels:** 45
+**Panels:** 102
 **Focus:** Conflicts, military, infrastructure, geopolitical risk
 
 This is the flagship. World Monitor is built for OSINT analysts, defense researchers, journalists, and anyone who needs to [understand global security dynamics](/blog/posts/track-global-conflicts-in-real-time/).
@@ -38,7 +39,7 @@ This is the flagship. World Monitor is built for OSINT analysts, defense researc
 ## 2. Tech Monitor: The Silicon Valley Radar
 
 **URL:** tech.worldmonitor.app
-**Panels:** 28
+**Panels:** 41
 **Focus:** AI/ML, startups, cybersecurity, cloud infrastructure
 
 Tech Monitor maps the global technology landscape: where AI is being built, where startups are funded, where data centers are concentrated, and where the next unicorn might emerge.
@@ -61,7 +62,7 @@ Tech Monitor maps the global technology landscape: where AI is being built, wher
 ## 3. Finance Monitor: Markets with Context
 
 **URL:** finance.worldmonitor.app
-**Panels:** 27
+**Panels:** 60
 **Focus:** Markets, central banks, forex, Gulf FDI, macro signals
 
 Finance Monitor is for [traders and analysts](/blog/posts/real-time-market-intelligence-for-traders-and-analysts/) who know that markets move on geopolitics. It combines traditional financial data with the intelligence layers that drive price action.
@@ -85,7 +86,7 @@ Finance Monitor is for [traders and analysts](/blog/posts/real-time-market-intel
 ## 4. Commodity Monitor: Raw Materials Intelligence
 
 **URL:** commodity.worldmonitor.app
-**Panels:** 16
+**Panels:** 32
 **Focus:** Mining, metals, energy, supply chain disruption
 
 Commodity Monitor tracks the physical resources that power the global economy: where they're extracted, how they're priced, and [what threatens their supply](/blog/posts/monitor-global-supply-chains-and-commodity-disruptions/).
@@ -130,11 +131,12 @@ In a world of conflict feeds and crisis dashboards, Happy Monitor exists to trac
 **Panels:** 26
 **Focus:** Chokepoints, pipelines, storage, and energy risks
 
-Energy Atlas tracks the critical infrastructure that keeps the world powered, providing real-time data on supply chain vulnerabilities and fuel logistics.
+Energy Atlas tracks the critical infrastructure that keeps the world powered, providing real-time data on supply chain vulnerabilities and fuel logistics. For the full tour — including the escalation-chain layout and the data sources behind each panel — see the [energy security dashboard deep-dive](/blog/posts/energy-security-dashboard-worldmonitor/).
 
 **Key features:**
+
 - Global chokepoint strip monitoring
-- Live pipeline status and flow data
+- Live status for 88 mapped oil & gas pipelines
 - Global energy storage atlas
 - Real-time fuel shortage alerts
 - Comprehensive energy risk overview
@@ -199,7 +201,7 @@ But when you need to cross domains (the commodity trader wants to check if a con
 
 ## One Platform, Zero Cost
 
-All Six variants are completely free. No freemium gates. No "contact sales" buttons. No feature tiers. The same platform, the same data, the same AI. Available to a solo researcher in Nairobi and a hedge fund analyst in New York.
+All six variants are completely free. No freemium gates. No "contact sales" buttons. No feature tiers. The same platform, the same data, the same AI. Available to a solo researcher in Nairobi and a hedge fund analyst in New York.
 
 Open source under AGPL-3.0. Deploy it yourself, contribute to it, or just use it.
 
