@@ -382,6 +382,7 @@
         "description": "Programowy dostęp do danych analitycznych",
         "features": [
           "REST API + oficjalne SDK (npm, PyPI, RubyGems, Go)",
+          "Klucz licencyjny / API w zestawie",
           "Strumienie danych w czasie rzeczywistym",
           "60 żądań/minutę",
           "1000 żądań/dzień w cenie",
