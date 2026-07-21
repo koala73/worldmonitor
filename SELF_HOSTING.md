@@ -289,6 +289,10 @@ Model names containing `haiku`/`sonnet`/`opus` map to those Claude tiers; anythi
 falls back to `CLAUDE_SHIM_DEFAULT_MODEL` (default `haiku`). Notes:
 
 - `LLM_API_URL` must include the full `/v1/chat/completions` path (it is not appended).
+- Self-hosted backends are slower than hosted APIs — set `LLM_MIN_TIMEOUT_MS: "60000"`
+  on the `worldmonitor` service so long generations (country briefs) aren't cut off by
+  the 25s per-attempt timeout tuned for hosted providers. Applies to any self-hosted
+  LLM (Ollama, vLLM, this shim), not just Claude Code.
 - Leave `GROQ_API_KEY`/`OPENROUTER_API_KEY` unset (or keep the `LLM_*_PROVIDER: generic`
   pins) — `generic` is last in the fallback chain.
 - The token draws down your personal subscription quota. Keep the daily cap conservative,
