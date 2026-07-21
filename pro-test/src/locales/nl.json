@@ -382,6 +382,7 @@
         "description": "Programmatische toegang tot intelligence-gegevens",
         "features": [
           "REST API + officiële SDK's (npm, PyPI, RubyGems, Go)",
+          "Licentie-/API-sleutel inbegrepen",
           "Real-time gegevensstromen",
           "60 aanvragen/minuut",
           "1.000 aanvragen/dag inbegrepen",

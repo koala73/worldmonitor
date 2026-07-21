@@ -382,6 +382,7 @@
         "description": "Truy cập theo chương trình vào dữ liệu trí tuệ",
         "features": [
           "REST API + SDK chính thức (npm, PyPI, RubyGems, Go)",
+          "Bao gồm khóa bản quyền / API",
           "Luồng dữ liệu thời gian thực",
           "60 yêu cầu/phút",
           "Bao gồm 1.000 yêu cầu/ngày",
