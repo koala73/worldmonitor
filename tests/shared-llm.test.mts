@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
-import { callLlm, callLlmReasoning, getLlmAttemptTimeoutMs } from '../server/_shared/llm.ts';
+import { callLlm, callLlmReasoning, getLlmAttemptTimeoutMs, applyTimeoutFloor } from '../server/_shared/llm.ts';
 
 const originalFetch = globalThis.fetch;
 const originalAbortSignalTimeout = AbortSignal.timeout;
@@ -45,6 +45,28 @@ describe('callLlm', () => {
     assert.equal(getLlmAttemptTimeoutMs('deepseek/deepseek-v4-flash', 8_000), 8_000);
     assert.equal(getLlmAttemptTimeoutMs('deepseek/deepseek-v4-pro', 25_000), 25_000);
     assert.equal(getLlmAttemptTimeoutMs('google/gemini-2.5-flash', 25_000), 25_000);
+  });
+
+  it('LLM_MIN_TIMEOUT_MS floors only self-hosted providers, preserving the hosted Flash cut', () => {
+    const prev = process.env.LLM_MIN_TIMEOUT_MS;
+    try {
+      process.env.LLM_MIN_TIMEOUT_MS = '60000';
+      // Self-hosted backends get the floor…
+      assert.equal(applyTimeoutFloor('generic', 25_000), 60_000);
+      assert.equal(applyTimeoutFloor('ollama', 25_000), 60_000);
+      // …hosted providers do NOT (the #5246 DeepSeek 15s dead-tail cut survives).
+      assert.equal(applyTimeoutFloor('openrouter', 15_000), 15_000);
+      assert.equal(applyTimeoutFloor('groq', 8_000), 8_000);
+      // Unset = no-op everywhere.
+      delete process.env.LLM_MIN_TIMEOUT_MS;
+      assert.equal(applyTimeoutFloor('generic', 25_000), 25_000);
+      // Non-numeric = ignored (no throw, treated as unset).
+      process.env.LLM_MIN_TIMEOUT_MS = '60s';
+      assert.equal(applyTimeoutFloor('generic', 25_000), 25_000);
+    } finally {
+      if (prev === undefined) delete process.env.LLM_MIN_TIMEOUT_MS;
+      else process.env.LLM_MIN_TIMEOUT_MS = prev;
+    }
   });
 
   it('wires the DeepSeek Flash deadline into the shared chat-completion request', async () => {
