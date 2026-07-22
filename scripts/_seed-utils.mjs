@@ -281,12 +281,37 @@ async function redisCommand(url, token, command) {
 }
 
 async function redisGet(url, token, key) {
-  const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
-    headers: { Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(5_000),
-  });
-  if (!resp.ok) return null;
-  const data = await resp.json();
+  // Retry transient failures (timeout / network tear / 5xx / 429) with the
+  // redisCommand tagging contract. A single unretried blip here silently read
+  // as "key missing", which killed seed-gdelt-intel's cache-merge fallback for
+  // 21h while the canonical key was healthy (issue #5437). The external
+  // contract is unchanged: HTTP failures still degrade to null (now loudly),
+  // thrown failures still propagate — both only after retries.
+  let data;
+  try {
+    data = await withRetry(async () => {
+      const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!resp.ok) {
+        const err = new Error(`Redis GET ${key} failed: HTTP ${resp.status}`);
+        if (PERMANENT_4XX_STATUSES.has(resp.status)) {
+          err.nonRetryable = true;
+        } else if (resp.status === 429) {
+          const retryAfterMs = parseRetryAfterMs(getResponseHeader(resp.headers, 'Retry-After'));
+          if (retryAfterMs != null) err.retryAfterMs = retryAfterMs;
+        }
+        err.httpStatus = resp.status;
+        throw err;
+      }
+      return resp.json();
+    }, 2, 1000);
+  } catch (err) {
+    if (err.httpStatus == null) throw err;
+    console.warn(`  Redis GET ${key}: degraded to null (${err.message})`);
+    return null;
+  }
   if (!data.result) return null;
   // Envelope-aware: returns inner `data` for seeded keys written in contract
   // mode, passes through legacy (bare-shape) values unchanged. Fixes WoW/cross-
@@ -438,7 +463,12 @@ export async function writeFreshnessMetadata(domain, resource, count, source, tt
   // Use the data TTL if it exceeds 7 days so monthly/annual seeds don't lose
   // their meta key before the health check maxStaleMin threshold is reached.
   const metaTtl = Math.max(86400 * 7, ttlSeconds || 0);
-  await redisSet(url, token, metaKey, meta, metaTtl);
+  // Retry transient Redis failures: this SET runs bare on runSeed's
+  // validate-skip path, where an unretried Upstash abort escaped to the
+  // seeder's top-level catch as `FATAL: The operation was aborted due to
+  // timeout` → exit 1 (seed-gdelt-intel, issue #5437). redisCommand tags
+  // permanent 4xx nonRetryable and 429 with Retry-After; withRetry honors both.
+  await withRetry(() => redisSet(url, token, metaKey, meta, metaTtl), 2, 1000);
   return meta;
 }
 
@@ -459,12 +489,27 @@ export async function writeFreshnessMetadata(domain, resource, count, source, tt
 export async function readCanonicalEnvelopeMeta(canonicalKey) {
   try {
     const { url, token } = getRedisCredentials();
-    const resp = await fetch(`${url}/get/${encodeURIComponent(canonicalKey)}`, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (!resp.ok) return null;
-    const data = await resp.json();
+    // Retry transient failures before degrading: a blip here is worse than a
+    // crash — the caller falls back to writing recordCount=0 with
+    // fetchedAt=NOW, resetting the freshness clock over real staleness
+    // (issue #5437). Outer catch preserves the never-throws contract.
+    const data = await withRetry(async () => {
+      const resp = await fetch(`${url}/get/${encodeURIComponent(canonicalKey)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (!resp.ok) {
+        const err = new Error(`Canonical meta GET ${canonicalKey} failed: HTTP ${resp.status}`);
+        if (PERMANENT_4XX_STATUSES.has(resp.status)) {
+          err.nonRetryable = true;
+        } else if (resp.status === 429) {
+          const retryAfterMs = parseRetryAfterMs(getResponseHeader(resp.headers, 'Retry-After'));
+          if (retryAfterMs != null) err.retryAfterMs = retryAfterMs;
+        }
+        throw err;
+      }
+      return resp.json();
+    }, 2, 1000);
     if (!data || !data.result) return null;
     let parsed;
     try { parsed = JSON.parse(data.result); } catch { return null; }
