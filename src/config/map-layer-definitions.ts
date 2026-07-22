@@ -3,7 +3,7 @@ import type { MapLayers } from '@/types';
 import { isDesktopRuntime } from '@/services/runtime';
 
 export type MapRenderer = 'flat' | 'globe';
-export type MapVariant = 'full' | 'tech' | 'finance' | 'happy' | 'commodity' | 'energy';
+export type MapVariant = 'full' | 'tech' | 'finance' | 'happy' | 'commodity' | 'energy' | 'cinema';
 
 const _desktop = isDesktopRuntime();
 
@@ -121,6 +121,7 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   storageFacilities:        def('storageFacilities',        '&#127959;', 'storageFacilities',        'Storage Facilities', ['flat'], undefined, true),
   fuelShortages:            def('fuelShortages',            '&#9881;',   'fuelShortages',            'Fuel Shortages', ['flat'], undefined, true),
   liveTankers:              def('liveTankers',              '&#128674;', 'liveTankers',              'Live Tanker Positions', ['flat'], undefined, true),
+  cinemaHubs:               def('cinemaHubs',               '&#127916;', 'cinemaHubs',               'Cinema Hubs', ['flat'], undefined, true),
 };
 
 export const V1_LAYER_EXPLANATION_KEYS = [
@@ -329,6 +330,9 @@ const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
     // Energy-adjacent context
     'sanctions', 'fires', 'climate', 'weather', 'outages', 'natural',
     'resilienceScore', 'dayNight',
+  ],
+  cinema: [
+    'cinemaHubs', 'weather', 'natural', 'dayNight',
   ],
 };
 

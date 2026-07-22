@@ -1030,8 +1030,45 @@ const INDIA_FEEDS: Record<string, Feed[]> = {
   ],
 };
 
+// Cinema / entertainment feed preset. Category keys match the CINEMA_PANELS
+// keys in panels.ts so each renders as a news panel. Global coverage with an
+// India lens (Bollywood + regional). Uses Google News RSS for resilient
+// resolution of publishers without stable public feeds.
+const CINEMA_FEEDS: Record<string, Feed[]> = {
+  entertainment: [
+    { name: 'Variety', url: rss('https://variety.com/feed/') },
+    { name: 'The Hollywood Reporter', url: rss('https://www.hollywoodreporter.com/feed/') },
+    { name: 'Deadline', url: rss('https://deadline.com/feed/') },
+    { name: 'IndieWire', url: rss('https://www.indiewire.com/feed/') },
+    { name: 'Screen Daily', url: rss('https://www.screendaily.com/feed') },
+    { name: 'Entertainment Weekly', url: rss('https://ew.com/feed/') },
+  ],
+  'india-cinema': [
+    { name: 'Film Companion', url: rss('https://www.filmcompanion.in/feed') },
+    { name: 'TOI Entertainment', url: rss('https://timesofindia.indiatimes.com/rssfeeds/1081479906.cms') },
+    { name: 'Bollywood Hungama', url: rss('https://news.google.com/rss/search?q=site:bollywoodhungama.com+when:2d&hl=en-IN&gl=IN&ceid=IN:en') },
+    { name: 'Pinkvilla', url: rss('https://news.google.com/rss/search?q=site:pinkvilla.com+when:2d&hl=en-IN&gl=IN&ceid=IN:en') },
+    { name: 'Bollywood', url: rss('https://news.google.com/rss/search?q=Bollywood+film+when:2d&hl=en-IN&gl=IN&ceid=IN:en') },
+    { name: 'South Indian Cinema', url: rss('https://news.google.com/rss/search?q=(Tollywood+OR+Kollywood+OR+"Telugu+cinema"+OR+"Tamil+cinema"+OR+"Malayalam+cinema")+when:2d&hl=en-IN&gl=IN&ceid=IN:en') },
+  ],
+  boxoffice: [
+    { name: 'Box Office (Global)', url: rss('https://news.google.com/rss/search?q=("box+office"+(weekend+OR+collection+OR+gross+OR+opening))+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Box Office India', url: rss('https://news.google.com/rss/search?q=("box+office"+India+(crore+OR+collection+OR+opening))+when:3d&hl=en-IN&gl=IN&ceid=IN:en') },
+  ],
+  'ott-streaming': [
+    { name: 'Streaming News', url: rss('https://news.google.com/rss/search?q=(Netflix+OR+"Prime+Video"+OR+"Disney+Plus"+OR+"Apple+TV")+(release+OR+series+OR+film)+when:2d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'India OTT', url: rss('https://news.google.com/rss/search?q=(JioCinema+OR+"Disney+Hotstar"+OR+"Prime+Video+India"+OR+"OTT+release")+when:2d&hl=en-IN&gl=IN&ceid=IN:en') },
+  ],
+  'festivals-awards': [
+    { name: 'Festivals & Awards', url: rss('https://news.google.com/rss/search?q=("film+festival"+OR+Oscars+OR+"Academy+Awards"+OR+Cannes+OR+Venice+OR+Berlinale+OR+TIFF)+when:3d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'India Festivals & Awards', url: rss('https://news.google.com/rss/search?q=(IFFI+OR+Filmfare+OR+"National+Film+Awards"+OR+MAMI)+when:5d&hl=en-IN&gl=IN&ceid=IN:en') },
+  ],
+};
+
 // Variant-aware exports
-export const FEEDS = SITE_VARIANT === 'india'
+export const FEEDS = SITE_VARIANT === 'cinema'
+  ? CINEMA_FEEDS
+  : SITE_VARIANT === 'india'
   ? INDIA_FEEDS
   : SITE_VARIANT === 'tech'
   ? TECH_FEEDS
@@ -1060,6 +1097,7 @@ export const CANONICAL_FEEDS: Record<string, Feed[]> = mergeCanonicalFeeds([
   ENERGY_FEEDS,
   HAPPY_FEEDS,
   INDIA_FEEDS,
+  CINEMA_FEEDS,
 ]);
 
 export const SOURCE_REGION_MAP: Record<string, { labelKey: string; feedKeys: string[] }> = {

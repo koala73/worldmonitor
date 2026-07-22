@@ -109,6 +109,7 @@ import {
 import { STARTUP_HUBS, ACCELERATORS, TECH_HQS, CLOUD_REGIONS } from '@/config/tech-geo';
 import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
 import { UNDERSEA_CABLES, NUCLEAR_FACILITIES, ECONOMIC_CENTERS, SPACEPORTS, CRITICAL_MINERALS, SANCTIONED_COUNTRIES_ALPHA2 } from '@/config/geo-map';
+import { CINEMA_HUBS, type CinemaHub } from '@/config/cinema-geo';
 import type { GulfInvestment } from '@/types';
 import { resolveTradeRouteSegments, TRADE_ROUTES as TRADE_ROUTES_LIST, type TradeRouteSegment, type TradeRouteStatus } from '@/config/trade-routes';
 import type { ScenarioVisualState } from '@/config/scenario-templates';
@@ -1915,6 +1916,12 @@ export class DeckGLMap {
       layers.push(this.createSpaceportsLayer());
     }
 
+    // Cinema hubs layer (festivals, studios, production hubs) — cinema variant.
+    // Static data, shown at every zoom so it's visible on the default view.
+    if (mapLayers.cinemaHubs) {
+      layers.push(this.createCinemaHubsLayer());
+    }
+
     // Hotspots layer (all hotspots including high/breaking, with pulse + ghost)
     if (mapLayers.hotspots) {
       layers.push(...this.createHotspotsLayers());
@@ -2971,6 +2978,25 @@ export class DeckGLMap {
       getFillColor: [200, 100, 255, 200] as [number, number, number, number], // Purple
       radiusMinPixels: 5,
       radiusMaxPixels: 12,
+      pickable: true,
+    });
+  }
+
+  private createCinemaHubsLayer(): ScatterplotLayer<CinemaHub> {
+    return new ScatterplotLayer<CinemaHub>({
+      id: 'cinema-hubs-layer',
+      data: CINEMA_HUBS,
+      getPosition: (d) => [d.lon, d.lat],
+      getRadius: 9000,
+      getFillColor: (d) => (
+        d.kind === 'festival'
+          ? [244, 63, 94, 210] // Rose — festivals
+          : d.kind === 'studio'
+            ? [250, 204, 21, 210] // Gold — studios
+            : [56, 189, 248, 205] // Sky — production hubs
+      ) as [number, number, number, number],
+      radiusMinPixels: 5,
+      radiusMaxPixels: 14,
       pickable: true,
     });
   }
