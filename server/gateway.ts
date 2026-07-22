@@ -164,18 +164,22 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   // before they hit this Vercel function. Energy Atlas live-tanker layer.
   '/api/maritime/v1/get-vessel-snapshot': 'live',
 
-  '/api/market/v1/list-market-quotes': 'medium',
-  '/api/market/v1/list-crypto-quotes': 'medium',
+  // 'live' tier (CDN s-maxage 60s) for the real-time price tape — quote lists
+  // refresh far faster than the 'medium' 20-min edge window allowed on top of
+  // the seeder cadence. SWR + stale-if-error keep it stampede-safe (same
+  // headers already proven on get-vessel-snapshot).
+  '/api/market/v1/list-market-quotes': 'live',
+  '/api/market/v1/list-crypto-quotes': 'live',
   '/api/market/v1/list-crypto-sectors': 'slow',
   '/api/market/v1/list-defi-tokens': 'slow',
   '/api/market/v1/list-ai-tokens': 'slow',
   '/api/market/v1/list-other-tokens': 'slow',
-  '/api/market/v1/list-commodity-quotes': 'medium',
-  '/api/market/v1/list-stablecoin-markets': 'medium',
+  '/api/market/v1/list-commodity-quotes': 'live',
+  '/api/market/v1/list-stablecoin-markets': 'live',
   '/api/market/v1/get-sector-summary': 'medium',
   '/api/market/v1/get-fear-greed-index': 'slow',
   '/api/market/v1/get-market-breadth-history': 'daily',
-  '/api/market/v1/list-gulf-quotes': 'medium',
+  '/api/market/v1/list-gulf-quotes': 'live',
   '/api/market/v1/analyze-stock': 'slow',
   '/api/market/v1/get-stock-analysis-history': 'medium',
   '/api/market/v1/backtest-stock': 'slow',
