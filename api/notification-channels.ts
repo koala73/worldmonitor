@@ -148,6 +148,9 @@ async function convexRelay(body: Record<string, unknown>): Promise<Response> {
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${RELAY_SHARED_SECRET}`,
+      // AGENTS.md, Critical Conventions: always send a User-Agent on
+      // server-side fetches. Matches the Upstash calls above.
+      'User-Agent': 'worldmonitor-edge/1.0',
     },
     body: JSON.stringify(body),
     // Bound the relay round-trip well inside the edge runtime's initial-response
