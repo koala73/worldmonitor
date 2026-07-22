@@ -31064,6 +31064,8 @@ components:
                     description: |-
                         Extended-hours change % vs the last regular-session close. Only set when
                          extended_price is set.
+                fundamentals:
+                    $ref: '#/components/schemas/worldmonitor_market_v1_Fundamentals'
         worldmonitor_market_v1_StockAnalysisHeadline:
             type: object
             properties:
@@ -31136,6 +31138,45 @@ components:
                     type: integer
                     format: int64
                     description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+        worldmonitor_market_v1_Fundamentals:
+            type: object
+            properties:
+                profitMargin:
+                    type: number
+                    format: double
+                grossMargin:
+                    type: number
+                    format: double
+                operatingMargin:
+                    type: number
+                    format: double
+                returnOnEquity:
+                    type: number
+                    format: double
+                returnOnAssets:
+                    type: number
+                    format: double
+                revenueGrowth:
+                    type: number
+                    format: double
+                earningsGrowth:
+                    type: number
+                    format: double
+                debtToEquity:
+                    type: number
+                    format: double
+                totalCash:
+                    type: number
+                    format: double
+                totalDebt:
+                    type: number
+                    format: double
+                freeCashflow:
+                    type: number
+                    format: double
+                ebitda:
+                    type: number
+                    format: double
         worldmonitor_market_v1_GetStockAnalysisHistoryRequest:
             type: object
             properties:

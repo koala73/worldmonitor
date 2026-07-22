@@ -287,7 +287,36 @@ export class StockAnalysisPanel extends Panel {
         ${this.renderInsiderSection(item.symbol)}
         ${headlines ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px">${headlines}</div>` : ''}
         ${this.renderAnalystConsensus(item)}
+        ${this.renderFundamentals(item)}
       </section>
+    `;
+  }
+
+  private renderFundamentals(item: StockAnalysisResult): string {
+    const f = item.fundamentals;
+    if (!f) return '';
+
+    const num = (v: number | undefined): v is number => typeof v === 'number' && Number.isFinite(v);
+    const signColor = (v: number): string => (v >= 0 ? '#16a34a' : '#dc2626');
+    const cell = (label: string, value: string, color?: string): string =>
+      `<div style="border:1px solid var(--border);padding:6px 8px;flex:1;min-width:88px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">${escapeHtml(label)}</div><div style="margin-top:2px${color ? `;color:${color}` : ''}">${escapeHtml(value)}</div></div>`;
+
+    const cells: string[] = [];
+    if (num(f.profitMargin)) cells.push(cell('Profit Margin', `${(f.profitMargin * 100).toFixed(1)}%`, signColor(f.profitMargin)));
+    if (num(f.operatingMargin)) cells.push(cell('Oper. Margin', `${(f.operatingMargin * 100).toFixed(1)}%`, signColor(f.operatingMargin)));
+    if (num(f.returnOnEquity)) cells.push(cell('ROE', `${(f.returnOnEquity * 100).toFixed(1)}%`, signColor(f.returnOnEquity)));
+    if (num(f.revenueGrowth)) cells.push(cell('Rev. Growth', `${(f.revenueGrowth * 100).toFixed(1)}%`, signColor(f.revenueGrowth)));
+    if (num(f.earningsGrowth)) cells.push(cell('EPS Growth', `${(f.earningsGrowth * 100).toFixed(1)}%`, signColor(f.earningsGrowth)));
+    if (num(f.debtToEquity)) cells.push(cell('Debt/Equity', (f.debtToEquity / 100).toFixed(2)));
+    if (num(f.freeCashflow)) cells.push(cell('Free Cash Flow', `${f.freeCashflow < 0 ? '-' : ''}${Math.abs(f.freeCashflow / 1e9).toFixed(1)}B`, f.freeCashflow >= 0 ? undefined : '#dc2626'));
+
+    if (cells.length === 0) return '';
+
+    return `
+      <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:10px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);margin-bottom:8px">Fundamentals</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${cells.join('')}</div>
+      </div>
     `;
   }
 

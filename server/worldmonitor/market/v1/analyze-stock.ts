@@ -1379,6 +1379,7 @@ export function buildAnalysisResponse(params: {
     analystConsensus: analystData.analystConsensus,
     priceTarget: analystData.priceTarget,
     recentUpgrades: analystData.recentUpgrades,
+    fundamentals: analystData.fundamentals,
     dividendYield: dividend?.dividendYield ?? 0,
     trailingAnnualDividendRate: dividend?.trailingAnnualDividendRate ?? 0,
     exDividendDate: dividend?.exDividendDate ?? 0,
