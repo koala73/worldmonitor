@@ -22,17 +22,38 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const read = (p) => readFileSync(resolve(__dirname, '..', p), 'utf-8');
 
 const catalogSrc = read('convex/config/productCatalog.ts');
-const proTiers = JSON.parse(read('pro-test/src/generated/tiers.json'));
+
+const catalogEntrySourceFor = (planKey) => {
+  const blockStart = catalogSrc.indexOf(`\n  ${planKey}: {`);
+  assert.notEqual(blockStart, -1, `productCatalog.ts must contain a "${planKey}" entry`);
+  const remainder = catalogSrc.slice(blockStart + 1);
+  const nextEntry = remainder.slice(1).search(/\n  [A-Za-z_][A-Za-z0-9_]*: \{/);
+  return nextEntry === -1 ? remainder : remainder.slice(0, nextEntry + 1);
+};
 
 // planKey → priceCents for every publicly-priced subscription plan,
 // including the annual API plan the original docs omitted entirely.
 const PLAN_KEYS = ['pro_monthly', 'pro_annual', 'api_starter', 'api_starter_annual', 'api_business'];
 const priceCentsFor = (planKey) => {
-  const blockStart = catalogSrc.indexOf(`${planKey}: {`);
-  assert.notEqual(blockStart, -1, `productCatalog.ts must contain a "${planKey}" entry`);
-  const m = catalogSrc.slice(blockStart).match(/priceCents:\s*(\d+)/);
+  const m = catalogEntrySourceFor(planKey).match(/priceCents:\s*(\d+)/);
   assert.ok(m, `no priceCents found for ${planKey}`);
   return Number(m[1]);
+};
+
+const marketingFeaturesFor = (planKey) => {
+  const m = catalogEntrySourceFor(planKey).match(/marketingFeatures:\s*\[([\s\S]*?)\]/);
+  assert.ok(m, `no marketingFeatures found for ${planKey}`);
+  return [...m[1].matchAll(/"(?:\\.|[^"\\])*"/g)].map((match) => JSON.parse(match[0]));
+};
+
+const jsonLdOffersFor = (path) => {
+  const html = read(path);
+  const blocks = [...html.matchAll(/<script\b(?=[^>]*\btype="application\/ld\+json")[^>]*>\s*([\s\S]*?)\s*<\/script>/g)]
+    .map((match) => JSON.parse(match[1]));
+  const application = blocks.find((block) => block['@type'] === 'SoftwareApplication');
+  assert.ok(application, `${path} must contain SoftwareApplication JSON-LD`);
+  assert.ok(Array.isArray(application.offers), `${path} SoftwareApplication JSON-LD must contain an Offer array`);
+  return application.offers;
 };
 
 // $999 for even dollars, $39.99 otherwise — matching how the docs and the
@@ -103,14 +124,15 @@ test('pricing.md machine-readable JSON block matches productCatalog.ts numerical
 });
 
 test('/pro JSON-LD offers match productCatalog.ts prices and marketing features', () => {
-  const proHtml = read('pro-test/index.html');
-  const jsonLdBlocks = [...proHtml.matchAll(/<script type="application\/ld\+json">\s*([\s\S]*?)\s*<\/script>/g)]
-    .map((match) => JSON.parse(match[1]));
-  const softwareApplication = jsonLdBlocks.find((block) => block['@type'] === 'SoftwareApplication');
-  assert.ok(softwareApplication, 'pro-test/index.html must contain SoftwareApplication JSON-LD');
-  assert.ok(Array.isArray(softwareApplication.offers), 'SoftwareApplication JSON-LD must contain an Offer array');
+  const sourceOffers = jsonLdOffersFor('pro-test/index.html');
+  const deployedOffers = jsonLdOffersFor('public/pro/index.html');
+  assert.deepEqual(
+    deployedOffers,
+    sourceOffers,
+    'public/pro/index.html JSON-LD offers are stale — rebuild the /pro bundle'
+  );
 
-  const offerByName = Object.fromEntries(softwareApplication.offers.map((offer) => [offer.name, offer]));
+  const offerByName = Object.fromEntries(sourceOffers.map((offer) => [offer.name, offer]));
   const PRICE_EXPECT = [
     ['Free', 'free'],
     ['Pro Monthly', 'pro_monthly'],
@@ -129,15 +151,13 @@ test('/pro JSON-LD offers match productCatalog.ts prices and marketing features'
   }
 
   const FEATURE_OFFERS = [
-    ['Free', 'Free'],
-    ['Pro', 'Pro Monthly'],
-    ['API', 'API Starter Monthly'],
-    ['API Business', 'API Business'],
+    ['free', 'Free'],
+    ['pro_monthly', 'Pro Monthly'],
+    ['api_starter', 'API Starter Monthly'],
+    ['api_business', 'API Business'],
   ];
-  for (const [tierName, offerName] of FEATURE_OFFERS) {
-    const tier = proTiers.find((candidate) => candidate.name === tierName);
-    assert.ok(tier, `generated tiers must contain "${tierName}"`);
-    for (const feature of tier.features) {
+  for (const [planKey, offerName] of FEATURE_OFFERS) {
+    for (const feature of marketingFeaturesFor(planKey)) {
       assert.ok(
         offerByName[offerName].description.toLocaleLowerCase().includes(feature.toLocaleLowerCase()),
         `JSON-LD ${offerName} description is missing catalog marketing feature: "${feature}"`
