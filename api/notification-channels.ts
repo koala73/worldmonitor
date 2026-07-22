@@ -35,6 +35,30 @@ const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN ?? '';
 // api/create-checkout.ts:177).
 const RELAY_TIMEOUT_MS = 15_000;
 
+type NotificationChannelsDeps = {
+  validateBearerToken: typeof validateBearerToken;
+  getEntitlements: typeof getEntitlements;
+  fetch: typeof fetch;
+};
+
+function createDefaultNotificationChannelsDeps(): NotificationChannelsDeps {
+  return {
+    validateBearerToken,
+    getEntitlements,
+    fetch: (...args) => globalThis.fetch(...args),
+  };
+}
+
+let notificationChannelsDeps = createDefaultNotificationChannelsDeps();
+
+export function __setNotificationChannelsDepsForTests(
+  overrides: Partial<NotificationChannelsDeps> | null,
+): void {
+  notificationChannelsDeps = overrides
+    ? { ...createDefaultNotificationChannelsDeps(), ...overrides }
+    : createDefaultNotificationChannelsDeps();
+}
+
 // AES-256-GCM encryption using Web Crypto (matches Node crypto.cjs decrypt format).
 // Format stored: v1:<base64(iv[12] || tag[16] || ciphertext)>
 async function encryptSlackWebhook(webhookUrl: string): Promise<string> {
@@ -86,39 +110,11 @@ function isAllowedPushEndpointHost(host: string): boolean {
   return false;
 }
 
-async function publishWelcome(userId: string, channelType: string): Promise<void> {
-  if (!UPSTASH_URL || !UPSTASH_TOKEN) {
-    console.error('[notification-channels] publishWelcome: UPSTASH env vars missing — welcome not queued');
-    return;
-  }
-  console.log(`[notification-channels] publishWelcome: queuing ${channelType} for ${userId}`);
-  const msg = JSON.stringify({ eventType: 'channel_welcome', userId, channelType });
-  try {
-    const res = await fetch(`${UPSTASH_URL}/lpush/wm:events:queue/${encodeURIComponent(msg)}`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${UPSTASH_TOKEN}`,
-        'User-Agent': 'worldmonitor-edge/1.0',
-      },
-      signal: AbortSignal.timeout(5000),
-    });
-    const data = await res.json().catch(() => null) as { result?: unknown } | null;
-    console.log(`[notification-channels] publishWelcome LPUSH: status=${res.status} result=${JSON.stringify(data?.result)}`);
-  } catch (err) {
-    console.error('[notification-channels] publishWelcome LPUSH failed:', (err as Error).message);
-    // publishWelcome runs inside the handler's ctx.waitUntil chain; await
-    // keeps that chain pending until Sentry delivery completes.
-    await captureSilentError(err, {
-      tags: { route: 'api/notification-channels', step: 'publish-welcome' },
-    });
-  }
-}
-
 async function publishFlushHeld(userId: string, variant: string): Promise<void> {
   if (!UPSTASH_URL || !UPSTASH_TOKEN) return;
   const msg = JSON.stringify({ eventType: 'flush_quiet_held', userId, variant });
   try {
-    await fetch(`${UPSTASH_URL}/lpush/wm:events:queue/${encodeURIComponent(msg)}`, {
+    await notificationChannelsDeps.fetch(`${UPSTASH_URL}/lpush/wm:events:queue/${encodeURIComponent(msg)}`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'User-Agent': 'worldmonitor-edge/1.0' },
       signal: AbortSignal.timeout(5000),
@@ -143,7 +139,7 @@ function json(body: unknown, status: number, cors: Record<string, string>, noCac
 }
 
 async function convexRelay(body: Record<string, unknown>): Promise<Response> {
-  return fetch(`${CONVEX_SITE_URL}/relay/notification-channels`, {
+  return notificationChannelsDeps.fetch(`${CONVEX_SITE_URL}/relay/notification-channels`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -212,7 +208,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
   if (!token) return json({ error: 'Unauthorized' }, 401, corsHeaders);
 
-  const session = await validateBearerToken(token);
+  const session = await notificationChannelsDeps.validateBearerToken(token);
   if (!session.valid || !session.userId) return json({ error: 'Unauthorized' }, 401, corsHeaders);
 
   const idempotencyRequest = req.method === 'POST' ? req.clone() : null;
@@ -239,7 +235,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
   }
 
   if (req.method === 'POST') {
-    const ent = await getEntitlements(session.userId);
+    const ent = await notificationChannelsDeps.getEntitlements(session.userId);
     if (!ent || ent.features.tier < 1) {
       return json({
         error: 'pro_required',
@@ -317,10 +313,8 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           console.error('[notification-channels] POST set-channel relay error:', resp.status);
           return finish(json({ error: 'Operation failed' }, 500, corsHeaders));
         }
-        const setResult = await resp.json() as { ok: boolean; isNew?: boolean };
-        console.log(`[notification-channels] set-channel ${channelType}: isNew=${setResult.isNew}`);
-        // Only send welcome on first connect, not re-links; use waitUntil so the edge isolate doesn't terminate early
-        if (setResult.isNew) ctx.waitUntil(publishWelcome(session.userId, channelType));
+        // The Convex mutation transactionally schedules the first-connect
+        // welcome. It no longer depends on this relay response reaching edge.
         return finish(json({ ok: true }, 200, corsHeaders));
       }
 
@@ -365,8 +359,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           console.error('[notification-channels] POST set-web-push relay error:', resp.status);
           return finish(json({ error: 'Operation failed' }, 500, corsHeaders));
         }
-        const wpResult = await resp.json() as { ok: boolean; isNew?: boolean };
-        if (wpResult.isNew) ctx.waitUntil(publishWelcome(session.userId, 'web_push'));
+        // As above, Convex owns the durable first-connect welcome scheduling.
         return finish(json({ ok: true }, 200, corsHeaders));
       }
 

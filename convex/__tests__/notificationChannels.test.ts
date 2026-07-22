@@ -1,15 +1,29 @@
 import { convexTest } from "convex-test";
-import { describe, expect, test } from "vitest";
-import { api } from "../_generated/api";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { api, internal } from "../_generated/api";
 import schema from "../schema";
 
 const modules = import.meta.glob("../**/*.ts");
 type TestUser = ReturnType<ReturnType<typeof convexTest>["withIdentity"]>;
+const notificationChannelFns = (internal as any).notificationChannels;
+const originalFetch = globalThis.fetch;
+const originalUpstashUrl = process.env.UPSTASH_REDIS_REST_URL;
+const originalUpstashToken = process.env.UPSTASH_REDIS_REST_TOKEN;
 
 const USER = {
   subject: "user-tests-notification-channels",
   tokenIdentifier: "clerk|user-tests-notification-channels",
 };
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+  if (originalUpstashUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+  else process.env.UPSTASH_REDIS_REST_URL = originalUpstashUrl;
+  if (originalUpstashToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  else process.env.UPSTASH_REDIS_REST_TOKEN = originalUpstashToken;
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 
 async function seedEntitlement(
   t: ReturnType<typeof convexTest>,
@@ -150,5 +164,95 @@ describe("notificationChannels — Convex entitlement gate", () => {
     expect(channels).toMatchObject([
       { channelType: "telegram", chatId: "12345", verified: true },
     ]);
+  });
+});
+
+describe("notificationChannels — durable first-connect welcome", () => {
+  function installQueueMock() {
+    process.env.UPSTASH_REDIS_REST_URL = "https://upstash.test";
+    process.env.UPSTASH_REDIS_REST_TOKEN = "upstash-token";
+    return vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      Response.json({ result: 1 }),
+    );
+  }
+
+  function queuedEvent(fetchMock: ReturnType<typeof installQueueMock>) {
+    const [input, init] = fetchMock.mock.calls[0]!;
+    const url = String(input);
+    const encodedMessage = url.slice(url.lastIndexOf("/") + 1);
+    return {
+      url,
+      init,
+      message: JSON.parse(decodeURIComponent(encodedMessage)),
+    };
+  }
+
+  test("schedules an email welcome with the channel insert and not on retry", async () => {
+    vi.useFakeTimers();
+    const fetchMock = installQueueMock();
+    const t = convexTest(schema, modules);
+
+    await expect(t.mutation(notificationChannelFns.setChannelForUser, {
+      userId: USER.subject,
+      channelType: "email",
+      email: "first-connect@example.com",
+    })).resolves.toEqual({ isNew: true });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(queuedEvent(fetchMock)).toMatchObject({
+      url: expect.stringContaining("/lpush/wm:events:queue/"),
+      init: {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer upstash-token",
+          "User-Agent": "worldmonitor-convex/1.0",
+        },
+      },
+      message: {
+        eventType: "channel_welcome",
+        userId: USER.subject,
+        channelType: "email",
+      },
+    });
+
+    await expect(t.mutation(notificationChannelFns.setChannelForUser, {
+      userId: USER.subject,
+      channelType: "email",
+      email: "first-connect@example.com",
+    })).resolves.toEqual({ isNew: false });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  test("does not turn a same-endpoint web-push retry into a new connection", async () => {
+    vi.useFakeTimers();
+    const fetchMock = installQueueMock();
+    const t = convexTest(schema, modules);
+    const args = {
+      userId: USER.subject,
+      endpoint: "https://fcm.googleapis.com/push/subscription-1",
+      p256dh: "p256dh",
+      auth: "auth",
+      userAgent: "Chrome",
+    };
+
+    await expect(t.mutation(
+      notificationChannelFns.setWebPushChannelForUser,
+      args,
+    )).resolves.toEqual({ isNew: true });
+    await expect(t.mutation(
+      notificationChannelFns.setWebPushChannelForUser,
+      args,
+    )).resolves.toEqual({ isNew: false });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(queuedEvent(fetchMock).message).toEqual({
+      eventType: "channel_welcome",
+      userId: USER.subject,
+      channelType: "web_push",
+    });
   });
 });

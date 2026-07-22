@@ -1,12 +1,18 @@
 import { ConvexError, v } from "convex/values";
 import {
+  internalAction,
   internalMutation,
   internalQuery,
   type MutationCtx,
   mutation,
   query,
 } from "./_generated/server";
+import { internal } from "./_generated/api";
 import { channelTypeValidator } from "./constants";
+
+const WELCOME_QUEUE_KEY = "wm:events:queue";
+const WELCOME_FETCH_TIMEOUT_MS = 5_000;
+const WELCOME_USER_AGENT = "worldmonitor-convex/1.0";
 
 /**
  * Notifications are a PRO feature. Enforce the entitlement at the public
@@ -39,6 +45,53 @@ async function assertProEntitlement(
     });
   }
 }
+
+/**
+ * Queue a first-connect welcome outside the relay HTTP request lifecycle.
+ *
+ * The mutation that creates the channel schedules this action in the same
+ * Convex transaction as the channel insert. A Vercel-to-Convex timeout can
+ * therefore hide the mutation response without losing the welcome event.
+ */
+export const queueChannelWelcome = internalAction({
+  args: {
+    userId: v.string(),
+    channelType: channelTypeValidator,
+  },
+  handler: async (_ctx, args) => {
+    const url = process.env.UPSTASH_REDIS_REST_URL;
+    const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+    if (!url || !token) {
+      console.error(
+        "[notificationChannels] queueChannelWelcome: Upstash credentials missing",
+      );
+      return { queued: false };
+    }
+
+    const message = JSON.stringify({
+      eventType: "channel_welcome",
+      userId: args.userId,
+      channelType: args.channelType,
+    });
+    const response = await fetch(
+      `${url}/lpush/${WELCOME_QUEUE_KEY}/${encodeURIComponent(message)}`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "User-Agent": WELCOME_USER_AGENT,
+        },
+        signal: AbortSignal.timeout(WELCOME_FETCH_TIMEOUT_MS),
+      },
+    );
+    if (!response.ok) {
+      throw new Error(
+        `queueChannelWelcome: Upstash LPUSH returned HTTP ${response.status}`,
+      );
+    }
+    return { queued: true };
+  },
+});
 
 export const getChannelsByUserId = internalQuery({
   args: { userId: v.string() },
@@ -88,6 +141,13 @@ export const setChannelForUser = internalMutation({
     } else {
       throw new ConvexError("discord channel must be set via set-discord-oauth");
     }
+    if (isNew) {
+      await ctx.scheduler.runAfter(
+        0,
+        (internal as any).notificationChannels.queueChannelWelcome,
+        { userId, channelType },
+      );
+    }
     return { isNew };
   },
 });
@@ -121,8 +181,18 @@ export const setWebPushChannelForUser = internalMutation({
     userAgent: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // Step 1: scan for any existing rows with this endpoint across
-    // ALL users and delete them. notificationChannels has no
+    // Step 1: find the current user's row before cross-account endpoint
+    // cleanup. A retry with the same endpoint must remain a re-link rather
+    // than deleting its own row and appearing to be a first connection.
+    const existing = await ctx.db
+      .query("notificationChannels")
+      .withIndex("by_user_channel", (q) =>
+        q.eq("userId", args.userId).eq("channelType", "web_push"),
+      )
+      .unique();
+
+    // Step 2: scan for rows with this endpoint across other users and delete
+    // them. notificationChannels has no
     // endpoint-based index, so we filter at read time — acceptable
     // at current scale (<10k rows) and well-bounded to a single
     // write-path per user per connect.
@@ -134,21 +204,14 @@ export const setWebPushChannelForUser = internalMutation({
         row.channelType === "web_push" &&
         // Narrow through the channel-type literal so TS knows
         // `endpoint` exists on this row.
-        row.endpoint === args.endpoint
+        row.endpoint === args.endpoint &&
+        row.userId !== args.userId
       ) {
         await ctx.db.delete(row._id);
       }
     }
 
-    // Step 2: upsert the current-user row by (userId, channelType).
-    // After the delete above there is at most one row matching the
-    // unique index, so .unique() is safe.
-    const existing = await ctx.db
-      .query("notificationChannels")
-      .withIndex("by_user_channel", (q) =>
-        q.eq("userId", args.userId).eq("channelType", "web_push"),
-      )
-      .unique();
+    // Step 3: upsert the current-user row by (userId, channelType).
     const isNew = !existing;
     const doc = {
       userId: args.userId,
@@ -164,6 +227,13 @@ export const setWebPushChannelForUser = internalMutation({
       await ctx.db.replace(existing._id, doc);
     } else {
       await ctx.db.insert("notificationChannels", doc);
+    }
+    if (isNew) {
+      await ctx.scheduler.runAfter(
+        0,
+        (internal as any).notificationChannels.queueChannelWelcome,
+        { userId: args.userId, channelType: "web_push" },
+      );
     }
     return { isNew };
   },
