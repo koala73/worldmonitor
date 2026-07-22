@@ -10,7 +10,7 @@ const root = resolve(import.meta.dirname, '..');
 
 async function loadCanonicalLevelMapper(): Promise<(score: number) => 'low' | 'normal' | 'elevated' | 'high' | 'critical'> {
   const source = readFileSync(resolve(root, 'src/services/cached-risk-scores.ts'), 'utf8');
-  const match = source.match(/function getScoreLevel\(score: number\):[^\{]+\{[\s\S]*?\n\}/);
+  const match = source.match(/function getScoreLevel\(score: number\):[^{]+\{[\s\S]*?\n\}/);
   assert.ok(match, 'canonical cached-score level mapper must exist');
 
   const transformed = transformSync(`${match[0]}\nexport { getScoreLevel };`, {

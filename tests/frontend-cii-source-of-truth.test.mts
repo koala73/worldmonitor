@@ -467,7 +467,7 @@ describe('frontend CII source of truth', () => {
     assert.match(cachedBannerBody, /t\('components\.strategicRisk\.cachedCiiStatus', \{ states: labels\.join\(' · '\) \}\)/);
     assert.doesNotMatch(cachedBannerBody, /'degraded'|'stale'|Cached CII/);
 
-    assert.match(enLocaleSrc, /"sourceStates": \{\n        "degraded": "degraded",\n        "stale": "stale"\n      \}/);
+    assert.match(enLocaleSrc, /"sourceStates": \{\n {8}"degraded": "degraded",\n {8}"stale": "stale"\n {6}\}/);
     assert.match(enLocaleSrc, /"cachedCiiStatus": "Cached CII \{\{states\}\}"/);
   });
 

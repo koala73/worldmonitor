@@ -1174,12 +1174,12 @@ describe('security header guardrails', () => {
     );
     assert.match(
       viteConfigSource,
-      new RegExp(`cspNonce:\\s*STATIC_SCRIPT_NONCE`),
+      /cspNonce:\s*STATIC_SCRIPT_NONCE/,
       'Vite must stamp emitted HTML entry scripts with the nonce trusted by the header CSP'
     );
     assert.match(
       proViteConfigSource,
-      new RegExp(`cspNonce:\\s*STATIC_SCRIPT_NONCE`),
+      /cspNonce:\s*STATIC_SCRIPT_NONCE/,
       'Pro Vite builds must stamp emitted HTML entry scripts with the nonce trusted by the header CSP'
     );
 

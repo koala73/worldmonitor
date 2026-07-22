@@ -32,7 +32,7 @@ const cachedSnapshot = () => ({
 describe('seed-gdelt-intel fetchAllTopics soft budget (issue #4864)', () => {
   it('fatal runSeed rejection exits nonzero so Railway/bundles see the failure', () => {
     const source = readFileSync(new URL('../scripts/seed-gdelt-intel.mjs', import.meta.url), 'utf8');
-    const fatalCatch = source.match(/\.catch\(\(err\) => \{[\s\S]*?console\.error\('FATAL:'[\s\S]*?\n  \}\);/);
+    const fatalCatch = source.match(/\.catch\(\(err\) => \{[\s\S]*?console\.error\('FATAL:'[\s\S]*?\n {2}\}\);/);
 
     assert.ok(fatalCatch, 'seed-gdelt-intel must keep an explicit fatal catch');
     assert.match(fatalCatch[0], /process\.exit\(1\)/);
