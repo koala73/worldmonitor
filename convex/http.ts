@@ -503,6 +503,7 @@ http.route({
       aiDigestEnabled?: boolean;
       countries?: string[];
       tickers?: string[];
+      scheduleWelcome?: boolean;
     }>(request);
     if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
@@ -531,6 +532,13 @@ http.route({
         });
       }
 
+      if (action === "welcome-scheduling-capability") {
+        return new Response(
+          JSON.stringify({ durableWelcomeScheduling: true }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
       if (action === "create-pairing-token") {
         const result = await ctx.runMutation((internal as any).notificationChannels.createPairingTokenForUser, {
           userId,
@@ -550,8 +558,13 @@ http.route({
           webhookEnvelope: body.webhookEnvelope,
           email: body.email,
           webhookLabel: body.webhookLabel,
+          scheduleWelcome: body.scheduleWelcome === true,
         });
-        return new Response(JSON.stringify({ ok: true, isNew: setResult.isNew }), { status: 200, headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({
+          ok: true,
+          isNew: setResult.isNew,
+          durableWelcomeScheduling: body.scheduleWelcome === true,
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 
       if (action === "set-slack-oauth") {
@@ -591,8 +604,13 @@ http.route({
           p256dh: body.p256dh,
           auth: body.auth,
           userAgent: body.userAgent,
+          scheduleWelcome: body.scheduleWelcome === true,
         });
-        return new Response(JSON.stringify({ ok: true, isNew: webPushResult.isNew }), { status: 200, headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({
+          ok: true,
+          isNew: webPushResult.isNew,
+          durableWelcomeScheduling: body.scheduleWelcome === true,
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 
       if (action === "delete-channel") {
