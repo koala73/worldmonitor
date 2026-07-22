@@ -32,6 +32,12 @@ const RELAY_SHARED_SECRET = process.env.RELAY_SHARED_SECRET ?? '';
 const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL ?? '';
 const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN ?? '';
 
+// Bound the Convex relay round-trip. Without it a hung Convex action keeps the
+// caller open past the idempotency PROCESSING TTL, so the lock stays held and
+// every retry 409s until it expires (#5426). Kept above the 5s Upstash-queue
+// timeouts since a Convex action does more work, but well under the lock TTL.
+const CONVEX_RELAY_TIMEOUT_MS = 10_000;
+
 // AES-256-GCM encryption using Web Crypto (matches Node crypto.cjs decrypt format).
 // Format stored: v1:<base64(iv[12] || tag[16] || ciphertext)>
 async function encryptSlackWebhook(webhookUrl: string): Promise<string> {
@@ -147,6 +153,7 @@ async function convexRelay(body: Record<string, unknown>): Promise<Response> {
       'Authorization': `Bearer ${RELAY_SHARED_SECRET}`,
     },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(CONVEX_RELAY_TIMEOUT_MS),
   });
 }
 
