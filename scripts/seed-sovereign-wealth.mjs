@@ -83,6 +83,10 @@
 import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, SHARED_FX_FALLBACKS, getSharedFxRates, getBundleRunStartedAtMs } from './_seed-utils.mjs';
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 import { groupFundsByCountry, loadSwfManifest } from './shared/swf-manifest-loader.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, SHARED_FX_FALLBACKS, getSharedFxRates, getBundleRunStartedAtMs } from './_seed-utils.mjs';
+import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
+import { groupFundsByCountry, loadSwfManifest } from './shared/swf-manifest-loader.mjs';
+import { decodeHtmlEntities } from './shared/entity-decoder.mjs'; 
 
 const REEXPORT_SHARE_CANONICAL_KEY = 'resilience:recovery:reexport-share:v1';
 const REEXPORT_SHARE_META_KEY = 'seed-meta:resilience:recovery:reexport-share';
@@ -336,13 +340,9 @@ function stripHtmlInline(value) {
   // `302.0<sup>41</sup>` becomes `302.0 41` — otherwise the decimal
   // value and its trailing footnote ref get welded into `302.041`,
   // which the Assets regex then mis-parses as a single number.
-  return String(value || '')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&[#\w]+;/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
+  let text = String(value || '').replace(/<[^>]+>/g, ' ');
+  text = decodeHtmlEntities(text);
+  return text.replace(/\s+/g, ' ').trim();
 }
 
 // Depth-aware extraction of the first `<table class="wikitable...">`

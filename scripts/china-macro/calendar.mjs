@@ -1,6 +1,11 @@
 export const NBS_CALENDAR_INDEX_URL = 'https://www.stats.gov.cn/english/PressRelease/ReleaseCalendar/';
 export const CHINAMONEY_LPR_URL = 'https://www.chinamoney.com.cn/chinese/bklpr/?tab=2';
 export const CHINAMONEY_LPR_NOTICE_API = 'https://www.chinamoney.com.cn/ags/ms/cm-s-notice-query/contentsinshorttime';
+import { decodeHtmlEntities } from './shared/entity-decoder.mjs';
+
+export const NBS_CALENDAR_INDEX_URL = 'https://www.stats.gov.cn/english/PressRelease/ReleaseCalendar/';
+
+
 // Official LPR market-notice channel resolved by ChinaMoney's public
 // /chinese/cxsymb/index.html channel map (`bklprmkn2`).
 const CHINAMONEY_LPR_CHANNEL_ID = '3686';
@@ -24,13 +29,11 @@ function isoDate(year, month, day) {
 }
 
 function stripHtml(value) {
-  return value
+  const stripped = value
     .replace(/<br\s*\/?\s*>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;|&#160;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&quot;/gi, '"')
+    .replace(/<[^>]+>/g, ' ');
+
+  return decodeHtmlEntities(stripped)
     .replace(/[ \t]+/g, ' ')
     .trim();
 }

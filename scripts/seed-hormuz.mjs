@@ -13,6 +13,9 @@
 // Chart window: last 30 days
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { decodeHtmlEntities } from './shared/entity-decoder.mjs'; // <-- Ye line add karni hai
+
 
 loadEnvFile(import.meta.url);
 
@@ -178,26 +181,19 @@ async function fetchPbiCharts() {
 }
 
 // Decode common HTML entities in scraped text.
-function decodeHtmlEntities(s) {
-  return s
+function stripTags(s) {
+  // Pehle HTML tags aur special typography (quotes/dashes) replace karo
+  const cleaned = s.replace(/<[^>]+>/g, '')
     .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&#039;/g, "'")
     .replace(/&ldquo;/g, '\u201c')
     .replace(/&rdquo;/g, '\u201d')
     .replace(/&lsquo;/g, '\u2018')
     .replace(/&rsquo;/g, '\u2019')
     .replace(/&mdash;/g, '\u2014')
-    .replace(/&ndash;/g, '\u2013')
-    .replace(/&#8217;/g, '\u2019')
-    .replace(/&#8220;/g, '\u201c')
-    .replace(/&#8221;/g, '\u201d');
-}
+    .replace(/&ndash;/g, '\u2013');
 
-function stripTags(s) {
-  return decodeHtmlEntities(s.replace(/<[^>]+>/g, '')).replace(/\s+/g, ' ').trim();
+  // Phir safe decoder call karke extra spaces hata do
+  return decodeHtmlEntities(cleaned).replace(/\s+/g, ' ').trim();
 }
 
 function deriveStatus(text) {

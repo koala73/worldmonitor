@@ -9,6 +9,7 @@
  */
 
 import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep } from './_seed-utils.mjs';
+import { decodeHtmlEntities } from './shared/entity-decoder.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -37,8 +38,8 @@ async function fetchArxivPapers() {
     const entryBlocks = xml.split('<entry>').slice(1);
     for (const block of entryBlocks) {
       const id = (block.match(/<id>([\s\S]*?)<\/id>/)?.[1] || '').trim().split('/').pop() || '';
-      const title = (block.match(/<title>([\s\S]*?)<\/title>/)?.[1] || '').trim().replace(/\s+/g, ' ');
-      const summary = (block.match(/<summary>([\s\S]*?)<\/summary>/)?.[1] || '').trim().replace(/\s+/g, ' ');
+      const title = decodeHtmlEntities((block.match(/<title>([\s\S]*?)<\/title>/)?.[1] || '').trim().replace(/\s+/g, ' '));
+      const summary = decodeHtmlEntities((block.match(/<summary>([\s\S]*?)<\/summary>/)?.[1] || '').trim().replace(/\s+/g, ' ')); 
       const published = block.match(/<published>([\s\S]*?)<\/published>/)?.[1]?.trim() || '';
       const publishedAt = published ? new Date(published).getTime() : 0;
       const urlMatch = block.match(/<link[^>]*rel="alternate"[^>]*href="([^"]+)"/);
@@ -167,11 +168,11 @@ async function fetchTechEvents() {
       const today = new Date().toISOString().split('T')[0];
       for (const m of items) {
         const block = m[1];
-        const title = (block.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/)?.[1] ||
-                       block.match(/<title>(.*?)<\/title>/)?.[1] || '').trim();
+        const title = decodeHtmlEntities((block.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/)?.[1] ||
+                       block.match(/<title>(.*?)<\/title>/)?.[1] || '').trim());
         const link = block.match(/<link>(.*?)<\/link>/)?.[1]?.trim() || '';
-        const desc = (block.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/)?.[1] ||
-                      block.match(/<description>([\s\S]*?)<\/description>/)?.[1] || '').trim();
+        const desc = decodeHtmlEntities((block.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/)?.[1] ||
+                      block.match(/<description>([\s\S]*?)<\/description>/)?.[1] || '').trim());
         const guid = block.match(/<guid[^>]*>(.*?)<\/guid>/)?.[1]?.trim() || '';
         if (!title) continue;
         const dateMatch = desc.match(/on\s+(\w+\s+\d{1,2},?\s+\d{4})/i);

@@ -10,6 +10,7 @@ import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 // its top-level runSeed is guarded by `if (process.argv[1]?.endsWith(...))`,
 // so importing as a module just exposes the parsers.
 import { parseRealtimeAlerts } from './seed-vpd-tracker.mjs';
+
 // Pure helpers (parsers/mappers/contentMeta/publishTransform) live in their
 // own module so tests can import the real code instead of replicating it.
 // See `scripts/_disease-outbreaks-helpers.mjs` for the shape contract.
@@ -23,8 +24,10 @@ import {
   DISEASE_MAX_CONTENT_AGE_MIN,
   ALERT_LEVEL_METHODOLOGY_VERSION,
 } from './_disease-outbreaks-helpers.mjs';
+import { decodeHtmlEntities } from './shared/entity-decoder.mjs'; // <-- Ye line add karni hai
 
 loadEnvFile(import.meta.url);
+
 
 const CANONICAL_KEY = 'health:disease-outbreaks:v1';
 const CACHE_TTL = 259200; // 72h (3 days) — 3× daily cron interval per gold standard; survives 2 consecutive missed runs
@@ -87,9 +90,7 @@ async function fetchRssItems(url, sourceName) {
       const title = (block.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/) || [])[1]?.trim() || '';
       const link = (block.match(/<link>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/link>/) || [])[1]?.trim() || '';
       const rawDesc = (block.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/) || [])[1] || '';
-      const desc = rawDesc
-        .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
-        .replace(/<[^>]+>/g, '').trim().slice(0, 300);
+      const desc = decodeHtmlEntities(rawDesc.replace(/<[^>]+>/g, ' ')).replace(/\s+/g, ' ').trim().slice(0, 300);
       const pubDate = (block.match(/<pubDate>(.*?)<\/pubDate>/) || [])[1]?.trim() || '';
       // Per-item synthetic-tag normalization lives in _disease-outbreaks-helpers.mjs
       // (rssNormalizeItem) so tests verify the exact contract without duplicating logic.

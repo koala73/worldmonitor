@@ -4,6 +4,10 @@ import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 // Pure contentMeta helper lives in its own module so tests can import the
 // real code (no replicas, no drift). See helpers module header for rationale.
 import { climateNewsContentMeta, CLIMATE_NEWS_MAX_CONTENT_AGE_MIN } from './_climate-news-helpers.mjs';
+import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { climateNewsContentMeta, CLIMATE_NEWS_MAX_CONTENT_AGE_MIN } from './_climate-news-helpers.mjs';
+import { decodeHtmlEntities } from './shared/entity-decoder.mjs'; // <-- Ye line add karni hai
+
 
 loadEnvFile(import.meta.url);
 
