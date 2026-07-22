@@ -27,6 +27,12 @@ services:
       LOCAL_API_MODE: "docker"
       LOCAL_API_CLOUD_FALLBACK: "false"
       WS_RELAY_URL: "http://ais-relay:3004"
+      # Comma-separated operator keys accepted by /api/mcp and the REST gateway
+      # via the X-WorldMonitor-Key header. This is the ONLY credential a
+      # self-hosted deployment can present (the OAuth/Convex path is hosted-only),
+      # so without passing it through, MCP auth is unconfigurable here. Optional:
+      # leave unset and /api/mcp simply stays closed.
+      WORLDMONITOR_VALID_KEYS: "${WORLDMONITOR_VALID_KEYS:-}"
       # LLM provider (any OpenAI-compatible endpoint)
       LLM_API_URL: "${LLM_API_URL:-}"
       LLM_API_KEY: "${LLM_API_KEY:-}"

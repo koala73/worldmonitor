@@ -48,6 +48,31 @@ These must be set before `docker compose up -d`, or one of the containers will e
 
 > Need to bring the relay up without auth for local debugging? Set `I_UNDERSTAND_THIS_DISABLES_AUTH=true` (the deprecated `ALLOW_UNAUTHENTICATED_RELAY=true` is still accepted). The relay will log a loud `[SECURITY]` warning at boot and every 5 minutes, and every non-public route will be reachable by anyone who can hit the port — **never use this on an internet-reachable host.**
 
+## 🤖 Using the MCP server
+
+The bundled MCP server is served at `/api/mcp` on your own stack. It authenticates
+with the `X-WorldMonitor-Key` header, validated against `WORLDMONITOR_VALID_KEYS`
+(the OAuth path is hosted-only). Generate a key, put it in `.env`, and restart:
+
+```bash
+echo "WORLDMONITOR_VALID_KEYS=wm_$(openssl rand -hex 20)" >> .env
+docker compose up -d
+```
+
+```bash
+curl -s -X POST http://localhost:3000/api/mcp \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  -H "X-WorldMonitor-Key: $YOUR_KEY" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+> **Bearer tokens do not work against a self-hosted stack.** `docker/nginx.conf`
+> overwrites `Authorization` with the sidecar's internal transport token, so a
+> client-supplied bearer never reaches the handler. Use `X-WorldMonitor-Key`. If
+> your MCP client can only send `Authorization`, put a small proxy in front that
+> rewrites it into the header.
+
 ## 🔑 API Keys
 
 Create a `docker-compose.override.yml` to inject your keys. This file is **gitignored** — your secrets stay local.
