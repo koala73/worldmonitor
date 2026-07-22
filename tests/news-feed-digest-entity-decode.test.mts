@@ -11,7 +11,8 @@ function escapeXml(text: string): string {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
 }
 
 describe('decodeXmlEntities: one pass must decode exactly one level', () => {
@@ -21,6 +22,7 @@ describe('decodeXmlEntities: one pass must decode exactly one level', () => {
       'XSS via &lt;script&gt; in Acme SDK',
       'Q3 revenue > $2B & rising',
       'He said "no comment"',
+      "Ireland's PM: 'no deal' & <no> comment",
       'plain headline with no entities',
     ];
     for (const original of originals) {
