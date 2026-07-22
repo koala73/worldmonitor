@@ -292,6 +292,11 @@ async function generateSummaryInternal(
   options?: SummarizeOptions,
 ): Promise<SummarizationResult | null> {
   const bodies = options?.bodies;
+  // Entitlement/suppression snapshot for this call — when the gate is
+  // closed (anon/free or 403-suppressed), skip the entire API chain
+    // instead of iterating providers that will each bail at the per-provider
+  // gate check (#5377).
+  const serverGated = !canAttemptServerSummarization();
   // Only take the pre-chain cache-lookup shortcut when no body is present.
   // When bodies are RAW on the client but sanitised server-side before
   // keying, the keys diverge on injection content. The regular call chain
@@ -318,14 +323,14 @@ async function generateSummaryInternal(
         const browserResult = await tryBrowserT5(headlines, 'summarization-beta', bodies);
         if (browserResult) {
           const groqProvider = API_PROVIDERS.find(p => p.provider === 'groq');
-          if (groqProvider && !options?.skipCloudProviders) tryApiProvider(groqProvider, headlines, geoContext, undefined, bodies).catch(() => {});
+          if (groqProvider && !options?.skipCloudProviders && !serverGated) tryApiProvider(groqProvider, headlines, geoContext, undefined, bodies).catch(() => {});
 
           return browserResult;
         }
       }
 
       // Warm model failed inference -- fallback through API providers
-      if (!options?.skipCloudProviders) {
+      if (!options?.skipCloudProviders && !serverGated) {
         const chainResult = await runApiChain(API_PROVIDERS, headlines, geoContext, undefined, onProgress, 2, totalSteps, bodies);
         if (chainResult) return chainResult;
       }
@@ -336,7 +341,7 @@ async function generateSummaryInternal(
       }
 
       // API providers while model loads
-      if (!options?.skipCloudProviders) {
+      if (!options?.skipCloudProviders && !serverGated) {
         const chainResult = await runApiChain(API_PROVIDERS, headlines, geoContext, undefined, onProgress, 1, totalSteps, bodies);
         if (chainResult) {
           return chainResult;
@@ -353,7 +358,7 @@ async function generateSummaryInternal(
       onProgress?.(totalSteps, totalSteps, 'No providers available');
     }
 
-    console.warn('[BETA] All providers failed');
+    if (!serverGated) console.warn('[BETA] All providers failed');
     return null;
   }
 
@@ -361,7 +366,7 @@ async function generateSummaryInternal(
   const totalSteps = API_PROVIDERS.length + 1;
   let chainResult: SummarizationResult | null = null;
 
-  if (!options?.skipCloudProviders) {
+  if (!options?.skipCloudProviders && !serverGated) {
     chainResult = await runApiChain(API_PROVIDERS, headlines, geoContext, lang, onProgress, 1, totalSteps, bodies);
   }
   if (chainResult) return chainResult;
@@ -372,7 +377,7 @@ async function generateSummaryInternal(
     if (browserResult) return browserResult;
   }
 
-  console.warn('[Summarization] All providers failed');
+  if (!serverGated) console.warn('[Summarization] All providers failed');
   return null;
 }
 
