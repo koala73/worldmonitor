@@ -1134,6 +1134,20 @@ export const VARIANT_DEFAULTS: Record<string, string[]> = {
   commodity: Object.keys(VARIANT_PANEL_CONFIGS.commodity),
   energy:    Object.keys(VARIANT_PANEL_CONFIGS.energy),
   happy:     Object.keys(VARIANT_PANEL_CONFIGS.happy),
+  // India / South Asia desk — curated subset of the full geopolitical panels,
+  // ordered for a regional focus (Asia + energy/markets first, Western-region
+  // desks dropped). Panels resolve their config from ALL_PANELS via
+  // getEffectivePanelConfig, so no separate *_PANELS table is required.
+  india: [
+    'map', 'live-news', 'insights', 'strategic-posture', 'cii', 'strategic-risk',
+    'intel', 'gdelt-intel', 'threat-timeline', 'cascade',
+    'asia', 'politics', 'middleeast',
+    'energy', 'energy-complex', 'commodities', 'gold-intelligence',
+    'markets', 'economic', 'supply-chain', 'trade-policy', 'finance', 'polymarket',
+    'gov', 'thinktanks', 'security-advisories',
+    'disease-outbreaks', 'displacement', 'climate', 'satellite-fires', 'ucdp-events',
+    'national-debt', 'world-clock', 'monitors',
+  ],
 };
 
 /**
@@ -1163,6 +1177,13 @@ export const VARIANT_PANEL_OVERRIDES: Partial<Record<string, Partial<Record<stri
   },
   happy: {
     map:         { name: 'World Map' },
+  },
+  india: {
+    map:         { name: 'South Asia Map' },
+    'live-news': { name: 'South Asia Headlines' },
+    insights:    { name: 'AI Regional Insights' },
+    asia:        { name: 'India & South Asia' },
+    politics:    { name: 'World News' },
   },
 };
 
