@@ -21,7 +21,12 @@ import type {
 import { CITY_COORDS } from '../../../../api/data/city-coords';
 import filterParamContracts from '../../../../shared/openapi-filter-param-contracts.json';
 import { CHROME_UA } from '../../../_shared/constants';
-import { resolveTechEventsPaging, type TechEventsPagingPresence } from './_tech-events-paging';
+import {
+  resolveTechEventsPaging,
+  TECH_EVENTS_MAX_DAYS,
+  TECH_EVENTS_MAX_LIMIT,
+  type TechEventsPagingPresence,
+} from './_tech-events-paging';
 import { cachedFetchJson } from '../../../_shared/redis';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 
@@ -463,8 +468,17 @@ export async function listTechEvents(
 
     // Primary: read from seed-populated Redis key (Railway relay seeds this every 6h)
     const result = await cachedFetchJson<ListTechEventsResponse>(REDIS_CACHE_KEY, REDIS_CACHE_TTL, async () => {
-      // Fallback fetcher: only runs on cold start when seed hasn't populated yet
-      const fetched = await fetchTechEvents(req, pagingPresence);
+      // Fallback fetcher: only runs on cold start when seed hasn't populated yet.
+      //
+      // REDIS_CACHE_KEY is shared and request-independent — the relay seeds the
+      // FULL event list under it — so this fetcher must not bake the calling
+      // request's filters into the cached payload. fetchTechEvents() applies
+      // type/mappable/days/limit itself, so ask it for the widest set and let
+      // filterEvents() below narrow the response for this caller.
+      const fetched = await fetchTechEvents(
+        { ...req, type: 'all', mappable: false, limit: TECH_EVENTS_MAX_LIMIT, days: TECH_EVENTS_MAX_DAYS },
+        { hasLimit: true, hasDays: true },
+      );
       return fetched.events.length > 0 ? fetched : null;
     });
 
