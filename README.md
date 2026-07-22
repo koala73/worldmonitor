@@ -215,3 +215,6 @@ See our [Security Policy](./SECURITY.md) for responsible disclosure guidelines.
    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=koala73/worldmonitor&type=Date" />
  </picture>
 </a>
+F i x e d  
+ T y p o  
+ 
