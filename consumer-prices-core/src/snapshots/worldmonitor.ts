@@ -295,6 +295,19 @@ export async function buildOverviewSnapshot(marketCode: string): Promise<WMOverv
   };
 }
 
+// A shelf-price change beyond a 4x ratio in either direction is far more likely
+// a unit/pack-size parse artifact (single vs multipack, per-kg vs per-100g,
+// currency drift) than a real move. Gating these keeps movers trustworthy
+// (#5445); the 4x bilateral bound mirrors the grocery-basket outlier gate
+// (#2322).
+export const MAX_MOVE_RATIO = 4;
+
+export function isPlausiblePriceMove(changePct: number): boolean {
+  if (!Number.isFinite(changePct)) return false;
+  const ratio = 1 + changePct / 100; // newPrice / pastPrice
+  return ratio >= 1 / MAX_MOVE_RATIO && ratio <= MAX_MOVE_RATIO;
+}
+
 export async function buildMoversSnapshot(
   marketCode: string,
   rangeDays: number,
@@ -349,12 +362,22 @@ export async function buildMoversSnapshot(
     changePct: parseFloat(r.change_pct),
   }));
 
+  // Drop implausible movers (unit/pack-size parse artifacts) before ranking so
+  // the published risers/fallers stay trustworthy (#5445).
+  const plausible = all.filter((r) => isPlausiblePriceMove(r.changePct));
+  const dropped = all.length - plausible.length;
+  if (dropped > 0) {
+    console.warn(
+      `[movers] ${marketCode} ${range}: dropped ${dropped}/${all.length} implausible movers (>${MAX_MOVE_RATIO}x — likely unit/parse artifacts)`,
+    );
+  }
+
   return {
     marketCode,
     asOf: String(now),
     range,
-    risers: all.filter((r) => r.changePct > 0).slice(0, 10),
-    fallers: all.filter((r) => r.changePct < 0).slice(0, 10),
+    risers: plausible.filter((r) => r.changePct > 0).slice(0, 10),
+    fallers: plausible.filter((r) => r.changePct < 0).slice(0, 10),
     upstreamUnavailable: false,
   };
 }
