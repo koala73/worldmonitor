@@ -253,6 +253,8 @@ function syncLocalePricingFeaturePlaceholders(localesDir, generatedFeaturesByKey
 
   let changedFiles = 0;
   const preservedTranslations = [];
+  const appendedPlaceholders = [];
+  const trimmedPlaceholders = [];
   for (const file of readdirSync(localesDir).filter((name) => name.endsWith('.json')).sort()) {
     const localePath = join(localesDir, file);
     const locale = readJsonFile(localePath);
@@ -275,7 +277,39 @@ function syncLocalePricingFeaturePlaceholders(localesDir, generatedFeaturesByKey
         tier.features = generatedFeatures;
         changed = true;
       } else if (!isEnglishSource && generatedFeaturesChanged && !sameStringArray(currentFeatures, generatedFeatures)) {
-        preservedTranslations.push(`${file}:pricing.tiers.${key}.features`);
+        // Translated locale diverges from generated — preserve existing translations,
+        // but append any NEW bullets from the generated English as untranslated placeholders,
+        // and trim any bullets that were removed from the English catalog (#5420).
+        const newBullets = findNewBullets(previousGeneratedFeatures, generatedFeatures);
+        const removedBullets = findRemovedBullets(previousGeneratedFeatures, generatedFeatures);
+
+        let updatedFeatures = currentFeatures;
+
+        // Trim removed English bullets (untranslated placeholders left from prior appends)
+        if (removedBullets.length > 0) {
+          const trimmed = updatedFeatures.filter((bullet) => !removedBullets.includes(bullet));
+          if (trimmed.length < updatedFeatures.length) {
+            updatedFeatures = trimmed;
+            changed = true;
+            trimmedPlaceholders.push(`${file}:pricing.tiers.${key}.features (-${updatedFeatures.length - trimmed.length || currentFeatures.length - trimmed.length})`);
+          }
+        }
+
+        // Append new English bullets as untranslated placeholders
+        if (newBullets.length > 0 && updatedFeatures.length < generatedFeatures.length) {
+          const missing = newBullets.filter((bullet) => !updatedFeatures.includes(bullet));
+          if (missing.length > 0) {
+            updatedFeatures = [...updatedFeatures, ...missing];
+            changed = true;
+            appendedPlaceholders.push(`${file}:pricing.tiers.${key}.features (+${missing.length})`);
+          }
+        }
+
+        if (updatedFeatures !== currentFeatures) {
+          tier.features = updatedFeatures;
+        } else {
+          preservedTranslations.push(`${file}:pricing.tiers.${key}.features`);
+        }
       }
     }
 
@@ -284,6 +318,20 @@ function syncLocalePricingFeaturePlaceholders(localesDir, generatedFeaturesByKey
       changedFiles += 1;
       console.log(`  ✓ ${localePath}`);
     }
+  }
+
+  if (appendedPlaceholders.length > 0) {
+    console.warn(
+      `  ⚠ appended untranslated English placeholder(s) to translated locales (${appendedPlaceholders.length}): ` +
+        appendedPlaceholders.join(', '),
+    );
+  }
+
+  if (trimmedPlaceholders.length > 0) {
+    console.warn(
+      `  ⚠ trimmed removed English placeholder(s) from translated locales (${trimmedPlaceholders.length}): ` +
+        trimmedPlaceholders.join(', '),
+    );
   }
 
   if (preservedTranslations.length > 0) {
@@ -345,4 +393,28 @@ function sameStringArray(left, right) {
     Array.isArray(right) &&
     left.length === right.length &&
     left.every((value, index) => value === right[index]);
+}
+
+/**
+ * Identify bullets that were added to the generated features array relative to
+ * the previous snapshot. Returns an array of new English strings that are in
+ * `current` but not in `previous`. Handles both trailing appends and mid-array
+ * insertions by comparing set membership.
+ */
+function findNewBullets(previous, current) {
+  if (!Array.isArray(previous) || !Array.isArray(current)) return [];
+  if (current.length <= previous.length) return [];
+  const previousSet = new Set(previous);
+  return current.filter((bullet) => !previousSet.has(bullet));
+}
+
+/**
+ * Identify bullets that were removed from the generated features array relative
+ * to the previous snapshot. Returns an array of English strings that were in
+ * `previous` but are no longer in `current`.
+ */
+function findRemovedBullets(previous, current) {
+  if (!Array.isArray(previous) || !Array.isArray(current)) return [];
+  const currentSet = new Set(current);
+  return previous.filter((bullet) => !currentSet.has(bullet));
 }
