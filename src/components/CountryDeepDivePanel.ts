@@ -47,6 +47,7 @@ import type {
 import { fetchMultiSectorCostShock, HS2_SHORT_LABELS } from '@/services/supply-chain';
 import type { MapContainer } from './MapContainer';
 import { dedupeHeadlines } from './CountryDeepDivePanel-news-utils';
+import { decodeHtmlEntities } from '../utils/decode-entities';
 import { renderFollowButton } from '@/utils/follow-button';
 import { renderNotifyCountryLink } from '@/utils/notify-country-link';
 import { exportCountryEvidenceMarkdown } from '@/utils/export';
@@ -3175,18 +3176,8 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   private decodeEntities(text: string): string {
-    // Single-pass decode (issue #5436): decode exactly one entity level so
-    // escaped-once markup like `&amp;lt;` stays literal instead of double-decoding.
-    return text.replace(/&(?:amp|lt|gt|quot|#(\d+)|#[xX]([0-9a-fA-F]+));/g, (m, dec, hex) => {
-      if (dec !== undefined || hex !== undefined) {
-        const cp = hex !== undefined ? parseInt(hex, 16) : Number(dec);
-        if (cp === 39) return "'";
-        if (cp === 47) return '/';
-        return m;
-      }
-      const named: Record<string, string> = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"' };
-      return named[m] ?? m;
-    });
+    // Single-pass decode (issue #5436) — shared client implementation.
+    return decodeHtmlEntities(text);
   }
 
   private toThreatLevel(level: string | undefined): ThreatLevel {

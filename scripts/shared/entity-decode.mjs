@@ -27,6 +27,27 @@ function escapeForRegExp(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// Compiled-regex cache. Call sites pass a fresh config object literal per call
+// (hundreds of times per seeder run), so memoise on a stable string derived
+// from the parts that shape the pattern rather than on object identity.
+const _regexCache = new Map();
+
+function compiledRegExp(names, caseInsensitive, unknownToSpace) {
+  const key = `${caseInsensitive ? 'i' : '-'}${unknownToSpace ? 'u' : '-'}|${names.join(',')}`;
+  let re = _regexCache.get(key);
+  if (!re) {
+    // Named capture groups keep the replace callback position-independent
+    // regardless of which alternatives are present.
+    const parts = [];
+    if (names.length > 0) parts.push(`(?<name>${names.join('|')})`);
+    parts.push('#[xX](?<hex>[0-9a-fA-F]+)', '#(?<dec>\\d+)');
+    if (unknownToSpace) parts.push('(?<unknown>[a-zA-Z][a-zA-Z0-9]*)');
+    re = new RegExp(`&(?:${parts.join('|')});`, caseInsensitive ? 'gi' : 'g');
+    _regexCache.set(key, re);
+  }
+  return re;
+}
+
 /**
  * Decode HTML/XML entities in a single left-to-right pass.
  *
@@ -61,14 +82,7 @@ export function decodeHtmlEntities(text, config = {}) {
     : named;
 
   const names = Object.keys(named).map(escapeForRegExp);
-  // Named capture groups keep the callback position-independent regardless of
-  // which alternatives are present.
-  const parts = [];
-  if (names.length > 0) parts.push(`(?<name>${names.join('|')})`);
-  parts.push('#[xX](?<hex>[0-9a-fA-F]+)', '#(?<dec>\\d+)');
-  if (unknownToSpace) parts.push('(?<unknown>[a-zA-Z][a-zA-Z0-9]*)');
-
-  const re = new RegExp(`&(?:${parts.join('|')});`, caseInsensitive ? 'gi' : 'g');
+  const re = compiledRegExp(names, caseInsensitive, unknownToSpace);
 
   return text.replace(re, (...args) => {
     const match = args[0];
