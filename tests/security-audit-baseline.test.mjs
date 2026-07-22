@@ -137,12 +137,22 @@ describe('security audit baseline', () => {
             url: 'https://github.com/advisories/GHSA-395f-4hp3-45gv',
           }],
         },
+        'sharp': {
+          name: 'sharp',
+          severity: 'high',
+          via: [{
+            name: 'sharp',
+            severity: 'high',
+            title: 'sharp inherited vulnerabilities in libvips',
+            url: 'https://github.com/advisories/GHSA-f88m-g3jw-g9cj',
+          }],
+        },
       },
     };
 
     // The still-present ids are not reported as stale; GHSA-qjx8 (absent) is.
     assert.deepEqual(collectStaleBaselineEntries(report, 'pro-test/package-lock.json'), ['GHSA-qjx8-664m-686j']);
-    // The empty root baseline has nothing to mark stale.
+    // Root's baselined sharp advisory is present in the report, so nothing is stale.
     assert.deepEqual(collectStaleBaselineEntries(report, 'package-lock.json'), []);
   });
 
