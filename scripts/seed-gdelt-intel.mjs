@@ -161,7 +161,14 @@ export async function fetchAllTopics(deps = {}) {
     _sleep = sleep,
     _fetchArticles = fetchWithRetry,
     _fetchTimeline = fetchTopicTimeline,
-    _loadPrevious = () => verifySeedKey(CANONICAL_KEY).catch(() => null),
+    // The cache-merge fallback is what keeps seed-meta fresh through a GDELT
+    // outage — when this read dies the run degrades to a no-write skip and
+    // freshness silently rots (21h stale before the gate fired, issue #5437),
+    // so its failure must be visible in the run log.
+    _loadPrevious = () => verifySeedKey(CANONICAL_KEY).catch((err) => {
+      console.warn(`  cache-merge: failed to load previous snapshot (${err?.message || err}) — topics will not be backfilled this run`);
+      return null;
+    }),
     _softBudgetMs = FETCH_SOFT_BUDGET_MS,
     _minTopicBudgetMs = MIN_TOPIC_BUDGET_MS,
     _interTopicDelayMs = INTER_TOPIC_DELAY_MS,
