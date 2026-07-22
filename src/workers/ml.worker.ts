@@ -161,7 +161,6 @@ async function loadModel(modelId: string): Promise<void> {
     });
 
     loadedPipelines.set(modelId, pipe);
-    loadingPromises.delete(modelId);
     console.log(`[MLWorker] Model loaded in ${Date.now() - startTime}ms: ${modelId}`);
 
     // Notify manager that model is now available (no id = unsolicited notification)
@@ -169,6 +168,14 @@ async function loadModel(modelId: string): Promise<void> {
   })();
 
   loadingPromises.set(modelId, loadPromise);
+  // Clear the in-flight entry on BOTH settle paths. Clearing only on success
+  // leaves a rejected promise cached here, and the early return above then
+  // hands that same rejection to every later loadModel() call — one transient
+  // model download failure would disable the model for the worker's lifetime.
+  const clearInFlight = () => {
+    loadingPromises.delete(modelId);
+  };
+  void loadPromise.then(clearInFlight, clearInFlight);
   return loadPromise;
 }
 
