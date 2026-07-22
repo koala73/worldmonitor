@@ -31,7 +31,7 @@ export interface ProviderCredentials {
   extraBody?: Record<string, unknown>;
 }
 
-export type LlmProviderName = 'ollama' | 'groq' | 'openrouter' | 'generic';
+export type LlmProviderName = 'ollama' | 'atlascloud' | 'groq' | 'openrouter' | 'generic';
 
 export interface ProviderCredentialOverrides {
   model?: string;
@@ -42,6 +42,10 @@ export interface ProviderCredentialOverrides {
 const OLLAMA_HOST_ALLOWLIST = new Set([
   'localhost', '127.0.0.1', '::1', '[::1]', 'host.docker.internal',
 ]);
+
+function openAiChatCompletionsUrl(baseUrl: string): string {
+  return `${baseUrl.replace(/\/+$/, '')}/chat/completions`;
+}
 
 function isLocalDeployment(): boolean {
   const mode = typeof process !== 'undefined' ? (process.env?.LOCAL_API_MODE || '') : '';
@@ -124,6 +128,22 @@ export function getProviderCredentials(
     };
   }
 
+  if (provider === 'atlascloud') {
+    const apiKey = process.env.ATLASCLOUD_API_KEY;
+    if (!apiKey) return null;
+    const baseUrl = process.env.ATLASCLOUD_API_BASE || 'https://api.atlascloud.ai/v1';
+    return {
+      apiUrl: openAiChatCompletionsUrl(baseUrl),
+      model: overrides.model
+        || process.env.ATLASCLOUD_MODEL
+        || (overrides.enableReasoning ? 'deepseek-ai/deepseek-v4-pro' : 'qwen/qwen3.5-flash'),
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+    };
+  }
+
   // Generic OpenAI-compatible endpoint via LLM_API_URL/LLM_API_KEY/LLM_MODEL
   if (provider === 'generic') {
     const apiUrl = process.env.LLM_API_URL;
@@ -188,11 +208,11 @@ export function stripThinkingTags(text: string): string {
 }
 
 
-// openrouter ahead of groq since #4944: core surfaces run DeepSeek V4 Flash
-// via OpenRouter; groq (llama-3.3-70b-versatile) is the free-tier/outage
-// fallback. Ollama stays first so self-hosted deployments are untouched —
-// it is skipped in cloud where OLLAMA_API_URL is unset.
-const PROVIDER_CHAIN = ['ollama', 'openrouter', 'groq', 'generic'] as const;
+// openrouter stays ahead of groq since #4944: core surfaces run DeepSeek V4
+// Flash via OpenRouter; groq (llama-3.3-70b-versatile) is the free-tier/outage
+// fallback. Ollama stays first so self-hosted deployments are untouched; Atlas
+// Cloud is skipped unless ATLASCLOUD_API_KEY is configured.
+const PROVIDER_CHAIN = ['ollama', 'atlascloud', 'openrouter', 'groq', 'generic'] as const;
 const PROVIDER_SET = new Set<string>(PROVIDER_CHAIN);
 
 export interface LlmCallOptions {
