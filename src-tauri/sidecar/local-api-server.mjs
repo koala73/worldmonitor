@@ -230,9 +230,22 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
       requestOptions.lookup = makePinnedLookup(pinned.address, pinned.family);
     }
     return await new Promise((resolve, reject) => {
+      // Settle idempotently on EVERY terminal event. Listening only for
+      // res 'end' / req 'error' leaks this Promise whenever an upstream sends
+      // headers and then stalls or truncates mid-body (common for rate-limited
+      // feeds): neither event fires, the finally below never runs, and one
+      // fetch-semaphore slot is lost until the process restarts (#5441).
+      let settled = false;
+      const settle = (fn, value) => {
+        if (settled) return;
+        settled = true;
+        fn(value);
+      };
       const req = mod.request(requestOptions, (res) => {
         const chunks = [];
         res.on('data', (c) => chunks.push(c));
+        res.on('error', (error) => settle(reject, error));
+        res.on('aborted', () => settle(reject, new Error('upstream response aborted mid-body')));
         res.on('end', () => {
           const buf = Buffer.concat(chunks);
           const responseHeaders = new Headers();
@@ -240,14 +253,27 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
             if (v) responseHeaders.set(k, Array.isArray(v) ? v.join(', ') : v);
           }
           try {
-            resolve(buildSafeResponse(res.statusCode, res.statusMessage, responseHeaders, buf));
+            settle(resolve, buildSafeResponse(res.statusCode, res.statusMessage, responseHeaders, buf));
           } catch (error) {
-            reject(error);
+            settle(reject, error);
           }
         });
       });
-      req.on('error', reject);
-      if (init?.signal) { init.signal.addEventListener('abort', () => req.destroy()); }
+      req.on('error', (error) => settle(reject, error));
+      // 'close' always fires once the request is done or destroyed — the
+      // catch-all for truncated responses and destroyed sockets. On clean
+      // completion res 'end' has already resolved, so this settle is a no-op.
+      req.on('close', () => settle(reject, new Error('upstream request closed before response completed')));
+      if (init?.signal) {
+        init.signal.addEventListener(
+          'abort',
+          () => {
+            req.destroy();
+            settle(reject, new Error('upstream request aborted by signal'));
+          },
+          { once: true },
+        );
+      }
       if (body != null) req.write(body);
       req.end();
     });
@@ -1728,6 +1754,14 @@ async function dispatch(requestUrl, req, routes, context) {
     return json({ error: 'Local handler error', reason, endpoint: requestUrl.pathname }, 502);
   }
 }
+
+// Test seam (see tests/sidecar-fetch-semaphore.test.mjs): lets tests allow a
+// local stall-server origin through the SSRF guard and observe the semaphore
+// limit without exporting the production internals for general use.
+export const __testing__ = {
+  registerSidecarAllowedPrivateFetchOrigins,
+  MAX_CONCURRENT_UPSTREAM,
+};
 
 export async function createLocalApiServer(options = {}) {
   const context = resolveConfig(options);
