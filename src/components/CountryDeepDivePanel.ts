@@ -3175,14 +3175,18 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   }
 
   private decodeEntities(text: string): string {
-    return text
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/&#x27;/g, "'")
-      .replace(/&#x2F;/g, '/');
+    // Single-pass decode (issue #5436): decode exactly one entity level so
+    // escaped-once markup like `&amp;lt;` stays literal instead of double-decoding.
+    return text.replace(/&(?:amp|lt|gt|quot|#(\d+)|#[xX]([0-9a-fA-F]+));/g, (m, dec, hex) => {
+      if (dec !== undefined || hex !== undefined) {
+        const cp = hex !== undefined ? parseInt(hex, 16) : Number(dec);
+        if (cp === 39) return "'";
+        if (cp === 47) return '/';
+        return m;
+      }
+      const named: Record<string, string> = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"' };
+      return named[m] ?? m;
+    });
   }
 
   private toThreatLevel(level: string | undefined): ThreatLevel {

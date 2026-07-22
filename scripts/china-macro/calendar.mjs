@@ -1,3 +1,4 @@
+import { decodeHtmlEntities as decodeEntities } from '../shared/entity-decode.mjs';
 export const NBS_CALENDAR_INDEX_URL = 'https://www.stats.gov.cn/english/PressRelease/ReleaseCalendar/';
 export const CHINAMONEY_LPR_URL = 'https://www.chinamoney.com.cn/chinese/bklpr/?tab=2';
 export const CHINAMONEY_LPR_NOTICE_API = 'https://www.chinamoney.com.cn/ags/ms/cm-s-notice-query/contentsinshorttime';
@@ -24,13 +25,15 @@ function isoDate(year, month, day) {
 }
 
 function stripHtml(value) {
-  return value
+  const stripped = value
     .replace(/<br\s*\/?\s*>/gi, '\n')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;|&#160;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&quot;/gi, '"')
+    .replace(/<[^>]+>/g, ' ');
+  return decodeEntities(stripped, {
+    named: { nbsp: ' ', amp: '&', apos: "'", quot: '"' },
+    numericOverrides: { 160: ' ', 39: "'" },
+    numericDefault: 'literal',
+    caseInsensitive: true,
+  })
     .replace(/[ \t]+/g, ' ')
     .trim();
 }

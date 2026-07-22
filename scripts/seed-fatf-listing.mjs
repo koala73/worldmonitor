@@ -17,6 +17,7 @@
 // drop the full listing.
 
 import { gunzipSync, inflateSync, brotliDecompressSync } from 'node:zlib';
+import { decodeHtmlEntities as decodeEntities } from './shared/entity-decode.mjs';
 import { loadEnvFile, CHROME_UA, runSeed, resolveProxyForConnect, httpsProxyFetchRaw, describeErr } from './_seed-utils.mjs';
 import countryNames from './shared/country-names.json' with { type: 'json' };
 
@@ -408,13 +409,11 @@ export function extractListedCountries(html, nameLookup) {
 // Full-fledged decoders pull in 100KB of dependencies; this targeted
 // list covers what we actually see in the fixtures.
 function decodeHtmlEntities(s) {
-  return String(s)
-    .replace(/&#39;/g, "'")
-    .replace(/&#34;/g, '"')
-    .replace(/&amp;/g, '&')
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>');
+  return decodeEntities(String(s), {
+    named: { amp: '&', nbsp: ' ', lt: '<', gt: '>' },
+    numericOverrides: { 39: "'", 34: '"' },
+    numericDefault: 'literal',
+  });
 }
 
 // Try to extract the publication date from the URL slug or the page

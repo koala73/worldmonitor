@@ -13,6 +13,7 @@
 // Chart window: last 30 days
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { decodeHtmlEntities as decodeEntities } from './shared/entity-decode.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -179,21 +180,15 @@ async function fetchPbiCharts() {
 
 // Decode common HTML entities in scraped text.
 function decodeHtmlEntities(s) {
-  return s
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&#039;/g, "'")
-    .replace(/&ldquo;/g, '\u201c')
-    .replace(/&rdquo;/g, '\u201d')
-    .replace(/&lsquo;/g, '\u2018')
-    .replace(/&rsquo;/g, '\u2019')
-    .replace(/&mdash;/g, '\u2014')
-    .replace(/&ndash;/g, '\u2013')
-    .replace(/&#8217;/g, '\u2019')
-    .replace(/&#8220;/g, '\u201c')
-    .replace(/&#8221;/g, '\u201d');
+  return decodeEntities(s, {
+    named: {
+      nbsp: ' ', amp: '&', lt: '<', gt: '>',
+      ldquo: '\u201c', rdquo: '\u201d', lsquo: '\u2018', rsquo: '\u2019',
+      mdash: '\u2014', ndash: '\u2013',
+    },
+    numericOverrides: { 39: "'", 8217: '\u2019', 8220: '\u201c', 8221: '\u201d' },
+    numericDefault: 'literal',
+  });
 }
 
 function stripTags(s) {

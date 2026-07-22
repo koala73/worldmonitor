@@ -2,6 +2,7 @@
 // @ts-check
 
 import { pathToFileURL } from 'node:url';
+import { decodeHtmlEntities as decodeEntitiesShared } from './shared/entity-decode.mjs';
 import { CHROME_UA, loadEnvFile, runSeed } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
@@ -44,17 +45,11 @@ const REGULATORY_FEEDS = [
 
 function decodeEntities(input) {
   if (!input) return '';
-  const named = input
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&apos;/gi, "'")
-    .replace(/&nbsp;/gi, ' ');
-
-  return named
-    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)));
+  return decodeEntitiesShared(input, {
+    named: { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' },
+    numericDefault: 'decode',
+    caseInsensitive: true,
+  });
 }
 
 function stripHtml(input) {

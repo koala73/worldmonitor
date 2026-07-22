@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { pathToFileURL } from 'node:url';
+import { decodeHtmlEntities as decodeEntities } from './shared/entity-decode.mjs';
 import { XMLParser } from 'fast-xml-parser';
 import Papa from 'papaparse';
 
@@ -163,15 +164,15 @@ export async function fetchCanadaBuys({ now = Date.now(), fetchTextFn = fetchTex
 }
 
 function decodeHtml(value) {
-  return String(value || '')
+  const stripped = String(value || '')
     .replace(/<br\s*\/?\s*>/gi, '\n')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&nbsp;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/<[^>]+>/g, '');
+  return decodeEntities(stripped, {
+    named: { nbsp: ' ', amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" },
+    numericOverrides: { 39: "'" },
+    numericDefault: 'literal',
+    caseInsensitive: true,
+  })
     .replace(/\s+/g, ' ')
     .trim();
 }

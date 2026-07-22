@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { decodeHtmlEntities as decodeEntities } from './shared/entity-decode.mjs';
 // Pure contentMeta helper lives in its own module so tests can import the
 // real code (no replicas, no drift). See helpers module header for rationale.
 import { climateNewsContentMeta, CLIMATE_NEWS_MAX_CONTENT_AGE_MIN } from './_climate-news-helpers.mjs';
@@ -31,13 +32,11 @@ function stableHash(str) {
 }
 
 function decodeHtmlEntities(text) {
-  return text
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, ' ');
+  return decodeEntities(text, {
+    named: { lt: '<', gt: '>', amp: '&', quot: '"', nbsp: ' ' },
+    numericOverrides: { 39: "'" },
+    numericDefault: 'literal',
+  });
 }
 
 function extractTag(block, tagName) {

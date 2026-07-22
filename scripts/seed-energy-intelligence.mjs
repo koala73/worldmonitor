@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed, httpsProxyFetchRaw } from './_seed-utils.mjs';
+import { decodeHtmlEntities as decodeEntities } from './shared/entity-decode.mjs';
 import { resolveProxyStringConnect } from './_proxy-utils.cjs';
 
 loadEnvFile(import.meta.url);
@@ -32,20 +33,14 @@ export function stableHash(str) {
 }
 
 function decodeHtmlEntities(text) {
-  return text
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)))
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;|&#39;/g, "'")
-    .replace(/&nbsp;/g, ' ')
-    .replace(/&hellip;/g, '…')
-    .replace(/&mdash;/g, '—')
-    .replace(/&ndash;/g, '–')
-    .replace(/&lsquo;|&rsquo;/g, "'")
-    .replace(/&ldquo;|&rdquo;/g, '"');
+  return decodeEntities(text, {
+    named: {
+      amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
+      hellip: '…', mdash: '—', ndash: '–',
+      lsquo: "'", rsquo: "'", ldquo: '"', rdquo: '"',
+    },
+    numericDefault: 'decode',
+  });
 }
 
 function extractTag(block, tagName) {
