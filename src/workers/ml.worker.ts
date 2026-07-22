@@ -172,8 +172,11 @@ async function loadModel(modelId: string): Promise<void> {
   // leaves a rejected promise cached here, and the early return above then
   // hands that same rejection to every later loadModel() call — one transient
   // model download failure would disable the model for the worker's lifetime.
+  // Only retract our OWN entry: if something else has already replaced or
+  // cleared it, a bare delete here would evict a newer in-flight load and
+  // break the de-dupe for its waiters.
   const clearInFlight = () => {
-    loadingPromises.delete(modelId);
+    if (loadingPromises.get(modelId) === loadPromise) loadingPromises.delete(modelId);
   };
   void loadPromise.then(clearInFlight, clearInFlight);
   return loadPromise;
