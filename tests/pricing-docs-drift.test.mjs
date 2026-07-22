@@ -4,17 +4,17 @@ import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Agent-facing pricing surfaces must not drift from the source of truth,
-// convex/config/productCatalog.ts (#4854). The /pro page has its own
-// freshness gate; these files are hand-maintained markdown/MDX with no
-// generator, so this guard extracts prices from the catalog SOURCE TEXT
-// (no import — convex modules don't load under tsx --test) and checks them
-// three ways (hardened after the post-#4867 review flagged the original
-// contains()-only version as brittle):
+// Agent- and crawler-facing pricing surfaces must not drift from the source
+// of truth, convex/config/productCatalog.ts (#4854). These files are
+// hand-maintained markdown/MDX or HTML, so this guard extracts prices from
+// the catalog SOURCE TEXT (no import — convex modules don't load under
+// tsx --test) and checks them four ways (hardened after the post-#4867 review
+// flagged the original contains()-only version as brittle):
 //   1. prose: each USD figure appears, tolerating thousands separators;
 //   2. pricing.md's embedded ```json block: numeric field comparison, so a
 //      stale machine-readable summary fails even when the prose was updated;
-//   3. the Commerce OpenAPI example product IDs still exist in the catalog.
+//   3. /pro's JSON-LD Offer prices and descriptions match catalog-backed data;
+//   4. the Commerce OpenAPI example product IDs still exist in the catalog.
 //
 // Run: node --test tests/pricing-docs-drift.test.mjs
 
@@ -22,6 +22,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const read = (p) => readFileSync(resolve(__dirname, '..', p), 'utf-8');
 
 const catalogSrc = read('convex/config/productCatalog.ts');
+const proTiers = JSON.parse(read('pro-test/src/generated/tiers.json'));
 
 // planKey → priceCents for every publicly-priced subscription plan,
 // including the annual API plan the original docs omitted entirely.
@@ -99,6 +100,50 @@ test('pricing.md machine-readable JSON block matches productCatalog.ts numerical
     );
   }
   assert.equal(planByName.Free?.price_usd_monthly, 0, 'Free plan must stay $0 in the JSON summary');
+});
+
+test('/pro JSON-LD offers match productCatalog.ts prices and marketing features', () => {
+  const proHtml = read('pro-test/index.html');
+  const jsonLdBlocks = [...proHtml.matchAll(/<script type="application\/ld\+json">\s*([\s\S]*?)\s*<\/script>/g)]
+    .map((match) => JSON.parse(match[1]));
+  const softwareApplication = jsonLdBlocks.find((block) => block['@type'] === 'SoftwareApplication');
+  assert.ok(softwareApplication, 'pro-test/index.html must contain SoftwareApplication JSON-LD');
+  assert.ok(Array.isArray(softwareApplication.offers), 'SoftwareApplication JSON-LD must contain an Offer array');
+
+  const offerByName = Object.fromEntries(softwareApplication.offers.map((offer) => [offer.name, offer]));
+  const PRICE_EXPECT = [
+    ['Free', 'free'],
+    ['Pro Monthly', 'pro_monthly'],
+    ['Pro Annual', 'pro_annual'],
+    ['API Starter Monthly', 'api_starter'],
+    ['API Starter Annual', 'api_starter_annual'],
+    ['API Business', 'api_business'],
+  ];
+  for (const [offerName, planKey] of PRICE_EXPECT) {
+    assert.ok(offerByName[offerName], `JSON-LD must contain the "${offerName}" offer`);
+    assert.equal(
+      Number(offerByName[offerName].price),
+      priceCentsFor(planKey) / 100,
+      `JSON-LD ${offerName} price is stale vs productCatalog.ts ${planKey}`
+    );
+  }
+
+  const FEATURE_OFFERS = [
+    ['Free', 'Free'],
+    ['Pro', 'Pro Monthly'],
+    ['API', 'API Starter Monthly'],
+    ['API Business', 'API Business'],
+  ];
+  for (const [tierName, offerName] of FEATURE_OFFERS) {
+    const tier = proTiers.find((candidate) => candidate.name === tierName);
+    assert.ok(tier, `generated tiers must contain "${tierName}"`);
+    for (const feature of tier.features) {
+      assert.ok(
+        offerByName[offerName].description.toLocaleLowerCase().includes(feature.toLocaleLowerCase()),
+        `JSON-LD ${offerName} description is missing catalog marketing feature: "${feature}"`
+      );
+    }
+  }
 });
 
 // The Dodo product IDs are surfaced by GET /api/product-catalog, and
