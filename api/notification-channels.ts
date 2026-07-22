@@ -31,6 +31,9 @@ const CONVEX_SITE_URL =
 const RELAY_SHARED_SECRET = process.env.RELAY_SHARED_SECRET ?? '';
 const UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL ?? '';
 const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN ?? '';
+// Same bound the other Convex relay callers use (api/customer-portal.ts:98,
+// api/create-checkout.ts:177).
+const RELAY_TIMEOUT_MS = 15_000;
 
 // AES-256-GCM encryption using Web Crypto (matches Node crypto.cjs decrypt format).
 // Format stored: v1:<base64(iv[12] || tag[16] || ciphertext)>
@@ -147,6 +150,13 @@ async function convexRelay(body: Record<string, unknown>): Promise<Response> {
       'Authorization': `Bearer ${RELAY_SHARED_SECRET}`,
     },
     body: JSON.stringify(body),
+    // Bound the relay round-trip well inside the edge runtime's initial-response
+    // budget. Without it a hung Convex action stalls the invocation until the
+    // platform kills it, which bypasses this file's try/catch — so no Sentry
+    // capture, no CORS headers, and `finish()` never runs, leaving the
+    // idempotency `processing` marker held for its full 180s TTL (every retry
+    // with the same Idempotency-Key then 409s).
+    signal: AbortSignal.timeout(RELAY_TIMEOUT_MS),
   });
 }
 
