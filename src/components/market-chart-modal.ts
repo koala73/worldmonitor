@@ -34,6 +34,7 @@ export function openMarketChartModal(stock: MarketData): void {
     width: 520,
     height: 240,
     formatValue: (v) => formatPrice(v),
+    ariaLabel: t('components.markets.chart.title', { symbol: stock.display }),
   });
   if (!chart) return; // no plottable series
 
@@ -76,4 +77,8 @@ export function openMarketChartModal(stock: MarketData): void {
   document.addEventListener('keydown', escHandler);
 
   document.body.appendChild(modalEl);
+
+  // Move focus into the dialog so keyboard/screen-reader users are contained in
+  // the overlay (and Esc works) instead of leaving focus on the market row.
+  (modalEl.querySelector('.market-chart-close') as HTMLElement | null)?.focus();
 }

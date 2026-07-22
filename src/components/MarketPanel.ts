@@ -51,7 +51,7 @@ export class MarketPanel extends Panel {
       .map((stock, idx) => {
         const clickable = hasPlottableSeries(stock);
         const attrs = clickable
-          ? ` class="market-item market-item-clickable" data-market-chart="${idx}" role="button" tabindex="0" aria-label="${t('components.markets.chart.title', { symbol: stock.display })}"`
+          ? ` class="market-item market-item-clickable" data-market-chart="${idx}" role="button" tabindex="0" aria-label="${t('components.markets.chart.title', { symbol: escapeHtml(stock.display) })}"`
           : ' class="market-item"';
         return `
       <div${attrs}>

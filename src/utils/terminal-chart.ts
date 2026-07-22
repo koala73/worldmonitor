@@ -13,6 +13,19 @@ export interface TerminalChartOptions {
   change?: number | null;
   /** Deterministic value formatter for axis labels. Defaults to a locale-free formatter. */
   formatValue?: (value: number) => string;
+  /** Accessible name for the SVG. Without it, role="img" announces only "image". */
+  ariaLabel?: string;
+}
+
+// Minimal attribute escape so an ariaLabel (which may carry a ticker's display
+// string) can't break out of the aria-label="" context. Kept local to keep this
+// util dependency-free, matching sparkline.ts.
+function escAttr(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
 // Module-level counter gives each rendered chart a unique gradient/clip id so
@@ -81,7 +94,7 @@ export function terminalChart(data: number[] | undefined, opts: TerminalChartOpt
   const lastDot = `<circle cx="${x(series.length - 1).toFixed(1)}" cy="${y(last).toFixed(1)}" r="2.5" fill="${color}"/>`;
 
   return (
-    `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" class="terminal-chart" role="img">` +
+    `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" class="terminal-chart" role="img"${opts.ariaLabel ? ` aria-label="${escAttr(opts.ariaLabel)}"` : ''}>` +
     `<defs><linearGradient id="${gradId}" x1="0" y1="0" x2="0" y2="1">` +
     `<stop offset="0%" stop-color="${color}" stop-opacity="0.28"/>` +
     `<stop offset="100%" stop-color="${color}" stop-opacity="0"/>` +

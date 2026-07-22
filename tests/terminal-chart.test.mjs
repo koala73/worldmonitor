@@ -59,6 +59,19 @@ describe('terminalChart', () => {
     assert.match(svg, /\$2\.2/);
   });
 
+  it('writes an escaped aria-label onto the svg when provided', () => {
+    const svg = terminalChart([1, 2], { ariaLabel: 'AAPL price chart' });
+    assert.match(svg, /<svg[^>]*aria-label="AAPL price chart"/);
+    // A hostile ticker string cannot break out of the attribute context.
+    const evil = terminalChart([1, 2], { ariaLabel: 'A"><script>x' });
+    assert.doesNotMatch(evil, /<script>/);
+    assert.match(evil, /aria-label="A&quot;&gt;&lt;script&gt;x"/);
+  });
+
+  it('omits aria-label when none is given', () => {
+    assert.doesNotMatch(terminalChart([1, 2]), /aria-label=/);
+  });
+
   it('emits a unique gradient id per call to avoid cross-chart collisions', () => {
     const idOf = (svg) => svg.match(/id="(tc-grad-\d+)"/)?.[1];
     const a = idOf(terminalChart([1, 2]));
