@@ -361,6 +361,42 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
 
     const { action } = body;
 
+    // session.userId is narrowed to string by the auth guard above, but
+    // property narrowing does not flow into closures — capture it once.
+    const welcomeUserId = session.userId;
+    // Shared tail for the two durable-welcome mutations (set-channel,
+    // set-web-push): map relay failures (503 deploy-window fail-closed vs
+    // generic 500), then publish the legacy welcome only when Convex did not
+    // acknowledge scheduling ownership. Requiring the mutation response to
+    // re-acknowledge protects the success path even if Convex rolls back
+    // between the capability probe and the mutation.
+    const finishDurableWelcomeRelay = async (
+      relay: WelcomeRelayResult,
+      relayAction: string,
+      welcomeChannelType: string,
+    ): Promise<Response> => {
+      const resp = relay.response;
+      if (!resp.ok) {
+        console.error(`[notification-channels] POST ${relayAction} relay error:`, resp.status);
+        if (resp.status === 503) {
+          return finish(json({ error: 'Service unavailable' }, 503, corsHeaders));
+        }
+        return finish(json({ error: 'Operation failed' }, 500, corsHeaders));
+      }
+      const result = await resp.json() as {
+        isNew?: boolean;
+        durableWelcomeScheduling?: boolean;
+      };
+      if (
+        result.isNew &&
+        (!relay.durableWelcomeScheduling ||
+          result.durableWelcomeScheduling !== true)
+      ) {
+        ctx.waitUntil(publishWelcome(welcomeUserId, welcomeChannelType));
+      }
+      return finish(json({ ok: true }, 200, corsHeaders));
+    };
+
     try {
       if (action === 'create-pairing-token') {
         const relayBody: Record<string, unknown> = { action: 'create-pairing-token', userId: session.userId };
@@ -397,29 +433,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           }
         }
         const relay = await convexRelayWithDurableWelcome(relayBody);
-        const resp = relay.response;
-        if (!resp.ok) {
-          console.error('[notification-channels] POST set-channel relay error:', resp.status);
-          if (resp.status === 503) {
-            return finish(json({ error: 'Service unavailable' }, 503, corsHeaders));
-          }
-          return finish(json({ error: 'Operation failed' }, 500, corsHeaders));
-        }
-        const setResult = await resp.json() as {
-          isNew?: boolean;
-          durableWelcomeScheduling?: boolean;
-        };
-        // Require the mutation response to acknowledge the ownership handoff.
-        // This protects the success path even if Convex rolls back between the
-        // capability probe and mutation.
-        if (
-          setResult.isNew &&
-          (!relay.durableWelcomeScheduling ||
-            setResult.durableWelcomeScheduling !== true)
-        ) {
-          ctx.waitUntil(publishWelcome(session.userId, channelType));
-        }
-        return finish(json({ ok: true }, 200, corsHeaders));
+        return finishDurableWelcomeRelay(relay, 'set-channel', channelType);
       }
 
       if (action === 'set-web-push') {
@@ -459,26 +473,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           // Trim user agent; it's cosmetic for the settings UI, not identity.
           userAgent: typeof userAgent === 'string' ? userAgent.slice(0, 200) : undefined,
         });
-        const resp = relay.response;
-        if (!resp.ok) {
-          console.error('[notification-channels] POST set-web-push relay error:', resp.status);
-          if (resp.status === 503) {
-            return finish(json({ error: 'Service unavailable' }, 503, corsHeaders));
-          }
-          return finish(json({ error: 'Operation failed' }, 500, corsHeaders));
-        }
-        const wpResult = await resp.json() as {
-          isNew?: boolean;
-          durableWelcomeScheduling?: boolean;
-        };
-        if (
-          wpResult.isNew &&
-          (!relay.durableWelcomeScheduling ||
-            wpResult.durableWelcomeScheduling !== true)
-        ) {
-          ctx.waitUntil(publishWelcome(session.userId, 'web_push'));
-        }
-        return finish(json({ ok: true }, 200, corsHeaders));
+        return finishDurableWelcomeRelay(relay, 'set-web-push', 'web_push');
       }
 
       if (action === 'delete-channel') {

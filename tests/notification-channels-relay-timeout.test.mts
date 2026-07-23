@@ -37,6 +37,25 @@ function makeSetChannelRequest(): Request {
   });
 }
 
+function makeSetWebPushRequest(): Request {
+  return new Request('https://worldmonitor.app/api/notification-channels', {
+    method: 'POST',
+    headers: {
+      Origin: 'https://worldmonitor.app',
+      Authorization: 'Bearer clerk-token',
+      'Content-Type': 'application/json',
+      'Idempotency-Key': 'notification-web-push-timeout-retry',
+    },
+    body: JSON.stringify({
+      action: 'set-web-push',
+      endpoint: 'https://fcm.googleapis.com/fcm/send/subscription-1',
+      p256dh: 'p256dh-key',
+      auth: 'auth-secret',
+      userAgent: 'Chrome',
+    }),
+  });
+}
+
 type RedisCommand = string[];
 
 function installInMemoryUpstash() {
@@ -307,5 +326,74 @@ describe('/api/notification-channels relay timeout recovery', () => {
     assert.equal(response.status, 200);
     assert.equal(waits.length, 0, 'edge must not enqueue a second welcome');
     assert.equal(relayFetch.mock.calls.length, 2);
+  });
+
+  it('applies the same fail-closed and duplicate-guard wiring to set-web-push', async () => {
+    const redis = installInMemoryUpstash();
+    const mod = await importFreshNotificationChannels();
+    const waits: Promise<unknown>[] = [];
+    let durableRelayAvailable = false;
+
+    const relayFetch = mock.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      assert.equal(url, 'https://convex.test/relay/notification-channels');
+      const body = JSON.parse(String(init?.body)) as {
+        action?: string;
+        scheduleWelcome?: boolean;
+        endpoint?: string;
+      };
+      if (body.action === 'welcome-scheduling-capability') {
+        if (!durableRelayAvailable) {
+          return Response.json({ error: 'Unknown action' }, { status: 400 });
+        }
+        return Response.json({ durableWelcomeScheduling: true });
+      }
+      assert.equal(body.action, 'set-web-push');
+      assert.equal(body.scheduleWelcome, true);
+      assert.equal(body.endpoint, 'https://fcm.googleapis.com/fcm/send/subscription-1');
+      return Response.json({
+        ok: true,
+        isNew: true,
+        durableWelcomeScheduling: true,
+      });
+    });
+
+    mod.__setNotificationChannelsDepsForTests({
+      validateBearerToken: async () => ({ valid: true, userId: 'user-web-push-deploy' }),
+      getEntitlements: async () => ({
+        planKey: 'pro_monthly',
+        features: {
+          tier: 1,
+          apiAccess: true,
+          apiRateLimit: 1_000,
+          maxDashboards: 10,
+          prioritySupport: true,
+          exportFormats: ['json'],
+          mcpAccess: true,
+        },
+        validUntil: Date.now() + 60_000,
+      }),
+      fetch: relayFetch,
+    });
+
+    const ctx = {
+      waitUntil: (promise: Promise<unknown>) => {
+        waits.push(promise);
+      },
+    };
+
+    const first = await mod.default(makeSetWebPushRequest(), ctx);
+    assert.equal(first.status, 503);
+    assert.deepEqual(await first.json(), { error: 'Service unavailable' });
+    assert.equal(waits.length, 0);
+    assert.equal(redis.store.size, 0, 'deploy-window 503 must release the processing marker');
+    assert.equal(relayFetch.mock.calls.length, 1, 'old Convex must not receive the set-web-push mutation');
+
+    durableRelayAvailable = true;
+    const retry = await mod.default(makeSetWebPushRequest(), ctx);
+    assert.equal(retry.status, 200);
+    assert.deepEqual(await retry.json(), { ok: true });
+    assert.equal(waits.length, 0, 'Convex owns the welcome — edge must not enqueue a duplicate');
+    assert.equal(relayFetch.mock.calls.length, 3);
   });
 });

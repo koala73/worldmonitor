@@ -174,8 +174,11 @@ describe("notificationChannels — durable first-connect welcome", () => {
   function installQueueMock() {
     process.env.UPSTASH_REDIS_REST_URL = "https://upstash.test";
     process.env.UPSTASH_REDIS_REST_TOKEN = "upstash-token";
-    return vi.spyOn(globalThis, "fetch").mockResolvedValue(
-      Response.json({ result: 1 }),
+    // Mint a fresh Response per call: a shared instance's body can only be
+    // consumed once, so a second successful enqueue in the same test would
+    // read an already-consumed body and spawn a spurious retry chain.
+    return vi.spyOn(globalThis, "fetch").mockImplementation(
+      async () => Response.json({ result: 1 }),
     );
   }
 
@@ -483,5 +486,82 @@ describe("notificationChannels — durable first-connect welcome", () => {
     await t.finishAllScheduledFunctions(vi.runAllTimers);
 
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("transfers a shared endpoint to another account as a fresh connection", async () => {
+    vi.useFakeTimers();
+    const fetchMock = installQueueMock();
+    const t = convexTest(schema, modules);
+    const endpoint = "https://fcm.googleapis.com/push/shared-device";
+    const otherUser = "user-tests-notification-channels-b";
+
+    await expect(t.mutation(notificationChannelFns.setWebPushChannelForUser, {
+      userId: USER.subject,
+      endpoint,
+      p256dh: "p256dh-a",
+      auth: "auth-a",
+      scheduleWelcome: true,
+    })).resolves.toEqual({ isNew: true });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    await expect(t.mutation(notificationChannelFns.setWebPushChannelForUser, {
+      userId: otherUser,
+      endpoint,
+      p256dh: "p256dh-b",
+      auth: "auth-b",
+      scheduleWelcome: true,
+    })).resolves.toEqual({ isNew: true });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    // The prior owner's row is deleted; only the new account keeps the endpoint.
+    await t.run(async (ctx) => {
+      const rows = (await ctx.db.query("notificationChannels").collect()).filter(
+        (row) => row.channelType === "web_push" && row.endpoint === endpoint,
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.userId).toBe(otherUser);
+    });
+
+    // Both first connects welcome their own account, in order.
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const welcomedUsers = fetchMock.mock.calls.map(([, init]) => {
+      const command = JSON.parse(String(init?.body)) as unknown[];
+      return (JSON.parse(String(command[5])) as { userId: string }).userId;
+    });
+    expect(welcomedUsers).toEqual([USER.subject, otherUser]);
+  });
+
+  test("stops retrying after the final scheduled attempt fails", async () => {
+    vi.useFakeTimers();
+    process.env.UPSTASH_REDIS_REST_URL = "https://upstash.test";
+    process.env.UPSTASH_REDIS_REST_TOKEN = "upstash-token";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockRejectedValue(
+      new Error("Upstash unreachable"),
+    );
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const t = convexTest(schema, modules);
+
+    await expect(t.mutation(notificationChannelFns.setChannelForUser, {
+      userId: USER.subject,
+      channelType: "email",
+      email: "retry-exhausted@example.com",
+      scheduleWelcome: true,
+    })).resolves.toEqual({ isNew: true });
+    // The terminal attempt (attempt 5, no successor) rethrows inside the
+    // scheduler; drain everything and tolerate that final rejection so the
+    // attempt-count assertions below stay the teeth of this test.
+    try {
+      await t.finishAllScheduledFunctions(vi.runAllTimers);
+    } catch {
+      // expected: terminal attempt propagates its enqueue failure
+    }
+
+    // Initial attempt + 5 scheduled retries, then no further successor.
+    expect(fetchMock).toHaveBeenCalledTimes(6);
+    const retryWarns = warn.mock.calls.filter(([message]) =>
+      String(message).includes("queueChannelWelcome"),
+    );
+    // Attempts 1-5 warn-and-retry; the terminal attempt rethrows instead.
+    expect(retryWarns).toHaveLength(5);
   });
 });
