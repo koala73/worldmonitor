@@ -322,7 +322,15 @@ async function validateBootstrapAuth(req, cors) {
       return {
         ok: false,
         response: authFailure(
-          { error: entitlementResult.error },
+          {
+            error: entitlementResult.error,
+            // Billing-verification denials (#4770) expose their machine-readable
+            // code in the body, matching the {error, code} shape the REST
+            // gateway emits for the same statuses.
+            ...(entitlementResult.headers?.['X-Billing-Verification']
+              ? { code: entitlementResult.reason }
+              : {}),
+          },
           entitlementResult.status,
           cors,
           entitlementResult.headers,

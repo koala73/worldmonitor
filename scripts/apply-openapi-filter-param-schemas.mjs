@@ -213,7 +213,7 @@ function schemaLines(schema) {
 function patchYamlTarget(text, target) {
   const lines = text.split('\n');
   const pathNeedle = `    ${target.path}:`;
-  const pathIndex = lines.findIndex((line) => line === pathNeedle);
+  const pathIndex = lines.indexOf(pathNeedle);
   if (pathIndex === -1) return text;
 
   let pathEnd = lines.length;
@@ -230,7 +230,7 @@ function patchYamlTarget(text, target) {
 
   let methodEnd = pathEnd;
   for (let i = methodIndex + 1; i < pathEnd; i++) {
-    if (/^        [a-z]+:$/.test(lines[i] || '')) {
+    if (/^ {8}[a-z]+:$/.test(lines[i] || '')) {
       methodEnd = i;
       break;
     }

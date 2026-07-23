@@ -13,7 +13,7 @@ const PRIOR_ALPHA = 1; // Laplace pseudo-count for "crosses"
 const PRIOR_BETA = 1;  // Laplace pseudo-count for "does not cross"
 const NEUTRAL_PRIOR = 0.5;
 
-export function baseRateProbability(series, spec, options = {}) {
+export function baseRateProbability(series, spec, _options = {}) {
   const values = (Array.isArray(series) ? series : [])
     .map(Number)
     .filter((v) => Number.isFinite(v));

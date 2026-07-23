@@ -30,7 +30,31 @@
       "package": "worldmonitor",
       "install": "npm install -g worldmonitor",
       "url": "https://www.npmjs.com/package/worldmonitor"
+    },
+    "sdks": {
+      "javascript": { "install": "npm install worldmonitor", "url": "https://www.npmjs.com/package/worldmonitor" },
+      "python": { "install": "pip install worldmonitor-sdk", "url": "https://pypi.org/project/worldmonitor-sdk/" },
+      "ruby": { "install": "gem install worldmonitor", "url": "https://rubygems.org/gems/worldmonitor" },
+      "go": { "install": "go get github.com/koala73/worldmonitor/sdk/go", "url": "https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go" },
+      "guide": "https://www.worldmonitor.app/docs/sdks",
+      "note": "Official zero-dependency SDK packages; every registry entry sets its homepage to worldmonitor.app for provenance."
+    },
+    "docsMcp": {
+      "url": "https://www.worldmonitor.app/docs/mcp",
+      "transport": "streamable-http",
+      "serverCard": "https://www.worldmonitor.app/.well-known/mcp/docs-server-card.json",
+      "note": "Public documentation search-and-retrieval MCP server — no auth. Route 'how do I…' questions here; route live-data calls to the product MCP."
+    },
+    "sandbox": {
+      "url": "https://www.worldmonitor.app/sandbox/index.json",
+      "docs": "https://www.worldmonitor.app/docs/sandbox",
+      "note": "Test environment: deterministic, schema-valid sample responses for representative REST operations — no auth, no quota, safe for CI. The data API is read-only, so live calls cannot mutate production data."
     }
+  },
+  "quickstart": {
+    "sandbox": "curl https://www.worldmonitor.app/sandbox/get-resilience-score.json",
+    "rest": "curl -H 'X-WorldMonitor-Key: wm_<40 hex>' 'https://api.worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=DE'",
+    "mcp": "curl -X POST https://worldmonitor.app/mcp -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' -d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}'"
   },
   "authentication": {
     "summary": "Authentication: OAuth2 (scope=mcp) or an API key header. Discovery surfaces (tools/list, describe_tool, prompts/list, resources/list, /a2a, /ask) are anonymous — no authentication required.",
@@ -65,6 +89,14 @@
   ],
   "discovery": {
     "llmsTxt": "https://worldmonitor.app/llms.txt",
+    "llmsFullTxt": "https://worldmonitor.app/llms-full.txt",
+    "sectionLlmsTxt": {
+      "api": "https://worldmonitor.app/api/llms.txt",
+      "docs": "https://www.worldmonitor.app/docs/llms.txt",
+      "developers": "https://worldmonitor.app/developers/llms.txt",
+      "blog": "https://www.worldmonitor.app/blog/llms.txt"
+    },
+    "schemamap": "https://www.worldmonitor.app/schemamap.xml",
     "markdownHomepage": "https://worldmonitor.app/index.md",
     "agentSkills": "https://worldmonitor.app/.well-known/agent-skills/index.json",
     "apiCatalog": "https://worldmonitor.app/.well-known/api-catalog",

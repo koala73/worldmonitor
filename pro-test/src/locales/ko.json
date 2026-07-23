@@ -382,6 +382,7 @@
         "description": "인텔리전스 데이터에 대한 프로그래매틱 접근",
         "features": [
           "REST API + 공식 SDK (npm, PyPI, RubyGems, Go)",
+          "라이선스 / API 키 포함",
           "실시간 데이터 스트림",
           "분당 60개 요청",
           "일일 1,000개 요청 포함",

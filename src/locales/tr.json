@@ -2170,6 +2170,17 @@
       "cta": "Pro'ya Yükselt →",
       "dismiss": "Kapat"
     },
+    "billingState": {
+      "onHoldDesc": "Ödeme başarısız oldu. Premium erişimi geri yüklemek için ödeme yönteminizi güncelleyin.",
+      "onHoldBannerMessage": "Ödeme başarısız oldu. Aboneliğinizi aktif tutmak için ödeme yönteminizi güncelleyin.",
+      "updatePayment": "Ödemeyi Güncelle",
+      "renewalPendingDesc": "Aboneliğinizin yenilenmesini doğruluyoruz. Onaylandığında premium erişim otomatik olarak geri yüklenecek.",
+      "refreshStatus": "Durumu Yenile",
+      "renewalFailedDesc": "Aboneliğinizin yenilenmesini doğrulayamadık. Sorun devam ederse faturalandırmayı yönetin veya destekle iletişime geçin.",
+      "manageBilling": "Faturalandırmayı Yönet",
+      "lapsedDesc": "Pro aboneliğiniz sona erdi. Premium erişimi yeniden kazanmak için tekrar abone olun.",
+      "resubscribe": "Tekrar Abone Ol"
+    },
     "checkoutFailureBanner": {
       "message": "Ödeme tamamlanamadı. Herhangi bir ücret alınmadı.",
       "retry": "Tekrar Dene",

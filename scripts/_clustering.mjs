@@ -321,6 +321,7 @@ export function computeEntityCorroboration(clusters, nowMs = Date.now()) {
  *   #4920 coverage ledger: when provided, populated with how many clusters
  *   each gate dropped — previously all three gates were silent.
  */
+// biome-ignore lint/style/useDefaultParameterLast: maxCount's default predates the trailing params; reordering would break the (clusters, maxCount, stats) call shape
 export function selectTopStories(clusters, maxCount = 8, stats, opts = {}) {
   // Positional-arg guard (#4929 external review): a caller passing
   // { demoteFinance } in the stats slot would silently get default

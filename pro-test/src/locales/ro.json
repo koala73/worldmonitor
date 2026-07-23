@@ -382,6 +382,7 @@
         "description": "Acces programatic la date de intelligence",
         "features": [
           "API REST + SDK-uri oficiale (npm, PyPI, RubyGems, Go)",
+          "Cheie de licență / API inclusă",
           "Fluxuri de date în timp real",
           "60 de cereri/minut",
           "1.000 de cereri/zi incluse",

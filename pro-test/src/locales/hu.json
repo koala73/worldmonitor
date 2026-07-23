@@ -382,6 +382,7 @@
         "description": "Programozott hozzáférés hírszerzési adatokhoz",
         "features": [
           "REST API + hivatalos SDK-k (npm, PyPI, RubyGems, Go)",
+          "Licenc- / API-kulcs mellékelve",
           "Valós idejű adatfolyamok",
           "60 kérés/perc",
           "1 000 kérés/nap benne foglalt",

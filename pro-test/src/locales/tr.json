@@ -382,6 +382,7 @@
         "description": "İstihbarat verilerine programlı erişim",
         "features": [
           "REST API + resmî SDK'lar (npm, PyPI, RubyGems, Go)",
+          "Lisans / API anahtarı dahil",
           "Gerçek zamanlı veri akışları",
           "Dakikada 60 istek",
           "Günde 1.000 istek dahil",

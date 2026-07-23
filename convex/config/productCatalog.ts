@@ -270,6 +270,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
     features: API_STARTER_FEATURES,
     marketingFeatures: [
       "REST API + official SDKs (npm, PyPI, RubyGems, Go)",
+      "License / API key included",
       "Real-time data streams",
       "60 requests/minute",
       "1,000 requests/day included",

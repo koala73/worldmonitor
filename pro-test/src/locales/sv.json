@@ -382,6 +382,7 @@
         "description": "Programmatisk åtkomst till underrättelsedata",
         "features": [
           "REST-API + officiella SDK:er (npm, PyPI, RubyGems, Go)",
+          "Licens-/API-nyckel ingår",
           "Realtidsdataströmmar",
           "60 förfrågningar/minut",
           "1 000 förfrågningar/dag ingår",

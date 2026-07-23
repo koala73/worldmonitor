@@ -16,6 +16,7 @@ This page names and links every developer resource type. For the machine-readabl
 - **World Monitor Agent Skills:** installable skills for agent frameworks — discovery index at https://worldmonitor.app/.well-known/agent-skills/index.json · `npx skills add koala73/worldmonitor`
 - **World Monitor API documentation:** the full developer documentation site at [/docs](https://www.worldmonitor.app/docs/documentation), including the [MCP Quickstart](https://www.worldmonitor.app/docs/mcp-quickstart), [tool reference](https://www.worldmonitor.app/docs/mcp-tools-reference), and [JMESPath projection guide](https://www.worldmonitor.app/docs/mcp-jmespath).
 - **World Monitor authentication:** the agent auth walkthrough at [auth.md](https://worldmonitor.app/auth.md) — API keys (`X-WorldMonitor-Key: wm_<40-hex>`) and OAuth 2.1 (`scope=mcp`) with dynamic client registration.
+- **World Monitor sandbox:** deterministic, schema-valid sample responses for representative REST operations — no key, no quota, safe for CI. Index: https://www.worldmonitor.app/sandbox/index.json · [Sandbox guide](https://www.worldmonitor.app/docs/sandbox) · scoped context: [developers/llms.txt](https://worldmonitor.app/developers/llms.txt)
 
 ## Authentication in one line
 

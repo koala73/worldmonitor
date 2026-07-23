@@ -382,6 +382,7 @@
         "description": "Programmatický přístup k datům zpravodajství",
         "features": [
           "REST API + oficiální SDK (npm, PyPI, RubyGems, Go)",
+          "Licenční / API klíč v ceně",
           "Datové toky v reálném čase",
           "60 požadavků/minutu",
           "1 000 požadavků denně v ceně",

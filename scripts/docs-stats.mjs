@@ -55,9 +55,9 @@ function extractSingleQuotedValue(text, name) {
 }
 
 function findTopLevelObjectBlocks(source) {
-  const starts = [...source.matchAll(/^  \{$/gm)].map((m) => m.index);
+  const starts = [...source.matchAll(/^ {2}\{$/gm)].map((m) => m.index);
   return starts.map((start) => {
-    const close = source.slice(start).search(/^  \},?$/m);
+    const close = source.slice(start).search(/^ {2}\},?$/m);
     if (close === -1) return source.slice(start);
     return source.slice(start, start + close);
   });

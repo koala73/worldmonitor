@@ -454,7 +454,7 @@ function ensureYamlSecuritySchemes(lines, hasBearer) {
 }
 
 // ── Service/bundle YAML entitlement insertion (formatting-preserving) ────────
-const YAML_METHOD_LINE_RE = /^        (get|post|put|delete|patch|options|head):$/;
+const YAML_METHOD_LINE_RE = /^ {8}(get|post|put|delete|patch|options|head):$/;
 
 const YAML_FORBIDDEN_RESPONSE = [
   '                "403":',

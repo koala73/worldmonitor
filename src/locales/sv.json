@@ -1914,6 +1914,17 @@
       "cta": "Uppgradera till Pro →",
       "dismiss": "Stäng"
     },
+    "billingState": {
+      "onHoldDesc": "Betalningen misslyckades. Uppdatera din betalningsmetod för att återställa premiumåtkomsten.",
+      "onHoldBannerMessage": "Betalningen misslyckades. Uppdatera din betalningsmetod för att hålla din prenumeration aktiv.",
+      "updatePayment": "Uppdatera betalning",
+      "renewalPendingDesc": "Vi verifierar förnyelsen av din prenumeration. Premiumåtkomsten återställs automatiskt när den har bekräftats.",
+      "refreshStatus": "Uppdatera status",
+      "renewalFailedDesc": "Vi kunde inte verifiera förnyelsen av din prenumeration. Hantera fakturering eller kontakta supporten om problemet kvarstår.",
+      "manageBilling": "Hantera fakturering",
+      "lapsedDesc": "Din Pro-prenumeration har upphört. Prenumerera igen för att återfå premiumåtkomsten.",
+      "resubscribe": "Prenumerera igen"
+    },
     "checkoutFailureBanner": {
       "message": "Betalningen kunde inte genomföras. Ingen debitering gjordes.",
       "retry": "Försök igen",

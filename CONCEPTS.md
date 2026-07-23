@@ -16,6 +16,10 @@ A bootstrap key excluded from the batched tiers and fetched individually — thr
 
 A companion cache key holding a *view* of a dataset sized to what the dashboard actually renders — sliced, projected, and stripped of fields the UI never shows — published alongside the **canonical key**, which remains the full source of truth for RPC, MCP, and analytical consumers. The governing principle is "cache what we show, not the source": the view rides the widely-delivered tiers, the canonical stays on demand-priced paths. A view key that accidentally ships more than the UI renders defeats its own purpose. See also: Bootstrap Tier.
 
+### Seed-Owned Key
+
+A cache key whose only writer is a dedicated seeder or relay process; edge endpoints read and serve it but never write it back on a miss — a missing value is answered with a short-TTL computed fallback while the owning seeder's next cycle restores the key. The consequence runs both ways: the reader stays cheap and can never poison the key with a degraded payload, but purging a seed-owned key does not force regeneration at read time — freshness after a purge returns only on the owner's schedule, and a purge issued while an outdated owner is still running is simply overwritten with outdated data. See also: Bootstrap Tier, On-Demand Key.
+
 ### One-Shot Hydration
 
 The delivery contract of the boot payload: a hydrated value can be read exactly once, and reading it consumes it. Its consequence is the important part — any *recurring* reader (a periodic refresh tick, a retry) is guaranteed to miss hydration and fall through to whatever fallback path exists. When that fallback is not CDN-shielded, one-shot hydration plus a refresh timer silently manufactures origin traffic. Audit every refresh path's fallthrough whenever a payload is one-shot. See also: The Lever Test, On-Demand Key.
@@ -95,3 +99,31 @@ The MCP transport this server implements over HTTP: JSON-RPC 2.0 requests via `P
 ### Variant Host
 
 One of the product-variant subdomains (`tech`, `finance`, `commodity`, `happy`, `energy`) that serves a themed dashboard entry and metadata. The middleware and Vercel config recognize these hosts explicitly; canonical discovery URLs for shared surfaces (such as `/mcp`) redirect retrieval-method requests from variant hosts to the apex host so discovery signals do not fragment.
+
+## Billing & Entitlements
+
+### Entitlement
+
+The per-user record granting feature access — a plan key, feature flags with a tier, and a validity horizon — derived from subscriptions by the server and replicated to clients as a reactive snapshot. An entitlement is evidence of paid access *now*; it says nothing about why access exists or when it will renew. When its validity horizon passes without a renewal being recorded, readers fall back to free-tier defaults, which is the moment stale local state can misrepresent a still-paying customer.
+
+### Covering Subscription
+
+A subscription that currently grants paid coverage. Coverage is decided per status, not by the status name's plain-English reading: an active subscription covers; an on-hold subscription (payment failed, provider retrying) still covers through its retry window; a cancelled subscription covers until the end of the period already paid for; an expired subscription never covers regardless of its recorded period end. The server owns these rules; any client-side derivation must mirror them rather than re-deriving from status-string intuition. See also: Cancelled-But-Paid-Through, Billing UX State.
+
+### Cancelled-But-Paid-Through
+
+The state of a subscription whose auto-renew has been turned off but whose paid period has not yet ended. Colloquially "cancelled" reads as terminal; here it is a covering state until period end, and only afterwards does coverage lapse. UI and copy must not treat it as ended while the paid window is open — telling such a customer their subscription "has ended" invites duplicate checkout. See also: Covering Subscription.
+
+### Renewal Verification
+
+The bounded, on-demand re-check against the payment provider that runs when locally-stale paid evidence would otherwise cause a denial — instead of trusting a possibly-missed webhook, the provider is asked directly. It records a verdict (pending while queued or in flight, failed when the provider check errored, lapsed when the provider confirms coverage ended) that both the denial surfaces and the client UI consume. It shares provider-evidence bookkeeping with the scheduled reconciliation sweep but is deliberately independent of it, so one path failing cannot suppress the other. See also: Billing UX State.
+
+### Billing UX State
+
+The single client-derived state that decides what a customer sees when premium access is in question: free (never paid), active (access works), on-hold (payment failed, retry window), renewal-verification pending or failed (paid evidence went stale and the provider re-check is running or errored), or lapsed (coverage confirmed over). Its purpose is to prevent the misleading collapse of every non-paying state into a generic upgrade prompt — a paying customer whose renewal is being verified must be told that, not sold to. Derived purely from the entitlement and subscription snapshots, it changes copy and actions only; it never grants access the server would deny. See also: Covering Subscription, Renewal Verification.
+
+## Localization & First Paint
+
+### English Shell
+
+The small, byte-budgeted subset of English UI strings inlined so first-paint chrome renders real text before the full locale file loads. Membership is decided by namespace: keys under the shell prefixes and referenced from eager chrome must be mirrored into the shell byte-identically, and the whole shell lives under a hard byte cap that is a first-paint performance budget, not a formatting limit. The consequence cuts both ways: post-boot copy placed in a shell namespace pays first-paint bytes for strings nobody can see yet, while first-paint copy placed outside the shell flashes raw keys until the full locale arrives. Choosing a key's namespace is therefore a rendering-time decision, not a taxonomy one.
