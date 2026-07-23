@@ -147,6 +147,13 @@ async function convexRelay(body: Record<string, unknown>): Promise<Response> {
       'Authorization': `Bearer ${RELAY_SHARED_SECRET}`,
     },
     body: JSON.stringify(body),
+    // Matches the 15s timeout api/customer-portal.ts and api/create-checkout.ts
+    // already use for the same Convex host. Without this, a hung relay call
+    // outlives the edge runtime's invocation budget before the handler's own
+    // catch can run finish() to release the idempotency lock this endpoint
+    // holds across the call — leaving every retry 409ing for the lock's full
+    // 180s TTL (#5426).
+    signal: AbortSignal.timeout(15_000),
   });
 }
 
