@@ -2,6 +2,8 @@
 // Pure types only — no runtime exports — so this module is safe to import
 // from anywhere without creating evaluation-order surprises or cycles.
 
+import type { BillingVerificationStatus } from '../../server/_shared/entitlement-check';
+
 // ---------------------------------------------------------------------------
 // Auth-context shape passed into tool _execute. U7 widened the previous
 // `apiKey: string` to a discriminated union so per-tool fetches can branch
@@ -235,7 +237,14 @@ export interface QuotaRejected {
 export interface McpHandlerDeps {
   resolveBearerToContext: (token: string) => Promise<McpAuthContext | null>;
   validateProMcpToken: (tokenId: string) => Promise<{ userId: string } | null>;
-  getEntitlements: (userId: string) => Promise<{ planKey?: string; features: { tier: number; mcpAccess?: boolean }; validUntil: number } | null>;
+  getEntitlements: (userId: string) => Promise<{
+    planKey?: string;
+    features: { tier: number; mcpAccess?: boolean };
+    validUntil: number;
+    billingStatus?: BillingVerificationStatus;
+    retryAfterSeconds?: number;
+    verificationUnavailable?: boolean;
+  } | null>;
   // #4859: Convex userApiKeys hash lookup (same shared helper as the REST
   // gateway). Returns the key owner, or null for unknown/revoked keys. The
   // production impl fail-softs to null internally; a THROW from a dep is

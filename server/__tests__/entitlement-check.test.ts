@@ -22,7 +22,7 @@ vi.mock("../_shared/redis", () => ({
   setCachedJson: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { getCachedJson } from "../_shared/redis";
+import { getCachedJson, setCachedJson } from "../_shared/redis";
 import {
   getRequiredTier,
   checkEntitlement,
@@ -53,6 +53,55 @@ function makeEntitlements(tier: number, planKey = "free") {
     },
     validUntil: FUTURE,
   };
+}
+
+async function withConvexEntitlementResponse<T>(
+  payload: unknown,
+  run: () => Promise<T>,
+): Promise<T> {
+  const originalSiteUrl = process.env.CONVEX_SITE_URL;
+  const originalSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+  process.env.CONVEX_SITE_URL = "https://example-deployment.convex.site";
+  process.env.CONVEX_SERVER_SHARED_SECRET = "test-secret";
+  vi.mocked(getCachedJson).mockResolvedValueOnce(null);
+  vi.stubGlobal("fetch", vi.fn().mockResolvedValue(
+    new Response(JSON.stringify(payload), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    }),
+  ));
+  try {
+    return await run();
+  } finally {
+    if (originalSiteUrl === undefined) delete process.env.CONVEX_SITE_URL;
+    else process.env.CONVEX_SITE_URL = originalSiteUrl;
+    if (originalSecret === undefined) delete process.env.CONVEX_SERVER_SHARED_SECRET;
+    else process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
+    vi.unstubAllGlobals();
+  }
+}
+
+// Like withConvexEntitlementResponse, but with full control over the fetch
+// outcome (throw, 5xx, 4xx) — used to pin the transient-vs-confirmed split.
+async function withConvexEntitlementFetch<T>(
+  fetchImpl: () => Promise<Response>,
+  run: () => Promise<T>,
+): Promise<T> {
+  const originalSiteUrl = process.env.CONVEX_SITE_URL;
+  const originalSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+  process.env.CONVEX_SITE_URL = "https://example-deployment.convex.site";
+  process.env.CONVEX_SERVER_SHARED_SECRET = "test-secret";
+  vi.mocked(getCachedJson).mockResolvedValueOnce(null);
+  vi.stubGlobal("fetch", vi.fn().mockImplementation(fetchImpl));
+  try {
+    return await run();
+  } finally {
+    if (originalSiteUrl === undefined) delete process.env.CONVEX_SITE_URL;
+    else process.env.CONVEX_SITE_URL = originalSiteUrl;
+    if (originalSecret === undefined) delete process.env.CONVEX_SERVER_SHARED_SECRET;
+    else process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
+    vi.unstubAllGlobals();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -98,6 +147,225 @@ describe("gateway entitlement check", () => {
     const body = await result!.json();
     expect(body.error).toBe("Unable to verify entitlements");
     expect(body.requiredTier).toBe(1);
+  });
+
+  test("transient Convex fetch failure returns a verificationUnavailable marker, not null", async () => {
+    await withConvexEntitlementFetch(
+      () => Promise.reject(Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" })),
+      async () => {
+        const ent = await getEntitlements("user-transient-timeout");
+        expect(ent).not.toBeNull();
+        expect(ent?.verificationUnavailable).toBe(true);
+        // Deny-side: the marker must never carry an affirmative grant.
+        expect(ent?.features.tier).toBe(0);
+        expect(ent?.features.apiAccess).toBe(false);
+        expect(ent?.validUntil).toBe(0);
+      },
+    );
+  });
+
+  test("Convex 5xx returns the verificationUnavailable marker; 4xx stays a fail-closed null", async () => {
+    await withConvexEntitlementFetch(
+      () => Promise.resolve(new Response("upstream error", { status: 503 })),
+      async () => {
+        const ent = await getEntitlements("user-transient-5xx");
+        expect(ent?.verificationUnavailable).toBe(true);
+      },
+    );
+    await withConvexEntitlementFetch(
+      () => Promise.resolve(new Response("forbidden", { status: 403 })),
+      async () => {
+        // A 4xx (bad shared secret / contract rejection) is a deploy defect,
+        // not a transient — the hard fail-closed null posture must hold.
+        const ent = await getEntitlements("user-config-4xx");
+        expect(ent).toBeNull();
+      },
+    );
+  });
+
+  test("checkEntitlement answers a transient lookup failure with the retryable 503 contract, not a hard 403", async () => {
+    await withConvexEntitlementFetch(
+      () => Promise.reject(new Error("fetch failed")),
+      async () => {
+        const result = await checkEntitlement("user-transient-check", "/api/market/v1/analyze-stock", {});
+        expect(result).not.toBeNull();
+        expect(result!.status).toBe(503);
+        expect(result!.headers.get("X-Billing-Verification")).toBe("entitlement_verification_unavailable");
+        expect(result!.headers.get("Retry-After")).toBe("5");
+        expect(result!.headers.get("Cache-Control")).toBe("no-store");
+
+        const body = await result!.json();
+        expect(body.error).toBe("Unable to verify API access");
+        expect(body.code).toBe("entitlement_verification_unavailable");
+        expect(body.requiredTier).toBe(1);
+      },
+    );
+  });
+
+  test.each([
+    ["renewal_verification_pending", "Renewal verification pending"],
+    ["renewal_verification_failed", "Renewal verification failed"],
+  ] as const)("%s returns a distinct retryable 503", async (billingStatus, error) => {
+    const result = await withConvexEntitlementResponse(
+      {
+        ...makeEntitlements(0),
+        validUntil: 0,
+        billingStatus,
+        retryAfterSeconds: 17,
+      },
+      () => checkEntitlement("test-user", "/api/market/v1/analyze-stock", {}),
+    );
+
+    expect(result?.status).toBe(503);
+    expect(result?.headers.get("Retry-After")).toBe("17");
+    expect(result?.headers.get("X-Billing-Verification")).toBe(billingStatus);
+    expect(await result?.json()).toMatchObject({ error, code: billingStatus });
+  });
+
+  test.each([
+    "renewal_verification_pending",
+    "renewal_verification_failed",
+  ] as const)(
+    "current Pro fallback authorizes tier-1 REST while stronger verification is %s",
+    async (billingStatus) => {
+      const result = await withConvexEntitlementResponse(
+        {
+          ...makeEntitlements(1, "pro_monthly"),
+          billingStatus,
+          retryAfterSeconds: 17,
+        },
+        () => checkEntitlement(
+          "test-user",
+          "/api/market/v1/analyze-stock",
+          {},
+        ),
+      );
+
+      expect(result).toBeNull();
+    },
+  );
+
+  test("subscription_lapsed returns a distinct hard-denial code", async () => {
+    const result = await withConvexEntitlementResponse(
+      {
+        ...makeEntitlements(0),
+        validUntil: 0,
+        billingStatus: "subscription_lapsed",
+      },
+      () => checkEntitlement("test-user", "/api/market/v1/analyze-stock", {}),
+    );
+
+    expect(result?.status).toBe(403);
+    expect(result?.headers.get("X-Billing-Verification")).toBe("subscription_lapsed");
+    expect(await result?.json()).toMatchObject({
+      error: "Subscription lapsed",
+      code: "subscription_lapsed",
+    });
+  });
+
+  test("serves a short-lived verification marker from Redis without another Convex request", async () => {
+    vi.mocked(getCachedJson).mockResolvedValueOnce({
+      ...makeEntitlements(0),
+      validUntil: 0,
+      billingStatus: "renewal_verification_pending",
+      retryAfterSeconds: 11,
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const result = await checkEntitlement(
+        "test-user",
+        "/api/market/v1/analyze-stock",
+        {},
+      );
+
+      expect(result?.status).toBe(503);
+      expect(result?.headers.get("Retry-After")).toBe("11");
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("serves a recent not-applicable freshness marker without another Convex request", async () => {
+    vi.mocked(getCachedJson).mockResolvedValueOnce({
+      ...makeEntitlements(0),
+      validUntil: 0,
+      renewalVerificationFreshness: {
+        status: "not_applicable",
+        checkedAt: Date.now(),
+      },
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const result = await checkEntitlement(
+        "test-user",
+        "/api/market/v1/analyze-stock",
+        {},
+      );
+
+      expect(result?.status).toBe(403);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("an expired not-applicable freshness marker falls through to Convex", async () => {
+    vi.mocked(getCachedJson).mockResolvedValueOnce({
+      ...makeEntitlements(0),
+      validUntil: 0,
+      renewalVerificationFreshness: {
+        status: "not_applicable",
+        checkedAt: Date.now() - 900_001,
+      },
+    });
+    const originalSiteUrl = process.env.CONVEX_SITE_URL;
+    const originalSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+    process.env.CONVEX_SITE_URL = "https://example-deployment.convex.site";
+    process.env.CONVEX_SERVER_SHARED_SECRET = "test-secret";
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(makeEntitlements(1, "pro_monthly")), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const result = await checkEntitlement(
+        "test-user",
+        "/api/market/v1/analyze-stock",
+        {},
+      );
+
+      expect(result).toBeNull();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      if (originalSiteUrl === undefined) delete process.env.CONVEX_SITE_URL;
+      else process.env.CONVEX_SITE_URL = originalSiteUrl;
+      if (originalSecret === undefined) delete process.env.CONVEX_SERVER_SHARED_SECRET;
+      else process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("caches a not-applicable freshness marker for at most 900 seconds", async () => {
+    const marker = {
+      ...makeEntitlements(0),
+      validUntil: 0,
+      renewalVerificationFreshness: {
+        status: "not_applicable",
+        checkedAt: Date.now(),
+      },
+    };
+    await withConvexEntitlementResponse(marker, async () => {
+      await getEntitlements("test-user-marker-ttl");
+    });
+
+    const ttl = vi.mocked(setCachedJson).mock.calls.at(-1)?.[2];
+    expect(ttl).toBeGreaterThan(0);
+    expect(ttl).toBeLessThanOrEqual(900);
   });
 
   test("checkEntitlement accepts Clerk role=pro for tier-1 gates without Convex entitlements", async () => {

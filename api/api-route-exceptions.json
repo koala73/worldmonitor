@@ -59,6 +59,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/billing-denial.ts",
+      "category": "internal-helper",
+      "reason": "Typed billing-denial propagation for MCP tool _execute fetches (#4770): BillingDenialError + header-detection helpers so a gateway 403/503 billing denial survives dispatch's catch-all instead of flattening into a generic -32603. Pure helper module for the external-protocol MCP handler family above — exports no route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/usage.ts",
       "category": "external-protocol",
       "reason": "MCP wm_api_usage emission (#4866) — phase-to-reason mapper + ctx.waitUntil RequestEvent emitter for the /mcp funnel. Ops/observability plumbing for the same external-protocol handler, not a JSON data API; reuses server/_shared/usage.ts builders.",
@@ -258,6 +265,13 @@
       "path": "api/mcp-proxy.ts",
       "category": "external-protocol",
       "reason": "Proxy for the MCP transport — same shape constraint as api/mcp.ts. Renamed .js → .ts in PR #3768 to unlock the isCallerPremium import from server/.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/docs-mcp.ts",
+      "category": "external-protocol",
+      "reason": "First-party facade for the docs MCP server (served at /docs/mcp ahead of the Mintlify rewrite) — JSON-RPC 2.0 / MCP streamable-HTTP envelope dictated by the MCP spec. Proxies worldmonitor.mintlify.dev/docs/mcp verbatim, answering malformed bodies with -32700/-32600 locally and lifting the upstream's protocol-level tool-call failures (result.isError + code -32601/-32602) into proper top-level JSON-RPC error objects. Anonymous like the upstream; per-IP limit registered in ENDPOINT_RATE_POLICIES and enforced in-handler via checkScopedRateLimit.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },

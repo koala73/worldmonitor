@@ -6,7 +6,7 @@ keywords: "country risk monitoring, country risk API, geopolitical due diligence
 audience: "Risk teams, investors, security managers, compliance analysts, consultants"
 heroImage: "/blog/images/blog/country-risk-monitoring-due-diligence-worldmonitor.jpg"
 pubDate: "2026-06-10"
-modifiedDate: "2026-06-13"
+modifiedDate: "2026-07-22"
 ---
 
 Country risk due diligence is the process of asking: "What could go wrong because this deal, supplier, shipment, facility, or trip depends on a country?"
@@ -171,6 +171,10 @@ Country risk is probabilistic and incomplete. Good due diligence writing should 
 - "Data is stale" instead of silently treating old data as current.
 
 This is the difference between an intelligence workflow and a polished guess.
+
+## Due-Diligence Sources
+
+Corroborate country findings with first-party sources such as [World Bank Data](https://data.worldbank.org/) and the [US Treasury sanctions programs and country information](https://ofac.treasury.gov/sanctions-programs-and-country-information). Dashboard signals accelerate triage; they do not replace legal, financial, or local-source review.
 
 ## Frequently Asked Questions
 

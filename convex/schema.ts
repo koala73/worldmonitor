@@ -595,8 +595,25 @@ export default defineSchema({
     // kinds for backoff) so the terminal "subscription deleted in Dodo"
     // downgrade requires repeated 404s specifically, not just any prior failure.
     reconcileNotFoundCount: v.optional(v.number()),
+    // Request-path renewal verification (#4770). The state + attempt timestamp
+    // form a durable lease/cooldown shared by every Convex action instance, so
+    // concurrent premium requests cannot fan out into duplicate Dodo lookups.
+    // Kept separate from the daily reconciler's backoff fields above so a cron
+    // failure does not suppress the bounded customer-facing rescue attempt —
+    // and vice versa: on-demand attempts advance/reset only the shared
+    // consecutive-404 streak (reconcileNotFoundCount — provider evidence
+    // counts from either path); the backoff pair (reconcileFailureCount /
+    // lastReconcileAttemptAt) is cron-only, so request-path failures cannot
+    // defer the nightly safety net (see markDodoReconcileAttempt `source`).
+    renewalVerificationState: v.optional(v.union(
+      v.literal("pending"),
+      v.literal("failed"),
+      v.literal("lapsed"),
+    )),
+    renewalVerificationAttemptAt: v.optional(v.number()),
   })
     .index("by_userId", ["userId"])
+    .index("by_userId_status_currentPeriodEnd", ["userId", "status", "currentPeriodEnd"])
     .index("by_dodoSubscriptionId", ["dodoSubscriptionId"])
     .index("by_dodoCustomerId", ["dodoCustomerId"])
     // Dunning scan (#4932): on_hold is a small TRANSIENT set (tens of rows),

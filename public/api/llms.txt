@@ -14,6 +14,7 @@ This is the API-section companion to the site-wide briefing at https://worldmoni
 - **CLI:** `npx worldmonitor tools` lists every tool with no key; `npm install -g worldmonitor` installs the `worldmonitor` command — a zero-dependency, MCP-first client for the tools and REST API above. https://www.npmjs.com/package/worldmonitor
 - **SDKs:** official zero-dependency client libraries mirroring the CLI — Python `pip install worldmonitor-sdk` (https://pypi.org/project/worldmonitor-sdk/), Ruby `gem install worldmonitor` (https://rubygems.org/gems/worldmonitor), Go `go get github.com/koala73/worldmonitor/sdk/go` (https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go), JavaScript (npm `worldmonitor`). Guide: https://www.worldmonitor.app/docs/sdks
 - **Agent Skills:** discovery manifest at https://worldmonitor.app/.well-known/agent-skills/index.json
+- **Sandbox:** https://www.worldmonitor.app/sandbox/index.json — deterministic sample responses for representative REST operations; no auth, no quota. Guide: https://www.worldmonitor.app/docs/sandbox
 
 ## Authentication
 

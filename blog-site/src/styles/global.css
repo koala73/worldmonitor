@@ -382,6 +382,13 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   color: var(--wm-text);
 }
 
+.article-dek {
+  margin: -0.25rem 0 2rem;
+  color: var(--wm-muted);
+  font-size: clamp(1.05rem, 2vw, 1.2rem);
+  line-height: 1.65;
+}
+
 .prose h2 {
   font-family: var(--font-display);
   font-size: 1.4rem;
@@ -519,8 +526,10 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   font-family: var(--font-mono);
   margin-bottom: 2rem;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem;
+  line-height: 1.6;
 }
 
 .article-content {

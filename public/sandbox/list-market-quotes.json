@@ -1,0 +1,40 @@
+{
+  "$comment": "Sandbox fixture — a deterministic, schema-valid sample response derived from the published OpenAPI contract. No auth, no quota. Do not treat the payload as live data; call the production endpoint for real values. Guide: https://www.worldmonitor.app/docs/sandbox",
+  "sandbox": true,
+  "operation": {
+    "operationId": "ListMarketQuotes",
+    "method": "GET",
+    "path": "/api/market/v1/list-market-quotes",
+    "summary": "ListMarketQuotes",
+    "productionUrl": "https://api.worldmonitor.app/api/market/v1/list-market-quotes",
+    "service": "MarketService"
+  },
+  "request": {
+    "query": {
+      "symbols": [
+        "AAPL"
+      ],
+      "jmespath": "keys(@)"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "finnhubSkipped": true,
+      "quotes": [
+        {
+          "change": 1.5,
+          "display": "example",
+          "name": "WorldMonitor Analyst",
+          "price": 75.25,
+          "sparkline": [
+            1.5
+          ],
+          "symbol": "AAPL"
+        }
+      ],
+      "rateLimited": true,
+      "skipReason": "example"
+    }
+  }
+}

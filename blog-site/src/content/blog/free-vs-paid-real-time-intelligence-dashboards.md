@@ -1,11 +1,12 @@
 ---
 title: "Free vs. Paid Real-Time Intelligence Dashboards: What to Compare"
-description: "What free intelligence dashboards actually include, what paid tiers add, and the seven factors buyers should compare — with real 2026 price anchors from $0 to $24,000/year."
+description: "Compare free and paid intelligence dashboards using seven buying criteria and 2026 price anchors ranging from $0 to $24,000 per year."
 metaTitle: "Free vs Paid Intelligence Dashboards: Buyer's Comparison 2026"
 keywords: "free vs paid intelligence dashboard, real-time intelligence dashboard comparison, free OSINT dashboard, intelligence platform pricing, geopolitical dashboard cost, situational awareness tools comparison, free intelligence tools 2026"
 audience: "Buyers evaluating intelligence tooling, analysts justifying budget, procurement teams, researchers deciding whether to upgrade"
 heroImage: "/blog/images/blog/free-vs-paid-real-time-intelligence-dashboards.jpg"
 pubDate: "2026-07-07"
+modifiedDate: "2026-07-22"
 ---
 
 Most buyers evaluating real-time intelligence dashboards compare the wrong things. The honest answer to "free versus paid" is that free tiers now cover **awareness** — seeing what is happening in the world right now — remarkably well, while paid tiers sell the **decision layer**: analysis, alert routing, programmatic access, and deployment control. If your job ends at "know what's happening," a good free dashboard is enough. If your job is "decide, notify, and integrate," you are buying one of those three things, and you should price them separately.
@@ -21,7 +22,7 @@ More than most buyers expect. Using [World Monitor's free tier](https://www.worl
 - **Country briefs and instability scores** for situational context worldwide
 - **Maritime chokepoint monitoring** (Hormuz, Suez, Malacca, Bab el-Mandeb) and undersea cable status
 - **Cascade analysis, hotspots, breaking-alert pipeline, and watchlists**
-- Coverage in [21 languages](https://www.worldmonitor.app/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/)
+- Coverage in [25 languages](https://www.worldmonitor.app/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/)
 
 The catch, and it is a fair one: free-tier refresh cadence is typically **5–15 minutes** rather than seconds, and the workflow layer — analyst chat, scheduled digests, API access, team features — sits behind paid plans.
 
@@ -82,7 +83,7 @@ Upgrade when one of these is concretely true:
 - **Missed events cost you money or safety.** Scheduled digests and alert routing to Slack/Teams/Telegram exist so the dashboard reaches you.
 - **You ask analytical questions daily.** An AI analyst grounded in 30+ live data services with citations replaces the hour of tab-hopping, not the dashboard.
 - **You're integrating, not reading.** API quotas (e.g. 1,000 requests/day starter, 10,000/day business tier) and webhook rules are the product; the UI is incidental.
-- **Your agents need the data.** MCP access with a documented tool surface (39 tools in World Monitor's case) lets Claude or GPT query live intelligence under one key.
+- **Your agents need the data.** MCP access with a documented tool surface (41 tools in World Monitor's case) lets Claude or GPT query live intelligence under one key.
 - **Compliance is in the room.** SSO, RBAC, audit trails, and air-gapped deployment are enterprise-tier features everywhere; nobody ships them free.
 
 ## How World Monitor prices free vs. paid
@@ -92,12 +93,16 @@ For a concrete, current example (full details on the [pricing page](https://www.
 | Plan | Price | Built for |
 |---|---|---|
 | Free | $0, no signup | Public situational awareness: 56 map layers, 500+ feeds, country briefs, chokepoints, watchlists |
-| Pro | $39.99/month or $399.99/year | Analysts: WM Analyst chat with citations, Scenario Engine, Route Explorer, AI digest, MCP access with 39 tools |
+| Pro | $39.99/month or $399.99/year | Analysts: WM Analyst chat with citations, Scenario Engine, Route Explorer, AI digest, MCP access with 41 tools |
 | API | $99.99/month or $999/year | Developers: REST access, 1,000 requests/day, 5 webhook rules, OpenAPI docs |
 | API Business | $249.99/month | Teams: 300 requests/minute, 10,000 requests/day, priority support |
 | Enterprise | Custom | Organizations: SSO/MFA/RBAC, team workspaces, white-label, on-prem or air-gapped deployment |
 
 Rate limits are hard limits — exceeding a quota returns HTTP 429 with a `Retry-After` header, never a silent charge. That is the kind of detail worth checking on any vendor's pricing page before you integrate.
+
+## Open-Data References
+
+Free access does not eliminate source diligence. For example, conflict and mineral claims should be checked against the underlying publishers, such as [ACLED](https://acleddata.com/) and the [USGS Mineral Commodity Summaries](https://www.usgs.gov/centers/national-minerals-information-center/mineral-commodity-summaries). Pricing and feature comparisons should be rechecked before procurement because vendor plans change.
 
 ## Frequently Asked Questions
 

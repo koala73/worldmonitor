@@ -6,6 +6,7 @@ keywords: "self host WorldMonitor, open source OSINT dashboard, Docker OSINT das
 audience: "Developers, OSINT builders, platform teams, security researchers"
 heroImage: "/blog/images/blog/self-host-worldmonitor-open-source-osint-dashboard.jpg"
 pubDate: "2026-06-13"
+modifiedDate: "2026-07-22"
 ---
 
 WorldMonitor is open source, but "open source" does not automatically mean "safe to run on the public internet with defaults." A serious self-hosted intelligence dashboard needs secrets, seeders, Redis, source keys, and a clear understanding of which feeds are public, optional, or paid.
@@ -129,6 +130,8 @@ For developer context before you deploy, read the [developer API and open-source
 The self-hosting path uses public code, local secrets, Redis-backed caches, and seed scripts that fetch upstream data. Some panels will show more when optional keys exist. Some sources are free with signup. Some are paid. Missing source keys should be treated as expected partial coverage, not a broken product.
 
 That distinction is important for demos. If a panel is empty, check whether the seeder ran, whether Redis has data, whether the key is configured, and whether the source is currently available.
+
+The deployment files and current setup instructions live in the public [WorldMonitor repository](https://github.com/koala73/worldmonitor). Review the [GNU AGPL license text](https://www.gnu.org/licenses/agpl-3.0.html) alongside the repository's own licensing notes before operating a modified network service.
 
 ## Frequently Asked Questions
 

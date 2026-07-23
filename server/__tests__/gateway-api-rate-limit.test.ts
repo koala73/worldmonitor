@@ -54,12 +54,16 @@ const STARTER = {
   validUntil: Date.now() + 86_400_000,
 };
 let entitlement: typeof STARTER | { planKey: string; features: Record<string, unknown>; validUntil: number } | null = STARTER;
-vi.mock("../_shared/entitlement-check", () => ({
-  getRequiredTier: () => null, // not tier-gated
-  checkEntitlement: vi.fn().mockResolvedValue(null), // passes
-  checkEntitlementDetailed: vi.fn().mockResolvedValue({ response: null, entitlements: null }), // passes
-  getEntitlements: vi.fn(async () => entitlement),
-}));
+vi.mock("../_shared/entitlement-check", async (importActual) => {
+  const actual = await importActual<typeof import("../_shared/entitlement-check")>();
+  return {
+    ...actual,
+    getRequiredTier: () => null, // not tier-gated
+    checkEntitlement: vi.fn().mockResolvedValue(null), // passes
+    checkEntitlementDetailed: vi.fn().mockResolvedValue({ response: null, entitlements: null }), // passes
+    getEntitlements: vi.fn(async () => entitlement),
+  };
+});
 
 // --- Stub user-key validation: a valid wm_ key resolves to a userId ----------
 vi.mock("../_shared/user-api-key", () => ({
