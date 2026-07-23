@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 
 import {
   apiKeyDailyKey,
+  apiKeyUsageDay,
   reserveDailyMeter,
   rateLimitHeaders,
   checkBurst,
@@ -131,6 +132,21 @@ describe('#3199 U3 — reserveDailyMeter', () => {
     const date = new Date(Date.UTC(2026, 5, 30, 23, 0, 0)); // 1h before midnight
     const r = await reserveDailyMeter({ userId: 'u', allowance: STARTER_ALLOWANCE, pipeline: makePipeline(0).pipeline, date });
     assert.equal(r.retryAfterSec, 3600);
+  });
+
+  it('reports the meter UTC day as usageDay on both served and fail-open paths', async () => {
+    const date = D(2026, 5, 30); // 2026-06-30 UTC
+    // Served (metered) path — the day the INCR is keyed to.
+    const served = await reserveDailyMeter({ userId: 'u', allowance: STARTER_ALLOWANCE, pipeline: makePipeline(0).pipeline, date });
+    assert.equal(served.metered, true);
+    assert.equal(served.usageDay, apiKeyUsageDay(date));
+    assert.equal(served.usageDay, '2026-06-30');
+    // Fail-open early return (empty pipeline result) must STILL carry the day —
+    // a future edit that forgets usageDay on one of the 4 fail-open returns
+    // would otherwise pass every existing assertion.
+    const failOpen = await reserveDailyMeter({ userId: 'u', allowance: STARTER_ALLOWANCE, pipeline: async () => [], date });
+    assert.equal(failOpen.metered, false);
+    assert.equal(failOpen.usageDay, apiKeyUsageDay(date));
   });
 });
 

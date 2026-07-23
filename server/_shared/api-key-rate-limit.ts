@@ -98,16 +98,23 @@ export async function checkBurst(perMinute: number, identity: string): Promise<B
   }
 }
 
-/** Plain (un-prefixed) daily-meter key — `runRedisPipeline` applies the
- *  deployment/env prefix. UTC calendar day so the ceiling resets at midnight.
- *  `date` is injectable for deterministic tests. */
-export function apiKeyDailyKey(userId: string, date?: Date): string {
-  if (!userId) return '';
+/** The meter's authoritative UTC calendar day (`yyyy-mm-dd`). The daily key,
+ *  its INCR count, and any downstream usage stamp all derive from this single
+ *  read so a request straddling UTC midnight cannot desync its day from its
+ *  count. `date` is injectable for deterministic tests. */
+export function apiKeyUsageDay(date?: Date): string {
   const d = date ?? new Date();
   const yyyy = d.getUTCFullYear();
   const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
   const dd = String(d.getUTCDate()).padStart(2, '0');
-  return `rl:apikey:day:${userId}:${yyyy}-${mm}-${dd}`;
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+/** Plain (un-prefixed) daily-meter key — `runRedisPipeline` applies the
+ *  deployment/env prefix. UTC calendar day so the ceiling resets at midnight. */
+export function apiKeyDailyKey(userId: string, date?: Date): string {
+  if (!userId) return '';
+  return `rl:apikey:day:${userId}:${apiKeyUsageDay(date)}`;
 }
 
 /** 48h TTL: covers UTC-midnight rollover + an inspection window. Mirrors
@@ -124,6 +131,11 @@ export type RateLimitPipeline = (
 export interface MeterResult {
   /** Post-INCR count for this UTC day (0 when not metered). */
   count: number;
+  /** The UTC calendar day (`yyyy-mm-dd`) this count belongs to — the same day
+   *  embedded in the meter key. Downstream billing must stamp usage from this,
+   *  never a fresh clock read, or a midnight-straddling request desyncs its day
+   *  from its count. */
+  usageDay: string;
   /** True when count exceeded CEILING_MULTIPLIER × allowance. */
   overCeiling: boolean;
   /** False when Redis was unavailable (fail-open: serve uncounted). */
@@ -154,18 +166,19 @@ export async function reserveDailyMeter(opts: {
   const { userId, allowance, pipeline, date } = opts;
   const noop = async (): Promise<void> => {};
   const retryAfterSec = secondsUntilUtcMidnight(date);
+  const usageDay = apiKeyUsageDay(date);
 
   // No daily limit: `-1` is unlimited (enterprise); `0` is a misconfiguration
   // (positive burst but zero allowance) that we fail OPEN on rather than
   // ceiling-429 every request (ceiling would be 0×10 = 0, so request #1 trips).
   // Callers already gate eligibility on apiRateLimit > 0, so this is defensive.
   if (allowance <= 0) {
-    return { count: 0, overCeiling: false, metered: false, retryAfterSec, rollback: noop };
+    return { count: 0, usageDay, overCeiling: false, metered: false, retryAfterSec, rollback: noop };
   }
 
   const key = apiKeyDailyKey(userId, date);
   if (!key) {
-    return { count: 0, overCeiling: false, metered: false, retryAfterSec, rollback: noop };
+    return { count: 0, usageDay, overCeiling: false, metered: false, retryAfterSec, rollback: noop };
   }
 
   let pipeResult: Array<{ result?: unknown }> | null;
@@ -181,13 +194,13 @@ export async function reserveDailyMeter(opts: {
   // Fail-open: couldn't meter → serve uncounted (never punish a paying
   // customer for our Redis outage).
   if (!pipeResult || !Array.isArray(pipeResult) || pipeResult.length === 0) {
-    return { count: 0, overCeiling: false, metered: false, retryAfterSec, rollback: noop };
+    return { count: 0, usageDay, overCeiling: false, metered: false, retryAfterSec, rollback: noop };
   }
 
   const incrRaw = pipeResult[0]?.result;
   const count = typeof incrRaw === 'number' ? incrRaw : Number(incrRaw);
   if (!Number.isFinite(count) || count < 1) {
-    return { count: 0, overCeiling: false, metered: false, retryAfterSec, rollback: noop };
+    return { count: 0, usageDay, overCeiling: false, metered: false, retryAfterSec, rollback: noop };
   }
 
   let rolledBack = false;
@@ -203,7 +216,7 @@ export async function reserveDailyMeter(opts: {
   };
 
   const ceiling = allowance * CEILING_MULTIPLIER;
-  return { count, overCeiling: count > ceiling, metered: true, retryAfterSec, rollback };
+  return { count, usageDay, overCeiling: count > ceiling, metered: true, retryAfterSec, rollback };
 }
 
 /**
