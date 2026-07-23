@@ -26,7 +26,7 @@
 
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
-import { setTrustedHtml, trustedHtml, type TrustedHtml } from '@/utils/dom-utils';
+import { getFocusableElements, setTrustedHtml, trustedHtml, type TrustedHtml } from '@/utils/dom-utils';
 import { SITE_VARIANT } from '@/config/variant';
 import {
   getChannelsData,
@@ -122,8 +122,6 @@ type StepStatus = 'pending' | 'in-flight' | 'verified' | 'failed' | 'blocked' | 
 let overlay: HTMLElement | null = null;
 let lastFocusedElement: HTMLElement | null = null;
 let docKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
-
-const FOCUSABLE_SELECTOR = 'button:not([disabled]), a[href], [tabindex]:not([tabindex="-1"])';
 
 interface StepFrameCopy {
   heading: string;
@@ -335,10 +333,10 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
 
   const stepActionsHtml = (step: ActivationStep): string => {
     const copy = stepFrameCopy(step.id);
-    const primary = (label: string, action: string, disabled = false, busy = false): string =>
+    const primary = (label: string, action: string, busy = false): string =>
       `<button type="button" class="btn btn-primary pro-activation-primary" data-action="${action}"${
-        disabled ? ' disabled' : ''
-      }${busy ? ' aria-busy="true"' : ''}>${escapeHtml(label)}</button>`;
+        busy ? ' disabled aria-busy="true"' : ''
+      }>${escapeHtml(label)}</button>`;
     const skip = (): string =>
       `<button type="button" class="btn btn-ghost pro-activation-skip" data-action="skip">${escapeHtml(
         t('components.proActivation.actions.skip', { defaultValue: 'Skip for now' }),
@@ -351,7 +349,7 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
     // confirmable
     // Power step: the extras' pointers ARE the actions — render only "Continue".
     if (options.stepExtras?.[step.id]?.replacesPrimaryAction) return cont('advance-skip');
-    if (transient === 'in-flight') return primary(copy.confirming, 'confirm', true, true);
+    if (transient === 'in-flight') return primary(copy.confirming, 'confirm', true);
     const label =
       transient === 'failed'
         ? t('components.proActivation.status.retry', { defaultValue: 'Try again' })
@@ -531,15 +529,7 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
     }
   };
 
-  const getFocusable = (): HTMLElement[] => {
-    if (!overlay) return [];
-    return Array.from(overlay.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)).filter(
-      (el) =>
-        !el.hasAttribute('disabled') &&
-        el.getAttribute('aria-hidden') !== 'true' &&
-        el.offsetParent !== null,
-    );
-  };
+  const getFocusable = (): HTMLElement[] => (overlay ? getFocusableElements(overlay) : []);
 
   const onKeydown = (e: KeyboardEvent): void => {
     if (!overlay) return;

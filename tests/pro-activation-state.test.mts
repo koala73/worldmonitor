@@ -15,6 +15,9 @@ import { DODO_PRODUCTS } from '@/config/products.generated';
 import {
   decideActivationMount,
   computePendingMarker,
+  parsePendingMarker,
+  parseFireOnceRecord,
+  parseChipDismissal,
   isPendingMarkerExpired,
   isProProductId,
   isProPlanKey,
@@ -613,5 +616,44 @@ describe('storage key constants (versioned, stable)', () => {
     const keys = [PENDING_MARKER_KEY, FIRE_ONCE_KEY, FINISH_SETUP_CHIP_DISMISS_KEY];
     for (const k of keys) assert.match(k, /-v\d+$/);
     assert.equal(new Set(keys).size, keys.length);
+  });
+});
+
+describe('stored-record parsers (raw string → validated record, storage stays with callers)', () => {
+  it('parsePendingMarker: valid roundtrip, with and without productId', () => {
+    assert.deepEqual(parsePendingMarker(JSON.stringify({ productId: 'pdt_x', createdAt: 5 })), {
+      productId: 'pdt_x',
+      createdAt: 5,
+    });
+    assert.deepEqual(parsePendingMarker(JSON.stringify({ createdAt: 5 })), { createdAt: 5 });
+  });
+
+  it('parsePendingMarker: strips junk keys and rejects malformed values', () => {
+    assert.deepEqual(parsePendingMarker(JSON.stringify({ createdAt: 5, junk: true })), {
+      createdAt: 5,
+    });
+    assert.equal(parsePendingMarker(null), null);
+    assert.equal(parsePendingMarker('not json'), null);
+    assert.equal(parsePendingMarker(JSON.stringify({ createdAt: 'nope' })), null);
+    assert.equal(parsePendingMarker(JSON.stringify('a string')), null);
+  });
+
+  it('parseFireOnceRecord: valid roundtrip, junk stripped, malformed rejected', () => {
+    assert.deepEqual(
+      parseFireOnceRecord(JSON.stringify({ subscriptionKey: 'sub_1', shownAt: 7, junk: 1 })),
+      { subscriptionKey: 'sub_1', shownAt: 7 },
+    );
+    assert.equal(parseFireOnceRecord(null), null);
+    assert.equal(parseFireOnceRecord('{'), null);
+    assert.equal(parseFireOnceRecord(JSON.stringify({ shownAt: 7 })), null);
+  });
+
+  it('parseChipDismissal: valid roundtrip, junk stripped, malformed rejected', () => {
+    assert.deepEqual(parseChipDismissal(JSON.stringify({ dismissedAt: 9, junk: 'x' })), {
+      dismissedAt: 9,
+    });
+    assert.equal(parseChipDismissal(null), null);
+    assert.equal(parseChipDismissal('[]'), null);
+    assert.equal(parseChipDismissal(JSON.stringify({ dismissedAt: null })), null);
   });
 });

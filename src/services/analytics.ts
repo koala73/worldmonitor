@@ -10,6 +10,7 @@ import { subscribeAuthState, type AuthSession } from './auth-state';
 import { onSubscriptionChange, type SubscriptionInfo } from './billing';
 import { getClerkUserCreatedAt } from './clerk';
 import { DODO_PRODUCT_IDS } from '@/config/product-ids.generated';
+import type { ActivationEventName, ActivationStepId } from './pro-activation-state';
 
 const UMAMI_SCRIPT_SRC = 'https://abacus.worldmonitor.app/script.js';
 const UMAMI_WEBSITE_ID = 'e8800335-c853-46a8-8497-c993ed2f58bc';
@@ -637,12 +638,8 @@ export function trackCheckoutFailed(rawStatus: string): void {
 // Pro Activation Onboarding funnel (#4771)
 // ---------------------------------------------------------------------------
 
-/** The four activation funnel events (mirrors ACTIVATION_EVENTS in the leaf). */
-export type ProActivationEvent =
-  | 'pro-activation-entered'
-  | 'pro-activation-step-confirmed'
-  | 'pro-activation-step-skipped'
-  | 'pro-activation-exit';
+/** The four activation funnel events — the leaf's ACTIVATION_EVENTS is the naming source. */
+export type ProActivationEvent = ActivationEventName;
 
 /**
  * The ONLY fields allowed on an activation event payload. Deliberately narrow:
@@ -653,7 +650,7 @@ export type ProActivationEvent =
  */
 export interface ProActivationEventFields {
   planKey?: string | null;
-  step?: 'brief' | 'alerts' | 'power';
+  step?: ActivationStepId;
   completion?: 'complete' | 'partial' | 'none';
   verified?: number;
   pending?: number;

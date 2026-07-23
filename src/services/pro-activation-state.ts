@@ -506,6 +506,49 @@ export function isChipDismissed(record: FinishSetupChipDismissal | null, now: nu
   return record !== null && now - record.dismissedAt <= FINISH_SETUP_CHIP_DISMISS_TTL_MS;
 }
 
+// ---------------------------------------------------------------------------
+// Stored-record parsers. Raw string (from a caller's storage read) → validated
+// record, or null for anything malformed or legacy so callers degrade to "no
+// record" instead of throwing. Records are rebuilt field-by-field so junk keys
+// never survive a parse. Storage I/O itself stays with callers — these take
+// only strings, keeping the leaf import-free and node:test-testable.
+// ---------------------------------------------------------------------------
+
+function parseJsonObject(raw: string | null): Record<string, unknown> | null {
+  if (!raw) return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Malformed JSON degrades to "no record".
+  }
+  return null;
+}
+
+export function parsePendingMarker(raw: string | null): PendingOnboardingMarker | null {
+  const obj = parseJsonObject(raw);
+  if (obj === null || typeof obj.createdAt !== 'number') return null;
+  return typeof obj.productId === 'string'
+    ? { productId: obj.productId, createdAt: obj.createdAt }
+    : { createdAt: obj.createdAt };
+}
+
+export function parseFireOnceRecord(raw: string | null): FireOnceRecord | null {
+  const obj = parseJsonObject(raw);
+  if (obj === null || typeof obj.subscriptionKey !== 'string' || typeof obj.shownAt !== 'number') {
+    return null;
+  }
+  return { subscriptionKey: obj.subscriptionKey, shownAt: obj.shownAt };
+}
+
+export function parseChipDismissal(raw: string | null): FinishSetupChipDismissal | null {
+  const obj = parseJsonObject(raw);
+  if (obj === null || typeof obj.dismissedAt !== 'number') return null;
+  return { dismissedAt: obj.dismissedAt };
+}
+
 /**
  * Whether to surface the persistent "finish setup" chip after the flow. Shows
  * when any step is left unfinished (skipped or failed) and the chip has not

@@ -18,6 +18,7 @@ import {
   buildActivationSteps,
   shouldShowFinishSetupChip,
   computeFinishSetupChipDismissal,
+  parseChipDismissal,
   isChipDismissed,
   FINISH_SETUP_CHIP_DISMISS_KEY,
   type ActivationStepResult,
@@ -40,17 +41,7 @@ function nowOf(options: ProActivationFlowOptions): number {
 
 function readChipDismissal(): FinishSetupChipDismissal | null {
   try {
-    const raw = localStorage.getItem(FINISH_SETUP_CHIP_DISMISS_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    if (
-      parsed &&
-      typeof parsed === 'object' &&
-      typeof (parsed as FinishSetupChipDismissal).dismissedAt === 'number'
-    ) {
-      return parsed as FinishSetupChipDismissal;
-    }
-    return null;
+    return parseChipDismissal(localStorage.getItem(FINISH_SETUP_CHIP_DISMISS_KEY));
   } catch {
     return null;
   }

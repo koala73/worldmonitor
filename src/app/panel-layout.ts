@@ -52,6 +52,8 @@ import { registerCheckoutSuccessCallback, destroyCheckoutOverlay, showCheckoutSu
 import {
   computePendingMarker,
   computeFireOnceRecord,
+  parsePendingMarker,
+  parseFireOnceRecord,
   decideActivationMount,
   isFireOnceActive,
   PENDING_MARKER_KEY,
@@ -112,16 +114,7 @@ function writeSessionStorageValue(key: string, value: string): void {
 
 function readPendingActivationMarker(): PendingOnboardingMarker | null {
   try {
-    const raw = window.localStorage.getItem(PENDING_MARKER_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    if (parsed && typeof parsed === 'object' && typeof (parsed as PendingOnboardingMarker).createdAt === 'number') {
-      const createdAt = (parsed as PendingOnboardingMarker).createdAt;
-      const productId = (parsed as PendingOnboardingMarker).productId;
-      // Rebuild the record so only the known fields survive (drop any junk keys).
-      return typeof productId === 'string' ? { productId, createdAt } : { createdAt };
-    }
-    return null;
+    return parsePendingMarker(window.localStorage.getItem(PENDING_MARKER_KEY));
   } catch {
     return null;
   }
@@ -145,21 +138,7 @@ function clearPendingActivationMarker(): void {
 
 function readActivationFireOnceRecord(): FireOnceRecord | null {
   try {
-    const raw = window.localStorage.getItem(FIRE_ONCE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as unknown;
-    if (
-      parsed &&
-      typeof parsed === 'object' &&
-      typeof (parsed as FireOnceRecord).subscriptionKey === 'string' &&
-      typeof (parsed as FireOnceRecord).shownAt === 'number'
-    ) {
-      return {
-        subscriptionKey: (parsed as FireOnceRecord).subscriptionKey,
-        shownAt: (parsed as FireOnceRecord).shownAt,
-      };
-    }
-    return null;
+    return parseFireOnceRecord(window.localStorage.getItem(FIRE_ONCE_KEY));
   } catch {
     return null;
   }
@@ -465,6 +444,8 @@ export class PanelLayoutManager implements AppModule {
   private activationResolved = false;
   private activationRetryArmed = false;
   private activationRetryUnsubscribers: Array<() => void> = [];
+  private activationMountIdleHandle: number | null = null;
+  private activationMountTimeoutHandle: number | null = null;
 
   constructor(ctx: AppContext, callbacks: PanelLayoutManagerCallbacks) {
     this.ctx = ctx;
@@ -694,8 +675,21 @@ export class PanelLayoutManager implements AppModule {
     const idle = (window as unknown as {
       requestIdleCallback?: (cb: () => void, opts?: { timeout?: number }) => number;
     }).requestIdleCallback;
-    if (typeof idle === 'function') idle(run, { timeout: 2000 });
-    else window.setTimeout(run, 800);
+    if (typeof idle === 'function') this.activationMountIdleHandle = idle(run, { timeout: 2000 });
+    else this.activationMountTimeoutHandle = window.setTimeout(run, 800);
+  }
+
+  private cancelScheduledActivationMountCheck(): void {
+    if (typeof window === 'undefined') return;
+    if (this.activationMountIdleHandle !== null) {
+      const cancelIdle = window.cancelIdleCallback as ((handle: number) => void) | undefined;
+      cancelIdle?.(this.activationMountIdleHandle);
+      this.activationMountIdleHandle = null;
+    }
+    if (this.activationMountTimeoutHandle !== null) {
+      window.clearTimeout(this.activationMountTimeoutHandle);
+      this.activationMountTimeoutHandle = null;
+    }
   }
 
   /**
@@ -975,8 +969,9 @@ export class PanelLayoutManager implements AppModule {
     this.unsubscribePaymentFailureBanner = null;
 
     // Clean up the Pro-activation mount-retry listeners (armed only while the
-    // mount decision is still settling).
+    // mount decision is still settling) and any still-pending mount check.
     this.teardownActivationRetry();
+    this.cancelScheduledActivationMountCheck();
 
     // Reset checkout overlay so next layout init can register its callback
     destroyCheckoutOverlay();
