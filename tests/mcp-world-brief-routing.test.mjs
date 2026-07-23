@@ -76,6 +76,7 @@ function makeDeps() {
     validateUserApiKey: async (key) => (
       key === USER_KEY ? { userId: USER_ID } : null
     ),
+    guardUserApiKeyValidation: async () => null,
     redisPipeline: pipe.pipeline,
   };
 }
