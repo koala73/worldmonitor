@@ -694,6 +694,17 @@ const DIGEST_CADENCES = new Set(['daily', 'twice_daily', 'weekly']);
 const BRIEF_PREVIEW_MAX = 220;
 const BRIEF_PREVIEW_TIMEOUT_MS = 2500;
 
+/**
+ * The brief step's chosen delivery hour, held outside the re-rendered DOM. The
+ * shell rebuilds the hour `<select>` (with only DEFAULT selected) on the
+ * in-flight/failed re-render that happens *before* the confirm write reads it,
+ * so the pick lives here — written by the select's change listener, re-applied
+ * to each rebuilt select, and read by `confirmBrief` ahead of the DOM.
+ */
+interface DigestHourRef {
+  hour: number | null;
+}
+
 /** IANA timezone of the browser, defensively defaulted so a write never sends undefined. */
 function browserTimezone(): string {
   try {
@@ -721,7 +732,7 @@ function hasUsedPowerFeature(): boolean {
 }
 
 /** Platform capabilities from the live push runtime (drives the alerts-step gate). */
-export function readActivationCapabilities(): ActivationPlatformCapabilities {
+function readActivationCapabilities(): ActivationPlatformCapabilities {
   const webPushSupported = isWebPushSupported();
   const perm = getPushPermission();
   return {
@@ -812,7 +823,7 @@ function safeWorldBrief(): string | null {
 }
 
 /** Brief-step extras: a live preview (AE2) + an inline delivery-hour picker (one click). */
-function buildBriefExtra(syncBrief: string | null): ProActivationStepExtra {
+function buildBriefExtra(syncBrief: string | null, hourRef: DigestHourRef): ProActivationStepExtra {
   const hourOptions = Array.from({ length: 24 }, (_, h) =>
     `<option value="${h}"${h === DEFAULT_DIGEST_HOUR ? ' selected' : ''}>${escapeHtml(
       formatHourLabel(h),
@@ -836,31 +847,52 @@ function buildBriefExtra(syncBrief: string | null): ProActivationStepExtra {
   );
 
   let resolved: string | null = syncBrief;
-  let fetchStarted = false;
+  // Tri-state so a re-render that lands while the fetch is still in flight leaves
+  // the loading copy in place ('pending') instead of tearing it out as if the
+  // fetch had already resolved empty ('empty'); the .then() re-queries the live
+  // DOM so late content still lands after any such re-render (AE2).
+  let fetchState: 'idle' | 'pending' | 'empty' = 'idle';
   return {
     html,
     onMount: (root) => {
+      // Persist the delivery-hour pick outside the DOM: re-apply the saved hour to
+      // this freshly rendered select, then record future changes into the ref so
+      // the confirm write (which fires after an in-flight re-render) reads it.
+      const select = root.querySelector<HTMLSelectElement>(`#${BRIEF_HOUR_SELECT_ID}`);
+      if (select) {
+        if (hourRef.hour != null) select.value = String(hourRef.hour);
+        select.addEventListener('change', () => {
+          const parsed = Number(select.value);
+          if (Number.isFinite(parsed)) hourRef.hour = parsed;
+        });
+      }
+
       const el = root.querySelector<HTMLElement>('[data-brief-preview]');
       if (!el) return;
       if (resolved) {
         setTrustedHtml(el, briefPreviewInner(resolved));
         return;
       }
-      // Already fetched once and came back empty → stay copy-only (AE2).
-      if (fetchStarted) {
+      // A prior fetch already resolved empty → stay copy-only (AE2).
+      if (fetchState === 'empty') {
         el.remove();
         return;
       }
-      fetchStarted = true;
+      // Fetch still in flight from an earlier mount → leave the loading copy; its
+      // .then() re-queries the live DOM and lands the content on resolve.
+      if (fetchState === 'pending') return;
+      fetchState = 'pending';
       void fetchServerInsights(BRIEF_PREVIEW_TIMEOUT_MS)
         .then((data) => {
           resolved = data?.worldBrief?.trim() || null;
+          if (!resolved) fetchState = 'empty';
           const cur = document.querySelector<HTMLElement>('[data-brief-preview]');
           if (!cur) return;
           if (resolved) setTrustedHtml(cur, briefPreviewInner(resolved));
           else cur.remove();
         })
         .catch(() => {
+          fetchState = 'empty';
           document.querySelector<HTMLElement>('[data-brief-preview]')?.remove();
         });
     },
@@ -932,8 +964,12 @@ function buildPowerExtra(options: ProActivationFlowOptions): ProActivationStepEx
 async function confirmBrief(
   options: ProActivationFlowOptions,
   ctx: ActivationContext,
+  hourRef: DigestHourRef,
 ): Promise<'verified' | 'failed'> {
-  const payload = buildBriefDigestPayload(ctx.config, readSelectedDigestHour(), browserTimezone());
+  // Prefer the ref (survives the in-flight re-render that resets the select to
+  // DEFAULT); fall back to the live select / DEFAULT when the user never picked.
+  const selectedHour = hourRef.hour ?? readSelectedDigestHour();
+  const payload = buildBriefDigestPayload(ctx.config, selectedHour, browserTimezone());
   // null → already-done (defensive; the shell never calls confirm for an
   // already-done step, so no tuned config is ever overwritten — R15/AE6).
   if (!payload) return 'verified';
@@ -953,7 +989,10 @@ async function confirmBrief(
 }
 
 /** Alerts confirm: request+subscribe push, then ensure a rule delivers to it. */
-async function confirmAlerts(): Promise<'verified' | 'failed'> {
+async function confirmAlerts(
+  ctx: ActivationContext,
+  briefConfirmed: boolean,
+): Promise<'verified' | 'failed'> {
   try {
     // Requests permission, subscribes, and registers the web_push channel.
     // A denial throws here → 'failed' (AE3: the flow continues, nothing enabled).
@@ -962,17 +1001,23 @@ async function confirmAlerts(): Promise<'verified' | 'failed'> {
     console.warn('[pro-activation] push subscribe declined/failed', err);
     return 'failed';
   }
+  // Seed the pre-write state from the flow-open snapshot PLUS the brief step's
+  // in-session work (its 'email' channel + enabled digest rule). The channels
+  // write REPLACES the field, so a failed re-read below must not fall back to
+  // empty — that would drop the brief's 'email' and reseed a critical rule over
+  // its daily cadence. The success path still prefers the fresh re-read.
+  let channels: string[] = [...ctx.channels];
+  if (briefConfirmed && !channels.includes('email')) channels.push('email');
+  let hasEnabledRule = ctx.hasEnabledRule || briefConfirmed;
   // Re-read AFTER subscribe so the rule write reflects the just-registered
   // web_push channel AND anything the brief step created this session (a stale
   // snapshot would clobber the brief's daily cadence — read-before-write, R15).
-  let channels: string[] = [];
-  let hasEnabledRule = false;
   try {
     const data = await getChannelsData();
     channels = (data.channels ?? []).map((c) => c.channelType);
     hasEnabledRule = !!data.alertRules?.[0]?.enabled;
   } catch {
-    // Fall through with empty → seeds a fresh critical rule carrying web_push.
+    // Keep the seeded snapshot — never fall back to empty (would clobber brief).
   }
   const payload = buildCriticalAlertsPayload(channels, hasEnabledRule);
   try {
@@ -1009,8 +1054,11 @@ export async function openProActivationFlow(options: ProActivationFlowOptions): 
   const ctx = await readActivationContext();
   const steps = buildActivationSteps(ctx.capabilities, ctx.config);
 
+  // Holds the brief step's delivery-hour pick across the shell's re-renders.
+  const selectedHourRef: DigestHourRef = { hour: null };
+
   const stepExtras: Partial<Record<ActivationStepId, ProActivationStepExtra>> = {
-    brief: buildBriefExtra(safeWorldBrief()),
+    brief: buildBriefExtra(safeWorldBrief(), selectedHourRef),
     power: buildPowerExtra(options),
   };
 
@@ -1018,6 +1066,11 @@ export async function openProActivationFlow(options: ProActivationFlowOptions): 
   // the confirm button while in-flight (guard the handler itself against a
   // double-fire, e.g. a stray second click before the first await settles).
   const inFlight = new Set<ActivationStepId>();
+
+  // The brief step ran its write this session (adds 'email' + a digest rule);
+  // the alerts step seeds its pre-write channels from this so a failed re-read
+  // there never clobbers the just-added email channel.
+  let briefConfirmedThisFlow = false;
 
   options.onEvent?.(ACTIVATION_EVENTS.entered);
 
@@ -1032,11 +1085,14 @@ export async function openProActivationFlow(options: ProActivationFlowOptions): 
       try {
         const result =
           stepId === 'brief'
-            ? await confirmBrief(options, ctx)
+            ? await confirmBrief(options, ctx, selectedHourRef)
             : stepId === 'alerts'
-              ? await confirmAlerts()
+              ? await confirmAlerts(ctx, briefConfirmedThisFlow)
               : 'verified';
-        if (result === 'verified') options.onEvent?.(ACTIVATION_EVENTS.stepConfirmed, stepId);
+        if (result === 'verified') {
+          if (stepId === 'brief') briefConfirmedThisFlow = true;
+          options.onEvent?.(ACTIVATION_EVENTS.stepConfirmed, stepId);
+        }
         return result;
       } finally {
         inFlight.delete(stepId);

@@ -12,6 +12,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { DODO_PRODUCTS } from '@/config/products.generated';
+import { PRODUCT_CATALOG } from '../convex/config/productCatalog.ts';
 import {
   decideActivationMount,
   computePendingMarker,
@@ -194,6 +195,13 @@ describe('decideActivationMount — snapshot settling race (#5494)', () => {
     );
     assert.equal(d.action, 'keep');
   });
+
+  it('Pro planKey but validUntil already in the past = keep (never mount, never clear)', () => {
+    const d = decideActivationMount(
+      mountInput({ entitlement: ent({ planKey: 'pro_monthly', validUntil: NOW - DAY }) }),
+    );
+    assert.equal(d.action, 'keep');
+  });
 });
 
 describe('decideActivationMount — fire-once per subscription (R3)', () => {
@@ -280,8 +288,12 @@ describe('plan classification helpers (allowlist)', () => {
     assert.deepEqual([...PRO_PRODUCT_IDS].sort(), [DODO_PRODUCTS.PRO_MONTHLY, DODO_PRODUCTS.PRO_ANNUAL].sort());
   });
 
-  it('PRO_PLAN_KEYS matches the two Pro plan keys', () => {
-    assert.deepEqual([...PRO_PLAN_KEYS].sort(), ['pro_annual', 'pro_monthly']);
+  it('PRO_PLAN_KEYS stays in sync with the catalog\'s pro tierGroup (drift guard)', () => {
+    const catalogProPlanKeys = Object.values(PRODUCT_CATALOG)
+      .filter((e) => e.tierGroup === 'pro')
+      .map((e) => e.planKey)
+      .sort();
+    assert.deepEqual([...PRO_PLAN_KEYS].sort(), catalogProPlanKeys);
   });
 });
 
@@ -465,6 +477,14 @@ describe('buildCriticalAlertsPayload — alerts step write delta (U5)', () => {
     assert.deepEqual(buildCriticalAlertsPayload(['email', 'web_push'], true), {
       enabled: true,
       channels: ['email', 'web_push'],
+    });
+  });
+
+  it('web_push already present + no enabled rule: no duplicate channel, sensitivity still seeded', () => {
+    assert.deepEqual(buildCriticalAlertsPayload(['web_push'], false), {
+      enabled: true,
+      channels: ['web_push'],
+      sensitivity: 'critical',
     });
   });
 });

@@ -171,6 +171,27 @@ test.describe('Pro activation interstitial — shell step flow', () => {
     );
     expect(results.map((r) => r.outcome)).toEqual(['skipped', 'skipped', 'skipped']);
   });
+
+  test('confirm resolves to failed → failed badge + retry CTA, then Escape rolls it into the exit summary', async ({
+    page,
+  }) => {
+    await gotoHarness(page);
+    await openShell(page, 'failed');
+
+    await page.locator(CONFIRM_BTN).click();
+
+    // Failed state: distinct status badge + error note, primary CTA relabels to retry.
+    await expect(page.locator('.pro-activation-status.status-failed')).toContainText("Didn't work");
+    await expect(page.locator('.pro-activation-note.note-error')).toBeVisible();
+    await expect(page.locator(CONFIRM_BTN)).toContainText('Try again');
+
+    // Escape abandons the flow: the failed step keeps its 'failed' outcome, the
+    // remaining steps are marked skipped, and the summary renders both statuses.
+    await page.keyboard.press('Escape');
+    await expect(page.locator(SUMMARY)).toBeVisible();
+    await expect(page.locator('.pro-activation-summary-line.status-failed')).toHaveCount(1);
+    await expect(page.locator('.pro-activation-summary-line.status-pending')).toHaveCount(2);
+  });
 });
 
 test.describe('Pro activation flow — telemetry + finish-setup chip', () => {
@@ -316,5 +337,11 @@ test.describe('Pro activation — boot gating (real app)', () => {
     await page.waitForTimeout(4_000);
 
     await expect(page.locator(OVERLAY)).toHaveCount(0);
+
+    // The 'none' decision still runs the finish-setup chip check (fire-once is
+    // active). This harness's getChannelsData throws (no Clerk token), so every
+    // step degrades to unconfigured → derives as unfinished, and the chip should
+    // surface. A generous timeout absorbs the chip's own async config read.
+    await expect(page.locator(CHIP)).toBeVisible({ timeout: 10_000 });
   });
 });
