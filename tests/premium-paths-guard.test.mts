@@ -222,10 +222,14 @@ describe('premium-paths guard — browser direct-LLM routes cannot trigger wm-se
         node.arguments[0].expression.getText(ast) === 'toApiUrl'
       ) {
         const route = node.arguments[0].arguments[0];
-        usesPremiumFetch =
-          (ts.isTemplateExpression(route) && route.head.text === '/api/intelligence/v1/get-country-intel-brief?') ||
+        if (
+          (ts.isTemplateExpression(route) &&
+            route.head.text === '/api/intelligence/v1/get-country-intel-brief?') ||
           (ts.isNoSubstitutionTemplateLiteral(route) &&
-            route.text.startsWith('/api/intelligence/v1/get-country-intel-brief?'));
+            route.text.startsWith('/api/intelligence/v1/get-country-intel-brief?'))
+        ) {
+          usesPremiumFetch = true;
+        }
       }
       ts.forEachChild(node, visitPremiumFetch);
     }
