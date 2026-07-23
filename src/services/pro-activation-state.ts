@@ -329,6 +329,82 @@ export function buildActivationSteps(
 }
 
 // ---------------------------------------------------------------------------
+// Per-step write payloads (U4/U5): pure deltas the confirm handlers POST
+// ---------------------------------------------------------------------------
+
+/** The digest hour applied when a subscriber has not tuned their own (8:00). */
+export const DEFAULT_DIGEST_HOUR = 8;
+
+/**
+ * The digest-schedule delta the brief step writes when a subscriber turns on
+ * their morning brief. A zero-import leaf, so `digestMode` is a literal and the
+ * caller adds `variant` / `channels` (which need imports). The payload ALWAYS
+ * carries an explicit hour + timezone so the daily digest never rides the
+ * sender's 8:00-UTC default.
+ */
+export interface BriefDigestPayload {
+  readonly enabled: true;
+  readonly digestMode: 'daily';
+  readonly digestHour: number;
+  readonly digestTimezone: string;
+}
+
+/** Clamp an arbitrary hour input to a valid 0–23 integer, else the default. */
+function normalizeDigestHour(hourLocal: number): number {
+  return Number.isInteger(hourLocal) && hourLocal >= 0 && hourLocal <= 23
+    ? hourLocal
+    : DEFAULT_DIGEST_HOUR;
+}
+
+/**
+ * Build the brief step's write payload, or `null` when the brief is already set
+ * up (an enabled digest rule delivering to a verified channel) — a returning
+ * subscriber's tuned config is never overwritten (R15/AE6). Mirrors the
+ * `briefStep` already-done predicate so the confirm path and the step model
+ * agree on when a write is reachable.
+ */
+export function buildBriefDigestPayload(
+  existing: ActivationExistingConfig,
+  hourLocal: number,
+  ianaTimezone: string,
+): BriefDigestPayload | null {
+  if (existing.hasEnabledDigestRule && existing.hasVerifiedEmailChannel) return null;
+  return {
+    enabled: true,
+    digestMode: 'daily',
+    digestHour: normalizeDigestHour(hourLocal),
+    digestTimezone: ianaTimezone,
+  };
+}
+
+/**
+ * The alert-rule delta the alerts step writes after the web-push channel is
+ * registered. Adds `web_push` to the delivery channels (set semantics). When no
+ * enabled rule exists it seeds a critical-only rule; when one already exists
+ * (e.g. the brief step just created a daily digest) it PATCHES channels only —
+ * `sensitivity` is omitted so the existing cadence/sensitivity is preserved
+ * (R15, never clobber). `channels` is `string[]` to keep the leaf import-free;
+ * the caller casts to `ChannelType[]`.
+ */
+export interface CriticalAlertsPayload {
+  readonly enabled: true;
+  readonly channels: string[];
+  readonly sensitivity?: 'critical';
+}
+
+export function buildCriticalAlertsPayload(
+  existingChannels: readonly string[],
+  hasEnabledRule: boolean,
+): CriticalAlertsPayload {
+  const channels = existingChannels.includes('web_push')
+    ? [...existingChannels]
+    : [...existingChannels, 'web_push'];
+  return hasEnabledRule
+    ? { enabled: true, channels }
+    : { enabled: true, channels, sensitivity: 'critical' };
+}
+
+// ---------------------------------------------------------------------------
 // Exit summary + finish-setup chip
 // ---------------------------------------------------------------------------
 

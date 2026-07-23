@@ -22,6 +22,9 @@ import {
   isFireOnceActive,
   computeFireOnceRecord,
   buildActivationSteps,
+  buildBriefDigestPayload,
+  buildCriticalAlertsPayload,
+  DEFAULT_DIGEST_HOUR,
   buildExitSummary,
   shouldShowFinishSetupChip,
   computeFinishSetupChipDismissal,
@@ -394,6 +397,71 @@ describe('buildActivationSteps — step model (R15/AE6)', () => {
       }),
     );
     assert.deepEqual(steps.map((s) => s.state), ['already-done', 'already-done', 'already-done']);
+  });
+});
+
+describe('buildBriefDigestPayload — brief step write delta (U4)', () => {
+  it('carries explicit daily mode, chosen hour, and IANA timezone', () => {
+    assert.deepEqual(buildBriefDigestPayload(config(), 6, 'America/New_York'), {
+      enabled: true,
+      digestMode: 'daily',
+      digestHour: 6,
+      digestTimezone: 'America/New_York',
+    });
+  });
+
+  it('returns null when a digest rule + verified channel already exist (already-done, never overwrite AE6)', () => {
+    assert.equal(
+      buildBriefDigestPayload(
+        config({ hasEnabledDigestRule: true, hasVerifiedEmailChannel: true }),
+        6,
+        'UTC',
+      ),
+      null,
+    );
+  });
+
+  it('still writes when an enabled rule exists but has no verified delivery channel (undeliverable)', () => {
+    const p = buildBriefDigestPayload(
+      config({ hasEnabledDigestRule: true, hasVerifiedEmailChannel: false }),
+      9,
+      'UTC',
+    );
+    assert.equal(p?.digestHour, 9);
+    assert.equal(p?.digestMode, 'daily');
+  });
+
+  it('clamps an out-of-range or non-integer hour to the default, keeps valid bounds', () => {
+    assert.equal(buildBriefDigestPayload(config(), -1, 'UTC')?.digestHour, DEFAULT_DIGEST_HOUR);
+    assert.equal(buildBriefDigestPayload(config(), 24, 'UTC')?.digestHour, DEFAULT_DIGEST_HOUR);
+    assert.equal(buildBriefDigestPayload(config(), 9.5, 'UTC')?.digestHour, DEFAULT_DIGEST_HOUR);
+    assert.equal(buildBriefDigestPayload(config(), Number.NaN, 'UTC')?.digestHour, DEFAULT_DIGEST_HOUR);
+    assert.equal(buildBriefDigestPayload(config(), 0, 'UTC')?.digestHour, 0);
+    assert.equal(buildBriefDigestPayload(config(), 23, 'UTC')?.digestHour, 23);
+  });
+});
+
+describe('buildCriticalAlertsPayload — alerts step write delta (U5)', () => {
+  it('seeds a critical-only rule carrying web_push when no enabled rule exists', () => {
+    assert.deepEqual(buildCriticalAlertsPayload([], false), {
+      enabled: true,
+      channels: ['web_push'],
+      sensitivity: 'critical',
+    });
+  });
+
+  it('PATCHES channels only (omits sensitivity) when an enabled rule already exists — preserves cadence (R15)', () => {
+    assert.deepEqual(buildCriticalAlertsPayload(['email'], true), {
+      enabled: true,
+      channels: ['email', 'web_push'],
+    });
+  });
+
+  it('does not duplicate web_push when it is already a delivery channel', () => {
+    assert.deepEqual(buildCriticalAlertsPayload(['email', 'web_push'], true), {
+      enabled: true,
+      channels: ['email', 'web_push'],
+    });
   });
 });
 

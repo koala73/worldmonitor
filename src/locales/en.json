@@ -2274,17 +2274,21 @@
           "doneNote": "Your morning brief is already running.",
           "scheduleNote": "We'll keep your current delivery time.",
           "summaryLabel": "Morning brief",
-          "summaryVerified": "On — starts with your next morning brief."
+          "summaryVerified": "On — starts with your next morning brief.",
+          "deliverAt": "Deliver at",
+          "previewLoading": "Preparing a preview of your first brief…",
+          "previewLabel": "This morning's brief"
         },
         "alerts": {
-          "heading": "Real-time alerts",
-          "body": "Be first to know. A push the moment a watched signal breaks — conflict escalations, market shocks, fresh sanctions — so you're not waiting on the next brief.",
+          "heading": "Critical alerts",
+          "body": "Get pinged in your browser when something big breaks — conflict escalations, market shocks, fresh sanctions. Tune the cadence anytime in Settings.",
           "confirmCta": "Enable alerts",
           "confirming": "Enabling…",
-          "doneNote": "Real-time alerts are already on.",
+          "doneNote": "Browser alerts are already on.",
           "blockedNote": "Notifications are blocked in your browser. Turn them on in your browser's site settings to get alerts.",
-          "summaryLabel": "Real-time alerts",
-          "summaryVerified": "On — you'll get the next breaking signal."
+          "declinedNote": "No problem — we won't send browser alerts. You can turn them on later from your browser's site settings.",
+          "summaryLabel": "Critical alerts",
+          "summaryVerified": "On — critical signals will reach your browser."
         },
         "power": {
           "heading": "Your Pro toolkit",
@@ -2293,7 +2297,14 @@
           "confirming": "Opening…",
           "doneNote": "You're already using your Pro tools.",
           "summaryLabel": "Pro toolkit",
-          "summaryVerified": "Unlocked and ready when you are."
+          "summaryVerified": "Unlocked and ready when you are.",
+          "channelsNote": "Prefer Telegram, Slack, Discord, or a webhook?",
+          "pointers": {
+            "widgets": "Build a custom widget",
+            "analyst": "Ask the AI analyst",
+            "apiKeys": "Get your API & MCP keys",
+            "channels": "Set those up in notification settings"
+          }
         }
       },
       "status": {
@@ -2319,6 +2330,11 @@
         "linePending": "Not set up yet — finish any time in settings.",
         "lineFailed": "We couldn't set this up — try again from settings.",
         "finish": "Go to my dashboard"
+      },
+      "chip": {
+        "message": "Finish setting up your Pro account.",
+        "action": "Finish setup",
+        "dismissLabel": "Dismiss"
       }
     },
     "frameworkSelector": {

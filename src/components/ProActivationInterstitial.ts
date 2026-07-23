@@ -26,9 +26,30 @@
 
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
-import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { setTrustedHtml, trustedHtml, type TrustedHtml } from '@/utils/dom-utils';
+import { SITE_VARIANT } from '@/config/variant';
 import {
+  getChannelsData,
+  setEmailChannel,
+  setNotificationConfig,
+  type ChannelType,
+} from '@/services/notification-channels';
+import {
+  isWebPushSupported,
+  getPushPermission,
+  subscribeToPush,
+} from '@/services/push-notifications';
+import { getServerInsights, fetchServerInsights } from '@/services/insights-loader';
+import { loadWidgets } from '@/services/widget-store';
+import {
+  ACTIVATION_EVENTS,
+  buildActivationSteps,
+  buildBriefDigestPayload,
+  buildCriticalAlertsPayload,
   buildExitSummary,
+  DEFAULT_DIGEST_HOUR,
+  type ActivationExistingConfig,
+  type ActivationPlatformCapabilities,
   type ActivationStep,
   type ActivationStepId,
   type ActivationStepOutcome,
@@ -50,6 +71,42 @@ export interface ProActivationInterstitialOptions {
   onSkipStep: (stepId: ActivationStepId) => void;
   /** Called exactly once when the flow ends, with the ordered step results. */
   onExit: (results: ActivationStepResult[]) => void;
+  /**
+   * Optional per-step body extras rendered inside the step frame — the brief
+   * hour picker + preview and the power toolkit pointers (U4/U6). Rendered only
+   * for `confirmable` steps (already-done/blocked/unavailable never show them).
+   */
+  stepExtras?: Partial<Record<ActivationStepId, ProActivationStepExtra>>;
+  /**
+   * Optional per-step override for the "it failed" note copy. Consulted live at
+   * render time so the alerts step can distinguish "you declined the prompt"
+   * (permission denied) from a genuine write error (AE3). Return null/undefined
+   * to keep the generic failure note.
+   */
+  failedNote?: (stepId: ActivationStepId) => string | null | undefined;
+}
+
+/** Controls handed to a step's `onMount` so extras can complete the step. */
+export interface ProActivationStepControls {
+  /**
+   * Mark the current step confirmed and end the whole flow — used by the power
+   * step's deep-link pointers, which navigate the user into a Pro surface (so
+   * the interstitial must close first rather than sit over it).
+   */
+  confirmAndFinish(): void;
+}
+
+/** Per-step body extras injected by the high-level flow (U4/U6). */
+export interface ProActivationStepExtra {
+  /** Extra body content rendered inside the step frame (caller MUST escape). */
+  html: TrustedHtml;
+  /** Wire listeners on the rendered extras root; may complete the step early. */
+  onMount?(root: HTMLElement, controls: ProActivationStepControls): void;
+  /**
+   * When true the step renders no confirm CTA — the extras own the actions (the
+   * power step's pointers); a single "Continue" advances (counts as skip).
+   */
+  replacesPrimaryAction?: boolean;
 }
 
 /** Transient UI state for the CURRENT confirmable step only. */
@@ -259,11 +316,13 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
         ),
       );
     } else if (transient === 'failed') {
+      const override = options.failedNote?.(step.id);
       notes.push(
         noteHtml(
-          t('components.proActivation.status.failedBody', {
-            defaultValue: 'Something went wrong. You can try again, or set it up later from settings.',
-          }),
+          override ??
+            t('components.proActivation.status.failedBody', {
+              defaultValue: 'Something went wrong. You can try again, or set it up later from settings.',
+            }),
           'error',
         ),
       );
@@ -287,12 +346,21 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
     if (step.state === 'already-done') return cont('advance-done');
     if (step.state === 'blocked' || step.state === 'unavailable') return cont('advance-skip');
     // confirmable
+    // Power step: the extras' pointers ARE the actions — render only "Continue".
+    if (options.stepExtras?.[step.id]?.replacesPrimaryAction) return cont('advance-skip');
     if (transient === 'in-flight') return primary(copy.confirming, 'confirm', true, true);
     const label =
       transient === 'failed'
         ? t('components.proActivation.status.retry', { defaultValue: 'Try again' })
         : copy.confirmCta;
     return primary(label, 'confirm') + skip();
+  };
+
+  const stepExtrasHtml = (step: ActivationStep): string => {
+    if (step.state !== 'confirmable') return '';
+    const extra = options.stepExtras?.[step.id];
+    if (!extra) return '';
+    return `<div class="pro-activation-extras" data-pro-activation-extras>${extra.html}</div>`;
   };
 
   const stepHtml = (step: ActivationStep): string => {
@@ -303,6 +371,7 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
         <span class="pro-activation-status status-${status}">${escapeHtml(statusLabel(status))}</span>
         <h2 class="pro-activation-heading">${escapeHtml(copy.heading)}</h2>
         <p class="pro-activation-step-body">${escapeHtml(copy.body)}</p>
+        ${stepExtrasHtml(step)}
         ${stepNotesHtml(step)}
         <div class="pro-activation-actions">${stepActionsHtml(step)}</div>
       </div>`;
@@ -529,6 +598,22 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
         }
       });
       modal.querySelector('.pro-activation-skip')?.addEventListener('click', () => handleSkip(step));
+
+      // Wire per-step extras (brief hour picker/preview, power pointers). The
+      // controls let the power pointers confirm-and-close before deep-linking
+      // the user into a Pro surface.
+      const extra = step.state === 'confirmable' ? options.stepExtras?.[step.id] : undefined;
+      if (extra?.onMount) {
+        const extrasRoot = modal.querySelector<HTMLElement>('[data-pro-activation-extras]');
+        if (extrasRoot) {
+          extra.onMount(extrasRoot, {
+            confirmAndFinish: () => {
+              outcomes.set(step.id, 'confirmed');
+              finishFlow();
+            },
+          });
+        }
+      }
     }
 
     requestAnimationFrame(() => {
@@ -566,4 +651,408 @@ export function closeProActivationInterstitial(): void {
   const toRestore = lastFocusedElement;
   lastFocusedElement = null;
   toRestore?.focus?.();
+}
+
+// ===========================================================================
+// High-level flow (U4/U5/U6): reads real config, builds steps, supplies the
+// per-step confirm handlers, and handles exit (summary + finish-setup chip).
+//
+// Handlers call the notification-channels / push-notifications / insights
+// services DIRECTLY (the plan forbids an intermediate action-layer module).
+// The one thing this component cannot reach is the AppContext — so the power
+// step's surface openers are INJECTED by the boot hook (a later unit) via the
+// options below; the exact ctx wiring each opener needs is documented inline.
+// ===========================================================================
+
+/** Injectable configuration for `openProActivationFlow` / the finish-setup chip. */
+export interface ProActivationFlowOptions {
+  /** Account email — displayed, and the address the morning brief is sent to. */
+  accountEmail: string;
+  /** Open the API-keys / MCP settings surface. Boot hook: `ctx.unifiedSettings.open('api-keys')`. */
+  openApiKeys?: () => void;
+  /** Reveal the AI analyst / researcher panel. Boot hook: mount + scroll the `chat-analyst` panel into view. */
+  openAiAnalyst?: () => void;
+  /** Open the custom-widget builder. Boot hook: dispatch `wm:open-widget-creator` on `ctx.container`. */
+  openWidgetBuilder?: () => void;
+  /** Open notification settings for multi-step channels (R8). Boot hook: `ctx.unifiedSettings.open('notifications')`. */
+  openChannelSettings?: () => void;
+  /** Telemetry sink (names from `ACTIVATION_EVENTS`); wired by a later unit. */
+  onEvent?: (event: string, stepId?: ActivationStepId) => void;
+  /** Injectable clock (tests). Defaults to `Date.now`. */
+  now?: () => number;
+}
+
+/** Live activation context read once at flow open: config + platform + fields for the alerts patch. */
+export interface ActivationContext {
+  config: ActivationExistingConfig;
+  capabilities: ActivationPlatformCapabilities;
+  /** Existing delivery-channel types (used to merge without clobbering). */
+  channels: readonly string[];
+  /** Whether any enabled alert rule already exists (drives the alerts patch/seed choice). */
+  hasEnabledRule: boolean;
+}
+
+const BRIEF_HOUR_SELECT_ID = 'proActivationDigestHour';
+const DIGEST_CADENCES = new Set(['daily', 'twice_daily', 'weekly']);
+const BRIEF_PREVIEW_MAX = 220;
+const BRIEF_PREVIEW_TIMEOUT_MS = 2500;
+
+/** IANA timezone of the browser, defensively defaulted so a write never sends undefined. */
+function browserTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
+
+/** Local 12-hour clock label for an hour-of-day (mirrors the settings picker). */
+function formatHourLabel(h: number): string {
+  if (h === 0) return '12 AM';
+  if (h < 12) return `${h} AM`;
+  if (h === 12) return '12 PM';
+  return `${h - 12} PM`;
+}
+
+/** Best-effort synchronous "has the subscriber already used a Pro power feature". */
+function hasUsedPowerFeature(): boolean {
+  try {
+    return loadWidgets().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Platform capabilities from the live push runtime (drives the alerts-step gate). */
+export function readActivationCapabilities(): ActivationPlatformCapabilities {
+  const webPushSupported = isWebPushSupported();
+  const perm = getPushPermission();
+  return {
+    webPushSupported,
+    // 'unsupported' is already captured by webPushSupported=false; only forward
+    // a real Notification.permission value to buildActivationSteps.
+    pushPermission: perm === 'unsupported' ? undefined : perm,
+  };
+}
+
+/**
+ * Read the subscriber's existing channels + alert rule into the pure step
+ * inputs. Never throws — an unreachable channels endpoint degrades to an
+ * all-unconfigured context so onboarding still opens and offers every step.
+ */
+export async function readActivationContext(): Promise<ActivationContext> {
+  const capabilities = readActivationCapabilities();
+  try {
+    const data = await getChannelsData();
+    const channels = data.channels ?? [];
+    const rule = data.alertRules?.[0] ?? null;
+    const emailCh = channels.find((c) => c.channelType === 'email');
+    const webPushCh = channels.find((c) => c.channelType === 'web_push');
+    const hasEnabledDigestRule =
+      !!rule?.enabled && !!rule.digestMode && DIGEST_CADENCES.has(rule.digestMode);
+    return {
+      config: {
+        hasVerifiedEmailChannel: !!emailCh?.verified,
+        hasEnabledDigestRule,
+        hasTunedDigestHour: rule?.digestHour != null && rule.digestHour !== DEFAULT_DIGEST_HOUR,
+        hasWebPushChannel: !!webPushCh?.verified,
+        hasUsedPowerFeature: hasUsedPowerFeature(),
+      },
+      capabilities,
+      channels: channels.map((c) => c.channelType),
+      hasEnabledRule: !!rule?.enabled,
+    };
+  } catch {
+    return {
+      config: {
+        hasVerifiedEmailChannel: false,
+        hasEnabledDigestRule: false,
+        hasTunedDigestHour: false,
+        hasWebPushChannel: false,
+        hasUsedPowerFeature: hasUsedPowerFeature(),
+      },
+      capabilities,
+      channels: [],
+      hasEnabledRule: false,
+    };
+  }
+}
+
+/** Read the hour the user picked in the brief step frame, defaulting safely. */
+function readSelectedDigestHour(): number {
+  const el = document.getElementById(BRIEF_HOUR_SELECT_ID);
+  const value = el instanceof HTMLSelectElement ? Number(el.value) : Number.NaN;
+  return Number.isFinite(value) ? value : DEFAULT_DIGEST_HOUR;
+}
+
+function truncatePreview(text: string): string {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (clean.length <= BRIEF_PREVIEW_MAX) return clean;
+  const cut = clean.slice(0, BRIEF_PREVIEW_MAX);
+  const lastSpace = cut.lastIndexOf(' ');
+  return `${(lastSpace > 40 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
+}
+
+/** Inner HTML for a resolved brief preview (label + snippet), fully escaped. */
+function briefPreviewInner(brief: string): TrustedHtml {
+  const label = escapeHtml(
+    t('components.proActivation.steps.brief.previewLabel', { defaultValue: "This morning's brief" }),
+  );
+  const text = escapeHtml(truncatePreview(brief));
+  return trustedHtml(
+    `<span class="pro-activation-brief-preview-label">${label}</span><span class="pro-activation-brief-preview-text">${text}</span>`,
+    'pro-activation brief preview; label + snippet escaped via escapeHtml',
+  );
+}
+
+/** Synchronously-hydrated world brief, if present (else null → background fetch). */
+function safeWorldBrief(): string | null {
+  try {
+    return getServerInsights()?.worldBrief?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/** Brief-step extras: a live preview (AE2) + an inline delivery-hour picker (one click). */
+function buildBriefExtra(syncBrief: string | null): ProActivationStepExtra {
+  const hourOptions = Array.from({ length: 24 }, (_, h) =>
+    `<option value="${h}"${h === DEFAULT_DIGEST_HOUR ? ' selected' : ''}>${escapeHtml(
+      formatHourLabel(h),
+    )}</option>`,
+  ).join('');
+  const deliverLabel = escapeHtml(
+    t('components.proActivation.steps.brief.deliverAt', { defaultValue: 'Deliver at' }),
+  );
+  const sendToLabel = escapeHtml(
+    t('components.proActivation.steps.brief.previewLoading', {
+      defaultValue: 'Preparing a preview of your first brief…',
+    }),
+  );
+  const html = trustedHtml(
+    `<div class="pro-activation-brief-preview" data-brief-preview>${sendToLabel}</div>
+     <label class="pro-activation-brief-hour">
+       <span class="pro-activation-brief-hour-label">${deliverLabel}</span>
+       <select id="${BRIEF_HOUR_SELECT_ID}" class="pro-activation-hour-select unified-settings-select">${hourOptions}</select>
+     </label>`,
+    'pro-activation brief extras; hour labels + preview placeholder escaped via escapeHtml',
+  );
+
+  let resolved: string | null = syncBrief;
+  let fetchStarted = false;
+  return {
+    html,
+    onMount: (root) => {
+      const el = root.querySelector<HTMLElement>('[data-brief-preview]');
+      if (!el) return;
+      if (resolved) {
+        setTrustedHtml(el, briefPreviewInner(resolved));
+        return;
+      }
+      // Already fetched once and came back empty → stay copy-only (AE2).
+      if (fetchStarted) {
+        el.remove();
+        return;
+      }
+      fetchStarted = true;
+      void fetchServerInsights(BRIEF_PREVIEW_TIMEOUT_MS)
+        .then((data) => {
+          resolved = data?.worldBrief?.trim() || null;
+          const cur = document.querySelector<HTMLElement>('[data-brief-preview]');
+          if (!cur) return;
+          if (resolved) setTrustedHtml(cur, briefPreviewInner(resolved));
+          else cur.remove();
+        })
+        .catch(() => {
+          document.querySelector<HTMLElement>('[data-brief-preview]')?.remove();
+        });
+    },
+  };
+}
+
+/** Power-step extras: deep-link pointers into the Pro surfaces (R8-aware). */
+function buildPowerExtra(options: ProActivationFlowOptions): ProActivationStepExtra {
+  const pointers: Array<{ id: string; label: string; open: () => void }> = [];
+  const add = (id: string, key: string, defaultValue: string, open?: () => void): void => {
+    if (typeof open !== 'function') return;
+    pointers.push({ id, label: t(key, { defaultValue }), open });
+  };
+  add('widgets', 'components.proActivation.steps.power.pointers.widgets', 'Build a custom widget', options.openWidgetBuilder);
+  add('analyst', 'components.proActivation.steps.power.pointers.analyst', 'Ask the AI analyst', options.openAiAnalyst);
+  add('apiKeys', 'components.proActivation.steps.power.pointers.apiKeys', 'Get your API & MCP keys', options.openApiKeys);
+
+  const pointerButtons = pointers
+    .map(
+      (p) =>
+        `<button type="button" class="pro-activation-pointer" data-pointer="${p.id}">${escapeHtml(
+          p.label,
+        )}<span class="pro-activation-pointer-arrow" aria-hidden="true">→</span></button>`,
+    )
+    .join('');
+
+  // R8: multi-step channels are never embedded — link out to settings instead.
+  const channelsLine = options.openChannelSettings
+    ? `<p class="pro-activation-pointer-note">${escapeHtml(
+        t('components.proActivation.steps.power.channelsNote', {
+          defaultValue: 'Prefer Telegram, Slack, Discord, or a webhook?',
+        }),
+      )} <button type="button" class="pro-activation-pointer-link" data-pointer="channels">${escapeHtml(
+        t('components.proActivation.steps.power.pointers.channels', {
+          defaultValue: 'Set those up in notification settings',
+        }),
+      )}<span class="pro-activation-pointer-arrow" aria-hidden="true">→</span></button></p>`
+    : '';
+
+  const openers = new Map<string, () => void>();
+  for (const p of pointers) openers.set(p.id, p.open);
+  if (options.openChannelSettings) openers.set('channels', options.openChannelSettings);
+
+  return {
+    html: trustedHtml(
+      `<div class="pro-activation-pointers">${pointerButtons}</div>${channelsLine}`,
+      'pro-activation power pointers; labels escaped via escapeHtml',
+    ),
+    replacesPrimaryAction: true,
+    onMount: (root, controls) => {
+      for (const btn of root.querySelectorAll<HTMLElement>('[data-pointer]')) {
+        btn.addEventListener('click', () => {
+          const open = openers.get(btn.dataset.pointer ?? '');
+          options.onEvent?.(ACTIVATION_EVENTS.stepConfirmed, 'power');
+          // Close the interstitial FIRST (a full-screen overlay), then deep-link.
+          controls.confirmAndFinish();
+          try {
+            open?.();
+          } catch (err) {
+            console.warn('[pro-activation] surface opener threw', err);
+          }
+        });
+      }
+    },
+  };
+}
+
+/** Brief confirm: link the email channel, then one atomic daily-digest write. */
+async function confirmBrief(
+  options: ProActivationFlowOptions,
+  ctx: ActivationContext,
+): Promise<'verified' | 'failed'> {
+  const payload = buildBriefDigestPayload(ctx.config, readSelectedDigestHour(), browserTimezone());
+  // null → already-done (defensive; the shell never calls confirm for an
+  // already-done step, so no tuned config is ever overwritten — R15/AE6).
+  if (!payload) return 'verified';
+  try {
+    await setEmailChannel(options.accountEmail);
+    const channels = ctx.channels.includes('email') ? [...ctx.channels] : [...ctx.channels, 'email'];
+    await setNotificationConfig({
+      variant: SITE_VARIANT,
+      ...payload,
+      channels: channels as ChannelType[],
+    });
+    return 'verified';
+  } catch (err) {
+    console.warn('[pro-activation] brief confirm failed', err);
+    return 'failed';
+  }
+}
+
+/** Alerts confirm: request+subscribe push, then ensure a rule delivers to it. */
+async function confirmAlerts(): Promise<'verified' | 'failed'> {
+  try {
+    // Requests permission, subscribes, and registers the web_push channel.
+    // A denial throws here → 'failed' (AE3: the flow continues, nothing enabled).
+    await subscribeToPush();
+  } catch (err) {
+    console.warn('[pro-activation] push subscribe declined/failed', err);
+    return 'failed';
+  }
+  // Re-read AFTER subscribe so the rule write reflects the just-registered
+  // web_push channel AND anything the brief step created this session (a stale
+  // snapshot would clobber the brief's daily cadence — read-before-write, R15).
+  let channels: string[] = [];
+  let hasEnabledRule = false;
+  try {
+    const data = await getChannelsData();
+    channels = (data.channels ?? []).map((c) => c.channelType);
+    hasEnabledRule = !!data.alertRules?.[0]?.enabled;
+  } catch {
+    // Fall through with empty → seeds a fresh critical rule carrying web_push.
+  }
+  const payload = buildCriticalAlertsPayload(channels, hasEnabledRule);
+  try {
+    await setNotificationConfig({
+      variant: SITE_VARIANT,
+      ...payload,
+      channels: payload.channels as ChannelType[],
+    });
+    return 'verified';
+  } catch (err) {
+    console.warn('[pro-activation] alerts rule write failed', err);
+    return 'failed';
+  }
+}
+
+/** Denial-aware failed-note copy for the alerts step (distinguish decline from error). */
+function alertsFailedNote(): string {
+  return getPushPermission() === 'denied'
+    ? t('components.proActivation.steps.alerts.declinedNote', {
+        defaultValue:
+          "No problem — we won't send browser alerts. You can turn them on later from your browser's site settings.",
+      })
+    : t('components.proActivation.status.failedBody', {
+        defaultValue: 'Something went wrong. You can try again, or set it up later from settings.',
+      });
+}
+
+/**
+ * Open the full Pro-activation flow: read the subscriber's config, build the
+ * ordered steps, wire the real per-step handlers, and on exit decide the
+ * finish-setup chip. Safe to await; opens exactly one interstitial.
+ */
+export async function openProActivationFlow(options: ProActivationFlowOptions): Promise<void> {
+  const ctx = await readActivationContext();
+  const steps = buildActivationSteps(ctx.capabilities, ctx.config);
+
+  const stepExtras: Partial<Record<ActivationStepId, ProActivationStepExtra>> = {
+    brief: buildBriefExtra(safeWorldBrief()),
+    power: buildPowerExtra(options),
+  };
+
+  // Per-step re-entry guard: belt-and-suspenders on top of the shell disabling
+  // the confirm button while in-flight (guard the handler itself against a
+  // double-fire, e.g. a stray second click before the first await settles).
+  const inFlight = new Set<ActivationStepId>();
+
+  options.onEvent?.(ACTIVATION_EVENTS.entered);
+
+  openProActivationInterstitial({
+    steps,
+    accountEmail: options.accountEmail,
+    stepExtras,
+    failedNote: (stepId) => (stepId === 'alerts' ? alertsFailedNote() : null),
+    onConfirmStep: async (stepId) => {
+      if (inFlight.has(stepId)) return 'failed';
+      inFlight.add(stepId);
+      try {
+        const result =
+          stepId === 'brief'
+            ? await confirmBrief(options, ctx)
+            : stepId === 'alerts'
+              ? await confirmAlerts()
+              : 'verified';
+        if (result === 'verified') options.onEvent?.(ACTIVATION_EVENTS.stepConfirmed, stepId);
+        return result;
+      } finally {
+        inFlight.delete(stepId);
+      }
+    },
+    onSkipStep: (stepId) => options.onEvent?.(ACTIVATION_EVENTS.stepSkipped, stepId),
+    onExit: (results) => {
+      options.onEvent?.(ACTIVATION_EVENTS.exit);
+      // Chip decision + all localStorage live in the chip module (lazy-imported
+      // to keep this component ↔ chip pair free of a static import cycle).
+      void import('@/components/ProActivationChip')
+        .then((m) => m.showFinishSetupChipForResults(options, results))
+        .catch((err) => console.warn('[pro-activation] finish-setup chip failed to load', err));
+    },
+  });
 }

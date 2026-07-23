@@ -7926,6 +7926,108 @@ a.prediction-link:hover {
   color: var(--text-dim);
 }
 
+.pro-activation-extras {
+  margin: 0 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pro-activation-brief-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  background: var(--overlay-light);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.pro-activation-brief-preview-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+}
+
+.pro-activation-brief-preview-text {
+  color: var(--text);
+}
+
+.pro-activation-brief-hour {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pro-activation-brief-hour-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.pro-activation-hour-select {
+  width: auto;
+}
+
+.pro-activation-pointers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pro-activation-pointer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  color: var(--text);
+  background: var(--overlay-light);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.pro-activation-pointer:hover {
+  border-color: var(--green);
+  background: color-mix(in srgb, var(--green) 8%, transparent);
+}
+
+.pro-activation-pointer-arrow {
+  color: var(--text-dim);
+}
+
+.pro-activation-pointer-note {
+  margin: 12px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.pro-activation-pointer-link {
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: inherit;
+  font-weight: 600;
+  color: var(--green);
+  cursor: pointer;
+}
+
+.pro-activation-pointer-link:hover {
+  text-decoration: underline;
+}
+
 @media (max-width: 560px) {
   .pro-activation-modal {
     width: 100%;
