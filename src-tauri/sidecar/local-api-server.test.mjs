@@ -4,6 +4,7 @@ import http, { createServer, request as httpRequest } from 'node:http';
 import https from 'node:https';
 import { createHmac } from 'node:crypto';
 import { EventEmitter } from 'node:events';
+import net from 'node:net';
 import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import os from 'node:os';
 import path from 'node:path';
@@ -2077,6 +2078,130 @@ test('service-status reports bound fallback port after EADDRINUSE recovery', asy
     await localApi.cleanup();
     await new Promise((resolve, reject) => {
       blocker.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
+test('releases the upstream fetch semaphore when a response stalls mid-body (#5441)', async () => {
+  // Raw TCP, not http.createServer: sends valid headers with a Content-Length
+  // promising more body than it ever delivers, then destroys the socket
+  // shortly after — the "accepts connection, sends headers, stalls mid-body,
+  // connection eventually drops" failure mode from the issue. Node's http
+  // client surfaces this on `res` ('aborted'/'error'), not on `req` — which is
+  // exactly what the old globalThis.fetch wrapper never listened for, so the
+  // wrapped Promise never settled and the semaphore slot leaked permanently.
+  let stallConnections = 0;
+  const stallServer = net.createServer((socket) => {
+    socket.once('data', () => {
+      stallConnections += 1;
+      socket.write(
+        'HTTP/1.1 200 OK\r\n' +
+        'Content-Type: application/json\r\n' +
+        'Content-Length: 1000\r\n' +
+        '\r\n'
+      );
+      setTimeout(() => socket.destroy(), 20);
+    });
+  });
+  const stallPort = await listen(stallServer);
+
+  const healthy = createServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+  });
+  const healthyPort = await listen(healthy);
+
+  const localApi = await setupApiDir({
+    'stall-proxy.js': `
+      export default async function handler() {
+        try {
+          await fetch('http://127.0.0.1:${stallPort}/');
+          return new Response(JSON.stringify({ settled: 'resolved' }), { status: 200 });
+        } catch (error) {
+          return new Response(JSON.stringify({ settled: 'rejected', message: error.message }), { status: 200 });
+        }
+      }
+    `,
+    'healthy-proxy.js': `
+      export default async function handler() {
+        const upstream = await fetch('http://127.0.0.1:${healthyPort}/');
+        const payload = await upstream.text();
+        return new Response(payload, { status: upstream.status, headers: { 'content-type': 'application/json' } });
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+    allowPrivateFetchOrigins: [
+      `http://127.0.0.1:${stallPort}`,
+      `http://127.0.0.1:${healthyPort}`,
+    ],
+  });
+  const { port } = await app.start();
+
+  try {
+    // getJsonViaHttp, NOT authFetch/global fetch: globalThis.fetch is
+    // monkey-patched by local-api-server.mjs and shares its 6-slot semaphore
+    // with the handler-side fetches this test is exercising. A real external
+    // client (a separate process/browser) never shares that counter — using
+    // the patched fetch for these outer calls too would have each one
+    // consume a slot just reaching the local API server, before its handler
+    // ever got to make its own inner request, self-deadlocking the test
+    // rather than reproducing the issue.
+    //
+    // MAX_CONCURRENT_UPSTREAM is 6 — fire exactly that many concurrent
+    // requests through the stalling upstream to exhaust every slot. Do not
+    // await them yet: under the pre-fix code these never settle at all, so
+    // awaiting here would hang the test itself, not just prove the bug.
+    const stallRequests = Array.from({ length: 6 }, () =>
+      getJsonViaHttp(`http://127.0.0.1:${port}/api/stall-proxy`)
+    );
+
+    // Wait until all 6 have actually reached the upstream (holding their
+    // semaphore slot) before touching the healthy endpoint, so the assertion
+    // below is exercising a genuinely exhausted semaphore, not a race.
+    const deadline = Date.now() + 2000;
+    while (stallConnections < 6 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(stallConnections, 6, 'all 6 stalling requests should have reached the upstream');
+
+    // The semaphore is now fully held by 6 in-flight stalling fetches. A 7th
+    // request to a completely healthy upstream must still complete quickly —
+    // proving the stalled slots were released rather than leaked forever.
+    const healthyResponse = await Promise.race([
+      getJsonViaHttp(`http://127.0.0.1:${port}/api/healthy-proxy`),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('healthy request did not complete — semaphore is wedged')), 3000)
+      ),
+    ]);
+    assert.equal(healthyResponse.status, 200);
+    assert.deepEqual(healthyResponse.json, { ok: true });
+
+    // The 6 stalling requests should also have settled (rejected) by now that
+    // their upstream connections were destroyed — confirm none of them hung.
+    const stallResults = await Promise.all(
+      stallRequests.map((p) =>
+        Promise.race([
+          p.then((r) => r.json),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('stall request never settled')), 1000)),
+        ])
+      )
+    );
+    for (const result of stallResults) {
+      assert.equal(result.settled, 'rejected');
+    }
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    await new Promise((resolve, reject) => {
+      stallServer.close((error) => (error ? reject(error) : resolve()));
+    });
+    await new Promise((resolve, reject) => {
+      healthy.close((error) => (error ? reject(error) : resolve()));
     });
   }
 });

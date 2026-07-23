@@ -229,10 +229,19 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
     if (pinned) {
       requestOptions.lookup = makePinnedLookup(pinned.address, pinned.family);
     }
+    // Settle idempotently and reject on every stream event that can leave a
+    // response mid-flight (upstream accepts the connection, sends headers,
+    // then stalls) — not just `res 'end'` / `req 'error'`. Without this, a
+    // stalled response never settles the Promise, the `finally` below never
+    // runs, and one upstream slot leaks permanently (#5441).
     return await new Promise((resolve, reject) => {
+      let settled = false;
+      const settle = (fn, v) => { if (settled) return; settled = true; fn(v); };
       const req = mod.request(requestOptions, (res) => {
         const chunks = [];
         res.on('data', (c) => chunks.push(c));
+        res.on('error', (e) => settle(reject, e));
+        res.on('aborted', () => settle(reject, new Error('upstream response aborted mid-body')));
         res.on('end', () => {
           const buf = Buffer.concat(chunks);
           const responseHeaders = new Headers();
@@ -240,14 +249,17 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
             if (v) responseHeaders.set(k, Array.isArray(v) ? v.join(', ') : v);
           }
           try {
-            resolve(buildSafeResponse(res.statusCode, res.statusMessage, responseHeaders, buf));
+            settle(resolve, buildSafeResponse(res.statusCode, res.statusMessage, responseHeaders, buf));
           } catch (error) {
-            reject(error);
+            settle(reject, error);
           }
         });
       });
-      req.on('error', reject);
-      if (init?.signal) { init.signal.addEventListener('abort', () => req.destroy()); }
+      req.on('error', (e) => settle(reject, e));
+      req.on('close', () => settle(reject, new Error('request closed before completion')));
+      if (init?.signal) {
+        init.signal.addEventListener('abort', () => { req.destroy(); settle(reject, new Error('aborted by signal')); });
+      }
       if (body != null) req.write(body);
       req.end();
     });
