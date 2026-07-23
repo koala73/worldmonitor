@@ -449,7 +449,8 @@
       "trustOpenSource": "Open source · AGPL-3.0",
       "screenshotAlt": "World Monitor live intelligence dashboard — global map with conflict, shipping and market layers",
       "plateNote": "Captured from the live map — click to open it",
-      "trustBuild": "Build on it:"
+      "trustBuild": "Build on it:",
+      "positioningLink": "WorldMonitor is not an open-source Palantir"
     },
     "live": {
       "eyebrow": "Live right now",
