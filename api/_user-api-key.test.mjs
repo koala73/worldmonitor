@@ -94,11 +94,14 @@ async function withMockedConvex(fn, options = {}) {
     }
 
     if (url.endsWith('/api/internal-entitlements')) {
-      return new Response(JSON.stringify({
-        planKey: 'api_starter',
-        validUntil: Date.now() + 86_400_000,
-        features: { apiAccess: true },
-      }), {
+      const value = Object.hasOwn(options, 'entitlementResponse')
+        ? options.entitlementResponse
+        : {
+            planKey: 'api_starter',
+            validUntil: Date.now() + 86_400_000,
+            features: { apiAccess: true },
+          };
+      return new Response(JSON.stringify(value), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -342,6 +345,135 @@ test('apiAccess entitlement past validUntil fails closed with 403 posture', asyn
   });
 });
 
+test('renewal verification pending is a distinct retryable 503', async () => {
+  await withMockedEntitlement({
+    planKey: 'free',
+    validUntil: 0,
+    features: { apiAccess: false },
+    billingStatus: 'renewal_verification_pending',
+    retryAfterSeconds: 19,
+  }, async () => {
+    const result = await validateBootstrapUserApiAccess('user_api_owner');
+
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 503);
+    assert.equal(result.reason, 'renewal_verification_pending');
+    assert.equal(result.error, 'Renewal verification pending');
+    assert.equal(result.headers['Retry-After'], '19');
+    assert.equal(result.headers['X-Billing-Verification'], 'renewal_verification_pending');
+  });
+});
+
+test('confirmed subscription lapse is distinct from verification failure', async () => {
+  await withMockedEntitlement({
+    planKey: 'free',
+    validUntil: 0,
+    features: { apiAccess: false },
+    billingStatus: 'subscription_lapsed',
+  }, async () => {
+    const result = await validateBootstrapUserApiAccess('user_api_owner');
+
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 403);
+    assert.equal(result.reason, 'subscription_lapsed');
+    assert.equal(result.error, 'API access subscription lapsed');
+    assert.equal(result.headers['X-Billing-Verification'], 'subscription_lapsed');
+  });
+});
+
+test('short-lived verification marker is served from Redis without another Convex request', async () => {
+  await withMockedConvex(async (calls) => {
+    const result = await validateBootstrapUserApiAccess('user_api_owner');
+
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 503);
+    assert.equal(result.reason, 'renewal_verification_failed');
+    assert.equal(calls.some((call) => call.url.endsWith('/api/internal-entitlements')), false);
+  }, {
+    redisCache: {
+      'entitlements:test:user_api_owner': {
+        planKey: 'free',
+        validUntil: 0,
+        features: { apiAccess: false },
+        billingStatus: 'renewal_verification_failed',
+        retryAfterSeconds: 9,
+      },
+    },
+  });
+});
+
+test('recent not-applicable freshness marker is served from Redis without another Convex request', async () => {
+  await withMockedConvex(async (calls) => {
+    const result = await validateBootstrapUserApiAccess('user_api_owner');
+
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 403);
+    assert.equal(result.reason, 'cached-forbidden');
+    assert.equal(calls.some((call) => call.url.endsWith('/api/internal-entitlements')), false);
+  }, {
+    redisCache: {
+      'entitlements:test:user_api_owner': {
+        planKey: 'free',
+        validUntil: 0,
+        features: { apiAccess: false },
+        renewalVerificationFreshness: {
+          status: 'not_applicable',
+          checkedAt: Date.now(),
+        },
+      },
+    },
+  });
+});
+
+test('expired not-applicable freshness marker falls through to Convex', async () => {
+  await withMockedConvex(async (calls) => {
+    const result = await validateBootstrapUserApiAccess('user_api_owner');
+
+    assert.equal(result.ok, true);
+    assert.equal(calls.some((call) => call.url.endsWith('/api/internal-entitlements')), true);
+  }, {
+    redisCache: {
+      'entitlements:test:user_api_owner': {
+        planKey: 'free',
+        validUntil: 0,
+        features: { apiAccess: false },
+        renewalVerificationFreshness: {
+          status: 'not_applicable',
+          checkedAt: Date.now() - 900_001,
+        },
+      },
+    },
+  });
+});
+
+test('not-applicable freshness marker is cached for at most 900 seconds', async () => {
+  await withMockedConvex(async (calls) => {
+    const result = await validateBootstrapUserApiAccess('user_api_owner');
+
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 403);
+    const cacheWrite = calls.find((call) => {
+      if (!call.url.startsWith('https://upstash.test') || !call.body.includes('"SET"')) return false;
+      const command = JSON.parse(call.body).find((entry) => entry[0] === 'SET');
+      return command?.[1] === 'entitlements:test:user_api_owner';
+    });
+    assert.ok(cacheWrite);
+    const setCommand = JSON.parse(cacheWrite.body).find((entry) => entry[0] === 'SET');
+    const ttl = Number(setCommand[4]);
+    assert.ok(ttl > 0 && ttl <= 900, `unexpected marker TTL: ${ttl}`);
+  }, {
+    entitlementResponse: {
+      planKey: 'free',
+      validUntil: 0,
+      features: { apiAccess: false },
+      renewalVerificationFreshness: {
+        status: 'not_applicable',
+        checkedAt: Date.now(),
+      },
+    },
+  });
+});
+
 test('malformed entitlement response fails closed with 403 posture', async () => {
   await withMockedEntitlement({ ok: true }, async () => {
     const result = await validateBootstrapUserApiAccess('user_api_owner');
@@ -370,7 +502,7 @@ test('stale cached entitlement (past validUntil) re-validates against Convex', a
   });
 });
 
-test('transient Convex HTTP 5xx on entitlement check is a retryable 503, not 403', async () => {
+test('transient Convex HTTP 5xx on entitlement check emits the entitlement_verification_unavailable contract', async () => {
   await withMockedConvex(async (calls) => {
     globalThis.fetch = async (input, init) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
@@ -393,7 +525,13 @@ test('transient Convex HTTP 5xx on entitlement check is a retryable 503, not 403
     assert.equal(result.ok, false);
     assert.equal(result.status, 503);
     assert.equal(result.unavailable, true);
-    assert.equal(result.error, 'Service temporarily unavailable');
+    // Matches server/gateway.ts's wm_-key branch and docs/usage-errors.mdx —
+    // the bootstrap surface must speak the same billing-verification contract.
+    assert.equal(result.error, 'Unable to verify API access');
+    assert.equal(result.reason, 'entitlement_verification_unavailable');
+    assert.equal(result.headers['X-Billing-Verification'], 'entitlement_verification_unavailable');
+    assert.equal(result.headers['X-Validation-Mode'], 'degraded');
+    assert.equal(result.headers['Retry-After'], '5');
   });
 });
 

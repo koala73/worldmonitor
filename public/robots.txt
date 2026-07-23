@@ -63,3 +63,7 @@ Sitemap: https://www.worldmonitor.app/sitemap.xml
 Sitemap: https://www.worldmonitor.app/blog/sitemap-index.xml
 # Mintlify owns the documentation index, including /docs/zh/ translations.
 Sitemap: https://www.worldmonitor.app/docs/sitemap.xml
+
+# NLWeb Schema Map — structured-data index for AI agents (kept in parity with
+# public/schemamap.xml by tests/deploy-config.test.mjs).
+Schemamap: https://www.worldmonitor.app/schemamap.xml

@@ -28,6 +28,8 @@
     "sync:locales:check": "node scripts/sync-locale-keys.mjs --check",
     "sync:bootstrap-tier-keys": "node scripts/sync-bootstrap-tier-keys.mjs",
     "sync:bootstrap-tier-keys:check": "node scripts/sync-bootstrap-tier-keys.mjs --check",
+    "sandbox:fixtures": "node scripts/generate-sandbox-fixtures.mjs",
+    "sandbox:fixtures:check": "node scripts/generate-sandbox-fixtures.mjs --check",
     "docs:stats": "node scripts/docs-stats.mjs",
     "docs:check": "node scripts/docs-stats.mjs --check",
     "dev": "vite",

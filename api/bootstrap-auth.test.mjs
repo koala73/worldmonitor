@@ -333,6 +333,45 @@ test('revoked wm_ user key returns generic non-cacheable 401 without leaking gat
   });
 });
 
+test('billing-verification lapse on a wm_ user key exposes a machine-readable code', async () => {
+  await withMockedBootstrapAuth({
+    entitlement: {
+      planKey: 'free',
+      validUntil: 0,
+      features: { apiAccess: false },
+      billingStatus: 'subscription_lapsed',
+    },
+  }, async () => {
+    const resp = await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': USER_KEY }));
+    const body = await resp.json();
+
+    assert.equal(resp.status, 403);
+    assert.equal(resp.headers.get('x-billing-verification'), 'subscription_lapsed');
+    assert.equal(resp.headers.get('cache-control'), 'no-store');
+    assert.equal(body.error, 'API access subscription lapsed');
+    assert.equal(body.code, 'subscription_lapsed');
+  });
+});
+
+test('retryable billing verification on a wm_ user key keeps Retry-After and code on the wire', async () => {
+  await withMockedBootstrapAuth({
+    entitlement: {
+      planKey: 'free',
+      validUntil: 0,
+      features: { apiAccess: false },
+      billingStatus: 'renewal_verification_pending',
+      retryAfterSeconds: 19,
+    },
+  }, async () => {
+    const resp = await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': USER_KEY }));
+    const body = await resp.json();
+
+    assert.equal(resp.status, 503);
+    assert.equal(resp.headers.get('retry-after'), '19');
+    assert.equal(body.code, 'renewal_verification_pending');
+  });
+});
+
 test('malformed wm_ user key is rejected before Redis or Convex validation', async () => {
   await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async (calls) => {
     const resp = await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': 'wm_notcanonical' }));

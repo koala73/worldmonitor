@@ -129,6 +129,13 @@ export function isNewerEvent(
   return incomingTimestamp > existingUpdatedAt;
 }
 
+// Delay for the second, race-covering entitlement cache sync (#4770 review):
+// must exceed an edge request's Convex-read -> Redis-marker-write span, which
+// happens entirely inside the entitlement check (3s Convex fetch budget + 5s
+// Redis write timeout, ~8s worst case). Tool-level fetch timeouts (up to 25s)
+// do NOT extend that span — the marker write is not deferred to request end.
+const ENTITLEMENT_CACHE_RESYNC_DELAY_MS = 15_000;
+
 /**
  * Creates or updates the entitlements record for a given user.
  * Only one entitlement row exists per userId (upsert semantics).
@@ -188,6 +195,19 @@ export async function upsertEntitlements(
       0,
       internal.payments.cacheActions.syncEntitlementCache,
       { userId, planKey, features, validUntil },
+    );
+    // #4770 review: a request that read Convex BEFORE this write can still be
+    // in flight and will write its stale billing-denial marker to the same
+    // Redis key AFTER the sync above (bare SET, last-writer-wins, no version
+    // guard). Edge requests' read->write span is bounded well under this
+    // delay, so a delayed re-sync overwrites any such late marker. The
+    // delayed job re-reads CURRENT state at fire time: replaying this
+    // upsert's snapshot could revert a newer entitlement write that landed
+    // inside the delay (a stale re-GRANT, worse than the race it fixes).
+    await ctx.scheduler.runAfter(
+      ENTITLEMENT_CACHE_RESYNC_DELAY_MS,
+      internal.payments.cacheActions.resyncEntitlementCacheFromDb,
+      { userId },
     );
   }
 }
@@ -598,6 +618,8 @@ export async function handleSubscriptionActive(
       lastReconcileAttemptAt: undefined,
       reconcileFailureCount: undefined,
       reconcileNotFoundCount: undefined,
+      renewalVerificationState: undefined,
+      renewalVerificationAttemptAt: undefined,
     });
   } else {
     await ctx.db.insert("subscriptions", {
@@ -746,6 +768,8 @@ export async function handleSubscriptionRenewed(
     lastReconcileAttemptAt: undefined,
     reconcileFailureCount: undefined,
     reconcileNotFoundCount: undefined,
+    renewalVerificationState: undefined,
+    renewalVerificationAttemptAt: undefined,
   });
 
   // Recompute from ALL subs — a renewal on a lower-tier sub must NOT

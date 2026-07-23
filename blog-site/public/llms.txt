@@ -1,0 +1,17 @@
+# World Monitor Blog
+
+> Section-scoped llms.txt for the World Monitor blog — analysis posts on geopolitical monitoring, OSINT tradecraft, markets, and the platform itself, plus the intelligence glossary. Fetch this file when the task needs World Monitor's written analysis or terminology rather than its live data APIs.
+
+The blog is the editorial layer of World Monitor, the open-source real-time global-intelligence dashboard. Posts carry schema.org JSON-LD (BlogPosting, FAQPage) and are listed in the RSS feed and sitemap below.
+
+## Entry Points
+
+- [Blog index](https://www.worldmonitor.app/blog/): all posts, newest first
+- [RSS feed](https://www.worldmonitor.app/blog/rss.xml): full post list with summaries — the machine-readable subscription surface
+- [Intelligence glossary](https://www.worldmonitor.app/blog/glossary/): defined terms (DefinedTermSet JSON-LD) for geopolitical-intelligence vocabulary
+- [Blog sitemap](https://www.worldmonitor.app/blog/sitemap-index.xml)
+
+## Related Section Files
+
+- [Site-wide llms.txt](https://worldmonitor.app/llms.txt) · [API section](https://worldmonitor.app/api/llms.txt) · [Docs section](https://www.worldmonitor.app/docs/llms.txt) · [Developer portal section](https://worldmonitor.app/developers/llms.txt)
+- Live data, MCP server, and REST API: see the site-wide llms.txt — the blog is content-only.

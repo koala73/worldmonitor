@@ -35,7 +35,7 @@ const dockerNginxSource = readFileSync(resolve(__dirname, '../docker/nginx.conf'
 const frontendDockerfileSource = readFileSync(resolve(__dirname, '../docker/Dockerfile'), 'utf-8');
 const dockerignoreSource = readFileSync(resolve(__dirname, '../.dockerignore'), 'utf-8');
 const vercelIgnoreSource = readFileSync(resolve(__dirname, '../scripts/vercel-ignore.sh'), 'utf-8');
-const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|countries|chokepoints|reference|changelog|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|mcp-server\\.md|openapi\\.md|sdks\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
+const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|countries|chokepoints|reference|changelog|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
 const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html).*)';
 const APP_ROOT_HOST_PATTERN = '^(?:(?:www|tech|finance|commodity|happy|energy)\\.)?worldmonitor\\.app$';
 const GLOBAL_CSP_INLINE_SCRIPT_HTML_FILES = [
@@ -2639,6 +2639,111 @@ describe('agent readiness: named developer-resource pages (#4953)', () => {
         `sitemap.xml must register ${page.path} on the www host`
       );
       assert.ok(blogPost.includes(page.path), `the developer blog post must cross-link ${page.path}`);
+    }
+  });
+});
+
+// NLWeb schemamap (orank "NLWeb Schema Feeds"): the robots.txt `Schemamap:`
+// directive and public/schemamap.xml must stay in parity, and every <loc> the
+// map advertises must resolve to a tracked file or a live route — a schemamap
+// pointing at a 404 is worse than none (same dead-pointer class as the deleted
+// Wikidata QID incident).
+describe('NLWeb schemamap (/schemamap.xml)', () => {
+  const schemamapSource = readFileSync(resolve(__dirname, '../public/schemamap.xml'), 'utf-8');
+
+  it('robots.txt advertises the schemamap and the file exists', () => {
+    assert.match(robotsSource, /^Schemamap: https:\/\/www\.worldmonitor\.app\/schemamap\.xml$/m);
+    assert.match(schemamapSource, /^<\?xml version="1\.0" encoding="UTF-8"\?>/);
+    assert.ok(
+      schemamapSource.includes('<schemamap xmlns="http://www.nlweb.ai/schemas/schemamap/0.1">'),
+      'schemamap must declare the NLWeb schemamap namespace'
+    );
+  });
+
+  it('every advertised <loc> resolves to a tracked file or a live route', () => {
+    const locs = [...schemamapSource.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+    assert.ok(locs.length >= 3, 'schemamap must index at least the homepage, blog, and RSS feed');
+    const resolvable = {
+      'https://www.worldmonitor.app/': () =>
+        vercelConfig.rewrites.some((r) => r.source === '/' && r.destination === '/pro/welcome.html'),
+      'https://www.worldmonitor.app/blog/': () =>
+        existsSync(resolve(__dirname, '../blog-site/src/pages/index.astro')),
+      'https://www.worldmonitor.app/blog/rss.xml': () =>
+        existsSync(resolve(__dirname, '../blog-site/src/pages/rss.xml.ts')),
+      'https://www.worldmonitor.app/blog/glossary/': () =>
+        existsSync(resolve(__dirname, '../blog-site/src/pages/glossary/index.astro')),
+    };
+    for (const loc of locs) {
+      const probe = resolvable[loc];
+      assert.ok(probe, `schemamap <loc> ${loc} has no resolvability probe — add one when adding entries`);
+      assert.ok(probe(), `schemamap <loc> ${loc} does not resolve to a tracked file or live route`);
+    }
+    // Each entry must pair the loc with a schema.org type. Line-anchored so
+    // the explanatory XML comment (which names the tags) doesn't count.
+    const entries = schemamapSource.match(/^ {2}<url>$/gm) || [];
+    const schemas = schemamapSource.match(/<schema>https:\/\/schema\.org\/[A-Za-z]+<\/schema>/g) || [];
+    assert.equal(entries.length, locs.length);
+    assert.equal(schemas.length, locs.length, 'every schemamap entry needs a schema.org type');
+  });
+
+  it('the schemamap.xml headers rule serves XML with CORS', () => {
+    const rule = vercelConfig.headers.find((h) => h.source === '/schemamap.xml');
+    assert.ok(rule, 'vercel.json must carry a /schemamap.xml headers rule');
+    const keys = Object.fromEntries(rule.headers.map((h) => [h.key, h.value]));
+    assert.match(keys['Content-Type'], /application\/xml/);
+    assert.equal(keys['Access-Control-Allow-Origin'], '*');
+  });
+});
+
+// Docs MCP facade: /docs/mcp must hit api/docs-mcp.ts (which lifts the
+// upstream's protocol-level tool-call failures into real JSON-RPC errors)
+// BEFORE the catch-all /docs/:match* Mintlify rewrite — rewrites are
+// first-match-wins, so ordering is load-bearing.
+describe('docs MCP facade (/docs/mcp)', () => {
+  it('rewrites /docs/mcp to /api/docs-mcp ahead of the Mintlify catch-all', () => {
+    const rewrites = vercelConfig.rewrites;
+    const facadeIdx = rewrites.findIndex(
+      (r) => r.source === '/docs/mcp' && r.destination === '/api/docs-mcp'
+    );
+    const mintlifyIdx = rewrites.findIndex(
+      (r) => r.source === '/docs/:match*' && String(r.destination).includes('mintlify.dev')
+    );
+    assert.ok(facadeIdx >= 0, 'missing /docs/mcp → /api/docs-mcp rewrite');
+    assert.ok(mintlifyIdx >= 0, 'Mintlify /docs rewrite missing');
+    assert.ok(facadeIdx < mintlifyIdx, '/docs/mcp rewrite must precede the /docs/:match* Mintlify rewrite');
+    assert.ok(existsSync(resolve(__dirname, '../api/docs-mcp.ts')), 'api/docs-mcp.ts must exist');
+  });
+
+  it('the first-party docs server card still points at the facade URL', () => {
+    const card = JSON.parse(
+      readFileSync(resolve(__dirname, '../public/.well-known/mcp/docs-server-card.json'), 'utf-8')
+    );
+    assert.equal(card.url, 'https://www.worldmonitor.app/docs/mcp');
+    assert.equal(card.serverUrl, 'https://www.worldmonitor.app/docs/mcp');
+  });
+});
+
+// Modular llms.txt (orank "Modular llms.txt per product area"): section-scoped
+// files must exist and the site-wide llms.txt must cross-link every section so
+// agents can discover them without probing paths blind.
+describe('section-scoped llms.txt files', () => {
+  it('tracked section files exist', () => {
+    for (const path of ['../public/api/llms.txt', '../public/developers/llms.txt', '../blog-site/public/llms.txt']) {
+      assert.ok(existsSync(resolve(__dirname, path)), `${path} must exist`);
+    }
+  });
+
+  it('the site-wide llms.txt cross-links every section file and the sandbox', () => {
+    const llms = readFileSync(resolve(__dirname, '../public/llms.txt'), 'utf-8');
+    for (const url of [
+      'https://worldmonitor.app/api/llms.txt',
+      'https://www.worldmonitor.app/docs/llms.txt',
+      'https://worldmonitor.app/developers/llms.txt',
+      'https://www.worldmonitor.app/blog/llms.txt',
+      'https://www.worldmonitor.app/sandbox/index.json',
+      'https://www.worldmonitor.app/schemamap.xml',
+    ]) {
+      assert.ok(llms.includes(url), `public/llms.txt must link ${url}`);
     }
   });
 });

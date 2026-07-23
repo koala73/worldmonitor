@@ -1,0 +1,43 @@
+{
+  "$comment": "Sandbox fixture — a deterministic, schema-valid sample response derived from the published OpenAPI contract. No auth, no quota. Do not treat the payload as live data; call the production endpoint for real values. Guide: https://www.worldmonitor.app/docs/sandbox",
+  "sandbox": true,
+  "operation": {
+    "operationId": "ListAcledEvents",
+    "method": "GET",
+    "path": "/api/conflict/v1/list-acled-events",
+    "summary": "ListAcledEvents",
+    "productionUrl": "https://api.worldmonitor.app/api/conflict/v1/list-acled-events",
+    "service": "ConflictService"
+  },
+  "request": {
+    "query": {
+      "start": "1717200000000",
+      "end": "1717200000000",
+      "page_size": 25,
+      "cursor": "next-page-token",
+      "country": "US",
+      "jmespath": "keys(@)"
+    }
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "events": [
+        {
+          "actors": [
+            "example"
+          ],
+          "admin1": "example",
+          "country": "US",
+          "eventType": "all",
+          "fatalities": 1,
+          "id": "example-id"
+        }
+      ],
+      "pagination": {
+        "nextCursor": "next-page-token",
+        "totalCount": 1
+      }
+    }
+  }
+}
