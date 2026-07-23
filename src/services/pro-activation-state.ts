@@ -444,6 +444,48 @@ export function buildExitSummary(
   return results.map((r) => ({ id: r.id, outcome: r.outcome, status: outcomeStatus(r.outcome) }));
 }
 
+/** Overall disposition of a finished flow — the funnel-exit completion state. */
+export type ActivationCompletion = 'complete' | 'partial' | 'none';
+
+/**
+ * Aggregate exit state for the funnel-exit telemetry event. The per-step
+ * outcomes collapse into the three summary buckets (mirrors `outcomeStatus`),
+ * and `completion` is `complete` when every step verified, `none` when none
+ * did, and `partial` in between. Carries only counts — never a per-step or
+ * billing identity — so it is safe to forward straight to analytics.
+ */
+export interface ActivationExitSummary {
+  readonly completion: ActivationCompletion;
+  /** Steps that ended verified (confirmed in-flow or already-done). */
+  readonly verified: number;
+  /** Steps left unfinished (skipped). */
+  readonly pending: number;
+  /** Steps whose write failed. */
+  readonly failed: number;
+  /** Total steps the flow presented. */
+  readonly total: number;
+}
+
+/** Collapse ordered step results into the aggregate exit summary (funnel state). */
+export function summarizeActivationExit(
+  results: readonly ActivationStepResult[],
+): ActivationExitSummary {
+  let verified = 0;
+  let pending = 0;
+  let failed = 0;
+  for (const r of results) {
+    const status = outcomeStatus(r.outcome);
+    if (status === 'verified') verified += 1;
+    else if (status === 'pending') pending += 1;
+    else failed += 1;
+  }
+  const total = results.length;
+  // verified === 0 also covers the empty-flow case (0 === 0 total).
+  const completion: ActivationCompletion =
+    verified === 0 ? 'none' : verified === total ? 'complete' : 'partial';
+  return { completion, verified, pending, failed, total };
+}
+
 /** Versioned localStorage key for the finish-setup chip dismissal. */
 export const FINISH_SETUP_CHIP_DISMISS_KEY = 'wm-pro-activation-chip-dismissed-v1';
 
@@ -490,6 +532,14 @@ export const ACTIVATION_EVENTS = {
   stepSkipped: 'pro-activation-step-skipped',
   exit: 'pro-activation-exit',
 } as const;
+
+/**
+ * The set of activation telemetry event names. This is the single naming
+ * source: the analytics.ts EVENTS catalog and its `ProActivationEvent` union
+ * mirror these literals, and the flow's `onEvent` hook is typed to it so a
+ * rename here surfaces as a compile error at the analytics wiring site.
+ */
+export type ActivationEventName = (typeof ACTIVATION_EVENTS)[keyof typeof ACTIVATION_EVENTS];
 
 /**
  * The per-step telemetry event for an outcome, or null when the outcome is not

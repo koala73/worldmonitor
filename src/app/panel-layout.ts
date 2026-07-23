@@ -40,7 +40,7 @@ import { resolveNewsCategories, enabledNewsCategoryKeys } from '@/config/feed-re
 import { BETA_MODE } from '@/config/beta';
 import { t } from '@/services/i18n';
 import { getCurrentTheme } from '@/utils';
-import { trackCriticalBannerAction, trackCheckoutSuccess, trackCheckoutFailed, replayPendingCheckoutSuccess, replayPendingProFunnelEvents } from '@/services/analytics';
+import { trackCriticalBannerAction, trackCheckoutSuccess, trackCheckoutFailed, replayPendingCheckoutSuccess, replayPendingProFunnelEvents, trackProActivation } from '@/services/analytics';
 import { getStoredMapModePreference } from '@/services/map-mode-preference';
 import { loadWidgets, saveWidget, isProUser } from '@/services/widget-store';
 import type { CustomWidgetSpec } from '@/services/widget-store';
@@ -830,6 +830,20 @@ export class PanelLayoutManager implements AppModule {
       openWidgetBuilder: () =>
         ctx.container.dispatchEvent(new CustomEvent('wm:open-widget-creator', { detail: {} })),
       openAiAnalyst: () => this.revealAnalystPanel(),
+      // Funnel telemetry (#4771). The plan tier is read live at fire-time from
+      // the entitlement snapshot (a mount only happens once it is live Pro).
+      // Payload minimization lives in trackProActivation: only planKey / step /
+      // the aggregate exit counts reach Umami — never the subscription id.
+      onEvent: (event, stepId, exit) =>
+        trackProActivation(event, {
+          planKey: getEntitlementState()?.planKey ?? null,
+          step: stepId,
+          completion: exit?.completion,
+          verified: exit?.verified,
+          pending: exit?.pending,
+          failed: exit?.failed,
+          total: exit?.total,
+        }),
     };
   }
 

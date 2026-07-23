@@ -26,6 +26,7 @@ import {
   buildCriticalAlertsPayload,
   DEFAULT_DIGEST_HOUR,
   buildExitSummary,
+  summarizeActivationExit,
   shouldShowFinishSetupChip,
   computeFinishSetupChipDismissal,
   isChipDismissed,
@@ -483,6 +484,60 @@ describe('buildExitSummary — R15 pending/verified/failed', () => {
     assert.deepEqual(buildExitSummary([{ id: 'brief', outcome: 'done' }]), [
       { id: 'brief', outcome: 'done', status: 'verified' },
     ]);
+  });
+});
+
+describe('summarizeActivationExit — funnel exit completion state', () => {
+  it('all verified (confirmed/done) → complete, counts bucketed', () => {
+    assert.deepEqual(
+      summarizeActivationExit([
+        { id: 'brief', outcome: 'confirmed' },
+        { id: 'alerts', outcome: 'done' },
+        { id: 'power', outcome: 'confirmed' },
+      ]),
+      { completion: 'complete', verified: 3, pending: 0, failed: 0, total: 3 },
+    );
+  });
+
+  it('mix of verified + skipped + failed → partial', () => {
+    assert.deepEqual(
+      summarizeActivationExit([
+        { id: 'brief', outcome: 'confirmed' },
+        { id: 'alerts', outcome: 'skipped' },
+        { id: 'power', outcome: 'failed' },
+      ]),
+      { completion: 'partial', verified: 1, pending: 1, failed: 1, total: 3 },
+    );
+  });
+
+  it('nothing verified (all skipped) → none', () => {
+    assert.deepEqual(
+      summarizeActivationExit([
+        { id: 'brief', outcome: 'skipped' },
+        { id: 'alerts', outcome: 'skipped' },
+      ]),
+      { completion: 'none', verified: 0, pending: 2, failed: 0, total: 2 },
+    );
+  });
+
+  it('a failed-only exit is none, not partial (no step verified)', () => {
+    assert.deepEqual(summarizeActivationExit([{ id: 'brief', outcome: 'failed' }]), {
+      completion: 'none',
+      verified: 0,
+      pending: 0,
+      failed: 1,
+      total: 1,
+    });
+  });
+
+  it('empty flow → none with zero counts', () => {
+    assert.deepEqual(summarizeActivationExit([]), {
+      completion: 'none',
+      verified: 0,
+      pending: 0,
+      failed: 0,
+      total: 0,
+    });
   });
 });
 

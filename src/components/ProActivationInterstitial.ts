@@ -47,8 +47,11 @@ import {
   buildBriefDigestPayload,
   buildCriticalAlertsPayload,
   buildExitSummary,
+  summarizeActivationExit,
   DEFAULT_DIGEST_HOUR,
+  type ActivationEventName,
   type ActivationExistingConfig,
+  type ActivationExitSummary,
   type ActivationPlatformCapabilities,
   type ActivationStep,
   type ActivationStepId,
@@ -676,8 +679,12 @@ export interface ProActivationFlowOptions {
   openWidgetBuilder?: () => void;
   /** Open notification settings for multi-step channels (R8). Boot hook: `ctx.unifiedSettings.open('notifications')`. */
   openChannelSettings?: () => void;
-  /** Telemetry sink (names from `ACTIVATION_EVENTS`); wired by a later unit. */
-  onEvent?: (event: string, stepId?: ActivationStepId) => void;
+  /**
+   * Telemetry sink (names from `ACTIVATION_EVENTS`). `stepId` accompanies the
+   * per-step confirmed/skipped events; `exit` carries the aggregate completion
+   * state on the flow-exit event (absent on every other event).
+   */
+  onEvent?: (event: ActivationEventName, stepId?: ActivationStepId, exit?: ActivationExitSummary) => void;
   /** Injectable clock (tests). Defaults to `Date.now`. */
   now?: () => number;
 }
@@ -1047,7 +1054,7 @@ export async function openProActivationFlow(options: ProActivationFlowOptions): 
     },
     onSkipStep: (stepId) => options.onEvent?.(ACTIVATION_EVENTS.stepSkipped, stepId),
     onExit: (results) => {
-      options.onEvent?.(ACTIVATION_EVENTS.exit);
+      options.onEvent?.(ACTIVATION_EVENTS.exit, undefined, summarizeActivationExit(results));
       // Chip decision + all localStorage live in the chip module (lazy-imported
       // to keep this component ↔ chip pair free of a static import cycle).
       void import('@/components/ProActivationChip')
