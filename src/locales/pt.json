@@ -1921,6 +1921,17 @@
       "cta": "Fazer upgrade para Pro →",
       "dismiss": "Descartar"
     },
+    "billingState": {
+      "onHoldDesc": "O pagamento falhou. Atualize seu método de pagamento para restaurar o acesso premium.",
+      "onHoldBannerMessage": "O pagamento falhou. Atualize seu método de pagamento para manter sua assinatura ativa.",
+      "updatePayment": "Atualizar pagamento",
+      "renewalPendingDesc": "Estamos verificando a renovação da sua assinatura. O acesso premium será restaurado automaticamente assim que for confirmada.",
+      "refreshStatus": "Atualizar status",
+      "renewalFailedDesc": "Não foi possível verificar a renovação da sua assinatura. Gerencie a cobrança ou entre em contato com o suporte se o problema persistir.",
+      "manageBilling": "Gerenciar cobrança",
+      "lapsedDesc": "Sua assinatura Pro terminou. Assine novamente para recuperar o acesso premium.",
+      "resubscribe": "Assinar novamente"
+    },
     "checkoutFailureBanner": {
       "message": "O pagamento não pôde ser concluído. Nenhuma cobrança foi realizada.",
       "retry": "Tentar novamente",

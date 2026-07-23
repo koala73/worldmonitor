@@ -2170,6 +2170,17 @@
       "cta": "Upgrade auf Pro →",
       "dismiss": "Verwerfen"
     },
+    "billingState": {
+      "onHoldDesc": "Zahlung fehlgeschlagen. Aktualisieren Sie Ihre Zahlungsmethode, um den Premium-Zugriff wiederherzustellen.",
+      "onHoldBannerMessage": "Zahlung fehlgeschlagen. Aktualisieren Sie Ihre Zahlungsmethode, damit Ihr Abonnement aktiv bleibt.",
+      "updatePayment": "Zahlungsmethode aktualisieren",
+      "renewalPendingDesc": "Wir überprüfen die Verlängerung Ihres Abonnements. Der Premium-Zugriff wird nach Bestätigung automatisch wiederhergestellt.",
+      "refreshStatus": "Status aktualisieren",
+      "renewalFailedDesc": "Die Verlängerung Ihres Abonnements konnte nicht überprüft werden. Verwalten Sie Ihre Abrechnung oder kontaktieren Sie den Support, falls das Problem weiterhin besteht.",
+      "manageBilling": "Abrechnung verwalten",
+      "lapsedDesc": "Ihr Pro-Abonnement ist abgelaufen. Abonnieren Sie erneut, um den Premium-Zugriff wiederzuerlangen.",
+      "resubscribe": "Erneut abonnieren"
+    },
     "checkoutFailureBanner": {
       "message": "Zahlung konnte nicht abgeschlossen werden. Es wurde keine Gebühr eingezogen.",
       "retry": "Erneut versuchen",

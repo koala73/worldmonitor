@@ -475,6 +475,7 @@ ${welcomeFaqEntries}
     <li><a href="https://www.worldmonitor.app/pro">World Monitor Pro</a> — AI analyst, scheduled digests, MCP for Claude &amp; GPT</li>
     <li><a href="https://www.worldmonitor.app/blog/">World Monitor Blog</a> — OSINT guides, geopolitics and market intelligence</li>
     <li><a href="https://www.worldmonitor.app/blog/posts/what-is-worldmonitor-real-time-global-intelligence/">What is World Monitor?</a></li>
+    <li><a href="https://www.worldmonitor.app/blog/posts/worldmonitor-is-not-palantir/">WorldMonitor is not an open-source Palantir</a></li>
     <li><a href="https://www.worldmonitor.app/blog/posts/osint-for-everyone-open-source-intelligence-democratized/">OSINT for everyone — open-source intelligence democratized</a></li>
     <li><a href="https://github.com/koala73/worldmonitor">Open source on GitHub (AGPL-3.0)</a></li>
     <li><a href="${WIRED_STORY_URL}">Featured in WIRED</a></li>

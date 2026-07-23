@@ -58,6 +58,7 @@ async function seedSubscription(
     suffix: string;
     rawPayload?: unknown;
     userId?: string;
+    renewalVerificationState?: "pending" | "failed" | "lapsed";
   },
 ) {
   await t.run(async (ctx) => {
@@ -71,6 +72,9 @@ async function seedSubscription(
       currentPeriodEnd: opts.currentPeriodEnd,
       rawPayload: opts.rawPayload ?? {},
       updatedAt: NOW,
+      ...(opts.renewalVerificationState
+        ? { renewalVerificationState: opts.renewalVerificationState }
+        : {}),
     });
   });
 }
@@ -4470,5 +4474,72 @@ describe("payments billing missed renewal reconciliation", () => {
         vi.unstubAllEnvs();
       }
     });
+  });
+});
+
+describe("getSubscriptionForUser renewal verification exposure (#4771)", () => {
+  const IDENTITY = { subject: TEST_USER_ID, tokenIdentifier: `clerk|${TEST_USER_ID}` };
+
+  test("returns renewalVerificationState when the row carries a verification verdict", async () => {
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW - DAY_MS,
+      suffix: "renewal_pending",
+      renewalVerificationState: "pending",
+    });
+
+    const result = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+    expect(result).not.toBeNull();
+    expect(result!.renewalVerificationState).toBe("pending");
+  });
+
+  test("returns null renewalVerificationState for rows without a verdict (stable shape)", async () => {
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "no_verdict",
+    });
+
+    const result = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+    expect(result).not.toBeNull();
+    expect(result!.renewalVerificationState).toBeNull();
+  });
+
+  test("multi-row: returns the priority-selected row's verdict, not another row's", async () => {
+    const t = convexTest(schema, modules);
+    // Older cancelled row carrying a stale verification verdict...
+    await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "cancelled",
+      currentPeriodEnd: NOW - 30 * DAY_MS,
+      suffix: "multi_row_cancelled",
+      renewalVerificationState: "failed",
+    });
+    // ...must not leak onto the newer active row the priority sort selects.
+    await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "multi_row_active",
+    });
+
+    const result = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe("active");
+    expect(result!.renewalVerificationState).toBeNull();
   });
 });

@@ -6,6 +6,7 @@ import { readJsonFromUpstash } from '../../_upstash-json.js';
 import { buildAuthHeaders } from '../auth';
 import { assertToolFetchOk, BillingDenialError, throwIfBillingDenial } from '../billing-denial';
 import { SUPPORTED_CONSUMER_PRICES_COUNTRIES } from '../constants';
+import { assertMcpToolFetchOk } from '../downstream';
 import { evaluateFreshness } from '../freshness';
 import type { FreshnessCheck, ToolDef } from '../types';
 import { COUNTRY_BRIEF_UI_URI, COUNTRY_RISK_UI_URI, WORLD_BRIEF_UI_URI } from '../ui/registry';
@@ -309,7 +310,7 @@ export const RPC_TOOLS: ToolDef[] = [
     // ui:// app shell (rendered inline by an MCP-Apps host). Single source of
     // truth — the ui:// resource is registered in ../ui/registry.ts.
     _uiResourceUri: WORLD_BRIEF_UI_URI,
-    _execute: async (params, base, context) => {
+    _execute: async (params, base, context, execution) => {
       const UA = 'worldmonitor-mcp-edge/1.0';
       // Step 1: fetch current geopolitical headlines (budget: 6 s, leaves ~24 s for LLM).
       // `full` is the documented geopolitical/default digest variant.
@@ -319,7 +320,12 @@ export const RPC_TOOLS: ToolDef[] = [
         headers: { ...digestAuth, 'User-Agent': UA },
         signal: AbortSignal.timeout(6_000),
       });
-      assertToolFetchOk(digestRes, 'feed-digest');
+      await assertMcpToolFetchOk(digestRes, {
+        operation: 'list-feed-digest',
+        tool: 'get_world_brief',
+        auth: context,
+        execution,
+      });
       type DigestPayload = { categories?: Record<string, { items?: DigestItemForBrief[] }> };
       const digest = await digestRes.json() as DigestPayload;
       // Pair headlines with their RSS snippets so the LLM grounds per-story
@@ -356,7 +362,12 @@ export const RPC_TOOLS: ToolDef[] = [
         body: briefBody,
         signal: AbortSignal.timeout(18_000),
       });
-      assertToolFetchOk(briefRes, 'summarize-article');
+      await assertMcpToolFetchOk(briefRes, {
+        operation: 'summarize-article',
+        tool: 'get_world_brief',
+        auth: context,
+        execution,
+      });
       const result = await briefRes.json() as Record<string, unknown>;
       return { ...result, headlines, sources };
     },

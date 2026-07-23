@@ -2188,6 +2188,17 @@
       "cta": "Przejdź na Pro →",
       "dismiss": "Odrzuć"
     },
+    "billingState": {
+      "onHoldDesc": "Płatność nie powiodła się. Zaktualizuj metodę płatności, aby przywrócić dostęp premium.",
+      "onHoldBannerMessage": "Płatność nie powiodła się. Zaktualizuj metodę płatności, aby zachować aktywną subskrypcję.",
+      "updatePayment": "Zaktualizuj płatność",
+      "renewalPendingDesc": "Weryfikujemy odnowienie Twojej subskrypcji. Dostęp premium zostanie automatycznie przywrócony po potwierdzeniu.",
+      "refreshStatus": "Odśwież status",
+      "renewalFailedDesc": "Nie udało się zweryfikować odnowienia Twojej subskrypcji. Zarządzaj rozliczeniami lub skontaktuj się z pomocą techniczną, jeśli problem będzie się powtarzał.",
+      "manageBilling": "Zarządzaj rozliczeniami",
+      "lapsedDesc": "Twoja subskrypcja Pro wygasła. Subskrybuj ponownie, aby odzyskać dostęp premium.",
+      "resubscribe": "Subskrybuj ponownie"
+    },
     "checkoutFailureBanner": {
       "message": "Nie można ukończyć płatności. Nie dokonano opłaty.",
       "retry": "Spróbuj ponownie",

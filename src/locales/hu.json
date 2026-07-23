@@ -2239,6 +2239,17 @@
       "cta": "Frissítés Pro-ra →",
       "dismiss": "Eltüntetés"
     },
+    "billingState": {
+      "onHoldDesc": "A fizetés sikertelen. Frissítse fizetési módját a prémium hozzáférés visszaállításához.",
+      "onHoldBannerMessage": "A fizetés sikertelen. Frissítse fizetési módját, hogy előfizetése aktív maradjon.",
+      "updatePayment": "Fizetés frissítése",
+      "renewalPendingDesc": "Ellenőrizzük előfizetése megújítását. A prémium hozzáférés a megerősítés után automatikusan helyreáll.",
+      "refreshStatus": "Állapot frissítése",
+      "renewalFailedDesc": "Nem sikerült ellenőrizni előfizetése megújítását. Kezelje a számlázást, vagy lépjen kapcsolatba az ügyfélszolgálattal, ha a probléma továbbra is fennáll.",
+      "manageBilling": "Számlázás kezelése",
+      "lapsedDesc": "Pro előfizetése lejárt. Fizessen elő újra a prémium hozzáférés visszaszerzéséhez.",
+      "resubscribe": "Újra előfizetek"
+    },
     "checkoutFailureBanner": {
       "message": "A fizetés nem fejeződött be. Nem történt költség.",
       "retry": "Próbáld újra",

@@ -528,6 +528,11 @@ export const getSubscriptionForUser = query({
       displayName: productPlan?.displayName ?? subscription.planKey,
       status: subscription.status,
       currentPeriodEnd: subscription.currentPeriodEnd,
+      // #4771: request-path renewal verification verdict (#4770), so the
+      // frontend can show "verifying your renewal" instead of a generic
+      // Upgrade CTA when local paid evidence goes stale. Normalized to null
+      // (not undefined) for a stable wire shape.
+      renewalVerificationState: subscription.renewalVerificationState ?? null,
     };
   },
 });

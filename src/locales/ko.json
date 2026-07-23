@@ -2170,6 +2170,17 @@
       "cta": "Pro로 업그레이드 →",
       "dismiss": "닫기"
     },
+    "billingState": {
+      "onHoldDesc": "결제에 실패했습니다. 프리미엄 이용 권한을 복원하려면 결제 수단을 업데이트하세요.",
+      "onHoldBannerMessage": "결제에 실패했습니다. 구독을 유지하려면 결제 수단을 업데이트하세요.",
+      "updatePayment": "결제 수단 업데이트",
+      "renewalPendingDesc": "구독 갱신을 확인하고 있습니다. 확인되는 즉시 프리미엄 이용 권한이 자동으로 복원됩니다.",
+      "refreshStatus": "상태 새로고침",
+      "renewalFailedDesc": "구독 갱신을 확인할 수 없습니다. 문제가 계속되면 결제를 관리하거나 지원팀에 문의하세요.",
+      "manageBilling": "결제 관리",
+      "lapsedDesc": "Pro 구독이 종료되었습니다. 프리미엄 이용 권한을 되찾으려면 다시 구독하세요.",
+      "resubscribe": "다시 구독"
+    },
     "checkoutFailureBanner": {
       "message": "결제를 완료할 수 없습니다. 청구되지 않았습니다.",
       "retry": "다시 시도",
