@@ -4543,3 +4543,25 @@ describe("getSubscriptionForUser renewal verification exposure (#4771)", () => {
     expect(result!.renewalVerificationState).toBeNull();
   });
 });
+
+describe("getSubscriptionForUser activation fire-once identity exposure", () => {
+  const IDENTITY = { subject: TEST_USER_ID, tokenIdentifier: `clerk|${TEST_USER_ID}` };
+
+  test("surfaces subscriptionId and currentPeriodStart for the fire-once key", async () => {
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_identity",
+    });
+
+    const result = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+    expect(result).not.toBeNull();
+    expect(result!.subscriptionId).toBe("sub_billing_activation_identity");
+    expect(result!.currentPeriodStart).toBe(NOW - DAY_MS);
+  });
+});

@@ -44,11 +44,24 @@ import { trackCriticalBannerAction, trackCheckoutSuccess, trackCheckoutFailed, r
 import { getStoredMapModePreference } from '@/services/map-mode-preference';
 import { loadWidgets, saveWidget, isProUser } from '@/services/widget-store';
 import type { CustomWidgetSpec } from '@/services/widget-store';
-import { initEntitlementSubscription, destroyEntitlementSubscription, isEntitled, hasTier, getEntitlementState, onEntitlementChange, shouldReloadOnEntitlementChange } from '@/services/entitlements';
-import { initSubscriptionWatch, destroySubscriptionWatch, onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
+import { initEntitlementSubscription, destroyEntitlementSubscription, isEntitled, hasTier, getEntitlementState, onEntitlementChange, shouldReloadOnEntitlementChange, type EntitlementState } from '@/services/entitlements';
+import { initSubscriptionWatch, destroySubscriptionWatch, onSubscriptionChange, getSubscription, openBillingPortal, prereserveBillingPortalTab, type SubscriptionInfo } from '@/services/billing';
 import { initPaymentFailureBanner } from '@/components/payment-failure-banner';
 import { handleCheckoutReturn } from '@/services/checkout-return';
-import { registerCheckoutSuccessCallback, destroyCheckoutOverlay, showCheckoutSuccess, consumePostCheckoutFlag, clearCheckoutAttempt } from '@/services/checkout';
+import { registerCheckoutSuccessCallback, destroyCheckoutOverlay, showCheckoutSuccess, consumePostCheckoutFlag, clearCheckoutAttempt, loadCheckoutAttempt } from '@/services/checkout';
+import {
+  computePendingMarker,
+  computeFireOnceRecord,
+  decideActivationMount,
+  isFireOnceActive,
+  PENDING_MARKER_KEY,
+  FIRE_ONCE_KEY,
+  type PendingOnboardingMarker,
+  type FireOnceRecord,
+  type ActivationEntitlementSnapshot,
+  type ActivationSubscriptionSnapshot,
+} from '@/services/pro-activation-state';
+import type { ProActivationFlowOptions } from '@/components/ProActivationInterstitial';
 import { showCheckoutFailureBanner } from '@/components/checkout-failure-banner';
 import { PanelTabBar } from '@/components/PanelTabBar';
 import {
@@ -85,6 +98,96 @@ function writeSessionStorageValue(key: string, value: string): void {
   } catch {
     // Banner dismissal remains functional for this render even without persistence.
   }
+}
+
+// ---------------------------------------------------------------------------
+// Pro Activation Onboarding — localStorage plumbing + snapshot adapters.
+//
+// The pure decision leaf (@/services/pro-activation-state) computes records and
+// the mount decision from explicit inputs; every storage read/write and every
+// live-snapshot read lives HERE (the panel-layout/UI unit), never in the leaf.
+// Parse/validate mirrors ProActivationChip.readChipDismissal so a corrupt or
+// legacy value degrades to "no record" rather than throwing on boot.
+// ---------------------------------------------------------------------------
+
+function readPendingActivationMarker(): PendingOnboardingMarker | null {
+  try {
+    const raw = window.localStorage.getItem(PENDING_MARKER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (parsed && typeof parsed === 'object' && typeof (parsed as PendingOnboardingMarker).createdAt === 'number') {
+      const createdAt = (parsed as PendingOnboardingMarker).createdAt;
+      const productId = (parsed as PendingOnboardingMarker).productId;
+      // Rebuild the record so only the known fields survive (drop any junk keys).
+      return typeof productId === 'string' ? { productId, createdAt } : { createdAt };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function writePendingActivationMarker(marker: PendingOnboardingMarker): void {
+  try {
+    window.localStorage.setItem(PENDING_MARKER_KEY, JSON.stringify(marker));
+  } catch {
+    // Storage disabled/full — onboarding simply won't fire on the next boot.
+  }
+}
+
+function clearPendingActivationMarker(): void {
+  try {
+    window.localStorage.removeItem(PENDING_MARKER_KEY);
+  } catch {
+    // Ignore storage failures — a stale marker is reaped by its TTL anyway.
+  }
+}
+
+function readActivationFireOnceRecord(): FireOnceRecord | null {
+  try {
+    const raw = window.localStorage.getItem(FIRE_ONCE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as unknown;
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      typeof (parsed as FireOnceRecord).subscriptionKey === 'string' &&
+      typeof (parsed as FireOnceRecord).shownAt === 'number'
+    ) {
+      return {
+        subscriptionKey: (parsed as FireOnceRecord).subscriptionKey,
+        shownAt: (parsed as FireOnceRecord).shownAt,
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function writeActivationFireOnceRecord(record: FireOnceRecord): void {
+  try {
+    window.localStorage.setItem(FIRE_ONCE_KEY, JSON.stringify(record));
+  } catch {
+    // Storage disabled/full — a reload mid-flow could re-open onboarding once.
+  }
+}
+
+/** Map the live entitlement snapshot to the leaf's minimal input (null = not yet loaded). */
+function toActivationEntitlementSnapshot(state: EntitlementState | null): ActivationEntitlementSnapshot | null {
+  if (state === null) return null;
+  return { planKey: state.planKey, validUntil: state.validUntil };
+}
+
+/**
+ * Map the live subscription snapshot to the leaf's fire-once-keying input
+ * (null = not yet loaded). The id/period-start fields are optional on the wire
+ * (deploy skew: a pre-onboarding server build omits them) — the leaf treats a
+ * snapshot with neither as still settling and re-evaluates on the next change.
+ */
+function toActivationSubscriptionSnapshot(sub: SubscriptionInfo | null): ActivationSubscriptionSnapshot | null {
+  if (sub === null) return null;
+  return { id: sub.subscriptionId ?? null, currentPeriodStart: sub.currentPeriodStart ?? null };
 }
 
 /**
@@ -352,6 +455,16 @@ export class PanelLayoutManager implements AppModule {
   private scheduledLoadAllRaf: number | null = null;
   private scheduledLoadAllIdle: number | null = null;
   private responsiveZoneListener: ResponsiveZoneListener | null = null;
+  // Pro Activation Onboarding boot hook. `activationReloadPending` is true only
+  // on the checkout-return pass, where the entitlement watcher is about to
+  // reload the page (free→pro) — the mount evaluation must run on the boot
+  // AFTER that reload, never on the pass that discards the DOM. `resolved`
+  // latches once the decision is terminal (mount/clear/none) so a settling
+  // `keep` can re-arm on snapshot changes without ever mounting twice.
+  private activationReloadPending = false;
+  private activationResolved = false;
+  private activationRetryArmed = false;
+  private activationRetryUnsubscribers: Array<() => void> = [];
 
   constructor(ctx: AppContext, callbacks: PanelLayoutManagerCallbacks) {
     this.ctx = ctx;
@@ -373,10 +486,26 @@ export class PanelLayoutManager implements AppModule {
     const returnResult = handleCheckoutReturn();
     const returnedFromOverlay = consumePostCheckoutFlag();
     const returnedFromCheckout = returnResult.kind === 'success' || returnedFromOverlay;
+    // The entitlement watcher reloads the page on the imminent free→pro flip
+    // (it seeds lastEntitled=false below only on this checkout-return pass), so
+    // the Pro-activation mount evaluation must be skipped on THIS boot and run
+    // on the post-reload boot instead — otherwise a same-pass mount would write
+    // the fire-once record and then have its overlay discarded by the reload,
+    // leaving only the finish-setup chip. See scheduleProActivationMountCheck.
+    this.activationReloadPending = returnedFromCheckout;
     if (returnedFromCheckout) {
       // Funnel (#4931): the purchase-complete signal on the client side.
       // Queued by the analytics facade until Umami loads after first paint.
       trackCheckoutSuccess(returnResult.kind === 'success' ? 'url-return' : 'overlay-flag');
+      // Pro Activation Onboarding: capture the plan identity from the attempt
+      // record and write the durable pending-onboarding marker BEFORE the
+      // clear below wipes the attempt. Success branch only (the `failed`
+      // branch structurally cannot reach here). An overlay-only return may
+      // carry no attempt record → the marker omits productId and the boot
+      // hook falls back to the live entitlement snapshot for plan identity
+      // (never a write-time frozen fallback — see decideActivationMount).
+      const activationProductId = loadCheckoutAttempt()?.productId ?? null;
+      writePendingActivationMarker(computePendingMarker(activationProductId, Date.now()));
       // Full-page return cleared its URL params; belt-and-braces clear
       // of the attempt record here catches the success path where the
       // overlay handler never ran (direct Dodo redirect).
@@ -534,6 +663,193 @@ export class PanelLayoutManager implements AppModule {
       })).catch((err) => console.error('[widget-chat] failed to lazy-load WidgetChatModal', err));
     }) as EventListener;
     this.ctx.container.addEventListener('wm:open-widget-creator', this.boundWidgetCreatorHandler);
+
+    // Pro Activation Onboarding: after the dashboard settles, evaluate whether
+    // a pending-onboarding marker should open the interstitial (or surface the
+    // finish-setup chip). Deferred off the boot critical path like the panel
+    // hydration scheduler above.
+    this.scheduleProActivationMountCheck();
+  }
+
+  // =========================================================================
+  // Pro Activation Onboarding — post-reload boot mount hook.
+  //
+  // Every decision (should we mount / clear / keep / do nothing) is computed by
+  // the pure leaf `decideActivationMount`; this glue only reads storage + live
+  // snapshots, disposes the outcome, and injects the app-layer surface openers
+  // the interstitial cannot reach on its own.
+  // =========================================================================
+
+  /** Defer the first mount evaluation until the dashboard has settled. */
+  private scheduleProActivationMountCheck(): void {
+    if (typeof window === 'undefined') return;
+    // Skip on the checkout-return pass: the entitlement watcher is about to
+    // reload the page, and the evaluation must run on the post-reload boot so
+    // its overlay isn't discarded mid-flow (see activationReloadPending).
+    if (this.activationReloadPending) return;
+    const run = (): void => {
+      if (this.ctx.isDestroyed) return;
+      void this.evaluateProActivationMount();
+    };
+    const idle = (window as unknown as {
+      requestIdleCallback?: (cb: () => void, opts?: { timeout?: number }) => number;
+    }).requestIdleCallback;
+    if (typeof idle === 'function') idle(run, { timeout: 2000 });
+    else window.setTimeout(run, 800);
+  }
+
+  /**
+   * Read the marker + live snapshots, ask the pure leaf what to do, and act:
+   *   mount → persist fire-once + clear the marker, then open the flow.
+   *   clear → reap the marker; surface the finish-setup chip if already onboarded.
+   *   none  → surface the finish-setup chip if already onboarded.
+   *   keep  → still settling; arm a bounded re-evaluation on the next snapshot.
+   */
+  private async evaluateProActivationMount(): Promise<void> {
+    if (this.activationResolved || this.ctx.isDestroyed) return;
+    const now = Date.now();
+    const marker = readPendingActivationMarker();
+    const fireOnce = readActivationFireOnceRecord();
+    const decision = decideActivationMount({
+      marker,
+      entitlement: toActivationEntitlementSnapshot(getEntitlementState()),
+      subscription: toActivationSubscriptionSnapshot(getSubscription()),
+      fireOnce,
+      isDesktop: this.ctx.isDesktopApp,
+      now,
+    });
+
+    switch (decision.action) {
+      case 'mount': {
+        // Latch BEFORE any await so a snapshot change firing mid-open can't
+        // mount a second interstitial.
+        this.activationResolved = true;
+        this.teardownActivationRetry();
+        // Contract (decideActivationMount): write the fire-once record keyed by
+        // the resolved subscription identity, THEN clear the marker — so a
+        // reload mid-flow reads fire-once as active (no re-mount) and the chip
+        // path can still pick up any unfinished steps.
+        writeActivationFireOnceRecord(computeFireOnceRecord(decision.subscriptionKey, now));
+        clearPendingActivationMarker();
+        await this.openProActivationFlow();
+        return;
+      }
+      case 'clear': {
+        this.activationResolved = true;
+        this.teardownActivationRetry();
+        clearPendingActivationMarker();
+        this.maybeShowProActivationChip(fireOnce, now);
+        return;
+      }
+      case 'none': {
+        this.activationResolved = true;
+        this.teardownActivationRetry();
+        this.maybeShowProActivationChip(fireOnce, now);
+        return;
+      }
+      case 'keep': {
+        // The entitlement snapshot has not loaded yet, or the unlock is not
+        // live. Re-evaluate when the entitlement snapshot next changes —
+        // bounded, no polling loop: the retry disarms the moment the decision
+        // goes terminal.
+        this.armActivationRetry();
+        return;
+      }
+    }
+  }
+
+  /**
+   * Arm a one-shot-per-lifetime re-evaluation on entitlement changes. The only
+   * "still settling" input is entitlement liveness (the post-checkout unlock);
+   * the fire-once identity is synthesized from the marker, so the billing
+   * subscription snapshot is not an input and does not need watching.
+   * `onEntitlementChange` fires immediately with the current value on
+   * subscribe, so the re-evaluation is deferred to a microtask: that lets the
+   * `push()` record the unsubscriber BEFORE any re-evaluation runs, so a
+   * decision that turns terminal on the first snapshot tears the listener down
+   * cleanly instead of racing the arm.
+   */
+  private armActivationRetry(): void {
+    if (this.activationRetryArmed || this.activationResolved) return;
+    this.activationRetryArmed = true;
+    const reEvaluate = (): void => {
+      queueMicrotask(() => {
+        void this.evaluateProActivationMount();
+      });
+    };
+    this.activationRetryUnsubscribers.push(onEntitlementChange(reEvaluate));
+  }
+
+  private teardownActivationRetry(): void {
+    for (const unsubscribe of this.activationRetryUnsubscribers) {
+      try {
+        unsubscribe();
+      } catch {
+        // A listener registry removal never throws in practice; ignore if it does.
+      }
+    }
+    this.activationRetryUnsubscribers = [];
+    this.activationRetryArmed = false;
+  }
+
+  /** Lazy-open the interstitial with the injected app-layer surface openers. */
+  private async openProActivationFlow(): Promise<void> {
+    try {
+      const mod = await import('@/components/ProActivationInterstitial');
+      await mod.openProActivationFlow(this.buildProActivationFlowOptions());
+    } catch (err) {
+      console.warn('[pro-activation] failed to open activation flow', err);
+    }
+  }
+
+  /**
+   * Surface the persistent finish-setup chip when onboarding has already fired
+   * for this subscription (fire-once active) but is not mounting now. The chip
+   * module re-derives from live config whether anything is actually unfinished.
+   */
+  private maybeShowProActivationChip(fireOnce: FireOnceRecord | null, now: number): void {
+    if (this.ctx.isDesktopApp) return; // web-only (R12)
+    if (!isFireOnceActive(fireOnce, now)) return;
+    void import('@/components/ProActivationChip')
+      .then((m) => m.maybeShowFinishSetupChip(this.buildProActivationFlowOptions()))
+      .catch((err) => console.warn('[pro-activation] finish-setup chip failed to load', err));
+  }
+
+  /**
+   * The injected flow options. The interstitial/chip run the notification,
+   * push, and insights services directly; the four surface openers below are
+   * the only things they cannot reach without the AppContext.
+   */
+  private buildProActivationFlowOptions(): ProActivationFlowOptions {
+    const ctx = this.ctx;
+    return {
+      accountEmail: getAuthState().user?.email ?? '',
+      openApiKeys: () => ctx.unifiedSettings?.open('api-keys'),
+      openChannelSettings: () => ctx.unifiedSettings?.open('notifications'),
+      openWidgetBuilder: () =>
+        ctx.container.dispatchEvent(new CustomEvent('wm:open-widget-creator', { detail: {} })),
+      openAiAnalyst: () => this.revealAnalystPanel(),
+    };
+  }
+
+  /**
+   * Open + scroll the WM Analyst (chat-analyst) panel into view. The panel is a
+   * lazy/deferred premium panel, so it may not be in `ctx.panels` yet at click
+   * time; scrolling to its reserved grid slot trips the mount observer, and we
+   * retry briefly until the element appears (mirrors search-manager's
+   * scrollToPanelWhenReady contract).
+   */
+  private revealAnalystPanel(attemptsLeft = 12): void {
+    if (this.ctx.isDestroyed || typeof document === 'undefined') return;
+    const key = 'chat-analyst';
+    this.ctx.panels[key]?.show();
+    const el = document.querySelector(`[data-panel="${key}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    if (attemptsLeft <= 0) return;
+    window.setTimeout(() => this.revealAnalystPanel(attemptsLeft - 1), 80);
   }
 
   destroy(): void {
@@ -642,6 +958,10 @@ export class PanelLayoutManager implements AppModule {
     // Clean up payment failure banner subscription
     this.unsubscribePaymentFailureBanner?.();
     this.unsubscribePaymentFailureBanner = null;
+
+    // Clean up the Pro-activation mount-retry listeners (armed only while the
+    // mount decision is still settling).
+    this.teardownActivationRetry();
 
     // Reset checkout overlay so next layout init can register its callback
     destroyCheckoutOverlay();

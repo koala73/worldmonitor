@@ -14,6 +14,14 @@ import { getConvexClient, getConvexApi } from './convex-client';
 import { extractBillingErrorKind } from './_billing-error';
 
 export interface SubscriptionInfo {
+  // Provider subscription id, the preferred Pro Activation Onboarding
+  // fire-once key. Optional so a snapshot from a pre-onboarding server build
+  // (deploy skew) parses fine — onboarding just defers a boot until the field
+  // arrives. See pro-activation-state.ts deriveSubscriptionKey.
+  subscriptionId?: string;
+  // Epoch ms period start — the onboarding fire-once key fallback when
+  // subscriptionId is absent. Optional for the same deploy-skew reason.
+  currentPeriodStart?: number;
   planKey: string;
   displayName: string;
   status: 'active' | 'on_hold' | 'cancelled' | 'expired';

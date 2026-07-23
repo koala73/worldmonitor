@@ -524,6 +524,14 @@ export const getSubscriptionForUser = query({
       .first();
 
     return {
+      // Stable per-subscription identity for the Pro Activation Onboarding
+      // fire-once key: the provider subscription id is unique per subscription
+      // and changes for a genuine re-subscribe, so a win-back re-onboards while
+      // the same subscription never re-offers. currentPeriodStart is the
+      // period-based fallback key. Both surface existing subscriptions-table
+      // columns; no new data is stored.
+      subscriptionId: subscription.dodoSubscriptionId,
+      currentPeriodStart: subscription.currentPeriodStart,
       planKey: subscription.planKey,
       displayName: productPlan?.displayName ?? subscription.planKey,
       status: subscription.status,
