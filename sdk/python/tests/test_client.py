@@ -22,6 +22,7 @@ from worldmonitor_sdk import (  # noqa: E402
 
 WORLD_MONITOR_API_KEY_ENV = "WORLDMONITOR_" + "API_" + "KEY"
 WM_API_KEY_ENV = "WM_" + "API_" + "KEY"
+EXPECTED_API_KEY_HEADER = "X-" + "WorldMonitor-" + "Key"
 EXAMPLE_ENV_VALUE = "example-env-value"
 EXAMPLE_ARG_VALUE = "example-arg-value"
 EXAMPLE_CLIENT_VALUE = "example-client-value"
@@ -83,6 +84,9 @@ class TestClientConfig(unittest.TestCase):
         self.assertTrue(USER_AGENT.startswith("worldmonitor-python/"))
         self.assertIn("+https://worldmonitor.app", USER_AGENT)
 
+    def test_api_key_header_matches_wire_contract(self):
+        self.assertEqual(API_KEY_HEADER, EXPECTED_API_KEY_HEADER)
+
 
 class TestMCPCalls(unittest.TestCase):
     def test_call_tool_builds_json_rpc_and_unwraps_result(self):
@@ -94,7 +98,7 @@ class TestMCPCalls(unittest.TestCase):
         request, timeout = transport.requests[0]
         self.assertEqual(request["url"], DEFAULT_MCP_URL)
         self.assertEqual(request["method"], "POST")
-        self.assertEqual(request["headers"][API_KEY_HEADER], EXAMPLE_CLIENT_VALUE)
+        self.assertEqual(request["headers"][EXPECTED_API_KEY_HEADER], EXAMPLE_CLIENT_VALUE)
         self.assertEqual(request["headers"]["user-agent"], USER_AGENT)
         self.assertIn("text/event-stream", request["headers"]["accept"])
         rpc = json.loads(request["body"].decode("utf-8"))
@@ -120,7 +124,7 @@ class TestMCPCalls(unittest.TestCase):
         result = Client(env={}, transport=transport).list_tools()
         self.assertEqual(result, {"tools": []})
         request, _ = transport.requests[0]
-        self.assertNotIn(API_KEY_HEADER, request["headers"])
+        self.assertNotIn(EXPECTED_API_KEY_HEADER, request["headers"])
         rpc = json.loads(request["body"].decode("utf-8"))
         self.assertEqual(rpc["method"], "tools/list")
         self.assertNotIn("params", rpc)
@@ -154,7 +158,7 @@ class TestRest(unittest.TestCase):
         self.assertEqual(client.get("/api/health", verbose=True), {"status": "ok"})
         request, _ = transport.requests[0]
         self.assertEqual(request["url"], DEFAULT_BASE_URL + "/api/health?verbose=true")
-        self.assertEqual(request["headers"][API_KEY_HEADER], EXAMPLE_CLIENT_VALUE)
+        self.assertEqual(request["headers"][EXPECTED_API_KEY_HEADER], EXAMPLE_CLIENT_VALUE)
 
     def test_get_requires_host_relative_path(self):
         with self.assertRaises(ValueError):
