@@ -88,8 +88,10 @@ function tedDate(value) {
 // non-federal keys). An hourly seed that fetches every tick — worse, with
 // in-run 429 retries — burns ~72 requests/day and pins the source at HTTP 429
 // permanently (#5444). Spread the budget instead: only hit the API when the
-// last success is older than this interval (~9.6 requests/day), which still
-// keeps the source age under the 180-minute staleness ceiling.
+// last success is older than this interval (~9.6 requests/day). Because the
+// enclosing bundle only checks this member hourly, successful SAM publishes
+// land roughly every 180 minutes; source health allows one more hourly gate
+// for normal scheduling jitter.
 const SAM_MIN_FETCH_INTERVAL_MS = 150 * 60_000;
 
 function previousSamResult(previousSnapshot, now) {
@@ -107,10 +109,15 @@ export async function fetchSam({ apiKey = process.env.SAM_GOV_API_KEY, now = Dat
   if (prior && now - prior.lastSuccessMs < SAM_MIN_FETCH_INTERVAL_MS) {
     // Within budget interval: carry the fresh-enough prior result through
     // without spending a request. lastSuccessfulAt keeps its real value, so
-    // health staleness accounting is unaffected.
+    // health staleness accounting is unaffected. Only an already-healthy
+    // status may be normalized; a paced stale/error status must remain
+    // degraded until a real SAM request succeeds.
+    const status = prior.status.state === 'ok'
+      ? { ...prior.status, state: 'ok', recordCount: prior.records.length, stale: false, paced: true }
+      : { ...prior.status, recordCount: prior.records.length, paced: true };
     return {
       records: prior.records,
-      status: { ...prior.status, state: 'ok', recordCount: prior.records.length, stale: false, paced: true },
+      status,
     };
   }
   const url = new URL('https://api.sam.gov/opportunities/v2/search');

@@ -826,6 +826,7 @@ export interface TenderSourceStatus {
   error?: string;
   lastSuccessfulAt: string;
   stale: boolean;
+  paced: boolean;
 }
 
 export interface FieldViolation {
