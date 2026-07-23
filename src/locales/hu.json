@@ -2215,7 +2215,9 @@
       "infoTooltip": "<strong>Keyword Monitors</strong> Adjon hozzá bármilyen kifejezést az összes WorldMonitor forrásban való élő hírerwähnungen nyomon követéséhez. Az eredmények valós időben frissülnek, miközben a megfelelő cikkeket feldolgozzák."
     },
     "renewable": {
-      "infoTooltip": "<strong>Renewable Energy</strong> Megújuló energiaforrásokból származó villamos energia aránya régiónként és évenként, valamint az USA telepített kapacitása a napenergia, szélenergia és szén esetében (MW). Források: World Bank (EG.ELC.RNEW.ZS) és EIA."
+      "infoTooltip": "<strong>Renewable Energy</strong> Megújuló energiaforrásokból származó villamos energia aránya régiónként és évenként, valamint az USA telepített kapacitása a napenergia, szélenergia és szén esetében (MW). Források: World Bank (EG.ELC.RNEW.ZS) és EIA.",
+      "fallbackBadge": "Showing static fallback data — live series unavailable",
+      "fallbackTooltip": "The live World Bank seed could not be reached. This gauge and regional breakdown are rendered from a hardcoded snapshot last verified Feb 2026."
     },
     "socialVelocity": {
       "infoTooltip": "<strong>Social Velocity</strong> Trendelő témák és virálos tartalom geopolitikai szignifikanciával. Méri a közösségi média sebességét: milyen gyorsan terjed egy történet az alapvonalhoz képest. Segít felszínre hozni az új narratívákat, mielőtt azok a főáramú hírekbe kerülnének."

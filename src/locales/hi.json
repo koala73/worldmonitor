@@ -2215,7 +2215,9 @@
       "infoTooltip": "<strong>कीवर्ड मॉनिटर</strong> कोई भी शब्द जोड़ें ताकि विश्वमॉनिटर के सभी स्रोतों में लाइव समाचार उल्लेख ट्रैक कर सकें। मिलान करने वाले लेख जैसे ही शामिल हों अपडेट होते हैं।"
     },
     "renewable": {
-      "infoTooltip": "<strong>नवीकरणीय ऊर्जा</strong> क्षेत्र और वर्षवार नवीकरणीय ऊर्जा से बिजली उत्पादन का हिस्सा, साथ ही US में सौर, पवन, और कोयला स्थापित क्षमता (MW)। स्रोत: विश्व बैंक (EG.ELC.RNEW.ZS) और EIA।"
+      "infoTooltip": "<strong>नवीकरणीय ऊर्जा</strong> क्षेत्र और वर्षवार नवीकरणीय ऊर्जा से बिजली उत्पादन का हिस्सा, साथ ही US में सौर, पवन, और कोयला स्थापित क्षमता (MW)। स्रोत: विश्व बैंक (EG.ELC.RNEW.ZS) और EIA।",
+      "fallbackBadge": "Showing static fallback data — live series unavailable",
+      "fallbackTooltip": "The live World Bank seed could not be reached. This gauge and regional breakdown are rendered from a hardcoded snapshot last verified Feb 2026."
     },
     "socialVelocity": {
       "infoTooltip": "<strong>सोशल वेलोसिटी</strong> भू-राजनीतिक महत्व वाले ट्रेंडिंग विषय और वायरल सामग्री। सामाजिक मीडिया में कहानी फैलने की गति को मापता है। मुख्यधारा समाचार से पहले उभरती कथाएँ दिखाने में मदद करता है।"

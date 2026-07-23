@@ -39,6 +39,13 @@ export class RenewableEnergyPanel extends Panel {
       return;
     }
 
+    // Disclose hardcoded-fallback state before the charts so the user does
+    // not mistake a degraded panel (2+-year-old static snapshot) for a live
+    // read (sibling of the fix shipped for #3758).
+    if (data.source === 'fallback') {
+      this.renderFallbackBanner();
+    }
+
     const container = document.createElement('div');
     container.className = 'renewable-container';
     Object.assign(container.style, {
@@ -77,6 +84,33 @@ export class RenewableEnergyPanel extends Panel {
     }
 
     this.content.appendChild(container);
+  }
+
+  /**
+   * Render a disclosure banner shown when the panel is rendering the
+   * hardcoded static snapshot instead of a live/cached World Bank read.
+   * Mirrors ProgressChartsPanel's fallback banner (fix for #3758).
+   */
+  private renderFallbackBanner(): void {
+    const banner = document.createElement('div');
+    banner.className = 'renewable-fallback-banner';
+    banner.setAttribute('role', 'status');
+    banner.setAttribute('data-source', 'fallback');
+    banner.title = t('components.renewable.fallbackTooltip');
+    Object.assign(banner.style, {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '6px',
+      margin: '0 0 8px 0',
+      padding: '6px 8px',
+      fontSize: '11px',
+      color: 'var(--text-dim)',
+      background: 'var(--bg-subtle, rgba(255,255,255,0.04))',
+      border: '1px solid var(--border-subtle, rgba(255,255,255,0.12))',
+      borderRadius: '4px',
+    });
+    banner.textContent = t('components.renewable.fallbackBadge');
+    this.content.appendChild(banner);
   }
 
   /**

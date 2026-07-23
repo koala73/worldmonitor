@@ -2023,7 +2023,9 @@
       "infoTooltip": "<strong>Stichwort-Monitore</strong> Fügen Sie einen beliebigen Begriff hinzu, um Live-Nachrichtenerwähnungen über alle WorldMonitor-Quellen zu verfolgen. Ergebnisse werden in Echtzeit aktualisiert, wenn passende Artikel aufgenommen werden."
     },
     "renewable": {
-      "infoTooltip": "<strong>Erneuerbare Energie</strong> Anteil erneuerbarer Energien an der Stromerzeugung nach Region und Jahr sowie installierte Leistung in den USA für Solar, Wind und Kohle (MW). Quellen: Weltbank (EG.ELC.RNEW.ZS) und EIA."
+      "infoTooltip": "<strong>Erneuerbare Energie</strong> Anteil erneuerbarer Energien an der Stromerzeugung nach Region und Jahr sowie installierte Leistung in den USA für Solar, Wind und Kohle (MW). Quellen: Weltbank (EG.ELC.RNEW.ZS) und EIA.",
+      "fallbackBadge": "Showing static fallback data — live series unavailable",
+      "fallbackTooltip": "The live World Bank seed could not be reached. This gauge and regional breakdown are rendered from a hardcoded snapshot last verified Feb 2026."
     },
     "socialVelocity": {
       "infoTooltip": "<strong>Soziale Geschwindigkeit</strong> Trending-Themen und virale Inhalte mit geopolitischer Bedeutung. Misst die Social-Media-Geschwindigkeit: wie schnell sich eine Story relativ zur Baseline verbreitet. Hilft aufkommende Narrative zu erkennen, bevor sie Mainstream-Medien erreichen."

@@ -2392,7 +2392,9 @@
       "infoTooltip": "<strong>Keyword Monitors</strong> Dodajte bilo koji pojam kako biste pratili živu spomenuću vijesti na svim WorldMonitor izvorima. Rezultati se ažuriraju u realnom vremenu dok se upareni članci primaju."
     },
     "renewable": {
-      "infoTooltip": "<strong>Renewable Energy</strong> Udio proizvodnje električne energije iz obnovljivih izvora po regiji i godini, plus instalirana US kapaciteta za solarnu energiju, vjetar i ugljen (MW). Izvori: World Bank (EG.ELC.RNEW.ZS) i EIA."
+      "infoTooltip": "<strong>Renewable Energy</strong> Udio proizvodnje električne energije iz obnovljivih izvora po regiji i godini, plus instalirana US kapaciteta za solarnu energiju, vjetar i ugljen (MW). Izvori: World Bank (EG.ELC.RNEW.ZS) i EIA.",
+      "fallbackBadge": "Showing static fallback data — live series unavailable",
+      "fallbackTooltip": "The live World Bank seed could not be reached. This gauge and regional breakdown are rendered from a hardcoded snapshot last verified Feb 2026."
     },
     "socialVelocity": {
       "infoTooltip": "<strong>Social Velocity</strong> Trendske teme i virusni sadržaj s geopolitičkom važnošću. Mjeri brzinu društvenih mreža: kako brzo se priča širi u odnosu na osnovu. Pomaže pri otkrivanju emerging narativa prije nego što stignu u mainstream vijesti."

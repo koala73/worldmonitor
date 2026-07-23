@@ -2055,7 +2055,9 @@
       "infoTooltip": "<strong>مراقبة الكلمات المفتاحية</strong> أضف أي مصطلح لتتبع الإشارات الإخبارية المباشرة عبر جميع مصادر WorldMonitor. تُحدث النتائج فورياً مع استيعاب المقالات المطابقة."
     },
     "renewable": {
-      "infoTooltip": "<strong>الطاقة المتجددة</strong> حصة المصادر المتجددة في توليد الكهرباء حسب المنطقة والسنة، بالإضافة إلى السعة المركبة في الولايات المتحدة للطاقة الشمسية وطاقة الرياح والفحم (ميغاواط). المصادر: البنك الدولي (EG.ELC.RNEW.ZS) وإدارة معلومات الطاقة الأمريكية (EIA)."
+      "infoTooltip": "<strong>الطاقة المتجددة</strong> حصة المصادر المتجددة في توليد الكهرباء حسب المنطقة والسنة، بالإضافة إلى السعة المركبة في الولايات المتحدة للطاقة الشمسية وطاقة الرياح والفحم (ميغاواط). المصادر: البنك الدولي (EG.ELC.RNEW.ZS) وإدارة معلومات الطاقة الأمريكية (EIA).",
+      "fallbackBadge": "Showing static fallback data — live series unavailable",
+      "fallbackTooltip": "The live World Bank seed could not be reached. This gauge and regional breakdown are rendered from a hardcoded snapshot last verified Feb 2026."
     },
     "socialVelocity": {
       "infoTooltip": "<strong>السرعة الاجتماعية</strong> المواضيع الرائجة والمحتوى الفيروسي ذو الأهمية الجيوسياسية. يقيس سرعة وسائل التواصل الاجتماعي: مدى سرعة انتشار قصة مقارنة بالمعدل الطبيعي. يساعد في إبراز الروايات الناشئة قبل وصولها للإعلام التقليدي."

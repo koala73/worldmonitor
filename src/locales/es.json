@@ -2031,7 +2031,9 @@
       "infoTooltip": "<strong>Monitores de palabras clave</strong> Añada cualquier término para rastrear menciones en noticias en tiempo real en todas las fuentes de WorldMonitor. Los resultados se actualizan en tiempo real conforme se ingieren artículos coincidentes."
     },
     "renewable": {
-      "infoTooltip": "<strong>Energía renovable</strong> Cuota de las renovables en la generación de electricidad por región y año, más la capacidad instalada en EE. UU. de solar, eólica y carbón (MW). Fuentes: Banco Mundial (EG.ELC.RNEW.ZS) y EIA."
+      "infoTooltip": "<strong>Energía renovable</strong> Cuota de las renovables en la generación de electricidad por región y año, más la capacidad instalada en EE. UU. de solar, eólica y carbón (MW). Fuentes: Banco Mundial (EG.ELC.RNEW.ZS) y EIA.",
+      "fallbackBadge": "Showing static fallback data — live series unavailable",
+      "fallbackTooltip": "The live World Bank seed could not be reached. This gauge and regional breakdown are rendered from a hardcoded snapshot last verified Feb 2026."
     },
     "socialVelocity": {
       "infoTooltip": "<strong>Velocidad social</strong> Temas en tendencia y contenido viral con significado geopolítico. Mide la velocidad en redes sociales: qué tan rápido se propaga una historia respecto a la línea base. Ayuda a identificar narrativas emergentes antes de que lleguen a los medios convencionales."

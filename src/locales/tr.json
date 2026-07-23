@@ -2023,7 +2023,9 @@
       "infoTooltip": "<strong>Anahtar Kelime Monitörleri</strong> Tüm WorldMonitor kaynaklarından gerçek zamanlı haber söz takibi için herhangi bir terim ekleyin. Eşleşen makaleler alındıkça sonuçlar gerçek zamanlı güncellenir."
     },
     "renewable": {
-      "infoTooltip": "<strong>Yenilenebilir Enerji</strong> Bölge ve yıla göre elektrik üretiminde yenilenebilir kaynak payı, ayrıca ABD'de güneş, rüzgâr ve kömür için kurulu güç (MW). Kaynaklar: Dünya Bankası (EG.ELC.RNEW.ZS) ve EIA."
+      "infoTooltip": "<strong>Yenilenebilir Enerji</strong> Bölge ve yıla göre elektrik üretiminde yenilenebilir kaynak payı, ayrıca ABD'de güneş, rüzgâr ve kömür için kurulu güç (MW). Kaynaklar: Dünya Bankası (EG.ELC.RNEW.ZS) ve EIA.",
+      "fallbackBadge": "Showing static fallback data — live series unavailable",
+      "fallbackTooltip": "The live World Bank seed could not be reached. This gauge and regional breakdown are rendered from a hardcoded snapshot last verified Feb 2026."
     },
     "socialVelocity": {
       "infoTooltip": "<strong>Sosyal Hız</strong> Jeopolitik önem taşıyan trend konular ve viral içerik. Sosyal medya hızını ölçer: bir haberin baz çizgisine göre ne kadar hızlı yayıldığını. Ana akım haberlere ulaşmadan önce ortaya çıkan anlatıları tespit etmeye yardımcı olur."

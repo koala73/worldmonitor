@@ -9,8 +9,7 @@
  * endpoint since it's a different data source (not World Bank).
  */
 
-import { fetchEnergyCapacityRpc } from '@/services/economic';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
 import { toApiUrl } from '@/services/runtime';
 
@@ -23,11 +22,22 @@ export interface RegionRenewableData {
   year: number;       // Year of latest data point
 }
 
+/**
+ * Where the rendered series came from. The UI surfaces a disclosure
+ * badge when `source === 'fallback'` so a degraded panel does not look
+ * like live truth (sibling of the fix shipped for #3758). Values:
+ *   hydrated  -- bootstrap hydration cache (first page load)
+ *   bootstrap -- live fetch from /api/bootstrap
+ *   fallback  -- hardcoded FALLBACK_DATA (no fresh data available)
+ */
+export type RenewableDataSource = 'hydrated' | 'bootstrap' | 'fallback';
+
 export interface RenewableEnergyData {
   globalPercentage: number;          // Latest global renewable electricity %
   globalYear: number;                // Year of latest global data
   historicalData: Array<{ year: number; value: number }>;  // Global time-series
   regions: RegionRenewableData[];    // Regional breakdown
+  source: RenewableDataSource;       // Provenance for staleness disclosure
 }
 
 // ---- Default / Empty ----
@@ -35,6 +45,7 @@ export interface RenewableEnergyData {
 // Static fallback when seed data is unavailable and no cache exists.
 // Source: https://data.worldbank.org/indicator/EG.ELC.RNEW.ZS — last verified Feb 2026
 const FALLBACK_DATA: RenewableEnergyData = {
+  source: 'fallback',
   globalPercentage: 29.6,
   globalYear: 2022,
   historicalData: [
@@ -70,10 +81,10 @@ const capacityBreaker = createCircuitBreaker<CapacitySeries[]>({
 
 // ---- Data Fetching (from Railway seed via bootstrap) ----
 
-async function fetchRenewableEnergyDataFresh(): Promise<RenewableEnergyData> {
+export async function fetchRenewableEnergyDataFresh(): Promise<RenewableEnergyData> {
   // 1. Try bootstrap hydration cache (first page load)
   const hydrated = getHydratedData('renewableEnergy') as RenewableEnergyData | undefined;
-  if (hydrated?.historicalData?.length) return hydrated;
+  if (hydrated?.historicalData?.length) return { ...hydrated, source: 'hydrated' };
 
   // 2. Fallback: fetch from bootstrap endpoint directly
   try {
@@ -82,11 +93,13 @@ async function fetchRenewableEnergyDataFresh(): Promise<RenewableEnergyData> {
     });
     if (resp.ok) {
       const { data } = (await resp.json()) as { data: { renewableEnergy?: RenewableEnergyData } };
-      if (data.renewableEnergy?.historicalData?.length) return data.renewableEnergy;
+      if (data.renewableEnergy?.historicalData?.length) {
+        return { ...data.renewableEnergy, source: 'bootstrap' };
+      }
     }
   } catch { /* fall through */ }
 
-  // 3. Static fallback
+  // 3. Static fallback. UI must show a disclosure badge (sibling of #3758).
   return FALLBACK_DATA;
 }
 
@@ -95,7 +108,15 @@ async function fetchRenewableEnergyDataFresh(): Promise<RenewableEnergyData> {
  * Returns instantly from IndexedDB cache on subsequent loads.
  */
 export async function fetchRenewableEnergyData(): Promise<RenewableEnergyData> {
-  return renewableBreaker.execute(() => fetchRenewableEnergyDataFresh(), FALLBACK_DATA);
+  return renewableBreaker.execute(
+    () => fetchRenewableEnergyDataFresh(),
+    FALLBACK_DATA,
+    // Never persist the static fallback. fetchRenewableEnergyDataFresh
+    // swallows errors and returns FALLBACK_DATA, which the breaker would
+    // otherwise cache to IndexedDB for the 1h TTL and keep showing the
+    // disclosure banner long after the seed/network recovers.
+    { shouldCache: (result) => result.source !== 'fallback' },
+  );
 }
 
 // ========================================================================
@@ -120,6 +141,9 @@ export interface CapacitySeries {
  */
 export async function fetchEnergyCapacity(): Promise<CapacitySeries[]> {
   return capacityBreaker.execute(async () => {
+    // Lazy-import the heavy economic RPC module so the World Bank fresh-fetch
+    // path (and its tests) stay decoupled from the EIA client graph.
+    const { fetchEnergyCapacityRpc } = await import('@/services/economic');
     const resp = await fetchEnergyCapacityRpc(['SUN', 'WND', 'COL'], 25);
     return resp.series.map(s => ({
       source: s.energySource,

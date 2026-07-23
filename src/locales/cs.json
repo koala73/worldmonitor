@@ -2039,7 +2039,9 @@
       "infoTooltip": "<strong>Monitory klíčových slov</strong> Přidejte libovolný výraz pro sledování zmínek ve zprávách v reálném čase ze všech zdrojů WorldMonitor. Výsledky se aktualizují při příjmu odpovídajících článků."
     },
     "renewable": {
-      "infoTooltip": "<strong>Obnovitelná energie</strong> Podíl obnovitelných zdrojů na výrobě elektřiny podle regionu a roku a instalovaný výkon v USA pro solární, větrnou a uhelnou energii (MW). Zdroje: Světová banka (EG.ELC.RNEW.ZS) a EIA."
+      "infoTooltip": "<strong>Obnovitelná energie</strong> Podíl obnovitelných zdrojů na výrobě elektřiny podle regionu a roku a instalovaný výkon v USA pro solární, větrnou a uhelnou energii (MW). Zdroje: Světová banka (EG.ELC.RNEW.ZS) a EIA.",
+      "fallbackBadge": "Showing static fallback data — live series unavailable",
+      "fallbackTooltip": "The live World Bank seed could not be reached. This gauge and regional breakdown are rendered from a hardcoded snapshot last verified Feb 2026."
     },
     "socialVelocity": {
       "infoTooltip": "<strong>Sociální rychlost</strong> Trendy a virální obsah s geopolitickým významem. Měří rychlost na sociálních médiích: jak rychle se příběh šíří vůči základní linii. Pomáhá odhalit vznikající narativy dříve, než se dostanou do mainstreamových médií."

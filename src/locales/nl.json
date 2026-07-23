@@ -1767,7 +1767,9 @@
       "infoTooltip": "<strong>Zoekwoordmonitoren</strong> Voeg een willekeurige term toe om live nieuwsvermeldingen over alle WorldMonitor-bronnen te volgen. Resultaten worden in realtime bijgewerkt naarmate overeenkomende artikelen worden opgenomen."
     },
     "renewable": {
-      "infoTooltip": "<strong>Hernieuwbare energie</strong> Aandeel hernieuwbare bronnen in de elektriciteitsopwekking per regio en jaar, plus geïnstalleerd vermogen in de VS voor zon, wind en kolen (MW). Bronnen: Wereldbank (EG.ELC.RNEW.ZS) en EIA."
+      "infoTooltip": "<strong>Hernieuwbare energie</strong> Aandeel hernieuwbare bronnen in de elektriciteitsopwekking per regio en jaar, plus geïnstalleerd vermogen in de VS voor zon, wind en kolen (MW). Bronnen: Wereldbank (EG.ELC.RNEW.ZS) en EIA.",
+      "fallbackBadge": "Showing static fallback data — live series unavailable",
+      "fallbackTooltip": "The live World Bank seed could not be reached. This gauge and regional breakdown are rendered from a hardcoded snapshot last verified Feb 2026."
     },
     "socialVelocity": {
       "infoTooltip": "<strong>Sociale snelheid</strong> Trending onderwerpen en virale content met geopolitieke betekenis. Meet de snelheid op sociale media: hoe snel een verhaal zich verspreidt ten opzichte van de basislijn. Helpt opkomende narratieven te signaleren voordat ze de reguliere media bereiken."
