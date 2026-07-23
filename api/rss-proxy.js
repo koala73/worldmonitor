@@ -188,15 +188,26 @@ export default async function handler(req, ctx) {
         response = await fetchDirect();
       } catch (directError) {
         if (directError instanceof RssProxyPolicyError) throw directError;
-        response = await fetchViaRailway(feedUrl, timeout);
+        
+        try {
+          response = await fetchViaRailway(feedUrl, timeout);
+        } catch (relayFallbackError) {
+          console.error('Relay fallback also failed:', relayFallbackError);
+          throw directError;
+        }
+        
         usedRelay = !!response;
         if (!response) throw directError;
       }
 
       if (!response.ok && !usedRelay) {
-        const relayResponse = await fetchViaRailway(feedUrl, timeout);
-        if (relayResponse?.ok) {
-          response = relayResponse;
+        try {
+          const relayResponse = await fetchViaRailway(feedUrl, timeout);
+          if (relayResponse?.ok) {
+            response = relayResponse;
+          }
+        } catch (relayRetryError) {
+          console.error('Relay retry failed:', relayRetryError);
         }
       }
     }

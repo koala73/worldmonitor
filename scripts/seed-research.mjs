@@ -9,6 +9,7 @@
  */
 
 import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep } from './_seed-utils.mjs';
+import { decodeHtmlEntities } from './shared/entity-decoder.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -25,20 +26,30 @@ const TRENDING_TTL = 3600;
 
 // ─── arXiv Papers ───
 
-const ARXIV_CATEGORIES = ['cs.AI', 'cs.CL', 'cs.CR'];
+async function fetchArxivPapers() {
+  const categories = ['cs.AI', 'cs.CL', 'cs.CR'];
+  const results = {};
 
-// Parse arXiv Atom XML into paper records. Pure — split out so the fetch path stays testable.
-function parseArxivEntries(xml) {
-  const papers = [];
-  const entryBlocks = xml.split('<entry>').slice(1);
-  for (const block of entryBlocks) {
-    const id = (block.match(/<id>([\s\S]*?)<\/id>/)?.[1] || '').trim().split('/').pop() || '';
-    const title = (block.match(/<title>([\s\S]*?)<\/title>/)?.[1] || '').trim().replace(/\s+/g, ' ');
-    const summary = (block.match(/<summary>([\s\S]*?)<\/summary>/)?.[1] || '').trim().replace(/\s+/g, ' ');
-    const published = block.match(/<published>([\s\S]*?)<\/published>/)?.[1]?.trim() || '';
-    const publishedAt = published ? new Date(published).getTime() : 0;
-    const urlMatch = block.match(/<link[^>]*rel="alternate"[^>]*href="([^"]+)"/);
-    const paperUrl = urlMatch?.[1] || `https://arxiv.org/abs/${id}`;
+  for (const cat of categories) {
+    const url = `https://export.arxiv.org/api/query?search_query=cat:${cat}&start=0&max_results=50`;
+    const resp = await fetch(url, {
+      headers: { Accept: 'application/xml', 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!resp.ok) { console.warn(`  arXiv ${cat}: HTTP ${resp.status}`); continue; }
+    const xml = await resp.text();
+
+    // Simple XML parse for arXiv entries
+    const papers = [];
+    const entryBlocks = xml.split('<entry>').slice(1);
+    for (const block of entryBlocks) {
+      const id = (block.match(/<id>([\s\S]*?)<\/id>/)?.[1] || '').trim().split('/').pop() || '';
+      const title = decodeHtmlEntities((block.match(/<title>([\s\S]*?)<\/title>/)?.[1] || '').trim().replace(/\s+/g, ' '));
+      const summary = decodeHtmlEntities((block.match(/<summary>([\s\S]*?)<\/summary>/)?.[1] || '').trim().replace(/\s+/g, ' ')); 
+      const published = block.match(/<published>([\s\S]*?)<\/published>/)?.[1]?.trim() || '';
+      const publishedAt = published ? new Date(published).getTime() : 0;
+      const urlMatch = block.match(/<link[^>]*rel="alternate"[^>]*href="([^"]+)"/);
+      const paperUrl = urlMatch?.[1] || `https://arxiv.org/abs/${id}`;
 
     const authors = [];
     const authorMatches = block.matchAll(/<author>\s*<name>([\s\S]*?)<\/name>/g);
@@ -200,11 +211,11 @@ async function fetchTechEvents() {
       const today = new Date().toISOString().split('T')[0];
       for (const m of items) {
         const block = m[1];
-        const title = (block.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/)?.[1] ||
-                       block.match(/<title>(.*?)<\/title>/)?.[1] || '').trim();
+        const title = decodeHtmlEntities((block.match(/<title><!\[CDATA\[(.*?)\]\]><\/title>|<title>(.*?)<\/title>/)?.[1] ||
+                       block.match(/<title>(.*?)<\/title>/)?.[1] || '').trim());
         const link = block.match(/<link>(.*?)<\/link>/)?.[1]?.trim() || '';
-        const desc = (block.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/)?.[1] ||
-                      block.match(/<description>([\s\S]*?)<\/description>/)?.[1] || '').trim();
+        const desc = decodeHtmlEntities((block.match(/<description><!\[CDATA\[([\s\S]*?)\]\]><\/description>/)?.[1] ||
+                      block.match(/<description>([\s\S]*?)<\/description>/)?.[1] || '').trim());
         const guid = block.match(/<guid[^>]*>(.*?)<\/guid>/)?.[1]?.trim() || '';
         if (!title) continue;
         const dateMatch = desc.match(/on\s+(\w+\s+\d{1,2},?\s+\d{4})/i);

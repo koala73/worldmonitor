@@ -3,6 +3,7 @@
 
 import { pathToFileURL } from 'node:url';
 import { CHROME_UA, loadEnvFile, runSeed } from './_seed-utils.mjs';
+import { decodeHtmlEntities } from './shared/entity-decoder.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -42,24 +43,11 @@ const REGULATORY_FEEDS = [
   { agency: 'FINRA', url: 'http://feeds.finra.org/FINRANotices' },
 ];
 
-function decodeEntities(input) {
-  if (!input) return '';
-  const named = input
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&apos;/gi, "'")
-    .replace(/&nbsp;/gi, ' ');
 
-  return named
-    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(parseInt(code, 16)));
-}
 
 function stripHtml(input) {
   const unwrapped = String(input || '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1');
-  const decoded = decodeEntities(unwrapped);
+  const decoded = decodeHtmlEntities(unwrapped);
   return decoded.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
@@ -75,12 +63,12 @@ function extractAtomLink(block) {
   for (const [, attrs] of linkTags) {
     const href = attrs.match(/\bhref=["']([^"']+)["']/i)?.[1];
     const rel = attrs.match(/\brel=["']([^"']+)["']/i)?.[1]?.toLowerCase() || '';
-    if (href && (!rel || rel === 'alternate')) return decodeEntities(href.trim());
+    if (href && (!rel || rel === 'alternate')) return decodeHtmlEntities(href.trim());
   }
 
   for (const [, attrs] of linkTags) {
     const href = attrs.match(/\bhref=["']([^"']+)["']/i)?.[1];
-    if (href) return decodeEntities(href.trim());
+    if (href) return decodeHtmlEntities(href.trim());
   }
 
   return '';
@@ -345,7 +333,6 @@ export {
   buildSeedPayload,
   canonicalizeLink,
   classifyAction,
-  decodeEntities,
   dedupeAndSortActions,
   extractAtomLink,
   fetchAllFeeds,

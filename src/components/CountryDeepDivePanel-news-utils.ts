@@ -1,15 +1,5 @@
 import type { NewsItem } from '../types';
-
-export function decodeHtmlEntities(text: string): string {
-  return text
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&#x27;/g, "'")
-    .replace(/&#x2F;/g, '/');
-}
+import { decodeHtmlEntities } from '../utils/entity-decoder';
 
 export function normalizeHeadlineKey(title: string): string {
   return decodeHtmlEntities(title)
@@ -42,10 +32,12 @@ export function dedupeHeadlines(
   const getTier: TierLookup = tierOf ?? ((it) => (typeof it.tier === 'number' ? it.tier : 4));
   const groups = new Map<string, NewsItem[]>();
   const order: string[] = [];
+  
   for (const it of items) {
     let key = normalizeHeadlineKey(it.title);
     if (!key) key = fallbackHeadlineKey(it.title);
     if (!key) key = it.link || `__idx_${order.length}`;
+    
     const existing = groups.get(key);
     if (existing) {
       existing.push(it);
@@ -59,14 +51,17 @@ export function dedupeHeadlines(
   for (const key of order) {
     const group = groups.get(key);
     if (!group || group.length === 0) continue;
+    
     const primary = [...group].sort((a, b) => {
       const ta = getTier(a);
       const tb = getTier(b);
       if (ta !== tb) return ta - tb;
+      
       const da = a.pubDate instanceof Date ? a.pubDate.getTime() : new Date(a.pubDate).getTime();
       const db = b.pubDate instanceof Date ? b.pubDate.getTime() : new Date(b.pubDate).getTime();
       return (Number.isFinite(db) ? db : 0) - (Number.isFinite(da) ? da : 0);
     })[0]!;
+    
     const extraSources: string[] = [];
     for (const other of group) {
       if (other === primary) continue;
@@ -76,5 +71,6 @@ export function dedupeHeadlines(
     }
     out.push({ item: primary, extraSources });
   }
+  
   return out;
 }

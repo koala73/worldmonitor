@@ -10,6 +10,7 @@ import { sanitizeUrl, escapeHtml } from '@/utils/sanitize';
 import { computeAlternativeSuppliers, type ChokepointScoreMap, type EnrichedExporter } from '@/utils/supplier-route-risk';
 import { formatIntelBrief } from '@/utils/format-intel-brief';
 import { collectBriefSources, renderBriefSourcesFooter, type BriefSource } from '@/utils/brief-sources';
+import { decodeHtmlEntities } from '../utils/entity-decoder'; // <-- Ye nayi line add karni hai
 import { getCSSColor, showToast } from '@/utils';
 import { toFlagEmoji } from '@/utils/country-flag';
 import { PORTS } from '@/config/ports';
@@ -420,7 +421,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         top.append(this.badge(`State-affiliated: ${risk.stateAffiliated}`, 'cdp-state-badge'));
       }
 
-      const title = this.el('div', 'cdp-news-title', this.decodeEntities(item.title));
+      const title = this.el('div', 'cdp-news-title', decodeHtmlEntities(item.title));
       const metaText = extraSources.length > 0
         ? `${item.source} +${extraSources.length} ${extraSources.length === 1 ? 'source' : 'sources'} • ${this.formatRelativeTime(item.pubDate)}`
         : `${item.source} • ${this.formatRelativeTime(item.pubDate)}`;
@@ -3174,16 +3175,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     return '→';
   }
 
-  private decodeEntities(text: string): string {
-    return text
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/&#x27;/g, "'")
-      .replace(/&#x2F;/g, '/');
-  }
+  
 
   private toThreatLevel(level: string | undefined): ThreatLevel {
     if (level === 'critical' || level === 'high' || level === 'medium' || level === 'low' || level === 'info') {

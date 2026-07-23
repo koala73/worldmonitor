@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { decodeHtmlEntities } from './shared/entity-decoder.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -96,11 +97,10 @@ function isValidUrl(link) {
 }
 
 function stripHtml(html) {
-  return html.replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
-    .replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').replace(/&#8217;/g, "'")
-    .replace(/&#8220;/g, '"').replace(/&#8221;/g, '"').replace(/\s+/g, ' ').trim();
-}
+  const unwrapped = String(html || '').replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1');
+  const decoded = decodeHtmlEntities(unwrapped);
+  return decoded.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+} 
 
 export function parseRssItems(xml) {
   const items = [];
