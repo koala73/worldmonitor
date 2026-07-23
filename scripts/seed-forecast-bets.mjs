@@ -42,6 +42,12 @@ export { MARKETS_RESOLUTION_FEED };
 // Deduped by the feed's own `asOf` release date so a daily cron on a weekly
 // feed accumulates ONE point per real EIA release (not seven zero-deltas).
 export const BETS_SERIES_KEY = 'forecast:bets:eia-series:v1';
+// Persistent registry of ALL market slugs ever generated, keyed forever so
+// the settlement seeder can query them even after they age out of the 200-run
+// bets-history window. TTL = 90d (matches RESOLUTION_TTL_SECONDS in settlement
+// seeder). The seeder merges new slugs in on each run (P1 fix).
+export const MARKET_SLUGS_KEY = 'forecast:bets:market-slugs:v1';
+export const MARKET_SLUGS_TTL_SECONDS = 90 * 24 * 60 * 60;
 const BETS_MAX_RUNS = 200;
 // 45d TTL mirrors the predictions-history reach so the resolver's LRANGE 200
 // window can always find a bet before it rolls out; well under the ledger's
@@ -143,11 +149,19 @@ export function buildBetsSnapshot(feedsByKey, nowMs, priorSeries = {}) {
   // Attach base-rate probabilities to every bet (used both in Stage A and as
   // the scorecard's baselineProbability in Stage B for Brier comparison).
   // calibration is already emitted by generateBets() via template.buildCalibration (KTD5).
+  // P1 fix: for FRED bets the EIA accumulator has no entries — use the template's
+  // own historical observations (stored as bet._baseRateHistory by generateBets).
   for (const bet of allBets) {
     const parsed = parseMetricKey(bet.resolution?.metricKey);
-    const values = (series[parsed?.value] || []).map((p) => Number(p.v)).filter(Number.isFinite);
+    const accumulatorValues = (series[parsed?.value] || []).map((p) => Number(p.v)).filter(Number.isFinite);
+    // Prefer accumulator (rich, release-deduped); fall back to template history
+    // (from metric.observations — up to 24 FRED obs) when accumulator is empty.
+    const values = accumulatorValues.length > 0
+      ? accumulatorValues
+      : (Array.isArray(bet._baseRateHistory) ? bet._baseRateHistory : []);
     const { probability } = baseRateProbability(values, bet.resolution);
     bet._baseRateProbability = probability;
+    delete bet._baseRateHistory; // clean up before top-K snapshot
   }
 
   // Sort by userValueScore desc, take top-K.
@@ -276,6 +290,21 @@ async function main() {
       await redisPipeline(['LTRIM', BETS_HISTORY_KEY, 0, BETS_MAX_RUNS - 1]);
       await redisPipeline(['EXPIRE', BETS_HISTORY_KEY, BETS_TTL_SECONDS]);
       await redisPipeline(['SET', BETS_SERIES_KEY, JSON.stringify(nextSeries), 'EX', SERIES_TTL_SECONDS]);
+
+      // P1 fix: persist market slugs in a long-lived registry so the settlement
+      // seeder can find them even after they age out of the 200-run bets-history
+      // window. Merge new slugs with any existing ones (idempotent — a Set dedupes).
+      const newSlugs = snapshot.predictions
+        .filter((b) => b.domain === 'prediction_market' && b.resolution?.marketSlug)
+        .map((b) => b.resolution.marketSlug);
+      if (newSlugs.length > 0) {
+        const existingSlugsRaw = await readRedisJson(MARKET_SLUGS_KEY).catch(() => null);
+        const existingSlugs = Array.isArray(existingSlugsRaw) ? existingSlugsRaw : [];
+        const mergedSlugs = [...new Set([...existingSlugs, ...newSlugs])];
+        await redisPipeline(['SET', MARKET_SLUGS_KEY, JSON.stringify(mergedSlugs), 'EX', MARKET_SLUGS_TTL_SECONDS]);
+        console.log(`  [bets] slug registry: ${mergedSlugs.length} market slug(s) persisted -> ${MARKET_SLUGS_KEY}`);
+      }
+
       const byDomain = snapshot.predictions.reduce((acc, b) => {
         acc[b.domain] = (acc[b.domain] || 0) + 1;
         return acc;

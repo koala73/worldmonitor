@@ -192,6 +192,13 @@ function buildFredTemplate({ seriesId, subject, unit, horizonMs }) {
       // Rate/yield series are higher interest than index levels.
       return seriesId === 'FEDFUNDS' || seriesId === 'DGS10' ? 0.75 : 0.65;
     },
+    // P1b fix: supply historical observations as base-rate input so the seeder
+    // does not fall back to the 0.4 dummy prior for FRED bets. generateBets()
+    // stores this as bet._baseRateHistory; buildBetsSnapshot() uses it when the
+    // EIA accumulator has no entries for this series (always the case for FRED).
+    buildBaseRateHistory({ metric }) {
+      return Array.isArray(metric.observations) ? metric.observations : [];
+    },
   };
 }
 

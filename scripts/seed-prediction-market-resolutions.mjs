@@ -22,9 +22,10 @@
 // Railway cron: runs alongside seed-forecast-bets (30 min interval).
 // Graceful exit on any Upstash/API transient: self-heals next run.
 
-import { loadEnvFile, CHROME_UA, getRedisCredentials, GRACEFUL_FETCH_FAILURE_EXIT_CODE } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, getRedisCredentials, GRACEFUL_FETCH_FAILURE_EXIT_CODE, writeFreshnessMetadata } from './_seed-utils.mjs';
 import { BETS_HISTORY_KEY } from './_forecast-bets-keys.mjs';
 import { MARKETS_RESOLUTION_FEED } from './_bet-templates-markets.mjs';
+import { MARKET_SLUGS_KEY, MARKET_SLUGS_TTL_SECONDS } from './seed-forecast-bets.mjs';
 
 const DIRECT_RUN = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/'));
 if (DIRECT_RUN) loadEnvFile(import.meta.url);
@@ -144,13 +145,29 @@ async function readRedisJson(key) {
 // ── Slug extraction from bets history ────────────────────────────────────
 
 /**
- * Read up to HISTORY_SCAN_RUNS snapshots from the bets history and collect all
- * unique prediction_market slugs whose bets are still pending.
+ * Read all pending market slugs from the persistent slug registry.
+ * Falls back to scanning bets history if the registry key is absent (first run
+ * before any bets seeder write has populated it).
+ * P1 fix: the registry (written by seed-forecast-bets.mjs on every run) retains
+ * slugs for 90d regardless of how many bets-history snapshots have rolled over.
  */
 async function collectPendingMarketSlugs() {
   const slugs = new Set();
+
+  // Primary: persistent slug registry (P1 fix).
   try {
-    const raw = await redisPipeline(['LRANGE', BETS_HISTORY_KEY, 0, HISTORY_SCAN_RUNS - 1]);
+    const registryRaw = await readRedisJson(MARKET_SLUGS_KEY);
+    if (Array.isArray(registryRaw)) {
+      for (const s of registryRaw) if (typeof s === 'string') slugs.add(s);
+      if (slugs.size > 0) return slugs; // registry is authoritative
+    }
+  } catch (err) {
+    console.warn(`  [settlement] registry read error: ${err.message}; falling back to history scan`);
+  }
+
+  // Fallback: scan bets history (covers the period before registry is populated).
+  try {
+    const raw = await redisPipeline(['LRANGE', BETS_HISTORY_KEY, 0, 199]);
     if (!Array.isArray(raw)) return slugs;
     for (const item of raw) {
       let snapshot;
@@ -163,7 +180,7 @@ async function collectPendingMarketSlugs() {
       }
     }
   } catch (err) {
-    console.warn(`  [settlement] error reading bets history: ${err.message}`);
+    console.warn(`  [settlement] bets history scan error: ${err.message}`);
   }
   return slugs;
 }
@@ -221,7 +238,9 @@ async function main() {
 
   try {
     await redisPipeline(['SET', MARKETS_RESOLUTION_FEED, JSON.stringify(merged), 'EX', RESOLUTION_TTL_SECONDS]);
-    console.log(`  [settlement] wrote ${merged.length} settlement record(s) → ${MARKETS_RESOLUTION_FEED} (${RESOLUTION_TTL_SECONDS}s TTL)`);
+    console.log(`  [settlement] wrote ${merged.length} settlement record(s) -> ${MARKETS_RESOLUTION_FEED} (${RESOLUTION_TTL_SECONDS}s TTL)`);
+    // P2 fix: publish standard freshness metadata so monitoring can detect a stalled settlement job.
+    await writeFreshnessMetadata('forecast', 'bets-settlement', settlements.length, 'prediction-market-resolutions:v1', RESOLUTION_TTL_SECONDS);
   } catch (err) {
     console.warn(`  [settlement] redis write failed (transient — graceful exit): ${err.message}`);
     process.exit(GRACEFUL_FETCH_FAILURE_EXIT_CODE);

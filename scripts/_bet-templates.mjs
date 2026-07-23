@@ -77,6 +77,12 @@ export function generateBets(templates, feedsByKey, nowMs) {
       generationOrigin: 'bet_engine',
       userValueScore: clamp01(template.userValueScore ? Number(template.userValueScore(ctx)) : 0.5),
       ...(betCalibration ? { calibration: betCalibration } : {}),
+      // _baseRateHistory: transient — consumed and deleted by buildBetsSnapshot().
+      // Set when the template knows its own historical series (e.g. FRED observations)
+      // so the seeder doesn't fall back to the EIA-only accumulator (P1b fix).
+      ...(typeof template.buildBaseRateHistory === 'function'
+        ? { _baseRateHistory: (() => { try { return template.buildBaseRateHistory(ctx); } catch { return undefined; } })() }
+        : {}),
       generatedAt: nowMs,
       feedKey: template.feedKey,
       templateId: template.id,
