@@ -11,7 +11,7 @@ Live tier/price/product-ID data (JSON): `GET https://www.worldmonitor.app/api/pr
 - Price: $0/month
 - Signup required: No
 - Best for: Public situational awareness, OSINT research, market/geopolitical context, news monitoring
-- Includes: 56 map layers, 500+ curated feeds, country briefs, hotspots, instability scores, chokepoints, cables, cascade analysis, breaking alert pipeline and watchlists
+- Includes: 55 free map layers (of 56 total; the Resilience layer is Pro), 500+ curated feeds, country briefs, hotspots, instability scores, chokepoints, cables, cascade analysis, breaking alert pipeline and watchlists
 - Limits: Free dashboard refresh cadence is typically 5-15 minutes; advanced analyst, digest, API and team workflows require paid plans
 
 ## Pro
@@ -20,7 +20,7 @@ Live tier/price/product-ID data (JSON): `GET https://www.worldmonitor.app/api/pr
 - Annual price: $399.99/year
 - Annual savings: 2 months free versus monthly billing
 - Best for: Investors, analysts, researchers, traders and operators who need the decision layer on top of the free dashboard
-- Includes: WM Analyst chat across 30+ live services with citations, Scenario Engine, Route Explorer, personal AI digest, custom widget builder, MCP access and 40 tools under one key
+- Includes: WM Analyst chat across 30+ live services with citations, Scenario Engine, Route Explorer, personal AI digest, custom widget builder, the Resilience map layer, MCP access and 41 tools under one key
 - Digest cadence: Daily, twice-daily or weekly
 - Delivery channels: Slack, Discord, Telegram, email and webhook
 
@@ -69,7 +69,7 @@ Live tier/price/product-ID data (JSON): `GET https://www.worldmonitor.app/api/pr
       "name": "Free",
       "price_usd_monthly": 0,
       "signup_required": false,
-      "features": ["56 map layers", "500+ feeds", "country briefs", "chokepoints", "instability scores", "watchlists"]
+      "features": ["55 free map layers", "500+ feeds", "country briefs", "chokepoints", "instability scores", "watchlists"]
     },
     {
       "name": "Pro",

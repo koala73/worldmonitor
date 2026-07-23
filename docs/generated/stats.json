@@ -1,6 +1,10 @@
 {
   "_generated": "scripts/docs-stats.mjs — do not edit by hand; run `npm run docs:stats`",
   "layerDefinitions": 56,
+  "lockedLayerDefinitions": 1,
+  "freeLayerDefinitions": 55,
+  "tier1Countries": 31,
+  "rankableUniverseCountries": 196,
   "variantLayers": {
     "full": 37,
     "tech": 13,

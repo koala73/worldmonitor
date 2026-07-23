@@ -260,6 +260,14 @@ function computeStats() {
   const registryBlock = mld.slice(mld.indexOf('LAYER_REGISTRY'), mld.indexOf('VARIANT_LAYER_ORDER'));
   const layerDefinitions = (registryBlock.match(/^\s+\w+:\s+def\(/gm) || []).length;
 
+  // Web-locked premium layers: literal 'locked' in the def() call. Desktop-only
+  // locks use the `_desktop ? 'locked' : undefined` ternary and stay free on web,
+  // so they are excluded — plan copy describes the web product.
+  const lockedLayerDefinitions = registryBlock
+    .split('\n')
+    .filter((line) => line.includes("'locked'") && !line.includes("? 'locked'")).length;
+  const freeLayerDefinitions = layerDefinitions - lockedLayerDefinitions;
+
   const variantBlock = mld.slice(mld.indexOf('VARIANT_LAYER_ORDER'), mld.indexOf('export function getLayersForVariant'));
   const variantLayers = {};
   for (const m of variantBlock.matchAll(/(\w+):\s*\[([^\]]*)\]/g)) {
@@ -350,6 +358,21 @@ function computeStats() {
   }
   const leaderNames = (leaderBlock[1].match(/'[^']+'/g) || []).length;
 
+  // ---- CII Tier-1 countries (src/config/countries.ts) ----
+  const countriesSource = read('src/config/countries.ts');
+  const tier1Match = countriesSource.match(/export const TIER1_COUNTRIES[^=]*=\s*\{([\s\S]*?)\n\};/);
+  if (!tier1Match) {
+    throw new Error('docs-stats: could not find TIER1_COUNTRIES in src/config/countries.ts');
+  }
+  const tier1Countries = (tier1Match[1].match(/^\s+[A-Z]{2}:/gm) || []).length;
+
+  // ---- CRI rankable universe (scripts/shared/sovereign-status.json) ----
+  const sovereignStatus = parseJson('scripts/shared/sovereign-status.json');
+  if (!Array.isArray(sovereignStatus?.entries) || sovereignStatus.entries.length === 0) {
+    throw new Error('docs-stats: could not read entries from scripts/shared/sovereign-status.json');
+  }
+  const rankableUniverseCountries = sovereignStatus.entries.length;
+
   const populationBlock = read('src/services/population-exposure.ts').match(
     /const PRIORITY_COUNTRIES:[\s\S]*?=\s*\{([\s\S]*?)\n\};/,
   );
@@ -360,6 +383,10 @@ function computeStats() {
   return {
     _generated: 'scripts/docs-stats.mjs — do not edit by hand; run `npm run docs:stats`',
     layerDefinitions,
+    lockedLayerDefinitions,
+    freeLayerDefinitions,
+    tier1Countries,
+    rankableUniverseCountries,
     variantLayers,
     variantCount,
     componentTopLevelTsFiles,
@@ -451,6 +478,50 @@ function claims(s) {
     { file: 'docs/api-reference.mdx', re: /all (\d+)\s+generated services/, value: s.protoServices },
 
     { file: 'docs/mcp-overview.mdx', re: /same (\d+)\s+tools/, value: s.mcpToolCount },
+
+    // ---- MCP tool count on public agent-discovery and marketing surfaces (#5389) ----
+    { file: 'public/home.md', re: /(\d+)-tool MCP server/, value: s.mcpToolCount },
+    { file: 'public/agents.md', re: /Streamable HTTP, (\d+)\s+tools/, value: s.mcpToolCount },
+    { file: 'public/developers.md', re: /Streamable HTTP, (\d+)\s+tools/, value: s.mcpToolCount },
+    { file: 'public/llms.txt', re: /Streamable HTTP, (\d+)\s+tools/, value: s.mcpToolCount },
+    { file: 'public/llms-full.txt', re: /Streamable HTTP, (\d+)\s+tools/, value: s.mcpToolCount },
+    { file: 'public/llms-full.txt', re: /MCP server endpoint, (\d+)\s+tools/, value: s.mcpToolCount },
+    { file: 'public/ai-search.md', re: /- (\d+)\s+MCP tools/, value: s.mcpToolCount },
+    { file: 'public/sdks.md', re: /every one of the (\d+)\s+\[MCP tools\]/, value: s.mcpToolCount },
+    { file: 'public/agent.txt', re: /(\d+)\s+tools; tools\/list for the live inventory/, value: s.mcpToolCount },
+    { file: 'public/pricing.md', re: /MCP access and (\d+)\s+tools under one key/, value: s.mcpToolCount },
+    { file: 'docs/pricing.mdx', re: /MCP access \((\d+)\s+tools under one key\)/, value: s.mcpToolCount },
+    { file: 'docs/cli.mdx', re: /any of the (\d+)\s+MCP tools/, value: s.mcpToolCount },
+    { file: 'docs/cli.mdx', re: /every one of the (\d+)\s+tools/, value: s.mcpToolCount },
+    { file: 'docs/cli.mdx', re: /for all (\d+)\s+tools/, value: s.mcpToolCount },
+    { file: 'docs/mcp-quickstart.mdx', re: /one of (\d+)\s+tools/, value: s.mcpToolCount },
+    { file: 'pro-test/src/locales/en.json', re: /(\d+)\s+MCP tools — risk scores/, value: s.mcpToolCount },
+    { file: 'pro-test/src/locales/en.json', re: /One key\. (\d+)\s+MCP tools/, value: s.mcpToolCount },
+    { file: 'pro-test/src/locales/en.json', re: /SDKs — (\d+)\s+tools under one key/, value: s.mcpToolCount },
+
+    // ---- Free vs total map layers in plan copy (#5387) ----
+    { file: 'public/home.md', re: /(\d+)\s+data layers and \d+\+\s+curated news feeds/, value: s.layerDefinitions },
+    { file: 'public/pricing.md', re: /Includes: (\d+)\s+free map layers/, value: s.freeLayerDefinitions },
+    { file: 'public/pricing.md', re: /free map layers \(of (\d+)\s+total/, value: s.layerDefinitions },
+    { file: 'public/pricing.md', re: /"(\d+)\s+free map layers"/, value: s.freeLayerDefinitions },
+    { file: 'docs/pricing.mdx', re: /\*\*Free\*\* — (\d+)\s+free map layers/, value: s.freeLayerDefinitions },
+    { file: 'docs/pricing.mdx', re: /free map layers \(of (\d+)\s+total/, value: s.layerDefinitions },
+    { file: 'docs/accounts.mdx', re: /(\d+)\s+free map layers/, value: s.freeLayerDefinitions },
+    { file: 'pro-test/src/locales/en.json', re: /(\d+)\s+free map layers & \d+\+\s+feeds/, value: s.freeLayerDefinitions },
+    { file: 'pro-test/src/locales/en.json', re: /free — (\d+) of \d+\s+map layers/, value: s.freeLayerDefinitions },
+    { file: 'pro-test/src/locales/en.json', re: /free — \d+ of (\d+)\s+map layers/, value: s.layerDefinitions },
+    { file: 'pro-test/src/locales/en.json', re: /(\d+) of the \d+\s+map layers, every feed/, value: s.freeLayerDefinitions },
+    { file: 'pro-test/src/locales/en.json', re: /\d+ of the (\d+)\s+map layers, every feed/, value: s.layerDefinitions },
+    { file: 'pro-test/src/locales/en.json', re: /(\d+) of \d+\s+layers, 500\+\s+feeds/, value: s.freeLayerDefinitions },
+    { file: 'pro-test/src/locales/en.json', re: /\d+ of (\d+)\s+layers, 500\+\s+feeds/, value: s.layerDefinitions },
+
+    // ---- CII vs CRI country coverage (#5391) ----
+    { file: 'public/home.md', re: /Country Instability Index for (\d+)\s+Tier-1 countries/, value: s.tier1Countries },
+    { file: 'public/home.md', re: /Country Resilience Index across the (\d+)-country rankable universe/, value: s.rankableUniverseCountries },
+    { file: 'README.md', re: /CII v8 stress scoring for (\d+)\s+Tier-1 countries/, value: s.tier1Countries },
+    { file: 'docs/country-instability-index.mdx', re: /CII v8 stability scoring for (\d+)\s+Tier-1 countries/, value: s.tier1Countries },
+    { file: 'public/llms-full.txt', re: /resilience scores for the (\d+)-country public rankable universe/, value: s.rankableUniverseCountries },
+
     { file: 'docs/mcp-apps.mdx', re: /current fleet ships (\d+)\s+MCP Apps/, value: s.mcpAppCount },
     { file: 'docs/mcp-quickstart.mdx', re: /WorldMonitor exposes (\d+)\s+live tools/, value: s.mcpToolCount },
     { file: 'docs/mcp-quickstart.mdx', re: /receives (\d+)\s+compressed tool descriptions/, value: s.mcpToolCount },

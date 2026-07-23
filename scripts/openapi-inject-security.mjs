@@ -45,6 +45,7 @@ import {
   readEndpointEntitlements,
   readPremiumRpcPaths,
   PUBLIC_FORBIDDEN_GATES,
+  LAPSED_BILLING_STATUS,
 } from './lib/openapi-codegen.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -156,6 +157,11 @@ const FORBIDDEN_SCHEMA = {
     'Returned when a PRO-gated endpoint denies access because the caller has no resolved authenticated user, entitlements cannot be verified, or the caller lacks the required entitlement tier.',
   properties: {
     error: { type: 'string', description: 'Human-readable entitlement failure reason.' },
+    code: {
+      type: 'string',
+      enum: [LAPSED_BILLING_STATUS],
+      description: 'Machine-readable denial code, present when the 403 is a billing-provider-confirmed subscription lapse (mirrored in the X-Billing-Verification response header).',
+    },
     requiredTier: {
       type: 'integer',
       format: 'int32',
@@ -503,6 +509,11 @@ const YAML_FORBIDDEN_SCHEMA = [
   '                error:',
   '                    type: string',
   '                    description: Human-readable entitlement failure reason.',
+  '                code:',
+  '                    type: string',
+  '                    enum:',
+  `                        - ${LAPSED_BILLING_STATUS}`,
+  '                    description: Machine-readable denial code, present when the 403 is a billing-provider-confirmed subscription lapse (mirrored in the X-Billing-Verification response header).',
   '                requiredTier:',
   '                    type: integer',
   '                    format: int32',
