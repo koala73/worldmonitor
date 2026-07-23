@@ -91,6 +91,17 @@ export const RESOLUTION_FEED_KEYS = new Set([
   // seeder shapes {wti,brent,production,inventory} into records carrying
   // {metric, value}; bets read via `...|value(metric==<name>)`.
   'energy:eia-petroleum:v1',
+  // Phase 2 (#5238 U11): prediction-market settlement feed. The bootstrap feed
+  // only publishes open markets (closed:false); settled prices (~0/100) land
+  // here via the dedicated settlement seeder (mirrors ACLED precedent, KTD2).
+  'prediction:markets-resolution:v1',
+  // Phase 2 (#5238 U12 / KTD4): FRED macro/rates — exact-match allowlist.
+  // Monthly series: FEDFUNDS, UNRATE, CPIAUCSL; daily: DGS10.
+  // Grace handled by FRED_VALUE_SETTLEMENT_MAX_LAG_MS in _forecast-resolution-eval.mjs.
+  'economic:fred:v1:FEDFUNDS:0',
+  'economic:fred:v1:UNRATE:0',
+  'economic:fred:v1:CPIAUCSL:0',
+  'economic:fred:v1:DGS10:0',
 ]);
 
 // ── Signal type -> hard family (D3) ──────────────────────────────────────

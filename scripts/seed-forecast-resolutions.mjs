@@ -960,6 +960,7 @@ function hasSampleAtOrAfterDeadline(samples, deadline) {
 
 function createEntry(id, forecast, spec, generatedAt, snapshotAt, deadline) {
   const status = spec.kind === 'judged' ? 'pending-judge' : 'pending';
+  const baselineProbability = Number(forecast.baselineProbability);
   return pruneUndefined({
     id,
     key: `${id}@${deadline}`,
@@ -971,6 +972,11 @@ function createEntry(id, forecast, spec, generatedAt, snapshotAt, deadline) {
     spec: cloneJson(spec),
     probability: Number(forecast.probability),
     firstSeenProbability: Number(forecast.probability),
+    // Phase 2 (KTD5): persist ensemble metadata so scorecard can compare against
+    // base-rate and updateOpenWindow can refuse to overwrite ensemble with base-rate.
+    baselineProbability: Number.isFinite(baselineProbability) ? baselineProbability : undefined,
+    probabilitySource: forecast.probabilitySource || undefined,
+    passes: Array.isArray(forecast.passes) ? cloneJson(forecast.passes) : undefined,
     calibration: forecast.calibration ? cloneJson(forecast.calibration) : undefined,
     generatedAt,
     deadline,
@@ -985,7 +991,16 @@ function updateOpenWindow(entry, forecast, generatedAt, snapshotAt) {
   if (entry.status !== 'pending' && entry.status !== 'pending-judge') return;
   if (generatedAt >= entry.deadline) return;
   const probability = Number(forecast.probability);
-  if (Number.isFinite(probability)) entry.probability = probability;
+  // KTD5: never overwrite an ensemble probability with a later base-rate run.
+  // Once a window has been scored by the ensemble (probabilitySource === 'ensemble'),
+  // a subsequent base-rate-only run must not silently replace it with a less
+  // calibrated value and corrupt the Gate-2 measurement.
+  const currIsEnsemble = entry.probabilitySource === 'ensemble';
+  const incomingIsBaseRate = forecast.probabilitySource !== 'ensemble';
+  if (Number.isFinite(probability) && !(currIsEnsemble && incomingIsBaseRate)) {
+    entry.probability = probability;
+    if (forecast.probabilitySource) entry.probabilitySource = forecast.probabilitySource;
+  }
   entry.lastSeenAt = Math.max(Number(entry.lastSeenAt || 0), snapshotAt);
 }
 
@@ -1105,6 +1120,31 @@ export function shapeResolutionFeed(key, data) {
       return d.quotes.map((q) => (q && typeof q === 'object' && Number.isFinite(fetchedAt) ? { ...q, asOf: fetchedAt } : q));
     }
     return d;
+  }
+  if (key === 'prediction:markets-resolution:v1') {
+    // Settlement feed written by the markets-resolution seeder (Gamma closed:true).
+    // Shape: [{market: slug, yesPrice: 0|100}] — the resolver reads
+    // yesPrice(market==<slug>) and resolves YES when yesPrice >= threshold (50).
+    const d = data?.data ?? data;
+    return Array.isArray(d) ? d : [];
+  }
+  if (typeof key === 'string' && key.startsWith('economic:fred:v1:')) {
+    // FRED series stored as { series: { seriesId, observations: [{date, value}] } }.
+    // The eval's value() fn needs a record with { series, value, asOf }.
+    // Unwrap {series:{observations}} and return the latest valid observation.
+    const d = data?.data ?? data;
+    const obs = d?.series?.observations ?? d?.observations;
+    if (!Array.isArray(obs)) return data;
+    // Scan backwards for the latest non-null value (FRED appends `.` sentinels).
+    for (let i = obs.length - 1; i >= 0; i--) {
+      const o = obs[i];
+      const v = Number(o?.value);
+      if (Number.isFinite(v) && typeof o.date === 'string') {
+        const seriesId = d?.series?.seriesId ?? key.split(':')[3] ?? key;
+        return [{ series: seriesId, value: v, asOf: o.date }];
+      }
+    }
+    return [];
   }
   return data;
 }

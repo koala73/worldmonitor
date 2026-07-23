@@ -8,17 +8,18 @@
 //
 // Template shape:
 //   {
-//     id:            string                       // stable slug, e.g. 'energy:crude-inventory'
-//     feedKey:       string                       // the feed this template reads
-//     domain:        string                       // forecast domain bucket
-//     extractMetric: (feedData) => metric | null  // null = feed absent/unusable → skip
-//     horizonPolicy: (ctx) => deadlineMs          // when the bet resolves
-//     buildResolutionSpec: (ctx) => spec          // #4976 hard/judged spec
-//     buildQuestion: (ctx) => string              // crisp YES criterion
-//     buildTitle?:   (ctx) => string              // display title (defaults to question)
-//     userValueScore?: (ctx) => number            // 0..1 ranking signal
+//     id:              string                       // stable slug, e.g. 'energy:crude-inventory'
+//     feedKey:         string                       // the feed this template reads
+//     domain:          string                       // forecast domain bucket
+//     extractMetric:   (feedData) => metric | null  // null = feed absent/unusable → skip
+//     horizonPolicy:   (ctx) => deadlineMs          // when the bet resolves
+//     buildResolutionSpec: (ctx) => spec            // #4976 hard/judged spec
+//     buildQuestion:   (ctx) => string              // crisp YES criterion
+//     buildTitle?:     (ctx) => string              // display title (defaults to question)
+//     buildCalibration?: (ctx) => object            // Phase 2: market-price calibration anchor (KTD5)
+//     userValueScore?: (ctx) => number              // 0..1 ranking signal
 //   }
-// ctx passed to horizon/spec/question/title/score:
+// ctx passed to horizon/spec/question/title/calibration/score:
 //   { template, metric, feed, nowMs, deadlineMs, spec }
 
 export function generateBets(templates, feedsByKey, nowMs) {
@@ -56,6 +57,16 @@ export function generateBets(templates, feedsByKey, nowMs) {
     if (seen.has(dedupeKey)) continue;
     seen.add(dedupeKey);
 
+    const betCalibration = (() => {
+      try {
+        return typeof template.buildCalibration === 'function'
+          ? template.buildCalibration(ctx)
+          : undefined;
+      } catch {
+        return undefined;
+      }
+    })();
+
     bets.push({
       id,
       domain: template.domain,
@@ -65,6 +76,7 @@ export function generateBets(templates, feedsByKey, nowMs) {
       resolution: spec,
       generationOrigin: 'bet_engine',
       userValueScore: clamp01(template.userValueScore ? Number(template.userValueScore(ctx)) : 0.5),
+      ...(betCalibration ? { calibration: betCalibration } : {}),
       generatedAt: nowMs,
       feedKey: template.feedKey,
       templateId: template.id,

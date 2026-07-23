@@ -52,6 +52,8 @@ export function computeScorecard(ledger, nowMs, options = {}) {
     byDomain: summarizeGroups(scored, resolved, 'domain', 'domain'),
     byGenerationOrigin: summarizeGroups(scored, resolved, 'generationOrigin', 'generationOrigin'),
     calibration: calibrationBuckets(scored),
+    // Phase 2 (KTD6): promotion flag. Default false until Gate 2 criteria are met.
+    promotionEnabled: options.promotionEnabled ?? false,
   };
 
   const overall = summarizeScored(scored);
@@ -61,6 +63,22 @@ export function computeScorecard(ledger, nowMs, options = {}) {
   if (skill) scorecard.skill = skill;
   const marketSkill = summarizeMarketSkill(scored);
   if (marketSkill) scorecard.vsMarketSkill = marketSkill;
+
+  // Phase 2 (KTD6): per-origin Gate-2 measurement for bet_engine slice.
+  const betEngineScored = scored.filter((entry) => entry?.generationOrigin === 'bet_engine');
+  if (betEngineScored.length > 0) {
+    scorecard.betEngineCalibration = calibrationBuckets(betEngineScored);
+    const betEngineMarketSkill = summarizeMarketSkill(betEngineScored);
+    if (betEngineMarketSkill) scorecard.betEngineMarketSkill = betEngineMarketSkill;
+    // Deviation skill: corr(sign(ensemble - market), outcome - market) for bets
+    // where |ensemble - market| > DEVIATION_BAND (anti-parroting, KTD3).
+    const devSkill = deviationSkill(betEngineScored);
+    if (devSkill) scorecard.betEngineDeviationSkill = devSkill;
+    // Base-rate comparison: how much does the ensemble beat the base-rate prior?
+    const baseRateCmp = baseRateComparison(betEngineScored);
+    if (baseRateCmp) scorecard.betEngineBaseRateComparison = baseRateCmp;
+  }
+
   return scorecard;
 }
 
@@ -210,6 +228,82 @@ function summarizeMarketSkill(scored) {
     marketBrier: round(marketBrier),
     brierDelta: round(marketBrier - forecastBrier),
   };
+}
+
+/**
+ * Deviation skill (KTD3 / anti-parroting gate).
+ * Computes corr(sign(ensemble - market), outcome - market) for bets where
+ * |ensemble - market| > deviationBand. A positive correlation means the ensemble
+ * is right WHEN it disagrees with the market — genuine calibration, not parroting.
+ *
+ * Returns null when fewer than MIN_DEVIATION_N bets have a large-enough deviation.
+ * @param {object[]} scored   Scored ledger entries (bet_engine slice or all).
+ * @param {number} [deviationBand=0.10]  Minimum |ensemble - market| fraction.
+ * @returns {{ n: number, corr: number } | null}
+ */
+export function deviationSkill(scored, deviationBand = 0.10) {
+  const MIN_N = 5;
+  const anchored = scored.filter((entry) => {
+    const market = marketProbability(entry);
+    if (!Number.isFinite(market)) return false;
+    const p = probability(entry);
+    return Math.abs(p - market) > deviationBand;
+  });
+  if (anchored.length < MIN_N) return null;
+
+  const signs = anchored.map((e) => Math.sign(probability(e) - marketProbability(e)));
+  const deltas = anchored.map((e) => outcomeNumber(e) - marketProbability(e));
+  const corr = pearsonCorr(signs, deltas);
+  return { n: anchored.length, corr: round(corr), deviationBand };
+}
+
+/**
+ * Base-rate comparison: how much does the ensemble Brier beat the base-rate Brier?
+ * Both are computed over the same set of scored entries. Only entries that have
+ * a numeric `baselineProbability` participate (skips entries with no baseline).
+ *
+ * @param {object[]} scored  Scored ledger entries.
+ * @returns {{ n: number, ensembleBrier: number, baseRateBrier: number, brierImprovement: number } | null}
+ */
+export function baseRateComparison(scored) {
+  const pairs = scored
+    .map((entry) => {
+      const baseline = Number(entry.baselineProbability);
+      return Number.isFinite(baseline) ? { entry, baseline } : null;
+    })
+    .filter(Boolean);
+  if (!pairs.length) return null;
+
+  const ensembleBrier = mean(pairs.map(({ entry }) => brier(entry)));
+  const baseRateBrier = mean(pairs.map(({ entry, baseline }) => brier(entry, clampProbability(baseline))));
+  return {
+    n: pairs.length,
+    ensembleBrier: round(ensembleBrier),
+    baseRateBrier: round(baseRateBrier),
+    // Positive = ensemble is better (lower Brier).
+    brierImprovement: round(baseRateBrier - ensembleBrier),
+  };
+}
+
+/**
+ * Pearson product-moment correlation coefficient for two equal-length numeric arrays.
+ * Returns NaN when the denominator is 0 (one series is constant).
+ */
+function pearsonCorr(xs, ys) {
+  const n = xs.length;
+  if (n === 0 || n !== ys.length) return NaN;
+  const xMean = xs.reduce((s, v) => s + v, 0) / n;
+  const yMean = ys.reduce((s, v) => s + v, 0) / n;
+  let num = 0, sx = 0, sy = 0;
+  for (let i = 0; i < n; i++) {
+    const dx = xs[i] - xMean;
+    const dy = ys[i] - yMean;
+    num += dx * dy;
+    sx += dx * dx;
+    sy += dy * dy;
+  }
+  const denom = Math.sqrt(sx * sy);
+  return denom === 0 ? NaN : num / denom;
 }
 
 function marketProbability(entry) {

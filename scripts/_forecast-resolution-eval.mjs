@@ -17,11 +17,17 @@ export const VALUE_SETTLEMENT_MAX_LAG_MS = 10 * DAY_MS;
 // week. A deadline just after the covered period may therefore need the next
 // report (plus holiday slack) before `asOf` reaches the deadline.
 export const EIA_VALUE_SETTLEMENT_MAX_LAG_MS = 14 * DAY_MS;
+// FRED monthly series (FEDFUNDS, UNRATE, CPIAUCSL) are dated the 1st of the
+// reference month and published ~2 weeks after month end, giving a ~45-70d lag
+// from a mid-month deadline. DGS10 is daily but shares this constant for safety.
+// Grace = 75d = worst-case monthly lag with a margin (KTD4 / #5238 U12).
+export const FRED_VALUE_SETTLEMENT_MAX_LAG_MS = 75 * DAY_MS;
 
 function valueSettlementMaxLagMs(feedKey) {
-  return feedKey === 'energy:eia-petroleum:v1'
-    ? EIA_VALUE_SETTLEMENT_MAX_LAG_MS
-    : VALUE_SETTLEMENT_MAX_LAG_MS;
+  if (feedKey === 'energy:eia-petroleum:v1') return EIA_VALUE_SETTLEMENT_MAX_LAG_MS;
+  // FRED monthly series have a ~45-70d observation lag; 75d gives safe margin (KTD4).
+  if (typeof feedKey === 'string' && feedKey.startsWith('economic:fred:v1:')) return FRED_VALUE_SETTLEMENT_MAX_LAG_MS;
+  return VALUE_SETTLEMENT_MAX_LAG_MS;
 }
 
 const SUPPORTED_FUNCTIONS = new Set(['count', 'riskScore', 'present', 'yesPrice', 'hexCount', 'price', 'value']);
