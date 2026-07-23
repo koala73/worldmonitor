@@ -162,6 +162,17 @@ describe('value settlement gate (#2 — no false NO on a stale pre-release read)
     assert.equal(ledger[key].outcome, 'YES');
   });
 
+  it('uses the EIA-specific grace when a partial refresh drops the metric', () => {
+    const entry = inventoryEntry();
+    const partialFeed = shapeResolutionFeed(EIA_PETROLEUM_FEED, eiaFixture({ inventory: null }));
+    const pending = resolveHardSpec(entry, partialFeed, [], DEADLINE + 10 * DAY_MS);
+    assert.equal(pending.status, 'pending');
+    assert.equal(pending.evidence.reason, 'value_source_record_missing');
+
+    const voided = resolveHardSpec(entry, partialFeed, [], DEADLINE + 14 * DAY_MS);
+    assert.equal(voided.outcome, 'VOID');
+  });
+
   it('VOIDs once the EIA-specific settlement grace elapses and the feed never caught up', () => {
     const entry = inventoryEntry();
     const staleFeed = shapeResolutionFeed(EIA_PETROLEUM_FEED, eiaFixture({
