@@ -677,7 +677,7 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
 }
 
 .author-name a {
-  color: var(--wm-muted);
+  color: var(--wm-green);
   text-decoration: none;
 }
 
@@ -685,7 +685,7 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
 
 .author-desc {
   font-size: 0.82rem;
-  color: var(--text-dim);
+  color: var(--wm-muted);
   line-height: 1.5;
 }
 
