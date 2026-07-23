@@ -6,7 +6,7 @@ Agent entry point for WorldMonitor. Read this first, then follow links for depth
 
 Real-time global intelligence dashboard. TypeScript SPA (Vite + Preact) with 163 top-level TypeScript component files, 80+ Vercel Edge API endpoint entries, a Tauri desktop app with Node.js sidecar, and a Railway relay service. Aggregates geopolitics, military, finance, climate, cyber, maritime, and aviation data across 35 freshness-tracked source groups.
 
-## Repository Map
+## Repository Map 123
 
 ```
 .
