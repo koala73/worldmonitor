@@ -99,6 +99,7 @@ export interface EntitlementCheckOptions {
 const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
   '/api/forecast/v1/trigger-simulation': 1,
   '/api/intelligence/v1/classify-event': 1,
+  '/api/intelligence/v1/get-country-intel-brief': 1,
   '/api/market/v1/analyze-stock': 1,
   '/api/market/v1/get-stock-analysis-history': 1,
   '/api/market/v1/backtest-stock': 1,
