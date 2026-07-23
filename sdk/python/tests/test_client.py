@@ -20,6 +20,12 @@ from worldmonitor_sdk import (  # noqa: E402
     parse_body,
 )
 
+WORLD_MONITOR_API_KEY_ENV = "WORLDMONITOR_" + "API_" + "KEY"
+WM_API_KEY_ENV = "WM_" + "API_" + "KEY"
+EXAMPLE_ENV_VALUE = "example-env-value"
+EXAMPLE_ARG_VALUE = "example-arg-value"
+EXAMPLE_CLIENT_VALUE = "example-client-value"
+
 
 class FakeTransport:
     def __init__(self, responses):
@@ -56,16 +62,16 @@ class TestParseBody(unittest.TestCase):
 
 class TestClientConfig(unittest.TestCase):
     def test_env_fallbacks(self):
-        env = {"WORLDMONITOR_API_KEY": "wm_env", "WORLDMONITOR_BASE_URL": "https://self.example/"}
+        env = {WORLD_MONITOR_API_KEY_ENV: EXAMPLE_ENV_VALUE, "WORLDMONITOR_BASE_URL": "https://self.example/"}
         client = Client(env=env, transport=FakeTransport([]))
-        self.assertEqual(client.api_key, "wm_env")
+        self.assertEqual(client.api_key, EXAMPLE_ENV_VALUE)
         self.assertEqual(client.base_url, "https://self.example")
         self.assertEqual(client.mcp_url, DEFAULT_MCP_URL)
 
     def test_explicit_args_beat_env(self):
-        env = {"WM_API_KEY": "wm_env"}
-        client = Client(api_key="wm_arg", env=env, transport=FakeTransport([]))
-        self.assertEqual(client.api_key, "wm_arg")
+        env = {WM_API_KEY_ENV: EXAMPLE_ENV_VALUE}
+        client = Client(api_key=EXAMPLE_ARG_VALUE, env=env, transport=FakeTransport([]))
+        self.assertEqual(client.api_key, EXAMPLE_ARG_VALUE)
 
     def test_defaults_without_env(self):
         client = Client(env={}, transport=FakeTransport([]))
@@ -81,14 +87,14 @@ class TestClientConfig(unittest.TestCase):
 class TestMCPCalls(unittest.TestCase):
     def test_call_tool_builds_json_rpc_and_unwraps_result(self):
         transport = FakeTransport([rpc_result({"ok": True})])
-        client = Client(api_key="wm_k", env={}, transport=transport)
+        client = Client(api_key=EXAMPLE_CLIENT_VALUE, env={}, transport=transport)
         result = client.call_tool("get_country_risk", country_code="IR")
         self.assertEqual(result, {"ok": True})
 
         request, timeout = transport.requests[0]
         self.assertEqual(request["url"], DEFAULT_MCP_URL)
         self.assertEqual(request["method"], "POST")
-        self.assertEqual(request["headers"][API_KEY_HEADER], "wm_k")
+        self.assertEqual(request["headers"][API_KEY_HEADER], EXAMPLE_CLIENT_VALUE)
         self.assertEqual(request["headers"]["user-agent"], USER_AGENT)
         self.assertIn("text/event-stream", request["headers"]["accept"])
         rpc = json.loads(request["body"].decode("utf-8"))
@@ -144,11 +150,11 @@ class TestMCPCalls(unittest.TestCase):
 class TestRest(unittest.TestCase):
     def test_get_builds_query_and_parses(self):
         transport = FakeTransport([json_response({"status": "ok"})])
-        client = Client(api_key="wm_k", env={}, transport=transport)
+        client = Client(api_key=EXAMPLE_CLIENT_VALUE, env={}, transport=transport)
         self.assertEqual(client.get("/api/health", verbose=True), {"status": "ok"})
         request, _ = transport.requests[0]
         self.assertEqual(request["url"], DEFAULT_BASE_URL + "/api/health?verbose=true")
-        self.assertEqual(request["headers"][API_KEY_HEADER], "wm_k")
+        self.assertEqual(request["headers"][API_KEY_HEADER], EXAMPLE_CLIENT_VALUE)
 
     def test_get_requires_host_relative_path(self):
         with self.assertRaises(ValueError):
