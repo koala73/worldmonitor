@@ -372,6 +372,22 @@ test('retryable billing verification on a wm_ user key keeps Retry-After and cod
   });
 });
 
+test('current API access keeps wm_ bootstrap usable while a stronger renewal is pending', async () => {
+  await withMockedBootstrapAuth({
+    entitlement: {
+      ...activeApiEntitlement(),
+      billingStatus: 'renewal_verification_pending',
+      retryAfterSeconds: 19,
+    },
+  }, async () => {
+    const resp = await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': USER_KEY }));
+
+    assert.equal(resp.status, 200);
+    assert.deepEqual(Object.keys(await resp.json()).sort(), ['data', 'missing']);
+    assertNonSharedCacheHeaders(resp);
+  });
+});
+
 test('malformed wm_ user key is rejected before Redis or Convex validation', async () => {
   await withMockedBootstrapAuth({ entitlement: activeApiEntitlement() }, async (calls) => {
     const resp = await handler(makeBootstrapRequest({ 'X-WorldMonitor-Key': 'wm_notcanonical' }));

@@ -303,6 +303,31 @@ test('current apiAccess entitlement can be served from Redis cache without Conve
   });
 });
 
+for (const billingStatus of [
+  'subscription_lapsed',
+  'renewal_verification_pending',
+  'renewal_verification_failed',
+]) {
+  test(`current cached apiAccess remains usable with ${billingStatus}`, async () => {
+    await withMockedConvex(async (calls) => {
+      const result = await validateBootstrapUserApiAccess('user_api_owner');
+
+      assert.equal(result.ok, true);
+      assert.equal(calls.some((call) => call.url.endsWith('/api/internal-entitlements')), false);
+    }, {
+      redisCache: {
+        'entitlements:test:user_api_owner': {
+          planKey: 'api_starter',
+          validUntil: Date.now() + 86_400_000,
+          features: { apiAccess: true },
+          billingStatus,
+          retryAfterSeconds: 19,
+        },
+      },
+    });
+  });
+}
+
 async function withMockedEntitlement(entitlement, fn) {
   await withMockedConvex(async (calls) => {
     globalThis.fetch = async (input, init) => {
@@ -316,6 +341,26 @@ async function withMockedEntitlement(entitlement, fn) {
     };
 
     return fn(calls);
+  });
+}
+
+for (const billingStatus of [
+  'subscription_lapsed',
+  'renewal_verification_pending',
+  'renewal_verification_failed',
+]) {
+  test(`current fresh apiAccess remains usable with ${billingStatus}`, async () => {
+    await withMockedEntitlement({
+      planKey: 'api_starter',
+      validUntil: Date.now() + 86_400_000,
+      features: { apiAccess: true },
+      billingStatus,
+      retryAfterSeconds: 19,
+    }, async () => {
+      const result = await validateBootstrapUserApiAccess('user_api_owner');
+
+      assert.equal(result.ok, true);
+    });
   });
 }
 
