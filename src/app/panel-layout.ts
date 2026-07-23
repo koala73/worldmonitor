@@ -759,14 +759,14 @@ export class PanelLayoutManager implements AppModule {
   }
 
   /**
-   * Arm a one-shot-per-lifetime re-evaluation on entitlement changes. The only
-   * "still settling" input is entitlement liveness (the post-checkout unlock);
-   * the fire-once identity is synthesized from the marker, so the billing
-   * subscription snapshot is not an input and does not need watching.
-   * `onEntitlementChange` fires immediately with the current value on
-   * subscribe, so the re-evaluation is deferred to a microtask: that lets the
-   * `push()` record the unsubscriber BEFORE any re-evaluation runs, so a
-   * decision that turns terminal on the first snapshot tears the listener down
+   * Arm a one-shot-per-lifetime re-evaluation on entitlement/subscription
+   * changes. "Still settling" can mean either input: entitlement not yet live
+   * (the post-checkout unlock) or the subscription snapshot not yet loaded
+   * (the fire-once identity key). Both listeners fire immediately with the
+   * current value on subscribe, so the re-evaluation is deferred to a
+   * microtask: that lets both `push()` calls record their unsubscribers BEFORE
+   * any re-evaluation runs, so a decision that turns terminal on the first
+   * snapshot tears the listeners down
    * cleanly instead of racing the arm.
    */
   private armActivationRetry(): void {
@@ -778,6 +778,7 @@ export class PanelLayoutManager implements AppModule {
       });
     };
     this.activationRetryUnsubscribers.push(onEntitlementChange(reEvaluate));
+    this.activationRetryUnsubscribers.push(onSubscriptionChange(reEvaluate));
   }
 
   private teardownActivationRetry(): void {
