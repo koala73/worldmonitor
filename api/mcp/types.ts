@@ -22,6 +22,22 @@ export type McpAuthContext =
   // way env_key does).
   | { kind: 'user_key'; apiKey: string; userId: string };
 
+export type McpInboundHostClass =
+  | 'canonical_api'
+  | 'apex'
+  | 'www'
+  | 'variant'
+  | 'worldmonitor_subdomain'
+  | 'local'
+  | 'vercel_preview'
+  | 'other';
+
+export interface McpToolExecutionContext {
+  inboundHostClass: McpInboundHostClass;
+  downstreamOrigin: string;
+  downstreamOriginTag: string;
+}
+
 // ---------------------------------------------------------------------------
 // Tool registry types
 // ---------------------------------------------------------------------------
@@ -152,7 +168,12 @@ export interface RpcToolDef extends BaseToolDef {
   _seedMetaKey?: never;
   _maxStaleMin?: never;
   _freshnessChecks?: never;
-  _execute: (params: Record<string, unknown>, base: string, context: McpAuthContext) => Promise<unknown>;
+  _execute: (
+    params: Record<string, unknown>,
+    base: string,
+    context: McpAuthContext,
+    execution?: McpToolExecutionContext,
+  ) => Promise<unknown>;
   _coverageKeys?: string[];
   // U3 (Tier-4 parity): REQUIRED. Every OpenAPI operation this `_execute`
   // body proxies via fetch (extracted from `${base}/api/...` callsites),

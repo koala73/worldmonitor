@@ -22,6 +22,7 @@ const BILLING_VERIFICATION_CODES: ReadonlySet<string> = new Set([
 ] satisfies BillingVerificationCode[]);
 
 export class BillingDenialError extends Error {
+  readonly operation: string;
   readonly status: number;
   readonly billingCode: BillingVerificationCode;
   readonly retryAfterSeconds: number | undefined;
@@ -36,6 +37,7 @@ export class BillingDenialError extends Error {
     // for expected 4xx keys on this message format.
     super(`${label} HTTP ${status} (${billingCode})`);
     this.name = 'BillingDenialError';
+    this.operation = label;
     this.status = status;
     this.billingCode = billingCode;
     this.retryAfterSeconds = retryAfterSeconds;
