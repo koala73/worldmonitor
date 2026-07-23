@@ -60,7 +60,7 @@ OAuth endpoints follow [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rf
 | `subscription_lapsed` | The subscription lapse was confirmed with the billing provider. Re-authenticating will not help — resubscribe to restore access. Response carries `X-Billing-Verification: subscription_lapsed`. |
 | `renewal_verification_pending` | Your subscription recently expired locally and the server is re-confirming it with the billing provider. Retryable 503 — honor `Retry-After` (1-60s); a renewed subscription typically recovers within one or two retries. |
 | `renewal_verification_failed` | The provider re-check could not complete and is in a short cooldown. Retryable 503 — honor `Retry-After`. |
-| `entitlement_verification_unavailable` | The billing backend could not be reached to verify a `wm_` API key. Retryable 503 with fixed `Retry-After: 5` and `X-Billing-Verification: entitlement_verification_unavailable`. |
+| `entitlement_verification_unavailable` | The billing backend could not be reached to verify access — emitted on every authenticated surface (`wm_` API keys, bootstrap, session/bearer tier checks, MCP). Retryable 503 with `Retry-After: 5` and `X-Billing-Verification: entitlement_verification_unavailable`. |
 | `idempotency_conflict` | A POST with this `Idempotency-Key` is still processing. Retry after `Retry-After: 2`. |
 | `idempotency_key_reused` | The same `Idempotency-Key` was already used with a different request body. |
 | `invalid_idempotency_key` | The `Idempotency-Key` header is too long or contains non-printable characters. Generated OpenAPI POSTs also reject an empty key. |

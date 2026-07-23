@@ -243,6 +243,7 @@ export interface McpHandlerDeps {
     validUntil: number;
     billingStatus?: BillingVerificationStatus;
     retryAfterSeconds?: number;
+    verificationUnavailable?: boolean;
   } | null>;
   // #4859: Convex userApiKeys hash lookup (same shared helper as the REST
   // gateway). Returns the key owner, or null for unknown/revoked keys. The

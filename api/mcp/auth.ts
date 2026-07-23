@@ -159,11 +159,17 @@ export function getMcpBillingVerificationDenial(
   entitlements: {
     billingStatus?: BillingVerificationCode;
     retryAfterSeconds?: number;
+    // Transient entitlement-lookup failure marker from getEntitlements()
+    // (server/_shared/entitlement-check.ts) — mapped to the same retryable
+    // envelope as a gateway-synthesized entitlement_verification_unavailable.
+    verificationUnavailable?: boolean;
   } | null | undefined,
   corsHeaders: Record<string, string>,
   id: unknown = null,
 ): Response | null {
-  const billingStatus = entitlements?.billingStatus;
+  const billingStatus = entitlements?.verificationUnavailable
+    ? 'entitlement_verification_unavailable'
+    : entitlements?.billingStatus;
   if (billingStatus === 'entitlement_verification_unavailable') {
     // Gateway-synthesized backend-unreachable 503 (server/gateway.ts wm_-key
     // branch). The shared Convex-facing helper doesn't recognize this code, so

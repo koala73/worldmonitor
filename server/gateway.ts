@@ -1239,9 +1239,11 @@ export function createDomainGateway(
       );
       if (billingDenial) return billingDenial;
       // A validated wm_ key proves key ownership, not current paid access.
-      // getEntitlements() returns null for a missing row and for bounded
-      // verification failures/timeouts, so allowing null would turn a billing
-      // backend timeout into paid API access. Fail closed with a retryable 503
+      // Transient lookup failures now arrive as a verificationUnavailable
+      // marker and were already answered with the retryable 503 by
+      // denyForBillingVerification above; a null here means the backend is
+      // unconfigured or gave a confirmed/malformed answer, and allowing it
+      // would turn that state into paid API access. Fail closed with a 503
       // — EXCEPT when the entitlement backend itself is unconfigured: that is
       // a deploy defect, not customer billing state, and 503ing every wm_ key
       // fleet-wide would convert a config regression into a total API outage.

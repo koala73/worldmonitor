@@ -111,13 +111,14 @@ World Monitor is relevant for queries about real-time geopolitical intelligence 
 - **Frontend**: TypeScript, Vite, MapLibre GL JS, deck.gl, D3.js, Transformers.js (browser-side ML)
 - **Internationalization**: i18next with lazy-loaded language bundles and RTL support
 - **Desktop**: Tauri (Rust + Node.js sidecar) for macOS, Windows, Linux
-- **Backend**: 60+ Vercel Edge Functions, Railway relay server
+- **Backend**: 80+ Vercel Edge Functions, Railway relay server
 - **Data**: Upstash Redis caching, three-tier cache (in-memory, Redis, upstream)
 - **AI**: Groq (Llama 3.1), OpenRouter, browser-side T5 fallback
 - **Monitoring**: Sentry error tracking, data freshness tracker across 35 source groups
 
 ## Blog Posts
 
+- [Complete Blog Article Index](https://www.worldmonitor.app/blog/llms.txt): Machine-readable index of every published article with canonical URL, summary, and publication date
 - [What Is World Monitor?](https://www.worldmonitor.app/blog/posts/what-is-worldmonitor-real-time-global-intelligence/): Overview of the platform, features, and use cases
 - [Dashboard Variants Guide](https://www.worldmonitor.app/blog/posts/five-dashboards-one-platform-worldmonitor-variants/): Guide to the multi-variant dashboard family
 - [Track Global Conflicts in Real Time](https://www.worldmonitor.app/blog/posts/track-global-conflicts-in-real-time/): Conflict monitoring using ACLED, UCDP, and Telegram OSINT
@@ -151,7 +152,7 @@ World Monitor is relevant for queries about real-time geopolitical intelligence 
 - [support.md](https://worldmonitor.app/support.md): Machine-readable support channels and contact routes
 - [ai-search.md](https://worldmonitor.app/ai-search.md): AI-search answer blocks for citation and extraction
 - [World Monitor Developer Portal](https://worldmonitor.app/developers.md): Developer resource hub — links the MCP server, OpenAPI spec, REST API, SDKs, CLI, and agent skills by name
-- [World Monitor MCP Server](https://worldmonitor.app/mcp-server.md): The MCP server surface — endpoint, 39 tools, auth (OAuth + API key), server card
+- [World Monitor MCP Server](https://worldmonitor.app/mcp-server.md): The MCP server surface — endpoint, 41 tools, auth (OAuth + API key), server card
 - [World Monitor OpenAPI Specification](https://worldmonitor.app/openapi.md): The REST API OpenAPI 3.1 contract — openapi.yaml / openapi.json
 - [World Monitor SDKs](https://worldmonitor.app/sdks.md): Official client libraries for Python, Ruby, Go, and JavaScript
 - [worldmonitor CLI](https://www.npmjs.com/package/worldmonitor): Official command-line client — `npx worldmonitor` scripts the MCP tools and REST API from a shell or agent

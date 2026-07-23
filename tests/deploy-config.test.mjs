@@ -2728,7 +2728,7 @@ describe('docs MCP facade (/docs/mcp)', () => {
 // agents can discover them without probing paths blind.
 describe('section-scoped llms.txt files', () => {
   it('tracked section files exist', () => {
-    for (const path of ['../public/api/llms.txt', '../public/developers/llms.txt', '../blog-site/public/llms.txt']) {
+    for (const path of ['../public/api/llms.txt', '../public/developers/llms.txt', '../blog-site/src/pages/llms.txt.ts']) {
       assert.ok(existsSync(resolve(__dirname, path)), `${path} must exist`);
     }
   });

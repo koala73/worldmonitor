@@ -6,6 +6,7 @@ keywords: "geopolitical alerts app, telegram news alerts, discord intelligence a
 audience: "Analysts, ops and security teams, traders, journalists, anyone who can't watch a dashboard all day"
 heroImage: "/blog/images/blog/alerts-notification-channels-worldmonitor.jpg"
 pubDate: "2026-07-21"
+modifiedDate: "2026-07-22"
 ---
 
 A dashboard you have to watch is a part-time job. The whole point of monitoring infrastructure is inverted attention: you ignore the world safely because the system knows what you care about and interrupts you only when it happens.
@@ -50,6 +51,10 @@ Developers who want full control still have it — the API path with your own sc
 ## Limits
 
 Delivery depends on the receiving platform's own reliability and rate limits — Telegram, Slack, and Discord each have their own weather. Web push requires a browser that supports it and permission you can revoke anytime. And no alert system substitutes for judgment about what deserves a rule: start with fewer rules at higher sensitivity, and widen only when you find yourself checking the dashboard for things it should have told you.
+
+## Sources and implementation references
+
+Delivery behavior follows the destination's own transport contract. See the official [Slack incoming-webhook guide](https://api.slack.com/messaging/webhooks) and Microsoft's current [Teams webhook and Workflows guidance](https://learn.microsoft.com/en-us/microsoftteams/platform/webhooks-and-connectors/what-are-webhooks-and-connectors).
 
 ## Frequently Asked Questions
 

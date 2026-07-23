@@ -59,6 +59,15 @@ export interface CachedEntitlements {
     status: 'not_applicable';
     checkedAt: number;
   };
+  // Synthesized by getEntitlements() when the backend lookup failed
+  // TRANSIENTLY (fetch abort at the 3s budget — which the #4770 on-demand
+  // provider re-check can consume — network error, Convex 5xx): a free-shaped,
+  // deny-side value that getBillingVerificationDenial turns into the retryable
+  // entitlement_verification_unavailable 503 instead of a hard "upgrade
+  // required"/401. Never originates from Convex and is never written to the
+  // Redis cache. A null return now means the backend is unconfigured or gave a
+  // confirmed/malformed answer — callers keep their fail-closed posture there.
+  verificationUnavailable?: true;
 }
 
 export interface EntitlementCheckResult {
@@ -244,6 +253,26 @@ export async function getEntitlements(userId: string): Promise<CachedEntitlement
   }
 }
 
+// Free-shaped deny-side value for transient lookup failures. Grants nothing
+// (tier 0, no apiAccess/mcpAccess, validUntil 0); its only power is steering
+// the gates to the retryable 503 via getBillingVerificationDenial.
+function unavailableEntitlements(): CachedEntitlements {
+  return {
+    planKey: 'free',
+    features: {
+      tier: 0,
+      apiAccess: false,
+      apiRateLimit: 0,
+      maxDashboards: 3,
+      prioritySupport: false,
+      exportFormats: ['csv'],
+      mcpAccess: false,
+    },
+    validUntil: 0,
+    verificationUnavailable: true,
+  };
+}
+
 async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements | null> {
   try {
     // Redis cache check (raw=true: entitlements use user-scoped keys, no deployment prefix)
@@ -292,7 +321,12 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
       body: JSON.stringify({ userId }),
       signal: AbortSignal.timeout(3_000),
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      // 5xx = Convex/platform blip -> retryable-503 posture at the gates.
+      // 4xx (bad shared secret, contract rejection) = deploy defect, not a
+      // transient: keep the fail-closed null so callers hold the hard posture.
+      return response.status >= 500 ? unavailableEntitlements() : null;
+    }
     const result = await response.json() as CachedEntitlements | null;
 
     if (result) {
@@ -323,9 +357,15 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
 
     return null;
   } catch (err) {
-    // Fail-closed: any error in entitlement lookup returns null (caller blocks the request)
+    // Still fail-closed — nothing is granted — but a TRANSIENT failure
+    // (timeout/abort, network, a throwing cache read) is distinguishable from
+    // "no entitlement": return the verificationUnavailable marker so every
+    // gate answers with the retryable entitlement_verification_unavailable
+    // 503 (Retry-After) instead of a misleading hard 403/401. Without this,
+    // the on-demand provider re-check (#4770) overrunning the 3s fetch budget
+    // reproduced exactly the hard-denial the rework exists to eliminate.
     console.warn('[entitlement-check] getEntitlements failed:', err instanceof Error ? err.message : String(err));
-    return null;
+    return unavailableEntitlements();
   }
 }
 
@@ -335,10 +375,32 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
  * provider outage is never flattened into a misleading "upgrade required".
  */
 export function getBillingVerificationDenial(
-  entitlements: Pick<CachedEntitlements, 'billingStatus' | 'retryAfterSeconds'> | null | undefined,
+  entitlements: Pick<CachedEntitlements, 'billingStatus' | 'retryAfterSeconds' | 'verificationUnavailable'> | null | undefined,
   corsHeaders: Record<string, string>,
   requiredTier?: number,
 ): Response | null {
+  if (entitlements?.verificationUnavailable) {
+    // Transient lookup failure: same wire contract as server/gateway.ts's
+    // wm_-key null-entitlement branch (docs/usage-errors.mdx).
+    return new Response(
+      JSON.stringify({
+        error: 'Unable to verify API access',
+        code: 'entitlement_verification_unavailable',
+        ...(requiredTier == null ? {} : { requiredTier }),
+      }),
+      {
+        status: 503,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'X-Billing-Verification': 'entitlement_verification_unavailable',
+          'Retry-After': String(clampRetryAfterSeconds(entitlements.retryAfterSeconds)),
+          ...corsHeaders,
+        },
+      },
+    );
+  }
+
   const status = entitlements?.billingStatus;
   if (!isBillingVerificationStatus(status)) return null;
 

@@ -2925,6 +2925,30 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     assert.equal(pipe.count, 0);
   });
 
+  it('error: transient entitlement-lookup failure → retryable 503, not a -32001 re-auth loop', async () => {
+    const { deps, pipe } = makeProDeps({
+      getEntitlements: async () => ({
+        planKey: 'free',
+        features: { tier: 0, mcpAccess: false },
+        validUntil: 0,
+        verificationUnavailable: true,
+      }),
+    });
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('Cache-Control'), 'no-store');
+    assert.equal(res.headers.get('Retry-After'), '5');
+    assert.equal(res.headers.get('X-Billing-Verification'), 'entitlement_verification_unavailable');
+    const body = await res.json();
+    assert.equal(body.jsonrpc, '2.0');
+    // Retryable class, NOT -32001: re-authenticating cannot fix a backend
+    // blip, and the old 401 sent doc-following agents into an OAuth loop.
+    assert.equal(body.error?.code, -32603);
+    assert.equal(body.error?.data?.code, 'entitlement_verification_unavailable');
+    assert.equal(pipe.count, 0);
+  });
+
   it('error: mid-call billing 503 from the gateway keeps its contract (no -32603 flatten)', async () => {
     const { deps } = makeProDeps();
     globalThis.fetch = async () => new Response(

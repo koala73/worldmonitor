@@ -81,6 +81,29 @@ async function withConvexEntitlementResponse<T>(
   }
 }
 
+// Like withConvexEntitlementResponse, but with full control over the fetch
+// outcome (throw, 5xx, 4xx) — used to pin the transient-vs-confirmed split.
+async function withConvexEntitlementFetch<T>(
+  fetchImpl: () => Promise<Response>,
+  run: () => Promise<T>,
+): Promise<T> {
+  const originalSiteUrl = process.env.CONVEX_SITE_URL;
+  const originalSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+  process.env.CONVEX_SITE_URL = "https://example-deployment.convex.site";
+  process.env.CONVEX_SERVER_SHARED_SECRET = "test-secret";
+  vi.mocked(getCachedJson).mockResolvedValueOnce(null);
+  vi.stubGlobal("fetch", vi.fn().mockImplementation(fetchImpl));
+  try {
+    return await run();
+  } finally {
+    if (originalSiteUrl === undefined) delete process.env.CONVEX_SITE_URL;
+    else process.env.CONVEX_SITE_URL = originalSiteUrl;
+    if (originalSecret === undefined) delete process.env.CONVEX_SERVER_SHARED_SECRET;
+    else process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
+    vi.unstubAllGlobals();
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -124,6 +147,59 @@ describe("gateway entitlement check", () => {
     const body = await result!.json();
     expect(body.error).toBe("Unable to verify entitlements");
     expect(body.requiredTier).toBe(1);
+  });
+
+  test("transient Convex fetch failure returns a verificationUnavailable marker, not null", async () => {
+    await withConvexEntitlementFetch(
+      () => Promise.reject(Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" })),
+      async () => {
+        const ent = await getEntitlements("user-transient-timeout");
+        expect(ent).not.toBeNull();
+        expect(ent?.verificationUnavailable).toBe(true);
+        // Deny-side: the marker must never carry an affirmative grant.
+        expect(ent?.features.tier).toBe(0);
+        expect(ent?.features.apiAccess).toBe(false);
+        expect(ent?.validUntil).toBe(0);
+      },
+    );
+  });
+
+  test("Convex 5xx returns the verificationUnavailable marker; 4xx stays a fail-closed null", async () => {
+    await withConvexEntitlementFetch(
+      () => Promise.resolve(new Response("upstream error", { status: 503 })),
+      async () => {
+        const ent = await getEntitlements("user-transient-5xx");
+        expect(ent?.verificationUnavailable).toBe(true);
+      },
+    );
+    await withConvexEntitlementFetch(
+      () => Promise.resolve(new Response("forbidden", { status: 403 })),
+      async () => {
+        // A 4xx (bad shared secret / contract rejection) is a deploy defect,
+        // not a transient — the hard fail-closed null posture must hold.
+        const ent = await getEntitlements("user-config-4xx");
+        expect(ent).toBeNull();
+      },
+    );
+  });
+
+  test("checkEntitlement answers a transient lookup failure with the retryable 503 contract, not a hard 403", async () => {
+    await withConvexEntitlementFetch(
+      () => Promise.reject(new Error("fetch failed")),
+      async () => {
+        const result = await checkEntitlement("user-transient-check", "/api/market/v1/analyze-stock", {});
+        expect(result).not.toBeNull();
+        expect(result!.status).toBe(503);
+        expect(result!.headers.get("X-Billing-Verification")).toBe("entitlement_verification_unavailable");
+        expect(result!.headers.get("Retry-After")).toBe("5");
+        expect(result!.headers.get("Cache-Control")).toBe("no-store");
+
+        const body = await result!.json();
+        expect(body.error).toBe("Unable to verify API access");
+        expect(body.code).toBe("entitlement_verification_unavailable");
+        expect(body.requiredTier).toBe(1);
+      },
+    );
   });
 
   test.each([

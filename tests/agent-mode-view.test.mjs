@@ -85,7 +85,7 @@ describe('agent-mode view (/?mode=agent)', () => {
     const trackedSectionFiles = {
       api: 'public/api/llms.txt',
       developers: 'public/developers/llms.txt',
-      blog: 'blog-site/public/llms.txt', // copied to /blog/llms.txt by the Astro build
+      blog: 'blog-site/src/pages/llms.txt.ts', // generated at /blog/llms.txt by Astro
     };
     for (const [section, path] of Object.entries(trackedSectionFiles)) {
       assert.doesNotThrow(

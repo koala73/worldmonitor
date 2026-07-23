@@ -6,7 +6,7 @@ keywords: "energy shock monitoring, oil chokepoint dashboard, fuel shortage trac
 audience: "Energy analysts, commodity traders, policy teams, infrastructure risk managers"
 heroImage: "/blog/images/blog/energy-shock-monitoring-chokepoints-worldmonitor.jpg"
 pubDate: "2026-06-10"
-modifiedDate: "2026-06-13"
+modifiedDate: "2026-07-22"
 ---
 
 An energy shock rarely starts as a chart. It starts as a closure rumor, a tanker reroute, a fuel shortage, a policy announcement, a port delay, a pipeline disruption, or a military signal near a chokepoint. By the time the price chart explains it, the operational window has already narrowed.
@@ -158,6 +158,10 @@ Next checks:
 When a chokepoint becomes the main driver, pair live monitoring with the [Scenarios API](https://www.worldmonitor.app/docs/api-scenarios). Scenario templates let you ask what happens if a route disruption lasts a defined number of days or affects a specific country set.
 
 Use it for planning, not prediction. Scenario output answers "what would be exposed if..." rather than "what will happen next."
+
+## Primary Energy Reference
+
+Baseline flow estimates and strategic context should be checked against the EIA's [World Oil Transit Chokepoints](https://www.eia.gov/international/content/analysis/special_topics/World_Oil_Transit_Chokepoints/) analysis. Live risk scores add warning context but do not override the source agency's published methodology.
 
 ## Frequently Asked Questions
 

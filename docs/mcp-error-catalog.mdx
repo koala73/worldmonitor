@@ -238,7 +238,7 @@ Retry-After: 5
 Content-Type: application/json
 ```
 
-The `message` text identifies the trigger. Six sites emit a 503; five distinct strings:
+The `message` text identifies the trigger. Seven sites emit a 503; five distinct strings:
 
 | Trigger                                         | `message`                                              | Site                              |
 |-------------------------------------------------|--------------------------------------------------------|-----------------------------------|
@@ -247,7 +247,7 @@ The `message` text identifies the trigger. Six sites emit a 503; five distinct s
 | Pro quota-reservation Redis failure (non-cap)   | `Service temporarily unavailable, retry in a moment.`  | `api/mcp/dispatch.ts` `dispatchToolsCall` quota reservation |
 | Renewal verification in flight (#4770)          | `Renewal verification pending. Retry shortly.`         | `api/mcp/auth.ts` `getMcpBillingVerificationDenial` (pre-check) or `api/mcp/dispatch.ts` (mid-call re-emit) |
 | Renewal verification failed, in cooldown (#4770)| `Renewal verification failed. Retry shortly.`          | same two sites as above           |
-| Entitlement backend unreachable mid-call (#4770)| `Unable to verify API access. Retry shortly.`          | `api/mcp/dispatch.ts` mid-call re-emit of a gateway `entitlement_verification_unavailable` 503 (wm\_-key tool fetches) |
+| Entitlement backend unreachable (#4770)         | `Unable to verify API access. Retry shortly.`          | `api/mcp/auth.ts` `getMcpBillingVerificationDenial` (pre-check, transient entitlement-lookup failure) or `api/mcp/dispatch.ts` (mid-call re-emit of a gateway `entitlement_verification_unavailable` 503 on wm\_-key tool fetches) |
 
 Recovery for the first three is identical (honour `Retry-After: 5`). The billing-verification rows differ: they carry an `X-Billing-Verification` header (`renewal_verification_pending|renewal_verification_failed`, or `entitlement_verification_unavailable` for the backend-unreachable row), a `data.code` mirroring it, and — for the two renewal-verification codes — a **dynamic `Retry-After` between 1 and 60 seconds** sized to the actual provider re-check; honour the header value rather than assuming 5 (the backend-unreachable row uses a fixed `Retry-After: 5`). The renewal-verification codes mean the subscription recently expired locally and the server is re-confirming it with the billing provider before denying; a renewed subscription typically recovers within one or two retries.
 
