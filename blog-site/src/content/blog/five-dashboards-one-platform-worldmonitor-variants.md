@@ -1,6 +1,6 @@
 ---
 title: "Six Intelligence Dashboards on One Platform"
-description: "World Monitor offers 6 free intelligence dashboards: geopolitical, tech, finance, commodity, positive news, and energy. Switch between them instantly from one platform."
+description: "Explore six free World Monitor dashboards for geopolitics, technology, finance, commodities, positive news, and energy, all built on one platform."
 metaTitle: "6 Intelligence Dashboards, One Platform | World Monitor"
 keywords: "intelligence dashboard variants, tech monitoring dashboard, positive news dashboard, energy security dashboard, multi-purpose intelligence platform, specialized monitoring tools"
 audience: "General tech audience, product managers, developers, knowledge workers, content creators"
@@ -46,7 +46,7 @@ Tech Monitor maps the global technology landscape: where AI is being built, wher
 
 **Key features:**
 
-- 111 AI datacenters mapped globally with operator details
+- 300+ AI datacenters mapped globally with operator details
 - Startup hub and accelerator locations
 - AI lab and research center tracking
 - GitHub Trending integration
@@ -69,9 +69,9 @@ Finance Monitor is for [traders and analysts](/blog/posts/real-time-market-intel
 
 **Key features:**
 
-- 92 global stock exchanges with trading hours and market caps
+- 29 global stock exchanges with trading hours and market caps
 - 7-signal macro radar with composite BUY/CASH verdict
-- 13 central bank policy trackers with [BIS](https://www.bis.org/) data
+- 14 central bank policy trackers with [BIS](https://www.bis.org/) data
 - Stablecoin peg monitoring (USDT, USDC, DAI, FDUSD, USDe)
 - BTC spot ETF flow tracker (IBIT, FBTC, GBTC, and 7 more)
 - Fear & Greed Index with 30-day history
@@ -149,13 +149,13 @@ Regardless of which variant you use, you get the full platform engine:
 
 ### Interactive 3D Globe + Flat Map
 
-Dual map engines ([globe.gl](https://globe.gl/)/[Three.js](https://threejs.org/) for 3D, [deck.gl](https://deck.gl/) for flat WebGL) that switch at runtime. Both support all 45 data layers.
+Dual map engines ([globe.gl](https://globe.gl/)/[Three.js](https://threejs.org/) for 3D, [deck.gl](https://deck.gl/) for flat WebGL) that switch at runtime. Both support all 56 map layers.
 
 ### AI Analysis
 
 The 4-tier LLM fallback chain (Ollama, Groq, OpenRouter, browser T5) works across all variants. Generate briefs, classify threats, and run analysis privately.
 
-### 21 Languages
+### 25 Languages
 
 Full internationalization with lazy-loaded language packs, locale-specific RSS feeds, and RTL support for Arabic.
 

@@ -2242,6 +2242,17 @@
       "cta": "Upgrade to Pro →",
       "dismiss": "Dismiss"
     },
+    "billingState": {
+      "onHoldDesc": "پرداخت ناموفق بود. روش پرداخت خود را به‌روزرسانی کنید تا دسترسی ویژه بازیابی شود.",
+      "onHoldBannerMessage": "پرداخت ناموفق بود. روش پرداخت خود را به‌روزرسانی کنید تا اشتراک شما فعال بماند.",
+      "updatePayment": "به‌روزرسانی پرداخت",
+      "renewalPendingDesc": "در حال بررسی تمدید اشتراک شما هستیم. دسترسی ویژه پس از تأیید به‌طور خودکار بازیابی می‌شود.",
+      "refreshStatus": "به‌روزرسانی وضعیت",
+      "renewalFailedDesc": "تمدید اشتراک شما تأیید نشد. صورتحساب را مدیریت کنید یا در صورت ادامه مشکل با پشتیبانی تماس بگیرید.",
+      "manageBilling": "مدیریت صورتحساب",
+      "lapsedDesc": "اشتراک Pro شما به پایان رسیده است. برای بازیابی دسترسی ویژه دوباره مشترک شوید.",
+      "resubscribe": "اشتراک مجدد"
+    },
     "checkoutFailureBanner": {
       "message": "Payment couldn't be completed. No charge was made.",
       "retry": "Try again",

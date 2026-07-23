@@ -6,6 +6,7 @@ keywords: "disease outbreak map, epidemic monitoring dashboard, WHO outbreak tra
 audience: "Public-health analysts, NGO and travel-security teams, researchers, journalists, expats and frequent travelers"
 heroImage: "/blog/images/blog/disease-outbreak-air-quality-monitoring-health-signals.jpg"
 pubDate: "2026-07-21"
+modifiedDate: "2026-07-22"
 ---
 
 Health signals are geopolitical signals. An outbreak reshapes trade and travel; a smoke or smog crisis empties cities and moves elections; and health infrastructure under strain is one of the most concrete measures of a state losing capacity. Yet health monitoring usually lives in separate tools from the conflict, disaster, and market layers it interacts with.
@@ -38,6 +39,10 @@ A useful habit from the [15-minute briefing routine](/blog/posts/daily-intellige
 ## Limits
 
 Outbreak reporting inherits the biases of surveillance: countries with strong health systems report more, so more reports don't always mean more disease. Official WHO confirmation lags the specialist press by design — that's what verification costs. Air-quality sensor density varies sharply by region, with the thinnest coverage often where conditions are worst. Read gaps as gaps, not as clean air or absent disease.
+
+## Primary data sources
+
+Check health events at [WHO Disease Outbreak News](https://www.who.int/emergencies/disease-outbreak-news) and [CDC Travel Health Notices](https://wwwnc.cdc.gov/travel/notices). Air-quality observations come from the documented [OpenAQ API](https://docs.openaq.org/) and [World Air Quality Index API](https://aqicn.org/api/).
 
 ## Frequently Asked Questions
 

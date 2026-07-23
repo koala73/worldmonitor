@@ -21,6 +21,9 @@ const { title, description, metaTitle, keywords, ogType, ogImage, ogImageAlt, ca
 const pageTitle = metaTitle || title;
 const resolvedOgImage = ogImage || 'https://www.worldmonitor.app/favico/og-image.png';
 const resolvedOgImageAlt = ogImageAlt || pageTitle;
+const resolvedOgImageType = resolvedOgImage.toLowerCase().split(/[?#]/)[0].endsWith('.png')
+  ? 'image/png'
+  : 'image/jpeg';
 const resolvedOgType = ogType || 'website';
 const keywordTags = keywords ? keywords.split(',').map(k => k.trim()).slice(0, 6) : [];
 const resolvedCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, 'https://www.worldmonitor.app').href;
@@ -38,7 +41,7 @@ function stringifyJsonLd(value: Record<string, unknown>): string {
     <title>{pageTitle}</title>
     <meta name="description" content={description} />
     {keywords && <meta name="keywords" content={keywords} />}
-    <meta name="robots" content="index, follow" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
     <meta name="author" content={author || 'World Monitor'} />
     <meta name="theme-color" content="#050505" />
     <link rel="canonical" href={resolvedCanonicalUrl} />
@@ -50,6 +53,7 @@ function stringifyJsonLd(value: Record<string, unknown>): string {
     <meta property="og:site_name" content="World Monitor Blog" />
     <meta property="og:image" content={resolvedOgImage} />
     <meta property="og:image:secure_url" content={resolvedOgImage} />
+    <meta property="og:image:type" content={resolvedOgImageType} />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:locale" content="en_US" />
@@ -128,6 +132,7 @@ function stringifyJsonLd(value: Record<string, unknown>): string {
           </div>
         </div>
         <div class="footer-links">
+          <a href="/blog/authors/elie-habib/">About</a>
           <a href="https://www.worldmonitor.app" target="_blank" rel="noopener noreferrer">Dashboard</a>
           <a href="https://www.worldmonitor.app/pro" target="_blank" rel="noopener noreferrer">Pro</a>
           <a href="https://www.worldmonitor.app/docs" target="_blank" rel="noopener noreferrer">Docs</a>

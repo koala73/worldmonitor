@@ -1,50 +1,83 @@
 /**
- * Persistent payment failure banner.
+ * Persistent billing-state banner (né payment-failure banner).
  *
- * Displayed when the user's subscription status is "on_hold" (payment failed).
- * Auto-removes when subscription returns to active via reactive Convex subscription.
- * Can be manually dismissed (stored in sessionStorage for current session).
+ * Pre-#4771 this only handled `subscription.status === "on_hold"`. It now
+ * renders one banner per derived billing UX state (billing-state.ts):
+ *   - on_hold: the original red "Payment failed" banner, byte-identical
+ *     copy/action/dismiss key (issue #4771 requires it stay intact).
+ *   - renewal_verification_pending: amber "verifying your renewal" notice,
+ *     so a paying user whose local renewal evidence went stale is not
+ *     silently downgraded to generic free-tier UX.
+ *   - renewal_verification_failed: red "couldn't verify" with Manage Billing.
+ * free/active/lapsed render no banner (lapsed copy lives in the panel CTA).
+ *
+ * Auto-updates via the reactive Convex subscription + entitlement watches.
+ * Each state has its own sessionStorage dismissal key so dismissing the
+ * pending notice never suppresses a later payment-failure alert.
  *
  * Attaches event listeners directly to DOM elements (not via setContent)
  * to avoid debounce issues with Panel.setContent().
  */
 
-import { onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
-import type { SubscriptionInfo } from '@/services/billing';
+import { getSubscription, onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
+import {
+  BILLING_BANNER_DISMISS_KEYS,
+  deriveBillingUxState,
+  getBillingBannerVariant,
+} from '@/services/billing-state';
+import { getEntitlementState, onEntitlementChange } from '@/services/entitlements';
+import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
 
 const BANNER_ID = 'payment-failure-banner';
-const DISMISS_KEY = 'pf-banner-dismissed';
 
 /**
- * Initialize the payment failure banner.
- * Listens to subscription changes and shows/hides the banner reactively.
- * Returns an unsubscribe function to clean up when the layout is destroyed.
+ * Initialize the billing-state banner.
+ * Listens to subscription AND entitlement changes and shows/hides the banner
+ * reactively. Returns an unsubscribe function to clean up when the layout is
+ * destroyed.
  */
 export function initPaymentFailureBanner(): () => void {
-  return onSubscriptionChange((sub: SubscriptionInfo | null) => {
+  const render = (): void => {
+    const state = deriveBillingUxState(getSubscription(), getEntitlementState(), Date.now());
+    const variant = getBillingBannerVariant(state);
     const existing = document.getElementById(BANNER_ID);
+    // Which variant the current DOM banner renders, tagged on the element
+    // itself (dismiss keys are unique per state) — no parallel state to sync.
+    const existingVariant = existing?.dataset.variant ?? null;
 
-    // Remove banner if subscription is not on_hold
-    if (!sub || sub.status !== 'on_hold') {
+    // No banner for this state — remove and clear dismissal flags so the
+    // next episode (e.g. a new payment failure months later) shows again.
+    if (!variant) {
       if (existing) existing.remove();
-      // Clear dismissal flag when subscription recovers
-      try { sessionStorage.removeItem(DISMISS_KEY); } catch { /* noop */ }
+      try {
+        for (const key of BILLING_BANNER_DISMISS_KEYS) sessionStorage.removeItem(key);
+      } catch { /* noop */ }
       return;
     }
 
-    // Don't show if already dismissed in this session
+    // Don't show if this state's banner was dismissed this session. A
+    // banner left over from a DIFFERENT state is stale — remove it.
     try {
-      if (sessionStorage.getItem(DISMISS_KEY) === '1') return;
+      if (sessionStorage.getItem(variant.dismissKey) === '1') {
+        if (existing) existing.remove();
+        return;
+      }
     } catch { /* noop */ }
 
-    // Don't duplicate
-    if (existing) return;
+    // Don't duplicate; rebuild only when the state changed.
+    if (existing) {
+      if (existingVariant === variant.dismissKey) return;
+      existing.remove();
+    }
+
+    const accent = variant.tone === 'warning' ? '#b45309' : '#dc2626';
 
     // Create banner
     const banner = document.createElement('div');
     banner.id = BANNER_ID;
+    banner.dataset.variant = variant.dismissKey;
     Object.assign(banner.style, {
       position: 'fixed',
       top: '0',
@@ -52,7 +85,7 @@ export function initPaymentFailureBanner(): () => void {
       right: '0',
       zIndex: '99998',
       padding: '10px 20px',
-      background: '#dc2626',
+      background: accent,
       color: '#fff',
       fontSize: '13px',
       textAlign: 'center',
@@ -63,14 +96,20 @@ export function initPaymentFailureBanner(): () => void {
       boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
     });
 
+    // Message/label resolve through i18n (same components.billingState.*
+    // keys as the panel CTA, so the two surfaces cannot drift). Our own
+    // locale strings, never user input — safe for the trusted template.
+    const actionBtn = variant.actionLabelKey
+      ? `<button id="pf-update-btn" style="background:#fff;color:${accent};border:none;border-radius:4px;padding:4px 12px;font-weight:600;font-size:12px;cursor:pointer;white-space:nowrap;">${t(variant.actionLabelKey)}</button>`
+      : '';
     setTrustedHtml(banner, trustedHtml(`
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
         <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
         <line x1="12" y1="9" x2="12" y2="13"/>
         <line x1="12" y1="17" x2="12.01" y2="17"/>
       </svg>
-      <span>Payment failed. Update your payment method to keep your subscription active.</span>
-      <button id="pf-update-btn" style="background:#fff;color:#dc2626;border:none;border-radius:4px;padding:4px 12px;font-weight:600;font-size:12px;cursor:pointer;white-space:nowrap;">Update Payment</button>
+      <span>${t(variant.messageKey)}</span>
+      ${actionBtn}
       <button id="pf-dismiss-btn" style="background:transparent;color:#fff;border:none;cursor:pointer;font-size:18px;padding:0 4px;line-height:1;">&times;</button>
     `, "legacy direct innerHTML migration"));
 
@@ -78,7 +117,7 @@ export function initPaymentFailureBanner(): () => void {
 
     // Attach event listeners directly (avoid debounced setContent per project memory)
     const updateBtn = document.getElementById('pf-update-btn');
-    if (updateBtn) {
+    if (updateBtn && variant.action === 'billing-portal') {
       updateBtn.addEventListener('click', () => {
         // Pre-reserve portal tab synchronously to survive popup blocker.
         const reservedWin = prereserveBillingPortalTab();
@@ -90,8 +129,15 @@ export function initPaymentFailureBanner(): () => void {
     if (dismissBtn) {
       dismissBtn.addEventListener('click', () => {
         banner.remove();
-        try { sessionStorage.setItem(DISMISS_KEY, '1'); } catch { /* noop */ }
+        try { sessionStorage.setItem(variant.dismissKey, '1'); } catch { /* noop */ }
       });
     }
-  });
+  };
+
+  const unsubscribeSubscription = onSubscriptionChange(() => render());
+  const unsubscribeEntitlement = onEntitlementChange(() => render());
+  return () => {
+    unsubscribeSubscription();
+    unsubscribeEntitlement();
+  };
 }

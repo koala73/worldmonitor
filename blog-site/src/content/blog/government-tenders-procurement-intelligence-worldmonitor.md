@@ -1,6 +1,6 @@
 ---
 title: "Track Government Tenders Worldwide in One Feed"
-description: "WorldMonitor aggregates open tenders from SAM.gov, TED, Contracts Finder, CanadaBuys, GETS, and the World Bank into one searchable, hourly-refreshed procurement feed."
+description: "WorldMonitor aggregates public tenders from SAM.gov, TED, Contracts Finder, CanadaBuys, GETS, and the World Bank into one searchable procurement feed."
 metaTitle: "Global Government Tender Tracking | WorldMonitor"
 keywords: "government tender tracking, global procurement opportunities, SAM.gov TED tenders, government contracts monitoring, procurement intelligence, tender alerts API"
 audience: "Business development teams, government contractors, consultancies, market-entry analysts, procurement researchers"

@@ -2170,6 +2170,17 @@
       "cta": "Nâng cấp lên Pro →",
       "dismiss": "Bỏ qua"
     },
+    "billingState": {
+      "onHoldDesc": "Thanh toán không thành công. Cập nhật phương thức thanh toán của bạn để khôi phục quyền truy cập cao cấp.",
+      "onHoldBannerMessage": "Thanh toán không thành công. Cập nhật phương thức thanh toán của bạn để duy trì gói đăng ký.",
+      "updatePayment": "Cập nhật thanh toán",
+      "renewalPendingDesc": "Chúng tôi đang xác minh việc gia hạn gói đăng ký của bạn. Quyền truy cập cao cấp sẽ tự động được khôi phục sau khi xác nhận.",
+      "refreshStatus": "Làm mới trạng thái",
+      "renewalFailedDesc": "Chúng tôi không thể xác minh việc gia hạn gói đăng ký của bạn. Quản lý thanh toán hoặc liên hệ hỗ trợ nếu sự cố vẫn tiếp diễn.",
+      "manageBilling": "Quản lý thanh toán",
+      "lapsedDesc": "Gói đăng ký Pro của bạn đã kết thúc. Đăng ký lại để lấy lại quyền truy cập cao cấp.",
+      "resubscribe": "Đăng ký lại"
+    },
     "checkoutFailureBanner": {
       "message": "Không thể hoàn tất thanh toán. Không có khoản phí nào được tính.",
       "retry": "Thử lại",

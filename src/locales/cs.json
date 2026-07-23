@@ -2188,6 +2188,17 @@
       "cta": "Upgradovat na Pro →",
       "dismiss": "Zavřít"
     },
+    "billingState": {
+      "onHoldDesc": "Platba se nezdařila. Aktualizujte svou platební metodu pro obnovení prémiového přístupu.",
+      "onHoldBannerMessage": "Platba se nezdařila. Aktualizujte svou platební metodu, aby vaše předplatné zůstalo aktivní.",
+      "updatePayment": "Aktualizovat platbu",
+      "renewalPendingDesc": "Ověřujeme obnovení vašeho předplatného. Prémiový přístup bude po potvrzení automaticky obnoven.",
+      "refreshStatus": "Obnovit stav",
+      "renewalFailedDesc": "Nepodařilo se nám ověřit obnovení vašeho předplatného. Spravujte fakturaci nebo kontaktujte podporu, pokud problém přetrvává.",
+      "manageBilling": "Spravovat fakturaci",
+      "lapsedDesc": "Vaše předplatné Pro skončilo. Předplaťte si znovu pro obnovení prémiového přístupu.",
+      "resubscribe": "Znovu předplatit"
+    },
     "checkoutFailureBanner": {
       "message": "Platbu se nepodařilo dokončit. Nebyl proveden žádný poplatek.",
       "retry": "Zkusit znovu",

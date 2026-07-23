@@ -6,7 +6,7 @@ keywords: "supply chain early warning dashboard, supply chain risk API, chokepoi
 audience: "Supply chain teams, logistics analysts, procurement leaders, data engineers"
 heroImage: "/blog/images/blog/supply-chain-early-warning-dashboard-worldmonitor-api.jpg"
 pubDate: "2026-06-10"
-modifiedDate: "2026-06-13"
+modifiedDate: "2026-07-22"
 ---
 
 A supply chain early warning dashboard should answer one question before the weekly operations meeting: which routes, commodities, suppliers, or countries need attention now?
@@ -174,6 +174,10 @@ Before shipping the dashboard internally, check:
 - Alerts are state changes, not every new headline.
 - Route, country, and commodity thresholds are configurable.
 - There is a weekly review of false positives and missed events.
+
+## Primary Supply-Chain Sources
+
+Corroborate trade and route signals with primary datasets such as [UN Comtrade](https://comtradeplus.un.org/) and the EIA's [World Oil Transit Chokepoints](https://www.eia.gov/international/content/analysis/special_topics/World_Oil_Transit_Chokepoints/) analysis. Preserve the reporting date because both trade data and route baselines can be revised.
 
 ## Frequently Asked Questions
 

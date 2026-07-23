@@ -2424,6 +2424,66 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(body.error?.code, -32603, 'total outage must return -32603');
   });
 
+  it('get_airspace surfaces a mid-call billing denial instead of a generic failure', async () => {
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ error: 'Renewal verification pending', code: 'renewal_verification_pending' }),
+      {
+        status: 503,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'Retry-After': '21',
+          'X-Billing-Verification': 'renewal_verification_pending',
+        },
+      },
+    );
+
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 15, method: 'tools/call',
+      params: { name: 'get_airspace', arguments: { country_code: 'GB' } },
+    }));
+
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('Retry-After'), '21');
+    assert.equal(res.headers.get('X-Billing-Verification'), 'renewal_verification_pending');
+    const body = await res.json();
+    assert.equal(body.error?.code, -32603);
+    assert.equal(body.error?.data?.code, 'renewal_verification_pending');
+  });
+
+  it('get_airspace type=civilian rethrows a billing denial instead of serving partial data', async () => {
+    globalThis.fetch = async (url) => {
+      const u = url.toString();
+      if (u.includes('/api/aviation/v1/track-aircraft')) {
+        return new Response(
+          JSON.stringify({ error: 'Subscription lapsed', code: 'subscription_lapsed' }),
+          {
+            status: 403,
+            headers: {
+              'Content-Type': 'application/json',
+              'Cache-Control': 'no-store',
+              'X-Billing-Verification': 'subscription_lapsed',
+            },
+          },
+        );
+      }
+      return originalFetch(url);
+    };
+
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 16, method: 'tools/call',
+      params: { name: 'get_airspace', arguments: { country_code: 'DE', type: 'civilian' } },
+    }));
+
+    // Pre-fix behavior was a plausible-looking 200 with partial:true — a
+    // billing lapse masked as a data-source outage.
+    assert.equal(res.status, 403);
+    assert.equal(res.headers.get('X-Billing-Verification'), 'subscription_lapsed');
+    const body = await res.json();
+    assert.equal(body.error?.code, -32002);
+    assert.equal(body.error?.data?.code, 'subscription_lapsed');
+  });
+
   it('get_airspace type=civilian skips military fetch', async () => {
     let militaryFetched = false;
     globalThis.fetch = async (url) => {
@@ -2787,6 +2847,200 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     });
     const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
     assert.equal(res.status, 401);
+  });
+
+  it('current Pro fallback remains usable while stronger renewal verification is pending', async () => {
+    const { deps, pipe } = makeProDeps({
+      getEntitlements: async () => ({
+        planKey: 'pro_monthly',
+        features: { tier: 1, mcpAccess: true },
+        validUntil: Date.now() + 86_400_000,
+        billingStatus: 'renewal_verification_pending',
+        retryAfterSeconds: 19,
+      }),
+    });
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ result: JSON.stringify({ ok: 1 }) }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    );
+
+    const res = await mcpHandler(
+      proReq('POST', callBody('get_market_data')),
+      deps,
+    );
+
+    assert.equal(res.status, 200);
+    assert.equal(pipe.count, 1);
+  });
+
+  for (const billingStatus of ['renewal_verification_pending', 'renewal_verification_failed']) {
+    it(`error: ${billingStatus} → JSON-RPC retryable no-store 503`, async () => {
+      const { deps, pipe } = makeProDeps({
+        getEntitlements: async () => ({
+          planKey: 'free',
+          features: { tier: 0, mcpAccess: false },
+          validUntil: 0,
+          billingStatus,
+          retryAfterSeconds: 19,
+        }),
+      });
+      const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+
+      assert.equal(res.status, 503);
+      assert.equal(res.headers.get('Cache-Control'), 'no-store');
+      assert.equal(res.headers.get('Retry-After'), '19');
+      assert.equal(res.headers.get('X-Billing-Verification'), billingStatus);
+      const body = await res.json();
+      assert.equal(body.jsonrpc, '2.0');
+      assert.equal(body.error?.code, -32603);
+      assert.equal(body.error?.data?.code, billingStatus);
+      assert.equal(pipe.count, 0);
+    });
+  }
+
+  it('error: subscription_lapsed → distinct JSON-RPC hard denial', async () => {
+    const { deps, pipe } = makeProDeps({
+      getEntitlements: async () => ({
+        planKey: 'free',
+        features: { tier: 0, mcpAccess: false },
+        validUntil: 0,
+        billingStatus: 'subscription_lapsed',
+      }),
+    });
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+
+    assert.equal(res.status, 403);
+    assert.equal(res.headers.get('Cache-Control'), 'no-store');
+    assert.equal(res.headers.get('Retry-After'), null);
+    assert.equal(res.headers.get('X-Billing-Verification'), 'subscription_lapsed');
+    const body = await res.json();
+    assert.equal(body.jsonrpc, '2.0');
+    // -32002, NOT -32001: the catalog reserves -32001 for HTTP 401 auth
+    // failures with OAuth-reauth recovery; a confirmed lapse cannot be fixed
+    // by re-authenticating.
+    assert.equal(body.error?.code, -32002);
+    assert.equal(body.error?.data?.code, 'subscription_lapsed');
+    assert.equal(pipe.count, 0);
+  });
+
+  it('error: transient entitlement-lookup failure → retryable 503, not a -32001 re-auth loop', async () => {
+    const { deps, pipe } = makeProDeps({
+      getEntitlements: async () => ({
+        planKey: 'free',
+        features: { tier: 0, mcpAccess: false },
+        validUntil: 0,
+        verificationUnavailable: true,
+      }),
+    });
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('Cache-Control'), 'no-store');
+    assert.equal(res.headers.get('Retry-After'), '5');
+    assert.equal(res.headers.get('X-Billing-Verification'), 'entitlement_verification_unavailable');
+    const body = await res.json();
+    assert.equal(body.jsonrpc, '2.0');
+    // Retryable class, NOT -32001: re-authenticating cannot fix a backend
+    // blip, and the old 401 sent doc-following agents into an OAuth loop.
+    assert.equal(body.error?.code, -32603);
+    assert.equal(body.error?.data?.code, 'entitlement_verification_unavailable');
+    assert.equal(pipe.count, 0);
+  });
+
+  it('error: mid-call billing 503 from the gateway keeps its contract (no -32603 flatten)', async () => {
+    const { deps } = makeProDeps();
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ error: 'Renewal verification pending', code: 'renewal_verification_pending' }),
+      {
+        status: 503,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'Retry-After': '21',
+          'X-Billing-Verification': 'renewal_verification_pending',
+        },
+      },
+    );
+    try {
+      const res = await mcpHandler(proReq('POST', callBody('get_country_risk', { country_code: 'US' })), deps);
+
+      assert.equal(res.status, 503);
+      assert.equal(res.headers.get('Retry-After'), '21');
+      assert.equal(res.headers.get('Cache-Control'), 'no-store');
+      assert.equal(res.headers.get('X-Billing-Verification'), 'renewal_verification_pending');
+      const body = await res.json();
+      assert.equal(body.error?.code, -32603);
+      assert.equal(body.error?.data?.code, 'renewal_verification_pending');
+      assert.equal(body.id, 100);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('error: mid-call backend-unreachable 503 keeps the entitlement_verification_unavailable contract', async () => {
+    const { deps } = makeProDeps();
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ error: 'Unable to verify API access', code: 'entitlement_verification_unavailable' }),
+      {
+        status: 503,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'Retry-After': '5',
+          'X-Billing-Verification': 'entitlement_verification_unavailable',
+        },
+      },
+    );
+    try {
+      const res = await mcpHandler(proReq('POST', callBody('get_country_risk', { country_code: 'US' })), deps);
+
+      assert.equal(res.status, 503);
+      assert.equal(res.headers.get('Retry-After'), '5');
+      assert.equal(res.headers.get('Cache-Control'), 'no-store');
+      assert.equal(res.headers.get('X-Billing-Verification'), 'entitlement_verification_unavailable');
+      const body = await res.json();
+      assert.equal(body.error?.code, -32603);
+      assert.equal(body.error?.data?.code, 'entitlement_verification_unavailable');
+      assert.equal(body.id, 100);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('error: mid-call confirmed lapse from the gateway surfaces -32002 + 403', async () => {
+    const { deps } = makeProDeps();
+    globalThis.fetch = async () => new Response(
+      JSON.stringify({ error: 'Subscription lapsed', code: 'subscription_lapsed' }),
+      {
+        status: 403,
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'X-Billing-Verification': 'subscription_lapsed',
+        },
+      },
+    );
+    try {
+      const res = await mcpHandler(proReq('POST', callBody('get_country_risk', { country_code: 'US' })), deps);
+
+      assert.equal(res.status, 403);
+      assert.equal(res.headers.get('X-Billing-Verification'), 'subscription_lapsed');
+      const body = await res.json();
+      assert.equal(body.error?.code, -32002);
+      assert.equal(body.error?.data?.code, 'subscription_lapsed');
+      assert.equal(body.id, 100);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('classifies billing-verification denials distinctly in usage telemetry', async () => {
+    const { mcpReasonFor } = await import('../api/mcp/usage.ts');
+    assert.equal(mcpReasonFor('billing', 503), 'billing_verification_503');
+    assert.equal(mcpReasonFor('billing', 403), 'tier_403');
+    assert.equal(mcpReasonFor('precheck', 503), 'auth_unavailable');
   });
 
   it('error: Redis pipeline throws on INCR → -32603 + 503 + Retry-After', async () => {

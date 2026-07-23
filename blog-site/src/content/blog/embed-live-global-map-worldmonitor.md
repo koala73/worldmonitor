@@ -6,7 +6,7 @@ keywords: "embeddable map, live conflict map, earthquake map embed, geopolitical
 audience: "Journalists, publishers, researchers, analysts"
 heroImage: "/blog/images/blog/embed-live-global-map-worldmonitor.jpg"
 pubDate: "2026-06-11"
-modifiedDate: "2026-06-13"
+modifiedDate: "2026-07-22"
 ---
 
 Maps are most useful when they appear next to the story people are reading. A live conflict map, earthquake map, or weather-risk map can turn a static explainer into something readers can revisit as conditions change.
@@ -103,6 +103,10 @@ Start with the fewest layers that answer the story. Too many overlays make the m
 | Energy security | `conflicts,weather` with `variant=energy` | Frame route risk near Gulf, Red Sea, or Black Sea exposure |
 
 If the reader needs deeper source evidence, pair the map with the [OSINT verification workflow](/blog/posts/verify-breaking-news-osint-workflow-journalists/) or expose the same signals programmatically through the [WorldMonitor MCP server](/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/).
+
+## Standards and implementation references
+
+The embed follows the HTML standard's [`iframe` element](https://html.spec.whatwg.org/multipage/iframe-embed-object.html#the-iframe-element), while WorldMonitor's public implementation remains inspectable in the [open-source embed module](https://github.com/koala73/worldmonitor/tree/main/src/embed).
 
 ## Frequently Asked Questions
 

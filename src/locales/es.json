@@ -2179,6 +2179,17 @@
       "cta": "Actualiza a Pro →",
       "dismiss": "Descartar"
     },
+    "billingState": {
+      "onHoldDesc": "El pago falló. Actualiza tu método de pago para restaurar el acceso premium.",
+      "onHoldBannerMessage": "El pago falló. Actualiza tu método de pago para mantener tu suscripción activa.",
+      "updatePayment": "Actualizar pago",
+      "renewalPendingDesc": "Estamos verificando la renovación de tu suscripción. El acceso premium se restaurará automáticamente una vez confirmada.",
+      "refreshStatus": "Actualizar estado",
+      "renewalFailedDesc": "No pudimos verificar la renovación de tu suscripción. Gestiona la facturación o contacta con soporte si el problema persiste.",
+      "manageBilling": "Gestionar facturación",
+      "lapsedDesc": "Tu suscripción Pro ha finalizado. Vuelve a suscribirte para recuperar el acceso premium.",
+      "resubscribe": "Volver a suscribirse"
+    },
     "checkoutFailureBanner": {
       "message": "No se pudo completar el pago. No se realizó ningún cargo.",
       "retry": "Reintentar",

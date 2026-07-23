@@ -6,6 +6,7 @@ keywords: "humanitarian situational awareness, NGO security monitoring, displace
 audience: "NGO security teams, humanitarian operations leads, field program managers, crisis analysts"
 heroImage: "/blog/images/blog/humanitarian-situational-awareness-ngo-security-monitoring-worldmonitor.jpg"
 pubDate: "2026-06-13"
+modifiedDate: "2026-07-22"
 ---
 
 Humanitarian teams do not need another map full of alarming dots. They need a repeatable way to decide whether a field team, partner network, shipment, or program site needs attention today.
@@ -101,6 +102,8 @@ For neighboring workflows, combine this with [country risk monitoring for due di
 WorldMonitor's humanitarian-adjacent workflow draws from public and authoritative sources where available: displacement datasets, HAPI/HDX humanitarian summaries, WHO and CDC health alerts, disaster feeds, security advisories, conflict/event sources, and country-risk/resilience scoring.
 
 None of those sources should erase local knowledge. A country office, local partner, logistics coordinator, or health lead can see conditions that public feeds miss. The dashboard's job is to make the review more consistent, not to overrule the people closest to the work.
+
+Primary reference surfaces include the [HDX Humanitarian API](https://data.humdata.org/hapi), [UNHCR Refugee Data Finder](https://www.unhcr.org/refugee-statistics/), and [WHO emergency situation reports](https://www.who.int/emergencies/situation-reports). Use each provider's definitions and update timestamps when making operational decisions.
 
 ## Frequently Asked Questions
 

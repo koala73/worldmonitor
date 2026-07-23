@@ -2416,6 +2416,17 @@
       "cta": "Nadogradi na Pro →",
       "dismiss": "Odbaci"
     },
+    "billingState": {
+      "onHoldDesc": "Plaćanje nije uspjelo. Ažurirajte način plaćanja kako biste vratili premium pristup.",
+      "onHoldBannerMessage": "Plaćanje nije uspjelo. Ažurirajte način plaćanja kako bi vaša pretplata ostala aktivna.",
+      "updatePayment": "Ažuriraj plaćanje",
+      "renewalPendingDesc": "Provjeravamo obnovu vaše pretplate. Premium pristup bit će automatski vraćen nakon potvrde.",
+      "refreshStatus": "Osvježi status",
+      "renewalFailedDesc": "Nismo mogli provjeriti obnovu vaše pretplate. Upravljajte naplatom ili kontaktirajte podršku ako se problem nastavi.",
+      "manageBilling": "Upravljanje naplatom",
+      "lapsedDesc": "Vaša Pro pretplata je istekla. Pretplatite se ponovno kako biste vratili premium pristup.",
+      "resubscribe": "Ponovno se pretplati"
+    },
     "checkoutFailureBanner": {
       "message": "Plaćanje nije moglo biti dovršeno. Nije izvršena nikakva naplata.",
       "retry": "Pokušaj ponovno",

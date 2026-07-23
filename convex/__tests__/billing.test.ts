@@ -9,6 +9,7 @@ import {
   STUCK_PAYMENT_RECONCILIATION_THRESHOLD_MS,
   safeMarkReconcileAttempt,
 } from "../payments/billing";
+import { upsertEntitlements } from "../payments/subscriptionHelpers";
 import { getFeaturesForPlan } from "../lib/entitlements";
 import { signAnonClaimToken } from "../lib/identitySigning";
 
@@ -57,6 +58,7 @@ async function seedSubscription(
     suffix: string;
     rawPayload?: unknown;
     userId?: string;
+    renewalVerificationState?: "pending" | "failed" | "lapsed";
   },
 ) {
   await t.run(async (ctx) => {
@@ -70,6 +72,9 @@ async function seedSubscription(
       currentPeriodEnd: opts.currentPeriodEnd,
       rawPayload: opts.rawPayload ?? {},
       updatedAt: NOW,
+      ...(opts.renewalVerificationState
+        ? { renewalVerificationState: opts.renewalVerificationState }
+        : {}),
     });
   });
 }
@@ -3693,5 +3698,848 @@ describe("payments billing missed renewal reconciliation", () => {
     ).resolves.toBeUndefined();
     expect(errorSpy).toHaveBeenCalledTimes(1);
     errorSpy.mockRestore();
+  });
+
+  describe("on-demand renewal verification", () => {
+    test("restores premium access immediately when Dodo reports a future active period", async () => {
+      const t = convexTest(schema, modules);
+      const renewedEnd = NOW + 30 * DAY_MS;
+      await seedStaleActiveForReconcile(t, { suffix: "on_demand_active" });
+
+      const result = await t.action(
+        internal.payments.billing.verifyRecentlyStaleSubscriptionOnDemand,
+        {
+          userId: TEST_USER_ID,
+          now: NOW,
+          remoteSubscriptionsForTest: [
+            {
+              subscription_id: "sub_on_demand_active",
+              product_id: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+              status: "active",
+              previous_billing_date: new Date(NOW).toISOString(),
+              next_billing_date: new Date(renewedEnd).toISOString(),
+            },
+          ],
+        },
+      );
+
+      expect(result).toEqual({ status: "active" });
+      expect((await readSub(t, "on_demand_active"))?.currentPeriodEnd).toBe(renewedEnd);
+      expect((await readEntitlement(t, TEST_USER_ID))?.validUntil).toBe(renewedEnd);
+    });
+
+    test("corrects an inactive remote subscription and reports a confirmed lapse", async () => {
+      const t = convexTest(schema, modules);
+      const staleEnd = NOW - DAY_MS;
+      await seedStaleActiveForReconcile(t, {
+        suffix: "on_demand_expired",
+        currentPeriodEnd: staleEnd,
+      });
+
+      const result = await t.action(
+        internal.payments.billing.verifyRecentlyStaleSubscriptionOnDemand,
+        {
+          userId: TEST_USER_ID,
+          now: NOW,
+          remoteSubscriptionsForTest: [
+            {
+              subscription_id: "sub_on_demand_expired",
+              product_id: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+              status: "expired",
+              previous_billing_date: new Date(NOW - 31 * DAY_MS).toISOString(),
+              next_billing_date: new Date(staleEnd).toISOString(),
+            },
+          ],
+        },
+      );
+
+      expect(result).toEqual({ status: "subscription_lapsed" });
+      expect((await readSub(t, "on_demand_expired"))?.status).toBe("expired");
+      expect((await readEntitlement(t, TEST_USER_ID))?.planKey).toBe("free");
+    });
+
+    test("threads a sibling's failed cooldown into the resolution-stage Retry-After", async () => {
+      const t = convexTest(schema, modules);
+      const staleEnd = NOW - DAY_MS;
+      const strongerId = await seedStaleActiveForReconcile(t, {
+        suffix: "on_demand_sibling_failed_stronger",
+        planKey: "enterprise",
+        dodoProductId: PRODUCT_CATALOG.enterprise.dodoProductId!,
+        currentPeriodEnd: staleEnd,
+      });
+      await seedStaleActiveForReconcile(t, {
+        suffix: "on_demand_sibling_failed_weaker",
+        currentPeriodEnd: staleEnd,
+        seedEntitlement: false,
+      });
+      // The stronger sibling is 20s into its 60s failed cooldown, so the claim
+      // skips it and verifies the weaker row.
+      await t.run(async (ctx) => {
+        await ctx.db.patch(strongerId, {
+          renewalVerificationState: "failed",
+          renewalVerificationAttemptAt: NOW - 20_000,
+        });
+      });
+
+      const result = await t.action(
+        internal.payments.billing.verifyRecentlyStaleSubscriptionOnDemand,
+        {
+          userId: TEST_USER_ID,
+          now: NOW,
+          remoteSubscriptionsForTest: [
+            {
+              subscription_id: "sub_on_demand_sibling_failed_weaker",
+              product_id: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+              status: "expired",
+              previous_billing_date: new Date(NOW - 31 * DAY_MS).toISOString(),
+              next_billing_date: new Date(staleEnd).toISOString(),
+            },
+          ],
+        },
+      );
+
+      // The resolution stage must quote the SIBLING's remaining failed
+      // cooldown (60s - 20s elapsed = 40s), not the fixed 1s progress retry
+      // the neighboring 'unresolved' branch returns.
+      expect(result).toEqual({
+        status: "renewal_verification_failed",
+        retryAfterSeconds: 40,
+      });
+      expect((await readSub(t, "on_demand_sibling_failed_weaker"))?.status).toBe("expired");
+    });
+
+    test("getOnDemandRenewalResolution reports a live sibling lease as pending", async () => {
+      const t = convexTest(schema, modules);
+      const staleEnd = NOW - DAY_MS;
+      const rowId = await seedStaleActiveForReconcile(t, {
+        suffix: "on_demand_resolution_pending",
+        currentPeriodEnd: staleEnd,
+      });
+      await t.run(async (ctx) => {
+        await ctx.db.patch(rowId, {
+          renewalVerificationState: "pending",
+          renewalVerificationAttemptAt: NOW - 1_000,
+        });
+      });
+
+      const resolution = await t.query(
+        internal.payments.billing.getOnDemandRenewalResolution,
+        { userId: TEST_USER_ID, now: NOW },
+      );
+
+      // Reachable only when a sibling lease starts between this request's
+      // claim and its resolution read; the guard must quote the leader's
+      // expected completion (3s - 1s elapsed = 2s), not lapsed/unresolved.
+      expect(resolution).toEqual({ kind: "pending", retryAfterSeconds: 2 });
+    });
+
+    test("does not report a user-level lapse until every recently-stale subscription is resolved", async () => {
+      const t = convexTest(schema, modules);
+      const staleEnd = NOW - DAY_MS;
+      const renewedEnd = NOW + 30 * DAY_MS;
+      await seedStaleActiveForReconcile(t, {
+        suffix: "on_demand_stronger_lapsed",
+        planKey: "enterprise",
+        dodoProductId: PRODUCT_CATALOG.enterprise.dodoProductId!,
+        currentPeriodEnd: staleEnd,
+      });
+      await seedStaleActiveForReconcile(t, {
+        suffix: "on_demand_weaker_renewed",
+        planKey: "pro_monthly",
+        dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+        currentPeriodEnd: staleEnd,
+        seedEntitlement: false,
+      });
+
+      const strongerResult = await t.action(
+        internal.payments.billing.verifyRecentlyStaleSubscriptionOnDemand,
+        {
+          userId: TEST_USER_ID,
+          now: NOW,
+          remoteSubscriptionsForTest: [
+            {
+              subscription_id: "sub_on_demand_stronger_lapsed",
+              product_id: PRODUCT_CATALOG.enterprise.dodoProductId!,
+              status: "expired",
+              previous_billing_date: new Date(NOW - 31 * DAY_MS).toISOString(),
+              next_billing_date: new Date(staleEnd).toISOString(),
+            },
+          ],
+        },
+      );
+
+      expect(strongerResult).toEqual({
+        status: "renewal_verification_pending",
+        retryAfterSeconds: 1,
+      });
+      expect((await readSub(t, "on_demand_stronger_lapsed"))?.status).toBe("expired");
+
+      const weakerResult = await t.action(
+        internal.payments.billing.verifyRecentlyStaleSubscriptionOnDemand,
+        {
+          userId: TEST_USER_ID,
+          now: NOW + 1,
+          remoteSubscriptionsForTest: [
+            {
+              subscription_id: "sub_on_demand_weaker_renewed",
+              product_id: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+              status: "active",
+              previous_billing_date: new Date(NOW).toISOString(),
+              next_billing_date: new Date(renewedEnd).toISOString(),
+            },
+          ],
+        },
+      );
+
+      expect(weakerResult).toEqual({ status: "active" });
+      expect((await readSub(t, "on_demand_weaker_renewed"))?.currentPeriodEnd).toBe(renewedEnd);
+      expect((await readEntitlement(t, TEST_USER_ID))?.validUntil).toBe(renewedEnd);
+    });
+
+    test("treats an unchanged active provider period as verification uncertainty", async () => {
+      const t = convexTest(schema, modules);
+      const staleEnd = NOW - DAY_MS;
+      await seedStaleActiveForReconcile(t, {
+        suffix: "on_demand_active_unchanged",
+        currentPeriodEnd: staleEnd,
+      });
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const result = await t.action(
+        internal.payments.billing.verifyRecentlyStaleSubscriptionOnDemand,
+        {
+          userId: TEST_USER_ID,
+          now: NOW,
+          remoteSubscriptionsForTest: [
+            {
+              subscription_id: "sub_on_demand_active_unchanged",
+              product_id: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+              status: "active",
+              previous_billing_date: new Date(NOW - 31 * DAY_MS).toISOString(),
+              next_billing_date: new Date(staleEnd).toISOString(),
+            },
+          ],
+          // The first failed-state finalization throws; the bounded best-effort
+          // retry must contain it and durably leave this row in failed cooldown.
+          convexFailureInjectionForTest: "finalize",
+        },
+      );
+
+      expect(result).toEqual({
+        status: "renewal_verification_failed",
+        retryAfterSeconds: 60,
+      });
+      expect((await readSub(t, "on_demand_active_unchanged"))?.renewalVerificationState).toBe("failed");
+      errorSpy.mockRestore();
+    });
+
+    test("treats a newer but still-past active provider period as verification uncertainty", async () => {
+      const t = convexTest(schema, modules);
+      const staleEnd = NOW - 2 * DAY_MS;
+      const stillPastEnd = NOW - DAY_MS;
+      await seedStaleActiveForReconcile(t, {
+        suffix: "on_demand_active_still_past",
+        currentPeriodEnd: staleEnd,
+      });
+
+      const result = await t.action(
+        internal.payments.billing.verifyRecentlyStaleSubscriptionOnDemand,
+        {
+          userId: TEST_USER_ID,
+          now: NOW,
+          remoteSubscriptionsForTest: [
+            {
+              subscription_id: "sub_on_demand_active_still_past",
+              product_id: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+              status: "active",
+              previous_billing_date: new Date(NOW - 31 * DAY_MS).toISOString(),
+              next_billing_date: new Date(stillPastEnd).toISOString(),
+            },
+          ],
+        },
+      );
+
+      expect(result).toEqual({
+        status: "renewal_verification_failed",
+        retryAfterSeconds: 60,
+      });
+      expect((await readSub(t, "on_demand_active_still_past"))?.currentPeriodEnd).toBe(stillPastEnd);
+      expect((await readSub(t, "on_demand_active_still_past"))?.renewalVerificationState).toBe("failed");
+    });
+
+    test("contains a post-reconcile Convex query failure and returns a retryable result", async () => {
+      const t = convexTest(schema, modules);
+      const staleEnd = NOW - DAY_MS;
+      await seedStaleActiveForReconcile(t, {
+        suffix: "on_demand_post_query_failure",
+        currentPeriodEnd: staleEnd,
+      });
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const result = await t.action(
+        internal.payments.billing.verifyRecentlyStaleSubscriptionOnDemand,
+        {
+          userId: TEST_USER_ID,
+          now: NOW,
+          remoteSubscriptionsForTest: [
+            {
+              subscription_id: "sub_on_demand_post_query_failure",
+              product_id: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+              status: "expired",
+              previous_billing_date: new Date(NOW - 31 * DAY_MS).toISOString(),
+              next_billing_date: new Date(staleEnd).toISOString(),
+            },
+          ],
+          convexFailureInjectionForTest: "post_reconcile_query",
+        },
+      );
+
+      expect(result).toEqual({
+        status: "renewal_verification_failed",
+        retryAfterSeconds: 60,
+      });
+      expect((await readSub(t, "on_demand_post_query_failure"))?.status).toBe("expired");
+      errorSpy.mockRestore();
+    });
+
+    test("contains a finalize failure and preserves a confirmed active result", async () => {
+      const t = convexTest(schema, modules);
+      const renewedEnd = NOW + 30 * DAY_MS;
+      await seedStaleActiveForReconcile(t, { suffix: "on_demand_finalize_failure" });
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const result = await t.action(
+        internal.payments.billing.verifyRecentlyStaleSubscriptionOnDemand,
+        {
+          userId: TEST_USER_ID,
+          now: NOW,
+          remoteSubscriptionsForTest: [
+            {
+              subscription_id: "sub_on_demand_finalize_failure",
+              product_id: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+              status: "active",
+              previous_billing_date: new Date(NOW).toISOString(),
+              next_billing_date: new Date(renewedEnd).toISOString(),
+            },
+          ],
+          convexFailureInjectionForTest: "finalize",
+        },
+      );
+
+      expect(result).toEqual({ status: "active" });
+      expect((await readEntitlement(t, TEST_USER_ID))?.validUntil).toBe(renewedEnd);
+      errorSpy.mockRestore();
+    });
+
+    test("surfaces Dodo failure and throttles an immediate retry", async () => {
+      const t = convexTest(schema, modules);
+      await seedStaleActiveForReconcile(t, { suffix: "on_demand_failure" });
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const first = await t.action(
+        internal.payments.billing.verifyRecentlyStaleSubscriptionOnDemand,
+        {
+          userId: TEST_USER_ID,
+          now: NOW,
+          remoteSubscriptionsForTest: [],
+        },
+      );
+      const second = await t.action(
+        internal.payments.billing.verifyRecentlyStaleSubscriptionOnDemand,
+        {
+          userId: TEST_USER_ID,
+          now: NOW + 1_000,
+          remoteSubscriptionsForTest: [
+            {
+              subscription_id: "sub_on_demand_failure",
+              product_id: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+              status: "active",
+              previous_billing_date: new Date(NOW).toISOString(),
+              next_billing_date: new Date(NOW + 30 * DAY_MS).toISOString(),
+            },
+          ],
+        },
+      );
+
+      expect(first).toMatchObject({ status: "renewal_verification_failed" });
+      expect(second).toMatchObject({
+        status: "renewal_verification_failed",
+        retryAfterSeconds: expect.any(Number),
+      });
+      expect((await readSub(t, "on_demand_failure"))?.currentPeriodEnd).toBe(NOW - DAY_MS);
+      errorSpy.mockRestore();
+    });
+
+    test("on-demand Dodo failure does not inflate the cron's reconcile backoff", async () => {
+      const t = convexTest(schema, modules);
+      const subId = await seedStaleActiveForReconcile(t, { suffix: "on_demand_no_backoff" });
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const result = await t.action(
+        internal.payments.billing.verifyRecentlyStaleSubscriptionOnDemand,
+        {
+          userId: TEST_USER_ID,
+          now: NOW,
+          remoteSubscriptionsForTest: [],
+          errorInjectionForTest: { sub_on_demand_no_backoff: "server_error" },
+        },
+      );
+
+      expect(result).toMatchObject({ status: "renewal_verification_failed" });
+      // The request path owns its own cooldown (renewalVerificationState); the
+      // cron's backoff pair must stay untouched, or a customer retrying through
+      // a Dodo blip (one attempt per 60s cooldown) defers the nightly safety
+      // net toward the 30-day backoff cap.
+      const row = await t.run((ctx) => ctx.db.get(subId));
+      expect(row?.reconcileFailureCount).toBeUndefined();
+      expect(row?.lastReconcileAttemptAt).toBeUndefined();
+      expect(row?.renewalVerificationState).toBe("failed");
+      errorSpy.mockRestore();
+    });
+
+    test("on-demand definitive 404 advances the terminal not-found streak without backoff", async () => {
+      const t = convexTest(schema, modules);
+      const subId = await seedStaleActiveForReconcile(t, { suffix: "on_demand_streak" });
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+      const result = await t.action(
+        internal.payments.billing.verifyRecentlyStaleSubscriptionOnDemand,
+        {
+          userId: TEST_USER_ID,
+          now: NOW,
+          remoteSubscriptionsForTest: [],
+          errorInjectionForTest: { sub_on_demand_streak: "not_found" },
+        },
+      );
+
+      expect(result).toMatchObject({ status: "renewal_verification_failed" });
+      // A definitive 404 is provider evidence regardless of which path saw it:
+      // it must advance reconcileNotFoundCount (the consecutive-404 streak
+      // gating the terminal "deleted in Dodo" downgrade) while leaving the
+      // cron-only backoff pair alone.
+      const row = await t.run((ctx) => ctx.db.get(subId));
+      expect(row?.reconcileNotFoundCount).toBe(1);
+      expect(row?.reconcileFailureCount).toBeUndefined();
+      expect(row?.lastReconcileAttemptAt).toBeUndefined();
+      errorSpy.mockRestore();
+    });
+
+    test.each(["failed", "lapsed"] as const)(
+      "progresses past a stronger subscription in the %s cooldown",
+      async (verificationState) => {
+        const t = convexTest(schema, modules);
+        const strongerId = await seedStaleActiveForReconcile(t, {
+          suffix: `on_demand_${verificationState}_stronger`,
+          planKey: "enterprise",
+          dodoProductId: PRODUCT_CATALOG.enterprise.dodoProductId!,
+        });
+        const weakerId = await seedStaleActiveForReconcile(t, {
+          suffix: `on_demand_${verificationState}_weaker`,
+          planKey: "pro_monthly",
+          dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+          seedEntitlement: false,
+        });
+        await t.run(async (ctx) => {
+          await ctx.db.patch(strongerId, {
+            renewalVerificationState: verificationState,
+            renewalVerificationAttemptAt: NOW,
+          });
+        });
+
+        const claim = await t.mutation(
+          internal.payments.billing.claimRecentlyStaleSubscriptionForVerification,
+          { userId: TEST_USER_ID, now: NOW + 1_000 },
+        );
+
+        expect(claim.kind).toBe("claimed");
+        if (claim.kind === "claimed") {
+          expect(claim.subscription._id).toBe(weakerId);
+        }
+      },
+    );
+
+    test("coalesces at the user level when a different stale subscription is pending", async () => {
+      const t = convexTest(schema, modules);
+      const strongerId = await seedStaleActiveForReconcile(t, {
+        suffix: "on_demand_pending_stronger",
+        planKey: "enterprise",
+        dodoProductId: PRODUCT_CATALOG.enterprise.dodoProductId!,
+      });
+      const weakerId = await seedStaleActiveForReconcile(t, {
+        suffix: "on_demand_pending_weaker",
+        planKey: "pro_monthly",
+        dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+        seedEntitlement: false,
+      });
+      await t.run(async (ctx) => {
+        await ctx.db.patch(weakerId, {
+          renewalVerificationState: "pending",
+          renewalVerificationAttemptAt: NOW,
+        });
+      });
+
+      const claim = await t.mutation(
+        internal.payments.billing.claimRecentlyStaleSubscriptionForVerification,
+        { userId: TEST_USER_ID, now: NOW + 1_000 },
+      );
+
+      expect(claim).toEqual({ kind: "pending", retryAfterSeconds: 2 });
+      expect((await t.run((ctx) => ctx.db.get(strongerId)))?.renewalVerificationState).toBeUndefined();
+    });
+
+    test("atomically coalesces concurrent claims for the same stale subscription", async () => {
+      const t = convexTest(schema, modules);
+      await seedStaleActiveForReconcile(t, { suffix: "on_demand_coalesce" });
+
+      const claims = await Promise.all([
+        t.mutation(
+          internal.payments.billing.claimRecentlyStaleSubscriptionForVerification,
+          { userId: TEST_USER_ID, now: NOW },
+        ),
+        t.mutation(
+          internal.payments.billing.claimRecentlyStaleSubscriptionForVerification,
+          { userId: TEST_USER_ID, now: NOW },
+        ),
+      ]);
+
+      expect(claims.map((claim) => claim.kind).sort()).toEqual(["claimed", "pending"]);
+    });
+
+    test("does not call Dodo for an active row outside the recent-staleness window", async () => {
+      const t = convexTest(schema, modules);
+      await seedStaleActiveForReconcile(t, {
+        suffix: "on_demand_old",
+        currentPeriodEnd: NOW - 4 * DAY_MS,
+      });
+
+      const result = await t.action(
+        internal.payments.billing.verifyRecentlyStaleSubscriptionOnDemand,
+        {
+          userId: TEST_USER_ID,
+          now: NOW,
+          remoteSubscriptionsForTest: [
+            {
+              subscription_id: "sub_on_demand_old",
+              product_id: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+              status: "active",
+              previous_billing_date: new Date(NOW).toISOString(),
+              next_billing_date: new Date(NOW + 30 * DAY_MS).toISOString(),
+            },
+          ],
+        },
+      );
+
+      expect(result).toEqual({ status: "subscription_lapsed" });
+      expect((await readSub(t, "on_demand_old"))?.currentPeriodEnd).toBe(NOW - 4 * DAY_MS);
+    });
+
+    test("rejects test-injection args outside NODE_ENV=test", async () => {
+      const t = convexTest(schema, modules);
+      vi.stubEnv("NODE_ENV", "production");
+      try {
+        await expect(
+          t.action(internal.payments.billing.verifyRecentlyStaleSubscriptionOnDemand, {
+            userId: TEST_USER_ID,
+            now: NOW,
+            remoteSubscriptionsForTest: [],
+          }),
+        ).rejects.toThrow(/test injection args are only allowed under test/);
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    });
+
+    test("returns active via post-reconcile resolution when another subscription already covers", async () => {
+      const t = convexTest(schema, modules);
+      const staleEnd = NOW - DAY_MS;
+      const coveredEnd = NOW + 20 * DAY_MS;
+      await seedStaleActiveForReconcile(t, {
+        suffix: "on_demand_resolution_expired",
+        currentPeriodEnd: staleEnd,
+        seedEntitlement: false,
+      });
+      await seedStaleActiveForReconcile(t, {
+        suffix: "on_demand_resolution_cover",
+        planKey: "enterprise",
+        dodoProductId: PRODUCT_CATALOG.enterprise.dodoProductId!,
+        currentPeriodEnd: coveredEnd,
+      });
+
+      const result = await t.action(
+        internal.payments.billing.verifyRecentlyStaleSubscriptionOnDemand,
+        {
+          userId: TEST_USER_ID,
+          now: NOW,
+          remoteSubscriptionsForTest: [
+            {
+              subscription_id: "sub_on_demand_resolution_expired",
+              product_id: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+              status: "expired",
+              previous_billing_date: new Date(NOW - 31 * DAY_MS).toISOString(),
+              next_billing_date: new Date(staleEnd).toISOString(),
+            },
+          ],
+        },
+      );
+
+      // The claimed row is confirmed non-covering, so this "active" must come
+      // from the post-reconcile resolution read of the covering subscription,
+      // not the outcomeConfirmsCoveringPeriod short-circuit.
+      expect(result).toEqual({ status: "active" });
+      expect((await readSub(t, "on_demand_resolution_expired"))?.status).toBe("expired");
+      expect((await readEntitlement(t, TEST_USER_ID))?.validUntil).toBe(coveredEnd);
+    });
+
+    test("serves the lapsed cooldown without a provider call when every stale row is lapsed", async () => {
+      const t = convexTest(schema, modules);
+      const subId = await seedStaleActiveForReconcile(t, { suffix: "on_demand_lapsed_cooldown" });
+      await t.run(async (ctx) => {
+        await ctx.db.patch(subId, {
+          renewalVerificationState: "lapsed",
+          renewalVerificationAttemptAt: NOW,
+        });
+      });
+
+      const result = await t.action(
+        internal.payments.billing.verifyRecentlyStaleSubscriptionOnDemand,
+        {
+          userId: TEST_USER_ID,
+          now: NOW + 1_000,
+          remoteSubscriptionsForTest: [
+            {
+              subscription_id: "sub_on_demand_lapsed_cooldown",
+              product_id: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+              status: "active",
+              previous_billing_date: new Date(NOW).toISOString(),
+              next_billing_date: new Date(NOW + 30 * DAY_MS).toISOString(),
+            },
+          ],
+        },
+      );
+
+      // The remote payload reports a covering renewal; a cooldown-honoring
+      // claim never consults it, so the row must stay stale and lapsed.
+      expect(result).toEqual({ status: "subscription_lapsed" });
+      expect((await readSub(t, "on_demand_lapsed_cooldown"))?.currentPeriodEnd).toBe(NOW - DAY_MS);
+      expect((await readSub(t, "on_demand_lapsed_cooldown"))?.renewalVerificationState).toBe("lapsed");
+    });
+
+    test("finalize is a no-op when a newer claim superseded the caller's lease", async () => {
+      const t = convexTest(schema, modules);
+      const subId = await seedStaleActiveForReconcile(t, { suffix: "on_demand_stale_finalize" });
+      const claim = await t.mutation(
+        internal.payments.billing.claimRecentlyStaleSubscriptionForVerification,
+        { userId: TEST_USER_ID, now: NOW },
+      );
+      expect(claim.kind).toBe("claimed");
+
+      // A newer claim supersedes the original lease (fresh attempt timestamp);
+      // the original owner's finalize must not clobber it.
+      await t.run(async (ctx) => {
+        await ctx.db.patch(subId, { renewalVerificationAttemptAt: NOW + 20_000 });
+      });
+      await t.mutation(
+        internal.payments.billing.finalizeRecentlyStaleSubscriptionVerification,
+        { subscriptionId: subId, claimedAt: NOW, status: "lapsed" },
+      );
+
+      const row = await readSub(t, "on_demand_stale_finalize");
+      expect(row?.renewalVerificationState).toBe("pending");
+      expect(row?.renewalVerificationAttemptAt).toBe(NOW + 20_000);
+    });
+
+    test("an unusable remote status maps to a retryable verification failure", async () => {
+      const t = convexTest(schema, modules);
+      await seedStaleActiveForReconcile(t, { suffix: "on_demand_unusable" });
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+      const result = await t.action(
+        internal.payments.billing.verifyRecentlyStaleSubscriptionOnDemand,
+        {
+          userId: TEST_USER_ID,
+          now: NOW,
+          remoteSubscriptionsForTest: [
+            {
+              subscription_id: "sub_on_demand_unusable",
+              product_id: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+              status: "pending",
+              previous_billing_date: new Date(NOW - 31 * DAY_MS).toISOString(),
+              next_billing_date: new Date(NOW - DAY_MS).toISOString(),
+            },
+          ],
+        },
+      );
+
+      expect(result).toEqual({
+        status: "renewal_verification_failed",
+        retryAfterSeconds: 60,
+      });
+      expect((await readSub(t, "on_demand_unusable"))?.renewalVerificationState).toBe("failed");
+      errorSpy.mockRestore();
+      warnSpy.mockRestore();
+    });
+  });
+
+  describe("entitlement cache re-sync (#4770 marker race)", () => {
+    test("schedules an immediate snapshot sync and a delayed from-DB re-sync", async () => {
+      const t = convexTest(schema, modules);
+      vi.stubEnv("UPSTASH_REDIS_REST_URL", "https://upstash.test");
+      // Freeze timers so the enqueued jobs are inspectable but never execute —
+      // convex-test runs a 0-delay scheduled action after the transaction
+      // closes, which trips its "Write outside of transaction" guard.
+      vi.useFakeTimers({ toFake: ["setTimeout", "setInterval"] });
+      try {
+        await t.run(async (ctx) => {
+          await upsertEntitlements(ctx, TEST_USER_ID, "pro_monthly", NOW + 30 * DAY_MS, NOW);
+        });
+
+        const scheduled = await t.run((ctx) =>
+          ctx.db.system.query("_scheduled_functions").collect(),
+        );
+        const jobs = scheduled
+          .filter((job) => job.name.includes("cacheActions"))
+          .sort((a, b) => a.scheduledTime - b.scheduledTime);
+
+        // The delayed second sync overwrites any stale billing-denial marker a
+        // still-in-flight request writes AFTER the immediate sync (bare SET,
+        // last-writer-wins). It must be the from-DB variant: replaying this
+        // upsert's snapshot could revert a NEWER entitlement write landing
+        // inside the delay (a stale re-grant).
+        expect(jobs).toHaveLength(2);
+        expect(jobs[0].name).toContain("syncEntitlementCache");
+        expect(jobs[0].name).not.toContain("resync");
+        expect(jobs[1].name).toContain("resyncEntitlementCacheFromDb");
+        expect(jobs[1].args).toEqual([{ userId: TEST_USER_ID }]);
+        // Each runAfter stamps its own Date.now() (not faked), so the two
+        // calls can straddle a millisecond tick — assert the delay with a
+        // small tolerance instead of exact equality.
+        const delta = jobs[1].scheduledTime - jobs[0].scheduledTime;
+        expect(delta).toBeGreaterThanOrEqual(15_000);
+        expect(delta).toBeLessThan(15_100);
+      } finally {
+        vi.useRealTimers();
+        vi.unstubAllEnvs();
+      }
+    });
+
+    test("delayed re-sync writes CURRENT entitlement state, not a caller snapshot", async () => {
+      const t = convexTest(schema, modules);
+      vi.stubEnv("UPSTASH_REDIS_REST_URL", "https://upstash.test");
+      vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "token-test");
+      const setCalls: string[] = [];
+      const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+        setCalls.push(String(input));
+        return new Response(JSON.stringify({ result: "OK" }), { status: 200 });
+      });
+      try {
+        await t.run(async (ctx) => {
+          await ctx.db.insert("entitlements", {
+            userId: TEST_USER_ID,
+            planKey: "pro_monthly",
+            features: getFeaturesForPlan("pro_monthly"),
+            validUntil: NOW + 30 * DAY_MS,
+            updatedAt: NOW,
+          });
+        });
+        await t.action(internal.payments.cacheActions.resyncEntitlementCacheFromDb, {
+          userId: TEST_USER_ID,
+        });
+        expect(setCalls).toHaveLength(1);
+        expect(setCalls[0]).toContain(encodeURIComponent('"planKey":"pro_monthly"'));
+
+        // A downgrade landing before the delayed job fires must be what the
+        // re-sync writes — the action reads at fire time by construction.
+        await t.run(async (ctx) => {
+          const row = await ctx.db
+            .query("entitlements")
+            .withIndex("by_userId", (q) => q.eq("userId", TEST_USER_ID))
+            .first();
+          if (row) {
+            await ctx.db.patch(row._id, {
+              planKey: "free",
+              features: getFeaturesForPlan("free"),
+              validUntil: 0,
+              updatedAt: NOW + 1,
+            });
+          }
+        });
+        await t.action(internal.payments.cacheActions.resyncEntitlementCacheFromDb, {
+          userId: TEST_USER_ID,
+        });
+        expect(setCalls).toHaveLength(2);
+        expect(setCalls[1]).toContain(encodeURIComponent('"planKey":"free"'));
+      } finally {
+        fetchSpy.mockRestore();
+        vi.unstubAllEnvs();
+      }
+    });
+  });
+});
+
+describe("getSubscriptionForUser renewal verification exposure (#4771)", () => {
+  const IDENTITY = { subject: TEST_USER_ID, tokenIdentifier: `clerk|${TEST_USER_ID}` };
+
+  test("returns renewalVerificationState when the row carries a verification verdict", async () => {
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW - DAY_MS,
+      suffix: "renewal_pending",
+      renewalVerificationState: "pending",
+    });
+
+    const result = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+    expect(result).not.toBeNull();
+    expect(result!.renewalVerificationState).toBe("pending");
+  });
+
+  test("returns null renewalVerificationState for rows without a verdict (stable shape)", async () => {
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "no_verdict",
+    });
+
+    const result = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+    expect(result).not.toBeNull();
+    expect(result!.renewalVerificationState).toBeNull();
+  });
+
+  test("multi-row: returns the priority-selected row's verdict, not another row's", async () => {
+    const t = convexTest(schema, modules);
+    // Older cancelled row carrying a stale verification verdict...
+    await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "cancelled",
+      currentPeriodEnd: NOW - 30 * DAY_MS,
+      suffix: "multi_row_cancelled",
+      renewalVerificationState: "failed",
+    });
+    // ...must not leak onto the newer active row the priority sort selects.
+    await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "multi_row_active",
+    });
+
+    const result = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe("active");
+    expect(result!.renewalVerificationState).toBeNull();
   });
 });

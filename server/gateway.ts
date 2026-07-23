@@ -28,7 +28,14 @@ import {
 import { drainResponseHeaders, drainSuccessStatusOverride } from './_shared/response-headers';
 import { projectJsonResponse } from './_shared/response-projection';
 import { getRpcNoStoreReasonFromJson } from './_shared/cache-contract';
-import { checkEntitlementDetailed, getRequiredTier, getEntitlements, type CachedEntitlements } from './_shared/entitlement-check';
+import {
+  checkEntitlementDetailed,
+  getBillingVerificationDenial,
+  getRequiredTier,
+  getEntitlements,
+  isEntitlementBackendConfigured,
+  type CachedEntitlements,
+} from './_shared/entitlement-check';
 import { resolveClerkSession } from './_shared/auth-session';
 import {
   INTERNAL_MCP_SIG_HEADER,
@@ -724,6 +731,23 @@ export function createDomainGateway(
     // volume signal Phase-2 pricing reuses isn't double-counted. Overrides only
     // a successful terminal reason (status < 400); a real 4xx/5xx outcome wins.
     let pendingShadowReason: RequestReason | null = null;
+    // Shared emit+return for the three billing-verification denial sites below
+    // (internal-MCP re-check, wm_ key, legacy bearer).
+    function denyForBillingVerification(
+      ent: CachedEntitlements | null | undefined,
+      cors: Record<string, string>,
+      capabilityCovered = false,
+    ): Response | null {
+      if (capabilityCovered) return null;
+      const billingDenial = getBillingVerificationDenial(ent, cors);
+      if (!billingDenial) return null;
+      emitRequest(
+        billingDenial.status,
+        billingDenial.status === 503 ? 'billing_verification_503' : 'tier_403',
+        null,
+      );
+      return billingDenial;
+    }
     function emitRequest(status: number, reason: RequestReason, cacheTier: UsageCacheTier | null, resBytes = 0): void {
       if (!ctx?.waitUntil) return;
       const effectiveReason: RequestReason =
@@ -1015,6 +1039,16 @@ export function createDomainGateway(
       // re-check via the fallback path. Mirror the per-handler runProPreChecks
       // and authorize-pro entitlement guards.
       const ent = await getEntitlements(verified.userId);
+      const mcpCovered = !!ent &&
+        ent.features.tier >= 1 &&
+        (ent.features as { mcpAccess?: boolean }).mcpAccess === true &&
+        ent.validUntil >= Date.now();
+      const billingDenial = denyForBillingVerification(
+        ent,
+        corsHeaders,
+        mcpCovered,
+      );
+      if (billingDenial) return billingDenial;
       if (
         !ent ||
         ent.features.tier < 1 ||
@@ -1195,16 +1229,51 @@ export function createDomainGateway(
     if (isUserApiKey && sessionUserId) {
       userKeyEntitlement = await getEntitlements(sessionUserId);
       recordUsageEntitlement(userKeyEntitlement);
-      // Fail-OPEN on an unresolved entitlement (null ⇒ transient Convex/cache
-      // failure, indistinguishable from "no row"): mirrors the #3199 block below
-      // and avoids 403-ing an ACTIVE subscriber fleet-wide during a backend
-      // blip. Reject only on an AFFIRMATIVELY inactive/expired entitlement — the
-      // systematic churn case (#4611), always resolvable under normal operation
-      // (the warm 15-min entitlement cache closes the leak; an outage degrades
-      // to prior behavior rather than denying paying customers).
-      if (
-        userKeyEntitlement &&
-        (!userKeyEntitlement.features.apiAccess || userKeyEntitlement.validUntil < Date.now())
+      const apiAccessCovered = !!userKeyEntitlement &&
+        userKeyEntitlement.features.apiAccess &&
+        userKeyEntitlement.validUntil >= Date.now();
+      const billingDenial = denyForBillingVerification(
+        userKeyEntitlement,
+        corsHeaders,
+        apiAccessCovered,
+      );
+      if (billingDenial) return billingDenial;
+      // A validated wm_ key proves key ownership, not current paid access.
+      // Transient lookup failures now arrive as a verificationUnavailable
+      // marker and were already answered with the retryable 503 by
+      // denyForBillingVerification above; a null here means the backend is
+      // unconfigured or gave a confirmed/malformed answer, and allowing it
+      // would turn that state into paid API access. Fail closed with a 503
+      // — EXCEPT when the entitlement backend itself is unconfigured: that is
+      // a deploy defect, not customer billing state, and 503ing every wm_ key
+      // fleet-wide would convert a config regression into a total API outage.
+      // Misconfig serves fail-open (pre-#4770 behavior) and logs loudly.
+      if (!userKeyEntitlement) {
+        if (isEntitlementBackendConfigured()) {
+          emitRequest(503, 'billing_verification_503', null);
+          return new Response(
+            JSON.stringify({
+              error: 'Unable to verify API access',
+              code: 'entitlement_verification_unavailable',
+            }),
+            {
+              status: 503,
+              headers: {
+                ...corsHeaders,
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-store',
+                'Retry-After': '5',
+                'X-Billing-Verification': 'entitlement_verification_unavailable',
+              },
+            },
+          );
+        }
+        console.error(
+          '[gateway] entitlement backend unconfigured (CONVEX_SITE_URL / shared secret missing) — serving wm_-key request fail-open',
+        );
+      } else if (
+        !userKeyEntitlement.features.apiAccess ||
+        userKeyEntitlement.validUntil < Date.now()
       ) {
         emitRequest(403, 'tier_403', null);
         return createGatewayAuthErrorResponse(
@@ -1253,6 +1322,15 @@ export function createDomainGateway(
           if (!allowed && session.userId) {
             const ent = await getEntitlements(session.userId);
             recordUsageEntitlement(ent);
+            const proCovered = !!ent &&
+              ent.features.tier >= 1 &&
+              ent.validUntil >= Date.now();
+            const billingDenial = denyForBillingVerification(
+              ent,
+              corsHeaders,
+              proCovered,
+            );
+            if (billingDenial) return billingDenial;
             allowed = !!ent && ent.features.tier >= 1 && ent.validUntil >= Date.now();
           }
           if (!allowed) {
@@ -1291,6 +1369,7 @@ export function createDomainGateway(
         const entReason: RequestReason =
           entitlementResponse.status === 401 ? 'auth_401'
           : entitlementResponse.status === 403 ? 'tier_403'
+          : entitlementResponse.status === 503 ? 'billing_verification_503'
           : 'ok';
         emitRequest(entitlementResponse.status, entReason, null);
         return entitlementResponse.status === 401 || entitlementResponse.status === 403

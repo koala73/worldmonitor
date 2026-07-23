@@ -42,7 +42,20 @@ describe('convex/http JSON object body guard', () => {
       assert.notEqual(routeStart, -1, `missing ${path} route`);
       const nextRoute = source.indexOf('http.route({', routeStart + 1);
       const route = source.slice(routeStart, nextRoute === -1 ? undefined : nextRoute);
-      assert.match(route, /parseJsonObjectBody[\s\S]*?\(request\)/, `${path} bypasses object guard`);
+      const namedHandler = route.match(/handler:\s*httpAction\(([A-Za-z0-9_]+)\)/)?.[1];
+      let guardSurface = route;
+      if (namedHandler) {
+        const handlerStart = source.indexOf(`function ${namedHandler}`);
+        assert.notEqual(handlerStart, -1, `missing ${namedHandler} implementation for ${path}`);
+        const handlerEnd = source.indexOf('\n}\n', handlerStart);
+        assert.notEqual(handlerEnd, -1, `could not bound ${namedHandler} implementation for ${path}`);
+        guardSurface += source.slice(handlerStart, handlerEnd + 2);
+      }
+      assert.match(
+        guardSurface,
+        /parseJsonObjectBody[\s\S]*?\(request\)/,
+        `${path} bypasses object guard`,
+      );
     }
   });
 });
