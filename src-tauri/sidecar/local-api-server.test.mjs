@@ -531,6 +531,46 @@ test('replaces browser origin with localhost origin for local handlers', async (
   }
 });
 
+test('preserves caller Authorization while hiding the sidecar transport token', async () => {
+  const localApi = await setupApiDir({
+    'header-check.js': `
+      export default async function handler(req) {
+        return new Response(JSON.stringify({
+          authorization: req.headers.get('authorization'),
+          transportToken: req.headers.get('x-worldmonitor-local-token'),
+        }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/header-check`, {
+      headers: {
+        Authorization: 'Bearer caller-oauth-token',
+        'X-WorldMonitor-Local-Token': TEST_LOCAL_API_TOKEN,
+      },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      authorization: 'Bearer caller-oauth-token',
+      transportToken: null,
+    });
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
 test('preserves Request body when handler uses fetch(Request)', async () => {
   // Use a DISTINCT upstream server (not the sidecar itself) so this test
   // exercises real "handler proxies to external host" semantics. The upstream

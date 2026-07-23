@@ -15,6 +15,7 @@ const brotliCompressAsync = promisify(brotliCompress);
 const DESKTOP_AUTH_SECRET_ENV = 'WM_DESKTOP_SHARED_SECRET';
 const DESKTOP_AUTH_TIMESTAMP_HEADER = 'X-WorldMonitor-Desktop-Timestamp';
 const DESKTOP_AUTH_SIGNATURE_HEADER = 'X-WorldMonitor-Desktop-Signature';
+const LOCAL_API_TRANSPORT_HEADER = 'x-worldmonitor-local-token';
 
 // Monkey-patch globalThis.fetch to force IPv4 for HTTPS requests.
 // Node.js built-in fetch (undici) tries IPv6 first via Happy Eyeballs.
@@ -1406,7 +1407,10 @@ async function dispatch(requestUrl, req, routes, context) {
     return json({ error: 'Service misconfigured: LOCAL_API_TOKEN not set' }, 503);
   }
   const authHeader = req.headers.authorization || '';
-  if (authHeader !== `Bearer ${expectedToken}`) {
+  const transportToken = req.headers[LOCAL_API_TRANSPORT_HEADER] || '';
+  const hasTransportAuth = transportToken === expectedToken;
+  const hasLegacyAuth = authHeader === `Bearer ${expectedToken}`;
+  if (!hasTransportAuth && !hasLegacyAuth) {
     context.logger.warn(`[local-api] unauthorized request to ${requestUrl.pathname}`);
     return json({ error: 'Unauthorized' }, 401);
   }
@@ -1696,6 +1700,13 @@ async function dispatch(requestUrl, req, routes, context) {
     const body = ['GET', 'HEAD'].includes(req.method) ? undefined : await readBody(req);
     const hdrs = toHeaders(req.headers, { stripOrigin: true });
     hdrs.set('Origin', `http://127.0.0.1:${context.port}`);
+    // The transport credential authenticates the nginx/sidecar hop only. Do
+    // not expose it to route handlers, where Authorization is caller identity
+    // (OAuth bearer) and X-WorldMonitor-Key is the caller's API key.
+    hdrs.delete(LOCAL_API_TRANSPORT_HEADER);
+    if (hdrs.get('Authorization') === `Bearer ${expectedToken}`) {
+      hdrs.delete('Authorization');
+    }
     const request = new Request(requestUrl.toString(), {
       method: req.method,
       headers: hdrs,
