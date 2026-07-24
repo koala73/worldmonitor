@@ -2776,3 +2776,28 @@ describe('section-scoped llms.txt files', () => {
     }
   });
 });
+
+describe('skeleton brand text extraction (#5541)', () => {
+  const indexHtml = readFileSync(resolve(__dirname, '../index.html'), 'utf-8');
+
+  it('.skeleton-brand raw textContent does not contain "WWorld"', () => {
+    const match = indexHtml.match(/<div class="skeleton-brand">([\s\S]*?)<\/div>/);
+    assert.ok(match, 'index.html must contain .skeleton-brand element');
+    // Simulate raw textContent: strip all HTML tags
+    const rawText = match[1].replace(/<[^>]+>/g, '');
+    assert.doesNotMatch(rawText, /WWorld/, 'skeleton-brand raw text must not concatenate as "WWorld Monitor"');
+    assert.match(rawText, /World Monitor/, 'skeleton-brand raw text must contain "World Monitor"');
+  });
+
+  it('.skeleton-brand-mark is aria-hidden and has no text content', () => {
+    const markMatch = indexHtml.match(/<span class="skeleton-brand-mark"[^>]*>([\s\S]*?)<\/span>/);
+    assert.ok(markMatch, 'index.html must contain .skeleton-brand-mark element');
+    assert.match(markMatch[0], /aria-hidden="true"/, 'skeleton-brand-mark must be aria-hidden');
+    const markText = markMatch[1].replace(/<[^>]+>/g, '').trim();
+    assert.equal(markText, '', 'skeleton-brand-mark must have no text content (use CSS ::after instead)');
+  });
+
+  it('.skeleton-brand-mark renders "W" via CSS content pseudo-element', () => {
+    assert.match(indexHtml, /\.skeleton-brand-mark::after\s*\{\s*content:\s*"W"\s*\}/, 'skeleton-brand-mark must render W via CSS ::after content');
+  });
+});
