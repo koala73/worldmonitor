@@ -1,3 +1,5 @@
+[![mcpindex](https://mcpindex.ai/api/v1/badge/app-worldmonitor-mcp)](https://mcpindex.ai/server/app-worldmonitor-mcp)
+
 # World Monitor
 
 [简体中文](README.zh-CN.md)
