@@ -131,10 +131,10 @@ export interface SourceRiskProfile {
 }
 
 /** Fail-closed default: missing provenance is not independent journalism. */
-export const UNREVIEWED_SOURCE_RISK: SourceRiskProfile = {
-  risk: 'unknown',
+export const UNREVIEWED_SOURCE_RISK: Readonly<SourceRiskProfile> = Object.freeze({
+  risk: 'unknown' as const,
   note: 'Provenance not yet reviewed — do not treat as independent journalism',
-};
+});
 
 export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   // High risk - State-controlled media
