@@ -10,46 +10,14 @@
 // month and publish ~2 weeks after the month ends, so deadlines carry the
 // calendar-derived settlement graces in _forecast-resolution-eval.mjs (KTD4).
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+import { FRED_SERIES } from './_fred-series.mjs';
+
 // Flat-week floor so a no-move series still yields a non-trivial threshold.
 const MIN_MOVE_FRACTION = 0.005;
 
-export const FRED_SERIES = [
-  {
-    series: 'FEDFUNDS',
-    feedKey: 'economic:fred:v1:FEDFUNDS:0',
-    subject: 'the effective federal funds rate',
-    unit: '%',
-    cadence: 'monthly',
-    horizonMs: 35 * DAY_MS,
-  },
-  {
-    series: 'UNRATE',
-    feedKey: 'economic:fred:v1:UNRATE:0',
-    subject: 'the US unemployment rate',
-    unit: '%',
-    cadence: 'monthly',
-    horizonMs: 35 * DAY_MS,
-  },
-  {
-    series: 'CPIAUCSL',
-    feedKey: 'economic:fred:v1:CPIAUCSL:0',
-    subject: 'the US CPI index (CPIAUCSL)',
-    unit: 'index points',
-    cadence: 'monthly',
-    horizonMs: 35 * DAY_MS,
-  },
-  {
-    series: 'DGS10',
-    feedKey: 'economic:fred:v1:DGS10:0',
-    subject: 'the 10-year US Treasury yield',
-    unit: '%',
-    cadence: 'daily',
-    horizonMs: 7 * DAY_MS,
-  },
-];
-
-export const FRED_FEED_KEYS = FRED_SERIES.map((s) => s.feedKey);
+// Series list + derived keys live in _fred-series.mjs (shared with the eval's
+// cadence-grace sets); re-exported here so template consumers keep one import.
+export { FRED_SERIES, FRED_FEED_KEYS } from './_fred-series.mjs';
 
 // Latest finite observations, ascending by date. Pure.
 export function finiteObservations(feed) {

@@ -74,11 +74,13 @@ function buildSlotTemplate(slot) {
     feedKey: MARKET_FEED,
     domain: 'market',
 
-    extractMetric(feed) {
-      // nowMs is not available to extractMetric in the registry contract, so
-      // eligibility uses the feed's own fetchedAt when present (falling back to
-      // wall clock only if the producer omitted it — it never does in prod).
-      const nowMs = Number(feed?.fetchedAt) || Date.now();
+    extractMetric(feed, ctx = {}) {
+      // Eligibility time: the feed's own fetchedAt when present (it always is
+      // in prod), else the registry-injected nowMs — never the wall clock
+      // (registry purity contract). No finite time source → no bet (an
+      // undated horizon check would fail open on the 2-45d window).
+      const nowMs = Number(feed?.fetchedAt) || Number(ctx.nowMs);
+      if (!Number.isFinite(nowMs)) return null;
       const market = eligibleMarkets(feed, nowMs)[slot];
       if (!market) return null;
       return {

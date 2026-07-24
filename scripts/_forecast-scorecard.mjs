@@ -57,9 +57,10 @@ export function computeScorecard(ledger, nowMs, options = {}) {
   const overall = summarizeScored(scored);
   if (overall) scorecard.overall = overall;
   // Promotion flag (#5525 U14): bet_engine stays OUT of the skill headline
-  // until Gate 2 passes. Flipping `promoteBetEngine` (or the env var read by
-  // the seeder) is the ONLY promotion path — it removes bet_engine from the
-  // exclusion set while state_derived stays excluded.
+  // until Gate 2 passes. Flipping `promoteBetEngine` (the resolutions seeder
+  // wires it from FORECAST_PROMOTE_BET_ENGINE=1) is the ONLY promotion path —
+  // it removes bet_engine from the exclusion set while state_derived stays
+  // excluded.
   const promoteBetEngine = options.promoteBetEngine === true;
   const defaultExcluded = promoteBetEngine
     ? DEFAULT_SKILL_EXCLUDED_ORIGINS.filter((origin) => origin !== 'bet_engine')

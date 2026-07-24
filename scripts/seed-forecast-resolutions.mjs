@@ -79,6 +79,14 @@ export function declareScorecardRecords(scorecard) {
   return Number.isInteger(scorecard?.totals?.entries) ? scorecard.totals.entries : 0;
 }
 
+// Gate-2 promotion flag (#5525 U14): default OFF — setting
+// FORECAST_PROMOTE_BET_ENGINE=1 on the resolutions service is the deliberate
+// promotion act that lifts bet_engine into the scorecard's skill headline.
+// Read at call time (not module load) so both sides are testable.
+function promoteBetEngineEnabled() {
+  return process.env.FORECAST_PROMOTE_BET_ENGINE === '1';
+}
+
 export function processResolutionCycle(existingLedger, historySnapshots, feedsByKey, nowMs) {
   const ingested = ingestHistory(existingLedger, historySnapshots, nowMs);
   samplePendingEntries(ingested, feedsByKey, nowMs);
@@ -88,7 +96,7 @@ export function processResolutionCycle(existingLedger, historySnapshots, feedsBy
   // resolveDueEntries so entries resolved this cycle (resolvedAt === nowMs, not
   // yet archived) are always retained and still emit a receipt above.
   const ledger = pruneArchivedTerminalEntries(ingested, nowMs);
-  const scorecard = computeScorecard(ledger, nowMs);
+  const scorecard = computeScorecard(ledger, nowMs, { promoteBetEngine: promoteBetEngineEnabled() });
   return { ledger, receipts, scorecard };
 }
 
@@ -98,7 +106,7 @@ export async function processResolutionCycleWithJudges(existingLedger, historySn
   const receipts = resolveDueEntries(ingested, feedsByKey, nowMs);
   receipts.push(...await resolvePendingJudgedEntries(ingested, newsArchive, nowMs, options));
   const ledger = pruneArchivedTerminalEntries(ingested, nowMs);
-  const scorecard = computeScorecard(ledger, nowMs);
+  const scorecard = computeScorecard(ledger, nowMs, { promoteBetEngine: promoteBetEngineEnabled() });
   return { ledger, receipts, scorecard };
 }
 
@@ -1651,7 +1659,7 @@ if (DIRECT_RUN && process.argv.includes('--dry-run')) {
     extraKeys: [{
       key: SCORECARD_KEY,
       ttl: SCORECARD_TTL_SECONDS,
-      transform: (ledger) => computeScorecard(ledger, Date.now()),
+      transform: (ledger) => computeScorecard(ledger, Date.now(), { promoteBetEngine: promoteBetEngineEnabled() }),
       declareRecords: declareScorecardRecords,
       metaKey: SCORECARD_META_KEY,
       metaCritical: true,

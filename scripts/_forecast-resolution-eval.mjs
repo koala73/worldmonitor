@@ -6,6 +6,10 @@
 
 import { readFileSync } from 'node:fs';
 
+// Cadence-keyed FRED sets derive from the shared series registry so the
+// settlement grace can never disagree with the template's declared cadence.
+import { FRED_MONTHLY_FEED_KEYS, FRED_DAILY_FEED_KEYS } from './_fred-series.mjs';
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const ACLED_SETTLEMENT_LAG_MS = 2 * DAY_MS;
 export const UCDP_SETTLEMENT_LAG_MS = 14 * DAY_MS;
@@ -29,12 +33,6 @@ export const MARKET_SETTLEMENT_MAX_LAG_MS = 14 * DAY_MS;
 // a daily series and settles fast.
 export const FRED_MONTHLY_VALUE_SETTLEMENT_MAX_LAG_MS = 75 * DAY_MS;
 export const FRED_DAILY_VALUE_SETTLEMENT_MAX_LAG_MS = 14 * DAY_MS;
-const FRED_MONTHLY_FEED_KEYS = new Set([
-  'economic:fred:v1:FEDFUNDS:0',
-  'economic:fred:v1:UNRATE:0',
-  'economic:fred:v1:CPIAUCSL:0',
-]);
-const FRED_DAILY_FEED_KEYS = new Set(['economic:fred:v1:DGS10:0']);
 
 function valueSettlementMaxLagMs(feedKey) {
   if (feedKey === 'energy:eia-petroleum:v1') return EIA_VALUE_SETTLEMENT_MAX_LAG_MS;

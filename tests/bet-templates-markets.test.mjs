@@ -78,6 +78,21 @@ describe('eligibleMarkets + slot templates', () => {
     assert.equal(bets[0].marketSlug, 'bigger'); // slot 0 = highest volume
   });
 
+  it('extractMetric is pure — eligibility uses the injected nowMs, never the wall clock (review R3 #1)', () => {
+    // A feed WITHOUT fetchedAt must fall back to the registry-injected nowMs.
+    // Run far in the future: a wall-clock fallback would see this endDate as
+    // >45d out and reject it, so the bet only generates if nowMs is honored.
+    const FUTURE = Date.parse('2030-01-01T00:00:00Z');
+    const feed = {
+      geopolitical: [market({ endDate: new Date(FUTURE + 20 * DAY_MS).toISOString() })],
+      tech: [],
+      finance: [],
+    };
+    const bets = generateBets(MARKET_BET_TEMPLATES, { [MARKET_FEED]: feed }, FUTURE);
+    assert.equal(bets.length, 1);
+    assert.equal(bets[0].resolution.deadline, FUTURE + 20 * DAY_MS);
+  });
+
   it('keys the metricKey on the stable slug, not the mutable title', () => {
     const tricky = market({ title: 'Will X (or Y==Z) happen?', url: 'https://polymarket.com/event/tricky' });
     const bets = generateBets(MARKET_BET_TEMPLATES, { [MARKET_FEED]: feedFixture([tricky]) }, NOW);

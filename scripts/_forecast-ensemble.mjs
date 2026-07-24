@@ -103,6 +103,10 @@ const defaultCache = createEnsembleCache();
 // UTC day (news windows are day-granular) + market price bucketed to 5-point
 // steps + base rate at 2dp + the spec's threshold/baseline. A live marketPrice
 // in the raw key would change every run and make the cache illusory.
+// baselineValue is deliberately NOT bucketed: it is the bet's spec identity
+// (its anchor), not drifting evidence — for market bets it tracks the live
+// yesPrice, but the cache is per-process (one-shot seeder) and the seeder's
+// open-window skip, not this digest, is the real cross-run cost control.
 export function stabilizedEvidenceDigest(bet, evidence, nowMs) {
   const day = new Date(Number.isFinite(nowMs) ? nowMs : Date.now()).toISOString().slice(0, 10);
   const market = evidence?.marketPrice != null && Number.isFinite(Number(evidence.marketPrice))

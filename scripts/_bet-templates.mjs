@@ -11,7 +11,7 @@
 //     id:            string                       // stable slug, e.g. 'energy:crude-inventory'
 //     feedKey:       string                       // the feed this template reads
 //     domain:        string                       // forecast domain bucket
-//     extractMetric: (feedData) => metric | null  // null = feed absent/unusable → skip
+//     extractMetric: (feedData, {nowMs}) => metric | null  // null = feed absent/unusable → skip
 //     horizonPolicy: (ctx) => deadlineMs          // when the bet resolves
 //     buildResolutionSpec: (ctx) => spec          // #4976 hard/judged spec
 //     buildQuestion: (ctx) => string              // crisp YES criterion
@@ -28,7 +28,7 @@ export function generateBets(templates, feedsByKey, nowMs) {
     const feed = feedsByKey?.[template.feedKey];
     let metric = null;
     try {
-      metric = template.extractMetric(feed);
+      metric = template.extractMetric(feed, { nowMs });
     } catch {
       metric = null;
     }
