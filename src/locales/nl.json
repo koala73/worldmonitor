@@ -1914,6 +1914,17 @@
       "cta": "Upgrade naar Pro →",
       "dismiss": "Verwijderen"
     },
+    "billingState": {
+      "onHoldDesc": "Betaling mislukt. Werk je betaalmethode bij om premium toegang te herstellen.",
+      "onHoldBannerMessage": "Betaling mislukt. Werk je betaalmethode bij om je abonnement actief te houden.",
+      "updatePayment": "Betaling bijwerken",
+      "renewalPendingDesc": "We controleren de verlenging van je abonnement. Premium toegang wordt automatisch hersteld zodra deze is bevestigd.",
+      "refreshStatus": "Status vernieuwen",
+      "renewalFailedDesc": "We konden de verlenging van je abonnement niet verifiëren. Beheer je facturering of neem contact op met support als het probleem aanhoudt.",
+      "manageBilling": "Facturering beheren",
+      "lapsedDesc": "Je Pro-abonnement is beëindigd. Abonneer je opnieuw om premium toegang terug te krijgen.",
+      "resubscribe": "Opnieuw abonneren"
+    },
     "checkoutFailureBanner": {
       "message": "Betaling kon niet worden voltooid. Er is geen bedrag in rekening gebracht.",
       "retry": "Opnieuw proberen",

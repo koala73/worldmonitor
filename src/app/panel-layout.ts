@@ -45,7 +45,7 @@ import { getStoredMapModePreference } from '@/services/map-mode-preference';
 import { loadWidgets, saveWidget, isProUser } from '@/services/widget-store';
 import type { CustomWidgetSpec } from '@/services/widget-store';
 import { initEntitlementSubscription, destroyEntitlementSubscription, isEntitled, hasTier, getEntitlementState, onEntitlementChange, shouldReloadOnEntitlementChange } from '@/services/entitlements';
-import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
+import { initSubscriptionWatch, destroySubscriptionWatch, onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
 import { initPaymentFailureBanner } from '@/components/payment-failure-banner';
 import { handleCheckoutReturn } from '@/services/checkout-return';
 import { registerCheckoutSuccessCallback, destroyCheckoutOverlay, showCheckoutSuccess, consumePostCheckoutFlag, clearCheckoutAttempt } from '@/services/checkout';
@@ -63,7 +63,7 @@ import { loadMcpPanels, saveMcpPanel } from '@/services/mcp-store';
 import type { McpPanelSpec } from '@/services/mcp-store';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import type { AuthSession } from '@/services/auth-state';
-import { PanelGateReason, getPanelGateReason, hasPremiumAccess } from '@/services/panel-gating';
+import { PanelGateReason, getPanelGateReason, hasPremiumAccess, resolveBillingAwareGateReason } from '@/services/panel-gating';
 import { markLcpDebug } from '@/utils/lcp-debug';
 import type { Panel } from '@/components/Panel';
 import type { SupplyChainPanel } from '@/components/SupplyChainPanel';
@@ -347,6 +347,7 @@ export class PanelLayoutManager implements AppModule {
   private proBlockEntitlementUnsubscribe: (() => void) | null = null;
   private boundWidgetCreatorHandler: ((e: Event) => void) | null = null;
   private unsubscribeEntitlementChange: (() => void) | null = null;
+  private unsubscribeSubscriptionChange: (() => void) | null = null;
   private unsubscribePaymentFailureBanner: (() => void) | null = null;
   private scheduledLoadAllRaf: number | null = null;
   private scheduledLoadAllIdle: number | null = null;
@@ -499,6 +500,14 @@ export class PanelLayoutManager implements AppModule {
       // snapshot synchronously rather than waiting for the next auth event.
       this.updatePanelGating(getAuthState());
     });
+
+    // #4771: billing-state transitions can arrive on the SUBSCRIPTION row
+    // alone (webhook flips to on_hold, renewal verification records a
+    // verdict) with no entitlement snapshot change. Re-run gating so the
+    // billing-aware CTA copy tracks the current state, not just the banner.
+    this.unsubscribeSubscriptionChange = onSubscriptionChange(() => {
+      this.updatePanelGating(getAuthState());
+    });
   }
 
   async init(): Promise<void> {
@@ -626,6 +635,10 @@ export class PanelLayoutManager implements AppModule {
     this.unsubscribeEntitlementChange?.();
     this.unsubscribeEntitlementChange = null;
 
+    // Clean up subscription-change gating listener (#4771)
+    this.unsubscribeSubscriptionChange?.();
+    this.unsubscribeSubscriptionChange = null;
+
     // Clean up payment failure banner subscription
     this.unsubscribePaymentFailureBanner?.();
     this.unsubscribePaymentFailureBanner = null;
@@ -639,6 +652,11 @@ export class PanelLayoutManager implements AppModule {
 
   /** Reactively update premium panel gating based on auth state. */
   private updatePanelGating(state: AuthSession): void {
+    // #4771: resolve the billing-aware refinement of FREE_TIER once per pass
+    // — the inputs (subscription/entitlement snapshots, now) are invariant
+    // across the panel loop, and a single Date.now() keeps every panel on
+    // the same verdict at a period-end boundary.
+    const billingAwareFreeTier = resolveBillingAwareGateReason(PanelGateReason.FREE_TIER);
     for (const [key, panel] of Object.entries(this.ctx.panels)) {
       const isPremium = WEB_PREMIUM_PANELS.has(key);
       let reason = getPanelGateReason(state, isPremium);
@@ -670,6 +688,11 @@ export class PanelLayoutManager implements AppModule {
         reason = state.user ? PanelGateReason.FREE_TIER : PanelGateReason.ANONYMOUS;
       }
 
+      // #4771: a FREE_TIER verdict for a customer with stale paid evidence
+      // becomes a billing-state reason (verifying renewal / update payment /
+      // resubscribe) so we never push a paying user toward duplicate checkout.
+      if (reason === PanelGateReason.FREE_TIER) reason = billingAwareFreeTier;
+
       if (reason === PanelGateReason.NONE) {
         // User has access -- unlock if previously locked
         (panel as Panel).unlockPanel();
@@ -687,6 +710,21 @@ export class PanelLayoutManager implements AppModule {
       case PanelGateReason.ANONYMOUS:
         return () => this.ctx.authModal?.open();
       case PanelGateReason.FREE_TIER:
+        return () => window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
+      case PanelGateReason.PAYMENT_ON_HOLD:
+      case PanelGateReason.RENEWAL_FAILED:
+        // Pre-reserve the portal tab synchronously inside the click gesture
+        // so the async portal-session fetch survives the popup blocker
+        // (same pattern as payment-failure-banner.ts).
+        return () => {
+          const reservedWin = prereserveBillingPortalTab();
+          void openBillingPortal(reservedWin);
+        };
+      case PanelGateReason.RENEWAL_PENDING:
+        // Verification resolves server-side; a reload re-pulls entitlements
+        // for users who don't want to wait for the reactive update.
+        return () => window.location.reload();
+      case PanelGateReason.LAPSED:
         return () => window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
       default:
         return () => {};

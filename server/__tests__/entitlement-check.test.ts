@@ -529,6 +529,42 @@ describe("gateway entitlement check", () => {
       vi.unstubAllGlobals();
     }
   });
+
+  test("confirmed Convex entitlement survives a Redis cache-write failure", async () => {
+    vi.mocked(getCachedJson).mockResolvedValueOnce(null);
+    vi.mocked(setCachedJson).mockRejectedValueOnce(new Error("upstash unavailable"));
+
+    const originalSiteUrl = process.env.CONVEX_SITE_URL;
+    const originalSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+    const confirmed = makeEntitlements(2, "api_starter");
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(confirmed), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    process.env.CONVEX_SITE_URL = "https://example-deployment.convex.site";
+    process.env.CONVEX_SERVER_SHARED_SECRET = "test-secret";
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const result = await getEntitlements("user_cache_write_failure");
+      expect(result).toEqual(confirmed);
+      expect(setCachedJson).toHaveBeenCalledWith(
+        "entitlements:test:user_cache_write_failure",
+        confirmed,
+        900,
+        true,
+      );
+    } finally {
+      if (originalSiteUrl === undefined) delete process.env.CONVEX_SITE_URL;
+      else process.env.CONVEX_SITE_URL = originalSiteUrl;
+      if (originalSecret === undefined) delete process.env.CONVEX_SERVER_SHARED_SECRET;
+      else process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -559,5 +595,39 @@ describe("getEntitlements surfaces apiDailyAllowance (#3199 U2)", () => {
     const result = await getEntitlements("user_legacy");
     expect(result).not.toBeNull();
     expect(result?.features.apiDailyAllowance).toBeUndefined();
+  });
+
+  // #5379 — the misconfiguration edge of the null contract.
+  test("MISCONFIG: absent Convex env returns null for everyone, permanently (not a transient blip)", async () => {
+    // A deploy missing CONVEX_SITE_URL / CONVEX_SERVER_SHARED_SECRET takes the
+    // early return at entitlement-check.ts, so every user resolves to null on
+    // every request with no self-healing path — the 15-min cache cannot warm
+    // what never resolves.
+    //
+    // Why this test lives here and matters elsewhere: the #4611 apiAccess gate
+    // in server/gateway.ts deliberately fail-OPENS on null. Its "warm path
+    // re-resolves" bound assumes the entitlement EVENTUALLY resolves, which this
+    // case violates — so a missing env var silently disables that gate fleet-wide
+    // and indefinitely. Pinning it here keeps the premise of that bound honest.
+    // Save/restore in finally, matching this file's convention above — without
+    // it the deleted env leaks into any test appended after this one.
+    const originalSiteUrl = process.env.CONVEX_SITE_URL;
+    const originalSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+    delete process.env.CONVEX_SITE_URL;
+    delete process.env.CONVEX_SERVER_SHARED_SECRET;
+    vi.mocked(getCachedJson).mockResolvedValue(null); // cold cache, every call
+
+    try {
+      // Distinct userIds: repeated nulls, not one coalesced in-flight promise.
+      expect(await getEntitlements("user_misconfig_a")).toBeNull();
+      expect(await getEntitlements("user_misconfig_b")).toBeNull();
+      // Same user twice — still null, i.e. no recovery on retry.
+      expect(await getEntitlements("user_misconfig_a")).toBeNull();
+    } finally {
+      if (originalSiteUrl === undefined) delete process.env.CONVEX_SITE_URL;
+      else process.env.CONVEX_SITE_URL = originalSiteUrl;
+      if (originalSecret === undefined) delete process.env.CONVEX_SERVER_SHARED_SECRET;
+      else process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
+    }
   });
 });

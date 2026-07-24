@@ -245,6 +245,22 @@ function isCoveringAt<T extends Pick<SubscriptionRow, "status" | "currentPeriodE
 }
 
 /**
+ * A prior subscription is eligible for post-lapse reactivation messaging only
+ * after access has actually ended. `on_hold` and cancelled-but-paid-through
+ * rows are deliberately excluded: those users are still in recovery/current
+ * access flows, not win-back.
+ */
+function isLapsedAt<
+  T extends Pick<SubscriptionRow, "status" | "currentPeriodEnd"> & {
+    renewalVerificationState?: "pending" | "failed" | "lapsed";
+  },
+>(s: T, at: number): boolean {
+  if (s.status === "expired") return true;
+  if (s.status === "cancelled") return s.currentPeriodEnd < at;
+  return s.status === "active" && s.renewalVerificationState === "lapsed";
+}
+
+/**
  * Deterministic comparator over covering subscriptions. Returns positive when
  * `a` outranks `b`, negative when `b` outranks `a`, zero only when fully
  * indistinguishable. Tie-break order:
@@ -599,6 +615,26 @@ export async function handleSubscriptionActive(
   const userId = existing
     ? existing.userId
     : preferExistingCustomerOwner(existingCustomer?.userId, resolvedUserId);
+  // A returning checkout receives a NEW Dodo subscription id, so matching only
+  // `existing` would misclassify the user as a first-time subscriber and send
+  // the generic welcome + admin alert. Snapshot the user's prior rows before
+  // inserting the new one and use the same post-lapse boundary as the UI.
+  const priorSubscriptions = existing
+    ? [existing]
+    : await ctx.db
+        .query("subscriptions")
+        .withIndex("by_userId", (q) => q.eq("userId", userId))
+        .take(50);
+  const hasCurrentAccess = priorSubscriptions.some(
+    (subscription) =>
+      !isLapsedAt(subscription, eventTimestamp) &&
+      isCoveringAt(subscription, eventTimestamp),
+  );
+  const wasLapsed =
+    !hasCurrentAccess &&
+    priorSubscriptions.some((subscription) =>
+      isLapsedAt(subscription, eventTimestamp),
+    );
 
   if (existing) {
     await ctx.db.patch(existing._id, {
@@ -703,13 +739,28 @@ export async function handleSubscriptionActive(
     }
   }
 
-  // Schedule welcome + admin notification emails (non-blocking, new subscriptions only)
+  // Schedule the appropriate customer email (non-blocking). Only a proven
+  // post-lapse return receives the customer-only welcome-back confirmation.
+  // Pre-lapse recovery and already-active replay/update paths remain silent.
   if (!email) {
     console.warn(
       `[subscriptionHelpers] subscription.active: no customer email — skipping welcome email (subscriptionId=${data.subscription_id})`,
     );
+  } else if (wasLapsed) {
+    if (process.env.RESEND_API_KEY) {
+      await ctx.scheduler.runAfter(
+        0,
+        internal.payments.subscriptionEmails.sendReactivationEmail,
+        { userEmail: email, planKey },
+      );
+      console.log(`[subscriptionHelpers] subscription.active: scheduled reactivation email (subscriptionId=${data.subscription_id})`);
+    } else {
+      console.warn(
+        `[subscriptionHelpers] subscription.active: RESEND_API_KEY not set — skipping reactivation email (subscriptionId=${data.subscription_id})`,
+      );
+    }
   } else if (existing) {
-    console.log(`[subscriptionHelpers] subscription.active: reactivation — skipping welcome email (subscriptionId=${data.subscription_id})`);
+    console.log(`[subscriptionHelpers] subscription.active: existing non-lapsed subscription — skipping email (subscriptionId=${data.subscription_id})`);
   } else if (process.env.RESEND_API_KEY) {
     await ctx.scheduler.runAfter(
       0,

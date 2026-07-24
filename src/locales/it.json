@@ -2179,6 +2179,17 @@
       "cta": "Passa a Pro →",
       "dismiss": "Scarta"
     },
+    "billingState": {
+      "onHoldDesc": "Pagamento non riuscito. Aggiorna il metodo di pagamento per ripristinare l'accesso premium.",
+      "onHoldBannerMessage": "Pagamento non riuscito. Aggiorna il metodo di pagamento per mantenere attivo il tuo abbonamento.",
+      "updatePayment": "Aggiorna pagamento",
+      "renewalPendingDesc": "Stiamo verificando il rinnovo del tuo abbonamento. L'accesso premium verrà ripristinato automaticamente una volta confermato.",
+      "refreshStatus": "Aggiorna stato",
+      "renewalFailedDesc": "Non siamo riusciti a verificare il rinnovo del tuo abbonamento. Gestisci la fatturazione o contatta l'assistenza se il problema persiste.",
+      "manageBilling": "Gestisci fatturazione",
+      "lapsedDesc": "Il tuo abbonamento Pro è terminato. Riabbonati per riottenere l'accesso premium.",
+      "resubscribe": "Riabbonati"
+    },
     "checkoutFailureBanner": {
       "message": "Il pagamento non è stato completato. Nessuna addebito è stato effettuato.",
       "retry": "Riprova",

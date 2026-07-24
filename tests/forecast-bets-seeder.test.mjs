@@ -2,7 +2,7 @@ import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
 import { buildBetsSnapshot, computeNextSeries } from '../scripts/seed-forecast-bets.mjs';
-import { ingestHistory, shapeResolutionFeed } from '../scripts/seed-forecast-resolutions.mjs';
+import { ingestHistory, resolveDueEntries, shapeResolutionFeed } from '../scripts/seed-forecast-resolutions.mjs';
 import { EIA_PETROLEUM_FEED } from '../scripts/_bet-templates-energy.mjs';
 import { resolveHardSpec } from '../scripts/_forecast-resolution-eval.mjs';
 
@@ -144,12 +144,41 @@ describe('value settlement gate (#2 — no false NO on a stale pre-release read)
     assert.equal(res.evidence.reason, 'value_source_not_settled');
   });
 
-  it('VOIDs once the settlement grace elapses and the feed never caught up', () => {
+  it('keeps EIA pending through the default grace and resolves from the covering weekly report', () => {
+    const snap = buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: eiaFixture() }, NOW, {});
+    const ledger = ingestHistory({}, [snap], NOW);
+    const key = Object.keys(ledger).find((k) => ledger[k].spec?.metricKey?.includes('inventory'));
+    const staleFeed = shapeResolutionFeed(EIA_PETROLEUM_FEED, eiaFixture({
+      inventory: { current: 390, previous: 388, date: '2026-07-12', unit: '' },
+    }));
+    resolveDueEntries(ledger, { [EIA_PETROLEUM_FEED]: staleFeed }, DEADLINE + 10 * DAY_MS);
+    assert.equal(ledger[key].status, 'pending');
+
+    const coveringReport = shapeResolutionFeed(EIA_PETROLEUM_FEED, eiaFixture({
+      inventory: { current: 396, previous: 390, date: '2026-07-24', unit: '' },
+    }));
+    resolveDueEntries(ledger, { [EIA_PETROLEUM_FEED]: coveringReport }, DEADLINE + 11 * DAY_MS);
+    assert.equal(ledger[key].status, 'resolved');
+    assert.equal(ledger[key].outcome, 'YES');
+  });
+
+  it('uses the EIA-specific grace when a partial refresh drops the metric', () => {
+    const entry = inventoryEntry();
+    const partialFeed = shapeResolutionFeed(EIA_PETROLEUM_FEED, eiaFixture({ inventory: null }));
+    const pending = resolveHardSpec(entry, partialFeed, [], DEADLINE + 10 * DAY_MS);
+    assert.equal(pending.status, 'pending');
+    assert.equal(pending.evidence.reason, 'value_source_record_missing');
+
+    const voided = resolveHardSpec(entry, partialFeed, [], DEADLINE + 14 * DAY_MS);
+    assert.equal(voided.outcome, 'VOID');
+  });
+
+  it('VOIDs once the EIA-specific settlement grace elapses and the feed never caught up', () => {
     const entry = inventoryEntry();
     const staleFeed = shapeResolutionFeed(EIA_PETROLEUM_FEED, eiaFixture({
       inventory: { current: 390, previous: 388, date: '2026-07-12', unit: '' },
     }));
-    const res = resolveHardSpec(entry, staleFeed, [], DEADLINE + 11 * DAY_MS);
+    const res = resolveHardSpec(entry, staleFeed, [], DEADLINE + 14 * DAY_MS);
     assert.equal(res.outcome, 'VOID');
   });
 });

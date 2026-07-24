@@ -9445,8 +9445,12 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetCountryIntelBrief
-            description: GetCountryIntelBrief generates a strategic brief for a specific country.
+            description: GetCountryIntelBrief generates a strategic brief for a specific country. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetCountryIntelBrief
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: country_code
                   in: query
@@ -9499,7 +9503,7 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: PRO entitlement access denied.
                     content:
                         application/json:
                             schema:
@@ -26189,6 +26193,8 @@ components:
                     type: string
                     description: Time of the most recent successful retrieval; preserved across failures.
                 stale:
+                    type: boolean
+                paced:
                     type: boolean
         worldmonitor_forecast_v1_GetForecastsRequest:
             type: object

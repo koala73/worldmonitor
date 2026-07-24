@@ -2179,6 +2179,17 @@
       "cta": "Upgrade la Pro →",
       "dismiss": "Închide"
     },
+    "billingState": {
+      "onHoldDesc": "Plata a eșuat. Actualizează metoda de plată pentru a restabili accesul premium.",
+      "onHoldBannerMessage": "Plata a eșuat. Actualizează metoda de plată pentru a-ți menține abonamentul activ.",
+      "updatePayment": "Actualizează plata",
+      "renewalPendingDesc": "Verificăm reînnoirea abonamentului tău. Accesul premium va fi restabilit automat după confirmare.",
+      "refreshStatus": "Actualizează starea",
+      "renewalFailedDesc": "Nu am putut verifica reînnoirea abonamentului tău. Gestionează facturarea sau contactează asistența dacă problema persistă.",
+      "manageBilling": "Gestionează facturarea",
+      "lapsedDesc": "Abonamentul tău Pro s-a încheiat. Reabonează-te pentru a recâștiga accesul premium.",
+      "resubscribe": "Reabonare"
+    },
     "checkoutFailureBanner": {
       "message": "Plata nu a putut fi finalizată. Nu a fost făcută nicio încărcare.",
       "retry": "Încearcă din nou",

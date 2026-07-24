@@ -2170,6 +2170,17 @@
       "cta": "Pro にアップグレード →",
       "dismiss": "閉じる"
     },
+    "billingState": {
+      "onHoldDesc": "お支払いに失敗しました。プレミアムアクセスを復元するには、お支払い方法を更新してください。",
+      "onHoldBannerMessage": "お支払いに失敗しました。サブスクリプションを有効に保つには、お支払い方法を更新してください。",
+      "updatePayment": "支払い方法を更新",
+      "renewalPendingDesc": "サブスクリプションの更新を確認しています。確認が完了すると、プレミアムアクセスは自動的に復元されます。",
+      "refreshStatus": "ステータスを更新",
+      "renewalFailedDesc": "サブスクリプションの更新を確認できませんでした。問題が続く場合は、請求を管理するかサポートにお問い合わせください。",
+      "manageBilling": "請求を管理",
+      "lapsedDesc": "Proサブスクリプションが終了しました。プレミアムアクセスを取り戻すには再登録してください。",
+      "resubscribe": "再登録"
+    },
     "checkoutFailureBanner": {
       "message": "お支払いが完了できませんでした。請求はされていません。",
       "retry": "もう一度試す",

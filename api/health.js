@@ -427,7 +427,7 @@ const SEED_META = {
   weatherAlerts:    { key: 'seed-meta:weather:alerts',             maxStaleMin: 45 }, // relay loop every 15min; 45 = 3× interval (was 30 = 2×, too tight on relay hiccup)
   spending:         { key: 'seed-meta:economic:spending',          maxStaleMin: 120 },
   globalTenders:    { key: 'seed-meta:economic:global-tenders',   maxStaleMin: 180 },
-  globalTendersSam:             { key: 'seed-meta:economic:global-tenders:sam',              maxStaleMin: 180 },
+  globalTendersSam:             { key: 'seed-meta:economic:global-tenders:sam',              maxStaleMin: 240 }, // 150min request pacing + hourly member gate yields ~180min publishes; 240min leaves one gate of scheduling jitter without raising the 10/day SAM budget.
   globalTendersTed:             { key: 'seed-meta:economic:global-tenders:ted',              maxStaleMin: 180 },
   globalTendersContractsFinder: { key: 'seed-meta:economic:global-tenders:contracts-finder', maxStaleMin: 180 },
   globalTendersCanadaBuys:      { key: 'seed-meta:economic:global-tenders:canada-buys',      maxStaleMin: 180 },
