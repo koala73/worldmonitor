@@ -18,7 +18,7 @@ const apiDir = resolve(root, 'docs/api');
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options', 'head']);
 const JSON_MEDIA = 'application/json';
 const GIVING_PUBLISHED_ESTIMATE_CLAIMS = JSON.parse(
-  readFileSync(resolve(root, 'shared/giving-published-estimate-claims.json'), 'utf8'),
+  readFileSync(resolve(root, 'scripts/shared/giving-published-estimate-claims.json'), 'utf8'),
 );
 
 const serviceSpecs = readdirSync(apiDir)

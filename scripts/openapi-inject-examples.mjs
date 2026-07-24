@@ -58,7 +58,7 @@ function readRepoText(rel) {
 }
 
 const GIVING_PUBLISHED_ESTIMATE_CLAIMS = JSON.parse(
-  readRepoText('shared/giving-published-estimate-claims.json'),
+  readRepoText('scripts/shared/giving-published-estimate-claims.json'),
 );
 
 // chokepointId / chokepointIds: get-bypass-options & siblings (SupplyChain) and

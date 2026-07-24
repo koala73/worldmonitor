@@ -34,15 +34,11 @@ function renderSourceName(entry: GivingProvenance): string {
   return `<a href="${safeUrl}" target="_blank" rel="noopener noreferrer nofollow">${safeName}</a>`;
 }
 
-function renderSourceMeta(entry: GivingProvenance, translate: GivingTranslate): string {
-  const sourceAndPeriod = translate('components.giving.sourcePeriod', {
-    source: entry.sourceName,
-    period: entry.referencePeriod,
-  });
+function renderSourceMeta(entry: GivingProvenance): string {
   const publication = entry.sourcePublishedAt
     ? ` · ${escapeHtml(entry.sourcePublishedAt)}`
     : '';
-  return `<span class="giving-source-meta">${renderSourceName(entry)} · ${escapeHtml(entry.referencePeriod)}${publication}<span class="sr-only">${escapeHtml(sourceAndPeriod)}</span></span>`;
+  return `<span class="giving-source-meta">${renderSourceName(entry)} · ${escapeHtml(entry.referencePeriod)}${publication}</span>`;
 }
 
 function compactNumber(value: number): string {
@@ -148,7 +144,7 @@ function renderPlatforms(data: GivingSummary, translate: GivingTranslate): strin
       <td class="giving-platform-name">${escapeHtml(platform.platform)}</td>
       <td class="giving-platform-benchmark">
         ${benchmark}
-        ${evidence ? renderSourceMeta(evidence, translate) : ''}
+        ${evidence ? renderSourceMeta(evidence) : ''}
       </td>
     </tr>`;
   }).join('');
@@ -183,7 +179,7 @@ function renderCategories(
       <td class="giving-cat-name">${escapeHtml(category.category)}</td>
       <td class="giving-category-benchmark">
         <span class="${verified ? 'giving-benchmark-value' : 'giving-unverified'}">${value}</span>
-        ${evidence ? renderSourceMeta(evidence, translate) : ''}
+        ${evidence ? renderSourceMeta(evidence) : ''}
       </td>
     </tr>`;
   }).join('');
@@ -205,7 +201,7 @@ function renderInstitutionalMetric(
         ${verified && evidence ? formatReportedValue(evidence) : escapeHtml(translate('components.giving.sourceNotVerified'))}
       </span>
       <span class="giving-stat-label">${escapeHtml(label)}</span>
-      ${evidence ? renderSourceMeta(evidence, translate) : ''}
+      ${evidence ? renderSourceMeta(evidence) : ''}
     </div>`;
 }
 

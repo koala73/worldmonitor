@@ -4,7 +4,7 @@ import type {
   GivingSummary,
   PlatformGiving,
 } from '../../../../src/generated/server/worldmonitor/giving/v1/service_server';
-import publishedEstimateClaims from '../../../../shared/giving-published-estimate-claims.json';
+import publishedEstimateClaims from '../../../../scripts/shared/giving-published-estimate-claims.json';
 
 export const GIVING_PROVENANCE_STATUSES = [
   'verified',
