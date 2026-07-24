@@ -1426,11 +1426,12 @@
         "published": "Published benchmarks with verified source coverage.",
         "partial": "Published benchmarks with partial source coverage.",
         "legacy": "Legacy snapshot; source details are unavailable.",
-        "cached": "Showing a cached verified snapshot; refresh unavailable."
+        "cached": "Showing a cached snapshot; refresh unavailable."
       },
       "trackedAnnualized": "Tracked platform giving — annualized estimate",
       "annualizedDaily": "Annualized daily estimate",
       "atLeast": "At least",
+      "about": "About",
       "sourceNotVerified": "Source not verified",
       "reportedCumulative": "Reported cumulative total",
       "sourcePeriod": "{{source}} · {{period}}",

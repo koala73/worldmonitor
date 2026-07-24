@@ -1,7 +1,7 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import type { GetGivingSummaryResponse as ProtoResponse } from '@/generated/client/worldmonitor/giving/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
-import { getHydratedData } from '@/services/bootstrap';
+import { getBootstrapHydrationState, getHydratedData } from '@/services/bootstrap';
 import { GivingServiceClient } from '@/services/generated-rpc-clients';
 import {
   EMPTY_PROTO_RESPONSE,
@@ -9,6 +9,7 @@ import {
   GIVING_STALE_CEILING_MS,
   classifyGivingResponse,
   isCacheableGivingResponse,
+  resolveGivingHydration,
   resolveGivingRefresh,
 } from './model';
 import type {
@@ -38,18 +39,20 @@ export async function fetchGivingSummary(): Promise<GivingFetchResult> {
   const now = Date.now();
   const hydrated = getHydratedData('giving') as ProtoResponse | undefined;
   if (hydrated) {
-    const classified = classifyGivingResponse(hydrated, now);
-    if (classified.kind === 'v2') {
-      lastGoodSnapshot = classified.snapshot;
-      lastRefreshFailure = null;
-      return resolveGivingRefresh(hydrated, null, now, null);
-    }
-    lastRefreshFailure = classified.kind;
+    const hydration = resolveGivingHydration(
+      hydrated,
+      getBootstrapHydrationState().tiers.slow.source,
+      now,
+    );
+    if (hydration.lastGood) lastGoodSnapshot = hydration.lastGood;
+    lastRefreshFailure = hydration.refreshFailure;
+    if (hydration.immediateResult) return hydration.immediateResult;
   }
 
   if (fetchPromise) return fetchPromise;
 
   fetchPromise = (async (): Promise<GivingFetchResult> => {
+    let nonV2Refresh: ProtoResponse | null = null;
     const response = await breaker.execute(async () => {
       let responseFailure: GivingRefreshFailure | null = null;
       try {
@@ -59,6 +62,7 @@ export async function fetchGivingSummary(): Promise<GivingFetchResult> {
         });
         const classified = classifyGivingResponse(fresh);
         if (classified.kind !== 'v2') {
+          nonV2Refresh = fresh;
           responseFailure = classified.kind;
           throw new Error(`Giving refresh returned ${classified.kind} data`);
         }
@@ -71,16 +75,26 @@ export async function fetchGivingSummary(): Promise<GivingFetchResult> {
     }, EMPTY_PROTO_RESPONSE, {
       cacheKey: GIVING_BREAKER_CACHE_KEY,
       shouldCache: isCacheableGivingResponse,
+      staleRefreshMode: 'await',
     });
 
     const resolvedAt = Date.now();
     const classified = classifyGivingResponse(response, resolvedAt);
     if (classified.kind === 'v2') {
       lastGoodSnapshot = classified.snapshot;
-      if (breaker.getDataState().mode === 'cached' && lastRefreshFailure) {
+      if (breaker.getDataState().mode !== 'live' && lastRefreshFailure) {
         return resolveGivingRefresh(null, lastGoodSnapshot, resolvedAt, lastRefreshFailure);
       }
       return resolveGivingRefresh(response, null, resolvedAt, null);
+    }
+
+    if (nonV2Refresh) {
+      return resolveGivingRefresh(
+        nonV2Refresh,
+        lastGoodSnapshot,
+        resolvedAt,
+        lastRefreshFailure,
+      );
     }
 
     const failure = lastRefreshFailure ?? classified.kind;

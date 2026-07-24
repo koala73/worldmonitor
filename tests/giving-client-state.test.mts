@@ -84,6 +84,17 @@ function v2Response(overrides: {
   };
 }
 
+function responseWithRuntimeProvenance(value: unknown): GetGivingSummaryResponse {
+  const response = v2Response();
+  return {
+    ...response,
+    summary: {
+      ...response.summary!,
+      provenance: value,
+    },
+  } as unknown as GetGivingSummaryResponse;
+}
+
 describe('Giving client v2 response classification', () => {
   it('preserves the original materialization timestamp and normalizes evidence state', () => {
     const classified = __testing__.classifyGivingResponse(v2Response(), MATERIALIZED_AT + 60_000);
@@ -114,9 +125,81 @@ describe('Giving client v2 response classification', () => {
       legacy.summary.dataMode = '';
       legacy.summary.provenance = [];
     }
-    assert.equal(__testing__.classifyGivingResponse(legacy, MATERIALIZED_AT).kind, 'legacy');
+    const classified = __testing__.classifyGivingResponse(legacy, MATERIALIZED_AT);
+    assert.equal(classified.kind, 'legacy');
+    assert.equal(classified.data?.availability, 'available-but-legacy');
     assert.equal(__testing__.isCacheableGivingResponse(legacy), false);
     assert.equal(__testing__.GIVING_BREAKER_CACHE_KEY, 'v2');
+  });
+
+  it('rejects malformed renderer-consumed provenance before mapping', () => {
+    const missingPaths = { ...provenance() } as Record<string, unknown>;
+    delete missingPaths.coveredMetricPaths;
+
+    const malformedFixtures = [
+      null,
+      [null],
+      [missingPaths],
+      [provenance({ reportedValue: Number.POSITIVE_INFINITY })],
+      [provenance({ coveredMetricPaths: Array.from({ length: 65 }, (_, index) => `metric.${index}`) })],
+    ];
+
+    for (const malformed of malformedFixtures) {
+      const response = responseWithRuntimeProvenance(malformed);
+      const classified = __testing__.classifyGivingResponse(response, MATERIALIZED_AT);
+      assert.equal(classified.kind, 'legacy');
+      assert.equal(classified.data?.availability, 'available-but-legacy');
+      assert.equal(__testing__.isCacheableGivingResponse(response), false);
+    }
+  });
+
+  it('rejects malformed or unbounded platform and category projections before mapping', () => {
+    const malformedFixtures = [
+      { platforms: [null] },
+      { platforms: Array.from({ length: 65 }, () => v2Response().summary!.platforms[0]) },
+      { categories: [null] },
+      {
+        categories: [{
+          category: 'Medical',
+          share: Number.NaN,
+          change24h: 0,
+          activeCampaigns: 0,
+          trending: false,
+        }],
+      },
+    ];
+
+    for (const overrides of malformedFixtures) {
+      const response = v2Response();
+      response.summary = {
+        ...response.summary!,
+        ...overrides,
+      } as GetGivingSummaryResponse['summary'];
+      const classified = __testing__.classifyGivingResponse(response, MATERIALIZED_AT);
+      assert.equal(classified.kind, 'legacy');
+      assert.equal(classified.data?.availability, 'available-but-legacy');
+      assert.equal(__testing__.isCacheableGivingResponse(response), false);
+    }
+  });
+
+  it('maps a direct populated legacy response to a renderer-safe legacy state', () => {
+    const legacy = v2Response();
+    if (legacy.summary) {
+      legacy.summary.dataMode = '';
+      legacy.summary.provenance = [];
+      legacy.summary.activityIndex = 99;
+      legacy.summary.estimatedDailyFlowUsd = 123_456;
+    }
+
+    const resolved = __testing__.resolveGivingRefresh(legacy, null, MATERIALIZED_AT, null);
+    assert.equal(resolved.ok, true);
+    assert.equal(resolved.state, 'available-but-legacy');
+    assert.equal(resolved.cachedAt, '2026-07-24T12:00:00.000Z');
+    assert.equal(resolved.data.materializedAt, '2026-07-24T12:00:00.000Z');
+    assert.equal(resolved.data.activityIndex, 0);
+    assert.equal(resolved.data.estimatedDailyFlowUsd, 0);
+    assert.deepEqual(resolved.data.platforms, []);
+    assert.deepEqual(resolved.data.provenance, []);
   });
 
   it('preserves a valid v2 last-good snapshot for exactly 24 hours after refresh failures', () => {
@@ -150,6 +233,85 @@ describe('Giving client v2 response classification', () => {
     assert.equal(expired.data.generatedAt, '');
   });
 
+  it('preserves v2 last-good when the actual refresh response is legacy', () => {
+    const accepted = __testing__.classifyGivingResponse(v2Response(), MATERIALIZED_AT);
+    assert.equal(accepted.kind, 'v2');
+    assert.ok(accepted.snapshot);
+
+    const legacy = v2Response();
+    if (legacy.summary) {
+      legacy.summary.dataMode = '';
+      legacy.summary.provenance = [];
+    }
+    const resolved = __testing__.resolveGivingRefresh(
+      legacy,
+      accepted.snapshot,
+      MATERIALIZED_AT + 60_000,
+      null,
+    );
+    assert.equal(resolved.ok, true);
+    assert.equal(resolved.state, 'cached-refresh-unavailable');
+    assert.equal(resolved.refreshFailure, 'legacy');
+    assert.equal(resolved.cachedAt, '2026-07-24T12:00:00.000Z');
+    assert.equal(resolved.data.dataMode, 'partial_estimate');
+  });
+
+  it('uses cached or mixed bootstrap v2 only as last-good until refresh resolves', () => {
+    for (const source of ['cached', 'mixed'] as const) {
+      const hydration = __testing__.resolveGivingHydration(
+        v2Response(),
+        source,
+        MATERIALIZED_AT + 60_000,
+      );
+      assert.ok(hydration.lastGood);
+      assert.equal(hydration.immediateResult, null);
+      assert.equal(hydration.refreshFailure, 'transport');
+
+      const failedRefresh = __testing__.resolveGivingRefresh(
+        null,
+        hydration.lastGood,
+        MATERIALIZED_AT + 120_000,
+        'transport',
+      );
+      assert.equal(failedRefresh.state, 'cached-refresh-unavailable');
+      assert.equal(failedRefresh.cachedAt, '2026-07-24T12:00:00.000Z');
+      assert.equal(failedRefresh.data.generatedAt, '2026-07-24T12:00:00.000Z');
+    }
+  });
+
+  it('trusts only an explicitly live slow-tier hydration as an immediate response', () => {
+    const live = __testing__.resolveGivingHydration(
+      v2Response(),
+      'live',
+      MATERIALIZED_AT + 60_000,
+    );
+    assert.ok(live.lastGood);
+    assert.equal(live.immediateResult?.state, 'available-but-partial');
+    assert.equal(live.immediateResult?.cachedAt, '2026-07-24T12:00:00.000Z');
+
+    const legacy = v2Response();
+    if (legacy.summary) {
+      legacy.summary.dataMode = '';
+      legacy.summary.provenance = [];
+    }
+    const cachedLegacy = __testing__.resolveGivingHydration(
+      legacy,
+      'cached',
+      MATERIALIZED_AT + 60_000,
+    );
+    assert.equal(cachedLegacy.lastGood, null);
+    assert.equal(cachedLegacy.immediateResult, null);
+    assert.equal(cachedLegacy.refreshFailure, 'legacy');
+
+    const liveLegacy = __testing__.resolveGivingHydration(
+      legacy,
+      'live',
+      MATERIALIZED_AT + 60_000,
+    );
+    assert.equal(liveLegacy.immediateResult?.state, 'available-but-legacy');
+    assert.deepEqual(liveLegacy.immediateResult?.data.platforms, []);
+  });
+
   it('never promotes an unavailable or legacy-only refresh without a v2 last-good snapshot', () => {
     for (const failure of ['transport', 'unavailable', 'legacy'] as const) {
       const resolved = __testing__.resolveGivingRefresh(null, null, MATERIALIZED_AT, failure);
@@ -165,6 +327,8 @@ describe('Giving client v2 response classification', () => {
     const loader = readFileSync(resolve(root, 'src/app/data-loader.ts'), 'utf8');
     assert.match(source, /cacheKey:\s*GIVING_BREAKER_CACHE_KEY/);
     assert.match(source, /shouldCache:\s*isCacheableGivingResponse/);
+    assert.match(source, /staleRefreshMode:\s*'await'/);
+    assert.match(source, /getBootstrapHydrationState\(\)\.tiers\.slow\.source/);
     assert.doesNotMatch(source, /cachedAt\s*=\s*Date\.now\(\)/);
     assert.doesNotMatch(source, /generatedAt:\s*new Date\(\)\.toISOString\(\)/);
     assert.match(loader, /givingResult\.state === 'cached-refresh-unavailable'[\s\S]*recordError\('giving'/);

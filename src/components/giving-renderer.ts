@@ -56,6 +56,24 @@ function formatReportedValue(entry: GivingProvenance): string {
   return `${compactNumber(entry.reportedValue)} ${escapeHtml(entry.reportedUnit)}`.trim();
 }
 
+function qualifierPrefix(valueQualifier: string, translate: GivingTranslate): string {
+  if (valueQualifier === 'more_than' || valueQualifier === 'at_least') {
+    return `${escapeHtml(translate('components.giving.atLeast'))} `;
+  }
+  if (valueQualifier === 'about') {
+    return `${escapeHtml(translate('components.giving.about'))} `;
+  }
+  return '';
+}
+
+function formatQualifiedValue(
+  entry: GivingProvenance,
+  value: string,
+  translate: GivingTranslate,
+): string {
+  return `${qualifierPrefix(entry.valueQualifier, translate)}${value}`;
+}
+
 function platformProvenance(data: GivingSummary, platform: string): GivingProvenance | undefined {
   return data.provenance.find((entry) =>
     entry.sourceName === platform
@@ -67,30 +85,17 @@ function contextProvenance(data: GivingSummary, metricPath: string): GivingProve
     entry.coveredMetricPaths.some((path) => path.includes(metricPath)));
 }
 
-function annualizedClaimValue(entry: GivingProvenance): number {
-  if (
-    entry.status !== 'verified'
-    || !entry.includedInHighlightedAggregate
-    || entry.reportedUnit !== 'USD'
-    || !Number.isFinite(entry.reportedValue)
-    || entry.reportedValue <= 0
-  ) {
-    return 0;
-  }
-  if (entry.denominator === 'year') return entry.reportedValue;
-  if (entry.denominator === 'week') return entry.reportedValue * 52;
-  return 0;
-}
-
 function renderAggregate(data: GivingSummary, translate: GivingTranslate): string {
   const contributors = data.provenance.filter((entry) =>
     entry.includedInHighlightedAggregate && entry.status === 'verified');
   const atLeast = contributors.some((entry) =>
     entry.valueQualifier === 'more_than' || entry.valueQualifier === 'at_least');
-  const annualized = contributors.reduce((total, entry) => total + annualizedClaimValue(entry), 0);
-  const annualizedDaily = annualized / 365;
+  const annualizedDaily = Number.isFinite(data.estimatedDailyFlowUsd) && data.estimatedDailyFlowUsd > 0
+    ? data.estimatedDailyFlowUsd
+    : 0;
+  const annualized = annualizedDaily * 365;
   const value = annualized > 0 ? formatCurrency(annualized) : translate('components.giving.sourceNotVerified');
-  const qualifier = atLeast ? `${escapeHtml(translate('components.giving.atLeast'))} ` : '';
+  const qualifier = atLeast ? qualifierPrefix('at_least', translate) : '';
   const sources = contributors
     .map((entry) => `${entry.sourceName} · ${entry.referencePeriod}`)
     .join(' · ');
@@ -121,22 +126,19 @@ function renderPlatforms(data: GivingSummary, translate: GivingTranslate): strin
       benchmark = `<span class="giving-unverified">${escapeHtml(translate('components.giving.sourceNotVerified'))}</span>`;
     } else if (evidence.status === 'partially_verified') {
       benchmark = `
-        <span class="giving-benchmark-value">${formatReportedValue(evidence)}</span>
+        <span class="giving-benchmark-value">${formatQualifiedValue(evidence, formatReportedValue(evidence), translate)}</span>
         <span class="giving-benchmark-kind">${escapeHtml(translate('components.giving.partialEstimate'))}</span>
         <span class="giving-methodology-note">${escapeHtml(evidence.notes)}</span>`;
     } else if (evidence.denominator.includes('cumulative')) {
       benchmark = `
-        <span class="giving-benchmark-value">${formatReportedValue(evidence)}</span>
+        <span class="giving-benchmark-value">${formatQualifiedValue(evidence, formatReportedValue(evidence), translate)}</span>
         <span class="giving-benchmark-kind">${escapeHtml(translate('components.giving.reportedCumulative'))}</span>`;
     } else {
       const value = platform.dailyVolumeUsd > 0
         ? formatCurrency(platform.dailyVolumeUsd * 365)
         : formatReportedValue(evidence);
-      const qualifier = evidence.valueQualifier === 'more_than'
-        ? `${escapeHtml(translate('components.giving.atLeast'))} `
-        : '';
       benchmark = `
-        <span class="giving-benchmark-value">${qualifier}${value}</span>
+        <span class="giving-benchmark-value">${formatQualifiedValue(evidence, value, translate)}</span>
         <span class="giving-benchmark-kind">${escapeHtml(translate('components.giving.trackedAnnualized'))}</span>`;
     }
 
@@ -198,7 +200,9 @@ function renderInstitutionalMetric(
   return `
     <div class="giving-stat-box">
       <span class="${verified ? 'giving-stat-value' : 'giving-unverified'}">
-        ${verified && evidence ? formatReportedValue(evidence) : escapeHtml(translate('components.giving.sourceNotVerified'))}
+        ${verified && evidence
+          ? formatQualifiedValue(evidence, formatReportedValue(evidence), translate)
+          : escapeHtml(translate('components.giving.sourceNotVerified'))}
       </span>
       <span class="giving-stat-label">${escapeHtml(label)}</span>
       ${evidence ? renderSourceMeta(evidence) : ''}

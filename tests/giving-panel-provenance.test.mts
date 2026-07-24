@@ -13,10 +13,11 @@ const copy: Record<string, string> = {
   'components.giving.status.partial': 'Published benchmarks with partial source coverage.',
   'components.giving.status.published': 'Published benchmarks with verified source coverage.',
   'components.giving.status.legacy': 'Legacy snapshot; source details are unavailable.',
-  'components.giving.status.cached': 'Showing a cached verified snapshot; refresh unavailable.',
+  'components.giving.status.cached': 'Showing a cached snapshot; refresh unavailable.',
   'components.giving.trackedAnnualized': 'Tracked platform giving — annualized estimate',
   'components.giving.annualizedDaily': 'Annualized daily estimate',
   'components.giving.atLeast': 'At least',
+  'components.giving.about': 'About',
   'components.giving.sourceNotVerified': 'Source not verified',
   'components.giving.partialEstimate': 'Partially verified estimate',
   'components.giving.reportedCumulative': 'Reported cumulative total',
@@ -148,6 +149,25 @@ function summary(overrides: Partial<GivingSummary> = {}): GivingSummary {
         derivation: 'Reported annual amount.',
       },
       {
+        subject: 'Candid grants represented annually',
+        sourceName: 'Candid',
+        sourceUrl: 'https://candid.org/about/our-data/grants-data-fact-sheet/',
+        referencePeriod: 'Current fact sheet accessed 2026-07-24',
+        sourcePublishedAt: '',
+        measurementBasis: 'Published approximate annual grants-data coverage',
+        status: 'verified',
+        coveredMetricPaths: ['summary.institutional.candid_grants_tracked'],
+        includedInHighlightedAggregate: false,
+        reportedValue: 3_000_000,
+        reportedUnit: 'grants',
+        notes: 'Candid data represents about 3 million grants annually.',
+        valueQualifier: 'about',
+        sourceLocator: 'Grants data fact sheet',
+        accessedAt: '2026-07-24',
+        denominator: 'year',
+        derivation: 'No derivation.',
+      },
+      {
         subject: 'Unsafe legacy source',
         sourceName: 'Unsafe source',
         sourceUrl: 'http://example.com/source',
@@ -178,7 +198,8 @@ describe('Giving panel provenance rendering', () => {
     assert.match(html, /At least[\s\S]*\$2\.7B/);
     assert.match(html, /Annualized daily estimate/);
     assert.match(html, /GoFundMe · Average week across 2023-2024/);
-    assert.match(html, /GBP 7\.0B[\s\S]*Reported cumulative total/);
+    assert.match(html, /GoFundMe[\s\S]*At least \$2\.6B[\s\S]*Tracked platform giving/);
+    assert.match(html, /At least GBP 7\.0B[\s\S]*Reported cumulative total/);
     assert.doesNotMatch(html, /Activity Index|24h|\/hr|Trending|Fresh|wallet|velocity/i);
     assert.doesNotMatch(html, />stable</i);
     assert.match(html, /<details class="giving-methodology" open>/);
@@ -206,6 +227,25 @@ describe('Giving panel provenance rendering', () => {
     assert.doesNotMatch(html, /<details class="giving-methodology" open>/);
   });
 
+  it('uses evidence-neutral disclosure for cached partial estimates', () => {
+    const html = renderGivingPanelContent(summary({
+      availability: 'cached-refresh-unavailable',
+      dataMode: 'partial_estimate',
+    }), 'platforms', tr);
+    assert.match(html, /Showing a cached snapshot; refresh unavailable\./);
+    assert.doesNotMatch(html, /cached verified snapshot/i);
+    assert.match(html, /<details class="giving-methodology" open>/);
+  });
+
+  it('renders headline amounts from the API aggregate even when provenance amounts diverge', () => {
+    const html = renderGivingPanelContent(summary({
+      estimatedDailyFlowUsd: 1_000_000,
+    }), 'platforms', tr);
+    assert.match(html, /At least[\s\S]*\$365\.0M/);
+    assert.match(html, /\$1\.0M[\s\S]*Annualized daily estimate/);
+    assert.doesNotMatch(html, /At least \$2\.7B/);
+  });
+
   it('shows source-not-verified without a numeric category claim', () => {
     const withCategory = summary({
       categories: [{
@@ -222,13 +262,20 @@ describe('Giving panel provenance rendering', () => {
     assert.doesNotMatch(html, /33\.0%/);
   });
 
+  it('renders approximate institutional qualifiers at the point of use', () => {
+    const html = renderGivingPanelContent(summary(), 'institutional', tr);
+    assert.match(html, /About 3\.0M grants[\s\S]*Candid grants represented/);
+  });
+
   it('labels partially verified platform values with a caveat and excludes them from the headline', () => {
     const partial = summary();
+    partial.estimatedDailyFlowUsd = 84_000_000 / 365;
     partial.provenance = partial.provenance.map((entry) =>
       entry.sourceName === 'GoFundMe'
         ? { ...entry, status: 'partially_verified', notes: 'The denominator remains under review.' }
         : entry);
     const html = renderGivingPanelContent(partial, 'platforms', tr);
+    assert.match(html, /At least \$50\.0M[\s\S]*Partially verified estimate/);
     assert.match(html, /Partially verified estimate/);
     assert.match(html, /The denominator remains under review\./);
     assert.match(html, /At least \$84\.0M/);

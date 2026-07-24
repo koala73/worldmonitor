@@ -1,5 +1,8 @@
 import { Panel } from './Panel';
-import type { GivingSummary } from '@/services/giving';
+import {
+  GIVING_STALE_CEILING_MS,
+  type GivingSummary,
+} from '@/services/giving/model';
 import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import {
@@ -11,6 +14,7 @@ import type { GivingTab } from './giving-renderer';
 export class GivingPanel extends Panel {
   private data: GivingSummary | null = null;
   private activeTab: GivingTab = 'platforms';
+  private expiryTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
 
   constructor() {
     super({
@@ -24,13 +28,45 @@ export class GivingPanel extends Panel {
   }
 
   public setData(data: GivingSummary): void {
+    if (!this.scheduleExpiry(data.materializedAt)) {
+      this.showUnavailable();
+      return;
+    }
+
     this.data = data;
+    this.setErrorState(false);
     this.setCount(data.platforms.length);
     this.renderContent();
   }
 
+  public showUnavailable(): void {
+    this.clearExpiryTimer();
+    this.data = null;
+    this.setCount(0);
+    this.showError();
+  }
+
   public hasData(): boolean {
     return this.data !== null;
+  }
+
+  private scheduleExpiry(materializedAtValue: string): boolean {
+    this.clearExpiryTimer();
+    const materializedAt = Date.parse(materializedAtValue);
+    const expiresInMs = materializedAt + GIVING_STALE_CEILING_MS - Date.now();
+    if (!Number.isFinite(materializedAt) || expiresInMs <= 0) return false;
+
+    this.expiryTimer = globalThis.setTimeout(() => {
+      this.expiryTimer = null;
+      this.showUnavailable();
+    }, expiresInMs);
+    return true;
+  }
+
+  private clearExpiryTimer(): void {
+    if (this.expiryTimer === null) return;
+    globalThis.clearTimeout(this.expiryTimer);
+    this.expiryTimer = null;
   }
 
   private renderContent(): void {
@@ -52,5 +88,10 @@ export class GivingPanel extends Panel {
         this.renderContent();
       });
     });
+  }
+
+  public override destroy(): void {
+    this.clearExpiryTimer();
+    super.destroy();
   }
 }
