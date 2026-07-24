@@ -170,6 +170,7 @@ export async function attachEnsembleProbabilities(snapshot, options = {}) {
   const ranked = [...bets].sort((a, b) => (b.userValueScore || 0) - (a.userValueScore || 0)).slice(0, topK);
   let attempted = 0;
   let ensembled = 0;
+  let partial = 0;
   let skipped = 0;
   for (const bet of ranked) {
     if (openEnsembleIds.has(bet.id)) { skipped += 1; continue; }
@@ -182,22 +183,29 @@ export async function attachEnsembleProbabilities(snapshot, options = {}) {
         news,
         marketPrice: bet.calibration?.marketPrice,
       }, options.callLLM, { deadlineMs, cache: options.cache, stageBudgetMs: options.stageBudgetMs });
-      if (result.source === 'ensemble' && Number.isFinite(result.probability)) {
+      // A partial round (1-2 finite passes) is still better evidence than the
+      // base rate, but it attaches under its OWN provenance: only a full
+      // 'ensemble' pins the open ledger window (skip + no-downgrade guard), so
+      // an 'ensemble_partial' bet is re-scored next run and upgradeable.
+      if ((result.source === 'ensemble' || result.source === 'ensemble_partial') && Number.isFinite(result.probability)) {
         bet.probability = result.probability;
-        bet.probabilitySource = 'ensemble';
+        bet.probabilitySource = result.source;
         bet.passes = result.passes;
       }
       if (result.source === 'ensemble') ensembled += 1;
+      else if (result.source === 'ensemble_partial') partial += 1;
     } catch (err) {
       console.warn(`  [bets] ensemble failed for ${bet.id}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
-  return { attempted, ensembled, skipped };
+  return { attempted, ensembled, partial, skipped };
 }
 
-// Ids of pending ledger entries whose open window already carries an
+// Ids of pending ledger entries whose open window already carries a FULL
 // ensemble-sourced probability (re-scoring them would be wasted spend — the
 // resolver's updateOpenWindow guard would ignore a downgrade anyway).
+// 'ensemble_partial' windows are deliberately NOT indexed: a degraded 1-2 pass
+// round must be retried until a full round lands.
 export function collectOpenEnsembleIds(ledger) {
   const entries = ledger && typeof ledger === 'object'
     ? (Array.isArray(ledger) ? ledger : Object.values(ledger.data ?? ledger))
@@ -269,7 +277,7 @@ async function main() {
         topK: ENSEMBLE_TOP_K,
         deadlineMs: Date.now() + ENSEMBLE_BUDGET_MS,
       });
-      console.log(`  [bets] ensemble: attempted=${stats.attempted} ensembled=${stats.ensembled} skipped-open=${stats.skipped} (K=${ENSEMBLE_TOP_K})`);
+      console.log(`  [bets] ensemble: attempted=${stats.attempted} ensembled=${stats.ensembled} partial=${stats.partial} skipped-open=${stats.skipped} (K=${ENSEMBLE_TOP_K})`);
     } catch (err) {
       console.warn(`  [bets] ensemble stage failed (bets keep base-rate): ${err instanceof Error ? err.message : String(err)}`);
     }

@@ -78,11 +78,12 @@ describe('eligibleMarkets + slot templates', () => {
     assert.equal(bets[0].marketSlug, 'bigger'); // slot 0 = highest volume
   });
 
-  it('parses adversarial titles through the metricKey grammar', () => {
+  it('keys the metricKey on the stable slug, not the mutable title', () => {
     const tricky = market({ title: 'Will X (or Y==Z) happen?', url: 'https://polymarket.com/event/tricky' });
     const bets = generateBets(MARKET_BET_TEMPLATES, { [MARKET_FEED]: feedFixture([tricky]) }, NOW);
     const parsed = parseMetricKey(bets[0].resolution.metricKey);
-    assert.equal(parsed.value, 'Will X (or Y==Z) happen?');
+    assert.equal(parsed.field, 'slug');
+    assert.equal(parsed.value, 'tricky');
   });
 });
 
@@ -126,6 +127,43 @@ describe('market bets resolve via the settlement feed (pend → settle → resol
     const res = resolveHardSpec(entry, [], [], entry.deadline + MARKET_SETTLEMENT_MAX_LAG_MS + 1);
     assert.equal(res.outcome, 'VOID');
     assert.equal(res.evidence.reason, 'value_source_never_settled');
+  });
+
+  it('settlement identity survives a title WITHOUT a trailing question mark (review #1)', async () => {
+    // Venue titles are often statements ("Fed cuts rates in September") while the
+    // bet question/title gets a '?' appended — the loader-written record must
+    // still match the spec end-to-end or every such bet VOIDs after grace.
+    const statement = market({ title: 'Fed cuts rates in September 2026', url: 'https://polymarket.com/event/fed-statement' });
+    const bets = generateBets(MARKET_BET_TEMPLATES, { [MARKET_FEED]: feedFixture([statement]) }, NOW);
+    const ledger = ingestHistory({}, [{ generatedAt: NOW, predictions: bets }], NOW);
+    const entry = Object.values(ledger)[0];
+    const writes = [];
+    await updateMarketSettlements(ledger, entry.deadline + DAY_MS, {
+      fetchSettlement: async () => 100,
+      readJson: async () => null,
+      writeJson: async (_key, value) => { writes.push(value); },
+    });
+    assert.equal(writes.length, 1);
+    const feed = shapeResolutionFeed(MARKET_SETTLEMENT_FEED, writes[0]);
+    const res = resolveHardSpec(entry, feed, [], entry.deadline + DAY_MS);
+    assert.equal(res.status, 'resolved');
+    assert.equal(res.outcome, 'YES');
+  });
+});
+
+describe('open-window merge tracks the venue endDate (review #4)', () => {
+  it('advances deadline + spec.deadline when the venue moves endDate on re-ingest', () => {
+    const first = generateBets(MARKET_BET_TEMPLATES, { [MARKET_FEED]: feedFixture() }, NOW);
+    const ledger = ingestHistory({}, [{ generatedAt: NOW, predictions: first }], NOW);
+    const movedEndDate = new Date(NOW + 30 * DAY_MS).toISOString();
+    const moved = generateBets(MARKET_BET_TEMPLATES, {
+      [MARKET_FEED]: feedFixture([market({ endDate: movedEndDate })], { fetchedAt: NOW + DAY_MS }),
+    }, NOW + DAY_MS);
+    const after = ingestHistory(ledger, [{ generatedAt: NOW + DAY_MS, predictions: moved }], NOW + DAY_MS);
+    assert.equal(Object.values(after).length, 1); // merged, not duplicated
+    const entry = Object.values(after)[0];
+    assert.equal(entry.deadline, Date.parse(movedEndDate));
+    assert.equal(entry.spec.deadline, Date.parse(movedEndDate));
   });
 });
 
@@ -186,6 +224,21 @@ describe('settlement parsing + loader', () => {
     assert.deepEqual(statsNotDue, { fetched: 0, settled: 0 });
     assert.equal(fetches, 0);
   });
+
+  it('fails CLOSED when the settlement feed read errors — never rebuilds from empty (review #2)', async () => {
+    const bets = generateBets(MARKET_BET_TEMPLATES, { [MARKET_FEED]: feedFixture() }, NOW);
+    const ledger = ingestHistory({}, [{ generatedAt: NOW, predictions: bets }], NOW);
+    const writes = [];
+    const stats = await updateMarketSettlements(ledger, Date.parse(market().endDate) + DAY_MS, {
+      fetchSettlement: async () => 100,
+      readJson: async () => { throw new Error('redis blip'); },
+      writeJson: async (_key, value) => { writes.push(value); },
+    });
+    // A read failure is indistinguishable from a populated feed: writing would
+    // full-document SET an empty records array and wipe prior adjudications.
+    assert.deepEqual(stats, { fetched: 0, settled: 0 });
+    assert.equal(writes.length, 0);
+  });
 });
 
 describe('settlement ambiguity guard (Greptile #5526)', () => {
@@ -199,6 +252,19 @@ describe('settlement ambiguity guard (Greptile #5526)', () => {
     // The saved bet title matches neither child — settling on "first closed"
     // would grade with another market's outcome. Must stay pending (null).
     assert.equal(parseGammaSettlement(events, 'Will there be no change in Fed rates?'), null);
+  });
+
+  it('title-matches across the appended question mark (review #1)', () => {
+    // The bet title is normalizeQuestion(venue title) — '?' appended when the
+    // venue used a statement. Disambiguation must tolerate that transform, or a
+    // multi-market event never matches and the bet VOIDs.
+    const events = [{
+      markets: [
+        { question: 'Fed cuts rates in September 2026', closed: true, outcomes: '["Yes","No"]', outcomePrices: '["1","0"]' },
+        { question: 'Fed raises rates in September 2026', closed: true, outcomes: '["Yes","No"]', outcomePrices: '["0","1"]' },
+      ],
+    }];
+    assert.equal(parseGammaSettlement(events, 'Fed cuts rates in September 2026?'), 100);
   });
 
   it('still settles a single-market event when the title drifted', () => {

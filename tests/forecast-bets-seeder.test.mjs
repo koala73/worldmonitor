@@ -242,13 +242,33 @@ describe('Phase-2: baselines + ensemble stage (#5525 U13)', () => {
     assert.equal(callLLM.calls.length, 0);
   });
 
-  it('collectOpenEnsembleIds indexes only pending ensemble-sourced entries', () => {
+  it('collectOpenEnsembleIds indexes only pending FULL-ensemble entries — partials retry (review #3)', () => {
     const ids = collectOpenEnsembleIds({
       a: { id: 'x', status: 'pending', probabilitySource: 'ensemble' },
       b: { id: 'y', status: 'pending', probabilitySource: 'base_rate' },
       c: { id: 'z', status: 'resolved', probabilitySource: 'ensemble' },
+      d: { id: 'w', status: 'pending', probabilitySource: 'ensemble_partial' },
     });
     assert.deepEqual([...ids], ['x']);
+  });
+
+  it('a partial round attaches as ensemble_partial so the open window is not frozen (review #3)', async () => {
+    const snap = buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: { _seed: { fetchedAt: NOW }, data: eiaFixture() } }, NOW, {});
+    let call = 0;
+    const partialLLM = async (_system, _user, options = {}) => {
+      call += 1;
+      if (options.stage === 'ensemble_inside_view') return { text: 'no probability here' };
+      return { text: JSON.stringify({ probability: 0.7, rationale: 'test' }), provider: 'double', model: 'double' };
+    };
+    const stats = await attachEnsembleProbabilities(snap, { callLLM: partialLLM, topK: 1, deadlineMs: Date.now() + 60_000, cache: createEnsembleCache() });
+    assert.equal(stats.ensembled, 0);
+    assert.equal(stats.partial, 1);
+    const bet = snap.predictions.find((b) => b.probabilitySource === 'ensemble_partial');
+    assert.ok(bet, 'partial result attached under its own provenance');
+    assert.equal(bet.probability, 0.7);
+    assert.equal(bet.baselineProbability, 0.4); // baseline retained
+    assert.equal(bet.passes.length, 3);
+    assert.ok(call >= 3);
   });
 });
 
@@ -290,5 +310,42 @@ describe('Phase-2: resolver ingest pass-through + no-downgrade guard (#5525 KTD5
     second.generatedAt = NOW + 60_000;
     const after = ingestHistory(ledger, [second], NOW + 60_000);
     assert.equal(Object.values(after)[0].probability, 0.45); // base→base updates
+  });
+
+  it('a later FULL ensemble upgrades a partial entry; a later partial never downgrades a full (review #3)', () => {
+    // partial → full: upgrade allowed, passes carried through the merge.
+    const partial = betSnapshot({ probabilitySource: 'ensemble_partial', probability: 0.6, passes: [{ name: 'p', probability: 0.6 }, { name: 'q', probability: null }] });
+    let ledger = ingestHistory({}, [partial], NOW);
+    const full = betSnapshot({ probabilitySource: 'ensemble', probability: 0.7, passes: [{ name: 'a', probability: 0.7 }] });
+    for (const bet of full.predictions) bet.generatedAt = NOW + 60_000;
+    full.generatedAt = NOW + 60_000;
+    ledger = ingestHistory(ledger, [full], NOW + 60_000);
+    let entry = Object.values(ledger)[0];
+    assert.equal(entry.probability, 0.7);
+    assert.equal(entry.probabilitySource, 'ensemble');
+    assert.equal(entry.passes.length, 1); // merged forecast's passes copied
+
+    // full → partial: the no-downgrade guard holds.
+    const laterPartial = betSnapshot({ probabilitySource: 'ensemble_partial', probability: 0.5 });
+    for (const bet of laterPartial.predictions) bet.generatedAt = NOW + 120_000;
+    laterPartial.generatedAt = NOW + 120_000;
+    ledger = ingestHistory(ledger, [laterPartial], NOW + 120_000);
+    entry = Object.values(ledger)[0];
+    assert.equal(entry.probability, 0.7);
+    assert.equal(entry.probabilitySource, 'ensemble');
+  });
+
+  it('non-market deadlines never creep on re-ingest (guard for review #4 scope)', () => {
+    // Energy horizons are wall-clock derived: a next-day run generates a later
+    // deadline for the same id. The merge must NOT advance the open window's
+    // deadline or daily reruns would keep the bet open forever.
+    const first = betSnapshot();
+    const ledger = ingestHistory({}, [first], NOW);
+    const entryBefore = Object.values(ledger)[0];
+    const nextDay = buildBetsSnapshot({ [EIA_PETROLEUM_FEED]: { _seed: { fetchedAt: NOW + DAY_MS }, data: eiaFixture() } }, NOW + DAY_MS, {});
+    const after = ingestHistory(ledger, [nextDay], NOW + DAY_MS);
+    const entryAfter = Object.values(after).find((e) => e.key === entryBefore.key);
+    assert.equal(entryAfter.deadline, entryBefore.deadline);
+    assert.equal(entryAfter.spec.deadline, entryBefore.spec.deadline);
   });
 });

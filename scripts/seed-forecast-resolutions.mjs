@@ -1008,8 +1008,23 @@ function updateOpenWindow(entry, forecast, generatedAt, snapshotAt) {
       entry.probability = probability;
       if (typeof forecast.probabilitySource === 'string') entry.probabilitySource = forecast.probabilitySource;
       if (Number.isFinite(Number(forecast.baselineProbability))) entry.baselineProbability = Number(forecast.baselineProbability);
-      if (forecastIsEnsemble && Array.isArray(forecast.passes)) entry.passes = cloneJson(forecast.passes);
+      // Copy passes for full AND partial ensemble runs ('ensemble_partial'
+      // carries the failed passes too — KTD1 post-hoc calibration needs them).
+      const forecastRanEnsemble = typeof forecast.probabilitySource === 'string' && forecast.probabilitySource.startsWith('ensemble');
+      if (forecastRanEnsemble && Array.isArray(forecast.passes)) entry.passes = cloneJson(forecast.passes);
     }
+  }
+  // Market-settlement bets track the venue's CURRENT endDate: venues move
+  // close dates, and freezing the first-seen deadline would run the settlement
+  // clock (and its 14d VOID grace) against a date the venue no longer honors.
+  // Scoped to the settlement feed — other domains derive deadlines from
+  // wall-clock horizons, so advancing them would keep windows open forever.
+  const incomingDeadline = Number(forecast.resolution?.deadline);
+  if (entry.spec?.sourceFeed === MARKET_SETTLEMENT_FEED_KEY
+    && Number.isFinite(incomingDeadline)
+    && incomingDeadline !== Number(entry.deadline)) {
+    entry.deadline = incomingDeadline;
+    entry.spec.deadline = incomingDeadline;
   }
   entry.lastSeenAt = Math.max(Number(entry.lastSeenAt || 0), snapshotAt);
 }
@@ -1209,7 +1224,10 @@ export function parseKalshiSettlement(marketJson) {
 }
 
 function normalizeTitle(value) {
-  return String(value ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+  // Trailing '?' is stripped because the bet title is normalizeQuestion(venue
+  // title) — a '?' appended to statement-form titles. Without this, such a bet
+  // never title-matches its own market in a multi-market event and VOIDs.
+  return String(value ?? '').trim().toLowerCase().replace(/\s+/g, ' ').replace(/[?\s]+$/, '');
 }
 
 function parseJsonArray(value) {
@@ -1266,7 +1284,18 @@ export async function updateMarketSettlements(ledger, nowMs, options = {}) {
     && typeof entry.marketSlug === 'string' && entry.marketSlug);
   if (!due.length) return { fetched: 0, settled: 0 };
 
-  const existing = await Promise.resolve(readJson(MARKET_SETTLEMENT_FEED_KEY)).catch(() => null);
+  // Fail CLOSED on a read ERROR (distinct from "key absent", which readJson
+  // reports as null): an unreadable feed is indistinguishable from a populated
+  // one, and rebuilding from [] would full-document SET away every prior
+  // adjudication. Skip the cycle instead — bets stay pending inside the
+  // settlement grace and the next run self-heals.
+  let existing;
+  try {
+    existing = await Promise.resolve(readJson(MARKET_SETTLEMENT_FEED_KEY));
+  } catch (err) {
+    console.warn(`  [forecast-resolutions] settlement feed read failed — skipping settlement cycle: ${err?.message || err}`);
+    return { fetched: 0, settled: 0 };
+  }
   const records = Array.isArray(existing?.records) ? [...existing.records] : [];
   const have = new Set(records.map((r) => r?.slug).filter(Boolean));
   const targets = due.filter((entry) => !have.has(entry.marketSlug)).slice(0, SETTLEMENT_FETCH_CAP_PER_RUN);

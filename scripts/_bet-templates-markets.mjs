@@ -101,7 +101,11 @@ function buildSlotTemplate(slot) {
         // Resolution targets the SETTLEMENT feed (KTD2): the bootstrap feed can
         // never carry a settled price. `crosses` with fn yesPrice resolves
         // YES iff settled yesPrice >= threshold (existing eval semantics).
-        metricKey: `${MARKET_SETTLEMENT_FEED}|yesPrice(market==${metric.subject})`,
+        // Identity is the venue SLUG end-to-end: titles are mutable and the
+        // ledger title goes through normalizeQuestion (appends '?'), so a
+        // title-keyed match would miss the loader-written record and VOID
+        // after the settlement grace.
+        metricKey: `${MARKET_SETTLEMENT_FEED}|yesPrice(slug==${metric.slug})`,
         operator: 'crosses',
         threshold: 50,
         baselineValue: round2(metric.value),
