@@ -33,7 +33,7 @@ export const BASELINE_ADVISORIES_BY_LOCKFILE = {
   // `overrides` pin bump) would drag an otherwise-untouched public/pro/ rebuild
   // into a lockfile-hygiene change. Baselined rather than patched here; drop it
   // once react-native leaves pro-test's tree. (GHSA-qjx8/w24r predate this.)
-  'pro-test/package-lock.json': ['GHSA-qjx8-664m-686j', 'GHSA-w24r-5266-9c3c', 'GHSA-395f-4hp3-45gv'],
+  'pro-test/package-lock.json': ['GHSA-395f-4hp3-45gv'],
   'scripts/package-lock.json': [],
   'docker/runtime-package-lock.json': [],
 };
