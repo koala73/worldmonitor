@@ -655,7 +655,7 @@ function pageDocument({
 ${body}
     </main>
     <footer>World Monitor reference corpus. Crawlable pages use committed snapshots; live API results are labelled separately.</footer>
-    ${scriptSrcs.map((src) => `<script type="module" src="${escapeHtml(src)}"></script>`).join('\n    ')}
+    ${scriptSrcs.map((src) => `<script type="module" nonce="wm-static-bootstrap" src="${escapeHtml(src)}"></script>`).join('\n    ')}
   </body>
 </html>
 `;

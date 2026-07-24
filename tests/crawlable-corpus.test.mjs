@@ -21,6 +21,16 @@ function jsonLdObjects(html) {
     .map(([, raw]) => JSON.parse(raw));
 }
 
+function productionScriptNonce() {
+  const config = JSON.parse(readFileSync(join(repoRoot, 'vercel.json'), 'utf8'));
+  const csp = config.headers
+    .flatMap((rule) => rule.headers || [])
+    .find((header) => header.key === 'Content-Security-Policy' && header.value.includes("'strict-dynamic'"));
+  const nonce = csp?.value.match(/'nonce-([^']+)'/)?.[1];
+  assert.ok(nonce, 'production CSP must declare a strict-dynamic script nonce');
+  return nonce;
+}
+
 describe('crawlable corpus generator', () => {
   it('builds a non-trivial static corpus with canonical raw HTML pages', async () => {
     const outDir = mkdtempSync(join(tmpdir(), 'wm-crawlable-corpus-'));
@@ -35,6 +45,7 @@ describe('crawlable corpus generator', () => {
       assert.equal(manifest.sections.chokepoints.count, 13);
       assert.equal(manifest.sections.crises.count, 4);
       assert.equal(manifest.sections.tools.count, 2);
+      const liveScriptTag = `<script type="module" nonce="${productionScriptNonce()}" src="/tools/live-tools.js"></script>`;
       assert.ok(manifest.sections.changelog.count >= 2, `expected paginated changelog pages, got ${manifest.sections.changelog.count}`);
       assert.ok(manifest.sections.glossary.count >= 15, `expected existing glossary manifest entries, got ${manifest.sections.glossary.count}`);
 
@@ -69,7 +80,7 @@ describe('crawlable corpus generator', () => {
       assert.match(norway, /data-live-country-risk data-country-code="NO" data-country-name="Norway"/);
       assert.match(norway, /Instability is a fast-moving composite/);
       assert.match(norway, /the two scores should not be combined/);
-      assert.match(norway, /<script type="module" src="\/tools\/live-tools\.js"><\/script>/);
+      assert.ok(norway.includes(liveScriptTag), 'country live script must match the production CSP nonce');
       // Deep-link CTA into the live map (opens the maximized country brief). `&` is HTML-escaped.
       assert.match(norway, /<a class="cta" href="https:\/\/www\.worldmonitor\.app\/\?country=NO&amp;expanded=1">Open Norway on the live map/);
 
@@ -102,7 +113,7 @@ describe('crawlable corpus generator', () => {
       assert.match(hormuz, /href="\/blog\/glossary\/strait-of-hormuz\/"/);
       assert.match(hormuz, /data-live-chokepoint data-chokepoint-id="hormuz_strait"/);
       assert.match(hormuz, /traffic-light badge is a disruption score, not an operational closure declaration/i);
-      assert.match(hormuz, /<script type="module" src="\/tools\/live-tools\.js"><\/script>/);
+      assert.ok(hormuz.includes(liveScriptTag), 'chokepoint live script must match the production CSP nonce');
       assert.doesNotMatch(hormuz, /id="app"/, 'chokepoint page must be raw static HTML, not the SPA shell');
 
       const hormuzLd = jsonLdObjects(hormuz);
@@ -122,7 +133,7 @@ describe('crawlable corpus generator', () => {
       assert.match(redSea, /data-country-code="YE" data-country-name="Yemen"/);
       assert.match(redSea, /Missing countries are unavailable, not zero/);
       assert.match(redSea, /HAPI\/HDX humanitarian conflict summaries/);
-      assert.match(redSea, /<script type="module" src="\/tools\/live-tools\.js"><\/script>/);
+      assert.ok(redSea.includes(liveScriptTag), 'crisis live script must match the production CSP nonce');
       assert.doesNotMatch(redSea, /id="app"/);
 
       const toolsIndex = read(outDir, 'tools/index.html');

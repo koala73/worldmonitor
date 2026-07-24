@@ -6,6 +6,7 @@ import {
   chokepointStatusViewModel,
   crisisTrackerViewModel,
   hazardPulseViewModel,
+  loadHazards,
   militaryFlightsViewModel,
   pointInBounds,
   requestLiveJson,
@@ -48,9 +49,22 @@ describe('crawlable live intelligence view models', () => {
       fetchedAt: NOW - 60_000,
       partial: true,
     });
+    const responsePartial = chokepointStatusViewModel({
+      ...payload,
+      upstreamUnavailable: true,
+      chokepoints: payload.chokepoints.map((row) => row.id === 'hormuz_strait'
+        ? {
+            ...row,
+            transitSummary: { dataAvailable: true, todayTotal: 11, wowChangePct: 2.5 },
+          }
+        : row),
+    }, 'hormuz_strait', NOW);
+    assert.equal(responsePartial.todayTransits, '11');
+    assert.equal(responsePartial.weekMovement, '+2.5% vs prior week');
+    assert.equal(responsePartial.partial, true);
     assert.throws(
-      () => chokepointStatusViewModel({ ...payload, upstreamUnavailable: true }, 'hormuz_strait', NOW),
-      /unavailable/i,
+      () => chokepointStatusViewModel({ chokepoints: [], upstreamUnavailable: true }, 'hormuz_strait', NOW),
+      /not present/i,
     );
     assert.throws(
       () => chokepointStatusViewModel(payload, 'panama', NOW),
@@ -204,6 +218,52 @@ describe('crawlable live intelligence view models', () => {
     assert.equal(filtered.categories, 'Earthquakes 1');
     assert.equal(filtered.strongest, '6.2 Mw');
     assert.equal(filtered.events[0].source, 'USGS');
+
+    assert.throws(
+      () => hazardPulseViewModel({
+        dataAvailable: true,
+        fetchedAt: NOW - 60_000,
+        events: [{ id: 'malformed', closed: false, lat: null, lon: 140, date: NOW - 60_000 }],
+      }, { now: NOW }),
+      /observations are malformed/i,
+    );
+
+    const boundedZero = hazardPulseViewModel({
+      dataAvailable: true,
+      fetchedAt: NOW - 60_000,
+      events: [{ id: 'outside-stale', closed: false, lat: 0, lon: 0, date: 0 }],
+    }, { now: NOW, bounds: [31, 129, 46, 146] });
+    assert.equal(boundedZero.total, '0');
+
+    const mixedUnits = hazardPulseViewModel({
+      dataAvailable: true,
+      fetchedAt: NOW - 60_000,
+      events: [
+        {
+          id: 'quake',
+          title: 'Earthquake',
+          categoryTitle: 'Earthquakes',
+          lat: 35,
+          lon: 140,
+          date: NOW - 60_000,
+          magnitude: 6.2,
+          magnitudeUnit: 'Mw',
+          sourceName: 'USGS',
+        },
+        {
+          id: 'storm',
+          title: 'Storm',
+          categoryTitle: 'Severe Storms',
+          lat: 34,
+          lon: 139,
+          date: NOW - 120_000,
+          magnitude: 80,
+          magnitudeUnit: 'kt',
+          sourceName: 'NHC',
+        },
+      ],
+    }, { now: NOW });
+    assert.equal(mixedUnits.strongest, 'Mixed units — see events');
   });
 
   it('keeps unknown airport coverage separate from disruption', () => {
@@ -371,6 +431,53 @@ describe('crawlable live intelligence view models', () => {
       requestLiveJson('/api/slow-body', { fetchImpl, timeoutMs: 10 }),
       /timed out/i,
     );
+  });
+
+  it('keeps the latest hazard handoff when its live request fails', async () => {
+    const select = {
+      value: 'JP',
+      selectedOptions: [{ dataset: { bounds: '31,129,46,146' } }],
+    };
+    const dashboardLink = { href: '/?country=NO&expanded=1' };
+    const tool = {
+      dataset: {},
+      querySelector(selector) {
+        if (selector === '[data-country-select]') return select;
+        return null;
+      },
+      querySelectorAll() {
+        return [];
+      },
+      ownerDocument: {
+        querySelector(selector) {
+          return selector === '[data-dashboard-link]' ? dashboardLink : null;
+        },
+      },
+    };
+    const replacedUrls = [];
+    const originalFetch = globalThis.fetch;
+    const originalWindow = globalThis.window;
+    globalThis.window = {
+      location: { href: 'https://www.worldmonitor.app/tools/natural-hazard-pulse/?country=NO' },
+      history: {
+        replaceState(_state, _title, url) {
+          replacedUrls.push(url);
+        },
+      },
+    };
+    globalThis.fetch = async () => {
+      throw new Error('offline');
+    };
+
+    try {
+      await loadHazards(tool);
+      assert.deepEqual(replacedUrls, ['/tools/natural-hazard-pulse/?country=JP']);
+      assert.equal(dashboardLink.href, '/?country=JP&expanded=1');
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalWindow === undefined) delete globalThis.window;
+      else globalThis.window = originalWindow;
+    }
   });
 
   it('commits counters, URL, and dashboard link only for the latest request', async () => {

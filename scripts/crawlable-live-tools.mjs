@@ -153,9 +153,6 @@ export function chokepointStatusViewModel(payload, chokepointId, now = Date.now(
   if (!payload || typeof payload !== 'object') {
     throw new Error('Chokepoint status response is not an object');
   }
-  if (payload.upstreamUnavailable === true) {
-    throw new Error('Chokepoint status upstream is unavailable');
-  }
   if (!Array.isArray(payload.chokepoints)) {
     throw new Error('Chokepoint status list is unavailable');
   }
@@ -195,7 +192,7 @@ export function chokepointStatusViewModel(payload, chokepointId, now = Date.now(
       ? null
       : `${weekMovement > 0 ? '+' : ''}${formatNumber(weekMovement)}% vs prior week`,
     fetchedAt,
-    partial: !transitAvailable || todayTotal === null,
+    partial: payload.upstreamUnavailable === true || !transitAvailable || todayTotal === null,
   };
 }
 
@@ -290,14 +287,22 @@ export function hazardPulseViewModel(payload, { now = Date.now(), bounds = null 
   const normalizedBounds = bounds === null ? null : normalizeBounds(bounds);
   if (bounds !== null && !normalizedBounds) throw new Error('Country bounds are invalid');
 
+  let malformedOpenEvents = 0;
   const events = payload.events
     .filter((event) => event && event.closed !== true)
     .map((event) => {
       const lat = finiteNumber(event.lat);
       const lon = finiteNumber(event.lon);
-      const date = validTimestamp(event.date, now);
-      if (lat === null || lon === null || date === null) return null;
+      if (lat === null || lon === null) {
+        malformedOpenEvents += 1;
+        return null;
+      }
       if (normalizedBounds && !pointInBounds(lat, lon, normalizedBounds)) return null;
+      const date = validTimestamp(event.date, now);
+      if (date === null) {
+        malformedOpenEvents += 1;
+        return null;
+      }
       const rawMagnitude = finiteNumber(event.magnitude);
       const magnitude = rawMagnitude !== null && rawMagnitude > 0 ? rawMagnitude : null;
       return {
@@ -314,6 +319,9 @@ export function hazardPulseViewModel(payload, { now = Date.now(), bounds = null 
     })
     .filter(Boolean)
     .sort((a, b) => b.date - a.date);
+  if (events.length === 0 && malformedOpenEvents > 0) {
+    throw new Error('Natural-hazard observations are malformed');
+  }
 
   const categoryCounts = new Map();
   for (const event of events) {
@@ -323,16 +331,22 @@ export function hazardPulseViewModel(payload, { now = Date.now(), bounds = null 
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .map(([category, count]) => `${category} ${count}`)
     .join(' · ');
-  const strongestEvent = events
-    .filter((event) => event.magnitude !== null)
-    .sort((a, b) => b.magnitude - a.magnitude)[0];
+  const magnitudeEvents = events.filter((event) => event.magnitude !== null);
+  const magnitudeDomains = new Set(
+    magnitudeEvents.map((event) => `${event.category}::${event.magnitudeUnit}`),
+  );
+  const strongestEvent = magnitudeDomains.size <= 1
+    ? [...magnitudeEvents].sort((a, b) => b.magnitude - a.magnitude)[0]
+    : null;
 
   return {
     total: formatNumber(events.length, 0),
     categories: categories || 'No current matches',
-    strongest: strongestEvent
-      ? `${formatNumber(strongestEvent.magnitude)}${strongestEvent.magnitudeUnit ? ` ${strongestEvent.magnitudeUnit}` : ''}`
-      : 'Not reported',
+    strongest: magnitudeDomains.size > 1
+      ? 'Mixed units — see events'
+      : strongestEvent
+        ? `${formatNumber(strongestEvent.magnitude)}${strongestEvent.magnitudeUnit ? ` ${strongestEvent.magnitudeUnit}` : ''}`
+        : 'Not reported',
     latestAt: events[0]?.date ?? null,
     fetchedAt,
     events: events.slice(0, MAX_RENDERED_ROWS),
@@ -795,7 +809,7 @@ async function loadCrisis(tool) {
   }
 }
 
-async function loadHazards(tool) {
+export async function loadHazards(tool) {
   const select = tool.querySelector('[data-country-select]');
   const bounds = selectedBounds(select);
   const selectedCode = String(select?.value || '');
@@ -804,6 +818,7 @@ async function loadHazards(tool) {
     setToolState(tool, 'error', 'Unsupported country');
     return;
   }
+  updateCountryQuery(select, dashboardLinkFor(tool));
   setToolState(tool, 'loading', 'Connecting…');
   try {
     await runLatestToolRequest(
@@ -823,7 +838,6 @@ async function loadHazards(tool) {
           `${event.title} · ${event.category} · ${event.source} · ${formatDateTime(event.date)}`
         ));
         setTime(tool, '[data-live-updated]', view.fetchedAt, 'Snapshot');
-        updateCountryQuery(select, dashboardLinkFor(tool));
         setToolState(tool, 'ready', 'API result');
       },
     );
