@@ -45,7 +45,7 @@ export class GivingPanel extends Panel {
     const statsHtml = `
       <div class="giving-stat-box giving-stat-index">
         <span class="giving-stat-value" style="color: ${indexColor}">${d.activityIndex}</span>
-        <span class="giving-stat-label">${t('components.giving.activityIndex')}</span>
+        <span class="giving-stat-label">${t('components.giving.activityIndex')} <span class="giving-fresh-badge giving-fresh-annual">annual</span></span>
       </div>
       <div class="giving-stat-box giving-stat-trend">
         <span class="giving-stat-value" style="color: ${trendColor}">${trendIcon} ${escapeHtml(d.trend)}</span>
@@ -53,7 +53,7 @@ export class GivingPanel extends Panel {
       </div>
       <div class="giving-stat-box giving-stat-daily">
         <span class="giving-stat-value">${formatCurrency(d.estimatedDailyFlowUsd)}</span>
-        <span class="giving-stat-label">${t('components.giving.estDailyFlow')}</span>
+        <span class="giving-stat-label">${t('components.giving.estDailyFlow')} <span class="giving-fresh-badge giving-fresh-annual">annual</span></span>
       </div>
       <div class="giving-stat-box giving-stat-crypto">
         <span class="giving-stat-value">${formatCurrency(d.crypto.dailyInflowUsd)}</span>

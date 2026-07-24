@@ -45,7 +45,7 @@ function getGoFundMeEstimate(): PlatformGiving {
     newCampaigns24h: 0,
     donationVelocity: 0,
     dataFreshness: 'annual',
-    lastUpdated: new Date().toISOString(),
+    lastUpdated: '2024-01-01T00:00:00.000Z',
   };
 }
 
@@ -67,7 +67,7 @@ function getGlobalGivingEstimate(): PlatformGiving {
     newCampaigns24h: 0,
     donationVelocity: 0,
     dataFreshness: 'annual',
-    lastUpdated: new Date().toISOString(),
+    lastUpdated: '2024-01-01T00:00:00.000Z',
   };
 }
 
@@ -83,7 +83,7 @@ function getJustGivingEstimate(): PlatformGiving {
     newCampaigns24h: 0,
     donationVelocity: 0,
     dataFreshness: 'annual',
-    lastUpdated: new Date().toISOString(),
+    lastUpdated: '2024-01-01T00:00:00.000Z',
   };
 }
 
