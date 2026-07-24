@@ -22,6 +22,7 @@ import {
   isPendingMarkerExpired,
   isProProductId,
   isProPlanKey,
+  deriveActivationAccountKey,
   deriveSubscriptionKey,
   isFireOnceActive,
   computeFireOnceRecord,
@@ -64,6 +65,8 @@ const DAY = 86_400_000;
 
 const USER_A = 'user_2abcAAA';
 const USER_B = 'user_2defBBB';
+const ACCOUNT_A = deriveActivationAccountKey(USER_A)!;
+const ACCOUNT_B = deriveActivationAccountKey(USER_B)!;
 
 const PRO_ID = DODO_PRODUCTS.PRO_MONTHLY;
 const PRO_ANNUAL_ID = DODO_PRODUCTS.PRO_ANNUAL;
@@ -82,7 +85,7 @@ function ent(overrides: Partial<ActivationEntitlementSnapshot> = {}): Activation
 function sub(
   overrides: Partial<ActivationSubscriptionSnapshot> = {},
 ): ActivationSubscriptionSnapshot {
-  return { id: 'sub_live_1', currentPeriodStart: NOW - DAY, ...overrides };
+  return { activationKey: 'sub_live_1', ...overrides };
 }
 
 function fireOnce(overrides: Partial<FireOnceRecord> = {}): FireOnceRecord {
@@ -96,7 +99,7 @@ function mountInput(overrides: Partial<ActivationMountInput> = {}): ActivationMo
     subscription: sub(),
     fireOnce: null,
     isDesktop: false,
-    currentUserId: null,
+    currentAccountKey: ACCOUNT_A,
     now: NOW,
     ...overrides,
   };
@@ -200,7 +203,7 @@ describe('decideActivationMount — snapshot settling race (#5494)', () => {
 
   it('subscription snapshot present but unkeyable (no id, no period-start) = keep', () => {
     const d = decideActivationMount(
-      mountInput({ subscription: { id: null, currentPeriodStart: null } }),
+      mountInput({ subscription: { activationKey: null } }),
     );
     assert.equal(d.action, 'keep');
   });
@@ -222,7 +225,7 @@ describe('decideActivationMount — fire-once per subscription (R3)', () => {
   it('fire-once for a DIFFERENT subscription id re-offers onboarding (win-back mounts)', () => {
     const d = decideActivationMount(
       mountInput({
-        subscription: sub({ id: 'sub_winback_2' }),
+        subscription: sub({ activationKey: 'sub_winback_2' }),
         fireOnce: fireOnce({ subscriptionKey: 'sub_live_1' }),
       }),
     );
@@ -236,72 +239,70 @@ describe('decideActivationMount — fire-once per subscription (R3)', () => {
     assert.equal(d.action, 'mount');
   });
 
-  it('keys off currentPeriodStart when the subscription id is absent', () => {
-    const d = decideActivationMount(
-      mountInput({ subscription: { id: null, currentPeriodStart: 123 } }),
-    );
-    assert.equal(d.action, 'mount');
-    assert.equal(d.action === 'mount' ? d.subscriptionKey : null, 'period:123');
-  });
 });
 
 describe('decideActivationMount — cross-account marker identity (#6)', () => {
-  it('marker without userId mounts regardless of signed-in user (legacy tolerance)', () => {
-    // A marker written before identity scoping carries no userId; it flows
-    // through the identity gate untouched and mounts on the live snapshot.
+  it('marker without an account key waits for a resolved account instead of mounting anonymously', () => {
     assert.equal(
-      decideActivationMount(mountInput({ marker: marker(), currentUserId: USER_A })).action,
+      decideActivationMount(mountInput({ marker: marker(), currentAccountKey: ACCOUNT_A })).action,
       'mount',
     );
     assert.equal(
-      decideActivationMount(mountInput({ marker: marker(), currentUserId: null })).action,
-      'mount',
+      decideActivationMount(mountInput({ marker: marker(), currentAccountKey: null })).action,
+      'keep',
     );
   });
 
-  it('marker with userId + same signed-in user mounts', () => {
+  it('marker with the same opaque account key mounts', () => {
     const d = decideActivationMount(
-      mountInput({ marker: marker({ userId: USER_A }), currentUserId: USER_A }),
+      mountInput({ marker: marker({ accountKey: ACCOUNT_A }), currentAccountKey: ACCOUNT_A }),
     );
     assert.equal(d.action, 'mount');
   });
 
-  it('marker with userId + auth still settling (currentUserId null) = keep, never mount/clear', () => {
+  it('scoped marker + auth still settling = keep, never mount/clear', () => {
     const d = decideActivationMount(
-      mountInput({ marker: marker({ userId: USER_A }), currentUserId: null }),
+      mountInput({ marker: marker({ accountKey: ACCOUNT_A }), currentAccountKey: null }),
     );
     assert.equal(d.action, 'keep');
   });
 
-  it('marker with userId + a DIFFERENT signed-in user = none (foreign marker: no mount, no clear)', () => {
+  it('a different account keeps the foreign marker for the buyer to revisit', () => {
     const d = decideActivationMount(
-      mountInput({ marker: marker({ userId: USER_A }), currentUserId: USER_B }),
+      mountInput({ marker: marker({ accountKey: ACCOUNT_A }), currentAccountKey: ACCOUNT_B }),
     );
-    assert.equal(d.action, 'none');
+    assert.equal(d.action, 'keep');
   });
 
   it('foreign-user identity gate precedes plan classification (a Pro marker for user A does not mount for user B)', () => {
     const d = decideActivationMount(
       mountInput({
-        marker: marker({ productId: PRO_ID, userId: USER_A }),
+        marker: marker({ productId: PRO_ID, accountKey: ACCOUNT_A }),
         entitlement: ent(),
         subscription: sub(),
-        currentUserId: USER_B,
+        currentAccountKey: ACCOUNT_B,
       }),
     );
-    assert.equal(d.action, 'none');
+    assert.equal(d.action, 'keep');
   });
 
-  it('desktop + userId marker still clears (desktop precedes the identity gate, R12)', () => {
+  it('desktop + scoped marker still clears (desktop precedes the identity gate, R12)', () => {
     const d = decideActivationMount(
-      mountInput({ marker: marker({ userId: USER_A }), currentUserId: USER_B, isDesktop: true }),
+      mountInput({
+        marker: marker({ accountKey: ACCOUNT_A }),
+        currentAccountKey: ACCOUNT_B,
+        isDesktop: true,
+      }),
     );
     assert.equal(d.action, 'clear');
   });
 
-  it('expired + foreign userId marker still clears (TTL precedes the identity gate)', () => {
-    const stale = marker({ userId: USER_A, createdAt: NOW - PENDING_MARKER_TTL_MS - 1 });
-    const d = decideActivationMount(mountInput({ marker: stale, currentUserId: USER_B }));
+  it('expired + foreign account marker still clears (TTL precedes the identity gate)', () => {
+    const stale = marker({
+      accountKey: ACCOUNT_A,
+      createdAt: NOW - PENDING_MARKER_TTL_MS - 1,
+    });
+    const d = decideActivationMount(mountInput({ marker: stale, currentAccountKey: ACCOUNT_B }));
     assert.equal(d.action, 'clear');
   });
 });
@@ -330,14 +331,14 @@ describe('pending marker record + TTL (KTD1)', () => {
     assert.equal('productId' in m, false);
   });
 
-  it('computePendingMarker embeds the userId when signed in, omits it when null (#6)', () => {
-    assert.deepEqual(computePendingMarker(PRO_ID, USER_A, NOW), {
+  it('computePendingMarker embeds only the opaque account key when signed in', () => {
+    assert.deepEqual(computePendingMarker(PRO_ID, ACCOUNT_A, NOW), {
       productId: PRO_ID,
-      userId: USER_A,
+      accountKey: ACCOUNT_A,
       createdAt: NOW,
     });
     const anon = computePendingMarker(PRO_ID, null, NOW);
-    assert.equal('userId' in anon, false);
+    assert.equal('accountKey' in anon, false);
   });
 
   it('isPendingMarkerExpired: fresh false, past-TTL true, exactly-TTL false (inclusive)', () => {
@@ -378,35 +379,26 @@ describe('plan classification helpers (allowlist)', () => {
 });
 
 describe('deriveSubscriptionKey (fire-once identity)', () => {
-  it('prefers the subscription id', () => {
-    assert.equal(deriveSubscriptionKey({ id: 'sub_x', currentPeriodStart: 5 }), 'sub_x');
-  });
-
-  it('falls back to period-start when id is absent', () => {
-    assert.equal(deriveSubscriptionKey({ id: null, currentPeriodStart: 999 }), 'period:999');
+  it('uses the opaque server-generated activation key', () => {
+    assert.equal(deriveSubscriptionKey({ activationKey: 'sub_x' }), 'sub_x');
   });
 
   it('returns null when nothing identifies the subscription yet', () => {
-    assert.equal(deriveSubscriptionKey({ id: null, currentPeriodStart: null }), null);
+    assert.equal(deriveSubscriptionKey({ activationKey: null }), null);
     assert.equal(deriveSubscriptionKey(null), null);
   });
 });
 
 describe('fire-once record + TTL (KTD4)', () => {
   it('computeFireOnceRecord captures the subscription key and shown time', () => {
-    assert.deepEqual(computeFireOnceRecord('sub_x', null, NOW), {
+    assert.deepEqual(computeFireOnceRecord('sub_x', NOW), {
       subscriptionKey: 'sub_x',
       shownAt: NOW,
     });
   });
 
-  it('computeFireOnceRecord embeds the userId when signed in, omits it when null (#6 observability)', () => {
-    assert.deepEqual(computeFireOnceRecord('sub_x', USER_A, NOW), {
-      subscriptionKey: 'sub_x',
-      userId: USER_A,
-      shownAt: NOW,
-    });
-    assert.equal('userId' in computeFireOnceRecord('sub_x', null, NOW), false);
+  it('computeFireOnceRecord never persists a raw account id', () => {
+    assert.equal('userId' in computeFireOnceRecord('sub_x', NOW), false);
   });
 
   it('isFireOnceActive: fresh true, expired false, null false', () => {
@@ -423,9 +415,11 @@ function caps(overrides: Partial<ActivationPlatformCapabilities> = {}): Activati
 function config(overrides: Partial<ActivationExistingConfig> = {}): ActivationExistingConfig {
   return {
     hasVerifiedEmailChannel: false,
+    hasEmailDelivery: false,
     hasEnabledDigestRule: false,
     hasTunedDigestHour: false,
     hasWebPushChannel: false,
+    hasWebPushDelivery: false,
     hasUsedPowerFeature: false,
     ...overrides,
   };
@@ -447,9 +441,14 @@ describe('buildActivationSteps — step model (R15/AE6)', () => {
     assert.equal(steps.find((s) => s.id === 'alerts')?.state, 'blocked');
   });
 
-  it('alerts is already-done when a web-push channel already exists', () => {
-    const steps = buildActivationSteps(caps(), config({ hasWebPushChannel: true }));
+  it('alerts is already-done when the current-variant rule delivers to web push', () => {
+    const steps = buildActivationSteps(caps(), config({ hasWebPushDelivery: true }));
     assert.equal(steps.find((s) => s.id === 'alerts')?.state, 'already-done');
+  });
+
+  it('alerts stays confirmable when a web-push row exists but the rule does not use it', () => {
+    const steps = buildActivationSteps(caps(), config({ hasWebPushChannel: true }));
+    assert.equal(steps.find((s) => s.id === 'alerts')?.state, 'confirmable');
   });
 
   it('alerts is confirmable with default permission and no existing channel', () => {
@@ -460,7 +459,11 @@ describe('buildActivationSteps — step model (R15/AE6)', () => {
   it('brief already-done when an enabled digest rule + verified channel exist', () => {
     const steps = buildActivationSteps(
       caps(),
-      config({ hasEnabledDigestRule: true, hasVerifiedEmailChannel: true }),
+      config({
+        hasEnabledDigestRule: true,
+        hasVerifiedEmailChannel: true,
+        hasEmailDelivery: true,
+      }),
     );
     assert.equal(steps.find((s) => s.id === 'brief')?.state, 'already-done');
   });
@@ -468,7 +471,12 @@ describe('buildActivationSteps — step model (R15/AE6)', () => {
   it('brief already-done with tuned digestHour preserves their schedule (AE6, never overwrite)', () => {
     const brief = buildActivationSteps(
       caps(),
-      config({ hasEnabledDigestRule: true, hasVerifiedEmailChannel: true, hasTunedDigestHour: true }),
+      config({
+        hasEnabledDigestRule: true,
+        hasVerifiedEmailChannel: true,
+        hasEmailDelivery: true,
+        hasTunedDigestHour: true,
+      }),
     ).find((s) => s.id === 'brief');
     assert.equal(brief?.state, 'already-done');
     assert.equal(brief?.preservesSchedule, true);
@@ -478,6 +486,14 @@ describe('buildActivationSteps — step model (R15/AE6)', () => {
     const steps = buildActivationSteps(
       caps(),
       config({ hasEnabledDigestRule: true, hasVerifiedEmailChannel: false }),
+    );
+    assert.equal(steps.find((s) => s.id === 'brief')?.state, 'confirmable');
+  });
+
+  it('brief stays confirmable when a verified email row exists but the rule does not use it', () => {
+    const steps = buildActivationSteps(
+      caps(),
+      config({ hasEnabledDigestRule: true, hasVerifiedEmailChannel: true }),
     );
     assert.equal(steps.find((s) => s.id === 'brief')?.state, 'confirmable');
   });
@@ -498,9 +514,11 @@ describe('buildActivationSteps — step model (R15/AE6)', () => {
       caps(),
       config({
         hasVerifiedEmailChannel: true,
+        hasEmailDelivery: true,
         hasEnabledDigestRule: true,
         hasTunedDigestHour: true,
         hasWebPushChannel: true,
+        hasWebPushDelivery: true,
         hasUsedPowerFeature: true,
       }),
     );
@@ -521,7 +539,11 @@ describe('buildBriefDigestPayload — brief step write delta (U4)', () => {
   it('returns null when a digest rule + verified channel already exist (already-done, never overwrite AE6)', () => {
     assert.equal(
       buildBriefDigestPayload(
-        config({ hasEnabledDigestRule: true, hasVerifiedEmailChannel: true }),
+        config({
+          hasEnabledDigestRule: true,
+          hasVerifiedEmailChannel: true,
+          hasEmailDelivery: true,
+        }),
         6,
         'UTC',
       ),
@@ -700,27 +722,27 @@ describe('shouldShowFinishSetupChip', () => {
     assert.equal(shouldShowFinishSetupChip(withSkip, stale, null, NOW), true);
   });
 
-  it("a DIFFERENT user's fresh dismissal does not suppress the chip (#13)", () => {
-    const foreign = { dismissedAt: NOW, userId: USER_A };
-    assert.equal(shouldShowFinishSetupChip(withSkip, foreign, USER_B, NOW), true);
+  it("a DIFFERENT account's fresh dismissal does not suppress the chip (#13)", () => {
+    const foreign = { dismissedAt: NOW, accountKey: ACCOUNT_A };
+    assert.equal(shouldShowFinishSetupChip(withSkip, foreign, ACCOUNT_B, NOW), true);
   });
 
-  it("the SAME user's fresh dismissal suppresses the chip (#13)", () => {
-    const own = { dismissedAt: NOW, userId: USER_A };
-    assert.equal(shouldShowFinishSetupChip(withSkip, own, USER_A, NOW), false);
+  it("the SAME account's fresh dismissal suppresses the chip (#13)", () => {
+    const own = { dismissedAt: NOW, accountKey: ACCOUNT_A };
+    assert.equal(shouldShowFinishSetupChip(withSkip, own, ACCOUNT_A, NOW), false);
   });
 });
 
 describe('finish-setup chip dismissal record', () => {
-  it('computeFinishSetupChipDismissal captures the dismissal time, embeds userId when signed in', () => {
+  it('computeFinishSetupChipDismissal captures the dismissal time and opaque account key', () => {
     assert.deepEqual(computeFinishSetupChipDismissal(null, NOW), { dismissedAt: NOW });
-    assert.deepEqual(computeFinishSetupChipDismissal(USER_A, NOW), {
+    assert.deepEqual(computeFinishSetupChipDismissal(ACCOUNT_A, NOW), {
       dismissedAt: NOW,
-      userId: USER_A,
+      accountKey: ACCOUNT_A,
     });
   });
 
-  it('isChipDismissed: fresh true, expired false, null false (legacy no-userId record)', () => {
+  it('isChipDismissed: fresh true, expired false, null false (legacy unscoped record)', () => {
     assert.equal(isChipDismissed({ dismissedAt: NOW }, null, NOW), true);
     assert.equal(
       isChipDismissed({ dismissedAt: NOW - FINISH_SETUP_CHIP_DISMISS_TTL_MS - 1 }, null, NOW),
@@ -729,20 +751,29 @@ describe('finish-setup chip dismissal record', () => {
     assert.equal(isChipDismissed(null, null, NOW), false);
   });
 
-  it('isChipDismissed identity matrix (#13): legacy suppresses all; scoped suppresses same user + pre-auth only', () => {
-    // Legacy record (no userId) suppresses for everyone, signed in or not.
-    assert.equal(isChipDismissed({ dismissedAt: NOW }, USER_A, NOW), true);
-    // Scoped record suppresses for the SAME user.
-    assert.equal(isChipDismissed({ dismissedAt: NOW, userId: USER_A }, USER_A, NOW), true);
-    // A DIFFERENT signed-in user is not bound by it — the chip may show.
-    assert.equal(isChipDismissed({ dismissedAt: NOW, userId: USER_A }, USER_B, NOW), false);
-    // Pre-auth (currentUserId null): suppress a fresh record to avoid flashing.
-    assert.equal(isChipDismissed({ dismissedAt: NOW, userId: USER_A }, null, NOW), true);
+  it('isChipDismissed identity matrix (#13): legacy suppresses all; scoped suppresses same account + pre-auth only', () => {
+    // Legacy record (no account key) suppresses for everyone, signed in or not.
+    assert.equal(isChipDismissed({ dismissedAt: NOW }, ACCOUNT_A, NOW), true);
+    // Scoped record suppresses for the SAME account.
+    assert.equal(
+      isChipDismissed({ dismissedAt: NOW, accountKey: ACCOUNT_A }, ACCOUNT_A, NOW),
+      true,
+    );
+    // A DIFFERENT signed-in account is not bound by it — the chip may show.
+    assert.equal(
+      isChipDismissed({ dismissedAt: NOW, accountKey: ACCOUNT_A }, ACCOUNT_B, NOW),
+      false,
+    );
+    // Pre-auth: suppress a fresh record to avoid flashing.
+    assert.equal(isChipDismissed({ dismissedAt: NOW, accountKey: ACCOUNT_A }, null, NOW), true);
     // Expiry still wins over identity.
     assert.equal(
       isChipDismissed(
-        { dismissedAt: NOW - FINISH_SETUP_CHIP_DISMISS_TTL_MS - 1, userId: USER_A },
-        USER_A,
+        {
+          dismissedAt: NOW - FINISH_SETUP_CHIP_DISMISS_TTL_MS - 1,
+          accountKey: ACCOUNT_A,
+        },
+        ACCOUNT_A,
         NOW,
       ),
       false,
@@ -812,10 +843,10 @@ describe('stored-record parsers (raw string → validated record, storage stays 
     assert.equal(parseChipDismissal(JSON.stringify({ dismissedAt: null })), null);
   });
 
-  it('parsers preserve a string userId and strip a non-string one (#6/#13)', () => {
+  it('parsers migrate legacy raw user ids to opaque account keys', () => {
     assert.deepEqual(parsePendingMarker(JSON.stringify({ createdAt: 5, userId: USER_A })), {
       createdAt: 5,
-      userId: USER_A,
+      accountKey: ACCOUNT_A,
     });
     assert.equal(
       'userId' in (parsePendingMarker(JSON.stringify({ createdAt: 5, userId: 42 })) ?? {}),
@@ -823,11 +854,11 @@ describe('stored-record parsers (raw string → validated record, storage stays 
     );
     assert.deepEqual(
       parseFireOnceRecord(JSON.stringify({ subscriptionKey: 'sub_1', shownAt: 7, userId: USER_A })),
-      { subscriptionKey: 'sub_1', shownAt: 7, userId: USER_A },
+      { subscriptionKey: 'sub_1', shownAt: 7 },
     );
     assert.deepEqual(parseChipDismissal(JSON.stringify({ dismissedAt: 9, userId: USER_A })), {
       dismissedAt: 9,
-      userId: USER_A,
+      accountKey: ACCOUNT_A,
     });
   });
 });

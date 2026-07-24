@@ -14,14 +14,10 @@ import { getConvexClient, getConvexApi } from './convex-client';
 import { extractBillingErrorKind } from './_billing-error';
 
 export interface SubscriptionInfo {
-  // Provider subscription id, the preferred Pro Activation Onboarding
-  // fire-once key. Optional so a snapshot from a pre-onboarding server build
-  // (deploy skew) parses fine — onboarding just defers a boot until the field
-  // arrives. See pro-activation-state.ts deriveSubscriptionKey.
-  subscriptionId?: string;
-  // Epoch ms period start — the onboarding fire-once key fallback when
-  // subscriptionId is absent. Optional for the same deploy-skew reason.
-  currentPeriodStart?: number;
+  // Opaque Convex subscription-row identity for Pro Activation fire-once
+  // keying. Optional across a mixed frontend/backend deploy; onboarding waits
+  // for the updated response instead of persisting a provider billing id.
+  activationKey?: string;
   planKey: string;
   displayName: string;
   status: 'active' | 'on_hold' | 'cancelled' | 'expired';
@@ -242,4 +238,3 @@ export async function openBillingPortal(
     return navigate(DODO_PORTAL_FALLBACK_URL);
   }
 }
-

@@ -4547,7 +4547,7 @@ describe("getSubscriptionForUser renewal verification exposure (#4771)", () => {
 describe("getSubscriptionForUser activation fire-once identity exposure", () => {
   const IDENTITY = { subject: TEST_USER_ID, tokenIdentifier: `clerk|${TEST_USER_ID}` };
 
-  test("surfaces subscriptionId and currentPeriodStart for the fire-once key", async () => {
+  test("surfaces only an opaque Convex activation key for fire-once storage", async () => {
     const t = convexTest(schema, modules);
     await seedSubscription(t, {
       planKey: "pro_monthly",
@@ -4561,7 +4561,9 @@ describe("getSubscriptionForUser activation fire-once identity exposure", () => 
       .withIdentity(IDENTITY)
       .query(api.payments.billing.getSubscriptionForUser, {});
     expect(result).not.toBeNull();
-    expect(result!.subscriptionId).toBe("sub_billing_activation_identity");
-    expect(result!.currentPeriodStart).toBe(NOW - DAY_MS);
+    expect(typeof result!.activationKey).toBe("string");
+    expect(result!.activationKey).not.toBe("sub_billing_activation_identity");
+    expect(result).not.toHaveProperty("subscriptionId");
+    expect(result).not.toHaveProperty("currentPeriodStart");
   });
 });

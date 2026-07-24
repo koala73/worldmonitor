@@ -14,14 +14,16 @@
  */
 
 import { t } from '@/services/i18n';
-import { getAuthState } from '@/services/auth-state';
+import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import {
   buildActivationSteps,
   shouldShowFinishSetupChip,
   computeFinishSetupChipDismissal,
+  deriveActivationAccountKey,
   parseChipDismissal,
   isChipDismissed,
   FINISH_SETUP_CHIP_DISMISS_KEY,
+  FINISH_SETUP_CHIP_DISMISS_TTL_MS,
   type ActivationStepResult,
   type FinishSetupChipDismissal,
 } from '@/services/pro-activation-state';
@@ -33,6 +35,7 @@ import {
 
 // Single instance at a time (like the checkout banner).
 let chipEl: HTMLElement | null = null;
+let chipAuthUnsubscribe: (() => void) | null = null;
 
 const CHIP_ID = 'pro-activation-finish-chip';
 
@@ -40,26 +43,34 @@ function nowOf(options: ProActivationFlowOptions): number {
   return (options.now ?? Date.now)();
 }
 
-/** The current Clerk user id, or null while auth is still settling / anonymous. */
-function currentChipUserId(): string | null {
-  return getAuthState().user?.id ?? null;
+/** Opaque account scope for the settled current session. */
+function currentChipAccountKey(): string | null {
+  return deriveActivationAccountKey(getAuthState().user?.id);
 }
 
-function readChipDismissal(): FinishSetupChipDismissal | null {
+function readChipDismissal(now: number): FinishSetupChipDismissal | null {
   try {
-    return parseChipDismissal(localStorage.getItem(FINISH_SETUP_CHIP_DISMISS_KEY));
+    const raw = localStorage.getItem(FINISH_SETUP_CHIP_DISMISS_KEY);
+    const dismissal = parseChipDismissal(raw);
+    if (dismissal && now - dismissal.dismissedAt > FINISH_SETUP_CHIP_DISMISS_TTL_MS) {
+      localStorage.removeItem(FINISH_SETUP_CHIP_DISMISS_KEY);
+      return null;
+    }
+    if (dismissal && raw !== JSON.stringify(dismissal)) {
+      localStorage.setItem(FINISH_SETUP_CHIP_DISMISS_KEY, JSON.stringify(dismissal));
+    }
+    return dismissal;
   } catch {
     return null;
   }
 }
 
-function writeChipDismissal(now: number): void {
+function writeChipDismissal(options: ProActivationFlowOptions, now: number): void {
+  if (getAuthState().user?.id !== options.accountUserId) return;
   try {
     localStorage.setItem(
       FINISH_SETUP_CHIP_DISMISS_KEY,
-      // Scope the dismissal to the signed-in account (finding #13) so it does
-      // not pre-suppress another user's chip on a shared browser.
-      JSON.stringify(computeFinishSetupChipDismissal(currentChipUserId(), now)),
+      JSON.stringify(computeFinishSetupChipDismissal(currentChipAccountKey(), now)),
     );
   } catch {
     // Storage disabled/full — the chip simply reappears next session.
@@ -67,6 +78,8 @@ function writeChipDismissal(now: number): void {
 }
 
 function removeChip(): void {
+  chipAuthUnsubscribe?.();
+  chipAuthUnsubscribe = null;
   chipEl?.remove();
   chipEl = null;
 }
@@ -141,13 +154,21 @@ function renderChip(options: ProActivationFlowOptions): void {
     cursor: 'pointer',
   });
   closeBtn.addEventListener('click', () => {
-    writeChipDismissal(nowOf(options));
+    writeChipDismissal(options, nowOf(options));
     removeChip();
   });
 
   chip.append(text, finishBtn, closeBtn);
   document.body.appendChild(chip);
   chipEl = chip;
+  chipAuthUnsubscribe = subscribeAuthState(() => {
+    if (getAuthState().user?.id === options.accountUserId) return;
+    // subscribeAuthState emits synchronously before returning its unsubscribe.
+    // Defer removal so removeChip can tear the listener down as well.
+    queueMicrotask(() => {
+      if (chipEl === chip && getAuthState().user?.id !== options.accountUserId) removeChip();
+    });
+  });
 }
 
 /**
@@ -159,7 +180,10 @@ export function showFinishSetupChipForResults(
   results: readonly ActivationStepResult[],
 ): void {
   const now = nowOf(options);
-  if (!shouldShowFinishSetupChip(results, readChipDismissal(), currentChipUserId(), now)) return;
+  if (getAuthState().user?.id !== options.accountUserId) return;
+  if (!shouldShowFinishSetupChip(results, readChipDismissal(now), currentChipAccountKey(), now)) {
+    return;
+  }
   renderChip(options);
 }
 
@@ -170,14 +194,16 @@ export function showFinishSetupChipForResults(
  */
 export async function maybeShowFinishSetupChip(options: ProActivationFlowOptions): Promise<void> {
   const now = nowOf(options);
-  const currentUserId = currentChipUserId();
-  const dismissal = readChipDismissal();
-  if (isChipDismissed(dismissal, currentUserId, now)) return; // avoid the config read when dismissed
-  const ctx = await readActivationContext();
+  if (getAuthState().user?.id !== options.accountUserId) return;
+  const currentAccountKey = currentChipAccountKey();
+  const dismissal = readChipDismissal(now);
+  if (isChipDismissed(dismissal, currentAccountKey, now)) return; // avoid the config read when dismissed
+  const ctx = await readActivationContext(options.accountUserId);
   const results: ActivationStepResult[] = buildActivationSteps(ctx.capabilities, ctx.config).map(
     (s) => ({ id: s.id, outcome: s.state === 'already-done' ? 'done' : 'skipped' }),
   );
-  if (!shouldShowFinishSetupChip(results, dismissal, currentUserId, now)) return;
+  if (getAuthState().user?.id !== options.accountUserId) return;
+  if (!shouldShowFinishSetupChip(results, dismissal, currentAccountKey, now)) return;
   renderChip(options);
 }
 

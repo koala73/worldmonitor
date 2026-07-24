@@ -25,6 +25,7 @@
  */
 
 import { t } from '@/services/i18n';
+import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { escapeHtml } from '@/utils/sanitize';
 import { getFocusableElements, setTrustedHtml, trustedHtml, type TrustedHtml } from '@/utils/dom-utils';
 import { SITE_VARIANT } from '@/config/variant';
@@ -33,6 +34,7 @@ import {
   setEmailChannel,
   setNotificationConfig,
   type ChannelType,
+  type ChannelsData,
 } from '@/services/notification-channels';
 import {
   isWebPushSupported,
@@ -122,6 +124,7 @@ type StepStatus = 'pending' | 'in-flight' | 'verified' | 'failed' | 'blocked' | 
 let overlay: HTMLElement | null = null;
 let lastFocusedElement: HTMLElement | null = null;
 let docKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
+let flowAccountUnsubscribe: (() => void) | null = null;
 
 interface StepFrameCopy {
   heading: string;
@@ -450,7 +453,9 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
         <div class="pro-activation-header-top">
           <span class="pro-activation-badge">${badge}</span>
           ${progress}
-          <button type="button" class="pro-activation-close" aria-label="${closeLabel}">✕</button>
+          <button type="button" class="pro-activation-close" aria-label="${closeLabel}"${
+            transient === 'in-flight' ? ' disabled aria-disabled="true"' : ''
+          }>✕</button>
         </div>
         <p class="pro-activation-account">${account}</p>
       </div>`;
@@ -498,6 +503,10 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
 
   /** X and Escape both mean "skip remaining steps" → summary; on the summary they dismiss. */
   const handleDismiss = (): void => {
+    // A notification mutation cannot be cancelled once sent. Keep the modal
+    // stable until it settles so the summary/telemetry cannot call a successful
+    // write "skipped" simply because Escape or the backdrop won the race.
+    if (transient === 'in-flight') return;
     if (onSummary()) finishFlow();
     else finalizeAndShowSummary();
   };
@@ -635,6 +644,8 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
 }
 
 export function closeProActivationInterstitial(): void {
+  flowAccountUnsubscribe?.();
+  flowAccountUnsubscribe = null;
   if (docKeydownHandler) {
     document.removeEventListener('keydown', docKeydownHandler, true);
     docKeydownHandler = null;
@@ -659,8 +670,12 @@ export function closeProActivationInterstitial(): void {
 
 /** Injectable configuration for `openProActivationFlow` / the finish-setup chip. */
 export interface ProActivationFlowOptions {
+  /** Clerk user id that owns this flow. Kept in memory; never persisted. */
+  accountUserId: string;
   /** Account email — displayed, and the address the morning brief is sent to. */
   accountEmail: string;
+  /** Injectable owner check for the browser harness; production uses live auth. */
+  isAccountCurrent?: () => boolean;
   /** Open the API-keys / MCP settings surface. Boot hook: `ctx.unifiedSettings.open('api-keys')`. */
   openApiKeys?: () => void;
   /** Reveal the AI analyst / researcher panel. Boot hook: mount + scroll the `chat-analyst` panel into view. */
@@ -686,15 +701,16 @@ export interface ActivationContext {
   /** Existing delivery-channel types (used to merge without clobbering). */
   channels: readonly string[];
   /**
-   * Whether `channels` came from a SUCCESSFUL read. False when getChannelsData
-   * threw, in which case `channels` is `[]` as a placeholder — not an
-   * authoritative empty list. A confirm write must then OMIT the channels field
-   * entirely (the relay preserves it on omit) rather than replace the rule's
-   * real channels with an empty array and erase Telegram/Slack/etc.
+   * Whether `channels` came from a successful read. Confirm handlers require a
+   * fresh authoritative read before writing; false is presentation-only state.
    */
   channelsKnown: boolean;
-  /** Whether any enabled alert rule already exists (drives the alerts patch/seed choice). */
+  /** Whether the current-variant rule is enabled (drives alerts patch/seed choice). */
   hasEnabledRule: boolean;
+}
+
+function isFlowAccountCurrent(options: ProActivationFlowOptions): boolean {
+  return options.isAccountCurrent?.() ?? getAuthState().user?.id === options.accountUserId;
 }
 
 const BRIEF_HOUR_SELECT_ID = 'proActivationDigestHour';
@@ -756,36 +772,57 @@ function readActivationCapabilities(): ActivationPlatformCapabilities {
  * inputs. Never throws — an unreachable channels endpoint degrades to an
  * all-unconfigured context so onboarding still opens and offers every step.
  */
-export async function readActivationContext(): Promise<ActivationContext> {
+export function activationContextFromChannelsData(
+  data: ChannelsData,
+  capabilities: ActivationPlatformCapabilities,
+): ActivationContext {
+  const channels = data.channels ?? [];
+  const rule = data.alertRules?.find((candidate) => candidate.variant === SITE_VARIANT) ?? null;
+  const ruleChannels = rule?.channels ?? [];
+  const emailCh = channels.find((channel) => channel.channelType === 'email');
+  const webPushCh = channels.find((channel) => channel.channelType === 'web_push');
+  const hasEnabledDigestRule =
+    !!rule?.enabled && !!rule.digestMode && DIGEST_CADENCES.has(rule.digestMode);
+  const hasVerifiedEmailChannel = !!emailCh?.verified;
+  const hasWebPushChannel = !!webPushCh?.verified;
+  return {
+    config: {
+      hasVerifiedEmailChannel,
+      hasEmailDelivery:
+        !!rule?.enabled && hasVerifiedEmailChannel && ruleChannels.includes('email'),
+      hasEnabledDigestRule,
+      hasTunedDigestHour: rule?.digestHour != null && rule.digestHour !== DEFAULT_DIGEST_HOUR,
+      hasWebPushChannel,
+      hasWebPushDelivery:
+        !!rule?.enabled && hasWebPushChannel && ruleChannels.includes('web_push'),
+      hasUsedPowerFeature: hasUsedPowerFeature(),
+    },
+    capabilities,
+    channels: channels.map((channel) => channel.channelType),
+    channelsKnown: true,
+    hasEnabledRule: !!rule?.enabled,
+  };
+}
+
+async function readActivationContextStrict(expectedUserId: string): Promise<ActivationContext> {
+  const data = await getChannelsData(expectedUserId);
+  return activationContextFromChannelsData(data, readActivationCapabilities());
+}
+
+export async function readActivationContext(expectedUserId?: string): Promise<ActivationContext> {
   const capabilities = readActivationCapabilities();
   try {
-    const data = await getChannelsData();
-    const channels = data.channels ?? [];
-    const rule = data.alertRules?.[0] ?? null;
-    const emailCh = channels.find((c) => c.channelType === 'email');
-    const webPushCh = channels.find((c) => c.channelType === 'web_push');
-    const hasEnabledDigestRule =
-      !!rule?.enabled && !!rule.digestMode && DIGEST_CADENCES.has(rule.digestMode);
-    return {
-      config: {
-        hasVerifiedEmailChannel: !!emailCh?.verified,
-        hasEnabledDigestRule,
-        hasTunedDigestHour: rule?.digestHour != null && rule.digestHour !== DEFAULT_DIGEST_HOUR,
-        hasWebPushChannel: !!webPushCh?.verified,
-        hasUsedPowerFeature: hasUsedPowerFeature(),
-      },
-      capabilities,
-      channels: channels.map((c) => c.channelType),
-      channelsKnown: true,
-      hasEnabledRule: !!rule?.enabled,
-    };
+    const data = await getChannelsData(expectedUserId);
+    return activationContextFromChannelsData(data, capabilities);
   } catch {
     return {
       config: {
         hasVerifiedEmailChannel: false,
+        hasEmailDelivery: false,
         hasEnabledDigestRule: false,
         hasTunedDigestHour: false,
         hasWebPushChannel: false,
+        hasWebPushDelivery: false,
         hasUsedPowerFeature: hasUsedPowerFeature(),
       },
       capabilities,
@@ -973,36 +1010,28 @@ function buildPowerExtra(options: ProActivationFlowOptions): ProActivationStepEx
 /** Brief confirm: link the email channel, then one atomic daily-digest write. */
 async function confirmBrief(
   options: ProActivationFlowOptions,
-  ctx: ActivationContext,
   hourRef: DigestHourRef,
 ): Promise<'verified' | 'failed'> {
   // Prefer the ref (survives the in-flight re-render that resets the select to
   // DEFAULT); fall back to the live select / DEFAULT when the user never picked.
   const selectedHour = hourRef.hour ?? readSelectedDigestHour();
-  const payload = buildBriefDigestPayload(ctx.config, selectedHour, browserTimezone());
-  // null → already-done (defensive; the shell never calls confirm for an
-  // already-done step, so no tuned config is ever overwritten — R15/AE6).
-  if (!payload) return 'verified';
   try {
-    await setEmailChannel(options.accountEmail);
-    // Only send the rule's `channels` field when we have a TRUSTWORTHY current
-    // list (a successful read): union email in. When the pre-read failed,
-    // ctx.channels is a placeholder [], so omit the field entirely — the relay
-    // preserves existing channels on omit rather than erasing them. The email
-    // channel row is still created by setEmailChannel above; a later
-    // trustworthy write links it into the rule.
-    const channels =
-      ctx.channelsKnown && !ctx.channels.includes('email')
-        ? [...ctx.channels, 'email']
-        : ctx.channelsKnown
-          ? [...ctx.channels]
-          : undefined;
+    await setEmailChannel(options.accountEmail, options.accountUserId);
+    // Channel registration and rule attachment are separate server mutations.
+    // Never infer the second from a failed/stale read: refresh after the row
+    // exists, then build the delta from the authoritative current-variant rule.
+    const fresh = await readActivationContextStrict(options.accountUserId);
+    const payload = buildBriefDigestPayload(fresh.config, selectedHour, browserTimezone());
+    if (!payload) return 'verified';
+    const channels = fresh.channels.includes('email')
+      ? [...fresh.channels]
+      : [...fresh.channels, 'email'];
     await setNotificationConfig({
       variant: SITE_VARIANT,
       ...payload,
-      ...(channels ? { channels: channels as ChannelType[] } : {}),
-    });
-    return 'verified';
+      channels: channels as ChannelType[],
+    }, options.accountUserId);
+    return isFlowAccountCurrent(options) ? 'verified' : 'failed';
   } catch (err) {
     console.warn('[pro-activation] brief confirm failed', err);
     return 'failed';
@@ -1011,53 +1040,34 @@ async function confirmBrief(
 
 /** Alerts confirm: request+subscribe push, then ensure a rule delivers to it. */
 async function confirmAlerts(
-  ctx: ActivationContext,
-  briefConfirmed: boolean,
+  options: ProActivationFlowOptions,
 ): Promise<'verified' | 'failed'> {
   try {
     // Requests permission, subscribes, and registers the web_push channel.
     // A denial throws here → 'failed' (AE3: the flow continues, nothing enabled).
-    await subscribeToPush();
+    await subscribeToPush(options.accountUserId);
   } catch (err) {
     console.warn('[pro-activation] push subscribe declined/failed', err);
     return 'failed';
   }
-  // Seed the pre-write state from the flow-open snapshot PLUS the brief step's
-  // in-session work (its 'email' channel + enabled digest rule). The channels
-  // write REPLACES the field, so a failed re-read below must not fall back to
-  // empty — that would drop the brief's 'email' and reseed a critical rule over
-  // its daily cadence. The success path still prefers the fresh re-read.
-  let channels: string[] = [...ctx.channels];
-  if (briefConfirmed && !channels.includes('email')) channels.push('email');
-  let hasEnabledRule = ctx.hasEnabledRule || briefConfirmed;
-  // Trust the seed only if the flow-open read succeeded; a fresh successful
-  // re-read below upgrades it. When neither read is trustworthy, we must not
-  // write a replacing channels array (it would erase existing channels).
-  let channelsKnown = ctx.channelsKnown;
-  // Re-read AFTER subscribe so the rule write reflects the just-registered
-  // web_push channel AND anything the brief step created this session (a stale
-  // snapshot would clobber the brief's daily cadence — read-before-write, R15).
+  let fresh: ActivationContext;
   try {
-    const data = await getChannelsData();
-    channels = (data.channels ?? []).map((c) => c.channelType);
-    hasEnabledRule = !!data.alertRules?.[0]?.enabled;
-    channelsKnown = true;
-  } catch {
-    // Keep the seeded snapshot — never fall back to empty (would clobber brief).
+    // A registered push row is not delivery until the current-variant rule
+    // includes it. If the authoritative read fails, leave the step retryable.
+    fresh = await readActivationContextStrict(options.accountUserId);
+  } catch (err) {
+    console.warn('[pro-activation] alerts config refresh failed', err);
+    return 'failed';
   }
-  const payload = buildCriticalAlertsPayload(channels, hasEnabledRule);
+  const payload = buildCriticalAlertsPayload(fresh.channels, fresh.hasEnabledRule);
   try {
     await setNotificationConfig({
       variant: SITE_VARIANT,
       enabled: payload.enabled,
       ...(payload.sensitivity ? { sensitivity: payload.sensitivity } : {}),
-      // Only replace the rule's channels when the list is trustworthy. On an
-      // unknown list (both reads failed), omit channels so the relay preserves
-      // the existing set — web_push is still registered as a channel row, and a
-      // later trustworthy write links it into the rule.
-      ...(channelsKnown ? { channels: payload.channels as ChannelType[] } : {}),
-    });
-    return 'verified';
+      channels: payload.channels as ChannelType[],
+    }, options.accountUserId);
+    return isFlowAccountCurrent(options) ? 'verified' : 'failed';
   } catch (err) {
     console.warn('[pro-activation] alerts rule write failed', err);
     return 'failed';
@@ -1081,8 +1091,10 @@ function alertsFailedNote(): string {
  * ordered steps, wire the real per-step handlers, and on exit decide the
  * finish-setup chip. Safe to await; opens exactly one interstitial.
  */
-export async function openProActivationFlow(options: ProActivationFlowOptions): Promise<void> {
-  const ctx = await readActivationContext();
+export async function openProActivationFlow(options: ProActivationFlowOptions): Promise<boolean> {
+  if (!isFlowAccountCurrent(options)) return false;
+  const ctx = await readActivationContext(options.accountUserId);
+  if (!isFlowAccountCurrent(options)) return false;
   const steps = buildActivationSteps(ctx.capabilities, ctx.config);
 
   // Holds the brief step's delivery-hour pick across the shell's re-renders.
@@ -1098,11 +1110,6 @@ export async function openProActivationFlow(options: ProActivationFlowOptions): 
   // double-fire, e.g. a stray second click before the first await settles).
   const inFlight = new Set<ActivationStepId>();
 
-  // The brief step ran its write this session (adds 'email' + a digest rule);
-  // the alerts step seeds its pre-write channels from this so a failed re-read
-  // there never clobbers the just-added email channel.
-  let briefConfirmedThisFlow = false;
-
   options.onEvent?.(ACTIVATION_EVENTS.entered);
 
   openProActivationInterstitial({
@@ -1116,12 +1123,11 @@ export async function openProActivationFlow(options: ProActivationFlowOptions): 
       try {
         const result =
           stepId === 'brief'
-            ? await confirmBrief(options, ctx, selectedHourRef)
+            ? await confirmBrief(options, selectedHourRef)
             : stepId === 'alerts'
-              ? await confirmAlerts(ctx, briefConfirmedThisFlow)
+              ? await confirmAlerts(options)
               : 'verified';
         if (result === 'verified') {
-          if (stepId === 'brief') briefConfirmedThisFlow = true;
           options.onEvent?.(ACTIVATION_EVENTS.stepConfirmed, stepId);
         }
         return result;
@@ -1139,4 +1145,14 @@ export async function openProActivationFlow(options: ProActivationFlowOptions): 
         .catch((err) => console.warn('[pro-activation] finish-setup chip failed to load', err));
     },
   });
+  flowAccountUnsubscribe = subscribeAuthState(() => {
+    if (isFlowAccountCurrent(options)) return;
+    // subscribeAuthState emits synchronously before returning its unsubscribe.
+    // Defer removal so closeProActivationInterstitial can tear the listener
+    // down as well, and never leave user A's email visible to user B.
+    queueMicrotask(() => {
+      if (!isFlowAccountCurrent(options)) closeProActivationInterstitial();
+    });
+  });
+  return true;
 }
