@@ -15936,6 +15936,12 @@ a.prediction-link:hover {
   border: 1px solid rgba(255, 170, 0, 0.3);
 }
 
+.propaganda-badge.unknown {
+  background: rgba(160, 160, 170, 0.12);
+  color: var(--text-dim, #9aa0a6);
+  border: 1px solid rgba(160, 160, 170, 0.25);
+}
+
 .top-source .propaganda-badge {
   font-size: 7px;
   padding: 0 3px;

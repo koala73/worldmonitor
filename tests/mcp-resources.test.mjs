@@ -619,14 +619,22 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         uri: 'ui://worldmonitor/news-intelligence.html',
         hostId: 'list',
         raw: { data: { insights: { topStories: [{
-          primaryTitle: 'Port disruption expands', primarySource: 'WorldMonitor Wire',
+          primaryTitle: 'Port disruption expands', primarySource: 'MIIT (China)',
+          sourceProvenance: {
+            risk: 'high', type: 'gov', riskReviewed: true, typeReviewed: true,
+            stateAffiliated: 'China',
+          },
           category: 'security', threatLevel: 'high', isAlert: true, countryCode: 'DE',
         }] } } },
         summary: { data: { insights: { topStories: { count: 1, sample: [{
-          primaryTitle: 'Summary news headline', primarySource: 'Summary Wire', category: 'politics',
+          primaryTitle: 'Summary news headline', primarySource: 'Unreviewed Source',
+          sourceProvenance: {
+            risk: 'unknown', type: 'unknown', riskReviewed: false, typeReviewed: false,
+          },
+          category: 'politics',
         }] } } } },
-        rawTokens: [/Port disruption expands/, /WorldMonitor Wire/, /Alert/, /Germany/],
-        summaryTokens: [/Summary news headline/, /Summary Wire/],
+        rawTokens: [/Port disruption expands/, /MIIT \(China\)/, /State-affiliated: China/, /Alert/, /Germany/],
+        summaryTokens: [/Summary news headline/, /Unreviewed Source/, /\? Unreviewed/],
       },
       {
         uri: 'ui://worldmonitor/conflict-events.html',
