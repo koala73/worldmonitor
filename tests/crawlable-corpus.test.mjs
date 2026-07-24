@@ -82,7 +82,20 @@ describe('crawlable corpus generator', () => {
       assert.match(norway, /the two scores should not be combined/);
       assert.ok(norway.includes(liveScriptTag), 'country live script must match the production CSP nonce');
       // Deep-link CTA into the live map (opens the maximized country brief). `&` is HTML-escaped.
-      assert.match(norway, /<a class="cta" href="https:\/\/www\.worldmonitor\.app\/\?country=NO&amp;expanded=1">Open Norway on the live map/);
+      // Carries utm_source (NOT ref= — that would be captured as an affiliate referral code).
+      assert.match(norway, /<a class="cta" href="https:\/\/www\.worldmonitor\.app\/\?country=NO&amp;expanded=1&amp;utm_source=seo-country">Open Norway on the live map/);
+      assert.doesNotMatch(norway, /[?&]ref=/, 'corpus CTAs must never use the affiliate ref= param');
+      // Social preview + trust-link contracts.
+      assert.match(norway, /<meta property="og:image" content="https:\/\/www\.worldmonitor\.app\/favico\/og-image\.png">/);
+      assert.match(norway, /<meta name="twitter:card" content="summary_large_image">/);
+      assert.match(norway, /href="\/docs\/methodology\/country-resilience-index"/);
+
+      // Search-friendly display aliases: slug stays stable, reader-facing name is aliased.
+      const uk = read(outDir, 'countries/uk/index.html');
+      assert.match(uk, /<h1>United Kingdom country risk and resilience<\/h1>/);
+      assert.doesNotMatch(uk, /<h1>Uk /);
+      const dprk = read(outDir, 'countries/democratic-peoples-republic-of-korea/index.html');
+      assert.match(dprk, /<title>North Korea Country Risk and Resilience \| World Monitor<\/title>/);
 
       const liveRiskScript = read(outDir, 'tools/live-tools.js');
       assert.match(liveRiskScript, /\/api\/wm-session/);
@@ -105,7 +118,8 @@ describe('crawlable corpus generator', () => {
       assert.match(hormuz, /<h1>Strait of Hormuz<\/h1>/);
       assert.match(hormuz, /<link rel="canonical" href="https:\/\/www\.worldmonitor\.app\/chokepoints\/strait-of-hormuz\/">/);
       // Deep-link CTA into the live map (pans to + opens the waterway popup).
-      assert.match(hormuz, /<a class="cta" href="https:\/\/www\.worldmonitor\.app\/\?chokepoint=hormuz_strait">Open Strait of Hormuz on the live map/);
+      assert.match(hormuz, /<a class="cta" href="https:\/\/www\.worldmonitor\.app\/\?chokepoint=hormuz_strait&amp;utm_source=seo-chokepoint">Open Strait of Hormuz on the live map/);
+      assert.match(hormuz, /href="\/docs\/methodology\/chokepoints"/);
       // Human trade-route names replace the old raw route-id dump.
       assert.match(hormuz, /Persian Gulf → Europe \(Oil\)/);
       assert.doesNotMatch(hormuz, /Canonical ID|Energy baseline|Route IDs:/, 'chokepoint page must not dump raw registry fields');
@@ -146,9 +160,14 @@ describe('crawlable corpus generator', () => {
       assert.match(hazard, /<option value="">Worldwide<\/option>/);
       assert.match(hazard, /<option value="JP" data-bounds="31\.11,129\.85,45\.51,145\.77">Japan<\/option>/);
       assert.doesNotMatch(hazard, /<option value="US"/);
+      // Bare ISO2 codes must never surface as user-facing option labels.
+      assert.doesNotMatch(hazard, /<option value="[A-Z]{2}"[^>]*>[A-Z]{2}<\/option>/);
       assert.match(hazard, /Countries with oversized or discontinuous envelopes are omitted/i);
       assert.match(hazard, /approximate geographic filter, not a territorial polygon/i);
-      assert.match(hazard, /EONET, GDACS, NHC, and HKO/);
+      // Sources are trust links, not bare tokens.
+      assert.match(hazard, /<a href="https:\/\/eonet\.gsfc\.nasa\.gov\/">NASA EONET<\/a>/);
+      assert.match(hazard, /<a href="https:\/\/www\.gdacs\.org\/">GDACS<\/a>/);
+      assert.match(hazard, /href="\/docs\/natural-disasters"/);
       assert.doesNotMatch(hazard, /id="app"/);
 
       const airspace = read(outDir, 'tools/airspace-disruption-checker/index.html');

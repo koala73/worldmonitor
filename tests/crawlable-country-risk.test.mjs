@@ -50,6 +50,7 @@ describe('crawlable country live-risk tool', () => {
     }, computedAt + 60_000);
 
     assert.deepEqual(view, {
+      partial: false,
       score: '71.3',
       band: 'High',
       trend: 'Rising +3.2',
@@ -60,7 +61,42 @@ describe('crawlable country live-risk tool', () => {
     });
   });
 
-  it('fails closed when the API has no authoritative current score', () => {
+  it('returns a labelled partial view when CII is absent but sub-signals exist', () => {
+    // Real production shape (Norway 2026-07-24): sanctions feed present, no
+    // CII, fetchedAt 0. The widget must not discard the whole response.
+    const view = liveRiskViewModel({
+      countryCode: 'NO',
+      advisoryLevel: '',
+      sanctionsActive: true,
+      sanctionsCount: 5,
+      fetchedAt: 0,
+      upstreamUnavailable: false,
+    }, NOW);
+
+    assert.deepEqual(view, {
+      partial: true,
+      score: null,
+      band: null,
+      trend: null,
+      advisory: 'Not present',
+      sanctions: '5 designated entities',
+      computedAt: null,
+      methodologyVersion: '',
+    });
+
+    const advisoryOnly = liveRiskViewModel({
+      advisoryLevel: 'caution',
+      sanctionsActive: false,
+      sanctionsCount: 0,
+      fetchedAt: NOW - 60_000,
+      upstreamUnavailable: false,
+    }, NOW);
+    assert.equal(advisoryOnly.partial, true);
+    assert.equal(advisoryOnly.advisory, 'Exercise Increased Caution');
+    assert.equal(advisoryOnly.computedAt, NOW - 60_000);
+  });
+
+  it('fails closed when the API has no score AND no sub-signals', () => {
     assert.throws(
       () => liveRiskViewModel({ upstreamUnavailable: true }),
       /upstream is temporarily unavailable/,
@@ -71,6 +107,16 @@ describe('crawlable country live-risk tool', () => {
     );
     assert.throws(
       () => liveRiskViewModel({ upstreamUnavailable: false, cii: { combinedScore: null } }),
+      /No current instability score/,
+    );
+    assert.throws(
+      () => liveRiskViewModel({
+        upstreamUnavailable: false,
+        advisoryLevel: '',
+        sanctionsActive: false,
+        sanctionsCount: 0,
+        fetchedAt: NOW,
+      }, NOW),
       /No current instability score/,
     );
   });
