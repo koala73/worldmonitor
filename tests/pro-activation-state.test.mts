@@ -529,14 +529,20 @@ describe('buildBriefDigestPayload — brief step write delta (U4)', () => {
     );
   });
 
-  it('still writes when an enabled rule exists but has no verified delivery channel (undeliverable)', () => {
+  it('enables an existing rule without a verified channel but PRESERVES its cadence (never forces daily)', () => {
+    // A subscriber with an enabled weekly/twice_daily rule but no verified email
+    // channel keeps the brief step confirmable; confirming must add email
+    // without overwriting their chosen cadence — so the payload omits the
+    // cadence fields (relay preserves them on omit) rather than forcing daily.
     const p = buildBriefDigestPayload(
       config({ hasEnabledDigestRule: true, hasVerifiedEmailChannel: false }),
       9,
       'UTC',
     );
-    assert.equal(p?.digestHour, 9);
-    assert.equal(p?.digestMode, 'daily');
+    assert.deepEqual(p, { enabled: true });
+    assert.equal(p?.digestMode, undefined);
+    assert.equal(p?.digestHour, undefined);
+    assert.equal(p?.digestTimezone, undefined);
   });
 
   it('clamps an out-of-range or non-integer hour to the default, keeps valid bounds', () => {

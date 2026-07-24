@@ -32,6 +32,7 @@ const PRODUCT_ID_EXCLUDE_PATTERNS = [
   'public/pro/',
   'tests/',
   'convex/__tests__/',
+  'e2e/',
   'scripts/generate-product-config',
 ];
 

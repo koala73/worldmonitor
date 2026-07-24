@@ -685,6 +685,14 @@ export interface ActivationContext {
   capabilities: ActivationPlatformCapabilities;
   /** Existing delivery-channel types (used to merge without clobbering). */
   channels: readonly string[];
+  /**
+   * Whether `channels` came from a SUCCESSFUL read. False when getChannelsData
+   * threw, in which case `channels` is `[]` as a placeholder — not an
+   * authoritative empty list. A confirm write must then OMIT the channels field
+   * entirely (the relay preserves it on omit) rather than replace the rule's
+   * real channels with an empty array and erase Telegram/Slack/etc.
+   */
+  channelsKnown: boolean;
   /** Whether any enabled alert rule already exists (drives the alerts patch/seed choice). */
   hasEnabledRule: boolean;
 }
@@ -768,6 +776,7 @@ export async function readActivationContext(): Promise<ActivationContext> {
       },
       capabilities,
       channels: channels.map((c) => c.channelType),
+      channelsKnown: true,
       hasEnabledRule: !!rule?.enabled,
     };
   } catch {
@@ -781,6 +790,7 @@ export async function readActivationContext(): Promise<ActivationContext> {
       },
       capabilities,
       channels: [],
+      channelsKnown: false,
       hasEnabledRule: false,
     };
   }
@@ -975,11 +985,22 @@ async function confirmBrief(
   if (!payload) return 'verified';
   try {
     await setEmailChannel(options.accountEmail);
-    const channels = ctx.channels.includes('email') ? [...ctx.channels] : [...ctx.channels, 'email'];
+    // Only send the rule's `channels` field when we have a TRUSTWORTHY current
+    // list (a successful read): union email in. When the pre-read failed,
+    // ctx.channels is a placeholder [], so omit the field entirely — the relay
+    // preserves existing channels on omit rather than erasing them. The email
+    // channel row is still created by setEmailChannel above; a later
+    // trustworthy write links it into the rule.
+    const channels =
+      ctx.channelsKnown && !ctx.channels.includes('email')
+        ? [...ctx.channels, 'email']
+        : ctx.channelsKnown
+          ? [...ctx.channels]
+          : undefined;
     await setNotificationConfig({
       variant: SITE_VARIANT,
       ...payload,
-      channels: channels as ChannelType[],
+      ...(channels ? { channels: channels as ChannelType[] } : {}),
     });
     return 'verified';
   } catch (err) {
@@ -1009,6 +1030,10 @@ async function confirmAlerts(
   let channels: string[] = [...ctx.channels];
   if (briefConfirmed && !channels.includes('email')) channels.push('email');
   let hasEnabledRule = ctx.hasEnabledRule || briefConfirmed;
+  // Trust the seed only if the flow-open read succeeded; a fresh successful
+  // re-read below upgrades it. When neither read is trustworthy, we must not
+  // write a replacing channels array (it would erase existing channels).
+  let channelsKnown = ctx.channelsKnown;
   // Re-read AFTER subscribe so the rule write reflects the just-registered
   // web_push channel AND anything the brief step created this session (a stale
   // snapshot would clobber the brief's daily cadence — read-before-write, R15).
@@ -1016,6 +1041,7 @@ async function confirmAlerts(
     const data = await getChannelsData();
     channels = (data.channels ?? []).map((c) => c.channelType);
     hasEnabledRule = !!data.alertRules?.[0]?.enabled;
+    channelsKnown = true;
   } catch {
     // Keep the seeded snapshot — never fall back to empty (would clobber brief).
   }
@@ -1023,8 +1049,13 @@ async function confirmAlerts(
   try {
     await setNotificationConfig({
       variant: SITE_VARIANT,
-      ...payload,
-      channels: payload.channels as ChannelType[],
+      enabled: payload.enabled,
+      ...(payload.sensitivity ? { sensitivity: payload.sensitivity } : {}),
+      // Only replace the rule's channels when the list is trustworthy. On an
+      // unknown list (both reads failed), omit channels so the relay preserves
+      // the existing set — web_push is still registered as a channel row, and a
+      // later trustworthy write links it into the rule.
+      ...(channelsKnown ? { channels: payload.channels as ChannelType[] } : {}),
     });
     return 'verified';
   } catch (err) {

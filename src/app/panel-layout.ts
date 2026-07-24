@@ -750,7 +750,8 @@ export class PanelLayoutManager implements AppModule {
 
   /**
    * Read the marker + live snapshots, ask the pure leaf what to do, and act:
-   *   mount → persist fire-once + clear the marker, then open the flow.
+   *   mount → open the flow, then (only on success) persist fire-once + clear
+   *           the marker; a failed open leaves the marker for a later retry.
    *   clear → reap the marker; surface the finish-setup chip if already onboarded.
    *   none  → surface the finish-setup chip if already onboarded.
    *   keep  → still settling; arm a bounded re-evaluation on the next snapshot.
@@ -801,7 +802,17 @@ export class PanelLayoutManager implements AppModule {
         if (this.ctx.isDestroyed) return;
         if (isMountClaimBlocking(readActivationMountClaim(), ownNonce, Date.now())) return;
 
-        // Our claim held. Contract (decideActivationMount): write the fire-once
+        // Our claim held. Open the interstitial FIRST, and persist fire-once +
+        // clear the marker ONLY after it actually opened. If the lazy import or
+        // flow-init fails, leaving the marker in place lets a later boot retry
+        // instead of permanently suppressing onboarding behind a fire-once
+        // record for a presentation that never happened. Double-mount is still
+        // prevented — in-session by the activationResolved latch above,
+        // cross-tab by the mount claim — NOT by a premature fire-once write.
+        // A failed open leaves our claim behind, but it self-expires at its 10s
+        // TTL, so it never blocks the retry longer than that window.
+        if (!(await this.openProActivationFlow())) return;
+        // Flow is up. Contract (decideActivationMount): write the fire-once
         // record keyed by the resolved subscription identity, THEN clear the
         // marker — so a reload mid-flow reads fire-once as active (no re-mount)
         // and the chip path can still pick up any unfinished steps.
@@ -809,7 +820,6 @@ export class PanelLayoutManager implements AppModule {
           computeFireOnceRecord(decision.subscriptionKey, currentActivationUserId(), now),
         );
         clearPendingActivationMarker();
-        await this.openProActivationFlow();
         return;
       }
       case 'clear': {
@@ -871,13 +881,21 @@ export class PanelLayoutManager implements AppModule {
     this.activationRetryArmed = false;
   }
 
-  /** Lazy-open the interstitial with the injected app-layer surface openers. */
-  private async openProActivationFlow(): Promise<void> {
+  /**
+   * Lazy-open the interstitial with the injected app-layer surface openers.
+   * Returns whether the flow actually opened: a dynamic-import or flow-init
+   * failure resolves `false` so the caller can leave the pending marker in
+   * place for a later boot to retry instead of persisting fire-once over a
+   * presentation that never happened.
+   */
+  private async openProActivationFlow(): Promise<boolean> {
     try {
       const mod = await import('@/components/ProActivationInterstitial');
       await mod.openProActivationFlow(this.buildProActivationFlowOptions());
+      return true;
     } catch (err) {
       console.warn('[pro-activation] failed to open activation flow', err);
+      return false;
     }
   }
 

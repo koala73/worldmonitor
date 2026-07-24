@@ -8,32 +8,34 @@
  * fire-once keying, the step model, the exit summary, the finish-setup chip,
  * and telemetry event selection.
  *
- * MUST stay a zero-import leaf (mirrors billing-state.ts): it is unit-tested
- * under `tsx --test` (no jsdom, no Vite globals) and both services and
- * components import it. It COMPUTES records and decisions from explicit
- * snapshot inputs — callers perform every storage read/write (localStorage
- * lives in the panel-layout/UI units, never here).
+ * A near-leaf (mirrors billing-state.ts): its only import is the
+ * zero-dependency generated product catalog, so it stays unit-testable under
+ * `tsx --test` (no jsdom, no Vite globals) while both services and components
+ * import it. It COMPUTES records and decisions from explicit snapshot inputs —
+ * callers perform every storage read/write (localStorage lives in the
+ * panel-layout/UI units, never here).
  *
- * Plan identity is an allowlist against the two Pro product ids
- * (config/products.generated.ts DODO_PRODUCTS.PRO_MONTHLY / PRO_ANNUAL) and
- * the two Pro plan keys (convex/config/productCatalog.ts). The constants are
- * mirrored here to keep the leaf import-free; tests/pro-activation-state.test.mts
- * asserts PRO_PRODUCT_IDS against the generated catalog so drift goes red.
+ * Plan identity is an allowlist against the two Pro product ids, derived
+ * directly from `DODO_PRODUCTS` so it can never drift from the catalog (and so
+ * no raw product-id literal is hand-written here — the repo-wide product-id
+ * guard). Pro plan keys mirror convex/config/productCatalog.ts; the drift-guard
+ * test asserts them against the catalog's tierGroup.
  */
+
+import { DODO_PRODUCTS } from '@/config/products.generated';
 
 // ---------------------------------------------------------------------------
 // Plan-identity allowlists (kept in sync by the drift-guard test)
 // ---------------------------------------------------------------------------
 
 /**
- * The only two product ids that grant Pro. Mirrors
- * `DODO_PRODUCTS.PRO_MONTHLY` / `PRO_ANNUAL`. Anything else — api_starter,
- * api_starter_annual, api_business, enterprise, or an unknown id — is non-Pro
- * and must never trigger onboarding.
+ * The only two product ids that grant Pro, taken straight from the generated
+ * catalog. Anything else — api_starter, api_starter_annual, api_business,
+ * enterprise, or an unknown id — is non-Pro and must never trigger onboarding.
  */
 export const PRO_PRODUCT_IDS: readonly string[] = [
-  'pdt_0Nbtt71uObulf7fGXhQup', // PRO_MONTHLY
-  'pdt_0NbttMIfjLWC10jHQWYgJ', // PRO_ANNUAL
+  DODO_PRODUCTS.PRO_MONTHLY,
+  DODO_PRODUCTS.PRO_ANNUAL,
 ];
 
 /** The entitlement plan keys that classify as Pro (productCatalog.ts). */
@@ -450,9 +452,16 @@ export const DEFAULT_DIGEST_HOUR = 8;
  */
 export interface BriefDigestPayload {
   readonly enabled: true;
-  readonly digestMode: 'daily';
-  readonly digestHour: number;
-  readonly digestTimezone: string;
+  /**
+   * Cadence fields are present only when CREATING a fresh rule. When an enabled
+   * digest rule already exists (the subscriber has a weekly/twice_daily rule but
+   * no verified email channel yet), they are omitted so the notification-config
+   * write preserves the existing cadence instead of forcing it to daily — the
+   * relay mutation guards every field with `!== undefined` (omit = preserve).
+   */
+  readonly digestMode?: 'daily';
+  readonly digestHour?: number;
+  readonly digestTimezone?: string;
 }
 
 /** Clamp an arbitrary hour input to a valid 0–23 integer, else the default. */
@@ -475,6 +484,11 @@ export function buildBriefDigestPayload(
   ianaTimezone: string,
 ): BriefDigestPayload | null {
   if (existing.hasEnabledDigestRule && existing.hasVerifiedEmailChannel) return null;
+  // An enabled digest rule already exists (just missing a verified email
+  // channel): enable + let the caller add email, but omit the cadence fields so
+  // a subscriber's existing weekly/twice_daily schedule is never overwritten
+  // with daily. Only a fresh rule gets an explicit daily cadence.
+  if (existing.hasEnabledDigestRule) return { enabled: true };
   return {
     enabled: true,
     digestMode: 'daily',
