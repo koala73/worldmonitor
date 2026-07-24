@@ -110,7 +110,7 @@ before(async () => {
   feeds = await import(`${pathToFileURL(outfile).href}?t=${Date.now()}`) as FeedsModule;
 
   const rendererResult = await build({
-    entryPoints: [join(repoRoot, 'src/components/news-source-provenance.ts')],
+    entryPoints: [join(repoRoot, 'src/components/news/source-provenance.ts')],
     bundle: true,
     format: 'esm',
     platform: 'neutral',

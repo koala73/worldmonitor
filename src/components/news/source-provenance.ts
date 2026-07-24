@@ -15,7 +15,7 @@ export interface PrimarySourceProvenanceHtml {
 /**
  * Render the exact provenance badges used beside a cluster's primary source.
  * Kept as a pure helper so fail-closed output can be regression-tested without
- * constructing the full virtualized NewsPanel.
+ * constructing the full virtualized NewsPanel component.
  */
 export function renderPrimarySourceProvenance(sourceName: string): PrimarySourceProvenanceHtml {
   const riskDescription = describePropagandaBadge(getSourcePropagandaRisk(sourceName));

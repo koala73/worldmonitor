@@ -13,7 +13,7 @@ import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import {
   renderCorroboratingSourceRisk,
   renderPrimarySourceProvenance,
-} from './news-source-provenance';
+} from './news/source-provenance';
 
 
 type SortMode = 'relevance' | 'newest';
