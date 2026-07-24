@@ -27,7 +27,7 @@
     "fast-xml-parser": "^5.8.0",
     "h3": "^1.15.9",
     "picomatch": "^4.0.4",
-    "postcss": "^8.5.10",
+    "postcss": "^8.5.18",
     "smol-toml": "^1.6.1",
     "vite": "^7.3.2"
   }

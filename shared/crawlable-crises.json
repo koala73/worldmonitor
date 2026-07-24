@@ -3,7 +3,7 @@
     "slug": "iran-israel-escalation",
     "title": "Iran–Israel escalation tracker",
     "shortTitle": "Iran–Israel escalation",
-    "description": "A bounded monthly conflict pulse for Iran and Israel using World Monitor's maintained humanitarian summaries.",
+    "description": "Monthly conflict pulse for Iran and Israel: recorded events, political violence and fatalities from HAPI/HDX humanitarian summaries in a fixed two-country scope.",
     "overview": "This tracker keeps a deliberately narrow geographic boundary: it compares the latest available monthly conflict summaries for Iran and Israel. It does not claim to capture every regional spillover event, diplomatic development, or military movement.",
     "coverage": [
       { "code": "IR", "name": "Iran" },
@@ -15,7 +15,7 @@
     "slug": "ukraine-war",
     "title": "Ukraine war tracker",
     "shortTitle": "Ukraine war",
-    "description": "A bounded monthly conflict pulse for Ukraine and Russia using World Monitor's maintained humanitarian summaries.",
+    "description": "Monthly conflict pulse for Ukraine and Russia: recorded events, political violence and fatalities from HAPI/HDX humanitarian summaries in a fixed two-country scope.",
     "overview": "This tracker compares the latest available monthly conflict summaries for Ukraine and Russia. The totals reflect the maintained humanitarian dataset's country records and are not a battlefield map, casualty estimate, or prediction.",
     "coverage": [
       { "code": "UA", "name": "Ukraine" },
@@ -27,7 +27,7 @@
     "slug": "red-sea-security",
     "title": "Red Sea security tracker",
     "shortTitle": "Red Sea security",
-    "description": "A bounded monthly conflict pulse for Yemen, Saudi Arabia, Djibouti, and Eritrea.",
+    "description": "Monthly conflict pulse for Yemen, Saudi Arabia, Djibouti and Eritrea — the fixed four-country boundary around the Red Sea and the Bab el-Mandeb strait.",
     "overview": "This tracker uses a fixed four-country boundary around the Red Sea and Bab el-Mandeb. It provides country-level humanitarian conflict context; maritime warnings and vessel disruptions remain separate live signals on the chokepoint pages and dashboard.",
     "coverage": [
       { "code": "YE", "name": "Yemen" },
@@ -41,7 +41,7 @@
     "slug": "sudan-conflict",
     "title": "Sudan conflict tracker",
     "shortTitle": "Sudan conflict",
-    "description": "A bounded monthly conflict pulse for Sudan using World Monitor's maintained humanitarian summary.",
+    "description": "Monthly conflict pulse for Sudan: recorded events, political violence and fatalities from HAPI/HDX humanitarian summaries in a bounded country-level view.",
     "overview": "This tracker reports the latest available monthly humanitarian conflict summary for Sudan. It is a country-level pulse, not a comprehensive incident ledger, displacement estimate, or forecast.",
     "coverage": [
       { "code": "SD", "name": "Sudan" }
