@@ -99,11 +99,42 @@ export function liveRiskViewModel(payload, now = Date.now()) {
   const cii = payload.cii;
   const score = finiteNumber(cii?.combinedScore);
   const band = instabilityBand(score);
+  const sanctionsCount = Math.max(0, finiteNumber(payload.sanctionsCount) ?? 0);
+  const sanctions = sanctionsCount > 0
+    ? `${formatNumber(sanctionsCount, 0)} designated ${sanctionsCount === 1 ? 'entity' : 'entities'}`
+    : payload.sanctionsActive
+      ? 'Active designations'
+      : 'None in feed';
+
   if (score === null || band === null) {
-    throw new Error('No current instability score is available for this country');
+    // No combined instability score — render a labelled partial result when
+    // an independent sub-signal (advisory or sanctions feed) is present
+    // instead of discarding the whole response. Fail closed only when the
+    // response carries nothing at all.
+    const hasSubSignal = String(payload.advisoryLevel || '').trim() !== ''
+      || sanctionsCount > 0
+      || payload.sanctionsActive === true;
+    if (!hasSubSignal) {
+      throw new Error('No current instability score is available for this country');
+    }
+    return {
+      partial: true,
+      score: null,
+      band: null,
+      trend: null,
+      advisory: formatAdvisory(payload.advisoryLevel),
+      sanctions,
+      // Sub-signals are served live at request time; the payload timestamp
+      // may be absent (fetchedAt: 0) when no CII was computed.
+      computedAt: validTimestamp(
+        finiteNumber(payload.fetchedAt) ?? finiteNumber(cii?.computedAt),
+        now,
+        MAX_LIVE_SNAPSHOT_AGE_MS,
+      ),
+      methodologyVersion: '',
+    };
   }
 
-  const sanctionsCount = Math.max(0, finiteNumber(payload.sanctionsCount) ?? 0);
   const computedAt = requireTimestamp(
     finiteNumber(payload.fetchedAt) ?? finiteNumber(cii?.computedAt),
     now,
@@ -112,15 +143,12 @@ export function liveRiskViewModel(payload, now = Date.now()) {
   );
 
   return {
+    partial: false,
     score: formatNumber(score),
     band,
     trend: formatTrend(cii?.dynamicScore, cii?.trend),
     advisory: formatAdvisory(payload.advisoryLevel || cii?.advisoryLevel),
-    sanctions: sanctionsCount > 0
-      ? `${formatNumber(sanctionsCount, 0)} designated ${sanctionsCount === 1 ? 'entity' : 'entities'}`
-      : payload.sanctionsActive
-        ? 'Active designations'
-        : 'None in feed',
+    sanctions,
     computedAt,
     methodologyVersion: String(cii?.methodologyVersion || '').trim(),
   };
@@ -650,7 +678,10 @@ function updateCountryQuery(select, dashboardLink) {
   else url.searchParams.delete('country');
   window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
   if (dashboardLink) {
-    dashboardLink.href = code ? `/?country=${encodeURIComponent(code)}&expanded=1` : '/';
+    // Keep conversion attribution on dynamically-rewritten dashboard links.
+    dashboardLink.href = code
+      ? `/?country=${encodeURIComponent(code)}&expanded=1&utm_source=seo-tool`
+      : '/?utm_source=seo-tool';
   }
 }
 
@@ -661,20 +692,29 @@ function dashboardLinkFor(tool) {
 }
 
 function renderCountryRiskViewModel(tool, view) {
-  setText(tool, '[data-live-score]', view.score);
-  setText(tool, '[data-live-band]', view.band);
-  setText(tool, '[data-live-trend]', view.trend);
+  setText(tool, '[data-live-score]', view.partial ? '—' : view.score);
+  setText(tool, '[data-live-band]', view.partial ? 'No current score' : view.band);
+  setText(tool, '[data-live-trend]', view.partial ? 'Unavailable' : view.trend);
   setText(tool, '[data-live-advisory]', view.advisory);
   setText(tool, '[data-live-sanctions]', view.sanctions);
   const updated = tool.querySelector('[data-live-updated]');
   if (updated) {
-    const methodology = view.methodologyVersion
-      ? ` · methodology ${view.methodologyVersion}`
-      : '';
-    updated.textContent = `Computed ${formatDateTime(view.computedAt)}${methodology}`;
-    updated.setAttribute('datetime', new Date(view.computedAt).toISOString());
+    if (view.partial) {
+      updated.textContent = view.computedAt === null
+        ? 'Advisory and sanctions signals retrieved live; no combined instability score for this country.'
+        : `Retrieved ${formatDateTime(view.computedAt)} · no combined instability score for this country`;
+      if (view.computedAt === null) updated.removeAttribute('datetime');
+      else updated.setAttribute('datetime', new Date(view.computedAt).toISOString());
+    } else {
+      const methodology = view.methodologyVersion
+        ? ` · methodology ${view.methodologyVersion}`
+        : '';
+      updated.textContent = `Computed ${formatDateTime(view.computedAt)}${methodology}`;
+      updated.setAttribute('datetime', new Date(view.computedAt).toISOString());
+    }
   }
-  setToolState(tool, 'ready', 'API result');
+  if (view.partial) setToolState(tool, 'partial', 'Partial API result');
+  else setToolState(tool, 'ready', 'API result');
 }
 
 function renderCountryRiskError(tool) {

@@ -109,6 +109,42 @@ const CHOKEPOINT_CONTENT = {
   },
 };
 
+// Search-friendly display names for ISO2 codes whose committed snapshot /
+// bbox labels are formal long forms, truncated tokens ("Uk", "Korea Rep",
+// "Lao Pdr"), or bare codes. Applied AFTER slug computation so every live
+// URL stays stable; this only changes what readers and SERPs see.
+const COUNTRY_DISPLAY_NAMES = {
+  AE: 'United Arab Emirates',
+  AG: 'Antigua and Barbuda',
+  BA: 'Bosnia and Herzegovina',
+  CD: 'DR Congo',
+  CG: 'Republic of the Congo',
+  CI: 'Côte d’Ivoire',
+  EH: 'Western Sahara',
+  FM: 'Micronesia',
+  GB: 'United Kingdom',
+  KG: 'Kyrgyzstan',
+  KN: 'Saint Kitts and Nevis',
+  KP: 'North Korea',
+  KR: 'South Korea',
+  LA: 'Laos',
+  NC: 'New Caledonia',
+  PR: 'Puerto Rico',
+  PS: 'Palestine',
+  RS: 'Serbia',
+  SK: 'Slovakia',
+  ST: 'São Tomé and Príncipe',
+  TL: 'Timor-Leste',
+  TT: 'Trinidad and Tobago',
+  VC: 'Saint Vincent and the Grenadines',
+  VE: 'Venezuela',
+  XK: 'Kosovo',
+};
+
+function displayCountryName(code, fallbackName) {
+  return COUNTRY_DISPLAY_NAMES[code] || fallbackName || code;
+}
+
 const GENERATED_DIRS = [
   'countries',
   'chokepoints',
@@ -151,6 +187,18 @@ function normalizeBaseUrl(baseUrl) {
 function absoluteUrl(baseUrl, pathname) {
   return `${normalizeBaseUrl(baseUrl)}${pathname}`;
 }
+
+// Tag dashboard-bound CTAs so page→dashboard conversion is measurable in the
+// analytics UTM report. Deliberately NOT `ref=`: the dashboard captures
+// `?ref=` as an affiliate referral code (src/services/referral-capture.ts)
+// and forwards it to checkout attribution, so a static-page source tag there
+// would pollute purchase attribution.
+function withUtmSource(url, utmSource) {
+  return `${url}${url.includes('?') ? '&' : '?'}utm_source=${utmSource}`;
+}
+
+const OG_IMAGE_PATH = '/favico/og-image.png';
+const OG_IMAGE_ALT = 'World Monitor — real-time global intelligence dashboard with live markets, geopolitical data, and infrastructure monitoring';
 
 function escapeHtml(value) {
   return String(value ?? '')
@@ -288,11 +336,13 @@ function normalizeCountries(snapshot, reverseNames) {
   const seen = new Set();
   const ranked = (snapshot.items || []).map((item) => {
     const code = String(item.countryCode || '').toUpperCase();
-    const name = item.countryName || reverseNames.get(code) || code;
+    // Slugs derive from the raw snapshot name so live URLs stay stable even
+    // when the reader-facing display name is aliased.
+    const rawName = item.countryName || reverseNames.get(code) || code;
     return {
       code,
-      name,
-      slug: uniqueSlug(name, code, seen),
+      name: displayCountryName(code, rawName),
+      slug: uniqueSlug(rawName, code, seen),
       rank: Number(item.rank),
       overallScore: item.overallScore,
       level: item.level || 'unclassified',
@@ -308,11 +358,11 @@ function normalizeCountries(snapshot, reverseNames) {
     .filter((item) => !rankedCodes.has(String(item.countryCode || '').toUpperCase()))
     .map((item) => {
       const code = String(item.countryCode || '').toUpperCase();
-      const name = item.countryName || reverseNames.get(code) || code;
+      const rawName = item.countryName || reverseNames.get(code) || code;
       return {
         code,
-        name,
-        slug: uniqueSlug(name, code, seen),
+        name: displayCountryName(code, rawName),
+        slug: uniqueSlug(rawName, code, seen),
         rank: null,
         overallScore: item.overallScore ?? null,
         level: item.level || 'low-confidence',
@@ -331,7 +381,7 @@ function normalizeCountries(snapshot, reverseNames) {
   });
 }
 
-function normalizeCountryBounds(countryBboxes, countries) {
+function normalizeCountryBounds(countryBboxes, countries, reverseNames = new Map()) {
   const names = new Map(countries.map((country) => [country.code, country.name]));
   return Object.entries(countryBboxes || {})
     .map(([code, rawBounds]) => {
@@ -358,7 +408,9 @@ function normalizeCountryBounds(countryBboxes, countries) {
       }
       return {
         code,
-        name: names.get(code) || code,
+        // Bare ISO2 codes ("EH", "XK") must never surface as user-facing
+        // labels in the tool selects — alias, then reverse-name, then code.
+        name: displayCountryName(code, names.get(code) || reverseNames.get(code)),
         bounds,
       };
     })
@@ -491,7 +543,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     importRepoModule(rootDir, COUNTRY_BBOXES_PATH),
   ]);
   const countries = normalizeCountries(resilience, reverseNames);
-  const countryBounds = normalizeCountryBounds(countryBboxes, countries);
+  const countryBounds = normalizeCountryBounds(countryBboxes, countries, reverseNames);
   const crises = normalizeCrises(readJson(rootDir, CRISIS_REGISTRY_PATH));
   const chokepoints = normalizeChokepoints(CHOKEPOINT_REGISTRY);
   const tradeRoutesById = new Map(
@@ -586,6 +638,16 @@ function pageDocument({
     <meta property="og:description" content="${escapeHtml(description)}">
     <meta property="og:url" content="${escapeHtml(canonical)}">
     <meta property="og:site_name" content="World Monitor">
+    <meta property="og:image" content="${escapeHtml(absoluteUrl(baseUrl, OG_IMAGE_PATH))}">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="${escapeHtml(OG_IMAGE_ALT)}">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="${escapeHtml(title)}">
+    <meta name="twitter:description" content="${escapeHtml(description)}">
+    <meta name="twitter:image" content="${escapeHtml(absoluteUrl(baseUrl, OG_IMAGE_PATH))}">
+    <meta name="twitter:image:alt" content="${escapeHtml(OG_IMAGE_ALT)}">
+    <meta name="twitter:site" content="@worldmonitorai">
     ${ld.map((entry) => `<script type="application/ld+json">${escapeJsonScript(entry)}</script>`).join('\n    ')}
     <style>
       :root { color-scheme: dark; --bg: #050807; --panel: #0c1210; --text: #eef8f0; --muted: #a8b8ad; --line: #1b2b22; --accent: #4ade80; }
@@ -595,7 +657,8 @@ function pageDocument({
       a:hover { text-decoration: underline; }
       header, main, footer { max-width: 960px; margin: 0 auto; padding: 0 20px; }
       header { padding-top: 24px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
-      nav { display: flex; gap: 14px; flex-wrap: wrap; font-size: 14px; }
+      nav { display: flex; gap: 4px 14px; flex-wrap: wrap; font-size: 14px; }
+      nav a { display: inline-flex; align-items: center; min-height: 44px; }
       main { padding-top: 36px; padding-bottom: 52px; }
       h1 { font-size: clamp(32px, 5vw, 54px); line-height: 1; margin: 0 0 16px; letter-spacing: 0; }
       h2 { margin-top: 36px; font-size: 22px; }
@@ -606,7 +669,7 @@ function pageDocument({
       .metric strong { display: block; font-size: 28px; color: var(--text); }
       .metric small { display: block; color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
       .eyebrow { color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; font-size: 12px; font-weight: 700; }
-      .cta { display: inline-flex; align-items: center; gap: 8px; margin-top: 22px; padding: 11px 18px; border-radius: 8px; background: var(--accent); color: #04170c; font-weight: 700; font-size: 15px; }
+      .cta { display: inline-flex; align-items: center; gap: 8px; margin-top: 22px; padding: 13px 18px; border-radius: 8px; background: var(--accent); color: #04170c; font-weight: 700; font-size: 15px; }
       .cta:hover { text-decoration: none; filter: brightness(1.08); }
       .live-tool { margin-top: 28px; padding: 20px; border: 1px solid #28543a; border-radius: 12px; background: linear-gradient(145deg, #0e1712, #09100c); }
       .live-tool h2 { margin: 3px 0 0; }
@@ -618,12 +681,12 @@ function pageDocument({
       .live-tool[data-state="ready"] .live-status { border-color: #28543a; color: var(--accent); }
       .live-tool[data-state="partial"] .live-status { border-color: #7c6322; color: #fde68a; }
       .live-tool[data-state="error"] .live-status { border-color: #6f3b3b; color: #fca5a5; }
-      .refresh { border: 1px solid var(--line); border-radius: 7px; padding: 8px 11px; background: #121d16; color: var(--text); cursor: pointer; font: inherit; }
+      .refresh { border: 1px solid var(--line); border-radius: 7px; padding: 12px 14px; background: #121d16; color: var(--text); cursor: pointer; font: inherit; }
       .refresh:hover:not(:disabled) { border-color: var(--accent); }
       .refresh:disabled { cursor: wait; opacity: 0.55; }
       .tool-controls { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
       .tool-controls label { display: grid; gap: 6px; color: var(--muted); font-size: 13px; }
-      .tool-controls select { min-width: 240px; border: 1px solid var(--line); border-radius: 7px; padding: 9px 34px 9px 11px; background: #121d16; color: var(--text); font: inherit; }
+      .tool-controls select { min-width: 240px; border: 1px solid var(--line); border-radius: 7px; padding: 12px 34px 12px 12px; background: #121d16; color: var(--text); font: inherit; }
       .result-list { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 8px; }
       .result-list li { border-left: 2px solid var(--line); padding: 8px 12px; color: var(--muted); font-size: 14px; }
       .split { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-top: 18px; }
@@ -634,7 +697,8 @@ function pageDocument({
       .routes { list-style: none; padding: 0; margin: 20px 0 0; display: grid; gap: 8px; }
       .routes li { border: 1px solid var(--line); border-radius: 8px; padding: 11px 14px; background: var(--panel); color: var(--text); font-size: 14px; }
       .routes .vol { color: var(--muted); }
-      .related { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 10px 20px; }
+      .related { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 0 20px; }
+      .related a { display: inline-flex; align-items: center; min-height: 44px; }
       .source { margin-top: 34px; font-size: 13px; color: var(--muted); }
       footer { border-top: 1px solid var(--line); padding-top: 20px; padding-bottom: 28px; color: var(--muted); font-size: 13px; }
     </style>
@@ -670,7 +734,7 @@ function renderCountriesIndex({ countries, baseUrl, capturedAt }) {
       <div class="grid">
 ${countries.map((country) => `        <a class="card" href="/countries/${country.slug}/"><strong>${escapeHtml(country.name)}</strong><br><span>${country.rank == null ? 'Low-confidence listing' : `Rank ${country.rank}`} &middot; ${escapeHtml(country.code)}</span></a>`).join('\n')}
       </div>
-      <p class="source">Source: ${RESILIENCE_SNAPSHOT_PATH} (${escapeHtml(prettyDate(capturedAt))}).</p>`;
+      <p class="source">Source: ${RESILIENCE_SNAPSHOT_PATH} (${escapeHtml(prettyDate(capturedAt))}). Methodology: <a href="/docs/methodology/country-resilience-index">Country Resilience Index</a>.</p>`;
   return pageDocument({
     baseUrl,
     path,
@@ -693,11 +757,19 @@ ${countries.map((country) => `        <a class="card" href="/countries/${country
   });
 }
 
-function renderCountryPage({ country, baseUrl, capturedAt, methodologyFormula }) {
+function renderCountryPage({ country, baseUrl, capturedAt, methodologyFormula, rankedCount }) {
   const path = `/countries/${country.slug}/`;
   const rankText = country.rank == null ? 'not ranked in the headline table' : `ranked #${country.rank}`;
-  const description = `${country.name} is ${rankText} in the ${capturedAt} World Monitor Country Resilience Index snapshot.`;
-  const mapUrl = absoluteUrl(baseUrl, `/?country=${encodeURIComponent(country.code)}&expanded=1`);
+  const description = metaDescription(
+    country.rank == null
+      ? `${country.name} country risk: a low-confidence listing in World Monitor's Country Resilience Index, with live instability, travel-advisory and sanctions signals on one page.`
+      : `${country.name} country risk: ranked #${country.rank} of ${rankedCount} in World Monitor's Country Resilience Index, plus live instability, travel-advisory and sanctions signals.`,
+    165,
+  );
+  const mapUrl = withUtmSource(
+    absoluteUrl(baseUrl, `/?country=${encodeURIComponent(country.code)}&expanded=1`),
+    'seo-country',
+  );
   const body = `      <p class="eyebrow">Country &middot; ${escapeHtml(country.code)}</p>
       <h1>${escapeHtml(country.name)} country risk and resilience</h1>
       <p class="lede">${escapeHtml(description)} The structural snapshot is dated and source-labelled; the current instability tool below loads separately from the live World Monitor API.</p>
@@ -731,13 +803,17 @@ function renderCountryPage({ country, baseUrl, capturedAt, methodologyFormula })
         <div class="metric"><span>Confidence</span><strong>${country.lowConfidence ? 'Low' : 'Standard'}</strong></div>
       </section>
       <h2>How to read this page</h2>
-      <p>World Monitor's Country Resilience Index is a 0-100 structural resilience score. This page records the committed ${escapeHtml(prettyDate(capturedAt))} snapshot using the ${escapeHtml(methodologyFormula)} methodology tag.</p>
+      <p>World Monitor's Country Resilience Index is a 0-100 structural resilience score. This page records the committed ${escapeHtml(prettyDate(capturedAt))} snapshot using the ${escapeHtml(methodologyFormula)} methodology tag. The full scoring approach — dimensions, sources, and confidence rules — is documented in the <a href="/docs/methodology/country-resilience-index">Country Resilience Index methodology</a>.</p>
       <p>Use it as a crawlable reference and stable landing page. For the current live picture — active alerts, conflict events, market and energy signals — open ${escapeHtml(country.name)} on the live map above.</p>
-      <p class="source">Source: ${RESILIENCE_SNAPSHOT_PATH}. Captured ${escapeHtml(capturedAt)}.</p>`;
+      <p class="source">Source: ${RESILIENCE_SNAPSHOT_PATH}. Captured ${escapeHtml(capturedAt)}. Methodology: <a href="/docs/methodology/country-resilience-index">Country Resilience Index</a>.</p>`;
+  const coreTitle = `${country.name} Country Risk and Resilience`;
   return pageDocument({
     baseUrl,
     path,
-    title: `${country.name} Country Risk and Resilience | World Monitor`,
+    // Keep SERP titles near the ~60-char display budget: drop the brand
+    // suffix for long country names rather than letting Google truncate
+    // mid-brand.
+    title: coreTitle.length > 44 ? coreTitle : `${coreTitle} | World Monitor`,
     description,
     lastmod: capturedAt,
     jsonLd: {
@@ -771,7 +847,7 @@ function renderCountryPage({ country, baseUrl, capturedAt, methodologyFormula })
 
 function renderChokepointsIndex({ chokepoints, baseUrl, lastmod }) {
   const path = '/chokepoints/';
-  const description = 'The maritime chokepoints and waterways World Monitor tracks — the narrow straits and canals where a disruption removes optionality from global trade, energy and food flows.';
+  const description = `The ${chokepoints.length} maritime chokepoints World Monitor tracks — narrow straits and canals where a disruption removes optionality from global trade, energy and food flows.`;
   const body = `      <p class="eyebrow">Maritime corpus</p>
       <h1>Chokepoints and waterways</h1>
       <p class="lede">${escapeHtml(description)}</p>
@@ -781,7 +857,11 @@ ${chokepoints.map((cp) => {
     return `        <a class="card" href="/chokepoints/${cp.slug}/"><strong>${escapeHtml(cp.displayName)}</strong><br><span>${escapeHtml(subtitle)}</span></a>`;
   }).join('\n')}
       </div>
-      <p class="source">Source: ${CHOKEPOINT_REGISTRY_PATH}.</p>`;
+      <h2>Why chokepoints matter</h2>
+      <p>A <a href="/blog/glossary/maritime-chokepoint/">maritime chokepoint</a> is a narrow passage with no cheap alternative: when one closes or degrades, ships reroute onto longer, costlier paths and freight, insurance, and energy prices move within days. A small number of straits and canals carry a disproportionate share of the world's seaborne oil, LNG, grain, and container traffic, which is why traders, supply-chain teams, and analysts watch them continuously.</p>
+      <h2>How the status badge works</h2>
+      <p>Each chokepoint page combines a static reference — what the waterway connects, which modelled trade routes depend on it — with a live disruption score computed from active warnings, AIS signal disruptions, congestion, and transit counts. The score is a monitoring signal, not an operational closure declaration; the <a href="/docs/methodology/chokepoints">chokepoint methodology</a> documents the inputs and bands. Daily transit counts and baselines come from <a href="https://portwatch.imf.org/">IMF PortWatch</a> data.</p>
+      <p class="source">Source: ${CHOKEPOINT_REGISTRY_PATH}. Methodology: <a href="/docs/methodology/chokepoints">chokepoint disruption scoring</a>.</p>`;
   return pageDocument({
     baseUrl,
     path,
@@ -810,7 +890,10 @@ function renderChokepointPage({ chokepoint, baseUrl, lastmod, tradeRoutesById })
   const blurb = content.blurb
     || `${chokepoint.displayName} is one of the 13 canonical maritime chokepoints tracked by World Monitor.`;
   const description = metaDescription(blurb);
-  const mapUrl = absoluteUrl(baseUrl, `/?chokepoint=${encodeURIComponent(chokepoint.id)}`);
+  const mapUrl = withUtmSource(
+    absoluteUrl(baseUrl, `/?chokepoint=${encodeURIComponent(chokepoint.id)}`),
+    'seo-chokepoint',
+  );
 
   const routes = chokepoint.routeIds
     .map((id) => tradeRoutesById.get(id))
@@ -872,11 +955,11 @@ ${tiles}
       <ul class="related">
 ${relatedItems.map((item) => `        <li>${item}</li>`).join('\n')}
       </ul>
-      <p class="source">Source: ${CHOKEPOINT_REGISTRY_PATH} and ${TRADE_ROUTES_PATH}.</p>`;
+      <p class="source">Source: ${CHOKEPOINT_REGISTRY_PATH} and ${TRADE_ROUTES_PATH}. Methodology: <a href="/docs/methodology/chokepoints">how chokepoint disruption is scored</a>.</p>`;
   return pageDocument({
     baseUrl,
     path,
-    title: `${chokepoint.displayName} Chokepoint | World Monitor`,
+    title: `${chokepoint.displayName} Chokepoint Status | World Monitor`,
     description,
     lastmod,
     jsonLd: {
@@ -929,6 +1012,10 @@ function renderCrisesIndex({ crises, baseUrl, lastmod }) {
       <div class="grid">
 ${crises.map((crisis) => `        <a class="card" href="/crises/${escapeHtml(crisis.slug)}/"><strong>${escapeHtml(crisis.shortTitle)}</strong><br><span>${escapeHtml(crisis.coverage.map((country) => country.name).join(', '))}</span></a>`).join('\n')}
       </div>
+      <h2>How these trackers are scoped</h2>
+      <p>Every tracker names its covered countries up front and never silently widens. Metrics are monthly country-level conflict summaries — recorded events, political-violence events, fatalities, and demonstrations — from the UN OCHA <a href="https://data.humdata.org/hapi">Humanitarian API (HDX HAPI)</a>. A combined total is shown only when every covered country reports the same reference month; otherwise per-country figures stand alone.</p>
+      <h2>What they are not</h2>
+      <p>These are bounded pulses, not battlefield maps, casualty ledgers, or forecasts. Missing countries are reported as unavailable rather than zero, and event-level context lives in the <a href="/?utm_source=seo-crisis">live dashboard</a> with its map layers and independent signals.</p>
       <p class="source">Scope source: ${CRISIS_REGISTRY_PATH}. Live metrics: HAPI/HDX humanitarian conflict summaries through the World Monitor API.</p>`;
   return pageDocument({
     baseUrl,
@@ -954,7 +1041,7 @@ ${crises.map((crisis) => `        <a class="card" href="/crises/${escapeHtml(cri
 
 function renderCrisisPage({ crisis, baseUrl, lastmod }) {
   const path = `/crises/${crisis.slug}/`;
-  const dashboardUrl = absoluteUrl(baseUrl, crisis.dashboardPath);
+  const dashboardUrl = withUtmSource(absoluteUrl(baseUrl, crisis.dashboardPath), 'seo-crisis');
   const body = `      <p class="eyebrow">Bounded crisis tracker</p>
       <h1>${escapeHtml(crisis.title)}</h1>
       <p class="lede">${escapeHtml(crisis.description)}</p>
@@ -989,7 +1076,7 @@ ${crisis.coverage.map((country) => `          <li data-crisis-country data-count
       <p>${escapeHtml(crisis.coverage.map((country) => `${country.name} (${country.code})`).join(', '))}. Events outside this list are not included in the live totals on this page.</p>
       <h2>How to read this tracker</h2>
       <p>Use these monthly country summaries as a bounded pulse, then inspect the dashboard for event-level context, map layers, and other independent signals. The figures are not forecasts and should not be interpreted as a complete casualty or incident ledger.</p>
-      <p class="source">Scope source: ${CRISIS_REGISTRY_PATH}. Live metrics: HAPI/HDX humanitarian conflict summaries via <code>/api/conflict/v1/get-humanitarian-summary</code>.</p>`;
+      <p class="source">Scope source: ${CRISIS_REGISTRY_PATH}. Live metrics: HAPI/HDX humanitarian conflict summaries from the UN OCHA <a href="https://data.humdata.org/hapi">Humanitarian API</a>, served through the World Monitor API.</p>`;
   return pageDocument({
     baseUrl,
     path,
@@ -1031,6 +1118,10 @@ function renderToolsIndex({ baseUrl, lastmod }) {
         <a class="card" href="/chokepoints/"><strong>Maritime chokepoint status</strong><br><span>13 canonical waterways</span></a>
         <a class="card" href="/crises/"><strong>Bounded crisis trackers</strong><br><span>Four curated geographic scopes</span></a>
       </div>
+      <h2>How these tools work</h2>
+      <p>Each tool asks one narrow operational question — what natural hazards are open right now, is a country's monitored airspace disrupted — and answers it from a maintained World Monitor API contract. Results are labelled with their source and retrieval time, unavailable data is reported as unavailable rather than zero, and independent signals are never combined into a single opaque threat score.</p>
+      <h2>When to use them</h2>
+      <p>Use these pages for a fast, shareable check before a trip, a shipment, or a market open; use the <a href="/?utm_source=seo-tool">live dashboard</a> when you need the full picture — map layers, alerts, news, and country briefs side by side. Hazard coverage is documented in <a href="/docs/natural-disasters">natural disaster tracking</a>; chokepoint scoring in the <a href="/docs/methodology/chokepoints">chokepoint methodology</a>.</p>
       <p class="source">Live results load from maintained World Monitor API contracts. Static route descriptions remain available if a current source cannot be reached.</p>`;
   return pageDocument({
     baseUrl,
@@ -1056,7 +1147,7 @@ function renderToolsIndex({ baseUrl, lastmod }) {
 
 function renderHazardPage({ countryBounds, baseUrl, lastmod }) {
   const path = '/tools/natural-hazard-pulse/';
-  const description = 'Check the latest available worldwide natural-hazard snapshot, or apply an approximate country bounding-box filter.';
+  const description = 'See which natural hazards are active right now — earthquakes, storms, wildfires and floods from EONET, GDACS, NHC and HKO feeds — worldwide or filtered to one country.';
   const body = `      <p class="eyebrow">Natural-hazard pulse</p>
       <h1>What natural hazards are active now?</h1>
       <p class="lede">${escapeHtml(description)}</p>
@@ -1087,14 +1178,14 @@ ${countrySelectOptions(countryBounds, { includeWorldwide: true })}
         <div class="tool-meta"><time data-live-updated>Requesting the latest available snapshot…</time></div>
         <noscript><p>Enable JavaScript to load and filter the current event snapshot. This page still documents the tool’s coverage and sources.</p></noscript>
       </section>
-      <a class="cta" data-dashboard-link href="${escapeHtml(absoluteUrl(baseUrl, '/'))}">Open the selected area in World Monitor →</a>
+      <a class="cta" data-dashboard-link href="${escapeHtml(withUtmSource(absoluteUrl(baseUrl, '/'), 'seo-tool'))}">Open the selected area in World Monitor →</a>
       <h2>Sources and limits</h2>
-      <p>World Monitor reads its seeded natural-event snapshot from maintained EONET, GDACS, NHC, and HKO ingestion paths. Source names are retained on individual events. A zero is shown only when a source snapshot is explicitly available; unavailable snapshots fail closed.</p>
+      <p>World Monitor reads its seeded natural-event snapshot from maintained <a href="https://eonet.gsfc.nasa.gov/">NASA EONET</a>, <a href="https://www.gdacs.org/">GDACS</a>, <a href="https://www.nhc.noaa.gov/">NHC</a>, and <a href="https://www.hko.gov.hk/">HKO</a> ingestion paths. Source names are retained on individual events. A zero is shown only when a source snapshot is explicitly available; unavailable snapshots fail closed. Coverage and update cadence are documented in <a href="/docs/natural-disasters">natural disaster tracking</a>.</p>
       <p class="source">Geographic filters: ${COUNTRY_BBOXES_PATH}. Live metrics: <code>/api/natural/v1/list-natural-events</code>.</p>`;
   return pageDocument({
     baseUrl,
     path,
-    title: 'Natural-Hazard Pulse | World Monitor',
+    title: 'Live Natural Hazard Tracker | World Monitor',
     description,
     lastmod,
     jsonLd: {
@@ -1168,7 +1259,7 @@ ${countrySelectOptions(countryBounds, { defaultCode: 'JP' })}
         <p class="tool-note">Military results are capped at 100 returned observations for the selected box. Countries with oversized or discontinuous envelopes are omitted so the tool never issues a continent-scale observation query. An empty or failed military response is unavailable, not confirmed zero activity.</p>
         <noscript><p>Enable JavaScript to check the selected country. The independent-source methodology and limitations remain available on this page.</p></noscript>
       </section>
-      <a class="cta" data-dashboard-link href="${escapeHtml(absoluteUrl(baseUrl, '/?country=JP&expanded=1'))}">Investigate the selected country in World Monitor →</a>
+      <a class="cta" data-dashboard-link href="${escapeHtml(withUtmSource(absoluteUrl(baseUrl, '/?country=JP&expanded=1'), 'seo-tool'))}">Investigate the selected country in World Monitor →</a>
       <h2>How to read the result</h2>
       <p>“Normal” applies only to monitored airports with current source coverage. “Unknown” means telemetry was not available and is not counted as normal. Military-flight results are bounded observations from OpenSky/Wingbits-compatible ingestion and are not exhaustive.</p>
       <p class="source">Geographic filters: ${COUNTRY_BBOXES_PATH}. Live metrics: <code>/api/aviation/v1/list-airport-delays</code> and <code>/api/military/v1/list-military-flights</code>.</p>`;
@@ -1216,7 +1307,7 @@ function renderChangelogPage({ releases, pageIndex, totalPages, baseUrl, lastmod
   const title = pageIndex === 0
     ? 'World Monitor Changelog | World Monitor'
     : `World Monitor Changelog Page ${pageIndex + 1} | World Monitor`;
-  const description = 'Paginated static release notes for World Monitor, built from the committed CHANGELOG.md file.';
+  const description = 'Paginated release notes for World Monitor — new panels, data sources, API changes and fixes — built from the committed CHANGELOG.md so every release is crawlable.';
   const body = `      <p class="eyebrow">Release notes</p>
       <h1>World Monitor changelog</h1>
       <p class="lede">${escapeHtml(description)}</p>
@@ -1344,6 +1435,7 @@ export async function buildCorpus({
       capturedAt: data.resilience.capturedAt,
     }),
   );
+  const rankedCount = data.countries.filter((country) => country.rank != null).length;
   for (const country of data.countries) {
     writeGeneratedFile(
       outDir,
@@ -1353,6 +1445,7 @@ export async function buildCorpus({
         baseUrl,
         capturedAt: data.resilience.capturedAt,
         methodologyFormula: data.resilience.methodologyFormula || 'unknown',
+        rankedCount,
       }),
     );
   }
