@@ -122,6 +122,10 @@ The bounded, on-demand re-check against the payment provider that runs when loca
 
 The single client-derived state that decides what a customer sees when premium access is in question: free (never paid), active (access works), on-hold (payment failed, retry window), renewal-verification pending or failed (paid evidence went stale and the provider re-check is running or errored), or lapsed (coverage confirmed over). Its purpose is to prevent the misleading collapse of every non-paying state into a generic upgrade prompt — a paying customer whose renewal is being verified must be told that, not sold to. Derived purely from the entitlement and subscription snapshots, it changes copy and actions only; it never grants access the server would deny. See also: Covering Subscription, Renewal Verification.
 
+### Referral Capture
+
+The bootstrap-time process that turns an inbound URL param into checkout attribution: `?ref=` or `?wm_referral=` on any dashboard landing is read once at app boot, stripped from the URL, persisted locally with a bounded TTL, and forwarded to the payment provider at checkout to credit the referring sharer. Because the param names are generic-looking, any other use of `ref=` on dashboard-bound links (SEO tags, campaign labels) is silently captured as a fake affiliate code — internal source attribution must use `utm_*` params, which this process ignores. See also: Entitlement.
+
 ## Activation & Onboarding
 
 ### Brief Loop
