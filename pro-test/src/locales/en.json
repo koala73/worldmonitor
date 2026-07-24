@@ -49,6 +49,9 @@
           "60 requests/minute",
           "1,000 requests/day included",
           "Webhook notifications"
+        ],
+        "highlightFeatures": [
+          "No commercial use"
         ]
       },
       "apiBusiness": {
@@ -60,6 +63,9 @@
           "5 Pro licenses included",
           "Same company email required",
           "Priority support"
+        ],
+        "highlightFeatures": [
+          "Commercial use applicable"
         ]
       },
       "enterprise": {
