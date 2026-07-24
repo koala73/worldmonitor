@@ -32,6 +32,7 @@
   },
   "overrides": {
     "esbuild": "0.28.1",
+    "postcss": "8.5.12",
     "ws": "8.21.0",
     "shell-quote": "1.8.4"
   }

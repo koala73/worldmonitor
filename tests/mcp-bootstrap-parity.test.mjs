@@ -132,7 +132,7 @@ const EXCLUDED_FROM_MCP = new Map([
     'on-demand: superseded by the transit-summaries + chokepoint-flows + portwatch-ports bundle exposed via get_chokepoint_status.'],
   ['supply_chain:minerals:v2',
     'on-demand: RPC cache populated only after first user query — deferred to a future minerals/strategic-materials tool.'],
-  ['giving:summary:v1',
+  ['giving:summary:v2',
     'on-demand: RPC cache for philanthropy summary; not in v1 brainstorm inventory. Deferred to a future humanitarian/aid tool.'],
   ['military:bases:active',
     'on-demand: RPC cache for military bases — deferred to a future expanded military tool.'],

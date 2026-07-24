@@ -8,6 +8,10 @@ import {
 } from '../../server/_shared/pro-mcp-token';
 import { getMcpBillingVerificationDenial } from './auth';
 import { BillingDenialError } from './billing-denial';
+import {
+  createMcpToolExecutionContext,
+  downstreamErrorTags,
+} from './downstream';
 import { mcpErrorFingerprint } from './error-fingerprint';
 import { argBool, summarizeData } from './filters';
 import { evaluateFreshness } from './freshness';
@@ -20,7 +24,12 @@ import {
   principalIdForLog,
   telemetryEnabled,
 } from './telemetry';
-import type { CacheToolDef, McpAuthContext, McpHandlerDeps } from './types';
+import type {
+  CacheToolDef,
+  McpAuthContext,
+  McpHandlerDeps,
+  McpToolExecutionContext,
+} from './types';
 import { utf8ByteLength } from './utils';
 
 // ---------------------------------------------------------------------------
@@ -169,11 +178,17 @@ export async function dispatchToolsCall(
   // contexts so downstream per-tenant aggregation can join on it. Out of
   // scope for v1 since the dashboards we ship next only need `auth_kind`.
   const tStart = Date.now();
+  let execution: McpToolExecutionContext | undefined;
   try {
     let result: unknown;
     if (tool._execute) {
-      const baseUrl = new URL(req.url).origin;
-      result = await tool._execute(p.arguments ?? {}, baseUrl, context);
+      execution = createMcpToolExecutionContext(req.url);
+      result = await tool._execute(
+        p.arguments ?? {},
+        execution.downstreamOrigin,
+        context,
+        execution,
+      );
     } else {
       result = await executeTool(tool, p.arguments ?? {});
     }
@@ -267,10 +282,21 @@ export async function dispatchToolsCall(
     // expected, handled customer state — warning-level, not error-level, so
     // Sentry/log alerts don't page on ordinary billing churn.
     const isExpectedDenial = err instanceof BillingDenialError;
+    const downstreamTags = downstreamErrorTags(err);
     const log = isClient4xx || isExpectedDenial ? console.warn : console.error;
     log('[mcp] tool execution error:', err);
     captureSilentError(err, {
-      tags: { route: 'api/mcp', step: 'tool-execution', tool: tool.name },
+      tags: {
+        route: 'api/mcp',
+        step: 'tool-execution',
+        tool: tool.name,
+        auth_kind: context.kind,
+        ...(execution ? {
+          inbound_host_class: execution.inboundHostClass,
+          downstream_origin: execution.downstreamOriginTag,
+        } : {}),
+        ...downstreamTags,
+      },
       ctx,
       // Split the api/mcp catch-all (WORLDMONITOR-T8) into per-tool,
       // per-status groups — see api/mcp/error-fingerprint.ts.

@@ -3,10 +3,10 @@
      fetch schema.org data directly instead of extracting it from HTML.
      Emerging convention (NLWeb / AgentReady) with no external standard yet;
      the namespace and <url><loc><schema> shape follow the published ora.ai
-     reference implementation. Advertised via the `Schemamap:` directive in
-     public/robots.txt — both sides are guarded in tests/deploy-config.test.mjs
-     (directive parity + every <loc> must resolve to a tracked file or a live
-     route, so this file can never point at a 404). -->
+     reference implementation. Published at the stable /schemamap.xml path and
+     linked from agents.md, llms.txt, and agent-view.json. Resolution guards in
+     tests/deploy-config.test.mjs ensure every <loc> resolves to a tracked file
+     or a live route, so this file can never point at a 404. -->
 <schemamap xmlns="http://www.nlweb.ai/schemas/schemamap/0.1">
   <url>
     <loc>https://www.worldmonitor.app/</loc>

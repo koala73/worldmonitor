@@ -11,8 +11,8 @@
 
 export const EIA_PETROLEUM_FEED = 'energy:eia-petroleum:v1';
 const DAY_MS = 24 * 60 * 60 * 1000;
-// EIA Weekly Petroleum Status Report publishes every Wednesday; a 7-day horizon
-// lands the deadline on the next release for the weekly series.
+// Keep a weekly question horizon. Resolution has a separate, feed-aware grace
+// because the report's observation date can trail its publication date.
 const EIA_HORIZON_MS = 7 * DAY_MS;
 // Floor the threshold move so a flat week (current==previous) still yields a
 // non-trivial bet instead of "value >= current" (~coin-flip, uninformative).

@@ -21,6 +21,7 @@ import {
 } from '../../server/_shared/mcp-internal-hmac';
 import { validateProMcpTokenOrNull } from '../../server/_shared/pro-mcp-token';
 import { validateUserApiKey } from '../../server/_shared/user-api-key';
+import { checkFailClosedScopedIpRateLimit } from '../../server/_shared/rate-limit';
 import { rpcError, withMcpNoStore } from './rpc';
 import type {
   AuthResolution,
@@ -142,6 +143,13 @@ export const PRODUCTION_DEPS: McpHandlerDeps = {
   validateProMcpToken: validateProMcpTokenOrNull,
   getEntitlements,
   validateUserApiKey,
+  guardUserApiKeyValidation: (request, corsHeaders) => checkFailClosedScopedIpRateLimit(
+    request,
+    'mcp:user-api-key:pre-auth-validation',
+    60,
+    '60 s',
+    corsHeaders,
+  ),
   redisPipeline: rawRedisPipeline,
 };
 
@@ -153,6 +161,28 @@ export const PRODUCTION_DEPS: McpHandlerDeps = {
 export function wwwAuthHeader(resourceMetadataUrl: string, errorParam = ''): string {
   const errSegment = errorParam ? `, error="${errorParam}"` : '';
   return `Bearer realm="worldmonitor"${errSegment}, resource_metadata="${resourceMetadataUrl}"`;
+}
+
+function userKeyValidationBackpressureResponse(response: Response, corsHeaders: Record<string, string>): Response {
+  const limited = response.status === 429;
+  return new Response(
+    JSON.stringify({
+      jsonrpc: '2.0',
+      id: null,
+      error: {
+        code: limited ? -32029 : -32603,
+        message: limited ? 'Too many requests' : 'Auth service temporarily unavailable. Try again.',
+      },
+    }),
+    {
+      status: response.status,
+      headers: withMcpNoStore({
+        ...Object.fromEntries(response.headers.entries()),
+        ...corsHeaders,
+        'Content-Type': 'application/json',
+      }),
+    },
+  );
 }
 
 export function getMcpBillingVerificationDenial(
@@ -297,6 +327,17 @@ export async function resolveAuthContext(
   if (candidateKey.startsWith('wm_')) {
     let userKey: { userId: string } | null = null;
     try {
+      // Identity is not known until after this Convex-backed lookup, so the
+      // normal per-user MCP limit cannot protect it. Bound rotating unknown
+      // wm_ guesses by client IP first; otherwise each unique key evades the
+      // per-hash negative cache and reaches the auth backend.
+      const validationGuardResponse = await deps.guardUserApiKeyValidation(req, corsHeaders);
+      if (validationGuardResponse) {
+        return {
+          ok: false,
+          response: userKeyValidationBackpressureResponse(validationGuardResponse, corsHeaders),
+        };
+      }
       userKey = await deps.validateUserApiKey(candidateKey);
     } catch {
       // Production validateUserApiKey fail-softs to null; a throw means the

@@ -230,6 +230,7 @@
       .skeleton-header-right{display:flex;align-items:center;gap:12px}
       .skeleton-brand{display:flex;align-items:center;gap:8px;margin:0;color:#f5f5f5;font-size:14px;line-height:1;font-weight:800}
       .skeleton-brand-mark{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border:1px solid #2f8f68;border-radius:50%;color:#4ade80;font-size:12px;line-height:1}
+      .skeleton-brand-mark::after{content:"W"}
       .skeleton-kicker{color:#9ca3af;font-size:11px;line-height:1;white-space:nowrap}
       .skeleton-chip{display:inline-flex;align-items:center;min-height:22px;padding:0 8px;border:1px solid #2a2a2a;border-radius:4px;color:#d1d5db;background:#181818;font-size:11px;line-height:1;white-space:nowrap}
       .skeleton-chip.live{color:#86efac;border-color:#14532d;background:#062317}
@@ -455,7 +456,7 @@
       <div class="skeleton-shell" aria-busy="true" aria-label="World Monitor dashboard loading">
         <div class="skeleton-header">
           <div class="skeleton-header-left">
-            <div class="skeleton-brand"><span class="skeleton-brand-mark" aria-hidden="true">W</span><span>World Monitor</span></div>
+            <div class="skeleton-brand"><span class="skeleton-brand-mark" aria-hidden="true"></span><span>World Monitor</span></div>
             <span class="skeleton-kicker">Dashboard shell loading</span>
             <span class="skeleton-dot" aria-hidden="true"></span>
           </div>

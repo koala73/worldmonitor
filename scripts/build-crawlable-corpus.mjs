@@ -25,7 +25,12 @@ const CHOKEPOINT_REGISTRY_PATH = 'src/config/chokepoint-registry.ts';
 const TRADE_ROUTES_PATH = 'src/config/trade-routes.ts';
 const GLOSSARY_DATA_PATH = 'blog-site/src/data/glossary.ts';
 const CHANGELOG_PATH = 'CHANGELOG.md';
+const LIVE_TOOLS_SCRIPT_PATH = 'scripts/crawlable-live-tools.mjs';
+const COUNTRY_BBOXES_PATH = 'shared/country-bboxes.js';
+const CRISIS_REGISTRY_PATH = 'shared/crawlable-crises.json';
 const CHANGELOG_PAGE_SIZE = 2;
+const MAX_TOOL_LATITUDE_SPAN = 45;
+const MAX_TOOL_LONGITUDE_SPAN = 60;
 
 // Hand-authored, human-readable context for each canonical chokepoint, keyed by
 // the registry `id`. `region` describes what the waterway connects (used as the
@@ -107,6 +112,8 @@ const CHOKEPOINT_CONTENT = {
 const GENERATED_DIRS = [
   'countries',
   'chokepoints',
+  'crises',
+  'tools',
   'reference/changelog',
 ];
 
@@ -324,6 +331,81 @@ function normalizeCountries(snapshot, reverseNames) {
   });
 }
 
+function normalizeCountryBounds(countryBboxes, countries) {
+  const names = new Map(countries.map((country) => [country.code, country.name]));
+  return Object.entries(countryBboxes || {})
+    .map(([code, rawBounds]) => {
+      if (!/^[A-Z]{2}$/.test(code) || !Array.isArray(rawBounds) || rawBounds.length !== 4) return null;
+      const bounds = rawBounds.map(Number);
+      const [south, west, north, east] = bounds;
+      if (
+        bounds.some((value) => !Number.isFinite(value))
+        || south < -90
+        || north > 90
+        || south > north
+        || west < -180
+        || west > 180
+        || east < -180
+        || east > 180
+      ) {
+        return null;
+      }
+      if (
+        north - south > MAX_TOOL_LATITUDE_SPAN
+        || (west <= east ? east - west : 360 - (west - east)) > MAX_TOOL_LONGITUDE_SPAN
+      ) {
+        return null;
+      }
+      return {
+        code,
+        name: names.get(code) || code,
+        bounds,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function normalizeCrises(entries) {
+  const seen = new Set();
+  return (entries || []).map((entry) => {
+    const slug = String(entry.slug || '');
+    const dashboardPath = String(entry.dashboardPath || '');
+    const coverage = Array.isArray(entry.coverage)
+      ? entry.coverage.map((country) => ({
+          code: String(country.code || '').toUpperCase(),
+          name: String(country.name || ''),
+        }))
+      : [];
+    const coverageCodes = new Set(coverage.map((country) => country.code));
+    if (
+      !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)
+      || seen.has(slug)
+      || !entry.title
+      || !entry.shortTitle
+      || !entry.description
+      || !entry.overview
+      || !dashboardPath.startsWith('/')
+      || dashboardPath.startsWith('//')
+      || coverage.length === 0
+      || coverageCodes.size !== coverage.length
+      || coverage.some((country) => !/^[A-Z]{2}$/.test(country.code) || !country.name)
+    ) {
+      throw new Error(`Invalid crawlable crisis registry entry: ${slug || '(missing slug)'}`);
+    }
+    seen.add(slug);
+    return {
+      slug,
+      title: String(entry.title),
+      shortTitle: String(entry.shortTitle),
+      description: String(entry.description),
+      overview: String(entry.overview),
+      coverage,
+      dashboardPath,
+    };
+  });
+}
+
 function stripMarkdownInline(value) {
   return String(value || '')
     .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
@@ -397,12 +479,20 @@ function gitFileLastmod(rootDir, relativePath) {
 export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   const resilience = readJson(rootDir, RESILIENCE_SNAPSHOT_PATH);
   const reverseNames = reverseCountryNames(readJson(rootDir, COUNTRY_NAMES_PATH));
-  const [{ CHOKEPOINT_REGISTRY }, { TRADE_ROUTES }, { GLOSSARY_TERMS }] = await Promise.all([
+  const [
+    { CHOKEPOINT_REGISTRY },
+    { TRADE_ROUTES },
+    { GLOSSARY_TERMS },
+    { default: countryBboxes },
+  ] = await Promise.all([
     importRepoModule(rootDir, CHOKEPOINT_REGISTRY_PATH),
     importRepoModule(rootDir, TRADE_ROUTES_PATH),
     importRepoModule(rootDir, GLOSSARY_DATA_PATH),
+    importRepoModule(rootDir, COUNTRY_BBOXES_PATH),
   ]);
   const countries = normalizeCountries(resilience, reverseNames);
+  const countryBounds = normalizeCountryBounds(countryBboxes, countries);
+  const crises = normalizeCrises(readJson(rootDir, CRISIS_REGISTRY_PATH));
   const chokepoints = normalizeChokepoints(CHOKEPOINT_REGISTRY);
   const tradeRoutesById = new Map(
     (TRADE_ROUTES || []).map((route) => [route.id, {
@@ -419,6 +509,10 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     || resilience.capturedAt;
   const chokepointsLastmod = gitFileLastmod(rootDir, CHOKEPOINT_REGISTRY_PATH)
     || resilience.capturedAt;
+  const toolsLastmod = gitFileLastmod(rootDir, LIVE_TOOLS_SCRIPT_PATH)
+    || resilience.capturedAt;
+  const crisesLastmod = gitFileLastmod(rootDir, CRISIS_REGISTRY_PATH)
+    || resilience.capturedAt;
 
   return {
     sources: {
@@ -428,13 +522,20 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
       glossaryData: GLOSSARY_DATA_PATH,
       changelog: CHANGELOG_PATH,
       tradeRoutes: TRADE_ROUTES_PATH,
+      liveToolsScript: LIVE_TOOLS_SCRIPT_PATH,
+      countryBboxes: COUNTRY_BBOXES_PATH,
+      crisisRegistry: CRISIS_REGISTRY_PATH,
     },
     lastmod: {
       changelog: changelogLastmod,
       chokepoints: chokepointsLastmod,
+      tools: toolsLastmod,
+      crises: crisesLastmod,
     },
     resilience,
     countries,
+    countryBounds,
+    crises,
     chokepoints,
     tradeRoutesById,
     glossaryTerms,
@@ -465,6 +566,7 @@ function pageDocument({
   jsonLd,
   breadcrumbs,
   body,
+  scriptSrcs = [],
 }) {
   const canonical = absoluteUrl(baseUrl, path);
   const ld = [jsonLd, breadcrumbs].filter(Boolean);
@@ -502,9 +604,33 @@ function pageDocument({
       .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 24px; }
       .card, .metric { border: 1px solid var(--line); border-radius: 8px; padding: 16px; background: var(--panel); }
       .metric strong { display: block; font-size: 28px; color: var(--text); }
+      .metric small { display: block; color: var(--accent); font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; }
       .eyebrow { color: var(--accent); text-transform: uppercase; letter-spacing: 0.08em; font-size: 12px; font-weight: 700; }
       .cta { display: inline-flex; align-items: center; gap: 8px; margin-top: 22px; padding: 11px 18px; border-radius: 8px; background: var(--accent); color: #04170c; font-weight: 700; font-size: 15px; }
       .cta:hover { text-decoration: none; filter: brightness(1.08); }
+      .live-tool { margin-top: 28px; padding: 20px; border: 1px solid #28543a; border-radius: 12px; background: linear-gradient(145deg, #0e1712, #09100c); }
+      .live-tool h2 { margin: 3px 0 0; }
+      .live-tool .grid { margin-top: 18px; }
+      .tool-head, .tool-meta { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+      .tool-note { max-width: 760px; margin-bottom: 0; }
+      .tool-meta { margin-top: 16px; color: var(--muted); font-size: 13px; }
+      .live-status { padding: 5px 9px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 12px; font-weight: 700; }
+      .live-tool[data-state="ready"] .live-status { border-color: #28543a; color: var(--accent); }
+      .live-tool[data-state="partial"] .live-status { border-color: #7c6322; color: #fde68a; }
+      .live-tool[data-state="error"] .live-status { border-color: #6f3b3b; color: #fca5a5; }
+      .refresh { border: 1px solid var(--line); border-radius: 7px; padding: 8px 11px; background: #121d16; color: var(--text); cursor: pointer; font: inherit; }
+      .refresh:hover:not(:disabled) { border-color: var(--accent); }
+      .refresh:disabled { cursor: wait; opacity: 0.55; }
+      .tool-controls { display: flex; align-items: end; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+      .tool-controls label { display: grid; gap: 6px; color: var(--muted); font-size: 13px; }
+      .tool-controls select { min-width: 240px; border: 1px solid var(--line); border-radius: 7px; padding: 9px 34px 9px 11px; background: #121d16; color: var(--text); font: inherit; }
+      .result-list { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 8px; }
+      .result-list li { border-left: 2px solid var(--line); padding: 8px 12px; color: var(--muted); font-size: 14px; }
+      .split { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; margin-top: 18px; }
+      .split > section { border: 1px solid var(--line); border-radius: 8px; padding: 16px; background: var(--panel); }
+      .split h3 { margin: 0; font-size: 18px; }
+      .split .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .split .metric strong { font-size: 22px; }
       .routes { list-style: none; padding: 0; margin: 20px 0 0; display: grid; gap: 8px; }
       .routes li { border: 1px solid var(--line); border-radius: 8px; padding: 11px 14px; background: var(--panel); color: var(--text); font-size: 14px; }
       .routes .vol { color: var(--muted); }
@@ -519,6 +645,8 @@ function pageDocument({
         <a href="/">World Monitor</a>
         <a href="/countries/">Countries</a>
         <a href="/chokepoints/">Chokepoints</a>
+        <a href="/crises/">Crises</a>
+        <a href="/tools/">Live tools</a>
         <a href="/reference/changelog/">Changelog</a>
         <a href="/blog/glossary/">Glossary</a>
       </nav>
@@ -526,7 +654,8 @@ function pageDocument({
     <main>
 ${body}
     </main>
-    <footer>World Monitor static reference corpus. Built from committed methodology and data snapshots.</footer>
+    <footer>World Monitor reference corpus. Crawlable pages use committed snapshots; live API results are labelled separately.</footer>
+    ${scriptSrcs.map((src) => `<script type="module" nonce="wm-static-bootstrap" src="${escapeHtml(src)}"></script>`).join('\n    ')}
   </body>
 </html>
 `;
@@ -534,7 +663,7 @@ ${body}
 
 function renderCountriesIndex({ countries, baseUrl, capturedAt }) {
   const path = '/countries/';
-  const description = `Country risk and resilience pages built from World Monitor's committed ${capturedAt} resilience ranking snapshot.`;
+  const description = `Browse ${countries.length} country risk and resilience pages from World Monitor's dated ${capturedAt} structural snapshot, with current instability signals on each page.`;
   const body = `      <p class="eyebrow">Country corpus</p>
       <h1>Country risk and resilience</h1>
       <p class="lede">${escapeHtml(description)}</p>
@@ -571,8 +700,30 @@ function renderCountryPage({ country, baseUrl, capturedAt, methodologyFormula })
   const mapUrl = absoluteUrl(baseUrl, `/?country=${encodeURIComponent(country.code)}&expanded=1`);
   const body = `      <p class="eyebrow">Country &middot; ${escapeHtml(country.code)}</p>
       <h1>${escapeHtml(country.name)} country risk and resilience</h1>
-      <p class="lede">${escapeHtml(description)} The page is a static, dated reference built from committed data, not a live score.</p>
+      <p class="lede">${escapeHtml(description)} The structural snapshot is dated and source-labelled; the current instability tool below loads separately from the live World Monitor API.</p>
+      <section class="live-tool" data-live-country-risk data-country-code="${escapeHtml(country.code)}" data-country-name="${escapeHtml(country.name)}" data-state="loading">
+        <div class="tool-head">
+          <div>
+            <p class="eyebrow">Current signal</p>
+            <h2>${escapeHtml(country.name)} instability monitor</h2>
+          </div>
+          <span class="live-status" data-live-status role="status" aria-live="polite">Connecting…</span>
+        </div>
+        <p class="tool-note">Instability is a fast-moving composite of current information, unrest, armed-conflict and security-mobility signals. It is different from the slower structural resilience snapshot below; the two scores should not be combined.</p>
+        <div class="grid" data-live-grid aria-label="Current country instability metrics" aria-busy="true">
+          <div class="metric"><span>Instability score</span><strong><span data-live-score>—</span><small data-live-band>Loading</small></strong></div>
+          <div class="metric"><span>Approx. 24-hour movement</span><strong data-live-trend>—</strong></div>
+          <div class="metric"><span>Travel advisory input</span><strong data-live-advisory>—</strong></div>
+          <div class="metric"><span>OFAC designations in feed</span><strong data-live-sanctions>—</strong></div>
+        </div>
+        <div class="tool-meta">
+          <time data-live-updated>Requesting the latest available result…</time>
+          <button class="refresh" type="button" data-live-refresh disabled>Refresh live data</button>
+        </div>
+        <noscript><p>Enable JavaScript to load the current API result. The structural resilience snapshot remains available below.</p></noscript>
+      </section>
       <a class="cta" href="${escapeHtml(mapUrl)}">Open ${escapeHtml(country.name)} on the live map →</a>
+      <h2>Structural resilience snapshot</h2>
       <section class="grid" aria-label="Country resilience metrics">
         <div class="metric"><span>Rank</span><strong>${escapeHtml(country.rank == null ? 'Not ranked' : `#${country.rank}`)}</strong></div>
         <div class="metric"><span>Overall score</span><strong>${escapeHtml(formatScore(country.overallScore))}</strong></div>
@@ -614,6 +765,7 @@ function renderCountryPage({ country, baseUrl, capturedAt, methodologyFormula })
       { name: country.name, path },
     ]),
     body,
+    scriptSrcs: ['/tools/live-tools.js'],
   });
 }
 
@@ -687,6 +839,29 @@ ${routes.map((route) => {
   const body = `      <p class="eyebrow">Chokepoint</p>
       <h1>${escapeHtml(chokepoint.displayName)}</h1>
       <p class="lede">${escapeHtml(blurb)}</p>
+      <section class="live-tool" data-live-chokepoint data-chokepoint-id="${escapeHtml(chokepoint.id)}" data-state="loading">
+        <div class="tool-head">
+          <div>
+            <p class="eyebrow">Current status</p>
+            <h2>${escapeHtml(chokepoint.displayName)} disruption pulse</h2>
+          </div>
+          <span class="live-status" data-live-status role="status" aria-live="polite">Connecting…</span>
+        </div>
+        <p class="tool-note">The traffic-light badge is a disruption score, not an operational closure declaration. Transit metrics appear only when the current vessel snapshot has coverage.</p>
+        <div class="grid" data-live-grid aria-label="Current chokepoint status" aria-busy="true">
+          <div class="metric"><span>Disruption score</span><strong><span data-chokepoint-score>—</span><small data-chokepoint-band>Loading</small></strong></div>
+          <div class="metric"><span>Congestion</span><strong data-chokepoint-congestion>—</strong></div>
+          <div class="metric"><span>Warnings and AIS</span><strong data-chokepoint-warnings>—</strong></div>
+          <div class="metric"><span>Today's transits</span><strong data-chokepoint-transits>—</strong></div>
+          <div class="metric"><span>Week-over-week movement</span><strong data-chokepoint-movement>—</strong></div>
+        </div>
+        <p data-chokepoint-description>Requesting the latest available status…</p>
+        <div class="tool-meta">
+          <time data-live-updated>Requesting the latest available result…</time>
+          <button class="refresh" type="button" data-live-refresh disabled>Refresh live data</button>
+        </div>
+        <noscript><p>Enable JavaScript to load the current API result. The static waterway and route context remains available below.</p></noscript>
+      </section>
       <a class="cta" href="${escapeHtml(mapUrl)}">Open ${escapeHtml(chokepoint.displayName)} on the live map →</a>
       <section class="grid" aria-label="Chokepoint overview">
 ${tiles}
@@ -730,6 +905,295 @@ ${relatedItems.map((item) => `        <li>${item}</li>`).join('\n')}
       { name: chokepoint.displayName, path },
     ]),
     body,
+    scriptSrcs: ['/tools/live-tools.js'],
+  });
+}
+
+function countrySelectOptions(countryBounds, { includeWorldwide = false, defaultCode = '' } = {}) {
+  const worldwide = includeWorldwide
+    ? '          <option value="">Worldwide</option>\n'
+    : '';
+  return worldwide + countryBounds.map((country) => {
+    const selected = country.code === defaultCode ? ' selected' : '';
+    return `          <option value="${escapeHtml(country.code)}" data-bounds="${escapeHtml(country.bounds.join(','))}"${selected}>${escapeHtml(country.name)}</option>`;
+  }).join('\n');
+}
+
+function renderCrisesIndex({ crises, baseUrl, lastmod }) {
+  const path = '/crises/';
+  const description = 'Curated, bounded crisis trackers that combine stable coverage definitions with World Monitor’s maintained country-level humanitarian summaries.';
+  const body = `      <p class="eyebrow">Bounded trackers</p>
+      <h1>Current crisis trackers</h1>
+      <p class="lede">${escapeHtml(description)}</p>
+      <p>Each tracker has a fixed, reviewable geographic boundary. The static page explains that boundary; current monthly conflict metrics load separately and fail closed when a country summary is unavailable.</p>
+      <div class="grid">
+${crises.map((crisis) => `        <a class="card" href="/crises/${escapeHtml(crisis.slug)}/"><strong>${escapeHtml(crisis.shortTitle)}</strong><br><span>${escapeHtml(crisis.coverage.map((country) => country.name).join(', '))}</span></a>`).join('\n')}
+      </div>
+      <p class="source">Scope source: ${CRISIS_REGISTRY_PATH}. Live metrics: HAPI/HDX humanitarian conflict summaries through the World Monitor API.</p>`;
+  return pageDocument({
+    baseUrl,
+    path,
+    title: 'Current Crisis Trackers | World Monitor',
+    description,
+    lastmod,
+    jsonLd: {
+      '@context': 'https://schema.org',
+      '@type': 'CollectionPage',
+      name: 'Current crisis trackers',
+      description,
+      url: absoluteUrl(baseUrl, path),
+      inLanguage: 'en-US',
+    },
+    breadcrumbs: breadcrumbLd(baseUrl, [
+      { name: 'Home', path: '/' },
+      { name: 'Crises', path },
+    ]),
+    body,
+  });
+}
+
+function renderCrisisPage({ crisis, baseUrl, lastmod }) {
+  const path = `/crises/${crisis.slug}/`;
+  const dashboardUrl = absoluteUrl(baseUrl, crisis.dashboardPath);
+  const body = `      <p class="eyebrow">Bounded crisis tracker</p>
+      <h1>${escapeHtml(crisis.title)}</h1>
+      <p class="lede">${escapeHtml(crisis.description)}</p>
+      <p>${escapeHtml(crisis.overview)}</p>
+      <section class="live-tool" data-live-crisis data-state="loading">
+        <div class="tool-head">
+          <div>
+            <p class="eyebrow">Latest maintained month</p>
+            <h2>Country conflict pulse</h2>
+          </div>
+          <span class="live-status" data-live-status role="status" aria-live="polite">Connecting…</span>
+        </div>
+        <p class="tool-note">Metrics are country-level records for the latest available HAPI/HDX reference month. Missing countries are unavailable, not zero. A combined total is withheld when reference periods differ.</p>
+        <div class="grid" data-live-grid aria-label="Current crisis metrics" aria-busy="true">
+          <div class="metric"><span>Recorded events</span><strong data-crisis-events>—</strong></div>
+          <div class="metric"><span>Recorded fatalities</span><strong data-crisis-fatalities>—</strong></div>
+          <div class="metric"><span>Political violence events</span><strong data-crisis-political>—</strong></div>
+          <div class="metric"><span>Reference period</span><strong data-crisis-period>Loading</strong></div>
+        </div>
+        <ul class="result-list" aria-label="Country coverage">
+${crisis.coverage.map((country) => `          <li data-crisis-country data-country-code="${escapeHtml(country.code)}" data-country-name="${escapeHtml(country.name)}"><strong>${escapeHtml(country.name)}</strong><br><span data-crisis-country-value>Loading…</span></li>`).join('\n')}
+        </ul>
+        <div class="tool-meta">
+          <span data-crisis-coverage>${crisis.coverage.length} ${crisis.coverage.length === 1 ? 'country' : 'countries'} requested</span>
+          <time data-live-updated>Requesting the latest available summaries…</time>
+          <button class="refresh" type="button" data-live-refresh disabled>Refresh live data</button>
+        </div>
+        <noscript><p>Enable JavaScript to load current monthly summaries. The tracker scope and methodology remain available on this page.</p></noscript>
+      </section>
+      <a class="cta" href="${escapeHtml(dashboardUrl)}">Investigate this crisis in World Monitor →</a>
+      <h2>Coverage boundary</h2>
+      <p>${escapeHtml(crisis.coverage.map((country) => `${country.name} (${country.code})`).join(', '))}. Events outside this list are not included in the live totals on this page.</p>
+      <h2>How to read this tracker</h2>
+      <p>Use these monthly country summaries as a bounded pulse, then inspect the dashboard for event-level context, map layers, and other independent signals. The figures are not forecasts and should not be interpreted as a complete casualty or incident ledger.</p>
+      <p class="source">Scope source: ${CRISIS_REGISTRY_PATH}. Live metrics: HAPI/HDX humanitarian conflict summaries via <code>/api/conflict/v1/get-humanitarian-summary</code>.</p>`;
+  return pageDocument({
+    baseUrl,
+    path,
+    title: `${crisis.title} | World Monitor`,
+    description: crisis.description,
+    lastmod,
+    jsonLd: {
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name: crisis.title,
+      description: crisis.description,
+      url: absoluteUrl(baseUrl, path),
+      inLanguage: 'en-US',
+      about: crisis.coverage.map((country) => ({
+        '@type': 'Country',
+        name: country.name,
+        identifier: country.code,
+      })),
+    },
+    breadcrumbs: breadcrumbLd(baseUrl, [
+      { name: 'Home', path: '/' },
+      { name: 'Crises', path: '/crises/' },
+      { name: crisis.shortTitle, path },
+    ]),
+    body,
+    scriptSrcs: ['/tools/live-tools.js'],
+  });
+}
+
+function renderToolsIndex({ baseUrl, lastmod }) {
+  const path = '/tools/';
+  const description = 'Focused World Monitor tools for current natural hazards and country-level airspace disruption, backed by maintained first-party data contracts.';
+  const body = `      <p class="eyebrow">Live intelligence tools</p>
+      <h1>Check a current operational signal</h1>
+      <p class="lede">${escapeHtml(description)}</p>
+      <div class="grid">
+        <a class="card" href="/tools/natural-hazard-pulse/"><strong>Natural-hazard pulse</strong><br><span>Worldwide or approximate country filter</span></a>
+        <a class="card" href="/tools/airspace-disruption-checker/"><strong>Airspace-disruption checker</strong><br><span>Commercial airport disruption and observed military flights</span></a>
+        <a class="card" href="/chokepoints/"><strong>Maritime chokepoint status</strong><br><span>13 canonical waterways</span></a>
+        <a class="card" href="/crises/"><strong>Bounded crisis trackers</strong><br><span>Four curated geographic scopes</span></a>
+      </div>
+      <p class="source">Live results load from maintained World Monitor API contracts. Static route descriptions remain available if a current source cannot be reached.</p>`;
+  return pageDocument({
+    baseUrl,
+    path,
+    title: 'Live Intelligence Tools | World Monitor',
+    description,
+    lastmod,
+    jsonLd: {
+      '@context': 'https://schema.org',
+      '@type': 'CollectionPage',
+      name: 'Live intelligence tools',
+      description,
+      url: absoluteUrl(baseUrl, path),
+      inLanguage: 'en-US',
+    },
+    breadcrumbs: breadcrumbLd(baseUrl, [
+      { name: 'Home', path: '/' },
+      { name: 'Live tools', path },
+    ]),
+    body,
+  });
+}
+
+function renderHazardPage({ countryBounds, baseUrl, lastmod }) {
+  const path = '/tools/natural-hazard-pulse/';
+  const description = 'Check the latest available worldwide natural-hazard snapshot, or apply an approximate country bounding-box filter.';
+  const body = `      <p class="eyebrow">Natural-hazard pulse</p>
+      <h1>What natural hazards are active now?</h1>
+      <p class="lede">${escapeHtml(description)}</p>
+      <p>The country selector is an approximate geographic filter, not a territorial polygon. Coastal and border events can overlap neighbouring countries. Countries with oversized or discontinuous envelopes are omitted so every country query remains bounded. Agency observations and wind averaging periods remain distinct.</p>
+      <section class="live-tool" data-natural-hazard-tool data-state="loading">
+        <div class="tool-head">
+          <div>
+            <p class="eyebrow">Current source snapshot</p>
+            <h2>Open event pulse</h2>
+          </div>
+          <span class="live-status" data-live-status role="status" aria-live="polite">Connecting…</span>
+        </div>
+        <div class="tool-controls">
+          <label>Geographic filter
+            <select data-country-select>
+${countrySelectOptions(countryBounds, { includeWorldwide: true })}
+            </select>
+          </label>
+          <button class="refresh" type="button" data-live-refresh disabled>Refresh live data</button>
+        </div>
+        <div class="grid" data-live-grid aria-label="Current natural hazard metrics" aria-busy="true">
+          <div class="metric"><span>Open matches</span><strong data-hazard-total>—</strong></div>
+          <div class="metric"><span>Categories</span><strong data-hazard-categories>Loading</strong></div>
+          <div class="metric"><span>Strongest reported magnitude</span><strong data-hazard-strongest>—</strong></div>
+          <div class="metric"><span>Most recent event</span><strong data-hazard-latest>—</strong></div>
+        </div>
+        <ul class="result-list" data-hazard-list aria-label="Recent matching natural events"><li>Loading current events…</li></ul>
+        <div class="tool-meta"><time data-live-updated>Requesting the latest available snapshot…</time></div>
+        <noscript><p>Enable JavaScript to load and filter the current event snapshot. This page still documents the tool’s coverage and sources.</p></noscript>
+      </section>
+      <a class="cta" data-dashboard-link href="${escapeHtml(absoluteUrl(baseUrl, '/'))}">Open the selected area in World Monitor →</a>
+      <h2>Sources and limits</h2>
+      <p>World Monitor reads its seeded natural-event snapshot from maintained EONET, GDACS, NHC, and HKO ingestion paths. Source names are retained on individual events. A zero is shown only when a source snapshot is explicitly available; unavailable snapshots fail closed.</p>
+      <p class="source">Geographic filters: ${COUNTRY_BBOXES_PATH}. Live metrics: <code>/api/natural/v1/list-natural-events</code>.</p>`;
+  return pageDocument({
+    baseUrl,
+    path,
+    title: 'Natural-Hazard Pulse | World Monitor',
+    description,
+    lastmod,
+    jsonLd: {
+      '@context': 'https://schema.org',
+      '@type': 'WebApplication',
+      name: 'World Monitor natural-hazard pulse',
+      description,
+      url: absoluteUrl(baseUrl, path),
+      applicationCategory: 'DataApplication',
+      operatingSystem: 'Any',
+    },
+    breadcrumbs: breadcrumbLd(baseUrl, [
+      { name: 'Home', path: '/' },
+      { name: 'Live tools', path: '/tools/' },
+      { name: 'Natural-hazard pulse', path },
+    ]),
+    body,
+    scriptSrcs: ['/tools/live-tools.js'],
+  });
+}
+
+function renderAirspacePage({ countryBounds, baseUrl, lastmod }) {
+  const path = '/tools/airspace-disruption-checker/';
+  const description = 'Check monitored commercial-airport disruption and bounded observed military-flight activity for one country without combining the signals into a threat score.';
+  const body = `      <p class="eyebrow">Airspace-disruption checker</p>
+      <h1>Check a country’s airspace signals</h1>
+      <p class="lede">${escapeHtml(description)}</p>
+      <p>Commercial disruption and observed military aircraft are independent evidence domains. Aircraft presence does not establish mission, intent, or danger. Airport coverage is limited to monitored hubs.</p>
+      <section class="live-tool" data-airspace-tool data-state="loading">
+        <div class="tool-head">
+          <div>
+            <p class="eyebrow">Country bounding-box check</p>
+            <h2>Commercial and observed activity</h2>
+          </div>
+          <span class="live-status" data-live-status role="status" aria-live="polite">Connecting…</span>
+        </div>
+        <div class="tool-controls">
+          <label>Country
+            <select data-country-select>
+${countrySelectOptions(countryBounds, { defaultCode: 'JP' })}
+            </select>
+          </label>
+          <button class="refresh" type="button" data-live-refresh disabled>Refresh live data</button>
+        </div>
+        <div class="split" data-live-grid aria-busy="true">
+          <section>
+            <p class="eyebrow">Commercial operations</p>
+            <h3>Monitored airports</h3>
+            <p data-airport-state>Loading source coverage…</p>
+            <div class="grid">
+              <div class="metric"><span>Monitored in box</span><strong data-airport-monitored>—</strong></div>
+              <div class="metric"><span>Disrupted</span><strong data-airport-disrupted>—</strong></div>
+              <div class="metric"><span>Normal coverage</span><strong data-airport-normal>—</strong></div>
+              <div class="metric"><span>Unknown coverage</span><strong data-airport-unknown>—</strong></div>
+            </div>
+            <ul class="result-list" data-airport-list aria-label="Current airport disruptions"><li>Loading airport coverage…</li></ul>
+            <time data-airport-updated>Requesting monitored-airport data…</time>
+          </section>
+          <section>
+            <p class="eyebrow">Observed activity</p>
+            <h3>Military-flight returns</h3>
+            <p data-military-state>Loading bounded observations…</p>
+            <div class="grid">
+              <div class="metric"><span>Returned aircraft</span><strong data-military-returned>—</strong></div>
+              <div class="metric"><span>Flagged interesting</span><strong data-military-interesting>—</strong></div>
+            </div>
+            <ul class="result-list" data-military-list aria-label="Recent returned military flights"><li>Loading returned observations…</li></ul>
+            <time data-military-updated>Requesting bounded flight observations…</time>
+          </section>
+        </div>
+        <p class="tool-note">Military results are capped at 100 returned observations for the selected box. Countries with oversized or discontinuous envelopes are omitted so the tool never issues a continent-scale observation query. An empty or failed military response is unavailable, not confirmed zero activity.</p>
+        <noscript><p>Enable JavaScript to check the selected country. The independent-source methodology and limitations remain available on this page.</p></noscript>
+      </section>
+      <a class="cta" data-dashboard-link href="${escapeHtml(absoluteUrl(baseUrl, '/?country=JP&expanded=1'))}">Investigate the selected country in World Monitor →</a>
+      <h2>How to read the result</h2>
+      <p>“Normal” applies only to monitored airports with current source coverage. “Unknown” means telemetry was not available and is not counted as normal. Military-flight results are bounded observations from OpenSky/Wingbits-compatible ingestion and are not exhaustive.</p>
+      <p class="source">Geographic filters: ${COUNTRY_BBOXES_PATH}. Live metrics: <code>/api/aviation/v1/list-airport-delays</code> and <code>/api/military/v1/list-military-flights</code>.</p>`;
+  return pageDocument({
+    baseUrl,
+    path,
+    title: 'Airspace-Disruption Checker | World Monitor',
+    description,
+    lastmod,
+    jsonLd: {
+      '@context': 'https://schema.org',
+      '@type': 'WebApplication',
+      name: 'World Monitor airspace-disruption checker',
+      description,
+      url: absoluteUrl(baseUrl, path),
+      applicationCategory: 'DataApplication',
+      operatingSystem: 'Any',
+    },
+    breadcrumbs: breadcrumbLd(baseUrl, [
+      { name: 'Home', path: '/' },
+      { name: 'Live tools', path: '/tools/' },
+      { name: 'Airspace-disruption checker', path },
+    ]),
+    body,
+    scriptSrcs: ['/tools/live-tools.js'],
   });
 }
 
@@ -809,6 +1273,11 @@ function routeFile(pathname) {
 function buildManifest({ data, baseUrl, changelogPageCount }) {
   const countryRoutes = data.countries.map((country) => `/countries/${country.slug}/`);
   const chokepointRoutes = data.chokepoints.map((chokepoint) => `/chokepoints/${chokepoint.slug}/`);
+  const crisisRoutes = data.crises.map((crisis) => `/crises/${crisis.slug}/`);
+  const toolRoutes = [
+    '/tools/natural-hazard-pulse/',
+    '/tools/airspace-disruption-checker/',
+  ];
   const changelogRoutes = Array.from({ length: changelogPageCount }, (_, index) => changelogPagePath(index));
   const glossaryRoutes = data.glossaryTerms.map((term) => `/blog/glossary/${term.slug}/`);
   return {
@@ -826,6 +1295,16 @@ function buildManifest({ data, baseUrl, changelogPageCount }) {
         count: chokepointRoutes.length,
         index: '/chokepoints/',
         routes: chokepointRoutes,
+      },
+      crises: {
+        count: crisisRoutes.length,
+        index: '/crises/',
+        routes: crisisRoutes,
+      },
+      tools: {
+        count: toolRoutes.length,
+        index: '/tools/',
+        routes: toolRoutes,
       },
       changelog: {
         count: changelogRoutes.length,
@@ -900,6 +1379,59 @@ export async function buildCorpus({
     );
   }
 
+  writeGeneratedFile(
+    outDir,
+    'tools/live-tools.js',
+    readText(rootDir, LIVE_TOOLS_SCRIPT_PATH),
+  );
+  writeGeneratedFile(
+    outDir,
+    'tools/index.html',
+    renderToolsIndex({
+      baseUrl,
+      lastmod: data.lastmod.tools,
+    }),
+  );
+  writeGeneratedFile(
+    outDir,
+    'tools/natural-hazard-pulse/index.html',
+    renderHazardPage({
+      countryBounds: data.countryBounds,
+      baseUrl,
+      lastmod: data.lastmod.tools,
+    }),
+  );
+  writeGeneratedFile(
+    outDir,
+    'tools/airspace-disruption-checker/index.html',
+    renderAirspacePage({
+      countryBounds: data.countryBounds,
+      baseUrl,
+      lastmod: data.lastmod.tools,
+    }),
+  );
+
+  writeGeneratedFile(
+    outDir,
+    'crises/index.html',
+    renderCrisesIndex({
+      crises: data.crises,
+      baseUrl,
+      lastmod: data.lastmod.crises,
+    }),
+  );
+  for (const crisis of data.crises) {
+    writeGeneratedFile(
+      outDir,
+      routeFile(`/crises/${crisis.slug}/`),
+      renderCrisisPage({
+        crisis,
+        baseUrl,
+        lastmod: data.lastmod.crises,
+      }),
+    );
+  }
+
   const changelogPages = chunk(data.changelog, CHANGELOG_PAGE_SIZE);
   changelogPages.forEach((releases, pageIndex) => {
     writeGeneratedFile(
@@ -960,6 +1492,8 @@ async function main() {
   process.stdout.write(
     `Wrote crawlable corpus: ${manifest.sections.countries.count} countries, `
     + `${manifest.sections.chokepoints.count} chokepoints, `
+    + `${manifest.sections.crises.count} crisis trackers, `
+    + `${manifest.sections.tools.count} live tools, `
     + `${manifest.sections.changelog.count} changelog pages. `
     + `Glossary manifest references ${manifest.sections.glossary.count} existing blog pages.\n`,
   );

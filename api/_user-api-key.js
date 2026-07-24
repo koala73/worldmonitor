@@ -343,6 +343,7 @@ async function validateBootstrapUserApiAccessUncached(userId) {
   const cacheKey = `entitlements:${ENTITLEMENT_ENV_PREFIX}:${userId}`;
   const cached = await readCachedJson(cacheKey);
   if (cached.status === 'hit' && cached.value && typeof cached.value === 'object') {
+    if (hasCurrentApiAccess(cached.value)) return { ok: true };
     const cachedBillingFailure = billingVerificationFailure(cached.value);
     if (cachedBillingFailure) return cachedBillingFailure;
     if (notApplicableVerificationTtlSeconds(cached.value) !== null) {
@@ -350,7 +351,6 @@ async function validateBootstrapUserApiAccessUncached(userId) {
     }
     const validUntil = Number(cached.value.validUntil ?? 0);
     if (Number.isFinite(validUntil) && validUntil >= Date.now()) {
-      if (hasCurrentApiAccess(cached.value)) return { ok: true };
       return { ok: false, status: 403, error: 'API access subscription required', reason: 'cached-forbidden' };
     }
   }
@@ -379,12 +379,9 @@ async function validateBootstrapUserApiAccessUncached(userId) {
     await writeCachedJson(cacheKey, result.value, entitlementCacheTtlSeconds(result.value));
   }
 
+  if (hasCurrentApiAccess(result.value)) return { ok: true };
   const billingFailure = billingVerificationFailure(result.value);
   if (billingFailure) return billingFailure;
 
-  if (!hasCurrentApiAccess(result.value)) {
-    return { ok: false, status: 403, error: 'API access subscription required', reason: 'forbidden' };
-  }
-
-  return { ok: true };
+  return { ok: false, status: 403, error: 'API access subscription required', reason: 'forbidden' };
 }

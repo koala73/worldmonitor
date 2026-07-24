@@ -5,10 +5,16 @@
  * Convex fallback on cache miss. Returns a 403 Response for tier-gated endpoints
  * when the user lacks the required tier.
  *
- * Fail-closed behavior:
+ * Fail-closed behavior of checkEntitlement():
  *   - No userId header on a gated endpoint -> 403 (authentication required)
  *   - Redis miss + Convex failure -> 403 (unable to verify entitlements)
  *   - Endpoint not in ENDPOINT_ENTITLEMENTS -> allow (unrestricted)
+ *
+ * Transient Redis/Convex failures return a verificationUnavailable marker so
+ * callers can answer with a retryable 503 instead of a misleading hard denial.
+ * A null means the backend is unconfigured or returned no usable entitlement.
+ * The user-key gateway fails closed on null when the backend is configured and
+ * retains a logged fail-open exception only when lookup is wholly unconfigured.
  */
 
 import { getCachedJson, setCachedJson } from './redis';
@@ -43,8 +49,8 @@ export interface CachedEntitlements {
      */
     mcpAccess?: boolean;
     /**
-     * Per-account daily REST allowance (#3199). The rate-limit layer meters
-     * but never rejects at this value; the hard ceiling is 10×. `-1` =
+     * Per-account daily REST allowance (#3199). The rate-limit layer
+     * hard-rejects (in enforce mode) at this value (#4635). `-1` =
      * unlimited. Unlike `mcpAccess`, consumers treat `undefined` as
      * **no daily limit (fail-OPEN)** — a stale/legacy cache must not punish
      * a paying customer. NOT added to the cache-staleness gate below for
@@ -99,6 +105,7 @@ export interface EntitlementCheckOptions {
 const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
   '/api/forecast/v1/trigger-simulation': 1,
   '/api/intelligence/v1/classify-event': 1,
+  '/api/intelligence/v1/get-country-intel-brief': 1,
   '/api/market/v1/analyze-stock': 1,
   '/api/market/v1/get-stock-analysis-history': 1,
   '/api/market/v1/backtest-stock': 1,
@@ -121,6 +128,7 @@ const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
 
 const CONVEX_INTERNAL_ENTITLEMENTS_PATH = '/api/internal-entitlements';
 let _didWarnMissingConvexSharedSecret = false;
+let _didWarnMissingConvexSiteUrl = false;
 
 function getConvexSharedSecret(): string {
   const secret = process.env.CONVEX_SERVER_SHARED_SECRET ?? '';
@@ -129,6 +137,21 @@ function getConvexSharedSecret(): string {
     console.warn('[entitlement-check] CONVEX_SERVER_SHARED_SECRET not set; Convex fallback disabled');
   }
   return secret;
+}
+
+/**
+ * Warn once when CONVEX_SITE_URL is missing. Its sibling above covered only the
+ * shared secret, so a deploy missing ONLY the site URL disabled the Convex
+ * fallback with no signal from this module. The warning keeps that deployment
+ * defect visible alongside the gateway's explicit unconfigured-backend log.
+ */
+function getConvexSiteUrl(): string {
+  const siteUrl = process.env.CONVEX_SITE_URL ?? '';
+  if (!siteUrl && !_didWarnMissingConvexSiteUrl) {
+    _didWarnMissingConvexSiteUrl = true;
+    console.warn('[entitlement-check] CONVEX_SITE_URL not set; Convex fallback disabled');
+  }
+  return siteUrl;
 }
 
 // ---------------------------------------------------------------------------
@@ -307,8 +330,13 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
     }
 
     // Convex fallback on cache miss or expired cache
-    const convexSiteUrl = process.env.CONVEX_SITE_URL;
+    const convexSiteUrl = getConvexSiteUrl();
     const convexSharedSecret = getConvexSharedSecret();
+    // MISCONFIGURATION HAZARD: a deploy missing CONVEX_SITE_URL or
+    // CONVEX_SERVER_SHARED_SECRET returns null for every user on every request.
+    // The gateway recognizes that configuration state and logs before using its
+    // explicit fail-open deploy-defect exception; other entitlement gates remain
+    // fail closed. Warn once per variable here so neither missing value is silent.
     if (!convexSiteUrl || !convexSharedSecret) return null;
 
     const response = await fetch(`${convexSiteUrl}${CONVEX_INTERNAL_ENTITLEMENTS_PATH}`, {

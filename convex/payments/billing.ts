@@ -506,12 +506,18 @@ export const getSubscriptionForUser = query({
 
     if (allSubs.length === 0) return null;
 
-    const priorityOrder = ["active", "on_hold", "cancelled", "expired"];
     allSubs.sort((a, b) => {
-      const pa = priorityOrder.indexOf(a.status);
-      const pb = priorityOrder.indexOf(b.status);
+      // Ended subscriptions are equivalent for display selection. Prefer the
+      // one whose coverage ended most recently so returning-subscriber links
+      // preserve the latest plan instead of always favoring cancelled.
+      const pa = a.status === "active" ? 0 : a.status === "on_hold" ? 1 : 2;
+      const pb = b.status === "active" ? 0 : b.status === "on_hold" ? 1 : 2;
       if (pa !== pb) return pa - pb; // active first
-      return b.updatedAt - a.updatedAt; // then most recently updated
+      if (pa === 2) {
+        const periodDelta = b.currentPeriodEnd - a.currentPeriodEnd;
+        if (periodDelta !== 0) return periodDelta;
+      }
+      return b.updatedAt - a.updatedAt;
     });
 
     // Safe: we checked length > 0 above
@@ -524,10 +530,19 @@ export const getSubscriptionForUser = query({
       .first();
 
     return {
+      // Purpose-built opaque identity for Pro Activation fire-once keying.
+      // Never expose/store the provider subscription id in browser storage.
+      // A new subscription row gets a new Convex id, so win-backs re-onboard.
+      activationKey: subscription._id,
       planKey: subscription.planKey,
       displayName: productPlan?.displayName ?? subscription.planKey,
       status: subscription.status,
       currentPeriodEnd: subscription.currentPeriodEnd,
+      // #4771: request-path renewal verification verdict (#4770), so the
+      // frontend can show "verifying your renewal" instead of a generic
+      // Upgrade CTA when local paid evidence goes stale. Normalized to null
+      // (not undefined) for a stable wire shape.
+      renewalVerificationState: subscription.renewalVerificationState ?? null,
     };
   },
 });
