@@ -121,7 +121,10 @@ async function getUnresolvedFailureSummary(ctx: QueryCtx) {
   const rows = await ctx.db
     .query("paymentWebhookFailureSummary")
     .withIndex("by_key", (q) => q.eq("key", "global"))
-    .unique();
+    // A deploy seed and the daily self-heal can both observe an empty index
+    // and insert concurrently. Operational reads must remain available until
+    // the next seed pass removes the extra row.
+    .first();
   return {
     unresolvedCount: rows?.unresolvedCount ?? 0,
     eventTypes: rows?.eventTypes.map((entry) => entry.eventType) ?? [],
@@ -213,13 +216,25 @@ async function removeUnresolvedFailureFromSummary(
  */
 export const _seedFailureSummary = internalMutation({
   args: {},
-  handler: async (ctx): Promise<{ seeded: number }> => {
+  handler: async (ctx): Promise<{ seeded: number; deduped: number }> => {
     const existing = await ctx.db
       .query("paymentWebhookFailureSummary")
       .withIndex("by_key", (q) => q.eq("key", GLOBAL_FAILURE_SUMMARY_KEY))
-      .first();
-    if (existing) {
-      return { seeded: 0 };
+      .collect();
+    if (existing.length > 0) {
+      // Concurrent first seeds can both insert because an empty index range is
+      // not a document-backed OCC lock. All operational reads use the oldest
+      // row via `.first()`, so retain that authority and remove later extras.
+      existing.sort((a, b) => a._creationTime - b._creationTime);
+      let deduped = 0;
+      for (let index = 1; index < existing.length; index++) {
+        const extra = existing[index];
+        if (extra !== undefined) {
+          await ctx.db.delete(extra._id);
+          deduped += 1;
+        }
+      }
+      return { seeded: 0, deduped };
     }
 
     await ctx.db.insert("paymentWebhookFailureSummary", {
@@ -228,7 +243,7 @@ export const _seedFailureSummary = internalMutation({
       eventTypes: [],
       updatedAt: Date.now(),
     });
-    return { seeded: 1 };
+    return { seeded: 1, deduped: 0 };
   },
 });
 
@@ -341,7 +356,7 @@ export const getWebhookFailureDiagnostics = internalQuery({
     const summary = await ctx.db
       .query("paymentWebhookFailureSummary")
       .withIndex("by_key", (q) => q.eq("key", "global"))
-      .unique();
+      .first();
     const failures = await ctx.db
       .query("paymentWebhookFailures")
       .withIndex("by_unresolved_lastSeenAt", (q) => q.eq("unresolved", true))

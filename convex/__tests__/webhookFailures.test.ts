@@ -122,6 +122,7 @@ function failureArgs(overrides: Record<string, unknown> = {}) {
 describe("Dodo webhook failure tracking", () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
     delete process.env.DODO_PAYMENTS_WEBHOOK_SECRET;
   });
 
@@ -176,6 +177,51 @@ describe("Dodo webhook failure tracking", () => {
     expect(reportLog).toHaveBeenCalledWith(
       expect.stringContaining("unresolvedCount=1"),
     );
+  });
+
+  test("queues the production operations signal after the failure commits", async () => {
+    vi.stubEnv("NODE_ENV", "production");
+    vi.useFakeTimers({ toFake: ["setTimeout", "setInterval"] });
+    try {
+      vi.spyOn(Date, "now").mockReturnValue(BASE_TIMESTAMP);
+      process.env.DODO_PAYMENTS_WEBHOOK_SECRET = DODO_WEBHOOK_SECRET;
+      const t = await makeT();
+      const body = JSON.stringify(makeProviderValidSubscriptionPayload());
+      const webhookId = "wh_http_signal_001";
+      const timestampSeconds = String(Math.floor(BASE_TIMESTAMP / 1000));
+      const signature = await signDodoPayload(body, webhookId, timestampSeconds);
+
+      const response = await t.fetch("/dodopayments-webhook", {
+        method: "POST",
+        headers: {
+          "webhook-id": webhookId,
+          "webhook-timestamp": timestampSeconds,
+          "webhook-signature": signature,
+        },
+        body,
+      });
+
+      expect(response.status).toBe(500);
+      const scheduled = await t.run((ctx) =>
+        ctx.db.system.query("_scheduled_functions").collect(),
+      );
+      const reportJobs = scheduled.filter((job) =>
+        job.name.includes("reportDodoWebhookFailure"),
+      );
+      expect(reportJobs).toHaveLength(1);
+      expect(reportJobs[0].args).toEqual([
+        expect.objectContaining({
+          webhookId,
+          eventType: "subscription.active",
+          attemptCount: 1,
+          unresolvedCount: 1,
+          eventTypes: ["subscription.active"],
+        }),
+      ]);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllEnvs();
+    }
   });
 
   test("records sanitized context for a malformed subscription event", async () => {
@@ -260,9 +306,12 @@ describe("Dodo webhook failure tracking", () => {
     expect(rows[0].lastSeenAt).toBe(BASE_TIMESTAMP + 5000);
   });
 
-  test("serializes first failure writes for the same webhook ID", async () => {
+  test("keeps one row across overlapping same-ID mutation requests", async () => {
     const t = await makeT();
 
+    // convex-test currently executes top-level functions one at a time, so
+    // this proves the idempotent outcome but not a production OCC retry. The
+    // shared pre-seeded summary read is the production serialization point.
     const [first, second] = await Promise.all([
       t.mutation(
         internal.payments.webhookMutations.recordWebhookFailure,
@@ -286,6 +335,48 @@ describe("Dodo webhook failure tracking", () => {
       {},
     );
     expect(summary.unresolvedCount).toBe(1);
+  });
+
+  test("tolerates and self-heals duplicate summary seed rows", async () => {
+    const t = await makeT();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("paymentWebhookFailureSummary", {
+        key: "global",
+        unresolvedCount: 0,
+        eventTypes: [],
+        updatedAt: BASE_TIMESTAMP,
+      });
+    });
+
+    const signal = await t.mutation(
+      internal.payments.webhookMutations.recordWebhookFailure,
+      failureArgs(),
+    );
+    expect(signal).toMatchObject({
+      attemptCount: 1,
+      unresolvedCount: 1,
+      eventTypes: ["subscription.renewed"],
+    });
+
+    const diagnostics = await t.query(
+      internal.payments.webhookMutations.getWebhookFailureDiagnostics,
+      {},
+    );
+    expect(diagnostics.unresolvedCount).toBe(1);
+
+    const seed = await t.mutation(
+      internal.payments.webhookMutations._seedFailureSummary,
+      {},
+    );
+    expect(seed).toEqual({ seeded: 0, deduped: 1 });
+    const summaries = await t.run(async (ctx) =>
+      ctx.db.query("paymentWebhookFailureSummary").collect(),
+    );
+    expect(summaries).toHaveLength(1);
+    expect(summaries[0]).toMatchObject({
+      unresolvedCount: 1,
+      eventTypes: [{ eventType: "subscription.renewed", count: 1 }],
+    });
   });
 
   test("keeps distinct webhook IDs separate for the same subscription", async () => {
@@ -395,5 +486,65 @@ describe("Dodo webhook failure tracking", () => {
       resolvedBy: "dodo-retry",
       resolutionNote: "Processed successfully on provider retry",
     });
+  });
+
+  test("recovers a failure through the signed HTTP retry path", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(BASE_TIMESTAMP);
+    vi.stubEnv("RESEND_API_KEY", "");
+    process.env.DODO_PAYMENTS_WEBHOOK_SECRET = DODO_WEBHOOK_SECRET;
+    const t = await makeT();
+    const payload = makeProviderValidSubscriptionPayload();
+    const webhookId = "wh_http_recovery_001";
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("customers", {
+        userId: "user_http_recovery",
+        dodoCustomerId: payload.data.customer.customer_id,
+        email: payload.data.customer.email,
+        normalizedEmail: payload.data.customer.email,
+        createdAt: BASE_TIMESTAMP,
+        updatedAt: BASE_TIMESTAMP,
+      });
+    });
+    await t.mutation(
+      internal.payments.webhookMutations.recordWebhookFailure,
+      failureArgs({
+        webhookId,
+        eventType: payload.type,
+        rawPayload: payload,
+      }),
+    );
+
+    const body = JSON.stringify(payload);
+    const timestampSeconds = String(Math.floor(BASE_TIMESTAMP / 1000));
+    const signature = await signDodoPayload(body, webhookId, timestampSeconds);
+    const response = await t.fetch("/dodopayments-webhook", {
+      method: "POST",
+      headers: {
+        "webhook-id": webhookId,
+        "webhook-timestamp": timestampSeconds,
+        "webhook-signature": signature,
+      },
+      body,
+    });
+
+    expect(response.status).toBe(200);
+    const rows = await t.run(async (ctx) =>
+      ctx.db.query("paymentWebhookFailures").collect(),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      webhookId,
+      unresolved: false,
+      resolvedBy: "dodo-retry",
+      resolutionNote: "Processed successfully on provider retry",
+    });
+
+    const diagnostics = await t.query(
+      internal.payments.webhookMutations.getWebhookFailureDiagnostics,
+      {},
+    );
+    expect(diagnostics.unresolvedCount).toBe(0);
+    expect(diagnostics.failures).toHaveLength(0);
   });
 });
