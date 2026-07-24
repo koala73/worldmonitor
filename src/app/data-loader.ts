@@ -3879,11 +3879,11 @@ export class DataLoaderManager implements AppModule {
 
   private async loadRenewableData(): Promise<void> {
     const { fetchRenewableEnergyData, fetchEnergyCapacity } = await import('@/services/renewable-energy-data');
-    const data = await fetchRenewableEnergyData();
-    this.callPanel('renewable', 'setData', data);
-    if (SITE_VARIANT === 'happy' && data?.globalPercentage) {
+    const result = await fetchRenewableEnergyData();
+    this.callPanel('renewable', 'setData', result);
+    if (SITE_VARIANT === 'happy' && result.state === 'live' && result.data?.globalPercentage) {
       checkMilestones({
-        renewablePercent: data.globalPercentage,
+        renewablePercent: result.data.globalPercentage,
       });
     }
     try {
