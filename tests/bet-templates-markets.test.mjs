@@ -8,10 +8,10 @@ import {
 } from '../scripts/_bet-templates-markets.mjs';
 import { parseMetricKey, resolveHardSpec, MARKET_SETTLEMENT_MAX_LAG_MS } from '../scripts/_forecast-resolution-eval.mjs';
 import { RESOLUTION_FEED_KEYS } from '../scripts/_forecast-resolution.mjs';
+import { shapeResolutionFeed, ingestHistory } from '../scripts/seed-forecast-resolutions.mjs';
 import {
-  shapeResolutionFeed, ingestHistory, updateMarketSettlements,
-  parseGammaSettlement, parseKalshiSettlement,
-} from '../scripts/seed-forecast-resolutions.mjs';
+  updateMarketSettlements, parseGammaSettlement, parseKalshiSettlement,
+} from '../scripts/_forecast-market-settlements.mjs';
 
 const NOW = Date.parse('2026-07-23T00:00:00Z');
 const DAY_MS = 24 * 60 * 60 * 1000;
