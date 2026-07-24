@@ -221,6 +221,22 @@ describe('Giving panel expiry and unavailable behavior', () => {
     assert.equal(panel.testState.destroyed, true);
   });
 
+  it('ignores a late fetch result after the panel is destroyed', () => {
+    const panel = new GivingPanel();
+    panel.setData(summary(now - 60_000, 2));
+    const renderedBeforeDestroy = panel.content.innerHTML;
+
+    panel.destroy();
+    panel.setData(summary(now, 4));
+    panel.showUnavailable();
+
+    assert.equal(pendingTimers.size, 0);
+    assert.equal(panel.testState.destroyed, true);
+    assert.equal(panel.testState.count, 2);
+    assert.equal(panel.testState.error, false);
+    assert.equal(panel.content.innerHTML, renderedBeforeDestroy);
+  });
+
   it('routes an unavailable Giving fetch through the retained-data cold error guard', () => {
     const source = readFileSync(resolve(root, 'src/app/data-loader.ts'), 'utf8');
     const file = ts.createSourceFile(

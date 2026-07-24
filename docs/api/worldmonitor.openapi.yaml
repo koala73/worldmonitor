@@ -7552,7 +7552,58 @@ paths:
                                     "activityIndex": 0
                                     "activityIndexAvailable": false
                                     "categories":
-                                        []
+                                        - "activeCampaigns": 0
+                                          "category": "Medical & Health"
+                                          "change24h": 0
+                                          "share": 0
+                                          "trending": false
+                                        - "activeCampaigns": 0
+                                          "category": "Disaster Relief"
+                                          "change24h": 0
+                                          "share": 0
+                                          "trending": false
+                                        - "activeCampaigns": 0
+                                          "category": "Education"
+                                          "change24h": 0
+                                          "share": 0
+                                          "trending": false
+                                        - "activeCampaigns": 0
+                                          "category": "Community"
+                                          "change24h": 0
+                                          "share": 0
+                                          "trending": false
+                                        - "activeCampaigns": 0
+                                          "category": "Memorials"
+                                          "change24h": 0
+                                          "share": 0
+                                          "trending": false
+                                        - "activeCampaigns": 0
+                                          "category": "Animals & Pets"
+                                          "change24h": 0
+                                          "share": 0
+                                          "trending": false
+                                        - "activeCampaigns": 0
+                                          "category": "Environment"
+                                          "change24h": 0
+                                          "share": 0
+                                          "trending": false
+                                        - "activeCampaigns": 0
+                                          "category": "Hunger & Food"
+                                          "change24h": 0
+                                          "share": 0
+                                          "trending": false
+                                        - "activeCampaigns": 0
+                                          "category": "Other"
+                                          "change24h": 0
+                                          "share": 0
+                                          "trending": false
+                                    "crypto":
+                                        "dailyInflowUsd": 0
+                                        "pctOfTotal": 0
+                                        "topReceivers":
+                                            []
+                                        "trackedWallets": 0
+                                        "transactions24h": 0
                                     "dataMode": "partial_estimate"
                                     "estimatedDailyFlowUsd": 7353424.657534246
                                     "generatedAt": "2026-07-24T12:00:00.000Z"
@@ -27408,7 +27459,10 @@ components:
                     type: array
                     items:
                         type: string
-                        description: JSON-style response metric paths covered by this evidence record.
+                        description: |-
+                            Stable proto response field paths covered by this evidence record. Field
+                             names use the proto snake_case spelling (for example,
+                             "summary.estimated_daily_flow_usd").
                 includedInHighlightedAggregate:
                     type: boolean
                     description: Whether this claim contributes to the highlighted tracked-platform aggregate.

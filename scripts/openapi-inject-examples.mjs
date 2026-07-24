@@ -362,6 +362,23 @@ function getGivingSummaryExample() {
     claim.status === 'unverified' || claim.status === 'partially_verified')
     ? 'partial_estimate'
     : 'published_estimate';
+  const categories = [
+    'Medical & Health',
+    'Disaster Relief',
+    'Education',
+    'Community',
+    'Memorials',
+    'Animals & Pets',
+    'Environment',
+    'Hunger & Food',
+    'Other',
+  ].map((category) => ({
+    category,
+    share: 0,
+    change24h: 0,
+    activeCampaigns: 0,
+    trending: false,
+  }));
 
   return {
     summary: {
@@ -373,7 +390,14 @@ function getGivingSummaryExample() {
         0,
       ),
       platforms,
-      categories: [],
+      categories,
+      crypto: {
+        dailyInflowUsd: 0,
+        trackedWallets: 0,
+        transactions24h: 0,
+        topReceivers: [],
+        pctOfTotal: 0,
+      },
       institutional: {
         oecdOdaAnnualUsdBn,
         oecdDataYear: oecdOdaAnnualUsdBn > 0 ? 2023 : 0,

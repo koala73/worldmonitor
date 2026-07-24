@@ -328,6 +328,7 @@ describe('Giving client v2 response classification', () => {
     assert.match(source, /cacheKey:\s*GIVING_BREAKER_CACHE_KEY/);
     assert.match(source, /shouldCache:\s*isCacheableGivingResponse/);
     assert.match(source, /staleRefreshMode:\s*'await'/);
+    assert.match(source, /forceRefresh:\s*lastRefreshFailure\s*!==\s*null/);
     assert.match(source, /getBootstrapHydrationState\(\)\.tiers\.slow\.source/);
     assert.doesNotMatch(source, /cachedAt\s*=\s*Date\.now\(\)/);
     assert.doesNotMatch(source, /generatedAt:\s*new Date\(\)\.toISOString\(\)/);

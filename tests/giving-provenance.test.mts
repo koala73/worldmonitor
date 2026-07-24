@@ -59,6 +59,12 @@ describe('Giving published-estimate contract', () => {
       denominator: 16,
       derivation: 17,
     });
+    assert.match(
+      source,
+      /Stable proto response field paths[\s\S]*proto snake_case spelling/,
+      'covered_metric_paths docs must describe the proto snake_case namespace',
+    );
+    assert.doesNotMatch(source, /JSON-style response metric paths/);
     assert.doesNotMatch(source, /\bsource_observed_at\b/);
   });
 

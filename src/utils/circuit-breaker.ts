@@ -351,6 +351,11 @@ export class CircuitBreaker<T> {
        * existing stale entry with data mode `cached`.
        */
       staleRefreshMode?: 'background' | 'await';
+      /**
+       * Bypass a fresh cache entry and run the coalesced refresh path while
+       * retaining that entry as a fallback. Circuit cooldown still applies.
+       */
+      forceRefresh?: boolean;
     } = {},
   ): Promise<R> {
     const offline = isDesktopOfflineMode();
@@ -358,6 +363,7 @@ export class CircuitBreaker<T> {
     const shouldCache = options.shouldCache ?? (() => true);
     const evictOnRefreshFailure = options.evictOnRefreshFailure ?? false;
     const staleRefreshMode = options.staleRefreshMode ?? 'background';
+    const forceRefresh = options.forceRefresh ?? false;
 
     // Hydrate from persistent storage on first call (~1-5ms IndexedDB read)
     if (this.persistEnabled && !this.persistentLoadedKeys.has(cacheKey)) {
@@ -390,7 +396,11 @@ export class CircuitBreaker<T> {
       return (cachedEntry?.data ?? defaultValue) as R;
     }
 
-    if (cachedEntry !== null && this.isCacheEntryFresh(cachedEntry)) {
+    if (
+      !forceRefresh
+      && cachedEntry !== null
+      && this.isCacheEntryFresh(cachedEntry)
+    ) {
       this.lastDataState = { mode: 'cached', timestamp: cachedEntry.timestamp, offline };
       this.touchCacheKey(cacheKey);
       return cachedEntry.data as R;
@@ -398,8 +408,9 @@ export class CircuitBreaker<T> {
 
     // Stale-while-revalidate: if we have stale cached data (outside TTL but
     // within the 24h persistent ceiling), return it instantly and refresh in
-    // the background. This prevents "Loading..." on every page reload when
-    // the persistent cache is older than the TTL. Skip SWR when cacheTtlMs === 0.
+    // the background. A forced refresh takes this same coalesced path even for
+    // a fresh entry, preserving it as fallback while awaiting the refresh.
+    // Skip SWR when cacheTtlMs === 0.
     if (cachedEntry !== null && this.cacheTtlMs > 0) {
       this.lastDataState = { mode: 'cached', timestamp: cachedEntry.timestamp, offline };
       this.touchCacheKey(cacheKey);
@@ -444,7 +455,7 @@ export class CircuitBreaker<T> {
         this.backgroundRefreshPromises.set(cacheKey, refreshPromise);
       }
 
-      if (staleRefreshMode === 'await') {
+      if (forceRefresh || staleRefreshMode === 'await') {
         const outcome = await refreshPromise;
         if (outcome.kind === 'cacheable') {
           return outcome.data as R;

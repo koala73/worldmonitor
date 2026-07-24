@@ -15,6 +15,7 @@ export class GivingPanel extends Panel {
   private data: GivingSummary | null = null;
   private activeTab: GivingTab = 'platforms';
   private expiryTimer: ReturnType<typeof globalThis.setTimeout> | null = null;
+  private disposed = false;
 
   constructor() {
     super({
@@ -28,6 +29,7 @@ export class GivingPanel extends Panel {
   }
 
   public setData(data: GivingSummary): void {
+    if (this.disposed) return;
     if (!this.scheduleExpiry(data.materializedAt)) {
       this.showUnavailable();
       return;
@@ -40,6 +42,7 @@ export class GivingPanel extends Panel {
   }
 
   public showUnavailable(): void {
+    if (this.disposed) return;
     this.clearExpiryTimer();
     this.data = null;
     this.setCount(0);
@@ -51,6 +54,7 @@ export class GivingPanel extends Panel {
   }
 
   private scheduleExpiry(materializedAtValue: string): boolean {
+    if (this.disposed) return false;
     this.clearExpiryTimer();
     const materializedAt = Date.parse(materializedAtValue);
     const expiresInMs = materializedAt + GIVING_STALE_CEILING_MS - Date.now();
@@ -58,6 +62,7 @@ export class GivingPanel extends Panel {
 
     this.expiryTimer = globalThis.setTimeout(() => {
       this.expiryTimer = null;
+      if (this.disposed) return;
       this.showUnavailable();
     }, expiresInMs);
     return true;
@@ -91,6 +96,8 @@ export class GivingPanel extends Panel {
   }
 
   public override destroy(): void {
+    if (this.disposed) return;
+    this.disposed = true;
     this.clearExpiryTimer();
     super.destroy();
   }

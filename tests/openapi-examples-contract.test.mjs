@@ -20,6 +20,17 @@ const JSON_MEDIA = 'application/json';
 const GIVING_PUBLISHED_ESTIMATE_CLAIMS = JSON.parse(
   readFileSync(resolve(root, 'scripts/shared/giving-published-estimate-claims.json'), 'utf8'),
 );
+const GIVING_CATEGORY_SENTINELS = [
+  'Medical & Health',
+  'Disaster Relief',
+  'Education',
+  'Community',
+  'Memorials',
+  'Animals & Pets',
+  'Environment',
+  'Hunger & Food',
+  'Other',
+];
 
 const serviceSpecs = readdirSync(apiDir)
   .filter((f) => /Service\.openapi\.json$/.test(f))
@@ -542,10 +553,23 @@ function assertGivingPublishedEstimateExample(spec, label) {
     assert.equal(platform.donationVelocity, undefined, `${label}: must not fabricate live donation velocity`);
   }
   for (const category of example.summary?.categories ?? []) {
-    assert.equal(category.change24h, undefined, `${label}: must not fabricate 24-hour category change`);
-    assert.equal(category.trending, undefined, `${label}: must not fabricate a trending category`);
+    assert.equal(category.share, 0, `${label}: category share must remain an unavailable sentinel`);
+    assert.equal(category.change24h, 0, `${label}: category change must remain a not-collected sentinel`);
+    assert.equal(category.activeCampaigns, 0, `${label}: category campaign count must remain a not-collected sentinel`);
+    assert.equal(category.trending, false, `${label}: category trend must remain unavailable`);
   }
-  assert.equal(example.summary?.crypto, undefined, `${label}: must not fabricate on-chain activity`);
+  assert.deepEqual(
+    example.summary?.categories?.map((category) => category.category),
+    GIVING_CATEGORY_SENTINELS,
+    `${label}: Giving category compatibility projection must match the live builder`,
+  );
+  assert.deepEqual(example.summary?.crypto, {
+    dailyInflowUsd: 0,
+    trackedWallets: 0,
+    transactions24h: 0,
+    topReceivers: [],
+    pctOfTotal: 0,
+  }, `${label}: crypto compatibility projection must match the live builder`);
 }
 
 // Honeypot fields are hidden anti-bot inputs (marked by a schema description

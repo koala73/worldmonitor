@@ -70,7 +70,9 @@ message GivingProvenance {
   // "unverified", "not_collected", "not_applicable". Consumers must treat
   // unknown future values as "unverified".
   string status = 7;
-  // JSON-style response metric paths covered by this evidence record.
+  // Stable proto response field paths covered by this evidence record. Field
+  // names use the proto snake_case spelling (for example,
+  // "summary.estimated_daily_flow_usd").
   repeated string covered_metric_paths = 8;
   // Whether this claim contributes to the highlighted tracked-platform aggregate.
   bool included_in_highlighted_aggregate = 9;

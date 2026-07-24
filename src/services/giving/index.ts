@@ -76,6 +76,7 @@ export async function fetchGivingSummary(): Promise<GivingFetchResult> {
       cacheKey: GIVING_BREAKER_CACHE_KEY,
       shouldCache: isCacheableGivingResponse,
       staleRefreshMode: 'await',
+      forceRefresh: lastRefreshFailure !== null,
     });
 
     const resolvedAt = Date.now();
