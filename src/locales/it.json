@@ -2215,6 +2215,84 @@
       "retrying": "Riprovando…",
       "dismiss": "Scarta"
     },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Passaggio {{current}} di {{total}}",
+      "closeLabel": "Salta configurazione",
+      "ariaLabel": "Configurazione attivazione Pro",
+      "signedInAs": "Accesso effettuato come {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Il tuo briefing quotidiano, ogni mattina",
+          "body": "Un briefing di intelligence curato nella tua casella di posta ogni mattina — i segnali della notte che contano, condensati in una lettura di cinque minuti.",
+          "confirmCta": "Attiva il mio briefing mattutino",
+          "confirming": "Attivazione…",
+          "doneNote": "Il tuo briefing mattutino è già attivo.",
+          "scheduleNote": "Manterremo il tuo orario di consegna attuale.",
+          "summaryLabel": "Briefing mattutino",
+          "summaryVerified": "Attivo — inizia con il tuo prossimo briefing mattutino.",
+          "deliverAt": "Consegna alle",
+          "previewLoading": "Preparazione di un'anteprima del tuo primo briefing…",
+          "previewLabel": "Il briefing di stamattina"
+        },
+        "alerts": {
+          "heading": "Avvisi critici",
+          "body": "Ricevi una notifica nel browser quando succede qualcosa di importante — escalation di conflitti, shock di mercato, nuove sanzioni. Modifica la frequenza in qualsiasi momento nelle Impostazioni.",
+          "confirmCta": "Attiva gli avvisi",
+          "confirming": "Attivazione…",
+          "doneNote": "Gli avvisi del browser sono già attivi.",
+          "blockedNote": "Le notifiche sono bloccate nel tuo browser. Attivale nelle impostazioni del sito del tuo browser per ricevere avvisi.",
+          "declinedNote": "Nessun problema — non invieremo avvisi del browser. Potrai attivarli più tardi dalle impostazioni del sito del tuo browser.",
+          "summaryLabel": "Avvisi critici",
+          "summaryVerified": "Attivi — i segnali critici raggiungeranno il tuo browser."
+        },
+        "power": {
+          "heading": "Il tuo kit di strumenti Pro",
+          "body": "Widget personalizzati, connessioni MCP e il ricercatore IA sono sbloccati. Crea la dashboard che vuoi davvero monitorare.",
+          "confirmCta": "Esplora gli strumenti Pro",
+          "confirming": "Apertura…",
+          "doneNote": "Stai già usando i tuoi strumenti Pro.",
+          "summaryLabel": "Kit di strumenti Pro",
+          "summaryVerified": "Sbloccato e pronto quando lo sei tu.",
+          "channelsNote": "Preferisci Telegram, Slack, Discord o un webhook?",
+          "pointers": {
+            "widgets": "Crea un widget personalizzato",
+            "analyst": "Chiedi all'analista IA",
+            "apiKeys": "Ottieni le tue chiavi API e MCP",
+            "channels": "Configurali nelle impostazioni di notifica"
+          }
+        }
+      },
+      "status": {
+        "pending": "Non configurato",
+        "inFlight": "Configurazione in corso…",
+        "verified": "Pronto",
+        "failed": "Non ha funzionato",
+        "blocked": "Bloccato",
+        "unavailable": "Non disponibile",
+        "blockedNote": "Questo non è disponibile al momento — potrai configurarlo più tardi dalle impostazioni.",
+        "unavailableNote": "Questo non è disponibile sul tuo dispositivo — potrai configurarlo più tardi.",
+        "failedBody": "Qualcosa è andato storto. Puoi riprovare o configurarlo più tardi dalle impostazioni.",
+        "retry": "Riprova"
+      },
+      "actions": {
+        "skip": "Salta per ora",
+        "continue": "Continua"
+      },
+      "summary": {
+        "heading": "Tutto pronto",
+        "subVerified": "Ecco cosa è attivo sul tuo account.",
+        "subPending": "Puoi completare la configurazione in qualsiasi momento dalle impostazioni.",
+        "linePending": "Non ancora configurato — completalo quando vuoi nelle impostazioni.",
+        "lineFailed": "Non siamo riusciti a configurarlo — riprova dalle impostazioni.",
+        "finish": "Vai alla mia dashboard"
+      },
+      "chip": {
+        "message": "Completa la configurazione del tuo account Pro.",
+        "action": "Completa configurazione",
+        "dismissLabel": "Ignora"
+      }
+    },
     "frameworkSelector": {
       "label": "Framework di Analisi",
       "defaultNeutral": "Predefinito (Neutro)",

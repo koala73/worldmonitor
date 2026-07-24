@@ -2275,6 +2275,84 @@
       "retrying": "Újrapróbálás…",
       "dismiss": "Eltüntetés"
     },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "{{current}}. lépés / {{total}}",
+      "closeLabel": "Beállítás kihagyása",
+      "ariaLabel": "Pro aktiválás beállítása",
+      "signedInAs": "Bejelentkezve mint {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Napi összefoglalója minden reggel",
+          "body": "Válogatott hírszerzési összefoglaló a postafiókjában minden reggel — az éjszaka fontos jelei öt perces olvasmányba sűrítve.",
+          "confirmCta": "Reggeli összefoglaló bekapcsolása",
+          "confirming": "Bekapcsolás…",
+          "doneNote": "A reggeli összefoglalója már fut.",
+          "scheduleNote": "Megtartjuk a jelenlegi kézbesítési időpontját.",
+          "summaryLabel": "Reggeli összefoglaló",
+          "summaryVerified": "Bekapcsolva — a következő reggeli összefoglalóval indul.",
+          "deliverAt": "Kézbesítés ekkor",
+          "previewLoading": "Az első összefoglaló előnézetének előkészítése…",
+          "previewLabel": "A mai reggeli összefoglaló"
+        },
+        "alerts": {
+          "heading": "Kritikus riasztások",
+          "body": "Kapjon értesítést a böngészőjében, ha valami nagy dolog történik — konfliktusok eszkalációja, piaci sokkok, friss szankciók. A gyakoriságot bármikor módosíthatja a Beállításokban.",
+          "confirmCta": "Riasztások engedélyezése",
+          "confirming": "Engedélyezés…",
+          "doneNote": "A böngészőriasztások már be vannak kapcsolva.",
+          "blockedNote": "Az értesítések le vannak tiltva a böngészőjében. Kapcsolja be őket a böngésző webhelybeállításaiban, hogy riasztásokat kapjon.",
+          "declinedNote": "Semmi gond — nem küldünk böngészőriasztásokat. Később bármikor bekapcsolhatja őket a böngésző webhelybeállításaiban.",
+          "summaryLabel": "Kritikus riasztások",
+          "summaryVerified": "Bekapcsolva — a kritikus jelzések eljutnak a böngészőjéhez."
+        },
+        "power": {
+          "heading": "Az Ön Pro eszköztára",
+          "body": "Egyéni widgetek, MCP-kapcsolatok és az AI kutató fel vannak oldva. Építse fel azt az irányítópultot, amit valóban figyelni szeretne.",
+          "confirmCta": "Pro eszközök felfedezése",
+          "confirming": "Megnyitás…",
+          "doneNote": "Már használja Pro eszközeit.",
+          "summaryLabel": "Pro eszköztár",
+          "summaryVerified": "Feloldva és készen áll, amikor Ön is az.",
+          "channelsNote": "Inkább Telegramot, Slacket, Discordot vagy egy webhookot szeretne?",
+          "pointers": {
+            "widgets": "Egyéni widget létrehozása",
+            "analyst": "Kérdezze meg az AI elemzőt",
+            "apiKeys": "API és MCP kulcsok beszerzése",
+            "channels": "Állítsa be ezeket az értesítési beállításokban"
+          }
+        }
+      },
+      "status": {
+        "pending": "Nincs beállítva",
+        "inFlight": "Beállítás…",
+        "verified": "Kész",
+        "failed": "Nem sikerült",
+        "blocked": "Blokkolva",
+        "unavailable": "Nem elérhető",
+        "blockedNote": "Ez most nem elérhető — később beállíthatja a beállításokban.",
+        "unavailableNote": "Ez nem elérhető az Ön eszközén — később beállíthatja.",
+        "failedBody": "Valami elromlott. Próbálja újra, vagy állítsa be később a beállításokban.",
+        "retry": "Próbálja újra"
+      },
+      "actions": {
+        "skip": "Kihagyás egyelőre",
+        "continue": "Folytatás"
+      },
+      "summary": {
+        "heading": "Minden készen áll",
+        "subVerified": "Íme, mi fut a fiókján.",
+        "subPending": "A beállítást bármikor befejezheti a beállításokban.",
+        "linePending": "Még nincs beállítva — bármikor befejezheti a beállításokban.",
+        "lineFailed": "Ezt nem sikerült beállítanunk — próbálja újra a beállításokban.",
+        "finish": "Ugrás az irányítópultomra"
+      },
+      "chip": {
+        "message": "Fejezze be Pro fiókja beállítását.",
+        "action": "Beállítás befejezése",
+        "dismissLabel": "Elvetés"
+      }
+    },
     "frameworkSelector": {
       "label": "Elemzési Keretrendszer",
       "defaultNeutral": "Alapértelmezett (Semleges)",

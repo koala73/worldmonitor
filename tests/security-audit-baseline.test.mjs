@@ -147,6 +147,16 @@ describe('security audit baseline', () => {
             url: 'https://github.com/advisories/GHSA-f88m-g3jw-g9cj',
           }],
         },
+        'postcss': {
+          name: 'postcss',
+          severity: 'high',
+          via: [{
+            name: 'postcss',
+            severity: 'high',
+            title: 'PostCSS sourceMappingURL path traversal',
+            url: 'https://github.com/advisories/GHSA-r28c-9q8g-f849',
+          }],
+        },
       },
     };
 

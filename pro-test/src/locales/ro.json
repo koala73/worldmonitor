@@ -386,8 +386,10 @@
           "Fluxuri de date în timp real",
           "60 de cereri/minut",
           "1.000 de cereri/zi incluse",
-          "Notificări webhook",
-          "Exporturi de date personalizate"
+          "Notificări webhook"
+        ],
+        "highlightFeatures": [
+          "Fără utilizare comercială"
         ]
       },
       "enterprise": {
@@ -401,6 +403,20 @@
           "Opțiune on-premise"
         ],
         "cta": "Contactați Vânzări"
+      },
+      "apiBusiness": {
+        "description": "API de volum ridicat pentru echipe",
+        "features": [
+          "Totul din API Starter",
+          "300 de cereri/minut",
+          "10.000 de cereri/zi incluse",
+          "5 licențe Pro incluse",
+          "Același e-mail de companie necesar",
+          "Suport prioritar"
+        ],
+        "highlightFeatures": [
+          "Utilizare comercială permisă"
+        ]
       }
     },
     "cta": {

@@ -2206,6 +2206,84 @@
       "retrying": "再試行中…",
       "dismiss": "閉じる"
     },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "ステップ {{current}} / {{total}}",
+      "closeLabel": "セットアップをスキップ",
+      "ariaLabel": "Proアクティベーション設定",
+      "signedInAs": "{{email}} としてサインイン中",
+      "steps": {
+        "brief": {
+          "heading": "毎朝届くデイリーブリーフ",
+          "body": "毎朝、受信トレイに厳選されたインテリジェンスブリーフをお届け — 一晩の重要なシグナルを5分で読める内容に凝縮。",
+          "confirmCta": "モーニングブリーフをオンにする",
+          "confirming": "オンにしています…",
+          "doneNote": "モーニングブリーフはすでに配信中です。",
+          "scheduleNote": "現在の配信時刻を維持します。",
+          "summaryLabel": "モーニングブリーフ",
+          "summaryVerified": "オン — 次回のモーニングブリーフから開始します。",
+          "deliverAt": "配信時刻",
+          "previewLoading": "最初のブリーフのプレビューを準備しています…",
+          "previewLabel": "今朝のブリーフ"
+        },
+        "alerts": {
+          "heading": "重大アラート",
+          "body": "紛争の激化、市場ショック、新たな制裁など、大きな出来事が起きたときにブラウザで通知を受け取れます。頻度は設定でいつでも調整できます。",
+          "confirmCta": "アラートを有効にする",
+          "confirming": "有効にしています…",
+          "doneNote": "ブラウザアラートはすでにオンです。",
+          "blockedNote": "ブラウザで通知がブロックされています。アラートを受け取るには、ブラウザのサイト設定でオンにしてください。",
+          "declinedNote": "問題ありません — ブラウザアラートは送信しません。後でブラウザのサイト設定からいつでもオンにできます。",
+          "summaryLabel": "重大アラート",
+          "summaryVerified": "オン — 重大なシグナルがブラウザに届きます。"
+        },
+        "power": {
+          "heading": "あなたのProツールキット",
+          "body": "カスタムウィジェット、MCP接続、AIリサーチャーが解放されました。本当に見ておきたいボードを作りましょう。",
+          "confirmCta": "Proツールを見る",
+          "confirming": "開いています…",
+          "doneNote": "すでにProツールを使用中です。",
+          "summaryLabel": "Proツールキット",
+          "summaryVerified": "解放済み — いつでも準備完了です。",
+          "channelsNote": "Telegram、Slack、Discord、またはWebhookがお好みですか？",
+          "pointers": {
+            "widgets": "カスタムウィジェットを作成",
+            "analyst": "AIアナリストに質問",
+            "apiKeys": "APIとMCPのキーを取得",
+            "channels": "通知設定でセットアップ"
+          }
+        }
+      },
+      "status": {
+        "pending": "未設定",
+        "inFlight": "設定中…",
+        "verified": "準備完了",
+        "failed": "うまくいきませんでした",
+        "blocked": "ブロック済み",
+        "unavailable": "利用できません",
+        "blockedNote": "現在ご利用いただけません — 後で設定から設定できます。",
+        "unavailableNote": "お使いのデバイスではご利用いただけません — 後で設定できます。",
+        "failedBody": "問題が発生しました。もう一度お試しいただくか、後で設定から設定してください。",
+        "retry": "もう一度試す"
+      },
+      "actions": {
+        "skip": "今はスキップ",
+        "continue": "続ける"
+      },
+      "summary": {
+        "heading": "準備完了です",
+        "subVerified": "アカウントで有効になっている内容です。",
+        "subPending": "セットアップは設定からいつでも完了できます。",
+        "linePending": "まだ設定されていません — 設定からいつでも完了できます。",
+        "lineFailed": "設定できませんでした — 設定からもう一度お試しください。",
+        "finish": "ダッシュボードに移動"
+      },
+      "chip": {
+        "message": "Proアカウントのセットアップを完了してください。",
+        "action": "セットアップを完了",
+        "dismissLabel": "閉じる"
+      }
+    },
     "frameworkSelector": {
       "label": "分析フレームワーク",
       "defaultNeutral": "デフォルト (ニュートラル)",

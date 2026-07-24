@@ -386,8 +386,10 @@
           "Flussi dati in tempo reale",
           "60 richieste/minuto",
           "1.000 richieste/giorno incluse",
-          "Notifiche webhook",
-          "Esportazioni dati personalizzate"
+          "Notifiche webhook"
+        ],
+        "highlightFeatures": [
+          "Nessun uso commerciale"
         ]
       },
       "enterprise": {
@@ -401,6 +403,20 @@
           "Opzione on-premise"
         ],
         "cta": "Contatta il Team Vendite"
+      },
+      "apiBusiness": {
+        "description": "API ad alto volume per i team",
+        "features": [
+          "Tutto nel piano API Starter",
+          "300 richieste/minuto",
+          "10.000 richieste/giorno incluse",
+          "5 licenze Pro incluse",
+          "Stessa email aziendale richiesta",
+          "Supporto prioritario"
+        ],
+        "highlightFeatures": [
+          "Uso commerciale consentito"
+        ]
       }
     },
     "cta": {

@@ -2215,6 +2215,84 @@
       "retrying": "Nouvelle tentative…",
       "dismiss": "Rejeter"
     },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Étape {{current}} sur {{total}}",
+      "closeLabel": "Ignorer la configuration",
+      "ariaLabel": "Configuration de l'activation Pro",
+      "signedInAs": "Connecté en tant que {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Votre brief quotidien, chaque matin",
+          "body": "Un brief de renseignement organisé dans votre boîte de réception chaque matin — les signaux de la nuit qui comptent, condensés en cinq minutes de lecture.",
+          "confirmCta": "Activer mon brief matinal",
+          "confirming": "Activation…",
+          "doneNote": "Votre brief matinal est déjà actif.",
+          "scheduleNote": "Nous conservons votre heure de livraison actuelle.",
+          "summaryLabel": "Brief matinal",
+          "summaryVerified": "Activé — démarre avec votre prochain brief matinal.",
+          "deliverAt": "Livraison à",
+          "previewLoading": "Préparation d'un aperçu de votre premier brief…",
+          "previewLabel": "Le brief de ce matin"
+        },
+        "alerts": {
+          "heading": "Alertes critiques",
+          "body": "Recevez une notification dans votre navigateur quand quelque chose d'important se produit — escalades de conflits, chocs de marché, nouvelles sanctions. Ajustez la fréquence à tout moment dans les paramètres.",
+          "confirmCta": "Activer les alertes",
+          "confirming": "Activation…",
+          "doneNote": "Les alertes du navigateur sont déjà activées.",
+          "blockedNote": "Les notifications sont bloquées dans votre navigateur. Activez-les dans les paramètres du site de votre navigateur pour recevoir des alertes.",
+          "declinedNote": "Aucun problème — nous n'enverrons pas d'alertes navigateur. Vous pourrez les activer plus tard depuis les paramètres du site de votre navigateur.",
+          "summaryLabel": "Alertes critiques",
+          "summaryVerified": "Activées — les signaux critiques atteindront votre navigateur."
+        },
+        "power": {
+          "heading": "Votre boîte à outils Pro",
+          "body": "Widgets personnalisés, connexions MCP et le chercheur IA sont débloqués. Construisez le tableau de bord que vous voulez vraiment surveiller.",
+          "confirmCta": "Découvrir les outils Pro",
+          "confirming": "Ouverture…",
+          "doneNote": "Vous utilisez déjà vos outils Pro.",
+          "summaryLabel": "Boîte à outils Pro",
+          "summaryVerified": "Débloquée et prête quand vous le serez.",
+          "channelsNote": "Vous préférez Telegram, Slack, Discord ou un webhook ?",
+          "pointers": {
+            "widgets": "Créer un widget personnalisé",
+            "analyst": "Interroger l'analyste IA",
+            "apiKeys": "Obtenir vos clés API et MCP",
+            "channels": "Configurez-les dans les paramètres de notification"
+          }
+        }
+      },
+      "status": {
+        "pending": "Non configuré",
+        "inFlight": "Configuration en cours…",
+        "verified": "Prêt",
+        "failed": "Ça n'a pas fonctionné",
+        "blocked": "Bloqué",
+        "unavailable": "Non disponible",
+        "blockedNote": "Ce n'est pas disponible pour le moment — vous pourrez le configurer plus tard dans les paramètres.",
+        "unavailableNote": "Ce n'est pas disponible sur votre appareil — vous pourrez le configurer plus tard.",
+        "failedBody": "Une erreur s'est produite. Vous pouvez réessayer ou le configurer plus tard dans les paramètres.",
+        "retry": "Réessayer"
+      },
+      "actions": {
+        "skip": "Ignorer pour l'instant",
+        "continue": "Continuer"
+      },
+      "summary": {
+        "heading": "Tout est configuré",
+        "subVerified": "Voici ce qui fonctionne sur votre compte.",
+        "subPending": "Vous pouvez terminer la configuration à tout moment depuis les paramètres.",
+        "linePending": "Pas encore configuré — à terminer à tout moment dans les paramètres.",
+        "lineFailed": "Nous n'avons pas pu configurer cela — réessayez depuis les paramètres.",
+        "finish": "Aller à mon tableau de bord"
+      },
+      "chip": {
+        "message": "Terminez la configuration de votre compte Pro.",
+        "action": "Terminer la configuration",
+        "dismissLabel": "Rejeter"
+      }
+    },
     "frameworkSelector": {
       "label": "Cadre d'analyse",
       "defaultNeutral": "Par défaut (Neutre)",

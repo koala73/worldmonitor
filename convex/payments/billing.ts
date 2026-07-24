@@ -530,6 +530,10 @@ export const getSubscriptionForUser = query({
       .first();
 
     return {
+      // Purpose-built opaque identity for Pro Activation fire-once keying.
+      // Never expose/store the provider subscription id in browser storage.
+      // A new subscription row gets a new Convex id, so win-backs re-onboard.
+      activationKey: subscription._id,
       planKey: subscription.planKey,
       displayName: productPlan?.displayName ?? subscription.planKey,
       status: subscription.status,

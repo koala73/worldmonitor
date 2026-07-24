@@ -2224,6 +2224,84 @@
       "retrying": "Ponawianie…",
       "dismiss": "Odrzuć"
     },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Krok {{current}} z {{total}}",
+      "closeLabel": "Pomiń konfigurację",
+      "ariaLabel": "Konfiguracja aktywacji Pro",
+      "signedInAs": "Zalogowano jako {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Twój codzienny brief, każdego ranka",
+          "body": "Wyselekcjonowany brief wywiadowczy w Twojej skrzynce odbiorczej każdego ranka — najważniejsze sygnały z nocy, ujęte w pięciominutową lekturę.",
+          "confirmCta": "Włącz mój poranny brief",
+          "confirming": "Włączanie…",
+          "doneNote": "Twój poranny brief już działa.",
+          "scheduleNote": "Zachowamy Twoją obecną godzinę dostarczania.",
+          "summaryLabel": "Poranny brief",
+          "summaryVerified": "Włączony — zacznie się od Twojego następnego porannego briefu.",
+          "deliverAt": "Dostarczenie o",
+          "previewLoading": "Przygotowujemy podgląd Twojego pierwszego briefu…",
+          "previewLabel": "Dzisiejszy poranny brief"
+        },
+        "alerts": {
+          "heading": "Krytyczne alerty",
+          "body": "Otrzymuj powiadomienia w przeglądarce, gdy wydarzy się coś ważnego — eskalacje konfliktów, wstrząsy rynkowe, nowe sankcje. Dostosuj częstotliwość w dowolnym momencie w Ustawieniach.",
+          "confirmCta": "Włącz alerty",
+          "confirming": "Włączanie…",
+          "doneNote": "Alerty w przeglądarce są już włączone.",
+          "blockedNote": "Powiadomienia są zablokowane w Twojej przeglądarce. Włącz je w ustawieniach witryny w przeglądarce, aby otrzymywać alerty.",
+          "declinedNote": "Nie ma problemu — nie będziemy wysyłać alertów w przeglądarce. Możesz je później włączyć w ustawieniach witryny w przeglądarce.",
+          "summaryLabel": "Krytyczne alerty",
+          "summaryVerified": "Włączone — krytyczne sygnały dotrą do Twojej przeglądarki."
+        },
+        "power": {
+          "heading": "Twój zestaw narzędzi Pro",
+          "body": "Niestandardowe widżety, połączenia MCP i badacz AI zostały odblokowane. Zbuduj panel, który naprawdę chcesz obserwować.",
+          "confirmCta": "Poznaj narzędzia Pro",
+          "confirming": "Otwieranie…",
+          "doneNote": "Już korzystasz ze swoich narzędzi Pro.",
+          "summaryLabel": "Zestaw narzędzi Pro",
+          "summaryVerified": "Odblokowane i gotowe, gdy Ty będziesz gotowy.",
+          "channelsNote": "Wolisz Telegram, Slack, Discord czy webhook?",
+          "pointers": {
+            "widgets": "Utwórz niestandardowy widżet",
+            "analyst": "Zapytaj analityka AI",
+            "apiKeys": "Pobierz swoje klucze API i MCP",
+            "channels": "Skonfiguruj je w ustawieniach powiadomień"
+          }
+        }
+      },
+      "status": {
+        "pending": "Nie skonfigurowano",
+        "inFlight": "Konfigurowanie…",
+        "verified": "Gotowe",
+        "failed": "Nie zadziałało",
+        "blocked": "Zablokowane",
+        "unavailable": "Niedostępne",
+        "blockedNote": "To nie jest teraz dostępne — możesz to skonfigurować później w ustawieniach.",
+        "unavailableNote": "To nie jest dostępne na Twoim urządzeniu — możesz to skonfigurować później.",
+        "failedBody": "Coś poszło nie tak. Możesz spróbować ponownie lub skonfigurować to później w ustawieniach.",
+        "retry": "Spróbuj ponownie"
+      },
+      "actions": {
+        "skip": "Na razie pomiń",
+        "continue": "Kontynuuj"
+      },
+      "summary": {
+        "heading": "Wszystko gotowe",
+        "subVerified": "Oto, co działa na Twoim koncie.",
+        "subPending": "Możesz dokończyć konfigurację w dowolnym momencie w ustawieniach.",
+        "linePending": "Jeszcze nie skonfigurowano — dokończ w dowolnym momencie w ustawieniach.",
+        "lineFailed": "Nie udało nam się tego skonfigurować — spróbuj ponownie w ustawieniach.",
+        "finish": "Przejdź do mojego panelu"
+      },
+      "chip": {
+        "message": "Dokończ konfigurację swojego konta Pro.",
+        "action": "Dokończ konfigurację",
+        "dismissLabel": "Odrzuć"
+      }
+    },
     "frameworkSelector": {
       "label": "Framework analizy",
       "defaultNeutral": "Domyślny (Neutralny)",

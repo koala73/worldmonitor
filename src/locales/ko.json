@@ -2206,6 +2206,84 @@
       "retrying": "재시도 중…",
       "dismiss": "닫기"
     },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "{{current}}단계 / {{total}}단계",
+      "closeLabel": "설정 건너뛰기",
+      "ariaLabel": "Pro 활성화 설정",
+      "signedInAs": "{{email}}(으)로 로그인됨",
+      "steps": {
+        "brief": {
+          "heading": "매일 아침 받는 데일리 브리핑",
+          "body": "매일 아침 받은편지함에 엄선된 인텔리전스 브리핑을 보내드립니다 — 밤사이 중요한 신호를 5분 안에 읽을 수 있게 정리했습니다.",
+          "confirmCta": "모닝 브리핑 켜기",
+          "confirming": "켜는 중…",
+          "doneNote": "모닝 브리핑이 이미 실행 중입니다.",
+          "scheduleNote": "현재 전달 시간을 그대로 유지합니다.",
+          "summaryLabel": "모닝 브리핑",
+          "summaryVerified": "켜짐 — 다음 모닝 브리핑부터 시작됩니다.",
+          "deliverAt": "전달 시간",
+          "previewLoading": "첫 브리핑의 미리보기를 준비하고 있습니다…",
+          "previewLabel": "오늘 아침 브리핑"
+        },
+        "alerts": {
+          "heading": "긴급 알림",
+          "body": "분쟁 격화, 시장 충격, 새로운 제재 등 중요한 일이 발생하면 브라우저로 알림을 받으세요. 빈도는 설정에서 언제든지 조정할 수 있습니다.",
+          "confirmCta": "알림 활성화",
+          "confirming": "활성화하는 중…",
+          "doneNote": "브라우저 알림이 이미 켜져 있습니다.",
+          "blockedNote": "브라우저에서 알림이 차단되어 있습니다. 알림을 받으려면 브라우저의 사이트 설정에서 알림을 켜세요.",
+          "declinedNote": "괜찮습니다 — 브라우저 알림을 보내지 않습니다. 나중에 브라우저의 사이트 설정에서 언제든지 켤 수 있습니다.",
+          "summaryLabel": "긴급 알림",
+          "summaryVerified": "켜짐 — 긴급 신호가 브라우저로 전달됩니다."
+        },
+        "power": {
+          "heading": "당신의 Pro 툴킷",
+          "body": "맞춤 위젯, MCP 연결, AI 리서처가 잠금 해제되었습니다. 정말로 지켜보고 싶은 보드를 만들어보세요.",
+          "confirmCta": "Pro 도구 둘러보기",
+          "confirming": "여는 중…",
+          "doneNote": "이미 Pro 도구를 사용하고 있습니다.",
+          "summaryLabel": "Pro 툴킷",
+          "summaryVerified": "잠금 해제됨 — 준비되면 언제든지 사용하세요.",
+          "channelsNote": "Telegram, Slack, Discord 또는 웹훅을 선호하시나요?",
+          "pointers": {
+            "widgets": "맞춤 위젯 만들기",
+            "analyst": "AI 분석가에게 질문하기",
+            "apiKeys": "API 및 MCP 키 받기",
+            "channels": "알림 설정에서 설정하기"
+          }
+        }
+      },
+      "status": {
+        "pending": "설정되지 않음",
+        "inFlight": "설정 중…",
+        "verified": "준비됨",
+        "failed": "작동하지 않음",
+        "blocked": "차단됨",
+        "unavailable": "사용할 수 없음",
+        "blockedNote": "지금은 사용할 수 없습니다 — 나중에 설정에서 설정할 수 있습니다.",
+        "unavailableNote": "이 기기에서는 사용할 수 없습니다 — 나중에 설정할 수 있습니다.",
+        "failedBody": "문제가 발생했습니다. 다시 시도하거나 나중에 설정에서 설정하세요.",
+        "retry": "다시 시도"
+      },
+      "actions": {
+        "skip": "지금은 건너뛰기",
+        "continue": "계속"
+      },
+      "summary": {
+        "heading": "모두 준비되었습니다",
+        "subVerified": "계정에서 실행 중인 항목입니다.",
+        "subPending": "설정은 언제든지 설정에서 완료할 수 있습니다.",
+        "linePending": "아직 설정되지 않음 — 설정에서 언제든지 완료하세요.",
+        "lineFailed": "설정하지 못했습니다 — 설정에서 다시 시도하세요.",
+        "finish": "내 대시보드로 이동"
+      },
+      "chip": {
+        "message": "Pro 계정 설정을 완료하세요.",
+        "action": "설정 완료",
+        "dismissLabel": "닫기"
+      }
+    },
     "frameworkSelector": {
       "label": "분석 프레임워크",
       "defaultNeutral": "기본값 (중립)",

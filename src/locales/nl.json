@@ -1950,6 +1950,84 @@
       "retrying": "Opnieuw proberen…",
       "dismiss": "Verwijderen"
     },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Stap {{current}} van {{total}}",
+      "closeLabel": "Installatie overslaan",
+      "ariaLabel": "Pro-activering instellen",
+      "signedInAs": "Aangemeld als {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Je dagelijkse brief, elke ochtend",
+          "body": "Een samengestelde intelligence-brief in je inbox elke ochtend — de signalen van de nacht die ertoe doen, samengevat in vijf minuten lezen.",
+          "confirmCta": "Mijn ochtendbrief inschakelen",
+          "confirming": "Inschakelen…",
+          "doneNote": "Je ochtendbrief loopt al.",
+          "scheduleNote": "We behouden je huidige bezorgtijd.",
+          "summaryLabel": "Ochtendbrief",
+          "summaryVerified": "Aan — start met je volgende ochtendbrief.",
+          "deliverAt": "Bezorgen om",
+          "previewLoading": "Voorbeeld van je eerste brief wordt voorbereid…",
+          "previewLabel": "De brief van vanochtend"
+        },
+        "alerts": {
+          "heading": "Kritieke meldingen",
+          "body": "Krijg een melding in je browser wanneer er iets groots gebeurt — escalerende conflicten, marktschokken, nieuwe sancties. Pas de frequentie op elk moment aan in Instellingen.",
+          "confirmCta": "Meldingen inschakelen",
+          "confirming": "Inschakelen…",
+          "doneNote": "Browsermeldingen staan al aan.",
+          "blockedNote": "Meldingen zijn geblokkeerd in je browser. Schakel ze in bij de sitegegevens van je browser om meldingen te ontvangen.",
+          "declinedNote": "Geen probleem — we sturen geen browsermeldingen. Je kunt ze later inschakelen via de sitegegevens van je browser.",
+          "summaryLabel": "Kritieke meldingen",
+          "summaryVerified": "Aan — kritieke signalen bereiken je browser."
+        },
+        "power": {
+          "heading": "Jouw Pro-toolkit",
+          "body": "Aangepaste widgets, MCP-verbindingen en de AI-onderzoeker zijn ontgrendeld. Bouw het dashboard dat je echt in de gaten wilt houden.",
+          "confirmCta": "Pro-tools verkennen",
+          "confirming": "Openen…",
+          "doneNote": "Je gebruikt je Pro-tools al.",
+          "summaryLabel": "Pro-toolkit",
+          "summaryVerified": "Ontgrendeld en klaar wanneer jij dat bent.",
+          "channelsNote": "Heb je liever Telegram, Slack, Discord of een webhook?",
+          "pointers": {
+            "widgets": "Een aangepaste widget maken",
+            "analyst": "Stel de AI-analist een vraag",
+            "apiKeys": "Je API- en MCP-sleutels ophalen",
+            "channels": "Stel deze in bij de meldingsinstellingen"
+          }
+        }
+      },
+      "status": {
+        "pending": "Niet ingesteld",
+        "inFlight": "Instellen…",
+        "verified": "Gereed",
+        "failed": "Het is niet gelukt",
+        "blocked": "Geblokkeerd",
+        "unavailable": "Niet beschikbaar",
+        "blockedNote": "Dit is momenteel niet beschikbaar — je kunt het later instellen via instellingen.",
+        "unavailableNote": "Dit is niet beschikbaar op je apparaat — je kunt het later instellen.",
+        "failedBody": "Er is iets misgegaan. Probeer het opnieuw of stel het later in via instellingen.",
+        "retry": "Opnieuw proberen"
+      },
+      "actions": {
+        "skip": "Voorlopig overslaan",
+        "continue": "Doorgaan"
+      },
+      "summary": {
+        "heading": "Alles is ingesteld",
+        "subVerified": "Dit draait nu op je account.",
+        "subPending": "Je kunt de installatie op elk moment afronden via instellingen.",
+        "linePending": "Nog niet ingesteld — rond dit op elk moment af in instellingen.",
+        "lineFailed": "Dit konden we niet instellen — probeer het opnieuw via instellingen.",
+        "finish": "Naar mijn dashboard"
+      },
+      "chip": {
+        "message": "Rond de installatie van je Pro-account af.",
+        "action": "Installatie afronden",
+        "dismissLabel": "Sluiten"
+      }
+    },
     "frameworkSelector": {
       "label": "Analyseframework",
       "defaultNeutral": "Standaard (Neutraal)",

@@ -2452,6 +2452,84 @@
       "retrying": "Ponovno pokušavam…",
       "dismiss": "Odbaci"
     },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Korak {{current}} od {{total}}",
+      "closeLabel": "Preskoči postavljanje",
+      "ariaLabel": "Postavljanje aktivacije Pro",
+      "signedInAs": "Prijavljeni ste kao {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Vaš dnevni pregled, svako jutro",
+          "body": "Kurirani obavještajni pregled u vašem pretincu svako jutro — noćni signali koji su bitni, sažeti u petominutno čitanje.",
+          "confirmCta": "Uključi moj jutarnji pregled",
+          "confirming": "Uključivanje…",
+          "doneNote": "Vaš jutarnji pregled već radi.",
+          "scheduleNote": "Zadržat ćemo vaše trenutno vrijeme dostave.",
+          "summaryLabel": "Jutarnji pregled",
+          "summaryVerified": "Uključeno — počinje s vašim sljedećim jutarnjim pregledom.",
+          "deliverAt": "Dostava u",
+          "previewLoading": "Priprema pregleda vašeg prvog izvještaja…",
+          "previewLabel": "Jutrošnji pregled"
+        },
+        "alerts": {
+          "heading": "Kritična upozorenja",
+          "body": "Primite obavijest u pregledniku kad se dogodi nešto veliko — eskalacije sukoba, tržišni šokovi, nove sankcije. Prilagodite učestalost bilo kada u Postavkama.",
+          "confirmCta": "Omogući upozorenja",
+          "confirming": "Omogućavanje…",
+          "doneNote": "Upozorenja u pregledniku već su uključena.",
+          "blockedNote": "Obavijesti su blokirane u vašem pregledniku. Uključite ih u postavkama stranice u vašem pregledniku kako biste primali upozorenja.",
+          "declinedNote": "Nema problema — nećemo slati obavijesti u pregledniku. Možete ih kasnije uključiti putem postavki stranice u vašem pregledniku.",
+          "summaryLabel": "Kritična upozorenja",
+          "summaryVerified": "Uključeno — kritični signali stizat će do vašeg preglednika."
+        },
+        "power": {
+          "heading": "Vaš Pro komplet alata",
+          "body": "Prilagođeni widgeti, MCP veze i AI istraživač su otključani. Izgradite nadzornu ploču koju stvarno želite pratiti.",
+          "confirmCta": "Istraži Pro alate",
+          "confirming": "Otvaranje…",
+          "doneNote": "Već koristite svoje Pro alate.",
+          "summaryLabel": "Pro komplet alata",
+          "summaryVerified": "Otključano i spremno kad i vi budete.",
+          "channelsNote": "Preferirate Telegram, Slack, Discord ili webhook?",
+          "pointers": {
+            "widgets": "Izradi prilagođeni widget",
+            "analyst": "Pitaj AI analitičara",
+            "apiKeys": "Preuzmi svoje API i MCP ključeve",
+            "channels": "Postavite ih u postavkama obavijesti"
+          }
+        }
+      },
+      "status": {
+        "pending": "Nije postavljeno",
+        "inFlight": "Postavljanje…",
+        "verified": "Spremno",
+        "failed": "Nije uspjelo",
+        "blocked": "Blokirano",
+        "unavailable": "Nedostupno",
+        "blockedNote": "Ovo trenutno nije dostupno — možete to postaviti kasnije u postavkama.",
+        "unavailableNote": "Ovo nije dostupno na vašem uređaju — možete to postaviti kasnije.",
+        "failedBody": "Nešto je pošlo po zlu. Možete pokušati ponovno ili to postaviti kasnije u postavkama.",
+        "retry": "Pokušaj ponovno"
+      },
+      "actions": {
+        "skip": "Preskoči za sada",
+        "continue": "Nastavi"
+      },
+      "summary": {
+        "heading": "Sve je spremno",
+        "subVerified": "Evo što radi na vašem računu.",
+        "subPending": "Postavljanje možete dovršiti bilo kada u postavkama.",
+        "linePending": "Još nije postavljeno — dovršite bilo kada u postavkama.",
+        "lineFailed": "Nismo uspjeli ovo postaviti — pokušajte ponovno u postavkama.",
+        "finish": "Idi na moju nadzornu ploču"
+      },
+      "chip": {
+        "message": "Dovršite postavljanje svog Pro računa.",
+        "action": "Dovrši postavljanje",
+        "dismissLabel": "Odbaci"
+      }
+    },
     "frameworkSelector": {
       "label": "Analysis Framework",
       "defaultNeutral": "Default (Neutral)",

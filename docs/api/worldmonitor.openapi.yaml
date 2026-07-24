@@ -14788,7 +14788,7 @@ paths:
             parameters:
                 - name: page_size
                   in: query
-                  description: Maximum items per page (1-100).
+                  description: Maximum items per page (1-100). 0 or omitted uses the default of 100.
                   required: false
                   example: 25
                   schema:
@@ -14797,8 +14797,10 @@ paths:
                 - name: cursor
                   in: query
                   description: |-
-                    Cursor for next page.
-                     Accepted but currently ignored; no-op until this handler supports the parameter.
+                    Cursor for the next page. Treat it as opaque: echo the next-cursor value
+                     returned in the previous response's pagination metadata verbatim, and do
+                     not construct or parse it. Empty (or any unrecognized value) requests the
+                     first page.
                   required: false
                   example: "next-page-token"
                   schema:
@@ -32434,12 +32436,14 @@ components:
                 pageSize:
                     type: integer
                     format: int32
-                    description: Maximum items per page (1-100).
+                    description: Maximum items per page (1-100). 0 or omitted uses the default of 100.
                 cursor:
                     type: string
                     description: |-
-                        Cursor for next page.
-                         Accepted but currently ignored; no-op until this handler supports the parameter.
+                        Cursor for the next page. Treat it as opaque: echo the next-cursor value
+                         returned in the previous response's pagination metadata verbatim, and do
+                         not construct or parse it. Empty (or any unrecognized value) requests the
+                         first page.
                 neLat:
                     type: number
                     format: double

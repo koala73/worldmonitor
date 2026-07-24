@@ -2215,6 +2215,84 @@
       "retrying": "Se încearcă din nou…",
       "dismiss": "Închide"
     },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Pasul {{current}} din {{total}}",
+      "closeLabel": "Omite configurarea",
+      "ariaLabel": "Configurarea activării Pro",
+      "signedInAs": "Conectat ca {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Rezumatul tău zilnic, în fiecare dimineață",
+          "body": "Un rezumat de informații selectat în inboxul tău în fiecare dimineață — semnalele importante din timpul nopții, condensate într-o lectură de cinci minute.",
+          "confirmCta": "Activează rezumatul meu de dimineață",
+          "confirming": "Se activează…",
+          "doneNote": "Rezumatul tău de dimineață rulează deja.",
+          "scheduleNote": "Vom păstra ora ta actuală de livrare.",
+          "summaryLabel": "Rezumat de dimineață",
+          "summaryVerified": "Activat — începe cu următorul tău rezumat de dimineață.",
+          "deliverAt": "Livrare la",
+          "previewLoading": "Se pregătește o previzualizare a primului tău rezumat…",
+          "previewLabel": "Rezumatul de azi dimineață"
+        },
+        "alerts": {
+          "heading": "Alerte critice",
+          "body": "Primește o notificare în browser când se întâmplă ceva important — escaladări de conflicte, șocuri de piață, sancțiuni noi. Ajustează frecvența oricând din Setări.",
+          "confirmCta": "Activează alertele",
+          "confirming": "Se activează…",
+          "doneNote": "Alertele din browser sunt deja activate.",
+          "blockedNote": "Notificările sunt blocate în browserul tău. Activează-le din setările site-ului din browserul tău pentru a primi alerte.",
+          "declinedNote": "Nicio problemă — nu vom trimite alerte din browser. Le poți activa mai târziu din setările site-ului din browserul tău.",
+          "summaryLabel": "Alerte critice",
+          "summaryVerified": "Activate — semnalele critice vor ajunge la browserul tău."
+        },
+        "power": {
+          "heading": "Trusa ta de instrumente Pro",
+          "body": "Widget-uri personalizate, conexiuni MCP și cercetătorul AI sunt deblocate. Construiește panoul pe care chiar vrei să-l urmărești.",
+          "confirmCta": "Explorează instrumentele Pro",
+          "confirming": "Se deschide…",
+          "doneNote": "Deja folosești instrumentele tale Pro.",
+          "summaryLabel": "Trusă de instrumente Pro",
+          "summaryVerified": "Deblocată și pregătită oricând ești și tu.",
+          "channelsNote": "Preferi Telegram, Slack, Discord sau un webhook?",
+          "pointers": {
+            "widgets": "Creează un widget personalizat",
+            "analyst": "Întreabă analistul AI",
+            "apiKeys": "Obține cheile tale API și MCP",
+            "channels": "Configurează-le în setările de notificare"
+          }
+        }
+      },
+      "status": {
+        "pending": "Neconfigurat",
+        "inFlight": "Se configurează…",
+        "verified": "Gata",
+        "failed": "Nu a funcționat",
+        "blocked": "Blocat",
+        "unavailable": "Indisponibil",
+        "blockedNote": "Acest lucru nu este disponibil acum — îl poți configura mai târziu din setări.",
+        "unavailableNote": "Acest lucru nu este disponibil pe dispozitivul tău — îl poți configura mai târziu.",
+        "failedBody": "Ceva n-a mers bine. Poți încerca din nou sau îl poți configura mai târziu din setări.",
+        "retry": "Încearcă din nou"
+      },
+      "actions": {
+        "skip": "Omite deocamdată",
+        "continue": "Continuă"
+      },
+      "summary": {
+        "heading": "Totul este gata",
+        "subVerified": "Iată ce rulează pe contul tău.",
+        "subPending": "Poți finaliza configurarea oricând din setări.",
+        "linePending": "Încă neconfigurat — finalizează oricând din setări.",
+        "lineFailed": "Nu am reușit să configurăm asta — încearcă din nou din setări.",
+        "finish": "Mergi la panoul meu"
+      },
+      "chip": {
+        "message": "Finalizează configurarea contului tău Pro.",
+        "action": "Finalizează configurarea",
+        "dismissLabel": "Închide"
+      }
+    },
     "frameworkSelector": {
       "label": "Cadru de analiză",
       "defaultNeutral": "Implicit (Neutru)",

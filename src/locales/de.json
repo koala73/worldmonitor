@@ -2206,6 +2206,84 @@
       "retrying": "Wird erneut versucht…",
       "dismiss": "Verwerfen"
     },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Schritt {{current}} von {{total}}",
+      "closeLabel": "Einrichtung überspringen",
+      "ariaLabel": "Pro-Aktivierung einrichten",
+      "signedInAs": "Angemeldet als {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Ihr tägliches Briefing, jeden Morgen",
+          "body": "Ein kuratiertes Intelligence-Briefing jeden Morgen in Ihrem Posteingang — die wichtigen Signale der Nacht, destilliert auf eine Fünf-Minuten-Lektüre.",
+          "confirmCta": "Mein Morgen-Briefing aktivieren",
+          "confirming": "Wird aktiviert…",
+          "doneNote": "Ihr Morgen-Briefing läuft bereits.",
+          "scheduleNote": "Wir behalten Ihre aktuelle Zustellzeit bei.",
+          "summaryLabel": "Morgen-Briefing",
+          "summaryVerified": "Aktiv — startet mit Ihrem nächsten Morgen-Briefing.",
+          "deliverAt": "Zustellung um",
+          "previewLoading": "Vorschau Ihres ersten Briefings wird vorbereitet…",
+          "previewLabel": "Das heutige Briefing"
+        },
+        "alerts": {
+          "heading": "Kritische Warnmeldungen",
+          "body": "Werden Sie in Ihrem Browser benachrichtigt, wenn etwas Großes passiert — Konflikteskalationen, Marktschocks, neue Sanktionen. Passen Sie die Häufigkeit jederzeit in den Einstellungen an.",
+          "confirmCta": "Warnmeldungen aktivieren",
+          "confirming": "Wird aktiviert…",
+          "doneNote": "Browser-Warnmeldungen sind bereits aktiv.",
+          "blockedNote": "Benachrichtigungen sind in Ihrem Browser blockiert. Aktivieren Sie sie in den Website-Einstellungen Ihres Browsers, um Warnmeldungen zu erhalten.",
+          "declinedNote": "Kein Problem — wir senden keine Browser-Warnmeldungen. Sie können sie später in den Website-Einstellungen Ihres Browsers aktivieren.",
+          "summaryLabel": "Kritische Warnmeldungen",
+          "summaryVerified": "Aktiv — kritische Signale erreichen Ihren Browser."
+        },
+        "power": {
+          "heading": "Ihr Pro-Toolkit",
+          "body": "Individuelle Widgets, MCP-Verbindungen und der KI-Researcher sind freigeschaltet. Bauen Sie sich das Dashboard, das Sie wirklich im Blick behalten wollen.",
+          "confirmCta": "Pro-Tools entdecken",
+          "confirming": "Wird geöffnet…",
+          "doneNote": "Sie nutzen Ihre Pro-Tools bereits.",
+          "summaryLabel": "Pro-Toolkit",
+          "summaryVerified": "Freigeschaltet und einsatzbereit, wenn Sie es sind.",
+          "channelsNote": "Lieber Telegram, Slack, Discord oder ein Webhook?",
+          "pointers": {
+            "widgets": "Ein individuelles Widget erstellen",
+            "analyst": "Den KI-Analysten fragen",
+            "apiKeys": "Ihre API- & MCP-Schlüssel abrufen",
+            "channels": "In den Benachrichtigungseinstellungen einrichten"
+          }
+        }
+      },
+      "status": {
+        "pending": "Nicht eingerichtet",
+        "inFlight": "Wird eingerichtet…",
+        "verified": "Bereit",
+        "failed": "Hat nicht funktioniert",
+        "blocked": "Blockiert",
+        "unavailable": "Nicht verfügbar",
+        "blockedNote": "Das ist gerade nicht verfügbar — Sie können es später in den Einstellungen einrichten.",
+        "unavailableNote": "Das ist auf Ihrem Gerät nicht verfügbar — Sie können es später einrichten.",
+        "failedBody": "Etwas ist schiefgelaufen. Versuchen Sie es erneut oder richten Sie es später in den Einstellungen ein.",
+        "retry": "Erneut versuchen"
+      },
+      "actions": {
+        "skip": "Vorerst überspringen",
+        "continue": "Weiter"
+      },
+      "summary": {
+        "heading": "Alles eingerichtet",
+        "subVerified": "Das läuft jetzt auf Ihrem Konto.",
+        "subPending": "Sie können die Einrichtung jederzeit in den Einstellungen abschließen.",
+        "linePending": "Noch nicht eingerichtet — jederzeit in den Einstellungen abschließbar.",
+        "lineFailed": "Das konnten wir nicht einrichten — versuchen Sie es erneut in den Einstellungen.",
+        "finish": "Zu meinem Dashboard"
+      },
+      "chip": {
+        "message": "Schließen Sie die Einrichtung Ihres Pro-Kontos ab.",
+        "action": "Einrichtung abschließen",
+        "dismissLabel": "Schließen"
+      }
+    },
     "frameworkSelector": {
       "label": "Analysisframework",
       "defaultNeutral": "Standard (Neutral)",

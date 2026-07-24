@@ -1950,6 +1950,84 @@
       "retrying": "Försöker igen…",
       "dismiss": "Stäng"
     },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Steg {{current}} av {{total}}",
+      "closeLabel": "Hoppa över installationen",
+      "ariaLabel": "Inställning för Pro-aktivering",
+      "signedInAs": "Inloggad som {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Din dagliga sammanfattning, varje morgon",
+          "body": "En sammanställd underrättelsesammanfattning i din inkorg varje morgon — nattens viktiga signaler, komprimerade till fem minuters läsning.",
+          "confirmCta": "Slå på min morgonsammanfattning",
+          "confirming": "Slår på…",
+          "doneNote": "Din morgonsammanfattning körs redan.",
+          "scheduleNote": "Vi behåller din nuvarande leveranstid.",
+          "summaryLabel": "Morgonsammanfattning",
+          "summaryVerified": "På — börjar med din nästa morgonsammanfattning.",
+          "deliverAt": "Leverans kl.",
+          "previewLoading": "Förbereder en förhandsvisning av din första sammanfattning…",
+          "previewLabel": "Dagens morgonsammanfattning"
+        },
+        "alerts": {
+          "heading": "Kritiska varningar",
+          "body": "Få ett meddelande i din webbläsare när något stort händer — konflikteskaleringar, marknadschocker, nya sanktioner. Justera frekvensen när som helst i Inställningar.",
+          "confirmCta": "Aktivera varningar",
+          "confirming": "Aktiverar…",
+          "doneNote": "Webbläsarvarningar är redan på.",
+          "blockedNote": "Aviseringar är blockerade i din webbläsare. Slå på dem i webbläsarens webbplatsinställningar för att få varningar.",
+          "declinedNote": "Inga problem — vi skickar inga webbläsarvarningar. Du kan slå på dem senare via webbläsarens webbplatsinställningar.",
+          "summaryLabel": "Kritiska varningar",
+          "summaryVerified": "På — kritiska signaler når din webbläsare."
+        },
+        "power": {
+          "heading": "Din Pro-verktygslåda",
+          "body": "Anpassade widgetar, MCP-anslutningar och AI-forskaren är upplåsta. Bygg den vy du verkligen vill bevaka.",
+          "confirmCta": "Utforska Pro-verktyg",
+          "confirming": "Öppnar…",
+          "doneNote": "Du använder redan dina Pro-verktyg.",
+          "summaryLabel": "Pro-verktygslåda",
+          "summaryVerified": "Upplåst och redo när du är det.",
+          "channelsNote": "Föredrar du Telegram, Slack, Discord eller en webhook?",
+          "pointers": {
+            "widgets": "Skapa en anpassad widget",
+            "analyst": "Fråga AI-analytikern",
+            "apiKeys": "Hämta dina API- och MCP-nycklar",
+            "channels": "Ställ in dem i aviseringsinställningarna"
+          }
+        }
+      },
+      "status": {
+        "pending": "Inte konfigurerat",
+        "inFlight": "Konfigurerar…",
+        "verified": "Klart",
+        "failed": "Det fungerade inte",
+        "blocked": "Blockerat",
+        "unavailable": "Inte tillgängligt",
+        "blockedNote": "Det här är inte tillgängligt just nu — du kan konfigurera det senare i inställningarna.",
+        "unavailableNote": "Det här är inte tillgängligt på din enhet — du kan konfigurera det senare.",
+        "failedBody": "Något gick fel. Du kan försöka igen eller konfigurera det senare i inställningarna.",
+        "retry": "Försök igen"
+      },
+      "actions": {
+        "skip": "Hoppa över för nu",
+        "continue": "Fortsätt"
+      },
+      "summary": {
+        "heading": "Allt är klart",
+        "subVerified": "Så här är det på ditt konto just nu.",
+        "subPending": "Du kan slutföra installationen när som helst i inställningarna.",
+        "linePending": "Inte konfigurerat än — slutför när som helst i inställningarna.",
+        "lineFailed": "Vi kunde inte konfigurera det här — försök igen i inställningarna.",
+        "finish": "Gå till min instrumentpanel"
+      },
+      "chip": {
+        "message": "Slutför installationen av ditt Pro-konto.",
+        "action": "Slutför installation",
+        "dismissLabel": "Stäng"
+      }
+    },
     "frameworkSelector": {
       "label": "Analysramverk",
       "defaultNeutral": "Standard (Neutral)",

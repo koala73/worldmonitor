@@ -2206,6 +2206,84 @@
       "retrying": "Tekrar Deneniyor…",
       "dismiss": "Kapat"
     },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Adım {{current}} / {{total}}",
+      "closeLabel": "Kurulumu Atla",
+      "ariaLabel": "Pro Etkinleştirme Kurulumu",
+      "signedInAs": "{{email}} olarak oturum açıldı",
+      "steps": {
+        "brief": {
+          "heading": "Her sabah günlük özetiniz",
+          "body": "Her sabah gelen kutunuzda özenle hazırlanmış bir istihbarat özeti — gece boyunca önemli olan sinyaller, beş dakikalık bir okumaya sığdırılmış.",
+          "confirmCta": "Sabah Özetimi Aç",
+          "confirming": "Açılıyor…",
+          "doneNote": "Sabah özetiniz zaten çalışıyor.",
+          "scheduleNote": "Mevcut teslim saatinizi koruyacağız.",
+          "summaryLabel": "Sabah Özeti",
+          "summaryVerified": "Açık — bir sonraki sabah özetinizle başlar.",
+          "deliverAt": "Teslim saati",
+          "previewLoading": "İlk özetinizin önizlemesi hazırlanıyor…",
+          "previewLabel": "Bu sabahki özet"
+        },
+        "alerts": {
+          "heading": "Kritik Uyarılar",
+          "body": "Çatışma tırmanışları, piyasa şokları, yeni yaptırımlar gibi büyük bir şey olduğunda tarayıcınızda bildirim alın. Sıklığı istediğiniz zaman Ayarlar'dan değiştirebilirsiniz.",
+          "confirmCta": "Uyarıları Etkinleştir",
+          "confirming": "Etkinleştiriliyor…",
+          "doneNote": "Tarayıcı uyarıları zaten açık.",
+          "blockedNote": "Tarayıcınızda bildirimler engellenmiş. Uyarı alabilmek için tarayıcınızın site ayarlarından bunları açın.",
+          "declinedNote": "Sorun değil — tarayıcı uyarısı göndermeyeceğiz. Bunları daha sonra tarayıcınızın site ayarlarından açabilirsiniz.",
+          "summaryLabel": "Kritik Uyarılar",
+          "summaryVerified": "Açık — kritik sinyaller tarayıcınıza ulaşacak."
+        },
+        "power": {
+          "heading": "Pro Araç Setiniz",
+          "body": "Özel widget'lar, MCP bağlantıları ve yapay zeka araştırmacısının kilidi açıldı. Gerçekten izlemek istediğiniz paneli oluşturun.",
+          "confirmCta": "Pro Araçları Keşfet",
+          "confirming": "Açılıyor…",
+          "doneNote": "Pro araçlarınızı zaten kullanıyorsunuz.",
+          "summaryLabel": "Pro Araç Seti",
+          "summaryVerified": "Kilidi açıldı, siz hazır olduğunuzda kullanıma hazır.",
+          "channelsNote": "Telegram, Slack, Discord veya bir webhook mu tercih edersiniz?",
+          "pointers": {
+            "widgets": "Özel bir widget oluşturun",
+            "analyst": "Yapay zeka analistine sorun",
+            "apiKeys": "API ve MCP anahtarlarınızı alın",
+            "channels": "Bunları bildirim ayarlarından yapılandırın"
+          }
+        }
+      },
+      "status": {
+        "pending": "Kurulmadı",
+        "inFlight": "Kuruluyor…",
+        "verified": "Hazır",
+        "failed": "Başarısız Oldu",
+        "blocked": "Engellendi",
+        "unavailable": "Kullanılamıyor",
+        "blockedNote": "Bu şu anda kullanılamıyor — daha sonra ayarlardan kurabilirsiniz.",
+        "unavailableNote": "Bu, cihazınızda kullanılamıyor — daha sonra kurabilirsiniz.",
+        "failedBody": "Bir şeyler ters gitti. Tekrar deneyebilir veya daha sonra ayarlardan kurabilirsiniz.",
+        "retry": "Tekrar Dene"
+      },
+      "actions": {
+        "skip": "Şimdilik Atla",
+        "continue": "Devam Et"
+      },
+      "summary": {
+        "heading": "Her Şey Hazır",
+        "subVerified": "Hesabınızda çalışan şeyler burada.",
+        "subPending": "Kurulumu istediğiniz zaman ayarlardan tamamlayabilirsiniz.",
+        "linePending": "Henüz kurulmadı — istediğiniz zaman ayarlardan tamamlayın.",
+        "lineFailed": "Bunu kuramadık — ayarlardan tekrar deneyin.",
+        "finish": "Panelime Git"
+      },
+      "chip": {
+        "message": "Pro hesabınızın kurulumunu tamamlayın.",
+        "action": "Kurulumu Tamamla",
+        "dismissLabel": "Kapat"
+      }
+    },
     "frameworkSelector": {
       "label": "Analiz Çerçevesi",
       "defaultNeutral": "Varsayılan (Tarafsız)",

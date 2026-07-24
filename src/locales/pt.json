@@ -1957,6 +1957,84 @@
       "retrying": "Tentando novamente…",
       "dismiss": "Descartar"
     },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Etapa {{current}} de {{total}}",
+      "closeLabel": "Pular configuração",
+      "ariaLabel": "Configuração de ativação do Pro",
+      "signedInAs": "Conectado como {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Seu resumo diário, toda manhã",
+          "body": "Um resumo de inteligência selecionado na sua caixa de entrada todas as manhãs — os sinais da noite que importam, condensados em uma leitura de cinco minutos.",
+          "confirmCta": "Ativar meu resumo matinal",
+          "confirming": "Ativando…",
+          "doneNote": "Seu resumo matinal já está ativo.",
+          "scheduleNote": "Manteremos seu horário de entrega atual.",
+          "summaryLabel": "Resumo matinal",
+          "summaryVerified": "Ativado — começa com seu próximo resumo matinal.",
+          "deliverAt": "Entregar às",
+          "previewLoading": "Preparando uma prévia do seu primeiro resumo…",
+          "previewLabel": "O resumo desta manhã"
+        },
+        "alerts": {
+          "heading": "Alertas críticos",
+          "body": "Receba um aviso no navegador quando algo importante acontecer — escaladas de conflito, choques de mercado, novas sanções. Ajuste a frequência a qualquer momento nas Configurações.",
+          "confirmCta": "Ativar alertas",
+          "confirming": "Ativando…",
+          "doneNote": "Os alertas do navegador já estão ativados.",
+          "blockedNote": "As notificações estão bloqueadas no seu navegador. Ative-as nas configurações do site do seu navegador para receber alertas.",
+          "declinedNote": "Sem problema — não enviaremos alertas do navegador. Você pode ativá-los mais tarde nas configurações do site do seu navegador.",
+          "summaryLabel": "Alertas críticos",
+          "summaryVerified": "Ativados — sinais críticos chegarão ao seu navegador."
+        },
+        "power": {
+          "heading": "Seu kit de ferramentas Pro",
+          "body": "Widgets personalizados, conexões MCP e o pesquisador de IA foram desbloqueados. Monte o painel que você realmente quer acompanhar.",
+          "confirmCta": "Explorar ferramentas Pro",
+          "confirming": "Abrindo…",
+          "doneNote": "Você já está usando suas ferramentas Pro.",
+          "summaryLabel": "Kit de ferramentas Pro",
+          "summaryVerified": "Desbloqueado e pronto quando você estiver.",
+          "channelsNote": "Prefere Telegram, Slack, Discord ou um webhook?",
+          "pointers": {
+            "widgets": "Criar um widget personalizado",
+            "analyst": "Perguntar ao analista de IA",
+            "apiKeys": "Obter suas chaves de API e MCP",
+            "channels": "Configure-os nas configurações de notificação"
+          }
+        }
+      },
+      "status": {
+        "pending": "Não configurado",
+        "inFlight": "Configurando…",
+        "verified": "Pronto",
+        "failed": "Não funcionou",
+        "blocked": "Bloqueado",
+        "unavailable": "Indisponível",
+        "blockedNote": "Isso não está disponível agora — você pode configurá-lo mais tarde nas configurações.",
+        "unavailableNote": "Isso não está disponível no seu dispositivo — você pode configurá-lo mais tarde.",
+        "failedBody": "Algo deu errado. Você pode tentar novamente ou configurá-lo mais tarde nas configurações.",
+        "retry": "Tentar novamente"
+      },
+      "actions": {
+        "skip": "Pular por enquanto",
+        "continue": "Continuar"
+      },
+      "summary": {
+        "heading": "Tudo pronto",
+        "subVerified": "Veja o que está ativo na sua conta.",
+        "subPending": "Você pode terminar a configuração a qualquer momento nas configurações.",
+        "linePending": "Ainda não configurado — termine quando quiser nas configurações.",
+        "lineFailed": "Não conseguimos configurar isso — tente novamente nas configurações.",
+        "finish": "Ir para meu painel"
+      },
+      "chip": {
+        "message": "Termine a configuração da sua conta Pro.",
+        "action": "Terminar configuração",
+        "dismissLabel": "Descartar"
+      }
+    },
     "frameworkSelector": {
       "label": "Framework de Análise",
       "defaultNeutral": "Padrão (Neutro)",

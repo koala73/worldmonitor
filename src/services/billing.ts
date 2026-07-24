@@ -14,6 +14,10 @@ import { getConvexClient, getConvexApi, waitForConvexAuth } from './convex-clien
 import { extractBillingErrorKind } from './_billing-error';
 
 export interface SubscriptionInfo {
+  // Opaque Convex subscription-row identity for Pro Activation fire-once
+  // keying. Optional across a mixed frontend/backend deploy; onboarding waits
+  // for the updated response instead of persisting a provider billing id.
+  activationKey?: string;
   planKey: string;
   displayName: string;
   status: 'active' | 'on_hold' | 'cancelled' | 'expired';
@@ -290,4 +294,3 @@ export async function acceptBusinessInvite(grantId: string, token: string): Prom
   await waitForConvexAuth();
   await client.mutation((api as any).payments.businessSeats.acceptBusinessInvite, { grantId, token });
 }
-

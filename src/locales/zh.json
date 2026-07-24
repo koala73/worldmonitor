@@ -2206,6 +2206,84 @@
       "retrying": "重试中…",
       "dismiss": "关闭"
     },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "第 {{current}} 步，共 {{total}} 步",
+      "closeLabel": "跳过设置",
+      "ariaLabel": "Pro 激活设置",
+      "signedInAs": "以 {{email}} 身份登录",
+      "steps": {
+        "brief": {
+          "heading": "您的每日简报，每天早晨送达",
+          "body": "每天早晨在您的收件箱中呈现精心策划的情报简报——夜间重要信号，浓缩成五分钟的阅读内容。",
+          "confirmCta": "开启我的晨间简报",
+          "confirming": "正在开启…",
+          "doneNote": "您的晨间简报已在运行。",
+          "scheduleNote": "我们将保留您当前的发送时间。",
+          "summaryLabel": "晨间简报",
+          "summaryVerified": "已开启——将从您的下一份晨间简报开始。",
+          "deliverAt": "发送时间",
+          "previewLoading": "正在准备您第一份简报的预览…",
+          "previewLabel": "今早的简报"
+        },
+        "alerts": {
+          "heading": "重大警报",
+          "body": "当发生重大事件时（冲突升级、市场震荡、新的制裁措施），在浏览器中接收提醒。随时可在设置中调整提醒频率。",
+          "confirmCta": "启用警报",
+          "confirming": "正在启用…",
+          "doneNote": "浏览器警报已开启。",
+          "blockedNote": "您的浏览器中通知已被屏蔽。请在浏览器的网站设置中开启通知以接收警报。",
+          "declinedNote": "没关系——我们不会发送浏览器警报。您可以稍后在浏览器的网站设置中开启。",
+          "summaryLabel": "重大警报",
+          "summaryVerified": "已开启——重大信号将发送至您的浏览器。"
+        },
+        "power": {
+          "heading": "您的 Pro 工具包",
+          "body": "自定义小组件、MCP 连接和 AI 研究员已解锁。构建您真正想要关注的看板。",
+          "confirmCta": "探索 Pro 工具",
+          "confirming": "正在打开…",
+          "doneNote": "您已经在使用 Pro 工具了。",
+          "summaryLabel": "Pro 工具包",
+          "summaryVerified": "已解锁，随时可用。",
+          "channelsNote": "更喜欢 Telegram、Slack、Discord 还是 Webhook？",
+          "pointers": {
+            "widgets": "创建自定义小组件",
+            "analyst": "咨询 AI 分析师",
+            "apiKeys": "获取您的 API 和 MCP 密钥",
+            "channels": "在通知设置中进行配置"
+          }
+        }
+      },
+      "status": {
+        "pending": "尚未设置",
+        "inFlight": "正在设置…",
+        "verified": "已就绪",
+        "failed": "未能成功",
+        "blocked": "已屏蔽",
+        "unavailable": "不可用",
+        "blockedNote": "此功能目前不可用——您可以稍后在设置中进行配置。",
+        "unavailableNote": "此功能在您的设备上不可用——您可以稍后进行配置。",
+        "failedBody": "出现了问题。您可以重试，或稍后在设置中进行配置。",
+        "retry": "重试"
+      },
+      "actions": {
+        "skip": "暂时跳过",
+        "continue": "继续"
+      },
+      "summary": {
+        "heading": "一切就绪",
+        "subVerified": "以下是您账户中正在运行的内容。",
+        "subPending": "您可以随时在设置中完成配置。",
+        "linePending": "尚未设置——可随时在设置中完成。",
+        "lineFailed": "我们未能完成此设置——请在设置中重试。",
+        "finish": "前往我的仪表盘"
+      },
+      "chip": {
+        "message": "完成您的 Pro 账户设置。",
+        "action": "完成设置",
+        "dismissLabel": "关闭"
+      }
+    },
     "frameworkSelector": {
       "label": "分析框架",
       "defaultNeutral": "默认（中立）",

@@ -2224,6 +2224,84 @@
       "retrying": "Opakování…",
       "dismiss": "Zavřít"
     },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Krok {{current}} z {{total}}",
+      "closeLabel": "Přeskočit nastavení",
+      "ariaLabel": "Nastavení aktivace Pro",
+      "signedInAs": "Přihlášen jako {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Váš denní přehled, každé ráno",
+          "body": "Kurátorovaný zpravodajský přehled ve vaší schránce každé ráno — noční signály, na kterých záleží, zhuštěné do pětiminutového čtení.",
+          "confirmCta": "Zapnout můj ranní přehled",
+          "confirming": "Zapínání…",
+          "doneNote": "Váš ranní přehled už běží.",
+          "scheduleNote": "Zachováme váš aktuální čas doručení.",
+          "summaryLabel": "Ranní přehled",
+          "summaryVerified": "Zapnuto — začne vaším dalším ranním přehledem.",
+          "deliverAt": "Doručit v",
+          "previewLoading": "Připravujeme náhled vašeho prvního přehledu…",
+          "previewLabel": "Dnešní ranní přehled"
+        },
+        "alerts": {
+          "heading": "Kritická upozornění",
+          "body": "Nechte se upozornit v prohlížeči, když se stane něco zásadního — eskalace konfliktů, tržní otřesy, nové sankce. Frekvenci kdykoli upravte v Nastavení.",
+          "confirmCta": "Povolit upozornění",
+          "confirming": "Povolování…",
+          "doneNote": "Upozornění v prohlížeči jsou už zapnutá.",
+          "blockedNote": "Oznámení jsou ve vašem prohlížeči zablokovaná. Povolte je v nastavení webu ve vašem prohlížeči, abyste dostávali upozornění.",
+          "declinedNote": "Žádný problém — upozornění v prohlížeči nebudeme posílat. Můžete je později zapnout v nastavení webu ve vašem prohlížeči.",
+          "summaryLabel": "Kritická upozornění",
+          "summaryVerified": "Zapnuto — kritické signály se dostanou do vašeho prohlížeče."
+        },
+        "power": {
+          "heading": "Vaše sada Pro nástrojů",
+          "body": "Vlastní widgety, MCP připojení a AI výzkumník jsou odemčené. Sestavte si nástěnku, kterou opravdu chcete sledovat.",
+          "confirmCta": "Prozkoumat Pro nástroje",
+          "confirming": "Otevírání…",
+          "doneNote": "Své Pro nástroje už používáte.",
+          "summaryLabel": "Sada Pro nástrojů",
+          "summaryVerified": "Odemčeno a připraveno, až budete chtít.",
+          "channelsNote": "Preferujete Telegram, Slack, Discord nebo webhook?",
+          "pointers": {
+            "widgets": "Vytvořit vlastní widget",
+            "analyst": "Zeptat se AI analytika",
+            "apiKeys": "Získat své API a MCP klíče",
+            "channels": "Nastavte si je v nastavení oznámení"
+          }
+        }
+      },
+      "status": {
+        "pending": "Nenastaveno",
+        "inFlight": "Nastavování…",
+        "verified": "Připraveno",
+        "failed": "Nepovedlo se",
+        "blocked": "Blokováno",
+        "unavailable": "Nedostupné",
+        "blockedNote": "Tohle teď není dostupné — můžete to nastavit později v nastavení.",
+        "unavailableNote": "Tohle není dostupné na vašem zařízení — můžete to nastavit později.",
+        "failedBody": "Něco se nepovedlo. Zkuste to znovu, nebo to nastavte později v nastavení.",
+        "retry": "Zkusit znovu"
+      },
+      "actions": {
+        "skip": "Zatím přeskočit",
+        "continue": "Pokračovat"
+      },
+      "summary": {
+        "heading": "Vše je nastaveno",
+        "subVerified": "Tohle teď běží na vašem účtu.",
+        "subPending": "Nastavení můžete dokončit kdykoli v nastavení.",
+        "linePending": "Zatím nenastaveno — dokončete kdykoli v nastavení.",
+        "lineFailed": "Tohle se nám nepodařilo nastavit — zkuste to znovu v nastavení.",
+        "finish": "Přejít na můj dashboard"
+      },
+      "chip": {
+        "message": "Dokončete nastavení svého Pro účtu.",
+        "action": "Dokončit nastavení",
+        "dismissLabel": "Zavřít"
+      }
+    },
     "frameworkSelector": {
       "label": "Analytický rámec",
       "defaultNeutral": "Výchozí (neutrální)",
