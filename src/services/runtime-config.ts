@@ -1,4 +1,4 @@
-import { getApiBaseUrl, isDesktopRuntime } from './runtime';
+import { isDesktopRuntime } from './runtime';
 import { invokeTauri } from './tauri-bridge';
 
 export type RuntimeSecretKey =
@@ -67,7 +67,9 @@ export interface RuntimeFeatureDefinition {
 }
 
 export interface RuntimeSecretState {
-  value: string;
+  /** Values are retained only for browser environment variables. Desktop vault
+   * entries intentionally expose presence/status without returning plaintext. */
+  value?: string;
   source: 'env' | 'vault';
 }
 
@@ -77,15 +79,6 @@ export interface RuntimeConfig {
 }
 
 const TOGGLES_STORAGE_KEY = 'worldmonitor-runtime-feature-toggles';
-function getSidecarEnvUpdateUrl(): string {
-  return `${getApiBaseUrl()}/api/local-env-update`;
-}
-function getSidecarEnvUpdateBatchUrl(): string {
-  return `${getApiBaseUrl()}/api/local-env-update-batch`;
-}
-function getSidecarSecretValidateUrl(): string {
-  return `${getApiBaseUrl()}/api/local-validate-secret`;
-}
 
 const defaultToggles: Record<RuntimeFeatureId, boolean> = {
   aiGroq: true,
@@ -375,8 +368,6 @@ const runtimeConfig: RuntimeConfig = {
   secrets: {},
 };
 
-let localApiTokenPromise: Promise<string | null> | null = null;
-
 function notifyConfigChanged(): void {
   for (const listener of listeners) listener();
 }
@@ -430,7 +421,11 @@ export function isFeatureEnabled(featureId: RuntimeFeatureId): boolean {
 export function getSecretState(key: RuntimeSecretKey): { present: boolean; valid: boolean; source: 'env' | 'vault' | 'missing' } {
   const state = runtimeConfig.secrets[key];
   if (!state) return { present: false, valid: false, source: 'missing' };
-  return { present: true, valid: validateSecret(key, state.value).valid, source: state.source };
+  return {
+    present: true,
+    valid: state.source === 'vault' || validateSecret(key, state.value ?? '').valid,
+    source: state.source,
+  };
 }
 
 export function isFeatureAvailable(featureId: RuntimeFeatureId): boolean {
@@ -467,18 +462,10 @@ export async function setSecretValue(key: RuntimeSecretKey, value: string): Prom
   const sanitized = value.trim();
   if (sanitized) {
     await invokeTauri<void>('set_secret', { key, value: sanitized });
-    runtimeConfig.secrets[key] = { value: sanitized, source: 'vault' };
+    runtimeConfig.secrets[key] = { source: 'vault' };
   } else {
     await invokeTauri<void>('delete_secret', { key });
     delete runtimeConfig.secrets[key];
-  }
-
-  // Push to sidecar so handlers pick it up immediately.
-  // This is best-effort: keyring persistence is the source of truth.
-  try {
-    await pushSecretToSidecar(key, sanitized || '');
-  } catch (error) {
-    console.warn(`[runtime-config] Failed to sync ${key} to sidecar`, error);
   }
 
   // Signal other windows (main ↔ settings) to reload secrets from keychain.
@@ -488,50 +475,6 @@ export async function setSecretValue(key: RuntimeSecretKey, value: string): Prom
   } catch { /* localStorage may be unavailable */ }
 
   notifyConfigChanged();
-}
-
-async function getLocalApiToken(): Promise<string | null> {
-  if (!localApiTokenPromise) {
-    localApiTokenPromise = invokeTauri<string>('get_local_api_token')
-      .then((token) => token.trim() || null)
-      .catch((error) => {
-        // Allow retries on subsequent calls if bridge/token is temporarily unavailable.
-        localApiTokenPromise = null;
-        throw error;
-      });
-  }
-  return localApiTokenPromise;
-}
-
-async function pushSecretToSidecar(key: string, value: string): Promise<void> {
-  const headers = new Headers({ 'Content-Type': 'application/json' });
-  const token = await getLocalApiToken();
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
-  }
-
-  const response = await fetch(getSidecarEnvUpdateUrl(), {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ key, value: value || null }),
-  });
-
-  if (!response.ok) {
-    let detail = '';
-    try {
-      detail = await response.text();
-    } catch { /* ignore non-readable body */ }
-    throw new Error(`Sidecar secret sync failed (${response.status})${detail ? `: ${detail.slice(0, 200)}` : ''}`);
-  }
-}
-
-async function callSidecarWithAuth(url: string, init: RequestInit): Promise<Response> {
-  const headers = new Headers(init.headers ?? {});
-  const token = await getLocalApiToken();
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
-  }
-  return fetch(url, { ...init, headers });
 }
 
 export async function verifySecretWithApi(
@@ -549,18 +492,14 @@ export async function verifySecretWithApi(
   }
 
   try {
-    const response = await callSidecarWithAuth(getSidecarSecretValidateUrl(), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key, value: value.trim(), context }),
+    const response = await invokeTauri<{ status: number; payload: unknown }>('validate_secret_with_sidecar', {
+      key,
+      value: value.trim(),
+      context,
     });
+    const { payload } = response;
 
-    let payload: unknown = null;
-    try {
-      payload = await response.json();
-    } catch { /* non-JSON response */ }
-
-    if (!response.ok) {
+    if (response.status < 200 || response.status >= 300) {
       const message = payload && typeof payload === 'object'
         ? String(
           (payload as Record<string, unknown>).message
@@ -590,29 +529,14 @@ export async function loadDesktopSecrets(): Promise<void> {
   if (!isDesktopRuntime()) return;
 
   try {
-    const allSecrets = await invokeTauri<Record<string, string>>('get_all_secrets');
-
-    const entries: { key: string; value: string }[] = [];
-    for (const [key, value] of Object.entries(allSecrets)) {
-      if (value && value.trim().length > 0) {
-        runtimeConfig.secrets[key as RuntimeSecretKey] = { value, source: 'vault' };
-        entries.push({ key, value });
-      }
+    const configuredKeys = await invokeTauri<string[]>('list_configured_secret_keys');
+    for (const [key, state] of Object.entries(runtimeConfig.secrets)) {
+      if (state.source === 'vault') delete runtimeConfig.secrets[key as RuntimeSecretKey];
     }
-
-    if (entries.length > 0) {
-      try {
-        await pushSecretBatchToSidecar(entries);
-      } catch (batchErr) {
-        console.warn('[runtime-config] Batch env update failed, falling back to individual pushes', batchErr);
-        await Promise.allSettled(
-          entries.map(({ key, value }) =>
-            pushSecretToSidecar(key as RuntimeSecretKey, value).catch((error) => {
-              console.warn(`[runtime-config] Failed to sync ${key} to sidecar`, error);
-            })
-          )
-        );
-      }
+    for (const key of configuredKeys) {
+      // The native process reports only key names; sidecar startup receives the
+      // values directly from the keychain and renderer state remains opaque.
+      runtimeConfig.secrets[key as RuntimeSecretKey] = { source: 'vault' };
     }
 
     notifyConfigChanged();
@@ -620,23 +544,5 @@ export async function loadDesktopSecrets(): Promise<void> {
     console.warn('[runtime-config] Failed to load desktop secrets from vault', error);
   } finally {
     secretsReadyResolve();
-  }
-}
-
-async function pushSecretBatchToSidecar(entries: { key: string; value: string }[]): Promise<void> {
-  const headers = new Headers({ 'Content-Type': 'application/json' });
-  const token = await getLocalApiToken();
-  if (token) {
-    headers.set('Authorization', `Bearer ${token}`);
-  }
-
-  const response = await fetch(getSidecarEnvUpdateBatchUrl(), {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ entries }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Batch env update failed (${response.status})`);
   }
 }

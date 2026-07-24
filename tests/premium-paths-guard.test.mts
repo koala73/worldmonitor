@@ -3,7 +3,9 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
+import ts from 'typescript';
 
+import { DIRECT_LLM_GATEWAY_QUOTA_PATHS } from '../server/_shared/direct-llm-quota.ts';
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths.ts';
 
 // ---------------------------------------------------------------------------
@@ -45,6 +47,18 @@ const PREMIUM_FETCH_BYPASS_ALLOWLIST: Record<string, string> = {
     'entitlement-watchdog.ts and checkout.ts attach the Clerk Bearer ' +
     'manually. premiumFetch would short-circuit on tester keys and break the ' +
     'free→pro promotion polling flow.',
+};
+
+// Gateway-level direct-LLM routes also require a Clerk identity before quota
+// reservation. Browser callers must therefore enter through premiumFetch so
+// they attach Bearer auth and so the wm-session interceptor does not mistake
+// the expected anonymous 401 for a dead HttpOnly session. Summarize stays out:
+// its translate mode is intentionally available to free callers and the
+// gateway only applies direct-LLM quota after inspecting the request body.
+const DIRECT_LLM_PREMIUM_BYPASS_ALLOWLIST: Record<string, string> = {
+  '/api/news/v1/summarize-article':
+    'The route also serves free translate mode; spend-bearing summarize calls ' +
+    'opt into premiumFetch with forcePremium instead of gating the whole path.',
 };
 
 // ---------------------------------------------------------------------------
@@ -159,5 +173,84 @@ describe('premium-paths guard — every premium-gated direct-edge endpoint is co
         `One of them is wrong — pick the canonical source of truth for this endpoint.`,
       );
     }
+  });
+});
+
+describe('premium-paths guard — browser direct-LLM routes cannot trigger wm-session recovery', () => {
+  for (const route of DIRECT_LLM_GATEWAY_QUOTA_PATHS) {
+    it(`${route} is covered by premium auth routing or an explicit mode-specific bypass`, () => {
+      if (PREMIUM_RPC_PATHS.has(route)) return;
+      assert.ok(
+        DIRECT_LLM_PREMIUM_BYPASS_ALLOWLIST[route],
+        [
+          `Direct-LLM route ${route} requires a Clerk identity in the gateway`,
+          `but is NOT in PREMIUM_RPC_PATHS.`,
+          ``,
+          `Anonymous browser calls will receive 401, and the wm-session`,
+          `interceptor will misclassify that expected denial as a rejected`,
+          `fresh cookie, entering the global 15-minute cooldown.`,
+        ].join('\n'),
+      );
+    });
+  }
+
+  it('every direct-LLM bypass remains real and intentionally non-premium', () => {
+    for (const route of Object.keys(DIRECT_LLM_PREMIUM_BYPASS_ALLOWLIST)) {
+      assert.ok(
+        DIRECT_LLM_GATEWAY_QUOTA_PATHS.has(route),
+        `Stale direct-LLM bypass ${route}: route is no longer quota-gated.`,
+      );
+      assert.equal(
+        PREMIUM_RPC_PATHS.has(route),
+        false,
+        `${route} is now premium-routed; remove its stale direct-LLM bypass.`,
+      );
+    }
+  });
+
+  it('country-intel sends the direct-LLM brief request through premiumFetch', () => {
+    const source = readFileSync(join(repoRoot, 'src/app/country-intel.ts'), 'utf8');
+    const ast = ts.createSourceFile('country-intel.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    let usesPremiumFetch = false;
+
+    function visitPremiumFetch(node: ts.Node): void {
+      if (
+        ts.isCallExpression(node) &&
+        node.expression.getText(ast) === 'premiumFetch' &&
+        node.arguments[0] &&
+        ts.isCallExpression(node.arguments[0]) &&
+        node.arguments[0].expression.getText(ast) === 'toApiUrl'
+      ) {
+        const route = node.arguments[0].arguments[0];
+        if (
+          (ts.isTemplateExpression(route) &&
+            route.head.text === '/api/intelligence/v1/get-country-intel-brief?') ||
+          (ts.isNoSubstitutionTemplateLiteral(route) &&
+            route.text.startsWith('/api/intelligence/v1/get-country-intel-brief?'))
+        ) {
+          usesPremiumFetch = true;
+        }
+      }
+      ts.forEachChild(node, visitPremiumFetch);
+    }
+
+    function visitMethod(node: ts.Node): void {
+      if (
+        ts.isMethodDeclaration(node) &&
+        node.name.getText(ast) === 'fetchCountryIntelBrief' &&
+        node.body
+      ) {
+        visitPremiumFetch(node.body);
+        return;
+      }
+      ts.forEachChild(node, visitMethod);
+    }
+
+    visitMethod(ast);
+    assert.equal(
+      usesPremiumFetch,
+      true,
+      'The country-intel call site must attach Clerk auth through premiumFetch.',
+    );
   });
 });

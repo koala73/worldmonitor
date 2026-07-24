@@ -9,9 +9,20 @@ import { readFileSync } from 'node:fs';
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const ACLED_SETTLEMENT_LAG_MS = 2 * DAY_MS;
 export const UCDP_SETTLEMENT_LAG_MS = 14 * DAY_MS;
-// Grace window for a `value` feed to publish the deadline period's reading
-// before we give up and VOID (EIA weekly releases can slip on holidays).
+// Default grace for a scalar feed to publish a deadline-period reading before
+// we give up and VOID. Live feeds (for example commodities) should not retain a
+// missing/stale observation indefinitely.
 export const VALUE_SETTLEMENT_MAX_LAG_MS = 10 * DAY_MS;
+// EIA's weekly petroleum observation date trails publication by roughly one
+// week. A deadline just after the covered period may therefore need the next
+// report (plus holiday slack) before `asOf` reaches the deadline.
+export const EIA_VALUE_SETTLEMENT_MAX_LAG_MS = 14 * DAY_MS;
+
+function valueSettlementMaxLagMs(feedKey) {
+  return feedKey === 'energy:eia-petroleum:v1'
+    ? EIA_VALUE_SETTLEMENT_MAX_LAG_MS
+    : VALUE_SETTLEMENT_MAX_LAG_MS;
+}
 
 const SUPPORTED_FUNCTIONS = new Set(['count', 'riskScore', 'present', 'yesPrice', 'hexCount', 'price', 'value']);
 const COUNTRY_ALIASES = loadCountryAliases();
@@ -179,6 +190,7 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
 // no usable timestamp, so we can't gate — fall through to normal resolution),
 // a pending result while within the grace window, or VOID once grace elapses.
 function valueSettlementResult(parsed, feedData, deadline, nowMs, entry, spec) {
+  const maxLagMs = valueSettlementMaxLagMs(parsed.feedKey || spec?.sourceFeed);
   const record = findMatchingRecord(feedData, parsed.field, parsed.value);
   if (!record) {
     // Whole-feed-down is handled by the window path (source_feed_unavailable);
@@ -186,7 +198,7 @@ function valueSettlementResult(parsed, feedData, deadline, nowMs, entry, spec) {
     // refresh that dropped this symbol. Pend through the grace so a transient
     // gap doesn't immediately VOID; VOID only if it never returns (#5243 P2).
     if (feedData == null) return null;
-    if (nowMs < deadline + VALUE_SETTLEMENT_MAX_LAG_MS) {
+    if (nowMs < deadline + maxLagMs) {
       return { status: 'pending', evidence: { reason: 'value_source_record_missing', deadline } };
     }
     return voidResult('value_source_never_settled', entry, spec, parsed, nowMs);
@@ -195,7 +207,7 @@ function valueSettlementResult(parsed, feedData, deadline, nowMs, entry, spec) {
   if (!Number.isFinite(asOf)) return null; // record present but no timestamp → cannot gate
   const deadlineDay = Math.floor(deadline / DAY_MS) * DAY_MS;
   if (asOf >= deadlineDay) return null; // feed has caught up to the deadline period
-  if (nowMs < deadline + VALUE_SETTLEMENT_MAX_LAG_MS) {
+  if (nowMs < deadline + maxLagMs) {
     return { status: 'pending', evidence: { reason: 'value_source_not_settled', deadline, asOf } };
   }
   return voidResult('value_source_never_settled', entry, spec, parsed, nowMs);

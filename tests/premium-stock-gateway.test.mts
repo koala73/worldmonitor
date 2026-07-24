@@ -7,6 +7,18 @@ import { createDomainGateway } from '../server/gateway.ts';
 import { issueSessionToken } from '../api/_session.js';
 import { createRedisFetch } from './helpers/fake-upstash-redis.mts';
 
+// User API keys must be canonical `wm_` + 40 lowercase hex — that is the only
+// shape generateKey() (src/services/api-keys.ts) ever mints, and since #5379
+// validateUserApiKey rejects anything else BEFORE hashing so a malformed key
+// cannot burn a SHA-256 + Redis + Convex round-trip. These fixtures previously
+// used readable placeholders ('wm_free_test_key') that production could never
+// produce, so they exercised the gateway with an impossible input. The Convex
+// mocks below match on URL, not on the key or its hash, so the values here are
+// arbitrary as long as they are well-shaped.
+const FREE_USER_KEY = `wm_${'a'.repeat(40)}`;
+const PRO_USER_KEY = `wm_${'b'.repeat(40)}`;
+const OWNER_PRO_USER_KEY = `wm_${'c'.repeat(40)}`;
+
 const originalKeys = process.env.WORLDMONITOR_VALID_KEYS;
 const originalSessionSecret = process.env.WM_SESSION_SECRET;
 const originalRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
@@ -224,7 +236,7 @@ describe('premium gateway API key enforcement', () => {
           method,
           headers: {
             Origin: 'https://worldmonitor.app',
-            'X-Api-Key': 'wm_free_test_key',
+            'X-Api-Key': FREE_USER_KEY,
           },
         }));
         assert.equal(res.status, 403, `${method} ${path} should fail at the entitlement gate`);
@@ -294,7 +306,7 @@ describe('premium gateway API key enforcement', () => {
           method,
           headers: {
             Origin: 'https://worldmonitor.app',
-            'X-Api-Key': 'wm_pro_test_key',
+            'X-Api-Key': PRO_USER_KEY,
           },
         }));
         assert.equal(res.status, 200, `${method} ${path} should allow tier-1 Pro entitlements`);
@@ -422,7 +434,7 @@ describe('premium gateway API key enforcement', () => {
         new Request('https://worldmonitor.app/api/market/v1/analyze-stock?symbol=AAPL', {
           headers: {
             Origin: 'https://worldmonitor.app',
-            'X-WorldMonitor-Key': 'wm_owner_pro_test',
+            'X-WorldMonitor-Key': OWNER_PRO_USER_KEY,
             'x-user-id': 'victim-user',
           },
         }),
@@ -674,7 +686,7 @@ describe('premium gateway bearer token auth', () => {
         headers: {
           Origin: 'https://worldmonitor.app',
           Authorization: `Bearer ${token}`,
-          'X-Api-Key': 'wm_free_test_key',
+          'X-Api-Key': FREE_USER_KEY,
         },
       }));
       assert.equal(res.status, 403);

@@ -78,21 +78,55 @@ function extractOrgId(payload: Record<string, unknown>): string | null {
 const _planCache = new Map<string, { role: 'free' | 'pro'; expiresAt: number }>();
 const PLAN_CACHE_TTL_MS = 5 * 60 * 1_000;
 
+// Matches the 3s budget used for the other external auth lookup
+// — an inline AbortSignal.timeout(3_000) in server/_shared/user-api-key.ts, and
+// the VALIDATION_TIMEOUT_MS constant in api/_user-api-key.js.
+const DEFAULT_PLAN_LOOKUP_TIMEOUT_MS = 3_000;
+const MAX_ABORT_SIGNAL_TIMEOUT_MS = 2_147_483_647;
+
+export function parsePlanLookupTimeoutMs(value: string | undefined): number {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 && parsed <= MAX_ABORT_SIGNAL_TIMEOUT_MS
+    ? parsed
+    : DEFAULT_PLAN_LOOKUP_TIMEOUT_MS;
+}
+
+const PLAN_LOOKUP_TIMEOUT_MS = parsePlanLookupTimeoutMs(process.env.CLERK_PLAN_LOOKUP_TIMEOUT_MS);
+
 async function lookupPlanFromClerk(userId: string): Promise<'free' | 'pro'> {
   const cached = _planCache.get(userId);
   if (cached && Date.now() < cached.expiresAt) return cached.role;
 
   if (!CLERK_SECRET_KEY) return 'free';
   try {
+    // Adversarial DoS guard: validateBearerToken awaits this on every standard
+    // (non-template) session token, so a Clerk API stall would otherwise let an
+    // authenticated caller pin gateway invocations open indefinitely.
     const resp = await fetch(`https://api.clerk.com/v1/users/${userId}`, {
-      headers: { Authorization: `Bearer ${CLERK_SECRET_KEY}` },
+      headers: {
+        Authorization: `Bearer ${CLERK_SECRET_KEY}`,
+        // AGENTS.md: always set User-Agent on server-side fetches. Matches the
+        // sibling auth lookups (entitlement-check.ts, _shared/user-api-key.ts).
+        'User-Agent': 'worldmonitor-gateway/1.0',
+      },
+      signal: AbortSignal.timeout(PLAN_LOOKUP_TIMEOUT_MS),
     });
     if (!resp.ok) return 'free';
     const user = (await resp.json()) as { public_metadata?: Record<string, unknown> };
     const role: 'free' | 'pro' = user.public_metadata?.plan === 'pro' ? 'pro' : 'free';
     _planCache.set(userId, { role, expiresAt: Date.now() + PLAN_CACHE_TTL_MS });
     return role;
-  } catch {
+  } catch (err) {
+    // Log, don't swallow. This path downgrades a PRO user to 'free' for the
+    // request, and the AbortSignal.timeout added above made it newly reachable
+    // from a plain Clerk stall rather than only from a hard network error. With
+    // no log, a sustained Clerk outage is indistinguishable from a fleet of
+    // genuinely free users — the failure mode is silent revenue-affecting
+    // degradation. Not cached (see above), so the next request retries.
+    console.warn(
+      '[auth-session] lookupPlanFromClerk failed, degrading to free:',
+      err instanceof Error ? err.message : String(err),
+    );
     return 'free';
   }
 }

@@ -1697,7 +1697,26 @@
       "cafIndex": "CAF इंडेक्स",
       "candidGrants": "कैंडिड ग्रांट्स",
       "dataLag": "डेटा विलंब",
-      "infoTooltip": "<strong>वैश्विक दान गतिविधि सूचकांक</strong> व्यक्तिगत दान को ट्रैक करने वाला संयोजित सूचकांक क्राउडफंडिंग प्लेटफॉर्म और क्रिप्टो वॉलेट्स से।<ul><li><strong>प्लेटफ़ॉर्म</strong>: GoFundMe, GlobalGiving, JustGiving नमूना</li><li><strong>क्रिप्टो</strong>: ऑन-चेन चैरिटी वॉलेट इनफ्लो (Endaoment, Giving Block)</li><li><strong>संस्थागत</strong>: OECD ODA, CAF वर्ल्ड गिविंग इंडेक्स, कैंडिड ग्रांट्स</li></ul>सूचकांक दिशात्मक है (सटीक राशि नहीं)। लाइव नमूना और वार्षिक रिपोर्ट मिलाकर।"
+      "infoTooltip": "<strong>वैश्विक दान गतिविधि सूचकांक</strong> व्यक्तिगत दान को ट्रैक करने वाला संयोजित सूचकांक क्राउडफंडिंग प्लेटफॉर्म और क्रिप्टो वॉलेट्स से।<ul><li><strong>प्लेटफ़ॉर्म</strong>: GoFundMe, GlobalGiving, JustGiving नमूना</li><li><strong>क्रिप्टो</strong>: ऑन-चेन चैरिटी वॉलेट इनफ्लो (Endaoment, Giving Block)</li><li><strong>संस्थागत</strong>: OECD ODA, CAF वर्ल्ड गिविंग इंडेक्स, कैंडिड ग्रांट्स</li></ul>सूचकांक दिशात्मक है (सटीक राशि नहीं)। लाइव नमूना और वार्षिक रिपोर्ट मिलाकर।",
+      "benchmarkTitle": "Global Giving Benchmarks",
+      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "status": {
+        "published": "Published benchmarks with verified source coverage.",
+        "partial": "Published benchmarks with partial source coverage.",
+        "legacy": "Legacy snapshot; source details are unavailable.",
+        "cached": "Showing a cached snapshot; refresh unavailable."
+      },
+      "trackedAnnualized": "Tracked platform giving — annualized estimate",
+      "annualizedDaily": "Annualized daily estimate",
+      "atLeast": "At least",
+      "about": "About",
+      "sourceNotVerified": "Source not verified",
+      "reportedCumulative": "Reported cumulative total",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Published benchmark",
+      "sourcesMethodology": "Sources & methodology",
+      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
+      "partialEstimate": "Partially verified estimate"
     },
     "displacement": {
       "refugees": "शरणार्थी",
@@ -2239,11 +2258,100 @@
       "cta": "प्रो में अपग्रेड करें →",
       "dismiss": "बंद करें"
     },
+    "billingState": {
+      "onHoldDesc": "भुगतान विफल रहा। प्रीमियम एक्सेस बहाल करने के लिए अपनी भुगतान विधि अपडेट करें।",
+      "onHoldBannerMessage": "भुगतान विफल रहा। अपनी सदस्यता सक्रिय रखने के लिए अपनी भुगतान विधि अपडेट करें।",
+      "updatePayment": "भुगतान अपडेट करें",
+      "renewalPendingDesc": "हम आपकी सदस्यता के नवीनीकरण की पुष्टि कर रहे हैं। पुष्टि होते ही प्रीमियम एक्सेस स्वचालित रूप से बहाल हो जाएगा।",
+      "refreshStatus": "स्थिति रीफ़्रेश करें",
+      "renewalFailedDesc": "हम आपकी सदस्यता के नवीनीकरण की पुष्टि नहीं कर सके। बिलिंग प्रबंधित करें या समस्या बनी रहने पर सहायता से संपर्क करें।",
+      "manageBilling": "बिलिंग प्रबंधित करें",
+      "lapsedDesc": "आपकी Pro सदस्यता समाप्त हो गई है। प्रीमियम एक्सेस पुनः प्राप्त करने के लिए फिर से सदस्यता लें।",
+      "resubscribe": "फिर से सदस्यता लें"
+    },
     "checkoutFailureBanner": {
       "message": "भुगतान पूरा नहीं हो सका। कोई शुल्क नहीं लिया गया।",
       "retry": "फिर प्रयास करें",
       "retrying": "पुनः प्रयास कर रहे हैं…",
       "dismiss": "बंद करें"
+    },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "चरण {{current}} / {{total}}",
+      "closeLabel": "सेटअप छोड़ें",
+      "ariaLabel": "Pro सक्रियण सेटअप",
+      "signedInAs": "{{email}} के रूप में साइन इन",
+      "steps": {
+        "brief": {
+          "heading": "आपका दैनिक ब्रीफ, हर सुबह",
+          "body": "हर सुबह आपके इनबॉक्स में एक क्यूरेटेड इंटेलिजेंस ब्रीफ — रात भर के महत्वपूर्ण संकेत, पांच मिनट के पठन में समेटे गए।",
+          "confirmCta": "मेरा मॉर्निंग ब्रीफ चालू करें",
+          "confirming": "चालू किया जा रहा है…",
+          "doneNote": "आपका मॉर्निंग ब्रीफ पहले से चल रहा है।",
+          "scheduleNote": "हम आपका मौजूदा डिलीवरी समय बनाए रखेंगे।",
+          "summaryLabel": "मॉर्निंग ब्रीफ",
+          "summaryVerified": "चालू — आपके अगले मॉर्निंग ब्रीफ से शुरू।",
+          "deliverAt": "डिलीवर करें",
+          "previewLoading": "आपके पहले ब्रीफ का पूर्वावलोकन तैयार किया जा रहा है…",
+          "previewLabel": "आज सुबह का ब्रीफ"
+        },
+        "alerts": {
+          "heading": "गंभीर अलर्ट",
+          "body": "जब कुछ बड़ा होता है — संघर्ष में बढ़ोतरी, बाज़ार में झटके, नए प्रतिबंध — तो अपने ब्राउज़र में सूचना पाएं। सेटिंग्स में कभी भी आवृत्ति समायोजित करें।",
+          "confirmCta": "अलर्ट सक्षम करें",
+          "confirming": "सक्षम किया जा रहा है…",
+          "doneNote": "ब्राउज़र अलर्ट पहले से चालू हैं।",
+          "blockedNote": "आपके ब्राउज़र में सूचनाएं अवरुद्ध हैं। अलर्ट पाने के लिए अपने ब्राउज़र की साइट सेटिंग्स में उन्हें चालू करें।",
+          "declinedNote": "कोई बात नहीं — हम ब्राउज़र अलर्ट नहीं भेजेंगे। आप बाद में अपने ब्राउज़र की साइट सेटिंग्स से उन्हें चालू कर सकते हैं।",
+          "summaryLabel": "गंभीर अलर्ट",
+          "summaryVerified": "चालू — गंभीर संकेत आपके ब्राउज़र तक पहुंचेंगे।"
+        },
+        "power": {
+          "heading": "आपकी Pro टूलकिट",
+          "body": "कस्टम विजेट्स, MCP कनेक्शन और AI शोधकर्ता अनलॉक हो गए हैं। वह डैशबोर्ड बनाएं जिसे आप वाकई देखना चाहते हैं।",
+          "confirmCta": "Pro टूल्स एक्सप्लोर करें",
+          "confirming": "खोला जा रहा है…",
+          "doneNote": "आप पहले से ही अपने Pro टूल्स का उपयोग कर रहे हैं।",
+          "summaryLabel": "Pro टूलकिट",
+          "summaryVerified": "अनलॉक और तैयार, जब आप हों।",
+          "channelsNote": "Telegram, Slack, Discord या वेबहुक पसंद करेंगे?",
+          "pointers": {
+            "widgets": "एक कस्टम विजेट बनाएं",
+            "analyst": "AI विश्लेषक से पूछें",
+            "apiKeys": "अपनी API और MCP कुंजियां प्राप्त करें",
+            "channels": "उन्हें नोटिफिकेशन सेटिंग्स में सेट करें"
+          }
+        }
+      },
+      "status": {
+        "pending": "सेटअप नहीं हुआ",
+        "inFlight": "सेटअप हो रहा है…",
+        "verified": "तैयार",
+        "failed": "काम नहीं हुआ",
+        "blocked": "अवरुद्ध",
+        "unavailable": "उपलब्ध नहीं",
+        "blockedNote": "यह अभी उपलब्ध नहीं है — आप इसे बाद में सेटिंग्स से सेट कर सकते हैं।",
+        "unavailableNote": "यह आपके डिवाइस पर उपलब्ध नहीं है — आप इसे बाद में सेट कर सकते हैं।",
+        "failedBody": "कुछ गड़बड़ हो गई। आप फिर से प्रयास कर सकते हैं, या इसे बाद में सेटिंग्स से सेट कर सकते हैं।",
+        "retry": "फिर से प्रयास करें"
+      },
+      "actions": {
+        "skip": "अभी के लिए छोड़ें",
+        "continue": "जारी रखें"
+      },
+      "summary": {
+        "heading": "सब कुछ तैयार है",
+        "subVerified": "यह है जो आपके खाते पर चल रहा है।",
+        "subPending": "आप सेटिंग्स से कभी भी सेटअप पूरा कर सकते हैं।",
+        "linePending": "अभी सेटअप नहीं हुआ — सेटिंग्स में कभी भी पूरा करें।",
+        "lineFailed": "हम इसे सेट नहीं कर सके — सेटिंग्स से फिर से प्रयास करें।",
+        "finish": "मेरे डैशबोर्ड पर जाएं"
+      },
+      "chip": {
+        "message": "अपने Pro खाते का सेटअप पूरा करें।",
+        "action": "सेटअप पूरा करें",
+        "dismissLabel": "बंद करें"
+      }
     },
     "frameworkSelector": {
       "label": "विश्लेषण फ्रेमवर्क",

@@ -165,6 +165,9 @@ for (const [tierGroup, entries] of tierGroups) {
 
   tier.description = getDescription(primary.tierGroup);
   tier.features = marketingFeatures;
+  if (primary.highlightFeatures?.length) {
+    tier.highlightFeatures = primary.highlightFeatures;
+  }
   tier.planLimits = primary.features.planLimits ?? null;
   if (localeFeaturesByKey[localeKey]) {
     throw new Error(`[product-config] Duplicate pro locale tier key "${localeKey}" generated for public tier group "${tierGroup}".`);
@@ -207,7 +210,7 @@ function getTierDisplayName(tierGroup) {
   const names = {
     free: 'Free',
     pro: 'Pro',
-    api_starter: 'API',
+    api_starter: 'API Starter',
     api_business: 'API Business',
     enterprise: 'Enterprise',
   };

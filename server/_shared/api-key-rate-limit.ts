@@ -3,9 +3,8 @@
 //   1. Per-minute burst  — infra/abuse protection. Hard limit; the gateway
 //      returns 429 on violation (in enforce mode). Value from the catalog
 //      `apiRateLimit` (user keys) or a hardcoded constant (enterprise).
-//   2. Daily usage meter — the commercial "included allowance". Counts every
-//      served request but NEVER rejects at the allowance. The only hard reject
-//      on this axis is a safety ceiling at CEILING_MULTIPLIER × allowance.
+//   2. Daily usage meter — the commercial "included allowance". Hard-rejects
+//      (429 in enforce mode) at the sold allowance (#4635; was a 10× ceiling).
 //
 // This module is decision-only: it never builds a Response and never reads the
 // enforce flag — the gateway (the single chokepoint at server/gateway.ts:1034)
@@ -28,9 +27,6 @@ import { secondsUntilUtcMidnight } from './pro-mcp-token';
  *  be sourced from `features.apiRateLimit`. Mirrors ENTERPRISE_FEATURES. */
 export const ENTERPRISE_API_RATE_LIMIT = 1000;
 
-/** Safety ceiling = this × the included daily allowance. The allowance itself
- *  is metered (never rejects); the ceiling is pure runaway/cost protection. */
-export const CEILING_MULTIPLIER = 10;
 
 // One Redis client shared across every per-minute Ratelimit instance; one
 // Ratelimit per distinct numeric limit (60, 300, 1000) cached in the Map so two
@@ -99,7 +95,7 @@ export async function checkBurst(perMinute: number, identity: string): Promise<B
 }
 
 /** Plain (un-prefixed) daily-meter key — `runRedisPipeline` applies the
- *  deployment/env prefix. UTC calendar day so the ceiling resets at midnight.
+ *  deployment/env prefix. UTC calendar day so the daily meter resets at midnight.
  *  `date` is injectable for deterministic tests. */
 export function apiKeyDailyKey(userId: string, date?: Date): string {
   if (!userId) return '';
@@ -124,25 +120,25 @@ export type RateLimitPipeline = (
 export interface MeterResult {
   /** Post-INCR count for this UTC day (0 when not metered). */
   count: number;
-  /** True when count exceeded CEILING_MULTIPLIER × allowance. */
-  overCeiling: boolean;
+  /** True when count exceeded the sold daily allowance. */
+  overLimit: boolean;
   /** False when Redis was unavailable (fail-open: serve uncounted). */
   metered: boolean;
-  /** Seconds until UTC midnight — the ceiling 429 `Retry-After`. */
+  /** Seconds until UTC midnight — the daily 429 `Retry-After`. */
   retryAfterSec: number;
   /** Idempotent DECR rollback. The gateway calls this only when it actually
-   *  rejects (enforce + overCeiling); in shadow the request is served, so the
+   *  rejects (enforce + overLimit); in shadow the request is served, so the
    *  increment stands and reflects true demand. */
   rollback: () => Promise<void>;
 }
 
 /**
- * Increment the per-account daily meter and report whether the safety ceiling
- * is now exceeded. INCR-first (atomic; no check-then-incr race), mirroring
+ * Increment the per-account daily meter and report whether the sold daily
+ * allowance is now exceeded. INCR-first (atomic; no check-then-incr race), mirroring
  * api/mcp/quota.ts::reserveQuota.
  *
  * - `allowance < 0` (unlimited, e.g. enterprise) → no Redis call; never metered.
- * - Redis unavailable / pipeline failure → `metered:false`, `overCeiling:false`
+ * - Redis unavailable / pipeline failure → `metered:false`, `overLimit:false`
  *   (fail-open: the gateway serves uncounted).
  */
 export async function reserveDailyMeter(opts: {
@@ -156,16 +152,17 @@ export async function reserveDailyMeter(opts: {
   const retryAfterSec = secondsUntilUtcMidnight(date);
 
   // No daily limit: `-1` is unlimited (enterprise); `0` is a misconfiguration
-  // (positive burst but zero allowance) that we fail OPEN on rather than
-  // ceiling-429 every request (ceiling would be 0×10 = 0, so request #1 trips).
+  // (positive burst but zero allowance) that we fail OPEN on rather than 429
+  // every request (a 0 allowance would reject request #1). This guard also keeps
+  // unlimited (-1) from ever reaching `count > allowance` (always-true otherwise).
   // Callers already gate eligibility on apiRateLimit > 0, so this is defensive.
   if (allowance <= 0) {
-    return { count: 0, overCeiling: false, metered: false, retryAfterSec, rollback: noop };
+    return { count: 0, overLimit: false, metered: false, retryAfterSec, rollback: noop };
   }
 
   const key = apiKeyDailyKey(userId, date);
   if (!key) {
-    return { count: 0, overCeiling: false, metered: false, retryAfterSec, rollback: noop };
+    return { count: 0, overLimit: false, metered: false, retryAfterSec, rollback: noop };
   }
 
   let pipeResult: Array<{ result?: unknown }> | null;
@@ -181,13 +178,13 @@ export async function reserveDailyMeter(opts: {
   // Fail-open: couldn't meter → serve uncounted (never punish a paying
   // customer for our Redis outage).
   if (!pipeResult || !Array.isArray(pipeResult) || pipeResult.length === 0) {
-    return { count: 0, overCeiling: false, metered: false, retryAfterSec, rollback: noop };
+    return { count: 0, overLimit: false, metered: false, retryAfterSec, rollback: noop };
   }
 
   const incrRaw = pipeResult[0]?.result;
   const count = typeof incrRaw === 'number' ? incrRaw : Number(incrRaw);
   if (!Number.isFinite(count) || count < 1) {
-    return { count: 0, overCeiling: false, metered: false, retryAfterSec, rollback: noop };
+    return { count: 0, overLimit: false, metered: false, retryAfterSec, rollback: noop };
   }
 
   let rolledBack = false;
@@ -202,8 +199,9 @@ export async function reserveDailyMeter(opts: {
     }
   };
 
-  const ceiling = allowance * CEILING_MULTIPLIER;
-  return { count, overCeiling: count > ceiling, metered: true, retryAfterSec, rollback };
+  // Enforce at the SOLD allowance (#4635): the customer's plan limit is the
+  // limit. (Was a 10× safety ceiling; dropped so the sold cap is authoritative.)
+  return { count, overLimit: count > allowance, metered: true, retryAfterSec, rollback };
 }
 
 /**

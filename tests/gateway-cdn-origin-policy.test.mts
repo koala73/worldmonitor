@@ -269,7 +269,7 @@ describe('gateway CDN origin policy', () => {
     assert.equal(withKey.headers.get('CDN-Cache-Control'), null, 'premium endpoints must NOT have CDN caching');
   });
 
-  it('normalizes invalid wm_ gateway-validation sentinel to non-cacheable invalid key response', async () => {
+  it('fails closed before unknown wm_ validation when the pre-auth limiter is unavailable', async () => {
     const handler = createHandler();
     const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL', {
       headers: {
@@ -279,14 +279,14 @@ describe('gateway CDN origin policy', () => {
     }));
     const body = await res.json();
 
-    assert.equal(res.status, 401);
-    assert.equal(res.headers.get('Cache-Control'), 'no-store');
-    assert.equal(res.headers.get('CDN-Cache-Control'), null);
-    assert.equal(body.error, 'Invalid API key');
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('X-RateLimit-Mode'), 'degraded');
+    assertNoSharedCacheHeaders(res);
+    assert.equal(body.error, 'Rate-limit service temporarily unavailable');
     assert.doesNotMatch(JSON.stringify(body), /gateway validation|Convex|keyHash/i);
   });
 
-  it('normalizes invalid wm_ gateway-validation sentinel on premium RPCs', async () => {
+  it('fails closed before unknown wm_ validation on premium RPCs when the limiter is unavailable', async () => {
     const handler = createHandler();
     const res = await handler(new Request('https://worldmonitor.app/api/market/v1/analyze-stock?symbol=AAPL', {
       headers: {
@@ -296,10 +296,10 @@ describe('gateway CDN origin policy', () => {
     }));
     const body = await res.json();
 
-    assert.equal(res.status, 401);
-    assert.equal(res.headers.get('Cache-Control'), 'no-store');
-    assert.equal(res.headers.get('CDN-Cache-Control'), null);
-    assert.equal(body.error, 'Invalid API key');
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('X-RateLimit-Mode'), 'degraded');
+    assertNoSharedCacheHeaders(res);
+    assert.equal(body.error, 'Rate-limit service temporarily unavailable');
     assert.doesNotMatch(JSON.stringify(body), /gateway validation|Convex|keyHash/i);
   });
 });
