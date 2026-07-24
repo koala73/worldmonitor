@@ -16,6 +16,13 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import {
+  findNewBullets,
+  findRemovedBullets,
+  mergeTranslatedFeatures,
+  sameStringArray,
+} from './_product-config-helpers.mjs';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
 
@@ -255,6 +262,7 @@ function syncLocalePricingFeaturePlaceholders(localesDir, generatedFeaturesByKey
   const preservedTranslations = [];
   const appendedPlaceholders = [];
   const trimmedPlaceholders = [];
+  const positionalTrimmedPlaceholders = [];
   for (const file of readdirSync(localesDir).filter((name) => name.endsWith('.json')).sort()) {
     const localePath = join(localesDir, file);
     const locale = readJsonFile(localePath);
@@ -280,34 +288,26 @@ function syncLocalePricingFeaturePlaceholders(localesDir, generatedFeaturesByKey
         // Translated locale diverges from generated — preserve existing translations,
         // but append any NEW bullets from the generated English as untranslated placeholders,
         // and trim any bullets that were removed from the English catalog (#5420).
-        const newBullets = findNewBullets(previousGeneratedFeatures, generatedFeatures);
-        const removedBullets = findRemovedBullets(previousGeneratedFeatures, generatedFeatures);
+        const {
+          features,
+          changed: mergedChanged,
+          appendedCount,
+          trimmedCount,
+          positionalTrimmedCount,
+        } = mergeTranslatedFeatures(currentFeatures, previousGeneratedFeatures, generatedFeatures);
 
-        let updatedFeatures = currentFeatures;
-
-        // Trim removed English bullets (untranslated placeholders left from prior appends)
-        if (removedBullets.length > 0) {
-          const trimmed = updatedFeatures.filter((bullet) => !removedBullets.includes(bullet));
-          if (trimmed.length < updatedFeatures.length) {
-            updatedFeatures = trimmed;
-            changed = true;
-            trimmedPlaceholders.push(`${file}:pricing.tiers.${key}.features (-${currentFeatures.length - trimmed.length})`);
+        if (mergedChanged) {
+          tier.features = features;
+          changed = true;
+          if (appendedCount > 0) {
+            appendedPlaceholders.push(`${file}:pricing.tiers.${key}.features (+${appendedCount})`);
           }
-        }
-
-        // Append new English bullets as untranslated placeholders
-        if (newBullets.length > 0 && updatedFeatures.length < generatedFeatures.length) {
-          const slots = generatedFeatures.length - updatedFeatures.length;
-          const missing = newBullets.filter((bullet) => !updatedFeatures.includes(bullet)).slice(0, Math.max(0, slots));
-          if (missing.length > 0) {
-            updatedFeatures = [...updatedFeatures, ...missing];
-            changed = true;
-            appendedPlaceholders.push(`${file}:pricing.tiers.${key}.features (+${missing.length})`);
+          if (trimmedCount > 0) {
+            trimmedPlaceholders.push(`${file}:pricing.tiers.${key}.features (-${trimmedCount})`);
           }
-        }
-
-        if (updatedFeatures !== currentFeatures) {
-          tier.features = updatedFeatures;
+          if (positionalTrimmedCount > 0) {
+            positionalTrimmedPlaceholders.push(`${file}:pricing.tiers.${key}.features (-${positionalTrimmedCount} positional)`);
+          }
         } else {
           preservedTranslations.push(`${file}:pricing.tiers.${key}.features`);
         }
@@ -332,6 +332,14 @@ function syncLocalePricingFeaturePlaceholders(localesDir, generatedFeaturesByKey
     console.warn(
       `  ⚠ trimmed removed English placeholder(s) from translated locales (${trimmedPlaceholders.length}): ` +
         trimmedPlaceholders.join(', '),
+    );
+  }
+
+  if (positionalTrimmedPlaceholders.length > 0) {
+    console.warn(
+      `  ⚠ positional trim applied to translated locales to match English feature count (${positionalTrimmedPlaceholders.length}): ` +
+        positionalTrimmedPlaceholders.join(', ') +
+        ' — review for dropped translations that need re-translation.',
     );
   }
 
@@ -387,34 +395,4 @@ function pricingFeatureSnapshot(locale) {
       .filter(([, tier]) => tier && typeof tier === 'object' && !Array.isArray(tier) && Array.isArray(tier.features))
       .map(([key, tier]) => [key, tier.features]),
   );
-}
-
-function sameStringArray(left, right) {
-  return Array.isArray(left) &&
-    Array.isArray(right) &&
-    left.length === right.length &&
-    left.every((value, index) => value === right[index]);
-}
-
-/**
- * Identify bullets that were added to the generated features array relative to
- * the previous snapshot. Returns an array of new English strings that are in
- * `current` but not in `previous`. Handles both trailing appends and mid-array
- * insertions by comparing set membership.
- */
-function findNewBullets(previous, current) {
-  if (!Array.isArray(previous) || !Array.isArray(current)) return [];
-  const previousSet = new Set(previous);
-  return current.filter((bullet) => !previousSet.has(bullet));
-}
-
-/**
- * Identify bullets that were removed from the generated features array relative
- * to the previous snapshot. Returns an array of English strings that were in
- * `previous` but are no longer in `current`.
- */
-function findRemovedBullets(previous, current) {
-  if (!Array.isArray(previous) || !Array.isArray(current)) return [];
-  const currentSet = new Set(current);
-  return previous.filter((bullet) => !currentSet.has(bullet));
 }
