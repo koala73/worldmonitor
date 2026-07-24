@@ -8,34 +8,35 @@
  * fire-once keying, the step model, the exit summary, the finish-setup chip,
  * and telemetry event selection.
  *
- * A near-leaf (mirrors billing-state.ts): its only import is the
- * zero-dependency generated product catalog, so it stays unit-testable under
- * `tsx --test` (no jsdom, no Vite globals) while both services and components
- * import it. It COMPUTES records and decisions from explicit snapshot inputs —
- * callers perform every storage read/write (localStorage lives in the
+ * MUST stay a zero-import leaf (mirrors billing-state.ts): it is unit-tested
+ * under `tsx --test` (no jsdom, no Vite globals) and — because the eager
+ * dashboard code statically imports it — importing the product catalog here
+ * would drag that checkout-only module into the main entry chunk and break the
+ * eager-chunk budget. It COMPUTES records and decisions from explicit snapshot
+ * inputs — callers perform every storage read/write (localStorage lives in the
  * panel-layout/UI units, never here).
  *
- * Plan identity is an allowlist against the two Pro product ids, derived
- * directly from `DODO_PRODUCTS` so it can never drift from the catalog (and so
- * no raw product-id literal is hand-written here — the repo-wide product-id
- * guard). Pro plan keys mirror convex/config/productCatalog.ts; the drift-guard
- * test asserts them against the catalog's tierGroup.
+ * Plan identity is an allowlist against the two Pro product ids. The literals
+ * are mirrored from config/products.generated.ts (DODO_PRODUCTS.PRO_MONTHLY /
+ * PRO_ANNUAL) rather than imported — keeping the leaf import-free — and
+ * tests/pro-activation-state.test.mts asserts them against the generated
+ * catalog so any drift goes red. The repo product-id guard excludes this file
+ * for the same reason (the drift-guard test provides the catalog-sync it wants).
  */
-
-import { DODO_PRODUCTS } from '@/config/products.generated';
 
 // ---------------------------------------------------------------------------
 // Plan-identity allowlists (kept in sync by the drift-guard test)
 // ---------------------------------------------------------------------------
 
 /**
- * The only two product ids that grant Pro, taken straight from the generated
- * catalog. Anything else — api_starter, api_starter_annual, api_business,
+ * The only two product ids that grant Pro. Mirrors
+ * `DODO_PRODUCTS.PRO_MONTHLY` / `PRO_ANNUAL` (kept in sync by the drift-guard
+ * test). Anything else — api_starter, api_starter_annual, api_business,
  * enterprise, or an unknown id — is non-Pro and must never trigger onboarding.
  */
 export const PRO_PRODUCT_IDS: readonly string[] = [
-  DODO_PRODUCTS.PRO_MONTHLY,
-  DODO_PRODUCTS.PRO_ANNUAL,
+  'pdt_0Nbtt71uObulf7fGXhQup', // PRO_MONTHLY
+  'pdt_0NbttMIfjLWC10jHQWYgJ', // PRO_ANNUAL
 ];
 
 /** The entitlement plan keys that classify as Pro (productCatalog.ts). */

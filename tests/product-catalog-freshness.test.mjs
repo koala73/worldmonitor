@@ -33,6 +33,11 @@ const PRODUCT_ID_EXCLUDE_PATTERNS = [
   'tests/',
   'convex/__tests__/',
   'e2e/',
+  // Zero-import leaf: statically imported by the eager dashboard code, so it
+  // cannot import the catalog without breaking the eager-chunk budget. It
+  // mirrors the two Pro ids as literals; its drift-guard test asserts them
+  // against the generated catalog, giving the same catalog-sync this guard wants.
+  'src/services/pro-activation-state',
   'scripts/generate-product-config',
 ];
 
