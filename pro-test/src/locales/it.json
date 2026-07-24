@@ -386,8 +386,7 @@
           "Flussi dati in tempo reale",
           "60 richieste/minuto",
           "1.000 richieste/giorno incluse",
-          "Notifiche webhook",
-          "Esportazioni dati personalizzate"
+          "Notifiche webhook"
         ]
       },
       "enterprise": {

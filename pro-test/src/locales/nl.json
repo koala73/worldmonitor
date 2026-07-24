@@ -386,8 +386,7 @@
           "Real-time gegevensstromen",
           "60 aanvragen/minuut",
           "1.000 aanvragen/dag inbegrepen",
-          "Webhook-meldingen",
-          "Aangepaste gegevensexports"
+          "Webhook-meldingen"
         ]
       },
       "enterprise": {

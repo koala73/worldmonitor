@@ -386,8 +386,7 @@
           "Echtzeit-Datenströme",
           "60 Anfragen/Minute",
           "1.000 Anfragen/Tag inklusive",
-          "Webhook-Benachrichtigungen",
-          "Custom-Datenexporte"
+          "Webhook-Benachrichtigungen"
         ]
       },
       "enterprise": {

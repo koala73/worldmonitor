@@ -386,8 +386,7 @@
           "Fluxuri de date în timp real",
           "60 de cereri/minut",
           "1.000 de cereri/zi incluse",
-          "Notificări webhook",
-          "Exporturi de date personalizate"
+          "Notificări webhook"
         ]
       },
       "enterprise": {

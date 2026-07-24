@@ -60,7 +60,7 @@ Realistic anchors across the spectrum:
 |---|---|---|---|
 | Free / open source | $0 | Aggregated multi-domain awareness, community support | World Monitor free tier, self-hosted OSINT stacks |
 | Prosumer / analyst | ~$30–80/month | AI analysis, digests, alerting, personal workflows | World Monitor Pro at $39.99/month |
-| API / developer | ~$100–250/month | Programmatic quotas, webhooks, structured data | World Monitor API at $99.99–249.99/month |
+| API / developer | ~$100–250/month | Programmatic quotas, webhooks, structured data | World Monitor API at $99.99–299.99/month |
 | Enterprise SaaS | Six figures/year | Team seats, SLAs, integrations, support | Dataminr-class licenses |
 | Terminal / platform | $24,000/year per seat and up | Deep proprietary data, execution workflows | Bloomberg Terminal; Palantir deployments start in the millions |
 
@@ -95,7 +95,7 @@ For a concrete, current example (full details on the [pricing page](https://www.
 | Free | $0, no signup | Public situational awareness: 56 map layers, 500+ feeds, country briefs, chokepoints, watchlists |
 | Pro | $39.99/month or $399.99/year | Analysts: WM Analyst chat with citations, Scenario Engine, Route Explorer, AI digest, MCP access with 41 tools |
 | API | $99.99/month or $999/year | Developers: REST access, 1,000 requests/day, 5 webhook rules, OpenAPI docs |
-| API Business | $249.99/month | Teams: 300 requests/minute, 10,000 requests/day, priority support |
+| API Business | $299.99/month | Teams: 300 requests/minute, 10,000 requests/day, priority support |
 | Enterprise | Custom | Organizations: SSO/MFA/RBAC, team workspaces, white-label, on-prem or air-gapped deployment |
 
 Rate limits are hard limits — exceeding a quota returns HTTP 429 with a `Retry-After` header, never a silent charge. That is the kind of detail worth checking on any vendor's pricing page before you integrate.

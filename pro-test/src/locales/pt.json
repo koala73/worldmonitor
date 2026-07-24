@@ -386,8 +386,7 @@
           "Fluxos de dados em tempo real",
           "60 requisições/minuto",
           "1.000 requisições/dia incluídas",
-          "Notificações por webhook",
-          "Exportações de dados personalizadas"
+          "Notificações por webhook"
         ]
       },
       "enterprise": {

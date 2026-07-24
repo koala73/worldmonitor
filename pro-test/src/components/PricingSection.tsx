@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'motion/react';
-import { Check, ArrowRight, Zap, Loader2 } from 'lucide-react';
+import { Check, ShieldCheck, ArrowRight, Zap, Loader2 } from 'lucide-react';
 import { startCheckout, subscribeCheckoutPhase, type CheckoutPhase } from '../services/checkout';
 import { t, tArray } from '../i18n';
 
@@ -13,6 +13,8 @@ interface Tier {
   localeKey?: string;
   description: string;
   features: string[];
+  /** License/commercial-use callouts, rendered green + distinct from features. */
+  highlightFeatures?: string[];
   highlighted?: boolean;
   price?: number | null;
   period?: string;
@@ -321,6 +323,12 @@ export function PricingSection({ refCode }: { refCode?: string }) {
                         tier.highlighted ? 'text-wm-green' : 'text-wm-muted'
                       }`} aria-hidden="true" />
                       <span className="text-wm-muted">{feature}</span>
+                    </li>
+                  ))}
+                  {tier.highlightFeatures?.map((hf, hi) => (
+                    <li key={`hl-${hi}`} className="flex items-start gap-2 text-sm">
+                      <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5 text-wm-green" aria-hidden="true" />
+                      <span className="text-wm-green font-medium">{hf}</span>
                     </li>
                   ))}
                 </ul>

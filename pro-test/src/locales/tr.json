@@ -386,8 +386,7 @@
           "Gerçek zamanlı veri akışları",
           "Dakikada 60 istek",
           "Günde 1.000 istek dahil",
-          "Webhook bildirimleri",
-          "Özel veri dışa aktarımı"
+          "Webhook bildirimleri"
         ]
       },
       "enterprise": {

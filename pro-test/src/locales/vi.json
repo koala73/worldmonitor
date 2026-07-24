@@ -386,8 +386,7 @@
           "Luồng dữ liệu thời gian thực",
           "60 yêu cầu/phút",
           "Bao gồm 1.000 yêu cầu/ngày",
-          "Thông báo Webhook",
-          "Xuất dữ liệu tùy chỉnh"
+          "Thông báo Webhook"
         ]
       },
       "enterprise": {

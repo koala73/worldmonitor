@@ -386,8 +386,7 @@
           "Strumienie danych w czasie rzeczywistym",
           "60 żądań/minutę",
           "1000 żądań/dzień w cenie",
-          "Powiadomienia webhook",
-          "Niestandardowe eksporty danych"
+          "Powiadomienia webhook"
         ]
       },
       "enterprise": {

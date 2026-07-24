@@ -386,8 +386,7 @@
           "Realtidsdataströmmar",
           "60 förfrågningar/minut",
           "1 000 förfrågningar/dag ingår",
-          "Webhook-meddelanden",
-          "Anpassade dataexporter"
+          "Webhook-meddelanden"
         ]
       },
       "enterprise": {
