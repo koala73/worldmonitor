@@ -50,7 +50,10 @@ async function fetchHapiSummary(countryCode: string): Promise<HumanitarianCountr
       signal: AbortSignal.timeout(15000),
     });
 
-    if (!response.ok) return undefined;
+    if (!response.ok) {
+      console.warn(`  HAPI RPC error: HTTP ${response.status} ${response.statusText}`);
+      return undefined;
+    }
 
     const rawData = await response.json();
     const records: any[] = rawData.data || [];

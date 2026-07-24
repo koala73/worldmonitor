@@ -52,6 +52,7 @@ const PIZZINT_TTL = 600;
 export const CONFLICT_COUNTRIES = [
   'AF', 'SY', 'UA', 'SD', 'SS', 'SO', 'CD', 'MM', 'YE', 'ET',
   'IQ', 'PS', 'LY', 'ML', 'BF', 'NE', 'NG', 'CM', 'MZ', 'HT',
+  'IR', 'IL', 'SA', 'DJ', 'ER',
 ];
 export const GDELT_MIN_SUCCESSFUL_COUNTRIES = Math.ceil(CONFLICT_COUNTRIES.length * 0.8);
 // A throttled failure, as it reaches us: fetchGdeltCountryEvents flattens the direct and
@@ -377,7 +378,10 @@ async function fetchHapiSummary(countryCode) {
     headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
     signal: AbortSignal.timeout(15_000),
   });
-  if (!resp.ok) return null;
+  if (!resp.ok) {
+    console.warn(`  HAPI ${countryCode}: HTTP ${resp.status} ${resp.statusText}`);
+    return null;
+  }
   const rawData = await resp.json();
   const records = rawData.data || [];
 

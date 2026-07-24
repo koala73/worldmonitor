@@ -171,6 +171,7 @@ const BOOTSTRAP_KEYS = {
 const STANDALONE_KEYS = {
   chinaCoverage:      CHINA_COVERAGE_SUMMARY_KEY,
   hkoWarnings:        'weather:hko-warnings:v1',
+  humanitarianSummary: 'conflict:humanitarian:v1',
   // #4920 completeness measurement (daily GH Actions publishers) — ops
   // keys: health-monitored but NOT bootstrap-hydrated into page loads.
   newsFeedHealth:    'news:feed-health:v1',
@@ -336,6 +337,7 @@ const STANDALONE_KEYS = {
 };
 
 const SEED_META = {
+  humanitarianSummary: { key: 'seed-meta:conflict:humanitarian', maxStaleMin: 43200 },
   chinaCoverage:   { key: 'seed-meta:health:china-coverage',   maxStaleMin: 180 },
   earthquakes:      { key: 'seed-meta:seismology:earthquakes',  maxStaleMin: 30 },
   wildfires:        { key: 'seed-meta:wildfire:fires',          maxStaleMin: 360 }, // FIRMS NRT resets at midnight UTC; new-day data takes 3-6h to accumulate
