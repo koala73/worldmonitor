@@ -10,9 +10,10 @@
 import { convexTest } from "convex-test";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import schema from "../schema";
-import { api } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 import { PRODUCT_CATALOG } from "../config/productCatalog";
 import { getFeaturesForPlan } from "../lib/entitlements";
+import { signBusinessInviteToken } from "../lib/identitySigning";
 
 const modules = import.meta.glob("../**/*.ts");
 
@@ -321,5 +322,528 @@ describe("payments businessSeats inviteSeats", () => {
         .mutation(api.payments.businessSeats.removeSeat, { grantId }),
     ).rejects.toThrow(/NOT_OWNER/);
     await t.finishAllScheduledFunctions(vi.runAllTimers);
+  });
+});
+
+describe("payments businessSeats acceptBusinessInvite", () => {
+  async function seedPendingGrant(
+    t: ReturnType<typeof convexTest>,
+    opts: {
+      businessSubscriptionId: string;
+      inviteeEmail: string;
+      domain: string;
+      ownerUserId?: string;
+      expiresAt?: number;
+      status?: "pending" | "accepted" | "revoked" | "expired";
+    },
+  ) {
+    const now = Date.now();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("businessProGrants", {
+        businessSubscriptionId: opts.businessSubscriptionId,
+        ownerUserId: opts.ownerUserId ?? OWNER_ID,
+        inviteeEmail: opts.inviteeEmail,
+        domain: opts.domain,
+        status: opts.status ?? "pending",
+        createdAt: now,
+        expiresAt: opts.expiresAt ?? now + 14 * DAY_MS,
+      });
+    });
+  }
+
+  test("valid accept → invitee gets Pro", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_accept_001";
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    await seedPendingGrant(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeEmail: "teammate@acme.com",
+      domain: "acme.com",
+    });
+    const grant = await t.run(async (ctx) =>
+      ctx.db
+        .query("businessProGrants")
+        .withIndex("by_businessSubscriptionId", (q) =>
+          q.eq("businessSubscriptionId", businessSubId),
+        )
+        .first(),
+    );
+    const token = await signBusinessInviteToken(grant!._id);
+
+    await t
+      .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "teammate@acme.com" })
+      .mutation(api.payments.businessSeats.acceptBusinessInvite, {
+        grantId: grant!._id,
+        token,
+      });
+
+    const updated = await t.run(async (ctx) => ctx.db.get(grant!._id));
+    expect(updated?.status).toBe("accepted");
+    expect(updated?.inviteeUserId).toBe("user_teammate");
+    expect(updated?.acceptedAt).toBe(NOW);
+
+    const entitlement = await t.run(async (ctx) =>
+      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", "user_teammate")).first(),
+    );
+    expect(entitlement?.planKey).toBe("pro_monthly");
+    expect(entitlement?.validUntil).toBe(NOW + 30 * DAY_MS);
+    vi.useRealTimers();
+  });
+
+  test("wrong-email accept → INVITE_EMAIL_MISMATCH", async () => {
+    vi.useFakeTimers();
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_accept_002";
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    await seedPendingGrant(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeEmail: "teammate@acme.com",
+      domain: "acme.com",
+    });
+    const grant = await t.run(async (ctx) =>
+      ctx.db
+        .query("businessProGrants")
+        .withIndex("by_businessSubscriptionId", (q) =>
+          q.eq("businessSubscriptionId", businessSubId),
+        )
+        .first(),
+    );
+    const token = await signBusinessInviteToken(grant!._id);
+
+    await expect(
+      t
+        .withIdentity({ subject: "user_intruder", tokenIdentifier: "clerk|user_intruder", email: "intruder@acme.com" })
+        .mutation(api.payments.businessSeats.acceptBusinessInvite, {
+          grantId: grant!._id,
+          token,
+        }),
+    ).rejects.toThrow(/INVITE_EMAIL_MISMATCH/);
+    vi.useRealTimers();
+  });
+
+  test("expired token → INVITE_EXPIRED", async () => {
+    vi.useFakeTimers();
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_accept_003";
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    await seedPendingGrant(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeEmail: "teammate@acme.com",
+      domain: "acme.com",
+      expiresAt: NOW - DAY_MS,
+    });
+    const grant = await t.run(async (ctx) =>
+      ctx.db
+        .query("businessProGrants")
+        .withIndex("by_businessSubscriptionId", (q) =>
+          q.eq("businessSubscriptionId", businessSubId),
+        )
+        .first(),
+    );
+    const token = await signBusinessInviteToken(grant!._id);
+
+    await expect(
+      t
+        .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "teammate@acme.com" })
+        .mutation(api.payments.businessSeats.acceptBusinessInvite, {
+          grantId: grant!._id,
+          token,
+        }),
+    ).rejects.toThrow(/INVITE_EXPIRED/);
+    vi.useRealTimers();
+  });
+
+  test("replay of accepted invite → INVITE_ALREADY_USED", async () => {
+    vi.useFakeTimers();
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_accept_004";
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    await seedPendingGrant(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeEmail: "teammate@acme.com",
+      domain: "acme.com",
+      status: "accepted",
+    });
+    const grant = await t.run(async (ctx) =>
+      ctx.db
+        .query("businessProGrants")
+        .withIndex("by_businessSubscriptionId", (q) =>
+          q.eq("businessSubscriptionId", businessSubId),
+        )
+        .first(),
+    );
+    const token = await signBusinessInviteToken(grant!._id);
+
+    await expect(
+      t
+        .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "teammate@acme.com" })
+        .mutation(api.payments.businessSeats.acceptBusinessInvite, {
+          grantId: grant!._id,
+          token,
+        }),
+    ).rejects.toThrow(/INVITE_ALREADY_USED/);
+    vi.useRealTimers();
+  });
+
+  test("accept when Business already lapsed → BUSINESS_NOT_ACTIVE", async () => {
+    vi.useFakeTimers();
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_accept_005";
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "expired",
+      currentPeriodEnd: NOW - DAY_MS,
+    });
+    await seedPendingGrant(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeEmail: "teammate@acme.com",
+      domain: "acme.com",
+    });
+    const grant = await t.run(async (ctx) =>
+      ctx.db
+        .query("businessProGrants")
+        .withIndex("by_businessSubscriptionId", (q) =>
+          q.eq("businessSubscriptionId", businessSubId),
+        )
+        .first(),
+    );
+    const token = await signBusinessInviteToken(grant!._id);
+
+    await expect(
+      t
+        .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "teammate@acme.com" })
+        .mutation(api.payments.businessSeats.acceptBusinessInvite, {
+          grantId: grant!._id,
+          token,
+        }),
+    ).rejects.toThrow(/BUSINESS_NOT_ACTIVE/);
+    vi.useRealTimers();
+  });
+
+  test("invalid token → INVALID_INVITE_TOKEN", async () => {
+    vi.useFakeTimers();
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_accept_006";
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    await seedPendingGrant(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeEmail: "teammate@acme.com",
+      domain: "acme.com",
+    });
+    const grant = await t.run(async (ctx) =>
+      ctx.db
+        .query("businessProGrants")
+        .withIndex("by_businessSubscriptionId", (q) =>
+          q.eq("businessSubscriptionId", businessSubId),
+        )
+        .first(),
+    );
+
+    await expect(
+      t
+        .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "teammate@acme.com" })
+        .mutation(api.payments.businessSeats.acceptBusinessInvite, {
+          grantId: grant!._id,
+          token: "v1.12345.invalidsignature",
+        }),
+    ).rejects.toThrow(/INVALID_INVITE_TOKEN/);
+    vi.useRealTimers();
+  });
+});
+
+describe("payments businessSeats revoke-on-lapse", () => {
+  async function seedAcceptedGrantWithInvitee(
+    t: ReturnType<typeof convexTest>,
+    opts: {
+      businessSubscriptionId: string;
+      inviteeUserId: string;
+      inviteeEmail: string;
+      domain: string;
+      ownerUserId?: string;
+    },
+  ) {
+    const now = Date.now();
+    await t.run(async (ctx) => {
+      await ctx.db.insert("businessProGrants", {
+        businessSubscriptionId: opts.businessSubscriptionId,
+        ownerUserId: opts.ownerUserId ?? OWNER_ID,
+        inviteeEmail: opts.inviteeEmail,
+        domain: opts.domain,
+        status: "accepted",
+        inviteeUserId: opts.inviteeUserId,
+        createdAt: now,
+        acceptedAt: now,
+        expiresAt: now + 14 * DAY_MS,
+      });
+      await ctx.db.insert("entitlements", {
+        userId: opts.inviteeUserId,
+        planKey: "pro_monthly",
+        features: getFeaturesForPlan("pro_monthly"),
+        validUntil: now + 30 * DAY_MS,
+        updatedAt: now,
+      });
+    });
+  }
+
+  async function fireWebhook(
+    t: ReturnType<typeof convexTest>,
+    opts: {
+      eventType: string;
+      dodoSubscriptionId: string;
+      status: string;
+      eventTimestamp: number;
+      cancelledAt?: number;
+    },
+  ) {
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: `msg_test_${opts.dodoSubscriptionId}_${opts.eventType}_${Math.random().toString(36).slice(2, 6)}`,
+      eventType: opts.eventType,
+      rawPayload: {
+        type: opts.eventType,
+        data: {
+          subscription_id: opts.dodoSubscriptionId,
+          product_id: PRODUCT_CATALOG.api_business.dodoProductId!,
+          status: opts.status,
+          customer: { customer_id: "cus_test" },
+          metadata: { wm_user_id: OWNER_ID },
+          previous_billing_date: new Date(NOW - DAY_MS).toISOString(),
+          next_billing_date: new Date(NOW + 30 * DAY_MS).toISOString(),
+          ...(opts.cancelledAt ? { cancelled_at: new Date(opts.cancelledAt).toISOString() } : {}),
+        },
+      },
+      timestamp: opts.eventTimestamp,
+    });
+  }
+
+  test("Business expired → all grants revoked + invitees free", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_revoke_001";
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    await seedAcceptedGrantWithInvitee(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeUserId: "user_teammate_1",
+      inviteeEmail: "teammate1@acme.com",
+      domain: "acme.com",
+    });
+    await seedAcceptedGrantWithInvitee(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeUserId: "user_teammate_2",
+      inviteeEmail: "teammate2@acme.com",
+      domain: "acme.com",
+    });
+
+    await fireWebhook(t, {
+      eventType: "subscription.expired",
+      dodoSubscriptionId: businessSubId,
+      status: "expired",
+      eventTimestamp: NOW + 1000,
+    });
+
+    const grants = await t.run(async (ctx) =>
+      ctx.db
+        .query("businessProGrants")
+        .withIndex("by_businessSubscriptionId", (q) =>
+          q.eq("businessSubscriptionId", businessSubId),
+        )
+        .collect(),
+    );
+    expect(grants.every((g) => g.status === "revoked")).toBe(true);
+
+    for (const invitee of ["user_teammate_1", "user_teammate_2"]) {
+      const ent = await t.run(async (ctx) =>
+        ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", invitee)).first(),
+      );
+      expect(ent?.planKey).toBe("free");
+    }
+    vi.useRealTimers();
+  });
+
+  test("cancelled-but-paid-through → grants persist until currentPeriodEnd, then revoked", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_revoke_002";
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    await seedAcceptedGrantWithInvitee(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeUserId: "user_teammate",
+      inviteeEmail: "teammate@acme.com",
+      domain: "acme.com",
+    });
+
+    // Cancel while still paid-through: grants must persist.
+    await fireWebhook(t, {
+      eventType: "subscription.cancelled",
+      dodoSubscriptionId: businessSubId,
+      status: "cancelled",
+      eventTimestamp: NOW + 1000,
+      cancelledAt: NOW,
+    });
+
+    let grants = await t.run(async (ctx) =>
+      ctx.db
+        .query("businessProGrants")
+        .withIndex("by_businessSubscriptionId", (q) =>
+          q.eq("businessSubscriptionId", businessSubId),
+        )
+        .collect(),
+    );
+    expect(grants.every((g) => g.status === "accepted")).toBe(true);
+
+    // Fast-forward past currentPeriodEnd and run the scheduled revoke.
+    vi.setSystemTime(NOW + 31 * DAY_MS);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    grants = await t.run(async (ctx) =>
+      ctx.db
+        .query("businessProGrants")
+        .withIndex("by_businessSubscriptionId", (q) =>
+          q.eq("businessSubscriptionId", businessSubId),
+        )
+        .collect(),
+    );
+    expect(grants.every((g) => g.status === "revoked")).toBe(true);
+
+    const ent = await t.run(async (ctx) =>
+      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", "user_teammate")).first(),
+    );
+    expect(ent?.planKey).toBe("free");
+    vi.useRealTimers();
+  });
+
+  test("on_hold → grants persist through grace window", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_revoke_003";
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    await seedAcceptedGrantWithInvitee(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeUserId: "user_teammate",
+      inviteeEmail: "teammate@acme.com",
+      domain: "acme.com",
+    });
+
+    await fireWebhook(t, {
+      eventType: "subscription.on_hold",
+      dodoSubscriptionId: businessSubId,
+      status: "on_hold",
+      eventTimestamp: NOW + 1000,
+    });
+
+    const grants = await t.run(async (ctx) =>
+      ctx.db
+        .query("businessProGrants")
+        .withIndex("by_businessSubscriptionId", (q) =>
+          q.eq("businessSubscriptionId", businessSubId),
+        )
+        .collect(),
+    );
+    expect(grants.every((g) => g.status === "accepted")).toBe(true);
+    vi.useRealTimers();
+  });
+
+  test("removeSeat → that invitee free, others unaffected", async () => {
+    vi.useFakeTimers();
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_revoke_004";
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    await seedAcceptedGrantWithInvitee(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeUserId: "user_teammate_1",
+      inviteeEmail: "teammate1@acme.com",
+      domain: "acme.com",
+    });
+    await seedAcceptedGrantWithInvitee(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeUserId: "user_teammate_2",
+      inviteeEmail: "teammate2@acme.com",
+      domain: "acme.com",
+    });
+
+    const grant1 = await t.run(async (ctx) =>
+      ctx.db
+        .query("businessProGrants")
+        .withIndex("by_businessSubscriptionId", (q) =>
+          q.eq("businessSubscriptionId", businessSubId),
+        )
+        .filter((q) => q.eq(q.field("inviteeUserId"), "user_teammate_1"))
+        .first(),
+    );
+
+    await t.withIdentity(OWNER_IDENTITY).mutation(api.payments.businessSeats.removeSeat, {
+      grantId: grant1!._id,
+    });
+
+    const grants = await t.run(async (ctx) =>
+      ctx.db
+        .query("businessProGrants")
+        .withIndex("by_businessSubscriptionId", (q) =>
+          q.eq("businessSubscriptionId", businessSubId),
+        )
+        .collect(),
+    );
+    const revoked = grants.find((g) => g.inviteeUserId === "user_teammate_1");
+    const accepted = grants.find((g) => g.inviteeUserId === "user_teammate_2");
+    expect(revoked?.status).toBe("revoked");
+    expect(accepted?.status).toBe("accepted");
+
+    const ent1 = await t.run(async (ctx) =>
+      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", "user_teammate_1")).first(),
+    );
+    const ent2 = await t.run(async (ctx) =>
+      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", "user_teammate_2")).first(),
+    );
+    expect(ent1?.planKey).toBe("free");
+    expect(ent2?.planKey).toBe("pro_monthly");
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    vi.useRealTimers();
   });
 });

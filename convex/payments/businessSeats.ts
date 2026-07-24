@@ -303,3 +303,69 @@ export const removeSeat = mutation({
     return { ok: true as const };
   },
 });
+
+/**
+ * Invitee redeems an HMAC token to accept a Business Pro seat invite. Verifies
+ * the token, matches the signed-in Clerk email against the invited address,
+ * checks the underlying Business subscription is still covering, flips the
+ * grant to `accepted`, stamps `inviteeUserId`, and recomputes the invitee's
+ * entitlement. Single-use: accepted/revoked/expired tokens are rejected.
+ */
+export const acceptBusinessInvite = mutation({
+  args: { grantId: v.id("businessProGrants"), token: v.string() },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+    const identity = await resolveUserIdentity(ctx);
+    const inviteeEmail = identity?.email?.trim().toLowerCase();
+    if (!inviteeEmail) {
+      throw new ConvexError({ kind: "INVITEE_EMAIL_UNAVAILABLE" });
+    }
+
+    const grant = await ctx.db.get(args.grantId);
+    if (!grant) {
+      throw new ConvexError({ kind: "GRANT_NOT_FOUND" });
+    }
+    if (grant.status !== "pending") {
+      throw new ConvexError({ kind: "INVITE_ALREADY_USED" });
+    }
+    const now = Date.now();
+    if (grant.expiresAt <= now) {
+      throw new ConvexError({ kind: "INVITE_EXPIRED" });
+    }
+    if (!(await verifyBusinessInviteToken(args.grantId, args.token))) {
+      throw new ConvexError({ kind: "INVALID_INVITE_TOKEN" });
+    }
+    if (grant.inviteeEmail !== inviteeEmail) {
+      throw new ConvexError({ kind: "INVITE_EMAIL_MISMATCH" });
+    }
+    if (!sameDomain(grant.inviteeEmail, inviteeEmail)) {
+      throw new ConvexError({ kind: "INVITE_EMAIL_MISMATCH" });
+    }
+    if (!isCorporateDomain(inviteeEmail)) {
+      throw new ConvexError({ kind: "INVITEE_DOMAIN_NOT_CORPORATE" });
+    }
+
+    const businessSub = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_dodoSubscriptionId", (q) =>
+        q.eq("dodoSubscriptionId", grant.businessSubscriptionId),
+      )
+      .unique();
+    if (!businessSub || !isCoveringAt(businessSub, now)) {
+      throw new ConvexError({ kind: "BUSINESS_NOT_ACTIVE" });
+    }
+
+    await ctx.db.patch(args.grantId, {
+      status: "accepted",
+      inviteeUserId: userId,
+      acceptedAt: now,
+    });
+
+    await ctx.runMutation(
+      internal.payments.subscriptionHelpers.recomputeEntitlementForUser,
+      { userId, eventTimestamp: now },
+    );
+
+    return { ok: true as const };
+  },
+});

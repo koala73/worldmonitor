@@ -429,6 +429,44 @@ export const recomputeEntitlementForUser = internalMutation({
   },
 });
 
+/**
+ * Scheduled revocation of Business Pro grants when the underlying Business
+ * subscription is no longer covering. Used for paid-through cancellations so
+ * grants die at currentPeriodEnd, not at the cancellation webhook.
+ */
+export const revokeBusinessProGrantsIfNotCovering = internalMutation({
+  args: { dodoSubscriptionId: v.string() },
+  handler: async (ctx, args) => {
+    const sub = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_dodoSubscriptionId", (q) =>
+        q.eq("dodoSubscriptionId", args.dodoSubscriptionId),
+      )
+      .unique();
+    if (!sub) return { ok: true as const, revoked: 0 };
+
+    const now = Date.now();
+    if (isCoveringAt(sub, now)) return { ok: true as const, revoked: 0 };
+
+    let revoked = 0;
+    const grants = await ctx.db
+      .query("businessProGrants")
+      .withIndex("by_businessSubscriptionId", (q) =>
+        q.eq("businessSubscriptionId", args.dodoSubscriptionId),
+      )
+      .collect();
+    for (const grant of grants) {
+      if (grant.status !== "accepted" && grant.status !== "pending") continue;
+      await ctx.db.patch(grant._id, { status: "revoked" });
+      revoked += 1;
+      if (grant.inviteeUserId) {
+        await recomputeEntitlementFromAllSubs(ctx, grant.inviteeUserId, now);
+      }
+    }
+    return { ok: true as const, revoked };
+  },
+});
+
 // ---------------------------------------------------------------------------
 // Internal resolution helpers
 // ---------------------------------------------------------------------------
@@ -966,6 +1004,33 @@ export async function handleSubscriptionOnHold(
 }
 
 /**
+ * Revokes every accepted Business Pro grant tied to a non-covering Business
+ * subscription and recomputes each affected invitee. Pending grants are also
+ * revoked so they cannot be accepted against a lapsed Business. Idempotent —
+ * already-revoked/expired rows are skipped.
+ */
+async function revokeBusinessProGrantsForSubscription(
+  ctx: MutationCtx,
+  dodoSubscriptionId: string,
+  eventTimestamp: number,
+): Promise<void> {
+  const grants = await ctx.db
+    .query("businessProGrants")
+    .withIndex("by_businessSubscriptionId", (q) =>
+      q.eq("businessSubscriptionId", dodoSubscriptionId),
+    )
+    .collect();
+
+  for (const grant of grants) {
+    if (grant.status !== "accepted" && grant.status !== "pending") continue;
+    await ctx.db.patch(grant._id, { status: "revoked" });
+    if (grant.inviteeUserId) {
+      await recomputeEntitlementFromAllSubs(ctx, grant.inviteeUserId, eventTimestamp);
+    }
+  }
+}
+
+/**
  * Handles `subscription.cancelled` -- user cancelled or admin cancelled.
  *
  * Entitlements remain valid until `currentPeriodEnd` (no immediate revocation).
@@ -1014,6 +1079,22 @@ export async function handleSubscriptionCancelled(
     rawPayload: data,
     updatedAt: eventTimestamp,
   });
+
+  // Business Pro grants follow the owner: revoke only when the sub has
+  // actually stopped covering (paid-through cancellation still covers). For a
+  // still-covering cancellation, schedule the revoke at currentPeriodEnd so
+  // grants die with access.
+  if (existing.planKey === "api_business") {
+    if (!isCoveringAt(existing, eventTimestamp)) {
+      await revokeBusinessProGrantsForSubscription(ctx, existing.dodoSubscriptionId, eventTimestamp);
+    } else {
+      await ctx.scheduler.runAfter(
+        Math.max(0, existing.currentPeriodEnd - eventTimestamp),
+        internal.payments.subscriptionHelpers.revokeBusinessProGrantsIfNotCovering,
+        { dodoSubscriptionId: existing.dodoSubscriptionId },
+      );
+    }
+  }
 
   // Do NOT revoke entitlements immediately -- valid until currentPeriodEnd
 }
@@ -1093,6 +1174,12 @@ export async function handleSubscriptionExpired(
     rawPayload: data,
     updatedAt: eventTimestamp,
   });
+
+  // Business Pro grants die with the Business sub — revoke them and recompute
+  // each invitee before the owner's own recompute below.
+  if (existing.planKey === "api_business") {
+    await revokeBusinessProGrantsForSubscription(ctx, existing.dodoSubscriptionId, eventTimestamp);
+  }
 
   // Recompute from ALL subs (post-patch). The expired sub is now status:
   // "expired" so it's automatically excluded by isCoveringAt; if any other
