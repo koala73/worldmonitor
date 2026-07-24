@@ -9,6 +9,7 @@ import {
   militaryFlightsViewModel,
   pointInBounds,
   requestLiveJson,
+  runLatestToolRequest,
 } from '../scripts/crawlable-live-tools.mjs';
 
 const NOW = Date.UTC(2026, 6, 24, 12);
@@ -265,6 +266,29 @@ describe('crawlable live intelligence view models', () => {
       }, [31, 129, 46, 146], NOW),
       /coverage is unavailable/i,
     );
+
+    assert.throws(
+      () => airportDisruptionViewModel({
+        alerts: [
+          {
+            iata: 'NRT',
+            name: 'Narita',
+            location: { latitude: 35.77, longitude: 140.39 },
+            severity: 'FLIGHT_DELAY_SEVERITY_MAJOR',
+            updatedAt: NOW - (25 * 60 * 60 * 1_000),
+          },
+          {
+            iata: 'LAX',
+            name: 'Los Angeles',
+            location: { latitude: 33.94, longitude: -118.4 },
+            severity: 'FLIGHT_DELAY_SEVERITY_NORMAL',
+            updatedAt: NOW - 60_000,
+          },
+        ],
+      }, [31, 129, 46, 146], NOW),
+      /coverage is unavailable/i,
+      'fresh observations outside the selected bounds must not validate stale in-bounds coverage',
+    );
   });
 
   it('treats an empty military response as unavailable and labels returned observations', () => {
@@ -330,7 +354,63 @@ describe('crawlable live intelligence view models', () => {
 
     await assert.rejects(
       requestLiveJson('/api/slow', { fetchImpl, timeoutMs: 10 }),
-      /request aborted/,
+      /timed out/i,
     );
+  });
+
+  it('keeps the request bound active while decoding the response body', async () => {
+    const fetchImpl = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => new Promise((resolve) => {
+        setTimeout(() => resolve({ tooLate: true }), 50);
+      }),
+    });
+
+    await assert.rejects(
+      requestLiveJson('/api/slow-body', { fetchImpl, timeoutMs: 10 }),
+      /timed out/i,
+    );
+  });
+
+  it('commits counters, URL, and dashboard link only for the latest request', async () => {
+    const tool = {};
+    const rendered = {
+      counter: null,
+      url: null,
+      dashboardLink: null,
+    };
+    let resolveFirst;
+
+    const first = runLatestToolRequest(
+      tool,
+      () => new Promise((resolve) => {
+        resolveFirst = resolve;
+      }),
+      (value) => Object.assign(rendered, value),
+    );
+    const second = runLatestToolRequest(
+      tool,
+      async () => ({
+        counter: 2,
+        url: '/tools/natural-hazard-pulse/?country=JP',
+        dashboardLink: '/?country=JP&expanded=1',
+      }),
+      (value) => Object.assign(rendered, value),
+    );
+
+    await second;
+    resolveFirst({
+      counter: 99,
+      url: '/tools/natural-hazard-pulse/?country=US',
+      dashboardLink: '/?country=US&expanded=1',
+    });
+    await first;
+
+    assert.deepEqual(rendered, {
+      counter: 2,
+      url: '/tools/natural-hazard-pulse/?country=JP',
+      dashboardLink: '/?country=JP&expanded=1',
+    });
   });
 });

@@ -5,6 +5,22 @@ const MAX_LIVE_SNAPSHOT_AGE_MS = 48 * 60 * 60 * 1_000;
 const MAX_AIRSPACE_OBSERVATION_AGE_MS = 24 * 60 * 60 * 1_000;
 const MAX_RENDERED_ROWS = 5;
 
+const SCORE_BANDS = [
+  { min: 81, label: 'Critical' },
+  { min: 66, label: 'High' },
+  { min: 51, label: 'Elevated' },
+  { min: 31, label: 'Normal' },
+  { min: 0, label: 'Low' },
+];
+
+const ADVISORY_LABELS = {
+  'do-not-travel': 'Do Not Travel',
+  reconsider: 'Reconsider Travel',
+  caution: 'Exercise Increased Caution',
+  normal: 'Exercise Normal Precautions',
+  info: 'Information Only',
+};
+
 function finiteNumber(value) {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
@@ -45,6 +61,69 @@ function requireTimestamp(value, now, label, maxAgeMs = null) {
   const timestamp = validTimestamp(value, now, maxAgeMs);
   if (timestamp === null) throw new Error(`${label} timestamp is unavailable, stale, or invalid`);
   return timestamp;
+}
+
+export function instabilityBand(score) {
+  const numeric = finiteNumber(score);
+  if (numeric === null || numeric < 0 || numeric > 100) return null;
+  return SCORE_BANDS.find((band) => numeric >= band.min)?.label ?? null;
+}
+
+export function formatAdvisory(value) {
+  const token = String(value || '').trim().toLowerCase();
+  if (ADVISORY_LABELS[token]) return ADVISORY_LABELS[token];
+  const normalized = humanizeToken(token);
+  return normalized || 'Not present';
+}
+
+export function formatTrend(dynamicScore, trend) {
+  const delta = finiteNumber(dynamicScore);
+  if (delta !== null) {
+    if (delta > 0) return `Rising +${formatNumber(delta)}`;
+    if (delta < 0) return `Falling ${formatNumber(delta)}`;
+  }
+
+  const normalized = humanizeToken(trend, ['TREND_DIRECTION_']);
+  if (normalized && normalized !== 'Unspecified') return normalized;
+  return 'Stable / unavailable';
+}
+
+export function liveRiskViewModel(payload, now = Date.now()) {
+  if (!payload || typeof payload !== 'object') {
+    throw new Error('Country risk response is not an object');
+  }
+  if (payload.upstreamUnavailable === true) {
+    throw new Error('Country risk upstream is temporarily unavailable');
+  }
+
+  const cii = payload.cii;
+  const score = finiteNumber(cii?.combinedScore);
+  const band = instabilityBand(score);
+  if (score === null || band === null) {
+    throw new Error('No current instability score is available for this country');
+  }
+
+  const sanctionsCount = Math.max(0, finiteNumber(payload.sanctionsCount) ?? 0);
+  const computedAt = requireTimestamp(
+    finiteNumber(payload.fetchedAt) ?? finiteNumber(cii?.computedAt),
+    now,
+    'Country risk',
+    MAX_LIVE_SNAPSHOT_AGE_MS,
+  );
+
+  return {
+    score: formatNumber(score),
+    band,
+    trend: formatTrend(cii?.dynamicScore, cii?.trend),
+    advisory: formatAdvisory(payload.advisoryLevel || cii?.advisoryLevel),
+    sanctions: sanctionsCount > 0
+      ? `${formatNumber(sanctionsCount, 0)} designated ${sanctionsCount === 1 ? 'entity' : 'entities'}`
+      : payload.sanctionsActive
+        ? 'Active designations'
+        : 'None in feed',
+    computedAt,
+    methodologyVersion: String(cii?.methodologyVersion || '').trim(),
+  };
 }
 
 function normalizeBounds(bounds) {
@@ -281,16 +360,19 @@ export function airportDisruptionViewModel(payload, bounds, now = Date.now()) {
   }
   const normalizedBounds = normalizeBounds(bounds);
   if (!normalizedBounds) throw new Error('Country bounds are invalid');
-  const hasFreshCoverage = payload.alerts.some((alert) => (
+  const hasFreshCoverageAnywhere = payload.alerts.some((alert) => (
     validTimestamp(alert?.updatedAt, now, MAX_AIRSPACE_OBSERVATION_AGE_MS) !== null
   ));
-  if (!hasFreshCoverage) throw new Error('Airport coverage is unavailable');
+  if (!hasFreshCoverageAnywhere) throw new Error('Airport coverage is unavailable');
 
-  const alerts = payload.alerts
-    .map((alert) => {
+  const matchingAlerts = payload.alerts
+    .filter((alert) => {
       const lat = finiteNumber(alert?.location?.latitude);
       const lon = finiteNumber(alert?.location?.longitude);
-      if (lat === null || lon === null || !pointInBounds(lat, lon, normalizedBounds)) return null;
+      return lat !== null && lon !== null && pointInBounds(lat, lon, normalizedBounds);
+    });
+  const alerts = matchingAlerts
+    .map((alert) => {
       const severity = airportSeverity(alert.severity);
       const updatedAt = validTimestamp(alert.updatedAt, now, MAX_AIRSPACE_OBSERVATION_AGE_MS);
       if (updatedAt === null) return null;
@@ -305,6 +387,9 @@ export function airportDisruptionViewModel(payload, bounds, now = Date.now()) {
       };
     })
     .filter(Boolean);
+  if (matchingAlerts.length > 0 && alerts.length === 0) {
+    throw new Error('Airport coverage is unavailable');
+  }
 
   const unknown = alerts.filter((alert) => alert.severity === 'unknown' || alert.severity === 'unspecified');
   const normal = alerts.filter((alert) => alert.severity === 'normal');
@@ -365,19 +450,41 @@ async function fetchWithTimeout(
   options = {},
   fetchImpl = fetch,
   timeoutMs = REQUEST_TIMEOUT_MS,
+  readJson = false,
 ) {
   const controller = new AbortController();
   const externalSignal = options.signal;
-  const abort = () => controller.abort();
+  let rejectCancellation;
+  let cancelled = false;
+  const cancellation = new Promise((_, reject) => {
+    rejectCancellation = reject;
+  });
+  const cancel = (message, name) => {
+    if (cancelled) return;
+    cancelled = true;
+    const error = new Error(message);
+    error.name = name;
+    controller.abort(error);
+    rejectCancellation(error);
+  };
+  const abort = () => cancel('Live data request aborted', 'AbortError');
   externalSignal?.addEventListener('abort', abort, { once: true });
   if (externalSignal?.aborted) abort();
-  const timer = setTimeout(abort, timeoutMs);
+  const timer = setTimeout(
+    () => cancel(`Live data request timed out after ${timeoutMs}ms`, 'TimeoutError'),
+    timeoutMs,
+  );
   try {
-    return await fetchImpl(url, {
-      ...options,
-      signal: controller.signal,
-      credentials: 'include',
-    });
+    const operation = (async () => {
+      const response = await fetchImpl(url, {
+        ...options,
+        signal: controller.signal,
+        credentials: 'include',
+      });
+      const payload = readJson && response.ok ? await response.json() : null;
+      return { response, payload };
+    })();
+    return await Promise.race([operation, cancellation]);
   } finally {
     clearTimeout(timer);
     externalSignal?.removeEventListener('abort', abort);
@@ -390,7 +497,7 @@ async function ensureAnonymousSession(fetchImpl, timeoutMs) {
   if (!anonymousSessionPromise) {
     anonymousSessionPromise = fetchWithTimeout('/api/wm-session', {
       method: 'POST',
-    }, fetchImpl, timeoutMs).then((response) => {
+    }, fetchImpl, timeoutMs).then(({ response }) => {
       if (!response.ok) throw new Error(`Anonymous session request failed (${response.status})`);
     }).finally(() => {
       anonymousSessionPromise = null;
@@ -403,13 +510,25 @@ export async function requestLiveJson(
   url,
   { fetchImpl = fetch, signal, timeoutMs = REQUEST_TIMEOUT_MS } = {},
 ) {
-  let response = await fetchWithTimeout(url, { signal }, fetchImpl, timeoutMs);
+  let { response, payload } = await fetchWithTimeout(
+    url,
+    { signal },
+    fetchImpl,
+    timeoutMs,
+    true,
+  );
   if (response.status === 401) {
     await ensureAnonymousSession(fetchImpl, timeoutMs);
-    response = await fetchWithTimeout(url, { signal }, fetchImpl, timeoutMs);
+    ({ response, payload } = await fetchWithTimeout(
+      url,
+      { signal },
+      fetchImpl,
+      timeoutMs,
+      true,
+    ));
   }
   if (!response.ok) throw new Error(`Live data request failed (${response.status})`);
-  return response.json();
+  return payload;
 }
 
 function setText(root, selector, value) {
@@ -476,7 +595,6 @@ function beginToolRequest(tool) {
   const previous = requestStates.get(tool);
   previous?.controller.abort();
   const state = {
-    generation: (previous?.generation || 0) + 1,
     controller: new AbortController(),
   };
   requestStates.set(tool, state);
@@ -485,6 +603,24 @@ function beginToolRequest(tool) {
 
 function isCurrentRequest(tool, state) {
   return requestStates.get(tool) === state && !state.controller.signal.aborted;
+}
+
+function cancelToolRequest(tool) {
+  requestStates.get(tool)?.controller.abort();
+  requestStates.delete(tool);
+}
+
+export async function runLatestToolRequest(tool, request, commit) {
+  const state = beginToolRequest(tool);
+  try {
+    const result = await request(state.controller.signal);
+    if (!isCurrentRequest(tool, state)) return false;
+    await commit(result);
+    return true;
+  } catch (error) {
+    if (!isCurrentRequest(tool, state)) return false;
+    throw error;
+  }
 }
 
 function selectedBounds(select) {
@@ -508,6 +644,64 @@ function dashboardLinkFor(tool) {
   return tool.querySelector('[data-dashboard-link]')
     || tool.ownerDocument?.querySelector('[data-dashboard-link]')
     || null;
+}
+
+function renderCountryRiskViewModel(tool, view) {
+  setText(tool, '[data-live-score]', view.score);
+  setText(tool, '[data-live-band]', view.band);
+  setText(tool, '[data-live-trend]', view.trend);
+  setText(tool, '[data-live-advisory]', view.advisory);
+  setText(tool, '[data-live-sanctions]', view.sanctions);
+  const updated = tool.querySelector('[data-live-updated]');
+  if (updated) {
+    const methodology = view.methodologyVersion
+      ? ` · methodology ${view.methodologyVersion}`
+      : '';
+    updated.textContent = `Computed ${formatDateTime(view.computedAt)}${methodology}`;
+    updated.setAttribute('datetime', new Date(view.computedAt).toISOString());
+  }
+  setToolState(tool, 'ready', 'API result');
+}
+
+function renderCountryRiskError(tool) {
+  setText(tool, '[data-live-score]', '—');
+  setText(tool, '[data-live-band]', 'Unavailable');
+  setText(tool, '[data-live-trend]', 'Unavailable');
+  setText(tool, '[data-live-advisory]', 'Unavailable');
+  setText(tool, '[data-live-sanctions]', 'Unavailable');
+  setText(
+    tool,
+    '[data-live-updated]',
+    'The live signal could not be loaded. The dated structural snapshot below remains available.',
+  );
+  tool.querySelector('[data-live-updated]')?.removeAttribute('datetime');
+  setToolState(tool, 'error', 'Temporarily unavailable');
+}
+
+async function loadCountryRisk(tool) {
+  const countryCode = String(tool.dataset.countryCode || '').toUpperCase();
+  if (!/^[A-Z]{2}$/.test(countryCode)) {
+    cancelToolRequest(tool);
+    renderCountryRiskError(tool);
+    return;
+  }
+
+  setToolState(tool, 'loading', 'Connecting…');
+  try {
+    await runLatestToolRequest(
+      tool,
+      async (signal) => {
+        const payload = await requestLiveJson(
+          `/api/intelligence/v1/get-country-risk?country_code=${encodeURIComponent(countryCode)}`,
+          { signal },
+        );
+        return liveRiskViewModel(payload);
+      },
+      (view) => renderCountryRiskViewModel(tool, view),
+    );
+  } catch {
+    renderCountryRiskError(tool);
+  }
 }
 
 async function loadChokepoint(tool) {
@@ -602,33 +796,38 @@ async function loadCrisis(tool) {
 }
 
 async function loadHazards(tool) {
-  const state = beginToolRequest(tool);
   const select = tool.querySelector('[data-country-select]');
   const bounds = selectedBounds(select);
   const selectedCode = String(select?.value || '');
   if (selectedCode && !bounds) {
+    cancelToolRequest(tool);
     setToolState(tool, 'error', 'Unsupported country');
     return;
   }
   setToolState(tool, 'loading', 'Connecting…');
   try {
-    const payload = await requestLiveJson('/api/natural/v1/list-natural-events?days=30', {
-      signal: state.controller.signal,
-    });
-    const view = hazardPulseViewModel(payload, { bounds });
-    if (!isCurrentRequest(tool, state)) return;
-    setText(tool, '[data-hazard-total]', view.total);
-    setText(tool, '[data-hazard-categories]', view.categories);
-    setText(tool, '[data-hazard-strongest]', view.strongest);
-    setText(tool, '[data-hazard-latest]', view.latestAt ? formatDateTime(view.latestAt) : 'No current matches');
-    renderList(tool, '[data-hazard-list]', view.events, (event) => (
-      `${event.title} · ${event.category} · ${event.source} · ${formatDateTime(event.date)}`
-    ));
-    setTime(tool, '[data-live-updated]', view.fetchedAt, 'Snapshot');
-    updateCountryQuery(select, dashboardLinkFor(tool));
-    setToolState(tool, 'ready', 'API result');
+    await runLatestToolRequest(
+      tool,
+      async (signal) => {
+        const payload = await requestLiveJson('/api/natural/v1/list-natural-events', {
+          signal,
+        });
+        return hazardPulseViewModel(payload, { bounds });
+      },
+      (view) => {
+        setText(tool, '[data-hazard-total]', view.total);
+        setText(tool, '[data-hazard-categories]', view.categories);
+        setText(tool, '[data-hazard-strongest]', view.strongest);
+        setText(tool, '[data-hazard-latest]', view.latestAt ? formatDateTime(view.latestAt) : 'No current matches');
+        renderList(tool, '[data-hazard-list]', view.events, (event) => (
+          `${event.title} · ${event.category} · ${event.source} · ${formatDateTime(event.date)}`
+        ));
+        setTime(tool, '[data-live-updated]', view.fetchedAt, 'Snapshot');
+        updateCountryQuery(select, dashboardLinkFor(tool));
+        setToolState(tool, 'ready', 'API result');
+      },
+    );
   } catch {
-    if (!isCurrentRequest(tool, state)) return;
     setText(tool, '[data-hazard-total]', '—');
     setText(tool, '[data-hazard-categories]', 'Unavailable');
     setText(tool, '[data-hazard-strongest]', 'Unavailable');
@@ -669,10 +868,10 @@ function renderAirspaceSectionError(tool, section) {
 }
 
 async function loadAirspace(tool) {
-  const state = beginToolRequest(tool);
   const select = tool.querySelector('[data-country-select]');
   const bounds = selectedBounds(select);
   if (!bounds) {
+    cancelToolRequest(tool);
     setToolState(tool, 'error', 'Choose a supported country');
     return;
   }
@@ -680,55 +879,58 @@ async function loadAirspace(tool) {
   setToolState(tool, 'loading', 'Connecting…');
   const airportUrl = '/api/aviation/v1/list-airport-delays';
   const militaryUrl = `/api/military/v1/list-military-flights?sw_lat=${encodeURIComponent(south)}&sw_lon=${encodeURIComponent(west)}&ne_lat=${encodeURIComponent(north)}&ne_lon=${encodeURIComponent(east)}&page_size=100`;
-  const [airportResult, militaryResult] = await Promise.allSettled([
-    requestLiveJson(airportUrl, { signal: state.controller.signal }),
-    requestLiveJson(militaryUrl, { signal: state.controller.signal }),
-  ]);
-  if (!isCurrentRequest(tool, state)) return;
+  await runLatestToolRequest(
+    tool,
+    async (signal) => Promise.allSettled([
+      requestLiveJson(airportUrl, { signal }),
+      requestLiveJson(militaryUrl, { signal }),
+    ]),
+    ([airportResult, militaryResult]) => {
+      let readySections = 0;
+      if (airportResult.status === 'fulfilled') {
+        try {
+          const view = airportDisruptionViewModel(airportResult.value, bounds);
+          setText(tool, '[data-airport-monitored]', view.monitored);
+          setText(tool, '[data-airport-disrupted]', view.disrupted);
+          setText(tool, '[data-airport-normal]', view.normal);
+          setText(tool, '[data-airport-unknown]', view.unknown);
+          setText(tool, '[data-airport-state]', 'Available');
+          setTime(tool, '[data-airport-updated]', view.updatedAt, 'Latest monitored update');
+          renderList(tool, '[data-airport-list]', view.alerts, (alert) => (
+            `${alert.iata} · ${humanizeToken(alert.severity)}${alert.delayMinutes ? ` · ${formatNumber(alert.delayMinutes, 0)} min` : ''}${alert.reason ? ` · ${alert.reason}` : ''} · ${alert.source}`
+          ));
+          readySections += 1;
+        } catch {
+          renderAirspaceSectionError(tool, 'airport');
+        }
+      } else {
+        renderAirspaceSectionError(tool, 'airport');
+      }
 
-  let readySections = 0;
-  if (airportResult.status === 'fulfilled') {
-    try {
-      const view = airportDisruptionViewModel(airportResult.value, bounds);
-      setText(tool, '[data-airport-monitored]', view.monitored);
-      setText(tool, '[data-airport-disrupted]', view.disrupted);
-      setText(tool, '[data-airport-normal]', view.normal);
-      setText(tool, '[data-airport-unknown]', view.unknown);
-      setText(tool, '[data-airport-state]', 'Available');
-      setTime(tool, '[data-airport-updated]', view.updatedAt, 'Latest monitored update');
-      renderList(tool, '[data-airport-list]', view.alerts, (alert) => (
-        `${alert.iata} · ${humanizeToken(alert.severity)}${alert.delayMinutes ? ` · ${formatNumber(alert.delayMinutes, 0)} min` : ''}${alert.reason ? ` · ${alert.reason}` : ''} · ${alert.source}`
-      ));
-      readySections += 1;
-    } catch {
-      renderAirspaceSectionError(tool, 'airport');
-    }
-  } else {
-    renderAirspaceSectionError(tool, 'airport');
-  }
+      if (militaryResult.status === 'fulfilled') {
+        try {
+          const view = militaryFlightsViewModel(militaryResult.value);
+          setText(tool, '[data-military-returned]', view.returned);
+          setText(tool, '[data-military-interesting]', view.interesting);
+          setText(tool, '[data-military-state]', 'Available');
+          setTime(tool, '[data-military-updated]', view.latestSeenAt, 'Latest returned observation');
+          renderList(tool, '[data-military-list]', view.flights, (flight) => (
+            `${flight.callsign} · ${flight.aircraftType} · ${flight.operator} · ${formatDateTime(flight.lastSeenAt)}`
+          ));
+          readySections += 1;
+        } catch {
+          renderAirspaceSectionError(tool, 'military');
+        }
+      } else {
+        renderAirspaceSectionError(tool, 'military');
+      }
 
-  if (militaryResult.status === 'fulfilled') {
-    try {
-      const view = militaryFlightsViewModel(militaryResult.value);
-      setText(tool, '[data-military-returned]', view.returned);
-      setText(tool, '[data-military-interesting]', view.interesting);
-      setText(tool, '[data-military-state]', 'Available');
-      setTime(tool, '[data-military-updated]', view.latestSeenAt, 'Latest returned observation');
-      renderList(tool, '[data-military-list]', view.flights, (flight) => (
-        `${flight.callsign} · ${flight.aircraftType} · ${flight.operator} · ${formatDateTime(flight.lastSeenAt)}`
-      ));
-      readySections += 1;
-    } catch {
-      renderAirspaceSectionError(tool, 'military');
-    }
-  } else {
-    renderAirspaceSectionError(tool, 'military');
-  }
-
-  updateCountryQuery(select, dashboardLinkFor(tool));
-  if (readySections === 2) setToolState(tool, 'ready', 'API results');
-  else if (readySections === 1) setToolState(tool, 'partial', 'Partial API result');
-  else setToolState(tool, 'error', 'Temporarily unavailable');
+      updateCountryQuery(select, dashboardLinkFor(tool));
+      if (readySections === 2) setToolState(tool, 'ready', 'API results');
+      else if (readySections === 1) setToolState(tool, 'partial', 'Partial API result');
+      else setToolState(tool, 'error', 'Temporarily unavailable');
+    },
+  );
 }
 
 function applyInitialCountrySelection(tool) {
@@ -741,6 +943,10 @@ function applyInitialCountrySelection(tool) {
 }
 
 export function initLiveTools(root = document) {
+  for (const tool of root.querySelectorAll('[data-live-country-risk]')) {
+    tool.querySelector('[data-live-refresh]')?.addEventListener('click', () => loadCountryRisk(tool));
+    void loadCountryRisk(tool);
+  }
   for (const tool of root.querySelectorAll('[data-live-chokepoint]')) {
     tool.querySelector('[data-live-refresh]')?.addEventListener('click', () => loadChokepoint(tool));
     void loadChokepoint(tool);

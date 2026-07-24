@@ -40,7 +40,6 @@ describe('crawlable corpus generator', () => {
 
       for (const path of [
         'countries/index.html',
-        'countries/live-risk.js',
         'countries/norway/index.html',
         'chokepoints/index.html',
         'chokepoints/strait-of-hormuz/index.html',
@@ -56,6 +55,10 @@ describe('crawlable corpus generator', () => {
       ]) {
         assert.ok(existsSync(join(outDir, path)), `missing generated file ${path}`);
       }
+      assert.ok(
+        !existsSync(join(outDir, 'countries/live-risk.js')),
+        'country pages must reuse the shared live-tools runtime',
+      );
 
       const norway = read(outDir, 'countries/norway/index.html');
       assert.match(norway, /<h1>Norway country risk and resilience<\/h1>/);
@@ -66,11 +69,11 @@ describe('crawlable corpus generator', () => {
       assert.match(norway, /data-live-country-risk data-country-code="NO" data-country-name="Norway"/);
       assert.match(norway, /Instability is a fast-moving composite/);
       assert.match(norway, /the two scores should not be combined/);
-      assert.match(norway, /<script type="module" src="\/countries\/live-risk\.js"><\/script>/);
+      assert.match(norway, /<script type="module" src="\/tools\/live-tools\.js"><\/script>/);
       // Deep-link CTA into the live map (opens the maximized country brief). `&` is HTML-escaped.
       assert.match(norway, /<a class="cta" href="https:\/\/www\.worldmonitor\.app\/\?country=NO&amp;expanded=1">Open Norway on the live map/);
 
-      const liveRiskScript = read(outDir, 'countries/live-risk.js');
+      const liveRiskScript = read(outDir, 'tools/live-tools.js');
       assert.match(liveRiskScript, /\/api\/wm-session/);
       assert.match(liveRiskScript, /\/api\/intelligence\/v1\/get-country-risk\?country_code=/);
       assert.match(liveRiskScript, /credentials:\s*'include'/);
@@ -131,6 +134,8 @@ describe('crawlable corpus generator', () => {
       assert.match(hazard, /data-natural-hazard-tool/);
       assert.match(hazard, /<option value="">Worldwide<\/option>/);
       assert.match(hazard, /<option value="JP" data-bounds="31\.11,129\.85,45\.51,145\.77">Japan<\/option>/);
+      assert.doesNotMatch(hazard, /<option value="US"/);
+      assert.match(hazard, /Countries with oversized or discontinuous envelopes are omitted/i);
       assert.match(hazard, /approximate geographic filter, not a territorial polygon/i);
       assert.match(hazard, /EONET, GDACS, NHC, and HKO/);
       assert.doesNotMatch(hazard, /id="app"/);
@@ -140,6 +145,8 @@ describe('crawlable corpus generator', () => {
       assert.match(airspace, /Commercial disruption and observed military aircraft are independent evidence domains/);
       assert.match(airspace, /Unknown.+not counted as normal/s);
       assert.match(airspace, /capped at 100 returned observations/);
+      assert.match(airspace, /<option value="JP" data-bounds="31\.11,129\.85,45\.51,145\.77" selected>Japan<\/option>/);
+      assert.doesNotMatch(airspace, /<option value="US"/);
       assert.doesNotMatch(airspace, /id="app"/);
 
       const liveToolsScript = read(outDir, 'tools/live-tools.js');
@@ -150,6 +157,8 @@ describe('crawlable corpus generator', () => {
       assert.match(liveToolsScript, /\/api\/military\/v1\/list-military-flights/);
       assert.match(liveToolsScript, /response\.status === 401/);
       assert.match(liveToolsScript, /credentials:\s*'include'/);
+      assert.doesNotMatch(liveToolsScript, /list-natural-events\?days=/);
+      assert.doesNotMatch(liveToolsScript, /generation:/);
 
       const changelogIndex = read(outDir, 'reference/changelog/index.html');
       const changelogPage2 = read(outDir, 'reference/changelog/page/2/index.html');
@@ -165,7 +174,6 @@ describe('crawlable corpus generator', () => {
   it('loads deterministic source data without network access', async () => {
     const data = await loadCorpusData({ rootDir: repoRoot });
     assert.equal(data.sources.resilienceSnapshot, 'docs/snapshots/resilience-ranking-2026-05-28.json');
-    assert.equal(data.sources.countryLiveRiskScript, 'scripts/crawlable-country-risk.mjs');
     assert.equal(data.sources.liveToolsScript, 'scripts/crawlable-live-tools.mjs');
     assert.equal(data.sources.countryBboxes, 'shared/country-bboxes.js');
     assert.equal(data.sources.crisisRegistry, 'shared/crawlable-crises.json');
@@ -173,6 +181,10 @@ describe('crawlable corpus generator', () => {
     assert.equal(data.crises.length, 4);
     assert.ok(data.crises.some((crisis) => crisis.slug === 'ukraine-war' && crisis.coverage.some((country) => country.code === 'UA')));
     assert.ok(data.countryBounds.some((country) => country.code === 'JP' && country.bounds[0] === 31.11));
+    assert.ok(!data.countryBounds.some((country) => country.code === 'US'));
+    assert.ok(data.countryBounds.every(({ bounds: [south, west, north, east] }) => (
+      north - south <= 45 && east - west <= 60
+    )));
     assert.ok(data.countries.some((country) => country.slug === 'norway' && country.rank === 1));
     assert.ok(data.chokepoints.some((chokepoint) => chokepoint.slug === 'strait-of-hormuz' && chokepoint.id === 'hormuz_strait'));
     assert.ok(data.glossaryTerms.some((term) => term.slug === 'country-resilience-index'));

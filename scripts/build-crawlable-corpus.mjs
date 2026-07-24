@@ -25,11 +25,12 @@ const CHOKEPOINT_REGISTRY_PATH = 'src/config/chokepoint-registry.ts';
 const TRADE_ROUTES_PATH = 'src/config/trade-routes.ts';
 const GLOSSARY_DATA_PATH = 'blog-site/src/data/glossary.ts';
 const CHANGELOG_PATH = 'CHANGELOG.md';
-const COUNTRY_LIVE_RISK_SCRIPT_PATH = 'scripts/crawlable-country-risk.mjs';
 const LIVE_TOOLS_SCRIPT_PATH = 'scripts/crawlable-live-tools.mjs';
 const COUNTRY_BBOXES_PATH = 'shared/country-bboxes.js';
 const CRISIS_REGISTRY_PATH = 'shared/crawlable-crises.json';
 const CHANGELOG_PAGE_SIZE = 2;
+const MAX_TOOL_LATITUDE_SPAN = 45;
+const MAX_TOOL_LONGITUDE_SPAN = 60;
 
 // Hand-authored, human-readable context for each canonical chokepoint, keyed by
 // the registry `id`. `region` describes what the waterway connects (used as the
@@ -349,6 +350,12 @@ function normalizeCountryBounds(countryBboxes, countries) {
       ) {
         return null;
       }
+      if (
+        north - south > MAX_TOOL_LATITUDE_SPAN
+        || (west <= east ? east - west : 360 - (west - east)) > MAX_TOOL_LONGITUDE_SPAN
+      ) {
+        return null;
+      }
       return {
         code,
         name: names.get(code) || code,
@@ -515,7 +522,6 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
       glossaryData: GLOSSARY_DATA_PATH,
       changelog: CHANGELOG_PATH,
       tradeRoutes: TRADE_ROUTES_PATH,
-      countryLiveRiskScript: COUNTRY_LIVE_RISK_SCRIPT_PATH,
       liveToolsScript: LIVE_TOOLS_SCRIPT_PATH,
       countryBboxes: COUNTRY_BBOXES_PATH,
       crisisRegistry: CRISIS_REGISTRY_PATH,
@@ -759,7 +765,7 @@ function renderCountryPage({ country, baseUrl, capturedAt, methodologyFormula })
       { name: country.name, path },
     ]),
     body,
-    scriptSrcs: ['/countries/live-risk.js'],
+    scriptSrcs: ['/tools/live-tools.js'],
   });
 }
 
@@ -1054,7 +1060,7 @@ function renderHazardPage({ countryBounds, baseUrl, lastmod }) {
   const body = `      <p class="eyebrow">Natural-hazard pulse</p>
       <h1>What natural hazards are active now?</h1>
       <p class="lede">${escapeHtml(description)}</p>
-      <p>The country selector is an approximate geographic filter, not a territorial polygon. Coastal and border events can overlap neighbouring countries. Agency observations and wind averaging periods remain distinct.</p>
+      <p>The country selector is an approximate geographic filter, not a territorial polygon. Coastal and border events can overlap neighbouring countries. Countries with oversized or discontinuous envelopes are omitted so every country query remains bounded. Agency observations and wind averaging periods remain distinct.</p>
       <section class="live-tool" data-natural-hazard-tool data-state="loading">
         <div class="tool-head">
           <div>
@@ -1128,7 +1134,7 @@ function renderAirspacePage({ countryBounds, baseUrl, lastmod }) {
         <div class="tool-controls">
           <label>Country
             <select data-country-select>
-${countrySelectOptions(countryBounds, { defaultCode: 'US' })}
+${countrySelectOptions(countryBounds, { defaultCode: 'JP' })}
             </select>
           </label>
           <button class="refresh" type="button" data-live-refresh disabled>Refresh live data</button>
@@ -1159,10 +1165,10 @@ ${countrySelectOptions(countryBounds, { defaultCode: 'US' })}
             <time data-military-updated>Requesting bounded flight observations…</time>
           </section>
         </div>
-        <p class="tool-note">Military results are capped at 100 returned observations for the selected box. An empty or failed military response is unavailable, not confirmed zero activity.</p>
+        <p class="tool-note">Military results are capped at 100 returned observations for the selected box. Countries with oversized or discontinuous envelopes are omitted so the tool never issues a continent-scale observation query. An empty or failed military response is unavailable, not confirmed zero activity.</p>
         <noscript><p>Enable JavaScript to check the selected country. The independent-source methodology and limitations remain available on this page.</p></noscript>
       </section>
-      <a class="cta" data-dashboard-link href="${escapeHtml(absoluteUrl(baseUrl, '/?country=US&expanded=1'))}">Investigate the selected country in World Monitor →</a>
+      <a class="cta" data-dashboard-link href="${escapeHtml(absoluteUrl(baseUrl, '/?country=JP&expanded=1'))}">Investigate the selected country in World Monitor →</a>
       <h2>How to read the result</h2>
       <p>“Normal” applies only to monitored airports with current source coverage. “Unknown” means telemetry was not available and is not counted as normal. Military-flight results are bounded observations from OpenSky/Wingbits-compatible ingestion and are not exhaustive.</p>
       <p class="source">Geographic filters: ${COUNTRY_BBOXES_PATH}. Live metrics: <code>/api/aviation/v1/list-airport-delays</code> and <code>/api/military/v1/list-military-flights</code>.</p>`;
@@ -1337,11 +1343,6 @@ export async function buildCorpus({
       baseUrl,
       capturedAt: data.resilience.capturedAt,
     }),
-  );
-  writeGeneratedFile(
-    outDir,
-    'countries/live-risk.js',
-    readText(rootDir, COUNTRY_LIVE_RISK_SCRIPT_PATH),
   );
   for (const country of data.countries) {
     writeGeneratedFile(

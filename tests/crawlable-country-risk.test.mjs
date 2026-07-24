@@ -6,7 +6,9 @@ import {
   formatTrend,
   instabilityBand,
   liveRiskViewModel,
-} from '../scripts/crawlable-country-risk.mjs';
+} from '../scripts/crawlable-live-tools.mjs';
+
+const NOW = Date.UTC(2026, 6, 24, 12);
 
 describe('crawlable country live-risk tool', () => {
   it('uses the canonical CII score bands', () => {
@@ -71,5 +73,31 @@ describe('crawlable country live-risk tool', () => {
       () => liveRiskViewModel({ upstreamUnavailable: false, cii: { combinedScore: null } }),
       /No current instability score/,
     );
+  });
+
+  it('fails closed when the current score has no fresh authoritative timestamp', () => {
+    const payload = {
+      fetchedAt: NOW,
+      upstreamUnavailable: false,
+      cii: {
+        combinedScore: 71,
+        computedAt: NOW,
+      },
+    };
+
+    for (const fetchedAt of [
+      0,
+      NOW + (6 * 60 * 1_000),
+      NOW - (49 * 60 * 60 * 1_000),
+    ]) {
+      assert.throws(
+        () => liveRiskViewModel({
+          ...payload,
+          fetchedAt,
+          cii: { ...payload.cii, computedAt: fetchedAt },
+        }, NOW),
+        /timestamp is unavailable, stale, or invalid/i,
+      );
+    }
   });
 });

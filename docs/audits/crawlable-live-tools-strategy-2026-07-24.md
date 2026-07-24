@@ -57,7 +57,8 @@ Let a visitor choose a country or region and see current earthquakes, fires and 
 Implemented at `/tools/natural-hazard-pulse/` as a worldwide view with optional
 country bounding-box filtering. The page calls the seeded natural-events
 contract, retains per-event source names, excludes closed/malformed events, and
-distinguishes an authoritative zero from an unavailable snapshot.
+distinguishes an authoritative zero from an unavailable snapshot. Country
+options whose maintained envelopes exceed the bounded-query budget are omitted.
 
 ### 4. Airspace disruption checker
 
@@ -67,7 +68,8 @@ Implemented at `/tools/airspace-disruption-checker/`. Commercial monitored
 airport coverage and bounded military-flight observations render as independent
 sections and can fail independently. Unknown airport telemetry is not counted
 as normal, military returns are capped at 100 in the page model, and the page
-does not produce a combined threat score.
+does not produce a combined threat score. The selector exposes only maintained
+country envelopes no larger than 45 degrees latitude by 60 degrees longitude.
 
 ## Delivery Shape
 
@@ -80,7 +82,7 @@ does not produce a combined threat score.
 - Authentication: session-gated RPCs reuse the anonymous `wm-session`
   mint-and-retry path; no keys enter generated HTML
 - Failure posture: loading, ready, partial, and unavailable states; current
-  selections own their request generation so late responses cannot overwrite a
+  selections own their request controller so late responses cannot overwrite a
   newer country
 
 ## Deferred Expansion
