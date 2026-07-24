@@ -75,6 +75,7 @@ Shipped as environment repair plus PR #5558.
 
 ## Prevention
 
+- **Push-time self-identity tripwire.** The first check in `.husky/pre-push` verifies the executing hook file lives in the current worktree's own `.husky/`; if it is running from another checkout (the exact signature of this incident), the push fails immediately with the one-line fix printed. Bootstrap can be skipped; push time cannot. Escape hatch for an intentional central-hook setup: `WM_ALLOW_FOREIGN_HOOKS=1`.
 - **Bootstrap auto-heal is in the path of every new worktree.** `bootstrapWorktree` unsets stale per-worktree `core.hooksPath` overrides automatically and prints the one-line shared-config fix (`git config core.hooksPath .husky`) when the shared value is foreign.
 - **Diagnostic recipe when a push is mysteriously slow or runs unfamiliar gate steps:**
   1. `git config --show-origin core.hooksPath` from the worktree — the origin file distinguishes a shared-config value from a `config.worktree` override (the two layers need different fixes).
