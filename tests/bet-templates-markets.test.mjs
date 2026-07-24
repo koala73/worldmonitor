@@ -141,10 +141,11 @@ describe('market bets resolve via the settlement feed (pend → settle → resol
     await updateMarketSettlements(ledger, entry.deadline + DAY_MS, {
       fetchSettlement: async () => 100,
       readJson: async () => null,
-      writeJson: async (_key, value) => { writes.push(value); },
+      writeJson: async (key, value) => { writes.push({ key, value }); },
     });
-    assert.equal(writes.length, 1);
-    const feed = shapeResolutionFeed(MARKET_SETTLEMENT_FEED, writes[0]);
+    const feedWrite = writes.find((w) => w.key === MARKET_SETTLEMENT_FEED);
+    assert.ok(feedWrite, 'settlement feed written');
+    const feed = shapeResolutionFeed(MARKET_SETTLEMENT_FEED, feedWrite.value);
     const res = resolveHardSpec(entry, feed, [], entry.deadline + DAY_MS);
     assert.equal(res.status, 'resolved');
     assert.equal(res.outcome, 'YES');
@@ -199,9 +200,10 @@ describe('settlement parsing + loader', () => {
       writeJson: async (key, value) => { writes.push({ key, value }); },
     });
     assert.equal(stats.settled, 1);
-    assert.equal(writes.length, 1);
-    assert.equal(writes[0].value.records[0].slug, 'fed-cut-september-2026');
-    assert.equal(writes[0].value.records[0].yesPrice, 100);
+    const feedWrites = writes.filter((w) => w.key === MARKET_SETTLEMENT_FEED);
+    assert.equal(feedWrites.length, 1);
+    assert.equal(feedWrites[0].value.records[0].slug, 'fed-cut-september-2026');
+    assert.equal(feedWrites[0].value.records[0].yesPrice, 100);
   });
 
   it('updateMarketSettlements skips already-settled slugs and non-due bets', async () => {
@@ -232,12 +234,95 @@ describe('settlement parsing + loader', () => {
     const stats = await updateMarketSettlements(ledger, Date.parse(market().endDate) + DAY_MS, {
       fetchSettlement: async () => 100,
       readJson: async () => { throw new Error('redis blip'); },
-      writeJson: async (_key, value) => { writes.push(value); },
+      writeJson: async (key, value) => { writes.push({ key, value }); },
     });
     // A read failure is indistinguishable from a populated feed: writing would
     // full-document SET an empty records array and wipe prior adjudications.
     assert.deepEqual(stats, { fetched: 0, settled: 0 });
-    assert.equal(writes.length, 0);
+    assert.equal(writes.filter((w) => w.key === MARKET_SETTLEMENT_FEED).length, 0);
+  });
+});
+
+describe('settlement loader edge paths + health meta (review #5526)', () => {
+  const DUE_AT = Date.parse(market().endDate) + DAY_MS;
+
+  function dueLedger(markets = [market()]) {
+    const bets = generateBets(MARKET_BET_TEMPLATES, { [MARKET_FEED]: feedFixture(markets) }, NOW);
+    return ingestHistory({}, [{ generatedAt: NOW, predictions: bets }], NOW);
+  }
+
+  it('a not-yet-adjudicated venue (null) writes no record — the bet stays pending', async () => {
+    const ledger = dueLedger();
+    const writes = [];
+    const stats = await updateMarketSettlements(ledger, DUE_AT, {
+      fetchSettlement: async () => null,
+      readJson: async () => null,
+      writeJson: async (key, value) => { writes.push({ key, value }); },
+    });
+    assert.deepEqual(stats, { fetched: 1, settled: 0 });
+    assert.equal(writes.filter((w) => w.key === MARKET_SETTLEMENT_FEED).length, 0);
+  });
+
+  it('a throwing fetch skips that slug but still settles the others', async () => {
+    const ledger = dueLedger([
+      market({ title: 'Market A?', url: 'https://polymarket.com/event/aaa' }),
+      market({ title: 'Market B?', volume: 400_000, url: 'https://polymarket.com/event/bbb' }),
+    ]);
+    const writes = [];
+    const stats = await updateMarketSettlements(ledger, DUE_AT, {
+      fetchSettlement: async (entry) => {
+        if (entry.marketSlug === 'aaa') throw new Error('venue 500');
+        return 0;
+      },
+      readJson: async () => null,
+      writeJson: async (key, value) => { writes.push({ key, value }); },
+    });
+    assert.deepEqual(stats, { fetched: 2, settled: 1 });
+    const feedWrite = writes.find((w) => w.key === MARKET_SETTLEMENT_FEED);
+    assert.equal(feedWrite.value.records.length, 1);
+    assert.equal(feedWrite.value.records[0].slug, 'bbb');
+    assert.equal(feedWrite.value.records[0].yesPrice, 0);
+  });
+
+  it('two due entries sharing a marketSlug fetch and record once per run', async () => {
+    const base = dueLedger();
+    const entry = Object.values(base)[0];
+    // A venue-moved endDate can mint a second id@deadline window for the same
+    // slug; both are due in the same run. The loader must fetch/record once.
+    const ledger = {
+      ...base,
+      'market:fed-cut-september-2026@9999999999999': {
+        ...entry,
+        key: 'market:fed-cut-september-2026@9999999999999',
+        deadline: entry.deadline + DAY_MS,
+      },
+    };
+    let fetches = 0;
+    const writes = [];
+    const stats = await updateMarketSettlements(ledger, entry.deadline + 2 * DAY_MS, {
+      fetchSettlement: async () => { fetches += 1; return 100; },
+      readJson: async () => null,
+      writeJson: async (key, value) => { writes.push({ key, value }); },
+    });
+    assert.deepEqual(stats, { fetched: 1, settled: 1 });
+    assert.equal(fetches, 1);
+    const feedWrite = writes.find((w) => w.key === MARKET_SETTLEMENT_FEED);
+    assert.equal(feedWrite.value.records.length, 1);
+  });
+
+  it('writes a seed-meta companion on every run — even with nothing due', async () => {
+    const ledger = dueLedger();
+    const writes = [];
+    const stats = await updateMarketSettlements(ledger, NOW, { // NOW < deadline → nothing due
+      fetchSettlement: async () => 100,
+      readJson: async () => null,
+      writeJson: async (key, value) => { writes.push({ key, value }); },
+    });
+    assert.deepEqual(stats, { fetched: 0, settled: 0 });
+    const meta = writes.find((w) => w.key === 'seed-meta:prediction:markets-resolution');
+    assert.ok(meta, 'seed-meta written even with zero due bets');
+    assert.equal(meta.value.fetchedAt, NOW);
+    assert.equal(meta.value.settled, 0);
   });
 });
 

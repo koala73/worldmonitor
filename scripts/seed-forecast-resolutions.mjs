@@ -18,6 +18,7 @@ import { CHROME_UA, loadEnvFile, runSeed } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { resolveR2StorageConfig, putR2JsonObject } from './_r2-storage.mjs';
 import { parseMetricKey, resolveHardSpec, extractMetricValue, extractMetricObservation, MARKET_SETTLEMENT_FEED_KEY } from './_forecast-resolution-eval.mjs';
+import { finiteObservations } from './_bet-templates-macro.mjs';
 import { CONFLICT_COUNT_FEED_AVAILABLE, UNREST_COUNT_FEED_AVAILABLE, CONFLICT_COUNT_SOURCE_FEED, UNREST_COUNT_SOURCE_FEED } from './_forecast-resolution.mjs';
 import { computeScorecard, DEFAULT_ROLLING_WINDOW_DAYS } from './_forecast-scorecard.mjs';
 import { BETS_HISTORY_KEY } from './_forecast-bets-keys.mjs';
@@ -1154,10 +1155,10 @@ export function shapeResolutionFeed(key, data) {
     // gates on (KTD4). SERIES is the 4th key segment (exact `:0`-suffixed keys).
     const series = key.split(':')[3];
     const d = data?.data ?? data;
-    const observations = Array.isArray(d?.series?.observations) ? d.series.observations : [];
-    const finite = observations
-      .map((o) => ({ date: o?.date, value: Number(o?.value) }))
-      .filter((o) => o.date && Number.isFinite(o.value));
+    // Shared filter with the bet generator (finiteObservations in
+    // _bet-templates-macro.mjs) — the '.'-sentinel handling must not drift
+    // between generation and resolution.
+    const finite = finiteObservations(d);
     const latest = finite[finite.length - 1];
     return latest ? [{ metric: series, value: latest.value, asOf: latest.date }] : [];
   }
@@ -1184,6 +1185,9 @@ const GAMMA_SETTLEMENT_BASE = 'https://gamma-api.polymarket.com';
 const KALSHI_SETTLEMENT_BASE = 'https://api.elections.kalshi.com/trade-api/v2';
 const SETTLEMENT_TTL_SECONDS = 45 * 24 * 60 * 60;
 const SETTLEMENT_FETCH_CAP_PER_RUN = 10;
+// Health-monitoring companion for the settlement feed (AGENTS.md: Redis seed
+// scripts MUST write seed-meta:<key>). Registered in api/health.js SEED_META.
+export const MARKET_SETTLEMENT_META_KEY = 'seed-meta:prediction:markets-resolution';
 
 // Pure: extract a settled yesPrice (0-100) from a Gamma events-by-slug reply.
 // Returns null while unsettled/ambiguous — never a guess. A multi-market event
@@ -1278,11 +1282,20 @@ export async function updateMarketSettlements(ledger, nowMs, options = {}) {
   const readJson = options.readJson || readRedisJson;
   const writeJson = options.writeJson || writeRedisJson;
 
+  // seed-meta companion on EVERY run — including zero-due and fail-closed
+  // cycles — so the health board sees a live writer instead of a flapping
+  // staleness alarm whenever no market bet happens to be due.
+  const finalize = async (stats, recordCount) => {
+    await Promise.resolve(writeJson(MARKET_SETTLEMENT_META_KEY, { fetchedAt: nowMs, recordCount, ...stats }, SETTLEMENT_TTL_SECONDS))
+      .catch((err) => console.warn(`  [forecast-resolutions] settlement seed-meta write failed: ${err?.message || err}`));
+    return stats;
+  };
+
   const due = Object.values(normalizeLedger(ledger)).filter((entry) => entry?.status === 'pending'
     && entry.spec?.sourceFeed === MARKET_SETTLEMENT_FEED_KEY
     && Number(entry.deadline) <= nowMs
     && typeof entry.marketSlug === 'string' && entry.marketSlug);
-  if (!due.length) return { fetched: 0, settled: 0 };
+  if (!due.length) return finalize({ fetched: 0, settled: 0 }, null);
 
   // Fail CLOSED on a read ERROR (distinct from "key absent", which readJson
   // reports as null): an unreadable feed is indistinguishable from a populated
@@ -1294,11 +1307,16 @@ export async function updateMarketSettlements(ledger, nowMs, options = {}) {
     existing = await Promise.resolve(readJson(MARKET_SETTLEMENT_FEED_KEY));
   } catch (err) {
     console.warn(`  [forecast-resolutions] settlement feed read failed — skipping settlement cycle: ${err?.message || err}`);
-    return { fetched: 0, settled: 0 };
+    return finalize({ fetched: 0, settled: 0 }, null);
   }
   const records = Array.isArray(existing?.records) ? [...existing.records] : [];
   const have = new Set(records.map((r) => r?.slug).filter(Boolean));
-  const targets = due.filter((entry) => !have.has(entry.marketSlug)).slice(0, SETTLEMENT_FETCH_CAP_PER_RUN);
+  // Dedupe by slug before fetching: two due entries can share a marketSlug
+  // (a venue-moved endDate can mint a second id@deadline window for the same
+  // market) — fetch and record each market once per run.
+  const targets = [...new Map(
+    due.filter((entry) => !have.has(entry.marketSlug)).map((entry) => [entry.marketSlug, entry]),
+  ).values()].slice(0, SETTLEMENT_FETCH_CAP_PER_RUN);
 
   let settled = 0;
   for (const entry of targets) {
@@ -1315,7 +1333,7 @@ export async function updateMarketSettlements(ledger, nowMs, options = {}) {
     await Promise.resolve(writeJson(MARKET_SETTLEMENT_FEED_KEY, { records, updatedAt: nowMs }, SETTLEMENT_TTL_SECONDS))
       .catch((err) => console.warn(`  [forecast-resolutions] settlement write failed: ${err?.message || err}`));
   }
-  return { fetched: targets.length, settled };
+  return finalize({ fetched: targets.length, settled }, records.length);
 }
 
 async function readResolutionFeeds(ledger) {

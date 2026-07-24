@@ -5,7 +5,7 @@ import { generateBets } from '../scripts/_bet-templates.mjs';
 import { MACRO_BET_TEMPLATES, FRED_FEED_KEYS, FRED_SERIES } from '../scripts/_bet-templates-macro.mjs';
 import {
   parseMetricKey, resolveHardSpec,
-  FRED_MONTHLY_VALUE_SETTLEMENT_MAX_LAG_MS, VALUE_SETTLEMENT_MAX_LAG_MS,
+  FRED_MONTHLY_VALUE_SETTLEMENT_MAX_LAG_MS, FRED_DAILY_VALUE_SETTLEMENT_MAX_LAG_MS, VALUE_SETTLEMENT_MAX_LAG_MS,
 } from '../scripts/_forecast-resolution-eval.mjs';
 import { RESOLUTION_FEED_KEYS } from '../scripts/_forecast-resolution.mjs';
 import { shapeResolutionFeed, ingestHistory } from '../scripts/seed-forecast-resolutions.mjs';
@@ -104,6 +104,47 @@ describe('FRED resolver enablement', () => {
     const entry = unrateEntry();
     const stale = shapeResolutionFeed(UNRATE_KEY, fredFixture(UNRATE_OBS));
     const pastGrace = resolveHardSpec(entry, stale, [], entry.deadline + FRED_MONTHLY_VALUE_SETTLEMENT_MAX_LAG_MS + DAY_MS);
+    assert.equal(pastGrace.outcome, 'VOID');
+    assert.equal(pastGrace.evidence.reason, 'value_source_never_settled');
+  });
+});
+
+describe('FRED daily (DGS10) settlement grace', () => {
+  const DGS10_KEY = 'economic:fred:v1:DGS10:0';
+  const DGS10_OBS = [
+    { date: '2026-07-20', value: '4.20' },
+    { date: '2026-07-21', value: '4.25' },
+  ];
+
+  function dgs10Entry() {
+    const bets = generateBets(MACRO_BET_TEMPLATES, { [DGS10_KEY]: fredFixture(DGS10_OBS) }, NOW);
+    assert.equal(bets.length, 1);
+    const ledger = ingestHistory({}, [{ generatedAt: NOW, predictions: bets }], NOW);
+    return Object.values(ledger)[0];
+  }
+
+  it('pends past the generic 10d grace inside the 14d daily grace, resolves on a covering observation, VOIDs past grace', () => {
+    const entry = dgs10Entry();
+    assert.equal(entry.spec.sourceFeed, DGS10_KEY);
+    const deadline = entry.deadline; // NOW + 7d = 2026-07-30
+    const stale = shapeResolutionFeed(DGS10_KEY, fredFixture(DGS10_OBS));
+
+    // Day 11: past the generic 10d grace, inside the 14d FRED daily grace → pend.
+    const day11 = resolveHardSpec(entry, stale, [], deadline + 11 * DAY_MS);
+    assert.equal(day11.status, 'pending');
+    assert.ok(11 * DAY_MS > VALUE_SETTLEMENT_MAX_LAG_MS, 'sanity: generic grace would have VOIDed by now');
+
+    // A covering daily observation (dated >= the deadline) lands → resolves.
+    const settledFeed = shapeResolutionFeed(DGS10_KEY, fredFixture([
+      ...DGS10_OBS,
+      { date: '2026-07-30', value: '4.40' },
+    ]));
+    const resolved = resolveHardSpec(entry, settledFeed, [], deadline + 11 * DAY_MS);
+    assert.equal(resolved.status, 'resolved');
+    assert.equal(resolved.outcome, 'YES'); // 4.40 >= threshold 4.30, rising from 4.25
+
+    // Past the 14d daily grace with no covering observation → VOID.
+    const pastGrace = resolveHardSpec(entry, stale, [], deadline + FRED_DAILY_VALUE_SETTLEMENT_MAX_LAG_MS + DAY_MS);
     assert.equal(pastGrace.outcome, 'VOID');
     assert.equal(pastGrace.evidence.reason, 'value_source_never_settled');
   });
