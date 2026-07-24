@@ -4,6 +4,16 @@ import schema from "../schema";
 import { internal } from "../_generated/api";
 
 const modules = import.meta.glob("../**/*.ts");
+
+async function makeT(): Promise<ReturnType<typeof convexTest>> {
+  const t = convexTest(schema, modules);
+  await t.mutation(
+    internal.payments.webhookMutations._seedFailureSummary,
+    {},
+  );
+  return t;
+}
+
 const BASE_TIMESTAMP = new Date("2026-07-23T10:00:00Z").getTime();
 const DODO_SECRET_BYTES = new Uint8Array([
   0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
@@ -118,7 +128,7 @@ describe("Dodo webhook failure tracking", () => {
   test("dead-letters an application-invalid subscription received through the HTTP handler", async () => {
     vi.spyOn(Date, "now").mockReturnValue(BASE_TIMESTAMP);
     process.env.DODO_PAYMENTS_WEBHOOK_SECRET = DODO_WEBHOOK_SECRET;
-    const t = convexTest(schema, modules);
+    const t = await makeT();
     const body = JSON.stringify(makeProviderValidSubscriptionPayload());
     const webhookId = "wh_http_failure_001";
     const timestampSeconds = String(Math.floor(BASE_TIMESTAMP / 1000));
@@ -169,7 +179,7 @@ describe("Dodo webhook failure tracking", () => {
   });
 
   test("records sanitized context for a malformed subscription event", async () => {
-    const t = convexTest(schema, modules);
+    const t = await makeT();
 
     await expect(
       t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
@@ -221,7 +231,7 @@ describe("Dodo webhook failure tracking", () => {
   });
 
   test("updates the same failure row for repeated webhook deliveries", async () => {
-    const t = convexTest(schema, modules);
+    const t = await makeT();
 
     const first = await t.mutation(
       internal.payments.webhookMutations.recordWebhookFailure,
@@ -250,8 +260,36 @@ describe("Dodo webhook failure tracking", () => {
     expect(rows[0].lastSeenAt).toBe(BASE_TIMESTAMP + 5000);
   });
 
+  test("serializes first failure writes for the same webhook ID", async () => {
+    const t = await makeT();
+
+    const [first, second] = await Promise.all([
+      t.mutation(
+        internal.payments.webhookMutations.recordWebhookFailure,
+        failureArgs(),
+      ),
+      t.mutation(
+        internal.payments.webhookMutations.recordWebhookFailure,
+        failureArgs({ errorMessage: "same delivery, concurrent attempt" }),
+      ),
+    ]);
+
+    expect([first.isNew, second.isNew].sort()).toEqual([false, true]);
+    const rows = await t.run(async (ctx) =>
+      ctx.db.query("paymentWebhookFailures").collect(),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].attemptCount).toBe(2);
+
+    const summary = await t.query(
+      internal.payments.webhookMutations.getWebhookFailureDiagnostics,
+      {},
+    );
+    expect(summary.unresolvedCount).toBe(1);
+  });
+
   test("keeps distinct webhook IDs separate for the same subscription", async () => {
-    const t = convexTest(schema, modules);
+    const t = await makeT();
 
     await t.mutation(
       internal.payments.webhookMutations.recordWebhookFailure,
@@ -291,7 +329,7 @@ describe("Dodo webhook failure tracking", () => {
   });
 
   test("resolves a failure and removes it from the unresolved diagnostic query", async () => {
-    const t = convexTest(schema, modules);
+    const t = await makeT();
 
     await t.mutation(
       internal.payments.webhookMutations.recordWebhookFailure,
@@ -332,7 +370,7 @@ describe("Dodo webhook failure tracking", () => {
   });
 
   test("automatically resolves a transient failure after a successful retry", async () => {
-    const t = convexTest(schema, modules);
+    const t = await makeT();
 
     await t.mutation(
       internal.payments.webhookMutations.recordWebhookFailure,

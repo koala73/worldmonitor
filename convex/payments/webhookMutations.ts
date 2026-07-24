@@ -21,6 +21,7 @@ import {
 const MAX_FAILURE_MESSAGE_LENGTH = 1000;
 const MAX_FAILURE_DATA_KEYS = 100;
 const MAX_DIAGNOSTIC_ROWS = 250;
+const GLOBAL_FAILURE_SUMMARY_KEY = "global" as const;
 type EventTypeCount = { eventType: string; count: number };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -75,27 +76,26 @@ function adjustEventTypeCount(
     .sort((a, b) => a.eventType.localeCompare(b.eventType));
 }
 
+async function readFailureSummaryLock(ctx: MutationCtx) {
+  const summary = await ctx.db
+    .query("paymentWebhookFailureSummary")
+    .withIndex("by_key", (q) => q.eq("key", GLOBAL_FAILURE_SUMMARY_KEY))
+    .first();
+  if (!summary) {
+    throw new Error(
+      "Dodo webhook failure summary is not seeded; run payments/webhookMutations:_seedFailureSummary",
+    );
+  }
+  return summary;
+}
+
 async function updateFailureSummary(
   ctx: MutationCtx,
+  summary: Doc<"paymentWebhookFailureSummary">,
   existing: Doc<"paymentWebhookFailures"> | null,
   eventType: string,
   updatedAt: number,
 ) {
-  const summary = await ctx.db
-    .query("paymentWebhookFailureSummary")
-    .withIndex("by_key", (q) => q.eq("key", "global"))
-    .unique();
-
-  if (!summary) {
-    await ctx.db.insert("paymentWebhookFailureSummary", {
-      key: "global",
-      unresolvedCount: 1,
-      eventTypes: [{ eventType, count: 1 }],
-      updatedAt,
-    });
-    return;
-  }
-
   let unresolvedCount = summary.unresolvedCount;
   let eventTypes = summary.eventTypes;
   if (existing?.unresolved) {
@@ -139,6 +139,11 @@ export const recordWebhookFailure = internalMutation({
     errorMessage: v.string(),
   },
   handler: async (ctx, args) => {
+    // This pre-seeded summary document is also the OCC serialization point
+    // for the failure row + aggregate update. Index reads do not serialize a
+    // brand-new webhookId race on their own, so the lock must exist before
+    // either mutation can insert the first row for an ID.
+    const summary = await readFailureSummaryLock(ctx);
     const receivedAt = args.receivedAt ?? Date.now();
     const context = extractFailureContext(args.rawPayload);
     const existing = await ctx.db
@@ -173,20 +178,21 @@ export const recordWebhookFailure = internalMutation({
       });
     }
 
-    await updateFailureSummary(ctx, existing, args.eventType, receivedAt);
-    const summary = await getUnresolvedFailureSummary(ctx);
+    await updateFailureSummary(ctx, summary, existing, args.eventType, receivedAt);
+    const currentSummary = await getUnresolvedFailureSummary(ctx);
     return {
       isNew: !existing,
       attemptCount,
       errorKind: failure.errorKind,
       errorMessage: failure.errorMessage,
-      ...summary,
+      ...currentSummary,
     };
   },
 });
 
 async function removeUnresolvedFailureFromSummary(
   ctx: MutationCtx,
+  summary: Doc<"paymentWebhookFailureSummary">,
   existing: Doc<"paymentWebhookFailures">,
   updatedAt: number,
 ) {
@@ -194,18 +200,37 @@ async function removeUnresolvedFailureFromSummary(
     return;
   }
 
-  const summary = await ctx.db
-    .query("paymentWebhookFailureSummary")
-    .withIndex("by_key", (q) => q.eq("key", "global"))
-    .unique();
-  if (summary) {
-    await ctx.db.patch(summary._id, {
-      unresolvedCount: Math.max(0, summary.unresolvedCount - 1),
-      eventTypes: adjustEventTypeCount(summary.eventTypes, existing.eventType, -1),
-      updatedAt,
-    });
-  }
+  await ctx.db.patch(summary._id, {
+    unresolvedCount: Math.max(0, summary.unresolvedCount - 1),
+    eventTypes: adjustEventTypeCount(summary.eventTypes, existing.eventType, -1),
+    updatedAt,
+  });
 }
+
+/**
+ * Idempotently creates the aggregate/serialization document used by the
+ * failure lifecycle. This runs after Convex deploy and is also safe to rerun.
+ */
+export const _seedFailureSummary = internalMutation({
+  args: {},
+  handler: async (ctx): Promise<{ seeded: number }> => {
+    const existing = await ctx.db
+      .query("paymentWebhookFailureSummary")
+      .withIndex("by_key", (q) => q.eq("key", GLOBAL_FAILURE_SUMMARY_KEY))
+      .first();
+    if (existing) {
+      return { seeded: 0 };
+    }
+
+    await ctx.db.insert("paymentWebhookFailureSummary", {
+      key: GLOBAL_FAILURE_SUMMARY_KEY,
+      unresolvedCount: 0,
+      eventTypes: [],
+      updatedAt: Date.now(),
+    });
+    return { seeded: 1 };
+  },
+});
 
 /**
  * Emits one grouped Convex auto-Sentry event after a failure row commits.
@@ -240,6 +265,7 @@ export const resolveWebhookFailure = internalMutation({
     resolutionNote: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
+    const summary = await readFailureSummaryLock(ctx);
     const existing = await ctx.db
       .query("paymentWebhookFailures")
       .withIndex("by_webhookId", (q) => q.eq("webhookId", args.webhookId))
@@ -257,7 +283,7 @@ export const resolveWebhookFailure = internalMutation({
         : undefined,
     });
 
-    await removeUnresolvedFailureFromSummary(ctx, existing, Date.now());
+    await removeUnresolvedFailureFromSummary(ctx, summary, existing, Date.now());
   },
 });
 
@@ -273,6 +299,8 @@ export const markWebhookFailureRecovered = internalMutation({
       return;
     }
 
+    const summary = await readFailureSummaryLock(ctx);
+
     const recoveredAt = Date.now();
     await ctx.db.patch(existing._id, {
       unresolved: false,
@@ -280,7 +308,7 @@ export const markWebhookFailureRecovered = internalMutation({
       resolvedBy: "dodo-retry",
       resolutionNote: "Processed successfully on provider retry",
     });
-    await removeUnresolvedFailureFromSummary(ctx, existing, recoveredAt);
+    await removeUnresolvedFailureFromSummary(ctx, summary, existing, recoveredAt);
   },
 });
 

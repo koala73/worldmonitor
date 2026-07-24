@@ -139,10 +139,6 @@ export const webhookHandler = httpAction(async (ctx, request) => {
         timestamp: eventTimestamp,
       },
     );
-    await ctx.runMutation(
-      internal.payments.webhookMutations.markWebhookFailureRecovered,
-      { webhookId },
-    );
   } catch (error) {
     const errorKind = error instanceof Error && error.name
       ? error.name
@@ -198,6 +194,20 @@ export const webhookHandler = httpAction(async (ctx, request) => {
     // sentry-coverage-ok: failure details are persisted above and the
     // scheduled report mutation provides the structured Sentry signal.
     console.error("Webhook processing failed:", error);
+    return new Response("Internal processing error", { status: 500 });
+  }
+
+  // Recovery is deliberately outside the processing-failure catch. If this
+  // bookkeeping mutation is transiently unavailable, the provider should
+  // retry the delivery, but that recovery error must not be recorded as a
+  // new processing incident after billing state already committed.
+  try {
+    await ctx.runMutation(
+      internal.payments.webhookMutations.markWebhookFailureRecovered,
+      { webhookId },
+    );
+  } catch (error) {
+    console.error("[webhook] Failed to mark Dodo webhook failure recovered:", error);
     return new Response("Internal processing error", { status: 500 });
   }
 

@@ -828,7 +828,11 @@ export default defineSchema({
 
   // Bounded aggregate used for the Sentry/ops signal. Keeping it separate
   // from the dead-letter rows avoids collecting an incident-sized table from
-  // every retry just to report queue counts.
+  // every retry just to report queue counts. The pre-seeded global document
+  // also serializes failure-row inserts and lifecycle transitions; see
+  // `payments/webhookMutations:_seedFailureSummary` and the Convex deploy
+  // workflow. It must not be lazily created in the failure mutation because
+  // an empty index range does not serialize concurrent first inserts.
   paymentWebhookFailureSummary: defineTable({
     key: v.literal("global"),
     unresolvedCount: v.number(),

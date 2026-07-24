@@ -125,3 +125,11 @@ jobs:
         run: npx convex run --prod followedCountries:_seedCountryLocks
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+      - name: Seed Dodo webhook failure summary (idempotent)
+        # Failure recording uses this pre-seeded aggregate row as its
+        # document-backed OCC lock. Without it, two first-time failures for
+        # the same webhook-id could both insert a dead-letter row before an
+        # index read can observe either insert.
+        run: npx convex run --prod payments/webhookMutations:_seedFailureSummary
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
