@@ -25,7 +25,7 @@ import { getAuthState } from '@/services/auth-state';
 import { track } from '@/services/analytics';
 import { isEntitled, hasFeature, onEntitlementChange, getEntitlementState } from '@/services/entitlements';
 import { hasPremiumAccess } from '@/services/panel-gating';
-import { getSubscription, onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
+import { getSubscription, onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab, listBusinessSeats, inviteBusinessSeats, removeBusinessSeat, type BusinessSeat } from '@/services/billing';
 import { deriveBillingUxState, getReactivationHref } from '@/services/billing-state';
 import { createApiKey, listApiKeys, revokeApiKey, type ApiKeyInfo } from '@/services/api-keys';
 import { listMcpClients, revokeMcpClient, fetchMcpQuota, type McpClientInfo, type McpQuota } from '@/services/mcp-clients';
@@ -84,6 +84,10 @@ export class UnifiedSettings {
   private newlyCreatedKey: string | null = null;
   private planLimitNotices: ApiPlanLimitNotice[] = [];
   private planLimitNoticesLoading = false;
+  // ---- Business Pro seats (plan 2026-07-24-001 U7) ----
+  private businessSeats: BusinessSeat[] = [];
+  private businessSeatsLoading = false;
+  private businessSeatsError = '';
   // ---- Connected MCP clients tab (plan 2026-05-10-001 U9) ----
   private mcpClients: McpClientInfo[] = [];
   private mcpClientsLoading = false;
@@ -285,6 +289,18 @@ export class UnifiedSettings {
         return;
       }
 
+      const businessInviteBtn = target.closest<HTMLElement>('.business-seats-invite-btn');
+      if (businessInviteBtn) {
+        void this.handleInviteBusinessSeat();
+        return;
+      }
+
+      const businessRemoveBtn = target.closest<HTMLElement>('.business-seat-remove-btn');
+      if (businessRemoveBtn?.dataset.grantId) {
+        void this.handleRemoveBusinessSeat(businessRemoveBtn.dataset.grantId);
+        return;
+      }
+
       const mcpCopyUrlBtn = target.closest<HTMLElement>('.mcp-clients-copy-url-btn');
       if (mcpCopyUrlBtn?.dataset.copyValue) {
         const value = mcpCopyUrlBtn.dataset.copyValue;
@@ -354,7 +370,17 @@ export class UnifiedSettings {
       this.replaceUpgradeSection();
     });
     this.unsubscribeSubscription?.();
-    this.unsubscribeSubscription = onSubscriptionChange(() => this.replaceUpgradeSection());
+    this.unsubscribeSubscription = onSubscriptionChange(() => {
+      this.replaceUpgradeSection();
+      const sub = getSubscription();
+      if (sub?.planKey === 'api_business' && sub?.status === 'active') {
+        void this.loadBusinessSeats();
+      }
+    });
+    const sub = getSubscription();
+    if (sub?.planKey === 'api_business' && sub?.status === 'active') {
+      void this.loadBusinessSeats();
+    }
     // Bounded fallback: the entitlement listener can legitimately never
     // fire (no VITE_CONVEX_URL, Convex API fails to load, waitForConvexAuth
     // times out at 10s, or init throws — see entitlements.ts:41,47,58,78).
@@ -690,6 +716,7 @@ export class UnifiedSettings {
           ${sub?.planKey === 'api_starter' ? `<button class="upgrade-to-business-btn" style="margin-right:8px;">Upgrade to Business</button>` : ''}
           <button class="manage-billing-btn">Manage Billing</button>
         </div>
+        ${sub?.planKey === 'api_business' && sub?.status === 'active' ? `<div id="usBusinessSeats">${this.renderBusinessSeatsContent()}</div>` : ''}
       `;
     }
 
@@ -721,6 +748,141 @@ export class UnifiedSettings {
         <button class="upgrade-pro-cta">Upgrade to Pro</button>
       </div>
     `;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Business Pro seats (#4634/#4635)
+  // ---------------------------------------------------------------------------
+
+  private async loadBusinessSeats(): Promise<void> {
+    if (this.businessSeatsLoading) return;
+    this.businessSeatsLoading = true;
+    this.businessSeatsError = '';
+    try {
+      const result = await listBusinessSeats();
+      this.businessSeats = result.seats;
+    } catch (err) {
+      this.businessSeatsError = err instanceof Error ? err.message : 'Failed to load seats';
+    } finally {
+      this.businessSeatsLoading = false;
+      this.renderBusinessSeatsInPlace();
+    }
+  }
+
+  private renderBusinessSeatsInPlace(): void {
+    const container = this.overlay.querySelector('#usBusinessSeats');
+    if (container) {
+      setTrustedHtml(container, trustedHtml(this.renderBusinessSeatsContent(), "legacy direct innerHTML migration"));
+    }
+  }
+
+  private renderBusinessSeatsContent(): string {
+    const sub = getSubscription();
+    const authUser = getAuthState().user;
+    const ownerEmail = authUser?.email ?? '';
+    const ownerDomain = ownerEmail.split('@')[1]?.toLowerCase() ?? '';
+    const isBusinessOwner = sub?.planKey === 'api_business' && sub?.status === 'active';
+    const isCorporateDomain = ownerDomain.length > 0 &&
+      !['gmail.com', 'outlook.com', 'hotmail.com', 'yahoo.com', 'protonmail.com', 'proton.me', 'icloud.com', 'aol.com', 'mail.com', 'zoho.com', 'yandex.com', 'gmx.com', 'live.com', 'qq.com', '163.com', '126.com', 'sina.com', 'foxmail.com'].includes(ownerDomain);
+
+    if (!isBusinessOwner) return '';
+
+    const seats = this.businessSeats;
+    const activeSeats = seats.filter((s) => s.status === 'accepted');
+    const pendingSeats = seats.filter((s) => s.status === 'pending');
+    const seatCount = activeSeats.length + pendingSeats.length;
+
+    const renderSeat = (seat: BusinessSeat) => {
+      const statusLabel = seat.status === 'accepted' ? 'Accepted' : 'Pending';
+      const statusColor = seat.status === 'accepted' ? '#22c55e' : '#eab308';
+      const expires = seat.status === 'pending'
+        ? `<div style="font-size:11px;color:#666;">Expires ${new Date(seat.expiresAt).toLocaleDateString()}</div>`
+        : '';
+      return `
+        <div class="business-seat-item" style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;border:1px solid #1a1a1a;border-radius:6px;margin-bottom:8px;background:#0d0d0d;">
+          <div>
+            <div style="font-size:13px;color:#fff;">${escapeHtml(seat.inviteeEmail)}</div>
+            <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
+              <span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${statusColor};"></span>
+              <span style="font-size:11px;color:${statusColor};">${statusLabel}</span>
+            </div>
+            ${expires}
+          </div>
+          <button class="btn btn-ghost business-seat-remove-btn" data-grant-id="${escapeHtml(seat.grantId)}" style="font-size:12px;">Remove</button>
+        </div>
+      `;
+    };
+
+    const inviteHint = isCorporateDomain
+      ? `Invite teammates on your company domain (@${escapeHtml(ownerDomain)}).`
+      : 'Add a company email to invite teammates.';
+
+    return `
+      <div class="business-seats-section" style="margin-top:16px;padding:14px 16px;border:1px solid #1a1a1a;border-radius:6px;background:#0d0d0d;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <div style="font-size:13px;font-weight:600;color:#fff;">Business Seats</div>
+          <div style="font-size:11px;color:#888;">${seatCount} / 4 used</div>
+        </div>
+        <div style="font-size:12px;color:#999;margin-bottom:12px;">${escapeHtml(inviteHint)}</div>
+        ${!isCorporateDomain ? `<div style="font-size:12px;color:#ef4444;margin-bottom:12px;">Free or disposable email domains cannot invite teammates. Add a company email to use this feature.</div>` : ''}
+        ${isCorporateDomain ? `
+          <div class="business-seats-invite-form" style="display:flex;gap:8px;margin-bottom:12px;">
+            <input type="email" class="business-seats-email-input" placeholder="teammate@${escapeHtml(ownerDomain)}" style="flex:1;padding:8px 10px;background:#111;border:1px solid #1a1a1a;border-radius:4px;color:#fff;font-size:13px;" ${seatCount >= 4 ? 'disabled' : ''} />
+            <button class="btn btn-primary business-seats-invite-btn" ${seatCount >= 4 ? 'disabled' : ''}>Invite</button>
+          </div>
+        ` : ''}
+        ${this.businessSeatsError ? `<div style="font-size:12px;color:#ef4444;margin-bottom:12px;">${escapeHtml(this.businessSeatsError)}</div>` : ''}
+        <div id="usBusinessSeatsList">
+          ${seats.length === 0 ? `<div style="font-size:12px;color:#666;padding:12px;text-align:center;">No seats invited yet.</div>` : seats.map(renderSeat).join('')}
+        </div>
+      </div>
+    `;
+  }
+
+  private async handleInviteBusinessSeat(): Promise<void> {
+    const input = this.overlay.querySelector<HTMLInputElement>('.business-seats-email-input');
+    const email = input?.value.trim();
+    if (!email) return;
+
+    this.businessSeatsError = '';
+    try {
+      const result = await inviteBusinessSeats([email]);
+      if (result.invited[0]?.status === 'created') {
+        showToast('Invite sent');
+        if (input) input.value = '';
+      } else {
+        showToast('Already invited');
+      }
+      await this.loadBusinessSeats();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to send invite';
+      if (msg.includes('SEAT_CAP_REACHED')) {
+        this.businessSeatsError = 'All 4 seats are used. Remove a seat first.';
+      } else if (msg.includes('INVITEE_DOMAIN_MISMATCH')) {
+        this.businessSeatsError = 'Invitee must share your company email domain.';
+      } else if (msg.includes('OWNER_DOMAIN_NOT_CORPORATE')) {
+        this.businessSeatsError = 'Your account email must be a company domain to invite teammates.';
+      } else if (msg.includes('CANNOT_INVITE_SELF')) {
+        this.businessSeatsError = 'You cannot invite yourself.';
+      } else if (msg.includes('INVITEE_DOMAIN_NOT_CORPORATE')) {
+        this.businessSeatsError = 'The invitee email must be a company domain.';
+      } else {
+        this.businessSeatsError = msg;
+      }
+      this.renderBusinessSeatsInPlace();
+    }
+  }
+
+  private async handleRemoveBusinessSeat(grantId: string): Promise<void> {
+    if (!confirm('Remove this seat? The invitee will lose Pro access immediately.')) return;
+    try {
+      await removeBusinessSeat(grantId);
+      showToast('Seat removed');
+      await this.loadBusinessSeats();
+    } catch (err) {
+      this.businessSeatsError = err instanceof Error ? err.message : 'Failed to remove seat';
+      this.renderBusinessSeatsInPlace();
+    }
   }
 
   private handleUpgradeClick(): void {

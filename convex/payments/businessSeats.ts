@@ -190,7 +190,7 @@ export const sendBusinessInviteEmail = internalAction({
     grantId: v.string(),
     token: v.string(),
   },
-  handler: async (ctx, args) => {
+  handler: async (_ctx, args) => {
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
       console.error("[businessSeats] RESEND_API_KEY not set — skipping invite email");
