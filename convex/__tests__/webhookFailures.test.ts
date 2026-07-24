@@ -630,4 +630,109 @@ describe("Dodo webhook failure tracking", () => {
       eventTypes: [{ eventType: "subscription.renewed", count: 1 }],
     });
   });
+
+  test("dead-letters an authenticated but schema-invalid payload with 500, not 401", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(BASE_TIMESTAMP);
+    process.env.DODO_PAYMENTS_WEBHOOK_SECRET = DODO_WEBHOOK_SECRET;
+    const t = await makeT();
+    const body = JSON.stringify({
+      business_id: "biz_failure_test",
+      type: "subscription.active",
+      timestamp: new Date(BASE_TIMESTAMP).toISOString(),
+      data: {
+        payload_type: "Subscription",
+        subscription_id: "sub_schema_invalid",
+      },
+    });
+    const webhookId = "wh_http_schema_invalid";
+    const timestampSeconds = String(Math.floor(BASE_TIMESTAMP / 1000));
+    const signature = await signDodoPayload(body, webhookId, timestampSeconds);
+
+    const response = await t.fetch("/dodopayments-webhook", {
+      method: "POST",
+      headers: {
+        "webhook-id": webhookId,
+        "webhook-timestamp": timestampSeconds,
+        "webhook-signature": signature,
+      },
+      body,
+    });
+
+    expect(response.status).toBe(500);
+    expect(await response.text()).not.toBe("Invalid webhook signature");
+    const rows = await t.run(async (ctx) =>
+      ctx.db.query("paymentWebhookFailures").collect(),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      webhookId,
+      eventType: "subscription.active",
+      dodoSubscriptionId: "sub_schema_invalid",
+      errorKind: "ZodError",
+      unresolved: true,
+      attemptCount: 1,
+    });
+    expect("rawPayload" in rows[0]).toBe(false);
+  });
+
+  test("dead-letters an authenticated but unparseable body with 500, not 401", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(BASE_TIMESTAMP);
+    process.env.DODO_PAYMENTS_WEBHOOK_SECRET = DODO_WEBHOOK_SECRET;
+    const t = await makeT();
+    const body = "this is not json";
+    const webhookId = "wh_http_unparseable";
+    const timestampSeconds = String(Math.floor(BASE_TIMESTAMP / 1000));
+    const signature = await signDodoPayload(body, webhookId, timestampSeconds);
+
+    const response = await t.fetch("/dodopayments-webhook", {
+      method: "POST",
+      headers: {
+        "webhook-id": webhookId,
+        "webhook-timestamp": timestampSeconds,
+        "webhook-signature": signature,
+      },
+      body,
+    });
+
+    expect(response.status).toBe(500);
+    const rows = await t.run(async (ctx) =>
+      ctx.db.query("paymentWebhookFailures").collect(),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      webhookId,
+      eventType: "unknown",
+      errorKind: "SyntaxError",
+      dataKeys: [],
+      unresolved: true,
+      attemptCount: 1,
+    });
+    expect("rawPayload" in rows[0]).toBe(false);
+  });
+
+  test("still rejects a bad signature with 401 and records no failure", async () => {
+    vi.spyOn(Date, "now").mockReturnValue(BASE_TIMESTAMP);
+    process.env.DODO_PAYMENTS_WEBHOOK_SECRET = DODO_WEBHOOK_SECRET;
+    const t = await makeT();
+    const body = JSON.stringify(makeProviderValidSubscriptionPayload());
+    const webhookId = "wh_http_bad_signature";
+    const timestampSeconds = String(Math.floor(BASE_TIMESTAMP / 1000));
+
+    const response = await t.fetch("/dodopayments-webhook", {
+      method: "POST",
+      headers: {
+        "webhook-id": webhookId,
+        "webhook-timestamp": timestampSeconds,
+        "webhook-signature": "v1,AAAAAAAABBBBBBBBCCCCCCCCDDDDDDDDEEEEEEEE=",
+      },
+      body,
+    });
+
+    expect(response.status).toBe(401);
+    expect(await response.text()).toBe("Invalid webhook signature");
+    const rows = await t.run(async (ctx) =>
+      ctx.db.query("paymentWebhookFailures").collect(),
+    );
+    expect(rows).toHaveLength(0);
+  });
 });

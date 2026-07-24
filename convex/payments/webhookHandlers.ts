@@ -2,7 +2,84 @@ import { httpAction, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { requireEnv } from "../lib/env";
-import { verifyWebhookPayload } from "@dodopayments/core";
+import {
+  WebhookPayloadSchema,
+  type WebhookPayload,
+} from "@dodopayments/core";
+
+const WEBHOOK_SIGNATURE_TOLERANCE_SECONDS = 5 * 60;
+
+async function timingSafeEqualStrings(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const keyMaterial = await crypto.subtle.generateKey(
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const [sigA, sigB] = await Promise.all([
+    crypto.subtle.sign("HMAC", keyMaterial, enc.encode(a)),
+    crypto.subtle.sign("HMAC", keyMaterial, enc.encode(b)),
+  ]);
+  const aArr = new Uint8Array(sigA);
+  const bArr = new Uint8Array(sigB);
+  let diff = 0;
+  for (let i = 0; i < aArr.length; i++) diff |= aArr[i]! ^ bArr[i]!;
+  return diff === 0;
+}
+
+/**
+ * Signature-only half of the SDK's verifyWebhookPayload, same vendored
+ * standardwebhooks scheme: `whsec_` base64 secret, HMAC-SHA256 over
+ * `${webhookId}.${timestamp}.${body}`, space-separated `v1,` signatures,
+ * ±5 minute timestamp tolerance. Split out so a payload that authenticates
+ * but fails to parse or validate is handled as a provider-side defect
+ * (dead-letter + 500) instead of being mislabeled as a signature failure
+ * (401). Throws Error with the SDK's message on any verification failure.
+ */
+async function verifyDodoSignature(
+  webhookKey: string,
+  webhookId: string,
+  webhookTimestamp: string,
+  webhookSignature: string,
+  body: string,
+): Promise<void> {
+  const now = Math.floor(Date.now() / 1000);
+  const timestamp = Number.parseInt(webhookTimestamp, 10);
+  if (Number.isNaN(timestamp)) {
+    throw new Error("Invalid Signature Headers");
+  }
+  if (now - timestamp > WEBHOOK_SIGNATURE_TOLERANCE_SECONDS) {
+    throw new Error("Message timestamp too old");
+  }
+  if (timestamp > now + WEBHOOK_SIGNATURE_TOLERANCE_SECONDS) {
+    throw new Error("Message timestamp too new");
+  }
+
+  const secretBytes = Uint8Array.from(
+    atob(webhookKey.replace("whsec_", "")),
+    (c) => c.charCodeAt(0),
+  );
+  const key = await crypto.subtle.importKey(
+    "raw",
+    secretBytes,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const computed = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(`${webhookId}.${timestamp}.${body}`),
+  );
+  const expected = btoa(String.fromCharCode(...new Uint8Array(computed)));
+
+  for (const versionedSignature of webhookSignature.split(" ")) {
+    const [version, signature] = versionedSignature.split(",");
+    if (version !== "v1" || !signature) continue;
+    if (await timingSafeEqualStrings(signature, expected)) return;
+  }
+  throw new Error("No matching signature found");
+}
 
 /**
  * Surfaces a Dodo webhook signature failure to Convex auto-Sentry by
@@ -44,8 +121,9 @@ export const reportDodoSignatureFailure = internalMutation({
  * - We want 401 for invalid signatures (library returns 400)
  * - We control error handling and dispatch flow
  *
- * Signature verification uses @dodopayments/core's verifyWebhookPayload
- * which wraps Standard Webhooks (Svix) protocol with HMAC SHA256.
+ * Signature verification mirrors @dodopayments/core's vendored
+ * standardwebhooks scheme (HMAC SHA256), split from payload validation so
+ * authenticated-but-malformed deliveries dead-letter instead of 401.
  */
 export const webhookHandler = httpAction(async (ctx, request) => {
   // 1. Read webhook secret from environment
@@ -63,18 +141,82 @@ export const webhookHandler = httpAction(async (ctx, request) => {
   // 3. Read raw body for signature verification
   const body = await request.text();
 
-  // 4. Verify signature using @dodopayments/core
-  let payload: Awaited<ReturnType<typeof verifyWebhookPayload>>;
+  // Shared failure persistence: record the sanitized projection, then queue
+  // the production ops signal after the row commits. Both the validation
+  // catch (step 5) and the processing catch (step 6) use it; a degraded
+  // failure write never changes the provider-facing 500.
+  const persistFailureAndSignal = async (failure: {
+    eventType: string;
+    rawPayload: unknown;
+    timestamp: number;
+    errorKind: string;
+    errorMessage: string;
+  }): Promise<void> => {
+    try {
+      const signal = await ctx.runMutation(
+        internal.payments.webhookMutations.recordWebhookFailure,
+        {
+          webhookId,
+          eventType: failure.eventType,
+          rawPayload: failure.rawPayload,
+          timestamp: failure.timestamp,
+          receivedAt: Date.now(),
+          errorKind: failure.errorKind,
+          errorMessage: failure.errorMessage,
+        },
+      );
+
+      // `convex-test` cannot safely await a scheduler write started by an HTTP
+      // action, so keep this test-only guard aligned with the existing Redis
+      // scheduler guards in subscriptionHelpers.ts. Production attempts to
+      // queue the structured auto-Sentry signal after the failure row commits;
+      // a scheduler failure is logged and does not alter the provider-facing
+      // retry response.
+      if (process.env.NODE_ENV !== "test") {
+        // sentry-coverage-ok: the scheduled mutation emits a structured
+        // console.error after the failure row commits, so Convex auto-Sentry
+        // receives an ops signal without changing the provider-facing 500.
+        try {
+          await ctx.scheduler.runAfter(
+            0,
+            internal.payments.webhookMutations.reportDodoWebhookFailure,
+            {
+              webhookId,
+              eventType: failure.eventType,
+              errorKind: signal.errorKind,
+              errorMessage: signal.errorMessage,
+              attemptCount: signal.attemptCount,
+              unresolvedCount: signal.unresolvedCount,
+              eventTypes: signal.eventTypes,
+            },
+          );
+        } catch (scheduleErr) {
+          // sentry-coverage-ok: the caller's own console.error still reaches
+          // Convex auto-Sentry; a scheduler hiccup is best-effort and must
+          // not change the provider-facing 500.
+          console.error("[webhook] reportDodoWebhookFailure schedule failed:", scheduleErr);
+        }
+      }
+    } catch (recordErr) {
+      // sentry-coverage-ok: the caller's own console.error still reaches
+      // Convex auto-Sentry. The retry contract is more important than the
+      // observability bonus — keep returning 500 if the failure write is
+      // degraded.
+      console.error("[webhook] Failed to persist Dodo webhook failure:", recordErr);
+    }
+  };
+
+  // 4. Verify the signature on its own, BEFORE parsing. 401 is reserved for
+  //    credentials that do not verify — see step 5 for authenticated but
+  //    malformed payloads.
   try {
-    payload = await verifyWebhookPayload({
+    await verifyDodoSignature(
       webhookKey,
-      headers: {
-        "webhook-id": webhookId,
-        "webhook-timestamp": webhookTimestamp,
-        "webhook-signature": webhookSignature,
-      },
+      webhookId,
+      webhookTimestamp,
+      webhookSignature,
       body,
-    });
+    );
   } catch (error) {
     // sentry-coverage-ok: the scheduled mutation below throws a
     // structured error that Convex auto-Sentry captures. Required because
@@ -110,7 +252,41 @@ export const webhookHandler = httpAction(async (ctx, request) => {
     return new Response("Invalid webhook signature", { status: 401 });
   }
 
-  // 5. Dispatch to internal mutation for idempotent processing.
+  // 5. Parse + schema-validate the authenticated payload (the same schema
+  //    the SDK's verifyWebhookPayload applies after its signature check).
+  //    A failure here is a permanent provider-side defect, not a credentials
+  //    failure: dead-letter a sanitized projection and return 500 so the
+  //    retry exhausts into a repairable incident instead of a mislabeled 401.
+  let parsedBody: unknown = null;
+  let payload: WebhookPayload;
+  try {
+    parsedBody = JSON.parse(body);
+    payload = WebhookPayloadSchema.parse(parsedBody);
+  } catch (error) {
+    const errorKind = error instanceof Error && error.name
+      ? error.name
+      : "WebhookPayloadValidationError";
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const parsedRecord =
+      parsedBody !== null && typeof parsedBody === "object" && !Array.isArray(parsedBody)
+        ? (parsedBody as Record<string, unknown>)
+        : null;
+    await persistFailureAndSignal({
+      eventType: typeof parsedRecord?.type === "string" ? parsedRecord.type : "unknown",
+      // Never the raw body text: only the parsed structure's identifiers and
+      // shape keys are extracted downstream; unparseable bodies record null.
+      rawPayload: parsedBody,
+      timestamp: Date.now(),
+      errorKind,
+      errorMessage,
+    });
+    // sentry-coverage-ok: failure details are persisted above and the
+    // scheduled report mutation provides the structured Sentry signal.
+    console.error("Webhook payload validation failed:", error);
+    return new Response("Invalid webhook payload", { status: 500 });
+  }
+
+  // 6. Dispatch to internal mutation for idempotent processing.
   //    Uses the validated payload directly (not a second JSON.parse) to avoid divergence.
   //    On handler failure the mutation throws, rolling back partial writes.
   //    We record a sanitized failure projection in a separate mutation before
@@ -145,53 +321,13 @@ export const webhookHandler = httpAction(async (ctx, request) => {
       : "WebhookProcessingError";
     const errorMessage = error instanceof Error ? error.message : String(error);
 
-    try {
-      const signal = await ctx.runMutation(
-        internal.payments.webhookMutations.recordWebhookFailure,
-        {
-          webhookId,
-          eventType,
-          rawPayload: sanitizedPayload,
-          timestamp: eventTimestamp,
-          receivedAt: Date.now(),
-          errorKind,
-          errorMessage,
-        },
-      );
-
-      // `convex-test` cannot safely await a scheduler write started by an HTTP
-      // action, so keep this test-only guard aligned with the existing Redis
-      // scheduler guards in subscriptionHelpers.ts. Production attempts to
-      // queue the structured auto-Sentry signal after the failure row commits;
-      // a scheduler failure is logged and does not alter the provider-facing
-      // retry response.
-      if (process.env.NODE_ENV !== "test") {
-        // sentry-coverage-ok: the scheduled mutation emits a structured
-        // console.error after the failure row commits, so Convex auto-Sentry
-        // receives an ops signal without changing the provider-facing 500.
-        try {
-          await ctx.scheduler.runAfter(
-            0,
-            internal.payments.webhookMutations.reportDodoWebhookFailure,
-            {
-              webhookId,
-              eventType,
-              errorKind: signal.errorKind,
-              errorMessage: signal.errorMessage,
-              attemptCount: signal.attemptCount,
-              unresolvedCount: signal.unresolvedCount,
-              eventTypes: signal.eventTypes,
-            },
-          );
-        } catch (scheduleErr) {
-          console.error("[webhook] reportDodoWebhookFailure schedule failed:", scheduleErr);
-        }
-      }
-    } catch (recordErr) {
-      // The retry contract is still more important than the observability
-      // bonus. Keep returning 500 if the separate failure write is degraded.
-      console.error("[webhook] Failed to persist Dodo webhook failure:", recordErr);
-    }
+    await persistFailureAndSignal({
+      eventType,
+      rawPayload: sanitizedPayload,
+      timestamp: eventTimestamp,
+      errorKind,
+      errorMessage,
+    });
 
     // sentry-coverage-ok: failure details are persisted above and the
     // scheduled report mutation provides the structured Sentry signal.
@@ -199,7 +335,7 @@ export const webhookHandler = httpAction(async (ctx, request) => {
     return new Response("Internal processing error", { status: 500 });
   }
 
-  // Recovery is deliberately outside the processing-failure catch. If this
+  // 7. Recovery is deliberately outside the processing-failure catch. If this
   // bookkeeping mutation is transiently unavailable, the provider should
   // retry the delivery, but that recovery error must not be recorded as a
   // new processing incident after billing state already committed.
@@ -213,6 +349,6 @@ export const webhookHandler = httpAction(async (ctx, request) => {
     return new Response("Internal processing error", { status: 500 });
   }
 
-  // 6. Return 200 on success (synchronous processing complete)
+  // 8. Return 200 on success (synchronous processing complete)
   return new Response(null, { status: 200 });
 });
