@@ -208,7 +208,11 @@ function syncProBanner(): void {
   // A premium snapshot may have started the fade-out immediately before a
   // non-premium snapshot arrived. Keep the banner visible for the restored
   // state instead of letting that stale removal callback delete it.
+  // An explicit dismissal owns its removal timer and must not be reversed by
+  // an unrelated subscription snapshot arriving during the 300 ms fade.
+  if (dismissedThisSession) return;
   cancelPendingBannerRemoval();
+  bannerEl?.classList.remove('pro-banner-out');
   if (bannerEl && bannerContainer) {
     const nextState = deriveBillingUxState(getSubscription(), getEntitlementState(), Date.now()) === 'lapsed'
       ? 'lapsed'

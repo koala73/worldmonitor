@@ -151,6 +151,11 @@ describe('returning-subscriber surfaces (#4799)', () => {
     assert.match(src, /getReactivationHref\(/);
     assert.match(src, /cancelPendingBannerRemoval\(\)/);
     assert.match(src, /pendingBannerRemoval/);
+    assert.match(
+      src,
+      /if \(dismissedThisSession\) return;\s+cancelPendingBannerRemoval\(\);\s+bannerEl\?\.classList\.remove\('pro-banner-out'\);/,
+      'reversed entitlement fades must restore visibility without cancelling explicit dismissals',
+    );
   });
 
   it('uses the lapsed billing state and prior plan in Unified Settings', async () => {
