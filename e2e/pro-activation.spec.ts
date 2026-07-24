@@ -102,7 +102,9 @@ async function openFlow(page: Page, withOpeners: boolean): Promise<void> {
     const w = window as unknown as { __proEvents: CapturedProEvent[] };
     w.__proEvents = [];
     const options: Record<string, unknown> = {
+      accountUserId: 'e2e-user',
       accountEmail: 'e2e@worldmonitor.app',
+      isAccountCurrent: () => true,
       onEvent: (event: string, stepId?: string, exit?: CapturedProEvent['exit']) => {
         w.__proEvents.push({ event, stepId, exit });
       },
@@ -112,7 +114,7 @@ async function openFlow(page: Page, withOpeners: boolean): Promise<void> {
       options.openAiAnalyst = () => {};
       options.openApiKeys = () => {};
     }
-    void (mod.openProActivationFlow as (o: unknown) => Promise<void>)(options);
+    void (mod.openProActivationFlow as (o: unknown) => Promise<boolean>)(options);
   }, withOpeners);
   await expect(page.locator(OVERLAY)).toBeVisible({ timeout: 20_000 });
 }
@@ -192,10 +194,58 @@ test.describe('Pro activation interstitial — shell step flow', () => {
     await expect(page.locator('.pro-activation-summary-line.status-failed')).toHaveCount(1);
     await expect(page.locator('.pro-activation-summary-line.status-pending')).toHaveCount(2);
   });
+
+  test('dismiss is blocked while a confirmation write is in flight', async ({ page }) => {
+    await gotoHarness(page);
+    await page.evaluate(async () => {
+      const { initI18n } = await import('/src/services/i18n.ts');
+      await initI18n();
+      const mod = await import('/src/components/ProActivationInterstitial.ts');
+      const w = window as unknown as {
+        __resolveProConfirm?: (result: 'verified') => void;
+        __proExit: unknown;
+      };
+      w.__proExit = null;
+      mod.openProActivationInterstitial({
+        steps: [{ id: 'brief', state: 'confirmable' }],
+        accountEmail: 'e2e@worldmonitor.app',
+        onConfirmStep: () =>
+          new Promise<'verified'>((resolve) => {
+            w.__resolveProConfirm = resolve;
+          }),
+        onSkipStep: () => {},
+        onExit: (results) => {
+          w.__proExit = results;
+        },
+      });
+    });
+
+    await page.locator(CONFIRM_BTN).click();
+    await expect(page.locator(CONFIRM_BTN)).toBeDisabled();
+    await expect(page.locator('.pro-activation-close')).toBeDisabled();
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator(OVERLAY)).toBeVisible();
+    await expect(page.locator(SUMMARY)).toHaveCount(0);
+
+    await page.evaluate(() => {
+      (
+        window as unknown as { __resolveProConfirm?: (result: 'verified') => void }
+      ).__resolveProConfirm?.('verified');
+    });
+    await expect(page.locator(SUMMARY)).toBeVisible();
+    await expect(page.locator('.pro-activation-summary-line.status-verified')).toHaveCount(1);
+
+    await page.locator(FINISH_BTN).click();
+    const results = await page.evaluate(
+      () => (window as unknown as { __proExit: Array<{ outcome: string }> }).__proExit,
+    );
+    expect(results.map((result) => result.outcome)).toEqual(['confirmed']);
+  });
 });
 
 test.describe('Pro activation flow — telemetry + finish-setup chip', () => {
-  test('skip-all through the real flow → chip appears, dismiss persists across reload', async ({
+  test('skip-all through the real flow does not leak a chip after the owner session changes', async ({
     page,
   }) => {
     await gotoHarness(page);
@@ -227,25 +277,12 @@ test.describe('Pro activation flow — telemetry + finish-setup chip', () => {
     expect(exit).toBeTruthy();
     expect(exit?.exit?.completion).toBe('none');
 
-    // The finish-setup chip surfaces because a step was left unfinished.
-    await expect(page.locator(CHIP)).toBeVisible();
-
-    // Dismiss (the ✕) persists a dismissal record and removes the chip.
-    await page.locator(`${CHIP} button`, { hasText: '✕' }).click();
+    // The harness has no Clerk session. The flow is owned by the synthetic
+    // account passed above, so its unfinished state must not leak into an
+    // anonymous/different-account chip.
     await expect(page.locator(CHIP)).toHaveCount(0);
     const dismissed = await page.evaluate((k) => localStorage.getItem(k), CHIP_DISMISS_KEY);
-    expect(dismissed).toBeTruthy();
-
-    // After reload, the fresh-dismissal record suppresses the chip (AE:
-    // maybeShowFinishSetupChip short-circuits before any config read).
-    await page.reload();
-    await page.evaluate(async () => {
-      const { initI18n } = await import('/src/services/i18n.ts');
-      await initI18n();
-      const chip = await import('/src/components/ProActivationChip.ts');
-      await chip.maybeShowFinishSetupChip({ accountEmail: 'e2e@worldmonitor.app' });
-    });
-    await expect(page.locator(CHIP)).toHaveCount(0);
+    expect(dismissed).toBeNull();
   });
 
   test('power-toolkit pointer confirms the step and fires step-confirmed telemetry', async ({
@@ -278,6 +315,88 @@ test.describe('Pro activation flow — telemetry + finish-setup chip', () => {
     expect(exit).toBeTruthy();
     // One step verified (power), the rest left pending → partial completion.
     expect(exit?.exit?.completion).toBe('partial');
+  });
+});
+
+test.describe('Pro activation — notification context', () => {
+  test('selects the current variant instead of the first alert rule', async ({ page }) => {
+    await gotoHarness(page);
+    const result = await page.evaluate(async () => {
+      const { SITE_VARIANT } = await import('/src/config/variant.ts');
+      const { activationContextFromChannelsData } = await import(
+        '/src/components/ProActivationInterstitial.ts'
+      );
+      return activationContextFromChannelsData(
+        {
+          channels: [
+            { channelType: 'email', verified: true, linkedAt: 1 },
+            { channelType: 'web_push', verified: true, linkedAt: 1 },
+          ],
+          alertRules: [
+            {
+              variant: 'not-the-current-variant',
+              enabled: true,
+              eventTypes: [],
+              sensitivity: 'all',
+              channels: ['email', 'web_push'],
+              digestMode: 'daily',
+              digestHour: 6,
+            },
+            {
+              variant: SITE_VARIANT,
+              enabled: true,
+              eventTypes: [],
+              sensitivity: 'critical',
+              channels: [],
+              digestMode: 'weekly',
+              digestHour: 8,
+            },
+          ],
+        },
+        { webPushSupported: true, pushPermission: 'granted' },
+      );
+    });
+
+    expect(result.config.hasEnabledDigestRule).toBe(true);
+    expect(result.config.hasTunedDigestHour).toBe(false);
+    expect(result.config.hasEmailDelivery).toBe(false);
+    expect(result.config.hasWebPushDelivery).toBe(false);
+    expect(result.channels).toEqual(['email', 'web_push']);
+  });
+
+  test('requires verified channel rows to be linked by the current rule', async ({ page }) => {
+    await gotoHarness(page);
+    const result = await page.evaluate(async () => {
+      const { SITE_VARIANT } = await import('/src/config/variant.ts');
+      const { activationContextFromChannelsData } = await import(
+        '/src/components/ProActivationInterstitial.ts'
+      );
+      return activationContextFromChannelsData(
+        {
+          channels: [
+            { channelType: 'email', verified: true, linkedAt: 1 },
+            { channelType: 'web_push', verified: true, linkedAt: 1 },
+          ],
+          alertRules: [
+            {
+              variant: SITE_VARIANT,
+              enabled: true,
+              eventTypes: [],
+              sensitivity: 'critical',
+              channels: ['email'],
+              digestMode: 'daily',
+              digestHour: 8,
+            },
+          ],
+        },
+        { webPushSupported: true, pushPermission: 'granted' },
+      );
+    });
+
+    expect(result.config.hasVerifiedEmailChannel).toBe(true);
+    expect(result.config.hasWebPushChannel).toBe(true);
+    expect(result.config.hasEmailDelivery).toBe(true);
+    expect(result.config.hasWebPushDelivery).toBe(false);
   });
 });
 
@@ -319,7 +438,7 @@ test.describe('Pro activation — boot gating (real app)', () => {
     expect(marker).not.toBeNull();
   });
 
-  test('already-onboarded fire-once record + no marker → no re-open on a later boot (AE5)', async ({
+  test('unresolved auth never leaks a fire-once setup chip to the wrong viewer', async ({
     page,
   }) => {
     // Post-completion storage state: the marker was cleared and a fire-once
@@ -338,10 +457,8 @@ test.describe('Pro activation — boot gating (real app)', () => {
 
     await expect(page.locator(OVERLAY)).toHaveCount(0);
 
-    // The 'none' decision still runs the finish-setup chip check (fire-once is
-    // active). This harness's getChannelsData throws (no Clerk token), so every
-    // step degrades to unconfigured → derives as unfinished, and the chip should
-    // surface. A generous timeout absorbs the chip's own async config read.
-    await expect(page.locator(CHIP)).toBeVisible({ timeout: 10_000 });
+    await expect(page.locator(CHIP)).toHaveCount(0);
+    const stored = await page.evaluate((key) => localStorage.getItem(key), FIRE_ONCE_KEY);
+    expect(stored).not.toContain('userId');
   });
 });

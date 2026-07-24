@@ -1,4 +1,4 @@
-import { getClerkToken } from '@/services/clerk';
+import { getClerkToken, getCurrentClerkUser } from '@/services/clerk';
 import { SITE_VARIANT } from '@/config/variant';
 
 export type ChannelType = 'telegram' | 'slack' | 'email' | 'discord' | 'webhook' | 'web_push';
@@ -50,7 +50,18 @@ export interface ChannelsData {
   alertRules: AlertRule[];
 }
 
-async function authFetch(path: string, init?: RequestInit): Promise<Response> {
+function assertExpectedAccount(expectedUserId?: string): void {
+  if (expectedUserId && getCurrentClerkUser()?.id !== expectedUserId) {
+    throw new Error('Authenticated account changed during notification setup');
+  }
+}
+
+async function authFetch(
+  path: string,
+  init?: RequestInit,
+  expectedUserId?: string,
+): Promise<Response> {
+  assertExpectedAccount(expectedUserId);
   let token = await getClerkToken();
   if (!token) {
     console.warn('[authFetch] getClerkToken returned null, retrying in 2s...');
@@ -58,6 +69,9 @@ async function authFetch(path: string, init?: RequestInit): Promise<Response> {
     token = await getClerkToken();
   }
   if (!token) throw new Error('Not authenticated (Clerk token null after retry)');
+  // The token was resolved asynchronously. Re-check immediately before the
+  // request so a modal opened by user A cannot write under user B's session.
+  assertExpectedAccount(expectedUserId);
   return fetch(path, {
     ...init,
     headers: {
@@ -67,8 +81,8 @@ async function authFetch(path: string, init?: RequestInit): Promise<Response> {
   });
 }
 
-export async function getChannelsData(): Promise<ChannelsData> {
-  const res = await authFetch('/api/notification-channels');
+export async function getChannelsData(expectedUserId?: string): Promise<ChannelsData> {
+  const res = await authFetch('/api/notification-channels', undefined, expectedUserId);
   if (!res.ok) throw new Error(`get channels: ${res.status}`);
   return res.json() as Promise<ChannelsData>;
 }
@@ -83,12 +97,12 @@ export async function createPairingToken(): Promise<{ token: string; expiresAt: 
   return res.json();
 }
 
-export async function setEmailChannel(email: string): Promise<void> {
+export async function setEmailChannel(email: string, expectedUserId?: string): Promise<void> {
   const res = await authFetch('/api/notification-channels', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'set-channel', channelType: 'email', email }),
-  });
+  }, expectedUserId);
   if (!res.ok) throw new Error(`set email channel: ${res.status}`);
 }
 
@@ -263,12 +277,12 @@ export async function setNotificationConfig(args: {
   digestTimezone?: string;
   countries?: string[];
   tickers?: string[];
-}): Promise<void> {
+}, expectedUserId?: string): Promise<void> {
   const res = await authFetch('/api/notification-channels', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ action: 'set-notification-config', ...args }),
-  });
+  }, expectedUserId);
   if (res.ok) return;
   let body: { error?: string; message?: string } = {};
   try { body = await res.json(); } catch { /* keep default */ }
