@@ -13,6 +13,7 @@ import { join } from 'node:path';
 
 import {
   assertNoForbiddenEnvDumps,
+  decideHooksPathAction,
   linkEnvFiles,
   parseArgs,
   shouldInstallDependencies,
@@ -121,5 +122,56 @@ describe('worktree bootstrap helper', () => {
     assert.equal(options.skipInstall, true);
     assert.equal(options.ignoreScripts, true);
     assert.equal(options.dryRun, true);
+  });
+
+  // A stale absolute core.hooksPath makes every worktree push run ANOTHER
+  // checkout's (possibly ancient) pre-push hook — the 2026-07-24 "pushes
+  // take minutes and time out" incident. Worktree-creation tooling stamps
+  // the shared value into .git/worktrees/<n>/config.worktree at creation
+  // time, so a one-time absolute value keeps resurfacing per worktree.
+  describe('decideHooksPathAction', () => {
+    const root = '/repos/wm/.claude/worktrees/my-feature';
+
+    it('leaves unset and relative hooksPath alone', () => {
+      assert.equal(
+        decideHooksPathAction({ rootDir: root, hooksPathValue: '', originFile: '' }).action,
+        'none',
+      );
+      assert.equal(
+        decideHooksPathAction({
+          rootDir: root,
+          hooksPathValue: '.husky',
+          originFile: '/repos/wm/.git/config',
+        }).action,
+        'none',
+      );
+    });
+
+    it('leaves an absolute hooksPath alone when it points into this worktree', () => {
+      const result = decideHooksPathAction({
+        rootDir: root,
+        hooksPathValue: `${root}/.husky`,
+        originFile: `/repos/wm/.git/worktrees/my-feature/config.worktree`,
+      });
+      assert.equal(result.action, 'none');
+    });
+
+    it('unsets a per-worktree override pointing at another checkout', () => {
+      const result = decideHooksPathAction({
+        rootDir: root,
+        hooksPathValue: '/repos/wm/.husky',
+        originFile: '/repos/wm/.git/worktrees/my-feature/config.worktree',
+      });
+      assert.equal(result.action, 'unset-worktree');
+    });
+
+    it('warns (never mutates) when the foreign absolute value is in the shared config', () => {
+      const result = decideHooksPathAction({
+        rootDir: root,
+        hooksPathValue: '/repos/wm/.husky',
+        originFile: '/repos/wm/.git/config',
+      });
+      assert.equal(result.action, 'warn-shared');
+    });
   });
 });

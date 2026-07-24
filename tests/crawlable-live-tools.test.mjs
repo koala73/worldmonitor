@@ -472,7 +472,7 @@ describe('crawlable live intelligence view models', () => {
     try {
       await loadHazards(tool);
       assert.deepEqual(replacedUrls, ['/tools/natural-hazard-pulse/?country=JP']);
-      assert.equal(dashboardLink.href, '/?country=JP&expanded=1');
+      assert.equal(dashboardLink.href, '/?country=JP&expanded=1&utm_source=seo-tool');
     } finally {
       globalThis.fetch = originalFetch;
       if (originalWindow === undefined) delete globalThis.window;
