@@ -234,7 +234,7 @@ type SubscriptionRow = {
  * (payment retry window — entitlement preserved per business policy), or
  * cancelled-but-paid-through (currentPeriodEnd in the future).
  */
-function isCoveringAt<T extends Pick<SubscriptionRow, "status" | "currentPeriodEnd">>(
+export function isCoveringAt<T extends Pick<SubscriptionRow, "status" | "currentPeriodEnd">>(
   s: T,
   at: number,
 ): boolean {
