@@ -706,6 +706,12 @@ export class UnifiedSettings {
         }
       }
 
+      // An invitee holding a Business Pro grant has Pro features but no own
+      // subscription row — they hold a grant, not a subscription, so the
+      // billing surface remains owner-only. Show their plan status without
+      // the Manage Billing CTA that would 404 against Dodo.
+      const hasOwnSubscription = sub !== null;
+
       return `
         <div class="upgrade-pro-section upgrade-pro-active" style="margin-top:16px;padding:14px 16px;border:1px solid ${statusBorderColor};border-radius:6px;background:${statusBgColor};">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:${statusLine ? '8' : '0'}px;">
@@ -714,7 +720,7 @@ export class UnifiedSettings {
           </div>
           ${statusLine ? `<div class="upgrade-pro-status-line">${escapeHtml(statusLine)}</div>` : ''}
           ${sub?.planKey === 'api_starter' ? `<button class="upgrade-to-business-btn" style="margin-right:8px;">Upgrade to Business</button>` : ''}
-          <button class="manage-billing-btn">Manage Billing</button>
+          ${hasOwnSubscription ? `<button class="manage-billing-btn">Manage Billing</button>` : ''}
         </div>
         ${sub?.planKey === 'api_business' && sub?.status === 'active' ? `<div id="usBusinessSeats">${this.renderBusinessSeatsContent()}</div>` : ''}
       `;
