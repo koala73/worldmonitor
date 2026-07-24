@@ -332,6 +332,88 @@ describe("payments businessSeats inviteSeats", () => {
     await t.finishAllScheduledFunctions(vi.runAllTimers);
   });
 
+  test("re-inviting an already-accepted email is idempotent ('already_accepted')", async () => {
+    vi.useFakeTimers();
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_already_accepted";
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    await seedAcceptedGrantWithInvitee(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeUserId: "user_teammate",
+      inviteeEmail: "teammate@acme.com",
+      domain: "acme.com",
+    });
+
+    const result = await t.withIdentity(OWNER_IDENTITY).mutation(
+      api.payments.businessSeats.inviteSeats,
+      { emails: ["teammate@acme.com"] },
+    );
+    expect(result.invited[0].status).toBe("already_accepted");
+
+    const grants = await t.run(async (ctx) =>
+      ctx.db
+        .query("businessProGrants")
+        .withIndex("by_businessSubscriptionId", (q) =>
+          q.eq("businessSubscriptionId", businessSubId),
+        )
+        .collect(),
+    );
+    expect(grants).toHaveLength(1);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+  });
+
+  test("owner identity without email → OWNER_EMAIL_UNAVAILABLE", async () => {
+    const t = convexTest(schema, modules);
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: "sub_business_no_email",
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+
+    await expect(
+      t
+        .withIdentity({ subject: OWNER_ID, tokenIdentifier: `clerk|${OWNER_ID}` })
+        .mutation(api.payments.businessSeats.inviteSeats, {
+          emails: ["teammate@acme.com"],
+        }),
+    ).rejects.toThrow(/OWNER_EMAIL_UNAVAILABLE/);
+  });
+
+  test("empty/whitespace emails → NO_EMAILS_PROVIDED", async () => {
+    const t = convexTest(schema, modules);
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: "sub_business_empty_emails",
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+
+    await expect(
+      t.withIdentity(OWNER_IDENTITY).mutation(api.payments.businessSeats.inviteSeats, {
+        emails: ["", "   "],
+      }),
+    ).rejects.toThrow(/NO_EMAILS_PROVIDED/);
+  });
+
+  test("invitee free-domain → INVITEE_DOMAIN_NOT_CORPORATE", async () => {
+    const t = convexTest(schema, modules);
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: "sub_business_free_invitee",
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+
+    await expect(
+      t.withIdentity(OWNER_IDENTITY).mutation(api.payments.businessSeats.inviteSeats, {
+        emails: ["friend@gmail.com"],
+      }),
+    ).rejects.toThrow(/INVITEE_DOMAIN_NOT_CORPORATE/);
+  });
+
   test("non-Business owner → OWNER_NOT_BUSINESS", async () => {
     const t = convexTest(schema, modules);
     await seedEntitlement(t, OWNER_ID, "pro_monthly", NOW + 30 * DAY_MS);
@@ -692,6 +774,116 @@ describe("payments businessSeats acceptBusinessInvite", () => {
     ).rejects.toThrow(/INVALID_INVITE_TOKEN/);
     vi.useRealTimers();
   });
+
+  test("unknown grantId → GRANT_NOT_FOUND", async () => {
+    vi.useFakeTimers();
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_accept_007";
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    // Create and delete a grant to get a valid-format ID that no longer exists.
+    const grantId = await t.run(async (ctx) => {
+      const id = await ctx.db.insert("businessProGrants", {
+        businessSubscriptionId: businessSubId,
+        ownerUserId: OWNER_ID,
+        inviteeEmail: "temp@acme.com",
+        domain: "acme.com",
+        status: "pending",
+        createdAt: NOW,
+        expiresAt: NOW + 14 * DAY_MS,
+      });
+      await ctx.db.delete(id);
+      return id;
+    });
+
+    await expect(
+      t
+        .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "teammate@acme.com" })
+        .mutation(api.payments.businessSeats.acceptBusinessInvite, {
+          grantId,
+          token: "v1.12345.fake",
+        }),
+    ).rejects.toThrow(/GRANT_NOT_FOUND/);
+    vi.useRealTimers();
+  });
+
+  test("identity without email → INVITEE_EMAIL_UNAVAILABLE", async () => {
+    vi.useFakeTimers();
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_accept_008";
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    await seedPendingGrant(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeEmail: "teammate@acme.com",
+      domain: "acme.com",
+    });
+    const grant = await t.run(async (ctx) =>
+      ctx.db
+        .query("businessProGrants")
+        .withIndex("by_businessSubscriptionId", (q) =>
+          q.eq("businessSubscriptionId", businessSubId),
+        )
+        .first(),
+    );
+    const token = await signBusinessInviteToken(grant!._id);
+
+    await expect(
+      t
+        .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate" })
+        .mutation(api.payments.businessSeats.acceptBusinessInvite, {
+          grantId: grant!._id,
+          token,
+        }),
+    ).rejects.toThrow(/INVITEE_EMAIL_UNAVAILABLE/);
+    vi.useRealTimers();
+  });
+
+  test("invitee free-domain at accept-time → INVITEE_DOMAIN_NOT_CORPORATE", async () => {
+    vi.useFakeTimers();
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_accept_009";
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    // Seed a pending grant whose invitee email is on a free domain (as if the
+    // invite was created before the gate tightened, or via a direct DB write).
+    await seedPendingGrant(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeEmail: "friend@gmail.com",
+      domain: "gmail.com",
+    });
+    const grant = await t.run(async (ctx) =>
+      ctx.db
+        .query("businessProGrants")
+        .withIndex("by_businessSubscriptionId", (q) =>
+          q.eq("businessSubscriptionId", businessSubId),
+        )
+        .first(),
+    );
+    const token = await signBusinessInviteToken(grant!._id);
+
+    await expect(
+      t
+        .withIdentity({ subject: "user_friend", tokenIdentifier: "clerk|user_friend", email: "friend@gmail.com" })
+        .mutation(api.payments.businessSeats.acceptBusinessInvite, {
+          grantId: grant!._id,
+          token,
+        }),
+    ).rejects.toThrow(/INVITEE_DOMAIN_NOT_CORPORATE/);
+    vi.useRealTimers();
+  });
 });
 
 describe("payments businessSeats revoke-on-lapse", () => {
@@ -848,6 +1040,50 @@ describe("payments businessSeats revoke-on-lapse", () => {
         .collect(),
     );
     expect(grants.every((g) => g.status === "accepted")).toBe(true);
+    vi.useRealTimers();
+  });
+
+  test("cancelled api_business with currentPeriodEnd already past → grants revoked synchronously", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_revoke_immediate";
+    // Seed as cancelled with currentPeriodEnd already in the past so the
+    // webhook handler's isCoveringAt check fails immediately.
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "cancelled",
+      currentPeriodEnd: NOW - DAY_MS,
+    });
+    await seedAcceptedGrantWithInvitee(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeUserId: "user_teammate",
+      inviteeEmail: "teammate@acme.com",
+      domain: "acme.com",
+    });
+
+    await fireWebhook(t, {
+      eventType: "subscription.cancelled",
+      dodoSubscriptionId: businessSubId,
+      status: "cancelled",
+      eventTimestamp: NOW + 1000,
+      cancelledAt: NOW - DAY_MS,
+    });
+
+    const grants = await t.run(async (ctx) =>
+      ctx.db
+        .query("businessProGrants")
+        .withIndex("by_businessSubscriptionId", (q) =>
+          q.eq("businessSubscriptionId", businessSubId),
+        )
+        .collect(),
+    );
+    expect(grants.every((g) => g.status === "revoked")).toBe(true);
+
+    const ent = await t.run(async (ctx) =>
+      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", "user_teammate")).first(),
+    );
+    expect(ent?.planKey).toBe("free");
     vi.useRealTimers();
   });
 

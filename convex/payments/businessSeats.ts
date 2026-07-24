@@ -29,6 +29,15 @@ import {
 } from "../lib/identitySigning";
 import { isCoveringAt } from "./subscriptionHelpers";
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 const MAX_SEATS = 4;
 const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 
@@ -253,7 +262,7 @@ export const sendTeamAccessEndedEmail = internalAction({
       console.error(`[businessSeats] Resend ${res.status}: ${body}`);
       throw new Error(`Resend team-access-ended email failed: ${res.status}`);
     }
-    console.log(`[businessSeats] Team-access-ended email sent to ${args.inviteeEmail}`);
+    console.log(`[businessSeats] Team-access-ended email sent to ${args.inviteeEmail.split("@")[0]}@...`);
   },
 });
 
@@ -282,7 +291,7 @@ export const sendBusinessInviteEmail = internalAction({
   <div style="padding: 40px 32px;">
     <p style="font-size: 22px; font-weight: 700; color: #fff; margin: 0 0 12px;">You're invited to WorldMonitor Pro</p>
     <p style="font-size: 14px; color: #999; line-height: 1.5; margin: 0 0 24px;">
-      ${args.ownerEmail} has invited you to a Pro seat on their WorldMonitor API Business plan.
+      ${escapeHtml(args.ownerEmail)} has invited you to a Pro seat on their WorldMonitor API Business plan.
       Accept the invite to unlock all Pro features — no billing setup required.
     </p>
     <div style="text-align: center;">
@@ -313,7 +322,7 @@ export const sendBusinessInviteEmail = internalAction({
       console.error(`[businessSeats] Resend ${res.status}: ${body}`);
       throw new Error(`Resend invite email failed: ${res.status}`);
     }
-    console.log(`[businessSeats] Invite email sent to ${args.inviteeEmail} (grant ${args.grantId})`);
+    console.log(`[businessSeats] Invite email sent to ${args.inviteeEmail.split("@")[0]}@... (grant ${args.grantId.slice(0, 8)}...)`);
   },
 });
 
