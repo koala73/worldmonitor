@@ -34,10 +34,13 @@ import type * as followedCountries from "../followedCountries.js";
 import type * as http from "../http.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_dodo from "../lib/dodo.js";
+import type * as lib_emailDomain from "../lib/emailDomain.js";
 import type * as lib_entitlements from "../lib/entitlements.js";
 import type * as lib_env from "../lib/env.js";
 import type * as lib_identitySigning from "../lib/identitySigning.js";
 import type * as lib_iso2 from "../lib/iso2.js";
+import type * as lib_shards from "../lib/shards.js";
+import type * as mcpProTokens from "../mcpProTokens.js";
 import type * as notificationChannels from "../notificationChannels.js";
 import type * as payments_backfillCustomerNormalizedEmail from "../payments/backfillCustomerNormalizedEmail.js";
 import type * as payments_billing from "../payments/billing.js";
@@ -87,10 +90,13 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   "lib/auth": typeof lib_auth;
   "lib/dodo": typeof lib_dodo;
+  "lib/emailDomain": typeof lib_emailDomain;
   "lib/entitlements": typeof lib_entitlements;
   "lib/env": typeof lib_env;
   "lib/identitySigning": typeof lib_identitySigning;
   "lib/iso2": typeof lib_iso2;
+  "lib/shards": typeof lib_shards;
+  mcpProTokens: typeof mcpProTokens;
   notificationChannels: typeof notificationChannels;
   "payments/backfillCustomerNormalizedEmail": typeof payments_backfillCustomerNormalizedEmail;
   "payments/billing": typeof payments_billing;
@@ -135,77 +141,5 @@ export declare const internal: FilterApi<
 >;
 
 export declare const components: {
-  dodopayments: {
-    lib: {
-      checkout: FunctionReference<
-        "action",
-        "internal",
-        {
-          apiKey: string;
-          environment: "test_mode" | "live_mode";
-          payload: {
-            allowed_payment_method_types?: Array<string>;
-            billing_address?: {
-              city?: string;
-              country: string;
-              state?: string;
-              street?: string;
-              zipcode?: string;
-            };
-            billing_currency?: string;
-            confirm?: boolean;
-            customer?:
-              | { email: string; name?: string; phone_number?: string }
-              | { customer_id: string };
-            customization?: {
-              force_language?: string;
-              show_on_demand_tag?: boolean;
-              show_order_details?: boolean;
-              theme?: string;
-            };
-            discount_code?: string;
-            feature_flags?: {
-              allow_currency_selection?: boolean;
-              allow_discount_code?: boolean;
-              allow_phone_number_collection?: boolean;
-              allow_tax_id?: boolean;
-              always_create_new_customer?: boolean;
-            };
-            force_3ds?: boolean;
-            metadata?: Record<string, string>;
-            product_cart: Array<{
-              addons?: Array<{ addon_id: string; quantity: number }>;
-              amount?: number;
-              product_id: string;
-              quantity: number;
-            }>;
-            return_url?: string;
-            show_saved_payment_methods?: boolean;
-            subscription_data?: {
-              on_demand?: {
-                adaptive_currency_fees_inclusive?: boolean;
-                mandate_only: boolean;
-                product_currency?: string;
-                product_description?: string;
-                product_price?: number;
-              };
-              trial_period_days?: number;
-            };
-          };
-        },
-        { checkout_url: string }
-      >;
-      customerPortal: FunctionReference<
-        "action",
-        "internal",
-        {
-          apiKey: string;
-          dodoCustomerId: string;
-          environment: "test_mode" | "live_mode";
-          send_email?: boolean;
-        },
-        { portal_url: string }
-      >;
-    };
-  };
+  dodopayments: import("@dodopayments/convex/_generated/component.js").ComponentApi<"dodopayments">;
 };

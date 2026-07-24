@@ -438,6 +438,183 @@ describe("claimSubscription anonymous ownership proof", () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// U5 — Business Pro grants entitlement resolution (#4634/#4635)
+// ---------------------------------------------------------------------------
+
+describe("payments billing Business Pro grants entitlement resolution", () => {
+  async function seedBusinessSub(
+    t: ReturnType<typeof convexTest>,
+    opts: {
+      dodoSubscriptionId: string;
+      status: "active" | "on_hold" | "cancelled" | "expired";
+      currentPeriodEnd: number;
+      ownerUserId?: string;
+    },
+  ) {
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: opts.ownerUserId ?? "user_business_owner",
+        dodoSubscriptionId: opts.dodoSubscriptionId,
+        dodoProductId: PRODUCT_CATALOG.api_business.dodoProductId!,
+        planKey: "api_business",
+        status: opts.status,
+        currentPeriodStart: NOW - DAY_MS,
+        currentPeriodEnd: opts.currentPeriodEnd,
+        rawPayload: {},
+        updatedAt: NOW,
+      });
+    });
+  }
+
+  async function seedAcceptedGrant(
+    t: ReturnType<typeof convexTest>,
+    opts: {
+      businessSubscriptionId: string;
+      inviteeUserId: string;
+      inviteeEmail: string;
+      domain: string;
+    },
+  ) {
+    await t.run(async (ctx) => {
+      await ctx.db.insert("businessProGrants", {
+        businessSubscriptionId: opts.businessSubscriptionId,
+        ownerUserId: "user_business_owner",
+        inviteeEmail: opts.inviteeEmail,
+        domain: opts.domain,
+        status: "accepted",
+        inviteeUserId: opts.inviteeUserId,
+        createdAt: NOW,
+        acceptedAt: NOW,
+        expiresAt: NOW + 14 * DAY_MS,
+      });
+    });
+  }
+
+  test("invitee with no own subscription resolves to Pro via accepted grant", async () => {
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_grant_001";
+    await seedBusinessSub(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    await seedAcceptedGrant(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeUserId: TEST_USER_ID,
+      inviteeEmail: "teammate@acme.com",
+      domain: "acme.com",
+    });
+
+    await t.mutation(internal.payments.subscriptionHelpers.recomputeEntitlementForUser, {
+      userId: TEST_USER_ID,
+      eventTimestamp: NOW,
+    });
+
+    const entitlement = await t.run(async (ctx) =>
+      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", TEST_USER_ID)).first(),
+    );
+    expect(entitlement?.planKey).toBe("pro_monthly");
+    expect(entitlement?.validUntil).toBe(NOW + 30 * DAY_MS);
+    expect(entitlement?.features.tier).toBe(1);
+  });
+
+  test("invitee who also has own Pro subscription keeps own Pro", async () => {
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_grant_002";
+    await seedBusinessSub(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 10 * DAY_MS,
+    });
+    await seedAcceptedGrant(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeUserId: TEST_USER_ID,
+      inviteeEmail: "teammate@acme.com",
+      domain: "acme.com",
+    });
+    await seedSubscription(t, {
+      planKey: "pro_annual",
+      dodoProductId: PRODUCT_CATALOG.pro_annual.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 365 * DAY_MS,
+      suffix: "own_pro_annual",
+    });
+
+    await t.mutation(internal.payments.subscriptionHelpers.recomputeEntitlementForUser, {
+      userId: TEST_USER_ID,
+      eventTimestamp: NOW,
+    });
+
+    const entitlement = await t.run(async (ctx) =>
+      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", TEST_USER_ID)).first(),
+    );
+    expect(entitlement?.planKey).toBe("pro_annual");
+    expect(entitlement?.validUntil).toBe(NOW + 365 * DAY_MS);
+  });
+
+  test("invitee whose grant's Business subscription is lapsed resolves to free", async () => {
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_grant_003";
+    await seedBusinessSub(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "expired",
+      currentPeriodEnd: NOW - DAY_MS,
+    });
+    await seedAcceptedGrant(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeUserId: TEST_USER_ID,
+      inviteeEmail: "teammate@acme.com",
+      domain: "acme.com",
+    });
+
+    await t.mutation(internal.payments.subscriptionHelpers.recomputeEntitlementForUser, {
+      userId: TEST_USER_ID,
+      eventTimestamp: NOW,
+    });
+
+    const entitlement = await t.run(async (ctx) =>
+      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", TEST_USER_ID)).first(),
+    );
+    expect(entitlement?.planKey).toBe("free");
+    expect(entitlement?.validUntil).toBe(NOW);
+  });
+
+  test("invitee with higher-tier own subscription keeps own plan over grant", async () => {
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_grant_004";
+    await seedBusinessSub(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    await seedAcceptedGrant(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeUserId: TEST_USER_ID,
+      inviteeEmail: "teammate@acme.com",
+      domain: "acme.com",
+    });
+    await seedSubscription(t, {
+      planKey: "api_starter",
+      dodoProductId: PRODUCT_CATALOG.api_starter.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "own_api_starter",
+    });
+
+    await t.mutation(internal.payments.subscriptionHelpers.recomputeEntitlementForUser, {
+      userId: TEST_USER_ID,
+      eventTimestamp: NOW,
+    });
+
+    const entitlement = await t.run(async (ctx) =>
+      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", TEST_USER_ID)).first(),
+    );
+    expect(entitlement?.planKey).toBe("api_starter");
+    expect(entitlement?.features.tier).toBe(2);
+  });
+});
+
 describe("payments billing duplicate-checkout guard", () => {
   test("does not block checkout when the user has no subscriptions", async () => {
     const t = convexTest(schema, modules);

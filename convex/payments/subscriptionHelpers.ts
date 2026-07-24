@@ -6,7 +6,8 @@
  * records and entitlements.
  */
 
-import { MutationCtx } from "../_generated/server";
+import { MutationCtx, internalMutation } from "../_generated/server";
+import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { getFeaturesForPlan } from "../lib/entitlements";
 import { PLAN_PRECEDENCE, LEGACY_PRODUCT_ALIASES } from "../config/productCatalog";
@@ -311,6 +312,43 @@ async function pickBestCoveringSub(
 }
 
 /**
+ * Picks the strongest accepted Business Pro grant for a user.
+ *
+ * An accepted grant tied to a covering `api_business` subscription confers a
+ * Pro-tier entitlement (planKey `pro_monthly`) valid until the Business
+ * subscription's `currentPeriodEnd`. The grant is explicit and revocable;
+ * it never creates a fake subscription row in `subscriptions`.
+ */
+async function pickBestAcceptedBusinessGrant(
+  ctx: MutationCtx,
+  userId: string,
+  at: number,
+): Promise<{ planKey: string; currentPeriodEnd: number } | null> {
+  const acceptedGrants = await ctx.db
+    .query("businessProGrants")
+    .withIndex("by_inviteeUserId", (q) => q.eq("inviteeUserId", userId))
+    .filter((q) => q.eq(q.field("status"), "accepted"))
+    .collect();
+
+  let best: { planKey: string; currentPeriodEnd: number } | null = null;
+  for (const grant of acceptedGrants) {
+    const businessSub = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_dodoSubscriptionId", (q) =>
+        q.eq("dodoSubscriptionId", grant.businessSubscriptionId),
+      )
+      .unique();
+    if (!businessSub || !isCoveringAt(businessSub, at)) continue;
+
+    const candidate = { planKey: "pro_monthly", currentPeriodEnd: businessSub.currentPeriodEnd };
+    if (best === null || compareSubscriptionsByCoverage(candidate, best) > 0) {
+      best = candidate;
+    }
+  }
+  return best;
+}
+
+/**
  * Recomputes the user's entitlement from ALL of their subscriptions.
  *
  * This is the ONE entitlement-write path for subscription event handlers.
@@ -326,8 +364,11 @@ async function pickBestCoveringSub(
  *      the entitlement untouched (goodwill credit outlives Dodo state).
  *   2. Pick the strongest covering sub via the deterministic comparator
  *      (tier > PLAN_PRECEDENCE > currentPeriodEnd).
- *   3. If a covering sub exists, write its (planKey, currentPeriodEnd).
- *   4. Otherwise downgrade to free.
+ *   3. Also consider any accepted Business Pro grant tied to a covering
+ *      `api_business` subscription; it confers Pro-tier features without
+ *      creating a fake subscription row.
+ *   4. Write the best source's (planKey, currentPeriodEnd) if any cover,
+ *      otherwise downgrade to free.
  *
  * Note: callers MUST persist their own subscription row patch BEFORE calling
  * this helper so the recompute sees the post-event state.
@@ -348,17 +389,45 @@ export async function recomputeEntitlementFromAllSubs(
     return;
   }
 
-  const best = await pickBestCoveringSub(ctx, userId, eventTimestamp);
+  const bestSub = await pickBestCoveringSub(ctx, userId, eventTimestamp);
+  const bestGrant = await pickBestAcceptedBusinessGrant(ctx, userId, eventTimestamp);
+
+  // Normalize both sources to the same comparison shape. A Business Pro grant
+  // confers Pro-tier features (`pro_monthly`) without creating a fake
+  // subscription row; pick whichever source outranks the other.
+  const best =
+    bestSub && bestGrant
+      ? compareSubscriptionsByCoverage(bestSub, bestGrant) >= 0
+        ? { planKey: bestSub.planKey, validUntil: bestSub.currentPeriodEnd }
+        : { planKey: bestGrant.planKey, validUntil: bestGrant.currentPeriodEnd }
+      : bestSub
+        ? { planKey: bestSub.planKey, validUntil: bestSub.currentPeriodEnd }
+        : bestGrant
+          ? { planKey: bestGrant.planKey, validUntil: bestGrant.currentPeriodEnd }
+          : null;
+
   if (best) {
-    await upsertEntitlements(ctx, userId, best.planKey, best.currentPeriodEnd, eventTimestamp);
+    await upsertEntitlements(ctx, userId, best.planKey, best.validUntil, eventTimestamp);
     return;
   }
 
-  // No covering sub — downgrade to free. validUntil = eventTimestamp marks the
+  // No covering sub or grant — downgrade to free. validUntil = eventTimestamp marks the
   // immediate-revoke point; entitlement queries fall back to free-tier defaults
   // when validUntil is in the past.
   await upsertEntitlements(ctx, userId, "free", eventTimestamp, eventTimestamp);
 }
+
+/**
+ * Test/ops helper: recomputes a user's entitlement from subscriptions and
+ * accepted Business Pro grants. Internal-only; not exposed to clients.
+ */
+export const recomputeEntitlementForUser = internalMutation({
+  args: { userId: v.string(), eventTimestamp: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    await recomputeEntitlementFromAllSubs(ctx, args.userId, args.eventTimestamp ?? Date.now());
+    return { ok: true as const };
+  },
+});
 
 // ---------------------------------------------------------------------------
 // Internal resolution helpers
