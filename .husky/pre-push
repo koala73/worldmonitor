@@ -174,13 +174,23 @@ if changed '^(api/|server/|src/generated/)'; then
   # and generated stubs — a server-only Node-ism breaks the Vercel bundle with
   # zero api/ diff, so those paths must trigger the esbuild check too.
   echo "Running edge function bundle check..."
-  while IFS= read -r f; do
-    npx esbuild "$f" --bundle --format=esm --platform=browser --outfile=/dev/null 2>/dev/null || {
-      echo "ERROR: esbuild failed to bundle $f — this will break Vercel deployment"
-      npx esbuild "$f" --bundle --format=esm --platform=browser --outfile=/dev/null
+  # Single multi-entry esbuild invocation: one process bundling all entries in
+  # parallel instead of one npx+esbuild spawn per file (~47 sequential spawns).
+  # Errors still attribute per-file — esbuild prefixes each diagnostic with the
+  # source path. --outdir is required for multi-entry; discard it afterwards.
+  EDGE_OUT=$(mktemp -d) || exit 1
+  ESBUILD_ENTRIES=()
+  while IFS= read -r f; do ESBUILD_ENTRIES+=("$f"); done \
+    < <(find api/ -name "*.js" -not -name "_*"; find api/ -maxdepth 1 -name "*.ts" -not -name "_*")
+  if [ "${#ESBUILD_ENTRIES[@]}" -gt 0 ]; then
+    if ! npx esbuild "${ESBUILD_ENTRIES[@]}" --bundle --format=esm --platform=browser \
+        --log-level=error --outdir="$EDGE_OUT"; then
+      rm -rf "$EDGE_OUT"
+      echo "ERROR: esbuild failed to bundle edge functions (paths above) — this will break Vercel deployment"
       exit 1
-    }
-  done < <(find api/ -name "*.js" -not -name "_*"; find api/ -maxdepth 1 -name "*.ts" -not -name "_*")
+    fi
+  fi
+  rm -rf "$EDGE_OUT"
 else
   echo "Edge function bundle check skipped (no api/, server/, or src/generated changes)."
 fi
