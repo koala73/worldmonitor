@@ -11,7 +11,9 @@ const railwayRss = rssProxyUrl;
 export { SOURCE_TIERS, getSourceTier } from '../../server/_shared/source-tiers';
 
 
-export type SourceType = 'wire' | 'gov' | 'intel' | 'mainstream' | 'market' | 'tech' | 'other';
+// 'unknown' = not yet reviewed (default for unlisted sources — never invent a type)
+// 'other' remains available as an explicit classification when needed
+export type SourceType = 'wire' | 'gov' | 'intel' | 'mainstream' | 'market' | 'tech' | 'other' | 'unknown';
 
 export const SOURCE_TYPES: Record<string, SourceType> = {
   // Wire services - fastest, most authoritative
@@ -23,6 +25,8 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'Treasury': 'gov', 'DOJ': 'gov', 'DHS': 'gov', 'CDC': 'gov',
   'FEMA': 'gov', 'Federal Reserve': 'gov', 'SEC': 'gov',
   'UN News': 'gov', 'CISA': 'gov',
+  // Chinese government ministries (Tier 1 official sources — not wire/verified outlets)
+  'MIIT (China)': 'gov', 'MOFCOM (China)': 'gov',
 
   // Intel/Defense specialty
   'Defense One': 'intel', 'Breaking Defense': 'intel', 'The War Zone': 'intel',
@@ -105,14 +109,19 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
 };
 
 export function getSourceType(sourceName: string): SourceType {
-  return SOURCE_TYPES[sourceName] ?? 'other';
+  return SOURCE_TYPES[sourceName] ?? 'unknown';
+}
+
+export function hasReviewedSourceType(sourceName: string): boolean {
+  return Object.prototype.hasOwnProperty.call(SOURCE_TYPES, sourceName);
 }
 
 // Propaganda risk assessment for sources (Quick Win #5)
 // 'high' = State-controlled media, known to push government narratives
 // 'medium' = State-affiliated or known editorial bias toward specific governments
-// 'low' = Independent journalism with editorial standards
-export type PropagandaRisk = 'low' | 'medium' | 'high';
+// 'low' = Independent journalism with editorial standards (must be explicit — never defaulted)
+// 'unknown' = Not yet reviewed (default for unlisted sources — do not imply independence)
+export type PropagandaRisk = 'low' | 'medium' | 'high' | 'unknown';
 
 export interface SourceRiskProfile {
   risk: PropagandaRisk;
@@ -120,6 +129,12 @@ export interface SourceRiskProfile {
   knownBiases?: string[];
   note?: string;
 }
+
+/** Fail-closed default: missing provenance is not independent journalism. */
+export const UNREVIEWED_SOURCE_RISK: SourceRiskProfile = {
+  risk: 'unknown',
+  note: 'Provenance not yet reviewed — do not treat as independent journalism',
+};
 
 export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   // High risk - State-controlled media
@@ -133,6 +148,17 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
   'IRNA': { risk: 'high', stateAffiliated: 'Iran', note: 'Iranian state news agency (Islamic Republic News Agency)' },
   'Mehr News': { risk: 'high', stateAffiliated: 'Iran', note: 'Iranian state-affiliated, Basij-linked' },
   'KCNA': { risk: 'high', stateAffiliated: 'North Korea', note: 'North Korean state media' },
+  // Official Chinese ministry feeds (government sources, not independent media)
+  'MIIT (China)': {
+    risk: 'high',
+    stateAffiliated: 'China',
+    note: 'Chinese Ministry of Industry and Information Technology official feed',
+  },
+  'MOFCOM (China)': {
+    risk: 'high',
+    stateAffiliated: 'China',
+    note: 'Chinese Ministry of Commerce official feed',
+  },
 
   // Medium risk - State-affiliated or known bias
   'Al Jazeera': { risk: 'medium', stateAffiliated: 'Qatar', note: 'Qatari state-funded, independent editorial' },
@@ -161,12 +187,58 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
 };
 
 export function getSourcePropagandaRisk(sourceName: string): SourceRiskProfile {
-  return SOURCE_PROPAGANDA_RISK[sourceName] ?? { risk: 'low' };
+  return SOURCE_PROPAGANDA_RISK[sourceName] ?? UNREVIEWED_SOURCE_RISK;
+}
+
+export function hasReviewedPropagandaRisk(sourceName: string): boolean {
+  return Object.prototype.hasOwnProperty.call(SOURCE_PROPAGANDA_RISK, sourceName);
 }
 
 export function isStateAffiliatedSource(sourceName: string): boolean {
   const profile = SOURCE_PROPAGANDA_RISK[sourceName];
   return !!profile?.stateAffiliated;
+}
+
+/**
+ * Tooltip for the Tier 1/2 credibility badge.
+ * Never presents unreviewed / non-wire / non-gov sources as "Verified News Outlet".
+ */
+export function getSourceTierBadgeTitle(sourceType: SourceType): string {
+  if (sourceType === 'wire') return 'Wire Service - Highest reliability';
+  if (sourceType === 'gov') return 'Official Government Source';
+  if (sourceType === 'unknown') return 'Source type not yet reviewed';
+  if (sourceType === 'intel') return 'Specialist / intel outlet';
+  if (sourceType === 'mainstream') return 'Major news outlet';
+  if (sourceType === 'market') return 'Market / financial outlet';
+  if (sourceType === 'tech') return 'Technology outlet';
+  return 'News source';
+}
+
+/**
+ * Propaganda-risk badge presentation. `null` only for explicit reviewed `low`
+ * (independent journalism). Unknown always surfaces so silence never implies independence.
+ */
+export function describePropagandaBadge(profile: SourceRiskProfile): {
+  risk: PropagandaRisk;
+  label: string;
+  shortLabel: string;
+  title: string;
+} | null {
+  if (profile.risk === 'low') return null;
+  const title = profile.note
+    || (profile.stateAffiliated ? `State-affiliated: ${profile.stateAffiliated}` : 'Provenance not yet reviewed');
+  if (profile.risk === 'high') {
+    return { risk: 'high', label: '⚠ State Media', shortLabel: '⚠', title };
+  }
+  if (profile.risk === 'medium') {
+    return { risk: 'medium', label: '! Caution', shortLabel: '!', title };
+  }
+  return {
+    risk: 'unknown',
+    label: '? Unreviewed',
+    shortLabel: '?',
+    title: title || UNREVIEWED_SOURCE_RISK.note || 'Provenance not yet reviewed',
+  };
 }
 
 let _sourcePanelMap: Map<string, string> | null = null;
@@ -1120,6 +1192,35 @@ export const INTEL_SOURCES: Feed[] = [
 
   { name: 'EU ISS', url: rss('https://news.google.com/rss/search?q=site:iss.europa.eu+when:7d&hl=en-US&gl=US&ceid=US:en'), type: 'intl' },
 ];
+
+/** Unique configured feed names across every variant map + intel sources. */
+export function listConfiguredFeedNames(): string[] {
+  const names = new Set<string>();
+  for (const feeds of Object.values(CANONICAL_FEEDS)) {
+    for (const feed of feeds) names.add(feed.name);
+  }
+  for (const feed of INTEL_SOURCES) names.add(feed.name);
+  return [...names].sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Provenance state for a configured feed.
+ * `reviewed` = present in SOURCE_PROPAGANDA_RISK (any risk including explicit low).
+ * `unknown` = not yet reviewed — API still returns a definite profile via getSourcePropagandaRisk.
+ */
+export function getFeedProvenanceState(sourceName: string): {
+  risk: PropagandaRisk;
+  type: SourceType;
+  riskReviewed: boolean;
+  typeReviewed: boolean;
+} {
+  return {
+    risk: getSourcePropagandaRisk(sourceName).risk,
+    type: getSourceType(sourceName),
+    riskReviewed: hasReviewedPropagandaRisk(sourceName),
+    typeReviewed: hasReviewedSourceType(sourceName),
+  };
+}
 
 // Default-enabled sources per panel (Tier 1+2 priority, ≥8 per panel)
 export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
