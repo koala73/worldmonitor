@@ -1,4 +1,5 @@
 import ISO2_TO_ISO3 from '../../../shared/iso2-to-iso3.js';
+import { getSourceProvenanceState } from '../../../shared/source-provenance';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
 import { DEFAULT_LIST_LIMIT } from '../constants';
 import {
@@ -39,6 +40,19 @@ import {
 // The output schema still documents an iran-events field (harmless when absent).
 // Set IRAN_EVENTS_ENABLED=true to restore. See api/health.js.
 const IRAN_EVENTS_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLowerCase() === 'true';
+
+function addNewsSourceProvenance(value: unknown): unknown {
+  if (!Array.isArray(value)) return value;
+  return value.map((story) => {
+    if (!story || typeof story !== 'object' || Array.isArray(story)) return story;
+    const record = story as Record<string, unknown>;
+    const sourceName = typeof record.primarySource === 'string' ? record.primarySource.trim() : '';
+    return {
+      ...record,
+      sourceProvenance: getSourceProvenanceState(sourceName),
+    };
+  });
+}
 
 export const CACHE_TOOLS: ToolDef[] = [
   {
@@ -359,6 +373,18 @@ export const CACHE_TOOLS: ToolDef[] = [
             } },
             category: { type: 'string' }, threatLevel: { type: 'string' },
             countryCode: { type: ['string', 'null'] }, isAlert: { type: 'boolean' },
+            sourceProvenance: {
+              type: 'object',
+              properties: {
+                risk: { type: 'string', enum: ['low', 'medium', 'high', 'unknown'] },
+                type: { type: 'string', enum: ['wire', 'gov', 'intel', 'mainstream', 'market', 'tech', 'other', 'unknown'] },
+                riskReviewed: { type: 'boolean' },
+                typeReviewed: { type: 'boolean' },
+                stateAffiliated: { type: 'string' },
+                note: { type: 'string' },
+              },
+              required: ['risk', 'type', 'riskReviewed', 'typeReviewed'],
+            },
           } } },
         },
       },
@@ -385,6 +411,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       const category = argStr(params.category);
       const countries = argStrList(params.country);
       const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
+      mapNested(data, 'insights', 'topStories', addNewsSourceProvenance);
       if (topic) narrowNested(data, 'gdelt-intel', 'topics', (t) => argStr(t.id) === topic);
       if (category) narrowNested(data, 'insights', 'topStories', (s) => argStr(s.category) === category);
       if (countries.length > 0) {

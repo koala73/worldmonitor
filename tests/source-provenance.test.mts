@@ -29,6 +29,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, '..');
 const tempDir = join(repoRoot, 'tmp-source-provenance-test');
 const outfile = join(tempDir, 'feeds-bundle.mjs');
+const rendererOutfile = join(tempDir, 'renderer-bundle.mjs');
 
 interface FeedsModule {
   SOURCE_PROPAGANDA_RISK: Record<string, { risk: string; stateAffiliated?: string; note?: string }>;
@@ -56,6 +57,13 @@ interface FeedsModule {
 }
 
 let feeds: FeedsModule;
+let renderer: {
+  renderPrimarySourceProvenance: (sourceName: string) => {
+    riskBadge: string;
+    tierBadge: string;
+  };
+  renderCorroboratingSourceRisk: (sourceName: string) => string;
+};
 
 before(async () => {
   mkdirSync(tempDir, { recursive: true });
@@ -100,6 +108,33 @@ before(async () => {
   });
   writeFileSync(outfile, result.outputFiles[0].text, 'utf8');
   feeds = await import(`${pathToFileURL(outfile).href}?t=${Date.now()}`) as FeedsModule;
+
+  const rendererResult = await build({
+    entryPoints: [join(repoRoot, 'src/components/news-source-provenance.ts')],
+    bundle: true,
+    format: 'esm',
+    platform: 'neutral',
+    target: 'es2022',
+    write: false,
+    absWorkingDir: repoRoot,
+    alias: {
+      '@': join(repoRoot, 'src'),
+    },
+    plugins: [stubUtilsPlugin as never],
+    define: {
+      'import.meta.env': JSON.stringify({
+        DEV: false,
+        PROD: true,
+        SSR: false,
+        MODE: 'test',
+        BASE_URL: '/',
+        VITE_VARIANT: 'full',
+        VITE_RSS_DIRECT_TO_RELAY: 'false',
+      }),
+    },
+  });
+  writeFileSync(rendererOutfile, rendererResult.outputFiles[0].text, 'utf8');
+  renderer = await import(`${pathToFileURL(rendererOutfile).href}?t=${Date.now()}`) as typeof renderer;
 });
 
 describe('source provenance defaults (#5390)', () => {
@@ -190,13 +225,24 @@ describe('source provenance defaults (#5390)', () => {
     }
   });
 
-  it('NewsPanel no longer hardcodes Verified News Outlet for non-wire types', async () => {
-    const { readFileSync } = await import('node:fs');
-    const panelSrc = readFileSync(join(repoRoot, 'src/components/NewsPanel.ts'), 'utf8');
-    assert.doesNotMatch(panelSrc, /Verified News Outlet/);
-    assert.match(panelSrc, /describePropagandaBadge/);
-    assert.match(panelSrc, /getSourceTierBadgeTitle/);
-    assert.match(panelSrc, /primaryType === 'wire'/);
+  it('renders NewsPanel provenance output for unreviewed, government, and reviewed wire sources', () => {
+    const unreviewed = renderer.renderPrimarySourceProvenance('Reuters US');
+    assert.match(unreviewed.riskBadge, /\? Unreviewed/);
+    assert.match(unreviewed.riskBadge, /not yet reviewed/i);
+    assert.match(unreviewed.tierBadge, /Source type not yet reviewed/);
+    assert.doesNotMatch(unreviewed.tierBadge, />[^<]*Wire/);
+
+    const government = renderer.renderPrimarySourceProvenance('MIIT (China)');
+    assert.match(government.riskBadge, /State Media/);
+    assert.match(government.tierBadge, /Official Government Source/);
+    assert.doesNotMatch(government.tierBadge, />[^<]*Wire/);
+
+    const reviewedWire = renderer.renderPrimarySourceProvenance('Reuters');
+    assert.equal(reviewedWire.riskBadge, '');
+    assert.match(reviewedWire.tierBadge, /Wire Service - Highest reliability/);
+    assert.match(reviewedWire.tierBadge, />★ Wire</);
+
+    assert.match(renderer.renderCorroboratingSourceRisk('Fars News'), />\?</);
   });
 });
 
