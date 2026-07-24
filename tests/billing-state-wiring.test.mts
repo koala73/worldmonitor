@@ -149,6 +149,8 @@ describe('returning-subscriber surfaces (#4799)', () => {
     assert.match(src, /components\.billingState\.lapsedDesc/);
     assert.match(src, /components\.billingState\.resubscribe/);
     assert.match(src, /getReactivationHref\(/);
+    assert.match(src, /cancelPendingBannerRemoval\(\)/);
+    assert.match(src, /pendingBannerRemoval/);
   });
 
   it('uses the lapsed billing state and prior plan in Unified Settings', async () => {

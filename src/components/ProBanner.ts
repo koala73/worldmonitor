@@ -9,6 +9,7 @@ import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
 
 let bannerEl: HTMLElement | null = null;
+let pendingBannerRemoval: ReturnType<typeof setTimeout> | null = null;
 let dismissedThisSession = false;
 // Cached at first showProBanner() call (App.ts always calls it once at init,
 // regardless of premium state — the early-returns inside decide whether to
@@ -30,6 +31,22 @@ const RESERVATION_CLASS = 'wm-pro-banner-reserved';
 
 function setReservation(active: boolean): void {
   document.documentElement.classList.toggle(RESERVATION_CLASS, active);
+}
+
+function cancelPendingBannerRemoval(): void {
+  if (pendingBannerRemoval === null) return;
+  clearTimeout(pendingBannerRemoval);
+  pendingBannerRemoval = null;
+}
+
+function scheduleBannerRemoval(): void {
+  cancelPendingBannerRemoval();
+  pendingBannerRemoval = setTimeout(() => {
+    bannerEl?.remove();
+    bannerEl = null;
+    pendingBannerRemoval = null;
+    setReservation(false);
+  }, 300);
 }
 
 function isDismissed(): boolean {
@@ -59,11 +76,7 @@ function dismiss(): void {
   if (!bannerEl) return;
   dismissedThisSession = true;
   bannerEl.classList.add('pro-banner-out');
-  setTimeout(() => {
-    bannerEl?.remove();
-    bannerEl = null;
-    setReservation(false);
-  }, 300);
+  scheduleBannerRemoval();
   try {
     localStorage.setItem(DISMISS_KEY, String(Date.now()));
   } catch {
@@ -158,11 +171,7 @@ export function hideProBanner(): void {
     return;
   }
   bannerEl.classList.add('pro-banner-out');
-  setTimeout(() => {
-    bannerEl?.remove();
-    bannerEl = null;
-    setReservation(false);
-  }, 300);
+  scheduleBannerRemoval();
 }
 
 export function isProBannerVisible(): boolean {
@@ -193,13 +202,13 @@ function syncProBanner(): void {
       return;
     }
     bannerEl.classList.add('pro-banner-out');
-    setTimeout(() => {
-      bannerEl?.remove();
-      bannerEl = null;
-      setReservation(false);
-    }, 300);
+    scheduleBannerRemoval();
     return;
   }
+  // A premium snapshot may have started the fade-out immediately before a
+  // non-premium snapshot arrived. Keep the banner visible for the restored
+  // state instead of letting that stale removal callback delete it.
+  cancelPendingBannerRemoval();
   if (bannerEl && bannerContainer) {
     const nextState = deriveBillingUxState(getSubscription(), getEntitlementState(), Date.now()) === 'lapsed'
       ? 'lapsed'
