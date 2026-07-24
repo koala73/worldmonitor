@@ -45,6 +45,7 @@
     "build:pro": "cd pro-test && npm ci && npm run build",
     "build:openapi": "node -e \"require('fs').cpSync('docs/api/worldmonitor.openapi.yaml', 'public/openapi.yaml')\" && node scripts/build-openapi-json.mjs",
     "gen:openapi:security": "node scripts/openapi-inject-security.mjs",
+    "gen:openapi:billing": "node scripts/openapi-inject-billing-verification.mjs",
     "gen:openapi:examples": "node scripts/openapi-inject-examples.mjs",
     "gen:openapi:required": "node scripts/openapi-inject-required.mjs",
     "gen:openapi:servers": "node scripts/openapi-inject-servers.mjs",

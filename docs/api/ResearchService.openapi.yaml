@@ -123,6 +123,25 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Billing verification temporarily unavailable. Retry after the indicated delay.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying the request (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing verification failure status.
+                            schema:
+                                type: string
+                                enum:
+                                    - renewal_verification_pending
+                                    - renewal_verification_failed
+                                    - entitlement_verification_unavailable
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BillingVerificationError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -239,6 +258,25 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Billing verification temporarily unavailable. Retry after the indicated delay.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying the request (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing verification failure status.
+                            schema:
+                                type: string
+                                enum:
+                                    - renewal_verification_pending
+                                    - renewal_verification_failed
+                                    - entitlement_verification_unavailable
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BillingVerificationError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -355,6 +393,25 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Billing verification temporarily unavailable. Retry after the indicated delay.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying the request (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing verification failure status.
+                            schema:
+                                type: string
+                                enum:
+                                    - renewal_verification_pending
+                                    - renewal_verification_failed
+                                    - entitlement_verification_unavailable
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BillingVerificationError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -487,6 +544,25 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Billing verification temporarily unavailable. Retry after the indicated delay.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying the request (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing verification failure status.
+                            schema:
+                                type: string
+                                enum:
+                                    - renewal_verification_pending
+                                    - renewal_verification_failed
+                                    - entitlement_verification_unavailable
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/BillingVerificationError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -508,6 +584,27 @@ components:
             name: X-Api-Key
             description: Alias header for the WorldMonitor API key (X-WorldMonitor-Key).
     schemas:
+        BillingVerificationError:
+            type: object
+            description: Returned when billing or entitlement verification is temporarily unavailable.
+            properties:
+                error:
+                    type: string
+                    description: Human-readable billing verification failure reason.
+                code:
+                    type: string
+                    enum:
+                        - renewal_verification_pending
+                        - renewal_verification_failed
+                        - entitlement_verification_unavailable
+                    description: Machine-readable retryable billing verification status.
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint when known.
+            required:
+                - error
+                - code
         JmespathProjectionError:
             description: Returned when a REST jmespath projection is invalid or exceeds the expression/output byte limits.
             properties:
@@ -575,6 +672,14 @@ components:
                 error:
                     type: string
                     description: Human-readable entitlement failure reason.
+                code:
+                    type: string
+                    enum:
+                        - subscription_lapsed
+                        - renewal_verification_pending
+                        - renewal_verification_failed
+                        - entitlement_verification_unavailable
+                    description: Machine-readable billing verification status when access is denied because of subscription state.
                 requiredTier:
                     type: integer
                     format: int32

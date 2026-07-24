@@ -76,6 +76,32 @@ export function readPremiumRpcPaths() {
   return [...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
 }
 
+export function readBillingVerificationCodes() {
+  const entitlementSrc = readFileSync(resolve(root, 'server/_shared/entitlement-check.ts'), 'utf8');
+  const statusBlock = entitlementSrc.match(/export type BillingVerificationStatus\s*=\s*([\s\S]*?);/);
+  if (!statusBlock) throw new Error('could not locate BillingVerificationStatus in server/_shared/entitlement-check.ts');
+  const extractStringLiterals = (source) => [...source.matchAll(/(['"`])([^'"`\r\n]*)\1/g)].map((m) => m[2]);
+  const statusCodes = extractStringLiterals(statusBlock[1]);
+  if (statusCodes.length === 0) throw new Error('BillingVerificationStatus parsed as empty — refusing to run');
+
+  const denialFunction = entitlementSrc.match(
+    /export function getBillingVerificationDenial\b[\s\S]*?(?=\n\/\*\*|\nexport (?:async )?function |$)/,
+  );
+  if (!denialFunction) throw new Error('could not locate getBillingVerificationDenial in server/_shared/entitlement-check.ts');
+  if (!extractStringLiterals(denialFunction[0]).includes('entitlement_verification_unavailable')) {
+    throw new Error('could not locate entitlement_verification_unavailable in getBillingVerificationDenial');
+  }
+
+  const usageSrc = readFileSync(resolve(root, 'server/_shared/usage.ts'), 'utf8');
+  const reasonBlock = usageSrc.match(/export type RequestReason\s*=\s*([\s\S]*?);/);
+  if (!reasonBlock) throw new Error('could not locate RequestReason in server/_shared/usage.ts');
+  if (!extractStringLiterals(reasonBlock[1]).includes('billing_verification_503')) {
+    throw new Error('billing_verification_503 usage reason is missing — refusing to run');
+  }
+
+  return [...new Set([...statusCodes, 'entitlement_verification_unavailable'])];
+}
+
 // ── Public 403 gates ─────────────────────────────────────────────────────────
 // Public RPCs (security: []) that nonetheless document a 403 the handler throws.
 // Lead capture opts out of API-key auth at the gateway, then fails closed in the
