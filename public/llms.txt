@@ -147,7 +147,7 @@ World Monitor is relevant for queries about real-time geopolitical intelligence 
 - [developers/llms.txt](https://worldmonitor.app/developers/llms.txt): Developer-portal-section briefing — MCP server, OpenAPI, SDKs, CLI, sandbox, and agent skills in one scoped file
 - [blog/llms.txt](https://www.worldmonitor.app/blog/llms.txt): Blog-section briefing — analysis posts, the intelligence glossary, and the RSS feed
 - [Sandbox](https://www.worldmonitor.app/sandbox/index.json): Deterministic sample responses for representative REST operations — test parsers and integrations with no key and no quota ([guide](https://www.worldmonitor.app/docs/sandbox))
-- [Schema Map](https://www.worldmonitor.app/schemamap.xml): NLWeb schemamap indexing the site's structured-data surfaces (also advertised in robots.txt)
+- [Schema Map](https://www.worldmonitor.app/schemamap.xml): NLWeb schemamap indexing the site's structured-data surfaces
 - [pricing.md](https://worldmonitor.app/pricing.md): Machine-readable pricing, limits and plan features
 - [support.md](https://worldmonitor.app/support.md): Machine-readable support channels and contact routes
 - [ai-search.md](https://worldmonitor.app/ai-search.md): AI-search answer blocks for citation and extraction

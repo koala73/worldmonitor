@@ -1,12 +1,15 @@
 import { trackGateHit } from '@/services/analytics';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { onEntitlementChange, getEntitlementState } from '@/services/entitlements';
+import { getSubscription, onSubscriptionChange } from '@/services/billing';
+import { deriveBillingUxState, getReactivationHref } from '@/services/billing-state';
 import { getCurrentClerkUser } from '@/services/clerk';
 import { t } from '@/services/i18n';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
 
 let bannerEl: HTMLElement | null = null;
+let pendingBannerRemoval: ReturnType<typeof setTimeout> | null = null;
 let dismissedThisSession = false;
 // Cached at first showProBanner() call (App.ts always calls it once at init,
 // regardless of premium state — the early-returns inside decide whether to
@@ -28,6 +31,22 @@ const RESERVATION_CLASS = 'wm-pro-banner-reserved';
 
 function setReservation(active: boolean): void {
   document.documentElement.classList.toggle(RESERVATION_CLASS, active);
+}
+
+function cancelPendingBannerRemoval(): void {
+  if (pendingBannerRemoval === null) return;
+  clearTimeout(pendingBannerRemoval);
+  pendingBannerRemoval = null;
+}
+
+function scheduleBannerRemoval(): void {
+  cancelPendingBannerRemoval();
+  pendingBannerRemoval = setTimeout(() => {
+    bannerEl?.remove();
+    bannerEl = null;
+    pendingBannerRemoval = null;
+    setReservation(false);
+  }, 300);
 }
 
 function isDismissed(): boolean {
@@ -57,11 +76,7 @@ function dismiss(): void {
   if (!bannerEl) return;
   dismissedThisSession = true;
   bannerEl.classList.add('pro-banner-out');
-  setTimeout(() => {
-    bannerEl?.remove();
-    bannerEl = null;
-    setReservation(false);
-  }, 300);
+  scheduleBannerRemoval();
   try {
     localStorage.setItem(DISMISS_KEY, String(Date.now()));
   } catch {
@@ -115,14 +130,19 @@ export function showProBanner(container: HTMLElement): void {
   trackGateHit('pro-banner');
   setReservation(true);
 
+  const subscription = getSubscription();
+  const billingState = deriveBillingUxState(subscription, getEntitlementState(), Date.now());
+  const returning = billingState === 'lapsed';
+  const ctaHref = returning ? getReactivationHref(subscription?.planKey) : '/pro#pricing';
   const banner = document.createElement('div');
   banner.className = 'pro-banner';
+  banner.dataset.billingState = returning ? 'lapsed' : 'upgrade';
   setTrustedHtml(banner, trustedHtml(`
-    <span class="pro-banner-badge">${t('components.proBanner.badge')}</span>
+    <span class="pro-banner-badge">${returning ? t('components.billingState.resubscribe') : t('components.proBanner.badge')}</span>
     <span class="pro-banner-text">
-      <strong>${t('components.proBanner.headline')}</strong> — ${t('components.proBanner.tagline')}
+      <strong>${returning ? t('components.billingState.lapsedDesc') : t('components.proBanner.headline')}</strong>${returning ? '' : ` — ${t('components.proBanner.tagline')}`}
     </span>
-    <a class="pro-banner-cta" href="/pro#pricing">${t('components.proBanner.cta')}</a>
+    <a class="pro-banner-cta" href="${ctaHref}">${returning ? t('components.billingState.resubscribe') : t('components.proBanner.cta')}</a>
     <button class="pro-banner-close" aria-label="${t('components.proBanner.dismiss')}">×</button>
   `, "legacy direct innerHTML migration"));
 
@@ -151,11 +171,7 @@ export function hideProBanner(): void {
     return;
   }
   bannerEl.classList.add('pro-banner-out');
-  setTimeout(() => {
-    bannerEl?.remove();
-    bannerEl = null;
-    setReservation(false);
-  }, 300);
+  scheduleBannerRemoval();
 }
 
 export function isProBannerVisible(): boolean {
@@ -178,7 +194,7 @@ export function isProBannerVisible(): boolean {
 //     not user-dismissed + not in iframe
 //     → re-mount via showProBanner. Same gate set as the initial mount path,
 //       so we can never surface a banner the user has already ✕'d this week.
-onEntitlementChange(() => {
+function syncProBanner(): void {
   const premium = hasPremiumAccess();
   if (premium) {
     if (!bannerEl) {
@@ -186,14 +202,31 @@ onEntitlementChange(() => {
       return;
     }
     bannerEl.classList.add('pro-banner-out');
-    setTimeout(() => {
-      bannerEl?.remove();
+    scheduleBannerRemoval();
+    return;
+  }
+  // A premium snapshot may have started the fade-out immediately before a
+  // non-premium snapshot arrived. Keep the banner visible for the restored
+  // state instead of letting that stale removal callback delete it.
+  // An explicit dismissal owns its removal timer and must not be reversed by
+  // an unrelated subscription snapshot arriving during the 300 ms fade.
+  if (dismissedThisSession) return;
+  cancelPendingBannerRemoval();
+  bannerEl?.classList.remove('pro-banner-out');
+  if (bannerEl && bannerContainer) {
+    const nextState = deriveBillingUxState(getSubscription(), getEntitlementState(), Date.now()) === 'lapsed'
+      ? 'lapsed'
+      : 'upgrade';
+    if (bannerEl.dataset.billingState !== nextState) {
+      bannerEl.remove();
       bannerEl = null;
       setReservation(false);
-    }, 300);
-    return;
+    }
   }
   if (!bannerEl && bannerContainer) {
     showProBanner(bannerContainer);
   }
-});
+}
+
+onEntitlementChange(syncProBanner);
+onSubscriptionChange(syncProBanner);

@@ -1562,7 +1562,26 @@
       "cafIndex": "Индекс CAF",
       "candidGrants": "Гранты Candid",
       "dataLag": "Задержка данных",
-      "infoTooltip": "<strong>Глобальный индекс благотворительной активности</strong> Композитный индекс отслеживания частных пожертвований через краудфандинговые платформы и крипто-кошельки.<ul><li><strong>Платформы</strong>: Выборка кампаний GoFundMe, GlobalGiving, JustGiving</li><li><strong>Крипто</strong>: Ончейн-поступления в благотворительные кошельки (Endaoment, Giving Block)</li><li><strong>Институциональные</strong>: OECD ODA, CAF World Giving Index, гранты Candid</li></ul>Индекс показывает направление, а не точные суммы. Сочетает живую выборку с опубликованными годовыми отчётами."
+      "infoTooltip": "<strong>Глобальный индекс благотворительной активности</strong> Композитный индекс отслеживания частных пожертвований через краудфандинговые платформы и крипто-кошельки.<ul><li><strong>Платформы</strong>: Выборка кампаний GoFundMe, GlobalGiving, JustGiving</li><li><strong>Крипто</strong>: Ончейн-поступления в благотворительные кошельки (Endaoment, Giving Block)</li><li><strong>Институциональные</strong>: OECD ODA, CAF World Giving Index, гранты Candid</li></ul>Индекс показывает направление, а не точные суммы. Сочетает живую выборку с опубликованными годовыми отчётами.",
+      "benchmarkTitle": "Global Giving Benchmarks",
+      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "status": {
+        "published": "Published benchmarks with verified source coverage.",
+        "partial": "Published benchmarks with partial source coverage.",
+        "legacy": "Legacy snapshot; source details are unavailable.",
+        "cached": "Showing a cached snapshot; refresh unavailable."
+      },
+      "trackedAnnualized": "Tracked platform giving — annualized estimate",
+      "annualizedDaily": "Annualized daily estimate",
+      "atLeast": "At least",
+      "about": "About",
+      "sourceNotVerified": "Source not verified",
+      "reportedCumulative": "Reported cumulative total",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Published benchmark",
+      "sourcesMethodology": "Sources & methodology",
+      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
+      "partialEstimate": "Partially verified estimate"
     },
     "displacement": {
       "refugees": "Беженцы",

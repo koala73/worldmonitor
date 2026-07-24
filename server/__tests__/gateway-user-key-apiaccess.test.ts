@@ -31,7 +31,6 @@ vi.mock("../_shared/api-key-rate-limit", () => ({
   reserveDailyMeter: (...a: unknown[]) => reserveDailyMeter(...a),
   rateLimitHeaders: () => ({ "X-RateLimit-Limit": "60", "Retry-After": "30" }),
   ENTERPRISE_API_RATE_LIMIT: 1000,
-  CEILING_MULTIPLIER: 10,
 }));
 
 // --- Stub the per-IP layer: spy whether checkRateLimit runs. -----------------
@@ -162,7 +161,7 @@ beforeEach(() => {
   clerkSession = null;
   checkBurst.mockReset().mockResolvedValue({ ok: true });
   reserveDailyMeter.mockReset().mockResolvedValue({
-    count: 1, overCeiling: false, metered: true, retryAfterSec: 100, rollback: async () => {},
+    count: 1, overLimit: false, metered: true, retryAfterSec: 100, rollback: async () => {},
   });
   checkRateLimit.mockClear().mockResolvedValue(null);
   checkFailClosedScopedIpRateLimit.mockReset().mockResolvedValue(null);

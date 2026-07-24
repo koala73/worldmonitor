@@ -25,7 +25,8 @@ import { getAuthState } from '@/services/auth-state';
 import { track } from '@/services/analytics';
 import { isEntitled, hasFeature, onEntitlementChange, getEntitlementState } from '@/services/entitlements';
 import { hasPremiumAccess } from '@/services/panel-gating';
-import { getSubscription, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
+import { getSubscription, onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
+import { deriveBillingUxState, getReactivationHref } from '@/services/billing-state';
 import { createApiKey, listApiKeys, revokeApiKey, type ApiKeyInfo } from '@/services/api-keys';
 import { listMcpClients, revokeMcpClient, fetchMcpQuota, type McpClientInfo, type McpQuota } from '@/services/mcp-clients';
 import {
@@ -91,6 +92,7 @@ export class UnifiedSettings {
   /** setInterval handle for quota auto-refresh; cleared on close()/destroy()/tab-switch. */
   private mcpQuotaTimer: ReturnType<typeof setInterval> | null = null;
   private unsubscribeEntitlement: (() => void) | null = null;
+  private unsubscribeSubscription: (() => void) | null = null;
   // Bounded "entitlement snapshot might still arrive" window. Starts false
   // on open() when currentState is null, flips true on first snapshot OR
   // after a fallback timeout so signed-in free users aren't stranded on an
@@ -351,6 +353,8 @@ export class UnifiedSettings {
       }
       this.replaceUpgradeSection();
     });
+    this.unsubscribeSubscription?.();
+    this.unsubscribeSubscription = onSubscriptionChange(() => this.replaceUpgradeSection());
     // Bounded fallback: the entitlement listener can legitimately never
     // fire (no VITE_CONVEX_URL, Convex API fails to load, waitForConvexAuth
     // times out at 10s, or init throws — see entitlements.ts:41,47,58,78).
@@ -408,6 +412,8 @@ export class UnifiedSettings {
     this.pendingNotifs = null;
     this.unsubscribeEntitlement?.();
     this.unsubscribeEntitlement = null;
+    this.unsubscribeSubscription?.();
+    this.unsubscribeSubscription = null;
     if (this.entitlementReadyTimer) {
       clearTimeout(this.entitlementReadyTimer);
       this.entitlementReadyTimer = null;
@@ -436,6 +442,8 @@ export class UnifiedSettings {
     this.pendingNotifs = null;
     this.unsubscribeEntitlement?.();
     this.unsubscribeEntitlement = null;
+    this.unsubscribeSubscription?.();
+    this.unsubscribeSubscription = null;
     // Mirror close() — without this, a destroy() during the 12s fallback
     // window leaves the timer live; it fires after teardown and calls
     // replaceUpgradeSection() against a detached overlay (no-op via the
@@ -618,6 +626,18 @@ export class UnifiedSettings {
     // never arrive at all.
     if (!isEntitled() && hasPremiumAccess()) {
       return '<div class="upgrade-pro-section upgrade-pro-hidden" hidden></div>';
+    }
+    const sub = getSubscription();
+    const billingState = deriveBillingUxState(sub, getEntitlementState(), Date.now());
+    if (billingState === 'lapsed') {
+      const planName = sub?.displayName ?? 'Pro';
+      return `
+        <div class="upgrade-pro-section upgrade-pro-lapsed" data-billing-state="lapsed">
+          <div class="upgrade-pro-title">${escapeHtml(t('components.billingState.resubscribe'))}: ${escapeHtml(planName)}</div>
+          <div class="upgrade-pro-desc">${escapeHtml(t('components.billingState.lapsedDesc'))}</div>
+          <a class="upgrade-pro-cta-link" href="${getReactivationHref(sub?.planKey)}" target="_blank" rel="noopener">${escapeHtml(t('components.billingState.resubscribe'))} →</a>
+        </div>
+      `;
     }
     // Signed-in user whose Convex entitlement snapshot has not arrived yet
     // AND whose bounded-wait window has not expired. Rendering "Upgrade to

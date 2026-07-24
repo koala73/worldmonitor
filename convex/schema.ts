@@ -799,6 +799,52 @@ export default defineSchema({
     .index("by_webhookId", ["webhookId"])
     .index("by_eventType", ["eventType"]),
 
+  // Durable dead-letter records for Dodo events that fail processing. Keep
+  // this projection intentionally payload-free: operators need stable Dodo
+  // identifiers and shape metadata to repair a subscription/payment, not a
+  // second copy of customer data or webhook secrets.
+  paymentWebhookFailures: defineTable({
+    webhookId: v.string(),
+    eventType: v.string(),
+    dodoSubscriptionId: v.optional(v.string()),
+    dodoPaymentId: v.optional(v.string()),
+    dodoCustomerId: v.optional(v.string()),
+    errorKind: v.string(),
+    errorMessage: v.string(),
+    dataKeys: v.array(v.string()),
+    eventTimestamp: v.number(),
+    receivedAt: v.number(),
+    lastSeenAt: v.number(),
+    attemptCount: v.number(),
+    unresolved: v.boolean(),
+    resolvedAt: v.optional(v.number()),
+    resolvedBy: v.optional(v.string()),
+    resolutionNote: v.optional(v.string()),
+  })
+    .index("by_webhookId", ["webhookId"])
+    .index("by_unresolved_lastSeenAt", ["unresolved", "lastSeenAt"])
+    .index("by_dodoSubscriptionId", ["dodoSubscriptionId"])
+    .index("by_dodoPaymentId", ["dodoPaymentId"]),
+
+  // Bounded aggregate used for the Sentry/ops signal. Keeping it separate
+  // from the dead-letter rows avoids collecting an incident-sized table from
+  // every retry just to report queue counts. The pre-seeded global document
+  // also serializes failure-row inserts and lifecycle transitions; see
+  // `payments/webhookMutations:_seedFailureSummary` and the Convex deploy
+  // workflow. It must not be lazily created in the failure mutation because
+  // an empty index range does not serialize concurrent first inserts.
+  paymentWebhookFailureSummary: defineTable({
+    key: v.literal("global"),
+    unresolvedCount: v.number(),
+    eventTypes: v.array(
+      v.object({
+        eventType: v.string(),
+        count: v.number(),
+      }),
+    ),
+    updatedAt: v.number(),
+  }).index("by_key", ["key"]),
+
   paymentEvents: defineTable({
     userId: v.string(),
     dodoPaymentId: v.string(),

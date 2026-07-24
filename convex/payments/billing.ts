@@ -506,12 +506,18 @@ export const getSubscriptionForUser = query({
 
     if (allSubs.length === 0) return null;
 
-    const priorityOrder = ["active", "on_hold", "cancelled", "expired"];
     allSubs.sort((a, b) => {
-      const pa = priorityOrder.indexOf(a.status);
-      const pb = priorityOrder.indexOf(b.status);
+      // Ended subscriptions are equivalent for display selection. Prefer the
+      // one whose coverage ended most recently so returning-subscriber links
+      // preserve the latest plan instead of always favoring cancelled.
+      const pa = a.status === "active" ? 0 : a.status === "on_hold" ? 1 : 2;
+      const pb = b.status === "active" ? 0 : b.status === "on_hold" ? 1 : 2;
       if (pa !== pb) return pa - pb; // active first
-      return b.updatedAt - a.updatedAt; // then most recently updated
+      if (pa === 2) {
+        const periodDelta = b.currentPeriodEnd - a.currentPeriodEnd;
+        if (periodDelta !== 0) return periodDelta;
+      }
+      return b.updatedAt - a.updatedAt;
     });
 
     // Safe: we checked length > 0 above

@@ -1556,7 +1556,26 @@
       "cafIndex": "Δείκτης CAF",
       "candidGrants": "Επιχορηγήσεις Candid",
       "dataLag": "Καθυστέρηση Δεδομένων",
-      "infoTooltip": "<strong>Δείκτης Παγκόσμιας Φιλανθρωπικής Δραστηριότητας</strong> Σύνθετος δείκτης που παρακολουθεί προσωπικές δωρεές μέσω πλατφορμών crowdfunding και crypto πορτοφολιών.<ul><li><strong>Πλατφόρμες</strong>: Δειγματοληψία καμπανιών GoFundMe, GlobalGiving, JustGiving</li><li><strong>Crypto</strong>: On-chain εισροές φιλανθρωπικών πορτοφολιών (Endaoment, Giving Block)</li><li><strong>Θεσμικά</strong>: OECD ODA, Δείκτης CAF World Giving, Επιχορηγήσεις Candid</li></ul>Ο δείκτης είναι κατευθυντικός (όχι ακριβή ποσά). Συνδυάζει ζωντανή δειγματοληψία με δημοσιευμένες ετήσιες εκθέσεις."
+      "infoTooltip": "<strong>Δείκτης Παγκόσμιας Φιλανθρωπικής Δραστηριότητας</strong> Σύνθετος δείκτης που παρακολουθεί προσωπικές δωρεές μέσω πλατφορμών crowdfunding και crypto πορτοφολιών.<ul><li><strong>Πλατφόρμες</strong>: Δειγματοληψία καμπανιών GoFundMe, GlobalGiving, JustGiving</li><li><strong>Crypto</strong>: On-chain εισροές φιλανθρωπικών πορτοφολιών (Endaoment, Giving Block)</li><li><strong>Θεσμικά</strong>: OECD ODA, Δείκτης CAF World Giving, Επιχορηγήσεις Candid</li></ul>Ο δείκτης είναι κατευθυντικός (όχι ακριβή ποσά). Συνδυάζει ζωντανή δειγματοληψία με δημοσιευμένες ετήσιες εκθέσεις.",
+      "benchmarkTitle": "Global Giving Benchmarks",
+      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "status": {
+        "published": "Published benchmarks with verified source coverage.",
+        "partial": "Published benchmarks with partial source coverage.",
+        "legacy": "Legacy snapshot; source details are unavailable.",
+        "cached": "Showing a cached snapshot; refresh unavailable."
+      },
+      "trackedAnnualized": "Tracked platform giving — annualized estimate",
+      "annualizedDaily": "Annualized daily estimate",
+      "atLeast": "At least",
+      "about": "About",
+      "sourceNotVerified": "Source not verified",
+      "reportedCumulative": "Reported cumulative total",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Published benchmark",
+      "sourcesMethodology": "Sources & methodology",
+      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
+      "partialEstimate": "Partially verified estimate"
     },
     "displacement": {
       "refugees": "Πρόσφυγες",

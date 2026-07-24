@@ -1697,7 +1697,26 @@
       "cafIndex": "CAF इंडेक्स",
       "candidGrants": "कैंडिड ग्रांट्स",
       "dataLag": "डेटा विलंब",
-      "infoTooltip": "<strong>वैश्विक दान गतिविधि सूचकांक</strong> व्यक्तिगत दान को ट्रैक करने वाला संयोजित सूचकांक क्राउडफंडिंग प्लेटफॉर्म और क्रिप्टो वॉलेट्स से।<ul><li><strong>प्लेटफ़ॉर्म</strong>: GoFundMe, GlobalGiving, JustGiving नमूना</li><li><strong>क्रिप्टो</strong>: ऑन-चेन चैरिटी वॉलेट इनफ्लो (Endaoment, Giving Block)</li><li><strong>संस्थागत</strong>: OECD ODA, CAF वर्ल्ड गिविंग इंडेक्स, कैंडिड ग्रांट्स</li></ul>सूचकांक दिशात्मक है (सटीक राशि नहीं)। लाइव नमूना और वार्षिक रिपोर्ट मिलाकर।"
+      "infoTooltip": "<strong>वैश्विक दान गतिविधि सूचकांक</strong> व्यक्तिगत दान को ट्रैक करने वाला संयोजित सूचकांक क्राउडफंडिंग प्लेटफॉर्म और क्रिप्टो वॉलेट्स से।<ul><li><strong>प्लेटफ़ॉर्म</strong>: GoFundMe, GlobalGiving, JustGiving नमूना</li><li><strong>क्रिप्टो</strong>: ऑन-चेन चैरिटी वॉलेट इनफ्लो (Endaoment, Giving Block)</li><li><strong>संस्थागत</strong>: OECD ODA, CAF वर्ल्ड गिविंग इंडेक्स, कैंडिड ग्रांट्स</li></ul>सूचकांक दिशात्मक है (सटीक राशि नहीं)। लाइव नमूना और वार्षिक रिपोर्ट मिलाकर।",
+      "benchmarkTitle": "Global Giving Benchmarks",
+      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "status": {
+        "published": "Published benchmarks with verified source coverage.",
+        "partial": "Published benchmarks with partial source coverage.",
+        "legacy": "Legacy snapshot; source details are unavailable.",
+        "cached": "Showing a cached snapshot; refresh unavailable."
+      },
+      "trackedAnnualized": "Tracked platform giving — annualized estimate",
+      "annualizedDaily": "Annualized daily estimate",
+      "atLeast": "At least",
+      "about": "About",
+      "sourceNotVerified": "Source not verified",
+      "reportedCumulative": "Reported cumulative total",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Published benchmark",
+      "sourcesMethodology": "Sources & methodology",
+      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
+      "partialEstimate": "Partially verified estimate"
     },
     "displacement": {
       "refugees": "शरणार्थी",

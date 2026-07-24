@@ -847,7 +847,11 @@ export class DataLoaderManager implements AppModule {
           }
           const data = givingResult.data;
           this.callPanel('giving', 'setData', data);
-          if (data.platforms.length > 0) dataFreshness.recordUpdate('giving', data.platforms.length);
+          if (givingResult.state === 'cached-refresh-unavailable') {
+            dataFreshness.recordError('giving', `Giving refresh unavailable (${givingResult.refreshFailure ?? 'unknown'})`);
+          } else if (data.platforms.length > 0) {
+            dataFreshness.recordUpdate('giving', data.platforms.length);
+          }
         }),
       });
     }

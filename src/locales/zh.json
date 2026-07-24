@@ -1556,7 +1556,26 @@
       "cafIndex": "CAF指数",
       "candidGrants": "Candid拨款",
       "dataLag": "数据延迟",
-      "infoTooltip": "<strong>全球捐赠活动指数</strong> 跟踪众筹平台和加密钱包个人捐赠的综合指数。<ul><li><strong>平台</strong>：GoFundMe、GlobalGiving、JustGiving活动抽样</li><li><strong>加密</strong>：链上慈善钱包流入（Endaoment、Giving Block）</li><li><strong>机构</strong>：OECD ODA、CAF世界捐赠指数、Candid拨款</li></ul>指数为方向性指标，非精确金额。结合实时抽样与已发布年度报告。"
+      "infoTooltip": "<strong>全球捐赠活动指数</strong> 跟踪众筹平台和加密钱包个人捐赠的综合指数。<ul><li><strong>平台</strong>：GoFundMe、GlobalGiving、JustGiving活动抽样</li><li><strong>加密</strong>：链上慈善钱包流入（Endaoment、Giving Block）</li><li><strong>机构</strong>：OECD ODA、CAF世界捐赠指数、Candid拨款</li></ul>指数为方向性指标，非精确金额。结合实时抽样与已发布年度报告。",
+      "benchmarkTitle": "Global Giving Benchmarks",
+      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "status": {
+        "published": "Published benchmarks with verified source coverage.",
+        "partial": "Published benchmarks with partial source coverage.",
+        "legacy": "Legacy snapshot; source details are unavailable.",
+        "cached": "Showing a cached snapshot; refresh unavailable."
+      },
+      "trackedAnnualized": "Tracked platform giving — annualized estimate",
+      "annualizedDaily": "Annualized daily estimate",
+      "atLeast": "At least",
+      "about": "About",
+      "sourceNotVerified": "Source not verified",
+      "reportedCumulative": "Reported cumulative total",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Published benchmark",
+      "sourcesMethodology": "Sources & methodology",
+      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
+      "partialEstimate": "Partially verified estimate"
     },
     "displacement": {
       "refugees": "难民",

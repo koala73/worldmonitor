@@ -1556,7 +1556,26 @@
       "cafIndex": "CAF 지수",
       "candidGrants": "Candid 보조금",
       "dataLag": "데이터 지연",
-      "infoTooltip": "<strong>글로벌 기부 활동 지수</strong> 크라우드펀딩 플랫폼 및 암호화폐 지갑을 통한 개인 기부를 추적하는 종합 지수.<ul><li><strong>플랫폼</strong>: GoFundMe, GlobalGiving, JustGiving 캠페인 샘플링</li><li><strong>암호화폐</strong>: 온체인 자선 지갑 유입 (Endaoment, Giving Block)</li><li><strong>기관</strong>: OECD ODA, CAF 세계 기부 지수, Candid 보조금</li></ul>지수는 방향성 지표입니다 (정확한 금액 아님). 실시간 샘플링과 연간 보고서를 결합합니다."
+      "infoTooltip": "<strong>글로벌 기부 활동 지수</strong> 크라우드펀딩 플랫폼 및 암호화폐 지갑을 통한 개인 기부를 추적하는 종합 지수.<ul><li><strong>플랫폼</strong>: GoFundMe, GlobalGiving, JustGiving 캠페인 샘플링</li><li><strong>암호화폐</strong>: 온체인 자선 지갑 유입 (Endaoment, Giving Block)</li><li><strong>기관</strong>: OECD ODA, CAF 세계 기부 지수, Candid 보조금</li></ul>지수는 방향성 지표입니다 (정확한 금액 아님). 실시간 샘플링과 연간 보고서를 결합합니다.",
+      "benchmarkTitle": "Global Giving Benchmarks",
+      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "status": {
+        "published": "Published benchmarks with verified source coverage.",
+        "partial": "Published benchmarks with partial source coverage.",
+        "legacy": "Legacy snapshot; source details are unavailable.",
+        "cached": "Showing a cached snapshot; refresh unavailable."
+      },
+      "trackedAnnualized": "Tracked platform giving — annualized estimate",
+      "annualizedDaily": "Annualized daily estimate",
+      "atLeast": "At least",
+      "about": "About",
+      "sourceNotVerified": "Source not verified",
+      "reportedCumulative": "Reported cumulative total",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Published benchmark",
+      "sourcesMethodology": "Sources & methodology",
+      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
+      "partialEstimate": "Partially verified estimate"
     },
     "displacement": {
       "refugees": "난민",

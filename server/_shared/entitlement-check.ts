@@ -49,8 +49,8 @@ export interface CachedEntitlements {
      */
     mcpAccess?: boolean;
     /**
-     * Per-account daily REST allowance (#3199). The rate-limit layer meters
-     * but never rejects at this value; the hard ceiling is 10×. `-1` =
+     * Per-account daily REST allowance (#3199). The rate-limit layer
+     * hard-rejects (in enforce mode) at this value (#4635). `-1` =
      * unlimited. Unlike `mcpAccess`, consumers treat `undefined` as
      * **no daily limit (fail-OPEN)** — a stale/legacy cache must not punish
      * a paying customer. NOT added to the cache-staleness gate below for

@@ -164,7 +164,10 @@ function getCtaProps(tier: Tier, billing: 'monthly' | 'annual'): CtaProps {
 }
 
 export function PricingSection({ refCode }: { refCode?: string }) {
-  const [billing, setBilling] = useState<'monthly' | 'annual'>('monthly');
+  const [billing, setBilling] = useState<'monthly' | 'annual'>(() => {
+    const planKey = new URLSearchParams(window.location.search).get('wm_reactivate_plan');
+    return planKey?.endsWith('_annual') ? 'annual' : 'monthly';
+  });
   // Loading state is driven by the service's checkout phase. Only the
   // `creating_checkout` phase (post-auth, inside doCheckout) disables
   // the clicked CTA. During the Clerk modal window, phase stays idle —

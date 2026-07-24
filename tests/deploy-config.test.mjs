@@ -671,6 +671,29 @@ describe('welcome landing page routing', () => {
     assert.equal(redirect.permanent, true);
   });
 
+  it('redirects the human pricing route to the canonical pricing section before SPA routing', () => {
+    const redirect = vercelConfig.redirects.find((r) => r.source === '/pricing');
+    assert.ok(redirect, 'expected a redirect for /pricing');
+    assert.equal(redirect.destination, '/pro#pricing');
+    assert.equal(redirect.permanent, true);
+
+    assert.equal(
+      vercelConfig.redirects.some((r) => r.source === '/pricing.md'),
+      false,
+      'the machine-readable pricing contract must remain a static asset',
+    );
+    assert.equal(
+      vercelConfig.redirects.some((r) => r.source === '/api/product-catalog'),
+      false,
+      'the live product catalog endpoint must remain unchanged',
+    );
+    assert.equal(
+      vercelConfig.rewrites.some((r) => r.source === '/pricing'),
+      false,
+      '/pricing must be handled in the redirects phase before the SPA rewrites phase',
+    );
+  });
+
   it('redirects bare corpus roots to canonical generated pages', () => {
     const changelog = vercelConfig.redirects.find((r) => r.source === '/changelog');
     assert.ok(changelog, 'expected a redirect for /changelog');
@@ -2643,16 +2666,22 @@ describe('agent readiness: named developer-resource pages (#4953)', () => {
   });
 });
 
-// NLWeb schemamap (orank "NLWeb Schema Feeds"): the robots.txt `Schemamap:`
-// directive and public/schemamap.xml must stay in parity, and every <loc> the
-// map advertises must resolve to a tracked file or a live route — a schemamap
-// pointing at a 404 is worse than none (same dead-pointer class as the deleted
-// Wikidata QID incident).
+// NLWeb schemamap (orank "NLWeb Schema Feeds"): keep the file published and
+// discoverable without advertising it through robots.txt. Lighthouse rejects
+// the emerging `Schemamap:` directive as unknown, dropping SEO 100 -> 92 on
+// every route; #4835 tracks the upstream safelist unblock. Every <loc> must
+// still resolve to a tracked file or a live route — a schemamap pointing at a
+// 404 is worse than none (same dead-pointer class as the deleted Wikidata QID
+// incident).
 describe('NLWeb schemamap (/schemamap.xml)', () => {
   const schemamapSource = readFileSync(resolve(__dirname, '../public/schemamap.xml'), 'utf-8');
 
-  it('robots.txt advertises the schemamap and the file exists', () => {
-    assert.match(robotsSource, /^Schemamap: https:\/\/www\.worldmonitor\.app\/schemamap\.xml$/m);
+  it('keeps the file published without an unsupported robots.txt directive', () => {
+    assert.doesNotMatch(
+      robotsSource,
+      /^Schemamap:/mi,
+      'Lighthouse rejects Schemamap as an unknown robots.txt directive; see #4835'
+    );
     assert.match(schemamapSource, /^<\?xml version="1\.0" encoding="UTF-8"\?>/);
     assert.ok(
       schemamapSource.includes('<schemamap xmlns="http://www.nlweb.ai/schemas/schemamap/0.1">'),

@@ -36,7 +36,7 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
   shippingRates: 'supply_chain:shipping:v2',
   chokepoints: 'supply_chain:chokepoints:v4',
   minerals: 'supply_chain:minerals:v2',
-  giving: 'giving:summary:v1',
+  giving: 'giving:summary:v2',
   climateAnomalies: 'climate:anomalies:v2',
   climateDisasters: 'climate:disasters:v1',
   co2Monitoring: 'climate:co2-monitoring:v1',

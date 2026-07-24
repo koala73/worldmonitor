@@ -62,7 +62,6 @@ import {
   reserveDailyMeter,
   rateLimitHeaders,
   ENTERPRISE_API_RATE_LIMIT,
-  CEILING_MULTIPLIER,
 } from './_shared/api-key-rate-limit';
 import {
   DIRECT_LLM_DAILY_QUOTA_LIMIT,
@@ -1576,8 +1575,8 @@ export function createDomainGateway(
       // ── Per-account API rate limit (#3199) ──────────────────────────────
       // Eligible authenticated keys — a valid user key (which carries NO
       // keyCheck.kind, so `isUserApiKey` is the discriminator) or an enterprise
-      // env key — are governed by a per-account burst + daily meter + 10×
-      // safety ceiling instead of the global per-IP cap. In ENFORCE they bypass
+      // env key — are governed by a per-account burst + daily meter (enforced
+      // at the sold allowance, #4635) instead of the global per-IP cap. In ENFORCE they bypass
       // the per-IP fallback below; in SHADOW they only record telemetry and
       // still fall through to per-IP, so protection never drops below today.
       // Limits are NOT in scope here (checkEntitlement discards `features`), so
@@ -1589,9 +1588,11 @@ export function createDomainGateway(
         let perMinute = 0;
         let allowance = -1;
         let identity = '';
+        let planKey = ''; // #4635 — hoisted for the informative 429 (ent is block-scoped below)
         if (isEnterpriseAuth) {
           perMinute = ENTERPRISE_API_RATE_LIMIT; // hardcoded — no entitlement row
           allowance = -1; // unlimited daily / no ceiling
+          planKey = 'enterprise'; // top tier — named in the 429, but no upgrade_url
           usage.tier = 3; // enterprise tier — no entitlement row to read it from
           // (plan_key defaults to 'enterprise' in buildUsageIdentity)
           // Enterprise burst is keyed PER KEY (not per account) by design:
@@ -1623,6 +1624,7 @@ export function createDomainGateway(
               typeof ent.features.apiDailyAllowance === 'number'
                 ? ent.features.apiDailyAllowance
                 : -1;
+            planKey = ent.planKey;
             identity = sessionUserId;
           }
           // else: downgraded / null entitlement ⇒ not eligible (perMinute = 0),
@@ -1630,13 +1632,23 @@ export function createDomainGateway(
         }
 
         if (perMinute > 0 && identity) {
+          // #4635 — informative 429 upgrade link; omitted for enterprise/top tier.
+          const upgradeUrl =
+            planKey && planKey !== 'enterprise' ? 'https://worldmonitor.app/' : undefined;
           // 1. Per-minute burst (hard limit).
           const burst = await checkBurst(perMinute, identity);
           if (!burst.ok) {
             if (enforce) {
               const retryAfterSec = Math.max(1, Math.ceil((burst.reset - Date.now()) / 1000));
               emitRequest(429, 'rl_min_429', null);
-              return new Response(JSON.stringify({ error: 'Too many requests' }), {
+              return new Response(JSON.stringify({
+                error: 'Too many requests',
+                plan: planKey || undefined,
+                limit: burst.limit,
+                limit_type: 'per_minute',
+                reset: new Date(burst.reset).toISOString(),
+                upgrade_url: upgradeUrl,
+              }), {
                 status: 429,
                 headers: {
                   'Content-Type': 'application/json',
@@ -1648,23 +1660,31 @@ export function createDomainGateway(
             }
             pendingShadowReason = 'rl_min_shadow';
           } else if (allowance >= 0) {
-            // 2. Daily meter + 10× ceiling (skipped for unlimited allowance).
+            // 2. Daily meter — hard-rejects at the sold allowance (#4635).
+            //    Skipped for unlimited (-1); reserveDailyMeter fail-opens on <=0.
             const meter = await reserveDailyMeter({
               userId: identity,
               allowance,
               pipeline: (cmds) => runRedisPipeline(cmds),
             });
-            if (meter.overCeiling) {
+            if (meter.overLimit) {
               if (enforce) {
                 await meter.rollback();
                 emitRequest(429, 'rl_ceiling_429', null);
-                return new Response(JSON.stringify({ error: 'Daily request ceiling exceeded' }), {
+                return new Response(JSON.stringify({
+                  error: 'Daily request limit reached',
+                  plan: planKey || undefined,
+                  limit: allowance,
+                  limit_type: 'daily',
+                  reset: new Date(Date.now() + meter.retryAfterSec * 1000).toISOString(),
+                  upgrade_url: upgradeUrl,
+                }), {
                   status: 429,
                   headers: {
                     'Content-Type': 'application/json',
                     'Cache-Control': 'no-store',
                     ...rateLimitHeaders({
-                      limit: allowance * CEILING_MULTIPLIER,
+                      limit: allowance,
                       remaining: 0,
                       resetMs: Date.now() + meter.retryAfterSec * 1000,
                       retryAfterSec: meter.retryAfterSec,

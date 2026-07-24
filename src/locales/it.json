@@ -1419,7 +1419,26 @@
       "cafIndex": "Indice CAF",
       "candidGrants": "Sovvenzioni Candid",
       "dataLag": "Ritardo dati",
-      "infoTooltip": "<strong>Indice di attività donazioni globali</strong> Indice composito che traccia le donazioni personali attraverso piattaforme di crowdfunding e wallet crypto.<ul><li><strong>Piattaforme</strong>: GoFundMe, GlobalGiving, JustGiving campionamento campagne</li><li><strong>Crypto</strong>: Afflussi on-chain a wallet beneficenza (Endaoment, Giving Block)</li><li><strong>Istituzionale</strong>: OCSE APS, CAF World Giving Index, sovvenzioni Candid</li></ul>L'indice è direzionale (non importi esatti in dollari). Combina campionamento in tempo reale con rapporti annuali pubblicati."
+      "infoTooltip": "<strong>Indice di attività donazioni globali</strong> Indice composito che traccia le donazioni personali attraverso piattaforme di crowdfunding e wallet crypto.<ul><li><strong>Piattaforme</strong>: GoFundMe, GlobalGiving, JustGiving campionamento campagne</li><li><strong>Crypto</strong>: Afflussi on-chain a wallet beneficenza (Endaoment, Giving Block)</li><li><strong>Istituzionale</strong>: OCSE APS, CAF World Giving Index, sovvenzioni Candid</li></ul>L'indice è direzionale (non importi esatti in dollari). Combina campionamento in tempo reale con rapporti annuali pubblicati.",
+      "benchmarkTitle": "Global Giving Benchmarks",
+      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "status": {
+        "published": "Published benchmarks with verified source coverage.",
+        "partial": "Published benchmarks with partial source coverage.",
+        "legacy": "Legacy snapshot; source details are unavailable.",
+        "cached": "Showing a cached snapshot; refresh unavailable."
+      },
+      "trackedAnnualized": "Tracked platform giving — annualized estimate",
+      "annualizedDaily": "Annualized daily estimate",
+      "atLeast": "At least",
+      "about": "About",
+      "sourceNotVerified": "Source not verified",
+      "reportedCumulative": "Reported cumulative total",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Published benchmark",
+      "sourcesMethodology": "Sources & methodology",
+      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
+      "partialEstimate": "Partially verified estimate"
     },
     "displacement": {
       "refugees": "Rifugiati",

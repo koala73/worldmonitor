@@ -1559,7 +1559,26 @@
       "cafIndex": "Indicele CAF",
       "candidGrants": "Granturi Candid",
       "dataLag": "Data Lag",
-      "infoTooltip": "<strong>Indexul activității globale de donații</strong> Index compozit care urmărește donațiile personale pe platformele de crowdfunding și portofelele cripto.<ul><li><strong>Platforme</strong>: eșantionarea campaniilor GoFundMe, GlobalGiving, JustGiving</li><li><strong>Crypto</strong>: fluxuri de portofel de caritate în lanț, fluxuri de portofel de caritate GivingEnda Bloc)</li><li><strong>Instituțional</strong>: ODA OECD, CAF World Giving Index, Granturi Candid</li></ul>Indexul este direcțional (nu sume exacte în dolari). Combină eșantionarea în direct cu rapoartele anuale publicate."
+      "infoTooltip": "<strong>Indexul activității globale de donații</strong> Index compozit care urmărește donațiile personale pe platformele de crowdfunding și portofelele cripto.<ul><li><strong>Platforme</strong>: eșantionarea campaniilor GoFundMe, GlobalGiving, JustGiving</li><li><strong>Crypto</strong>: fluxuri de portofel de caritate în lanț, fluxuri de portofel de caritate GivingEnda Bloc)</li><li><strong>Instituțional</strong>: ODA OECD, CAF World Giving Index, Granturi Candid</li></ul>Indexul este direcțional (nu sume exacte în dolari). Combină eșantionarea în direct cu rapoartele anuale publicate.",
+      "benchmarkTitle": "Global Giving Benchmarks",
+      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "status": {
+        "published": "Published benchmarks with verified source coverage.",
+        "partial": "Published benchmarks with partial source coverage.",
+        "legacy": "Legacy snapshot; source details are unavailable.",
+        "cached": "Showing a cached snapshot; refresh unavailable."
+      },
+      "trackedAnnualized": "Tracked platform giving — annualized estimate",
+      "annualizedDaily": "Annualized daily estimate",
+      "atLeast": "At least",
+      "about": "About",
+      "sourceNotVerified": "Source not verified",
+      "reportedCumulative": "Reported cumulative total",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Published benchmark",
+      "sourcesMethodology": "Sources & methodology",
+      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
+      "partialEstimate": "Partially verified estimate"
     },
     "displacement": {
       "refugees": "Refugiati",
