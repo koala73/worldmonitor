@@ -14,6 +14,7 @@
  */
 
 import { t } from '@/services/i18n';
+import { getAuthState } from '@/services/auth-state';
 import {
   buildActivationSteps,
   shouldShowFinishSetupChip,
@@ -39,6 +40,11 @@ function nowOf(options: ProActivationFlowOptions): number {
   return (options.now ?? Date.now)();
 }
 
+/** The current Clerk user id, or null while auth is still settling / anonymous. */
+function currentChipUserId(): string | null {
+  return getAuthState().user?.id ?? null;
+}
+
 function readChipDismissal(): FinishSetupChipDismissal | null {
   try {
     return parseChipDismissal(localStorage.getItem(FINISH_SETUP_CHIP_DISMISS_KEY));
@@ -51,7 +57,9 @@ function writeChipDismissal(now: number): void {
   try {
     localStorage.setItem(
       FINISH_SETUP_CHIP_DISMISS_KEY,
-      JSON.stringify(computeFinishSetupChipDismissal(now)),
+      // Scope the dismissal to the signed-in account (finding #13) so it does
+      // not pre-suppress another user's chip on a shared browser.
+      JSON.stringify(computeFinishSetupChipDismissal(currentChipUserId(), now)),
     );
   } catch {
     // Storage disabled/full — the chip simply reappears next session.
@@ -151,7 +159,7 @@ export function showFinishSetupChipForResults(
   results: readonly ActivationStepResult[],
 ): void {
   const now = nowOf(options);
-  if (!shouldShowFinishSetupChip(results, readChipDismissal(), now)) return;
+  if (!shouldShowFinishSetupChip(results, readChipDismissal(), currentChipUserId(), now)) return;
   renderChip(options);
 }
 
@@ -162,13 +170,14 @@ export function showFinishSetupChipForResults(
  */
 export async function maybeShowFinishSetupChip(options: ProActivationFlowOptions): Promise<void> {
   const now = nowOf(options);
+  const currentUserId = currentChipUserId();
   const dismissal = readChipDismissal();
-  if (isChipDismissed(dismissal, now)) return; // avoid the config read when dismissed
+  if (isChipDismissed(dismissal, currentUserId, now)) return; // avoid the config read when dismissed
   const ctx = await readActivationContext();
   const results: ActivationStepResult[] = buildActivationSteps(ctx.capabilities, ctx.config).map(
     (s) => ({ id: s.id, outcome: s.state === 'already-done' ? 'done' : 'skipped' }),
   );
-  if (!shouldShowFinishSetupChip(results, dismissal, now)) return;
+  if (!shouldShowFinishSetupChip(results, dismissal, currentUserId, now)) return;
   renderChip(options);
 }
 

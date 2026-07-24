@@ -34,6 +34,9 @@ import {
   shouldShowFinishSetupChip,
   computeFinishSetupChipDismissal,
   isChipDismissed,
+  computeMountClaim,
+  parseMountClaim,
+  isMountClaimBlocking,
   selectStepEvent,
   ACTIVATION_EVENTS,
   PRO_PRODUCT_IDS,
@@ -44,6 +47,8 @@ import {
   FIRE_ONCE_TTL_MS,
   FINISH_SETUP_CHIP_DISMISS_KEY,
   FINISH_SETUP_CHIP_DISMISS_TTL_MS,
+  MOUNT_CLAIM_KEY,
+  MOUNT_CLAIM_TTL_MS,
   type PendingOnboardingMarker,
   type FireOnceRecord,
   type ActivationEntitlementSnapshot,
@@ -56,6 +61,9 @@ import {
 
 const NOW = 1_800_000_000_000; // fixed epoch ms
 const DAY = 86_400_000;
+
+const USER_A = 'user_2abcAAA';
+const USER_B = 'user_2defBBB';
 
 const PRO_ID = DODO_PRODUCTS.PRO_MONTHLY;
 const PRO_ANNUAL_ID = DODO_PRODUCTS.PRO_ANNUAL;
@@ -88,6 +96,7 @@ function mountInput(overrides: Partial<ActivationMountInput> = {}): ActivationMo
     subscription: sub(),
     fireOnce: null,
     isDesktop: false,
+    currentUserId: null,
     now: NOW,
     ...overrides,
   };
@@ -236,6 +245,67 @@ describe('decideActivationMount — fire-once per subscription (R3)', () => {
   });
 });
 
+describe('decideActivationMount — cross-account marker identity (#6)', () => {
+  it('marker without userId mounts regardless of signed-in user (legacy tolerance)', () => {
+    // A marker written before identity scoping carries no userId; it flows
+    // through the identity gate untouched and mounts on the live snapshot.
+    assert.equal(
+      decideActivationMount(mountInput({ marker: marker(), currentUserId: USER_A })).action,
+      'mount',
+    );
+    assert.equal(
+      decideActivationMount(mountInput({ marker: marker(), currentUserId: null })).action,
+      'mount',
+    );
+  });
+
+  it('marker with userId + same signed-in user mounts', () => {
+    const d = decideActivationMount(
+      mountInput({ marker: marker({ userId: USER_A }), currentUserId: USER_A }),
+    );
+    assert.equal(d.action, 'mount');
+  });
+
+  it('marker with userId + auth still settling (currentUserId null) = keep, never mount/clear', () => {
+    const d = decideActivationMount(
+      mountInput({ marker: marker({ userId: USER_A }), currentUserId: null }),
+    );
+    assert.equal(d.action, 'keep');
+  });
+
+  it('marker with userId + a DIFFERENT signed-in user = none (foreign marker: no mount, no clear)', () => {
+    const d = decideActivationMount(
+      mountInput({ marker: marker({ userId: USER_A }), currentUserId: USER_B }),
+    );
+    assert.equal(d.action, 'none');
+  });
+
+  it('foreign-user identity gate precedes plan classification (a Pro marker for user A does not mount for user B)', () => {
+    const d = decideActivationMount(
+      mountInput({
+        marker: marker({ productId: PRO_ID, userId: USER_A }),
+        entitlement: ent(),
+        subscription: sub(),
+        currentUserId: USER_B,
+      }),
+    );
+    assert.equal(d.action, 'none');
+  });
+
+  it('desktop + userId marker still clears (desktop precedes the identity gate, R12)', () => {
+    const d = decideActivationMount(
+      mountInput({ marker: marker({ userId: USER_A }), currentUserId: USER_B, isDesktop: true }),
+    );
+    assert.equal(d.action, 'clear');
+  });
+
+  it('expired + foreign userId marker still clears (TTL precedes the identity gate)', () => {
+    const stale = marker({ userId: USER_A, createdAt: NOW - PENDING_MARKER_TTL_MS - 1 });
+    const d = decideActivationMount(mountInput({ marker: stale, currentUserId: USER_B }));
+    assert.equal(d.action, 'clear');
+  });
+});
+
 describe('decideActivationMount — boundaries', () => {
   it('entitlement validUntil exactly now counts as live', () => {
     const d = decideActivationMount(mountInput({ entitlement: ent({ validUntil: NOW }) }));
@@ -250,14 +320,24 @@ describe('decideActivationMount — boundaries', () => {
 
 describe('pending marker record + TTL (KTD1)', () => {
   it('computePendingMarker carries the productId and createdAt', () => {
-    assert.deepEqual(computePendingMarker(PRO_ID, NOW), { productId: PRO_ID, createdAt: NOW });
+    assert.deepEqual(computePendingMarker(PRO_ID, null, NOW), { productId: PRO_ID, createdAt: NOW });
   });
 
   it('computePendingMarker omits productId when the checkout attempt is unknown', () => {
-    const m = computePendingMarker(null, NOW);
+    const m = computePendingMarker(null, null, NOW);
     assert.equal(m.createdAt, NOW);
     assert.equal(m.productId, undefined);
     assert.equal('productId' in m, false);
+  });
+
+  it('computePendingMarker embeds the userId when signed in, omits it when null (#6)', () => {
+    assert.deepEqual(computePendingMarker(PRO_ID, USER_A, NOW), {
+      productId: PRO_ID,
+      userId: USER_A,
+      createdAt: NOW,
+    });
+    const anon = computePendingMarker(PRO_ID, null, NOW);
+    assert.equal('userId' in anon, false);
   });
 
   it('isPendingMarkerExpired: fresh false, past-TTL true, exactly-TTL false (inclusive)', () => {
@@ -314,7 +394,19 @@ describe('deriveSubscriptionKey (fire-once identity)', () => {
 
 describe('fire-once record + TTL (KTD4)', () => {
   it('computeFireOnceRecord captures the subscription key and shown time', () => {
-    assert.deepEqual(computeFireOnceRecord('sub_x', NOW), { subscriptionKey: 'sub_x', shownAt: NOW });
+    assert.deepEqual(computeFireOnceRecord('sub_x', null, NOW), {
+      subscriptionKey: 'sub_x',
+      shownAt: NOW,
+    });
+  });
+
+  it('computeFireOnceRecord embeds the userId when signed in, omits it when null (#6 observability)', () => {
+    assert.deepEqual(computeFireOnceRecord('sub_x', USER_A, NOW), {
+      subscriptionKey: 'sub_x',
+      userId: USER_A,
+      shownAt: NOW,
+    });
+    assert.equal('userId' in computeFireOnceRecord('sub_x', null, NOW), false);
   });
 
   it('isFireOnceActive: fresh true, expired false, null false', () => {
@@ -578,40 +670,77 @@ describe('shouldShowFinishSetupChip', () => {
   ];
 
   it('shows the chip when any step was skipped', () => {
-    assert.equal(shouldShowFinishSetupChip(withSkip, null, NOW), true);
+    assert.equal(shouldShowFinishSetupChip(withSkip, null, null, NOW), true);
   });
 
   it('shows the chip when any step failed', () => {
-    assert.equal(shouldShowFinishSetupChip(withFail, null, NOW), true);
+    assert.equal(shouldShowFinishSetupChip(withFail, null, null, NOW), true);
   });
 
   it('no chip when everything was completed or already-done', () => {
-    assert.equal(shouldShowFinishSetupChip(done, null, NOW), false);
+    assert.equal(shouldShowFinishSetupChip(done, null, null, NOW), false);
   });
 
   it('no chip when there are no results', () => {
-    assert.equal(shouldShowFinishSetupChip([], null, NOW), false);
+    assert.equal(shouldShowFinishSetupChip([], null, null, NOW), false);
   });
 
   it('a fresh dismissal record suppresses the chip even with skipped steps', () => {
-    assert.equal(shouldShowFinishSetupChip(withSkip, { dismissedAt: NOW }, NOW), false);
+    assert.equal(shouldShowFinishSetupChip(withSkip, { dismissedAt: NOW }, null, NOW), false);
   });
 
   it('an expired dismissal record no longer suppresses the chip', () => {
     const stale = { dismissedAt: NOW - FINISH_SETUP_CHIP_DISMISS_TTL_MS - 1 };
-    assert.equal(shouldShowFinishSetupChip(withSkip, stale, NOW), true);
+    assert.equal(shouldShowFinishSetupChip(withSkip, stale, null, NOW), true);
+  });
+
+  it("a DIFFERENT user's fresh dismissal does not suppress the chip (#13)", () => {
+    const foreign = { dismissedAt: NOW, userId: USER_A };
+    assert.equal(shouldShowFinishSetupChip(withSkip, foreign, USER_B, NOW), true);
+  });
+
+  it("the SAME user's fresh dismissal suppresses the chip (#13)", () => {
+    const own = { dismissedAt: NOW, userId: USER_A };
+    assert.equal(shouldShowFinishSetupChip(withSkip, own, USER_A, NOW), false);
   });
 });
 
 describe('finish-setup chip dismissal record', () => {
-  it('computeFinishSetupChipDismissal captures the dismissal time', () => {
-    assert.deepEqual(computeFinishSetupChipDismissal(NOW), { dismissedAt: NOW });
+  it('computeFinishSetupChipDismissal captures the dismissal time, embeds userId when signed in', () => {
+    assert.deepEqual(computeFinishSetupChipDismissal(null, NOW), { dismissedAt: NOW });
+    assert.deepEqual(computeFinishSetupChipDismissal(USER_A, NOW), {
+      dismissedAt: NOW,
+      userId: USER_A,
+    });
   });
 
-  it('isChipDismissed: fresh true, expired false, null false', () => {
-    assert.equal(isChipDismissed({ dismissedAt: NOW }, NOW), true);
-    assert.equal(isChipDismissed({ dismissedAt: NOW - FINISH_SETUP_CHIP_DISMISS_TTL_MS - 1 }, NOW), false);
-    assert.equal(isChipDismissed(null, NOW), false);
+  it('isChipDismissed: fresh true, expired false, null false (legacy no-userId record)', () => {
+    assert.equal(isChipDismissed({ dismissedAt: NOW }, null, NOW), true);
+    assert.equal(
+      isChipDismissed({ dismissedAt: NOW - FINISH_SETUP_CHIP_DISMISS_TTL_MS - 1 }, null, NOW),
+      false,
+    );
+    assert.equal(isChipDismissed(null, null, NOW), false);
+  });
+
+  it('isChipDismissed identity matrix (#13): legacy suppresses all; scoped suppresses same user + pre-auth only', () => {
+    // Legacy record (no userId) suppresses for everyone, signed in or not.
+    assert.equal(isChipDismissed({ dismissedAt: NOW }, USER_A, NOW), true);
+    // Scoped record suppresses for the SAME user.
+    assert.equal(isChipDismissed({ dismissedAt: NOW, userId: USER_A }, USER_A, NOW), true);
+    // A DIFFERENT signed-in user is not bound by it — the chip may show.
+    assert.equal(isChipDismissed({ dismissedAt: NOW, userId: USER_A }, USER_B, NOW), false);
+    // Pre-auth (currentUserId null): suppress a fresh record to avoid flashing.
+    assert.equal(isChipDismissed({ dismissedAt: NOW, userId: USER_A }, null, NOW), true);
+    // Expiry still wins over identity.
+    assert.equal(
+      isChipDismissed(
+        { dismissedAt: NOW - FINISH_SETUP_CHIP_DISMISS_TTL_MS - 1, userId: USER_A },
+        USER_A,
+        NOW,
+      ),
+      false,
+    );
   });
 });
 
@@ -675,5 +804,64 @@ describe('stored-record parsers (raw string → validated record, storage stays 
     assert.equal(parseChipDismissal(null), null);
     assert.equal(parseChipDismissal('[]'), null);
     assert.equal(parseChipDismissal(JSON.stringify({ dismissedAt: null })), null);
+  });
+
+  it('parsers preserve a string userId and strip a non-string one (#6/#13)', () => {
+    assert.deepEqual(parsePendingMarker(JSON.stringify({ createdAt: 5, userId: USER_A })), {
+      createdAt: 5,
+      userId: USER_A,
+    });
+    assert.equal(
+      'userId' in (parsePendingMarker(JSON.stringify({ createdAt: 5, userId: 42 })) ?? {}),
+      false,
+    );
+    assert.deepEqual(
+      parseFireOnceRecord(JSON.stringify({ subscriptionKey: 'sub_1', shownAt: 7, userId: USER_A })),
+      { subscriptionKey: 'sub_1', shownAt: 7, userId: USER_A },
+    );
+    assert.deepEqual(parseChipDismissal(JSON.stringify({ dismissedAt: 9, userId: USER_A })), {
+      dismissedAt: 9,
+      userId: USER_A,
+    });
+  });
+});
+
+describe('cross-tab mount claim (#7)', () => {
+  it('computeMountClaim captures the nonce and claim time', () => {
+    assert.deepEqual(computeMountClaim('nonce-1', NOW), { nonce: 'nonce-1', claimedAt: NOW });
+  });
+
+  it('parseMountClaim: valid roundtrip, junk stripped, malformed rejected', () => {
+    assert.deepEqual(parseMountClaim(JSON.stringify({ nonce: 'n1', claimedAt: 7, junk: 1 })), {
+      nonce: 'n1',
+      claimedAt: 7,
+    });
+    assert.equal(parseMountClaim(null), null);
+    assert.equal(parseMountClaim('{'), null);
+    assert.equal(parseMountClaim(JSON.stringify({ claimedAt: 7 })), null);
+    assert.equal(parseMountClaim(JSON.stringify({ nonce: 5, claimedAt: 7 })), null);
+    assert.equal(parseMountClaim(JSON.stringify({ nonce: 'n1', claimedAt: 'nope' })), null);
+  });
+
+  it('isMountClaimBlocking matrix: fresh-foreign blocks; own/stale-foreign/null do not', () => {
+    const fresh = computeMountClaim('other-tab', NOW);
+    // A fresh claim from a DIFFERENT tab blocks us.
+    assert.equal(isMountClaimBlocking(fresh, 'my-tab', NOW), true);
+    // Our OWN fresh claim never blocks us.
+    assert.equal(isMountClaimBlocking(computeMountClaim('my-tab', NOW), 'my-tab', NOW), false);
+    // A stale foreign claim (past TTL) has lapsed — non-blocking.
+    const stale = computeMountClaim('other-tab', NOW - MOUNT_CLAIM_TTL_MS - 1);
+    assert.equal(isMountClaimBlocking(stale, 'my-tab', NOW), false);
+    // No claim at all — non-blocking.
+    assert.equal(isMountClaimBlocking(null, 'my-tab', NOW), false);
+    // Exactly-at-TTL foreign claim is still within its lease (inclusive) → blocks.
+    const edge = computeMountClaim('other-tab', NOW - MOUNT_CLAIM_TTL_MS);
+    assert.equal(isMountClaimBlocking(edge, 'my-tab', NOW), true);
+  });
+
+  it('MOUNT_CLAIM_KEY is versioned and distinct from the other activation keys', () => {
+    assert.match(MOUNT_CLAIM_KEY, /-v\d+$/);
+    const keys = [PENDING_MARKER_KEY, FIRE_ONCE_KEY, FINISH_SETUP_CHIP_DISMISS_KEY, MOUNT_CLAIM_KEY];
+    assert.equal(new Set(keys).size, keys.length);
   });
 });

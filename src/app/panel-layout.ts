@@ -56,10 +56,15 @@ import {
   parseFireOnceRecord,
   decideActivationMount,
   isFireOnceActive,
+  computeMountClaim,
+  parseMountClaim,
+  isMountClaimBlocking,
   PENDING_MARKER_KEY,
   FIRE_ONCE_KEY,
+  MOUNT_CLAIM_KEY,
   type PendingOnboardingMarker,
   type FireOnceRecord,
+  type MountClaimRecord,
   type ActivationEntitlementSnapshot,
   type ActivationSubscriptionSnapshot,
 } from '@/services/pro-activation-state';
@@ -150,6 +155,47 @@ function writeActivationFireOnceRecord(record: FireOnceRecord): void {
   } catch {
     // Storage disabled/full — a reload mid-flow could re-open onboarding once.
   }
+}
+
+function readActivationMountClaim(): MountClaimRecord | null {
+  try {
+    return parseMountClaim(window.localStorage.getItem(MOUNT_CLAIM_KEY));
+  } catch {
+    return null;
+  }
+}
+
+function writeActivationMountClaim(record: MountClaimRecord): void {
+  try {
+    window.localStorage.setItem(MOUNT_CLAIM_KEY, JSON.stringify(record));
+  } catch {
+    // Storage disabled/full — the cross-tab lease simply does not engage; the
+    // in-tab activationResolved latch still prevents a double mount locally.
+  }
+}
+
+/** The read → write → re-read settle a claiming tab waits so both tabs' writes land. */
+const MOUNT_CLAIM_SETTLE_MS = 75;
+
+function activationMountClaimSettle(): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, MOUNT_CLAIM_SETTLE_MS));
+}
+
+/** A unique-per-tab nonce for the cross-tab mount claim (crypto with a fallback). */
+function generateMountClaimNonce(): string {
+  try {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID();
+    }
+  } catch {
+    // Fall through to the non-crypto fallback below.
+  }
+  return `n-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+/** The current Clerk user id, or null while auth is still settling / anonymous. */
+function currentActivationUserId(): string | null {
+  return getAuthState().user?.id ?? null;
 }
 
 /** Map the live entitlement snapshot to the leaf's minimal input (null = not yet loaded). */
@@ -446,6 +492,9 @@ export class PanelLayoutManager implements AppModule {
   private activationRetryUnsubscribers: Array<() => void> = [];
   private activationMountIdleHandle: number | null = null;
   private activationMountTimeoutHandle: number | null = null;
+  // Per-tab nonce for the cross-tab mount claim (finding #7). Generated once so
+  // this tab recognizes its own claim across the read → settle → re-read window.
+  private readonly activationMountNonce = generateMountClaimNonce();
 
   constructor(ctx: AppContext, callbacks: PanelLayoutManagerCallbacks) {
     this.ctx = ctx;
@@ -486,7 +535,14 @@ export class PanelLayoutManager implements AppModule {
       // hook falls back to the live entitlement snapshot for plan identity
       // (never a write-time frozen fallback — see decideActivationMount).
       const activationProductId = loadCheckoutAttempt()?.productId ?? null;
-      writePendingActivationMarker(computePendingMarker(activationProductId, Date.now()));
+      // Bind the marker to the buyer's account when a session is already
+      // resolved at checkout return, so a shared browser cannot onboard a
+      // different signer-in off this purchase (finding #6). Null when auth has
+      // not settled yet — the marker stays legacy/anonymous and mounts on the
+      // live entitlement snapshot as before.
+      writePendingActivationMarker(
+        computePendingMarker(activationProductId, currentActivationUserId(), Date.now()),
+      );
       // Full-page return cleared its URL params; belt-and-braces clear
       // of the attempt record here catches the success path where the
       // overlay handler never ran (direct Dodo redirect).
@@ -702,7 +758,18 @@ export class PanelLayoutManager implements AppModule {
   private async evaluateProActivationMount(): Promise<void> {
     if (this.activationResolved || this.ctx.isDestroyed) return;
     const now = Date.now();
-    const marker = readPendingActivationMarker();
+    let marker = readPendingActivationMarker();
+    const currentUserId = currentActivationUserId();
+    // Bind a not-yet-scoped marker to the first RESOLVED session that observes
+    // it (finding #6): the checkout-return write runs in the constructor before
+    // Clerk restores the session, so markers usually start unscoped — and the
+    // buyer's own post-reload boot is the first resolved viewer in every normal
+    // flow. Binding here shrinks the shared-browser exposure window from the
+    // marker's 7-day TTL to the seconds before this evaluation.
+    if (marker && !marker.userId && currentUserId) {
+      marker = { ...marker, userId: currentUserId };
+      writePendingActivationMarker(marker);
+    }
     const fireOnce = readActivationFireOnceRecord();
     const decision = decideActivationMount({
       marker,
@@ -710,20 +777,37 @@ export class PanelLayoutManager implements AppModule {
       subscription: toActivationSubscriptionSnapshot(getSubscription()),
       fireOnce,
       isDesktop: this.ctx.isDesktopApp,
+      currentUserId,
       now,
     });
 
     switch (decision.action) {
       case 'mount': {
         // Latch BEFORE any await so a snapshot change firing mid-open can't
-        // mount a second interstitial.
+        // mount a second interstitial IN THIS TAB.
         this.activationResolved = true;
         this.teardownActivationRetry();
-        // Contract (decideActivationMount): write the fire-once record keyed by
-        // the resolved subscription identity, THEN clear the marker — so a
-        // reload mid-flow reads fire-once as active (no re-mount) and the chip
-        // path can still pick up any unfinished steps.
-        writeActivationFireOnceRecord(computeFireOnceRecord(decision.subscriptionKey, now));
+
+        // Cross-tab mount claim (finding #7): two tabs booting the same
+        // post-checkout marker would otherwise both open the interstitial.
+        // If another tab already holds a fresh claim, yield now — do NOT write
+        // fire-once and do NOT clear the marker; the winner owns those writes.
+        const ownNonce = this.activationMountNonce;
+        if (isMountClaimBlocking(readActivationMountClaim(), ownNonce, now)) return;
+        // Stake our claim, let both tabs' writes settle (last-writer-wins), then
+        // re-read: exactly one nonce survives, and only that tab proceeds.
+        writeActivationMountClaim(computeMountClaim(ownNonce, now));
+        await activationMountClaimSettle();
+        if (this.ctx.isDestroyed) return;
+        if (isMountClaimBlocking(readActivationMountClaim(), ownNonce, Date.now())) return;
+
+        // Our claim held. Contract (decideActivationMount): write the fire-once
+        // record keyed by the resolved subscription identity, THEN clear the
+        // marker — so a reload mid-flow reads fire-once as active (no re-mount)
+        // and the chip path can still pick up any unfinished steps.
+        writeActivationFireOnceRecord(
+          computeFireOnceRecord(decision.subscriptionKey, currentActivationUserId(), now),
+        );
         clearPendingActivationMarker();
         await this.openProActivationFlow();
         return;

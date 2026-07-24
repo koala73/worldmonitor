@@ -76,16 +76,32 @@ export const PENDING_MARKER_TTL_MS = 7 * 24 * 60 * 60 * 1000;
  */
 export interface PendingOnboardingMarker {
   productId?: string;
+  /**
+   * The Clerk user id the checkout return was observed under, when a session
+   * was already resolved at write time. ABSENT for an anonymous checkout return
+   * (auth still settling) and for markers written before identity scoping —
+   * both flow through the mount decision as legacy, un-scoped markers. When
+   * present it binds the marker to one account so a shared browser cannot
+   * onboard user B off user A's purchase (decideActivationMount, finding #6).
+   */
+  userId?: string;
   /** Epoch ms the marker was written. */
   createdAt: number;
 }
 
-/** Build a marker record; omit `productId` entirely when the plan is unknown. */
+/**
+ * Build a marker record; omit `productId` entirely when the plan is unknown and
+ * `userId` entirely when no session is resolved (anonymous checkout return).
+ */
 export function computePendingMarker(
   productId: string | null | undefined,
+  userId: string | null | undefined,
   now: number,
 ): PendingOnboardingMarker {
-  return productId ? { productId, createdAt: now } : { createdAt: now };
+  const marker: PendingOnboardingMarker = { createdAt: now };
+  if (productId) marker.productId = productId;
+  if (userId) marker.userId = userId;
+  return marker;
 }
 
 /** True once a marker is older than its TTL (inclusive boundary stays fresh). */
@@ -111,13 +127,26 @@ export const FIRE_ONCE_TTL_MS = 400 * 24 * 60 * 60 * 1000;
 export interface FireOnceRecord {
   /** Subscription identity onboarding was shown for (see deriveSubscriptionKey). */
   subscriptionKey: string;
+  /**
+   * The Clerk user id onboarding fired under, when known. Suppression already
+   * scopes correctly by `subscriptionKey`, so the decision never reads this
+   * field — it is retained for observability / future cross-account auditing
+   * (finding #6). Absent for anonymous or legacy records.
+   */
+  userId?: string;
   /** Epoch ms the interstitial was shown. */
   shownAt: number;
 }
 
-/** Build a fire-once record for a subscription identity. */
-export function computeFireOnceRecord(subscriptionKey: string, now: number): FireOnceRecord {
-  return { subscriptionKey, shownAt: now };
+/** Build a fire-once record for a subscription identity; omit `userId` when absent. */
+export function computeFireOnceRecord(
+  subscriptionKey: string,
+  userId: string | null | undefined,
+  now: number,
+): FireOnceRecord {
+  const record: FireOnceRecord = { subscriptionKey, shownAt: now };
+  if (userId) record.userId = userId;
+  return record;
 }
 
 /** True when a fire-once record exists and is still within its TTL. */
@@ -175,6 +204,12 @@ export interface ActivationMountInput {
   fireOnce: FireOnceRecord | null;
   /** Desktop (Tauri) runtime — onboarding is web-only (R12). */
   isDesktop: boolean;
+  /**
+   * The currently signed-in Clerk user id, or null while auth is still settling
+   * (or a genuinely anonymous session). Compared against `marker.userId` so a
+   * shared browser never onboards one account off another's purchase (#6).
+   */
+  currentUserId: string | null;
   now: number;
 }
 
@@ -225,11 +260,26 @@ function isEntitlementLive(entitlement: ActivationEntitlementSnapshot | null, no
  * "still settling", the exact race that shipped a bug in PR #5494.
  */
 export function decideActivationMount(input: ActivationMountInput): ActivationMountDecision {
-  const { marker, entitlement, subscription, fireOnce, isDesktop, now } = input;
+  const { marker, entitlement, subscription, fireOnce, isDesktop, currentUserId, now } = input;
 
   if (marker === null) return { action: 'none' };
   if (isDesktop) return { action: 'clear' }; // web-only (R12); reap the inert marker
   if (isPendingMarkerExpired(marker, now)) return { action: 'clear' };
+
+  // Cross-account identity gate (finding #6). A marker carrying a `userId` is
+  // bound to that account. Placed AFTER the desktop/TTL reaps (an inert or
+  // stale marker is cleared regardless of who is signed in) and BEFORE plan
+  // classification (identity decides before eligibility). A marker WITHOUT a
+  // userId is legacy/anonymous and flows through untouched.
+  if (marker.userId !== undefined) {
+    // Auth has not resolved yet — we cannot confirm the buyer is back. Keep the
+    // marker and retry when a snapshot next changes (never clear on a settle).
+    if (currentUserId === null) return { action: 'keep' };
+    // A DIFFERENT account is signed in: this is someone else's purchase. Do NOT
+    // mount (no cross-account onboarding) and do NOT clear (the buyer may sign
+    // back in on this browser); the 7-day TTL reaps it if they never do.
+    if (currentUserId !== marker.userId) return { action: 'none' };
+  }
 
   const plan = classifyActivationPlan(marker, entitlement);
   if (plan === 'non-pro') return { action: 'clear' };
@@ -246,6 +296,62 @@ export function decideActivationMount(input: ActivationMountInput): ActivationMo
   }
 
   return { action: 'mount', subscriptionKey };
+}
+
+// ---------------------------------------------------------------------------
+// Cross-tab mount claim (finding #7): a short-lived localStorage lease so two
+// tabs that both boot the same post-checkout marker do not each open the
+// interstitial. The claiming tab writes its nonce, waits a beat, then re-reads:
+// exactly one nonce survives the last-writer-wins settle, and only that tab
+// proceeds. The in-tab `activationResolved` latch guards the single-tab case;
+// this guards the multi-tab case. Best-effort — if storage is unavailable the
+// lease simply does not engage and both tabs fall back to the local latch.
+// ---------------------------------------------------------------------------
+
+/** Versioned localStorage key for the cross-tab mount claim. */
+export const MOUNT_CLAIM_KEY = 'wm-pro-activation-claim-v1';
+
+/**
+ * How long a mount claim is honored. Long enough to cover the read → write →
+ * re-read settle a claiming tab waits through, short enough that a tab which
+ * crashed mid-claim cannot wedge onboarding for the next boot.
+ */
+export const MOUNT_CLAIM_TTL_MS = 10_000;
+
+export interface MountClaimRecord {
+  /** Per-manager random nonce identifying the claiming tab. */
+  nonce: string;
+  /** Epoch ms the claim was written. */
+  claimedAt: number;
+}
+
+/** Build a mount-claim record for a tab's nonce. */
+export function computeMountClaim(nonce: string, now: number): MountClaimRecord {
+  return { nonce, claimedAt: now };
+}
+
+export function parseMountClaim(raw: string | null): MountClaimRecord | null {
+  const obj = parseJsonObject(raw);
+  if (obj === null || typeof obj.nonce !== 'string' || typeof obj.claimedAt !== 'number') {
+    return null;
+  }
+  return { nonce: obj.nonce, claimedAt: obj.claimedAt };
+}
+
+/**
+ * True when a foreign, still-fresh claim blocks us from mounting: a record
+ * exists, is within its TTL (inclusive boundary stays fresh), and was written
+ * by a DIFFERENT tab. Our own claim, a lapsed (stale) claim, and no claim at
+ * all are all non-blocking.
+ */
+export function isMountClaimBlocking(
+  record: MountClaimRecord | null,
+  ownNonce: string,
+  now: number,
+): boolean {
+  if (record === null) return false;
+  if (now - record.claimedAt > MOUNT_CLAIM_TTL_MS) return false; // lease lapsed
+  return record.nonce !== ownNonce;
 }
 
 // ---------------------------------------------------------------------------
@@ -494,16 +600,47 @@ export const FINISH_SETUP_CHIP_DISMISS_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 export interface FinishSetupChipDismissal {
   dismissedAt: number;
+  /**
+   * The Clerk user id the chip was dismissed under, when known. Scopes the
+   * dismissal to one account so dismissing on user A's session does not
+   * pre-suppress user B's chip on a shared browser (finding #13). Absent for
+   * anonymous or legacy dismissals, which suppress for everyone.
+   */
+  userId?: string;
 }
 
-/** Build a chip-dismissal record. */
-export function computeFinishSetupChipDismissal(now: number): FinishSetupChipDismissal {
-  return { dismissedAt: now };
+/** Build a chip-dismissal record; omit `userId` when no session is resolved. */
+export function computeFinishSetupChipDismissal(
+  userId: string | null | undefined,
+  now: number,
+): FinishSetupChipDismissal {
+  const record: FinishSetupChipDismissal = { dismissedAt: now };
+  if (userId) record.userId = userId;
+  return record;
 }
 
-/** True when a chip dismissal exists and is still within its TTL. */
-export function isChipDismissed(record: FinishSetupChipDismissal | null, now: number): boolean {
-  return record !== null && now - record.dismissedAt <= FINISH_SETUP_CHIP_DISMISS_TTL_MS;
+/**
+ * Whether a chip dismissal still suppresses the chip for the current viewer.
+ * TTL is the outer gate; identity refines it (finding #13):
+ *   - no record, or past its TTL → NOT dismissed.
+ *   - a legacy record (no `userId`) → dismissed for everyone (back-compat).
+ *   - a scoped record + the SAME signed-in user → dismissed.
+ *   - a scoped record + a DIFFERENT signed-in user → NOT dismissed (their chip
+ *     is not bound by another account's dismissal).
+ *   - a scoped record while auth is still settling (`currentUserId` null) →
+ *     dismissed, so a fresh dismissal does not flash the chip pre-auth; it
+ *     re-resolves once the user id loads and a mismatch reveals the chip.
+ */
+export function isChipDismissed(
+  record: FinishSetupChipDismissal | null,
+  currentUserId: string | null,
+  now: number,
+): boolean {
+  if (record === null) return false;
+  if (now - record.dismissedAt > FINISH_SETUP_CHIP_DISMISS_TTL_MS) return false;
+  if (record.userId === undefined) return true; // legacy: suppress for all
+  if (currentUserId === null) return true; // pre-auth: don't flash the chip
+  return currentUserId === record.userId; // scoped: same account only
 }
 
 // ---------------------------------------------------------------------------
@@ -530,9 +667,10 @@ function parseJsonObject(raw: string | null): Record<string, unknown> | null {
 export function parsePendingMarker(raw: string | null): PendingOnboardingMarker | null {
   const obj = parseJsonObject(raw);
   if (obj === null || typeof obj.createdAt !== 'number') return null;
-  return typeof obj.productId === 'string'
-    ? { productId: obj.productId, createdAt: obj.createdAt }
-    : { createdAt: obj.createdAt };
+  const marker: PendingOnboardingMarker = { createdAt: obj.createdAt };
+  if (typeof obj.productId === 'string') marker.productId = obj.productId;
+  if (typeof obj.userId === 'string') marker.userId = obj.userId;
+  return marker;
 }
 
 export function parseFireOnceRecord(raw: string | null): FireOnceRecord | null {
@@ -540,13 +678,17 @@ export function parseFireOnceRecord(raw: string | null): FireOnceRecord | null {
   if (obj === null || typeof obj.subscriptionKey !== 'string' || typeof obj.shownAt !== 'number') {
     return null;
   }
-  return { subscriptionKey: obj.subscriptionKey, shownAt: obj.shownAt };
+  const record: FireOnceRecord = { subscriptionKey: obj.subscriptionKey, shownAt: obj.shownAt };
+  if (typeof obj.userId === 'string') record.userId = obj.userId;
+  return record;
 }
 
 export function parseChipDismissal(raw: string | null): FinishSetupChipDismissal | null {
   const obj = parseJsonObject(raw);
   if (obj === null || typeof obj.dismissedAt !== 'number') return null;
-  return { dismissedAt: obj.dismissedAt };
+  const record: FinishSetupChipDismissal = { dismissedAt: obj.dismissedAt };
+  if (typeof obj.userId === 'string') record.userId = obj.userId;
+  return record;
 }
 
 /**
@@ -558,9 +700,10 @@ export function parseChipDismissal(raw: string | null): FinishSetupChipDismissal
 export function shouldShowFinishSetupChip(
   results: readonly ActivationStepResult[],
   dismissal: FinishSetupChipDismissal | null,
+  currentUserId: string | null,
   now: number,
 ): boolean {
-  if (isChipDismissed(dismissal, now)) return false;
+  if (isChipDismissed(dismissal, currentUserId, now)) return false;
   return results.some((r) => r.outcome === 'skipped' || r.outcome === 'failed');
 }
 
