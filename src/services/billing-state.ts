@@ -171,3 +171,15 @@ export function getBillingGateOverride(state: BillingUxState): BillingGateOverri
       return null;
   }
 }
+
+/**
+ * Build the pricing link used by returning subscribers. The plan key only
+ * controls the pricing page's monthly/annual preference; checkout still
+ * resolves the product from the live pricing catalog.
+ */
+export function getReactivationHref(planKey?: string | null): string {
+  const planParam = planKey
+    ? `?wm_reactivate_plan=${encodeURIComponent(planKey)}`
+    : '';
+  return `/pro${planParam}#pricing`;
+}

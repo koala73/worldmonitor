@@ -24,21 +24,23 @@ Live tier/price/product-ID data (JSON): `GET https://www.worldmonitor.app/api/pr
 - Digest cadence: Daily, twice-daily or weekly
 - Delivery channels: Slack, Discord, Telegram, email and webhook
 
-## API
+## API Starter
 
 - Price: $99.99/month
 - Annual price: $999/year
 - Annual savings: about 17 percent versus monthly billing
 - Best for: Developers and teams that want programmatic access to World Monitor intelligence data
-- Includes: REST API access, license / API key creation (the `wm_` key used by the desktop app and API), structured JSON, cache headers, OpenAPI docs, real-time data streams, webhook notifications and custom data exports
+- Includes: REST API access, license / API key creation (the `wm_` key used by the desktop app and API), structured JSON, cache headers, OpenAPI docs, real-time data streams and webhook notifications
+- License: Personal use only — no commercial use
 - Starter limit: 1,000 requests/day
 - Starter webhooks: 5 webhook rules
 
 ## API Business
 
-- Price: $249.99/month
+- Price: $299.99/month
 - Best for: Teams with high-volume programmatic workloads that outgrow the Starter quota
-- Includes: Everything in API Starter and priority support
+- Includes: Everything in API Starter, 5 Pro licenses included and priority support
+- License: Commercial use applicable; the 5 bundled Pro seats all require the same company email domain
 - Limits: 300 requests/minute, 10,000 requests/day
 - Upgrading from Starter: manage the switch from the billing portal (prorated immediately); new customers can subscribe directly at https://worldmonitor.app/pro
 
@@ -81,12 +83,12 @@ Live tier/price/product-ID data (JSON): `GET https://www.worldmonitor.app/api/pr
       "name": "API",
       "price_usd_monthly": 99.99,
       "price_usd_yearly": 999,
-      "features": ["REST API", "license / API key included", "1,000 requests/day starter limit", "webhooks", "structured JSON", "OpenAPI docs"]
+      "features": ["REST API", "license / API key included", "1,000 requests/day starter limit", "webhooks", "structured JSON", "OpenAPI docs", "personal use only — no commercial use"]
     },
     {
       "name": "API Business",
-      "price_usd_monthly": 249.99,
-      "features": ["Everything in API Starter", "300 requests/minute", "10,000 requests/day", "priority support"]
+      "price_usd_monthly": 299.99,
+      "features": ["Everything in API Starter", "300 requests/minute", "10,000 requests/day", "5 Pro licenses included", "same company email required", "commercial use applicable", "priority support"]
     },
     {
       "name": "Enterprise",

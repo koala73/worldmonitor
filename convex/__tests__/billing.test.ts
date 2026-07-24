@@ -4542,4 +4542,53 @@ describe("getSubscriptionForUser renewal verification exposure (#4771)", () => {
     expect(result!.status).toBe("active");
     expect(result!.renewalVerificationState).toBeNull();
   });
+
+  test("multi-row: preserves the most recently ended plan for reactivation", async () => {
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "cancelled",
+      currentPeriodEnd: NOW - 30 * DAY_MS,
+      suffix: "older_cancelled_monthly",
+    });
+    await seedSubscription(t, {
+      planKey: "pro_annual",
+      dodoProductId: PRODUCT_CATALOG.pro_annual.dodoProductId!,
+      status: "expired",
+      currentPeriodEnd: NOW - DAY_MS,
+      suffix: "newer_expired_annual",
+    });
+
+    const result = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+    expect(result).not.toBeNull();
+    expect(result!.status).toBe("expired");
+    expect(result!.planKey).toBe("pro_annual");
+  });
+});
+
+describe("getSubscriptionForUser activation fire-once identity exposure", () => {
+  const IDENTITY = { subject: TEST_USER_ID, tokenIdentifier: `clerk|${TEST_USER_ID}` };
+
+  test("surfaces only an opaque Convex activation key for fire-once storage", async () => {
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_identity",
+    });
+
+    const result = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+    expect(result).not.toBeNull();
+    expect(typeof result!.activationKey).toBe("string");
+    expect(result!.activationKey).not.toBe("sub_billing_activation_identity");
+    expect(result).not.toHaveProperty("subscriptionId");
+    expect(result).not.toHaveProperty("currentPeriodStart");
+  });
 });

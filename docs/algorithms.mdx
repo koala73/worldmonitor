@@ -305,7 +305,7 @@ Keyword spikes, hotspot escalations, and military surges remain inputs to correl
 - **RSS importance floor** — items with `importanceScore < 30` are too low-signal for the banner
 - **RSS startup grace** — RSS alerts are suppressed for the first 10 seconds after app load so the initial feed fetch does not replay old articles as breaking news
 - **RSS user sensitivity control** — configurable between `critical-only` (only critical severity fires) and `critical-and-high` (critical and high severities both fire)
-- **OREF direct escalation** — any non-empty siren batch raises a critical alert when alerts are enabled and the event is not a duplicate; OREF bypasses the RSS gates and global cooldown
+- **OREF direct escalation** — OREF siren alerts are exempt from the RSS gates and global cooldown; any non-empty siren batch raises a critical alert when alerts are enabled and the event is not a duplicate
 
 When an alert passes the gates that apply to its producer, the system dispatches a `wm:breaking-news` CustomEvent on `document`, which the Breaking News Banner consumes to display a persistent top-of-screen notification. Optional browser Notification API popups and an audio chime are available as user settings. Clicking an RSS-sourced banner scrolls to the RSS panel and applies a 1.5-second flash highlight animation.
 

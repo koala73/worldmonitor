@@ -35,7 +35,7 @@ const dockerNginxSource = readFileSync(resolve(__dirname, '../docker/nginx.conf'
 const frontendDockerfileSource = readFileSync(resolve(__dirname, '../docker/Dockerfile'), 'utf-8');
 const dockerignoreSource = readFileSync(resolve(__dirname, '../.dockerignore'), 'utf-8');
 const vercelIgnoreSource = readFileSync(resolve(__dirname, '../scripts/vercel-ignore.sh'), 'utf-8');
-const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|countries|chokepoints|reference|changelog|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
+const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|countries|chokepoints|crises|tools|reference|changelog|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|openapi\\.yaml|openapi\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)';
 const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html).*)';
 const APP_ROOT_HOST_PATTERN = '^(?:(?:www|tech|finance|commodity|happy|energy)\\.)?worldmonitor\\.app$';
 const GLOBAL_CSP_INLINE_SCRIPT_HTML_FILES = [
@@ -173,6 +173,8 @@ describe('crawlable content corpus deployment contracts', () => {
   const staticCorpusPaths = [
     '/countries/ukraine/',
     '/chokepoints/suez-canal/',
+    '/crises/ukraine-war/',
+    '/tools/natural-hazard-pulse/',
     '/reference/changelog/page/2/',
   ];
 
@@ -301,6 +303,16 @@ describe('crawlable content corpus deployment contracts', () => {
       );
       writeFixturePage(
         publicDir,
+        'crises/ukraine-war/index.html',
+        '<link rel="canonical" href="https://www.worldmonitor.app/crises/ukraine-war/" />'
+      );
+      writeFixturePage(
+        publicDir,
+        'tools/natural-hazard-pulse/index.html',
+        '<link rel="canonical" href="https://www.worldmonitor.app/tools/natural-hazard-pulse/" />'
+      );
+      writeFixturePage(
+        publicDir,
         'reference/changelog/page/1/index.html',
         '<link rel="canonical" href="https://www.worldmonitor.app/reference/changelog/page/1/" /><link rel="next" href="https://www.worldmonitor.app/reference/changelog/page/2/" />'
       );
@@ -316,7 +328,9 @@ describe('crawlable content corpus deployment contracts', () => {
         'https://www.worldmonitor.app/reference/changelog/page/1/',
         'https://www.worldmonitor.app/reference/changelog/page/2/',
         'https://www.worldmonitor.app/chokepoints/suez-canal/',
+        'https://www.worldmonitor.app/crises/ukraine-war/',
         'https://www.worldmonitor.app/countries/ukraine/',
+        'https://www.worldmonitor.app/tools/natural-hazard-pulse/',
       ].sort());
 
       const block = buildContentCorpusSitemapBlock(pages);
@@ -669,6 +683,29 @@ describe('welcome landing page routing', () => {
     assert.ok(redirect, 'expected a redirect for /index.html');
     assert.equal(redirect.destination, '/');
     assert.equal(redirect.permanent, true);
+  });
+
+  it('redirects the human pricing route to the canonical pricing section before SPA routing', () => {
+    const redirect = vercelConfig.redirects.find((r) => r.source === '/pricing');
+    assert.ok(redirect, 'expected a redirect for /pricing');
+    assert.equal(redirect.destination, '/pro#pricing');
+    assert.equal(redirect.permanent, true);
+
+    assert.equal(
+      vercelConfig.redirects.some((r) => r.source === '/pricing.md'),
+      false,
+      'the machine-readable pricing contract must remain a static asset',
+    );
+    assert.equal(
+      vercelConfig.redirects.some((r) => r.source === '/api/product-catalog'),
+      false,
+      'the live product catalog endpoint must remain unchanged',
+    );
+    assert.equal(
+      vercelConfig.rewrites.some((r) => r.source === '/pricing'),
+      false,
+      '/pricing must be handled in the redirects phase before the SPA rewrites phase',
+    );
   });
 
   it('redirects bare corpus roots to canonical generated pages', () => {
@@ -2643,16 +2680,22 @@ describe('agent readiness: named developer-resource pages (#4953)', () => {
   });
 });
 
-// NLWeb schemamap (orank "NLWeb Schema Feeds"): the robots.txt `Schemamap:`
-// directive and public/schemamap.xml must stay in parity, and every <loc> the
-// map advertises must resolve to a tracked file or a live route — a schemamap
-// pointing at a 404 is worse than none (same dead-pointer class as the deleted
-// Wikidata QID incident).
+// NLWeb schemamap (orank "NLWeb Schema Feeds"): keep the file published and
+// discoverable without advertising it through robots.txt. Lighthouse rejects
+// the emerging `Schemamap:` directive as unknown, dropping SEO 100 -> 92 on
+// every route; #4835 tracks the upstream safelist unblock. Every <loc> must
+// still resolve to a tracked file or a live route — a schemamap pointing at a
+// 404 is worse than none (same dead-pointer class as the deleted Wikidata QID
+// incident).
 describe('NLWeb schemamap (/schemamap.xml)', () => {
   const schemamapSource = readFileSync(resolve(__dirname, '../public/schemamap.xml'), 'utf-8');
 
-  it('robots.txt advertises the schemamap and the file exists', () => {
-    assert.match(robotsSource, /^Schemamap: https:\/\/www\.worldmonitor\.app\/schemamap\.xml$/m);
+  it('keeps the file published without an unsupported robots.txt directive', () => {
+    assert.doesNotMatch(
+      robotsSource,
+      /^Schemamap:/mi,
+      'Lighthouse rejects Schemamap as an unknown robots.txt directive; see #4835'
+    );
     assert.match(schemamapSource, /^<\?xml version="1\.0" encoding="UTF-8"\?>/);
     assert.ok(
       schemamapSource.includes('<schemamap xmlns="http://www.nlweb.ai/schemas/schemamap/0.1">'),
@@ -2745,5 +2788,30 @@ describe('section-scoped llms.txt files', () => {
     ]) {
       assert.ok(llms.includes(url), `public/llms.txt must link ${url}`);
     }
+  });
+});
+
+describe('skeleton brand text extraction (#5541)', () => {
+  const indexHtml = readFileSync(resolve(__dirname, '../index.html'), 'utf-8');
+
+  it('.skeleton-brand raw textContent does not contain "WWorld"', () => {
+    const match = indexHtml.match(/<div class="skeleton-brand">([\s\S]*?)<\/div>/);
+    assert.ok(match, 'index.html must contain .skeleton-brand element');
+    // Simulate raw textContent: strip all HTML tags
+    const rawText = match[1].replace(/<[^>]+>/g, '');
+    assert.doesNotMatch(rawText, /WWorld/, 'skeleton-brand raw text must not concatenate as "WWorld Monitor"');
+    assert.match(rawText, /World Monitor/, 'skeleton-brand raw text must contain "World Monitor"');
+  });
+
+  it('.skeleton-brand-mark is aria-hidden and has no text content', () => {
+    const markMatch = indexHtml.match(/<span class="skeleton-brand-mark"[^>]*>([\s\S]*?)<\/span>/);
+    assert.ok(markMatch, 'index.html must contain .skeleton-brand-mark element');
+    assert.match(markMatch[0], /aria-hidden="true"/, 'skeleton-brand-mark must be aria-hidden');
+    const markText = markMatch[1].replace(/<[^>]+>/g, '').trim();
+    assert.equal(markText, '', 'skeleton-brand-mark must have no text content (use CSS ::after instead)');
+  });
+
+  it('.skeleton-brand-mark renders "W" via CSS content pseudo-element', () => {
+    assert.match(indexHtml, /\.skeleton-brand-mark::after\s*\{\s*content:\s*"W"\s*\}/, 'skeleton-brand-mark must render W via CSS ::after content');
   });
 });

@@ -140,3 +140,36 @@ describe('Panel CTA copy coverage (#4771)', () => {
     );
   });
 });
+
+describe('returning-subscriber surfaces (#4799)', () => {
+  it('uses the lapsed billing state and prior plan on the Pro banner', async () => {
+    const src = await read('src/components/ProBanner.ts');
+    assert.match(src, /deriveBillingUxState\(/);
+    assert.match(src, /onSubscriptionChange\(/);
+    assert.match(src, /components\.billingState\.lapsedDesc/);
+    assert.match(src, /components\.billingState\.resubscribe/);
+    assert.match(src, /getReactivationHref\(/);
+    assert.match(src, /cancelPendingBannerRemoval\(\)/);
+    assert.match(src, /pendingBannerRemoval/);
+    assert.match(
+      src,
+      /if \(dismissedThisSession\) return;\s+cancelPendingBannerRemoval\(\);\s+bannerEl\?\.classList\.remove\('pro-banner-out'\);/,
+      'reversed entitlement fades must restore visibility without cancelling explicit dismissals',
+    );
+  });
+
+  it('uses the lapsed billing state and prior plan in Unified Settings', async () => {
+    const src = await read('src/components/UnifiedSettings.ts');
+    assert.match(src, /deriveBillingUxState\(/);
+    assert.match(src, /onSubscriptionChange\(/);
+    assert.match(src, /components\.billingState\.lapsedDesc/);
+    assert.match(src, /components\.billingState\.resubscribe/);
+    assert.match(src, /getReactivationHref\(/);
+  });
+
+  it('lets the pricing page honor a returning subscriber plan preference', async () => {
+    const src = await read('pro-test/src/components/PricingSection.tsx');
+    assert.match(src, /wm_reactivate_plan/);
+    assert.match(src, /endsWith\('_annual'\)/);
+  });
+});

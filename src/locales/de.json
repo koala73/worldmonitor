@@ -1417,7 +1417,26 @@
       "cafIndex": "CAF-Index",
       "candidGrants": "Candid-Zuschüsse",
       "dataLag": "Datenverzögerung",
-      "infoTooltip": "<strong>Globaler Spendenaktivitätsindex</strong> Zusammengesetzter Index zur Verfolgung persönlicher Spenden über Crowdfunding-Plattformen und Krypto-Wallets.<ul><li><strong>Plattformen</strong>: GoFundMe, GlobalGiving, JustGiving Kampagnenstichproben</li><li><strong>Krypto</strong>: On-Chain-Spenden-Wallet-Zuflüsse (Endaoment, Giving Block)</li><li><strong>Institutionell</strong>: OECD ODA, CAF World Giving Index, Candid-Zuschüsse</li></ul>Der Index ist richtungsweisend (keine exakten Dollarbeträge). Kombiniert Live-Stichproben mit veröffentlichten Jahresberichten."
+      "infoTooltip": "<strong>Globaler Spendenaktivitätsindex</strong> Zusammengesetzter Index zur Verfolgung persönlicher Spenden über Crowdfunding-Plattformen und Krypto-Wallets.<ul><li><strong>Plattformen</strong>: GoFundMe, GlobalGiving, JustGiving Kampagnenstichproben</li><li><strong>Krypto</strong>: On-Chain-Spenden-Wallet-Zuflüsse (Endaoment, Giving Block)</li><li><strong>Institutionell</strong>: OECD ODA, CAF World Giving Index, Candid-Zuschüsse</li></ul>Der Index ist richtungsweisend (keine exakten Dollarbeträge). Kombiniert Live-Stichproben mit veröffentlichten Jahresberichten.",
+      "benchmarkTitle": "Global Giving Benchmarks",
+      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "status": {
+        "published": "Published benchmarks with verified source coverage.",
+        "partial": "Published benchmarks with partial source coverage.",
+        "legacy": "Legacy snapshot; source details are unavailable.",
+        "cached": "Showing a cached snapshot; refresh unavailable."
+      },
+      "trackedAnnualized": "Tracked platform giving — annualized estimate",
+      "annualizedDaily": "Annualized daily estimate",
+      "atLeast": "At least",
+      "about": "About",
+      "sourceNotVerified": "Source not verified",
+      "reportedCumulative": "Reported cumulative total",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Published benchmark",
+      "sourcesMethodology": "Sources & methodology",
+      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
+      "partialEstimate": "Partially verified estimate"
     },
     "displacement": {
       "refugees": "Flüchtlinge",
@@ -2186,6 +2205,84 @@
       "retry": "Erneut versuchen",
       "retrying": "Wird erneut versucht…",
       "dismiss": "Verwerfen"
+    },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Schritt {{current}} von {{total}}",
+      "closeLabel": "Einrichtung überspringen",
+      "ariaLabel": "Pro-Aktivierung einrichten",
+      "signedInAs": "Angemeldet als {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Ihr tägliches Briefing, jeden Morgen",
+          "body": "Ein kuratiertes Intelligence-Briefing jeden Morgen in Ihrem Posteingang — die wichtigen Signale der Nacht, destilliert auf eine Fünf-Minuten-Lektüre.",
+          "confirmCta": "Mein Morgen-Briefing aktivieren",
+          "confirming": "Wird aktiviert…",
+          "doneNote": "Ihr Morgen-Briefing läuft bereits.",
+          "scheduleNote": "Wir behalten Ihre aktuelle Zustellzeit bei.",
+          "summaryLabel": "Morgen-Briefing",
+          "summaryVerified": "Aktiv — startet mit Ihrem nächsten Morgen-Briefing.",
+          "deliverAt": "Zustellung um",
+          "previewLoading": "Vorschau Ihres ersten Briefings wird vorbereitet…",
+          "previewLabel": "Das heutige Briefing"
+        },
+        "alerts": {
+          "heading": "Kritische Warnmeldungen",
+          "body": "Werden Sie in Ihrem Browser benachrichtigt, wenn etwas Großes passiert — Konflikteskalationen, Marktschocks, neue Sanktionen. Passen Sie die Häufigkeit jederzeit in den Einstellungen an.",
+          "confirmCta": "Warnmeldungen aktivieren",
+          "confirming": "Wird aktiviert…",
+          "doneNote": "Browser-Warnmeldungen sind bereits aktiv.",
+          "blockedNote": "Benachrichtigungen sind in Ihrem Browser blockiert. Aktivieren Sie sie in den Website-Einstellungen Ihres Browsers, um Warnmeldungen zu erhalten.",
+          "declinedNote": "Kein Problem — wir senden keine Browser-Warnmeldungen. Sie können sie später in den Website-Einstellungen Ihres Browsers aktivieren.",
+          "summaryLabel": "Kritische Warnmeldungen",
+          "summaryVerified": "Aktiv — kritische Signale erreichen Ihren Browser."
+        },
+        "power": {
+          "heading": "Ihr Pro-Toolkit",
+          "body": "Individuelle Widgets, MCP-Verbindungen und der KI-Researcher sind freigeschaltet. Bauen Sie sich das Dashboard, das Sie wirklich im Blick behalten wollen.",
+          "confirmCta": "Pro-Tools entdecken",
+          "confirming": "Wird geöffnet…",
+          "doneNote": "Sie nutzen Ihre Pro-Tools bereits.",
+          "summaryLabel": "Pro-Toolkit",
+          "summaryVerified": "Freigeschaltet und einsatzbereit, wenn Sie es sind.",
+          "channelsNote": "Lieber Telegram, Slack, Discord oder ein Webhook?",
+          "pointers": {
+            "widgets": "Ein individuelles Widget erstellen",
+            "analyst": "Den KI-Analysten fragen",
+            "apiKeys": "Ihre API- & MCP-Schlüssel abrufen",
+            "channels": "In den Benachrichtigungseinstellungen einrichten"
+          }
+        }
+      },
+      "status": {
+        "pending": "Nicht eingerichtet",
+        "inFlight": "Wird eingerichtet…",
+        "verified": "Bereit",
+        "failed": "Hat nicht funktioniert",
+        "blocked": "Blockiert",
+        "unavailable": "Nicht verfügbar",
+        "blockedNote": "Das ist gerade nicht verfügbar — Sie können es später in den Einstellungen einrichten.",
+        "unavailableNote": "Das ist auf Ihrem Gerät nicht verfügbar — Sie können es später einrichten.",
+        "failedBody": "Etwas ist schiefgelaufen. Versuchen Sie es erneut oder richten Sie es später in den Einstellungen ein.",
+        "retry": "Erneut versuchen"
+      },
+      "actions": {
+        "skip": "Vorerst überspringen",
+        "continue": "Weiter"
+      },
+      "summary": {
+        "heading": "Alles eingerichtet",
+        "subVerified": "Das läuft jetzt auf Ihrem Konto.",
+        "subPending": "Sie können die Einrichtung jederzeit in den Einstellungen abschließen.",
+        "linePending": "Noch nicht eingerichtet — jederzeit in den Einstellungen abschließbar.",
+        "lineFailed": "Das konnten wir nicht einrichten — versuchen Sie es erneut in den Einstellungen.",
+        "finish": "Zu meinem Dashboard"
+      },
+      "chip": {
+        "message": "Schließen Sie die Einrichtung Ihres Pro-Kontos ab.",
+        "action": "Einrichtung abschließen",
+        "dismissLabel": "Schließen"
+      }
     },
     "frameworkSelector": {
       "label": "Analysisframework",

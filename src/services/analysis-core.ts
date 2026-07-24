@@ -190,7 +190,7 @@ export interface CorrelationSignalCore {
   };
 }
 
-export type SourceType = 'wire' | 'gov' | 'intel' | 'mainstream' | 'market' | 'tech' | 'other';
+export type SourceType = 'wire' | 'gov' | 'intel' | 'mainstream' | 'market' | 'tech' | 'other' | 'unknown';
 
 export interface StreamSnapshot {
   newsVelocity: Map<string, number>;
@@ -461,7 +461,7 @@ export function detectConvergence(
     }
 
     if (sourceTypes.size >= 3) {
-      const types = Array.from(sourceTypes).filter(t => t !== 'other');
+      const types = Array.from(sourceTypes).filter(t => t !== 'other' && t !== 'unknown');
       const dedupeKey = generateDedupeKey('convergence', event.id, sourceTypes.size);
 
       if (!isRecentDuplicate(dedupeKey) && types.length >= 3) {
