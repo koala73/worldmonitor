@@ -107,6 +107,7 @@ describe('FRED resolver enablement', () => {
     assert.equal(pastGrace.outcome, 'VOID');
     assert.equal(pastGrace.evidence.reason, 'value_source_never_settled');
   });
+
 });
 
 describe('FRED daily (DGS10) settlement grace', () => {

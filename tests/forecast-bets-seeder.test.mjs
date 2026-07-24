@@ -312,6 +312,51 @@ describe('Phase-2: resolver ingest pass-through + no-downgrade guard (#5525 KTD5
     assert.equal(Object.values(after)[0].probability, 0.45); // base→base updates
   });
 
+  it('a later base_rate re-ingest never clobbers an ensemble_partial window (review R2 #1)', () => {
+    // Budget break / top-K miss re-ingests the bet as base_rate. The partial
+    // is the only DERIVED probability the window has — grading the placeholder
+    // prior instead would corrupt the Gate-2 evidence.
+    const partial = betSnapshot({ probabilitySource: 'ensemble_partial', probability: 0.6 });
+    let ledger = ingestHistory({}, [partial], NOW);
+    const baseRate = betSnapshot(); // probabilitySource base_rate, probability 0.4
+    for (const bet of baseRate.predictions) bet.generatedAt = NOW + 60_000;
+    baseRate.generatedAt = NOW + 60_000;
+    ledger = ingestHistory(ledger, [baseRate], NOW + 60_000);
+    const entry = Object.values(ledger)[0];
+    assert.equal(entry.probability, 0.6); // NOT reverted to 0.4
+    assert.equal(entry.probabilitySource, 'ensemble_partial');
+  });
+
+  it('open-window updates refresh calibration so market comparisons stay contemporaneous (review R2 #3)', () => {
+    const first = betSnapshot({ calibration: { marketPrice: 62, source: 'polymarket' } });
+    let ledger = ingestHistory({}, [first], NOW);
+    assert.equal(Object.values(ledger)[0].calibration.marketPrice, 62);
+    // Ensemble upgrade arrives with the market having moved: vsMarketSkill /
+    // deviationSkill compare entry.probability to calibration.marketPrice, so
+    // the graded probability must be paired with the contemporaneous price.
+    const upgraded = betSnapshot({
+      probabilitySource: 'ensemble', probability: 0.7,
+      calibration: { marketPrice: 71, source: 'polymarket' },
+    });
+    for (const bet of upgraded.predictions) bet.generatedAt = NOW + 60_000;
+    upgraded.generatedAt = NOW + 60_000;
+    ledger = ingestHistory(ledger, [upgraded], NOW + 60_000);
+    let entry = Object.values(ledger)[0];
+    assert.equal(entry.probability, 0.7);
+    assert.equal(entry.calibration.marketPrice, 71);
+    // ensemble→ensemble same-rank refresh keeps working too.
+    const refreshed = betSnapshot({
+      probabilitySource: 'ensemble', probability: 0.75,
+      calibration: { marketPrice: 74, source: 'polymarket' },
+    });
+    for (const bet of refreshed.predictions) bet.generatedAt = NOW + 120_000;
+    refreshed.generatedAt = NOW + 120_000;
+    ledger = ingestHistory(ledger, [refreshed], NOW + 120_000);
+    entry = Object.values(ledger)[0];
+    assert.equal(entry.probability, 0.75);
+    assert.equal(entry.calibration.marketPrice, 74);
+  });
+
   it('a later FULL ensemble upgrades a partial entry; a later partial never downgrades a full (review #3)', () => {
     // partial → full: upgrade allowed, passes carried through the merge.
     const partial = betSnapshot({ probabilitySource: 'ensemble_partial', probability: 0.6, passes: [{ name: 'p', probability: 0.6 }, { name: 'q', probability: null }] });

@@ -227,6 +227,47 @@ describe('settlement parsing + loader', () => {
     assert.equal(fetches, 0);
   });
 
+  it('fetch cap drains the OLDEST deadlines first — a backlog cannot starve near-grace markets (review R2 #2)', async () => {
+    // 12 due markets whose alphabetical (ledger-key) order deliberately
+    // disagrees with deadline order. The 10-per-run cap must take the 10
+    // nearest-to-grace entries, or the two oldest could sit unfetched until
+    // the 14d grace expires and VOID despite the venue having adjudicated.
+    const agesDays = [3, 11, 0, 7, 5, 9, 1, 8, 2, 10, 4, 6]; // by slug order m-a…m-l
+    const ledger = {};
+    agesDays.forEach((age, i) => {
+      const slug = `m-${String.fromCharCode(97 + i)}`;
+      const deadline = NOW - age * DAY_MS;
+      ledger[`market:${slug}@${deadline}`] = {
+        id: `market:${slug}`,
+        key: `market:${slug}@${deadline}`,
+        status: 'pending',
+        title: slug,
+        spec: { sourceFeed: MARKET_SETTLEMENT_FEED, deadline },
+        deadline,
+        marketSlug: slug,
+        marketSource: 'polymarket',
+      };
+    });
+    const fetchedSlugs = [];
+    const writes = [];
+    const stats = await updateMarketSettlements(ledger, NOW, {
+      fetchSettlement: async (entry) => { fetchedSlugs.push(entry.marketSlug); return null; }, // queued, not yet adjudicated
+      readJson: async () => null,
+      writeJson: async (key, value) => { writes.push({ key, value }); },
+    });
+    assert.equal(stats.fetched, 10);
+    assert.equal(stats.settled, 0);
+    // null fetches never write the FEED (the seed-meta companion still fires)
+    assert.equal(writes.filter((w) => w.key === MARKET_SETTLEMENT_FEED).length, 0);
+    const oldestTen = agesDays
+      .map((age, i) => ({ age, slug: `m-${String.fromCharCode(97 + i)}` }))
+      .sort((a, b) => b.age - a.age)
+      .slice(0, 10)
+      .map((x) => x.slug)
+      .sort();
+    assert.deepEqual([...fetchedSlugs].sort(), oldestTen);
+  });
+
   it('fails CLOSED when the settlement feed read errors — never rebuilds from empty (review #2)', async () => {
     const bets = generateBets(MARKET_BET_TEMPLATES, { [MARKET_FEED]: feedFixture() }, NOW);
     const ledger = ingestHistory({}, [{ generatedAt: NOW, predictions: bets }], NOW);

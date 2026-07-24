@@ -999,13 +999,13 @@ function updateOpenWindow(entry, forecast, generatedAt, snapshotAt) {
   if (generatedAt >= entry.deadline) return;
   const probability = Number(forecast.probability);
   if (Number.isFinite(probability)) {
-    // Never downgrade an ensemble-sourced probability to a later base-rate
-    // (#5525): a bet falling out of top-K (or hitting the LLM budget) on a
-    // later run re-ingests with probabilitySource 'base_rate' — overwriting
-    // would silently revert Gate-2's graded probability to the placeholder.
-    const entryIsEnsemble = entry.probabilitySource === 'ensemble';
-    const forecastIsEnsemble = forecast.probabilitySource === 'ensemble';
-    if (!entryIsEnsemble || forecastIsEnsemble) {
+    // Probability provenance is RANKED: full 3-pass ensemble (2) over a 1-2
+    // pass partial (1) over the base-rate placeholder (0). An update may keep
+    // or raise the rank, never lower it (#5525): a bet falling out of top-K
+    // (or hitting the LLM budget) on a later run re-ingests as 'base_rate',
+    // and letting it clobber EITHER derived aggregate would silently grade the
+    // placeholder prior. Same-rank refreshes and partial→full upgrades pass.
+    if (sourceRank(forecast.probabilitySource) >= sourceRank(entry.probabilitySource)) {
       entry.probability = probability;
       if (typeof forecast.probabilitySource === 'string') entry.probabilitySource = forecast.probabilitySource;
       if (Number.isFinite(Number(forecast.baselineProbability))) entry.baselineProbability = Number(forecast.baselineProbability);
@@ -1013,6 +1013,11 @@ function updateOpenWindow(entry, forecast, generatedAt, snapshotAt) {
       // carries the failed passes too — KTD1 post-hoc calibration needs them).
       const forecastRanEnsemble = typeof forecast.probabilitySource === 'string' && forecast.probabilitySource.startsWith('ensemble');
       if (forecastRanEnsemble && Array.isArray(forecast.passes)) entry.passes = cloneJson(forecast.passes);
+      // Refresh the market snapshot alongside the probability: vsMarketSkill /
+      // deviationSkill compare entry.probability against calibration.marketPrice,
+      // so a re-graded probability must not be measured against the first-seen
+      // crowd price.
+      if (forecast.calibration && typeof forecast.calibration === 'object') entry.calibration = cloneJson(forecast.calibration);
     }
   }
   // Market-settlement bets track the venue's CURRENT endDate: venues move
@@ -1028,6 +1033,13 @@ function updateOpenWindow(entry, forecast, generatedAt, snapshotAt) {
     entry.spec.deadline = incomingDeadline;
   }
   entry.lastSeenAt = Math.max(Number(entry.lastSeenAt || 0), snapshotAt);
+}
+
+// Provenance rank for updateOpenWindow's no-downgrade guard.
+function sourceRank(source) {
+  if (source === 'ensemble') return 2;
+  if (source === 'ensemble_partial') return 1;
+  return 0; // base_rate, legacy/undefined
 }
 
 function findOpenWindowKey(ledger, id, generatedAt) {
@@ -1294,7 +1306,13 @@ export async function updateMarketSettlements(ledger, nowMs, options = {}) {
   const due = Object.values(normalizeLedger(ledger)).filter((entry) => entry?.status === 'pending'
     && entry.spec?.sourceFeed === MARKET_SETTLEMENT_FEED_KEY
     && Number(entry.deadline) <= nowMs
-    && typeof entry.marketSlug === 'string' && entry.marketSlug);
+    && typeof entry.marketSlug === 'string' && entry.marketSlug)
+    // Oldest deadline first: with a backlog above the per-run fetch cap, the
+    // slice below must drain the entries nearest their VOID grace — ledger
+    // (alphabetical-key) order would let an adjudicated market starve past
+    // the 14d grace and VOID while younger slugs hog the cap. (The slug
+    // dedupe below keeps the FIRST entry per slug, i.e. the oldest window.)
+    .sort((a, b) => Number(a.deadline) - Number(b.deadline));
   if (!due.length) return finalize({ fetched: 0, settled: 0 }, null);
 
   // Fail CLOSED on a read ERROR (distinct from "key absent", which readJson
