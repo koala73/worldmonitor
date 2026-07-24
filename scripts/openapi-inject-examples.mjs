@@ -309,6 +309,95 @@ function getScenarioStatusExample() {
   };
 }
 
+function getGivingSummaryExample() {
+  const generatedAt = '2026-07-24T12:00:00.000Z';
+  return {
+    summary: {
+      generatedAt,
+      activityIndex: 0,
+      trend: 'stable',
+      estimatedDailyFlowUsd: 2_684_000_000 / 365,
+      platforms: [
+        {
+          platform: 'GoFundMe',
+          dailyVolumeUsd: 2_600_000_000 / 365,
+          dataFreshness: 'annual',
+          lastUpdated: '',
+        },
+        {
+          platform: 'GlobalGiving',
+          dailyVolumeUsd: 84_000_000 / 365,
+          dataFreshness: 'annual',
+          lastUpdated: '',
+        },
+        {
+          platform: 'JustGiving',
+          dailyVolumeUsd: 0,
+          dataFreshness: 'cumulative',
+          lastUpdated: '',
+        },
+      ],
+      categories: [],
+      institutional: {
+        oecdOdaAnnualUsdBn: 223.7,
+        oecdDataYear: 2023,
+        cafWorldGivingIndex: 0,
+        cafDataYear: 0,
+        candidGrantsTracked: 3_000_000,
+        dataLag: 'Annual published context',
+      },
+      dataMode: 'partial_estimate',
+      trendAvailable: false,
+      provenance: [
+        {
+          subject: 'GoFundMe weekly giving',
+          sourceName: 'GoFundMe',
+          sourceUrl: 'https://www.gofundme.com/?lang=en',
+          referencePeriod: 'Average week across 2023-2024',
+          sourcePublishedAt: '',
+          measurementBasis: 'Published lower-bound weekly platform claim',
+          status: 'verified',
+          coveredMetricPaths: [
+            'summary.platforms[platform=GoFundMe].daily_volume_usd',
+            'summary.estimated_daily_flow_usd',
+          ],
+          includedInHighlightedAggregate: true,
+          reportedValue: 50_000_000,
+          reportedUnit: 'USD',
+          notes: 'Exact claim: more than USD 50 million is raised each week on GoFundMe.',
+          valueQualifier: 'more_than',
+          sourceLocator: 'Homepage giving-volume claim and attached footnote 1',
+          accessedAt: '2026-07-24',
+          denominator: 'week',
+          derivation: '50,000,000 USD/week * 52 weeks/year = at least 2,600,000,000 USD/year.',
+        },
+        {
+          subject: 'JustGiving cumulative giving',
+          sourceName: 'JustGiving',
+          sourceUrl: 'https://www.justgiving.com/about',
+          referencePeriod: '25 years cumulative',
+          sourcePublishedAt: '',
+          measurementBasis: 'Published lower-bound cumulative platform claim',
+          status: 'verified',
+          coveredMetricPaths: ['summary.platforms[platform=JustGiving].daily_volume_usd'],
+          includedInHighlightedAggregate: false,
+          reportedValue: 7_000_000_000,
+          reportedUnit: 'GBP',
+          notes: 'Exact claim: more than GBP 7 billion raised over 25 years.',
+          valueQualifier: 'more_than',
+          sourceLocator: 'About JustGiving, platform impact statement',
+          accessedAt: '2026-07-24',
+          denominator: '25 years cumulative',
+          derivation: 'No annualization or USD conversion; cumulative GBP is provenance-only.',
+        },
+      ],
+      activityIndexAvailable: false,
+    },
+    fetchedAt: Date.parse(generatedAt),
+    dataAvailable: true,
+  };
+}
+
 function clone(value) {
   return value === undefined ? undefined : JSON.parse(JSON.stringify(value));
 }
@@ -482,6 +571,13 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   if (!schema || typeof schema !== 'object') return 'example';
   const original = schema;
   schema = resolveRef(schema, spec);
+  if (
+    depth === 0
+    && String(context.operationId ?? '').toLowerCase() === 'getgivingsummary'
+    && String(context.name ?? '').toLowerCase().endsWith('response')
+  ) {
+    return getGivingSummaryExample();
+  }
   if (
     depth === 0
     && String(context.operationId ?? '').toLowerCase() === 'getscenariostatus'

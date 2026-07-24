@@ -198,7 +198,7 @@ const STANDALONE_KEYS = {
   shippingRates:         'supply_chain:shipping:v2',
   chokepoints:           'supply_chain:chokepoints:v4',
   minerals:              'supply_chain:minerals:v2',
-  giving:                'giving:summary:v1',
+  giving:                'giving:summary:v2',
   gpsjam:                'intelligence:gpsjam:v2',
   theaterPosture:        'theater_posture:sebuf:stale:v1',
   theaterPostureLive:    'theater-posture:sebuf:v1',
