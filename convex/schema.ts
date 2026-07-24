@@ -922,6 +922,34 @@ export default defineSchema({
     revokedAt: v.optional(v.number()),
   }).index("by_userId", ["userId"]),
 
+  // API Business domain-gated Pro-seat invites (#4634/#4635). One row per seat
+  // invite issued by an active `api_business` owner to a same-corporate-domain
+  // teammate. The grant is an explicit, revocable object keyed to the owner's
+  // Business `dodoSubscriptionId` (KTD1) — NOT a fake subscription — so
+  // `pickBestCoveringSub` stays clean. An `accepted` grant under a covering
+  // Business sub resolves the invitee to Pro (U5); when the Business sub stops
+  // covering, its grants flip to `revoked` and each invitee recomputes down (U6).
+  // `inviteeEmail`/`domain` are stored lowercased for exact same-domain checks.
+  businessProGrants: defineTable({
+    businessSubscriptionId: v.string(),
+    ownerUserId: v.string(),
+    inviteeEmail: v.string(),
+    domain: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("accepted"),
+      v.literal("revoked"),
+      v.literal("expired"),
+    ),
+    inviteeUserId: v.optional(v.string()),
+    createdAt: v.number(),
+    acceptedAt: v.optional(v.number()),
+    expiresAt: v.number(),
+  })
+    .index("by_businessSubscriptionId", ["businessSubscriptionId"])
+    .index("by_inviteeEmail", ["inviteeEmail"])
+    .index("by_inviteeUserId", ["inviteeUserId"]),
+
   emailSuppressions: defineTable({
     normalizedEmail: v.string(),
     reason: v.union(v.literal("bounce"), v.literal("complaint"), v.literal("manual")),
