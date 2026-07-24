@@ -671,6 +671,29 @@ describe('welcome landing page routing', () => {
     assert.equal(redirect.permanent, true);
   });
 
+  it('redirects the human pricing route to the canonical pricing section before SPA routing', () => {
+    const redirect = vercelConfig.redirects.find((r) => r.source === '/pricing');
+    assert.ok(redirect, 'expected a redirect for /pricing');
+    assert.equal(redirect.destination, '/pro#pricing');
+    assert.equal(redirect.permanent, true);
+
+    assert.equal(
+      vercelConfig.redirects.some((r) => r.source === '/pricing.md'),
+      false,
+      'the machine-readable pricing contract must remain a static asset',
+    );
+    assert.equal(
+      vercelConfig.redirects.some((r) => r.source === '/api/product-catalog'),
+      false,
+      'the live product catalog endpoint must remain unchanged',
+    );
+    assert.equal(
+      vercelConfig.rewrites.some((r) => r.source === '/pricing'),
+      false,
+      '/pricing must be handled in the redirects phase before the SPA rewrites phase',
+    );
+  });
+
   it('redirects bare corpus roots to canonical generated pages', () => {
     const changelog = vercelConfig.redirects.find((r) => r.source === '/changelog');
     assert.ok(changelog, 'expected a redirect for /changelog');

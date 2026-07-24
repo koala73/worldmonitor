@@ -8,6 +8,7 @@
     { "source": "/security.txt", "destination": "/.well-known/security.txt", "permanent": true },
     { "source": "/index.html", "destination": "/", "permanent": true },
     { "source": "/welcome", "destination": "/", "permanent": true },
+    { "source": "/pricing", "destination": "/pro#pricing", "permanent": true },
     { "source": "/blog/posts", "destination": "/blog", "permanent": true },
     { "source": "/changelog", "destination": "/reference/changelog/", "permanent": true },
     { "source": "/reference", "destination": "/reference/changelog/", "permanent": false },
