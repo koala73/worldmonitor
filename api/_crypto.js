@@ -1,18 +1,12 @@
 export async function sha256Hex(str) {
-  // Validate input is a non-empty string to prevent TypeError on TextEncoder.encode
-  if (typeof str !== 'string') {
-    throw new TypeError('sha256Hex requires a string input');
-  }
+  if (typeof str !== 'string') return null;
   const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 export async function keyFingerprint(key) {
-  // Validate key is a string before passing to sha256Hex
-  if (typeof key !== 'string') {
-    throw new TypeError('keyFingerprint requires a string key');
-  }
-  return (await sha256Hex(key)).slice(0, 16);
+  const hash = await sha256Hex(key);
+  return hash === null ? null : hash.slice(0, 16);
 }
 
 export async function verifyPkceS256(codeVerifier, codeChallenge) {
@@ -39,8 +33,13 @@ export async function verifyPkceS256(codeVerifier, codeChallenge) {
 }
 
 export async function timingSafeIncludes(candidate, validKeys) {
-  // Validate validKeys is an array before accessing .length to prevent TypeError
-  if (!candidate || !Array.isArray(validKeys) || !validKeys.length) return false;
+  if (typeof candidate !== 'string' ||
+      !candidate ||
+      !Array.isArray(validKeys) ||
+      !validKeys.length ||
+      validKeys.some((key) => typeof key !== 'string')) {
+    return false;
+  }
   const enc = new TextEncoder();
   const candidateHash = await crypto.subtle.digest('SHA-256', enc.encode(candidate));
   const candidateBytes = new Uint8Array(candidateHash);
