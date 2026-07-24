@@ -291,13 +291,14 @@ function syncLocalePricingFeaturePlaceholders(localesDir, generatedFeaturesByKey
           if (trimmed.length < updatedFeatures.length) {
             updatedFeatures = trimmed;
             changed = true;
-            trimmedPlaceholders.push(`${file}:pricing.tiers.${key}.features (-${updatedFeatures.length - trimmed.length || currentFeatures.length - trimmed.length})`);
+            trimmedPlaceholders.push(`${file}:pricing.tiers.${key}.features (-${currentFeatures.length - trimmed.length})`);
           }
         }
 
         // Append new English bullets as untranslated placeholders
         if (newBullets.length > 0 && updatedFeatures.length < generatedFeatures.length) {
-          const missing = newBullets.filter((bullet) => !updatedFeatures.includes(bullet));
+          const slots = generatedFeatures.length - updatedFeatures.length;
+          const missing = newBullets.filter((bullet) => !updatedFeatures.includes(bullet)).slice(0, Math.max(0, slots));
           if (missing.length > 0) {
             updatedFeatures = [...updatedFeatures, ...missing];
             changed = true;
@@ -403,7 +404,6 @@ function sameStringArray(left, right) {
  */
 function findNewBullets(previous, current) {
   if (!Array.isArray(previous) || !Array.isArray(current)) return [];
-  if (current.length <= previous.length) return [];
   const previousSet = new Set(previous);
   return current.filter((bullet) => !previousSet.has(bullet));
 }
