@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import {
   createRenewableEnergyService,
   RENEWABLE_DATA_CACHE_KEY,
+  RENEWABLE_DATA_STALE_CEILING_MS,
 } from '../src/services/renewable-energy-data.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -199,6 +200,35 @@ describe('renewable energy last-known-good recovery (#5497)', () => {
     assert.equal(refreshCalls, 2, 'stale last-known-good data must still trigger a refresh attempt');
   });
 
+  it('stops serving in-memory last-known-good data after the seven-day ceiling', async () => {
+    let refreshCalls = 0;
+    let online = true;
+    const service = createTestService('Renewable Test Long-Lived', async () => {
+      refreshCalls++;
+      if (!online) throw new Error('simulated bootstrap outage');
+      return new Response(JSON.stringify({
+        data: { renewableEnergy: canonicalRenewableData() },
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    await service.fetch();
+
+    now += RENEWABLE_DATA_STALE_CEILING_MS + 1;
+    online = false;
+
+    const result = await service.fetch();
+    await flushPersistence();
+
+    assert.deepEqual(result, {
+      data: null,
+      state: 'unavailable',
+      cachedAt: null,
+    });
+    assert.equal(refreshCalls, 2, 'the expired snapshot must still trigger a refresh attempt');
+  });
+
   it('fails closed when no last-known-good data exists', async () => {
     const service = createTestService('Renewable Test Empty', async () => {
       throw new Error('simulated bootstrap outage');
@@ -246,7 +276,7 @@ describe('renewable energy last-known-good recovery (#5497)', () => {
     await seedService.fetch();
     await flushPersistence();
 
-    now += (7 * 24 * 60 * 60 * 1000) + 1;
+    now += RENEWABLE_DATA_STALE_CEILING_MS + 1;
     const recoveryService = createTestService(breakerName, async () => {
       throw new Error('simulated bootstrap outage');
     }, true);

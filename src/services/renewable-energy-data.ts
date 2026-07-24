@@ -160,7 +160,10 @@ export function createRenewableEnergyService(options: RenewableEnergyServiceOpti
         shouldCache: isRenewableEnergySnapshot,
       },
     );
-    if (snapshot === null) {
+    if (
+      snapshot === null
+      || Date.now() - snapshot.cachedAt > RENEWABLE_DATA_STALE_CEILING_MS
+    ) {
       return {
         data: null,
         state: 'unavailable',

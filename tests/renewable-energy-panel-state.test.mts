@@ -220,17 +220,27 @@ describe('RenewableEnergyPanel data-state disclosure (#5497)', () => {
 
     panel.setData({
       data: {
-        globalPercentage: 0,
+        globalPercentage: 42,
         globalYear: 2024,
-        historicalData: [],
-        regions: [],
+        historicalData: [
+          { year: 2022, value: 38 },
+          { year: 2023, value: 40 },
+          { year: 2024, value: 42 },
+        ],
+        regions: [
+          { code: 'EUU', name: 'European Union', percentage: 50, year: 2024 },
+        ],
       },
       state: 'cached',
       cachedAt,
     });
 
-    const badge = panel.getElement().querySelector('.panel-data-badge');
+    const element = panel.getElement();
+    const badge = element.querySelector('.panel-data-badge');
     assert.ok(badge?.classList.contains('cached'));
     assert.match(badge?.textContent ?? '', /2h ago/);
+    assert.ok(element.querySelector('.renewable-container'));
+    assert.equal(element.querySelector('.renewable-empty'), null);
+    assert.equal(element.querySelector('.gauge-value')?.textContent, '42.0%');
   });
 });
