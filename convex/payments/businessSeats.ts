@@ -17,6 +17,7 @@ import {
   type QueryCtx,
 } from "../_generated/server";
 import { internal } from "../_generated/api";
+import { USER_AGENT } from "../broadcast/_resendContacts";
 import { requireUserId, resolveUserIdentity } from "../lib/auth";
 import {
   extractDomain,
@@ -40,6 +41,7 @@ function escapeHtml(value: string): string {
 
 const MAX_SEATS = 4;
 const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
+const RESEND_FETCH_TIMEOUT_MS = 10_000;
 
 /**
  * Returns true when the caller owns an active/covering `api_business`
@@ -248,6 +250,7 @@ export const sendTeamAccessEndedEmail = internalAction({
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
+        "User-Agent": USER_AGENT,
       },
       body: JSON.stringify({
         from: "World Monitor <noreply@worldmonitor.app>",
@@ -255,6 +258,7 @@ export const sendTeamAccessEndedEmail = internalAction({
         subject: "Your WorldMonitor team access has ended",
         html,
       }),
+      signal: AbortSignal.timeout(RESEND_FETCH_TIMEOUT_MS),
     });
 
     if (!res.ok) {
@@ -308,6 +312,7 @@ export const sendBusinessInviteEmail = internalAction({
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
+        "User-Agent": USER_AGENT,
       },
       body: JSON.stringify({
         from: "World Monitor <noreply@worldmonitor.app>",
@@ -315,6 +320,7 @@ export const sendBusinessInviteEmail = internalAction({
         subject: "You've been invited to WorldMonitor Pro",
         html,
       }),
+      signal: AbortSignal.timeout(RESEND_FETCH_TIMEOUT_MS),
     });
 
     if (!res.ok) {

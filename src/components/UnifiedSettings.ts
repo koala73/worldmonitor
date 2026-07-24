@@ -847,15 +847,17 @@ export class UnifiedSettings {
 
   private async handleInviteBusinessSeat(): Promise<void> {
     const input = this.overlay.querySelector<HTMLInputElement>('.business-seats-email-input');
+    const btn = this.overlay.querySelector<HTMLButtonElement>('.business-seats-invite-btn');
     const email = input?.value.trim();
-    if (!email) return;
+    if (!email || !btn || btn.disabled) return;
 
+    btn.disabled = true;
+    btn.textContent = 'Inviting...';
     this.businessSeatsError = '';
     try {
       const result = await inviteBusinessSeats([email]);
       if (result.invited[0]?.status === 'created') {
         showToast('Invite sent');
-        if (input) input.value = '';
       } else {
         showToast('Already invited');
       }
@@ -875,6 +877,8 @@ export class UnifiedSettings {
       } else {
         this.businessSeatsError = msg;
       }
+      // renderBusinessSeatsInPlace() below regenerates the invite form fresh
+      // (button re-enabled, input cleared) — no manual btn/input reset needed.
       this.renderBusinessSeatsInPlace();
     }
   }

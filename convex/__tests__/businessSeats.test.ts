@@ -520,6 +520,33 @@ describe("payments businessSeats inviteSeats", () => {
     ).rejects.toThrow(/NOT_OWNER/);
     await t.finishAllScheduledFunctions(vi.runAllTimers);
   });
+
+  test("removeSeat is idempotent — second call on an already-revoked grant returns already:'inactive'", async () => {
+    vi.useFakeTimers();
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: "sub_business_011",
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    const invite = await t.withIdentity(OWNER_IDENTITY).mutation(
+      api.payments.businessSeats.inviteSeats,
+      { emails: ["teammate@acme.com"] },
+    );
+    const grantId = invite.invited[0].grantId;
+
+    const first = await t.withIdentity(OWNER_IDENTITY).mutation(api.payments.businessSeats.removeSeat, {
+      grantId,
+    });
+    expect(first).toEqual({ ok: true });
+
+    const second = await t.withIdentity(OWNER_IDENTITY).mutation(api.payments.businessSeats.removeSeat, {
+      grantId,
+    });
+    expect(second).toEqual({ ok: true, already: "inactive" });
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+  });
 });
 
 describe("payments businessSeats acceptBusinessInvite", () => {
@@ -1389,5 +1416,42 @@ describe("payments businessSeats end-to-end lifecycle", () => {
     expect(ent?.planKey).toBe("api_starter");
     expect(ent?.features.tier).toBe(2);
     vi.useRealTimers();
+  });
+});
+
+describe("payments businessSeats email actions — Resend failure handling", () => {
+  test("sendBusinessInviteEmail throws when Resend returns non-2xx", async () => {
+    process.env.RESEND_API_KEY = "test-resend-key";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("rate limited", { status: 429 }),
+    );
+    const t = convexTest(schema, modules);
+
+    await expect(
+      t.action(internal.payments.businessSeats.sendBusinessInviteEmail, {
+        inviteeEmail: "teammate@acme.com",
+        ownerEmail: "owner@acme.com",
+        grantId: "fake_grant_id",
+        token: "fake.token.sig",
+      }),
+    ).rejects.toThrow(/Resend invite email failed: 429/);
+
+    fetchMock.mockRestore();
+  });
+
+  test("sendTeamAccessEndedEmail throws when Resend returns non-2xx", async () => {
+    process.env.RESEND_API_KEY = "test-resend-key";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response("rate limited", { status: 429 }),
+    );
+    const t = convexTest(schema, modules);
+
+    await expect(
+      t.action(internal.payments.businessSeats.sendTeamAccessEndedEmail, {
+        inviteeEmail: "teammate@acme.com",
+      }),
+    ).rejects.toThrow(/Resend team-access-ended email failed: 429/);
+
+    fetchMock.mockRestore();
   });
 });
