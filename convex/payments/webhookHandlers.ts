@@ -161,8 +161,10 @@ export const webhookHandler = httpAction(async (ctx, request) => {
 
       // `convex-test` cannot safely await a scheduler write started by an HTTP
       // action, so keep this test-only guard aligned with the existing Redis
-      // scheduler guards in subscriptionHelpers.ts. Production always queues
-      // the structured auto-Sentry signal after the failure row commits.
+      // scheduler guards in subscriptionHelpers.ts. Production attempts to
+      // queue the structured auto-Sentry signal after the failure row commits;
+      // a scheduler failure is logged and does not alter the provider-facing
+      // retry response.
       if (process.env.NODE_ENV !== "test") {
         // sentry-coverage-ok: the scheduled mutation emits a structured
         // console.error after the failure row commits, so Convex auto-Sentry

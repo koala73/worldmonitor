@@ -273,6 +273,27 @@ export const reportDodoWebhookFailure = internalMutation({
   },
 });
 
+/**
+ * Shared resolution transition for manual resolution and provider-retry
+ * recovery: one timestamp marks the failure row resolved and rebalances the
+ * aggregate. Callers keep their own lookup and missing-row policy.
+ */
+async function applyWebhookFailureResolution(
+  ctx: MutationCtx,
+  summary: Doc<"paymentWebhookFailureSummary">,
+  existing: Doc<"paymentWebhookFailures">,
+  attribution: { resolvedBy: string; resolutionNote?: string },
+) {
+  const resolvedAt = Date.now();
+  await ctx.db.patch(existing._id, {
+    unresolved: false,
+    resolvedAt,
+    resolvedBy: attribution.resolvedBy,
+    resolutionNote: attribution.resolutionNote,
+  });
+  await removeUnresolvedFailureFromSummary(ctx, summary, existing, resolvedAt);
+}
+
 export const resolveWebhookFailure = internalMutation({
   args: {
     webhookId: v.string(),
@@ -289,16 +310,12 @@ export const resolveWebhookFailure = internalMutation({
       throw new Error(`No Dodo webhook failure found for ${args.webhookId}`);
     }
 
-    await ctx.db.patch(existing._id, {
-      unresolved: false,
-      resolvedAt: Date.now(),
+    await applyWebhookFailureResolution(ctx, summary, existing, {
       resolvedBy: args.resolvedBy.slice(0, 200),
       resolutionNote: args.resolutionNote
         ? sanitizeFailureMessage(args.resolutionNote)
         : undefined,
     });
-
-    await removeUnresolvedFailureFromSummary(ctx, summary, existing, Date.now());
   },
 });
 
@@ -315,15 +332,10 @@ export const markWebhookFailureRecovered = internalMutation({
     }
 
     const summary = await readFailureSummaryLock(ctx);
-
-    const recoveredAt = Date.now();
-    await ctx.db.patch(existing._id, {
-      unresolved: false,
-      resolvedAt: recoveredAt,
+    await applyWebhookFailureResolution(ctx, summary, existing, {
       resolvedBy: "dodo-retry",
       resolutionNote: "Processed successfully on provider retry",
     });
-    await removeUnresolvedFailureFromSummary(ctx, summary, existing, recoveredAt);
   },
 });
 

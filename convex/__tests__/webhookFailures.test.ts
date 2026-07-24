@@ -547,4 +547,87 @@ describe("Dodo webhook failure tracking", () => {
     expect(diagnostics.unresolvedCount).toBe(0);
     expect(diagnostics.failures).toHaveLength(0);
   });
+
+  test("moves the event bucket when a redelivery changes event type", async () => {
+    const t = await makeT();
+
+    await t.mutation(
+      internal.payments.webhookMutations.recordWebhookFailure,
+      failureArgs(),
+    );
+    const signal = await t.mutation(
+      internal.payments.webhookMutations.recordWebhookFailure,
+      failureArgs({
+        eventType: "subscription.on_hold",
+        rawPayload: {
+          type: "subscription.on_hold",
+          data: { subscription_id: "sub_failure_001" },
+        },
+      }),
+    );
+
+    expect(signal).toMatchObject({
+      isNew: false,
+      attemptCount: 2,
+      unresolvedCount: 1,
+    });
+    const rows = await t.run(async (ctx) =>
+      ctx.db.query("paymentWebhookFailures").collect(),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0].eventType).toBe("subscription.on_hold");
+
+    const summary = await t.run(async (ctx) =>
+      ctx.db.query("paymentWebhookFailureSummary").collect(),
+    );
+    expect(summary[0]).toMatchObject({
+      unresolvedCount: 1,
+      eventTypes: [{ eventType: "subscription.on_hold", count: 1 }],
+    });
+  });
+
+  test("reopens a resolved incident as a fresh unresolved failure", async () => {
+    const t = await makeT();
+
+    await t.mutation(
+      internal.payments.webhookMutations.recordWebhookFailure,
+      failureArgs(),
+    );
+    await t.mutation(
+      internal.payments.webhookMutations.resolveWebhookFailure,
+      {
+        webhookId: "wh_failure_001",
+        resolvedBy: "on-call@example.com",
+      },
+    );
+    const signal = await t.mutation(
+      internal.payments.webhookMutations.recordWebhookFailure,
+      failureArgs({
+        timestamp: BASE_TIMESTAMP + 5000,
+        receivedAt: BASE_TIMESTAMP + 5000,
+      }),
+    );
+
+    expect(signal).toMatchObject({
+      isNew: false,
+      attemptCount: 2,
+      unresolvedCount: 1,
+    });
+    const rows = await t.run(async (ctx) =>
+      ctx.db.query("paymentWebhookFailures").collect(),
+    );
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ unresolved: true, attemptCount: 2 });
+    expect(rows[0].resolvedAt).toBeUndefined();
+    expect(rows[0].resolvedBy).toBeUndefined();
+    expect(rows[0].resolutionNote).toBeUndefined();
+
+    const summary = await t.run(async (ctx) =>
+      ctx.db.query("paymentWebhookFailureSummary").collect(),
+    );
+    expect(summary[0]).toMatchObject({
+      unresolvedCount: 1,
+      eventTypes: [{ eventType: "subscription.renewed", count: 1 }],
+    });
+  });
 });
