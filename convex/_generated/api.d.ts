@@ -44,6 +44,7 @@ import type * as mcpProTokens from "../mcpProTokens.js";
 import type * as notificationChannels from "../notificationChannels.js";
 import type * as payments_backfillCustomerNormalizedEmail from "../payments/backfillCustomerNormalizedEmail.js";
 import type * as payments_billing from "../payments/billing.js";
+import type * as payments_businessSeats from "../payments/businessSeats.js";
 import type * as payments_cacheActions from "../payments/cacheActions.js";
 import type * as payments_checkout from "../payments/checkout.js";
 import type * as payments_seedProductPlans from "../payments/seedProductPlans.js";
@@ -100,6 +101,7 @@ declare const fullApi: ApiFromModules<{
   notificationChannels: typeof notificationChannels;
   "payments/backfillCustomerNormalizedEmail": typeof payments_backfillCustomerNormalizedEmail;
   "payments/billing": typeof payments_billing;
+  "payments/businessSeats": typeof payments_businessSeats;
   "payments/cacheActions": typeof payments_cacheActions;
   "payments/checkout": typeof payments_checkout;
   "payments/seedProductPlans": typeof payments_seedProductPlans;

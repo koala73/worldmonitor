@@ -98,6 +98,24 @@ export const inviteSeats = mutation({
       throw new ConvexError({ kind: "OWNER_DOMAIN_NOT_CORPORATE" });
     }
 
+    // Serialize concurrent inviteSeats / removeSeat calls for this Business
+    // subscription: read + patch the lock row so Convex OCC serializes the
+    // mutations and the cap check below cannot be bypassed by a race.
+    const lock = await ctx.db
+      .query("businessSeatLocks")
+      .withIndex("by_businessSubscriptionId", (q) =>
+        q.eq("businessSubscriptionId", businessSub.dodoSubscriptionId),
+      )
+      .unique();
+    if (lock) {
+      await ctx.db.patch(lock._id, { lastTouchedAt: now });
+    } else {
+      await ctx.db.insert("businessSeatLocks", {
+        businessSubscriptionId: businessSub.dodoSubscriptionId,
+        lastTouchedAt: now,
+      });
+    }
+
     const normalizedOwnerEmail = ownerEmail.toLowerCase();
     const emails = args.emails.map((e) => e.trim().toLowerCase()).filter((e) => e.length > 0);
     if (emails.length === 0) {
@@ -105,15 +123,6 @@ export const inviteSeats = mutation({
     }
     if (emails.length > MAX_SEATS) {
       throw new ConvexError({ kind: "TOO_MANY_EMAILS" });
-    }
-
-    const currentCount = await countActiveOrPendingGrants(
-      ctx,
-      businessSub.dodoSubscriptionId,
-      now,
-    );
-    if (currentCount + emails.length > MAX_SEATS) {
-      throw new ConvexError({ kind: "SEAT_CAP_REACHED" });
     }
 
     // Check existing grants for duplicates (active or pending).
@@ -127,6 +136,9 @@ export const inviteSeats = mutation({
       existingGrants.map((g) => [g.inviteeEmail, g]),
     );
 
+    // Separate new invites from duplicates before the cap check so a duplicate
+    // re-invite is idempotent even when the cap is full.
+    const newEmails: string[] = [];
     const results: Array<{
       email: string;
       grantId: string;
@@ -155,7 +167,19 @@ export const inviteSeats = mutation({
           continue;
         }
       }
+      newEmails.push(email);
+    }
 
+    const currentCount = await countActiveOrPendingGrants(
+      ctx,
+      businessSub.dodoSubscriptionId,
+      now,
+    );
+    if (currentCount + newEmails.length > MAX_SEATS) {
+      throw new ConvexError({ kind: "SEAT_CAP_REACHED" });
+    }
+
+    for (const email of newEmails) {
       const grantId = await ctx.db.insert("businessProGrants", {
         businessSubscriptionId: businessSub.dodoSubscriptionId,
         ownerUserId: userId,
@@ -176,6 +200,60 @@ export const inviteSeats = mutation({
     }
 
     return { invited: results };
+  },
+});
+
+/**
+ * Notifies a revoked invitee that their team access ended. Scheduled from the
+ * revoke-on-lapse path in subscriptionHelpers.
+ */
+export const sendTeamAccessEndedEmail = internalAction({
+  args: { inviteeEmail: v.string() },
+  handler: async (_ctx, args) => {
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+      console.error("[businessSeats] RESEND_API_KEY not set — skipping team-access-ended email");
+      return;
+    }
+
+    const html = `
+<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #0a0a0a; color: #e0e0e0;">
+  <div style="background: #ef4444; height: 4px;"></div>
+  <div style="padding: 40px 32px;">
+    <p style="font-size: 22px; font-weight: 700; color: #fff; margin: 0 0 12px;">Team access ended</p>
+    <p style="font-size: 14px; color: #999; line-height: 1.5; margin: 0 0 24px;">
+      Your WorldMonitor Pro seat on a team Business plan has ended because the plan is no longer active.
+      Your account has returned to the free tier.
+    </p>
+    <div style="text-align: center;">
+      <a href="https://worldmonitor.app/pro" style="display: inline-block; background: #ef4444; color: #fff; padding: 14px 36px; text-decoration: none; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; border-radius: 2px;">View Plans</a>
+    </div>
+    <p style="font-size: 11px; color: #666; text-align: center; margin: 24px 0 0;">
+      Questions? Reply to this email or contact support@worldmonitor.app.
+    </p>
+  </div>
+</div>`;
+
+    const res = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        from: "World Monitor <noreply@worldmonitor.app>",
+        to: [args.inviteeEmail],
+        subject: "Your WorldMonitor team access has ended",
+        html,
+      }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      console.error(`[businessSeats] Resend ${res.status}: ${body}`);
+      throw new Error(`Resend team-access-ended email failed: ${res.status}`);
+    }
+    console.log(`[businessSeats] Team-access-ended email sent to ${args.inviteeEmail}`);
   },
 });
 
@@ -292,6 +370,22 @@ export const removeSeat = mutation({
     }
 
     const now = Date.now();
+    // Serialize with inviteSeats via the per-Business-subscription lock row.
+    const lock = await ctx.db
+      .query("businessSeatLocks")
+      .withIndex("by_businessSubscriptionId", (q) =>
+        q.eq("businessSubscriptionId", grant.businessSubscriptionId),
+      )
+      .unique();
+    if (lock) {
+      await ctx.db.patch(lock._id, { lastTouchedAt: now });
+    } else {
+      await ctx.db.insert("businessSeatLocks", {
+        businessSubscriptionId: grant.businessSubscriptionId,
+        lastTouchedAt: now,
+      });
+    }
+
     await ctx.db.patch(args.grantId, { status: "revoked" });
 
     if (grant.inviteeUserId) {

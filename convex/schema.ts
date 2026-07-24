@@ -950,6 +950,16 @@ export default defineSchema({
     .index("by_inviteeEmail", ["inviteeEmail"])
     .index("by_inviteeUserId", ["inviteeUserId"]),
 
+  // Per-Business-subscription serialization document for the 4-seat cap.
+  // EVERY mutation that mutates `businessProGrants` for a Business sub reads
+  // AND writes this row, forcing Convex's per-document OCC to serialize
+  // concurrent inviteSeats / removeSeat calls. Without this, two parallel
+  // invites could both pass the cap check and insert a 5th grant.
+  businessSeatLocks: defineTable({
+    businessSubscriptionId: v.string(),
+    lastTouchedAt: v.number(),
+  }).index("by_businessSubscriptionId", ["businessSubscriptionId"]),
+
   emailSuppressions: defineTable({
     normalizedEmail: v.string(),
     reason: v.union(v.literal("bounce"), v.literal("complaint"), v.literal("manual")),

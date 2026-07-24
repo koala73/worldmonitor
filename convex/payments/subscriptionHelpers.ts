@@ -1026,6 +1026,14 @@ async function revokeBusinessProGrantsForSubscription(
     await ctx.db.patch(grant._id, { status: "revoked" });
     if (grant.inviteeUserId) {
       await recomputeEntitlementFromAllSubs(ctx, grant.inviteeUserId, eventTimestamp);
+      // Notify the revoked invitee that their team access ended.
+      if (process.env.RESEND_API_KEY) {
+        await ctx.scheduler.runAfter(
+          0,
+          internal.payments.businessSeats.sendTeamAccessEndedEmail,
+          { inviteeEmail: grant.inviteeEmail },
+        );
+      }
     }
   }
 }

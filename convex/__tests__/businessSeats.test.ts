@@ -306,6 +306,32 @@ describe("payments businessSeats inviteSeats", () => {
     await t.finishAllScheduledFunctions(vi.runAllTimers);
   });
 
+  test("duplicate re-invite at cap is idempotent, not SEAT_CAP_REACHED", async () => {
+    vi.useFakeTimers();
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: "sub_business_cap_dup",
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+
+    // Fill all 4 seats.
+    for (const email of ["a@acme.com", "b@acme.com", "c@acme.com", "d@acme.com"]) {
+      await t.withIdentity(OWNER_IDENTITY).mutation(api.payments.businessSeats.inviteSeats, {
+        emails: [email],
+      });
+    }
+
+    // Re-inviting one of the 4 must be idempotent, not a cap error.
+    const result = await t.withIdentity(OWNER_IDENTITY).mutation(
+      api.payments.businessSeats.inviteSeats,
+      { emails: ["a@acme.com"] },
+    );
+    expect(result.invited[0].status).toBe("already_pending");
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+  });
+
   test("non-Business owner → OWNER_NOT_BUSINESS", async () => {
     const t = convexTest(schema, modules);
     await seedEntitlement(t, OWNER_ID, "pro_monthly", NOW + 30 * DAY_MS);
@@ -672,6 +698,10 @@ describe("payments businessSeats revoke-on-lapse", () => {
   test("Business expired → all grants revoked + invitees free", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
+    process.env.RESEND_API_KEY = "test-resend-key";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ id: "resend-ok" }), { status: 200 }),
+    );
     const t = convexTest(schema, modules);
     const businessSubId = "sub_business_revoke_001";
     await seedBusinessSubscription(t, {
@@ -715,6 +745,16 @@ describe("payments businessSeats revoke-on-lapse", () => {
       );
       expect(ent?.planKey).toBe("free");
     }
+
+    // Team-access-ended emails are scheduled for both revoked invitees.
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const sentTo = fetchMock.mock.calls.map((call) => {
+      const body = JSON.parse(String(call[1]?.body));
+      return body.to?.[0];
+    });
+    expect(sentTo).toEqual(expect.arrayContaining(["teammate1@acme.com", "teammate2@acme.com"]));
+    fetchMock.mockRestore();
     vi.useRealTimers();
   });
 
