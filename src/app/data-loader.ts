@@ -841,8 +841,8 @@ export class DataLoaderManager implements AppModule {
         task: () => runGuarded('giving', async () => {
           const givingResult = await fetchGivingSummary();
           if (!givingResult.ok) {
-            dataFreshness.recordError('giving', 'Giving data unavailable');
-            this.callPanel('giving', 'showUnavailable');
+            dataFreshness.recordError('giving', 'Giving data unavailable (retaining prior state)');
+            this.showColdLoadError('giving');
             return;
           }
           const data = givingResult.data;

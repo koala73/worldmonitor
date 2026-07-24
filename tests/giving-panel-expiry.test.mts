@@ -221,7 +221,7 @@ describe('Giving panel expiry and unavailable behavior', () => {
     assert.equal(panel.testState.destroyed, true);
   });
 
-  it('routes an unavailable Giving fetch through the explicit panel clear path', () => {
+  it('routes an unavailable Giving fetch through the retained-data cold error guard', () => {
     const source = readFileSync(resolve(root, 'src/app/data-loader.ts'), 'utf8');
     const file = ts.createSourceFile(
       'src/app/data-loader.ts',
@@ -247,22 +247,19 @@ describe('Giving panel expiry and unavailable behavior', () => {
     });
 
     assert.ok(unavailableBranch, 'Giving loader must branch on an unavailable result');
-    let clearsGivingPanel = false;
+    let guardsColdGivingError = false;
     visit(unavailableBranch, (node) => {
       if (
         ts.isCallExpression(node)
         && ts.isPropertyAccessExpression(node.expression)
-        && node.expression.name.text === 'callPanel'
+        && node.expression.name.text === 'showColdLoadError'
         && node.arguments[0]
         && ts.isStringLiteralLike(node.arguments[0])
         && node.arguments[0].text === 'giving'
-        && node.arguments[1]
-        && ts.isStringLiteralLike(node.arguments[1])
-        && node.arguments[1].text === 'showUnavailable'
       ) {
-        clearsGivingPanel = true;
+        guardsColdGivingError = true;
       }
     });
-    assert.equal(clearsGivingPanel, true);
+    assert.equal(guardsColdGivingError, true);
   });
 });
