@@ -435,6 +435,11 @@ describe('scoped rate-limit degraded call-site policy (#3531)', () => {
       reason: 'NLWeb /ask serves only anonymous, quota-free, cheap catalog matching — degradation is logged and stays availability-first',
     },
     {
+      path: 'api/docs-mcp.ts',
+      expected: /Redis-degraded scoped limits intentionally stay availability-first/,
+      reason: 'docs MCP facade proxies a fully public, cheap upstream — degradation is logged and stays availability-first',
+    },
+    {
       path: 'api/mcp-proxy.ts',
       expected: /Redis-degraded scoped limits intentionally stay availability-first/,
       reason: 'MCP proxy is already premium-auth gated; scoped limit degradation is logged and remains availability-first',

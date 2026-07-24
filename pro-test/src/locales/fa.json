@@ -44,20 +44,28 @@
         "description": "Programmatic access to intelligence data",
         "features": [
           "REST API + official SDKs (npm, PyPI, RubyGems, Go)",
+          "License / API key included",
           "Real-time data streams",
           "60 requests/minute",
           "1,000 requests/day included",
-          "Webhook notifications",
-          "Custom data exports"
+          "Webhook notifications"
+        ],
+        "highlightFeatures": [
+          "بدون استفاده تجاری"
         ]
       },
       "apiBusiness": {
-        "description": "High-volume API for teams",
+        "description": "API پرحجم برای تیمها",
         "features": [
-          "Everything in API Starter",
-          "300 requests/minute",
-          "10,000 requests/day included",
-          "Priority support"
+          "همه چیز در API Starter",
+          "۳۰۰ درخواست در دقیقه",
+          "۱۰٬۰۰۰ درخواست در روز شامل",
+          "شامل ۵ مجوز Pro",
+          "ایمیل شرکتی یکسان الزامی است",
+          "پشتیبانی اولویتدار"
+        ],
+        "highlightFeatures": [
+          "استفاده تجاری مجاز است"
         ]
       },
       "enterprise": {
@@ -448,7 +456,8 @@
       "trustOpenSource": "Open source · AGPL-3.0",
       "screenshotAlt": "World Monitor live intelligence dashboard — global map with conflict, shipping and market layers",
       "plateNote": "Captured from the live map — click to open it",
-      "trustBuild": "Build on it:"
+      "trustBuild": "Build on it:",
+      "positioningLink": "WorldMonitor is not an open-source Palantir"
     },
     "live": {
       "eyebrow": "Live right now",

@@ -17,6 +17,20 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options', 'head']);
 const JSON_MEDIA = 'application/json';
+const GIVING_PUBLISHED_ESTIMATE_CLAIMS = JSON.parse(
+  readFileSync(resolve(root, 'scripts/shared/giving-published-estimate-claims.json'), 'utf8'),
+);
+const GIVING_CATEGORY_SENTINELS = [
+  'Medical & Health',
+  'Disaster Relief',
+  'Education',
+  'Community',
+  'Memorials',
+  'Animals & Pets',
+  'Environment',
+  'Hunger & Food',
+  'Other',
+];
 
 const serviceSpecs = readdirSync(apiDir)
   .filter((f) => /Service\.openapi\.json$/.test(f))
@@ -499,6 +513,65 @@ function assertScenarioStatusPollExample(spec, label) {
   }
 }
 
+function assertGivingPublishedEstimateExample(spec, label) {
+  const example = spec.paths?.['/api/giving/v1/get-giving-summary']?.get
+    ?.responses?.['200']?.content?.[JSON_MEDIA]?.example;
+  assert.ok(example, `${label}: Giving response example missing`);
+  assert.equal(example.dataAvailable, true, `${label}: populated Giving example must be available`);
+  assert.ok(example.fetchedAt > 0, `${label}: populated Giving example needs a cache-generation time`);
+  assert.equal(example.summary?.dataMode, 'partial_estimate', `${label}: initial Giving mode`);
+  assert.equal(example.summary?.activityIndex, 0, `${label}: activity index is a compatibility sentinel`);
+  assert.equal(example.summary?.activityIndexAvailable, false, `${label}: activity index must be unavailable`);
+  assert.equal(example.summary?.trend, 'stable', `${label}: trend string is a compatibility sentinel`);
+  assert.equal(example.summary?.trendAvailable, false, `${label}: trend must be unavailable`);
+  assert.ok(example.summary?.estimatedDailyFlowUsd > 0, `${label}: verified annualized platform flow missing`);
+  assert.ok(Array.isArray(example.summary?.provenance) && example.summary.provenance.length > 0, `${label}: provenance missing`);
+  assert.deepEqual(
+    example.summary.provenance.map((entry) => entry.subject),
+    GIVING_PUBLISHED_ESTIMATE_CLAIMS.map((entry) => entry.subject),
+    `${label}: Giving provenance must derive from the shared claim registry`,
+  );
+  assert.ok(
+    example.summary.provenance.some((entry) =>
+      entry.sourceName === 'GoFundMe'
+      && entry.status === 'verified'
+      && entry.includedInHighlightedAggregate === true
+      && /^https:\/\//.test(entry.sourceUrl)),
+    `${label}: verified GoFundMe provenance missing`,
+  );
+  assert.ok(
+    example.summary.provenance.some((entry) =>
+      entry.sourceName === 'GlobalGiving'
+      && entry.status === 'verified'
+      && entry.includedInHighlightedAggregate === true
+      && entry.reportedValue === 84_000_000),
+    `${label}: verified GlobalGiving provenance missing`,
+  );
+  for (const platform of example.summary?.platforms ?? []) {
+    assert.equal(platform.activeCampaignsSampled, undefined, `${label}: must not fabricate sampled campaign counts`);
+    assert.equal(platform.newCampaigns24h, undefined, `${label}: must not fabricate 24-hour campaign counts`);
+    assert.equal(platform.donationVelocity, undefined, `${label}: must not fabricate live donation velocity`);
+  }
+  for (const category of example.summary?.categories ?? []) {
+    assert.equal(category.share, 0, `${label}: category share must remain an unavailable sentinel`);
+    assert.equal(category.change24h, 0, `${label}: category change must remain a not-collected sentinel`);
+    assert.equal(category.activeCampaigns, 0, `${label}: category campaign count must remain a not-collected sentinel`);
+    assert.equal(category.trending, false, `${label}: category trend must remain unavailable`);
+  }
+  assert.deepEqual(
+    example.summary?.categories?.map((category) => category.category),
+    GIVING_CATEGORY_SENTINELS,
+    `${label}: Giving category compatibility projection must match the live builder`,
+  );
+  assert.deepEqual(example.summary?.crypto, {
+    dailyInflowUsd: 0,
+    trackedWallets: 0,
+    transactions24h: 0,
+    topReceivers: [],
+    pctOfTotal: 0,
+  }, `${label}: crypto compatibility projection must match the live builder`);
+}
+
 // Honeypot fields are hidden anti-bot inputs (marked by a schema description
 // containing "honeypot"). The handlers silently discard any non-empty value, so
 // a populated request example is a fake-success trap and contradicts the field's
@@ -840,6 +913,18 @@ describe('OpenAPI curated example values', () => {
 
     for (const [label, spec] of specs) {
       assertScenarioStatusPollExample(spec, label);
+    }
+  });
+
+  it('uses a truthful partial-estimate Giving response example', () => {
+    const specs = [
+      ['GivingService.openapi.json', JSON.parse(readFileSync(resolve(apiDir, 'GivingService.openapi.json'), 'utf8'))],
+      ['GivingService.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'GivingService.openapi.yaml'), 'utf8'))],
+      ['worldmonitor.openapi.yaml', loadYaml(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8'))],
+    ];
+
+    for (const [label, spec] of specs) {
+      assertGivingPublishedEstimateExample(spec, label);
     }
   });
 

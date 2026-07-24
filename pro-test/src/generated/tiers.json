@@ -47,18 +47,21 @@
     "highlighted": true
   },
   {
-    "name": "API",
+    "name": "API Starter",
     "localeKey": "api",
     "monthlyPrice": 99.99,
     "annualPrice": 999,
     "description": "Programmatic access to intelligence data",
     "features": [
       "REST API + official SDKs (npm, PyPI, RubyGems, Go)",
+      "License / API key included",
       "Real-time data streams",
       "60 requests/minute",
       "1,000 requests/day included",
-      "Webhook notifications",
-      "Custom data exports"
+      "Webhook notifications"
+    ],
+    "highlightFeatures": [
+      "No commercial use"
     ],
     "planLimits": {
       "apiRequestsPerDay": 1000,
@@ -73,13 +76,18 @@
   {
     "name": "API Business",
     "localeKey": "apiBusiness",
-    "monthlyPrice": 249.99,
+    "monthlyPrice": 299.99,
     "description": "High-volume API for teams",
     "features": [
       "Everything in API Starter",
       "300 requests/minute",
       "10,000 requests/day included",
+      "5 Pro licenses included",
+      "Same company email required",
       "Priority support"
+    ],
+    "highlightFeatures": [
+      "Commercial use applicable"
     ],
     "planLimits": {
       "apiRequestsPerDay": 10000,

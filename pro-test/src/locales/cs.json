@@ -382,11 +382,14 @@
         "description": "Programmatický přístup k datům zpravodajství",
         "features": [
           "REST API + oficiální SDK (npm, PyPI, RubyGems, Go)",
+          "Licenční / API klíč v ceně",
           "Datové toky v reálném čase",
           "60 požadavků/minutu",
           "1 000 požadavků denně v ceně",
-          "Webhook oznámení",
-          "Vlastní export dat"
+          "Webhook oznámení"
+        ],
+        "highlightFeatures": [
+          "Bez komerčního použití"
         ]
       },
       "enterprise": {
@@ -400,6 +403,20 @@
           "Možnost on-premise"
         ],
         "cta": "Kontaktujte prodej"
+      },
+      "apiBusiness": {
+        "description": "Vysokokapacitní API pro týmy",
+        "features": [
+          "Vše z API Starter",
+          "300 požadavků/minutu",
+          "10 000 požadavků/den v ceně",
+          "Zahrnuje 5 Pro licencí",
+          "Vyžadován stejný firemní e-mail",
+          "Prioritní podpora"
+        ],
+        "highlightFeatures": [
+          "Komerční použití je povoleno"
+        ]
       }
     },
     "cta": {

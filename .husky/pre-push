@@ -1,4 +1,33 @@
 #!/usr/bin/env bash
+
+# Self-identity tripwire: this hook must be the copy checked out in the tree
+# being pushed. An absolute/foreign core.hooksPath silently welds every
+# worktree's push to ANOTHER checkout's (possibly ancient) hook file — the
+# 2026-07-24 "pushes take 4 minutes and time out" incident (see
+# docs/solutions/performance-issues/git-push-timeout-stale-core-hookspath.md).
+# Bootstrap heals this too, but only when bootstrap runs; push time is the
+# moment that matters. Escape hatch for an intentional central-hook setup:
+# WM_ALLOW_FOREIGN_HOOKS=1.
+if [ -z "${WM_ALLOW_FOREIGN_HOOKS:-}" ] && [ -n "${BASH_SOURCE[0]:-}" ]; then
+  _hook_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P)
+  _wt_root=$(cd "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null && pwd -P)
+  if [ -n "$_hook_dir" ] && [ -n "$_wt_root" ] && [ "$_hook_dir" != "$_wt_root/.husky" ]; then
+    echo "============================================================"
+    echo "ERROR: pre-push hook is executing from OUTSIDE this worktree:"
+    echo "  running:  $_hook_dir/pre-push"
+    echo "  expected: $_wt_root/.husky/pre-push"
+    echo "core.hooksPath resolves to another checkout, so pushes run that"
+    echo "checkout's (possibly stale) gate instead of this branch's."
+    echo "Fix (once, for all worktrees):  git config core.hooksPath .husky"
+    echo "Then check for a per-worktree override:"
+    echo "  git config --show-origin core.hooksPath"
+    echo "  (if origin is a config.worktree file: git config --worktree --unset core.hooksPath)"
+    echo "Intentional central hooks? Re-run with WM_ALLOW_FOREIGN_HOOKS=1."
+    echo "============================================================"
+    exit 1
+  fi
+fi
+
 echo "Checking for local Vercel env dumps..."
 node scripts/check-local-secret-dumps.mjs || exit 1
 
@@ -174,13 +203,23 @@ if changed '^(api/|server/|src/generated/)'; then
   # and generated stubs — a server-only Node-ism breaks the Vercel bundle with
   # zero api/ diff, so those paths must trigger the esbuild check too.
   echo "Running edge function bundle check..."
-  while IFS= read -r f; do
-    npx esbuild "$f" --bundle --format=esm --platform=browser --outfile=/dev/null 2>/dev/null || {
-      echo "ERROR: esbuild failed to bundle $f — this will break Vercel deployment"
-      npx esbuild "$f" --bundle --format=esm --platform=browser --outfile=/dev/null
+  # Single multi-entry esbuild invocation: one process bundling all entries in
+  # parallel instead of one npx+esbuild spawn per file (~47 sequential spawns).
+  # Errors still attribute per-file — esbuild prefixes each diagnostic with the
+  # source path. --outdir is required for multi-entry; discard it afterwards.
+  EDGE_OUT=$(mktemp -d) || exit 1
+  ESBUILD_ENTRIES=()
+  while IFS= read -r f; do ESBUILD_ENTRIES+=("$f"); done \
+    < <(find api/ -name "*.js" -not -name "_*"; find api/ -maxdepth 1 -name "*.ts" -not -name "_*")
+  if [ "${#ESBUILD_ENTRIES[@]}" -gt 0 ]; then
+    if ! npx esbuild "${ESBUILD_ENTRIES[@]}" --bundle --format=esm --platform=browser \
+        --log-level=error --outdir="$EDGE_OUT"; then
+      rm -rf "$EDGE_OUT"
+      echo "ERROR: esbuild failed to bundle edge functions (paths above) — this will break Vercel deployment"
       exit 1
-    }
-  done < <(find api/ -name "*.js" -not -name "_*"; find api/ -maxdepth 1 -name "*.ts" -not -name "_*")
+    fi
+  fi
+  rm -rf "$EDGE_OUT"
 else
   echo "Edge function bundle check skipped (no api/, server/, or src/generated changes)."
 fi

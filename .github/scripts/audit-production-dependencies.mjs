@@ -14,9 +14,18 @@ const SEVERITY_RANK = new Map([
 ]);
 
 export const BASELINE_ADVISORIES_BY_LOCKFILE = {
-  'package-lock.json': [],
+  // GHSA-f88m-g3jw-g9cj (sharp inherited libvips decode CVEs) needs attacker-
+  // crafted image BYTES fed to sharp. Neither root chain decodes untrusted
+  // input: @vercel/og's sharp only converts satori-rendered first-party
+  // buffers (brief carousel), and @xenova/transformers is consumed solely by
+  // the browser ML worker (src/workers/ml.worker.ts) — its Node-only sharp
+  // binary never executes server-side. The clean fix (sharp 0.35.x) is
+  // semver-major across both chains; baselined until the parents bump. The
+  // same reasoning covers blog-site below: sharp runs only at Astro build
+  // time over repo-owned images, and the fix requires astro@7 (semver-major).
+  'package-lock.json': ['GHSA-f88m-g3jw-g9cj'],
   'consumer-prices-core/package-lock.json': [],
-  'blog-site/package-lock.json': [],
+  'blog-site/package-lock.json': ['GHSA-f88m-g3jw-g9cj'],
   // GHSA-395f-4hp3-45gv (shell-quote quadratic-complexity DoS in parse()) reaches
   // pro-test only via react-native -> react-devtools-core, a mobile/dev-tooling
   // chain the Vite web build never bundles into public/pro/. The parse() DoS is
@@ -24,7 +33,14 @@ export const BASELINE_ADVISORIES_BY_LOCKFILE = {
   // `overrides` pin bump) would drag an otherwise-untouched public/pro/ rebuild
   // into a lockfile-hygiene change. Baselined rather than patched here; drop it
   // once react-native leaves pro-test's tree. (GHSA-qjx8/w24r predate this.)
-  'pro-test/package-lock.json': ['GHSA-qjx8-664m-686j', 'GHSA-w24r-5266-9c3c', 'GHSA-395f-4hp3-45gv'],
+  // GHSA-r28c-9q8g-f849 (postcss sourceMappingURL path traversal) requires
+  // postcss to process attacker-controlled CSS carrying a malicious
+  // sourceMappingURL. pro-test runs postcss only at build time over
+  // first-party Tailwind sources; postcss never ships in public/pro/. The
+  // clean fix means bumping the `overrides.postcss` pin (8.5.12 → ≥8.5.23),
+  // which drags a public/pro/ bundle rebuild into a lockfile-hygiene change —
+  // same trade-off as GHSA-395f below. Drop when the pin next bumps.
+  'pro-test/package-lock.json': ['GHSA-qjx8-664m-686j', 'GHSA-w24r-5266-9c3c', 'GHSA-395f-4hp3-45gv', 'GHSA-r28c-9q8g-f849'],
   'scripts/package-lock.json': [],
   'docker/runtime-package-lock.json': [],
 };

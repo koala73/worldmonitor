@@ -382,11 +382,14 @@
         "description": "Accès programmatique aux données de renseignement",
         "features": [
           "API REST + SDK officiels (npm, PyPI, RubyGems, Go)",
+          "Clé de licence / API incluse",
           "Flux de données en temps réel",
           "60 requêtes/minute",
           "1 000 requêtes/jour incluses",
-          "Notifications webhook",
-          "Exports de données personnalisés"
+          "Notifications webhook"
+        ],
+        "highlightFeatures": [
+          "Pas d'usage commercial"
         ]
       },
       "enterprise": {
@@ -400,6 +403,20 @@
           "Option sur site"
         ],
         "cta": "Contacter les ventes"
+      },
+      "apiBusiness": {
+        "description": "API à fort volume pour les équipes",
+        "features": [
+          "Tout ce qui est dans API Starter",
+          "300 requêtes/minute",
+          "10 000 requêtes/jour incluses",
+          "5 licences Pro incluses",
+          "Même e-mail d'entreprise requis",
+          "Support prioritaire"
+        ],
+        "highlightFeatures": [
+          "Usage commercial autorisé"
+        ]
       }
     },
     "cta": {

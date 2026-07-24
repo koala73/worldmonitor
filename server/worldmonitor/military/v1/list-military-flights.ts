@@ -49,6 +49,54 @@ function filterFlightsToBounds(
   });
 }
 
+// Pagination is bounded on every request: page_size documents a 1-100 range,
+// and 0 / omitted / malformed / out-of-range inputs fall back to the default
+// so the public endpoint never streams an unbounded response. The cursor is an
+// opaque decimal offset into the exact-bbox-filtered result; empty or malformed
+// cursors start at the first page. Internal callers that need the full dataset
+// follow next_cursor (see src/services/military-flights.ts:fetchViaProto).
+const DEFAULT_PAGE_SIZE = 100;
+const MAX_PAGE_SIZE = 100;
+
+function resolvePageSize(pageSize: number | undefined): number {
+  if (typeof pageSize !== 'number' || !Number.isInteger(pageSize) || pageSize <= 0) {
+    return DEFAULT_PAGE_SIZE;
+  }
+  return Math.min(pageSize, MAX_PAGE_SIZE);
+}
+
+function resolveOffset(cursor: string | undefined): number {
+  if (typeof cursor !== 'string' || !/^\d+$/.test(cursor)) return 0;
+  const offset = Number(cursor);
+  return Number.isSafeInteger(offset) && offset >= 0 ? offset : 0;
+}
+
+function emptyResponse(): ListMilitaryFlightsResponse {
+  return { flights: [], clusters: [], pagination: { nextCursor: '', totalCount: 0 } };
+}
+
+// Filter the cached quantized-cell snapshot to the exact request bbox, THEN
+// page it. Ordering must not depend on page size or cursor, so the shared
+// snapshot's stable order is preserved and only sliced here.
+function paginateResponse(
+  flights: ListMilitaryFlightsResponse['flights'],
+  clusters: ListMilitaryFlightsResponse['clusters'],
+  bounds: RequestBounds,
+  req: ListMilitaryFlightsRequest,
+): ListMilitaryFlightsResponse {
+  const filtered = filterFlightsToBounds(flights, bounds);
+  const pageSize = resolvePageSize(req.pageSize);
+  const offset = resolveOffset(req.cursor);
+  const page = filtered.slice(offset, offset + pageSize);
+  const nextOffset = offset + page.length;
+  const nextCursor = nextOffset < filtered.length ? String(nextOffset) : '';
+  return {
+    flights: page,
+    clusters: clusters ?? [],
+    pagination: { nextCursor, totalCount: filtered.length },
+  };
+}
+
 const AIRCRAFT_TYPE_MAP: Record<string, string> = {
   tanker: 'MILITARY_AIRCRAFT_TYPE_TANKER',
   awacs: 'MILITARY_AIRCRAFT_TYPE_AWACS',
@@ -190,7 +238,7 @@ export async function listMilitaryFlights(
   req: ListMilitaryFlightsRequest,
 ): Promise<ListMilitaryFlightsResponse> {
   try {
-    if (!req.neLat && !req.neLon && !req.swLat && !req.swLon) return { flights: [], clusters: [], pagination: undefined };
+    if (!req.neLat && !req.neLon && !req.swLat && !req.swLon) return emptyResponse();
     const requestBounds = normalizeBounds(req);
 
     // Quantize bbox to a 1° grid so nearby map views share cache entries.
@@ -201,7 +249,11 @@ export async function listMilitaryFlights(
       quantize(req.neLat, BBOX_GRID_STEP),
       quantize(req.neLon, BBOX_GRID_STEP),
     ].join(':');
-    const cacheKey = `${REDIS_CACHE_KEY}:${quantizedBB}:${req.operator || ''}:${req.aircraftType || ''}:${req.pageSize || 0}`;
+    // Key by the quantized bbox only. The cached value is the complete
+    // expanded-cell snapshot, so page size and cursor must NOT fragment it —
+    // every page/cursor for the same cell shares one upstream fetch and one
+    // entry, and pagination is applied per-request after retrieval.
+    const cacheKey = `${REDIS_CACHE_KEY}:${quantizedBB}:${req.operator || ''}:${req.aircraftType || ''}`;
 
     const fullResult = await cachedFetchJson<ListMilitaryFlightsResponse>(
       cacheKey,
@@ -291,14 +343,14 @@ export async function listMilitaryFlights(
       // fallback when OpenSky / the relay hiccups.
       const staleFlights = await fetchStaleFallback();
       if (staleFlights && staleFlights.length > 0) {
-        return { flights: filterFlightsToBounds(staleFlights, requestBounds), clusters: [], pagination: undefined };
+        return paginateResponse(staleFlights, [], requestBounds, req);
       }
       markNoCacheResponse(ctx.request);
-      return { flights: [], clusters: [], pagination: undefined };
+      return emptyResponse();
     }
-    return { ...fullResult, flights: filterFlightsToBounds(fullResult.flights, requestBounds) };
+    return paginateResponse(fullResult.flights, fullResult.clusters, requestBounds, req);
   } catch {
     markNoCacheResponse(ctx.request);
-    return { flights: [], clusters: [], pagination: undefined };
+    return emptyResponse();
   }
 }

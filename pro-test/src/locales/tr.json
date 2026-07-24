@@ -382,11 +382,14 @@
         "description": "İstihbarat verilerine programlı erişim",
         "features": [
           "REST API + resmî SDK'lar (npm, PyPI, RubyGems, Go)",
+          "Lisans / API anahtarı dahil",
           "Gerçek zamanlı veri akışları",
           "Dakikada 60 istek",
           "Günde 1.000 istek dahil",
-          "Webhook bildirimleri",
-          "Özel veri dışa aktarımı"
+          "Webhook bildirimleri"
+        ],
+        "highlightFeatures": [
+          "Ticari kullanım yok"
         ]
       },
       "enterprise": {
@@ -400,6 +403,20 @@
           "Şirket içi seçenek"
         ],
         "cta": "Satışla İletişime Geçin"
+      },
+      "apiBusiness": {
+        "description": "Ekipler için yüksek hacimli API",
+        "features": [
+          "API Starter'daki her şey",
+          "Dakikada 300 istek",
+          "Günde 10.000 istek dahil",
+          "5 Pro lisansı dahil",
+          "Aynı şirket e-postası gerekli",
+          "Öncelikli destek"
+        ],
+        "highlightFeatures": [
+          "Ticari kullanıma uygun"
+        ]
       }
     },
     "cta": {

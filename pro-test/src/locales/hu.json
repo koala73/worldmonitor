@@ -382,11 +382,14 @@
         "description": "Programozott hozzáférés hírszerzési adatokhoz",
         "features": [
           "REST API + hivatalos SDK-k (npm, PyPI, RubyGems, Go)",
+          "Licenc- / API-kulcs mellékelve",
           "Valós idejű adatfolyamok",
           "60 kérés/perc",
           "1 000 kérés/nap benne foglalt",
-          "Webhook-értesítések",
-          "Egyedi adatexportok"
+          "Webhook-értesítések"
+        ],
+        "highlightFeatures": [
+          "Nem kereskedelmi használatra"
         ]
       },
       "enterprise": {
@@ -400,6 +403,20 @@
           "On-premise opció"
         ],
         "cta": "Kapcsolat az értékesítéssel"
+      },
+      "apiBusiness": {
+        "description": "Nagy forgalmú API csapatoknak",
+        "features": [
+          "Minden az API Starter csomagból",
+          "300 kérés/perc",
+          "Napi 10 000 kérés benne foglaltatik",
+          "5 Pro licenc benne foglaltatik",
+          "Ugyanaz a céges e-mail szükséges",
+          "Prioritásos támogatás"
+        ],
+        "highlightFeatures": [
+          "Kereskedelmi használat megengedett"
+        ]
       }
     },
     "cta": {

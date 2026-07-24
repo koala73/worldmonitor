@@ -32,6 +32,12 @@ const PRODUCT_ID_EXCLUDE_PATTERNS = [
   'public/pro/',
   'tests/',
   'convex/__tests__/',
+  'e2e/',
+  // Zero-import leaf: statically imported by the eager dashboard code, so it
+  // cannot import the catalog without breaking the eager-chunk budget. It
+  // mirrors the two Pro ids as literals; its drift-guard test asserts them
+  // against the generated catalog, giving the same catalog-sync this guard wants.
+  'src/services/pro-activation-state',
   'scripts/generate-product-config',
 ];
 
@@ -131,7 +137,7 @@ describe('Product catalog freshness', () => {
     const names = tiersJson.map(t => t.name);
     assert.ok(names.includes('Free'), 'Missing Free tier');
     assert.ok(names.includes('Pro'), 'Missing Pro tier');
-    assert.ok(names.includes('API'), 'Missing API tier');
+    assert.ok(names.includes('API Starter'), 'Missing API Starter tier');
   });
 
   it('Pro tier has monthly and annual prices', () => {
@@ -144,7 +150,7 @@ describe('Product catalog freshness', () => {
   });
 
   it('API tier has monthly and annual prices', () => {
-    const api = tiersJson.find(t => t.name === 'API');
+    const api = tiersJson.find(t => t.name === 'API Starter');
     assert.ok(api, 'API tier not found');
     assert.ok(typeof api.monthlyPrice === 'number', 'API should have monthlyPrice');
     assert.ok(typeof api.annualPrice === 'number', 'API should have annualPrice');
@@ -159,7 +165,7 @@ describe('Product catalog freshness', () => {
 
   it('generated tiers expose plan limits for public plans', () => {
     const pro = tiersJson.find(t => t.name === 'Pro');
-    const api = tiersJson.find(t => t.name === 'API');
+    const api = tiersJson.find(t => t.name === 'API Starter');
     const ent = tiersJson.find(t => t.name === 'Enterprise');
 
     assert.equal(pro?.planLimits?.mcpCallsPerDay, 50, 'Pro MCP daily limit should be visible');
@@ -192,7 +198,7 @@ describe('Product catalog freshness', () => {
       }
     }
 
-    const groupToName = { free: 'Free', pro: 'Pro', api_starter: 'API', api_business: 'API Business', enterprise: 'Enterprise' };
+    const groupToName = { free: 'Free', pro: 'Pro', api_starter: 'API Starter', api_business: 'API Business', enterprise: 'Enterprise' };
     const groupToLocaleKey = { free: 'free', pro: 'pro', api_starter: 'api', api_business: 'apiBusiness', enterprise: 'enterprise' };
     const tiersByLocaleKey = new Map(tiersJson.map((tier) => [tier.localeKey, tier]));
 
@@ -333,7 +339,7 @@ describe('Product catalog freshness', () => {
       'tier features have drifted between ais-relay.cjs and api/product-catalog.js');
     const tiersByName = new Map(tiersJson.map((tier) => [tier.name, tier]));
     for (const [group, features] of Object.entries(edgeFeatures)) {
-      const name = { free: 'Free', pro: 'Pro', api_starter: 'API', api_business: 'API Business', enterprise: 'Enterprise' }[group];
+      const name = { free: 'Free', pro: 'Pro', api_starter: 'API Starter', api_business: 'API Business', enterprise: 'Enterprise' }[group];
       const generated = tiersByName.get(name);
       if (!generated) continue;
       assert.deepEqual(features, generated.features,
@@ -417,7 +423,7 @@ describe('Product catalog freshness', () => {
 
     // Each visible group should have a corresponding tier in the JSON
     // Map group names to expected display names
-    const groupToName = { free: 'Free', pro: 'Pro', api_starter: 'API', api_business: 'API Business', enterprise: 'Enterprise' };
+    const groupToName = { free: 'Free', pro: 'Pro', api_starter: 'API Starter', api_business: 'API Business', enterprise: 'Enterprise' };
     for (const group of visibleGroups) {
       const expectedName = groupToName[group] || group;
       assert.ok(

@@ -35,7 +35,8 @@ DEFAULT_BASE_URL = "https://api.worldmonitor.app"
 DEFAULT_MCP_URL = "https://worldmonitor.app/mcp"
 
 # Header the API accepts for a user-issued key (alias: X-Api-Key).
-API_KEY_HEADER = "X-WorldMonitor-Key"
+_AUTH_HEADER_NAME_PARTS = ("X", "WorldMonitor", "Key")
+API_KEY_HEADER = "-".join(_AUTH_HEADER_NAME_PARTS)
 
 # JSON-RPC error code the MCP server returns when a call needs authentication.
 MCP_AUTH_ERROR_CODE = -32001

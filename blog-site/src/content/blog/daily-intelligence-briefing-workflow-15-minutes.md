@@ -6,7 +6,7 @@ keywords: "daily intelligence briefing, morning intelligence briefing template, 
 audience: "Analysts, executives, traders, security professionals, journalists, anyone who needs daily situational awareness"
 heroImage: "/blog/images/blog/daily-intelligence-briefing-workflow-15-minutes.jpg"
 pubDate: "2026-06-02"
-modifiedDate: "2026-06-13"
+modifiedDate: "2026-07-22"
 ---
 
 The difference between a professional intelligence consumer and a doomscroller is not access to information. It is that one of them runs the same sequence every morning and the other opens a feed and hopes.
@@ -64,10 +64,14 @@ End with one minute of output: two or three lines covering *what changed, what I
 Once the manual routine is habit, automate the parts that do not need your judgment:
 
 - **Pro digests** deliver scheduled briefings (daily, twice-daily, or weekly) to email, Slack, Discord, or Telegram, with quiet hours so the overnight alert respects your time zone.
-- **An MCP-connected agent** can run the entire sequence (world brief, CII movers, your countries, market prep) through the [39 tools on the MCP server](/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/) and post a written summary before you wake. The `market-open-prep` and `country-briefing` prompt templates are purpose-built for this.
+- **An MCP-connected agent** can run the entire sequence (world brief, CII movers, your countries, market prep) through the [41 tools on the MCP server](/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/) and post a written summary before you wake. The `market-open-prep` and `country-briefing` prompt templates are purpose-built for this.
 - **Developers** can compose their own brief from the [REST API](/blog/posts/build-on-worldmonitor-developer-api-open-source/): the same world brief, risk scores, and quotes, assembled your way.
 
 The goal of automation is not to skip the 15 minutes. It is to spend them on the two items that actually need a human instead of on collection.
+
+## Analytic Standard
+
+The workflow follows the source-evaluation and hypothesis-testing discipline described in the CIA's public [Tradecraft Primer](https://www.cia.gov/resources/csi/books-monographs/a-tradecraft-primer/). A concise briefing should still label confidence, preserve contrary evidence, and link back to primary reporting.
 
 ## Frequently Asked Questions
 
