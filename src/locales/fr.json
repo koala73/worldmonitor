@@ -2179,6 +2179,17 @@
       "cta": "Passer à Pro →",
       "dismiss": "Rejeter"
     },
+    "billingState": {
+      "onHoldDesc": "Le paiement a échoué. Mettez à jour votre moyen de paiement pour rétablir l'accès premium.",
+      "onHoldBannerMessage": "Le paiement a échoué. Mettez à jour votre moyen de paiement pour garder votre abonnement actif.",
+      "updatePayment": "Mettre à jour le paiement",
+      "renewalPendingDesc": "Nous vérifions le renouvellement de votre abonnement. L'accès premium sera rétabli automatiquement une fois confirmé.",
+      "refreshStatus": "Actualiser le statut",
+      "renewalFailedDesc": "Impossible de vérifier le renouvellement de votre abonnement. Gérez votre facturation ou contactez l'assistance si le problème persiste.",
+      "manageBilling": "Gérer la facturation",
+      "lapsedDesc": "Votre abonnement Pro a pris fin. Réabonnez-vous pour retrouver l'accès premium.",
+      "resubscribe": "Se réabonner"
+    },
     "checkoutFailureBanner": {
       "message": "Le paiement n'a pas pu être complété. Aucun frais n'a été prélevé.",
       "retry": "Réessayer",

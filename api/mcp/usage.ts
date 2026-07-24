@@ -34,6 +34,7 @@ import type { McpAuthContext } from './types';
 export type McpPhase =
   | 'auth'       // credential resolution rejected (invalid key/bearer, backend down)
   | 'precheck'   // identity ok, entitlement/token pre-check rejected
+  | 'billing'    // pre-check rejected with a billing-verification denial (#4770)
   | 'limit'      // per-minute rate limit
   | 'dispatch'   // tools/call quota (429) / reservation unavailable (503)
   | 'malformed'  // unparseable JSON-RPC envelope
@@ -78,6 +79,12 @@ export function mcpReasonFor(phase: McpPhase, status: number): RequestReason {
       return status === 503 ? 'auth_unavailable' : 'auth_401';
     case 'precheck':
       return status === 503 ? 'auth_unavailable' : 'tier_403';
+    case 'billing':
+      // Mirrors server/gateway.ts's classification of the same denial: a
+      // billing-verification 503 is provider-verification churn, not the
+      // auth backend being unreachable — keeping it out of auth_unavailable
+      // stops Axiom outage alerts from paging on ordinary billing states.
+      return status === 503 ? 'billing_verification_503' : 'tier_403';
     case 'limit':
       return 'rate_limit_429';
     case 'dispatch':

@@ -382,6 +382,7 @@
         "description": "Programmgesteuerte Zugang zu Intelligence-Daten",
         "features": [
           "REST-API + offizielle SDKs (npm, PyPI, RubyGems, Go)",
+          "Lizenz-/API-Schlüssel inklusive",
           "Echtzeit-Datenströme",
           "60 Anfragen/Minute",
           "1.000 Anfragen/Tag inklusive",

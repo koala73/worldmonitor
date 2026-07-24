@@ -2242,6 +2242,17 @@
       "cta": "Upgrade to Pro →",
       "dismiss": "Dismiss"
     },
+    "billingState": {
+      "onHoldDesc": "Payment failed. Update your payment method to restore premium access.",
+      "onHoldBannerMessage": "Payment failed. Update your payment method to keep your subscription active.",
+      "updatePayment": "Update Payment",
+      "renewalPendingDesc": "We're verifying your subscription renewal. Premium access will be restored automatically once confirmed.",
+      "refreshStatus": "Refresh Status",
+      "renewalFailedDesc": "We couldn't verify your subscription renewal. Manage billing or contact support if this persists.",
+      "manageBilling": "Manage Billing",
+      "lapsedDesc": "Your Pro subscription has ended. Resubscribe to regain premium access.",
+      "resubscribe": "Resubscribe"
+    },
     "checkoutFailureBanner": {
       "message": "Payment couldn't be completed. No charge was made.",
       "retry": "Try again",

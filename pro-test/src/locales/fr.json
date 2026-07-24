@@ -382,6 +382,7 @@
         "description": "Accès programmatique aux données de renseignement",
         "features": [
           "API REST + SDK officiels (npm, PyPI, RubyGems, Go)",
+          "Clé de licence / API incluse",
           "Flux de données en temps réel",
           "60 requêtes/minute",
           "1 000 requêtes/jour incluses",

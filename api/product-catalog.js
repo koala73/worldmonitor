@@ -70,7 +70,7 @@ const TIER_CONFIG = {
     name: 'API',
     localeKey: 'api',
     description: 'Programmatic access to intelligence data',
-    features: ['REST API + official SDKs (npm, PyPI, RubyGems, Go)', 'Real-time data streams', '60 requests/minute', '1,000 requests/day included', 'Webhook notifications', 'Custom data exports'],
+    features: ['REST API + official SDKs (npm, PyPI, RubyGems, Go)', 'License / API key included', 'Real-time data streams', '60 requests/minute', '1,000 requests/day included', 'Webhook notifications', 'Custom data exports'],
     highlighted: false,
   },
   api_business: {

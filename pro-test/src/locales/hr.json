@@ -382,6 +382,7 @@
         "description": "Programski pristup obavještajnim podacima",
         "features": [
           "REST API + službeni SDK-ovi (npm, PyPI, RubyGems, Go)",
+          "Uključen licencni / API ključ",
           "Tokovi podataka u stvarnom vremenu",
           "60 zahtjeva/minutu",
           "1.000 zahtjeva/dan uključeno",

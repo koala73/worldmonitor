@@ -1151,7 +1151,7 @@ export class CountryIntelManager implements AppModule {
       params.set('framework', framework.slice(0, 2000));
     }
 
-    const resp = await fetch(toApiUrl(`/api/intelligence/v1/get-country-intel-brief?${params.toString()}`), {
+    const resp = await premiumFetch(toApiUrl(`/api/intelligence/v1/get-country-intel-brief?${params.toString()}`), {
       method: 'GET',
       headers: { Accept: 'application/json' },
       signal: this.ctx.countryBriefPage?.signal,

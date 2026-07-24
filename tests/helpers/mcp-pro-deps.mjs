@@ -68,8 +68,8 @@ export function makePipelineMock({ initialCount = 0, throwOnIncr = false, decrFa
  * Build the McpHandlerDeps bundle for a Pro user. Returns `{deps, pipe}` so
  * callers can inspect `pipe.count` / `pipe.ops` after dispatch.
  *
- * Pass `overrides.pipelineOpts` to shape the counter; pass any of the four
- * dep functions to replace the default happy-path behaviour (e.g. a stub
+ * Pass `overrides.pipelineOpts` to shape the counter; pass any dependency
+ * function to replace the default happy-path behaviour (e.g. a stub
  * that returns null to simulate revocation).
  */
 export function makeProDeps(overrides = {}) {
@@ -93,6 +93,10 @@ export function makeProDeps(overrides = {}) {
       // keep their exact 401 behaviour; user-key tests override with a
       // fixture-matching resolver.
       validateUserApiKey: overrides.validateUserApiKey ?? (async () => null),
+      // Production fails closed through Redis before unattributed user-key
+      // validation. Unit tests inject the guard result explicitly so their
+      // auth behavior is deterministic and never contacts Redis.
+      guardUserApiKeyValidation: overrides.guardUserApiKeyValidation ?? (async () => null),
       redisPipeline: pipe.pipeline,
     },
     pipe,

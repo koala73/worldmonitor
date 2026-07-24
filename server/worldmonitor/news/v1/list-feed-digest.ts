@@ -748,15 +748,30 @@ function extractTag(xml: string, tag: string): string {
   return match ? decodeXmlEntities(match[1]!.trim()) : '';
 }
 
+/**
+ * `String.fromCodePoint` throws `RangeError` on anything outside the Unicode
+ * range, which would turn one malformed numeric reference into a failed feed
+ * parse. Drop those instead. `fromCharCode` is not usable here: it truncates to
+ * 16 bits, so `&#128512;` decoded to U+F600 (a private-use glyph) rather than 😀.
+ */
+function decodeNumericReference(codePoint: number): string {
+  return Number.isInteger(codePoint) && codePoint >= 0 && codePoint <= 0x10ffff
+    ? String.fromCodePoint(codePoint)
+    : '';
+}
+
 function decodeXmlEntities(s: string): string {
   return s
-    .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"')
     .replace(/&apos;/g, "'")
-    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(Number(n)))
-    .replace(/&#x([0-9a-fA-F]+);/g, (_, n) => String.fromCharCode(parseInt(n, 16)));
+    .replace(/&#(\d+);/g, (_, n) => decodeNumericReference(Number(n)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, n) => decodeNumericReference(parseInt(n, 16)))
+    // `&amp;` MUST be decoded last. Decoding it first turns the escaped
+    // ampersand of `&amp;lt;` into a live `&`, which the very next replace then
+    // consumes as `&lt;` — one pass decoding twice.
+    .replace(/&amp;/g, '&');
 }
 
 async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
@@ -1547,6 +1562,7 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
 /** Internal exports for unit tests only — do not import in production code. */
 export const __testing__ = {
   parseRssXml,
+  decodeXmlEntities,
   extractDescription,
   extractRawTagBody,
   extractFirstDateTag,
