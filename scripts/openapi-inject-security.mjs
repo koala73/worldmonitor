@@ -44,6 +44,7 @@ import {
   readPublicNoAuthPaths,
   readEndpointEntitlements,
   readPremiumRpcPaths,
+  readBillingVerificationCodes,
   PUBLIC_FORBIDDEN_GATES,
 } from './lib/openapi-codegen.mjs';
 
@@ -126,6 +127,8 @@ const ROOT_SECURITY = [
   { ApiKeyHeader: [] },
 ];
 
+const BILLING_VERIFICATION_CODES = readBillingVerificationCodes();
+
 const BEARER_OPERATION_SECURITY = [
   ...ROOT_SECURITY,
   { BearerAuth: [] },
@@ -156,6 +159,11 @@ const FORBIDDEN_SCHEMA = {
     'Returned when a PRO-gated endpoint denies access because the caller has no resolved authenticated user, entitlements cannot be verified, or the caller lacks the required entitlement tier.',
   properties: {
     error: { type: 'string', description: 'Human-readable entitlement failure reason.' },
+    code: {
+      type: 'string',
+      enum: BILLING_VERIFICATION_CODES,
+      description: 'Machine-readable billing verification status when access is denied because of subscription state.',
+    },
     requiredTier: {
       type: 'integer',
       format: 'int32',
@@ -503,6 +511,11 @@ const YAML_FORBIDDEN_SCHEMA = [
   '                error:',
   '                    type: string',
   '                    description: Human-readable entitlement failure reason.',
+  '                code:',
+  '                    type: string',
+  '                    enum:',
+  ...BILLING_VERIFICATION_CODES.map((code) => `                        - ${code}`),
+  '                    description: Machine-readable billing verification status when access is denied because of subscription state.',
   '                requiredTier:',
   '                    type: integer',
   '                    format: int32',
