@@ -57,6 +57,10 @@ function readRepoText(rel) {
   }
 }
 
+const GIVING_PUBLISHED_ESTIMATE_CLAIMS = JSON.parse(
+  readRepoText('shared/giving-published-estimate-claims.json'),
+);
+
 // chokepointId / chokepointIds: get-bypass-options & siblings (SupplyChain) and
 // register-webhook (ShippingV2) validate against the chokepoint registry
 // (VALID_CHOKEPOINT_IDS = CHOKEPOINT_REGISTRY ids). `intelligenceChokepointIds`
@@ -311,86 +315,76 @@ function getScenarioStatusExample() {
 
 function getGivingSummaryExample() {
   const generatedAt = '2026-07-24T12:00:00.000Z';
+  const annualizedPlatformValueUsd = (claim) => {
+    if (
+      !claim.platform
+      || !claim.includedInHighlightedAggregate
+      || claim.status !== 'verified'
+      || claim.reportedUnit !== 'USD'
+      || !Number.isFinite(claim.reportedValue)
+      || claim.reportedValue <= 0
+    ) {
+      return 0;
+    }
+    if (claim.denominator === 'year') return claim.reportedValue;
+    if (claim.denominator === 'week') return claim.reportedValue * 52;
+    return 0;
+  };
+  const platforms = [
+    ['GoFundMe', 'annual'],
+    ['GlobalGiving', 'annual'],
+    ['JustGiving', 'cumulative'],
+  ].map(([platform, dataFreshness]) => {
+    const platformClaims = GIVING_PUBLISHED_ESTIMATE_CLAIMS
+      .filter((claim) => claim.platform === platform);
+    const annualizedUsd = platformClaims
+      .reduce((total, claim) => total + annualizedPlatformValueUsd(claim), 0);
+    const lastUpdated = platformClaims.find((claim) =>
+      claim.status === 'verified' && claim.sourcePublishedAt?.trim())?.sourcePublishedAt ?? '';
+    return {
+      platform,
+      dailyVolumeUsd: annualizedUsd / 365,
+      dataFreshness,
+      lastUpdated,
+    };
+  });
+  const verifiedContextValue = (metric) => {
+    const claim = GIVING_PUBLISHED_ESTIMATE_CLAIMS.find((entry) =>
+      entry.contextMetric === metric && entry.status === 'verified');
+    return claim?.reportedValue ?? 0;
+  };
+  const publicProvenance = GIVING_PUBLISHED_ESTIMATE_CLAIMS.map((claim) =>
+    Object.fromEntries(
+      Object.entries(claim).filter(([key]) => key !== 'platform' && key !== 'contextMetric'),
+    ));
+  const oecdOdaAnnualUsdBn = verifiedContextValue('oecd_oda_usd_bn');
+  const dataMode = GIVING_PUBLISHED_ESTIMATE_CLAIMS.some((claim) =>
+    claim.status === 'unverified' || claim.status === 'partially_verified')
+    ? 'partial_estimate'
+    : 'published_estimate';
+
   return {
     summary: {
       generatedAt,
       activityIndex: 0,
       trend: 'stable',
-      estimatedDailyFlowUsd: 2_684_000_000 / 365,
-      platforms: [
-        {
-          platform: 'GoFundMe',
-          dailyVolumeUsd: 2_600_000_000 / 365,
-          dataFreshness: 'annual',
-          lastUpdated: '',
-        },
-        {
-          platform: 'GlobalGiving',
-          dailyVolumeUsd: 84_000_000 / 365,
-          dataFreshness: 'annual',
-          lastUpdated: '',
-        },
-        {
-          platform: 'JustGiving',
-          dailyVolumeUsd: 0,
-          dataFreshness: 'cumulative',
-          lastUpdated: '',
-        },
-      ],
+      estimatedDailyFlowUsd: platforms.reduce(
+        (total, platform) => total + platform.dailyVolumeUsd,
+        0,
+      ),
+      platforms,
       categories: [],
       institutional: {
-        oecdOdaAnnualUsdBn: 223.7,
-        oecdDataYear: 2023,
+        oecdOdaAnnualUsdBn,
+        oecdDataYear: oecdOdaAnnualUsdBn > 0 ? 2023 : 0,
         cafWorldGivingIndex: 0,
         cafDataYear: 0,
-        candidGrantsTracked: 3_000_000,
+        candidGrantsTracked: verifiedContextValue('candid_grants'),
         dataLag: 'Annual published context',
       },
-      dataMode: 'partial_estimate',
+      dataMode,
       trendAvailable: false,
-      provenance: [
-        {
-          subject: 'GoFundMe weekly giving',
-          sourceName: 'GoFundMe',
-          sourceUrl: 'https://www.gofundme.com/?lang=en',
-          referencePeriod: 'Average week across 2023-2024',
-          sourcePublishedAt: '',
-          measurementBasis: 'Published lower-bound weekly platform claim',
-          status: 'verified',
-          coveredMetricPaths: [
-            'summary.platforms[platform=GoFundMe].daily_volume_usd',
-            'summary.estimated_daily_flow_usd',
-          ],
-          includedInHighlightedAggregate: true,
-          reportedValue: 50_000_000,
-          reportedUnit: 'USD',
-          notes: 'Exact claim: more than USD 50 million is raised each week on GoFundMe.',
-          valueQualifier: 'more_than',
-          sourceLocator: 'Homepage giving-volume claim and attached footnote 1',
-          accessedAt: '2026-07-24',
-          denominator: 'week',
-          derivation: '50,000,000 USD/week * 52 weeks/year = at least 2,600,000,000 USD/year.',
-        },
-        {
-          subject: 'JustGiving cumulative giving',
-          sourceName: 'JustGiving',
-          sourceUrl: 'https://www.justgiving.com/about',
-          referencePeriod: '25 years cumulative',
-          sourcePublishedAt: '',
-          measurementBasis: 'Published lower-bound cumulative platform claim',
-          status: 'verified',
-          coveredMetricPaths: ['summary.platforms[platform=JustGiving].daily_volume_usd'],
-          includedInHighlightedAggregate: false,
-          reportedValue: 7_000_000_000,
-          reportedUnit: 'GBP',
-          notes: 'Exact claim: more than GBP 7 billion raised over 25 years.',
-          valueQualifier: 'more_than',
-          sourceLocator: 'About JustGiving, platform impact statement',
-          accessedAt: '2026-07-24',
-          denominator: '25 years cumulative',
-          derivation: 'No annualization or USD conversion; cumulative GBP is provenance-only.',
-        },
-      ],
+      provenance: publicProvenance,
       activityIndexAvailable: false,
     },
     fetchedAt: Date.parse(generatedAt),

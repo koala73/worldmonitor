@@ -1556,7 +1556,25 @@
       "cafIndex": "Chỉ số CAF",
       "candidGrants": "Tài trợ Candid",
       "dataLag": "Độ trễ Dữ liệu",
-      "infoTooltip": "<strong>Chỉ số Hoạt động Từ thiện Toàn cầu</strong> Chỉ số tổng hợp theo dõi quyên góp cá nhân qua nền tảng gây quỹ cộng đồng và ví tiền mã hóa.<ul><li><strong>Nền tảng</strong>: GoFundMe, GlobalGiving, JustGiving lấy mẫu chiến dịch</li><li><strong>Crypto</strong>: Dòng tiền vào ví từ thiện on-chain (Endaoment, Giving Block)</li><li><strong>Tổ chức</strong>: OECD ODA, CAF World Giving Index, tài trợ Candid</li></ul>Chỉ số mang tính định hướng (không phải số tiền chính xác). Kết hợp lấy mẫu trực tiếp với báo cáo thường niên đã công bố."
+      "infoTooltip": "<strong>Chỉ số Hoạt động Từ thiện Toàn cầu</strong> Chỉ số tổng hợp theo dõi quyên góp cá nhân qua nền tảng gây quỹ cộng đồng và ví tiền mã hóa.<ul><li><strong>Nền tảng</strong>: GoFundMe, GlobalGiving, JustGiving lấy mẫu chiến dịch</li><li><strong>Crypto</strong>: Dòng tiền vào ví từ thiện on-chain (Endaoment, Giving Block)</li><li><strong>Tổ chức</strong>: OECD ODA, CAF World Giving Index, tài trợ Candid</li></ul>Chỉ số mang tính định hướng (không phải số tiền chính xác). Kết hợp lấy mẫu trực tiếp với báo cáo thường niên đã công bố.",
+      "benchmarkTitle": "Global Giving Benchmarks",
+      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "status": {
+        "published": "Published benchmarks with verified source coverage.",
+        "partial": "Published benchmarks with partial source coverage.",
+        "legacy": "Legacy snapshot; source details are unavailable.",
+        "cached": "Showing a cached verified snapshot; refresh unavailable."
+      },
+      "trackedAnnualized": "Tracked platform giving — annualized estimate",
+      "annualizedDaily": "Annualized daily estimate",
+      "atLeast": "At least",
+      "sourceNotVerified": "Source not verified",
+      "reportedCumulative": "Reported cumulative total",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Published benchmark",
+      "sourcesMethodology": "Sources & methodology",
+      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
+      "partialEstimate": "Partially verified estimate"
     },
     "displacement": {
       "refugees": "Người tị nạn",

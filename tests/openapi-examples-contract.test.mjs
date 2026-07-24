@@ -17,6 +17,9 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options', 'head']);
 const JSON_MEDIA = 'application/json';
+const GIVING_PUBLISHED_ESTIMATE_CLAIMS = JSON.parse(
+  readFileSync(resolve(root, 'shared/giving-published-estimate-claims.json'), 'utf8'),
+);
 
 const serviceSpecs = readdirSync(apiDir)
   .filter((f) => /Service\.openapi\.json$/.test(f))
@@ -512,6 +515,11 @@ function assertGivingPublishedEstimateExample(spec, label) {
   assert.equal(example.summary?.trendAvailable, false, `${label}: trend must be unavailable`);
   assert.ok(example.summary?.estimatedDailyFlowUsd > 0, `${label}: verified annualized platform flow missing`);
   assert.ok(Array.isArray(example.summary?.provenance) && example.summary.provenance.length > 0, `${label}: provenance missing`);
+  assert.deepEqual(
+    example.summary.provenance.map((entry) => entry.subject),
+    GIVING_PUBLISHED_ESTIMATE_CLAIMS.map((entry) => entry.subject),
+    `${label}: Giving provenance must derive from the shared claim registry`,
+  );
   assert.ok(
     example.summary.provenance.some((entry) =>
       entry.sourceName === 'GoFundMe'
@@ -519,6 +527,14 @@ function assertGivingPublishedEstimateExample(spec, label) {
       && entry.includedInHighlightedAggregate === true
       && /^https:\/\//.test(entry.sourceUrl)),
     `${label}: verified GoFundMe provenance missing`,
+  );
+  assert.ok(
+    example.summary.provenance.some((entry) =>
+      entry.sourceName === 'GlobalGiving'
+      && entry.status === 'verified'
+      && entry.includedInHighlightedAggregate === true
+      && entry.reportedValue === 84_000_000),
+    `${label}: verified GlobalGiving provenance missing`,
   );
   for (const platform of example.summary?.platforms ?? []) {
     assert.equal(platform.activeCampaignsSampled, undefined, `${label}: must not fabricate sampled campaign counts`);
