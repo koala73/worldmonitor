@@ -356,7 +356,10 @@ canvas,
 .header-left {
   display: flex;
   align-items: center;
-  gap: 16px;
+  /* 10px (was 16px): tightens the left cluster so the right-side actions
+     (Search / settings / Sign In) clear the viewport edge on medium-width
+     desktops. Paired with the progressive-disclosure tiers below .github-link. */
+  gap: 10px;
 }
 
 /* Variant Switcher */
@@ -1060,12 +1063,37 @@ canvas,
   color: var(--text);
 }
 
-/* Medium-width desktop: keep header utility actions reachable when OS scaling
-   reduces the effective viewport width (e.g. 1920px @ 150% = ~1280px CSS). */
-@media (max-width: 1360px) {
-  .credit-link {
-    display: none;
-  }
+/* Progressive header disclosure — keep the core right-side actions (Search,
+   settings, and especially the Sign In / Create account cluster) fully on
+   screen as usable width shrinks: small laptops, split-screen, OS scaling
+   (1920px @ 150% = ~1280px CSS), and browsers with a vertical tab strip.
+   The single-row header wants ~1520px; without these tiers it silently
+   overflows and clips the rightmost item (Sign In) anywhere below ~1520px.
+   Items are dropped least-essential first; each is still reachable elsewhere
+   (footer links, the mobile hamburger menu, or the map's own controls). The
+   full mobile hamburger takes over at <=768px. !important mirrors the <=768
+   block below (needed to beat the #missionPresetMount id rule in header.css). */
+@media (max-width: 1530px) {
+  /* redundant with footer/menu: X credit + GitHub icon */
+  .credit-link,
+  .github-link { display: none !important; }
+}
+@media (max-width: 1420px) {
+  .version,
+  .fullscreen-btn { display: none !important; }
+}
+@media (max-width: 1330px) {
+  /* Link + Embed share .copy-link-btn */
+  .copy-link-btn { display: none !important; }
+}
+@media (max-width: 1200px) {
+  .pizzint-indicator { display: none !important; }
+}
+@media (max-width: 1075px) {
+  .mission-preset-mount { display: none !important; }
+}
+@media (max-width: 980px) {
+  .variant-switcher { display: none !important; }
 }
 
 .search-btn {
