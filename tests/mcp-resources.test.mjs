@@ -621,7 +621,8 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         raw: { data: { insights: { topStories: [{
           primaryTitle: 'Port disruption expands', primarySource: 'MIIT (China)',
           sourceProvenance: {
-            risk: 'high', type: 'gov', riskReviewed: true, typeReviewed: true,
+            risk: 'high', type: 'gov', riskDeclared: true, typeDeclared: true,
+            riskReviewed: true, typeReviewed: true,
             stateAffiliated: 'China',
           },
           category: 'security', threatLevel: 'high', isAlert: true, countryCode: 'DE',
@@ -629,11 +630,12 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
         summary: { data: { insights: { topStories: { count: 1, sample: [{
           primaryTitle: 'Summary news headline', primarySource: 'Unreviewed Source',
           sourceProvenance: {
-            risk: 'unknown', type: 'unknown', riskReviewed: false, typeReviewed: false,
+            risk: 'unknown', type: 'unknown', riskDeclared: false, typeDeclared: false,
+            riskReviewed: false, typeReviewed: false,
           },
           category: 'politics',
         }] } } } },
-        rawTokens: [/Port disruption expands/, /MIIT \(China\)/, /State-affiliated: China/, /Alert/, /Germany/],
+        rawTokens: [/Port disruption expands/, /MIIT \(China\)/, /Official government source: China/, /Alert/, /Germany/],
         summaryTokens: [/Summary news headline/, /Unreviewed Source/, /\? Unreviewed/],
       },
       {

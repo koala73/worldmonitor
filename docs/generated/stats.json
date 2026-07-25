@@ -11,7 +11,7 @@
   },
   "variantCount": 6,
   "componentTopLevelTsFiles": 166,
-  "serviceTopLevelEntries": 202,
+  "serviceTopLevelEntries": 203,
   "apiEndpointEntries": 89,
   "panelClasses": 105,
   "protoFiles": 281,
@@ -48,6 +48,7 @@
   ],
   "locales": 25,
   "workflows": [
+    "analytics-collector-monitor.yml",
     "build-desktop.yml",
     "contributor-trust.yml",
     "convex-deploy.yml",
@@ -71,7 +72,7 @@
     "test.yml",
     "typecheck.yml"
   ],
-  "workflowCount": 22,
+  "workflowCount": 23,
   "freshnessSources": 35,
   "freshnessRequiredForRisk": 2,
   "feedDefinitions": 567,

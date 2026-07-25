@@ -114,7 +114,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     assert.ok(newsStory.primarySource, 'news schema must declare primarySource');
     assert.ok(newsStory.threatLevel, 'news schema must declare threatLevel');
     assert.deepEqual(newsStory.sourceProvenance.required, [
-      'risk', 'type', 'riskReviewed', 'typeReviewed',
+      'risk', 'type', 'riskDeclared', 'typeDeclared', 'riskReviewed', 'typeReviewed',
     ]);
     assert.deepEqual(newsStory.sourceProvenance.properties.risk.enum, [
       'low', 'medium', 'high', 'unknown',

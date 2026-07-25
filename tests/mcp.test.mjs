@@ -692,6 +692,8 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.deepEqual(government.sourceProvenance, {
       risk: 'high',
       type: 'gov',
+      riskDeclared: true,
+      typeDeclared: true,
       riskReviewed: true,
       typeReviewed: true,
       stateAffiliated: 'China',
@@ -700,6 +702,8 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.deepEqual(unreviewed.sourceProvenance, {
       risk: 'unknown',
       type: 'unknown',
+      riskDeclared: true,
+      typeDeclared: true,
       riskReviewed: false,
       typeReviewed: false,
       note: 'Provenance not yet reviewed — do not treat as independent journalism',
@@ -707,6 +711,8 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.deepEqual(wire.sourceProvenance, {
       risk: 'low',
       type: 'wire',
+      riskDeclared: true,
+      typeDeclared: true,
       riskReviewed: true,
       typeReviewed: true,
       note: 'Wire service, strict editorial standards',

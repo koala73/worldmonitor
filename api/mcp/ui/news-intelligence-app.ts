@@ -72,10 +72,11 @@ const RENDER = `
       if (provenance) {
         if (provenance.riskReviewed === false || provenance.risk === "unknown") {
           provenanceLabel = "? Unreviewed";
+        } else if (provenance.type === "gov") {
+          provenanceLabel = "Official government source"
+            + (collapseWs(provenance.stateAffiliated) ? ": " + collapseWs(provenance.stateAffiliated) : "");
         } else if (collapseWs(provenance.stateAffiliated)) {
           provenanceLabel = "State-affiliated: " + collapseWs(provenance.stateAffiliated);
-        } else if (provenance.type === "gov") {
-          provenanceLabel = "Official government source";
         } else if (provenance.type === "wire") {
           provenanceLabel = "Wire service";
         }
