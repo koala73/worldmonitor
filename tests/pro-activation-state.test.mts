@@ -45,6 +45,7 @@ import {
   computeMountClaim,
   parseMountClaim,
   isMountClaimBlocking,
+  selectConfirmOutcome,
   selectStepEvent,
   shouldReportPushSubscribeFailure,
   ACTIVATION_EVENTS,
@@ -1090,6 +1091,20 @@ describe('telemetry event selection', () => {
     assert.equal(ACTIVATION_EVENTS.stepBlocked, 'pro-activation-step-blocked');
     assert.equal(ACTIVATION_EVENTS.stepFailed, 'pro-activation-step-failed');
     assert.equal(ACTIVATION_EVENTS.exit, 'pro-activation-exit');
+  });
+
+  it('selectConfirmOutcome reports blocked through no step event', () => {
+    // Silent-hazard pin between #5609 and #5600: the shell already reports a
+    // blocked step via onBlockStep. If a confirm result of `blocked` also mapped
+    // to the `failed` outcome, one denied-permission attempt would emit BOTH
+    // step-blocked and step-failed — double-counting it and re-creating the
+    // mislabeled funnel #5600 exists to fix, just with different labels.
+    assert.equal(selectConfirmOutcome('verified'), 'confirmed');
+    assert.equal(selectConfirmOutcome('failed'), 'failed');
+    assert.equal(selectConfirmOutcome('blocked'), null);
+    // And the composition the flow actually performs.
+    assert.equal(selectStepEvent(selectConfirmOutcome('verified')!), ACTIVATION_EVENTS.stepConfirmed);
+    assert.equal(selectStepEvent(selectConfirmOutcome('failed')!), ACTIVATION_EVENTS.stepFailed);
   });
 
   it('reports a push-subscribe failure to Sentry only when permission was granted', () => {

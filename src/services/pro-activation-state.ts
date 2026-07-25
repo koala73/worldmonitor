@@ -908,6 +908,35 @@ export const ACTIVATION_EVENTS = {
 } as const;
 
 /**
+ * How an in-flow confirm resolved. `blocked` means the platform refused in a
+ * way a retry cannot fix — a denied notification permission, which browsers
+ * never re-prompt for (#5609).
+ */
+export type ActivationConfirmResult = 'verified' | 'failed' | 'blocked';
+
+/**
+ * The step outcome a confirm result reports as, or null when the result is
+ * already reported through another channel.
+ *
+ * `blocked` maps to null on purpose: the shell fires its own `stepBlocked`
+ * event via `onBlockStep`, so emitting a step event here too would count one
+ * attempt twice — re-creating the mislabeled-funnel bug #5600 exists to fix,
+ * just with a different pair of labels.
+ */
+export function selectConfirmOutcome(
+  result: ActivationConfirmResult,
+): ActivationStepOutcome | null {
+  switch (result) {
+    case 'verified':
+      return 'confirmed';
+    case 'failed':
+      return 'failed';
+    case 'blocked':
+      return null;
+  }
+}
+
+/**
  * Whether a failed `subscribeToPush` is worth reporting to Sentry.
  *
  * Only granted-then-failed is a real error. `denied` and `default` (the user

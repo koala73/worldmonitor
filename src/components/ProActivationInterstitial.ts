@@ -58,6 +58,7 @@ import {
   buildCriticalAlertsPayload,
   buildExitSummary,
   buildActivationOutcomeBuckets,
+  selectConfirmOutcome,
   selectStepEvent,
   shouldReportPushSubscribeFailure,
   summarizeActivationExit,
@@ -1454,18 +1455,17 @@ export async function openProActivationFlow(
         // one definition (a parallel inline ternary here would let the unit
         // test stay green while this wiring regressed).
         //
-        // `blocked` is deliberately excluded: the shell fires stepBlocked
-        // through onBlockStep (#5609), and emitting stepFailed here as well
-        // would count one attempt twice — corrupting the funnel this event
-        // exists to make trustworthy, in the exact way the original bug did.
+        // `blocked` maps to no event here — the shell fires stepBlocked through
+        // onBlockStep (#5609). selectConfirmOutcome owns that decision so it is
+        // unit-pinned rather than living as an inline condition.
         //
         // An account switch mid-confirm makes confirmBrief/confirmAlerts return
         // 'failed' for a write that actually succeeded. That is flow teardown,
         // not a step failure — counting it would inflate the same metric.
-        if (result !== 'blocked' && isFlowAccountCurrent(options)) {
-          const stepEvent = selectStepEvent(result === 'verified' ? 'confirmed' : 'failed');
+        const outcome = selectConfirmOutcome(result);
+        if (outcome && isFlowAccountCurrent(options)) {
+          const stepEvent = selectStepEvent(outcome);
           if (stepEvent) options.onEvent?.(stepEvent, stepId);
-        }
         }
         return result;
       } finally {
