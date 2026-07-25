@@ -241,6 +241,22 @@ export const CHINA_COVERAGE_ENTRIES = Object.freeze([
       probe: { kind: 'object', timestampPaths: [['evaluatedAt'], ['latestObservationAt']] },
     },
   },
+  {
+    id: 'military.cross-strait-activity',
+    label: 'Official cross-Strait activity baseline',
+    ownerIssue: 5575,
+    launchStatus: 'launched',
+    transport: metaTransport('seed-meta:military:cross-strait-activity', 720),
+    content: {
+      key: 'military:cross-strait-activity:v1',
+      maxAgeMin: 3 * 1_440,
+      probe: {
+        kind: 'object',
+        requiredTruthyPaths: [['coverage', 'usableMndReportingDays']],
+        timestampPaths: [['coverage', 'latestMndReportingDay']],
+      },
+    },
+  },
 ]);
 
 export function chinaCoverageRedisKeys(entries = CHINA_COVERAGE_ENTRIES) {

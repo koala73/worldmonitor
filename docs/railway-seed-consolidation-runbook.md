@@ -365,8 +365,8 @@ continuous metric.
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 2 services |
 | **Net savings** | 1 slot |
-| **Members** | Correlation (5min), Cross-Source Signals (15min, runs every 3rd invocation) |
-| **Note** | Both are Redis-derived (no external API calls), fast execution |
+| **Members** | Correlation (5min), Cross-Source Signals (15min), Cross-Strait Activity (3h), Regional Snapshots (6h) |
+| **Note** | Cross-Strait Activity is the only external-source member; it uses bounded MND/Japan MOD requests and a 3h freshness gate. Other members are Redis-derived. The bundle enforces a 570s wall-time admission budget so a non-fitting due section defers before Railway's 10-minute container limit. |
 
 ### Bundle 6: seed-bundle-climate
 
@@ -609,7 +609,7 @@ Start with lowest-risk, highest-savings bundles.
 | 6 | seed-bundle-energy-sources | 5 | Medium (daily, 6 members) | Daily |
 | 7 | seed-bundle-macro | 5 | Medium (daily, 6 members) | Daily |
 | 8 | seed-bundle-health | 3 | Medium (hourly, 5 members) | Hourly |
-| 9 | seed-bundle-derived-signals | 1 | Low (5min, Redis-only) | 5min |
+| 9 | seed-bundle-derived-signals | 1 | Medium (5min bundle; one bounded 3h external member) | 5min |
 | 10 | seed-bundle-market-backup | 4 | Low (backup for relay) | 5min |
 | 11 | seed-bundle-relay-backup | 3 | Low (backup for relay) | 30min |
 
