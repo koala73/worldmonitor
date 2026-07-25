@@ -175,14 +175,25 @@ const ENTITLEMENT_CACHE_TTL_SECONDS = 900;
 // only cost of a short marker is ~1 cheap Convex round-trip per minute per
 // actively-retrying lapsed user.
 const LAPSED_BILLING_MARKER_TTL_SECONDS = 60;
-// No-billing-history is structurally invariant while tier stays 0, and every
-// tier-changing write path unconditionally overwrites this cache key via
-// syncEntitlementCache — so a longer marker cannot delay a new subscription
-// from taking effect (invariant re-audited in the fresh review round). Full
-// 900s restores pre-#4770 cache economics for the never-subscribed cohort,
-// the bulk of tier-0 traffic; short/dynamic TTLs stay reserved for the
-// genuinely uncertain lapsed/pending/failed states.
-const NOT_APPLICABLE_VERIFICATION_TTL_SECONDS = 900;
+// Convex stamps the not-applicable marker ONLY for a user with zero
+// subscription rows (convex/payments/billing.ts
+// claimRecentlyStaleSubscriptionForVerification: no billing history ->
+// not_applicable, any history -> lapsed). "No history" is therefore not the
+// stable state the previous 900s assumed: it is also what a buyer looks like
+// in the seconds between checkout return and the Dodo webhook landing.
+//
+// The "syncEntitlementCache always overwrites this key" invariant does NOT
+// close that window — the read path is not atomic. A request that misses cache
+// at t0 can have its stale free+marker payload land in Redis AFTER the
+// webhook's Pro write at t0+ε, re-poisoning the key for the marker's full TTL
+// (#5600: 15 min of 403s on every tier-gated endpoint for a paying customer,
+// reproduced live 2026-07-25). Bounding the marker bounds that worst case.
+//
+// The cost is one extra Convex round-trip per minute per actively-requesting
+// never-subscribed user — still far cheaper than pre-#4770, where a tier-0
+// answer was never served from cache at all (free rows carry validUntil: 0,
+// so the ordinary freshness gate below always fell through).
+const NOT_APPLICABLE_VERIFICATION_TTL_SECONDS = 60;
 
 /**
  * True when the Convex entitlement backend is reachable in principle. Callers

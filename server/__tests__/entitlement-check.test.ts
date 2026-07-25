@@ -312,6 +312,48 @@ describe("gateway entitlement check", () => {
     }
   });
 
+  test("a not-applicable freshness marker past the bounded window falls through to Convex", async () => {
+    // #5600: a fresh Pro checkout races the Dodo webhook. The pre-purchase
+    // no-history answer must stop being served-sticky within a minute so the
+    // new subscriber's next request re-reads Convex instead of eating a
+    // 15-minute wrongful 403 on every tier-gated endpoint.
+    vi.mocked(getCachedJson).mockResolvedValueOnce({
+      ...makeEntitlements(0),
+      validUntil: 0,
+      renewalVerificationFreshness: {
+        status: "not_applicable",
+        checkedAt: Date.now() - 61_000,
+      },
+    });
+    const originalSiteUrl = process.env.CONVEX_SITE_URL;
+    const originalSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+    process.env.CONVEX_SITE_URL = "https://example-deployment.convex.site";
+    process.env.CONVEX_SERVER_SHARED_SECRET = "test-secret";
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(makeEntitlements(1, "pro_monthly")), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const result = await checkEntitlement(
+        "test-user",
+        "/api/market/v1/analyze-stock",
+        {},
+      );
+
+      expect(result).toBeNull();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      if (originalSiteUrl === undefined) delete process.env.CONVEX_SITE_URL;
+      else process.env.CONVEX_SITE_URL = originalSiteUrl;
+      if (originalSecret === undefined) delete process.env.CONVEX_SERVER_SHARED_SECRET;
+      else process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
+      vi.unstubAllGlobals();
+    }
+  });
+
   test("an expired not-applicable freshness marker falls through to Convex", async () => {
     vi.mocked(getCachedJson).mockResolvedValueOnce({
       ...makeEntitlements(0),
@@ -350,7 +392,7 @@ describe("gateway entitlement check", () => {
     }
   });
 
-  test("caches a not-applicable freshness marker for at most 900 seconds", async () => {
+  test("caches a not-applicable freshness marker for at most 60 seconds", async () => {
     const marker = {
       ...makeEntitlements(0),
       validUntil: 0,
@@ -365,7 +407,7 @@ describe("gateway entitlement check", () => {
 
     const ttl = vi.mocked(setCachedJson).mock.calls.at(-1)?.[2];
     expect(ttl).toBeGreaterThan(0);
-    expect(ttl).toBeLessThanOrEqual(900);
+    expect(ttl).toBeLessThanOrEqual(60);
   });
 
   test("checkEntitlement accepts Clerk role=pro for tier-1 gates without Convex entitlements", async () => {
