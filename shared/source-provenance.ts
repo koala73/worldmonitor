@@ -16,6 +16,9 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'Treasury': 'gov', 'DOJ': 'gov', 'DHS': 'gov', 'CDC': 'gov',
   'FEMA': 'gov', 'Federal Reserve': 'gov', 'SEC': 'gov',
   'UN News': 'gov', 'CISA': 'gov',
+  // Direct official military publishers. Their claims remain publisher claims,
+  // not independent ADS-B/AIS observations.
+  'Taiwan Ministry of National Defense': 'gov', 'Japan Joint Staff': 'gov',
   // Chinese government ministries (Tier 1 official sources — not wire/verified outlets)
   'MIIT (China)': 'gov', 'MOFCOM (China)': 'gov',
 
@@ -155,6 +158,16 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
     risk: 'high',
     stateAffiliated: 'China',
     note: 'Chinese Ministry of Commerce official feed',
+  },
+  'Taiwan Ministry of National Defense': {
+    risk: 'high',
+    stateAffiliated: 'Taiwan',
+    note: 'Direct government activity reports; treat values as official publisher claims, not independent observations',
+  },
+  'Japan Joint Staff': {
+    risk: 'high',
+    stateAffiliated: 'Japan',
+    note: 'Direct government activity reports; only manually reviewed documents are admitted as regional augmentation',
   },
 
   // Medium risk - State-affiliated or known bias

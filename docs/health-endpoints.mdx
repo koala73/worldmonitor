@@ -96,6 +96,19 @@ critical when the summary is invalid or the launched content is unavailable.
 Blocked China contracts remain visible in the audit with their stable reason
 code but are excluded from the strict launched-entry health count.
 
+The launched cross-Strait activity contract audits the durable archive
+`military:cross-strait-activity:v1` independently for producer transport and
+latest Taiwan MND reporting-window freshness. A fresh seed with a stale
+official report therefore remains degraded. Japan Joint Staff reviewed
+observations are regional augmentation and do not satisfy the Taiwan MND
+content requirement. `/api/health` separately monitors
+`military:cross-strait-activity-bootstrap:v1`; fresh canonical data cannot hide
+a missing compact UI projection. It also exposes dedicated MND and Japan Joint
+Staff transport records; either source reports `SEED_ERROR` immediately when
+its current fetch fails, while the last-good archive remains available. The
+bundle freshness gate advances only after the archive, projection, and both
+source-health records publish successfully.
+
 Operators can obtain the same sanitized, read-only audit with
 `node scripts/audit-china-coverage.mjs --json`; add `--strict` to return a
 nonzero exit code unless every launched entry is healthy. The audit reads only

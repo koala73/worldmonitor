@@ -74,6 +74,11 @@ const SEED_DOMAINS = {
   'intelligence:gpsjam':      { key: 'seed-meta:intelligence:gpsjam',      intervalMin: 720 }, // 720 × 2 = 1440min (24h) staleness; matches api/health.js gpsjam.maxStaleMin. Widened from 360 (12h) on 2026-04-29 alongside Wingbits API quota incident — see PR #3494 + the seeder graceful-failure path at scripts/fetch-gpsjam.mjs:258-262.
   'intelligence:satellites':  { key: 'seed-meta:intelligence:satellites',  intervalMin: 90 },
   'military:flights':         { key: 'seed-meta:military:flights',         intervalMin: 8 },
+  'military:cross-strait-activity': { key: 'seed-meta:military:cross-strait-activity', intervalMin: 180 },
+  'military:cross-strait-activity-bootstrap': { key: 'seed-meta:military:cross-strait-activity-bootstrap', intervalMin: 180 },
+  'military:cross-strait-activity:complete': { key: 'seed-meta:military:cross-strait-activity:complete', intervalMin: 180 },
+  'military:cross-strait-activity:taiwan-mnd': { key: 'seed-meta:military:cross-strait-activity:taiwan-mnd', intervalMin: 180 },
+  'military:cross-strait-activity:japan-mod': { key: 'seed-meta:military:cross-strait-activity:japan-mod', intervalMin: 180 },
   'military:defense-patents': { key: 'seed-meta:military:defense-patents', intervalMin: 12600 },
   'military-forecast-inputs': { key: 'seed-meta:military-forecast-inputs', intervalMin: 8 },
   'infra:service-statuses':   { key: 'seed-meta:infra:service-statuses',   intervalMin: 60 },
@@ -379,7 +384,16 @@ export default async function handler(req) {
     const ageMs = now - (meta.fetchedAt || 0);
     const recordCount = parseFiniteRecordCount(meta.recordCount);
     const coveragePartial = cfg.minRecordCount != null && (recordCount == null || recordCount < cfg.minRecordCount);
-    const isError = meta.status === 'error';
+    // Source-specific seed projections retain their last-good records while
+    // reporting a current upstream failure through sourceState. Treat that as
+    // an immediate operator error instead of waiting for the freshness window.
+    // `unavailable` means an optional adapter was never configured, matching
+    // api/health.js's NOT_CONFIGURED treatment rather than a broken source.
+    const sourceUnavailable = meta.sourceState === 'unavailable';
+    const sourceError = typeof meta.sourceState === 'string'
+      && meta.sourceState !== 'ok'
+      && !sourceUnavailable;
+    const isError = meta.status === 'error' || sourceError;
     const probe = evaluateDataProbe(cfg.dataProbe, probeMap.get(domain));
     const sourceMismatch = Boolean(
       cfg.dataProbe?.sourceVersion &&
@@ -391,7 +405,9 @@ export default async function handler(req) {
     if (stale) staleCount++;
 
     seeds[domain] = {
-      status: isError
+      status: sourceUnavailable
+        ? 'not_configured'
+        : isError
         ? 'error'
         : sourceMismatch
           ? 'source_version_mismatch'

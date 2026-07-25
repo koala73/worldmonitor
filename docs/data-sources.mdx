@@ -213,6 +213,32 @@ The audit records aggregate status and reason codes only: it never logs
 credentials or raw upstream payloads. Detailed bilateral trade data remains
 Pro-only and is not included in the public China summary.
 
+#### Cross-Strait Official Activity Claims
+
+The durable Railway archive is `military:cross-strait-activity:v1`; the Force
+Posture panel hydrates its compact projection at
+`military:cross-strait-activity-bootstrap:v1`. Taiwan Ministry of National
+Defense daily releases are
+stored as publisher claims with their official 06:00-to-06:00 Asia/Taipei
+reporting window. PLA aircraft sorties, PLAN ships, other official ships,
+median-line crossings, and ADIZ entries remain separate nullable categories:
+an omitted category is unknown, not zero.
+
+The seed accumulates at most 20 new Taiwan MND detail pages per run and retains
+corrections as linked vintages in the durable archive. Oldest vintages are
+pruned first when the complete archive approaches its 4 MiB publish budget.
+Bootstrap carries only the latest MND observation and reviewed Japan context,
+never revision history.
+Its 30- and 90-day medians use only prior usable
+Taiwan MND reporting days, excluding the current report; each comparison stays
+unavailable until the full prior-day sample exists. Reviewed Japan Joint Staff
+releases are displayed as separately attributed regional context and never
+enter the Taiwan MND baselines.
+
+These official claims are not ADS-B aircraft tracks, AIS vessel tracks, NOTAMs,
+news reports, or market observations. The panel labels that distinction and
+does not combine those source families into a single activity count.
+
 ### Aviation Intelligence Panel
 
 The Airline Intel panel provides a comprehensive 6-tab aviation monitoring interface covering operations, flights, carriers, tracking, news, and pricing:

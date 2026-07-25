@@ -189,7 +189,9 @@ export const DECISION_SIGNAL_PROVENANCE_FAMILY_REGISTRATIONS: Readonly<
     serializationFixtureId: 'typed-document-translated',
   }),
   operational_activity_record: Object.freeze({
-    launchStatus: 'reference',
+    // Launched by the cross-Strait official-activity lane (#5575). Domain
+    // fixtures validate daily Taiwan MND claims and reviewed Japan MOD records.
+    launchStatus: 'launched',
     serializationFixtureId: 'operational-stale-transport',
   }),
   exchange_disclosure: Object.freeze({
