@@ -9,7 +9,7 @@ import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { createLocalApiServer } from './local-api-server.mjs';
+import { createLocalApiServer, __testing__ } from './local-api-server.mjs';
 
 // The sidecar default-denies when LOCAL_API_TOKEN is unset (security fix:
 // previously "unset" meant "auth disabled", which made any standalone run
@@ -2202,6 +2202,192 @@ test('releases the upstream fetch semaphore when a response stalls mid-body (#54
     });
     await new Promise((resolve, reject) => {
       healthy.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
+test('releases the upstream fetch semaphore when a connection goes silent forever (#5441 follow-up)', async () => {
+  // Accepts the connection and never writes anything, never closes -- no
+  // FIN/RST, no data. None of res 'error'/'aborted'/'end' or req 'error'/
+  // 'close' ever fire for this shape; only the new idle timeout observes it.
+  const openSockets = new Set();
+  const silentServer = net.createServer((socket) => {
+    // Intentionally do nothing with the data -- leave the connection open
+    // and silent. Track it so cleanup can force-close it: net.Server.close()
+    // waits for every accepted socket to end on its own, and a socket we
+    // never write to or read from (by design, to simulate a true silent
+    // stall) never will.
+    openSockets.add(socket);
+    socket.once('close', () => openSockets.delete(socket));
+  });
+  const silentPort = await listen(silentServer);
+
+  __testing__.setUpstreamIdleTimeoutMs(200);
+
+  const localApi = await setupApiDir({
+    'silent-proxy.js': `
+      export default async function handler() {
+        try {
+          await fetch('http://127.0.0.1:${silentPort}/');
+          return new Response(JSON.stringify({ settled: 'resolved' }), { status: 200 });
+        } catch (error) {
+          return new Response(JSON.stringify({ settled: 'rejected', message: error.message }), { status: 200 });
+        }
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+    allowPrivateFetchOrigins: [`http://127.0.0.1:${silentPort}`],
+  });
+  const { port } = await app.start();
+
+  try {
+    const result = await Promise.race([
+      getJsonViaHttp(`http://127.0.0.1:${port}/api/silent-proxy`).then((r) => r.json),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('silent stall never settled -- idle timeout did not fire')), 3000)
+      ),
+    ]);
+    assert.equal(result.settled, 'rejected');
+    assert.match(result.message, /idle-timed out/);
+
+    // Slot must be released: a request through the SAME fetch wrapper (any
+    // origin) must not be blocked by the leaked silent connection.
+    const stallRequests = Array.from({ length: 6 }, () =>
+      getJsonViaHttp(`http://127.0.0.1:${port}/api/silent-proxy`).then((r) => r.json)
+    );
+    const followUp = await Promise.race([
+      Promise.all(stallRequests),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('semaphore still wedged after idle timeout')), 5000)),
+    ]);
+    for (const r of followUp) assert.equal(r.settled, 'rejected');
+  } finally {
+    __testing__.setUpstreamIdleTimeoutMs(12000);
+    await app.close();
+    await localApi.cleanup();
+    for (const socket of openSockets) socket.destroy();
+    await new Promise((resolve, reject) => {
+      silentServer.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
+test('abort-signal path: mid-flight abort rejects promptly and releases the slot (#5441 follow-up)', async () => {
+  // Mirrors how fetchWithTimeout drives this exact branch in production: an
+  // AbortController whose signal is passed into fetch(), aborted mid-flight
+  // against an upstream that never responds.
+  const openSockets = new Set();
+  const neverResponds = net.createServer((socket) => {
+    // Accepts but never writes -- the abort must fire before any other
+    // listener would (idle timeout stays at its default 12s here). Tracked
+    // so cleanup can force-close it (see the silent-stall test above for why).
+    openSockets.add(socket);
+    socket.once('close', () => openSockets.delete(socket));
+  });
+  const neverRespondsPort = await listen(neverResponds);
+
+  const localApi = await setupApiDir({
+    'abort-proxy.js': `
+      export default async function handler() {
+        const controller = new AbortController();
+        setTimeout(() => controller.abort(), 30);
+        try {
+          await fetch('http://127.0.0.1:${neverRespondsPort}/', { signal: controller.signal });
+          return new Response(JSON.stringify({ settled: 'resolved' }), { status: 200 });
+        } catch (error) {
+          return new Response(JSON.stringify({ settled: 'rejected', message: error.message, name: error.name }), { status: 200 });
+        }
+      }
+    `,
+    'healthy-proxy.js': `
+      export default async function handler() {
+        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+    allowPrivateFetchOrigins: [`http://127.0.0.1:${neverRespondsPort}`],
+  });
+  const { port } = await app.start();
+
+  try {
+    const result = await Promise.race([
+      getJsonViaHttp(`http://127.0.0.1:${port}/api/abort-proxy`).then((r) => r.json),
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('abort-signal path never settled -- semaphore leak reintroduced')), 2000)
+      ),
+    ]);
+    assert.equal(result.settled, 'rejected');
+    assert.match(result.message, /aborted by signal/);
+
+    // Slot released promptly (well under the 12s idle timeout): a healthy
+    // request right after must not be delayed by the aborted one.
+    const healthy = await Promise.race([
+      getJsonViaHttp(`http://127.0.0.1:${port}/api/healthy-proxy`).then((r) => r.json),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('slot not released after abort')), 1000)),
+    ]);
+    assert.deepEqual(healthy, { ok: true });
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    for (const socket of openSockets) socket.destroy();
+    await new Promise((resolve, reject) => {
+      neverResponds.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
+test('abort-signal path: an already-aborted signal rejects immediately without dispatching (#5441 follow-up)', async () => {
+  let connectionsReceived = 0;
+  const neverShouldConnect = net.createServer((_socket) => {
+    connectionsReceived += 1;
+  });
+  const neverShouldConnectPort = await listen(neverShouldConnect);
+
+  const localApi = await setupApiDir({
+    'preaborted-proxy.js': `
+      export default async function handler() {
+        const controller = new AbortController();
+        controller.abort();
+        try {
+          await fetch('http://127.0.0.1:${neverShouldConnectPort}/', { signal: controller.signal });
+          return new Response(JSON.stringify({ settled: 'resolved' }), { status: 200 });
+        } catch (error) {
+          return new Response(JSON.stringify({ settled: 'rejected', message: error.message }), { status: 200 });
+        }
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+    allowPrivateFetchOrigins: [`http://127.0.0.1:${neverShouldConnectPort}`],
+  });
+  const { port } = await app.start();
+
+  try {
+    const result = await Promise.race([
+      getJsonViaHttp(`http://127.0.0.1:${port}/api/preaborted-proxy`).then((r) => r.json),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('pre-aborted fetch never settled')), 1000)),
+    ]);
+    assert.equal(result.settled, 'rejected');
+    assert.match(result.message, /aborted by signal/);
+    assert.equal(connectionsReceived, 0, 'an already-aborted signal must not dispatch to the network at all');
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    await new Promise((resolve, reject) => {
+      neverShouldConnect.close((error) => (error ? reject(error) : resolve()));
     });
   }
 });
