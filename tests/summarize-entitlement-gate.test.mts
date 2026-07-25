@@ -208,4 +208,40 @@ describe('summarization.ts wiring (source-grep — module not loadable under nod
     const nextFnIdx = fn.indexOf('canAttemptServerSummarization');
     assert.equal(nextFnIdx, -1, 'translateText must not consult the premium gate');
   });
+
+  // #5377: a gated/declined chain must not log the outage-shaped
+  // "All providers failed" warning — that string cost a live investigation
+  // two wrong hypotheses. `warn` is reserved for chains where a provider was
+  // genuinely attempted; the declined-by-design path logs at `debug`.
+  it('declined-by-design chains log at debug, not the outage-shaped warn (#5377)', () => {
+    const fn = src.slice(src.indexOf('function logChainOutcome'));
+    assert.ok(fn.length > 0, 'expected the logChainOutcome helper');
+    const noneBranch = fn.indexOf("lastAttemptedProvider === 'none'");
+    const debugIdx = fn.indexOf('console.debug');
+    const warnIdx = fn.indexOf('console.warn');
+    assert.ok(noneBranch > -1, 'outcome logging must branch on lastAttemptedProvider === none');
+    assert.ok(debugIdx > -1 && debugIdx < warnIdx, 'nothing-attempted branch must log at debug, warn only otherwise');
+    // Both fail sites must route through the helper — a raw string-literal
+    // warn (the pre-#5377 pattern) would reintroduce the misleading string on
+    // the anon path. The helper's own conditional warn uses a template
+    // literal and is exempt.
+    const rawWarns = src.match(/console\.warn\(['"][^'"]*All providers failed/g) ?? [];
+    assert.equal(rawWarns.length, 0, 'no call site may warn "All providers failed" unconditionally');
+    const outcomeCalls = src.match(/logChainOutcome\(/g) ?? [];
+    assert.ok(outcomeCalls.length >= 3, 'both chain-exhausted sites (BETA + normal) must route through logChainOutcome');
+  });
+
+  it('attempt tracking stays behind the gates so "none" means declined-by-design (#5377)', () => {
+    // tryApiProvider: attempts are recorded only AFTER the feature +
+    // entitlement gates pass, so a fully-gated chain leaves 'none'.
+    const api = src.slice(src.indexOf('async function tryApiProvider'), src.indexOf('async function tryBrowserT5'));
+    const gateIdx = api.indexOf('canAttemptServerSummarization()');
+    const markIdx = api.indexOf('lastAttemptedProvider =');
+    assert.ok(gateIdx > -1 && markIdx > gateIdx, 'tryApiProvider must mark the attempt after the entitlement gate');
+    // tryBrowserT5: only after the worker availability check.
+    const t5 = src.slice(src.indexOf('async function tryBrowserT5'), src.indexOf('// ── Fallback chain runner ──'));
+    const availIdx = t5.indexOf('mlWorker.isAvailable');
+    const t5MarkIdx = t5.indexOf("lastAttemptedProvider = 'browser'");
+    assert.ok(availIdx > -1 && t5MarkIdx > availIdx, 'tryBrowserT5 must mark the attempt after the availability check');
+  });
 });

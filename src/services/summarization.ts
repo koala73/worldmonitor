@@ -353,7 +353,7 @@ async function generateSummaryInternal(
       onProgress?.(totalSteps, totalSteps, 'No providers available');
     }
 
-    console.warn('[BETA] All providers failed');
+    logChainOutcome('[BETA]');
     return null;
   }
 
@@ -372,8 +372,26 @@ async function generateSummaryInternal(
     if (browserResult) return browserResult;
   }
 
-  console.warn('[Summarization] All providers failed');
+  logChainOutcome('[Summarization]');
   return null;
+}
+
+/**
+ * #5377: "All providers failed" at `warn` is indistinguishable from a real
+ * provider outage when the chain was in fact DECLINED BY DESIGN — the
+ * entitlement gate (#4913) blocked every server dispatch and browser T5 was
+ * unavailable/skipped, which is the normal anonymous path. In that case
+ * `lastAttemptedProvider` is still 'none' (tryApiProvider sets it only after
+ * passing the feature + entitlement gates; tryBrowserT5 only after the
+ * mlWorker availability check), so log at `debug`; reserve `warn` for a chain
+ * where at least one provider was genuinely attempted and failed.
+ */
+function logChainOutcome(prefix: string): void {
+  if (lastAttemptedProvider === 'none') {
+    console.debug(`${prefix} Summarization skipped: no eligible provider (entitlement-gated or unavailable); using designed fallback`);
+  } else {
+    console.warn(`${prefix} All providers failed`);
+  }
 }
 
 /**
