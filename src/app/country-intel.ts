@@ -64,6 +64,11 @@ import { fetchMultiSectorExposure, fetchCountryProducts, fetchMultiSectorCostSho
 import { getImfCountryBundle, buildImfEconomicIndicators, type ImfCountryBundle } from '@/services/imf-country-data';
 import { getBisCreditData, getChinaMacroSnapshotData } from '@/services/economic';
 import { chinaSummaryState, toObservedDate } from '@/app/china-summary-state';
+import {
+  fetchChinaPolicyEvents,
+  type ChinaPolicyActionType,
+  type ChinaPolicyStatus,
+} from '@/services/china-policy-events';
 import { EconomicServiceClient, IntelligenceServiceClient, MarketServiceClient, TradeServiceClient } from '@/services/generated-rpc-clients';
 
 // Iran-events domain sunset (war ended 2026-07). Default OFF: no strikes in the
@@ -89,11 +94,37 @@ type CountryStockSnapshot = {
 
 const CHINA_SUMMARY_GROUP_IDS: ChinaCountrySummaryGroupId[] = [
   'macro-policy',
+  'policy-enforcement',
   'market-credit',
   'trade-supply',
   'energy',
   'availability',
 ];
+
+const CHINA_POLICY_ACTION_LABELS: Record<ChinaPolicyActionType, string> = {
+  consultation_draft: 'Consultation / draft',
+  announcement_guidance: 'Announcement / guidance',
+  final_rule: 'Final rule',
+  administrative_approval_restriction: 'Administrative approval / restriction',
+  investigation: 'Investigation',
+  enforcement_penalty: 'Enforcement / penalty',
+  effective_date_change: 'Effective-date change',
+  amendment_correction_repeal_supersession: 'Amendment / correction / repeal',
+  unknown: 'Uncertain classification',
+};
+
+const CHINA_POLICY_STATUS_LABELS: Record<ChinaPolicyStatus, string> = {
+  draft: 'Draft',
+  announced: 'Announced',
+  in_force: 'In force',
+  under_investigation: 'Under investigation',
+  enforced: 'Enforced',
+  amended: 'Amended',
+  corrected: 'Corrected',
+  repealed: 'Repealed',
+  superseded: 'Superseded',
+  unknown: 'Status uncertain',
+};
 
 type CountryIntelBriefResult = {
   brief: string;
@@ -477,6 +508,62 @@ export class CountryIntelManager implements AppModule {
         }).catch(() => {
           updateChinaSummaryGroup({
             id: 'macro-policy', state: 'unavailable', signals: [], unavailableReason: t('countryBrief.china.macroUnavailable'),
+          });
+        });
+
+        fetchChinaPolicyEvents().then((result) => {
+          const currentEvents = (result.data?.events ?? [])
+            .filter((event) => event.supersession.state === 'current')
+            .slice(0, 3);
+          if (!result.data || currentEvents.length === 0) {
+            updateChinaSummaryGroup({
+              id: 'policy-enforcement',
+              state: 'unavailable',
+              signals: [],
+              unavailableReason: t('countryBrief.china.policyUnavailable'),
+            });
+            return;
+          }
+          const agencyStates = Object.values(result.data.agencies);
+          const degradedAgencies = agencyStates.filter((agency) => agency.status !== 'ok').length;
+          const signals: ChinaCountrySummarySignal[] = currentEvents.map((event) => {
+            const transportClaim = event.provenance.claims.transport_freshness;
+            const stale = result.state === 'cached'
+              || transportClaim.status !== 'known'
+              || transportClaim.value.state !== 'fresh';
+            return {
+              label: event.titleTranslated || event.titleOriginal,
+              value: `${event.agency} · ${CHINA_POLICY_ACTION_LABELS[event.actionType]} · ${CHINA_POLICY_STATUS_LABELS[event.status]}`,
+              source: event.agency,
+              sourceUrl: event.canonicalUrl,
+              publishedAt: event.publicationDate,
+              effectiveAt: event.effectiveDate ?? undefined,
+              action: event.actionType,
+              status: event.status,
+              sectors: event.sectors.map((sector) => sector.label ?? sector.id),
+              entities: event.entities.map((entity) => entity.name ?? entity.id),
+              translationState: event.translation.state.replace(/_/g, ' '),
+              stale,
+            };
+          });
+          updateChinaSummaryGroup({
+            id: 'policy-enforcement',
+            state: result.state === 'cached'
+              ? 'stale'
+              : degradedAgencies > 0
+                ? 'partial'
+                : 'available',
+            signals,
+            unavailableReason: degradedAgencies > 0
+              ? t('countryBrief.china.policyPartial', { count: degradedAgencies })
+              : undefined,
+          });
+        }).catch(() => {
+          updateChinaSummaryGroup({
+            id: 'policy-enforcement',
+            state: 'unavailable',
+            signals: [],
+            unavailableReason: t('countryBrief.china.policyUnavailable'),
           });
         });
 

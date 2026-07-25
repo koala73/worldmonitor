@@ -5,12 +5,12 @@
  * ("Independent journalism with editorial standards") and source type
  * `other`, which NewsPanel rendered for Tier 1/2 as "Verified News Outlet"
  * (and Tier 1 as a "Wire" label). Official ministry feeds such as
- * MIIT/MOFCOM therefore looked like independent wire services.
+ * official Chinese policy sources therefore looked like independent wire services.
  *
  * Contract:
  * - Missing registry entries → risk `unknown`, type `unknown` (never low/other)
  * - Explicit low only when reviewed in SOURCE_PROPAGANDA_RISK
- * - MIIT / MOFCOM are government sources with high state-affiliated risk
+ * - All six China policy agencies are government sources with high state-affiliated risk
  * - Badge helpers never claim "Verified News Outlet" for unreviewed types
  * - Every configured feed has a definite provenance state via the public API
  *
@@ -166,8 +166,15 @@ describe('source provenance defaults (#5390)', () => {
     assert.equal(feeds.describePropagandaBadge(feeds.getSourcePropagandaRisk('Reuters')), null);
   });
 
-  it('classifies MIIT and MOFCOM as official Chinese government sources', () => {
-    for (const name of ['MIIT (China)', 'MOFCOM (China)'] as const) {
+  it('classifies all six China policy agencies as official Chinese government sources', () => {
+    for (const name of [
+      'CAC (China)',
+      'SAMR (China)',
+      'MIIT (China)',
+      'MOFCOM (China)',
+      'NDRC (China)',
+      'PBoC (China)',
+    ] as const) {
       assert.equal(feeds.getSourceType(name), 'gov', `${name} type`);
       assert.equal(feeds.SOURCE_TYPES[name], 'gov');
       const risk = feeds.getSourcePropagandaRisk(name);
