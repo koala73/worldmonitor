@@ -723,8 +723,10 @@ test('not-applicable freshness marker is cached for at most 60 seconds', async (
     });
     assert.ok(cacheWrite);
     const setCommand = JSON.parse(cacheWrite.body).find((entry) => entry[0] === 'SET');
+    // Both bounds are load-bearing — see the sibling assertion in
+    // server/__tests__/entitlement-check.test.ts.
     const ttl = Number(setCommand[4]);
-    assert.ok(ttl > 0 && ttl <= 60, `unexpected marker TTL: ${ttl}`);
+    assert.ok(ttl > 30 && ttl <= 60, `unexpected marker TTL: ${ttl}`);
   }, {
     entitlementResponse: {
       planKey: 'free',

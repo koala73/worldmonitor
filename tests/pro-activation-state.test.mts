@@ -46,6 +46,7 @@ import {
   parseMountClaim,
   isMountClaimBlocking,
   selectStepEvent,
+  shouldReportPushSubscribeFailure,
   ACTIVATION_EVENTS,
   PRO_PRODUCT_IDS,
   PRO_PLAN_KEYS,
@@ -1089,6 +1090,16 @@ describe('telemetry event selection', () => {
     assert.equal(ACTIVATION_EVENTS.stepBlocked, 'pro-activation-step-blocked');
     assert.equal(ACTIVATION_EVENTS.stepFailed, 'pro-activation-step-failed');
     assert.equal(ACTIVATION_EVENTS.exit, 'pro-activation-exit');
+  });
+
+  it('reports a push-subscribe failure to Sentry only when permission was granted', () => {
+    // #5600: the capture exists to surface real write failures. A user who
+    // denies OR dismisses the browser prompt is the documented AE3 outcome and
+    // is the common case — reporting either would bury the signal in noise.
+    assert.equal(shouldReportPushSubscribeFailure('granted'), true);
+    assert.equal(shouldReportPushSubscribeFailure('denied'), false);
+    assert.equal(shouldReportPushSubscribeFailure('default'), false);
+    assert.equal(shouldReportPushSubscribeFailure('unsupported'), false);
   });
 
   it('selectStepEvent maps confirmed/skipped/failed to their events; done to null', () => {

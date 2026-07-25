@@ -41,7 +41,7 @@ description: "World Monitor 通知系统 API 完整参考：涵盖通知渠道�
 
 所有 action 均要求 Clerk bearer + PRO(`tier >= 1`)。无效的 action 返回 `400 Unknown action`。请求通过 `RELAY_SHARED_SECRET` 转发至 Convex。
 
-仅当权益被确认为非 Pro 时,低于 `tier >= 1` 的调用方才会收到 `403 pro_required`。当权益校验本身处于不确定状态时,该网关改为遵循共享的计费校验契约:对 `entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed` 返回带 `Retry-After` 和 `X-Billing-Verification` 的 `503`;对已确认失效的订阅返回 `403 subscription_lapsed`。参见[错误处理](/zh/usage-errors)。
+仅当权益被确认为非 Pro 时,低于 `tier >= 1` 的调用方才会收到 `403 pro_required`。当权益校验本身处于不确定状态时,本端点的权限检查改为遵循共享的计费校验契约:对 `entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed` 返回带 `Retry-After` 和 `X-Billing-Verification` 的 `503`;对已确认失效的订阅返回 `403 subscription_lapsed`。参见[错误处理](/zh/usage-errors)。
 
 - **幂等性**: `POST /api/notification-channels` 支持可选的 `Idempotency-Key`。使用相同 key 和相同请求体重试时,会重放原始响应,而不是再次应用渠道动作。
 

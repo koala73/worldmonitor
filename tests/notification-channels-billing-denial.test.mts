@@ -149,6 +149,64 @@ describe('/api/notification-channels POST billing-verification contract', () => 
     });
   });
 
+  it('answers a failed renewal verification with a retryable 503', async () => {
+    const mod = await importFreshNotificationChannels();
+    mod.__setNotificationChannelsDepsForTests({
+      validateBearerToken: async () => ({ valid: true, userId: 'user-renewal-failed' }),
+      getEntitlements: async () => freeShapedEntitlements({
+        billingStatus: 'renewal_verification_failed',
+        retryAfterSeconds: 60,
+      }),
+      fetch: async () => {
+        throw new Error('relay must not be reached for a denied request');
+      },
+    });
+    mock.method(console, 'warn', () => {});
+
+    const res = await mod.default(makeSetChannelRequest(), ctx);
+
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('X-Billing-Verification'), 'renewal_verification_failed');
+    assert.equal(res.headers.get('Retry-After'), '60');
+    assert.deepEqual(await res.json(), {
+      error: 'Renewal verification failed',
+      code: 'renewal_verification_failed',
+      requiredTier: 1,
+    });
+  });
+
+  it('leaves the day-0 no-history marker on the terminal 403 path', async () => {
+    // Scope pin for #5600: the poisoned-marker cohort arrives as a PLAIN tier-0
+    // answer — `renewalVerificationFreshness` is not part of
+    // getBillingVerificationDenial's input, so it cannot and must not become a
+    // 503 here (that would hand every never-subscribed free user a retryable
+    // error instead of a clean upsell). This endpoint deliberately keeps the
+    // 403; the wrongful-denial window is bounded by
+    // NOT_APPLICABLE_VERIFICATION_TTL_SECONDS instead. If someone later widens
+    // the helper to react to this marker, this test tells them it was a choice.
+    const mod = await importFreshNotificationChannels();
+    mod.__setNotificationChannelsDepsForTests({
+      validateBearerToken: async () => ({ valid: true, userId: 'user-day0-marker' }),
+      getEntitlements: async () => freeShapedEntitlements({
+        renewalVerificationFreshness: { status: 'not_applicable', checkedAt: Date.now() },
+      }),
+      fetch: async () => {
+        throw new Error('relay must not be reached for a denied request');
+      },
+    });
+    mock.method(console, 'warn', () => {});
+
+    const res = await mod.default(makeSetChannelRequest(), ctx);
+
+    assert.equal(res.status, 403);
+    assert.equal(res.headers.get('X-Billing-Verification'), null);
+    assert.deepEqual(await res.json(), {
+      error: 'pro_required',
+      message: 'Real-time alerts are available on the Pro plan.',
+      upgradeUrl: 'https://worldmonitor.app/pro',
+    });
+  });
+
   it('still hard-denies a genuine free user with the pro_required upsell', async () => {
     const mod = await importFreshNotificationChannels();
     mod.__setNotificationChannelsDepsForTests({

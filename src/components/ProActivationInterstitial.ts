@@ -58,6 +58,8 @@ import {
   buildCriticalAlertsPayload,
   buildExitSummary,
   buildActivationOutcomeBuckets,
+  selectStepEvent,
+  shouldReportPushSubscribeFailure,
   summarizeActivationExit,
   DEFAULT_DIGEST_HOUR,
   type ActivationEventName,
@@ -1139,10 +1141,17 @@ function buildPowerExtra(options: ProActivationFlowOptions): ProActivationStepEx
  * cohort, which writes no `proActivationPresentations` outcome row at all,
  * from the retro backfill cohort that does.
  */
+/** Closed vocabulary of failure sites, so a typo'd Sentry tag is a compile error. */
+type ActivationFailureStage =
+  | 'brief-confirm'
+  | 'push-subscribe'
+  | 'alerts-config-refresh'
+  | 'alerts-rule-write';
+
 function reportActivationStepFailure(
   options: ProActivationFlowOptions,
   step: ActivationStepId,
-  stage: string,
+  stage: ActivationFailureStage,
   err: unknown,
 ): void {
   enqueueSentryCall((s) => s.captureException(
@@ -1207,7 +1216,7 @@ async function confirmAlerts(
     // #5600: only granted-then-failed is a real error. `denied` routes to the
     // blocked state below and `default` (prompt dismissed) is a user outcome —
     // reporting either would bury real failures under permission noise.
-    if (permission === 'granted') {
+    if (shouldReportPushSubscribeFailure(permission)) {
       reportActivationStepFailure(options, 'alerts', 'push-subscribe', err);
     }
     return permission === 'denied' ? 'blocked' : 'failed';
@@ -1440,23 +1449,33 @@ export async function openProActivationFlow(
               : 'verified';
         // Attempt-level outcome: one event per real confirm, so a step the
         // user retries is visible as N failures rather than a single terminal
-        // state inferred from the exit summary (#5600).
+        // state inferred from the exit summary (#5600). Routed through the
+        // leaf's selectStepEvent so the outcome -> event mapping has exactly
+        // one definition (a parallel inline ternary here would let the unit
+        // test stay green while this wiring regressed).
         //
-        // `blocked` is deliberately absent: the shell fires stepBlocked through
-        // onBlockStep (#5609), and emitting stepFailed here as well would count
-        // one attempt twice — corrupting the funnel this event exists to make
-        // trustworthy, and in the exact way the original bug did.
-        if (result === 'verified') {
-          options.onEvent?.(ACTIVATION_EVENTS.stepConfirmed, stepId);
-        } else if (result === 'failed') {
-          options.onEvent?.(ACTIVATION_EVENTS.stepFailed, stepId);
+        // `blocked` is deliberately excluded: the shell fires stepBlocked
+        // through onBlockStep (#5609), and emitting stepFailed here as well
+        // would count one attempt twice — corrupting the funnel this event
+        // exists to make trustworthy, in the exact way the original bug did.
+        //
+        // An account switch mid-confirm makes confirmBrief/confirmAlerts return
+        // 'failed' for a write that actually succeeded. That is flow teardown,
+        // not a step failure — counting it would inflate the same metric.
+        if (result !== 'blocked' && isFlowAccountCurrent(options)) {
+          const stepEvent = selectStepEvent(result === 'verified' ? 'confirmed' : 'failed');
+          if (stepEvent) options.onEvent?.(stepEvent, stepId);
+        }
         }
         return result;
       } finally {
         inFlight.delete(stepId);
       }
     },
-    onSkipStep: (stepId) => options.onEvent?.(ACTIVATION_EVENTS.stepSkipped, stepId),
+    onSkipStep: (stepId) => {
+      const skipEvent = selectStepEvent('skipped');
+      if (skipEvent) options.onEvent?.(skipEvent, stepId);
+    },
     onBlockStep: (stepId) => options.onEvent?.(ACTIVATION_EVENTS.stepBlocked, stepId),
     onProgress: (results) => persistOutcome(results, false),
     onExit: (results) => {

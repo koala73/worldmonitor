@@ -43,6 +43,33 @@ test('Retry-After clamp bounds match across the TS/JS mirror', () => {
   }
 });
 
+test('entitlement cache key prefix is derived identically by every writer and reader', () => {
+  // #5600's aggravator: the Dodo webhook's corrective Redis sync wrote
+  // `entitlements:live:*` while the edge read `entitlements:test:*`, so the
+  // poisoned free entry was never overwritten. The env var itself is deploy
+  // config, but the three independent derivations of the prefix are code — and
+  // nothing pinned them together. A drift here silently splits the namespace
+  // again, with the same symptom and the same 15-minute blast radius.
+  const sources = [
+    ['server/_shared/entitlement-check.ts', read('server/_shared/entitlement-check.ts')],
+    ['api/_user-api-key.js', read('api/_user-api-key.js')],
+    ['convex/payments/cacheActions.ts', read('convex/payments/cacheActions.ts')],
+  ];
+
+  for (const [file, src] of sources) {
+    assert.match(
+      src,
+      /process\.env\.DODO_PAYMENTS_ENVIRONMENT === ['"]live_mode['"]\s*\?\s*['"]live['"]\s*:\s*['"]test['"]/,
+      `${file} no longer derives the entitlement env prefix as live_mode -> 'live', else 'test'`,
+    );
+    assert.match(
+      src,
+      /`entitlements:\$\{[A-Za-z_][A-Za-z0-9_]*\}:\$\{[A-Za-z_][A-Za-z0-9_]*\}`/,
+      `${file} no longer builds the entitlements key as entitlements:{env}:{userId}`,
+    );
+  }
+});
+
 test('Retry-After fallback default matches across the TS/JS mirror', () => {
   const ts = read('server/_shared/entitlement-check.ts');
   const js = read('api/_user-api-key.js');

@@ -325,19 +325,54 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
   if (req.method === 'POST') {
     const ent = await notificationChannelsDeps.getEntitlements(session.userId);
     if (!ent || ent.features.tier < 1) {
-      // #5600: a transiently-unverifiable entitlement (Convex 5xx/timeout, or
-      // the day-0 window where a fresh purchase has not propagated) is not a
-      // free user. Answer it with the shared retryable contract — 503 +
-      // Retry-After + X-Billing-Verification — the same way the gateway,
-      // widget-agent, and MCP surfaces do, so the client can retry instead of
-      // rendering a terminal "upgrade to Pro" to someone who just paid.
+      // #5600: an entitlement the backend could not VERIFY (Convex 5xx/timeout,
+      // or a renewal re-check in flight) is not a confirmed free user. Answer
+      // it with the shared retryable contract — 503 + Retry-After +
+      // X-Billing-Verification — the same way the gateway, widget-agent, and
+      // MCP surfaces do, so the client can retry instead of rendering a
+      // terminal "upgrade to Pro".
+      //
+      // Scope note: this does NOT cover the day-0 poisoned-marker cohort. That
+      // one arrives as a plain tier-0 answer (no billingStatus, no
+      // verificationUnavailable), so the helper returns null and the buyer
+      // still gets the 403 below — bounded to
+      // NOT_APPLICABLE_VERIFICATION_TTL_SECONDS by the other half of this fix.
+      // Making that state 503 instead would hand every never-subscribed free
+      // user a retryable error in place of a clean upsell.
       const billingDenial = getBillingVerificationDenial(ent, corsHeaders, 1);
       if (billingDenial) {
+        const code = billingDenial.headers.get('X-Billing-Verification');
         console.warn('[notification-channels] billing-verification denial', JSON.stringify({
           status: billingDenial.status,
-          code: billingDenial.headers.get('X-Billing-Verification'),
+          code,
           userId: session.userId,
         }));
+        // Match this file's own convention (publishWelcome / publishFlushHeld
+        // above): a console.warn alone is a Sentry breadcrumb, not an event, so
+        // it would be invisible in exactly the way #5600's activation failures
+        // were. Tagged so these group with the wizard-side captures.
+        //
+        // Transient states only. `subscription_lapsed` is a confirmed terminal
+        // answer already visible in Convex — eventing it would turn ordinary
+        // churn into a permanent Sentry stream and bury the anomaly.
+        //
+        // NOT awaited: makeCaptureSilentError registers ctx.waitUntil(promise)
+        // (api/_sentry-common.js), so the capture is guaranteed to run without
+        // holding the denial response open for its 2s transport timeout.
+        if (code && code !== 'subscription_lapsed') {
+          void captureSilentError(
+            new Error(`notification-channels billing-verification denial: ${code}`),
+            {
+              tags: {
+                route: 'api/notification-channels',
+                step: 'billing-verification-denial',
+                code,
+                severity: 'warn',
+              },
+              ctx,
+            },
+          );
+        }
         return billingDenial;
       }
       return json({

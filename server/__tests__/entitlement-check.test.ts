@@ -405,8 +405,11 @@ describe("gateway entitlement check", () => {
       await getEntitlements("test-user-marker-ttl");
     });
 
+    // Both bounds are load-bearing: the upper one caps the wrongful-denial
+    // window, the lower one keeps a future edit from collapsing the marker to
+    // ~0s and silently reverting the cache to a per-request Convex round-trip.
     const ttl = vi.mocked(setCachedJson).mock.calls.at(-1)?.[2];
-    expect(ttl).toBeGreaterThan(0);
+    expect(ttl).toBeGreaterThan(30);
     expect(ttl).toBeLessThanOrEqual(60);
   });
 

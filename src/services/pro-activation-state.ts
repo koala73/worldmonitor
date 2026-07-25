@@ -908,6 +908,18 @@ export const ACTIVATION_EVENTS = {
 } as const;
 
 /**
+ * Whether a failed `subscribeToPush` is worth reporting to Sentry.
+ *
+ * Only granted-then-failed is a real error. `denied` and `default` (the user
+ * dismissed the prompt without choosing) are both the documented AE3 user
+ * outcome and are the common case — reporting them would bury genuine failures
+ * under permission noise (#5600).
+ */
+export function shouldReportPushSubscribeFailure(permission: string): boolean {
+  return permission === 'granted';
+}
+
+/**
  * The set of activation telemetry event names. This is the single naming
  * source: the analytics.ts EVENTS catalog and its `ProActivationEvent` union
  * mirror these literals, and the flow's `onEvent` hook is typed to it so a
@@ -921,7 +933,7 @@ export type ActivationEventName = (typeof ACTIVATION_EVENTS)[keyof typeof ACTIVA
  * none. `failed` has its own event since #5600 — folding it into the exit
  * summary alone is what let a systemic write failure look like a skip.
  */
-export function selectStepEvent(outcome: ActivationStepOutcome): string | null {
+export function selectStepEvent(outcome: ActivationStepOutcome): ActivationEventName | null {
   switch (outcome) {
     case 'confirmed':
       return ACTIVATION_EVENTS.stepConfirmed;
