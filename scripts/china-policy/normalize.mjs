@@ -257,8 +257,19 @@ function adjustedStatus(classified, effectiveDate, retrievedAt) {
 
 function lineageIdentity(input) {
   return normalizeWhitespace(input.documentNumber)
-    || normalizeWhitespace(input.titleOriginal)
     || normalizeWhitespace(input.canonicalUrl);
+}
+
+function currentMirrorIdentity(event) {
+  if (normalizeWhitespace(event.documentNumber)) {
+    return `${event.lineageId}:${event.contentHash}`;
+  }
+  return [
+    event.agency,
+    normalizeWhitespace(event.titleOriginal),
+    event.publicationDate,
+    event.contentHash,
+  ].join(':');
 }
 
 function provenanceFor(event, extractionConfidence) {
@@ -415,7 +426,7 @@ function withProvenanceLineage(event) {
 export function reconcilePolicyEvents(currentEvents, previousEvents = []) {
   const dedupedByContent = new Map();
   for (const event of currentEvents) {
-    const key = `${event.lineageId}:${event.contentHash}`;
+    const key = currentMirrorIdentity(event);
     const existing = dedupedByContent.get(key);
     if (!existing) {
       dedupedByContent.set(key, {
@@ -436,6 +447,29 @@ export function reconcilePolicyEvents(currentEvents, previousEvents = []) {
     const lineageHistory = previousEvents
       .filter((previous) => previous.lineageId === event.lineageId)
       .sort((a, b) => (b.revision?.sequence ?? 1) - (a.revision?.sequence ?? 1));
+    if (lineageHistory.length === 0) {
+      const mirrorIdentity = currentMirrorIdentity(event);
+      const previousMirror = previousEvents.find(
+        (previous) => currentMirrorIdentity(previous) === mirrorIdentity,
+      );
+      if (previousMirror) {
+        result.push(...previousEvents
+          .filter((previous) => previous.lineageId === previousMirror.lineageId)
+          .map((previous) => (
+            previous.id === previousMirror.id
+              ? withProvenanceLineage({
+                ...previous,
+                mirrorUrls: [...new Set([
+                  ...(previous.mirrorUrls ?? []),
+                  event.canonicalUrl,
+                  ...(event.mirrorUrls ?? []),
+                ])].filter((url) => url !== previous.canonicalUrl),
+              })
+              : previous
+          )));
+        continue;
+      }
+    }
     const previous = lineageHistory[0];
     if (previous?.contentHash === event.contentHash) {
       result.push(withProvenanceLineage({

@@ -61,7 +61,7 @@ function eventTransportFailed(event, agencyState) {
     ));
 }
 
-function capEventsByLineage(events) {
+export function capEventsByLineage(events, maxEvents = MAX_EVENTS) {
   const lineages = new Map();
   for (const event of events) {
     const byId = lineages.get(event.lineageId) ?? new Map();
@@ -76,7 +76,7 @@ function capEventsByLineage(events) {
     .sort((a, b) => Date.parse(b[0].publicationDate) - Date.parse(a[0].publicationDate));
   const retained = [];
   for (const group of groups) {
-    if (retained.length + group.length > MAX_EVENTS) continue;
+    if (retained.length + group.length > maxEvents) break;
     retained.push(...group);
   }
   return retained;

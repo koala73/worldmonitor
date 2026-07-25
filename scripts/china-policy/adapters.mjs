@@ -100,6 +100,19 @@ const NON_DOCUMENT_TITLE = /专家解读|答记者问|一图读懂|公开招聘|
 const POLICY_TITLE_HINT = /条例|规定|办法|规章|决定|公告|通知|意见|方案|指南|规划|批复|裁定|处罚|调查|管控名单|管理措施|禁令|令〔|令\d/;
 const BLOCK_PAGE_PATTERN = /Access Denied|访问频繁|安全验证|验证码|请求被拒绝|系统繁忙|页面不存在|404 Not Found|服务异常/i;
 
+function decodeNumericEntity(code, radix) {
+  const value = Number.parseInt(code, radix);
+  if (
+    !Number.isInteger(value)
+    || value < 0
+    || value > 0x10FFFF
+    || (value >= 0xD800 && value <= 0xDFFF)
+  ) {
+    return '\uFFFD';
+  }
+  return String.fromCodePoint(value);
+}
+
 function decodeEntities(input) {
   return String(input ?? '')
     .replace(/&amp;/gi, '&')
@@ -108,8 +121,8 @@ function decodeEntities(input) {
     .replace(/&quot;/gi, '"')
     .replace(/&#39;|&apos;/gi, "'")
     .replace(/&nbsp;/gi, ' ')
-    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
-    .replace(/&#x([0-9a-f]+);/gi, (_, code) => String.fromCodePoint(Number.parseInt(code, 16)));
+    .replace(/&#(\d+);/g, (_, code) => decodeNumericEntity(code, 10))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => decodeNumericEntity(code, 16));
 }
 
 function stripHtml(input) {
@@ -212,8 +225,8 @@ function parseMiitListing(raw, sourceConfig) {
       const canonicalUrl = canonicalizeSourceUrl(data.url, sourceConfig);
       const publicationDate = validDay(data.jsearch_date);
       const titleOriginal = stripHtml(data.title_text || data.title);
-      const originalText = stripHtml(data.infocontent);
-      if (!canonicalUrl || !publicationDate || titleOriginal.length < 5 || originalText.length < 5) {
+      const listingText = stripHtml(data.infocontent);
+      if (!canonicalUrl || !publicationDate || titleOriginal.length < 5 || listingText.length < 5) {
         continue;
       }
       rows.push({
@@ -221,7 +234,7 @@ function parseMiitListing(raw, sourceConfig) {
         canonicalUrl,
         titleOriginal,
         publicationDate,
-        originalText,
+        originalText: '',
         documentNumber: stripHtml(data.filenumbername) || extractDocumentNumber(titleOriginal),
       });
     }

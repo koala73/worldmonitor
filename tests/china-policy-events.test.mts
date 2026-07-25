@@ -18,6 +18,7 @@ import {
 } from '../scripts/china-policy/normalize.mjs';
 import {
   buildChinaPolicyEvents,
+  capEventsByLineage,
   chinaPolicyContentMeta,
 } from '../scripts/seed-china-policy-events.mjs';
 import {
@@ -101,6 +102,43 @@ describe('China official policy adapters (#5576)', () => {
     assert.match(parsed.originalText, /依法保护个人信息/);
     assert.equal(parsed.publicationDate, '2026-07-24');
     assert.equal(parsed.effectiveDate, '2026-08-01');
+  });
+
+  it('fetches the MIIT detail document instead of publishing its listing snippet', async () => {
+    const listing = await fixture('miit.json');
+    const detail = await fixture('detail.html');
+    const requested: string[] = [];
+    const result = await fetchAgencyDocuments('MIIT', {
+      fetchImpl: async (input) => {
+        const url = String(input);
+        requested.push(url);
+        return officialResponse(
+          url,
+          url === CHINA_POLICY_SOURCES.MIIT.listUrl ? listing : detail,
+        );
+      },
+      sleep: async () => {},
+    });
+
+    assert.equal(result.status, 'ok');
+    assert.equal(result.requestCount, 2);
+    assert.deepEqual(requested, [
+      CHINA_POLICY_SOURCES.MIIT.listUrl,
+      result.documents[0].canonicalUrl,
+    ]);
+    assert.match(result.documents[0].originalText, /依法保护个人信息/);
+  });
+
+  it('substitutes invalid numeric HTML entities instead of failing an agency parse', () => {
+    const parsed = parsePolicyDocumentHtml([
+      '<html><head>',
+      '<meta name="ArticleTitle" content="市场监管公告&#1114112;">',
+      '<meta name="PubDate" content="2026-07-24">',
+      '</head><body><div class="article-content">正文&#x110000;内容</div></body></html>',
+    ].join(''));
+
+    assert.equal(parsed.titleOriginal, '市场监管公告�');
+    assert.equal(parsed.originalText, '正文�内容');
   });
 
   it('rejects an oversized source response before parsing or following any redirect', async () => {
@@ -332,6 +370,32 @@ describe('China policy event provenance, reconciliation, and degradation (#5576)
     assert.equal(noNumberDeduped.length, 1);
     assert.deepEqual(noNumberDeduped[0].mirrorUrls, [noNumberMirror.canonicalUrl]);
 
+    const laterMirror = reconcilePolicyEvents([noNumberMirror], [noNumberBase]);
+    assert.equal(laterMirror.length, 1);
+    assert.equal(laterMirror[0].id, noNumberBase.id);
+    assert.equal(laterMirror[0].lineageId, noNumberBase.lineageId);
+    assert.equal(laterMirror[0].canonicalUrl, noNumberBase.canonicalUrl);
+    assert.deepEqual(laterMirror[0].mirrorUrls, [noNumberMirror.canonicalUrl]);
+
+    const sameTitleDifferentDocument = normalizePolicyDocument({
+      agency: 'CAC',
+      canonicalUrl: 'https://www.cac.gov.cn/2026-07/25/c_1787000000000000.htm',
+      titleOriginal: noNumberBase.titleOriginal,
+      originalText: '这是另一份没有文号的独立规定。',
+      publicationDate: '2026-07-25',
+      effectiveDate: null,
+      documentNumber: null,
+      retrievedAt: RETRIEVED_AT,
+    });
+    assert.notEqual(
+      noNumberBase.lineageId,
+      sameTitleDifferentDocument.lineageId,
+      'un-numbered documents with a shared title must retain URL-scoped lineages',
+    );
+    const independent = reconcilePolicyEvents([noNumberBase, sameTitleDifferentDocument], []);
+    assert.equal(independent.length, 2);
+    assert.ok(independent.every((event) => event.supersession.state === 'current'));
+
     const revision = normalizePolicyDocument({
       agency: 'PBOC',
       canonicalUrl: base.canonicalUrl,
@@ -510,6 +574,29 @@ describe('China policy event provenance, reconciliation, and degradation (#5576)
       detailFailureLastGood?.provenance.claims.transport_freshness.value.state,
       'error',
     );
+  });
+
+  it('does not backfill older lineages after the next-newest lineage exceeds the cap', () => {
+    const event = (
+      id: string,
+      lineageId: string,
+      publicationDate: string,
+      sequence: number,
+    ) => ({
+      id,
+      lineageId,
+      publicationDate,
+      revision: { sequence },
+    });
+    const retained = capEventsByLineage([
+      event('new-2', 'new', '2026-07-25', 2),
+      event('new-1', 'new', '2026-07-24', 1),
+      event('middle-2', 'middle', '2026-07-23', 2),
+      event('middle-1', 'middle', '2026-07-22', 1),
+      event('old-1', 'old', '2026-07-01', 1),
+    ], 3);
+
+    assert.deepEqual(retained.map(({ id }) => id), ['new-2', 'new-1']);
   });
 
   it('validates at the client boundary and falls back to a bounded cached snapshot', async () => {
