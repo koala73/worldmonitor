@@ -59,6 +59,7 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   // Market/Finance
   'CNBC': 'market', 'MarketWatch': 'market', 'Yahoo Finance': 'market',
   'Financial Times': 'market',
+  'Shanghai Stock Exchange': 'market', 'Shenzhen Stock Exchange': 'market',
 
   // Tech
   'Hacker News': 'tech', 'Ars Technica': 'tech', 'The Verge': 'tech',
@@ -155,6 +156,17 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
     risk: 'high',
     stateAffiliated: 'China',
     note: 'Chinese Ministry of Commerce official feed',
+  },
+  // Official exchange authorities. These are authoritative primary publishers,
+  // not independent journalism; omit stateAffiliated so the shared validator
+  // does not conflate an exchange authority with state-controlled media.
+  'Shanghai Stock Exchange': {
+    risk: 'high',
+    note: 'Official mainland China exchange authority; metadata-only source',
+  },
+  'Shenzhen Stock Exchange': {
+    risk: 'high',
+    note: 'Official mainland China exchange authority; metadata-only source',
   },
 
   // Medium risk - State-affiliated or known bias

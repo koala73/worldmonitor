@@ -6,20 +6,42 @@ import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { miniSparkline } from '@/utils/sparkline';
 import { SITE_VARIANT } from '@/config';
 import { createWatchlistButton } from './watchlist-modal';
+import {
+  renderChinaCorporateDisclosureSignals,
+  type ChinaCorporateDisclosureSnapshot,
+} from './market-disclosures';
 
 export class MarketPanel extends Panel {
+  private _markets: MarketData[] = [];
+  private _marketsRateLimited = false;
+  private _disclosures: ChinaCorporateDisclosureSnapshot | null = null;
+
   constructor() {
     super({ id: 'markets', title: t('panels.markets'), infoTooltip: t('components.markets.infoTooltip') });
     this.header.appendChild(createWatchlistButton());
   }
 
   public renderMarkets(data: MarketData[], rateLimited?: boolean): void {
-    if (data.length === 0) {
-      this.showRetrying(rateLimited ? t('common.rateLimitedMarket') : t('common.failedMarketData'));
+    this._markets = data;
+    this._marketsRateLimited = Boolean(rateLimited);
+    this._renderMarketsAndDisclosures();
+  }
+
+  public renderDisclosures(snapshot: ChinaCorporateDisclosureSnapshot | null | undefined): void {
+    this._disclosures = snapshot ?? null;
+    this._renderMarketsAndDisclosures();
+  }
+
+  private _renderMarketsAndDisclosures(): void {
+    const disclosureHtml = renderChinaCorporateDisclosureSignals(this._disclosures);
+    if (this._markets.length === 0 && !disclosureHtml) {
+      this.showRetrying(
+        this._marketsRateLimited ? t('common.rateLimitedMarket') : t('common.failedMarketData'),
+      );
       return;
     }
 
-    const html = data
+    const marketsHtml = this._markets
       .map(
         (stock) => `
       <div class="market-item">
@@ -36,8 +58,15 @@ export class MarketPanel extends Panel {
     `
       )
       .join('');
-
-    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
+    const unavailableHtml = this._markets.length === 0
+      ? `<div class="market-data-unavailable">${escapeHtml(
+        this._marketsRateLimited ? t('common.rateLimitedMarket') : t('common.failedMarketData'),
+      )}</div>`
+      : '';
+    this.setSafeContent(unsafeRawHtml(
+      marketsHtml + unavailableHtml + disclosureHtml,
+      'legacy Panel.setContent() migration',
+    ));
   }
 }
 

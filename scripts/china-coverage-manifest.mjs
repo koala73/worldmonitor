@@ -147,6 +147,25 @@ export const CHINA_COVERAGE_ENTRIES = Object.freeze([
     },
   },
   {
+    id: 'market.china-corporate-disclosures',
+    label: 'Official SSE/SZSE corporate disclosures',
+    ownerIssue: 5577,
+    launchStatus: 'launched',
+    transport: metaTransport('seed-meta:market:china-corporate-disclosures', 180),
+    content: {
+      key: 'market:china:corporate-disclosures:v1',
+      maxAgeMin: 90 * 1_440,
+      probe: {
+        kind: 'object',
+        requiredTruthyPaths: [['sources']],
+        timestampPaths: [
+          ['events', '*', 'publicationTime', 'value'],
+          ['coverageThrough'],
+        ],
+      },
+    },
+  },
+  {
     id: 'news.china',
     label: 'China news digest',
     ownerIssue: 5272,

@@ -1,0 +1,459 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { describe, it } from 'node:test';
+
+import { validateDecisionSignalProvenance } from '../shared/decision-signal-provenance';
+import {
+  CHINA_CORPORATE_DISCLOSURE_KEY,
+  DISCLOSURE_TYPES,
+  OFFICIAL_EXCHANGE_SOURCE_CONTRACTS,
+  REVIEWED_DISCLOSURE_ISSUERS,
+  buildChinaCorporateDisclosureSnapshot,
+  classifyDisclosureTitle,
+  fetchChinaCorporateDisclosureSnapshot,
+  findReviewedDisclosureIssuer,
+  normalizeSseAnnouncements,
+  normalizeSzseAnnouncements,
+  readBoundedJsonResponse,
+} from '../scripts/china-corporate-disclosures/adapters.mjs';
+import {
+  chinaCorporateDisclosureContentMeta,
+  validateChinaCorporateDisclosureSnapshot,
+} from '../scripts/seed-china-corporate-disclosures.mjs';
+
+const fixtureRoot = resolve(import.meta.dirname, 'fixtures/china-corporate-disclosures');
+const fixture = (name: string) => JSON.parse(readFileSync(resolve(fixtureRoot, name), 'utf8'));
+const retrievedAt = '2026-07-25T10:00:00.000Z';
+
+describe('official China corporate disclosures (#5577)', () => {
+  it('maps only the reviewed A/H basket and keeps HKEX blocked', () => {
+    assert.equal(CHINA_CORPORATE_DISCLOSURE_KEY, 'market:china:corporate-disclosures:v1');
+    assert.deepEqual(
+      REVIEWED_DISCLOSURE_ISSUERS.map((issuer) => `${issuer.exchange}:${issuer.securityCode}:${issuer.symbol}`),
+      [
+        'SSE:600519:600519.SS',
+        'SSE:601318:601318.SS',
+        'SSE:600900:600900.SS',
+        'SSE:688981:688981.SS',
+        'SZSE:300750:300750.SZ',
+        'HKEX:0700:0700.HK',
+        'HKEX:1211:1211.HK',
+        'HKEX:0939:0939.HK',
+        'HKEX:0857:0857.HK',
+      ],
+    );
+    assert.equal(findReviewedDisclosureIssuer('SSE', '600519')?.name, 'Kweichow Moutai');
+    assert.equal(findReviewedDisclosureIssuer('SSE', '999999'), null);
+    assert.equal(findReviewedDisclosureIssuer('HKEX', '0700')?.name, 'Tencent');
+    assert.equal(OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.hkex.launchStatus, 'blocked');
+    assert.equal(OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.hkex.maxRequestsPerRun, 0);
+  });
+
+  it('records Railway reachability, request/redirect/response bounds, robots, terms, and source decisions', () => {
+    for (const id of ['sse', 'szse'] as const) {
+      const contract = OFFICIAL_EXCHANGE_SOURCE_CONTRACTS[id];
+      assert.equal(contract.launchStatus, 'launched');
+      assert.equal(contract.preflight.environment, 'railway-production');
+      assert.equal(contract.preflight.reachable, true);
+      assert.ok(contract.maxRequestsPerRun > 0 && contract.maxRequestsPerRun <= 4);
+      assert.ok(contract.maxResponseBytes >= 32_000 && contract.maxResponseBytes <= 262_144);
+      assert.equal(contract.redirectPolicy, 'error');
+      assert.equal(contract.documentRetrieval, 'lazy-link-only');
+      assert.match(contract.termsUrl, /^https:/);
+      assert.match(contract.termsNote, /metadata|document bodies/i);
+      assert.match(contract.robots.status, /^(empty|not_published)$/);
+      assert.equal(contract.admissionDecision, 'admitted_metadata_only');
+    }
+
+    const hkex = OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.hkex;
+    assert.equal(hkex.preflight.reachable, true);
+    assert.equal(hkex.admissionDecision, 'rejected');
+    assert.equal(hkex.blockedReason, 'TERMS_PROHIBIT_AUTOMATED_ACCESS');
+    assert.match(hkex.termsUrl, /^https:/);
+  });
+
+  it('classifies the seven owned categories without collision inflation', () => {
+    assert.deepEqual(DISCLOSURE_TYPES, [
+      'halt',
+      'resumption',
+      'earnings_warning',
+      'restructuring',
+      'share_pledge',
+      'investigation',
+      'exchange_risk_alert',
+    ]);
+
+    for (const row of fixture('collisions.json') as Array<{ title: string; expected: string | null }>) {
+      assert.equal(classifyDisclosureTitle(row.title), row.expected, row.title);
+    }
+  });
+
+  it('normalizes official metadata, rejects unreviewed issuers, and never fetches document bodies', () => {
+    const sse = normalizeSseAnnouncements(fixture('sse.json'), { retrievedAt });
+    const szse = normalizeSzseAnnouncements(fixture('szse.json'), { retrievedAt });
+
+    assert.equal(sse.some((row) => row.issuer.securityCode === '999999'), false);
+    assert.equal(sse.every((row) => row.exchange === 'SSE'), true);
+    assert.equal(szse.every((row) => row.exchange === 'SZSE'), true);
+    assert.equal(sse.every((row) => row.documentUrl.startsWith('https://www.sse.com.cn/')), true);
+    assert.equal(szse.every((row) => row.documentUrl.startsWith('https://disc.static.szse.cn/download/')), true);
+    assert.equal(sse.every((row) => !('documentBody' in row)), true);
+    assert.equal(szse.every((row) => !('documentBody' in row)), true);
+    assert.equal(
+      sse.find((row) => row.titleOriginal.includes('业绩说明会'))?.disclosureType,
+      null,
+      'an earnings briefing must not become an earnings warning',
+    );
+  });
+
+  it('deduplicates announcements and applies corrections/cancellations to the correct event with history', () => {
+    const sse = normalizeSseAnnouncements(fixture('sse.json'), { retrievedAt });
+    const szse = normalizeSzseAnnouncements(fixture('szse.json'), { retrievedAt });
+    const riskAlert = sse.find((row) => row.disclosureType === 'exchange_risk_alert');
+    assert.ok(riskAlert);
+    const repeatedOriginal = {
+      ...riskAlert,
+      announcementId: '600519_20260720_W002',
+      documentUrl: 'https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-07-20/600519_20260720_W002.pdf',
+      publicationTime: { value: '2026-07-20', precision: 'day' as const },
+      retrievalTime: '2026-07-20T18:00:00.000Z',
+    };
+    const snapshot = buildChinaCorporateDisclosureSnapshot({
+      generatedAt: retrievedAt,
+      previousSnapshot: null,
+      outcomes: [
+        {
+          sourceId: 'sse',
+          ok: true,
+          requestCount: 4,
+          announcements: [...sse, sse[0], repeatedOriginal],
+        },
+        { sourceId: 'szse', ok: true, requestCount: 1, announcements: szse },
+      ],
+    });
+
+    assert.equal(snapshot.status, 'healthy');
+    assert.deepEqual(
+      [...new Set(snapshot.events.map((event) => event.disclosureType))].sort(),
+      [...DISCLOSURE_TYPES].sort(),
+    );
+    const pledge = snapshot.events.find((event) => event.disclosureType === 'share_pledge');
+    assert.ok(pledge);
+    assert.equal(pledge.announcementId, '600519_20260703_P003');
+    assert.equal(pledge.status, 'cancelled');
+    assert.equal(pledge.history.length, 3);
+    assert.deepEqual(pledge.history.map((revision) => revision.revisionState), [
+      'original',
+      'corrected',
+      'cancelled',
+    ]);
+    assert.equal(new Set(pledge.history.map((revision) => revision.announcementId)).size, 3);
+    assert.equal(pledge.history[0].provenance.claims.supersession.status, 'known');
+    assert.equal(
+      (pledge.history[0].provenance.claims.supersession as { value: { state: string } }).value.state,
+      'superseded',
+    );
+    assert.equal(
+      (pledge.provenance.claims.supersession as { value: { state: string } }).value.state,
+      'cancelled',
+    );
+    const riskEvents = snapshot.events.filter(
+      (event) => event.exchange === 'SSE' && event.disclosureType === 'exchange_risk_alert',
+    );
+    assert.equal(riskEvents.length, 2, 'repeated original notices are separate events');
+    assert.equal(riskEvents.every((event) => event.history.length === 1), true);
+
+    for (const event of snapshot.events) {
+      for (const revision of event.history) {
+        const result = validateDecisionSignalProvenance(revision.provenance);
+        assert.equal(
+          result.ok,
+          true,
+          result.ok ? '' : result.errors.map((issue) => `${issue.path}:${issue.code}`).join(', '),
+        );
+      }
+    }
+  });
+
+  it('keeps full revision history and never invents original lineage for an orphan revision', () => {
+    const sse = normalizeSseAnnouncements(fixture('sse.json'), { retrievedAt });
+    const original = sse.find(
+      (row) => row.disclosureType === 'share_pledge' && row.revisionState === 'original',
+    );
+    const correction = sse.find(
+      (row) => row.disclosureType === 'share_pledge' && row.revisionState === 'corrected',
+    );
+    assert.ok(original);
+    assert.ok(correction);
+
+    const orphan = buildChinaCorporateDisclosureSnapshot({
+      generatedAt: retrievedAt,
+      outcomes: [
+        { sourceId: 'sse', ok: true, requestCount: 4, announcements: [correction] },
+        { sourceId: 'szse', ok: true, requestCount: 1, announcements: [] },
+      ],
+    });
+    const orphanRevision = orphan.events[0].history[0].provenance.claims.revision;
+    assert.equal(orphan.events[0].status, 'corrected');
+    assert.equal(orphan.events[0].lineage.status, 'partial');
+    assert.deepEqual(orphanRevision, {
+      status: 'known',
+      value: {
+        vintageId: `sse:${correction.announcementId}`,
+        sequence: 2,
+        state: 'corrected',
+      },
+    });
+    assert.equal(validateDecisionSignalProvenance(orphan.events[0].provenance).ok, true);
+
+    const revisions = [
+      original,
+      ...Array.from({ length: 11 }, (_, index) => ({
+        ...correction,
+        announcementId: `600519_202607${String(index + 2).padStart(2, '0')}_P${String(index + 2).padStart(3, '0')}`,
+        documentUrl: `https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-07-${String(index + 2).padStart(2, '0')}/600519_revision_${index + 2}.pdf`,
+        publicationTime: {
+          value: `2026-07-${String(index + 2).padStart(2, '0')}`,
+          precision: 'day' as const,
+        },
+        retrievalTime: `2026-07-${String(index + 2).padStart(2, '0')}T18:00:00.000Z`,
+      })),
+    ];
+    const fullHistory = buildChinaCorporateDisclosureSnapshot({
+      generatedAt: '2026-07-25T19:00:00.000Z',
+      outcomes: [
+        { sourceId: 'sse', ok: true, requestCount: 4, announcements: revisions },
+        { sourceId: 'szse', ok: true, requestCount: 1, announcements: [] },
+      ],
+    });
+    const event = fullHistory.events[0];
+    assert.equal(event.history.length, 12);
+    assert.equal(event.history[0].announcementId, original.announcementId);
+    assert.match(event.id, new RegExp(`${original.announcementId}$`));
+    assert.equal(
+      event.history.every((revision) => validateDecisionSignalProvenance(revision.provenance).ok),
+      true,
+    );
+  });
+
+  it('degrades sources independently and retains last-good events for a failed source', () => {
+    const first = buildChinaCorporateDisclosureSnapshot({
+      generatedAt: retrievedAt,
+      previousSnapshot: null,
+      outcomes: [
+        {
+          sourceId: 'sse',
+          ok: true,
+          requestCount: 4,
+          announcements: normalizeSseAnnouncements(fixture('sse.json'), { retrievedAt }),
+        },
+        {
+          sourceId: 'szse',
+          ok: true,
+          requestCount: 1,
+          announcements: normalizeSzseAnnouncements(fixture('szse.json'), { retrievedAt }),
+        },
+      ],
+    });
+    const second = buildChinaCorporateDisclosureSnapshot({
+      generatedAt: '2026-07-25T11:00:00.000Z',
+      previousSnapshot: first,
+      outcomes: [
+        { sourceId: 'sse', ok: false, requestCount: 1, errorCode: 'TIMEOUT' },
+        { sourceId: 'szse', ok: true, requestCount: 1, announcements: [] },
+      ],
+    });
+
+    assert.equal(second.status, 'degraded');
+    assert.equal(second.events.some((event) => event.exchange === 'SSE'), true);
+    assert.equal(second.sources.find((source) => source.id === 'sse')?.transportStatus, 'error');
+    assert.equal(second.sources.find((source) => source.id === 'sse')?.lastSuccessAt, retrievedAt);
+    assert.equal(second.sources.find((source) => source.id === 'szse')?.transportStatus, 'fresh');
+    assert.equal(second.sources.find((source) => source.id === 'hkex')?.launchStatus, 'blocked');
+
+    const totalOutage = buildChinaCorporateDisclosureSnapshot({
+      generatedAt: '2026-07-25T12:00:00.000Z',
+      previousSnapshot: first,
+      outcomes: [
+        { sourceId: 'sse', ok: false, requestCount: 4, errorCode: 'TIMEOUT' },
+        { sourceId: 'szse', ok: false, requestCount: 1, errorCode: 'TIMEOUT' },
+      ],
+    });
+    assert.equal(totalOutage.events.length > 0, true);
+    assert.equal(totalOutage.status, 'unavailable');
+    assert.equal(validateChinaCorporateDisclosureSnapshot(totalOutage), false);
+  });
+
+  it('enforces response bounds and the exact metadata request budget', async () => {
+    await assert.rejects(
+      () => readBoundedJsonResponse(
+        new Response(JSON.stringify({ payload: 'x'.repeat(256) })),
+        64,
+      ),
+      /RESPONSE_TOO_LARGE/,
+    );
+
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    const fetchFn = async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      calls.push({ url, init });
+      if (url.includes('query.sse.com.cn')) {
+        const productId = new URL(url).searchParams.get('productId');
+        const payload = productId === '600519' ? fixture('sse.json') : { pageHelp: { total: 0 }, result: [] };
+        return new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (url.includes('www.szse.cn')) {
+        return new Response(JSON.stringify(fixture('szse.json')), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      throw new Error(`unexpected fetch ${url}`);
+    };
+
+    const snapshot = await fetchChinaCorporateDisclosureSnapshot({
+      fetchFn,
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+    });
+    assert.equal(snapshot.status, 'healthy');
+    const sseCalls = calls.filter((call) => call.url.includes('query.sse.com.cn'));
+    assert.equal(sseCalls.length, 4);
+    assert.equal(calls.filter((call) => call.url.includes('www.szse.cn')).length, 1);
+    assert.equal(calls.every((call) => call.init?.redirect === 'error'), true);
+    assert.equal(calls.some((call) => /\.pdf/i.test(call.url)), false);
+    const firstSseUrl = new URL(sseCalls[0].url);
+    assert.equal(
+      Date.parse(firstSseUrl.searchParams.get('endDate')!)
+        - Date.parse(firstSseUrl.searchParams.get('beginDate')!),
+      90 * 86_400_000,
+    );
+
+    const partialFetchFn = async (input: string | URL | Request, init?: RequestInit) => {
+      const url = String(input);
+      if (
+        url.includes('query.sse.com.cn')
+        && new URL(url).searchParams.get('productId') === '601318'
+      ) {
+        throw Object.assign(new Error('issuer request timed out'), { name: 'TimeoutError' });
+      }
+      return fetchFn(input, init);
+    };
+    const partial = await fetchChinaCorporateDisclosureSnapshot({
+      fetchFn: partialFetchFn,
+      now: Date.parse('2026-07-25T11:00:00.000Z'),
+      previousSnapshot: snapshot,
+      onDecision: () => {},
+    });
+    const sseState = partial.sources.find((source) => source.id === 'sse');
+    assert.equal(partial.status, 'degraded');
+    assert.equal(sseState?.requestCount, 4);
+    assert.equal(sseState?.transportStatus, 'error');
+    assert.equal(sseState?.contentStatus, 'partial');
+    assert.equal(partial.events.some((event) => event.exchange === 'SSE'), true);
+
+    const saturatedCalls: Array<string> = [];
+    const saturatedDecisions: Array<{ sourceId: string; reason?: string }> = [];
+    const saturated = await fetchChinaCorporateDisclosureSnapshot({
+      now: Date.parse('2026-07-25T12:00:00.000Z'),
+      previousSnapshot: snapshot,
+      onDecision: (decision) => saturatedDecisions.push(decision),
+      fetchFn: async (input) => {
+        const url = String(input);
+        saturatedCalls.push(url);
+        if (url.includes('query.sse.com.cn')) {
+          const productId = new URL(url).searchParams.get('productId');
+          const payload = productId === '600519'
+            ? { ...fixture('sse.json'), pageHelp: { pageNo: 1, pageSize: 25, total: 26 } }
+            : { pageHelp: { pageNo: 1, pageSize: 25, total: 0 }, result: [] };
+          return new Response(JSON.stringify(payload), { status: 200 });
+        }
+        return new Response(JSON.stringify({ ...fixture('szse.json'), announceCount: 51 }), {
+          status: 200,
+        });
+      },
+    });
+    assert.equal(saturatedCalls.length, 5);
+    assert.equal(saturated.status, 'degraded');
+    assert.equal(saturated.sources.find((source) => source.id === 'sse')?.transportStatus, 'fresh');
+    assert.equal(saturated.sources.find((source) => source.id === 'sse')?.contentStatus, 'partial');
+    assert.equal(saturated.sources.find((source) => source.id === 'szse')?.contentStatus, 'partial');
+    assert.equal(
+      saturatedDecisions.filter((decision) => decision.reason === 'PAGE_LIMIT_REACHED').length,
+      2,
+    );
+  });
+
+  it('rejects malformed HTTP-200 exchange envelopes instead of refreshing stale content', async () => {
+    assert.throws(
+      () => normalizeSseAnnouncements({ pageHelp: { total: 0 } }, { retrievedAt }),
+      /MALFORMED_RESPONSE/,
+    );
+    assert.throws(
+      () => normalizeSzseAnnouncements({ announceCount: 0 }, { retrievedAt }),
+      /MALFORMED_RESPONSE/,
+    );
+
+    const previousSnapshot = buildChinaCorporateDisclosureSnapshot({
+      generatedAt: retrievedAt,
+      outcomes: [
+        {
+          sourceId: 'sse',
+          ok: true,
+          requestCount: 4,
+          announcements: normalizeSseAnnouncements(fixture('sse.json'), { retrievedAt }),
+        },
+        {
+          sourceId: 'szse',
+          ok: true,
+          requestCount: 1,
+          announcements: normalizeSzseAnnouncements(fixture('szse.json'), { retrievedAt }),
+        },
+      ],
+    });
+    const malformed = await fetchChinaCorporateDisclosureSnapshot({
+      now: Date.parse('2026-07-25T13:00:00.000Z'),
+      previousSnapshot,
+      onDecision: () => {},
+      fetchFn: async (input) => {
+        const url = String(input);
+        if (url.includes('query.sse.com.cn')) {
+          return new Response(JSON.stringify({ pageHelp: { total: 0 } }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ announceCount: 0, data: [] }), { status: 200 });
+      },
+    });
+    const sseState = malformed.sources.find((source) => source.id === 'sse');
+    assert.equal(malformed.status, 'degraded');
+    assert.equal(sseState?.transportStatus, 'error');
+    assert.equal(sseState?.contentStatus, 'stale');
+    assert.equal(sseState?.errorCode, 'MALFORMED_RESPONSE');
+    assert.equal(malformed.events.some((event) => event.exchange === 'SSE'), true);
+  });
+
+  it('uses successful query coverage to keep a healthy quiet window current', () => {
+    assert.deepEqual(
+      chinaCorporateDisclosureContentMeta({
+        status: 'healthy',
+        coverageThrough: '2026-07-25',
+        events: [],
+      }),
+      {
+        newestItemAt: Date.parse('2026-07-25'),
+        oldestItemAt: Date.parse('2026-07-25'),
+      },
+    );
+    assert.equal(
+      chinaCorporateDisclosureContentMeta({
+        status: 'degraded',
+        coverageThrough: null,
+        events: [],
+      }),
+      null,
+    );
+  });
+});

@@ -139,6 +139,7 @@ const BOOTSTRAP_KEYS = {
   econCalendar:      'economic:econ-calendar:v1',
   chinaMacro:        'economic:china:macro:v1',
   chinaReleaseCalendar: 'economic:china:release-calendar:v1',
+  chinaCorporateDisclosures: 'market:china:corporate-disclosures:v1',
   cotPositioning:    'market:cot:v1',
   hyperliquidFlow:   'market:hyperliquid:flow:v1',
   crudeInventories:  'economic:crude-inventories:v1',
@@ -384,6 +385,7 @@ const SEED_META = {
   macroSignals:     { key: 'seed-meta:economic:macro-signals',    maxStaleMin: 150 }, // seed-economy afterPublish-derived stress/macro key
   chinaMacro:       { key: 'seed-meta:economic:china-macro', maxStaleMin: 4_320 }, // 36h gate; 72h tolerates one missed run
   chinaReleaseCalendar: { key: 'seed-meta:economic:china-release-calendar', maxStaleMin: 4_320 },
+  chinaCorporateDisclosures: { key: 'seed-meta:market:china-corporate-disclosures', maxStaleMin: 180 },
   energyPrices:     { key: 'seed-meta:economic:energy-prices',    maxStaleMin: 150 }, // seed-economy primary runSeed resource
   bisPolicy:        { key: 'seed-meta:economic:bis',              maxStaleMin: 10080 }, // runSeed('economic','bis',...) writes seed-meta:economic:bis
   // seed-bis-extended.mjs is a child-process section spawned by
@@ -775,6 +777,10 @@ const ZERO_RECORD_DATA_OK_KEYS = new Set([
   // sit in the broad set because their data key can be wholly absent on quiet
   // (writeSeedMeta-only path).
   'outages',
+  // Official disclosure categories are sparse. The canonical snapshot always
+  // exists after a successful query, but a quiet 90-day window can validly
+  // contain zero owned-category events.
+  'chinaCorporateDisclosures',
 ]);
 
 // Cascade groups: if any key in the group has data, all empty siblings are OK.
