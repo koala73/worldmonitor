@@ -186,7 +186,7 @@ test that has never been observed failing has not been shown to test anything.
 - #5600 — the P0 live purchase repro that surfaced it
 - #5617 — open follow-up: the durable Convex record still cannot distinguish a
   blocked step from a voluntary skip
-- #5534 — the origin feature that introduced the wizard and its mount-time
+- PR #5534 — the origin feature that introduced the wizard and its mount-time
   blocked state
 - #5608 — same theme in a different subsystem: premium panels rendering a 403
   as a terminal "upgrade" prompt when the client's own entitlement says Pro
