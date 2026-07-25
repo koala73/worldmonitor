@@ -125,6 +125,10 @@ async function openFlow(page: Page, withOpeners: boolean): Promise<void> {
       options.openWidgetBuilder = () => {};
       options.openAiAnalyst = () => {};
       options.openMcpClients = () => {};
+      // Inject the retired opener too, so the "no apiKeys pointer" assertion is
+      // about buildPowerExtra dropping it rather than about this harness never
+      // supplying it — add() skips any pointer whose opener is absent (#5607).
+      options.openApiKeys = () => {};
     }
     void (mod.openProActivationFlow as (o: unknown) => Promise<unknown>)(options);
   }, withOpeners);

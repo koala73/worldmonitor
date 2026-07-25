@@ -75,11 +75,15 @@ async function loadController(): Promise<typeof import('../src/app/pro-activatio
     `],
     ['entitlements-stub', `
       export function getEntitlementState() { return globalThis.__activationEntitlement; }
-      // Mirrors production hasFeature(): null state → false, and a missing
-      // feature flag coerces to false (fail-closed for legacy snapshots).
+      // Mirrors production hasFeature() EXACTLY (src/services/entitlements.ts):
+      // null state → false, and an absent flag coerces to false. Deliberately no
+      // optional chaining on \`.features\` — production indexes it directly, so a
+      // fixture that omits the (required) field must throw here too rather than
+      // silently reporting false and hiding a real crash.
       export function hasFeature(flag) {
         const state = globalThis.__activationEntitlement;
-        return state === null || state === undefined ? false : Boolean(state.features?.[flag]);
+        if (state === null || state === undefined) return false;
+        return Boolean(state.features[flag]);
       }
       export function onEntitlementChange(callback) {
         globalThis.__activationEntitlementListeners.add(callback);
@@ -167,7 +171,14 @@ function installBrowserState(options: { fastTimers?: boolean } = {}): void {
     __activationAuth: { user: null, isPending: false },
     __activationAuthListeners: new Set<(state: unknown) => void>(),
     __activationSubscription: null,
-    __activationEntitlement: { planKey: 'free', validUntil: Date.now() + 60_000 },
+    // Production never yields an EntitlementState without `features` — the Convex
+    // query returns FREE_TIER_DEFAULTS or a catalog-merged row — so every fixture
+    // carries it, matching what hasFeature()/hasTier() index directly.
+    __activationEntitlement: {
+      planKey: 'free',
+      validUntil: Date.now() + 60_000,
+      features: { tier: 0, apiAccess: false, mcpAccess: false },
+    },
     __activationEntitlementListeners: new Set<() => void>(),
     __activationSubscriptionListeners: new Set<() => void>(),
     __activationOpenedFor: [] as string[],
@@ -251,6 +262,7 @@ describe('ProActivationController auth lifecycle', () => {
         __activationEntitlement: {
           planKey: 'pro_monthly',
           validUntil: Date.now() + 30 * 24 * 60 * 60 * 1000,
+          features: { tier: 1, apiAccess: false, mcpAccess: true },
         },
       });
       const authState = (globalThis as unknown as { __activationAuth: unknown }).__activationAuth;
@@ -561,6 +573,33 @@ describe('ProActivationController power-step surface wiring', () => {
       settingsOpens,
       ['mcp-clients'],
       'the pointer must open the MCP Clients tab, not the API Keys upsell',
+    );
+  });
+
+  it('falls back to plain settings when mcpAccess lapses between build and click', async () => {
+    // The finish-setup chip replays a captured options object, so the gap
+    // between building the opener and invoking it can span an entitlement
+    // change. A build-time-only check would deep-link to a tab UnifiedSettings
+    // has since stopped rendering, leaving the modal with no active panel.
+    const { options, settingsOpens } = await captureFlowOptions('user-lapsed-midflight', {
+      apiAccess: false,
+      mcpAccess: true,
+    });
+    assert.equal(typeof options.openMcpClients, 'function');
+
+    Object.assign(globalThis, {
+      __activationEntitlement: {
+        planKey: 'pro_monthly',
+        validUntil: Date.now() + 30 * 24 * 60 * 60 * 1000,
+        features: { tier: 1, apiAccess: false, mcpAccess: false },
+      },
+    });
+
+    (options.openMcpClients as () => void)();
+    assert.deepEqual(
+      settingsOpens,
+      ['settings'],
+      'a lapsed mcpAccess must land on a rendered tab, not the vanished MCP panel',
     );
   });
 
