@@ -6990,11 +6990,12 @@ body.playback-mode .status-dot {
 
 .market-chart-modal {
   position: relative;
+  width: 566px;
+  max-width: 100%;
   background: var(--bg-panel);
   border: 1px solid var(--border-strong);
   border-radius: 8px;
   padding: 20px 22px 16px;
-  max-width: 95vw;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
 }
 
@@ -7049,7 +7050,14 @@ body.playback-mode .status-dot {
 }
 
 .market-chart-canvas {
+  width: 100%;
   line-height: 0;
+}
+
+.market-chart-canvas .terminal-chart {
+  display: block;
+  width: 100%;
+  height: auto;
 }
 
 .market-info {

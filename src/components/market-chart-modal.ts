@@ -11,24 +11,26 @@ import { formatPrice, formatChange, getChangeClass } from '@/utils';
 import { escapeHtml } from '@/utils/sanitize';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { terminalChart } from '@/utils/terminal-chart';
+import {
+  createMarketChartFocusController,
+  type MarketChartFocusController,
+} from './market-chart-interactions';
 
 let modalEl: HTMLElement | null = null;
+let focusController: MarketChartFocusController | null = null;
 
-function escHandler(e: KeyboardEvent): void {
-  if (e.key === 'Escape') closeMarketChartModal();
+function removeMarketChartModal(restoreFocus: boolean): void {
+  modalEl?.remove();
+  modalEl = null;
+  focusController?.deactivate({ restoreFocus });
+  focusController = null;
 }
 
 export function closeMarketChartModal(): void {
-  if (modalEl) {
-    modalEl.remove();
-    modalEl = null;
-    document.removeEventListener('keydown', escHandler);
-  }
+  removeMarketChartModal(true);
 }
 
 export function openMarketChartModal(stock: MarketData): void {
-  closeMarketChartModal();
-
   const chart = terminalChart(stock.sparkline, {
     change: stock.change,
     width: 520,
@@ -37,6 +39,16 @@ export function openMarketChartModal(stock: MarketData): void {
     ariaLabel: t('components.markets.chart.title', { symbol: stock.display }),
   });
   if (!chart) return; // no plottable series
+
+  // If a caller replaces an open chart, preserve the original row as the
+  // eventual focus destination instead of briefly focusing it between dialogs.
+  const activeElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const returnFocus = focusController?.returnFocus?.isConnected
+    ? focusController.returnFocus
+    : activeElement?.isConnected
+      ? activeElement
+      : null;
+  removeMarketChartModal(false);
 
   modalEl = document.createElement('div');
   modalEl.className = 'market-chart-overlay';
@@ -50,7 +62,7 @@ export function openMarketChartModal(stock: MarketData): void {
     trustedHtml(
       `
       <div class="market-chart-modal">
-        <button class="market-chart-close" aria-label="${t('components.markets.chart.close')}">
+        <button type="button" class="market-chart-close" aria-label="${t('components.markets.chart.close')}">
           <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M15 5L5 15M5 5l10 10" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         </button>
         <div class="market-chart-head">
@@ -73,12 +85,10 @@ export function openMarketChartModal(stock: MarketData): void {
   modalEl.addEventListener('click', (e) => {
     if (e.target === modalEl) closeMarketChartModal();
   });
-  modalEl.querySelector('.market-chart-close')?.addEventListener('click', closeMarketChartModal);
-  document.addEventListener('keydown', escHandler);
+  const closeButton = modalEl.querySelector<HTMLElement>('.market-chart-close');
+  closeButton?.addEventListener('click', closeMarketChartModal);
+  focusController = createMarketChartFocusController(modalEl, closeMarketChartModal, returnFocus);
 
   document.body.appendChild(modalEl);
-
-  // Move focus into the dialog so keyboard/screen-reader users are contained in
-  // the overlay (and Esc works) instead of leaving focus on the market row.
-  (modalEl.querySelector('.market-chart-close') as HTMLElement | null)?.focus();
+  focusController.activate(closeButton);
 }

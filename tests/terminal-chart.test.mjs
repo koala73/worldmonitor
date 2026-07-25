@@ -49,7 +49,28 @@ describe('terminalChart', () => {
     const svg = terminalChart([10, 30, 20]);
     assert.match(svg, /HI 30/);
     assert.match(svg, /LO 10/);
-    assert.match(svg, />20</); // last value is the closing point
+    assert.match(svg, /LAST 20/);
+  });
+
+  it('combines labels that share an exact high, low, or flat-series baseline', () => {
+    assert.match(terminalChart([1, 2]), /HI\/LAST 2/);
+    assert.match(terminalChart([2, 1]), /LO\/LAST 1/);
+
+    const flat = terminalChart([7, 7, 7]);
+    assert.match(flat, /HI\/LO\/LAST 7/);
+    assert.equal([...flat.matchAll(/<text /g)].length, 1);
+    assert.match(flat, /M8\.0,99\.0 L207\.0,99\.0 L406\.0,99\.0/);
+  });
+
+  it('keeps near-extreme axis labels on distinct baselines', () => {
+    const svg = terminalChart([0, 100, 99]);
+    const baselines = [...svg.matchAll(/<text x="[^"]+" y="([^"]+)"/g)]
+      .map((match) => Number(match[1]))
+      .sort((a, b) => a - b);
+
+    assert.equal(baselines.length, 3);
+    assert.ok(baselines[1] - baselines[0] >= 11);
+    assert.ok(baselines[2] - baselines[1] >= 11);
   });
 
   it('honors width/height and a custom formatter', () => {

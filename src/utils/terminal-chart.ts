@@ -60,14 +60,16 @@ export function terminalChart(data: number[] | undefined, opts: TerminalChartOpt
 
   const min = Math.min(...series);
   const max = Math.max(...series);
-  const range = max - min || 1;
+  const range = max - min;
   const first = series[0]!; // guarded: series.length >= 2
   const last = series[series.length - 1]!;
   const rising = opts.change != null ? opts.change >= 0 : last >= first;
   const color = rising ? 'var(--green)' : 'var(--red)';
 
   const x = (i: number): number => marginL + (i / (series.length - 1)) * chartW;
-  const y = (v: number): number => marginT + (1 - (v - min) / range) * chartH;
+  const y = range === 0
+    ? (): number => marginT + chartH / 2
+    : (v: number): number => marginT + (1 - (v - min) / range) * chartH;
 
   // Line + closed area path (area drops to the chart baseline for the fill).
   const linePts = series.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`);
@@ -86,10 +88,50 @@ export function terminalChart(data: number[] | undefined, opts: TerminalChartOpt
     .join('');
 
   const labelX = marginL + chartW + 6;
-  const labels =
-    `<text x="${labelX}" y="${(y(max) + 3).toFixed(1)}" fill="var(--text-dim)" font-size="9">HI ${fmt(max)}</text>` +
-    `<text x="${labelX}" y="${(y(last) + 3).toFixed(1)}" fill="${color}" font-size="9" font-weight="600">${fmt(last)}</text>` +
-    `<text x="${labelX}" y="${(y(min) + 3).toFixed(1)}" fill="var(--text-dim)" font-size="9">LO ${fmt(min)}</text>`;
+  const labelTop = marginT + 3;
+  const labelBottom = marginT + chartH + 3;
+  const labelSpecs = range === 0
+    ? [{ y: y(last) + 3, text: `HI/LO/LAST ${fmt(last)}`, fill: color, emphasis: true }]
+    : [
+        {
+          y: y(max) + 3,
+          text: `${last === max ? 'HI/LAST' : 'HI'} ${fmt(max)}`,
+          fill: last === max ? color : 'var(--text-dim)',
+          emphasis: last === max,
+        },
+        ...(last !== max && last !== min
+          ? [{ y: y(last) + 3, text: `LAST ${fmt(last)}`, fill: color, emphasis: true }]
+          : []),
+        {
+          y: y(min) + 3,
+          text: `${last === min ? 'LO/LAST' : 'LO'} ${fmt(min)}`,
+          fill: last === min ? color : 'var(--text-dim)',
+          emphasis: last === min,
+        },
+      ];
+  labelSpecs.sort((a, b) => a.y - b.y);
+
+  // Preserve readable baselines when LAST is very close to HI or LO. Exact
+  // coincidences are combined above; near-coincidences are separated here.
+  const labelGap = labelSpecs.length > 1
+    ? Math.min(11, (labelBottom - labelTop) / (labelSpecs.length - 1))
+    : 0;
+  for (let index = 1; index < labelSpecs.length; index++) {
+    labelSpecs[index]!.y = Math.max(labelSpecs[index]!.y, labelSpecs[index - 1]!.y + labelGap);
+  }
+  const finalLabel = labelSpecs[labelSpecs.length - 1]!;
+  if (finalLabel.y > labelBottom) {
+    finalLabel.y = labelBottom;
+    for (let index = labelSpecs.length - 2; index >= 0; index--) {
+      labelSpecs[index]!.y = Math.min(labelSpecs[index]!.y, labelSpecs[index + 1]!.y - labelGap);
+    }
+  }
+  const labels = labelSpecs
+    .map(
+      (label) =>
+        `<text x="${labelX}" y="${label.y.toFixed(1)}" fill="${label.fill}" font-size="9"${label.emphasis ? ' font-weight="600"' : ''}>${label.text}</text>`,
+    )
+    .join('');
 
   const lastDot = `<circle cx="${x(series.length - 1).toFixed(1)}" cy="${y(last).toFixed(1)}" r="2.5" fill="${color}"/>`;
 

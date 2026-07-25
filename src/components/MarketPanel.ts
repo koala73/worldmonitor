@@ -7,10 +7,10 @@ import { miniSparkline } from '@/utils/sparkline';
 import { SITE_VARIANT } from '@/config';
 import { createWatchlistButton } from './watchlist-modal';
 import { openMarketChartModal } from './market-chart-modal';
-
-function hasPlottableSeries(stock: MarketData): boolean {
-  return Array.isArray(stock.sparkline) && stock.sparkline.filter((v) => Number.isFinite(v)).length >= 2;
-}
+import {
+  bindMarketChartActivation,
+  getMarketChartRowAttributes,
+} from './market-chart-interactions';
 
 export class MarketPanel extends Panel {
   private _markets: MarketData[] = [];
@@ -21,23 +21,7 @@ export class MarketPanel extends Panel {
 
     // Delegated once on the persistent content element (renderMarkets only swaps
     // innerHTML): click or Enter/Space on a plottable ticker opens its terminal chart.
-    const openFromEvent = (target: HTMLElement): void => {
-      const row = target.closest<HTMLElement>('[data-market-chart]');
-      if (!row) return;
-      const idx = Number(row.dataset.marketChart);
-      const stock = this._markets[idx];
-      if (stock) openMarketChartModal(stock);
-    };
-    this.content.addEventListener('click', (e) => openFromEvent(e.target as HTMLElement));
-    this.content.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        const row = (e.target as HTMLElement).closest('[data-market-chart]');
-        if (row) {
-          e.preventDefault();
-          openFromEvent(e.target as HTMLElement);
-        }
-      }
-    });
+    bindMarketChartActivation(this.content, () => this._markets, openMarketChartModal);
   }
 
   public renderMarkets(data: MarketData[], rateLimited?: boolean): void {
@@ -49,10 +33,11 @@ export class MarketPanel extends Panel {
     this._markets = data;
     const html = data
       .map((stock, idx) => {
-        const clickable = hasPlottableSeries(stock);
-        const attrs = clickable
-          ? ` class="market-item market-item-clickable" data-market-chart="${idx}" role="button" tabindex="0" aria-label="${t('components.markets.chart.title', { symbol: escapeHtml(stock.display) })}"`
-          : ' class="market-item"';
+        const attrs = getMarketChartRowAttributes(
+          stock,
+          idx,
+          t('components.markets.chart.title', { symbol: stock.display }),
+        );
         return `
       <div${attrs}>
         <div class="market-info">
