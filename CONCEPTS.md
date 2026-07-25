@@ -142,7 +142,11 @@ The composed state in which a paying subscriber receives the daily AI brief off-
 
 ### Activation Interstitial
 
-The day-0 post-checkout flow shown to a new Pro subscriber once the payment-to-entitlement settling window resolves: a short sequence of one-click, individually-skippable confirms that wire premium features — the Brief Loop first — rather than teach them. Defined against two constraints from production data: activation that does not happen on day 0 essentially never happens, and nothing may activate without an explicit per-item confirm. Distinct from a tour (education, no state change) and from a persistent checklist (dashboard residue; the interstitial leaves at most a dismissible finish-setup affordance). See also: Brief Loop, Billing UX State.
+The day-0 post-checkout flow shown to a new Pro subscriber once the payment-to-entitlement settling window resolves: a short sequence of one-click, individually-skippable confirms that wire premium features — the Brief Loop first — rather than teach them. Defined against two constraints from production data: activation that does not happen on day 0 essentially never happens, and nothing may activate without an explicit per-item confirm. Distinct from a tour (education, no state change) and from a persistent checklist (dashboard residue; the interstitial leaves at most a dismissible finish-setup affordance). See also: Brief Loop, Activation Step State, Billing UX State.
+
+### Activation Step State
+
+The disposition of one step in the Activation Interstitial, in two layers: a declared state the step opens with — confirmable, already-done, blocked (the platform will refuse), or unavailable (the device cannot do it) — and a transient overlay for the step the user is currently on, in-flight while a confirm runs and failed when it did not work. The load-bearing distinction is terminal versus retryable, because the failed state is what puts a "Try again" button on screen: a refusal no retry can clear — a denied browser notification permission, which browsers never re-prompt for — must resolve to blocked and show the platform's own out-of-app remedy instead. A step that ends blocked resolves as skipped rather than failed, so the summary never claims a failure that was never attempted; the cost is that a platform refusal is otherwise indistinguishable from disinterest and needs its own event to stay countable. See also: Activation Interstitial, Billing UX State.
 
 ## Shipping Gate
 
