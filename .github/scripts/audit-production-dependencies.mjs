@@ -23,7 +23,13 @@ export const BASELINE_ADVISORIES_BY_LOCKFILE = {
   // semver-major across both chains; baselined until the parents bump. The
   // same reasoning covers blog-site below: sharp runs only at Astro build
   // time over repo-owned images, and the fix requires astro@7 (semver-major).
-  'package-lock.json': ['GHSA-f88m-g3jw-g9cj'],
+  // GHSA-mh99-v99m-4gvg (brace-expansion OOM from unbounded brace patterns)
+  // reaches root only through Clerk's optional Solana wallet -> react-native ->
+  // babel-jest/test-exclude tooling chain. It never executes in the Vite web
+  // bundle or API runtime. The sole patched release, brace-expansion 5.0.8,
+  // changes the CommonJS export shape and breaks this chain's minimatch 3.x;
+  // keep the advisory baselined until the upstream parents move to minimatch 10.
+  'package-lock.json': ['GHSA-f88m-g3jw-g9cj', 'GHSA-mh99-v99m-4gvg'],
   'consumer-prices-core/package-lock.json': [],
   'blog-site/package-lock.json': ['GHSA-f88m-g3jw-g9cj'],
   // GHSA-395f-4hp3-45gv (shell-quote quadratic-complexity DoS in parse()) reaches
@@ -41,7 +47,12 @@ export const BASELINE_ADVISORIES_BY_LOCKFILE = {
   // which drags a public/pro/ bundle rebuild into a lockfile-hygiene change —
   // same trade-off as GHSA-395f below. Drop when the pin next bumps.
   'pro-test/package-lock.json': ['GHSA-qjx8-664m-686j', 'GHSA-w24r-5266-9c3c', 'GHSA-395f-4hp3-45gv', 'GHSA-r28c-9q8g-f849'],
-  'scripts/package-lock.json': [],
+  // GHSA-mh99-v99m-4gvg reaches scripts only through ExcelJS's archive
+  // dependencies. ExcelJS is used by operator-run seed/backfill scripts with
+  // exact workbook paths; no request input reaches a minimatch brace pattern.
+  // Forcing brace-expansion 5.0.8 breaks minimatch 3.x/5.x's callable require,
+  // while replacing ExcelJS's archiver stack requires unrelated major upgrades.
+  'scripts/package-lock.json': ['GHSA-mh99-v99m-4gvg'],
   'docker/runtime-package-lock.json': [],
 };
 
