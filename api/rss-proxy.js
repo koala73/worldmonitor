@@ -195,7 +195,7 @@ export default async function handler(req, ctx) {
         try {
           relayResponse = await fetchViaRailway(feedUrl, timeout);
         } catch (relayError) {
-          console.error('RSS proxy relay fallback error:', feedUrl, relayError.message);
+          console.error('RSS proxy relay fallback error:', feedUrl, relayError instanceof Error ? relayError.message : String(relayError));
         }
         response = relayResponse;
         usedRelay = !!response;
@@ -210,7 +210,8 @@ export default async function handler(req, ctx) {
         try {
           relayResponse = await fetchViaRailway(feedUrl, timeout);
         } catch (relayError) {
-          console.error('RSS proxy relay retry error:', feedUrl, relayError.message);
+          console.error('RSS proxy relay retry error:', feedUrl, relayError instanceof Error ? relayError.message : String(relayError));
+          captureSilentError(relayError, { tags: { route: 'api/rss-proxy', step: 'relay-retry', feed: feedUrl }, ctx });
         }
         if (relayResponse?.ok) {
           response = relayResponse;
