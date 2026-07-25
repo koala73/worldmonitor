@@ -33,6 +33,11 @@ export const OFFICIAL_EXCHANGE_SOURCE_CONTRACTS = Object.freeze({
     maxResponseBytes: 262_144,
     redirectPolicy: 'error',
     documentRetrieval: 'lazy-link-only',
+    // Intentionally do not chase additional pages: the issue contract keeps
+    // metadata polling bounded. A saturated first page stays visibly degraded
+    // through PAGE_LIMIT_REACHED until the 90-day query window falls below it.
+    paginationPolicy: 'bounded_first_page',
+    saturationBehavior: 'degraded_on_page_limit',
     launchStatus: 'launched',
     admissionDecision: 'admitted_metadata_only',
     termsUrl: 'https://www.sse.com.cn/home/legal/',
@@ -60,6 +65,10 @@ export const OFFICIAL_EXCHANGE_SOURCE_CONTRACTS = Object.freeze({
     maxResponseBytes: 131_072,
     redirectPolicy: 'error',
     documentRetrieval: 'lazy-link-only',
+    // Same bounded-first-page policy as SSE; saturation is an explicit health
+    // state, not permission to expand the source request budget automatically.
+    paginationPolicy: 'bounded_first_page',
+    saturationBehavior: 'degraded_on_page_limit',
     launchStatus: 'launched',
     admissionDecision: 'admitted_metadata_only',
     termsUrl: 'https://www.szse.cn/application/laws/',
@@ -116,6 +125,7 @@ const CLASSIFICATION_PATTERNS = Object.freeze([
 
 const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_EVENTS = 100;
+const MAX_REVISIONS_PER_EVENT = 20;
 const SSE_PAGE_SIZE = 25;
 const SZSE_PAGE_SIZE = 50;
 const LAUNCHED_SOURCE_FETCHERS = Object.freeze([
@@ -498,8 +508,10 @@ function previousAnnouncements(snapshot) {
   const announcements = [];
   for (const event of Array.isArray(snapshot?.events) ? snapshot.events : []) {
     for (const revision of Array.isArray(event?.history) ? event.history : []) {
+      const revisionSequence = Number(revision?.provenance?.claims?.revision?.value?.sequence);
       announcements.push({
         eventGroupId: event.id,
+        historyTruncated: event.historyTruncated === true,
         sourceId: String(event.exchange).toLowerCase(),
         exchange: event.exchange,
         issuer: event.issuer,
@@ -516,6 +528,9 @@ function previousAnnouncements(snapshot) {
         retrievalTime: revision.retrievalTime,
         effectiveTime: event.effectiveTime,
         confidence: event.confidence,
+        ...(Number.isInteger(revisionSequence) && revisionSequence > 0
+          ? { revisionSequence }
+          : {}),
       });
     }
   }
@@ -559,6 +574,7 @@ function sourceStates(outcomes, previousSnapshot, generatedAt) {
       };
     }
     if (outcome?.partial) {
+      const transportSucceeded = outcome.transportOk === true;
       return {
         id,
         exchange: contract.exchange,
@@ -566,7 +582,7 @@ function sourceStates(outcomes, previousSnapshot, generatedAt) {
         transportStatus: outcome.transportOk ? 'fresh' : 'error',
         contentStatus: 'partial',
         checkedAt: generatedAt,
-        lastSuccessAt: generatedAt,
+        lastSuccessAt: transportSucceeded ? generatedAt : previous?.lastSuccessAt ?? null,
         requestCount: outcome.requestCount,
         errorCode: outcome.errorCode ?? 'PARTIAL_FETCH',
       };
@@ -697,12 +713,18 @@ function buildEvents(announcements, sources, generatedAt) {
     if (!announcement?.disclosureType || !announcement?.announcementId) continue;
     const key = `${announcement.exchange}:${announcement.announcementId}`;
     const existing = deduped.get(key);
-    deduped.set(
-      key,
-      existing?.eventGroupId && !announcement.eventGroupId
-        ? { ...announcement, eventGroupId: existing.eventGroupId }
-        : announcement,
-    );
+    deduped.set(key, existing
+      ? {
+          ...announcement,
+          ...(!announcement.eventGroupId && existing.eventGroupId
+            ? { eventGroupId: existing.eventGroupId }
+            : {}),
+          ...(!announcement.revisionSequence && existing.revisionSequence
+            ? { revisionSequence: existing.revisionSequence }
+            : {}),
+          ...(existing.historyTruncated ? { historyTruncated: true } : {}),
+        }
+      : announcement);
   }
 
   const ordered = [...deduped.values()].sort((left, right) => (
@@ -714,6 +736,7 @@ function buildEvents(announcements, sources, generatedAt) {
   for (const announcement of ordered) {
     let key = announcement.eventGroupId;
     if (!key && announcement.revisionState !== 'original') {
+      const candidateKeys = [];
       for (const [candidateKey, revisions] of groups) {
         const latest = revisions.at(-1);
         if (
@@ -722,9 +745,10 @@ function buildEvents(announcements, sources, generatedAt) {
           && latest.disclosureType === announcement.disclosureType
           && latest.subjectKey === announcement.subjectKey
         ) {
-          key = candidateKey;
+          candidateKeys.push(candidateKey);
         }
       }
+      if (candidateKeys.length === 1) key = candidateKeys[0];
     }
     key ??= `china-disclosure:${announcement.exchange.toLowerCase()}:${announcement.issuer.securityCode}:${announcement.announcementId}`;
     const group = groups.get(key) ?? [];
@@ -733,13 +757,39 @@ function buildEvents(announcements, sources, generatedAt) {
   }
 
   const events = [];
-  for (const revisions of groups.values()) {
+  for (const allRevisions of groups.values()) {
+    const sequences = [];
+    let previousSequence = 0;
+    for (const revision of allRevisions) {
+      const declaredSequence = Number(revision.revisionSequence);
+      const minimumSequence = previousSequence > 0
+        ? previousSequence + 1
+        : revision.revisionState === 'original'
+          ? 1
+          : 2;
+      const sequence = Number.isInteger(declaredSequence) && declaredSequence >= minimumSequence
+        ? declaredSequence
+        : minimumSequence;
+      sequences.push(sequence);
+      previousSequence = sequence;
+    }
+    const historyTruncated = allRevisions.some((revision) => revision.historyTruncated)
+      || allRevisions.length > MAX_REVISIONS_PER_EVENT;
+    const retainedIndexes = allRevisions.length <= MAX_REVISIONS_PER_EVENT
+      ? allRevisions.map((_, index) => index)
+      : [
+          0,
+          ...allRevisions
+            .slice(-(MAX_REVISIONS_PER_EVENT - 1))
+            .map((_, index) => allRevisions.length - (MAX_REVISIONS_PER_EVENT - 1) + index),
+        ];
+    const revisions = retainedIndexes.map((index) => allRevisions[index]);
+    const retainedSequences = retainedIndexes.map((index) => sequences[index]);
     const hasOriginalRevision = revisions[0].revisionState === 'original';
-    const sequenceOffset = hasOriginalRevision ? 0 : 1;
     const history = revisions.map((revision, index) => {
       const provenance = buildProvenance(
         revision,
-        index + 1 + sequenceOffset,
+        retainedSequences[index],
         revisions[index + 1],
         sourceMap.get(revision.sourceId),
         generatedAt,
@@ -787,6 +837,7 @@ function buildEvents(announcements, sources, generatedAt) {
           },
       confidence: latest.confidence,
       history,
+      historyTruncated,
       provenance: latestHistory.provenance,
     });
   }
@@ -845,6 +896,8 @@ export function buildChinaCorporateDisclosureSnapshot({
       maxResponseBytes: contract.maxResponseBytes,
       redirectPolicy: contract.redirectPolicy,
       documentRetrieval: contract.documentRetrieval,
+      ...(contract.paginationPolicy ? { paginationPolicy: contract.paginationPolicy } : {}),
+      ...(contract.saturationBehavior ? { saturationBehavior: contract.saturationBehavior } : {}),
       ...(contract.blockedReason ? { blockedReason: contract.blockedReason } : {}),
     })),
     events,

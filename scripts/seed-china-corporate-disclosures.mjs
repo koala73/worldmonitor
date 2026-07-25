@@ -10,7 +10,7 @@ import {
 loadEnvFile(import.meta.url);
 
 export const CHINA_CORPORATE_DISCLOSURE_TTL_SECONDS = 3 * DAY_MIN * 60;
-export const CHINA_CORPORATE_DISCLOSURE_MAX_STALE_MIN = DAY_MIN;
+export const CHINA_CORPORATE_DISCLOSURE_MAX_STALE_MIN = 180;
 
 export function validateChinaCorporateDisclosureSnapshot(snapshot) {
   if (
@@ -29,6 +29,12 @@ export function validateChinaCorporateDisclosureSnapshot(snapshot) {
 export function chinaCorporateDisclosureContentMeta(snapshot) {
   const tokens = (Array.isArray(snapshot?.events) ? snapshot.events : [])
     .map((event) => event?.publicationTime?.value);
+  // A successful official query establishes the quiet window's content-as-of
+  // time even when it returns no owned-category events. Failed sources retain
+  // only their prior lastSuccessAt, so their content age still advances.
+  for (const source of Array.isArray(snapshot?.sources) ? snapshot.sources : []) {
+    tokens.push(source?.lastSuccessAt);
+  }
   if (snapshot?.status === 'healthy') tokens.push(snapshot?.coverageThrough);
   return tokensToContentMeta(tokens);
 }

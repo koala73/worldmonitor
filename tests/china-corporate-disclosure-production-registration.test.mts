@@ -8,6 +8,9 @@ import {
   DECISION_SIGNAL_PROVENANCE_FAMILY_REGISTRATIONS,
 } from '../shared/decision-signal-provenance';
 import {
+  CHINA_CORPORATE_DISCLOSURE_MAX_STALE_MIN,
+} from '../scripts/seed-china-corporate-disclosures.mjs';
+import {
   CHINA_COVERAGE_ENTRIES,
 } from '../scripts/china-coverage-manifest.mjs';
 import {
@@ -54,7 +57,20 @@ describe('China corporate disclosure production registration (#5577)', () => {
       true,
       'a present zero-event disclosure snapshot is a valid quiet window',
     );
-    assert.match(read('api/seed-health.js'), /'market:china-corporate-disclosures'/);
+    assert.match(
+      read('api/health.js'),
+      /chinaCorporateDisclosures:\s*\{[^}]*maxStaleMin:\s*180/,
+    );
+    assert.match(
+      read('api/seed-health.js'),
+      /'market:china-corporate-disclosures':\s*\{[^}]*intervalMin:\s*90/,
+      'seed-health uses intervalMin * 2, so its 180-minute alarm must match /api/health',
+    );
+    assert.equal(
+      CHINA_CORPORATE_DISCLOSURE_MAX_STALE_MIN,
+      180,
+      'the canonical envelope must publish the same 180-minute freshness budget',
+    );
   });
 
   it('hydrates the MarketPanel without adding final API or MCP composition', () => {

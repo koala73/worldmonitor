@@ -10,6 +10,7 @@ import {
   renderChinaCorporateDisclosureSignals,
   type ChinaCorporateDisclosureSnapshot,
 } from './market-disclosures';
+import { composeMarketPanelContent } from './market-panel-content';
 
 export class MarketPanel extends Panel {
   private _markets: MarketData[] = [];
@@ -34,13 +35,6 @@ export class MarketPanel extends Panel {
 
   private _renderMarketsAndDisclosures(): void {
     const disclosureHtml = renderChinaCorporateDisclosureSignals(this._disclosures);
-    if (this._markets.length === 0 && !disclosureHtml) {
-      this.showRetrying(
-        this._marketsRateLimited ? t('common.rateLimitedMarket') : t('common.failedMarketData'),
-      );
-      return;
-    }
-
     const marketsHtml = this._markets
       .map(
         (stock) => `
@@ -58,13 +52,20 @@ export class MarketPanel extends Panel {
     `
       )
       .join('');
-    const unavailableHtml = this._markets.length === 0
-      ? `<div class="market-data-unavailable">${escapeHtml(
-        this._marketsRateLimited ? t('common.rateLimitedMarket') : t('common.failedMarketData'),
-      )}</div>`
-      : '';
+    const content = composeMarketPanelContent({
+      hasMarkets: this._markets.length > 0,
+      marketsHtml,
+      disclosureHtml,
+      unavailableMessage: this._marketsRateLimited
+        ? t('common.rateLimitedMarket')
+        : t('common.failedMarketData'),
+    });
+    if (content.kind === 'retry') {
+      this.showRetrying(content.message);
+      return;
+    }
     this.setSafeContent(unsafeRawHtml(
-      marketsHtml + unavailableHtml + disclosureHtml,
+      content.html,
       'legacy Panel.setContent() migration',
     ));
   }

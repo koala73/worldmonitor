@@ -60,6 +60,8 @@ describe('official China corporate disclosures (#5577)', () => {
       assert.ok(contract.maxResponseBytes >= 32_000 && contract.maxResponseBytes <= 262_144);
       assert.equal(contract.redirectPolicy, 'error');
       assert.equal(contract.documentRetrieval, 'lazy-link-only');
+      assert.equal(contract.paginationPolicy, 'bounded_first_page');
+      assert.equal(contract.saturationBehavior, 'degraded_on_page_limit');
       assert.match(contract.termsUrl, /^https:/);
       assert.match(contract.termsNote, /metadata|document bodies/i);
       assert.match(contract.robots.status, /^(empty|not_published)$/);
@@ -134,6 +136,16 @@ describe('official China corporate disclosures (#5577)', () => {
     });
 
     assert.equal(snapshot.status, 'healthy');
+    assert.equal(
+      snapshot.sourceDecisions
+        .filter((decision) => decision.launchStatus === 'launched')
+        .every(
+          (decision) => decision.paginationPolicy === 'bounded_first_page'
+            && decision.saturationBehavior === 'degraded_on_page_limit',
+        ),
+      true,
+      'the persisted source decision documents the intentional saturation behavior',
+    );
     assert.deepEqual(
       [...new Set(snapshot.events.map((event) => event.disclosureType))].sort(),
       [...DISCLOSURE_TYPES].sort(),
@@ -164,6 +176,37 @@ describe('official China corporate disclosures (#5577)', () => {
     assert.equal(riskEvents.length, 2, 'repeated original notices are separate events');
     assert.equal(riskEvents.every((event) => event.history.length === 1), true);
 
+    const ambiguousCorrection = {
+      ...riskAlert,
+      announcementId: '600519_20260721_W003',
+      documentUrl: 'https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-07-21/600519_20260721_W003.pdf',
+      publicationTime: { value: '2026-07-21', precision: 'day' as const },
+      retrievalTime: '2026-07-21T18:00:00.000Z',
+      revisionState: 'corrected' as const,
+    };
+    const ambiguous = buildChinaCorporateDisclosureSnapshot({
+      generatedAt: retrievedAt,
+      outcomes: [
+        {
+          sourceId: 'sse',
+          ok: true,
+          requestCount: 4,
+          announcements: [riskAlert, repeatedOriginal, ambiguousCorrection],
+        },
+        { sourceId: 'szse', ok: true, requestCount: 1, announcements: [] },
+      ],
+    });
+    const ambiguousEvent = ambiguous.events.find(
+      (event) => event.announcementId === ambiguousCorrection.announcementId,
+    );
+    assert.ok(ambiguousEvent);
+    assert.equal(
+      ambiguousEvent.history.length,
+      1,
+      'a correction with multiple same-subject candidates must not attach to an arbitrary event',
+    );
+    assert.equal(ambiguousEvent.lineage.status, 'partial');
+
     for (const event of snapshot.events) {
       for (const revision of event.history) {
         const result = validateDecisionSignalProvenance(revision.provenance);
@@ -176,7 +219,7 @@ describe('official China corporate disclosures (#5577)', () => {
     }
   });
 
-  it('keeps full revision history and never invents original lineage for an orphan revision', () => {
+  it('bounds revision history, preserves its original and newest vintages, and never invents lineage', () => {
     const sse = normalizeSseAnnouncements(fixture('sse.json'), { retrievedAt });
     const original = sse.find(
       (row) => row.disclosureType === 'share_pledge' && row.revisionState === 'original',
@@ -209,7 +252,7 @@ describe('official China corporate disclosures (#5577)', () => {
 
     const revisions = [
       original,
-      ...Array.from({ length: 11 }, (_, index) => ({
+      ...Array.from({ length: 30 }, (_, index) => ({
         ...correction,
         announcementId: `600519_202607${String(index + 2).padStart(2, '0')}_P${String(index + 2).padStart(3, '0')}`,
         documentUrl: `https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-07-${String(index + 2).padStart(2, '0')}/600519_revision_${index + 2}.pdf`,
@@ -221,20 +264,45 @@ describe('official China corporate disclosures (#5577)', () => {
       })),
     ];
     const fullHistory = buildChinaCorporateDisclosureSnapshot({
-      generatedAt: '2026-07-25T19:00:00.000Z',
+      generatedAt: '2026-08-01T19:00:00.000Z',
       outcomes: [
         { sourceId: 'sse', ok: true, requestCount: 4, announcements: revisions },
         { sourceId: 'szse', ok: true, requestCount: 1, announcements: [] },
       ],
     });
     const event = fullHistory.events[0];
-    assert.equal(event.history.length, 12);
+    assert.equal(event.history.length, 20);
     assert.equal(event.history[0].announcementId, original.announcementId);
+    assert.equal(event.history.at(-1)?.announcementId, revisions.at(-1)?.announcementId);
+    assert.equal(event.historyTruncated, true);
     assert.match(event.id, new RegExp(`${original.announcementId}$`));
+    assert.equal(event.history[0].provenance.claims.revision.value.sequence, 1);
+    assert.equal(event.history.at(-1)?.provenance.claims.revision.value.sequence, 31);
     assert.equal(
       event.history.every((revision) => validateDecisionSignalProvenance(revision.provenance).ok),
       true,
     );
+
+    const nextRevision = {
+      ...correction,
+      announcementId: '600519_20260801_P032',
+      documentUrl: 'https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-08-01/600519_revision_32.pdf',
+      publicationTime: { value: '2026-08-01', precision: 'day' as const },
+      retrievalTime: '2026-08-01T20:00:00.000Z',
+    };
+    const rolledHistory = buildChinaCorporateDisclosureSnapshot({
+      generatedAt: '2026-08-01T20:00:00.000Z',
+      previousSnapshot: fullHistory,
+      outcomes: [
+        { sourceId: 'sse', ok: true, requestCount: 4, announcements: [nextRevision] },
+        { sourceId: 'szse', ok: true, requestCount: 1, announcements: [] },
+      ],
+    }).events[0];
+    assert.equal(rolledHistory.history.length, 20);
+    assert.equal(rolledHistory.historyTruncated, true);
+    assert.equal(rolledHistory.history[0].announcementId, original.announcementId);
+    assert.equal(rolledHistory.history.at(-1)?.announcementId, nextRevision.announcementId);
+    assert.equal(rolledHistory.history.at(-1)?.provenance.claims.revision.value.sequence, 32);
   });
 
   it('degrades sources independently and retains last-good events for a failed source', () => {
@@ -354,6 +422,11 @@ describe('official China corporate disclosures (#5577)', () => {
     assert.equal(sseState?.requestCount, 4);
     assert.equal(sseState?.transportStatus, 'error');
     assert.equal(sseState?.contentStatus, 'partial');
+    assert.equal(
+      sseState?.lastSuccessAt,
+      retrievedAt,
+      'a partial transport failure must preserve the prior fully-successful timestamp',
+    );
     assert.equal(partial.events.some((event) => event.exchange === 'SSE'), true);
 
     const saturatedCalls: Array<string> = [];
@@ -381,6 +454,11 @@ describe('official China corporate disclosures (#5577)', () => {
     assert.equal(saturated.status, 'degraded');
     assert.equal(saturated.sources.find((source) => source.id === 'sse')?.transportStatus, 'fresh');
     assert.equal(saturated.sources.find((source) => source.id === 'sse')?.contentStatus, 'partial');
+    assert.equal(
+      saturated.sources.find((source) => source.id === 'sse')?.lastSuccessAt,
+      '2026-07-25T12:00:00.000Z',
+      'a complete transport that reaches the bounded page limit is still a successful collection',
+    );
     assert.equal(saturated.sources.find((source) => source.id === 'szse')?.contentStatus, 'partial');
     assert.equal(
       saturatedDecisions.filter((decision) => decision.reason === 'PAGE_LIMIT_REACHED').length,
@@ -447,13 +525,36 @@ describe('official China corporate disclosures (#5577)', () => {
         oldestItemAt: Date.parse('2026-07-25'),
       },
     );
+    assert.deepEqual(
+      chinaCorporateDisclosureContentMeta({
+        status: 'degraded',
+        coverageThrough: null,
+        events: [],
+        sources: [
+          { id: 'sse', lastSuccessAt: '2026-07-25T11:00:00.000Z' },
+          { id: 'szse', lastSuccessAt: '2026-07-25T10:00:00.000Z' },
+          { id: 'hkex', lastSuccessAt: null },
+        ],
+      }),
+      {
+        newestItemAt: Date.parse('2026-07-25T11:00:00.000Z'),
+        oldestItemAt: Date.parse('2026-07-25T10:00:00.000Z'),
+      },
+      'a degraded but successfully checked quiet window must not become STALE_CONTENT',
+    );
     assert.equal(
       chinaCorporateDisclosureContentMeta({
         status: 'degraded',
         coverageThrough: null,
         events: [],
+        sources: [
+          { id: 'sse', lastSuccessAt: null },
+          { id: 'szse', lastSuccessAt: null },
+          { id: 'hkex', lastSuccessAt: null },
+        ],
       }),
       null,
+      'a degraded window with no successful source timestamp must remain eligible for STALE_CONTENT',
     );
   });
 });
