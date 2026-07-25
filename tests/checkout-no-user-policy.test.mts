@@ -28,6 +28,9 @@
 
 import { describe, it, beforeEach, before, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 class MemoryStorage {
   private readonly store = new Map<string, string>();
@@ -142,5 +145,46 @@ describe('cross-page redirect leak regression', () => {
     } else {
       assert.fail('expected redirect-pro outcome');
     }
+  });
+});
+
+// #5380 High-3: the policy module is pure, so a mutation wiring
+// `savePendingCheckoutIntent(intent)` into checkout.ts's REDIRECT branch left
+// this suite green — the leak this file documents would be back with every
+// test passing. Pin the caller's wiring by source-grep (checkout.ts needs the
+// full Clerk + Dodo tree and cannot load under node:test).
+describe('startCheckout no-user wiring (source-grep)', () => {
+  const dirname = path.dirname(fileURLToPath(import.meta.url));
+  const src = readFileSync(path.join(dirname, '..', 'src', 'services', 'checkout.ts'), 'utf8');
+
+  function noUserBlock(): { redirectBranch: string; inlineBranch: string } {
+    const start = src.indexOf('const outcome = decideNoUserPathOutcome');
+    assert.ok(start > -1, 'expected decideNoUserPathOutcome call in checkout.ts');
+    const ifIdx = src.indexOf("if (outcome.kind === 'redirect-pro')", start);
+    const elseIdx = src.indexOf('} else {', ifIdx);
+    const endIdx = src.indexOf('return false;', elseIdx);
+    assert.ok(ifIdx > -1 && elseIdx > ifIdx && endIdx > elseIdx, 'no-user branch shape changed — update this test');
+    return {
+      redirectBranch: src.slice(ifIdx, elseIdx),
+      inlineBranch: src.slice(elseIdx, endIdx),
+    };
+  }
+
+  it('redirect-pro branch must NOT persist a pending checkout intent', () => {
+    const { redirectBranch } = noUserBlock();
+    assert.ok(redirectBranch.includes('window.location.assign'), 'redirect branch must navigate');
+    assert.ok(
+      !redirectBranch.includes('savePendingCheckoutIntent'),
+      'redirect path persisting intent recreates the stale auto-resume leak this suite exists to prevent',
+    );
+    assert.ok(!redirectBranch.includes('saveCheckoutAttempt'), 'redirect path must not persist attempt state either');
+  });
+
+  it('inline sign-in branch MUST persist the intent before opening sign-in', () => {
+    const { inlineBranch } = noUserBlock();
+    const saveIdx = inlineBranch.indexOf('savePendingCheckoutIntent(intent)');
+    const signInIdx = inlineBranch.indexOf('openSignIn()');
+    assert.ok(saveIdx > -1, 'inline path must persist the pending intent');
+    assert.ok(signInIdx > saveIdx, 'intent must be persisted BEFORE openSignIn so the post-auth listener can resume');
   });
 });
