@@ -36,6 +36,8 @@ export {
   getSourcePropagandaRisk,
   getSourceTierBadgeTitle,
   describePropagandaBadge,
+  hasDeclaredPropagandaRisk,
+  hasDeclaredSourceType,
   hasReviewedPropagandaRisk,
   hasReviewedSourceType,
   listConfiguredFeedNames,

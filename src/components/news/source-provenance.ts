@@ -18,13 +18,13 @@ export interface PrimarySourceProvenanceHtml {
  * constructing the full virtualized NewsPanel component.
  */
 export function renderPrimarySourceProvenance(sourceName: string): PrimarySourceProvenanceHtml {
-  const riskDescription = describePropagandaBadge(getSourcePropagandaRisk(sourceName));
+  const sourceType = getSourceType(sourceName);
+  const riskDescription = describePropagandaBadge(getSourcePropagandaRisk(sourceName), sourceType);
   const riskBadge = riskDescription
     ? `<span class="propaganda-badge ${riskDescription.risk}" title="${escapeHtml(riskDescription.title)}">${riskDescription.label}</span>`
     : '';
 
   const tier = getSourceTier(sourceName);
-  const sourceType = getSourceType(sourceName);
   const tierLabel = tier === 1 && sourceType === 'wire' ? ' Wire' : '';
   const tierBadge = tier <= 2
     ? `<span class="tier-badge tier-${tier}" title="${escapeHtml(getSourceTierBadgeTitle(sourceType))}">${tier === 1 ? '★' : '●'}${tierLabel}</span>`
@@ -35,7 +35,10 @@ export function renderPrimarySourceProvenance(sourceName: string): PrimarySource
 
 /** Render the compact risk marker shown for corroborating sources. */
 export function renderCorroboratingSourceRisk(sourceName: string): string {
-  const description = describePropagandaBadge(getSourcePropagandaRisk(sourceName));
+  const description = describePropagandaBadge(
+    getSourcePropagandaRisk(sourceName),
+    getSourceType(sourceName),
+  );
   return description
     ? `<span class="propaganda-badge ${description.risk}" title="${escapeHtml(description.title)}">${description.shortLabel}</span>`
     : '';
