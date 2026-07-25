@@ -4,6 +4,8 @@ import { resolve } from 'node:path';
 import test from 'node:test';
 
 import { __testing__ } from '../api/health.js';
+import { atomicPublish, runSeed } from '../scripts/_seed-utils.mjs';
+import { CROSS_STRAIT_ACTIVITY_KEY } from '../scripts/cross-strait-activity/adapters.mjs';
 import {
   CROSS_STRAIT_ACTIVITY_BOOTSTRAP_KEY,
   CROSS_STRAIT_ACTIVITY_BOOTSTRAP_MAX_BYTES,
@@ -12,9 +14,12 @@ import {
   CROSS_STRAIT_ACTIVITY_FETCH_PHASE_TIMEOUT_MS,
   CROSS_STRAIT_ACTIVITY_LOCK_TTL_MS,
   CROSS_STRAIT_ACTIVITY_PUBLISH_CLEANUP_HEADROOM_MS,
+  CROSS_STRAIT_ACTIVITY_TTL_SECONDS,
   crossStraitActivityAfterPublish,
+  crossStraitActivityBeforePublish,
   projectCrossStraitActivityBootstrap,
   writePublicationCompletion,
+  writeSourceHealth,
 } from '../scripts/seed-cross-strait-activity.mjs';
 
 const root = resolve(import.meta.dirname, '..');
@@ -152,39 +157,263 @@ test('cross-Strait shipping budgets preserve Railway cleanup headroom', () => {
   assert.ok(CROSS_STRAIT_ACTIVITY_LOCK_TTL_MS > 310_000);
 });
 
-test('cross-Strait completion marker is absent when any source-health write fails', async () => {
+test('degraded cross-Strait source health publishes the error metadata before its detail record', async () => {
   const snapshot = {
-    observations: [
-      { sourceId: 'taiwan-mnd' },
-      { sourceId: 'japan-mod' },
-    ],
-    sources: [
-      {
-        id: 'taiwan-mnd',
-        transportStatus: 'fresh',
-        lastSuccessAt: '2026-07-25T08:00:00.000Z',
-      },
-      {
-        id: 'japan-mod',
-        transportStatus: 'fresh',
-        lastSuccessAt: '2026-07-25T08:00:00.000Z',
-      },
-    ],
+    observations: [{ sourceId: 'taiwan-mnd' }],
+    sources: [{
+      id: 'taiwan-mnd',
+      transportStatus: 'error',
+      lastSuccessAt: '2026-07-24T08:00:00.000Z',
+    }],
   };
   const writes: string[] = [];
-  const writer = async (key: string) => {
-    writes.push(key);
-    if (key === 'seed-meta:military:cross-strait-activity:japan-mod') {
-      throw new Error('injected source-health failure');
-    }
+  await writeSourceHealth(snapshot, async (key: string) => { writes.push(key); });
+
+  assert.deepEqual(writes, [
+    'seed-meta:military:cross-strait-activity:taiwan-mnd',
+    'military:cross-strait-activity:v1:source:taiwan-mnd',
+  ]);
+});
+
+test('cross-Strait publish hooks ignore runSeed metadata instead of treating it as a writer', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const originalRedisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const writes: string[] = [];
+  const snapshot = {
+    observations: [{ sourceId: 'taiwan-mnd' }, { sourceId: 'japan-mod' }],
+    sources: [
+      { id: 'taiwan-mnd', transportStatus: 'fresh', lastSuccessAt: '2026-07-25T08:00:00.000Z' },
+      { id: 'japan-mod', transportStatus: 'fresh', lastSuccessAt: '2026-07-25T08:00:00.000Z' },
+    ],
   };
-  await assert.rejects(
-    writePublicationCompletion(snapshot, writer, Date.parse('2026-07-25T09:00:00.000Z')),
-    /injected source-health failure/,
-  );
-  assert.ok(writes.includes('military:cross-strait-activity:v1:source:taiwan-mnd'));
-  assert.ok(writes.includes('military:cross-strait-activity:v1:source:japan-mod'));
-  assert.ok(!writes.includes(CROSS_STRAIT_ACTIVITY_COMPLETION_META_KEY));
+  const publishMeta = {
+    canonicalKey: CROSS_STRAIT_ACTIVITY_KEY,
+    ttlSeconds: CROSS_STRAIT_ACTIVITY_TTL_SECONDS,
+    recordCount: snapshot.observations.length,
+    runId: 'production-shape',
+  };
+  process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+  globalThis.fetch = async (_url, init) => {
+    const command = JSON.parse(String(init?.body));
+    if (command[0] === 'SET') writes.push(String(command[1]));
+    return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+  };
+
+  try {
+    await Reflect.apply(crossStraitActivityBeforePublish, null, [snapshot, publishMeta]);
+    await Reflect.apply(crossStraitActivityAfterPublish, null, [snapshot, publishMeta]);
+    assert.deepEqual(new Set(writes), new Set([
+      'military:cross-strait-activity:v1:source:taiwan-mnd',
+      'seed-meta:military:cross-strait-activity:taiwan-mnd',
+      'military:cross-strait-activity:v1:source:japan-mod',
+      'seed-meta:military:cross-strait-activity:japan-mod',
+      CROSS_STRAIT_ACTIVITY_COMPLETION_META_KEY,
+    ]));
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalRedisUrl == null) delete process.env.UPSTASH_REDIS_REST_URL;
+    else process.env.UPSTASH_REDIS_REST_URL = originalRedisUrl;
+    if (originalRedisToken == null) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    else process.env.UPSTASH_REDIS_REST_TOKEN = originalRedisToken;
+  }
+});
+
+test('cross-Strait source-health failure settles every write before canonical publication', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const originalRedisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+  let releaseTaiwanWrite = () => {};
+  let settled = false;
+  let canonicalFetches = 0;
+  const writes: string[] = [];
+  const snapshot = {
+    observations: [{ sourceId: 'taiwan-mnd' }, { sourceId: 'japan-mod' }],
+    sources: [
+      { id: 'taiwan-mnd', transportStatus: 'fresh', lastSuccessAt: '2026-07-25T08:00:00.000Z' },
+      { id: 'japan-mod', transportStatus: 'fresh', lastSuccessAt: '2026-07-25T08:00:00.000Z' },
+    ],
+  };
+  process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+  globalThis.fetch = async () => {
+    canonicalFetches += 1;
+    return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+  };
+
+  try {
+    const outcome = atomicPublish(
+      CROSS_STRAIT_ACTIVITY_KEY,
+      snapshot,
+      () => true,
+      CROSS_STRAIT_ACTIVITY_TTL_SECONDS,
+      {
+        beforePublish: () => writeSourceHealth(snapshot, async (key: string) => {
+          writes.push(key);
+          if (key === 'military:cross-strait-activity:v1:source:taiwan-mnd') {
+            await new Promise<void>((resolveWrite) => { releaseTaiwanWrite = resolveWrite; });
+          }
+          if (key === 'seed-meta:military:cross-strait-activity:japan-mod') {
+            throw new Error('injected source-health failure');
+          }
+        }),
+      },
+    ).then(
+      () => ({ error: null }),
+      (error: Error) => ({ error }),
+    ).finally(() => { settled = true; });
+
+    await new Promise<void>((resolveTick) => setImmediate(resolveTick));
+    const settledBeforeRelease = settled;
+    releaseTaiwanWrite();
+    const result = await outcome;
+
+    assert.equal(settledBeforeRelease, false);
+    assert.match(result.error?.message ?? '', /injected source-health failure/);
+    assert.ok(writes.includes('seed-meta:military:cross-strait-activity:taiwan-mnd'));
+    assert.equal(canonicalFetches, 0, 'canonical staging must not start after source-health failure');
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalRedisUrl == null) delete process.env.UPSTASH_REDIS_REST_URL;
+    else process.env.UPSTASH_REDIS_REST_URL = originalRedisUrl;
+    if (originalRedisToken == null) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    else process.env.UPSTASH_REDIS_REST_TOKEN = originalRedisToken;
+  }
+});
+
+test('runSeed forwards cross-Strait source health through the pre-publication boundary', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const originalRedisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const originalSigtermListeners = new Set(process.rawListeners('SIGTERM'));
+  const redisCommands: unknown[][] = [];
+  const snapshot = {
+    observations: [{ sourceId: 'taiwan-mnd' }],
+    sources: [{
+      id: 'taiwan-mnd',
+      transportStatus: 'fresh',
+      lastSuccessAt: '2026-07-25T08:00:00.000Z',
+    }],
+  };
+  process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+  globalThis.fetch = async (_url, init) => {
+    const command = JSON.parse(String(init?.body));
+    redisCommands.push(command);
+    return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+  };
+
+  try {
+    await assert.rejects(
+      runSeed(
+        'military',
+        'cross-strait-activity',
+        CROSS_STRAIT_ACTIVITY_KEY,
+        async () => snapshot,
+        {
+          validateFn: () => true,
+          ttlSeconds: CROSS_STRAIT_ACTIVITY_TTL_SECONDS,
+          declareRecords: data => data.observations.length,
+          sourceVersion: 'test-v1',
+          schemaVersion: 1,
+          maxStaleMin: 120,
+          beforePublish: data => writeSourceHealth(data, async () => {
+            throw new Error('injected source-health failure');
+          }),
+        },
+      ),
+      /injected source-health failure/,
+    );
+    assert.equal(
+      redisCommands.some(command =>
+        command[0] === 'SET'
+        && (
+          command[1] === CROSS_STRAIT_ACTIVITY_KEY
+          || String(command[1]).startsWith(`${CROSS_STRAIT_ACTIVITY_KEY}:staging:`)
+        )),
+      false,
+      'runSeed must not stage or publish canonical data after the source-health barrier fails',
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalRedisUrl == null) delete process.env.UPSTASH_REDIS_REST_URL;
+    else process.env.UPSTASH_REDIS_REST_URL = originalRedisUrl;
+    if (originalRedisToken == null) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    else process.env.UPSTASH_REDIS_REST_TOKEN = originalRedisToken;
+    for (const listener of process.rawListeners('SIGTERM')) {
+      if (!originalSigtermListeners.has(listener)) process.removeListener('SIGTERM', listener);
+    }
+  }
+});
+
+test('runSeed withholds cross-Strait completion when primary freshness metadata fails', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const originalRedisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const originalSigtermListeners = new Set(process.rawListeners('SIGTERM'));
+  const writtenKeys: string[] = [];
+  const snapshot = {
+    observations: [{ sourceId: 'taiwan-mnd' }],
+    sources: [{
+      id: 'taiwan-mnd',
+      transportStatus: 'fresh',
+      lastSuccessAt: '2026-07-25T08:00:00.000Z',
+    }],
+  };
+  process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+  globalThis.fetch = async (_url, init) => {
+    const command = JSON.parse(String(init?.body));
+    const key = String(command[1] ?? '');
+    if (command[0] === 'SET') writtenKeys.push(key);
+    if (key === 'seed-meta:military:cross-strait-activity') {
+      return new Response('injected primary freshness failure', { status: 503 });
+    }
+    return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+  };
+
+  try {
+    await assert.rejects(
+      runSeed(
+        'military',
+        'cross-strait-activity',
+        CROSS_STRAIT_ACTIVITY_KEY,
+        async () => snapshot,
+        {
+          validateFn: () => true,
+          ttlSeconds: CROSS_STRAIT_ACTIVITY_TTL_SECONDS,
+          declareRecords: data => data.observations.length,
+          sourceVersion: 'test-v1',
+          schemaVersion: 1,
+          maxStaleMin: 120,
+          beforePublish: crossStraitActivityBeforePublish,
+          afterFreshness: crossStraitActivityAfterPublish,
+        },
+      ),
+      /freshness metadata write failed before completion/,
+    );
+    assert.equal(
+      writtenKeys.includes(CROSS_STRAIT_ACTIVITY_COMPLETION_META_KEY),
+      false,
+      'the bundle completion marker must remain absent so the next bundle run retries',
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (originalRedisUrl == null) delete process.env.UPSTASH_REDIS_REST_URL;
+    else process.env.UPSTASH_REDIS_REST_URL = originalRedisUrl;
+    if (originalRedisToken == null) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    else process.env.UPSTASH_REDIS_REST_TOKEN = originalRedisToken;
+    for (const listener of process.rawListeners('SIGTERM')) {
+      if (!originalSigtermListeners.has(listener)) process.removeListener('SIGTERM', listener);
+    }
+  }
+});
+
+test('cross-Strait source health runs before canonical publication and completion stays last', () => {
+  const source = read('scripts/seed-cross-strait-activity.mjs');
+  assert.match(source, /beforePublish:\s*crossStraitActivityBeforePublish/);
+  assert.match(source, /afterFreshness:\s*crossStraitActivityAfterPublish/);
   assert.notEqual(
     CROSS_STRAIT_ACTIVITY_BOOTSTRAP_META_KEY,
     CROSS_STRAIT_ACTIVITY_COMPLETION_META_KEY,
@@ -196,7 +425,7 @@ test('cross-Strait completion marker is absent when any source-health write fail
 // meta object where writePublicationCompletion expects an injectable writer.
 // Existing coverage always supplied a writer explicitly, so the production
 // call shape was never exercised. Pin it here.
-test('afterPublish hook survives runSeed passing its meta object in slot 2', async () => {
+test('completion hook survives runSeed passing its meta object in slot 2', async () => {
   const writes: string[] = [];
   const writer = async (key: string) => {
     writes.push(key);
@@ -219,22 +448,16 @@ test('afterPublish hook survives runSeed passing its meta object in slot 2', asy
     },
     writer,
   );
-  assert.ok(writes.includes('military:cross-strait-activity:v1:source:taiwan-mnd'));
-  assert.ok(writes.includes('seed-meta:military:cross-strait-activity:taiwan-mnd'));
-  assert.equal(
-    writes.at(-1),
-    CROSS_STRAIT_ACTIVITY_COMPLETION_META_KEY,
-    'completion marker must still be the final write through the runSeed hook',
-  );
+  assert.deepEqual(writes, [CROSS_STRAIT_ACTIVITY_COMPLETION_META_KEY]);
 });
 
 test('runSeed wires the meta-tolerant hook, not the writer-injected helper', () => {
   const source = read('scripts/seed-cross-strait-activity.mjs');
-  assert.match(source, /afterPublish:\s*crossStraitActivityAfterPublish,/);
+  assert.match(source, /afterFreshness:\s*crossStraitActivityAfterPublish,/);
   assert.doesNotMatch(
     source,
-    /afterPublish:\s*writePublicationCompletion,/,
-    'wiring the writer-injected helper straight into afterPublish puts runSeed meta in the writer slot (#5614)',
+    /afterFreshness:\s*writePublicationCompletion,/,
+    'wiring the writer-injected helper straight into the hook puts runSeed meta in the writer slot (#5614)',
   );
 });
 
@@ -242,13 +465,8 @@ test('cross-Strait completion marker is the final cohort write', async () => {
   const writes: string[] = [];
   await writePublicationCompletion({
     observations: [{ sourceId: 'taiwan-mnd' }],
-    sources: [{
-      id: 'taiwan-mnd',
-      transportStatus: 'fresh',
-      lastSuccessAt: '2026-07-25T08:00:00.000Z',
-    }],
   }, async (key: string) => {
     writes.push(key);
   }, Date.parse('2026-07-25T09:00:00.000Z'));
-  assert.equal(writes.at(-1), CROSS_STRAIT_ACTIVITY_COMPLETION_META_KEY);
+  assert.deepEqual(writes, [CROSS_STRAIT_ACTIVITY_COMPLETION_META_KEY]);
 });
