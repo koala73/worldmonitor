@@ -104,6 +104,8 @@ const BOOTSTRAP_KEYS = {
   techEvents:        'research:tech-events-bootstrap:v1',
   gdeltIntel:        'intelligence:gdelt-intel:v1',
   correlationCards:   'correlation:cards-bootstrap:v1',
+  crossStraitActivity: 'military:cross-strait-activity:v1',
+  crossStraitActivityBootstrap: 'military:cross-strait-activity-bootstrap:v1',
   forecasts:         'forecast:predictions:v2',
   forecastsBootstrap: 'forecast:predictions-bootstrap:v1',
   securityAdvisories: 'intelligence:advisories-bootstrap:v1',
@@ -229,6 +231,8 @@ const STANDALONE_KEYS = {
   globalTendersCanadaBuys:      'economic:global-tenders:v1:source:canada-buys',
   globalTendersGets:            'economic:global-tenders:v1:source:gets',
   globalTendersWorldBank:       'economic:global-tenders:v1:source:world-bank',
+  crossStraitActivityTaiwanMnd: 'military:cross-strait-activity:v1:source:taiwan-mnd',
+  crossStraitActivityJapanMod:  'military:cross-strait-activity:v1:source:japan-mod',
   defensePatents:        'patents:defense:latest',
   temporalAnomalies:     'temporal:anomalies:v1',
   displacement:          `displacement:summary:v1:${new Date().getUTCFullYear()}`,
@@ -386,6 +390,10 @@ const SEED_META = {
   chinaMacro:       { key: 'seed-meta:economic:china-macro', maxStaleMin: 4_320 }, // 36h gate; 72h tolerates one missed run
   chinaReleaseCalendar: { key: 'seed-meta:economic:china-release-calendar', maxStaleMin: 4_320 },
   chinaCorporateDisclosures: { key: 'seed-meta:market:china-corporate-disclosures', maxStaleMin: 180 },
+  crossStraitActivity: { key: 'seed-meta:military:cross-strait-activity', maxStaleMin: 720 },
+  crossStraitActivityBootstrap: { key: 'seed-meta:military:cross-strait-activity-bootstrap', maxStaleMin: 720 },
+  crossStraitActivityTaiwanMnd: { key: 'seed-meta:military:cross-strait-activity:taiwan-mnd', maxStaleMin: 720 },
+  crossStraitActivityJapanMod:  { key: 'seed-meta:military:cross-strait-activity:japan-mod', maxStaleMin: 720 },
   energyPrices:     { key: 'seed-meta:economic:energy-prices',    maxStaleMin: 150 }, // seed-economy primary runSeed resource
   bisPolicy:        { key: 'seed-meta:economic:bis',              maxStaleMin: 10080 }, // runSeed('economic','bis',...) writes seed-meta:economic:bis
   // seed-bis-extended.mjs is a child-process section spawned by
@@ -737,6 +745,7 @@ const EMPTY_DATA_OK_KEYS = new Set([
   'ucdpEventsBootstrap',
   'forecastsBootstrap',
   'wildfiresBootstrap',
+  'crossStraitActivityBootstrap',
 ]);
 
 // These compact projections must leave a payload on every successful publish.
@@ -751,6 +760,7 @@ const MISSING_DATA_IS_FAILURE_KEYS = new Set([
   'wildfiresBootstrap',
   'forecastsBootstrap',
   'positiveGeoEvents',
+  'crossStraitActivityBootstrap',
 ]);
 
 // Keys where a present payload with meta recordCount=0 is valid, but the data
