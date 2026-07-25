@@ -6988,6 +6988,106 @@ body.playback-mode .status-dot {
   border-bottom: none;
 }
 
+.market-item-clickable {
+  cursor: pointer;
+  transition: background 0.12s ease;
+  border-radius: 4px;
+  margin: 0 -6px;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.market-item-clickable:hover,
+.market-item-clickable:focus-visible {
+  background: var(--surface-active);
+  outline: none;
+}
+
+/* Expandable Bloomberg-terminal-style price chart (market-chart-modal.ts). */
+.market-chart-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  background: var(--overlay-medium);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.market-chart-modal {
+  position: relative;
+  width: 566px;
+  max-width: 100%;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 20px 22px 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.market-chart-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 4px;
+  line-height: 0;
+  border-radius: 4px;
+}
+
+.market-chart-close:hover {
+  color: var(--text);
+  background: var(--surface-active);
+}
+
+.market-chart-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 8px;
+  padding-right: 28px;
+}
+
+.market-chart-name {
+  font-weight: 600;
+}
+
+.market-chart-symbol {
+  color: var(--text-dim);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.market-chart-quote {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.market-chart-price {
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+}
+
+.market-chart-canvas {
+  width: 100%;
+  line-height: 0;
+}
+
+.market-chart-canvas .terminal-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 .market-info {
   display: flex;
   flex-direction: column;

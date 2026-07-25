@@ -2136,7 +2136,11 @@
       "infoTooltip": "<strong>Disaster Cascade</strong> Rileva segnali convergenti di disastri naturali e infrastrutture:<ul><li>Correla terremoti, incendi boschivi, alluvioni ed estremi meteorologici</li><li>Traccia effetti a cascata su infrastrutture e supply chain</li><li>Evidenzia regioni con rischio di disastri composti</li></ul>Clicca su una card per ingrandire la regione interessata."
     },
     "markets": {
-      "infoTooltip": "<strong>Markets</strong> Indici azionari in tempo reale, azioni e prezzi crypto. Personalizza la tua watchlist con il pulsante Watchlist. Le sparkline mostrano il trend di prezzo recente."
+      "infoTooltip": "<strong>Markets</strong> Indici azionari in tempo reale, azioni e prezzi crypto. Personalizza la tua watchlist con il pulsante Watchlist. Le sparkline mostrano il trend di prezzo recente.",
+      "chart": {
+        "title": "{{symbol}} price chart",
+        "close": "Close chart"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Sector Heatmap</strong> Performance dei settori S&P 500 a colpo d'occhio. L'intensità del colore riflette l'entità della variazione giornaliera. Verde = guadagni, Rosso = perdite."
