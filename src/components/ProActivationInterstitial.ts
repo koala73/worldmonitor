@@ -67,8 +67,17 @@ import {
   type ActivationStepId,
   type ActivationStepOutcome,
   type ActivationStepResult,
+  type ActivationStepState,
   type ActivationSummaryLine,
 } from '@/services/pro-activation-state';
+
+/**
+ * How an in-flow confirm resolved. `blocked` means the platform refused in a
+ * way a retry cannot fix — a denied notification permission, which browsers
+ * never re-prompt for — so the shell moves the step into its blocked state
+ * instead of offering a "Try again" that can only fail identically (#5609).
+ */
+export type ActivationConfirmResult = 'verified' | 'failed' | 'blocked';
 
 export interface ProActivationInterstitialOptions {
   /** Ordered steps from `buildActivationSteps` (computed by the caller). */
@@ -76,12 +85,19 @@ export interface ProActivationInterstitialOptions {
   /** Account email for display, so the user sees which account got Pro. */
   accountEmail: string;
   /**
-   * Complete a step in-flow. Resolves `'verified'` on success, `'failed'`
-   * otherwise. Injected by a later unit; until then a stub can resolve either.
+   * Complete a step in-flow. Resolves `'verified'` on success, `'blocked'` when
+   * the platform refused unrecoverably, `'failed'` for anything retryable.
+   * Injected by a later unit; until then a stub can resolve any of them.
    */
-  onConfirmStep: (stepId: ActivationStepId) => Promise<'verified' | 'failed'>;
+  onConfirmStep: (stepId: ActivationStepId) => Promise<ActivationConfirmResult>;
   /** Fire-and-forget skip signal (bookkeeping/telemetry wired by later units). */
   onSkipStep: (stepId: ActivationStepId) => void;
+  /**
+   * Fire-and-forget signal that a confirm resolved `blocked`. The step still
+   * resolves as skipped, so without this the denial cohort is indistinguishable
+   * from users who chose to skip.
+   */
+  onBlockStep?: (stepId: ActivationStepId) => void;
   /** Called after each durable step-state transition with a full snapshot. */
   onProgress?: (results: ActivationStepResult[]) => void;
   /** Called exactly once when the flow ends, with the ordered step results. */
@@ -92,13 +108,6 @@ export interface ProActivationInterstitialOptions {
    * for `confirmable` steps (already-done/blocked/unavailable never show them).
    */
   stepExtras?: Partial<Record<ActivationStepId, ProActivationStepExtra>>;
-  /**
-   * Optional per-step override for the "it failed" note copy. Consulted live at
-   * render time so the alerts step can distinguish "you declined the prompt"
-   * (permission denied) from a genuine write error (AE3). Return null/undefined
-   * to keep the generic failure note.
-   */
-  failedNote?: (stepId: ActivationStepId) => string | null | undefined;
 }
 
 /** Controls handed to a step's `onMount` so extras can complete the step. */
@@ -237,6 +246,29 @@ function summaryVerifiedDetail(id: ActivationStepId): string {
   }
 }
 
+/**
+ * Blocked-state note. `justDenied` marks the mid-flow transition — the user
+ * acted on the browser prompt just now, so the copy acknowledges that instead
+ * of reporting a pre-existing block. Both variants point at the browser's site
+ * settings: nothing inside the wizard can undo a denied permission.
+ */
+function blockedNote(id: ActivationStepId, justDenied: boolean): string {
+  if (id !== 'alerts') {
+    return t('components.proActivation.status.blockedNote', {
+      defaultValue: "This isn't available right now — you can set it up later from settings.",
+    });
+  }
+  return justDenied
+    ? t('components.proActivation.steps.alerts.declinedNote', {
+        defaultValue:
+          "No problem — we won't send browser alerts. You can turn them on later from your browser's site settings.",
+      })
+    : t('components.proActivation.steps.alerts.blockedNote', {
+        defaultValue:
+          "Notifications are blocked in your browser. Turn them on in your browser's site settings to get alerts.",
+      });
+}
+
 function statusLabel(status: StepStatus): string {
   switch (status) {
     case 'pending':
@@ -272,12 +304,24 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
   let generation = 0;
   let finished = false;
   const outcomes = new Map<ActivationStepId, ActivationStepOutcome>();
+  // Steps whose confirm resolved `blocked` (a denied browser permission). They
+  // render exactly like a step that was already blocked at mount — the browser
+  // will not re-prompt, so a retry CTA would be a dead end (#5609).
+  const blockedByConfirm = new Set<ActivationStepId>();
 
   const onSummary = (): boolean => currentIndex >= steps.length;
 
+  /**
+   * The step's CURRENT state — its declared state plus a mid-flow permission
+   * block. Every read goes through this: reading `step.state` directly would
+   * silently miss a blocked-by-confirm step the moment a branch cares about it.
+   */
+  const effectiveState = (step: ActivationStep): ActivationStepState =>
+    blockedByConfirm.has(step.id) ? 'blocked' : step.state;
+
   /** Default disposition for a step never explicitly acted on. */
   const defaultOutcome = (step: ActivationStep): ActivationStepOutcome =>
-    step.state === 'already-done' ? 'done' : 'skipped';
+    effectiveState(step) === 'already-done' ? 'done' : 'skipped';
 
   const buildResults = (): ActivationStepResult[] =>
     steps.map((step) => ({ id: step.id, outcome: outcomes.get(step.id) ?? defaultOutcome(step) }));
@@ -285,9 +329,10 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
   const recordProgress = (): void => options.onProgress?.(buildResults());
 
   const currentStatus = (step: ActivationStep): StepStatus => {
-    if (step.state === 'already-done') return 'verified';
-    if (step.state === 'blocked') return 'blocked';
-    if (step.state === 'unavailable') return 'unavailable';
+    const state = effectiveState(step);
+    if (state === 'already-done') return 'verified';
+    if (state === 'blocked') return 'blocked';
+    if (state === 'unavailable') return 'unavailable';
     if (transient === 'in-flight') return 'in-flight';
     if (transient === 'failed') return 'failed';
     return 'pending';
@@ -298,8 +343,9 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
 
   const stepNotesHtml = (step: ActivationStep): string => {
     const copy = stepFrameCopy(step.id);
+    const state = effectiveState(step);
     const notes: string[] = [];
-    if (step.state === 'already-done') {
+    if (state === 'already-done') {
       notes.push(noteHtml(copy.doneNote, 'ok'));
       if (step.id === 'brief' && step.preservesSchedule) {
         notes.push(
@@ -311,18 +357,9 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
           ),
         );
       }
-    } else if (step.state === 'blocked') {
-      const blocked =
-        step.id === 'alerts'
-          ? t('components.proActivation.steps.alerts.blockedNote', {
-              defaultValue:
-                "Notifications are blocked in your browser. Turn them on in your browser's site settings to get alerts.",
-            })
-          : t('components.proActivation.status.blockedNote', {
-              defaultValue: "This isn't available right now — you can set it up later from settings.",
-            });
-      notes.push(noteHtml(blocked, 'warn'));
-    } else if (step.state === 'unavailable') {
+    } else if (state === 'blocked') {
+      notes.push(noteHtml(blockedNote(step.id, blockedByConfirm.has(step.id)), 'warn'));
+    } else if (state === 'unavailable') {
       notes.push(
         noteHtml(
           t('components.proActivation.status.unavailableNote', {
@@ -332,13 +369,11 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
         ),
       );
     } else if (transient === 'failed') {
-      const override = options.failedNote?.(step.id);
       notes.push(
         noteHtml(
-          override ??
-            t('components.proActivation.status.failedBody', {
-              defaultValue: 'Something went wrong. You can try again, or set it up later from settings.',
-            }),
+          t('components.proActivation.status.failedBody', {
+            defaultValue: 'Something went wrong. You can try again, or set it up later from settings.',
+          }),
           'error',
         ),
       );
@@ -359,8 +394,9 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
     const cont = (action: string): string =>
       primary(t('components.proActivation.actions.continue', { defaultValue: 'Continue' }), action);
 
-    if (step.state === 'already-done') return cont('advance-done');
-    if (step.state === 'blocked' || step.state === 'unavailable') return cont('advance-skip');
+    const state = effectiveState(step);
+    if (state === 'already-done') return cont('advance-done');
+    if (state === 'blocked' || state === 'unavailable') return cont('advance-skip');
     // confirmable
     // Power step: the extras' pointers ARE the actions — render only "Continue".
     if (options.stepExtras?.[step.id]?.replacesPrimaryAction) return cont('advance-skip');
@@ -373,7 +409,7 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
   };
 
   const stepExtrasHtml = (step: ActivationStep): string => {
-    if (step.state !== 'confirmable') return '';
+    if (effectiveState(step) !== 'confirmable') return '';
     const extra = options.stepExtras?.[step.id];
     if (!extra) return '';
     return `<div class="pro-activation-extras" data-pro-activation-extras>${extra.html}</div>`;
@@ -496,7 +532,7 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
     for (let i = currentIndex; i < steps.length; i += 1) {
       const step = steps[i]!;
       if (outcomes.has(step.id)) continue;
-      if (step.state === 'already-done') {
+      if (effectiveState(step) === 'already-done') {
         outcomes.set(step.id, 'done');
         continue;
       }
@@ -535,7 +571,7 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
     transient = 'in-flight';
     renderModal();
     const gen = generation;
-    let result: 'verified' | 'failed';
+    let result: ActivationConfirmResult;
     try {
       result = await options.onConfirmStep(step.id);
     } catch {
@@ -547,6 +583,15 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
       outcomes.set(step.id, 'confirmed');
       recordProgress();
       advance();
+    } else if (result === 'blocked') {
+      // Unrecoverable refusal: drop the retry CTA and render the blocked state
+      // so the user gets the site-settings instructions instead of a "Try
+      // again" the browser will refuse identically forever. The step still
+      // resolves as skipped (same as one blocked at mount) when they continue.
+      blockedByConfirm.add(step.id);
+      transient = 'idle';
+      options.onBlockStep?.(step.id);
+      renderModal();
     } else {
       transient = 'failed';
       renderModal();
@@ -621,7 +666,7 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
       // Wire per-step extras (brief hour picker/preview, power pointers). The
       // controls let the power pointers confirm-and-close before deep-linking
       // the user into a Pro surface.
-      const extra = step.state === 'confirmable' ? options.stepExtras?.[step.id] : undefined;
+      const extra = effectiveState(step) === 'confirmable' ? options.stepExtras?.[step.id] : undefined;
       if (extra?.onMount) {
         const extrasRoot = modal.querySelector<HTMLElement>('[data-pro-activation-extras]');
         if (extrasRoot) {
@@ -1108,14 +1153,17 @@ async function confirmBrief(
 /** Alerts confirm: request+subscribe push, then ensure a rule delivers to it. */
 async function confirmAlerts(
   options: ProActivationFlowOptions,
-): Promise<'verified' | 'failed'> {
+): Promise<ActivationConfirmResult> {
   try {
     // Requests permission, subscribes, and registers the web_push channel.
-    // A denial throws here → 'failed' (AE3: the flow continues, nothing enabled).
+    // A denial throws here (AE3: the flow continues, nothing enabled).
     await subscribeToPush(options.accountUserId);
   } catch (err) {
     console.warn('[pro-activation] push subscribe declined/failed', err);
-    return 'failed';
+    // Read the LIVE permission rather than the thrown message: once it is
+    // `denied` no browser re-prompts, so the step is blocked, not retryable.
+    // A dismissed prompt leaves it `default` and stays a retryable failure.
+    return getPushPermission() === 'denied' ? 'blocked' : 'failed';
   }
   let fresh: ActivationContext;
   try {
@@ -1139,18 +1187,6 @@ async function confirmAlerts(
     console.warn('[pro-activation] alerts rule write failed', err);
     return 'failed';
   }
-}
-
-/** Denial-aware failed-note copy for the alerts step (distinguish decline from error). */
-function alertsFailedNote(): string {
-  return getPushPermission() === 'denied'
-    ? t('components.proActivation.steps.alerts.declinedNote', {
-        defaultValue:
-          "No problem — we won't send browser alerts. You can turn them on later from your browser's site settings.",
-      })
-    : t('components.proActivation.status.failedBody', {
-        defaultValue: 'Something went wrong. You can try again, or set it up later from settings.',
-      });
 }
 
 async function confirmPresentationWithRetry(
@@ -1341,7 +1377,6 @@ export async function openProActivationFlow(
     steps,
     accountEmail: options.accountEmail,
     stepExtras,
-    failedNote: (stepId) => (stepId === 'alerts' ? alertsFailedNote() : null),
     onConfirmStep: async (stepId) => {
       if (inFlight.has(stepId)) return 'failed';
       inFlight.add(stepId);
@@ -1361,6 +1396,7 @@ export async function openProActivationFlow(
       }
     },
     onSkipStep: (stepId) => options.onEvent?.(ACTIVATION_EVENTS.stepSkipped, stepId),
+    onBlockStep: (stepId) => options.onEvent?.(ACTIVATION_EVENTS.stepBlocked, stepId),
     onProgress: (results) => persistOutcome(results, false),
     onExit: (results) => {
       options.onEvent?.(ACTIVATION_EVENTS.exit, undefined, summarizeActivationExit(results));

@@ -77,7 +77,10 @@ async function gotoHarness(page: Page): Promise<void> {
 }
 
 /** Open the interstitial SHELL directly with synthetic steps + injected callbacks. */
-async function openShell(page: Page, confirmResult: 'verified' | 'failed'): Promise<void> {
+async function openShell(
+  page: Page,
+  confirmResult: 'verified' | 'failed' | 'blocked',
+): Promise<void> {
   await page.evaluate(async (result) => {
     const { initI18n } = await import('/src/services/i18n.ts');
     await initI18n();
@@ -91,7 +94,7 @@ async function openShell(page: Page, confirmResult: 'verified' | 'failed'): Prom
         { id: 'power', state: 'confirmable' },
       ],
       accountEmail: 'e2e@worldmonitor.app',
-      onConfirmStep: async () => result as 'verified' | 'failed',
+      onConfirmStep: async () => result as 'verified' | 'failed' | 'blocked',
       onSkipStep: () => {},
       onExit: (results) => {
         w.__proExit = results;
@@ -556,6 +559,43 @@ test.describe('Pro activation interstitial — shell step flow', () => {
     await expect(page.locator(SUMMARY)).toBeVisible();
     await expect(page.locator('.pro-activation-summary-line.status-failed')).toHaveCount(1);
     await expect(page.locator('.pro-activation-summary-line.status-pending')).toHaveCount(2);
+  });
+
+  test('confirm resolves to blocked → blocked state, no dead-end retry (#5609)', async ({
+    page,
+  }) => {
+    await gotoHarness(page);
+    await openShell(page, 'blocked');
+
+    // Advance to alerts — the step a browser permission can actually block.
+    await page.locator(SKIP_BTN).click();
+    await expect(page.locator(PROGRESS)).toContainText('2 of 3');
+    await page.locator(CONFIRM_BTN).click();
+
+    // Blocked badge + the site-settings instructions, not the generic error.
+    await expect(page.locator('.pro-activation-status.status-blocked')).toContainText('Blocked');
+    await expect(page.locator('.pro-activation-note.note-warn')).toContainText('site settings');
+    await expect(page.locator('.pro-activation-note.note-error')).toHaveCount(0);
+
+    // Browsers never re-prompt after a deny, so "Try again" must be gone and
+    // the step must expose exactly one way forward.
+    await expect(page.locator(CONFIRM_BTN)).toHaveCount(0);
+    await expect(page.locator(SKIP_BTN)).toHaveCount(0);
+    await expect(page.locator(ADVANCE_SKIP_BTN)).toBeVisible();
+
+    // Continuing resolves it as skipped (same as a step blocked at mount) —
+    // never 'failed', which the summary would report as "we couldn't set up".
+    await page.locator(ADVANCE_SKIP_BTN).click();
+    await expect(page.locator(PROGRESS)).toContainText('3 of 3');
+    await page.locator(SKIP_BTN).click();
+    await expect(page.locator(SUMMARY)).toBeVisible();
+    await expect(page.locator('.pro-activation-summary-line.status-failed')).toHaveCount(0);
+
+    await page.locator(FINISH_BTN).click();
+    const results = await page.evaluate(
+      () => (window as unknown as { __proExit: Array<{ outcome: string }> }).__proExit,
+    );
+    expect(results.map((r) => r.outcome)).toEqual(['skipped', 'skipped', 'skipped']);
   });
 
   test('dismiss is blocked while a confirmation write is in flight', async ({ page }) => {
