@@ -931,6 +931,15 @@ export const INTEL_SOURCES: Feed[] = [
   { name: 'USNI News', url: rss('https://news.google.com/rss/search?q=site:news.usni.org+when:3d&hl=en-US&gl=US&ceid=US:en'), type: 'defense' },
   { name: 'gCaptain', url: rss('https://gcaptain.com/feed/'), type: 'defense' },
   { name: 'Oryx OSINT', url: rss('https://www.oryxspioenkop.com/feeds/posts/default?alt=rss'), type: 'defense' },
+  // Declared LAST in the defense group on purpose. The free-tier source cap
+  // (selectSourcesUnderCap, FREE_MAX_SOURCES) fills category buckets round-robin
+  // in DECLARATION ORDER, and the intel bucket only gets a handful of slots — so
+  // inserting a new name near the top silently evicts whichever default-enabled
+  // source it pushes past the cap. That eviction is written back into
+  // worldmonitor-disabled-feeds and cloud-synced rather than recomputed, so it
+  // never recovers. Appending makes a new source absorb its own cap cost instead
+  // of deleting an existing one from every free-tier user (#5405 review).
+  { name: 'Breaking Defense', url: rss('https://breakingdefense.com/feed/'), type: 'defense' },
   { name: 'UK MOD', url: rss('https://www.gov.uk/government/organisations/ministry-of-defence.atom'), type: 'defense' },
   { name: 'CSIS', url: rss('https://news.google.com/rss/search?q=site:csis.org&hl=en&gl=US&ceid=US:en'), type: 'defense' },
 

@@ -17,18 +17,19 @@ import {
   computeMountClaim,
   computePendingMarker,
   decideActivationMount,
+  activationFlowRetryDelay,
   deriveActivationAccountKey,
   deriveSubscriptionKey,
-  FIRE_ONCE_KEY,
   isFireOnceActive,
   isMountClaimBlocking,
   isProPlanKey,
   MOUNT_CLAIM_KEY,
   MOUNT_CLAIM_TTL_MS,
-  parseFireOnceRecord,
   parseMountClaim,
   parsePendingMarker,
   PENDING_MARKER_KEY,
+  readScopedFireOnceRecord,
+  writeScopedFireOnceRecord,
   type ActivationEntitlementSnapshot,
   type ActivationSubscriptionSnapshot,
   type FireOnceRecord,
@@ -64,38 +65,6 @@ function clearPendingMarker(): void {
     window.localStorage.removeItem(PENDING_MARKER_KEY);
   } catch {
     // A stale marker is reaped by its TTL.
-  }
-}
-
-function readFireOnceRecord(now: number): FireOnceRecord | null {
-  try {
-    const raw = window.localStorage.getItem(FIRE_ONCE_KEY);
-    const record = parseFireOnceRecord(raw);
-    if (record && !isFireOnceActive(record, now)) {
-      window.localStorage.removeItem(FIRE_ONCE_KEY);
-      return null;
-    }
-    if (record && raw !== JSON.stringify(record)) writeFireOnceRecord(record);
-    return record;
-  } catch {
-    return null;
-  }
-}
-
-function writeFireOnceRecord(record: FireOnceRecord): boolean {
-  try {
-    window.localStorage.setItem(FIRE_ONCE_KEY, JSON.stringify(record));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function clearFireOnceRecord(): void {
-  try {
-    window.localStorage.removeItem(FIRE_ONCE_KEY);
-  } catch {
-    // Best-effort privacy cleanup for signed-out/expired records.
   }
 }
 
@@ -153,7 +122,12 @@ function toSubscriptionSnapshot(
   subscription: SubscriptionInfo | null,
 ): ActivationSubscriptionSnapshot | null {
   if (subscription === null) return null;
-  return { activationKey: subscription.activationKey ?? null };
+  return {
+    activationKey: subscription.activationKey ?? null,
+    planKey: subscription.planKey,
+    currentPeriodEnd: subscription.currentPeriodEnd,
+    activationOnboardingEligible: subscription.activationOnboardingEligible ?? null,
+  };
 }
 
 /** Write the durable checkout-return marker without persisting a Clerk user id. */
@@ -183,6 +157,11 @@ export class ProActivationController implements AppModule {
   private mountIdleHandle: number | null = null;
   private mountTimeoutHandle: number | null = null;
   private claimRetryHandle: number | null = null;
+  private flowRetryHandle: number | null = null;
+  private flowRetryAttempts = 0;
+  private authUnsubscribe: (() => void) | null = null;
+  private authStateKey: string | null = null;
+  private authGeneration = 0;
   private readonly mountNonce = generateMountClaimNonce();
 
   constructor(
@@ -192,6 +171,23 @@ export class ProActivationController implements AppModule {
 
   init(): void {
     if (typeof window === 'undefined' || this.options.reloadPending) return;
+    this.authStateKey = this.activationAuthStateKey();
+    let initialAuthEmission = true;
+    this.authUnsubscribe = subscribeAuthState(() => {
+      const nextAuthStateKey = this.activationAuthStateKey();
+      if (initialAuthEmission) {
+        initialAuthEmission = false;
+        this.authStateKey = nextAuthStateKey;
+        return;
+      }
+      if (nextAuthStateKey === this.authStateKey) {
+        if (!this.resolved && !this.mounting) queueMicrotask(() => void this.evaluate());
+        return;
+      }
+      this.authStateKey = nextAuthStateKey;
+      this.resetForAuthTransition();
+    });
+
     const run = (): void => {
       this.mountIdleHandle = null;
       this.mountTimeoutHandle = null;
@@ -205,9 +201,31 @@ export class ProActivationController implements AppModule {
   }
 
   destroy(): void {
+    this.authGeneration += 1;
+    this.authUnsubscribe?.();
+    this.authUnsubscribe = null;
     this.teardownRetry();
     this.cancelScheduledMount();
     this.clearClaimRetry();
+    this.clearFlowRetry();
+  }
+
+  private activationAuthStateKey(): string {
+    const auth = getAuthState();
+    if (auth.isPending) return 'pending';
+    return deriveActivationAccountKey(auth.user?.id) ?? 'signed-out';
+  }
+
+  private resetForAuthTransition(): void {
+    this.authGeneration += 1;
+    this.resolved = false;
+    this.teardownRetry();
+    this.clearClaimRetry();
+    this.clearFlowRetry();
+    clearMountClaimIfOwned(this.mountNonce);
+    queueMicrotask(() => {
+      if (!this.ctx.isDestroyed) void this.evaluate();
+    });
   }
 
   private async evaluate(): Promise<void> {
@@ -222,27 +240,36 @@ export class ProActivationController implements AppModule {
       writePendingMarker(marker);
     }
 
-    let fireOnce = readFireOnceRecord(now);
-    if (!auth.isPending && auth.user === null && fireOnce) {
-      clearFireOnceRecord();
-      fireOnce = null;
-    }
-
     const entitlement = toEntitlementSnapshot(getEntitlementState());
     const subscription = toSubscriptionSnapshot(getSubscription());
+    const currentSubscriptionKey = deriveSubscriptionKey(subscription);
+    const fireOnce = readScopedFireOnceRecord(
+      window.localStorage,
+      currentAccountKey,
+      currentSubscriptionKey,
+      now,
+    );
     const decision = decideActivationMount({
       marker,
       entitlement,
       subscription,
       fireOnce,
       isDesktop: this.ctx.isDesktopApp,
+      authPending: auth.isPending,
       currentAccountKey,
       now,
     });
 
     switch (decision.action) {
       case 'mount':
-        if (auth.user) await this.mount(decision.subscriptionKey, auth.user.id, now);
+        if (auth.user) {
+          await this.mount(
+            decision.subscriptionKey,
+            auth.user.id,
+            now,
+            decision.onlyIfUnactivated,
+          );
+        }
         else this.armRetry();
         return;
       case 'clear':
@@ -258,57 +285,104 @@ export class ProActivationController implements AppModule {
     }
   }
 
-  private async mount(subscriptionKey: string, expectedUserId: string, now: number): Promise<void> {
+  private async mount(
+    subscriptionKey: string,
+    expectedUserId: string,
+    now: number,
+    onlyIfUnactivated: boolean,
+  ): Promise<void> {
+    const authGeneration = this.authGeneration;
     if (getAuthState().user?.id !== expectedUserId) {
       this.armRetry();
       return;
     }
-    const existingClaim = readMountClaim();
-    if (isMountClaimBlocking(existingClaim, this.mountNonce, now)) {
-      this.armRetry();
-      this.scheduleClaimRetry(existingClaim, now);
-      return;
-    }
-
-    writeMountClaim(computeMountClaim(this.mountNonce, now));
-    await claimSettle();
-    if (this.ctx.isDestroyed) return;
-    if (getAuthState().user?.id !== expectedUserId) {
-      clearMountClaimIfOwned(this.mountNonce);
-      this.armRetry();
-      return;
-    }
-
-    const settledClaim = readMountClaim();
-    const settledAt = Date.now();
-    if (isMountClaimBlocking(settledClaim, this.mountNonce, settledAt)) {
-      this.armRetry();
-      this.scheduleClaimRetry(settledClaim, settledAt);
-      return;
-    }
-
-    // Mark the open attempt in-flight only after this tab owns the claim. A
-    // loser remains retryable when the winning tab crashes and its lease
-    // expires, while subscription/auth callbacks cannot double-open this tab.
+    // Claim settlement awaits a timer. Hold a local single-flight latch before
+    // that await so synchronous auth/subscription listener replays cannot start
+    // a second mount attempt in this tab. The try/finally guarantees the latch
+    // releases on every exit path, including an unexpected throw.
     this.mounting = true;
-    this.teardownRetry();
-    this.clearClaimRetry();
+    try {
+      const existingClaim = readMountClaim();
+      if (isMountClaimBlocking(existingClaim, this.mountNonce, now)) {
+        this.armRetry();
+        this.scheduleClaimRetry(existingClaim, now);
+        return;
+      }
 
-    if (!(await this.openFlow(expectedUserId))) {
-      this.mounting = false;
+      writeMountClaim(computeMountClaim(this.mountNonce, now));
+      await claimSettle();
+      if (this.abortIfStale(authGeneration)) return;
+      if (getAuthState().user?.id !== expectedUserId) {
+        clearMountClaimIfOwned(this.mountNonce);
+        this.armRetry();
+        return;
+      }
+
+      const settledClaim = readMountClaim();
+      const settledAt = Date.now();
+      if (isMountClaimBlocking(settledClaim, this.mountNonce, settledAt)) {
+        this.armRetry();
+        this.scheduleClaimRetry(settledClaim, settledAt);
+        return;
+      }
+
+      // This tab owns the cross-tab claim. A loser remains retryable when the
+      // winner crashes and its lease expires.
+      this.teardownRetry();
+      this.clearClaimRetry();
+
+      const openResult = await this.openFlow(
+        expectedUserId,
+        subscriptionKey,
+        onlyIfUnactivated,
+        () => !this.ctx.isDestroyed && authGeneration === this.authGeneration,
+      );
+      if (this.abortIfStale(authGeneration)) return;
+      if (openResult === 'not-eligible') {
+        this.resolved = true;
+        this.clearFlowRetry();
+        clearMountClaimIfOwned(this.mountNonce);
+        return;
+      }
+      if (openResult !== 'opened') {
+        clearMountClaimIfOwned(this.mountNonce);
+        this.scheduleFlowRetry();
+        return;
+      }
+      this.resolved = true;
+      this.clearFlowRetry();
+
+      // Never consume the pending marker unless durable fire-once persistence
+      // succeeded. Storage failures can then retry on a later boot.
+      const accountKey = deriveActivationAccountKey(expectedUserId);
+      if (
+        accountKey &&
+        writeScopedFireOnceRecord(
+          window.localStorage,
+          accountKey,
+          computeFireOnceRecord(subscriptionKey, now),
+        )
+      ) {
+        clearPendingMarker();
+      }
       clearMountClaimIfOwned(this.mountNonce);
-      this.armRetry();
-      return;
+    } finally {
+      this.mounting = false;
     }
-    this.mounting = false;
-    this.resolved = true;
+  }
 
-    // Never consume the pending marker unless durable fire-once persistence
-    // succeeded. Storage failures can then retry on a later boot.
-    if (writeFireOnceRecord(computeFireOnceRecord(subscriptionKey, now))) {
-      clearPendingMarker();
-    }
+  /**
+   * True (and cleaned up) once this in-flight mount attempt is no longer
+   * relevant — the tab was destroyed, or a newer auth generation (sign-out,
+   * account switch) superseded it. Also releases the cross-tab claim and, for
+   * a live tab, schedules a fresh evaluate() so the superseding attempt isn't
+   * stranded waiting on a claim this attempt still held.
+   */
+  private abortIfStale(authGeneration: number): boolean {
+    if (!this.ctx.isDestroyed && authGeneration === this.authGeneration) return false;
     clearMountClaimIfOwned(this.mountNonce);
+    if (!this.ctx.isDestroyed) queueMicrotask(() => void this.evaluate());
+    return true;
   }
 
   private finishWithChip(
@@ -335,6 +409,7 @@ export class ProActivationController implements AppModule {
     this.resolved = true;
     this.teardownRetry();
     this.clearClaimRetry();
+    this.clearFlowRetry();
     if (decision !== 'show') return;
 
     const flowOptions = this.buildFlowOptions();
@@ -364,12 +439,27 @@ export class ProActivationController implements AppModule {
   private armRetry(): void {
     if (this.retryArmed || this.resolved) return;
     this.retryArmed = true;
+    // Both listener services replay their current snapshot SYNCHRONOUSLY on
+    // subscribe when state is already loaded. armRetry is only called right
+    // after an evaluate() consumed that exact snapshot, so the replay is
+    // always redundant — swallow the first invocation per registration or the
+    // exhaustion fallback in scheduleFlowRetry() would instantly re-trigger
+    // evaluate() and recreate the retry loop it was meant to stop.
+    const skipSyncReplay = (cb: () => void): (() => void) => {
+      let first = true;
+      return () => {
+        if (first) {
+          first = false;
+          return;
+        }
+        cb();
+      };
+    };
     const reEvaluate = (): void => {
       queueMicrotask(() => void this.evaluate());
     };
-    this.retryUnsubscribers.push(onEntitlementChange(reEvaluate));
-    this.retryUnsubscribers.push(onSubscriptionChange(reEvaluate));
-    this.retryUnsubscribers.push(subscribeAuthState(reEvaluate));
+    this.retryUnsubscribers.push(onEntitlementChange(skipSyncReplay(reEvaluate)));
+    this.retryUnsubscribers.push(onSubscriptionChange(skipSyncReplay(reEvaluate)));
   }
 
   private teardownRetry(): void {
@@ -401,6 +491,36 @@ export class ProActivationController implements AppModule {
     this.claimRetryHandle = null;
   }
 
+  private scheduleFlowRetry(): void {
+    this.teardownRetry();
+    this.clearFlowRetry(false);
+    const delay = activationFlowRetryDelay(this.flowRetryAttempts);
+    if (delay === null) {
+      // The bounded backoff schedule is exhausted. Stop hammering with a
+      // timer, but stay unresolved and fall back to the same passive
+      // entitlement/subscription listeners used elsewhere in this file, so an
+      // external signal (e.g. the outage that caused the failures clearing)
+      // can still retrigger evaluate() later in the session. A fresh trigger
+      // gets its own full backoff schedule rather than an immediate re-give-up.
+      this.flowRetryAttempts = 0;
+      this.armRetry();
+      return;
+    }
+    this.flowRetryAttempts += 1;
+    this.flowRetryHandle = window.setTimeout(() => {
+      this.flowRetryHandle = null;
+      void this.evaluate();
+    }, delay);
+  }
+
+  private clearFlowRetry(resetAttempts = true): void {
+    if (this.flowRetryHandle !== null) {
+      window.clearTimeout(this.flowRetryHandle);
+      this.flowRetryHandle = null;
+    }
+    if (resetAttempts) this.flowRetryAttempts = 0;
+  }
+
   private cancelScheduledMount(): void {
     if (this.mountIdleHandle !== null) {
       const cancelIdle = window.cancelIdleCallback as ((handle: number) => void) | undefined;
@@ -413,15 +533,34 @@ export class ProActivationController implements AppModule {
     }
   }
 
-  private async openFlow(expectedUserId: string): Promise<boolean> {
+  private async openFlow(
+    expectedUserId: string,
+    subscriptionKey: string,
+    onlyIfUnactivated: boolean,
+    isStillValid: () => boolean,
+  ): Promise<'opened' | 'not-eligible' | 'retry'> {
     const flowOptions = this.buildFlowOptions(expectedUserId);
-    if (!flowOptions) return false;
+    if (!flowOptions) return 'retry';
     try {
       const module = await import('@/components/ProActivationInterstitial');
-      return await module.openProActivationFlow(flowOptions);
+      const result = await module.openProActivationFlow({
+        ...flowOptions,
+        onlyIfUnactivated,
+        expectedActivationKey: onlyIfUnactivated ? subscriptionKey : undefined,
+        activationClaimNonce: onlyIfUnactivated ? this.mountNonce : undefined,
+      });
+      // The interstitial may already be rendered by this point (opened
+      // synchronously inside openProActivationFlow before it resolves). If
+      // this tab was destroyed or superseded while that was in flight, close
+      // it rather than leaving an orphaned overlay wired to a dead context.
+      if (!isStillValid()) {
+        module.closeProActivationInterstitial();
+        return 'retry';
+      }
+      return result;
     } catch (error) {
       console.warn('[pro-activation] failed to open activation flow', error);
-      return false;
+      return 'retry';
     }
   }
 

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import {
   airportDisruptionViewModel,
@@ -15,7 +15,33 @@ import {
 
 const NOW = Date.UTC(2026, 6, 24, 12);
 
+function anonymousSessionResponse() {
+  return {
+    ok: true,
+    status: 200,
+    json: async () => ({ exp: Date.now() + 60 * 60 * 1000 }),
+  };
+}
+
 describe('crawlable live intelligence view models', () => {
+  let previousSessionStorage;
+  let storedSessionValues;
+
+  beforeEach(() => {
+    previousSessionStorage = globalThis.sessionStorage;
+    storedSessionValues = new Map();
+    globalThis.sessionStorage = {
+      getItem: (key) => storedSessionValues.get(key) ?? null,
+      setItem: (key, value) => storedSessionValues.set(key, value),
+      removeItem: (key) => storedSessionValues.delete(key),
+    };
+  });
+
+  afterEach(() => {
+    if (previousSessionStorage === undefined) delete globalThis.sessionStorage;
+    else globalThis.sessionStorage = previousSessionStorage;
+  });
+
   it('matches the requested chokepoint and preserves partial transit coverage', () => {
     const payload = {
       fetchedAt: new Date(NOW - 60_000).toISOString(),
@@ -384,11 +410,202 @@ describe('crawlable live intelligence view models', () => {
     assert.equal(view.flights[0].aircraftType, 'Reconnaissance');
   });
 
+  it('mints an anonymous session before a session-gated live request', async () => {
+    const calls = [];
+    const responses = [
+      anonymousSessionResponse(),
+      { ok: true, status: 200, json: async () => ({ value: 42 }) },
+    ];
+    const fetchImpl = async (url, options) => {
+      calls.push({ url, method: options.method || 'GET', credentials: options.credentials });
+      return responses.shift();
+    };
+
+    const payload = await requestLiveJson('/api/example', {
+      fetchImpl,
+      preflightSession: true,
+    });
+    assert.deepEqual(payload, { value: 42 });
+    assert.deepEqual(calls, [
+      { url: '/api/wm-session', method: 'POST', credentials: 'include' },
+      { url: '/api/example', method: 'GET', credentials: 'include' },
+    ]);
+  });
+
+  it('reuses a fresh anonymous session for serial protected requests', async () => {
+    const calls = [];
+    const fetchImpl = async (url, options) => {
+      calls.push({ url, method: options.method || 'GET' });
+      if (url === '/api/wm-session') return anonymousSessionResponse();
+      return { ok: true, status: 200, json: async () => ({ url }) };
+    };
+
+    await requestLiveJson('/api/one', { fetchImpl, preflightSession: true });
+    await requestLiveJson('/api/two', { fetchImpl, preflightSession: true });
+    assert.deepEqual(calls.map(({ url }) => url), [
+      '/api/wm-session',
+      '/api/one',
+      '/api/two',
+    ]);
+  });
+
+  it('reuses a fresh anonymous session when browser storage is unavailable', async () => {
+    globalThis.sessionStorage = {
+      getItem: () => {
+        throw new Error('storage disabled');
+      },
+      setItem: () => {
+        throw new Error('storage disabled');
+      },
+      removeItem: () => {
+        throw new Error('storage disabled');
+      },
+    };
+    const calls = [];
+    const fetchImpl = async (url, options) => {
+      calls.push({ url, method: options.method || 'GET' });
+      if (url === '/api/wm-session') return anonymousSessionResponse();
+      return { ok: true, status: 200, json: async () => ({ url }) };
+    };
+
+    await requestLiveJson('/api/one', { fetchImpl, preflightSession: true });
+    await requestLiveJson('/api/two', { fetchImpl, preflightSession: true });
+    assert.deepEqual(calls.map(({ url }) => url), [
+      '/api/wm-session',
+      '/api/one',
+      '/api/two',
+    ]);
+  });
+
+  it('refreshes a stored session after a protected request returns 401', async () => {
+    globalThis.sessionStorage.setItem(
+      'wm-session-exp',
+      JSON.stringify({ exp: Date.now() + 60 * 60 * 1000 }),
+    );
+    const calls = [];
+    const responses = [
+      { ok: false, status: 401 },
+      anonymousSessionResponse(),
+      { ok: true, status: 200, json: async () => ({ value: 42 }) },
+    ];
+    const fetchImpl = async (url, options) => {
+      calls.push({ url, method: options.method || 'GET' });
+      return responses.shift();
+    };
+
+    assert.deepEqual(
+      await requestLiveJson('/api/example', { fetchImpl, preflightSession: true }),
+      { value: 42 },
+    );
+    assert.deepEqual(calls, [
+      { url: '/api/example', method: 'GET' },
+      { url: '/api/wm-session', method: 'POST' },
+      { url: '/api/example', method: 'GET' },
+    ]);
+  });
+
+  it('does not send a session-gated live request when session minting fails', async () => {
+    const calls = [];
+    const fetchImpl = async (url, options) => {
+      calls.push({ url, method: options.method || 'GET', credentials: options.credentials });
+      return { ok: false, status: 503 };
+    };
+
+    await assert.rejects(
+      requestLiveJson('/api/example', { fetchImpl, preflightSession: true }),
+      /Anonymous session request failed \(503\)/,
+    );
+    assert.deepEqual(calls, [
+      { url: '/api/wm-session', method: 'POST', credentials: 'include' },
+    ]);
+  });
+
+  it('coalesces concurrent session preflights before protected request fan-out', async () => {
+    const calls = [];
+    let releaseSession;
+    const sessionResponse = new Promise((resolve) => {
+      releaseSession = resolve;
+    });
+    const fetchImpl = async (url, options) => {
+      calls.push({ url, method: options.method || 'GET', credentials: options.credentials });
+      if (url === '/api/wm-session') return sessionResponse;
+      return { ok: true, status: 200, json: async () => ({ url }) };
+    };
+
+    const requests = [
+      requestLiveJson('/api/one', { fetchImpl, preflightSession: true }),
+      requestLiveJson('/api/two', { fetchImpl, preflightSession: true }),
+    ];
+    await Promise.resolve();
+    assert.equal(
+      calls.filter(({ url }) => url === '/api/wm-session').length,
+      1,
+      'concurrent protected calls should share one session mint',
+    );
+
+    releaseSession(anonymousSessionResponse());
+    assert.deepEqual(await Promise.all(requests), [
+      { url: '/api/one' },
+      { url: '/api/two' },
+    ]);
+    assert.deepEqual(calls.map(({ url }) => url), [
+      '/api/wm-session',
+      '/api/one',
+      '/api/two',
+    ]);
+  });
+
+  it('does not remint for a late 401 after another request refreshed the session', async () => {
+    let resolveFirst;
+    let resolveSecond;
+    const firstResponse = new Promise((resolve) => {
+      resolveFirst = resolve;
+    });
+    const secondResponse = new Promise((resolve) => {
+      resolveSecond = resolve;
+    });
+    let resolveFirstRetryStarted;
+    const firstRetryStarted = new Promise((resolve) => {
+      resolveFirstRetryStarted = resolve;
+    });
+    const calls = [];
+    const requestCounts = new Map();
+    const fetchImpl = async (url, options) => {
+      calls.push({ url, method: options.method || 'GET' });
+      if (url === '/api/wm-session') return anonymousSessionResponse();
+      const count = (requestCounts.get(url) || 0) + 1;
+      requestCounts.set(url, count);
+      if (count > 1) {
+        if (url === '/api/one') resolveFirstRetryStarted();
+        return { ok: true, status: 200, json: async () => ({ url }) };
+      }
+      return url === '/api/one' ? firstResponse : secondResponse;
+    };
+
+    const requests = [
+      requestLiveJson('/api/one', { fetchImpl, preflightSession: true }),
+      requestLiveJson('/api/two', { fetchImpl, preflightSession: true }),
+    ];
+    await Promise.resolve();
+    resolveFirst({ ok: false, status: 401 });
+    await firstRetryStarted;
+    resolveSecond({ ok: false, status: 401 });
+    assert.deepEqual(await Promise.all(requests), [
+      { url: '/api/one' },
+      { url: '/api/two' },
+    ]);
+    assert.equal(
+      calls.filter(({ url }) => url === '/api/wm-session').length,
+      2,
+      'the late 401 should reuse the newer session generation',
+    );
+  });
+
   it('mints an anonymous session after a 401 and retries the original request once', async () => {
     const calls = [];
     const responses = [
       { ok: false, status: 401 },
-      { ok: true, status: 200 },
+      anonymousSessionResponse(),
       { ok: true, status: 200, json: async () => ({ value: 42 }) },
     ];
     const fetchImpl = async (url, options) => {

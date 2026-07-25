@@ -42,16 +42,34 @@ export interface CustomWidgetSpec {
   updatedAt: number;
 }
 
-export function loadWidgets(): CustomWidgetSpec[] {
-  const raw = loadFromStorage<CustomWidgetSpec[]>(STORAGE_KEY, []);
+function materializeWidgets(raw: unknown, strict: boolean): CustomWidgetSpec[] {
+  if (!Array.isArray(raw)) {
+    if (strict) throw new Error('Stored custom widgets must be an array');
+    return [];
+  }
+
   const result: CustomWidgetSpec[] = [];
-  for (const w of raw) {
+  for (const candidate of raw) {
+    if (
+      typeof candidate !== 'object' ||
+      candidate === null ||
+      typeof (candidate as Partial<CustomWidgetSpec>).id !== 'string'
+    ) {
+      if (strict) throw new Error('Stored custom widget is malformed');
+      continue;
+    }
+    const w = candidate as CustomWidgetSpec;
+    // Legacy widgets predate the `tier` field (added after custom widgets
+    // shipped) and have no `tier` key at all. Both loaders normalize a
+    // missing/invalid tier to 'basic' rather than dropping the widget from
+    // the dashboard.
     const tier = w.tier === 'pro' ? 'pro' : 'basic';
     if (tier === 'pro') {
       const sideKeyHtml = localStorage.getItem(proHtmlKey(w.id));
       const storedHtml = typeof w.html === 'string' ? w.html : '';
       const proHtml = storedHtml || sideKeyHtml;
       if (!proHtml) {
+        if (strict) throw new Error('Stored Pro widget is missing HTML');
         // HTML missing — drop widget and clean up spans
         clearPanelSpanEntry(w.id);
         clearPanelColSpanEntry(w.id);
@@ -59,10 +77,29 @@ export function loadWidgets(): CustomWidgetSpec[] {
       }
       result.push({ ...w, tier, html: proHtml });
     } else {
+      if (strict && typeof w.html !== 'string') {
+        throw new Error('Stored basic widget is missing HTML');
+      }
       result.push({ ...w, tier: 'basic' });
     }
   }
   return result;
+}
+
+export function loadWidgets(): CustomWidgetSpec[] {
+  return materializeWidgets(loadFromStorage<unknown>(STORAGE_KEY, []), false);
+}
+
+/**
+ * Activation-cohort reads must distinguish a genuinely empty widget list from
+ * unavailable or malformed storage. The regular loader intentionally degrades
+ * those failures to `[]` for dashboard resilience.
+ */
+export function loadWidgetsStrict(): CustomWidgetSpec[] {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (raw === null) return [];
+  const parsed: unknown = JSON.parse(raw);
+  return materializeWidgets(parsed, true);
 }
 
 export async function saveWidget(spec: CustomWidgetSpec): Promise<void> {

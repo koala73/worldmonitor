@@ -114,7 +114,7 @@ async function openFlow(page: Page, withOpeners: boolean): Promise<void> {
       options.openAiAnalyst = () => {};
       options.openApiKeys = () => {};
     }
-    void (mod.openProActivationFlow as (o: unknown) => Promise<boolean>)(options);
+    void (mod.openProActivationFlow as (o: unknown) => Promise<unknown>)(options);
   }, withOpeners);
   await expect(page.locator(OVERLAY)).toBeVisible({ timeout: 20_000 });
 }
@@ -122,6 +122,169 @@ async function openFlow(page: Page, withOpeners: boolean): Promise<void> {
 async function readCapturedEvents(page: Page): Promise<CapturedProEvent[]> {
   return page.evaluate(() => (window as unknown as { __proEvents: CapturedProEvent[] }).__proEvents);
 }
+
+type ClaimStatus = 'claimed' | 'not_eligible' | 'already_presented' | 'already_claimed';
+
+async function runMarkerlessFlowHarness(
+  page: Page,
+  input: {
+    claimStatus: ClaimStatus;
+    activeLocal?: boolean;
+    throwRead?: boolean;
+    switchAfterClaim?: boolean;
+    confirmResult?: boolean;
+    confirmFailures?: number;
+    neverResolveClaim?: boolean;
+  },
+): Promise<{ result: string; claimCalls: number; confirmCalls: number }> {
+  return await page.evaluate(async (scenario) => {
+    const { initI18n } = await import('/src/services/i18n.ts');
+    await initI18n();
+    const mod = await import('/src/components/ProActivationInterstitial.ts');
+    let ownerChecks = 0;
+    let claimCalls = 0;
+    let confirmCalls = 0;
+    const context = {
+      config: {
+        hasVerifiedEmailChannel: false,
+        hasEmailDelivery: false,
+        hasEnabledDigestRule: false,
+        hasTunedDigestHour: false,
+        hasWebPushChannel: false,
+        hasWebPushDelivery: false,
+        hasUsedPowerFeature: scenario.activeLocal === true,
+      },
+      capabilities: { webPushSupported: false },
+      channels: [],
+      channelsKnown: true,
+      hasEnabledRule: false,
+    };
+    const result = await mod.openProActivationFlow(
+      {
+        accountUserId: 'markerless-user',
+        accountEmail: 'markerless@worldmonitor.app',
+        onlyIfUnactivated: true,
+        expectedActivationKey: 'opaque-subscription',
+        activationClaimNonce: 'tab-nonce',
+        isAccountCurrent: () => {
+          ownerChecks += 1;
+          return !(scenario.switchAfterClaim && ownerChecks >= 3);
+        },
+      },
+      {
+        readContext: async () => {
+          if (scenario.throwRead) throw new Error('strict read failed');
+          return context;
+        },
+        claimPresentation: async () => {
+          claimCalls += 1;
+          if (scenario.neverResolveClaim) return await new Promise<never>(() => {});
+          return scenario.claimStatus;
+        },
+        confirmPresentation: async () => {
+          confirmCalls += 1;
+          if (confirmCalls <= (scenario.confirmFailures ?? 0)) {
+            throw new Error('confirm transport failed');
+          }
+          return scenario.confirmResult !== false;
+        },
+        operationTimeoutMs: 20,
+      },
+    );
+    return { result, claimCalls, confirmCalls };
+  }, input);
+}
+
+test.describe('Pro activation flow — markerless first-cycle handoff', () => {
+  test.beforeEach(async ({ page }) => {
+    await gotoHarness(page);
+  });
+
+  test('strict config failure retries without claiming or opening', async ({ page }) => {
+    const result = await runMarkerlessFlowHarness(page, {
+      claimStatus: 'claimed',
+      throwRead: true,
+    });
+    expect(result).toEqual({ result: 'retry', claimCalls: 0, confirmCalls: 0 });
+    await expect(page.locator(OVERLAY)).toHaveCount(0);
+  });
+
+  test('a stalled claim reaches the controller retry path within its deadline', async ({ page }) => {
+    const result = await runMarkerlessFlowHarness(page, {
+      claimStatus: 'claimed',
+      neverResolveClaim: true,
+    });
+    expect(result).toEqual({ result: 'retry', claimCalls: 1, confirmCalls: 0 });
+    await expect(page.locator(OVERLAY)).toHaveCount(0);
+  });
+
+  test('local Pro activation suppresses before the server claim', async ({ page }) => {
+    const result = await runMarkerlessFlowHarness(page, {
+      claimStatus: 'claimed',
+      activeLocal: true,
+    });
+    expect(result).toEqual({ result: 'not-eligible', claimCalls: 0, confirmCalls: 0 });
+    await expect(page.locator(OVERLAY)).toHaveCount(0);
+  });
+
+  test('claim outcomes preserve retryable and terminal meanings', async ({ page }) => {
+    const claimedElsewhere = await runMarkerlessFlowHarness(page, {
+      claimStatus: 'already_claimed',
+    });
+    expect(claimedElsewhere.result).toBe('retry');
+
+    const alreadyPresented = await runMarkerlessFlowHarness(page, {
+      claimStatus: 'already_presented',
+    });
+    expect(alreadyPresented.result).toBe('not-eligible');
+    await expect(page.locator(OVERLAY)).toHaveCount(0);
+  });
+
+  test('a successful claim opens once and confirms the presentation', async ({ page }) => {
+    const result = await runMarkerlessFlowHarness(page, { claimStatus: 'claimed' });
+    expect(result).toEqual({ result: 'opened', claimCalls: 1, confirmCalls: 1 });
+    await expect(page.locator(OVERLAY)).toBeVisible();
+  });
+
+  test('lost confirmation ownership closes the flow and remains retryable', async ({ page }) => {
+    const result = await runMarkerlessFlowHarness(page, {
+      claimStatus: 'claimed',
+      confirmResult: false,
+    });
+    expect(result).toEqual({ result: 'retry', claimCalls: 1, confirmCalls: 1 });
+    await expect(page.locator(OVERLAY)).toHaveCount(0);
+  });
+
+  test('transient confirm failures still open after the retry delays', async ({ page }) => {
+    const result = await runMarkerlessFlowHarness(page, {
+      claimStatus: 'claimed',
+      confirmFailures: 2,
+    });
+    expect(result).toEqual({ result: 'opened', claimCalls: 1, confirmCalls: 3 });
+    await expect(page.locator(OVERLAY)).toBeVisible();
+  });
+
+  test('confirm failures beyond the retry schedule close the flow and remain retryable', async ({ page }) => {
+    // One initial call plus every entry of PRESENTATION_CONFIRM_RETRY_DELAYS_MS
+    // (250/750/1500ms real delays) fails → the flow gives up retrying.
+    test.setTimeout(60_000);
+    const result = await runMarkerlessFlowHarness(page, {
+      claimStatus: 'claimed',
+      confirmFailures: 4,
+    });
+    expect(result).toEqual({ result: 'retry', claimCalls: 1, confirmCalls: 4 });
+    await expect(page.locator(OVERLAY)).toHaveCount(0);
+  });
+
+  test('account switch after claim retries without opening or confirming', async ({ page }) => {
+    const result = await runMarkerlessFlowHarness(page, {
+      claimStatus: 'claimed',
+      switchAfterClaim: true,
+    });
+    expect(result).toEqual({ result: 'retry', claimCalls: 1, confirmCalls: 0 });
+    await expect(page.locator(OVERLAY)).toHaveCount(0);
+  });
+});
 
 test.describe('Pro activation interstitial — shell step flow', () => {
   test('happy path: confirm every step → verified exit summary → dashboard', async ({ page }) => {
@@ -401,12 +564,12 @@ test.describe('Pro activation — notification context', () => {
 });
 
 test.describe('Pro activation — boot gating (real app)', () => {
-  test('no pending marker → interstitial never opens and no marker is written', async ({
+  test('anonymous boot without a pending marker does not open or synthesize one', async ({
     page,
   }) => {
     // A failed / non-success checkout return writes NO pending marker (only the
-    // success path does), so this also covers "failed checkout return → no
-    // interstitial": with no marker, the boot decision is `none`.
+    // success path does). Markerless onboarding still requires an authenticated,
+    // first-cycle Pro subscription carrying server-derived eligibility.
     await page.addInitScript(() => {
       localStorage.setItem('worldmonitor-variant', 'happy');
     });

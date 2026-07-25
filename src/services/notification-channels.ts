@@ -81,8 +81,15 @@ async function authFetch(
   });
 }
 
-export async function getChannelsData(expectedUserId?: string): Promise<ChannelsData> {
-  const res = await authFetch('/api/notification-channels', undefined, expectedUserId);
+export async function getChannelsData(
+  expectedUserId?: string,
+  signal?: AbortSignal,
+): Promise<ChannelsData> {
+  const res = await authFetch(
+    '/api/notification-channels',
+    signal ? { signal } : undefined,
+    expectedUserId,
+  );
   if (!res.ok) throw new Error(`get channels: ${res.status}`);
   return res.json() as Promise<ChannelsData>;
 }

@@ -10,7 +10,7 @@
  */
 
 import { ConvexError, v } from "convex/values";
-import { action, mutation, query, internalAction, internalMutation, internalQuery, type ActionCtx, type QueryCtx } from "../_generated/server";
+import { action, mutation, query, internalAction, internalMutation, internalQuery, type ActionCtx, type MutationCtx, type QueryCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { DodoPayments } from "dodopayments";
 import type { Subscription as DodoSubscription } from "dodopayments/resources/subscriptions";
@@ -20,6 +20,7 @@ import { getFeaturesForPlan } from "../lib/entitlements";
 import { ANON_ID_V4_REGEX, verifyAnonClaimToken } from "../lib/identitySigning";
 import { PLAN_PRECEDENCE, PRODUCT_CATALOG, resolveProductToPlan } from "../config/productCatalog";
 import {
+  isCoveringAt,
   isNewerEvent,
   recomputeEntitlementFromAllSubs,
   resolvePlanKey,
@@ -479,6 +480,81 @@ function getSubscriptionStatusPriority(status: string): number {
   }
 }
 
+function isProActivationPlan(planKey: string): boolean {
+  return planKey === "pro_monthly" || planKey === "pro_annual";
+}
+
+function isFirstBillingCycle(
+  subscription: {
+    _creationTime: number;
+    currentPeriodStart: number;
+    currentPeriodEnd: number;
+  },
+): boolean {
+  // Convex creates the row from the first subscription.active webhook and
+  // preserves that system timestamp across renewals. A renewal advances
+  // currentPeriodStart beyond _creationTime, while the initial cycle contains
+  // the creation timestamp inside its [start, end) bounds.
+  return (
+    subscription._creationTime >= subscription.currentPeriodStart &&
+    subscription._creationTime < subscription.currentPeriodEnd
+  );
+}
+
+const PRO_ACTIVATION_CLAIM_TTL_MS = 30 * 1000;
+
+async function hasActivatedServerProFunctionality(
+  ctx: QueryCtx | MutationCtx,
+  userId: string,
+): Promise<boolean> {
+  const [channels, rules, apiKeys, mcpTokens] = await Promise.all([
+    ctx.db
+      .query("notificationChannels")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect(),
+    ctx.db
+      .query("alertRules")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect(),
+    ctx.db
+      .query("userApiKeys")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .collect(),
+    ctx.db
+      .query("mcpProTokens")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .collect(),
+  ]);
+
+  const verifiedChannels = new Set(
+    channels
+      .filter((channel) => channel.verified)
+      .map((channel) => channel.channelType),
+  );
+  const hasConfiguredDelivery = rules.some(
+    (rule) =>
+      rule.enabled &&
+      rule.channels.some((channelType) => verifiedChannels.has(channelType)),
+  );
+  const hasApiSetup = apiKeys.some((key) => key.revokedAt === undefined);
+  const hasMcpSetup = mcpTokens.some((token) => token.revokedAt === undefined);
+  return hasConfiguredDelivery || hasApiSetup || hasMcpSetup;
+}
+
+async function hasConfirmedActivationPresentation(
+  ctx: QueryCtx | MutationCtx,
+  subscriptionId: Id<"subscriptions">,
+): Promise<boolean> {
+  const presentation = await ctx.db
+    .query("proActivationPresentations")
+    .withIndex("by_subscription", (q) => q.eq("subscriptionId", subscriptionId))
+    .first();
+  // Pending leases arbitrate at the claim mutation. Keeping the reactive
+  // eligibility verdict true until presentation is confirmed lets a losing
+  // browser retry if the winner crashes and the short lease expires.
+  return presentation?.presentedAt !== undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Queries
 // ---------------------------------------------------------------------------
@@ -528,12 +604,24 @@ export const getSubscriptionForUser = query({
       .query("productPlans")
       .withIndex("by_planKey", (q) => q.eq("planKey", subscription.planKey))
       .first();
+    const firstProBillingCycle =
+      isProActivationPlan(subscription.planKey) &&
+      isFirstBillingCycle(subscription) &&
+      isCoveringAt(subscription, Date.now());
+    const activationOnboardingEligible =
+      firstProBillingCycle &&
+      !(await hasConfirmedActivationPresentation(ctx, subscription._id));
 
     return {
       // Purpose-built opaque identity for Pro Activation fire-once keying.
       // Never expose/store the provider subscription id in browser storage.
       // A new subscription row gets a new Convex id, so win-backs re-onboard.
       activationKey: subscription._id,
+      // Markerless cohort candidate for Pro Activation. This deliberately
+      // exposes no billing dates or provider ids. The atomic claim mutation
+      // re-checks delivery/API/MCP activation immediately before opening,
+      // keeping the reactive billing watch independent of those collections.
+      activationOnboardingEligible,
       planKey: subscription.planKey,
       displayName: productPlan?.displayName ?? subscription.planKey,
       status: subscription.status,
@@ -544,6 +632,89 @@ export const getSubscriptionForUser = query({
       // (not undefined) for a stable wire shape.
       renewalVerificationState: subscription.renewalVerificationState ?? null,
     };
+  },
+});
+
+/**
+ * Atomically re-check markerless eligibility and reserve the interstitial for
+ * one browser. The short lease expires if the browser crashes before render.
+ */
+export const claimProActivationPresentation = mutation({
+  args: {
+    activationKey: v.id("subscriptions"),
+    claimNonce: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+    const now = Date.now();
+    const subscription = await ctx.db.get(args.activationKey);
+    if (
+      subscription === null ||
+      subscription.userId !== userId ||
+      !isProActivationPlan(subscription.planKey) ||
+      !isFirstBillingCycle(subscription) ||
+      !isCoveringAt(subscription, now) ||
+      await hasActivatedServerProFunctionality(ctx, userId)
+    ) {
+      return { status: "not_eligible" as const };
+    }
+
+    const existing = await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription", (q) => q.eq("subscriptionId", args.activationKey))
+      .first();
+    if (existing?.presentedAt !== undefined) {
+      return { status: "already_presented" as const };
+    }
+    if (
+      existing &&
+      existing.claimNonce !== args.claimNonce &&
+      now - existing.claimedAt <= PRO_ACTIVATION_CLAIM_TTL_MS
+    ) {
+      return { status: "already_claimed" as const };
+    }
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        claimNonce: args.claimNonce,
+        claimedAt: now,
+        presentedAt: undefined,
+      });
+    } else {
+      await ctx.db.insert("proActivationPresentations", {
+        userId,
+        subscriptionId: args.activationKey,
+        claimNonce: args.claimNonce,
+        claimedAt: now,
+      });
+    }
+    return { status: "claimed" as const };
+  },
+});
+
+/** Confirm that the browser holding the claim actually rendered the flow. */
+export const confirmProActivationPresentation = mutation({
+  args: {
+    activationKey: v.id("subscriptions"),
+    claimNonce: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireUserId(ctx);
+    const presentation = await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription", (q) => q.eq("subscriptionId", args.activationKey))
+      .first();
+    if (
+      presentation === null ||
+      presentation.userId !== userId ||
+      presentation.claimNonce !== args.claimNonce
+    ) {
+      return false;
+    }
+    if (presentation.presentedAt === undefined) {
+      await ctx.db.patch(presentation._id, { presentedAt: Date.now() });
+    }
+    return true;
   },
 });
 
@@ -3491,6 +3662,13 @@ export const deleteSubscriptionByDodoId = internalMutation({
     }
 
     const userId = sub.userId;
+    const presentations = await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription", (q) => q.eq("subscriptionId", sub._id))
+      .collect();
+    for (const presentation of presentations) {
+      await ctx.db.delete(presentation._id);
+    }
     await ctx.db.delete(sub._id);
     console.log(
       `[billing] deleteSubscriptionByDodoId userId=${userId} dodoSubscriptionId=${args.dodoSubscriptionId} planKey=${sub.planKey} reason="${args.reason}"`,

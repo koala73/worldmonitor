@@ -54,6 +54,7 @@ async function seedSubscription(
     planKey: string;
     dodoProductId: string;
     status: "active" | "on_hold" | "cancelled" | "expired";
+    currentPeriodStart?: number;
     currentPeriodEnd: number;
     suffix: string;
     rawPayload?: unknown;
@@ -61,14 +62,14 @@ async function seedSubscription(
     renewalVerificationState?: "pending" | "failed" | "lapsed";
   },
 ) {
-  await t.run(async (ctx) => {
-    await ctx.db.insert("subscriptions", {
+  return await t.run(async (ctx) => {
+    return await ctx.db.insert("subscriptions", {
       userId: opts.userId ?? TEST_USER_ID,
       dodoSubscriptionId: `sub_billing_${opts.suffix}`,
       dodoProductId: opts.dodoProductId,
       planKey: opts.planKey,
       status: opts.status,
-      currentPeriodStart: NOW - DAY_MS,
+      currentPeriodStart: opts.currentPeriodStart ?? NOW - DAY_MS,
       currentPeriodEnd: opts.currentPeriodEnd,
       rawPayload: opts.rawPayload ?? {},
       updatedAt: NOW,
@@ -435,6 +436,183 @@ describe("claimSubscription anonymous ownership proof", () => {
         claimToken: wrongToken,
       }),
     ).rejects.toThrow(/ANON_CLAIM_PROOF_REQUIRED/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// U5 — Business Pro grants entitlement resolution (#4634/#4635)
+// ---------------------------------------------------------------------------
+
+describe("payments billing Business Pro grants entitlement resolution", () => {
+  async function seedBusinessSub(
+    t: ReturnType<typeof convexTest>,
+    opts: {
+      dodoSubscriptionId: string;
+      status: "active" | "on_hold" | "cancelled" | "expired";
+      currentPeriodEnd: number;
+      ownerUserId?: string;
+    },
+  ) {
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: opts.ownerUserId ?? "user_business_owner",
+        dodoSubscriptionId: opts.dodoSubscriptionId,
+        dodoProductId: PRODUCT_CATALOG.api_business.dodoProductId!,
+        planKey: "api_business",
+        status: opts.status,
+        currentPeriodStart: NOW - DAY_MS,
+        currentPeriodEnd: opts.currentPeriodEnd,
+        rawPayload: {},
+        updatedAt: NOW,
+      });
+    });
+  }
+
+  async function seedAcceptedGrant(
+    t: ReturnType<typeof convexTest>,
+    opts: {
+      businessSubscriptionId: string;
+      inviteeUserId: string;
+      inviteeEmail: string;
+      domain: string;
+    },
+  ) {
+    await t.run(async (ctx) => {
+      await ctx.db.insert("businessProGrants", {
+        businessSubscriptionId: opts.businessSubscriptionId,
+        ownerUserId: "user_business_owner",
+        inviteeEmail: opts.inviteeEmail,
+        domain: opts.domain,
+        status: "accepted",
+        inviteeUserId: opts.inviteeUserId,
+        createdAt: NOW,
+        acceptedAt: NOW,
+        expiresAt: NOW + 14 * DAY_MS,
+      });
+    });
+  }
+
+  test("invitee with no own subscription resolves to Pro via accepted grant", async () => {
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_grant_001";
+    await seedBusinessSub(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    await seedAcceptedGrant(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeUserId: TEST_USER_ID,
+      inviteeEmail: "teammate@acme.com",
+      domain: "acme.com",
+    });
+
+    await t.mutation(internal.payments.subscriptionHelpers.recomputeEntitlementForUser, {
+      userId: TEST_USER_ID,
+      eventTimestamp: NOW,
+    });
+
+    const entitlement = await t.run(async (ctx) =>
+      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", TEST_USER_ID)).first(),
+    );
+    expect(entitlement?.planKey).toBe("pro_monthly");
+    expect(entitlement?.validUntil).toBe(NOW + 30 * DAY_MS);
+    expect(entitlement?.features.tier).toBe(1);
+  });
+
+  test("invitee who also has own Pro subscription keeps own Pro", async () => {
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_grant_002";
+    await seedBusinessSub(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 10 * DAY_MS,
+    });
+    await seedAcceptedGrant(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeUserId: TEST_USER_ID,
+      inviteeEmail: "teammate@acme.com",
+      domain: "acme.com",
+    });
+    await seedSubscription(t, {
+      planKey: "pro_annual",
+      dodoProductId: PRODUCT_CATALOG.pro_annual.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 365 * DAY_MS,
+      suffix: "own_pro_annual",
+    });
+
+    await t.mutation(internal.payments.subscriptionHelpers.recomputeEntitlementForUser, {
+      userId: TEST_USER_ID,
+      eventTimestamp: NOW,
+    });
+
+    const entitlement = await t.run(async (ctx) =>
+      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", TEST_USER_ID)).first(),
+    );
+    expect(entitlement?.planKey).toBe("pro_annual");
+    expect(entitlement?.validUntil).toBe(NOW + 365 * DAY_MS);
+  });
+
+  test("invitee whose grant's Business subscription is lapsed resolves to free", async () => {
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_grant_003";
+    await seedBusinessSub(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "expired",
+      currentPeriodEnd: NOW - DAY_MS,
+    });
+    await seedAcceptedGrant(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeUserId: TEST_USER_ID,
+      inviteeEmail: "teammate@acme.com",
+      domain: "acme.com",
+    });
+
+    await t.mutation(internal.payments.subscriptionHelpers.recomputeEntitlementForUser, {
+      userId: TEST_USER_ID,
+      eventTimestamp: NOW,
+    });
+
+    const entitlement = await t.run(async (ctx) =>
+      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", TEST_USER_ID)).first(),
+    );
+    expect(entitlement?.planKey).toBe("free");
+    expect(entitlement?.validUntil).toBe(NOW);
+  });
+
+  test("invitee with higher-tier own subscription keeps own plan over grant", async () => {
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_grant_004";
+    await seedBusinessSub(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    await seedAcceptedGrant(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeUserId: TEST_USER_ID,
+      inviteeEmail: "teammate@acme.com",
+      domain: "acme.com",
+    });
+    await seedSubscription(t, {
+      planKey: "api_starter",
+      dodoProductId: PRODUCT_CATALOG.api_starter.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "own_api_starter",
+    });
+
+    await t.mutation(internal.payments.subscriptionHelpers.recomputeEntitlementForUser, {
+      userId: TEST_USER_ID,
+      eventTimestamp: NOW,
+    });
+
+    const entitlement = await t.run(async (ctx) =>
+      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", TEST_USER_ID)).first(),
+    );
+    expect(entitlement?.planKey).toBe("api_starter");
+    expect(entitlement?.features.tier).toBe(2);
   });
 });
 
@@ -4569,10 +4747,10 @@ describe("getSubscriptionForUser renewal verification exposure (#4771)", () => {
   });
 });
 
-describe("getSubscriptionForUser activation fire-once identity exposure", () => {
+describe("getSubscriptionForUser activation onboarding eligibility", () => {
   const IDENTITY = { subject: TEST_USER_ID, tokenIdentifier: `clerk|${TEST_USER_ID}` };
 
-  test("surfaces only an opaque Convex activation key for fire-once storage", async () => {
+  test("surfaces an opaque key plus first-cycle unactivated eligibility", async () => {
     const t = convexTest(schema, modules);
     await seedSubscription(t, {
       planKey: "pro_monthly",
@@ -4588,7 +4766,517 @@ describe("getSubscriptionForUser activation fire-once identity exposure", () => 
     expect(result).not.toBeNull();
     expect(typeof result!.activationKey).toBe("string");
     expect(result!.activationKey).not.toBe("sub_billing_activation_identity");
+    expect(result!.activationOnboardingEligible).toBe(true);
     expect(result).not.toHaveProperty("subscriptionId");
     expect(result).not.toHaveProperty("currentPeriodStart");
+  });
+
+  test("does not backfill onboarding after the first billing cycle", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_renewed",
+    });
+    // Advance the same preserved subscription row into its second period.
+    // `_creationTime` remains in cycle one while the provider period advances.
+    await t.run(async (ctx) => {
+      await ctx.db.patch(activationKey, {
+        currentPeriodStart: NOW + 30 * DAY_MS,
+        currentPeriodEnd: NOW + 60 * DAY_MS,
+        updatedAt: NOW + 30 * DAY_MS,
+      });
+    });
+
+    const result = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+
+    expect(result?.activationOnboardingEligible).toBe(false);
+  });
+
+  test.each([
+    ["active", NOW + 30 * DAY_MS, true],
+    ["on_hold", NOW + 30 * DAY_MS, true],
+    ["cancelled", NOW + 30 * DAY_MS, true],
+    ["expired", NOW + 30 * DAY_MS, false],
+  ] as const)(
+    "requires canonical subscription coverage for %s rows",
+    async (status, currentPeriodEnd, expectedEligible) => {
+      const t = convexTest(schema, modules);
+      const activationKey = await seedSubscription(t, {
+        planKey: "pro_monthly",
+        dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+        status,
+        currentPeriodEnd,
+        suffix: `activation_coverage_${status}`,
+      });
+
+      const result = await t
+        .withIdentity(IDENTITY)
+        .query(api.payments.billing.getSubscriptionForUser, {});
+      expect(result?.activationOnboardingEligible).toBe(expectedEligible);
+
+      const claim = await t.withIdentity(IDENTITY).mutation(
+        api.payments.billing.claimProActivationPresentation,
+        { activationKey, claimNonce: `coverage-${status}` },
+      );
+      expect(claim.status).toBe(expectedEligible ? "claimed" : "not_eligible");
+    },
+  );
+
+  test("does not backfill onboarding after a configured Pro delivery is active", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_delivery",
+    });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("notificationChannels", {
+        userId: TEST_USER_ID,
+        channelType: "email",
+        email: "activated@example.com",
+        verified: true,
+        linkedAt: NOW,
+      });
+      await ctx.db.insert("alertRules", {
+        userId: TEST_USER_ID,
+        variant: "full",
+        enabled: true,
+        eventTypes: [],
+        sensitivity: "critical",
+        channels: ["email"],
+        updatedAt: NOW,
+        digestMode: "daily",
+      });
+    });
+
+    const result = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+
+    expect(result?.activationOnboardingEligible).toBe(true);
+    const claim = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "delivery-device" },
+    );
+    expect(claim.status).toBe("not_eligible");
+  });
+
+  test("does not backfill onboarding after API setup", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_power",
+    });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("userApiKeys", {
+        userId: TEST_USER_ID,
+        name: "Activated key",
+        keyPrefix: "wm_test_",
+        keyHash: "hash",
+        createdAt: NOW,
+      });
+    });
+
+    const result = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+
+    expect(result?.activationOnboardingEligible).toBe(true);
+    const claim = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "api-device" },
+    );
+    expect(claim.status).toBe("not_eligible");
+  });
+
+  test("does not backfill onboarding after MCP setup", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_annual",
+      dodoProductId: PRODUCT_CATALOG.pro_annual.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 365 * DAY_MS,
+      suffix: "activation_mcp",
+    });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("mcpProTokens", {
+        userId: TEST_USER_ID,
+        name: "Activated MCP client",
+        createdAt: NOW,
+      });
+    });
+
+    const result = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+
+    expect(result?.activationOnboardingEligible).toBe(true);
+    const claim = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "mcp-device" },
+    );
+    expect(claim.status).toBe("not_eligible");
+  });
+
+  test("keeps inactive delivery and revoked credentials eligible", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_inactive_setup",
+    });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("notificationChannels", {
+        userId: TEST_USER_ID,
+        channelType: "email",
+        email: "unverified@example.com",
+        verified: false,
+        linkedAt: NOW,
+      });
+      await ctx.db.insert("alertRules", {
+        userId: TEST_USER_ID,
+        variant: "full",
+        enabled: true,
+        eventTypes: [],
+        sensitivity: "critical",
+        channels: ["email"],
+        updatedAt: NOW,
+      });
+      await ctx.db.insert("userApiKeys", {
+        userId: TEST_USER_ID,
+        name: "Revoked key",
+        keyPrefix: "wm_old_",
+        keyHash: "old-hash",
+        createdAt: NOW,
+        revokedAt: NOW,
+      });
+      await ctx.db.insert("mcpProTokens", {
+        userId: TEST_USER_ID,
+        name: "Revoked MCP client",
+        createdAt: NOW,
+        revokedAt: NOW,
+      });
+    });
+
+    const claim = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "inactive-device" },
+    );
+    expect(claim.status).toBe("claimed");
+  });
+
+  test("claims one markerless presentation across devices and confirms it", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_claim",
+    });
+
+    const first = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-a" },
+    );
+    expect(first.status).toBe("claimed");
+
+    const second = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-b" },
+    );
+    expect(second.status).toBe("already_claimed");
+
+    const whileClaimed = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+    expect(whileClaimed?.activationOnboardingEligible).toBe(true);
+
+    expect(await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.confirmProActivationPresentation,
+      { activationKey, claimNonce: "device-a" },
+    )).toBe(true);
+    const afterConfirmation = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+    expect(afterConfirmation?.activationOnboardingEligible).toBe(false);
+
+    const afterPresentation = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-b" },
+    );
+    expect(afterPresentation.status).toBe("already_presented");
+  });
+
+  test("confirming an already-confirmed presentation is idempotent and preserves the original timestamp", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_confirm_idempotent",
+    });
+
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-a" },
+    );
+
+    expect(await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.confirmProActivationPresentation,
+      { activationKey, claimNonce: "device-a" },
+    )).toBe(true);
+    const firstPresentedAt = (await t.run(async (ctx) => await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription", (q) => q.eq("subscriptionId", activationKey))
+      .unique()))!.presentedAt;
+    expect(firstPresentedAt).toBeDefined();
+
+    // A retried confirm call (e.g. a client that timed out but the server
+    // call actually succeeded) must still return true and must not clobber
+    // the original presentedAt timestamp.
+    expect(await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.confirmProActivationPresentation,
+      { activationKey, claimNonce: "device-a" },
+    )).toBe(true);
+    const secondPresentedAt = (await t.run(async (ctx) => await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription", (q) => q.eq("subscriptionId", activationKey))
+      .unique()))!.presentedAt;
+    expect(secondPresentedAt).toBe(firstPresentedAt);
+  });
+
+  test("concurrent first claims serialize to one winner and one row", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_claim_concurrent",
+    });
+
+    const results = await Promise.all([
+      t.withIdentity(IDENTITY).mutation(
+        api.payments.billing.claimProActivationPresentation,
+        { activationKey, claimNonce: "device-a" },
+      ),
+      t.withIdentity(IDENTITY).mutation(
+        api.payments.billing.claimProActivationPresentation,
+        { activationKey, claimNonce: "device-b" },
+      ),
+    ]);
+    expect(results.map((result) => result.status).sort()).toEqual([
+      "already_claimed",
+      "claimed",
+    ]);
+    const rows = await t.run(async (ctx) => await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription", (q) => q.eq("subscriptionId", activationKey))
+      .collect());
+    expect(rows).toHaveLength(1);
+  });
+
+  test("claim and confirmation enforce subscription ownership and nonce", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_claim_authz",
+    });
+    const otherIdentity = {
+      subject: "user_activation_other",
+      tokenIdentifier: "clerk|user_activation_other",
+    };
+    const otherClaim = await t.withIdentity(otherIdentity).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-other" },
+    );
+    expect(otherClaim.status).toBe("not_eligible");
+
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-owner" },
+    );
+    expect(await t.withIdentity(otherIdentity).mutation(
+      api.payments.billing.confirmProActivationPresentation,
+      { activationKey, claimNonce: "device-owner" },
+    )).toBe(false);
+    expect(await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.confirmProActivationPresentation,
+      { activationKey, claimNonce: "wrong-nonce" },
+    )).toBe(false);
+  });
+
+  test("a different device can reclaim an abandoned presentation lease", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_claim_recovery",
+    });
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "crashed-device" },
+    );
+    await t.run(async (ctx) => {
+      const presentation = await ctx.db
+        .query("proActivationPresentations")
+        .withIndex("by_subscription", (q) => q.eq("subscriptionId", activationKey))
+        .unique();
+      expect(presentation).not.toBeNull();
+      await ctx.db.patch(presentation!._id, { claimedAt: Date.now() - 31_000 });
+    });
+
+    const recovered = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "recovery-device" },
+    );
+    expect(recovered.status).toBe("claimed");
+  });
+
+  test("claim closes an API activation race after an eligible snapshot", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_claim_api_race",
+    });
+    const before = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+    expect(before?.activationOnboardingEligible).toBe(true);
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("userApiKeys", {
+        userId: TEST_USER_ID,
+        name: "Race winner",
+        keyPrefix: "wm_race_",
+        keyHash: "race-hash",
+        createdAt: NOW,
+      });
+    });
+
+    const claim = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-a" },
+    );
+    expect(claim.status).toBe("not_eligible");
+  });
+
+  test("admin subscription cleanup removes its activation presentation", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_cleanup",
+    });
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-a" },
+    );
+
+    await t.mutation(internal.payments.billing.deleteSubscriptionByDodoId, {
+      dodoSubscriptionId: "sub_billing_activation_cleanup",
+      reason: "test cleanup",
+    });
+
+    const rows = await t.run(async (ctx) => await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription", (q) => q.eq("subscriptionId", activationKey))
+      .collect());
+    expect(rows).toEqual([]);
+  });
+
+  test("a disabled alert rule with a verified channel stays onboarding-eligible", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_disabled_rule",
+    });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("notificationChannels", {
+        userId: TEST_USER_ID,
+        channelType: "email",
+        email: "disabled-rule@example.com",
+        verified: true,
+        linkedAt: NOW,
+      });
+      await ctx.db.insert("alertRules", {
+        userId: TEST_USER_ID,
+        variant: "full",
+        enabled: false,
+        eventTypes: [],
+        sensitivity: "critical",
+        channels: ["email"],
+        updatedAt: NOW,
+      });
+    });
+
+    const result = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+
+    expect(result?.activationOnboardingEligible).toBe(true);
+    const claim = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "disabled-rule-device" },
+    );
+    expect(claim.status).toBe("claimed");
+  });
+
+  test("a repeated claim with the same nonce within the TTL re-claims without a second row", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_claim_same_nonce",
+    });
+
+    const first = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "same-tab-nonce" },
+    );
+    expect(first.status).toBe("claimed");
+
+    // The client retries a stalled claim with the same per-tab nonce; within
+    // PRO_ACTIVATION_CLAIM_TTL_MS the retry must succeed and stay a single row.
+    const second = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "same-tab-nonce" },
+    );
+    expect(second.status).toBe("claimed");
+
+    const rows = await t.run(async (ctx) => await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription", (q) => q.eq("subscriptionId", activationKey))
+      .collect());
+    expect(rows).toHaveLength(1);
   });
 });

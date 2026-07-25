@@ -26,11 +26,17 @@ import {
   deriveSubscriptionKey,
   isFireOnceActive,
   computeFireOnceRecord,
+  fireOnceStorageKey,
+  readScopedFireOnceRecord,
+  writeScopedFireOnceRecord,
   buildActivationSteps,
+  hasAnyActivatedProFunctionality,
   buildBriefDigestPayload,
   buildCriticalAlertsPayload,
   DEFAULT_DIGEST_HOUR,
   buildExitSummary,
+  ACTIVATION_FLOW_RETRY_DELAYS_MS,
+  activationFlowRetryDelay,
   summarizeActivationExit,
   shouldShowFinishSetupChip,
   computeFinishSetupChipDismissal,
@@ -85,11 +91,31 @@ function ent(overrides: Partial<ActivationEntitlementSnapshot> = {}): Activation
 function sub(
   overrides: Partial<ActivationSubscriptionSnapshot> = {},
 ): ActivationSubscriptionSnapshot {
-  return { activationKey: 'sub_live_1', ...overrides };
+  return {
+    activationKey: 'sub_live_1',
+    planKey: 'pro_monthly',
+    currentPeriodEnd: NOW + 30 * DAY,
+    activationOnboardingEligible: true,
+    ...overrides,
+  };
 }
 
 function fireOnce(overrides: Partial<FireOnceRecord> = {}): FireOnceRecord {
   return { subscriptionKey: 'sub_live_1', shownAt: NOW, ...overrides };
+}
+
+function createMemoryStorage(
+  values: Map<string, string>,
+): Pick<Storage, 'getItem' | 'setItem' | 'removeItem'> {
+  return {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      values.set(key, value);
+    },
+    removeItem: (key: string) => {
+      values.delete(key);
+    },
+  };
 }
 
 function mountInput(overrides: Partial<ActivationMountInput> = {}): ActivationMountInput {
@@ -99,6 +125,7 @@ function mountInput(overrides: Partial<ActivationMountInput> = {}): ActivationMo
     subscription: sub(),
     fireOnce: null,
     isDesktop: false,
+    authPending: false,
     currentAccountKey: ACCOUNT_A,
     now: NOW,
     ...overrides,
@@ -112,8 +139,134 @@ describe('decideActivationMount — happy path & mount gate', () => {
     assert.equal(d.action === 'mount' ? d.subscriptionKey : null, 'sub_live_1');
   });
 
-  it('no marker = none (nothing to decide)', () => {
-    assert.equal(decideActivationMount(mountInput({ marker: null })).action, 'none');
+  it('no marker + first-cycle unactivated eligibility mounts the cohort fallback', () => {
+    const d = decideActivationMount(mountInput({ marker: null }));
+    assert.equal(d.action, 'mount');
+    assert.equal(d.action === 'mount' ? d.onlyIfUnactivated : null, true);
+  });
+
+  it('no marker + eligible annual subscription mounts throughout its first billing cycle', () => {
+    const d = decideActivationMount(
+      mountInput({
+        marker: null,
+        entitlement: ent({
+          planKey: 'pro_annual',
+          validUntil: NOW + 365 * DAY,
+        }),
+        subscription: sub({
+          planKey: 'pro_annual',
+          currentPeriodEnd: NOW + 365 * DAY,
+        }),
+      }),
+    );
+    assert.equal(d.action, 'mount');
+    assert.equal(d.action === 'mount' ? d.onlyIfUnactivated : null, true);
+  });
+
+  it('no marker + ineligible subscription = none', () => {
+    const d = decideActivationMount(
+      mountInput({
+        marker: null,
+        subscription: sub({ activationOnboardingEligible: false }),
+      }),
+    );
+    assert.equal(d.action, 'none');
+  });
+
+  it('no marker + mixed-deploy subscription without eligibility = none', () => {
+    const d = decideActivationMount(
+      mountInput({
+        marker: null,
+        subscription: sub({ activationOnboardingEligible: undefined }),
+      }),
+    );
+    assert.equal(d.action, 'none');
+  });
+
+  it('no marker + pending auth keeps the markerless decision retryable', () => {
+    const d = decideActivationMount(
+      mountInput({
+        marker: null,
+        authPending: true,
+        currentAccountKey: null,
+        entitlement: null,
+        subscription: null,
+      }),
+    );
+    assert.equal(d.action, 'keep');
+  });
+
+  it('no marker + settled signed-out visitor = none', () => {
+    const d = decideActivationMount(
+      mountInput({
+        marker: null,
+        currentAccountKey: null,
+        entitlement: null,
+        subscription: null,
+      }),
+    );
+    assert.equal(d.action, 'none');
+  });
+
+  it('no marker + settled free account without a subscription = none', () => {
+    const d = decideActivationMount(
+      mountInput({
+        marker: null,
+        entitlement: ent({ planKey: 'free', validUntil: 0 }),
+        subscription: null,
+      }),
+    );
+    assert.equal(d.action, 'none');
+  });
+
+  it('no marker + first-cycle cohort waits for the live Pro entitlement', () => {
+    const d = decideActivationMount(
+      mountInput({
+        marker: null,
+        entitlement: ent({ planKey: 'free', validUntil: 0 }),
+      }),
+    );
+    assert.equal(d.action, 'keep');
+  });
+
+  it('no marker + already-shown subscription = none', () => {
+    const d = decideActivationMount(
+      mountInput({
+        marker: null,
+        fireOnce: fireOnce(),
+      }),
+    );
+    assert.equal(d.action, 'none');
+  });
+
+  it('no marker + desktop platform = none (R12 applies to the markerless cohort too)', () => {
+    const d = decideActivationMount(
+      mountInput({
+        marker: null,
+        isDesktop: true,
+      }),
+    );
+    assert.equal(d.action, 'none');
+  });
+
+  it('no marker + entitlement not yet loaded keeps the markerless decision retryable', () => {
+    const d = decideActivationMount(
+      mountInput({
+        marker: null,
+        entitlement: null,
+      }),
+    );
+    assert.equal(d.action, 'keep');
+  });
+
+  it('no marker + live entitlement whose subscription snapshot has not loaded yet = keep', () => {
+    const d = decideActivationMount(
+      mountInput({
+        marker: null,
+        subscription: null,
+      }),
+    );
+    assert.equal(d.action, 'keep');
   });
 
   it('desktop platform flag never mounts, even with a fully valid marker (R12)', () => {
@@ -406,6 +559,81 @@ describe('fire-once record + TTL (KTD4)', () => {
     assert.equal(isFireOnceActive(fireOnce({ shownAt: NOW - FIRE_ONCE_TTL_MS - 1 }), NOW), false);
     assert.equal(isFireOnceActive(null, NOW), false);
   });
+
+  it('scopes storage independently for each opaque account key', () => {
+    assert.notEqual(fireOnceStorageKey(ACCOUNT_A), fireOnceStorageKey(ACCOUNT_B));
+    assert.equal(fireOnceStorageKey(ACCOUNT_A), `${FIRE_ONCE_KEY}:${ACCOUNT_A}`);
+  });
+
+  it('migrates legacy state once and preserves independent A-to-B-to-A records', () => {
+    const values = new Map<string, string>([
+      [FIRE_ONCE_KEY, JSON.stringify(fireOnce({ subscriptionKey: 'sub-a' }))],
+    ]);
+    const storage = createMemoryStorage(values);
+
+    assert.equal(
+      readScopedFireOnceRecord(storage, ACCOUNT_A, 'sub-a', NOW)?.subscriptionKey,
+      'sub-a',
+    );
+    assert.equal(values.has(FIRE_ONCE_KEY), false);
+    assert.equal(
+      writeScopedFireOnceRecord(storage, ACCOUNT_B, fireOnce({ subscriptionKey: 'sub-b' })),
+      true,
+    );
+    assert.equal(
+      readScopedFireOnceRecord(storage, ACCOUNT_B, 'sub-b', NOW)?.subscriptionKey,
+      'sub-b',
+    );
+    assert.equal(
+      readScopedFireOnceRecord(storage, ACCOUNT_A, 'sub-a', NOW)?.subscriptionKey,
+      'sub-a',
+    );
+  });
+
+  it('leaves a legacy record for its owning account when another account evaluates first', () => {
+    const values = new Map<string, string>([
+      [FIRE_ONCE_KEY, JSON.stringify(fireOnce({ subscriptionKey: 'sub-a' }))],
+    ]);
+    const storage = createMemoryStorage(values);
+
+    assert.equal(readScopedFireOnceRecord(storage, ACCOUNT_B, 'sub-b', NOW), null);
+    assert.equal(values.has(FIRE_ONCE_KEY), true);
+    assert.equal(values.has(fireOnceStorageKey(ACCOUNT_B)), false);
+
+    assert.equal(
+      readScopedFireOnceRecord(storage, ACCOUNT_A, 'sub-a', NOW)?.subscriptionKey,
+      'sub-a',
+    );
+    assert.equal(values.has(FIRE_ONCE_KEY), false);
+  });
+
+  it('expires only the current account record and fails closed on storage errors', () => {
+    const values = new Map<string, string>([
+      [
+        fireOnceStorageKey(ACCOUNT_A),
+        JSON.stringify(fireOnce({ shownAt: NOW - FIRE_ONCE_TTL_MS - 1 })),
+      ],
+      [fireOnceStorageKey(ACCOUNT_B), JSON.stringify(fireOnce({ subscriptionKey: 'sub-b' }))],
+    ]);
+    const storage = createMemoryStorage(values);
+    assert.equal(readScopedFireOnceRecord(storage, ACCOUNT_A, 'sub-a', NOW), null);
+    assert.equal(values.has(fireOnceStorageKey(ACCOUNT_A)), false);
+    assert.equal(values.has(fireOnceStorageKey(ACCOUNT_B)), true);
+
+    const denied = {
+      getItem: () => {
+        throw new Error('denied');
+      },
+      setItem: () => {
+        throw new Error('denied');
+      },
+      removeItem: () => {
+        throw new Error('denied');
+      },
+    };
+    assert.equal(readScopedFireOnceRecord(denied, ACCOUNT_A, 'sub-a', NOW), null);
+    assert.equal(writeScopedFireOnceRecord(denied, ACCOUNT_A, fireOnce()), false);
+  });
 });
 
 function caps(overrides: Partial<ActivationPlatformCapabilities> = {}): ActivationPlatformCapabilities {
@@ -523,6 +751,35 @@ describe('buildActivationSteps — step model (R15/AE6)', () => {
       }),
     );
     assert.deepEqual(steps.map((s) => s.state), ['already-done', 'already-done', 'already-done']);
+  });
+});
+
+describe('hasAnyActivatedProFunctionality — cohort suppression', () => {
+  it('returns false when none of the onboarding targets is active', () => {
+    assert.equal(hasAnyActivatedProFunctionality(config()), false);
+  });
+
+  it('returns true for an active email brief', () => {
+    assert.equal(
+      hasAnyActivatedProFunctionality(
+        config({ hasEnabledDigestRule: true, hasEmailDelivery: true }),
+      ),
+      true,
+    );
+  });
+
+  it('returns true for active browser alerts', () => {
+    assert.equal(
+      hasAnyActivatedProFunctionality(config({ hasWebPushDelivery: true })),
+      true,
+    );
+  });
+
+  it('returns true for a previously used power feature', () => {
+    assert.equal(
+      hasAnyActivatedProFunctionality(config({ hasUsedPowerFeature: true })),
+      true,
+    );
   });
 });
 
@@ -900,5 +1157,14 @@ describe('cross-tab mount claim (#7)', () => {
     assert.match(MOUNT_CLAIM_KEY, /-v\d+$/);
     const keys = [PENDING_MARKER_KEY, FIRE_ONCE_KEY, FINISH_SETUP_CHIP_DISMISS_KEY, MOUNT_CLAIM_KEY];
     assert.equal(new Set(keys).size, keys.length);
+  });
+});
+
+describe('activation flow retry schedule', () => {
+  it('backs off finitely through the abandoned server-claim lease window', () => {
+    assert.deepEqual(ACTIVATION_FLOW_RETRY_DELAYS_MS, [2_000, 4_000, 8_000, 16_000, 30_000]);
+    assert.equal(activationFlowRetryDelay(0), 2_000);
+    assert.equal(activationFlowRetryDelay(4), 30_000);
+    assert.equal(activationFlowRetryDelay(5), null);
   });
 });

@@ -26,7 +26,12 @@
 
 import { t } from '@/services/i18n';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
+import {
+  claimProActivationPresentation,
+  confirmProActivationPresentation,
+} from '@/services/billing';
 import { escapeHtml } from '@/utils/sanitize';
+import { withTimeout } from '@/utils/with-timeout';
 import { getFocusableElements, setTrustedHtml, trustedHtml, type TrustedHtml } from '@/utils/dom-utils';
 import { SITE_VARIANT } from '@/config/variant';
 import {
@@ -42,10 +47,11 @@ import {
   subscribeToPush,
 } from '@/services/push-notifications';
 import { getServerInsights, fetchServerInsights } from '@/services/insights-loader';
-import { loadWidgets } from '@/services/widget-store';
+import { loadWidgets, loadWidgetsStrict } from '@/services/widget-store';
 import {
   ACTIVATION_EVENTS,
   buildActivationSteps,
+  hasAnyActivatedProFunctionality,
   buildBriefDigestPayload,
   buildCriticalAlertsPayload,
   buildExitSummary,
@@ -692,6 +698,15 @@ export interface ProActivationFlowOptions {
   onEvent?: (event: ActivationEventName, stepId?: ActivationStepId, exit?: ActivationExitSummary) => void;
   /** Injectable clock (tests). Defaults to `Date.now`. */
   now?: () => number;
+  /**
+   * Markerless first-cycle backfill only: require an authoritative config read
+   * and suppress the flow if any targeted Pro capability is already active.
+   */
+  onlyIfUnactivated?: boolean;
+  /** Opaque subscription identity whose markerless eligibility was evaluated. */
+  expectedActivationKey?: string;
+  /** Per-tab nonce used by the server-side cross-device presentation lease. */
+  activationClaimNonce?: string;
 }
 
 /** Live activation context read once at flow open: config + platform + fields for the alerts patch. */
@@ -709,6 +724,18 @@ export interface ActivationContext {
   hasEnabledRule: boolean;
 }
 
+export interface ProActivationFlowDependencies {
+  readContext: (expectedUserId: string, strict: boolean) => Promise<ActivationContext>;
+  claimPresentation: (
+    activationKey: string,
+    claimNonce: string,
+  ) => Promise<'claimed' | 'not_eligible' | 'already_presented' | 'already_claimed'>;
+  confirmPresentation: (activationKey: string, claimNonce: string) => Promise<boolean>;
+  openInterstitial: typeof openProActivationInterstitial;
+  /** Per-operation deadline; injectable only to keep timeout regressions fast. */
+  operationTimeoutMs?: number;
+}
+
 function isFlowAccountCurrent(options: ProActivationFlowOptions): boolean {
   return options.isAccountCurrent?.() ?? getAuthState().user?.id === options.accountUserId;
 }
@@ -717,6 +744,9 @@ const BRIEF_HOUR_SELECT_ID = 'proActivationDigestHour';
 const DIGEST_CADENCES = new Set(['daily', 'twice_daily', 'weekly']);
 const BRIEF_PREVIEW_MAX = 220;
 const BRIEF_PREVIEW_TIMEOUT_MS = 2500;
+const ACTIVATION_CONTEXT_TIMEOUT_MS = 5_000;
+const ACTIVATION_MUTATION_TIMEOUT_MS = 5_000;
+const PRESENTATION_CONFIRM_RETRY_DELAYS_MS = [250, 750, 1_500] as const;
 
 /**
  * The brief step's chosen delivery hour, held outside the re-rendered DOM. The
@@ -753,6 +783,11 @@ function hasUsedPowerFeature(): boolean {
   } catch {
     return false;
   }
+}
+
+/** Strict counterpart for markerless cohort suppression; storage failure retries. */
+function hasUsedPowerFeatureStrict(): boolean {
+  return loadWidgetsStrict().length > 0;
 }
 
 /** Platform capabilities from the live push runtime (drives the alerts-step gate). */
@@ -805,8 +840,16 @@ export function activationContextFromChannelsData(
 }
 
 async function readActivationContextStrict(expectedUserId: string): Promise<ActivationContext> {
-  const data = await getChannelsData(expectedUserId);
-  return activationContextFromChannelsData(data, readActivationCapabilities());
+  const controller = new AbortController();
+  const data = await withTimeout(
+    getChannelsData(expectedUserId, controller.signal),
+    ACTIVATION_CONTEXT_TIMEOUT_MS,
+    'activation-context-read',
+    () => controller.abort(),
+  );
+  const context = activationContextFromChannelsData(data, readActivationCapabilities());
+  context.config.hasUsedPowerFeature = hasUsedPowerFeatureStrict();
+  return context;
 }
 
 export async function readActivationContext(expectedUserId?: string): Promise<ActivationContext> {
@@ -1086,15 +1129,97 @@ function alertsFailedNote(): string {
       });
 }
 
+async function confirmPresentationWithRetry(
+  options: ProActivationFlowOptions,
+  dependencies: ProActivationFlowDependencies,
+): Promise<boolean> {
+  if (!options.expectedActivationKey || !options.activationClaimNonce) return false;
+  for (let attempt = 0; attempt <= PRESENTATION_CONFIRM_RETRY_DELAYS_MS.length; attempt += 1) {
+    if (!isFlowAccountCurrent(options)) return false;
+    try {
+      return await withTimeout(
+        dependencies.confirmPresentation(
+          options.expectedActivationKey,
+          options.activationClaimNonce,
+        ),
+        dependencies.operationTimeoutMs ?? ACTIVATION_MUTATION_TIMEOUT_MS,
+        'activation-confirm-presentation',
+      );
+    } catch (error) {
+      const delay = PRESENTATION_CONFIRM_RETRY_DELAYS_MS[attempt];
+      if (delay === undefined) {
+        console.warn('[pro-activation] failed to confirm presentation', error);
+        return false;
+      }
+      await new Promise<void>((resolve) => window.setTimeout(resolve, delay));
+    }
+  }
+  return false;
+}
+
 /**
  * Open the full Pro-activation flow: read the subscriber's config, build the
  * ordered steps, wire the real per-step handlers, and on exit decide the
  * finish-setup chip. Safe to await; opens exactly one interstitial.
  */
-export async function openProActivationFlow(options: ProActivationFlowOptions): Promise<boolean> {
-  if (!isFlowAccountCurrent(options)) return false;
-  const ctx = await readActivationContext(options.accountUserId);
-  if (!isFlowAccountCurrent(options)) return false;
+export async function openProActivationFlow(
+  options: ProActivationFlowOptions,
+  injected: Partial<ProActivationFlowDependencies> = {},
+): Promise<'opened' | 'not-eligible' | 'retry'> {
+  const dependencies: ProActivationFlowDependencies = {
+    readContext: (expectedUserId, strict) =>
+      strict
+        ? readActivationContextStrict(expectedUserId)
+        : readActivationContext(expectedUserId),
+    claimPresentation: claimProActivationPresentation,
+    confirmPresentation: confirmProActivationPresentation,
+    openInterstitial: openProActivationInterstitial,
+    ...injected,
+  };
+  if (!isFlowAccountCurrent(options)) return 'retry';
+  let ctx: ActivationContext;
+  try {
+    ctx = await dependencies.readContext(
+      options.accountUserId,
+      options.onlyIfUnactivated === true,
+    );
+  } catch {
+    // Markerless backfill must never turn a failed read into a fabricated
+    // "nothing activated" snapshot. Retry on a later evaluation/boot.
+    return 'retry';
+  }
+  if (!isFlowAccountCurrent(options)) return 'retry';
+  if (
+    options.onlyIfUnactivated &&
+    hasAnyActivatedProFunctionality(ctx.config)
+  ) {
+    return 'not-eligible';
+  }
+  if (options.onlyIfUnactivated) {
+    if (!options.expectedActivationKey || !options.activationClaimNonce) {
+      return 'retry';
+    }
+    let claimStatus;
+    try {
+      claimStatus = await withTimeout(
+        dependencies.claimPresentation(
+          options.expectedActivationKey,
+          options.activationClaimNonce,
+        ),
+        dependencies.operationTimeoutMs ?? ACTIVATION_MUTATION_TIMEOUT_MS,
+        'activation-claim-presentation',
+      );
+    } catch {
+      return 'retry';
+    }
+    if (!isFlowAccountCurrent(options)) return 'retry';
+    if (claimStatus === 'already_claimed') {
+      return 'retry';
+    }
+    if (claimStatus !== 'claimed') {
+      return 'not-eligible';
+    }
+  }
   const steps = buildActivationSteps(ctx.capabilities, ctx.config);
 
   // Holds the brief step's delivery-hour pick across the shell's re-renders.
@@ -1112,7 +1237,7 @@ export async function openProActivationFlow(options: ProActivationFlowOptions): 
 
   options.onEvent?.(ACTIVATION_EVENTS.entered);
 
-  openProActivationInterstitial({
+  dependencies.openInterstitial({
     steps,
     accountEmail: options.accountEmail,
     stepExtras,
@@ -1154,5 +1279,17 @@ export async function openProActivationFlow(options: ProActivationFlowOptions): 
       if (!isFlowAccountCurrent(options)) closeProActivationInterstitial();
     });
   });
-  return true;
+  if (
+    options.onlyIfUnactivated &&
+    options.expectedActivationKey &&
+    options.activationClaimNonce
+  ) {
+    if (!(await confirmPresentationWithRetry(options, dependencies))) {
+      // A false result means this browser no longer owns the server claim;
+      // repeated transport errors remain retryable under the short lease.
+      closeProActivationInterstitial();
+      return 'retry';
+    }
+  }
+  return 'opened';
 }

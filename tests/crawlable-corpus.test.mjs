@@ -101,6 +101,7 @@ describe('crawlable corpus generator', () => {
       assert.match(liveRiskScript, /\/api\/wm-session/);
       assert.match(liveRiskScript, /\/api\/intelligence\/v1\/get-country-risk\?country_code=/);
       assert.match(liveRiskScript, /credentials:\s*'include'/);
+      assert.match(liveRiskScript, /preflightSession:\s*true/);
       assert.match(liveRiskScript, /response\.status === 401/);
       assert.match(liveRiskScript, /payload\.upstreamUnavailable === true/);
 

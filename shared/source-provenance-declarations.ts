@@ -90,6 +90,7 @@ export const CONFIGURED_SOURCE_PROVENANCE_DECLARATIONS: Readonly<
   "Bond Market": { risk: 'unknown', type: 'unknown' },
   "Brasil Paralelo": { risk: 'reviewed', type: 'reviewed' },
   "Brazil Tech": { risk: 'unknown', type: 'unknown' },
+  "Breaking Defense": { risk: 'unknown', type: 'reviewed' },
   "Brookings": { risk: 'unknown', type: 'reviewed' },
   "Brookings Tech": { risk: 'unknown', type: 'reviewed' },
   "Bulletin of Atomic Scientists": { risk: 'unknown', type: 'reviewed' },
