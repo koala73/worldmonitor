@@ -1,11 +1,21 @@
 // YouTube Live Stream Detection API
 // Proxies to Railway relay which uses residential proxy for YouTube scraping
-
+ 
 import { getCorsHeaders, isDisallowedOrigin } from '../_cors.js';
 import { getRelayBaseUrl, getRelayHeaders } from '../_relay.js';
-
+import { checkRateLimit } from '../_rate-limit.js';
+ 
 export const config = { runtime: 'edge' };
-
+ 
+const VIDEO_ID_RE = /^[A-Za-z0-9_-]{11}$/;
+// YouTube handle (@name, 3-30 chars) or canonical channel id (UC + 22 chars).
+const CHANNEL_RE = /^(@[A-Za-z0-9._-]{3,30}|UC[A-Za-z0-9_-]{22})$/;
+ 
+export function isValidChannel(value) {
+  if (typeof value !== 'string') return false;
+  return CHANNEL_RE.test(value) || CHANNEL_RE.test(`@${value}`);
+}
+ 
 export default async function handler(request) {
   const cors = getCorsHeaders(request);
   if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: cors });
@@ -15,19 +25,38 @@ export default async function handler(request) {
   const url = new URL(request.url);
   const channel = url.searchParams.get('channel');
   const videoIdParam = url.searchParams.get('videoId');
-
+ 
+  if (channel !== null && !isValidChannel(channel)) {
+    return new Response(JSON.stringify({ error: 'Invalid channel parameter' }), {
+      status: 400,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
+  }
+  if (videoIdParam !== null && !VIDEO_ID_RE.test(videoIdParam)) {
+    return new Response(JSON.stringify({ error: 'Invalid videoId parameter' }), {
+      status: 400,
+      headers: { ...cors, 'Content-Type': 'application/json' },
+    });
+  }
+ 
   const params = new URLSearchParams();
   if (channel) params.set('channel', channel);
   if (videoIdParam) params.set('videoId', videoIdParam);
   const qs = params.toString();
-
+ 
   if (!qs) {
     return new Response(JSON.stringify({ error: 'Missing channel or videoId parameter' }), {
       status: 400,
       headers: { ...cors, 'Content-Type': 'application/json' },
     });
   }
-
+ 
+  // Every path below reaches YouTube (directly or through the metered
+  // residential-proxy relay) on behalf of an unauthenticated caller, so the
+  // per-IP budget is the only abuse defence this route has.
+  const rateLimited = await checkRateLimit(request, cors, { scope: 'youtube-live', limit: 60, window: '60 s' });
+  if (rateLimited) return rateLimited;
+ 
   // Proxy to Railway relay
   const relayBase = getRelayBaseUrl();
   if (relayBase) {
@@ -48,9 +77,9 @@ export default async function handler(request) {
       }
     } catch { /* relay unavailable — fall through to direct fetch */ }
   }
-
+ 
   // Fallback: direct fetch (works for oembed, limited for live detection from datacenter IPs)
-  if (videoIdParam && /^[A-Za-z0-9_-]{11}$/.test(videoIdParam)) {
+  if (videoIdParam) {
     try {
       const oembedRes = await fetch(
         `https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoIdParam}&format=json`,
@@ -69,14 +98,14 @@ export default async function handler(request) {
       headers: { ...cors, 'Content-Type': 'application/json' },
     });
   }
-
+ 
   if (!channel) {
     return new Response(JSON.stringify({ error: 'Missing channel parameter' }), {
       status: 400,
       headers: { ...cors, 'Content-Type': 'application/json' },
     });
   }
-
+ 
   // Fallback: direct scrape (limited from datacenter IPs)
   try {
     const channelHandle = channel.startsWith('@') ? channel : `@${channel}`;
@@ -95,7 +124,7 @@ export default async function handler(request) {
     const ownerMatch = html.match(/"ownerChannelName"\s*:\s*"([^"]+)"/);
     if (ownerMatch) channelName = ownerMatch[1];
     else { const am = html.match(/"author"\s*:\s*"([^"]+)"/); if (am) channelName = am[1]; }
-
+ 
     let videoId = null;
     const detailsIdx = html.indexOf('"videoDetails"');
     if (detailsIdx !== -1) {
@@ -104,11 +133,11 @@ export default async function handler(request) {
       const liveMatch = block.match(/"isLive"\s*:\s*true/);
       if (vidMatch && liveMatch) videoId = vidMatch[1];
     }
-
+ 
     let hlsUrl = null;
     const hlsMatch = html.match(/"hlsManifestUrl"\s*:\s*"([^"]+)"/);
     if (hlsMatch && videoId) hlsUrl = hlsMatch[1].replace(/\\u0026/g, '&');
-
+ 
     return new Response(JSON.stringify({ videoId, isLive: videoId !== null, channelExists, channelName, hlsUrl }), {
       status: 200,
       headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=300, s-maxage=600, stale-while-revalidate=120' },

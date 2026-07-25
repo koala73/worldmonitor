@@ -1,31 +1,34 @@
 export const config = { runtime: 'edge' };
-
+ 
 function parseFlag(value, fallback = '1') {
   if (value === '0' || value === '1') return value;
   return fallback;
 }
-
+ 
 function sanitizeVideoId(value) {
   if (typeof value !== 'string') return null;
   return /^[A-Za-z0-9_-]{11}$/.test(value) ? value : null;
 }
-
+ 
 const ALLOWED_ORIGINS = [
   /^https:\/\/(.*\.)?worldmonitor\.app$/,
   /^https:\/\/worldmonitor-[a-z0-9-]+-elie-habib-projects\.vercel\.app$/,
-  /^https:\/\/worldmonitor-[a-z0-9-]+\.vercel\.app$/,
+  // Team-scoped preview aliases only (mirrors api/_cors.js): a bare
+  // worldmonitor-*.vercel.app matches any third-party Vercel project whose
+  // name starts with "worldmonitor-", which anyone can create.
+  /^https:\/\/worldmonitor-[a-z0-9-]+-eliewm\.vercel\.app$/,
   /^https?:\/\/localhost(:\d+)?$/,
   /^https?:\/\/127\.0\.0\.1(:\d+)?$/,
   /^tauri:\/\/localhost$/,
 ];
-
+ 
 const ALLOWED_PARENT_ORIGINS = [
   ...ALLOWED_ORIGINS,
   // tauri://localhost is already covered via ALLOWED_ORIGINS spread above.
   /^https?:\/\/tauri\.localhost$/,
   /^https?:\/\/[a-z0-9-]+\.tauri\.localhost$/,
 ];
-
+ 
 function sanitizeAllowedOrigin(raw, fallback, allowList = ALLOWED_ORIGINS) {
   if (!raw) return fallback;
   try {
@@ -38,33 +41,33 @@ function sanitizeAllowedOrigin(raw, fallback, allowList = ALLOWED_ORIGINS) {
   } catch { /* invalid URL */ }
   return fallback;
 }
-
+ 
 function sanitizeOrigin(raw) {
   return sanitizeAllowedOrigin(raw, 'https://worldmonitor.app', ALLOWED_ORIGINS);
 }
-
+ 
 function sanitizeParentOrigin(raw, fallback) {
   return sanitizeAllowedOrigin(raw, fallback, ALLOWED_PARENT_ORIGINS);
 }
-
+ 
 export default async function handler(request) {
   const url = new URL(request.url);
   const videoId = sanitizeVideoId(url.searchParams.get('videoId'));
-
+ 
   if (!videoId) {
     return new Response('Missing or invalid videoId', {
       status: 400,
       headers: { 'content-type': 'text/plain; charset=utf-8' },
     });
   }
-
+ 
   const autoplay = parseFlag(url.searchParams.get('autoplay'), '1');
   const mute = parseFlag(url.searchParams.get('mute'), '1');
   const vq = ['small', 'medium', 'large', 'hd720', 'hd1080'].includes(url.searchParams.get('vq') || '') ? url.searchParams.get('vq') : '';
-
+ 
   const origin = sanitizeOrigin(url.searchParams.get('origin'));
   const parentOrigin = sanitizeParentOrigin(url.searchParams.get('parentOrigin'), origin);
-
+ 
   const embedSrc = new URL(`https://www.youtube.com/embed/${videoId}`);
   embedSrc.searchParams.set('autoplay', autoplay);
   embedSrc.searchParams.set('mute', mute);
@@ -74,7 +77,7 @@ export default async function handler(request) {
   embedSrc.searchParams.set('enablejsapi', '1');
   embedSrc.searchParams.set('origin', origin);
   embedSrc.searchParams.set('widget_referrer', origin);
-
+ 
   const html = `<!doctype html>
 <html lang="en">
 <head>
@@ -168,7 +171,7 @@ export default async function handler(request) {
   </script>
 </body>
 </html>`;
-
+ 
   return new Response(html, {
     status: 200,
     headers: {
