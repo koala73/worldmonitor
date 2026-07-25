@@ -409,11 +409,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
       const top = this.el('div', 'cdp-news-top');
       const tier = item.tier ?? getSourceTier(item.source);
+      const sourceType = getSourceType(item.source);
       const clampedTier = Math.max(1, Math.min(4, tier));
       const tierBadge = this.badge(`T${clampedTier} SRC`, `cdp-tier-badge tier-${clampedTier}`);
       tierBadge.setAttribute(
         'title',
-        `${getSourceTierBadgeTitle(getSourceType(item.source))}. Source tier ${clampedTier}; independent of article severity.`,
+        `${getSourceTierBadgeTitle(sourceType)}. Source tier ${clampedTier}; independent of article severity.`,
       );
       top.append(tierBadge);
 
@@ -425,7 +426,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       top.append(sevBadge);
 
       const risk = getSourcePropagandaRisk(item.source);
-      const riskDescription = describePropagandaBadge(risk);
+      const riskDescription = describePropagandaBadge(risk, sourceType);
       if (riskDescription) {
         const riskLabel = risk.stateAffiliated
           ? `${riskDescription.label}: ${risk.stateAffiliated}`
@@ -437,7 +438,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         riskBadge.setAttribute(
           'title',
           risk.stateAffiliated
-            ? `State-affiliated: ${risk.stateAffiliated}. ${riskDescription.title}`
+            ? `${sourceType === 'gov' ? 'Official government source' : 'State-affiliated'}: ${risk.stateAffiliated}. ${riskDescription.title}`
             : riskDescription.title,
         );
         top.append(riskBadge);

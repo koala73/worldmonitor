@@ -5,6 +5,7 @@ import { isAnalyzableSymbol } from '@/services/stock-analysis';
 import { getMarketWatchlistEntries } from '@/services/market-watchlist';
 import type { AnalystConsensus, PriceTarget, UpgradeDowngrade } from '@/generated/client/worldmonitor/market/v1/service_client';
 import type { InsiderTransactionsResult } from '@/services/insider-transactions';
+import { buildFundamentalDisplayCells } from '@/services/stock-fundamentals-display';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
 import type { StockAnalysisHistory } from '@/services/stock-analysis-history';
 import { sparkline } from '@/utils/sparkline';
@@ -287,7 +288,25 @@ export class StockAnalysisPanel extends Panel {
         ${this.renderInsiderSection(item.symbol)}
         ${headlines ? `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px">${headlines}</div>` : ''}
         ${this.renderAnalystConsensus(item)}
+        ${this.renderFundamentals(item)}
       </section>
+    `;
+  }
+
+  private renderFundamentals(item: StockAnalysisResult): string {
+    const cell = (label: string, value: string, color?: string): string =>
+      `<div style="border:1px solid var(--border);padding:6px 8px;flex:1;min-width:88px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">${escapeHtml(label)}</div><div style="margin-top:2px${color ? `;color:${color}` : ''}">${escapeHtml(value)}</div></div>`;
+
+    const cells = buildFundamentalDisplayCells(item.fundamentals, item.currency)
+      .map((entry) => cell(entry.label, entry.value, entry.color));
+
+    if (cells.length === 0) return '';
+
+    return `
+      <div style="border-top:1px solid var(--border);margin-top:4px;padding-top:10px">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim);margin-bottom:8px">Fundamentals</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">${cells.join('')}</div>
+      </div>
     `;
   }
 

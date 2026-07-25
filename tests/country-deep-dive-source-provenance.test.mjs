@@ -91,7 +91,10 @@ describe('CountryDeepDivePanel source provenance', () => {
 
       const governmentRow = rowBySource('MIIT (China)');
       assert.ok(governmentRow);
-      assert.match(governmentRow.querySelector('.cdp-state-badge')?.textContent ?? '', /State Media: China/);
+      assert.match(governmentRow.querySelector('.cdp-state-badge')?.textContent ?? '', /Official Government Source/);
+      assert.doesNotMatch(governmentRow.querySelector('.cdp-state-badge')?.textContent ?? '', /State Media/);
+      assert.match(governmentRow.querySelector('.cdp-state-badge')?.getAttribute('title') ?? '', /Official government source: China/);
+      assert.doesNotMatch(governmentRow.querySelector('.cdp-state-badge')?.getAttribute('title') ?? '', /State-affiliated/);
       assert.match(governmentRow.querySelector('.cdp-tier-badge')?.getAttribute('title') ?? '', /Official Government Source/);
       assert.doesNotMatch(governmentRow.querySelector('.cdp-tier-badge')?.getAttribute('title') ?? '', /top wire/i);
 

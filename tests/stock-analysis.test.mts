@@ -43,12 +43,25 @@ const mockQuoteSummaryPayload = {
           ],
         },
         financialData: {
+          financialCurrency: 'CNY',
           targetHighPrice: { raw: 250.0 },
           targetLowPrice: { raw: 160.0 },
           targetMeanPrice: { raw: 210.5 },
           targetMedianPrice: { raw: 215.0 },
           currentPrice: { raw: 132.0 },
           numberOfAnalystOpinions: { raw: 39 },
+          profitMargins: { raw: 0.249 },
+          grossMargins: { raw: 0.45 },
+          operatingMargins: { raw: 0.31 },
+          returnOnEquity: { raw: 0.4 },
+          returnOnAssets: { raw: 0.15 },
+          revenueGrowth: { raw: 0.12 },
+          earningsGrowth: { raw: -0.03 },
+          debtToEquity: { raw: 150 },
+          totalCash: { raw: 100_000_000_000 },
+          totalDebt: { raw: 50_000_000_000 },
+          freeCashflow: { raw: -49_000_000 },
+          ebitda: { raw: 20_000_000_000 },
         },
         upgradeDowngradeHistory: {
           history: [
@@ -142,6 +155,13 @@ describe('analyzeStock handler', () => {
     assert.equal(response.priceTarget.median, 215);
     assert.equal(response.priceTarget.numberOfAnalysts, 39);
 
+    assert.ok(response.fundamentals);
+    assert.equal(response.fundamentals.profitMargin, 0.249);
+    assert.equal(response.fundamentals.earningsGrowth, -0.03);
+    assert.equal(response.fundamentals.debtToEquity, 1.5);
+    assert.equal(response.fundamentals.freeCashflow, -49_000_000);
+    assert.equal(response.fundamentals.financialCurrency, 'CNY');
+
     assert.ok(response.recentUpgrades);
     assert.equal(response.recentUpgrades.length, 3);
     assert.equal(response.recentUpgrades[0].firm, 'Morgan Stanley');
@@ -173,6 +193,20 @@ describe('fetchYahooAnalystData', () => {
     assert.equal(data.priceTarget.median, 215);
     assert.equal(data.priceTarget.current, 132);
     assert.equal(data.priceTarget.numberOfAnalysts, 39);
+
+    assert.equal(data.fundamentals.profitMargin, 0.249);
+    assert.equal(data.fundamentals.grossMargin, 0.45);
+    assert.equal(data.fundamentals.operatingMargin, 0.31);
+    assert.equal(data.fundamentals.returnOnEquity, 0.4);
+    assert.equal(data.fundamentals.returnOnAssets, 0.15);
+    assert.equal(data.fundamentals.revenueGrowth, 0.12);
+    assert.equal(data.fundamentals.earningsGrowth, -0.03);
+    assert.equal(data.fundamentals.debtToEquity, 1.5);
+    assert.equal(data.fundamentals.totalCash, 100_000_000_000);
+    assert.equal(data.fundamentals.totalDebt, 50_000_000_000);
+    assert.equal(data.fundamentals.freeCashflow, -49_000_000);
+    assert.equal(data.fundamentals.ebitda, 20_000_000_000);
+    assert.equal(data.fundamentals.financialCurrency, 'CNY');
 
     assert.equal(data.recentUpgrades.length, 3);
     assert.equal(data.recentUpgrades[0].firm, 'Morgan Stanley');
@@ -226,9 +260,12 @@ describe('fetchYahooAnalystData', () => {
               trend: [{ period: '0m', strongBuy: 'five', buy: null, hold: 3, sell: undefined, strongSell: 0 }],
             },
             financialData: {
+              financialCurrency: 'not-a-currency',
               targetHighPrice: { raw: 'not a number' },
               targetLowPrice: {},
               numberOfAnalystOpinions: { raw: 10 },
+              profitMargins: { raw: 'not a number' },
+              debtToEquity: { raw: Number.NaN },
             },
           }],
         },
@@ -248,6 +285,9 @@ describe('fetchYahooAnalystData', () => {
     assert.equal(data.priceTarget.median, undefined);
     assert.equal(data.priceTarget.current, undefined);
     assert.equal(data.priceTarget.numberOfAnalysts, 10);
+    assert.equal(data.fundamentals.profitMargin, undefined);
+    assert.equal(data.fundamentals.debtToEquity, undefined);
+    assert.equal(data.fundamentals.financialCurrency, undefined);
   });
 
   it('returns undefined price target fields when financialData is entirely absent', async () => {
@@ -270,6 +310,74 @@ describe('fetchYahooAnalystData', () => {
     assert.equal(data.priceTarget.mean, undefined);
     assert.equal(data.priceTarget.median, undefined);
     assert.equal(data.priceTarget.numberOfAnalysts, 0);
+    assert.deepEqual(data.fundamentals, {});
+  });
+
+  it('sends normalized, currency-labelled fundamentals to the analysis LLM', async () => {
+    process.env.OPENROUTER_API_KEY = 'test-openrouter-key';
+    let llmRequestBody: {
+      messages?: Array<{ role?: string; content?: string }>;
+    } | undefined;
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes('query1.finance.yahoo.com/v8/finance/chart')) {
+        return new Response(JSON.stringify(mockChartPayload), { status: 200 });
+      }
+      if (url.includes('query1.finance.yahoo.com/v10/finance/quoteSummary')) {
+        return new Response(JSON.stringify(mockQuoteSummaryPayload), { status: 200 });
+      }
+      if (url.includes('news.google.com')) {
+        return new Response(mockNewsXml, { status: 200 });
+      }
+      if (url === 'https://openrouter.ai' || url === 'https://openrouter.ai/') {
+        return new Response('ok', { status: 200 });
+      }
+      if (url === 'https://openrouter.ai/api/v1/chat/completions') {
+        llmRequestBody = JSON.parse(typeof init?.body === 'string' ? init.body : '{}') as typeof llmRequestBody;
+        return new Response(JSON.stringify({
+          choices: [{
+            message: {
+              content: JSON.stringify({
+                summary: 'Fundamentals included.',
+                action: 'Hold',
+                confidence: 'Medium',
+                whyNow: 'Valuation and growth are mixed.',
+                technicalSummary: 'Trend is constructive.',
+                newsSummary: 'Coverage is stable.',
+                bullishFactors: ['Profitable'],
+                riskFactors: ['Leverage'],
+              }),
+            },
+            finish_reason: 'stop',
+          }],
+          usage: { total_tokens: 100, prompt_tokens: 80, completion_tokens: 20 },
+        }), { status: 200 });
+      }
+      throw new Error(`Unexpected URL: ${url}`);
+    }) as typeof fetch;
+
+    const response = await analyzeStock({} as never, {
+      symbol: 'BABA',
+      name: 'Alibaba',
+      includeNews: true,
+    });
+
+    assert.equal(response.provider, 'openrouter');
+    assert.equal(response.fundamentals?.debtToEquity, 1.5);
+    assert.equal(response.fundamentals?.financialCurrency, 'CNY');
+
+    const systemPrompt = llmRequestBody?.messages?.find((message) => message.role === 'system')?.content || '';
+    assert.match(systemPrompt, /debtToEquity 1\.5 means debt is 1\.5x equity/);
+    assert.match(systemPrompt, /fundamentals\.financialCurrency/);
+
+    const userMessage = llmRequestBody?.messages?.find((message) => message.role === 'user')?.content || '{}';
+    const userPayload = JSON.parse(userMessage) as {
+      fundamentals?: { debtToEquity?: number; financialCurrency?: string; freeCashflow?: number };
+    };
+    assert.equal(userPayload.fundamentals?.debtToEquity, 1.5);
+    assert.equal(userPayload.fundamentals?.financialCurrency, 'CNY');
+    assert.equal(userPayload.fundamentals?.freeCashflow, -49_000_000);
   });
 });
 

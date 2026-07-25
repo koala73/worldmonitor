@@ -22,6 +22,8 @@ export {
   getSourceProvenanceState,
   getSourceTierBadgeTitle,
   getSourceType,
+  hasDeclaredPropagandaRisk,
+  hasDeclaredSourceType,
   hasReviewedPropagandaRisk,
   hasReviewedSourceType,
   isStateAffiliatedSource,

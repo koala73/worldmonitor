@@ -242,12 +242,12 @@ The dashboard visually flags sources with known state affiliations or propaganda
 
 | Level | Visual | Meaning |
 |-------|--------|---------|
-| **High** | ⚠ State Media (red) | Direct state control or ownership |
+| **High** | ⚠ State Media or Official Government Source (red) | Direct state control or ownership; government publishers use the type-aware official-source label |
 | **Medium** | ! Caution (orange) | Significant state influence or funding |
 | **Low** | (none) | **Explicitly reviewed** independent editorial control |
 | **Unknown** | ? Unreviewed (muted) | Provenance not yet reviewed — **not** an independence claim |
 
-Absence from the reviewed registry defaults to **Unknown**, never Low. A missing badge only means independent journalism when the source has an explicit Low classification; unclassified feeds show **? Unreviewed** so missing data cannot be mistaken for a positive editorial assessment.
+Every configured feed has an explicit per-dimension declaration of **Reviewed** or **Unknown**. CI requires that inventory to match the configured feed names exactly, so additions, removals, and alias changes cannot silently inherit a default. Absence from the reviewed registry defaults to **Unknown**, never Low. A missing badge only means independent journalism when the source has an explicit Low classification; unclassified feeds show **? Unreviewed** so missing data cannot be mistaken for a positive editorial assessment.
 
 **Flagged Sources** (selected examples)
 

@@ -14,7 +14,7 @@
 
 import assert from 'node:assert/strict';
 import { describe, it, before, after, mock } from 'node:test';
-import { premiumFetch, reportServerError, _setTestProviders } from '@/services/premium-fetch';
+import { premiumFetch, proFreshRpcFetch, reportServerError, _setTestProviders } from '@/services/premium-fetch';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -41,6 +41,8 @@ const TARGET = 'https://api.worldmonitor.app/api/sanctions/v1/list-sanctions-pre
 const PUBLIC_TARGET = 'https://api.worldmonitor.app/api/economic/v1/get-fred-series-batch';
 const PUBLIC_INSIDER_TRANSACTIONS_TARGET =
   'https://api.worldmonitor.app/api/market/v1/get-insider-transactions?symbol=AAPL';
+const PRO_FRESH_MARKET_TARGET =
+  'https://api.worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL';
 
 // ---------------------------------------------------------------------------
 // Suite
@@ -213,6 +215,21 @@ describe('premiumFetch', () => {
       'forcePremium' in ((fetchMock.mock.calls[0].arguments[1] as RequestInit | undefined) ?? {}),
       false,
       'forcePremium is a premiumFetch-only control and must not be forwarded to native fetch',
+    );
+  });
+
+  it('Pro-fresh market adapter attaches Clerk JWT only on the shared allowlist', async () => {
+    setup({ testerKey: '', clerkToken: 'pro-fresh-clerk-token' });
+
+    await proFreshRpcFetch(PRO_FRESH_MARKET_TARGET);
+    assert.equal(sentHeaders(0).get('Authorization'), 'Bearer pro-fresh-clerk-token');
+
+    fetchMock.mock.resetCalls();
+    await proFreshRpcFetch(PUBLIC_INSIDER_TRANSACTIONS_TARGET);
+    assert.equal(
+      sentHeaders(0).get('Authorization'),
+      null,
+      'other methods on the MarketService client must retain anonymous-session auth',
     );
   });
 
