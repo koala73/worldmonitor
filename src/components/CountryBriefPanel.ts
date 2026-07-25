@@ -69,14 +69,28 @@ export interface CountryDeepDiveEconomicIndicator {
   source?: string;
 }
 
-export type ChinaCountrySummaryGroupId = 'macro-policy' | 'market-credit' | 'trade-supply' | 'energy' | 'availability';
+export type ChinaCountrySummaryGroupId =
+  | 'macro-policy'
+  | 'policy-enforcement'
+  | 'market-credit'
+  | 'trade-supply'
+  | 'energy'
+  | 'availability';
 export type ChinaCountrySummaryState = 'loading' | 'available' | 'partial' | 'stale' | 'unavailable';
 
 export interface ChinaCountrySummarySignal {
   label: string;
   value: string;
   source: string;
+  sourceUrl?: string;
   observedAt?: string;
+  publishedAt?: string;
+  effectiveAt?: string;
+  action?: string;
+  status?: string;
+  sectors?: string[];
+  entities?: string[];
+  translationState?: string;
   stale: boolean;
 }
 

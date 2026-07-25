@@ -116,6 +116,7 @@ import {
   type CloudPrefsAppliedDetail,
 } from '@/utils/cloud-prefs-sync';
 import { getConvexClient, getConvexApi, waitForConvexAuth } from '@/services/convex-client';
+import type { Id } from '../convex/_generated/dataModel';
 import { initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState, onEntitlementChange } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
 import {
@@ -1482,6 +1483,50 @@ export class App {
             console.warn('[billing] claimSubscription failed:', err);
             // Non-fatal — anon ID preserved for retry on next page load
           });
+        }
+
+        // Accept a Business Pro seat invite carried in the URL (mirror of the
+        // anon-claim hook). The invite link is /settings?accept-business-invite=<id>&token=<t>.
+        // Runs after sign-in so the invitee's Clerk email is available server-side.
+        const businessInviteGrantId = new URLSearchParams(window.location.search).get('accept-business-invite');
+        const businessInviteToken = new URLSearchParams(window.location.search).get('token');
+        if (businessInviteGrantId && businessInviteToken) {
+          void (async () => {
+            const [client, api] = await Promise.all([getConvexClient(), getConvexApi()]);
+            if (!client || !api) return;
+            const ready = await waitForConvexAuth(10_000);
+            if (!ready) {
+              console.warn('[business-seats] acceptBusinessInvite skipped — Convex auth not ready');
+              return;
+            }
+            try {
+              await client.mutation(api.payments.businessSeats.acceptBusinessInvite, {
+                grantId: businessInviteGrantId as Id<'businessProGrants'>,
+                token: businessInviteToken,
+              });
+              showToast('Pro seat activated');
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : 'Failed to accept invite';
+              if (msg.includes('INVITE_EMAIL_MISMATCH')) {
+                showToast('This invite is for a different email address');
+              } else if (msg.includes('INVITE_EXPIRED')) {
+                showToast('This invite has expired');
+              } else if (msg.includes('BUSINESS_NOT_ACTIVE')) {
+                showToast('The Business plan that sent this invite is no longer active');
+              } else if (msg.includes('INVITE_ALREADY_USED')) {
+                showToast('This invite has already been used');
+              } else {
+                showToast('Could not accept invite');
+              }
+              console.warn('[business-seats] acceptBusinessInvite failed:', err);
+            } finally {
+              // Clear the invite params from the URL so a refresh does not retry.
+              const url = new URL(window.location.href);
+              url.searchParams.delete('accept-business-invite');
+              url.searchParams.delete('token');
+              window.history.replaceState({}, '', url.toString());
+            }
+          })();
         }
         void resumePendingCheckout({
           openAuth: () => this.state.authModal?.open(),

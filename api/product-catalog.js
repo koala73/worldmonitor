@@ -67,17 +67,19 @@ const TIER_CONFIG = {
     highlighted: true,
   },
   api_starter: {
-    name: 'API',
+    name: 'API Starter',
     localeKey: 'api',
     description: 'Programmatic access to intelligence data',
-    features: ['REST API + official SDKs (npm, PyPI, RubyGems, Go)', 'License / API key included', 'Real-time data streams', '60 requests/minute', '1,000 requests/day included', 'Webhook notifications', 'Custom data exports'],
+    features: ['REST API + official SDKs (npm, PyPI, RubyGems, Go)', 'License / API key included', 'Real-time data streams', '60 requests/minute', '1,000 requests/day included', 'Webhook notifications'],
+    highlightFeatures: ['No commercial use'],
     highlighted: false,
   },
   api_business: {
     name: 'API Business',
     localeKey: 'apiBusiness',
     description: 'High-volume API for teams',
-    features: ['Everything in API Starter', '300 requests/minute', '10,000 requests/day included', 'Priority support'],
+    features: ['Everything in API Starter', '300 requests/minute', '10,000 requests/day included', '5 Pro licenses included', 'Same company email required', 'Priority support'],
+    highlightFeatures: ['Commercial use applicable'],
     highlighted: false,
   },
   enterprise: {

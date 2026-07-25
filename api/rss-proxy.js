@@ -188,13 +188,31 @@ export default async function handler(req, ctx) {
         response = await fetchDirect();
       } catch (directError) {
         if (directError instanceof RssProxyPolicyError) throw directError;
-        response = await fetchViaRailway(feedUrl, timeout);
+        // A throwing relay leg here must not replace directError — a null or
+        // non-ok relay response already falls through to it below, so a thrown
+        // relay error should too, rather than becoming the reported failure.
+        let relayResponse = null;
+        try {
+          relayResponse = await fetchViaRailway(feedUrl, timeout);
+        } catch (relayError) {
+          console.error('RSS proxy relay fallback error:', feedUrl, relayError instanceof Error ? relayError.message : String(relayError));
+        }
+        response = relayResponse;
         usedRelay = !!response;
         if (!response) throw directError;
       }
 
       if (!response.ok && !usedRelay) {
-        const relayResponse = await fetchViaRailway(feedUrl, timeout);
+        // Same reasoning: a throwing relay retry must not discard the original
+        // non-ok direct response — fall through to it exactly as a null or
+        // non-ok relay response already would.
+        let relayResponse = null;
+        try {
+          relayResponse = await fetchViaRailway(feedUrl, timeout);
+        } catch (relayError) {
+          console.error('RSS proxy relay retry error:', feedUrl, relayError instanceof Error ? relayError.message : String(relayError));
+          captureSilentError(relayError, { tags: { route: 'api/rss-proxy', step: 'relay-retry', feed: feedUrl }, ctx });
+        }
         if (relayResponse?.ok) {
           response = relayResponse;
         }

@@ -218,6 +218,22 @@ export const CHINA_COVERAGE_ENTRIES = Object.freeze([
     },
   },
   {
+    id: 'policy.official-events',
+    label: 'Official policy and enforcement events',
+    ownerIssue: 5576,
+    launchStatus: 'launched',
+    transport: metaTransport('seed-meta:china:policy-events', 2_160),
+    content: {
+      key: 'china:policy-events:v1',
+      maxAgeMin: 180 * 1_440,
+      probe: {
+        kind: 'object',
+        requiredTruthyPaths: [['events']],
+        timestampPaths: [['events', '*', 'publicationDate']],
+      },
+    },
+  },
+  {
     id: 'hazards.western-pacific-cyclones',
     label: 'Western Pacific cyclone identity',
     ownerIssue: 5276,
@@ -239,6 +255,22 @@ export const CHINA_COVERAGE_ENTRIES = Object.freeze([
       key: 'weather:hko-warnings:v1',
       maxAgeMin: 540,
       probe: { kind: 'object', timestampPaths: [['evaluatedAt'], ['latestObservationAt']] },
+    },
+  },
+  {
+    id: 'military.cross-strait-activity',
+    label: 'Official cross-Strait activity baseline',
+    ownerIssue: 5575,
+    launchStatus: 'launched',
+    transport: metaTransport('seed-meta:military:cross-strait-activity', 720),
+    content: {
+      key: 'military:cross-strait-activity:v1',
+      maxAgeMin: 3 * 1_440,
+      probe: {
+        kind: 'object',
+        requiredTruthyPaths: [['coverage', 'usableMndReportingDays']],
+        timestampPaths: [['coverage', 'latestMndReportingDay']],
+      },
     },
   },
 ]);

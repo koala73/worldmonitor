@@ -135,11 +135,17 @@
       "title": "Ülke özeti: Çin",
       "description": "Mevcut kamu veri sözleşmelerinden güncel makro, piyasa, ticaret, enerji ve operasyonel kullanılabilirlik.",
       "macroPolicy": "Makro ve Politika",
+      "policyEvents": "Policy & Enforcement",
       "marketCredit": "Piyasa ve Kredi",
       "tradeSupply": "Ticaret ve Tedarik Zinciri",
       "energy": "Enerji",
       "availability": "Tehlikeler ve Havacılık",
       "observed": "Tarih:",
+      "published": "Published:",
+      "effective": "Effective:",
+      "sectors": "Sectors:",
+      "entities": "Entities:",
+      "translation": "Translation:",
       "source": "Kaynak:",
       "imfGrowth": "IMF büyüme tahmini",
       "creditGdp": "GSYH'ye oranla kredi",
@@ -166,6 +172,8 @@
       "tradeUnavailable": "Ticaret ve tedarik zinciri verileri şu anda kullanılamıyor.",
       "energyUnavailable": "Enerji verileri şu anda kullanılamıyor.",
       "availabilityUnavailable": "Tehlike ve havacılık kullanılabilirlik verileri şu anda kullanılamıyor.",
+      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
+      "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
         "loading": "Yükleniyor",
         "available": "Kullanılabilir",
@@ -1556,7 +1564,26 @@
       "cafIndex": "CAF Endeksi",
       "candidGrants": "Candid Hibeleri",
       "dataLag": "Veri Gecikmesi",
-      "infoTooltip": "<strong>Küresel Bağış Faaliyet Endeksi</strong> Kitlesel fonlama platformları ve kripto cüzdanları üzerinden kişisel bağışları izleyen bileşik endeks.<ul><li><strong>Platformlar</strong>: GoFundMe, GlobalGiving, JustGiving kampanya örneklemesi</li><li><strong>Kripto</strong>: Zincir üzeri hayır kurumu cüzdan girişleri (Endaoment, Giving Block)</li><li><strong>Kurumsal</strong>: OECD ODA, CAF Dünya Bağış Endeksi, Candid hibeleri</li></ul>Endeks yönsel bir göstergedir (kesin dolar tutarları değildir). Canlı örnekleme ile yayımlanan yıllık raporları birleştirir."
+      "infoTooltip": "<strong>Küresel Bağış Faaliyet Endeksi</strong> Kitlesel fonlama platformları ve kripto cüzdanları üzerinden kişisel bağışları izleyen bileşik endeks.<ul><li><strong>Platformlar</strong>: GoFundMe, GlobalGiving, JustGiving kampanya örneklemesi</li><li><strong>Kripto</strong>: Zincir üzeri hayır kurumu cüzdan girişleri (Endaoment, Giving Block)</li><li><strong>Kurumsal</strong>: OECD ODA, CAF Dünya Bağış Endeksi, Candid hibeleri</li></ul>Endeks yönsel bir göstergedir (kesin dolar tutarları değildir). Canlı örnekleme ile yayımlanan yıllık raporları birleştirir.",
+      "benchmarkTitle": "Global Giving Benchmarks",
+      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "status": {
+        "published": "Published benchmarks with verified source coverage.",
+        "partial": "Published benchmarks with partial source coverage.",
+        "legacy": "Legacy snapshot; source details are unavailable.",
+        "cached": "Showing a cached snapshot; refresh unavailable."
+      },
+      "trackedAnnualized": "Tracked platform giving — annualized estimate",
+      "annualizedDaily": "Annualized daily estimate",
+      "atLeast": "At least",
+      "about": "About",
+      "sourceNotVerified": "Source not verified",
+      "reportedCumulative": "Reported cumulative total",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Published benchmark",
+      "sourcesMethodology": "Sources & methodology",
+      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
+      "partialEstimate": "Partially verified estimate"
     },
     "displacement": {
       "refugees": "Multeciler",
@@ -2108,7 +2135,11 @@
       "infoTooltip": "<strong>Felaket Kaskadı</strong> Yakınlaşan doğal afet ve altyapı sinyallerini tespit eder:<ul><li>Depremleri, orman yangınlarını, seller ve hava aşırılıklarını ilişkilendirir</li><li>Altyapı ve tedarik zincirlerine ilişkin basamaklı etkileri izler</li><li>Bileşik afet riski olan bölgeleri vurgular</li></ul>Etkilenen bölgeyi haritada yakınlaştırmak için bir kartı tıklayın."
     },
     "markets": {
-      "infoTooltip": "<strong>Piyasalar</strong> Gerçek zamanlı borsa endeksleri, hisse senetleri ve kripto fiyatları. Watchlist düğmesi ile izleme listenizi özelleştirin. Sparkline'lar son fiyat eğilimini gösterir."
+      "infoTooltip": "<strong>Piyasalar</strong> Gerçek zamanlı borsa endeksleri, hisse senetleri ve kripto fiyatları. Watchlist düğmesi ile izleme listenizi özelleştirin. Sparkline'lar son fiyat eğilimini gösterir.",
+      "chart": {
+        "title": "{{symbol}} price chart",
+        "close": "Close chart"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Sektör Isı Haritası</strong> S&P 500 sektör performansını bir bakışta görün. Renk yoğunluğu günlük değişimin büyüklüğünü yansıtır. Yeşil = kazançlar, Kırmızı = kayıplar."
@@ -2186,6 +2217,84 @@
       "retry": "Tekrar Dene",
       "retrying": "Tekrar Deneniyor…",
       "dismiss": "Kapat"
+    },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Adım {{current}} / {{total}}",
+      "closeLabel": "Kurulumu Atla",
+      "ariaLabel": "Pro Etkinleştirme Kurulumu",
+      "signedInAs": "{{email}} olarak oturum açıldı",
+      "steps": {
+        "brief": {
+          "heading": "Her sabah günlük özetiniz",
+          "body": "Her sabah gelen kutunuzda özenle hazırlanmış bir istihbarat özeti — gece boyunca önemli olan sinyaller, beş dakikalık bir okumaya sığdırılmış.",
+          "confirmCta": "Sabah Özetimi Aç",
+          "confirming": "Açılıyor…",
+          "doneNote": "Sabah özetiniz zaten çalışıyor.",
+          "scheduleNote": "Mevcut teslim saatinizi koruyacağız.",
+          "summaryLabel": "Sabah Özeti",
+          "summaryVerified": "Açık — bir sonraki sabah özetinizle başlar.",
+          "deliverAt": "Teslim saati",
+          "previewLoading": "İlk özetinizin önizlemesi hazırlanıyor…",
+          "previewLabel": "Bu sabahki özet"
+        },
+        "alerts": {
+          "heading": "Kritik Uyarılar",
+          "body": "Çatışma tırmanışları, piyasa şokları, yeni yaptırımlar gibi büyük bir şey olduğunda tarayıcınızda bildirim alın. Sıklığı istediğiniz zaman Ayarlar'dan değiştirebilirsiniz.",
+          "confirmCta": "Uyarıları Etkinleştir",
+          "confirming": "Etkinleştiriliyor…",
+          "doneNote": "Tarayıcı uyarıları zaten açık.",
+          "blockedNote": "Tarayıcınızda bildirimler engellenmiş. Uyarı alabilmek için tarayıcınızın site ayarlarından bunları açın.",
+          "declinedNote": "Sorun değil — tarayıcı uyarısı göndermeyeceğiz. Bunları daha sonra tarayıcınızın site ayarlarından açabilirsiniz.",
+          "summaryLabel": "Kritik Uyarılar",
+          "summaryVerified": "Açık — kritik sinyaller tarayıcınıza ulaşacak."
+        },
+        "power": {
+          "heading": "Pro Araç Setiniz",
+          "body": "Özel widget'lar, MCP bağlantıları ve yapay zeka araştırmacısının kilidi açıldı. Gerçekten izlemek istediğiniz paneli oluşturun.",
+          "confirmCta": "Pro Araçları Keşfet",
+          "confirming": "Açılıyor…",
+          "doneNote": "Pro araçlarınızı zaten kullanıyorsunuz.",
+          "summaryLabel": "Pro Araç Seti",
+          "summaryVerified": "Kilidi açıldı, siz hazır olduğunuzda kullanıma hazır.",
+          "channelsNote": "Telegram, Slack, Discord veya bir webhook mu tercih edersiniz?",
+          "pointers": {
+            "widgets": "Özel bir widget oluşturun",
+            "analyst": "Yapay zeka analistine sorun",
+            "apiKeys": "API ve MCP anahtarlarınızı alın",
+            "channels": "Bunları bildirim ayarlarından yapılandırın"
+          }
+        }
+      },
+      "status": {
+        "pending": "Kurulmadı",
+        "inFlight": "Kuruluyor…",
+        "verified": "Hazır",
+        "failed": "Başarısız Oldu",
+        "blocked": "Engellendi",
+        "unavailable": "Kullanılamıyor",
+        "blockedNote": "Bu şu anda kullanılamıyor — daha sonra ayarlardan kurabilirsiniz.",
+        "unavailableNote": "Bu, cihazınızda kullanılamıyor — daha sonra kurabilirsiniz.",
+        "failedBody": "Bir şeyler ters gitti. Tekrar deneyebilir veya daha sonra ayarlardan kurabilirsiniz.",
+        "retry": "Tekrar Dene"
+      },
+      "actions": {
+        "skip": "Şimdilik Atla",
+        "continue": "Devam Et"
+      },
+      "summary": {
+        "heading": "Her Şey Hazır",
+        "subVerified": "Hesabınızda çalışan şeyler burada.",
+        "subPending": "Kurulumu istediğiniz zaman ayarlardan tamamlayabilirsiniz.",
+        "linePending": "Henüz kurulmadı — istediğiniz zaman ayarlardan tamamlayın.",
+        "lineFailed": "Bunu kuramadık — ayarlardan tekrar deneyin.",
+        "finish": "Panelime Git"
+      },
+      "chip": {
+        "message": "Pro hesabınızın kurulumunu tamamlayın.",
+        "action": "Kurulumu Tamamla",
+        "dismissLabel": "Kapat"
+      }
     },
     "frameworkSelector": {
       "label": "Analiz Çerçevesi",

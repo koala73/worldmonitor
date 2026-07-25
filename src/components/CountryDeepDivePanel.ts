@@ -1,5 +1,11 @@
 import type { CountryBriefSignals } from '@/types';
-import { getSourcePropagandaRisk, getSourceTier } from '@/config/feeds';
+import {
+  describePropagandaBadge,
+  getSourcePropagandaRisk,
+  getSourceTier,
+  getSourceTierBadgeTitle,
+  getSourceType,
+} from '@/config/feeds';
 import { getCountryCentroid, ME_STRIKE_BOUNDS } from '@/services/country-geometry';
 import type { CountryScore } from '@/services/country-instability';
 import { t } from '@/services/i18n';
@@ -403,9 +409,13 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
       const top = this.el('div', 'cdp-news-top');
       const tier = item.tier ?? getSourceTier(item.source);
+      const sourceType = getSourceType(item.source);
       const clampedTier = Math.max(1, Math.min(4, tier));
       const tierBadge = this.badge(`T${clampedTier} SRC`, `cdp-tier-badge tier-${clampedTier}`);
-      tierBadge.setAttribute('title', `Source tier ${clampedTier}: reflects publication credibility (1 = top wire services, 4 = specialty/low-reach). Independent of article severity.`);
+      tierBadge.setAttribute(
+        'title',
+        `${getSourceTierBadgeTitle(sourceType)}. Source tier ${clampedTier}; independent of article severity.`,
+      );
       top.append(tierBadge);
 
       const severity = this.toThreatLevel(item.threat?.level);
@@ -416,8 +426,22 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       top.append(sevBadge);
 
       const risk = getSourcePropagandaRisk(item.source);
-      if (risk.stateAffiliated) {
-        top.append(this.badge(`State-affiliated: ${risk.stateAffiliated}`, 'cdp-state-badge'));
+      const riskDescription = describePropagandaBadge(risk, sourceType);
+      if (riskDescription) {
+        const riskLabel = risk.stateAffiliated
+          ? `${riskDescription.label}: ${risk.stateAffiliated}`
+          : riskDescription.label;
+        const riskBadge = this.badge(
+          riskLabel,
+          `cdp-state-badge propaganda-badge ${riskDescription.risk}`,
+        );
+        riskBadge.setAttribute(
+          'title',
+          risk.stateAffiliated
+            ? `${sourceType === 'gov' ? 'Official government source' : 'State-affiliated'}: ${risk.stateAffiliated}. ${riskDescription.title}`
+            : riskDescription.title,
+        );
+        top.append(riskBadge);
       }
 
       const title = this.el('div', 'cdp-news-title', this.decodeEntities(item.title));
@@ -2597,6 +2621,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       this.chinaSummaryBody = body;
       this.renderChinaCountrySummary([
         'macro-policy',
+        'policy-enforcement',
         'market-credit',
         'trade-supply',
         'energy',
@@ -2963,7 +2988,35 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
           if (signal.observedAt) {
             item.append(this.el('div', 'cdp-china-summary-attribution', `${t('countryBrief.china.observed')} ${signal.observedAt}`));
           }
-          item.append(this.el('div', 'cdp-china-summary-attribution', `${t('countryBrief.china.source')} ${signal.source}`));
+          if (signal.publishedAt) {
+            item.append(this.el('div', 'cdp-china-summary-attribution', `${t('countryBrief.china.published')} ${signal.publishedAt}`));
+          }
+          if (signal.effectiveAt) {
+            item.append(this.el('div', 'cdp-china-summary-attribution', `${t('countryBrief.china.effective')} ${signal.effectiveAt}`));
+          }
+          if (signal.sectors?.length) {
+            item.append(this.el('div', 'cdp-china-summary-attribution', `${t('countryBrief.china.sectors')} ${signal.sectors.join(', ')}`));
+          }
+          if (signal.entities?.length) {
+            item.append(this.el('div', 'cdp-china-summary-attribution', `${t('countryBrief.china.entities')} ${signal.entities.join(', ')}`));
+          }
+          if (signal.translationState) {
+            item.append(this.el('div', 'cdp-china-summary-attribution', `${t('countryBrief.china.translation')} ${signal.translationState}`));
+          }
+          const sourceAttribution = this.el('div', 'cdp-china-summary-attribution');
+          const sourcePrefix = `${t('countryBrief.china.source')} `;
+          const safeHref = signal.sourceUrl ? sanitizeUrl(signal.sourceUrl) : '';
+          if (safeHref) {
+            sourceAttribution.append(document.createTextNode(sourcePrefix));
+            const sourceLink = this.el('a', 'cdp-china-summary-source-link', signal.source);
+            sourceLink.setAttribute('href', safeHref);
+            sourceLink.setAttribute('target', '_blank');
+            sourceLink.setAttribute('rel', 'noopener noreferrer');
+            sourceAttribution.append(sourceLink);
+          } else {
+            sourceAttribution.textContent = `${sourcePrefix}${signal.source}`;
+          }
+          item.append(sourceAttribution);
           children.push(item);
         }
         if (group.unavailableReason) {
@@ -2977,6 +3030,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private chinaSummaryGroupLabel(id: ChinaCountrySummaryGroupId): string {
     const keys: Record<ChinaCountrySummaryGroupId, string> = {
       'macro-policy': 'macroPolicy',
+      'policy-enforcement': 'policyEvents',
       'market-credit': 'marketCredit',
       'trade-supply': 'tradeSupply',
       energy: 'energy',

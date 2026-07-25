@@ -14,6 +14,7 @@ import {
   deriveBillingUxState,
   getBillingBannerVariant,
   getBillingGateOverride,
+  getReactivationHref,
   type BillingSubscriptionSnapshot,
   type BillingEntitlementSnapshot,
 } from '@/services/billing-state';
@@ -275,5 +276,13 @@ describe('getBillingGateOverride', () => {
         `${state} produced unexpected override ${String(override)}`,
       );
     }
+  });
+});
+
+describe('getReactivationHref', () => {
+  it('preserves the returning subscriber plan preference', () => {
+    assert.equal(getReactivationHref('pro_annual'), '/pro?wm_reactivate_plan=pro_annual#pricing');
+    assert.equal(getReactivationHref('pro_monthly'), '/pro?wm_reactivate_plan=pro_monthly#pricing');
+    assert.equal(getReactivationHref(null), '/pro#pricing');
   });
 });

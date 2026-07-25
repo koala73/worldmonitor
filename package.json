@@ -177,6 +177,7 @@
     "i18next-browser-languagedetector": "^8.2.1",
     "jmespath": "^0.16.0",
     "jose": "^6.2.2",
+    "mailchecker": "^6.0.21",
     "maplibre-gl": "^5.16.0",
     "marked": "^17.0.3",
     "onnxruntime-web": "^1.26.0",

@@ -14,14 +14,18 @@ paths:
                 - GivingService
             summary: GetGivingSummary
             description: |-
-                GetGivingSummary retrieves a composite global giving activity index and platform breakdowns.
+                GetGivingSummary retrieves published-claim platform projections, a verified
+                 tracked-platform annualized flow estimate, and claim-level provenance.
+                 Compatibility index/trend fields are explicitly marked unavailable.
                  Empty/absent summary with fetched_at=0 or data_available=false means the
                  snapshot is unavailable/degraded, not that giving activity is zero.
             operationId: GetGivingSummary
             parameters:
                 - name: platform_limit
                   in: query
-                  description: Number of platforms to include (0 = all).
+                  description: |-
+                    Number of platform rows to return (0 = all). Aggregates and provenance
+                     continue to describe the full snapshot.
                   required: false
                   example: 25
                   schema:
@@ -29,7 +33,9 @@ paths:
                     format: int32
                 - name: category_limit
                   in: query
-                  description: Number of category breakdowns to include (0 = all).
+                  description: |-
+                    Number of category rows to return (0 = all). Aggregates and provenance
+                     continue to describe the full snapshot.
                   required: false
                   example: 25
                   schema:
@@ -50,24 +56,324 @@ paths:
                         application/json:
                             example:
                                 "dataAvailable": true
-                                "fetchedAt": 1717200000000
+                                "fetchedAt": 1784894400000
                                 "summary":
-                                    "activityIndex": 1.5
+                                    "activityIndex": 0
+                                    "activityIndexAvailable": false
                                     "categories":
-                                        - "activeCampaigns": 1
-                                          "category": "cs.AI"
-                                          "change24h": 1.5
-                                          "share": 1.5
-                                          "trending": true
+                                        - "activeCampaigns": 0
+                                          "category": "Medical & Health"
+                                          "change24h": 0
+                                          "share": 0
+                                          "trending": false
+                                        - "activeCampaigns": 0
+                                          "category": "Disaster Relief"
+                                          "change24h": 0
+                                          "share": 0
+                                          "trending": false
+                                        - "activeCampaigns": 0
+                                          "category": "Education"
+                                          "change24h": 0
+                                          "share": 0
+                                          "trending": false
+                                        - "activeCampaigns": 0
+                                          "category": "Community"
+                                          "change24h": 0
+                                          "share": 0
+                                          "trending": false
+                                        - "activeCampaigns": 0
+                                          "category": "Memorials"
+                                          "change24h": 0
+                                          "share": 0
+                                          "trending": false
+                                        - "activeCampaigns": 0
+                                          "category": "Animals & Pets"
+                                          "change24h": 0
+                                          "share": 0
+                                          "trending": false
+                                        - "activeCampaigns": 0
+                                          "category": "Environment"
+                                          "change24h": 0
+                                          "share": 0
+                                          "trending": false
+                                        - "activeCampaigns": 0
+                                          "category": "Hunger & Food"
+                                          "change24h": 0
+                                          "share": 0
+                                          "trending": false
+                                        - "activeCampaigns": 0
+                                          "category": "Other"
+                                          "change24h": 0
+                                          "share": 0
+                                          "trending": false
                                     "crypto":
-                                        "dailyInflowUsd": 1.5
-                                        "pctOfTotal": 1
+                                        "dailyInflowUsd": 0
+                                        "pctOfTotal": 0
                                         "topReceivers":
-                                            - "example"
-                                        "trackedWallets": 1
-                                        "transactions24h": 1
-                                    "estimatedDailyFlowUsd": 1.5
-                                    "generatedAt": "2026-01-15T12:00:00Z"
+                                            []
+                                        "trackedWallets": 0
+                                        "transactions24h": 0
+                                    "dataMode": "partial_estimate"
+                                    "estimatedDailyFlowUsd": 7353424.657534246
+                                    "generatedAt": "2026-07-24T12:00:00.000Z"
+                                    "institutional":
+                                        "cafDataYear": 0
+                                        "cafWorldGivingIndex": 0
+                                        "candidGrantsTracked": 3000000
+                                        "dataLag": "Annual published context"
+                                        "oecdDataYear": 2023
+                                        "oecdOdaAnnualUsdBn": 223.7
+                                    "platforms":
+                                        - "dailyVolumeUsd": 7123287.671232876
+                                          "dataFreshness": "annual"
+                                          "lastUpdated": ""
+                                          "platform": "GoFundMe"
+                                        - "dailyVolumeUsd": 230136.98630136985
+                                          "dataFreshness": "annual"
+                                          "lastUpdated": ""
+                                          "platform": "GlobalGiving"
+                                        - "dailyVolumeUsd": 0
+                                          "dataFreshness": "cumulative"
+                                          "lastUpdated": ""
+                                          "platform": "JustGiving"
+                                    "provenance":
+                                        - "accessedAt": "2026-07-24"
+                                          "coveredMetricPaths":
+                                              - "summary.platforms[platform=GoFundMe].daily_volume_usd"
+                                              - "summary.estimated_daily_flow_usd"
+                                          "denominator": "week"
+                                          "derivation": "50,000,000 USD/week * 52 weeks/year = at least 2,600,000,000 USD/year."
+                                          "includedInHighlightedAggregate": true
+                                          "measurementBasis": "Published lower-bound weekly platform claim"
+                                          "notes": "Exact claim: \"More than $50 million is raised each week on GoFundMe.\" The source footnote says this is the average amount raised per week in 2023 and 2024."
+                                          "referencePeriod": "Average week across 2023-2024"
+                                          "reportedUnit": "USD"
+                                          "reportedValue": 50000000
+                                          "sourceLocator": "Homepage giving-volume claim and attached footnote 1"
+                                          "sourceName": "GoFundMe"
+                                          "sourcePublishedAt": ""
+                                          "sourceUrl": "https://www.gofundme.com/?lang=en"
+                                          "status": "verified"
+                                          "subject": "GoFundMe weekly giving"
+                                          "valueQualifier": "more_than"
+                                        - "accessedAt": "2026-07-24"
+                                          "coveredMetricPaths":
+                                              - "summary.platforms[platform=GlobalGiving].daily_volume_usd"
+                                              - "summary.estimated_daily_flow_usd"
+                                          "denominator": "year"
+                                          "derivation": "Reported 2024 amount is used as an at-least annual estimate; no currency conversion."
+                                          "includedInHighlightedAggregate": true
+                                          "measurementBasis": "Published lower-bound annual platform claim"
+                                          "notes": "Exact claim: GlobalGiving raised more than USD 84 million in 2024."
+                                          "referencePeriod": "2024"
+                                          "reportedUnit": "USD"
+                                          "reportedValue": 84000000
+                                          "sourceLocator": "2024 Year in Review, annual impact totals"
+                                          "sourceName": "GlobalGiving"
+                                          "sourcePublishedAt": ""
+                                          "sourceUrl": "https://www.globalgiving.org/2024/"
+                                          "status": "verified"
+                                          "subject": "GlobalGiving 2024 giving"
+                                          "valueQualifier": "more_than"
+                                        - "accessedAt": "2026-07-24"
+                                          "coveredMetricPaths":
+                                              - "summary.platforms[platform=JustGiving].daily_volume_usd"
+                                              - "summary.provenance"
+                                          "denominator": "25 years cumulative"
+                                          "derivation": "No annualization or USD conversion; cumulative GBP is provenance-only."
+                                          "includedInHighlightedAggregate": false
+                                          "measurementBasis": "Published lower-bound cumulative platform claim"
+                                          "notes": "Exact claim: JustGiving has helped people raise more than GBP 7 billion over 25 years."
+                                          "referencePeriod": "25 years cumulative"
+                                          "reportedUnit": "GBP"
+                                          "reportedValue": 7000000000
+                                          "sourceLocator": "About JustGiving, platform impact statement"
+                                          "sourceName": "JustGiving"
+                                          "sourcePublishedAt": ""
+                                          "sourceUrl": "https://www.justgiving.com/about"
+                                          "status": "verified"
+                                          "subject": "JustGiving cumulative giving"
+                                          "valueQualifier": "more_than"
+                                        - "accessedAt": "2026-07-24"
+                                          "coveredMetricPaths":
+                                              - "summary.institutional.oecd_oda_annual_usd_bn"
+                                              - "summary.institutional.oecd_data_year"
+                                          "denominator": "year"
+                                          "derivation": "No derivation; retained in reported USD billions as institutional context only."
+                                          "includedInHighlightedAggregate": false
+                                          "measurementBasis": "Published annual institutional assistance context"
+                                          "notes": "Exact claim: official development assistance from DAC members totalled USD 223.7 billion in 2023. This is institutional context, not personal platform giving."
+                                          "referencePeriod": "2023"
+                                          "reportedUnit": "USD billion"
+                                          "reportedValue": 223.7
+                                          "sourceLocator": "2023 ODA Figures and Trends launch, total ODA statement"
+                                          "sourceName": "OECD"
+                                          "sourcePublishedAt": ""
+                                          "sourceUrl": "https://www.oecd.org/en/about/news/speech-statements/2024/04/2023-oda-figures-and-trends-launch-press-conference.html"
+                                          "status": "verified"
+                                          "subject": "OECD official development assistance"
+                                          "valueQualifier": "reported"
+                                        - "accessedAt": "2026-07-24"
+                                          "coveredMetricPaths":
+                                              - "summary.institutional.candid_grants_tracked"
+                                          "denominator": "year"
+                                          "derivation": "No derivation; replaces the unsupported legacy bare 18 million grant count."
+                                          "includedInHighlightedAggregate": false
+                                          "measurementBasis": "Published approximate annual grants-data coverage"
+                                          "notes": "Exact claim: Candid data represents about 3 million grants annually."
+                                          "referencePeriod": "Current fact sheet accessed 2026-07-24"
+                                          "reportedUnit": "grants"
+                                          "reportedValue": 3000000
+                                          "sourceLocator": "Grants data fact sheet, annual grants-data coverage statement"
+                                          "sourceName": "Candid"
+                                          "sourcePublishedAt": ""
+                                          "sourceUrl": "https://candid.org/about/our-data/grants-data-fact-sheet/"
+                                          "status": "verified"
+                                          "subject": "Candid grants represented annually"
+                                          "valueQualifier": "about"
+                                        - "accessedAt": "2026-07-24"
+                                          "coveredMetricPaths":
+                                              - "summary.provenance"
+                                          "denominator": "year"
+                                          "derivation": "No derivation; provenance-only institutional context."
+                                          "includedInHighlightedAggregate": false
+                                          "measurementBasis": "Published approximate annual grants-data value"
+                                          "notes": "Exact claim: Candid data represents about USD 180 billion in grantmaking annually."
+                                          "referencePeriod": "Current fact sheet accessed 2026-07-24"
+                                          "reportedUnit": "USD"
+                                          "reportedValue": 180000000000
+                                          "sourceLocator": "Grants data fact sheet, annual grants-data coverage statement"
+                                          "sourceName": "Candid"
+                                          "sourcePublishedAt": ""
+                                          "sourceUrl": "https://candid.org/about/our-data/grants-data-fact-sheet/"
+                                          "status": "verified"
+                                          "subject": "Candid annual grantmaking represented"
+                                          "valueQualifier": "about"
+                                        - "accessedAt": "2026-07-24"
+                                          "coveredMetricPaths":
+                                              - "summary.crypto.daily_inflow_usd"
+                                          "denominator": "purported year"
+                                          "derivation": "No derivation; unverified input is excluded from annual and daily flow."
+                                          "includedInHighlightedAggregate": false
+                                          "measurementBasis": "Unsupported legacy annual crypto-giving estimate"
+                                          "notes": "Exact legacy claim: total crypto giving was estimated at approximately USD 2 billion per year. No stable primary evidence was established, so the value is hidden and excluded."
+                                          "referencePeriod": "Legacy 2024 estimate; reference period not verified"
+                                          "reportedUnit": "USD"
+                                          "reportedValue": 2000000000
+                                          "sourceLocator": "Issue #5504, unsupported crypto estimate"
+                                          "sourceName": "WorldMonitor issue #5504"
+                                          "sourcePublishedAt": ""
+                                          "sourceUrl": "https://github.com/koala73/worldmonitor/issues/5504"
+                                          "status": "unverified"
+                                          "subject": "Legacy crypto-giving annual volume"
+                                          "valueQualifier": "approximately"
+                                        - "accessedAt": "2026-07-24"
+                                          "coveredMetricPaths":
+                                              - "summary.crypto.tracked_wallets"
+                                              - "summary.crypto.top_receivers"
+                                              - "summary.crypto.pct_of_total"
+                                          "denominator": "snapshot"
+                                          "derivation": "No derivation; wallet count, receivers, and percentage are hidden."
+                                          "includedInHighlightedAggregate": false
+                                          "measurementBasis": "Unsupported legacy wallet/receiver coverage claim"
+                                          "notes": "Exact legacy claim: 150 charity wallets were tracked, with named top receivers and an estimated 0.8 percent share. No collector or stable primary evidence was established."
+                                          "referencePeriod": "Legacy snapshot; reference period not verified"
+                                          "reportedUnit": "wallets"
+                                          "reportedValue": 150
+                                          "sourceLocator": "Issue #5504, unsupported wallet and receiver metrics"
+                                          "sourceName": "WorldMonitor issue #5504"
+                                          "sourcePublishedAt": ""
+                                          "sourceUrl": "https://github.com/koala73/worldmonitor/issues/5504"
+                                          "status": "unverified"
+                                          "subject": "Legacy crypto wallet and receiver coverage"
+                                          "valueQualifier": "unverified"
+                                        - "accessedAt": "2026-07-24"
+                                          "coveredMetricPaths":
+                                              - "summary.institutional.caf_world_giving_index"
+                                              - "summary.institutional.caf_data_year"
+                                          "denominator": "index"
+                                          "derivation": "No derivation; value and year are hidden."
+                                          "includedInHighlightedAggregate": false
+                                          "measurementBasis": "Unsupported legacy index context"
+                                          "notes": "Exact legacy claim: a global-average CAF World Giving Index value of 34 for 2024. No stable primary evidence for this exact displayed value was established."
+                                          "referencePeriod": "Purported 2024 value; source not verified"
+                                          "reportedUnit": "index points"
+                                          "reportedValue": 34
+                                          "sourceLocator": "Issue #5504, unsupported CAF value"
+                                          "sourceName": "WorldMonitor issue #5504"
+                                          "sourcePublishedAt": ""
+                                          "sourceUrl": "https://github.com/koala73/worldmonitor/issues/5504"
+                                          "status": "unverified"
+                                          "subject": "Legacy CAF World Giving Index context"
+                                          "valueQualifier": "unverified"
+                                        - "accessedAt": "2026-07-24"
+                                          "coveredMetricPaths":
+                                              - "summary.categories[*].share"
+                                              - "summary.categories[*].change_24h"
+                                              - "summary.categories[*].active_campaigns"
+                                              - "summary.categories[*].trending"
+                                          "denominator": "share of legacy distribution"
+                                          "derivation": "No derivation; shares are hidden and live fields remain zero/false sentinels."
+                                          "includedInHighlightedAggregate": false
+                                          "measurementBasis": "Unsupported static category distribution"
+                                          "notes": "Exact legacy claim: nine category shares totalled 1.0, led by Medical & Health at 0.33. Stable primary evidence for the displayed distribution was not established."
+                                          "referencePeriod": "Legacy snapshot; reference period not verified"
+                                          "reportedUnit": "distribution total"
+                                          "reportedValue": 1
+                                          "sourceLocator": "Issue #5504, unsupported category values and trending semantics"
+                                          "sourceName": "WorldMonitor issue #5504"
+                                          "sourcePublishedAt": ""
+                                          "sourceUrl": "https://github.com/koala73/worldmonitor/issues/5504"
+                                          "status": "unverified"
+                                          "subject": "Legacy giving category shares"
+                                          "valueQualifier": "unverified"
+                                        - "accessedAt": "2026-07-24"
+                                          "coveredMetricPaths":
+                                              - "summary.platforms[*].active_campaigns_sampled"
+                                              - "summary.platforms[*].new_campaigns_24h"
+                                              - "summary.platforms[*].donation_velocity"
+                                              - "summary.categories[*].change_24h"
+                                              - "summary.categories[*].active_campaigns"
+                                              - "summary.categories[*].trending"
+                                              - "summary.crypto.transactions_24h"
+                                          "denominator": "not applicable"
+                                          "derivation": "No derivation; zero and false are compatibility sentinels, not measured activity."
+                                          "includedInHighlightedAggregate": false
+                                          "measurementBasis": "Explicit collection-status record"
+                                          "notes": "Exact collection status: no live campaign-sampling or on-chain transaction collector populates these fields."
+                                          "referencePeriod": "Current v2 collection capability"
+                                          "reportedUnit": "compatibility sentinel"
+                                          "reportedValue": 0
+                                          "sourceLocator": "Issue #5504, collector audit"
+                                          "sourceName": "WorldMonitor issue #5504"
+                                          "sourcePublishedAt": ""
+                                          "sourceUrl": "https://github.com/koala73/worldmonitor/issues/5504"
+                                          "status": "not_collected"
+                                          "subject": "Live platform and category activity collection"
+                                          "valueQualifier": "not_measured"
+                                        - "accessedAt": "2026-07-24"
+                                          "coveredMetricPaths":
+                                              - "summary.activity_index"
+                                              - "summary.activity_index_available"
+                                              - "summary.trend"
+                                              - "summary.trend_available"
+                                          "denominator": "not applicable"
+                                          "derivation": "No derivation; retain activityIndex=0 and trend=\"stable\" only for wire compatibility."
+                                          "includedInHighlightedAggregate": false
+                                          "measurementBasis": "Explicit compatibility-status record"
+                                          "notes": "Exact compatibility status: no measured activity index or historical directional trend is available."
+                                          "referencePeriod": "Current v2 compatibility contract"
+                                          "reportedUnit": "compatibility sentinel"
+                                          "reportedValue": 0
+                                          "sourceLocator": "Issue #5504, index and trend audit"
+                                          "sourceName": "WorldMonitor issue #5504"
+                                          "sourcePublishedAt": ""
+                                          "sourceUrl": "https://github.com/koala73/worldmonitor/issues/5504"
+                                          "status": "not_applicable"
+                                          "subject": "Activity index and directional trend"
+                                          "valueQualifier": "not_measured"
+                                    "trend": "stable"
+                                    "trendAvailable": false
                             schema:
                                 $ref: '#/components/schemas/GetGivingSummaryResponse'
                 "400":
@@ -247,12 +553,16 @@ components:
                 platformLimit:
                     type: integer
                     format: int32
-                    description: Number of platforms to include (0 = all).
+                    description: |-
+                        Number of platform rows to return (0 = all). Aggregates and provenance
+                         continue to describe the full snapshot.
                 categoryLimit:
                     type: integer
                     format: int32
-                    description: Number of category breakdowns to include (0 = all).
-            description: GetGivingSummaryRequest specifies parameters for retrieving the global giving summary.
+                    description: |-
+                        Number of category rows to return (0 = all). Aggregates and provenance
+                         continue to describe the full snapshot.
+            description: GetGivingSummaryRequest specifies projections over the published-claim snapshot.
         GetGivingSummaryResponse:
             type: object
             properties:
@@ -262,32 +572,42 @@ components:
                     type: integer
                     format: int64
                     description: |-
-                        Time the summary was generated, as Unix epoch milliseconds. A value of 0
-                         means the snapshot is unavailable/degraded, not that giving activity is
-                         zero.. Warning: Values > 2^53 may lose precision in JavaScript
+                        Cache/response materialization time as Unix epoch milliseconds. This is not
+                         source publication or observation time. A value of 0 means the snapshot is
+                         unavailable/degraded, not that giving activity is zero.. Warning: Values > 2^53 may lose precision in JavaScript
                 dataAvailable:
                     type: boolean
                     description: |-
-                        True when summary is populated. False means an absent/empty summary is
-                         graceful degradation because the snapshot is unavailable.
-            description: GetGivingSummaryResponse contains the global giving activity summary.
+                        True when a summary payload is populated. False means an absent/empty
+                         summary is graceful degradation because the snapshot is unavailable;
+                         provenance and data mode are not required on that degraded shape.
+            description: GetGivingSummaryResponse contains a cacheable published-claim snapshot.
         GivingSummary:
             type: object
             properties:
                 generatedAt:
                     type: string
-                    description: Timestamp of the summary generation (ISO 8601).
+                    description: |-
+                        Response summary generation time (ISO 8601). This is a transport/cache
+                         timestamp, not a source publication or observation time.
                 activityIndex:
                     type: number
                     format: double
-                    description: Global giving activity index (0-100 composite score).
+                    description: |-
+                        Legacy numeric compatibility sentinel. Corrected snapshots emit 0 and
+                         activity_index_available=false; this is not a measured score.
                 trend:
                     type: string
-                    description: Index trend direction.
+                    description: |-
+                        Legacy string compatibility sentinel. Corrected snapshots retain "stable"
+                         with trend_available=false; this is not a measured directional trend.
                 estimatedDailyFlowUsd:
                     type: number
                     format: double
-                    description: Estimated daily global giving flow in USD (directional, not precise).
+                    description: |-
+                        Daily USD equivalent of only aggregate-eligible, verified annual or
+                         defensibly annualized tracked-platform claims. It is not a live daily
+                         observation or an estimate of all global giving.
                 platforms:
                     type: array
                     items:
@@ -300,7 +620,30 @@ components:
                     $ref: '#/components/schemas/CryptoGivingSummary'
                 institutional:
                     $ref: '#/components/schemas/InstitutionalGiving'
-            description: GivingSummary represents a global overview of personal giving activity across platforms.
+                dataMode:
+                    type: string
+                    description: |-
+                        Evidence mode: "published_estimate" or "partial_estimate". If absent in an
+                         older payload, consumers must treat the payload as legacy/unknown, never as
+                         a published estimate by proto scalar default.
+                trendAvailable:
+                    type: boolean
+                    description: |-
+                        True only when trend contains a measured directional trend. Corrected
+                         published-claim snapshots emit false.
+                provenance:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GivingProvenance'
+                activityIndexAvailable:
+                    type: boolean
+                    description: |-
+                        True only when activity_index contains a measured score. Corrected
+                         published-claim snapshots emit false.
+            description: |-
+                GivingSummary is a cacheable snapshot of published giving claims. Source
+                 reference periods live in provenance; generated_at is only the time this
+                 response snapshot was materialized.
         PlatformGiving:
             type: object
             properties:
@@ -311,25 +654,37 @@ components:
                 dailyVolumeUsd:
                     type: number
                     format: double
-                    description: Estimated daily donation volume in USD.
+                    description: |-
+                        Daily USD equivalent derived from an aggregate-eligible published claim.
+                         Zero means no eligible conversion, not measured zero giving.
                 activeCampaignsSampled:
                     type: integer
                     format: int32
-                    description: Number of active campaigns being sampled.
+                    description: |-
+                        Legacy live-sampling field. Zero is a not-collected compatibility sentinel
+                         unless provenance says otherwise.
                 newCampaigns24h:
                     type: integer
                     format: int32
-                    description: New campaigns created in the last 24 hours.
+                    description: |-
+                        Legacy 24-hour field. Zero is a not-collected compatibility sentinel unless
+                         provenance says otherwise.
                 donationVelocity:
                     type: number
                     format: double
-                    description: Average donation velocity (donations per hour).
+                    description: |-
+                        Legacy live-velocity field. Zero is a not-collected compatibility sentinel
+                         unless provenance says otherwise.
                 dataFreshness:
                     type: string
-                    description: 'Data freshness: "live", "daily", "weekly", "annual".'
+                    description: |-
+                        Legacy source basis/cadence ("annual", "cumulative", or "unknown"), not
+                         response freshness or source age.
                 lastUpdated:
                     type: string
-                    description: Last data update timestamp (ISO 8601).
+                    description: |-
+                        Verified source publication date only. Empty when no publication date was
+                         verified; request/cache time must never be substituted.
             required:
                 - platform
             description: PlatformGiving represents aggregated giving data from a single crowdfunding platform.
@@ -342,44 +697,49 @@ components:
                 share:
                     type: number
                     format: double
-                    description: Share of total giving activity (0-1).
+                    description: |-
+                        Published share (0-1) when verified. Zero is an unavailable sentinel when
+                         the category evidence is unverified.
                 change24h:
                     type: number
                     format: double
-                    description: 24-hour change in share percentage points.
+                    description: Legacy 24-hour change. Zero is a not-collected compatibility sentinel.
                 activeCampaigns:
                     type: integer
                     format: int32
-                    description: Number of active campaigns in this category.
+                    description: Legacy live campaign count. Zero is a not-collected compatibility sentinel.
                 trending:
                     type: boolean
-                    description: Trending indicator.
-            description: CategoryBreakdown represents giving activity within a specific cause category.
+                    description: Legacy live trending indicator. Corrected static snapshots emit false.
+            description: CategoryBreakdown retains the legacy wire shape for category claims.
         CryptoGivingSummary:
             type: object
             properties:
                 dailyInflowUsd:
                     type: number
                     format: double
-                    description: Total 24h inflow to tracked charity wallets (USD equivalent).
+                    description: Daily USD equivalent from a verified annual claim, if available.
                 trackedWallets:
                     type: integer
                     format: int32
-                    description: Number of tracked charity wallets.
+                    description: Verified tracked-wallet count, if available.
                 transactions24h:
                     type: integer
                     format: int32
-                    description: Number of transactions in the last 24 hours.
+                    description: Measured transactions in the last 24 hours, if a collector exists.
                 topReceivers:
                     type: array
                     items:
                         type: string
-                        description: Top receiving platforms / DAOs.
+                        description: Verified receiving platforms or organizations, if available.
                 pctOfTotal:
                     type: number
                     format: double
-                    description: Percentage of total giving that is on-chain.
-            description: CryptoGivingSummary tracks transparent on-chain philanthropy.
+                    description: Verified on-chain share of the relevant giving denominator, if available.
+            description: |-
+                CryptoGivingSummary retains the legacy wire shape. Corrected snapshots expose
+                 only verified values; zero/empty fields are unavailable compatibility
+                 sentinels, not measured on-chain activity.
         InstitutionalGiving:
             type: object
             properties:
@@ -407,3 +767,75 @@ components:
                     type: string
                     description: Data lag description (e.g., "Quarterly", "Annual").
             description: InstitutionalGiving tracks large-scale structured philanthropy and ODA.
+        GivingProvenance:
+            type: object
+            properties:
+                subject:
+                    type: string
+                    description: Human-readable subject of the claim or collection-status record.
+                sourceName:
+                    type: string
+                    description: Publisher or authority responsible for the referenced claim.
+                sourceUrl:
+                    type: string
+                    description: HTTPS URL for the source or stable audit record.
+                referencePeriod:
+                    type: string
+                    description: Period covered by the source claim (for example, "2024" or "25 years cumulative").
+                sourcePublishedAt:
+                    type: string
+                    description: |-
+                        Verified source publication date when known. Empty means not verified; it
+                         must never fall back to generated_at, fetched_at, or access time.
+                measurementBasis:
+                    type: string
+                    description: |-
+                        What the reported number measures (annual, weekly average, cumulative,
+                         institutional context, compatibility sentinel, or collection status).
+                status:
+                    type: string
+                    description: |-
+                        Verification status. Allowed values: "verified", "partially_verified",
+                         "unverified", "not_collected", "not_applicable". Consumers must treat
+                         unknown future values as "unverified".
+                coveredMetricPaths:
+                    type: array
+                    items:
+                        type: string
+                        description: |-
+                            Stable proto response field paths covered by this evidence record. Field
+                             names use the proto snake_case spelling (for example,
+                             "summary.estimated_daily_flow_usd").
+                includedInHighlightedAggregate:
+                    type: boolean
+                    description: Whether this claim contributes to the highlighted tracked-platform aggregate.
+                reportedValue:
+                    type: number
+                    format: double
+                    description: Numeric value exactly as reported or recorded for the compatibility status.
+                reportedUnit:
+                    type: string
+                    description: Unit attached to reported_value without implicit currency conversion.
+                notes:
+                    type: string
+                    description: Exact-claim text and any limitations needed to audit the record.
+                valueQualifier:
+                    type: string
+                    description: Source qualifier such as "more_than", "about", "reported", or "not_measured".
+                sourceLocator:
+                    type: string
+                    description: Stable location within the source where the claim can be found.
+                accessedAt:
+                    type: string
+                    description: Date the source was checked (YYYY-MM-DD); not a source observation time.
+                denominator:
+                    type: string
+                    description: Time/value denominator used by the source claim.
+                derivation:
+                    type: string
+                    description: Explicit derivation applied to the claim, or why no derivation is allowed.
+            description: |-
+                GivingProvenance records one auditable published claim or one explicit
+                 collection/compatibility status. No field represents a source observation
+                 time; source reference periods and verified publication dates stay separate
+                 from response/cache timestamps.

@@ -1,6 +1,12 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
-import { channelTypeValidator, digestModeValidator, quietHoursOverrideValidator, sensitivityValidator } from "./constants";
+import {
+  channelTypeValidator,
+  digestModeValidator,
+  proActivationStepIdValidator,
+  quietHoursOverrideValidator,
+  sensitivityValidator,
+} from "./constants";
 
 // Subscription status enum — maps Dodo statuses to our internal set
 const subscriptionStatus = v.union(
@@ -631,6 +637,33 @@ export default defineSchema({
     // "your access ended ~a month ago", so access end is the right clock.
     .index("by_status_currentPeriodEnd", ["status", "currentPeriodEnd"]),
 
+  // Cross-device single-presentation lease for markerless Pro activation.
+  // A short pending claim closes concurrent mount races without permanently
+  // suppressing onboarding when a browser crashes before rendering the flow.
+  //
+  // The outcome buckets mirror ActivationStepOutcome
+  // (pro-activation-state.ts). They are updated as the subscriber acts so a
+  // tab close cannot erase engagement, then frozen when `exitedAt` is set.
+  // `outcomeRevision` rejects late/out-of-order best-effort writes.
+  proActivationPresentations: defineTable({
+    userId: v.string(),
+    subscriptionId: v.id("subscriptions"),
+    claimNonce: v.string(),
+    claimedAt: v.number(),
+    presentedAt: v.optional(v.number()),
+    // Set when a presentation is confirmed by an outcome-aware client. This
+    // excludes rows created before #5582 without losing post-deploy sessions
+    // that abandon the flow before their first progress snapshot.
+    outcomeTrackingVersion: v.optional(v.literal(1)),
+    confirmedSteps: v.optional(v.array(proActivationStepIdValidator)),
+    skippedSteps: v.optional(v.array(proActivationStepIdValidator)),
+    failedSteps: v.optional(v.array(proActivationStepIdValidator)),
+    outcomeRevision: v.optional(v.number()),
+    outcomeUpdatedAt: v.optional(v.number()),
+    exitedAt: v.optional(v.number()),
+  })
+    .index("by_subscription", ["subscriptionId"]),
+
   // Dunning/winback send ledger (#4932): one row per email step actually
   // delivered for a given subscription episode. `episodeAt` is the on_hold
   // anchor (dunning steps) or `cancelledAt` (winback), so a later, separate
@@ -799,6 +832,52 @@ export default defineSchema({
     .index("by_webhookId", ["webhookId"])
     .index("by_eventType", ["eventType"]),
 
+  // Durable dead-letter records for Dodo events that fail processing. Keep
+  // this projection intentionally payload-free: operators need stable Dodo
+  // identifiers and shape metadata to repair a subscription/payment, not a
+  // second copy of customer data or webhook secrets.
+  paymentWebhookFailures: defineTable({
+    webhookId: v.string(),
+    eventType: v.string(),
+    dodoSubscriptionId: v.optional(v.string()),
+    dodoPaymentId: v.optional(v.string()),
+    dodoCustomerId: v.optional(v.string()),
+    errorKind: v.string(),
+    errorMessage: v.string(),
+    dataKeys: v.array(v.string()),
+    eventTimestamp: v.number(),
+    receivedAt: v.number(),
+    lastSeenAt: v.number(),
+    attemptCount: v.number(),
+    unresolved: v.boolean(),
+    resolvedAt: v.optional(v.number()),
+    resolvedBy: v.optional(v.string()),
+    resolutionNote: v.optional(v.string()),
+  })
+    .index("by_webhookId", ["webhookId"])
+    .index("by_unresolved_lastSeenAt", ["unresolved", "lastSeenAt"])
+    .index("by_dodoSubscriptionId", ["dodoSubscriptionId"])
+    .index("by_dodoPaymentId", ["dodoPaymentId"]),
+
+  // Bounded aggregate used for the Sentry/ops signal. Keeping it separate
+  // from the dead-letter rows avoids collecting an incident-sized table from
+  // every retry just to report queue counts. The pre-seeded global document
+  // also serializes failure-row inserts and lifecycle transitions; see
+  // `payments/webhookMutations:_seedFailureSummary` and the Convex deploy
+  // workflow. It must not be lazily created in the failure mutation because
+  // an empty index range does not serialize concurrent first inserts.
+  paymentWebhookFailureSummary: defineTable({
+    key: v.literal("global"),
+    unresolvedCount: v.number(),
+    eventTypes: v.array(
+      v.object({
+        eventType: v.string(),
+        count: v.number(),
+      }),
+    ),
+    updatedAt: v.number(),
+  }).index("by_key", ["key"]),
+
   paymentEvents: defineTable({
     userId: v.string(),
     dodoPaymentId: v.string(),
@@ -875,6 +954,44 @@ export default defineSchema({
     lastUsedAt: v.optional(v.number()),
     revokedAt: v.optional(v.number()),
   }).index("by_userId", ["userId"]),
+
+  // API Business domain-gated Pro-seat invites (#4634/#4635). One row per seat
+  // invite issued by an active `api_business` owner to a same-corporate-domain
+  // teammate. The grant is an explicit, revocable object keyed to the owner's
+  // Business `dodoSubscriptionId` (KTD1) — NOT a fake subscription — so
+  // `pickBestCoveringSub` stays clean. An `accepted` grant under a covering
+  // Business sub resolves the invitee to Pro (U5); when the Business sub stops
+  // covering, its grants flip to `revoked` and each invitee recomputes down (U6).
+  // `inviteeEmail`/`domain` are stored lowercased for exact same-domain checks.
+  businessProGrants: defineTable({
+    businessSubscriptionId: v.string(),
+    ownerUserId: v.string(),
+    inviteeEmail: v.string(),
+    domain: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("accepted"),
+      v.literal("revoked"),
+      v.literal("expired"),
+    ),
+    inviteeUserId: v.optional(v.string()),
+    createdAt: v.number(),
+    acceptedAt: v.optional(v.number()),
+    expiresAt: v.number(),
+  })
+    .index("by_businessSubscriptionId", ["businessSubscriptionId"])
+    .index("by_inviteeEmail", ["inviteeEmail"])
+    .index("by_inviteeUserId", ["inviteeUserId"]),
+
+  // Per-Business-subscription serialization document for the 4-seat cap.
+  // EVERY mutation that mutates `businessProGrants` for a Business sub reads
+  // AND writes this row, forcing Convex's per-document OCC to serialize
+  // concurrent inviteSeats / removeSeat calls. Without this, two parallel
+  // invites could both pass the cap check and insert a 5th grant.
+  businessSeatLocks: defineTable({
+    businessSubscriptionId: v.string(),
+    lastTouchedAt: v.number(),
+  }).index("by_businessSubscriptionId", ["businessSubscriptionId"]),
 
   emailSuppressions: defineTable({
     normalizedEmail: v.string(),

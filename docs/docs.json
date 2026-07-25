@@ -231,6 +231,7 @@
                   "cors",
                   "health-endpoints",
                   "relay-parameters",
+                  "decision-signal-provenance",
                   "data-sources"
                 ]
               },
@@ -687,6 +688,7 @@
                   "zh/cors",
                   "zh/health-endpoints",
                   "zh/relay-parameters",
+                  "zh/decision-signal-provenance",
                   "zh/data-sources"
                 ]
               },

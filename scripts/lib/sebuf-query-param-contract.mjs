@@ -62,7 +62,6 @@ const DEFAULT_FORCED_NOOP_QUERY_PARAMS = new Set([
   'worldmonitor/market/v1/list_earnings_calendar.proto:fromDate',
   'worldmonitor/market/v1/list_earnings_calendar.proto:toDate',
   'worldmonitor/military/v1/get_theater_posture.proto:theater',
-  'worldmonitor/military/v1/list_military_flights.proto:cursor',
   'worldmonitor/military/v1/list_military_flights.proto:operator',
   'worldmonitor/military/v1/list_military_flights.proto:aircraft_type',
   'worldmonitor/natural/v1/list_natural_events.proto:days',

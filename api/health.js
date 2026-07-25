@@ -104,6 +104,8 @@ const BOOTSTRAP_KEYS = {
   techEvents:        'research:tech-events-bootstrap:v1',
   gdeltIntel:        'intelligence:gdelt-intel:v1',
   correlationCards:   'correlation:cards-bootstrap:v1',
+  crossStraitActivity: 'military:cross-strait-activity:v1',
+  crossStraitActivityBootstrap: 'military:cross-strait-activity-bootstrap:v1',
   forecasts:         'forecast:predictions:v2',
   forecastsBootstrap: 'forecast:predictions-bootstrap:v1',
   securityAdvisories: 'intelligence:advisories-bootstrap:v1',
@@ -139,6 +141,7 @@ const BOOTSTRAP_KEYS = {
   econCalendar:      'economic:econ-calendar:v1',
   chinaMacro:        'economic:china:macro:v1',
   chinaReleaseCalendar: 'economic:china:release-calendar:v1',
+  chinaPolicyEvents: 'china:policy-events:v1',
   cotPositioning:    'market:cot:v1',
   hyperliquidFlow:   'market:hyperliquid:flow:v1',
   crudeInventories:  'economic:crude-inventories:v1',
@@ -171,6 +174,7 @@ const BOOTSTRAP_KEYS = {
 const STANDALONE_KEYS = {
   chinaCoverage:      CHINA_COVERAGE_SUMMARY_KEY,
   hkoWarnings:        'weather:hko-warnings:v1',
+  humanitarianSummary: 'conflict:humanitarian:v1',
   // #4920 completeness measurement (daily GH Actions publishers) — ops
   // keys: health-monitored but NOT bootstrap-hydrated into page loads.
   newsFeedHealth:    'news:feed-health:v1',
@@ -198,7 +202,7 @@ const STANDALONE_KEYS = {
   shippingRates:         'supply_chain:shipping:v2',
   chokepoints:           'supply_chain:chokepoints:v4',
   minerals:              'supply_chain:minerals:v2',
-  giving:                'giving:summary:v1',
+  giving:                'giving:summary:v2',
   gpsjam:                'intelligence:gpsjam:v2',
   theaterPosture:        'theater_posture:sebuf:stale:v1',
   theaterPostureLive:    'theater-posture:sebuf:v1',
@@ -227,6 +231,8 @@ const STANDALONE_KEYS = {
   globalTendersCanadaBuys:      'economic:global-tenders:v1:source:canada-buys',
   globalTendersGets:            'economic:global-tenders:v1:source:gets',
   globalTendersWorldBank:       'economic:global-tenders:v1:source:world-bank',
+  crossStraitActivityTaiwanMnd: 'military:cross-strait-activity:v1:source:taiwan-mnd',
+  crossStraitActivityJapanMod:  'military:cross-strait-activity:v1:source:japan-mod',
   defensePatents:        'patents:defense:latest',
   temporalAnomalies:     'temporal:anomalies:v1',
   displacement:          `displacement:summary:v1:${new Date().getUTCFullYear()}`,
@@ -336,6 +342,14 @@ const STANDALONE_KEYS = {
 };
 
 const SEED_META = {
+  // scripts/seed-conflict-intel.mjs cron runs every 30min. Bounded above by
+  // HAPI_TTL (360min / 6h) — the per-country data key's own Redis TTL — not
+  // by cron headroom alone: this MUST fire before a per-country key can expire,
+  // or users see empty data for up to 6h before health notices (#5554 review;
+  // an earlier 720min value left exactly that blind spot). 300 (5h) is ~10x
+  // the cron interval (headroom for missed/lock-contended ticks) while staying
+  // a full hour below the 6h data-expiry floor.
+  humanitarianSummary: { key: 'seed-meta:conflict:humanitarian',  maxStaleMin: 300 },
   chinaCoverage:   { key: 'seed-meta:health:china-coverage',   maxStaleMin: 180 },
   earthquakes:      { key: 'seed-meta:seismology:earthquakes',  maxStaleMin: 30 },
   wildfires:        { key: 'seed-meta:wildfire:fires',          maxStaleMin: 360 }, // FIRMS NRT resets at midnight UTC; new-day data takes 3-6h to accumulate
@@ -375,6 +389,11 @@ const SEED_META = {
   macroSignals:     { key: 'seed-meta:economic:macro-signals',    maxStaleMin: 150 }, // seed-economy afterPublish-derived stress/macro key
   chinaMacro:       { key: 'seed-meta:economic:china-macro', maxStaleMin: 4_320 }, // 36h gate; 72h tolerates one missed run
   chinaReleaseCalendar: { key: 'seed-meta:economic:china-release-calendar', maxStaleMin: 4_320 },
+  crossStraitActivity: { key: 'seed-meta:military:cross-strait-activity', maxStaleMin: 720 },
+  crossStraitActivityBootstrap: { key: 'seed-meta:military:cross-strait-activity-bootstrap', maxStaleMin: 720 },
+  crossStraitActivityTaiwanMnd: { key: 'seed-meta:military:cross-strait-activity:taiwan-mnd', maxStaleMin: 720 },
+  crossStraitActivityJapanMod:  { key: 'seed-meta:military:cross-strait-activity:japan-mod', maxStaleMin: 720 },
+  chinaPolicyEvents: { key: 'seed-meta:china:policy-events', maxStaleMin: 2_160 },
   energyPrices:     { key: 'seed-meta:economic:energy-prices',    maxStaleMin: 150 }, // seed-economy primary runSeed resource
   bisPolicy:        { key: 'seed-meta:economic:bis',              maxStaleMin: 10080 }, // runSeed('economic','bis',...) writes seed-meta:economic:bis
   // seed-bis-extended.mjs is a child-process section spawned by
@@ -427,7 +446,7 @@ const SEED_META = {
   weatherAlerts:    { key: 'seed-meta:weather:alerts',             maxStaleMin: 45 }, // relay loop every 15min; 45 = 3× interval (was 30 = 2×, too tight on relay hiccup)
   spending:         { key: 'seed-meta:economic:spending',          maxStaleMin: 120 },
   globalTenders:    { key: 'seed-meta:economic:global-tenders',   maxStaleMin: 180 },
-  globalTendersSam:             { key: 'seed-meta:economic:global-tenders:sam',              maxStaleMin: 180 },
+  globalTendersSam:             { key: 'seed-meta:economic:global-tenders:sam',              maxStaleMin: 240 }, // 150min request pacing + hourly member gate yields ~180min publishes; 240min leaves one gate of scheduling jitter without raising the 10/day SAM budget.
   globalTendersTed:             { key: 'seed-meta:economic:global-tenders:ted',              maxStaleMin: 180 },
   globalTendersContractsFinder: { key: 'seed-meta:economic:global-tenders:contracts-finder', maxStaleMin: 180 },
   globalTendersCanadaBuys:      { key: 'seed-meta:economic:global-tenders:canada-buys',      maxStaleMin: 180 },
@@ -443,6 +462,7 @@ const SEED_META = {
   forecastResolutions: { key: 'seed-meta:forecast:resolutions',     maxStaleMin: 2160 }, // daily Bet-2 resolver; 36h catches a missed cron without flapping on normal daily jitter
   forecastScorecard:   { key: 'seed-meta:forecast:scorecard',       maxStaleMin: 2160 }, // scorecard extra key written by seed-forecast-resolutions
   forecastBets:        { key: 'seed-meta:forecast:bets',            maxStaleMin: 2880 }, // #5233 shadow bet-engine seeder; daily cron (05:00 UTC), 48h = 2× interval
+  forecastMarketsResolution: { key: 'seed-meta:prediction:markets-resolution', maxStaleMin: 2160 }, // #5525 market settlement feed; written every resolver run (even zero-due), so it shares the resolver's 36h window
   forecastFunnel:      { key: 'seed-meta:forecast:funnel:health:v1', maxStaleMin: 180 }, // funnel-diversity guardrail (#5233); written by seed-forecasts afterPublish each hourly run (3× cadence). status:'error' → SEED_ERROR when the published funnel collapses (too few domains / mostly synthetic)
   sectors:          { key: 'seed-meta:market:sectors',             maxStaleMin: 30 },
   techReadiness:    { key: 'seed-meta:economic:worldbank-techreadiness:v1', maxStaleMin: 10080 },
@@ -725,6 +745,7 @@ const EMPTY_DATA_OK_KEYS = new Set([
   'ucdpEventsBootstrap',
   'forecastsBootstrap',
   'wildfiresBootstrap',
+  'crossStraitActivityBootstrap',
 ]);
 
 // These compact projections must leave a payload on every successful publish.
@@ -739,6 +760,7 @@ const MISSING_DATA_IS_FAILURE_KEYS = new Set([
   'wildfiresBootstrap',
   'forecastsBootstrap',
   'positiveGeoEvents',
+  'crossStraitActivityBootstrap',
 ]);
 
 // Keys where a present payload with meta recordCount=0 is valid, but the data

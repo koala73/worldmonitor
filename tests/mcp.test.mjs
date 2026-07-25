@@ -673,6 +673,52 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.ok(out.data.crypto, 'no args → crypto slice present');
   });
 
+  it('get_news_intelligence enriches every top story with fail-closed source provenance', async () => {
+    const insights = {
+      topStories: [
+        { primaryTitle: 'Official ministry update', primarySource: 'MIIT (China)' },
+        { primaryTitle: 'Unreviewed report', primarySource: 'Reuters US' },
+        { primaryTitle: 'Reviewed wire report', primarySource: 'Reuters' },
+      ],
+    };
+    mockCacheKeys(
+      { 'news:insights:v1': insights },
+      { 'seed-meta:news:insights': { fetchedAt: Date.now() - 60_000, recordCount: 3 } },
+    );
+
+    const out = await callTool('get_news_intelligence', {});
+    const [government, unreviewed, wire] = out.data.insights.topStories;
+
+    assert.deepEqual(government.sourceProvenance, {
+      risk: 'high',
+      type: 'gov',
+      riskDeclared: true,
+      typeDeclared: true,
+      riskReviewed: true,
+      typeReviewed: true,
+      stateAffiliated: 'China',
+      note: 'Chinese Ministry of Industry and Information Technology official feed',
+    });
+    assert.deepEqual(unreviewed.sourceProvenance, {
+      risk: 'unknown',
+      type: 'unknown',
+      riskDeclared: true,
+      typeDeclared: true,
+      riskReviewed: false,
+      typeReviewed: false,
+      note: 'Provenance not yet reviewed — do not treat as independent journalism',
+    });
+    assert.deepEqual(wire.sourceProvenance, {
+      risk: 'low',
+      type: 'wire',
+      riskDeclared: true,
+      typeDeclared: true,
+      riskReviewed: true,
+      typeReviewed: true,
+      note: 'Wire service, strict editorial standards',
+    });
+  });
+
   // --- Telemetry ---
 
   it('telemetry: successful tools/call emits one mcp.toolcall line with the documented fields', async () => {

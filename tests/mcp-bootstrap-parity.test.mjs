@@ -48,6 +48,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'ops surface: daily GDELT recall percentage + missed headlines for coverage monitoring; consumed by api/health.js + operators, not a queryable news slice (#4920).'],
   ['health:china-coverage:v1',
     'operational: bounded China coverage verdict and reason codes consumed by api/health.js and the read-only operator audit; source content remains available through its domain tools, so this summary is not a queryable MCP slice (#5271).'],
+  ['china:policy-events:v1',
+    'deferred: official policy and enforcement documents are consumed by the dedicated China dashboard surface in #5576; final cross-domain API/MCP composition belongs to #5580 and is explicitly outside this ingestion issue.'],
   ['economic:global-tenders:v1:source:sam',
     'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
   ['economic:global-tenders:v1:source:ted',
@@ -60,6 +62,10 @@ const EXCLUDED_FROM_MCP = new Map([
     'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
   ['economic:global-tenders:v1:source:world-bank',
     'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
+  ['military:cross-strait-activity:v1:source:taiwan-mnd',
+    'operational: Taiwan MND transport status, errors, and last-success time consumed by api/health.js; #5580 owns final MCP composition for the separately attributed official activity records.'],
+  ['military:cross-strait-activity:v1:source:japan-mod',
+    'operational: Japan Joint Staff transport status, errors, and last-success time consumed by api/health.js; #5580 owns final MCP composition for the separately attributed reviewed activity records.'],
 
   // ===========================================================================
   // Intermediate / pipeline keys (data surfaces through a sibling tool)
@@ -72,6 +78,10 @@ const EXCLUDED_FROM_MCP = new Map([
     'intermediate: per-country military-presence aggregate (own/foreign flights+vessels, AIS disruption buckets) read by server/worldmonitor/intelligence/v1/get-risk-scores.ts to feed the CII Security component; surfaces transitively via the country-risk score returned by get_country_risk. Not a queryable MCP slice on its own.'],
   ['weather:hko-warnings:v1',
     'intermediate: dedicated HKO warning snapshot is independently health-monitored, while its warning events are merged into natural:events:v1 and exposed by get_natural_disasters. The raw side snapshot has no separate MCP schema or filter surface.'],
+  ['military:cross-strait-activity:v1',
+    'deferred by ownership: #5575 exposes official publisher claims in the existing Force Posture panel but explicitly excludes final MCP/cross-domain composition; #5580 owns the later parity audit and any dedicated query surface.'],
+  ['military:cross-strait-activity-bootstrap:v1',
+    'compact UI projection of military:cross-strait-activity:v1 with the same ownership boundary: #5580 owns final MCP/cross-domain composition and any dedicated query surface.'],
 
   // ===========================================================================
   // Cascade-mirror fallbacks (live/stale/backup of a sibling already exposed)
@@ -100,6 +110,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'cascade-mirror: RPC variant of cyber:threats-bootstrap:v2 (covered by get_cyber_threats). Same seed-meta key (seed-meta:cyber:threats).'],
   ['conflict:ucdp-events-bootstrap:v1',
     'cascade-mirror: pre-compacted dashboard view of conflict:ucdp-events:v1 (covered by get_conflict_events). Carries the 150 rows the panel renders plus precomputed classifications/aggregates; agents must read the canonical key, which carries all 2,000 events (#5300).'],
+  ['conflict:humanitarian:v1',
+    'deferred: per-country monthly humanitarian conflict-event/fatality aggregates (HDX HAPI) seeded by scripts/seed-conflict-intel.mjs. Different shape from get_conflict_events (event lists with geo-coordinates, not per-country monthly counts) — not a trivial _coverageKeys addition. No dedicated humanitarian/aid MCP tool exists yet; file a follow-up issue if/when one is planned rather than reusing #5554 (the bug fix this key\'s health-monitoring wiring shipped with).'],
   ['wildfire:fires-bootstrap:v1',
     'cascade-mirror: pre-compacted dashboard/RPC variant of wildfire:fires:v1 (covered by get_natural_events). It preserves the same top-500 response while avoiding canonical-payload Redis egress.'],
   ['thermal:escalation-bootstrap:v1',
@@ -132,7 +144,7 @@ const EXCLUDED_FROM_MCP = new Map([
     'on-demand: superseded by the transit-summaries + chokepoint-flows + portwatch-ports bundle exposed via get_chokepoint_status.'],
   ['supply_chain:minerals:v2',
     'on-demand: RPC cache populated only after first user query — deferred to a future minerals/strategic-materials tool.'],
-  ['giving:summary:v1',
+  ['giving:summary:v2',
     'on-demand: RPC cache for philanthropy summary; not in v1 brainstorm inventory. Deferred to a future humanitarian/aid tool.'],
   ['military:bases:active',
     'on-demand: RPC cache for military bases — deferred to a future expanded military tool.'],

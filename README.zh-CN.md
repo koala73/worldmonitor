@@ -1,6 +1,6 @@
 # World Monitor
 
-[English](README.md)
+[English](README.md) | [日本語](README.ja-JP.md)
 
 **实时全球情报仪表盘** — 在统一的态势感知界面中，汇集 AI 驱动的新闻聚合、地缘政治监测和基础设施追踪。
 
@@ -111,7 +111,7 @@ npm run dev:energy     # energy.worldmonitor.app
 | **前端** | Vanilla TypeScript、Vite、globe.gl + Three.js、deck.gl + MapLibre GL |
 | **桌面** | Tauri 2（Rust）与 Node.js sidecar |
 | **AI/ML** | Ollama / Groq / OpenRouter、Transformers.js（浏览器端） |
-| **API 契约** | Protocol Buffers（279 个 proto、35 项服务）、sebuf HTTP 注解 |
+| **API 契约** | Protocol Buffers（281 个 proto、35 项服务）、sebuf HTTP 注解 |
 | **部署** | Vercel Edge Functions（60+）、Railway 中继、Tauri、PWA |
 | **缓存** | Redis（Upstash）、3 层缓存、CDN、service worker |
 

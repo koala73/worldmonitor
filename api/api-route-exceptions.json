@@ -66,6 +66,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/downstream.ts",
+      "category": "internal-helper",
+      "reason": "Canonical sibling-request routing and credential-safe downstream error classification for MCP RPC tools (#5514). Pure helper module for the external-protocol MCP handler family above — exports no route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/usage.ts",
       "category": "external-protocol",
       "reason": "MCP wm_api_usage emission (#4866) — phase-to-reason mapper + ctx.waitUntil RequestEvent emitter for the /mcp funnel. Ops/observability plumbing for the same external-protocol handler, not a JSON data API; reuses server/_shared/usage.ts builders.",

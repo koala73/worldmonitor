@@ -25,7 +25,9 @@ import { getAuthState } from '@/services/auth-state';
 import { track } from '@/services/analytics';
 import { isEntitled, hasFeature, onEntitlementChange, getEntitlementState } from '@/services/entitlements';
 import { hasPremiumAccess } from '@/services/panel-gating';
-import { getSubscription, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
+import { getSubscription, onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
+import { BusinessSeatsSection } from '@/components/BusinessSeatsSection';
+import { deriveBillingUxState, getReactivationHref } from '@/services/billing-state';
 import { createApiKey, listApiKeys, revokeApiKey, type ApiKeyInfo } from '@/services/api-keys';
 import { listMcpClients, revokeMcpClient, fetchMcpQuota, type McpClientInfo, type McpQuota } from '@/services/mcp-clients';
 import {
@@ -83,6 +85,8 @@ export class UnifiedSettings {
   private newlyCreatedKey: string | null = null;
   private planLimitNotices: ApiPlanLimitNotice[] = [];
   private planLimitNoticesLoading = false;
+  // ---- Business Pro seats (plan 2026-07-24-001 U7) ----
+  private readonly businessSeatsSection: BusinessSeatsSection;
   // ---- Connected MCP clients tab (plan 2026-05-10-001 U9) ----
   private mcpClients: McpClientInfo[] = [];
   private mcpClientsLoading = false;
@@ -91,6 +95,7 @@ export class UnifiedSettings {
   /** setInterval handle for quota auto-refresh; cleared on close()/destroy()/tab-switch. */
   private mcpQuotaTimer: ReturnType<typeof setInterval> | null = null;
   private unsubscribeEntitlement: (() => void) | null = null;
+  private unsubscribeSubscription: (() => void) | null = null;
   // Bounded "entitlement snapshot might still arrive" window. Starts false
   // on open() when currentState is null, flips true on first snapshot OR
   // after a fallback timeout so signed-in free users aren't stranded on an
@@ -108,6 +113,7 @@ export class UnifiedSettings {
     this.overlay.id = 'unifiedSettingsModal';
     this.overlay.setAttribute('role', 'dialog');
     this.overlay.setAttribute('aria-label', t('header.settings'));
+    this.businessSeatsSection = new BusinessSeatsSection(this.overlay);
 
     this.resetPanelDraft();
 
@@ -283,6 +289,18 @@ export class UnifiedSettings {
         return;
       }
 
+      const businessInviteBtn = target.closest<HTMLElement>('.business-seats-invite-btn');
+      if (businessInviteBtn) {
+        void this.businessSeatsSection.handleInvite();
+        return;
+      }
+
+      const businessRemoveBtn = target.closest<HTMLElement>('.business-seat-remove-btn');
+      if (businessRemoveBtn?.dataset.grantId) {
+        void this.businessSeatsSection.handleRemove(businessRemoveBtn.dataset.grantId);
+        return;
+      }
+
       const mcpCopyUrlBtn = target.closest<HTMLElement>('.mcp-clients-copy-url-btn');
       if (mcpCopyUrlBtn?.dataset.copyValue) {
         const value = mcpCopyUrlBtn.dataset.copyValue;
@@ -352,6 +370,18 @@ export class UnifiedSettings {
       }
       this.replaceUpgradeSection();
     });
+    this.unsubscribeSubscription?.();
+    this.unsubscribeSubscription = onSubscriptionChange(() => {
+      this.replaceUpgradeSection();
+      const sub = getSubscription();
+      if (sub?.planKey === 'api_business' && sub?.status === 'active') {
+        void this.businessSeatsSection.load();
+      }
+    });
+    const sub = getSubscription();
+    if (sub?.planKey === 'api_business' && sub?.status === 'active') {
+      void this.businessSeatsSection.load();
+    }
     // Bounded fallback: the entitlement listener can legitimately never
     // fire (no VITE_CONVEX_URL, Convex API fails to load, waitForConvexAuth
     // times out at 10s, or init throws — see entitlements.ts:41,47,58,78).
@@ -409,6 +439,8 @@ export class UnifiedSettings {
     this.pendingNotifs = null;
     this.unsubscribeEntitlement?.();
     this.unsubscribeEntitlement = null;
+    this.unsubscribeSubscription?.();
+    this.unsubscribeSubscription = null;
     if (this.entitlementReadyTimer) {
       clearTimeout(this.entitlementReadyTimer);
       this.entitlementReadyTimer = null;
@@ -437,6 +469,8 @@ export class UnifiedSettings {
     this.pendingNotifs = null;
     this.unsubscribeEntitlement?.();
     this.unsubscribeEntitlement = null;
+    this.unsubscribeSubscription?.();
+    this.unsubscribeSubscription = null;
     // Mirror close() — without this, a destroy() during the 12s fallback
     // window leaves the timer live; it fires after teardown and calls
     // replaceUpgradeSection() against a detached overlay (no-op via the
@@ -645,6 +679,18 @@ export class UnifiedSettings {
     if (!isEntitled() && hasPremiumAccess()) {
       return '<div class="upgrade-pro-section upgrade-pro-hidden" hidden></div>';
     }
+    const sub = getSubscription();
+    const billingState = deriveBillingUxState(sub, getEntitlementState(), Date.now());
+    if (billingState === 'lapsed') {
+      const planName = sub?.displayName ?? 'Pro';
+      return `
+        <div class="upgrade-pro-section upgrade-pro-lapsed" data-billing-state="lapsed">
+          <div class="upgrade-pro-title">${escapeHtml(t('components.billingState.resubscribe'))}: ${escapeHtml(planName)}</div>
+          <div class="upgrade-pro-desc">${escapeHtml(t('components.billingState.lapsedDesc'))}</div>
+          <a class="upgrade-pro-cta-link" href="${getReactivationHref(sub?.planKey)}" target="_blank" rel="noopener">${escapeHtml(t('components.billingState.resubscribe'))} →</a>
+        </div>
+      `;
+    }
     // Signed-in user whose Convex entitlement snapshot has not arrived yet
     // AND whose bounded-wait window has not expired. Rendering "Upgrade to
     // Pro" in this window is how paying users click through to
@@ -668,9 +714,15 @@ export class UnifiedSettings {
     if (isEntitled()) {
       const sub = getSubscription();
       const planName = sub?.displayName ?? 'Pro';
-      const statusColor = sub?.status === 'active' ? '#22c55e' : sub?.status === 'on_hold' ? '#eab308' : '#ef4444';
-      const statusBorderColor = sub?.status === 'active' ? '#22c55e33' : sub?.status === 'on_hold' ? '#eab30833' : '#ef444433';
-      const statusBgColor = sub?.status === 'active' ? '#22c55e0a' : sub?.status === 'on_hold' ? '#eab3080a' : '#ef44440a';
+      // A Business Pro grant invitee has no own subscription row (sub === null)
+      // but IS entitled (we're inside the isEntitled() branch) — treat that as
+      // 'active' rather than falling through to the red "problem" color, which
+      // the ternaries below would otherwise do for every status value that
+      // isn't literally 'active'/'on_hold'.
+      const effectiveStatus = sub?.status ?? 'active';
+      const statusColor = effectiveStatus === 'active' ? '#22c55e' : effectiveStatus === 'on_hold' ? '#eab308' : '#ef4444';
+      const statusBorderColor = effectiveStatus === 'active' ? '#22c55e33' : effectiveStatus === 'on_hold' ? '#eab30833' : '#ef444433';
+      const statusBgColor = effectiveStatus === 'active' ? '#22c55e0a' : effectiveStatus === 'on_hold' ? '#eab3080a' : '#ef44440a';
 
       let statusLine = '';
       if (sub?.currentPeriodEnd) {
@@ -686,6 +738,12 @@ export class UnifiedSettings {
         }
       }
 
+      // An invitee holding a Business Pro grant has Pro features but no own
+      // subscription row — they hold a grant, not a subscription, so the
+      // billing surface remains owner-only. Show their plan status without
+      // the Manage Billing CTA that would 404 against Dodo.
+      const hasOwnSubscription = sub !== null;
+
       return `
         <div class="upgrade-pro-section upgrade-pro-active" style="margin-top:16px;padding:14px 16px;border:1px solid ${statusBorderColor};border-radius:6px;background:${statusBgColor};">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:${statusLine ? '8' : '0'}px;">
@@ -694,8 +752,9 @@ export class UnifiedSettings {
           </div>
           ${statusLine ? `<div class="upgrade-pro-status-line">${escapeHtml(statusLine)}</div>` : ''}
           ${sub?.planKey === 'api_starter' ? `<button class="upgrade-to-business-btn" style="margin-right:8px;">Upgrade to Business</button>` : ''}
-          <button class="manage-billing-btn">Manage Billing</button>
+          ${hasOwnSubscription ? `<button class="manage-billing-btn">Manage Billing</button>` : ''}
         </div>
+        ${sub?.planKey === 'api_business' && sub?.status === 'active' ? `<div id="usBusinessSeats">${this.businessSeatsSection.renderContent()}</div>` : ''}
       `;
     }
 
@@ -728,6 +787,9 @@ export class UnifiedSettings {
       </div>
     `;
   }
+
+  // Business Pro seats (#4634/#4635) state/render/handlers live in
+  // BusinessSeatsSection — see this.businessSeatsSection.
 
   private handleUpgradeClick(): void {
     // Defense in depth: the upgrade CTA can only be clicked when either (a)

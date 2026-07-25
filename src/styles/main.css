@@ -356,7 +356,10 @@ canvas,
 .header-left {
   display: flex;
   align-items: center;
-  gap: 16px;
+  /* 10px (was 16px): tightens the left cluster so the right-side actions
+     (Search / settings / Sign In) clear the viewport edge on medium-width
+     desktops. Paired with the progressive-disclosure tiers below .github-link. */
+  gap: 10px;
 }
 
 /* Variant Switcher */
@@ -1060,12 +1063,37 @@ canvas,
   color: var(--text);
 }
 
-/* Medium-width desktop: keep header utility actions reachable when OS scaling
-   reduces the effective viewport width (e.g. 1920px @ 150% = ~1280px CSS). */
-@media (max-width: 1360px) {
-  .credit-link {
-    display: none;
-  }
+/* Progressive header disclosure — keep the core right-side actions (Search,
+   settings, and especially the Sign In / Create account cluster) fully on
+   screen as usable width shrinks: small laptops, split-screen, OS scaling
+   (1920px @ 150% = ~1280px CSS), and browsers with a vertical tab strip.
+   The single-row header wants ~1520px; without these tiers it silently
+   overflows and clips the rightmost item (Sign In) anywhere below ~1520px.
+   Items are dropped least-essential first; each is still reachable elsewhere
+   (footer links, the mobile hamburger menu, or the map's own controls). The
+   full mobile hamburger takes over at <=768px. !important mirrors the <=768
+   block below (needed to beat the #missionPresetMount id rule in header.css). */
+@media (max-width: 1530px) {
+  /* redundant with footer/menu: X credit + GitHub icon */
+  .credit-link,
+  .github-link { display: none !important; }
+}
+@media (max-width: 1420px) {
+  .version,
+  .fullscreen-btn { display: none !important; }
+}
+@media (max-width: 1330px) {
+  /* Link + Embed share .copy-link-btn */
+  .copy-link-btn { display: none !important; }
+}
+@media (max-width: 1200px) {
+  .pizzint-indicator { display: none !important; }
+}
+@media (max-width: 1075px) {
+  .mission-preset-mount { display: none !important; }
+}
+@media (max-width: 980px) {
+  .variant-switcher { display: none !important; }
 }
 
 .search-btn {
@@ -6960,6 +6988,106 @@ body.playback-mode .status-dot {
   border-bottom: none;
 }
 
+.market-item-clickable {
+  cursor: pointer;
+  transition: background 0.12s ease;
+  border-radius: 4px;
+  margin: 0 -6px;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.market-item-clickable:hover,
+.market-item-clickable:focus-visible {
+  background: var(--surface-active);
+  outline: none;
+}
+
+/* Expandable Bloomberg-terminal-style price chart (market-chart-modal.ts). */
+.market-chart-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10001;
+  background: var(--overlay-medium);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.market-chart-modal {
+  position: relative;
+  width: 566px;
+  max-width: 100%;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 20px 22px 16px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+.market-chart-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 4px;
+  line-height: 0;
+  border-radius: 4px;
+}
+
+.market-chart-close:hover {
+  color: var(--text);
+  background: var(--surface-active);
+}
+
+.market-chart-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 8px;
+  padding-right: 28px;
+}
+
+.market-chart-name {
+  font-weight: 600;
+}
+
+.market-chart-symbol {
+  color: var(--text-dim);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-top: 2px;
+}
+
+.market-chart-quote {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.market-chart-price {
+  font-variant-numeric: tabular-nums;
+  font-size: 15px;
+}
+
+.market-chart-canvas {
+  width: 100%;
+  line-height: 0;
+}
+
+.market-chart-canvas .terminal-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
 .market-info {
   display: flex;
   flex-direction: column;
@@ -7699,6 +7827,349 @@ a.prediction-link:hover {
   display: flex;
   justify-content: flex-end;
   gap: 10px;
+}
+
+/* Pro Activation Interstitial (day-0 onboarding) — a larger, scrollable
+   variant of .modal-overlay/.modal. Themes via the shared CSS variables. */
+.pro-activation-overlay {
+  z-index: 10000; /* above the standard 9999 modal layer */
+}
+
+.pro-activation-modal {
+  max-width: 640px;
+  width: 92%;
+  max-height: 85vh;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 12px;
+}
+
+.pro-activation-header {
+  flex-shrink: 0;
+  padding: 18px 24px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-secondary);
+}
+
+.pro-activation-header-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pro-activation-badge {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  color: var(--bg);
+  background: var(--green);
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.pro-activation-progress {
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+}
+
+.pro-activation-close {
+  margin-left: auto;
+  padding: 2px 4px;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pro-activation-close:hover {
+  color: var(--text);
+}
+
+.pro-activation-account {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.pro-activation-body {
+  flex: 1;
+  padding: 24px;
+  overflow-y: auto;
+}
+
+.pro-activation-status {
+  display: inline-block;
+  margin-bottom: 14px;
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.pro-activation-status.status-verified {
+  color: var(--green);
+  background: color-mix(in srgb, var(--green) 12%, transparent);
+  border-color: color-mix(in srgb, var(--green) 40%, transparent);
+}
+
+.pro-activation-status.status-failed {
+  color: var(--semantic-critical);
+  background: color-mix(in srgb, var(--semantic-critical) 12%, transparent);
+  border-color: color-mix(in srgb, var(--semantic-critical) 40%, transparent);
+}
+
+.pro-activation-status.status-in-flight {
+  color: var(--text-secondary);
+}
+
+.pro-activation-status.status-blocked,
+.pro-activation-status.status-unavailable {
+  color: var(--semantic-high);
+  border-color: color-mix(in srgb, var(--semantic-high) 40%, transparent);
+}
+
+.pro-activation-heading {
+  margin: 0 0 10px;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
+  color: var(--text);
+}
+
+.pro-activation-step-body {
+  margin: 0 0 16px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+
+.pro-activation-note {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  background: var(--overlay-light);
+  border-left: 3px solid var(--border-strong);
+  border-radius: 8px;
+}
+
+.pro-activation-note.note-ok {
+  border-left-color: var(--green);
+}
+
+.pro-activation-note.note-warn {
+  border-left-color: var(--semantic-high);
+}
+
+.pro-activation-note.note-error {
+  border-left-color: var(--semantic-critical);
+}
+
+.pro-activation-note.note-muted {
+  color: var(--text-dim);
+  border-left-color: var(--border-strong);
+}
+
+.pro-activation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.pro-activation-summary-sub {
+  margin: 0 0 18px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+.pro-activation-summary-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.pro-activation-summary-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.pro-activation-summary-icon {
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-dim);
+  background: var(--overlay-light);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.pro-activation-summary-line.status-verified .pro-activation-summary-icon {
+  color: var(--bg);
+  background: var(--green);
+  border-color: var(--green);
+}
+
+.pro-activation-summary-line.status-failed .pro-activation-summary-icon {
+  color: #fff;
+  background: var(--semantic-critical);
+  border-color: var(--semantic-critical);
+}
+
+.pro-activation-summary-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pro-activation-summary-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.pro-activation-summary-detail {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text-dim);
+}
+
+.pro-activation-extras {
+  margin: 0 0 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.pro-activation-brief-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  background: var(--overlay-light);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.pro-activation-brief-preview-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+}
+
+.pro-activation-brief-preview-text {
+  color: var(--text);
+}
+
+.pro-activation-brief-hour {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pro-activation-brief-hour-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.pro-activation-hour-select {
+  width: auto;
+}
+
+.pro-activation-pointers {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pro-activation-pointer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  color: var(--text);
+  background: var(--overlay-light);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.pro-activation-pointer:hover {
+  border-color: var(--green);
+  background: color-mix(in srgb, var(--green) 8%, transparent);
+}
+
+.pro-activation-pointer-arrow {
+  color: var(--text-dim);
+}
+
+.pro-activation-pointer-note {
+  margin: 12px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+
+.pro-activation-pointer-link {
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: inherit;
+  font-weight: 600;
+  color: var(--green);
+  cursor: pointer;
+}
+
+.pro-activation-pointer-link:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 560px) {
+  .pro-activation-modal {
+    width: 100%;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+
+  .pro-activation-actions {
+    flex-direction: column-reverse;
+  }
+
+  .pro-activation-actions .btn {
+    width: 100%;
+  }
 }
 
 /* Standalone settings window (?settings=1) */
@@ -15584,6 +16055,12 @@ a.prediction-link:hover {
   background: rgba(255, 170, 0, 0.15);
   color: var(--semantic-elevated);
   border: 1px solid rgba(255, 170, 0, 0.3);
+}
+
+.propaganda-badge.unknown {
+  background: rgba(160, 160, 170, 0.12);
+  color: var(--text-dim, #9aa0a6);
+  border: 1px solid rgba(160, 160, 170, 0.25);
 }
 
 .top-source .propaganda-badge {

@@ -1138,9 +1138,9 @@ describe('PRO widget — store and sanitizer', () => {
   });
 
   it('loadWidgets can hydrate legacy PRO HTML from the side key', () => {
-    const loadIdx = store.indexOf('function loadWidgets');
-    assert.ok(loadIdx !== -1, 'loadWidgets not found');
-    const loadBody = store.slice(loadIdx, loadIdx + 600);
+    const loadIdx = store.indexOf('function materializeWidgets');
+    assert.ok(loadIdx !== -1, 'shared widget materializer not found');
+    const loadBody = store.slice(loadIdx, loadIdx + 2_000);
     assert.ok(
       /localStorage\.getItem\(proHtmlKey\(w\.id\)\)/.test(loadBody),
       'loadWidgets must read legacy PRO HTML from the side key',
@@ -1148,8 +1148,8 @@ describe('PRO widget — store and sanitizer', () => {
   });
 
   it('loadWidgets treats canonical PRO HTML as primary before legacy side key', () => {
-    const loadIdx = store.indexOf('function loadWidgets');
-    const loadBody = store.slice(loadIdx, loadIdx + 900);
+    const loadIdx = store.indexOf('function materializeWidgets');
+    const loadBody = store.slice(loadIdx, loadIdx + 2_000);
     assert.ok(
       loadBody.includes('storedHtml || sideKeyHtml'),
       'loadWidgets must prefer canonical widget HTML before the legacy side key',
@@ -1157,8 +1157,8 @@ describe('PRO widget — store and sanitizer', () => {
   });
 
   it('loadWidgets drops PRO entry only when no persisted HTML remains', () => {
-    const loadIdx = store.indexOf('function loadWidgets');
-    const loadBody = store.slice(loadIdx, loadIdx + 900);
+    const loadIdx = store.indexOf('function materializeWidgets');
+    const loadBody = store.slice(loadIdx, loadIdx + 2_000);
     assert.ok(
       loadBody.includes('if (!proHtml)') && loadBody.includes('continue'),
       'loadWidgets must skip/drop PRO entries only when no HTML exists in either storage path',

@@ -27,31 +27,30 @@ const readSrc = (relPath) => readFileSync(resolve(root, relPath), 'utf-8');
 // 1. Humanitarian summary: country fallback + ISO-2 contract
 // ========================================================================
 
-describe('getHumanitarianSummary handler', () => {
-  const src = readSrc('server/worldmonitor/conflict/v1/get-humanitarian-summary.ts');
+describe('fetchHapiSummary (scripts/seed-conflict-intel.mjs)', () => {
+  // #5554: server/worldmonitor/conflict/v1/get-humanitarian-summary.ts no longer
+  // fetches HAPI at all — it's a cache-only read of what this seeder writes (HDX's
+  // app_identifier rate limiting is per-identifier, so a per-request RPC fetch would
+  // stack uncoordinated traffic on top of the seeder's own paced loop). The
+  // BLOCKING-1/BLOCKING-2/MEDIUM-1 guards below (originally PR #106, against the old
+  // RPC-handler implementation) moved here with the fetch/aggregation logic itself.
+  const src = readSrc('scripts/seed-conflict-intel.mjs');
 
-  it('returns undefined when country has no ISO3 mapping (BLOCKING-1)', () => {
-    // Must have early return when no ISO3 mapping (before HAPI fetch)
-    assert.match(src, /if\s*\(\s*!iso3\s*\)\s*return\s+undefined/,
-      'Should return undefined when no ISO3 mapping exists');
-    // The countryCode branch must NOT fall back to Object.values(byCountry)[0]
-    // Extract only the "if (countryCode)" block for picking entry and verify no fallback
-    const pickSection = src.slice(
-      src.indexOf('// Pick the right country entry'),
-      src.indexOf('if (!entry) return undefined;'),
-    );
-    // Inside the countryCode branch, should NOT have Object.values(byCountry)[0] as fallback
-    const countryCodeBranch = pickSection.slice(0, pickSection.indexOf('} else {'));
-    assert.doesNotMatch(countryCodeBranch, /Object\.values\(byCountry\)\[0\]/,
-      'countryCode branch should not fallback to first entry');
+  it('returns null when country has no ISO3 mapping (BLOCKING-1)', () => {
+    // Must have early return when no ISO3 mapping (before the HAPI fetch)
+    assert.match(src, /if\s*\(\s*!iso3\s*\)\s*return\s+null/,
+      'fetchHapiSummary should return null when no ISO3 mapping exists');
+    // Unlike the old RPC-handler implementation (a byCountry map with a
+    // countryCode-absent fallback to the first entry), the seeder only ever
+    // aggregates records matching the ONE requested iso3 — there is no map to
+    // silently fall back into, so this pattern must never reappear here.
+    assert.doesNotMatch(src, /Object\.values\(byCountry\)\[0\]/,
+      'fetchHapiSummary must not fall back to an arbitrary country\'s data');
   });
 
   it('returns ISO-2 country_code per proto contract (BLOCKING-2)', () => {
-    // Must NOT return ISO2_TO_ISO3[...] as countryCode
-    assert.doesNotMatch(src, /countryCode:\s*ISO2_TO_ISO3/,
-      'Should not return ISO-3 code in countryCode field');
-    // Should return the original countryCode (uppercased)
-    assert.match(src, /countryCode:\s*countryCode.*\.toUpperCase\(\)/,
+    // Should return the original countryCode (uppercased), not the ISO-3 lookup key
+    assert.match(src, /countryCode:\s*countryCode\.toUpperCase\(\)/,
       'Should return original ISO-2 countryCode uppercased');
   });
 
@@ -71,6 +70,17 @@ describe('getHumanitarianSummary handler', () => {
       'Should not reference old populationAffected field');
     assert.doesNotMatch(src, /peopleInNeed/,
       'Should not reference old peopleInNeed field');
+  });
+});
+
+describe('getHumanitarianSummary handler (cache-only)', () => {
+  const src = readSrc('server/worldmonitor/conflict/v1/get-humanitarian-summary.ts');
+
+  it('never calls HAPI directly — reads the seeder-written cache only', () => {
+    assert.doesNotMatch(src, /hapi\.humdata\.org/,
+      'The RPC handler must not fetch HAPI directly (#5554 — per-identifier rate limiting means every direct-fetch call site shares one throttle bucket)');
+    assert.match(src, /getCachedJson\(/,
+      'Should read via a plain cache lookup, not a fetch-on-miss helper');
   });
 });
 
