@@ -6,6 +6,18 @@ import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
+import {
+  validateChinaCorridorProvenanceForSurface,
+  type ChinaCorridorControlTowerResponse,
+} from '../../../shared/china-corridor-control-towers';
+
+export type {
+  ChinaCorridorCondition,
+  ChinaCorridorControlTower,
+  ChinaCorridorControlTowerResponse,
+  CorridorAvailability,
+  CorridorSourceSignal,
+} from '../../../shared/china-corridor-control-towers';
 
 export type {
   GetShippingRatesResponse,
@@ -53,10 +65,43 @@ const client = new SupplyChainServiceClient(getRpcBaseUrl(), { fetch: premiumFet
 const shippingBreaker = createCircuitBreaker<GetShippingRatesResponse>({ name: 'Shipping Rates', cacheTtlMs: 60 * 60 * 1000, persistCache: true });
 const chokepointBreaker = createCircuitBreaker<GetChokepointStatusResponse>({ name: 'Chokepoint Status', cacheTtlMs: 90 * 60 * 1000, persistCache: true });
 const mineralsBreaker = createCircuitBreaker<GetCriticalMineralsResponse>({ name: 'Critical Minerals', cacheTtlMs: 24 * 60 * 60 * 1000, persistCache: true });
+const chinaCorridorBreaker = createCircuitBreaker<ChinaCorridorControlTowerResponse>({
+  name: 'China Corridor Control Towers',
+  cacheTtlMs: 15 * 60 * 1000,
+  persistCache: true,
+});
 
 const emptyShipping: GetShippingRatesResponse = { indices: [], fetchedAt: '', upstreamUnavailable: false };
 const emptyChokepoints: GetChokepointStatusResponse = { chokepoints: [], fetchedAt: '', upstreamUnavailable: false };
 const emptyMinerals: GetCriticalMineralsResponse = { minerals: [], fetchedAt: '', upstreamUnavailable: false };
+const emptyChinaCorridors: ChinaCorridorControlTowerResponse = { generatedAt: '', corridors: [] };
+
+function parseChinaCorridorResponse(payloadJson: string): ChinaCorridorControlTowerResponse {
+  const parsed: unknown = JSON.parse(payloadJson);
+  if (
+    typeof parsed !== 'object'
+    || parsed === null
+    || typeof (parsed as { generatedAt?: unknown }).generatedAt !== 'string'
+    || !Array.isArray((parsed as { corridors?: unknown }).corridors)
+  ) {
+    throw new Error('Invalid China corridor control-tower response');
+  }
+  return validateChinaCorridorProvenanceForSurface(
+    parsed as ChinaCorridorControlTowerResponse,
+    'ui',
+  );
+}
+
+export async function fetchChinaCorridorControlTowers(): Promise<ChinaCorridorControlTowerResponse> {
+  try {
+    return await chinaCorridorBreaker.execute(async () => {
+      const response = await client.getChinaCorridorControlTowers({});
+      return parseChinaCorridorResponse(response.payloadJson);
+    }, emptyChinaCorridors);
+  } catch {
+    return emptyChinaCorridors;
+  }
+}
 
 export async function fetchShippingRates(): Promise<GetShippingRatesResponse> {
   const hydrated = getHydratedData('shippingRates') as GetShippingRatesResponse | undefined;

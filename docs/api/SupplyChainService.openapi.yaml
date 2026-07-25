@@ -2115,6 +2115,89 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/GatewayError'
+    /api/supply-chain/v1/get-china-corridor-control-towers:
+        get:
+            tags:
+                - SupplyChainService
+            summary: GetChinaCorridorControlTowers
+            description: |-
+                GetChinaCorridorControlTowers composes reviewed China logistics corridors
+                 from existing source caches. Conditions retain canonical provenance and
+                 explicit unavailable states; the response never emits a single risk score.
+            operationId: GetChinaCorridorControlTowers
+            parameters:
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "generatedAt": "2026-01-15T12:00:00Z"
+                                "payloadJson": "example"
+                                "upstreamUnavailable": true
+                            schema:
+                                $ref: '#/components/schemas/GetChinaCorridorControlTowersResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
 components:
     securitySchemes:
         WorldMonitorKey:
@@ -3838,3 +3921,18 @@ components:
                     type: string
                 sourceType:
                     type: string
+        GetChinaCorridorControlTowersRequest:
+            type: object
+        GetChinaCorridorControlTowersResponse:
+            type: object
+            properties:
+                payloadJson:
+                    type: string
+                    description: |-
+                        Canonical JSON keeps the shared #5581 provenance envelope byte-for-byte
+                         equivalent across cache, API, UI, and later MCP adapters.
+                generatedAt:
+                    type: string
+                upstreamUnavailable:
+                    type: boolean
+                    description: True only when every reviewed corridor is unavailable.

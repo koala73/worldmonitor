@@ -22,7 +22,6 @@ import {
 } from './decision-signal-provenance-contract';
 import {
   DECISION_SIGNAL_PROVENANCE_FAMILY_DECLARATIONS,
-  DECISION_SIGNAL_PROVENANCE_FAMILY_REGISTRATIONS,
 } from './decision-signal-provenance-families';
 import { getSourceProvenanceState } from './source-provenance';
 
@@ -43,6 +42,10 @@ export type DecisionSignalProvenanceValidationResult =
   | { ok: false; errors: DecisionSignalProvenanceValidationIssue[] };
 
 type RecordValue = Record<string, unknown>;
+
+function hasOwn(value: object, key: PropertyKey): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key);
+}
 
 const TOP_LEVEL_KEYS = ['contractVersion', 'signalId', 'familyId', 'claims'] as const;
 const CLAIM_KNOWN_KEYS = ['status', 'value'] as const;
@@ -119,7 +122,7 @@ function isValidCalendarDate(year: number, month: number, day: number): boolean 
     30,
     31,
   ];
-  return day <= daysInMonth[month - 1];
+  return day <= (daysInMonth[month - 1] ?? 0);
 }
 
 function isCalendarMonth(value: unknown): value is string {
@@ -692,7 +695,7 @@ function validateClaim(
 
   if (claim.status === 'known') {
     validateExactKeys(claim, CLAIM_KNOWN_KEYS, path, errors);
-    if (!Object.hasOwn(claim, 'value')) {
+    if (!hasOwn(claim, 'value')) {
       pushIssue(errors, `${path}.value`, 'MISSING_CLAIM_VALUE', 'Known claims require a value');
       return;
     }
@@ -702,7 +705,7 @@ function validateClaim(
 
   validateExactKeys(claim, CLAIM_UNAVAILABLE_KEYS, path, errors);
   validateRequiredString(claim.reason, `${path}.reason`, errors);
-  if (Object.hasOwn(claim, 'value')) {
+  if (hasOwn(claim, 'value')) {
     pushIssue(
       errors,
       `${path}.value`,
@@ -732,9 +735,10 @@ export function validateDecisionSignalProvenance(
     );
   }
   validateRequiredString(input.signalId, 'signalId', errors);
-  const hasFamilyId = validateRequiredString(input.familyId, 'familyId', errors);
+  const familyId = input.familyId;
+  const hasFamilyId = validateRequiredString(familyId, 'familyId', errors);
   const declaration = hasFamilyId
-    ? DECISION_SIGNAL_PROVENANCE_FAMILY_DECLARATIONS[input.familyId]
+    ? DECISION_SIGNAL_PROVENANCE_FAMILY_DECLARATIONS[familyId]
     : undefined;
   if (!declaration) {
     pushIssue(errors, 'familyId', 'UNKNOWN_FAMILY', 'Signal family has no provenance declaration');
@@ -744,7 +748,7 @@ export function validateDecisionSignalProvenance(
   } else if (declaration) {
     validateExactKeys(input.claims, DECISION_SIGNAL_PROVENANCE_DIMENSIONS, 'claims', errors);
     for (const dimension of DECISION_SIGNAL_PROVENANCE_DIMENSIONS) {
-      if (!Object.hasOwn(input.claims, dimension)) {
+      if (!hasOwn(input.claims, dimension)) {
         pushIssue(
           errors,
           `claims.${dimension}`,
