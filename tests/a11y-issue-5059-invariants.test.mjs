@@ -3,12 +3,47 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  getPanelToggleA11yState,
+  getSettingsTabNavigationIndex,
+  normalizeSettingsTab,
+  restoreSettingsToggleFocus,
+  updateSettingsTabSelection,
+} from '../src/components/unified-settings-interactions.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const read = (...p) => readFileSync(resolve(__dirname, '..', ...p), 'utf-8');
 
 const settings = read('src', 'components', 'UnifiedSettings.ts');
 const css = read('src', 'styles', 'main.css');
+
+function makeClassList(initial = []) {
+  const values = new Set(initial);
+  return {
+    contains: (value) => values.has(value),
+    toggle: (value, force) => {
+      if (force) values.add(value);
+      else values.delete(value);
+    },
+  };
+}
+
+function makeTab(tab, selected = false) {
+  const attributes = new Map();
+  return {
+    dataset: { tab },
+    classList: makeClassList(selected ? ['active'] : []),
+    setAttribute: (name, value) => attributes.set(name, String(value)),
+    getAttribute: (name) => attributes.get(name) ?? null,
+  };
+}
+
+function makePanel(panelId, selected = false) {
+  return {
+    dataset: { panelId },
+    classList: makeClassList(selected ? ['active'] : []),
+  };
+}
 
 describe('panel toggles are real buttons', () => {
   it('panel-toggle-item renders as a button', () => {
@@ -29,8 +64,31 @@ describe('panel toggles are real buttons', () => {
     assert.match(settings, /<button\b[^>]*type="button"[^>]*class="source-toggle-item/);
   });
 
-  it('panel-toggle-item has aria-pressed', () => {
-    assert.match(settings, /class="panel-toggle-item[\s\S]*?aria-pressed=/);
+  it('unlocked panel toggles expose their current pressed state', () => {
+    assert.deepEqual(
+      getPanelToggleA11yState(false, true, 'Markets'),
+      { ariaPressed: 'true', ariaLabel: null },
+    );
+    assert.deepEqual(
+      getPanelToggleA11yState(false, false, 'Markets'),
+      { ariaPressed: 'false', ariaLabel: null },
+    );
+  });
+
+  it('locked Pro panels are upgrade actions rather than false toggles', () => {
+    assert.deepEqual(
+      getPanelToggleA11yState(true, false, 'Force posture'),
+      {
+        ariaPressed: null,
+        ariaLabel: 'Upgrade to Pro to use Force posture',
+      },
+    );
+    assert.match(
+      settings,
+      /a11yState\.ariaPressed === null \? '' : `aria-pressed=/,
+      'locked controls must omit aria-pressed',
+    );
+    assert.match(settings, /a11yState\.ariaLabel === null \? '' : `aria-label=/);
   });
 
   it('source-toggle-item has aria-pressed', () => {
@@ -43,8 +101,84 @@ describe('panel toggles are real buttons', () => {
 });
 
 describe('keyboard — roving tablist', () => {
-  it('switchTab updates tabindex on tab switch', () => {
-    assert.match(settings, /setAttribute\('tabindex',\s*isActive\s*\?\s*'0'\s*:\s*'-1'\)/);
+  it('moves with ArrowLeft/ArrowRight and wraps at each end', () => {
+    assert.equal(getSettingsTabNavigationIndex('ArrowRight', 1, 4), 2);
+    assert.equal(getSettingsTabNavigationIndex('ArrowRight', 3, 4), 0);
+    assert.equal(getSettingsTabNavigationIndex('ArrowLeft', 2, 4), 1);
+    assert.equal(getSettingsTabNavigationIndex('ArrowLeft', 0, 4), 3);
+  });
+
+  it('moves to the first and last tab with Home and End', () => {
+    assert.equal(getSettingsTabNavigationIndex('Home', 2, 4), 0);
+    assert.equal(getSettingsTabNavigationIndex('End', 1, 4), 3);
+  });
+
+  it('does not intercept native Enter/Space button activation', () => {
+    assert.equal(getSettingsTabNavigationIndex('Enter', 1, 4), null);
+    assert.equal(getSettingsTabNavigationIndex(' ', 1, 4), null);
+  });
+
+  it('updates aria-selected, tabindex, active tab, and active panel together', () => {
+    const tabs = [makeTab('settings', true), makeTab('panels'), makeTab('sources')];
+    const panels = [makePanel('settings', true), makePanel('panels'), makePanel('sources')];
+
+    updateSettingsTabSelection(tabs, panels, 'sources');
+
+    assert.deepEqual(tabs.map(tab => tab.getAttribute('aria-selected')), ['false', 'false', 'true']);
+    assert.deepEqual(tabs.map(tab => tab.getAttribute('tabindex')), ['-1', '-1', '0']);
+    assert.deepEqual(tabs.map(tab => tab.classList.contains('active')), [false, false, true]);
+    assert.deepEqual(panels.map(panel => panel.classList.contains('active')), [false, false, true]);
+  });
+
+  it('normalizes an unavailable MCP tab to the Settings tab', () => {
+    assert.equal(
+      normalizeSettingsTab('mcp-clients', ['settings', 'panels', 'sources', 'api-keys']),
+      'settings',
+    );
+    assert.equal(
+      normalizeSettingsTab(
+        'mcp-clients',
+        ['settings', 'panels', 'sources', 'api-keys', 'mcp-clients'],
+      ),
+      'mcp-clients',
+    );
+  });
+});
+
+describe('keyboard — toggle focus continuity', () => {
+  it('restores focus to the replacement panel control with the same key', () => {
+    const focused = [];
+    const controls = [
+      { dataset: { panel: 'map' }, focus: () => focused.push('map') },
+      { dataset: { panel: 'force-posture' }, focus: () => focused.push('force-posture') },
+    ];
+
+    restoreSettingsToggleFocus(true, controls, 'panel', 'force-posture');
+
+    assert.deepEqual(focused, ['force-posture']);
+  });
+
+  it('restores focus to the replacement source control with the same key', () => {
+    const focused = [];
+    const controls = [
+      { dataset: { source: 'Reuters' }, focus: () => focused.push('Reuters') },
+      { dataset: { source: 'AP' }, focus: () => focused.push('AP') },
+    ];
+
+    restoreSettingsToggleFocus(true, controls, 'source', 'AP');
+
+    assert.deepEqual(focused, ['AP']);
+  });
+
+  it('does not move focus when the activated control did not own focus', () => {
+    let focusCalls = 0;
+    restoreSettingsToggleFocus(
+      false,
+      [{ dataset: { panel: 'map' }, focus: () => { focusCalls += 1; } }],
+      'panel',
+      'map',
+    );
+    assert.equal(focusCalls, 0);
   });
 });
 

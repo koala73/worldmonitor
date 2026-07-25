@@ -19340,11 +19340,6 @@ a.prediction-link:hover {
   outline-offset: 2px;
 }
 
-.ai-flow-switch input:focus-visible + .ai-flow-slider {
-  outline: 2px solid var(--text);
-  outline-offset: 2px;
-}
-
 /* Ollama CTA */
 .ai-flow-cta {
   border-top: 1px solid #333;
