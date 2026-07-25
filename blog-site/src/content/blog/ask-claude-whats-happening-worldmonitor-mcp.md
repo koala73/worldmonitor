@@ -6,6 +6,7 @@ keywords: "Claude connectors real-time news, ask AI about current events, Claude
 audience: "Claude users, analysts, founders, journalists, operators, non-developer power users"
 heroImage: "/blog/images/blog/worldmonitor-mcp-server-ai-agents-real-time-intelligence.jpg"
 pubDate: "2026-06-10"
+modifiedDate: "2026-07-22"
 ---
 
 Claude is useful for reasoning through messy questions. It is less useful when the answer depends on what changed this morning.
@@ -28,7 +29,7 @@ The goal is not "make Claude browse the internet." The job is narrower and more 
 
 That last point matters. A good intelligence assistant should say "the data supports elevated route risk" rather than "there is an 82% chance of escalation" unless it is using a forecast tool that actually returns probabilities.
 
-WorldMonitor's MCP server exists for this exact pattern. It exposes 39 tools, six prompt templates, and read-only resources through the [Model Context Protocol](https://modelcontextprotocol.io), so Claude can discover tools and call them during a conversation.
+WorldMonitor's MCP server exists for this exact pattern. It exposes 41 tools, six prompt templates, and read-only resources through the [Model Context Protocol](https://modelcontextprotocol.io), so Claude can discover tools and call them during a conversation.
 
 ## Add the connector
 

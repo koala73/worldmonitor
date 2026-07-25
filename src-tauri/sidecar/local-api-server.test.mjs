@@ -135,10 +135,12 @@ function mockHttpsRequestOnce({ statusCode, headers, body }) {
 async function setupRemoteServer() {
   const hits = [];
   const origins = [];
+  const headers = [];
   const server = createServer((req, res) => {
     const url = new URL(req.url || '/', 'http://127.0.0.1');
     hits.push(url.pathname);
     origins.push(req.headers.origin || null);
+    headers.push(req.headers);
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({
       source: 'remote',
@@ -151,6 +153,7 @@ async function setupRemoteServer() {
   return {
     hits,
     origins,
+    headers,
     remoteBase: `http://127.0.0.1:${port}`,
     async close() {
       await new Promise((resolve, reject) => {
@@ -528,6 +531,88 @@ test('replaces browser origin with localhost origin for local handlers', async (
     await app.close();
     await localApi.cleanup();
     await remote.close();
+  }
+});
+
+test('preserves caller Authorization while hiding the sidecar transport token', async () => {
+  const localApi = await setupApiDir({
+    'header-check.js': `
+      export default async function handler(req) {
+        return new Response(JSON.stringify({
+          authorization: req.headers.get('authorization'),
+          transportToken: req.headers.get('x-worldmonitor-local-token'),
+        }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/header-check`, {
+      headers: {
+        Authorization: 'Bearer caller-oauth-token',
+        'X-WorldMonitor-Local-Token': TEST_LOCAL_API_TOKEN,
+      },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      authorization: 'Bearer caller-oauth-token',
+      transportToken: null,
+    });
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('does not forward the sidecar transport token through Docker cloud proxy routes', async () => {
+  const originalConvex = process.env.CONVEX_URL;
+  delete process.env.CONVEX_URL;
+
+  const remote = await setupRemoteServer();
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    remoteBase: remote.remoteBase,
+    allowPrivateRemoteBase: true,
+    mode: 'docker',
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const headers = { 'X-WorldMonitor-Local-Token': TEST_LOCAL_API_TOKEN };
+    const youtubeResponse = await fetch(`http://127.0.0.1:${port}/api/youtube/live`, { headers });
+    assert.equal(youtubeResponse.status, 200);
+
+    const registerResponse = await fetch(`http://127.0.0.1:${port}/api/register-interest`, {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'docker@example.com', source: 'web-form' }),
+    });
+    assert.equal(registerResponse.status, 200);
+
+    assert.deepEqual(remote.hits, ['/api/youtube/live', '/api/leads/v1/register-interest']);
+    assert.equal(remote.headers.length, 2);
+    for (const upstreamHeaders of remote.headers) {
+      assert.equal(upstreamHeaders['x-worldmonitor-local-token'], undefined);
+    }
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    await remote.close();
+    if (originalConvex === undefined) delete process.env.CONVEX_URL;
+    else process.env.CONVEX_URL = originalConvex;
   }
 });
 

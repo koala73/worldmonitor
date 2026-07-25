@@ -19,6 +19,7 @@ const repoRoot = resolve(__dirname, '..');
 
 const MIRRORED_FILES = [
   'geography.js',
+  'hapi-app-identifier.json',
   'iso2-to-region.json',
   'iso3-to-iso2.json',
   'story-identity.js',

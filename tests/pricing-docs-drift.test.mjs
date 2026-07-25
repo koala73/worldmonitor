@@ -40,11 +40,61 @@ const priceCentsFor = (planKey) => {
   return Number(m[1]);
 };
 
-const marketingFeaturesFor = (planKey) => {
-  const m = catalogEntrySourceFor(planKey).match(/marketingFeatures:\s*\[([\s\S]*?)\]/);
-  assert.ok(m, `no marketingFeatures found for ${planKey}`);
-  return [...m[1].matchAll(/"(?:\\.|[^"\\])*"/g)].map((match) => JSON.parse(match[0]));
+const stringArrayPropertyFromSource = (entrySource, property, context, { required = true } = {}) => {
+  const propertyMatch = entrySource.match(new RegExp(`${property}:\\s*\\[`));
+  if (!propertyMatch) {
+    assert.equal(required, false, `no ${property} found for ${context}`);
+    return [];
+  }
+
+  const openIndex = propertyMatch.index + propertyMatch[0].lastIndexOf('[');
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  let closeIndex = -1;
+  for (let index = openIndex; index < entrySource.length; index += 1) {
+    const character = entrySource[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === '\\') {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+    } else if (character === '[') {
+      depth += 1;
+    } else if (character === ']') {
+      depth -= 1;
+      if (depth === 0) {
+        closeIndex = index;
+        break;
+      }
+    }
+  }
+
+  assert.notEqual(closeIndex, -1, `unterminated ${property} array for ${context}`);
+  const arraySource = entrySource.slice(openIndex + 1, closeIndex);
+  return [...arraySource.matchAll(/"(?:\\.|[^"\\])*"/g)].map((match) => JSON.parse(match[0]));
 };
+
+const stringArrayPropertyFor = (planKey, property, options) =>
+  stringArrayPropertyFromSource(catalogEntrySourceFor(planKey), property, planKey, options);
+const marketingFeaturesFor = (planKey) => stringArrayPropertyFor(planKey, 'marketingFeatures');
+const highlightFeaturesFor = (planKey) =>
+  stringArrayPropertyFor(planKey, 'highlightFeatures', { required: false });
+
+test('catalog string-array extraction ignores closing brackets inside quoted features', () => {
+  const entrySource = 'marketingFeatures: ["Bracket ] stays inside the feature", "Next feature"]';
+  assert.deepEqual(
+    stringArrayPropertyFromSource(entrySource, 'marketingFeatures', 'synthetic plan'),
+    ['Bracket ] stays inside the feature', 'Next feature']
+  );
+});
 
 const jsonLdOffersFor = (path) => {
   const html = read(path);
@@ -123,26 +173,43 @@ test('pricing.md machine-readable JSON block matches productCatalog.ts numerical
   assert.equal(planByName.Free?.price_usd_monthly, 0, 'Free plan must stay $0 in the JSON summary');
 });
 
-test('/pro JSON-LD offers match productCatalog.ts prices and marketing features', () => {
-  const sourceOffers = jsonLdOffersFor('pro-test/index.html');
-  const deployedOffers = jsonLdOffersFor('public/pro/index.html');
+const PRICE_EXPECT = [
+  ['Free', 'free'],
+  ['Pro Monthly', 'pro_monthly'],
+  ['Pro Annual', 'pro_annual'],
+  ['API Starter Monthly', 'api_starter'],
+  ['API Starter Annual', 'api_starter_annual'],
+  ['API Business', 'api_business'],
+];
+const FEATURE_OFFERS = [
+  ['free', 'Free'],
+  ['pro_monthly', 'Pro Monthly'],
+  ['api_starter', 'API Starter Monthly'],
+  ['api_business', 'API Business'],
+];
+const EXPECTED_OFFER_NAMES = PRICE_EXPECT.map(([offerName]) => offerName).sort();
+
+const assertJsonLdOffersMatchCatalog = (sourceOffers, deployedOffers) => {
   assert.deepEqual(
     deployedOffers,
     sourceOffers,
     'public/pro/index.html JSON-LD offers are stale — rebuild the /pro bundle'
   );
 
+  const offerNames = sourceOffers.map((offer) => offer.name);
+  assert.equal(
+    new Set(offerNames).size,
+    offerNames.length,
+    'JSON-LD offer names must be unique'
+  );
+  assert.deepEqual(
+    [...offerNames].sort(),
+    EXPECTED_OFFER_NAMES,
+    'JSON-LD must contain exactly the catalog-backed public offers'
+  );
+
   const offerByName = Object.fromEntries(sourceOffers.map((offer) => [offer.name, offer]));
-  const PRICE_EXPECT = [
-    ['Free', 'free'],
-    ['Pro Monthly', 'pro_monthly'],
-    ['Pro Annual', 'pro_annual'],
-    ['API Starter Monthly', 'api_starter'],
-    ['API Starter Annual', 'api_starter_annual'],
-    ['API Business', 'api_business'],
-  ];
   for (const [offerName, planKey] of PRICE_EXPECT) {
-    assert.ok(offerByName[offerName], `JSON-LD must contain the "${offerName}" offer`);
     assert.equal(
       Number(offerByName[offerName].price),
       priceCentsFor(planKey) / 100,
@@ -150,20 +217,57 @@ test('/pro JSON-LD offers match productCatalog.ts prices and marketing features'
     );
   }
 
-  const FEATURE_OFFERS = [
-    ['free', 'Free'],
-    ['pro_monthly', 'Pro Monthly'],
-    ['api_starter', 'API Starter Monthly'],
-    ['api_business', 'API Business'],
-  ];
   for (const [planKey, offerName] of FEATURE_OFFERS) {
-    for (const feature of marketingFeaturesFor(planKey)) {
-      assert.ok(
-        offerByName[offerName].description.toLocaleLowerCase().includes(feature.toLocaleLowerCase()),
-        `JSON-LD ${offerName} description is missing catalog marketing feature: "${feature}"`
-      );
-    }
+    const catalogDescription = [
+      ...marketingFeaturesFor(planKey),
+      ...highlightFeaturesFor(planKey),
+    ].join(', ');
+    assert.equal(
+      offerByName[offerName].description,
+      catalogDescription,
+      `JSON-LD ${offerName} description must exactly match catalog marketing and highlight features`
+    );
   }
+};
+
+test('/pro JSON-LD offers match productCatalog.ts prices and marketing features', () => {
+  assertJsonLdOffersMatchCatalog(
+    jsonLdOffersFor('pro-test/index.html'),
+    jsonLdOffersFor('public/pro/index.html')
+  );
+});
+
+test('/pro JSON-LD guard rejects unexpected and duplicate offers', () => {
+  const offers = jsonLdOffersFor('pro-test/index.html');
+  const unexpectedOffers = structuredClone(offers);
+  unexpectedOffers.push({
+    '@type': 'Offer',
+    price: '1',
+    priceCurrency: 'USD',
+    name: 'Retired Legacy Plan',
+    description: 'Retired',
+  });
+  assert.throws(
+    () => assertJsonLdOffersMatchCatalog(unexpectedOffers, structuredClone(unexpectedOffers)),
+    /exactly the catalog-backed public offers/
+  );
+
+  const duplicateOffers = structuredClone(offers);
+  duplicateOffers.push(structuredClone(duplicateOffers[0]));
+  assert.throws(
+    () => assertJsonLdOffersMatchCatalog(duplicateOffers, structuredClone(duplicateOffers)),
+    /offer names must be unique/
+  );
+});
+
+test('/pro JSON-LD guard rejects a removed catalog feature left in a description', () => {
+  const staleOffers = jsonLdOffersFor('pro-test/index.html');
+  const staleFreeOffer = staleOffers.find((offer) => offer.name === 'Free');
+  staleFreeOffer.description += ', Retired catalog feature';
+  assert.throws(
+    () => assertJsonLdOffersMatchCatalog(staleOffers, structuredClone(staleOffers)),
+    /description must exactly match catalog marketing and highlight features/
+  );
 });
 
 // The Dodo product IDs are surfaced by GET /api/product-catalog, and

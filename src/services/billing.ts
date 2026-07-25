@@ -14,10 +14,18 @@ import { getConvexClient, getConvexApi } from './convex-client';
 import { extractBillingErrorKind } from './_billing-error';
 
 export interface SubscriptionInfo {
+  // Opaque Convex subscription-row identity for Pro Activation fire-once
+  // keying. Optional across a mixed frontend/backend deploy; onboarding waits
+  // for the updated response instead of persisting a provider billing id.
+  activationKey?: string;
   planKey: string;
   displayName: string;
   status: 'active' | 'on_hold' | 'cancelled' | 'expired';
   currentPeriodEnd: number; // epoch ms, renewal date
+  // #4771: verdict of the request-path renewal verification (#4770), null
+  // when no verification episode is recorded. Drives the billing-aware
+  // gating copy in billing-state.ts.
+  renewalVerificationState: 'pending' | 'failed' | 'lapsed' | null;
 }
 
 // Module-level state
@@ -230,4 +238,3 @@ export async function openBillingPortal(
     return navigate(DODO_PORTAL_FALLBACK_URL);
   }
 }
-

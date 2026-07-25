@@ -253,6 +253,14 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // resolves edge-function paths via api/api-route-exceptions.json instead
   // of the OpenAPI specs.
   '/api/mcp-proxy': { limit: 30, window: '60 s' },
+  // Docs MCP facade (`api/docs-mcp.ts`, external-protocol exception — serves
+  // /docs/mcp, proxying the Mintlify docs MCP server and lifting its
+  // protocol-level tool-call failures into proper JSON-RPC error objects).
+  // Anonymous by design (upstream is fully public), so the per-IP minute
+  // limit is the whole abuse defence; 60/min mirrors the MCP public-method
+  // posture. Enforced in-handler via `checkScopedRateLimit`, same pattern as
+  // /api/mcp-proxy.
+  '/api/docs-mcp': { limit: 60, window: '60 s' },
   // A2A concierge endpoint (`api/a2a.ts`, external-protocol exception —
   // JSON-RPC shape dictated by the A2A spec, served at /a2a). Anonymous and
   // quota-free by design (routes over the public tool catalog + public

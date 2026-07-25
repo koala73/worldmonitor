@@ -2,6 +2,8 @@
 // Pure types only — no runtime exports — so this module is safe to import
 // from anywhere without creating evaluation-order surprises or cycles.
 
+import type { BillingVerificationStatus } from '../../server/_shared/entitlement-check';
+
 // ---------------------------------------------------------------------------
 // Auth-context shape passed into tool _execute. U7 widened the previous
 // `apiKey: string` to a discriminated union so per-tool fetches can branch
@@ -19,6 +21,22 @@ export type McpAuthContext =
   // entitlement pre-check — a user_key context must NEVER skip that gate the
   // way env_key does).
   | { kind: 'user_key'; apiKey: string; userId: string };
+
+export type McpInboundHostClass =
+  | 'canonical_api'
+  | 'apex'
+  | 'www'
+  | 'variant'
+  | 'worldmonitor_subdomain'
+  | 'local'
+  | 'vercel_preview'
+  | 'other';
+
+export interface McpToolExecutionContext {
+  inboundHostClass: McpInboundHostClass;
+  downstreamOrigin: string;
+  downstreamOriginTag: string;
+}
 
 // ---------------------------------------------------------------------------
 // Tool registry types
@@ -150,7 +168,12 @@ export interface RpcToolDef extends BaseToolDef {
   _seedMetaKey?: never;
   _maxStaleMin?: never;
   _freshnessChecks?: never;
-  _execute: (params: Record<string, unknown>, base: string, context: McpAuthContext) => Promise<unknown>;
+  _execute: (
+    params: Record<string, unknown>,
+    base: string,
+    context: McpAuthContext,
+    execution?: McpToolExecutionContext,
+  ) => Promise<unknown>;
   _coverageKeys?: string[];
   // U3 (Tier-4 parity): REQUIRED. Every OpenAPI operation this `_execute`
   // body proxies via fetch (extracted from `${base}/api/...` callsites),
@@ -235,12 +258,23 @@ export interface QuotaRejected {
 export interface McpHandlerDeps {
   resolveBearerToContext: (token: string) => Promise<McpAuthContext | null>;
   validateProMcpToken: (tokenId: string) => Promise<{ userId: string } | null>;
-  getEntitlements: (userId: string) => Promise<{ planKey?: string; features: { tier: number; mcpAccess?: boolean }; validUntil: number } | null>;
+  getEntitlements: (userId: string) => Promise<{
+    planKey?: string;
+    features: { tier: number; mcpAccess?: boolean };
+    validUntil: number;
+    billingStatus?: BillingVerificationStatus;
+    retryAfterSeconds?: number;
+    verificationUnavailable?: boolean;
+  } | null>;
   // #4859: Convex userApiKeys hash lookup (same shared helper as the REST
   // gateway). Returns the key owner, or null for unknown/revoked keys. The
   // production impl fail-softs to null internally; a THROW from a dep is
   // treated as auth-backend-transient (503), mirroring resolveBearerToContext.
   validateUserApiKey: (key: string) => Promise<{ userId: string } | null>;
+  // Fail-closed per-IP guard that runs before the unattributed Convex lookup.
+  // Kept injectable so auth ordering and backpressure are testable without
+  // contacting Redis.
+  guardUserApiKeyValidation: (request: Request, corsHeaders: Record<string, string>) => Promise<Response | null>;
   redisPipeline: PipelineFn;
 }
 

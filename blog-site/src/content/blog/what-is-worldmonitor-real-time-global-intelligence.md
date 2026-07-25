@@ -6,6 +6,7 @@ keywords: "global intelligence dashboard, real-time intelligence platform, OSINT
 audience: "General tech audience, OSINT researchers, analysts, journalists"
 heroImage: "/blog/images/blog/what-is-worldmonitor-real-time-global-intelligence.jpg"
 pubDate: "2026-02-10"
+modifiedDate: "2026-07-22"
 ---
 
 Imagine opening 100 browser tabs every morning: one for Reuters, another for flight tracking, a third for earthquake monitors, a fourth for stock markets, a fifth for military ship positions. Now imagine replacing all of them with a single dashboard.
@@ -22,16 +23,16 @@ It's the kind of tool that used to be locked behind six-figure enterprise contra
 
 The first thing you notice is the globe. A 3D interactive map powered by [globe.gl](https://globe.gl/) and [Three.js](https://threejs.org/), dotted with live data points: conflict zones pulsing red, military bases marked by operator, undersea cables tracing the ocean floor, and ADS-B aircraft positions updating in real time.
 
-On the left, a panel system lets you pull up any combination of 45+ data layers:
+On the left, a panel system lets you pull up any combination of 56 map layers:
 
 - **Geopolitical:** Active conflicts, protests, hotspot escalation scores, strategic theater posture assessments across 9 operational theaters (Taiwan Strait, Persian Gulf, Baltic, and more)
 - **Military:** 210+ military bases, live flight tracking, naval vessel positions merged with USNI fleet reports, GPS jamming detection zones
-- **Infrastructure:** Nuclear facilities, AI datacenters (111 mapped), undersea cables, pipelines, strategic ports (83), and airports (107)
-- **Financial:** 92 stock exchanges, 13 central bank policy trackers, commodity prices, Fear & Greed Index, Bitcoin ETF flows, stablecoin peg monitoring
+- **Infrastructure:** Nuclear facilities, AI datacenters (300+ mapped), undersea cables, pipelines, strategic ports (60+), and airports (115)
+- **Financial:** 29 stock exchanges, 14 central bank policy trackers, commodity prices, Fear & Greed Index, Bitcoin ETF flows, stablecoin peg monitoring
 - **Natural Disasters:** [USGS](https://earthquake.usgs.gov/) earthquakes (M4.5+), [NASA satellite fire detection](https://firms.modaps.eosdis.nasa.gov/), volcanic activity, flood alerts
 - **Cyber Threats:** [Feodo Tracker](https://feodotracker.abuse.ch/) botnet C2 servers, [URLhaus](https://urlhaus.abuse.ch/) malicious URLs, internet outage detection via [Cloudflare Radar](https://radar.cloudflare.com/)
 
-Every data point is sourced from public, verifiable feeds: 435+ RSS sources, government APIs, satellite data, and open maritime/aviation transponders.
+Every data point is sourced from public, verifiable feeds: 500+ RSS sources, government APIs, satellite data, and open maritime/aviation transponders.
 
 ## Five Dashboards, One Codebase
 
@@ -74,7 +75,7 @@ Click any country on the map and you get a full intelligence dossier:
 The dashboard serves a surprisingly wide audience:
 
 - **OSINT researchers** who need a unified view instead of 100 tabs
-- **Financial analysts** tracking macro signals across 92 exchanges
+- **Financial analysts** tracking macro signals across 29 exchanges
 - **Journalists** who need instant context for breaking stories
 - **Supply chain managers** monitoring disruption risk at ports and commodity hubs
 - **Policy researchers** studying government spending and trade policy
@@ -89,7 +90,7 @@ World Monitor works as:
 - A **native desktop app** via Tauri for macOS, Windows, and Linux
 - Fully **mobile-optimized** with touch gestures, pinch-to-zoom, and bottom-sheet panels
 
-It supports **21 languages** including Arabic (with full RTL layout), Japanese, Chinese, and all major European languages. RSS feeds are localized per language, and AI analysis can be generated in your preferred language. See the full language breakdown in [World Monitor in 21 Languages](/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/).
+It supports **25 languages** including Arabic (with full RTL layout), Japanese, Chinese, and all major European languages. RSS feeds are localized per language, and AI analysis can be generated in your preferred language. See the full language breakdown in [World Monitor in 25 Languages](/blog/posts/worldmonitor-in-21-languages-global-intelligence-for-everyone/).
 
 ## Open Source, No Strings
 

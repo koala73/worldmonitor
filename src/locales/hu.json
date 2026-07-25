@@ -1697,7 +1697,26 @@
       "cafIndex": "CAF Index",
       "candidGrants": "Candid Grants",
       "dataLag": "Adatforgalom",
-      "infoTooltip": "<strong>Global Giving Activity Index</strong> Összetett index, amely a személyes adományozást követi nyomauxiliar platformokon és kriptopénz pénztárcákon.<ul><li><strong>Platformok</strong>: GoFundMe, GlobalGiving, JustGiving kampánymintavételezés</li><li><strong>Kriptó</strong>: On-chain jótékonysági pénztárca beáramlása (Endaoment, Giving Block)</li><li><strong>Intézményi</strong>: OECD ODA, CAF World Giving Index, Candid grants</li></ul>Az index irányjellegű (nem pontos dollárösszegek). Élő mintavételezést egyesít a megjelent éves jelentésekkel."
+      "infoTooltip": "<strong>Global Giving Activity Index</strong> Összetett index, amely a személyes adományozást követi nyomauxiliar platformokon és kriptopénz pénztárcákon.<ul><li><strong>Platformok</strong>: GoFundMe, GlobalGiving, JustGiving kampánymintavételezés</li><li><strong>Kriptó</strong>: On-chain jótékonysági pénztárca beáramlása (Endaoment, Giving Block)</li><li><strong>Intézményi</strong>: OECD ODA, CAF World Giving Index, Candid grants</li></ul>Az index irányjellegű (nem pontos dollárösszegek). Élő mintavételezést egyesít a megjelent éves jelentésekkel.",
+      "benchmarkTitle": "Global Giving Benchmarks",
+      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "status": {
+        "published": "Published benchmarks with verified source coverage.",
+        "partial": "Published benchmarks with partial source coverage.",
+        "legacy": "Legacy snapshot; source details are unavailable.",
+        "cached": "Showing a cached snapshot; refresh unavailable."
+      },
+      "trackedAnnualized": "Tracked platform giving — annualized estimate",
+      "annualizedDaily": "Annualized daily estimate",
+      "atLeast": "At least",
+      "about": "About",
+      "sourceNotVerified": "Source not verified",
+      "reportedCumulative": "Reported cumulative total",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Published benchmark",
+      "sourcesMethodology": "Sources & methodology",
+      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
+      "partialEstimate": "Partially verified estimate"
     },
     "displacement": {
       "refugees": "Menekültek",
@@ -2239,11 +2258,100 @@
       "cta": "Frissítés Pro-ra →",
       "dismiss": "Eltüntetés"
     },
+    "billingState": {
+      "onHoldDesc": "A fizetés sikertelen. Frissítse fizetési módját a prémium hozzáférés visszaállításához.",
+      "onHoldBannerMessage": "A fizetés sikertelen. Frissítse fizetési módját, hogy előfizetése aktív maradjon.",
+      "updatePayment": "Fizetés frissítése",
+      "renewalPendingDesc": "Ellenőrizzük előfizetése megújítását. A prémium hozzáférés a megerősítés után automatikusan helyreáll.",
+      "refreshStatus": "Állapot frissítése",
+      "renewalFailedDesc": "Nem sikerült ellenőrizni előfizetése megújítását. Kezelje a számlázást, vagy lépjen kapcsolatba az ügyfélszolgálattal, ha a probléma továbbra is fennáll.",
+      "manageBilling": "Számlázás kezelése",
+      "lapsedDesc": "Pro előfizetése lejárt. Fizessen elő újra a prémium hozzáférés visszaszerzéséhez.",
+      "resubscribe": "Újra előfizetek"
+    },
     "checkoutFailureBanner": {
       "message": "A fizetés nem fejeződött be. Nem történt költség.",
       "retry": "Próbáld újra",
       "retrying": "Újrapróbálás…",
       "dismiss": "Eltüntetés"
+    },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "{{current}}. lépés / {{total}}",
+      "closeLabel": "Beállítás kihagyása",
+      "ariaLabel": "Pro aktiválás beállítása",
+      "signedInAs": "Bejelentkezve mint {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Napi összefoglalója minden reggel",
+          "body": "Válogatott hírszerzési összefoglaló a postafiókjában minden reggel — az éjszaka fontos jelei öt perces olvasmányba sűrítve.",
+          "confirmCta": "Reggeli összefoglaló bekapcsolása",
+          "confirming": "Bekapcsolás…",
+          "doneNote": "A reggeli összefoglalója már fut.",
+          "scheduleNote": "Megtartjuk a jelenlegi kézbesítési időpontját.",
+          "summaryLabel": "Reggeli összefoglaló",
+          "summaryVerified": "Bekapcsolva — a következő reggeli összefoglalóval indul.",
+          "deliverAt": "Kézbesítés ekkor",
+          "previewLoading": "Az első összefoglaló előnézetének előkészítése…",
+          "previewLabel": "A mai reggeli összefoglaló"
+        },
+        "alerts": {
+          "heading": "Kritikus riasztások",
+          "body": "Kapjon értesítést a böngészőjében, ha valami nagy dolog történik — konfliktusok eszkalációja, piaci sokkok, friss szankciók. A gyakoriságot bármikor módosíthatja a Beállításokban.",
+          "confirmCta": "Riasztások engedélyezése",
+          "confirming": "Engedélyezés…",
+          "doneNote": "A böngészőriasztások már be vannak kapcsolva.",
+          "blockedNote": "Az értesítések le vannak tiltva a böngészőjében. Kapcsolja be őket a böngésző webhelybeállításaiban, hogy riasztásokat kapjon.",
+          "declinedNote": "Semmi gond — nem küldünk böngészőriasztásokat. Később bármikor bekapcsolhatja őket a böngésző webhelybeállításaiban.",
+          "summaryLabel": "Kritikus riasztások",
+          "summaryVerified": "Bekapcsolva — a kritikus jelzések eljutnak a böngészőjéhez."
+        },
+        "power": {
+          "heading": "Az Ön Pro eszköztára",
+          "body": "Egyéni widgetek, MCP-kapcsolatok és az AI kutató fel vannak oldva. Építse fel azt az irányítópultot, amit valóban figyelni szeretne.",
+          "confirmCta": "Pro eszközök felfedezése",
+          "confirming": "Megnyitás…",
+          "doneNote": "Már használja Pro eszközeit.",
+          "summaryLabel": "Pro eszköztár",
+          "summaryVerified": "Feloldva és készen áll, amikor Ön is az.",
+          "channelsNote": "Inkább Telegramot, Slacket, Discordot vagy egy webhookot szeretne?",
+          "pointers": {
+            "widgets": "Egyéni widget létrehozása",
+            "analyst": "Kérdezze meg az AI elemzőt",
+            "apiKeys": "API és MCP kulcsok beszerzése",
+            "channels": "Állítsa be ezeket az értesítési beállításokban"
+          }
+        }
+      },
+      "status": {
+        "pending": "Nincs beállítva",
+        "inFlight": "Beállítás…",
+        "verified": "Kész",
+        "failed": "Nem sikerült",
+        "blocked": "Blokkolva",
+        "unavailable": "Nem elérhető",
+        "blockedNote": "Ez most nem elérhető — később beállíthatja a beállításokban.",
+        "unavailableNote": "Ez nem elérhető az Ön eszközén — később beállíthatja.",
+        "failedBody": "Valami elromlott. Próbálja újra, vagy állítsa be később a beállításokban.",
+        "retry": "Próbálja újra"
+      },
+      "actions": {
+        "skip": "Kihagyás egyelőre",
+        "continue": "Folytatás"
+      },
+      "summary": {
+        "heading": "Minden készen áll",
+        "subVerified": "Íme, mi fut a fiókján.",
+        "subPending": "A beállítást bármikor befejezheti a beállításokban.",
+        "linePending": "Még nincs beállítva — bármikor befejezheti a beállításokban.",
+        "lineFailed": "Ezt nem sikerült beállítanunk — próbálja újra a beállításokban.",
+        "finish": "Ugrás az irányítópultomra"
+      },
+      "chip": {
+        "message": "Fejezze be Pro fiókja beállítását.",
+        "action": "Beállítás befejezése",
+        "dismissLabel": "Elvetés"
+      }
     },
     "frameworkSelector": {
       "label": "Elemzési Keretrendszer",
