@@ -114,6 +114,16 @@ crons.daily(
   internal.followedCountries._dedupeCountryLocks,
 );
 
+// Daily self-heal for the singleton Dodo failure summary. This both restores a
+// missing deploy-time seed and removes duplicate global rows from a rare race
+// between deploy/manual/cron seed invocations. Operational reads tolerate the
+// duplicates until this idempotent pass retains the oldest authority row.
+crons.daily(
+  "dodo-webhook-failure-summary-seed",
+  { hourUTC: 3, minuteUTC: 4 },
+  internal.payments.webhookMutations._seedFailureSummary,
+);
+
 // Dunning + winback scan (#4932). Schedules the due day-3/day-7 payment-
 // failure reminders and the 30-day winback (at most one step per
 // subscription per tick; every send re-validates live state). 14:30 UTC =

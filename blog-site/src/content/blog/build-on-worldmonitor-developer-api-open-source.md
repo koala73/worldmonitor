@@ -1,12 +1,12 @@
 ---
 title: "Build on World Monitor: APIs and Developer Platform"
-description: "Build intelligence apps on World Monitor's typed API: 35 services, 281 proto files, 60+ edge functions, and auto-generated TypeScript clients. AGPL-3.0."
+description: "Build intelligence apps on World Monitor's typed API: 35 services, 281 proto files, 80+ edge functions, and auto-generated TypeScript clients. AGPL-3.0."
 metaTitle: "Developer API & Open Source Platform | World Monitor"
 keywords: "open source intelligence API, OSINT API free, geopolitical data API, intelligence platform developer, proto-first API architecture"
 audience: "Developers, data engineers, startup builders, academic researchers, open-source contributors"
 heroImage: "/blog/images/blog/build-on-worldmonitor-developer-api-open-source.jpg"
 pubDate: "2026-03-09"
-modifiedDate: "2026-07-07"
+modifiedDate: "2026-07-22"
 ---
 
 Most intelligence platforms are walled gardens. You pay for access, you use their interface, and if you want to build something custom, you're out of luck. The data is locked behind a UI.
@@ -83,7 +83,7 @@ World Monitor's API is organized into domain-specific services:
 
 Each domain has its own edge function, proto definitions, and TypeScript client.
 
-## 60+ Vercel Edge Functions
+## 80+ Vercel Edge Functions
 
 The API layer runs on **Vercel Edge Functions**, providing:
 
@@ -149,7 +149,7 @@ Build alerting bots that post to your team channel when:
 
 Every developer surface has a dedicated, named page you can jump to directly — the [World Monitor Developer Portal](https://worldmonitor.app/developers.md) links them all in one place:
 
-- **[World Monitor MCP Server](https://worldmonitor.app/mcp-server.md)** — the recommended agent surface at `https://worldmonitor.app/mcp`, with 39 tools over Streamable HTTP. Connect Claude, Cursor, or any MCP client. See the [MCP Overview](https://www.worldmonitor.app/docs/mcp-overview) for auth and the full catalog.
+- **[World Monitor MCP Server](https://worldmonitor.app/mcp-server.md)** — the recommended agent surface at `https://worldmonitor.app/mcp`, with 41 tools over Streamable HTTP. Connect Claude, Cursor, or any MCP client. See the [MCP Overview](https://www.worldmonitor.app/docs/mcp-overview) for auth and the full catalog.
 - **[World Monitor OpenAPI Specification](https://worldmonitor.app/openapi.md)** — the OpenAPI 3.1 contract for the REST API ([openapi.yaml](https://worldmonitor.app/openapi.yaml) / [openapi.json](https://worldmonitor.app/openapi.json)), so you can generate a typed client in any language.
 - **[World Monitor SDKs](https://worldmonitor.app/sdks.md)** — official zero-dependency client libraries for Python, Ruby, Go, and JavaScript, plus the [`worldmonitor` CLI](https://www.worldmonitor.app/docs/cli).
 - **World Monitor API docs** — the full [developer documentation](https://www.worldmonitor.app/docs/documentation) site, with an [MCP Quickstart](https://www.worldmonitor.app/docs/mcp-quickstart) and [agent auth walkthrough](https://worldmonitor.app/auth.md).
@@ -201,7 +201,7 @@ For reference, World Monitor is built with:
 | Caching | Redis |
 | Browser ML | Transformers.js, ONNX |
 | Styling | CSS Custom Properties |
-| i18n | i18next (21 locales) |
+| i18n | i18next (25 locales) |
 | Testing | Vitest, Playwright |
 
 ## Why Build on World Monitor?
@@ -218,7 +218,7 @@ World Monitor's open, typed, proto-first architecture is the alternative:
 
 The intelligence platform of the future isn't a product. It's an ecosystem. World Monitor is building the foundation.
 
-Building an AI agent instead of an app? The same platform is exposed as a Model Context Protocol server with 39 live tools. See [how to connect Claude and other agents to World Monitor's MCP server](/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/).
+Building an AI agent instead of an app? The same platform is exposed as a Model Context Protocol server with 41 live tools. See [how to connect Claude and other agents to World Monitor's MCP server](/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/).
 
 ## Frequently Asked Questions
 

@@ -8,11 +8,13 @@ import "worldmonitor/military/v1/military_flight.proto";
 
 // ListMilitaryFlightsRequest specifies filters for retrieving military flight data.
 message ListMilitaryFlightsRequest {
-  // Maximum items per page (1-100).
+  // Maximum items per page (1-100). 0 or omitted uses the default of 100.
   int32 page_size = 1 [(sebuf.http.query) = { name: "page_size" }];
-  // Cursor for next page.
-  // Accepted but currently ignored; no-op until this handler supports the parameter.
-  string cursor = 2 [(sebuf.http.query) = { name: "cursor" }, (sebuf.http.unimplemented) = true];
+  // Cursor for the next page. Treat it as opaque: echo the next-cursor value
+  // returned in the previous response's pagination metadata verbatim, and do
+  // not construct or parse it. Empty (or any unrecognized value) requests the
+  // first page.
+  string cursor = 2 [(sebuf.http.query) = { name: "cursor" }];
   // North-east corner latitude of bounding box.
   double ne_lat = 3 [(sebuf.http.query) = { name: "ne_lat" }];
   // North-east corner longitude of bounding box.

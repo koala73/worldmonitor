@@ -1697,7 +1697,26 @@
       "cafIndex": "CAF Index",
       "candidGrants": "Candid Grants",
       "dataLag": "Data Lag",
-      "infoTooltip": "<strong>Global Giving Activity Index</strong> Composite index tracking personal giving across crowdfunding platforms and crypto wallets.<ul><li><strong>Platforms</strong>: GoFundMe, GlobalGiving, JustGiving campaign sampling</li><li><strong>Crypto</strong>: On-chain charity wallet inflows (Endaoment, Giving Block)</li><li><strong>Institutional</strong>: OECD ODA, CAF World Giving Index, Candid grants</li></ul>Index is directional (not exact dollar amounts). Combines live sampling with published annual reports."
+      "infoTooltip": "<strong>Global Giving Activity Index</strong> Composite index tracking personal giving across crowdfunding platforms and crypto wallets.<ul><li><strong>Platforms</strong>: GoFundMe, GlobalGiving, JustGiving campaign sampling</li><li><strong>Crypto</strong>: On-chain charity wallet inflows (Endaoment, Giving Block)</li><li><strong>Institutional</strong>: OECD ODA, CAF World Giving Index, Candid grants</li></ul>Index is directional (not exact dollar amounts). Combines live sampling with published annual reports.",
+      "benchmarkTitle": "Global Giving Benchmarks",
+      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "status": {
+        "published": "Published benchmarks with verified source coverage.",
+        "partial": "Published benchmarks with partial source coverage.",
+        "legacy": "Legacy snapshot; source details are unavailable.",
+        "cached": "Showing a cached snapshot; refresh unavailable."
+      },
+      "trackedAnnualized": "Tracked platform giving — annualized estimate",
+      "annualizedDaily": "Annualized daily estimate",
+      "atLeast": "At least",
+      "about": "About",
+      "sourceNotVerified": "Source not verified",
+      "reportedCumulative": "Reported cumulative total",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Published benchmark",
+      "sourcesMethodology": "Sources & methodology",
+      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
+      "partialEstimate": "Partially verified estimate"
     },
     "displacement": {
       "refugees": "Refugees",
@@ -2242,11 +2261,100 @@
       "cta": "Upgrade to Pro →",
       "dismiss": "Dismiss"
     },
+    "billingState": {
+      "onHoldDesc": "پرداخت ناموفق بود. روش پرداخت خود را به‌روزرسانی کنید تا دسترسی ویژه بازیابی شود.",
+      "onHoldBannerMessage": "پرداخت ناموفق بود. روش پرداخت خود را به‌روزرسانی کنید تا اشتراک شما فعال بماند.",
+      "updatePayment": "به‌روزرسانی پرداخت",
+      "renewalPendingDesc": "در حال بررسی تمدید اشتراک شما هستیم. دسترسی ویژه پس از تأیید به‌طور خودکار بازیابی می‌شود.",
+      "refreshStatus": "به‌روزرسانی وضعیت",
+      "renewalFailedDesc": "تمدید اشتراک شما تأیید نشد. صورتحساب را مدیریت کنید یا در صورت ادامه مشکل با پشتیبانی تماس بگیرید.",
+      "manageBilling": "مدیریت صورتحساب",
+      "lapsedDesc": "اشتراک Pro شما به پایان رسیده است. برای بازیابی دسترسی ویژه دوباره مشترک شوید.",
+      "resubscribe": "اشتراک مجدد"
+    },
     "checkoutFailureBanner": {
       "message": "Payment couldn't be completed. No charge was made.",
       "retry": "Try again",
       "retrying": "Retrying…",
       "dismiss": "Dismiss"
+    },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Step {{current}} of {{total}}",
+      "closeLabel": "Skip setup",
+      "ariaLabel": "Pro activation setup",
+      "signedInAs": "Signed in as {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Your daily brief, every morning",
+          "body": "A curated intelligence briefing in your inbox each morning — the overnight signals that matter, distilled into a five-minute read.",
+          "confirmCta": "Turn on my morning brief",
+          "confirming": "Turning it on…",
+          "doneNote": "Your morning brief is already running.",
+          "scheduleNote": "We'll keep your current delivery time.",
+          "summaryLabel": "Morning brief",
+          "summaryVerified": "On — starts with your next morning brief.",
+          "deliverAt": "Deliver at",
+          "previewLoading": "Preparing a preview of your first brief…",
+          "previewLabel": "This morning's brief"
+        },
+        "alerts": {
+          "heading": "Critical alerts",
+          "body": "Get pinged in your browser when something big breaks — conflict escalations, market shocks, fresh sanctions. Tune the cadence anytime in Settings.",
+          "confirmCta": "Enable alerts",
+          "confirming": "Enabling…",
+          "doneNote": "Browser alerts are already on.",
+          "blockedNote": "Notifications are blocked in your browser. Turn them on in your browser's site settings to get alerts.",
+          "declinedNote": "No problem — we won't send browser alerts. You can turn them on later from your browser's site settings.",
+          "summaryLabel": "Critical alerts",
+          "summaryVerified": "On — critical signals will reach your browser."
+        },
+        "power": {
+          "heading": "Your Pro toolkit",
+          "body": "Custom widgets, MCP connections, and the AI researcher are unlocked. Build the board you actually want to watch.",
+          "confirmCta": "Explore Pro tools",
+          "confirming": "Opening…",
+          "doneNote": "You're already using your Pro tools.",
+          "summaryLabel": "Pro toolkit",
+          "summaryVerified": "Unlocked and ready when you are.",
+          "channelsNote": "Prefer Telegram, Slack, Discord, or a webhook?",
+          "pointers": {
+            "widgets": "Build a custom widget",
+            "analyst": "Ask the AI analyst",
+            "apiKeys": "Get your API & MCP keys",
+            "channels": "Set those up in notification settings"
+          }
+        }
+      },
+      "status": {
+        "pending": "Not set up",
+        "inFlight": "Setting up…",
+        "verified": "Ready",
+        "failed": "Didn't work",
+        "blocked": "Blocked",
+        "unavailable": "Not available",
+        "blockedNote": "This isn't available right now — you can set it up later from settings.",
+        "unavailableNote": "This isn't available on your device — you can set it up later.",
+        "failedBody": "Something went wrong. You can try again, or set it up later from settings.",
+        "retry": "Try again"
+      },
+      "actions": {
+        "skip": "Skip for now",
+        "continue": "Continue"
+      },
+      "summary": {
+        "heading": "You're all set",
+        "subVerified": "Here's what's running on your account.",
+        "subPending": "You can finish setup any time from settings.",
+        "linePending": "Not set up yet — finish any time in settings.",
+        "lineFailed": "We couldn't set this up — try again from settings.",
+        "finish": "Go to my dashboard"
+      },
+      "chip": {
+        "message": "Finish setting up your Pro account.",
+        "action": "Finish setup",
+        "dismissLabel": "Dismiss"
+      }
     },
     "frameworkSelector": {
       "label": "Analysis Framework",

@@ -6,6 +6,12 @@ import {
   PRO_DAILY_QUOTA_LIMIT,
   secondsUntilUtcMidnight,
 } from '../../server/_shared/pro-mcp-token';
+import { getMcpBillingVerificationDenial } from './auth';
+import { BillingDenialError } from './billing-denial';
+import {
+  createMcpToolExecutionContext,
+  downstreamErrorTags,
+} from './downstream';
 import { mcpErrorFingerprint } from './error-fingerprint';
 import { argBool, summarizeData } from './filters';
 import { evaluateFreshness } from './freshness';
@@ -18,7 +24,12 @@ import {
   principalIdForLog,
   telemetryEnabled,
 } from './telemetry';
-import type { CacheToolDef, McpAuthContext, McpHandlerDeps } from './types';
+import type {
+  CacheToolDef,
+  McpAuthContext,
+  McpHandlerDeps,
+  McpToolExecutionContext,
+} from './types';
 import { utf8ByteLength } from './utils';
 
 // ---------------------------------------------------------------------------
@@ -167,11 +178,17 @@ export async function dispatchToolsCall(
   // contexts so downstream per-tenant aggregation can join on it. Out of
   // scope for v1 since the dashboards we ship next only need `auth_kind`.
   const tStart = Date.now();
+  let execution: McpToolExecutionContext | undefined;
   try {
     let result: unknown;
     if (tool._execute) {
-      const baseUrl = new URL(req.url).origin;
-      result = await tool._execute(p.arguments ?? {}, baseUrl, context);
+      execution = createMcpToolExecutionContext(req.url);
+      result = await tool._execute(
+        p.arguments ?? {},
+        execution.downstreamOrigin,
+        context,
+        execution,
+      );
     } else {
       result = await executeTool(tool, p.arguments ?? {});
     }
@@ -261,15 +278,30 @@ export async function dispatchToolsCall(
     // fire on 4xx while Sentry does not, defeating the downgrade.
     const message = err instanceof Error ? err.message : String(err);
     const isClient4xx = /HTTP 4\d\d\b/.test(message);
-    const log = isClient4xx ? console.warn : console.error;
+    // A typed billing denial (incl. its 503 pending/failed variants) is an
+    // expected, handled customer state — warning-level, not error-level, so
+    // Sentry/log alerts don't page on ordinary billing churn.
+    const isExpectedDenial = err instanceof BillingDenialError;
+    const downstreamTags = downstreamErrorTags(err);
+    const log = isClient4xx || isExpectedDenial ? console.warn : console.error;
     log('[mcp] tool execution error:', err);
     captureSilentError(err, {
-      tags: { route: 'api/mcp', step: 'tool-execution', tool: tool.name },
+      tags: {
+        route: 'api/mcp',
+        step: 'tool-execution',
+        tool: tool.name,
+        auth_kind: context.kind,
+        ...(execution ? {
+          inbound_host_class: execution.inboundHostClass,
+          downstream_origin: execution.downstreamOriginTag,
+        } : {}),
+        ...downstreamTags,
+      },
       ctx,
       // Split the api/mcp catch-all (WORLDMONITOR-T8) into per-tool,
       // per-status groups — see api/mcp/error-fingerprint.ts.
       fingerprint: mcpErrorFingerprint('tool-execution', tool.name, err),
-      ...(isClient4xx ? { level: 'warning' as const } : {}),
+      ...(isClient4xx || isExpectedDenial ? { level: 'warning' as const } : {}),
     });
     emitTelemetry('mcp.toolcall', {
       tool: tool.name,
@@ -284,6 +316,19 @@ export async function dispatchToolsCall(
       error_kind: isClient4xx ? 'client_4xx' : 'server_error',
       budget_exceeded: false,
     });
+    // #4770: a mid-request billing denial from the gateway keeps its full
+    // contract (status, Retry-After, X-Billing-Verification, data.code)
+    // instead of flattening into the generic -32603. The pre-dispatch
+    // entitlement gate catches most billing denials; this covers the window
+    // between that pre-check and the tool's downstream fetch.
+    if (err instanceof BillingDenialError) {
+      const denial = getMcpBillingVerificationDenial(
+        { billingStatus: err.billingCode, retryAfterSeconds: err.retryAfterSeconds },
+        corsHeaders,
+        id,
+      );
+      if (denial) return denial;
+    }
     return rpcError(id, -32603, 'Internal error: data fetch failed', corsHeaders);
   }
 }

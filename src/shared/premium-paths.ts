@@ -14,6 +14,9 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   // anonymous wms_ sessions cannot mint cache-miss LLM spend.
   '/api/intelligence/v1/classify-event',
   '/api/intelligence/v1/deduct-situation',
+  // Browser calls must attach Clerk auth and bypass wm-session recovery:
+  // anonymous 401s here are expected Pro denials, not dead session cookies.
+  '/api/intelligence/v1/get-country-intel-brief',
   '/api/intelligence/v1/list-market-implications',
   '/api/intelligence/v1/get-regional-snapshot',
   '/api/intelligence/v1/get-regime-history',

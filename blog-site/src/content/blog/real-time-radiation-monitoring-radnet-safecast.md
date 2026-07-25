@@ -4,7 +4,7 @@ description: "WorldMonitor merges EPA RadNet stations and the Safecast citizen-s
 metaTitle: "Real-Time Radiation Monitoring Map | WorldMonitor"
 keywords: "real time radiation map, radiation levels live, nuclear radiation monitoring, Safecast radiation data, EPA RadNet, radiation monitoring dashboard"
 audience: "OSINT analysts, journalists, researchers, emergency-preparedness planners, concerned readers during nuclear events"
-heroImage: "/blog/og/real-time-radiation-monitoring-radnet-safecast.png"
+heroImage: "/blog/images/blog/real-time-radiation-monitoring-radnet-safecast.jpg"
 pubDate: "2026-07-21"
 modifiedDate: "2026-07-22"
 ---
@@ -53,6 +53,10 @@ The `get_radiation_data` MCP tool returns current observation levels from the mo
 ## Limits
 
 Sensor coverage is uneven: dense in the US, Japan, and Europe, sparse exactly where geopolitical radiation risk is highest — active conflict zones rarely host functioning public sensor networks. Citizen sensors vary in calibration and siting. A quiet map in an uninstrumented region means "no data," never "no radiation." And a dashboard is not a civil-defense system: in a genuine emergency, official local guidance wins.
+
+## Primary data sources
+
+Verify readings and network coverage at the [EPA RadNet program](https://www.epa.gov/radnet), [Safecast radiation map](https://map.safecast.org/), and the IAEA's [Directory of Radiotherapy Centres](https://dirac.iaea.org/). A dashboard view is context, not an emergency instruction.
 
 ## Frequently Asked Questions
 

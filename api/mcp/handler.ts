@@ -313,7 +313,7 @@ async function handleAuthenticatedSseReplay(
   setUsageContext(usage, auth.context);
   const getPreCheck = await runContextPreChecks(auth.context, deps, resourceMetadataUrl, corsHeaders, ctx);
   if (getPreCheck) {
-    usage.phase = 'precheck';
+    usage.phase = getPreCheck.headers.get('X-Billing-Verification') ? 'billing' : 'precheck';
     return getPreCheck;
   }
   const getLimited = await applyPerMinuteLimit(auth.context, corsHeaders);
@@ -671,7 +671,7 @@ async function mcpHandlerInner(
     setUsageContext(usage, context);
     const preCheck = await runContextPreChecks(context, deps, resourceMetadataUrl, corsHeaders, ctx);
     if (preCheck) {
-      usage.phase = 'precheck';
+      usage.phase = preCheck.headers.get('X-Billing-Verification') ? 'billing' : 'precheck';
       return preCheck;
     }
     const limited = await applyPerMinuteLimit(context, corsHeaders);
@@ -741,7 +741,14 @@ async function mcpHandlerInner(
         return authRequiredResponse(id, resourceMetadataUrl, corsHeaders);
       }
       const dispatched = await dispatchToolsCall(req, context, deps, body, corsHeaders, ctx);
-      if (dispatched.status === 429 || dispatched.status === 503) usage.phase = 'dispatch';
+      // Mid-call billing denials (dispatch's BillingDenialError re-emit) must
+      // classify like the pre-check sites: 'billing' -> billing_verification_503
+      // / tier_403, not rate_limit_degraded (503) or 'ok' (403).
+      if (dispatched.headers.get('X-Billing-Verification')) {
+        usage.phase = 'billing';
+      } else if (dispatched.status === 429 || dispatched.status === 503) {
+        usage.phase = 'dispatch';
+      }
       return maybeStreamJsonRpcResponse(req, dispatched);
     }
     // Prompts are metadata-class — they ship a workflow template, not data.

@@ -145,6 +145,10 @@ export class Panel {
   private retryAttempt = 0;
   private _fetching = false;
   private _locked = false;
+  // Last reason rendered by showGatedCta, so repeat gating passes with an
+  // unchanged verdict skip the DOM teardown/rebuild (#4771 re-runs gating on
+  // every subscription-row change, including fields irrelevant to gating).
+  private _lastGateReason: PanelGateReason | null = null;
   // Snapshot of this.content's children at the moment showLocked /
   // showGatedCta replaces them with a lock CTA. unlockPanel re-attaches
   // these nodes so subclasses whose UI is constructed once (typically in
@@ -934,22 +938,69 @@ export class Panel {
     replaceChildren(this.content, h('div', { className: 'panel-locked-state' }, ...lockedChildren));
   }
 
-  public showGatedCta(reason: PanelGateReason, onAction: () => void): void {
-    const config: Record<string, { icon: string; desc: string; cta: string }> = {
-      [PanelGateReason.ANONYMOUS]: {
-        icon: lockSvg,
-        desc: t('premium.signInToUnlock'),
-        cta: t('premium.signIn'),
-      },
-      [PanelGateReason.FREE_TIER]: {
-        icon: upgradeSvg,
-        desc: t('premium.upgradeDesc'),
-        cta: t('premium.upgradeToPro'),
-      },
-    };
+  /**
+   * CTA copy per gate reason, resolved lazily so each call translates only
+   * the two strings it renders. #4771 billing-aware states: the user has
+   * (or had) paid evidence, so the CTA must never read as a fresh upsell
+   * (duplicate-checkout risk). Their keys live under components.billingState
+   * (NOT premium.*): premium. is a first-paint shell namespace and these
+   * CTAs only render after the Convex entitlement round-trip, well past
+   * full-locale load.
+   */
+  private static gatedCtaEntry(
+    reason: PanelGateReason,
+  ): { icon: string; desc: string; cta: string } | null {
+    switch (reason) {
+      case PanelGateReason.ANONYMOUS:
+        return {
+          icon: lockSvg,
+          desc: t('premium.signInToUnlock'),
+          cta: t('premium.signIn'),
+        };
+      case PanelGateReason.FREE_TIER:
+        return {
+          icon: upgradeSvg,
+          desc: t('premium.upgradeDesc'),
+          cta: t('premium.upgradeToPro'),
+        };
+      case PanelGateReason.PAYMENT_ON_HOLD:
+        return {
+          icon: lockSvg,
+          desc: t('components.billingState.onHoldDesc'),
+          cta: t('components.billingState.updatePayment'),
+        };
+      case PanelGateReason.RENEWAL_PENDING:
+        return {
+          icon: lockSvg,
+          desc: t('components.billingState.renewalPendingDesc'),
+          cta: t('components.billingState.refreshStatus'),
+        };
+      case PanelGateReason.RENEWAL_FAILED:
+        return {
+          icon: lockSvg,
+          desc: t('components.billingState.renewalFailedDesc'),
+          cta: t('components.billingState.manageBilling'),
+        };
+      case PanelGateReason.LAPSED:
+        return {
+          icon: upgradeSvg,
+          desc: t('components.billingState.lapsedDesc'),
+          cta: t('components.billingState.resubscribe'),
+        };
+      default:
+        return null;
+    }
+  }
 
-    const entry = config[reason];
+  public showGatedCta(reason: PanelGateReason, onAction: () => void): void {
+    const entry = Panel.gatedCtaEntry(reason);
     if (!entry) return; // PanelGateReason.NONE should never reach here
+
+    // Same verdict already rendered — skip the DOM teardown/rebuild.
+    // Gating re-runs on every subscription-row change (#4771), including
+    // Convex updates to fields irrelevant to the gate verdict.
+    if (this._locked && this._lastGateReason === reason) return;
+    this._lastGateReason = reason;
 
     // Bail-out done — now commit to the locked state. Doing this AFTER the
     // guard avoids a half-locked DOM (header siblings hidden, panel-is-locked
@@ -979,6 +1030,7 @@ export class Panel {
   public unlockPanel(): void {
     if (!this._locked) return;
     this._locked = false;
+    this._lastGateReason = null;
     this.element.classList.remove('panel-is-locked');
     // Re-show hidden elements
     for (let child = this.header.nextElementSibling; child && child !== this.content; child = child.nextElementSibling) {

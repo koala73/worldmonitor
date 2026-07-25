@@ -1,17 +1,17 @@
 ---
 title: "Give Your AI Agent Eyes on the World: The World Monitor MCP Server"
-description: "Connect Claude, Cursor, or any MCP client to 39 live geopolitical intelligence tools. Real-time country risk, conflicts, chokepoints, and markets for AI agents."
+description: "Connect Claude, Cursor, or any MCP client to 41 live geopolitical intelligence tools. Real-time country risk, conflicts, chokepoints, and markets for AI agents."
 metaTitle: "Real-Time Intelligence MCP Server | World Monitor"
 keywords: "MCP server real-time data, Claude MCP server, Model Context Protocol geopolitics, AI agent live data, geopolitical data for LLMs, real-time intelligence API for AI"
 audience: "AI engineers, agent builders, Claude power users, developers, intelligence analysts automating workflows"
 heroImage: "/blog/images/blog/worldmonitor-mcp-server-ai-agents-real-time-intelligence.jpg"
 pubDate: "2026-06-10"
-modifiedDate: "2026-06-13"
+modifiedDate: "2026-07-22"
 ---
 
 Ask any LLM what is happening in the Strait of Hormuz right now and you get a polite version of "my training data ends months ago." Large language models are brilliant reasoners with no eyes. They cannot see today's vessel traffic, this morning's conflict events, or the country risk score that moved overnight.
 
-The Model Context Protocol (MCP) fixes the plumbing problem: it gives AI assistants a standard way to call live tools. World Monitor fixes the data problem: it exposes the entire intelligence platform, the same one behind the [free real-time dashboard](/blog/posts/what-is-worldmonitor-real-time-global-intelligence/), as an MCP server with **39 live tools**.
+The Model Context Protocol (MCP) fixes the plumbing problem: it gives AI assistants a standard way to call live tools. World Monitor fixes the data problem: it exposes the entire intelligence platform, the same one behind the [free real-time dashboard](/blog/posts/what-is-worldmonitor-real-time-global-intelligence/), as an MCP server with **41 live tools**.
 
 Connect the two and your agent can answer questions like "Which of my supplier countries got riskier this week, and why?" with real numbers instead of vibes.
 
@@ -23,7 +23,7 @@ The endpoint is a single URL:
 https://worldmonitor.app/mcp
 ```
 
-It speaks streamable HTTP (JSON-RPC 2.0), handles OAuth automatically on first connection, and serves 39 tools across six domains. The flagship ones:
+It speaks streamable HTTP (JSON-RPC 2.0), handles OAuth automatically on first connection, and serves 41 tools across six domains. The flagship ones:
 
 | Tool | What your agent gets |
 |------|----------------------|
@@ -123,6 +123,10 @@ Fifty calls sounds tight until you use JMESPath and the prompt templates: a comp
 - **Research assistants** that ground geopolitical claims in live `analyze_situation` output instead of stale training data
 - **Trading checklists** that pull `market-open-prep` plus prediction market odds before the open
 
+## Protocol Reference
+
+World Monitor follows the official [Model Context Protocol specification](https://modelcontextprotocol.io/specification/latest). Client support and transport behavior can vary, so verify the client's current MCP documentation when configuring production access.
+
 ## Frequently Asked Questions
 
 **What is an MCP server?**
@@ -135,7 +139,7 @@ Any client that implements MCP over streamable HTTP with OAuth can connect. The 
 
 **Is there a free tier for MCP access?**
 
-MCP requires a Pro subscription ($20/month) or an API plan. The dashboard itself stays free; MCP is the programmatic surface on top of it. Metadata and discovery endpoints (`llms.txt`, the OpenAPI spec, `describe_tool`) are open.
+MCP requires a Pro subscription ($39.99/month) or an API plan. The dashboard itself stays free; MCP is the programmatic surface on top of it. Metadata and discovery endpoints (`llms.txt`, the OpenAPI spec, `describe_tool`) are open.
 
 ---
 

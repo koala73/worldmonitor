@@ -16,21 +16,23 @@ const getHeroImages = () =>
     .map((name) => {
       const source = readFileSync(resolve(CONTENT_DIR, name), 'utf-8');
       return { post: name, heroImage: source.match(/^heroImage:\s*"([^"]+)"/m)?.[1] ?? null };
-    })
-    .filter((entry) => entry.heroImage !== null);
+    });
 
 describe('blog cover WebP siblings', () => {
-  it('every committed cover has .webp and -640.webp siblings', () => {
+  it('every post uses a committed cover with .webp and -640.webp siblings', () => {
     // The <picture> markup in BlogPost.astro / index.astro serves the WebP
     // when coverWebpSources() finds both siblings. A committed cover without
     // them silently loses the optimization, so keep the pair in lockstep:
     // `cwebp -q 80 <cover> -o <cover>.webp` and
     // `cwebp -q 80 -resize 640 0 <cover> -o <cover>-640.webp`.
-    const committed = getHeroImages().filter(({ heroImage }) =>
-      heroImage.startsWith('/blog/images/blog/')
-    );
-    assert.ok(committed.length > 0, 'expected committed blog covers');
-    for (const { post, heroImage } of committed) {
+    const posts = getHeroImages();
+    assert.ok(posts.length > 0, 'expected blog posts');
+    for (const { post, heroImage } of posts) {
+      assert.ok(heroImage, `${post}: heroImage is required`);
+      assert.ok(
+        heroImage.startsWith('/blog/images/blog/'),
+        `${post}: heroImage must be a committed product cover, not a generated title card`
+      );
       const local = resolve(PUBLIC_DIR, heroImage.replace('/blog/', ''));
       assert.ok(existsSync(local), `${post}: cover missing at ${heroImage}`);
       const sources = coverWebpSources(heroImage);

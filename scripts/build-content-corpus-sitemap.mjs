@@ -4,7 +4,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const SITE_ORIGIN = 'https://www.worldmonitor.app';
-export const CONTENT_CORPUS_PREFIXES = ['countries', 'chokepoints', 'reference', 'changelog'];
+export const CONTENT_CORPUS_PREFIXES = ['countries', 'chokepoints', 'crises', 'tools', 'reference', 'changelog'];
 export const CONTENT_CORPUS_START_MARKER = '<!-- content-corpus:start -->';
 export const CONTENT_CORPUS_END_MARKER = '<!-- content-corpus:end -->';
 
@@ -12,6 +12,8 @@ const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const PREFIX_METADATA = {
   countries: { changefreq: 'weekly', priority: '0.6' },
   chokepoints: { changefreq: 'daily', priority: '0.7' },
+  crises: { changefreq: 'daily', priority: '0.7' },
+  tools: { changefreq: 'daily', priority: '0.7' },
   reference: { changefreq: 'weekly', priority: '0.6' },
   changelog: { changefreq: 'weekly', priority: '0.6' },
 };

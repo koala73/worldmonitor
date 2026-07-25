@@ -6,6 +6,7 @@ keywords: "real-time conflict map, geopolitical intelligence map, military track
 audience: "Geopolitical analysts, defense researchers, policy makers, journalists covering conflict"
 heroImage: "/blog/images/blog/track-global-conflicts-in-real-time.jpg"
 pubDate: "2026-02-14"
+modifiedDate: "2026-07-22"
 ---
 
 When a military escalation begins, the first 24 hours define the narrative. Analysts who see the signals early, the unusual flight patterns, the naval repositioning, the news velocity spike, have a decisive advantage over those waiting for the morning briefing.
@@ -105,8 +106,8 @@ World Monitor maps critical infrastructure alongside conflict data:
 - **Undersea cables** carrying 95% of intercontinental internet traffic
 - **Oil and gas pipelines** traversing conflict zones
 - **Nuclear facilities** and their proximity to active hostilities
-- **AI datacenters** (111 mapped globally)
-- **Strategic ports** (83) and airports (107)
+- **AI datacenters** (300+ mapped globally)
+- **Strategic ports** (60+) and airports (115)
 
 The Infrastructure Cascade panel shows what happens when a conflict zone overlaps with critical infrastructure. A pipeline through a hotspot, a cable landing station near an escalation zone. These second-order effects drive market moves and policy decisions.
 

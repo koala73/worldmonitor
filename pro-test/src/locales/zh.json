@@ -386,8 +386,10 @@
           "实时数据流",
           "每分钟 60 个请求",
           "包含每天 1,000 个请求",
-          "Webhook 通知",
-          "自定义数据导出"
+          "Webhook 通知"
+        ],
+        "highlightFeatures": [
+          "不可商用"
         ]
       },
       "enterprise": {
@@ -401,6 +403,20 @@
           "本地部署选项"
         ],
         "cta": "联系销售"
+      },
+      "apiBusiness": {
+        "description": "面向团队的高流量 API",
+        "features": [
+          "涵盖 API Starter 的全部内容",
+          "每分钟 300 个请求",
+          "包含每天 10,000 个请求",
+          "包含 5 个 Pro 许可证",
+          "需使用同一公司邮箱",
+          "优先支持"
+        ],
+        "highlightFeatures": [
+          "可商用"
+        ]
       }
     },
     "cta": {

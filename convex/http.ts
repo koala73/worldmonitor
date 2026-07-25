@@ -1,5 +1,5 @@
 import { anyApi, httpRouter } from "convex/server";
-import { httpAction } from "./_generated/server";
+import { httpAction, type ActionCtx } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { webhookHandler } from "./payments/webhookHandlers";
 import { resendWebhookHandler } from "./resendWebhookHandler";
@@ -125,12 +125,10 @@ function setRateLimitResponseHeaders(headers: Headers, limit: number, reset: num
   headers.set("Retry-After", String(retryAfter));
 }
 
-const http = httpRouter();
-
-http.route({
-  path: "/api/internal-entitlements",
-  method: "POST",
-  handler: httpAction(async (ctx, request) => {
+export async function internalEntitlementsHttpHandler(
+  ctx: ActionCtx,
+  request: Request,
+): Promise<Response> {
     const providedSecret = request.headers.get("x-convex-shared-secret") ?? "";
     const expectedSecret = process.env.CONVEX_SERVER_SHARED_SECRET ?? "";
     if (!expectedSecret || !(await timingSafeEqualStrings(providedSecret, expectedSecret))) {
@@ -159,15 +157,94 @@ http.route({
       });
     }
 
-    const result = await ctx.runQuery(
+    let result = await ctx.runQuery(
       internal.entitlements.getEntitlementsByUserId,
       { userId: body.userId },
     );
-    return new Response(JSON.stringify(result), {
+    let billingStatus:
+      | "subscription_lapsed"
+      | "renewal_verification_pending"
+      | "renewal_verification_failed"
+      | undefined;
+    let retryAfterSeconds: number | undefined;
+    let renewalVerificationFreshness:
+      | { status: "not_applicable"; checkedAt: number }
+      | undefined;
+
+    // Expired stored entitlements are deliberately returned as free-tier
+    // defaults by the query. Before the gateway turns that into a hard denial,
+    // give a recently-stale active subscription one bounded provider re-check.
+    if (result.features.tier === 0) {
+      const verification = await ctx.runAction(
+        internal.payments.billing.verifyRecentlyStaleSubscriptionOnDemand,
+        { userId: body.userId },
+      );
+      if (verification.status === "not_applicable") {
+        renewalVerificationFreshness = {
+          status: "not_applicable",
+          checkedAt: Date.now(),
+        };
+      } else {
+        // The provider action and a webhook can interleave. Always re-read the
+        // source of truth before attaching a denial marker so a concurrent
+        // renewal wins over a stale action result.
+        result = await ctx.runQuery(
+          internal.entitlements.getEntitlementsByUserId,
+          { userId: body.userId },
+        );
+        // A stale materialized entitlement can point at the stronger row under
+        // verification even while another lower-plan subscription is still
+        // current. Preserve that known-good coverage in this response; the
+        // billing marker remains attached so callers deny only capabilities
+        // the fallback plan does not authorize.
+        const fallbackState = await ctx.runQuery(
+          internal.payments.billing.getOnDemandRenewalFallbackState,
+          { userId: body.userId, now: Date.now() },
+        );
+        if (
+          result.features.tier === 0 &&
+          fallbackState?.currentEntitlement
+        ) {
+          result = fallbackState.currentEntitlement;
+        }
+        const staleFeatures = fallbackState?.strongestRecentlyStaleFeatures;
+        const verificationCouldExpandCoverage = !!staleFeatures && (
+          staleFeatures.tier > result.features.tier ||
+          (staleFeatures.apiAccess && !result.features.apiAccess) ||
+          (staleFeatures.mcpAccess && !result.features.mcpAccess)
+        );
+        if (
+          verification.status !== "active" &&
+          (
+            result.features.tier === 0 ||
+            verificationCouldExpandCoverage
+          )
+        ) {
+          billingStatus = verification.status;
+          if ("retryAfterSeconds" in verification) {
+            retryAfterSeconds = verification.retryAfterSeconds;
+          }
+        }
+      }
+    }
+
+    return new Response(JSON.stringify({
+      ...result,
+      ...(billingStatus ? { billingStatus } : {}),
+      ...(retryAfterSeconds != null ? { retryAfterSeconds } : {}),
+      ...(renewalVerificationFreshness ? { renewalVerificationFreshness } : {}),
+    }), {
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
-  }),
+}
+
+const http = httpRouter();
+
+http.route({
+  path: "/api/internal-entitlements",
+  method: "POST",
+  handler: httpAction(internalEntitlementsHttpHandler),
 });
 
 http.route({
@@ -503,6 +580,7 @@ http.route({
       aiDigestEnabled?: boolean;
       countries?: string[];
       tickers?: string[];
+      scheduleWelcome?: boolean;
     }>(request);
     if (!body) {
       return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
@@ -531,6 +609,13 @@ http.route({
         });
       }
 
+      if (action === "welcome-scheduling-capability") {
+        return new Response(
+          JSON.stringify({ durableWelcomeScheduling: true }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        );
+      }
+
       if (action === "create-pairing-token") {
         const result = await ctx.runMutation((internal as any).notificationChannels.createPairingTokenForUser, {
           userId,
@@ -550,8 +635,13 @@ http.route({
           webhookEnvelope: body.webhookEnvelope,
           email: body.email,
           webhookLabel: body.webhookLabel,
+          scheduleWelcome: body.scheduleWelcome === true,
         });
-        return new Response(JSON.stringify({ ok: true, isNew: setResult.isNew }), { status: 200, headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({
+          ok: true,
+          isNew: setResult.isNew,
+          durableWelcomeScheduling: body.scheduleWelcome === true,
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 
       if (action === "set-slack-oauth") {
@@ -591,8 +681,13 @@ http.route({
           p256dh: body.p256dh,
           auth: body.auth,
           userAgent: body.userAgent,
+          scheduleWelcome: body.scheduleWelcome === true,
         });
-        return new Response(JSON.stringify({ ok: true, isNew: webPushResult.isNew }), { status: 200, headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({
+          ok: true,
+          isNew: webPushResult.isNew,
+          durableWelcomeScheduling: body.scheduleWelcome === true,
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 
       if (action === "delete-channel") {
