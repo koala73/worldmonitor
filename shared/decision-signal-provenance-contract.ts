@@ -110,7 +110,7 @@ export interface DecisionSignalTimeReference {
 export interface DecisionSignalRevision {
   vintageId: string;
   sequence: number;
-  state: 'original' | 'revised' | 'corrected';
+  state: 'preliminary' | 'original' | 'revised' | 'corrected';
 }
 
 export interface DecisionSignalSupersession {

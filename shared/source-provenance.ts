@@ -22,7 +22,8 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   // Chinese government ministries (Tier 1 official sources — not wire/verified outlets)
   'CAC (China)': 'gov', 'SAMR (China)': 'gov',
   'MIIT (China)': 'gov', 'MOFCOM (China)': 'gov',
-  'NDRC (China)': 'gov', 'PBoC (China)': 'gov',
+  'NDRC (China)': 'gov', 'NBS (China)': 'gov', 'PBoC (China)': 'gov',
+  'SAFE (China)': 'gov', 'GACC (China)': 'gov',
 
   // Intel/Defense specialty
   'Defense One': 'intel', 'Breaking Defense': 'intel', 'The War Zone': 'intel',
@@ -186,10 +187,25 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
     stateAffiliated: 'China',
     note: 'National Development and Reform Commission official publication',
   },
+  'NBS (China)': {
+    risk: 'high',
+    stateAffiliated: 'China',
+    note: 'National Bureau of Statistics of China official data release',
+  },
   'PBoC (China)': {
     risk: 'high',
     stateAffiliated: 'China',
     note: "People's Bank of China official publication",
+  },
+  'SAFE (China)': {
+    risk: 'high',
+    stateAffiliated: 'China',
+    note: 'State Administration of Foreign Exchange official data release',
+  },
+  'GACC (China)': {
+    risk: 'high',
+    stateAffiliated: 'China',
+    note: 'General Administration of Customs of China official data release',
   },
 
   // Medium risk - State-affiliated or known bias

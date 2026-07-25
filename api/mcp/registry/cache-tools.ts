@@ -1,6 +1,14 @@
 import ISO2_TO_ISO3 from '../../../shared/iso2-to-iso3.js';
+import { CHINA_MACRO_REQUIRED_SERIES } from '../../../shared/china-macro-contract.js';
+import {
+  normalizeChinaMacroObservations,
+  normalizeChinaMacroPreflight,
+  validateChinaMacroAvailabilityBindings,
+} from '../../../shared/china-macro-normalization';
 import { getSourceProvenanceState } from '../../../shared/source-provenance';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
+// @ts-expect-error — generated Edge-safe JS mirror; authored types live in shared/bootstrap-tier-keys.d.ts
+import { BOOTSTRAP_CACHE_KEYS } from '../../_bootstrap-tier-keys.js';
 import { DEFAULT_LIST_LIMIT } from '../constants';
 import {
   argBool,
@@ -52,6 +60,62 @@ function addNewsSourceProvenance(value: unknown): unknown {
       sourceProvenance: getSourceProvenanceState(sourceName),
     };
   });
+}
+
+function projectChinaMacroForMcp(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const macro = value as Record<string, unknown>;
+  const generatedAt = typeof macro.generatedAt === 'string' ? macro.generatedAt : '';
+  const rawObservations = Array.isArray(macro.observations) ? macro.observations : [];
+  const observations = normalizeChinaMacroObservations(rawObservations, Date.now(), generatedAt);
+  const decisions = normalizeChinaMacroPreflight(
+    Array.isArray(macro.sourceDecisions) ? macro.sourceDecisions : [],
+    generatedAt,
+  );
+  if (
+    macro.countryCode !== 'CN'
+    || observations === null
+    || decisions === null
+    || !validateChinaMacroAvailabilityBindings(rawObservations, decisions)
+  ) return null;
+
+  const launchReady = macro.launchReady === true && CHINA_MACRO_REQUIRED_SERIES.every(
+    (seriesId) => observations.some((observation) => (
+      observation.id === seriesId
+      && observation.hasValue
+      && !observation.stale
+      && observation.unavailableReason === ''
+      && observation.transportStatus === 'fresh'
+    )),
+  );
+  const degraded = observations.some((observation) => (
+    !observation.hasValue
+    || observation.stale
+    || observation.unavailableReason !== ''
+    || observation.transportStatus !== 'fresh'
+  )) || decisions.some((decision) => decision.status !== 'accepted');
+
+  // Keep the existing unversioned MCP contract stable. The raw v2 snapshot
+  // contains an immutable vintage ledger and full provenance payloads; exposing
+  // those here would both break `indicators` clients and grow without a useful
+  // bound. A separately versioned MCP tool can expose that ledger later.
+  return {
+    countryCode: 'CN',
+    launchReady,
+    status: launchReady && !degraded ? 'ready' : 'degraded',
+    indicators: observations.map((observation) => ({
+      id: observation.id,
+      label: observation.label,
+      category: observation.category,
+      value: observation.hasValue ? observation.value : null,
+      priorValue: observation.hasPriorValue ? observation.priorValue : null,
+      unit: observation.unit,
+      observationDate: observation.observationDate,
+      source: observation.source,
+      stale: observation.stale,
+      unavailableReason: observation.unavailableReason,
+    })),
+  };
 }
 
 export const CACHE_TOOLS: ToolDef[] = [
@@ -679,7 +743,8 @@ export const CACHE_TOOLS: ToolDef[] = [
           indicators: { type: 'array', items: { type: 'object', properties: {
             id: { type: 'string' }, label: { type: 'string' }, category: { type: 'string' },
             value: { type: ['number', 'null'] }, priorValue: { type: ['number', 'null'] }, unit: { type: 'string' },
-            observationDate: { type: 'string' }, source: { type: 'string' }, stale: { type: 'boolean' }, unavailableReason: { type: 'string' },
+            observationDate: { type: 'string' }, source: { type: 'string' },
+            stale: { type: 'boolean' }, unavailableReason: { type: 'string' },
           } } },
         },
       },
@@ -719,6 +784,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
+      data['china-macro'] = projectChinaMacroForMcp(data['china-macro']);
       const countries = argStrList(params.country);
       const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       if (countries.length > 0) {
@@ -739,8 +805,8 @@ export const CACHE_TOOLS: ToolDef[] = [
     _cacheKeys: [
       'economic:fred:v1:FEDFUNDS:0',
       'economic:econ-calendar:v1',
-      'economic:china:macro:v1',
-      'economic:china:release-calendar:v1',
+      BOOTSTRAP_CACHE_KEYS.chinaMacro,
+      BOOTSTRAP_CACHE_KEYS.chinaReleaseCalendar,
       'economic:fuel-prices:v1',
       'economic:ecb-fx-rates:v1',
       'economic:yield-curve-eu:v1',
@@ -751,11 +817,15 @@ export const CACHE_TOOLS: ToolDef[] = [
       'economic:bis:property-residential:v1',
       'economic:bis:property-commercial:v1',
     ],
+    _cacheLabels: {
+      [BOOTSTRAP_CACHE_KEYS.chinaMacro]: 'china-macro',
+      [BOOTSTRAP_CACHE_KEYS.chinaReleaseCalendar]: 'china-release-calendar',
+    },
     _seedMetaKey: 'seed-meta:economic:econ-calendar',
     _maxStaleMin: 1440,
     _freshnessChecks: [
       { key: 'seed-meta:economic:econ-calendar', maxStaleMin: 1440 },
-      { key: 'seed-meta:economic:china-macro', maxStaleMin: 4320 },
+      { key: 'seed-meta:economic:china-macro-transport', maxStaleMin: 4320 },
       { key: 'seed-meta:economic:china-release-calendar', maxStaleMin: 4320 },
       // Per-dataset BIS seed-meta keys — the aggregate
       // `seed-meta:economic:bis-extended` would report "fresh" even if only

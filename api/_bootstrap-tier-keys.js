@@ -31,7 +31,7 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
   imfGrowth: 'economic:imf:growth:v1',
   imfLabor: 'economic:imf:labor:v1',
   imfExternal: 'economic:imf:external:v1',
-  chinaMacro: 'economic:china:macro:v1',
+  chinaMacro: 'economic:china:macro:v2',
   chinaReleaseCalendar: 'economic:china:release-calendar:v1',
   chinaPolicyEvents: 'china:policy-events:v1',
   shippingRates: 'supply_chain:shipping:v2',

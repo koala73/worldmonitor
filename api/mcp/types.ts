@@ -136,6 +136,9 @@ export interface FreshnessCheck {
 // Cache-read tool: reads one or more Redis keys and returns them with staleness info.
 export interface CacheToolDef extends BaseToolDef {
   _cacheKeys: string[];
+  // Explicit output labels for keys whose last informative segment is too
+  // generic (for example economic:china:macro:v2 -> "china-macro").
+  _cacheLabels?: Record<string, string>;
   _seedMetaKey: string;
   _maxStaleMin: number;
   _freshnessChecks?: FreshnessCheck[];

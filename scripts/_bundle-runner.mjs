@@ -64,18 +64,22 @@ async function readRedisKey(key) {
  * values have no `_seed` field and pass through as `data` unchanged. When PR 2
  * migrates bundles to `canonicalKey`, this function starts reading envelopes.
  */
-async function readSectionFreshness(section) {
+export async function readSectionFreshness(section, readKey = readRedisKey) {
   // Try the envelope path first when a canonicalKey is declared. If the canonical
   // key isn't yet written as an envelope (PR 2 writer migration lagging reader
   // migration, or a legacy payload still present), fall through to the legacy
   // seed-meta read so the bundle doesn't over-run during the transition.
   if (section.canonicalKey) {
-    const raw = await readRedisKey(section.canonicalKey);
+    const raw = await readKey(section.canonicalKey);
     const { _seed } = unwrapEnvelope(raw);
     if (_seed?.fetchedAt) return { fetchedAt: _seed.fetchedAt };
+    // Version migrations can opt out of the legacy seed-meta fallback. A
+    // fresh meta entry for the old version must never suppress the first
+    // publish of a newly required canonical envelope.
+    if (section.requireCanonical) return null;
   }
   if (section.seedMetaKey) {
-    const raw = await readRedisKey(`seed-meta:${section.seedMetaKey}`);
+    const raw = await readKey(`seed-meta:${section.seedMetaKey}`);
     // Legacy seed-meta is `{ fetchedAt, recordCount, sourceVersion }` at top
     // level. It has no `_seed` wrapper so unwrapEnvelope returns it as data.
     const meta = unwrapEnvelope(raw).data;
@@ -201,6 +205,7 @@ function spawnSeed(scriptPath, { timeoutMs, label, bundleStartedAtMs }) {
  *   script: string,
  *   seedMetaKey?: string,    // legacy (pre-contract); reads `seed-meta:<key>`
  *   canonicalKey?: string,   // PR 2+: reads envelope from the canonical data key
+ *   requireCanonical?: boolean, // do not fall back to legacy meta when canonical is absent
  *   intervalMs: number,
  *   timeoutMs?: number,
  *   dependsOn?: string[],    // labels that MUST run earlier in the array

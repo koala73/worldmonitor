@@ -1,3 +1,5 @@
+import { BOOTSTRAP_CACHE_KEYS } from '../../shared/bootstrap-tier-keys.js';
+
 // ── Story persistence tracking keys (E3) ─────────────────────────────────────
 // Hash: firstSeen, lastSeen, mentionCount, currentScore,
 //       title, link, severity, lang, description, publishedAt,
@@ -83,8 +85,8 @@ export const CLIMATE_OCEAN_ICE_KEY = 'climate:ocean-ice:v1';
 export const CLIMATE_NEWS_KEY = 'climate:news-intelligence:v1';
 export const HEALTH_AIR_QUALITY_KEY = 'health:air-quality:v1';
 export const CHINA_COVERAGE_HEALTH_KEY = 'health:china-coverage:v1';
-export const CHINA_MACRO_KEY = 'economic:china:macro:v1';
-export const CHINA_RELEASE_CALENDAR_KEY = 'economic:china:release-calendar:v1';
+export const CHINA_MACRO_KEY = BOOTSTRAP_CACHE_KEYS.chinaMacro;
+export const CHINA_RELEASE_CALENDAR_KEY = BOOTSTRAP_CACHE_KEYS.chinaReleaseCalendar;
 
 export const ENERGY_MIX_KEY_PREFIX = 'energy:mix:v1:';
 export const ENERGY_EXPOSURE_INDEX_KEY = 'energy:exposure:v1:index';

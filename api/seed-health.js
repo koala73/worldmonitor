@@ -93,7 +93,7 @@ const SEED_DOMAINS = {
   'economic:worldbank-progress':      { key: 'seed-meta:economic:worldbank-progress:v1',     intervalMin: 5040 },
   'economic:worldbank-renewable':     { key: 'seed-meta:economic:worldbank-renewable:v1',    intervalMin: 5040 },
   'economic:bis-extended':    { key: 'seed-meta:economic:bis-extended',    intervalMin: 720 }, // 12h Railway cron; "seeder ran" aggregate — per-dataset freshness lives below
-  'economic:china-macro':     { key: 'seed-meta:economic:china-macro',     intervalMin: 2160 },
+  'economic:china-macro':     { key: 'seed-meta:economic:china-macro-transport', intervalMin: 2160 },
   'economic:china-release-calendar': { key: 'seed-meta:economic:china-release-calendar', intervalMin: 2160 },
   'china:policy-events':      { key: 'seed-meta:china:policy-events',      intervalMin: 360 },
   'economic:bis-dsr':                  { key: 'seed-meta:economic:bis-dsr',                  intervalMin: 720 }, // 12h cron; only written when DSR slice fetched fresh entries

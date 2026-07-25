@@ -11,6 +11,7 @@ import {
   proReq,
   callBody,
 } from './helpers/mcp-pro-deps.mjs';
+import { buildOfficialChinaMacroFixture } from './helpers/china-macro-fixture.mjs';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -443,6 +444,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       assert.ok(tool.description, 'tool.description must be present');
       assert.ok(tool.inputSchema, 'tool.inputSchema must be present');
       assert.ok(!('_cacheKeys' in tool), 'Internal _cacheKeys must not be exposed in tools/list');
+      assert.ok(!('_cacheLabels' in tool), 'Internal _cacheLabels must not be exposed in tools/list');
       assert.ok(!('_execute' in tool), 'Internal _execute must not be exposed in tools/list');
       assert.ok(!('_coverageKeys' in tool), 'Internal _coverageKeys must not be exposed in tools/list');
       assert.ok(!('_apiPaths' in tool), 'Internal _apiPaths must not be exposed in tools/list (Tier-4 parity)');
@@ -1047,6 +1049,56 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const out = await callTool('get_market_data', { asset_class: ['crypto'] });
     assert.ok(out.data.crypto, 'asset_class crypto → crypto slice kept');
     assert.ok(!('stocks-bootstrap' in out.data), 'asset_class crypto → stocks slice dropped');
+  });
+
+  it('get_economic_data: China v2 aliases, dataset filter, country filter, and schema stay aligned', async () => {
+    const macro = await buildOfficialChinaMacroFixture();
+    const releaseCalendar = {
+      events: [{ countryCode: 'CN', event: 'NBS release' }],
+    };
+    const meta = {
+      'seed-meta:economic:china-macro-transport': {
+        fetchedAt: Date.now() - 60_000,
+        recordCount: 5,
+      },
+      'seed-meta:economic:china-release-calendar': {
+        fetchedAt: Date.now() - 60_000,
+        recordCount: 1,
+      },
+    };
+    mockCacheKeys({
+      'economic:china:macro:v2': macro,
+      'economic:china:release-calendar:v1': releaseCalendar,
+    }, meta);
+    const selected = await callTool('get_economic_data', { dataset: ['china-macro'] });
+    assert.deepEqual(Object.keys(selected.data), ['china-macro']);
+    assert.equal(selected.data['china-macro'].indicators.length, 12);
+    assert.equal(
+      selected.data['china-macro'].indicators[0].id,
+      'nbs_industrial_value_added_yoy',
+    );
+    assert.ok(!('observations' in selected.data['china-macro']));
+    assert.ok(
+      JSON.stringify(selected.data['china-macro']).length < 20_000,
+      'legacy current-indicator projection must not grow with the v2 vintage ledger',
+    );
+    assert.ok(!('macro' in selected.data), 'generic key-derived alias must not leak');
+
+    mockCacheKeys({
+      'economic:china:macro:v2': macro,
+      'economic:china:release-calendar:v1': releaseCalendar,
+    }, meta);
+    const excluded = await callTool('get_economic_data', { country: 'US' });
+    assert.equal(excluded.data['china-macro'], null);
+    assert.ok(!('macro' in excluded.data), 'country filter must not leave the real payload under a hidden alias');
+
+    const tools = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 702, method: 'tools/list', params: {},
+    })).then((response) => response.json());
+    const economic = tools.result.tools.find((tool) => tool.name === 'get_economic_data');
+    const chinaSchema = economic.outputSchema.properties.data.properties['china-macro'];
+    assert.ok(chinaSchema.properties.indicators);
+    assert.ok(!chinaSchema.properties.observations);
   });
 
   it('get_country_macro: countries filter narrows the ISO2-keyed maps', async () => {

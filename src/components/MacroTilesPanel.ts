@@ -1,6 +1,4 @@
 import type {
-  ChinaMacroIndicator,
-  ChinaReleaseEvent,
   EconomicServiceClient,
   GetChinaMacroSnapshotResponse,
 } from '@/generated/client/worldmonitor/economic/v1/service_client';
@@ -10,6 +8,12 @@ import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { getEurostatCountryData } from '@/services/economic';
 import type { GetEurostatCountryDataResponse } from '@/services/economic';
 import { getHydratedData } from '@/services/bootstrap';
+import {
+  chinaTileHtml,
+  hasChinaMacroData,
+  isChinaLaunchReady,
+  normalizeHydratedChina,
+} from './macro-tiles-china';
 
 let _client: EconomicServiceClient | null = null;
 async function getEconomicClient(): Promise<EconomicServiceClient> {
@@ -82,120 +86,6 @@ function tileHtml(tile: MacroTile): string {
     ${deltaStr ? `<div style="font-size:11px;color:${color}">${escapeHtml(deltaStr)}</div>` : ''}
     <div style="font-size:10px;color:var(--text-dim)">${escapeHtml(tile.date)}</div>
   </div>`;
-}
-
-function chinaValueFmt(indicator: ChinaMacroIndicator, value: number): string {
-  if (indicator.unit === '%') return pctFmt(value);
-  if (indicator.unit === 'index') return value.toFixed(2);
-  if (indicator.unit.includes('per')) return value.toFixed(4);
-  return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}${indicator.unit ? ` ${indicator.unit}` : ''}`;
-}
-
-function chinaTileHtml(indicator: ChinaMacroIndicator): string {
-  const available = indicator.hasValue && Number.isFinite(indicator.value);
-  const value = available ? escapeHtml(chinaValueFmt(indicator, indicator.value)) : 'N/A';
-  const delta = available && indicator.hasPriorValue && Number.isFinite(indicator.priorValue)
-    ? indicator.value - indicator.priorValue
-    : null;
-  const deltaText = delta === null ? '' : `${delta >= 0 ? '+' : ''}${chinaValueFmt(indicator, delta)} vs prior`;
-  const state = indicator.stale ? 'STALE' : (indicator.unavailableReason || (available ? 'LIVE' : 'UNAVAILABLE'));
-  const stateColor = indicator.stale
-    ? '#f39c12'
-    : (indicator.unavailableReason || !available ? '#e74c3c' : '#27ae60');
-  const observed = indicator.observationDate || 'No observation date';
-  const source = indicator.source || 'Source unavailable';
-
-  return `<div style="background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:6px;padding:14px 12px;display:flex;flex-direction:column;gap:4px;min-width:0">
-    <div style="display:flex;justify-content:space-between;gap:6px;align-items:flex-start">
-      <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.07em">${escapeHtml(indicator.label)}</div>
-      <span style="font-size:9px;color:${stateColor};font-weight:600">${escapeHtml(state.replace(/_/g, ' '))}</span>
-    </div>
-    <div style="font-size:28px;font-weight:700;color:var(--text);line-height:1.1;font-variant-numeric:tabular-nums">${value}</div>
-    ${deltaText ? `<div style="font-size:11px;color:var(--text-dim)">${escapeHtml(deltaText)}</div>` : ''}
-    <div style="font-size:10px;color:var(--text-dim)">Observed ${escapeHtml(observed)}</div>
-    <div style="font-size:9px;color:var(--text-dim);overflow-wrap:anywhere">Source: ${escapeHtml(source)}</div>
-  </div>`;
-}
-
-function normalizeChinaReleaseEvent(entry: unknown): ChinaReleaseEvent {
-  const event = entry && typeof entry === 'object' && !Array.isArray(entry)
-    ? entry as Record<string, unknown>
-    : {};
-  return {
-    id: String(event.id ?? ''),
-    event: String(event.event ?? ''),
-    countryCode: String(event.countryCode ?? ''),
-    releaseDate: String(event.releaseDate ?? ''),
-    releaseTime: String(event.releaseTime ?? ''),
-    timezone: String(event.timezone ?? ''),
-    kind: String(event.kind ?? ''),
-    status: String(event.status ?? ''),
-    source: String(event.source ?? ''),
-    sourceUrl: String(event.sourceUrl ?? ''),
-  };
-}
-
-function normalizeHydratedChina(
-  macro: unknown,
-  calendar: unknown,
-): GetChinaMacroSnapshotResponse | null {
-  if (!macro || typeof macro !== 'object') return null;
-  if (!calendar || typeof calendar !== 'object') return null;
-  const raw = macro as Record<string, unknown>;
-  const indicators = Array.isArray(raw.indicators)
-    ? raw.indicators.map((entry) => {
-      const indicator = entry as Record<string, unknown>;
-      const value = typeof indicator.value === 'number' ? indicator.value : 0;
-      const priorValue = typeof indicator.priorValue === 'number' ? indicator.priorValue : 0;
-      return {
-        id: String(indicator.id ?? ''),
-        label: String(indicator.label ?? ''),
-        category: String(indicator.category ?? ''),
-        value,
-        hasValue: typeof indicator.value === 'number' && Number.isFinite(indicator.value),
-        priorValue,
-        hasPriorValue: typeof indicator.priorValue === 'number' && Number.isFinite(indicator.priorValue),
-        unit: String(indicator.unit ?? ''),
-        observationDate: String(indicator.observationDate ?? ''),
-        source: String(indicator.source ?? ''),
-        sourceUrl: String(indicator.sourceUrl ?? ''),
-        stale: indicator.stale === true,
-        unavailableReason: String(indicator.unavailableReason ?? ''),
-        contextOnly: indicator.contextOnly === true,
-      } satisfies ChinaMacroIndicator;
-    })
-    : [];
-  const calendarRecord = calendar as Record<string, unknown>;
-  const releaseEvents = Array.isArray(calendarRecord.events)
-    ? calendarRecord.events.map(normalizeChinaReleaseEvent)
-    : [];
-  if (releaseEvents.length === 0) return null;
-
-  return {
-    countryCode: String(raw.countryCode ?? 'CN'),
-    generatedAt: String(raw.generatedAt ?? ''),
-    status: String(raw.status ?? 'unavailable'),
-    launchReady: raw.launchReady === true,
-    contentObservationDate: String(raw.contentObservationDate ?? ''),
-    latestObservationDate: String(raw.latestObservationDate ?? ''),
-    indicators,
-    sourceDecisions: Array.isArray(raw.sourceDecisions) ? raw.sourceDecisions as GetChinaMacroSnapshotResponse['sourceDecisions'] : [],
-    releaseEvents,
-    unavailable: false,
-  };
-}
-
-const CHINA_REQUIRED_CATEGORIES = ['price', 'activity', 'policy', 'fx'];
-
-function isChinaLaunchReady(snapshot: GetChinaMacroSnapshotResponse | null): boolean {
-  if (snapshot?.launchReady !== true || snapshot.unavailable) return false;
-  return CHINA_REQUIRED_CATEGORIES.every((category) => snapshot.indicators.some((indicator) => (
-    indicator.category === category
-    && indicator.hasValue
-    && Number.isFinite(indicator.value)
-    && !indicator.stale
-    && !indicator.unavailableReason
-  )));
 }
 
 const EU_CORE = ['DE', 'FR', 'IT', 'ES'];
@@ -314,7 +204,7 @@ export class MacroTilesPanel extends Panel {
 
       const hasUs = this._usTiles.some(t => t.value !== null);
       const hasEu = this._eurostat !== null;
-      const hasChina = isChinaLaunchReady(this._china);
+      const hasChina = hasChinaMacroData(this._china);
       if (!hasUs && !hasEu && !hasChina) {
         if (!this._hasData) this.showError('Macro data unavailable', () => void this.fetchData());
         return false;
@@ -355,13 +245,16 @@ export class MacroTilesPanel extends Panel {
   }
 
   private _availableTabs(): Tab[] {
-    return isChinaLaunchReady(this._china) ? ['us', 'eu', 'cn'] : ['us', 'eu'];
+    return hasChinaMacroData(this._china) ? ['us', 'eu', 'cn'] : ['us', 'eu'];
   }
 
   private _buildChinaBody(): string {
-    if (!isChinaLaunchReady(this._china) || !this._china) {
+    if (!hasChinaMacroData(this._china) || !this._china) {
       return '<div style="padding:8px;color:var(--text-dim);font-size:12px">China macro data unavailable</div>';
     }
+    const quality = isChinaLaunchReady(this._china)
+      ? ''
+      : '<div style="margin-bottom:8px;padding:7px 9px;border:1px solid #f39c12;border-radius:5px;color:#f39c12;font-size:10px">Official China macro pulse is degraded; stale or delayed observations remain visible below.</div>';
     const tiles = this._china.indicators.map(chinaTileHtml).join('');
     const today = new Date().toISOString().slice(0, 10);
     const events = this._china.releaseEvents
@@ -374,7 +267,7 @@ export class MacroTilesPanel extends Panel {
           ${events.map((event) => `<div style="display:flex;justify-content:space-between;gap:8px;font-size:10px;color:var(--text-dim);margin-top:3px"><span>${escapeHtml(event.event)}</span><span>${escapeHtml(event.releaseDate)} · ${escapeHtml(event.status)}</span></div>`).join('')}
         </div>`
       : '<div style="margin-top:8px;font-size:10px;color:var(--text-dim)">China release calendar unavailable</div>';
-    return `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">${tiles}</div>${calendar}`;
+    return `${quality}<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px">${tiles}</div>${calendar}`;
   }
 
   private _buildEuBody(): string {

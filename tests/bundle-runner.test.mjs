@@ -7,15 +7,32 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GRACEFUL_FETCH_FAILURE_EXIT_CODE } from '../scripts/_seed-utils.mjs';
+import { readSectionFreshness } from '../scripts/_bundle-runner.mjs';
 
 const SCRIPTS_DIR = fileURLToPath(new URL('../scripts/', import.meta.url));
 
+test('requireCanonical ignores fresh legacy meta when a new canonical envelope is absent', async () => {
+  const reads = [];
+  const freshness = await readSectionFreshness({
+    canonicalKey: 'economic:china:macro:v2',
+    seedMetaKey: 'economic:china-macro',
+    requireCanonical: true,
+  }, async (key) => {
+    reads.push(key);
+    if (key === 'economic:china:macro:v2') return null;
+    return { fetchedAt: Date.now() };
+  });
+  assert.equal(freshness, null);
+  assert.deepEqual(reads, ['economic:china:macro:v2']);
+});
+
 function runBundleWith(sections, opts = {}) {
-  const runPath = join(SCRIPTS_DIR, '_bundle-runner-test-run.mjs');
+  const runPath = join(SCRIPTS_DIR, `_bundle-runner-test-run-${randomUUID()}.mjs`);
   writeFileSync(
     runPath,
     `import { runBundle } from './_bundle-runner.mjs';\nawait runBundle('test', ${JSON.stringify(

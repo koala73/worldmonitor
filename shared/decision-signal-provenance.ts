@@ -438,11 +438,11 @@ function validateRevision(
   if (!Number.isInteger(value.sequence) || Number(value.sequence) < 1) {
     pushIssue(errors, `${path}.sequence`, 'INVALID_VALUE', 'Revision sequence must be a positive integer');
   }
-  if (!['original', 'revised', 'corrected'].includes(String(value.state))) {
+  if (!['preliminary', 'original', 'revised', 'corrected'].includes(String(value.state))) {
     pushIssue(errors, `${path}.state`, 'INVALID_STATUS_VOCABULARY', 'Unknown revision state');
   }
-  if (value.state === 'original' && value.sequence !== 1) {
-    pushIssue(errors, `${path}.sequence`, 'INVALID_LINEAGE', 'Original vintages must use sequence 1');
+  if ((value.state === 'preliminary' || value.state === 'original') && value.sequence !== 1) {
+    pushIssue(errors, `${path}.sequence`, 'INVALID_LINEAGE', 'Preliminary and original vintages must use sequence 1');
   }
   if ((value.state === 'revised' || value.state === 'corrected') && Number(value.sequence) < 2) {
     pushIssue(errors, `${path}.sequence`, 'INVALID_LINEAGE', 'Revised vintages must advance the sequence');

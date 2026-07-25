@@ -78,7 +78,7 @@ export async function executeTool(
       const seg = parts[idx] ?? '';
       if (!NON_LABEL.test(seg)) { label = seg; break; }
     }
-    data[label || (parts[0] ?? key)] = results[i];
+    data[tool._cacheLabels?.[key] || label || (parts[0] ?? key)] = results[i];
   });
 
   // Optional in-memory post-filter (declared per-tool, mirrors that tool's

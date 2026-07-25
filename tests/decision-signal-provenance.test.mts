@@ -38,9 +38,12 @@ interface InvalidFixture {
   expectedCodes: string[];
 }
 
-const positiveFixtures = JSON.parse(
-  readFileSync(join(fixtureRoot, 'positive.json'), 'utf8'),
-) as Fixture[];
+const positiveFixtures = [
+  ...(JSON.parse(readFileSync(join(fixtureRoot, 'positive.json'), 'utf8')) as Fixture[]),
+  JSON.parse(
+    readFileSync(join(fixtureRoot, 'china-macro-official.json'), 'utf8'),
+  ) as Fixture,
+];
 const negativeFixtures = JSON.parse(
   readFileSync(join(fixtureRoot, 'negative.json'), 'utf8'),
 ) as InvalidFixture[];
@@ -114,9 +117,10 @@ describe('decision-signal provenance contract (#5581)', () => {
       'derived_comparison',
     ];
     assert.deepEqual(
-      Object.values(DECISION_SIGNAL_PROVENANCE_FAMILY_DECLARATIONS)
-        .map((declaration) => declaration.kind)
-        .sort(),
+      [...new Set(
+        Object.values(DECISION_SIGNAL_PROVENANCE_FAMILY_DECLARATIONS)
+          .map((declaration) => declaration.kind),
+      )].sort(),
       [...expectedKinds].sort(),
     );
 
@@ -170,7 +174,7 @@ describe('decision-signal provenance contract (#5581)', () => {
   });
 
   it('accepts the positive reference matrix across every supported family', () => {
-    assert.equal(positiveFixtures.length, 7);
+    assert.equal(positiveFixtures.length, 8);
     for (const fixture of positiveFixtures) {
       const value = assertValid(fixture);
       assert.equal(value.familyId, fixture.familyId);
