@@ -7,6 +7,7 @@ import { validateDecisionSignalProvenance } from '../shared/decision-signal-prov
 import {
   CHINA_CORPORATE_DISCLOSURE_KEY,
   DISCLOSURE_TYPES,
+  EMPTY_RESULT_DEGRADE_AFTER,
   OFFICIAL_EXCHANGE_SOURCE_CONTRACTS,
   REVIEWED_DISCLOSURE_ISSUERS,
   buildChinaCorporateDisclosureSnapshot,
@@ -62,6 +63,10 @@ describe('official China corporate disclosures (#5577)', () => {
       assert.equal(contract.documentRetrieval, 'lazy-link-only');
       assert.equal(contract.paginationPolicy, 'bounded_first_page');
       assert.equal(contract.saturationBehavior, 'degraded_on_page_limit');
+      assert.deepEqual(contract.emptyResultPolicy, {
+        degradeAfterConsecutive: EMPTY_RESULT_DEGRADE_AFTER,
+        reason: 'COVERAGE_GAP',
+      });
       assert.match(contract.termsUrl, /^https:/);
       assert.match(contract.termsNote, /metadata|document bodies/i);
       assert.match(contract.robots.status, /^(empty|not_published)$/);
@@ -219,6 +224,159 @@ describe('official China corporate disclosures (#5577)', () => {
     }
   });
 
+  it('attaches unclassifiable revisions when lineage is unique and retains unmatched revisions for audit', () => {
+    const riskAlert = normalizeSseAnnouncements(fixture('sse.json'), { retrievedAt })
+      .find((row) => row.disclosureType === 'exchange_risk_alert');
+    assert.ok(riskAlert);
+    const matchedCorrection = {
+      ...riskAlert,
+      announcementId: '600519_unclassifiable_correction',
+      titleOriginal: '关于事项的更正公告',
+      documentUrl: 'https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-07-21/600519_unclassifiable_correction.pdf',
+      publicationTime: { value: '2026-07-21', precision: 'day' as const },
+      retrievalTime: '2026-07-21T18:00:00.000Z',
+      disclosureType: null,
+      revisionState: 'corrected' as const,
+    };
+    const matched = buildChinaCorporateDisclosureSnapshot({
+      generatedAt: retrievedAt,
+      outcomes: [
+        {
+          sourceId: 'sse',
+          ok: true,
+          requestCount: 4,
+          announcements: [riskAlert, matchedCorrection],
+        },
+        { sourceId: 'szse', ok: true, requestCount: 1, announcements: [] },
+      ],
+    });
+    const corrected = matched.events.find(
+      (event) => event.announcementId === matchedCorrection.announcementId,
+    );
+    assert.ok(corrected);
+    assert.equal(corrected.disclosureType, riskAlert.disclosureType);
+    assert.equal(corrected.status, 'corrected');
+    assert.deepEqual(corrected.provenance.claims.classification_confidence, {
+      status: 'known',
+      value: {
+        score: 0.75,
+        method: 'issuer-subject-lineage/v1',
+      },
+    });
+    assert.deepEqual(
+      corrected.history.map((revision) => revision.announcementId),
+      [riskAlert.announcementId, matchedCorrection.announcementId],
+    );
+    const matchedRetained = buildChinaCorporateDisclosureSnapshot({
+      generatedAt: '2026-07-25T10:30:00.000Z',
+      previousSnapshot: matched,
+      outcomes: [
+        { sourceId: 'sse', ok: true, requestCount: 4, announcements: [] },
+        { sourceId: 'szse', ok: true, requestCount: 1, announcements: [] },
+      ],
+    });
+    assert.deepEqual(
+      matchedRetained.events[0].history.map(
+        (revision) => revision.provenance.claims.classification_confidence.value,
+      ),
+      [
+        {
+          score: riskAlert.confidence.classification,
+          method: 'china-exchange-disclosure-title-taxonomy/v1',
+        },
+        {
+          score: 0.75,
+          method: 'issuer-subject-lineage/v1',
+        },
+      ],
+    );
+
+    const matchedCancellation = {
+      ...matchedCorrection,
+      announcementId: '600519_unclassifiable_cancellation',
+      titleOriginal: '关于事项的撤回公告',
+      documentUrl: 'https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-07-22/600519_unclassifiable_cancellation.pdf',
+      publicationTime: { value: '2026-07-22', precision: 'day' as const },
+      retrievalTime: '2026-07-22T18:00:00.000Z',
+      revisionState: 'cancelled' as const,
+    };
+    const cancelled = buildChinaCorporateDisclosureSnapshot({
+      generatedAt: retrievedAt,
+      outcomes: [
+        {
+          sourceId: 'sse',
+          ok: true,
+          requestCount: 4,
+          announcements: [riskAlert, matchedCancellation],
+        },
+        { sourceId: 'szse', ok: true, requestCount: 1, announcements: [] },
+      ],
+    }).events[0];
+    assert.equal(cancelled.status, 'cancelled');
+    assert.equal(cancelled.disclosureType, riskAlert.disclosureType);
+    assert.deepEqual(
+      cancelled.history.at(-1)?.provenance.claims.classification_confidence.value,
+      {
+        score: 0.75,
+        method: 'issuer-subject-lineage/v1',
+      },
+    );
+
+    const unmatchedCorrection = {
+      ...matchedCorrection,
+      announcementId: '600519_unmatched_correction',
+      documentUrl: 'https://www.sse.com.cn/disclosure/listedinfo/announcement/c/new/2026-07-22/600519_unmatched_correction.pdf',
+      publicationTime: { value: '2026-07-22', precision: 'day' as const },
+      retrievalTime: '2026-07-22T18:00:00.000Z',
+      subjectKey: 'unmatched-subject',
+    };
+    const unmatched = buildChinaCorporateDisclosureSnapshot({
+      generatedAt: retrievedAt,
+      outcomes: [
+        {
+          sourceId: 'sse',
+          ok: true,
+          requestCount: 4,
+          announcements: [unmatchedCorrection],
+        },
+        { sourceId: 'szse', ok: true, requestCount: 1, announcements: [] },
+      ],
+    });
+    assert.equal(unmatched.events.length, 0);
+    assert.equal(validateChinaCorporateDisclosureSnapshot(unmatched), true);
+    assert.deepEqual(
+      unmatched.unclassifiedRevisions.map((revision) => ({
+        announcementId: revision.announcementId,
+        revisionState: revision.revisionState,
+        lineage: revision.lineage,
+        decisionCode: revision.decisionCode,
+      })),
+      [{
+        announcementId: unmatchedCorrection.announcementId,
+        revisionState: 'corrected',
+        lineage: {
+          status: 'partial',
+          reason: 'No unique owned-category filing matched this official revision.',
+        },
+        decisionCode: 'UNCLASSIFIED_REVISION',
+      }],
+    );
+
+    const retained = buildChinaCorporateDisclosureSnapshot({
+      generatedAt: '2026-07-25T10:30:00.000Z',
+      previousSnapshot: unmatched,
+      outcomes: [
+        { sourceId: 'sse', ok: true, requestCount: 4, announcements: [] },
+        { sourceId: 'szse', ok: true, requestCount: 1, announcements: [] },
+      ],
+    });
+    assert.equal(retained.unclassifiedRevisions.length, 1);
+    assert.equal(
+      retained.unclassifiedRevisions[0].announcementId,
+      unmatchedCorrection.announcementId,
+    );
+  });
+
   it('bounds revision history, preserves its original and newest vintages, and never invents lineage', () => {
     const sse = normalizeSseAnnouncements(fixture('sse.json'), { retrievedAt });
     const original = sse.find(
@@ -353,6 +511,119 @@ describe('official China corporate disclosures (#5577)', () => {
     assert.equal(validateChinaCorporateDisclosureSnapshot(totalOutage), false);
   });
 
+  it('degrades consecutive empty source results and resets the counter after observed disclosures', async () => {
+    assert.equal(EMPTY_RESULT_DEGRADE_AFTER, 3);
+    const emptyOutcomes = [
+      { sourceId: 'sse', ok: true, transportOk: true, requestCount: 4, announcements: [] },
+      { sourceId: 'szse', ok: true, transportOk: true, requestCount: 1, announcements: [] },
+    ];
+    const first = buildChinaCorporateDisclosureSnapshot({
+      generatedAt: retrievedAt,
+      outcomes: emptyOutcomes,
+    });
+    const second = buildChinaCorporateDisclosureSnapshot({
+      generatedAt: '2026-07-25T10:30:00.000Z',
+      previousSnapshot: first,
+      outcomes: emptyOutcomes,
+    });
+    assert.equal(first.status, 'healthy');
+    assert.equal(second.status, 'healthy');
+    assert.deepEqual(
+      first.sources.filter((source) => source.launchStatus === 'launched')
+        .map((source) => source.emptyResultCount),
+      [1, 1],
+    );
+    assert.deepEqual(
+      second.sources.filter((source) => source.launchStatus === 'launched')
+        .map((source) => source.emptyResultCount),
+      [2, 2],
+    );
+
+    const decisions: Array<{
+      sourceId: string;
+      status: string;
+      reason?: string;
+      emptyResultCount?: number;
+    }> = [];
+    const third = await fetchChinaCorporateDisclosureSnapshot({
+      now: Date.parse('2026-07-25T11:00:00.000Z'),
+      previousSnapshot: second,
+      onDecision: (decision) => decisions.push(decision),
+      fetchFn: async (input) => {
+        const url = String(input);
+        if (url.includes('query.sse.com.cn')) {
+          return new Response(JSON.stringify({
+            pageHelp: { pageNo: 1, pageSize: 25, total: 0 },
+            result: [],
+          }), { status: 200 });
+        }
+        return new Response(JSON.stringify({ announceCount: 0, data: [] }), { status: 200 });
+      },
+    });
+    assert.equal(third.status, 'degraded');
+    assert.equal(third.coverageThrough, null);
+    assert.deepEqual(
+      third.sources.filter((source) => source.launchStatus === 'launched')
+        .map((source) => ({
+          contentStatus: source.contentStatus,
+          errorCode: source.errorCode,
+          emptyResultCount: source.emptyResultCount,
+        })),
+      [
+        { contentStatus: 'partial', errorCode: 'COVERAGE_GAP', emptyResultCount: 3 },
+        { contentStatus: 'partial', errorCode: 'COVERAGE_GAP', emptyResultCount: 3 },
+      ],
+    );
+    assert.deepEqual(
+      decisions.filter((decision) => decision.sourceId !== 'hkex')
+        .map((decision) => ({
+          sourceId: decision.sourceId,
+          status: decision.status,
+          reason: decision.reason,
+          emptyResultCount: decision.emptyResultCount,
+        })),
+      [
+        { sourceId: 'sse', status: 'degraded', reason: 'COVERAGE_GAP', emptyResultCount: 3 },
+        { sourceId: 'szse', status: 'degraded', reason: 'COVERAGE_GAP', emptyResultCount: 3 },
+      ],
+    );
+
+    const recovered = buildChinaCorporateDisclosureSnapshot({
+      generatedAt: '2026-07-25T11:30:00.000Z',
+      previousSnapshot: third,
+      outcomes: [
+        {
+          sourceId: 'sse',
+          ok: true,
+          transportOk: true,
+          requestCount: 4,
+          announcements: normalizeSseAnnouncements(fixture('sse.json'), { retrievedAt }),
+        },
+        {
+          sourceId: 'szse',
+          ok: true,
+          transportOk: true,
+          requestCount: 1,
+          announcements: normalizeSzseAnnouncements(fixture('szse.json'), { retrievedAt }),
+        },
+      ],
+    });
+    assert.equal(recovered.status, 'healthy');
+    assert.equal(recovered.coverageThrough, '2026-07-25');
+    assert.deepEqual(
+      recovered.sources.filter((source) => source.launchStatus === 'launched')
+        .map((source) => ({
+          contentStatus: source.contentStatus,
+          errorCode: source.errorCode,
+          emptyResultCount: source.emptyResultCount,
+        })),
+      [
+        { contentStatus: 'current', errorCode: null, emptyResultCount: 0 },
+        { contentStatus: 'current', errorCode: null, emptyResultCount: 0 },
+      ],
+    );
+  });
+
   it('enforces response bounds and the exact metadata request budget', async () => {
     await assert.rejects(
       () => readBoundedJsonResponse(
@@ -473,6 +744,56 @@ describe('official China corporate disclosures (#5577)', () => {
     );
     assert.throws(
       () => normalizeSzseAnnouncements({ announceCount: 0 }, { retrievedAt }),
+      /MALFORMED_RESPONSE/,
+    );
+    assert.throws(
+      () => normalizeSseAnnouncements({
+        pageHelp: { total: 1 },
+        result: [{
+          SECURITY_CODE: '600519',
+          TITLE: '',
+          URL: '/disclosure/listedinfo/announcement/c/new/2026-07-25/malformed.pdf',
+          SSEDATE: '2026-07-25',
+        }],
+      }, { retrievedAt }),
+      /MALFORMED_RESPONSE/,
+    );
+    assert.throws(
+      () => normalizeSseAnnouncements({
+        pageHelp: { total: 1 },
+        result: [{
+          SECURITY_CODE: '600519',
+          TITLE: '贵州茅台关于股票交易异常波动的风险提示公告',
+          URL: '',
+          SSEDATE: '2026-07-25',
+        }],
+      }, { retrievedAt }),
+      /MALFORMED_RESPONSE/,
+    );
+    assert.throws(
+      () => normalizeSzseAnnouncements({
+        announceCount: 1,
+        data: [{
+          secCode: ['300750'],
+          annId: 'malformed',
+          title: '',
+          attachPath: '/disc/2026-07-25/malformed.pdf',
+          publishTime: '2026-07-25',
+        }],
+      }, { retrievedAt }),
+      /MALFORMED_RESPONSE/,
+    );
+    assert.throws(
+      () => normalizeSzseAnnouncements({
+        announceCount: 1,
+        data: [{
+          secCode: ['300750'],
+          annId: 'malformed',
+          title: '宁德时代关于股票交易异常波动的风险提示公告',
+          attachPath: '',
+          publishTime: '2026-07-25',
+        }],
+      }, { retrievedAt }),
       /MALFORMED_RESPONSE/,
     );
 

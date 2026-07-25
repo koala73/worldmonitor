@@ -19,6 +19,7 @@ export function validateChinaCorporateDisclosureSnapshot(snapshot) {
     || !['healthy', 'degraded'].includes(snapshot?.status)
     || !Array.isArray(snapshot?.events)
     || !Array.isArray(snapshot?.sources)
+    || !Array.isArray(snapshot?.unclassifiedRevisions)
   ) {
     return false;
   }
@@ -29,6 +30,11 @@ export function validateChinaCorporateDisclosureSnapshot(snapshot) {
 export function chinaCorporateDisclosureContentMeta(snapshot) {
   const tokens = (Array.isArray(snapshot?.events) ? snapshot.events : [])
     .map((event) => event?.publicationTime?.value);
+  for (const revision of Array.isArray(snapshot?.unclassifiedRevisions)
+    ? snapshot.unclassifiedRevisions
+    : []) {
+    tokens.push(revision?.publicationTime?.value);
+  }
   // A successful official query establishes the quiet window's content-as-of
   // time even when it returns no owned-category events. Failed sources retain
   // only their prior lastSuccessAt, so their content age still advances.

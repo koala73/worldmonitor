@@ -6,6 +6,7 @@ import {
 export const CHINA_CORPORATE_DISCLOSURE_KEY = 'market:china:corporate-disclosures:v1';
 
 export const DISCLOSURE_TYPES = CHINA_CORPORATE_DISCLOSURE_TYPES;
+export const EMPTY_RESULT_DEGRADE_AFTER = 3;
 
 export const REVIEWED_DISCLOSURE_ISSUERS = Object.freeze([
   { id: 'issuer:sse:600519', exchange: 'SSE', securityCode: '600519', symbol: '600519.SS', name: 'Kweichow Moutai', nameOriginal: '贵州茅台', mappingConfidence: 1 },
@@ -38,6 +39,10 @@ export const OFFICIAL_EXCHANGE_SOURCE_CONTRACTS = Object.freeze({
     // through PAGE_LIMIT_REACHED until the 90-day query window falls below it.
     paginationPolicy: 'bounded_first_page',
     saturationBehavior: 'degraded_on_page_limit',
+    emptyResultPolicy: Object.freeze({
+      degradeAfterConsecutive: EMPTY_RESULT_DEGRADE_AFTER,
+      reason: 'COVERAGE_GAP',
+    }),
     launchStatus: 'launched',
     admissionDecision: 'admitted_metadata_only',
     termsUrl: 'https://www.sse.com.cn/home/legal/',
@@ -69,6 +74,10 @@ export const OFFICIAL_EXCHANGE_SOURCE_CONTRACTS = Object.freeze({
     // state, not permission to expand the source request budget automatically.
     paginationPolicy: 'bounded_first_page',
     saturationBehavior: 'degraded_on_page_limit',
+    emptyResultPolicy: Object.freeze({
+      degradeAfterConsecutive: EMPTY_RESULT_DEGRADE_AFTER,
+      reason: 'COVERAGE_GAP',
+    }),
     launchStatus: 'launched',
     admissionDecision: 'admitted_metadata_only',
     termsUrl: 'https://www.szse.cn/application/laws/',
@@ -126,6 +135,7 @@ const CLASSIFICATION_PATTERNS = Object.freeze([
 const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_EVENTS = 100;
 const MAX_REVISIONS_PER_EVENT = 20;
+const MAX_UNCLASSIFIED_REVISIONS = 100;
 const SSE_PAGE_SIZE = 25;
 const SZSE_PAGE_SIZE = 50;
 const LAUNCHED_SOURCE_FETCHERS = Object.freeze([
@@ -509,6 +519,8 @@ function previousAnnouncements(snapshot) {
   for (const event of Array.isArray(snapshot?.events) ? snapshot.events : []) {
     for (const revision of Array.isArray(event?.history) ? event.history : []) {
       const revisionSequence = Number(revision?.provenance?.claims?.revision?.value?.sequence);
+      const classification = revision?.provenance?.claims?.classification_confidence?.value;
+      const extraction = revision?.provenance?.claims?.extraction_confidence?.value;
       announcements.push({
         eventGroupId: event.id,
         historyTruncated: event.historyTruncated === true,
@@ -527,14 +539,45 @@ function previousAnnouncements(snapshot) {
         publicationTime: revision.publicationTime,
         retrievalTime: revision.retrievalTime,
         effectiveTime: event.effectiveTime,
-        confidence: event.confidence,
+        confidence: {
+          ...event.confidence,
+          ...(Number.isFinite(classification?.score)
+            ? { classification: classification.score }
+            : {}),
+          ...(Number.isFinite(extraction?.score)
+            ? { extraction: extraction.score }
+            : {}),
+        },
+        ...(typeof classification?.method === 'string'
+          ? { classificationMethod: classification.method }
+          : {}),
         ...(Number.isInteger(revisionSequence) && revisionSequence > 0
           ? { revisionSequence }
           : {}),
       });
     }
   }
+  for (const revision of Array.isArray(snapshot?.unclassifiedRevisions)
+    ? snapshot.unclassifiedRevisions
+    : []) {
+    announcements.push({
+      ...revision,
+      disclosureType: null,
+    });
+  }
   return announcements;
+}
+
+function nextEmptyResultCount(outcome, previous) {
+  const previousCount = Number.isInteger(previous?.emptyResultCount)
+    ? Math.max(0, previous.emptyResultCount)
+    : 0;
+  const transportSucceeded = outcome?.ok === true
+    || (outcome?.partial === true && outcome?.transportOk === true);
+  if (!transportSucceeded) return previousCount;
+  return Array.isArray(outcome.announcements) && outcome.announcements.length > 0
+    ? 0
+    : previousCount + 1;
 }
 
 function sourceStates(outcomes, previousSnapshot, generatedAt) {
@@ -555,22 +598,26 @@ function sourceStates(outcomes, previousSnapshot, generatedAt) {
         checkedAt: generatedAt,
         lastSuccessAt: null,
         requestCount: 0,
+        emptyResultCount: 0,
         errorCode: contract.blockedReason,
       };
     }
     const outcome = outcomeMap.get(id);
     const previous = previousMap.get(id);
+    const emptyResultCount = nextEmptyResultCount(outcome, previous);
+    const coverageGap = emptyResultCount >= EMPTY_RESULT_DEGRADE_AFTER;
     if (outcome?.ok) {
       return {
         id,
         exchange: contract.exchange,
         launchStatus: 'launched',
         transportStatus: 'fresh',
-        contentStatus: 'current',
+        contentStatus: coverageGap ? 'partial' : 'current',
         checkedAt: generatedAt,
         lastSuccessAt: generatedAt,
         requestCount: outcome.requestCount,
-        errorCode: null,
+        emptyResultCount,
+        errorCode: coverageGap ? 'COVERAGE_GAP' : null,
       };
     }
     if (outcome?.partial) {
@@ -584,7 +631,8 @@ function sourceStates(outcomes, previousSnapshot, generatedAt) {
         checkedAt: generatedAt,
         lastSuccessAt: transportSucceeded ? generatedAt : previous?.lastSuccessAt ?? null,
         requestCount: outcome.requestCount,
-        errorCode: outcome.errorCode ?? 'PARTIAL_FETCH',
+        emptyResultCount,
+        errorCode: outcome.errorCode ?? (coverageGap ? 'COVERAGE_GAP' : 'PARTIAL_FETCH'),
       };
     }
     return {
@@ -596,6 +644,7 @@ function sourceStates(outcomes, previousSnapshot, generatedAt) {
       checkedAt: generatedAt,
       lastSuccessAt: previous?.lastSuccessAt ?? null,
       requestCount: outcome?.requestCount ?? 0,
+      emptyResultCount,
       errorCode: outcome?.errorCode ?? 'NOT_ATTEMPTED',
     };
   });
@@ -692,7 +741,8 @@ function buildProvenance(
       }),
       classification_confidence: known({
         score: revision.confidence.classification,
-        method: 'china-exchange-disclosure-title-taxonomy/v1',
+        method: revision.classificationMethod
+          ?? 'china-exchange-disclosure-title-taxonomy/v1',
       }),
       corroboration: unavailable('unknown', 'News may corroborate this event but never substitutes for the official exchange record.'),
       transport_freshness: known(transportValue),
@@ -710,12 +760,14 @@ function buildEvents(announcements, sources, generatedAt) {
   const sourceMap = new Map(sources.map((source) => [source.id, source]));
   const deduped = new Map();
   for (const announcement of announcements) {
-    if (!announcement?.disclosureType || !announcement?.announcementId) continue;
+    if (!announcement?.announcementId) continue;
+    if (!announcement.disclosureType && announcement.revisionState === 'original') continue;
     const key = `${announcement.exchange}:${announcement.announcementId}`;
     const existing = deduped.get(key);
     deduped.set(key, existing
       ? {
           ...announcement,
+          disclosureType: announcement.disclosureType ?? existing.disclosureType ?? null,
           ...(!announcement.eventGroupId && existing.eventGroupId
             ? { eventGroupId: existing.eventGroupId }
             : {}),
@@ -733,26 +785,69 @@ function buildEvents(announcements, sources, generatedAt) {
     || left.announcementId.localeCompare(right.announcementId)
   ));
   const groups = new Map();
+  const unclassifiedRevisions = [];
   for (const announcement of ordered) {
-    let key = announcement.eventGroupId;
-    if (!key && announcement.revisionState !== 'original') {
+    let revision = announcement;
+    let key = revision.eventGroupId;
+    if (!key && revision.revisionState !== 'original') {
       const candidateKeys = [];
       for (const [candidateKey, revisions] of groups) {
         const latest = revisions.at(-1);
         if (
-          latest.exchange === announcement.exchange
-          && latest.issuer.id === announcement.issuer.id
-          && latest.disclosureType === announcement.disclosureType
-          && latest.subjectKey === announcement.subjectKey
+          latest.exchange === revision.exchange
+          && latest.issuer.id === revision.issuer.id
+          && (!revision.disclosureType || latest.disclosureType === revision.disclosureType)
+          && latest.subjectKey === revision.subjectKey
         ) {
           candidateKeys.push(candidateKey);
         }
       }
-      if (candidateKeys.length === 1) key = candidateKeys[0];
+      if (candidateKeys.length === 1) {
+        key = candidateKeys[0];
+        if (!revision.disclosureType) {
+          const inheritedType = groups.get(key).at(-1).disclosureType;
+          revision = {
+            ...revision,
+            disclosureType: inheritedType,
+            confidence: {
+              ...revision.confidence,
+              classification: Math.min(revision.confidence.classification, 0.75),
+            },
+            classificationMethod: 'issuer-subject-lineage/v1',
+          };
+        }
+      }
     }
-    key ??= `china-disclosure:${announcement.exchange.toLowerCase()}:${announcement.issuer.securityCode}:${announcement.announcementId}`;
+    if (!revision.disclosureType) {
+      unclassifiedRevisions.push({
+        sourceId: revision.sourceId,
+        exchange: revision.exchange,
+        issuer: revision.issuer,
+        announcementId: revision.announcementId,
+        titleOriginal: revision.titleOriginal,
+        subjectKey: revision.subjectKey,
+        revisionState: revision.revisionState,
+        originalLanguage: revision.originalLanguage,
+        translation: revision.translation,
+        documentUrl: revision.documentUrl,
+        metadataUrl: revision.metadataUrl,
+        publicationTime: revision.publicationTime,
+        retrievalTime: revision.retrievalTime,
+        confidence: {
+          ...revision.confidence,
+          classification: 0,
+        },
+        lineage: {
+          status: 'partial',
+          reason: 'No unique owned-category filing matched this official revision.',
+        },
+        decisionCode: 'UNCLASSIFIED_REVISION',
+      });
+      continue;
+    }
+    key ??= `china-disclosure:${revision.exchange.toLowerCase()}:${revision.issuer.securityCode}:${revision.announcementId}`;
     const group = groups.get(key) ?? [];
-    group.push(announcement);
+    group.push(revision);
     groups.set(key, group);
   }
 
@@ -841,12 +936,20 @@ function buildEvents(announcements, sources, generatedAt) {
       provenance: latestHistory.provenance,
     });
   }
-  return events
-    .sort((left, right) => (
-      right.publicationTime.value.localeCompare(left.publicationTime.value)
-      || right.announcementId.localeCompare(left.announcementId)
-    ))
-    .slice(0, MAX_EVENTS);
+  return {
+    events: events
+      .sort((left, right) => (
+        right.publicationTime.value.localeCompare(left.publicationTime.value)
+        || right.announcementId.localeCompare(left.announcementId)
+      ))
+      .slice(0, MAX_EVENTS),
+    unclassifiedRevisions: unclassifiedRevisions
+      .sort((left, right) => (
+        right.publicationTime.value.localeCompare(left.publicationTime.value)
+        || right.announcementId.localeCompare(left.announcementId)
+      ))
+      .slice(0, MAX_UNCLASSIFIED_REVISIONS),
+  };
 }
 
 export function buildChinaCorporateDisclosureSnapshot({
@@ -862,7 +965,7 @@ export function buildChinaCorporateDisclosureSnapshot({
       announcements.push(...outcome.announcements);
     }
   }
-  const events = buildEvents(announcements, sources, checkedAt);
+  const { events, unclassifiedRevisions } = buildEvents(announcements, sources, checkedAt);
   const launched = sources.filter((source) => source.launchStatus === 'launched');
   const usable = launched.filter(
     (source) => source.contentStatus === 'current' || source.contentStatus === 'partial',
@@ -898,9 +1001,11 @@ export function buildChinaCorporateDisclosureSnapshot({
       documentRetrieval: contract.documentRetrieval,
       ...(contract.paginationPolicy ? { paginationPolicy: contract.paginationPolicy } : {}),
       ...(contract.saturationBehavior ? { saturationBehavior: contract.saturationBehavior } : {}),
+      ...(contract.emptyResultPolicy ? { emptyResultPolicy: contract.emptyResultPolicy } : {}),
       ...(contract.blockedReason ? { blockedReason: contract.blockedReason } : {}),
     })),
     events,
+    unclassifiedRevisions,
   };
 }
 
@@ -919,13 +1024,6 @@ export async function fetchChinaCorporateDisclosureSnapshot({
         return fetchFn(input, init);
       }, now);
       outcomes.push(outcome);
-      onDecision({
-        sourceId,
-        status: outcome.ok ? 'accepted' : 'degraded',
-        requestCount: outcome.requestCount,
-        ...(outcome.errorCode ? { reason: outcome.errorCode } : {}),
-        checkedAt: new Date(now).toISOString(),
-      });
     } catch (error) {
       const outcome = {
         sourceId,
@@ -934,19 +1032,28 @@ export async function fetchChinaCorporateDisclosureSnapshot({
         errorCode: errorCodeFor(error),
       };
       outcomes.push(outcome);
-      onDecision({ sourceId, status: 'degraded', requestCount, reason: outcome.errorCode, checkedAt: new Date(now).toISOString() });
     }
   }
-  onDecision({
-    sourceId: 'hkex',
-    status: 'blocked',
-    requestCount: 0,
-    reason: OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.hkex.blockedReason,
-    checkedAt: new Date(now).toISOString(),
-  });
-  return buildChinaCorporateDisclosureSnapshot({
+  const snapshot = buildChinaCorporateDisclosureSnapshot({
     outcomes,
     previousSnapshot,
     generatedAt: new Date(now).toISOString(),
   });
+  for (const source of snapshot.sources) {
+    onDecision({
+      sourceId: source.id,
+      status: source.launchStatus === 'blocked'
+        ? 'blocked'
+        : source.transportStatus === 'fresh' && source.contentStatus === 'current'
+          ? 'accepted'
+          : 'degraded',
+      requestCount: source.requestCount,
+      ...(source.errorCode ? { reason: source.errorCode } : {}),
+      ...(source.launchStatus === 'launched'
+        ? { emptyResultCount: source.emptyResultCount }
+        : {}),
+      checkedAt: source.checkedAt,
+    });
+  }
+  return snapshot;
 }
