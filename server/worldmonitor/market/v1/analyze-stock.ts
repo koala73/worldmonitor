@@ -135,6 +135,7 @@ type YahooQuoteSummaryResponse = {
         trend?: YahooRecommendationEntry[];
       };
       financialData?: {
+        financialCurrency?: string;
         targetHighPrice?: { raw?: number };
         targetLowPrice?: { raw?: number };
         targetMeanPrice?: { raw?: number };
@@ -177,6 +178,7 @@ export type StockFundamentals = {
   totalDebt?: number;
   freeCashflow?: number;
   ebitda?: number;
+  financialCurrency?: string;
 };
 
 export type AnalystData = {
@@ -777,6 +779,18 @@ function optionalFinite(field: { raw?: number } | undefined): number | undefined
   return typeof raw === 'number' && Number.isFinite(raw) ? raw : undefined;
 }
 
+function optionalYahooDebtToEquity(field: { raw?: number } | undefined): number | undefined {
+  const raw = optionalFinite(field);
+  // Yahoo expresses this field in percentage points (150 means 1.5x).
+  return raw === undefined ? undefined : raw / 100;
+}
+
+function optionalFinancialCurrency(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(normalized) ? normalized : undefined;
+}
+
 const EMPTY_ANALYST_DATA: AnalystData = {
   analystConsensus: { strongBuy: 0, buy: 0, hold: 0, sell: 0, strongSell: 0, total: 0, period: '' },
   priceTarget: { numberOfAnalysts: 0 },
@@ -842,11 +856,12 @@ export async function fetchYahooAnalystData(symbol: string): Promise<AnalystData
       returnOnAssets: optionalFinite(fd.returnOnAssets),
       revenueGrowth: optionalFinite(fd.revenueGrowth),
       earningsGrowth: optionalFinite(fd.earningsGrowth),
-      debtToEquity: optionalFinite(fd.debtToEquity),
+      debtToEquity: optionalYahooDebtToEquity(fd.debtToEquity),
       totalCash: optionalFinite(fd.totalCash),
       totalDebt: optionalFinite(fd.totalDebt),
       freeCashflow: optionalFinite(fd.freeCashflow),
       ebitda: optionalFinite(fd.ebitda),
+      financialCurrency: optionalFinancialCurrency(fd.financialCurrency),
     } : {};
 
     return { analystConsensus, priceTarget, recentUpgrades, fundamentals };
@@ -1203,7 +1218,7 @@ async function buildAiOverlay(
     messages: [
       {
         role: 'system',
-        content: 'You are a disciplined stock analyst. Weigh the fundamentals (profitability, returns on equity/assets, revenue/earnings growth, leverage) alongside the technicals and news — do not judge on price action alone. Return strict JSON only with keys: summary, action, confidence, whyNow, technicalSummary, newsSummary, bullishFactors, riskFactors. Keep it concise, factual, and free of disclaimers.',
+        content: 'You are a disciplined stock analyst. Weigh the fundamentals alongside the technicals and news — do not judge on price action alone. All margin, return, growth, and debtToEquity values are decimal ratios (0.25 means 25%; debtToEquity 1.5 means debt is 1.5x equity). totalCash, totalDebt, freeCashflow, and ebitda are denominated in fundamentals.financialCurrency. Treat missing values as unknown. Return strict JSON only with keys: summary, action, confidence, whyNow, technicalSummary, newsSummary, bullishFactors, riskFactors. Keep it concise, factual, and free of disclaimers.',
       },
       {
         role: 'user',
@@ -1471,9 +1486,9 @@ export async function analyzeStock(
   const name = (req.name || symbol).trim().slice(0, 120) || symbol;
   const includeNews = req.includeNews === true;
   const nameSuffix = name !== symbol ? `:${name.replace(/[^a-zA-Z0-9]/g, '').slice(0, 30).toLowerCase()}` : '';
-  // v3 → v4 (2026-07-06, #4944): LLM analysis moved to deepseek-v4-flash;
-  // v3 rows carry old-model output and must age out at cutover.
-  const cacheKey = `market:analyze-stock:v4:${symbol}:${includeNews ? 'news' : 'no-news'}${nameSuffix}`;
+  // v4 -> v5 (#5467): fundamentals now use normalized leverage and explicit
+  // statement currency. Never replay a pre-contract response into the Pro UI.
+  const cacheKey = `market:analyze-stock:v5:${symbol}:${includeNews ? 'news' : 'no-news'}${nameSuffix}`;
 
   const fetchFreshAnalysis = async (): Promise<AnalyzeStockResponse | null> => {
     const [history, analystData] = await Promise.all([

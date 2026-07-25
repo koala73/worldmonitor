@@ -281,6 +281,7 @@ export interface Fundamentals {
   totalDebt?: number;
   freeCashflow?: number;
   ebitda?: number;
+  financialCurrency?: string;
 }
 
 export interface GetStockAnalysisHistoryRequest {
