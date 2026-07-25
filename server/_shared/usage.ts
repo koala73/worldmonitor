@@ -44,6 +44,7 @@ export type CacheTier =
   | 'medium'
   | 'slow'
   | 'slow-browser'
+  | 'live-browser'
   | 'static'
   | 'daily'
   | 'no-store'
