@@ -232,6 +232,8 @@ export interface AnalyzeStockResponse {
   extendedPrice?: number;
   extendedChangePercent?: number;
   fundamentals?: Fundamentals;
+  fundamentalScore?: number;
+  compositeScore: number;
   nextEarningsDate?: string;
   consensusEps?: number;
   consensusRevenue?: number;

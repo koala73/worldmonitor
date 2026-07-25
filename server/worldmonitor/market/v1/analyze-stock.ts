@@ -1243,12 +1243,7 @@ export function buildTechnicalSnapshot(candles: Candle[]): TechnicalSnapshot {
 
   signalScore = clamp(Math.round(signalScore), 0, 100);
 
-  let signal: Signal = 'Sell';
-  if (signalScore >= 75 && (trendStatus === 'Strong bull' || trendStatus === 'Bull')) signal = 'Strong buy';
-  else if (signalScore >= 60 && (trendStatus === 'Strong bull' || trendStatus === 'Bull' || trendStatus === 'Weak bull')) signal = 'Buy';
-  else if (signalScore >= 45) signal = 'Hold';
-  else if (signalScore >= 30) signal = 'Watch';
-  else if (trendStatus === 'Bear' || trendStatus === 'Strong bear') signal = 'Strong sell';
+  const signal = deriveSignal(signalScore, trendStatus);
 
   const realizedVolatility = computeRealizedVolatility(closes);
   const atr = computeAtr(highs, lows, closes);
@@ -1338,6 +1333,111 @@ async function fetchUpcomingEarnings(): Promise<EarningsEntry[]> {
   } catch {
     return [];
   }
+}
+
+/**
+ * Map a 0-100 score plus trend to the Strong buy…Strong sell rating. Extracted
+ * verbatim from the former inline logic in {@link buildTechnicalSnapshot} so the
+ * same thresholds drive both the technicals-only signal and the
+ * fundamentals-blended composite rating.
+ */
+export function deriveSignal(score: number, trendStatus: TrendStatus): Signal {
+  if (score >= 75 && (trendStatus === 'Strong bull' || trendStatus === 'Bull')) return 'Strong buy';
+  if (score >= 60 && (trendStatus === 'Strong bull' || trendStatus === 'Bull' || trendStatus === 'Weak bull')) return 'Buy';
+  if (score >= 45) return 'Hold';
+  if (score >= 30) return 'Watch';
+  if (trendStatus === 'Bear' || trendStatus === 'Strong bear') return 'Strong sell';
+  return 'Sell';
+}
+
+// Ascending [threshold, score] bands. Returns the score of the highest
+// threshold `value` clears; bands[0] is the floor (its threshold is -Infinity).
+type ScoreBand = readonly [threshold: number, score: number];
+function bandScore(value: number, bands: readonly ScoreBand[]): number {
+  let score = 50; // neutral default; overwritten by the -Infinity floor band on the first pass
+  for (const [threshold, bandValue] of bands) {
+    if (value >= threshold) score = bandValue;
+    else break;
+  }
+  return score;
+}
+
+// Technicals lead the composite; fundamentals temper the rating rather than
+// override it. Named so the weighting is easy to find and tune.
+const FUNDAMENTAL_TECHNICAL_WEIGHT = 0.65;
+
+/**
+ * Fundamental health score (0-100) from the quality / growth / leverage fields
+ * Yahoo returns in the financialData module (already fetched for price targets).
+ * Each present sub-metric maps to a 0-100 band; each dimension averages its
+ * present metrics, and the dimensions combine with a quality-heavy weighting
+ * (renormalised over whichever dimensions are present). Returns null when the
+ * data is too sparse to be meaningful (fewer than 3 metrics or fewer than 2
+ * dimensions) so data-poor names fall back to a technicals-only rating instead
+ * of being penalised for missing data.
+ */
+export function computeFundamentalScore(f: StockFundamentals): number | null {
+  const finite = (v: number | undefined): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+
+  // Quality — margins, returns on capital, cash generation. Higher is better.
+  const quality: number[] = [];
+  const profitMargin = finite(f.profitMargin);
+  if (profitMargin !== null) quality.push(bandScore(profitMargin, [[-Infinity, 15], [0, 42], [0.05, 58], [0.12, 75], [0.20, 90]]));
+  const operatingMargin = finite(f.operatingMargin);
+  if (operatingMargin !== null) quality.push(bandScore(operatingMargin, [[-Infinity, 18], [0, 45], [0.08, 62], [0.18, 80], [0.30, 92]]));
+  const grossMargin = finite(f.grossMargin);
+  if (grossMargin !== null) quality.push(bandScore(grossMargin, [[-Infinity, 30], [0.20, 50], [0.35, 64], [0.50, 78], [0.65, 90]]));
+  const returnOnEquity = finite(f.returnOnEquity);
+  if (returnOnEquity !== null) quality.push(bandScore(returnOnEquity, [[-Infinity, 20], [0, 45], [0.10, 65], [0.18, 80], [0.30, 90]]));
+  const returnOnAssets = finite(f.returnOnAssets);
+  if (returnOnAssets !== null) quality.push(bandScore(returnOnAssets, [[-Infinity, 20], [0, 45], [0.05, 63], [0.10, 80], [0.18, 90]]));
+  const freeCashflow = finite(f.freeCashflow);
+  if (freeCashflow !== null) quality.push(freeCashflow > 0 ? 72 : 32); // FCF sign only — magnitude isn't comparable across market caps.
+
+  // Growth — top and bottom line. Higher is better.
+  const growth: number[] = [];
+  const revenueGrowth = finite(f.revenueGrowth);
+  if (revenueGrowth !== null) growth.push(bandScore(revenueGrowth, [[-Infinity, 12], [-0.05, 35], [0.03, 55], [0.12, 75], [0.25, 90]]));
+  const earningsGrowth = finite(f.earningsGrowth);
+  if (earningsGrowth !== null) growth.push(bandScore(earningsGrowth, [[-Infinity, 12], [-0.10, 35], [0.05, 58], [0.20, 78], [0.40, 90]]));
+
+  // Leverage — lower debt is healthier, so the score falls as debt rises.
+  const leverage: number[] = [];
+  const debtToEquity = finite(f.debtToEquity);
+  if (debtToEquity !== null) {
+    // Yahoo reports debtToEquity as a percentage (e.g. 150 == 1.5x); normalise.
+    const ratio = debtToEquity > 10 ? debtToEquity / 100 : debtToEquity;
+    leverage.push(ratio < 0 ? 25 : ratio <= 0.3 ? 90 : ratio <= 0.6 ? 78 : ratio <= 1.0 ? 62 : ratio <= 2.0 ? 42 : 22);
+  }
+  const totalCash = finite(f.totalCash);
+  const totalDebt = finite(f.totalDebt);
+  if (totalCash !== null && totalDebt !== null) {
+    leverage.push(totalCash >= totalDebt ? 85 : totalCash >= totalDebt * 0.5 ? 62 : 40);
+  }
+
+  const metricCount = quality.length + growth.length + leverage.length;
+  if (metricCount < 3) return null;
+
+  const mean = (xs: number[]): number => xs.reduce((sum, x) => sum + x, 0) / xs.length;
+  const dimensions: Array<{ score: number; weight: number }> = [];
+  if (quality.length) dimensions.push({ score: mean(quality), weight: 0.5 });
+  if (growth.length) dimensions.push({ score: mean(growth), weight: 0.3 });
+  if (leverage.length) dimensions.push({ score: mean(leverage), weight: 0.2 });
+  if (dimensions.length < 2) return null;
+
+  const weightTotal = dimensions.reduce((sum, d) => sum + d.weight, 0);
+  const blended = dimensions.reduce((sum, d) => sum + d.score * d.weight, 0) / weightTotal;
+  return clamp(Math.round(blended), 0, 100);
+}
+
+/**
+ * Blend the technicals-only {@link signalScore} with {@link computeFundamentalScore}.
+ * Returns signalScore unchanged when the fundamental score is null (sparse data),
+ * so the rating is never altered for names we cannot fundamentally score.
+ */
+export function computeCompositeScore(signalScore: number, fundamentalScore: number | null): number {
+  if (fundamentalScore === null) return signalScore;
+  return clamp(Math.round(FUNDAMENTAL_TECHNICAL_WEIGHT * signalScore + (1 - FUNDAMENTAL_TECHNICAL_WEIGHT) * fundamentalScore), 0, 100);
 }
 
 export function getFallbackOverlay(name: string, technical: TechnicalSnapshot, headlines: StockAnalysisHeadline[]): AiOverlay {
@@ -1490,6 +1590,8 @@ export function buildAnalysisResponse(params: {
   marketSession?: string;
   extended?: ExtendedHoursQuote;
   earnings?: UpcomingEarnings | null;
+  fundamentalScore?: number | null;
+  compositeScore?: number;
 }): AnalyzeStockResponse {
   const {
     symbol,
@@ -1506,6 +1608,8 @@ export function buildAnalysisResponse(params: {
     marketSession,
     extended,
     earnings,
+    fundamentalScore,
+    compositeScore,
   } = params;
   const analysisId = params.analysisId || `stock:${STOCK_ANALYSIS_ENGINE_VERSION}:${symbol}:${analysisAt}:${includeNews ? 'news' : 'core'}`;
   const { stopLoss, takeProfit } = deriveTradeLevels(
@@ -1525,6 +1629,9 @@ export function buildAnalysisResponse(params: {
     changePercent: technical.changePercent,
     signalScore: technical.signalScore,
     signal: technical.signal,
+    // fundamentalScore is optional — omit the key when the name is unscoreable.
+    ...(fundamentalScore != null ? { fundamentalScore } : {}),
+    compositeScore: compositeScore ?? technical.signalScore,
     trendStatus: technical.trendStatus,
     volumeStatus: technical.volumeStatus,
     macdStatus: technical.macdStatus,
@@ -1600,6 +1707,7 @@ function buildEmptyAnalysisResponse(symbol: string, name: string, includeNews: b
     changePercent: 0,
     signalScore: 0,
     signal: '',
+    compositeScore: 0,
     trendStatus: '',
     volumeStatus: '',
     macdStatus: '',
@@ -1685,6 +1793,14 @@ export async function analyzeStock(
 
     const technical = buildTechnicalSnapshot(history.candles);
     technical.currency = history.currency || 'USD';
+    // Blend the fundamentals Yahoo already returned into the rating so a Strong
+    // buy/sell no longer fires on price action alone. signalScore stays purely
+    // technical; the composite drives the surfaced signal, and sparse
+    // fundamentals leave both the composite and the rating at the technical
+    // baseline.
+    const fundamentalScore = computeFundamentalScore(analystData.fundamentals);
+    const compositeScore = computeCompositeScore(technical.signalScore, fundamentalScore);
+    technical.signal = deriveSignal(compositeScore, technical.trendStatus);
     // Session at analysis time (#4922d); '' when US hours don't apply to the
     // listing. The extended-hours fetch runs ONLY in pre/post — during the
     // regular session the current price is already live, and while closed
@@ -1711,6 +1827,8 @@ export async function analyzeStock(
       headlines,
       overlay,
       analystData,
+      fundamentalScore,
+      compositeScore,
       includeNews,
       analysisAt,
       generatedAt: new Date().toISOString(),

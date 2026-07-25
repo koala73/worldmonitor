@@ -3003,6 +3003,20 @@ components:
                          extended_price is set.
                 fundamentals:
                     $ref: '#/components/schemas/Fundamentals'
+                fundamentalScore:
+                    type: number
+                    format: double
+                    description: |-
+                        Fundamental health score (0-100) blended from the quality/growth/leverage
+                         fundamentals above. Unset when too few fundamentals are available to score,
+                         in which case composite_score falls back to signal_score.
+                compositeScore:
+                    type: number
+                    format: double
+                    description: |-
+                        Blend of signal_score (technicals) and fundamental_score that drives the
+                         signal rating, so a Strong buy/sell no longer fires on price action alone.
+                         Equals signal_score when fundamental_score is unset.
                 nextEarningsDate:
                     type: string
                     description: |-

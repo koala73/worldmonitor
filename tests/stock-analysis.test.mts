@@ -7,8 +7,11 @@ import {
   buildAnalysisResponse,
   buildTechnicalSnapshot,
   computeAtr,
+  computeCompositeScore,
+  computeFundamentalScore,
   computeMaxDrawdown,
   computeRealizedVolatility,
+  deriveSignal,
   fetchYahooAnalystData,
   fetchYahooHistory,
   getFallbackOverlay,
@@ -725,5 +728,166 @@ describe('buildAnalysisResponse risk-analytics surfacing', () => {
     assert.ok(Number.isFinite(resp.realizedVolatility) && resp.realizedVolatility > 0);
     assert.ok(Number.isFinite(resp.atr) && resp.atr > 0);
     assert.ok(Number.isFinite(resp.maxDrawdown) && resp.maxDrawdown < 0);
+  });
+});
+
+describe('deriveSignal', () => {
+  it('keeps the technicals-only thresholds and trend gates', () => {
+    assert.equal(deriveSignal(80, 'Strong bull'), 'Strong buy');
+    assert.equal(deriveSignal(80, 'Weak bull'), 'Buy'); // >=75 but the trend gate blocks Strong buy
+    assert.equal(deriveSignal(62, 'Bull'), 'Buy');
+    assert.equal(deriveSignal(50, 'Consolidation'), 'Hold');
+    assert.equal(deriveSignal(35, 'Consolidation'), 'Watch');
+    assert.equal(deriveSignal(20, 'Strong bear'), 'Strong sell');
+    assert.equal(deriveSignal(20, 'Consolidation'), 'Sell');
+  });
+});
+
+describe('computeFundamentalScore', () => {
+  it('returns null when the data is too sparse to score', () => {
+    assert.equal(computeFundamentalScore({}), null);
+    assert.equal(computeFundamentalScore({ profitMargin: 0.2 }), null); // one metric
+    // Two metrics but only one dimension (quality) present -> still null.
+    assert.equal(computeFundamentalScore({ profitMargin: 0.2, grossMargin: 0.6 }), null);
+  });
+
+  it('scores strong quality/growth/leverage fundamentals high', () => {
+    const score = computeFundamentalScore({
+      profitMargin: 0.25, operatingMargin: 0.30, grossMargin: 0.65,
+      returnOnEquity: 0.35, returnOnAssets: 0.18, freeCashflow: 9e10,
+      revenueGrowth: 0.20, earningsGrowth: 0.28,
+      debtToEquity: 45, totalCash: 6e10, totalDebt: 2e10,
+    });
+    assert.equal(typeof score, 'number');
+    assert.ok((score ?? 0) > 80, `expected > 80, got ${score}`);
+  });
+
+  it('scores weak, loss-making, levered fundamentals low', () => {
+    const score = computeFundamentalScore({
+      profitMargin: -0.10, operatingMargin: -0.05, returnOnEquity: -0.20,
+      revenueGrowth: -0.20, earningsGrowth: -0.30,
+      debtToEquity: 300,
+    });
+    assert.equal(typeof score, 'number');
+    assert.ok((score ?? 100) < 30, `expected < 30, got ${score}`);
+  });
+
+  it("normalises Yahoo's percentage debt-to-equity", () => {
+    // 45 (== 0.45x) should score better than 250 (== 2.5x).
+    const low = computeFundamentalScore({ profitMargin: 0.1, revenueGrowth: 0.1, debtToEquity: 45 });
+    const high = computeFundamentalScore({ profitMargin: 0.1, revenueGrowth: 0.1, debtToEquity: 250 });
+    assert.ok((low ?? 0) > (high ?? 0), `expected 0.45x D/E to beat 2.5x, got ${low} vs ${high}`);
+  });
+});
+
+describe('computeCompositeScore', () => {
+  it('passes the technical score through untouched when fundamentals are null', () => {
+    assert.equal(computeCompositeScore(72, null), 72);
+    assert.equal(computeCompositeScore(0, null), 0);
+  });
+
+  it('blends 65% technical / 35% fundamental', () => {
+    assert.equal(computeCompositeScore(80, 40), 66); // 0.65*80 + 0.35*40
+    assert.equal(computeCompositeScore(50, 90), 64);
+  });
+});
+
+describe('fundamentals-blended rating', () => {
+  const weakFundamentals = {
+    profitMargin: -0.10, operatingMargin: -0.05, returnOnEquity: -0.20,
+    revenueGrowth: -0.20, earningsGrowth: -0.30, debtToEquity: 300,
+  };
+  const strongFundamentals = {
+    profitMargin: 0.25, operatingMargin: 0.30, grossMargin: 0.65,
+    returnOnEquity: 0.35, returnOnAssets: 0.18, freeCashflow: 9e10,
+    revenueGrowth: 0.20, earningsGrowth: 0.28,
+    debtToEquity: 45, totalCash: 6e10, totalDebt: 2e10,
+  };
+
+  it('downgrades a technical Strong buy when fundamentals are weak', () => {
+    const signalScore = 78;
+    assert.equal(deriveSignal(signalScore, 'Strong bull'), 'Strong buy');
+    const composite = computeCompositeScore(signalScore, computeFundamentalScore(weakFundamentals));
+    assert.ok(composite < signalScore);
+    assert.notEqual(deriveSignal(composite, 'Strong bull'), 'Strong buy');
+  });
+
+  it('leaves a technical Strong buy intact when fundamentals are strong', () => {
+    const composite = computeCompositeScore(78, computeFundamentalScore(strongFundamentals));
+    assert.equal(deriveSignal(composite, 'Strong bull'), 'Strong buy');
+  });
+
+  it('never changes the rating when fundamentals are unscoreable', () => {
+    const composite = computeCompositeScore(78, computeFundamentalScore({}));
+    assert.equal(composite, 78);
+    assert.equal(deriveSignal(composite, 'Strong bull'), 'Strong buy');
+  });
+});
+
+describe('analyzeStock fundamental scoring wiring', () => {
+  const strongFundamentalsPayload = {
+    quoteSummary: {
+      result: [{
+        recommendationTrend: { trend: [{ period: '0m', strongBuy: 10, buy: 12, hold: 4, sell: 1, strongSell: 0 }] },
+        financialData: {
+          currentPrice: { raw: 132 },
+          profitMargins: { raw: 0.25 },
+          grossMargins: { raw: 0.65 },
+          operatingMargins: { raw: 0.30 },
+          returnOnEquity: { raw: 0.35 },
+          returnOnAssets: { raw: 0.18 },
+          revenueGrowth: { raw: 0.20 },
+          earningsGrowth: { raw: 0.28 },
+          debtToEquity: { raw: 45 },
+          totalCash: { raw: 6e10 },
+          totalDebt: { raw: 2e10 },
+          freeCashflow: { raw: 9e10 },
+        },
+      }],
+    },
+  };
+  // Monday, US regular hours -> marketSession 'regular' so no extended-hours fetch;
+  // passing `now` also takes the direct fetch path (no Redis cache) for determinism.
+  const regularSession = new Date('2026-07-20T17:00:00Z');
+
+  it('surfaces fundamentalScore and compositeScore when Yahoo returns fundamentals', async () => {
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes('query1.finance.yahoo.com/v10/finance/quoteSummary')) {
+        return new Response(JSON.stringify(strongFundamentalsPayload), { status: 200 });
+      }
+      if (url.includes('query1.finance.yahoo.com/v8/finance/chart')) {
+        return new Response(JSON.stringify(mockChartPayload), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    }) as typeof fetch;
+
+    const response = await analyzeStock({} as never, { symbol: 'AAPL', name: 'Apple', includeNews: false }, { now: regularSession });
+
+    assert.equal(response.available, true);
+    assert.equal(typeof response.compositeScore, 'number');
+    assert.equal(typeof response.fundamentalScore, 'number');
+    const fundamental = response.fundamentalScore ?? -1;
+    assert.ok(fundamental > 60 && fundamental <= 100, `expected strong fundamentalScore, got ${fundamental}`);
+    assert.ok(response.signalScore >= 0); // signalScore stays technicals-only
+  });
+
+  it('omits fundamentalScore and sets compositeScore = signalScore when fundamentals are absent', async () => {
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes('query1.finance.yahoo.com/v10/finance/quoteSummary')) {
+        return new Response(JSON.stringify({ quoteSummary: { result: [{ financialData: {} }] } }), { status: 200 });
+      }
+      if (url.includes('query1.finance.yahoo.com/v8/finance/chart')) {
+        return new Response(JSON.stringify(mockChartPayload), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    }) as typeof fetch;
+
+    const response = await analyzeStock({} as never, { symbol: 'AAPL', name: 'Apple', includeNews: false }, { now: regularSession });
+
+    assert.equal(response.available, true);
+    assert.equal(response.fundamentalScore, undefined);
+    assert.equal(response.compositeScore, response.signalScore);
   });
 });
