@@ -1,11 +1,12 @@
 ---
 title: "Track Tariffs and Trade Policy Before They Hit Your Costs"
-description: "WorldMonitor's Trade Policy tracker combines WTO tariff baselines, US customs revenue, food-price indices, and trade news so you see policy shifts before invoices do."
+description: "Track WTO tariff baselines, US customs revenue, food-price indices, and trade news in WorldMonitor to spot policy shifts before they reach invoices."
 metaTitle: "Tariff Tracker & Trade Policy Monitoring | WorldMonitor"
 keywords: "tariff tracker, trade policy monitoring, US tariff trends, customs revenue data, trade war dashboard, tariff data API, import tariffs"
 audience: "Importers and exporters, procurement teams, supply-chain analysts, macro traders, trade researchers"
 heroImage: "/blog/images/blog/tariff-tracker-trade-policy-monitoring-worldmonitor.jpg"
 pubDate: "2026-07-21"
+modifiedDate: "2026-07-22"
 ---
 
 Tariffs are the rare geopolitical instrument with a direct line item on your invoice. A new duty schedule doesn't just signal intent like a speech does — it reprices goods on a date certain, and everyone in the affected supply chain either saw it coming or didn't.
@@ -40,6 +41,10 @@ The `get_tariff_trends` MCP tool returns the tariff-trend series with customs re
 ## Limits
 
 Tariff data is strongest for the US (trends, customs revenue) and for WTO-published MFN baselines; it is not a customs-broker-grade HS-code lookup for every country pair. Effective rates on a specific product still require the official tariff schedule. What the tracker gives you is the trend, the exposure, and the early warning — the inputs to a decision, not the customs filing itself.
+
+## Primary data sources
+
+Use the [WTO World Tariff Profiles](https://www.wto.org/english/res_e/reser_e/tariff_profiles_e.htm), the U.S. Treasury's [Monthly Treasury Statement data](https://fiscaldata.treasury.gov/datasets/monthly-treasury-statement/), and the [FAO Food Price Index](https://www.fao.org/worldfoodsituation/foodpricesindex/) to inspect the original series and definitions.
 
 ## Frequently Asked Questions
 

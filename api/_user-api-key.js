@@ -18,6 +18,14 @@ const USER_KEY_NEGATIVE_CACHE_TTL_SECONDS = 60;
 const USER_KEY_CACHE_PREFIX = 'user-api-key:';
 const BOOTSTRAP_USER_KEY_NEGATIVE_CACHE_PREFIX = 'bootstrap-user-api-key-invalid:';
 const ENTITLEMENT_CACHE_TTL_SECONDS = 900;
+// Mirrors server/_shared/entitlement-check.ts (this .js file cannot import the
+// .ts module under node --test; tests/billing-marker-ttl-parity.test.mjs pins
+// the two copies together): lapsed markers stay short because their TTL is
+// the worst-case wrongful-denial window; not_applicable markers get the full
+// default TTL because syncEntitlementCache unconditionally overwrites the key
+// on any tier change.
+const LAPSED_BILLING_MARKER_TTL_SECONDS = 60;
+const NOT_APPLICABLE_VERIFICATION_TTL_SECONDS = 900;
 const ENTITLEMENT_ENV_PREFIX = process.env.DODO_PAYMENTS_ENVIRONMENT === 'live_mode' ? 'live' : 'test';
 const NEG_SENTINEL = '__WM_NEG__';
 
@@ -260,6 +268,69 @@ function hasCurrentApiAccess(value) {
   return Boolean(value.features?.apiAccess === true && Number.isFinite(validUntil) && validUntil >= Date.now());
 }
 
+function clampRetryAfterSeconds(rawRetryAfter) {
+  const parsed = Number(rawRetryAfter);
+  return Number.isFinite(parsed)
+    ? Math.max(1, Math.min(60, Math.ceil(parsed)))
+    : VALIDATION_RETRY_AFTER_SECONDS;
+}
+
+function billingVerificationFailure(value) {
+  const status = value?.billingStatus;
+  if (status === 'subscription_lapsed') {
+    return {
+      ok: false,
+      status: 403,
+      error: 'API access subscription lapsed',
+      reason: status,
+      headers: noStoreHeaders({ 'X-Billing-Verification': status }),
+    };
+  }
+  if (status !== 'renewal_verification_pending' && status !== 'renewal_verification_failed') {
+    return null;
+  }
+
+  const retryAfter = clampRetryAfterSeconds(value?.retryAfterSeconds);
+  return {
+    ok: false,
+    status: 503,
+    error: status === 'renewal_verification_pending'
+      ? 'Renewal verification pending'
+      : 'Renewal verification failed',
+    reason: status,
+    unavailable: true,
+    headers: noStoreHeaders({
+      'Retry-After': String(retryAfter),
+      'X-Billing-Verification': status,
+    }),
+  };
+}
+
+function notApplicableVerificationTtlSeconds(value) {
+  const marker = value?.renewalVerificationFreshness;
+  if (marker?.status !== 'not_applicable') return null;
+  if (typeof marker.checkedAt !== 'number' || !Number.isFinite(marker.checkedAt)) return null;
+  const remainingMs = marker.checkedAt
+    + NOT_APPLICABLE_VERIFICATION_TTL_SECONDS * 1_000
+    - Date.now();
+  return remainingMs > 0
+    ? Math.max(1, Math.min(
+      NOT_APPLICABLE_VERIFICATION_TTL_SECONDS,
+      Math.ceil(remainingMs / 1_000),
+    ))
+    : null;
+}
+
+function entitlementCacheTtlSeconds(value) {
+  const status = value?.billingStatus;
+  if (status === 'subscription_lapsed') return LAPSED_BILLING_MARKER_TTL_SECONDS;
+  if (status === 'renewal_verification_pending' || status === 'renewal_verification_failed') {
+    return clampRetryAfterSeconds(value?.retryAfterSeconds);
+  }
+  const notApplicableTtl = notApplicableVerificationTtlSeconds(value);
+  return notApplicableTtl ?? ENTITLEMENT_CACHE_TTL_SECONDS;
+}
+
 export async function validateBootstrapUserApiAccess(userId) {
   if (!userId || typeof userId !== 'string') {
     return { ok: false, status: 403, error: 'API access subscription required', reason: 'missing-user' };
@@ -272,25 +343,45 @@ async function validateBootstrapUserApiAccessUncached(userId) {
   const cacheKey = `entitlements:${ENTITLEMENT_ENV_PREFIX}:${userId}`;
   const cached = await readCachedJson(cacheKey);
   if (cached.status === 'hit' && cached.value && typeof cached.value === 'object') {
+    if (hasCurrentApiAccess(cached.value)) return { ok: true };
+    const cachedBillingFailure = billingVerificationFailure(cached.value);
+    if (cachedBillingFailure) return cachedBillingFailure;
+    if (notApplicableVerificationTtlSeconds(cached.value) !== null) {
+      return { ok: false, status: 403, error: 'API access subscription required', reason: 'cached-forbidden' };
+    }
     const validUntil = Number(cached.value.validUntil ?? 0);
     if (Number.isFinite(validUntil) && validUntil >= Date.now()) {
-      if (hasCurrentApiAccess(cached.value)) return { ok: true };
       return { ok: false, status: 403, error: 'API access subscription required', reason: 'cached-forbidden' };
     }
   }
 
   const result = await postConvexJson(CONVEX_ENTITLEMENTS_PATH, { userId });
   if (!result.ok) {
-    return serviceUnavailable();
+    // The entitlement backend could not be reached to verify a wm_ key: emit
+    // the documented entitlement_verification_unavailable contract
+    // (docs/usage-errors.mdx), matching server/gateway.ts's wm_-key branch.
+    // X-Validation-Mode: degraded is kept for existing monitors.
+    return {
+      ok: false,
+      status: 503,
+      error: 'Unable to verify API access',
+      reason: 'entitlement_verification_unavailable',
+      unavailable: true,
+      headers: noStoreHeaders({
+        'Retry-After': String(VALIDATION_RETRY_AFTER_SECONDS),
+        'X-Validation-Mode': 'degraded',
+        'X-Billing-Verification': 'entitlement_verification_unavailable',
+      }),
+    };
   }
 
   if (result.value && typeof result.value === 'object') {
-    await writeCachedJson(cacheKey, result.value, ENTITLEMENT_CACHE_TTL_SECONDS);
+    await writeCachedJson(cacheKey, result.value, entitlementCacheTtlSeconds(result.value));
   }
 
-  if (!hasCurrentApiAccess(result.value)) {
-    return { ok: false, status: 403, error: 'API access subscription required', reason: 'forbidden' };
-  }
+  if (hasCurrentApiAccess(result.value)) return { ok: true };
+  const billingFailure = billingVerificationFailure(result.value);
+  if (billingFailure) return billingFailure;
 
-  return { ok: true };
+  return { ok: false, status: 403, error: 'API access subscription required', reason: 'forbidden' };
 }

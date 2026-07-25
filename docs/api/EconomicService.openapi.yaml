@@ -4942,3 +4942,5 @@ components:
                     description: Time of the most recent successful retrieval; preserved across failures.
                 stale:
                     type: boolean
+                paced:
+                    type: boolean

@@ -6,6 +6,7 @@ keywords: "sanctions tracking tool, OFAC SDN list monitoring, sanctions dashboar
 audience: "Compliance analysts, trade and export teams, risk researchers, macro analysts, journalists"
 heroImage: "/blog/images/blog/monitor-global-sanctions-pressure-worldmonitor.jpg"
 pubDate: "2026-07-21"
+modifiedDate: "2026-07-22"
 ---
 
 Sanctions move faster than most reference data. A designation published on a Tuesday morning can strand a cargo, freeze a counterparty, or reprice a bond by Tuesday afternoon — and the analysts who noticed early are usually the ones who were watching the source lists, not waiting for coverage.
@@ -37,6 +38,10 @@ If you're watching a specific jurisdiction continuously, pair the sanctions laye
 ## Limits
 
 This is OFAC-centric today: US Treasury designations, not a merged EU/UN/UK screening database. It is an intelligence and awareness layer, not a compliance screening service — a positive or negative here doesn't discharge a legal screening obligation, and entity-level matching (aliases, transliterations, ownership chains) belongs in dedicated screening tooling. WorldMonitor tells you where pressure is building and when the ground shifts; your compliance stack tells you whether a specific counterparty is clear.
+
+## Authoritative Sanctions Source
+
+Always verify sanctions exposure against the issuing authority. For US programs, use the Treasury's [Sanctions List Service](https://ofac.treasury.gov/sanctions-list-service); dashboard signals are for monitoring and triage, not legal determinations.
 
 ## Frequently Asked Questions
 

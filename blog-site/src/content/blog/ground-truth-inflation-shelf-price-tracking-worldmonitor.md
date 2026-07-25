@@ -1,11 +1,12 @@
 ---
 title: "Ground-Truth Inflation: Tracking Real Shelf Prices, Not Just CPI"
-description: "WorldMonitor scrapes real supermarket shelf prices — starting with four UAE retailers — and pairs them with the Big Mac Index, FAO food prices, fuel prices, and IMF CPI."
+description: "WorldMonitor tracks supermarket shelf prices across four UAE retailers and compares them with the Big Mac Index, FAO food prices, fuel prices, and IMF CPI."
 metaTitle: "Real-Time Shelf Price & Inflation Tracking | WorldMonitor"
 keywords: "real time inflation data, grocery price tracker, consumer prices API, shelf price monitoring, cost of living dashboard, food price index"
 audience: "Economists, macro analysts, journalists, expats, cost-of-living researchers"
 heroImage: "/blog/images/blog/ground-truth-inflation-shelf-price-tracking-worldmonitor.jpg"
 pubDate: "2026-07-21"
+modifiedDate: "2026-07-22"
 ---
 
 Official inflation is a lagging average of an averaged lag. A national CPI print arrives weeks after the month it measures, blends thousands of items into one number, and tells you nothing about whether *your* basket at *your* store got more expensive on Tuesday.
@@ -44,6 +45,10 @@ The `get_consumer_prices` MCP tool (UAE today) returns the overview, category in
 ## Limits
 
 Coverage is honest about being narrow: one country live, four retailers, an essentials basket — a precise instrument, not yet a global one. Scraped prices reflect listed shelf prices, not loyalty discounts or in-store promotions. And a retailer basket is deliberately not a CPI replacement: it trades statistical breadth for speed and specificity. Use both — that's why both are on the dashboard.
+
+## Benchmark Sources
+
+Compare shelf-price observations with official benchmarks such as the FAO [Food Price Index](https://www.fao.org/worldfoodsituation/foodpricesindex/) and the IMF's [Consumer Price Index dataset](https://data.imf.org/en/datasets/IMF.STA:CPI). The series measure different baskets and frequencies, so disagreement can be informative rather than erroneous.
 
 ## Frequently Asked Questions
 

@@ -6,11 +6,14 @@ import { formatTime, getCSSColor } from '@/utils';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
 import { computeNewSinceVisit } from '@/utils/new-since-visit';
 import { analysisWorker, enrichWithVelocityML, getClusterAssetContext, MAX_DISTANCE_KM, activityTracker, generateSummary, translateText, preloadRelatedAssetTables } from '@/services';
-import { getSourcePropagandaRisk, getSourceTier, getSourceType } from '@/config/feeds';
 import { SITE_VARIANT } from '@/config';
 import { t, getCurrentLanguage } from '@/services/i18n';
 import { track } from '@/services/analytics';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import {
+  renderCorroboratingSourceRisk,
+  renderPrimarySourceProvenance,
+} from './news/source-provenance';
 
 
 type SortMode = 'relevance' | 'newest';
@@ -654,29 +657,18 @@ export class NewsPanel extends Panel {
       ? `<span class="lang-badge">${cluster.lang.toUpperCase()}</span>`
       : '';
 
-    // Propaganda risk indicator for primary source
-    const primaryPropRisk = getSourcePropagandaRisk(cluster.primarySource);
-    const primaryPropBadge = primaryPropRisk.risk !== 'low'
-      ? `<span class="propaganda-badge ${primaryPropRisk.risk}" title="${escapeHtml(primaryPropRisk.note || `State-affiliated: ${primaryPropRisk.stateAffiliated || 'Unknown'}`)}">${primaryPropRisk.risk === 'high' ? '⚠ State Media' : '! Caution'}</span>`
-      : '';
-
-    // Source credibility badge for primary source (T1=Wire, T2=Verified outlet)
-    const primaryTier = getSourceTier(cluster.primarySource);
-    const primaryType = getSourceType(cluster.primarySource);
-    const tierLabel = primaryTier === 1 ? 'Wire' : ''; // Don't show "Major" - confusing with story importance
-    const tierBadge = primaryTier <= 2
-      ? `<span class="tier-badge tier-${primaryTier}" title="${primaryType === 'wire' ? 'Wire Service - Highest reliability' : primaryType === 'gov' ? 'Official Government Source' : 'Verified News Outlet'}">${primaryTier === 1 ? '★' : '●'}${tierLabel ? ` ${tierLabel}` : ''}</span>`
-      : '';
+    // Unknown provenance is always visible; "Wire" is reserved for reviewed wire types.
+    const {
+      riskBadge: primaryPropBadge,
+      tierBadge,
+    } = renderPrimarySourceProvenance(cluster.primarySource);
 
     // Build "Also reported by" section for multi-source confirmation
     const otherSources = cluster.topSources.filter(s => s.name !== cluster.primarySource);
     const topSourcesHtml = otherSources.length > 0
       ? `<span class="also-reported">Also:</span>` + otherSources
         .map(s => {
-          const propRisk = getSourcePropagandaRisk(s.name);
-          const propBadge = propRisk.risk !== 'low'
-            ? `<span class="propaganda-badge ${propRisk.risk}" title="${escapeHtml(propRisk.note || `State-affiliated: ${propRisk.stateAffiliated || 'Unknown'}`)}">${propRisk.risk === 'high' ? '⚠' : '!'}</span>`
-            : '';
+          const propBadge = renderCorroboratingSourceRisk(s.name);
           return `<span class="top-source tier-${s.tier}">${escapeHtml(s.name)}${propBadge}</span>`;
         })
         .join('')

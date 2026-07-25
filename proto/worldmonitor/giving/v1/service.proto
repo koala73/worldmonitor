@@ -5,11 +5,15 @@ package worldmonitor.giving.v1;
 import "sebuf/http/annotations.proto";
 import "worldmonitor/giving/v1/get_giving_summary.proto";
 
-// GivingService provides APIs for global personal giving and philanthropy tracking.
+// GivingService serves a cacheable snapshot of published personal-giving and
+// institutional-context claims. It does not perform live campaign or on-chain
+// activity collection.
 service GivingService {
   option (sebuf.http.service_config) = {base_path: "/api/giving/v1"};
 
-  // GetGivingSummary retrieves a composite global giving activity index and platform breakdowns.
+  // GetGivingSummary retrieves published-claim platform projections, a verified
+  // tracked-platform annualized flow estimate, and claim-level provenance.
+  // Compatibility index/trend fields are explicitly marked unavailable.
   // Empty/absent summary with fetched_at=0 or data_available=false means the
   // snapshot is unavailable/degraded, not that giving activity is zero.
   rpc GetGivingSummary(GetGivingSummaryRequest) returns (GetGivingSummaryResponse) {

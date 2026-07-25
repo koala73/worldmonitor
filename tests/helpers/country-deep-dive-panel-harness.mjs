@@ -39,6 +39,7 @@ function defineGlobal(name, value) {
 async function loadCountryDeepDivePanel(options = {}) {
   const resilienceWidgetMode = options.resilienceWidgetMode ?? 'success';
   const premiumAccess = options.premiumAccess === true;
+  const sourceProvenance = JSON.stringify(options.sourceProvenance ?? {});
   const tempDir = mkdtempSync(join(tmpdir(), 'wm-country-deep-dive-'));
   const outfile = join(tempDir, 'CountryDeepDivePanel.bundle.mjs');
   const resilienceWidgetStub = resilienceWidgetMode === 'import-reject'
@@ -102,11 +103,34 @@ async function loadCountryDeepDivePanel(options = {}) {
 
   const stubModules = new Map([
     ['feeds-stub', `
-      export function getSourcePropagandaRisk() {
-        return { stateAffiliated: '' };
+      const sourceProvenance = ${sourceProvenance};
+      export function getSourcePropagandaRisk(sourceName) {
+        return sourceProvenance[sourceName]?.riskProfile
+          ?? { risk: 'unknown', note: 'Provenance not yet reviewed — do not treat as independent journalism' };
       }
-      export function getSourceTier() {
-        return 2;
+      export function getSourceTier(sourceName) {
+        return sourceProvenance[sourceName]?.tier ?? 4;
+      }
+      export function getSourceType(sourceName) {
+        return sourceProvenance[sourceName]?.type ?? 'unknown';
+      }
+      export function getSourceTierBadgeTitle(sourceType) {
+        if (sourceType === 'wire') return 'Wire Service - Highest reliability';
+        if (sourceType === 'gov') return 'Official Government Source';
+        if (sourceType === 'unknown') return 'Source type not yet reviewed';
+        return 'News source';
+      }
+      export function describePropagandaBadge(profile) {
+        if (profile.risk === 'low') return null;
+        const title = profile.note
+          || (profile.stateAffiliated ? 'State-affiliated: ' + profile.stateAffiliated : 'Provenance not yet reviewed');
+        if (profile.risk === 'high') {
+          return { risk: 'high', label: '⚠ State Media', shortLabel: '⚠', title };
+        }
+        if (profile.risk === 'medium') {
+          return { risk: 'medium', label: '! Caution', shortLabel: '!', title };
+        }
+        return { risk: 'unknown', label: '? Unreviewed', shortLabel: '?', title };
       }
     `],
     ['country-geometry-stub', `

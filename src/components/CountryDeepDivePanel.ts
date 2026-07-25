@@ -1,5 +1,11 @@
 import type { CountryBriefSignals } from '@/types';
-import { getSourcePropagandaRisk, getSourceTier } from '@/config/feeds';
+import {
+  describePropagandaBadge,
+  getSourcePropagandaRisk,
+  getSourceTier,
+  getSourceTierBadgeTitle,
+  getSourceType,
+} from '@/config/feeds';
 import { getCountryCentroid, ME_STRIKE_BOUNDS } from '@/services/country-geometry';
 import type { CountryScore } from '@/services/country-instability';
 import { t } from '@/services/i18n';
@@ -405,7 +411,10 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       const tier = item.tier ?? getSourceTier(item.source);
       const clampedTier = Math.max(1, Math.min(4, tier));
       const tierBadge = this.badge(`T${clampedTier} SRC`, `cdp-tier-badge tier-${clampedTier}`);
-      tierBadge.setAttribute('title', `Source tier ${clampedTier}: reflects publication credibility (1 = top wire services, 4 = specialty/low-reach). Independent of article severity.`);
+      tierBadge.setAttribute(
+        'title',
+        `${getSourceTierBadgeTitle(getSourceType(item.source))}. Source tier ${clampedTier}; independent of article severity.`,
+      );
       top.append(tierBadge);
 
       const severity = this.toThreatLevel(item.threat?.level);
@@ -416,8 +425,22 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       top.append(sevBadge);
 
       const risk = getSourcePropagandaRisk(item.source);
-      if (risk.stateAffiliated) {
-        top.append(this.badge(`State-affiliated: ${risk.stateAffiliated}`, 'cdp-state-badge'));
+      const riskDescription = describePropagandaBadge(risk);
+      if (riskDescription) {
+        const riskLabel = risk.stateAffiliated
+          ? `${riskDescription.label}: ${risk.stateAffiliated}`
+          : riskDescription.label;
+        const riskBadge = this.badge(
+          riskLabel,
+          `cdp-state-badge propaganda-badge ${riskDescription.risk}`,
+        );
+        riskBadge.setAttribute(
+          'title',
+          risk.stateAffiliated
+            ? `State-affiliated: ${risk.stateAffiliated}. ${riskDescription.title}`
+            : riskDescription.title,
+        );
+        top.append(riskBadge);
       }
 
       const title = this.el('div', 'cdp-news-title', this.decodeEntities(item.title));

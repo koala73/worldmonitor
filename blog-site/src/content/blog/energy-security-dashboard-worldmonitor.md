@@ -1,11 +1,12 @@
 ---
 title: "The Energy Security Dashboard: Oil, Gas, and Grid Risk on One Screen"
-description: "energy.worldmonitor.app is WorldMonitor's dedicated energy dashboard: 26 panels covering chokepoints, 88 pipelines, gas storage, fuel shortages, crisis policies, and prices."
+description: "Explore WorldMonitor's energy dashboard: 26 panels covering chokepoints, 88 pipelines, gas storage, fuel shortages, crisis policies, and prices."
 metaTitle: "Energy Security Dashboard | WorldMonitor"
 keywords: "energy security dashboard, oil and gas monitoring, energy intelligence platform, European gas storage levels, pipeline status map, energy crisis tracker, Strait of Hormuz monitoring"
 audience: "Energy analysts, commodity traders, utilities and policy researchers, logistics teams, macro investors"
 heroImage: "/blog/images/blog/energy-security-dashboard-worldmonitor.jpg"
 pubDate: "2026-07-21"
+modifiedDate: "2026-07-22"
 ---
 
 Energy is the transmission belt between geopolitics and everything else. A strait closes, a pipeline drops pressure, a cold snap lands on thin storage — and within weeks the same event has become a freight story, an inflation story, and a political story. That's why energy analysis can't live inside a single market feed: the causes are physical and geopolitical, and only the consequences are financial.
@@ -48,6 +49,10 @@ The `get_energy_intelligence` MCP tool returns the core bundle — petroleum sto
 ## Limits
 
 Live flow estimates cover seven of the 13 chokepoints — the ones with EIA baselines. Gas-storage depth is strongest for Europe, where GIE's AGSI+ transparency regime exists; most of the world publishes nothing comparable. Electricity data inherits Ember's reporting cadence, and retail fuel-price coverage varies by country. The dashboard's job is to show you what's knowable and label what isn't — not to interpolate confidence where the world doesn't publish data.
+
+## Primary Energy Sources
+
+Interpret live indicators against authoritative references such as the EIA's [World Oil Transit Chokepoints](https://www.eia.gov/international/content/analysis/special_topics/World_Oil_Transit_Chokepoints/) analysis and Gas Infrastructure Europe's [AGSI storage data](https://agsi.gie.eu/). Each source has its own reporting cadence and revision policy.
 
 ## Frequently Asked Questions
 

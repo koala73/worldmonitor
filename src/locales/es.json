@@ -1419,7 +1419,26 @@
       "cafIndex": "Índice CAF",
       "candidGrants": "Subvenciones Candid",
       "dataLag": "Retraso de datos",
-      "infoTooltip": "<strong>Índice de actividad de donaciones globales</strong> Índice compuesto que rastrea donaciones personales a través de plataformas de crowdfunding y billeteras cripto.<ul><li><strong>Plataformas</strong>: GoFundMe, GlobalGiving, JustGiving muestreo de campañas</li><li><strong>Cripto</strong>: Ingresos a billeteras de caridad on-chain (Endaoment, Giving Block)</li><li><strong>Institucional</strong>: OCDE AOD, CAF World Giving Index, subvenciones Candid</li></ul>El índice es direccional (no montos exactos en dólares). Combina muestreo en vivo con informes anuales publicados."
+      "infoTooltip": "<strong>Índice de actividad de donaciones globales</strong> Índice compuesto que rastrea donaciones personales a través de plataformas de crowdfunding y billeteras cripto.<ul><li><strong>Plataformas</strong>: GoFundMe, GlobalGiving, JustGiving muestreo de campañas</li><li><strong>Cripto</strong>: Ingresos a billeteras de caridad on-chain (Endaoment, Giving Block)</li><li><strong>Institucional</strong>: OCDE AOD, CAF World Giving Index, subvenciones Candid</li></ul>El índice es direccional (no montos exactos en dólares). Combina muestreo en vivo con informes anuales publicados.",
+      "benchmarkTitle": "Global Giving Benchmarks",
+      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "status": {
+        "published": "Published benchmarks with verified source coverage.",
+        "partial": "Published benchmarks with partial source coverage.",
+        "legacy": "Legacy snapshot; source details are unavailable.",
+        "cached": "Showing a cached snapshot; refresh unavailable."
+      },
+      "trackedAnnualized": "Tracked platform giving — annualized estimate",
+      "annualizedDaily": "Annualized daily estimate",
+      "atLeast": "At least",
+      "about": "About",
+      "sourceNotVerified": "Source not verified",
+      "reportedCumulative": "Reported cumulative total",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Published benchmark",
+      "sourcesMethodology": "Sources & methodology",
+      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
+      "partialEstimate": "Partially verified estimate"
     },
     "displacement": {
       "refugees": "Refugiados",
@@ -2179,11 +2198,100 @@
       "cta": "Actualiza a Pro →",
       "dismiss": "Descartar"
     },
+    "billingState": {
+      "onHoldDesc": "El pago falló. Actualiza tu método de pago para restaurar el acceso premium.",
+      "onHoldBannerMessage": "El pago falló. Actualiza tu método de pago para mantener tu suscripción activa.",
+      "updatePayment": "Actualizar pago",
+      "renewalPendingDesc": "Estamos verificando la renovación de tu suscripción. El acceso premium se restaurará automáticamente una vez confirmada.",
+      "refreshStatus": "Actualizar estado",
+      "renewalFailedDesc": "No pudimos verificar la renovación de tu suscripción. Gestiona la facturación o contacta con soporte si el problema persiste.",
+      "manageBilling": "Gestionar facturación",
+      "lapsedDesc": "Tu suscripción Pro ha finalizado. Vuelve a suscribirte para recuperar el acceso premium.",
+      "resubscribe": "Volver a suscribirse"
+    },
     "checkoutFailureBanner": {
       "message": "No se pudo completar el pago. No se realizó ningún cargo.",
       "retry": "Reintentar",
       "retrying": "Reintentando…",
       "dismiss": "Descartar"
+    },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Paso {{current}} de {{total}}",
+      "closeLabel": "Omitir configuración",
+      "ariaLabel": "Configuración de activación Pro",
+      "signedInAs": "Sesión iniciada como {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Tu resumen diario, cada mañana",
+          "body": "Un resumen de inteligencia curado en tu bandeja de entrada cada mañana: las señales de la noche que importan, condensadas en una lectura de cinco minutos.",
+          "confirmCta": "Activar mi resumen matutino",
+          "confirming": "Activando…",
+          "doneNote": "Tu resumen matutino ya está activo.",
+          "scheduleNote": "Mantendremos tu horario de entrega actual.",
+          "summaryLabel": "Resumen matutino",
+          "summaryVerified": "Activo — comienza con tu próximo resumen matutino.",
+          "deliverAt": "Entregar a las",
+          "previewLoading": "Preparando una vista previa de tu primer resumen…",
+          "previewLabel": "El resumen de esta mañana"
+        },
+        "alerts": {
+          "heading": "Alertas críticas",
+          "body": "Recibe un aviso en tu navegador cuando ocurra algo importante: escaladas de conflictos, shocks del mercado, nuevas sanciones. Ajusta la frecuencia cuando quieras en Configuración.",
+          "confirmCta": "Activar alertas",
+          "confirming": "Activando…",
+          "doneNote": "Las alertas del navegador ya están activadas.",
+          "blockedNote": "Las notificaciones están bloqueadas en tu navegador. Actívalas en la configuración del sitio de tu navegador para recibir alertas.",
+          "declinedNote": "No hay problema — no enviaremos alertas del navegador. Puedes activarlas más tarde desde la configuración del sitio de tu navegador.",
+          "summaryLabel": "Alertas críticas",
+          "summaryVerified": "Activas — las señales críticas llegarán a tu navegador."
+        },
+        "power": {
+          "heading": "Tu kit de herramientas Pro",
+          "body": "Widgets personalizados, conexiones MCP y el investigador de IA están desbloqueados. Crea el panel que realmente quieres vigilar.",
+          "confirmCta": "Explorar herramientas Pro",
+          "confirming": "Abriendo…",
+          "doneNote": "Ya estás usando tus herramientas Pro.",
+          "summaryLabel": "Kit de herramientas Pro",
+          "summaryVerified": "Desbloqueado y listo cuando tú lo estés.",
+          "channelsNote": "¿Prefieres Telegram, Slack, Discord o un webhook?",
+          "pointers": {
+            "widgets": "Crear un widget personalizado",
+            "analyst": "Preguntar al analista de IA",
+            "apiKeys": "Obtener tus claves de API y MCP",
+            "channels": "Configúralos en los ajustes de notificaciones"
+          }
+        }
+      },
+      "status": {
+        "pending": "Sin configurar",
+        "inFlight": "Configurando…",
+        "verified": "Listo",
+        "failed": "No funcionó",
+        "blocked": "Bloqueado",
+        "unavailable": "No disponible",
+        "blockedNote": "Esto no está disponible ahora mismo — puedes configurarlo más tarde desde los ajustes.",
+        "unavailableNote": "Esto no está disponible en tu dispositivo — puedes configurarlo más tarde.",
+        "failedBody": "Algo salió mal. Puedes intentarlo de nuevo o configurarlo más tarde desde los ajustes.",
+        "retry": "Intentar de nuevo"
+      },
+      "actions": {
+        "skip": "Omitir por ahora",
+        "continue": "Continuar"
+      },
+      "summary": {
+        "heading": "Todo listo",
+        "subVerified": "Esto es lo que está activo en tu cuenta.",
+        "subPending": "Puedes terminar la configuración cuando quieras desde los ajustes.",
+        "linePending": "Aún sin configurar — termínalo cuando quieras en los ajustes.",
+        "lineFailed": "No pudimos configurar esto — inténtalo de nuevo desde los ajustes.",
+        "finish": "Ir a mi panel"
+      },
+      "chip": {
+        "message": "Termina de configurar tu cuenta Pro.",
+        "action": "Terminar configuración",
+        "dismissLabel": "Descartar"
+      }
     },
     "frameworkSelector": {
       "label": "Marco de análisis",

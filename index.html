@@ -230,6 +230,7 @@
       .skeleton-header-right{display:flex;align-items:center;gap:12px}
       .skeleton-brand{display:flex;align-items:center;gap:8px;margin:0;color:#f5f5f5;font-size:14px;line-height:1;font-weight:800}
       .skeleton-brand-mark{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border:1px solid #2f8f68;border-radius:50%;color:#4ade80;font-size:12px;line-height:1}
+      .skeleton-brand-mark::after{content:"W"}
       .skeleton-kicker{color:#9ca3af;font-size:11px;line-height:1;white-space:nowrap}
       .skeleton-chip{display:inline-flex;align-items:center;min-height:22px;padding:0 8px;border:1px solid #2a2a2a;border-radius:4px;color:#d1d5db;background:#181818;font-size:11px;line-height:1;white-space:nowrap}
       .skeleton-chip.live{color:#86efac;border-color:#14532d;background:#062317}
@@ -430,6 +431,15 @@
         <li><a href="https://energy.worldmonitor.app/">Energy Monitor</a> — oil, gas, chokepoints, energy security</li>
       </ul>
 
+      <h2>Live intelligence reference</h2>
+      <ul>
+        <li><a href="https://www.worldmonitor.app/countries/">Country risk and resilience</a> — 196 country pages with resilience rank and live instability signals</li>
+        <li><a href="https://www.worldmonitor.app/chokepoints/">Maritime chokepoints</a> — 13 waterways with live disruption status, including the <a href="https://www.worldmonitor.app/chokepoints/strait-of-hormuz/">Strait of Hormuz</a> and <a href="https://www.worldmonitor.app/chokepoints/suez-canal/">Suez Canal</a></li>
+        <li><a href="https://www.worldmonitor.app/crises/">Crisis trackers</a> — bounded monthly conflict pulses for Iran–Israel, Ukraine, the Red Sea, and Sudan</li>
+        <li><a href="https://www.worldmonitor.app/tools/">Live tools</a> — <a href="https://www.worldmonitor.app/tools/natural-hazard-pulse/">natural-hazard tracker</a> and <a href="https://www.worldmonitor.app/tools/airspace-disruption-checker/">airspace-disruption checker</a></li>
+        <li><a href="https://www.worldmonitor.app/reference/changelog/">Changelog</a> and <a href="https://www.worldmonitor.app/blog/glossary/">glossary of monitoring terms</a></li>
+      </ul>
+
       <h2>Learn more</h2>
       <ul>
         <li><a href="https://www.worldmonitor.app/pro">World Monitor Pro</a> — AI analyst, personalized digests, MCP for Claude &amp; GPT</li>
@@ -455,7 +465,7 @@
       <div class="skeleton-shell" aria-busy="true" aria-label="World Monitor dashboard loading">
         <div class="skeleton-header">
           <div class="skeleton-header-left">
-            <div class="skeleton-brand"><span class="skeleton-brand-mark" aria-hidden="true">W</span><span>World Monitor</span></div>
+            <div class="skeleton-brand"><span class="skeleton-brand-mark" aria-hidden="true"></span><span>World Monitor</span></div>
             <span class="skeleton-kicker">Dashboard shell loading</span>
             <span class="skeleton-dot" aria-hidden="true"></span>
           </div>
@@ -512,6 +522,9 @@
 
         <h3>Six dashboards, one platform</h3>
         <p>Explore the variant that matches what you track: <a href="https://www.worldmonitor.app/dashboard" style="color:#4ade80;">World Monitor</a> for geopolitics and conflicts, <a href="https://tech.worldmonitor.app/" style="color:#4ade80;">Tech Monitor</a> for AI labs and startups, <a href="https://finance.worldmonitor.app/" style="color:#4ade80;">Finance Monitor</a> for markets and central banks, <a href="https://commodity.worldmonitor.app/" style="color:#4ade80;">Commodity Monitor</a> for mining and supply chains, <a href="https://happy.worldmonitor.app/" style="color:#4ade80;">Happy Monitor</a> for positive news and progress, and <a href="https://energy.worldmonitor.app/" style="color:#4ade80;">Energy Monitor</a> for oil, gas, chokepoints, and energy security.</p>
+
+        <h3>Live intelligence reference</h3>
+        <p>Browse the crawlable reference corpus: <a href="https://www.worldmonitor.app/countries/" style="color:#4ade80;">country risk and resilience</a> for 196 countries, <a href="https://www.worldmonitor.app/chokepoints/" style="color:#4ade80;">13 maritime chokepoints</a> with live disruption status, <a href="https://www.worldmonitor.app/crises/" style="color:#4ade80;">bounded crisis trackers</a>, and <a href="https://www.worldmonitor.app/tools/" style="color:#4ade80;">live tools</a> for natural hazards and airspace disruption.</p>
 
         <h3>Read more</h3>
         <p>Learn what the platform does in <a href="https://www.worldmonitor.app/blog/posts/what-is-worldmonitor-real-time-global-intelligence/" style="color:#4ade80;">What is World Monitor?</a>, how OSINT applies in <a href="https://www.worldmonitor.app/blog/posts/osint-for-everyone-open-source-intelligence-democratized/" style="color:#4ade80;">OSINT for everyone</a>, or compare to traditional tools in <a href="https://www.worldmonitor.app/blog/posts/worldmonitor-vs-traditional-intelligence-tools/" style="color:#4ade80;">World Monitor vs Bloomberg, Palantir, Dataminr</a>. Full source on <a href="https://github.com/koala73/worldmonitor" style="color:#4ade80;" rel="noopener noreferrer">GitHub (AGPL-3.0)</a>, or <a href="https://www.worldmonitor.app/pro" style="color:#4ade80;">upgrade to World Monitor Pro</a> for the AI analyst, custom widget builder, and MCP for Claude and GPT.</p>

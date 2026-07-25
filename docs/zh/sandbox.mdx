@@ -1,0 +1,62 @@
+---
+title: "沙盒与测试环境"
+description: "无需 API 密钥、不消耗配额即可测试 World Monitor API：确定性的沙盒样例响应、匿名 MCP 发现接口，以及只读的数据接口。"
+---
+
+World Monitor 提供沙盒环境，让智能体和集成方可以在**无需 API 密钥、不消耗配额、且完全不影响生产数据**的前提下进行开发和测试。沙盒由三部分组成:
+
+## 1. 沙盒样例(fixtures)——确定性的示例响应
+
+沙盒以纯静态 JSON 的形式，为一组代表性 REST 操作提供确定性、符合 schema 的示例响应。从索引开始:
+
+```bash
+curl https://www.worldmonitor.app/sandbox/index.json
+```
+
+每个条目列出操作本身、生产环境 URL 以及 `fixture` 地址。获取任一 fixture 会返回与生产端点**完全一致的响应信封结构**，并附带请求元数据:
+
+```bash
+curl https://www.worldmonitor.app/sandbox/get-resilience-score.json
+```
+
+```json
+{
+  "sandbox": true,
+  "operation": {
+    "method": "GET",
+    "path": "/api/resilience/v1/get-resilience-score",
+    "productionUrl": "https://api.worldmonitor.app/api/resilience/v1/get-resilience-score"
+  },
+  "request": { "query": { "countryCode": "US" } },
+  "response": { "status": 200, "body": { "...": "符合 schema 的示例负载" } }
+}
+```
+
+保证:
+
+- **确定性** — fixtures 由已发布的 OpenAPI 示例生成(`scripts/generate-sandbox-fixtures.mjs`)，只有在 API 契约变化时才会更新。可安全地用于 CI 快照测试。
+- **符合 schema** — 每个 `response.body` 都通过 [openapi.json](https://worldmonitor.app/openapi.json) 中对应操作的响应 schema 校验。
+- **明确标注为合成数据** — 每个 fixture 都带有 `"sandbox": true`。切勿将 fixture 负载当作实时数据。
+
+## 2. 生产 MCP 服务器上的匿名、免配额发现接口
+
+生产 MCP 服务器 `https://worldmonitor.app/mcp` 允许你在无需认证、不消耗每日配额的情况下探索完整的工具面:
+
+- `tools/list` — 实时工具清单(压缩描述)
+- `describe_tool` — 任意工具的完整定义，包括输出 schema
+- `prompts/list` / `prompts/get` — 预置的工作流模板
+- `resources/list` — 只读资源(seed-meta 新鲜度资源完全匿名可用)
+
+[文档 MCP 服务器](/zh/mcp-overview)(`https://www.worldmonitor.app/docs/mcp`)完全公开——无需任何密钥即可通过 MCP 搜索和阅读本文档。
+
+## 3. 只读的数据接口
+
+[REST API](/zh/api-reference) 中的每个数据操作和每个 MCP 数据工具都是**只读**的:智能体对 `api.worldmonitor.app` 发起的任何调用都不会修改生产数据。唯一具有写入能力的接口都限定在账户范围内(API 密钥管理、告警规则、通知渠道)，需要经过认证的会话——它们被有意排除在沙盒之外。
+
+## 切换到生产环境
+
+1. 在 [worldmonitor.app/pro](https://worldmonitor.app/pro) 申请密钥，并通过 `X-WorldMonitor-Key: wm_<40位十六进制>` 请求头发送(或使用 [OAuth 2.1](/zh/api-oauth)，`scope=mcp`)。
+2. 将 fixture URL 替换为沙盒索引中的 `productionUrl`——响应信封结构完全相同。
+3. 注意[速率限制](/zh/usage-rate-limits)，收到 429 时遵循 `Retry-After`。
+
+完整的认证矩阵见[认证](/zh/usage-auth)，生产 API 的错误信封见[错误参考](/zh/usage-errors)。

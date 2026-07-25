@@ -45,9 +45,11 @@ vi.mock("../_shared/direct-llm-quota", async (importOriginal) => {
 });
 
 import { createDomainGateway } from "../gateway";
+import { getRequiredTier } from "../_shared/entitlement-check";
 
 const CLASSIFY_PATH = "/api/intelligence/v1/classify-event";
 const DEDUCT_PATH = "/api/intelligence/v1/deduct-situation";
+const COUNTRY_BRIEF_PATH = "/api/intelligence/v1/get-country-intel-brief";
 const CACHE_PATH = "/api/news/v1/summarize-article-cache";
 
 function json(body: unknown, status = 200) {
@@ -73,6 +75,14 @@ function makeGateway(handlerCalls: Record<string, number>) {
       handler: async () => {
         handlerCalls.deduct += 1;
         return json({ ok: true, route: "deduct" });
+      },
+    },
+    {
+      method: "GET",
+      path: COUNTRY_BRIEF_PATH,
+      handler: async () => {
+        handlerCalls.country += 1;
+        return json({ ok: true, route: "country" });
       },
     },
     {
@@ -109,6 +119,54 @@ beforeEach(() => {
 });
 
 describe("gateway direct LLM quota", () => {
+  test("country brief is declared as a tier-1 Pro endpoint", () => {
+    expect(getRequiredTier(COUNTRY_BRIEF_PATH)).toBe(1);
+  });
+
+  test("free bearer country brief is rejected before quota or handler spend", async () => {
+    const calls = { classify: 0, deduct: 0, country: 0, cache: 0 };
+    resolveClerkSession.mockResolvedValue({ userId: "user_free", orgId: null, role: "free" });
+    checkEntitlementDetailed.mockResolvedValue({
+      response: json({ error: "Upgrade required", requiredTier: 1, currentTier: 0 }, 403),
+      entitlements: null,
+    });
+
+    const res = await makeGateway(calls)(
+      req(`${COUNTRY_BRIEF_PATH}?country_code=US`, {
+        headers: { Authorization: "Bearer free" },
+      }),
+      { waitUntil: () => {} },
+    );
+
+    expect(res.status).toBe(403);
+    expect(checkEntitlementDetailed).toHaveBeenCalledWith(
+      "user_free",
+      COUNTRY_BRIEF_PATH,
+      expect.any(Object),
+      { clerkRole: "free" },
+    );
+    expect(calls.country).toBe(0);
+    expect(reserveDirectLlmQuota).not.toHaveBeenCalled();
+  });
+
+  test("Pro bearer country brief reserves quota and reaches the handler", async () => {
+    const calls = { classify: 0, deduct: 0, country: 0, cache: 0 };
+    resolveClerkSession.mockResolvedValue({ userId: "user_pro", orgId: null, role: "pro" });
+
+    const res = await makeGateway(calls)(
+      req(`${COUNTRY_BRIEF_PATH}?country_code=US`, {
+        headers: { Authorization: "Bearer pro" },
+      }),
+      { waitUntil: () => {} },
+    );
+
+    expect(res.status).toBe(200);
+    expect(calls.country).toBe(1);
+    expect(reserveDirectLlmQuota).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "user_pro" }),
+    );
+  });
+
   test("anonymous wms-only classify-event is blocked before handler spend", async () => {
     const calls = { classify: 0, deduct: 0, cache: 0 };
     validateApiKey.mockResolvedValue({ valid: true, required: false, kind: "session" });

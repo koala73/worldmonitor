@@ -1775,3 +1775,33 @@ describe('processResolutionCycle retention', () => {
     assert.equal(receipts.length, 1, 'the receipt is still emitted for R2 archival');
   });
 });
+
+describe('Gate-2 promotion env wiring (review R3 #8)', () => {
+  const scoredBetEngineLedger = () => ({
+    'bet@1': {
+      key: 'bet@1',
+      id: 'bet',
+      status: 'resolved',
+      outcome: 'YES',
+      probability: 0.8,
+      generationOrigin: 'bet_engine',
+      domain: 'market',
+      resolvedAt: T0,
+    },
+  });
+
+  it('FORECAST_PROMOTE_BET_ENGINE=1 lifts bet_engine into the skill headline; default stays excluded', () => {
+    delete process.env.FORECAST_PROMOTE_BET_ENGINE;
+    const off = processResolutionCycle(scoredBetEngineLedger(), [], {}, T0 + DAY_MS);
+    assert.ok(off.scorecard.skill.excludedOrigins.includes('bet_engine'), 'default: shadow slice excluded');
+
+    process.env.FORECAST_PROMOTE_BET_ENGINE = '1';
+    try {
+      const on = processResolutionCycle(scoredBetEngineLedger(), [], {}, T0 + DAY_MS);
+      assert.ok(!on.scorecard.skill.excludedOrigins.includes('bet_engine'), 'env flip promotes');
+      assert.equal(on.scorecard.skill.count, 1);
+    } finally {
+      delete process.env.FORECAST_PROMOTE_BET_ENGINE;
+    }
+  });
+});

@@ -6,6 +6,7 @@ keywords: "geopolitics to markets, macro trading workflow, geopolitical market r
 audience: "Macro traders, portfolio managers, market strategists, risk analysts"
 heroImage: "/blog/images/blog/geopolitics-to-markets-pipeline-macro-traders-worldmonitor.jpg"
 pubDate: "2026-06-13"
+modifiedDate: "2026-07-22"
 ---
 
 Geopolitical headlines are noisy. Markets care about some of them immediately, some slowly, and many not at all.
@@ -112,6 +113,8 @@ For adjacent market surfaces, see the [real-time market intelligence workflow](/
 WorldMonitor combines market, commodity, trade, chokepoint, forecast, news, country-risk, and prediction-market context. Some surfaces are public. Some are PRO-gated. Some are daily or hourly. Some are market-hours dependent. A good analyst records source freshness and treats model outputs as structured context, not certainty.
 
 The point is to reduce unstructured narrative risk. The tool should help you say, "Here is the channel, here is the evidence, here is what would prove me wrong."
+
+For the underlying macro series, use primary releases such as [FRED from the Federal Reserve Bank of St. Louis](https://fred.stlouisfed.org/) and [IMF Data](https://www.imf.org/en/Data). The workflow above helps organize evidence; it does not replace the source release or investment judgment.
 
 ## Frequently Asked Questions
 

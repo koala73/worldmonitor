@@ -6,7 +6,6 @@
 // Constants mirrored from the module so a prod drift fails by name rather than
 // silently (matches tests/mcp-quota-concurrent.test.mjs discipline).
 const STARTER_ALLOWANCE = 1000;
-const CEILING_MULTIPLIER = 10; // server/_shared/api-key-rate-limit.ts
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -58,40 +57,40 @@ describe('#3199 U3 — apiKeyDailyKey (UTC calendar day)', () => {
 });
 
 describe('#3199 U3 — reserveDailyMeter', () => {
-  it('under the ceiling: meters, does not flag, no rollback', async () => {
-    const mock = makePipeline(4999); // next INCR -> 5000, well under 10×1000
+  it('under the allowance: meters, does not flag, no rollback', async () => {
+    const mock = makePipeline(500); // next INCR -> 501, under the 1000 allowance
     const r = await reserveDailyMeter({ userId: 'u', allowance: STARTER_ALLOWANCE, pipeline: mock.pipeline });
-    assert.equal(r.count, 5000);
-    assert.equal(r.overCeiling, false);
+    assert.equal(r.count, 501);
+    assert.equal(r.overLimit, false);
     assert.equal(r.metered, true);
     // INCR+EXPIRE issued, no DECR.
     assert.equal(mock.commands.length, 1);
   });
 
-  it('over the 10× ceiling: flags, and rollback() floors the counter', async () => {
-    const mock = makePipeline(STARTER_ALLOWANCE * CEILING_MULTIPLIER); // 10000 -> INCR 10001
+  it('over the sold allowance: flags, and rollback() floors the counter', async () => {
+    const mock = makePipeline(STARTER_ALLOWANCE); // 1000 -> INCR 1001
     const r = await reserveDailyMeter({ userId: 'u', allowance: STARTER_ALLOWANCE, pipeline: mock.pipeline });
-    assert.equal(r.count, 10001);
-    assert.equal(r.overCeiling, true);
+    assert.equal(r.count, 1001);
+    assert.equal(r.overLimit, true);
     await r.rollback();
-    assert.equal(mock.current(), 10000, 'rollback DECRs the over-ceiling increment');
+    assert.equal(mock.current(), 1000, 'rollback DECRs the over-limit increment');
     // rollback is idempotent
     await r.rollback();
-    assert.equal(mock.current(), 10000);
+    assert.equal(mock.current(), 1000);
   });
 
-  it('exactly at the ceiling is allowed (only strictly-over rejects)', async () => {
-    const mock = makePipeline(STARTER_ALLOWANCE * CEILING_MULTIPLIER - 1); // -> 10000
+  it('exactly at the allowance is allowed (only strictly-over rejects)', async () => {
+    const mock = makePipeline(STARTER_ALLOWANCE - 1); // -> 1000
     const r = await reserveDailyMeter({ userId: 'u', allowance: STARTER_ALLOWANCE, pipeline: mock.pipeline });
-    assert.equal(r.count, 10000);
-    assert.equal(r.overCeiling, false);
+    assert.equal(r.count, 1000);
+    assert.equal(r.overLimit, false);
   });
 
-  it('unlimited allowance (-1): never touches Redis, never ceilings', async () => {
+  it('unlimited allowance (-1): never touches Redis, never over-limits', async () => {
     const mock = makePipeline(999999);
     const r = await reserveDailyMeter({ userId: 'ent', allowance: -1, pipeline: mock.pipeline });
     assert.equal(r.metered, false);
-    assert.equal(r.overCeiling, false);
+    assert.equal(r.overLimit, false);
     assert.equal(mock.commands.length, 0, 'no pipeline call for unlimited');
   });
 
@@ -99,7 +98,7 @@ describe('#3199 U3 — reserveDailyMeter', () => {
     const mock = makePipeline(0);
     const r = await reserveDailyMeter({ userId: 'u', allowance: 0, pipeline: mock.pipeline });
     assert.equal(r.metered, false);
-    assert.equal(r.overCeiling, false);
+    assert.equal(r.overLimit, false);
     assert.equal(mock.commands.length, 0, 'allowance 0 must not ceiling-429 request #1');
   });
 
@@ -107,7 +106,7 @@ describe('#3199 U3 — reserveDailyMeter', () => {
     const downPipeline = async () => [];
     const r = await reserveDailyMeter({ userId: 'u', allowance: STARTER_ALLOWANCE, pipeline: downPipeline });
     assert.equal(r.metered, false);
-    assert.equal(r.overCeiling, false);
+    assert.equal(r.overLimit, false);
   });
 
   it('fail-open when the pipeline throws', async () => {
@@ -116,7 +115,7 @@ describe('#3199 U3 — reserveDailyMeter', () => {
     };
     const r = await reserveDailyMeter({ userId: 'u', allowance: STARTER_ALLOWANCE, pipeline: throwingPipeline });
     assert.equal(r.metered, false);
-    assert.equal(r.overCeiling, false);
+    assert.equal(r.overLimit, false);
   });
 
   it('per-account: the metered key is the userId-scoped daily key', async () => {
