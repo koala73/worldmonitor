@@ -73,6 +73,7 @@ describe('China coverage manifest', () => {
       'aviation.china-hubs',
       'macro.china-snapshot',
       'macro.china-release-calendar',
+      'policy.official-events',
       'hazards.western-pacific-cyclones',
       'hazards.hko-warnings',
     ]) {
@@ -86,6 +87,18 @@ describe('China coverage manifest', () => {
     assert.equal(
       CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === 'macro.china-release-calendar')?.launchStatus,
       'launched',
+    );
+    assert.deepEqual(
+      CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === 'policy.official-events')?.content,
+      {
+        key: 'china:policy-events:v1',
+        maxAgeMin: 180 * 1_440,
+        probe: {
+          kind: 'object',
+          requiredTruthyPaths: [['events']],
+          timestampPaths: [['events', '*', 'publicationDate']],
+        },
+      },
     );
     assert.equal(
       CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === 'hazards.hko-warnings')?.launchStatus,

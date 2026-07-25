@@ -1,0 +1,486 @@
+import { CHROME_UA } from '../_seed-utils.mjs';
+import { extractDocumentNumber } from './normalize.mjs';
+
+const DEFAULT_FETCH = (...args) => globalThis.fetch(...args);
+const LIST_BYTES = 750_000;
+const DOCUMENT_BYTES = 2_000_000;
+const MAX_DOCUMENTS = 3;
+const REQUEST_CADENCE_MS = 400;
+const REQUEST_TIMEOUT_MS = 15_000;
+
+const SAMR_LIST_URL = new URL('https://www.samr.gov.cn/api-gateway/jpaas-publish-server/front/page/build/unit');
+SAMR_LIST_URL.search = new URLSearchParams({
+  webId: '29e9522dc89d4e088a953d8cede72f4c',
+  pageId: 'dedefc44460a4338ac649d95f0ed8023',
+  parseType: 'bulidstatic',
+  pageType: 'column',
+  tagId: '内容区域',
+  tplSetId: '5c30fb89ae5e48b9aefe3cdf49853830',
+  pageNo: '1',
+}).toString();
+
+const MIIT_LIST_URL = new URL('https://www.miit.gov.cn/search-front-server/api/search/info');
+MIIT_LIST_URL.search = new URLSearchParams({
+  websiteid: '110000000000000',
+  scope: 'basic',
+  q: '',
+  pg: '10',
+  cateid: '58',
+  pos: 'title_text,infocontent,titlepy',
+  _cus_eq_typename: '',
+  _cus_eq_publishgroupname: '',
+  _cus_eq_themename: '',
+  begin: '',
+  end: '',
+  dateField: 'deploytime',
+  selectFields: 'title,content,deploytime,_index,url,cdate,infoextends,infocontentattribute,columnname,filenumbername,publishgroupname,publishtime,metaid,bexxgk,columnid,xxgkextend1,xxgkextend2,themename,typename,indexcode,createdate',
+  group: 'distinct',
+  highlightConfigs: '[{"field":"infocontent","numberOfFragments":2,"fragmentOffset":0,"fragmentSize":30,"noMatchSize":145}]',
+  highlightFields: 'title_text,infocontent,webid',
+  level: '6',
+  sortFields: '[{"name":"deploytime","type":"desc"}]',
+  p: '1',
+}).toString();
+
+function source(listUrl, allowedHost, listingFormat, documentPathPattern, requiredSearchParam = null) {
+  return Object.freeze({
+    listUrl,
+    allowedHost,
+    listingFormat,
+    documentPathPattern,
+    requiredSearchParam,
+    maxListBytes: LIST_BYTES,
+    maxDocumentBytes: DOCUMENT_BYTES,
+    maxDocumentsPerRun: MAX_DOCUMENTS,
+    requestCadenceMs: REQUEST_CADENCE_MS,
+  });
+}
+
+export const CHINA_POLICY_SOURCES = Object.freeze({
+  CAC: source(
+    'https://www.cac.gov.cn/wxzw/zcfg/A093703index_1.htm',
+    'www.cac.gov.cn',
+    'html',
+    /^\/\d{4}-\d{2}\/\d{2}\/c_\d+\.htm$/,
+  ),
+  SAMR: source(
+    SAMR_LIST_URL.href,
+    'www.samr.gov.cn',
+    'samr-json',
+    /^\/zw\/zfxxgk\/.+\/art\/\d{4}\/art_[0-9a-f]+\.html$/,
+  ),
+  MIIT: source(
+    MIIT_LIST_URL.href,
+    'www.miit.gov.cn',
+    'miit-json',
+    /^\/zwgk\/zcwj\/.+\/art\/\d{4}\/art_[0-9a-f]+\.html$/,
+  ),
+  MOFCOM: source(
+    'https://www.mofcom.gov.cn/zcfb/index.html',
+    'www.mofcom.gov.cn',
+    'html',
+    /^\/zcfb\/.+\/art\/\d{4}\/art_[0-9a-f]+\.html$/,
+  ),
+  NDRC: source(
+    'https://zfxxgk.ndrc.gov.cn/web/zclist.jsp?dirid=41&pid=39',
+    'zfxxgk.ndrc.gov.cn',
+    'html',
+    /^\/web\/iteminfo\.jsp$/,
+    ['id', /^\d+$/],
+  ),
+  PBOC: source(
+    'https://www.pbc.gov.cn/tiaofasi/144941/144957/index.html',
+    'www.pbc.gov.cn',
+    'html',
+    /^\/tiaofasi\/144941\/144957\/\d+\/index\.html$/,
+  ),
+});
+
+const NON_DOCUMENT_TITLE = /专家解读|答记者问|一图读懂|公开招聘|拟聘|预算|公示|工作动态/;
+const POLICY_TITLE_HINT = /条例|规定|办法|规章|决定|公告|通知|意见|方案|指南|规划|批复|裁定|处罚|调查|管控名单|管理措施|禁令|令〔|令\d/;
+const BLOCK_PAGE_PATTERN = /Access Denied|访问频繁|安全验证|验证码|请求被拒绝|系统繁忙|页面不存在|404 Not Found|服务异常/i;
+
+function decodeNumericEntity(code, radix) {
+  const value = Number.parseInt(code, radix);
+  if (
+    !Number.isInteger(value)
+    || value < 0
+    || value > 0x10FFFF
+    || (value >= 0xD800 && value <= 0xDFFF)
+  ) {
+    return '\uFFFD';
+  }
+  return String.fromCodePoint(value);
+}
+
+function decodeEntities(input) {
+  return String(input ?? '')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&#(\d+);/g, (_, code) => decodeNumericEntity(code, 10))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) => decodeNumericEntity(code, 16));
+}
+
+function stripHtml(input) {
+  return decodeEntities(
+    String(input ?? '')
+      .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<[^>]+>/g, ' '),
+  ).replace(/\s+/g, ' ').trim();
+}
+
+function validDay(value) {
+  const token = String(value ?? '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(token)) return null;
+  const parsed = Date.parse(`${token}T00:00:00.000Z`);
+  return Number.isFinite(parsed) ? token : null;
+}
+
+function canonicalizeSourceUrl(value, sourceConfig) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  let parsed;
+  try {
+    if (raw.startsWith('//')) parsed = new URL(`https:${raw}`);
+    else parsed = new URL(raw, sourceConfig.listUrl);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol === 'http:') parsed.protocol = 'https:';
+  parsed.hash = '';
+  if (
+    parsed.protocol !== 'https:'
+    || parsed.hostname !== sourceConfig.allowedHost
+    || parsed.username
+    || parsed.password
+    || !sourceConfig.documentPathPattern.test(parsed.pathname)
+    || (
+      sourceConfig.requiredSearchParam
+      && !sourceConfig.requiredSearchParam[1].test(
+        parsed.searchParams.get(sourceConfig.requiredSearchParam[0]) ?? '',
+      )
+    )
+  ) {
+    return null;
+  }
+  return parsed.href;
+}
+
+function dateNearAnchor(html, anchorEnd) {
+  const nearby = html.slice(anchorEnd, anchorEnd + 500);
+  return validDay(nearby.match(/\b(20\d{2}-\d{2}-\d{2})\b/)?.[1]);
+}
+
+function parseHtmlListing(agency, html, sourceConfig) {
+  const rows = [];
+  const anchorPattern = /<a\b([^>]*?)>([\s\S]*?)<\/a>/gi;
+  let match;
+  while ((match = anchorPattern.exec(html)) !== null) {
+    const attributes = match[1];
+    const href = attributes.match(/\bhref\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/i);
+    const rawHref = href?.[1] ?? href?.[2] ?? href?.[3] ?? '';
+    const titleAttribute = attributes.match(/\btitle\s*=\s*(?:"([^"]+)"|'([^']+)')/i);
+    const titleOriginal = stripHtml(titleAttribute?.[1] ?? titleAttribute?.[2] ?? match[2]);
+    const canonicalUrl = canonicalizeSourceUrl(rawHref, sourceConfig);
+    const publicationDate = dateNearAnchor(html, anchorPattern.lastIndex);
+    if (
+      !canonicalUrl
+      || !publicationDate
+      || titleOriginal.length < 5
+      || NON_DOCUMENT_TITLE.test(titleOriginal)
+      || !POLICY_TITLE_HINT.test(titleOriginal)
+    ) {
+      continue;
+    }
+    rows.push({
+      agency,
+      canonicalUrl,
+      titleOriginal,
+      publicationDate,
+      originalText: '',
+      documentNumber: extractDocumentNumber(titleOriginal),
+    });
+  }
+  return rows;
+}
+
+function parseMiitListing(raw, sourceConfig) {
+  let payload;
+  try {
+    payload = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  const groups = payload?.data?.searchResult?.dataResults ?? [];
+  const rows = [];
+  for (const result of groups) {
+    for (const group of result?.groupData ?? []) {
+      const data = group?.data;
+      if (!data || typeof data !== 'object') continue;
+      const canonicalUrl = canonicalizeSourceUrl(data.url, sourceConfig);
+      const publicationDate = validDay(data.jsearch_date);
+      const titleOriginal = stripHtml(data.title_text || data.title);
+      const listingText = stripHtml(data.infocontent);
+      if (!canonicalUrl || !publicationDate || titleOriginal.length < 5 || listingText.length < 5) {
+        continue;
+      }
+      rows.push({
+        agency: 'MIIT',
+        canonicalUrl,
+        titleOriginal,
+        publicationDate,
+        originalText: '',
+        documentNumber: stripHtml(data.filenumbername) || extractDocumentNumber(titleOriginal),
+      });
+    }
+  }
+  return rows;
+}
+
+export function parseAgencyListing(agency, raw) {
+  const sourceConfig = CHINA_POLICY_SOURCES[agency];
+  if (!sourceConfig) throw new TypeError(`Unknown agency ${String(agency)}`);
+  if (sourceConfig.listingFormat === 'miit-json') return parseMiitListing(raw, sourceConfig);
+  if (sourceConfig.listingFormat === 'samr-json') {
+    try {
+      const payload = JSON.parse(raw);
+      return parseHtmlListing(agency, String(payload?.data?.html ?? ''), sourceConfig);
+    } catch {
+      return [];
+    }
+  }
+  return parseHtmlListing(agency, raw, sourceConfig);
+}
+
+function metaContent(html, name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const pattern = new RegExp(
+    `<meta\\b(?=[^>]*\\bname\\s*=\\s*["']${escaped}["'])(?=[^>]*\\bcontent\\s*=\\s*["']([^"']*)["'])[^>]*>`,
+    'i',
+  );
+  return stripHtml(html.match(pattern)?.[1] ?? '');
+}
+
+function extractArticleBody(html) {
+  for (const className of ['article-content', 'main-content', 'TRS_Editor', 'content']) {
+    const escaped = className.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = html.match(new RegExp(
+      `<(?:div|td|article)\\b[^>]*class\\s*=\\s*["'][^"']*\\b${escaped}\\b[^"']*["'][^>]*>([\\s\\S]*?)<\\/(?:div|td|article)>`,
+      'i',
+    ));
+    const text = stripHtml(match?.[1] ?? '');
+    if (text.length >= 10) return text;
+  }
+  const body = html.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i)?.[1] ?? html;
+  return stripHtml(body);
+}
+
+export function extractEffectiveDate(text) {
+  const match = String(text).match(
+    /(?:自|于)\s*(20\d{2})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日(?:起)?(?:施行|实施|生效)/,
+  );
+  if (!match) return null;
+  const year = match[1];
+  const month = match[2].padStart(2, '0');
+  const day = match[3].padStart(2, '0');
+  return validDay(`${year}-${month}-${day}`);
+}
+
+export function parsePolicyDocumentHtml(html, fallback = {}) {
+  const titleOriginal = metaContent(html, 'ArticleTitle')
+    || stripHtml(html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1])
+    || fallback.titleOriginal
+    || '';
+  const publicationDate = validDay(metaContent(html, 'PubDate')) ?? fallback.publicationDate ?? null;
+  const originalText = extractArticleBody(html);
+  return {
+    titleOriginal,
+    publicationDate,
+    originalText,
+    effectiveDate: extractEffectiveDate(originalText),
+    documentNumber: extractDocumentNumber(`${titleOriginal} ${originalText}`),
+  };
+}
+
+async function readBoundedBody(response, maxBytes) {
+  const declaredLength = Number(response.headers.get('content-length'));
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) {
+    throw new Error(`response exceeded ${maxBytes} bytes`);
+  }
+  if (!response.body?.getReader) {
+    const text = await response.text();
+    if (Buffer.byteLength(text) > maxBytes) throw new Error(`response exceeded ${maxBytes} bytes`);
+    return text;
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let bytes = 0;
+  let text = '';
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > maxBytes) {
+        await reader.cancel();
+        throw new Error(`response exceeded ${maxBytes} bytes`);
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode();
+    return text;
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+async function fetchBounded(url, sourceConfig, maxBytes, fetchImpl, allowedContentTypes) {
+  const parsed = new URL(url);
+  if (parsed.protocol !== 'https:' || parsed.hostname !== sourceConfig.allowedHost) {
+    throw new Error(`disallowed source URL ${parsed.href}`);
+  }
+  const response = await fetchImpl(parsed.href, {
+    headers: {
+      Accept: 'application/json, text/html;q=0.9, */*;q=0.1',
+      'User-Agent': CHROME_UA,
+    },
+    redirect: 'error',
+    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+  });
+  if (!response.ok) throw new Error(`HTTP ${response.status}`);
+  const contentType = response.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase();
+  if (!contentType || !allowedContentTypes.includes(contentType)) {
+    throw new Error(`unexpected content type ${contentType || 'missing'}`);
+  }
+  return readBoundedBody(response, maxBytes);
+}
+
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function fetchAgencyDocuments(agency, {
+  fetchImpl = DEFAULT_FETCH,
+  sleep = wait,
+} = {}) {
+  const sourceConfig = CHINA_POLICY_SOURCES[agency];
+  if (!sourceConfig) throw new TypeError(`Unknown agency ${String(agency)}`);
+  const listedAt = new Date().toISOString();
+  const listing = await fetchBounded(
+    sourceConfig.listUrl,
+    sourceConfig,
+    sourceConfig.maxListBytes,
+    fetchImpl,
+    sourceConfig.listingFormat.endsWith('json')
+      ? ['application/json']
+      : ['text/html', 'application/xhtml+xml'],
+  );
+  const candidates = parseAgencyListing(agency, listing)
+    .slice(0, sourceConfig.maxDocumentsPerRun);
+  const documents = [];
+  const failures = [];
+  let requestCount = 1;
+  if (candidates.length === 0) {
+    failures.push({
+      canonicalUrl: sourceConfig.listUrl,
+      reason: 'listing produced no eligible policy documents',
+    });
+  }
+
+  for (const candidate of candidates) {
+    if (candidate.originalText) {
+      documents.push({
+        ...candidate,
+        effectiveDate: extractEffectiveDate(candidate.originalText),
+      });
+      continue;
+    }
+    await sleep(sourceConfig.requestCadenceMs);
+    requestCount += 1;
+    try {
+      const detail = await fetchBounded(
+        candidate.canonicalUrl,
+        sourceConfig,
+        sourceConfig.maxDocumentBytes,
+        fetchImpl,
+        ['text/html', 'application/xhtml+xml'],
+      );
+      const parsed = parsePolicyDocumentHtml(detail, candidate);
+      if (
+        !parsed.originalText
+        || !parsed.publicationDate
+        || BLOCK_PAGE_PATTERN.test(`${parsed.titleOriginal} ${parsed.originalText.slice(0, 500)}`)
+      ) {
+        throw new Error('document body or date missing');
+      }
+      documents.push({
+        ...candidate,
+        ...parsed,
+        documentNumber: parsed.documentNumber ?? candidate.documentNumber,
+      });
+    } catch (error) {
+      failures.push({
+        canonicalUrl: candidate.canonicalUrl,
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return {
+    agency,
+    status: documents.length === 0 ? 'error' : failures.length > 0 ? 'partial' : 'ok',
+    retrievedAt: listedAt,
+    documents,
+    failures,
+    requestCount,
+  };
+}
+
+export async function fetchAllChinaPolicyDocuments(options = {}) {
+  const agencies = {};
+  const documents = [];
+  let successCount = 0;
+  for (const agency of Object.keys(CHINA_POLICY_SOURCES)) {
+    try {
+      const result = await fetchAgencyDocuments(agency, options);
+      agencies[agency] = {
+        status: result.status,
+        retrievedAt: result.retrievedAt,
+        documentCount: result.documents.length,
+        failures: result.failures,
+        requestCount: result.requestCount,
+      };
+      if (result.documents.length > 0) {
+        successCount += 1;
+        documents.push(...result.documents.map((document) => ({
+          ...document,
+          retrievedAt: result.retrievedAt,
+        })));
+      }
+    } catch (error) {
+      agencies[agency] = {
+        status: 'error',
+        retrievedAt: new Date().toISOString(),
+        documentCount: 0,
+        failures: [{
+          canonicalUrl: CHINA_POLICY_SOURCES[agency].listUrl,
+          reason: error instanceof Error ? error.message : String(error),
+        }],
+        requestCount: 1,
+      };
+    }
+  }
+  if (successCount === 0) throw new Error('All official China policy sources failed');
+  return { agencies, documents };
+}
+
+export const __testing__ = Object.freeze({
+  canonicalizeSourceUrl,
+  readBoundedBody,
+  stripHtml,
+});
