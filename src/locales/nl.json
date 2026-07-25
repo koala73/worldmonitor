@@ -1871,7 +1871,11 @@
       "infoTooltip": "<strong>Disaster Cascade</strong> Detecteert convergerende natuurramp- en infrastructuursignalen:<ul><li>Correleert aardbevingen, bosbranden, overstromingen en weerextremen</li><li>Volgt cascadische effecten op infrastructuur en toeleveringsketens</li><li>Markeert regio's met samengesteld risicorisico</li></ul>Klik op een kaart om naar de getroffen regio in te zoomen."
     },
     "markets": {
-      "infoTooltip": "<strong>Markten</strong> Real-time aandelenindices, aandelen en cryptoprijzen. Pas uw watchlist aan met de knop Watchlist. Sparklines tonen recente prijstrend."
+      "infoTooltip": "<strong>Markten</strong> Real-time aandelenindices, aandelen en cryptoprijzen. Pas uw watchlist aan met de knop Watchlist. Sparklines tonen recente prijstrend.",
+      "chart": {
+        "title": "{{symbol}} price chart",
+        "close": "Close chart"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Sector Heatmap</strong> S&P 500 sectorprestatie in één oogopslag. Kleurintensiteit weerspiegelt de omvang van dagelijkse verandering. Groen = winsten, Rood = verlies."

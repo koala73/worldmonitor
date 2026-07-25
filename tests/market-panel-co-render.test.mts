@@ -27,13 +27,14 @@ describe('MarketPanel market/disclosure co-rendering (#5577)', () => {
 
     const restoredMarkets = composeMarketPanelContent({
       hasMarkets: true,
-      marketsHtml: '<div class="market-item">SSE Composite</div>',
+      marketsHtml: '<div class="market-item market-item-clickable" data-market-chart="0">SSE Composite</div>',
       disclosureHtml: '<section class="market-disclosures">Official exchange disclosures</section>',
       unavailableMessage: 'Market data unavailable',
     });
     assert.equal(restoredMarkets.kind, 'content');
     if (restoredMarkets.kind === 'content') {
       assert.match(restoredMarkets.html, /SSE Composite/);
+      assert.match(restoredMarkets.html, /data-market-chart="0"/);
       assert.match(restoredMarkets.html, /Official exchange disclosures/);
       assert.doesNotMatch(restoredMarkets.html, /market-data-unavailable/);
     }

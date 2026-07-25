@@ -2127,7 +2127,11 @@
       "infoTooltip": "<strong>Katastrophen-Kaskadeneffekte</strong> Erkennt konvergierende Signale natürlicher Katastrophen und Infrastruktur:<ul><li>Korreliert Erdbeben, Waldbrände, Überschwemmungen und Wetterextreme</li><li>Verfolgt kaskadierende Effekte auf Infrastruktur und Lieferketten</li><li>Hebt Regionen mit zusammengesetztem Katastrophenrisiko hervor</li></ul>Klicken Sie auf eine Karte, um die betroffene Region zu vergrößern."
     },
     "markets": {
-      "infoTooltip": "<strong>Märkte</strong> Echtzeit-Börsenindizes, Aktien und Kryptowährungspreise. Passen Sie Ihre Beobachtungsliste mit der Schaltfläche Beobachtungsliste an. Sparklines zeigen aktuelle Preistrendentwicklung."
+      "infoTooltip": "<strong>Märkte</strong> Echtzeit-Börsenindizes, Aktien und Kryptowährungspreise. Passen Sie Ihre Beobachtungsliste mit der Schaltfläche Beobachtungsliste an. Sparklines zeigen aktuelle Preistrendentwicklung.",
+      "chart": {
+        "title": "{{symbol}} price chart",
+        "close": "Close chart"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Sektor-Heatmap</strong> S&P 500 Sektorenleistung auf einen Blick. Die Farbintensität spiegelt die Größe der täglichen Veränderung wider. Grün = Gewinne, Rot = Verluste."

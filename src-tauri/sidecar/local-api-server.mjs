@@ -87,6 +87,15 @@ function isTransientVerificationError(error) {
 let _activeUpstream = 0;
 const _upstreamQueue = [];
 const MAX_CONCURRENT_UPSTREAM = 6;
+// Inactivity timeout for ipv4Fetch's upstream requests. req.setTimeout fires
+// after this many ms with NO socket activity (it resets on data, so a slow
+// but active transfer is unaffected) -- protects against a peer that accepts
+// the connection and then goes fully silent (no FIN/RST, no more bytes),
+// which none of the other terminal-event listeners below ever observe.
+// Matches fetchWithTimeout()'s own default timeoutMs for consistency.
+// Mutable (not const) only so tests can shrink it -- production always runs
+// at the default.
+let _upstreamIdleTimeoutMs = 12000;
 function acquireUpstreamSlot() {
   if (_activeUpstream < MAX_CONCURRENT_UPSTREAM) {
     _activeUpstream++;
@@ -230,10 +239,27 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
     if (pinned) {
       requestOptions.lookup = makePinnedLookup(pinned.address, pinned.family);
     }
+    // Settle idempotently and reject on every stream event that can leave a
+    // response mid-flight (upstream accepts the connection, sends headers,
+    // then stalls) — not just `res 'end'` / `req 'error'`. Without this, a
+    // stalled response never settles the Promise, the `finally` below never
+    // runs, and one upstream slot leaks permanently (#5441).
     return await new Promise((resolve, reject) => {
+      let settled = false;
+      const settle = (fn, v) => { if (settled) return; settled = true; fn(v); };
+      // Check before ever dispatching to the network: if the caller's signal
+      // already fired (e.g. while we were awaiting the SSRF check or the
+      // upstream-slot queue above), honor it now instead of wasting a slot
+      // on a request nobody wants (#5441 follow-up review).
+      if (init?.signal?.aborted) {
+        settle(reject, new Error('aborted by signal'));
+        return;
+      }
       const req = mod.request(requestOptions, (res) => {
         const chunks = [];
         res.on('data', (c) => chunks.push(c));
+        res.on('error', (e) => settle(reject, e));
+        res.on('aborted', () => settle(reject, new Error('upstream response aborted mid-body')));
         res.on('end', () => {
           const buf = Buffer.concat(chunks);
           const responseHeaders = new Headers();
@@ -241,14 +267,24 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
             if (v) responseHeaders.set(k, Array.isArray(v) ? v.join(', ') : v);
           }
           try {
-            resolve(buildSafeResponse(res.statusCode, res.statusMessage, responseHeaders, buf));
+            settle(resolve, buildSafeResponse(res.statusCode, res.statusMessage, responseHeaders, buf));
           } catch (error) {
-            reject(error);
+            settle(reject, error);
           }
         });
       });
-      req.on('error', reject);
-      if (init?.signal) { init.signal.addEventListener('abort', () => req.destroy()); }
+      req.on('error', (e) => settle(reject, e));
+      req.on('close', () => settle(reject, new Error('request closed before completion')));
+      // Catches a peer that accepts the connection and then goes silent
+      // forever (no error, no close, no data) -- the only stall shape none
+      // of the listeners above ever observe.
+      req.setTimeout(_upstreamIdleTimeoutMs, () => {
+        req.destroy();
+        settle(reject, new Error('upstream request idle-timed out'));
+      });
+      if (init?.signal) {
+        init.signal.addEventListener('abort', () => { req.destroy(); settle(reject, new Error('aborted by signal')); });
+      }
       if (body != null) req.write(body);
       req.end();
     });
@@ -1741,6 +1777,15 @@ async function dispatch(requestUrl, req, routes, context) {
     return json({ error: 'Local handler error', reason, endpoint: requestUrl.pathname }, 502);
   }
 }
+
+// Test seam: lets tests shrink ipv4Fetch's upstream idle timeout so a
+// silent-stall test doesn't have to wait out the real 12s production value.
+// Production code never calls this.
+export const __testing__ = {
+  setUpstreamIdleTimeoutMs(ms) {
+    _upstreamIdleTimeoutMs = ms;
+  },
+};
 
 export async function createLocalApiServer(options = {}) {
   const context = resolveConfig(options);

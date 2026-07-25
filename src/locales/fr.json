@@ -2136,7 +2136,11 @@
       "infoTooltip": "<strong>Cascade de catastrophes</strong> Détecte les signaux convergents de catastrophe naturelle et d'infrastructure :<ul><li>Corrélie les tremblements de terre, les incendies, les inondations et les extrêmes météorologiques</li><li>Suit les effets en cascade sur l'infrastructure et la chaîne d'approvisionnement</li><li>Met en évidence les régions avec un risque de catastrophe composé</li></ul>Cliquez sur une carte pour zoomer sur la région affectée."
     },
     "markets": {
-      "infoTooltip": "<strong>Marchés</strong> Indices boursiers, titres et prix crypto en temps réel. Personnalisez votre liste de suivi avec le bouton Liste de suivi. Les sparklines affichent la tendance des prix récente."
+      "infoTooltip": "<strong>Marchés</strong> Indices boursiers, titres et prix crypto en temps réel. Personnalisez votre liste de suivi avec le bouton Liste de suivi. Les sparklines affichent la tendance des prix récente.",
+      "chart": {
+        "title": "{{symbol}} price chart",
+        "close": "Close chart"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Carte thermique des secteurs</strong> Performance des secteurs du S&P 500 en un coup d'œil. L'intensité de la couleur reflète l'ampleur de la variation quotidienne. Vert = gains, Rouge = pertes."

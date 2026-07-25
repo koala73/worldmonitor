@@ -2127,7 +2127,11 @@
       "infoTooltip": "<strong>灾难级联</strong> 检测汇聚的自然灾害和基础设施信号：<ul><li>关联地震、野火、洪灾和极端天气</li><li>追踪对基础设施和供应链的级联影响</li><li>突出具有复合灾难风险的地区</li></ul>点击卡片可在地图上放大到受影响区域。"
     },
     "markets": {
-      "infoTooltip": "<strong>市场</strong> 实时股票指数、股票和加密货币价格。使用\"观察列表\"按钮自定义您的观察列表。火花线显示最近价格趋势。"
+      "infoTooltip": "<strong>市场</strong> 实时股票指数、股票和加密货币价格。使用\"观察列表\"按钮自定义您的观察列表。火花线显示最近价格趋势。",
+      "chart": {
+        "title": "{{symbol}} price chart",
+        "close": "Close chart"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>板块热力图</strong> S&P 500 板块表现一览。颜色强度反映每日变化幅度。绿色 = 涨幅，红色 = 跌幅。"

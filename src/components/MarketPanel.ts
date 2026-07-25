@@ -11,6 +11,11 @@ import {
   type ChinaCorporateDisclosureSnapshot,
 } from './market-disclosures';
 import { composeMarketPanelContent } from './market-panel-content';
+import { openMarketChartModal } from './market-chart-modal';
+import {
+  bindMarketChartActivation,
+  getMarketChartRowAttributes,
+} from './market-chart-interactions';
 
 export class MarketPanel extends Panel {
   private _markets: MarketData[] = [];
@@ -20,6 +25,10 @@ export class MarketPanel extends Panel {
   constructor() {
     super({ id: 'markets', title: t('panels.markets'), infoTooltip: t('components.markets.infoTooltip') });
     this.header.appendChild(createWatchlistButton());
+
+    // Delegated once on the persistent content element (each render only swaps
+    // innerHTML): click or Enter/Space on a plottable ticker opens its terminal chart.
+    bindMarketChartActivation(this.content, () => this._markets, openMarketChartModal);
   }
 
   public renderMarkets(data: MarketData[], rateLimited?: boolean): void {
@@ -36,9 +45,14 @@ export class MarketPanel extends Panel {
   private _renderMarketsAndDisclosures(): void {
     const disclosureHtml = renderChinaCorporateDisclosureSignals(this._disclosures);
     const marketsHtml = this._markets
-      .map(
-        (stock) => `
-      <div class="market-item">
+      .map((stock, idx) => {
+        const attrs = getMarketChartRowAttributes(
+          stock,
+          idx,
+          t('components.markets.chart.title', { symbol: stock.display }),
+        );
+        return `
+      <div${attrs}>
         <div class="market-info">
           <span class="market-name">${escapeHtml(stock.name)}</span>
           <span class="market-symbol">${escapeHtml(stock.display)}</span>
@@ -49,8 +63,8 @@ export class MarketPanel extends Panel {
           <span class="market-change ${getChangeClass(stock.change!)}">${formatChange(stock.change!)}</span>
         </div>
       </div>
-    `
-      )
+    `;
+      })
       .join('');
     const content = composeMarketPanelContent({
       hasMarkets: this._markets.length > 0,

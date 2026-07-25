@@ -2127,7 +2127,11 @@
       "infoTooltip": "<strong>Hiệu ứng xếp tầng thảm họa</strong> Phát hiện các tín hiệu thảm họa tự nhiên và cơ sở hạ tầng hội tụ:<ul><li>Tương quan giữa động đất, cháy rừng, lũ lụt và thời tiết khắc nghiệt</li><li>Theo dõi các ảnh hưởng xếp tầng đến cơ sở hạ tầng và chuỗi cung ứng</li><li>Làm nổi bật các khu vực có rủi ro thảm họa kết hợp</li></ul>Nhấp vào một thẻ để phóng to khu vực bị ảnh hưởng."
     },
     "markets": {
-      "infoTooltip": "<strong>Thị trường</strong> Chỉ số chứng khoán, cổ phiếu và giá tiền điện tử thời gian thực. Tùy chỉnh danh sách theo dõi của bạn bằng nút Danh sách theo dõi. Đường sparkline hiển thị xu hướng giá gần đây."
+      "infoTooltip": "<strong>Thị trường</strong> Chỉ số chứng khoán, cổ phiếu và giá tiền điện tử thời gian thực. Tùy chỉnh danh sách theo dõi của bạn bằng nút Danh sách theo dõi. Đường sparkline hiển thị xu hướng giá gần đây.",
+      "chart": {
+        "title": "{{symbol}} price chart",
+        "close": "Close chart"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Bản đồ nhiệt ngành</strong> Hiệu suất ngành S&P 500 một cách nhanh chóng. Cường độ màu phản ánh độ lớn của thay đổi hàng ngày. Xanh = lợi nhuận, Đỏ = thua lỗ."

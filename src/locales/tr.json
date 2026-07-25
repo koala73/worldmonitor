@@ -2127,7 +2127,11 @@
       "infoTooltip": "<strong>Felaket Kaskadı</strong> Yakınlaşan doğal afet ve altyapı sinyallerini tespit eder:<ul><li>Depremleri, orman yangınlarını, seller ve hava aşırılıklarını ilişkilendirir</li><li>Altyapı ve tedarik zincirlerine ilişkin basamaklı etkileri izler</li><li>Bileşik afet riski olan bölgeleri vurgular</li></ul>Etkilenen bölgeyi haritada yakınlaştırmak için bir kartı tıklayın."
     },
     "markets": {
-      "infoTooltip": "<strong>Piyasalar</strong> Gerçek zamanlı borsa endeksleri, hisse senetleri ve kripto fiyatları. Watchlist düğmesi ile izleme listenizi özelleştirin. Sparkline'lar son fiyat eğilimini gösterir."
+      "infoTooltip": "<strong>Piyasalar</strong> Gerçek zamanlı borsa endeksleri, hisse senetleri ve kripto fiyatları. Watchlist düğmesi ile izleme listenizi özelleştirin. Sparkline'lar son fiyat eğilimini gösterir.",
+      "chart": {
+        "title": "{{symbol}} price chart",
+        "close": "Close chart"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Sektör Isı Haritası</strong> S&P 500 sektör performansını bir bakışta görün. Renk yoğunluğu günlük değişimin büyüklüğünü yansıtır. Yeşil = kazançlar, Kırmızı = kayıplar."

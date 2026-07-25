@@ -1,6 +1,6 @@
 # World Monitor
 
-[简体中文](README.zh-CN.md)
+[简体中文](README.zh-CN.md) | [日本語](README.ja-JP.md)
 
 **Real-time global intelligence dashboard** — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
 

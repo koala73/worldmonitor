@@ -2136,7 +2136,11 @@
       "infoTooltip": "<strong>Disaster Cascade</strong> Detectează semnale convergente de dezastre naturale și infrastructură:<ul><li>Corelează cutremure, incendii de vegetație, inundații și extremuri meteo</li><li>Urmărește efectele în cascadă asupra infrastructurii și lanțurilor de aprovizionare</li><li>Evidențiază regiuni cu risc de dezastru compus</li></ul>Faceți clic pe o carte pentru a mări regiunea afectată."
     },
     "markets": {
-      "infoTooltip": "<strong>Markets</strong> Indici bursieri în timp real, acțiuni și prețuri crypto. Personalizați lista de urmărire cu butonul Watchlist. Sparkline-urile arată tendința recentă de preț."
+      "infoTooltip": "<strong>Markets</strong> Indici bursieri în timp real, acțiuni și prețuri crypto. Personalizați lista de urmărire cu butonul Watchlist. Sparkline-urile arată tendința recentă de preț.",
+      "chart": {
+        "title": "{{symbol}} price chart",
+        "close": "Close chart"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Sector Heatmap</strong> Performanța sectorului S&P 500 în colțul ochiului. Intensitatea culorii reflectă magnitudinea schimbării zilnice. Verde = câștiguri, Roșu = pierderi."
