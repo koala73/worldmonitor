@@ -133,6 +133,22 @@ async function seedAcceptedGrantWithInvitee(
   });
 }
 
+async function seedProductPlan(
+  t: ReturnType<typeof convexTest>,
+  dodoProductId: string,
+  planKey: string,
+  displayName: string,
+) {
+  await t.run(async (ctx) => {
+    await ctx.db.insert("productPlans", {
+      dodoProductId,
+      planKey,
+      displayName,
+      isActive: true,
+    });
+  });
+}
+
 async function fireWebhook(
   t: ReturnType<typeof convexTest>,
   opts: {
@@ -141,6 +157,7 @@ async function fireWebhook(
     status: string;
     eventTimestamp: number;
     cancelledAt?: number;
+    productId?: string;
   },
 ) {
   await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
@@ -150,7 +167,7 @@ async function fireWebhook(
       type: opts.eventType,
       data: {
         subscription_id: opts.dodoSubscriptionId,
-        product_id: PRODUCT_CATALOG.api_business.dodoProductId!,
+        product_id: opts.productId ?? PRODUCT_CATALOG.api_business.dodoProductId!,
         status: opts.status,
         customer: { customer_id: "cus_test" },
         metadata: { wm_user_id: OWNER_ID },
@@ -207,6 +224,40 @@ describe("payments businessSeats inviteSeats", () => {
     expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(fetchMock.mock.calls.every((call) => String(call[0]).includes("resend.com"))).toBe(true);
     fetchMock.mockRestore();
+    vi.useRealTimers();
+  });
+
+  test("duplicate email within one inviteSeats call is deduped to a single grant", async () => {
+    vi.useFakeTimers();
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: "sub_business_001b",
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+
+    const result = await t.withIdentity(OWNER_IDENTITY).mutation(
+      api.payments.businessSeats.inviteSeats,
+      { emails: ["dupe@acme.com", "Dupe@Acme.com", "dupe@acme.com "] },
+    );
+
+    // All three entries normalize to the same email — one "created" result,
+    // not three.
+    expect(result.invited).toHaveLength(1);
+    expect(result.invited[0].status).toBe("created");
+
+    const grants = await t.run(async (ctx) =>
+      ctx.db
+        .query("businessProGrants")
+        .withIndex("by_businessSubscriptionId", (q) =>
+          q.eq("businessSubscriptionId", "sub_business_001b"),
+        )
+        .collect(),
+    );
+    expect(grants).toHaveLength(1);
+    expect(grants[0].inviteeEmail).toBe("dupe@acme.com");
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
     vi.useRealTimers();
   });
 
@@ -461,7 +512,50 @@ describe("payments businessSeats inviteSeats", () => {
     expect(result.seats).toHaveLength(1);
     expect(result.seats[0].inviteeEmail).toBe("teammate@acme.com");
     expect(result.seats[0].status).toBe("pending");
+    // Server-computed corporate-domain check, replacing the client's former
+    // hardcoded (stale) free-domain list.
+    expect(result.ownerDomain).toBe("acme.com");
+    expect(result.ownerIsCorporateDomain).toBe(true);
     await t.finishAllScheduledFunctions(vi.runAllTimers);
+  });
+
+  test("listSeats reports a lapsed pending grant as 'expired', not stale 'pending'", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: "sub_business_008b",
+      status: "active",
+      currentPeriodEnd: NOW + 60 * DAY_MS,
+    });
+    await t.withIdentity(OWNER_IDENTITY).mutation(api.payments.businessSeats.inviteSeats, {
+      emails: ["teammate@acme.com"],
+    });
+
+    // Advance past the 14-day invite TTL without anything sweeping the row.
+    vi.setSystemTime(NOW + 15 * DAY_MS);
+
+    const result = await t.withIdentity(OWNER_IDENTITY).query(
+      api.payments.businessSeats.listSeats,
+      {},
+    );
+    expect(result.seats).toHaveLength(1);
+    expect(result.seats[0].status).toBe("expired");
+
+    // The stored row itself is untouched (listSeats computes, doesn't sweep) —
+    // confirms this is a read-time projection, not a write.
+    const storedGrant = await t.run(async (ctx) =>
+      ctx.db
+        .query("businessProGrants")
+        .withIndex("by_businessSubscriptionId", (q) =>
+          q.eq("businessSubscriptionId", "sub_business_008b"),
+        )
+        .first(),
+    );
+    expect(storedGrant?.status).toBe("pending");
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    vi.useRealTimers();
   });
 
   test("listSeats returns empty for non-Business owner", async () => {
@@ -521,7 +615,7 @@ describe("payments businessSeats inviteSeats", () => {
     await t.finishAllScheduledFunctions(vi.runAllTimers);
   });
 
-  test("removeSeat is idempotent — second call on an already-revoked grant returns already:'inactive'", async () => {
+  test("removeSeat is idempotent — second call on an already-revoked grant returns status:'already_inactive'", async () => {
     vi.useFakeTimers();
     process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
     const t = convexTest(schema, modules);
@@ -539,12 +633,15 @@ describe("payments businessSeats inviteSeats", () => {
     const first = await t.withIdentity(OWNER_IDENTITY).mutation(api.payments.businessSeats.removeSeat, {
       grantId,
     });
-    expect(first).toEqual({ ok: true });
+    // Discriminated status field on every response — consistent with
+    // inviteSeats' always-present status enum, instead of an optional
+    // `already` field only present on the no-op branch.
+    expect(first).toEqual({ ok: true, status: "revoked" });
 
     const second = await t.withIdentity(OWNER_IDENTITY).mutation(api.payments.businessSeats.removeSeat, {
       grantId,
     });
-    expect(second).toEqual({ ok: true, already: "inactive" });
+    expect(second).toEqual({ ok: true, status: "already_inactive" });
     await t.finishAllScheduledFunctions(vi.runAllTimers);
   });
 });
@@ -1034,6 +1131,64 @@ describe("payments businessSeats revoke-on-lapse", () => {
     vi.useRealTimers();
   });
 
+  test("cancelled-but-paid-through, then renewed before the scheduled revoke fires → 'still covering' no-op leaves grants intact", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_revoke_002b";
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    await seedAcceptedGrantWithInvitee(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeUserId: "user_teammate_renewed",
+      inviteeEmail: "teammate@acme.com",
+      domain: "acme.com",
+    });
+
+    // Cancel while still paid-through: schedules revokeBusinessProGrantsIfNotCovering
+    // at the original currentPeriodEnd (NOW + 30d).
+    await fireWebhook(t, {
+      eventType: "subscription.cancelled",
+      dodoSubscriptionId: businessSubId,
+      status: "cancelled",
+      eventTimestamp: NOW + 1000,
+      cancelledAt: NOW,
+    });
+
+    // Owner renews before the scheduled revoke fires — subscription is
+    // covering again by the time the scheduled mutation runs.
+    await t.run(async (ctx) => {
+      const sub = await ctx.db
+        .query("subscriptions")
+        .withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", businessSubId))
+        .unique();
+      await ctx.db.patch(sub!._id, { status: "active", currentPeriodEnd: NOW + 60 * DAY_MS });
+    });
+
+    // Advance to when the ORIGINAL scheduled revoke was due to fire and run it.
+    vi.setSystemTime(NOW + 31 * DAY_MS);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const grants = await t.run(async (ctx) =>
+      ctx.db
+        .query("businessProGrants")
+        .withIndex("by_businessSubscriptionId", (q) =>
+          q.eq("businessSubscriptionId", businessSubId),
+        )
+        .collect(),
+    );
+    expect(grants.every((g) => g.status === "accepted")).toBe(true);
+
+    const ent = await t.run(async (ctx) =>
+      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", "user_teammate_renewed")).first(),
+    );
+    expect(ent?.planKey).toBe("pro_monthly");
+    vi.useRealTimers();
+  });
+
   test("on_hold → grants persist through grace window", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
@@ -1174,6 +1329,311 @@ describe("payments businessSeats revoke-on-lapse", () => {
     expect(ent2?.planKey).toBe("pro_monthly");
     await t.finishAllScheduledFunctions(vi.runAllTimers);
     vi.useRealTimers();
+  });
+
+  test("owner downgrades off Business (plan_changed) → accepted grants revoked, invitees free", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    process.env.RESEND_API_KEY = "test-resend-key";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ id: "resend-ok" }), { status: 200 }),
+    );
+    const t = convexTest(schema, modules);
+    await seedProductPlan(t, PRODUCT_CATALOG.api_starter.dodoProductId!, "api_starter", "API Starter");
+    const businessSubId = "sub_business_downgrade_001";
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    await seedAcceptedGrantWithInvitee(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeUserId: "user_teammate_1",
+      inviteeEmail: "teammate1@acme.com",
+      domain: "acme.com",
+    });
+
+    // Owner downgrades from api_business to api_starter — status/currentPeriodEnd
+    // are untouched by this event, only planKey changes.
+    await fireWebhook(t, {
+      eventType: "subscription.plan_changed",
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      eventTimestamp: NOW + 1000,
+      productId: PRODUCT_CATALOG.api_starter.dodoProductId!,
+    });
+
+    const sub = await t.run(async (ctx) =>
+      ctx.db
+        .query("subscriptions")
+        .withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", businessSubId))
+        .unique(),
+    );
+    expect(sub?.planKey).toBe("api_starter");
+    expect(sub?.status).toBe("active");
+
+    const grant = await t.run(async (ctx) =>
+      ctx.db
+        .query("businessProGrants")
+        .withIndex("by_businessSubscriptionId", (q) =>
+          q.eq("businessSubscriptionId", businessSubId),
+        )
+        .first(),
+    );
+    expect(grant?.status).toBe("revoked");
+
+    const ent = await t.run(async (ctx) =>
+      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", "user_teammate_1")).first(),
+    );
+    expect(ent?.planKey).toBe("free");
+
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(body.to).toEqual(["teammate1@acme.com"]);
+    fetchMock.mockRestore();
+    vi.useRealTimers();
+  });
+
+  test("acceptBusinessInvite defense-in-depth: rejects when the subscription's planKey is no longer api_business even though status/currentPeriodEnd still look covering", async () => {
+    // Simulates the guard on businessSeats.ts's acceptBusinessInvite directly
+    // (independent of the plan_changed revocation path above) — a subscription
+    // row whose planKey changed without going through handleSubscriptionPlanChanged
+    // (e.g. a future code path, a data migration, or a race) must still be
+    // rejected by the BUSINESS_NOT_ACTIVE guard, not just by the primary
+    // revoke-on-plan-change wiring.
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_downgrade_003";
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    const invite = await t.withIdentity(OWNER_IDENTITY).mutation(
+      api.payments.businessSeats.inviteSeats,
+      { emails: ["teammate@acme.com"] },
+    );
+    const grantId = invite.invited[0].grantId;
+    const token = await signBusinessInviteToken(grantId);
+
+    // Directly flip planKey without touching status/currentPeriodEnd or the
+    // grant — isCoveringAt alone would still say "covering".
+    await t.run(async (ctx) => {
+      const sub = await ctx.db
+        .query("subscriptions")
+        .withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", businessSubId))
+        .unique();
+      await ctx.db.patch(sub!._id, { planKey: "api_starter" });
+    });
+
+    await expect(
+      t
+        .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "teammate@acme.com" })
+        .mutation(api.payments.businessSeats.acceptBusinessInvite, { grantId, token }),
+    ).rejects.toThrow(/BUSINESS_NOT_ACTIVE/);
+
+    const ent = await t.run(async (ctx) =>
+      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", "user_teammate")).first(),
+    );
+    expect(ent).toBeNull();
+    vi.useRealTimers();
+  });
+
+  test("pickBestAcceptedBusinessGrant defense-in-depth: an accepted grant stops conferring Pro once the parent sub's planKey leaves api_business, even though status/currentPeriodEnd still look covering", async () => {
+    // Isolates the grant-resolution guard from the revocation wiring: the
+    // grant row is left status:"accepted" (as if the revoke-on-plan-change
+    // hook were somehow bypassed) and only the subscription's planKey is
+    // flipped. recomputeEntitlementFromAllSubs must still downgrade the
+    // invitee to free — proving the fix isn't solely dependent on the grant
+    // itself being revoked.
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_downgrade_004";
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    await seedAcceptedGrantWithInvitee(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeUserId: "user_teammate_stale_grant",
+      inviteeEmail: "teammate@acme.com",
+      domain: "acme.com",
+    });
+
+    await t.run(async (ctx) => {
+      const sub = await ctx.db
+        .query("subscriptions")
+        .withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", businessSubId))
+        .unique();
+      await ctx.db.patch(sub!._id, { planKey: "api_starter" });
+    });
+
+    await t.mutation(internal.payments.subscriptionHelpers.recomputeEntitlementForUser, {
+      userId: "user_teammate_stale_grant",
+    });
+
+    const ent = await t.run(async (ctx) =>
+      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", "user_teammate_stale_grant")).first(),
+    );
+    expect(ent?.planKey).toBe("free");
+
+    // The grant row itself is untouched by this path (it's the resolution
+    // guard, not a revocation pass) — confirms this is a distinct safety net
+    // from the revoke-on-plan-change wiring, not a duplicate of it.
+    const grant = await t.run(async (ctx) =>
+      ctx.db
+        .query("businessProGrants")
+        .withIndex("by_businessSubscriptionId", (q) =>
+          q.eq("businessSubscriptionId", businessSubId),
+        )
+        .first(),
+    );
+    expect(grant?.status).toBe("accepted");
+    vi.useRealTimers();
+  });
+
+  test("owner downgrades off Business (plan_changed) with a still-pending unaccepted invite → acceptBusinessInvite rejects", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    await seedProductPlan(t, PRODUCT_CATALOG.api_starter.dodoProductId!, "api_starter", "API Starter");
+    const businessSubId = "sub_business_downgrade_002";
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    const invite = await t.withIdentity(OWNER_IDENTITY).mutation(
+      api.payments.businessSeats.inviteSeats,
+      { emails: ["teammate@acme.com"] },
+    );
+    const grantId = invite.invited[0].grantId;
+    const token = await signBusinessInviteToken(grantId);
+
+    // Owner downgrades while the invite is still pending and unexpired.
+    await fireWebhook(t, {
+      eventType: "subscription.plan_changed",
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      eventTimestamp: NOW + 1000,
+      productId: PRODUCT_CATALOG.api_starter.dodoProductId!,
+    });
+
+    // The plan-changed handler revoked the (pending) grant outright, so the
+    // teammate now gets INVITE_ALREADY_USED (status check fires first) rather
+    // than BUSINESS_NOT_ACTIVE — either way, they must NOT be granted Pro.
+    await expect(
+      t
+        .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "teammate@acme.com" })
+        .mutation(api.payments.businessSeats.acceptBusinessInvite, { grantId, token }),
+    ).rejects.toThrow(/INVITE_ALREADY_USED|BUSINESS_NOT_ACTIVE/);
+
+    const ent = await t.run(async (ctx) =>
+      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", "user_teammate")).first(),
+    );
+    expect(ent).toBeNull();
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    vi.useRealTimers();
+  });
+});
+
+describe("payments businessSeats reconcileBusinessProGrants (reconciliation cron safety net)", () => {
+  test("revokes a grant left stranded on a Business sub that already downgraded, and leaves a healthy grant untouched", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    process.env.RESEND_API_KEY = "test-resend-key";
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      new Response(JSON.stringify({ id: "resend-ok" }), { status: 200 }),
+    );
+    const t = convexTest(schema, modules);
+
+    // Stranded: subscription row directly patched to a non-business planKey
+    // WITHOUT going through handleSubscriptionPlanChanged (simulates the
+    // exact class of failure this sweep exists for — a lost webhook/dropped
+    // scheduled function that never revoked the grant).
+    const strandedSubId = "sub_business_reconcile_stranded";
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: strandedSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    await seedAcceptedGrantWithInvitee(t, {
+      businessSubscriptionId: strandedSubId,
+      inviteeUserId: "user_stranded",
+      inviteeEmail: "stranded@acme.com",
+      domain: "acme.com",
+    });
+    await t.run(async (ctx) => {
+      const sub = await ctx.db
+        .query("subscriptions")
+        .withIndex("by_dodoSubscriptionId", (q) => q.eq("dodoSubscriptionId", strandedSubId))
+        .unique();
+      await ctx.db.patch(sub!._id, { planKey: "api_starter" });
+    });
+
+    // Healthy: normal accepted grant on a genuinely still-covering Business sub.
+    const healthySubId = "sub_business_reconcile_healthy";
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: healthySubId,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    await seedAcceptedGrantWithInvitee(t, {
+      businessSubscriptionId: healthySubId,
+      inviteeUserId: "user_healthy",
+      inviteeEmail: "healthy@acme.com",
+      domain: "acme.com",
+    });
+
+    const result = await t.mutation(internal.payments.subscriptionHelpers.reconcileBusinessProGrants, {});
+    expect(result).toEqual({ ok: true, checked: 2, revoked: 1, failed: 0 });
+
+    const strandedGrant = await t.run(async (ctx) =>
+      ctx.db
+        .query("businessProGrants")
+        .withIndex("by_businessSubscriptionId", (q) =>
+          q.eq("businessSubscriptionId", strandedSubId),
+        )
+        .first(),
+    );
+    expect(strandedGrant?.status).toBe("revoked");
+    const strandedEnt = await t.run(async (ctx) =>
+      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", "user_stranded")).first(),
+    );
+    expect(strandedEnt?.planKey).toBe("free");
+
+    const healthyGrant = await t.run(async (ctx) =>
+      ctx.db
+        .query("businessProGrants")
+        .withIndex("by_businessSubscriptionId", (q) =>
+          q.eq("businessSubscriptionId", healthySubId),
+        )
+        .first(),
+    );
+    expect(healthyGrant?.status).toBe("accepted");
+    const healthyEnt = await t.run(async (ctx) =>
+      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", "user_healthy")).first(),
+    );
+    expect(healthyEnt?.planKey).toBe("pro_monthly");
+
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body));
+    expect(body.to).toEqual(["stranded@acme.com"]);
+    fetchMock.mockRestore();
+    vi.useRealTimers();
+  });
+
+  test("is a no-op when there are no live grants", async () => {
+    const t = convexTest(schema, modules);
+    const result = await t.mutation(internal.payments.subscriptionHelpers.reconcileBusinessProGrants, {});
+    expect(result).toEqual({ ok: true, checked: 0, revoked: 0, failed: 0 });
   });
 });
 
@@ -1324,7 +1784,23 @@ describe("payments businessSeats end-to-end lifecycle", () => {
     vi.useRealTimers();
   });
 
-  test("concurrent 5th-invite race: cap holds", async () => {
+  // NOTE on what this test does and does NOT prove (2026-07-25 review):
+  // convex-test's TransactionManager.begin() holds a mutex around every
+  // top-level mutation call, forcing full sequential execution — the two
+  // `Promise.allSettled(t.mutation(...))` calls below run fully end-to-end
+  // one after the other with zero read/write interleaving. This test
+  // therefore proves the cap-check logic is correct under back-to-back
+  // sequential calls (i.e. the SAME thing four single-invite calls in a
+  // row would prove) — it does NOT exercise the `businessSeatLocks`
+  // OCC-serialization mechanism itself, since nothing in this harness can
+  // interleave two mutations' reads and writes. It would pass identically
+  // even if `businessSeatLocks` were deleted outright. The lock's design is
+  // architecturally sound per Convex's documented per-document OCC/retry
+  // semantics, but that claim is unverified by any automated test in this
+  // repo — a staging/production smoke test issuing genuinely parallel
+  // `inviteSeats` calls at the cap boundary is needed to actually prove it
+  // under load.
+  test("sequential 5th-invite calls at the cap: cap holds (does not exercise true OCC concurrency — see note above)", async () => {
     vi.useFakeTimers();
     process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
     const t = convexTest(schema, modules);
@@ -1342,8 +1818,10 @@ describe("payments businessSeats end-to-end lifecycle", () => {
       });
     }
 
-    // Two concurrent 5th invites: only one may succeed, or both may fail with
-    // SEAT_CAP_REACHED / TOO_MANY_EMAILS. The cap must never be exceeded.
+    // "Concurrent" only in call-site shape — convex-test serializes these two
+    // mutations end-to-end (see note above). Only one may succeed, or both
+    // may fail with SEAT_CAP_REACHED / TOO_MANY_EMAILS. The cap must never
+    // be exceeded.
     const results = await Promise.allSettled([
       t.withIdentity(OWNER_IDENTITY).mutation(api.payments.businessSeats.inviteSeats, {
         emails: ["e@acme.com"],
@@ -1372,6 +1850,52 @@ describe("payments businessSeats end-to-end lifecycle", () => {
     const failed = results.filter((r) => r.status === "rejected").length;
     expect(succeeded + failed).toBe(2);
     expect(activeOrPending.length).toBeLessThanOrEqual(4);
+    vi.useRealTimers();
+  });
+
+  test("businessSeatLocks row is touched on every inviteSeats call (necessary precondition for the OCC mechanism to serialize concurrent calls under real Convex)", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_e2e_005";
+    await seedBusinessSubscription(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+
+    await t.withIdentity(OWNER_IDENTITY).mutation(api.payments.businessSeats.inviteSeats, {
+      emails: ["a@acme.com"],
+    });
+    const lockAfterFirst = await t.run(async (ctx) =>
+      ctx.db
+        .query("businessSeatLocks")
+        .withIndex("by_businessSubscriptionId", (q) =>
+          q.eq("businessSubscriptionId", businessSubId),
+        )
+        .unique(),
+    );
+    expect(lockAfterFirst).not.toBeNull();
+    expect(lockAfterFirst?.lastTouchedAt).toBe(NOW);
+
+    vi.setSystemTime(NOW + 1000);
+    await t.withIdentity(OWNER_IDENTITY).mutation(api.payments.businessSeats.inviteSeats, {
+      emails: ["b@acme.com"],
+    });
+    const lockAfterSecond = await t.run(async (ctx) =>
+      ctx.db
+        .query("businessSeatLocks")
+        .withIndex("by_businessSubscriptionId", (q) =>
+          q.eq("businessSubscriptionId", businessSubId),
+        )
+        .unique(),
+    );
+    // Same lock row (not a duplicate insert), timestamp advanced — confirms
+    // every call actually reads+writes the shared document, which is the
+    // mechanism Convex's per-document OCC conflict detection depends on.
+    expect(lockAfterSecond?._id).toBe(lockAfterFirst?._id);
+    expect(lockAfterSecond?.lastTouchedAt).toBe(NOW + 1000);
     vi.useRealTimers();
   });
 

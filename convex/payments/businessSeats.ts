@@ -44,6 +44,34 @@ const INVITE_TTL_MS = 14 * 24 * 60 * 60 * 1000;
 const RESEND_FETCH_TIMEOUT_MS = 10_000;
 
 /**
+ * Touch-or-insert the per-Business-subscription OCC lock row shared by
+ * inviteSeats and removeSeat. EVERY mutation that mutates `businessProGrants`
+ * for a Business sub must read AND write this row, forcing Convex's
+ * per-document OCC to serialize concurrent calls. Without this, two parallel
+ * invites could both pass the cap check and insert a 5th grant.
+ */
+async function touchBusinessSeatLock(
+  ctx: MutationCtx,
+  businessSubscriptionId: string,
+  now: number,
+): Promise<void> {
+  const lock = await ctx.db
+    .query("businessSeatLocks")
+    .withIndex("by_businessSubscriptionId", (q) =>
+      q.eq("businessSubscriptionId", businessSubscriptionId),
+    )
+    .unique();
+  if (lock) {
+    await ctx.db.patch(lock._id, { lastTouchedAt: now });
+  } else {
+    await ctx.db.insert("businessSeatLocks", {
+      businessSubscriptionId,
+      lastTouchedAt: now,
+    });
+  }
+}
+
+/**
  * Returns true when the caller owns an active/covering `api_business`
  * subscription.
  */
@@ -110,25 +138,18 @@ export const inviteSeats = mutation({
     }
 
     // Serialize concurrent inviteSeats / removeSeat calls for this Business
-    // subscription: read + patch the lock row so Convex OCC serializes the
-    // mutations and the cap check below cannot be bypassed by a race.
-    const lock = await ctx.db
-      .query("businessSeatLocks")
-      .withIndex("by_businessSubscriptionId", (q) =>
-        q.eq("businessSubscriptionId", businessSub.dodoSubscriptionId),
-      )
-      .unique();
-    if (lock) {
-      await ctx.db.patch(lock._id, { lastTouchedAt: now });
-    } else {
-      await ctx.db.insert("businessSeatLocks", {
-        businessSubscriptionId: businessSub.dodoSubscriptionId,
-        lastTouchedAt: now,
-      });
-    }
+    // subscription so the cap check below cannot be bypassed by a race.
+    await touchBusinessSeatLock(ctx, businessSub.dodoSubscriptionId, now);
 
     const normalizedOwnerEmail = ownerEmail.toLowerCase();
-    const emails = args.emails.map((e) => e.trim().toLowerCase()).filter((e) => e.length > 0);
+    // Dedupe: the existingByEmail check below only guards against emails
+    // that already had a grant BEFORE this call — a duplicate within the
+    // SAME args.emails array would otherwise slip past it (neither
+    // occurrence is in existingGrants yet) and create two grant rows for
+    // one invitee.
+    const emails = Array.from(
+      new Set(args.emails.map((e) => e.trim().toLowerCase()).filter((e) => e.length > 0)),
+    );
     if (emails.length === 0) {
       throw new ConvexError({ kind: "NO_EMAILS_PROVIDED" });
     }
@@ -215,18 +236,55 @@ export const inviteSeats = mutation({
 });
 
 /**
+ * Shared Resend send + error-handling for both business-seat email actions.
+ * `skipLogContext` names what's being skipped when RESEND_API_KEY is unset;
+ * `failureLabel` names the operation in the thrown error on a non-2xx.
+ */
+async function sendResendEmail(opts: {
+  to: string;
+  subject: string;
+  html: string;
+  skipLogContext: string;
+  failureLabel: string;
+  successLog: string;
+}): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.error(`[businessSeats] RESEND_API_KEY not set — skipping ${opts.skipLogContext}`);
+    return;
+  }
+
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+      "User-Agent": USER_AGENT,
+    },
+    body: JSON.stringify({
+      from: "World Monitor <noreply@worldmonitor.app>",
+      to: [opts.to],
+      subject: opts.subject,
+      html: opts.html,
+    }),
+    signal: AbortSignal.timeout(RESEND_FETCH_TIMEOUT_MS),
+  });
+
+  if (!res.ok) {
+    const body = await res.text();
+    console.error(`[businessSeats] Resend ${res.status}: ${body}`);
+    throw new Error(`Resend ${opts.failureLabel} failed: ${res.status}`);
+  }
+  console.log(opts.successLog);
+}
+
+/**
  * Notifies a revoked invitee that their team access ended. Scheduled from the
  * revoke-on-lapse path in subscriptionHelpers.
  */
 export const sendTeamAccessEndedEmail = internalAction({
   args: { inviteeEmail: v.string() },
   handler: async (_ctx, args) => {
-    const apiKey = process.env.RESEND_API_KEY;
-    if (!apiKey) {
-      console.error("[businessSeats] RESEND_API_KEY not set — skipping team-access-ended email");
-      return;
-    }
-
     const html = `
 <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #0a0a0a; color: #e0e0e0;">
   <div style="background: #ef4444; height: 4px;"></div>
@@ -245,28 +303,14 @@ export const sendTeamAccessEndedEmail = internalAction({
   </div>
 </div>`;
 
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        "User-Agent": USER_AGENT,
-      },
-      body: JSON.stringify({
-        from: "World Monitor <noreply@worldmonitor.app>",
-        to: [args.inviteeEmail],
-        subject: "Your WorldMonitor team access has ended",
-        html,
-      }),
-      signal: AbortSignal.timeout(RESEND_FETCH_TIMEOUT_MS),
+    await sendResendEmail({
+      to: args.inviteeEmail,
+      subject: "Your WorldMonitor team access has ended",
+      html,
+      skipLogContext: "team-access-ended email",
+      failureLabel: "team-access-ended email",
+      successLog: `[businessSeats] Team-access-ended email sent to ${args.inviteeEmail.split("@")[0]}@...`,
     });
-
-    if (!res.ok) {
-      const body = await res.text();
-      console.error(`[businessSeats] Resend ${res.status}: ${body}`);
-      throw new Error(`Resend team-access-ended email failed: ${res.status}`);
-    }
-    console.log(`[businessSeats] Team-access-ended email sent to ${args.inviteeEmail.split("@")[0]}@...`);
   },
 });
 
@@ -282,12 +326,6 @@ export const sendBusinessInviteEmail = internalAction({
     token: v.string(),
   },
   handler: async (_ctx, args) => {
-    const apiKey = process.env.RESEND_API_KEY;
-    if (!apiKey) {
-      console.error("[businessSeats] RESEND_API_KEY not set — skipping invite email");
-      return;
-    }
-
     const acceptUrl = `https://worldmonitor.app/settings?accept-business-invite=${encodeURIComponent(args.grantId)}&token=${encodeURIComponent(args.token)}`;
     const html = `
 <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #0a0a0a; color: #e0e0e0;">
@@ -307,28 +345,14 @@ export const sendBusinessInviteEmail = internalAction({
   </div>
 </div>`;
 
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-        "User-Agent": USER_AGENT,
-      },
-      body: JSON.stringify({
-        from: "World Monitor <noreply@worldmonitor.app>",
-        to: [args.inviteeEmail],
-        subject: "You've been invited to WorldMonitor Pro",
-        html,
-      }),
-      signal: AbortSignal.timeout(RESEND_FETCH_TIMEOUT_MS),
+    await sendResendEmail({
+      to: args.inviteeEmail,
+      subject: "You've been invited to WorldMonitor Pro",
+      html,
+      skipLogContext: "invite email",
+      failureLabel: "invite email",
+      successLog: `[businessSeats] Invite email sent to ${args.inviteeEmail.split("@")[0]}@... (grant ${args.grantId.slice(0, 8)}...)`,
     });
-
-    if (!res.ok) {
-      const body = await res.text();
-      console.error(`[businessSeats] Resend ${res.status}: ${body}`);
-      throw new Error(`Resend invite email failed: ${res.status}`);
-    }
-    console.log(`[businessSeats] Invite email sent to ${args.inviteeEmail.split("@")[0]}@... (grant ${args.grantId.slice(0, 8)}...)`);
   },
 });
 
@@ -340,9 +364,20 @@ export const listSeats = query({
   args: {},
   handler: async (ctx) => {
     const userId = await requireUserId(ctx);
+    const identity = await resolveUserIdentity(ctx);
+    const ownerEmail = identity?.email?.trim() ?? "";
+    // Server-computed corporate-domain check, using the same authoritative
+    // isCorporateDomain() the invite/accept mutations enforce — the settings
+    // UI uses this instead of maintaining its own copy of the free-domain
+    // list, which drifted stale and shorter than the real one.
+    const ownerDomain = ownerEmail ? extractDomain(ownerEmail) : null;
+    const ownerIsCorporateDomain = ownerEmail ? isCorporateDomain(ownerEmail) : false;
+
     const now = Date.now();
     const businessSub = await getCoveringBusinessSubscription(ctx, userId, now);
-    if (!businessSub) return { seats: [], businessSubscriptionId: null };
+    if (!businessSub) {
+      return { seats: [], businessSubscriptionId: null, ownerDomain, ownerIsCorporateDomain };
+    }
 
     const grants = await ctx.db
       .query("businessProGrants")
@@ -353,10 +388,18 @@ export const listSeats = query({
 
     return {
       businessSubscriptionId: businessSub.dodoSubscriptionId,
+      ownerDomain,
+      ownerIsCorporateDomain,
       seats: grants.map((g) => ({
         grantId: g._id,
         inviteeEmail: g.inviteeEmail,
-        status: g.status,
+        // Compute the effective status at read time: a "pending" grant past
+        // its expiresAt is expired even though the stored row hasn't been
+        // swept yet (nothing proactively flips it) — without this, the UI
+        // would show a lapsed invite as still pending indefinitely, and
+        // the reader's status wouldn't agree with countActiveOrPendingGrants'
+        // own expiry check.
+        status: g.status === "pending" && g.expiresAt <= now ? "expired" : g.status,
         createdAt: g.createdAt,
         acceptedAt: g.acceptedAt ?? null,
         expiresAt: g.expiresAt,
@@ -381,25 +424,12 @@ export const removeSeat = mutation({
       throw new ConvexError({ kind: "NOT_OWNER" });
     }
     if (grant.status !== "pending" && grant.status !== "accepted") {
-      return { ok: true as const, already: "inactive" as const };
+      return { ok: true as const, status: "already_inactive" as const };
     }
 
     const now = Date.now();
     // Serialize with inviteSeats via the per-Business-subscription lock row.
-    const lock = await ctx.db
-      .query("businessSeatLocks")
-      .withIndex("by_businessSubscriptionId", (q) =>
-        q.eq("businessSubscriptionId", grant.businessSubscriptionId),
-      )
-      .unique();
-    if (lock) {
-      await ctx.db.patch(lock._id, { lastTouchedAt: now });
-    } else {
-      await ctx.db.insert("businessSeatLocks", {
-        businessSubscriptionId: grant.businessSubscriptionId,
-        lastTouchedAt: now,
-      });
-    }
+    await touchBusinessSeatLock(ctx, grant.businessSubscriptionId, now);
 
     await ctx.db.patch(args.grantId, { status: "revoked" });
 
@@ -409,7 +439,7 @@ export const removeSeat = mutation({
         { userId: grant.inviteeUserId, eventTimestamp: now },
       );
     }
-    return { ok: true as const };
+    return { ok: true as const, status: "revoked" as const };
   },
 });
 
@@ -460,7 +490,7 @@ export const acceptBusinessInvite = mutation({
         q.eq("dodoSubscriptionId", grant.businessSubscriptionId),
       )
       .unique();
-    if (!businessSub || !isCoveringAt(businessSub, now)) {
+    if (!businessSub || businessSub.planKey !== "api_business" || !isCoveringAt(businessSub, now)) {
       throw new ConvexError({ kind: "BUSINESS_NOT_ACTIVE" });
     }
 

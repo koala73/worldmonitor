@@ -116,6 +116,7 @@ import {
   type CloudPrefsAppliedDetail,
 } from '@/utils/cloud-prefs-sync';
 import { getConvexClient, getConvexApi, waitForConvexAuth } from '@/services/convex-client';
+import type { Id } from '../convex/_generated/dataModel';
 import { initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState, onEntitlementChange } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
 import {
@@ -1499,8 +1500,8 @@ export class App {
               return;
             }
             try {
-              await client.mutation((api as any).payments.businessSeats.acceptBusinessInvite, {
-                grantId: businessInviteGrantId,
+              await client.mutation(api.payments.businessSeats.acceptBusinessInvite, {
+                grantId: businessInviteGrantId as Id<'businessProGrants'>,
                 token: businessInviteToken,
               });
               showToast('Pro seat activated');

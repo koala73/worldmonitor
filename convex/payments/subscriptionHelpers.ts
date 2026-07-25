@@ -338,7 +338,13 @@ async function pickBestAcceptedBusinessGrant(
         q.eq("dodoSubscriptionId", grant.businessSubscriptionId),
       )
       .unique();
-    if (!businessSub || !isCoveringAt(businessSub, at)) continue;
+    // Defense-in-depth: a grant only confers Pro while its parent sub is BOTH
+    // covering AND still on the api_business plan. isCoveringAt alone is not
+    // enough — a subscription.plan_changed downgrade leaves status/currentPeriodEnd
+    // untouched, so the primary revocation path is the plan_changed handler
+    // wiring the grant-revoke call (see handleSubscriptionPlanChanged); this
+    // check is the safety net for any lifecycle transition that doesn't.
+    if (!businessSub || businessSub.planKey !== "api_business" || !isCoveringAt(businessSub, at)) continue;
 
     const candidate = { planKey: "pro_monthly", currentPeriodEnd: businessSub.currentPeriodEnd };
     if (best === null || compareSubscriptionsByCoverage(candidate, best) > 0) {
@@ -433,6 +439,11 @@ export const recomputeEntitlementForUser = internalMutation({
  * Scheduled revocation of Business Pro grants when the underlying Business
  * subscription is no longer covering. Used for paid-through cancellations so
  * grants die at currentPeriodEnd, not at the cancellation webhook.
+ *
+ * Delegates the actual grant-walk to revokeBusinessProGrantsForSubscription
+ * (shared with the cancelled/expired/plan_changed handlers) so this path
+ * gets the same per-invitee error isolation and "team access ended" email
+ * as every other revocation trigger, instead of a second hand-rolled copy.
  */
 export const revokeBusinessProGrantsIfNotCovering = internalMutation({
   args: { dodoSubscriptionId: v.string() },
@@ -448,22 +459,79 @@ export const revokeBusinessProGrantsIfNotCovering = internalMutation({
     const now = Date.now();
     if (isCoveringAt(sub, now)) return { ok: true as const, revoked: 0 };
 
+    const { revoked } = await revokeBusinessProGrantsForSubscription(
+      ctx,
+      args.dodoSubscriptionId,
+      now,
+    );
+    return { ok: true as const, revoked };
+  },
+});
+
+/**
+ * Daily reconciliation sweep for `businessProGrants` — a safety net for the
+ * webhook-driven and scheduled revocation paths above. If a webhook event is
+ * lost, or the multi-week-delay `revokeBusinessProGrantsIfNotCovering`
+ * mutation itself never fires (e.g. a scheduled-function drop), a live grant
+ * can be left pointing at a subscription that no longer covers or is no
+ * longer `api_business` — the invitee's own entitlement still self-expires
+ * correctly via its own `validUntil`, but the stuck grant row keeps counting
+ * against the owner's 4-seat cap forever with no product-visible way to
+ * clear it. Mirrors `dodo-renewal-reconciliation`'s pattern for the same
+ * class of failure: a state transition whose trigger got lost, re-derived
+ * independently on a schedule rather than trusted to have fired once.
+ */
+export const reconcileBusinessProGrants = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const grants = await ctx.db.query("businessProGrants").collect();
+    const live = grants.filter((g) => g.status === "accepted" || g.status === "pending");
+
+    let checked = 0;
     let revoked = 0;
-    const grants = await ctx.db
-      .query("businessProGrants")
-      .withIndex("by_businessSubscriptionId", (q) =>
-        q.eq("businessSubscriptionId", args.dodoSubscriptionId),
-      )
-      .collect();
-    for (const grant of grants) {
-      if (grant.status !== "accepted" && grant.status !== "pending") continue;
-      await ctx.db.patch(grant._id, { status: "revoked" });
-      revoked += 1;
-      if (grant.inviteeUserId) {
-        await recomputeEntitlementFromAllSubs(ctx, grant.inviteeUserId, now);
+    let failed = 0;
+    for (const grant of live) {
+      checked += 1;
+      // Per-grant error isolation, same reasoning as
+      // revokeBusinessProGrantsForSubscription: this is one atomic mutation
+      // transaction, so an unguarded throw for one bad grant would roll back
+      // every reconciliation already applied earlier in this sweep.
+      try {
+        const sub = await ctx.db
+          .query("subscriptions")
+          .withIndex("by_dodoSubscriptionId", (q) =>
+            q.eq("dodoSubscriptionId", grant.businessSubscriptionId),
+          )
+          .unique();
+        const stillValid = sub !== null && sub.planKey === "api_business" && isCoveringAt(sub, now);
+        if (stillValid) continue;
+
+        await ctx.db.patch(grant._id, { status: "revoked" });
+        revoked += 1;
+        if (grant.inviteeUserId) {
+          await recomputeEntitlementFromAllSubs(ctx, grant.inviteeUserId, now);
+          if (process.env.RESEND_API_KEY) {
+            await ctx.scheduler.runAfter(
+              0,
+              internal.payments.businessSeats.sendTeamAccessEndedEmail,
+              { inviteeEmail: grant.inviteeEmail },
+            );
+          }
+        }
+      } catch (err) {
+        failed += 1;
+        // sentry-coverage-ok: structured console.error is forwarded by
+        // Convex auto-Sentry so on-call sees the failed grant immediately.
+        // We do NOT re-throw — this is a daily reconciliation sweep over
+        // many grants, and one bad record must not abort the whole run.
+        console.error(
+          `[subscriptionHelpers] reconcileBusinessProGrants: failed to reconcile grant ${grant._id} — continuing with remaining grants`,
+          err,
+        );
       }
     }
-    return { ok: true as const, revoked };
+    return { ok: true as const, checked, revoked, failed };
   },
 });
 
@@ -1013,7 +1081,7 @@ async function revokeBusinessProGrantsForSubscription(
   ctx: MutationCtx,
   dodoSubscriptionId: string,
   eventTimestamp: number,
-): Promise<void> {
+): Promise<{ revoked: number; failed: number }> {
   const grants = await ctx.db
     .query("businessProGrants")
     .withIndex("by_businessSubscriptionId", (q) =>
@@ -1021,21 +1089,46 @@ async function revokeBusinessProGrantsForSubscription(
     )
     .collect();
 
+  let revoked = 0;
+  let failed = 0;
   for (const grant of grants) {
     if (grant.status !== "accepted" && grant.status !== "pending") continue;
-    await ctx.db.patch(grant._id, { status: "revoked" });
-    if (grant.inviteeUserId) {
-      await recomputeEntitlementFromAllSubs(ctx, grant.inviteeUserId, eventTimestamp);
-      // Notify the revoked invitee that their team access ended.
-      if (process.env.RESEND_API_KEY) {
-        await ctx.scheduler.runAfter(
-          0,
-          internal.payments.businessSeats.sendTeamAccessEndedEmail,
-          { inviteeEmail: grant.inviteeEmail },
-        );
+    // Per-invitee error isolation: this whole handler runs inside ONE atomic
+    // Convex mutation transaction (shared with the caller's own subscription-
+    // status patch). An unguarded throw here would roll back every grant
+    // revocation already applied earlier in this loop AND the caller's own
+    // state transition. Catch, log, and keep going so one bad invitee record
+    // can't wedge revocation for the rest of the batch.
+    try {
+      await ctx.db.patch(grant._id, { status: "revoked" });
+      revoked += 1;
+      if (grant.inviteeUserId) {
+        await recomputeEntitlementFromAllSubs(ctx, grant.inviteeUserId, eventTimestamp);
+        // Notify the revoked invitee that their team access ended.
+        if (process.env.RESEND_API_KEY) {
+          await ctx.scheduler.runAfter(
+            0,
+            internal.payments.businessSeats.sendTeamAccessEndedEmail,
+            { inviteeEmail: grant.inviteeEmail },
+          );
+        }
       }
+    } catch (err) {
+      failed += 1;
+      // sentry-coverage-ok: structured console.error is forwarded by Convex
+      // auto-Sentry so on-call sees the failed invitee immediately. We do
+      // NOT re-throw — this handler runs inside the caller's own webhook
+      // mutation transaction, and re-throwing would roll back every
+      // revocation already applied earlier in this loop plus the caller's
+      // own subscription-status patch (the exact bug this catch exists to
+      // prevent — see the function's own doc comment above).
+      console.error(
+        `[subscriptionHelpers] revokeBusinessProGrantsForSubscription: failed to fully process grant ${grant._id} (invitee ${grant.inviteeUserId ?? "unaccepted"}) — grant is revoked, continuing with remaining grants`,
+        err,
+      );
     }
   }
+  return { revoked, failed };
 }
 
 /**
@@ -1134,6 +1227,7 @@ export async function handleSubscriptionPlanChanged(
   if (!isNewerEvent(existing.updatedAt, eventTimestamp)) return;
 
   const newPlanKey = await resolvePlanKey(ctx, data.product_id);
+  const leftBusinessPlan = existing.planKey === "api_business" && newPlanKey !== "api_business";
 
   await ctx.db.patch(existing._id, {
     dodoProductId: data.product_id,
@@ -1142,6 +1236,15 @@ export async function handleSubscriptionPlanChanged(
     rawPayload: data,
     updatedAt: eventTimestamp,
   });
+
+  // Business Pro grants are tied to the owner's dodoSubscriptionId staying on
+  // api_business — status/currentPeriodEnd alone don't change on a plan
+  // change, so without this the grants would otherwise silently outlive the
+  // Business plan they were issued under (see pickBestAcceptedBusinessGrant's
+  // planKey defense-in-depth check for the other half of this fix).
+  if (leftBusinessPlan) {
+    await revokeBusinessProGrantsForSubscription(ctx, existing.dodoSubscriptionId, eventTimestamp);
+  }
 
   // Recompute from ALL subs — the new plan may be lower-tier than another
   // active sub on the same userId, in which case we must NOT clobber the

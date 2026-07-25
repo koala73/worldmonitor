@@ -148,4 +148,17 @@ crons.daily(
   {},
 );
 
+// Business Pro seat grant reconciliation (#4634/#4635) — safety net for the
+// webhook-driven and scheduled grant-revocation paths in subscriptionHelpers.ts.
+// A lost webhook or a dropped scheduled function can leave a grant pointing
+// at a Business subscription that's no longer covering/no longer api_business;
+// this daily sweep independently re-derives every live grant's validity
+// rather than trusting a single revocation trigger to have fired.
+crons.daily(
+  "business-pro-grants-reconciliation",
+  { hourUTC: 3, minuteUTC: 20 },
+  internal.payments.subscriptionHelpers.reconcileBusinessProGrants,
+  {},
+);
+
 export default crons;
