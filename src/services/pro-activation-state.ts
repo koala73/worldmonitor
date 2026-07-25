@@ -898,6 +898,12 @@ export const ACTIVATION_EVENTS = {
   // without this event the denial cohort is indistinguishable from users who
   // chose to skip — the funnel would read a browser block as disinterest.
   stepBlocked: 'pro-activation-step-blocked',
+  // #5600: a step whose write genuinely errored. Distinct from `stepBlocked`:
+  // that one is the platform refusing, this one is our write failing. Without
+  // it the only trace of a failure was a `stepSkipped` plus an aggregate count
+  // on the exit event, so a day of broken day-0 activations read as user
+  // disinterest.
+  stepFailed: 'pro-activation-step-failed',
   exit: 'pro-activation-exit',
 } as const;
 
@@ -911,8 +917,9 @@ export type ActivationEventName = (typeof ACTIVATION_EVENTS)[keyof typeof ACTIVA
 
 /**
  * The per-step telemetry event for an outcome, or null when the outcome is not
- * a tracked user action: `done` (nothing to do, pre-configured) and `failed`
- * (surfaced via the exit summary, not a dedicated step event) both emit none.
+ * a tracked user action: only `done` (nothing to do, pre-configured) emits
+ * none. `failed` has its own event since #5600 — folding it into the exit
+ * summary alone is what let a systemic write failure look like a skip.
  */
 export function selectStepEvent(outcome: ActivationStepOutcome): string | null {
   switch (outcome) {
@@ -920,8 +927,9 @@ export function selectStepEvent(outcome: ActivationStepOutcome): string | null {
       return ACTIVATION_EVENTS.stepConfirmed;
     case 'skipped':
       return ACTIVATION_EVENTS.stepSkipped;
-    case 'done':
     case 'failed':
+      return ACTIVATION_EVENTS.stepFailed;
+    case 'done':
       return null;
   }
 }

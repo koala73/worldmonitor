@@ -1087,14 +1087,18 @@ describe('telemetry event selection', () => {
     assert.equal(ACTIVATION_EVENTS.stepConfirmed, 'pro-activation-step-confirmed');
     assert.equal(ACTIVATION_EVENTS.stepSkipped, 'pro-activation-step-skipped');
     assert.equal(ACTIVATION_EVENTS.stepBlocked, 'pro-activation-step-blocked');
+    assert.equal(ACTIVATION_EVENTS.stepFailed, 'pro-activation-step-failed');
     assert.equal(ACTIVATION_EVENTS.exit, 'pro-activation-exit');
   });
 
-  it('selectStepEvent maps confirmed/skipped to their events; done/failed to null', () => {
+  it('selectStepEvent maps confirmed/skipped/failed to their events; done to null', () => {
+    // #5600: `failed` used to map to null, so a genuinely errored step reached
+    // Umami only as a `step-skipped` — the funnel read broken writes as user
+    // disinterest for a full day before anyone noticed.
     assert.equal(selectStepEvent('confirmed'), ACTIVATION_EVENTS.stepConfirmed);
     assert.equal(selectStepEvent('skipped'), ACTIVATION_EVENTS.stepSkipped);
+    assert.equal(selectStepEvent('failed'), ACTIVATION_EVENTS.stepFailed);
     assert.equal(selectStepEvent('done'), null);
-    assert.equal(selectStepEvent('failed'), null);
   });
 });
 

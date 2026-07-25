@@ -25,6 +25,7 @@
  */
 
 import { t } from '@/services/i18n';
+import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import {
   claimProActivationPresentation,
@@ -561,7 +562,11 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
   };
 
   const handleSkip = (step: ActivationStep): void => {
-    options.onSkipStep(step.id);
+    // Moving on from a step whose write errored is not a skip. Reporting it as
+    // one is what made a systemic day-0 failure look like user disinterest in
+    // the funnel (#5600); the failure itself was already reported by
+    // onConfirmStep, and the outcome below keeps the summary/ledger honest.
+    if (transient !== 'failed') options.onSkipStep(step.id);
     outcomes.set(step.id, transient === 'failed' ? 'failed' : 'skipped');
     recordProgress();
     advance();
@@ -1124,6 +1129,35 @@ function buildPowerExtra(options: ProActivationFlowOptions): ProActivationStepEx
   };
 }
 
+/**
+ * Surface an activation step failure to Sentry (#5600).
+ *
+ * These paths used to only `console.warn`, and sentry-init.ts has no
+ * captureConsole integration — so the error text never left the browser and a
+ * systemic day-0 failure (every network-backed step 403ing after checkout) was
+ * invisible server-side for a full day. `activation_path` separates the day-0
+ * cohort, which writes no `proActivationPresentations` outcome row at all,
+ * from the retro backfill cohort that does.
+ */
+function reportActivationStepFailure(
+  options: ProActivationFlowOptions,
+  step: ActivationStepId,
+  stage: string,
+  err: unknown,
+): void {
+  enqueueSentryCall((s) => s.captureException(
+    err instanceof Error ? err : new Error(String(err)),
+    {
+      tags: {
+        component: 'pro-activation',
+        step,
+        stage,
+        activation_path: options.onlyIfUnactivated ? 'retro' : 'day0',
+      },
+    },
+  ));
+}
+
 /** Brief confirm: link the email channel, then one atomic daily-digest write. */
 async function confirmBrief(
   options: ProActivationFlowOptions,
@@ -1151,6 +1185,7 @@ async function confirmBrief(
     return isFlowAccountCurrent(options) ? 'verified' : 'failed';
   } catch (err) {
     console.warn('[pro-activation] brief confirm failed', err);
+    reportActivationStepFailure(options, 'brief', 'brief-confirm', err);
     return 'failed';
   }
 }
@@ -1168,7 +1203,14 @@ async function confirmAlerts(
     // Read the LIVE permission rather than the thrown message: once it is
     // `denied` no browser re-prompts, so the step is blocked, not retryable.
     // A dismissed prompt leaves it `default` and stays a retryable failure.
-    return getPushPermission() === 'denied' ? 'blocked' : 'failed';
+    const permission = getPushPermission();
+    // #5600: only granted-then-failed is a real error. `denied` routes to the
+    // blocked state below and `default` (prompt dismissed) is a user outcome —
+    // reporting either would bury real failures under permission noise.
+    if (permission === 'granted') {
+      reportActivationStepFailure(options, 'alerts', 'push-subscribe', err);
+    }
+    return permission === 'denied' ? 'blocked' : 'failed';
   }
   let fresh: ActivationContext;
   try {
@@ -1177,6 +1219,7 @@ async function confirmAlerts(
     fresh = await readActivationContextStrict(options.accountUserId);
   } catch (err) {
     console.warn('[pro-activation] alerts config refresh failed', err);
+    reportActivationStepFailure(options, 'alerts', 'alerts-config-refresh', err);
     return 'failed';
   }
   const payload = buildCriticalAlertsPayload(fresh.channels, fresh.hasEnabledRule);
@@ -1190,6 +1233,7 @@ async function confirmAlerts(
     return isFlowAccountCurrent(options) ? 'verified' : 'failed';
   } catch (err) {
     console.warn('[pro-activation] alerts rule write failed', err);
+    reportActivationStepFailure(options, 'alerts', 'alerts-rule-write', err);
     return 'failed';
   }
 }
@@ -1383,6 +1427,8 @@ export async function openProActivationFlow(
     accountEmail: options.accountEmail,
     stepExtras,
     onConfirmStep: async (stepId) => {
+      // A double-fire is not an attempt — return without telemetry so the
+      // re-entry guard never inflates either counter.
       if (inFlight.has(stepId)) return 'failed';
       inFlight.add(stepId);
       try {
@@ -1392,8 +1438,18 @@ export async function openProActivationFlow(
             : stepId === 'alerts'
               ? await confirmAlerts(options)
               : 'verified';
+        // Attempt-level outcome: one event per real confirm, so a step the
+        // user retries is visible as N failures rather than a single terminal
+        // state inferred from the exit summary (#5600).
+        //
+        // `blocked` is deliberately absent: the shell fires stepBlocked through
+        // onBlockStep (#5609), and emitting stepFailed here as well would count
+        // one attempt twice — corrupting the funnel this event exists to make
+        // trustworthy, and in the exact way the original bug did.
         if (result === 'verified') {
           options.onEvent?.(ACTIVATION_EVENTS.stepConfirmed, stepId);
+        } else if (result === 'failed') {
+          options.onEvent?.(ACTIVATION_EVENTS.stepFailed, stepId);
         }
         return result;
       } finally {

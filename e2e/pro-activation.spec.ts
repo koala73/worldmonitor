@@ -692,6 +692,98 @@ test.describe('Pro activation flow — telemetry + finish-setup chip', () => {
     expect(dismissed).toBeNull();
   });
 
+  test('a failed confirm fires step-failed telemetry and is never reported as a skip', async ({
+    page,
+  }) => {
+    // #5600: every per-step write in this harness fails (authFetch throws with
+    // no Clerk session — see the HARNESS NOTE), which is exactly the day-0
+    // production shape. The failure must reach Umami as its own event; before
+    // the fix the only trace was a `step-skipped`, so the funnel counted broken
+    // writes as user disinterest.
+    await gotoHarness(page);
+    await openFlow(page, /* withOpeners */ false);
+
+    await expect(page.locator(CONFIRM_BTN)).toBeVisible();
+    await page.locator(CONFIRM_BTN).click();
+    await expect(page.locator('.pro-activation-status.status-failed')).toBeVisible();
+
+    const afterConfirm = await readCapturedEvents(page);
+    const failed = afterConfirm.filter((e) => e.event === 'pro-activation-step-failed');
+    expect(failed.length).toBe(1);
+    expect(failed[0]?.stepId).toBe('brief');
+    expect(afterConfirm.some((e) => e.event === 'pro-activation-step-skipped')).toBe(false);
+
+    // Moving on from a failed step records the outcome as `failed`; it must not
+    // also emit a skip for the same step.
+    await page.locator(SKIP_BTN).first().click();
+    const afterSkip = await readCapturedEvents(page);
+    expect(
+      afterSkip.some((e) => e.event === 'pro-activation-step-skipped' && e.stepId === 'brief'),
+    ).toBe(false);
+    expect(
+      afterSkip.filter((e) => e.event === 'pro-activation-step-failed' && e.stepId === 'brief')
+        .length,
+    ).toBe(1);
+  });
+
+  test('a failed confirm reaches Sentry with the step and activation-path tags', async ({
+    page,
+  }) => {
+    // #5600 blind spot 3: the confirm catch blocks only console.warn'd, and
+    // sentry-init.ts has no captureConsole integration — so the error text
+    // never left the browser. Drives the REAL deferred-Sentry queue with an
+    // injected loader (timers collapsed so the 10s audit-window delay does not
+    // dominate the run).
+    await gotoHarness(page);
+    await page.evaluate(async () => {
+      const w = window as unknown as {
+        __sentryCaptures: Array<{ message: string; tags?: Record<string, string> }>;
+      };
+      w.__sentryCaptures = [];
+      const realSetTimeout = window.setTimeout.bind(window);
+      window.setTimeout = ((fn: TimerHandler, ms?: number, ...rest: unknown[]) =>
+        realSetTimeout(fn as () => void, (ms ?? 0) >= 1_000 ? 0 : ms, ...rest)) as typeof setTimeout;
+      (window as unknown as { requestIdleCallback?: unknown }).requestIdleCallback = (
+        cb: () => void,
+      ) => realSetTimeout(cb, 0);
+      const sentryDefer = await import('/src/bootstrap/sentry-defer.ts');
+      sentryDefer._resetSentryDeferStateForTests();
+      sentryDefer._setSentryLoaderForTests(async () => ({
+        captureException: (err: unknown, ctx?: { tags?: Record<string, string> }) => {
+          w.__sentryCaptures.push({
+            message: err instanceof Error ? err.message : String(err),
+            tags: ctx?.tags,
+          });
+          return 'test-event-id';
+        },
+      }) as never);
+      await sentryDefer.scheduleSentryInit();
+    });
+
+    await openFlow(page, /* withOpeners */ false);
+    await expect(page.locator(CONFIRM_BTN)).toBeVisible();
+    await page.locator(CONFIRM_BTN).click();
+    await expect(page.locator('.pro-activation-status.status-failed')).toBeVisible();
+
+    const captures = await page.evaluate(
+      () =>
+        (window as unknown as {
+          __sentryCaptures: Array<{ message: string; tags?: Record<string, string> }>;
+        }).__sentryCaptures,
+    );
+    const briefCapture = captures.find((c) => c.tags?.step === 'brief');
+    expect(briefCapture).toBeTruthy();
+    expect(briefCapture?.tags).toMatchObject({
+      component: 'pro-activation',
+      step: 'brief',
+      stage: 'brief-confirm',
+      activation_path: 'day0',
+    });
+    // The thrown error carries the failing surface + status, which is the
+    // detail that was missing when this only reached the console.
+    expect(briefCapture?.message.length).toBeGreaterThan(0);
+  });
+
   test('power-toolkit pointer confirms the step and fires step-confirmed telemetry', async ({
     page,
   }) => {
