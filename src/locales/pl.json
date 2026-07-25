@@ -1777,7 +1777,26 @@
       "trend": "Trend",
       "trending": "TREND",
       "velocity": "Prędkość",
-      "wallets": "Portfele"
+      "wallets": "Portfele",
+      "benchmarkTitle": "Global Giving Benchmarks",
+      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "status": {
+        "published": "Published benchmarks with verified source coverage.",
+        "partial": "Published benchmarks with partial source coverage.",
+        "legacy": "Legacy snapshot; source details are unavailable.",
+        "cached": "Showing a cached snapshot; refresh unavailable."
+      },
+      "trackedAnnualized": "Tracked platform giving — annualized estimate",
+      "annualizedDaily": "Annualized daily estimate",
+      "atLeast": "At least",
+      "about": "About",
+      "sourceNotVerified": "Source not verified",
+      "reportedCumulative": "Reported cumulative total",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Published benchmark",
+      "sourcesMethodology": "Sources & methodology",
+      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
+      "partialEstimate": "Partially verified estimate"
     },
     "supplyChain": {
       "chokepoints": "Wąskie gardła",
@@ -2192,11 +2211,100 @@
       "cta": "Przejdź na Pro →",
       "dismiss": "Odrzuć"
     },
+    "billingState": {
+      "onHoldDesc": "Płatność nie powiodła się. Zaktualizuj metodę płatności, aby przywrócić dostęp premium.",
+      "onHoldBannerMessage": "Płatność nie powiodła się. Zaktualizuj metodę płatności, aby zachować aktywną subskrypcję.",
+      "updatePayment": "Zaktualizuj płatność",
+      "renewalPendingDesc": "Weryfikujemy odnowienie Twojej subskrypcji. Dostęp premium zostanie automatycznie przywrócony po potwierdzeniu.",
+      "refreshStatus": "Odśwież status",
+      "renewalFailedDesc": "Nie udało się zweryfikować odnowienia Twojej subskrypcji. Zarządzaj rozliczeniami lub skontaktuj się z pomocą techniczną, jeśli problem będzie się powtarzał.",
+      "manageBilling": "Zarządzaj rozliczeniami",
+      "lapsedDesc": "Twoja subskrypcja Pro wygasła. Subskrybuj ponownie, aby odzyskać dostęp premium.",
+      "resubscribe": "Subskrybuj ponownie"
+    },
     "checkoutFailureBanner": {
       "message": "Nie można ukończyć płatności. Nie dokonano opłaty.",
       "retry": "Spróbuj ponownie",
       "retrying": "Ponawianie…",
       "dismiss": "Odrzuć"
+    },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Krok {{current}} z {{total}}",
+      "closeLabel": "Pomiń konfigurację",
+      "ariaLabel": "Konfiguracja aktywacji Pro",
+      "signedInAs": "Zalogowano jako {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Twój codzienny brief, każdego ranka",
+          "body": "Wyselekcjonowany brief wywiadowczy w Twojej skrzynce odbiorczej każdego ranka — najważniejsze sygnały z nocy, ujęte w pięciominutową lekturę.",
+          "confirmCta": "Włącz mój poranny brief",
+          "confirming": "Włączanie…",
+          "doneNote": "Twój poranny brief już działa.",
+          "scheduleNote": "Zachowamy Twoją obecną godzinę dostarczania.",
+          "summaryLabel": "Poranny brief",
+          "summaryVerified": "Włączony — zacznie się od Twojego następnego porannego briefu.",
+          "deliverAt": "Dostarczenie o",
+          "previewLoading": "Przygotowujemy podgląd Twojego pierwszego briefu…",
+          "previewLabel": "Dzisiejszy poranny brief"
+        },
+        "alerts": {
+          "heading": "Krytyczne alerty",
+          "body": "Otrzymuj powiadomienia w przeglądarce, gdy wydarzy się coś ważnego — eskalacje konfliktów, wstrząsy rynkowe, nowe sankcje. Dostosuj częstotliwość w dowolnym momencie w Ustawieniach.",
+          "confirmCta": "Włącz alerty",
+          "confirming": "Włączanie…",
+          "doneNote": "Alerty w przeglądarce są już włączone.",
+          "blockedNote": "Powiadomienia są zablokowane w Twojej przeglądarce. Włącz je w ustawieniach witryny w przeglądarce, aby otrzymywać alerty.",
+          "declinedNote": "Nie ma problemu — nie będziemy wysyłać alertów w przeglądarce. Możesz je później włączyć w ustawieniach witryny w przeglądarce.",
+          "summaryLabel": "Krytyczne alerty",
+          "summaryVerified": "Włączone — krytyczne sygnały dotrą do Twojej przeglądarki."
+        },
+        "power": {
+          "heading": "Twój zestaw narzędzi Pro",
+          "body": "Niestandardowe widżety, połączenia MCP i badacz AI zostały odblokowane. Zbuduj panel, który naprawdę chcesz obserwować.",
+          "confirmCta": "Poznaj narzędzia Pro",
+          "confirming": "Otwieranie…",
+          "doneNote": "Już korzystasz ze swoich narzędzi Pro.",
+          "summaryLabel": "Zestaw narzędzi Pro",
+          "summaryVerified": "Odblokowane i gotowe, gdy Ty będziesz gotowy.",
+          "channelsNote": "Wolisz Telegram, Slack, Discord czy webhook?",
+          "pointers": {
+            "widgets": "Utwórz niestandardowy widżet",
+            "analyst": "Zapytaj analityka AI",
+            "apiKeys": "Pobierz swoje klucze API i MCP",
+            "channels": "Skonfiguruj je w ustawieniach powiadomień"
+          }
+        }
+      },
+      "status": {
+        "pending": "Nie skonfigurowano",
+        "inFlight": "Konfigurowanie…",
+        "verified": "Gotowe",
+        "failed": "Nie zadziałało",
+        "blocked": "Zablokowane",
+        "unavailable": "Niedostępne",
+        "blockedNote": "To nie jest teraz dostępne — możesz to skonfigurować później w ustawieniach.",
+        "unavailableNote": "To nie jest dostępne na Twoim urządzeniu — możesz to skonfigurować później.",
+        "failedBody": "Coś poszło nie tak. Możesz spróbować ponownie lub skonfigurować to później w ustawieniach.",
+        "retry": "Spróbuj ponownie"
+      },
+      "actions": {
+        "skip": "Na razie pomiń",
+        "continue": "Kontynuuj"
+      },
+      "summary": {
+        "heading": "Wszystko gotowe",
+        "subVerified": "Oto, co działa na Twoim koncie.",
+        "subPending": "Możesz dokończyć konfigurację w dowolnym momencie w ustawieniach.",
+        "linePending": "Jeszcze nie skonfigurowano — dokończ w dowolnym momencie w ustawieniach.",
+        "lineFailed": "Nie udało nam się tego skonfigurować — spróbuj ponownie w ustawieniach.",
+        "finish": "Przejdź do mojego panelu"
+      },
+      "chip": {
+        "message": "Dokończ konfigurację swojego konta Pro.",
+        "action": "Dokończ konfigurację",
+        "dismissLabel": "Odrzuć"
+      }
     },
     "frameworkSelector": {
       "label": "Framework analizy",

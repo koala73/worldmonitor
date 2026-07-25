@@ -26,8 +26,8 @@ import {
   type RuntimeFeatureId,
   type RuntimeSecretKey,
 } from '@/services/runtime-config';
-import { getApiBaseUrl, isDesktopRuntime, resolveLocalApiPort, startSmartPollLoop, type SmartPollLoopHandle } from '@/services/runtime';
-import { tryInvokeTauri, invokeTauri } from '@/services/tauri-bridge';
+import { isDesktopRuntime, resolveLocalApiPort, startSmartPollLoop, type SmartPollLoopHandle } from '@/services/runtime';
+import { proxyLocalApiRequest, tryInvokeTauri, invokeTauri } from '@/services/tauri-bridge';
 import { escapeHtml } from '@/utils/sanitize';
 import { initI18n, t } from '@/services/i18n';
 import { applyStoredTheme } from '@/utils/theme-manager';
@@ -61,21 +61,8 @@ function closeSettingsWindow(): void {
   void tryInvokeTauri<void>('close_settings_window').then(() => { }, () => window.close());
 }
 
-function getSidecarBase(): string {
-  return getApiBaseUrl() || '';
-}
-
-let _diagToken: string | null = null;
-
 async function diagFetch(path: string, init?: RequestInit): Promise<Response> {
-  if (!_diagToken) {
-    try {
-      _diagToken = await tryInvokeTauri<string>('get_local_api_token');
-    } catch { /* token unavailable */ }
-  }
-  const headers = new Headers(init?.headers);
-  if (_diagToken) headers.set('Authorization', `Bearer ${_diagToken}`);
-  return fetch(`${getSidecarBase()}${path}`, { ...init, headers });
+  return proxyLocalApiRequest(path, `http://localhost${path}`, init);
 }
 
 // ── Sidebar icons ──

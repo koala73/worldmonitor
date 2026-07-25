@@ -93,6 +93,8 @@ test('built welcome page ships the real hero in #root before JavaScript', () => 
   assert.match(rootContent, /By the time it&#x27;s news,[\s\S]*you already knew\./);
   assert.match(rootContent, /Launch the dashboard/);
   assert.match(rootContent, /Open source · AGPL-3\.0/);
+  assert.match(rootContent, /href="\/blog\/posts\/worldmonitor-is-not-palantir\/"/);
+  assert.match(rootContent, /WorldMonitor is not an open-source Palantir/);
   assert.match(rootContent, /Map layers/);
   const headlineIndex = rootContent.indexOf('By the time it&#x27;s news,');
   assert.ok(headlineIndex > 0, 'welcome headline should be in the prerendered root');

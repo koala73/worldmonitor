@@ -6,12 +6,41 @@
 
 import { readFileSync } from 'node:fs';
 
+// Cadence-keyed FRED sets derive from the shared series registry so the
+// settlement grace can never disagree with the template's declared cadence.
+import { FRED_MONTHLY_FEED_KEYS, FRED_DAILY_FEED_KEYS } from './_fred-series.mjs';
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const ACLED_SETTLEMENT_LAG_MS = 2 * DAY_MS;
 export const UCDP_SETTLEMENT_LAG_MS = 14 * DAY_MS;
-// Grace window for a `value` feed to publish the deadline period's reading
-// before we give up and VOID (EIA weekly releases can slip on holidays).
+// Default grace for a scalar feed to publish a deadline-period reading before
+// we give up and VOID. Live feeds (for example commodities) should not retain a
+// missing/stale observation indefinitely.
 export const VALUE_SETTLEMENT_MAX_LAG_MS = 10 * DAY_MS;
+// EIA's weekly petroleum observation date trails publication by roughly one
+// week. A deadline just after the covered period may therefore need the next
+// report (plus holiday slack) before `asOf` reaches the deadline.
+export const EIA_VALUE_SETTLEMENT_MAX_LAG_MS = 14 * DAY_MS;
+// Prediction-market settlement (#5525 KTD2): the venue adjudicates after
+// endDate; the settlement loader then needs a run to capture it. Pend up to
+// this long past the deadline for the adjudicated record before VOIDing.
+export const MARKET_SETTLEMENT_FEED_KEY = 'prediction:markets-resolution:v1';
+export const MARKET_SETTLEMENT_MAX_LAG_MS = 14 * DAY_MS;
+// FRED (#5525 KTD4): monthly series observations are dated the FIRST of the
+// reference month and publish ~2 weeks after the month ENDS, so the first
+// observation dated >= a mid-month deadline lands ~45-70 days after that
+// deadline. Grace must cover next-observation gap + publication lag. DGS10 is
+// a daily series and settles fast.
+export const FRED_MONTHLY_VALUE_SETTLEMENT_MAX_LAG_MS = 75 * DAY_MS;
+export const FRED_DAILY_VALUE_SETTLEMENT_MAX_LAG_MS = 14 * DAY_MS;
+
+function valueSettlementMaxLagMs(feedKey) {
+  if (feedKey === 'energy:eia-petroleum:v1') return EIA_VALUE_SETTLEMENT_MAX_LAG_MS;
+  if (feedKey === MARKET_SETTLEMENT_FEED_KEY) return MARKET_SETTLEMENT_MAX_LAG_MS;
+  if (FRED_MONTHLY_FEED_KEYS.has(feedKey)) return FRED_MONTHLY_VALUE_SETTLEMENT_MAX_LAG_MS;
+  if (FRED_DAILY_FEED_KEYS.has(feedKey)) return FRED_DAILY_VALUE_SETTLEMENT_MAX_LAG_MS;
+  return VALUE_SETTLEMENT_MAX_LAG_MS;
+}
 
 const SUPPORTED_FUNCTIONS = new Set(['count', 'riskScore', 'present', 'yesPrice', 'hexCount', 'price', 'value']);
 const COUNTRY_ALIASES = loadCountryAliases();
@@ -72,7 +101,9 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
   // timestamp fall through (cannot gate). within-horizon is exempt — it resolves
   // from the asOf-stamped sample timeline, not the current feed record.
   const isPointWindow = spec.window === 'at-deadline' || spec.window === 'at-endDate';
-  if (isPointWindow && (parsed.fn === 'value' || parsed.fn === 'price')) {
+  const isSettlementYesPrice = parsed.fn === 'yesPrice'
+    && (parsed.feedKey === MARKET_SETTLEMENT_FEED_KEY || spec.sourceFeed === MARKET_SETTLEMENT_FEED_KEY);
+  if (isPointWindow && (parsed.fn === 'value' || parsed.fn === 'price' || isSettlementYesPrice)) {
     const settle = valueSettlementResult(parsed, feedData, deadline, nowMs, entry, spec);
     if (settle) return settle;
   }
@@ -179,6 +210,7 @@ export function resolveHardSpec(entry, feedData, samples, nowMs) {
 // no usable timestamp, so we can't gate — fall through to normal resolution),
 // a pending result while within the grace window, or VOID once grace elapses.
 function valueSettlementResult(parsed, feedData, deadline, nowMs, entry, spec) {
+  const maxLagMs = valueSettlementMaxLagMs(parsed.feedKey || spec?.sourceFeed);
   const record = findMatchingRecord(feedData, parsed.field, parsed.value);
   if (!record) {
     // Whole-feed-down is handled by the window path (source_feed_unavailable);
@@ -186,16 +218,20 @@ function valueSettlementResult(parsed, feedData, deadline, nowMs, entry, spec) {
     // refresh that dropped this symbol. Pend through the grace so a transient
     // gap doesn't immediately VOID; VOID only if it never returns (#5243 P2).
     if (feedData == null) return null;
-    if (nowMs < deadline + VALUE_SETTLEMENT_MAX_LAG_MS) {
+    if (nowMs < deadline + maxLagMs) {
       return { status: 'pending', evidence: { reason: 'value_source_record_missing', deadline } };
     }
     return voidResult('value_source_never_settled', entry, spec, parsed, nowMs);
   }
+  // A settlement-feed record is the venue's ADJUDICATED outcome — terminal
+  // truth regardless of when adjudication was stamped (a market can settle
+  // early, dating asOf before the deadline day). Resolve on presence alone.
+  if (parsed.feedKey === MARKET_SETTLEMENT_FEED_KEY || spec?.sourceFeed === MARKET_SETTLEMENT_FEED_KEY) return null;
   const asOf = parseAsOfMs(record.asOf ?? record.date);
   if (!Number.isFinite(asOf)) return null; // record present but no timestamp → cannot gate
   const deadlineDay = Math.floor(deadline / DAY_MS) * DAY_MS;
   if (asOf >= deadlineDay) return null; // feed has caught up to the deadline period
-  if (nowMs < deadline + VALUE_SETTLEMENT_MAX_LAG_MS) {
+  if (nowMs < deadline + maxLagMs) {
     return { status: 'pending', evidence: { reason: 'value_source_not_settled', deadline, asOf } };
   }
   return voidResult('value_source_never_settled', entry, spec, parsed, nowMs);

@@ -17,6 +17,12 @@ import { readFileSync } from "node:fs";
  * shell command line. This test asserts the sink cannot come back.
  */
 const mainRs = readFileSync(new URL("./src/main.rs", import.meta.url), "utf8");
+const defaultCapability = readFileSync(new URL("./capabilities/default.json", import.meta.url), "utf8");
+const rendererSources = [
+  new URL("../src/services/runtime.ts", import.meta.url),
+  new URL("../src/services/runtime-config.ts", import.meta.url),
+  new URL("../src/settings-main.ts", import.meta.url),
+].map((url) => readFileSync(url, "utf8"));
 
 test("open_in_shell never spawns cmd.exe (GHSA-2x6r)", () => {
   assert.ok(
@@ -36,7 +42,6 @@ test("open_in_shell opens URLs/paths via the opener crate (ShellExecuteW on Wind
 
 test("every renderer-callable UX and log command requires a trusted window", () => {
   const commands = [
-    "list_supported_secret_keys",
     "open_logs_folder",
     "open_sidecar_log_file",
     "open_settings_window_command",
@@ -56,5 +61,47 @@ test("every renderer-callable UX and log command requires a trusted window", () 
       /require_trusted_window\(webview\.label\(\)\)\?/,
       `${command} must reject calls from untrusted windows`,
     );
+  }
+});
+
+test("renderer IPC cannot read the sidecar bearer token or the secret cache (GHSA-5458)", () => {
+  for (const command of ["get_local_api_token", "get_secret", "get_all_secrets"]) {
+    assert.ok(
+      !mainRs.includes(`fn ${command}(`),
+      `${command} must not be a renderer-callable Tauri command (GHSA-5458).`,
+    );
+    assert.ok(
+      !mainRs.includes(`            ${command},`),
+      `${command} must not be registered in Tauri's invoke handler (GHSA-5458).`,
+    );
+  }
+  for (const source of rendererSources) {
+    for (const command of ["get_local_api_token", "get_secret", "get_all_secrets"]) {
+      assert.ok(!source.includes(command), `renderer source must not invoke ${command} (GHSA-5458).`);
+    }
+  }
+  const runtimeConfig = rendererSources[1];
+  assert.ok(
+    runtimeConfig.includes("runtimeConfig.secrets[key as RuntimeSecretKey] = { source: 'vault' }"),
+    'desktop vault state must remain metadata-only (no renderer plaintext value).',
+  );
+});
+
+test("only the main window receives the default Tauri capability (GHSA-5458)", () => {
+  assert.match(defaultCapability, /"windows": \["main"\]/);
+  assert.ok(
+    !defaultCapability.includes('"settings"') && !defaultCapability.includes('"live-channels"'),
+    "settings and live-channels must not inherit the main window's default capability.",
+  );
+});
+
+test("native sidecar proxy blocks secret-management routes (GHSA-5458)", () => {
+  const proxyStart = mainRs.indexOf("fn proxy_local_api_request(");
+  assert.ok(proxyStart >= 0, "native sidecar proxy command must be present");
+  const proxyEnd = mainRs.indexOf("#[tauri::command]", proxyStart + 1);
+  const proxyBody = mainRs.slice(proxyStart, proxyEnd);
+  assert.match(proxyBody, /require_secret_management_window\(webview\.label\(\)\)\?/);
+  for (const route of ["/api/local-env-update", "/api/local-env-update-batch", "/api/local-validate-secret"]) {
+    assert.ok(mainRs.includes(route), `native proxy must reject ${route}`);
   }
 });

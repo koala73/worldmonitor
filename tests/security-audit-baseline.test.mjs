@@ -137,13 +137,44 @@ describe('security audit baseline', () => {
             url: 'https://github.com/advisories/GHSA-395f-4hp3-45gv',
           }],
         },
+        'sharp': {
+          name: 'sharp',
+          severity: 'high',
+          via: [{
+            name: 'sharp',
+            severity: 'high',
+            title: 'sharp inherited vulnerabilities in libvips',
+            url: 'https://github.com/advisories/GHSA-f88m-g3jw-g9cj',
+          }],
+        },
+        'brace-expansion': {
+          name: 'brace-expansion',
+          severity: 'high',
+          via: [{
+            name: 'brace-expansion',
+            severity: 'high',
+            title: 'brace-expansion uncontrolled resource consumption',
+            url: 'https://github.com/advisories/GHSA-mh99-v99m-4gvg',
+          }],
+        },
+        'postcss': {
+          name: 'postcss',
+          severity: 'high',
+          via: [{
+            name: 'postcss',
+            severity: 'high',
+            title: 'PostCSS sourceMappingURL path traversal',
+            url: 'https://github.com/advisories/GHSA-r28c-9q8g-f849',
+          }],
+        },
       },
     };
 
     // The still-present ids are not reported as stale; GHSA-qjx8 (absent) is.
     assert.deepEqual(collectStaleBaselineEntries(report, 'pro-test/package-lock.json'), ['GHSA-qjx8-664m-686j']);
-    // The empty root baseline has nothing to mark stale.
+    // Root and scripts baselines are represented, so neither reports a stale entry.
     assert.deepEqual(collectStaleBaselineEntries(report, 'package-lock.json'), []);
+    assert.deepEqual(collectStaleBaselineEntries(report, 'scripts/package-lock.json'), []);
   });
 
   it('treats a symlinked entry path as direct invocation (no silent fail-open)', () => {

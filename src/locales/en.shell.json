@@ -559,7 +559,8 @@
       "infoTooltip": "<strong>Geopolitical Activity Hubs</strong><br>Shows regions with the most news activity.<br><br><em>Hub types:</em><br>• 🏛️ Capitals — World capitals and government centers<br>• ⚔️ Conflict Zones — Active conflict areas<br>• ⚓ Strategic — Chokepoints and key regions<br>• 🏢 Organizations — UN, NATO, IAEA, etc.<br><br><em>Activity levels:</em><br>• <span style=\"color: {{highColor}}\">High</span> — Breaking news or 70+ score<br>• <span style=\"color: {{elevatedColor}}\">Elevated</span> — Score 40-69<br>• <span style=\"color: {{lowColor}}\">Low</span> — Score below 40<br><br>Click a hub to zoom to its location."
     },
     "giving": {
-      "infoTooltip": "<strong>Global Giving Activity Index</strong> Composite index tracking personal giving across crowdfunding platforms and crypto wallets.<ul><li><strong>Platforms</strong>: GoFundMe, GlobalGiving, JustGiving campaign sampling</li><li><strong>Crypto</strong>: On-chain charity wallet inflows (Endaoment, Giving Block)</li><li><strong>Institutional</strong>: OECD ODA, CAF World Giving Index, Candid grants</li></ul>Index is directional (not exact dollar amounts). Combines live sampling with published annual reports."
+      "benchmarkTitle": "Global Giving Benchmarks",
+      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity."
     },
     "goldIntelligence": {
       "infoTooltip": "<strong>Gold Intelligence</strong> Gold spot price, gold/silver ratio, gold vs platinum premium, cross-currency XAU prices (EUR, GBP, JPY, CNY, INR, CHF), and CFTC managed money positioning. Sources: Yahoo Finance, CFTC COT."

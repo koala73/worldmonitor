@@ -38,9 +38,11 @@ const formattedDate = pubDate.toLocaleDateString('en-US', {
 const isoDate = pubDate.toISOString();
 const isoModifiedDate = modifiedDate ? modifiedDate.toISOString() : isoDate;
 const DEFAULT_AUTHOR = 'Elie Habib';
-const DEFAULT_AUTHOR_URL = 'https://x.com/eliehabib';
+const DEFAULT_AUTHOR_URL = 'https://www.worldmonitor.app/blog/authors/elie-habib/';
+const DEFAULT_AUTHOR_ID = `${DEFAULT_AUTHOR_URL}#person`;
 const DEFAULT_AUTHOR_BIO = 'Founder of World Monitor. Previously co-founder &amp; CEO of Anghami (NASDAQ: ANGH). Building open-source global intelligence infrastructure.';
 const DEFAULT_AUTHOR_GITHUB = 'koala73';
+const DEFAULT_SECTION = 'Global Intelligence';
 const authorName = author || DEFAULT_AUTHOR;
 const resolvedAuthorUrl = authorUrl || (authorName === DEFAULT_AUTHOR ? DEFAULT_AUTHOR_URL : undefined);
 const resolvedAuthorBio = authorBio || (authorName === DEFAULT_AUTHOR ? DEFAULT_AUTHOR_BIO : undefined);
@@ -55,6 +57,28 @@ const showUpdated = modifiedDate && modifiedDate.getTime() !== pubDate.getTime()
 const formattedModifiedDate = modifiedDate ? modifiedDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '';
 const wordCount = rawBody ? rawBody.trim().split(/\s+/).filter(Boolean).length : undefined;
 const readingMinutes = wordCount ? Math.max(1, Math.ceil(wordCount / 220)) : undefined;
+
+function extractCitations(body: string | undefined): { "@type": string; name: string; url: string }[] {
+  if (!body) return [];
+  const citations: { "@type": string; name: string; url: string }[] = [];
+  const seen = new Set<string>();
+  const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)(?:\s+"[^"]*")?\)/g;
+  let match: RegExpExecArray | null;
+  while ((match = linkRegex.exec(body)) !== null) {
+    const url = match[2];
+    const host = new URL(url).hostname.replace(/^www\./, '');
+    if (host === 'worldmonitor.app' || host.endsWith('.worldmonitor.app') || seen.has(url)) continue;
+    seen.add(url);
+    citations.push({
+      "@type": "CreativeWork",
+      "name": match[1].replace(/[*_`]/g, '').trim(),
+      "url": url
+    });
+  }
+  return citations;
+}
+
+const citations = extractCitations(rawBody);
 
 const breadcrumbLd = {
   "@context": "https://schema.org",
@@ -86,16 +110,30 @@ const jsonLd = {
   "dateModified": isoModifiedDate,
   "inLanguage": "en-US",
   "isAccessibleForFree": true,
-  ...(audience ? { "articleSection": audience } : {}),
+  "articleSection": DEFAULT_SECTION,
+  ...(audience ? {
+    "audience": {
+      "@type": "Audience",
+      "audienceType": audience
+    }
+  } : {}),
   ...(wordCount ? { "wordCount": wordCount } : {}),
   ...(readingMinutes ? { "timeRequired": `PT${readingMinutes}M` } : {}),
   "author": {
     "@type": "Person",
     "name": authorName,
-    ...(resolvedAuthorUrl ? { "url": resolvedAuthorUrl } : {})
+    ...(resolvedAuthorUrl ? { "url": resolvedAuthorUrl } : {}),
+    ...(authorName === DEFAULT_AUTHOR ? {
+      "@id": DEFAULT_AUTHOR_ID,
+      "sameAs": [
+        "https://x.com/eliehabib",
+        `https://github.com/${DEFAULT_AUTHOR_GITHUB}`
+      ]
+    } : {})
   },
   "publisher": {
     "@type": "Organization",
+    "@id": "https://www.worldmonitor.app/#organization",
     "name": "World Monitor",
     "url": "https://www.worldmonitor.app",
     "sameAs": [
@@ -113,6 +151,13 @@ const jsonLd = {
   },
   "image": ogImage || "https://www.worldmonitor.app/favico/og-image.png",
   "url": canonicalUrl,
+  "isPartOf": {
+    "@type": "Blog",
+    "@id": "https://www.worldmonitor.app/blog/#blog",
+    "name": "World Monitor Blog",
+    "url": "https://www.worldmonitor.app/blog/"
+  },
+  ...(citations.length > 0 ? { "citation": citations } : {}),
   ...(keywords ? { "keywords": keywords } : {})
 };
 
@@ -157,7 +202,7 @@ const faqLd = extractFaqLd(rawBody);
   publishedTime={isoDate}
   modifiedTime={isoModifiedDate}
   author={authorName}
-  section={audience}
+  section={DEFAULT_SECTION}
   jsonLd={jsonLd}
   breadcrumbLd={breadcrumbLd}
   faqLd={faqLd ?? undefined}
@@ -185,6 +230,7 @@ const faqLd = extractFaqLd(rawBody);
     )}
     <div class="article-content prose">
       <h1>{title}</h1>
+      <p class="article-dek">{description}</p>
       <slot />
     </div>
     {relatedPosts.length > 0 && (
@@ -211,7 +257,7 @@ const faqLd = extractFaqLd(rawBody);
       <div class="author-info">
         <div class="author-name">
           {resolvedAuthorUrl
-            ? <a href={resolvedAuthorUrl} target="_blank" rel="author noopener noreferrer">{authorName}</a>
+            ? <a href={resolvedAuthorUrl} rel="author">{authorName}</a>
             : <span>{authorName}</span>
           }
         </div>

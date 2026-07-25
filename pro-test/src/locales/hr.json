@@ -382,11 +382,14 @@
         "description": "Programski pristup obavještajnim podacima",
         "features": [
           "REST API + službeni SDK-ovi (npm, PyPI, RubyGems, Go)",
+          "Uključen licencni / API ključ",
           "Tokovi podataka u stvarnom vremenu",
           "60 zahtjeva/minutu",
           "1.000 zahtjeva/dan uključeno",
-          "Webhook obavijesti",
-          "Prilagođeni izvozi podataka"
+          "Webhook obavijesti"
+        ],
+        "highlightFeatures": [
+          "Bez komercijalne uporabe"
         ]
       },
       "enterprise": {
@@ -400,6 +403,20 @@
           "On-premise opcija"
         ],
         "cta": "Kontaktirajte prodaju"
+      },
+      "apiBusiness": {
+        "description": "API velikog volumena za timove",
+        "features": [
+          "Sve iz API Startera",
+          "300 zahtjeva/minutu",
+          "10.000 zahtjeva/dan uključeno",
+          "Uključeno 5 Pro licenci",
+          "Obavezan isti email tvrtke",
+          "Prioritetna podrška"
+        ],
+        "highlightFeatures": [
+          "Komercijalna uporaba dopuštena"
+        ]
       }
     },
     "cta": {

@@ -102,7 +102,7 @@ self.onmessage = (event: MessageEvent<WorkerMessage>) => {
         })),
       }));
 
-      const getSourceType = (source: string): SourceType => message.sourceTypes[source] ?? 'other';
+      const getSourceType = (source: string): SourceType => message.sourceTypes[source] ?? 'unknown';
 
       const { signals, snapshot } = analyzeCorrelationsCore(
         clusters,

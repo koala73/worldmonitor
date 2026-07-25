@@ -382,11 +382,14 @@
         "description": "Programmatisk åtkomst till underrättelsedata",
         "features": [
           "REST-API + officiella SDK:er (npm, PyPI, RubyGems, Go)",
+          "Licens-/API-nyckel ingår",
           "Realtidsdataströmmar",
           "60 förfrågningar/minut",
           "1 000 förfrågningar/dag ingår",
-          "Webhook-meddelanden",
-          "Anpassade dataexporter"
+          "Webhook-meddelanden"
+        ],
+        "highlightFeatures": [
+          "Ingen kommersiell användning"
         ]
       },
       "enterprise": {
@@ -400,6 +403,20 @@
           "On-premise-alternativ"
         ],
         "cta": "Kontakta försäljning"
+      },
+      "apiBusiness": {
+        "description": "API med hög volym för team",
+        "features": [
+          "Allt i API Starter",
+          "300 förfrågningar/minut",
+          "10 000 förfrågningar/dag ingår",
+          "5 Pro-licenser ingår",
+          "Samma företags-e-post krävs",
+          "Prioriterad support"
+        ],
+        "highlightFeatures": [
+          "Kommersiell användning tillåten"
+        ]
       }
     },
     "cta": {

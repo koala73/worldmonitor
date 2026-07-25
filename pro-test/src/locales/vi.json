@@ -382,11 +382,14 @@
         "description": "Truy cập theo chương trình vào dữ liệu trí tuệ",
         "features": [
           "REST API + SDK chính thức (npm, PyPI, RubyGems, Go)",
+          "Bao gồm khóa bản quyền / API",
           "Luồng dữ liệu thời gian thực",
           "60 yêu cầu/phút",
           "Bao gồm 1.000 yêu cầu/ngày",
-          "Thông báo Webhook",
-          "Xuất dữ liệu tùy chỉnh"
+          "Thông báo Webhook"
+        ],
+        "highlightFeatures": [
+          "Không dùng cho mục đích thương mại"
         ]
       },
       "enterprise": {
@@ -400,6 +403,20 @@
           "Tuỳ chọn tại chỗ"
         ],
         "cta": "Liên hệ Phòng bán hàng"
+      },
+      "apiBusiness": {
+        "description": "API lưu lượng cao cho nhóm",
+        "features": [
+          "Tất cả trong API Starter",
+          "300 yêu cầu/phút",
+          "Bao gồm 10.000 yêu cầu/ngày",
+          "Bao gồm 5 giấy phép Pro",
+          "Yêu cầu cùng email công ty",
+          "Hỗ trợ ưu tiên"
+        ],
+        "highlightFeatures": [
+          "Cho phép sử dụng thương mại"
+        ]
       }
     },
     "cta": {

@@ -382,11 +382,14 @@
         "description": "Acceso programático a datos de inteligencia",
         "features": [
           "API REST + SDK oficiales (npm, PyPI, RubyGems, Go)",
+          "Clave de licencia / API incluida",
           "Flujos de datos en tiempo real",
           "60 solicitudes/minuto",
           "1.000 solicitudes/día incluidas",
-          "Notificaciones por webhook",
-          "Exportaciones de datos personalizadas"
+          "Notificaciones por webhook"
+        ],
+        "highlightFeatures": [
+          "Sin uso comercial"
         ]
       },
       "enterprise": {
@@ -400,6 +403,20 @@
           "Opción local"
         ],
         "cta": "Contactar Ventas"
+      },
+      "apiBusiness": {
+        "description": "API de alto volumen para equipos",
+        "features": [
+          "Todo en API Starter",
+          "300 solicitudes/minuto",
+          "10.000 solicitudes/día incluidas",
+          "5 licencias Pro incluidas",
+          "Se requiere el mismo correo de empresa",
+          "Soporte prioritario"
+        ],
+        "highlightFeatures": [
+          "Uso comercial permitido"
+        ]
       }
     },
     "cta": {
