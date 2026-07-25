@@ -340,7 +340,10 @@ export class UnifiedSettings {
   }
 
   public open(tab?: TabId): void {
-    if (tab) this.activeTab = tab;
+    const requestedTab = tab ?? this.activeTab;
+    this.activeTab = requestedTab === 'mcp-clients' && !hasFeature('mcpAccess')
+      ? 'settings'
+      : requestedTab;
     this.resetPanelDraft();
     // Seed entitlementReady BEFORE render() so the first paint of
     // renderUpgradeSection branches on the current snapshot state, not the
