@@ -1,5 +1,7 @@
 # World Monitor
 
+[![MCP Toplist](https://mcptoplist.com/badge/app.worldmonitor%2Fmcp.svg)](https://mcptoplist.com/server/app.worldmonitor%2Fmcp)
+
 [简体中文](README.zh-CN.md)
 
 **Real-time global intelligence dashboard** — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
