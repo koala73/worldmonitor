@@ -48,6 +48,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'ops surface: daily GDELT recall percentage + missed headlines for coverage monitoring; consumed by api/health.js + operators, not a queryable news slice (#4920).'],
   ['health:china-coverage:v1',
     'operational: bounded China coverage verdict and reason codes consumed by api/health.js and the read-only operator audit; source content remains available through its domain tools, so this summary is not a queryable MCP slice (#5271).'],
+  ['china:policy-events:v1',
+    'deferred: official policy and enforcement documents are consumed by the dedicated China dashboard surface in #5576; final cross-domain API/MCP composition belongs to #5580 and is explicitly outside this ingestion issue.'],
   ['economic:global-tenders:v1:source:sam',
     'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
   ['economic:global-tenders:v1:source:ted',

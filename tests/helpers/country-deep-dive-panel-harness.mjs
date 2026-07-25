@@ -170,7 +170,15 @@ async function loadCountryDeepDivePanel(options = {}) {
       }
     `],
     ['sanitize-stub', `
-      export function sanitizeUrl(value) { return value ?? ''; }
+      export function sanitizeUrl(value) {
+        if (!value) return '';
+        try {
+          const parsed = new URL(value, 'https://example.com');
+          return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? value : '';
+        } catch {
+          return '';
+        }
+      }
       export function escapeHtml(value) { return value ?? ''; }
       export function safeHtmlToString(value) { return String(value ?? ''); }
     `],

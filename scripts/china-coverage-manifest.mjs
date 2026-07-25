@@ -218,6 +218,22 @@ export const CHINA_COVERAGE_ENTRIES = Object.freeze([
     },
   },
   {
+    id: 'policy.official-events',
+    label: 'Official policy and enforcement events',
+    ownerIssue: 5576,
+    launchStatus: 'launched',
+    transport: metaTransport('seed-meta:china:policy-events', 2_160),
+    content: {
+      key: 'china:policy-events:v1',
+      maxAgeMin: 180 * 1_440,
+      probe: {
+        kind: 'object',
+        requiredTruthyPaths: [['events']],
+        timestampPaths: [['events', '*', 'publicationDate']],
+      },
+    },
+  },
+  {
     id: 'hazards.western-pacific-cyclones',
     label: 'Western Pacific cyclone identity',
     ownerIssue: 5276,

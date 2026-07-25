@@ -20,7 +20,9 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   // not independent ADS-B/AIS observations.
   'Taiwan Ministry of National Defense': 'gov', 'Japan Joint Staff': 'gov',
   // Chinese government ministries (Tier 1 official sources — not wire/verified outlets)
+  'CAC (China)': 'gov', 'SAMR (China)': 'gov',
   'MIIT (China)': 'gov', 'MOFCOM (China)': 'gov',
+  'NDRC (China)': 'gov', 'PBoC (China)': 'gov',
 
   // Intel/Defense specialty
   'Defense One': 'intel', 'Breaking Defense': 'intel', 'The War Zone': 'intel',
@@ -168,6 +170,26 @@ export const SOURCE_PROPAGANDA_RISK: Record<string, SourceRiskProfile> = {
     risk: 'high',
     stateAffiliated: 'Japan',
     note: 'Direct government activity reports; only manually reviewed documents are admitted as regional augmentation',
+  },
+  'CAC (China)': {
+    risk: 'high',
+    stateAffiliated: 'China',
+    note: 'Cyberspace Administration of China official publication',
+  },
+  'SAMR (China)': {
+    risk: 'high',
+    stateAffiliated: 'China',
+    note: 'State Administration for Market Regulation official publication',
+  },
+  'NDRC (China)': {
+    risk: 'high',
+    stateAffiliated: 'China',
+    note: 'National Development and Reform Commission official publication',
+  },
+  'PBoC (China)': {
+    risk: 'high',
+    stateAffiliated: 'China',
+    note: "People's Bank of China official publication",
   },
 
   // Medium risk - State-affiliated or known bias

@@ -47,6 +47,25 @@ const summary = {
       unavailableReason: 'One policy source is temporarily unavailable.',
     },
     {
+      id: 'policy-enforcement',
+      state: 'partial',
+      signals: [{
+        label: '市场监管总局关于发布执法指南的公告 <img src=x>',
+        value: 'SAMR · Guidance · Announced',
+        source: 'SAMR (China)',
+        sourceUrl: 'https://www.samr.gov.cn/zw/example.html',
+        publishedAt: '2026-06-12',
+        effectiveAt: undefined,
+        action: 'announcement_guidance',
+        status: 'announced',
+        sectors: ['Consumer markets'],
+        entities: [],
+        translationState: 'not_translated',
+        stale: false,
+      }],
+      unavailableReason: 'One official agency is temporarily unavailable.',
+    },
+    {
       id: 'market-credit',
       state: 'available',
       signals: [{
@@ -109,14 +128,14 @@ test('China summary is scoped to China, exposes per-group states, and safely att
     const card = harness.getPanelRoot()?.querySelector<HTMLElement>('.cdp-china-summary');
     assert.ok(card, 'China should receive the dedicated country summary');
     assert.equal(card?.getAttribute('aria-label'), 'countryBrief.china.title');
-    assert.equal(card?.querySelectorAll('.cdp-china-summary-group').length, 5);
+    assert.equal(card?.querySelectorAll('.cdp-china-summary-group').length, 6);
     assert.equal(card?.querySelector('[role="status"]')?.getAttribute('aria-live'), 'polite');
     assert.match(card?.textContent ?? '', /countryBrief\.china\.status\.loading/, 'groups start in an explicit loading state');
 
     const sectionsBeforeUpdate = Array.from(card?.querySelectorAll<HTMLElement>('.cdp-china-summary-group') ?? []);
     panel.updateChinaCountrySummary(summary);
     const sectionsAfterUpdate = Array.from(card?.querySelectorAll<HTMLElement>('.cdp-china-summary-group') ?? []);
-    assert.equal(sectionsAfterUpdate.length, 5);
+    assert.equal(sectionsAfterUpdate.length, 6);
     for (let i = 0; i < sectionsBeforeUpdate.length; i += 1) {
       assert.equal(
         sectionsAfterUpdate[i],
@@ -134,6 +153,34 @@ test('China summary is scoped to China, exposes per-group states, and safely att
     );
     assert.match(card?.textContent ?? '', /OECD <img src=x>/, 'source attribution is retained as text');
     assert.equal(card?.querySelector('img'), null, 'source attribution is never interpreted as markup');
+    assert.match(
+      card?.textContent ?? '',
+      /市场监管总局关于发布执法指南的公告 <img src=x>/,
+      'policy titles remain original text rather than becoming markup',
+    );
+    const policySource = card?.querySelector<HTMLAnchorElement>('.cdp-china-summary-source-link');
+    assert.equal(policySource?.getAttribute('href'), 'https://www.samr.gov.cn/zw/example.html');
+    assert.equal(policySource?.getAttribute('rel'), 'noopener noreferrer');
+
+    const unsafeSourceSummary = {
+      groups: summary.groups.map((group) => (group.id === 'policy-enforcement'
+        ? {
+            ...group,
+            signals: group.signals.map((signal) => ({
+              ...signal,
+              sourceUrl: 'javascript:alert(1)',
+            })),
+          }
+        : group)),
+    };
+    panel.updateChinaCountrySummary(unsafeSourceSummary);
+    assert.equal(
+      card?.querySelector('.cdp-china-summary-source-link'),
+      null,
+      'an unsafe official-source URL is rendered as text instead of an executable link',
+    );
+    assert.match(card?.textContent ?? '', /SAMR \(China\)/);
+
     const availability = Array.from(card?.querySelectorAll<HTMLElement>('.cdp-china-summary-group') ?? []).at(-1);
     assert.doesNotMatch(
       availability?.textContent ?? '',

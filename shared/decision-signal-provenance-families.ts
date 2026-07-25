@@ -185,7 +185,7 @@ export const DECISION_SIGNAL_PROVENANCE_FAMILY_REGISTRATIONS: Readonly<
     serializationFixtureId: 'official-numeric-revised',
   }),
   typed_document_event: Object.freeze({
-    launchStatus: 'reference',
+    launchStatus: 'launched',
     serializationFixtureId: 'typed-document-translated',
   }),
   operational_activity_record: Object.freeze({
