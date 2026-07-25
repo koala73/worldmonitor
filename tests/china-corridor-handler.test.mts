@@ -86,6 +86,104 @@ describe('China corridor API/cache composition (#5578)', () => {
     assert.equal(response, null);
   });
 
+  it('does not repeat the batch source read after an all-unavailable cache miss', async () => {
+    let batchReads = 0;
+    const response = await resolveChinaCorridorSnapshot(
+      ASSESSED_AT,
+      async (_key, _ttlSeconds, fetcher) => fetcher(),
+      undefined,
+      async () => {
+        batchReads++;
+        return new Map();
+      },
+    );
+
+    assert.equal(batchReads, 1);
+    assert.equal(
+      response.corridors.every((corridor) => corridor.availability === 'unavailable'),
+      true,
+    );
+  });
+
+  it('coalesces concurrent all-unavailable cache misses before the source batch', async () => {
+    let releaseCache!: () => void;
+    const cacheGate = new Promise<void>((resolve) => {
+      releaseCache = resolve;
+    });
+    let cacheReads = 0;
+    let batchReads = 0;
+    const cache = async (
+      _key: string,
+      _ttlSeconds: number,
+      fetcher: () => Promise<Awaited<ReturnType<typeof composeChinaCorridorSnapshot>>>,
+    ) => {
+      cacheReads++;
+      await cacheGate;
+      return fetcher();
+    };
+    const readBatch = async () => {
+      batchReads++;
+      return new Map<string, unknown>();
+    };
+
+    const first = resolveChinaCorridorSnapshot(
+      ASSESSED_AT,
+      cache,
+      undefined,
+      readBatch,
+    );
+    const second = resolveChinaCorridorSnapshot(
+      ASSESSED_AT,
+      cache,
+      undefined,
+      readBatch,
+    );
+    releaseCache();
+    const [firstResponse, secondResponse] = await Promise.all([first, second]);
+
+    assert.equal(cacheReads, 1);
+    assert.equal(batchReads, 1);
+    assert.deepEqual(secondResponse, firstResponse);
+  });
+
+  it('does not coalesce resolutions with different assessment timestamps', async () => {
+    let releaseCache!: () => void;
+    const cacheGate = new Promise<void>((resolve) => {
+      releaseCache = resolve;
+    });
+    let cacheReads = 0;
+    const cache = async (
+      _key: string,
+      _ttlSeconds: number,
+      fetcher: () => Promise<Awaited<ReturnType<typeof composeChinaCorridorSnapshot>>>,
+    ) => {
+      cacheReads++;
+      await cacheGate;
+      return fetcher();
+    };
+    const readBatch = async () => new Map<string, unknown>();
+    const laterAssessedAt = '2026-07-25T13:00:00.000Z';
+
+    const first = resolveChinaCorridorSnapshot(
+      ASSESSED_AT,
+      cache,
+      undefined,
+      readBatch,
+    );
+    const second = resolveChinaCorridorSnapshot(
+      laterAssessedAt,
+      cache,
+      undefined,
+      readBatch,
+    );
+    releaseCache();
+    const [firstResponse, secondResponse] = await Promise.all([first, second]);
+
+    assert.equal(cacheReads, 2);
+    assert.equal(firstResponse.generatedAt, ASSESSED_AT);
+    assert.equal(secondResponse.generatedAt, laterAssessedAt);
+  });
+
   it('recomposes a cache-null result from current source seeds', async () => {
     const values = new Map<string, unknown>([
       [CHINA_CORRIDOR_SOURCE_KEYS.portwatchChina, {
@@ -96,17 +194,19 @@ describe('China corridor API/cache composition (#5578)', () => {
         fetchedAt: Date.parse('2026-07-25T11:30:00.000Z'),
       }],
     ]);
-    const readCalls: string[] = [];
+    let batchReads = 0;
     const response = await resolveChinaCorridorSnapshot(
       ASSESSED_AT,
       async () => null,
-      async (key) => {
-        readCalls.push(key);
-        return values.get(key) ?? null;
+      undefined,
+      async (keys) => {
+        batchReads++;
+        assert.deepEqual(keys.sort(), Object.values(CHINA_CORRIDOR_SOURCE_KEYS).sort());
+        return values;
       },
     );
 
-    assert.equal(readCalls.length, Object.keys(CHINA_CORRIDOR_SOURCE_KEYS).length);
+    assert.equal(batchReads, 1);
     const yrdPort = response.corridors
       .find((corridor) => corridor.id === 'china-yangtze-river-delta')
       ?.conditions.find((condition) => condition.family === 'port');

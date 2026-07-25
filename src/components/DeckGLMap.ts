@@ -129,7 +129,10 @@ import { MapPopup, type PopupType } from './MapPopup';
 import { renderMilitaryVesselTooltipHtml } from './deckgl-tooltip-renderers';
 import type { GetChokepointStatusResponse } from '@/services/supply-chain';
 import type { ChinaCorridorControlTower } from '../../shared/china-corridor-control-towers';
-import { projectChinaCorridorOverlay } from './map/china-corridor-overlay';
+import {
+  projectChinaCorridorOverlay,
+  type ChinaCorridorOverlayProjection,
+} from './map/china-corridor-overlay';
 import {
   updateHotspotEscalation,
   getHotspotEscalation,
@@ -612,7 +615,7 @@ export class DeckGLMap {
   private highlightedMarkers: HighlightedMarker[] = [];
   private bypassArcData: BypassArcDatum[] = [];
   private scenarioState: ScenarioVisualState | null = null;
-  private selectedChinaCorridor: ChinaCorridorControlTower | null = null;
+  private selectedChinaCorridorOverlay: ChinaCorridorOverlayProjection | null = null;
   private affectedIso2Set: Set<string> = new Set();
   private positiveEvents: PositiveGeoEvent[] = [];
   private kindnessPoints: KindnessPoint[] = [];
@@ -1816,8 +1819,8 @@ export class DeckGLMap {
       this.layerCache.delete('day-night-layer');
     }
 
-    if (this.selectedChinaCorridor) {
-      layers.push(...this.createChinaCorridorSelectionLayers(this.selectedChinaCorridor));
+    if (this.selectedChinaCorridorOverlay) {
+      layers.push(...this.createChinaCorridorSelectionLayers(this.selectedChinaCorridorOverlay));
     }
 
     // Undersea cables layer
@@ -6508,9 +6511,8 @@ export class DeckGLMap {
   }
 
   private createChinaCorridorSelectionLayers(
-    corridor: ChinaCorridorControlTower,
+    overlay: ChinaCorridorOverlayProjection,
   ): [PolygonLayer, ScatterplotLayer] {
-    const overlay = projectChinaCorridorOverlay(corridor);
     return [
       new PolygonLayer({
         id: `china-corridor-boundary-${overlay.id}`,
@@ -6855,10 +6857,11 @@ export class DeckGLMap {
   }
 
   public setChinaCorridorSelection(corridor: ChinaCorridorControlTower | null): void {
-    this.selectedChinaCorridor = corridor;
+    const overlay = corridor ? projectChinaCorridorOverlay(corridor) : null;
+    this.selectedChinaCorridorOverlay = overlay;
     this.render();
-    if (!corridor || !this.maplibreMap) return;
-    const [minLon, minLat, maxLon, maxLat] = projectChinaCorridorOverlay(corridor).bounds;
+    if (!overlay || !this.maplibreMap) return;
+    const [minLon, minLat, maxLon, maxLat] = overlay.bounds;
     this.maplibreMap.fitBounds([[minLon, minLat], [maxLon, maxLat]], {
       padding: 48,
       duration: 700,

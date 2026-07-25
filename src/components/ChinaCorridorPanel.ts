@@ -29,6 +29,8 @@ const AVAILABILITY_LABELS: Record<CorridorAvailability, string> = {
   stale: 'Stale',
   unavailable: 'Unavailable',
 };
+const RENDERER_HINT =
+  'The active map renderer centers this corridor but cannot draw its boundary or nodes. Use the WebGL 2D map on a supported device to view the overlay.';
 
 function formatDate(
   value: string | null,
@@ -129,6 +131,7 @@ function injectStyles(): void {
     .china-corridor-source__meta { display: flex; flex-wrap: wrap; gap: 3px 8px; margin-top: 5px; color: var(--text-dim); font-size: 9px; overflow-wrap: anywhere; }
     .china-corridor-source__meta a { color: var(--accent); }
     .china-corridor-missing { margin: 8px 0 0; color: var(--text-dim); font-size: 11px; line-height: 1.4; }
+    .china-corridor-renderer-hint { margin: 8px 0 0; color: var(--warning); font-size: 11px; line-height: 1.4; }
     @media (max-width: 520px) {
       .china-corridor-compare { grid-template-columns: 1fr 1fr; }
       .china-corridor-conditions { grid-template-columns: 1fr; }
@@ -142,7 +145,8 @@ export class ChinaCorridorPanel extends Panel {
   private response: ChinaCorridorControlTowerResponse = { generatedAt: '', corridors: [] };
   private selectedId: ChinaLogisticsCorridorId | null = null;
   private readonly selectedFamilies = new Set<ChinaCorridorSignalFamily>(CHINA_CORRIDOR_SIGNAL_FAMILIES);
-  private onCorridorSelect: ((corridor: ChinaCorridorControlTower) => void) | null = null;
+  private onCorridorSelect: ((corridor: ChinaCorridorControlTower) => boolean | void) | null = null;
+  private showRendererHint = false;
 
   constructor() {
     super({
@@ -157,8 +161,17 @@ export class ChinaCorridorPanel extends Panel {
     this.content.addEventListener('keydown', (event) => this.handleKeydown(event));
   }
 
-  public setOnCorridorSelect(callback: (corridor: ChinaCorridorControlTower) => void): void {
+  public setOnCorridorSelect(
+    callback: (corridor: ChinaCorridorControlTower) => boolean | void,
+  ): void {
     this.onCorridorSelect = callback;
+  }
+
+  public setRendererSupportsOverlay(supported: boolean): void {
+    const showRendererHint = !supported;
+    if (showRendererHint === this.showRendererHint) return;
+    this.showRendererHint = showRendererHint;
+    if (this.selectedId !== null) this.render();
   }
 
   public async fetchData(): Promise<boolean> {
@@ -186,12 +199,13 @@ export class ChinaCorridorPanel extends Panel {
     const corridor = this.response.corridors.find((item) => item.id === id);
     if (!corridor) return;
     this.selectedId = corridor.id;
+    const rendererSupportsOverlay = this.onCorridorSelect?.(corridor);
+    this.showRendererHint = rendererSupportsOverlay === false;
     this.render(() => {
       if (focus) {
         this.content.querySelector<HTMLElement>(`[role="tab"][data-corridor-id="${corridor.id}"]`)?.focus();
       }
     });
-    this.onCorridorSelect?.(corridor);
   }
 
   private handleClick(event: Event): void {
@@ -256,6 +270,9 @@ export class ChinaCorridorPanel extends Panel {
             </div>
             <span class="china-corridor-status china-corridor-status--${selected.availability}">${escapeHtml(AVAILABILITY_LABELS[selected.availability])}</span>
           </div>
+          ${this.showRendererHint
+            ? `<p class="china-corridor-renderer-hint" role="status">${escapeHtml(RENDERER_HINT)}</p>`
+            : ''}
           <div class="china-corridor-conditions">${conditions || '<p class="china-corridor-missing">Select at least one signal family.</p>'}</div>
         </section>
       </div>

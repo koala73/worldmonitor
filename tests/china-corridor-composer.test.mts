@@ -44,7 +44,6 @@ function sourceBundle(): ChinaCorridorSourceBundle {
     families: {
       port: {
         providerId: 'portwatch',
-        availability: 'available',
         signals: [
           signal({
             id: 'signal:portwatch:port1188:2026-07-25',
@@ -62,7 +61,6 @@ function sourceBundle(): ChinaCorridorSourceBundle {
       },
       aviation: {
         providerId: 'aviationstack',
-        availability: 'available',
         signals: [
           signal({
             id: 'signal:aviation:PVG:2026-07-25T11:00Z',
@@ -74,7 +72,6 @@ function sourceBundle(): ChinaCorridorSourceBundle {
       },
       hazard: {
         providerId: 'china-hazards',
-        availability: 'available',
         signals: [
           signal({
             id: 'signal:hko:warning:2026-07-25T11:00Z',
@@ -87,7 +84,6 @@ function sourceBundle(): ChinaCorridorSourceBundle {
       },
       power_energy: {
         providerId: 'china-energy-spine',
-        availability: 'available',
         signals: [
           signal({
             id: 'signal:energy-spine:CN:2026-07-25',
@@ -99,7 +95,6 @@ function sourceBundle(): ChinaCorridorSourceBundle {
       },
       strategic_industry: {
         providerId: 'un-comtrade-strategic-products',
-        availability: 'available',
         signals: [
           signal({
             id: 'signal:comtrade:156:strategic:2026-06',
@@ -113,7 +108,6 @@ function sourceBundle(): ChinaCorridorSourceBundle {
       },
       trade: {
         providerId: 'china-trade-signals',
-        availability: 'available',
         signals: [
           signal({
             id: 'signal:ccfi:2026-07-25',
@@ -156,7 +150,6 @@ describe('China corridor control-tower composition (#5578)', () => {
     const bundle = sourceBundle();
     bundle.families.aviation = {
       providerId: 'aviationstack',
-      availability: 'unavailable',
       reason: 'provider cache missing',
       signals: [],
     };
@@ -173,11 +166,10 @@ describe('China corridor control-tower composition (#5578)', () => {
     assert.doesNotMatch(JSON.stringify(response), /"delayMinutes":0|"status":"normal"/);
   });
 
-  it('degrades only the failed provider family and keeps partial corridors useful', () => {
+  it('degrades only the missing provider family and keeps partial corridors useful', () => {
     const bundle = sourceBundle();
     bundle.families.hazard = {
       providerId: 'china-hazards',
-      availability: 'error',
       reason: 'hazard cache read failed',
       signals: [],
     };
@@ -208,7 +200,6 @@ describe('China corridor control-tower composition (#5578)', () => {
     hongKong.observationTime = null;
     hongKong.observationTimePrecision = 'unknown';
     hongKong.contentFreshness = 'unavailable';
-    bundle.families.port.availability = 'partial';
     bundle.families.port.reason = 'One reviewed port is unavailable';
 
     const response = composeChinaCorridorControlTowers(bundle);
@@ -303,6 +294,26 @@ describe('China corridor control-tower composition (#5578)', () => {
     assert.deepEqual(
       observation?.status === 'known' ? observation.value : null,
       { role: 'observation', value: '2025', precision: 'year' },
+    );
+  });
+
+  it('fails closed when a usable source observation lacks a provenance timestamp', () => {
+    const bundle = sourceBundle();
+    const portSignal = bundle.families.port.signals[0];
+    assert.ok(portSignal);
+    portSignal.observationTime = null;
+    portSignal.observationTimePrecision = 'unknown';
+
+    const response = composeChinaCorridorControlTowers(bundle);
+    const condition = response.corridors
+      .find((corridor) => corridor.id === 'china-yangtze-river-delta')
+      ?.conditions.find((item) => item.family === 'port');
+
+    assert.equal(condition?.availability, 'partial');
+    assert.equal(condition?.provenance, null);
+    assert.equal(
+      condition?.reason,
+      'Source observations lack the timestamps required for a composed provenance envelope.',
     );
   });
 

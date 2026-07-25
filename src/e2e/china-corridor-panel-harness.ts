@@ -1,5 +1,6 @@
 import '../styles/main.css';
 import { ChinaCorridorPanel } from '../components/ChinaCorridorPanel';
+import { MapContainer } from '../components/MapContainer';
 import {
   CHINA_CORRIDOR_SIGNAL_FAMILIES,
   CHINA_LOGISTICS_CORRIDORS,
@@ -15,6 +16,8 @@ declare global {
   interface Window {
     __chinaCorridorPanelHarness?: {
       selectedCorridorId: string | null;
+      rendererSupportsOverlay: boolean | null;
+      switchRenderer: (renderer: 'deck' | 'globe' | 'svg') => void;
       ready: boolean;
     };
   }
@@ -73,11 +76,52 @@ const response: ChinaCorridorControlTowerResponse = {
 const app = document.getElementById('app');
 if (!app) throw new Error('Missing #app');
 
-const harness = { selectedCorridorId: null as string | null, ready: false };
+const params = new URLSearchParams(window.location.search);
+const renderer = params.get('renderer') ?? 'deck';
+const map = Object.create(MapContainer.prototype) as MapContainer;
+const mapInternals = map as unknown as Record<string, unknown>;
+Object.assign(mapInternals, {
+  setCenter: () => {},
+  layerLoadingState: new Map(),
+  layerReadyState: new Map(),
+  pendingViewportActions: [],
+  hiddenLayerToggles: new Set(),
+  pendingCenter: null,
+});
+function configureRenderer(kind: string): void {
+  Object.assign(mapInternals, {
+    useDeckGL: kind === 'deck' || kind === 'pending-deck',
+    useGlobe: kind === 'globe',
+    globeMap: kind === 'globe' ? {} : null,
+    deckGLMap: kind === 'deck' ? { setChinaCorridorSelection: () => {} } : null,
+    svgMap: kind === 'svg' ? {} : null,
+  });
+}
+configureRenderer(renderer);
+const harness = {
+  selectedCorridorId: null as string | null,
+  rendererSupportsOverlay: renderer === 'pending-deck'
+    ? null
+    : renderer === 'deck',
+  switchRenderer: (kind: 'deck' | 'globe' | 'svg') => {
+    configureRenderer(kind);
+    (mapInternals.rehydrateActiveMap as () => void).call(map);
+  },
+  ready: false,
+};
 window.__chinaCorridorPanelHarness = harness;
 const panel = new ChinaCorridorPanel();
 panel.setOnCorridorSelect((corridor) => {
   harness.selectedCorridorId = corridor.id;
+  const rendererSupportsOverlay = map.setChinaCorridorSelection(corridor);
+  if (rendererSupportsOverlay !== undefined) {
+    harness.rendererSupportsOverlay = rendererSupportsOverlay;
+  }
+  return rendererSupportsOverlay;
+});
+map.setOnChinaCorridorRendererCapabilityChange((supported) => {
+  harness.rendererSupportsOverlay = supported;
+  panel.setRendererSupportsOverlay(supported);
 });
 app.appendChild(panel.getElement());
 panel.notifyConnected();

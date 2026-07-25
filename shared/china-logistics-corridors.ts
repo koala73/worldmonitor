@@ -18,7 +18,14 @@ export const CHINA_LOGISTICS_CORRIDOR_IDS = [
 
 export type ChinaLogisticsCorridorId = (typeof CHINA_LOGISTICS_CORRIDOR_IDS)[number];
 
-export type ChinaCorridorNodeType = 'port' | 'airport' | 'crossing' | 'industrial';
+export const CHINA_CORRIDOR_NODE_TYPES = [
+  'port',
+  'airport',
+  'crossing',
+  'industrial',
+] as const;
+
+export type ChinaCorridorNodeType = (typeof CHINA_CORRIDOR_NODE_TYPES)[number];
 
 export interface ChinaCorridorPoint {
   lat: number;

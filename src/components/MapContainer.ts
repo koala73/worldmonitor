@@ -164,6 +164,7 @@ export class MapContainer {
   private cachedOnHotspotClicked: ((hotspot: Hotspot) => void) | null = null;
   private cachedOnAircraftPositionsUpdate: ((positions: PositionSample[]) => void) | null = null;
   private cachedOnMapContextMenu: ((payload: { lat: number; lon: number; screenX: number; screenY: number; countryCode?: string; countryName?: string }) => void) | null = null;
+  private cachedOnChinaCorridorRendererCapabilityChange: ((supported: boolean) => void) | null = null;
 
   // ─── Data cache (survives map mode switches) ───────────────────────────────
   private cachedEarthquakes: Earthquake[] | null = null;
@@ -670,7 +671,10 @@ export class MapContainer {
     if (this.cachedTrafficAnomalies) this.setTrafficAnomalies(this.cachedTrafficAnomalies);
     if (this.cachedDdosLocations) this.setDdosLocations(this.cachedDdosLocations);
     if (this.cachedChokepointData !== undefined) this.setChokepointData(this.cachedChokepointData);
-    if (this.cachedChinaCorridorSelection) this.applyChinaCorridorSelection(this.cachedChinaCorridorSelection);
+    if (this.cachedChinaCorridorSelection) {
+      const supported = this.applyChinaCorridorSelection(this.cachedChinaCorridorSelection);
+      this.cachedOnChinaCorridorRendererCapabilityChange?.(supported);
+    }
     if (this.cachedWebcams) {
       if (this.useGlobe) this.globeMap?.setWebcams(this.cachedWebcams);
       else if (this.useDeckGL) this.deckGLMap?.setWebcams(this.cachedWebcams);
@@ -1087,20 +1091,29 @@ export class MapContainer {
     this.svgMap?.setChokepointData(data);
   }
 
-  private applyChinaCorridorSelection(corridor: ChinaCorridorControlTower): void {
+  private applyChinaCorridorSelection(corridor: ChinaCorridorControlTower): boolean {
     if (this.useDeckGL) {
       this.deckGLMap?.setChinaCorridorSelection(corridor);
-      return;
+      return true;
     }
     const { center, bounds } = projectChinaCorridorOverlay(corridor);
     const span = Math.max(bounds[2] - bounds[0], bounds[3] - bounds[1]);
     this.setCenter(center.lat, center.lon, span > 25 ? 3 : span > 8 ? 4 : 5);
+    return false;
   }
 
-  public setChinaCorridorSelection(corridor: ChinaCorridorControlTower): void {
+  public setChinaCorridorSelection(
+    corridor: ChinaCorridorControlTower,
+  ): boolean | undefined {
     this.cachedChinaCorridorSelection = corridor;
-    if (!this.hasActiveRenderer()) return;
-    this.applyChinaCorridorSelection(corridor);
+    if (!this.hasActiveRenderer()) return undefined;
+    return this.applyChinaCorridorSelection(corridor);
+  }
+
+  public setOnChinaCorridorRendererCapabilityChange(
+    callback: (supported: boolean) => void,
+  ): void {
+    this.cachedOnChinaCorridorRendererCapabilityChange = callback;
   }
 
   public setCIIScores(scores: CIIScore[]): void {
@@ -1521,6 +1534,7 @@ export class MapContainer {
     this.cachedOnHotspotClicked = null;
     this.cachedOnAircraftPositionsUpdate = null;
     this.cachedOnMapContextMenu = null;
+    this.cachedOnChinaCorridorRendererCapabilityChange = null;
     this.cachedEarthquakes = null;
     this.cachedConflictEvents = null;
     this.cachedWeatherAlerts = null;

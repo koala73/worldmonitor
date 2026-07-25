@@ -176,38 +176,14 @@ function reviewedNodeSelectors(
     }));
 }
 
-function familyAvailability(signals: readonly CorridorSourceSignal[]): CorridorFamilySource['availability'] {
-  if (signals.length === 0 || signals.every((signal) => signal.availability === 'unavailable')) {
-    return 'unavailable';
-  }
-  if (signals.some((signal) =>
-    signal.availability === 'unavailable'
-    || signal.transportFreshness === 'missing'
-    || signal.transportFreshness === 'error'
-    || signal.contentFreshness === 'partial'
-    || signal.contentFreshness === 'unavailable'
-    || signal.contentFreshness === 'timestamp_unknown')) {
-    return 'partial';
-  }
-  if (signals.some((signal) =>
-    signal.availability === 'stale'
-    || signal.transportFreshness === 'stale'
-    || signal.contentFreshness === 'stale')) {
-    return 'stale';
-  }
-  return 'available';
-}
-
 function family(
   providerId: string,
   signals: CorridorSourceSignal[],
   reason: string,
 ): CorridorFamilySource {
-  const availability = familyAvailability(signals);
   return {
     providerId,
-    availability,
-    ...(availability === 'available' ? {} : { reason }),
+    reason,
     signals,
   };
 }

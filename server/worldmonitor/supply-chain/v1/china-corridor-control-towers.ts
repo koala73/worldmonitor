@@ -6,11 +6,11 @@ import {
   type ChinaLogisticsCorridorId,
 } from '../../../../shared/china-logistics-corridors';
 import {
+  deriveChinaCorridorConditionAvailability,
   deriveChinaCorridorAvailability,
   type ChinaCorridorCondition,
   type ChinaCorridorControlTowerResponse,
   type ChinaCorridorSourceBundle,
-  type CorridorAvailability,
   type CorridorFamilySource,
   type CorridorSourceSignal,
 } from '../../../../shared/china-corridor-control-towers';
@@ -68,27 +68,6 @@ function timestampAtPrecision(
   if (precision === 'month') return timestamp.slice(0, 7);
   if (precision === 'day') return timestamp.slice(0, 10);
   return timestamp;
-}
-
-function conditionAvailability(signals: readonly CorridorSourceSignal[]): CorridorAvailability {
-  const available = signals.filter((signal) => signal.availability !== 'unavailable');
-  if (available.length === 0) return 'unavailable';
-  if (available.length !== signals.length) return 'partial';
-  if (signals.some((signal) =>
-    signal.transportFreshness === 'missing'
-    || signal.transportFreshness === 'error'
-    || signal.contentFreshness === 'partial'
-    || signal.contentFreshness === 'unavailable'
-    || signal.contentFreshness === 'timestamp_unknown')) {
-    return 'partial';
-  }
-  if (signals.some((signal) =>
-    signal.availability === 'stale'
-    || signal.transportFreshness === 'stale'
-    || signal.contentFreshness === 'stale')) {
-    return 'stale';
-  }
-  return 'available';
 }
 
 function buildProvenance(
@@ -260,7 +239,7 @@ function composeCondition(
     };
   }
 
-  const availability = conditionAvailability(sourceSignals);
+  const availability = deriveChinaCorridorConditionAvailability(sourceSignals);
   let provenance: DecisionSignalProvenance | null = null;
   let provenanceFailed = false;
   try {

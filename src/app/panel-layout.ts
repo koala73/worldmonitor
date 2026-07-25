@@ -1898,8 +1898,12 @@ export class PanelLayoutManager implements AppModule {
     this.lazyImportedPanel('china-corridors', () => import('@/components/ChinaCorridorPanel'), 'ChinaCorridorPanel', (ChinaCorridorPanel) => {
       const panel = new ChinaCorridorPanel();
       panel.setOnCorridorSelect((corridor) => {
-        this.ctx.map?.setChinaCorridorSelection(corridor);
+        const rendererSupportsOverlay = this.ctx.map?.setChinaCorridorSelection(corridor);
         if (this.ctx.isMobile) this.revealMobileMap();
+        return rendererSupportsOverlay;
+      });
+      this.ctx.map?.setOnChinaCorridorRendererCapabilityChange((supported) => {
+        panel.setRendererSupportsOverlay(supported);
       });
       return panel;
     });

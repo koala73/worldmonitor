@@ -25,9 +25,16 @@ test.describe('China corridor control towers', () => {
     await expect(panel.getByRole('tab').nth(1)).toHaveAttribute('aria-selected', 'true');
     await expect.poll(() => page.evaluate(() =>
       (window as unknown as {
-        __chinaCorridorPanelHarness?: { selectedCorridorId: string | null };
-      }).__chinaCorridorPanelHarness?.selectedCorridorId ?? null))
-      .toBe('china-greater-bay-area');
+        __chinaCorridorPanelHarness?: {
+          selectedCorridorId: string | null;
+          rendererSupportsOverlay: boolean;
+        };
+      }).__chinaCorridorPanelHarness))
+      .toMatchObject({
+        selectedCorridorId: 'china-greater-bay-area',
+        rendererSupportsOverlay: true,
+      });
+    await expect(panel.locator('.china-corridor-renderer-hint')).toHaveCount(0);
 
     const portFilter = panel.locator('[data-family-filter="port"]');
     await portFilter.click();
@@ -64,5 +71,64 @@ test.describe('China corridor control towers', () => {
       { id: 'china-corridor-boundary-china-yangtze-river-delta', dataCount: 1 },
       { id: 'china-corridor-nodes-china-yangtze-river-delta', dataCount: 10 },
     ]);
+  });
+
+  for (const renderer of ['globe', 'svg']) {
+    test(`tells ${renderer} users to switch to the 2D map when the corridor overlay is unavailable`, async ({ page }) => {
+      await page.goto(`/tests/china-corridor-panel-harness.html?renderer=${renderer}`);
+      await expect.poll(() => page.evaluate(() =>
+        (window as unknown as {
+          __chinaCorridorPanelHarness?: { ready: boolean };
+        }).__chinaCorridorPanelHarness?.ready ?? false)).toBe(true);
+
+      await page.locator('[data-panel="china-corridors"]').getByRole('tab').nth(1).click();
+      await expect(page.getByRole('status')).toContainText(
+        'The active map renderer centers this corridor but cannot draw its boundary or nodes.',
+      );
+      if (renderer === 'globe') {
+        await page.evaluate(() => (window as unknown as {
+          __chinaCorridorPanelHarness?: {
+            switchRenderer: (renderer: 'deck' | 'globe' | 'svg') => void;
+          };
+        }).__chinaCorridorPanelHarness?.switchRenderer('deck'));
+        await expect(page.locator('.china-corridor-renderer-hint')).toHaveCount(0);
+        await expect.poll(() => page.evaluate(() =>
+          (window as unknown as {
+            __chinaCorridorPanelHarness?: { rendererSupportsOverlay: boolean };
+          }).__chinaCorridorPanelHarness?.rendererSupportsOverlay ?? false))
+          .toBe(true);
+      }
+    });
+  }
+
+  test('keeps renderer capability pending until a deferred DeckGL map is ready', async ({ page }) => {
+    await page.goto('/tests/china-corridor-panel-harness.html?renderer=pending-deck');
+    await expect.poll(() => page.evaluate(() =>
+      (window as unknown as {
+        __chinaCorridorPanelHarness?: { ready: boolean };
+      }).__chinaCorridorPanelHarness?.ready ?? false)).toBe(true);
+
+    const panel = page.locator('[data-panel="china-corridors"]');
+    await panel.getByRole('tab').nth(1).click();
+    await expect(panel.locator('.china-corridor-renderer-hint')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() =>
+      (window as unknown as {
+        __chinaCorridorPanelHarness?: {
+          rendererSupportsOverlay: boolean | null;
+        };
+      }).__chinaCorridorPanelHarness?.rendererSupportsOverlay ?? null))
+      .toBe(null);
+
+    await page.evaluate(() => (window as unknown as {
+      __chinaCorridorPanelHarness?: {
+        switchRenderer: (renderer: 'deck' | 'globe' | 'svg') => void;
+      };
+    }).__chinaCorridorPanelHarness?.switchRenderer('deck'));
+    await expect.poll(() => page.evaluate(() =>
+      (window as unknown as {
+        __chinaCorridorPanelHarness?: { rendererSupportsOverlay: boolean | null };
+      }).__chinaCorridorPanelHarness?.rendererSupportsOverlay ?? null))
+      .toBe(true);
+    await expect(panel.locator('.china-corridor-renderer-hint')).toHaveCount(0);
   });
 });

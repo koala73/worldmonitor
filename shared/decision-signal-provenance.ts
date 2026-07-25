@@ -1,9 +1,17 @@
 import {
+  DECISION_SIGNAL_CONTENT_FRESHNESS_STATES,
+  DECISION_SIGNAL_CORROBORATION_STATES,
+  DECISION_SIGNAL_ORIGINAL_REFERENCE_KINDS,
   DECISION_SIGNAL_PROVENANCE_CLAIM_STATUSES,
   DECISION_SIGNAL_PROVENANCE_CONTRACT_VERSION,
   DECISION_SIGNAL_PROVENANCE_DIMENSIONS,
   DECISION_SIGNAL_PROVENANCE_SURFACES,
   DECISION_SIGNAL_PUBLISHER_TYPES,
+  DECISION_SIGNAL_REVISION_STATES,
+  DECISION_SIGNAL_SUPERSESSION_STATES,
+  DECISION_SIGNAL_TIME_PRECISIONS,
+  DECISION_SIGNAL_TRANSLATION_STATES,
+  DECISION_SIGNAL_TRANSPORT_FRESHNESS_STATES,
   type DecisionSignalConfidence,
   type DecisionSignalContentFreshness,
   type DecisionSignalCorroboration,
@@ -346,7 +354,9 @@ function validateOriginalReference(
     return false;
   }
   validateExactKeys(value, ['kind', 'id', 'contentHash'], path, errors);
-  if (!['document', 'text', 'observation', 'event', 'dataset'].includes(String(value.kind))) {
+  if (!DECISION_SIGNAL_ORIGINAL_REFERENCE_KINDS.includes(
+    value.kind as DecisionSignalOriginalReference['kind'],
+  )) {
     pushIssue(errors, `${path}.kind`, 'INVALID_STATUS_VOCABULARY', 'Unknown original-reference kind');
   }
   validateRequiredString(value.id, `${path}.id`, errors);
@@ -369,8 +379,9 @@ function validateTranslation(
     return false;
   }
   validateExactKeys(value, ['state', 'targetLanguage'], path, errors);
-  const states = ['unavailable', 'not_translated', 'machine_assisted', 'human_reviewed'];
-  if (!states.includes(String(value.state))) {
+  if (!DECISION_SIGNAL_TRANSLATION_STATES.includes(
+    value.state as DecisionSignalTranslation['state'],
+  )) {
     pushIssue(errors, `${path}.state`, 'INVALID_STATUS_VOCABULARY', 'Unknown translation state');
   }
   if (value.state === 'machine_assisted' || value.state === 'human_reviewed') {
@@ -420,7 +431,9 @@ function validateTimeReference(
       `${dimension} must retain its ${TIME_ROLES[dimension]} semantic role`,
     );
   }
-  if (!['instant', 'day', 'month', 'year'].includes(String(value.precision))) {
+  if (!DECISION_SIGNAL_TIME_PRECISIONS.includes(
+    value.precision as DecisionSignalTimeReference['precision'],
+  )) {
     pushIssue(errors, `${path}.precision`, 'INVALID_STATUS_VOCABULARY', 'Unknown timestamp precision');
   } else {
     validateTimestampValue(value.value, value.precision, `${path}.value`, errors);
@@ -442,7 +455,9 @@ function validateRevision(
   if (!Number.isInteger(value.sequence) || Number(value.sequence) < 1) {
     pushIssue(errors, `${path}.sequence`, 'INVALID_VALUE', 'Revision sequence must be a positive integer');
   }
-  if (!['original', 'revised', 'corrected'].includes(String(value.state))) {
+  if (!DECISION_SIGNAL_REVISION_STATES.includes(
+    value.state as DecisionSignalRevision['state'],
+  )) {
     pushIssue(errors, `${path}.state`, 'INVALID_STATUS_VOCABULARY', 'Unknown revision state');
   }
   if (value.state === 'original' && value.sequence !== 1) {
@@ -464,7 +479,9 @@ function validateSupersession(
     return false;
   }
   validateExactKeys(value, ['state', 'relatedSignalId', 'reason'], path, errors);
-  if (!['current', 'corrected', 'cancelled', 'superseded'].includes(String(value.state))) {
+  if (!DECISION_SIGNAL_SUPERSESSION_STATES.includes(
+    value.state as DecisionSignalSupersession['state'],
+  )) {
     pushIssue(errors, `${path}.state`, 'INVALID_STATUS_VOCABULARY', 'Unknown supersession state');
   }
   if (value.state === 'corrected' || value.state === 'superseded') {
@@ -535,8 +552,9 @@ function validateCorroboration(
     return false;
   }
   validateExactKeys(value, ['state', 'sourceSignalIds'], path, errors);
-  const states = ['single_source', 'multi_source', 'independently_corroborated', 'contradicted'];
-  if (!states.includes(String(value.state))) {
+  if (!DECISION_SIGNAL_CORROBORATION_STATES.includes(
+    value.state as DecisionSignalCorroboration['state'],
+  )) {
     pushIssue(errors, `${path}.state`, 'INVALID_STATUS_VOCABULARY', 'Unknown corroboration state');
   }
   if (validateSignalIds(value.sourceSignalIds, `${path}.sourceSignalIds`, errors)) {
@@ -566,7 +584,9 @@ function validateTransportFreshness(
     return false;
   }
   validateExactKeys(value, ['state', 'assessedAt', 'lastSuccessAt'], path, errors);
-  if (!['fresh', 'stale', 'missing', 'error'].includes(String(value.state))) {
+  if (!DECISION_SIGNAL_TRANSPORT_FRESHNESS_STATES.includes(
+    value.state as DecisionSignalTransportFreshness['state'],
+  )) {
     pushIssue(errors, `${path}.state`, 'INVALID_STATUS_VOCABULARY', 'Unknown transport-freshness state');
   }
   if (!isIsoInstant(value.assessedAt)) {
@@ -588,8 +608,9 @@ function validateContentFreshness(
     return false;
   }
   validateExactKeys(value, ['state', 'assessedAt', 'contentAsOf'], path, errors);
-  const states = ['current', 'stale', 'unavailable', 'partial', 'timestamp_unknown'];
-  if (!states.includes(String(value.state))) {
+  if (!DECISION_SIGNAL_CONTENT_FRESHNESS_STATES.includes(
+    value.state as DecisionSignalContentFreshness['state'],
+  )) {
     pushIssue(errors, `${path}.state`, 'INVALID_STATUS_VOCABULARY', 'Unknown content-freshness state');
   }
   if (!isIsoInstant(value.assessedAt)) {

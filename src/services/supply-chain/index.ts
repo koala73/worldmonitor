@@ -7,10 +7,14 @@ import { getHydratedData } from '@/services/bootstrap';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
 import {
-  createUnavailableChinaCorridorControlTowerResponse,
-  parseChinaCorridorWirePayload,
   type ChinaCorridorControlTowerResponse,
 } from '../../../shared/china-corridor-control-towers';
+import {
+  CHINA_CORRIDOR_BREAKER_CACHE_POLICY,
+  fetchChinaCorridorControlTowers as fetchChinaCorridorControlTowersWithDependencies,
+} from './china-corridor-control-towers';
+
+export { parseChinaCorridorResponse } from './china-corridor-control-towers';
 
 export type {
   ChinaCorridorCondition,
@@ -68,8 +72,7 @@ const chokepointBreaker = createCircuitBreaker<GetChokepointStatusResponse>({ na
 const mineralsBreaker = createCircuitBreaker<GetCriticalMineralsResponse>({ name: 'Critical Minerals', cacheTtlMs: 24 * 60 * 60 * 1000, persistCache: true });
 const chinaCorridorBreaker = createCircuitBreaker<ChinaCorridorControlTowerResponse>({
   name: 'China Corridor Control Towers',
-  cacheTtlMs: 15 * 60 * 1000,
-  persistCache: true,
+  ...CHINA_CORRIDOR_BREAKER_CACHE_POLICY,
 });
 
 const emptyShipping: GetShippingRatesResponse = { indices: [], fetchedAt: '', upstreamUnavailable: false };
@@ -77,20 +80,12 @@ const emptyChokepoints: GetChokepointStatusResponse = { chokepoints: [], fetched
 const emptyMinerals: GetCriticalMineralsResponse = { minerals: [], fetchedAt: '', upstreamUnavailable: false };
 
 export async function fetchChinaCorridorControlTowers(): Promise<ChinaCorridorControlTowerResponse> {
-  const fallback = createUnavailableChinaCorridorControlTowerResponse(
-    new Date().toISOString(),
-    'China corridor API response is unavailable.',
-  );
-  try {
-    return await chinaCorridorBreaker.execute(async () => {
-      const response = await client.getChinaCorridorControlTowers({});
-      return parseChinaCorridorWirePayload(response.payloadJson);
-    }, fallback, {
-      shouldCache: (response) => response.corridors.length > 0,
-    });
-  } catch {
-    return fallback;
-  }
+  return fetchChinaCorridorControlTowersWithDependencies({
+    now: () => new Date(),
+    getResponse: () => client.getChinaCorridorControlTowers({}),
+    execute: (operation, fallback) =>
+      chinaCorridorBreaker.execute(operation, fallback),
+  });
 }
 
 export async function fetchShippingRates(): Promise<GetShippingRatesResponse> {

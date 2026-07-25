@@ -86,16 +86,24 @@ export async function loadChinaCorridorRawSnapshots(
   return Object.fromEntries(entries) as ChinaCorridorRawSnapshots;
 }
 
+async function buildChinaCorridorSnapshot(
+  assessedAt: string,
+  read?: ChinaCorridorCacheReader,
+  readBatch: ChinaCorridorBatchCacheReader = getCachedJsonBatch,
+): Promise<ChinaCorridorControlTowerResponse> {
+  const raw = await loadChinaCorridorRawSnapshots(read, readBatch);
+  const response = composeChinaCorridorControlTowers(
+    buildChinaCorridorSourceBundle(raw, assessedAt),
+  );
+  return validateChinaCorridorProvenanceForSurface(response, 'cache_storage');
+}
+
 export async function composeChinaCorridorSnapshot(
   assessedAt: string,
   read?: ChinaCorridorCacheReader,
   readBatch: ChinaCorridorBatchCacheReader = getCachedJsonBatch,
 ): Promise<ChinaCorridorControlTowerResponse | null> {
-  const raw = await loadChinaCorridorRawSnapshots(read, readBatch);
-  const response = composeChinaCorridorControlTowers(
-    buildChinaCorridorSourceBundle(raw, assessedAt),
-  );
-  const validated = validateChinaCorridorProvenanceForSurface(response, 'cache_storage');
+  const validated = await buildChinaCorridorSnapshot(assessedAt, read, readBatch);
   return allCorridorsUnavailable(validated)
     ? null
     : validated;
@@ -128,24 +136,43 @@ export type ChinaCorridorSnapshotCache = (
   fetcher: () => Promise<ChinaCorridorControlTowerResponse | null>,
 ) => Promise<ChinaCorridorControlTowerResponse | null>;
 
-export async function resolveChinaCorridorSnapshot(
+const defaultChinaCorridorSnapshotCache: ChinaCorridorSnapshotCache =
+  (key, ttlSeconds, fetcher) => cachedFetchJson(key, ttlSeconds, fetcher);
+
+let inFlightResolution: {
+  assessedAt: string;
+  cache: ChinaCorridorSnapshotCache;
+  read: ChinaCorridorCacheReader | undefined;
+  readBatch: ChinaCorridorBatchCacheReader;
+  promise: Promise<ChinaCorridorControlTowerResponse>;
+} | null = null;
+
+async function resolveChinaCorridorSnapshotUncoalesced(
   assessedAt: string,
-  cache: ChinaCorridorSnapshotCache = (key, ttlSeconds, fetcher) =>
-    cachedFetchJson(key, ttlSeconds, fetcher),
+  cache: ChinaCorridorSnapshotCache,
   read?: ChinaCorridorCacheReader,
   readBatch: ChinaCorridorBatchCacheReader = getCachedJsonBatch,
 ): Promise<ChinaCorridorControlTowerResponse> {
   let response: ChinaCorridorControlTowerResponse | null = null;
+  let unavailableCacheMiss: ChinaCorridorControlTowerResponse | null = null;
   try {
     response = await cache(
       CHINA_CORRIDOR_CONTROL_TOWERS_KEY,
       300,
-      () => composeChinaCorridorSnapshot(assessedAt, read, readBatch),
+      async () => {
+        const composed = await buildChinaCorridorSnapshot(assessedAt, read, readBatch);
+        if (allCorridorsUnavailable(composed)) {
+          unavailableCacheMiss = composed;
+          return null;
+        }
+        return composed;
+      },
     );
   } catch {
     // Re-read the current source seeds below; do not manufacture an empty cache hit.
   }
   if (response !== null && !allCorridorsUnavailable(response)) return response;
+  if (unavailableCacheMiss !== null) return unavailableCacheMiss;
 
   try {
     response = await composeChinaCorridorSnapshot(assessedAt, read, readBatch);
@@ -153,6 +180,35 @@ export async function resolveChinaCorridorSnapshot(
     response = null;
   }
   return response ?? composeUnavailableChinaCorridorSnapshot(assessedAt);
+}
+
+export function resolveChinaCorridorSnapshot(
+  assessedAt: string,
+  cache: ChinaCorridorSnapshotCache = defaultChinaCorridorSnapshotCache,
+  read?: ChinaCorridorCacheReader,
+  readBatch: ChinaCorridorBatchCacheReader = getCachedJsonBatch,
+): Promise<ChinaCorridorControlTowerResponse> {
+  if (
+    inFlightResolution?.assessedAt === assessedAt
+    && inFlightResolution.cache === cache
+    && inFlightResolution.read === read
+    && inFlightResolution.readBatch === readBatch
+  ) {
+    return inFlightResolution.promise;
+  }
+  const promise = resolveChinaCorridorSnapshotUncoalesced(
+    assessedAt,
+    cache,
+    read,
+    readBatch,
+  );
+  const resolution = { assessedAt, cache, read, readBatch, promise };
+  inFlightResolution = resolution;
+  const clear = () => {
+    if (inFlightResolution === resolution) inFlightResolution = null;
+  };
+  void promise.then(clear, clear);
+  return promise;
 }
 
 export async function getChinaCorridorControlTowers(
