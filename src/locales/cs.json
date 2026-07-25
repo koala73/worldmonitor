@@ -2279,7 +2279,7 @@
           "pointers": {
             "widgets": "Vytvořit vlastní widget",
             "analyst": "Zeptat se AI analytika",
-            "apiKeys": "Získat své API a MCP klíče",
+            "mcpClients": "Nastavit MCP",
             "channels": "Nastavte si je v nastavení oznámení"
           }
         }

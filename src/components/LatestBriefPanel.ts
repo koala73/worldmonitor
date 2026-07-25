@@ -21,9 +21,16 @@
 
 import { Panel } from './Panel';
 import { getClerkToken, clearClerkTokenCache } from '@/services/clerk';
-import { PanelGateReason, hasPremiumAccess } from '@/services/panel-gating';
+import { PanelGateReason, hasPremiumAccess, readClientEntitlementBelief } from '@/services/panel-gating';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
-import { hasTier, getEntitlementState } from '@/services/entitlements';
+import { getEntitlementState } from '@/services/entitlements';
+import {
+  classifyDenialResponse,
+  isTransientDenial,
+  routeDenial,
+  shouldSkipDoomedFetch,
+  type PremiumDenialVerdict,
+} from '@/services/premium-denial';
 import { trackBriefThreadOpen } from '@/services/analytics';
 import { h, rawHtml, replaceChildren, clearChildren, trustedHtml, type TrustedHtml } from '@/utils/dom-utils';
 
@@ -45,12 +52,12 @@ type LatestBriefResponse = LatestBriefReady | LatestBriefComposing;
 
 /**
  * Typed access-failure surface. Lets the refresh loop branch on the
- * specific condition (sign-in / upgrade) instead of retrying as if
- * the error were transient.
+ * specific condition (sign-in / upgrade / server-side desync) instead
+ * of collapsing every denial into one render.
  */
 class BriefAccessError extends Error {
-  readonly code: 'sign_in_required' | 'upgrade_required';
-  constructor(code: BriefAccessError['code']) {
+  readonly code: PremiumDenialVerdict;
+  constructor(code: PremiumDenialVerdict) {
     super(code);
     this.code = code;
     this.name = 'BriefAccessError';
@@ -81,6 +88,16 @@ const WM_LOGO_SVG: TrustedHtml = trustedHtml(
 // Upstash with 401-path checks from backgrounded tabs".
 const COMPOSING_POLL_MS = 60_000;
 
+/**
+ * Consecutive transient denials to auto-retry before giving up.
+ *
+ * Panel.showError backs off 15s, 30s, 60s, 120s, then 180s per attempt, so 8
+ * attempts is roughly 16 minutes of grace — deliberately longer than the ~15
+ * minute entitlement-cache poison window observed in #5600, so a real desync
+ * resolves itself while a permanent one still terminates.
+ */
+const MAX_TRANSIENT_DENIALS = 8;
+
 export class LatestBriefPanel extends Panel {
   private refreshing = false;
   private refreshQueued = false;
@@ -98,6 +115,12 @@ export class LatestBriefPanel extends Panel {
   private onVisibility: (() => void) | null = null;
   /** Last Clerk user-id seen. Used to detect sign-in / sign-out transitions. */
   private lastUserId: string | null = null;
+  /**
+   * Consecutive transient denials. Reset on any successful load and on every
+   * auth-id transition, so the budget is per-desync-episode rather than
+   * per-session.
+   */
+  private transientDenials = 0;
 
   constructor() {
     super({
@@ -131,6 +154,9 @@ export class LatestBriefPanel extends Panel {
       this.inflightAbort?.abort();
       this.inflightAbort = null;
       this.clearComposingPoll();
+      // New account, new retry budget — the previous user's desync says
+      // nothing about this one's entitlement.
+      this.transientDenials = 0;
       // The Clerk token cache is keyed by time, not user. On every
       // id transition we MUST drop it so the next fetch reflects
       // the new session. Without this, /api/latest-brief derives
@@ -197,9 +223,14 @@ export class LatestBriefPanel extends Panel {
     // snapshot for AFFIRMATIVE DENIAL: skip the doomed fetch when
     // we KNOW the user is free. If the snapshot is missing, stale,
     // or the Convex subscription failed to establish, we fall
-    // through and let the server decide. The server's 403 response
-    // is translated to renderUpgradeRequired() in the catch block
-    // below (via BriefAccessError).
+    // through and let the server decide, and fetchLatest classifies
+    // its denial (via BriefAccessError).
+    //
+    // "KNOW the user is free" means a snapshot arrived AND no signal
+    // contradicts it — a snapshot that says free while the Clerk
+    // session claims the Pro role is a contradiction, not knowledge,
+    // so we let the server break the tie rather than paint an upsell
+    // over it (#5608).
     //
     // Consequence: an API-key-only user with a free Clerk account
     // will fire one doomed fetch per refresh and see the upgrade
@@ -208,7 +239,7 @@ export class LatestBriefPanel extends Panel {
     // a gate) locked legitimate Pro users out whenever the Convex
     // entitlement subscription was skipped or failed, which is a
     // worse failure mode.
-    if (getEntitlementState() !== null && !hasTier(1)) {
+    if (shouldSkipDoomedFetch(getEntitlementState() !== null, readClientEntitlementBelief(authState))) {
       this.renderUpgradeRequired();
       return;
     }
@@ -224,6 +255,11 @@ export class LatestBriefPanel extends Panel {
       // across account changes.
       if (this.gateLocked || !hasPremiumAccess(getAuthState())) return;
       if ((getAuthState().user?.id ?? null) !== requestUserId) return;
+      // We have data — retire any auto-retry countdown a previous transient
+      // denial (entitlement_desync / access_denied) left armed, and refund the
+      // retry budget so a later, unrelated desync gets its own full grace.
+      this.clearErrorState();
+      this.transientDenials = 0;
       if (data.status === 'ready') {
         this.renderReady(data);
       } else {
@@ -234,12 +270,37 @@ export class LatestBriefPanel extends Panel {
       if ((err as { name?: string } | null)?.name === 'AbortError') return;
       if (this.gateLocked || !hasPremiumAccess(getAuthState())) return;
       if ((getAuthState().user?.id ?? null) !== requestUserId) return;
-      // Structured access errors render a terminal CTA, not a retry
-      // error — retrying a 401 or 403 can't flip the outcome.
+      // Terminal access errors render a CTA — retrying can't flip a
+      // missing session or a genuinely free plan. Transient ones fall
+      // through to showError(), which retries on the panel's backoff.
       if (err instanceof BriefAccessError) {
-        if (err.code === 'sign_in_required') this.renderSignInRequired();
-        else this.renderUpgradeRequired();
-        return;
+        if (isTransientDenial(err.code)) this.transientDenials += 1;
+        // routeDenial owns the truth table (see premium-denial.ts) so the
+        // transient-vs-upsell decision is unit-tested rather than asserted by
+        // a source-level regex — this branch is exactly where #5608 lived.
+        switch (routeDenial(err.code, this.transientDenials, MAX_TRANSIENT_DENIALS)) {
+          case 'sign_in':
+            this.renderSignInRequired();
+            return;
+          case 'upgrade':
+            this.renderUpgradeRequired();
+            return;
+          case 'give_up':
+            // Auto-retry has had longer than the #5600 poison window to
+            // resolve and hasn't. An endless "verifying…" spinner is its own
+            // kind of lie, and a permanently-contradicted client belief (a
+            // stale Pro role on a free account) would spin here forever.
+            this.renderDesyncExhausted();
+            return;
+          default:
+            this.showError(
+              err.code === 'entitlement_desync'
+                ? 'Verifying your Pro access — your brief will appear shortly.'
+                : 'Brief service unavailable — retrying shortly.',
+              () => { void this.refresh(); },
+            );
+            return;
+        }
       }
       const message = err instanceof Error ? err.message : 'Brief unavailable — try again shortly.';
       this.showError(message, () => { void this.refresh(); });
@@ -299,16 +360,22 @@ export class LatestBriefPanel extends Panel {
       signal,
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (res.status === 401) {
-      throw new BriefAccessError('sign_in_required');
-    }
-    if (res.status === 403) {
-      // Server says the Clerk userId is not Pro. This can happen
-      // when the client's authState says role=pro but the server's
-      // entitlement source (Convex) disagrees, or when the Clerk
-      // plan claim goes stale. Surface as upgrade CTA — not a
-      // retryable error, since retrying won't flip entitlement.
-      throw new BriefAccessError('upgrade_required');
+    // 401/403 are classified rather than assumed. `/api/latest-brief`
+    // returns 403 for BOTH a free plan (`pro_required`) and a rejected
+    // origin (`Origin not allowed`), and a `pro_required` the client's own
+    // entitlement state contradicts is a server-side desync — rendering
+    // any of those as "Upgrade to Pro" tells a paying user to buy the
+    // plan they already bought (#5608).
+    // classifyDenialResponse reads the body ONLY on a denial status, so
+    // res.json() below still has an unconsumed stream on the success path.
+    const verdict = await classifyDenialResponse(res, readClientEntitlementBelief(getAuthState()));
+    if (verdict !== null) {
+      // Reading the body is awaited, so a gate-lock or account-switch abort
+      // can land mid-parse — where readDenialErrorCode swallows it. Without
+      // this, that abort would surface as a denial render instead of the
+      // no-op the abort was asking for.
+      if (signal.aborted) throw new DOMException('aborted while reading denial body', 'AbortError');
+      throw new BriefAccessError(verdict);
     }
     if (!res.ok) {
       throw new Error(`Brief service unavailable (${res.status})`);
@@ -336,6 +403,8 @@ export class LatestBriefPanel extends Panel {
    * this is an error state.
    */
   private renderSignInRequired(): void {
+    // Terminal state — retire any auto-retry a prior transient denial armed.
+    this.clearErrorState();
     clearChildren(this.content);
     const logo = h('div', { className: 'latest-brief-logo' });
     logo.appendChild(rawHtml(WM_LOGO_SVG));
@@ -351,11 +420,15 @@ export class LatestBriefPanel extends Panel {
   }
 
   /**
-   * Free Clerk account (either via local authState or via a 403
-   * from the server). Render an upgrade CTA instead of retrying —
-   * the user needs a plan change, not a fresh fetch.
+   * Free Clerk account, confirmed by BOTH the client snapshot and the
+   * server (or asserted by the server while the client has no opinion).
+   * Render an upgrade CTA instead of retrying — the user needs a plan
+   * change, not a fresh fetch. A 403 the client's own entitlement state
+   * contradicts does NOT land here; see classifyPremiumDenial (#5608).
    */
   private renderUpgradeRequired(): void {
+    // Terminal state — retire any auto-retry a prior transient denial armed.
+    this.clearErrorState();
     clearChildren(this.content);
     const logo = h('div', { className: 'latest-brief-logo' });
     logo.appendChild(rawHtml(WM_LOGO_SVG));
@@ -365,6 +438,30 @@ export class LatestBriefPanel extends Panel {
         h('div', { className: 'latest-brief-empty-title' }, 'Pro required.'),
         h('div', { className: 'latest-brief-empty-body' },
           'The WorldMonitor Brief is included with the Pro plan. Upgrade to unlock today\u2019s issue.',
+        ),
+      ),
+    );
+  }
+
+  /**
+   * Auto-retry spent its budget and the server still denies us while the
+   * client's own entitlement state says otherwise. Deliberately NOT an upsell
+   * — we have no evidence the user needs to buy anything, which is the whole
+   * point of #5608 — and deliberately no armed retry, so the panel stops
+   * polling. Returning to the tab re-runs refresh() via visibilitychange.
+   */
+  private renderDesyncExhausted(): void {
+    this.clearErrorState();
+    clearChildren(this.content);
+    const logo = h('div', { className: 'latest-brief-logo' });
+    logo.appendChild(rawHtml(WM_LOGO_SVG));
+    this.content.appendChild(
+      h('div', { className: 'latest-brief-card latest-brief-card--composing' },
+        logo,
+        h('div', { className: 'latest-brief-empty-title' }, 'We couldn’t confirm your plan.'),
+        h('div', { className: 'latest-brief-empty-body' },
+          'Your account looks active here, but the brief service still can’t verify it. '
+          + 'Reload the page — if this keeps happening, contact support and we’ll sort it out.',
         ),
       ),
     );

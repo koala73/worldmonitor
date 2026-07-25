@@ -2507,7 +2507,7 @@
           "pointers": {
             "widgets": "Izradi prilagođeni widget",
             "analyst": "Pitaj AI analitičara",
-            "apiKeys": "Preuzmi svoje API i MCP ključeve",
+            "mcpClients": "Postavi MCP",
             "channels": "Postavite ih u postavkama obavijesti"
           }
         }

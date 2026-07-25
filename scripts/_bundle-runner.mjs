@@ -8,7 +8,7 @@
  *
  * Usage from a bundle script:
  *   import { runBundle } from './_bundle-runner.mjs';
- *   await runBundle('ecb-eu', [ { label, script, seedMetaKey, intervalMs, timeoutMs } ]);
+ *   await runBundle('ecb-eu', [ { label, script, seedMetaKey, freshnessMetaKey, completionMetaKey, intervalMs, timeoutMs } ]);
  *
  * Budget (opt-in): Railway cron services SIGKILL the container at 10min. If
  * the sum of timeoutMs for sections that happen to be due exceeds ~9min, we
@@ -57,25 +57,45 @@ async function readRedisKey(key) {
 /**
  * Read section freshness for the interval gate.
  *
- * Returns `{ fetchedAt }` or null. Prefers envelope-form data when the section
- * declares `canonicalKey` (PR 2+); falls back to the legacy `seed-meta:<key>`
- * read used by every bundle file today. PR 1 keeps legacy as the ONLY live
- * path — `unwrapEnvelope` here is behavior-preserving because legacy seed-meta
- * values have no `_seed` field and pass through as `data` unchanged. When PR 2
- * migrates bundles to `canonicalKey`, this function starts reading envelopes.
+ * Returns `{ fetchedAt }` or null. A declared `freshnessMetaKey` is authoritative
+ * for sources whose canonical envelope may be republished from retained
+ * last-good data. When `completionMetaKey` is also declared, its timestamp must
+ * be at or after source transport success; an older completion belongs to a
+ * prior run and cannot attest a newer pre-publication heartbeat. Otherwise
+ * prefer envelope-form data when `canonicalKey` is declared, then fall back to
+ * the legacy `seed-meta:<key>` read.
  */
-async function readSectionFreshness(section) {
+export async function readSectionFreshness(section, readKey = readRedisKey) {
+  if (section.freshnessMetaKey) {
+    if (section.requireCanonical && section.canonicalKey) {
+      const canonical = await readKey(section.canonicalKey);
+      if (!unwrapEnvelope(canonical)._seed?.fetchedAt) return null;
+    }
+    const raw = await readKey(section.freshnessMetaKey);
+    const meta = unwrapEnvelope(raw).data;
+    if (!Number.isFinite(meta?.fetchedAt)) return null;
+    if (!section.completionMetaKey) return { fetchedAt: meta.fetchedAt };
+    const completionRaw = await readKey(section.completionMetaKey);
+    const completion = unwrapEnvelope(completionRaw).data;
+    if (!Number.isFinite(completion?.fetchedAt)) return null;
+    if (completion.fetchedAt < meta.fetchedAt) return null;
+    return { fetchedAt: meta.fetchedAt };
+  }
   // Try the envelope path first when a canonicalKey is declared. If the canonical
   // key isn't yet written as an envelope (PR 2 writer migration lagging reader
   // migration, or a legacy payload still present), fall through to the legacy
   // seed-meta read so the bundle doesn't over-run during the transition.
   if (section.canonicalKey) {
-    const raw = await readRedisKey(section.canonicalKey);
+    const raw = await readKey(section.canonicalKey);
     const { _seed } = unwrapEnvelope(raw);
     if (_seed?.fetchedAt) return { fetchedAt: _seed.fetchedAt };
+    // Version migrations can opt out of the legacy seed-meta fallback. A
+    // fresh meta entry for the old version must never suppress the first
+    // publish of a newly required canonical envelope.
+    if (section.requireCanonical) return null;
   }
   if (section.seedMetaKey) {
-    const raw = await readRedisKey(`seed-meta:${section.seedMetaKey}`);
+    const raw = await readKey(`seed-meta:${section.seedMetaKey}`);
     // Legacy seed-meta is `{ fetchedAt, recordCount, sourceVersion }` at top
     // level. It has no `_seed` wrapper so unwrapEnvelope returns it as data.
     const meta = unwrapEnvelope(raw).data;
@@ -200,7 +220,10 @@ function spawnSeed(scriptPath, { timeoutMs, label, bundleStartedAtMs }) {
  *   label: string,
  *   script: string,
  *   seedMetaKey?: string,    // legacy (pre-contract); reads `seed-meta:<key>`
+ *   freshnessMetaKey?: string, // authoritative explicit seed-meta key
+ *   completionMetaKey?: string, // optional completed-run key paired with freshnessMetaKey
  *   canonicalKey?: string,   // PR 2+: reads envelope from the canonical data key
+ *   requireCanonical?: boolean, // do not fall back to legacy meta when canonical is absent
  *   intervalMs: number,
  *   timeoutMs?: number,
  *   dependsOn?: string[],    // labels that MUST run earlier in the array

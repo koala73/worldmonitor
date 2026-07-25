@@ -1997,7 +1997,7 @@
           "pointers": {
             "widgets": "Een aangepaste widget maken",
             "analyst": "Stel de AI-analist een vraag",
-            "apiKeys": "Je API- en MCP-sleutels ophalen",
+            "mcpClients": "MCP instellen",
             "channels": "Stel deze in bij de meldingsinstellingen"
           }
         }

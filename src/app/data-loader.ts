@@ -121,6 +121,7 @@ import type {
   OtherTokensPanel,
   SectorValuation,
 } from '@/components/MarketPanel';
+import type { ChinaCorporateDisclosureSnapshot } from '@/components/market-disclosures';
 import { mountCommunityWidget } from '@/components/CommunityWidget';
 
 import type { StockAnalysisPanel } from '@/components/StockAnalysisPanel';
@@ -1824,6 +1825,11 @@ export class DataLoaderManager implements AppModule {
       const hydratedMarkets = getHydratedData('marketQuotes') as ListMarketQuotesResponse | undefined;
       let stocksResult: Awaited<ReturnType<typeof fetchMultipleStocks>>;
       const marketsPanel = this.ctx.panels['markets'] as MarketPanel | undefined;
+      const hydratedDisclosures = getHydratedData('chinaCorporateDisclosures') as
+        ChinaCorporateDisclosureSnapshot | undefined;
+      if (hydratedDisclosures !== undefined) {
+        marketsPanel?.renderDisclosures(hydratedDisclosures);
+      }
 
       if (customEntries.length === 0 && hydratedMarkets?.quotes?.length) {
         const symbolMetaMap = new Map(effectiveSymbols.map((s) => [s.symbol, s]));

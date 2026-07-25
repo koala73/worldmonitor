@@ -137,6 +137,7 @@ export interface DecisionSignalTimeReference {
 }
 
 export const DECISION_SIGNAL_REVISION_STATES = [
+  'preliminary',
   'original',
   'revised',
   'corrected',

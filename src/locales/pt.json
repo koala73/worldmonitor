@@ -2004,7 +2004,7 @@
           "pointers": {
             "widgets": "Criar um widget personalizado",
             "analyst": "Perguntar ao analista de IA",
-            "apiKeys": "Obter suas chaves de API e MCP",
+            "mcpClients": "Configurar MCP",
             "channels": "Configure-os nas configurações de notificação"
           }
         }

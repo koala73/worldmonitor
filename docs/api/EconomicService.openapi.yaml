@@ -467,10 +467,10 @@ paths:
                                 "generatedAt": "2026-01-15T12:00:00Z"
                                 "indicators":
                                     - "category": "cs.AI"
+                                      "comparisonBasis": "example"
+                                      "comparisonValue": 1.5
                                       "contextOnly": true
-                                      "hasPriorValue": true
-                                      "hasValue": true
-                                      "id": "example-id"
+                                      "direction": "example"
                                 "latestObservationDate": "40.7128"
                             schema:
                                 $ref: '#/components/schemas/GetChinaMacroSnapshotResponse'
@@ -3450,11 +3450,21 @@ components:
                     description: |-
                         True when the seeded snapshot or release calendar is unavailable; callers
                          should render the response as degraded rather than treating it as current.
+                schemaVersion:
+                    type: integer
+                    format: int32
+                pillars:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ChinaMacroPillarPulse'
         ChinaMacroIndicator:
             type: object
             properties:
                 id:
                     type: string
+                    description: |-
+                        Kept as "indicator" for API compatibility; each row is a versioned,
+                         revision-aware official observation in cache schema v2.
                 label:
                     type: string
                 category:
@@ -3483,6 +3493,74 @@ components:
                     type: string
                 contextOnly:
                     type: boolean
+                geography:
+                    type: string
+                seasonalAdjustment:
+                    type: string
+                periodKind:
+                    type: string
+                observationPeriod:
+                    type: string
+                releaseTime:
+                    type: string
+                retrievalTime:
+                    type: string
+                direction:
+                    type: string
+                directionReason:
+                    type: string
+                comparisonBasis:
+                    type: string
+                comparisonValue:
+                    type: number
+                    format: double
+                hasComparisonValue:
+                    type: boolean
+                revisionState:
+                    type: string
+                vintageId:
+                    type: string
+                revisionSequence:
+                    type: integer
+                    format: int32
+                provenanceJson:
+                    type: string
+                    description: 'Canonical #5581 payload, validated before crossing the cache/API boundary.'
+                vintages:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ChinaMacroVintage'
+                transportStatus:
+                    type: string
+                transportFailureReason:
+                    type: string
+        ChinaMacroVintage:
+            type: object
+            properties:
+                vintageId:
+                    type: string
+                sequence:
+                    type: integer
+                    format: int32
+                state:
+                    type: string
+                value:
+                    type: number
+                    format: double
+                hasValue:
+                    type: boolean
+                observationPeriod:
+                    type: string
+                periodKind:
+                    type: string
+                releaseTime:
+                    type: string
+                retrievalTime:
+                    type: string
+                supersededBy:
+                    type: string
+                provenanceJson:
+                    type: string
         ChinaMacroSourceDecision:
             type: object
             properties:
@@ -3501,6 +3579,19 @@ components:
                 requestCount:
                     type: integer
                     format: int32
+                publisherId:
+                    type: string
+                redirectBehavior:
+                    type: string
+                requestBudget:
+                    type: integer
+                    format: int32
+                robotsStatus:
+                    type: string
+                termsStatus:
+                    type: string
+                sourceUrl:
+                    type: string
         ChinaReleaseEvent:
             type: object
             properties:
@@ -3524,6 +3615,19 @@ components:
                     type: string
                 sourceUrl:
                     type: string
+        ChinaMacroPillarPulse:
+            type: object
+            properties:
+                pillar:
+                    type: string
+                direction:
+                    type: string
+                reason:
+                    type: string
+                observationIds:
+                    type: array
+                    items:
+                        type: string
         GetEnergyCapacityRequest:
             type: object
             properties:

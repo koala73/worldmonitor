@@ -55,6 +55,30 @@ export const DECISION_SIGNAL_PROVENANCE_FAMILY_DECLARATIONS: Readonly<
       derivation: 'not_applicable',
     },
   ),
+  china_macro_official_numeric_observation: declaration(
+    'china_macro_official_numeric_observation',
+    'official_numeric_observation',
+    'A revision-aware China macro-financial observation from a bounded official release.',
+    {
+      publisher: 'required',
+      source_url: 'required',
+      original_reference: 'required',
+      original_language: 'unknown_allowed',
+      translation: 'not_applicable',
+      observation_time: 'required',
+      effective_time: 'unknown_allowed',
+      publication_time: 'required',
+      retrieval_time: 'required',
+      revision: 'required',
+      supersession: 'required',
+      extraction_confidence: 'required',
+      classification_confidence: 'not_applicable',
+      corroboration: 'unknown_allowed',
+      transport_freshness: 'required',
+      content_freshness: 'required',
+      derivation: 'not_applicable',
+    },
+  ),
   typed_document_event: declaration(
     'typed_document_event',
     'typed_document_event',
@@ -184,6 +208,10 @@ export const DECISION_SIGNAL_PROVENANCE_FAMILY_REGISTRATIONS: Readonly<
     launchStatus: 'reference',
     serializationFixtureId: 'official-numeric-revised',
   }),
+  china_macro_official_numeric_observation: Object.freeze({
+    launchStatus: 'launched',
+    serializationFixtureId: 'china-macro-official-numeric',
+  }),
   typed_document_event: Object.freeze({
     launchStatus: 'launched',
     serializationFixtureId: 'typed-document-translated',
@@ -195,7 +223,7 @@ export const DECISION_SIGNAL_PROVENANCE_FAMILY_REGISTRATIONS: Readonly<
     serializationFixtureId: 'operational-stale-transport',
   }),
   exchange_disclosure: Object.freeze({
-    launchStatus: 'reference',
+    launchStatus: 'launched',
     serializationFixtureId: 'exchange-disclosure-superseded',
   }),
   composed_corridor_condition: Object.freeze({

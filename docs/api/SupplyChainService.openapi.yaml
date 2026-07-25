@@ -2880,6 +2880,7 @@ components:
                                                 state:
                                                     type: "string"
                                                     enum:
+                                                        - "preliminary"
                                                         - "original"
                                                         - "revised"
                                                         - "corrected"

@@ -39,6 +39,7 @@ const stateKeys = [
   '__activationOpenResult',
   '__activationOpenGate',
   '__activationCloseCalls',
+  '__activationFlowOptions',
 ] as const;
 const stateSnapshots = new Map(stateKeys.map((key) => [key, snapshotGlobal(key)]));
 
@@ -74,6 +75,16 @@ async function loadController(): Promise<typeof import('../src/app/pro-activatio
     `],
     ['entitlements-stub', `
       export function getEntitlementState() { return globalThis.__activationEntitlement; }
+      // Mirrors production hasFeature() EXACTLY (src/services/entitlements.ts):
+      // null state → false, and an absent flag coerces to false. Deliberately no
+      // optional chaining on \`.features\` — production indexes it directly, so a
+      // fixture that omits the (required) field must throw here too rather than
+      // silently reporting false and hiding a real crash.
+      export function hasFeature(flag) {
+        const state = globalThis.__activationEntitlement;
+        if (state === null || state === undefined) return false;
+        return Boolean(state.features[flag]);
+      }
       export function onEntitlementChange(callback) {
         globalThis.__activationEntitlementListeners.add(callback);
         // Mirror production (src/services/entitlements.ts): a late subscriber
@@ -87,6 +98,7 @@ async function loadController(): Promise<typeof import('../src/app/pro-activatio
     ['interstitial-stub', `
       export async function openProActivationFlow(options) {
         globalThis.__activationOpenedFor.push(options.accountUserId);
+        globalThis.__activationFlowOptions.push(options);
         if (globalThis.__activationOpenGate) await globalThis.__activationOpenGate;
         return globalThis.__activationOpenResult ?? 'opened';
       }
@@ -159,18 +171,36 @@ function installBrowserState(options: { fastTimers?: boolean } = {}): void {
     __activationAuth: { user: null, isPending: false },
     __activationAuthListeners: new Set<(state: unknown) => void>(),
     __activationSubscription: null,
-    __activationEntitlement: { planKey: 'free', validUntil: Date.now() + 60_000 },
+    // Production never yields an EntitlementState without `features` — the Convex
+    // query returns FREE_TIER_DEFAULTS or a catalog-merged row — so every fixture
+    // carries it, matching what hasFeature()/hasTier() index directly.
+    __activationEntitlement: {
+      planKey: 'free',
+      validUntil: Date.now() + 60_000,
+      features: { tier: 0, apiAccess: false, mcpAccess: false },
+    },
     __activationEntitlementListeners: new Set<() => void>(),
     __activationSubscriptionListeners: new Set<() => void>(),
     __activationOpenedFor: [] as string[],
     __activationOpenResult: 'opened' as string,
     __activationOpenGate: null as Promise<void> | null,
     __activationCloseCalls: 0,
+    __activationFlowOptions: [] as unknown[],
   });
 }
 
-/** A first-cycle Pro account eligible for the markerless cohort mount. */
-function installEligibleMarkerlessAccount(userId: string): void {
+/**
+ * A first-cycle Pro account eligible for the markerless cohort mount.
+ *
+ * `features` mirrors the live Pro entitlement (`apiAccess: false`,
+ * `mcpAccess: true`) so power-step deep links resolve against the same
+ * capability set production sees; pass an override to model a legacy snapshot
+ * that pre-dates the `mcpAccess` catalog field.
+ */
+function installEligibleMarkerlessAccount(
+  userId: string,
+  features: Record<string, unknown> = { apiAccess: false, mcpAccess: true },
+): void {
   Object.assign(globalThis, {
     __activationAuth: {
       user: { id: userId, name: 'Markerless User', email: `${userId}@example.com`, role: 'pro' },
@@ -185,6 +215,7 @@ function installEligibleMarkerlessAccount(userId: string): void {
     __activationEntitlement: {
       planKey: 'pro_monthly',
       validUntil: Date.now() + 30 * 24 * 60 * 60 * 1000,
+      features,
     },
   });
 }
@@ -231,6 +262,7 @@ describe('ProActivationController auth lifecycle', () => {
         __activationEntitlement: {
           planKey: 'pro_monthly',
           validUntil: Date.now() + 30 * 24 * 60 * 60 * 1000,
+          features: { tier: 1, apiAccess: false, mcpAccess: true },
         },
       });
       const authState = (globalThis as unknown as { __activationAuth: unknown }).__activationAuth;
@@ -477,5 +509,111 @@ describe('ProActivationController markerless mount() branching', () => {
       'a destroy-triggered generation bump must close any interstitial the stale attempt opened',
     );
     assert.equal(openedFor.length, 1, 'a destroyed controller must not attempt to re-mount');
+  });
+});
+
+describe('ProActivationController power-step surface wiring', () => {
+  /** Drive one mount and return the flow options the interstitial received. */
+  async function captureFlowOptions(
+    userId: string,
+    features: Record<string, unknown>,
+  ): Promise<{
+    options: Record<string, unknown>;
+    settingsOpens: string[];
+  }> {
+    installBrowserState();
+    installEligibleMarkerlessAccount(userId, features);
+    const { ProActivationController } = await loadController();
+    const settingsOpens: string[] = [];
+    const ctx = {
+      isDestroyed: false,
+      isDesktopApp: false,
+      container: { dispatchEvent() {} },
+      unifiedSettings: { open: (tab: string) => settingsOpens.push(tab) },
+    };
+    const controller = new ProActivationController(ctx as never, {
+      reloadPending: false,
+      openAiAnalyst() {},
+    });
+    try {
+      controller.init();
+      await (controller as unknown as { evaluate(): Promise<void> }).evaluate();
+      const captured = (globalThis as unknown as { __activationFlowOptions: unknown[] })
+        .__activationFlowOptions;
+      for (let attempt = 0; attempt < 40 && captured.length === 0; attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+      }
+      assert.equal(captured.length, 1, 'the eligible Pro account must mount the flow exactly once');
+      return { options: captured[0] as Record<string, unknown>, settingsOpens };
+    } finally {
+      ctx.isDestroyed = true;
+      controller.destroy();
+    }
+  }
+
+  it('deep-links the power step to MCP Clients — the capability Pro actually has (#5607)', async () => {
+    const { options, settingsOpens } = await captureFlowOptions('user-mcp-pointer', {
+      apiAccess: false,
+      mcpAccess: true,
+    });
+
+    assert.equal(
+      typeof options.openMcpClients,
+      'function',
+      'a Pro account with mcpAccess must get an MCP Clients pointer',
+    );
+    assert.equal(
+      options.openApiKeys,
+      undefined,
+      'Pro has apiAccess:false — the flow must not offer an API-keys deep link',
+    );
+
+    (options.openMcpClients as () => void)();
+    assert.deepEqual(
+      settingsOpens,
+      ['mcp-clients'],
+      'the pointer must open the MCP Clients tab, not the API Keys upsell',
+    );
+  });
+
+  it('falls back to plain settings when mcpAccess lapses between build and click', async () => {
+    // The finish-setup chip replays a captured options object, so the gap
+    // between building the opener and invoking it can span an entitlement
+    // change. A build-time-only check would deep-link to a tab UnifiedSettings
+    // has since stopped rendering, leaving the modal with no active panel.
+    const { options, settingsOpens } = await captureFlowOptions('user-lapsed-midflight', {
+      apiAccess: false,
+      mcpAccess: true,
+    });
+    assert.equal(typeof options.openMcpClients, 'function');
+
+    Object.assign(globalThis, {
+      __activationEntitlement: {
+        planKey: 'pro_monthly',
+        validUntil: Date.now() + 30 * 24 * 60 * 60 * 1000,
+        features: { tier: 1, apiAccess: false, mcpAccess: false },
+      },
+    });
+
+    (options.openMcpClients as () => void)();
+    assert.deepEqual(
+      settingsOpens,
+      ['settings'],
+      'a lapsed mcpAccess must land on a rendered tab, not the vanished MCP panel',
+    );
+  });
+
+  it('omits the pointer when mcpAccess is absent, rather than deep-linking to an unrendered tab', async () => {
+    // Legacy Pro entitlement snapshots pre-date the mcpAccess catalog field.
+    // UnifiedSettings renders neither the MCP tab button nor its panel in that
+    // state, so open('mcp-clients') would leave the modal with no active panel.
+    const { options } = await captureFlowOptions('user-legacy-snapshot', { apiAccess: false });
+
+    assert.equal(
+      options.openMcpClients,
+      undefined,
+      'without mcpAccess the power step must drop the pointer entirely',
+    );
+    assert.equal(options.openApiKeys, undefined, 'and must not fall back to the API-keys surface');
   });
 });

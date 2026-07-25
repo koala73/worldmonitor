@@ -122,11 +122,7 @@ export async function buildChinaPolicyEvents({
         ? lastGoodTransport(event, generatedAt)
         : event
     ));
-  const events = capEventsByLineage([...reconciled, ...preserved]).map((event) => (
-    eventTransportFailed(event, fetched.agencies[event.agency])
-      ? lastGoodTransport(event, generatedAt)
-      : event
-  ));
+  const events = capEventsByLineage([...reconciled, ...preserved]);
 
   const payload = {
     schemaVersion: 1,

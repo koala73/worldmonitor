@@ -460,8 +460,8 @@ function validateRevision(
   )) {
     pushIssue(errors, `${path}.state`, 'INVALID_STATUS_VOCABULARY', 'Unknown revision state');
   }
-  if (value.state === 'original' && value.sequence !== 1) {
-    pushIssue(errors, `${path}.sequence`, 'INVALID_LINEAGE', 'Original vintages must use sequence 1');
+  if ((value.state === 'preliminary' || value.state === 'original') && value.sequence !== 1) {
+    pushIssue(errors, `${path}.sequence`, 'INVALID_LINEAGE', 'Preliminary and original vintages must use sequence 1');
   }
   if ((value.state === 'revised' || value.state === 'corrected') && Number(value.sequence) < 2) {
     pushIssue(errors, `${path}.sequence`, 'INVALID_LINEAGE', 'Revised vintages must advance the sequence');

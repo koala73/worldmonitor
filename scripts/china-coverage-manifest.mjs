@@ -3,6 +3,11 @@
 // the serialized shared-registry frontier reaches them (issue #5271).
 
 import { CHINA_NEWS_SOURCE_NAMES } from './_china-news-coverage.mjs';
+import {
+  CHINA_MACRO_CACHE_KEY,
+  CHINA_MACRO_MAX_CONTENT_AGE_MIN,
+  CHINA_MACRO_MAX_TRANSPORT_AGE_MIN,
+} from './_china-macro-contract.mjs';
 
 export const CHINA_COVERAGE_SUMMARY_KEY = 'health:china-coverage:v1';
 export const CHINA_COVERAGE_SEED_META_KEY = 'seed-meta:health:china-coverage';
@@ -147,6 +152,25 @@ export const CHINA_COVERAGE_ENTRIES = Object.freeze([
     },
   },
   {
+    id: 'market.china-corporate-disclosures',
+    label: 'Official SSE/SZSE corporate disclosures',
+    ownerIssue: 5577,
+    launchStatus: 'launched',
+    transport: metaTransport('seed-meta:market:china-corporate-disclosures', 180),
+    content: {
+      key: 'market:china:corporate-disclosures:v1',
+      maxAgeMin: 90 * 1_440,
+      probe: {
+        kind: 'object',
+        requiredTruthyPaths: [['sources']],
+        timestampPaths: [
+          ['events', '*', 'publicationTime', 'value'],
+          ['coverageThrough'],
+        ],
+      },
+    },
+  },
+  {
     id: 'news.china',
     label: 'China news digest',
     ownerIssue: 5272,
@@ -194,14 +218,14 @@ export const CHINA_COVERAGE_ENTRIES = Object.freeze([
   {
     id: 'macro.china-snapshot',
     label: 'Normalized China macro snapshot',
-    ownerIssue: 5275,
+    ownerIssue: 5574,
     launchStatus: 'launched',
-    transport: metaTransport('seed-meta:economic:china-macro', 4_320),
+    transport: metaTransport('seed-meta:economic:china-macro-transport', CHINA_MACRO_MAX_TRANSPORT_AGE_MIN),
     content: {
-      key: 'economic:china:macro:v1',
-      maxAgeMin: 120 * 1_440,
-      // contentObservationDate is the OLDEST required launch indicator, so a
-      // fresh FX tick cannot mask stale price/activity content.
+      key: CHINA_MACRO_CACHE_KEY,
+      maxAgeMin: CHINA_MACRO_MAX_CONTENT_AGE_MIN,
+      // contentObservationDate is the oldest required official observation,
+      // while transport freshness remains independent in #5581 provenance.
       probe: { kind: 'object', timestampPaths: [['contentObservationDate']] },
     },
   },

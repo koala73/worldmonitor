@@ -7140,6 +7140,66 @@ body.playback-mode .status-dot {
   opacity: 0.7;
 }
 
+.market-data-unavailable {
+  padding: 8px 0;
+  color: var(--text-dim);
+  font-size: 10px;
+}
+
+.market-disclosures {
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.market-disclosure-heading,
+.market-disclosure-meta,
+.market-disclosure-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.market-disclosure-heading {
+  justify-content: space-between;
+  margin-bottom: 4px;
+  color: var(--text);
+  font-size: 10px;
+}
+
+.market-disclosure-heading span,
+.market-disclosure-meta,
+.market-disclosure-footer {
+  color: var(--text-dim);
+  font-size: 9px;
+}
+
+.market-disclosure-item {
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.market-disclosure-item:last-child {
+  border-bottom: 0;
+}
+
+.market-disclosure-meta,
+.market-disclosure-footer {
+  flex-wrap: wrap;
+}
+
+.market-disclosure-title {
+  margin: 3px 0;
+  color: var(--text);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.market-disclosure-link {
+  margin-left: auto;
+  color: var(--accent);
+}
+
 /* Gulf Economies */
 .gulf-section {
   margin-bottom: 8px;

@@ -104,6 +104,18 @@ export async function writePublicationCompletion(
   }, CROSS_STRAIT_ACTIVITY_TTL_SECONDS);
 }
 
+/**
+ * runSeed invokes the hook as `afterPublish(data, { canonicalKey, ttlSeconds,
+ * recordCount, runId })`. `writePublicationCompletion` takes its injectable
+ * writer in that same positional slot, and a `= writeExtraKey` default only
+ * applies to `undefined` — so wiring it in bare put the meta object in `writer`
+ * and threw `TypeError: writer is not a function` on every run (#5614). Keep
+ * the runSeed meta in its own ignored slot and the writer seam after it.
+ */
+export function crossStraitActivityAfterPublish(snapshot, _runSeedMeta, writer = writeExtraKey) {
+  return writePublicationCompletion(snapshot, writer);
+}
+
 export function crossStraitActivityContentMeta(snapshot) {
   return tokensToContentMeta((snapshot?.observations ?? [])
     .filter((row) => row?.sourceId === 'taiwan-mnd')
@@ -151,6 +163,6 @@ if (process.argv[1]?.endsWith('seed-cross-strait-activity.mjs')) {
       metaKey: CROSS_STRAIT_ACTIVITY_BOOTSTRAP_META_KEY,
       metaCritical: true,
     }],
-    afterPublish: writePublicationCompletion,
+    afterPublish: crossStraitActivityAfterPublish,
   });
 }

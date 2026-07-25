@@ -1086,6 +1086,7 @@ describe('telemetry event selection', () => {
     assert.equal(ACTIVATION_EVENTS.entered, 'pro-activation-entered');
     assert.equal(ACTIVATION_EVENTS.stepConfirmed, 'pro-activation-step-confirmed');
     assert.equal(ACTIVATION_EVENTS.stepSkipped, 'pro-activation-step-skipped');
+    assert.equal(ACTIVATION_EVENTS.stepBlocked, 'pro-activation-step-blocked');
     assert.equal(ACTIVATION_EVENTS.exit, 'pro-activation-exit');
   });
 

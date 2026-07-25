@@ -2261,7 +2261,7 @@
           "pointers": {
             "widgets": "Tạo widget tùy chỉnh",
             "analyst": "Hỏi nhà phân tích AI",
-            "apiKeys": "Lấy khóa API và MCP của bạn",
+            "mcpClients": "Thiết lập MCP",
             "channels": "Thiết lập chúng trong cài đặt thông báo"
           }
         }

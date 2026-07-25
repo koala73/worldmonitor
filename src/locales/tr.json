@@ -2261,7 +2261,7 @@
           "pointers": {
             "widgets": "Özel bir widget oluşturun",
             "analyst": "Yapay zeka analistine sorun",
-            "apiKeys": "API ve MCP anahtarlarınızı alın",
+            "mcpClients": "MCP'yi kurun",
             "channels": "Bunları bildirim ayarlarından yapılandırın"
           }
         }
