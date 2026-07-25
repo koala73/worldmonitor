@@ -78,8 +78,8 @@
   "documentation": "https://www.worldmonitor.app/docs/documentation",
   "capabilities": [
     "real-time market data (equities, commodities, crypto, FX)",
-    "conflict events and country instability/risk scores (196 countries)",
-    "country resilience scores with domain/pillar breakdown",
+    "global live conflict events and CII v8 scores for 31 Tier-1 countries",
+    "country resilience scores across the 196-country public rankable universe, with domain/pillar breakdown",
     "13 shipping chokepoints with live AIS transit intelligence",
     "maritime and aviation activity, airspace status",
     "energy intelligence (LNG, pipelines, refineries, outages)",

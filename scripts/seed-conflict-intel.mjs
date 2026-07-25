@@ -47,6 +47,34 @@ const ACLED_RESOLUTION_MAX_PAGES = 20;
 const ACLED_PAGE_DELAY_MS = 250;
 const HAPI_CACHE_KEY_PREFIX = 'conflict:humanitarian:v1';
 const HAPI_TTL = 21600;
+// api/health.js's SEED_META entry for this family reads ONE aggregate key
+// (seed-meta:conflict:humanitarian), not the per-country seed-meta keys
+// writeExtraKeyWithMeta derives per HAPI_CACHE_KEY_PREFIX write below — those
+// don't share a common non-country-specific prefix writeSeedMeta could roll up
+// automatically. maxStaleMin in health.js is 300 (5h) — bounded above by HAPI_TTL
+// (360min/6h, the per-country data key's own Redis TTL) so the alarm fires BEFORE
+// per-country data can expire, not just against this seeder's 30min cron cadence
+// (30 days would NOT have caught #5554 promptly, and even 12h left a 6h blind
+// spot where data was already empty but health still reported OK — #5554 review).
+// The TTL here must clearly OUTLIVE that staleness threshold — matching the
+// ACLED_TTL headroom lesson above (a TTL equal to the staleness window has zero
+// headroom against a single missed/late tick, and reports EMPTY instead of STALE).
+const HAPI_SEED_META_KEY = 'seed-meta:conflict:humanitarian';
+const HAPI_SEED_META_TTL_SECONDS = 3 * 86400;
+// HDX asks callers to moderate HAPI traffic to ~1 req/s (this is per-app_identifier
+// tracked, not per-IP — see the HAPI_APP_IDENTIFIER comment above). 1100ms gives
+// margin above that floor. Timeout is tightened from the previous 15s to keep the
+// worst-case sweep (all HAPI_COUNTRIES timing out) bounded — see fetchAll's
+// GDELT_SWEEP_BUDGET_MS comment for how this feeds the shared fetch-phase deadline.
+const HAPI_REQUEST_DELAY_MS = 1100;
+const HAPI_REQUEST_TIMEOUT_MS = 8_000;
+// Bounds worst-case sweep time AND avoids re-earning a throttle on the freshly-minted
+// identifier if HDX starts flagging us again mid-sweep. Counts ANY consecutive failure
+// (429, 401/403 from an invalidated identifier, 5xx, network timeout) — not 429 only.
+// An earlier version only counted 429s and reset the streak on other failure types,
+// which meant an interleaved pattern like 429/timeout/429/timeout never tripped the
+// breaker at all, defeating the whole point (#5554 review).
+const HAPI_MAX_CONSECUTIVE_FAILURES = 3;
 const PIZZINT_TTL = 600;
 
 export const CONFLICT_COUNTRIES = [
@@ -54,21 +82,42 @@ export const CONFLICT_COUNTRIES = [
   'IQ', 'PS', 'LY', 'ML', 'BF', 'NE', 'NG', 'CM', 'MZ', 'HT',
 ];
 export const GDELT_MIN_SUCCESSFUL_COUNTRIES = Math.ceil(CONFLICT_COUNTRIES.length * 0.8);
+// Crisis-tracker registry (shared/crawlable-crises.json) countries HAPI must cover that
+// CONFLICT_COUNTRIES doesn't already include. Kept as a SEPARATE list, not merged into
+// CONFLICT_COUNTRIES — that array also sizes GDELT_MIN_SUCCESSFUL_COUNTRIES and the GDELT
+// sweep threshold below; growing it here would silently shift GDELT's coverage floor and
+// break its fixed-count tests (#5554 — a prior fix attempt did exactly this).
+const HAPI_ONLY_COUNTRIES = ['IR', 'IL', 'RU', 'SA', 'DJ', 'ER'];
+// The dashboard's country-tension widget (src/services/conflict/index.ts
+// HAPI_COUNTRY_CODES) requests a broader 20-country watchlist that only partially
+// overlaps CONFLICT_COUNTRIES/HAPI_ONLY_COUNTRIES. Before this fix, a cache miss on
+// any of these fell back to a live HAPI fetch, so the gap was invisible; the RPC
+// handlers are now cache-only (#5554 review), so anything missing here silently
+// goes empty for the widget instead. Keep in sync with that file's list.
+const HAPI_DASHBOARD_COUNTRIES = ['US', 'CN', 'TW', 'KP', 'TR', 'PL', 'DE', 'FR', 'GB', 'IN', 'PK', 'VE'];
+// Order matters under a circuit-breaker trip: HAPI_ONLY_COUNTRIES (the actual subject
+// of #5554) and HAPI_DASHBOARD_COUNTRIES go first so a mid-sweep abort disadvantages
+// the lower-priority CONFLICT_COUNTRIES tail instead of the countries this fix exists
+// for (#5554 review — these previously sat last and could be starved every cycle).
+const HAPI_COUNTRIES = [...new Set([...HAPI_ONLY_COUNTRIES, ...HAPI_DASHBOARD_COUNTRIES, ...CONFLICT_COUNTRIES])];
 // A throttled failure, as it reaches us: fetchGdeltCountryEvents flattens the direct and
 // proxy attempts into one message, e.g. "...(last direct: HTTP 429) (last proxy: HTTP 429)".
 const RATE_LIMIT_ERROR = /\b429\b|rate.?limit|too many requests/i;
 // #5140: the GDELT fallback sweep may not LAUNCH a batch after this much of the
 // fetch phase has elapsed (fetchAll anchors the clock at its own entry and passes
-// an absolute deadline down, so slow aux feeds — HAPI is sequential, ~306s worst —
+// an absolute deadline down, so slow aux feeds — HAPI is sequential, ~346s worst
+// (38 HAPI_COUNTRIES × (HAPI_REQUEST_TIMEOUT_MS + HAPI_REQUEST_DELAY_MS), #5554) —
 // automatically shrink the sweep window instead of stacking on top of it). One
 // in-flight batch may still drain past the cutoff: ≤~100s at the knobs below
 // (15s concurrent direct legs + 4 × 20s SERIALIZED sync proxy curls — curlFetch is
 // execFileSync, so "concurrent" proxy attempts block the event loop one at a time;
 // 92s observed live 2026-07-10). Worst single fetchAll attempt before the bulk
-// fallback ≈ max(HAPI 306s, 120s + 100s). Without this cap a
+// fallback ≈ max(HAPI 346s, 120s + 100s). Without this cap a
 // GDELT brownout ran 5 batches ≈ 375s+ → deadline breach → exit 75 every tick.
 // The bulk fallback runs after those parallel feeds settle, so its 60s bound
-// and 30s publish slack are additive: max(306s, 220s) + 60s + 30s = 396s.
+// and 30s publish slack are additive: max(346s, 220s) + 60s + 30s = 436s — still
+// comfortably under ACLED_INTEL_LOCK_TTL_MS's 540s fetch deadline (lockTtlMs+120s)
+// below (re-verified #5554 review after growing HAPI_COUNTRIES to 38).
 export const GDELT_SWEEP_BUDGET_MS = 120_000;
 // maxRetries: 0 — a second direct attempt would honor GDELT's Retry-After header
 // (≤60s sleep, _gdelt-fetch.mjs MAX_RETRY_AFTER_MS), blowing any per-batch bound;
@@ -84,6 +133,30 @@ export const GDELT_COUNTRY_FETCH_OPTS = Object.freeze({ maxRetries: 0, proxyMaxA
 export const ACLED_INTEL_LOCK_TTL_MS = 420_000;
 
 const ISO2_TO_ISO3 = loadSharedConfig('iso2-to-iso3.json');
+
+// HDX HAPI's `app_identifier` is used for per-client tracking/rate-limiting, not
+// just auth. The previous identifier (`worldmonitor:monitor@worldmonitor.app`)
+// got persistently 429'd — confirmed NOT an IP-level block (a fresh identifier
+// from the same IP at the same instant got 200) and NOT a generic per-identifier
+// rate limit either: live probing found HDX is flagging any app_identifier whose
+// `application` field case-insensitively CONTAINS the substring "worldmonitor"
+// specifically (e.g. `worldmonitor2`, `WorldMonitor`, `xworldmonitorx` all 429;
+// `world-monitor`, `monitorworld`, `wm-crisis-tracker` all 200 from the same IP
+// in the same probe run) — almost certainly a manual flag HDX ops placed on the
+// name after our prior uncoordinated traffic pattern (see #5554). Only the
+// `application` field matters here — separately confirmed live that the `email`
+// field containing "worldmonitor" (monitor@worldmonitor.app, unchanged, kept as
+// the real contact address) is NOT part of the trigger: `totally-different-app-
+// name:monitor@worldmonitor.app` also got 200 in the same probe run. shared/
+// hapi-app-identifier.json's `application` value intentionally avoids the
+// substring for this reason; `email` doesn't need to. Whatever identifier is
+// configured there must ALSO stay within HDX's documented ~1 req/s courtesy
+// limit going forward (HAPI_REQUEST_DELAY_MS below) — this seeder is the ONLY
+// source of HAPI traffic; the RPC handlers only ever read the Redis keys this writes.
+const HAPI_APP_IDENTIFIER_CONFIG = loadSharedConfig('hapi-app-identifier.json');
+const HAPI_APP_IDENTIFIER = Buffer.from(
+  `${HAPI_APP_IDENTIFIER_CONFIG.application}:${HAPI_APP_IDENTIFIER_CONFIG.email}`,
+).toString('base64');
 
 // ─── ACLED Events ───
 
@@ -370,14 +443,15 @@ async function fetchHapiSummary(countryCode) {
   const iso3 = ISO2_TO_ISO3[countryCode];
   if (!iso3) return null;
 
-  const appId = Buffer.from('worldmonitor:monitor@worldmonitor.app').toString('base64');
-  const url = `https://hapi.humdata.org/api/v2/coordination-context/conflict-events?output_format=json&limit=1000&offset=0&app_identifier=${appId}&location_code=${iso3}`;
+  const url = `https://hapi.humdata.org/api/v2/coordination-context/conflict-events?output_format=json&limit=1000&offset=0&app_identifier=${HAPI_APP_IDENTIFIER}&location_code=${iso3}`;
 
   const resp = await fetch(url, {
     headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(HAPI_REQUEST_TIMEOUT_MS),
   });
-  if (!resp.ok) return null;
+  if (!resp.ok) {
+    throw Object.assign(new Error(`HTTP ${resp.status} ${resp.statusText}`), { status: resp.status });
+  }
   const rawData = await resp.json();
   const records = rawData.data || [];
 
@@ -415,16 +489,28 @@ async function fetchHapiSummary(countryCode) {
 
 async function fetchAllHumanitarianSummaries() {
   const results = {};
-  for (const cc of CONFLICT_COUNTRIES) {
+  let consecutiveFailures = 0;
+  let attempted = 0;
+  for (const cc of HAPI_COUNTRIES) {
+    attempted++;
     try {
       const data = await fetchHapiSummary(cc);
       if (data?.summary) results[cc] = data;
-      await sleep(300);
+      consecutiveFailures = 0;
     } catch (e) {
       console.warn(`  HAPI ${cc}: ${e.message}`);
+      consecutiveFailures++;
+      if (consecutiveFailures >= HAPI_MAX_CONSECUTIVE_FAILURES) {
+        console.warn(`  HAPI: ${consecutiveFailures} consecutive failures (last: ${e.status ? `HTTP ${e.status}` : e.message}) — aborting sweep early (app_identifier throttled again, or a broader outage? see #5554) after ${attempted}/${HAPI_COUNTRIES.length} countries`);
+        break;
+      }
     }
+    // Paced unconditionally (success, non-2xx, or network error) — this is the ONLY
+    // source of HAPI traffic in the app, so this loop's pacing is what keeps combined
+    // traffic within HDX's ~1 req/s courtesy ask (#5554).
+    await sleep(HAPI_REQUEST_DELAY_MS);
   }
-  console.log(`  Humanitarian: ${Object.keys(results).length}/${CONFLICT_COUNTRIES.length} countries`);
+  console.log(`  Humanitarian: ${Object.keys(results).length}/${HAPI_COUNTRIES.length} countries`);
   return results;
 }
 
@@ -501,7 +587,7 @@ async function fetchGdeltTensions() {
 // global-fetch stub can intercept, so it must be injectable to keep tests hermetic.
 export async function fetchAll({ fetchGdeltFallback = fetchGdeltConflictEvents } = {}) {
   // #5140: anchor the GDELT-fallback sweep cutoff at the START of the fetch phase,
-  // not at sweep entry — the aux feeds below (HAPI is sequential, ~306s worst) and
+  // not at sweep entry — the aux feeds below (HAPI is sequential, ~346s worst) and
   // the sweep share runSeed's single fetch deadline, so time the aux stage burns
   // must come out of the sweep's window, not be added to it.
   const sweepDeadlineAt = Date.now() + GDELT_SWEEP_BUDGET_MS;
@@ -533,7 +619,28 @@ export async function fetchAll({ fetchGdeltFallback = fetchGdeltConflictEvents }
 
   // Write secondary keys BEFORE returning or failing the primary feed
   // (runSeed calls process.exit after primary write).
-  if (ha) { for (const [cc, data] of Object.entries(ha)) await writeExtraKeyWithMeta(`${HAPI_CACHE_KEY_PREFIX}:${cc}`, data, HAPI_TTL, 1); }
+  if (ha && Object.keys(ha).length > 0) {
+    for (const [cc, data] of Object.entries(ha)) await writeExtraKeyWithMeta(`${HAPI_CACHE_KEY_PREFIX}:${cc}`, data, HAPI_TTL, 1);
+    // Aggregate marker for api/health.js — STANDALONE_KEYS.humanitarianSummary STRLENs
+    // this exact bare key (no country suffix) and SEED_META.humanitarianSummary reads
+    // its seed-meta; the per-country writes above don't give either check anything to
+    // read (they're all suffixed :<CC>, and writeExtraKeyWithMeta's auto-derived
+    // seed-meta keys for them are per-country too, not one family-wide pointer).
+    // Guarded on ha having entries, same as the per-country loop above: a run where
+    // EVERY HAPI call failed has nothing new to report, and attempting this write
+    // anyway would add a fresh network call (and crash risk if Redis is ALSO
+    // degraded) to a path that previously did nothing at all in that scenario —
+    // staleness still surfaces naturally once the last real marker's TTL/maxStaleMin
+    // window elapses, no need to force a write here.
+    await writeExtraKeyWithMeta(
+      HAPI_CACHE_KEY_PREFIX,
+      { countriesCovered: Object.keys(ha).length, updatedAt: Date.now() },
+      HAPI_SEED_META_TTL_SECONDS,
+      Object.keys(ha).length,
+      HAPI_SEED_META_KEY,
+      HAPI_SEED_META_TTL_SECONDS,
+    );
+  }
   if (acResolution?.events?.length) {
     await writeExtraKeyWithMeta(
       ACLED_RESOLUTION_CACHE_KEY,

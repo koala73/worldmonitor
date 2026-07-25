@@ -33,6 +33,7 @@
  */
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { PREMIUM_RPC_PATHS } from '@/shared/premium-paths';
+import { PRO_FRESH_CACHE_RPC_PATHS } from '@/shared/pro-fresh-rpc';
 import { isDesktopRuntime } from './runtime';
 
 /**
@@ -109,6 +110,32 @@ function isPremiumRpcTarget(input: RequestInfo | URL, forcePremium = false): boo
     // preserves prior behaviour for malformed inputs.
     return true;
   }
+}
+
+function isProFreshCacheRpcTarget(input: RequestInfo | URL): boolean {
+  try {
+    const href = input instanceof Request ? input.url : String(input);
+    const path = new URL(href, globalThis.location?.href ?? 'https://worldmonitor.app').pathname;
+    return PRO_FRESH_CACHE_RPC_PATHS.has(path);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Fetch adapter for generated RPC clients that include Pro-fresh market reads.
+ *
+ * Only the exact shared allowlist opts into Clerk bearer injection. Other
+ * methods on the same generated client retain the anonymous wm-session path.
+ */
+export function proFreshRpcFetch(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+): Promise<Response> {
+  if (!isProFreshCacheRpcTarget(input)) {
+    return globalThis.fetch(input, init);
+  }
+  return premiumFetch(input, { ...init, forcePremium: true });
 }
 
 function uniqueNonEmptyKeys(keys: Array<string | null | undefined>): string[] {

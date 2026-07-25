@@ -135,12 +135,26 @@ type YahooQuoteSummaryResponse = {
         trend?: YahooRecommendationEntry[];
       };
       financialData?: {
+        financialCurrency?: string;
         targetHighPrice?: { raw?: number };
         targetLowPrice?: { raw?: number };
         targetMeanPrice?: { raw?: number };
         targetMedianPrice?: { raw?: number };
         currentPrice?: { raw?: number };
         numberOfAnalystOpinions?: { raw?: number };
+        // Fundamentals returned in the same module but previously discarded (#5445-adjacent richness).
+        profitMargins?: { raw?: number };
+        grossMargins?: { raw?: number };
+        operatingMargins?: { raw?: number };
+        returnOnEquity?: { raw?: number };
+        returnOnAssets?: { raw?: number };
+        revenueGrowth?: { raw?: number };
+        earningsGrowth?: { raw?: number };
+        debtToEquity?: { raw?: number };
+        totalCash?: { raw?: number };
+        totalDebt?: { raw?: number };
+        freeCashflow?: { raw?: number };
+        ebitda?: { raw?: number };
       };
       upgradeDowngradeHistory?: {
         history?: YahooUpgradeEntry[];
@@ -149,10 +163,29 @@ type YahooQuoteSummaryResponse = {
   };
 };
 
+// Quality / growth / leverage fundamentals parsed from Yahoo's financialData
+// module (already fetched for price targets). Any field may be absent.
+export type StockFundamentals = {
+  profitMargin?: number;
+  grossMargin?: number;
+  operatingMargin?: number;
+  returnOnEquity?: number;
+  returnOnAssets?: number;
+  revenueGrowth?: number;
+  earningsGrowth?: number;
+  debtToEquity?: number;
+  totalCash?: number;
+  totalDebt?: number;
+  freeCashflow?: number;
+  ebitda?: number;
+  financialCurrency?: string;
+};
+
 export type AnalystData = {
   analystConsensus: AnalystConsensus;
   priceTarget: PriceTarget;
   recentUpgrades: UpgradeDowngrade[];
+  fundamentals: StockFundamentals;
 };
 
 export type DividendProfile = {
@@ -739,10 +772,30 @@ function optionalPositive(field: { raw?: number } | undefined): number | undefin
   return typeof raw === 'number' && Number.isFinite(raw) && raw > 0 ? raw : undefined;
 }
 
+// Like optionalPositive but keeps negatives — margins, growth and returns can
+// legitimately be below zero, so they must not be dropped as "missing".
+function optionalFinite(field: { raw?: number } | undefined): number | undefined {
+  const raw = field?.raw;
+  return typeof raw === 'number' && Number.isFinite(raw) ? raw : undefined;
+}
+
+function optionalYahooDebtToEquity(field: { raw?: number } | undefined): number | undefined {
+  const raw = optionalFinite(field);
+  // Yahoo expresses this field in percentage points (150 means 1.5x).
+  return raw === undefined ? undefined : raw / 100;
+}
+
+function optionalFinancialCurrency(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const normalized = value.trim().toUpperCase();
+  return /^[A-Z]{3}$/.test(normalized) ? normalized : undefined;
+}
+
 const EMPTY_ANALYST_DATA: AnalystData = {
   analystConsensus: { strongBuy: 0, buy: 0, hold: 0, sell: 0, strongSell: 0, total: 0, period: '' },
   priceTarget: { numberOfAnalysts: 0 },
   recentUpgrades: [],
+  fundamentals: {},
 };
 
 export async function fetchYahooAnalystData(symbol: string): Promise<AnalystData> {
@@ -794,7 +847,24 @@ export async function fetchYahooAnalystData(symbol: string): Promise<AnalystData
       epochGradeDate: typeof entry.epochGradeDate === 'number' ? entry.epochGradeDate : 0,
     })).filter((u) => u.firm);
 
-    return { analystConsensus, priceTarget, recentUpgrades };
+    // Quality/growth/leverage fundamentals from the same financialData module.
+    const fundamentals: StockFundamentals = fd ? {
+      profitMargin: optionalFinite(fd.profitMargins),
+      grossMargin: optionalFinite(fd.grossMargins),
+      operatingMargin: optionalFinite(fd.operatingMargins),
+      returnOnEquity: optionalFinite(fd.returnOnEquity),
+      returnOnAssets: optionalFinite(fd.returnOnAssets),
+      revenueGrowth: optionalFinite(fd.revenueGrowth),
+      earningsGrowth: optionalFinite(fd.earningsGrowth),
+      debtToEquity: optionalYahooDebtToEquity(fd.debtToEquity),
+      totalCash: optionalFinite(fd.totalCash),
+      totalDebt: optionalFinite(fd.totalDebt),
+      freeCashflow: optionalFinite(fd.freeCashflow),
+      ebitda: optionalFinite(fd.ebitda),
+      financialCurrency: optionalFinancialCurrency(fd.financialCurrency),
+    } : {};
+
+    return { analystConsensus, priceTarget, recentUpgrades, fundamentals };
   } catch {
     return EMPTY_ANALYST_DATA;
   }
@@ -1140,13 +1210,15 @@ async function buildAiOverlay(
   name: string,
   technical: TechnicalSnapshot,
   headlines: StockAnalysisHeadline[],
+  fundamentals: StockFundamentals,
 ): Promise<AiOverlay> {
   const fallback = getFallbackOverlay(name, technical, headlines);
+  const hasFundamentals = Object.values(fundamentals).some((v) => typeof v === 'number');
   const llm = await callLlm({
     messages: [
       {
         role: 'system',
-        content: 'You are a disciplined stock analyst. Return strict JSON only with keys: summary, action, confidence, whyNow, technicalSummary, newsSummary, bullishFactors, riskFactors. Keep it concise, factual, and free of disclaimers.',
+        content: 'You are a disciplined stock analyst. Weigh the fundamentals alongside the technicals and news — do not judge on price action alone. All margin, return, growth, and debtToEquity values are decimal ratios (0.25 means 25%; debtToEquity 1.5 means debt is 1.5x equity). totalCash, totalDebt, freeCashflow, and ebitda are denominated in fundamentals.financialCurrency. Treat missing values as unknown. Return strict JSON only with keys: summary, action, confidence, whyNow, technicalSummary, newsSummary, bullishFactors, riskFactors. Keep it concise, factual, and free of disclaimers.',
       },
       {
         role: 'user',
@@ -1181,6 +1253,8 @@ async function buildAiOverlay(
             source: headline.source,
             publishedAt: headline.publishedAt,
           })),
+          // Only sent when present; JSON.stringify drops undefined members.
+          fundamentals: hasFundamentals ? fundamentals : undefined,
         }),
       },
     ],
@@ -1320,6 +1394,7 @@ export function buildAnalysisResponse(params: {
     analystConsensus: analystData.analystConsensus,
     priceTarget: analystData.priceTarget,
     recentUpgrades: analystData.recentUpgrades,
+    fundamentals: analystData.fundamentals,
     dividendYield: dividend?.dividendYield ?? 0,
     trailingAnnualDividendRate: dividend?.trailingAnnualDividendRate ?? 0,
     exDividendDate: dividend?.exDividendDate ?? 0,
@@ -1411,9 +1486,9 @@ export async function analyzeStock(
   const name = (req.name || symbol).trim().slice(0, 120) || symbol;
   const includeNews = req.includeNews === true;
   const nameSuffix = name !== symbol ? `:${name.replace(/[^a-zA-Z0-9]/g, '').slice(0, 30).toLowerCase()}` : '';
-  // v3 → v4 (2026-07-06, #4944): LLM analysis moved to deepseek-v4-flash;
-  // v3 rows carry old-model output and must age out at cutover.
-  const cacheKey = `market:analyze-stock:v4:${symbol}:${includeNews ? 'news' : 'no-news'}${nameSuffix}`;
+  // v4 -> v5 (#5467): fundamentals now use normalized leverage and explicit
+  // statement currency. Never replay a pre-contract response into the Pro UI.
+  const cacheKey = `market:analyze-stock:v5:${symbol}:${includeNews ? 'news' : 'no-news'}${nameSuffix}`;
 
   const fetchFreshAnalysis = async (): Promise<AnalyzeStockResponse | null> => {
     const [history, analystData] = await Promise.all([
@@ -1438,7 +1513,7 @@ export async function analyzeStock(
         ? fetchExtendedHoursQuote(symbol, marketSession)
         : Promise.resolve(null),
     ]);
-    const overlay = await buildAiOverlay(symbol, name, technical, headlines);
+    const overlay = await buildAiOverlay(symbol, name, technical, headlines, analystData.fundamentals);
     const analysisAt = history.candles[history.candles.length - 1]?.timestamp || Date.now();
     const response = buildAnalysisResponse({
       symbol,

@@ -31504,6 +31504,8 @@ components:
                     description: |-
                         Extended-hours change % vs the last regular-session close. Only set when
                          extended_price is set.
+                fundamentals:
+                    $ref: '#/components/schemas/worldmonitor_market_v1_Fundamentals'
         worldmonitor_market_v1_StockAnalysisHeadline:
             type: object
             properties:
@@ -31576,6 +31578,62 @@ components:
                     type: integer
                     format: int64
                     description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+        worldmonitor_market_v1_Fundamentals:
+            type: object
+            properties:
+                profitMargin:
+                    type: number
+                    format: double
+                    description: Fractional ratio where 0.25 means 25%.
+                grossMargin:
+                    type: number
+                    format: double
+                    description: Fractional ratio where 0.25 means 25%.
+                operatingMargin:
+                    type: number
+                    format: double
+                    description: Fractional ratio where 0.25 means 25%.
+                returnOnEquity:
+                    type: number
+                    format: double
+                    description: Fractional ratio where 0.25 means 25%.
+                returnOnAssets:
+                    type: number
+                    format: double
+                    description: Fractional ratio where 0.25 means 25%.
+                revenueGrowth:
+                    type: number
+                    format: double
+                    description: Fractional ratio where 0.25 means 25%.
+                earningsGrowth:
+                    type: number
+                    format: double
+                    description: Fractional ratio where 0.25 means 25%.
+                debtToEquity:
+                    type: number
+                    format: double
+                    description: Normalized debt/equity ratio where 1.5 means debt is 1.5x equity.
+                totalCash:
+                    type: number
+                    format: double
+                    description: Latest Yahoo financialData value denominated in financial_currency.
+                totalDebt:
+                    type: number
+                    format: double
+                    description: Latest Yahoo financialData value denominated in financial_currency.
+                freeCashflow:
+                    type: number
+                    format: double
+                    description: Latest Yahoo financialData value denominated in financial_currency.
+                ebitda:
+                    type: number
+                    format: double
+                    description: Latest Yahoo financialData value denominated in financial_currency.
+                financialCurrency:
+                    type: string
+                    description: |-
+                        ISO 4217 currency used by the company's financial statements. This can
+                         differ from AnalyzeStockResponse.currency for ADRs and cross-listings.
         worldmonitor_market_v1_GetStockAnalysisHistoryRequest:
             type: object
             properties:

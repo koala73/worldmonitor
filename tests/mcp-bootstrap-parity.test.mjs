@@ -100,6 +100,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'cascade-mirror: RPC variant of cyber:threats-bootstrap:v2 (covered by get_cyber_threats). Same seed-meta key (seed-meta:cyber:threats).'],
   ['conflict:ucdp-events-bootstrap:v1',
     'cascade-mirror: pre-compacted dashboard view of conflict:ucdp-events:v1 (covered by get_conflict_events). Carries the 150 rows the panel renders plus precomputed classifications/aggregates; agents must read the canonical key, which carries all 2,000 events (#5300).'],
+  ['conflict:humanitarian:v1',
+    'deferred: per-country monthly humanitarian conflict-event/fatality aggregates (HDX HAPI) seeded by scripts/seed-conflict-intel.mjs. Different shape from get_conflict_events (event lists with geo-coordinates, not per-country monthly counts) — not a trivial _coverageKeys addition. No dedicated humanitarian/aid MCP tool exists yet; file a follow-up issue if/when one is planned rather than reusing #5554 (the bug fix this key\'s health-monitoring wiring shipped with).'],
   ['wildfire:fires-bootstrap:v1',
     'cascade-mirror: pre-compacted dashboard/RPC variant of wildfire:fires:v1 (covered by get_natural_events). It preserves the same top-500 response while avoiding canonical-payload Redis egress.'],
   ['thermal:escalation-bootstrap:v1',

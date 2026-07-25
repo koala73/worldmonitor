@@ -24,6 +24,7 @@ import { mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
+import { CONFIGURED_SOURCE_PROVENANCE_DECLARATIONS } from '../shared/source-provenance-declarations';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, '..');
@@ -35,7 +36,10 @@ interface FeedsModule {
   SOURCE_PROPAGANDA_RISK: Record<string, { risk: string; stateAffiliated?: string; note?: string }>;
   SOURCE_TYPES: Record<string, string>;
   UNREVIEWED_SOURCE_RISK: { risk: string; note?: string };
-  describePropagandaBadge: (profile: { risk: string; note?: string; stateAffiliated?: string }) => {
+  describePropagandaBadge: (
+    profile: { risk: string; note?: string; stateAffiliated?: string },
+    sourceType?: string,
+  ) => {
     risk: string;
     label: string;
     shortLabel: string;
@@ -44,6 +48,8 @@ interface FeedsModule {
   getFeedProvenanceState: (name: string) => {
     risk: string;
     type: string;
+    riskDeclared: boolean;
+    typeDeclared: boolean;
     riskReviewed: boolean;
     typeReviewed: boolean;
   };
@@ -51,6 +57,8 @@ interface FeedsModule {
   getSourceTier: (name: string) => number;
   getSourceTierBadgeTitle: (type: string) => string;
   getSourceType: (name: string) => string;
+  hasDeclaredPropagandaRisk: (name: string) => boolean;
+  hasDeclaredSourceType: (name: string) => boolean;
   hasReviewedPropagandaRisk: (name: string) => boolean;
   hasReviewedSourceType: (name: string) => boolean;
   listConfiguredFeedNames: () => string[];
@@ -142,11 +150,13 @@ describe('source provenance defaults (#5390)', () => {
     const profile = feeds.getSourcePropagandaRisk('Completely Unlisted Outlet XYZ');
     assert.equal(profile.risk, 'unknown');
     assert.equal(profile.note, feeds.UNREVIEWED_SOURCE_RISK.note);
+    assert.equal(feeds.hasDeclaredPropagandaRisk('Completely Unlisted Outlet XYZ'), false);
     assert.equal(feeds.hasReviewedPropagandaRisk('Completely Unlisted Outlet XYZ'), false);
   });
 
   it('does not map missing source types to other', () => {
     assert.equal(feeds.getSourceType('Completely Unlisted Outlet XYZ'), 'unknown');
+    assert.equal(feeds.hasDeclaredSourceType('Completely Unlisted Outlet XYZ'), false);
     assert.equal(feeds.hasReviewedSourceType('Completely Unlisted Outlet XYZ'), false);
   });
 
@@ -164,10 +174,11 @@ describe('source provenance defaults (#5390)', () => {
       assert.equal(risk.risk, 'high', `${name} risk`);
       assert.equal(risk.stateAffiliated, 'China');
       assert.equal(feeds.getSourceTier(name), 1, `${name} tier`);
-      const badge = feeds.describePropagandaBadge(risk);
+      const badge = feeds.describePropagandaBadge(risk, feeds.getSourceType(name));
       assert.ok(badge);
       assert.equal(badge!.risk, 'high');
-      assert.match(badge!.label, /State Media/);
+      assert.equal(badge!.label, 'Official Government Source');
+      assert.doesNotMatch(badge!.label, /State Media/);
       assert.equal(feeds.getSourceTierBadgeTitle(feeds.getSourceType(name)), 'Official Government Source');
       assert.notEqual(feeds.getSourceType(name), 'wire');
     }
@@ -189,18 +200,41 @@ describe('source provenance defaults (#5390)', () => {
     assert.match(badge!.title, /not yet reviewed/i);
   });
 
-  it('every configured feed has a definite provenance state (never silent low)', () => {
+  it('requires an explicit reviewed-or-unknown declaration for every configured feed', () => {
     const names = feeds.listConfiguredFeedNames();
     assert.ok(names.length > 100, `expected many feeds, got ${names.length}`);
     assert.ok(names.includes('MIIT (China)'));
     assert.ok(names.includes('MOFCOM (China)'));
+    const declaredNames = Object.keys(CONFIGURED_SOURCE_PROVENANCE_DECLARATIONS);
+    assert.deepEqual(
+      [...declaredNames].sort((a, b) => a.localeCompare(b)),
+      [...names].sort((a, b) => a.localeCompare(b)),
+      'configured feed names and provenance declarations must match exactly; regenerate after additions or aliases change',
+    );
 
     const falselyIndependent: string[] = [];
+    let explicitUnknownDimensions = 0;
 
     for (const name of names) {
       const state = feeds.getFeedProvenanceState(name);
+      const declaration = CONFIGURED_SOURCE_PROVENANCE_DECLARATIONS[name];
+      assert.ok(declaration, `${name} missing explicit provenance declaration`);
       assert.ok(state.risk, `${name} missing risk`);
       assert.ok(state.type, `${name} missing type`);
+      assert.equal(state.riskDeclared, true, `${name} risk declaration`);
+      assert.equal(state.typeDeclared, true, `${name} type declaration`);
+      assert.equal(
+        declaration.risk,
+        state.riskReviewed ? 'reviewed' : 'unknown',
+        `${name} risk declaration drift`,
+      );
+      assert.equal(
+        declaration.type,
+        state.typeReviewed ? 'reviewed' : 'unknown',
+        `${name} type declaration drift`,
+      );
+      if (declaration.risk === 'unknown') explicitUnknownDimensions += 1;
+      if (declaration.type === 'unknown') explicitUnknownDimensions += 1;
 
       if (state.risk === 'low' && !state.riskReviewed) {
         falselyIndependent.push(name);
@@ -214,6 +248,7 @@ describe('source provenance defaults (#5390)', () => {
     }
 
     assert.deepEqual(falselyIndependent, [], 'unreviewed feeds must not claim low risk');
+    assert.ok(explicitUnknownDimensions > 0, 'unreviewed dimensions must be explicitly declared unknown');
   });
 
   it('SOURCE_PROPAGANDA_RISK entries never use the unknown default sentinel by accident', () => {
@@ -233,7 +268,8 @@ describe('source provenance defaults (#5390)', () => {
     assert.doesNotMatch(unreviewed.tierBadge, />[^<]*Wire/);
 
     const government = renderer.renderPrimarySourceProvenance('MIIT (China)');
-    assert.match(government.riskBadge, /State Media/);
+    assert.match(government.riskBadge, /Official Government Source/);
+    assert.doesNotMatch(government.riskBadge, /State Media/);
     assert.match(government.tierBadge, /Official Government Source/);
     assert.doesNotMatch(government.tierBadge, />[^<]*Wire/);
 

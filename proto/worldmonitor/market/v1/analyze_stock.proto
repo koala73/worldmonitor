@@ -104,6 +104,40 @@ message AnalyzeStockResponse {
   // Extended-hours change % vs the last regular-session close. Only set when
   // extended_price is set.
   optional double extended_change_percent = 59;
+
+  // Quality / growth / leverage fundamentals parsed from Yahoo's financialData
+  // module (already fetched for price targets). Any field may be unset.
+  Fundamentals fundamentals = 60;
+}
+
+message Fundamentals {
+  // Fractional ratio where 0.25 means 25%.
+  optional double profit_margin = 1;
+  // Fractional ratio where 0.25 means 25%.
+  optional double gross_margin = 2;
+  // Fractional ratio where 0.25 means 25%.
+  optional double operating_margin = 3;
+  // Fractional ratio where 0.25 means 25%.
+  optional double return_on_equity = 4;
+  // Fractional ratio where 0.25 means 25%.
+  optional double return_on_assets = 5;
+  // Fractional ratio where 0.25 means 25%.
+  optional double revenue_growth = 6;
+  // Fractional ratio where 0.25 means 25%.
+  optional double earnings_growth = 7;
+  // Normalized debt/equity ratio where 1.5 means debt is 1.5x equity.
+  optional double debt_to_equity = 8;
+  // Latest Yahoo financialData value denominated in financial_currency.
+  optional double total_cash = 9;
+  // Latest Yahoo financialData value denominated in financial_currency.
+  optional double total_debt = 10;
+  // Latest Yahoo financialData value denominated in financial_currency.
+  optional double free_cashflow = 11;
+  // Latest Yahoo financialData value denominated in financial_currency.
+  optional double ebitda = 12;
+  // ISO 4217 currency used by the company's financial statements. This can
+  // differ from AnalyzeStockResponse.currency for ADRs and cross-listings.
+  optional string financial_currency = 13;
 }
 
 message AnalystConsensus {

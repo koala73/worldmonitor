@@ -143,7 +143,7 @@ function makeSnapshot(
   generatedAt: string,
   signalScore: number,
   signal = 'Buy',
-  options: { withAnalystFields?: boolean } = {},
+  options: { withAnalystFields?: boolean; withFundamentals?: boolean } = {},
 ): StockAnalysisSnapshot {
   const base: StockAnalysisSnapshot = {
     available: true,
@@ -197,6 +197,9 @@ function makeSnapshot(
   if (options.withAnalystFields) {
     base.analystConsensus = { strongBuy: 1, buy: 2, hold: 3, sell: 0, strongSell: 0, total: 6, period: '0m' };
     base.priceTarget = { mean: 150, median: 152, high: 180, low: 130, current: 145, numberOfAnalysts: 6 };
+  }
+  if (options.withFundamentals) {
+    base.fundamentals = {};
   }
   return base;
 }
@@ -268,10 +271,20 @@ describe('stock analysis history helpers', () => {
     assert.deepEqual(getMissingOrStaleStockAnalysisSymbols(history, ['AAPL']), ['AAPL']);
   });
 
-  it('treats fresh snapshots with the new analyst fields as truly fresh', () => {
+  it('treats time-fresh analyst snapshots without fundamentals as stale', () => {
     const recent = new Date(Date.now() - 60_000).toISOString();
     const history = {
       AAPL: [makeSnapshot('AAPL', recent, 70, 'Buy', { withAnalystFields: true })],
+    };
+
+    assert.equal(hasFreshStockAnalysisHistory(history, ['AAPL']), false);
+    assert.deepEqual(getMissingOrStaleStockAnalysisSymbols(history, ['AAPL']), ['AAPL']);
+  });
+
+  it('treats fresh snapshots with the current analyst and fundamentals schema as truly fresh', () => {
+    const recent = new Date(Date.now() - 60_000).toISOString();
+    const history = {
+      AAPL: [makeSnapshot('AAPL', recent, 70, 'Buy', { withAnalystFields: true, withFundamentals: true })],
     };
 
     assert.equal(hasFreshStockAnalysisHistory(history, ['AAPL']), true);
@@ -281,7 +294,7 @@ describe('stock analysis history helpers', () => {
   it('still treats time-stale snapshots as stale even with analyst fields', () => {
     const stale = new Date(Date.now() - (STOCK_ANALYSIS_FRESH_MS * 2)).toISOString();
     const history = {
-      AAPL: [makeSnapshot('AAPL', stale, 70, 'Buy', { withAnalystFields: true })],
+      AAPL: [makeSnapshot('AAPL', stale, 70, 'Buy', { withAnalystFields: true, withFundamentals: true })],
     };
 
     assert.equal(hasFreshStockAnalysisHistory(history, ['AAPL']), false);

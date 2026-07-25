@@ -141,6 +141,7 @@ async function _ensureHistoricalAnalysisLedger(
       analystConsensus: { strongBuy: 0, buy: 0, hold: 0, sell: 0, strongSell: 0, total: 0, period: '' },
       priceTarget: { high: 0, low: 0, mean: 0, median: 0, current: 0, numberOfAnalysts: 0 },
       recentUpgrades: [],
+      fundamentals: {},
     };
     generated.push(buildAnalysisResponse({
       symbol,
