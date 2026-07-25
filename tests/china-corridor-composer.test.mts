@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { validateDecisionSignalProvenance } from '../shared/decision-signal-provenance';
+import { validateChinaCorridorProvenanceForSurface } from '../shared/china-corridor-control-towers.ts';
 import {
   composeChinaCorridorControlTowers,
   type ChinaCorridorSourceBundle,
@@ -303,5 +304,46 @@ describe('China corridor control-tower composition (#5578)', () => {
       observation?.status === 'known' ? observation.value : null,
       { role: 'observation', value: '2025', precision: 'year' },
     );
+  });
+
+  it('localizes provenance construction failures to the affected condition', () => {
+    const bundle = sourceBundle();
+    const portSignal = bundle.families.port.signals[0];
+    assert.ok(portSignal);
+    portSignal.transportFreshness = 'invalid' as CorridorSourceSignal['transportFreshness'];
+
+    const response = composeChinaCorridorControlTowers(bundle);
+    const yrd = response.corridors.find((corridor) =>
+      corridor.id === 'china-yangtze-river-delta');
+    const port = yrd?.conditions.find((condition) => condition.family === 'port');
+    const trade = yrd?.conditions.find((condition) => condition.family === 'trade');
+
+    assert.equal(port?.availability, 'partial');
+    assert.equal(port?.provenance, null);
+    assert.match(port?.reason ?? '', /provenance failed validation/i);
+    assert.equal(trade?.availability, 'available');
+    assert.ok(trade?.provenance);
+  });
+
+  it('localizes surface-adapter validation failures to the affected condition', () => {
+    const response = composeChinaCorridorControlTowers(sourceBundle());
+    const yrd = response.corridors.find((corridor) =>
+      corridor.id === 'china-yangtze-river-delta');
+    const port = yrd?.conditions.find((condition) => condition.family === 'port');
+    assert.ok(port?.provenance);
+    (port.provenance as { familyId: string }).familyId = 'unknown-family';
+
+    const validated = validateChinaCorridorProvenanceForSurface(response, 'api');
+    const validatedYrd = validated.corridors.find((corridor) =>
+      corridor.id === 'china-yangtze-river-delta');
+    const validatedPort = validatedYrd?.conditions.find((condition) => condition.family === 'port');
+    const validatedTrade = validatedYrd?.conditions.find((condition) => condition.family === 'trade');
+
+    assert.equal(validatedPort?.availability, 'partial');
+    assert.equal(validatedPort?.provenance, null);
+    assert.match(validatedPort?.reason ?? '', /provenance failed validation/i);
+    assert.equal(validatedTrade?.availability, 'available');
+    assert.ok(validatedTrade?.provenance);
+    assert.equal(validatedYrd?.availability, 'partial');
   });
 });

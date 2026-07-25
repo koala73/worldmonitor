@@ -4,10 +4,15 @@ import { describe, it } from 'node:test';
 import {
   CHINA_CORRIDOR_SOURCE_KEYS,
   composeChinaCorridorSnapshot,
+  composeUnavailableChinaCorridorSnapshot,
   loadChinaCorridorRawSnapshots,
   projectChinaCorridorWireResponse,
+  resolveChinaCorridorSnapshot,
 } from '../server/worldmonitor/supply-chain/v1/get-china-corridor-control-towers.ts';
-import { validateChinaCorridorProvenanceForSurface } from '../shared/china-corridor-control-towers.ts';
+import {
+  parseChinaCorridorWirePayload,
+  validateChinaCorridorProvenanceForSurface,
+} from '../shared/china-corridor-control-towers.ts';
 
 const ASSESSED_AT = '2026-07-25T12:00:00.000Z';
 
@@ -26,6 +31,34 @@ describe('China corridor API/cache composition (#5578)', () => {
     assert.deepEqual(snapshots.portwatchMeta, { key: CHINA_CORRIDOR_SOURCE_KEYS.portwatchMeta });
   });
 
+  it('pipelines the default audited source reads in one batch', async () => {
+    const calls: Array<{ keys: string[]; raw: boolean | undefined }> = [];
+    const snapshots = await loadChinaCorridorRawSnapshots(undefined, async (keys, raw) => {
+      calls.push({ keys, raw });
+      return new Map([
+        [CHINA_CORRIDOR_SOURCE_KEYS.portwatchChina, { ports: [] }],
+        [CHINA_CORRIDOR_SOURCE_KEYS.portwatchMeta, { fetchedAt: 1 }],
+      ]);
+    });
+
+    assert.equal(calls.length, 1);
+    assert.deepEqual(calls[0]?.keys.sort(), Object.values(CHINA_CORRIDOR_SOURCE_KEYS).sort());
+    assert.equal(calls[0]?.raw, true);
+    assert.deepEqual(snapshots.portwatchChina, { ports: [] });
+    assert.equal(snapshots.aviation, null);
+  });
+
+  it('fails closed when the batch source read itself fails', async () => {
+    const snapshots = await loadChinaCorridorRawSnapshots(undefined, async () => {
+      throw new Error('pipeline unavailable');
+    });
+
+    assert.equal(
+      Object.values(snapshots).every((value) => value === null),
+      true,
+    );
+  });
+
   it('keeps unaffected families useful when one provider cache read fails', async () => {
     const values = new Map<string, unknown>([
       [CHINA_CORRIDOR_SOURCE_KEYS.portwatchChina, {
@@ -38,6 +71,7 @@ describe('China corridor API/cache composition (#5578)', () => {
       if (key === CHINA_CORRIDOR_SOURCE_KEYS.aviation) throw new Error('aviation unavailable');
       return values.get(key) ?? null;
     });
+    assert.ok(response);
 
     const yrd = response.corridors.find((corridor) => corridor.id === 'china-yangtze-river-delta');
     const port = yrd?.conditions.find((condition) => condition.family === 'port');
@@ -47,10 +81,91 @@ describe('China corridor API/cache composition (#5578)', () => {
     assert.equal(yrd?.availability, 'partial');
   });
 
-  it('serializes canonical API JSON and reports total upstream unavailability honestly', async () => {
+  it('returns null instead of positively caching an all-unavailable composition', async () => {
     const response = await composeChinaCorridorSnapshot(ASSESSED_AT, async () => null);
+    assert.equal(response, null);
+  });
+
+  it('recomposes a cache-null result from current source seeds', async () => {
+    const values = new Map<string, unknown>([
+      [CHINA_CORRIDOR_SOURCE_KEYS.portwatchChina, {
+        fetchedAt: '2026-07-25T11:00:00.000Z',
+        ports: [{ portId: 'port1188', portName: 'Shanghai', tankerCalls30d: 8 }],
+      }],
+      [CHINA_CORRIDOR_SOURCE_KEYS.portwatchMeta, {
+        fetchedAt: Date.parse('2026-07-25T11:30:00.000Z'),
+      }],
+    ]);
+    const readCalls: string[] = [];
+    const response = await resolveChinaCorridorSnapshot(
+      ASSESSED_AT,
+      async () => null,
+      async (key) => {
+        readCalls.push(key);
+        return values.get(key) ?? null;
+      },
+    );
+
+    assert.equal(readCalls.length, Object.keys(CHINA_CORRIDOR_SOURCE_KEYS).length);
+    const yrdPort = response.corridors
+      .find((corridor) => corridor.id === 'china-yangtze-river-delta')
+      ?.conditions.find((condition) => condition.family === 'port');
+    assert.equal(yrdPort?.sourceSignals.some((signal) =>
+      signal.selectorId === 'port1188' && signal.availability === 'available'), true);
+  });
+
+  it('does not preserve a legacy positive cache entry with total unavailability', async () => {
+    const values = new Map<string, unknown>([
+      [CHINA_CORRIDOR_SOURCE_KEYS.portwatchChina, {
+        fetchedAt: '2026-07-25T11:00:00.000Z',
+        ports: [{ portId: 'port1188', portName: 'Shanghai', tankerCalls30d: 8 }],
+      }],
+      [CHINA_CORRIDOR_SOURCE_KEYS.portwatchMeta, {
+        fetchedAt: Date.parse('2026-07-25T11:30:00.000Z'),
+      }],
+    ]);
+    const response = await resolveChinaCorridorSnapshot(
+      ASSESSED_AT,
+      async () => composeUnavailableChinaCorridorSnapshot(ASSESSED_AT),
+      async (key) => values.get(key) ?? null,
+    );
+
+    const yrdPort = response.corridors
+      .find((corridor) => corridor.id === 'china-yangtze-river-delta')
+      ?.conditions.find((condition) => condition.family === 'port');
+    assert.equal(yrdPort?.sourceSignals.some((signal) =>
+      signal.selectorId === 'port1188' && signal.availability === 'available'), true);
+  });
+
+  it('recomposes from current seeds when the aggregate cache read throws', async () => {
+    const values = new Map<string, unknown>([
+      [CHINA_CORRIDOR_SOURCE_KEYS.portwatchChina, {
+        fetchedAt: '2026-07-25T11:00:00.000Z',
+        ports: [{ portId: 'port1188', portName: 'Shanghai', tankerCalls30d: 8 }],
+      }],
+      [CHINA_CORRIDOR_SOURCE_KEYS.portwatchMeta, {
+        fetchedAt: Date.parse('2026-07-25T11:30:00.000Z'),
+      }],
+    ]);
+    const response = await resolveChinaCorridorSnapshot(
+      ASSESSED_AT,
+      async () => {
+        throw new Error('aggregate cache unavailable');
+      },
+      async (key) => values.get(key) ?? null,
+    );
+
+    const yrdPort = response.corridors
+      .find((corridor) => corridor.id === 'china-yangtze-river-delta')
+      ?.conditions.find((condition) => condition.family === 'port');
+    assert.equal(yrdPort?.sourceSignals.some((signal) =>
+      signal.selectorId === 'port1188' && signal.availability === 'available'), true);
+  });
+
+  it('serializes canonical API JSON and reports total upstream unavailability honestly', () => {
+    const response = composeUnavailableChinaCorridorSnapshot(ASSESSED_AT);
     const wire = projectChinaCorridorWireResponse(response);
-    const parsed = JSON.parse(wire.payloadJson);
+    const parsed = parseChinaCorridorWirePayload(wire.payloadJson);
 
     assert.equal(wire.generatedAt, ASSESSED_AT);
     assert.equal(wire.upstreamUnavailable, true);
@@ -65,6 +180,19 @@ describe('China corridor API/cache composition (#5578)', () => {
     assert.deepEqual(
       validateChinaCorridorProvenanceForSurface(parsed, 'ui'),
       parsed,
+    );
+  });
+
+  it('rejects an empty client payload instead of dropping canonical fail-closed towers', () => {
+    assert.throws(
+      () => parseChinaCorridorWirePayload('{"generatedAt":"","corridors":[]}'),
+      /Invalid China corridor control-tower response/,
+    );
+    assert.throws(
+      () => parseChinaCorridorWirePayload(
+        '{"generatedAt":"2026-07-25T12:00:00.000Z","corridors":[{"id":"china-yangtze-river-delta","conditions":[]}]}',
+      ),
+      /Invalid China corridor control-tower response/,
     );
   });
 });

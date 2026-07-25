@@ -6,6 +6,7 @@ import {
   type ChinaLogisticsCorridorId,
 } from '../../../../shared/china-logistics-corridors';
 import {
+  deriveChinaCorridorAvailability,
   type ChinaCorridorCondition,
   type ChinaCorridorControlTowerResponse,
   type ChinaCorridorSourceBundle,
@@ -260,30 +261,27 @@ function composeCondition(
   }
 
   const availability = conditionAvailability(sourceSignals);
-  const provenance = buildProvenance(corridorId, family, sourceSignals, assessedAt);
+  let provenance: DecisionSignalProvenance | null = null;
+  let provenanceFailed = false;
+  try {
+    provenance = buildProvenance(corridorId, family, sourceSignals, assessedAt);
+  } catch {
+    provenanceFailed = true;
+  }
   return {
     family,
     providerId: source.providerId,
     availability: provenance === null && availability !== 'unavailable' ? 'partial' : availability,
-    reason: provenance === null
-      ? 'Source observations lack the timestamps required for a composed provenance envelope.'
+    reason: provenanceFailed
+      ? 'Source provenance failed validation for this corridor condition.'
+      : provenance === null
+        ? 'Source observations lack the timestamps required for a composed provenance envelope.'
       : availability === 'available'
         ? null
         : source.reason ?? null,
     sourceSignals,
     provenance,
   };
-}
-
-function corridorAvailability(conditions: readonly ChinaCorridorCondition[]): CorridorAvailability {
-  if (conditions.every((condition) => condition.availability === 'unavailable')) return 'unavailable';
-  if (conditions.every((condition) => condition.availability === 'available')) return 'available';
-  if (conditions.every((condition) =>
-    condition.availability === 'available' || condition.availability === 'stale')
-    && conditions.some((condition) => condition.availability === 'stale')) {
-    return 'stale';
-  }
-  return 'partial';
 }
 
 export function composeChinaCorridorControlTowers(
@@ -298,7 +296,7 @@ export function composeChinaCorridorControlTowers(
       description: definition.description,
       boundary: definition.boundary,
       nodes: definition.nodes,
-      availability: corridorAvailability(conditions),
+      availability: deriveChinaCorridorAvailability(conditions),
       conditions,
     };
   });

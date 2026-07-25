@@ -7,7 +7,8 @@ import { getHydratedData } from '@/services/bootstrap';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
 import {
-  validateChinaCorridorProvenanceForSurface,
+  createUnavailableChinaCorridorControlTowerResponse,
+  parseChinaCorridorWirePayload,
   type ChinaCorridorControlTowerResponse,
 } from '../../../shared/china-corridor-control-towers';
 
@@ -74,32 +75,21 @@ const chinaCorridorBreaker = createCircuitBreaker<ChinaCorridorControlTowerRespo
 const emptyShipping: GetShippingRatesResponse = { indices: [], fetchedAt: '', upstreamUnavailable: false };
 const emptyChokepoints: GetChokepointStatusResponse = { chokepoints: [], fetchedAt: '', upstreamUnavailable: false };
 const emptyMinerals: GetCriticalMineralsResponse = { minerals: [], fetchedAt: '', upstreamUnavailable: false };
-const emptyChinaCorridors: ChinaCorridorControlTowerResponse = { generatedAt: '', corridors: [] };
-
-function parseChinaCorridorResponse(payloadJson: string): ChinaCorridorControlTowerResponse {
-  const parsed: unknown = JSON.parse(payloadJson);
-  if (
-    typeof parsed !== 'object'
-    || parsed === null
-    || typeof (parsed as { generatedAt?: unknown }).generatedAt !== 'string'
-    || !Array.isArray((parsed as { corridors?: unknown }).corridors)
-  ) {
-    throw new Error('Invalid China corridor control-tower response');
-  }
-  return validateChinaCorridorProvenanceForSurface(
-    parsed as ChinaCorridorControlTowerResponse,
-    'ui',
-  );
-}
 
 export async function fetchChinaCorridorControlTowers(): Promise<ChinaCorridorControlTowerResponse> {
+  const fallback = createUnavailableChinaCorridorControlTowerResponse(
+    new Date().toISOString(),
+    'China corridor API response is unavailable.',
+  );
   try {
     return await chinaCorridorBreaker.execute(async () => {
       const response = await client.getChinaCorridorControlTowers({});
-      return parseChinaCorridorResponse(response.payloadJson);
-    }, emptyChinaCorridors);
+      return parseChinaCorridorWirePayload(response.payloadJson);
+    }, fallback, {
+      shouldCache: (response) => response.corridors.length > 0,
+    });
   } catch {
-    return emptyChinaCorridors;
+    return fallback;
   }
 }
 

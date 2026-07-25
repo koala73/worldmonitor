@@ -107,6 +107,20 @@ function contentFreshness(
   return ageMinutes(observedAt, assessedAt) > maxAgeMinutes ? 'stale' : 'current';
 }
 
+function periodicContentFreshness(
+  observedAt: string | null,
+  precision: CorridorTimePrecision,
+  assessedAt: string,
+): CorridorSourceSignal['contentFreshness'] {
+  if (precision === 'unknown') return 'timestamp_unknown';
+  const maxAgeDays = precision === 'year'
+    ? 550
+    : precision === 'month'
+      ? 210
+      : 90;
+  return contentFreshness(observedAt, maxAgeDays * 1_440, assessedAt);
+}
+
 function metrics(entries: readonly [string, string | number | boolean | null][]) {
   return Object.fromEntries(entries.filter(([, value]) => value !== null));
 }
@@ -340,7 +354,7 @@ function adaptHazards(
     assessedAt,
   );
   const cycloneRetrieval = metaTimestamp(snapshots.westernPacificCyclonesMeta);
-  const signals: CorridorSourceSignal[] = records(cycloneSnapshot?.events).flatMap((event) => {
+  const eventSignals: CorridorSourceSignal[] = records(cycloneSnapshot?.events).flatMap((event) => {
     const lat = numberValue(event.lat);
     const lon = numberValue(event.lon);
     if (lat === null || lon === null) return [];
@@ -378,50 +392,54 @@ function adaptHazards(
       ]),
     })];
   });
+  const signals = [...eventSignals];
   const cycloneAvailable = cycloneSnapshot?.dataAvailable === true;
   const cycloneObservedAt = isoTimestamp(
     cycloneSnapshot?.latestObservationAt ?? cycloneSnapshot?.evaluatedAt,
   );
-  const reviewedEventCount = signals.length;
-  signals.push(cycloneAvailable
-    ? sourceSignal({
-      id: `signal:western-pacific-hazard-coverage:${cycloneObservedAt ?? 'timestamp-unknown'}`,
-      family: 'hazard',
-      selectorId: 'hazard:western-pacific-coverage',
-      corridorIds: [...CHINA_LOGISTICS_CORRIDOR_IDS],
-      availability: cycloneObservedAt ? 'available' : 'stale',
-      publisher: {
-        id: 'publisher:worldmonitor-western-pacific-coverage',
-        name: 'WorldMonitor Western Pacific hazard coverage',
-        type: 'derived',
-      },
-      sourceUrl: null,
-      sourceScope: 'regional',
-      observationTime: cycloneObservedAt,
-      observationTimePrecision: cycloneObservedAt ? 'instant' : 'unknown',
-      retrievalTime: cycloneRetrieval,
-      retrievalTimePrecision: cycloneRetrieval ? 'instant' : 'unknown',
-      transportFreshness: cycloneTransport,
-      contentFreshness: contentFreshness(cycloneObservedAt, 540, assessedAt),
-      summary: `Western Pacific hazard feed available with ${reviewedEventCount} event${reviewedEventCount === 1 ? '' : 's'} inside reviewed corridor boundaries.`,
-      metrics: { reviewedEventCount },
-    })
-    : unavailableSignal({
-      id: 'signal:western-pacific-hazard-coverage:unavailable',
-      family: 'hazard',
-      selectorId: 'hazard:western-pacific-coverage',
-      corridorIds: [...CHINA_LOGISTICS_CORRIDOR_IDS],
-      publisher: {
-        id: 'publisher:worldmonitor-western-pacific-coverage',
-        name: 'WorldMonitor Western Pacific hazard coverage',
-        type: 'derived',
-      },
-      sourceUrl: null,
-      sourceScope: 'regional',
-      retrievalTime: cycloneRetrieval,
-      transportFreshness: cycloneTransport,
-      summary: 'Western Pacific hazard feed coverage is unavailable.',
-    }));
+  for (const corridorId of CHINA_LOGISTICS_CORRIDOR_IDS) {
+    const reviewedEventCount = eventSignals.filter((signal) =>
+      signal.corridorIds?.includes(corridorId)).length;
+    signals.push(cycloneAvailable
+      ? sourceSignal({
+        id: `signal:western-pacific-hazard-coverage:${corridorId}:${cycloneObservedAt ?? 'timestamp-unknown'}`,
+        family: 'hazard',
+        selectorId: `hazard:western-pacific-coverage:${corridorId}`,
+        corridorIds: [corridorId],
+        availability: cycloneObservedAt ? 'available' : 'stale',
+        publisher: {
+          id: 'publisher:worldmonitor-western-pacific-coverage',
+          name: 'WorldMonitor Western Pacific hazard coverage',
+          type: 'derived',
+        },
+        sourceUrl: null,
+        sourceScope: 'regional',
+        observationTime: cycloneObservedAt,
+        observationTimePrecision: cycloneObservedAt ? 'instant' : 'unknown',
+        retrievalTime: cycloneRetrieval,
+        retrievalTimePrecision: cycloneRetrieval ? 'instant' : 'unknown',
+        transportFreshness: cycloneTransport,
+        contentFreshness: contentFreshness(cycloneObservedAt, 540, assessedAt),
+        summary: `Western Pacific hazard feed available with ${reviewedEventCount} event${reviewedEventCount === 1 ? '' : 's'} inside this reviewed corridor boundary.`,
+        metrics: { reviewedEventCount },
+      })
+      : unavailableSignal({
+        id: `signal:western-pacific-hazard-coverage:${corridorId}:unavailable`,
+        family: 'hazard',
+        selectorId: `hazard:western-pacific-coverage:${corridorId}`,
+        corridorIds: [corridorId],
+        publisher: {
+          id: 'publisher:worldmonitor-western-pacific-coverage',
+          name: 'WorldMonitor Western Pacific hazard coverage',
+          type: 'derived',
+        },
+        sourceUrl: null,
+        sourceScope: 'regional',
+        retrievalTime: cycloneRetrieval,
+        transportFreshness: cycloneTransport,
+        summary: 'Western Pacific hazard feed coverage is unavailable for this reviewed corridor.',
+      }));
+  }
 
   const hkoSnapshot = record(snapshots.hkoWarnings);
   const hkoTransport = transportFreshness(snapshots.hkoWarningsMeta, 540, assessedAt);
@@ -545,7 +563,7 @@ function adaptEnergy(
     retrievalTime,
     retrievalTimePrecision: retrievalTime ? 'instant' : 'unknown',
     transportFreshness: transport,
-    contentFreshness: observedAt ? 'current' : 'timestamp_unknown',
+    contentFreshness: periodicContentFreshness(observedAt, observationPrecision, assessedAt),
     summary: 'National China energy-spine dependencies available for corridor context.',
     metrics: metrics([
       ['hasMix', booleanValue(coverage?.hasMix)],
@@ -603,7 +621,11 @@ function adaptStrategicIndustry(
     retrievalTime,
     retrievalTimePrecision: retrievalTime ? 'instant' : 'unknown',
     transportFreshness: transport,
-    contentFreshness: observedAt ? 'current' : 'timestamp_unknown',
+    contentFreshness: periodicContentFreshness(
+      observedAt,
+      observedAt ? 'year' : 'unknown',
+      assessedAt,
+    ),
     summary: 'UN Comtrade strategic-product observations for China reporter 156.',
     metrics: {
       productCount: productCodes.size,
@@ -641,7 +663,11 @@ function adaptTrade(
       retrievalTime: comtradeRetrieval,
       retrievalTimePrecision: comtradeRetrieval ? 'instant' : 'unknown',
       transportFreshness: transportFreshness(snapshots.comtradeMeta, 2_880, assessedAt),
-      contentFreshness: comtradeObservedAt ? 'current' : 'timestamp_unknown',
+      contentFreshness: periodicContentFreshness(
+        comtradeObservedAt,
+        comtradeObservedAt ? 'year' : 'unknown',
+        assessedAt,
+      ),
       summary: 'UN Comtrade annual trade observations for China reporter 156.',
       metrics: {
         observationCount: flows.length,

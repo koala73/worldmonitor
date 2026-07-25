@@ -11,6 +11,11 @@ import type {
   ChinaCorridorSignalFamily,
   ChinaLogisticsCorridorId,
 } from './china-logistics-corridors';
+import {
+  CHINA_CORRIDOR_SIGNAL_FAMILIES,
+  CHINA_LOGISTICS_CORRIDORS,
+  CHINA_LOGISTICS_CORRIDOR_IDS,
+} from './china-logistics-corridors';
 
 export type CorridorAvailability = 'available' | 'partial' | 'stale' | 'unavailable';
 export type CorridorSourceAvailability = CorridorAvailability | 'error';
@@ -82,6 +87,53 @@ export interface ChinaCorridorControlTowerResponse {
   corridors: ChinaCorridorControlTower[];
 }
 
+export function deriveChinaCorridorAvailability(
+  conditions: readonly ChinaCorridorCondition[],
+): CorridorAvailability {
+  if (conditions.every((condition) => condition.availability === 'unavailable')) {
+    return 'unavailable';
+  }
+  if (conditions.every((condition) => condition.availability === 'available')) {
+    return 'available';
+  }
+  if (
+    conditions.every((condition) =>
+      condition.availability === 'available' || condition.availability === 'stale')
+    && conditions.some((condition) => condition.availability === 'stale')
+  ) {
+    return 'stale';
+  }
+  return 'partial';
+}
+
+const PROVENANCE_VALIDATION_FAILURE_REASON =
+  'Condition provenance failed validation; this condition is partial until a valid envelope is published.';
+
+export function createUnavailableChinaCorridorControlTowerResponse(
+  generatedAt: string,
+  reason = 'China corridor source observations are unavailable.',
+): ChinaCorridorControlTowerResponse {
+  return {
+    generatedAt,
+    corridors: CHINA_LOGISTICS_CORRIDORS.map((corridor) => ({
+      id: corridor.id,
+      name: corridor.name,
+      description: corridor.description,
+      boundary: corridor.boundary,
+      nodes: corridor.nodes,
+      availability: 'unavailable',
+      conditions: CHINA_CORRIDOR_SIGNAL_FAMILIES.map((family) => ({
+        family,
+        providerId: 'unavailable',
+        availability: 'unavailable',
+        reason,
+        sourceSignals: [],
+        provenance: null,
+      })),
+    })),
+  };
+}
+
 export function validateChinaCorridorProvenanceForSurface(
   response: ChinaCorridorControlTowerResponse,
   surface: DecisionSignalProvenanceSurface,
@@ -89,14 +141,60 @@ export function validateChinaCorridorProvenanceForSurface(
   const adapter = DECISION_SIGNAL_PROVENANCE_SURFACE_ADAPTERS[surface];
   return {
     ...response,
-    corridors: response.corridors.map((corridor) => ({
-      ...corridor,
-      conditions: corridor.conditions.map((condition) => ({
-        ...condition,
-        provenance: condition.provenance === null
-          ? null
-          : adapter.deserialize(adapter.serialize(condition.provenance)),
-      })),
-    })),
+    corridors: response.corridors.map((corridor) => {
+      const conditions: ChinaCorridorCondition[] = corridor.conditions.map((condition) => {
+        if (condition.provenance === null) return condition;
+        try {
+          return {
+            ...condition,
+            provenance: adapter.deserialize(adapter.serialize(condition.provenance)),
+          };
+        } catch {
+          return {
+            ...condition,
+            availability: condition.availability === 'unavailable' ? 'unavailable' : 'partial',
+            reason: PROVENANCE_VALIDATION_FAILURE_REASON,
+            provenance: null,
+          };
+        }
+      });
+      return {
+        ...corridor,
+        availability: deriveChinaCorridorAvailability(conditions),
+        conditions,
+      };
+    }),
   };
+}
+
+export function parseChinaCorridorWirePayload(
+  payloadJson: string,
+): ChinaCorridorControlTowerResponse {
+  const parsed: unknown = JSON.parse(payloadJson);
+  const corridors = typeof parsed === 'object' && parsed !== null
+    ? (parsed as { corridors?: unknown }).corridors
+    : null;
+  if (
+    typeof parsed !== 'object'
+    || parsed === null
+    || typeof (parsed as { generatedAt?: unknown }).generatedAt !== 'string'
+    || !Array.isArray(corridors)
+    || corridors.length !== CHINA_LOGISTICS_CORRIDOR_IDS.length
+  ) {
+    throw new Error('Invalid China corridor control-tower response');
+  }
+  const corridorIds = new Set(corridors.map((corridor) =>
+    typeof corridor === 'object' && corridor !== null
+      ? (corridor as { id?: unknown }).id
+      : null));
+  if (
+    corridorIds.size !== CHINA_LOGISTICS_CORRIDOR_IDS.length
+    || !CHINA_LOGISTICS_CORRIDOR_IDS.every((id) => corridorIds.has(id))
+  ) {
+    throw new Error('Invalid China corridor control-tower response');
+  }
+  return validateChinaCorridorProvenanceForSurface(
+    parsed as ChinaCorridorControlTowerResponse,
+    'ui',
+  );
 }

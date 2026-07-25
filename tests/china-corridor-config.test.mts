@@ -31,6 +31,11 @@ describe('China logistics corridor configuration (#5578)', () => {
         assert.ok(Number.isFinite(node.lat));
         assert.ok(Number.isFinite(node.lon));
         assert.ok(node.sourceOwner.length > 0);
+        assert.equal(
+          resolveCorridorForPoint(node),
+          corridor.id,
+          `${node.id} must remain inside only its reviewed corridor boundary`,
+        );
       }
     }
   });
@@ -77,6 +82,8 @@ describe('China logistics corridor configuration (#5578)', () => {
 
     assert.equal(resolveCorridorForPoint({ lat: 25.5, lon: 115.0 }), null);
     assert.equal(resolveCorridorForPoint({ lat: 35.0, lon: 113.0 }), null);
+    assert.equal(resolveCorridorForPoint({ lat: 21.0285, lon: 105.8542 }), null);
+    assert.equal(resolveCorridorForPoint({ lat: 23.8103, lon: 90.4125 }), null);
     assert.equal(resolveCorridorForPoint({ lat: Number.NaN, lon: 121 }), null);
   });
 

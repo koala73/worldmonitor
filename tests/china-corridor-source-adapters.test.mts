@@ -45,6 +45,8 @@ describe('China corridor source adapters (#5578)', () => {
   it('assigns hazards only through reviewed coordinates and the explicit HKO scope', () => {
     const bundle = buildChinaCorridorSourceBundle({
       westernPacificCyclones: {
+        dataAvailable: true,
+        latestObservationAt: Date.parse('2026-07-25T10:00:00.000Z'),
         events: [
           {
             id: 'inside-gba',
@@ -59,6 +61,22 @@ describe('China corridor source adapters (#5578)', () => {
             title: 'Nearby but unassigned',
             lat: 35,
             lon: 113,
+            date: Date.parse('2026-07-25T10:00:00.000Z'),
+            sourceName: 'GDACS',
+          },
+          {
+            id: 'hanoi',
+            title: 'Hanoi event must not be assigned to the western corridor',
+            lat: 21.0285,
+            lon: 105.8542,
+            date: Date.parse('2026-07-25T10:00:00.000Z'),
+            sourceName: 'GDACS',
+          },
+          {
+            id: 'dhaka',
+            title: 'Dhaka event must not be assigned to the western corridor',
+            lat: 23.8103,
+            lon: 90.4125,
             date: Date.parse('2026-07-25T10:00:00.000Z'),
             sourceName: 'GDACS',
           },
@@ -79,7 +97,17 @@ describe('China corridor source adapters (#5578)', () => {
       ['china-greater-bay-area'],
     );
     assert.equal(signals.some((signal) => signal.selectorId === 'hazard:event:outside-reviewed-boundaries'), false);
+    assert.equal(signals.some((signal) => signal.selectorId === 'hazard:event:hanoi'), false);
+    assert.equal(signals.some((signal) => signal.selectorId === 'hazard:event:dhaka'), false);
     assert.equal(signals.find((signal) => signal.selectorId === 'hazard:hko-warnings')?.corridorIds, undefined);
+    const gbaCoverage = signals.find((signal) =>
+      signal.selectorId === 'hazard:western-pacific-coverage:china-greater-bay-area');
+    const westernCoverage = signals.find((signal) =>
+      signal.selectorId === 'hazard:western-pacific-coverage:china-western-land-sea-corridor');
+    assert.deepEqual(gbaCoverage?.corridorIds, ['china-greater-bay-area']);
+    assert.equal(gbaCoverage?.metrics.reviewedEventCount, 1);
+    assert.deepEqual(westernCoverage?.corridorIds, ['china-western-land-sea-corridor']);
+    assert.equal(westernCoverage?.metrics.reviewedEventCount, 0);
   });
 
   it('keeps transport and content freshness independent', () => {
@@ -107,6 +135,7 @@ describe('China corridor source adapters (#5578)', () => {
     }, ASSESSED_AT).families.power_energy.signals[0];
     assert.equal(annual?.observationTime, '2024-12-31T23:59:59Z');
     assert.equal(annual?.observationTimePrecision, 'year');
+    assert.equal(annual?.contentFreshness, 'stale');
 
     const monthly = buildChinaCorridorSourceBundle({
       energySpine: {
@@ -118,6 +147,7 @@ describe('China corridor source adapters (#5578)', () => {
     }, ASSESSED_AT).families.power_energy.signals[0];
     assert.equal(monthly?.observationTime, '2026-02-01T00:00:00.000Z');
     assert.equal(monthly?.observationTimePrecision, 'month');
+    assert.equal(monthly?.contentFreshness, 'current');
   });
 
   it('omits synthetic Comtrade YoY and CCFI change fields', () => {
@@ -149,6 +179,10 @@ describe('China corridor source adapters (#5578)', () => {
     const ccfi = bundle.families.trade.signals.find((signal) =>
       signal.selectorId === 'supply_chain:shipping:v2:CCFI');
     assert.equal(strategic?.metrics.yoyChange, undefined);
+    assert.equal(strategic?.contentFreshness, 'stale');
+    const comtrade = bundle.families.trade.signals.find((signal) =>
+      signal.selectorId === 'comtrade:reporter:156');
+    assert.equal(comtrade?.contentFreshness, 'stale');
     assert.equal(ccfi?.metrics.changePct, undefined);
     assert.equal(ccfi?.metrics.currentValue, 900);
   });

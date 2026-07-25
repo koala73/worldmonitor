@@ -4,11 +4,12 @@ import type {
   ServerContext,
 } from '../../../../src/generated/server/worldmonitor/supply_chain/v1/service_server';
 import {
+  createUnavailableChinaCorridorControlTowerResponse,
   validateChinaCorridorProvenanceForSurface,
   type ChinaCorridorControlTowerResponse,
 } from '../../../../shared/china-corridor-control-towers';
 import { CHINA_CORRIDOR_CONTROL_TOWERS_KEY } from '../../../_shared/cache-keys';
-import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJsonBatch } from '../../../_shared/redis';
 import { composeChinaCorridorControlTowers } from './china-corridor-control-towers';
 import {
   buildChinaCorridorSourceBundle,
@@ -40,6 +41,17 @@ export type ChinaCorridorCacheReader = (
   raw?: boolean,
 ) => Promise<unknown | null>;
 
+export type ChinaCorridorBatchCacheReader = (
+  keys: string[],
+  raw?: boolean,
+) => Promise<Map<string, unknown>>;
+
+function allCorridorsUnavailable(
+  response: ChinaCorridorControlTowerResponse,
+): boolean {
+  return response.corridors.every((corridor) => corridor.availability === 'unavailable');
+}
+
 async function readIsolated(
   read: ChinaCorridorCacheReader,
   key: string,
@@ -52,8 +64,21 @@ async function readIsolated(
 }
 
 export async function loadChinaCorridorRawSnapshots(
-  read: ChinaCorridorCacheReader = getCachedJson,
+  read?: ChinaCorridorCacheReader,
+  readBatch: ChinaCorridorBatchCacheReader = getCachedJsonBatch,
 ): Promise<ChinaCorridorRawSnapshots> {
+  if (read === undefined) {
+    let cached = new Map<string, unknown>();
+    try {
+      cached = await readBatch(Object.values(CHINA_CORRIDOR_SOURCE_KEYS), true);
+    } catch {
+      // Batch failure is represented as an all-missing source bundle.
+    }
+    return Object.fromEntries(
+      Object.entries(CHINA_CORRIDOR_SOURCE_KEYS).map(([field, key]) =>
+        [field, cached.get(key) ?? null]),
+    ) as ChinaCorridorRawSnapshots;
+  }
   const entries = await Promise.all(
     Object.entries(CHINA_CORRIDOR_SOURCE_KEYS).map(async ([field, key]) =>
       [field, await readIsolated(read, key)] as const),
@@ -63,13 +88,26 @@ export async function loadChinaCorridorRawSnapshots(
 
 export async function composeChinaCorridorSnapshot(
   assessedAt: string,
-  read: ChinaCorridorCacheReader = getCachedJson,
-): Promise<ChinaCorridorControlTowerResponse> {
-  const raw = await loadChinaCorridorRawSnapshots(read);
+  read?: ChinaCorridorCacheReader,
+  readBatch: ChinaCorridorBatchCacheReader = getCachedJsonBatch,
+): Promise<ChinaCorridorControlTowerResponse | null> {
+  const raw = await loadChinaCorridorRawSnapshots(read, readBatch);
   const response = composeChinaCorridorControlTowers(
     buildChinaCorridorSourceBundle(raw, assessedAt),
   );
-  return validateChinaCorridorProvenanceForSurface(response, 'cache_storage');
+  const validated = validateChinaCorridorProvenanceForSurface(response, 'cache_storage');
+  return allCorridorsUnavailable(validated)
+    ? null
+    : validated;
+}
+
+export function composeUnavailableChinaCorridorSnapshot(
+  assessedAt: string,
+): ChinaCorridorControlTowerResponse {
+  return validateChinaCorridorProvenanceForSurface(
+    composeChinaCorridorControlTowers(buildChinaCorridorSourceBundle({}, assessedAt)),
+    'cache_storage',
+  );
 }
 
 export function projectChinaCorridorWireResponse(
@@ -84,23 +122,49 @@ export function projectChinaCorridorWireResponse(
   };
 }
 
+export type ChinaCorridorSnapshotCache = (
+  key: string,
+  ttlSeconds: number,
+  fetcher: () => Promise<ChinaCorridorControlTowerResponse | null>,
+) => Promise<ChinaCorridorControlTowerResponse | null>;
+
+export async function resolveChinaCorridorSnapshot(
+  assessedAt: string,
+  cache: ChinaCorridorSnapshotCache = (key, ttlSeconds, fetcher) =>
+    cachedFetchJson(key, ttlSeconds, fetcher),
+  read?: ChinaCorridorCacheReader,
+  readBatch: ChinaCorridorBatchCacheReader = getCachedJsonBatch,
+): Promise<ChinaCorridorControlTowerResponse> {
+  let response: ChinaCorridorControlTowerResponse | null = null;
+  try {
+    response = await cache(
+      CHINA_CORRIDOR_CONTROL_TOWERS_KEY,
+      300,
+      () => composeChinaCorridorSnapshot(assessedAt, read, readBatch),
+    );
+  } catch {
+    // Re-read the current source seeds below; do not manufacture an empty cache hit.
+  }
+  if (response !== null && !allCorridorsUnavailable(response)) return response;
+
+  try {
+    response = await composeChinaCorridorSnapshot(assessedAt, read, readBatch);
+  } catch {
+    response = null;
+  }
+  return response ?? composeUnavailableChinaCorridorSnapshot(assessedAt);
+}
+
 export async function getChinaCorridorControlTowers(
   _ctx: ServerContext,
   _req: GetChinaCorridorControlTowersRequest,
 ): Promise<GetChinaCorridorControlTowersResponse> {
   const assessedAt = new Date().toISOString();
   try {
-    const response = await cachedFetchJson<ChinaCorridorControlTowerResponse>(
-      CHINA_CORRIDOR_CONTROL_TOWERS_KEY,
-      300,
-      () => composeChinaCorridorSnapshot(assessedAt),
-    );
-    return projectChinaCorridorWireResponse(
-      response ?? await composeChinaCorridorSnapshot(assessedAt, async () => null),
-    );
+    return projectChinaCorridorWireResponse(await resolveChinaCorridorSnapshot(assessedAt));
   } catch {
     return projectChinaCorridorWireResponse(
-      await composeChinaCorridorSnapshot(assessedAt, async () => null),
+      createUnavailableChinaCorridorControlTowerResponse(assessedAt),
     );
   }
 }
