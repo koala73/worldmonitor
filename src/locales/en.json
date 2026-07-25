@@ -180,8 +180,8 @@
       "tradeUnavailable": "Trade and supply-chain data are currently unavailable.",
       "energyUnavailable": "Energy data are currently unavailable.",
       "availabilityUnavailable": "Hazard and aviation availability data are currently unavailable.",
-      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
-      "policyPartial": "{{count}} official agencies are temporarily degraded.",
+      "policyUnavailable": "Unavailable",
+      "policyPartial": "Degraded: {{count}}",
       "status": {
         "loading": "Loading",
         "available": "Available",
