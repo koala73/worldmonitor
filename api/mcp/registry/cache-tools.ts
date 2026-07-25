@@ -109,11 +109,15 @@ function projectChinaMacroForMcp(value: unknown): unknown {
       category: observation.category,
       value: observation.hasValue ? observation.value : null,
       priorValue: observation.hasPriorValue ? observation.priorValue : null,
+      comparisonValue: observation.hasComparisonValue ? observation.comparisonValue : null,
+      comparisonBasis: observation.comparisonBasis,
       unit: observation.unit,
       observationDate: observation.observationDate,
       source: observation.source,
       stale: observation.stale,
       unavailableReason: observation.unavailableReason,
+      transportStatus: observation.transportStatus,
+      transportFailureReason: observation.transportFailureReason,
     })),
   };
 }
@@ -705,7 +709,7 @@ export const CACHE_TOOLS: ToolDef[] = [
   {
     name: 'get_economic_data',
     _outputBudgetBytes: 131072,
-    description: 'Macro economic indicators: Fed Funds rate (FRED), economic calendar events, the normalized China macro snapshot plus official NBS/PBoC release calendar, fuel prices, ECB FX rates, EU yield curve, earnings calendar, COT positioning, energy storage data, BIS household debt service ratio (DSR, quarterly, leading indicator of household financial stress across ~40 advanced economies), and BIS residential + commercial property price indices (real, quarterly).',
+    description: 'China macro: official-only 12-series; 5 NBS/SAFE ingestible, PBoC/GACC unavailable, no proxies; see launchReady/status. Retained values expose transportStatus and transportFailureReason independently. Other economic data includes Fed Funds (FRED), economic and official NBS/PBoC release calendars, fuel prices, ECB FX rates, EU yield curves, earnings, COT positioning, energy storage, BIS household debt service ratios, and BIS residential/commercial property prices.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -742,9 +746,12 @@ export const CACHE_TOOLS: ToolDef[] = [
           countryCode: { type: 'string' }, launchReady: { type: 'boolean' }, status: { type: 'string' },
           indicators: { type: 'array', items: { type: 'object', properties: {
             id: { type: 'string' }, label: { type: 'string' }, category: { type: 'string' },
-            value: { type: ['number', 'null'] }, priorValue: { type: ['number', 'null'] }, unit: { type: 'string' },
+            value: { type: ['number', 'null'] }, priorValue: { type: ['number', 'null'] },
+            comparisonValue: { type: ['number', 'null'] }, comparisonBasis: { type: 'string' },
+            unit: { type: 'string' },
             observationDate: { type: 'string' }, source: { type: 'string' },
             stale: { type: 'boolean' }, unavailableReason: { type: 'string' },
+            transportStatus: { type: 'string' }, transportFailureReason: { type: 'string' },
           } } },
         },
       },

@@ -196,6 +196,11 @@ function hasCompleteProvenance(observation) {
     && revision.sequence === expectedSequence
     && ['preliminary', 'original', 'revised', 'corrected'].includes(revision.state)
     && revision.state === expectedState
+    && (
+      revision.sequence === 1
+        ? revision.state === 'preliminary' || revision.state === 'original'
+        : revision.state === 'revised' || revision.state === 'corrected'
+    )
     && knownClaim(claims.supersession)
     && (
       hasExactKeys(supersession, ['state'])
@@ -223,8 +228,9 @@ function hasCompleteProvenance(observation) {
     && ['fresh', 'stale', 'error', 'blocked'].includes(transport.state)
     && isIsoInstant(transport.assessedAt)
     && isIsoInstant(transport.lastSuccessAt)
-    && transport.lastSuccessAt === observation.retrievalTime
     && Date.parse(transport.assessedAt) >= Date.parse(observation.retrievalTime)
+    && Date.parse(transport.lastSuccessAt) >= Date.parse(observation.retrievalTime)
+    && Date.parse(transport.lastSuccessAt) <= Date.parse(transport.assessedAt)
     && (
       typeof observation.transportStatus !== 'string'
       || transport.state === observation.transportStatus
@@ -404,7 +410,7 @@ function hasValidSourceDecisions(sourceDecisions, generatedAtMs, now) {
   });
 }
 
-export function validateChinaMacroSnapshot(snapshot, now = Date.now()) {
+export function validateChinaMacroTransportSnapshot(snapshot, now = Date.now()) {
   const generatedAtMs = Date.parse(snapshot?.generatedAt);
   const required = CHINA_MACRO_REQUIRED_SERIES.map((seriesId) => (
     snapshot?.observations?.filter((item) => item?.seriesId === seriesId) ?? []
@@ -412,7 +418,6 @@ export function validateChinaMacroSnapshot(snapshot, now = Date.now()) {
   if (
     snapshot?.schemaVersion !== CHINA_MACRO_SCHEMA_VERSION
     || snapshot?.countryCode !== 'CN'
-    || snapshot?.launchReady !== true
     || !Array.isArray(snapshot?.observations)
     || snapshot.observations.length !== CHINA_MACRO_SERIES_IDS.length
     || snapshot.observations.some((observation, index) => (
@@ -430,8 +435,11 @@ export function validateChinaMacroSnapshot(snapshot, now = Date.now()) {
   ) return false;
   const requiredObservations = required.map(([observation]) => observation);
   const transportLastSuccessAt = Date.parse(snapshot.transportLastSuccessAt);
-  const requiredRetrievalTimes = requiredObservations.map((observation) => observation.retrievalTime);
-  const oldestRequiredTransport = [...requiredRetrievalTimes].sort()[0];
+  const requiredTransportTimes = requiredObservations.map((observation) => (
+    observation.provenance?.claims?.transport_freshness?.value?.lastSuccessAt
+    || observation.retrievalTime
+  ));
+  const oldestRequiredTransport = [...requiredTransportTimes].sort()[0];
   const requiredPeriods = requiredObservations.map((observation) => observation.observationPeriod).sort();
   const sourceCohorts = [
     [CHINA_MACRO_PUBLISHER_IDS.nbs, requiredObservations.filter((observation) => observation.seriesId.startsWith('nbs_'))],
@@ -474,13 +482,34 @@ export function validateChinaMacroSnapshot(snapshot, now = Date.now()) {
       && observation.releaseTime === ''
       && observation.retrievalTime === '';
   });
+  const expectedLaunchReady = requiredObservations.every((observation) => (
+    observation
+      && Number.isFinite(observation.value)
+      && observation.stale !== true
+      && !observation.unavailableReason
+      && typeof observation.observationPeriod === 'string'
+      && observation.observationPeriod.length > 0
+      && typeof observation.releaseTime === 'string'
+      && observation.releaseTime.length > 0
+      && hasValidTemporalOrder(observation, generatedAtMs)
+      && hasCompleteProvenance(observation)
+      && observation.vintages.every((vintage) => hasValidTemporalOrder(vintage, generatedAtMs))
+      && hasValidVintageLineage(observation)
+  ));
+  const hasAvailableObservation = snapshot.observations.some((observation) => (
+    Number.isFinite(observation?.value)
+  ));
+  const expectedStatus = expectedLaunchReady
+    ? (hasDegradedObservation || hasBlockedSource ? 'degraded' : 'ready')
+    : (hasAvailableObservation ? 'degraded' : 'unavailable');
   if (
-    snapshot.status !== (hasDegradedObservation || hasBlockedSource ? 'degraded' : 'ready')
+    snapshot.launchReady !== expectedLaunchReady
+    || snapshot.status !== expectedStatus
     || !isIsoInstant(snapshot.transportLastSuccessAt)
     || transportLastSuccessAt > generatedAtMs
     || transportLastSuccessAt > now + MAX_CLOCK_SKEW_MS
     || snapshot.transportLastSuccessAt !== oldestRequiredTransport
-    || snapshot.contentObservationDate !== requiredPeriods[0]
+    || snapshot.contentObservationDate !== (expectedLaunchReady ? requiredPeriods[0] : '')
     || snapshot.latestObservationDate !== requiredPeriods.at(-1)
     || JSON.stringify(snapshot.pillars) !== JSON.stringify(buildChinaMacroPillars(snapshot.observations))
     || !allObservationsValid
@@ -488,21 +517,32 @@ export function validateChinaMacroSnapshot(snapshot, now = Date.now()) {
       const decision = snapshot.sourceDecisions.find((entry) => entry.publisherId === publisherId);
       return decision?.status === 'accepted'
         ? observations.some((observation) => (
-          (
-            observation.retrievalTime !== decision.checkedAt
-            && !observation.vintages.some((vintage) => vintage.retrievalTime === decision.checkedAt)
-          )
+          observation.provenance?.claims?.transport_freshness?.value?.lastSuccessAt !== decision.checkedAt
           || observation.transportStatus !== 'fresh'
           || observation.transportFailureReason !== ''
         ))
         : observations.some((observation) => (
           observation.transportStatus !== 'error'
           || observation.transportFailureReason !== decision?.reason
-          || Date.parse(observation.retrievalTime) >= generatedAtMs
+          || Date.parse(
+            observation.provenance?.claims?.transport_freshness?.value?.lastSuccessAt,
+          ) >= Date.parse(decision?.checkedAt)
         ));
     })
   ) return false;
 
+  return true;
+}
+
+export function validateChinaMacroSnapshot(snapshot, now = Date.now()) {
+  if (
+    snapshot?.launchReady !== true
+    || !validateChinaMacroTransportSnapshot(snapshot, now)
+  ) return false;
+  const generatedAtMs = Date.parse(snapshot.generatedAt);
+  const requiredObservations = CHINA_MACRO_REQUIRED_SERIES.map((seriesId) => (
+    snapshot.observations.find((item) => item?.seriesId === seriesId)
+  ));
   return requiredObservations.every((observation) => (
     observation
       && Number.isFinite(observation.value)
@@ -538,8 +578,53 @@ export function chinaMacroTransportMeta(snapshot, now = Date.now()) {
     : null;
 }
 
+export async function recordChinaMacroTransportFreshness(
+  snapshot,
+  writeMetadataFn = writeFreshnessMetadataSafely,
+  now = Date.now(),
+) {
+  if (!validateChinaMacroTransportSnapshot(snapshot, now)) {
+    throw new Error('China macro snapshot is not a structurally valid official transport snapshot');
+  }
+  const transportAt = chinaMacroTransportMeta(snapshot, now);
+  if (transportAt == null) {
+    throw new Error('China macro snapshot is missing a valid transportLastSuccessAt');
+  }
+  await writeMetadataFn(
+    'economic',
+    'china-macro-transport',
+    CHINA_MACRO_REQUIRED_SERIES.length,
+    'china-macro-required-official-sources-v2',
+    CHINA_MACRO_TTL_SECONDS,
+    transportAt,
+  );
+}
+
+export async function recordChinaMacroCompletedRun(
+  snapshot,
+  writeMetadataFn = writeFreshnessMetadataSafely,
+  now = Date.now(),
+) {
+  if (!validateChinaMacroTransportSnapshot(snapshot, now)) {
+    throw new Error('China macro snapshot is not a structurally valid completed run');
+  }
+  await writeMetadataFn(
+    'economic',
+    'china-macro-complete',
+    CHINA_MACRO_REQUIRED_SERIES.length,
+    'china-macro-required-official-sources-v2',
+    CHINA_MACRO_TTL_SECONDS,
+    now,
+  );
+}
+
 if (process.argv[1]?.endsWith('seed-china-macro.mjs')) {
-  runSeed('economic', 'china-macro', CHINA_MACRO_KEY, fetchChinaMacroSnapshot, {
+  const fetchAndRecordTransport = async () => {
+    const snapshot = await fetchChinaMacroSnapshot();
+    await recordChinaMacroTransportFreshness(snapshot);
+    return snapshot;
+  };
+  runSeed('economic', 'china-macro', CHINA_MACRO_KEY, fetchAndRecordTransport, {
     ttlSeconds: CHINA_MACRO_TTL_SECONDS,
     lockTtlMs: 210_000,
     fetchPhaseTimeoutMs: 150_000,
@@ -550,19 +635,7 @@ if (process.argv[1]?.endsWith('seed-china-macro.mjs')) {
     maxStaleMin: CHINA_MACRO_MAX_TRANSPORT_AGE_MIN,
     contentMeta: chinaMacroContentMeta,
     maxContentAgeMin: CHINA_MACRO_MAX_CONTENT_AGE_MIN,
-    afterPublish: async (data) => {
-      const transportAt = chinaMacroTransportMeta(data);
-      if (transportAt == null) {
-        throw new Error('China macro snapshot is missing a valid transportLastSuccessAt');
-      }
-      await writeFreshnessMetadataSafely(
-        'economic',
-        'china-macro-transport',
-        CHINA_MACRO_REQUIRED_SERIES.length,
-        'china-macro-required-official-sources-v2',
-        CHINA_MACRO_TTL_SECONDS,
-        transportAt,
-      );
-    },
+    afterPublish: async (data) => recordChinaMacroCompletedRun(data),
+    afterPreservedValidationSkip: async (data) => recordChinaMacroCompletedRun(data),
   });
 }

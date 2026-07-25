@@ -66,15 +66,20 @@ export function buildChinaMacroSnapshot({
     .filter(Boolean)
     .sort();
   const hasUnavailable = observations.some((observation) => !Number.isFinite(observation.value));
-  const requiredRetrievalTimes = CHINA_MACRO_REQUIRED_SERIES
-    .map((seriesId) => observations.find((item) => item.seriesId === seriesId)?.retrievalTime)
+  const requiredTransportTimes = CHINA_MACRO_REQUIRED_SERIES
+    .map((seriesId) => {
+      const observation = observations.find((item) => item.seriesId === seriesId);
+      return observation?.provenance
+        ?.claims?.transport_freshness?.value?.lastSuccessAt
+        || observation?.retrievalTime;
+    })
     .filter((value) => Number.isFinite(Date.parse(value)))
     .sort();
   return {
     schemaVersion: CHINA_MACRO_SCHEMA_VERSION,
     countryCode: 'CN',
     generatedAt,
-    transportLastSuccessAt: transportLastSuccessAt || requiredRetrievalTimes[0] || '',
+    transportLastSuccessAt: transportLastSuccessAt || requiredTransportTimes[0] || '',
     status: launchReady
       ? (hasUnavailable ? 'degraded' : 'ready')
       : (observations.some((observation) => Number.isFinite(observation.value)) ? 'degraded' : 'unavailable'),

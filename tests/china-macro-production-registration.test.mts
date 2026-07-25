@@ -54,7 +54,7 @@ describe('China macro production registration', () => {
     const source = read('scripts/seed-bundle-macro.mjs');
     assert.match(
       source,
-      /\{ label: 'China-Macro', script: 'seed-china-macro\.mjs', seedMetaKey: 'economic:china-macro', canonicalKey: CHINA_MACRO_CACHE_KEY, requireCanonical: true, intervalMs: 36 \* HOUR, timeoutMs: 240_000 \}/,
+      /\{ label: 'China-Macro', script: 'seed-china-macro\.mjs', seedMetaKey: 'economic:china-macro', freshnessMetaKey: 'seed-meta:economic:china-macro-transport', completionMetaKey: 'seed-meta:economic:china-macro-complete', canonicalKey: CHINA_MACRO_CACHE_KEY, requireCanonical: true, intervalMs: 36 \* HOUR, timeoutMs: 240_000 \}/,
     );
     assert.match(source, /script:\s*'seed-china-release-calendar\.mjs'/);
   });
@@ -89,6 +89,13 @@ describe('China macro production registration', () => {
     const seed = read('scripts/seed-china-macro.mjs');
     assert.match(seed, /lockTtlMs:\s*210_000/);
     assert.match(seed, /fetchPhaseTimeoutMs:\s*150_000/);
+    assert.match(
+      seed,
+      /const fetchAndRecordTransport = async \(\) => \{[\s\S]*await fetchChinaMacroSnapshot\(\);[\s\S]*await recordChinaMacroTransportFreshness\(snapshot\);[\s\S]*runSeed\('economic', 'china-macro', CHINA_MACRO_KEY, fetchAndRecordTransport,/,
+      'transport freshness must be recorded after fetch and before canonical validation',
+    );
+    assert.match(seed, /afterPublish:\s*async \(data\) => recordChinaMacroCompletedRun\(data\)/);
+    assert.match(seed, /afterPreservedValidationSkip:\s*async \(data\) => recordChinaMacroCompletedRun\(data\)/);
     const bundle = read('scripts/seed-bundle-macro.mjs');
     assert.match(bundle, /China-Macro[\s\S]*timeoutMs:\s*240_000/);
     assert.ok(150_000 < 210_000);

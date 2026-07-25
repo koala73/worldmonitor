@@ -220,9 +220,11 @@ function validBoundProvenance(row: JsonRecord, expectedSeriesId?: string): boole
     && revision.vintageId === vintageId
     && revision.sequence === row.sequence
     && revision.state === row.state
-    && transport.lastSuccessAt === row.retrievalTime
+    && isIsoInstant(transport.lastSuccessAt)
     && isIsoInstant(transport.assessedAt)
     && Date.parse(asString(transport.assessedAt)) >= Date.parse(asString(row.retrievalTime))
+    && Date.parse(asString(transport.lastSuccessAt)) >= Date.parse(asString(row.retrievalTime))
+    && Date.parse(asString(transport.lastSuccessAt)) <= Date.parse(asString(transport.assessedAt))
     && (
       typeof row.transportStatus !== 'string'
       || transport.state === row.transportStatus
@@ -323,7 +325,8 @@ function normalizeProvenanceForRead(
   const provenance = structuredClone(asRecord(value));
   const claims = asRecord(provenance.claims);
   const assessedAt = new Date(now).toISOString();
-  const lastSuccessAtMs = Date.parse(retrievalTime);
+  const transport = asRecord(asRecord(claims.transport_freshness).value);
+  const lastSuccessAtMs = Date.parse(asString(transport.lastSuccessAt) || retrievalTime);
   const transportStale = !Number.isFinite(lastSuccessAtMs)
     || now - lastSuccessAtMs > CHINA_MACRO_MAX_TRANSPORT_AGE_MIN * 60_000;
   const effectiveTransportStatus = transportStatus === 'error' || transportStatus === 'blocked'

@@ -19,8 +19,11 @@ import {
 } from '../scripts/china-macro/adapters.mjs';
 import {
   CHINA_MACRO_KEY,
+  CHINA_MACRO_TTL_SECONDS,
   chinaMacroContentMeta,
   chinaMacroTransportMeta,
+  recordChinaMacroCompletedRun,
+  recordChinaMacroTransportFreshness,
   validateChinaMacroSnapshot,
 } from '../scripts/seed-china-macro.mjs';
 
@@ -168,6 +171,35 @@ describe('China official macro source adapters', () => {
     assert.deepEqual(nextPeriod.vintages.map((vintage) => vintage.value), [5.3, 5.1, 5.4]);
   });
 
+  it('starts first-seen corrected and revised releases as original lineage entries', () => {
+    for (const prefix of ['Corrected', 'Revised']) {
+      const firstSeen = parseNbsIndustrialRelease(
+        fixture('nbs-industrial.html').replace(
+          'Industrial Production Operation in June 2026',
+          `${prefix} Industrial Production Operation in June 2026`,
+        ),
+        { retrievalTime },
+      );
+      assert.equal(firstSeen.revisionState, 'original');
+      assert.equal(firstSeen.revisionSequence, 1);
+      assert.equal(firstSeen.provenance.claims.revision.value.state, 'original');
+      assert.equal(firstSeen.vintages[0].state, 'original');
+    }
+    for (const prefix of ['更正：', '修订：']) {
+      const firstSeen = parseSafeReserveRelease(
+        fixture('safe-reserves.html').replace(
+          '外汇储备规模数据',
+          `${prefix}外汇储备规模数据`,
+        ),
+        { retrievalTime },
+      );
+      assert.equal(firstSeen.revisionState, 'original');
+      assert.equal(firstSeen.revisionSequence, 1);
+      assert.equal(firstSeen.provenance.claims.revision.value.state, 'original');
+      assert.equal(firstSeen.vintages[0].state, 'original');
+    }
+  });
+
   it('keeps preliminary, revised, corrected, and superseded states in one immutable lineage', () => {
     const preliminaryHtml = fixture('nbs-industrial.html').replace(
       'Industrial Production Operation in June 2026',
@@ -255,6 +287,12 @@ describe('China official macro source adapters', () => {
         previousObservation: june,
       },
     );
+    july.transportStatus = 'error';
+    july.transportFailureReason = 'HTTP_503';
+    july.provenance.claims.transport_freshness.value.state = 'error';
+    july.vintages.find(
+      (vintage) => vintage.vintageId === july.vintageId,
+    ).provenance.claims.transport_freshness.value.state = 'error';
     const juneCorrection = parseNbsIndustrialRelease(
       fixture('nbs-industrial.html')
         .replace(
@@ -263,13 +301,43 @@ describe('China official macro source adapters', () => {
         )
         .replace('increased by 5.3%', 'increased by 5.1%'),
       {
-        retrievalTime: '2026-08-10T14:30:00.000Z',
+        retrievalTime: '2026-08-13T14:30:00.000Z',
         previousObservation: july,
       },
     );
     assert.equal(juneCorrection.observationPeriod, '2026-07');
     assert.equal(juneCorrection.value, 5.4);
     assert.equal(juneCorrection.vintageId, july.vintageId);
+    assert.equal(juneCorrection.retrievalTime, '2026-08-09T14:30:00.000Z');
+    assert.equal(juneCorrection.transportStatus, 'fresh');
+    assert.equal(juneCorrection.transportFailureReason, '');
+    assert.deepEqual(
+      juneCorrection.provenance.claims.transport_freshness.value,
+      {
+        state: 'fresh',
+        assessedAt: '2026-08-13T14:30:00.000Z',
+        lastSuccessAt: '2026-08-13T14:30:00.000Z',
+      },
+    );
+    assert.deepEqual(
+      juneCorrection.provenance.claims.content_freshness.value,
+      {
+        state: 'current',
+        assessedAt: '2026-08-13T14:30:00.000Z',
+        contentAsOf: '2026-07',
+      },
+    );
+    const retainedCurrentVintage = juneCorrection.vintages.find(
+      (vintage) => vintage.vintageId === juneCorrection.vintageId,
+    );
+    assert.deepEqual(
+      retainedCurrentVintage.provenance.claims.transport_freshness.value,
+      juneCorrection.provenance.claims.transport_freshness.value,
+    );
+    assert.deepEqual(
+      retainedCurrentVintage.provenance.claims.content_freshness.value,
+      juneCorrection.provenance.claims.content_freshness.value,
+    );
     assert.deepEqual(
       juneCorrection.vintages.map((vintage) => [
         vintage.observationPeriod,
@@ -290,7 +358,7 @@ describe('China official macro source adapters', () => {
       fetchFn: officialFetch(),
       onDecision: () => {},
     });
-    const generatedAt = '2026-08-10T14:30:00.000Z';
+    const generatedAt = '2026-08-13T14:30:00.000Z';
     const sourceDecisions = structuredClone(baseline.sourceDecisions);
     for (const decision of sourceDecisions) decision.checkedAt = generatedAt;
     const snapshot = buildChinaMacroSnapshot({
@@ -313,6 +381,11 @@ describe('China official macro source adapters', () => {
       sourceDecisions,
       generatedAt,
     });
+    assert.equal(snapshot.transportLastSuccessAt, generatedAt);
+    assert.equal(
+      chinaMacroTransportMeta(snapshot, Date.parse(generatedAt)),
+      Date.parse(generatedAt),
+    );
     assert.equal(validateChinaMacroSnapshot(snapshot, Date.parse(snapshot.generatedAt)), true);
   });
 
@@ -955,6 +1028,61 @@ describe('China official macro source adapters', () => {
     assert.equal(meta.oldestItemAt, meta.newestItemAt);
   });
 
+  it('records recovered transport before stale content fails canonical validation', async () => {
+    const staleContentNow = Date.parse('2027-01-25T14:30:00.000Z');
+    const snapshot = await fetchChinaMacroSnapshot({
+      now: staleContentNow,
+      readCachedFn: async () => null,
+      fetchFn: officialFetch(),
+      onDecision: () => {},
+    });
+    assert.equal(snapshot.launchReady, false);
+    assert.equal(validateChinaMacroSnapshot(snapshot, staleContentNow), false);
+
+    const writes = [];
+    await recordChinaMacroTransportFreshness(
+      snapshot,
+      async (...args) => { writes.push(args); },
+      staleContentNow,
+    );
+    assert.deepEqual(writes, [[
+      'economic',
+      'china-macro-transport',
+      5,
+      'china-macro-required-official-sources-v2',
+      CHINA_MACRO_TTL_SECONDS,
+      staleContentNow,
+    ]]);
+
+    await assert.rejects(
+      recordChinaMacroTransportFreshness(
+        {
+          generatedAt: snapshot.generatedAt,
+          transportLastSuccessAt: snapshot.transportLastSuccessAt,
+        },
+        async (...args) => { writes.push(args); },
+        staleContentNow,
+      ),
+      /structurally valid official transport snapshot/,
+    );
+    assert.equal(writes.length, 1);
+
+    const completionWrites = [];
+    await recordChinaMacroCompletedRun(
+      snapshot,
+      async (...args) => { completionWrites.push(args); },
+      staleContentNow,
+    );
+    assert.deepEqual(completionWrites, [[
+      'economic',
+      'china-macro-complete',
+      5,
+      'china-macro-required-official-sources-v2',
+      CHINA_MACRO_TTL_SECONDS,
+      staleContentNow,
+    ]]);
+  });
+
   it('keeps pillar aggregation fail-closed for incomparable or mixed official signals', () => {
     const observations = parseOfficialFixtures();
     const fixedAsset = observations.find(
@@ -1054,6 +1182,17 @@ describe('China official macro source adapters', () => {
     futureTransport.transportLastSuccessAt = '2099-01-01T00:00:00.000Z';
     assert.equal(validateChinaMacroSnapshot(futureTransport, now), false);
     assert.equal(chinaMacroTransportMeta(futureTransport, now), null);
+
+    const impossibleFirstRevision = structuredClone(snapshot);
+    const firstObservation = impossibleFirstRevision.observations[0];
+    firstObservation.revisionState = 'corrected';
+    firstObservation.provenance.claims.revision.value.state = 'corrected';
+    const firstVintage = firstObservation.vintages.find(
+      (vintage) => vintage.vintageId === firstObservation.vintageId,
+    );
+    firstVintage.state = 'corrected';
+    firstVintage.provenance.claims.revision.value.state = 'corrected';
+    assert.equal(validateChinaMacroSnapshot(impossibleFirstRevision, now), false);
 
     const mismatchedVintage = structuredClone(snapshot);
     mismatchedVintage.observations[0].vintages[0].sourceUrl = 'https://www.stats.gov.cn/english/PressRelease/';

@@ -1077,6 +1077,20 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       selected.data['china-macro'].indicators[0].id,
       'nbs_industrial_value_added_yoy',
     );
+    assert.equal(selected.data['china-macro'].indicators[0].comparisonValue, 5.3);
+    assert.equal(selected.data['china-macro'].indicators[0].comparisonBasis, 'year_over_year');
+    assert.equal(selected.data['china-macro'].indicators[0].transportStatus, 'fresh');
+    assert.equal(selected.data['china-macro'].indicators[0].transportFailureReason, '');
+    const settlement = selected.data['china-macro'].indicators.find(
+      (indicator) => indicator.id === 'safe_bank_fx_settlement',
+    );
+    assert.equal(settlement.comparisonValue, null);
+    assert.equal(settlement.comparisonBasis, 'not_available');
+    const blockedPboc = selected.data['china-macro'].indicators.find(
+      (indicator) => indicator.id === 'pboc_m2_yoy',
+    );
+    assert.equal(blockedPboc.transportStatus, 'blocked');
+    assert.equal(blockedPboc.transportFailureReason, 'ROBOTS_DISALLOW');
     assert.ok(!('observations' in selected.data['china-macro']));
     assert.ok(
       JSON.stringify(selected.data['china-macro']).length < 20_000,
@@ -1096,9 +1110,58 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       jsonrpc: '2.0', id: 702, method: 'tools/list', params: {},
     })).then((response) => response.json());
     const economic = tools.result.tools.find((tool) => tool.name === 'get_economic_data');
+    assert.match(economic.description, /official-only 12-series/i);
+    assert.match(economic.description, /no proxies/i);
+    assert.match(economic.description, /launchReady/i);
+    assert.doesNotMatch(economic.description, /NBS\/SAFE live/i);
     const chinaSchema = economic.outputSchema.properties.data.properties['china-macro'];
     assert.ok(chinaSchema.properties.indicators);
     assert.ok(!chinaSchema.properties.observations);
+    const indicatorSchema = chinaSchema.properties.indicators.items.properties;
+    assert.ok(indicatorSchema.comparisonValue);
+    assert.ok(indicatorSchema.comparisonBasis);
+    assert.ok(indicatorSchema.transportStatus);
+    assert.ok(indicatorSchema.transportFailureReason);
+  });
+
+  it('get_economic_data: China MCP projection keeps retained transport failures explicit', async () => {
+    const macro = await buildOfficialChinaMacroFixture();
+    const nbsDecision = macro.sourceDecisions.find(
+      (decision) => decision.publisherId === 'publisher:nbs-cn',
+    );
+    nbsDecision.status = 'blocked';
+    nbsDecision.reason = 'HTTP_503';
+    for (const observation of macro.observations.filter(
+      (row) => row.seriesId.startsWith('nbs_'),
+    )) {
+      observation.transportStatus = 'error';
+      observation.transportFailureReason = 'HTTP_503';
+      observation.provenance.claims.transport_freshness.value.state = 'error';
+      observation.provenance.claims.transport_freshness.value.assessedAt = macro.generatedAt;
+      const currentVintage = observation.vintages.find(
+        (vintage) => vintage.vintageId === observation.vintageId,
+      );
+      currentVintage.provenance.claims.transport_freshness.value.state = 'error';
+      currentVintage.provenance.claims.transport_freshness.value.assessedAt = macro.generatedAt;
+    }
+    mockCacheKeys({
+      'economic:china:macro:v2': macro,
+    }, {
+      'seed-meta:economic:china-macro-transport': {
+        fetchedAt: Date.now() - 60_000,
+        recordCount: 5,
+      },
+    });
+
+    const selected = await callTool('get_economic_data', { dataset: ['china-macro'] });
+    const industrial = selected.data['china-macro'].indicators.find(
+      (indicator) => indicator.id === 'nbs_industrial_value_added_yoy',
+    );
+    assert.equal(selected.data['china-macro'].launchReady, false);
+    assert.equal(selected.data['china-macro'].status, 'degraded');
+    assert.equal(industrial.value, 5.3);
+    assert.equal(industrial.transportStatus, 'error');
+    assert.equal(industrial.transportFailureReason, 'HTTP_503');
   });
 
   it('get_country_macro: countries filter narrows the ISO2-keyed maps', async () => {

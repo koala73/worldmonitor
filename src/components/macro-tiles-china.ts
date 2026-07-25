@@ -30,13 +30,16 @@ export function chinaTileHtml(indicator: ChinaMacroIndicator): string {
     && indicator.transportStatus !== 'fresh'
     ? `TRANSPORT_${indicator.transportStatus.toUpperCase()}`
     : '';
+  const direction = indicator.direction && indicator.direction !== 'unavailable'
+    ? indicator.direction
+    : '';
   const state = indicator.stale
     ? 'STALE'
     : (
       indicator.unavailableReason
       || indicator.transportFailureReason
       || transportProblem
-      || indicator.direction
+      || direction
       || (available ? 'LIVE' : 'UNAVAILABLE')
     );
   const stateColor = indicator.stale
@@ -48,7 +51,7 @@ export function chinaTileHtml(indicator: ChinaMacroIndicator): string {
       || !available
       || indicator.direction === 'weakening'
       ? '#e74c3c'
-      : indicator.direction === 'unchanged' || indicator.direction === 'unavailable'
+      : indicator.direction === 'unchanged'
         ? 'var(--text-dim)'
         : '#27ae60'
     );

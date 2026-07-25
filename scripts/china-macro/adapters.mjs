@@ -302,7 +302,9 @@ function completeObservation(base, previousObservation) {
     ? String(latestPeriod?.vintage.state || marker)
     : latestPeriod
       ? (marker === 'corrected' ? 'corrected' : 'revised')
-      : marker;
+      : marker === 'corrected' || marker === 'revised'
+        ? 'original'
+        : marker;
   const observation = {
     ...nextBase,
     revisionState,
@@ -329,10 +331,13 @@ function completeObservation(base, previousObservation) {
   }
   const vintages = priorVintages.slice(-MAX_VINTAGES_PER_SERIES);
   if (previous && previous.observationPeriod > observation.observationPeriod) {
-    return {
+    return markRetainedTransport({
       ...structuredClone(previous),
       vintages,
-    };
+    }, base.retrievalTime, {
+      state: 'fresh',
+      failureReason: '',
+    });
   }
   observation.vintages = vintages;
   return observation;
@@ -558,8 +563,18 @@ function unavailableObservation(definition, reason) {
   };
 }
 
-function markPreservedTransportFailure(previousObservation, checkedAt, reason) {
+function markRetainedTransport(previousObservation, checkedAt, {
+  state,
+  failureReason,
+}) {
   const observation = structuredClone(previousObservation);
+  const previousLastSuccessAt = observation.provenance
+    ?.claims?.transport_freshness?.value?.lastSuccessAt;
+  const lastSuccessAt = state === 'fresh'
+    ? checkedAt
+    : typeof previousLastSuccessAt === 'string' && previousLastSuccessAt
+      ? previousLastSuccessAt
+      : observation.retrievalTime;
   const stale = isChinaMacroObservationStale(
     observation.seriesId,
     observation.observationPeriod,
@@ -567,8 +582,8 @@ function markPreservedTransportFailure(previousObservation, checkedAt, reason) {
   );
   observation.stale = stale;
   observation.unavailableReason = stale ? 'STALE_OBSERVATION' : '';
-  observation.transportStatus = 'error';
-  observation.transportFailureReason = reason;
+  observation.transportStatus = state;
+  observation.transportFailureReason = failureReason;
   if (stale) {
     observation.direction = 'unavailable';
     observation.directionReason = 'STALE_OBSERVATION';
@@ -577,9 +592,9 @@ function markPreservedTransportFailure(previousObservation, checkedAt, reason) {
   const updateFreshness = (provenance) => {
     if (!isRecord(provenance?.claims)) return;
     provenance.claims.transport_freshness = known({
-      state: 'error',
+      state,
       assessedAt: checkedAt,
-      lastSuccessAt: observation.retrievalTime,
+      lastSuccessAt,
     });
     provenance.claims.content_freshness = known({
       state: stale ? 'stale' : 'current',
@@ -614,7 +629,10 @@ function preserveFailedRequiredSource({
   if (!canPreserve) throw requiredSourceError(source, error);
   const reason = reasonFor(error);
   return previous.map((observation) => (
-    markPreservedTransportFailure(observation, checkedAt, reason)
+    markRetainedTransport(observation, checkedAt, {
+      state: 'error',
+      failureReason: reason,
+    })
   ));
 }
 

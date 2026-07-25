@@ -80,6 +80,17 @@ describe('MacroTilesPanel China launch surface', () => {
     assert.match(html, /Released 2026-07-16T02:00:00\.000Z/);
     assert.match(html, /original/);
     assert.match(html, /National Bureau of Statistics of China/);
+    assert.match(html, />strengthening<\/span>/i);
+
+    const settlement = normalized.indicators.find(
+      (indicator) => indicator.id === 'safe_bank_fx_settlement',
+    );
+    assert.ok(settlement);
+    assert.equal(settlement.hasValue, true);
+    assert.equal(settlement.direction, 'unavailable');
+    const settlementHtml = chinaTileHtml(settlement);
+    assert.match(settlementHtml, />LIVE<\/span>/);
+    assert.doesNotMatch(settlementHtml, />UNAVAILABLE<\/span>/);
 
     const unavailableHtml = chinaTileHtml({
       ...industrial,
@@ -141,6 +152,47 @@ describe('MacroTilesPanel China launch surface', () => {
       JSON.parse(reserves.vintages.find((vintage) => vintage.vintageId === reserves.vintageId)?.provenanceJson ?? '')
         .claims.content_freshness.value.state,
       'stale',
+    );
+
+    const recoveredAt = '2026-08-01T14:30:00.000Z';
+    const recovered = structuredClone(await buildOfficialChinaMacroFixture());
+    recovered.generatedAt = recoveredAt;
+    recovered.transportLastSuccessAt = recoveredAt;
+    const recoveredIndustrial = recovered.observations.find(
+      (observation: { seriesId: string }) =>
+        observation.seriesId === 'nbs_industrial_value_added_yoy',
+    );
+    recoveredIndustrial.provenance.claims.transport_freshness.value = {
+      state: 'fresh',
+      assessedAt: recoveredAt,
+      lastSuccessAt: recoveredAt,
+    };
+    recoveredIndustrial.provenance.claims.content_freshness.value.assessedAt = recoveredAt;
+    const recoveredVintage = recoveredIndustrial.vintages.find(
+      (vintage: { vintageId: string }) =>
+        vintage.vintageId === recoveredIndustrial.vintageId,
+    );
+    recoveredVintage.provenance.claims.transport_freshness.value = {
+      state: 'fresh',
+      assessedAt: recoveredAt,
+      lastSuccessAt: recoveredAt,
+    };
+    recoveredVintage.provenance.claims.content_freshness.value.assessedAt = recoveredAt;
+    const recoveredNormalized = normalizeHydratedChina(
+      recovered,
+      calendar,
+      Date.parse(recoveredAt),
+    );
+    assert.ok(recoveredNormalized);
+    const normalizedIndustrial = recoveredNormalized.indicators.find(
+      (indicator) => indicator.id === 'nbs_industrial_value_added_yoy',
+    );
+    assert.equal(normalizedIndustrial?.retrievalTime, retrievalTime);
+    assert.equal(normalizedIndustrial?.transportStatus, 'fresh');
+    assert.equal(
+      JSON.parse(normalizedIndustrial?.provenanceJson ?? '')
+        .claims.transport_freshness.value.lastSuccessAt,
+      recoveredAt,
     );
   });
 
