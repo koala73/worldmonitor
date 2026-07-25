@@ -1054,14 +1054,18 @@ export async function fetchCrossStraitActivitySnapshot({
     }
   }
 
-  const primaryCandidates = [
+  const primaryPool = [
     ...latestCandidates.values(),
     ...unseenBackfillCandidates.values(),
-  ].slice(0, MND_MAX_DETAIL_REQUESTS_PER_RUN - MND_REFRESH_DETAIL_REQUESTS_PER_RUN);
+  ].slice(0, MND_MAX_DETAIL_REQUESTS_PER_RUN);
   const refreshCandidates = rotatingRefreshCandidates(
     previousMnd,
-    new Set(primaryCandidates.map((row) => row.sourceUrl)),
+    new Set(primaryPool.map((row) => row.sourceUrl)),
     now,
+  );
+  const primaryCandidates = primaryPool.slice(
+    0,
+    MND_MAX_DETAIL_REQUESTS_PER_RUN - refreshCandidates.length,
   );
   const candidates = [...primaryCandidates, ...refreshCandidates]
     .slice(0, MND_MAX_DETAIL_REQUESTS_PER_RUN);
@@ -1093,9 +1097,12 @@ export async function fetchCrossStraitActivitySnapshot({
   }
 
   const japanOutcome = await japanOutcomePromise;
+  const hasHardMndError = mndErrors.some(
+    (code) => code !== 'OUTBOUND_BUDGET_EXHAUSTED',
+  );
   const mndOutcome = {
     ok: discoveredCount > 0
-      && mndErrors.length === 0
+      && !hasHardMndError
       && (candidates.length === 0 || parsedMnd.length > 0),
     requestCount,
     observations: parsedMnd,

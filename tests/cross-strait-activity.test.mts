@@ -38,6 +38,15 @@ const fixtureRoot = resolve(import.meta.dirname, 'fixtures/cross-strait-activity
 const fixture = (name: string) => readFileSync(resolve(fixtureRoot, name), 'utf8');
 const retrievedAt = '2026-07-25T08:30:00.000Z';
 
+function mndListWithCount(count: number): string {
+  return `<div class="wrap-page3">${Array.from({ length: count }, (_, index) => `
+    <a href="/en/News/PLAAct/${90_000 + index}" class="news_list">
+      <h5 class="date">2026.07.25</h5>
+      <div>PLA activities in the waters and airspace around Taiwan</div>
+    </a>`).join('')}
+  </div>`;
+}
+
 function mndObservationForDay(day: number, aircraft = day) {
   const date = new Date(Date.UTC(2026, 3, day, 22));
   const reportingDay = date.toISOString().slice(0, 10);
@@ -609,6 +618,56 @@ describe('quantified cross-Strait activity (#5575)', () => {
     assert.ok(mndCalls.length < MND_MAX_LIST_PAGES_PER_BACKFILL_RUN + MND_MAX_DETAIL_REQUESTS_PER_RUN);
     assert.ok(clock <= MND_OUTBOUND_BUDGET_MS);
     assert.equal(snapshot.sources[0].requestCount, mndCalls.length);
+  });
+
+  it('keeps a partial MND collection fresh when only the outbound budget stops more work', async () => {
+    let budgetCheck = 0;
+    const list = mndListWithCount(MND_MAX_DETAIL_REQUESTS_PER_RUN);
+    const fetchFn = async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('mod.go.jp')) return new Response(fixture('jmod-index.html'));
+      if (url.includes('plaactlist')) return new Response(list);
+      return new Response(fixture('mnd-detail.html'));
+    };
+    const snapshot = await fetchCrossStraitActivitySnapshot({
+      fetchFn,
+      previousSnapshot: null,
+      now: Date.parse(retrievedAt),
+      nowFn: () => {
+        budgetCheck += 1;
+        return budgetCheck < 4 ? 0 : MND_OUTBOUND_BUDGET_MS;
+      },
+      sleepFn: async () => {},
+    });
+    const mnd = snapshot.sources.find((source: { id: string }) => source.id === 'taiwan-mnd');
+
+    assert.equal(mnd?.transportStatus, 'fresh');
+    assert.ok(mnd?.errorCodes.includes('OUTBOUND_BUDGET_EXHAUSTED'));
+    assert.equal(
+      snapshot.observations.filter((row: { sourceId: string }) => row.sourceId === 'taiwan-mnd').length,
+      1,
+    );
+  });
+
+  it('uses the full detail budget on first-run backfill when there are no rows to refresh', async () => {
+    const list = mndListWithCount(MND_MAX_DETAIL_REQUESTS_PER_RUN);
+    const detailCalls: string[] = [];
+    const fetchFn = async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url.includes('mod.go.jp')) return new Response(fixture('jmod-index.html'));
+      if (url.includes('plaactlist')) return new Response(list);
+      detailCalls.push(url);
+      return new Response(fixture('mnd-detail.html'));
+    };
+
+    await fetchCrossStraitActivitySnapshot({
+      fetchFn,
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      sleepFn: async () => {},
+    });
+
+    assert.equal(detailCalls.length, MND_MAX_DETAIL_REQUESTS_PER_RUN);
   });
 
   it('reserves bounded, deduplicated rotating detail refreshes for older known reports', async () => {

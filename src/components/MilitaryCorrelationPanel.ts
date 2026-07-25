@@ -4,7 +4,10 @@ import { ensureHydrated, getHydratedData, waitForBootstrapSlowTier } from '@/ser
 import { getGeoHubById } from '@/services/geo-hub-index';
 import { h } from '@/utils/dom-utils';
 import type { CrossStraitActivitySnapshot } from '@/types/cross-strait-activity';
-import { buildCrossStraitActivityPanelModel } from './cross-strait-activity-summary';
+import {
+  isCrossStraitActivitySnapshot,
+  tryBuildCrossStraitActivityPanelModel,
+} from './cross-strait-activity-summary';
 
 function officialSourceLabel(label: string, sourceUrl: string): HTMLElement {
   if (!sourceUrl) return h('span', {}, label);
@@ -44,7 +47,8 @@ export class MilitaryCorrelationPanel extends CorrelationPanel {
 
   private buildOfficialActivitySupplement(): HTMLElement | null {
     if (!this.officialActivity) return null;
-    const model = buildCrossStraitActivityPanelModel(this.officialActivity);
+    const model = tryBuildCrossStraitActivityPanelModel(this.officialActivity);
+    if (!model) return null;
     const children: HTMLElement[] = [
       h('div', { style: 'display:flex;justify-content:space-between;gap:8px;align-items:baseline;' },
         h('strong', { style: 'font-size:11px;' }, model.heading),
@@ -131,24 +135,4 @@ export class MilitaryCorrelationPanel extends CorrelationPanel {
     this.officialActivitySupplement = undefined;
     this.requestRender();
   }
-}
-
-function isCrossStraitActivitySnapshot(value: unknown): value is CrossStraitActivitySnapshot {
-  if (typeof value !== 'object' || value === null) return false;
-  const snapshot = value as Partial<CrossStraitActivitySnapshot>;
-  return snapshot.schemaVersion === 1
-    && ['healthy', 'backfilling', 'degraded', 'unavailable'].includes(snapshot.status ?? '')
-    && Array.isArray(snapshot.observations)
-    && Array.isArray(snapshot.sources)
-    && typeof snapshot.coverage === 'object'
-    && snapshot.coverage !== null
-    && Number.isInteger(snapshot.coverage.usableMndReportingDays)
-    && typeof snapshot.baselines === 'object'
-    && snapshot.baselines !== null
-    && snapshot.sources.every((source) => (
-      (source.id === 'taiwan-mnd' || source.id === 'japan-mod')
-      && typeof source.publisher === 'string'
-      && (source.transportStatus === 'fresh' || source.transportStatus === 'error')
-      && Array.isArray(source.errorCodes)
-    ));
 }

@@ -3,7 +3,11 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
 
-import { buildCrossStraitActivityPanelModel } from '../src/components/cross-strait-activity-summary';
+import {
+  buildCrossStraitActivityPanelModel,
+  isCrossStraitActivitySnapshot,
+  tryBuildCrossStraitActivityPanelModel,
+} from '../src/components/cross-strait-activity-summary';
 import type { CrossStraitActivitySnapshot } from '../src/types/cross-strait-activity';
 
 const root = resolve(import.meta.dirname, '..');
@@ -114,6 +118,8 @@ describe('Force Posture official-activity supplement (#5575)', () => {
         },
       },
     } satisfies CrossStraitActivitySnapshot;
+    assert.equal(isCrossStraitActivitySnapshot(snapshot), true);
+    assert.ok(tryBuildCrossStraitActivityPanelModel(snapshot));
     const model = buildCrossStraitActivityPanelModel(snapshot);
 
     assert.equal(model.heading, 'Official activity claims');
@@ -298,6 +304,54 @@ describe('Force Posture official-activity supplement (#5575)', () => {
     const unavailable = buildCrossStraitActivityPanelModel({ ...snapshot, status: 'unavailable' });
     assert.equal(unavailable.sourceHealth?.state, 'unavailable');
     assert.match(unavailable.sourceHealth?.summary ?? '', /snapshot unavailable/);
+  });
+
+  it('rejects malformed nested cache snapshots and soft-fails the supplement model', () => {
+    const base = {
+      schemaVersion: 1,
+      generatedAt: '2026-07-25T09:00:00.000Z',
+      status: 'healthy',
+      sources: [],
+      coverage: {
+        usableMndReportingDays: 1,
+        earliestMndReportingDay: '2026-07-25',
+        latestMndReportingDay: '2026-07-25',
+        backfillComplete: false,
+      },
+      baselines: {
+        sourceId: 'taiwan-mnd',
+        semantics: 'prior-usable-reporting-days-excluding-current',
+        categories: {},
+      },
+    };
+    const missingReportingPeriod = {
+      ...base,
+      observations: [{
+        sourceId: 'taiwan-mnd',
+        reportingDay: '2026-07-25',
+        categories: {
+          plaAircraftSorties: 1,
+          planShips: 1,
+          officialShips: 1,
+          medianLineCrossings: 1,
+          adizEntries: 1,
+        },
+        sourceUrl: 'https://www.mnd.gov.tw/en/News/PLAAct/87151',
+      }],
+    };
+    const missingBaselineCategories = {
+      ...base,
+      observations: [],
+      baselines: {
+        ...base.baselines,
+        categories: undefined,
+      },
+    };
+
+    assert.equal(isCrossStraitActivitySnapshot(missingReportingPeriod), false);
+    assert.equal(tryBuildCrossStraitActivityPanelModel(missingReportingPeriod), null);
+    assert.equal(isCrossStraitActivitySnapshot(missingBaselineCategories), false);
+    assert.equal(tryBuildCrossStraitActivityPanelModel(missingBaselineCategories), null);
   });
 
   it('waits for slow-tier hydration before using the CDN-shielded fallback and rerendering', () => {
