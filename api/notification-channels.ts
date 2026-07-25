@@ -22,7 +22,7 @@ import {
 } from './_idempotency.js';
 import { assertNotificationWebhookRegistrationUrlSafe } from './_notification-webhook-ssrf';
 import { validateBearerToken } from '../server/auth-session';
-import { getEntitlements } from '../server/_shared/entitlement-check';
+import { getBillingVerificationDenial, getEntitlements } from '../server/_shared/entitlement-check';
 
 // Prefer explicit CONVEX_SITE_URL; fall back to deriving from CONVEX_URL (same pattern as notification-relay.cjs).
 const CONVEX_SITE_URL =
@@ -325,6 +325,21 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
   if (req.method === 'POST') {
     const ent = await notificationChannelsDeps.getEntitlements(session.userId);
     if (!ent || ent.features.tier < 1) {
+      // #5600: a transiently-unverifiable entitlement (Convex 5xx/timeout, or
+      // the day-0 window where a fresh purchase has not propagated) is not a
+      // free user. Answer it with the shared retryable contract — 503 +
+      // Retry-After + X-Billing-Verification — the same way the gateway,
+      // widget-agent, and MCP surfaces do, so the client can retry instead of
+      // rendering a terminal "upgrade to Pro" to someone who just paid.
+      const billingDenial = getBillingVerificationDenial(ent, corsHeaders, 1);
+      if (billingDenial) {
+        console.warn('[notification-channels] billing-verification denial', JSON.stringify({
+          status: billingDenial.status,
+          code: billingDenial.headers.get('X-Billing-Verification'),
+          userId: session.userId,
+        }));
+        return billingDenial;
+      }
       return json({
         error: 'pro_required',
         message: 'Real-time alerts are available on the Pro plan.',

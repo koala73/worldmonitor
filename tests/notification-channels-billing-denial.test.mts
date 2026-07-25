@@ -1,0 +1,194 @@
+/**
+ * #5600: the notification-channels POST gate flattened every sub-tier-1
+ * entitlement into a hard `pro_required` 403 — including the transient
+ * `verificationUnavailable` marker and the renewal-verification statuses that
+ * the shared contract (server/_shared/entitlement-check.ts) requires be
+ * answered with a retryable 503 + Retry-After.
+ *
+ * That is the surface the day-0 Pro activation wizard writes through, so a
+ * paying customer whose entitlement lookup was momentarily unverifiable saw
+ * "Real-time alerts are available on the Pro plan." and the client treated the
+ * denial as final.
+ */
+import assert from 'node:assert/strict';
+import { afterEach, describe, it, mock } from 'node:test';
+
+const originalEnv = { ...process.env };
+const originalFetch = globalThis.fetch;
+
+function restoreEnv(): void {
+  for (const key of Object.keys(process.env)) {
+    if (!(key in originalEnv)) delete process.env[key];
+  }
+  Object.assign(process.env, originalEnv);
+}
+
+async function importFreshNotificationChannels() {
+  process.env.CONVEX_SITE_URL = 'https://convex.test';
+  process.env.RELAY_SHARED_SECRET = 'relay-secret';
+  process.env.UPSTASH_REDIS_REST_URL = 'https://upstash.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'upstash-token';
+  return import(`../api/notification-channels.ts?test=${Date.now()}-${Math.random()}`);
+}
+
+function makeSetChannelRequest(): Request {
+  return new Request('https://worldmonitor.app/api/notification-channels', {
+    method: 'POST',
+    headers: {
+      Origin: 'https://worldmonitor.app',
+      Authorization: 'Bearer clerk-token',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      action: 'set-channel',
+      channelType: 'email',
+      email: 'buyer@example.com',
+    }),
+  });
+}
+
+function freeShapedEntitlements(extra: Record<string, unknown>) {
+  return {
+    planKey: 'free',
+    features: {
+      tier: 0,
+      apiAccess: false,
+      apiRateLimit: 0,
+      maxDashboards: 3,
+      prioritySupport: false,
+      exportFormats: ['csv'],
+      mcpAccess: false,
+    },
+    validUntil: 0,
+    ...extra,
+  };
+}
+
+const ctx = { waitUntil: (_promise: Promise<unknown>) => {} };
+
+afterEach(() => {
+  mock.restoreAll();
+  globalThis.fetch = originalFetch;
+  restoreEnv();
+});
+
+describe('/api/notification-channels POST billing-verification contract', () => {
+  it('answers a transient verification failure with a retryable 503, not pro_required', async () => {
+    const mod = await importFreshNotificationChannels();
+    const relayFetch = mock.fn(async () => {
+      throw new Error('relay must not be reached for a denied request');
+    });
+    mod.__setNotificationChannelsDepsForTests({
+      validateBearerToken: async () => ({ valid: true, userId: 'user-verification-unavailable' }),
+      getEntitlements: async () => freeShapedEntitlements({ verificationUnavailable: true }),
+      fetch: relayFetch,
+    });
+    mock.method(console, 'warn', () => {});
+
+    const res = await mod.default(makeSetChannelRequest(), ctx);
+
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('X-Billing-Verification'), 'entitlement_verification_unavailable');
+    assert.equal(res.headers.get('Retry-After'), '5');
+    assert.equal(res.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app');
+    assert.deepEqual(await res.json(), {
+      error: 'Unable to verify API access',
+      code: 'entitlement_verification_unavailable',
+      requiredTier: 1,
+    });
+    assert.equal(relayFetch.mock.calls.length, 0);
+  });
+
+  it('answers a pending renewal verification with a retryable 503 carrying the provider hint', async () => {
+    const mod = await importFreshNotificationChannels();
+    mod.__setNotificationChannelsDepsForTests({
+      validateBearerToken: async () => ({ valid: true, userId: 'user-renewal-pending' }),
+      getEntitlements: async () => freeShapedEntitlements({
+        billingStatus: 'renewal_verification_pending',
+        retryAfterSeconds: 11,
+      }),
+      fetch: async () => {
+        throw new Error('relay must not be reached for a denied request');
+      },
+    });
+    mock.method(console, 'warn', () => {});
+
+    const res = await mod.default(makeSetChannelRequest(), ctx);
+
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('X-Billing-Verification'), 'renewal_verification_pending');
+    assert.equal(res.headers.get('Retry-After'), '11');
+    assert.deepEqual(await res.json(), {
+      error: 'Renewal verification pending',
+      code: 'renewal_verification_pending',
+      requiredTier: 1,
+    });
+  });
+
+  it('keeps the lapsed subscription denial a 403 with its own code', async () => {
+    const mod = await importFreshNotificationChannels();
+    mod.__setNotificationChannelsDepsForTests({
+      validateBearerToken: async () => ({ valid: true, userId: 'user-lapsed' }),
+      getEntitlements: async () => freeShapedEntitlements({
+        billingStatus: 'subscription_lapsed',
+      }),
+      fetch: async () => {
+        throw new Error('relay must not be reached for a denied request');
+      },
+    });
+    mock.method(console, 'warn', () => {});
+
+    const res = await mod.default(makeSetChannelRequest(), ctx);
+
+    assert.equal(res.status, 403);
+    assert.equal(res.headers.get('X-Billing-Verification'), 'subscription_lapsed');
+    assert.deepEqual(await res.json(), {
+      error: 'Subscription lapsed',
+      code: 'subscription_lapsed',
+      requiredTier: 1,
+    });
+  });
+
+  it('still hard-denies a genuine free user with the pro_required upsell', async () => {
+    const mod = await importFreshNotificationChannels();
+    mod.__setNotificationChannelsDepsForTests({
+      validateBearerToken: async () => ({ valid: true, userId: 'user-free' }),
+      getEntitlements: async () => freeShapedEntitlements({}),
+      fetch: async () => {
+        throw new Error('relay must not be reached for a denied request');
+      },
+    });
+    mock.method(console, 'warn', () => {});
+
+    const res = await mod.default(makeSetChannelRequest(), ctx);
+
+    assert.equal(res.status, 403);
+    assert.equal(res.headers.get('X-Billing-Verification'), null);
+    assert.deepEqual(await res.json(), {
+      error: 'pro_required',
+      message: 'Real-time alerts are available on the Pro plan.',
+      upgradeUrl: 'https://worldmonitor.app/pro',
+    });
+  });
+
+  it('fails closed with pro_required when the entitlement lookup returns null', async () => {
+    const mod = await importFreshNotificationChannels();
+    mod.__setNotificationChannelsDepsForTests({
+      validateBearerToken: async () => ({ valid: true, userId: 'user-null-entitlement' }),
+      getEntitlements: async () => null,
+      fetch: async () => {
+        throw new Error('relay must not be reached for a denied request');
+      },
+    });
+    mock.method(console, 'warn', () => {});
+
+    const res = await mod.default(makeSetChannelRequest(), ctx);
+
+    assert.equal(res.status, 403);
+    assert.deepEqual(await res.json(), {
+      error: 'pro_required',
+      message: 'Real-time alerts are available on the Pro plan.',
+      upgradeUrl: 'https://worldmonitor.app/pro',
+    });
+  });
+});

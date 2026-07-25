@@ -42,6 +42,8 @@ Action-dispatched writer. The body's `action` field selects the mutation:
 
 All actions require Clerk bearer + PRO (`tier >= 1`). Invalid actions return `400 Unknown action`. Requests are forwarded to Convex via `RELAY_SHARED_SECRET`.
 
+A caller below `tier >= 1` gets `403 pro_required` only when the entitlement is confirmed non-Pro. When entitlement verification is itself in doubt the gate follows the shared billing-verification contract instead: `503` with `Retry-After` and `X-Billing-Verification` for `entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed`, and `403 subscription_lapsed` for a confirmed lapse. See [Error handling](/usage-errors).
+
 - **Idempotency**: optional `Idempotency-Key` supported on `POST /api/notification-channels`. Retrying the same key with an identical body replays the original response instead of applying the channel action again.
 
 ## Webhook delivery contract
