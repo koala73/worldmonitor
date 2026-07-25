@@ -1,0 +1,211 @@
+---
+import { getCollection } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+
+const DEFAULT_AUTHOR = 'Elie Habib';
+const posts = (await getCollection('blog'))
+  .filter((post) => (post.data.author || DEFAULT_AUTHOR) === DEFAULT_AUTHOR)
+  .sort((a, b) => b.data.pubDate.valueOf() - a.data.pubDate.valueOf());
+
+const profileUrl = 'https://www.worldmonitor.app/blog/authors/elie-habib/';
+const personId = `${profileUrl}#person`;
+const description = 'Founder of World Monitor and former co-founder and CEO of Anghami, writing about open-source global intelligence, OSINT, markets, and AI.';
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'ProfilePage',
+      '@id': `${profileUrl}#profile`,
+      url: profileUrl,
+      name: 'Elie Habib — World Monitor',
+      description,
+      mainEntity: { '@id': personId },
+    },
+    {
+      '@type': 'Person',
+      '@id': personId,
+      name: 'Elie Habib',
+      url: profileUrl,
+      image: 'https://unavatar.io/github/koala73',
+      jobTitle: 'Founder of World Monitor',
+      worksFor: {
+        '@type': 'Organization',
+        '@id': 'https://www.worldmonitor.app/#organization',
+        name: 'World Monitor',
+        url: 'https://www.worldmonitor.app',
+      },
+      sameAs: [
+        'https://x.com/eliehabib',
+        'https://github.com/koala73',
+      ],
+      knowsAbout: [
+        'Open-source intelligence',
+        'Global intelligence',
+        'Geopolitical risk',
+        'Financial markets',
+        'Artificial intelligence',
+      ],
+    },
+  ],
+};
+---
+
+<Base
+  title="Elie Habib"
+  description={description}
+  metaTitle="Elie Habib, Founder of World Monitor"
+  canonicalUrl={profileUrl}
+  ogType="profile"
+  jsonLd={jsonLd}
+>
+  <article class="author-page">
+    <header class="author-page-header">
+      <img
+        src="https://unavatar.io/github/koala73"
+        alt="Elie Habib"
+        width="112"
+        height="112"
+        class="author-page-avatar"
+        decoding="async"
+        onerror="this.src='/favico/apple-touch-icon.png'"
+      />
+      <div>
+        <p class="author-page-label">Author</p>
+        <h1>Elie Habib</h1>
+        <p class="author-page-role">Founder of World Monitor</p>
+      </div>
+    </header>
+
+    <div class="prose author-page-bio">
+      <p>
+        Elie Habib is the founder of World Monitor, an open-source platform for real-time global
+        intelligence. He previously co-founded and led Anghami (NASDAQ: ANGH). His work focuses on
+        making geopolitical, market, infrastructure, and
+        public-source intelligence accessible to analysts, journalists, developers, and the public.
+      </p>
+      <p>
+        Follow Elie on <a href="https://x.com/eliehabib" rel="me noopener noreferrer">X</a> or
+        inspect the project on <a href="https://github.com/koala73/worldmonitor" rel="noopener noreferrer">GitHub</a>.
+      </p>
+    </div>
+
+    <section class="author-articles" aria-labelledby="author-articles-title">
+      <h2 id="author-articles-title">Articles by Elie Habib</h2>
+      <div class="author-article-list">
+        {posts.map((post) => (
+          <a href={`/blog/posts/${post.id}/`} class="author-article">
+            <div>
+              <h3>{post.data.title}</h3>
+              <p>{post.data.description}</p>
+            </div>
+            <time datetime={post.data.pubDate.toISOString()}>
+              {post.data.pubDate.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+              })}
+            </time>
+          </a>
+        ))}
+      </div>
+    </section>
+  </article>
+
+  <style>
+    .author-page {
+      max-width: 820px;
+      margin: 0 auto;
+      padding: 2.5rem 1.25rem 5rem;
+    }
+    .author-page-header {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .author-page-avatar {
+      width: 112px;
+      height: 112px;
+      border-radius: 50%;
+      border: 1px solid var(--wm-border);
+    }
+    .author-page-label {
+      color: var(--wm-green);
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .author-page-header h1 {
+      margin: 0.15rem 0 0;
+      font-family: var(--font-display);
+      font-size: clamp(2rem, 6vw, 3rem);
+      line-height: 1.1;
+    }
+    .author-page-role {
+      margin-top: 0.35rem;
+      color: var(--wm-muted);
+    }
+    .author-page-bio {
+      max-width: 720px;
+      margin: 0;
+    }
+    .author-articles {
+      margin-top: 3rem;
+    }
+    .author-articles > h2 {
+      margin-bottom: 1rem;
+      font-family: var(--font-display);
+      font-size: 1.35rem;
+    }
+    .author-article-list {
+      display: grid;
+      gap: 0.75rem;
+    }
+    .author-article {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 1rem;
+      padding: 1rem 1.1rem;
+      color: inherit;
+      border: 1px solid var(--wm-border);
+      border-radius: var(--radius);
+      background: var(--wm-card);
+    }
+    .author-article:hover {
+      color: inherit;
+      border-color: var(--wm-green);
+    }
+    .author-article h3 {
+      margin: 0;
+      font-family: var(--font-display);
+      font-size: 1rem;
+      line-height: 1.35;
+    }
+    .author-article p {
+      margin: 0.35rem 0 0;
+      color: var(--wm-muted);
+      font-size: 0.85rem;
+      line-height: 1.5;
+    }
+    .author-article time {
+      color: var(--wm-muted);
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      white-space: nowrap;
+    }
+    @media (max-width: 640px) {
+      .author-page-header {
+        align-items: flex-start;
+      }
+      .author-page-avatar {
+        width: 80px;
+        height: 80px;
+      }
+      .author-article {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</Base>

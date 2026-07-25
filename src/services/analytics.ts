@@ -10,6 +10,7 @@ import { subscribeAuthState, type AuthSession } from './auth-state';
 import { onSubscriptionChange, type SubscriptionInfo } from './billing';
 import { getClerkUserCreatedAt } from './clerk';
 import { DODO_PRODUCT_IDS } from '@/config/product-ids.generated';
+import type { ActivationEventName, ActivationStepId } from './pro-activation-state';
 
 const UMAMI_SCRIPT_SRC = 'https://abacus.worldmonitor.app/script.js';
 const UMAMI_WEBSITE_ID = 'e8800335-c853-46a8-8497-c993ed2f58bc';
@@ -112,6 +113,14 @@ const EVENTS = {
   // whether the click target maps to a country the user follows;
   // correlate with non-followed threads to size the bias's effect.
   'brief-thread-open': true,
+  // Pro Activation Onboarding funnel (#4771) — day-0 activation interstitial:
+  // entered → per-step confirmed/skipped → exit (with completion state). Names
+  // mirror ACTIVATION_EVENTS in @/services/pro-activation-state (the single
+  // naming source); this catalog matches those literals.
+  'pro-activation-entered': true,
+  'pro-activation-step-confirmed': true,
+  'pro-activation-step-skipped': true,
+  'pro-activation-exit': true,
 } as const;
 
 export type UmamiEvent = keyof typeof EVENTS;
@@ -623,6 +632,50 @@ const CHECKOUT_FAILED_STATUSES = new Set(['failed', 'declined', 'cancelled', 'ca
 export function trackCheckoutFailed(rawStatus: string): void {
   const status = CHECKOUT_FAILED_STATUSES.has(rawStatus) ? rawStatus : 'other';
   track('checkout-failed', { status });
+}
+
+// ---------------------------------------------------------------------------
+// Pro Activation Onboarding funnel (#4771)
+// ---------------------------------------------------------------------------
+
+/** The four activation funnel events — the leaf's ACTIVATION_EVENTS is the naming source. */
+export type ProActivationEvent = ActivationEventName;
+
+/**
+ * The ONLY fields allowed on an activation event payload. Deliberately narrow:
+ * the plan tier, the step id (step events), and the aggregate exit counts
+ * (exit event). NEVER the subscription id or any billing identifier — cohort
+ * joins key on the userId Umami already receives via identifyUser(). Mirrors
+ * the closed-vocabulary minimization of bucketProductIdForAnalytics above.
+ */
+export interface ProActivationEventFields {
+  planKey?: string | null;
+  step?: ActivationStepId;
+  completion?: 'complete' | 'partial' | 'none';
+  verified?: number;
+  pending?: number;
+  failed?: number;
+  total?: number;
+}
+
+/**
+ * Track a Pro-activation funnel event with a minimized payload. Every field is
+ * whitelisted here, so a caller cannot widen the payload into billing identity:
+ * only planKey / step / the aggregate exit counts ever reach Umami.
+ */
+export function trackProActivation(
+  event: ProActivationEvent,
+  fields: ProActivationEventFields = {},
+): void {
+  const data: Record<string, unknown> = {};
+  if (fields.planKey != null) data.planKey = fields.planKey;
+  if (fields.step != null) data.step = fields.step;
+  if (fields.completion != null) data.completion = fields.completion;
+  if (fields.verified != null) data.verified = fields.verified;
+  if (fields.pending != null) data.pending = fields.pending;
+  if (fields.failed != null) data.failed = fields.failed;
+  if (fields.total != null) data.total = fields.total;
+  track(event, data);
 }
 
 // ---------------------------------------------------------------------------

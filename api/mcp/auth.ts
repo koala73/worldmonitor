@@ -10,13 +10,18 @@ import { getClientIp } from '../_client-ip.js';
 import { captureSilentError } from '../_sentry-edge.js';
 // @ts-expect-error — JS module, no declaration file
 import { redisPipeline as rawRedisPipeline } from '../_upstash-json.js';
-import { getEntitlements } from '../../server/_shared/entitlement-check';
+import {
+  getBillingVerificationDenial,
+  getEntitlements,
+} from '../../server/_shared/entitlement-check';
+import type { BillingVerificationCode } from './billing-denial';
 import {
   buildInternalMcpHeaders,
   signInternalMcpRequest,
 } from '../../server/_shared/mcp-internal-hmac';
 import { validateProMcpTokenOrNull } from '../../server/_shared/pro-mcp-token';
 import { validateUserApiKey } from '../../server/_shared/user-api-key';
+import { checkFailClosedScopedIpRateLimit } from '../../server/_shared/rate-limit';
 import { rpcError, withMcpNoStore } from './rpc';
 import type {
   AuthResolution,
@@ -138,6 +143,13 @@ export const PRODUCTION_DEPS: McpHandlerDeps = {
   validateProMcpToken: validateProMcpTokenOrNull,
   getEntitlements,
   validateUserApiKey,
+  guardUserApiKeyValidation: (request, corsHeaders) => checkFailClosedScopedIpRateLimit(
+    request,
+    'mcp:user-api-key:pre-auth-validation',
+    60,
+    '60 s',
+    corsHeaders,
+  ),
   redisPipeline: rawRedisPipeline,
 };
 
@@ -149,6 +161,112 @@ export const PRODUCTION_DEPS: McpHandlerDeps = {
 export function wwwAuthHeader(resourceMetadataUrl: string, errorParam = ''): string {
   const errSegment = errorParam ? `, error="${errorParam}"` : '';
   return `Bearer realm="worldmonitor"${errSegment}, resource_metadata="${resourceMetadataUrl}"`;
+}
+
+function userKeyValidationBackpressureResponse(response: Response, corsHeaders: Record<string, string>): Response {
+  const limited = response.status === 429;
+  return new Response(
+    JSON.stringify({
+      jsonrpc: '2.0',
+      id: null,
+      error: {
+        code: limited ? -32029 : -32603,
+        message: limited ? 'Too many requests' : 'Auth service temporarily unavailable. Try again.',
+      },
+    }),
+    {
+      status: response.status,
+      headers: withMcpNoStore({
+        ...Object.fromEntries(response.headers.entries()),
+        ...corsHeaders,
+        'Content-Type': 'application/json',
+      }),
+    },
+  );
+}
+
+export function getMcpBillingVerificationDenial(
+  entitlements: {
+    billingStatus?: BillingVerificationCode;
+    retryAfterSeconds?: number;
+    // Transient entitlement-lookup failure marker from getEntitlements()
+    // (server/_shared/entitlement-check.ts) — mapped to the same retryable
+    // envelope as a gateway-synthesized entitlement_verification_unavailable.
+    verificationUnavailable?: boolean;
+  } | null | undefined,
+  corsHeaders: Record<string, string>,
+  id: unknown = null,
+): Response | null {
+  const billingStatus = entitlements?.verificationUnavailable
+    ? 'entitlement_verification_unavailable'
+    : entitlements?.billingStatus;
+  if (billingStatus === 'entitlement_verification_unavailable') {
+    // Gateway-synthesized backend-unreachable 503 (server/gateway.ts wm_-key
+    // branch). The shared Convex-facing helper doesn't recognize this code, so
+    // build the same retryable envelope here; clamp mirrors the shared helper.
+    const raw = entitlements?.retryAfterSeconds;
+    const retryAfter = Number.isFinite(raw)
+      ? Math.max(1, Math.min(60, Math.ceil(raw as number)))
+      : 5;
+    return new Response(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: id ?? null,
+        error: {
+          code: -32603,
+          message: 'Unable to verify API access. Retry shortly.',
+          data: { code: billingStatus },
+        },
+      }),
+      {
+        status: 503,
+        headers: new Headers({
+          ...corsHeaders,
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-store',
+          'Retry-After': String(retryAfter),
+          'X-Billing-Verification': billingStatus,
+        }),
+      },
+    );
+  }
+
+  // The shared helper owns status, retry normalization, no-store, and billing
+  // headers. Its parameter asks only for the billing fields, so both the
+  // McpHandlerDeps entitlement shape and dispatch's synthesized
+  // BillingDenialError shape are directly assignable.
+  const denial = getBillingVerificationDenial(
+    billingStatus ? { billingStatus, retryAfterSeconds: entitlements?.retryAfterSeconds } : null,
+    corsHeaders,
+  );
+  if (!denial || !billingStatus) return null;
+
+  const retryable = denial.status === 503;
+  const message = {
+    subscription_lapsed: 'Subscription lapsed. Re-authenticating will not help — resubscribe to restore access.',
+    renewal_verification_pending: 'Renewal verification pending. Retry shortly.',
+    renewal_verification_failed: 'Renewal verification failed. Retry shortly.',
+  }[billingStatus];
+  const headers = new Headers(denial.headers);
+  headers.set('Cache-Control', 'no-store');
+  headers.set('Content-Type', 'application/json');
+
+  return new Response(
+    JSON.stringify({
+      jsonrpc: '2.0',
+      id: id ?? null,
+      error: {
+        // -32002 is the confirmed-lapse code (HTTP 403, no WWW-Authenticate).
+        // -32001 stays reserved for authentication failures at HTTP 401 per
+        // docs/mcp-error-catalog.mdx — reusing it here sent doc-following
+        // agents into a pointless OAuth re-auth loop.
+        code: retryable ? -32603 : -32002,
+        message,
+        data: { code: billingStatus },
+      },
+    }),
+    { status: denial.status, headers },
+  );
 }
 
 export async function resolveAuthContext(
@@ -209,6 +327,17 @@ export async function resolveAuthContext(
   if (candidateKey.startsWith('wm_')) {
     let userKey: { userId: string } | null = null;
     try {
+      // Identity is not known until after this Convex-backed lookup, so the
+      // normal per-user MCP limit cannot protect it. Bound rotating unknown
+      // wm_ guesses by client IP first; otherwise each unique key evades the
+      // per-hash negative cache and reaches the auth backend.
+      const validationGuardResponse = await deps.guardUserApiKeyValidation(req, corsHeaders);
+      if (validationGuardResponse) {
+        return {
+          ok: false,
+          response: userKeyValidationBackpressureResponse(validationGuardResponse, corsHeaders),
+        };
+      }
       userKey = await deps.validateUserApiKey(candidateKey);
     } catch {
       // Production validateUserApiKey fail-softs to null; a throw means the
@@ -315,6 +444,13 @@ async function checkMcpEntitlementGate(
   const tier = ent?.features?.tier ?? 0;
   const mcpAccess = ent?.features?.mcpAccess === true;
   const validUntil = ent?.validUntil ?? 0;
+  // Renewal uncertainty on a stronger subscription must not revoke MCP when
+  // a separate, current fallback subscription still authorizes MCP access.
+  if (ent && tier >= 1 && mcpAccess && validUntil >= Date.now()) {
+    return null;
+  }
+  const billingDenial = getMcpBillingVerificationDenial(ent, corsHeaders);
+  if (billingDenial) return billingDenial;
   if (!ent || tier < 1 || !mcpAccess || validUntil < Date.now()) {
     return rejected();
   }
