@@ -27,8 +27,15 @@ import {
   suppressServerSummarizationFor,
 } from '@/services/summarize-gate';
 import { hasPremiumAccess } from '@/services/panel-gating';
+import {
+  createSummarizationAttemptState,
+  logChainOutcome,
+  markSummarizationAttempt,
+  type AttemptedSummarizationProvider,
+  type SummarizationAttemptState,
+} from './summarization-outcome';
 
-export type SummarizationProvider = 'ollama' | 'groq' | 'openrouter' | 'browser' | 'cache';
+export type SummarizationProvider = AttemptedSummarizationProvider | 'cache';
 
 export interface SummarizationResult {
   summary: string;
@@ -95,7 +102,7 @@ const emptySummaryFallback: SummarizeArticleResponse = { summary: '', provider: 
 
 interface ApiProviderDef {
   featureId: RuntimeFeatureId;
-  provider: SummarizationProvider;
+  provider: Exclude<AttemptedSummarizationProvider, 'browser'>;
   label: string;
 }
 
@@ -108,12 +115,11 @@ const API_PROVIDERS: ApiProviderDef[] = [
   { featureId: 'aiGroq',        provider: 'groq',       label: 'Groq AI' },
 ];
 
-let lastAttemptedProvider = 'none';
-
 // ── Unified API provider caller (via SummarizeArticle RPC) ──
 
 async function tryApiProvider(
   providerDef: ApiProviderDef,
+  attemptState: SummarizationAttemptState,
   headlines: string[],
   geoContext?: string,
   lang?: string,
@@ -123,7 +129,7 @@ async function tryApiProvider(
   // Entitlement/suppression gate BEFORE any network dispatch (#4913) — a
   // denial returns null so the chain falls through to browser T5.
   if (!canAttemptServerSummarization()) return null;
-  lastAttemptedProvider = providerDef.provider;
+  markSummarizationAttempt(attemptState, providerDef.provider);
   try {
     const resp: SummarizeArticleResponse = await summaryBreaker.execute(async () => {
       try {
@@ -174,6 +180,7 @@ async function tryApiProvider(
 // ── Browser T5 provider (different interface -- no API call) ──
 
 async function tryBrowserT5(
+  attemptState: SummarizationAttemptState,
   headlines: string[],
   modelId?: string,
   bodies?: string[],
@@ -182,7 +189,7 @@ async function tryBrowserT5(
     if (!mlWorker.isAvailable) {
       return null;
     }
-    lastAttemptedProvider = 'browser';
+    markSummarizationAttempt(attemptState, 'browser');
 
     const lang = getCurrentLanguage();
     // When bodies are supplied, interleave them with headlines so the local
@@ -224,6 +231,7 @@ async function tryBrowserT5(
 
 async function runApiChain(
   providers: ApiProviderDef[],
+  attemptState: SummarizationAttemptState,
   headlines: string[],
   geoContext: string | undefined,
   lang: string | undefined,
@@ -234,7 +242,7 @@ async function runApiChain(
 ): Promise<SummarizationResult | null> {
   for (const [i, provider] of providers.entries()) {
     onProgress?.(stepOffset + i, totalSteps, `Connecting to ${provider.label}...`);
-    const result = await tryApiProvider(provider, headlines, geoContext, lang, bodies);
+    const result = await tryApiProvider(provider, attemptState, headlines, geoContext, lang, bodies);
     if (result) return result;
   }
   return null;
@@ -268,13 +276,13 @@ export async function generateSummary(
 
   return summaryResultBreaker.execute(
     async () => {
-      lastAttemptedProvider = 'none';
-      const result = await generateSummaryInternal(headlines, onProgress, geoContext, lang, options);
+      const attemptState = createSummarizationAttemptState();
+      const result = await generateSummaryInternal(attemptState, headlines, onProgress, geoContext, lang, options);
 
       if (result) {
         trackLLMUsage(result.provider, result.model, result.cached);
       } else {
-        trackLLMFailure(lastAttemptedProvider);
+        trackLLMFailure(attemptState.lastAttemptedProvider);
       }
 
       return result;
@@ -285,6 +293,7 @@ export async function generateSummary(
 }
 
 async function generateSummaryInternal(
+  attemptState: SummarizationAttemptState,
   headlines: string[],
   onProgress: ProgressCallback | undefined,
   geoContext: string | undefined,
@@ -315,10 +324,10 @@ async function generateSummaryInternal(
       // Model already loaded -- use browser T5-small first
       if (!options?.skipBrowserFallback) {
         onProgress?.(1, totalSteps, 'Running local AI model (beta)...');
-        const browserResult = await tryBrowserT5(headlines, 'summarization-beta', bodies);
+        const browserResult = await tryBrowserT5(attemptState, headlines, 'summarization-beta', bodies);
         if (browserResult) {
           const groqProvider = API_PROVIDERS.find(p => p.provider === 'groq');
-          if (groqProvider && !options?.skipCloudProviders) tryApiProvider(groqProvider, headlines, geoContext, undefined, bodies).catch(() => {});
+          if (groqProvider && !options?.skipCloudProviders) tryApiProvider(groqProvider, attemptState, headlines, geoContext, undefined, bodies).catch(() => {});
 
           return browserResult;
         }
@@ -326,7 +335,7 @@ async function generateSummaryInternal(
 
       // Warm model failed inference -- fallback through API providers
       if (!options?.skipCloudProviders) {
-        const chainResult = await runApiChain(API_PROVIDERS, headlines, geoContext, undefined, onProgress, 2, totalSteps, bodies);
+        const chainResult = await runApiChain(API_PROVIDERS, attemptState, headlines, geoContext, undefined, onProgress, 2, totalSteps, bodies);
         if (chainResult) return chainResult;
       }
     } else {
@@ -337,7 +346,7 @@ async function generateSummaryInternal(
 
       // API providers while model loads
       if (!options?.skipCloudProviders) {
-        const chainResult = await runApiChain(API_PROVIDERS, headlines, geoContext, undefined, onProgress, 1, totalSteps, bodies);
+        const chainResult = await runApiChain(API_PROVIDERS, attemptState, headlines, geoContext, undefined, onProgress, 1, totalSteps, bodies);
         if (chainResult) {
           return chainResult;
         }
@@ -346,14 +355,14 @@ async function generateSummaryInternal(
       // Last resort: try browser T5 (may have finished loading by now)
       if (mlWorker.isAvailable && !options?.skipBrowserFallback) {
         onProgress?.(API_PROVIDERS.length + 1, totalSteps, 'Waiting for local AI model...');
-        const browserResult = await tryBrowserT5(headlines, 'summarization-beta', bodies);
+        const browserResult = await tryBrowserT5(attemptState, headlines, 'summarization-beta', bodies);
         if (browserResult) return browserResult;
       }
 
       onProgress?.(totalSteps, totalSteps, 'No providers available');
     }
 
-    logChainOutcome('[BETA]');
+    logChainOutcome('[BETA]', attemptState);
     return null;
   }
 
@@ -362,36 +371,18 @@ async function generateSummaryInternal(
   let chainResult: SummarizationResult | null = null;
 
   if (!options?.skipCloudProviders) {
-    chainResult = await runApiChain(API_PROVIDERS, headlines, geoContext, lang, onProgress, 1, totalSteps, bodies);
+    chainResult = await runApiChain(API_PROVIDERS, attemptState, headlines, geoContext, lang, onProgress, 1, totalSteps, bodies);
   }
   if (chainResult) return chainResult;
 
   if (!options?.skipBrowserFallback) {
     onProgress?.(totalSteps, totalSteps, 'Loading local AI model...');
-    const browserResult = await tryBrowserT5(headlines, undefined, bodies);
+    const browserResult = await tryBrowserT5(attemptState, headlines, undefined, bodies);
     if (browserResult) return browserResult;
   }
 
-  logChainOutcome('[Summarization]');
+  logChainOutcome('[Summarization]', attemptState);
   return null;
-}
-
-/**
- * #5377: "All providers failed" at `warn` is indistinguishable from a real
- * provider outage when the chain was in fact DECLINED BY DESIGN — the
- * entitlement gate (#4913) blocked every server dispatch and browser T5 was
- * unavailable/skipped, which is the normal anonymous path. In that case
- * `lastAttemptedProvider` is still 'none' (tryApiProvider sets it only after
- * passing the feature + entitlement gates; tryBrowserT5 only after the
- * mlWorker availability check), so log at `debug`; reserve `warn` for a chain
- * where at least one provider was genuinely attempted and failed.
- */
-function logChainOutcome(prefix: string): void {
-  if (lastAttemptedProvider === 'none') {
-    console.debug(`${prefix} Summarization skipped: no eligible provider (entitlement-gated or unavailable); using designed fallback`);
-  } else {
-    console.warn(`${prefix} All providers failed`);
-  }
 }
 
 /**

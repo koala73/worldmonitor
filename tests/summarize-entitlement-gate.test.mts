@@ -5,12 +5,14 @@
  * doomed RPCs (ollama→groq→openrouter through the same gated endpoint)
  * before landing on the browser-T5 fallback anon users get anyway.
  *
- * Two layers under test (same shape as tests/classify-entitlement-gate for
+ * Three seams under test (same shape as tests/classify-entitlement-gate for
  * #4865 — the sibling instance of this flood class):
  *   1. src/services/summarize-gate.ts — pure session gate (probe + timed
  *      suppression), node-test-safe (summarization.ts itself imports
  *      @/services/i18n etc. and cannot be loaded under tsx --test).
- *   2. Source-grep wiring assertions on summarization.ts — the gate is only
+ *   2. src/services/summarization-outcome.ts — call-local attempt state and
+ *      outcome classification, also node-test-safe.
+ *   3. Source-grep wiring assertions on summarization.ts — the gate is only
  *      effective if the dispatch path consults it and the 403 branch
  *      suppresses the chain.
  */
@@ -30,6 +32,11 @@ import {
   SUMMARIZE_SUPPRESS_MS,
   __resetSummarizeGateForTests,
 } from '../src/services/summarize-gate.ts';
+import {
+  createSummarizationAttemptState,
+  logChainOutcome,
+  markSummarizationAttempt,
+} from '../src/services/summarization-outcome.ts';
 
 describe('summarize-gate — entitlement probe + timed suppression', () => {
   beforeEach(() => {
@@ -214,21 +221,13 @@ describe('summarization.ts wiring (source-grep — module not loadable under nod
   // two wrong hypotheses. `warn` is reserved for chains where a provider was
   // genuinely attempted; the declined-by-design path logs at `debug`.
   it('declined-by-design chains log at debug, not the outage-shaped warn (#5377)', () => {
-    const fn = src.slice(src.indexOf('function logChainOutcome'));
-    assert.ok(fn.length > 0, 'expected the logChainOutcome helper');
-    const noneBranch = fn.indexOf("lastAttemptedProvider === 'none'");
-    const debugIdx = fn.indexOf('console.debug');
-    const warnIdx = fn.indexOf('console.warn');
-    assert.ok(noneBranch > -1, 'outcome logging must branch on lastAttemptedProvider === none');
-    assert.ok(debugIdx > -1 && debugIdx < warnIdx, 'nothing-attempted branch must log at debug, warn only otherwise');
-    // Both fail sites must route through the helper — a raw string-literal
-    // warn (the pre-#5377 pattern) would reintroduce the misleading string on
-    // the anon path. The helper's own conditional warn uses a template
-    // literal and is exempt.
+    // Both fail sites must route through the tested helper — a raw
+    // string-literal warn (the pre-#5377 pattern) would reintroduce the
+    // misleading string on the anon path.
     const rawWarns = src.match(/console\.warn\(['"][^'"]*All providers failed/g) ?? [];
     assert.equal(rawWarns.length, 0, 'no call site may warn "All providers failed" unconditionally');
     const outcomeCalls = src.match(/logChainOutcome\(/g) ?? [];
-    assert.ok(outcomeCalls.length >= 3, 'both chain-exhausted sites (BETA + normal) must route through logChainOutcome');
+    assert.equal(outcomeCalls.length, 2, 'both chain-exhausted sites (BETA + normal) must route through logChainOutcome');
   });
 
   it('attempt tracking stays behind the gates so "none" means declined-by-design (#5377)', () => {
@@ -236,12 +235,59 @@ describe('summarization.ts wiring (source-grep — module not loadable under nod
     // entitlement gates pass, so a fully-gated chain leaves 'none'.
     const api = src.slice(src.indexOf('async function tryApiProvider'), src.indexOf('async function tryBrowserT5'));
     const gateIdx = api.indexOf('canAttemptServerSummarization()');
-    const markIdx = api.indexOf('lastAttemptedProvider =');
+    const markIdx = api.indexOf('markSummarizationAttempt(');
     assert.ok(gateIdx > -1 && markIdx > gateIdx, 'tryApiProvider must mark the attempt after the entitlement gate');
     // tryBrowserT5: only after the worker availability check.
     const t5 = src.slice(src.indexOf('async function tryBrowserT5'), src.indexOf('// ── Fallback chain runner ──'));
     const availIdx = t5.indexOf('mlWorker.isAvailable');
-    const t5MarkIdx = t5.indexOf("lastAttemptedProvider = 'browser'");
+    const t5MarkIdx = t5.indexOf("markSummarizationAttempt(attemptState, 'browser')");
     assert.ok(availIdx > -1 && t5MarkIdx > availIdx, 'tryBrowserT5 must mark the attempt after the availability check');
+  });
+
+  it('keeps attempt tracking local to each generateSummary invocation (#5377)', () => {
+    assert.doesNotMatch(src, /^let lastAttemptedProvider/m, 'attempt tracking must not use mutable module-global state');
+    assert.match(src, /const attemptState = createSummarizationAttemptState\(\)/);
+    assert.match(src, /generateSummaryInternal\(attemptState,/);
+  });
+});
+
+describe('summarization outcome logging', () => {
+  it('keeps overlapping attempted and declined chains isolated', async () => {
+    const attemptedState = createSummarizationAttemptState();
+    const declinedState = createSummarizationAttemptState();
+    const events: string[] = [];
+    const logger = {
+      debug: (message: string) => events.push(`debug:${message}`),
+      warn: (message: string) => events.push(`warn:${message}`),
+    };
+
+    let releaseAttemptedChain!: () => void;
+    const attemptedChainMayFinish = new Promise<void>((resolve) => {
+      releaseAttemptedChain = resolve;
+    });
+    let attemptedChainMarked!: () => void;
+    const attemptedProviderMarked = new Promise<void>((resolve) => {
+      attemptedChainMarked = resolve;
+    });
+
+    const attemptedChain = (async () => {
+      markSummarizationAttempt(attemptedState, 'browser');
+      attemptedChainMarked();
+      await attemptedChainMayFinish;
+      logChainOutcome('[attempted]', attemptedState, logger);
+    })();
+
+    const declinedChain = (async () => {
+      await attemptedProviderMarked;
+      logChainOutcome('[declined]', declinedState, logger);
+      releaseAttemptedChain();
+    })();
+
+    await Promise.all([attemptedChain, declinedChain]);
+
+    assert.deepEqual(events, [
+      'debug:[declined] Summarization skipped: no eligible provider (entitlement-gated or unavailable); using designed fallback',
+      'warn:[attempted] All providers failed',
+    ]);
   });
 });
