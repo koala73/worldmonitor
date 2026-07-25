@@ -19,15 +19,16 @@ import {
   mergeNotamWithExistingAlert,
 } from './_shared';
 import { getCachedJson, setCachedJson } from '../../../_shared/redis';
+// @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../api/_sentry-edge.js';
- 
+
 const FAA_CACHE_KEY = 'aviation:delays:faa:v1';
 const INTL_CACHE_KEY = 'aviation:delays:intl:v3';
- 
+
 const FAA_AIRPORT_SET = new Set(FAA_AIRPORTS);
 const INTL_AIRPORT_SET = new Set(AVIATIONSTACK_AIRPORTS);
 type IntlCoverage = { iata: string; status: 'normal' | 'disruption' | 'omitted' | 'failed'; flightCount: number };
- 
+
 export async function listAirportDelays(
   _ctx: ServerContext,
   _req: ListAirportDelaysRequest,
@@ -57,7 +58,7 @@ export async function listAirportDelays(
     console.warn(`[Aviation] FAA seed read failed: ${err instanceof Error ? err.message : 'unknown'}`);
     void captureSilentError(err, { tags: { route: 'aviation/list-airport-delays', step: 'faa-seed-read' } });
   }
- 
+
   // 2. International — read-only from Redis (Railway relay seeds the cache)
   // A cache hit alone does not prove every configured hub was covered. The
   // seeder records each hub as normal/disruption/omitted/failed so an omitted
@@ -80,7 +81,7 @@ export async function listAirportDelays(
     console.warn(`[Aviation] Intl fetch failed: ${err instanceof Error ? err.message : 'unknown'}`);
     void captureSilentError(err, { tags: { route: 'aviation/list-airport-delays', step: 'intl-cache-read' } });
   }
- 
+
   // 3. NOTAM alerts — shared loader (seed-first with live fallback).
   // loadNotamClosures swallows both the seed-read and live-fetch failures
   // internally (returns null on error), so no outer try/catch is needed — a
@@ -115,7 +116,7 @@ export async function listAirportDelays(
       console.warn(`[Aviation] NOTAM: ${notamResult.closedIcaos?.length ?? 0} closures, ${notamResult.restrictedIcaos?.length ?? 0} restrictions applied`);
     }
   }
- 
+
   // 4. Fill in monitored airports without an active alert.
   //   - Covered (the airport's primary source returned data this tick) →
   //     emit a NORMAL row sourced to the actual upstream (FAA or AviationStack),
@@ -126,11 +127,11 @@ export async function listAirportDelays(
   const alertedIatas = new Set(allAlerts.map(a => a.iata));
   for (const airport of MONITORED_AIRPORTS) {
     if (alertedIatas.has(airport.iata)) continue;
- 
+
     const isFaaCovered = FAA_AIRPORT_SET.has(airport.iata) && faaSourceCovered;
     const isIntlCovered = INTL_AIRPORT_SET.has(airport.iata) && intlCoveredIatas.has(airport.iata);
     const covered = isFaaCovered || isIntlCovered;
- 
+
     if (covered) {
       allAlerts.push({
         id: `status-${airport.iata}`,
@@ -173,7 +174,7 @@ export async function listAirportDelays(
       });
     }
   }
- 
+
   // Write bootstrap key for initial page load hydration. Canonical writer is
   // scripts/seed-aviation.mjs (BOOTSTRAP_TTL=7200). This RPC-side write is a
   // courtesy mid-tick refresh — TTL kept in lockstep so a user-triggered RPC
@@ -182,6 +183,6 @@ export async function listAirportDelays(
   try {
     await setCachedJson('aviation:delays-bootstrap:v2', { alerts: allAlerts, coverage: intlCoverage }, 7200);
   } catch { /* non-critical */ }
- 
+
   return { alerts: allAlerts };
 }

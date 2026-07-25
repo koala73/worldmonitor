@@ -8,6 +8,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { MONITORED_AIRPORTS } from '../../../../src/config/airports';
 import { getCachedJson } from '../../../_shared/redis';
+// @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../api/_sentry-edge.js';
 import {
     determineSeverity,
@@ -16,9 +17,9 @@ import {
     DEFAULT_WATCHED_AIRPORTS,
     loadNotamClosures,
 } from './_shared';
- 
+
 const SEED_CACHE_KEY = 'aviation:delays:intl:v3';
- 
+
 export async function getAirportOpsSummary(
     _ctx: ServerContext,
     req: GetAirportOpsSummaryRequest,
@@ -27,13 +28,13 @@ export async function getAirportOpsSummary(
     const requested = rawAirports.length > 0
         ? rawAirports.map(a => a.toUpperCase())
         : DEFAULT_WATCHED_AIRPORTS;
- 
+
     const now = Date.now();
- 
+
     try {
         const airports = MONITORED_AIRPORTS.filter(a => requested.includes(a.iata));
         const summaries: AirportOpsSummary[] = [];
- 
+
         // Read delay alerts from relay seed cache (no direct AviationStack call)
         let alerts: AirportDelayAlert[] = [];
         let healthy = false;
@@ -50,7 +51,7 @@ export async function getAirportOpsSummary(
             console.warn(`[Aviation] Ops summary seed read failed: ${err instanceof Error ? err.message : 'unknown'}`);
             void captureSilentError(err, { tags: { route: 'aviation/get-airport-ops-summary', step: 'seed-read' } });
         }
- 
+
         // Fetch NOTAM closures via shared loader
         let notamClosedIcaos = new Set<string>();
         let notamRestrictedIcaos = new Set<string>();
@@ -66,19 +67,19 @@ export async function getAirportOpsSummary(
             console.warn(`[Aviation] Ops summary NOTAM load failed: ${err instanceof Error ? err.message : 'unknown'}`);
             void captureSilentError(err, { tags: { route: 'aviation/get-airport-ops-summary', step: 'notam-load' } });
         }
- 
+
         for (const airport of airports) {
             const alert = alerts.find(a => a.iata === airport.iata);
             const isClosed = notamClosedIcaos.has(airport.icao);
             const isRestricted = notamRestrictedIcaos.has(airport.icao);
             const notamText = notamReasons[airport.icao];
- 
+
             const delayPct = alert?.delayedFlightsPct ?? 0;
             const avgDelay = alert?.avgDelayMinutes ?? 0;
             const cancelledFlights = alert?.cancelledFlights ?? 0;
             const totalFlights = alert?.totalFlights ?? 0;
             const cancelRate = totalFlights > 0 ? (cancelledFlights / totalFlights) * 100 : 0;
- 
+
             const cancelSev = severityFromCancelRate(cancelRate);
             const delaySev = determineSeverity(avgDelay, delayPct);
             const notamFloor = isClosed
@@ -91,16 +92,16 @@ export async function getAirportOpsSummary(
                 sevOrder.indexOf(notamFloor),
             )] ?? 'normal';
             const severity = `FLIGHT_DELAY_SEVERITY_${sevStr.toUpperCase()}` as FlightDelaySeverity;
- 
+
             const notamFlags: string[] = [];
             if (isClosed) notamFlags.push('CLOSED');
             if (isRestricted) notamFlags.push('RESTRICTED');
             if (notamText) notamFlags.push('NOTAM');
- 
+
             const topDelayReasons: string[] = [];
             if (alert?.reason) topDelayReasons.push(alert.reason);
             if ((isClosed || isRestricted) && notamText) topDelayReasons.push(notamText.slice(0, 80));
- 
+
             summaries.push({
                 iata: airport.iata,
                 icao: airport.icao,
@@ -118,7 +119,7 @@ export async function getAirportOpsSummary(
                 updatedAt: now,
             });
         }
- 
+
         // Add requested airports not found in MONITORED_AIRPORTS
         for (const iata of requested) {
             if (!summaries.find(s => s.iata === iata)) {
@@ -140,7 +141,7 @@ export async function getAirportOpsSummary(
                 });
             }
         }
- 
+
         return { summaries, cacheHit: false };
     } catch (err) {
         console.warn(`[Aviation] GetAirportOpsSummary failed: ${err instanceof Error ? err.message : err}`);

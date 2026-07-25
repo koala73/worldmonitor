@@ -3,11 +3,11 @@ import { getRelayBaseUrl, getRelayHeaders, fetchWithTimeout, buildRelayResponse 
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
 import { captureSilentError } from './_sentry-edge.js';
- 
+
 export const config = { runtime: 'edge' };
- 
+
 const EPOCH_ISO = new Date(0).toISOString();
- 
+
 /**
  * @typedef {{
  *   id?: string | number;
@@ -27,7 +27,7 @@ const EPOCH_ISO = new Date(0).toISOString();
  *   mediaUrls?: unknown[];
  * }} RawTelegramMessage
  */
- 
+
 /**
  * @typedef {{
  *   enabled?: boolean;
@@ -39,7 +39,7 @@ const EPOCH_ISO = new Date(0).toISOString();
  *   items?: RawTelegramMessage[];
  * }} RawTelegramFeedResponse
  */
- 
+
 /**
  * @typedef {{
  *   id: string;
@@ -55,7 +55,7 @@ const EPOCH_ISO = new Date(0).toISOString();
  *   mediaUrls: string[];
  * }} TelegramFeedItem
  */
- 
+
 /**
  * @param {unknown} value
  * @returns {string}
@@ -63,7 +63,7 @@ const EPOCH_ISO = new Date(0).toISOString();
 function toText(value) {
   return value == null ? '' : String(value);
 }
- 
+
 /**
  * @param {unknown} value
  * @returns {string}
@@ -78,7 +78,7 @@ function toHttpUrl(value) {
     return '';
   }
 }
- 
+
 /**
  * @param {unknown} value
  * @returns {string}
@@ -97,7 +97,7 @@ function toIsoTimestamp(value) {
   const parsed = Date.parse(raw);
   return Number.isFinite(parsed) && parsed > 0 ? new Date(parsed).toISOString() : EPOCH_ISO;
 }
- 
+
 /**
  * @param {unknown[] | undefined} values
  * @param {(value: unknown) => string} mapper
@@ -107,7 +107,7 @@ function toTextArray(values, mapper = toText) {
   if (!Array.isArray(values)) return [];
   return values.map(mapper).filter(Boolean);
 }
- 
+
 /**
  * @param {RawTelegramMessage} message
  * @returns {TelegramFeedItem}
@@ -118,7 +118,7 @@ function normalizeTelegramMessage(message) {
   const ts = toIsoTimestamp(message.timestampMs ?? message.timestamp ?? message.ts);
   const text = toText(message.text).trim();
   const id = toText(message.id).trim() || `${channel || 'telegram'}:${ts}:${text.slice(0, 32)}`;
- 
+
   return {
     id,
     source: 'telegram',
@@ -133,7 +133,7 @@ function normalizeTelegramMessage(message) {
     mediaUrls: toTextArray(message.mediaUrls, toHttpUrl),
   };
 }
- 
+
 /**
  * @param {RawTelegramFeedResponse} parsed
  */
@@ -153,10 +153,10 @@ function normalizeTelegramFeed(parsed) {
     items,
   };
 }
- 
+
 export default async function handler(req) {
   const corsHeaders = getCorsHeaders(req, 'GET, OPTIONS');
- 
+
   if (isDisallowedOrigin(req)) {
     return jsonResponse({ error: 'Origin not allowed' }, 403, corsHeaders);
   }
@@ -166,12 +166,12 @@ export default async function handler(req) {
   if (req.method !== 'GET') {
     return jsonResponse({ error: 'Method not allowed' }, 405, corsHeaders);
   }
- 
+
   const relayBaseUrl = getRelayBaseUrl();
   if (!relayBaseUrl) {
     return jsonResponse({ error: 'WS_RELAY_URL is not configured' }, 503, corsHeaders);
   }
- 
+
   try {
     const url = new URL(req.url);
     const limit = Math.max(1, Math.min(200, parseInt(url.searchParams.get('limit') || '50', 10) || 50));
@@ -181,14 +181,14 @@ export default async function handler(req) {
     params.set('limit', String(limit));
     if (topic) params.set('topic', topic);
     if (channel) params.set('channel', channel);
- 
+
     const relayUrl = `${relayBaseUrl}/telegram/feed?${params}`;
     const response = await fetchWithTimeout(relayUrl, {
       headers: getRelayHeaders({ Accept: 'application/json' }),
     }, 15000);
- 
+
     const body = await response.text();
- 
+
     let cacheControl = 'public, max-age=30, s-maxage=120, stale-while-revalidate=60, stale-if-error=120';
     if (!response.ok) {
       return buildRelayResponse(response, body, {
@@ -196,7 +196,7 @@ export default async function handler(req) {
         ...corsHeaders,
       });
     }
- 
+
     try {
       const parsed = /** @type {RawTelegramFeedResponse} */ (JSON.parse(body));
       const normalized = normalizeTelegramFeed(parsed);
@@ -214,7 +214,7 @@ export default async function handler(req) {
       console.warn('[telegram-feed] normalization failed:', normalizeError?.message || String(normalizeError));
       void captureSilentError(normalizeError, { tags: { route: 'api/telegram-feed', step: 'normalize' } });
     }
- 
+
     return buildRelayResponse(response, body, {
       'Cache-Control': cacheControl,
       ...corsHeaders,

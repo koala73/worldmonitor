@@ -14,11 +14,12 @@ import {
 } from '../../../../src/config/airports';
 import { CHROME_UA } from '../../../_shared/constants';
 import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
+// @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../api/_sentry-edge.js';
 export { parseStringArray } from '../../../_shared/parse-string-array';
- 
+
 // ---------- Constants ----------
- 
+
 export const FAA_URL = 'https://nasstatus.faa.gov/api/airport-status-information';
 export const AVIATIONSTACK_URL = 'https://api.aviationstack.com/v1/flights';
 export const ICAO_NOTAM_URL = 'https://dataservices.icao.int/api/notams-realtime-list';
@@ -28,9 +29,9 @@ const MIN_FLIGHTS_FOR_CLOSURE = 10;
 const RESOLVED_STATUSES = new Set(['cancelled', 'landed', 'active', 'arrived', 'diverted']);
 const NOTAM_CLOSURE_QCODES = new Set(['FA', 'AH', 'AL', 'AW', 'AC', 'AM']);
 const NOTAM_RESTRICTION_QCODES = new Set(['RA', 'RO']);
- 
+
 // ---------- XML Parser ----------
- 
+
 export const xmlParser = new XMLParser({
   ignoreAttributes: true,
   isArray: (_name: string, jpath: unknown) => {
@@ -38,18 +39,18 @@ export const xmlParser = new XMLParser({
     return typeof jpath === 'string' && /\.(Ground_Delay|Ground_Stop|Delay|Airport)$/.test(jpath);
   },
 });
- 
+
 // ---------- Internal types ----------
- 
+
 export interface FAADelayInfo {
   airport: string;
   reason: string;
   avgDelay: number;
   type: string;
 }
- 
+
 // ---------- Helpers ----------
- 
+
 export function parseDelayTypeFromReason(reason: string): string {
   const r = reason.toLowerCase();
   if (r.includes('ground stop')) return 'ground_stop';
@@ -59,18 +60,18 @@ export function parseDelayTypeFromReason(reason: string): string {
   if (r.includes('clos')) return 'ground_stop';
   return 'general';
 }
- 
+
 export function parseFaaXml(xml: string): Map<string, FAADelayInfo> {
   const delays = new Map<string, FAADelayInfo>();
   const parsed = xmlParser.parse(xml);
   const root = parsed?.AIRPORT_STATUS_INFORMATION;
   if (!root) return delays;
- 
+
   // Delay_type may be array or single object
   const delayTypes = Array.isArray(root.Delay_type)
     ? root.Delay_type
     : root.Delay_type ? [root.Delay_type] : [];
- 
+
   for (const dt of delayTypes) {
     // Ground Delays
     if (dt.Ground_Delay_List?.Ground_Delay) {
@@ -131,12 +132,12 @@ export function parseFaaXml(xml: string): Map<string, FAADelayInfo> {
       }
     }
   }
- 
+
   return delays;
 }
- 
+
 // ---------- Proto enum mappers ----------
- 
+
 export function toProtoDelayType(t: string): FlightDelayType {
   const map: Record<string, FlightDelayType> = {
     ground_stop: 'FLIGHT_DELAY_TYPE_GROUND_STOP',
@@ -148,7 +149,7 @@ export function toProtoDelayType(t: string): FlightDelayType {
   };
   return map[t] || 'FLIGHT_DELAY_TYPE_GENERAL';
 }
- 
+
 export function toProtoSeverity(s: string): FlightDelaySeverity {
   const map: Record<string, FlightDelaySeverity> = {
     normal: 'FLIGHT_DELAY_SEVERITY_NORMAL',
@@ -163,7 +164,7 @@ export function toProtoSeverity(s: string): FlightDelaySeverity {
   // healthy.
   return map[s] || 'FLIGHT_DELAY_SEVERITY_UNKNOWN';
 }
- 
+
 export function toProtoRegion(r: string): AirportRegion {
   const map: Record<string, AirportRegion> = {
     americas: 'AIRPORT_REGION_AMERICAS',
@@ -174,7 +175,7 @@ export function toProtoRegion(r: string): AirportRegion {
   };
   return map[r] || 'AIRPORT_REGION_UNSPECIFIED';
 }
- 
+
 export function toProtoSource(s: string): FlightDelaySource {
   const map: Record<string, FlightDelaySource> = {
     unspecified: 'FLIGHT_DELAY_SOURCE_UNSPECIFIED',
@@ -186,9 +187,9 @@ export function toProtoSource(s: string): FlightDelaySource {
   };
   return map[s] || 'FLIGHT_DELAY_SOURCE_COMPUTED';
 }
- 
+
 // ---------- Severity classification ----------
- 
+
 export function severityFromCancelRate(cancelRate: number): string {
   if (cancelRate >= 80) return 'severe';
   if (cancelRate >= 50) return 'major';
@@ -196,7 +197,7 @@ export function severityFromCancelRate(cancelRate: number): string {
   if (cancelRate >= 10) return 'minor';
   return 'normal';
 }
- 
+
 export function determineSeverity(avgDelayMinutes: number, delayedPct?: number): string {
   const t = DELAY_SEVERITY_THRESHOLDS;
   if (avgDelayMinutes >= t.severe.avgDelayMinutes || (delayedPct && delayedPct >= t.severe.delayedPct)) return 'severe';
@@ -205,20 +206,20 @@ export function determineSeverity(avgDelayMinutes: number, delayedPct?: number):
   if (avgDelayMinutes >= t.minor.avgDelayMinutes || (delayedPct && delayedPct >= t.minor.delayedPct)) return 'minor';
   return 'normal';
 }
- 
+
 // ---------- AviationStack integration ----------
- 
+
 interface AviationStackFlight {
   flight_status?: string;
   flight_date?: string;
   departure?: { delay?: number };
 }
- 
+
 export interface AviationStackResult {
   alerts: AirportDelayAlert[];
   healthy: boolean;
 }
- 
+
 export async function fetchAviationStackDelays(
   allAirports: MonitoredAirport[]
 ): Promise<AviationStackResult> {
@@ -227,11 +228,11 @@ export async function fetchAviationStackDelays(
     console.warn('[Aviation] No AVIATIONSTACK_API key — skipping');
     return { alerts: [], healthy: false };
   }
- 
+
   const alerts: AirportDelayAlert[] = [];
   let succeeded = 0, failed = 0;
   const deadline = Date.now() + 50_000;
- 
+
   for (let i = 0; i < allAirports.length; i += BATCH_CONCURRENCY) {
     if (Date.now() >= deadline) {
       console.warn(`[Aviation] Deadline hit after ${succeeded + failed}/${allAirports.length} airports`);
@@ -250,7 +251,7 @@ export async function fetchAviationStackDelays(
       }
     }
   }
- 
+
   const healthy = allAirports.length < 5 || failed <= succeeded;
   console.warn(`[Aviation] Done: ${succeeded} ok, ${failed} failed, ${alerts.length} alerts, healthy=${healthy}`);
   if (!healthy) {
@@ -258,9 +259,9 @@ export async function fetchAviationStackDelays(
   }
   return { alerts, healthy };
 }
- 
+
 interface FetchResult { ok: boolean; alert: AirportDelayAlert | null; }
- 
+
 async function fetchSingleAirport(
   apiKey: string, airport: MonitoredAirport
 ): Promise<FetchResult> {
@@ -294,12 +295,12 @@ async function fetchSingleAirport(
     return { ok: false, alert: null };
   }
 }
- 
+
 function aggregateFlights(
   airport: MonitoredAirport, flights: AviationStackFlight[]
 ): AirportDelayAlert | null {
   if (flights.length === 0) return null;
- 
+
   let delayed = 0, cancelled = 0, totalDelay = 0, resolved = 0;
   for (const f of flights) {
     if (RESOLVED_STATUSES.has(f.flight_status ?? '')) resolved++;
@@ -309,12 +310,12 @@ function aggregateFlights(
       totalDelay += f.departure.delay;
     }
   }
- 
+
   const total = resolved >= MIN_FLIGHTS_FOR_CLOSURE ? resolved : flights.length;
   const cancelledPct = (cancelled / total) * 100;
   const delayedPct = (delayed / total) * 100;
   const avgDelay = delayed > 0 ? Math.round(totalDelay / delayed) : 0;
- 
+
   let severity: string, delayType: string, reason: string;
   if (cancelledPct >= 80 && total >= MIN_FLIGHTS_FOR_CLOSURE) {
     severity = 'severe'; delayType = 'closure';
@@ -336,7 +337,7 @@ function aggregateFlights(
     return null;
   }
   if (severity === 'normal') return null;
- 
+
   return {
     id: `avstack-${airport.iata}`,
     iata: airport.iata, icao: airport.icao,
@@ -354,9 +355,9 @@ function aggregateFlights(
     updatedAt: Date.now(),
   };
 }
- 
+
 // ---------- NOTAM closure detection (ICAO API) ----------
- 
+
 interface IcaoNotam {
   id?: string;
   location?: string;
@@ -368,16 +369,16 @@ interface IcaoNotam {
   startvalidity?: number;
   endvalidity?: number;
 }
- 
+
 export interface NotamClosureResult {
   closedIcaoCodes: Set<string>;
   restrictedIcaoCodes: Set<string>;
   notamsByIcao: Map<string, string>;
 }
- 
+
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 export { getRelayBaseUrl, getRelayHeaders };
- 
+
 export async function fetchNotamClosures(
   airports: MonitoredAirport[]
 ): Promise<NotamClosureResult> {
@@ -387,15 +388,15 @@ export async function fetchNotamClosures(
     console.warn('[Aviation] NOTAM: no ICAO_API_KEY — skipping');
     return result;
   }
- 
+
   const relayBase = getRelayBaseUrl();
   const icaoCodes = airports.map(a => a.icao);
   const now = Math.floor(Date.now() / 1000);
- 
+
   // Send all locations in one request (relay or direct)
   const locations = icaoCodes.join(',');
   let notams: IcaoNotam[] = [];
- 
+
   try {
     if (relayBase) {
       // Route through Railway relay — avoids Vercel edge timeout / CloudFront blocking
@@ -433,12 +434,12 @@ export async function fetchNotamClosures(
     console.warn(`[Aviation] NOTAM fetch: ${err instanceof Error ? err.message : 'unknown'}`);
     return result;
   }
- 
+
   for (const n of notams) {
     const icao = n.itema || n.location || '';
     if (!icao || !icaoCodes.includes(icao)) continue;
     if (n.endvalidity && n.endvalidity < now) continue;
- 
+
     const code23 = (n.code23 || '').toUpperCase();
     const code45 = (n.code45 || '').toUpperCase();
     const text = (n.iteme || '').toUpperCase();
@@ -448,7 +449,7 @@ export async function fetchNotamClosures(
     const isRestrictionCode = (NOTAM_RESTRICTION_QCODES.has(code23) || NOTAM_CLOSURE_QCODES.has(code23)) && restrictionCode45;
     const isClosureText = /\b(AD CLSD|AIRPORT CLOSED|AIRSPACE CLOSED|AD NOT AVBL|CLSD TO ALL)\b/.test(text);
     const isRestrictionText = /\b(RESTRICTED AREA|PROHIBITED AREA|DANGER AREA|TFR|TEMPORARY FLIGHT RESTRICTION)\b/.test(text);
- 
+
     if (isClosureCode || isClosureText) {
       result.closedIcaoCodes.add(icao);
       result.notamsByIcao.set(icao, n.iteme || 'Airport closure (NOTAM)');
@@ -457,13 +458,13 @@ export async function fetchNotamClosures(
       result.notamsByIcao.set(icao, n.iteme || 'Airspace restriction (NOTAM)');
     }
   }
- 
+
   if (result.closedIcaoCodes.size > 0 || result.restrictedIcaoCodes.size > 0) {
     console.warn(`[Aviation] NOTAM: ${result.closedIcaoCodes.size} closures [${[...result.closedIcaoCodes].join(', ')}], ${result.restrictedIcaoCodes.size} restrictions [${[...result.restrictedIcaoCodes].join(', ')}]`);
   }
   return result;
 }
- 
+
 export function buildNotamAlert(
   airport: MonitoredAirport,
   reason: string,
@@ -490,24 +491,24 @@ export function buildNotamAlert(
     updatedAt: Date.now(),
   };
 }
- 
+
 // ---------- Shared NOTAM loader (used by both list-airport-delays and get-airport-ops-summary) ----------
- 
+
 const NOTAM_CACHE_KEY = 'aviation:notam:closures:v2';
 const NOTAM_CACHE_TTL = 1800; // 30 minutes
 const SEED_FRESHNESS_MS = 20 * 60 * 1000; // 20 minutes
- 
+
 export interface LoadedNotamResult {
   closedIcaos: string[];
   restrictedIcaos: string[];
   reasons: Record<string, string>;
 }
- 
+
 export async function loadNotamClosures(): Promise<LoadedNotamResult | null> {
   const t0 = Date.now();
   let notamResult: LoadedNotamResult | null = null;
   let fromSeed = false;
- 
+
   try {
     const notamMeta = await getCachedJson('seed-meta:aviation:notam', true) as { fetchedAt?: number } | null;
     const notamAge = notamMeta?.fetchedAt ? t0 - notamMeta.fetchedAt : Infinity;
@@ -520,7 +521,7 @@ export async function loadNotamClosures(): Promise<LoadedNotamResult | null> {
     console.warn(`[Aviation] NOTAM seed read failed: ${err instanceof Error ? err.message : 'unknown'}`);
     void captureSilentError(err, { tags: { route: 'aviation/notam', step: 'seed-read' } });
   }
- 
+
   if (!fromSeed && process.env.ICAO_API_KEY) {
     try {
       notamResult = await cachedFetchJson<LoadedNotamResult>(
@@ -539,14 +540,14 @@ export async function loadNotamClosures(): Promise<LoadedNotamResult | null> {
       void captureSilentError(err, { tags: { route: 'aviation/notam', step: 'live-fetch' } });
     }
   }
- 
+
   return notamResult;
 }
- 
+
 // ---------- NOTAM + flight data merge ----------
- 
+
 const SEV_ORDER = ['normal', 'minor', 'moderate', 'major', 'severe'];
- 
+
 export function mergeNotamWithExistingAlert(
   airport: MonitoredAirport,
   notamReason: string,
@@ -557,11 +558,11 @@ export function mergeNotamWithExistingAlert(
   if (!existing || existing.totalFlights === 0) {
     return buildNotamAlert(airport, notamReason, severity, delayType);
   }
- 
+
   const cancelRate = (existing.cancelledFlights / existing.totalFlights) * 100;
   const notamCancelSev = severityFromCancelRate(cancelRate);
   const notamFloor = 'moderate';
- 
+
   const existingSevName = (existing.severity ?? '')
     .replace('FLIGHT_DELAY_SEVERITY_', '').toLowerCase() || 'normal';
   const effectiveSev = SEV_ORDER[Math.max(
@@ -569,10 +570,10 @@ export function mergeNotamWithExistingAlert(
     SEV_ORDER.indexOf(notamCancelSev),
     SEV_ORDER.indexOf(notamFloor),
   )] ?? 'moderate';
- 
+
   const cancelText = `${Math.round(cancelRate)}% cxl`;
   const reason = `NOTAM: ${notamReason.slice(0, 120)} — ${cancelText}`;
- 
+
   return {
     ...existing,
     id: `notam-${airport.iata}`,

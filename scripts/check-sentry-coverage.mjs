@@ -33,16 +33,16 @@
  *   node scripts/check-sentry-coverage.mjs            # diff mode
  *   node scripts/check-sentry-coverage.mjs --all      # full scan
  */
- 
+
 import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
- 
+
 const args = process.argv.slice(2);
 const SCAN_ALL = args.includes('--all');
- 
+
 const TARGET_DIRS = ['api', 'convex', 'server'];
- 
+
 // A catch block is "OK" if it contains at least one of these markers.
 // `throw` covers re-throws (auto-Sentry catches the propagated throw).
 // `captureSilentError` is our helper. `captureEdgeException` is the
@@ -63,7 +63,7 @@ const SAFE_PATTERNS = [
   /\bthrow\b/,
   /\bstatus:\s*5\d\d\b/,
 ];
- 
+
 // Inline override marker — when a catch body needs to swallow on the
 // HTTP path but surfaces to Sentry through a non-obvious channel (e.g.,
 // `ctx.scheduler.runAfter(...)` to a Convex mutation that throws). The
@@ -71,9 +71,9 @@ const SAFE_PATTERNS = [
 // removal — we check the raw catch body for it before falling through
 // to the safety patterns.
 const OVERRIDE_MARKER = /\/\/\s*sentry-coverage-ok\b/;
- 
+
 const LOG_PATTERN = /\bconsole\.(error|warn)\b/;
- 
+
 // Skip the helper files themselves — their `console.warn` on Sentry
 // delivery failure is the right behaviour (a Sentry capture inside the
 // Sentry helper would loop forever).
@@ -82,7 +82,7 @@ const SKIP_FILE_PATTERNS = [
   /\/api\/_sentry-node\.(js|mjs|ts)$/,
   /\/api\/_sentry-common\.(js|mjs|ts)$/,
 ];
- 
+
 /**
  * Replace JavaScript comments and string literals with spaces of equal
  * length, preserving line numbers and overall indexing. We don't need to
@@ -108,19 +108,19 @@ const SKIP_FILE_PATTERNS = [
 function stripCommentsAndStrings(src) {
   const out = new Array(src.length);
   for (let i = 0; i < src.length; i++) out[i] = src[i];
- 
+
   function blank(start, end) {
     for (let k = start; k < end; k++) {
       // Preserve newlines so line numbers stay correct.
       if (out[k] !== '\n') out[k] = ' ';
     }
   }
- 
+
   let i = 0;
   while (i < src.length) {
     const c = src[i];
     const next = src[i + 1];
- 
+
     // Line comment
     if (c === '/' && next === '/') {
       let j = i + 2;
@@ -204,10 +204,10 @@ function stripCommentsAndStrings(src) {
     }
     i++;
   }
- 
+
   return out.join('');
 }
- 
+
 // Helper — skip past a string starting at `i`, return index after closing.
 function stripStringFrom(src, i) {
   const c = src[i];
@@ -225,7 +225,7 @@ function stripStringFrom(src, i) {
   }
   return j;
 }
- 
+
 function listChangedFiles() {
   try {
     const out = execSync('git diff --name-only origin/main...HEAD', {
@@ -240,7 +240,7 @@ function listChangedFiles() {
     return [];
   }
 }
- 
+
 /**
  * For a given file in diff mode, parse `git diff --unified=0` to extract
  * the set of line ranges that were added/modified vs origin/main. Used
@@ -267,14 +267,14 @@ function changedLineRanges(filePath) {
     return [];
   }
 }
- 
+
 function rangesOverlap(catchStart, catchEnd, ranges) {
   for (const [s, e] of ranges) {
     if (catchEnd >= s && catchStart <= e) return true;
   }
   return false;
 }
- 
+
 function listAllFiles() {
   const out = execSync(
     `find ${TARGET_DIRS.join(' ')} -type f \\( -name '*.ts' -o -name '*.tsx' -o -name '*.mjs' -o -name '*.js' \\) -not -path '*/node_modules/*' -not -path '*/_generated/*'`,
@@ -282,12 +282,12 @@ function listAllFiles() {
   );
   return out.split('\n').filter(Boolean);
 }
- 
+
 function findUnsafeCatches(filePath, restrictToRanges) {
   const rawSrc = readFileSync(filePath, 'utf8');
   const src = stripCommentsAndStrings(rawSrc);
   const offenders = [];
- 
+
   // Scan for catch blocks. We balance braces manually to handle nesting
   // (regex alone misses nested `{ }` inside the catch body). Operating on
   // the comment/string-stripped source means brace counts inside string
@@ -299,7 +299,7 @@ function findUnsafeCatches(filePath, restrictToRanges) {
     const startInRest = m.index;
     const absStart = i + startInRest;
     const bodyOpenAbs = absStart + m[0].length - 1; // index of the opening `{`
- 
+
     // Walk forward to find the matching closing brace.
     let depth = 1;
     let j = bodyOpenAbs + 1;
@@ -311,10 +311,10 @@ function findUnsafeCatches(filePath, restrictToRanges) {
     }
     const bodyEnd = j; // exclusive
     const body = src.slice(bodyOpenAbs + 1, bodyEnd - 1);
- 
+
     const rawBody = rawSrc.slice(bodyOpenAbs + 1, bodyEnd - 1);
     const hasOverride = OVERRIDE_MARKER.test(rawBody);
- 
+
     const logsWithoutReporting =
       LOG_PATTERN.test(body) && !SAFE_PATTERNS.some((p) => p.test(body));
     // A bare `} catch {}` — no statements AND no comment explaining why the
@@ -323,7 +323,7 @@ function findUnsafeCatches(filePath, restrictToRanges) {
     // cases passing while flagging the accidental ones, where nothing
     // reaches Sentry, the console, or the next reader.
     const isSilent = body.trim() === '' && rawBody.trim() === '';
- 
+
     if (!hasOverride && (logsWithoutReporting || isSilent)) {
       const startLine = src.slice(0, absStart).split('\n').length;
       const endLine = src.slice(0, bodyEnd).split('\n').length;
@@ -336,20 +336,20 @@ function findUnsafeCatches(filePath, restrictToRanges) {
         });
       }
     }
- 
+
     i = bodyEnd;
   }
- 
+
   return offenders;
 }
- 
+
 function main() {
   const files = SCAN_ALL ? listAllFiles() : listChangedFiles();
   if (files.length === 0) {
     if (!SCAN_ALL) console.log('  Sentry coverage: no api/ or convex/ files changed.');
     return 0;
   }
- 
+
   const allOffenders = [];
   for (const f of files) {
     const abs = resolve(f);
@@ -363,12 +363,12 @@ function main() {
       if (err && err.code !== 'ENOENT') throw err;
     }
   }
- 
+
   if (allOffenders.length === 0) {
     console.log(`  Sentry coverage: clean (${files.length} file${files.length === 1 ? '' : 's'} checked).`);
     return 0;
   }
- 
+
   console.error('');
   console.error('============================================================');
   console.error('Sentry coverage check FAILED');
@@ -392,5 +392,5 @@ function main() {
   console.error('============================================================');
   return 1;
 }
- 
+
 process.exit(main());
