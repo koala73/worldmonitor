@@ -9,6 +9,7 @@
  */
 
 import { internalAction } from "../_generated/server";
+import { internal } from "../_generated/api";
 import { v } from "convex/values";
 
 // 15 min — short enough that subscription expiry is reflected promptly
@@ -62,6 +63,34 @@ export const syncEntitlementCache = internalAction({
     validUntil: v.number(),
   },
   handler: async (_ctx, args) => {
+    await writeEntitlementCacheToRedis(args.userId, args);
+  },
+});
+
+/**
+ * Re-syncs a user's entitlement cache from the CURRENT database state.
+ *
+ * Used for the delayed race-covering sync (#4770 review): replaying the
+ * caller's upsert-time snapshot could revert a newer entitlement write that
+ * landed inside the delay (e.g. a renewal followed by a cancellation),
+ * re-granting stale paid access for up to the cache TTL. Reading at fire
+ * time means the delayed write always reflects the latest state.
+ */
+export const resyncEntitlementCacheFromDb = internalAction({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    const current = await ctx.runQuery(
+      internal.entitlements.getEntitlementsByUserId,
+      { userId: args.userId },
+    );
+    await writeEntitlementCacheToRedis(args.userId, current);
+  },
+});
+
+async function writeEntitlementCacheToRedis(
+  userId: string,
+  payload: { planKey: string; features: unknown; validUntil: number },
+): Promise<void> {
     const url = process.env.UPSTASH_REDIS_REST_URL;
     const token = process.env.UPSTASH_REDIS_REST_TOKEN;
 
@@ -72,11 +101,11 @@ export const syncEntitlementCache = internalAction({
       return;
     }
 
-    const key = getEntitlementKey(args.userId);
+    const key = getEntitlementKey(userId);
     const value = JSON.stringify({
-      planKey: args.planKey,
-      features: args.features,
-      validUntil: args.validUntil,
+      planKey: payload.planKey,
+      features: payload.features,
+      validUntil: payload.validUntil,
     });
 
     const controller = new AbortController();
@@ -99,7 +128,7 @@ export const syncEntitlementCache = internalAction({
         // outages invisible — users who upgraded would not see PRO
         // features until next manual cache rebuild.
         throw new Error(
-          `[cacheActions] Redis SET failed: HTTP ${resp.status} for user ${args.userId}`,
+          `[cacheActions] Redis SET failed: HTTP ${resp.status} for user ${userId}`,
         );
       }
     } catch (err) {
@@ -113,8 +142,7 @@ export const syncEntitlementCache = internalAction({
     } finally {
       clearTimeout(timeout);
     }
-  },
-});
+}
 
 /**
  * Deletes a user's entitlement cache entry from Redis.

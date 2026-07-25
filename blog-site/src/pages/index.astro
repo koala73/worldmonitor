@@ -15,15 +15,21 @@ const posts = (await getCollection('blog')).sort(
 // render at ~340-540px, so the 640w thumb covers 1x displays and the full
 // WebP covers high-DPI ones.
 
+const DEFAULT_AUTHOR = 'Elie Habib';
+const DEFAULT_AUTHOR_URL = 'https://www.worldmonitor.app/blog/authors/elie-habib/';
+const DEFAULT_AUTHOR_ID = `${DEFAULT_AUTHOR_URL}#person`;
+
 const jsonLd = {
   "@context": "https://schema.org",
   "@type": "Blog",
+  "@id": "https://www.worldmonitor.app/blog/#blog",
   "name": "World Monitor Blog",
   "description": "Analysis, guides, and deep dives on real-time intelligence, OSINT, geopolitics, markets, and the open-source tools behind World Monitor.",
   "url": "https://www.worldmonitor.app/blog/",
   "inLanguage": "en-US",
   "publisher": {
     "@type": "Organization",
+    "@id": "https://www.worldmonitor.app/#organization",
     "name": "World Monitor",
     "url": "https://www.worldmonitor.app",
     "logo": {
@@ -31,22 +37,34 @@ const jsonLd = {
       "url": "https://www.worldmonitor.app/favico/apple-touch-icon.png"
     }
   },
-  "blogPost": posts.map(post => ({
-    "@type": "BlogPosting",
-    "headline": post.data.title,
-    "description": post.data.description,
-    "datePublished": post.data.pubDate.toISOString(),
-    ...(post.data.modifiedDate ? { "dateModified": post.data.modifiedDate.toISOString() } : {}),
-    "url": `https://www.worldmonitor.app/blog/posts/${post.id}/`,
-    "image": post.data.heroImage ? `https://www.worldmonitor.app${post.data.heroImage}` : "https://www.worldmonitor.app/favico/og-image.png"
-  }))
+  "blogPost": posts.map(post => {
+    const authorName = post.data.author || DEFAULT_AUTHOR;
+    const authorUrl = post.data.authorUrl || (authorName === DEFAULT_AUTHOR ? DEFAULT_AUTHOR_URL : undefined);
+
+    return {
+      "@type": "BlogPosting",
+      "@id": `https://www.worldmonitor.app/blog/posts/${post.id}/#article`,
+      "headline": post.data.title,
+      "description": post.data.description,
+      "datePublished": post.data.pubDate.toISOString(),
+      ...(post.data.modifiedDate ? { "dateModified": post.data.modifiedDate.toISOString() } : {}),
+      "author": {
+        "@type": "Person",
+        "name": authorName,
+        ...(authorUrl ? { "url": authorUrl } : {}),
+        ...(authorName === DEFAULT_AUTHOR ? { "@id": DEFAULT_AUTHOR_ID } : {})
+      },
+      "url": `https://www.worldmonitor.app/blog/posts/${post.id}/`,
+      "image": post.data.heroImage ? `https://www.worldmonitor.app${post.data.heroImage}` : "https://www.worldmonitor.app/favico/og-image.png"
+    };
+  })
 };
 ---
 
 <Base
   title="World Monitor Blog"
   description="Insights on real-time global intelligence, OSINT, geopolitics, markets, and the open-source tools that power situational awareness."
-  metaTitle="World Monitor Blog | Real-Time Intelligence, OSINT, Geopolitics & Markets"
+  metaTitle="World Monitor Blog | Global Intelligence & OSINT"
   jsonLd={jsonLd}
 >
   <div class="blog-hero">

@@ -24,6 +24,14 @@ import { deriveCountry } from '../server/_shared/usage.ts';
 import { issueSessionToken } from '../api/_session.js';
 import { createRedisFetch } from './helpers/fake-upstash-redis.mts';
 
+// Canonical `wm_` + 40 lowercase hex — the only shape generateKey()
+// (src/services/api-keys.ts) mints, and since #5379 validateUserApiKey rejects
+// anything else before hashing. The Convex mocks match on URL, not on the key
+// or its hash, so the exact values are arbitrary as long as they are shaped
+// like a real key.
+const TELEMETRY_FREE_USER_KEY = `wm_${'d'.repeat(40)}`;
+const TELEMETRY_ACTIVE_USER_KEY = `wm_${'e'.repeat(40)}`;
+
 // Anonymous browser access requires a wms_ session token (issue #3541).
 process.env.WM_SESSION_SECRET = process.env.WM_SESSION_SECRET
   ?? 'test-secret-must-be-at-least-32-chars-long-xxx';
@@ -552,7 +560,7 @@ describe('gateway telemetry payload — bearer identity propagation', () => {
       new Request('https://worldmonitor.app/api/market/v1/analyze-stock?symbol=AAPL', {
         headers: {
           Origin: 'https://worldmonitor.app',
-          'X-Api-Key': 'wm_test_free_key',
+          'X-Api-Key': TELEMETRY_FREE_USER_KEY,
         },
       }),
       recorder.ctx,
@@ -616,7 +624,7 @@ describe('gateway telemetry payload — bearer identity propagation', () => {
       new Request('https://worldmonitor.app/api/cyber/v1/list-cyber-threats', {
         headers: {
           Origin: 'https://worldmonitor.app',
-          'X-Api-Key': 'wm_test_active_key',
+          'X-Api-Key': TELEMETRY_ACTIVE_USER_KEY,
         },
       }),
       recorder.ctx,

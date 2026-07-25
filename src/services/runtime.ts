@@ -17,7 +17,6 @@ const ENV = (() => {
 
 const WS_API_URL = ENV.VITE_WS_API_URL || '';
 const DEFAULT_WEB_API_URL = 'https://api.worldmonitor.app';
-const KEYED_CLOUD_API_PATTERN = /^\/api\/(?:[^/]+\/v1\/|bootstrap(?:\?|$)|polymarket(?:\?|$)|ais-snapshot(?:\?|$))/;
 
 const DEFAULT_REMOTE_HOSTS: Record<string, string> = {
   tech: WS_API_URL,
@@ -305,21 +304,23 @@ function isKeyFreeApiTarget(target: string): boolean {
 }
 
 async function fetchLocalWithStartupRetry(
-  nativeFetch: typeof window.fetch,
-  localUrl: string,
+  target: string,
+  input: RequestInfo | URL,
   init?: RequestInit,
 ): Promise<Response> {
   const maxAttempts = 4;
   let lastError: unknown = null;
+  const signal = init?.signal ?? (input instanceof Request ? input.signal : undefined);
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      return await nativeFetch(localUrl, init);
+      const { proxyLocalApiRequest } = await import('@/services/tauri-bridge');
+      return await proxyLocalApiRequest(target, input, init);
     } catch (error) {
       lastError = error;
 
       // Preserve caller intent for aborted requests.
-      if (init?.signal?.aborted) {
+      if (signal?.aborted) {
         throw error;
       }
 
@@ -337,25 +338,10 @@ async function fetchLocalWithStartupRetry(
 }
 
 // ── Security threat model for the fetch patch ──────────────────────────
-// The LOCAL_API_TOKEN exists to prevent OTHER local processes from
-// accessing the sidecar on port 46123. The renderer IS the intended
-// client — injecting the token automatically is correct by design.
-//
-// If the renderer is compromised (XSS, supply chain), the attacker
-// already has access to strictly more powerful Tauri IPC commands
-// (get_all_secrets, set_secret, etc.) via window.__TAURI_INTERNALS__.
-// The fetch patch does not expand the attack surface beyond what IPC
-// already provides.
-//
-// Defense layers that protect the renderer trust boundary:
-//   1. CSP: script-src 'self' (no unsafe-inline/eval)
-//   2. IPC origin validation: sensitive commands gated to trusted windows
-//   3. Sidecar allowlists: env-update restricted to ALLOWED_ENV_KEYS
-//   4. DevTools disabled in production builds
-//
-// The token has a 5-minute TTL in the closure to limit exposure window
-// if IPC access is revoked mid-session.
-const TOKEN_TTL_MS = 5 * 60 * 1000;
+// The native process exclusively owns LOCAL_API_TOKEN. Renderer API calls are
+// proxied through a narrow native command that rejects sidecar configuration
+// routes, so a compromised page cannot read the token or mutate the secret
+// cache through the local HTTP control plane.
 
 export function installRuntimeFetchPatch(): void {
   if (!isDesktopRuntime() || typeof window === 'undefined' || (window as unknown as Record<string, unknown>).__wmFetchPatched) {
@@ -363,10 +349,6 @@ export function installRuntimeFetchPatch(): void {
   }
 
   const nativeFetch = window.fetch.bind(window);
-  let localApiToken: string | null = null;
-  let tokenFetchedAt = 0;
-  let authRetryCooldownUntil = 0; // suppress 401 retries after consecutive failures
-
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const target = getApiTargetFromRequestInput(input);
     const debug = localStorage.getItem('wm-debug-log') === '1';
@@ -379,30 +361,6 @@ export function installRuntimeFetchPatch(): void {
       return nativeFetch(input, init);
     }
 
-    // Resolve dynamic sidecar port on first API call
-    if (_resolvedPort === null) {
-      try { await resolveLocalApiPort(); } catch { /* use default */ }
-    }
-
-    const tokenExpired = localApiToken && (Date.now() - tokenFetchedAt > TOKEN_TTL_MS);
-    if (!localApiToken || tokenExpired) {
-      try {
-        const { tryInvokeTauri } = await import('@/services/tauri-bridge');
-        localApiToken = await tryInvokeTauri<string>('get_local_api_token');
-        tokenFetchedAt = Date.now();
-      } catch {
-        localApiToken = null;
-        tokenFetchedAt = 0;
-      }
-    }
-
-    const headers = new Headers(init?.headers);
-    if (localApiToken) {
-      headers.set('Authorization', `Bearer ${localApiToken}`);
-    }
-    const localInit = { ...init, headers };
-
-    const localUrl = `${getApiBaseUrl()}${target}`;
     if (debug) console.log(`[fetch] intercept → ${target}`);
     let allowCloudFallback = !isLocalOnlyApiTarget(target);
 
@@ -425,47 +383,13 @@ export function installRuntimeFetchPatch(): void {
       }
       const cloudUrl = `${getRemoteApiBaseUrl()}${target}`;
       if (debug) console.log(`[fetch] cloud fallback → ${cloudUrl}`);
-      const cloudHeaders = new Headers(init?.headers);
-      if (KEYED_CLOUD_API_PATTERN.test(target)) {
-        const { getRuntimeConfigSnapshot } = await import('@/services/runtime-config');
-        const wmKeyValue = getRuntimeConfigSnapshot().secrets['WORLDMONITOR_API_KEY']?.value;
-        if (wmKeyValue) {
-          cloudHeaders.set('X-WorldMonitor-Key', wmKeyValue);
-        }
-      }
-      return nativeFetch(cloudUrl, { ...init, headers: cloudHeaders });
+      return nativeFetch(cloudUrl, init);
     };
 
     try {
       const t0 = performance.now();
-      let response = await fetchLocalWithStartupRetry(nativeFetch, localUrl, localInit);
+      const response = await fetchLocalWithStartupRetry(target, input, init);
       if (debug) console.log(`[fetch] ${target} → ${response.status} (${Math.round(performance.now() - t0)}ms)`);
-
-      // Token may be stale after a sidecar restart — refresh and retry once.
-      // Skip retry if we recently failed (avoid doubling every request during auth outages).
-      if (response.status === 401 && localApiToken && Date.now() > authRetryCooldownUntil) {
-        if (debug) console.log(`[fetch] 401 from sidecar, refreshing token and retrying`);
-        try {
-          const { tryInvokeTauri } = await import('@/services/tauri-bridge');
-          localApiToken = await tryInvokeTauri<string>('get_local_api_token');
-          tokenFetchedAt = Date.now();
-        } catch {
-          localApiToken = null;
-          tokenFetchedAt = 0;
-        }
-        if (localApiToken) {
-          const retryHeaders = new Headers(init?.headers);
-          retryHeaders.set('Authorization', `Bearer ${localApiToken}`);
-          response = await fetchLocalWithStartupRetry(nativeFetch, localUrl, { ...init, headers: retryHeaders });
-          if (debug) console.log(`[fetch] retry ${target} → ${response.status}`);
-          if (response.status === 401) {
-            authRetryCooldownUntil = Date.now() + 60_000;
-            if (debug) console.log(`[fetch] auth retry failed, suppressing retries for 60s`);
-          } else {
-            authRetryCooldownUntil = 0;
-          }
-        }
-      }
 
       if (!response.ok) {
         if (!allowCloudFallback) {

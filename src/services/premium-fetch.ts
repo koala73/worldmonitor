@@ -33,6 +33,7 @@
  */
 import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { PREMIUM_RPC_PATHS } from '@/shared/premium-paths';
+import { isDesktopRuntime } from './runtime';
 
 /**
  * Test seam — set in unit tests to inject key/token providers without needing
@@ -191,17 +192,21 @@ export async function premiumFetch(
     return res;
   }
 
-  // 1. WORLDMONITOR_API_KEY from env (desktop / test environments).
-  try {
-    const { getRuntimeConfigSnapshot } = await import('@/services/runtime-config');
-    const wmKey = getRuntimeConfigSnapshot().secrets['WORLDMONITOR_API_KEY']?.value;
-    if (wmKey) {
-      existing.set('X-WorldMonitor-Key', wmKey);
-      const res = await globalThis.fetch(input, { ...withCredentials(requestInit), headers: existing });
-      reportServerError(res, input);
-      return res;
-    }
-  } catch { /* not available — fall through */ }
+  // 1. Browser/test runtime key. Desktop keys remain inside the native
+  // sidecar; its native proxy authenticates these requests without placing a
+  // license key in renderer memory.
+  if (!isDesktopRuntime()) {
+    try {
+      const { getRuntimeConfigSnapshot } = await import('@/services/runtime-config');
+      const wmKey = getRuntimeConfigSnapshot().secrets['WORLDMONITOR_API_KEY']?.value;
+      if (wmKey) {
+        existing.set('X-WorldMonitor-Key', wmKey);
+        const res = await globalThis.fetch(input, { ...withCredentials(requestInit), headers: existing });
+        reportServerError(res, input);
+        return res;
+      }
+    } catch { /* not available — fall through */ }
+  }
 
   // 2. Legacy in-memory test seam. In production, tester/widget keys are
   // HttpOnly cookies and ride along through credentials: 'include'.

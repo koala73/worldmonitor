@@ -33,7 +33,14 @@ export const BASELINE_ADVISORIES_BY_LOCKFILE = {
   // `overrides` pin bump) would drag an otherwise-untouched public/pro/ rebuild
   // into a lockfile-hygiene change. Baselined rather than patched here; drop it
   // once react-native leaves pro-test's tree. (GHSA-qjx8/w24r predate this.)
-  'pro-test/package-lock.json': ['GHSA-qjx8-664m-686j', 'GHSA-w24r-5266-9c3c', 'GHSA-395f-4hp3-45gv'],
+  // GHSA-r28c-9q8g-f849 (postcss sourceMappingURL path traversal) requires
+  // postcss to process attacker-controlled CSS carrying a malicious
+  // sourceMappingURL. pro-test runs postcss only at build time over
+  // first-party Tailwind sources; postcss never ships in public/pro/. The
+  // clean fix means bumping the `overrides.postcss` pin (8.5.12 → ≥8.5.23),
+  // which drags a public/pro/ bundle rebuild into a lockfile-hygiene change —
+  // same trade-off as GHSA-395f below. Drop when the pin next bumps.
+  'pro-test/package-lock.json': ['GHSA-qjx8-664m-686j', 'GHSA-w24r-5266-9c3c', 'GHSA-395f-4hp3-45gv', 'GHSA-r28c-9q8g-f849'],
   'scripts/package-lock.json': [],
   'docker/runtime-package-lock.json': [],
 };

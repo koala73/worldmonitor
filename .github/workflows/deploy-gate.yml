@@ -3,11 +3,22 @@ name: Deploy Gate
 # Runs whenever Test, Typecheck, Lint Code, or Security Audit completes on a PR/push.
 # Checks whether all required PR smoke gates have passed for the same commit SHA.
 # Posts a commit status on the PR's head SHA so branch protection can see it.
+#
+# Also runs on a 30-minute schedule (and on demand) as a self-healing sweep
+# (#5479): event-driven evaluation alone can strand a PR — the check-runs API
+# can serve stale reads (~1 min normally, longer during GitHub degradation),
+# and the last workflow_run event for a SHA is the last time anything
+# re-evaluates. The sweep finds open-PR head SHAs whose gate status is still
+# "pending" and re-evaluates them, so a stranded PR heals within 30 minutes
+# with no manual re-run.
 
 on:
   workflow_run:
     workflows: ["Test", "Typecheck", "Lint Code", "Security Audit"]
     types: [completed]
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
 
 permissions:
   statuses: write
@@ -24,16 +35,49 @@ jobs:
         run: |
           required='["changes","docs-stats","unit","consumer-prices","sidecar","convex-tests","variant-smoke-full","resilience-validation-smoke","digest-image","typecheck","biome","public-docs","security-audit"]'
 
+          if [ -n "$SHA" ]; then
+            # workflow_run event — evaluate exactly the triggering SHA.
+            shas="$SHA"
+          else
+            # schedule / workflow_dispatch — sweep open PRs whose gate status
+            # is still pending. Public-repo reads need no extra permission.
+            shas=$(gh api "repos/$REPO/pulls?state=open&per_page=100" --jq '.[].head.sha' | sort -u | while read -r s; do
+              state=$(gh api "repos/$REPO/commits/$s/status" \
+                --jq '[.statuses[] | select(.context == "gate")] | sort_by(.updated_at) | last | .state // "missing"')
+              if [ "$state" = "pending" ]; then echo "$s"; fi
+            done)
+            if [ -z "$shas" ]; then
+              echo "sweep: no open PRs with a pending gate status"
+              exit 0
+            fi
+            echo "sweep: re-evaluating pending gate on:"
+            echo "$shas"
+          fi
+
+          for SHA in $shas; do
+          echo "── evaluating $SHA"
+
           # Poll check-runs for this SHA and find the latest result for each required job.
           # Project to just the three fields the gate logic reads. A SHA can
           # accumulate dozens of full check-run objects across re-runs; passing
           # the un-projected JSON to python3 via the RUNS_JSON env var overflowed
           # Linux's 128KB-per-arg/env limit (MAX_ARG_STRLEN) once it crossed
           # ~131KB, failing the gate with "Argument list too long" (exit 126).
-          runs=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" \
-            --jq ".check_runs | map(select(.name as \$name | $required | index(\$name)) | {name, conclusion, completed_at})")
+          #
+          # #5479: the check-runs API can lag ~1 minute behind a job's completion,
+          # and workflow_run fires a bounded number of times per SHA — when the
+          # LAST event's single poll got a stale read, the posted "pending"
+          # status was never refreshed and the PR stayed stuck until a manual
+          # re-run (PRs #5476/#5475/#5481). When jobs still read as pending,
+          # re-poll a few times before concluding pending. The all-complete case
+          # breaks on the first pass, so the happy path costs nothing extra.
+          # NOTE: the python3 -c body must stay at column 0 of the block scalar —
+          # indenting it with the loops would be a Python IndentationError.
+          for attempt in 1 2 3 4 5; do
+            runs=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" \
+              --jq ".check_runs | map(select(.name as \$name | $required | index(\$name)) | {name, conclusion, completed_at})")
 
-          status=$(RUNS_JSON="$runs" REQUIRED_JOBS="$required" python3 -c "
+            status=$(RUNS_JSON="$runs" REQUIRED_JOBS="$required" python3 -c "
           import json
           import os
 
@@ -54,16 +98,24 @@ jobs:
           print('failed=' + ','.join(name for name in required if latest[name] not in ('success', 'skipped')))
           ")
 
-          echo "$status"
-          pending=$(echo "$status" | awk -F= '/^pending=/ { print $2 }')
-          failed=$(echo "$status" | awk -F= '/^failed=/ { print $2 }')
+            echo "attempt $attempt: $status"
+            pending=$(echo "$status" | awk -F= '/^pending=/ { print $2 }')
+            failed=$(echo "$status" | awk -F= '/^failed=/ { print $2 }')
+
+            if [ -z "$pending" ]; then
+              break
+            fi
+            if [ "$attempt" -lt 5 ]; then
+              sleep 30
+            fi
+          done
 
           if [ -n "$pending" ]; then
             gh api "repos/$REPO/statuses/$SHA" --method POST \
               --field state="pending" \
               --field context="gate" \
               --field description="Waiting for required PR gates: $pending"
-            exit 0
+            continue
           fi
 
           # Treat "skipped" as passing (docs-only PRs skip code checks)
@@ -72,10 +124,11 @@ jobs:
               --field state="failure" \
               --field context="gate" \
               --field description="Required PR gates did not pass: $failed"
-            exit 0
+            continue
           fi
 
           gh api "repos/$REPO/statuses/$SHA" --method POST \
             --field state="success" \
             --field context="gate" \
             --field description="All required PR gates passed"
+          done

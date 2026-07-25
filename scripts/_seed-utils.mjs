@@ -473,6 +473,33 @@ export async function writeFreshnessMetadata(domain, resource, count, source, tt
 }
 
 /**
+ * writeFreshnessMetadata for runSeed's OWN bookkeeping call sites: degrades to
+ * null (loudly) instead of throwing when Redis stays down past the retry
+ * budget. By the time runSeed writes seed-meta, the run's outcome is already
+ * decided — the canonical publish succeeded, or the skip path preserved
+ * last-good — so letting a metadata SET escape as a throw converts a Redis
+ * blip into `FATAL: … exit 1` + a "Deploy Crashed!" alert over pure
+ * bookkeeping (seed-gdelt-intel 2026-07-23, issue #5478; the #5438 retry
+ * alone was insufficient under the sustained brownout contention window).
+ * The degraded write leaves the OLD seed-meta in place, which ages naturally
+ * — /api/health STALE_SEED is the durable alarm for a persistent failure.
+ *
+ * External callers keep using writeFreshnessMetadata directly: its
+ * throw-after-retries contract is intentional and pinned by tests.
+ */
+export async function writeFreshnessMetadataSafely(domain, resource, ...rest) {
+  try {
+    return await writeFreshnessMetadata(domain, resource, ...rest);
+  } catch (err) {
+    console.warn(
+      `  WARNING: seed-meta write for ${domain}:${resource} failed after retries (${err?.message || err}) — `
+      + `continuing; seed-meta will age and /api/health STALE_SEED is the alarm if this persists`,
+    );
+    return null;
+  }
+}
+
+/**
  * Read the canonical key's contract-mode envelope meta. Used by runSeed's
  * validate-fail branch to mirror canonical state into seed-meta instead
  * of overwriting it with recordCount=0 (which makes /api/health report
@@ -1839,7 +1866,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
           // Pass-through canonical's contentAge so health doesn't lose the
           // STALE_CONTENT signal exactly when last-good-with-stale-content
           // data is being served (Codex round 1 P0b).
-          await writeFreshnessMetadata(
+          await writeFreshnessMetadataSafely(
             domain, resource, canonicalMeta.recordCount,
             canonicalMeta.sourceVersion || opts.sourceVersion,
             ttlSeconds,
@@ -1853,7 +1880,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
             `existing cache TTL extended`,
           );
         } else {
-          await writeFreshnessMetadata(domain, resource, 0, opts.sourceVersion, ttlSeconds);
+          await writeFreshnessMetadataSafely(domain, resource, 0, opts.sourceVersion, ttlSeconds);
           console.log(`  SKIPPED: validation failed (empty data) — seed-meta refreshed (recordCount=0), existing cache TTL extended`);
         }
       }
@@ -1981,7 +2008,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       oldestItemAt: contentOldestAt,
       maxContentAgeMin,
     } : undefined;
-    const meta = await writeFreshnessMetadata(
+    const meta = await writeFreshnessMetadataSafely(
       domain, resource, recordCount, opts.sourceVersion, ttlSeconds,
       undefined,            // fetchedAtOverride — success path uses now
       successContentAge,

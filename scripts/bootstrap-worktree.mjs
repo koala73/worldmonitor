@@ -239,6 +239,68 @@ export function installDependencies({
   return result;
 }
 
+// A stale absolute core.hooksPath makes every push from this worktree run
+// ANOTHER checkout's (possibly ancient) pre-push hook — the 2026-07-24
+// "pushes take minutes and time out" incident: the main checkout was parked
+// 800+ commits behind and its unconditional pre-#4800 gate ran on every
+// worktree push. Worktree-creation tooling copies the shared value into
+// .git/worktrees/<name>/config.worktree at creation time, so a one-time
+// absolute value keeps resurfacing in new worktrees. Policy: a per-worktree
+// override pointing outside this worktree is unset (worktree-local, safe);
+// a foreign absolute value in the SHARED config is warned about but never
+// mutated from a bootstrap script.
+export function decideHooksPathAction({ rootDir, hooksPathValue, originFile }) {
+  if (!hooksPathValue) return { action: 'none', reason: 'core.hooksPath not set' };
+  if (!hooksPathValue.startsWith('/')) {
+    return { action: 'none', reason: `relative hooksPath (${hooksPathValue}) resolves per-worktree` };
+  }
+  if (hooksPathValue === resolve(rootDir, '.husky')) {
+    return { action: 'none', reason: 'absolute hooksPath already points into this worktree' };
+  }
+  if (originFile.includes('/config.worktree')) {
+    return {
+      action: 'unset-worktree',
+      reason: `per-worktree override points outside this worktree (${hooksPathValue})`,
+    };
+  }
+  return {
+    action: 'warn-shared',
+    reason: `shared config sets absolute hooksPath outside this worktree (${hooksPathValue})`,
+  };
+}
+
+export function normalizeWorktreeHooksPath({ dryRun = false, log = console.log, rootDir = process.cwd() } = {}) {
+  const probe = spawnSync(
+    'git',
+    ['config', '--show-origin', '--get', 'core.hooksPath'],
+    { cwd: rootDir, encoding: 'utf8' },
+  );
+  // Exit 1 = unset; other failures (not a repo, no git) are not bootstrap's problem.
+  if (probe.status !== 0) return { action: 'none', reason: 'core.hooksPath not set' };
+
+  const [origin = '', ...valueParts] = probe.stdout.trim().split('\t');
+  const decision = decideHooksPathAction({
+    rootDir,
+    hooksPathValue: valueParts.join('\t'),
+    originFile: origin.replace(/^file:/, ''),
+  });
+
+  if (decision.action === 'unset-worktree') {
+    log(`[worktree] removing stale hooksPath override: ${decision.reason}`);
+    if (!dryRun) {
+      spawnSync('git', ['config', '--worktree', '--unset', 'core.hooksPath'], {
+        cwd: rootDir,
+        stdio: 'inherit',
+      });
+    }
+  } else if (decision.action === 'warn-shared') {
+    log(`[worktree] WARNING: ${decision.reason}`);
+    log('[worktree]   pushes here will run that checkout\'s hook copy, which may be stale.');
+    log('[worktree]   Fix once for all worktrees: git config core.hooksPath .husky');
+  }
+  return decision;
+}
+
 export function bootstrapWorktree(options = {}) {
   const rootDir = resolve(options.rootDir || process.cwd());
   const log = options.log || console.log;
@@ -247,6 +309,8 @@ export function bootstrapWorktree(options = {}) {
     : inferEnvSource(rootDir);
 
   assertProjectRoot(rootDir);
+
+  normalizeWorktreeHooksPath({ dryRun: options.dryRun, log, rootDir });
 
   if (!options.skipEnv) {
     linkEnvFiles({

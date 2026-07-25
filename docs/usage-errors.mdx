@@ -32,7 +32,7 @@ OAuth endpoints follow [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rf
 | `304` | Not Modified (conditional cache hit) | — |
 | `400` | Bad request — validation error | No — fix input |
 | `401` | Missing / invalid auth | No — fix auth |
-| `403` | Authenticated but not entitled (usually `pro_required`) | No — upgrade |
+| `403` | Authenticated but not entitled (usually `pro_required`), or `subscription_lapsed` — a lapse confirmed with the billing provider (`X-Billing-Verification` header set) | No — upgrade / resubscribe |
 | `404` | Resource / tool / brief / entity not found | No |
 | `405` | Method not allowed | No |
 | `409` | `Idempotency-Key` request still in progress, or another conflict such as duplicate webhook registration. | Yes for keyed in-flight requests — honor `Retry-After: 2`; otherwise no |
@@ -41,7 +41,7 @@ OAuth endpoints follow [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rf
 | `429` | Rate limited | Yes — honor `Retry-After` |
 | `500` | Server bug | Yes — with backoff, then report |
 | `502` | Upstream / Convex / Dodo failure | Yes — exponential backoff |
-| `503` | Service unavailable — missing env or dependency down | Yes — exponential backoff |
+| `503` | Service unavailable — missing env or dependency down; billing verification in progress (`renewal_verification_pending` / `renewal_verification_failed` — dynamic `Retry-After`, 1-60s); or billing backend unreachable (`entitlement_verification_unavailable` — fixed `Retry-After: 5`) | Yes — honor `Retry-After`, else exponential backoff |
 | `504` | Upstream timeout | Yes — with backoff |
 
 ## Common error strings
@@ -57,6 +57,10 @@ OAuth endpoints follow [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rf
 | `Service temporarily unavailable` | Upstash or another hard dependency missing at request time. |
 | `service_unavailable` | Signing secret / required env not configured. |
 | `Failed to enqueue scenario job` | Redis pipeline failure on `/api/scenario/v1/run-scenario`. |
+| `subscription_lapsed` | The subscription lapse was confirmed with the billing provider. Re-authenticating will not help — resubscribe to restore access. Response carries `X-Billing-Verification: subscription_lapsed`. |
+| `renewal_verification_pending` | Your subscription recently expired locally and the server is re-confirming it with the billing provider. Retryable 503 — honor `Retry-After` (1-60s); a renewed subscription typically recovers within one or two retries. |
+| `renewal_verification_failed` | The provider re-check could not complete and is in a short cooldown. Retryable 503 — honor `Retry-After`. |
+| `entitlement_verification_unavailable` | The billing backend could not be reached to verify access — emitted on every authenticated surface (`wm_` API keys, bootstrap, session/bearer tier checks, MCP). Retryable 503 with `Retry-After: 5` and `X-Billing-Verification: entitlement_verification_unavailable`. |
 | `idempotency_conflict` | A POST with this `Idempotency-Key` is still processing. Retry after `Retry-After: 2`. |
 | `idempotency_key_reused` | The same `Idempotency-Key` was already used with a different request body. |
 | `invalid_idempotency_key` | The `Idempotency-Key` header is too long or contains non-printable characters. Generated OpenAPI POSTs also reject an empty key. |
