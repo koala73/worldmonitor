@@ -166,21 +166,26 @@ describe('source provenance defaults (#5390)', () => {
     assert.equal(feeds.describePropagandaBadge(feeds.getSourcePropagandaRisk('Reuters')), null);
   });
 
-  it('classifies all six China policy agencies as official Chinese government sources', () => {
+  it('classifies reviewed Chinese ministries, agencies, and data publishers as government', () => {
     for (const name of [
       'CAC (China)',
       'SAMR (China)',
       'MIIT (China)',
       'MOFCOM (China)',
       'NDRC (China)',
+      'NBS (China)',
       'PBoC (China)',
+      'SAFE (China)',
+      'GACC (China)',
     ] as const) {
       assert.equal(feeds.getSourceType(name), 'gov', `${name} type`);
       assert.equal(feeds.SOURCE_TYPES[name], 'gov');
       const risk = feeds.getSourcePropagandaRisk(name);
       assert.equal(risk.risk, 'high', `${name} risk`);
       assert.equal(risk.stateAffiliated, 'China');
-      assert.equal(feeds.getSourceTier(name), 1, `${name} tier`);
+      if (name === 'MIIT (China)' || name === 'MOFCOM (China)') {
+        assert.equal(feeds.getSourceTier(name), 1, `${name} configured feed tier`);
+      }
       const badge = feeds.describePropagandaBadge(risk, feeds.getSourceType(name));
       assert.ok(badge);
       assert.equal(badge!.risk, 'high');

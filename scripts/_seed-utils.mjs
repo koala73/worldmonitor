@@ -1554,6 +1554,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     // last-good TTL protection when the primary fetch fails or is skipped.
     preserveKeys = [],
     afterPublish,
+    afterPreservedValidationSkip,
     publishTransform,
     declareRecords,        // new — contract opt-in. When present, runSeed enters
                            // envelope-dual-write path: writes `{_seed, data}` to
@@ -1828,7 +1829,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     const publishResult = await atomicPublish(canonicalKey, publishData, validateFn, ttlSeconds, { envelopeMeta });
     if (publishResult.skipped) {
       const durationMs = Date.now() - startMs;
-      await extendExistingTtl(preservationKeys(), ttlSeconds || 600);
+      const preserved = await extendExistingTtl(preservationKeys(), ttlSeconds || 600);
       const strictFailure = Boolean(opts.emptyDataIsFailure);
       if (strictFailure) {
         // Strict-floor seeders (e.g. IMF-External, floor=180 countries) treat
@@ -1883,6 +1884,14 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
           await writeFreshnessMetadataSafely(domain, resource, 0, opts.sourceVersion, ttlSeconds);
           console.log(`  SKIPPED: validation failed (empty data) — seed-meta refreshed (recordCount=0), existing cache TTL extended`);
         }
+      }
+      if (!strictFailure && preserved && afterPreservedValidationSkip) {
+        await afterPreservedValidationSkip(data, {
+          canonicalKey,
+          ttlSeconds,
+          recordCount: contractRecordCount,
+          runId,
+        });
       }
       console.log(`\n=== Done (${Math.round(durationMs)}ms, no write) ===`);
       await releaseLock(`${domain}:${resource}`, runId);
