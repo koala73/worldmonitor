@@ -9,6 +9,7 @@ import {
 } from '@/services/billing';
 import {
   getEntitlementState,
+  hasFeature,
   onEntitlementChange,
   type EntitlementState,
 } from '@/services/entitlements';
@@ -571,7 +572,14 @@ export class ProActivationController implements AppModule {
     return {
       accountUserId: user.id,
       accountEmail: user.email,
-      openApiKeys: () => ctx.unifiedSettings?.open('api-keys'),
+      // Pro entitles MCP, not the API plans' keys (#5607). Gate on the feature
+      // rather than the plan key: UnifiedSettings hides both the MCP tab and its
+      // panel without `mcpAccess` (legacy snapshots pre-date the catalog field),
+      // so deep-linking there would open settings with no active panel. Leaving
+      // the opener undefined makes buildPowerExtra drop the pointer instead.
+      openMcpClients: hasFeature('mcpAccess')
+        ? () => ctx.unifiedSettings?.open('mcp-clients')
+        : undefined,
       openChannelSettings: () => ctx.unifiedSettings?.open('notifications'),
       openWidgetBuilder: () =>
         ctx.container.dispatchEvent(new CustomEvent('wm:open-widget-creator', { detail: {} })),

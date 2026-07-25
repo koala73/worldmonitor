@@ -2333,7 +2333,7 @@
           "pointers": {
             "widgets": "Build a custom widget",
             "analyst": "Ask the AI analyst",
-            "apiKeys": "Get your API & MCP keys",
+            "mcpClients": "Set up MCP",
             "channels": "Set those up in notification settings"
           }
         }

@@ -2279,7 +2279,7 @@
           "pointers": {
             "widgets": "Utwórz niestandardowy widżet",
             "analyst": "Zapytaj analityka AI",
-            "apiKeys": "Pobierz swoje klucze API i MCP",
+            "mcpClients": "Skonfiguruj MCP",
             "channels": "Skonfiguruj je w ustawieniach powiadomień"
           }
         }

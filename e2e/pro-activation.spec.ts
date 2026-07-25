@@ -124,7 +124,7 @@ async function openFlow(page: Page, withOpeners: boolean): Promise<void> {
     if (openers) {
       options.openWidgetBuilder = () => {};
       options.openAiAnalyst = () => {};
-      options.openApiKeys = () => {};
+      options.openMcpClients = () => {};
     }
     void (mod.openProActivationFlow as (o: unknown) => Promise<unknown>)(options);
   }, withOpeners);
@@ -663,6 +663,13 @@ test.describe('Pro activation flow — telemetry + finish-setup chip', () => {
       else break;
     }
     await expect(pointer).toBeVisible();
+
+    // #5607: Pro is apiAccess:false / mcpAccess:true, so the third pointer sells
+    // MCP setup — never "API & MCP keys" deep-linked at the API-plan upsell.
+    await expect(
+      page.locator('.pro-activation-pointer[data-pointer="mcpClients"]'),
+    ).toContainText('Set up MCP');
+    await expect(page.locator('.pro-activation-pointer[data-pointer="apiKeys"]')).toHaveCount(0);
 
     // Clicking a pointer confirms the power step (stepConfirmed) and finishes
     // the flow (a deep-link closes the full-screen overlay first).

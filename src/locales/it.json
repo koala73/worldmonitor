@@ -2270,7 +2270,7 @@
           "pointers": {
             "widgets": "Crea un widget personalizzato",
             "analyst": "Chiedi all'analista IA",
-            "apiKeys": "Ottieni le tue chiavi API e MCP",
+            "mcpClients": "Configura MCP",
             "channels": "Configurali nelle impostazioni di notifica"
           }
         }
