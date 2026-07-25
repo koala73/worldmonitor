@@ -412,6 +412,23 @@ function claims(s) {
     { file: 'README.md', re: /(\d+)\s+stock exchanges/, value: s.stockExchangeCount },
     { file: 'docs/overview.mdx', re: /(\d+)\+\s+curated news feeds/, value: s.feedDefinitions, min: true },
 
+    // ---- Translated READMEs ----
+    // Same claims as README.md, pinned in each language. Without these the
+    // translations silently rot: README.zh-CN.md sat at 279 protos while
+    // README.md had already moved to 281.
+    { file: 'README.zh-CN.md', re: /(\d+)\s*种地图图层/, value: s.layerDefinitions },
+    { file: 'README.zh-CN.md', re: /Protocol Buffers（(\d+)\s*个 proto/, value: s.protoFiles },
+    { file: 'README.zh-CN.md', re: /(\d+)\s*项服务/, value: s.protoServices },
+    { file: 'README.zh-CN.md', re: /(\d+)\s*种语言/, value: s.locales },
+    { file: 'README.zh-CN.md', re: /(\d+)\+\s*精选新闻源/, value: s.feedDefinitions, min: true },
+    { file: 'README.zh-CN.md', re: /(\d+)\s*家证券交易所/, value: s.stockExchangeCount },
+    { file: 'README.ja-JP.md', re: /(\d+)\s*種類のマップレイヤー/, value: s.layerDefinitions },
+    { file: 'README.ja-JP.md', re: /Protocol Buffers \((\d+)\s*proto/, value: s.protoFiles },
+    { file: 'README.ja-JP.md', re: /(\d+)\s*サービス\)/, value: s.protoServices },
+    { file: 'README.ja-JP.md', re: /(\d+)\s*言語対応/, value: s.locales },
+    { file: 'README.ja-JP.md', re: /(\d+)\s*以上の厳選ニュースフィード/, value: s.feedDefinitions, min: true },
+    { file: 'README.ja-JP.md', re: /(\d+)\s*の証券取引所/, value: s.stockExchangeCount },
+
     // ---- Root contributor/agent/security docs ----
     { file: 'AGENTS.md', re: /with (\d+)\s+top-level TypeScript component files/, value: s.componentTopLevelTsFiles },
     { file: 'AGENTS.md', re: /(\d+)\+\s+Vercel Edge API endpoint entries/, value: s.apiEndpointEntries, min: true },
