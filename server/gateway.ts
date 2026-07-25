@@ -12,6 +12,7 @@
 import { createRouter, type RouteDescriptor } from './router';
 import { getCorsHeaders, isDisallowedOrigin, isAllowedOrigin } from './cors';
 import { isPublicSharedRpcRequest } from '../src/shared/public-rpc-cache';
+import { PRO_FRESH_CACHE_RPC_PATHS } from '../src/shared/pro-fresh-rpc';
 // @ts-expect-error — JS module, no declaration file
 import { USER_API_KEY_GATEWAY_VALIDATION_ERROR, validateApiKey } from '../api/_api-key.js';
 // @ts-expect-error — JS module, no declaration file
@@ -129,7 +130,7 @@ async function claimInternalMcpReplayNonce(userId: string, nonce: string): Promi
 // NOTE: This map is shared across all domain bundles (~3KB). Kept centralised for
 // single-source-of-truth maintainability; the size is negligible vs handler code.
 
-type CacheTier = 'fast' | 'medium' | 'slow' | 'slow-browser' | 'static' | 'daily' | 'no-store' | 'live';
+type CacheTier = 'fast' | 'medium' | 'slow' | 'slow-browser' | 'live-browser' | 'static' | 'daily' | 'no-store' | 'live';
 
 // Three-tier caching: browser (max-age) → CF edge (s-maxage) → Vercel CDN (CDN-Cache-Control).
 // CF ignores Vary: Origin so it may pin a single ACAO value, but this is acceptable
@@ -144,6 +145,7 @@ const TIER_HEADERS: Record<CacheTier, string> = {
   medium: 'public, max-age=120, s-maxage=600, stale-while-revalidate=120, stale-if-error=900',
   slow: 'public, max-age=300, s-maxage=1800, stale-while-revalidate=300, stale-if-error=3600',
   'slow-browser': 'max-age=300, stale-while-revalidate=60, stale-if-error=1800',
+  'live-browser': 'private, max-age=30, stale-while-revalidate=60, stale-if-error=300',
   static: 'public, max-age=600, s-maxage=3600, stale-while-revalidate=600, stale-if-error=14400',
   daily: 'public, max-age=3600, s-maxage=14400, stale-while-revalidate=7200, stale-if-error=172800',
   'no-store': 'no-store',
@@ -158,6 +160,7 @@ const TIER_CDN_CACHE: Record<CacheTier, string | null> = {
   medium: 'public, s-maxage=1200, stale-while-revalidate=600, stale-if-error=1800',
   slow: 'public, s-maxage=3600, stale-while-revalidate=900, stale-if-error=7200',
   'slow-browser': 'public, s-maxage=900, stale-while-revalidate=60, stale-if-error=1800',
+  'live-browser': null,
   static: 'public, s-maxage=14400, stale-while-revalidate=3600, stale-if-error=28800',
   daily: 'public, s-maxage=86400, stale-while-revalidate=14400, stale-if-error=172800',
   'no-store': null,
@@ -1115,13 +1118,20 @@ export function createDomainGateway(
     const requiresDirectLlmQuota = !internalMcpVerified && await shouldReserveGatewayDirectLlmQuota(request, pathname);
     const isTierGated = !internalMcpVerified && !isPublicNoAuthRpc && !seedRefreshVerified && !relayWarmPingVerified && getRequiredTier(pathname) !== null;
     const needsLegacyProBearerGate = !internalMcpVerified && !isPublicNoAuthRpc && PREMIUM_RPC_PATHS.has(pathname) && !isTierGated;
+    const isProFreshCacheRpc = PRO_FRESH_CACHE_RPC_PATHS.has(pathname);
+    const needsProFreshnessResolution =
+      !internalMcpVerified &&
+      !isPublicNoAuthRpc &&
+      isProFreshCacheRpc &&
+      request.headers.get('Authorization')?.startsWith('Bearer ') === true;
     let endpointRateLimitPrincipalUserId: string | undefined;
 
     // Session resolution — extract userId from bearer token (Clerk JWT) if present.
-    // Only runs for tier-gated or direct-LLM endpoints to avoid JWKS lookup on every request.
+    // Runs only for tier gates, direct-LLM quota, or the explicit Pro-fresh
+    // market allowlist to avoid JWKS lookup on every request.
     let sessionUserId: string | null = null;
     let sessionRole: 'free' | 'pro' | null = null;
-    if (isTierGated || requiresDirectLlmQuota) {
+    if (isTierGated || requiresDirectLlmQuota || needsProFreshnessResolution) {
       const session = await resolveClerkSession(request);
       sessionUserId = session?.userId ?? null;
       sessionRole = session?.role ?? null;
@@ -1210,8 +1220,13 @@ export function createDomainGateway(
     // Clerk session is itself proof of authentication (validated at line 410).
     // validateApiKey is strict-no-trust-of-headers per #3541 and would 401 every
     // Clerk-authenticated user who hasn't also minted a wms_ session token.
-    // Override: tier-gated routes with a resolved sessionUserId pass this layer.
-    if ((isTierGated || requiresDirectLlmQuota) && sessionUserId && keyCheck.required && !keyCheck.valid) {
+    // Override: routes that deliberately resolved a sessionUserId pass this layer.
+    if (
+      (isTierGated || requiresDirectLlmQuota || needsProFreshnessResolution) &&
+      sessionUserId &&
+      keyCheck.required &&
+      !keyCheck.valid
+    ) {
       keyCheck = { valid: true, required: false };
     }
 
@@ -1305,6 +1320,26 @@ export function createDomainGateway(
           corsHeaders,
         );
       }
+    }
+
+    // Pro freshness is an optional paid benefit, not an access gate. Resolve
+    // only identities that were already verified above (Clerk bearer or a
+    // user-owned API key), then fail closed to the ordinary cache policy when
+    // entitlement state is absent, expired, or temporarily unavailable.
+    //
+    // Do not accept the Clerk role alone here: this contract is specifically
+    // for active plans, while role='pro' can also represent legacy/test grants.
+    let hasProFreshCacheAccess = internalMcpVerified && isProFreshCacheRpc;
+    if (!hasProFreshCacheAccess && isProFreshCacheRpc && sessionUserId) {
+      const ent =
+        userKeyEntitlement !== undefined
+          ? userKeyEntitlement
+          : await getEntitlements(sessionUserId);
+      recordUsageEntitlement(ent);
+      hasProFreshCacheAccess =
+        !!ent &&
+        ent.features.tier >= 1 &&
+        ent.validUntil >= Date.now();
     }
 
     if (keyCheck.required && !keyCheck.valid) {
@@ -1834,7 +1869,8 @@ export function createDomainGateway(
         const envOverride = process.env[`CACHE_TIER_OVERRIDE_${rpcName.replace(/-/g, '_').toUpperCase()}`] as CacheTier | undefined;
         const isPremium = PREMIUM_RPC_PATHS.has(pathname) || getRequiredTier(pathname) !== null;
         const hasCredentialedNonPublicGet = !isPublicNoAuthRpc && hasCredentialBearingHeader(request);
-        const tier = isPremium || hasCredentialedNonPublicGet ? 'slow-browser' as CacheTier
+        const tier = hasProFreshCacheAccess ? 'live-browser' as CacheTier
+          : isPremium || hasCredentialedNonPublicGet ? 'slow-browser' as CacheTier
           : (envOverride && envOverride in TIER_HEADERS ? envOverride : null) ?? RPC_CACHE_TIER[pathname] ?? 'medium';
         resolvedCacheTier = tier;
         mergedHeaders.set('Cache-Control', TIER_HEADERS[tier]);
@@ -1844,7 +1880,9 @@ export function createDomainGateway(
         // 200 from a trusted-origin browser request could be served to a no-origin scraper,
         // bypassing auth entirely.
         const reqOrigin = request.headers.get('origin') || '';
-        const cdnCache = !isPremium && !hasCredentialedNonPublicGet && isAllowedOrigin(reqOrigin) ? TIER_CDN_CACHE[tier] : null;
+        const cdnCache = !hasProFreshCacheAccess && !isPremium && !hasCredentialedNonPublicGet && isAllowedOrigin(reqOrigin)
+          ? TIER_CDN_CACHE[tier]
+          : null;
         mergedHeaders.delete('CDN-Cache-Control');
         mergedHeaders.delete('Vercel-CDN-Cache-Control');
         if (cdnCache) mergedHeaders.set('CDN-Cache-Control', cdnCache);

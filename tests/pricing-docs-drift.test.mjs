@@ -4,17 +4,17 @@ import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// Agent-facing pricing surfaces must not drift from the source of truth,
-// convex/config/productCatalog.ts (#4854). The /pro page has its own
-// freshness gate; these files are hand-maintained markdown/MDX with no
-// generator, so this guard extracts prices from the catalog SOURCE TEXT
-// (no import — convex modules don't load under tsx --test) and checks them
-// three ways (hardened after the post-#4867 review flagged the original
-// contains()-only version as brittle):
+// Agent- and crawler-facing pricing surfaces must not drift from the source
+// of truth, convex/config/productCatalog.ts (#4854). These files are
+// hand-maintained markdown/MDX or HTML, so this guard extracts prices from
+// the catalog SOURCE TEXT (no import — convex modules don't load under
+// tsx --test) and checks them four ways (hardened after the post-#4867 review
+// flagged the original contains()-only version as brittle):
 //   1. prose: each USD figure appears, tolerating thousands separators;
 //   2. pricing.md's embedded ```json block: numeric field comparison, so a
 //      stale machine-readable summary fails even when the prose was updated;
-//   3. the Commerce OpenAPI example product IDs still exist in the catalog.
+//   3. /pro's JSON-LD Offer prices and descriptions match catalog-backed data;
+//   4. the Commerce OpenAPI example product IDs still exist in the catalog.
 //
 // Run: node --test tests/pricing-docs-drift.test.mjs
 
@@ -23,15 +23,87 @@ const read = (p) => readFileSync(resolve(__dirname, '..', p), 'utf-8');
 
 const catalogSrc = read('convex/config/productCatalog.ts');
 
+const catalogEntrySourceFor = (planKey) => {
+  const blockStart = catalogSrc.indexOf(`\n  ${planKey}: {`);
+  assert.notEqual(blockStart, -1, `productCatalog.ts must contain a "${planKey}" entry`);
+  const remainder = catalogSrc.slice(blockStart + 1);
+  const nextEntry = remainder.slice(1).search(/\n  [A-Za-z_][A-Za-z0-9_]*: \{/);
+  return nextEntry === -1 ? remainder : remainder.slice(0, nextEntry + 1);
+};
+
 // planKey → priceCents for every publicly-priced subscription plan,
 // including the annual API plan the original docs omitted entirely.
 const PLAN_KEYS = ['pro_monthly', 'pro_annual', 'api_starter', 'api_starter_annual', 'api_business'];
 const priceCentsFor = (planKey) => {
-  const blockStart = catalogSrc.indexOf(`${planKey}: {`);
-  assert.notEqual(blockStart, -1, `productCatalog.ts must contain a "${planKey}" entry`);
-  const m = catalogSrc.slice(blockStart).match(/priceCents:\s*(\d+)/);
+  const m = catalogEntrySourceFor(planKey).match(/priceCents:\s*(\d+)/);
   assert.ok(m, `no priceCents found for ${planKey}`);
   return Number(m[1]);
+};
+
+const stringArrayPropertyFromSource = (entrySource, property, context, { required = true } = {}) => {
+  const propertyMatch = entrySource.match(new RegExp(`${property}:\\s*\\[`));
+  if (!propertyMatch) {
+    assert.equal(required, false, `no ${property} found for ${context}`);
+    return [];
+  }
+
+  const openIndex = propertyMatch.index + propertyMatch[0].lastIndexOf('[');
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  let closeIndex = -1;
+  for (let index = openIndex; index < entrySource.length; index += 1) {
+    const character = entrySource[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === '\\') {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+    } else if (character === '[') {
+      depth += 1;
+    } else if (character === ']') {
+      depth -= 1;
+      if (depth === 0) {
+        closeIndex = index;
+        break;
+      }
+    }
+  }
+
+  assert.notEqual(closeIndex, -1, `unterminated ${property} array for ${context}`);
+  const arraySource = entrySource.slice(openIndex + 1, closeIndex);
+  return [...arraySource.matchAll(/"(?:\\.|[^"\\])*"/g)].map((match) => JSON.parse(match[0]));
+};
+
+const stringArrayPropertyFor = (planKey, property, options) =>
+  stringArrayPropertyFromSource(catalogEntrySourceFor(planKey), property, planKey, options);
+const marketingFeaturesFor = (planKey) => stringArrayPropertyFor(planKey, 'marketingFeatures');
+const highlightFeaturesFor = (planKey) =>
+  stringArrayPropertyFor(planKey, 'highlightFeatures', { required: false });
+
+test('catalog string-array extraction ignores closing brackets inside quoted features', () => {
+  const entrySource = 'marketingFeatures: ["Bracket ] stays inside the feature", "Next feature"]';
+  assert.deepEqual(
+    stringArrayPropertyFromSource(entrySource, 'marketingFeatures', 'synthetic plan'),
+    ['Bracket ] stays inside the feature', 'Next feature']
+  );
+});
+
+const jsonLdOffersFor = (path) => {
+  const html = read(path);
+  const blocks = [...html.matchAll(/<script\b(?=[^>]*\btype="application\/ld\+json")[^>]*>\s*([\s\S]*?)\s*<\/script>/g)]
+    .map((match) => JSON.parse(match[1]));
+  const application = blocks.find((block) => block['@type'] === 'SoftwareApplication');
+  assert.ok(application, `${path} must contain SoftwareApplication JSON-LD`);
+  assert.ok(Array.isArray(application.offers), `${path} SoftwareApplication JSON-LD must contain an Offer array`);
+  return application.offers;
 };
 
 // $999 for even dollars, $39.99 otherwise — matching how the docs and the
@@ -99,6 +171,103 @@ test('pricing.md machine-readable JSON block matches productCatalog.ts numerical
     );
   }
   assert.equal(planByName.Free?.price_usd_monthly, 0, 'Free plan must stay $0 in the JSON summary');
+});
+
+const PRICE_EXPECT = [
+  ['Free', 'free'],
+  ['Pro Monthly', 'pro_monthly'],
+  ['Pro Annual', 'pro_annual'],
+  ['API Starter Monthly', 'api_starter'],
+  ['API Starter Annual', 'api_starter_annual'],
+  ['API Business', 'api_business'],
+];
+const FEATURE_OFFERS = [
+  ['free', 'Free'],
+  ['pro_monthly', 'Pro Monthly'],
+  ['api_starter', 'API Starter Monthly'],
+  ['api_business', 'API Business'],
+];
+const EXPECTED_OFFER_NAMES = PRICE_EXPECT.map(([offerName]) => offerName).sort();
+
+const assertJsonLdOffersMatchCatalog = (sourceOffers, deployedOffers) => {
+  assert.deepEqual(
+    deployedOffers,
+    sourceOffers,
+    'public/pro/index.html JSON-LD offers are stale — rebuild the /pro bundle'
+  );
+
+  const offerNames = sourceOffers.map((offer) => offer.name);
+  assert.equal(
+    new Set(offerNames).size,
+    offerNames.length,
+    'JSON-LD offer names must be unique'
+  );
+  assert.deepEqual(
+    [...offerNames].sort(),
+    EXPECTED_OFFER_NAMES,
+    'JSON-LD must contain exactly the catalog-backed public offers'
+  );
+
+  const offerByName = Object.fromEntries(sourceOffers.map((offer) => [offer.name, offer]));
+  for (const [offerName, planKey] of PRICE_EXPECT) {
+    assert.equal(
+      Number(offerByName[offerName].price),
+      priceCentsFor(planKey) / 100,
+      `JSON-LD ${offerName} price is stale vs productCatalog.ts ${planKey}`
+    );
+  }
+
+  for (const [planKey, offerName] of FEATURE_OFFERS) {
+    const catalogDescription = [
+      ...marketingFeaturesFor(planKey),
+      ...highlightFeaturesFor(planKey),
+    ].join(', ');
+    assert.equal(
+      offerByName[offerName].description,
+      catalogDescription,
+      `JSON-LD ${offerName} description must exactly match catalog marketing and highlight features`
+    );
+  }
+};
+
+test('/pro JSON-LD offers match productCatalog.ts prices and marketing features', () => {
+  assertJsonLdOffersMatchCatalog(
+    jsonLdOffersFor('pro-test/index.html'),
+    jsonLdOffersFor('public/pro/index.html')
+  );
+});
+
+test('/pro JSON-LD guard rejects unexpected and duplicate offers', () => {
+  const offers = jsonLdOffersFor('pro-test/index.html');
+  const unexpectedOffers = structuredClone(offers);
+  unexpectedOffers.push({
+    '@type': 'Offer',
+    price: '1',
+    priceCurrency: 'USD',
+    name: 'Retired Legacy Plan',
+    description: 'Retired',
+  });
+  assert.throws(
+    () => assertJsonLdOffersMatchCatalog(unexpectedOffers, structuredClone(unexpectedOffers)),
+    /exactly the catalog-backed public offers/
+  );
+
+  const duplicateOffers = structuredClone(offers);
+  duplicateOffers.push(structuredClone(duplicateOffers[0]));
+  assert.throws(
+    () => assertJsonLdOffersMatchCatalog(duplicateOffers, structuredClone(duplicateOffers)),
+    /offer names must be unique/
+  );
+});
+
+test('/pro JSON-LD guard rejects a removed catalog feature left in a description', () => {
+  const staleOffers = jsonLdOffersFor('pro-test/index.html');
+  const staleFreeOffer = staleOffers.find((offer) => offer.name === 'Free');
+  staleFreeOffer.description += ', Retired catalog feature';
+  assert.throws(
+    () => assertJsonLdOffersMatchCatalog(staleOffers, structuredClone(staleOffers)),
+    /description must exactly match catalog marketing and highlight features/
+  );
 });
 
 // The Dodo product IDs are surfaced by GET /api/product-catalog, and

@@ -1,5 +1,6 @@
 // Canonical source provenance registry shared by the browser UI and MCP tools.
-// Keep this module dependency-free so it remains safe in both runtimes.
+// Keep this module runtime-neutral so it remains safe in both runtimes.
+import { CONFIGURED_SOURCE_PROVENANCE_DECLARATIONS } from './source-provenance-declarations';
 
 // 'unknown' = not yet reviewed (default for unlisted sources — never invent a type)
 // 'other' remains available as an explicit classification when needed.
@@ -106,6 +107,12 @@ export function hasReviewedSourceType(sourceName: string): boolean {
   return Object.prototype.hasOwnProperty.call(SOURCE_TYPES, sourceName);
 }
 
+/** True when a source type is either reviewed or explicitly declared unknown. */
+export function hasDeclaredSourceType(sourceName: string): boolean {
+  return hasReviewedSourceType(sourceName)
+    || Object.prototype.hasOwnProperty.call(CONFIGURED_SOURCE_PROVENANCE_DECLARATIONS, sourceName);
+}
+
 // Propaganda risk assessment for sources (Quick Win #5)
 // 'high' = State-controlled media, known to push government narratives
 // 'medium' = State-affiliated or known editorial bias toward specific governments
@@ -184,6 +191,12 @@ export function hasReviewedPropagandaRisk(sourceName: string): boolean {
   return Object.prototype.hasOwnProperty.call(SOURCE_PROPAGANDA_RISK, sourceName);
 }
 
+/** True when propaganda risk is either reviewed or explicitly declared unknown. */
+export function hasDeclaredPropagandaRisk(sourceName: string): boolean {
+  return hasReviewedPropagandaRisk(sourceName)
+    || Object.prototype.hasOwnProperty.call(CONFIGURED_SOURCE_PROVENANCE_DECLARATIONS, sourceName);
+}
+
 export function isStateAffiliatedSource(sourceName: string): boolean {
   const profile = SOURCE_PROPAGANDA_RISK[sourceName];
   return !!profile?.stateAffiliated;
@@ -208,32 +221,46 @@ export function getSourceTierBadgeTitle(sourceType: SourceType): string {
  * Propaganda-risk badge presentation. `null` only for explicit reviewed `low`
  * (independent journalism). Unknown always surfaces so silence never implies independence.
  */
-export function describePropagandaBadge(profile: SourceRiskProfile): {
+export function describePropagandaBadge(profile: SourceRiskProfile, sourceType: SourceType = 'unknown'): {
   risk: PropagandaRisk;
   label: string;
   shortLabel: string;
   title: string;
 } | null {
-  if (profile.risk === 'low') return null;
+  if (profile.risk === 'unknown') {
+    return {
+      risk: 'unknown',
+      label: '? Unreviewed',
+      shortLabel: '?',
+      title: profile.note || UNREVIEWED_SOURCE_RISK.note || 'Provenance not yet reviewed',
+    };
+  }
   const title = profile.note
-    || (profile.stateAffiliated ? `State-affiliated: ${profile.stateAffiliated}` : 'Provenance not yet reviewed');
+    || (sourceType === 'gov'
+      ? `Official government source${profile.stateAffiliated ? `: ${profile.stateAffiliated}` : ''}`
+      : profile.stateAffiliated
+        ? `State-affiliated: ${profile.stateAffiliated}`
+        : 'Provenance not yet reviewed');
+  if (sourceType === 'gov') {
+    return {
+      risk: profile.risk,
+      label: 'Official Government Source',
+      shortLabel: 'Gov',
+      title,
+    };
+  }
+  if (profile.risk === 'low') return null;
   if (profile.risk === 'high') {
     return { risk: 'high', label: '⚠ State Media', shortLabel: '⚠', title };
   }
-  if (profile.risk === 'medium') {
-    return { risk: 'medium', label: '! Caution', shortLabel: '!', title };
-  }
-  return {
-    risk: 'unknown',
-    label: '? Unreviewed',
-    shortLabel: '?',
-    title: title || UNREVIEWED_SOURCE_RISK.note || 'Provenance not yet reviewed',
-  };
+  return { risk: 'medium', label: '! Caution', shortLabel: '!', title };
 }
 
 export interface SourceProvenanceState {
   risk: PropagandaRisk;
   type: SourceType;
+  riskDeclared: boolean;
+  typeDeclared: boolean;
   riskReviewed: boolean;
   typeReviewed: boolean;
   stateAffiliated?: string;
@@ -246,6 +273,8 @@ export function getSourceProvenanceState(sourceName: string): SourceProvenanceSt
   return {
     risk: profile.risk,
     type: getSourceType(sourceName),
+    riskDeclared: hasDeclaredPropagandaRisk(sourceName),
+    typeDeclared: hasDeclaredSourceType(sourceName),
     riskReviewed: hasReviewedPropagandaRisk(sourceName),
     typeReviewed: hasReviewedSourceType(sourceName),
     ...(profile.stateAffiliated ? { stateAffiliated: profile.stateAffiliated } : {}),

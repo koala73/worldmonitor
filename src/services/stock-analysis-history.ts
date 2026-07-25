@@ -60,13 +60,15 @@ export function getLatestStockAnalysisSnapshots(history: StockAnalysisHistory, l
   return limit != null ? snapshots.slice(0, limit) : snapshots;
 }
 
-// Snapshots written before the analyst-revisions rollout have neither
-// analystConsensus nor priceTarget fields. Treat those as stale even if
-// the generatedAt timestamp is still within the freshness window so the
-// loader forces a live refetch to populate the new section.
-function hasAnalystSchemaFields(snapshot: StockAnalysisSnapshot | undefined): boolean {
+// Snapshots written before the analyst/fundamentals rollouts can still be
+// time-fresh while missing the richer Pro payload. Treat them as stale so the
+// first post-deploy load refreshes them instead of hiding the new section for
+// the remainder of the normal 15-minute freshness window. An empty
+// fundamentals object is valid when Yahoo has no values for a symbol.
+function hasCurrentStockAnalysisSchema(snapshot: StockAnalysisSnapshot | undefined): boolean {
   if (!snapshot) return false;
-  return snapshot.analystConsensus !== undefined || snapshot.priceTarget !== undefined;
+  const hasAnalystFields = snapshot.analystConsensus !== undefined || snapshot.priceTarget !== undefined;
+  return hasAnalystFields && snapshot.fundamentals !== undefined;
 }
 
 function isFreshSnapshot(
@@ -77,7 +79,7 @@ function isFreshSnapshot(
   if (!snapshot?.available) return false;
   const ts = Date.parse(snapshot.generatedAt || '');
   if (!Number.isFinite(ts) || (now - ts) > maxAgeMs) return false;
-  if (!hasAnalystSchemaFields(snapshot)) return false;
+  if (!hasCurrentStockAnalysisSchema(snapshot)) return false;
   return true;
 }
 

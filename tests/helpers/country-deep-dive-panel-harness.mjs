@@ -120,10 +120,21 @@ async function loadCountryDeepDivePanel(options = {}) {
         if (sourceType === 'unknown') return 'Source type not yet reviewed';
         return 'News source';
       }
-      export function describePropagandaBadge(profile) {
-        if (profile.risk === 'low') return null;
+      export function describePropagandaBadge(profile, sourceType = 'unknown') {
+        if (profile.risk === 'unknown') {
+          return {
+            risk: 'unknown',
+            label: '? Unreviewed',
+            shortLabel: '?',
+            title: profile.note || 'Provenance not yet reviewed',
+          };
+        }
         const title = profile.note
           || (profile.stateAffiliated ? 'State-affiliated: ' + profile.stateAffiliated : 'Provenance not yet reviewed');
+        if (sourceType === 'gov') {
+          return { risk: profile.risk, label: 'Official Government Source', shortLabel: 'Gov', title };
+        }
+        if (profile.risk === 'low') return null;
         if (profile.risk === 'high') {
           return { risk: 'high', label: '⚠ State Media', shortLabel: '⚠', title };
         }

@@ -231,6 +231,7 @@ export interface AnalyzeStockResponse {
   marketSession: string;
   extendedPrice?: number;
   extendedChangePercent?: number;
+  fundamentals?: Fundamentals;
 }
 
 export interface StockAnalysisHeadline {
@@ -265,6 +266,22 @@ export interface UpgradeDowngrade {
   fromGrade: string;
   action: string;
   epochGradeDate: number;
+}
+
+export interface Fundamentals {
+  profitMargin?: number;
+  grossMargin?: number;
+  operatingMargin?: number;
+  returnOnEquity?: number;
+  returnOnAssets?: number;
+  revenueGrowth?: number;
+  earningsGrowth?: number;
+  debtToEquity?: number;
+  totalCash?: number;
+  totalDebt?: number;
+  freeCashflow?: number;
+  ebitda?: number;
+  financialCurrency?: string;
 }
 
 export interface GetStockAnalysisHistoryRequest {
