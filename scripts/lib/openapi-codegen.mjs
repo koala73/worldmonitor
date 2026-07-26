@@ -46,6 +46,377 @@ export const eq = (a, b) => JSON.stringify(sortRec(a)) === JSON.stringify(sortRe
 // Normalize a parameter name to a lookup key (strip separators, lowercase).
 export const normalizeKey = (name = '') => String(name).replace(/[_\-\s]/g, '').toLowerCase();
 
+// ── Shared decision-signal provenance schemas ────────────────────────────────
+// Corridors and decision signals carry the same provenance contract. Keep the
+// strict known-value vocabulary here so every OpenAPI injector publishes the
+// same validation rules for that shared envelope.
+function objectSchema(required, properties, additionalProperties = false) {
+  return {
+    type: 'object',
+    additionalProperties,
+    required,
+    properties,
+  };
+}
+
+export const nonEmptyStringSchema = {
+  type: 'string',
+  minLength: 1,
+  pattern: '\\S',
+};
+const calendarDayPattern = '(?:(?:\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|02-(?:0[1-9]|1\\d|2[0-8])))|(?:(?:\\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:00|0[48]|[2468][048]|[13579][26])00)-02-29))';
+const calendarDaySchema = {
+  type: 'string',
+  format: 'date',
+  pattern: `^${calendarDayPattern}$`,
+};
+const calendarMonthSchema = {
+  type: 'string',
+  pattern: '^\\d{4}-(?:0[1-9]|1[0-2])$',
+};
+const calendarYearSchema = {
+  type: 'string',
+  pattern: '^\\d{4}$',
+};
+const isoInstantSchema = {
+  type: 'string',
+  format: 'date-time',
+  pattern: `^${calendarDayPattern}T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d{1,3})?Z$`,
+};
+export const provenanceTimestampSchema = {
+  oneOf: [
+    isoInstantSchema,
+    calendarDaySchema,
+    calendarMonthSchema,
+    calendarYearSchema,
+  ],
+};
+export const credentialFreeHttpsUrlSchema = {
+  type: 'string',
+  format: 'uri',
+  pattern: '^https://(?![^/?#]*@)[^/?#\\s]+(?:[/?#]\\S*)?$',
+};
+
+function arrayOfNonEmptyStrings({ minItems, uniqueItems = false } = {}) {
+  return {
+    type: 'array',
+    ...(minItems === undefined ? {} : { minItems }),
+    uniqueItems,
+    items: nonEmptyStringSchema,
+  };
+}
+
+export function provenanceValueSchema(dimension, provenanceContract) {
+  const timeRoles = {
+    observation_time: 'observation',
+    effective_time: 'effective',
+    publication_time: 'publication',
+    retrieval_time: 'retrieval',
+  };
+  if (dimension === 'publisher') {
+    const registryReference = objectSchema(
+      ['sourceName', 'sourceType', 'propagandaRisk'],
+      {
+        sourceName: nonEmptyStringSchema,
+        sourceType: nonEmptyStringSchema,
+        propagandaRisk: nonEmptyStringSchema,
+      },
+    );
+    return {
+      ...objectSchema(
+        ['id', 'name', 'type', 'registryReference'],
+        {
+          id: nonEmptyStringSchema,
+          name: nonEmptyStringSchema,
+          type: { type: 'string', enum: provenanceContract.publisherTypes },
+          registryReference: {
+            oneOf: [registryReference, { type: 'null' }],
+          },
+        },
+      ),
+      oneOf: [
+        {
+          properties: {
+            type: { const: 'derived_output' },
+            registryReference: { type: 'null' },
+          },
+        },
+        {
+          properties: {
+            type: {
+              enum: provenanceContract.publisherTypes.filter(
+                (type) => type !== 'derived_output',
+              ),
+            },
+            registryReference,
+          },
+        },
+      ],
+    };
+  }
+  if (dimension === 'source_url') {
+    return credentialFreeHttpsUrlSchema;
+  }
+  if (dimension === 'original_reference') {
+    return objectSchema(
+      ['kind', 'id'],
+      {
+        kind: {
+          type: 'string',
+          enum: provenanceContract.originalReferenceKinds,
+        },
+        id: nonEmptyStringSchema,
+        contentHash: {
+          type: 'string',
+          pattern: '^sha256:[a-f0-9]{64}$',
+        },
+      },
+    );
+  }
+  if (dimension === 'original_language') return nonEmptyStringSchema;
+  if (dimension === 'translation') {
+    return {
+      ...objectSchema(
+        ['state'],
+        {
+          state: {
+            type: 'string',
+            enum: provenanceContract.translationStates,
+          },
+          targetLanguage: nonEmptyStringSchema,
+        },
+      ),
+      oneOf: [
+        {
+          properties: {
+            state: { enum: ['machine_assisted', 'human_reviewed'] },
+          },
+          required: ['targetLanguage'],
+        },
+        {
+          properties: {
+            state: { enum: ['unavailable', 'not_translated'] },
+          },
+          not: { required: ['targetLanguage'] },
+        },
+      ],
+    };
+  }
+  if (dimension in timeRoles) {
+    return {
+      ...objectSchema(
+        ['role', 'value', 'precision'],
+        {
+          role: { type: 'string', const: timeRoles[dimension] },
+          value: provenanceTimestampSchema,
+          precision: {
+            type: 'string',
+            enum: provenanceContract.timePrecisions,
+          },
+        },
+      ),
+      oneOf: [
+        {
+          properties: {
+            precision: { const: 'instant' },
+            value: isoInstantSchema,
+          },
+        },
+        {
+          properties: {
+            precision: { const: 'day' },
+            value: calendarDaySchema,
+          },
+        },
+        {
+          properties: {
+            precision: { const: 'month' },
+            value: calendarMonthSchema,
+          },
+        },
+        {
+          properties: {
+            precision: { const: 'year' },
+            value: calendarYearSchema,
+          },
+        },
+      ],
+    };
+  }
+  if (dimension === 'revision') {
+    return {
+      ...objectSchema(
+        ['vintageId', 'sequence', 'state'],
+        {
+          vintageId: nonEmptyStringSchema,
+          sequence: { type: 'integer', minimum: 1 },
+          state: {
+            type: 'string',
+            enum: provenanceContract.revisionStates,
+          },
+        },
+      ),
+      oneOf: [
+        {
+          properties: {
+            state: { enum: ['preliminary', 'original'] },
+            sequence: { const: 1 },
+          },
+        },
+        {
+          properties: {
+            state: { enum: ['revised', 'corrected'] },
+            sequence: { type: 'integer', minimum: 2 },
+          },
+        },
+      ],
+    };
+  }
+  if (dimension === 'supersession') {
+    return {
+      ...objectSchema(
+        ['state'],
+        {
+          state: {
+            type: 'string',
+            enum: provenanceContract.supersessionStates,
+          },
+          relatedSignalId: nonEmptyStringSchema,
+          reason: nonEmptyStringSchema,
+        },
+      ),
+      oneOf: [
+        {
+          properties: { state: { const: 'current' } },
+          not: {
+            anyOf: [
+              { required: ['relatedSignalId'] },
+              { required: ['reason'] },
+            ],
+          },
+        },
+        {
+          properties: { state: { enum: ['corrected', 'superseded'] } },
+          required: ['relatedSignalId'],
+        },
+        {
+          properties: { state: { const: 'cancelled' } },
+          required: ['reason'],
+        },
+      ],
+    };
+  }
+  if (
+    dimension === 'extraction_confidence'
+    || dimension === 'classification_confidence'
+  ) {
+    return objectSchema(
+      ['score', 'method'],
+      {
+        score: { type: 'number', minimum: 0, maximum: 1 },
+        method: nonEmptyStringSchema,
+      },
+    );
+  }
+  if (dimension === 'corroboration') {
+    return {
+      ...objectSchema(
+        ['state', 'sourceSignalIds'],
+        {
+          state: {
+            type: 'string',
+            enum: provenanceContract.corroborationStates,
+          },
+          sourceSignalIds: arrayOfNonEmptyStrings({ uniqueItems: true }),
+        },
+      ),
+      oneOf: [
+        {
+          properties: {
+            state: { const: 'single_source' },
+            sourceSignalIds: {
+              ...arrayOfNonEmptyStrings({ uniqueItems: true }),
+              minItems: 1,
+              maxItems: 1,
+            },
+          },
+        },
+        {
+          properties: {
+            state: {
+              enum: [
+                'multi_source',
+                'independently_corroborated',
+                'contradicted',
+              ],
+            },
+            sourceSignalIds: arrayOfNonEmptyStrings({
+              minItems: 2,
+              uniqueItems: true,
+            }),
+          },
+        },
+      ],
+    };
+  }
+  if (dimension === 'transport_freshness') {
+    return objectSchema(
+      ['state', 'assessedAt'],
+      {
+        state: {
+          type: 'string',
+          enum: provenanceContract.transportFreshnessStates,
+        },
+        assessedAt: isoInstantSchema,
+        lastSuccessAt: isoInstantSchema,
+      },
+    );
+  }
+  if (dimension === 'content_freshness') {
+    return {
+      ...objectSchema(
+        ['state', 'assessedAt'],
+        {
+          state: {
+            type: 'string',
+            enum: provenanceContract.contentFreshnessStates,
+          },
+          assessedAt: isoInstantSchema,
+          contentAsOf: provenanceTimestampSchema,
+        },
+      ),
+      oneOf: [
+        {
+          properties: { state: { enum: ['current', 'stale'] } },
+          required: ['contentAsOf'],
+        },
+        {
+          properties: { state: { const: 'timestamp_unknown' } },
+          not: { required: ['contentAsOf'] },
+        },
+        {
+          properties: { state: { enum: ['unavailable', 'partial'] } },
+        },
+      ],
+    };
+  }
+  if (dimension === 'derivation') {
+    return objectSchema(
+      ['methodId', 'methodVersion', 'computedAt', 'inputSignalIds'],
+      {
+        methodId: nonEmptyStringSchema,
+        methodVersion: nonEmptyStringSchema,
+        computedAt: isoInstantSchema,
+        inputSignalIds: arrayOfNonEmptyStrings({
+          minItems: 1,
+          uniqueItems: true,
+        }),
+      },
+    );
+  }
+  throw new Error(`No OpenAPI value schema for provenance dimension ${dimension}`);
+}
+
 // ── Source-of-truth parsers (fail-closed) ───────────────────────────────────
 // Read the authoritative Set/Record literals straight from the gateway-adjacent
 // TypeScript so the published auth contract can never drift from runtime. Each
@@ -205,17 +576,35 @@ export function readChinaDecisionSignalWireContract() {
     resolve(root, 'shared/china-decision-signals.ts'),
     'utf8',
   );
-  const auditSrc = readFileSync(
-    resolve(root, 'scripts/audit-china-decision-parity.mjs'),
+  const manifestSrc = readFileSync(
+    resolve(root, 'shared/china-decision-signal-manifest.ts'),
     'utf8',
   );
+  const manifestBlock = manifestSrc.match(
+    /CHINA_DECISION_SIGNAL_GROUP_MANIFEST\s*=\s*\[([\s\S]*?)\]\s*as const/,
+  )?.[1];
+  const groupManifest = manifestBlock
+    ? [...manifestBlock.matchAll(
+        /\{\s*groupId:\s*'([^']+)',\s*provenanceFamily:\s*'([^']+)',\s*sourceKey:\s*'([^']+)',\s*\}/g,
+      )].map((match) => ({
+        groupId: match[1],
+        provenanceFamily: match[2],
+        sourceKey: match[3],
+      }))
+    : [];
+  const manifestEntryCount = manifestBlock
+    ? [...manifestBlock.matchAll(/\{\s*groupId:/g)].length
+    : 0;
+  const maxItemsMatches = [...manifestSrc.matchAll(
+    /CHINA_DECISION_SIGNAL_MAX_ITEMS_PER_GROUP\s*=\s*(\d+)\s+as const/g,
+  )];
   const schemaVersion = Number(src.match(
     /CHINA_DECISION_SIGNAL_SCHEMA_VERSION\s*=\s*(\d+)\s+as const/,
   )?.[1]);
-  const groupIds = readConstStringArray(src, 'CHINA_DECISION_SIGNAL_GROUP_IDS');
-  const provenanceFamilyIds = [
-    ...auditSrc.matchAll(/provenanceFamily:\s*'([^']+)'/g),
-  ].map((match) => match[1]);
+  const groupIds = groupManifest.map(({ groupId }) => groupId);
+  const provenanceFamilyIds = groupManifest.map(
+    ({ provenanceFamily }) => provenanceFamily,
+  );
   const stateBlock = src.match(
     /export type ChinaDecisionSignalState\s*=\s*([\s\S]*?);/,
   )?.[1];
@@ -231,14 +620,22 @@ export function readChinaDecisionSignalWireContract() {
         .map((match) => [match[1], match[2]])
       : [],
   );
-  const maxItemsPerGroup = Number(src.match(/items\.length\s*>\s*(\d+)/)?.[1]);
+  const maxItemsPerGroup = Number(maxItemsMatches[0]?.[1]);
+  const provenanceFamilies = new Set(
+    Object.keys(readDecisionSignalProvenanceContract().familyPolicies),
+  );
   if (
     !Number.isInteger(schemaVersion)
     || schemaVersion < 1
     || groupIds.length === 0
-    || provenanceFamilyIds.length !== groupIds.length
+    || manifestEntryCount !== groupManifest.length
+    || new Set(groupIds).size !== groupIds.length
+    || new Set(provenanceFamilyIds).size !== provenanceFamilyIds.length
+    || new Set(groupManifest.map(({ sourceKey }) => sourceKey)).size !== groupManifest.length
+    || provenanceFamilyIds.some((familyId) => !provenanceFamilies.has(familyId))
     || states.length === 0
     || Object.keys(access).length !== 3
+    || maxItemsMatches.length !== 1
     || !Number.isInteger(maxItemsPerGroup)
     || maxItemsPerGroup < 1
   ) {
@@ -246,6 +643,7 @@ export function readChinaDecisionSignalWireContract() {
   }
   return {
     schemaVersion,
+    groupManifest,
     groupIds,
     provenanceFamilyIds,
     states,

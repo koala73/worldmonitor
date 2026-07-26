@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
 
+import { CHINA_DECISION_SIGNAL_GROUP_MANIFEST } from '../shared/china-decision-signal-manifest.ts';
 import {
   CHINA_DECISION_PARITY_MANIFEST,
   auditChinaDecisionStaticRegistrations,
@@ -23,7 +24,10 @@ describe('China decision-signal static and staging audit (#5580)', () => {
     assert.equal(result.seedMetaKey, 'seed-meta:intelligence:china-decision-signals');
     assert.deepEqual(result.findings, []);
     assert.equal(result.ok, true);
-    assert.equal(CHINA_DECISION_PARITY_MANIFEST.length, 6);
+    assert.deepEqual(
+      CHINA_DECISION_PARITY_MANIFEST,
+      CHINA_DECISION_SIGNAL_GROUP_MANIFEST,
+    );
   });
 
   it('returns a sanitized live probe without source payloads or credentials', async () => {

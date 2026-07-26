@@ -3,40 +3,13 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { readChinaDecisionSignalWireContract } from './lib/openapi-codegen.mjs';
 import { validateChinaDecisionSignalSnapshot } from './seed-china-decision-signals.mjs';
 
-export const CHINA_DECISION_PARITY_MANIFEST = Object.freeze([
-  Object.freeze({
-    groupId: 'macro',
-    provenanceFamily: 'china_macro_official_numeric_observation',
-    sourceKey: 'economic:china:macro:v2',
-  }),
-  Object.freeze({
-    groupId: 'policy-enforcement',
-    provenanceFamily: 'typed_document_event',
-    sourceKey: 'china:policy-events:v1',
-  }),
-  Object.freeze({
-    groupId: 'cross-strait-activity',
-    provenanceFamily: 'operational_activity_record',
-    sourceKey: 'military:cross-strait-activity:v1',
-  }),
-  Object.freeze({
-    groupId: 'corporate-disclosures',
-    provenanceFamily: 'exchange_disclosure',
-    sourceKey: 'market:china:corporate-disclosures:v1',
-  }),
-  Object.freeze({
-    groupId: 'corridor-conditions',
-    provenanceFamily: 'composed_corridor_condition',
-    sourceKey: 'supply-chain:china-corridor-control-towers',
-  }),
-  Object.freeze({
-    groupId: 'activity-nowcast',
-    provenanceFamily: 'derived_comparison',
-    sourceKey: 'economic:china-activity-nowcast',
-  }),
-]);
+const wireContract = readChinaDecisionSignalWireContract();
+export const CHINA_DECISION_PARITY_MANIFEST = Object.freeze(
+  wireContract.groupManifest.map((entry) => Object.freeze(entry)),
+);
 
 const ROUTE = '/api/intelligence/v1/get-china-decision-signals';
 const BOOTSTRAP_ROUTE = '/api/bootstrap?keys=chinaDecisionSignals&public=1';

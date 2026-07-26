@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 import { load as loadYaml } from 'js-yaml';
 import {
+  provenanceValueSchema,
   readChinaCorridorWireContract,
   readDecisionSignalProvenanceContract,
 } from '../scripts/lib/openapi-codegen.mjs';
@@ -148,6 +149,13 @@ describe('China corridor OpenAPI agent contract', () => {
         claims.properties[dimension].oneOf
           .find((item) => item.properties?.status?.const === 'known')
           .properties.value;
+      for (const dimension of provenanceContract.dimensions) {
+        assert.deepEqual(
+          knownValue(dimension),
+          provenanceValueSchema(dimension, provenanceContract),
+          `${dimension} must use the shared provenance value schema`,
+        );
+      }
       assert.deepEqual(
         knownValue('publisher').properties.type.enum,
         provenanceContract.publisherTypes,

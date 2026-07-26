@@ -12,6 +12,11 @@ import {
   isChinaDecisionSignalSnapshot,
 } from '../shared/china-decision-signals';
 import {
+  CHINA_DECISION_SIGNAL_GROUP_MANIFEST,
+  CHINA_DECISION_SIGNAL_MAX_ITEMS_PER_GROUP,
+} from '../shared/china-decision-signal-manifest';
+import {
+  provenanceValueSchema,
   readChinaDecisionSignalWireContract,
   readDecisionSignalProvenanceContract,
 } from '../scripts/lib/openapi-codegen.mjs';
@@ -121,6 +126,23 @@ function availableSnapshot() {
 }
 
 describe('China decision-signals OpenAPI embedded JSON contract', () => {
+  it('reads group provenance and item bounds from the shared runtime manifest', () => {
+    assert.deepEqual(
+      wireContract.groupIds,
+      CHINA_DECISION_SIGNAL_GROUP_MANIFEST.map(({ groupId }) => groupId),
+    );
+    assert.deepEqual(
+      wireContract.provenanceFamilyIds,
+      CHINA_DECISION_SIGNAL_GROUP_MANIFEST.map(
+        ({ provenanceFamily }) => provenanceFamily,
+      ),
+    );
+    assert.equal(
+      wireContract.maxItemsPerGroup,
+      CHINA_DECISION_SIGNAL_MAX_ITEMS_PER_GROUP,
+    );
+  });
+
   for (const [label, spec] of specs) {
     it(`${label}: documents the anonymous six-group canonical snapshot`, () => {
       const operation = spec.paths[path].get;
@@ -177,6 +199,19 @@ describe('China decision-signals OpenAPI embedded JSON contract', () => {
         [...claims.required].sort(),
         [...provenanceContract.dimensions].sort(),
       );
+      for (const dimension of provenanceContract.dimensions) {
+        const knownValue = claims.properties[dimension].oneOf
+          .find(
+            (candidate: Record<string, any>) =>
+              candidate.properties?.status?.const === 'known',
+          )
+          .properties.value;
+        assert.deepEqual(
+          knownValue,
+          provenanceValueSchema(dimension, provenanceContract),
+          `${dimension} must use the shared provenance value schema`,
+        );
+      }
 
       const access = resolveRef(spec, snapshot.properties.access);
       assert.equal(
