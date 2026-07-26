@@ -303,15 +303,25 @@ export function validateTranslation(en, translated) {
   // which would otherwise look like paths. Compared as a sorted multiset so
   // word-order changes around the URL still pass.
   //
-  // The leading `(?<![A-Za-z0-9])` is what separates a path from a slash used as
-  // punctuation between two words. Without it, `calls/day`, `requests/minute`
-  // and `$69.99/mo` all register `/day`, `/minute`, `/mo` as paths, and every
-  // translation that renders the rate naturally ("250 Aufrufe pro Tag") is
-  // rejected for "dropping a URL". That rejection is deterministic, so those
-  // keys could never converge no matter how often the run was repeated — they
-  // stayed as array holes that serialise to `null`. A genuine path is preceded
-  // by start-of-string, whitespace or an opening bracket.
-  const urlPattern = /(?:https?:\/\/[^\s<>"']+|(?<![A-Za-z0-9])\/[A-Za-z][A-Za-z0-9_\-./]*(?=[\s,.;:!?)\]]|$))/g;
+  // Two constraints separate a real path from a slash used as punctuation, and
+  // both are needed — the failure shows up from each side:
+  //
+  //   `(?<![A-Za-z0-9])`  the slash must not follow a letter or digit, so
+  //                       `calls/day` and `requests/minute` are not paths. Without
+  //                       it every translation rendering the rate naturally
+  //                       ("250 Aufrufe pro Tag") was rejected for DROPPING a URL.
+  //   a second segment    the path must contain a further `/`, so `/Monat` and
+  //                       `/mois` are not paths. Without it German and French
+  //                       prices ("69,99 $/Monat" — slash after a space) were
+  //                       rejected for INVENTING one.
+  //
+  // Both rejections are deterministic, so the affected keys could never converge
+  // however often the pass was repeated; they stayed as array holes serialising
+  // to `null`. The two-segment rule is safe here because every genuine bare path
+  // in both EN catalogs is multi-segment (`/docs/methodology/...`); the only
+  // single-segment matches are the price suffixes `/mo` and `/yr`, which must be
+  // translated, not preserved.
+  const urlPattern = /(?:https?:\/\/[^\s<>"']+|(?<![A-Za-z0-9])\/[A-Za-z][A-Za-z0-9_\-.]*\/[A-Za-z0-9_\-./]*(?=[\s,.;:!?)\]]|$))/g;
   const enUrls = (en.match(urlPattern) || []).slice().sort();
   const tUrls = (translated.match(urlPattern) || []).slice().sort();
   if (enUrls.join('|') !== tUrls.join('|')) return false;

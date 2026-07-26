@@ -25,29 +25,71 @@ describe('translation validation', () => {
     }
   });
 
+  describe('a slash the target language introduces is not an invented path', () => {
+    // The mirror of the rate case. German and French render a monthly price as
+    // "69,99 $/Monat" / "39,99 $/mois" — the slash follows a space there, so it
+    // looks far more like a path than the English "$69.99/mo" it came from, and
+    // the translation gets rejected for INVENTING a URL.
+    const priced = [
+      ['From $39.99/mo · 2 months free when billed annually', 'Ab 39,99 $/Monat · 2 Monate gratis bei jährlicher Abrechnung'],
+      ['From $39.99/mo · 2 months free when billed annually', 'À partir de 39,99 $/mois · 2 mois offerts en facturation annuelle'],
+      [
+        'Yes. Pro is for personal use. Pro Business ($69.99/mo) adds the commercial license, data export, 25 dashboards, and 250 MCP calls/day.',
+        'Ja. Pro ist für den persönlichen Gebrauch. Pro Business (69,99 $/Monat) ergänzt die kommerzielle Lizenz, Datenexport, 25 Dashboards und 250 MCP-Aufrufe pro Tag.',
+      ],
+    ];
+    for (const [en, translated] of priced) {
+      it(`accepts "${translated.slice(0, 40)}"`, () => {
+        assert.equal(validateTranslation(en, translated), true);
+      });
+    }
+  });
+
   describe('real paths and URLs are still pinned', () => {
-    it('rejects a dropped path', () => {
-      assert.equal(validateTranslation('See /docs/methodology for details', 'Voir les détails'), false);
+    // Every genuine bare path in both EN catalogs is multi-segment (/docs/...);
+    // the only single-segment matches are the price suffixes "/mo" and "/yr",
+    // which are not paths. That is what makes "has a second segment" a safe test
+    // for a real path and a slash between two words.
+    const REAL = 'Scores are explained at /docs/methodology/cii-risk-scores today';
+
+    it('rejects dropping a multi-segment path', () => {
+      assert.equal(validateTranslation(REAL, 'Die Werte werden heute erklärt'), false);
     });
 
-    it('rejects a rewritten path', () => {
+    it('rejects rewriting a multi-segment path', () => {
       assert.equal(
-        validateTranslation('See /docs/methodology for details', 'Voir /docs/methodologie pour les détails'),
+        validateTranslation(REAL, 'Erklärt unter /docs/methodik/cii-risk-scores heute'),
         false,
       );
     });
 
-    it('accepts a preserved path', () => {
+    it('accepts a preserved multi-segment path', () => {
       assert.equal(
-        validateTranslation('See /docs/methodology for details', 'Détails sous /docs/methodology'),
+        validateTranslation(REAL, 'Heute erklärt unter /docs/methodology/cii-risk-scores hier'),
         true,
       );
     });
+  });
 
+  describe('absolute URLs', () => {
     it('rejects a dropped URL', () => {
       assert.equal(
         validateTranslation('Read https://worldmonitor.app/pro now', 'Lisez maintenant'),
         false,
+      );
+    });
+
+    it('rejects a rewritten URL', () => {
+      assert.equal(
+        validateTranslation('Read https://worldmonitor.app/pro now', 'Lisez https://worldmonitor.app/fr/pro'),
+        false,
+      );
+    });
+
+    it('accepts a preserved URL', () => {
+      assert.equal(
+        validateTranslation('Read https://worldmonitor.app/pro now', 'Lisez maintenant https://worldmonitor.app/pro'),
+        true,
       );
     });
   });
