@@ -116,6 +116,21 @@ message AnalyzeStockResponse {
   optional string next_earnings_date = 63;
   optional double consensus_eps = 64;
   optional double consensus_revenue = 65;
+
+  // Risk analytics computed from the 6-month daily candles already fetched for
+  // the technical snapshot (no extra upstream call).
+  // (66-68 avoid a field collision: 61-62 are claimed by the in-flight PR that
+  // blends fundamentals into the rating, and 63-65 by the merged earnings join.)
+  //
+  // Annualized realized volatility — sample stdev of daily log returns × √252 —
+  // as a fractional ratio where 0.25 means 25%. 0 when history is insufficient.
+  double realized_volatility = 66;
+  // Wilder's 14-period Average True Range, in the response currency's price
+  // units. 0 when history is insufficient.
+  double atr = 67;
+  // Maximum peak-to-trough drawdown over the window, as a non-positive fractional
+  // ratio where -0.25 means a 25% decline. 0 for a monotonically rising series.
+  double max_drawdown = 68;
 }
 
 message Fundamentals {
