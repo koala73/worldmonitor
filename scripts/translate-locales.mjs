@@ -131,6 +131,15 @@ Output (key<TAB>${langName}):`;
     max_tokens: 8192,
     messages: [{ role: 'user', content: prompt }],
   });
+  // A batch of 50 long strings (the welcome FAQ answers run 300+ chars each) can
+  // exceed max_tokens, and the reply is then cut mid-stream: the tail keys are
+  // simply absent from the tab-separated output and look indistinguishable from
+  // "the model chose to skip them". Say so, because it is a common reason a run
+  // reports a shortfall. The re-run fills them — it only resends what is still
+  // outstanding, so the retry batch is small enough not to truncate again.
+  if (res.stop_reason === 'max_tokens') {
+    console.warn('  ! reply hit max_tokens and was truncated — the tail of this batch was dropped');
+  }
   const text = res.content.filter(c => c.type === 'text').map(c => c.text).join('');
 
   const out = {};
@@ -259,7 +268,7 @@ function writeBaseline(baselinePath, enFlat) {
   writeFileSync(baselinePath, JSON.stringify(sorted, null, 2) + '\n');
 }
 
-function validateTranslation(en, translated) {
+export function validateTranslation(en, translated) {
   // Reject if interpolation tokens were dropped or invented
   const enTokens = (en.match(/\{\{[^}]+\}\}/g) || []).sort();
   const tTokens = (translated.match(/\{\{[^}]+\}\}/g) || []).sort();
@@ -282,7 +291,16 @@ function validateTranslation(en, translated) {
   // fractions like `50/100` or interpolation tokens like `{{count}}/{{total}}`
   // which would otherwise look like paths. Compared as a sorted multiset so
   // word-order changes around the URL still pass.
-  const urlPattern = /(?:https?:\/\/[^\s<>"']+|\/[A-Za-z][A-Za-z0-9_\-./]*(?=[\s,.;:!?)\]]|$))/g;
+  //
+  // The leading `(?<![A-Za-z0-9])` is what separates a path from a slash used as
+  // punctuation between two words. Without it, `calls/day`, `requests/minute`
+  // and `$69.99/mo` all register `/day`, `/minute`, `/mo` as paths, and every
+  // translation that renders the rate naturally ("250 Aufrufe pro Tag") is
+  // rejected for "dropping a URL". That rejection is deterministic, so those
+  // keys could never converge no matter how often the run was repeated — they
+  // stayed as array holes that serialise to `null`. A genuine path is preceded
+  // by start-of-string, whitespace or an opening bracket.
+  const urlPattern = /(?:https?:\/\/[^\s<>"']+|(?<![A-Za-z0-9])\/[A-Za-z][A-Za-z0-9_\-./]*(?=[\s,.;:!?)\]]|$))/g;
   const enUrls = (en.match(urlPattern) || []).slice().sort();
   const tUrls = (translated.match(urlPattern) || []).slice().sort();
   if (enUrls.join('|') !== tUrls.join('|')) return false;
@@ -386,7 +404,15 @@ async function main() {
       console.log(`[${loc}] progress ${Math.min(i + BATCH_SIZE, toTranslate.length)}/${toTranslate.length}`);
     }
     totalTranslated += added;
-    console.log(`[${loc}] ✓ wrote ${added} translations`);
+    // A shortfall means the model omitted keys from its reply or validateTranslation
+    // rejected them. Say so here rather than leaving it to the post-run scan —
+    // the fix is simply to run again, and the run is idempotent.
+    const shortfall = toTranslate.length - added;
+    console.log(
+      shortfall > 0
+        ? `[${loc}] ✓ wrote ${added} translations (${shortfall} not returned or rejected — re-run to fill)`
+        : `[${loc}] ✓ wrote ${added} translations`,
+    );
   }
 
   // Re-scan post-write to confirm full coverage. A partial run (rejections,
