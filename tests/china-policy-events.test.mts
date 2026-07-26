@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { performance } from 'node:perf_hooks';
 import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { validateDecisionSignalProvenance } from '../shared/decision-signal-provenance';
 import {
+  __testing__,
   CHINA_POLICY_SOURCES,
   fetchAgencyDocuments,
+  fetchAllChinaPolicyDocuments,
   parseAgencyListing,
   parsePolicyDocumentHtml,
 } from '../scripts/china-policy/adapters.mjs';
@@ -139,6 +142,70 @@ describe('China official policy adapters (#5576)', () => {
 
     assert.equal(parsed.titleOriginal, '市场监管公告�');
     assert.equal(parsed.originalText, '正文�内容');
+  });
+
+  it('keeps nested article containers intact when extracting policy text', () => {
+    const parsed = parsePolicyDocumentHtml([
+      '<html><head>',
+      '<meta name="ArticleTitle" content="市场监管政策公告">',
+      '<meta name="PubDate" content="2026-07-25">',
+      '</head><body>',
+      '<div class="article-content">',
+      '<div>前半正文内容足够长而且超过十个字符</div>',
+      '<p>后半正文，自2026年8月1日起施行</p>',
+      '</div>',
+      '</body></html>',
+    ].join(''));
+
+    assert.match(parsed.originalText, /前半正文/);
+    assert.match(parsed.originalText, /后半正文/);
+    assert.equal(parsed.effectiveDate, '2026-08-01');
+  });
+
+  it('parses bounded hostile markup without superlinear rescans', () => {
+    const startedAt = performance.now();
+    assert.equal(__testing__.stripHtml('<script '.repeat(16_000)), '');
+    assert.deepEqual(parseAgencyListing('CAC', '<a >'.repeat(16_000)), []);
+    const nested = parsePolicyDocumentHtml(
+      `<body>${'<div class="content">'.repeat(12_000)}正文内容足够长且必须保留${'</div>'.repeat(12_000)}</body>`,
+    );
+    assert.equal(nested.originalText, '正文内容足够长且必须保留');
+    assert.equal(
+      parsePolicyDocumentHtml(
+        `${'<div>'.repeat(12_000)}${'</span>'.repeat(12_000)}`,
+      ).originalText,
+      '',
+    );
+    const elapsedMs = performance.now() - startedAt;
+
+    assert.ok(elapsedMs < 1_000, `hostile markup parsing took ${elapsedMs.toFixed(1)}ms`);
+  });
+
+  it('starts all independent agency listing requests concurrently', async () => {
+    let activeRequests = 0;
+    let peakRequests = 0;
+    await assert.rejects(
+      fetchAllChinaPolicyDocuments({
+        fetchImpl: async (input) => {
+          const url = String(input);
+          activeRequests += 1;
+          peakRequests = Math.max(peakRequests, activeRequests);
+          await Promise.resolve();
+          activeRequests -= 1;
+          const source = Object.values(CHINA_POLICY_SOURCES)
+            .find((candidate) => candidate.listUrl === url);
+          const body = source?.listingFormat === 'samr-json'
+            ? '{"data":{"html":""}}'
+            : source?.listingFormat === 'miit-json'
+              ? '{"data":{"searchResult":{"dataResults":[]}}}'
+              : '';
+          return officialResponse(url, body);
+        },
+        sleep: async () => {},
+      }),
+      /All official China policy sources failed/,
+    );
+    assert.equal(peakRequests, Object.keys(CHINA_POLICY_SOURCES).length);
   });
 
   it('rejects an oversized source response before parsing or following any redirect', async () => {
@@ -553,6 +620,16 @@ describe('China policy event provenance, reconciliation, and degradation (#5576)
       const url = String(input);
       if (url === cacListUrl) return officialResponse(url, cacListing);
       if (url.includes('1783525612489633')) return officialResponse(url, 'blocked', 503);
+      if (url.includes('1787000000000000')) {
+        return officialResponse(url, [
+          '<html><head>',
+          '<meta name="ArticleTitle" content="网络数据安全工作通知">',
+          '<meta name="PubDate" content="2026-07-25">',
+          '</head><body><div class="article-content">',
+          '这是另一份独立发布的网络数据安全工作通知。',
+          '</div></body></html>',
+        ].join(''));
+      }
       const listing = listingFixtures.get(url);
       return officialResponse(url, listing ?? detail);
     };
@@ -573,6 +650,72 @@ describe('China policy event provenance, reconciliation, and degradation (#5576)
     assert.equal(
       detailFailureLastGood?.provenance.claims.transport_freshness.value.state,
       'error',
+    );
+
+    const previousCac = first.events.find((event) => (
+      event.agency === 'CAC' && event.supersession.state === 'current'
+    ));
+    assert.ok(previousCac);
+    const failedMirrorUrl = 'https://www.cac.gov.cn/2026-06/18/c_1783525612489999.htm';
+    const previousWithMirror = {
+      ...first,
+      events: first.events.map((event) => (
+        event.id === previousCac.id
+          ? { ...event, mirrorUrls: [failedMirrorUrl] }
+          : event
+      )),
+    };
+    assert.equal(validateChinaPolicyPayload(previousWithMirror), true);
+    const mirrorListing = [
+      `<a href="${previousCac.canonicalUrl}" title="网络数据安全管理条例（征求意见稿）">网络数据安全管理条例（征求意见稿）</a><span>2026-06-18</span>`,
+      `<a href="${failedMirrorUrl}" title="网络数据安全管理条例（征求意见稿）">网络数据安全管理条例（征求意见稿）</a><span>2026-06-18</span>`,
+    ].join('');
+    const mirrorFailureFetch = async (input: string | URL | Request) => {
+      const url = String(input);
+      if (url === cacListUrl) return officialResponse(url, mirrorListing);
+      if (url === failedMirrorUrl) return officialResponse(url, 'blocked', 503);
+      const listing = listingFixtures.get(url);
+      return officialResponse(url, listing ?? detail);
+    };
+    const mirrorPartial = await buildChinaPolicyEvents({
+      fetchImpl: mirrorFailureFetch,
+      sleep: async () => {},
+      now: Date.parse('2026-07-28T12:00:00.000Z'),
+      previousPayload: previousWithMirror,
+    });
+    assert.equal(mirrorPartial.agencies.CAC.status, 'partial');
+    const refreshedCanonical = mirrorPartial.events.find((event) => (
+      event.canonicalUrl === previousCac.canonicalUrl
+      && event.supersession.state === 'current'
+    ));
+    assert.equal(
+      refreshedCanonical?.provenance.claims.transport_freshness.value.state,
+      'fresh',
+      'a failed mirror must not stale a canonical URL fetched successfully in the same run',
+    );
+
+    const expired = await buildChinaPolicyEvents({
+      fetchImpl: partialFetch,
+      sleep: async () => {},
+      now: Date.parse('2027-02-01T12:00:00.000Z'),
+      previousPayload: first,
+    });
+    assert.equal(
+      expired.events.some((event) => event.agency === 'CAC'),
+      false,
+      'a failed agency must not preserve events beyond the 180-day retention ceiling',
+    );
+  });
+
+  it('fails closed when every official agency is unavailable', async () => {
+    await assert.rejects(
+      buildChinaPolicyEvents({
+        fetchImpl: async (input) => officialResponse(String(input), 'blocked', 503),
+        sleep: async () => {},
+        now: Date.parse(RETRIEVED_AT),
+        previousPayload: null,
+      }),
+      /All official China policy sources failed/,
     );
   });
 
@@ -635,6 +778,46 @@ describe('China policy event provenance, reconciliation, and degradation (#5576)
     const cached = await service.fetch();
     assert.equal(cached.state, 'cached');
     assert.deepEqual(cached.data, payload);
+  });
+
+  it('fetches and validates the public bootstrap fallback when hydration misses', async () => {
+    const event = normalizePolicyDocument({
+      agency: 'CAC',
+      canonicalUrl: 'https://www.cac.gov.cn/2026-06/18/c_1783525612489633.htm',
+      titleOriginal: '网络数据安全管理条例（征求意见稿）',
+      originalText: '公开征求意见。',
+      publicationDate: '2026-06-18',
+      effectiveDate: null,
+      documentNumber: null,
+      retrievedAt: RETRIEVED_AT,
+    });
+    const payload = {
+      schemaVersion: 1,
+      generatedAt: RETRIEVED_AT,
+      agencies: healthyAgencies(),
+      events: [event],
+    };
+    let requestedUrl = '';
+    const service = createChinaPolicyService({
+      getHydrated: async () => undefined,
+      fetchImpl: async (input) => {
+        requestedUrl = String(input);
+        return new Response(JSON.stringify({
+          data: { chinaPolicyEvents: payload },
+        }), {
+          headers: { 'content-type': 'application/json' },
+        });
+      },
+      persistCache: false,
+      breakerName: 'China Policy Bootstrap Fallback Test',
+      cacheKey: 'bootstrap-fallback-regression',
+      now: () => Date.parse('2026-07-25T13:00:00.000Z'),
+    });
+
+    const result = await service.fetch();
+    assert.match(requestedUrl, /\/api\/bootstrap\?keys=chinaPolicyEvents&public=1$/);
+    assert.equal(result.state, 'live');
+    assert.deepEqual(result.data, payload);
   });
 
   it('grades an old origin payload as cached and enforces the generated-at hard ceiling', async () => {

@@ -9,6 +9,7 @@ import {
 } from '@/services/billing';
 import {
   getEntitlementState,
+  hasFeature,
   onEntitlementChange,
   type EntitlementState,
 } from '@/services/entitlements';
@@ -571,7 +572,23 @@ export class ProActivationController implements AppModule {
     return {
       accountUserId: user.id,
       accountEmail: user.email,
-      openApiKeys: () => ctx.unifiedSettings?.open('api-keys'),
+      // Pro entitles MCP, not the API plans' keys (#5607). Gate on the feature
+      // rather than the plan key: UnifiedSettings hides both the MCP tab and its
+      // panel without `mcpAccess`, so deep-linking there would open settings on a
+      // tab that has no panel to show. A Pro row written before the catalog field
+      // existed still resolves true — convex/entitlements.ts read-merges catalog
+      // defaults — so this only fail-closes on an explicit per-user override.
+      // Leaving the opener undefined makes buildPowerExtra drop the pointer.
+      openMcpClients: hasFeature('mcpAccess')
+        ? () => {
+            // Re-check at click time, not just here: the finish-setup chip
+            // replays this captured options object long after it was built, so
+            // an entitlement that lapsed in between would otherwise deep-link
+            // to a tab UnifiedSettings no longer renders.
+            if (hasFeature('mcpAccess')) ctx.unifiedSettings?.open('mcp-clients');
+            else ctx.unifiedSettings?.open('settings');
+          }
+        : undefined,
       openChannelSettings: () => ctx.unifiedSettings?.open('notifications'),
       openWidgetBuilder: () =>
         ctx.container.dispatchEvent(new CustomEvent('wm:open-widget-creator', { detail: {} })),

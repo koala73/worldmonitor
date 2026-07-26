@@ -2261,7 +2261,7 @@
           "pointers": {
             "widgets": "カスタムウィジェットを作成",
             "analyst": "AIアナリストに質問",
-            "apiKeys": "APIとMCPのキーを取得",
+            "mcpClients": "MCPをセットアップ",
             "channels": "通知設定でセットアップ"
           }
         }

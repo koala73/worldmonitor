@@ -2330,7 +2330,7 @@
           "pointers": {
             "widgets": "Egyéni widget létrehozása",
             "analyst": "Kérdezze meg az AI elemzőt",
-            "apiKeys": "API és MCP kulcsok beszerzése",
+            "mcpClients": "MCP beállítása",
             "channels": "Állítsa be ezeket az értesítési beállításokban"
           }
         }

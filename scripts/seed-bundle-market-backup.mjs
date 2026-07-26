@@ -6,6 +6,7 @@ await runBundle('market-backup', [
   { label: 'Hyperliquid-Flow', script: 'seed-hyperliquid-flow.mjs', seedMetaKey: 'market:hyperliquid-flow', canonicalKey: 'market:hyperliquid:flow:v1', intervalMs: 5 * MIN, timeoutMs: 60_000 },
   { label: 'Stablecoin-Markets', script: 'seed-stablecoin-markets.mjs', seedMetaKey: 'market:stablecoins', canonicalKey: 'market:stablecoins:v1', intervalMs: 10 * MIN, timeoutMs: 120_000 },
   { label: 'ETF-Flows', script: 'seed-etf-flows.mjs', seedMetaKey: 'market:etf-flows', canonicalKey: 'market:etf-flows:v1', intervalMs: 15 * MIN, timeoutMs: 120_000 },
+  { label: 'China-Corporate-Disclosures', script: 'seed-china-corporate-disclosures.mjs', seedMetaKey: 'market:china-corporate-disclosures', canonicalKey: 'market:china:corporate-disclosures:v1', intervalMs: 30 * MIN, timeoutMs: 120_000 },
   { label: 'Gulf-Quotes', script: 'seed-gulf-quotes.mjs', seedMetaKey: 'market:gulf-quotes', canonicalKey: 'market:gulf-quotes:v1', intervalMs: 10 * MIN, timeoutMs: 120_000 },
   { label: 'Token-Panels', script: 'seed-token-panels.mjs', seedMetaKey: 'market:token-panels', canonicalKey: 'market:defi-tokens:v1', intervalMs: 30 * MIN, timeoutMs: 120_000 },
   // SPDR GLD publishes holdings once daily (~16:30 ET). 2h cadence = retries on Cloudflare blocks + catches late publish.

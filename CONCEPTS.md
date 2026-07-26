@@ -74,7 +74,7 @@ The element that *causes* a layout shift by changing its own footprint — growi
 
 ### Vacuous Guard
 
-A test, CI gate, or static audit that reports success without having examined what it claims to cover, because its *input* silently shrank rather than because its assertion held. The distinguishing property is that it fails open: guards of this shape assert a negative — a violation list is empty, a count is zero, no match was found — and an empty input satisfies a negative assertion perfectly, so the less such a guard actually checks, the greener it looks. Levers that shrink the input include a skip condition gated on a flag nothing sets, a normaliser or comment-stripper that deletes part of the scanned source, and a filter or path-walk predicate that stops matching files. A vacuous guard is worse than no guard, because it also supplies confidence. See also: Mutation Proof.
+A test, CI gate, or static audit that reports success without having examined what it claims to cover, because its *input* silently shrank rather than because its assertion held. The distinguishing property is that it fails open: guards of this shape assert a negative — a violation list is empty, a count is zero, no match was found — and an empty input satisfies a negative assertion perfectly, so the less such a guard actually checks, the greener it looks. Levers that shrink the input include a skip condition gated on a flag nothing sets, a normaliser or comment-stripper that deletes part of the scanned source, a filter or path-walk predicate that stops matching files, and a test harness that never supplies the input the assertion is written about — an "X is absent" check cannot fail when the fixture could not have produced an X in the first place. A vacuous guard is worse than no guard, because it also supplies confidence. See also: Mutation Proof.
 
 ### Mutation Proof
 
@@ -106,6 +106,14 @@ One of the product-variant subdomains (`tech`, `finance`, `commodity`, `happy`, 
 
 The per-user record granting feature access — a plan key, feature flags with a tier, and a validity horizon — derived from subscriptions by the server and replicated to clients as a reactive snapshot. An entitlement is evidence of paid access *now*; it says nothing about why access exists or when it will renew. When its validity horizon passes without a renewal being recorded, readers fall back to free-tier defaults, which is the moment stale local state can misrepresent a still-paying customer.
 
+Feature flags are resolved by merging the plan's catalog defaults under the stored row, so a record written before a flag existed still reports that flag's current default for its plan — "the row predates the field" is therefore never on its own a reason a capability would read as absent.
+
+### Capability-Gated Deep Link
+
+A link that jumps a user straight into a surface which only exists when they hold a particular capability, so the entry point must be gated on the *same* predicate the destination renders on — never on the plan or tier believed to imply it.
+
+Two rules follow. Plan-to-capability mappings drift while the destination's own condition does not, so gating on the wrong signal yields either an upsell for something the user already bought, or a navigation into a surface that renders nothing at all. And when the opener outlives the moment it was built — captured into a closure that some later affordance replays — the capability must be re-read at click time, falling back to a surface that always renders. When the capability is genuinely absent the correct behavior is to suppress the entry point entirely; pointing it somewhere degraded is not. See also: Entitlement, Activation Interstitial.
+
 ### Covering Subscription
 
 A subscription that currently grants paid coverage. Coverage is decided per status, not by the status name's plain-English reading: an active subscription covers; an on-hold subscription (payment failed, provider retrying) still covers through its retry window; a cancelled subscription covers until the end of the period already paid for; an expired subscription never covers regardless of its recorded period end. The server owns these rules; any client-side derivation must mirror them rather than re-deriving from status-string intuition. See also: Cancelled-But-Paid-Through, Billing UX State.
@@ -134,7 +142,11 @@ The composed state in which a paying subscriber receives the daily AI brief off-
 
 ### Activation Interstitial
 
-The day-0 post-checkout flow shown to a new Pro subscriber once the payment-to-entitlement settling window resolves: a short sequence of one-click, individually-skippable confirms that wire premium features — the Brief Loop first — rather than teach them. Defined against two constraints from production data: activation that does not happen on day 0 essentially never happens, and nothing may activate without an explicit per-item confirm. Distinct from a tour (education, no state change) and from a persistent checklist (dashboard residue; the interstitial leaves at most a dismissible finish-setup affordance). See also: Brief Loop, Billing UX State.
+The day-0 post-checkout flow shown to a new Pro subscriber once the payment-to-entitlement settling window resolves: a short sequence of one-click, individually-skippable confirms that wire premium features — the Brief Loop first — rather than teach them. Defined against two constraints from production data: activation that does not happen on day 0 essentially never happens, and nothing may activate without an explicit per-item confirm. Distinct from a tour (education, no state change) and from a persistent checklist (dashboard residue; the interstitial leaves at most a dismissible finish-setup affordance). See also: Brief Loop, Activation Step State, Billing UX State.
+
+### Activation Step State
+
+The disposition of one step in the Activation Interstitial, in two layers: a declared state the step opens with — confirmable, already-done, blocked (the platform will refuse), or unavailable (the device cannot do it) — and a transient overlay for the step the user is currently on, in-flight while a confirm runs and failed when it did not work. The load-bearing distinction is terminal versus retryable, because the failed state is what puts a "Try again" button on screen: a refusal no retry can clear — a denied browser notification permission, which browsers never re-prompt for — must resolve to blocked and show the platform's own out-of-app remedy instead. A step that ends blocked resolves as skipped rather than failed, so the summary never claims a failure that was never attempted; the cost is that a platform refusal is otherwise indistinguishable from disinterest and needs its own event to stay countable. See also: Activation Interstitial, Billing UX State.
 
 ## Shipping Gate
 

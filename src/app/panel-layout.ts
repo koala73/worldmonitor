@@ -155,6 +155,7 @@ const COLLIDING_NEWS_PANEL_KEYS = new Set(['markets', 'crypto', 'economic']);
 export const DEFERRED_PANEL_NATURAL_FOOTPRINTS: Readonly<Record<string, DeferredPanelShellFootprint>> = {
   cii: { rowSpan: 2 },
   'chat-analyst': { rowSpan: 2 },
+  'china-corridors': { rowSpan: 2, className: 'panel-wide' },
   'consumer-prices': { rowSpan: 2 },
   displacement: { rowSpan: 2 },
   economic: { rowSpan: 2 },
@@ -1893,6 +1894,18 @@ export class PanelLayoutManager implements AppModule {
       });
       this.ctx.map?.setSupplyChainPanel(supplyChainPanel);
       return supplyChainPanel;
+    });
+    this.lazyImportedPanel('china-corridors', () => import('@/components/ChinaCorridorPanel'), 'ChinaCorridorPanel', (ChinaCorridorPanel) => {
+      const panel = new ChinaCorridorPanel();
+      panel.setOnCorridorSelect((corridor) => {
+        const rendererSupportsOverlay = this.ctx.map?.setChinaCorridorSelection(corridor);
+        if (this.ctx.isMobile) this.revealMobileMap();
+        return rendererSupportsOverlay;
+      });
+      this.ctx.map?.setOnChinaCorridorRendererCapabilityChange((supported) => {
+        panel.setRendererSupportsOverlay(supported);
+      });
+      return panel;
     });
 
     this.createNewsPanel('africa', 'panels.africa');

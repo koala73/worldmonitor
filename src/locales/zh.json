@@ -2261,7 +2261,7 @@
           "pointers": {
             "widgets": "创建自定义小组件",
             "analyst": "咨询 AI 分析师",
-            "apiKeys": "获取您的 API 和 MCP 密钥",
+            "mcpClients": "设置 MCP",
             "channels": "在通知设置中进行配置"
           }
         }

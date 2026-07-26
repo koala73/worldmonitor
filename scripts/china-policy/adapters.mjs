@@ -99,6 +99,23 @@ export const CHINA_POLICY_SOURCES = Object.freeze({
 const NON_DOCUMENT_TITLE = /专家解读|答记者问|一图读懂|公开招聘|拟聘|预算|公示|工作动态/;
 const POLICY_TITLE_HINT = /条例|规定|办法|规章|决定|公告|通知|意见|方案|指南|规划|批复|裁定|处罚|调查|管控名单|管理措施|禁令|令〔|令\d/;
 const BLOCK_PAGE_PATTERN = /Access Denied|访问频繁|安全验证|验证码|请求被拒绝|系统繁忙|页面不存在|404 Not Found|服务异常/i;
+const RAW_TEXT_TAGS = new Set(['script', 'style']);
+const VOID_TAGS = new Set([
+  'area',
+  'base',
+  'br',
+  'col',
+  'embed',
+  'hr',
+  'img',
+  'input',
+  'link',
+  'meta',
+  'param',
+  'source',
+  'track',
+  'wbr',
+]);
 
 function decodeNumericEntity(code, radix) {
   const value = Number.parseInt(code, radix);
@@ -125,13 +142,108 @@ function decodeEntities(input) {
     .replace(/&#x([0-9a-f]+);/gi, (_, code) => decodeNumericEntity(code, 16));
 }
 
+function attributeValue(attributes, name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = String(attributes ?? '').match(new RegExp(
+    `(?:^|\\s)${escaped}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'=<>]+))`,
+    'i',
+  ));
+  return match?.[1] ?? match?.[2] ?? match?.[3] ?? null;
+}
+
+function parseTagAt(html, start) {
+  if (html.startsWith('<!--', start)) {
+    const commentEnd = html.indexOf('-->', start + 4);
+    return {
+      end: commentEnd === -1 ? html.length : commentEnd + 3,
+      name: null,
+    };
+  }
+
+  let cursor = start + 1;
+  if (html[cursor] === '!' || html[cursor] === '?') {
+    const specialEnd = html.indexOf('>', cursor + 1);
+    return {
+      end: specialEnd === -1 ? html.length : specialEnd + 1,
+      name: null,
+    };
+  }
+  let closing = false;
+  if (html[cursor] === '/') {
+    closing = true;
+    cursor += 1;
+  }
+  if (!/[A-Za-z]/.test(html[cursor] ?? '')) return null;
+  let nameEnd = cursor + 1;
+  while (/[A-Za-z0-9:-]/.test(html[nameEnd] ?? '')) nameEnd += 1;
+  const name = html.slice(cursor, nameEnd).toLowerCase();
+  const attributesStart = nameEnd;
+  let quote = null;
+  let end = attributesStart;
+  for (; end < html.length; end += 1) {
+    const char = html[end];
+    if (quote) {
+      if (char === quote) quote = null;
+      continue;
+    }
+    if (char === '"' || char === "'") {
+      quote = char;
+      continue;
+    }
+    if (char === '>') break;
+  }
+  const complete = end < html.length;
+  const attributes = html.slice(attributesStart, complete ? end : html.length);
+  return {
+    attributes,
+    closing,
+    end: complete ? end + 1 : html.length,
+    name,
+    selfClosing: /\/\s*$/.test(attributes),
+  };
+}
+
+function walkHtml(input, { onTag, onText } = {}) {
+  const html = String(input ?? '');
+  let cursor = 0;
+  let suppressedTag = null;
+  while (cursor < html.length) {
+    const tagStart = html.indexOf('<', cursor);
+    if (tagStart === -1) {
+      if (!suppressedTag && cursor < html.length) onText?.(html.slice(cursor));
+      break;
+    }
+    if (!suppressedTag && tagStart > cursor) onText?.(html.slice(cursor, tagStart));
+    const tag = parseTagAt(html, tagStart);
+    if (!tag) {
+      if (!suppressedTag) onText?.('<');
+      cursor = tagStart + 1;
+      continue;
+    }
+    cursor = tag.end;
+    if (!tag.name) continue;
+    if (suppressedTag) {
+      if (tag.closing && tag.name === suppressedTag) suppressedTag = null;
+      continue;
+    }
+    if (!tag.closing && !tag.selfClosing && RAW_TEXT_TAGS.has(tag.name)) {
+      suppressedTag = tag.name;
+      continue;
+    }
+    onTag?.(tag);
+  }
+}
+
+function normalizeHtmlText(parts) {
+  return decodeEntities(parts.join(' ')).replace(/\s+/g, ' ').trim();
+}
+
 function stripHtml(input) {
-  return decodeEntities(
-    String(input ?? '')
-      .replace(/<script\b[\s\S]*?<\/script>/gi, ' ')
-      .replace(/<style\b[\s\S]*?<\/style>/gi, ' ')
-      .replace(/<[^>]+>/g, ' '),
-  ).replace(/\s+/g, ' ').trim();
+  const parts = [];
+  walkHtml(input, {
+    onText: (text) => parts.push(text),
+  });
+  return normalizeHtmlText(parts);
 }
 
 function validDay(value) {
@@ -178,34 +290,46 @@ function dateNearAnchor(html, anchorEnd) {
 
 function parseHtmlListing(agency, html, sourceConfig) {
   const rows = [];
-  const anchorPattern = /<a\b([^>]*?)>([\s\S]*?)<\/a>/gi;
-  let match;
-  while ((match = anchorPattern.exec(html)) !== null) {
-    const attributes = match[1];
-    const href = attributes.match(/\bhref\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/i);
-    const rawHref = href?.[1] ?? href?.[2] ?? href?.[3] ?? '';
-    const titleAttribute = attributes.match(/\btitle\s*=\s*(?:"([^"]+)"|'([^']+)')/i);
-    const titleOriginal = stripHtml(titleAttribute?.[1] ?? titleAttribute?.[2] ?? match[2]);
-    const canonicalUrl = canonicalizeSourceUrl(rawHref, sourceConfig);
-    const publicationDate = dateNearAnchor(html, anchorPattern.lastIndex);
-    if (
-      !canonicalUrl
-      || !publicationDate
-      || titleOriginal.length < 5
-      || NON_DOCUMENT_TITLE.test(titleOriginal)
-      || !POLICY_TITLE_HINT.test(titleOriginal)
-    ) {
-      continue;
-    }
-    rows.push({
-      agency,
-      canonicalUrl,
-      titleOriginal,
-      publicationDate,
-      originalText: '',
-      documentNumber: extractDocumentNumber(titleOriginal),
-    });
-  }
+  let anchor = null;
+  walkHtml(html, {
+    onTag: (tag) => {
+      if (tag.name !== 'a') return;
+      if (!tag.closing) {
+        anchor = {
+          attributes: tag.attributes,
+          parts: [],
+        };
+        return;
+      }
+      if (!anchor) return;
+      const rawHref = attributeValue(anchor.attributes, 'href') ?? '';
+      const titleOriginal = normalizeHtmlText([
+        attributeValue(anchor.attributes, 'title') ?? anchor.parts.join(' '),
+      ]);
+      const canonicalUrl = canonicalizeSourceUrl(rawHref, sourceConfig);
+      const publicationDate = dateNearAnchor(html, tag.end);
+      if (
+        canonicalUrl
+        && publicationDate
+        && titleOriginal.length >= 5
+        && !NON_DOCUMENT_TITLE.test(titleOriginal)
+        && POLICY_TITLE_HINT.test(titleOriginal)
+      ) {
+        rows.push({
+          agency,
+          canonicalUrl,
+          titleOriginal,
+          publicationDate,
+          originalText: '',
+          documentNumber: extractDocumentNumber(titleOriginal),
+        });
+      }
+      anchor = null;
+    },
+    onText: (text) => {
+      if (anchor) anchor.parts.push(text);
+    },
+  });
   return rows;
 }
 
@@ -257,27 +381,103 @@ export function parseAgencyListing(agency, raw) {
   return parseHtmlListing(agency, raw, sourceConfig);
 }
 
-function metaContent(html, name) {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const pattern = new RegExp(
-    `<meta\\b(?=[^>]*\\bname\\s*=\\s*["']${escaped}["'])(?=[^>]*\\bcontent\\s*=\\s*["']([^"']*)["'])[^>]*>`,
-    'i',
-  );
-  return stripHtml(html.match(pattern)?.[1] ?? '');
-}
-
-function extractArticleBody(html) {
-  for (const className of ['article-content', 'main-content', 'TRS_Editor', 'content']) {
-    const escaped = className.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const match = html.match(new RegExp(
-      `<(?:div|td|article)\\b[^>]*class\\s*=\\s*["'][^"']*\\b${escaped}\\b[^"']*["'][^>]*>([\\s\\S]*?)<\\/(?:div|td|article)>`,
-      'i',
-    ));
-    const text = stripHtml(match?.[1] ?? '');
-    if (text.length >= 10) return text;
+function parsePolicyHtmlFields(html) {
+  const classPriority = ['article-content', 'main-content', 'TRS_Editor', 'content'];
+  const stack = [];
+  const openTagCounts = new Map();
+  const captures = new Map();
+  const candidates = new Map();
+  const allParts = [];
+  const titleParts = [];
+  const metadata = {};
+  let bodyCapture = null;
+  let titleDepth = 0;
+  let titleComplete = false;
+  walkHtml(html, {
+    onTag: (tag) => {
+      if (tag.closing) {
+        if (!openTagCounts.has(tag.name)) return;
+        let stackIndex = stack.length - 1;
+        while (stackIndex >= 0 && stack[stackIndex] !== tag.name) stackIndex -= 1;
+        const closingDepth = stackIndex + 1;
+        for (const [priority, capture] of captures) {
+          if (capture.depth !== closingDepth || capture.tagName !== tag.name) continue;
+          const text = normalizeHtmlText(capture.parts);
+          if (text.length >= 10) candidates.set(priority, text);
+          captures.delete(priority);
+        }
+        if (
+          bodyCapture
+          && bodyCapture.depth === closingDepth
+          && bodyCapture.tagName === tag.name
+        ) {
+          bodyCapture.text = normalizeHtmlText(bodyCapture.parts);
+        }
+        if (tag.name === 'title' && titleDepth > 0) {
+          titleDepth -= 1;
+          if (titleDepth === 0) titleComplete = true;
+        }
+        for (let index = stack.length - 1; index >= stackIndex; index -= 1) {
+          const openName = stack[index];
+          const remaining = openTagCounts.get(openName) - 1;
+          if (remaining === 0) openTagCounts.delete(openName);
+          else openTagCounts.set(openName, remaining);
+        }
+        stack.length = stackIndex;
+        return;
+      }
+      if (tag.name === 'meta') {
+        const metaName = attributeValue(tag.attributes, 'name')?.toLowerCase();
+        if (
+          (metaName === 'articletitle' || metaName === 'pubdate')
+          && !metadata[metaName]
+        ) {
+          metadata[metaName] = normalizeHtmlText([
+            attributeValue(tag.attributes, 'content') ?? '',
+          ]);
+        }
+      }
+      if (tag.selfClosing || VOID_TAGS.has(tag.name)) return;
+      stack.push(tag.name);
+      openTagCounts.set(tag.name, (openTagCounts.get(tag.name) ?? 0) + 1);
+      if (tag.name === 'title' && !titleComplete) titleDepth += 1;
+      if (tag.name === 'body' && !bodyCapture) {
+        bodyCapture = {
+          depth: stack.length,
+          parts: [],
+          tagName: tag.name,
+          text: '',
+        };
+      }
+      if (!['div', 'td', 'article'].includes(tag.name)) return;
+      const classes = new Set((attributeValue(tag.attributes, 'class') ?? '').split(/\s+/));
+      const priority = classPriority.findIndex((className) => classes.has(className));
+      if (priority === -1 || candidates.has(priority) || captures.has(priority)) return;
+      captures.set(priority, {
+        depth: stack.length,
+        parts: [],
+        tagName: tag.name,
+      });
+    },
+    onText: (text) => {
+      allParts.push(text);
+      for (const capture of captures.values()) capture.parts.push(text);
+      if (bodyCapture && !bodyCapture.text) bodyCapture.parts.push(text);
+      if (titleDepth > 0 && !titleComplete) titleParts.push(text);
+    },
+  });
+  let originalText = '';
+  for (let priority = 0; priority < classPriority.length; priority += 1) {
+    if (candidates.has(priority)) {
+      originalText = candidates.get(priority);
+      break;
+    }
   }
-  const body = html.match(/<body\b[^>]*>([\s\S]*?)<\/body>/i)?.[1] ?? html;
-  return stripHtml(body);
+  return {
+    articleTitle: metadata.articletitle || normalizeHtmlText(titleParts),
+    publicationDate: metadata.pubdate || '',
+    originalText: originalText || bodyCapture?.text || normalizeHtmlText(allParts),
+  };
 }
 
 export function extractEffectiveDate(text) {
@@ -292,12 +492,12 @@ export function extractEffectiveDate(text) {
 }
 
 export function parsePolicyDocumentHtml(html, fallback = {}) {
-  const titleOriginal = metaContent(html, 'ArticleTitle')
-    || stripHtml(html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i)?.[1])
+  const parsed = parsePolicyHtmlFields(html);
+  const titleOriginal = parsed.articleTitle
     || fallback.titleOriginal
     || '';
-  const publicationDate = validDay(metaContent(html, 'PubDate')) ?? fallback.publicationDate ?? null;
-  const originalText = extractArticleBody(html);
+  const publicationDate = validDay(parsed.publicationDate) ?? fallback.publicationDate ?? null;
+  const { originalText } = parsed;
   return {
     titleOriginal,
     publicationDate,
@@ -319,8 +519,8 @@ async function readBoundedBody(response, maxBytes) {
   }
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
+  const chunks = [];
   let bytes = 0;
-  let text = '';
   try {
     while (true) {
       const { done, value } = await reader.read();
@@ -330,10 +530,10 @@ async function readBoundedBody(response, maxBytes) {
         await reader.cancel();
         throw new Error(`response exceeded ${maxBytes} bytes`);
       }
-      text += decoder.decode(value, { stream: true });
+      chunks.push(decoder.decode(value, { stream: true }));
     }
-    text += decoder.decode();
-    return text;
+    chunks.push(decoder.decode());
+    return chunks.join('');
   } finally {
     reader.releaseLock();
   }
@@ -442,12 +642,26 @@ export async function fetchAgencyDocuments(agency, {
 }
 
 export async function fetchAllChinaPolicyDocuments(options = {}) {
+  const results = await Promise.all(Object.keys(CHINA_POLICY_SOURCES).map(async (agency) => {
+    try {
+      return {
+        agency,
+        result: await fetchAgencyDocuments(agency, options),
+      };
+    } catch (error) {
+      return {
+        agency,
+        error,
+      };
+    }
+  }));
   const agencies = {};
   const documents = [];
   let successCount = 0;
-  for (const agency of Object.keys(CHINA_POLICY_SOURCES)) {
-    try {
-      const result = await fetchAgencyDocuments(agency, options);
+  for (const entry of results) {
+    const { agency } = entry;
+    if (entry.result) {
+      const { result } = entry;
       agencies[agency] = {
         status: result.status,
         retrievedAt: result.retrievedAt,
@@ -462,7 +676,8 @@ export async function fetchAllChinaPolicyDocuments(options = {}) {
           retrievedAt: result.retrievedAt,
         })));
       }
-    } catch (error) {
+    } else {
+      const { error } = entry;
       agencies[agency] = {
         status: 'error',
         retrievedAt: new Date().toISOString(),

@@ -90,31 +90,74 @@ export interface DecisionSignalPublisherReference {
   registryReference: DecisionSignalSourceRegistryReference | null;
 }
 
+export const DECISION_SIGNAL_ORIGINAL_REFERENCE_KINDS = [
+  'document',
+  'text',
+  'observation',
+  'event',
+  'dataset',
+] as const;
+
 export interface DecisionSignalOriginalReference {
-  kind: 'document' | 'text' | 'observation' | 'event' | 'dataset';
+  kind: (typeof DECISION_SIGNAL_ORIGINAL_REFERENCE_KINDS)[number];
   id: string;
   contentHash?: string;
 }
 
+export const DECISION_SIGNAL_TRANSLATION_STATES = [
+  'unavailable',
+  'not_translated',
+  'machine_assisted',
+  'human_reviewed',
+] as const;
+
 export interface DecisionSignalTranslation {
-  state: 'unavailable' | 'not_translated' | 'machine_assisted' | 'human_reviewed';
+  state: (typeof DECISION_SIGNAL_TRANSLATION_STATES)[number];
   targetLanguage?: string;
 }
 
+export const DECISION_SIGNAL_TIME_ROLES = [
+  'observation',
+  'effective',
+  'publication',
+  'retrieval',
+] as const;
+
+export const DECISION_SIGNAL_TIME_PRECISIONS = [
+  'instant',
+  'day',
+  'month',
+  'year',
+] as const;
+
 export interface DecisionSignalTimeReference {
-  role: 'observation' | 'effective' | 'publication' | 'retrieval';
+  role: (typeof DECISION_SIGNAL_TIME_ROLES)[number];
   value: string;
-  precision: 'instant' | 'day' | 'month' | 'year';
+  precision: (typeof DECISION_SIGNAL_TIME_PRECISIONS)[number];
 }
+
+export const DECISION_SIGNAL_REVISION_STATES = [
+  'preliminary',
+  'original',
+  'revised',
+  'corrected',
+] as const;
 
 export interface DecisionSignalRevision {
   vintageId: string;
   sequence: number;
-  state: 'original' | 'revised' | 'corrected';
+  state: (typeof DECISION_SIGNAL_REVISION_STATES)[number];
 }
 
+export const DECISION_SIGNAL_SUPERSESSION_STATES = [
+  'current',
+  'corrected',
+  'cancelled',
+  'superseded',
+] as const;
+
 export interface DecisionSignalSupersession {
-  state: 'current' | 'corrected' | 'cancelled' | 'superseded';
+  state: (typeof DECISION_SIGNAL_SUPERSESSION_STATES)[number];
   relatedSignalId?: string;
   reason?: string;
 }
@@ -124,19 +167,47 @@ export interface DecisionSignalConfidence {
   method: string;
 }
 
+export const DECISION_SIGNAL_CORROBORATION_STATES = [
+  'single_source',
+  'multi_source',
+  'independently_corroborated',
+  'contradicted',
+] as const;
+
 export interface DecisionSignalCorroboration {
-  state: 'single_source' | 'multi_source' | 'independently_corroborated' | 'contradicted';
+  state: (typeof DECISION_SIGNAL_CORROBORATION_STATES)[number];
   sourceSignalIds: string[];
 }
 
+export const DECISION_SIGNAL_TRANSPORT_FRESHNESS_STATES = [
+  'fresh',
+  'stale',
+  'missing',
+  'error',
+] as const;
+
+export type DecisionSignalTransportFreshnessState =
+  (typeof DECISION_SIGNAL_TRANSPORT_FRESHNESS_STATES)[number];
+
 export interface DecisionSignalTransportFreshness {
-  state: 'fresh' | 'stale' | 'missing' | 'error';
+  state: DecisionSignalTransportFreshnessState;
   assessedAt: string;
   lastSuccessAt?: string;
 }
 
+export const DECISION_SIGNAL_CONTENT_FRESHNESS_STATES = [
+  'current',
+  'stale',
+  'unavailable',
+  'partial',
+  'timestamp_unknown',
+] as const;
+
+export type DecisionSignalContentFreshnessState =
+  (typeof DECISION_SIGNAL_CONTENT_FRESHNESS_STATES)[number];
+
 export interface DecisionSignalContentFreshness {
-  state: 'current' | 'stale' | 'unavailable' | 'partial' | 'timestamp_unknown';
+  state: DecisionSignalContentFreshnessState;
   assessedAt: string;
   contentAsOf?: string;
 }

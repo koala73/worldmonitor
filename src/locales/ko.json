@@ -2261,7 +2261,7 @@
           "pointers": {
             "widgets": "맞춤 위젯 만들기",
             "analyst": "AI 분석가에게 질문하기",
-            "apiKeys": "API 및 MCP 키 받기",
+            "mcpClients": "MCP 설정하기",
             "channels": "알림 설정에서 설정하기"
           }
         }

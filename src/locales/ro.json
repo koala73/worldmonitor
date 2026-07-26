@@ -2270,7 +2270,7 @@
           "pointers": {
             "widgets": "Creează un widget personalizat",
             "analyst": "Întreabă analistul AI",
-            "apiKeys": "Obține cheile tale API și MCP",
+            "mcpClients": "Configurează MCP",
             "channels": "Configurează-le în setările de notificare"
           }
         }

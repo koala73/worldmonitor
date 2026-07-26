@@ -214,6 +214,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'deferred to a future labor-statistics tool (per plan U7 expected exclusions). BLS economic series already partially surfaced via FRED bundles in get_economic_data.'],
   ['economic:fx:yoy:v1',
     'deferred: derived FX year-over-year cache; underlying ECB FX rates already exposed via get_economic_data (economic:ecb-fx-rates:v1).'],
+  ['market:china:corporate-disclosures:v1',
+    'deferred: #5577 introduces the bounded official SSE/SZSE snapshot for the reviewed MarketPanel basket; final API/MCP composition is explicitly owned by a later issue, so this key must not be exposed through an unrelated existing tool.'],
   ['intelligence:satellites:tle:v1',
     'deferred to a future space-domain tool. Not in v1 brainstorm inventory.'],
   ['intelligence:pizzint:seed:v1',

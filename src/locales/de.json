@@ -2261,7 +2261,7 @@
           "pointers": {
             "widgets": "Ein individuelles Widget erstellen",
             "analyst": "Den KI-Analysten fragen",
-            "apiKeys": "Ihre API- & MCP-Schlüssel abrufen",
+            "mcpClients": "MCP einrichten",
             "channels": "In den Benachrichtigungseinstellungen einrichten"
           }
         }

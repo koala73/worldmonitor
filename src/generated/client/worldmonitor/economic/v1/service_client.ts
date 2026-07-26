@@ -156,6 +156,8 @@ export interface GetChinaMacroSnapshotResponse {
   sourceDecisions: ChinaMacroSourceDecision[];
   releaseEvents: ChinaReleaseEvent[];
   unavailable: boolean;
+  schemaVersion: number;
+  pillars: ChinaMacroPillarPulse[];
 }
 
 export interface ChinaMacroIndicator {
@@ -173,6 +175,38 @@ export interface ChinaMacroIndicator {
   stale: boolean;
   unavailableReason: string;
   contextOnly: boolean;
+  geography: string;
+  seasonalAdjustment: string;
+  periodKind: string;
+  observationPeriod: string;
+  releaseTime: string;
+  retrievalTime: string;
+  direction: string;
+  directionReason: string;
+  comparisonBasis: string;
+  comparisonValue: number;
+  hasComparisonValue: boolean;
+  revisionState: string;
+  vintageId: string;
+  revisionSequence: number;
+  provenanceJson: string;
+  vintages: ChinaMacroVintage[];
+  transportStatus: string;
+  transportFailureReason: string;
+}
+
+export interface ChinaMacroVintage {
+  vintageId: string;
+  sequence: number;
+  state: string;
+  value: number;
+  hasValue: boolean;
+  observationPeriod: string;
+  periodKind: string;
+  releaseTime: string;
+  retrievalTime: string;
+  supersededBy: string;
+  provenanceJson: string;
 }
 
 export interface ChinaMacroSourceDecision {
@@ -183,6 +217,12 @@ export interface ChinaMacroSourceDecision {
   checkedAt: string;
   optional: boolean;
   requestCount: number;
+  publisherId: string;
+  redirectBehavior: string;
+  requestBudget: number;
+  robotsStatus: string;
+  termsStatus: string;
+  sourceUrl: string;
 }
 
 export interface ChinaReleaseEvent {
@@ -196,6 +236,13 @@ export interface ChinaReleaseEvent {
   status: string;
   source: string;
   sourceUrl: string;
+}
+
+export interface ChinaMacroPillarPulse {
+  pillar: string;
+  direction: string;
+  reason: string;
+  observationIds: string[];
 }
 
 export interface GetEnergyCapacityRequest {

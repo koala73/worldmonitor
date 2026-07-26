@@ -12,6 +12,7 @@ import {
   CROSS_STRAIT_ACTIVITY_FETCH_PHASE_TIMEOUT_MS,
   CROSS_STRAIT_ACTIVITY_LOCK_TTL_MS,
   CROSS_STRAIT_ACTIVITY_PUBLISH_CLEANUP_HEADROOM_MS,
+  crossStraitActivityAfterPublish,
   projectCrossStraitActivityBootstrap,
   writePublicationCompletion,
 } from '../scripts/seed-cross-strait-activity.mjs';
@@ -188,6 +189,52 @@ test('cross-Strait completion marker is absent when any source-health write fail
     CROSS_STRAIT_ACTIVITY_BOOTSTRAP_META_KEY,
     CROSS_STRAIT_ACTIVITY_COMPLETION_META_KEY,
     'bundle freshness must not fall back to a projection write',
+  );
+});
+
+// #5614: the seeder crashed on every bundle tick because runSeed passes its
+// meta object where writePublicationCompletion expects an injectable writer.
+// Existing coverage always supplied a writer explicitly, so the production
+// call shape was never exercised. Pin it here.
+test('afterPublish hook survives runSeed passing its meta object in slot 2', async () => {
+  const writes: string[] = [];
+  const writer = async (key: string) => {
+    writes.push(key);
+  };
+  await crossStraitActivityAfterPublish(
+    {
+      observations: [{ sourceId: 'taiwan-mnd' }],
+      sources: [{
+        id: 'taiwan-mnd',
+        transportStatus: 'fresh',
+        lastSuccessAt: '2026-07-25T08:00:00.000Z',
+      }],
+    },
+    // The exact shape runSeed hands the hook (scripts/_seed-utils.mjs).
+    {
+      canonicalKey: 'military:cross-strait-activity:v1',
+      ttlSeconds: 15_552_000,
+      recordCount: 1,
+      runId: 'run-5614',
+    },
+    writer,
+  );
+  assert.ok(writes.includes('military:cross-strait-activity:v1:source:taiwan-mnd'));
+  assert.ok(writes.includes('seed-meta:military:cross-strait-activity:taiwan-mnd'));
+  assert.equal(
+    writes.at(-1),
+    CROSS_STRAIT_ACTIVITY_COMPLETION_META_KEY,
+    'completion marker must still be the final write through the runSeed hook',
+  );
+});
+
+test('runSeed wires the meta-tolerant hook, not the writer-injected helper', () => {
+  const source = read('scripts/seed-cross-strait-activity.mjs');
+  assert.match(source, /afterPublish:\s*crossStraitActivityAfterPublish,/);
+  assert.doesNotMatch(
+    source,
+    /afterPublish:\s*writePublicationCompletion,/,
+    'wiring the writer-injected helper straight into afterPublish puts runSeed meta in the writer slot (#5614)',
   );
 });
 
