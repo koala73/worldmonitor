@@ -344,6 +344,8 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "deferred-to-future-tool: pure-read but no MCP tool exposes supply_chain:chokepoints:v4 yet — bundle into a future expanded-domain tool"],
   ["GET /api/supply-chain/v1/get-chokepoint-history",
     "deferred-to-future-tool: pure-read but no MCP tool exposes - yet — bundle into a future expanded-domain tool"],
+  ["GET /api/supply-chain/v1/get-china-corridor-control-towers",
+    "deferred-to-future-tool: pure-read corridor composition has no MCP supply-chain comparison tool yet — bundle into a future expanded-domain tool"],
   ["GET /api/supply-chain/v1/get-pipeline-detail",
     "deferred-to-future-tool: pure-read but no MCP tool exposes energy:pipelines:gas:v1 yet — bundle into a future expanded-domain tool"],
   ["GET /api/supply-chain/v1/get-shipping-rates",

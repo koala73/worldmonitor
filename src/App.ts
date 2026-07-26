@@ -583,6 +583,9 @@ export class App {
     if (shouldPrime('supply-chain')) {
       primeTask('supplyChain', () => this.dataLoader.loadSupplyChain());
     }
+    if (shouldPrime('china-corridors')) {
+      primeTask('chinaCorridors', () => this.dataLoader.loadChinaCorridors());
+    }
     if (shouldPrime('cross-source-signals')) {
       primeTask('crossSourceSignals', () => this.dataLoader.loadCrossSourceSignals());
     }
@@ -1447,6 +1450,16 @@ export class App {
 
         // Rebind Convex watches to the real Clerk userId (was bound to anon UUID at init)
         destroyEntitlementSubscription();
+        // destroyEntitlementSubscription deliberately PRESERVES the last
+        // snapshot so a WebSocket reconnect doesn't flash paying users back to
+        // locked. That preservation is wrong across an account change: until
+        // the new user's first snapshot lands, getEntitlementState() still
+        // describes the previous one. Anything reading it then attributes A's
+        // plan to B — e.g. premium-denial's clientBelievesPro would read B's
+        // legitimate 403 as A's entitlement desync and retry instead of
+        // showing the upgrade CTA. Sign-out already resets for this reason;
+        // an account switch carries the same hazard.
+        resetEntitlementState();
         destroySubscriptionWatch();
         void initEntitlementSubscription(userId);
         void initSubscriptionWatch(userId);
@@ -2250,6 +2263,7 @@ export class App {
     if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance' || SITE_VARIANT === 'commodity' || SITE_VARIANT === 'energy') {
       this.refreshScheduler.scheduleRefresh('tradePolicy', () => this.dataLoader.loadTradePolicy(), REFRESH_INTERVALS.tradePolicy, () => hasPremiumAccess() && this.isPanelNearViewport('trade-policy'));
       this.refreshScheduler.scheduleRefresh('supplyChain', () => this.dataLoader.loadSupplyChain(), REFRESH_INTERVALS.supplyChain, () => this.isPanelNearViewport('supply-chain'));
+      this.refreshScheduler.scheduleRefresh('chinaCorridors', () => this.dataLoader.loadChinaCorridors(), REFRESH_INTERVALS.chinaCorridors, () => this.isPanelNearViewport('china-corridors'));
     }
 
     this.refreshScheduler.scheduleRefresh(

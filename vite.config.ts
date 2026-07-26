@@ -129,7 +129,8 @@ const PANEL_CLUSTER: Record<string, PanelChunkName> = {
   GroceryBasket: 'panels-economy', GulfEconomies: 'panels-economy',
   Investments: 'panels-economy', MacroTiles: 'panels-economy',
   NationalDebt: 'panels-economy', SanctionsPressure: 'panels-economy',
-  SupplyChain: 'panels-economy', TradePolicy: 'panels-economy',
+  ChinaCorridor: 'panels-economy', SupplyChain: 'panels-economy',
+  TradePolicy: 'panels-economy',
   // Country briefs / signals / monitors / agent surfaces.
   // CorrelationPanel base lives here, so all *Correlation consumers MUST stay
   // in this cluster — splitting them across clusters caused TDZ on init.

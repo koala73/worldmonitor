@@ -897,6 +897,19 @@ export class Panel {
     this.retryAttempt = 0;
   }
 
+  /**
+   * Drop the error badge, the pending auto-retry countdown, and the backoff.
+   * `setContentHtml` does this implicitly, but panels that paint their content
+   * with `replaceChildren` bypass it — without this, a showError() countdown
+   * scheduled before a successful load keeps ticking and fires one redundant
+   * refresh after the panel has already recovered.
+   */
+  public clearErrorState(): void {
+    this.setErrorState(false);
+    this.clearRetryCountdown();
+    this.retryAttempt = 0;
+  }
+
   public showLocked(features: string[] = []): void {
     this._locked = true;
     this.clearRetryCountdown();
