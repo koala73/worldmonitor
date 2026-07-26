@@ -4,7 +4,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { EXCLUDED_PREFIXES, shouldScanFile } from '../scripts/check-unicode-safety.mjs';
+import { EXCLUDED_PREFIXES, SCAN_ROOTS, shouldScanFile } from '../scripts/check-unicode-safety.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -29,6 +29,28 @@ describe('unicode safety scan scope', () => {
     assert.equal(shouldScanFile('src/services/i18n.ts'), true);
     assert.equal(shouldScanFile('pro-test/src/i18n.ts'), true);
     assert.equal(shouldScanFile('scripts/translate-locales.mjs'), true);
+  });
+
+  it('sweeps pro-test in the full-repo walk, not only on commit', () => {
+    // --staged matches on EXCLUDED_PREFIXES alone, so pro-test/ was gated on
+    // commit but never swept by the repo walk. Keeping it out of SCAN_ROOTS left
+    // a whole React app uncovered in CI.
+    assert.ok(SCAN_ROOTS.includes('pro-test'));
+  });
+
+  it('never scans dependencies, at any depth', () => {
+    assert.equal(shouldScanFile('node_modules/pkg/index.js'), false);
+    assert.equal(shouldScanFile('scripts/node_modules/pkg/index.js'), false);
+    assert.equal(shouldScanFile('pro-test/node_modules/pkg/dist/app.js'), false);
+  });
+
+  it('does not scan the built /pro bundle', () => {
+    // pro-test/ compiles into public/pro/ and every locale becomes its own hashed
+    // chunk, so the ZWNJ excluded at source reappears verbatim in the output.
+    // public/blog/ was already excluded on the same generated-output grounds.
+    assert.equal(shouldScanFile('public/pro/assets/fa-DbM9A4cI.js'), false);
+    assert.equal(shouldScanFile('public/pro/index.html'), false);
+    assert.equal(shouldScanFile('public/blog/whatever.js'), false);
   });
 
   it('excludes every locale data directory in the repo', () => {

@@ -23,13 +23,18 @@ const stagedOnly = args.has('--staged');
 
 const ROOT = process.cwd();
 
-const SCAN_ROOTS = [
+// `--staged` matches purely on EXCLUDED_PREFIXES and extension, so it scans
+// anything a commit touches; the full-repo walk only descends these roots. That
+// asymmetry means a directory absent here is still gated on commit but never
+// swept in CI. pro-test/ is a full React app and was in exactly that position.
+export const SCAN_ROOTS = [
   'src',
   'server',
   'api',
   'scripts',
   'tests',
   'e2e',
+  'pro-test',
   '.github',
   '.husky',
 ];
@@ -56,6 +61,10 @@ export const EXCLUDED_PREFIXES = [
   'docs/',
   'blog-site/',
   'public/blog/',
+  // Built bundle, not source: pro-test/ compiles into here and each locale
+  // becomes its own hashed chunk, so the Persian ZWNJ excluded above reappears
+  // verbatim in public/pro/assets/fa-*.js.
+  'public/pro/',
   'scripts/data/',
   'scripts/node_modules/',
 ];
@@ -87,6 +96,11 @@ function getExtension(path) {
 }
 
 export function shouldScanFile(path) {
+  // Dependencies are never ours to fix, and minified vendor bundles are full of
+  // zero-width characters. A prefix cannot express this: the list already needed
+  // separate `node_modules/` and `scripts/node_modules/` entries, and every new
+  // package root would need another. Match the directory name at any depth.
+  if (path.split('/').includes('node_modules')) return false;
   if (EXCLUDED_PREFIXES.some(prefix => path.startsWith(prefix))) return false;
   const ext = getExtension(path);
   if (!INCLUDED_EXTENSIONS.has(ext)) return false;
