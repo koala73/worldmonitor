@@ -665,8 +665,18 @@ export function buildCriticalAlertsPayload(
 // Exit summary + finish-setup chip
 // ---------------------------------------------------------------------------
 
-/** What actually happened to a step during the flow. */
-export type ActivationStepOutcome = 'confirmed' | 'skipped' | 'done' | 'failed';
+/**
+ * What actually happened to a step during the flow.
+ *
+ * `blocked` is deliberately distinct from `skipped` (#5617). Both mean the step
+ * was not set up, and both read as `pending` to the user, but only `blocked`
+ * says the BROWSER refused — the subscriber never got a choice. Collapsing the
+ * two makes the push-permission-denial cohort unsizeable after the fact, and
+ * makes "is re-prompting this account worth anything?" unanswerable (it never
+ * is, once permission is `denied`). It is equally not `failed`: we never
+ * attempted a write, so "we couldn't set this up" would be a false claim.
+ */
+export type ActivationStepOutcome = 'confirmed' | 'skipped' | 'blocked' | 'done' | 'failed';
 
 /** R15 line status: distinct verified / pending / failed. */
 export type ActivationSummaryStatus = 'verified' | 'pending' | 'failed';
@@ -688,9 +698,35 @@ function outcomeStatus(outcome: ActivationStepOutcome): ActivationSummaryStatus 
     case 'done':
       return 'verified';
     case 'skipped':
+    // A browser refusal is durably distinct (#5617) but reads as `pending` to
+    // the user, NOT `failed`: the summary renders `failed` as "we couldn't set
+    // this up", which claims an attempt we were never allowed to make.
+    case 'blocked':
       return 'pending';
     case 'failed':
       return 'failed';
+  }
+}
+
+/**
+ * The outcome a step resolves to when the flow advances past it without a
+ * confirm. The shell reaches this from two directions — the blocked/unavailable
+ * "Continue" button, and the implicit default for a step the user never acted
+ * on (dismiss / Escape) — so it lives here as one pure seam: a denial recorded
+ * through one path and a plain skip through the other would make `blockedSteps`
+ * a biased sample of the exact cohort it exists to size (#5617).
+ */
+export function selectAdvanceOutcome(state: ActivationStepState): ActivationStepOutcome {
+  switch (state) {
+    case 'already-done':
+      return 'done';
+    case 'blocked':
+      return 'blocked';
+    case 'confirmable':
+    // Unavailable is a platform gap, not a browser refusal: nothing was ever
+    // offered or denied, so it stays an ordinary unfinished step.
+    case 'unavailable':
+      return 'skipped';
   }
 }
 
@@ -747,23 +783,49 @@ export function summarizeActivationExit(
 export interface ActivationOutcomeBuckets {
   /** Steps that ended verified -- confirmed in-flow or already-done. */
   readonly confirmedSteps: readonly ActivationStepId[];
+  /** Steps the subscriber chose to leave unfinished. */
   readonly skippedSteps: readonly ActivationStepId[];
+  /**
+   * Steps the BROWSER refused (a denied notification permission). Its own
+   * bucket rather than a widening of `skippedSteps` (#5617), so existing
+   * consumers of the three original buckets keep their exact meaning.
+   */
+  readonly blockedSteps: readonly ActivationStepId[];
+  /** Steps whose write was attempted and failed. */
   readonly failedSteps: readonly ActivationStepId[];
 }
 
-/** Bucket step results by outcome for persistence, independent of the Umami exit event. */
+/**
+ * Bucket step results by outcome for persistence, independent of the Umami exit
+ * event. Every outcome is routed EXPLICITLY: the previous `else` catch-all
+ * would have swallowed the new `blocked` outcome into `failedSteps`, silently
+ * labelling a browser refusal as a failed write.
+ */
 export function buildActivationOutcomeBuckets(
   results: readonly ActivationStepResult[],
 ): ActivationOutcomeBuckets {
   const confirmedSteps: ActivationStepId[] = [];
   const skippedSteps: ActivationStepId[] = [];
+  const blockedSteps: ActivationStepId[] = [];
   const failedSteps: ActivationStepId[] = [];
   for (const r of results) {
-    if (r.outcome === 'confirmed' || r.outcome === 'done') confirmedSteps.push(r.id);
-    else if (r.outcome === 'skipped') skippedSteps.push(r.id);
-    else failedSteps.push(r.id);
+    switch (r.outcome) {
+      case 'confirmed':
+      case 'done':
+        confirmedSteps.push(r.id);
+        break;
+      case 'skipped':
+        skippedSteps.push(r.id);
+        break;
+      case 'blocked':
+        blockedSteps.push(r.id);
+        break;
+      case 'failed':
+        failedSteps.push(r.id);
+        break;
+    }
   }
-  return { confirmedSteps, skippedSteps, failedSteps };
+  return { confirmedSteps, skippedSteps, blockedSteps, failedSteps };
 }
 
 /** Versioned localStorage key for the finish-setup chip dismissal. */
@@ -870,9 +932,11 @@ export function parseChipDismissal(raw: string | null): FinishSetupChipDismissal
 
 /**
  * Whether to surface the persistent "finish setup" chip after the flow. Shows
- * when any step is left unfinished (skipped or failed) and the chip has not
- * been dismissed within its TTL; a fully completed flow (or a fresh dismissal)
- * shows nothing.
+ * when any step is left unfinished (skipped, blocked, or failed) and the chip
+ * has not been dismissed within its TTL; a fully completed flow (or a fresh
+ * dismissal) shows nothing. `blocked` counts as unfinished for the same reason
+ * it reads as `pending`: splitting it out of `skippedSteps` (#5617) changed the
+ * durable record, never what the subscriber sees.
  */
 export function shouldShowFinishSetupChip(
   results: readonly ActivationStepResult[],
@@ -881,7 +945,9 @@ export function shouldShowFinishSetupChip(
   now: number,
 ): boolean {
   if (isChipDismissed(dismissal, currentAccountKey, now)) return false;
-  return results.some((r) => r.outcome === 'skipped' || r.outcome === 'failed');
+  return results.some(
+    (r) => r.outcome === 'skipped' || r.outcome === 'blocked' || r.outcome === 'failed',
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -894,9 +960,10 @@ export const ACTIVATION_EVENTS = {
   stepConfirmed: 'pro-activation-step-confirmed',
   stepSkipped: 'pro-activation-step-skipped',
   // A step the platform refused unrecoverably (a denied notification
-  // permission). It resolves as `skipped` like a step blocked at mount, so
-  // without this event the denial cohort is indistinguishable from users who
-  // chose to skip — the funnel would read a browser block as disinterest.
+  // permission). Without this event the denial cohort would be indistinguishable
+  // on the live stream from users who chose to skip — the funnel would read a
+  // browser block as disinterest. The durable counterpart is the `blocked`
+  // outcome and its own `blockedSteps` bucket (#5617).
   stepBlocked: 'pro-activation-step-blocked',
   exit: 'pro-activation-exit',
 } as const;
@@ -913,6 +980,9 @@ export type ActivationEventName = (typeof ACTIVATION_EVENTS)[keyof typeof ACTIVA
  * The per-step telemetry event for an outcome, or null when the outcome is not
  * a tracked user action: `done` (nothing to do, pre-configured) and `failed`
  * (surfaced via the exit summary, not a dedicated step event) both emit none.
+ * `blocked` keeps its OWN event — falling through to `stepSkipped` would
+ * re-collapse the denial cohort into voluntary skips at the event level, the
+ * exact gap the event was added to close (#5609).
  */
 export function selectStepEvent(outcome: ActivationStepOutcome): string | null {
   switch (outcome) {
@@ -920,6 +990,8 @@ export function selectStepEvent(outcome: ActivationStepOutcome): string | null {
       return ACTIVATION_EVENTS.stepConfirmed;
     case 'skipped':
       return ACTIVATION_EVENTS.stepSkipped;
+    case 'blocked':
+      return ACTIVATION_EVENTS.stepBlocked;
     case 'done':
     case 'failed':
       return null;

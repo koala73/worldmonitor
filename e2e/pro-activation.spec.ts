@@ -66,6 +66,8 @@ interface CapturedOutcomeCall {
   outcome: {
     confirmedSteps: string[];
     skippedSteps: string[];
+    /** Browser-refused steps (#5617); present-and-empty when nothing was blocked. */
+    blockedSteps: string[];
     failedSteps: string[];
     revision: number;
     finalized: boolean;
@@ -309,6 +311,10 @@ test.describe('Pro activation flow — markerless first-cycle handoff', () => {
         outcome: {
           confirmedSteps: [],
           skippedSteps: ['brief', 'power'],
+          // This harness presents no alerts step, so nothing can be blocked --
+          // but the bucket must still be sent, pinning that every snapshot is a
+          // full replacement rather than an omit-when-empty payload (#5617).
+          blockedSteps: [],
           failedSteps: [],
           revision: 1,
           finalized: false,
@@ -320,6 +326,7 @@ test.describe('Pro activation flow — markerless first-cycle handoff', () => {
         outcome: {
           confirmedSteps: [],
           skippedSteps: ['brief', 'power'],
+          blockedSteps: [],
           failedSteps: [],
           revision: 2,
           finalized: true,
@@ -587,8 +594,10 @@ test.describe('Pro activation interstitial — shell step flow', () => {
     await expect(page.locator(SKIP_BTN)).toHaveCount(0);
     await expect(page.locator(ADVANCE_SKIP_BTN)).toBeVisible();
 
-    // Continuing resolves it as skipped (same as a step blocked at mount) —
-    // never 'failed', which the summary would report as "we couldn't set up".
+    // Continuing resolves it as its own 'blocked' outcome (same as a step
+    // blocked at mount) — never 'failed', which the summary would report as
+    // "we couldn't set up", and never a plain 'skipped', which would make the
+    // denial indistinguishable from disinterest in the durable record (#5617).
     await page.locator(ADVANCE_SKIP_BTN).click();
     await expect(page.locator(PROGRESS)).toContainText('3 of 3');
     await page.locator(SKIP_BTN).click();
@@ -599,7 +608,10 @@ test.describe('Pro activation interstitial — shell step flow', () => {
     const results = await page.evaluate(
       () => (window as unknown as { __proExit: Array<{ outcome: string }> }).__proExit,
     );
-    expect(results.map((r) => r.outcome)).toEqual(['skipped', 'skipped', 'skipped']);
+    // Only the middle (alerts) step was refused by the browser; the other two
+    // are ordinary skips. Asserting all three as 'skipped' is exactly the
+    // collapse #5617 removed.
+    expect(results.map((r) => r.outcome)).toEqual(['skipped', 'blocked', 'skipped']);
   });
 
   test('dismiss is blocked while a confirmation write is in flight', async ({ page }) => {

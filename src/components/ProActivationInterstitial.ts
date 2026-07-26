@@ -30,6 +30,7 @@ import {
   claimProActivationPresentation,
   confirmProActivationPresentation,
   recordProActivationOutcome,
+  type ProActivationOutcomeSnapshot,
 } from '@/services/billing';
 import { escapeHtml } from '@/utils/sanitize';
 import { withTimeout } from '@/utils/with-timeout';
@@ -57,6 +58,7 @@ import {
   buildCriticalAlertsPayload,
   buildExitSummary,
   buildActivationOutcomeBuckets,
+  selectAdvanceOutcome,
   summarizeActivationExit,
   DEFAULT_DIGEST_HOUR,
   type ActivationEventName,
@@ -93,9 +95,11 @@ export interface ProActivationInterstitialOptions {
   /** Fire-and-forget skip signal (bookkeeping/telemetry wired by later units). */
   onSkipStep: (stepId: ActivationStepId) => void;
   /**
-   * Fire-and-forget signal that a confirm resolved `blocked`. The step still
-   * resolves as skipped, so without this the denial cohort is indistinguishable
-   * from users who chose to skip.
+   * Fire-and-forget signal that a confirm resolved `blocked`. This is the LIVE
+   * half of separating browser refusals from voluntary skips; the durable half
+   * is the step's own `blocked` outcome and its `blockedSteps` bucket (#5617).
+   * Note the step also still emits `onSkipStep` when the user advances past it,
+   * so the two events are not mutually exclusive on the stream.
    */
   onBlockStep?: (stepId: ActivationStepId) => void;
   /** Called after each durable step-state transition with a full snapshot. */
@@ -319,9 +323,35 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
   const effectiveState = (step: ActivationStep): ActivationStepState =>
     blockedByConfirm.has(step.id) ? 'blocked' : step.state;
 
-  /** Default disposition for a step never explicitly acted on. */
+  /**
+   * Default disposition for a step never explicitly acted on (dismiss/Escape).
+   * Shares `selectAdvanceOutcome` with the Continue button so a browser-refused
+   * step is recorded as `blocked` no matter which way the user leaves it —
+   * recording it only on the button would make `blockedSteps` a sample of
+   * "denied users who clicked Continue" rather than the denial cohort (#5617).
+   */
   const defaultOutcome = (step: ActivationStep): ActivationStepOutcome =>
-    effectiveState(step) === 'already-done' ? 'done' : 'skipped';
+    selectAdvanceOutcome(effectiveState(step));
+
+  /**
+   * Emit the per-step event matching the outcome a step ADVANCED to, so the
+   * live stream and the durable buckets count the same cohorts. Firing
+   * `onSkipStep` for a browser refusal would leave the funnel's skip count
+   * including denials while `skippedSteps` excludes them — two sources of truth
+   * disagreeing about the same step (#5617).
+   *
+   * Exactly one event per step: a mid-flow denial already announced itself from
+   * `handleConfirm` the instant the browser refused, so only a step blocked at
+   * MOUNT (never confirm-blocked, hence absent from `blockedByConfirm`) still
+   * needs its block reported here.
+   */
+  const reportAdvanceEvent = (stepId: ActivationStepId, outcome: ActivationStepOutcome): void => {
+    if (outcome === 'blocked') {
+      if (!blockedByConfirm.has(stepId)) options.onBlockStep?.(stepId);
+      return;
+    }
+    options.onSkipStep(stepId);
+  };
 
   const buildResults = (): ActivationStepResult[] =>
     steps.map((step) => ({ id: step.id, outcome: outcomes.get(step.id) ?? defaultOutcome(step) }));
@@ -532,17 +562,23 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
     for (let i = currentIndex; i < steps.length; i += 1) {
       const step = steps[i]!;
       if (outcomes.has(step.id)) continue;
-      if (effectiveState(step) === 'already-done') {
+      const state = effectiveState(step);
+      if (state === 'already-done') {
         outcomes.set(step.id, 'done');
         continue;
       }
       // Preserve a genuine failure signal on the step the user is abandoning.
+      // Unreachable for a blocked step: resolving a confirm `blocked` clears
+      // the transient, so the two signals can never contend for one step.
       if (i === currentIndex && transient === 'failed') {
         outcomes.set(step.id, 'failed');
         continue;
       }
-      options.onSkipStep(step.id);
-      outcomes.set(step.id, 'skipped');
+      // Abandoning the flow on a browser-refused step is still a refusal, not
+      // a skip — same seam as the Continue button so the two cannot drift.
+      const outcome = selectAdvanceOutcome(state);
+      reportAdvanceEvent(step.id, outcome);
+      outcomes.set(step.id, outcome);
     }
     transient = 'idle';
     currentIndex = steps.length;
@@ -586,11 +622,17 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
     } else if (result === 'blocked') {
       // Unrecoverable refusal: drop the retry CTA and render the blocked state
       // so the user gets the site-settings instructions instead of a "Try
-      // again" the browser will refuse identically forever. The step still
-      // resolves as skipped (same as one blocked at mount) when they continue.
+      // again" the browser will refuse identically forever. The step resolves
+      // as its own `blocked` outcome (same as one blocked at mount) when they
+      // continue.
       blockedByConfirm.add(step.id);
       transient = 'idle';
       options.onBlockStep?.(step.id);
+      // Flush the denial NOW, like the `verified` arm above. Being refused and
+      // then abandoning the tab is a likely reaction, and without this the last
+      // durable snapshot still calls the step `skipped` — losing exactly the
+      // cohort the blocked bucket exists to size (#5617).
+      recordProgress();
       renderModal();
     } else {
       transient = 'failed';
@@ -653,12 +695,18 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
             recordProgress();
             advance();
             break;
-          case 'advance-skip':
-            options.onSkipStep(step.id);
-            outcomes.set(step.id, 'skipped');
+          case 'advance-skip': {
+            // `blocked` (mount-time or mid-flow) records as its own outcome so
+            // the durable record can still tell a browser refusal from a
+            // voluntary skip. The exit summary still reads it as pending, so
+            // nothing changes for the user (#5617).
+            const advanced = selectAdvanceOutcome(effectiveState(step));
+            reportAdvanceEvent(step.id, advanced);
+            outcomes.set(step.id, advanced);
             recordProgress();
             advance();
             break;
+          }
         }
       });
       modal.querySelector('.pro-activation-skip')?.addEventListener('click', () => handleSkip(step));
@@ -793,16 +841,15 @@ export interface ProActivationFlowDependencies {
     claimNonce: string,
   ) => Promise<'claimed' | 'not_eligible' | 'already_presented' | 'already_claimed'>;
   confirmPresentation: (activationKey: string, claimNonce: string) => Promise<boolean>;
+  /**
+   * Typed against the service's own snapshot rather than a hand-copied shape:
+   * the duplicate drifted the moment a bucket was added (#5617), and a stale
+   * structural copy would have let the new field be dropped here silently.
+   */
   recordOutcome: (
     activationKey: string,
     claimNonce: string,
-    outcome: {
-      confirmedSteps: ActivationStepId[];
-      skippedSteps: ActivationStepId[];
-      failedSteps: ActivationStepId[];
-      revision: number;
-      finalized: boolean;
-    },
+    outcome: ProActivationOutcomeSnapshot,
   ) => Promise<boolean>;
   openInterstitial: typeof openProActivationInterstitial;
   /** Per-operation deadline; injectable only to keep timeout regressions fast. */
@@ -1243,6 +1290,7 @@ function persistActivationOutcomeWithRetry(
             {
               confirmedSteps: [...buckets.confirmedSteps],
               skippedSteps: [...buckets.skippedSteps],
+              blockedSteps: [...buckets.blockedSteps],
               failedSteps: [...buckets.failedSteps],
               revision,
               finalized,
@@ -1256,6 +1304,21 @@ function persistActivationOutcomeWithRetry(
         const delay = OUTCOME_WRITE_RETRY_DELAYS_MS[attempt];
         if (delay === undefined) {
           console.warn('[pro-activation] failed to record activation outcome', error);
+          // A permanently failing durable write is the one failure this whole
+          // record exists to rule out: it leaves the account's activation
+          // outcome invisible server-side, which is exactly the blind spot
+          // #5621 is filed about. A browser console line reaches nobody, so
+          // report it. Lazy-imported (like the chip below) to keep this
+          // component free of a static bootstrap import.
+          void import('@/bootstrap/sentry-defer')
+            .then((m) => m.enqueueSentryCall((s) => s.captureException(
+              error instanceof Error ? error : new Error(String(error)),
+              {
+                tags: { component: 'pro-activation', action: 'recordOutcome' },
+                extra: { revision, finalized },
+              },
+            )))
+            .catch(() => {}); // never let telemetry failure surface to the user
           return;
         }
         await new Promise<void>((resolve) => window.setTimeout(resolve, delay));

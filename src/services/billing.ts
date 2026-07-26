@@ -193,6 +193,14 @@ export type ProActivationOutcomeStepId = 'brief' | 'alerts' | 'power';
 export interface ProActivationOutcomeSnapshot {
   confirmedSteps: ProActivationOutcomeStepId[];
   skippedSteps: ProActivationOutcomeStepId[];
+  /**
+   * Steps the browser refused (a denied notification permission). Its own
+   * bucket, not a widening of `skippedSteps` (#5617): without it, a denial is
+   * byte-identical to a voluntary skip in the persisted record, so the
+   * push-denial cohort cannot be sized after the fact. The mutation accepts it
+   * as optional for mixed deploys; this client always sends it.
+   */
+  blockedSteps: ProActivationOutcomeStepId[];
   failedSteps: ProActivationOutcomeStepId[];
   revision: number;
   finalized: boolean;

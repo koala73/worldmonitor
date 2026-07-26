@@ -17,6 +17,7 @@ import { t } from '@/services/i18n';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import {
   buildActivationSteps,
+  selectAdvanceOutcome,
   shouldShowFinishSetupChip,
   computeFinishSetupChipDismissal,
   deriveActivationAccountKey,
@@ -199,8 +200,12 @@ export async function maybeShowFinishSetupChip(options: ProActivationFlowOptions
   const dismissal = readChipDismissal(now);
   if (isChipDismissed(dismissal, currentAccountKey, now)) return; // avoid the config read when dismissed
   const ctx = await readActivationContext(options.accountUserId);
+  // Same seam the wizard uses, so a later-session re-derivation classifies a
+  // browser-refused step the same way the flow itself did (#5617). The chip
+  // decision is unchanged — blocked and skipped are both "unfinished" — but an
+  // independent ternary here is exactly how the two would drift apart.
   const results: ActivationStepResult[] = buildActivationSteps(ctx.capabilities, ctx.config).map(
-    (s) => ({ id: s.id, outcome: s.state === 'already-done' ? 'done' : 'skipped' }),
+    (s) => ({ id: s.id, outcome: selectAdvanceOutcome(s.state) }),
   );
   if (getAuthState().user?.id !== options.accountUserId) return;
   if (!shouldShowFinishSetupChip(results, dismissal, currentAccountKey, now)) return;

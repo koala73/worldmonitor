@@ -101,14 +101,19 @@ already used — blocked badge, site-settings note, a single "Continue", no retr
 CTA — with no second implementation to drift.
 
 **4. Keep the outcome honest, and replace the signal it costs.** A blocked step
-resolves as `skipped`, not `failed`, so the summary does not claim a failure.
-But `skipped` is also what a user who simply clicked "Skip for now" produces, so
-the denial cohort would have vanished into voluntary skips. A distinct funnel
-event keeps them separable (`src/services/pro-activation-state.ts:900`):
+must not resolve as `failed`, or the summary claims a failure that never
+happened. It originally resolved as `skipped` — but `skipped` is also what a
+user who clicked "Skip for now" produces, so the denial cohort vanished into
+voluntary skips. A distinct funnel event kept them separable on the live stream:
 
 ```ts
 stepBlocked: 'pro-activation-step-blocked',
 ```
+
+#5617 then finished the job on the durable side: `blocked` became its own
+`ActivationStepOutcome` and its own `blockedSteps` bucket on the Convex row,
+while still reading as `pending` (never `failed`) in the summary and still
+counting as `pending` in the exit event — a record change, not a UX change.
 
 ## Why This Works
 
@@ -150,8 +155,37 @@ for the raw field after introducing an override and migrate all of them.
 that erases.** Moving denials from `failed` to `skipped` was right for the user
 and quietly destroyed the ability to size the denial cohort — a browser refusal
 would have read as disinterest in the funnel. Adding an event was ~6 lines. The
-durable Convex record still collapses the two (`skippedSteps` with no marker),
-tracked as #5617.
+durable Convex record collapsed the two for another day (`skippedSteps` with no
+marker) until #5617 added a fourth `blockedSteps` bucket.
+
+**Restoring a lost signal is two separate jobs: the live stream and the durable
+record.** The event fix (#5615) answered "how many denials this week"; it could
+not answer "is re-prompting THIS account worth anything" — a per-account
+question only the persisted row can serve. Adding the event felt like closing
+the gap because the dashboards went right. Ask which questions each surface
+actually answers before calling a telemetry gap closed.
+
+**A widened enum finds every `else` you wrote as a catch-all.** Adding
+`'blocked'` to `ActivationStepOutcome` was safe everywhere the code switched
+exhaustively (TypeScript reddened each one) and silent exactly where it did not:
+`buildActivationOutcomeBuckets` ended `else failedSteps.push(r.id)`, so the new
+outcome would have been persisted as a failed write — the precise mislabel the
+change existed to prevent, reintroduced by the shape of the old code. Route
+every case explicitly so the compiler, not a reviewer, catches the next one.
+
+**And it finds every hand-copied structural type.**
+`ProActivationFlowDependencies.recordOutcome` re-declared the outcome-snapshot
+shape inline instead of importing `ProActivationOutcomeSnapshot`. A duplicated
+shape does not fail when the original grows — it just quietly describes less.
+Here typecheck happened to catch it; a looser call site would not have.
+
+**One state, one write path — count them before adding the state.** A denied
+alerts step can leave the wizard three ways: Continue, Escape/dismiss, and never
+being reached at all. Two of the three ran through separate inline literals.
+Writing `blocked` on only the Continue arm (the shape the issue proposed) would
+have produced a `blockedSteps` bucket sampling *denied users who clicked
+Continue* — a plausible-looking number that silently undercounts the cohort it
+exists to size. All three now share one pure `selectAdvanceOutcome(state)`.
 
 **A test DOM whose `innerHTML` getter replays the assigned string will go
 vacuous.** The unit harness for this fix parses assigned `innerHTML` so the
@@ -184,8 +218,9 @@ test that has never been observed failing has not been shown to test anything.
 
 - #5609 — the issue (closed by PR #5615)
 - #5600 — the P0 live purchase repro that surfaced it
-- #5617 — open follow-up: the durable Convex record still cannot distinguish a
-  blocked step from a voluntary skip
+- #5617 — the durable follow-up: `blockedSteps` as a fourth outcome bucket, so
+  a browser refusal is queryable per-account after the fact and not just live
+  on the event stream
 - PR #5534 — the origin feature that introduced the wizard and its mount-time
   blocked state
 - #5608 — same theme in a different subsystem: premium panels rendering a 403

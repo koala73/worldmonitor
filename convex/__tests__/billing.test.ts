@@ -5349,6 +5349,10 @@ describe("getSubscriptionForUser activation onboarding eligibility", () => {
         claimNonce: "wrong-nonce",
         confirmedSteps: ["brief"],
         skippedSteps: [],
+        // Carried on the guard cases too: the ownership/nonce/exitedAt checks
+        // run before any bucket is read, and this pins that ordering against a
+        // refactor that hoists bucket handling above them.
+        blockedSteps: ["alerts"],
         failedSteps: [],
         revision: 1,
         finalized: true,
@@ -5367,6 +5371,7 @@ describe("getSubscriptionForUser activation onboarding eligibility", () => {
         claimNonce: "device-a",
         confirmedSteps: ["brief"],
         skippedSteps: [],
+        blockedSteps: ["alerts"],
         failedSteps: [],
         revision: 1,
         finalized: true,
@@ -5378,6 +5383,7 @@ describe("getSubscriptionForUser activation onboarding eligibility", () => {
       .withIndex("by_subscription", (q) => q.eq("subscriptionId", activationKey))
       .unique());
     expect(row?.confirmedSteps).toBeUndefined();
+    expect(row?.blockedSteps).toBeUndefined();
     expect(row?.exitedAt).toBeUndefined();
   });
 
@@ -5406,8 +5412,10 @@ describe("getSubscriptionForUser activation onboarding eligibility", () => {
         revision: 0,
         finalized: false,
       },
-    )).rejects.toThrow(/integer from 1 to 4/);
+    )).rejects.toThrow(/integer from 1 to 5/);
 
+    // The cap is 5, not 4, since #5617: a mid-flow permission denial flushes an
+    // extra progress snapshot before the user advances past the blocked step.
     await expect(t.withIdentity(IDENTITY).mutation(
       api.payments.billing.recordProActivationOutcome,
       {
@@ -5416,10 +5424,26 @@ describe("getSubscriptionForUser activation onboarding eligibility", () => {
         confirmedSteps: ["brief"],
         skippedSteps: [],
         failedSteps: [],
+        revision: 6,
+        finalized: false,
+      },
+    )).rejects.toThrow(/integer from 1 to 5/);
+
+    // The new top of the range must still be ACCEPTED — a cap that rejects the
+    // real worst-case write sequence would silently drop the final snapshot.
+    expect(await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: ["brief"],
+        skippedSteps: [],
+        blockedSteps: ["alerts"],
+        failedSteps: [],
         revision: 5,
         finalized: false,
       },
-    )).rejects.toThrow(/integer from 1 to 4/);
+    )).toBe(true);
 
     await expect(t.withIdentity(IDENTITY).mutation(
       api.payments.billing.recordProActivationOutcome,
@@ -5459,6 +5483,282 @@ describe("getSubscriptionForUser activation onboarding eligibility", () => {
         finalized: false,
       } as never,
     )).rejects.toThrow();
+  });
+
+  // #5617: a browser-denied step used to be byte-identical to a voluntary skip
+  // in this row, which made the push-denial cohort unsizeable after the fact.
+  // The fourth bucket is validated exactly like the other three.
+  test("recordProActivationOutcome persists blockedSteps as a distinct bucket", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_outcome_blocked",
+    });
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-a" },
+    );
+
+    expect(await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: ["brief"],
+        skippedSteps: ["power"],
+        blockedSteps: ["alerts"],
+        failedSteps: [],
+        revision: 1,
+        finalized: true,
+      },
+    )).toBe(true);
+
+    const row = await t.run(async (ctx) => await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription", (q) => q.eq("subscriptionId", activationKey))
+      .unique());
+    expect(row?.blockedSteps).toEqual(["alerts"]);
+    // The whole point: the denial is queryable WITHOUT being conflated with a
+    // step the subscriber chose to walk past.
+    expect(row?.skippedSteps).toEqual(["power"]);
+    expect(row?.failedSteps).toEqual([]);
+    expect(row?.confirmedSteps).toEqual(["brief"]);
+  });
+
+  // The real client writes a progress snapshot as each step resolves and one
+  // final snapshot on exit, so a denial recorded mid-flow must survive every
+  // later revision. Each snapshot is a full replacement -- the risk is a later
+  // write silently dropping the blocked bucket recorded by an earlier one.
+  test("recordProActivationOutcome carries blockedSteps across progress revisions to the finalized row", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_outcome_blocked_revisions",
+    });
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-a" },
+    );
+
+    // Revision 1: the alerts step is refused by the browser mid-flow.
+    expect(await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: [],
+        skippedSteps: [],
+        blockedSteps: ["alerts"],
+        failedSteps: [],
+        revision: 1,
+        finalized: false,
+      },
+    )).toBe(true);
+
+    // Revision 2: the subscriber confirms the brief. The denial is still true.
+    expect(await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: ["brief"],
+        skippedSteps: [],
+        blockedSteps: ["alerts"],
+        failedSteps: [],
+        revision: 2,
+        finalized: false,
+      },
+    )).toBe(true);
+
+    // Revision 3: exit freezes the record.
+    expect(await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: ["brief"],
+        skippedSteps: ["power"],
+        blockedSteps: ["alerts"],
+        failedSteps: [],
+        revision: 3,
+        finalized: true,
+      },
+    )).toBe(true);
+
+    const row = await t.run(async (ctx) => await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription", (q) => q.eq("subscriptionId", activationKey))
+      .unique());
+    expect(row?.blockedSteps).toEqual(["alerts"]);
+    expect(row?.confirmedSteps).toEqual(["brief"]);
+    expect(row?.skippedSteps).toEqual(["power"]);
+    expect(row?.outcomeRevision).toBe(3);
+    expect(row?.exitedAt).toBeTypeOf("number");
+
+    // A late/out-of-order progress write that never knew about the denial must
+    // not resurrect an empty blocked bucket over the frozen record.
+    expect(await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: [],
+        skippedSteps: ["brief", "alerts", "power"],
+        blockedSteps: [],
+        failedSteps: [],
+        revision: 2,
+        finalized: false,
+      },
+    )).toBe(false);
+
+    const afterLateWrite = await t.run(async (ctx) => await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription", (q) => q.eq("subscriptionId", activationKey))
+      .unique());
+    expect(afterLateWrite?.blockedSteps).toEqual(["alerts"]);
+  });
+
+  // Pins the direction the handler comment claims: because every snapshot is a
+  // full replacement, a later write that OMITS blockedSteps clears the bucket
+  // rather than stranding it beside newer confirmed/skipped arrays. It clears
+  // it to ABSENT, not to [] -- a client that cannot report blocked steps must
+  // not be recorded as having observed none.
+  test("a later snapshot omitting blockedSteps clears the bucket rather than stranding it", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_outcome_blocked_replacement",
+    });
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-a" },
+    );
+
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: [],
+        skippedSteps: [],
+        blockedSteps: ["alerts"],
+        failedSteps: [],
+        revision: 1,
+        finalized: false,
+      },
+    );
+
+    expect(await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: ["brief"],
+        skippedSteps: ["alerts"],
+        failedSteps: [],
+        revision: 2,
+        finalized: true,
+      },
+    )).toBe(true);
+
+    const row = await t.run(async (ctx) => await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription", (q) => q.eq("subscriptionId", activationKey))
+      .unique());
+    expect(row?.blockedSteps).toBeUndefined();
+    expect(row?.skippedSteps).toEqual(["alerts"]);
+  });
+
+  test("recordProActivationOutcome validates blockedSteps like every other bucket", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_outcome_blocked_validation",
+    });
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-a" },
+    );
+
+    // A step cannot be both refused by the browser and skipped by the user.
+    await expect(t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: [],
+        skippedSteps: ["alerts"],
+        blockedSteps: ["alerts"],
+        failedSteps: [],
+        revision: 1,
+        finalized: false,
+      },
+    )).rejects.toThrow(/disjoint/);
+
+    await expect(t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: [],
+        skippedSteps: [],
+        blockedSteps: ["unknown"],
+        failedSteps: [],
+        revision: 1,
+        finalized: false,
+      } as never,
+    )).rejects.toThrow();
+  });
+
+  // Mixed deploy: Convex ships ahead of the frontend, so the mutation must
+  // still accept a client that predates the bucket. Such a client classified
+  // any denial as a SKIP, so the row must leave blockedSteps absent -- writing
+  // [] would assert "we looked and found none", which is false for it.
+  test("recordProActivationOutcome accepts a legacy client that omits blockedSteps", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_outcome_legacy_client",
+    });
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-a" },
+    );
+
+    expect(await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: ["brief"],
+        skippedSteps: ["alerts"],
+        failedSteps: [],
+        revision: 1,
+        finalized: true,
+      },
+    )).toBe(true);
+
+    const row = await t.run(async (ctx) => await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription", (q) => q.eq("subscriptionId", activationKey))
+      .unique());
+    expect(row?.blockedSteps).toBeUndefined();
+    expect(row?.skippedSteps).toEqual(["alerts"]);
   });
 
   test("a disabled alert rule with a verified channel stays onboarding-eligible", async () => {
