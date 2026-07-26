@@ -246,6 +246,17 @@ describe('Product catalog freshness', () => {
   });
 
   it('Pro locale MCP pricing feature mentions Claude Desktop and the call allowance', () => {
+    // A locale may write the allowance in its own numeral system — fa uses
+    // Persian-Indic digits ("۵۰ فراخوانی/روز"), as it already did for the API
+    // request limits before it was translated. Fold those to ASCII so the
+    // assertion reads the NUMBER rather than the glyphs. The guard is unchanged
+    // in strength: if the allowance moved to 250 and a locale still said ۵۰,
+    // this would still fail.
+    const toAsciiDigits = (value) =>
+      value.replace(/[٠-٩۰-۹]/g, (digit) =>
+        String((digit.codePointAt(0) - (digit >= '۰' ? 0x06f0 : 0x0660))),
+      );
+
     for (const [file, src] of Object.entries(readProLocaleFiles())) {
       const locale = JSON.parse(src);
       const features = locale?.pricing?.tiers?.pro?.features;
@@ -254,7 +265,11 @@ describe('Product catalog freshness', () => {
       assert.equal(typeof feature, 'string', `${file} missing a Pro pricing feature mentioning MCP`);
       assert.match(feature, /\bMCP\b/, `${file} Pro MCP feature should mention MCP`);
       assert.match(feature, /Claude Desktop/, `${file} Pro MCP feature should mention Claude Desktop`);
-      assert.match(feature, /\b50\b/, `${file} Pro MCP feature should mention the 50 calls/day allowance`);
+      assert.match(
+        toAsciiDigits(feature),
+        /\b50\b/,
+        `${file} Pro MCP feature should mention the 50 calls/day allowance`,
+      );
     }
   });
 
