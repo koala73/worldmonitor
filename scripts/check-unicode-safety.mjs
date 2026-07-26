@@ -119,6 +119,10 @@ function walkDir(rootDir, out) {
     const rel = relative(ROOT, abs).replace(/\\/g, '/');
     if (EXCLUDED_PREFIXES.some(prefix => rel.startsWith(prefix))) continue;
     if (entry.isDirectory()) {
+      // Prune here as well as in shouldScanFile: without it the walk descends
+      // every directory of every dependency before rejecting the files one by
+      // one, which is pure work for a guaranteed-empty result.
+      if (entry.name === 'node_modules') continue;
       walkDir(abs, out);
       continue;
     }
