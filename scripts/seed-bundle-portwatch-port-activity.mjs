@@ -11,14 +11,16 @@
 // portwatch bundle and lets it run on an interval appropriate to the
 // ~10-day upstream dataset lag.
 //
-// Railway service provisioning checklist (after merge):
-//   1. Create new service: portwatch-port-activity-seed
+// Railway service settings checklist (after merge):
+//   1. Service: seed-bundle-portwatch-port-activity
 //   2. Builder: DOCKERFILE, dockerfilePath: Dockerfile.seed-bundle-portwatch-port-activity
 //   3. Root directory: "" (empty) — avoids NIXPACKS auto-detection (see
 //      feedback_railway_dockerfile_autodetect_overrides_builder.md)
-//   4. Cron schedule: "0 */24 * * *" (daily, UTC) — dataset lag means
-//      12h cadence is overkill; 24h keeps us inside the freshness
-//      expectations downstream
+//   4. Cron schedule: "0 */12 * * *" (twice daily, UTC). Each run caps
+//      cold refreshes at 30 countries to stay inside the ArcGIS and container
+//      budgets. A 12h trigger lets a 54-country upstream advance recover in
+//      two runs (~24h) instead of two daily runs (~48h), while the interval
+//      gate below still prevents rapid-fire manual retriggers.
 //   5. Env vars (copy from existing seed services):
 //      UPSTASH_REDIS_REST_URL, UPSTASH_REDIS_REST_TOKEN,
 //      PROXY_URL (for 429 fallback)
@@ -39,9 +41,8 @@ await runBundle('portwatch-port-activity', [
     script: 'seed-portwatch-port-activity.mjs',
     seedMetaKey: 'supply_chain:portwatch-ports',
     canonicalKey: 'supply_chain:portwatch-ports:v1:_countries',
-    // 12h interval gate — matches the historical cadence. Actual Railway
-    // cron should trigger at 24h; the interval gate prevents rapid-fire
-    // re-runs if someone manually retriggers mid-day.
+    // 12h interval gate matches the declared Railway cron and prevents
+    // rapid-fire manual retriggers.
     intervalMs: 12 * HOUR,
     // 540s section timeout — full budget for the one section. Bundle
     // runner still SIGTERMs if the child hangs, and the seeder's
