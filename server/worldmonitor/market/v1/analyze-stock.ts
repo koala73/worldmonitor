@@ -2,13 +2,14 @@ import type {
   AnalyzeStockRequest,
   AnalyzeStockResponse,
   AnalystConsensus,
+  EarningsEntry,
   PriceTarget,
   UpgradeDowngrade,
   ServerContext,
   StockAnalysisHeadline,
 } from '../../../../src/generated/server/worldmonitor/market/v1/service_server';
 import { callLlm } from '../../../_shared/llm';
-import { cachedFetchJson } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 import { CHROME_UA, yahooGate } from '../../../_shared/constants';
 import { UPSTREAM_TIMEOUT_MS, sanitizeSymbol } from './_shared';
 import { storeStockAnalysisSnapshot } from './premium-stock-store';
@@ -1176,6 +1177,51 @@ export function buildTechnicalSnapshot(candles: Candle[]): TechnicalSnapshot {
   };
 }
 
+// Shared earnings-calendar seed (scripts/seed-earnings-calendar.mjs): a bulk
+// list of upcoming/recent reporters, TTL 36h. analyze-stock joins the current
+// symbol against it to surface the next-earnings catalyst.
+const EARNINGS_CALENDAR_CACHE_KEY = 'market:earnings-calendar:v1';
+
+export type UpcomingEarnings = {
+  nextEarningsDate: string;
+  consensusEps?: number;
+  consensusRevenue?: number;
+};
+
+/**
+ * Pick the next upcoming earnings event for `symbol` from the earnings-calendar
+ * seed. The seed window looks back 7 days, so it also holds already-reported
+ * events — this returns only the earliest entry dated `todayStr` or later that
+ * has not yet reported (hasActuals === false), and omits absent/zero estimates.
+ * Returns null when the symbol has no upcoming entry.
+ */
+export function selectEarningsForSymbol(
+  earnings: readonly EarningsEntry[],
+  symbol: string,
+  todayStr: string,
+): UpcomingEarnings | null {
+  let pick: EarningsEntry | null = null;
+  for (const entry of earnings) {
+    if (entry.symbol !== symbol || entry.hasActuals || !entry.date || entry.date < todayStr) continue;
+    if (!pick || entry.date < pick.date) pick = entry;
+  }
+  if (!pick) return null;
+  const result: UpcomingEarnings = { nextEarningsDate: pick.date };
+  if (Number.isFinite(pick.epsEstimate) && pick.epsEstimate !== 0) result.consensusEps = pick.epsEstimate;
+  if (Number.isFinite(pick.revenueEstimate) && pick.revenueEstimate > 0) result.consensusRevenue = pick.revenueEstimate;
+  return result;
+}
+
+/** Read the shared earnings-calendar seed; returns [] when absent or unreachable. */
+async function fetchUpcomingEarnings(): Promise<EarningsEntry[]> {
+  try {
+    const cached = await getCachedJson(EARNINGS_CALENDAR_CACHE_KEY, true) as { earnings?: EarningsEntry[] } | null;
+    return cached?.earnings ?? [];
+  } catch {
+    return [];
+  }
+}
+
 export function getFallbackOverlay(name: string, technical: TechnicalSnapshot, headlines: StockAnalysisHeadline[]): AiOverlay {
   const technicalSummary = `${technical.maAlignment} ${technical.volumeTrend} ${technical.macdSignal} ${technical.rsiSignal}`;
   const newsSummary = headlines.length > 0
@@ -1320,6 +1366,7 @@ export function buildAnalysisResponse(params: {
   dividend?: DividendProfile;
   marketSession?: string;
   extended?: ExtendedHoursQuote;
+  earnings?: UpcomingEarnings | null;
 }): AnalyzeStockResponse {
   const {
     symbol,
@@ -1335,6 +1382,7 @@ export function buildAnalysisResponse(params: {
     dividend,
     marketSession,
     extended,
+    earnings,
   } = params;
   const analysisId = params.analysisId || `stock:${STOCK_ANALYSIS_ENGINE_VERSION}:${symbol}:${analysisAt}:${includeNews ? 'news' : 'core'}`;
   const { stopLoss, takeProfit } = deriveTradeLevels(
@@ -1404,6 +1452,11 @@ export function buildAnalysisResponse(params: {
     marketSession: marketSession ?? '',
     // Optional proto fields OMIT their keys when unset — never explicit null.
     ...(extended ? { extendedPrice: extended.price, extendedChangePercent: extended.changePercent } : {}),
+    ...(earnings ? {
+      nextEarningsDate: earnings.nextEarningsDate,
+      ...(earnings.consensusEps != null ? { consensusEps: earnings.consensusEps } : {}),
+      ...(earnings.consensusRevenue != null ? { consensusRevenue: earnings.consensusRevenue } : {}),
+    } : {}),
   };
 }
 
@@ -1506,15 +1559,17 @@ export async function analyzeStock(
     const marketSession = usEquityHoursApply(symbol, history.currency || 'USD')
       ? getUsEquitySessionAt(options.now)
       : '';
-    const [headlines, dividend, extendedQuote] = await Promise.all([
+    const [headlines, dividend, extendedQuote, earningsCalendar] = await Promise.all([
       includeNews ? searchRecentStockHeadlines(symbol, name, NEWS_LIMIT).then((r) => r.headlines) : Promise.resolve([]),
       fetchDividendProfile(symbol, technical.currentPrice),
       (marketSession === 'pre' || marketSession === 'post')
         ? fetchExtendedHoursQuote(symbol, marketSession)
         : Promise.resolve(null),
+      fetchUpcomingEarnings(),
     ]);
     const overlay = await buildAiOverlay(symbol, name, technical, headlines, analystData.fundamentals);
     const analysisAt = history.candles[history.candles.length - 1]?.timestamp || Date.now();
+    const earnings = selectEarningsForSymbol(earningsCalendar, symbol, (options.now ?? new Date()).toISOString().slice(0, 10));
     const response = buildAnalysisResponse({
       symbol,
       name,
@@ -1529,6 +1584,7 @@ export async function analyzeStock(
       dividend,
       marketSession,
       extended: extendedQuote ?? undefined,
+      earnings,
     });
     await storeStockAnalysisSnapshot(response, includeNews);
     return response;

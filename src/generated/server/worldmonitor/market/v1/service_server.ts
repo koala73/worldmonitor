@@ -232,6 +232,9 @@ export interface AnalyzeStockResponse {
   extendedPrice?: number;
   extendedChangePercent?: number;
   fundamentals?: Fundamentals;
+  nextEarningsDate?: string;
+  consensusEps?: number;
+  consensusRevenue?: number;
 }
 
 export interface StockAnalysisHeadline {
