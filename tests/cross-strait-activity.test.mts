@@ -466,6 +466,52 @@ describe('quantified cross-Strait activity (#5575)', () => {
     assert.equal(observation.categories.officialShips, 5);
   });
 
+  it('ignores a template report-body decoy before the published MND report', () => {
+    const hostileDetail = fixture('mnd-detail.html').replace(
+      '<div class="maincontent">',
+      `<template>
+        <div class="maincontent">
+          <p>1.Date: 6 a.m. Jul. 24 to 6 a.m. Jul. 25 (UTC+8)</p>
+          <p>99 sorties of PLA aircraft, 98 PLAN ships and 97 official ships were detected.
+            96 out of 99 sorties crossed the median line and entered Taiwan ADIZ.</p>
+        </div>
+      </template>
+      <div class="maincontent">`,
+    );
+    const observation = parseTaiwanMndDetail(hostileDetail, {
+      sourceUrl: 'https://www.mnd.gov.tw/en/News/PLAAct/87151',
+      retrievedAt,
+      expectedPublicationDay: '2026-07-25',
+    });
+
+    assert.deepEqual(observation.categories, {
+      plaAircraftSorties: 29,
+      planShips: 6,
+      officialShips: 5,
+      medianLineCrossings: 17,
+      adizEntries: 17,
+    });
+  });
+
+  it('keeps the selected MND report open across template-local closing tags', () => {
+    const hostileDetail = fixture('mnd-detail.html').replace(
+      '<p>2.PLA activities',
+      `<template>
+        </div>
+        <div>99 PLAN ships and 88 official ships</div>
+      </template>
+      <p>2.PLA activities`,
+    );
+    const observation = parseTaiwanMndDetail(hostileDetail, {
+      sourceUrl: 'https://www.mnd.gov.tw/en/News/PLAAct/87151',
+      retrievedAt,
+      expectedPublicationDay: '2026-07-25',
+    });
+
+    assert.equal(observation.categories.planShips, 6);
+    assert.equal(observation.categories.officialShips, 5);
+  });
+
   it('does not interpret count-like attributes from an unfinished trailing report tag', () => {
     const hostileDetail = fixture('mnd-detail.html').replace(
       '</p>\n</div>',
@@ -524,6 +570,40 @@ describe('quantified cross-Strait activity (#5575)', () => {
       publicationDay: '2026-07-25',
       sourceUrl: 'https://www.mnd.gov.tw/en/News/PLAAct/87151',
     }]);
+  });
+
+  it('ignores anchors inside template content for both official source indexes', () => {
+    const japanRows = parseJapanModIndex(`
+      <template>
+        <a href="/js/pdf/2026/template-decoy.pdf">Template decoy</a>
+      </template>
+      <a href="/js/pdf/2026/p20260724_05e.pdf">Reviewed document</a>
+    `);
+    const mndRows = parseTaiwanMndList(`
+      <template>
+        <a href="/en/News/PLAAct/99999"><h5 class="date">2026.07.25</h5></a>
+      </template>
+      <a href="/en/News/PLAAct/87151"><h5 class="date">2026.07.25</h5></a>
+    `);
+
+    assert.deepEqual(japanRows.map((row) => row.sourceUrl), [
+      'https://www.mod.go.jp/js/pdf/2026/p20260724_05e.pdf',
+    ]);
+    assert.deepEqual(mndRows, [{
+      publicationDay: '2026-07-25',
+      sourceUrl: 'https://www.mnd.gov.tw/en/News/PLAAct/87151',
+    }]);
+  });
+
+  it('skips a malformed Japan MOD document URL without aborting later rows', () => {
+    const rows = parseJapanModIndex(`
+      <a href="https://[invalid].pdf">Malformed document URL</a>
+      <a href="/js/pdf/2026/p20260724_05e.pdf">Reviewed document</a>
+    `);
+
+    assert.deepEqual(rows.map((row) => row.sourceUrl), [
+      'https://www.mod.go.jp/js/pdf/2026/p20260724_05e.pdf',
+    ]);
   });
 
   it('keeps an omitted category unknown rather than inventing a zero', () => {

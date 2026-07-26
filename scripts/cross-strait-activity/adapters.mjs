@@ -963,7 +963,16 @@ function scanHtmlAnchors(value) {
   const source = String(value);
   const anchors = [];
   let current = null;
+  let templateDepth = 0;
   for (const tag of scanHtmlTags(source)) {
+    const insideTemplate = templateDepth > 0;
+    if (isHtmlElementTag(tag) && tag.name === 'template') {
+      templateDepth = tag.isClosing
+        ? Math.max(0, templateDepth - 1)
+        : templateDepth + 1;
+      continue;
+    }
+    if (insideTemplate) continue;
     if (tag.name !== 'a') continue;
     if (tag.isClosing) {
       if (current) {
@@ -1069,8 +1078,17 @@ function extractHtmlElementBodies(value, tagNames, className, maxMatches = 1) {
   const bodies = [];
   let current = null;
   let depth = 0;
+  let templateDepth = 0;
 
   for (const tag of scanHtmlTags(source)) {
+    const insideTemplate = templateDepth > 0;
+    if (isHtmlElementTag(tag) && tag.name === 'template') {
+      templateDepth = tag.isClosing
+        ? Math.max(0, templateDepth - 1)
+        : templateDepth + 1;
+      continue;
+    }
+    if (insideTemplate) continue;
     if (current) {
       if (tag.name !== current.name) continue;
       if (tag.isClosing) depth -= 1;
@@ -1359,7 +1377,12 @@ export function parseJapanModIndex(html) {
   for (const anchor of scanHtmlAnchors(html)) {
     const href = quotedHtmlAttribute(anchor.openingTag, 'href');
     if (!href || !/\.pdf$/i.test(href)) continue;
-    const sourceUrl = new URL(href, JMOD_INDEX_URL).href;
+    let sourceUrl;
+    try {
+      sourceUrl = new URL(href, JMOD_INDEX_URL).href;
+    } catch {
+      continue;
+    }
     if (!isAllowedSourceUrl(sourceUrl, CROSS_STRAIT_SOURCE_CONTRACTS.japanMod)) continue;
     rows.push({
       sourceUrl,
