@@ -45,6 +45,9 @@ const SEED_DOMAINS = {
   'market:crypto':            { key: 'seed-meta:market:crypto',            intervalMin: 15 },
   'market:hyperliquid-flow':  { key: 'seed-meta:market:hyperliquid-flow',  intervalMin: 5 }, // Railway cron 5min via seed-bundle-market-backup
   'market:etf-flows':         { key: 'seed-meta:market:etf-flows',         intervalMin: 30 },
+  // The bundle polls every 30min, but seed-health classifies at intervalMin*2.
+  // Use half of /api/health's 180min alarm budget so both operator surfaces agree.
+  'market:china-corporate-disclosures': { key: 'seed-meta:market:china-corporate-disclosures', intervalMin: 90 },
   'market:gulf-quotes':       { key: 'seed-meta:market:gulf-quotes',       intervalMin: 15 },
   'market:stablecoins':       { key: 'seed-meta:market:stablecoins',       intervalMin: 30 },
   'shared:fx-rates':          { key: 'seed-meta:shared:fx-rates',          intervalMin: 1800 }, // 60h staleness budget in api/health.js
@@ -74,6 +77,11 @@ const SEED_DOMAINS = {
   'intelligence:gpsjam':      { key: 'seed-meta:intelligence:gpsjam',      intervalMin: 720 }, // 720 × 2 = 1440min (24h) staleness; matches api/health.js gpsjam.maxStaleMin. Widened from 360 (12h) on 2026-04-29 alongside Wingbits API quota incident — see PR #3494 + the seeder graceful-failure path at scripts/fetch-gpsjam.mjs:258-262.
   'intelligence:satellites':  { key: 'seed-meta:intelligence:satellites',  intervalMin: 90 },
   'military:flights':         { key: 'seed-meta:military:flights',         intervalMin: 8 },
+  'military:cross-strait-activity': { key: 'seed-meta:military:cross-strait-activity', intervalMin: 180 },
+  'military:cross-strait-activity-bootstrap': { key: 'seed-meta:military:cross-strait-activity-bootstrap', intervalMin: 180 },
+  'military:cross-strait-activity:complete': { key: 'seed-meta:military:cross-strait-activity:complete', intervalMin: 180 },
+  'military:cross-strait-activity:taiwan-mnd': { key: 'seed-meta:military:cross-strait-activity:taiwan-mnd', intervalMin: 180 },
+  'military:cross-strait-activity:japan-mod': { key: 'seed-meta:military:cross-strait-activity:japan-mod', intervalMin: 180 },
   'military:defense-patents': { key: 'seed-meta:military:defense-patents', intervalMin: 12600 },
   'military-forecast-inputs': { key: 'seed-meta:military-forecast-inputs', intervalMin: 8 },
   'infra:service-statuses':   { key: 'seed-meta:infra:service-statuses',   intervalMin: 60 },
@@ -88,8 +96,10 @@ const SEED_DOMAINS = {
   'economic:worldbank-progress':      { key: 'seed-meta:economic:worldbank-progress:v1',     intervalMin: 5040 },
   'economic:worldbank-renewable':     { key: 'seed-meta:economic:worldbank-renewable:v1',    intervalMin: 5040 },
   'economic:bis-extended':    { key: 'seed-meta:economic:bis-extended',    intervalMin: 720 }, // 12h Railway cron; "seeder ran" aggregate — per-dataset freshness lives below
-  'economic:china-macro':     { key: 'seed-meta:economic:china-macro',     intervalMin: 2160 },
+  'economic:china-macro':     { key: 'seed-meta:economic:china-macro-transport', intervalMin: 2160 },
   'economic:china-release-calendar': { key: 'seed-meta:economic:china-release-calendar', intervalMin: 2160 },
+  'china:policy-events':      { key: 'seed-meta:china:policy-events',      intervalMin: 360 },
+  'intelligence:china-decision-signals': { key: 'seed-meta:intelligence:china-decision-signals', intervalMin: 30, minRecordCount: 6 },
   'economic:bis-dsr':                  { key: 'seed-meta:economic:bis-dsr',                  intervalMin: 720 }, // 12h cron; only written when DSR slice fetched fresh entries
   'economic:bis-property-residential': { key: 'seed-meta:economic:bis-property-residential', intervalMin: 720 }, // 12h cron; only written when SPP slice fetched fresh entries
   'economic:bis-property-commercial':  { key: 'seed-meta:economic:bis-property-commercial',  intervalMin: 720 }, // 12h cron; only written when CPP slice fetched fresh entries
@@ -336,9 +346,9 @@ export default async function handler(req) {
   if (req.method === 'OPTIONS')
     return new Response(null, { status: 204, headers: cors });
 
-  const apiKeyResult = await validateApiKey(req);
-  if (apiKeyResult.required && !apiKeyResult.valid)
-    return jsonResponse({ error: apiKeyResult.error }, 401, cors);
+  const apiKeyResult = await validateApiKey(req, { forceKey: true });
+  if (!apiKeyResult.valid || apiKeyResult.kind !== 'enterprise')
+    return jsonResponse({ error: 'Operator API key required' }, 401, cors);
 
   const now = Date.now();
   const entries = Object.entries(SEED_DOMAINS);
@@ -379,7 +389,16 @@ export default async function handler(req) {
     const ageMs = now - (meta.fetchedAt || 0);
     const recordCount = parseFiniteRecordCount(meta.recordCount);
     const coveragePartial = cfg.minRecordCount != null && (recordCount == null || recordCount < cfg.minRecordCount);
-    const isError = meta.status === 'error';
+    // Source-specific seed projections retain their last-good records while
+    // reporting a current upstream failure through sourceState. Treat that as
+    // an immediate operator error instead of waiting for the freshness window.
+    // `unavailable` means an optional adapter was never configured, matching
+    // api/health.js's NOT_CONFIGURED treatment rather than a broken source.
+    const sourceUnavailable = meta.sourceState === 'unavailable';
+    const sourceError = typeof meta.sourceState === 'string'
+      && meta.sourceState !== 'ok'
+      && !sourceUnavailable;
+    const isError = meta.status === 'error' || sourceError;
     const probe = evaluateDataProbe(cfg.dataProbe, probeMap.get(domain));
     const sourceMismatch = Boolean(
       cfg.dataProbe?.sourceVersion &&
@@ -391,7 +410,9 @@ export default async function handler(req) {
     if (stale) staleCount++;
 
     seeds[domain] = {
-      status: isError
+      status: sourceUnavailable
+        ? 'not_configured'
+        : isError
         ? 'error'
         : sourceMismatch
           ? 'source_version_mismatch'

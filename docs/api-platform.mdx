@@ -20,6 +20,11 @@ Single round-trip hydration for the dashboard. Returns **all bootstrap-registere
 
 Use this on initial page load to avoid 40 parallel RPC calls.
 
+The slow tier includes `chinaDecisionSignals`, the bounded six-domain China
+country-summary contract. Its anonymous country/RPC representation, Pro MCP
+representation, and operator health registration share stable group IDs and
+provenance; see [China Decision Signals](/china-decision-signals).
+
 ## Version
 
 ### `GET /api/version`
@@ -92,6 +97,11 @@ Monitor via UptimeRobot / Better Stack with `?compact=1` — alert on any status
 ### `GET /api/seed-health`
 
 Parallel registry for Railway-cron-driven seeders with their own cadence thresholds. Distinct from `/api/health` — both must be updated when cadence changes. See [health endpoints](/health-endpoints).
+
+`chinaDecisionSignals` is refreshed by the derived-signals bundle every 15
+minutes. `/api/health` allows 60 minutes before `STALE_SEED`;
+`/api/seed-health` uses a 30-minute interval (60-minute alarm) so both operator
+surfaces agree.
 
 ### `POST /api/seed-contract-probe`
 

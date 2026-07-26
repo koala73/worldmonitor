@@ -22,7 +22,7 @@ import {
 } from './_idempotency.js';
 import { assertNotificationWebhookRegistrationUrlSafe } from './_notification-webhook-ssrf';
 import { validateBearerToken } from '../server/auth-session';
-import { getEntitlements } from '../server/_shared/entitlement-check';
+import { getBillingVerificationDenial, getEntitlements } from '../server/_shared/entitlement-check';
 
 // Prefer explicit CONVEX_SITE_URL; fall back to deriving from CONVEX_URL (same pattern as notification-relay.cjs).
 const CONVEX_SITE_URL =
@@ -36,6 +36,12 @@ type NotificationChannelsDeps = {
   validateBearerToken: typeof validateBearerToken;
   getEntitlements: typeof getEntitlements;
   fetch: typeof fetch;
+  // Injected so the billing-denial capture is observable in tests. It cannot be
+  // asserted through the real transport: api/_sentry-common.js's parseDsn()
+  // returns early when process.env.NODE_TEST_CONTEXT is set (which node:test
+  // always sets), so captureSilentError is a no-op under the test runner and
+  // the whole branch below could be deleted with every case still green.
+  captureSilentError: typeof captureSilentError;
 };
 
 function createDefaultNotificationChannelsDeps(): NotificationChannelsDeps {
@@ -43,7 +49,33 @@ function createDefaultNotificationChannelsDeps(): NotificationChannelsDeps {
     validateBearerToken,
     getEntitlements,
     fetch: (...args) => globalThis.fetch(...args),
+    captureSilentError,
   };
+}
+
+// Per-code dedup window for the billing-denial capture. The capture sits
+// downstream of the entitlement cache (server/_shared/entitlement-check.ts
+// serves a billing marker straight from Redis), so without this a Convex
+// brownout emits one Sentry event per denied POST per affected user rather than
+// one per incident. Module-level state is per-isolate, so this degrades with
+// edge fan-out instead of scaling with traffic.
+const DENIAL_CAPTURE_DEDUP_WINDOW_MS = 60_000;
+const lastDenialCaptureAtByCode = new Map<string, number>();
+
+function shouldCaptureDenial(code: string | null, now: number): boolean {
+  // `subscription_lapsed` is a confirmed terminal answer already visible in
+  // Convex — eventing it would turn ordinary churn into a permanent Sentry
+  // stream and bury the anomaly.
+  if (!code || code === 'subscription_lapsed') return false;
+  const last = lastDenialCaptureAtByCode.get(code);
+  if (last !== undefined && now - last < DENIAL_CAPTURE_DEDUP_WINDOW_MS) return false;
+  lastDenialCaptureAtByCode.set(code, now);
+  return true;
+}
+
+/** Test-only reset so dedup state cannot leak between cases. */
+export function __resetDenialCaptureDedupForTests(): void {
+  lastDenialCaptureAtByCode.clear();
 }
 
 let notificationChannelsDeps = createDefaultNotificationChannelsDeps();
@@ -147,7 +179,10 @@ async function publishFlushHeld(userId: string, variant: string): Promise<void> 
     });
   } catch (err) {
     console.warn('[notification-channels] publishFlushHeld LPUSH failed:', (err as Error).message);
+    // `level` (not the `severity` tag) is what buildEnvelope reads; without it
+    // this warn-intent capture also shipped at error level.
     await captureSilentError(err, {
+      level: 'warning',
       tags: { route: 'api/notification-channels', step: 'publish-flush-held', severity: 'warn' },
     });
   }
@@ -325,6 +360,62 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
   if (req.method === 'POST') {
     const ent = await notificationChannelsDeps.getEntitlements(session.userId);
     if (!ent || ent.features.tier < 1) {
+      // #5600: an entitlement the backend could not VERIFY (Convex 5xx/timeout,
+      // or a renewal re-check in flight) is not a confirmed free user. Answer
+      // it with the shared retryable contract — 503 + Retry-After +
+      // X-Billing-Verification — the same way the gateway, widget-agent, and
+      // MCP surfaces do, so the client can retry instead of rendering a
+      // terminal "upgrade to Pro".
+      //
+      // Scope note: this does NOT cover the day-0 poisoned-marker cohort. That
+      // one arrives as a plain tier-0 answer (no billingStatus, no
+      // verificationUnavailable), so the helper returns null and the buyer
+      // still gets the 403 below — bounded to
+      // NOT_APPLICABLE_VERIFICATION_TTL_SECONDS by the other half of this fix.
+      // Making that state 503 instead would hand every never-subscribed free
+      // user a retryable error in place of a clean upsell.
+      const billingDenial = getBillingVerificationDenial(ent, corsHeaders, 1);
+      if (billingDenial) {
+        const code = billingDenial.headers.get('X-Billing-Verification');
+        console.warn('[notification-channels] billing-verification denial', JSON.stringify({
+          status: billingDenial.status,
+          code,
+          userId: session.userId,
+        }));
+        // Match this file's own convention (publishWelcome / publishFlushHeld
+        // above): a console.warn alone is a Sentry breadcrumb, not an event, so
+        // it would be invisible in exactly the way #5600's activation failures
+        // were. Tagged so these group with the wizard-side captures.
+        //
+        // Transient states only, and at most one event per code per
+        // DENIAL_CAPTURE_DEDUP_WINDOW_MS — see shouldCaptureDenial.
+        //
+        // `level: 'warning'` is load-bearing, not decorative: buildEnvelope in
+        // api/_sentry-common.js derives the Sentry level ONLY from ctx.level and
+        // defaults to 'error'. A `severity` TAG does not set it, so without this
+        // an expected transient denial pages on-call at error level — the exact
+        // "drowns real bugs in dashboards/alerting" outcome that file warns about.
+        //
+        // NOT awaited: makeCaptureSilentError registers ctx.waitUntil(promise)
+        // (api/_sentry-common.js), so the capture is guaranteed to run without
+        // holding the denial response open for its 2s transport timeout.
+        if (shouldCaptureDenial(code, Date.now())) {
+          void notificationChannelsDeps.captureSilentError(
+            new Error(`notification-channels billing-verification denial: ${code}`),
+            {
+              level: 'warning',
+              tags: {
+                route: 'api/notification-channels',
+                step: 'billing-verification-denial',
+                code: code as string,
+                severity: 'warn',
+              },
+              ctx,
+            },
+          );
+        }
+        return billingDenial;
+      }
       return json({
         error: 'pro_required',
         message: 'Real-time alerts are available on the Pro plan.',

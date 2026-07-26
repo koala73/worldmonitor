@@ -20,12 +20,14 @@ const BOOTSTRAP_USER_KEY_NEGATIVE_CACHE_PREFIX = 'bootstrap-user-api-key-invalid
 const ENTITLEMENT_CACHE_TTL_SECONDS = 900;
 // Mirrors server/_shared/entitlement-check.ts (this .js file cannot import the
 // .ts module under node --test; tests/billing-marker-ttl-parity.test.mjs pins
-// the two copies together): lapsed markers stay short because their TTL is
-// the worst-case wrongful-denial window; not_applicable markers get the full
-// default TTL because syncEntitlementCache unconditionally overwrites the key
-// on any tier change.
+// the two copies together): both marker TTLs stay short because each is the
+// worst-case wrongful-denial window for its cohort. The not_applicable marker
+// is stamped only for a user with NO subscription row — which is also what a
+// buyer looks like between checkout return and the Dodo webhook landing, so a
+// long TTL turns a lost cache-write race into minutes of 403s for a paying
+// customer (#5600). See the fuller note in entitlement-check.ts.
 const LAPSED_BILLING_MARKER_TTL_SECONDS = 60;
-const NOT_APPLICABLE_VERIFICATION_TTL_SECONDS = 900;
+const NOT_APPLICABLE_VERIFICATION_TTL_SECONDS = 60;
 const ENTITLEMENT_ENV_PREFIX = process.env.DODO_PAYMENTS_ENVIRONMENT === 'live_mode' ? 'live' : 'test';
 const NEG_SENTINEL = '__WM_NEG__';
 

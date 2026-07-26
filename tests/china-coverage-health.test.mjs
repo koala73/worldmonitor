@@ -73,6 +73,7 @@ describe('China coverage manifest', () => {
       'aviation.china-hubs',
       'macro.china-snapshot',
       'macro.china-release-calendar',
+      'policy.official-events',
       'hazards.western-pacific-cyclones',
       'hazards.hko-warnings',
     ]) {
@@ -86,6 +87,18 @@ describe('China coverage manifest', () => {
     assert.equal(
       CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === 'macro.china-release-calendar')?.launchStatus,
       'launched',
+    );
+    assert.deepEqual(
+      CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === 'policy.official-events')?.content,
+      {
+        key: 'china:policy-events:v1',
+        maxAgeMin: 180 * 1_440,
+        probe: {
+          kind: 'object',
+          requiredTruthyPaths: [['events']],
+          timestampPaths: [['events', '*', 'publicationDate']],
+        },
+      },
     );
     assert.equal(
       CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === 'hazards.hko-warnings')?.launchStatus,
@@ -287,6 +300,39 @@ describe('China coverage manifest', () => {
     const missingTransport = evaluate(market, data);
     assert.equal(missingTransport.entries[0].status, 'degraded');
     assert.ok(missingTransport.entries[0].reasonCodes.includes(CHINA_COVERAGE_REASON_CODES.TRANSPORT_MISSING));
+  });
+
+  it('reports a fresh but degraded disclosure snapshot as partial coverage', () => {
+    const disclosures = CHINA_COVERAGE_ENTRIES.find(
+      (entry) => entry.id === 'market.china-corporate-disclosures',
+    );
+    const result = evaluate(
+      disclosures,
+      {
+        'market:china:corporate-disclosures:v1': {
+          status: 'degraded',
+          coverageThrough: null,
+          events: [],
+          sources: [
+            { id: 'sse', transportStatus: 'fresh', contentStatus: 'partial' },
+            { id: 'szse', transportStatus: 'error', contentStatus: 'unavailable' },
+          ],
+        },
+      },
+      {
+        'seed-meta:market:china-corporate-disclosures': {
+          fetchedAt: NOW,
+          status: 'ok',
+        },
+      },
+    );
+
+    assert.equal(result.entries[0].status, 'degraded');
+    assert.equal(result.entries[0].content.status, 'partial');
+    assert.deepEqual(
+      result.entries[0].reasonCodes,
+      [CHINA_COVERAGE_REASON_CODES.CHINA_COVERAGE_PARTIAL],
+    );
   });
 
   it('uses the source-specific China news projection rather than global top stories', () => {

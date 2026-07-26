@@ -134,12 +134,15 @@
     "china": {
       "title": "Преглед на държава: Китай",
       "description": "Текущо състояние на макроикономика, пазар, търговия, енергетика и оперативна наличност от съществуващите публични договори за данни.",
-      "macroPolicy": "Макро и политика",
-      "marketCredit": "Пазар и кредит",
-      "tradeSupply": "Търговия и вериги на доставки",
+      "policyEvents": "Policy & Enforcement",
       "energy": "Енергетика",
       "availability": "Опасности и авиация",
       "observed": "Към:",
+      "published": "Published:",
+      "effective": "Effective:",
+      "sectors": "Sectors:",
+      "entities": "Entities:",
+      "translation": "Translation:",
       "source": "Източник:",
       "imfGrowth": "Прогноза за растеж на МВФ",
       "creditGdp": "Кредит към БВП",
@@ -148,8 +151,6 @@
       "gasDemand": "Търсене на газ",
       "energyMix": "Електроенергиен микс",
       "coal": "въглища",
-      "aviationAvailability": "Наличност на авиацията",
-      "hazardAvailability": "Наличност на опасностите",
       "noMajorDisruptions": "Няма съобщени сериозни смущения",
       "activeDisruptions_one": "{{count}} активно прекъсване",
       "activeDisruptions_other": "{{count}} активни прекъсвания",
@@ -161,18 +162,21 @@
       "ccfiSource": "Шанхайска корабна борса",
       "comtradeSource": "UN Comtrade, докладваща страна 156",
       "sourceUnavailable": "Източникът не е наличен",
-      "macroUnavailable": "Макроикономическите и политическите данни в момента не са налични.",
-      "marketUnavailable": "Пазарните и кредитните данни в момента не са налични.",
-      "tradeUnavailable": "Данните за търговия и вериги на доставки в момента не са налични.",
-      "energyUnavailable": "Енергийните данни в момента не са налични.",
-      "availabilityUnavailable": "Данните за опасности и авиация в момента не са налични.",
+      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
+      "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
         "loading": "Зареждане",
         "available": "Налично",
         "partial": "Частично",
         "stale": "Остаряло",
         "unavailable": "Неналично"
-      }
+      },
+      "macroSignals": "Macro Signals",
+      "crossStraitActivity": "Cross-Strait Activity",
+      "corporateDisclosures": "Corporate Disclosures",
+      "corridorConditions": "Corridor Conditions",
+      "activityNowcast": "Activity Nowcast",
+      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
     }
   },
   "header": {
@@ -1556,7 +1560,26 @@
       "cafIndex": "CAF индекс",
       "candidGrants": "Candid дарения",
       "dataLag": "Лаг на данни",
-      "infoTooltip": "<strong>Глобалнен индекс на дарения активност</strong> Композитен индекс на проследяване на личното дарение в платформи за краудфинансиране и крипто портфейли.<ul><li><strong>Платформи</strong>: GoFundMe, GlobalGiving, JustGiving кампания вземане на проба</li><li><strong>Крипто</strong>: На-верига благодателност портфейл приливане (Endaoment, дарение блок)</li><li><strong>Институционален</strong>: OECD ODA, CAF световен индекс дарения, Candid дарения</li></ul>Индекс е посока (не точни суми). Комбинира живо вземане на проба с публикувани годишни доклади."
+      "infoTooltip": "<strong>Глобалнен индекс на дарения активност</strong> Композитен индекс на проследяване на личното дарение в платформи за краудфинансиране и крипто портфейли.<ul><li><strong>Платформи</strong>: GoFundMe, GlobalGiving, JustGiving кампания вземане на проба</li><li><strong>Крипто</strong>: На-верига благодателност портфейл приливане (Endaoment, дарение блок)</li><li><strong>Институционален</strong>: OECD ODA, CAF световен индекс дарения, Candid дарения</li></ul>Индекс е посока (не точни суми). Комбинира живо вземане на проба с публикувани годишни доклади.",
+      "benchmarkTitle": "Global Giving Benchmarks",
+      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "status": {
+        "published": "Published benchmarks with verified source coverage.",
+        "partial": "Published benchmarks with partial source coverage.",
+        "legacy": "Legacy snapshot; source details are unavailable.",
+        "cached": "Showing a cached snapshot; refresh unavailable."
+      },
+      "trackedAnnualized": "Tracked platform giving — annualized estimate",
+      "annualizedDaily": "Annualized daily estimate",
+      "atLeast": "At least",
+      "about": "About",
+      "sourceNotVerified": "Source not verified",
+      "reportedCumulative": "Reported cumulative total",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Published benchmark",
+      "sourcesMethodology": "Sources & methodology",
+      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
+      "partialEstimate": "Partially verified estimate"
     },
     "displacement": {
       "refugees": "Бежанци",
@@ -2108,7 +2131,11 @@
       "infoTooltip": "<strong>Каскада от災害</strong> Открива конвергиращи сигнали от природни бедствия и инфраструктура:<ul><li>Корелира земетресения, горски пожари, наводнения и екстремни времеви явления</li><li>Проследява каскадни ефекти на инфраструктура и верига на доставки</li><li>Подчертава региони с натрупан риск от бедствия</li></ul>Кликнете върху карта, за да увеличите мащаба на засегнатия регион."
     },
     "markets": {
-      "infoTooltip": "<strong>Пазари</strong> Цени в реално време на фондови индекси, акции и крипто. Персонализирайте списъка си с наблюдавани стойности с помощта на бутона Списък на наблюдаване. Спарклайните показват скорошния тренд на цената."
+      "infoTooltip": "<strong>Пазари</strong> Цени в реално време на фондови индекси, акции и крипто. Персонализирайте списъка си с наблюдавани стойности с помощта на бутона Списък на наблюдаване. Спарклайните показват скорошния тренд на цената.",
+      "chart": {
+        "title": "{{symbol}} price chart",
+        "close": "Close chart"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Хартата на топлината на секторите</strong> Производителност на секторите на S&P 500 с един поглед. Интензивността на цвета отразява величината на дневната промяна. Зелено = печалби, Червено = загуби."
@@ -2186,6 +2213,84 @@
       "retry": "Опитайте отново",
       "retrying": "Повторен опит…",
       "dismiss": "Отхвърляне"
+    },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Стъпка {{current}} от {{total}}",
+      "closeLabel": "Пропусни настройката",
+      "ariaLabel": "Настройка на активирането на Pro",
+      "signedInAs": "Влезли сте като {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Вашият ежедневен брифинг, всяка сутрин",
+          "body": "Подбран разузнавателен брифинг във входящата ви поща всяка сутрин — важните сигнали от нощта, сведени до петминутно четиво.",
+          "confirmCta": "Включи моя сутрешен брифинг",
+          "confirming": "Включване…",
+          "doneNote": "Сутрешният ви брифинг вече работи.",
+          "scheduleNote": "Ще запазим текущото ви време за доставка.",
+          "summaryLabel": "Сутрешен брифинг",
+          "summaryVerified": "Включен — стартира от следващия ви сутрешен брифинг.",
+          "deliverAt": "Доставка в",
+          "previewLoading": "Подготвяме преглед на първия ви брифинг…",
+          "previewLabel": "Брифингът за тази сутрин"
+        },
+        "alerts": {
+          "heading": "Критични сигнали",
+          "body": "Получавайте известие в браузъра си, когато се случи нещо голямо — ескалации на конфликти, пазарни сътресения, нови санкции. Настройте честотата по всяко време в Настройки.",
+          "confirmCta": "Включи сигналите",
+          "confirming": "Включване…",
+          "doneNote": "Известията в браузъра вече са включени.",
+          "blockedNote": "Известията са блокирани в браузъра ви. Включете ги в настройките на сайта на браузъра си, за да получавате сигнали.",
+          "declinedNote": "Няма проблем — няма да изпращаме известия в браузъра. Можете да ги включите по-късно от настройките на сайта на браузъра си.",
+          "summaryLabel": "Критични сигнали",
+          "summaryVerified": "Включени — критичните сигнали ще достигат до браузъра ви."
+        },
+        "power": {
+          "heading": "Вашият Pro инструментариум",
+          "body": "Персонализирани уиджети, MCP връзки и AI изследователят са отключени. Изградете таблото, което наистина искате да следите.",
+          "confirmCta": "Разгледай Pro инструментите",
+          "confirming": "Отваряне…",
+          "doneNote": "Вече използвате Pro инструментите си.",
+          "summaryLabel": "Pro инструментариум",
+          "summaryVerified": "Отключен и готов, когато сте готови и вие.",
+          "channelsNote": "Предпочитате Telegram, Slack, Discord или уебхук?",
+          "pointers": {
+            "widgets": "Създай персонализиран уиджет",
+            "analyst": "Попитай AI анализатора",
+            "mcpClients": "Настрой MCP",
+            "channels": "Настройте ги в настройките за известия"
+          }
+        }
+      },
+      "status": {
+        "pending": "Не е настроено",
+        "inFlight": "Настройване…",
+        "verified": "Готово",
+        "failed": "Не проработи",
+        "blocked": "Блокирано",
+        "unavailable": "Не е налично",
+        "blockedNote": "Това не е налично в момента — можете да го настроите по-късно от настройките.",
+        "unavailableNote": "Това не е налично на вашето устройство — можете да го настроите по-късно.",
+        "failedBody": "Нещо се обърка. Можете да опитате отново или да го настроите по-късно от настройките.",
+        "retry": "Опитай отново"
+      },
+      "actions": {
+        "skip": "Пропусни засега",
+        "continue": "Продължи"
+      },
+      "summary": {
+        "heading": "Всичко е готово",
+        "subVerified": "Ето какво работи във вашия акаунт.",
+        "subPending": "Можете да завършите настройката по всяко време от настройките.",
+        "linePending": "Все още не е настроено — довършете го по всяко време в настройките.",
+        "lineFailed": "Не успяхме да настроим това — опитайте отново от настройките.",
+        "finish": "Към моето табло"
+      },
+      "chip": {
+        "message": "Довършете настройката на своя Pro акаунт.",
+        "action": "Довърши настройката",
+        "dismissLabel": "Отхвърли"
+      }
     },
     "frameworkSelector": {
       "label": "Рамка за анализ",

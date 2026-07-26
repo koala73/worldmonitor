@@ -75,6 +75,17 @@ async function loadChatAnalystPanel() {
         ANONYMOUS: 'anonymous',
         FREE_TIER: 'free_tier',
       });
+      // No entitlement snapshot and no role claim — the panel's denial
+      // classifier then treats a 403 as an honest upsell. Tests that care
+      // about the desync branch drive classifyPremiumDenial directly
+      // (tests/premium-denial.test.mts); @/services/premium-denial is a pure
+      // leaf and is bundled for real here rather than stubbed.
+      export function readClientEntitlementBelief() {
+        return { entitlementTier: null, authRole: null };
+      }
+    `],
+    ['auth-state-stub', `
+      export function getAuthState() { return { user: null }; }
     `],
     ['premium-fetch-stub', `
       export function premiumFetch() { return Promise.reject(new Error('not wired in test')); }
@@ -107,6 +118,7 @@ async function loadChatAnalystPanel() {
     ['@/services/ai-flow-settings', 'ai-flow-settings-stub'],
     ['@/services/runtime-config', 'runtime-config-stub'],
     ['@/services/panel-gating', 'panel-gating-stub'],
+    ['@/services/auth-state', 'auth-state-stub'],
     ['@/services/premium-fetch', 'premium-fetch-stub'],
     ['@/utils/analyst-markdown', 'analyst-markdown-stub'],
     ['@/services/checkout', 'checkout-stub'],

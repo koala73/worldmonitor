@@ -134,12 +134,15 @@
     "china": {
       "title": "Přehled země: Čína",
       "description": "Aktuální makro, trh, obchod, energetika a provozní dostupnost z existujících veřejných datových kontraktů.",
-      "macroPolicy": "Makro a politika",
-      "marketCredit": "Trh a úvěr",
-      "tradeSupply": "Obchod a dodavatelský řetězec",
+      "policyEvents": "Policy & Enforcement",
       "energy": "Energetika",
       "availability": "Rizika a letectví",
       "observed": "K datu:",
+      "published": "Published:",
+      "effective": "Effective:",
+      "sectors": "Sectors:",
+      "entities": "Entities:",
+      "translation": "Translation:",
       "source": "Zdroj:",
       "imfGrowth": "Prognóza růstu MMF",
       "creditGdp": "Úvěr k HDP",
@@ -148,8 +151,6 @@
       "gasDemand": "Poptávka po plynu",
       "energyMix": "Energetický mix",
       "coal": "uhlí",
-      "aviationAvailability": "Dostupnost letectví",
-      "hazardAvailability": "Dostupnost rizik",
       "noMajorDisruptions": "Nebyla hlášena žádná závažná narušení",
       "activeDisruptions_one": "{{count}} aktivní výpadek",
       "activeDisruptions_few": "{{count}} aktivní výpadky",
@@ -165,18 +166,21 @@
       "ccfiSource": "Šanghajská lodní burza",
       "comtradeSource": "UN Comtrade, vykazující země 156",
       "sourceUnavailable": "Zdroj nedostupný",
-      "macroUnavailable": "Makroekonomická a politická data jsou momentálně nedostupná.",
-      "marketUnavailable": "Tržní a úvěrová data jsou momentálně nedostupná.",
-      "tradeUnavailable": "Data o obchodu a dodavatelském řetězci jsou momentálně nedostupná.",
-      "energyUnavailable": "Energetická data jsou momentálně nedostupná.",
-      "availabilityUnavailable": "Data o rizicích a letectví jsou momentálně nedostupná.",
+      "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
+      "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
         "loading": "Načítání",
         "available": "Dostupné",
         "partial": "Částečné",
         "stale": "Zastaralé",
         "unavailable": "Nedostupné"
-      }
+      },
+      "macroSignals": "Macro Signals",
+      "crossStraitActivity": "Cross-Strait Activity",
+      "corporateDisclosures": "Corporate Disclosures",
+      "corridorConditions": "Corridor Conditions",
+      "activityNowcast": "Activity Nowcast",
+      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
     }
   },
   "header": {
@@ -1541,7 +1545,26 @@
       "cafIndex": "Index CAF",
       "candidGrants": "Granty Candid",
       "dataLag": "Zpoždění dat",
-      "infoTooltip": "<strong>Index globální dárcovské aktivity</strong> Kompozitní index sledující osobní dárcovství napříč crowdfundingovými platformami a krypto peněženkami.<ul><li><strong>Platformy</strong>: Vzorkování kampaní GoFundMe, GlobalGiving, JustGiving</li><li><strong>Krypto</strong>: Příliv do on-chain charitativních peněženek (Endaoment, Giving Block)</li><li><strong>Institucionální</strong>: OECD ODA, CAF World Giving Index, granty Candid</li></ul>Index je orientační (ne přesné částky v dolarech). Kombinuje živé vzorkování s publikovanými výročními zprávami."
+      "infoTooltip": "<strong>Index globální dárcovské aktivity</strong> Kompozitní index sledující osobní dárcovství napříč crowdfundingovými platformami a krypto peněženkami.<ul><li><strong>Platformy</strong>: Vzorkování kampaní GoFundMe, GlobalGiving, JustGiving</li><li><strong>Krypto</strong>: Příliv do on-chain charitativních peněženek (Endaoment, Giving Block)</li><li><strong>Institucionální</strong>: OECD ODA, CAF World Giving Index, granty Candid</li></ul>Index je orientační (ne přesné částky v dolarech). Kombinuje živé vzorkování s publikovanými výročními zprávami.",
+      "benchmarkTitle": "Global Giving Benchmarks",
+      "benchmarkInfoTooltip": "<strong>Global Giving Benchmarks</strong> Published platform and institutional claims with source periods and verification status. Annualized figures are estimates, not live activity.",
+      "status": {
+        "published": "Published benchmarks with verified source coverage.",
+        "partial": "Published benchmarks with partial source coverage.",
+        "legacy": "Legacy snapshot; source details are unavailable.",
+        "cached": "Showing a cached snapshot; refresh unavailable."
+      },
+      "trackedAnnualized": "Tracked platform giving — annualized estimate",
+      "annualizedDaily": "Annualized daily estimate",
+      "atLeast": "At least",
+      "about": "About",
+      "sourceNotVerified": "Source not verified",
+      "reportedCumulative": "Reported cumulative total",
+      "sourcePeriod": "{{source}} · {{period}}",
+      "benchmark": "Published benchmark",
+      "sourcesMethodology": "Sources & methodology",
+      "methodologyIntro": "Only verified annual or defensibly annualized platform claims enter the headline. Cumulative and institutional figures remain separate context.",
+      "partialEstimate": "Partially verified estimate"
     },
     "displacement": {
       "refugees": "Uprchlíci",
@@ -2126,7 +2149,11 @@
       "infoTooltip": "<strong>Kaskáda katastrof</strong> Detekuje konvergující signály přírodních katastrof a infrastruktury:<ul><li>Koreluje zemětřesení, lesní požáry, povodně a extrémní počasí</li><li>Sleduje kaskádovité účinky na infrastrukturu a dodavatelský řetězec</li><li>Zvýrazňuje regiony se skládajícím se rizikem katastrofy</li></ul>Kliknutím na kartu přiblížíte postižený region."
     },
     "markets": {
-      "infoTooltip": "<strong>Trhy</strong> Ceny akcií v reálném čase, kmenové akcie a kryptoměny. Přizpůsobte si seznam sledovaných položek tlačítkem Sledovat. Minigrafy ukazují poslední cenový trend."
+      "infoTooltip": "<strong>Trhy</strong> Ceny akcií v reálném čase, kmenové akcie a kryptoměny. Přizpůsobte si seznam sledovaných položek tlačítkem Sledovat. Minigrafy ukazují poslední cenový trend.",
+      "chart": {
+        "title": "{{symbol}} price chart",
+        "close": "Close chart"
+      }
     },
     "heatmap": {
       "infoTooltip": "<strong>Sektorová heatmapa</strong> Výkonnost sektoru S&P 500 na první pohled. Intenzita barvy odráží velikost denní změny. Zelená = zisky, Červená = ztráty."
@@ -2204,6 +2231,84 @@
       "retry": "Zkusit znovu",
       "retrying": "Opakování…",
       "dismiss": "Zavřít"
+    },
+    "proActivation": {
+      "badge": "PRO",
+      "progress": "Krok {{current}} z {{total}}",
+      "closeLabel": "Přeskočit nastavení",
+      "ariaLabel": "Nastavení aktivace Pro",
+      "signedInAs": "Přihlášen jako {{email}}",
+      "steps": {
+        "brief": {
+          "heading": "Váš denní přehled, každé ráno",
+          "body": "Kurátorovaný zpravodajský přehled ve vaší schránce každé ráno — noční signály, na kterých záleží, zhuštěné do pětiminutového čtení.",
+          "confirmCta": "Zapnout můj ranní přehled",
+          "confirming": "Zapínání…",
+          "doneNote": "Váš ranní přehled už běží.",
+          "scheduleNote": "Zachováme váš aktuální čas doručení.",
+          "summaryLabel": "Ranní přehled",
+          "summaryVerified": "Zapnuto — začne vaším dalším ranním přehledem.",
+          "deliverAt": "Doručit v",
+          "previewLoading": "Připravujeme náhled vašeho prvního přehledu…",
+          "previewLabel": "Dnešní ranní přehled"
+        },
+        "alerts": {
+          "heading": "Kritická upozornění",
+          "body": "Nechte se upozornit v prohlížeči, když se stane něco zásadního — eskalace konfliktů, tržní otřesy, nové sankce. Frekvenci kdykoli upravte v Nastavení.",
+          "confirmCta": "Povolit upozornění",
+          "confirming": "Povolování…",
+          "doneNote": "Upozornění v prohlížeči jsou už zapnutá.",
+          "blockedNote": "Oznámení jsou ve vašem prohlížeči zablokovaná. Povolte je v nastavení webu ve vašem prohlížeči, abyste dostávali upozornění.",
+          "declinedNote": "Žádný problém — upozornění v prohlížeči nebudeme posílat. Můžete je později zapnout v nastavení webu ve vašem prohlížeči.",
+          "summaryLabel": "Kritická upozornění",
+          "summaryVerified": "Zapnuto — kritické signály se dostanou do vašeho prohlížeče."
+        },
+        "power": {
+          "heading": "Vaše sada Pro nástrojů",
+          "body": "Vlastní widgety, MCP připojení a AI výzkumník jsou odemčené. Sestavte si nástěnku, kterou opravdu chcete sledovat.",
+          "confirmCta": "Prozkoumat Pro nástroje",
+          "confirming": "Otevírání…",
+          "doneNote": "Své Pro nástroje už používáte.",
+          "summaryLabel": "Sada Pro nástrojů",
+          "summaryVerified": "Odemčeno a připraveno, až budete chtít.",
+          "channelsNote": "Preferujete Telegram, Slack, Discord nebo webhook?",
+          "pointers": {
+            "widgets": "Vytvořit vlastní widget",
+            "analyst": "Zeptat se AI analytika",
+            "mcpClients": "Nastavit MCP",
+            "channels": "Nastavte si je v nastavení oznámení"
+          }
+        }
+      },
+      "status": {
+        "pending": "Nenastaveno",
+        "inFlight": "Nastavování…",
+        "verified": "Připraveno",
+        "failed": "Nepovedlo se",
+        "blocked": "Blokováno",
+        "unavailable": "Nedostupné",
+        "blockedNote": "Tohle teď není dostupné — můžete to nastavit později v nastavení.",
+        "unavailableNote": "Tohle není dostupné na vašem zařízení — můžete to nastavit později.",
+        "failedBody": "Něco se nepovedlo. Zkuste to znovu, nebo to nastavte později v nastavení.",
+        "retry": "Zkusit znovu"
+      },
+      "actions": {
+        "skip": "Zatím přeskočit",
+        "continue": "Pokračovat"
+      },
+      "summary": {
+        "heading": "Vše je nastaveno",
+        "subVerified": "Tohle teď běží na vašem účtu.",
+        "subPending": "Nastavení můžete dokončit kdykoli v nastavení.",
+        "linePending": "Zatím nenastaveno — dokončete kdykoli v nastavení.",
+        "lineFailed": "Tohle se nám nepodařilo nastavit — zkuste to znovu v nastavení.",
+        "finish": "Přejít na můj dashboard"
+      },
+      "chip": {
+        "message": "Dokončete nastavení svého Pro účtu.",
+        "action": "Dokončit nastavení",
+        "dismissLabel": "Zavřít"
+      }
     },
     "frameworkSelector": {
       "label": "Analytický rámec",

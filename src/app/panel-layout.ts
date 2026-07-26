@@ -48,7 +48,11 @@ import { initEntitlementSubscription, destroyEntitlementSubscription, isEntitled
 import { initSubscriptionWatch, destroySubscriptionWatch, onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
 import { initPaymentFailureBanner } from '@/components/payment-failure-banner';
 import { handleCheckoutReturn } from '@/services/checkout-return';
-import { registerCheckoutSuccessCallback, destroyCheckoutOverlay, showCheckoutSuccess, consumePostCheckoutFlag, clearCheckoutAttempt } from '@/services/checkout';
+import { registerCheckoutSuccessCallback, destroyCheckoutOverlay, showCheckoutSuccess, consumePostCheckoutFlag, clearCheckoutAttempt, loadCheckoutAttempt } from '@/services/checkout';
+import {
+  markProActivationPending,
+  ProActivationController,
+} from '@/app/pro-activation-controller';
 import { showCheckoutFailureBanner } from '@/components/checkout-failure-banner';
 import { PanelTabBar } from '@/components/PanelTabBar';
 import {
@@ -151,6 +155,8 @@ const COLLIDING_NEWS_PANEL_KEYS = new Set(['markets', 'crypto', 'economic']);
 export const DEFERRED_PANEL_NATURAL_FOOTPRINTS: Readonly<Record<string, DeferredPanelShellFootprint>> = {
   cii: { rowSpan: 2 },
   'chat-analyst': { rowSpan: 2 },
+  'china-corridors': { rowSpan: 2, className: 'panel-wide' },
+  'china-activity-nowcast': { rowSpan: 2, className: 'panel-wide' },
   'consumer-prices': { rowSpan: 2 },
   displacement: { rowSpan: 2 },
   economic: { rowSpan: 2 },
@@ -352,6 +358,7 @@ export class PanelLayoutManager implements AppModule {
   private scheduledLoadAllRaf: number | null = null;
   private scheduledLoadAllIdle: number | null = null;
   private responsiveZoneListener: ResponsiveZoneListener | null = null;
+  private readonly proActivationController: ProActivationController;
 
   constructor(ctx: AppContext, callbacks: PanelLayoutManagerCallbacks) {
     this.ctx = ctx;
@@ -373,10 +380,23 @@ export class PanelLayoutManager implements AppModule {
     const returnResult = handleCheckoutReturn();
     const returnedFromOverlay = consumePostCheckoutFlag();
     const returnedFromCheckout = returnResult.kind === 'success' || returnedFromOverlay;
+    this.proActivationController = new ProActivationController(ctx, {
+      reloadPending: returnedFromCheckout,
+      openAiAnalyst: () => this.revealAnalystPanel(),
+    });
     if (returnedFromCheckout) {
       // Funnel (#4931): the purchase-complete signal on the client side.
       // Queued by the analytics facade until Umami loads after first paint.
       trackCheckoutSuccess(returnResult.kind === 'success' ? 'url-return' : 'overlay-flag');
+      // Pro Activation Onboarding: capture the plan identity from the attempt
+      // record and write the durable pending-onboarding marker BEFORE the
+      // clear below wipes the attempt. Success branch only (the `failed`
+      // branch structurally cannot reach here). An overlay-only return may
+      // carry no attempt record → the marker omits productId and the boot
+      // hook falls back to the live entitlement snapshot for plan identity
+      // (never a write-time frozen fallback — see decideActivationMount).
+      const activationProductId = loadCheckoutAttempt()?.productId ?? null;
+      markProActivationPending(activationProductId);
       // Full-page return cleared its URL params; belt-and-braces clear
       // of the attempt record here catches the success path where the
       // overlay handler never ran (direct Dodo redirect).
@@ -534,6 +554,32 @@ export class PanelLayoutManager implements AppModule {
       })).catch((err) => console.error('[widget-chat] failed to lazy-load WidgetChatModal', err));
     }) as EventListener;
     this.ctx.container.addEventListener('wm:open-widget-creator', this.boundWidgetCreatorHandler);
+
+    // Pro Activation Onboarding: after the dashboard settles, evaluate whether
+    // a pending-onboarding marker should open the interstitial (or surface the
+    // finish-setup chip). Deferred off the boot critical path like the panel
+    // hydration scheduler above.
+    this.proActivationController.init();
+  }
+
+  /**
+   * Open + scroll the WM Analyst (chat-analyst) panel into view. The panel is a
+   * lazy/deferred premium panel, so it may not be in `ctx.panels` yet at click
+   * time; scrolling to its reserved grid slot trips the mount observer, and we
+   * retry briefly until the element appears (mirrors search-manager's
+   * scrollToPanelWhenReady contract).
+   */
+  private revealAnalystPanel(attemptsLeft = 12): void {
+    if (this.ctx.isDestroyed || typeof document === 'undefined') return;
+    const key = 'chat-analyst';
+    this.ctx.panels[key]?.show();
+    const el = document.querySelector(`[data-panel="${key}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    if (attemptsLeft <= 0) return;
+    window.setTimeout(() => this.revealAnalystPanel(attemptsLeft - 1), 80);
   }
 
   destroy(): void {
@@ -642,6 +688,8 @@ export class PanelLayoutManager implements AppModule {
     // Clean up payment failure banner subscription
     this.unsubscribePaymentFailureBanner?.();
     this.unsubscribePaymentFailureBanner = null;
+
+    this.proActivationController.destroy();
 
     // Reset checkout overlay so next layout init can register its callback
     destroyCheckoutOverlay();
@@ -1848,6 +1896,23 @@ export class PanelLayoutManager implements AppModule {
       this.ctx.map?.setSupplyChainPanel(supplyChainPanel);
       return supplyChainPanel;
     });
+    this.lazyImportedPanel('china-corridors', () => import('@/components/ChinaCorridorPanel'), 'ChinaCorridorPanel', (ChinaCorridorPanel) => {
+      const panel = new ChinaCorridorPanel();
+      panel.setOnCorridorSelect((corridor) => {
+        const rendererSupportsOverlay = this.ctx.map?.setChinaCorridorSelection(corridor);
+        if (this.ctx.isMobile) this.revealMobileMap();
+        return rendererSupportsOverlay;
+      });
+      this.ctx.map?.setOnChinaCorridorRendererCapabilityChange((supported) => {
+        panel.setRendererSupportsOverlay(supported);
+      });
+      return panel;
+    });
+    this.lazyDefaultPanel(
+      'china-activity-nowcast',
+      () => import('@/components/ChinaActivityNowcastPanel'),
+      'ChinaActivityNowcastPanel',
+    );
 
     this.createNewsPanel('africa', 'panels.africa');
     this.createNewsPanel('latam', 'panels.latam');

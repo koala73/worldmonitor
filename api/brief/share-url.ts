@@ -37,7 +37,7 @@ import { readRawJsonFromUpstash, redisPipeline } from '../_upstash-json.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { validateBearerToken } from '../../server/auth-session';
-import { getEntitlements } from '../../server/_shared/entitlement-check';
+import { getBillingVerificationDenial, getEntitlements } from '../../server/_shared/entitlement-check';
 import {
   BriefShareUrlError,
   BRIEF_PUBLIC_POINTER_PREFIX,
@@ -94,6 +94,14 @@ export default async function handler(
 
   const ent = await getEntitlements(session.userId);
   if (!ent || ent.features.tier < 1) {
+    // #5600: an entitlement the backend could not VERIFY is not a confirmed
+    // free user. Answer the shared retryable contract (503 + Retry-After) for
+    // those states before falling back to the terminal upsell. Note this covers
+    // lookup failure and renewal verification only — the day-0 poisoned-marker
+    // cohort arrives as a plain tier-0 answer and still gets the 403; that
+    // window is bounded by NOT_APPLICABLE_VERIFICATION_TTL_SECONDS instead.
+    const billingDenial = getBillingVerificationDenial(ent, cors, 1);
+    if (billingDenial) return billingDenial;
     return jsonResponse(
       { error: 'pro_required', message: 'Sharing is available on the Pro plan.' },
       403,

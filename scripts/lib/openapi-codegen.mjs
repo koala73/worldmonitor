@@ -76,6 +76,184 @@ export function readPremiumRpcPaths() {
   return [...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
 }
 
+function readConstStringArray(src, name) {
+  const block = src.match(new RegExp(`${name}\\s*=\\s*\\[([\\s\\S]*?)\\]\\s*as const`));
+  return block ? [...block[1].matchAll(/'([^']+)'/g)].map((match) => match[1]) : [];
+}
+
+export function readDecisionSignalProvenanceContract() {
+  const src = readFileSync(resolve(root, 'shared/decision-signal-provenance-contract.ts'), 'utf8');
+  const familySrc = readFileSync(
+    resolve(root, 'shared/decision-signal-provenance-families.ts'),
+    'utf8',
+  );
+  const version = src.match(
+    /DECISION_SIGNAL_PROVENANCE_CONTRACT_VERSION\s*=\s*'([^']+)'\s+as const/,
+  )?.[1];
+  const dimensions = readConstStringArray(src, 'DECISION_SIGNAL_PROVENANCE_DIMENSIONS');
+  const claimStatuses = readConstStringArray(src, 'DECISION_SIGNAL_PROVENANCE_CLAIM_STATUSES');
+  const valueEnums = {
+    publisherTypes: readConstStringArray(src, 'DECISION_SIGNAL_PUBLISHER_TYPES'),
+    originalReferenceKinds: readConstStringArray(
+      src,
+      'DECISION_SIGNAL_ORIGINAL_REFERENCE_KINDS',
+    ),
+    translationStates: readConstStringArray(src, 'DECISION_SIGNAL_TRANSLATION_STATES'),
+    timeRoles: readConstStringArray(src, 'DECISION_SIGNAL_TIME_ROLES'),
+    timePrecisions: readConstStringArray(src, 'DECISION_SIGNAL_TIME_PRECISIONS'),
+    revisionStates: readConstStringArray(src, 'DECISION_SIGNAL_REVISION_STATES'),
+    supersessionStates: readConstStringArray(
+      src,
+      'DECISION_SIGNAL_SUPERSESSION_STATES',
+    ),
+    corroborationStates: readConstStringArray(
+      src,
+      'DECISION_SIGNAL_CORROBORATION_STATES',
+    ),
+    transportFreshnessStates: readConstStringArray(
+      src,
+      'DECISION_SIGNAL_TRANSPORT_FRESHNESS_STATES',
+    ),
+    contentFreshnessStates: readConstStringArray(
+      src,
+      'DECISION_SIGNAL_CONTENT_FRESHNESS_STATES',
+    ),
+  };
+  const familyPolicies = Object.fromEntries(
+    [...familySrc.matchAll(
+      /^\s{2}([a-z0-9_]+): declaration\(\n\s{4}'([^']+)',[\s\S]*?\n\s{4}\{\n([\s\S]*?)\n\s{4}\},\n\s{2}\),/gm,
+    )].map((match) => {
+      const key = match[1];
+      const id = match[2];
+      if (key !== id) {
+        throw new Error(`decision-signal provenance family key/id mismatch: ${key} != ${id}`);
+      }
+      const policies = Object.fromEntries(
+        [...match[3].matchAll(/^\s{6}([a-z_]+): '(required|unknown_allowed|not_applicable)',?$/gm)]
+          .map((policyMatch) => [policyMatch[1], policyMatch[2]]),
+      );
+      if (
+        dimensions.some((dimension) => !(dimension in policies))
+        || Object.keys(policies).length !== dimensions.length
+      ) {
+        throw new Error(`could not read all provenance policies for family ${id}`);
+      }
+      return [id, policies];
+    }),
+  );
+  if (
+    !version
+    || dimensions.length === 0
+    || claimStatuses.length === 0
+    || Object.keys(familyPolicies).length === 0
+    || Object.values(valueEnums).some((values) => values.length === 0)
+  ) {
+    throw new Error('could not read the decision-signal provenance contract');
+  }
+  return {
+    version,
+    dimensions,
+    claimStatuses,
+    familyPolicies,
+    ...valueEnums,
+  };
+}
+
+export function readChinaCorridorWireContract() {
+  const corridor = readFileSync(
+    resolve(root, 'shared/china-corridor-control-towers.ts'),
+    'utf8',
+  );
+  const logistics = readFileSync(
+    resolve(root, 'shared/china-logistics-corridors.ts'),
+    'utf8',
+  );
+  const provenance = readFileSync(
+    resolve(root, 'shared/decision-signal-provenance-contract.ts'),
+    'utf8',
+  );
+  const contract = {
+    availabilities: readConstStringArray(corridor, 'CHINA_CORRIDOR_AVAILABILITIES'),
+    signalAvailabilities: readConstStringArray(
+      corridor,
+      'CHINA_CORRIDOR_SIGNAL_AVAILABILITIES',
+    ),
+    timePrecisions: readConstStringArray(corridor, 'CHINA_CORRIDOR_TIME_PRECISIONS'),
+    publisherTypes: readConstStringArray(corridor, 'CHINA_CORRIDOR_PUBLISHER_TYPES'),
+    sourceScopes: readConstStringArray(corridor, 'CHINA_CORRIDOR_SOURCE_SCOPES'),
+    revisionStates: readConstStringArray(corridor, 'CHINA_CORRIDOR_REVISION_STATES'),
+    corridorIds: readConstStringArray(logistics, 'CHINA_LOGISTICS_CORRIDOR_IDS'),
+    signalFamilies: readConstStringArray(logistics, 'CHINA_CORRIDOR_SIGNAL_FAMILIES'),
+    nodeTypes: readConstStringArray(logistics, 'CHINA_CORRIDOR_NODE_TYPES'),
+    transportFreshnessStates: readConstStringArray(
+      provenance,
+      'DECISION_SIGNAL_TRANSPORT_FRESHNESS_STATES',
+    ),
+    contentFreshnessStates: readConstStringArray(
+      provenance,
+      'DECISION_SIGNAL_CONTENT_FRESHNESS_STATES',
+    ),
+  };
+  if (Object.values(contract).some((values) => values.length === 0)) {
+    throw new Error('could not read the China corridor wire contract');
+  }
+  return contract;
+}
+
+export function readChinaDecisionSignalWireContract() {
+  const src = readFileSync(
+    resolve(root, 'shared/china-decision-signals.ts'),
+    'utf8',
+  );
+  const auditSrc = readFileSync(
+    resolve(root, 'scripts/audit-china-decision-parity.mjs'),
+    'utf8',
+  );
+  const schemaVersion = Number(src.match(
+    /CHINA_DECISION_SIGNAL_SCHEMA_VERSION\s*=\s*(\d+)\s+as const/,
+  )?.[1]);
+  const groupIds = readConstStringArray(src, 'CHINA_DECISION_SIGNAL_GROUP_IDS');
+  const provenanceFamilyIds = [
+    ...auditSrc.matchAll(/provenanceFamily:\s*'([^']+)'/g),
+  ].map((match) => match[1]);
+  const stateBlock = src.match(
+    /export type ChinaDecisionSignalState\s*=\s*([\s\S]*?);/,
+  )?.[1];
+  const states = stateBlock
+    ? [...stateBlock.matchAll(/'([^']+)'/g)].map((match) => match[1])
+    : [];
+  const accessBlock = src.match(
+    /access:\s*\{([\s\S]*?)\};\s*\}/,
+  )?.[1];
+  const access = Object.fromEntries(
+    accessBlock
+      ? [...accessBlock.matchAll(/\b(anonymous|pro|operator):\s*'([^']+)'/g)]
+        .map((match) => [match[1], match[2]])
+      : [],
+  );
+  const maxItemsPerGroup = Number(src.match(/items\.length\s*>\s*(\d+)/)?.[1]);
+  if (
+    !Number.isInteger(schemaVersion)
+    || schemaVersion < 1
+    || groupIds.length === 0
+    || provenanceFamilyIds.length !== groupIds.length
+    || states.length === 0
+    || Object.keys(access).length !== 3
+    || !Number.isInteger(maxItemsPerGroup)
+    || maxItemsPerGroup < 1
+  ) {
+    throw new Error('could not read the China decision-signal wire contract');
+  }
+  return {
+    schemaVersion,
+    groupIds,
+    provenanceFamilyIds,
+    states,
+    access,
+    maxItemsPerGroup,
+  };
+}
+
 // ── Public 403 gates ─────────────────────────────────────────────────────────
 // Public RPCs (security: []) that nonetheless document a 403 the handler throws.
 // Lead capture opts out of API-key auth at the gateway, then fails closed in the

@@ -91,6 +91,18 @@ export const RESOLUTION_FEED_KEYS = new Set([
   // seeder shapes {wti,brent,production,inventory} into records carrying
   // {metric, value}; bets read via `...|value(metric==<name>)`.
   'energy:eia-petroleum:v1',
+  // Phase-2 bet engine (#5525). Market bets resolve against the DEDICATED
+  // settlement feed — the bootstrap feed never carries settled prices (its
+  // producer only publishes open markets and clips yesPrice to [10,90]); the
+  // resolver populates this key from venue adjudications by slug.
+  'prediction:markets-resolution:v1',
+  // FRED macro series (exact keys — this allowlist is an exact-match Set and
+  // seed-economy writes `economic:fred:v1:<SERIES>:0`). Read via
+  // `value(metric==<SERIES>)` with calendar-derived settlement graces.
+  'economic:fred:v1:FEDFUNDS:0',
+  'economic:fred:v1:UNRATE:0',
+  'economic:fred:v1:CPIAUCSL:0',
+  'economic:fred:v1:DGS10:0',
 ]);
 
 // ── Signal type -> hard family (D3) ──────────────────────────────────────

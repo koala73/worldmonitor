@@ -114,6 +114,16 @@ crons.daily(
   internal.followedCountries._dedupeCountryLocks,
 );
 
+// Daily self-heal for the singleton Dodo failure summary. This both restores a
+// missing deploy-time seed and removes duplicate global rows from a rare race
+// between deploy/manual/cron seed invocations. Operational reads tolerate the
+// duplicates until this idempotent pass retains the oldest authority row.
+crons.daily(
+  "dodo-webhook-failure-summary-seed",
+  { hourUTC: 3, minuteUTC: 4 },
+  internal.payments.webhookMutations._seedFailureSummary,
+);
+
 // Dunning + winback scan (#4932). Schedules the due day-3/day-7 payment-
 // failure reminders and the 30-day winback (at most one step per
 // subscription per tick; every send re-validates live state). 14:30 UTC =
@@ -135,6 +145,19 @@ crons.daily(
   "dodo-renewal-reconciliation",
   { hourUTC: 3, minuteUTC: 17 },
   internal.payments.billing.reconcileMissedDodoRenewals,
+  {},
+);
+
+// Business Pro seat grant reconciliation (#4634/#4635) — safety net for the
+// webhook-driven and scheduled grant-revocation paths in subscriptionHelpers.ts.
+// A lost webhook or a dropped scheduled function can leave a grant pointing
+// at a Business subscription that's no longer covering/no longer api_business;
+// this daily sweep independently re-derives every live grant's validity
+// rather than trusting a single revocation trigger to have fired.
+crons.daily(
+  "business-pro-grants-reconciliation",
+  { hourUTC: 3, minuteUTC: 20 },
+  internal.payments.subscriptionHelpers.reconcileBusinessProGrants,
   {},
 );
 

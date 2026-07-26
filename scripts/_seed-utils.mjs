@@ -385,6 +385,14 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
     }
   }
 
+  // Some seeds publish a cohort of source-health records that must succeed
+  // before the canonical archive becomes visible. Keep that work outside the
+  // Redis retry loop: the callback's own writes own their retry policy, and a
+  // failure must abort before the staging/canonical SET sequence begins.
+  if (options.beforePublish) {
+    await options.beforePublish(data);
+  }
+
   // When the seeder opts into the contract (options.envelopeMeta provided), wrap
   // the payload in the seed envelope before publishing so the data key and its
   // freshness metadata share one lifecycle. Legacy seeders pass no envelopeMeta
@@ -1553,7 +1561,10 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     // Keys written outside runSeed's normal extra-key phase that still need
     // last-good TTL protection when the primary fetch fails or is skipped.
     preserveKeys = [],
+    beforePublish,
     afterPublish,
+    afterPreservedValidationSkip,
+    afterFreshness,
     publishTransform,
     declareRecords,        // new — contract opt-in. When present, runSeed enters
                            // envelope-dual-write path: writes `{_seed, data}` to
@@ -1825,10 +1836,15 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       await exitAfterTelemetryFlush(0);
     }
 
-    const publishResult = await atomicPublish(canonicalKey, publishData, validateFn, ttlSeconds, { envelopeMeta });
+    const publishResult = await atomicPublish(canonicalKey, publishData, validateFn, ttlSeconds, {
+      envelopeMeta,
+      beforePublish: beforePublish
+        ? () => beforePublish(data, { canonicalKey, ttlSeconds, runId })
+        : undefined,
+    });
     if (publishResult.skipped) {
       const durationMs = Date.now() - startMs;
-      await extendExistingTtl(preservationKeys(), ttlSeconds || 600);
+      const preserved = await extendExistingTtl(preservationKeys(), ttlSeconds || 600);
       const strictFailure = Boolean(opts.emptyDataIsFailure);
       if (strictFailure) {
         // Strict-floor seeders (e.g. IMF-External, floor=180 countries) treat
@@ -1883,6 +1899,14 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
           await writeFreshnessMetadataSafely(domain, resource, 0, opts.sourceVersion, ttlSeconds);
           console.log(`  SKIPPED: validation failed (empty data) — seed-meta refreshed (recordCount=0), existing cache TTL extended`);
         }
+      }
+      if (!strictFailure && preserved && afterPreservedValidationSkip) {
+        await afterPreservedValidationSkip(data, {
+          canonicalKey,
+          ttlSeconds,
+          recordCount: contractRecordCount,
+          runId,
+        });
       }
       console.log(`\n=== Done (${Math.round(durationMs)}ms, no write) ===`);
       await releaseLock(`${domain}:${resource}`, runId);
@@ -2013,6 +2037,18 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       undefined,            // fetchedAtOverride — success path uses now
       successContentAge,
     );
+    if (afterFreshness) {
+      if (meta == null) {
+        throw new Error(`${domain}:${resource} freshness metadata write failed before completion`);
+      }
+      await afterFreshness(data, {
+        canonicalKey,
+        ttlSeconds,
+        recordCount,
+        runId,
+        freshnessMeta: meta,
+      });
+    }
 
     const durationMs = Date.now() - startMs;
     logSeedResult(domain, recordCount, durationMs, { payloadBytes, contractMode, state: contractState || 'LEGACY' });

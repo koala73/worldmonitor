@@ -52,6 +52,15 @@ const TIER_CDN_CACHE = {
   slow: 'public, s-maxage=7200, stale-while-revalidate=1800, stale-if-error=7200',
   fast: 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900',
 };
+const ON_DEMAND_CACHE_PROFILES = {
+  // Seeded every 15 minutes. Keep the caller-invariant public URL from
+  // outliving a complete seed interval; per-group stale/unavailable states
+  // remain part of the payload contract.
+  chinaDecisionSignals: {
+    browser: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',
+    cdn: 'public, s-maxage=900, stale-while-revalidate=120, stale-if-error=900',
+  },
+};
 
 export function isPublicWeatherBootstrapRequest(req) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return false;
@@ -354,7 +363,7 @@ function isPublicBootstrapKind(authKind) {
   return authKind === 'public-weather' || authKind === 'public-tier' || authKind === 'public-on-demand';
 }
 
-function successCacheHeaders(tier, authKind, cors) {
+function successCacheHeaders(tier, authKind, cors, onDemandKey = null) {
   if (!isPublicBootstrapKind(authKind)) {
     return {
       ...cors,
@@ -369,11 +378,18 @@ function successCacheHeaders(tier, authKind, cors) {
   // already rejected unauthorized origins at the handler entry (this is exactly
   // the contract getPublicCorsHeaders documents).
   const publicCors = getPublicCorsHeaders();
-  const cacheControl = (tier && TIER_CACHE[tier]) || 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900';
+  const onDemandProfile = authKind === 'public-on-demand'
+    ? ON_DEMAND_CACHE_PROFILES[onDemandKey]
+    : null;
+  const cacheControl = onDemandProfile?.browser
+    || (tier && TIER_CACHE[tier])
+    || 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900';
   return {
     ...publicCors,
     'Cache-Control': cacheControl,
-    'CDN-Cache-Control': (tier && TIER_CDN_CACHE[tier]) || TIER_CDN_CACHE.fast,
+    'CDN-Cache-Control': onDemandProfile?.cdn
+      || (tier && TIER_CDN_CACHE[tier])
+      || TIER_CDN_CACHE.fast,
   };
 }
 
@@ -464,11 +480,17 @@ export default async function handler(req, ctx) {
   // The browser runtime sends API requests with credentials so session and
   // entitlement cookies can ride along. Credentialed requests cannot consume
   // ACAO: * responses, even for public bootstrap data.
-  // On-demand keys carry slow-tier seed data, so they get the slow-tier CDN
-  // profile (s-maxage=7200) rather than the 600s default that a tier-less
-  // `?keys=` request would otherwise fall back to.
+  // Most on-demand keys carry slow-tier seed data. Keys with a faster publisher
+  // cadence can override that default through ON_DEMAND_CACHE_PROFILES.
   const cacheTier = tier ?? (auth.kind === 'public-on-demand' ? 'slow' : null);
-  const response = jsonResponse({ data, missing }, 200, successCacheHeaders(cacheTier, auth.kind, cors));
+  const onDemandKey = auth.kind === 'public-on-demand' && names.length === 1
+    ? names[0]
+    : null;
+  const response = jsonResponse(
+    { data, missing },
+    200,
+    successCacheHeaders(cacheTier, auth.kind, cors, onDemandKey),
+  );
   return measureR2Shadow
     ? finishBootstrapR2ShadowResponse(req, ctx, tier, response, redisDurationMs)
     : response;

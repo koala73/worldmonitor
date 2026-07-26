@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import schema from "../schema";
 import { api, internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
 import { PRODUCT_CATALOG } from "../config/productCatalog";
 import {
   PENDING_PAYMENT_BLOCK_WINDOW_MS,
@@ -54,6 +55,7 @@ async function seedSubscription(
     planKey: string;
     dodoProductId: string;
     status: "active" | "on_hold" | "cancelled" | "expired";
+    currentPeriodStart?: number;
     currentPeriodEnd: number;
     suffix: string;
     rawPayload?: unknown;
@@ -61,14 +63,14 @@ async function seedSubscription(
     renewalVerificationState?: "pending" | "failed" | "lapsed";
   },
 ) {
-  await t.run(async (ctx) => {
-    await ctx.db.insert("subscriptions", {
+  return await t.run(async (ctx) => {
+    return await ctx.db.insert("subscriptions", {
       userId: opts.userId ?? TEST_USER_ID,
       dodoSubscriptionId: `sub_billing_${opts.suffix}`,
       dodoProductId: opts.dodoProductId,
       planKey: opts.planKey,
       status: opts.status,
-      currentPeriodStart: NOW - DAY_MS,
+      currentPeriodStart: opts.currentPeriodStart ?? NOW - DAY_MS,
       currentPeriodEnd: opts.currentPeriodEnd,
       rawPayload: opts.rawPayload ?? {},
       updatedAt: NOW,
@@ -435,6 +437,183 @@ describe("claimSubscription anonymous ownership proof", () => {
         claimToken: wrongToken,
       }),
     ).rejects.toThrow(/ANON_CLAIM_PROOF_REQUIRED/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// U5 — Business Pro grants entitlement resolution (#4634/#4635)
+// ---------------------------------------------------------------------------
+
+describe("payments billing Business Pro grants entitlement resolution", () => {
+  async function seedBusinessSub(
+    t: ReturnType<typeof convexTest>,
+    opts: {
+      dodoSubscriptionId: string;
+      status: "active" | "on_hold" | "cancelled" | "expired";
+      currentPeriodEnd: number;
+      ownerUserId?: string;
+    },
+  ) {
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: opts.ownerUserId ?? "user_business_owner",
+        dodoSubscriptionId: opts.dodoSubscriptionId,
+        dodoProductId: PRODUCT_CATALOG.api_business.dodoProductId!,
+        planKey: "api_business",
+        status: opts.status,
+        currentPeriodStart: NOW - DAY_MS,
+        currentPeriodEnd: opts.currentPeriodEnd,
+        rawPayload: {},
+        updatedAt: NOW,
+      });
+    });
+  }
+
+  async function seedAcceptedGrant(
+    t: ReturnType<typeof convexTest>,
+    opts: {
+      businessSubscriptionId: string;
+      inviteeUserId: string;
+      inviteeEmail: string;
+      domain: string;
+    },
+  ) {
+    await t.run(async (ctx) => {
+      await ctx.db.insert("businessProGrants", {
+        businessSubscriptionId: opts.businessSubscriptionId,
+        ownerUserId: "user_business_owner",
+        inviteeEmail: opts.inviteeEmail,
+        domain: opts.domain,
+        status: "accepted",
+        inviteeUserId: opts.inviteeUserId,
+        createdAt: NOW,
+        acceptedAt: NOW,
+        expiresAt: NOW + 14 * DAY_MS,
+      });
+    });
+  }
+
+  test("invitee with no own subscription resolves to Pro via accepted grant", async () => {
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_grant_001";
+    await seedBusinessSub(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    await seedAcceptedGrant(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeUserId: TEST_USER_ID,
+      inviteeEmail: "teammate@acme.com",
+      domain: "acme.com",
+    });
+
+    await t.mutation(internal.payments.subscriptionHelpers.recomputeEntitlementForUser, {
+      userId: TEST_USER_ID,
+      eventTimestamp: NOW,
+    });
+
+    const entitlement = await t.run(async (ctx) =>
+      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", TEST_USER_ID)).first(),
+    );
+    expect(entitlement?.planKey).toBe("pro_monthly");
+    expect(entitlement?.validUntil).toBe(NOW + 30 * DAY_MS);
+    expect(entitlement?.features.tier).toBe(1);
+  });
+
+  test("invitee who also has own Pro subscription keeps own Pro", async () => {
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_grant_002";
+    await seedBusinessSub(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 10 * DAY_MS,
+    });
+    await seedAcceptedGrant(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeUserId: TEST_USER_ID,
+      inviteeEmail: "teammate@acme.com",
+      domain: "acme.com",
+    });
+    await seedSubscription(t, {
+      planKey: "pro_annual",
+      dodoProductId: PRODUCT_CATALOG.pro_annual.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 365 * DAY_MS,
+      suffix: "own_pro_annual",
+    });
+
+    await t.mutation(internal.payments.subscriptionHelpers.recomputeEntitlementForUser, {
+      userId: TEST_USER_ID,
+      eventTimestamp: NOW,
+    });
+
+    const entitlement = await t.run(async (ctx) =>
+      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", TEST_USER_ID)).first(),
+    );
+    expect(entitlement?.planKey).toBe("pro_annual");
+    expect(entitlement?.validUntil).toBe(NOW + 365 * DAY_MS);
+  });
+
+  test("invitee whose grant's Business subscription is lapsed resolves to free", async () => {
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_grant_003";
+    await seedBusinessSub(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "expired",
+      currentPeriodEnd: NOW - DAY_MS,
+    });
+    await seedAcceptedGrant(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeUserId: TEST_USER_ID,
+      inviteeEmail: "teammate@acme.com",
+      domain: "acme.com",
+    });
+
+    await t.mutation(internal.payments.subscriptionHelpers.recomputeEntitlementForUser, {
+      userId: TEST_USER_ID,
+      eventTimestamp: NOW,
+    });
+
+    const entitlement = await t.run(async (ctx) =>
+      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", TEST_USER_ID)).first(),
+    );
+    expect(entitlement?.planKey).toBe("free");
+    expect(entitlement?.validUntil).toBe(NOW);
+  });
+
+  test("invitee with higher-tier own subscription keeps own plan over grant", async () => {
+    const t = convexTest(schema, modules);
+    const businessSubId = "sub_business_grant_004";
+    await seedBusinessSub(t, {
+      dodoSubscriptionId: businessSubId,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+    });
+    await seedAcceptedGrant(t, {
+      businessSubscriptionId: businessSubId,
+      inviteeUserId: TEST_USER_ID,
+      inviteeEmail: "teammate@acme.com",
+      domain: "acme.com",
+    });
+    await seedSubscription(t, {
+      planKey: "api_starter",
+      dodoProductId: PRODUCT_CATALOG.api_starter.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "own_api_starter",
+    });
+
+    await t.mutation(internal.payments.subscriptionHelpers.recomputeEntitlementForUser, {
+      userId: TEST_USER_ID,
+      eventTimestamp: NOW,
+    });
+
+    const entitlement = await t.run(async (ctx) =>
+      ctx.db.query("entitlements").withIndex("by_userId", (q) => q.eq("userId", TEST_USER_ID)).first(),
+    );
+    expect(entitlement?.planKey).toBe("api_starter");
+    expect(entitlement?.features.tier).toBe(2);
   });
 });
 
@@ -4566,5 +4745,1550 @@ describe("getSubscriptionForUser renewal verification exposure (#4771)", () => {
     expect(result).not.toBeNull();
     expect(result!.status).toBe("expired");
     expect(result!.planKey).toBe("pro_annual");
+  });
+});
+
+describe("getSubscriptionForUser activation onboarding eligibility", () => {
+  const IDENTITY = { subject: TEST_USER_ID, tokenIdentifier: `clerk|${TEST_USER_ID}` };
+
+  test("surfaces an opaque key plus first-cycle unactivated eligibility", async () => {
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_identity",
+    });
+
+    const result = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+    expect(result).not.toBeNull();
+    expect(typeof result!.activationKey).toBe("string");
+    expect(result!.activationKey).not.toBe("sub_billing_activation_identity");
+    expect(result!.activationOnboardingEligible).toBe(true);
+    expect(result).not.toHaveProperty("subscriptionId");
+    expect(result).not.toHaveProperty("currentPeriodStart");
+  });
+
+  test("does not backfill onboarding after the first billing cycle", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_renewed",
+    });
+    // Advance the same preserved subscription row into its second period.
+    // `_creationTime` remains in cycle one while the provider period advances.
+    await t.run(async (ctx) => {
+      await ctx.db.patch(activationKey, {
+        currentPeriodStart: NOW + 30 * DAY_MS,
+        currentPeriodEnd: NOW + 60 * DAY_MS,
+        updatedAt: NOW + 30 * DAY_MS,
+      });
+    });
+
+    const result = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+
+    expect(result?.activationOnboardingEligible).toBe(false);
+  });
+
+  test.each([
+    ["active", NOW + 30 * DAY_MS, true],
+    ["on_hold", NOW + 30 * DAY_MS, true],
+    ["cancelled", NOW + 30 * DAY_MS, true],
+    ["expired", NOW + 30 * DAY_MS, false],
+  ] as const)(
+    "requires canonical subscription coverage for %s rows",
+    async (status, currentPeriodEnd, expectedEligible) => {
+      const t = convexTest(schema, modules);
+      const activationKey = await seedSubscription(t, {
+        planKey: "pro_monthly",
+        dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+        status,
+        currentPeriodEnd,
+        suffix: `activation_coverage_${status}`,
+      });
+
+      const result = await t
+        .withIdentity(IDENTITY)
+        .query(api.payments.billing.getSubscriptionForUser, {});
+      expect(result?.activationOnboardingEligible).toBe(expectedEligible);
+
+      const claim = await t.withIdentity(IDENTITY).mutation(
+        api.payments.billing.claimProActivationPresentation,
+        { activationKey, claimNonce: `coverage-${status}` },
+      );
+      expect(claim.status).toBe(expectedEligible ? "claimed" : "not_eligible");
+    },
+  );
+
+  test("does not backfill onboarding after a configured Pro delivery is active", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_delivery",
+    });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("notificationChannels", {
+        userId: TEST_USER_ID,
+        channelType: "email",
+        email: "activated@example.com",
+        verified: true,
+        linkedAt: NOW,
+      });
+      await ctx.db.insert("alertRules", {
+        userId: TEST_USER_ID,
+        variant: "full",
+        enabled: true,
+        eventTypes: [],
+        sensitivity: "critical",
+        channels: ["email"],
+        updatedAt: NOW,
+        digestMode: "daily",
+      });
+    });
+
+    const result = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+
+    expect(result?.activationOnboardingEligible).toBe(true);
+    const claim = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "delivery-device" },
+    );
+    expect(claim.status).toBe("not_eligible");
+  });
+
+  test("does not backfill onboarding after API setup", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_power",
+    });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("userApiKeys", {
+        userId: TEST_USER_ID,
+        name: "Activated key",
+        keyPrefix: "wm_test_",
+        keyHash: "hash",
+        createdAt: NOW,
+      });
+    });
+
+    const result = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+
+    expect(result?.activationOnboardingEligible).toBe(true);
+    const claim = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "api-device" },
+    );
+    expect(claim.status).toBe("not_eligible");
+  });
+
+  test("does not backfill onboarding after MCP setup", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_annual",
+      dodoProductId: PRODUCT_CATALOG.pro_annual.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 365 * DAY_MS,
+      suffix: "activation_mcp",
+    });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("mcpProTokens", {
+        userId: TEST_USER_ID,
+        name: "Activated MCP client",
+        createdAt: NOW,
+      });
+    });
+
+    const result = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+
+    expect(result?.activationOnboardingEligible).toBe(true);
+    const claim = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "mcp-device" },
+    );
+    expect(claim.status).toBe("not_eligible");
+  });
+
+  test("keeps inactive delivery and revoked credentials eligible", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_inactive_setup",
+    });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("notificationChannels", {
+        userId: TEST_USER_ID,
+        channelType: "email",
+        email: "unverified@example.com",
+        verified: false,
+        linkedAt: NOW,
+      });
+      await ctx.db.insert("alertRules", {
+        userId: TEST_USER_ID,
+        variant: "full",
+        enabled: true,
+        eventTypes: [],
+        sensitivity: "critical",
+        channels: ["email"],
+        updatedAt: NOW,
+      });
+      await ctx.db.insert("userApiKeys", {
+        userId: TEST_USER_ID,
+        name: "Revoked key",
+        keyPrefix: "wm_old_",
+        keyHash: "old-hash",
+        createdAt: NOW,
+        revokedAt: NOW,
+      });
+      await ctx.db.insert("mcpProTokens", {
+        userId: TEST_USER_ID,
+        name: "Revoked MCP client",
+        createdAt: NOW,
+        revokedAt: NOW,
+      });
+    });
+
+    const claim = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "inactive-device" },
+    );
+    expect(claim.status).toBe("claimed");
+  });
+
+  test("claims one markerless presentation across devices and confirms it", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_claim",
+    });
+
+    const first = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-a" },
+    );
+    expect(first.status).toBe("claimed");
+
+    const second = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-b" },
+    );
+    expect(second.status).toBe("already_claimed");
+
+    const whileClaimed = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+    expect(whileClaimed?.activationOnboardingEligible).toBe(true);
+
+    expect(await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.confirmProActivationPresentation,
+      { activationKey, claimNonce: "device-a" },
+    )).toBe(true);
+    const legacyPresentation = await t.run(async (ctx) => await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
+      .unique());
+    expect(legacyPresentation?.outcomeTrackingVersion).toBeUndefined();
+    const afterConfirmation = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+    expect(afterConfirmation?.activationOnboardingEligible).toBe(false);
+
+    const afterPresentation = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-b" },
+    );
+    expect(afterPresentation.status).toBe("already_presented");
+  });
+
+  test("confirming an already-confirmed presentation is idempotent and preserves the original timestamp", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_confirm_idempotent",
+    });
+
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-a" },
+    );
+
+    expect(await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.confirmProActivationPresentation,
+      { activationKey, claimNonce: "device-a", outcomeTrackingVersion: 1 },
+    )).toBe(true);
+    const firstPresentation = await t.run(async (ctx) => await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
+      .unique());
+    const firstPresentedAt = firstPresentation!.presentedAt;
+    expect(firstPresentedAt).toBeDefined();
+    expect(firstPresentation?.outcomeTrackingVersion).toBe(1);
+
+    // A retried confirm call (e.g. a client that timed out but the server
+    // call actually succeeded) must still return true and must not clobber
+    // the original presentedAt timestamp.
+    expect(await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.confirmProActivationPresentation,
+      { activationKey, claimNonce: "device-a", outcomeTrackingVersion: 1 },
+    )).toBe(true);
+    const secondPresentedAt = (await t.run(async (ctx) => await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
+      .unique()))!.presentedAt;
+    expect(secondPresentedAt).toBe(firstPresentedAt);
+  });
+
+  test("concurrent first claims serialize to one winner and one row", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_claim_concurrent",
+    });
+
+    const results = await Promise.all([
+      t.withIdentity(IDENTITY).mutation(
+        api.payments.billing.claimProActivationPresentation,
+        { activationKey, claimNonce: "device-a" },
+      ),
+      t.withIdentity(IDENTITY).mutation(
+        api.payments.billing.claimProActivationPresentation,
+        { activationKey, claimNonce: "device-b" },
+      ),
+    ]);
+    expect(results.map((result) => result.status).sort()).toEqual([
+      "already_claimed",
+      "claimed",
+    ]);
+    const rows = await t.run(async (ctx) => await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
+      .collect());
+    expect(rows).toHaveLength(1);
+  });
+
+  test("claim and confirmation enforce subscription ownership and nonce", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_claim_authz",
+    });
+    const otherIdentity = {
+      subject: "user_activation_other",
+      tokenIdentifier: "clerk|user_activation_other",
+    };
+    const otherClaim = await t.withIdentity(otherIdentity).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-other" },
+    );
+    expect(otherClaim.status).toBe("not_eligible");
+
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-owner" },
+    );
+    expect(await t.withIdentity(otherIdentity).mutation(
+      api.payments.billing.confirmProActivationPresentation,
+      { activationKey, claimNonce: "device-owner" },
+    )).toBe(false);
+    expect(await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.confirmProActivationPresentation,
+      { activationKey, claimNonce: "wrong-nonce" },
+    )).toBe(false);
+  });
+
+  test("a different device can reclaim an abandoned presentation lease", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_claim_recovery",
+    });
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "crashed-device" },
+    );
+    await t.run(async (ctx) => {
+      const presentation = await ctx.db
+        .query("proActivationPresentations")
+        .withIndex("by_subscription_cohort", (q) =>
+          q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+        )
+        .unique();
+      expect(presentation).not.toBeNull();
+      await ctx.db.patch(presentation!._id, { claimedAt: Date.now() - 31_000 });
+    });
+
+    const recovered = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "recovery-device" },
+    );
+    expect(recovered.status).toBe("claimed");
+  });
+
+  test("claim closes an API activation race after an eligible snapshot", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_claim_api_race",
+    });
+    const before = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+    expect(before?.activationOnboardingEligible).toBe(true);
+
+    await t.run(async (ctx) => {
+      await ctx.db.insert("userApiKeys", {
+        userId: TEST_USER_ID,
+        name: "Race winner",
+        keyPrefix: "wm_race_",
+        keyHash: "race-hash",
+        createdAt: NOW,
+      });
+    });
+
+    const claim = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-a" },
+    );
+    expect(claim.status).toBe("not_eligible");
+  });
+
+  test("admin subscription cleanup removes its activation presentation", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_cleanup",
+    });
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-a" },
+    );
+
+    await t.mutation(internal.payments.billing.deleteSubscriptionByDodoId, {
+      dodoSubscriptionId: "sub_billing_activation_cleanup",
+      reason: "test cleanup",
+    });
+
+    const rows = await t.run(async (ctx) => await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
+      .collect());
+    expect(rows).toEqual([]);
+  });
+
+  test("recordProActivationOutcome persists monotonic progress and freezes the finalized outcome", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_outcome",
+    });
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-a" },
+    );
+
+    const progressed = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: ["brief"],
+        skippedSteps: ["alerts"],
+        failedSteps: ["power"],
+        revision: 1,
+        finalized: false,
+      },
+    );
+    expect(progressed).toBe(true);
+
+    const progressRow = await t.run(async (ctx) => await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
+      .unique());
+    expect(progressRow?.presentedAt).toBeTypeOf("number");
+    expect(progressRow?.outcomeTrackingVersion).toBe(1);
+    expect(progressRow?.outcomeRevision).toBe(1);
+    expect(progressRow?.exitedAt).toBeUndefined();
+
+    expect(await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: [],
+        skippedSteps: ["brief", "alerts", "power"],
+        failedSteps: [],
+        revision: 1,
+        finalized: false,
+      },
+    )).toBe(false);
+
+    const afterStaleWrite = await t.run(async (ctx) => await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
+      .unique());
+    expect(afterStaleWrite?.confirmedSteps).toEqual(["brief"]);
+    expect(afterStaleWrite?.failedSteps).toEqual(["power"]);
+
+    const before = Date.now();
+    const finalized = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: ["brief", "power"],
+        skippedSteps: ["alerts"],
+        failedSteps: [],
+        revision: 2,
+        finalized: true,
+      },
+    );
+    expect(finalized).toBe(true);
+
+    const row = await t.run(async (ctx) => await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
+      .unique());
+    expect(row?.confirmedSteps).toEqual(["brief", "power"]);
+    expect(row?.skippedSteps).toEqual(["alerts"]);
+    expect(row?.failedSteps).toEqual([]);
+    expect(row?.outcomeRevision).toBe(2);
+    expect(row?.exitedAt).toBeGreaterThanOrEqual(before);
+
+    expect(await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: [],
+        skippedSteps: ["brief", "alerts", "power"],
+        failedSteps: [],
+        revision: 3,
+        finalized: true,
+      },
+    )).toBe(false);
+  });
+
+  test("recordProActivationOutcome no-ops on a claimNonce mismatch, another user's row, or a never-claimed subscription", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_outcome_guard",
+    });
+
+    // No presentation row exists yet -- never claimed.
+    expect(await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: [],
+        skippedSteps: [],
+        failedSteps: [],
+        revision: 1,
+        finalized: true,
+      },
+    )).toBe(false);
+
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-a" },
+    );
+
+    // Wrong nonce.
+    expect(await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "wrong-nonce",
+        confirmedSteps: ["brief"],
+        skippedSteps: [],
+        // Carried on the guard cases too: the ownership/nonce/exitedAt checks
+        // run before any bucket is read, and this pins that ordering against a
+        // refactor that hoists bucket handling above them.
+        blockedSteps: ["alerts"],
+        failedSteps: [],
+        revision: 1,
+        finalized: true,
+      },
+    )).toBe(false);
+
+    // Different user.
+    const otherIdentity = {
+      subject: "user_activation_outcome_other",
+      tokenIdentifier: "clerk|user_activation_outcome_other",
+    };
+    expect(await t.withIdentity(otherIdentity).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: ["brief"],
+        skippedSteps: [],
+        blockedSteps: ["alerts"],
+        failedSteps: [],
+        revision: 1,
+        finalized: true,
+      },
+    )).toBe(false);
+
+    const row = await t.run(async (ctx) => await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
+      .unique());
+    expect(row?.confirmedSteps).toBeUndefined();
+    expect(row?.blockedSteps).toBeUndefined();
+    expect(row?.exitedAt).toBeUndefined();
+  });
+
+  test("recordProActivationOutcome rejects invalid revisions, unknown steps, duplicates, and overlaps", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_outcome_validation",
+    });
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-a" },
+    );
+
+    await expect(t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: ["brief"],
+        skippedSteps: [],
+        failedSteps: [],
+        revision: 0,
+        finalized: false,
+      },
+    )).rejects.toThrow(/integer from 1 to 5/);
+
+    // The cap is 5, not 4, since #5617: a mid-flow permission denial flushes an
+    // extra progress snapshot before the user advances past the blocked step.
+    await expect(t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: ["brief"],
+        skippedSteps: [],
+        failedSteps: [],
+        revision: 6,
+        finalized: false,
+      },
+    )).rejects.toThrow(/integer from 1 to 5/);
+
+    // The new top of the range must still be ACCEPTED — a cap that rejects the
+    // real worst-case write sequence would silently drop the final snapshot.
+    expect(await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: ["brief"],
+        skippedSteps: [],
+        blockedSteps: ["alerts"],
+        failedSteps: [],
+        revision: 5,
+        finalized: false,
+      },
+    )).toBe(true);
+
+    await expect(t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: ["brief"],
+        skippedSteps: ["brief"],
+        failedSteps: [],
+        revision: 1,
+        finalized: false,
+      },
+    )).rejects.toThrow(/disjoint/);
+
+    await expect(t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: ["brief", "brief"],
+        skippedSteps: [],
+        failedSteps: [],
+        revision: 1,
+        finalized: false,
+      },
+    )).rejects.toThrow(/disjoint/);
+
+    await expect(t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: ["unknown"],
+        skippedSteps: [],
+        failedSteps: [],
+        revision: 1,
+        finalized: false,
+      } as never,
+    )).rejects.toThrow();
+  });
+
+  // #5617: a browser-denied step used to be byte-identical to a voluntary skip
+  // in this row, which made the push-denial cohort unsizeable after the fact.
+  // The fourth bucket is validated exactly like the other three.
+  test("recordProActivationOutcome persists blockedSteps as a distinct bucket", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_outcome_blocked",
+    });
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-a" },
+    );
+
+    expect(await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: ["brief"],
+        skippedSteps: ["power"],
+        blockedSteps: ["alerts"],
+        failedSteps: [],
+        revision: 1,
+        finalized: true,
+      },
+    )).toBe(true);
+
+    const row = await t.run(async (ctx) => await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
+      .unique());
+    expect(row?.blockedSteps).toEqual(["alerts"]);
+    // The whole point: the denial is queryable WITHOUT being conflated with a
+    // step the subscriber chose to walk past.
+    expect(row?.skippedSteps).toEqual(["power"]);
+    expect(row?.failedSteps).toEqual([]);
+    expect(row?.confirmedSteps).toEqual(["brief"]);
+  });
+
+  // The real client writes a progress snapshot as each step resolves and one
+  // final snapshot on exit, so a denial recorded mid-flow must survive every
+  // later revision. Each snapshot is a full replacement -- the risk is a later
+  // write silently dropping the blocked bucket recorded by an earlier one.
+  test("recordProActivationOutcome carries blockedSteps across progress revisions to the finalized row", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_outcome_blocked_revisions",
+    });
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-a" },
+    );
+
+    // Revision 1: the alerts step is refused by the browser mid-flow.
+    expect(await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: [],
+        skippedSteps: [],
+        blockedSteps: ["alerts"],
+        failedSteps: [],
+        revision: 1,
+        finalized: false,
+      },
+    )).toBe(true);
+
+    // Revision 2: the subscriber confirms the brief. The denial is still true.
+    expect(await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: ["brief"],
+        skippedSteps: [],
+        blockedSteps: ["alerts"],
+        failedSteps: [],
+        revision: 2,
+        finalized: false,
+      },
+    )).toBe(true);
+
+    // Revision 3: exit freezes the record.
+    expect(await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: ["brief"],
+        skippedSteps: ["power"],
+        blockedSteps: ["alerts"],
+        failedSteps: [],
+        revision: 3,
+        finalized: true,
+      },
+    )).toBe(true);
+
+    const row = await t.run(async (ctx) => await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
+      .unique());
+    expect(row?.blockedSteps).toEqual(["alerts"]);
+    expect(row?.confirmedSteps).toEqual(["brief"]);
+    expect(row?.skippedSteps).toEqual(["power"]);
+    expect(row?.outcomeRevision).toBe(3);
+    expect(row?.exitedAt).toBeTypeOf("number");
+
+    // A late/out-of-order progress write that never knew about the denial must
+    // not resurrect an empty blocked bucket over the frozen record.
+    expect(await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: [],
+        skippedSteps: ["brief", "alerts", "power"],
+        blockedSteps: [],
+        failedSteps: [],
+        revision: 2,
+        finalized: false,
+      },
+    )).toBe(false);
+
+    const afterLateWrite = await t.run(async (ctx) => await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
+      .unique());
+    expect(afterLateWrite?.blockedSteps).toEqual(["alerts"]);
+  });
+
+  // Pins the direction the handler comment claims: because every snapshot is a
+  // full replacement, a later write that OMITS blockedSteps clears the bucket
+  // rather than stranding it beside newer confirmed/skipped arrays. It clears
+  // it to ABSENT, not to [] -- a client that cannot report blocked steps must
+  // not be recorded as having observed none.
+  test("a later snapshot omitting blockedSteps clears the bucket rather than stranding it", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_outcome_blocked_replacement",
+    });
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-a" },
+    );
+
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: [],
+        skippedSteps: [],
+        blockedSteps: ["alerts"],
+        failedSteps: [],
+        revision: 1,
+        finalized: false,
+      },
+    );
+
+    expect(await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: ["brief"],
+        skippedSteps: ["alerts"],
+        failedSteps: [],
+        revision: 2,
+        finalized: true,
+      },
+    )).toBe(true);
+
+    const row = await t.run(async (ctx) => await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
+      .unique());
+    expect(row?.blockedSteps).toBeUndefined();
+    expect(row?.skippedSteps).toEqual(["alerts"]);
+  });
+
+  test("recordProActivationOutcome validates blockedSteps like every other bucket", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_outcome_blocked_validation",
+    });
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-a" },
+    );
+
+    // A step cannot be both refused by the browser and skipped by the user.
+    await expect(t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: [],
+        skippedSteps: ["alerts"],
+        blockedSteps: ["alerts"],
+        failedSteps: [],
+        revision: 1,
+        finalized: false,
+      },
+    )).rejects.toThrow(/disjoint/);
+
+    await expect(t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: [],
+        skippedSteps: [],
+        blockedSteps: ["unknown"],
+        failedSteps: [],
+        revision: 1,
+        finalized: false,
+      } as never,
+    )).rejects.toThrow();
+  });
+
+  // Mixed deploy: Convex ships ahead of the frontend, so the mutation must
+  // still accept a client that predates the bucket. Such a client classified
+  // any denial as a SKIP, so the row must leave blockedSteps absent -- writing
+  // [] would assert "we looked and found none", which is false for it.
+  test("recordProActivationOutcome accepts a legacy client that omits blockedSteps", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_outcome_legacy_client",
+    });
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "device-a" },
+    );
+
+    expect(await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "device-a",
+        confirmedSteps: ["brief"],
+        skippedSteps: ["alerts"],
+        failedSteps: [],
+        revision: 1,
+        finalized: true,
+      },
+    )).toBe(true);
+
+    const row = await t.run(async (ctx) => await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
+      .unique());
+    expect(row?.blockedSteps).toBeUndefined();
+    expect(row?.skippedSteps).toEqual(["alerts"]);
+  });
+
+  test("a disabled alert rule with a verified channel stays onboarding-eligible", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_disabled_rule",
+    });
+    await t.run(async (ctx) => {
+      await ctx.db.insert("notificationChannels", {
+        userId: TEST_USER_ID,
+        channelType: "email",
+        email: "disabled-rule@example.com",
+        verified: true,
+        linkedAt: NOW,
+      });
+      await ctx.db.insert("alertRules", {
+        userId: TEST_USER_ID,
+        variant: "full",
+        enabled: false,
+        eventTypes: [],
+        sensitivity: "critical",
+        channels: ["email"],
+        updatedAt: NOW,
+      });
+    });
+
+    const result = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+
+    expect(result?.activationOnboardingEligible).toBe(true);
+    const claim = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "disabled-rule-device" },
+    );
+    expect(claim.status).toBe("claimed");
+  });
+
+  test("a repeated claim with the same nonce within the TTL re-claims without a second row", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_claim_same_nonce",
+    });
+
+    const first = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "same-tab-nonce" },
+    );
+    expect(first.status).toBe("claimed");
+
+    // The client retries a stalled claim with the same per-tab nonce; within
+    // PRO_ACTIVATION_CLAIM_TTL_MS the retry must succeed and stay a single row.
+    const second = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "same-tab-nonce" },
+    );
+    expect(second.status).toBe("claimed");
+
+    const rows = await t.run(async (ctx) => await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
+      .collect());
+    expect(rows).toHaveLength(1);
+  });
+});
+
+describe("Pro activation — day-0 outcome rows (#5621)", () => {
+  const IDENTITY = { subject: TEST_USER_ID, tokenIdentifier: `clerk|${TEST_USER_ID}` };
+
+  async function seedProSubscription(t: ReturnType<typeof convexTest>, suffix: string) {
+    return await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix,
+    });
+  }
+
+  async function readCohort(
+    t: ReturnType<typeof convexTest>,
+    activationKey: Id<"subscriptions">,
+    cohort: "day0" | undefined,
+  ) {
+    return await t.run(async (ctx) => await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", cohort),
+      )
+      .collect());
+  }
+
+  test("a day-0 session is recorded as presented before it can report any step", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedProSubscription(t, "activation_day0_open");
+
+    const opened = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.openProActivationDay0Presentation,
+      { activationKey, claimNonce: "day0-tab", sessionStartedAt: NOW },
+    );
+    expect(opened.status).toBe("opened");
+
+    const [row] = await readCohort(t, activationKey, "day0");
+    // presentedAt without any outcome is the abandoned-immediately signal the
+    // #5600 forensics had to reconstruct from Umami sessions.
+    expect(row?.presentedAt).toEqual(expect.any(Number));
+    expect(row?.outcomeTrackingVersion).toBe(1);
+    expect(row?.confirmedSteps).toBeUndefined();
+    expect(row?.exitedAt).toBeUndefined();
+  });
+
+  test("a day-0 row does not block a later retro claim for the same subscription", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedProSubscription(t, "activation_day0_no_block");
+
+    // Day-0 ran and every step failed — the exact #5600 cohort.
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.openProActivationDay0Presentation,
+      { activationKey, claimNonce: "day0-tab", sessionStartedAt: NOW },
+    );
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "day0-tab",
+        cohort: "day0" as const,
+        confirmedSteps: [],
+        skippedSteps: [],
+        failedSteps: ["brief", "alerts"],
+        revision: 1,
+        finalized: true,
+      },
+    );
+
+    // The markerless backfill must still be offered and claimable: nothing
+    // actually activated, so this is the recovery path for that cohort.
+    const eligibility = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+    expect(eligibility?.activationOnboardingEligible).toBe(true);
+
+    const claim = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "retro-tab" },
+    );
+    expect(claim.status).toBe("claimed");
+
+    // ...and the retro claim landed on its own row, leaving day-0's frozen.
+    const [retro] = await readCohort(t, activationKey, undefined);
+    const [day0] = await readCohort(t, activationKey, "day0");
+    expect(retro?.claimNonce).toBe("retro-tab");
+    expect(retro?.confirmedSteps).toBeUndefined();
+    expect(day0?.failedSteps).toEqual(["brief", "alerts"]);
+    expect(day0?.exitedAt).toEqual(expect.any(Number));
+  });
+
+  test("outcome writes stay inside their own cohort's row", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedProSubscription(t, "activation_day0_isolation");
+
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.openProActivationDay0Presentation,
+      { activationKey, claimNonce: "day0-tab", sessionStartedAt: NOW },
+    );
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "retro-tab" },
+    );
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.confirmProActivationPresentation,
+      { activationKey, claimNonce: "retro-tab", outcomeTrackingVersion: 1 as const },
+    );
+
+    // Each nonce only writes its own cohort; presenting the other cohort's
+    // nonce is rejected rather than silently retargeted.
+    expect(
+      await t.withIdentity(IDENTITY).mutation(
+        api.payments.billing.recordProActivationOutcome,
+        {
+          activationKey,
+          claimNonce: "day0-tab",
+          confirmedSteps: ["brief"],
+          skippedSteps: [],
+          failedSteps: [],
+          revision: 1,
+          finalized: false,
+        },
+      ),
+    ).toBe(false);
+    expect(
+      await t.withIdentity(IDENTITY).mutation(
+        api.payments.billing.recordProActivationOutcome,
+        {
+          activationKey,
+          claimNonce: "retro-tab",
+          cohort: "day0" as const,
+          confirmedSteps: ["brief"],
+          skippedSteps: [],
+          failedSteps: [],
+          revision: 1,
+          finalized: false,
+        },
+      ),
+    ).toBe(false);
+
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "day0-tab",
+        cohort: "day0" as const,
+        confirmedSteps: ["brief"],
+        skippedSteps: [],
+        failedSteps: [],
+        revision: 1,
+        finalized: false,
+      },
+    );
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "retro-tab",
+        confirmedSteps: [],
+        skippedSteps: ["alerts"],
+        failedSteps: [],
+        revision: 1,
+        finalized: false,
+      },
+    );
+
+    const [day0] = await readCohort(t, activationKey, "day0");
+    const [retro] = await readCohort(t, activationKey, undefined);
+    expect(day0?.confirmedSteps).toEqual(["brief"]);
+    expect(day0?.skippedSteps).toEqual([]);
+    expect(retro?.confirmedSteps).toEqual([]);
+    expect(retro?.skippedSteps).toEqual(["alerts"]);
+  });
+
+  test("a re-opened day-0 session takes over an abandoned row but never a finalized one", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    const t = convexTest(schema, modules);
+    const activationKey = await seedProSubscription(t, "activation_day0_takeover");
+
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.openProActivationDay0Presentation,
+      { activationKey, claimNonce: "first-tab", sessionStartedAt: NOW },
+    );
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "first-tab",
+        cohort: "day0" as const,
+        confirmedSteps: [],
+        skippedSteps: ["brief"],
+        blockedSteps: ["alerts"],
+        failedSteps: ["power"],
+        revision: 1,
+        finalized: false,
+      },
+    );
+
+    // A later boot (storage write failed, so the marker survived) supersedes
+    // the abandoned session in place. It must reset the full outcome snapshot,
+    // not let the new session inherit the abandoned session's classifications.
+    vi.setSystemTime(NOW + 1_000);
+    const retaken = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.openProActivationDay0Presentation,
+      {
+        activationKey,
+        claimNonce: "second-tab",
+        sessionStartedAt: NOW + 1_000,
+      },
+    );
+    expect(retaken.status).toBe("opened");
+    const retakenRows = await readCohort(t, activationKey, "day0");
+    expect(retakenRows).toHaveLength(1);
+    const [retakenRow] = retakenRows;
+    expect(retakenRow?.claimNonce).toBe("second-tab");
+    expect(retakenRow?.claimedAt).toBe(NOW + 1_000);
+    expect(retakenRow?.presentedAt).toBe(NOW + 1_000);
+    expect(retakenRow?.confirmedSteps).toBeUndefined();
+    expect(retakenRow?.skippedSteps).toBeUndefined();
+    expect(retakenRow?.blockedSteps).toBeUndefined();
+    expect(retakenRow?.failedSteps).toBeUndefined();
+    expect(retakenRow?.outcomeRevision).toBeUndefined();
+    expect(retakenRow?.outcomeUpdatedAt).toBeUndefined();
+    expect(
+      await t.withIdentity(IDENTITY).mutation(
+        api.payments.billing.recordProActivationOutcome,
+        {
+          activationKey,
+          claimNonce: "second-tab",
+          cohort: "day0" as const,
+          confirmedSteps: ["brief"],
+          skippedSteps: [],
+          failedSteps: [],
+          revision: 1,
+          finalized: true,
+        },
+      ),
+    ).toBe(true);
+
+    // Once finalized the record is frozen: a chip-driven re-open reports the
+    // existing record instead of resetting the session that already exited.
+    const afterExit = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.openProActivationDay0Presentation,
+      {
+        activationKey,
+        claimNonce: "third-tab",
+        sessionStartedAt: NOW + 2_000,
+      },
+    );
+    expect(afterExit.status).toBe("already_recorded");
+    const [row] = await readCohort(t, activationKey, "day0");
+    expect(row?.claimNonce).toBe("second-tab");
+    expect(row?.confirmedSteps).toEqual(["brief"]);
+  });
+
+  test("an older or legacy delayed open cannot erase a newer session's progress", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedProSubscription(t, "activation_day0_stale_open");
+
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.openProActivationDay0Presentation,
+      {
+        activationKey,
+        claimNonce: "newer-tab",
+        sessionStartedAt: NOW + 2_000,
+      },
+    );
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "newer-tab",
+        cohort: "day0" as const,
+        confirmedSteps: ["brief"],
+        skippedSteps: [],
+        blockedSteps: ["alerts"],
+        failedSteps: [],
+        revision: 1,
+        finalized: false,
+      },
+    );
+
+    // Network delay delivers an older tab's open after the newer owner has
+    // already persisted progress. Arrival order must not reset ownership.
+    const older = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.openProActivationDay0Presentation,
+      {
+        activationKey,
+        claimNonce: "older-tab",
+        sessionStartedAt: NOW + 1_000,
+      },
+    );
+    expect(older.status).toBe("superseded");
+
+    // A cached #5626 client has no explicit order. Mixed-deploy order 0 keeps
+    // it below every ordered session even when its nonce wins the tie-break.
+    const legacy = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.openProActivationDay0Presentation,
+      { activationKey, claimNonce: "zzzz-legacy-tab" },
+    );
+    expect(legacy.status).toBe("superseded");
+
+    const [row] = await readCohort(t, activationKey, "day0");
+    expect(row?.claimNonce).toBe("newer-tab");
+    expect(row?.sessionStartedAt).toBe(NOW + 2_000);
+    expect(row?.confirmedSteps).toEqual(["brief"]);
+    expect(row?.blockedSteps).toEqual(["alerts"]);
+    expect(row?.outcomeRevision).toBe(1);
+  });
+
+  test("equal-time sessions converge on one deterministic nonce winner", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedProSubscription(t, "activation_day0_equal_time");
+
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.openProActivationDay0Presentation,
+      {
+        activationKey,
+        claimNonce: "equal-a",
+        sessionStartedAt: NOW,
+      },
+    );
+    const winner = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.openProActivationDay0Presentation,
+      {
+        activationKey,
+        claimNonce: "equal-b",
+        sessionStartedAt: NOW,
+      },
+    );
+    expect(winner.status).toBe("opened");
+
+    const loserReplay = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.openProActivationDay0Presentation,
+      {
+        activationKey,
+        claimNonce: "equal-a",
+        sessionStartedAt: NOW,
+      },
+    );
+    expect(loserReplay.status).toBe("superseded");
+
+    const [row] = await readCohort(t, activationKey, "day0");
+    expect(row?.claimNonce).toBe("equal-b");
+    expect(row?.sessionStartedAt).toBe(NOW);
+  });
+
+  test("legacy sessions cannot displace a different unfinished legacy owner", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedProSubscription(t, "activation_day0_legacy_owner");
+
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.openProActivationDay0Presentation,
+      { activationKey, claimNonce: "legacy-owner" },
+    );
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "legacy-owner",
+        cohort: "day0" as const,
+        confirmedSteps: ["brief"],
+        skippedSteps: [],
+        failedSteps: [],
+        revision: 1,
+        finalized: false,
+      },
+    );
+
+    const delayed = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.openProActivationDay0Presentation,
+      { activationKey, claimNonce: "zzzz-delayed-legacy" },
+    );
+    expect(delayed.status).toBe("superseded");
+
+    const [row] = await readCohort(t, activationKey, "day0");
+    expect(row?.claimNonce).toBe("legacy-owner");
+    expect(row?.confirmedSteps).toEqual(["brief"]);
+    expect(row?.outcomeRevision).toBe(1);
+  });
+
+  test("day-0 session order rejects invalid or implausibly future values", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedProSubscription(t, "activation_day0_order_validation");
+
+    for (const sessionStartedAt of [0, -1, 1.5, Date.now() + 6 * 60 * 1000]) {
+      await expect(t.withIdentity(IDENTITY).mutation(
+        api.payments.billing.openProActivationDay0Presentation,
+        {
+          activationKey,
+          claimNonce: `invalid-${sessionStartedAt}`,
+          sessionStartedAt,
+        },
+      )).rejects.toThrow(/positive safe integer within the allowed future clock skew/);
+    }
+    expect(await readCohort(t, activationKey, "day0")).toHaveLength(0);
+  });
+
+  test("day-0 records nothing for another user's or a non-Pro subscription", async () => {
+    const t = convexTest(schema, modules);
+    const foreignKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_day0_foreign",
+      userId: "user_someone_else",
+    });
+    const apiKey = await seedSubscription(t, {
+      planKey: "api_starter",
+      dodoProductId: PRODUCT_CATALOG.api_starter.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_day0_non_pro",
+    });
+
+    for (const activationKey of [foreignKey, apiKey]) {
+      const result = await t.withIdentity(IDENTITY).mutation(
+        api.payments.billing.openProActivationDay0Presentation,
+        { activationKey, claimNonce: "day0-tab", sessionStartedAt: NOW },
+      );
+      expect(result.status).toBe("not_eligible");
+      expect(await readCohort(t, activationKey, "day0")).toHaveLength(0);
+    }
   });
 });

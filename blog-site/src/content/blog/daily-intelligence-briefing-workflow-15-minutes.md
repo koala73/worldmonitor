@@ -64,7 +64,7 @@ End with one minute of output: two or three lines covering *what changed, what I
 Once the manual routine is habit, automate the parts that do not need your judgment:
 
 - **Pro digests** deliver scheduled briefings (daily, twice-daily, or weekly) to email, Slack, Discord, or Telegram, with quiet hours so the overnight alert respects your time zone.
-- **An MCP-connected agent** can run the entire sequence (world brief, CII movers, your countries, market prep) through the [41 tools on the MCP server](/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/) and post a written summary before you wake. The `market-open-prep` and `country-briefing` prompt templates are purpose-built for this.
+- **An MCP-connected agent** can run the entire sequence (world brief, CII movers, your countries, market prep) through the [42 tools on the MCP server](/blog/posts/worldmonitor-mcp-server-ai-agents-real-time-intelligence/) and post a written summary before you wake. The `market-open-prep` and `country-briefing` prompt templates are purpose-built for this.
 - **Developers** can compose their own brief from the [REST API](/blog/posts/build-on-worldmonitor-developer-api-open-source/): the same world brief, risk scores, and quotes, assembled your way.
 
 The goal of automation is not to skip the 15 minutes. It is to spend them on the two items that actually need a human instead of on collection.

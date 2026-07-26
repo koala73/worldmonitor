@@ -2,8 +2,8 @@
  * Tests for server handler correctness after PR #106 review fixes.
  *
  * These tests verify:
- * - Humanitarian summary handler rejects unmapped country codes
- * - Humanitarian summary returns ISO-2 country_code (not ISO-3)
+ * - Humanitarian summary aggregation rejects unmapped country codes
+ * - Humanitarian summary aggregation returns ISO-2 country_code (not ISO-3)
  * - Hardcoded political context is removed from LLM prompts
  * - Headline deduplication logic works correctly
  * - Cache key builder produces deterministic output
@@ -27,32 +27,27 @@ const readSrc = (relPath) => readFileSync(resolve(root, relPath), 'utf-8');
 // 1. Humanitarian summary: country fallback + ISO-2 contract
 // ========================================================================
 
-describe('getHumanitarianSummary handler', () => {
-  const src = readSrc('server/worldmonitor/conflict/v1/get-humanitarian-summary.ts');
+describe('aggregateHapiConflictEvents (scripts/seed-conflict-intel.mjs)', () => {
+  // #5554: server/worldmonitor/conflict/v1/get-humanitarian-summary.ts no longer
+  // fetches HAPI at all — it's a cache-only read of what this seeder writes (HDX's
+  // app_identifier rate limiting is per-identifier, so a per-request RPC fetch would
+  // stack uncoordinated traffic on top of the seeder's bulk refresh). The
+  // BLOCKING-1/BLOCKING-2/MEDIUM-1 guards below (originally PR #106, against the old
+  // RPC-handler implementation) moved here with the fetch/aggregation logic itself.
+  const src = readSrc('scripts/seed-conflict-intel.mjs');
 
-  it('returns undefined when country has no ISO3 mapping (BLOCKING-1)', () => {
-    // Must have early return when no ISO3 mapping (before HAPI fetch)
-    assert.match(src, /if\s*\(\s*!iso3\s*\)\s*return\s+undefined/,
-      'Should return undefined when no ISO3 mapping exists');
-    // The countryCode branch must NOT fall back to Object.values(byCountry)[0]
-    // Extract only the "if (countryCode)" block for picking entry and verify no fallback
-    const pickSection = src.slice(
-      src.indexOf('// Pick the right country entry'),
-      src.indexOf('if (!entry) return undefined;'),
-    );
-    // Inside the countryCode branch, should NOT have Object.values(byCountry)[0] as fallback
-    const countryCodeBranch = pickSection.slice(0, pickSection.indexOf('} else {'));
-    assert.doesNotMatch(countryCodeBranch, /Object\.values\(byCountry\)\[0\]/,
-      'countryCode branch should not fallback to first entry');
+  it('ignores rows whose ISO3 location has no ISO2 mapping (BLOCKING-1)', () => {
+    assert.match(src, /ISO3_TO_ISO2\.get\(/,
+      'bulk aggregation must translate HAPI ISO3 locations through the canonical map');
+    assert.match(src, /if\s*\(\s*!countryCode\s*\|\|\s*!targetCountries\.has\(countryCode\)\s*\)\s*continue/,
+      'unmapped and out-of-scope HAPI rows must be skipped');
+    assert.doesNotMatch(src, /Object\.values\(byCountry\)\[0\]/,
+      'bulk aggregation must not fall back to an arbitrary country\'s data');
   });
 
   it('returns ISO-2 country_code per proto contract (BLOCKING-2)', () => {
-    // Must NOT return ISO2_TO_ISO3[...] as countryCode
-    assert.doesNotMatch(src, /countryCode:\s*ISO2_TO_ISO3/,
-      'Should not return ISO-3 code in countryCode field');
-    // Should return the original countryCode (uppercased)
-    assert.match(src, /countryCode:\s*countryCode.*\.toUpperCase\(\)/,
-      'Should return original ISO-2 countryCode uppercased');
+    assert.match(src, /results\[countryCode\]\s*=\s*\{\s*summary:\s*\{\s*countryCode,/,
+      'Should publish the ISO-2 key produced by the reverse mapping');
   });
 
   it('uses renamed conflict-event proto fields (MEDIUM-1)', () => {
@@ -71,6 +66,17 @@ describe('getHumanitarianSummary handler', () => {
       'Should not reference old populationAffected field');
     assert.doesNotMatch(src, /peopleInNeed/,
       'Should not reference old peopleInNeed field');
+  });
+});
+
+describe('getHumanitarianSummary handler (cache-only)', () => {
+  const src = readSrc('server/worldmonitor/conflict/v1/get-humanitarian-summary.ts');
+
+  it('never calls HAPI directly — reads the seeder-written cache only', () => {
+    assert.doesNotMatch(src, /hapi\.humdata\.org/,
+      'The RPC handler must not fetch HAPI directly (#5554 — per-identifier rate limiting means every direct-fetch call site shares one throttle bucket)');
+    assert.match(src, /getCachedJson\(/,
+      'Should read via a plain cache lookup, not a fetch-on-miss helper');
   });
 });
 

@@ -22,8 +22,8 @@ WorldMonitor 在 Railway 上为每个用户生成情报简报，将每一期存�
 | 200 OK | `{ status: "ready", issueDate, issueSlot, dateLong, greeting, threadCount, magazineUrl }` |
 | 200 OK | `{ status: "composing", issueDate, issueSlot? }` — 当前/所请求时段尚无简报 |
 | 401 | 缺失/无效的 Clerk JWT |
-| 403 | `pro_required` |
-| 503 | `BRIEF_URL_SIGNING_SECRET` 未配置 |
+| 403 | `pro_required`（权益被确认为非 Pro）/ `subscription_lapsed`（已与计费提供方确认失效，并设置 `X-Billing-Verification`） |
+| 503 | `BRIEF_URL_SIGNING_SECRET` 未配置 —— **或**权益校验本身处于不确定状态：`entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed`，并携带 `Retry-After` 与 `X-Billing-Verification`。请依据 `code` 字段区分。参见[错误处理](/zh/usage-errors) |
 
 `issueDate` 仍是显示/日期字段（`YYYY-MM-DD`）。`issueSlot` 是冻结的版本键（`YYYY-MM-DD-HHMM`），用于 Redis 查找和 HMAC 绑定；它出现在 ready 响应中，以及显式请求时段的未命中响应中。`magazineUrl` 针对 `{userId, issueSlot}` 重新签名，因此仅对已认证的所有者有效。
 
@@ -42,9 +42,9 @@ WorldMonitor 在 Railway 上为每个用户生成情报简报，将每一期存�
 | 200 | `{ shareUrl, hash, issueSlot }` |
 | 400 | `invalid_slot_shape` / `invalid_payload` |
 | 401 | `UNAUTHENTICATED` |
-| 403 | `pro_required` |
+| 403 | `pro_required`（权益被确认为非 Pro）/ `subscription_lapsed`（已与计费提供方确认失效，并设置 `X-Billing-Verification`） |
 | 404 | `brief_not_found` — 阅读器无法分享不存在的内容 |
-| 503 | `service_unavailable` |
+| 503 | `service_unavailable` —— **或**权益校验本身处于不确定状态：`entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed`，并携带 `Retry-After` 与 `X-Billing-Verification`。请依据 `code` 字段区分。参见[错误处理](/zh/usage-errors) |
 
 ### `GET /api/brief/public/{hash}`
 

@@ -1,0 +1,292 @@
+[
+  {
+    "id": "missing-required-publisher",
+    "baseFixtureId": "official-numeric-revised",
+    "mutations": [
+      {
+        "operation": "delete",
+        "path": "claims.publisher"
+      }
+    ],
+    "expectedCodes": ["MISSING_CLAIM"]
+  },
+  {
+    "id": "missing-unknown-allowed-dimension",
+    "baseFixtureId": "operational-explicit-unknowns",
+    "mutations": [
+      {
+        "operation": "delete",
+        "path": "claims.original_language"
+      }
+    ],
+    "expectedCodes": ["MISSING_CLAIM"]
+  },
+  {
+    "id": "unknown-cannot-become-known-default",
+    "baseFixtureId": "operational-explicit-unknowns",
+    "mutations": [
+      {
+        "operation": "set",
+        "path": "claims.corroboration",
+        "value": {
+          "status": "known",
+          "value": {
+            "state": "independently_verified",
+            "sourceSignalIds": []
+          }
+        }
+      }
+    ],
+    "expectedCodes": ["INVALID_STATUS_VOCABULARY"]
+  },
+  {
+    "id": "not-applicable-cannot-carry-zero",
+    "baseFixtureId": "derived-comparison",
+    "mutations": [
+      {
+        "operation": "set",
+        "path": "claims.extraction_confidence",
+        "value": {
+          "status": "known",
+          "value": {
+            "score": 0,
+            "method": "default"
+          }
+        }
+      }
+    ],
+    "expectedCodes": ["CLAIM_STATUS_VIOLATES_DECLARATION"]
+  },
+  {
+    "id": "stale-source-registry-snapshot",
+    "baseFixtureId": "official-numeric-revised",
+    "mutations": [
+      {
+        "operation": "set",
+        "path": "claims.publisher.value.registryReference.sourceType",
+        "value": "wire"
+      }
+    ],
+    "expectedCodes": ["STALE_SOURCE_REFERENCE"]
+  },
+  {
+    "id": "undeclared-source-reference",
+    "baseFixtureId": "official-numeric-revised",
+    "mutations": [
+      {
+        "operation": "set",
+        "path": "claims.publisher.value.registryReference.sourceName",
+        "value": "Unregistered Favorable Source"
+      }
+    ],
+    "expectedCodes": ["UNKNOWN_SOURCE_REFERENCE"]
+  },
+  {
+    "id": "publication-time-substituted-as-observation",
+    "baseFixtureId": "typed-document-translated",
+    "mutations": [
+      {
+        "operation": "set",
+        "path": "claims.publication_time.value.role",
+        "value": "observation"
+      }
+    ],
+    "expectedCodes": ["TIMESTAMP_ROLE_MISMATCH"]
+  },
+  {
+    "id": "revised-vintage-without-sequence-advance",
+    "baseFixtureId": "official-numeric-revised",
+    "mutations": [
+      {
+        "operation": "set",
+        "path": "claims.revision.value.sequence",
+        "value": 1
+      }
+    ],
+    "expectedCodes": ["INVALID_LINEAGE"]
+  },
+  {
+    "id": "invalid-translation-vocabulary",
+    "baseFixtureId": "typed-document-translated",
+    "mutations": [
+      {
+        "operation": "set",
+        "path": "claims.translation.value.state",
+        "value": "verified"
+      }
+    ],
+    "expectedCodes": ["INVALID_STATUS_VOCABULARY"]
+  },
+  {
+    "id": "derived-output-masquerades-as-source",
+    "baseFixtureId": "derived-comparison",
+    "mutations": [
+      {
+        "operation": "set",
+        "path": "claims.publisher.value.registryReference",
+        "value": {
+          "sourceName": "Reuters",
+          "sourceType": "wire",
+          "propagandaRisk": "low"
+        }
+      }
+    ],
+    "expectedCodes": ["INVALID_SOURCE_REFERENCE"]
+  },
+  {
+    "id": "state-controlled-source-masquerades-as-wire",
+    "baseFixtureId": "typed-document-translated",
+    "mutations": [
+      {
+        "operation": "set",
+        "path": "claims.publisher.value.type",
+        "value": "wire_service"
+      }
+    ],
+    "expectedCodes": ["PUBLISHER_CLASS_MISMATCH"]
+  },
+  {
+    "id": "invalid-calendar-month",
+    "baseFixtureId": "official-numeric-revised",
+    "mutations": [
+      {
+        "operation": "set",
+        "path": "claims.observation_time.value.value",
+        "value": "2026-99"
+      }
+    ],
+    "expectedCodes": ["INVALID_VALUE"]
+  },
+  {
+    "id": "invalid-calendar-instant",
+    "baseFixtureId": "official-numeric-revised",
+    "mutations": [
+      {
+        "operation": "set",
+        "path": "claims.publication_time.value.value",
+        "value": "2026-02-31T02:00:00Z"
+      }
+    ],
+    "expectedCodes": ["INVALID_VALUE"]
+  },
+  {
+    "id": "wire-source-masquerades-as-independent",
+    "baseFixtureId": "operational-stale-transport",
+    "mutations": [
+      {
+        "operation": "set",
+        "path": "claims.publisher.value.type",
+        "value": "independent_media"
+      }
+    ],
+    "expectedCodes": ["PUBLISHER_CLASS_MISMATCH"]
+  },
+  {
+    "id": "current-signal-carries-replacement-link",
+    "baseFixtureId": "official-numeric-revised",
+    "mutations": [
+      {
+        "operation": "set",
+        "path": "claims.supersession.value.relatedSignalId",
+        "value": "signal:replacement"
+      }
+    ],
+    "expectedCodes": ["INVALID_LINEAGE"]
+  },
+  {
+    "id": "unknown-content-timestamp-carries-date",
+    "baseFixtureId": "operational-explicit-unknowns",
+    "mutations": [
+      {
+        "operation": "set",
+        "path": "claims.content_freshness.value.contentAsOf",
+        "value": "2026-07-24"
+      }
+    ],
+    "expectedCodes": ["INVALID_VALUE"]
+  },
+  {
+    "id": "unsupported-contract-version",
+    "baseFixtureId": "official-numeric-revised",
+    "mutations": [
+      {
+        "operation": "set",
+        "path": "contractVersion",
+        "value": "decision-signal-provenance/v2"
+      }
+    ],
+    "expectedCodes": ["UNSUPPORTED_CONTRACT_VERSION"]
+  },
+  {
+    "id": "unknown-family-id",
+    "baseFixtureId": "official-numeric-revised",
+    "mutations": [
+      {
+        "operation": "set",
+        "path": "familyId",
+        "value": "unregistered_family"
+      }
+    ],
+    "expectedCodes": ["UNKNOWN_FAMILY"]
+  },
+  {
+    "id": "known-claim-missing-value",
+    "baseFixtureId": "official-numeric-revised",
+    "mutations": [
+      {
+        "operation": "set",
+        "path": "claims.publisher",
+        "value": { "status": "known" }
+      }
+    ],
+    "expectedCodes": ["MISSING_CLAIM_VALUE"]
+  },
+  {
+    "id": "not-applicable-claim-carries-value",
+    "baseFixtureId": "official-numeric-revised",
+    "mutations": [
+      {
+        "operation": "set",
+        "path": "claims.translation.value",
+        "value": "en"
+      }
+    ],
+    "expectedCodes": ["INVALID_CLAIM"]
+  },
+  {
+    "id": "insecure-source-url",
+    "baseFixtureId": "official-numeric-revised",
+    "mutations": [
+      {
+        "operation": "set",
+        "path": "claims.source_url.value",
+        "value": "http://www.miit.gov.cn/example/industrial-output-2026-06"
+      }
+    ],
+    "expectedCodes": ["INVALID_VALUE"]
+  },
+  {
+    "id": "source-url-embeds-credentials",
+    "baseFixtureId": "official-numeric-revised",
+    "mutations": [
+      {
+        "operation": "set",
+        "path": "claims.source_url.value",
+        "value": "https://user:pass@www.miit.gov.cn/example/industrial-output-2026-06"
+      }
+    ],
+    "expectedCodes": ["INVALID_VALUE"]
+  },
+  {
+    "id": "malformed-content-hash",
+    "baseFixtureId": "official-numeric-revised",
+    "mutations": [
+      {
+        "operation": "set",
+        "path": "claims.original_reference.value.contentHash",
+        "value": "sha1:deadbeef"
+      }
+    ],
+    "expectedCodes": ["INVALID_VALUE"]
+  }
+]

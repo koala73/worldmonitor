@@ -490,6 +490,7 @@ export const INTEL_SOURCES: ServerFeed[] = [
   { name: 'Defense One', url: 'https://www.defenseone.com/rss/all/' },
   { name: 'The War Zone', url: 'https://www.twz.com/feed' },
   { name: 'Defense News', url: 'https://www.defensenews.com/arc/outboundfeeds/rss/?outputType=xml' },
+  { name: 'Breaking Defense', url: 'https://breakingdefense.com/feed/' },
   { name: 'Military Times', url: 'https://www.militarytimes.com/arc/outboundfeeds/rss/?outputType=xml' },
   { name: 'Task & Purpose', url: 'https://taskandpurpose.com/feed/' },
   { name: 'USNI News', url: 'https://news.google.com/rss/search?q=site:news.usni.org+when:3d&hl=en-US&gl=US&ceid=US:en' },

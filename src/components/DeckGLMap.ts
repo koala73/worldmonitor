@@ -128,6 +128,11 @@ import { trackGateHit } from '@/services/analytics';
 import { MapPopup, type PopupType } from './MapPopup';
 import { renderMilitaryVesselTooltipHtml } from './deckgl-tooltip-renderers';
 import type { GetChokepointStatusResponse } from '@/services/supply-chain';
+import type { ChinaCorridorControlTower } from '../../shared/china-corridor-control-towers';
+import {
+  projectChinaCorridorOverlay,
+  type ChinaCorridorOverlayProjection,
+} from './map/china-corridor-overlay';
 import {
   updateHotspotEscalation,
   getHotspotEscalation,
@@ -610,6 +615,7 @@ export class DeckGLMap {
   private highlightedMarkers: HighlightedMarker[] = [];
   private bypassArcData: BypassArcDatum[] = [];
   private scenarioState: ScenarioVisualState | null = null;
+  private selectedChinaCorridorOverlay: ChinaCorridorOverlayProjection | null = null;
   private affectedIso2Set: Set<string> = new Set();
   private positiveEvents: PositiveGeoEvent[] = [];
   private kindnessPoints: KindnessPoint[] = [];
@@ -1811,6 +1817,10 @@ export class DeckGLMap {
     } else {
       if (this.dayNightIntervalId) this.stopDayNightTimer();
       this.layerCache.delete('day-night-layer');
+    }
+
+    if (this.selectedChinaCorridorOverlay) {
+      layers.push(...this.createChinaCorridorSelectionLayers(this.selectedChinaCorridorOverlay));
     }
 
     // Undersea cables layer
@@ -6500,6 +6510,38 @@ export class DeckGLMap {
     });
   }
 
+  private createChinaCorridorSelectionLayers(
+    overlay: ChinaCorridorOverlayProjection,
+  ): [PolygonLayer, ScatterplotLayer] {
+    return [
+      new PolygonLayer({
+        id: `china-corridor-boundary-${overlay.id}`,
+        data: [{ polygon: overlay.polygon }],
+        getPolygon: (item: { polygon: [number, number][] }) => item.polygon,
+        filled: true,
+        stroked: true,
+        getFillColor: [40, 165, 220, 35],
+        getLineColor: [40, 190, 240, 230],
+        getLineWidth: 2,
+        lineWidthUnits: 'pixels' as const,
+        pickable: false,
+      }),
+      new ScatterplotLayer({
+        id: `china-corridor-nodes-${overlay.id}`,
+        data: overlay.nodes,
+        getPosition: (item: { position: [number, number] }) => item.position,
+        getFillColor: [255, 190, 70, 220],
+        getLineColor: [20, 30, 40, 230],
+        getRadius: 5,
+        radiusUnits: 'pixels' as const,
+        lineWidthUnits: 'pixels' as const,
+        getLineWidth: 1,
+        stroked: true,
+        pickable: false,
+      }),
+    ];
+  }
+
   // Data setters - all use render() for debouncing
   public setEarthquakes(earthquakes: Earthquake[]): void {
     this.earthquakes = earthquakes;
@@ -6812,6 +6854,19 @@ export class DeckGLMap {
     this.storedChokepointData = data;
     this.rebuildHighlightedMarkers();
     if (this.storedChokepointData) this.refreshTradeRouteStatus(this.storedChokepointData);
+  }
+
+  public setChinaCorridorSelection(corridor: ChinaCorridorControlTower | null): void {
+    const overlay = corridor ? projectChinaCorridorOverlay(corridor) : null;
+    this.selectedChinaCorridorOverlay = overlay;
+    this.render();
+    if (!overlay || !this.maplibreMap) return;
+    const [minLon, minLat, maxLon, maxLat] = overlay.bounds;
+    this.maplibreMap.fitBounds([[minLon, minLat], [maxLon, maxLat]], {
+      padding: 48,
+      duration: 700,
+      maxZoom: 6,
+    });
   }
 
   private refreshTradeRouteStatus(data: GetChokepointStatusResponse): void {

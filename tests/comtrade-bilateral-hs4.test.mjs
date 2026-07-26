@@ -284,10 +284,16 @@ describe('Comtrade bilateral HS4 lazy fallback (server/worldmonitor/supply-chain
 });
 
 describe('Comtrade reporter-code source-of-truth guard', () => {
+  function isRuntimeAuditFixture(name) {
+    return name === '_bundle-runner-test-run.mjs'
+      || /^_bundle-runner-test-run-[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}\.mjs$/u.test(name)
+      || name.startsWith('_bundle-fixture-');
+  }
+
   function collectRuntimeSources(dir) {
     const out = [];
     for (const name of readdirSync(dir)) {
-      if (name === '_bundle-runner-test-run.mjs' || name.startsWith('_bundle-fixture-')) continue;
+      if (isRuntimeAuditFixture(name)) continue;
       const filePath = join(dir, name);
       const stat = statSync(filePath);
       if (stat.isDirectory()) {
@@ -331,6 +337,15 @@ describe('Comtrade reporter-code source-of-truth guard', () => {
       checkedFiles.includes(join(root, 'scripts', '_bundle-runner.mjs')),
       'the committed bundle runner must remain covered by the runtime-source audit',
     );
+  });
+
+  it('ignores randomized bundle-runner fixtures created by concurrent tests', () => {
+    assert.equal(
+      isRuntimeAuditFixture('_bundle-runner-test-run-9cd5c29e-95ba-4eb9-839b-662729b61564.mjs'),
+      true,
+    );
+    assert.equal(isRuntimeAuditFixture('_bundle-runner-test-run-not-a-uuid.mjs'), false);
+    assert.equal(isRuntimeAuditFixture('_bundle-runner.mjs'), false);
   });
 
   it('does not reintroduce stale inline IN/TW-only reporter maps in runtime sources', () => {

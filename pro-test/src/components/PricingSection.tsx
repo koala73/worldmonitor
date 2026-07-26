@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'motion/react';
-import { Check, ArrowRight, Zap, Loader2 } from 'lucide-react';
+import { Check, ShieldCheck, ArrowRight, Zap, Loader2 } from 'lucide-react';
 import { startCheckout, subscribeCheckoutPhase, type CheckoutPhase } from '../services/checkout';
 import { t, tArray } from '../i18n';
 
@@ -13,6 +13,8 @@ interface Tier {
   localeKey?: string;
   description: string;
   features: string[];
+  /** License/commercial-use callouts, rendered green + distinct from features. */
+  highlightFeatures?: string[];
   highlighted?: boolean;
   price?: number | null;
   period?: string;
@@ -50,17 +52,27 @@ function usePricingData(): Tier[] {
  * value when the locale hasn't translated this tier yet. Generated tiers
  * carry a stable localeKey so display-name changes do not affect lookup.
  */
-function localizeTier(tier: Tier): { description: string; features: string[]; cta?: string } {
+function localizeTier(tier: Tier): {
+  description: string;
+  features: string[];
+  highlightFeatures?: string[];
+  cta?: string;
+} {
   const key = tier.localeKey ?? tier.name.toLowerCase();
   const description = t(`pricing.tiers.${key}.description`, { defaultValue: tier.description });
   const features = tArray(`pricing.tiers.${key}.features`) ?? tier.features;
+  // License callouts (e.g. "No commercial use") live on the catalog as
+  // highlightFeatures; fall back to the English catalog when the locale has
+  // not translated them yet — same pattern as features.
+  const highlightFeatures =
+    tArray(`pricing.tiers.${key}.highlightFeatures`) ?? tier.highlightFeatures;
   // Resolve CTA priority: locale-specific tier override → catalog tier.cta →
   // undefined (so getCtaProps applies the generic localized fallback). The
   // SENTINEL trick lets us detect "key missing" vs "key resolves to empty".
   const SENTINEL = '__no_locale_cta__';
   const localeCta = t(`pricing.tiers.${key}.cta`, { defaultValue: SENTINEL });
   const cta = localeCta !== SENTINEL ? localeCta : tier.cta;
-  return { description, features, cta };
+  return { description, features, highlightFeatures, cta };
 }
 
 function formatPrice(tier: Tier, billing: 'monthly' | 'annual'): { amount: string; suffix: string } {
@@ -321,6 +333,12 @@ export function PricingSection({ refCode }: { refCode?: string }) {
                         tier.highlighted ? 'text-wm-green' : 'text-wm-muted'
                       }`} aria-hidden="true" />
                       <span className="text-wm-muted">{feature}</span>
+                    </li>
+                  ))}
+                  {localized.highlightFeatures?.map((hf, hi) => (
+                    <li key={`hl-${hi}`} className="flex items-start gap-2 text-sm">
+                      <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5 text-wm-green" aria-hidden="true" />
+                      <span className="text-wm-green font-medium">{hf}</span>
                     </li>
                   ))}
                 </ul>

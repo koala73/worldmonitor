@@ -20,6 +20,7 @@ import "worldmonitor/supply_chain/v1/list_pipelines.proto";
 import "worldmonitor/supply_chain/v1/list_storage_facilities.proto";
 import "worldmonitor/supply_chain/v1/list_fuel_shortages.proto";
 import "worldmonitor/supply_chain/v1/list_energy_disruptions.proto";
+import "worldmonitor/supply_chain/v1/get_china_corridor_control_towers.proto";
 
 service SupplyChainService {
   option (sebuf.http.service_config) = {base_path: "/api/supply-chain/v1"};
@@ -146,5 +147,12 @@ service SupplyChainService {
   // full registry.
   rpc ListEnergyDisruptions(ListEnergyDisruptionsRequest) returns (ListEnergyDisruptionsResponse) {
     option (sebuf.http.config) = {path: "/list-energy-disruptions", method: HTTP_METHOD_GET};
+  }
+
+  // GetChinaCorridorControlTowers composes reviewed China logistics corridors
+  // from existing source caches. Conditions retain canonical provenance and
+  // explicit unavailable states; the response never emits a single risk score.
+  rpc GetChinaCorridorControlTowers(GetChinaCorridorControlTowersRequest) returns (GetChinaCorridorControlTowersResponse) {
+    option (sebuf.http.config) = {path: "/get-china-corridor-control-towers", method: HTTP_METHOD_GET};
   }
 }

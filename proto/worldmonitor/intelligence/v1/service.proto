@@ -24,6 +24,7 @@ import "worldmonitor/intelligence/v1/get_social_velocity.proto";
 import "worldmonitor/intelligence/v1/get_country_energy_profile.proto";
 import "worldmonitor/intelligence/v1/compute_energy_shock.proto";
 import "worldmonitor/intelligence/v1/get_country_port_activity.proto";
+import "worldmonitor/intelligence/v1/get_china_decision_signals.proto";
 import "worldmonitor/intelligence/v1/get_regional_snapshot.proto";
 import "worldmonitor/intelligence/v1/get_regime_history.proto";
 import "worldmonitor/intelligence/v1/get_regional_brief.proto";
@@ -181,6 +182,12 @@ service IntelligenceService {
   // GetCountryPortActivity returns port-level tanker traffic and trade volumes for a country.
   rpc GetCountryPortActivity(GetCountryPortActivityRequest) returns (CountryPortActivityResponse) {
     option (sebuf.http.config) = {path: "/get-country-port-activity", method: HTTP_METHOD_GET};
+  }
+
+  // GetChinaDecisionSignals composes the six launched China decision-parity
+  // domains into one bounded provenance-preserving public snapshot.
+  rpc GetChinaDecisionSignals(GetChinaDecisionSignalsRequest) returns (GetChinaDecisionSignalsResponse) {
+    option (sebuf.http.config) = {path: "/get-china-decision-signals", method: HTTP_METHOD_GET};
   }
 
   // GetRegionalSnapshot returns the latest persisted RegionalSnapshot for a

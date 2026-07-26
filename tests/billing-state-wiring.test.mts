@@ -117,6 +117,52 @@ describe('widget-agent structured billing denial (#4771)', () => {
   });
 });
 
+describe('Pro-gated endpoint billing denial ordering (#5600)', () => {
+  // The six endpoints below each received the same two-line insertion: call the
+  // shared getBillingVerificationDenial helper and return its Response before
+  // falling through to the terminal pro_required 403. Only notification-channels
+  // got handler-level tests (tests/notification-channels-billing-denial.test.mts),
+  // so for the rest a reorder or deletion of those two lines was silent — nothing
+  // but typecheck stood behind them.
+  //
+  // These are source-order assertions, the same shape as the widget-agent block
+  // above, and they carry that shape's known limit: they pin that the helper runs
+  // BEFORE the generic 403, not that the handler behaves correctly. The stronger
+  // move is a __set*DepsForTests seam per handler plus one parameterized table;
+  // notification-channels proves that is achievable. Until then this at least
+  // makes the ordering regression red instead of invisible.
+  const endpoints: Array<{ file: string; generic: string }> = [
+    { file: 'api/latest-brief.ts', generic: "error: 'pro_required'" },
+    { file: 'api/notify.ts', generic: "error: 'pro_required'" },
+    { file: 'api/brief/share-url.ts', generic: "error: 'pro_required'" },
+    { file: 'api/slack/oauth/start.ts', generic: "error: 'pro_required'" },
+    { file: 'api/discord/oauth/start.ts', generic: "error: 'pro_required'" },
+    { file: 'api/notification-channels.ts', generic: "error: 'pro_required'" },
+  ];
+
+  for (const { file, generic } of endpoints) {
+    it(`${file} evaluates the billing denial before the generic 403`, async () => {
+      const src = await read(file);
+      const denialIdx = src.indexOf('getBillingVerificationDenial(ent');
+      const genericIdx = src.indexOf(generic);
+      assert.ok(
+        denialIdx > 0,
+        `${file} must call getBillingVerificationDenial with the fetched entitlements`,
+      );
+      assert.ok(genericIdx > 0, `${file} should keep the generic pro_required 403 for true free users`);
+      assert.ok(
+        denialIdx < genericIdx,
+        `${file}: the billing-verification denial must run BEFORE the generic pro_required 403`,
+      );
+      assert.match(
+        src,
+        /if \(billingDenial\)/,
+        `${file} must return the denial Response when the helper produces one`,
+      );
+    });
+  }
+});
+
 describe('Panel CTA copy coverage (#4771)', () => {
   it('has a gated-CTA entry for every billing gate reason', async () => {
     const src = await read('src/components/Panel.ts');
