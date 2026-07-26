@@ -1276,7 +1276,7 @@ async function buildAiOverlay(
     messages: [
       {
         role: 'system',
-        content: 'You are a disciplined stock analyst. Weigh the fundamentals alongside the technicals and news — do not judge on price action alone. All margin, return, growth, and debtToEquity values are decimal ratios (0.25 means 25%; debtToEquity 1.5 means debt is 1.5x equity). totalCash, totalDebt, freeCashflow, and ebitda are denominated in fundamentals.financialCurrency. Treat missing values as unknown. Return strict JSON only with keys: summary, action, confidence, whyNow, technicalSummary, newsSummary, bullishFactors, riskFactors, newsSentiment. newsSentiment is a signed number from -1 to 1 scoring how bullish the supplied news headlines are for the stock (-1 very bearish, 0 neutral or no material news, 1 very bullish); use 0 when no headlines are provided. Keep it concise, factual, and free of disclaimers.',
+        content: 'You are a disciplined stock analyst. Weigh the fundamentals alongside the technicals and news — do not judge on price action alone. All margin, return, growth, and debtToEquity values are decimal ratios (0.25 means 25%; debtToEquity 1.5 means debt is 1.5x equity). totalCash, totalDebt, freeCashflow, and ebitda are denominated in fundamentals.financialCurrency. Treat missing values as unknown. Return strict JSON only with keys: summary, action, confidence, whyNow, technicalSummary, newsSummary, bullishFactors, riskFactors, newsSentiment. newsSentiment is a signed number from -1 to 1 scoring how bullish the supplied news headlines are for the stock (-1 very bearish, 0 neutral or no material news, 1 very bullish); base it only on the supplied headlines. Keep it concise, factual, and free of disclaimers.',
       },
       {
         role: 'user',
@@ -1471,7 +1471,9 @@ export function buildAnalysisResponse(params: {
       ...(earnings.consensusEps != null ? { consensusEps: earnings.consensusEps } : {}),
       ...(earnings.consensusRevenue != null ? { consensusRevenue: earnings.consensusRevenue } : {}),
     } : {}),
-    ...(overlay.newsSentiment != null ? { newsSentiment: overlay.newsSentiment } : {}),
+    // Only surface sentiment when headlines were actually analyzed — otherwise
+    // a "no news" run would report a misleading synthetic neutral (0) reading.
+    ...(overlay.newsSentiment != null && headlines.length > 0 ? { newsSentiment: overlay.newsSentiment } : {}),
   };
 }
 

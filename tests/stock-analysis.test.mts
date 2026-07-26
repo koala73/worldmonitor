@@ -498,13 +498,20 @@ describe('buildAnalysisResponse earnings surfacing', () => {
     assert.ok(!('consensusRevenue' in resp));
   });
 
-  it('surfaces a provided overlay news sentiment on the response', () => {
-    const resp = buildAnalysisResponse({ ...base, overlay: { ...overlay, newsSentiment: -0.3 } });
+  const headline = { title: 'Earnings beat', source: 'Reuters', publishedAt: '2026-07-25T00:00:00Z' };
+
+  it('surfaces a provided overlay news sentiment when headlines were analyzed', () => {
+    const resp = buildAnalysisResponse({ ...base, headlines: [headline], overlay: { ...overlay, newsSentiment: -0.3 } });
     assert.equal(resp.newsSentiment, -0.3);
   });
 
+  it('omits newsSentiment when no headlines were analyzed (avoids a synthetic neutral)', () => {
+    const resp = buildAnalysisResponse({ ...base, headlines: [], overlay: { ...overlay, newsSentiment: 0 } });
+    assert.ok(!('newsSentiment' in resp));
+  });
+
   it('omits newsSentiment when the overlay carries none (rules fallback)', () => {
-    const resp = buildAnalysisResponse({ ...base });
+    const resp = buildAnalysisResponse({ ...base, headlines: [headline] });
     assert.ok(!('newsSentiment' in resp));
   });
 });
