@@ -17,6 +17,12 @@ function formatChange(change: number): string {
   return `${change >= 0 ? '+' : ''}${rounded}%`;
 }
 
+function formatNewsSentiment(score: number): string {
+  const rounded = Number.isFinite(score) ? score.toFixed(2) : '0.00';
+  const label = score >= 0.15 ? 'Bullish' : score <= -0.15 ? 'Bearish' : 'Neutral';
+  return `${label} (${score >= 0 ? '+' : ''}${rounded})`;
+}
+
 function formatPrice(price: number, currency: string): string {
   if (!Number.isFinite(price)) return 'N/A';
   return `${currency === 'USD' ? '$' : ''}${price.toFixed(2)}${currency && currency !== 'USD' ? ` ${currency}` : ''}`;
@@ -248,6 +254,7 @@ export class StockAnalysisPanel extends Panel {
           <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">MA5 Bias</div><div style="margin-top:4px">${escapeHtml(formatChange(item.biasMa5))}</div></div>
           <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">RSI 12</div><div style="margin-top:4px">${escapeHtml(item.rsi12.toFixed(1))}</div></div>
           <div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">Volume</div><div style="margin-top:4px">${escapeHtml(item.volumeStatus)}</div></div>
+          ${item.newsSentiment != null ? `<div style="border:1px solid var(--border);padding:8px"><div style="color:var(--text-dim);text-transform:uppercase;letter-spacing:0.08em">News</div><div style="margin-top:4px">${escapeHtml(formatNewsSentiment(item.newsSentiment))}</div></div>` : ''}
         </div>
         ${this.renderDividendProfile(item)}
         <div style="font-size:12px;line-height:1.55;color:var(--text)"><strong style="font-size:11px;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-dim)">Action</strong><div style="margin-top:4px">${escapeHtml(item.action)}</div></div>

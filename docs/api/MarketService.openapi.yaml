@@ -3016,6 +3016,17 @@ components:
                 consensusRevenue:
                     type: number
                     format: double
+                newsSentiment:
+                    type: number
+                    format: double
+                    description: |-
+                        LLM-derived news sentiment for the analyzed symbol: a signed score in
+                         [-1, 1] (-1 very bearish, 0 neutral / no material news, +1 very bullish),
+                         emitted by the same overlay model that already reads the headlines — no
+                         extra call. Omitted when the analysis falls back to rules (no LLM overlay).
+                         (69 avoids a field collision with in-flight PRs: 61-62 blend fundamentals
+                         into the rating, 63-65 are the merged earnings join, 66-68 are the in-flight
+                         risk-analytics PR.)
         StockAnalysisHeadline:
             type: object
             properties:
