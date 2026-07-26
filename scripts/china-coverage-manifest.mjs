@@ -163,6 +163,12 @@ export const CHINA_COVERAGE_ENTRIES = Object.freeze([
       probe: {
         kind: 'object',
         requiredTruthyPaths: [['sources']],
+        // A fresh seed run can still retain a degraded source snapshot (for
+        // example an intermittent exchange fetch or a bounded page limit).
+        // Treat that as partial coverage directly instead of collapsing it
+        // into the misleading CONTENT_TIMESTAMP_MISSING reason.
+        statusPath: ['status'],
+        validStatusValues: ['healthy'],
         timestampPaths: [
           ['events', '*', 'publicationTime', 'value'],
           ['coverageThrough'],

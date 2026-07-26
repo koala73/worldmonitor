@@ -31,6 +31,7 @@ export const OFFICIAL_EXCHANGE_SOURCE_CONTRACTS = Object.freeze({
     metadataHost: 'query.sse.com.cn',
     documentHosts: CHINA_DISCLOSURE_DOCUMENT_HOSTS.SSE,
     maxRequestsPerRun: 4,
+    maxConcurrentRequests: 2,
     maxResponseBytes: 262_144,
     redirectPolicy: 'error',
     documentRetrieval: 'lazy-link-only',
@@ -50,10 +51,10 @@ export const OFFICIAL_EXCHANGE_SOURCE_CONTRACTS = Object.freeze({
     robots: Object.freeze({ status: 'not_published', httpStatus: 404 }),
     preflight: Object.freeze({
       environment: 'railway-production',
-      checkedOn: '2026-07-25',
+      checkedOn: '2026-07-26',
       reachable: true,
       metadataHttpStatus: 200,
-      observedResponseBytes: 63_610,
+      observedResponseBytes: 143_020,
       documentRedirects: 1,
     }),
   }),
@@ -136,7 +137,13 @@ const ISO_DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const MAX_EVENTS = 100;
 const MAX_REVISIONS_PER_EVENT = 20;
 const MAX_UNCLASSIFIED_REVISIONS = 100;
-const SSE_PAGE_SIZE = 25;
+// The exchange accepts 100 rows in the same bounded first-page request. The
+// reviewed 90-day basket currently reaches 50-55 rows for active issuers, so
+// the former 25-row page permanently reported PAGE_LIMIT_REACHED even though
+// the complete response remains comfortably below the 256 KiB byte ceiling
+// (largest live response observed 2026-07-26: 143,020 bytes).
+const SSE_PAGE_SIZE = 100;
+const SSE_REQUEST_TIMEOUT_MS = 30_000;
 const SZSE_PAGE_SIZE = 50;
 const LAUNCHED_SOURCE_FETCHERS = Object.freeze([
   Object.freeze(['sse', fetchSseAnnouncements]),
@@ -426,40 +433,55 @@ async function fetchSseAnnouncements(fetchFn, now) {
   let contentTruncated = false;
   let successfulRequests = 0;
   let requestCount = 0;
-  for (const issuer of issuers) {
-    if (requestCount >= contract.maxRequestsPerRun) throw sourceError('REQUEST_BUDGET_EXCEEDED');
-    const url = new URL(contract.metadataEndpoint);
-    const params = {
-      isPagination: 'true',
-      productId: issuer.securityCode,
-      securityType: '0101,120100,020100,020200,120200',
-      beginDate: begin,
-      endDate: end,
-      'pageHelp.pageSize': String(SSE_PAGE_SIZE),
-      'pageHelp.pageNo': '1',
-      'pageHelp.beginPage': '1',
-      'pageHelp.endPage': '1',
-    };
-    for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
-    requestCount += 1;
-    try {
-      const response = await fetchFn(url, {
-        headers: {
-          Accept: 'application/json',
-          Referer: 'https://www.sse.com.cn/',
-          'User-Agent': 'WorldMonitor/2.10 (+https://worldmonitor.app)',
-        },
-        redirect: contract.redirectPolicy,
-        signal: AbortSignal.timeout(20_000),
-      });
-      assertMetadataResponse(response, contract);
-      const payload = await readBoundedJsonResponse(response, contract.maxResponseBytes);
-      const normalized = normalizeSseAnnouncements(payload, { retrievedAt });
-      if (Number(payload.pageHelp.total) > SSE_PAGE_SIZE) contentTruncated = true;
-      announcements.push(...normalized);
+  for (let offset = 0; offset < issuers.length; offset += contract.maxConcurrentRequests) {
+    const batch = issuers.slice(offset, offset + contract.maxConcurrentRequests);
+    if (requestCount + batch.length > contract.maxRequestsPerRun) {
+      throw sourceError('REQUEST_BUDGET_EXCEEDED');
+    }
+    requestCount += batch.length;
+    const outcomes = await Promise.all(batch.map(async (issuer) => {
+      const url = new URL(contract.metadataEndpoint);
+      const params = {
+        isPagination: 'true',
+        productId: issuer.securityCode,
+        securityType: '0101,120100,020100,020200,120200',
+        beginDate: begin,
+        endDate: end,
+        'pageHelp.pageSize': String(SSE_PAGE_SIZE),
+        'pageHelp.pageNo': '1',
+        'pageHelp.beginPage': '1',
+        'pageHelp.endPage': '1',
+      };
+      for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+      try {
+        const response = await fetchFn(url, {
+          headers: {
+            Accept: 'application/json',
+            Referer: 'https://www.sse.com.cn/',
+            'User-Agent': 'WorldMonitor/2.10 (+https://worldmonitor.app)',
+          },
+          redirect: contract.redirectPolicy,
+          signal: AbortSignal.timeout(SSE_REQUEST_TIMEOUT_MS),
+        });
+        assertMetadataResponse(response, contract);
+        const payload = await readBoundedJsonResponse(response, contract.maxResponseBytes);
+        return {
+          announcements: normalizeSseAnnouncements(payload, { retrievedAt }),
+          contentTruncated: Number(payload.pageHelp.total) > SSE_PAGE_SIZE,
+        };
+      } catch (error) {
+        return { errorCode: errorCodeFor(error) };
+      }
+    }));
+
+    for (const outcome of outcomes) {
+      if (outcome.errorCode) {
+        errors.push(outcome.errorCode);
+        continue;
+      }
+      announcements.push(...outcome.announcements);
+      if (outcome.contentTruncated) contentTruncated = true;
       successfulRequests += 1;
-    } catch (error) {
-      errors.push(errorCodeFor(error));
     }
   }
   const transportOk = errors.length === 0;

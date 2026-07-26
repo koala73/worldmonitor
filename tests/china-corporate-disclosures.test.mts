@@ -662,10 +662,12 @@ describe('official China corporate disclosures (#5577)', () => {
     assert.equal(snapshot.status, 'healthy');
     const sseCalls = calls.filter((call) => call.url.includes('query.sse.com.cn'));
     assert.equal(sseCalls.length, 4);
+    assert.equal(OFFICIAL_EXCHANGE_SOURCE_CONTRACTS.sse.maxConcurrentRequests, 2);
     assert.equal(calls.filter((call) => call.url.includes('www.szse.cn')).length, 1);
     assert.equal(calls.every((call) => call.init?.redirect === 'error'), true);
     assert.equal(calls.some((call) => /\.pdf/i.test(call.url)), false);
     const firstSseUrl = new URL(sseCalls[0].url);
+    assert.equal(firstSseUrl.searchParams.get('pageHelp.pageSize'), '100');
     assert.equal(
       Date.parse(firstSseUrl.searchParams.get('endDate')!)
         - Date.parse(firstSseUrl.searchParams.get('beginDate')!),
@@ -712,8 +714,8 @@ describe('official China corporate disclosures (#5577)', () => {
         if (url.includes('query.sse.com.cn')) {
           const productId = new URL(url).searchParams.get('productId');
           const payload = productId === '600519'
-            ? { ...fixture('sse.json'), pageHelp: { pageNo: 1, pageSize: 25, total: 26 } }
-            : { pageHelp: { pageNo: 1, pageSize: 25, total: 0 }, result: [] };
+            ? { ...fixture('sse.json'), pageHelp: { pageNo: 1, pageSize: 100, total: 101 } }
+            : { pageHelp: { pageNo: 1, pageSize: 100, total: 0 }, result: [] };
           return new Response(JSON.stringify(payload), { status: 200 });
         }
         return new Response(JSON.stringify({ ...fixture('szse.json'), announceCount: 51 }), {
