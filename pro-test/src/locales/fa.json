@@ -41,8 +41,8 @@
           "Daily market briefs",
           "Military & geopolitical tracking",
           "Custom widget builder",
-          "10 custom dashboards (vs 3)",
-          "MCP + SDK access for Claude Desktop & other AI clients (50 calls/day)",
+          "۱۰ داشبورد سفارشی (در مقابل ۳)",
+          "دسترسی MCP + SDK برای Claude Desktop و سایر کلاینت‌های AI (۵۰ فراخوانی/روز)",
           "Priority data refresh"
         ],
         "highlightFeatures": [
@@ -64,7 +64,7 @@
         ]
       },
       "api": {
-        "description": "Programmatic access to intelligence data",
+        "description": "ایجاد ابزارهای داخلی بر روی داده‌های اطلاعات زنده",
         "features": [
           "REST API + official SDKs (npm, PyPI, RubyGems, Go)",
           "License / API key included",
@@ -74,21 +74,21 @@
           "Webhook notifications"
         ],
         "highlightFeatures": [
-          "بدون استفاده تجاری"
+          "مجوز تجاری — برای سازمان شما"
         ]
       },
       "apiBusiness": {
-        "description": "API پرحجم برای تیمها",
+        "description": "راه‌اندازی محصول خود بر روی داده‌های WorldMonitor",
         "features": [
           "همه چیز در API Starter",
-          "۳۰۰ درخواست در دقیقه",
-          "۱۰٬۰۰۰ درخواست در روز شامل",
-          "شامل ۵ مجوز Pro",
-          "ایمیل شرکتی یکسان الزامی است",
+          "حقوق توزیع مجدد — داده‌های ما را در محصولات خود تعبیه کنید",
+          "۳۰۰ درخواست/دقیقه",
+          "۱۰٬۰۰۰ درخواست/روز شامل",
+          "۵ مجوز Pro شامل",
           "پشتیبانی اولویتدار"
         ],
         "highlightFeatures": [
-          "استفاده تجاری مجاز است"
+          "مجوز تجاری — برای مشتریان شما"
         ]
       },
       "enterprise": {
@@ -311,7 +311,7 @@
     "dataLayers": "Expanded Data Layers",
     "dataLayersDesc": "Tens of thousands of infrastructure assets mapped globally. Satellite imagery integration with change detection and SAR.",
     "connectors": "100+ Data Connectors",
-    "connectorsDesc": "PostgreSQL, Snowflake, Splunk, Sentinel, Jira, Slack, Teams, and more. Export to PDF, CSV, JSON.",
+    "connectorsDesc": "PostgreSQL، Snowflake، Splunk، Sentinel، Jira، Slack، Teams و بیشتر. صادرات به PDF، CSV، JSON.",
     "whiteLabel": "White-Label, TV & Embeddable",
     "whiteLabelDesc": "Your brand, your domain, your desktop app. Android TV app for SOC walls and trading floors. Embeddable iframe panels.",
     "financial": "Financial Intelligence",
@@ -321,7 +321,7 @@
     "government": "Government & Institutions",
     "governmentDesc": "Air-gapped, AI agents, full situational awareness, MCP. No data leaves your network.",
     "risk": "Risk Consultancies",
-    "riskDesc": "Scenario simulation, investor personas, branded PDF/PowerPoint reports on demand.",
+    "riskDesc": "شبیه‌سازی سناریو، نقش‌های سرمایه‌گذار، گزارش‌های PDF با برند در تقاضا.",
     "soc": "SOCs & CERT",
     "socDesc": "Cyber threat layer, SIEM integration, BGP anomaly monitoring, ransomware feeds.",
     "talkToSales": "Talk to Sales",
@@ -388,13 +388,13 @@
   "faq": {
     "title": "Frequently Asked Questions",
     "q1": "Is World Monitor still free?",
-    "a1": "Yes. The core platform remains free. Pro adds equity research, macro analytics, and AI briefings. Pro Business adds the commercial license and data export. Enterprise adds team deployments and TV apps.",
+    "a1": "بله. پلتفرم اصلی رایگان است. Pro شامل تحقیقات سهام، تحلیل کلان و خلاصه‌های AI می‌شود. Pro Business مجوز تجاری و صادرات داده را اضافه می‌کند. Enterprise استقرار تیم و برنامه‌های TV را اضافه می‌کند.",
     "q2": "Why pay for Pro?",
     "a2": "Pro is for investors, analysts, and professionals who want stock monitoring, geopolitical analysis, economy analytics, and AI-powered daily briefings — all under one key.",
     "q3": "Who is Enterprise for?",
     "a3": "Enterprise is for teams that need shared use, APIs, integrations, deployment options, and direct support.",
     "q4": "Can I start with Pro and upgrade later?",
-    "a4": "Yes. Pro is for personal use. Pro Business ($69.99/mo) adds the commercial license, data export, 25 dashboards, and 250 MCP calls/day. API plans cover programmatic access, and Enterprise covers custom deployments. Upgrades run through the billing portal — the app guides you through the steps.",
+    "a4": "بله. Pro برای استفاده شخصی است. Pro Business (۶۹٫۹۹ دلار/ماه) مجوز تجاری، صادرات داده، ۲۵ داشبورد و ۲۵۰ فراخوانی MCP/روز را اضافه می‌کند. طرح‌های API دسترسی برنامه‌ای را پوشش می‌دهند و Enterprise استقرار سفارشی را پوشش می‌دهد. ارتقاها از طریق پورتال صورتحساب انجام می‌شود — برنامه شما را در مراحل راهنمایی می‌کند.",
     "q5": "Is this only for conflict monitoring?",
     "a5": "No. World Monitor is primarily a global intelligence platform covering stock markets, macroeconomics, geopolitical analysis, energy, infrastructure, and more. Conflict tracking is one of many capabilities — not the focus.",
     "q6": "Why keep the core platform free?",
@@ -645,7 +645,7 @@
       "eyebrow": "No catch",
       "title": "Fair questions.",
       "q1": "Is World Monitor really free?",
-      "a1": "Yes. The full live map — every layer, 500+ feeds, country briefs, breaking alerts, all six monitors — is free with no signup and no trial clock. Pro pays for the feeds: it adds WM Analyst, the scenario engine, Route Explorer, scheduled digests and MCP access for AI clients. No ads, and no account means there's no user data to sell.",
+      "a1": "بله. نقشه زنده کامل — هر لایه، ۵۰۰+ خوراک، خلاصه کشورها، هشدارهای فوری، هر شش مانیتور — با هیچ ثبت‌نام و هیچ ساعت آزمایشی رایگان است. Pro برای خوراک‌ها هزینه دارد: WM Analyst، موتور سناریو، Route Explorer، خلاصه‌های برنامه‌ریزی‌شده و دسترسی MCP برای کلاینت‌های AI را اضافه می‌کند. بدون تبلیغ و بدون حساب به این معنی است که هیچ داده کاربری برای فروش وجود ندارد.",
       "q2": "What is a global intelligence dashboard?",
       "a2": "A single live view that fuses signals most tools keep separate: conflict events, ship and aircraft tracking, shipping chokepoints, satellites, subsea cables, pipelines, markets and cyber threats — on one real-time world map, with AI scoring and briefs on top. World Monitor is a free one.",
       "q3": "Where does the data come from?",
