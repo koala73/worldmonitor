@@ -275,6 +275,34 @@ test('HAPI provider rejection persists a backoff and preserves last-known-good r
   assert.equal(backoff.retryAt, NOW + HAPI_FAILURE_BACKOFF_MS);
 });
 
+test('HAPI backoff records the fallback rejection status when the national sweep is empty', async () => {
+  let backoff;
+  let preserved = 0;
+  const result = await fetchAllHumanitarianSummaries({
+    now: () => NOW,
+    countryCodes: ['SD'],
+    pace: async () => {},
+    loadPreviousMarker: async () => null,
+    loadFailureBackoff: async () => null,
+    writeFailureBackoff: async (value) => { backoff = value; },
+    preserveLastGood: async () => { preserved += 1; },
+    fetchFn: async (url) => {
+      const parsed = new URL(url);
+      if (!parsed.searchParams.has('location_code')) {
+        // National admin-0 sweep covers nothing for this target country.
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      }
+      // Bounded per-country fallback is the one that gets throttled.
+      return new Response(JSON.stringify({ error: 'Blocked due to bot activity.' }), { status: 429 });
+    },
+  });
+
+  assert.equal(result, null);
+  assert.equal(preserved, 1);
+  assert.equal(backoff.status, 429, 'must record the fallback rejection status, not fall back to 0');
+  assert.equal(backoff.retryAt, NOW + HAPI_FAILURE_BACKOFF_MS);
+});
+
 test('HAPI ingestion skips network calls during success and failure backoff windows', async () => {
   let calls = 0;
   const fetchFn = async () => {

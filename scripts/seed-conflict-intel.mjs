@@ -701,7 +701,14 @@ export async function fetchAllHumanitarianSummaries({
     }
 
     if (Object.keys(results).length === 0) {
-      throw new Error('bulk response contained no target-country national summaries');
+      // Carry the fallback's status (e.g. 429/403) onto the thrown error so the
+      // outer catch's backoff write below records the real provider status
+      // instead of falling back to 0 when a fallback rejection is what left
+      // results empty.
+      throw Object.assign(
+        new Error('bulk response contained no target-country national summaries'),
+        fallbackFailure?.status != null ? { status: fallbackFailure.status } : {},
+      );
     }
 
     if (fallbackFailure) {
