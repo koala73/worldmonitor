@@ -22,6 +22,7 @@ import { premiumFetch } from '@/services/premium-fetch';
 import {
   canAttemptServerSummarization,
   configureSummarizeGate,
+  isServerSummarizationSuppressed,
   parseSummarizeRetryAfterMs,
   suppressServerSummarization,
   suppressServerSummarizationFor,
@@ -31,6 +32,8 @@ import {
   createSummarizationAttemptState,
   logChainOutcome,
   markSummarizationAttempt,
+  markSummarizationShortCircuited,
+  markSummarizationSuppressed,
   type AttemptedSummarizationProvider,
   type SummarizationAttemptState,
 } from './summarization-outcome';
@@ -128,10 +131,22 @@ async function tryApiProvider(
   if (!isFeatureAvailable(providerDef.featureId)) return null;
   // Entitlement/suppression gate BEFORE any network dispatch (#4913) — a
   // denial returns null so the chain falls through to browser T5.
-  if (!canAttemptServerSummarization()) return null;
-  markSummarizationAttempt(attemptState, providerDef.provider);
+  if (!canAttemptServerSummarization()) {
+    // #5605: a denial while the post-403/429 cooldown is armed is a server
+    // outage, not the designed anon decline. Recording which one it was keeps
+    // a paying user's broken entitlement visible at the chain's log site.
+    if (isServerSummarizationSuppressed()) markSummarizationSuppressed(attemptState);
+    return null;
+  }
+  let dispatched = false;
   try {
     const resp: SummarizeArticleResponse = await summaryBreaker.execute(async () => {
+      // #5605: the breaker returns its default WITHOUT running this callback
+      // while on cooldown, so marking HERE is what makes "attempted" mean
+      // "actually dispatched" — and makes gate-before-mark structural rather
+      // than a source-order convention a regex has to police.
+      dispatched = true;
+      markSummarizationAttempt(attemptState, providerDef.provider);
       try {
         return await premiumNewsClient.summarizeArticle({
           provider: providerDef.provider,
@@ -156,6 +171,14 @@ async function tryApiProvider(
         throw error;
       }
     }, emptySummaryFallback);
+
+    // Breaker open: `execute` returned its default without contacting anyone.
+    // Reporting that as a provider failure is the outage-shaped lie #5377 is
+    // about, so record it as its own cause instead (#5605).
+    if (!dispatched) {
+      markSummarizationShortCircuited(attemptState);
+      return null;
+    }
 
     // Provider skipped (credentials missing) or signaled fallback
     if (resp.status === 'SUMMARIZE_STATUS_SKIPPED' || resp.fallback) return null;
