@@ -180,7 +180,13 @@
         "partial": "一部利用可能",
         "stale": "古いデータ",
         "unavailable": "利用不可"
-      }
+      },
+      "macroSignals": "Macro Signals",
+      "crossStraitActivity": "Cross-Strait Activity",
+      "corporateDisclosures": "Corporate Disclosures",
+      "corridorConditions": "Corridor Conditions",
+      "activityNowcast": "Activity Nowcast",
+      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
     }
   },
   "header": {

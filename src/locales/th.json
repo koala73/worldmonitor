@@ -180,7 +180,13 @@
         "partial": "บางส่วน",
         "stale": "ล้าสมัย",
         "unavailable": "ไม่พร้อมใช้งาน"
-      }
+      },
+      "macroSignals": "Macro Signals",
+      "crossStraitActivity": "Cross-Strait Activity",
+      "corporateDisclosures": "Corporate Disclosures",
+      "corridorConditions": "Corridor Conditions",
+      "activityNowcast": "Activity Nowcast",
+      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
     }
   },
   "header": {

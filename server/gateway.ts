@@ -232,6 +232,10 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/research/v1/list-trending-repos': 'static',
   '/api/giving/v1/get-giving-summary': 'static',
   '/api/intelligence/v1/get-country-intel-brief': 'static',
+  // The canonical Railway projection refreshes every 15 minutes. Keep the
+  // public composition route's Vercel TTL (10m on fast) inside that cadence so
+  // the seeder cannot keep re-publishing a two-hour-old medium-tier response.
+  '/api/intelligence/v1/get-china-decision-signals': 'fast',
   '/api/intelligence/v1/get-gdelt-topic-timeline': 'medium',
   '/api/climate/v1/list-climate-anomalies': 'daily',
   '/api/climate/v1/list-climate-disasters': 'daily',
@@ -392,6 +396,7 @@ import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths';
 export const PUBLIC_NO_AUTH_RPC_PATHS = new Set<string>([
   '/api/conflict/v1/list-acled-events',
   '/api/natural/v1/list-natural-events',
+  '/api/intelligence/v1/get-china-decision-signals',
   '/api/resilience/v1/get-runtime-manifest',
   '/api/seismology/v1/list-earthquakes',
   '/api/unrest/v1/list-unrest-events',

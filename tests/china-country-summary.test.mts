@@ -35,7 +35,7 @@ const emptySignals = {
 const summary = {
   groups: [
     {
-      id: 'macro-policy',
+      id: 'macro',
       state: 'partial',
       signals: [{
         label: 'Consumer prices',
@@ -66,7 +66,7 @@ const summary = {
       unavailableReason: 'One official agency is temporarily unavailable.',
     },
     {
-      id: 'market-credit',
+      id: 'cross-strait-activity',
       state: 'available',
       signals: [{
         label: 'Shanghai Composite',
@@ -77,7 +77,7 @@ const summary = {
       }],
     },
     {
-      id: 'trade-supply',
+      id: 'corporate-disclosures',
       state: 'stale',
       signals: [{
         label: 'CCFI',
@@ -88,7 +88,7 @@ const summary = {
       }],
     },
     {
-      id: 'energy',
+      id: 'corridor-conditions',
       state: 'available',
       signals: [{
         label: 'Oil product supply',
@@ -99,7 +99,7 @@ const summary = {
       }],
     },
     {
-      id: 'availability',
+      id: 'activity-nowcast',
       state: 'available',
       signals: [{
         label: 'Aviation availability',
@@ -189,7 +189,7 @@ test('China summary is scoped to China, exposes per-group states, and safely att
     );
 
     const unavailableSummary = {
-      groups: summary.groups.map((group) => (group.id === 'energy'
+      groups: summary.groups.map((group) => (group.id === 'corridor-conditions'
         ? { id: group.id, state: 'unavailable', signals: [], unavailableReason: 'Energy data are currently unavailable.' }
         : group)),
     };

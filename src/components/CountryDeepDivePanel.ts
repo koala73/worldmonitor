@@ -50,6 +50,7 @@ import type {
   MultiSectorShockResponse,
   MultiSectorShock,
 } from '@/services/supply-chain';
+import { CHINA_DECISION_SIGNAL_GROUP_IDS } from '../../shared/china-decision-signals';
 import { fetchMultiSectorCostShock, HS2_SHORT_LABELS } from '@/services/supply-chain';
 import type { MapContainer } from './MapContainer';
 import { dedupeHeadlines } from './CountryDeepDivePanel-news-utils';
@@ -2619,14 +2620,13 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       card.classList.add('cdp-china-summary');
       card.setAttribute('aria-label', t('countryBrief.china.title'));
       this.chinaSummaryBody = body;
-      this.renderChinaCountrySummary([
-        'macro-policy',
-        'policy-enforcement',
-        'market-credit',
-        'trade-supply',
-        'energy',
-        'availability',
-      ].map((id) => ({ id: id as ChinaCountrySummaryGroupId, state: 'loading', signals: [] })));
+      this.renderChinaCountrySummary(
+        CHINA_DECISION_SIGNAL_GROUP_IDS.map((id) => ({
+          id,
+          state: 'loading',
+          signals: [],
+        })),
+      );
       chinaSummaryCard = card;
     }
     this.housingBody = housingBody;
@@ -3029,12 +3029,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
   private chinaSummaryGroupLabel(id: ChinaCountrySummaryGroupId): string {
     const keys: Record<ChinaCountrySummaryGroupId, string> = {
-      'macro-policy': 'macroPolicy',
+      macro: 'macroSignals',
       'policy-enforcement': 'policyEvents',
-      'market-credit': 'marketCredit',
-      'trade-supply': 'tradeSupply',
-      energy: 'energy',
-      availability: 'availability',
+      'cross-strait-activity': 'crossStraitActivity',
+      'corporate-disclosures': 'corporateDisclosures',
+      'corridor-conditions': 'corridorConditions',
+      'activity-nowcast': 'activityNowcast',
     };
     return t(`countryBrief.china.${keys[id]}`);
   }

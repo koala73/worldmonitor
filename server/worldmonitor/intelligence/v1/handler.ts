@@ -22,6 +22,7 @@ import { getSocialVelocity } from './get-social-velocity';
 import { getCountryEnergyProfile } from './get-country-energy-profile';
 import { computeEnergyShockScenario } from './compute-energy-shock';
 import { getCountryPortActivity } from './get-country-port-activity';
+import { getChinaDecisionSignals } from './get-china-decision-signals';
 import { getRegionalSnapshot } from './get-regional-snapshot';
 import { getRegimeHistory } from './get-regime-history';
 import { getRegionalBrief } from './get-regional-brief';
@@ -49,6 +50,7 @@ export const intelligenceHandler: IntelligenceServiceHandler = {
   getCountryEnergyProfile,
   computeEnergyShockScenario,
   getCountryPortActivity,
+  getChinaDecisionSignals,
   getRegionalSnapshot,
   getRegimeHistory,
   getRegionalBrief,

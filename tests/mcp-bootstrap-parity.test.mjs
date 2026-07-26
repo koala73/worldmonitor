@@ -48,8 +48,6 @@ const EXCLUDED_FROM_MCP = new Map([
     'ops surface: daily GDELT recall percentage + missed headlines for coverage monitoring; consumed by api/health.js + operators, not a queryable news slice (#4920).'],
   ['health:china-coverage:v1',
     'operational: bounded China coverage verdict and reason codes consumed by api/health.js and the read-only operator audit; source content remains available through its domain tools, so this summary is not a queryable MCP slice (#5271).'],
-  ['china:policy-events:v1',
-    'deferred: official policy and enforcement documents are consumed by the dedicated China dashboard surface in #5576; final cross-domain API/MCP composition belongs to #5580 and is explicitly outside this ingestion issue.'],
   ['economic:global-tenders:v1:source:sam',
     'ops surface: per-source procurement availability, freshness, and record count; consumed by api/health.js while tender content is exposed through the bounded MCP procurement tool, which proxies the paginated economic RPC.'],
   ['economic:global-tenders:v1:source:ted',
@@ -78,10 +76,6 @@ const EXCLUDED_FROM_MCP = new Map([
     'intermediate: per-country military-presence aggregate (own/foreign flights+vessels, AIS disruption buckets) read by server/worldmonitor/intelligence/v1/get-risk-scores.ts to feed the CII Security component; surfaces transitively via the country-risk score returned by get_country_risk. Not a queryable MCP slice on its own.'],
   ['weather:hko-warnings:v1',
     'intermediate: dedicated HKO warning snapshot is independently health-monitored, while its warning events are merged into natural:events:v1 and exposed by get_natural_disasters. The raw side snapshot has no separate MCP schema or filter surface.'],
-  ['military:cross-strait-activity:v1',
-    'deferred by ownership: #5575 exposes official publisher claims in the existing Force Posture panel but explicitly excludes final MCP/cross-domain composition; #5580 owns the later parity audit and any dedicated query surface.'],
-  ['military:cross-strait-activity-bootstrap:v1',
-    'compact UI projection of military:cross-strait-activity:v1 with the same ownership boundary: #5580 owns final MCP/cross-domain composition and any dedicated query surface.'],
 
   // ===========================================================================
   // Cascade-mirror fallbacks (live/stale/backup of a sibling already exposed)
@@ -214,8 +208,6 @@ const EXCLUDED_FROM_MCP = new Map([
     'deferred to a future labor-statistics tool (per plan U7 expected exclusions). BLS economic series already partially surfaced via FRED bundles in get_economic_data.'],
   ['economic:fx:yoy:v1',
     'deferred: derived FX year-over-year cache; underlying ECB FX rates already exposed via get_economic_data (economic:ecb-fx-rates:v1).'],
-  ['market:china:corporate-disclosures:v1',
-    'deferred: #5577 introduces the bounded official SSE/SZSE snapshot for the reviewed MarketPanel basket; final API/MCP composition is explicitly owned by a later issue, so this key must not be exposed through an unrelated existing tool.'],
   ['intelligence:satellites:tle:v1',
     'deferred to a future space-domain tool. Not in v1 brainstorm inventory.'],
   ['intelligence:pizzint:seed:v1',

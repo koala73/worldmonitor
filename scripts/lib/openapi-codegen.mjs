@@ -83,6 +83,10 @@ function readConstStringArray(src, name) {
 
 export function readDecisionSignalProvenanceContract() {
   const src = readFileSync(resolve(root, 'shared/decision-signal-provenance-contract.ts'), 'utf8');
+  const familySrc = readFileSync(
+    resolve(root, 'shared/decision-signal-provenance-families.ts'),
+    'utf8',
+  );
   const version = src.match(
     /DECISION_SIGNAL_PROVENANCE_CONTRACT_VERSION\s*=\s*'([^']+)'\s+as const/,
   )?.[1];
@@ -115,15 +119,44 @@ export function readDecisionSignalProvenanceContract() {
       'DECISION_SIGNAL_CONTENT_FRESHNESS_STATES',
     ),
   };
+  const familyPolicies = Object.fromEntries(
+    [...familySrc.matchAll(
+      /^\s{2}([a-z0-9_]+): declaration\(\n\s{4}'([^']+)',[\s\S]*?\n\s{4}\{\n([\s\S]*?)\n\s{4}\},\n\s{2}\),/gm,
+    )].map((match) => {
+      const key = match[1];
+      const id = match[2];
+      if (key !== id) {
+        throw new Error(`decision-signal provenance family key/id mismatch: ${key} != ${id}`);
+      }
+      const policies = Object.fromEntries(
+        [...match[3].matchAll(/^\s{6}([a-z_]+): '(required|unknown_allowed|not_applicable)',?$/gm)]
+          .map((policyMatch) => [policyMatch[1], policyMatch[2]]),
+      );
+      if (
+        dimensions.some((dimension) => !(dimension in policies))
+        || Object.keys(policies).length !== dimensions.length
+      ) {
+        throw new Error(`could not read all provenance policies for family ${id}`);
+      }
+      return [id, policies];
+    }),
+  );
   if (
     !version
     || dimensions.length === 0
     || claimStatuses.length === 0
+    || Object.keys(familyPolicies).length === 0
     || Object.values(valueEnums).some((values) => values.length === 0)
   ) {
     throw new Error('could not read the decision-signal provenance contract');
   }
-  return { version, dimensions, claimStatuses, ...valueEnums };
+  return {
+    version,
+    dimensions,
+    claimStatuses,
+    familyPolicies,
+    ...valueEnums,
+  };
 }
 
 export function readChinaCorridorWireContract() {
@@ -165,6 +198,60 @@ export function readChinaCorridorWireContract() {
     throw new Error('could not read the China corridor wire contract');
   }
   return contract;
+}
+
+export function readChinaDecisionSignalWireContract() {
+  const src = readFileSync(
+    resolve(root, 'shared/china-decision-signals.ts'),
+    'utf8',
+  );
+  const auditSrc = readFileSync(
+    resolve(root, 'scripts/audit-china-decision-parity.mjs'),
+    'utf8',
+  );
+  const schemaVersion = Number(src.match(
+    /CHINA_DECISION_SIGNAL_SCHEMA_VERSION\s*=\s*(\d+)\s+as const/,
+  )?.[1]);
+  const groupIds = readConstStringArray(src, 'CHINA_DECISION_SIGNAL_GROUP_IDS');
+  const provenanceFamilyIds = [
+    ...auditSrc.matchAll(/provenanceFamily:\s*'([^']+)'/g),
+  ].map((match) => match[1]);
+  const stateBlock = src.match(
+    /export type ChinaDecisionSignalState\s*=\s*([\s\S]*?);/,
+  )?.[1];
+  const states = stateBlock
+    ? [...stateBlock.matchAll(/'([^']+)'/g)].map((match) => match[1])
+    : [];
+  const accessBlock = src.match(
+    /access:\s*\{([\s\S]*?)\};\s*\}/,
+  )?.[1];
+  const access = Object.fromEntries(
+    accessBlock
+      ? [...accessBlock.matchAll(/\b(anonymous|pro|operator):\s*'([^']+)'/g)]
+        .map((match) => [match[1], match[2]])
+      : [],
+  );
+  const maxItemsPerGroup = Number(src.match(/items\.length\s*>\s*(\d+)/)?.[1]);
+  if (
+    !Number.isInteger(schemaVersion)
+    || schemaVersion < 1
+    || groupIds.length === 0
+    || provenanceFamilyIds.length !== groupIds.length
+    || states.length === 0
+    || Object.keys(access).length !== 3
+    || !Number.isInteger(maxItemsPerGroup)
+    || maxItemsPerGroup < 1
+  ) {
+    throw new Error('could not read the China decision-signal wire contract');
+  }
+  return {
+    schemaVersion,
+    groupIds,
+    provenanceFamilyIds,
+    states,
+    access,
+    maxItemsPerGroup,
+  };
 }
 
 // ── Public 403 gates ─────────────────────────────────────────────────────────

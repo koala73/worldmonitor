@@ -140,6 +140,16 @@ have both advanced. See Railway's official
 
 Each "bundle" is a single Railway cron service that replaces N individual services. The bundle script spawns each member seed sequentially via `child_process.execFile`, checking Redis `seed-meta:` timestamps to skip seeds that ran recently. Original seed scripts are unchanged.
 
+The `derived-signals` bundle also owns the final China composition
+(`seed-china-decision-signals.mjs`). It runs after the cross-Strait source lane,
+calls the public six-domain RPC, publishes
+`intelligence:china-decision-signals:v1`, and records
+`seed-meta:intelligence:china-decision-signals`. It does not add providers or
+recompute any source-domain method. Before rollout, run
+`node scripts/audit-china-decision-parity.mjs`; after staging is deployed, pass
+`--url <public-staging-api-base>`. The probe output is intentionally sanitized
+to reachability, latency, generation time, and group states.
+
 **Graceful fetch failures:** `runSeed` now treats transient upstream fetch
 failures as non-zero graceful failures after extending the last-good Redis TTL.
 This applies to bundled members and standalone `runSeed` cron seeders: Railway

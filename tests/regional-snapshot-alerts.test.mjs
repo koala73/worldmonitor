@@ -277,6 +277,18 @@ describe('buildDedupKey + simpleHash', () => {
     assert.match(key, /^wm:notif:scan-dedup:x:/);
   });
 
+  it('prefers an explicit stable dedupe lineage over mutable title text', () => {
+    const a = buildDedupKey({
+      eventType: 'x',
+      payload: { title: 'Original title', dedupe_key: 'stable-lineage' },
+    });
+    const b = buildDedupKey({
+      eventType: 'x',
+      payload: { title: 'Corrected title', dedupe_key: 'stable-lineage' },
+    });
+    assert.equal(a, b);
+  });
+
   it('simpleHash returns a non-empty base36 string for any input', () => {
     assert.ok(simpleHash('').length > 0);
     assert.ok(simpleHash('a').length > 0);
@@ -459,6 +471,23 @@ describe('publishEventWithOps — dedup rollback', () => {
     assert.equal(mem.deletedKeys.length, 0);
   });
 
+  it('uses a caller policy cooldown within the bounded publisher range', async () => {
+    const seenTtls = [];
+    const mem = memoryOps();
+    const ops = {
+      ...mem.ops,
+      setNx: async (key, ttl) => {
+        seenTtls.push(ttl);
+        return mem.ops.setNx(key, ttl);
+      },
+    };
+    await publishEventWithOps({
+      ...sampleEvent,
+      cooldownSeconds: 12 * 60 * 60,
+    }, ops);
+    assert.deepEqual(seenTtls, [12 * 60 * 60]);
+  });
+
   it('dedup hit: returns dedupHit=true without touching the queue', async () => {
     const mem = memoryOps();
     // Pre-populate the dedup key so the second call hits it.
@@ -528,7 +557,7 @@ describe('publishEventWithOps — dedup rollback', () => {
     assert.equal(mem.queue.length, 1);
   });
 
-  it('LPUSH failure + DEL failure still returns rolledBack=true (best-effort)', async () => {
+  it('LPUSH failure + DEL failure reports that rollback did not complete', async () => {
     const mem = memoryOps({ lpushFails: true });
     const opsWithBrokenDel = {
       setNx: mem.ops.setNx,
@@ -538,9 +567,25 @@ describe('publishEventWithOps — dedup rollback', () => {
       },
     };
     const outcome = await publishEventWithOps(sampleEvent, opsWithBrokenDel);
-    // We attempted rollback; del threw; still report rolledBack=true.
-    assert.equal(outcome.rolledBack, true);
+    assert.equal(outcome.rolledBack, false);
     assert.equal(outcome.enqueued, false);
+  });
+
+  it('atomic enqueue-once path never exposes a dedup key without its queue event', async () => {
+    const calls = [];
+    const outcome = await publishEventWithOps(sampleEvent, {
+      setNx: async () => { throw new Error('legacy path must not run'); },
+      lpush: async () => { throw new Error('legacy path must not run'); },
+      del: async () => { throw new Error('legacy path must not run'); },
+      enqueueOnce: async (...args) => {
+        calls.push(args);
+        return 'enqueued';
+      },
+    });
+    assert.deepEqual(outcome, { enqueued: true, dedupHit: false, rolledBack: false });
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0][2], 'wm:events:queue');
+    assert.match(calls[0][3], /"eventType":"regional_regime_shift"/);
   });
 
   it('swallows exceptions from setNx/lpush and returns a non-enqueued outcome', async () => {

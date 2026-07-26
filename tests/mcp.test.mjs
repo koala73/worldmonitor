@@ -433,12 +433,12 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
   // --- tools/list ---
 
-  it('tools/list returns 41 tools with name, description, inputSchema', async () => {
+  it('tools/list returns 42 tools with name, description, inputSchema', async () => {
     const res = await handler(makeReq('POST', { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }));
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.ok(Array.isArray(body.result?.tools), 'result.tools must be an array');
-    assert.equal(body.result.tools.length, 41, `Expected 41 tools, got ${body.result.tools.length}`);
+    assert.equal(body.result.tools.length, 42, `Expected 42 tools, got ${body.result.tools.length}`);
     for (const tool of body.result.tools) {
       assert.ok(tool.name, 'tool.name must be present');
       assert.ok(tool.description, 'tool.description must be present');

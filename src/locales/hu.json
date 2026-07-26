@@ -249,7 +249,13 @@
         "partial": "Részleges",
         "stale": "Elavult",
         "unavailable": "Nem elérhető"
-      }
+      },
+      "macroSignals": "Macro Signals",
+      "crossStraitActivity": "Cross-Strait Activity",
+      "corporateDisclosures": "Corporate Disclosures",
+      "corridorConditions": "Corridor Conditions",
+      "activityNowcast": "Activity Nowcast",
+      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
     }
   },
   "header": {
