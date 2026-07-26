@@ -176,6 +176,15 @@ export function analyzeActivationLift({
   const engaged = mature.filter((row) => (row.confirmedSteps?.length ?? 0) > 0);
   const presentedOnly = mature.filter((row) => (row.confirmedSteps?.length ?? 0) === 0);
 
+  // Push-denial cohort (#5617). `blockedSteps` records a step the BROWSER
+  // refused, which before #5617 was indistinguishable from a voluntary skip in
+  // this table — so this count could not be produced at all. Rows written by a
+  // client too old to report the bucket leave it ABSENT rather than empty, and
+  // those are excluded from the denominator instead of being counted as "no
+  // denial": they never looked, so they cannot testify either way.
+  const denialObservable = mature.filter((row) => Array.isArray(row.blockedSteps));
+  const denied = denialObservable.filter((row) => row.blockedSteps.length > 0);
+
   const base = {
     totalPresentations: presentations.length,
     shown: shown.length,
@@ -183,6 +192,18 @@ export function analyzeActivationLift({
     mature: mature.length,
     immature: immature.length,
     incompleteExits: incompleteExits.length,
+    // A denial is a permanent dead end — the browser never re-prompts once
+    // permission is `denied` — so this is the population for whom re-prompting
+    // is worth exactly nothing.
+    pushDenial: {
+      observable: denialObservable.length,
+      denied: denied.length,
+      unreportable: mature.length - denialObservable.length,
+      rate:
+        denialObservable.length > 0
+          ? Number((denied.length / denialObservable.length).toFixed(4))
+          : null,
+    },
     truncatedTables: [...truncatedTables],
   };
   if (truncatedTables.length > 0) {
@@ -249,6 +270,12 @@ export function formatActivationLiftReport(
     `  excluded as pre-instrumentation: ${analysis.uninstrumented}`,
     `  excluded as immature: ${analysis.immature}`,
     `  mature sessions without a recorded exit: ${analysis.incompleteExits} (included from durable presentation/progress state)`,
+    // Rendered even at 0 so the line's absence always means "old build", never
+    // "no denials" (#5617).
+    `Push denials: ${analysis.pushDenial.denied}/${analysis.pushDenial.observable}` +
+      `${analysis.pushDenial.rate === null ? "" : ` (${(analysis.pushDenial.rate * 100).toFixed(1)}%)`}` +
+      ` — permanent dead ends; re-prompting these accounts is worth nothing.` +
+      `${analysis.pushDenial.unreportable > 0 ? ` [${analysis.pushDenial.unreportable} row(s) predate the bucket and cannot testify]` : ""}`,
   ];
 
   if (analysis.verdict === "incomplete-export") {

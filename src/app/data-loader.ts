@@ -141,6 +141,7 @@ import type { UcdpEventsPanel } from '@/components/UcdpEventsPanel';
 import type { TradePolicyPanel } from '@/components/TradePolicyPanel';
 import type { SupplyChainPanel } from '@/components/SupplyChainPanel';
 import type { ChinaCorridorPanel } from '@/components/ChinaCorridorPanel';
+import type { ChinaActivityNowcastPanel } from '@/components/ChinaActivityNowcastPanel';
 import type { DiseaseOutbreaksPanel } from '@/components/DiseaseOutbreaksPanel';
 import type { SocialVelocityPanel } from '@/components/SocialVelocityPanel';
 import type { WsbTickerScannerPanel } from '@/components/WsbTickerScannerPanel';
@@ -798,6 +799,9 @@ export class DataLoaderManager implements AppModule {
         }
         if (shouldLoad('china-corridors')) {
           tasks.push({ name: 'chinaCorridors', task: () => runGuarded('chinaCorridors', () => this.loadChinaCorridors()) });
+        }
+        if (shouldLoad('china-activity-nowcast')) {
+          tasks.push({ name: 'chinaActivityNowcast', task: () => runGuarded('chinaActivityNowcast', () => this.loadChinaActivityNowcast()) });
         }
       }
     }
@@ -3543,6 +3547,17 @@ export class DataLoaderManager implements AppModule {
     } catch (error) {
       console.error('[App] China corridors failed:', error);
       panel.showError('China corridor data unavailable', () => void this.loadChinaCorridors());
+    }
+  }
+
+  async loadChinaActivityNowcast(): Promise<void> {
+    const panel = this.ctx.panels['china-activity-nowcast'] as ChinaActivityNowcastPanel | undefined;
+    if (!panel) return;
+    try {
+      await panel.fetchData();
+    } catch (error) {
+      console.error('[App] China activity nowcast failed:', error);
+      panel.showError('China activity comparison unavailable', () => void this.loadChinaActivityNowcast());
     }
   }
 

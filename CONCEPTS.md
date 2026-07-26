@@ -158,6 +158,18 @@ The pre-push check suite split into two tiers: a state-dependent tier (secret gu
 
 The tiered gate's attestation that an exact source tree already passed the full tree-dependent tier: a re-push of an identical tree (remote-side failure, message-only amend) skips those checks instead of re-paying minutes. The attestation is keyed by tree content, so any content change invalidates it, and it is not trusted when the branch diff cannot be resolved — a blind run must not rely on an attestation minted under a scoped plan it can no longer verify. State-dependent checks always run regardless of the cache. See also: Tiered Gate.
 
+### Third-Party Rot
+
+A gate failure caused by an external service being unavailable or answering unusably, rather than by anything in the tree under test — the failure class no author of the change can fix. The project's rule is that a gate must split its exit code by *who can fix the failure*: actor-fixable defects hard-fail, while third-party rot warns loudly and passes, with an opt-in flag to restore strict behaviour where a skipped check costs more than a blocked pipeline.
+
+Two properties keep the soft path from becoming a hole. It may fire only when the external system produced no usable result at all, never when a result exists and reports a genuine problem; and the skip must be annotated with what went unchecked, because an unannounced skip is indistinguishable from a pass. The diagnostic corollary matters as much as the split: because the tree is not the variable, the same commit can pass and then fail with nothing changed, so a gate that reddens repo-wide is diagnosed by comparing *when* each run executed rather than by reading pass/fail — sibling branches showing green are often stale runs from before the outage. See also: Tiered Gate, Vacuous Guard.
+
+### Baselined Advisory
+
+A dependency advisory the security gate knowingly tolerates, recorded per-lockfile with written reasoning for why the vulnerable path is unreachable in this project — typically a build-time-only or dev-tooling chain, or a fix that is semver-major on a parent the project cannot yet move.
+
+The baseline is an exemption list, not a suppression: an advisory outside it fails the gate for every branch at once, which is why a newly published advisory blocks the whole repository until someone either patches or baselines it. Each entry carries its justification inline so a later reader can re-evaluate rather than inherit a bare allowlist, and an entry that no longer matches any live advisory is surfaced as stale so the list does not accrete dead exemptions. See also: Third-Party Rot.
+
 ## Localization & First Paint
 
 ### English Shell

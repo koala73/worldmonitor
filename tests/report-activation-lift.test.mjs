@@ -247,3 +247,82 @@ test("feature indexing performs one pass and excludes inactive credentials", () 
   assert.equal(index.userApiKeys.has("user-1"), false);
   assert.equal(index.userApiKeys.size, 10_000);
 });
+
+// #5617. Before the blockedSteps bucket existed, a browser-refused step was
+// byte-identical to a voluntary skip in this table, so this report could not
+// produce a denial count at all. The cohort matters because a denial is a
+// permanent dead end -- the browser never re-prompts once permission is
+// `denied` -- so it is exactly the population for whom re-prompting is worth
+// nothing.
+test("push-denial cohort is sized, and clients that could not report are excluded from the rate", () => {
+  const observationStartedAt = NOW - WINDOW_MS;
+  const presentations = [
+    {
+      userId: "denied",
+      presentedAt: observationStartedAt,
+      outcomeTrackingVersion: 1,
+      confirmedSteps: ["brief"],
+      skippedSteps: [],
+      blockedSteps: ["alerts"],
+      exitedAt: observationStartedAt,
+    },
+    {
+      userId: "looked-and-found-none",
+      presentedAt: observationStartedAt,
+      outcomeTrackingVersion: 1,
+      confirmedSteps: ["brief"],
+      skippedSteps: ["alerts"],
+      blockedSteps: [],
+      exitedAt: observationStartedAt,
+    },
+    {
+      // Written by a client too old to know the bucket: absent, not empty.
+      // Counting it as "no denial" would silently deflate the rate.
+      userId: "could-not-report",
+      presentedAt: observationStartedAt,
+      outcomeTrackingVersion: 1,
+      confirmedSteps: [],
+      skippedSteps: ["alerts"],
+      exitedAt: observationStartedAt,
+    },
+  ];
+
+  const analysis = analyzeActivationLift({
+    presentations,
+    featureRowsByTable: emptyFeatureRows(),
+    reportNow: NOW,
+    windowMs: WINDOW_MS,
+    minGroupSize: 1,
+  });
+
+  assert.deepEqual(analysis.pushDenial, {
+    observable: 2,
+    denied: 1,
+    unreportable: 1,
+    rate: 0.5,
+  });
+});
+
+test("push-denial rate is null rather than 0 when no row can testify", () => {
+  const observationStartedAt = NOW - WINDOW_MS;
+  const analysis = analyzeActivationLift({
+    presentations: [
+      {
+        userId: "legacy-only",
+        presentedAt: observationStartedAt,
+        outcomeTrackingVersion: 1,
+        confirmedSteps: [],
+        exitedAt: observationStartedAt,
+      },
+    ],
+    featureRowsByTable: emptyFeatureRows(),
+    reportNow: NOW,
+    windowMs: WINDOW_MS,
+    minGroupSize: 1,
+  });
+
+  // A 0% denial rate and "nobody could tell us" are different claims.
+  assert.equal(analysis.pushDenial.rate, null);
+  assert.equal(analysis.pushDenial.observable, 0);
+  assert.equal(analysis.pushDenial.unreportable, 1);
+});

@@ -246,7 +246,7 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   ["POST /api/economic/v1/get-fred-series-batch",
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
 
-  // === deferred-to-future-tool (54) ===
+  // === deferred-to-future-tool (56) ===
   ["GET /api/consumer-prices/v1/get-consumer-price-basket-series",
     "deferred-to-future-tool: handler reads parameterized consumer-prices:basket-series:<market>:<basket>:<range> key NOT in get_consumer_prices._coverageKeys — bundle into a future expanded_consumer_prices tool that exposes the basket-series time series"],
   // NOTE: risk-scores was previously mis-classified as deferred-to-future-tool.
@@ -272,6 +272,8 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "deferred-to-future-tool: pure-read but no MCP tool exposes economic:bis:eer:v1 yet — bundle into a future expanded-domain tool"],
   ["GET /api/economic/v1/get-bis-policy-rates",
     "deferred-to-future-tool: pure-read but no MCP tool exposes economic:bis:policy:v1 yet — bundle into a future expanded-domain tool"],
+  ["GET /api/economic/v1/get-china-activity-nowcast",
+    "deferred-to-future-tool: deterministic China activity evidence ledger is public through EconomicService, while final MCP tool composition is explicitly outside issue #5579 — bundle into a future expanded economic comparison tool"],
   ["GET /api/economic/v1/get-crude-inventories",
     "deferred-to-future-tool: pure-read but no MCP tool exposes economic:crude-inventories:v1 yet — bundle into a future expanded-domain tool"],
   ["GET /api/economic/v1/get-economic-stress",

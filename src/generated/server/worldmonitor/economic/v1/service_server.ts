@@ -245,6 +245,17 @@ export interface ChinaMacroPillarPulse {
   observationIds: string[];
 }
 
+export interface GetChinaActivityNowcastRequest {
+}
+
+export interface GetChinaActivityNowcastResponse {
+  generatedAt: string;
+  methodVersion: string;
+  comparisonState: string;
+  upstreamUnavailable: boolean;
+  payloadJson: string;
+}
+
 export interface GetEnergyCapacityRequest {
   energySources: string[];
   years: number;
@@ -926,6 +937,7 @@ export interface EconomicServiceHandler {
   getEnergyPrices(ctx: ServerContext, req: GetEnergyPricesRequest): Promise<GetEnergyPricesResponse>;
   getMacroSignals(ctx: ServerContext, req: GetMacroSignalsRequest): Promise<GetMacroSignalsResponse>;
   getChinaMacroSnapshot(ctx: ServerContext, req: GetChinaMacroSnapshotRequest): Promise<GetChinaMacroSnapshotResponse>;
+  getChinaActivityNowcast(ctx: ServerContext, req: GetChinaActivityNowcastRequest): Promise<GetChinaActivityNowcastResponse>;
   getEnergyCapacity(ctx: ServerContext, req: GetEnergyCapacityRequest): Promise<GetEnergyCapacityResponse>;
   getBisPolicyRates(ctx: ServerContext, req: GetBisPolicyRatesRequest): Promise<GetBisPolicyRatesResponse>;
   getBisExchangeRates(ctx: ServerContext, req: GetBisExchangeRatesRequest): Promise<GetBisExchangeRatesResponse>;
@@ -1156,6 +1168,43 @@ export function createEconomicServiceRoutes(
 
           const result = await handler.getChinaMacroSnapshot(ctx, body);
           return new Response(JSON.stringify(result as GetChinaMacroSnapshotResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/economic/v1/get-china-activity-nowcast",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetChinaActivityNowcastRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getChinaActivityNowcast(ctx, body);
+          return new Response(JSON.stringify(result as GetChinaActivityNowcastResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

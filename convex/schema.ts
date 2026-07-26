@@ -657,6 +657,16 @@ export default defineSchema({
     outcomeTrackingVersion: v.optional(v.literal(1)),
     confirmedSteps: v.optional(v.array(proActivationStepIdValidator)),
     skippedSteps: v.optional(v.array(proActivationStepIdValidator)),
+    // Browser-refused steps (#5617). A separate bucket rather than a marker on
+    // `skippedSteps` so rows written before it existed stay valid and every
+    // existing consumer of the original three keeps its exact meaning.
+    //
+    // ROLLBACK: once any row has this field populated, deleting this line fails
+    // the Convex deploy — schema validation rejects a stored field the
+    // validator does not declare. To revert, revert the WRITE path (the client
+    // and the mutation arg) and leave this field in place; drop it only after
+    // the surviving rows have aged out.
+    blockedSteps: v.optional(v.array(proActivationStepIdValidator)),
     failedSteps: v.optional(v.array(proActivationStepIdValidator)),
     outcomeRevision: v.optional(v.number()),
     outcomeUpdatedAt: v.optional(v.number()),
