@@ -140,6 +140,7 @@ import type { TechReadinessPanel } from '@/components/TechReadinessPanel';
 import type { UcdpEventsPanel } from '@/components/UcdpEventsPanel';
 import type { TradePolicyPanel } from '@/components/TradePolicyPanel';
 import type { SupplyChainPanel } from '@/components/SupplyChainPanel';
+import type { ChinaCorridorPanel } from '@/components/ChinaCorridorPanel';
 import type { DiseaseOutbreaksPanel } from '@/components/DiseaseOutbreaksPanel';
 import type { SocialVelocityPanel } from '@/components/SocialVelocityPanel';
 import type { WsbTickerScannerPanel } from '@/components/WsbTickerScannerPanel';
@@ -794,6 +795,9 @@ export class DataLoaderManager implements AppModule {
         }
         if (shouldLoad('supply-chain')) {
           tasks.push({ name: 'supplyChain', task: () => runGuarded('supplyChain', () => this.loadSupplyChain()) });
+        }
+        if (shouldLoad('china-corridors')) {
+          tasks.push({ name: 'chinaCorridors', task: () => runGuarded('chinaCorridors', () => this.loadChinaCorridors()) });
         }
       }
     }
@@ -3528,6 +3532,17 @@ export class DataLoaderManager implements AppModule {
       this.callPanel('supply-chain', 'showError', undefined, () => void this.loadSupplyChain());
       this.ctx.statusPanel?.updateApi('SupplyChain', { status: 'error' });
       dataFreshness.recordError('supply_chain', String(e));
+    }
+  }
+
+  async loadChinaCorridors(): Promise<void> {
+    const panel = this.ctx.panels['china-corridors'] as ChinaCorridorPanel | undefined;
+    if (!panel) return;
+    try {
+      await panel.fetchData();
+    } catch (error) {
+      console.error('[App] China corridors failed:', error);
+      panel.showError('China corridor data unavailable', () => void this.loadChinaCorridors());
     }
   }
 

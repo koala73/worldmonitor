@@ -632,6 +632,15 @@ export interface EnergyDisruptionSource {
   sourceType: string;
 }
 
+export interface GetChinaCorridorControlTowersRequest {
+}
+
+export interface GetChinaCorridorControlTowersResponse {
+  payloadJson: string;
+  generatedAt: string;
+  upstreamUnavailable: boolean;
+}
+
 export type CorridorStatus = "CORRIDOR_STATUS_UNSPECIFIED" | "CORRIDOR_STATUS_ACTIVE" | "CORRIDOR_STATUS_PROPOSED" | "CORRIDOR_STATUS_UNAVAILABLE";
 
 export type DependencyFlag = "DEPENDENCY_FLAG_UNSPECIFIED" | "DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL" | "DEPENDENCY_FLAG_SINGLE_CORRIDOR_CRITICAL" | "DEPENDENCY_FLAG_COMPOUND_RISK" | "DEPENDENCY_FLAG_DIVERSIFIABLE";
@@ -703,6 +712,7 @@ export interface SupplyChainServiceHandler {
   listFuelShortages(ctx: ServerContext, req: ListFuelShortagesRequest): Promise<ListFuelShortagesResponse>;
   getFuelShortageDetail(ctx: ServerContext, req: GetFuelShortageDetailRequest): Promise<GetFuelShortageDetailResponse>;
   listEnergyDisruptions(ctx: ServerContext, req: ListEnergyDisruptionsRequest): Promise<ListEnergyDisruptionsResponse>;
+  getChinaCorridorControlTowers(ctx: ServerContext, req: GetChinaCorridorControlTowersRequest): Promise<GetChinaCorridorControlTowersResponse>;
 }
 
 export function createSupplyChainServiceRoutes(
@@ -1606,6 +1616,43 @@ export function createSupplyChainServiceRoutes(
 
           const result = await handler.listEnergyDisruptions(ctx, body);
           return new Response(JSON.stringify(result as ListEnergyDisruptionsResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/supply-chain/v1/get-china-corridor-control-towers",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetChinaCorridorControlTowersRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getChinaCorridorControlTowers(ctx, body);
+          return new Response(JSON.stringify(result as GetChinaCorridorControlTowersResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

@@ -123,6 +123,7 @@ export const COMMANDS: Command[] = [
   { id: 'panel:trade-policy', keywords: ['trade', 'tariffs', 'wto', 'trade policy', 'sanctions', 'restrictions'], label: 'Panel: Trade Policy', icon: '\u{1F4CA}', category: 'panels' },
   { id: 'panel:sanctions-pressure', keywords: ['sanctions pressure', 'ofac', 'designation', 'sanctions'], label: 'Panel: Sanctions Pressure', icon: '\u{1F6AB}', category: 'panels' },
   { id: 'panel:supply-chain', keywords: ['supply chain', 'shipping', 'chokepoint', 'minerals', 'freight', 'logistics'], label: 'Panel: Supply Chain', icon: '\u{1F6A2}', category: 'panels' },
+  { id: 'panel:china-corridors', keywords: ['china corridors', 'logistics control tower', 'yangtze', 'greater bay area', 'bohai', 'western land sea'], label: 'Panel: China Logistics Corridors', icon: '\u{1F5FA}', category: 'panels' },
   { id: 'panel:chokepoint-strip', keywords: ['chokepoint', 'chokepoints', 'strait', 'hormuz', 'suez', 'malacca', 'bab el mandeb', 'shipping chokepoints'], label: 'Panel: Chokepoint Status', icon: '\u{1F6A2}', category: 'panels' },
   { id: 'panel:geo-hubs', keywords: ['geopolitical hubs', 'geo hubs', 'power centers', 'capitals', 'geopolitical centers'], label: 'Panel: Geopolitical Hubs', icon: '\u{1F30D}', category: 'panels' },
   { id: 'panel:tech-hubs', keywords: ['tech hubs', 'hot tech hubs', 'innovation hubs', 'silicon valley', 'tech cities'], label: 'Panel: Hot Tech Hubs', icon: '\u{1F984}', category: 'panels' },
