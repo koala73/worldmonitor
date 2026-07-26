@@ -185,3 +185,15 @@ The baseline is an exemption list, not a suppression: an advisory outside it fai
 ### English Shell
 
 The small, byte-budgeted subset of English UI strings inlined so first-paint chrome renders real text before the full locale file loads. Membership is decided by namespace: keys under the shell prefixes and referenced from eager chrome must be mirrored into the shell byte-identically, and the whole shell lives under a hard byte cap that is a first-paint performance budget, not a formatting limit. The consequence cuts both ways: post-boot copy placed in a shell namespace pays first-paint bytes for strings nobody can see yet, while first-paint copy placed outside the shell flashes raw keys until the full locale arrives. Choosing a key's namespace is therefore a rendering-time decision, not a taxonomy one.
+
+### Translation Provenance
+
+The English string a committed translation was produced from, recorded separately from the translation itself.
+
+Provenance is what makes staleness detectable at all: a translation whose recorded English no longer matches the current source is wrong even though it is present, so any check comparing only key sets is structurally blind to it. Advancing the record is the one irreversible act in a translation pass — it certifies every current translation as correct against current English, and nothing re-examines a certified key — so it is permitted only when every locale is complete and free of stale entries. Adopting a record for the first time must be an explicit act rather than an inference from its absence, because a deleted record and a first run are indistinguishable, and inferring adoption from absence silently re-certifies whatever the translations currently say. See also: Stale Translation.
+
+### Stale Translation
+
+A translated value whose English source has changed since the translation was made.
+
+Distinct from a *missing* translation, which has no value at all, and from an *orphaned* one, which is a value the current English no longer has a key for. The distinction is load-bearing because only the stale class is fixable by retranslation — no translation of a source string that no longer exists can be correct, so orphans must be pruned instead. Inserting an element into an English list makes every later entry stale at once, since each index then points at a different source string; removing the last element produces an orphan instead, leaving every earlier index matching so nothing registers as stale. See also: Translation Provenance.
