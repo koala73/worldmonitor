@@ -148,7 +148,9 @@ function provenanceIsStale(provenance: DecisionSignalProvenance): boolean {
     || transport?.state === 'missing'
     || transport?.state === 'error'
     || content?.state === 'stale'
-    || content?.state === 'unavailable';
+    || content?.state === 'unavailable'
+    || content?.state === 'partial'
+    || content?.state === 'timestamp_unknown';
 }
 
 function itemFromProvenance(input: {
@@ -207,6 +209,21 @@ function stateFor(
     || ['degraded', 'backfilling', 'cached', 'partial', 'low'].includes(upstreamState ?? '')
   ) return 'partial';
   return 'available';
+}
+
+/**
+ * Recompute state after the bounded-publication trimmer drops an item.
+ * Mirrors stateFor's staleness checks so a group whose remaining items are
+ * all stale keeps reporting 'stale' rather than being relabeled 'partial'
+ * purely because wire-size trimming touched it. Trimming can never make a
+ * group look healthier than it is, so 'available' is never returned here.
+ */
+function recomputeStateAfterTrim(
+  items: ChinaDecisionSignalItem[],
+): ChinaDecisionSignalState {
+  if (items.length === 0) return 'unavailable';
+  if (items.every((item) => item.stale)) return 'stale';
+  return 'partial';
 }
 
 function group(
@@ -313,9 +330,7 @@ function boundChinaDecisionSignalSnapshot(
 
     if (metadataCandidate !== null) {
       metadataCandidate.group.metadata = metadataCandidate.compact;
-      metadataCandidate.group.state = metadataCandidate.group.items.length === 0
-        ? 'unavailable'
-        : 'partial';
+      metadataCandidate.group.state = recomputeStateAfterTrim(metadataCandidate.group.items);
       metadataCandidate.group.reason = [
         originalReasons.get(metadataCandidate.group.id),
         'Supplemental group metadata omitted to satisfy the bounded publication contract.',
@@ -354,9 +369,7 @@ function boundChinaDecisionSignalSnapshot(
       ) + 1,
       serializationOmittedItemCount: omittedCount,
     };
-    itemCandidate.group.state = itemCandidate.group.items.length === 0
-      ? 'unavailable'
-      : 'partial';
+    itemCandidate.group.state = recomputeStateAfterTrim(itemCandidate.group.items);
     itemCandidate.group.reason = [
       originalReasons.get(itemCandidate.group.id),
       itemCandidate.group.metadata.metadataOmittedForSerialization === true

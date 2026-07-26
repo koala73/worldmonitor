@@ -177,7 +177,15 @@ describe('China decision-signal final composition (#5580)', () => {
     assert.deepEqual(snapshot.groups.map((candidate) => candidate.id), CHINA_DECISION_SIGNAL_GROUP_IDS);
     assert.deepEqual(
       snapshot.groups.map((candidate) => candidate.state),
-      ['available', 'available', 'available', 'available', 'stale', 'available'],
+      // cross-strait-activity is 'stale', not 'available': its item's content
+      // freshness is 'timestamp_unknown', which must not be treated as fresh.
+      ['available', 'available', 'stale', 'available', 'stale', 'available'],
+    );
+    assert.equal(
+      snapshot.groups.find((candidate) => candidate.id === 'cross-strait-activity')
+        ?.items[0]?.stale,
+      true,
+      'an unknown content timestamp is reported as stale, not fabricated as fresh',
     );
     assert.deepEqual(snapshot.access, {
       anonymous: 'bounded_public_summary',
@@ -360,7 +368,10 @@ describe('China decision-signal final composition (#5580)', () => {
 
     const crossStrait = snapshot.groups.find((candidate) => candidate.id === 'cross-strait-activity');
     assert.equal(crossStrait?.metadata.metadataOmittedForSerialization, true);
-    assert.equal(crossStrait?.state, 'partial');
+    // Trimming supplemental metadata to fit the byte budget must not paper
+    // over the fact that the retained item's content timestamp is unknown:
+    // the group stays 'stale', it isn't relabeled 'partial' by the trim.
+    assert.equal(crossStrait?.state, 'stale');
     assert.match(crossStrait?.reason ?? '', /Supplemental group metadata omitted/);
   });
 });

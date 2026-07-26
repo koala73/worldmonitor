@@ -588,6 +588,42 @@ describe('publishEventWithOps — dedup rollback', () => {
     assert.match(calls[0][3], /"eventType":"regional_regime_shift"/);
   });
 
+  it('enqueueOnce transport error falls back to the legacy SET NX → LPUSH path', async () => {
+    const mem = memoryOps();
+    const calls = [];
+    const outcome = await publishEventWithOps(sampleEvent, {
+      ...mem.ops,
+      enqueueOnce: async (...args) => {
+        calls.push(args);
+        return 'error';
+      },
+    });
+    assert.deepEqual(outcome, { enqueued: true, dedupHit: false, rolledBack: false });
+    assert.equal(calls.length, 1, 'enqueueOnce was attempted before falling back');
+    assert.equal(mem.queue.length, 1, 'the legacy path actually enqueued the event');
+  });
+
+  it('enqueueOnce transport error fails open for high-priority alerts when the legacy SET NX also errors', async () => {
+    const mem = memoryOps({ setNxFails: true });
+    const event = {
+      ...sampleEvent,
+      payload: { title: `MENA: regime shift double outage ${Date.now()}` },
+    };
+    const outcome = await publishEventWithOps(event, {
+      ...mem.ops,
+      enqueueOnce: async () => 'error',
+    });
+    assert.deepEqual(outcome, { enqueued: true, dedupHit: false, rolledBack: false });
+    assert.equal(mem.queue.length, 1, 'a high-priority alert is not silently dropped during a double outage');
+  });
+
+  it('enqueueOnce transport error drops the event when no legacy fallback ops are supplied', async () => {
+    const outcome = await publishEventWithOps(sampleEvent, {
+      enqueueOnce: async () => 'error',
+    });
+    assert.deepEqual(outcome, { enqueued: false, dedupHit: false, rolledBack: false });
+  });
+
   it('swallows exceptions from setNx/lpush and returns a non-enqueued outcome', async () => {
     const brokenOps = {
       setNx: async () => {

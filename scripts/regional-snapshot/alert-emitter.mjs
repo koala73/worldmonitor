@@ -319,12 +319,17 @@ async function upstashEnqueueOnce(url, token, dedupKey, ttlSeconds, queueKey, va
  * is a thin wrapper that builds real Upstash REST calls and delegates here.
  *
  * Flow:
- *   1. SET NX dedup key with the caller-selected bounded TTL. If already set
+ *   1. If ops.enqueueOnce is available, dedup + LPUSH commit atomically in a
+ *      single Redis script. A transport error from that path falls back to
+ *      the legacy SET NX → LPUSH flow below so high/critical events still
+ *      fail open through the shared notification-dedup policy instead of
+ *      being silently dropped.
+ *   2. SET NX dedup key with the caller-selected bounded TTL. If already set
  *      → dedup hit, return false.
  *      SET NX transport errors fail open for high/critical events through the
  *      shared notification-dedup policy, with in-process fallback suppression.
- *   2. LPUSH event onto wm:events:queue.
- *   3. If LPUSH fails → DEL the dedup key so the next cron cycle can retry.
+ *   3. LPUSH event onto wm:events:queue.
+ *   4. If LPUSH fails → DEL the dedup key so the next cron cycle can retry.
  *      Otherwise the alert would be silently suppressed for the full dedup
  *      window even though nothing was enqueued. Matches the rollback path in
  *      ais-relay.cjs
@@ -354,12 +359,25 @@ export async function publishEventWithOps(event, ops) {
         outcome.enqueued = true;
         const title = String(event.payload?.title ?? '');
         console.log(`[alerts] queued ${event.severity} ${event.eventType}: ${title.slice(0, 60)}`);
-      } else if (result === 'duplicate') {
+        return outcome;
+      }
+      if (result === 'duplicate') {
         outcome.dedupHit = true;
         const title = String(event.payload?.title ?? '');
         console.log(`[alerts] dedup skip: ${event.eventType} — ${title.slice(0, 60)}`);
+        return outcome;
       }
-      return outcome;
+      // result === 'error': the atomic script's transport failed and we
+      // cannot tell whether the dedup+enqueue committed server-side. Fall
+      // back to the legacy SET NX → LPUSH path below, which still applies
+      // the shared fail-open policy for high/critical severity, rather than
+      // dropping the event outright. If the legacy ops aren't available
+      // there is nothing left to retry with.
+      if (typeof ops.setNx !== 'function' || typeof ops.lpush !== 'function') {
+        console.warn(`[alerts] enqueueOnce transport error for ${event.eventType} — no legacy fallback ops, dropping`);
+        return outcome;
+      }
+      console.warn(`[alerts] enqueueOnce transport error for ${event.eventType} — falling back to legacy dedup path`);
     }
     const dedupResult = await ops.setNx(dedupKey, dedupTtlSeconds);
     const dedupDecision = recordDedupOutcome(dedupResult, {
