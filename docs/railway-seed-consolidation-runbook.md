@@ -376,6 +376,7 @@ continuous metric.
 | **Replaces** | 2 services |
 | **Net savings** | 1 slot |
 | **Members** | Correlation (5min), Cross-Source Signals (15min), Cross-Strait Activity (3h), Regional Snapshots (6h) |
+| **Required env** | `PROXY_URL` (Cross-Strait Activity's Japan MOD proxy fallback; missing config fails that section as `CONFIG_ERROR`) |
 | **Note** | Cross-Strait Activity is the only external-source member; it uses bounded MND/Japan MOD requests and a 3h freshness gate. Other members are Redis-derived. The bundle enforces a 570s wall-time admission budget so a non-fitting due section defers before Railway's 10-minute container limit. |
 
 ### Bundle 6: seed-bundle-climate

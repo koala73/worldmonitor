@@ -77,6 +77,8 @@ export const CROSS_STRAIT_SOURCE_CONTRACTS = Object.freeze({
     redirectPolicy: 'error',
     maxResponseBytes: JMOD_MAX_RESPONSE_BYTES,
     requestCadenceMs: REQUEST_CADENCE_MS,
+    // Documents the fixed one-direct-then-one-proxy flow hard-coded in
+    // fetchJapanIndexOutcome; these bounds are not read back to drive it.
     maxRequestsPerRun: 2,
     maxDirectRequestsPerRun: 1,
     maxProxyRequestsPerRun: 1,
@@ -1464,7 +1466,9 @@ async function fetchJapanModViaConfiguredProxy(input, init, {
   const proxyConfig = parseProxyConfig(proxyUrl);
   if (!proxyConfig) throw new Error('PROXY_CONFIG_INVALID');
   const result = await proxyRequestFn(String(input), proxyConfig, {
-    accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.1',
+    // init.headers (from boundedHtmlRequestInit) always carries an Accept
+    // header, which proxyFetch's header spread applies after its own
+    // `accept` default — so headers.Accept is the actual source of truth.
     headers: init?.headers,
     method: init?.method ?? 'GET',
     maxResponseBytes,
