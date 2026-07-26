@@ -13,8 +13,9 @@
  *   node scripts/check-unicode-safety.mjs --staged
  */
 
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
 const args = new Set(process.argv.slice(2));
@@ -39,10 +40,18 @@ const INCLUDED_EXTENSIONS = new Set([
   '',  // extensionless scripts (e.g. .husky/pre-commit, .husky/pre-push)
 ]);
 
-const EXCLUDED_PREFIXES = [
+// Locale JSON is rendered as UI text and never parsed as code, so the threat
+// model above does not apply to it — while ZWNJ (U+200C) and ZWJ (U+200D) are
+// *required* for correct Persian and Devanagari typesetting. Every locale data
+// directory therefore has to be listed here: `--staged` matches by path prefix
+// rather than by SCAN_ROOTS, so an unlisted one rejects any commit carrying a
+// correctly-typeset RTL or Indic string. tests/unicode-safety-scope.test.mjs
+// fails if a new locale directory appears without an entry.
+export const EXCLUDED_PREFIXES = [
   '.git/',
   'node_modules/',
   'src/locales/',
+  'pro-test/src/locales/',
   'src/generated/',
   'docs/',
   'blog-site/',
@@ -77,7 +86,7 @@ function getExtension(path) {
   return idx === -1 ? '' : path.slice(idx);
 }
 
-function shouldScanFile(path) {
+export function shouldScanFile(path) {
   if (EXCLUDED_PREFIXES.some(prefix => path.startsWith(prefix))) return false;
   const ext = getExtension(path);
   if (!INCLUDED_EXTENSIONS.has(ext)) return false;
@@ -220,4 +229,12 @@ function main() {
   process.exit(1);
 }
 
-main();
+// realpath BOTH sides: through a symlinked checkout Node sets import.meta.url
+// to the realpath while argv[1] keeps the symlink, and the naive comparison
+// silently skips main() — a fail-open for a pre-commit security gate.
+const isMain =
+  process.argv[1] &&
+  pathToFileURL(realpathSync(process.argv[1])).href ===
+    pathToFileURL(realpathSync(fileURLToPath(import.meta.url))).href;
+
+if (isMain) main();
