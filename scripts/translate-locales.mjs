@@ -256,6 +256,17 @@ export function classifyKeys(localeFlat, expected, baselineExpected) {
   return { missing, stale, untracked, fresh };
 }
 
+// What is still wrong after a run. Staleness is a property of (baseline, en.json)
+// alone — it says nothing about the locale's current value — so a key stays
+// "stale" for the rest of the run even after it has just been retranslated. The
+// baseline is what retires it, and the baseline only advances once nothing is
+// outstanding. Without discounting the keys this run actually refreshed, that is
+// a deadlock: the scan can never reach zero, so the baseline can never advance,
+// so the next run re-translates exactly the same keys forever.
+export function unresolvedAfterRun({ missing, stale }, refreshedKeys) {
+  return { missing, stale: stale.filter(key => !refreshedKeys.has(key)) };
+}
+
 export function readBaseline(baselinePath) {
   if (!existsSync(baselinePath)) return null;
   return JSON.parse(readFileSync(baselinePath, 'utf8'));
@@ -342,6 +353,8 @@ async function main() {
     baselineFlat ? expectedKeysForLocale(baselineFlat, baselinePlurals, categories) : {};
 
   const targets = onlyLocales || LOCALES;
+  // locale → keys this run successfully wrote. Consumed by unresolvedAfterRun.
+  const refreshedByLocale = new Map();
   let totalMissing = 0;
   let totalStale = 0;
   let totalUntracked = 0;
@@ -382,6 +395,8 @@ async function main() {
     totalStale += stale.length;
     if (dryRun) continue;
 
+    const refreshed = new Set();
+    refreshedByLocale.set(loc, refreshed);
     let added = 0;
     for (let i = 0; i < toTranslate.length; i += BATCH_SIZE) {
       const batch = toTranslate.slice(i, i + BATCH_SIZE).map(k => [k, expected[k]]);
@@ -395,6 +410,7 @@ async function main() {
             continue;
           }
           setNested(raw, k, tr);
+          refreshed.add(k);
           added++;
         }
       } catch (err) {
@@ -432,7 +448,10 @@ async function main() {
       const flat = flatten(JSON.parse(readFileSync(locPath, 'utf8')));
       const categories = getPluralCategories(loc);
       const expected = expectedKeysForLocale(enFlat, pluralBases, categories);
-      const left = classifyKeys(flat, expected, baselineFor(categories));
+      const left = unresolvedAfterRun(
+        classifyKeys(flat, expected, baselineFor(categories)),
+        refreshedByLocale.get(loc) ?? new Set(),
+      );
       const outstanding = left.missing.length + left.stale.length;
       if (outstanding > 0) {
         const sample = [...left.missing, ...left.stale].slice(0, 3).join(', ');

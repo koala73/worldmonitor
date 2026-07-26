@@ -8,6 +8,7 @@ import {
   findPluralBases,
   flatten,
   getPluralCategories,
+  unresolvedAfterRun,
 } from '../scripts/translate-locales.mjs';
 
 // Staleness is the whole point of the baseline: a translated key whose English
@@ -89,6 +90,28 @@ describe('locale staleness classification', () => {
     // category is derived from _other, which changed.
     assert.deepEqual(result.fresh, ['alert_one']);
     assert.deepEqual(result.stale.sort(), ['alert_few', 'alert_many', 'alert_other']);
+  });
+
+  it('discounts the stale keys a run actually refreshed', () => {
+    // Staleness compares the baseline to en.json and never looks at the locale,
+    // so a key stays stale for the rest of the run even once it has been
+    // retranslated. Only the baseline retires it — and the baseline is only
+    // allowed to advance when nothing is outstanding. Counting those keys as
+    // outstanding deadlocks the pass: the scan never reaches zero, the baseline
+    // never advances, and every subsequent run retranslates the same keys.
+    const classification = { missing: ['b'], stale: ['a', 'c'], untracked: [], fresh: [] };
+
+    const afterFullRefresh = unresolvedAfterRun(classification, new Set(['a', 'c']));
+    assert.deepEqual(afterFullRefresh.stale, []);
+
+    // A key the run failed to write is still outstanding, so the run still fails
+    // and the baseline still refuses to advance.
+    const afterPartialRefresh = unresolvedAfterRun(classification, new Set(['a']));
+    assert.deepEqual(afterPartialRefresh.stale, ['c']);
+    assert.deepEqual(afterPartialRefresh.missing, ['b']);
+
+    // A locale the run never touched keeps every stale key outstanding.
+    assert.deepEqual(unresolvedAfterRun(classification, new Set()).stale, ['a', 'c']);
   });
 
   it('keeps a separate baseline per locale root', () => {
