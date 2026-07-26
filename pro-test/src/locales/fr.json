@@ -184,9 +184,9 @@
     "starterWebhooks": "5 règles webhook",
     "business": "Business",
     "businessReqs": "10 000 req/jour",
-    "businessWebhooks": "Priority support",
     "feedData": "Injectez des données dans vos tableaux de bord, automatisez l'alerting via Zapier/n8n/Make, construisez des modèles de scoring personnalisés sur données CII/risque.",
-    "cli": "CLI sans dépendance pour scripter chaque outil depuis votre shell"
+    "cli": "CLI sans dépendance pour scripter chaque outil depuis votre shell",
+    "businessWebhooks": "Support prioritaire"
   },
   "enterpriseShowcase": {
     "enterpriseTier": "NIVEAU ENTERPRISE",

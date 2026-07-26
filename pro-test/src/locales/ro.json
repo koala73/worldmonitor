@@ -184,9 +184,9 @@
     "starterWebhooks": "5 reguli webhook",
     "business": "Business",
     "businessReqs": "10.000 req/zi",
-    "businessWebhooks": "Priority support",
     "feedData": "Alimentează date în panourile tale, automatizează alerte via Zapier/n8n/Make, construiește modele de scoring personalizate pe date CII/risc.",
-    "cli": "CLI fără dependențe pentru a programa fiecare instrument din shell-ul dvs."
+    "cli": "CLI fără dependențe pentru a programa fiecare instrument din shell-ul dvs.",
+    "businessWebhooks": "Suport prioritar"
   },
   "enterpriseShowcase": {
     "enterpriseTier": "NIVEL ENTERPRISE",

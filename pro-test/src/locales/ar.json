@@ -184,9 +184,9 @@
     "starterWebhooks": "5 قواعد webhook",
     "business": "Business",
     "businessReqs": "10,000 طلب/يوم",
-    "businessWebhooks": "Priority support",
     "feedData": "ضخ البيانات إلى لوحاتك، أتمتة التنبيهات عبر Zapier/n8n/Make، بناء نماذج تسجيل مخصصة على بيانات CII/المخاطر.",
-    "cli": "CLI بدون تبعيات للكتابة البرمجية لكل أداة من الـ shell الخاص بك"
+    "cli": "CLI بدون تبعيات للكتابة البرمجية لكل أداة من الـ shell الخاص بك",
+    "businessWebhooks": "الدعم الأولوي"
   },
   "enterpriseShowcase": {
     "enterpriseTier": "المستوى ENTERPRISE",

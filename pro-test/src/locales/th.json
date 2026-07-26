@@ -184,9 +184,9 @@
     "starterWebhooks": "5 กฎ webhook",
     "business": "Business",
     "businessReqs": "10,000 req/วัน",
-    "businessWebhooks": "Priority support",
     "feedData": "ป้อนข้อมูลเข้าแดชบอร์ด อัตโนมัติการแจ้งเตือนผ่าน Zapier/n8n/Make สร้างโมเดลให้คะแนนบนข้อมูล CII/ความเสี่ยง",
-    "cli": "CLI ที่ไม่มีการขึ้นต่อกัน เพื่อสคริปต์ทุกเครื่องมือจากเชลล์ของคุณ"
+    "cli": "CLI ที่ไม่มีการขึ้นต่อกัน เพื่อสคริปต์ทุกเครื่องมือจากเชลล์ของคุณ",
+    "businessWebhooks": "การสนับสนุนลำดับความสำคัญ"
   },
   "enterpriseShowcase": {
     "enterpriseTier": "ระดับ ENTERPRISE",

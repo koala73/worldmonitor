@@ -184,9 +184,9 @@
     "starterWebhooks": "5 webhook rules",
     "business": "Business",
     "businessReqs": "10,000 req/day",
-    "businessWebhooks": "Priority support",
     "feedData": "अपने dashboards में data feed करें, Zapier/n8n/Make से alerting automate करें, CII/risk data पर custom scoring models बनाएं।",
-    "cli": "शून्य-निर्भरता CLI आपके शेल से हर उपकरण को स्क्रिप्ट करने के लिए"
+    "cli": "शून्य-निर्भरता CLI आपके शेल से हर उपकरण को स्क्रिप्ट करने के लिए",
+    "businessWebhooks": "प्राथमिकता सहायता"
   },
   "enterpriseShowcase": {
     "enterpriseTier": "ENTERPRISE TIER",
@@ -352,7 +352,7 @@
           "AI स्टॉक विश्लेषण और backtesting",
           "दैनिक मार्केट ब्रीफ़",
           "सैन्य और भू-राजनीतिक ट्रैकिंग",
-          "Custom widget builder",
+          "कस्टम विजेट बिल्डर",
           "10 कस्टम डैशबोर्ड (बनाम 3)",
           "Claude Desktop और अन्य AI क्लाइंट के लिए MCP + SDK एक्सेस (50 कॉल/दिन)",
           "प्राथमिकता डेटा रीफ्रेश"

@@ -184,9 +184,9 @@
     "starterWebhooks": "5개 웹훅 규칙",
     "business": "Business",
     "businessReqs": "10,000 req/일",
-    "businessWebhooks": "Priority support",
     "feedData": "데이터를 대시보드에 공급, Zapier/n8n/Make로 알림 자동화, CII/리스크 데이터 위에 맞춤형 점수 모델 구축.",
-    "cli": "셸에서 모든 도구를 스크립팅할 수 있는 종속성 없는 CLI"
+    "cli": "셸에서 모든 도구를 스크립팅할 수 있는 종속성 없는 CLI",
+    "businessWebhooks": "우선 지원"
   },
   "enterpriseShowcase": {
     "enterpriseTier": "ENTERPRISE 티어",
