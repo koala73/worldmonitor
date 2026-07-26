@@ -205,6 +205,9 @@
     "entry": "scripts/seed-bundle-market-backup.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-bundle-market-backup",
+    "requiredEnv": [
+      "PROXY_URL"
+    ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-10-seed-bundle-market-backup"
   },
   {
