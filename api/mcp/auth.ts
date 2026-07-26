@@ -14,6 +14,7 @@ import {
   getBillingVerificationDenial,
   getEntitlements,
 } from '../../server/_shared/entitlement-check';
+import { checkProMcpAccess } from '../../server/_shared/pro-mcp-gate';
 import type { BillingVerificationCode } from './billing-denial';
 import {
   buildInternalMcpHeaders,
@@ -441,20 +442,13 @@ async function checkMcpEntitlementGate(
     captureSilentError(err, { tags: { route: 'api/mcp', step: sentryStep }, ctx });
     return rejected();
   }
-  const tier = ent?.features?.tier ?? 0;
-  const mcpAccess = ent?.features?.mcpAccess === true;
-  const validUntil = ent?.validUntil ?? 0;
-  // Renewal uncertainty on a stronger subscription must not revoke MCP when
-  // a separate, current fallback subscription still authorizes MCP access.
-  if (ent && tier >= 1 && mcpAccess && validUntil >= Date.now()) {
+  // Single-source Pro MCP decision — see server/_shared/pro-mcp-gate.ts (#5653).
+  if (checkProMcpAccess(ent)) {
     return null;
   }
   const billingDenial = getMcpBillingVerificationDenial(ent, corsHeaders);
   if (billingDenial) return billingDenial;
-  if (!ent || tier < 1 || !mcpAccess || validUntil < Date.now()) {
-    return rejected();
-  }
-  return null;
+  return rejected();
 }
 
 /**

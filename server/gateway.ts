@@ -37,6 +37,7 @@ import {
   isEntitlementBackendConfigured,
   type CachedEntitlements,
 } from './_shared/entitlement-check';
+import { checkProMcpAccess } from './_shared/pro-mcp-gate';
 import { resolveClerkSession } from './_shared/auth-session';
 import {
   INTERNAL_MCP_SIG_HEADER,
@@ -1048,25 +1049,15 @@ export function createDomainGateway(
       // re-check via the fallback path. Mirror the per-handler runProPreChecks
       // and authorize-pro entitlement guards.
       const ent = await getEntitlements(verified.userId);
-      const mcpCovered = !!ent &&
-        ent.features.tier >= 1 &&
-        (ent.features as { mcpAccess?: boolean }).mcpAccess === true &&
-        ent.validUntil >= Date.now();
+      // Single-source Pro MCP decision — see server/_shared/pro-mcp-gate.ts (#5653).
+      const mcpCovered = checkProMcpAccess(ent);
       const billingDenial = denyForBillingVerification(
         ent,
         corsHeaders,
         mcpCovered,
       );
       if (billingDenial) return billingDenial;
-      if (
-        !ent ||
-        ent.features.tier < 1 ||
-        // mcpAccess flag lands in U10 — undefined means "field not present
-        // on this entitlement row", which we treat as false. This keeps
-        // pre-U10 entitlement rows from accidentally granting MCP access.
-        (ent.features as { mcpAccess?: boolean }).mcpAccess !== true ||
-        ent.validUntil < Date.now()
-      ) {
+      if (!mcpCovered) {
         emitRequest(401, 'auth_401', null);
         return new Response(
           JSON.stringify({ error: 'insufficient_entitlement' }),
