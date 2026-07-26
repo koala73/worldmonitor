@@ -644,7 +644,7 @@ export class UnifiedSettings {
     this.renderRegionPills();
     this.renderSourcesGrid();
     this.updateSourcesCounter();
-  
+
     this.attachApiKeysHandlers();
     if (this.activeTab === 'api-keys' || this.activeTab === 'mcp-clients') {
       void this.loadPlanLimitNotices();
