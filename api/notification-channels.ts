@@ -36,6 +36,12 @@ type NotificationChannelsDeps = {
   validateBearerToken: typeof validateBearerToken;
   getEntitlements: typeof getEntitlements;
   fetch: typeof fetch;
+  // Injected so the billing-denial capture is observable in tests. It cannot be
+  // asserted through the real transport: api/_sentry-common.js's parseDsn()
+  // returns early when process.env.NODE_TEST_CONTEXT is set (which node:test
+  // always sets), so captureSilentError is a no-op under the test runner and
+  // the whole branch below could be deleted with every case still green.
+  captureSilentError: typeof captureSilentError;
 };
 
 function createDefaultNotificationChannelsDeps(): NotificationChannelsDeps {
@@ -43,7 +49,33 @@ function createDefaultNotificationChannelsDeps(): NotificationChannelsDeps {
     validateBearerToken,
     getEntitlements,
     fetch: (...args) => globalThis.fetch(...args),
+    captureSilentError,
   };
+}
+
+// Per-code dedup window for the billing-denial capture. The capture sits
+// downstream of the entitlement cache (server/_shared/entitlement-check.ts
+// serves a billing marker straight from Redis), so without this a Convex
+// brownout emits one Sentry event per denied POST per affected user rather than
+// one per incident. Module-level state is per-isolate, so this degrades with
+// edge fan-out instead of scaling with traffic.
+const DENIAL_CAPTURE_DEDUP_WINDOW_MS = 60_000;
+const lastDenialCaptureAtByCode = new Map<string, number>();
+
+function shouldCaptureDenial(code: string | null, now: number): boolean {
+  // `subscription_lapsed` is a confirmed terminal answer already visible in
+  // Convex — eventing it would turn ordinary churn into a permanent Sentry
+  // stream and bury the anomaly.
+  if (!code || code === 'subscription_lapsed') return false;
+  const last = lastDenialCaptureAtByCode.get(code);
+  if (last !== undefined && now - last < DENIAL_CAPTURE_DEDUP_WINDOW_MS) return false;
+  lastDenialCaptureAtByCode.set(code, now);
+  return true;
+}
+
+/** Test-only reset so dedup state cannot leak between cases. */
+export function __resetDenialCaptureDedupForTests(): void {
+  lastDenialCaptureAtByCode.clear();
 }
 
 let notificationChannelsDeps = createDefaultNotificationChannelsDeps();
@@ -147,7 +179,10 @@ async function publishFlushHeld(userId: string, variant: string): Promise<void> 
     });
   } catch (err) {
     console.warn('[notification-channels] publishFlushHeld LPUSH failed:', (err as Error).message);
+    // `level` (not the `severity` tag) is what buildEnvelope reads; without it
+    // this warn-intent capture also shipped at error level.
     await captureSilentError(err, {
+      level: 'warning',
       tags: { route: 'api/notification-channels', step: 'publish-flush-held', severity: 'warn' },
     });
   }
@@ -352,21 +387,27 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         // it would be invisible in exactly the way #5600's activation failures
         // were. Tagged so these group with the wizard-side captures.
         //
-        // Transient states only. `subscription_lapsed` is a confirmed terminal
-        // answer already visible in Convex — eventing it would turn ordinary
-        // churn into a permanent Sentry stream and bury the anomaly.
+        // Transient states only, and at most one event per code per
+        // DENIAL_CAPTURE_DEDUP_WINDOW_MS — see shouldCaptureDenial.
+        //
+        // `level: 'warning'` is load-bearing, not decorative: buildEnvelope in
+        // api/_sentry-common.js derives the Sentry level ONLY from ctx.level and
+        // defaults to 'error'. A `severity` TAG does not set it, so without this
+        // an expected transient denial pages on-call at error level — the exact
+        // "drowns real bugs in dashboards/alerting" outcome that file warns about.
         //
         // NOT awaited: makeCaptureSilentError registers ctx.waitUntil(promise)
         // (api/_sentry-common.js), so the capture is guaranteed to run without
         // holding the denial response open for its 2s transport timeout.
-        if (code && code !== 'subscription_lapsed') {
-          void captureSilentError(
+        if (shouldCaptureDenial(code, Date.now())) {
+          void notificationChannelsDeps.captureSilentError(
             new Error(`notification-channels billing-verification denial: ${code}`),
             {
+              level: 'warning',
               tags: {
                 route: 'api/notification-channels',
                 step: 'billing-verification-denial',
-                code,
+                code: code as string,
                 severity: 'warn',
               },
               ctx,

@@ -66,10 +66,105 @@ function freeShapedEntitlements(extra: Record<string, unknown>) {
 
 const ctx = { waitUntil: (_promise: Promise<unknown>) => {} };
 
+type Capture = { message: string; level?: string; tags?: Record<string, string> };
+
+/**
+ * Injectable stand-in for captureSilentError.
+ *
+ * The real transport cannot be observed here: api/_sentry-common.js's parseDsn()
+ * returns early when process.env.NODE_TEST_CONTEXT is set — which node:test always
+ * sets — so captureSilentError is a complete no-op under the runner. Before this
+ * seam existed, the entire capture branch (including the
+ * `code !== 'subscription_lapsed'` decision) could be deleted with every case in
+ * this file still green.
+ */
+function makeCaptureSpy(into: Capture[]) {
+  return (err: unknown, opts?: { level?: string; tags?: Record<string, string> }) => {
+    into.push({
+      message: err instanceof Error ? err.message : String(err),
+      level: opts?.level,
+      tags: opts?.tags,
+    });
+  };
+}
+
 afterEach(() => {
   mock.restoreAll();
   globalThis.fetch = originalFetch;
   restoreEnv();
+});
+
+describe('/api/notification-channels POST billing-verification capture', () => {
+  it('reports a transient denial to Sentry at warning level, tagged and deduped', async () => {
+    const mod = await importFreshNotificationChannels();
+    const captures: Capture[] = [];
+    mod.__resetDenialCaptureDedupForTests();
+    mod.__setNotificationChannelsDepsForTests({
+      validateBearerToken: async () => ({ valid: true, userId: 'user-capture' }),
+      getEntitlements: async () => freeShapedEntitlements({ verificationUnavailable: true }),
+      fetch: async () => {
+        throw new Error('relay must not be reached for a denied request');
+      },
+      captureSilentError: makeCaptureSpy(captures),
+    });
+    mock.method(console, 'warn', () => {});
+
+    const res = await mod.default(makeSetChannelRequest(), ctx);
+    assert.equal(res.status, 503);
+
+    assert.equal(captures.length, 1);
+    // `level` is the field buildEnvelope actually reads (api/_sentry-common.js);
+    // a `severity` tag alone leaves the event at the 'error' default, which pages
+    // on-call for an expected transient denial.
+    assert.equal(captures[0]?.level, 'warning');
+    assert.equal(captures[0]?.tags?.code, 'entitlement_verification_unavailable');
+    assert.equal(captures[0]?.tags?.route, 'api/notification-channels');
+    assert.equal(captures[0]?.tags?.step, 'billing-verification-denial');
+
+    // Dedup: the capture sits downstream of the entitlement cache, so a repeat
+    // request inside the window must not emit a second event.
+    const again = await mod.default(makeSetChannelRequest(), ctx);
+    assert.equal(again.status, 503);
+    assert.equal(captures.length, 1, 'second denial inside the dedup window must not re-emit');
+  });
+
+  it('does NOT report a confirmed lapse — that is ordinary churn, already visible in Convex', async () => {
+    const mod = await importFreshNotificationChannels();
+    const captures: Capture[] = [];
+    mod.__resetDenialCaptureDedupForTests();
+    mod.__setNotificationChannelsDepsForTests({
+      validateBearerToken: async () => ({ valid: true, userId: 'user-lapsed-nocapture' }),
+      getEntitlements: async () => freeShapedEntitlements({ billingStatus: 'subscription_lapsed' }),
+      fetch: async () => {
+        throw new Error('relay must not be reached for a denied request');
+      },
+      captureSilentError: makeCaptureSpy(captures),
+    });
+    mock.method(console, 'warn', () => {});
+
+    const res = await mod.default(makeSetChannelRequest(), ctx);
+    assert.equal(res.status, 403);
+    assert.deepEqual(captures, []);
+  });
+
+  it('does NOT report a plain tier-0 free user', async () => {
+    const mod = await importFreshNotificationChannels();
+    const captures: Capture[] = [];
+    mod.__resetDenialCaptureDedupForTests();
+    mod.__setNotificationChannelsDepsForTests({
+      validateBearerToken: async () => ({ valid: true, userId: 'user-free-nocapture' }),
+      getEntitlements: async () => freeShapedEntitlements({}),
+      fetch: async () => {
+        throw new Error('relay must not be reached for a denied request');
+      },
+      captureSilentError: makeCaptureSpy(captures),
+    });
+    mock.method(console, 'warn', () => {});
+
+    const res = await mod.default(makeSetChannelRequest(), ctx);
+    assert.equal(res.status, 403);
+    assert.deepEqual(captures, []);
+  });
 });
 
 describe('/api/notification-channels POST billing-verification contract', () => {

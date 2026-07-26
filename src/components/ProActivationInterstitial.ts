@@ -25,7 +25,7 @@
  */
 
 import { t } from '@/services/i18n';
-import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
+import { enqueueSentryCall, scheduleSentryInit } from '@/bootstrap/sentry-defer';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import {
   claimProActivationPresentation,
@@ -81,7 +81,7 @@ import {
  * never re-prompt for — so the shell moves the step into its blocked state
  * instead of offering a "Try again" that can only fail identically (#5609).
  */
-export type ActivationConfirmResult = 'verified' | 'failed' | 'blocked';
+export type ActivationConfirmResult = 'verified' | 'failed' | 'blocked' | 'declined';
 
 export interface ProActivationInterstitialOptions {
   /** Ordered steps from `buildActivationSteps` (computed by the caller). */
@@ -312,6 +312,10 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
   // render exactly like a step that was already blocked at mount — the browser
   // will not re-prompt, so a retry CTA would be a dead end (#5609).
   const blockedByConfirm = new Set<ActivationStepId>();
+  // Steps parked in the failed state because the user dismissed a permission
+  // prompt rather than because a write errored. Same UI (retryable), different
+  // funnel meaning — see shouldEmitSkip.
+  const declinedByConfirm = new Set<ActivationStepId>();
 
   const onSummary = (): boolean => currentIndex >= steps.length;
 
@@ -322,6 +326,30 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
    */
   const effectiveState = (step: ActivationStep): ActivationStepState =>
     blockedByConfirm.has(step.id) ? 'blocked' : step.state;
+
+  /** True when the step is parked in the failed state because OUR write errored. */
+  const isGenuineFailure = (step: ActivationStep): boolean =>
+    transient === 'failed' && !declinedByConfirm.has(step.id);
+
+  /**
+   * Whether moving on from `step` should report a skip.
+   *
+   * A skip means "we presented this offer successfully and the user passed on
+   * it". Two things are not that, and reporting them as skips is how one attempt
+   * produced two funnel events (#5600's mislabeling class):
+   *
+   * - A confirm that resolved `blocked` already reported itself via onBlockStep
+   *   (#5609). Note this keys on `blockedByConfirm`, NOT `effectiveState`: a step
+   *   blocked at MOUNT never fires onBlockStep, so its skip is its only signal
+   *   and must still be emitted.
+   * - A confirm whose write errored already reported itself via the step-failed
+   *   event. `declined` is the exception — a dismissed permission prompt renders
+   *   the same retryable state but is a user choice, so it skips normally.
+   */
+  const shouldEmitSkip = (step: ActivationStep): boolean => {
+    if (blockedByConfirm.has(step.id)) return false;
+    return !isGenuineFailure(step);
+  };
 
   /** Default disposition for a step never explicitly acted on. */
   const defaultOutcome = (step: ActivationStep): ActivationStepOutcome =>
@@ -541,11 +569,13 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
         continue;
       }
       // Preserve a genuine failure signal on the step the user is abandoning.
-      if (i === currentIndex && transient === 'failed') {
+      if (i === currentIndex && isGenuineFailure(step)) {
         outcomes.set(step.id, 'failed');
         continue;
       }
-      options.onSkipStep(step.id);
+      // Same one-event-per-attempt rule as handleSkip: a confirm-time block has
+      // already reported itself (#5609/#5600).
+      if (i !== currentIndex || shouldEmitSkip(step)) options.onSkipStep(step.id);
       outcomes.set(step.id, 'skipped');
     }
     transient = 'idle';
@@ -569,13 +599,16 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
     // one is what made a systemic day-0 failure look like user disinterest in
     // the funnel (#5600); the failure itself was already reported by
     // onConfirmStep, and the outcome below keeps the summary/ledger honest.
-    if (transient !== 'failed') options.onSkipStep(step.id);
-    outcomes.set(step.id, transient === 'failed' ? 'failed' : 'skipped');
+    if (shouldEmitSkip(step)) options.onSkipStep(step.id);
+    outcomes.set(step.id, isGenuineFailure(step) ? 'failed' : 'skipped');
     recordProgress();
     advance();
   };
 
   const handleConfirm = async (step: ActivationStep): Promise<void> => {
+    // Each attempt is classified fresh: a retry after a dismissed prompt can
+    // resolve any other way.
+    declinedByConfirm.delete(step.id);
     transient = 'in-flight';
     renderModal();
     const gen = generation;
@@ -601,6 +634,10 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
       options.onBlockStep?.(step.id);
       renderModal();
     } else {
+      // 'declined' (dismissed prompt) renders the same retryable failed state as
+      // a genuine write error — clicking again re-prompts. Only the funnel
+      // meaning differs; shouldEmitSkip/isGenuineFailure read this set.
+      if (result === 'declined') declinedByConfirm.add(step.id);
       transient = 'failed';
       renderModal();
     }
@@ -662,7 +699,9 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
             advance();
             break;
           case 'advance-skip':
-            options.onSkipStep(step.id);
+            // #5600: a confirm-time block already fired stepBlocked, so emitting a
+            // skip here too counted one denied-permission attempt twice.
+            if (shouldEmitSkip(step)) options.onSkipStep(step.id);
             outcomes.set(step.id, 'skipped');
             recordProgress();
             advance();
@@ -1132,6 +1171,13 @@ function buildPowerExtra(options: ProActivationFlowOptions): ProActivationStepEx
   };
 }
 
+/** Closed vocabulary of failure sites, so a typo'd Sentry tag is a compile error. */
+type ActivationFailureStage =
+  | 'brief-confirm'
+  | 'push-subscribe'
+  | 'alerts-config-refresh'
+  | 'alerts-rule-write';
+
 /**
  * Surface an activation step failure to Sentry (#5600).
  *
@@ -1141,20 +1187,27 @@ function buildPowerExtra(options: ProActivationFlowOptions): ProActivationStepEx
  * invisible server-side for a full day. `activation_path` separates the day-0
  * cohort, which writes no `proActivationPresentations` outcome row at all,
  * from the retro backfill cohort that does.
+ *
+ * Two guards keep the signal honest:
+ *
+ * - An account switch mid-confirm makes confirmBrief/confirmAlerts return
+ *   'failed' for a write that may well have succeeded. The funnel already
+ *   excludes that (it is flow teardown, not a step failure); Sentry must too, or
+ *   the cohort counts here and in Umami disagree.
+ * - `scheduleSentryInit()` is kicked explicitly. It is idempotent, and without it
+ *   the call merely queues: main.ts defers real init ~10s, and the day-0
+ *   interstitial opens on that SAME post-checkout page load, so a user who fails
+ *   a step and closes the tab inside that window loses the one signal this
+ *   function exists to produce. The queue has no pagehide flush.
  */
-/** Closed vocabulary of failure sites, so a typo'd Sentry tag is a compile error. */
-type ActivationFailureStage =
-  | 'brief-confirm'
-  | 'push-subscribe'
-  | 'alerts-config-refresh'
-  | 'alerts-rule-write';
-
 function reportActivationStepFailure(
   options: ProActivationFlowOptions,
   step: ActivationStepId,
   stage: ActivationFailureStage,
   err: unknown,
 ): void {
+  if (!isFlowAccountCurrent(options)) return;
+  void scheduleSentryInit();
   enqueueSentryCall((s) => s.captureException(
     err instanceof Error ? err : new Error(String(err)),
     {
@@ -1220,7 +1273,15 @@ async function confirmAlerts(
     if (shouldReportPushSubscribeFailure(permission)) {
       reportActivationStepFailure(options, 'alerts', 'push-subscribe', err);
     }
-    return permission === 'denied' ? 'blocked' : 'failed';
+    if (permission === 'denied') return 'blocked';
+    // The permission is still `default`: the user dismissed the prompt without
+    // deciding. A retry re-prompts, so the UI keeps the retryable failed state —
+    // but this must not reach the step-failed metric, which exists to surface OUR
+    // writes erroring. Returning 'failed' for it is what routed the most common
+    // alerts-step outcome into that metric. Only a granted-then-failed subscribe
+    // is a genuine failure — the same line shouldReportPushSubscribeFailure
+    // already draws for Sentry, reused here so the two cannot drift apart.
+    return shouldReportPushSubscribeFailure(permission) ? 'failed' : 'declined';
   }
   let fresh: ActivationContext;
   try {

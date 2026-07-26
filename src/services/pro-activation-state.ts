@@ -908,11 +908,21 @@ export const ACTIVATION_EVENTS = {
 } as const;
 
 /**
- * How an in-flow confirm resolved. `blocked` means the platform refused in a
- * way a retry cannot fix — a denied notification permission, which browsers
- * never re-prompt for (#5609).
+ * How an in-flow confirm resolved.
+ *
+ * `blocked` means the platform refused in a way a retry cannot fix — a denied
+ * notification permission, which browsers never re-prompt for (#5609).
+ *
+ * `declined` means the USER walked away from a prompt without deciding (they
+ * dismissed the notification permission dialog, leaving it `default`). A retry
+ * still works, so the UI treats it like `failed`, but the funnel must not: it is
+ * a user outcome, not our write erroring. Folding it into `failed` is what let a
+ * dismissed prompt — the common case for the alerts step — land in the
+ * `pro-activation-step-failed` metric added to catch systemic write failures
+ * (#5600). Note `shouldReportPushSubscribeFailure` already excluded this state
+ * from Sentry for exactly this reason; the funnel just did not agree.
  */
-export type ActivationConfirmResult = 'verified' | 'failed' | 'blocked';
+export type ActivationConfirmResult = 'verified' | 'failed' | 'blocked' | 'declined';
 
 /**
  * The step outcome a confirm result reports as, or null when the result is
@@ -932,6 +942,12 @@ export function selectConfirmOutcome(
     case 'failed':
       return 'failed';
     case 'blocked':
+      // The shell fires its own stepBlocked via onBlockStep (#5609).
+      return null;
+    case 'declined':
+      // A dismissed prompt is a user choice. The shell reports it as a skip when
+      // the user moves on, so emitting a confirm-time event here would either
+      // double-count it or mislabel it as our failure (#5600).
       return null;
   }
 }

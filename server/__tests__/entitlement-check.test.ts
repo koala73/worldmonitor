@@ -405,12 +405,14 @@ describe("gateway entitlement check", () => {
       await getEntitlements("test-user-marker-ttl");
     });
 
-    // Both bounds are load-bearing: the upper one caps the wrongful-denial
-    // window, the lower one keeps a future edit from collapsing the marker to
-    // ~0s and silently reverting the cache to a per-request Convex round-trip.
+    // Pin the exact value, not a window. `checkedAt` is Date.now() immediately
+    // before the write and setCachedJson is mocked, so the computed
+    // Math.ceil((checkedAt + 60_000 - now) / 1000) is deterministically 60 — a
+    // range of (30, 60] let a drift to any value in [31, 59] pass both this and
+    // the api/_user-api-key.test.mjs mirror undetected, and cross-mirror parity
+    // would not catch a symmetric drift either.
     const ttl = vi.mocked(setCachedJson).mock.calls.at(-1)?.[2];
-    expect(ttl).toBeGreaterThan(30);
-    expect(ttl).toBeLessThanOrEqual(60);
+    expect(ttl).toBe(60);
   });
 
   test("checkEntitlement accepts Clerk role=pro for tier-1 gates without Convex entitlements", async () => {

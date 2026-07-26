@@ -189,6 +189,22 @@ const LAPSED_BILLING_MARKER_TTL_SECONDS = 60;
 // (#5600: 15 min of 403s on every tier-gated endpoint for a paying customer,
 // reproduced live 2026-07-25). Bounding the marker bounds that worst case.
 //
+// Be precise about WHICH window this bounds, because it is not the whole one a
+// buyer experiences:
+//
+//   wrongful-403 window = dodo_webhook_latency + min(this TTL, resync residual)
+//
+// Only the second term is bounded here. convex/http.ts re-stamps a fresh
+// not_applicable marker on every fallback for as long as the user has zero
+// subscription rows, so an expiry just mints another window — the buyer waits out
+// the webhook either way, just re-checking every 60s instead of every 900s.
+// And the second term is usually already covered: convex/payments/
+// subscriptionHelpers.ts schedules resyncEntitlementCacheFromDb at
+// ENTITLEMENT_CACHE_RESYNC_DELAY_MS (15s), a quarter of this TTL, which corrects a
+// poisoned key first in the common case. This TTL is the bound for when that
+// re-sync also loses the race or throws (it is fire-and-forget, no retry). Raising
+// that delay past this TTL silently promotes this constant to sole defense.
+//
 // The cost is one extra Convex round-trip per minute per actively-requesting
 // never-subscribed user — still far cheaper than pre-#4770, where a tier-0
 // answer was never served from cache at all (free rows carry validUntil: 0,

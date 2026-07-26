@@ -757,7 +757,12 @@ test.describe('Pro activation flow — telemetry + finish-setup chip', () => {
           return 'test-event-id';
         },
       }) as never);
-      await sentryDefer.scheduleSentryInit();
+      // Deliberately NOT calling scheduleSentryInit() here. Production defers
+      // real init ~10s from page load (main.ts) and the day-0 interstitial opens
+      // on that same post-checkout load, so a failing step enqueues into the
+      // pending buffer rather than dispatching straight through. Awaiting init
+      // first would exercise enqueueSentryCall's immediate branch — not the one
+      // this scenario depends on. reportActivationStepFailure kicks init itself.
     });
 
     await openFlow(page, /* withOpeners */ false);
@@ -765,12 +770,21 @@ test.describe('Pro activation flow — telemetry + finish-setup chip', () => {
     await page.locator(CONFIRM_BTN).click();
     await expect(page.locator('.pro-activation-status.status-failed')).toBeVisible();
 
-    const captures = await page.evaluate(
-      () =>
-        (window as unknown as {
-          __sentryCaptures: Array<{ message: string; tags?: Record<string, string> }>;
-        }).__sentryCaptures,
-    );
+    const readCaptures = () =>
+      page.evaluate(
+        () =>
+          (window as unknown as {
+            __sentryCaptures: Array<{ message: string; tags?: Record<string, string> }>;
+          }).__sentryCaptures,
+      );
+
+    // reportActivationStepFailure kicks the idempotent scheduleSentryInit() itself
+    // (#5600), so the capture must arrive without the test driving init — that
+    // explicit kick is what stops a user who closes the tab inside the ~10s
+    // deferral window from losing the only signal for a failed activation.
+    await expect.poll(async () => (await readCaptures()).length).toBeGreaterThan(0);
+
+    const captures = await readCaptures();
     const briefCapture = captures.find((c) => c.tags?.step === 'brief');
     expect(briefCapture).toBeTruthy();
     expect(briefCapture?.tags).toMatchObject({
@@ -779,9 +793,12 @@ test.describe('Pro activation flow — telemetry + finish-setup chip', () => {
       stage: 'brief-confirm',
       activation_path: 'day0',
     });
-    // The thrown error carries the failing surface + status, which is the
-    // detail that was missing when this only reached the console.
-    expect(briefCapture?.message.length).toBeGreaterThan(0);
+    // Assert the message this harness actually produces. It fails at
+    // assertExpectedAccount (src/services/notification-channels.ts:55) — no Clerk
+    // user in the harness — so there is no HTTP status to carry here; the
+    // `set email channel: <status>` shape lives on the post-auth path. A bare
+    // length check passed on literally any string, including an empty-ish one.
+    expect(briefCapture?.message).toContain('Authenticated account changed during notification setup');
   });
 
   test('power-toolkit pointer confirms the step and fires step-confirmed telemetry', async ({

@@ -1102,6 +1102,13 @@ describe('telemetry event selection', () => {
     assert.equal(selectConfirmOutcome('verified'), 'confirmed');
     assert.equal(selectConfirmOutcome('failed'), 'failed');
     assert.equal(selectConfirmOutcome('blocked'), null);
+    // #5600: a dismissed permission prompt is a USER outcome, not our write
+    // erroring. Mapping it to 'failed' put the most common alerts-step result
+    // into the step-failed metric that exists to catch systemic write failures —
+    // the same mislabeling this PR fixes, with the labels swapped. Note
+    // shouldReportPushSubscribeFailure below already excluded 'default' from
+    // Sentry for exactly this reason; the funnel simply did not agree.
+    assert.equal(selectConfirmOutcome('declined'), null);
     // And the composition the flow actually performs.
     assert.equal(selectStepEvent(selectConfirmOutcome('verified')!), ACTIVATION_EVENTS.stepConfirmed);
     assert.equal(selectStepEvent(selectConfirmOutcome('failed')!), ACTIVATION_EVENTS.stepFailed);
