@@ -583,6 +583,9 @@ export class App {
     if (shouldPrime('supply-chain')) {
       primeTask('supplyChain', () => this.dataLoader.loadSupplyChain());
     }
+    if (shouldPrime('china-corridors')) {
+      primeTask('chinaCorridors', () => this.dataLoader.loadChinaCorridors());
+    }
     if (shouldPrime('cross-source-signals')) {
       primeTask('crossSourceSignals', () => this.dataLoader.loadCrossSourceSignals());
     }
@@ -2260,6 +2263,7 @@ export class App {
     if (SITE_VARIANT === 'full' || SITE_VARIANT === 'finance' || SITE_VARIANT === 'commodity' || SITE_VARIANT === 'energy') {
       this.refreshScheduler.scheduleRefresh('tradePolicy', () => this.dataLoader.loadTradePolicy(), REFRESH_INTERVALS.tradePolicy, () => hasPremiumAccess() && this.isPanelNearViewport('trade-policy'));
       this.refreshScheduler.scheduleRefresh('supplyChain', () => this.dataLoader.loadSupplyChain(), REFRESH_INTERVALS.supplyChain, () => this.isPanelNearViewport('supply-chain'));
+      this.refreshScheduler.scheduleRefresh('chinaCorridors', () => this.dataLoader.loadChinaCorridors(), REFRESH_INTERVALS.chinaCorridors, () => this.isPanelNearViewport('china-corridors'));
     }
 
     this.refreshScheduler.scheduleRefresh(

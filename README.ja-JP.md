@@ -111,7 +111,7 @@ npm run dev:energy     # energy.worldmonitor.app
 | **フロントエンド** | Vanilla TypeScript、Vite、globe.gl + Three.js、deck.gl + MapLibre GL |
 | **デスクトップ** | Tauri 2 (Rust) + Node.js サイドカー |
 | **AI/ML** | Ollama / Groq / OpenRouter、Transformers.js (ブラウザ側) |
-| **API コントラクト** | Protocol Buffers (281 proto、35 サービス)、sebuf HTTP アノテーション |
+| **API コントラクト** | Protocol Buffers (282 proto、35 サービス)、sebuf HTTP アノテーション |
 | **デプロイ** | Vercel Edge Functions (60 以上)、Railway リレー、Tauri、PWA |
 | **キャッシュ** | Redis (Upstash)、3 層キャッシュ、CDN、Service Worker |
 

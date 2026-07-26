@@ -227,7 +227,7 @@ export const DECISION_SIGNAL_PROVENANCE_FAMILY_REGISTRATIONS: Readonly<
     serializationFixtureId: 'exchange-disclosure-superseded',
   }),
   composed_corridor_condition: Object.freeze({
-    launchStatus: 'reference',
+    launchStatus: 'launched',
     serializationFixtureId: 'corridor-stale-content',
   }),
   derived_comparison: Object.freeze({

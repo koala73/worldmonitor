@@ -76,6 +76,97 @@ export function readPremiumRpcPaths() {
   return [...block[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
 }
 
+function readConstStringArray(src, name) {
+  const block = src.match(new RegExp(`${name}\\s*=\\s*\\[([\\s\\S]*?)\\]\\s*as const`));
+  return block ? [...block[1].matchAll(/'([^']+)'/g)].map((match) => match[1]) : [];
+}
+
+export function readDecisionSignalProvenanceContract() {
+  const src = readFileSync(resolve(root, 'shared/decision-signal-provenance-contract.ts'), 'utf8');
+  const version = src.match(
+    /DECISION_SIGNAL_PROVENANCE_CONTRACT_VERSION\s*=\s*'([^']+)'\s+as const/,
+  )?.[1];
+  const dimensions = readConstStringArray(src, 'DECISION_SIGNAL_PROVENANCE_DIMENSIONS');
+  const claimStatuses = readConstStringArray(src, 'DECISION_SIGNAL_PROVENANCE_CLAIM_STATUSES');
+  const valueEnums = {
+    publisherTypes: readConstStringArray(src, 'DECISION_SIGNAL_PUBLISHER_TYPES'),
+    originalReferenceKinds: readConstStringArray(
+      src,
+      'DECISION_SIGNAL_ORIGINAL_REFERENCE_KINDS',
+    ),
+    translationStates: readConstStringArray(src, 'DECISION_SIGNAL_TRANSLATION_STATES'),
+    timeRoles: readConstStringArray(src, 'DECISION_SIGNAL_TIME_ROLES'),
+    timePrecisions: readConstStringArray(src, 'DECISION_SIGNAL_TIME_PRECISIONS'),
+    revisionStates: readConstStringArray(src, 'DECISION_SIGNAL_REVISION_STATES'),
+    supersessionStates: readConstStringArray(
+      src,
+      'DECISION_SIGNAL_SUPERSESSION_STATES',
+    ),
+    corroborationStates: readConstStringArray(
+      src,
+      'DECISION_SIGNAL_CORROBORATION_STATES',
+    ),
+    transportFreshnessStates: readConstStringArray(
+      src,
+      'DECISION_SIGNAL_TRANSPORT_FRESHNESS_STATES',
+    ),
+    contentFreshnessStates: readConstStringArray(
+      src,
+      'DECISION_SIGNAL_CONTENT_FRESHNESS_STATES',
+    ),
+  };
+  if (
+    !version
+    || dimensions.length === 0
+    || claimStatuses.length === 0
+    || Object.values(valueEnums).some((values) => values.length === 0)
+  ) {
+    throw new Error('could not read the decision-signal provenance contract');
+  }
+  return { version, dimensions, claimStatuses, ...valueEnums };
+}
+
+export function readChinaCorridorWireContract() {
+  const corridor = readFileSync(
+    resolve(root, 'shared/china-corridor-control-towers.ts'),
+    'utf8',
+  );
+  const logistics = readFileSync(
+    resolve(root, 'shared/china-logistics-corridors.ts'),
+    'utf8',
+  );
+  const provenance = readFileSync(
+    resolve(root, 'shared/decision-signal-provenance-contract.ts'),
+    'utf8',
+  );
+  const contract = {
+    availabilities: readConstStringArray(corridor, 'CHINA_CORRIDOR_AVAILABILITIES'),
+    signalAvailabilities: readConstStringArray(
+      corridor,
+      'CHINA_CORRIDOR_SIGNAL_AVAILABILITIES',
+    ),
+    timePrecisions: readConstStringArray(corridor, 'CHINA_CORRIDOR_TIME_PRECISIONS'),
+    publisherTypes: readConstStringArray(corridor, 'CHINA_CORRIDOR_PUBLISHER_TYPES'),
+    sourceScopes: readConstStringArray(corridor, 'CHINA_CORRIDOR_SOURCE_SCOPES'),
+    revisionStates: readConstStringArray(corridor, 'CHINA_CORRIDOR_REVISION_STATES'),
+    corridorIds: readConstStringArray(logistics, 'CHINA_LOGISTICS_CORRIDOR_IDS'),
+    signalFamilies: readConstStringArray(logistics, 'CHINA_CORRIDOR_SIGNAL_FAMILIES'),
+    nodeTypes: readConstStringArray(logistics, 'CHINA_CORRIDOR_NODE_TYPES'),
+    transportFreshnessStates: readConstStringArray(
+      provenance,
+      'DECISION_SIGNAL_TRANSPORT_FRESHNESS_STATES',
+    ),
+    contentFreshnessStates: readConstStringArray(
+      provenance,
+      'DECISION_SIGNAL_CONTENT_FRESHNESS_STATES',
+    ),
+  };
+  if (Object.values(contract).some((values) => values.length === 0)) {
+    throw new Error('could not read the China corridor wire contract');
+  }
+  return contract;
+}
+
 // ── Public 403 gates ─────────────────────────────────────────────────────────
 // Public RPCs (security: []) that nonetheless document a 403 the handler throws.
 // Lead capture opts out of API-key auth at the gateway, then fails closed in the
