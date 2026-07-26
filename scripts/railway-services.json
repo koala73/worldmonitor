@@ -18,6 +18,17 @@
     "deployMode": "dockerfile",
     "dockerfile": "Dockerfile.seed-bundle-portwatch-port-activity",
     "service": "seed-bundle-portwatch-port-activity",
+    "requiredEnv": [
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN",
+      "PROXY_URL"
+    ],
+    "watchPatterns": [
+      "scripts/**",
+      "shared/**",
+      "Dockerfile.seed-bundle-portwatch-port-activity"
+    ],
+    "cronSchedule": "0 */12 * * *",
     "documentedAt": "Dockerfile.seed-bundle-portwatch-port-activity"
   },
   {

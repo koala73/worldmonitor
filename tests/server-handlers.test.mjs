@@ -2,8 +2,8 @@
  * Tests for server handler correctness after PR #106 review fixes.
  *
  * These tests verify:
- * - Humanitarian summary handler rejects unmapped country codes
- * - Humanitarian summary returns ISO-2 country_code (not ISO-3)
+ * - Humanitarian summary aggregation rejects unmapped country codes
+ * - Humanitarian summary aggregation returns ISO-2 country_code (not ISO-3)
  * - Hardcoded political context is removed from LLM prompts
  * - Headline deduplication logic works correctly
  * - Cache key builder produces deterministic output
@@ -27,31 +27,27 @@ const readSrc = (relPath) => readFileSync(resolve(root, relPath), 'utf-8');
 // 1. Humanitarian summary: country fallback + ISO-2 contract
 // ========================================================================
 
-describe('fetchHapiSummary (scripts/seed-conflict-intel.mjs)', () => {
+describe('aggregateHapiConflictEvents (scripts/seed-conflict-intel.mjs)', () => {
   // #5554: server/worldmonitor/conflict/v1/get-humanitarian-summary.ts no longer
   // fetches HAPI at all — it's a cache-only read of what this seeder writes (HDX's
   // app_identifier rate limiting is per-identifier, so a per-request RPC fetch would
-  // stack uncoordinated traffic on top of the seeder's own paced loop). The
+  // stack uncoordinated traffic on top of the seeder's bulk refresh). The
   // BLOCKING-1/BLOCKING-2/MEDIUM-1 guards below (originally PR #106, against the old
   // RPC-handler implementation) moved here with the fetch/aggregation logic itself.
   const src = readSrc('scripts/seed-conflict-intel.mjs');
 
-  it('returns null when country has no ISO3 mapping (BLOCKING-1)', () => {
-    // Must have early return when no ISO3 mapping (before the HAPI fetch)
-    assert.match(src, /if\s*\(\s*!iso3\s*\)\s*return\s+null/,
-      'fetchHapiSummary should return null when no ISO3 mapping exists');
-    // Unlike the old RPC-handler implementation (a byCountry map with a
-    // countryCode-absent fallback to the first entry), the seeder only ever
-    // aggregates records matching the ONE requested iso3 — there is no map to
-    // silently fall back into, so this pattern must never reappear here.
+  it('ignores rows whose ISO3 location has no ISO2 mapping (BLOCKING-1)', () => {
+    assert.match(src, /ISO3_TO_ISO2\.get\(/,
+      'bulk aggregation must translate HAPI ISO3 locations through the canonical map');
+    assert.match(src, /if\s*\(\s*!countryCode\s*\|\|\s*!targetCountries\.has\(countryCode\)\s*\)\s*continue/,
+      'unmapped and out-of-scope HAPI rows must be skipped');
     assert.doesNotMatch(src, /Object\.values\(byCountry\)\[0\]/,
-      'fetchHapiSummary must not fall back to an arbitrary country\'s data');
+      'bulk aggregation must not fall back to an arbitrary country\'s data');
   });
 
   it('returns ISO-2 country_code per proto contract (BLOCKING-2)', () => {
-    // Should return the original countryCode (uppercased), not the ISO-3 lookup key
-    assert.match(src, /countryCode:\s*countryCode\.toUpperCase\(\)/,
-      'Should return original ISO-2 countryCode uppercased');
+    assert.match(src, /results\[countryCode\]\s*=\s*\{\s*summary:\s*\{\s*countryCode,/,
+      'Should publish the ISO-2 key produced by the reverse mapping');
   });
 
   it('uses renamed conflict-event proto fields (MEDIUM-1)', () => {

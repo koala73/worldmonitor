@@ -302,6 +302,39 @@ describe('China coverage manifest', () => {
     assert.ok(missingTransport.entries[0].reasonCodes.includes(CHINA_COVERAGE_REASON_CODES.TRANSPORT_MISSING));
   });
 
+  it('reports a fresh but degraded disclosure snapshot as partial coverage', () => {
+    const disclosures = CHINA_COVERAGE_ENTRIES.find(
+      (entry) => entry.id === 'market.china-corporate-disclosures',
+    );
+    const result = evaluate(
+      disclosures,
+      {
+        'market:china:corporate-disclosures:v1': {
+          status: 'degraded',
+          coverageThrough: null,
+          events: [],
+          sources: [
+            { id: 'sse', transportStatus: 'fresh', contentStatus: 'partial' },
+            { id: 'szse', transportStatus: 'error', contentStatus: 'unavailable' },
+          ],
+        },
+      },
+      {
+        'seed-meta:market:china-corporate-disclosures': {
+          fetchedAt: NOW,
+          status: 'ok',
+        },
+      },
+    );
+
+    assert.equal(result.entries[0].status, 'degraded');
+    assert.equal(result.entries[0].content.status, 'partial');
+    assert.deepEqual(
+      result.entries[0].reasonCodes,
+      [CHINA_COVERAGE_REASON_CODES.CHINA_COVERAGE_PARTIAL],
+    );
+  });
+
   it('uses the source-specific China news projection rather than global top stories', () => {
     const news = CHINA_COVERAGE_ENTRIES.find((entry) => entry.id === 'news.china');
     const data = {

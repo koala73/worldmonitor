@@ -1,107 +1,333 @@
-// Regression tests for #5554: the HAPI sweep's circuit breaker.
+// Regression coverage for the HAPI bot-block follow-up to #5554.
 //
-// fetchAllHumanitarianSummaries() aborts the per-country HAPI sweep after
-// HAPI_MAX_CONSECUTIVE_FAILURES consecutive failures, counting ANY failure type
-// (429, other HTTP errors, network/timeout) -- not just 429. An earlier version
-// only counted 429s and reset the streak on any other failure type, so a mixed
-// pattern like 429/timeout/429/timeout never tripped the breaker at all, defeating
-// the whole point of bounding worst-case sweep time (review finding on #5554).
-//
-// fetchHapiSummary/fetchAllHumanitarianSummaries aren't exported, so these tests
-// drive the breaker indirectly through fetchAll() and count HAPI-bound fetch calls.
+// The first repair paced 38 per-country requests at ~1 request/second, but the
+// production identifier was blocked again after that still produced thousands
+// of requests per day. The durable contract is:
+//   - one national-level bulk request for the target countries,
+//   - no new request while the last successful snapshot is fresh,
+//   - a persisted failure backoff after a provider rejection, and
+//   - last-known-good Redis rows preserved without refreshing their fetchedAt.
 
-import { test, beforeEach, afterEach } from 'node:test';
+import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
-import { fetchAll } from '../scripts/seed-conflict-intel.mjs';
+import {
+  HAPI_FAILURE_BACKOFF_MS,
+  HAPI_REFRESH_INTERVAL_MS,
+  HAPI_REQUIRED_COUNTRIES,
+  aggregateHapiConflictEvents,
+  buildHapiConflictEventsUrl,
+  fetchAllHumanitarianSummaries,
+} from '../scripts/seed-conflict-intel.mjs';
 
-const ORIGINAL_FETCH = globalThis.fetch;
-const ORIGINAL_ENV = {
-  UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
-  UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
-  ACLED_EMAIL: process.env.ACLED_EMAIL,
-  ACLED_PASSWORD: process.env.ACLED_PASSWORD,
-  ACLED_ACCESS_TOKEN: process.env.ACLED_ACCESS_TOKEN,
-};
+const NOW = Date.parse('2026-07-26T13:30:00Z');
 
-beforeEach(() => {
-  process.env.UPSTASH_REDIS_REST_URL = 'https://fake-upstash.example.com';
-  process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
-  delete process.env.ACLED_EMAIL;
-  delete process.env.ACLED_PASSWORD;
-  delete process.env.ACLED_ACCESS_TOKEN;
-});
-
-afterEach(() => {
-  globalThis.fetch = ORIGINAL_FETCH;
-  for (const [k, v] of Object.entries(ORIGINAL_ENV)) {
-    if (v == null) delete process.env[k];
-    else process.env[k] = v;
-  }
-});
-
-// A fast GDELT stub so these tests exercise only the HAPI sweep's timing, not
-// GDELT's own (much slower, curl-proxy-involving) fallback path.
-const FAST_GDELT_FALLBACK = async () => ({ events: [], source: 'gdelt' });
-
-test('HAPI sweep aborts after 3 consecutive failures of the SAME type (429)', async () => {
-  let hapiCalls = 0;
-  globalThis.fetch = async (url) => {
-    const u = String(url);
-    if (u.includes('hapi.humdata.org')) {
-      hapiCalls++;
-      return new Response('rate limited', { status: 429 });
-    }
-    return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
-  };
-
-  await fetchAll({ fetchGdeltFallback: FAST_GDELT_FALLBACK });
-
-  assert.equal(hapiCalls, 3, 'sweep should stop after exactly 3 consecutive HAPI failures, not attempt every country');
-});
-
-test('HAPI sweep aborts after 3 consecutive failures of MIXED types (429, timeout, 500)', async () => {
-  let hapiCalls = 0;
-  globalThis.fetch = async (url) => {
-    const u = String(url);
-    if (u.includes('hapi.humdata.org')) {
-      hapiCalls++;
-      if (hapiCalls === 1) return new Response('rate limited', { status: 429 });
-      if (hapiCalls === 2) throw new Error('fetch failed: network timeout');
-      return new Response('server error', { status: 500 });
-    }
-    return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
-  };
-
-  await fetchAll({ fetchGdeltFallback: FAST_GDELT_FALLBACK });
-
-  assert.equal(
-    hapiCalls, 3,
-    'a mixed failure pattern (429 -> timeout -> 500) must still trip the breaker at 3 -- ' +
-    'this is the exact bug: an earlier version only counted 429s and reset on any other ' +
-    'failure type, so this pattern never aborted',
+test('humanitarian health reports partial target-country coverage', () => {
+  const healthSource = readFileSync(new URL('../api/health.js', import.meta.url), 'utf8');
+  const seedSource = readFileSync(new URL('../scripts/seed-conflict-intel.mjs', import.meta.url), 'utf8');
+  assert.match(
+    healthSource,
+    /humanitarianSummary:\s*\{[^}]*maxStaleMin:\s*300,\s*minRecordCount:\s*23\s*\}/,
+  );
+  assert.match(
+    seedSource,
+    /const requiredCountriesCovered = HAPI_REQUIRED_COUNTRIES\.filter\([^;]+/,
+  );
+  assert.match(
+    seedSource,
+    /HAPI_SEED_META_TTL_SECONDS,\s*requiredCountriesCovered,\s*HAPI_SEED_META_KEY/,
+  );
+  assert.equal(HAPI_REQUIRED_COUNTRIES.length, 23);
+  assert.deepEqual(
+    new Set(HAPI_REQUIRED_COUNTRIES),
+    new Set([
+      'US', 'RU', 'CN', 'UA', 'IR', 'IL', 'TW', 'KP', 'SA', 'TR',
+      'PL', 'DE', 'FR', 'GB', 'IN', 'PK', 'SY', 'YE', 'MM', 'VE',
+      'SD', 'DJ', 'ER',
+    ]),
   );
 });
 
-test('HAPI sweep streak resets on an intervening success, allowing more attempts', async () => {
-  let hapiCalls = 0;
-  globalThis.fetch = async (url) => {
-    const u = String(url);
-    if (u.includes('hapi.humdata.org')) {
-      hapiCalls++;
-      // fail, fail, SUCCEED (empty data), fail, fail, fail -> breaker should only
-      // trip on the second run of 3, i.e. after the 6th HAPI call, not the 3rd.
-      if (hapiCalls === 3) return new Response(JSON.stringify({ data: [] }), { status: 200 });
-      return new Response('server error', { status: 500 });
-    }
-    return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+test('HAPI bulk URL requests national totals for the current and previous month', () => {
+  const url = new URL(buildHapiConflictEventsUrl({ nowMs: NOW }));
+
+  assert.equal(url.origin, 'https://hapi.humdata.org');
+  assert.equal(url.pathname, '/api/v2/coordination-context/conflict-events');
+  assert.equal(url.searchParams.get('admin_level'), '0');
+  assert.equal(url.searchParams.get('start_date'), '2026-06-01');
+  assert.equal(url.searchParams.get('limit'), '10000');
+  assert.equal(url.searchParams.get('offset'), '0');
+  assert.equal(url.searchParams.has('location_code'), false);
+  assert.equal(url.searchParams.has('app_identifier'), false, 'identifier belongs in the supported request header');
+});
+
+test('HAPI bulk rows are grouped by country and only the latest reference period is published', () => {
+  const rows = [
+    {
+      location_code: 'SDN',
+      location_name: 'Sudan',
+      reference_period_start: '2026-06-01',
+      admin_level: 0,
+      event_type: 'political_violence',
+      events: 99,
+      fatalities: 10,
+    },
+    {
+      location_code: 'SDN',
+      location_name: 'Sudan',
+      reference_period_start: '2026-07-01',
+      admin_level: 0,
+      event_type: 'political_violence',
+      events: 12,
+      fatalities: 3,
+    },
+    {
+      location_code: 'SDN',
+      location_name: 'Sudan',
+      reference_period_start: '2026-07-01',
+      admin_level: 0,
+      event_type: 'civilian_targeting',
+      events: 4,
+      fatalities: 2,
+    },
+    {
+      location_code: 'SDN',
+      location_name: 'Sudan',
+      reference_period_start: '2026-07-01',
+      admin_level: 0,
+      event_type: 'demonstration',
+      events: 7,
+      fatalities: 0,
+    },
+    {
+      location_code: 'ZZZ',
+      location_name: 'Unknown',
+      reference_period_start: '2026-07-01',
+      admin_level: 0,
+      event_type: 'political_violence',
+      events: 500,
+      fatalities: 500,
+    },
+  ];
+
+  const result = aggregateHapiConflictEvents(rows, { nowMs: NOW, countryCodes: ['SD'] });
+
+  assert.deepEqual(result, {
+    SD: {
+      summary: {
+        countryCode: 'SD',
+        countryName: 'Sudan',
+        conflictEventsTotal: 23,
+        conflictPoliticalViolenceEvents: 16,
+        conflictFatalities: 5,
+        referencePeriod: '2026-07-01',
+        conflictDemonstrations: 7,
+        updatedAt: NOW,
+      },
+    },
+  });
+});
+
+test('HAPI aggregation uses the deepest available administrative level without double counting', () => {
+  const result = aggregateHapiConflictEvents([
+    {
+      location_code: 'SDN',
+      location_name: 'Sudan',
+      reference_period_start: '2026-07-01',
+      admin_level: 1,
+      event_type: 'political_violence',
+      events: 100,
+      fatalities: 10,
+    },
+    {
+      location_code: 'SDN',
+      location_name: 'Sudan',
+      reference_period_start: '2026-07-01',
+      admin_level: 2,
+      event_type: 'political_violence',
+      events: 12,
+      fatalities: 3,
+    },
+    {
+      location_code: 'SDN',
+      location_name: 'Sudan',
+      reference_period_start: '2026-07-01',
+      admin_level: 2,
+      event_type: 'demonstration',
+      events: 7,
+      fatalities: 0,
+    },
+  ], { nowMs: NOW, countryCodes: ['SD'] });
+
+  assert.equal(result.SD.summary.conflictEventsTotal, 19);
+  assert.equal(result.SD.summary.conflictFatalities, 3);
+});
+
+test('HAPI ingestion makes one bulk request and maps all returned target countries', async () => {
+  const calls = [];
+  const result = await fetchAllHumanitarianSummaries({
+    now: () => NOW,
+    countryCodes: ['SD', 'UA'],
+    pace: async () => {},
+    loadPreviousMarker: async () => null,
+    loadFailureBackoff: async () => null,
+    writeFailureBackoff: async () => assert.fail('success must not write a failure backoff'),
+    preserveLastGood: async () => assert.fail('success must not extend stale rows'),
+    fetchFn: async (url, options) => {
+      calls.push({ url: String(url), options });
+      return new Response(JSON.stringify({
+        data: [
+          {
+            location_code: 'SDN',
+            location_name: 'Sudan',
+            reference_period_start: '2026-07-01',
+            admin_level: 0,
+            event_type: 'political_violence',
+            events: 12,
+            fatalities: 3,
+          },
+          {
+            location_code: 'UKR',
+            location_name: 'Ukraine',
+            reference_period_start: '2026-07-01',
+            admin_level: 0,
+            event_type: 'demonstration',
+            events: 8,
+            fatalities: 0,
+          },
+        ],
+      }), { status: 200 });
+    },
+  });
+
+  assert.equal(calls.length, 1, 'one bulk request replaces the 38-request per-country sweep');
+  assert.ok(calls[0].options.headers['X-HDX-HAPI-APP-IDENTIFIER']);
+  assert.deepEqual(Object.keys(result).sort(), ['SD', 'UA']);
+});
+
+test('HAPI ingestion falls back only for targets missing national rows', async () => {
+  const urls = [];
+  const result = await fetchAllHumanitarianSummaries({
+    now: () => NOW,
+    countryCodes: ['SD', 'UA'],
+    pace: async () => {},
+    loadPreviousMarker: async () => null,
+    loadFailureBackoff: async () => null,
+    writeFailureBackoff: async () => assert.fail('complete coverage must not write a failure backoff'),
+    preserveLastGood: async () => assert.fail('complete coverage must not extend stale rows'),
+    fetchFn: async (url) => {
+      const parsed = new URL(url);
+      urls.push(parsed);
+      const data = parsed.searchParams.get('location_code') === 'SDN'
+        ? [{
+            location_code: 'SDN',
+            location_name: 'Sudan',
+            reference_period_start: '2026-07-01',
+            admin_level: 2,
+            event_type: 'political_violence',
+            events: 12,
+            fatalities: 3,
+          }]
+        : [{
+            location_code: 'UKR',
+            location_name: 'Ukraine',
+            reference_period_start: '2026-07-01',
+            admin_level: 0,
+            event_type: 'demonstration',
+            events: 8,
+            fatalities: 0,
+          }];
+      return new Response(JSON.stringify({ data }), { status: 200 });
+    },
+  });
+
+  assert.equal(urls.length, 2);
+  assert.equal(urls[0].searchParams.get('admin_level'), '0');
+  assert.equal(urls[0].searchParams.has('location_code'), false);
+  assert.equal(urls[1].searchParams.has('admin_level'), false);
+  assert.equal(urls[1].searchParams.get('location_code'), 'SDN');
+  assert.deepEqual(Object.keys(result).sort(), ['SD', 'UA']);
+});
+
+test('HAPI provider rejection persists a backoff and preserves last-known-good rows', async () => {
+  let calls = 0;
+  let backoff;
+  let preserved = 0;
+  const result = await fetchAllHumanitarianSummaries({
+    now: () => NOW,
+    countryCodes: ['SD'],
+    pace: async () => {},
+    loadPreviousMarker: async () => null,
+    loadFailureBackoff: async () => null,
+    writeFailureBackoff: async (value) => { backoff = value; },
+    preserveLastGood: async () => { preserved += 1; },
+    fetchFn: async () => {
+      calls += 1;
+      return new Response(JSON.stringify({ error: 'Blocked due to bot activity.' }), { status: 429 });
+    },
+  });
+
+  assert.equal(result, null);
+  assert.equal(calls, 1, 'a blocked bulk request must not fan out into per-country retries');
+  assert.equal(preserved, 1);
+  assert.equal(backoff.status, 429);
+  assert.equal(backoff.retryAt, NOW + HAPI_FAILURE_BACKOFF_MS);
+});
+
+test('HAPI backoff records the fallback rejection status when the national sweep is empty', async () => {
+  let backoff;
+  let preserved = 0;
+  const result = await fetchAllHumanitarianSummaries({
+    now: () => NOW,
+    countryCodes: ['SD'],
+    pace: async () => {},
+    loadPreviousMarker: async () => null,
+    loadFailureBackoff: async () => null,
+    writeFailureBackoff: async (value) => { backoff = value; },
+    preserveLastGood: async () => { preserved += 1; },
+    fetchFn: async (url) => {
+      const parsed = new URL(url);
+      if (!parsed.searchParams.has('location_code')) {
+        // National admin-0 sweep covers nothing for this target country.
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      }
+      // Bounded per-country fallback is the one that gets throttled.
+      return new Response(JSON.stringify({ error: 'Blocked due to bot activity.' }), { status: 429 });
+    },
+  });
+
+  assert.equal(result, null);
+  assert.equal(preserved, 1);
+  assert.equal(backoff.status, 429, 'must record the fallback rejection status, not fall back to 0');
+  assert.equal(backoff.retryAt, NOW + HAPI_FAILURE_BACKOFF_MS);
+});
+
+test('HAPI ingestion skips network calls during success and failure backoff windows', async () => {
+  let calls = 0;
+  const fetchFn = async () => {
+    calls += 1;
+    return new Response(JSON.stringify({ data: [] }), { status: 200 });
   };
 
-  await fetchAll({ fetchGdeltFallback: FAST_GDELT_FALLBACK });
+  const recent = await fetchAllHumanitarianSummaries({
+    now: () => NOW,
+    countryCodes: ['SD'],
+    pace: async () => {},
+    loadPreviousMarker: async () => ({ updatedAt: NOW - HAPI_REFRESH_INTERVAL_MS + 1 }),
+    loadFailureBackoff: async () => null,
+    fetchFn,
+  });
+  const blocked = await fetchAllHumanitarianSummaries({
+    now: () => NOW,
+    countryCodes: ['SD'],
+    pace: async () => {},
+    loadPreviousMarker: async () => null,
+    loadFailureBackoff: async () => ({ retryAt: NOW + 1 }),
+    fetchFn,
+  });
 
-  assert.equal(
-    hapiCalls, 6,
-    'a success between two failure runs must reset the streak, so the breaker only trips ' +
-    'on the second run of 3 consecutive failures (call #6), not the first (call #3)',
-  );
+  assert.equal(recent, null);
+  assert.equal(blocked, null);
+  assert.equal(calls, 0);
 });
