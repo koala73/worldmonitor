@@ -331,25 +331,6 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
   const isGenuineFailure = (step: ActivationStep): boolean =>
     transient === 'failed' && !declinedByConfirm.has(step.id);
 
-  /**
-   * Whether moving on from `step` should report a skip.
-   *
-   * A skip means "we presented this offer successfully and the user passed on
-   * it". Two things are not that, and reporting them as skips is how one attempt
-   * produced two funnel events (#5600's mislabeling class):
-   *
-   * - A confirm that resolved `blocked` already reported itself via onBlockStep
-   *   (#5609). Note this keys on `blockedByConfirm`, NOT `effectiveState`: a step
-   *   blocked at MOUNT never fires onBlockStep, so its skip is its only signal
-   *   and must still be emitted.
-   * - A confirm whose write errored already reported itself via the step-failed
-   *   event. `declined` is the exception — a dismissed permission prompt renders
-   *   the same retryable state but is a user choice, so it skips normally.
-   */
-  const shouldEmitSkip = (step: ActivationStep): boolean => {
-    if (blockedByConfirm.has(step.id)) return false;
-    return !isGenuineFailure(step);
-  };
 
   /** Default disposition for a step never explicitly acted on. */
   const defaultOutcome = (step: ActivationStep): ActivationStepOutcome =>
@@ -573,9 +554,7 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
         outcomes.set(step.id, 'failed');
         continue;
       }
-      // Same one-event-per-attempt rule as handleSkip: a confirm-time block has
-      // already reported itself (#5609/#5600).
-      if (i !== currentIndex || shouldEmitSkip(step)) options.onSkipStep(step.id);
+      options.onSkipStep(step.id);
       outcomes.set(step.id, 'skipped');
     }
     transient = 'idle';
@@ -599,7 +578,7 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
     // one is what made a systemic day-0 failure look like user disinterest in
     // the funnel (#5600); the failure itself was already reported by
     // onConfirmStep, and the outcome below keeps the summary/ledger honest.
-    if (shouldEmitSkip(step)) options.onSkipStep(step.id);
+    if (!isGenuineFailure(step)) options.onSkipStep(step.id);
     outcomes.set(step.id, isGenuineFailure(step) ? 'failed' : 'skipped');
     recordProgress();
     advance();
@@ -699,9 +678,12 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
             advance();
             break;
           case 'advance-skip':
-            // #5600: a confirm-time block already fired stepBlocked, so emitting a
-            // skip here too counted one denied-permission attempt twice.
-            if (shouldEmitSkip(step)) options.onSkipStep(step.id);
+            // A blocked step deliberately reports BOTH: onBlockStep is the
+            // transition ("the browser refused") and this skip is the resolution
+            // ("the step ended up skipped, same as one blocked at mount"). Two
+            // facts about one step, not a double-count — pinned by
+            // tests/pro-activation-alerts-blocked.test.mts (#5609).
+            options.onSkipStep(step.id);
             outcomes.set(step.id, 'skipped');
             recordProgress();
             advance();

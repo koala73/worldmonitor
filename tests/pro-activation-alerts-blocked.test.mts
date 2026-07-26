@@ -335,15 +335,21 @@ describe('alerts confirm classification (#5609)', () => {
     ]);
   });
 
-  it('still returns retryable "failed" when the prompt was merely dismissed', async () => {
+  it('returns retryable "declined" when the prompt was merely dismissed', async () => {
     // Permission stays 'default' — the browser WILL prompt again, so "Try
     // again" remains meaningful and must not be swallowed by the blocked state.
+    // That intent is unchanged; only the vocabulary widened (#5600). 'declined'
+    // renders the SAME retryable state as 'failed' (see the shell test below)
+    // but keeps a dismissed prompt out of the pro-activation-step-failed metric,
+    // which exists to surface OUR writes erroring — a dismissed prompt is the
+    // most common alerts-step outcome and is a user choice, not our failure.
     installPushState('default', true);
     const mod = await loadInterstitial();
     const options = await captureConfirm(mod);
 
-    assert.equal(await options.onConfirmStep('alerts'), 'failed');
+    assert.equal(await options.onConfirmStep('alerts'), 'declined');
   });
+
 
   // Both post-subscribe failure paths must stay retryable: the permission was
   // granted, so the step is recoverable and "Try again" is the right CTA.
@@ -393,7 +399,7 @@ describe('activation interstitial blocked transition (#5609)', () => {
 
   function openAlertsStep(
     mod: InterstitialModule,
-    onConfirmStep: () => Promise<'verified' | 'failed' | 'blocked'>,
+    onConfirmStep: () => Promise<'verified' | 'failed' | 'blocked' | 'declined'>,
     state: 'confirmable' | 'blocked' = 'confirmable',
   ): {
     dom: DomHandles;
@@ -499,5 +505,35 @@ describe('activation interstitial blocked transition (#5609)', () => {
     assert.match(html, /status\.retry/, 'retry must survive for recoverable failures');
     assert.match(html, /data-action="confirm"/);
     assert.doesNotMatch(html, /status-blocked/);
+  });
+
+  it('renders a dismissed prompt as retryable too, and reports it as a skip not a failure', async () => {
+    // #5600: 'declined' is a dismissed permission prompt. It must render exactly
+    // like 'failed' — the browser re-prompts, so "Try again" is meaningful — while
+    // resolving as a SKIP rather than landing in the failed bucket. Splitting the
+    // two is the whole point: pro-activation-step-failed exists to surface our
+    // writes erroring, and a dismissed prompt is the alerts step's most common
+    // user outcome.
+    installPushState('default', true);
+    activeDom = installDom();
+    const mod = await loadInterstitial();
+    const { dom, skips, exits } = openAlertsStep(mod, async () => 'declined');
+
+    clickPrimary(dom);
+    await new Promise<void>((r) => setImmediate(r));
+
+    const html = renderedHtml(dom);
+    assert.match(html, /status-failed/, 'a dismissed prompt stays in the retryable state');
+    assert.match(html, /status\.retry/, '"Try again" must still be offered');
+    assert.doesNotMatch(html, /status-blocked/, 'it must not become the blocked dead end');
+
+    // Moving on via the secondary Skip button records a skip, not a failure —
+    // the outcome a genuine write error would land in.
+    const skip = dom.document.body.querySelector('.pro-activation-skip');
+    assert.ok(skip, 'a dismissed prompt must still offer Skip alongside Try again');
+    skip!.dispatchEvent(new Event('click'));
+    assert.deepEqual(skips, ['alerts']);
+    assert.equal(clickPrimary(dom), 'finish');
+    assert.deepEqual(exits, [[{ id: 'alerts', outcome: 'skipped' }]]);
   });
 });
