@@ -231,7 +231,10 @@ export const DECISION_SIGNAL_PROVENANCE_FAMILY_REGISTRATIONS: Readonly<
     serializationFixtureId: 'corridor-stale-content',
   }),
   derived_comparison: Object.freeze({
-    launchStatus: 'reference',
+    // Launched by the final China decision-parity composition (#5580). The
+    // comparison method remains owned by its source lane; this registration
+    // only admits its already-reviewed deterministic result to API/MCP/UI.
+    launchStatus: 'launched',
     serializationFixtureId: 'derived-comparison',
   }),
 });

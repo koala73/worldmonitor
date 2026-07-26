@@ -134,10 +134,7 @@
     "china": {
       "title": "中国国家概览",
       "description": "基于现有公共数据契约的宏观、市场、贸易、能源与运行可用性现状。",
-      "macroPolicy": "宏观与政策",
       "policyEvents": "政策与执法",
-      "marketCredit": "市场与信贷",
-      "tradeSupply": "贸易与供应链",
       "energy": "能源",
       "availability": "灾害与航空",
       "observed": "数据日期：",
@@ -154,8 +151,6 @@
       "gasDemand": "天然气需求",
       "energyMix": "电力结构",
       "coal": "煤炭",
-      "aviationAvailability": "航空可用性",
-      "hazardAvailability": "灾害可用性",
       "noMajorDisruptions": "未报告重大中断",
       "activeDisruptions_one": "{{count}} 起活跃中断",
       "activeDisruptions_other": "{{count}} 起活跃中断",
@@ -167,11 +162,6 @@
       "ccfiSource": "上海航运交易所",
       "comtradeSource": "联合国商品贸易数据库（报告方 156）",
       "sourceUnavailable": "来源不可用",
-      "macroUnavailable": "宏观与政策数据目前不可用。",
-      "marketUnavailable": "市场与信贷数据目前不可用。",
-      "tradeUnavailable": "贸易与供应链数据目前不可用。",
-      "energyUnavailable": "能源数据目前不可用。",
-      "availabilityUnavailable": "灾害与航空可用性数据目前不可用。",
       "policyUnavailable": "官方政策与执法事件目前不可用。",
       "policyPartial": "{{count}} 个官方机构的数据暂时降级。",
       "status": {
@@ -180,7 +170,13 @@
         "partial": "部分",
         "stale": "过期",
         "unavailable": "不可用"
-      }
+      },
+      "macroSignals": "Macro Signals",
+      "crossStraitActivity": "Cross-Strait Activity",
+      "corporateDisclosures": "Corporate Disclosures",
+      "corridorConditions": "Corridor Conditions",
+      "activityNowcast": "Activity Nowcast",
+      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
     }
   },
   "header": {

@@ -203,10 +203,7 @@
     "china": {
       "title": "देश अवलोकन: चीन",
       "description": "मौजूदा सार्वजनिक डेटा अनुबंधों से वर्तमान मैक्रो, बाज़ार, व्यापार, ऊर्जा और परिचालन उपलब्धता।",
-      "macroPolicy": "मैक्रो और नीति",
       "policyEvents": "Policy & Enforcement",
-      "marketCredit": "बाज़ार और ऋण",
-      "tradeSupply": "व्यापार और आपूर्ति श्रृंखला",
       "energy": "ऊर्जा",
       "availability": "खतरे और विमानन",
       "observed": "तिथि:",
@@ -223,8 +220,6 @@
       "gasDemand": "गैस की मांग",
       "energyMix": "बिजली मिश्रण",
       "coal": "कोयला",
-      "aviationAvailability": "विमानन उपलब्धता",
-      "hazardAvailability": "खतरा उपलब्धता",
       "noMajorDisruptions": "कोई बड़ा व्यवधान दर्ज नहीं",
       "activeDisruptions_one": "{{count}} सक्रिय व्यवधान",
       "activeDisruptions_other": "{{count}} सक्रिय व्यवधान",
@@ -236,11 +231,6 @@
       "ccfiSource": "शंघाई शिपिंग एक्सचेंज",
       "comtradeSource": "UN Comtrade, रिपोर्टर 156",
       "sourceUnavailable": "स्रोत अनुपलब्ध",
-      "macroUnavailable": "मैक्रो और नीति डेटा फ़िलहाल अनुपलब्ध है।",
-      "marketUnavailable": "बाज़ार और ऋण डेटा फ़िलहाल अनुपलब्ध है।",
-      "tradeUnavailable": "व्यापार और आपूर्ति श्रृंखला डेटा फ़िलहाल अनुपलब्ध है।",
-      "energyUnavailable": "ऊर्जा डेटा फ़िलहाल अनुपलब्ध है।",
-      "availabilityUnavailable": "खतरों और विमानन की उपलब्धता का डेटा फ़िलहाल अनुपलब्ध है।",
       "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
       "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
@@ -249,7 +239,13 @@
         "partial": "आंशिक",
         "stale": "पुराना",
         "unavailable": "अनुपलब्ध"
-      }
+      },
+      "macroSignals": "Macro Signals",
+      "crossStraitActivity": "Cross-Strait Activity",
+      "corporateDisclosures": "Corporate Disclosures",
+      "corridorConditions": "Corridor Conditions",
+      "activityNowcast": "Activity Nowcast",
+      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
     }
   },
   "header": {

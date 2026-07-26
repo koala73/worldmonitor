@@ -35,7 +35,7 @@ const emptySignals = {
 const summary = {
   groups: [
     {
-      id: 'macro-policy',
+      id: 'macro',
       state: 'partial',
       signals: [{
         label: 'Consumer prices',
@@ -66,45 +66,45 @@ const summary = {
       unavailableReason: 'One official agency is temporarily unavailable.',
     },
     {
-      id: 'market-credit',
+      id: 'cross-strait-activity',
       state: 'available',
       signals: [{
-        label: 'Shanghai Composite',
-        value: '3,420 CNY',
-        source: 'Market Service',
+        label: 'PLA aircraft sorties',
+        value: '18 sorties',
+        source: 'Taiwan MND',
         observedAt: '2026-07-14',
         stale: false,
       }],
     },
     {
-      id: 'trade-supply',
+      id: 'corporate-disclosures',
       state: 'stale',
       signals: [{
-        label: 'CCFI',
-        value: '1,072',
-        source: 'Shanghai Shipping Exchange',
+        label: 'SSE disclosure filings',
+        value: '3 filings',
+        source: 'Shanghai Stock Exchange',
         observedAt: '2026-07-11',
         stale: true,
       }],
     },
     {
-      id: 'energy',
+      id: 'corridor-conditions',
       state: 'available',
       signals: [{
-        label: 'Oil product supply',
+        label: 'Container throughput',
         value: 'Available',
-        source: 'JODI',
+        source: 'PortWatch',
         observedAt: '2026-05',
         stale: false,
       }],
     },
     {
-      id: 'availability',
+      id: 'activity-nowcast',
       state: 'available',
       signals: [{
-        label: 'Aviation availability',
-        value: '3 aircraft tracked',
-        source: 'Country intelligence',
+        label: 'Nowcast confidence',
+        value: 'High confidence',
+        source: 'WorldMonitor China Activity Nowcast',
         stale: false,
       }],
     },
@@ -189,7 +189,7 @@ test('China summary is scoped to China, exposes per-group states, and safely att
     );
 
     const unavailableSummary = {
-      groups: summary.groups.map((group) => (group.id === 'energy'
+      groups: summary.groups.map((group) => (group.id === 'corridor-conditions'
         ? { id: group.id, state: 'unavailable', signals: [], unavailableReason: 'Energy data are currently unavailable.' }
         : group)),
     };

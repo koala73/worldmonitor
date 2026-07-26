@@ -23,7 +23,7 @@ The endpoint is a single URL:
 https://worldmonitor.app/mcp
 ```
 
-It speaks streamable HTTP (JSON-RPC 2.0), handles OAuth automatically on first connection, and serves 41 tools across six domains. The flagship ones:
+It speaks streamable HTTP (JSON-RPC 2.0), handles OAuth automatically on first connection, and serves 42 tools across six domains. The flagship ones:
 
 | Tool | What your agent gets |
 |------|----------------------|

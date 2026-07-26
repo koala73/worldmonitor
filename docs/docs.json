@@ -233,6 +233,7 @@
                   "health-endpoints",
                   "relay-parameters",
                   "decision-signal-provenance",
+                  "china-decision-signals",
                   "data-sources"
                 ]
               },

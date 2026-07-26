@@ -134,10 +134,7 @@
     "china": {
       "title": "Privire de ansamblu: China",
       "description": "Situația actuală macro, de piață, comerț, energie și disponibilitate operațională din contractele de date publice existente.",
-      "macroPolicy": "Macro și politici",
       "policyEvents": "Policy & Enforcement",
-      "marketCredit": "Piață și credit",
-      "tradeSupply": "Comerț și lanț de aprovizionare",
       "energy": "Energie",
       "availability": "Pericole și aviație",
       "observed": "La data:",
@@ -154,8 +151,6 @@
       "gasDemand": "Cererea de gaze",
       "energyMix": "Mixul de energie electrică",
       "coal": "cărbune",
-      "aviationAvailability": "Disponibilitatea aviației",
-      "hazardAvailability": "Disponibilitatea pericolelor",
       "noMajorDisruptions": "Nu au fost raportate perturbări majore",
       "activeDisruptions_one": "{{count}} perturbare activă",
       "activeDisruptions_few": "{{count}} perturbări active",
@@ -169,11 +164,6 @@
       "ccfiSource": "Bursa de Navigație din Shanghai",
       "comtradeSource": "UN Comtrade, raportor 156",
       "sourceUnavailable": "Sursă indisponibilă",
-      "macroUnavailable": "Datele macro și de politici sunt momentan indisponibile.",
-      "marketUnavailable": "Datele de piață și credit sunt momentan indisponibile.",
-      "tradeUnavailable": "Datele despre comerț și lanțul de aprovizionare sunt momentan indisponibile.",
-      "energyUnavailable": "Datele energetice sunt momentan indisponibile.",
-      "availabilityUnavailable": "Datele privind pericolele și aviația sunt momentan indisponibile.",
       "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
       "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
@@ -182,7 +172,13 @@
         "partial": "Parțial",
         "stale": "Învechit",
         "unavailable": "Indisponibil"
-      }
+      },
+      "macroSignals": "Macro Signals",
+      "crossStraitActivity": "Cross-Strait Activity",
+      "corporateDisclosures": "Corporate Disclosures",
+      "corridorConditions": "Corridor Conditions",
+      "activityNowcast": "Activity Nowcast",
+      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
     }
   },
   "header": {

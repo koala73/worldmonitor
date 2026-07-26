@@ -134,10 +134,7 @@
     "china": {
       "title": "Επισκόπηση χώρας: Κίνα",
       "description": "Τρέχουσα εικόνα μακροοικονομίας, αγοράς, εμπορίου, ενέργειας και επιχειρησιακής διαθεσιμότητας από τα υφιστάμενα δημόσια συμβόλαια δεδομένων.",
-      "macroPolicy": "Μακροοικονομία & Πολιτική",
       "policyEvents": "Policy & Enforcement",
-      "marketCredit": "Αγορά & Πίστωση",
-      "tradeSupply": "Εμπόριο & Εφοδιαστική αλυσίδα",
       "energy": "Ενέργεια",
       "availability": "Κίνδυνοι & Αεροπορία",
       "observed": "Έως:",
@@ -154,8 +151,6 @@
       "gasDemand": "Ζήτηση φυσικού αερίου",
       "energyMix": "Μείγμα ηλεκτροπαραγωγής",
       "coal": "άνθρακας",
-      "aviationAvailability": "Διαθεσιμότητα αεροπορίας",
-      "hazardAvailability": "Διαθεσιμότητα κινδύνων",
       "noMajorDisruptions": "Δεν αναφέρθηκαν σημαντικές διαταραχές",
       "activeDisruptions_one": "{{count}} ενεργή διαταραχή",
       "activeDisruptions_other": "{{count}} ενεργές διαταραχές",
@@ -167,11 +162,6 @@
       "ccfiSource": "Ναυτιλιακό Χρηματιστήριο της Σαγκάης",
       "comtradeSource": "UN Comtrade, δηλούσα χώρα 156",
       "sourceUnavailable": "Μη διαθέσιμη πηγή",
-      "macroUnavailable": "Τα δεδομένα μακροοικονομίας και πολιτικής δεν είναι διαθέσιμα αυτήν τη στιγμή.",
-      "marketUnavailable": "Τα δεδομένα αγοράς και πίστωσης δεν είναι διαθέσιμα αυτήν τη στιγμή.",
-      "tradeUnavailable": "Τα δεδομένα εμπορίου και εφοδιαστικής αλυσίδας δεν είναι διαθέσιμα αυτήν τη στιγμή.",
-      "energyUnavailable": "Τα ενεργειακά δεδομένα δεν είναι διαθέσιμα αυτήν τη στιγμή.",
-      "availabilityUnavailable": "Τα δεδομένα διαθεσιμότητας κινδύνων και αεροπορίας δεν είναι διαθέσιμα αυτήν τη στιγμή.",
       "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
       "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
@@ -180,7 +170,13 @@
         "partial": "Μερικό",
         "stale": "Παρωχημένο",
         "unavailable": "Μη διαθέσιμο"
-      }
+      },
+      "macroSignals": "Macro Signals",
+      "crossStraitActivity": "Cross-Strait Activity",
+      "corporateDisclosures": "Corporate Disclosures",
+      "corridorConditions": "Corridor Conditions",
+      "activityNowcast": "Activity Nowcast",
+      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
     }
   },
   "header": {

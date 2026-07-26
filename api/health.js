@@ -144,6 +144,7 @@ const BOOTSTRAP_KEYS = {
   chinaReleaseCalendar: BOOTSTRAP_CACHE_KEYS.chinaReleaseCalendar,
   chinaCorporateDisclosures: 'market:china:corporate-disclosures:v1',
   chinaPolicyEvents: 'china:policy-events:v1',
+  chinaDecisionSignals: BOOTSTRAP_CACHE_KEYS.chinaDecisionSignals,
   cotPositioning:    'market:cot:v1',
   hyperliquidFlow:   'market:hyperliquid:flow:v1',
   crudeInventories:  'economic:crude-inventories:v1',
@@ -398,6 +399,7 @@ const SEED_META = {
   crossStraitActivityTaiwanMnd: { key: 'seed-meta:military:cross-strait-activity:taiwan-mnd', maxStaleMin: 720 },
   crossStraitActivityJapanMod:  { key: 'seed-meta:military:cross-strait-activity:japan-mod', maxStaleMin: 720 },
   chinaPolicyEvents: { key: 'seed-meta:china:policy-events', maxStaleMin: 2_160 },
+  chinaDecisionSignals: { key: 'seed-meta:intelligence:china-decision-signals', maxStaleMin: 60, minRecordCount: 6 },
   energyPrices:     { key: 'seed-meta:economic:energy-prices',    maxStaleMin: 150 }, // seed-economy primary runSeed resource
   bisPolicy:        { key: 'seed-meta:economic:bis',              maxStaleMin: 10080 }, // runSeed('economic','bis',...) writes seed-meta:economic:bis
   // seed-bis-extended.mjs is a child-process section spawned by
@@ -1216,8 +1218,14 @@ function healthResponseBody(snapshot, compact) {
   // the full 20 KB check map. Passing a compact snapshot back through here is a
   // no-op, which is what makes buildCompactVerdictSnapshot() below safe.
   const problems = snapshot.checks
-    ? Object.fromEntries(Object.entries(snapshot.checks).filter(([, check]) => isProblemStatus(check.status)))
-    : (snapshot.problems ?? {});
+    ? Object.fromEntries(Object.entries(snapshot.checks).filter(
+      ([name, check]) => name !== 'chinaDecisionSignals' && isProblemStatus(check.status),
+    ))
+    : { ...(snapshot.problems ?? {}) };
+  // Older compact snapshots may predate the operator-only China health
+  // projection. Strip it again at the response boundary so a cached value
+  // cannot leak source freshness details to anonymous status readers.
+  delete problems.chinaDecisionSignals;
   if (Object.keys(problems).length > 0) body.problems = problems;
   return body;
 }

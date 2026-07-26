@@ -93,6 +93,14 @@ for both a fresh producer heartbeat and fresh, substantive China content; a
 fresh seed cannot hide stale or missing source content. `CHINA_DEGRADED` is a
 warning projection for partial or stale coverage, while `CHINA_UNAVAILABLE` is
 critical when the summary is invalid or the launched content is unavailable.
+
+The final public composition is monitored separately as
+`chinaDecisionSignals`. Its canonical payload must contain all six stable
+groups even when individual groups are explicitly unavailable. Health requires
+six group records and a seed no older than 60 minutes. Per-source transport
+details for policy, exchanges, and cross-Strait publishers remain visible only
+in this authenticated operator view; they are not copied into the public
+country summary or Pro MCP result.
 Blocked China contracts remain visible in the audit with their stable reason
 code but are excluded from the strict launched-entry health count.
 

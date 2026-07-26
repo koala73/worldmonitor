@@ -134,10 +134,7 @@
     "china": {
       "title": "Tổng quan quốc gia: Trung Quốc",
       "description": "Tình hình hiện tại về vĩ mô, thị trường, thương mại, năng lượng và mức sẵn sàng vận hành từ các hợp đồng dữ liệu công khai hiện có.",
-      "macroPolicy": "Vĩ mô & Chính sách",
       "policyEvents": "Policy & Enforcement",
-      "marketCredit": "Thị trường & Tín dụng",
-      "tradeSupply": "Thương mại & Chuỗi cung ứng",
       "energy": "Năng lượng",
       "availability": "Hiểm họa & Hàng không",
       "observed": "Tính đến:",
@@ -154,8 +151,6 @@
       "gasDemand": "Nhu cầu khí đốt",
       "energyMix": "Cơ cấu nguồn điện",
       "coal": "than đá",
-      "aviationAvailability": "Mức sẵn sàng hàng không",
-      "hazardAvailability": "Mức sẵn sàng dữ liệu hiểm họa",
       "noMajorDisruptions": "Không có gián đoạn lớn nào được báo cáo",
       "activeDisruptions_one": "{{count}} gián đoạn đang hoạt động",
       "activeDisruptions_other": "{{count}} gián đoạn đang hoạt động",
@@ -167,11 +162,6 @@
       "ccfiSource": "Sàn giao dịch vận tải biển Thượng Hải",
       "comtradeSource": "UN Comtrade, bên báo cáo 156",
       "sourceUnavailable": "Không có nguồn",
-      "macroUnavailable": "Dữ liệu vĩ mô và chính sách hiện không khả dụng.",
-      "marketUnavailable": "Dữ liệu thị trường và tín dụng hiện không khả dụng.",
-      "tradeUnavailable": "Dữ liệu thương mại và chuỗi cung ứng hiện không khả dụng.",
-      "energyUnavailable": "Dữ liệu năng lượng hiện không khả dụng.",
-      "availabilityUnavailable": "Dữ liệu về hiểm họa và hàng không hiện không khả dụng.",
       "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
       "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
@@ -180,7 +170,13 @@
         "partial": "Một phần",
         "stale": "Cũ",
         "unavailable": "Không khả dụng"
-      }
+      },
+      "macroSignals": "Macro Signals",
+      "crossStraitActivity": "Cross-Strait Activity",
+      "corporateDisclosures": "Corporate Disclosures",
+      "corridorConditions": "Corridor Conditions",
+      "activityNowcast": "Activity Nowcast",
+      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
     }
   },
   "header": {

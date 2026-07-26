@@ -134,10 +134,7 @@
     "china": {
       "title": "لمحة قطرية عن الصين",
       "description": "الوضع الحالي للاقتصاد الكلي والأسواق والتجارة والطاقة والتوافر التشغيلي من عقود البيانات العامة القائمة.",
-      "macroPolicy": "الاقتصاد الكلي والسياسات",
       "policyEvents": "Policy & Enforcement",
-      "marketCredit": "السوق والائتمان",
-      "tradeSupply": "التجارة وسلاسل الإمداد",
       "energy": "الطاقة",
       "availability": "المخاطر والطيران",
       "observed": "اعتبارًا من:",
@@ -154,8 +151,6 @@
       "gasDemand": "الطلب على الغاز",
       "energyMix": "مزيج الكهرباء",
       "coal": "الفحم",
-      "aviationAvailability": "توافر الطيران",
-      "hazardAvailability": "توافر بيانات المخاطر",
       "noMajorDisruptions": "لم يُبلَّغ عن اضطرابات كبيرة",
       "activeDisruptions_zero": "لا توجد اضطرابات نشطة",
       "activeDisruptions_one": "اضطراب نشط واحد",
@@ -175,11 +170,6 @@
       "ccfiSource": "بورصة شنغهاي للشحن",
       "comtradeSource": "قاعدة الأمم المتحدة كومتريد، الجهة المبلغة 156",
       "sourceUnavailable": "المصدر غير متاح",
-      "macroUnavailable": "بيانات الاقتصاد الكلي والسياسات غير متاحة حاليًا.",
-      "marketUnavailable": "بيانات السوق والائتمان غير متاحة حاليًا.",
-      "tradeUnavailable": "بيانات التجارة وسلاسل الإمداد غير متاحة حاليًا.",
-      "energyUnavailable": "بيانات الطاقة غير متاحة حاليًا.",
-      "availabilityUnavailable": "بيانات توافر المخاطر والطيران غير متاحة حاليًا.",
       "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
       "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
@@ -188,7 +178,13 @@
         "partial": "جزئي",
         "stale": "قديم",
         "unavailable": "غير متاح"
-      }
+      },
+      "macroSignals": "Macro Signals",
+      "crossStraitActivity": "Cross-Strait Activity",
+      "corporateDisclosures": "Corporate Disclosures",
+      "corridorConditions": "Corridor Conditions",
+      "activityNowcast": "Activity Nowcast",
+      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
     }
   },
   "header": {

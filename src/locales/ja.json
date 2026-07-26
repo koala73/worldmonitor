@@ -134,10 +134,7 @@
     "china": {
       "title": "中国カントリースナップショット",
       "description": "既存の公開データ契約に基づくマクロ・市場・貿易・エネルギー・運用可用性の現況。",
-      "macroPolicy": "マクロ・政策",
       "policyEvents": "Policy & Enforcement",
-      "marketCredit": "市場・信用",
-      "tradeSupply": "貿易・サプライチェーン",
       "energy": "エネルギー",
       "availability": "災害・航空",
       "observed": "基準日:",
@@ -154,8 +151,6 @@
       "gasDemand": "ガス需要",
       "energyMix": "電源構成",
       "coal": "石炭",
-      "aviationAvailability": "航空の可用性",
-      "hazardAvailability": "災害シグナルの可用性",
       "noMajorDisruptions": "重大な障害は報告されていません",
       "activeDisruptions_one": "{{count}}件のアクティブな障害",
       "activeDisruptions_other": "{{count}}件のアクティブな障害",
@@ -167,11 +162,6 @@
       "ccfiSource": "上海航運取引所",
       "comtradeSource": "国連Comtrade（報告国156）",
       "sourceUnavailable": "出典不明",
-      "macroUnavailable": "マクロ・政策データは現在利用できません。",
-      "marketUnavailable": "市場・信用データは現在利用できません。",
-      "tradeUnavailable": "貿易・サプライチェーンデータは現在利用できません。",
-      "energyUnavailable": "エネルギーデータは現在利用できません。",
-      "availabilityUnavailable": "災害・航空の可用性データは現在利用できません。",
       "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
       "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
@@ -180,7 +170,13 @@
         "partial": "一部利用可能",
         "stale": "古いデータ",
         "unavailable": "利用不可"
-      }
+      },
+      "macroSignals": "Macro Signals",
+      "crossStraitActivity": "Cross-Strait Activity",
+      "corporateDisclosures": "Corporate Disclosures",
+      "corridorConditions": "Corridor Conditions",
+      "activityNowcast": "Activity Nowcast",
+      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
     }
   },
   "header": {

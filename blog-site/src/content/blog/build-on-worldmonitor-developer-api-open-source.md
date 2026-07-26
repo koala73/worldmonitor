@@ -1,6 +1,6 @@
 ---
 title: "Build on World Monitor: APIs and Developer Platform"
-description: "Build intelligence apps on World Monitor's typed API: 35 services, 283 proto files, 80+ edge functions, and auto-generated TypeScript clients. AGPL-3.0."
+description: "Build intelligence apps on World Monitor's typed API: 35 services, 284 proto files, 80+ edge functions, and auto-generated TypeScript clients. AGPL-3.0."
 metaTitle: "Developer API & Open Source Platform | World Monitor"
 keywords: "open source intelligence API, OSINT API free, geopolitical data API, intelligence platform developer, proto-first API architecture"
 audience: "Developers, data engineers, startup builders, academic researchers, open-source contributors"
@@ -17,7 +17,7 @@ World Monitor is designed differently. The entire intelligence platform, every d
 
 World Monitor uses **Protocol Buffers (protobuf)** as the single source of truth for all API contracts. The codebase contains:
 
-- **283 proto files** defining every data structure and service
+- **284 proto files** defining every data structure and service
 - **35 typed service domains** covering all intelligence verticals
 - **Auto-generated TypeScript** clients for type-safe API consumption
 - **Auto-generated OpenAPI** documentation for REST compatibility
@@ -149,7 +149,7 @@ Build alerting bots that post to your team channel when:
 
 Every developer surface has a dedicated, named page you can jump to directly — the [World Monitor Developer Portal](https://worldmonitor.app/developers.md) links them all in one place:
 
-- **[World Monitor MCP Server](https://worldmonitor.app/mcp-server.md)** — the recommended agent surface at `https://worldmonitor.app/mcp`, with 41 tools over Streamable HTTP. Connect Claude, Cursor, or any MCP client. See the [MCP Overview](https://www.worldmonitor.app/docs/mcp-overview) for auth and the full catalog.
+- **[World Monitor MCP Server](https://worldmonitor.app/mcp-server.md)** — the recommended agent surface at `https://worldmonitor.app/mcp`, with 42 tools over Streamable HTTP. Connect Claude, Cursor, or any MCP client. See the [MCP Overview](https://www.worldmonitor.app/docs/mcp-overview) for auth and the full catalog.
 - **[World Monitor OpenAPI Specification](https://worldmonitor.app/openapi.md)** — the OpenAPI 3.1 contract for the REST API ([openapi.yaml](https://worldmonitor.app/openapi.yaml) / [openapi.json](https://worldmonitor.app/openapi.json)), so you can generate a typed client in any language.
 - **[World Monitor SDKs](https://worldmonitor.app/sdks.md)** — official zero-dependency client libraries for Python, Ruby, Go, and JavaScript, plus the [`worldmonitor` CLI](https://www.worldmonitor.app/docs/cli).
 - **World Monitor API docs** — the full [developer documentation](https://www.worldmonitor.app/docs/documentation) site, with an [MCP Quickstart](https://www.worldmonitor.app/docs/mcp-quickstart) and [agent auth walkthrough](https://worldmonitor.app/auth.md).
@@ -195,7 +195,7 @@ For reference, World Monitor is built with:
 | 3D Globe | globe.gl, Three.js |
 | Flat Map | deck.gl, MapLibre |
 | API | Vercel Edge Functions |
-| Contracts | Protocol Buffers (283 files) |
+| Contracts | Protocol Buffers (284 files) |
 | Desktop | Tauri (Rust) |
 | Sidecar | Node.js |
 | Caching | Redis |
@@ -233,4 +233,4 @@ Define your data structures in a proto file, implement a handler function, wire 
 
 ---
 
-**Start building at [github.com/koala73/worldmonitor](https://github.com/koala73/worldmonitor). 35 services, 283 proto files, and a global intelligence dataset waiting for your application.**
+**Start building at [github.com/koala73/worldmonitor](https://github.com/koala73/worldmonitor). 35 services, 284 proto files, and a global intelligence dataset waiting for your application.**

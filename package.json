@@ -54,6 +54,7 @@
     "gen:openapi:idempotency": "node scripts/openapi-inject-idempotency.mjs",
     "gen:openapi:rate-limit-errors": "node scripts/openapi-inject-rate-limit-errors.mjs",
     "gen:openapi:async-jobs": "node scripts/openapi-inject-async-jobs.mjs",
+    "gen:openapi:china-decision-signals": "node scripts/openapi-inject-china-decision-signals.mjs",
     "build:agent-skills": "node scripts/build-agent-skills-index.mjs",
     "prebuild": "npm run build:openapi && npm run build:agent-skills",
     "build": "npm run security:vite-env-secrets -- --strict-local && npm run build:blog && npm run build:crawlable-corpus && npm run build:content-corpus && tsc && vite build",

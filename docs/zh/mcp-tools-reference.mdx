@@ -757,6 +757,36 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_china_decision_signals`
+
+返回国家摘要使用的受限六领域中国决策信号快照。宏观金融、政策与执法、台海活动、
+企业披露、走廊状况和活动 nowcast 采用稳定顺序，并共享 `available`、`partial`、
+`stale` 或 `unavailable` 状态词汇。
+
+每个条目都保留规范溯源、发布者类型、来源与原始引用、翻译状态、观测/生效/发布/
+检索时间、修订与替代、置信度、佐证和新鲜度声明。该工具返回与公共 RPC 相同的受限
+条目；它不暴露详细双边贸易行或仅限 operator 的来源健康信息。
+
+- **参数：** 除可选通用 `jmespath` 投影外，无参数。
+- **API 端点：** `GET /api/intelligence/v1/get-china-decision-signals`
+- **类型：** 基于 Railway 组合缓存的规范 RPC。
+- **刷新节奏：** 每 **15 分钟**；各领域可独立降级。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_china_decision_signals","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
 ### `get_military_posture`
 
 战区态势评估和军事风险评分。反映全球各战区的聚合军事定位和升级信号。

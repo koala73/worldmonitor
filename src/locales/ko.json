@@ -134,10 +134,7 @@
     "china": {
       "title": "중국 국가 스냅숏",
       "description": "기존 공개 데이터 계약 기반의 거시·시장·무역·에너지·운영 가용성 현황.",
-      "macroPolicy": "거시 & 정책",
       "policyEvents": "Policy & Enforcement",
-      "marketCredit": "시장 & 신용",
-      "tradeSupply": "무역 & 공급망",
       "energy": "에너지",
       "availability": "재해 & 항공",
       "observed": "기준일:",
@@ -154,8 +151,6 @@
       "gasDemand": "가스 수요",
       "energyMix": "전원 구성",
       "coal": "석탄",
-      "aviationAvailability": "항공 가용성",
-      "hazardAvailability": "재해 가용성",
       "noMajorDisruptions": "보고된 주요 중단 없음",
       "activeDisruptions_one": "활성 중단 {{count}}건",
       "activeDisruptions_other": "활성 중단 {{count}}건",
@@ -167,11 +162,6 @@
       "ccfiSource": "상하이 해운 거래소",
       "comtradeSource": "UN Comtrade 보고국 156",
       "sourceUnavailable": "출처 없음",
-      "macroUnavailable": "거시 및 정책 데이터를 현재 사용할 수 없습니다.",
-      "marketUnavailable": "시장 및 신용 데이터를 현재 사용할 수 없습니다.",
-      "tradeUnavailable": "무역 및 공급망 데이터를 현재 사용할 수 없습니다.",
-      "energyUnavailable": "에너지 데이터를 현재 사용할 수 없습니다.",
-      "availabilityUnavailable": "재해 및 항공 가용성 데이터를 현재 사용할 수 없습니다.",
       "policyUnavailable": "Official policy and enforcement events are currently unavailable.",
       "policyPartial": "{{count}} official agencies are temporarily degraded.",
       "status": {
@@ -180,7 +170,13 @@
         "partial": "부분",
         "stale": "오래됨",
         "unavailable": "사용 불가"
-      }
+      },
+      "macroSignals": "Macro Signals",
+      "crossStraitActivity": "Cross-Strait Activity",
+      "corporateDisclosures": "Corporate Disclosures",
+      "corridorConditions": "Corridor Conditions",
+      "activityNowcast": "Activity Nowcast",
+      "decisionSignalsUnavailable": "The China decision-signal snapshot is currently unavailable."
     }
   },
   "header": {

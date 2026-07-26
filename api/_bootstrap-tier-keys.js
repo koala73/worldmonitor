@@ -35,6 +35,7 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
   chinaReleaseCalendar: 'economic:china:release-calendar:v1',
   chinaCorporateDisclosures: 'market:china:corporate-disclosures:v1',
   chinaPolicyEvents: 'china:policy-events:v1',
+  chinaDecisionSignals: 'intelligence:china-decision-signals:v1',
   shippingRates: 'supply_chain:shipping:v2',
   chokepoints: 'supply_chain:chokepoints:v4',
   minerals: 'supply_chain:minerals:v2',
@@ -176,7 +177,7 @@ const FAST_KEY_NAMES = new Set([
 
 const ON_DEMAND_KEY_NAMES = new Set([
   'cyberThreats',
-  'chinaPolicyEvents',
+  'chinaPolicyEvents', 'chinaDecisionSignals',
   'bisDsr', 'bisPropertyResidential', 'bisPropertyCommercial',
   'imfMacro', 'imfGrowth', 'imfLabor', 'imfExternal',
   'eurostatHousePrices', 'eurostatGovDebtQ', 'eurostatIndProd',
