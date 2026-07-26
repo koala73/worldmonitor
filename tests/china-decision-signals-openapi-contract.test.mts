@@ -16,6 +16,7 @@ import {
   CHINA_DECISION_SIGNAL_MAX_ITEMS_PER_GROUP,
 } from '../shared/china-decision-signal-manifest';
 import {
+  parseChinaDecisionSignalManifest,
   provenanceValueSchema,
   readChinaDecisionSignalWireContract,
   readDecisionSignalProvenanceContract,
@@ -126,6 +127,33 @@ function availableSnapshot() {
 }
 
 describe('China decision-signals OpenAPI embedded JSON contract', () => {
+  it('parses harmless manifest formatting changes without weakening validation', () => {
+    const reformattedManifest = `
+      export const CHINA_DECISION_SIGNAL_MAX_ITEMS_PER_GROUP = 4
+        as const satisfies number;
+      export const CHINA_DECISION_SIGNAL_GROUP_MANIFEST = [
+        {
+          sourceKey: "economic:china:macro:v2",
+          // Metadata may be added without coupling codegen to its position.
+          metadata: { owner: 'macro' },
+          groupId: "macro",
+          provenanceFamily: "china_macro_official_numeric_observation",
+        },
+      ] as const satisfies readonly unknown[];
+    `;
+    assert.deepEqual(
+      parseChinaDecisionSignalManifest(reformattedManifest),
+      {
+        groupManifest: [{
+          groupId: 'macro',
+          provenanceFamily: 'china_macro_official_numeric_observation',
+          sourceKey: 'economic:china:macro:v2',
+        }],
+        maxItemsPerGroup: 4,
+      },
+    );
+  });
+
   it('reads group provenance and item bounds from the shared runtime manifest', () => {
     assert.deepEqual(
       wireContract.groupIds,

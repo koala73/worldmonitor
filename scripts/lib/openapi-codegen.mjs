@@ -452,6 +452,219 @@ function readConstStringArray(src, name) {
   return block ? [...block[1].matchAll(/'([^']+)'/g)].map((match) => match[1]) : [];
 }
 
+function skipQuotedLiteral(source, start) {
+  const quote = source[start];
+  let index = start + 1;
+  while (index < source.length) {
+    if (source[index] === '\\') {
+      index += 2;
+      continue;
+    }
+    if (source[index] === quote) return index + 1;
+    index += 1;
+  }
+  throw new Error('unterminated string literal in China decision-signal manifest');
+}
+
+function skipComment(source, start) {
+  if (source.startsWith('//', start)) {
+    const end = source.indexOf('\n', start + 2);
+    return end === -1 ? source.length : end + 1;
+  }
+  if (source.startsWith('/*', start)) {
+    const end = source.indexOf('*/', start + 2);
+    if (end === -1) {
+      throw new Error('unterminated comment in China decision-signal manifest');
+    }
+    return end + 2;
+  }
+  return start;
+}
+
+function skipTrivia(source, start) {
+  let index = start;
+  while (index < source.length) {
+    if (/\s/.test(source[index])) {
+      index += 1;
+      continue;
+    }
+    const commentEnd = skipComment(source, index);
+    if (commentEnd !== index) {
+      index = commentEnd;
+      continue;
+    }
+    break;
+  }
+  return index;
+}
+
+function readDelimited(source, start) {
+  const closingFor = { '(': ')', '[': ']', '{': '}' };
+  const firstClose = closingFor[source[start]];
+  if (!firstClose) {
+    throw new Error('expected a delimited literal in China decision-signal manifest');
+  }
+  const stack = [firstClose];
+  let index = start + 1;
+  while (index < source.length) {
+    const char = source[index];
+    if (char === '\'' || char === '"' || char === '`') {
+      index = skipQuotedLiteral(source, index);
+      continue;
+    }
+    const commentEnd = skipComment(source, index);
+    if (commentEnd !== index) {
+      index = commentEnd;
+      continue;
+    }
+    if (closingFor[char]) {
+      stack.push(closingFor[char]);
+      index += 1;
+      continue;
+    }
+    if (char === ')' || char === ']' || char === '}') {
+      if (stack.at(-1) !== char) {
+        throw new Error('mismatched delimiter in China decision-signal manifest');
+      }
+      stack.pop();
+      if (stack.length === 0) {
+        return {
+          content: source.slice(start + 1, index),
+          end: index + 1,
+        };
+      }
+    }
+    index += 1;
+  }
+  throw new Error('unterminated literal in China decision-signal manifest');
+}
+
+function findTopLevelComma(source, start) {
+  const closingFor = { '(': ')', '[': ']', '{': '}' };
+  const stack = [];
+  let index = start;
+  while (index < source.length) {
+    const char = source[index];
+    if (char === '\'' || char === '"' || char === '`') {
+      index = skipQuotedLiteral(source, index);
+      continue;
+    }
+    const commentEnd = skipComment(source, index);
+    if (commentEnd !== index) {
+      index = commentEnd;
+      continue;
+    }
+    if (closingFor[char]) {
+      stack.push(closingFor[char]);
+    } else if (char === ')' || char === ']' || char === '}') {
+      if (stack.at(-1) !== char) {
+        throw new Error('mismatched value delimiter in China decision-signal manifest');
+      }
+      stack.pop();
+    } else if (char === ',' && stack.length === 0) {
+      return index;
+    }
+    index += 1;
+  }
+  return source.length;
+}
+
+function constInitializerStart(source, name) {
+  const matches = [
+    ...source.matchAll(
+      new RegExp(`\\b(?:export\\s+)?const\\s+${name}\\b`, 'g'),
+    ),
+  ];
+  if (matches.length !== 1) return -1;
+  const start = skipTrivia(source, matches[0].index + matches[0][0].length);
+  return source[start] === '=' ? skipTrivia(source, start + 1) : -1;
+}
+
+function readManifestStringProperty(entry, property) {
+  let index = 0;
+  while (index < entry.length) {
+    index = skipTrivia(entry, index);
+    if (index >= entry.length) break;
+    if (entry[index] === ',') {
+      index += 1;
+      continue;
+    }
+    const key = entry.slice(index).match(/^[$A-Z_a-z][$\w]*/)?.[0];
+    if (!key) {
+      throw new Error('expected a property name in China decision-signal manifest');
+    }
+    index = skipTrivia(entry, index + key.length);
+    if (entry[index] !== ':') {
+      throw new Error(`expected ":" after ${key} in China decision-signal manifest`);
+    }
+    const valueStart = skipTrivia(entry, index + 1);
+    const valueEnd = findTopLevelComma(entry, valueStart);
+    if (key === property) {
+      const quote = entry[valueStart];
+      if (quote !== '\'' && quote !== '"') {
+        throw new Error(`${property} must be a string literal`);
+      }
+      const literalEnd = skipQuotedLiteral(entry, valueStart);
+      if (skipTrivia(entry, literalEnd) !== valueEnd) {
+        throw new Error(`${property} must be a plain string literal`);
+      }
+      const value = entry.slice(valueStart + 1, literalEnd - 1);
+      if (!value || value.includes('\\')) {
+        throw new Error(`${property} must be a non-empty unescaped string literal`);
+      }
+      return value;
+    }
+    index = valueEnd + 1;
+  }
+  throw new Error(`missing ${property} in China decision-signal manifest`);
+}
+
+export function parseChinaDecisionSignalManifest(source) {
+  const manifestStart = constInitializerStart(
+    source,
+    'CHINA_DECISION_SIGNAL_GROUP_MANIFEST',
+  );
+  const maxItemsStart = constInitializerStart(
+    source,
+    'CHINA_DECISION_SIGNAL_MAX_ITEMS_PER_GROUP',
+  );
+  if (manifestStart < 0 || source[manifestStart] !== '[' || maxItemsStart < 0) {
+    throw new Error('could not locate the China decision-signal manifest');
+  }
+
+  const manifestLiteral = readDelimited(source, manifestStart).content;
+  const groupManifest = [];
+  let index = 0;
+  while (index < manifestLiteral.length) {
+    index = skipTrivia(manifestLiteral, index);
+    if (index >= manifestLiteral.length) break;
+    if (manifestLiteral[index] === ',') {
+      index += 1;
+      continue;
+    }
+    if (manifestLiteral[index] !== '{') {
+      throw new Error('China decision-signal manifest entries must be object literals');
+    }
+    const entry = readDelimited(manifestLiteral, index);
+    groupManifest.push({
+      groupId: readManifestStringProperty(entry.content, 'groupId'),
+      provenanceFamily: readManifestStringProperty(
+        entry.content,
+        'provenanceFamily',
+      ),
+      sourceKey: readManifestStringProperty(entry.content, 'sourceKey'),
+    });
+    index = entry.end;
+  }
+
+  const maxItemsMatch = source.slice(maxItemsStart).match(/^(\d+)\b/);
+  const maxItemsPerGroup = Number(maxItemsMatch?.[1]);
+  if (groupManifest.length === 0 || !Number.isInteger(maxItemsPerGroup)) {
+    throw new Error('could not parse the China decision-signal manifest');
+  }
+  return { groupManifest, maxItemsPerGroup };
+}
+
 export function readDecisionSignalProvenanceContract() {
   const src = readFileSync(resolve(root, 'shared/decision-signal-provenance-contract.ts'), 'utf8');
   const familySrc = readFileSync(
@@ -580,24 +793,10 @@ export function readChinaDecisionSignalWireContract() {
     resolve(root, 'shared/china-decision-signal-manifest.ts'),
     'utf8',
   );
-  const manifestBlock = manifestSrc.match(
-    /CHINA_DECISION_SIGNAL_GROUP_MANIFEST\s*=\s*\[([\s\S]*?)\]\s*as const/,
-  )?.[1];
-  const groupManifest = manifestBlock
-    ? [...manifestBlock.matchAll(
-        /\{\s*groupId:\s*'([^']+)',\s*provenanceFamily:\s*'([^']+)',\s*sourceKey:\s*'([^']+)',\s*\}/g,
-      )].map((match) => ({
-        groupId: match[1],
-        provenanceFamily: match[2],
-        sourceKey: match[3],
-      }))
-    : [];
-  const manifestEntryCount = manifestBlock
-    ? [...manifestBlock.matchAll(/\{\s*groupId:/g)].length
-    : 0;
-  const maxItemsMatches = [...manifestSrc.matchAll(
-    /CHINA_DECISION_SIGNAL_MAX_ITEMS_PER_GROUP\s*=\s*(\d+)\s+as const/g,
-  )];
+  const {
+    groupManifest,
+    maxItemsPerGroup,
+  } = parseChinaDecisionSignalManifest(manifestSrc);
   const schemaVersion = Number(src.match(
     /CHINA_DECISION_SIGNAL_SCHEMA_VERSION\s*=\s*(\d+)\s+as const/,
   )?.[1]);
@@ -620,7 +819,6 @@ export function readChinaDecisionSignalWireContract() {
         .map((match) => [match[1], match[2]])
       : [],
   );
-  const maxItemsPerGroup = Number(maxItemsMatches[0]?.[1]);
   const provenanceFamilies = new Set(
     Object.keys(readDecisionSignalProvenanceContract().familyPolicies),
   );
@@ -628,14 +826,12 @@ export function readChinaDecisionSignalWireContract() {
     !Number.isInteger(schemaVersion)
     || schemaVersion < 1
     || groupIds.length === 0
-    || manifestEntryCount !== groupManifest.length
     || new Set(groupIds).size !== groupIds.length
     || new Set(provenanceFamilyIds).size !== provenanceFamilyIds.length
     || new Set(groupManifest.map(({ sourceKey }) => sourceKey)).size !== groupManifest.length
     || provenanceFamilyIds.some((familyId) => !provenanceFamilies.has(familyId))
     || states.length === 0
     || Object.keys(access).length !== 3
-    || maxItemsMatches.length !== 1
     || !Number.isInteger(maxItemsPerGroup)
     || maxItemsPerGroup < 1
   ) {
