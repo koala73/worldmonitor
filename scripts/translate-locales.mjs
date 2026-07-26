@@ -3,11 +3,16 @@
  * Backfill missing locale strings using Claude Haiku as the translator.
  *
  * - Source of truth: src/locales/en.json (or pro-test/src/locales/en.json with --pro-test)
- * - Diffs each non-English locale against EN, sends only the missing keys
- *   in batches to Claude, deep-merges the response back into the locale file.
+ * - Diffs each non-English locale against EN, sends the missing AND the stale
+ *   keys in batches to Claude, deep-merges the response back into the locale file.
+ * - Staleness is tracked by an EN baseline snapshot (scripts/locale-baselines/).
+ *   A key that is present in a locale but whose English source has changed since
+ *   the last completed run is retranslated. Without this, changing English copy
+ *   silently rots every translation of it — and inserting one array element
+ *   shifts every later index onto the wrong string (issue #5633).
  * - Preserves i18next interpolation tokens (`{{name}}`, `<strong>`, emoji,
  *   numerals, URLs) verbatim — the model is instructed not to translate them.
- * - Idempotent: re-running on a fully-translated locale is a no-op.
+ * - Idempotent: re-running on a fully-translated, fully-fresh locale is a no-op.
  *
  * Usage:
  *   ANTHROPIC_API_KEY=sk-ant-... node scripts/translate-locales.mjs
@@ -18,18 +23,12 @@
  * Cost: ~8.3K strings × 20 locales backfill ≈ ~$3 on claude-haiku-4-5.
  */
 
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { Anthropic } from '@anthropic-ai/sdk';
 
-const args = new Set(process.argv.slice(2));
-const dryRun = args.has('--dry-run');
-const proTest = args.has('--pro-test');
-const onlyArg = [...args].find(a => a.startsWith('--only='));
-const onlyLocales = onlyArg ? onlyArg.slice('--only='.length).split(',') : null;
-
-const ROOT = proTest ? 'pro-test/src/locales' : 'src/locales';
-const LOCALES = ['ar', 'bg', 'cs', 'de', 'el', 'es', 'fa', 'fr', 'hi', 'hr', 'hu', 'it', 'ja', 'ko', 'nl', 'pl', 'pt', 'ro', 'ru', 'sv', 'th', 'tr', 'vi', 'zh'];
+export const LOCALES = ['ar', 'bg', 'cs', 'de', 'el', 'es', 'fa', 'fr', 'hi', 'hr', 'hu', 'it', 'ja', 'ko', 'nl', 'pl', 'pt', 'ro', 'ru', 'sv', 'th', 'tr', 'vi', 'zh'];
 const LANG_NAMES = {
   ar: 'Arabic', bg: 'Bulgarian', cs: 'Czech', de: 'German', el: 'Greek',
   es: 'Spanish', fa: 'Persian (Farsi)', fr: 'French', hi: 'Hindi', hr: 'Croatian', hu: 'Hungarian', it: 'Italian', ja: 'Japanese',
@@ -40,7 +39,19 @@ const LANG_NAMES = {
 const BATCH_SIZE = 50;
 const MODEL = 'claude-haiku-4-5-20251001';
 
-function flatten(obj, prefix = '', out = {}) {
+export function localesRootFor(proTest) {
+  return proTest ? 'pro-test/src/locales' : 'src/locales';
+}
+
+// The baseline records the English string each committed translation was
+// produced from. It cannot live beside the locale files: pro-test's i18n
+// lazy-loads `./locales/*.json` via import.meta.glob, and the pro locale
+// registry test asserts that directory holds exactly one file per language.
+export function baselinePathFor(proTest) {
+  return `scripts/locale-baselines/${proTest ? 'pro-test' : 'app'}.json`;
+}
+
+export function flatten(obj, prefix = '', out = {}) {
   if (Array.isArray(obj)) {
     // Array elements get encoded with a `[N]` suffix so setNested can rebuild
     // the array shape on the receiving end. Required for things like pricing
@@ -142,7 +153,7 @@ Output (key<TAB>${langName}):`;
 //   cs/pl/ru        → ['one','few','many','other']
 //   ar              → ['zero','one','two','few','many','other']
 //   ja/ko/zh/vi/th  → ['other']
-function getPluralCategories(loc) {
+export function getPluralCategories(loc) {
   try {
     // `?? ['one','other']` covers the case where pluralCategories itself is
     // absent (older Node where the property predates the spec) — the catch
@@ -160,7 +171,7 @@ function getPluralCategories(loc) {
 // `<base>_other` exist. EN only ever defines those two (English plural
 // rules collapse everything else into _other), but the script will fan
 // these out per-locale in expectedKeysForLocale().
-function findPluralBases(enFlat) {
+export function findPluralBases(enFlat) {
   const bases = new Map();
   for (const k of Object.keys(enFlat)) {
     const m = k.match(/^(.+)_(one|other)$/);
@@ -191,7 +202,7 @@ function isPrivateKey(k) {
   return k.split('.').some(seg => seg.startsWith('_'));
 }
 
-function expectedKeysForLocale(enFlat, pluralBases, categories) {
+export function expectedKeysForLocale(enFlat, pluralBases, categories) {
   const expected = {};
   const pluralEnKeys = new Set();
   for (const base of pluralBases.keys()) {
@@ -209,6 +220,43 @@ function expectedKeysForLocale(enFlat, pluralBases, categories) {
     }
   }
   return expected;
+}
+
+// Split a locale's expected keys into what has to be sent to the translator and
+// what can be left alone.
+//
+//   missing   — no value in the locale at all
+//   stale     — a value exists, but the English it was translated from has since
+//               changed; the translation is silently wrong until it is redone
+//   untracked — a value exists and the baseline has no record of its English
+//               source. Left alone: adopting the baseline on an already
+//               translated locale must not force a full retranslation. These
+//               become tracked the first time the baseline advances.
+//   fresh     — a value exists and its English source is unchanged
+export function classifyKeys(localeFlat, expected, baselineExpected) {
+  const missing = [];
+  const stale = [];
+  const untracked = [];
+  const fresh = [];
+  for (const [key, en] of Object.entries(expected)) {
+    if (!(key in localeFlat)) missing.push(key);
+    else if (!(key in baselineExpected)) untracked.push(key);
+    else if (baselineExpected[key] !== en) stale.push(key);
+    else fresh.push(key);
+  }
+  return { missing, stale, untracked, fresh };
+}
+
+export function readBaseline(baselinePath) {
+  if (!existsSync(baselinePath)) return null;
+  return JSON.parse(readFileSync(baselinePath, 'utf8'));
+}
+
+function writeBaseline(baselinePath, enFlat) {
+  mkdirSync(path.dirname(baselinePath), { recursive: true });
+  // Sorted so the committed diff shows only the strings that actually moved.
+  const sorted = Object.fromEntries(Object.keys(enFlat).sort().map(k => [k, enFlat[k]]));
+  writeFileSync(baselinePath, JSON.stringify(sorted, null, 2) + '\n');
 }
 
 function validateTranslation(en, translated) {
@@ -243,6 +291,16 @@ function validateTranslation(en, translated) {
 }
 
 async function main() {
+  // argv is parsed here rather than at module scope so importing this file for
+  // its pure helpers (tests, the locale freshness gate) has no side effects and
+  // does not inherit the test runner's arguments.
+  const args = new Set(process.argv.slice(2));
+  const dryRun = args.has('--dry-run');
+  const proTest = args.has('--pro-test');
+  const onlyArg = [...args].find(a => a.startsWith('--only='));
+  const onlyLocales = onlyArg ? onlyArg.slice('--only='.length).split(',') : null;
+  const ROOT = localesRootFor(proTest);
+
   if (!dryRun && !process.env.ANTHROPIC_API_KEY) {
     console.error('ANTHROPIC_API_KEY not set. Use --dry-run to see the gap without translating.');
     process.exit(1);
@@ -254,8 +312,21 @@ async function main() {
   const pluralBases = findPluralBases(enFlat);
   console.log(`[translate] EN source: ${enPath} (${Object.keys(enFlat).length} keys, ${pluralBases.size} pluralized bases)`);
 
+  const baselinePath = baselinePathFor(proTest);
+  const baselineFlat = readBaseline(baselinePath);
+  const baselinePlurals = baselineFlat ? findPluralBases(baselineFlat) : new Map();
+  if (baselineFlat) {
+    console.log(`[translate] EN baseline: ${baselinePath} (${Object.keys(baselineFlat).length} keys)`);
+  } else {
+    console.log(`[translate] EN baseline: none at ${baselinePath} — every existing translation is treated as untracked (nothing is retranslated); the baseline is written once every locale is complete.`);
+  }
+  const baselineFor = (categories) =>
+    baselineFlat ? expectedKeysForLocale(baselineFlat, baselinePlurals, categories) : {};
+
   const targets = onlyLocales || LOCALES;
   let totalMissing = 0;
+  let totalStale = 0;
+  let totalUntracked = 0;
   let totalTranslated = 0;
   let totalRejected = 0;
 
@@ -276,18 +347,26 @@ async function main() {
     const flat = flatten(raw);
     const categories = getPluralCategories(loc);
     const expected = expectedKeysForLocale(enFlat, pluralBases, categories);
-    const missing = Object.keys(expected).filter(k => !(k in flat));
-    if (missing.length === 0) {
-      console.log(`[${loc}] ✓ already complete (CLDR categories: ${categories.join('/')})`);
+    const { missing, stale, untracked } = classifyKeys(flat, expected, baselineFor(categories));
+    totalUntracked += untracked.length;
+    // Stale keys are sent alongside missing ones; setNested overwrites the
+    // rotted value in place.
+    const toTranslate = [...missing, ...stale];
+    if (toTranslate.length === 0) {
+      console.log(`[${loc}] ✓ complete and fresh (CLDR categories: ${categories.join('/')})`);
       continue;
     }
-    console.log(`[${loc}] missing ${missing.length} keys (${LANG_NAMES[loc]}, CLDR: ${categories.join('/')})`);
+    console.log(`[${loc}] ${missing.length} missing + ${stale.length} stale keys (${LANG_NAMES[loc]}, CLDR: ${categories.join('/')})`);
+    if (stale.length > 0) {
+      console.log(`[${loc}]   stale e.g. ${stale.slice(0, 3).join(', ')}`);
+    }
     totalMissing += missing.length;
+    totalStale += stale.length;
     if (dryRun) continue;
 
     let added = 0;
-    for (let i = 0; i < missing.length; i += BATCH_SIZE) {
-      const batch = missing.slice(i, i + BATCH_SIZE).map(k => [k, expected[k]]);
+    for (let i = 0; i < toTranslate.length; i += BATCH_SIZE) {
+      const batch = toTranslate.slice(i, i + BATCH_SIZE).map(k => [k, expected[k]]);
       try {
         const translations = await translateBatch(client, LANG_NAMES[loc], batch);
         for (const [k, en] of batch) {
@@ -304,36 +383,62 @@ async function main() {
         console.error(`[${loc}] batch ${i}-${i + batch.length} failed:`, err.message);
       }
       writeFileSync(locPath, JSON.stringify(raw, null, 2) + '\n');
-      console.log(`[${loc}] progress ${Math.min(i + BATCH_SIZE, missing.length)}/${missing.length}`);
+      console.log(`[${loc}] progress ${Math.min(i + BATCH_SIZE, toTranslate.length)}/${toTranslate.length}`);
     }
     totalTranslated += added;
-    console.log(`[${loc}] ✓ added ${added} translations`);
+    console.log(`[${loc}] ✓ wrote ${added} translations`);
   }
 
   // Re-scan post-write to confirm full coverage. A partial run (rejections,
   // batch failures, model omissions) must surface as a non-zero exit so CI
   // and operators don't trust a half-finished locale set.
-  let stillMissing = 0;
+  //
+  // The scan covers EVERY locale, not just this run's targets, because the
+  // baseline is a claim about the whole root ("every committed translation was
+  // produced from this English snapshot"). Advancing it after an --only run
+  // would mark the locales that were skipped as fresh and hide their rot
+  // permanently.
+  let unresolved = 0;
   if (!dryRun) {
-    for (const loc of targets) {
-      const flat = flatten(JSON.parse(readFileSync(path.join(ROOT, `${loc}.json`), 'utf8')));
-      const expected = expectedKeysForLocale(enFlat, pluralBases, getPluralCategories(loc));
-      const left = Object.keys(expected).filter(k => !(k in flat));
-      if (left.length > 0) {
-        console.error(`[${loc}] ✗ still missing ${left.length} keys after run (e.g. ${left.slice(0, 3).join(', ')})`);
-        stillMissing += left.length;
+    for (const loc of LOCALES) {
+      const locPath = path.join(ROOT, `${loc}.json`);
+      if (!existsSync(locPath)) continue;
+      const flat = flatten(JSON.parse(readFileSync(locPath, 'utf8')));
+      const categories = getPluralCategories(loc);
+      const expected = expectedKeysForLocale(enFlat, pluralBases, categories);
+      const left = classifyKeys(flat, expected, baselineFor(categories));
+      const outstanding = left.missing.length + left.stale.length;
+      if (outstanding > 0) {
+        const sample = [...left.missing, ...left.stale].slice(0, 3).join(', ');
+        console.error(`[${loc}] ✗ still ${left.missing.length} missing / ${left.stale.length} stale after run (e.g. ${sample})`);
+        unresolved += outstanding;
       }
     }
   }
 
-  console.log(`\n[done] missing ${totalMissing}, translated ${totalTranslated}, rejected ${totalRejected}, still-missing-after-run ${stillMissing}`);
-  if (totalRejected > 0 || stillMissing > 0) {
+  console.log(`\n[done] missing ${totalMissing}, stale ${totalStale}, untracked ${totalUntracked}, translated ${totalTranslated}, rejected ${totalRejected}, unresolved-after-run ${unresolved}`);
+  if (totalRejected > 0 || unresolved > 0) {
     console.error('\n[FAIL] Partial backfill — re-run translate-locales.mjs to fill remaining keys.');
     process.exit(1);
   }
+
+  if (!dryRun) {
+    writeBaseline(baselinePath, enFlat);
+    console.log(`[translate] baseline advanced: ${baselinePath} now records the English every locale was translated from.`);
+  }
 }
 
-main().catch(err => {
-  console.error(err);
-  process.exit(1);
-});
+// realpath BOTH sides: through a symlinked checkout Node sets import.meta.url
+// to the realpath while argv[1] keeps the symlink, and the naive comparison
+// silently skips main().
+const isMain =
+  process.argv[1] &&
+  pathToFileURL(realpathSync(process.argv[1])).href ===
+    pathToFileURL(realpathSync(fileURLToPath(import.meta.url))).href;
+
+if (isMain) {
+  main().catch(err => {
+    console.error(err);
+    process.exit(1);
+  });
+}
