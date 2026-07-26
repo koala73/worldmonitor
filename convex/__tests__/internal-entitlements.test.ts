@@ -63,6 +63,45 @@ describe("/api/internal-entitlements HTTP action", () => {
     });
   });
 
+  test("a user with billing history never gets the not-applicable marker", async () => {
+    // Load-bearing for the edge's marker TTL (#5600): the not-applicable
+    // marker means "no subscription row exists", which is ALSO what a buyer
+    // looks like between checkout return and the webhook landing. That is why
+    // server/_shared/entitlement-check.ts caps its serve window at 60s. If the
+    // marker ever starts covering a settled cohort too, revisit that cap —
+    // this test goes red first.
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: USER_A,
+        dodoSubscriptionId: "sub_http_churned",
+        dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+        planKey: "pro_monthly",
+        status: "active",
+        currentPeriodStart: NOW - 60 * DAY_MS,
+        // Older than the 3-day on-demand recheck window -> settled churn, not
+        // an uncertain provider state.
+        currentPeriodEnd: NOW - 30 * DAY_MS,
+        rawPayload: {},
+        updatedAt: NOW - 30 * DAY_MS,
+      });
+    });
+
+    const res = await t.fetch("/api/internal-entitlements", {
+      method: "POST",
+      headers: validHeaders(),
+      body: JSON.stringify({ userId: USER_A }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as Record<string, unknown>;
+    expect(body).not.toHaveProperty("renewalVerificationFreshness");
+    expect(body).toMatchObject({
+      planKey: "free",
+      billingStatus: "subscription_lapsed",
+    });
+  });
+
   test("a concurrent paid refresh wins over a non-active verification result", async () => {
     const free = {
       planKey: "free",

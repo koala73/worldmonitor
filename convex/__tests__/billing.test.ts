@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import schema from "../schema";
 import { api, internal } from "../_generated/api";
+import type { Id } from "../_generated/dataModel";
 import { PRODUCT_CATALOG } from "../config/productCatalog";
 import {
   PENDING_PAYMENT_BLOCK_WINDOW_MS,
@@ -5010,7 +5011,9 @@ describe("getSubscriptionForUser activation onboarding eligibility", () => {
     )).toBe(true);
     const legacyPresentation = await t.run(async (ctx) => await ctx.db
       .query("proActivationPresentations")
-      .withIndex("by_subscription", (q) => q.eq("subscriptionId", activationKey))
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
       .unique());
     expect(legacyPresentation?.outcomeTrackingVersion).toBeUndefined();
     const afterConfirmation = await t
@@ -5046,7 +5049,9 @@ describe("getSubscriptionForUser activation onboarding eligibility", () => {
     )).toBe(true);
     const firstPresentation = await t.run(async (ctx) => await ctx.db
       .query("proActivationPresentations")
-      .withIndex("by_subscription", (q) => q.eq("subscriptionId", activationKey))
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
       .unique());
     const firstPresentedAt = firstPresentation!.presentedAt;
     expect(firstPresentedAt).toBeDefined();
@@ -5061,7 +5066,9 @@ describe("getSubscriptionForUser activation onboarding eligibility", () => {
     )).toBe(true);
     const secondPresentedAt = (await t.run(async (ctx) => await ctx.db
       .query("proActivationPresentations")
-      .withIndex("by_subscription", (q) => q.eq("subscriptionId", activationKey))
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
       .unique()))!.presentedAt;
     expect(secondPresentedAt).toBe(firstPresentedAt);
   });
@@ -5092,7 +5099,9 @@ describe("getSubscriptionForUser activation onboarding eligibility", () => {
     ]);
     const rows = await t.run(async (ctx) => await ctx.db
       .query("proActivationPresentations")
-      .withIndex("by_subscription", (q) => q.eq("subscriptionId", activationKey))
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
       .collect());
     expect(rows).toHaveLength(1);
   });
@@ -5146,7 +5155,9 @@ describe("getSubscriptionForUser activation onboarding eligibility", () => {
     await t.run(async (ctx) => {
       const presentation = await ctx.db
         .query("proActivationPresentations")
-        .withIndex("by_subscription", (q) => q.eq("subscriptionId", activationKey))
+        .withIndex("by_subscription_cohort", (q) =>
+          q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+        )
         .unique();
       expect(presentation).not.toBeNull();
       await ctx.db.patch(presentation!._id, { claimedAt: Date.now() - 31_000 });
@@ -5211,7 +5222,9 @@ describe("getSubscriptionForUser activation onboarding eligibility", () => {
 
     const rows = await t.run(async (ctx) => await ctx.db
       .query("proActivationPresentations")
-      .withIndex("by_subscription", (q) => q.eq("subscriptionId", activationKey))
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
       .collect());
     expect(rows).toEqual([]);
   });
@@ -5246,7 +5259,9 @@ describe("getSubscriptionForUser activation onboarding eligibility", () => {
 
     const progressRow = await t.run(async (ctx) => await ctx.db
       .query("proActivationPresentations")
-      .withIndex("by_subscription", (q) => q.eq("subscriptionId", activationKey))
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
       .unique());
     expect(progressRow?.presentedAt).toBeTypeOf("number");
     expect(progressRow?.outcomeTrackingVersion).toBe(1);
@@ -5268,7 +5283,9 @@ describe("getSubscriptionForUser activation onboarding eligibility", () => {
 
     const afterStaleWrite = await t.run(async (ctx) => await ctx.db
       .query("proActivationPresentations")
-      .withIndex("by_subscription", (q) => q.eq("subscriptionId", activationKey))
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
       .unique());
     expect(afterStaleWrite?.confirmedSteps).toEqual(["brief"]);
     expect(afterStaleWrite?.failedSteps).toEqual(["power"]);
@@ -5290,7 +5307,9 @@ describe("getSubscriptionForUser activation onboarding eligibility", () => {
 
     const row = await t.run(async (ctx) => await ctx.db
       .query("proActivationPresentations")
-      .withIndex("by_subscription", (q) => q.eq("subscriptionId", activationKey))
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
       .unique());
     expect(row?.confirmedSteps).toEqual(["brief", "power"]);
     expect(row?.skippedSteps).toEqual(["alerts"]);
@@ -5380,7 +5399,9 @@ describe("getSubscriptionForUser activation onboarding eligibility", () => {
 
     const row = await t.run(async (ctx) => await ctx.db
       .query("proActivationPresentations")
-      .withIndex("by_subscription", (q) => q.eq("subscriptionId", activationKey))
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
       .unique());
     expect(row?.confirmedSteps).toBeUndefined();
     expect(row?.blockedSteps).toBeUndefined();
@@ -5518,7 +5539,9 @@ describe("getSubscriptionForUser activation onboarding eligibility", () => {
 
     const row = await t.run(async (ctx) => await ctx.db
       .query("proActivationPresentations")
-      .withIndex("by_subscription", (q) => q.eq("subscriptionId", activationKey))
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
       .unique());
     expect(row?.blockedSteps).toEqual(["alerts"]);
     // The whole point: the denial is queryable WITHOUT being conflated with a
@@ -5593,7 +5616,9 @@ describe("getSubscriptionForUser activation onboarding eligibility", () => {
 
     const row = await t.run(async (ctx) => await ctx.db
       .query("proActivationPresentations")
-      .withIndex("by_subscription", (q) => q.eq("subscriptionId", activationKey))
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
       .unique());
     expect(row?.blockedSteps).toEqual(["alerts"]);
     expect(row?.confirmedSteps).toEqual(["brief"]);
@@ -5619,7 +5644,9 @@ describe("getSubscriptionForUser activation onboarding eligibility", () => {
 
     const afterLateWrite = await t.run(async (ctx) => await ctx.db
       .query("proActivationPresentations")
-      .withIndex("by_subscription", (q) => q.eq("subscriptionId", activationKey))
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
       .unique());
     expect(afterLateWrite?.blockedSteps).toEqual(["alerts"]);
   });
@@ -5672,7 +5699,9 @@ describe("getSubscriptionForUser activation onboarding eligibility", () => {
 
     const row = await t.run(async (ctx) => await ctx.db
       .query("proActivationPresentations")
-      .withIndex("by_subscription", (q) => q.eq("subscriptionId", activationKey))
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
       .unique());
     expect(row?.blockedSteps).toBeUndefined();
     expect(row?.skippedSteps).toEqual(["alerts"]);
@@ -5755,7 +5784,9 @@ describe("getSubscriptionForUser activation onboarding eligibility", () => {
 
     const row = await t.run(async (ctx) => await ctx.db
       .query("proActivationPresentations")
-      .withIndex("by_subscription", (q) => q.eq("subscriptionId", activationKey))
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
       .unique());
     expect(row?.blockedSteps).toBeUndefined();
     expect(row?.skippedSteps).toEqual(["alerts"]);
@@ -5827,8 +5858,437 @@ describe("getSubscriptionForUser activation onboarding eligibility", () => {
 
     const rows = await t.run(async (ctx) => await ctx.db
       .query("proActivationPresentations")
-      .withIndex("by_subscription", (q) => q.eq("subscriptionId", activationKey))
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", undefined),
+      )
       .collect());
     expect(rows).toHaveLength(1);
+  });
+});
+
+describe("Pro activation — day-0 outcome rows (#5621)", () => {
+  const IDENTITY = { subject: TEST_USER_ID, tokenIdentifier: `clerk|${TEST_USER_ID}` };
+
+  async function seedProSubscription(t: ReturnType<typeof convexTest>, suffix: string) {
+    return await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix,
+    });
+  }
+
+  async function readCohort(
+    t: ReturnType<typeof convexTest>,
+    activationKey: Id<"subscriptions">,
+    cohort: "day0" | undefined,
+  ) {
+    return await t.run(async (ctx) => await ctx.db
+      .query("proActivationPresentations")
+      .withIndex("by_subscription_cohort", (q) =>
+        q.eq("subscriptionId", activationKey).eq("cohort", cohort),
+      )
+      .collect());
+  }
+
+  test("a day-0 session is recorded as presented before it can report any step", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedProSubscription(t, "activation_day0_open");
+
+    const opened = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.openProActivationDay0Presentation,
+      { activationKey, claimNonce: "day0-tab", sessionStartedAt: NOW },
+    );
+    expect(opened.status).toBe("opened");
+
+    const [row] = await readCohort(t, activationKey, "day0");
+    // presentedAt without any outcome is the abandoned-immediately signal the
+    // #5600 forensics had to reconstruct from Umami sessions.
+    expect(row?.presentedAt).toEqual(expect.any(Number));
+    expect(row?.outcomeTrackingVersion).toBe(1);
+    expect(row?.confirmedSteps).toBeUndefined();
+    expect(row?.exitedAt).toBeUndefined();
+  });
+
+  test("a day-0 row does not block a later retro claim for the same subscription", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedProSubscription(t, "activation_day0_no_block");
+
+    // Day-0 ran and every step failed — the exact #5600 cohort.
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.openProActivationDay0Presentation,
+      { activationKey, claimNonce: "day0-tab", sessionStartedAt: NOW },
+    );
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "day0-tab",
+        cohort: "day0" as const,
+        confirmedSteps: [],
+        skippedSteps: [],
+        failedSteps: ["brief", "alerts"],
+        revision: 1,
+        finalized: true,
+      },
+    );
+
+    // The markerless backfill must still be offered and claimable: nothing
+    // actually activated, so this is the recovery path for that cohort.
+    const eligibility = await t
+      .withIdentity(IDENTITY)
+      .query(api.payments.billing.getSubscriptionForUser, {});
+    expect(eligibility?.activationOnboardingEligible).toBe(true);
+
+    const claim = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "retro-tab" },
+    );
+    expect(claim.status).toBe("claimed");
+
+    // ...and the retro claim landed on its own row, leaving day-0's frozen.
+    const [retro] = await readCohort(t, activationKey, undefined);
+    const [day0] = await readCohort(t, activationKey, "day0");
+    expect(retro?.claimNonce).toBe("retro-tab");
+    expect(retro?.confirmedSteps).toBeUndefined();
+    expect(day0?.failedSteps).toEqual(["brief", "alerts"]);
+    expect(day0?.exitedAt).toEqual(expect.any(Number));
+  });
+
+  test("outcome writes stay inside their own cohort's row", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedProSubscription(t, "activation_day0_isolation");
+
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.openProActivationDay0Presentation,
+      { activationKey, claimNonce: "day0-tab", sessionStartedAt: NOW },
+    );
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.claimProActivationPresentation,
+      { activationKey, claimNonce: "retro-tab" },
+    );
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.confirmProActivationPresentation,
+      { activationKey, claimNonce: "retro-tab", outcomeTrackingVersion: 1 as const },
+    );
+
+    // Each nonce only writes its own cohort; presenting the other cohort's
+    // nonce is rejected rather than silently retargeted.
+    expect(
+      await t.withIdentity(IDENTITY).mutation(
+        api.payments.billing.recordProActivationOutcome,
+        {
+          activationKey,
+          claimNonce: "day0-tab",
+          confirmedSteps: ["brief"],
+          skippedSteps: [],
+          failedSteps: [],
+          revision: 1,
+          finalized: false,
+        },
+      ),
+    ).toBe(false);
+    expect(
+      await t.withIdentity(IDENTITY).mutation(
+        api.payments.billing.recordProActivationOutcome,
+        {
+          activationKey,
+          claimNonce: "retro-tab",
+          cohort: "day0" as const,
+          confirmedSteps: ["brief"],
+          skippedSteps: [],
+          failedSteps: [],
+          revision: 1,
+          finalized: false,
+        },
+      ),
+    ).toBe(false);
+
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "day0-tab",
+        cohort: "day0" as const,
+        confirmedSteps: ["brief"],
+        skippedSteps: [],
+        failedSteps: [],
+        revision: 1,
+        finalized: false,
+      },
+    );
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "retro-tab",
+        confirmedSteps: [],
+        skippedSteps: ["alerts"],
+        failedSteps: [],
+        revision: 1,
+        finalized: false,
+      },
+    );
+
+    const [day0] = await readCohort(t, activationKey, "day0");
+    const [retro] = await readCohort(t, activationKey, undefined);
+    expect(day0?.confirmedSteps).toEqual(["brief"]);
+    expect(day0?.skippedSteps).toEqual([]);
+    expect(retro?.confirmedSteps).toEqual([]);
+    expect(retro?.skippedSteps).toEqual(["alerts"]);
+  });
+
+  test("a re-opened day-0 session takes over an abandoned row but never a finalized one", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(NOW);
+    const t = convexTest(schema, modules);
+    const activationKey = await seedProSubscription(t, "activation_day0_takeover");
+
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.openProActivationDay0Presentation,
+      { activationKey, claimNonce: "first-tab", sessionStartedAt: NOW },
+    );
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "first-tab",
+        cohort: "day0" as const,
+        confirmedSteps: [],
+        skippedSteps: ["brief"],
+        blockedSteps: ["alerts"],
+        failedSteps: ["power"],
+        revision: 1,
+        finalized: false,
+      },
+    );
+
+    // A later boot (storage write failed, so the marker survived) supersedes
+    // the abandoned session in place. It must reset the full outcome snapshot,
+    // not let the new session inherit the abandoned session's classifications.
+    vi.setSystemTime(NOW + 1_000);
+    const retaken = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.openProActivationDay0Presentation,
+      {
+        activationKey,
+        claimNonce: "second-tab",
+        sessionStartedAt: NOW + 1_000,
+      },
+    );
+    expect(retaken.status).toBe("opened");
+    const retakenRows = await readCohort(t, activationKey, "day0");
+    expect(retakenRows).toHaveLength(1);
+    const [retakenRow] = retakenRows;
+    expect(retakenRow?.claimNonce).toBe("second-tab");
+    expect(retakenRow?.claimedAt).toBe(NOW + 1_000);
+    expect(retakenRow?.presentedAt).toBe(NOW + 1_000);
+    expect(retakenRow?.confirmedSteps).toBeUndefined();
+    expect(retakenRow?.skippedSteps).toBeUndefined();
+    expect(retakenRow?.blockedSteps).toBeUndefined();
+    expect(retakenRow?.failedSteps).toBeUndefined();
+    expect(retakenRow?.outcomeRevision).toBeUndefined();
+    expect(retakenRow?.outcomeUpdatedAt).toBeUndefined();
+    expect(
+      await t.withIdentity(IDENTITY).mutation(
+        api.payments.billing.recordProActivationOutcome,
+        {
+          activationKey,
+          claimNonce: "second-tab",
+          cohort: "day0" as const,
+          confirmedSteps: ["brief"],
+          skippedSteps: [],
+          failedSteps: [],
+          revision: 1,
+          finalized: true,
+        },
+      ),
+    ).toBe(true);
+
+    // Once finalized the record is frozen: a chip-driven re-open reports the
+    // existing record instead of resetting the session that already exited.
+    const afterExit = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.openProActivationDay0Presentation,
+      {
+        activationKey,
+        claimNonce: "third-tab",
+        sessionStartedAt: NOW + 2_000,
+      },
+    );
+    expect(afterExit.status).toBe("already_recorded");
+    const [row] = await readCohort(t, activationKey, "day0");
+    expect(row?.claimNonce).toBe("second-tab");
+    expect(row?.confirmedSteps).toEqual(["brief"]);
+  });
+
+  test("an older or legacy delayed open cannot erase a newer session's progress", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedProSubscription(t, "activation_day0_stale_open");
+
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.openProActivationDay0Presentation,
+      {
+        activationKey,
+        claimNonce: "newer-tab",
+        sessionStartedAt: NOW + 2_000,
+      },
+    );
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "newer-tab",
+        cohort: "day0" as const,
+        confirmedSteps: ["brief"],
+        skippedSteps: [],
+        blockedSteps: ["alerts"],
+        failedSteps: [],
+        revision: 1,
+        finalized: false,
+      },
+    );
+
+    // Network delay delivers an older tab's open after the newer owner has
+    // already persisted progress. Arrival order must not reset ownership.
+    const older = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.openProActivationDay0Presentation,
+      {
+        activationKey,
+        claimNonce: "older-tab",
+        sessionStartedAt: NOW + 1_000,
+      },
+    );
+    expect(older.status).toBe("superseded");
+
+    // A cached #5626 client has no explicit order. Mixed-deploy order 0 keeps
+    // it below every ordered session even when its nonce wins the tie-break.
+    const legacy = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.openProActivationDay0Presentation,
+      { activationKey, claimNonce: "zzzz-legacy-tab" },
+    );
+    expect(legacy.status).toBe("superseded");
+
+    const [row] = await readCohort(t, activationKey, "day0");
+    expect(row?.claimNonce).toBe("newer-tab");
+    expect(row?.sessionStartedAt).toBe(NOW + 2_000);
+    expect(row?.confirmedSteps).toEqual(["brief"]);
+    expect(row?.blockedSteps).toEqual(["alerts"]);
+    expect(row?.outcomeRevision).toBe(1);
+  });
+
+  test("equal-time sessions converge on one deterministic nonce winner", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedProSubscription(t, "activation_day0_equal_time");
+
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.openProActivationDay0Presentation,
+      {
+        activationKey,
+        claimNonce: "equal-a",
+        sessionStartedAt: NOW,
+      },
+    );
+    const winner = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.openProActivationDay0Presentation,
+      {
+        activationKey,
+        claimNonce: "equal-b",
+        sessionStartedAt: NOW,
+      },
+    );
+    expect(winner.status).toBe("opened");
+
+    const loserReplay = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.openProActivationDay0Presentation,
+      {
+        activationKey,
+        claimNonce: "equal-a",
+        sessionStartedAt: NOW,
+      },
+    );
+    expect(loserReplay.status).toBe("superseded");
+
+    const [row] = await readCohort(t, activationKey, "day0");
+    expect(row?.claimNonce).toBe("equal-b");
+    expect(row?.sessionStartedAt).toBe(NOW);
+  });
+
+  test("legacy sessions cannot displace a different unfinished legacy owner", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedProSubscription(t, "activation_day0_legacy_owner");
+
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.openProActivationDay0Presentation,
+      { activationKey, claimNonce: "legacy-owner" },
+    );
+    await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.recordProActivationOutcome,
+      {
+        activationKey,
+        claimNonce: "legacy-owner",
+        cohort: "day0" as const,
+        confirmedSteps: ["brief"],
+        skippedSteps: [],
+        failedSteps: [],
+        revision: 1,
+        finalized: false,
+      },
+    );
+
+    const delayed = await t.withIdentity(IDENTITY).mutation(
+      api.payments.billing.openProActivationDay0Presentation,
+      { activationKey, claimNonce: "zzzz-delayed-legacy" },
+    );
+    expect(delayed.status).toBe("superseded");
+
+    const [row] = await readCohort(t, activationKey, "day0");
+    expect(row?.claimNonce).toBe("legacy-owner");
+    expect(row?.confirmedSteps).toEqual(["brief"]);
+    expect(row?.outcomeRevision).toBe(1);
+  });
+
+  test("day-0 session order rejects invalid or implausibly future values", async () => {
+    const t = convexTest(schema, modules);
+    const activationKey = await seedProSubscription(t, "activation_day0_order_validation");
+
+    for (const sessionStartedAt of [0, -1, 1.5, Date.now() + 6 * 60 * 1000]) {
+      await expect(t.withIdentity(IDENTITY).mutation(
+        api.payments.billing.openProActivationDay0Presentation,
+        {
+          activationKey,
+          claimNonce: `invalid-${sessionStartedAt}`,
+          sessionStartedAt,
+        },
+      )).rejects.toThrow(/positive safe integer within the allowed future clock skew/);
+    }
+    expect(await readCohort(t, activationKey, "day0")).toHaveLength(0);
+  });
+
+  test("day-0 records nothing for another user's or a non-Pro subscription", async () => {
+    const t = convexTest(schema, modules);
+    const foreignKey = await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_day0_foreign",
+      userId: "user_someone_else",
+    });
+    const apiKey = await seedSubscription(t, {
+      planKey: "api_starter",
+      dodoProductId: PRODUCT_CATALOG.api_starter.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "activation_day0_non_pro",
+    });
+
+    for (const activationKey of [foreignKey, apiKey]) {
+      const result = await t.withIdentity(IDENTITY).mutation(
+        api.payments.billing.openProActivationDay0Presentation,
+        { activationKey, claimNonce: "day0-tab", sessionStartedAt: NOW },
+      );
+      expect(result.status).toBe("not_eligible");
+      expect(await readCohort(t, activationKey, "day0")).toHaveLength(0);
+    }
   });
 });

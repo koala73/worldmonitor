@@ -41,6 +41,8 @@ description: "World Monitor 通知系统 API 完整参考：涵盖通知渠道�
 
 所有 action 均要求 Clerk bearer + PRO(`tier >= 1`)。无效的 action 返回 `400 Unknown action`。请求通过 `RELAY_SHARED_SECRET` 转发至 Convex。
 
+仅当权益被确认为非 Pro 时,低于 `tier >= 1` 的调用方才会收到 `403 pro_required`。当权益校验本身处于不确定状态时,本端点的权限检查改为遵循共享的计费校验契约:对 `entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed` 返回带 `Retry-After` 和 `X-Billing-Verification` 的 `503`;对已确认失效的订阅返回 `403 subscription_lapsed`。参见[错误处理](/zh/usage-errors)。
+
 - **幂等性**: `POST /api/notification-channels` 支持可选的 `Idempotency-Key`。使用相同 key 和相同请求体重试时,会重放原始响应,而不是再次应用渠道动作。
 
 ## Webhook 投递契约
@@ -74,6 +76,8 @@ description: "World Monitor 通知系统 API 完整参考：涵盖通知渠道�
 
 面向 PRO 调用方的认证事件发布端点。要求 Clerk bearer 认证和有效的 PRO 权益,随后将接受的事件入队到通知队列。中继内部控制事件(如 `flush_quiet_held` 和 `channel_welcome`)为保留事件,会被拒绝。
 
+错误码:401(缺少/无效 JWT)、403 `pro_required`;与本文档中所有 Pro 门控端点一样,当权益校验本身处于不确定状态时遵循共享的计费校验契约:对 `entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed` 返回带 `Retry-After` 和 `X-Billing-Verification` 的 `503`;对已确认失效的订阅返回 `403 subscription_lapsed`。参见[错误处理](/zh/usage-errors)。
+
 - **幂等性**: 支持可选的 `Idempotency-Key`。使用相同 key 和相同请求体重试时,会重放原始入队响应,而不是再次发布通知。
 
 ## Telegram
@@ -104,7 +108,7 @@ description: "World Monitor 通知系统 API 完整参考：涵盖通知渠道�
 { "oauthUrl": "https://slack.com/oauth/v2/authorize?client_id=...&scope=incoming-webhook&..." }
 ```
 
-错误码:401(缺少/无效 JWT)、403 `pro_required`、503(OAuth 未配置或 Upstash 不可用)。
+错误码:401(缺少/无效 JWT)、403 `pro_required`、503(OAuth 未配置或 Upstash 不可用)。此处的 503 **也可能**是可重试的计费校验拒绝 —— `entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed`,并携带 `Retry-After` 和 `X-Billing-Verification`;已确认失效的订阅为 `403 subscription_lapsed`。由于配置错误导致的 503 不可重试,请依据 `code` 字段而非仅凭状态码分支。参见[错误处理](/zh/usage-errors)。
 
 ### `GET /api/slack/oauth/callback`
 
@@ -114,7 +118,7 @@ description: "World Monitor 通知系统 API 完整参考：涵盖通知渠道�
 
 ### `POST /api/discord/oauth/start`
 
-需认证(Clerk JWT + PRO)。与 Slack 的 start 路由形态一致 — 返回 `{ oauthUrl }` 供弹窗使用。
+需认证(Clerk JWT + PRO)。与 Slack 的 start 路由形态一致 — 返回 `{ oauthUrl }` 供弹窗使用,错误码集合也相同,包括上文描述的计费校验 503/403 代码。
 
 ### `GET /api/discord/oauth/callback`
 

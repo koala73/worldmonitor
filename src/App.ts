@@ -586,6 +586,9 @@ export class App {
     if (shouldPrime('china-corridors')) {
       primeTask('chinaCorridors', () => this.dataLoader.loadChinaCorridors());
     }
+    if (shouldPrime('china-activity-nowcast')) {
+      primeTask('chinaActivityNowcast', () => this.dataLoader.loadChinaActivityNowcast());
+    }
     if (shouldPrime('cross-source-signals')) {
       primeTask('crossSourceSignals', () => this.dataLoader.loadCrossSourceSignals());
     }
@@ -2264,6 +2267,7 @@ export class App {
       this.refreshScheduler.scheduleRefresh('tradePolicy', () => this.dataLoader.loadTradePolicy(), REFRESH_INTERVALS.tradePolicy, () => hasPremiumAccess() && this.isPanelNearViewport('trade-policy'));
       this.refreshScheduler.scheduleRefresh('supplyChain', () => this.dataLoader.loadSupplyChain(), REFRESH_INTERVALS.supplyChain, () => this.isPanelNearViewport('supply-chain'));
       this.refreshScheduler.scheduleRefresh('chinaCorridors', () => this.dataLoader.loadChinaCorridors(), REFRESH_INTERVALS.chinaCorridors, () => this.isPanelNearViewport('china-corridors'));
+      this.refreshScheduler.scheduleRefresh('chinaActivityNowcast', () => this.dataLoader.loadChinaActivityNowcast(), REFRESH_INTERVALS.chinaActivityNowcast, () => this.isPanelNearViewport('china-activity-nowcast'));
     }
 
     this.refreshScheduler.scheduleRefresh(

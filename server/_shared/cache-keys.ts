@@ -89,6 +89,8 @@ export const CHINA_MACRO_KEY = BOOTSTRAP_CACHE_KEYS.chinaMacro;
 export const CHINA_RELEASE_CALENDAR_KEY = BOOTSTRAP_CACHE_KEYS.chinaReleaseCalendar;
 export const CHINA_CORRIDOR_CONTROL_TOWERS_KEY =
   'supply_chain:china-corridor-control-towers:v1';
+export const CHINA_ACTIVITY_NOWCAST_KEY =
+  'economic:china:activity-nowcast:v1';
 
 export const ENERGY_MIX_KEY_PREFIX = 'energy:mix:v1:';
 export const ENERGY_EXPOSURE_INDEX_KEY = 'energy:exposure:v1:index';

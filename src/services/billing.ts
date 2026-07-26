@@ -188,9 +188,43 @@ export async function confirmProActivationPresentation(
   ) as boolean;
 }
 
+export type ProActivationDay0Outcome =
+  | 'opened'
+  | 'already_recorded'
+  | 'not_eligible'
+  | 'superseded';
+
+/**
+ * Open the day-0 (post-checkout) activation record (#5621).
+ *
+ * Not a lease: the welcome interstitial opens regardless of this call, which
+ * exists only so the day-0 cohort has a server-side row instead of having to
+ * be reconstructed from Umami sessions. `already_recorded` means an earlier
+ * session already finalized this subscription's row, so outcome writes from
+ * this one are expected to be rejected. `superseded` means a newer unfinished
+ * session already owns the row, so this delayed opener must drop its snapshots.
+ */
+export async function openProActivationDay0Presentation(
+  activationKey: string,
+  claimNonce: string,
+  sessionStartedAt: number,
+): Promise<ProActivationDay0Outcome> {
+  const client = await getConvexClient();
+  const api = await getConvexApi();
+  if (!client || !api) throw new Error('Convex unavailable');
+  await waitForConvexAuth();
+  const result = await client.mutation(
+    (api as any).payments.billing.openProActivationDay0Presentation,
+    { activationKey, claimNonce, sessionStartedAt },
+  ) as { status: ProActivationDay0Outcome };
+  return result.status;
+}
+
 export type ProActivationOutcomeStepId = 'brief' | 'alerts' | 'power';
 
 export interface ProActivationOutcomeSnapshot {
+  /** Absent = the markerless retro backfill's row (#5621). */
+  cohort?: 'day0';
   confirmedSteps: ProActivationOutcomeStepId[];
   skippedSteps: ProActivationOutcomeStepId[];
   /**

@@ -45,8 +45,10 @@ import {
   computeMountClaim,
   parseMountClaim,
   isMountClaimBlocking,
-  selectStepEvent,
   selectAdvanceOutcome,
+  selectConfirmOutcome,
+  selectStepEvent,
+  shouldReportPushSubscribeFailure,
   ACTIVATION_EVENTS,
   PRO_PRODUCT_IDS,
   PRO_PLAN_KEYS,
@@ -1195,14 +1197,49 @@ describe('telemetry event selection', () => {
     assert.equal(ACTIVATION_EVENTS.stepConfirmed, 'pro-activation-step-confirmed');
     assert.equal(ACTIVATION_EVENTS.stepSkipped, 'pro-activation-step-skipped');
     assert.equal(ACTIVATION_EVENTS.stepBlocked, 'pro-activation-step-blocked');
+    assert.equal(ACTIVATION_EVENTS.stepFailed, 'pro-activation-step-failed');
     assert.equal(ACTIVATION_EVENTS.exit, 'pro-activation-exit');
   });
 
-  it('selectStepEvent maps confirmed/skipped to their events; done/failed to null', () => {
+  it('selectConfirmOutcome reports blocked through no step event', () => {
+    // Silent-hazard pin between #5609 and #5600: the shell already reports a
+    // blocked step via onBlockStep. If a confirm result of `blocked` also mapped
+    // to the `failed` outcome, one denied-permission attempt would emit BOTH
+    // step-blocked and step-failed — double-counting it and re-creating the
+    // mislabeled funnel #5600 exists to fix, just with different labels.
+    assert.equal(selectConfirmOutcome('verified'), 'confirmed');
+    assert.equal(selectConfirmOutcome('failed'), 'failed');
+    assert.equal(selectConfirmOutcome('blocked'), null);
+    // #5600: a dismissed permission prompt is a USER outcome, not our write
+    // erroring. Mapping it to 'failed' put the most common alerts-step result
+    // into the step-failed metric that exists to catch systemic write failures —
+    // the same mislabeling this PR fixes, with the labels swapped. Note
+    // shouldReportPushSubscribeFailure below already excluded 'default' from
+    // Sentry for exactly this reason; the funnel simply did not agree.
+    assert.equal(selectConfirmOutcome('declined'), null);
+    // And the composition the flow actually performs.
+    assert.equal(selectStepEvent(selectConfirmOutcome('verified')!), ACTIVATION_EVENTS.stepConfirmed);
+    assert.equal(selectStepEvent(selectConfirmOutcome('failed')!), ACTIVATION_EVENTS.stepFailed);
+  });
+
+  it('reports a push-subscribe failure to Sentry only when permission was granted', () => {
+    // #5600: the capture exists to surface real write failures. A user who
+    // denies OR dismisses the browser prompt is the documented AE3 outcome and
+    // is the common case — reporting either would bury the signal in noise.
+    assert.equal(shouldReportPushSubscribeFailure('granted'), true);
+    assert.equal(shouldReportPushSubscribeFailure('denied'), false);
+    assert.equal(shouldReportPushSubscribeFailure('default'), false);
+    assert.equal(shouldReportPushSubscribeFailure('unsupported'), false);
+  });
+
+  it('selectStepEvent maps confirmed/skipped/failed to their events; done to null', () => {
+    // #5600: `failed` used to map to null, so a genuinely errored step reached
+    // Umami only as a `step-skipped` — the funnel read broken writes as user
+    // disinterest for a full day before anyone noticed.
     assert.equal(selectStepEvent('confirmed'), ACTIVATION_EVENTS.stepConfirmed);
     assert.equal(selectStepEvent('skipped'), ACTIVATION_EVENTS.stepSkipped);
+    assert.equal(selectStepEvent('failed'), ACTIVATION_EVENTS.stepFailed);
     assert.equal(selectStepEvent('done'), null);
-    assert.equal(selectStepEvent('failed'), null);
   });
 
   // The durable `blocked` outcome (#5617) must keep its OWN event. Falling

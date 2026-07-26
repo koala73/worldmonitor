@@ -665,6 +665,30 @@ test('recent not-applicable freshness marker is served from Redis without anothe
   });
 });
 
+test('not-applicable freshness marker past the bounded window falls through to Convex', async () => {
+  // #5600: mirrors the gateway bound — the pre-purchase no-history answer must
+  // stop being served-sticky within a minute so a fresh subscriber does not eat
+  // a 15-minute wrongful denial while the Dodo webhook lands.
+  await withMockedConvex(async (calls) => {
+    const result = await validateBootstrapUserApiAccess('user_api_owner');
+
+    assert.equal(result.ok, true);
+    assert.equal(calls.some((call) => call.url.endsWith('/api/internal-entitlements')), true);
+  }, {
+    redisCache: {
+      'entitlements:test:user_api_owner': {
+        planKey: 'free',
+        validUntil: 0,
+        features: { apiAccess: false },
+        renewalVerificationFreshness: {
+          status: 'not_applicable',
+          checkedAt: Date.now() - 61_000,
+        },
+      },
+    },
+  });
+});
+
 test('expired not-applicable freshness marker falls through to Convex', async () => {
   await withMockedConvex(async (calls) => {
     const result = await validateBootstrapUserApiAccess('user_api_owner');
@@ -686,7 +710,7 @@ test('expired not-applicable freshness marker falls through to Convex', async ()
   });
 });
 
-test('not-applicable freshness marker is cached for at most 900 seconds', async () => {
+test('not-applicable freshness marker is cached for at most 60 seconds', async () => {
   await withMockedConvex(async (calls) => {
     const result = await validateBootstrapUserApiAccess('user_api_owner');
 
@@ -699,8 +723,11 @@ test('not-applicable freshness marker is cached for at most 900 seconds', async 
     });
     assert.ok(cacheWrite);
     const setCommand = JSON.parse(cacheWrite.body).find((entry) => entry[0] === 'SET');
+    // Exact value, not a window — see the sibling assertion in
+    // server/__tests__/entitlement-check.test.ts for why a range let a drift to
+    // anything in [31, 59] through.
     const ttl = Number(setCommand[4]);
-    assert.ok(ttl > 0 && ttl <= 900, `unexpected marker TTL: ${ttl}`);
+    assert.equal(ttl, 60, `unexpected marker TTL: ${ttl}`);
   }, {
     entitlementResponse: {
       planKey: 'free',

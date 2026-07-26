@@ -32,7 +32,7 @@ OAuth 端点遵循 [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rfc674
 | `304` | 未修改（条件缓存命中） | — |
 | `400` | 错误请求 — 校验错误 | 否 — 修正输入 |
 | `401` | 缺失 / 无效的认证 | 否 — 修正认证 |
-| `403` | 已认证但无权限（通常为 `pro_required`） | 否 — 升级订阅 |
+| `403` | 已认证但无权限（通常为 `pro_required`），或 `subscription_lapsed` —— 已与计费提供方确认的订阅失效（设置 `X-Billing-Verification` 响应头） | 否 — 升级 / 重新订阅 |
 | `404` | 资源 / 工具 / brief / 实体未找到 | 否 |
 | `405` | 方法不允许 | 否 |
 | `409` | 冲突（重复的 webhook 注册等） | 否 |
@@ -40,7 +40,7 @@ OAuth 端点遵循 [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rfc674
 | `429` | 触发速率限制 | 是 — 遵守 `Retry-After` |
 | `500` | 服务器 bug | 是 — 退避后重试，再上报 |
 | `502` | 上游 / Convex / Dodo 故障 | 是 — 指数退避 |
-| `503` | 服务不可用 — 缺失环境变量或依赖不可用 | 是 — 指数退避 |
+| `503` | 服务不可用 — 缺失环境变量或依赖不可用；计费校验进行中（`renewal_verification_pending` / `renewal_verification_failed` —— 动态 `Retry-After`，1-60 秒）；或计费后端不可达（`entitlement_verification_unavailable` —— 固定 `Retry-After: 5`） | 是 — 遵守 `Retry-After`，否则指数退避 |
 | `504` | 上游超时 | 是 — 退避后重试 |
 
 ## 常见错误字符串
@@ -56,6 +56,10 @@ OAuth 端点遵循 [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rfc674
 | `Service temporarily unavailable` | Upstash 或其他硬依赖在请求时不可用。 |
 | `service_unavailable` | 签名密钥 / 必需的环境变量未配置。 |
 | `Failed to enqueue scenario job` | `/api/scenario/v1/run-scenario` 上的 Redis 管道故障。 |
+| `subscription_lapsed` | 订阅失效已与计费提供方确认。重新认证无效 —— 请重新订阅以恢复访问。响应携带 `X-Billing-Verification: subscription_lapsed`。 |
+| `renewal_verification_pending` | 你的订阅在本地记录中刚刚到期，服务端正在与计费提供方重新确认。可重试的 503 —— 遵守 `Retry-After`（1-60 秒）；已续订的订阅通常在一到两次重试内恢复。 |
+| `renewal_verification_failed` | 提供方复查未能完成，处于短暂冷却期。可重试的 503 —— 遵守 `Retry-After`。 |
+| `entitlement_verification_unavailable` | 无法连接计费后端以校验访问权限 —— 在所有已认证入口均可能出现（`wm_` API 密钥、bootstrap、会话/bearer 层级检查、MCP）。可重试的 503，携带 `Retry-After: 5` 与 `X-Billing-Verification: entitlement_verification_unavailable`。 |
 
 ## 重试策略
 

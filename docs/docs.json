@@ -94,6 +94,7 @@
                 "pages": [
                   "signal-intelligence",
                   "ai-intelligence",
+                  "methodology/china-activity-nowcast",
                   "methodology/news-digest-and-briefing",
                   "country-instability-index",
                   "methodology/country-resilience-index",
@@ -551,6 +552,7 @@
                 "pages": [
                   "zh/signal-intelligence",
                   "zh/ai-intelligence",
+                  "zh/methodology/china-activity-nowcast",
                   "zh/methodology/news-digest-and-briefing",
                   "zh/country-instability-index",
                   "zh/methodology/country-resilience-index",

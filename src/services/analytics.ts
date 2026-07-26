@@ -114,14 +114,17 @@ const EVENTS = {
   // correlate with non-followed threads to size the bias's effect.
   'brief-thread-open': true,
   // Pro Activation Onboarding funnel (#4771) — day-0 activation interstitial:
-  // entered → per-step confirmed/skipped/blocked → exit (with completion
-  // state). `blocked` is a platform refusal, not a user choice (#5609). Names
-  // mirror ACTIVATION_EVENTS in @/services/pro-activation-state (the single
-  // naming source); this catalog matches those literals.
+  // entered → per-step confirmed/skipped/blocked/failed → exit (with completion
+  // state). Names mirror ACTIVATION_EVENTS in @/services/pro-activation-state
+  // (the single naming source); this catalog matches those literals.
+  // `blocked` is a platform refusal, not a user choice (#5609); `failed`
+  // (#5600) is our own write erroring. Both used to land as `skipped`, which is
+  // how a day of broken day-0 activations read as user disinterest.
   'pro-activation-entered': true,
   'pro-activation-step-confirmed': true,
   'pro-activation-step-skipped': true,
   'pro-activation-step-blocked': true,
+  'pro-activation-step-failed': true,
   'pro-activation-exit': true,
 } as const;
 

@@ -245,6 +245,17 @@ export interface ChinaMacroPillarPulse {
   observationIds: string[];
 }
 
+export interface GetChinaActivityNowcastRequest {
+}
+
+export interface GetChinaActivityNowcastResponse {
+  generatedAt: string;
+  methodVersion: string;
+  comparisonState: string;
+  upstreamUnavailable: boolean;
+  payloadJson: string;
+}
+
 export interface GetEnergyCapacityRequest {
   energySources: string[];
   years: number;
@@ -1048,6 +1059,29 @@ export class EconomicServiceClient {
     }
 
     return await resp.json() as GetChinaMacroSnapshotResponse;
+  }
+
+  async getChinaActivityNowcast(_req: GetChinaActivityNowcastRequest, options?: EconomicServiceCallOptions): Promise<GetChinaActivityNowcastResponse> {
+    let path = "/api/economic/v1/get-china-activity-nowcast";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetChinaActivityNowcastResponse;
   }
 
   async getEnergyCapacity(req: GetEnergyCapacityRequest, options?: EconomicServiceCallOptions): Promise<GetEnergyCapacityResponse> {

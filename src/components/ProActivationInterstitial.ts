@@ -25,10 +25,12 @@
  */
 
 import { t } from '@/services/i18n';
+import { enqueueSentryCall, scheduleSentryInit } from '@/bootstrap/sentry-defer';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import {
   claimProActivationPresentation,
   confirmProActivationPresentation,
+  openProActivationDay0Presentation,
   recordProActivationOutcome,
   type ProActivationOutcomeSnapshot,
 } from '@/services/billing';
@@ -59,6 +61,9 @@ import {
   buildExitSummary,
   buildActivationOutcomeBuckets,
   selectAdvanceOutcome,
+  selectConfirmOutcome,
+  selectStepEvent,
+  shouldReportPushSubscribeFailure,
   summarizeActivationExit,
   DEFAULT_DIGEST_HOUR,
   type ActivationEventName,
@@ -79,7 +84,7 @@ import {
  * never re-prompt for — so the shell moves the step into its blocked state
  * instead of offering a "Try again" that can only fail identically (#5609).
  */
-export type ActivationConfirmResult = 'verified' | 'failed' | 'blocked';
+export type ActivationConfirmResult = 'verified' | 'failed' | 'blocked' | 'declined';
 
 export interface ProActivationInterstitialOptions {
   /** Ordered steps from `buildActivationSteps` (computed by the caller). */
@@ -312,6 +317,10 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
   // render exactly like a step that was already blocked at mount — the browser
   // will not re-prompt, so a retry CTA would be a dead end (#5609).
   const blockedByConfirm = new Set<ActivationStepId>();
+  // Steps parked in the failed state because the user dismissed a permission
+  // prompt rather than because a write errored. Same UI (retryable), different
+  // funnel meaning — see shouldEmitSkip.
+  const declinedByConfirm = new Set<ActivationStepId>();
 
   const onSummary = (): boolean => currentIndex >= steps.length;
 
@@ -322,6 +331,10 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
    */
   const effectiveState = (step: ActivationStep): ActivationStepState =>
     blockedByConfirm.has(step.id) ? 'blocked' : step.state;
+
+  /** True when the step is parked in the failed state because OUR write errored. */
+  const isGenuineFailure = (step: ActivationStep): boolean =>
+    transient === 'failed' && !declinedByConfirm.has(step.id);
 
   /**
    * Default disposition for a step never explicitly acted on (dismiss/Escape).
@@ -568,9 +581,7 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
         continue;
       }
       // Preserve a genuine failure signal on the step the user is abandoning.
-      // Unreachable for a blocked step: resolving a confirm `blocked` clears
-      // the transient, so the two signals can never contend for one step.
-      if (i === currentIndex && transient === 'failed') {
+      if (i === currentIndex && isGenuineFailure(step)) {
         outcomes.set(step.id, 'failed');
         continue;
       }
@@ -597,13 +608,20 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
   };
 
   const handleSkip = (step: ActivationStep): void => {
-    options.onSkipStep(step.id);
-    outcomes.set(step.id, transient === 'failed' ? 'failed' : 'skipped');
+    // Moving on from a step whose write errored is not a skip. Reporting it as
+    // one is what made a systemic day-0 failure look like user disinterest in
+    // the funnel (#5600); the failure itself was already reported by
+    // onConfirmStep, and the outcome below keeps the summary/ledger honest.
+    if (!isGenuineFailure(step)) options.onSkipStep(step.id);
+    outcomes.set(step.id, isGenuineFailure(step) ? 'failed' : 'skipped');
     recordProgress();
     advance();
   };
 
   const handleConfirm = async (step: ActivationStep): Promise<void> => {
+    // Each attempt is classified fresh: a retry after a dismissed prompt can
+    // resolve any other way.
+    declinedByConfirm.delete(step.id);
     transient = 'in-flight';
     renderModal();
     const gen = generation;
@@ -635,6 +653,10 @@ export function openProActivationInterstitial(options: ProActivationInterstitial
       recordProgress();
       renderModal();
     } else {
+      // 'declined' (dismissed prompt) renders the same retryable failed state as
+      // a genuine write error — clicking again re-prompts. Only the funnel
+      // meaning differs; isGenuineFailure reads this set.
+      if (result === 'declined') declinedByConfirm.add(step.id);
       transient = 'failed';
       renderModal();
     }
@@ -817,6 +839,17 @@ export interface ProActivationFlowOptions {
   expectedActivationKey?: string;
   /** Per-tab nonce used by the server-side cross-device presentation lease. */
   activationClaimNonce?: string;
+  /** Day-0 session start; paired with the nonce for ordered row ownership. */
+  activationSessionStartedAt?: number;
+  /**
+   * Finish-setup chip seam. Invoked when the chip is clicked so each reopen
+   * gets fresh identity instead of replaying the captured flow's revision
+   * namespace.
+   */
+  createDay0SessionIdentity?: () => {
+    activationClaimNonce: string;
+    activationSessionStartedAt: number;
+  };
 }
 
 /** Live activation context read once at flow open: config + platform + fields for the alerts patch. */
@@ -841,6 +874,12 @@ export interface ProActivationFlowDependencies {
     claimNonce: string,
   ) => Promise<'claimed' | 'not_eligible' | 'already_presented' | 'already_claimed'>;
   confirmPresentation: (activationKey: string, claimNonce: string) => Promise<boolean>;
+  /** Day-0 counterpart to claim+confirm; best-effort, never gates the flow (#5621). */
+  openDay0Presentation: (
+    activationKey: string,
+    claimNonce: string,
+    sessionStartedAt: number,
+  ) => Promise<'opened' | 'already_recorded' | 'not_eligible' | 'superseded'>;
   /**
    * Typed against the service's own snapshot rather than a hand-copied shape:
    * the duplicate drifted the moment a bucket was added (#5617), and a stale
@@ -867,6 +906,7 @@ const BRIEF_PREVIEW_TIMEOUT_MS = 2500;
 const ACTIVATION_CONTEXT_TIMEOUT_MS = 5_000;
 const ACTIVATION_MUTATION_TIMEOUT_MS = 5_000;
 const PRESENTATION_CONFIRM_RETRY_DELAYS_MS = [250, 750, 1_500] as const;
+const DAY0_OPEN_RETRY_DELAYS_MS = [250, 750] as const;
 const OUTCOME_WRITE_RETRY_DELAYS_MS = [250, 750] as const;
 
 /**
@@ -1171,6 +1211,56 @@ function buildPowerExtra(options: ProActivationFlowOptions): ProActivationStepEx
   };
 }
 
+/** Closed vocabulary of failure sites, so a typo'd Sentry tag is a compile error. */
+type ActivationFailureStage =
+  | 'brief-confirm'
+  | 'push-subscribe'
+  | 'alerts-config-refresh'
+  | 'alerts-rule-write';
+
+/**
+ * Surface an activation step failure to Sentry (#5600).
+ *
+ * These paths used to only `console.warn`, and sentry-init.ts has no
+ * captureConsole integration — so the error text never left the browser and a
+ * systemic day-0 failure (every network-backed step 403ing after checkout) was
+ * invisible server-side for a full day. `activation_path` separates the day-0
+ * cohort, which writes no `proActivationPresentations` outcome row at all,
+ * from the retro backfill cohort that does.
+ *
+ * Two guards keep the signal honest:
+ *
+ * - An account switch mid-confirm makes confirmBrief/confirmAlerts return
+ *   'failed' for a write that may well have succeeded. The funnel already
+ *   excludes that (it is flow teardown, not a step failure); Sentry must too, or
+ *   the cohort counts here and in Umami disagree.
+ * - `scheduleSentryInit()` is kicked explicitly. It is idempotent, and without it
+ *   the call merely queues: main.ts defers real init ~10s, and the day-0
+ *   interstitial opens on that SAME post-checkout page load, so a user who fails
+ *   a step and closes the tab inside that window loses the one signal this
+ *   function exists to produce. The queue has no pagehide flush.
+ */
+function reportActivationStepFailure(
+  options: ProActivationFlowOptions,
+  step: ActivationStepId,
+  stage: ActivationFailureStage,
+  err: unknown,
+): void {
+  if (!isFlowAccountCurrent(options)) return;
+  void scheduleSentryInit();
+  enqueueSentryCall((s) => s.captureException(
+    err instanceof Error ? err : new Error(String(err)),
+    {
+      tags: {
+        component: 'pro-activation',
+        step,
+        stage,
+        activation_path: options.onlyIfUnactivated ? 'retro' : 'day0',
+      },
+    },
+  ));
+}
+
 /** Brief confirm: link the email channel, then one atomic daily-digest write. */
 async function confirmBrief(
   options: ProActivationFlowOptions,
@@ -1198,6 +1288,7 @@ async function confirmBrief(
     return isFlowAccountCurrent(options) ? 'verified' : 'failed';
   } catch (err) {
     console.warn('[pro-activation] brief confirm failed', err);
+    reportActivationStepFailure(options, 'brief', 'brief-confirm', err);
     return 'failed';
   }
 }
@@ -1215,7 +1306,22 @@ async function confirmAlerts(
     // Read the LIVE permission rather than the thrown message: once it is
     // `denied` no browser re-prompts, so the step is blocked, not retryable.
     // A dismissed prompt leaves it `default` and stays a retryable failure.
-    return getPushPermission() === 'denied' ? 'blocked' : 'failed';
+    const permission = getPushPermission();
+    // #5600: only granted-then-failed is a real error. `denied` routes to the
+    // blocked state below and `default` (prompt dismissed) is a user outcome —
+    // reporting either would bury real failures under permission noise.
+    if (shouldReportPushSubscribeFailure(permission)) {
+      reportActivationStepFailure(options, 'alerts', 'push-subscribe', err);
+    }
+    if (permission === 'denied') return 'blocked';
+    // The permission is still `default`: the user dismissed the prompt without
+    // deciding. A retry re-prompts, so the UI keeps the retryable failed state —
+    // but this must not reach the step-failed metric, which exists to surface OUR
+    // writes erroring. Returning 'failed' for it is what routed the most common
+    // alerts-step outcome into that metric. Only a granted-then-failed subscribe
+    // is a genuine failure — the same line shouldReportPushSubscribeFailure
+    // already draws for Sentry, reused here so the two cannot drift apart.
+    return shouldReportPushSubscribeFailure(permission) ? 'failed' : 'declined';
   }
   let fresh: ActivationContext;
   try {
@@ -1224,6 +1330,7 @@ async function confirmAlerts(
     fresh = await readActivationContextStrict(options.accountUserId);
   } catch (err) {
     console.warn('[pro-activation] alerts config refresh failed', err);
+    reportActivationStepFailure(options, 'alerts', 'alerts-config-refresh', err);
     return 'failed';
   }
   const payload = buildCriticalAlertsPayload(fresh.channels, fresh.hasEnabledRule);
@@ -1237,6 +1344,7 @@ async function confirmAlerts(
     return isFlowAccountCurrent(options) ? 'verified' : 'failed';
   } catch (err) {
     console.warn('[pro-activation] alerts rule write failed', err);
+    reportActivationStepFailure(options, 'alerts', 'alerts-rule-write', err);
     return 'failed';
   }
 }
@@ -1269,18 +1377,81 @@ async function confirmPresentationWithRetry(
   return false;
 }
 
+function reportActivationPersistenceFailure(
+  error: unknown,
+  action: 'openDay0Presentation' | 'recordOutcome',
+  extra?: Record<string, unknown>,
+): void {
+  // The activation ledger exists to remove a server-side observability blind
+  // spot, so its terminal write failures cannot stop at the user's console.
+  // Keep Sentry lazy (like the finish-setup chip) so this component retains no
+  // static bootstrap dependency, and never surface telemetry failure to the UI.
+  void import('@/bootstrap/sentry-defer')
+    .then((m) => m.enqueueSentryCall((s) => s.captureException(
+      error instanceof Error ? error : new Error(String(error)),
+      {
+        tags: { component: 'pro-activation', action },
+        ...(extra ? { extra } : {}),
+      },
+    )))
+    .catch(() => {});
+}
+
+async function openDay0PresentationWithRetry(
+  options: ProActivationFlowOptions,
+  dependencies: ProActivationFlowDependencies,
+): Promise<boolean> {
+  const activationKey = options.expectedActivationKey;
+  const claimNonce = options.activationClaimNonce;
+  const sessionStartedAt = options.activationSessionStartedAt;
+  if (!activationKey || !claimNonce || sessionStartedAt === undefined) return false;
+
+  for (let attempt = 0; ; attempt += 1) {
+    if (!isFlowAccountCurrent(options)) return false;
+    try {
+      const status = await dependencies.openDay0Presentation(
+        activationKey,
+        claimNonce,
+        sessionStartedAt,
+      );
+      // Every server refusal is authoritative and terminal. Only a rejected
+      // request is eligible for transport retry.
+      return status === 'opened';
+    } catch (error) {
+      // A late rejection must not keep retrying or report against an account
+      // that is no longer active in this browser.
+      if (!isFlowAccountCurrent(options)) return false;
+      const delay = DAY0_OPEN_RETRY_DELAYS_MS[attempt];
+      if (delay === undefined) {
+        console.warn('[pro-activation] failed to open day-0 activation record', error);
+        reportActivationPersistenceFailure(error, 'openDay0Presentation');
+        return false;
+      }
+      await new Promise<void>((resolve) => window.setTimeout(resolve, delay));
+    }
+  }
+}
+
 function persistActivationOutcomeWithRetry(
   options: ProActivationFlowOptions,
   dependencies: ProActivationFlowDependencies,
   results: readonly ActivationStepResult[],
   revision: number,
   finalized: boolean,
+  /**
+   * Day-0 only: resolves once the row these snapshots attach to exists. `false`
+   * means the server refused it (ineligible, finalized, or superseded by a
+   * newer session), so writing would be rejected anyway — skip quietly.
+   */
+  day0RowReady?: Promise<boolean>,
 ): void {
-  if (!options.onlyIfUnactivated || !options.expectedActivationKey || !options.activationClaimNonce) {
+  if (!options.expectedActivationKey || !options.activationClaimNonce) {
     return;
   }
+  const cohort = options.onlyIfUnactivated ? undefined : ('day0' as const);
   const buckets = buildActivationOutcomeBuckets(results);
   void (async () => {
+    if (day0RowReady && !(await day0RowReady)) return;
     for (let attempt = 0; ; attempt += 1) {
       try {
         await withTimeout(
@@ -1288,6 +1459,7 @@ function persistActivationOutcomeWithRetry(
             options.expectedActivationKey!,
             options.activationClaimNonce!,
             {
+              ...(cohort ? { cohort } : {}),
               confirmedSteps: [...buckets.confirmedSteps],
               skippedSteps: [...buckets.skippedSteps],
               blockedSteps: [...buckets.blockedSteps],
@@ -1304,21 +1476,7 @@ function persistActivationOutcomeWithRetry(
         const delay = OUTCOME_WRITE_RETRY_DELAYS_MS[attempt];
         if (delay === undefined) {
           console.warn('[pro-activation] failed to record activation outcome', error);
-          // A permanently failing durable write is the one failure this whole
-          // record exists to rule out: it leaves the account's activation
-          // outcome invisible server-side, which is exactly the blind spot
-          // #5621 is filed about. A browser console line reaches nobody, so
-          // report it. Lazy-imported (like the chip below) to keep this
-          // component free of a static bootstrap import.
-          void import('@/bootstrap/sentry-defer')
-            .then((m) => m.enqueueSentryCall((s) => s.captureException(
-              error instanceof Error ? error : new Error(String(error)),
-              {
-                tags: { component: 'pro-activation', action: 'recordOutcome' },
-                extra: { revision, finalized },
-              },
-            )))
-            .catch(() => {}); // never let telemetry failure surface to the user
+          reportActivationPersistenceFailure(error, 'recordOutcome', { revision, finalized });
           return;
         }
         await new Promise<void>((resolve) => window.setTimeout(resolve, delay));
@@ -1343,6 +1501,7 @@ export async function openProActivationFlow(
         : readActivationContext(expectedUserId),
     claimPresentation: claimProActivationPresentation,
     confirmPresentation: confirmProActivationPresentation,
+    openDay0Presentation: openProActivationDay0Presentation,
     recordOutcome: recordProActivationOutcome,
     openInterstitial: openProActivationInterstitial,
     ...injected,
@@ -1417,6 +1576,33 @@ export async function openProActivationFlow(
     }
   }
 
+  // Day-0's counterpart (#5621). Deliberately NOT awaited and never able to
+  // return 'retry': the post-checkout welcome must open even when Convex is
+  // unreachable. The promise is handed to the outcome writer instead, so
+  // snapshots queue behind the row they attach to rather than racing it, and
+  // a refusal (ineligible / already finalized) silently drops them.
+  const day0RowReady =
+    !options.onlyIfUnactivated &&
+    options.expectedActivationKey &&
+    options.activationClaimNonce &&
+    options.activationSessionStartedAt !== undefined
+      ? openDay0PresentationWithRetry(options, dependencies)
+      : undefined;
+  if (day0RowReady) {
+    // Observe availability within the normal mutation budget, but keep the raw
+    // retry promise above as the durable readiness signal. `withTimeout`
+    // cannot cancel its source promise, so a slow successful open can still
+    // release snapshots queued behind it. The timeout is slow/pending
+    // telemetry only; terminal rejection is reported by the retry loop once.
+    void withTimeout(
+      day0RowReady,
+      dependencies.operationTimeoutMs ?? ACTIVATION_MUTATION_TIMEOUT_MS,
+      'activation-open-day0-presentation',
+    ).catch((error) => {
+      console.warn('[pro-activation] day-0 activation record open is still pending', error);
+    });
+  }
+
   // Holds the brief step's delivery-hour pick across the shell's re-renders.
   const selectedHourRef: DigestHourRef = { hour: null };
 
@@ -1438,6 +1624,7 @@ export async function openProActivationFlow(
       results,
       outcomeRevision,
       finalized,
+      day0RowReady,
     );
   };
 
@@ -1446,6 +1633,8 @@ export async function openProActivationFlow(
     accountEmail: options.accountEmail,
     stepExtras,
     onConfirmStep: async (stepId) => {
+      // A double-fire is not an attempt — return without telemetry so the
+      // re-entry guard never inflates either counter.
       if (inFlight.has(stepId)) return 'failed';
       inFlight.add(stepId);
       try {
@@ -1455,15 +1644,34 @@ export async function openProActivationFlow(
             : stepId === 'alerts'
               ? await confirmAlerts(options)
               : 'verified';
-        if (result === 'verified') {
-          options.onEvent?.(ACTIVATION_EVENTS.stepConfirmed, stepId);
+        // Attempt-level outcome: one event per real confirm, so a step the
+        // user retries is visible as N failures rather than a single terminal
+        // state inferred from the exit summary (#5600). Routed through the
+        // leaf's selectStepEvent so the outcome -> event mapping has exactly
+        // one definition (a parallel inline ternary here would let the unit
+        // test stay green while this wiring regressed).
+        //
+        // `blocked` maps to no event here — the shell fires stepBlocked through
+        // onBlockStep (#5609). selectConfirmOutcome owns that decision so it is
+        // unit-pinned rather than living as an inline condition.
+        //
+        // An account switch mid-confirm makes confirmBrief/confirmAlerts return
+        // 'failed' for a write that actually succeeded. That is flow teardown,
+        // not a step failure — counting it would inflate the same metric.
+        const outcome = selectConfirmOutcome(result);
+        if (outcome && isFlowAccountCurrent(options)) {
+          const stepEvent = selectStepEvent(outcome);
+          if (stepEvent) options.onEvent?.(stepEvent, stepId);
         }
         return result;
       } finally {
         inFlight.delete(stepId);
       }
     },
-    onSkipStep: (stepId) => options.onEvent?.(ACTIVATION_EVENTS.stepSkipped, stepId),
+    onSkipStep: (stepId) => {
+      const skipEvent = selectStepEvent('skipped');
+      if (skipEvent) options.onEvent?.(skipEvent, stepId);
+    },
     onBlockStep: (stepId) => options.onEvent?.(ACTIVATION_EVENTS.stepBlocked, stepId),
     onProgress: (results) => persistOutcome(results, false),
     onExit: (results) => {

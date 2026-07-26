@@ -180,6 +180,14 @@ export async function internalEntitlementsHttpHandler(
         { userId: body.userId },
       );
       if (verification.status === "not_applicable") {
+        // Reached only when the user has NO subscription row at all
+        // (claimRecentlyStaleSubscriptionForVerification: any billing history
+        // yields `lapsed` instead). That cohort includes a buyer whose Dodo
+        // webhook has not landed yet, so the edge deliberately serves this
+        // marker for a short window only — see
+        // NOT_APPLICABLE_VERIFICATION_TTL_SECONDS in
+        // server/_shared/entitlement-check.ts (#5600). Widening the cases that
+        // produce this marker means revisiting that TTL.
         renewalVerificationFreshness = {
           status: "not_applicable",
           checkedAt: Date.now(),

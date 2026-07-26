@@ -1,7 +1,15 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
-import { analyzeStock, fetchYahooAnalystData } from '../server/worldmonitor/market/v1/analyze-stock.ts';
+import {
+  analyzeStock,
+  buildAnalysisResponse,
+  buildTechnicalSnapshot,
+  fetchYahooAnalystData,
+  getFallbackOverlay,
+  selectEarningsForSymbol,
+  type AnalystData,
+} from '../server/worldmonitor/market/v1/analyze-stock.ts';
 import { MarketServiceClient } from '../src/generated/client/worldmonitor/market/v1/service_client.ts';
 
 const originalFetch = globalThis.fetch;
@@ -396,5 +404,92 @@ describe('MarketServiceClient analyzeStock', () => {
     assert.match(requestedUrl, /symbol=MSFT/);
     assert.match(requestedUrl, /name=Microsoft/);
     assert.match(requestedUrl, /include_news=true/);
+  });
+});
+
+describe('selectEarningsForSymbol', () => {
+  const TODAY = '2026-07-26';
+  const entry = (over: Record<string, unknown> = {}) => ({
+    symbol: 'AAPL', company: 'Apple', date: '2026-07-30', hour: 'amc',
+    epsEstimate: 1.25, revenueEstimate: 90_000_000_000, epsActual: 0, revenueActual: 0,
+    hasActuals: false, surpriseDirection: '', ...over,
+  });
+
+  it('returns the next upcoming entry with consensus estimates', () => {
+    const result = selectEarningsForSymbol([entry()], 'AAPL', TODAY);
+    assert.deepEqual(result, { nextEarningsDate: '2026-07-30', consensusEps: 1.25, consensusRevenue: 90_000_000_000 });
+  });
+
+  it('returns null when the only entry has already reported (hasActuals)', () => {
+    assert.equal(selectEarningsForSymbol([entry({ hasActuals: true })], 'AAPL', TODAY), null);
+  });
+
+  it('returns null when the only entry is dated before today', () => {
+    assert.equal(selectEarningsForSymbol([entry({ date: '2026-07-20' })], 'AAPL', TODAY), null);
+  });
+
+  it('returns null when no entry matches the symbol', () => {
+    assert.equal(selectEarningsForSymbol([entry()], 'MSFT', TODAY), null);
+  });
+
+  it('picks the earliest upcoming entry, skipping reported and past ones', () => {
+    const result = selectEarningsForSymbol([
+      entry({ date: '2026-08-15' }),
+      entry({ date: '2026-07-20', hasActuals: true }), // past, already reported
+      entry({ date: '2026-07-28' }),                    // earliest still-upcoming
+    ], 'AAPL', TODAY);
+    assert.equal(result?.nextEarningsDate, '2026-07-28');
+  });
+
+  it('surfaces the date but omits absent/zero estimates', () => {
+    const result = selectEarningsForSymbol([entry({ epsEstimate: 0, revenueEstimate: 0 })], 'AAPL', TODAY);
+    assert.deepEqual(result, { nextEarningsDate: '2026-07-30' });
+  });
+
+  it('treats an entry dated exactly today as upcoming', () => {
+    const result = selectEarningsForSymbol([entry({ date: TODAY })], 'AAPL', TODAY);
+    assert.equal(result?.nextEarningsDate, TODAY);
+  });
+});
+
+describe('buildAnalysisResponse earnings surfacing', () => {
+  const candles = Array.from({ length: 80 }, (_, i) => ({
+    timestamp: 1_700_000_000_000 + i * 86_400_000,
+    open: 100 + i * 0.4, high: 101 + i * 0.4, low: 99 + i * 0.4,
+    close: 100 + i * 0.4, volume: 1_000_000 + i * 5_000,
+  }));
+  const technical = buildTechnicalSnapshot(candles);
+  const overlay = getFallbackOverlay('Test', technical, []);
+  const emptyAnalystData: AnalystData = {
+    analystConsensus: { strongBuy: 0, buy: 0, hold: 0, sell: 0, strongSell: 0, total: 0, period: '' },
+    priceTarget: { numberOfAnalysts: 0 },
+    recentUpgrades: [],
+    fundamentals: {},
+  };
+  const base = {
+    symbol: 'AAPL', name: 'Apple', currency: 'USD', technical, headlines: [],
+    overlay, analystData: emptyAnalystData, includeNews: false,
+    analysisAt: Date.now(), generatedAt: new Date().toISOString(),
+  };
+
+  it('surfaces the earnings fields when an upcoming event is provided', () => {
+    const resp = buildAnalysisResponse({ ...base, earnings: { nextEarningsDate: '2026-07-30', consensusEps: 1.25, consensusRevenue: 9e10 } });
+    assert.equal(resp.nextEarningsDate, '2026-07-30');
+    assert.equal(resp.consensusEps, 1.25);
+    assert.equal(resp.consensusRevenue, 9e10);
+  });
+
+  it('omits all earnings keys when there is no upcoming event', () => {
+    const resp = buildAnalysisResponse({ ...base });
+    assert.ok(!('nextEarningsDate' in resp));
+    assert.ok(!('consensusEps' in resp));
+    assert.ok(!('consensusRevenue' in resp));
+  });
+
+  it('omits the consensus keys when only the date is known', () => {
+    const resp = buildAnalysisResponse({ ...base, earnings: { nextEarningsDate: '2026-07-30' } });
+    assert.equal(resp.nextEarningsDate, '2026-07-30');
+    assert.ok(!('consensusEps' in resp));
+    assert.ok(!('consensusRevenue' in resp));
   });
 });

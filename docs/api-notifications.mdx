@@ -42,6 +42,8 @@ Action-dispatched writer. The body's `action` field selects the mutation:
 
 All actions require Clerk bearer + PRO (`tier >= 1`). Invalid actions return `400 Unknown action`. Requests are forwarded to Convex via `RELAY_SHARED_SECRET`.
 
+A caller below `tier >= 1` gets `403 pro_required` only when the entitlement is confirmed non-Pro. When entitlement verification is itself in doubt the gate follows the shared billing-verification contract instead: `503` with `Retry-After` and `X-Billing-Verification` for `entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed`, and `403 subscription_lapsed` for a confirmed lapse. See [Error handling](/usage-errors).
+
 - **Idempotency**: optional `Idempotency-Key` supported on `POST /api/notification-channels`. Retrying the same key with an identical body replays the original response instead of applying the channel action again.
 
 ## Webhook delivery contract
@@ -75,6 +77,8 @@ The envelope version is **shared across two producers** (`notification-relay`, `
 
 Authenticated event-publish endpoint for PRO callers. Requires Clerk bearer auth and an active PRO entitlement, then enqueues the accepted event into the notification queue. Relay-internal control events such as `flush_quiet_held` and `channel_welcome` are reserved and rejected.
 
+Errors: 401 (missing/invalid JWT), 403 `pro_required` — and, like every Pro-gated endpoint here, the shared billing-verification contract when entitlement verification is itself in doubt: `503` with `Retry-After` and `X-Billing-Verification` for `entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed`, and `403 subscription_lapsed` for a confirmed lapse. See [Error handling](/usage-errors).
+
 - **Idempotency**: optional `Idempotency-Key` supported. Retrying the same key with an identical body replays the original enqueue response instead of publishing the notification again.
 
 ## Telegram
@@ -105,7 +109,7 @@ Authenticated (Clerk JWT + PRO). Body is empty. Server generates a one-time CSRF
 { "oauthUrl": "https://slack.com/oauth/v2/authorize?client_id=...&scope=incoming-webhook&..." }
 ```
 
-Errors: 401 (missing/invalid JWT), 403 `pro_required`, 503 (OAuth not configured or Upstash unavailable).
+Errors: 401 (missing/invalid JWT), 403 `pro_required`, 503 (OAuth not configured or Upstash unavailable). A 503 here can **also** be the retryable billing-verification denial — `entitlement_verification_unavailable` / `renewal_verification_pending` / `renewal_verification_failed`, carrying `Retry-After` and `X-Billing-Verification`; a confirmed lapse is `403 subscription_lapsed`. Branch on the `code` field rather than the status alone, since the misconfiguration 503 is not retryable. See [Error handling](/usage-errors).
 
 ### `GET /api/slack/oauth/callback`
 
@@ -115,7 +119,7 @@ Unauthenticated — the popup lands here after Slack redirects. Validates the st
 
 ### `POST /api/discord/oauth/start`
 
-Authenticated (Clerk JWT + PRO). Same shape as the Slack start route — returns `{ oauthUrl }` for a popup.
+Authenticated (Clerk JWT + PRO). Same shape as the Slack start route — returns `{ oauthUrl }` for a popup, and the same error set, including the billing-verification 503/403 codes described there.
 
 ### `GET /api/discord/oauth/callback`
 

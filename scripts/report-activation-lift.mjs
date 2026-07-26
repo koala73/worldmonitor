@@ -3,6 +3,10 @@
  * Compare downstream Pro-feature adoption between subscribers who confirmed
  * at least one activation-wizard step and subscribers who confirmed none.
  *
+ * Reported per cohort (#5621) — day-0 post-checkout sessions and the
+ * markerless retro backfill are separate populations with different baseline
+ * adoption, so they get separate verdicts rather than one pooled number.
+ *
  * Every shown presentation stays in the cohort. Its observation window starts
  * at the durable exit when present, otherwise the latest persisted progress,
  * otherwise `presentedAt` for a no-action abandonment. This avoids both
@@ -147,9 +151,49 @@ function summarizeGroup(rows, featureIndex, windowMs) {
   };
 }
 
+/**
+ * Which activation cohort a presentation row belongs to (#5621). An absent
+ * `cohort` is the markerless retro backfill — the only cohort that existed
+ * before day-0 sessions started writing rows, so every historical row keeps
+ * classifying the way it always did.
+ */
+export function activationCohortOf(row) {
+  return row.cohort === "day0" ? "day0" : "retro";
+}
+
+export const ACTIVATION_COHORTS = ["day0", "retro"];
+
+export const COHORT_LABELS = {
+  day0: "Day-0 (post-checkout welcome)",
+  retro: "Retro (markerless first-cycle backfill)",
+};
+
+/**
+ * Analyze each cohort on its own. They are NOT pooled: a day-0 subscriber is
+ * minutes old and a retro subscriber is mid-cycle, so their baseline adoption
+ * rates are not comparable and a combined lift number would average two
+ * different populations into one meaningless figure.
+ */
+export function analyzeActivationLiftByCohort({ presentations, ...rest }) {
+  // One index for both cohorts — building it per cohort would re-walk every
+  // feature table for no gain.
+  const featureIndex = indexFeatureRows(rest.featureRowsByTable ?? {});
+  return Object.fromEntries(
+    ACTIVATION_COHORTS.map((cohort) => [
+      cohort,
+      analyzeActivationLift({
+        ...rest,
+        featureIndex,
+        presentations: presentations.filter((row) => activationCohortOf(row) === cohort),
+      }),
+    ]),
+  );
+}
+
 export function analyzeActivationLift({
   presentations,
   featureRowsByTable,
+  featureIndex: prebuiltFeatureIndex,
   truncatedTables = [],
   reportNow,
   windowMs,
@@ -176,6 +220,15 @@ export function analyzeActivationLift({
   const engaged = mature.filter((row) => (row.confirmedSteps?.length ?? 0) > 0);
   const presentedOnly = mature.filter((row) => (row.confirmedSteps?.length ?? 0) === 0);
 
+  // Push-denial cohort (#5617). `blockedSteps` records a step the BROWSER
+  // refused, which before #5617 was indistinguishable from a voluntary skip in
+  // this table — so this count could not be produced at all. Rows written by a
+  // client too old to report the bucket leave it ABSENT rather than empty, and
+  // those are excluded from the denominator instead of being counted as "no
+  // denial": they never looked, so they cannot testify either way.
+  const denialObservable = mature.filter((row) => Array.isArray(row.blockedSteps));
+  const denied = denialObservable.filter((row) => row.blockedSteps.length > 0);
+
   const base = {
     totalPresentations: presentations.length,
     shown: shown.length,
@@ -183,13 +236,25 @@ export function analyzeActivationLift({
     mature: mature.length,
     immature: immature.length,
     incompleteExits: incompleteExits.length,
+    // A denial is a permanent dead end — the browser never re-prompts once
+    // permission is `denied` — so this is the population for whom re-prompting
+    // is worth exactly nothing.
+    pushDenial: {
+      observable: denialObservable.length,
+      denied: denied.length,
+      unreportable: mature.length - denialObservable.length,
+      rate:
+        denialObservable.length > 0
+          ? Number((denied.length / denialObservable.length).toFixed(4))
+          : null,
+    },
     truncatedTables: [...truncatedTables],
   };
   if (truncatedTables.length > 0) {
     return { ...base, verdict: "incomplete-export", engaged: null, presentedOnly: null };
   }
 
-  const featureIndex = indexFeatureRows(featureRowsByTable);
+  const featureIndex = prebuiltFeatureIndex ?? indexFeatureRows(featureRowsByTable);
   const engagedSummary = summarizeGroup(engaged, featureIndex, windowMs);
   const presentedOnlySummary = summarizeGroup(presentedOnly, featureIndex, windowMs);
   if (mature.length === 0) {
@@ -240,15 +305,22 @@ export function formatActivationLiftReport(
     windowDays,
     limit,
     minGroupSize = MIN_GROUP_SIZE_FOR_A_CLAIM,
+    heading = `[activation-lift] window=${windowDays}d limit=${limit} per table`,
   },
 ) {
   const lines = [
-    `[activation-lift] window=${windowDays}d limit=${limit} per table`,
+    heading,
     "",
     `Presentations: ${analysis.totalPresentations} exported, ${analysis.shown} outcome-instrumented and shown, ${analysis.mature} with a complete ${windowDays}d window.`,
     `  excluded as pre-instrumentation: ${analysis.uninstrumented}`,
     `  excluded as immature: ${analysis.immature}`,
     `  mature sessions without a recorded exit: ${analysis.incompleteExits} (included from durable presentation/progress state)`,
+    // Rendered even at 0 so the line's absence always means "old build", never
+    // "no denials" (#5617).
+    `Push denials: ${analysis.pushDenial.denied}/${analysis.pushDenial.observable}` +
+      `${analysis.pushDenial.rate === null ? "" : ` (${(analysis.pushDenial.rate * 100).toFixed(1)}%)`}` +
+      ` — permanent dead ends; re-prompting these accounts is worth nothing.` +
+      `${analysis.pushDenial.unreportable > 0 ? ` [${analysis.pushDenial.unreportable} row(s) predate the bucket and cannot testify]` : ""}`,
   ];
 
   if (analysis.verdict === "incomplete-export") {
@@ -287,6 +359,17 @@ export function formatActivationLiftReport(
   return lines.join("\n");
 }
 
+/** One section per cohort, each with its own verdict (#5621). */
+export function formatActivationLiftReportByCohort(analysisByCohort, options) {
+  const sections = ACTIVATION_COHORTS.map((cohort) =>
+    formatActivationLiftReport(analysisByCohort[cohort], {
+      ...options,
+      heading: `=== ${COHORT_LABELS[cohort]} — window=${options.windowDays}d limit=${options.limit} per table ===`,
+    }),
+  );
+  return sections.join("\n\n");
+}
+
 function parsePositiveNumber(value, name) {
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -323,14 +406,14 @@ export function runCli(argv = process.argv.slice(2), env = process.env) {
   const featureRowsByTable = Object.fromEntries(
     FEATURE_TABLES.map((table) => [table, exports[table].rows]),
   );
-  const analysis = analyzeActivationLift({
+  const analysisByCohort = analyzeActivationLiftByCohort({
     presentations: exports.proActivationPresentations.rows,
     featureRowsByTable,
     truncatedTables,
     reportNow: Date.now(),
     windowMs,
   });
-  return formatActivationLiftReport(analysis, { windowDays, limit });
+  return formatActivationLiftReportByCohort(analysisByCohort, { windowDays, limit });
 }
 
 const isMain =

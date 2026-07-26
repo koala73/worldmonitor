@@ -34,7 +34,7 @@ import { readRawJsonFromUpstash } from './_upstash-json.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from './_sentry-edge.js';
 import { validateBearerToken } from '../server/auth-session';
-import { getEntitlements } from '../server/_shared/entitlement-check';
+import { getBillingVerificationDenial, getEntitlements } from '../server/_shared/entitlement-check';
 import { signBriefUrl, BriefUrlError } from '../server/_shared/brief-url';
 import { assertBriefEnvelope } from '../server/_shared/brief-render.js';
 
@@ -196,6 +196,16 @@ export default async function handler(
 
   const ent = await getEntitlements(session.userId);
   if (!ent || ent.features.tier < 1) {
+    // #5600: an entitlement the backend could not VERIFY is not a confirmed
+    // free user. This is the endpoint the live repro caught rendering "Pro
+    // required. Upgrade to unlock" to a customer who had paid 90 seconds
+    // earlier — answer the shared retryable contract (503 + Retry-After) for
+    // those states before the terminal upsell. Note this covers lookup failure
+    // and renewal verification only; the day-0 poisoned-marker cohort arrives
+    // as a plain tier-0 answer and is bounded by
+    // NOT_APPLICABLE_VERIFICATION_TTL_SECONDS instead.
+    const billingDenial = getBillingVerificationDenial(ent, cors, 1);
+    if (billingDenial) return billingDenial;
     return jsonResponse(
       {
         error: 'pro_required',

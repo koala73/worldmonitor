@@ -3003,6 +3003,19 @@ components:
                          extended_price is set.
                 fundamentals:
                     $ref: '#/components/schemas/Fundamentals'
+                nextEarningsDate:
+                    type: string
+                    description: |-
+                        Next scheduled earnings date (YYYY-MM-DD) plus consensus EPS / revenue for
+                         the symbol, joined from the market:earnings-calendar:v1 seed. Unset when the
+                         symbol has no upcoming (not-yet-reported) entry in the seed's ~2-week window.
+                         (61-62 are taken by a concurrent PR; using 63-65 to avoid a field collision.)
+                consensusEps:
+                    type: number
+                    format: double
+                consensusRevenue:
+                    type: number
+                    format: double
         StockAnalysisHeadline:
             type: object
             properties:

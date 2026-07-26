@@ -108,6 +108,14 @@ message AnalyzeStockResponse {
   // Quality / growth / leverage fundamentals parsed from Yahoo's financialData
   // module (already fetched for price targets). Any field may be unset.
   Fundamentals fundamentals = 60;
+
+  // Next scheduled earnings date (YYYY-MM-DD) plus consensus EPS / revenue for
+  // the symbol, joined from the market:earnings-calendar:v1 seed. Unset when the
+  // symbol has no upcoming (not-yet-reported) entry in the seed's ~2-week window.
+  // (61-62 are taken by a concurrent PR; using 63-65 to avoid a field collision.)
+  optional string next_earnings_date = 63;
+  optional double consensus_eps = 64;
+  optional double consensus_revenue = 65;
 }
 
 message Fundamentals {

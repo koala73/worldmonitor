@@ -132,7 +132,11 @@ function renderChip(options: ProActivationFlowOptions): void {
   });
   finishBtn.addEventListener('click', () => {
     removeChip();
-    void openProActivationFlow(options).catch((err) =>
+    const sessionIdentity = options.createDay0SessionIdentity?.();
+    void openProActivationFlow({
+      ...options,
+      ...(sessionIdentity ?? {}),
+    }).catch((err) =>
       console.warn('[pro-activation] failed to re-open flow from chip', err),
     );
   });

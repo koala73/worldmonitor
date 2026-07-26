@@ -965,8 +965,71 @@ export const ACTIVATION_EVENTS = {
   // browser block as disinterest. The durable counterpart is the `blocked`
   // outcome and its own `blockedSteps` bucket (#5617).
   stepBlocked: 'pro-activation-step-blocked',
+  // #5600: a step whose write genuinely errored. Distinct from `stepBlocked`:
+  // that one is the platform refusing, this one is our write failing. Without
+  // it the only trace of a failure was a `stepSkipped` plus an aggregate count
+  // on the exit event, so a day of broken day-0 activations read as user
+  // disinterest.
+  stepFailed: 'pro-activation-step-failed',
   exit: 'pro-activation-exit',
 } as const;
+
+/**
+ * How an in-flow confirm resolved.
+ *
+ * `blocked` means the platform refused in a way a retry cannot fix — a denied
+ * notification permission, which browsers never re-prompt for (#5609).
+ *
+ * `declined` means the USER walked away from a prompt without deciding (they
+ * dismissed the notification permission dialog, leaving it `default`). A retry
+ * still works, so the UI treats it like `failed`, but the funnel must not: it is
+ * a user outcome, not our write erroring. Folding it into `failed` is what let a
+ * dismissed prompt — the common case for the alerts step — land in the
+ * `pro-activation-step-failed` metric added to catch systemic write failures
+ * (#5600). Note `shouldReportPushSubscribeFailure` already excluded this state
+ * from Sentry for exactly this reason; the funnel just did not agree.
+ */
+export type ActivationConfirmResult = 'verified' | 'failed' | 'blocked' | 'declined';
+
+/**
+ * The step outcome a confirm result reports as, or null when the result is
+ * already reported through another channel.
+ *
+ * `blocked` maps to null on purpose: the shell fires its own `stepBlocked`
+ * event via `onBlockStep`, so emitting a step event here too would count one
+ * attempt twice — re-creating the mislabeled-funnel bug #5600 exists to fix,
+ * just with a different pair of labels.
+ */
+export function selectConfirmOutcome(
+  result: ActivationConfirmResult,
+): ActivationStepOutcome | null {
+  switch (result) {
+    case 'verified':
+      return 'confirmed';
+    case 'failed':
+      return 'failed';
+    case 'blocked':
+      // The shell fires its own stepBlocked via onBlockStep (#5609).
+      return null;
+    case 'declined':
+      // A dismissed prompt is a user choice. The shell reports it as a skip when
+      // the user moves on, so emitting a confirm-time event here would either
+      // double-count it or mislabel it as our failure (#5600).
+      return null;
+  }
+}
+
+/**
+ * Whether a failed `subscribeToPush` is worth reporting to Sentry.
+ *
+ * Only granted-then-failed is a real error. `denied` and `default` (the user
+ * dismissed the prompt without choosing) are both the documented AE3 user
+ * outcome and are the common case — reporting them would bury genuine failures
+ * under permission noise (#5600).
+ */
+export function shouldReportPushSubscribeFailure(permission: string): boolean {
+  return permission === 'granted';
+}
 
 /**
  * The set of activation telemetry event names. This is the single naming
@@ -978,13 +1041,14 @@ export type ActivationEventName = (typeof ACTIVATION_EVENTS)[keyof typeof ACTIVA
 
 /**
  * The per-step telemetry event for an outcome, or null when the outcome is not
- * a tracked user action: `done` (nothing to do, pre-configured) and `failed`
- * (surfaced via the exit summary, not a dedicated step event) both emit none.
+ * a tracked user action: only `done` (nothing to do, pre-configured) emits
+ * none. `failed` has its own event since #5600 — folding it into the exit
+ * summary alone is what let a systemic write failure look like a skip.
  * `blocked` keeps its OWN event — falling through to `stepSkipped` would
  * re-collapse the denial cohort into voluntary skips at the event level, the
  * exact gap the event was added to close (#5609).
  */
-export function selectStepEvent(outcome: ActivationStepOutcome): string | null {
+export function selectStepEvent(outcome: ActivationStepOutcome): ActivationEventName | null {
   switch (outcome) {
     case 'confirmed':
       return ACTIVATION_EVENTS.stepConfirmed;
@@ -992,8 +1056,9 @@ export function selectStepEvent(outcome: ActivationStepOutcome): string | null {
       return ACTIVATION_EVENTS.stepSkipped;
     case 'blocked':
       return ACTIVATION_EVENTS.stepBlocked;
-    case 'done':
     case 'failed':
+      return ACTIVATION_EVENTS.stepFailed;
+    case 'done':
       return null;
   }
 }
