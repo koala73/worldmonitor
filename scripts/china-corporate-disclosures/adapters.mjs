@@ -78,6 +78,10 @@ export const OFFICIAL_EXCHANGE_SOURCE_CONTRACTS = Object.freeze({
     maxDirectRequestsPerRun: 1,
     maxProxyRequestsPerRun: 1,
     fallbackPolicy: 'direct_then_proxy_on_transport_failure',
+    // Railway registers PROXY_URL as required config for this service: without
+    // it the source still runs direct-only (no hard failure), but it loses
+    // the one capability this contract exists to provide, so an unset
+    // PROXY_URL in production is a deployment gap worth alerting on.
     proxyEnvironmentVariable: 'PROXY_URL',
     maxResponseBytes: 131_072,
     redirectPolicy: 'error',
@@ -156,6 +160,10 @@ const MAX_UNCLASSIFIED_REVISIONS = 100;
 const SSE_PAGE_SIZE = 100;
 const SSE_REQUEST_TIMEOUT_MS = 30_000;
 const SZSE_PAGE_SIZE = 50;
+// Worst case (direct attempt times out, then the proxy retry also times out)
+// this source can take up to SZSE_DIRECT_TIMEOUT_MS + SZSE_PROXY_TIMEOUT_MS
+// (~35s) before the bundle moves on. Keep this comfortably inside the
+// per-section timeoutMs configured for it in seed-bundle-market-backup.mjs.
 const SZSE_DIRECT_TIMEOUT_MS = 15_000;
 const SZSE_PROXY_TIMEOUT_MS = 20_000;
 const LAUNCHED_SOURCE_FETCHERS = Object.freeze([
@@ -461,12 +469,20 @@ async function fetchViaConfiguredProxy(input, init, {
 }) {
   const proxyConfig = parseProxyConfig(proxyUrl);
   if (!proxyConfig) throw sourceError('PROXY_NOT_CONFIGURED');
+  // init.headers carries the same Referer/User-Agent/Content-Type the direct
+  // request used (requestInit() below), deliberately: we're routing the exact
+  // same declared client through a different egress point, not masquerading
+  // as a browser, which matches the source's terms-of-use posture.
   const result = await proxyRequestFn(String(input), proxyConfig, {
     accept: 'application/json',
     headers: init?.headers,
     method: init?.method,
     body: init?.body,
     maxResponseBytes: maxBytes,
+    // signal already enforces requestInit()'s timeoutMs; timeoutMs here is a
+    // second, independent backstop inside proxyFetch's own socket/tunnel
+    // handling in case the AbortSignal doesn't propagate through a stalled
+    // CONNECT tunnel. Both are pinned to SZSE_PROXY_TIMEOUT_MS on purpose.
     timeoutMs: SZSE_PROXY_TIMEOUT_MS,
     signal: init?.signal,
   });
