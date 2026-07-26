@@ -45,29 +45,41 @@ const INCLUDED_EXTENSIONS = new Set([
   '',  // extensionless scripts (e.g. .husky/pre-commit, .husky/pre-push)
 ]);
 
-// Locale JSON is rendered as UI text and never parsed as code, so the threat
-// model above does not apply to it — while ZWNJ (U+200C) and ZWJ (U+200D) are
-// *required* for correct Persian and Devanagari typesetting. Every locale data
-// directory therefore has to be listed here: `--staged` matches by path prefix
-// rather than by SCAN_ROOTS, so an unlisted one rejects any commit carrying a
-// correctly-typeset RTL or Indic string. tests/unicode-safety-scope.test.mjs
-// fails if a new locale directory appears without an entry.
 export const EXCLUDED_PREFIXES = [
   '.git/',
   'node_modules/',
-  'src/locales/',
-  'pro-test/src/locales/',
   'src/generated/',
   'docs/',
   'blog-site/',
   'public/blog/',
   // Built bundle, not source: pro-test/ compiles into here and each locale
-  // becomes its own hashed chunk, so the Persian ZWNJ excluded above reappears
-  // verbatim in public/pro/assets/fa-*.js.
+  // becomes its own hashed chunk, so the joiners allowed in locale data below
+  // reappear verbatim in public/pro/assets/fa-*.js. Its inputs are scanned, and
+  // .github/workflows rebuilds and byte-diffs it, so excluding the output adds
+  // no unscanned surface.
   'public/pro/',
   'scripts/data/',
   'scripts/node_modules/',
 ];
+
+// Locale data needs ZWNJ (U+200C) and ZWJ (U+200D) — they are *required* for
+// correct Persian and Devanagari typesetting, and `--staged` matches by path
+// rather than by SCAN_ROOTS, so without an allowance pre-commit rejects any
+// commit carrying a correctly-typeset RTL or Indic string.
+//
+// The allowance is scoped to those two code points rather than skipping the
+// files, because these strings are rendered into a public pricing page: a bidi
+// control in an RTL locale can reverse a rendered digit run, so a price or a
+// licence term can display differently from the JSON a reviewer reads. Excluding
+// the whole path would turn off Trojan Source detection exactly where nobody
+// eyeballs the rendered output. Verified sufficient: the only such characters in
+// either catalog today are U+200B/200C/200D, and no bidi control anywhere.
+export const LOCALE_DATA_PREFIXES = ['src/locales/', 'pro-test/src/locales/'];
+const LOCALE_ALLOWED_CODEPOINTS = new Set([0x200c, 0x200d]);
+
+export function isLocaleData(path) {
+  return LOCALE_DATA_PREFIXES.some(prefix => path.startsWith(prefix));
+}
 
 const ZERO_WIDTH = new Set([0x200B, 0x200C, 0x200D, 0x2060, 0xFEFF]);
 
@@ -91,8 +103,14 @@ function isVariationSelectorSuspicious(cp) {
 // semantics and is legitimately used by icon fonts in string literals.
 
 function getExtension(path) {
-  const idx = path.lastIndexOf('.');
-  return idx === -1 ? '' : path.slice(idx);
+  // Basename only. Reading the whole path made `.husky/pre-commit` report an
+  // extension of `.husky/pre-commit`, so it never matched the `''` entry that
+  // exists precisely to cover it — the git hooks, which execute on every commit
+  // and are the highest-value place to hide a Trojan Source payload, were listed
+  // in SCAN_ROOTS and silently skipped.
+  const base = path.slice(path.lastIndexOf('/') + 1);
+  const idx = base.lastIndexOf('.');
+  return idx <= 0 ? '' : base.slice(idx);
 }
 
 export function shouldScanFile(path) {
@@ -183,7 +201,14 @@ function scanFile(path) {
   } catch {
     return [];
   }
+  return scanText(path, text);
+}
 
+// Exported so the locale allowance can be tested against real content rather
+// than only against path predicates — a scope test that asserts which files are
+// skipped can never show that the skip is narrower than the threat model.
+export function scanText(path, text) {
+  const localeData = isLocaleData(path);
   const findings = [];
   const lines = text.split('\n');
   let line = 1;
@@ -191,7 +216,7 @@ function scanFile(path) {
 
   for (const ch of text) {
     const cp = ch.codePointAt(0);
-    const kind = classify(cp);
+    const kind = localeData && LOCALE_ALLOWED_CODEPOINTS.has(cp) ? null : classify(cp);
     if (kind) {
       const lineText = lines[line - 1] ?? '';
       findings.push({

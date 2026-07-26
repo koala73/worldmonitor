@@ -252,10 +252,22 @@ describe('Product catalog freshness', () => {
     // assertion reads the NUMBER rather than the glyphs. The guard is unchanged
     // in strength: if the allowance moved to 250 and a locale still said ۵۰,
     // this would still fail.
+    //
+    // Covers Devanagari (hi), Bengali and Thai (th) as well, not just the two
+    // ranges fa needs: those locales currently write ASCII, but fa is exactly
+    // what happens on the pass that changes that, and a false CI failure on an
+    // unrelated PR is the predictable cost of enumerating only what is needed
+    // today. A digit from an unlisted script passes through unchanged, so the
+    // assertion fails loudly rather than matching something wrong.
+    // (Number('۵') is NaN — JS parses ASCII digits only — so this has to be
+    // codepoint arithmetic against each block's zero.)
+    const DIGIT_ZEROS = [0x0030, 0x0660, 0x06f0, 0x0966, 0x09e6, 0x0e50];
     const toAsciiDigits = (value) =>
-      value.replace(/[٠-٩۰-۹]/g, (digit) =>
-        String((digit.codePointAt(0) - (digit >= '۰' ? 0x06f0 : 0x0660))),
-      );
+      value.replace(/\p{Nd}/gu, (digit) => {
+        const cp = digit.codePointAt(0);
+        const zero = DIGIT_ZEROS.find((z) => cp >= z && cp < z + 10);
+        return zero === undefined ? digit : String(cp - zero);
+      });
 
     for (const [file, src] of Object.entries(readProLocaleFiles())) {
       const locale = JSON.parse(src);

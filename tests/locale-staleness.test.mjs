@@ -8,6 +8,7 @@ import {
   findPluralBases,
   flatten,
   getPluralCategories,
+  mayAdvanceBaseline,
   unresolvedAfterRun,
 } from '../scripts/translate-locales.mjs';
 
@@ -63,13 +64,55 @@ describe('locale staleness classification', () => {
     assert.deepEqual(result.missing, ['features[3]']);
   });
 
-  it('leaves a key with no recorded provenance alone rather than retranslating it', () => {
+  it('leaves a key with no recorded provenance alone while the baseline is being created', () => {
     // Adopting the baseline on an already-translated locale must not trigger a
     // full retranslation of everything it has never tracked.
     const result = classify({}, { a: 'Alpha' }, { a: 'Alfa' });
     assert.deepEqual(result.stale, []);
     assert.deepEqual(result.missing, []);
     assert.deepEqual(result.untracked, ['a']);
+  });
+
+  it('treats a key the EXISTING baseline lost as stale, not fresh', () => {
+    // The dangerous case. Locale files are written per batch, but the baseline
+    // only advances on a fully clean pass, so "locales moved, baseline did not"
+    // is the normal outcome of any partial run. If the English then changes,
+    // that key is present in the locale, absent from the baseline — and calling
+    // it fresh lets the next clean run record the OLD translation against the
+    // NEW English, permanently certifying the rot.
+    const baselineFlat = flatten({ a: 'Alpha' });
+    const currentFlat = flatten({ a: 'Alpha', k: 'Bar' });
+    const expected = expectedKeysForLocale(currentFlat, findPluralBases(currentFlat), ['one', 'other']);
+    const baselineExpected = expectedKeysForLocale(baselineFlat, findPluralBases(baselineFlat), ['one', 'other']);
+    const locale = flatten({ a: 'Alfa', k: 'translated from the older English' });
+
+    const adopting = classifyKeys(locale, expected, baselineExpected, false);
+    assert.deepEqual(adopting.untracked, ['k'], 'no baseline yet: adoption, leave it alone');
+
+    const withBaseline = classifyKeys(locale, expected, baselineExpected, true);
+    assert.deepEqual(withBaseline.stale, ['k'], 'baseline exists: unprovenanced means retranslate');
+    assert.deepEqual(withBaseline.untracked, []);
+  });
+
+  it('reports a locale value the English no longer has as orphaned', () => {
+    // #5633 from the opposite direction. Removing the LAST element of an English
+    // array leaves every earlier index matching, so nothing is stale — and 24
+    // languages keep advertising a bullet the tier no longer offers.
+    const baseline = { features: ['A', 'B', 'C'] };
+    const current = { features: ['A', 'B'] };
+    const locale = { features: ['tA', 'tB', 'tC'] };
+
+    const result = classify(baseline, current, locale);
+    assert.deepEqual(result.orphan, ['features[2]']);
+    assert.deepEqual(result.stale, []);
+    assert.deepEqual(result.missing, []);
+  });
+
+  it('carries orphans through the post-run scan, since translating cannot fix them', () => {
+    const classification = { missing: [], stale: ['a'], orphan: ['features[9]'], untracked: [], fresh: [] };
+    const left = unresolvedAfterRun(classification, new Set(['a']));
+    assert.deepEqual(left.stale, [], 'refreshed stale keys clear');
+    assert.deepEqual(left.orphan, ['features[9]'], 'orphans never clear by retranslation');
   });
 
   it('marks only the affected CLDR plural categories stale', () => {
@@ -117,5 +160,51 @@ describe('locale staleness classification', () => {
   it('keeps a separate baseline per locale root', () => {
     assert.equal(baselinePathFor(true), 'scripts/locale-baselines/pro-test.json');
     assert.equal(baselinePathFor(false), 'scripts/locale-baselines/app.json');
+  });
+});
+
+describe('baseline advance', () => {
+  // Advancing the baseline is the one irreversible act: it declares "every
+  // committed translation came from this English", and nothing ever re-examines
+  // a key it has blessed. So the predicate is deliberately paranoid.
+  const clean = { unresolved: 0, rejected: 0, untracked: 0, baselineExisted: true, dryRun: false };
+
+  it('advances when every locale is complete and fresh', () => {
+    assert.equal(mayAdvanceBaseline(clean).advance, true);
+  });
+
+  it('adopts a root for the first time only when asked to', () => {
+    // A missing baseline is indistinguishable from a deleted one, so adoption
+    // cannot be inferred from its absence: `rm` on the baseline plus a re-run
+    // would otherwise re-adopt every current translation as correct, with no API
+    // call and exit 0.
+    const firstRun = { ...clean, baselineExisted: false, untracked: 5359 };
+    const inferred = mayAdvanceBaseline(firstRun);
+    assert.equal(inferred.advance, false);
+    assert.match(inferred.reason, /--adopt-baseline/);
+
+    assert.equal(mayAdvanceBaseline({ ...firstRun, adoptBaseline: true }).advance, true);
+  });
+
+  it('refuses when a key is still missing, stale or orphaned', () => {
+    assert.equal(mayAdvanceBaseline({ ...clean, unresolved: 1 }).advance, false);
+  });
+
+  it('refuses when any translation was rejected', () => {
+    assert.equal(mayAdvanceBaseline({ ...clean, rejected: 1 }).advance, false);
+  });
+
+  it('refuses when an existing baseline has lost entries', () => {
+    // Deleting the baseline file — or resolving a merge conflict in it by
+    // dropping a line — otherwise makes every key untracked, so a run that
+    // performs zero translations exits 0 and re-adopts whatever the locales
+    // currently say as correct. That is the unrecoverable failure.
+    const verdict = mayAdvanceBaseline({ ...clean, untracked: 24 });
+    assert.equal(verdict.advance, false);
+    assert.match(verdict.reason, /lost entries/);
+  });
+
+  it('never advances on a dry run', () => {
+    assert.equal(mayAdvanceBaseline({ ...clean, dryRun: true }).advance, false);
   });
 });

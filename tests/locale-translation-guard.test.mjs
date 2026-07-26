@@ -71,6 +71,37 @@ describe('translation validation', () => {
     });
   });
 
+  describe('host-qualified paths without a scheme', () => {
+    // src/locales/en.json ships this verbatim. The slash follows the "p" of
+    // ".app", so a rule that only requires a non-alphanumeric before the slash
+    // stops seeing it — and there is no scheme, so the https arm never fires
+    // either. The guard then accepts a translation that deletes the URL outright,
+    // which is precisely what it exists to prevent.
+    const REAL = 'See worldmonitor.app/docs/api-keys for step-by-step help.';
+
+    it('rejects dropping a bare-domain URL', () => {
+      assert.equal(validateTranslation(REAL, 'Weitere Hilfe finden Sie in der Dokumentation.'), false);
+    });
+
+    it('rejects rewriting a bare-domain URL', () => {
+      assert.equal(
+        validateTranslation(REAL, 'Siehe worldmonitor.app/fr/docs/cles-api für Hilfe.'),
+        false,
+      );
+    });
+
+    it('accepts a preserved bare-domain URL', () => {
+      assert.equal(
+        validateTranslation(REAL, 'Siehe worldmonitor.app/docs/api-keys für Schritt-für-Schritt-Hilfe.'),
+        true,
+      );
+    });
+
+    it('does not mistake a slash-separated word list for a host-qualified path', () => {
+      assert.equal(validateTranslation('Cloud/on-prem/air-gap', 'Cloud/vor-Ort/Luftspalt'), true);
+    });
+  });
+
   describe('absolute URLs', () => {
     it('rejects a dropped URL', () => {
       assert.equal(

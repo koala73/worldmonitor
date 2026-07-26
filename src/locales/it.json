@@ -1064,7 +1064,7 @@
           "techCloudRegions": "Regioni dei data center AWS, Azure e GCP",
           "techHQs": "Quartieri delle principali aziende tecnologiche",
           "techAccelerators": "Y Combinator, Techstars, 500 sedi di startup",
-          "infraCables": "Principali cavi in ​​fibra ottica sottomarini (dorsale Internet)",
+          "infraCables": "Principali cavi in fibra ottica sottomarini (dorsale Internet)",
           "infraDatacenters": "Cluster di calcolo AI >=10.000 GPU",
           "infraOutages": "Blackout di Internet e interruzioni del servizio",
           "naturalEventsTech": "Terremoti, tempeste, incendi (possono interessare i data center)",
@@ -1092,7 +1092,7 @@
           "militaryNuclear": "Centrali elettriche, arricchimento, impianti di armi",
           "militaryIrradiators": "Impianti industriali di irradiazione gamma",
           "militaryActivity": "Monitoraggio in tempo reale di aerei militari e navi",
-          "infraCablesFull": "Principali cavi in ​​fibra ottica sottomarini (20 percorsi dorsali)",
+          "infraCablesFull": "Principali cavi in fibra ottica sottomarini (20 percorsi dorsali)",
           "infraPipelinesFull": "Oleodotti/gasdotti (Nord Stream, TAPI, ecc.)",
           "infraDatacentersFull": "Solo cluster di elaborazione AI >=10.000 GPU",
           "transportShipping": "Navi, punti di strozzatura, 61 porti strategici",
@@ -2671,7 +2671,7 @@
       "health": {
         "evidence": "EVIDENZE DI STATO"
       },
-      "description": "Cavo sottomarino per telecomunicazioni che trasporta traffico Internet internazionale. Questi cavi in ​​fibra ottica costituiscono la spina dorsale della connettività Internet globale, trasmettendo oltre il 95% dei dati intercontinentali."
+      "description": "Cavo sottomarino per telecomunicazioni che trasporta traffico Internet internazionale. Questi cavi in fibra ottica costituiscono la spina dorsale della connettività Internet globale, trasmettendo oltre il 95% dei dati intercontinentali."
     },
     "repairShip": {
       "note": "Il tracciamento della nave riparatrice indica un dispiegamento attivo verso il sito del guasto.",
