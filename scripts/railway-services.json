@@ -175,6 +175,9 @@
     "entry": "scripts/seed-bundle-derived-signals.mjs",
     "deployMode": "nixpacks-root-scripts",
     "service": "seed-bundle-derived-signals",
+    "requiredEnv": [
+      "PROXY_URL"
+    ],
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-5-seed-bundle-derived-signals"
   },
   {

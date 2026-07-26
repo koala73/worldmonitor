@@ -34,10 +34,22 @@ import {
   CROSS_STRAIT_ACTIVITY_TTL_SECONDS,
   crossStraitActivityContentMeta,
 } from '../scripts/seed-cross-strait-activity.mjs';
+import { isCrossStraitActivitySnapshot } from '../src/components/cross-strait-activity-summary';
 
 const fixtureRoot = resolve(import.meta.dirname, 'fixtures/cross-strait-activity');
 const fixture = (name: string) => readFileSync(resolve(fixtureRoot, name), 'utf8');
 const retrievedAt = '2026-07-25T08:30:00.000Z';
+
+function crossStraitFixtureFetch(
+  japanResponse: () => Response | Promise<Response>,
+) {
+  return async (input: string | URL | Request) => {
+    const url = String(input);
+    if (url.includes('mod.go.jp')) return japanResponse();
+    if (/plaactlist/i.test(url)) return new Response(fixture('mnd-list.html'));
+    return new Response(fixture('mnd-detail.html'));
+  };
+}
 
 function mndListWithCount(count: number, firstId = 90_000): string {
   return `<div class="wrap-page3">${Array.from({ length: count }, (_, index) => `
@@ -110,7 +122,9 @@ describe('quantified cross-Strait activity (#5575)', () => {
     const jmod = CROSS_STRAIT_SOURCE_CONTRACTS.japanMod;
     assert.equal(jmod.launchStatus, 'launched_reviewed_only');
     assert.equal(jmod.preflight.environment, 'railway-production');
-    assert.equal(jmod.preflight.reachable, true);
+    assert.equal(jmod.preflight.checkedAt, '2026-07-26');
+    assert.equal(jmod.preflight.reachable, false);
+    assert.equal(jmod.preflight.observedIndexStatus, 403);
     assert.equal(jmod.documentAdmission, 'manual_review_required');
     assert.equal(jmod.runtimePdfRequestsPerRun, 0);
   });
@@ -1042,6 +1056,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
   });
 
   it('marks an empty or challenge-page Japan index as a transport error while retaining reviewed rows', async () => {
+    let proxyCalls = 0;
     const fetchFn = async (input: string | URL | Request) => {
       const url = String(input);
       if (url.includes('mod.go.jp')) return new Response('<html><title>Access denied</title></html>');
@@ -1053,28 +1068,270 @@ describe('quantified cross-Strait activity (#5575)', () => {
       now: Date.parse(retrievedAt),
       previousSnapshot: null,
       sleepFn: async () => {},
+      proxyUrl: 'https://proxy-user:proxy-secret@proxy.test:443',
+      proxyRequestFn: async () => {
+        proxyCalls += 1;
+        return {
+          buffer: Buffer.from(fixture('jmod-index.html')),
+          status: 200,
+          contentType: 'text/html',
+        };
+      },
     });
     const japan = snapshot.sources.find((source: { id: string }) => source.id === 'japan-mod');
     assert.equal(japan?.transportStatus, 'error');
     assert.deepEqual(japan?.errorCodes, ['JMOD_INDEX_EMPTY']);
+    assert.equal(proxyCalls, 0, 'valid HTTP transport with invalid content must not trigger the proxy');
     assert.equal(snapshot.status, 'degraded');
+    assert.equal(isCrossStraitActivitySnapshot(snapshot), true);
+    assert.ok(
+      snapshot.observations
+        .filter((row: { sourceId: string }) => row.sourceId === 'japan-mod')
+        .every((row: { indexPresence?: string }) => row.indexPresence === 'unknown'),
+      'a first-run source failure must stay explicitly unknown',
+    );
     assert.equal(
       snapshot.observations.filter((row: { sourceId: string }) => row.sourceId === 'japan-mod').length,
       REVIEWED_JAPAN_MOD_OBSERVATIONS.length,
     );
   });
 
-  it('records a rejected Japan index request as a source transport failure', async () => {
+  it('falls back to one bounded proxy request when Railway receives HTTP 403 from Japan MOD', async () => {
+    const proxyCalls: Array<{
+      url: string;
+      proxyConfig: Record<string, unknown>;
+      options: Record<string, unknown>;
+    }> = [];
     const snapshot = await fetchCrossStraitActivitySnapshot({
-      fetchFn: async (input: string | URL | Request) => {
-        const url = String(input);
-        if (url.includes('mod.go.jp')) throw new Error('network reset');
-        if (/plaactlist/i.test(url)) return new Response(fixture('mnd-list.html'));
-        return new Response(fixture('mnd-detail.html'));
-      },
+      fetchFn: crossStraitFixtureFetch(
+        () => new Response('Forbidden', { status: 403 }),
+      ),
       now: Date.parse(retrievedAt),
       previousSnapshot: null,
       sleepFn: async () => {},
+      proxyUrl: 'https://proxy-user:proxy-secret@proxy.test:443',
+      proxyRequestFn: async (url, proxyConfig, options) => {
+        proxyCalls.push({ url: String(url), proxyConfig, options });
+        return {
+          buffer: Buffer.from(fixture('jmod-index.html')),
+          status: 200,
+          contentType: 'text/html',
+        };
+      },
+    });
+
+    assert.equal(proxyCalls.length, 1);
+    assert.equal(proxyCalls[0].url, CROSS_STRAIT_SOURCE_CONTRACTS.japanMod.indexUrl);
+    assert.deepEqual(proxyCalls[0].proxyConfig, {
+      host: 'proxy.test',
+      port: 443,
+      auth: 'proxy-user:proxy-secret',
+      tls: true,
+    });
+    assert.equal(
+      proxyCalls[0].options.maxResponseBytes,
+      CROSS_STRAIT_SOURCE_CONTRACTS.japanMod.maxResponseBytes,
+    );
+    assert.equal(proxyCalls[0].options.method, 'GET');
+
+    const japan = snapshot.sources.find((source: { id: string }) => source.id === 'japan-mod');
+    assert.equal(japan?.transportStatus, 'fresh');
+    assert.equal(japan?.requestCount, 2);
+    assert.equal(japan?.transportPath, 'proxy');
+    assert.equal(japan?.fallbackReason, 'HTTP_403');
+    assert.deepEqual(japan?.errorCodes, []);
+    assert.equal(
+      CROSS_STRAIT_SOURCE_CONTRACTS.japanMod.fallbackPolicy,
+      'direct_then_proxy_on_transport_failure',
+    );
+    assert.equal(CROSS_STRAIT_SOURCE_CONTRACTS.japanMod.maxDirectRequestsPerRun, 1);
+    assert.equal(CROSS_STRAIT_SOURCE_CONTRACTS.japanMod.maxProxyRequestsPerRun, 1);
+    assert.doesNotMatch(JSON.stringify(japan), /proxy-user|proxy-secret/);
+  });
+
+  it('retains last-good Japan MOD data and records both failures when the proxy also fails', async () => {
+    const previousSnapshot = await fetchCrossStraitActivitySnapshot({
+      fetchFn: crossStraitFixtureFetch(
+        () => new Response(fixture('jmod-index.html')),
+      ),
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      sleepFn: async () => {},
+      proxyUrl: '',
+    });
+    const nextAt = '2026-07-25T11:30:00.000Z';
+    const snapshot = await fetchCrossStraitActivitySnapshot({
+      fetchFn: crossStraitFixtureFetch(
+        () => new Response('Forbidden', { status: 403 }),
+      ),
+      now: Date.parse(nextAt),
+      previousSnapshot,
+      sleepFn: async () => {},
+      proxyUrl: 'https://proxy-user:proxy-secret@proxy.test:443',
+      proxyRequestFn: async () => {
+        throw Object.assign(
+          new Error('Proxy CONNECT: HTTP/1.1 407 Proxy Authentication Required'),
+          { status: 407 },
+        );
+      },
+    });
+
+    const japan = snapshot.sources.find((source: { id: string }) => source.id === 'japan-mod');
+    assert.equal(japan?.transportStatus, 'error');
+    assert.equal(japan?.requestCount, 2);
+    assert.equal(japan?.transportPath, 'proxy');
+    assert.equal(japan?.fallbackReason, 'HTTP_403');
+    assert.equal(japan?.proxyFailureReason, 'PROXY_AUTH_FAILED');
+    assert.deepEqual(japan?.errorCodes, ['HTTP_403', 'PROXY_AUTH_FAILED']);
+    assert.equal(japan?.lastSuccessAt, retrievedAt);
+    const previousJapan = previousSnapshot.sources.find(
+      (source: { id: string }) => source.id === 'japan-mod',
+    );
+    assert.equal(
+      japan?.unreviewedCandidateCount,
+      previousJapan?.unreviewedCandidateCount,
+    );
+    assert.equal(snapshot.status, 'degraded');
+    const previousIndexPresence = previousSnapshot.observations
+      .filter((row: { sourceId: string }) => row.sourceId === 'japan-mod')
+      .map((row: { id: string; indexPresence?: string }) => [row.id, row.indexPresence]);
+    const currentIndexPresence = snapshot.observations
+      .filter((row: { sourceId: string }) => row.sourceId === 'japan-mod')
+      .map((row: { id: string; indexPresence?: string }) => [row.id, row.indexPresence]);
+    assert.deepEqual(
+      currentIndexPresence,
+      previousIndexPresence,
+      'an unreadable index must not be published as confirmed document absence',
+    );
+  });
+
+  it('records an unusable proxy response without hiding the direct Japan MOD rejection', async () => {
+    const snapshot = await fetchCrossStraitActivitySnapshot({
+      fetchFn: crossStraitFixtureFetch(
+        () => new Response('Forbidden', { status: 403 }),
+      ),
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      sleepFn: async () => {},
+      proxyUrl: 'https://proxy-user:proxy-secret@proxy.test:443',
+      proxyRequestFn: async () => ({
+        buffer: Buffer.from('<html><title>Proxy access denied</title></html>'),
+        status: 200,
+        contentType: 'text/html',
+      }),
+    });
+
+    const japan = snapshot.sources.find((source: { id: string }) => source.id === 'japan-mod');
+    assert.equal(japan?.transportStatus, 'error');
+    assert.equal(japan?.requestCount, 2);
+    assert.equal(japan?.transportPath, 'proxy');
+    assert.equal(japan?.fallbackReason, 'HTTP_403');
+    assert.equal(japan?.proxyFailureReason, 'JMOD_INDEX_EMPTY');
+    assert.deepEqual(japan?.errorCodes, ['HTTP_403', 'JMOD_INDEX_EMPTY']);
+  });
+
+  it('reports a malformed configured proxy as configuration failure', async () => {
+    let proxyCalls = 0;
+    const snapshot = await fetchCrossStraitActivitySnapshot({
+      fetchFn: crossStraitFixtureFetch(
+        () => new Response('Forbidden', { status: 403 }),
+      ),
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      sleepFn: async () => {},
+      proxyUrl: 'not-a-proxy',
+      proxyRequestFn: async () => {
+        proxyCalls += 1;
+        throw new Error('must not run');
+      },
+    });
+
+    const japan = snapshot.sources.find((source: { id: string }) => source.id === 'japan-mod');
+    assert.equal(proxyCalls, 0);
+    assert.equal(japan?.transportStatus, 'error');
+    assert.equal(japan?.requestCount, 2);
+    assert.equal(japan?.transportPath, 'proxy');
+    assert.equal(japan?.fallbackReason, 'HTTP_403');
+    assert.equal(japan?.proxyFailureReason, 'PROXY_CONFIG_INVALID');
+    assert.deepEqual(japan?.errorCodes, ['HTTP_403', 'PROXY_CONFIG_INVALID']);
+  });
+
+  it('falls back to the proxy for generic Japan MOD transport failures and timeouts', async () => {
+    for (const [failureMessage, fallbackReason] of [
+      ['network reset', 'SOURCE_ERROR'],
+      ['request timeout', 'TIMEOUT'],
+    ]) {
+      let proxyCalls = 0;
+      const snapshot = await fetchCrossStraitActivitySnapshot({
+        fetchFn: crossStraitFixtureFetch(
+          () => { throw new Error(failureMessage); },
+        ),
+        now: Date.parse(retrievedAt),
+        previousSnapshot: null,
+        sleepFn: async () => {},
+        proxyUrl: 'https://proxy-user:proxy-secret@proxy.test:443',
+        proxyRequestFn: async () => {
+          proxyCalls += 1;
+          return {
+            buffer: Buffer.from(fixture('jmod-index.html')),
+            status: 200,
+            contentType: 'text/html',
+          };
+        },
+      });
+      const japan = snapshot.sources.find((source: { id: string }) => source.id === 'japan-mod');
+      assert.equal(proxyCalls, 1);
+      assert.equal(japan?.transportStatus, 'fresh');
+      assert.equal(japan?.requestCount, 2);
+      assert.equal(japan?.transportPath, 'proxy');
+      assert.equal(japan?.fallbackReason, fallbackReason);
+    }
+  });
+
+  it('rejects an oversized Japan MOD proxy response and preserves last-good state', async () => {
+    const previousSnapshot = await fetchCrossStraitActivitySnapshot({
+      fetchFn: crossStraitFixtureFetch(
+        () => new Response(fixture('jmod-index.html')),
+      ),
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      sleepFn: async () => {},
+      proxyUrl: '',
+    });
+    const snapshot = await fetchCrossStraitActivitySnapshot({
+      fetchFn: crossStraitFixtureFetch(
+        () => new Response('Forbidden', { status: 403 }),
+      ),
+      now: Date.parse('2026-07-25T11:30:00.000Z'),
+      previousSnapshot,
+      sleepFn: async () => {},
+      proxyUrl: 'https://proxy-user:proxy-secret@proxy.test:443',
+      proxyRequestFn: async () => ({
+        buffer: Buffer.alloc(CROSS_STRAIT_SOURCE_CONTRACTS.japanMod.maxResponseBytes + 1),
+        status: 200,
+        contentType: 'text/html',
+      }),
+    });
+
+    const japan = snapshot.sources.find((source: { id: string }) => source.id === 'japan-mod');
+    assert.equal(japan?.transportStatus, 'error');
+    assert.equal(japan?.requestCount, 2);
+    assert.equal(japan?.transportPath, 'proxy');
+    assert.equal(japan?.fallbackReason, 'HTTP_403');
+    assert.equal(japan?.proxyFailureReason, 'RESPONSE_TOO_LARGE');
+    assert.deepEqual(japan?.errorCodes, ['HTTP_403', 'RESPONSE_TOO_LARGE']);
+    assert.equal(japan?.lastSuccessAt, retrievedAt);
+  });
+
+  it('records a rejected Japan index request as a source transport failure', async () => {
+    const snapshot = await fetchCrossStraitActivitySnapshot({
+      fetchFn: crossStraitFixtureFetch(
+        () => { throw new Error('network reset'); },
+      ),
+      now: Date.parse(retrievedAt),
+      previousSnapshot: null,
+      sleepFn: async () => {},
+      proxyUrl: '',
     });
     const japan = snapshot.sources.find((source: { id: string }) => source.id === 'japan-mod');
 

@@ -8,7 +8,7 @@ await runBundle('derived-signals', [
   // Gate on the completion marker written only after the canonical archive,
   // compact bootstrap projection, and per-source health records all succeed.
   // A partial cohort therefore retries on the next bundle tick.
-  { label: 'Cross-Strait-Activity', script: 'seed-cross-strait-activity.mjs', seedMetaKey: 'military:cross-strait-activity:complete', intervalMs: 3 * HOUR, timeoutMs: 300_000 },
+  { label: 'Cross-Strait-Activity', script: 'seed-cross-strait-activity.mjs', seedMetaKey: 'military:cross-strait-activity:complete', intervalMs: 3 * HOUR, timeoutMs: 300_000, requiredEnv: ['PROXY_URL'] },
   { label: 'China-Decision-Signals', script: 'seed-china-decision-signals.mjs', seedMetaKey: 'intelligence:china-decision-signals', canonicalKey: CHINA_DECISION_SIGNALS_KEY, intervalMs: 15 * MIN, timeoutMs: 90_000 },
   { label: 'Regional-Snapshots', script: 'seed-regional-snapshots.mjs', seedMetaKey: 'intelligence:regional-snapshots', intervalMs: 6 * HOUR, timeoutMs: 180_000 },
 ], {

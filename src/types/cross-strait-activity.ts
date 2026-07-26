@@ -51,6 +51,7 @@ export interface JapanModActivityObservation extends CrossStraitActivityObservat
   sourceId: 'japan-mod';
   observationKind: 'reviewed_regional_augmentation';
   categories: JapanModActivityCategories;
+  indexPresence?: 'present' | 'not_observed_in_current_index' | 'unknown';
 }
 
 export type CrossStraitActivityObservation =
@@ -91,6 +92,9 @@ export interface CrossStraitActivitySourceHealth {
   claimSemantics: string;
   transportStatus: 'fresh' | 'error';
   requestCount: number;
+  transportPath?: 'direct' | 'proxy';
+  fallbackReason?: string;
+  proxyFailureReason?: string;
   errorCodes: string[];
   lastSuccessAt: string | null;
   admittedDocumentCount?: number;
