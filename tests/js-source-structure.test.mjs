@@ -69,6 +69,30 @@ describe('stripJsComments', () => {
     assert.doesNotMatch(strippedRegex, /gone/);
   });
 
+  it('keeps offsets aligned when the source contains astral characters', () => {
+    // The output buffer must be indexed the same way `source[n]` and
+    // `indexOf` are — by UTF-16 code unit. A code-point-indexed buffer
+    // desynchronizes on the first surrogate pair and blanks the wrong range,
+    // which can leave a comment intact (a false pass for any caller relying
+    // on comments being gone) while eating real code.
+    const source = "const flag = '\u{1F1E8}\u{1F1F3}'; // strip me\nconst after = 1;\n";
+    const stripped = stripJsComments(source);
+    assert.equal(stripped.length, source.length);
+    assert.doesNotMatch(stripped, /strip me/);
+    assert.doesNotMatch(stripped, /\/\//, 'the comment marker itself must be blanked');
+    assert.ok(stripped.includes('const after = 1;'), 'code after an astral char must survive intact');
+    assert.ok(stripped.includes("'\u{1F1E8}\u{1F1F3}'"), 'the astral literal must survive');
+  });
+
+  it('finds an anchor that begins with a quote', () => {
+    // extractDelimitedBlock matches anchors only at code-level positions, so a
+    // quote-initial anchor is unfindable unless the opening quote is reported.
+    const source = "const MAP = {\n  'a': { tier: 'fast' },\n};\n";
+    const body = extractDelimitedBlock(source, "'a':");
+    assert.ok(body !== null, 'a quote-initial anchor must be findable');
+    assert.ok(body.includes("tier: 'fast'"));
+  });
+
   it('is idempotent', () => {
     const source = 'const a = 1; // x\n/* y */\n';
     assert.equal(stripJsComments(stripJsComments(source)), stripJsComments(source));
@@ -101,6 +125,19 @@ describe('extractDelimitedBlock', () => {
 
   it('fails closed when the anchor is absent', () => {
     assert.equal(extractDelimitedBlock(source, 'const RENAMED_MAP'), null);
+  });
+
+  it('does not match an anchor in the middle of a longer identifier', () => {
+    const widened = source.replace('const MAP', 'const MAP_V2');
+    assert.equal(
+      extractDelimitedBlock(widened, 'const MAP'),
+      null,
+      'MAP_V2 is a different container — matching it would audit the wrong object',
+    );
+    const prefixed = 'const OTHER_MAP = { skip: 1 };\nconst MAP = {\n  ok: 1,\n};\n';
+    const body = extractDelimitedBlock(prefixed, 'const MAP');
+    assert.ok(body !== null && body.includes('ok: 1'), 'a real declaration must still match');
+    assert.doesNotMatch(body, /skip/);
   });
 
   it('fails closed when the anchor only appears inside a comment', () => {
@@ -182,5 +219,13 @@ describe('arrayLiteralHasStringMember', () => {
   it('requires an exact match, not a prefix', () => {
     assert.equal(arrayLiteralHasStringMember(body, '/'), false);
     assert.equal(arrayLiteralHasStringMember(body, '/a/b'), false);
+  });
+
+  it('decodes standard escape sequences rather than dropping the backslash', () => {
+    assert.equal(arrayLiteralHasStringMember("  'a\\nb',", 'a\nb'), true);
+    assert.equal(arrayLiteralHasStringMember("  'a\\nb',", 'anb'), false);
+    assert.equal(arrayLiteralHasStringMember("  'it\\'s',", "it's"), true);
+    assert.equal(arrayLiteralHasStringMember("  'back\\\\slash',", 'back\\slash'), true);
+    assert.equal(arrayLiteralHasStringMember('  "tab\\there",', 'tab\there'), true);
   });
 });

@@ -33,7 +33,12 @@ const REGEX_PRECEDING = new Set([
  * @returns {string}
  */
 export function stripJsComments(source) {
-  const out = [...source];
+  // split('') — NOT [...source]. The spread iterates by code point, so a single
+  // surrogate pair (any emoji) makes the buffer shorter than the string and
+  // desynchronizes it from the code-unit indices every write here uses
+  // (`source[n]`, `indexOf`). The drift blanks the wrong range: it can leave a
+  // comment intact while eating real code.
+  const out = source.split('');
   const length = source.length;
   const stack = [];
   let prevSignificant = '';
@@ -111,9 +116,12 @@ export function stripJsComments(source) {
 
 /**
  * Walk `text` (comments already blanked) from `start`, invoking `onCodeChar`
- * only for characters at code level — never for string, template, or
- * interpolation-closing characters. Returns when the walk ends or `onCodeChar`
- * returns `false`.
+ * only for characters at code level — never for characters *inside* a string or
+ * template literal, and never for the `}` that closes a `${}` interpolation.
+ *
+ * The delimiter that OPENS a string or template IS reported, so a caller
+ * matching an anchor can find one that begins with a quote. The closing
+ * delimiter is not: it is consumed by the string branch below.
  */
 function walkCode(text, start, onCodeChar) {
   const stack = [];
@@ -137,10 +145,10 @@ function walkCode(text, start, onCodeChar) {
       continue;
     }
 
-    if (QUOTE_MODES[ch]) { stack.push(QUOTE_MODES[ch]); i += 1; continue; }
-    if (ch === '`') { stack.push('template'); i += 1; continue; }
-    if (ch === '{') { stack.push('brace'); }
-    if (ch === '}') {
+    if (QUOTE_MODES[ch]) stack.push(QUOTE_MODES[ch]);
+    else if (ch === '`') stack.push('template');
+    else if (ch === '{') stack.push('brace');
+    else if (ch === '}') {
       if (mode === 'interp') { stack.pop(); i += 1; continue; }
       if (mode === 'brace') stack.pop();
     }
@@ -148,6 +156,26 @@ function walkCode(text, start, onCodeChar) {
     if (onCodeChar(ch, i) === false) return;
     i += 1;
   }
+}
+
+const IDENTIFIER_CHAR = /[\w$]/;
+
+/**
+ * Report whether an anchor match at `index` sits on token boundaries, so an
+ * anchor never matches the middle of a longer identifier (`const MAP` must not
+ * match `const MAP_V2` — a different container entirely).
+ */
+function isTokenBoundedMatch(text, anchor, index) {
+  const before = text[index - 1];
+  if (before !== undefined && IDENTIFIER_CHAR.test(anchor[0]) && IDENTIFIER_CHAR.test(before)) {
+    return false;
+  }
+  const after = text[index + anchor.length];
+  const lastAnchorChar = anchor[anchor.length - 1];
+  if (after !== undefined && IDENTIFIER_CHAR.test(lastAnchorChar) && IDENTIFIER_CHAR.test(after)) {
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -170,6 +198,7 @@ export function extractDelimitedBlock(source, anchor, open = '{', close = '}') {
   let anchorEnd = -1;
   walkCode(text, 0, (_ch, index) => {
     if (!text.startsWith(anchor, index)) return true;
+    if (!isTokenBoundedMatch(text, anchor, index)) return true;
     anchorEnd = index + anchor.length;
     return false;
   });
@@ -226,11 +255,22 @@ export function splitTopLevelEntries(body) {
 const STRING_LITERAL = /^'((?:[^'\\]|\\.)*)'|^"((?:[^"\\]|\\.)*)"/;
 const BARE_KEY = /^([A-Za-z_$][\w$]*)\s*:/;
 
+// Standard single-character escapes. `\uXXXX` and `\xXX` are deliberately NOT
+// decoded — they do not appear in the keys and members this module matches, and
+// a half-correct unescaper is worse than an explicitly limited one. Anything
+// else after a backslash decodes to the literal character, which is correct for
+// \\, \', and \".
+const SIMPLE_ESCAPES = { n: '\n', t: '\t', r: '\r', b: '\b', f: '\f', v: '\v', 0: '\0' };
+
+function unescapeStringLiteral(raw) {
+  return raw.replace(/\\(.)/g, (_match, ch) => SIMPLE_ESCAPES[ch] ?? ch);
+}
+
 function readStringLiteral(entry) {
   const match = STRING_LITERAL.exec(entry);
   if (!match) return null;
   const raw = match[1] ?? match[2];
-  return { value: raw.replace(/\\(.)/g, '$1'), length: match[0].length };
+  return { value: unescapeStringLiteral(raw), length: match[0].length };
 }
 
 /**

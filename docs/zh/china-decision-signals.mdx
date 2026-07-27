@@ -98,5 +98,7 @@ node scripts/audit-china-decision-parity.mjs --require-live --url https://api-st
 ```
 
 `--require-live` 会在没有 URL 传给探针时让命令失败，因此自动化调用方无法报告一次
-从未执行的 staging 审计。实时探针只输出路由状态、延迟、生成时间和领域状态。它不会
-打印环境变量、API key、Redis 值、来源文档或详细贸易记录。
+从未执行的 staging 审计。base URL 必须是公共主机上的 `https`——回环地址、链路本地
+地址和私有网段都会被拒绝，因为探针会报告它所指向目标的可达性和延迟。实时探针只输出
+路由状态、延迟、生成时间和领域状态。它不会打印环境变量、API key、Redis 值、来源
+文档或详细贸易记录。

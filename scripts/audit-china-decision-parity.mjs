@@ -204,21 +204,28 @@ export function auditChinaDecisionAccessGating() {
 export function auditChinaDecisionStaticRegistrations(repoRoot) {
   const findings = [];
   const sources = new Map();
+  const failures = new Map();
   const load = (relativePath) => {
     if (!sources.has(relativePath)) {
       try {
         sources.set(relativePath, read(repoRoot, relativePath));
-      } catch {
+      } catch (error) {
+        // Keep the reason: "missing" and "present but unreadable" (EACCES, a
+        // dangling symlink, EISDIR) need different fixes, and this only ever
+        // surfaces in a CI log where nobody can re-run it interactively.
+        const code = error?.code ?? 'UNKNOWN';
+        failures.set(relativePath, code === 'ENOENT' ? 'the file is missing' : `the file is unreadable (${code})`);
         sources.set(relativePath, null);
       }
     }
     return sources.get(relativePath);
   };
+  const unreadable = (relativePath) => failures.get(relativePath) ?? 'the file is missing';
 
   for (const [relativePath, ...needles] of REQUIRED_REGISTRATIONS) {
     const source = load(relativePath);
     if (source === null) {
-      findings.push({ file: relativePath, check: 'registration', detail: 'the file is missing' });
+      findings.push({ file: relativePath, check: 'registration', detail: unreadable(relativePath) });
       continue;
     }
     for (const needle of needles) {
@@ -231,7 +238,7 @@ export function auditChinaDecisionStaticRegistrations(repoRoot) {
   for (const check of CHINA_DECISION_STRUCTURAL_CHECKS) {
     const source = load(check.file);
     if (source === null) {
-      findings.push({ file: check.file, check: check.id, detail: 'the file is missing' });
+      findings.push({ file: check.file, check: check.id, detail: unreadable(check.file) });
       continue;
     }
     const failure = check.verify(source);
@@ -396,6 +403,49 @@ export async function probeChinaDecisionParity(baseUrl, {
  * @param {string[]} args argv without the node binary and script path
  * @returns {{ url: string | null, requireLive: boolean, error: string | null }}
  */
+// Hosts that must never be probe targets. The probe reports HTTP status and
+// latency, so an operator-supplied URL is a (weak) oracle against whatever it
+// can reach; the workflow exposes the base URL as a dispatch input. This blocks
+// the obvious internal targets by literal host. It deliberately does NOT claim
+// to be SSRF-proof: a public hostname that resolves to a private address still
+// passes, because that needs resolution-time checking this tool has no reason
+// to carry.
+const PRIVATE_HOST_PATTERNS = [
+  /^localhost$/i,
+  /\.localhost$/i,
+  /\.internal$/i,
+  /\.local$/i,
+  /^127\./,
+  /^10\./,
+  /^192\.168\./,
+  /^169\.254\./,
+  /^172\.(1[6-9]|2\d|3[01])\./,
+  /^\[?::1\]?$/,
+  /^\[?f[cd][0-9a-f]{2}:/i,
+];
+
+/**
+ * Validate a probe base URL, returning an error string or null.
+ *
+ * @param {string} value
+ * @returns {string | null}
+ */
+export function validateProbeBaseUrl(value) {
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return `--url must be an absolute URL, got ${value}`;
+  }
+  if (parsed.protocol !== 'https:') {
+    return `--url must use https, got ${parsed.protocol.replace(':', '') || '<none>'}`;
+  }
+  if (PRIVATE_HOST_PATTERNS.some((pattern) => pattern.test(parsed.hostname))) {
+    return `--url must target a public host, got ${parsed.hostname}`;
+  }
+  return null;
+}
+
 export function parseChinaParityAuditArgs(args) {
   let url = null;
   let requireLive = false;
@@ -406,6 +456,8 @@ export function parseChinaParityAuditArgs(args) {
     if (arg === '--url') {
       const value = args[i + 1];
       if (!value || value.startsWith('--')) return fail('--url requires a base URL value');
+      const invalid = validateProbeBaseUrl(value);
+      if (invalid !== null) return fail(invalid);
       url = value;
       i += 1;
       continue;
@@ -479,7 +531,15 @@ export function isMainModule(moduleUrl, argv1) {
     return pathToFileURL(realpathSync(fileURLToPath(moduleUrl))).href
       === pathToFileURL(realpathSync(argv1)).href;
   } catch {
-    return false;
+    // Degrade to the plain comparison rather than answering `false`: a throw
+    // here (an unresolvable path, a permission error) must not put the audit
+    // back to exiting 0 with no output, which is the silent no-op this
+    // function exists to prevent.
+    try {
+      return moduleUrl === pathToFileURL(argv1).href;
+    } catch {
+      return false;
+    }
   }
 }
 

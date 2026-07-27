@@ -121,8 +121,11 @@ node scripts/audit-china-decision-parity.mjs --require-live --url https://api-st
 ```
 
 `--require-live` makes the command fail when no URL reaches the probe, so an
-automated caller cannot report a staging audit it never performed. The live
-probe validates both the composition RPC and the public `chinaDecisionSignals`
+automated caller cannot report a staging audit it never performed. The base URL
+must be `https` on a public host — loopback, link-local, and private ranges are
+rejected, because the probe reports reachability and latency for whatever it is
+pointed at. The live probe validates both the composition RPC and the public
+`chinaDecisionSignals`
 bootstrap projection, including a one-hour maximum canonical age. It prints only
 route status, latency, generation time, and group states. It never prints
 environment variables, API keys, Redis values, source documents, or detailed

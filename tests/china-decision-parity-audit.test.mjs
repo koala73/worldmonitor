@@ -320,6 +320,33 @@ describe('China decision-signal audit CLI (#5643)', () => {
     assert.deepEqual(parseChinaParityAuditArgs([]), { url: null, requireLive: false, error: null });
   });
 
+  it('refuses probe targets that are not public https endpoints', () => {
+    for (const url of [
+      'http://www.worldmonitor.app',
+      'https://localhost/api',
+      'https://127.0.0.1',
+      'https://[::1]',
+      'https://169.254.169.254',
+      'https://10.0.0.5',
+      'https://172.16.4.2',
+      'https://192.168.1.1',
+      'https://metadata.google.internal',
+      'not-a-url',
+    ]) {
+      const parsed = parseChinaParityAuditArgs(['--url', url]);
+      assert.ok(parsed.error, `expected ${url} to be rejected`);
+      assert.equal(parsed.url, null);
+    }
+  });
+
+  it('accepts ordinary public probe targets', () => {
+    for (const url of ['https://www.worldmonitor.app', 'https://api-staging.example', 'https://staging.example:8443/base']) {
+      const parsed = parseChinaParityAuditArgs(['--url', url]);
+      assert.equal(parsed.error, null, `expected ${url} to be accepted`);
+      assert.equal(parsed.url, url);
+    }
+  });
+
   it('refuses argument shapes that would silently skip the live probe', () => {
     // Each of these would have run the static half only and exited 0 before
     // --require-live existed, reporting a staging audit that never happened.
@@ -356,6 +383,16 @@ describe('China decision-signal audit CLI (#5643)', () => {
     assert.equal(isMainModule(moduleUrl, join(realDir, 'other.mjs')), false);
     assert.equal(isMainModule(moduleUrl, undefined), false);
     assert.equal(isMainModule(moduleUrl, ''), false);
+  });
+
+  it('degrades to a plain path comparison instead of skipping main on error', () => {
+    // realpathSync throws on a path that does not resolve. Answering `false`
+    // there would put the audit right back where it started: exit 0, no
+    // output, indistinguishable from a clean run.
+    const unresolvable = join(realpathSync(tmpdir()), 'wm-parity-does-not-exist', 'audit.mjs');
+    const moduleUrl = pathToFileURL(unresolvable).href;
+    assert.equal(isMainModule(moduleUrl, unresolvable), true, 'identical unresolvable paths must still run main');
+    assert.equal(isMainModule(moduleUrl, join(realpathSync(tmpdir()), 'wm-parity-does-not-exist', 'other.mjs')), false);
   });
 
   it('resolves exit codes so a missing live probe fails the gate', () => {
