@@ -100,7 +100,7 @@
   "faq.a13": "Notification channels are AES-256 encrypted at rest. Digests never leave our pipeline unredacted.",
   "faq.a2": "Pro is for investors, analysts, and professionals who want stock monitoring, geopolitical analysis, economy analytics, and AI-powered daily briefings — all under one key.",
   "faq.a3": "Enterprise is for teams that need shared use, APIs, integrations, deployment options, and direct support.",
-  "faq.a4": "Yes. Pro is for personal use. Pro Business ($69.99/mo) adds the commercial license, data export, 25 dashboards, and 250 MCP calls/day. API plans cover programmatic access, and Enterprise covers custom deployments. Upgrades run through the billing portal — the app guides you through the steps.",
+  "faq.a4": "Yes. Pro is for personal use. Pro Business ($49.99/mo) adds the commercial license, data export, 25 dashboards, and 250 MCP calls/day. API plans cover programmatic access, and Enterprise covers custom deployments. Upgrades run through the billing portal — the app guides you through the steps.",
   "faq.a5": "No. World Monitor is primarily a global intelligence platform covering stock markets, macroeconomics, geopolitical analysis, energy, infrastructure, and more. Conflict tracking is one of many capabilities — not the focus.",
   "faq.a6": "Because public access matters. Paid plans fund deeper workflows for serious users and organizations.",
   "faq.a7": "Yes. Bring-your-own-keys always works. Pro simply means you don't have to register for 20+ separate services.",
