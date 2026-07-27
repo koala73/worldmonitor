@@ -12,6 +12,9 @@
 // Template functions are injected by build-crawlable-corpus.mjs (the single
 // owner of the corpus HTML shell) to avoid a circular import.
 
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 const UMAMI_SCRIPT_TAG =
   '<script async defer src="https://abacus.worldmonitor.app/script.js" '
   + 'data-website-id="e8800335-16bc-4241-a133-0eb28c07c832" '
@@ -27,8 +30,13 @@ function round1(value) {
   return Math.round(value * 10) / 10;
 }
 
-function mean(rows, field) {
-  if (!rows.length) return null;
+// Throws rather than returning null: a fabricated 0.0 for an absent window is
+// indistinguishable from a real blockade reading, so averaging nothing is a
+// build failure, never a value.
+export function mean(rows, field) {
+  if (!rows.length) {
+    throw new Error(`No rows to average for "${field}" — refusing to fabricate a value for missing data`);
+  }
   return rows.reduce((total, row) => total + row[field], 0) / rows.length;
 }
 
@@ -36,10 +44,22 @@ function inRange(history, start, end) {
   return history.filter((row) => row.date >= start && row.date <= end);
 }
 
+const SHORT_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
 function monthLabel(isoMonth) {
   const [year, month] = isoMonth.split('-').map(Number);
-  const names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  return `${names[month - 1]} ${year}`;
+  return `${SHORT_MONTHS[month - 1]} ${year}`;
+}
+
+function monthDayLabel(isoDate) {
+  const [, month, day] = isoDate.split('-').map(Number);
+  return `${SHORT_MONTHS[month - 1]} ${day}`;
+}
+
+// "Jul 1–19 2026" for an observation window that ends mid-month.
+function partialRangeLabel(isoDate) {
+  const [year, month, day] = isoDate.split('-').map(Number);
+  return `${SHORT_MONTHS[month - 1]} 1–${day} ${year}`;
 }
 
 function formatInt(value) {
@@ -57,7 +77,20 @@ function formatInt(value) {
  * page, the downloads, and the provenance table stay in agreement by
  * construction.
  */
+// The metric windows below are the 2026-07 edition's analysis, not generic
+// arithmetic. A future edition must update them deliberately; this tripwire
+// turns "silently republish July's analysis under an August title" into a
+// build failure.
+const METRIC_WINDOWS_EDITION = '2026-07';
+
 export function computeReportMetrics(snapshot, report) {
+  if (report.edition !== METRIC_WINDOWS_EDITION || snapshot.edition !== report.edition) {
+    throw new Error(
+      `computeReportMetrics implements the ${METRIC_WINDOWS_EDITION} edition windows; `
+      + `got report edition ${report.edition} with snapshot edition ${snapshot.edition}. `
+      + 'Update the metric windows for the new edition before publishing.',
+    );
+  }
   const focus = snapshot.chokepoints[report.focusChokepointId];
   if (!focus) throw new Error(`Snapshot has no focus chokepoint ${report.focusChokepointId}`);
   const history = focus.history;
@@ -102,6 +135,7 @@ export function computeReportMetrics(snapshot, report) {
   );
 
   const mar1 = inRange(history, '2026-03-01', '2026-03-01');
+  if (!mar1.length) throw new Error('Snapshot is missing the 2026-03-01 observation required by mar1Total');
   add('mar1Total', {
     label: 'Transits on 2026-03-01',
     kind: 'count',
@@ -310,6 +344,19 @@ export function resolveMetricTokens(text, metrics, escapeHtml) {
   });
 }
 
+// Plain-text variant for surfaces that cannot carry markup (meta description,
+// JSON-LD, alt text). Same fail-closed contract as resolveMetricTokens.
+export function resolvePlainMetricTokens(text, metrics) {
+  return String(text).replace(/\{\{m:([a-zA-Z0-9]+)\}\}/g, (_, id) => {
+    const metric = metrics.get(id);
+    if (!metric) throw new Error(`Unresolved metric token: ${id}`);
+    return formatMetric(metric);
+  });
+}
+
+// Backstop for tokens the resolver regex does not recognize (a snake_case or
+// spaced id would otherwise ship literally): every rendered research document
+// passes through this before being returned.
 export function assertNoUnresolvedTokens(html) {
   const match = html.match(/\{\{m:[^}]*\}\}/);
   if (match) throw new Error(`Unresolved metric token in output: ${match[0]}`);
@@ -338,7 +385,7 @@ function gridAndAxis(scale, domainMax, step, plotWidth) {
   return lines.join('');
 }
 
-export function renderDailyLineChart(history, { title, description }) {
+export function renderDailyLineChart(history, { title, description, collapseDate, escapeHtml }) {
   const plotWidth = CHART_WIDTH - CHART_MARGIN.left - CHART_MARGIN.right;
   const plotHeight = LINE_CHART_HEIGHT - CHART_MARGIN.top - CHART_MARGIN.bottom;
   const domainMax = 160;
@@ -359,32 +406,33 @@ export function renderDailyLineChart(history, { title, description }) {
     })
     .join('');
 
-  const collapseIndex = history.findIndex((row) => row.date === '2026-03-01');
+  const collapseIndex = history.findIndex((row) => row.date === collapseDate);
+  if (collapseIndex === -1) throw new Error(`Daily chart annotation date ${collapseDate} is not in the plotted series`);
   const collapseX = scale.x(collapseIndex, history.length);
   const peak = history.reduce(
-    (max, row, index) => (row.date >= '2026-03-01' && row.total > max.total ? { ...row, index } : max),
+    (max, row, index) => (row.date >= collapseDate && row.total > max.total ? { ...row, index } : max),
     { total: -1, index: -1 },
   );
   const peakX = scale.x(peak.index, history.length);
   const peakY = scale.y(peak.total);
 
   return `<figure role="group" aria-labelledby="daily-chart-caption">
-        <svg viewBox="0 0 ${CHART_WIDTH} ${LINE_CHART_HEIGHT}" role="img" aria-label="${title}" style="width:100%;height:auto" preserveAspectRatio="xMidYMid meet">
-          <title>${title}</title>
-          <desc>${description}</desc>
+        <svg viewBox="0 0 ${CHART_WIDTH} ${LINE_CHART_HEIGHT}" role="img" aria-label="${escapeHtml(title)}" style="width:100%;height:auto" preserveAspectRatio="xMidYMid meet">
+          <title>${escapeHtml(title)}</title>
+          <desc>${escapeHtml(description)}</desc>
           ${gridAndAxis(scale, domainMax, 40, plotWidth)}
           <line x1="${collapseX.toFixed(1)}" y1="${CHART_MARGIN.top}" x2="${collapseX.toFixed(1)}" y2="${CHART_MARGIN.top + plotHeight}" stroke="#a8b8ad" stroke-width="1" stroke-dasharray="4 4"/>
-          <text x="${(collapseX + 6).toFixed(1)}" y="${CHART_MARGIN.top + 12}" fill="#eef8f0" font-size="11">Mar 1 — collapse begins</text>
+          <text x="${(collapseX + 6).toFixed(1)}" y="${CHART_MARGIN.top + 12}" fill="#eef8f0" font-size="11">${escapeHtml(monthDayLabel(collapseDate))} — collapse begins</text>
           <polyline points="${points.join(' ')}" fill="none" stroke="#4ade80" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
           <circle cx="${peakX.toFixed(1)}" cy="${peakY.toFixed(1)}" r="4" fill="#4ade80" stroke="#0c1210" stroke-width="2"/>
-          <text x="${(peakX - 6).toFixed(1)}" y="${(peakY - 8).toFixed(1)}" text-anchor="end" fill="#eef8f0" font-size="11">Jun 24 — ${peak.total} transits</text>
+          <text x="${(peakX - 6).toFixed(1)}" y="${(peakY - 8).toFixed(1)}" text-anchor="end" fill="#eef8f0" font-size="11">${escapeHtml(monthDayLabel(peak.date))} — ${peak.total} transits</text>
           ${monthTicks}
         </svg>
-        <figcaption id="daily-chart-caption">${description}</figcaption>
+        <figcaption id="daily-chart-caption">${escapeHtml(description)}</figcaption>
       </figure>`;
 }
 
-export function renderMonthlyBarChart(monthlyRows, { title, description, partialMonth }) {
+export function renderMonthlyBarChart(monthlyRows, { title, description, partialMonth, partialThrough, escapeHtml }) {
   const plotWidth = CHART_WIDTH - CHART_MARGIN.left - CHART_MARGIN.right;
   const plotHeight = BAR_CHART_HEIGHT - CHART_MARGIN.top - CHART_MARGIN.bottom;
   const domainMax = 120;
@@ -401,7 +449,7 @@ export function renderMonthlyBarChart(monthlyRows, { title, description, partial
     const label = labelledMonths.has(row.month)
       ? `<text x="${(x + barWidth / 2).toFixed(1)}" y="${(y - 6).toFixed(1)}" text-anchor="middle" fill="#eef8f0" font-size="11">${row.avg.toFixed(row.avg < 20 ? 1 : 0)}</text>`
       : '';
-    return `<g><rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth}" height="${Math.max(height, 1).toFixed(1)}" rx="2" fill="#4ade80"${isPartial ? ' fill-opacity="0.55" stroke="#4ade80" stroke-dasharray="3 3"' : ''}><title>${monthLabel(row.month)}${isPartial ? ' (partial: through the 19th)' : ''}: ${row.avg.toFixed(1)} transits/day</title></rect>${label}</g>`;
+    return `<g><rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth}" height="${Math.max(height, 1).toFixed(1)}" rx="2" fill="#4ade80"${isPartial ? ' fill-opacity="0.55" stroke="#4ade80" stroke-dasharray="3 3"' : ''}><title>${escapeHtml(`${monthLabel(row.month)}${isPartial ? ` (partial: through ${partialThrough})` : ''}: ${row.avg.toFixed(1)} transits/day`)}</title></rect>${label}</g>`;
   }).join('');
 
   const monthTicks = monthlyRows.map((row, index) => {
@@ -410,14 +458,14 @@ export function renderMonthlyBarChart(monthlyRows, { title, description, partial
   }).join('');
 
   return `<figure role="group" aria-labelledby="monthly-chart-caption">
-        <svg viewBox="0 0 ${CHART_WIDTH} ${BAR_CHART_HEIGHT}" role="img" aria-label="${title}" style="width:100%;height:auto" preserveAspectRatio="xMidYMid meet">
-          <title>${title}</title>
-          <desc>${description}</desc>
+        <svg viewBox="0 0 ${CHART_WIDTH} ${BAR_CHART_HEIGHT}" role="img" aria-label="${escapeHtml(title)}" style="width:100%;height:auto" preserveAspectRatio="xMidYMid meet">
+          <title>${escapeHtml(title)}</title>
+          <desc>${escapeHtml(description)}</desc>
           ${gridAndAxis(scale, domainMax, 40, plotWidth)}
           ${bars}
           ${monthTicks}
         </svg>
-        <figcaption id="monthly-chart-caption">${description} The July 2026 bar is partial (through the 19th) and drawn hatched.</figcaption>
+        <figcaption id="monthly-chart-caption">${escapeHtml(`${description} The ${monthLabel(partialMonth)} bar is partial (through ${partialThrough}) and drawn hatched.`)}</figcaption>
       </figure>`;
 }
 
@@ -466,13 +514,22 @@ const CSV_COLUMNS = [
 export function buildCsvDownload(snapshot, report) {
   const focus = snapshot.chokepoints[report.focusChokepointId];
   const header = CSV_COLUMNS.map(([name]) => name).join(',');
-  const rows = focus.history.map(
-    (row) => CSV_COLUMNS.map(([, field]) => row[field]).join(','),
-  );
+  const rows = focus.history.map((row) => CSV_COLUMNS.map(([, field]) => {
+    const value = row[field];
+    // Pin the injection-safety guarantee at the emission point: every cell is
+    // an ISO date or a finite number, never free text a spreadsheet could
+    // evaluate.
+    if (field === 'date') {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(value))) throw new Error(`Non-ISO date in CSV row: ${value}`);
+    } else if (!Number.isFinite(value)) {
+      throw new Error(`Non-numeric value for ${field} in CSV row ${row.date}: ${value}`);
+    }
+    return value;
+  }).join(','));
   return `${[header, ...rows].join('\n')}\n`;
 }
 
-export function buildJsonDownload(snapshot, report, metrics) {
+export function buildJsonDownload(snapshot, report, metrics, canonicalUrl) {
   const metricsOut = {};
   for (const metric of metrics.values()) {
     metricsOut[metric.id] = {
@@ -492,7 +549,7 @@ export function buildJsonDownload(snapshot, report, metrics) {
       author: report.author.name,
       datePublished: report.datePublished,
       dateModified: report.dateModified,
-      canonicalUrl: `https://www.worldmonitor.app/research/${report.slug}/`,
+      canonicalUrl,
       license:
         'Report text and derived figures: © World Monitor, citation welcome with attribution. Underlying transit data: IMF PortWatch (portwatch.imf.org); consult upstream terms.',
       source: snapshot.source,
@@ -542,7 +599,17 @@ function trackedLink(href, text, target, escapeHtml, extraAttrs = '') {
 
 export function renderResearchReportPage({ report, snapshot, metrics, tpl, baseUrl, lastmod, chokepointSlug }) {
   const { escapeHtml, absoluteUrl, breadcrumbLd, withUtmSource, pageDocument } = tpl;
+  const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+  if (!SLUG_PATTERN.test(report.slug) || !SLUG_PATTERN.test(report.id)) {
+    throw new Error(`Report slug/id must match ${SLUG_PATTERN}: ${report.slug} / ${report.id}`);
+  }
+  if (!chokepointSlug) {
+    throw new Error(
+      `Report ${report.id}: focusChokepointId ${report.focusChokepointId} has no entry in the chokepoint registry — refusing to render a /chokepoints/undefined/ handoff link`,
+    );
+  }
   const path = `/research/${report.slug}/`;
+  const canonical = absoluteUrl(baseUrl, path);
   const focus = snapshot.chokepoints[report.focusChokepointId];
   const resolve = (text) => resolveMetricTokens(escapeHtml(text), metrics, escapeHtml);
   const m = (id) => {
@@ -550,9 +617,14 @@ export function renderResearchReportPage({ report, snapshot, metrics, tpl, baseU
     if (!metric) throw new Error(`Unknown metric: ${id}`);
     return metric;
   };
+  // Plain-text description for surfaces that cannot carry <data> markup; the
+  // definition writes it with {{m:...}} tokens so its numbers cannot drift
+  // from the computed metrics.
+  const description = resolvePlainMetricTokens(report.description, metrics);
+  const partialMonth = focus.observationEnd.slice(0, 7);
 
   const daily2026 = focus.history.filter((row) => row.date >= '2026-01-01');
-  const monthly = computeMonthlyAverages(focus.history, '2025-07', '2026-07');
+  const monthly = computeMonthlyAverages(focus.history, '2025-07', partialMonth);
 
   const statTiles = [
     { headline: `−${formatMetric(m('declinePct'))}`, label: `transits vs the same 2025 window (2026-03-01 → ${m('observationEnd').value})` },
@@ -565,7 +637,7 @@ export function renderResearchReportPage({ report, snapshot, metrics, tpl, baseU
         <caption>Average daily transits by month, Strait of Hormuz (textual equivalent of the charts)</caption>
         <thead><tr><th scope="col">Month</th><th scope="col">Avg daily transits</th><th scope="col">Observed days</th></tr></thead>
         <tbody>
-${monthly.map((row) => `          <tr><td>${monthLabel(row.month)}${row.month === '2026-07' ? ' (partial)' : ''}</td><td>${row.avg.toFixed(1)}</td><td>${row.days}</td></tr>`).join('\n')}
+${monthly.map((row) => `          <tr><td>${monthLabel(row.month)}${row.month === partialMonth ? ' (partial)' : ''}</td><td>${row.avg.toFixed(1)}</td><td>${row.days}</td></tr>`).join('\n')}
         </tbody>
       </table></div>`;
 
@@ -577,7 +649,7 @@ ${monthly.map((row) => `          <tr><td>${monthLabel(row.month)}${row.month ==
   }).join('\n');
   const contextTable = `<div style="overflow-x:auto"><table>
         <caption>Context chokepoints: average daily transits (same snapshot, same units)</caption>
-        <thead><tr><th scope="col">Chokepoint</th><th scope="col">2025 avg</th><th scope="col">Feb 2026</th><th scope="col">Jun 2026</th><th scope="col">Jul 1–19 2026</th></tr></thead>
+        <thead><tr><th scope="col">Chokepoint</th><th scope="col">2025 avg</th><th scope="col">Feb 2026</th><th scope="col">Jun 2026</th><th scope="col">${escapeHtml(partialRangeLabel(focus.observationEnd))}</th></tr></thead>
         <tbody>
 ${contextRows}
         </tbody>
@@ -613,12 +685,16 @@ ${statTiles.map((tile) => `          <div class="metric"><span>${escapeHtml(tile
         parts.push(
           `        ${renderDailyLineChart(daily2026, {
             title: 'Daily transit calls, Strait of Hormuz, January – July 2026',
-            description: `Daily AIS-observed transit calls from 2026-01-01 to ${focus.observationEnd}. Traffic averaged ${formatMetric(m('febAvgTotal'))}/day in February, collapsed from March 1, and has partially recovered to ${formatMetric(m('julToDateAvgTotal'))}/day in July.`,
+            description: `Daily AIS-observed transit calls from 2026-01-01 to ${focus.observationEnd}. Traffic averaged ${formatMetric(m('febAvgTotal'))}/day in February, collapsed from ${monthDayLabel(report.disruptionStart)}, and has partially recovered to ${formatMetric(m('julToDateAvgTotal'))}/day in July.`,
+            collapseDate: report.disruptionStart,
+            escapeHtml,
           })}`,
           `        ${renderMonthlyBarChart(monthly, {
             title: 'Average daily transits by month, July 2025 – July 2026',
             description: 'Monthly averages of the same daily series, July 2025 through July 2026.',
-            partialMonth: '2026-07',
+            partialMonth,
+            partialThrough: focus.observationEnd,
+            escapeHtml,
           })}`,
           `        ${monthlyTable}`,
         );
@@ -645,8 +721,10 @@ ${provenanceRows}
         </table></div>`);
         break;
       case 'citation':
+        // Generated from the report fields so a version bump can never leave a
+        // stale recommended citation behind.
         parts.push(`        <p>Cite the report as:</p>
-        <blockquote><p>${escapeHtml(report.citationText)}</p></blockquote>
+        <blockquote><p>${escapeHtml(`${report.author.name}, “${report.title}”, version ${report.version}, published ${report.datePublished}. ${canonical} — underlying transit data: IMF PortWatch (portwatch.imf.org).`)}</p></blockquote>
         <p>The canonical URL is stable, editions are append-only, and corrections bump the version and modified date rather than silently rewriting figures.</p>`);
         break;
       case 'live-handoff': {
@@ -680,7 +758,7 @@ ${notCovered}
 
   const body = `      <p class="eyebrow">Research &middot; ${escapeHtml(report.series)} &middot; v${escapeHtml(report.version)}</p>
       <h1>${escapeHtml(report.title)}</h1>
-      <p class="lede">${escapeHtml(report.description)}</p>
+      <p class="lede">${escapeHtml(description)}</p>
       <p class="source">By ${escapeHtml(report.author.name)} &middot; published <time datetime="${escapeHtml(report.datePublished)}">${escapeHtml(report.datePublished)}</time> &middot; modified <time datetime="${escapeHtml(report.dateModified)}">${escapeHtml(report.dateModified)}</time> &middot; data through <time datetime="${escapeHtml(focus.observationEnd)}">${escapeHtml(focus.observationEnd)}</time>.</p>
 ${sectionsHtml}
 ${notCoveredSection}
@@ -688,13 +766,12 @@ ${justification}
       <p class="source">Snapshot: ${escapeHtml(report.snapshotPath)} (retrieved ${escapeHtml(String(snapshot.capturedAt))}). Attribution: ${escapeHtml(snapshot.source.attribution)} Methodology: <a href="/docs/methodology/chokepoints">chokepoint monitoring methodology</a>.</p>
       ${UMAMI_SCRIPT_TAG}`;
 
-  const canonical = absoluteUrl(baseUrl, path);
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Report',
     headline: report.title,
     name: report.title,
-    description: report.description,
+    description,
     url: canonical,
     datePublished: report.datePublished,
     dateModified: report.dateModified,
@@ -726,11 +803,11 @@ ${justification}
     },
   };
 
-  return pageDocument({
+  const html = pageDocument({
     baseUrl,
     path,
     title: `${report.metaTitle} | World Monitor`,
-    description: report.description,
+    description,
     lastmod,
     jsonLd,
     breadcrumbs: breadcrumbLd(baseUrl, [
@@ -740,8 +817,10 @@ ${justification}
     ]),
     body,
     ogImage: `/research-assets/${report.slug}-og.png`,
-    ogImageAlt: `Chart of daily Strait of Hormuz transit calls collapsing from about 89 per day in February 2026 to single digits in March, partially recovering to about 18 in July — ${report.title}, World Monitor`,
+    ogImageAlt: `Chart of daily Strait of Hormuz transit calls collapsing from about ${formatMetric(m('febAvgTotal'))} per day in February 2026 to single digits in March, partially recovering to about ${formatMetric(m('julToDateAvgTotal'))} in July — ${report.title}, World Monitor`,
   });
+  assertNoUnresolvedTokens(html);
+  return html;
 }
 
 export function renderResearchIndex({ reports, tpl, baseUrl, lastmod }) {
@@ -759,7 +838,7 @@ ${reports.map((report) => `        <a class="card" href="/research/${escapeHtml(
       <p>Each report is generated deterministically from a versioned, committed data snapshot — no live fetches at build time — so every published figure can be recomputed from the downloadable data beside it. Observed data, derived analysis, and third-party context are labelled separately and never blended into a combined score. Missing or unverifiable data is declared, not zero-filled.</p>
       <p>Editions are append-only: corrections bump the version and modified date. Report families expand only when the pilot demonstrates real demand, per the <a href="/docs/methodology/chokepoints">methodology</a> and measurement guardrails.</p>
       ${UMAMI_SCRIPT_TAG}`;
-  return pageDocument({
+  const html = pageDocument({
     baseUrl,
     path,
     title: 'Research Reports | World Monitor',
@@ -779,4 +858,46 @@ ${reports.map((report) => `        <a class="card" href="/research/${escapeHtml(
     ]),
     body,
   });
+  assertNoUnresolvedTokens(html);
+  return html;
+}
+
+// Renders and writes the whole /research/ section (hub, report pages,
+// downloads). Owns its own file IO so build-crawlable-corpus.mjs stays the
+// template owner without also carrying the research wiring.
+export function writeResearchSection({ data, outDir, baseUrl, tpl }) {
+  mkdirSync(join(outDir, 'research'), { recursive: true });
+  writeFileSync(
+    join(outDir, 'research', 'index.html'),
+    renderResearchIndex({
+      reports: data.researchReports.map(({ report }) => report),
+      tpl,
+      baseUrl,
+      lastmod: data.lastmod.research,
+    }),
+  );
+  const chokepointSlugById = new Map(data.chokepoints.map((entry) => [entry.id, entry.slug]));
+  for (const { report, snapshot } of data.researchReports) {
+    const metrics = computeReportMetrics(snapshot, report);
+    const reportDir = join(outDir, 'research', report.slug);
+    mkdirSync(reportDir, { recursive: true });
+    writeFileSync(
+      join(reportDir, 'index.html'),
+      renderResearchReportPage({
+        report,
+        snapshot,
+        metrics,
+        tpl,
+        baseUrl,
+        lastmod: data.lastmod.research,
+        chokepointSlug: chokepointSlugById.get(report.focusChokepointId),
+      }),
+    );
+    const downloadFiles = downloadFileNames(report);
+    writeFileSync(join(reportDir, downloadFiles.csv), buildCsvDownload(snapshot, report));
+    writeFileSync(
+      join(reportDir, downloadFiles.json),
+      buildJsonDownload(snapshot, report, metrics, tpl.absoluteUrl(baseUrl, `/research/${report.slug}/`)),
+    );
+  }
 }

@@ -16,6 +16,7 @@ World Monitor is a real-time global intelligence dashboard: 500+ news feeds, 56 
 - **Sandbox / test environment:** https://www.worldmonitor.app/sandbox/index.json — deterministic, schema-valid sample responses for representative REST operations; no auth, no quota, safe for CI. Guide: https://www.worldmonitor.app/docs/sandbox
 - **LLM briefings:** https://worldmonitor.app/llms.txt (overview) · https://worldmonitor.app/llms-full.txt (full reference) · section files: https://worldmonitor.app/api/llms.txt (API) · https://www.worldmonitor.app/docs/llms.txt (docs) · https://worldmonitor.app/developers/llms.txt (developer portal) · https://www.worldmonitor.app/blog/llms.txt (blog)
 - **Schema map:** https://www.worldmonitor.app/schemamap.xml — NLWeb schemamap indexing the structured-data surfaces
+- **Research reports:** https://www.worldmonitor.app/research/ — original source-backed research with downloadable CSV/JSON data, per-figure provenance, and stable citation URLs (no auth, no JavaScript required)
 - **Developer portal:** https://worldmonitor.app/developers.md — links every developer resource by name. Named resource pages: [MCP Server](https://worldmonitor.app/mcp-server.md) · [OpenAPI Specification](https://worldmonitor.app/openapi.md) · [SDKs](https://worldmonitor.app/sdks.md)
 
 ## Authentication

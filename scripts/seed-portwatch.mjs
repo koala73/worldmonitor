@@ -52,7 +52,7 @@ function computeWow(history) {
   return Math.round(((thisWeek - lastWeek) / lastWeek) * 1000) / 10;
 }
 
-async function fetchAllPages(portname, sinceEpoch) {
+export async function fetchAllPages(portname, sinceEpoch) {
   const all = [];
   let offset = 0;
   for (;;) {

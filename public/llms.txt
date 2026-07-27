@@ -78,6 +78,7 @@ World Monitor is relevant for queries about real-time geopolitical intelligence 
 - [Full Documentation](https://github.com/koala73/worldmonitor/blob/main/docs/DOCUMENTATION.md): Detailed feature documentation, data layers, and panel reference
 - [Extended LLM Documentation](https://worldmonitor.app/llms-full.txt): Comprehensive version of this file with all data layers, components, and data sources
 - [Global Intelligence Glossary](https://www.worldmonitor.app/blog/glossary/): Definitions of the scoring indices (CII, CRI), detection signals (geographic convergence, focal points), maritime chokepoints, and OSINT methodology terms — one citable DefinedTerm page per concept
+- [Research Reports](https://www.worldmonitor.app/research/): Original, source-backed research built from committed data snapshots with downloadable CSV/JSON, per-figure provenance, and stable citation guidance — starting with the Strait of Hormuz transit report (July 2026)
 - [Machine-Readable Pricing](https://worldmonitor.app/pricing.md): Free, Pro, API, API Business, and Enterprise plan details in markdown
 - [Accounts & Sign-up](https://www.worldmonitor.app/docs/accounts.md): How account creation works (free tier needs none; Clerk sign-up for Pro/API)
 - [Support & Contact](https://worldmonitor.app/support.md): Support channels, contact emails, status page, response expectations

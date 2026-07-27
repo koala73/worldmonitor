@@ -61,7 +61,7 @@ function buildWhere(portname, since) {
   return `portname='${portname.replace(/'/g, "''")}' AND date >= timestamp '${since} 00:00:00'`;
 }
 
-async function fetchAllPages(portname, since) {
+export async function fetchAllPages(portname, since) {
   const all = [];
   let offset = 0;
   for (;;) {

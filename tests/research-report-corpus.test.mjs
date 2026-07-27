@@ -12,17 +12,19 @@ import { after, before, describe, it } from 'node:test';
 
 import { buildCorpus } from '../scripts/build-crawlable-corpus.mjs';
 import {
-  buildCsvDownload,
-  buildJsonDownload,
+  assertNoUnresolvedTokens,
   computeReportMetrics,
   downloadFileNames,
   formatMetric,
+  mean,
   resolveMetricTokens,
 } from '../scripts/build-research-reports.mjs';
 import {
   enumerateMissingDates,
+  fetchAllPages as snapshotFetchAllPages,
   serializeSnapshot,
 } from '../scripts/build-chokepoint-transit-snapshot.mjs';
+import { fetchAllPages as seederFetchAllPages } from '../scripts/seed-portwatch.mjs';
 import { RESEARCH_REPORTS } from '../shared/research-reports/index.mjs';
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -117,6 +119,26 @@ describe('research report corpus (#5668)', () => {
     assert.ok(html.includes(`>−${formatMetric(decline)}<`), 'headline decline stat missing from page');
     const canonical = html.match(/<link rel="canonical" href="([^"]+)">/)[1];
     assert.equal(canonical, reportLd.url);
+    // The meta description resolves {{m:...}} tokens too: its headline numbers
+    // are pinned to the same recomputed metrics as the page body.
+    const metaDescription = html.match(/<meta name="description" content="([^"]+)">/)[1];
+    for (const id of ['declinePct', 'disruptionDailyAvg', 'sameWindow2025DailyAvg']) {
+      assert.ok(
+        metaDescription.includes(formatMetric(metrics.get(id))),
+        `meta description must carry the computed ${id}`,
+      );
+    }
+    assert.equal(reportLd.description, metaDescription);
+    // Date-kind tokens render as <time> with the recomputed value.
+    assert.ok(
+      html.includes(`<time datetime="${metrics.get('observationEnd').value}">`),
+      'observationEnd must render as a <time> element with the computed date',
+    );
+    // The recommended citation is generated from report fields, never stored.
+    assert.ok(
+      html.includes(`version ${report.version}, published ${report.datePublished}`),
+      'citation must carry the current version and publication date',
+    );
   });
 
   it('documents the downloadable schema and keeps the CSV in sync with it', () => {
@@ -135,10 +157,28 @@ describe('research report corpus (#5668)', () => {
       assert.ok(metric.method, 'every download metric needs a transformation method');
       assert.ok(metric.source, 'every download metric needs a source');
     }
-    // Missing days fail closed: enumerated, never filled.
-    for (const series of Object.values(dataJson.series)) {
-      assert.ok(Array.isArray(series.missingDates), 'series must enumerate missing dates');
-      assert.equal(series.history.length + series.missingDates.length >= series.rowCount, true);
+    // Missing days fail closed: enumerated, never filled. The invariants are
+    // recomputed independently of the producer's own bookkeeping — exact
+    // calendar tiling, not a comparison against fields derived from the same
+    // history array.
+    for (const [id, series] of Object.entries(dataJson.series)) {
+      assert.equal(series.rowCount, series.history.length, `${id}: rowCount must equal history length`);
+      assert.equal(series.history[0].date, series.observationStart, `${id}: observationStart must match first row`);
+      assert.equal(series.history.at(-1).date, series.observationEnd, `${id}: observationEnd must match last row`);
+      assert.deepEqual(
+        series.missingDates,
+        enumerateMissingDates(series.history),
+        `${id}: missingDates must be exactly the enumerated calendar gaps`,
+      );
+      const spanDays = Math.round(
+        (Date.parse(`${series.observationEnd}T00:00:00Z`) - Date.parse(`${series.observationStart}T00:00:00Z`))
+        / 86_400_000,
+      ) + 1;
+      assert.equal(
+        series.history.length + series.missingDates.length,
+        spanDays,
+        `${id}: observed days plus gaps must tile the observation window exactly`,
+      );
     }
   });
 
@@ -218,8 +258,24 @@ describe('research report corpus (#5668)', () => {
       () => resolveMetricTokens('before {{m:doesNotExist}} after', new Map(), escapeHtml),
       /Unresolved metric token: doesNotExist/,
     );
+    // Tokens the resolver regex does not recognize must still fail the build
+    // via the document-level backstop, never ship literally.
+    assert.throws(() => assertNoUnresolvedTokens('x {{m:snake_case}} y'), /Unresolved metric token/);
+    assert.throws(() => assertNoUnresolvedTokens('x {{m: spaced}} y'), /Unresolved metric token/);
+    // Averaging an empty window is a build failure, not a fabricated zero.
+    assert.throws(() => mean([], 'total'), /refusing to fabricate/);
+    // A wrong-edition report or snapshot trips the metric-window guard instead
+    // of silently republishing the pilot's analysis under a new title.
+    assert.throws(
+      () => computeReportMetrics({ ...snapshot, edition: '2026-08' }, report),
+      /edition/,
+    );
     assert.throws(
       () => computeReportMetrics({ chokepoints: {} }, report),
+      /edition/,
+    );
+    assert.throws(
+      () => computeReportMetrics({ ...snapshot, chokepoints: {} }, report),
       /no focus chokepoint/,
     );
     const truncated = {
@@ -239,6 +295,34 @@ describe('research report corpus (#5668)', () => {
       /No rows for metric/,
       'a snapshot missing the observation window must fail the build, not render empties',
     );
+  });
+
+  // Regression: the ArcGIS layer's server-side maxRecordCount (1000) is below
+  // the requested page size, so advancing offset by PAGE_SIZE instead of the
+  // rows actually returned silently skipped rows 1000-1999 (a contiguous
+  // 1000-day hole) on any multi-page query. Both fetch loops must advance by
+  // the returned row count.
+  it('ArcGIS pagination advances by returned rows, not by requested page size', async () => {
+    const makeFeature = (index) => ({ attributes: { date: 1714521600000 + index * 86_400_000 } });
+    for (const fetchAllPages of [snapshotFetchAllPages, seederFetchAllPages]) {
+      const offsets = [];
+      const originalFetch = global.fetch;
+      global.fetch = async (url) => {
+        const offset = Number(new URL(url).searchParams.get('resultOffset'));
+        offsets.push(offset);
+        const page = offset === 0
+          ? { exceededTransferLimit: true, features: Array.from({ length: 1000 }, (_, i) => makeFeature(i)) }
+          : { exceededTransferLimit: false, features: Array.from({ length: 757 }, (_, i) => makeFeature(offset + i)) };
+        return { ok: true, json: async () => page };
+      };
+      try {
+        const features = await fetchAllPages('Strait of Hormuz', fetchAllPages === seederFetchAllPages ? 0 : '2019-01-01');
+        assert.deepEqual(offsets, [0, 1000], 'second request must start where the server actually stopped');
+        assert.equal(features.length, 1757, 'no rows may be skipped across the page boundary');
+      } finally {
+        global.fetch = originalFetch;
+      }
+    }
   });
 
   it('snapshot producer helpers enumerate gaps and round-trip valid JSON', () => {

@@ -20,6 +20,11 @@ const HEIGHT = 630;
 const { RESEARCH_REPORTS } = await import(
   join(REPO_ROOT, 'shared', 'research-reports', 'index.mjs')
 );
+// Reuse the site generator's aggregation so the OG card can never disagree
+// with the published monthly figures.
+const { computeMonthlyAverages } = await import(
+  join(REPO_ROOT, 'scripts', 'build-research-reports.mjs')
+);
 
 function escapeXml(value) {
   return String(value)
@@ -28,25 +33,10 @@ function escapeXml(value) {
     .replace(/>/g, '&gt;');
 }
 
-function monthlyAverages(history, startMonth, endMonth) {
-  const byMonth = new Map();
-  for (const row of history) {
-    const month = row.date.slice(0, 7);
-    if (month < startMonth || month > endMonth) continue;
-    if (!byMonth.has(month)) byMonth.set(month, []);
-    byMonth.get(month).push(row.total);
-  }
-  return [...byMonth.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([month, values]) => ({
-      month,
-      avg: values.reduce((total, value) => total + value, 0) / values.length,
-    }));
-}
-
 function buildCardSvg(report, snapshot) {
   const focus = snapshot.chokepoints[report.focusChokepointId];
-  const months = monthlyAverages(focus.history, '2025-07', '2026-07');
+  const partialMonth = focus.observationEnd.slice(0, 7);
+  const months = computeMonthlyAverages(focus.history, '2025-07', partialMonth);
   const domainMax = 120;
   const chart = { x: 80, y: 300, width: 1040, height: 240 };
   const slot = chart.width / months.length;
@@ -56,7 +46,7 @@ function buildCardSvg(report, snapshot) {
     const height = Math.max((row.avg / domainMax) * chart.height, 3);
     const x = chart.x + index * slot + 5;
     const y = chart.y + chart.height - height;
-    const partial = row.month === '2026-07';
+    const partial = row.month === partialMonth;
     return `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barWidth}" height="${height.toFixed(1)}" rx="3" fill="#4ade80"${partial ? ' fill-opacity="0.55"' : ''}/>`;
   }).join('');
 
@@ -68,7 +58,7 @@ function buildCardSvg(report, snapshot) {
   }).join('');
 
   const feb = months.find((row) => row.month === '2026-02');
-  const jul = months.find((row) => row.month === '2026-07');
+  const jul = months.find((row) => row.month === partialMonth);
   const febX = chart.x + months.indexOf(feb) * slot + 5 + barWidth / 2;
   const febY = chart.y + chart.height - (feb.avg / domainMax) * chart.height;
   const julX = chart.x + months.indexOf(jul) * slot + 5 + barWidth / 2;

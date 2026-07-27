@@ -14,14 +14,7 @@ import {
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-import {
-  buildCsvDownload,
-  buildJsonDownload,
-  computeReportMetrics,
-  downloadFileNames,
-  renderResearchIndex,
-  renderResearchReportPage,
-} from './build-research-reports.mjs';
+import { writeResearchSection } from './build-research-reports.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1568,52 +1561,12 @@ export async function buildCorpus({
     );
   }
 
-  const researchTemplate = {
-    escapeHtml,
-    absoluteUrl,
-    breadcrumbLd,
-    withUtmSource,
-    metaDescription,
-    pageDocument,
-  };
-  writeGeneratedFile(
+  writeResearchSection({
+    data,
     outDir,
-    'research/index.html',
-    renderResearchIndex({
-      reports: data.researchReports.map(({ report }) => report),
-      tpl: researchTemplate,
-      baseUrl,
-      lastmod: data.lastmod.research,
-    }),
-  );
-  const chokepointSlugById = new Map(data.chokepoints.map((entry) => [entry.id, entry.slug]));
-  for (const { report, snapshot } of data.researchReports) {
-    const metrics = computeReportMetrics(snapshot, report);
-    writeGeneratedFile(
-      outDir,
-      routeFile(`/research/${report.slug}/`),
-      renderResearchReportPage({
-        report,
-        snapshot,
-        metrics,
-        tpl: researchTemplate,
-        baseUrl,
-        lastmod: data.lastmod.research,
-        chokepointSlug: chokepointSlugById.get(report.focusChokepointId),
-      }),
-    );
-    const downloadFiles = downloadFileNames(report);
-    writeGeneratedFile(
-      outDir,
-      join('research', report.slug, downloadFiles.csv),
-      buildCsvDownload(snapshot, report),
-    );
-    writeGeneratedFile(
-      outDir,
-      join('research', report.slug, downloadFiles.json),
-      buildJsonDownload(snapshot, report, metrics),
-    );
-  }
+    baseUrl,
+    tpl: { escapeHtml, absoluteUrl, breadcrumbLd, withUtmSource, pageDocument },
+  });
 
   writeGeneratedFile(
     outDir,

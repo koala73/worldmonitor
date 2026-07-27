@@ -22,8 +22,12 @@ export const REPORT = {
   version: '1.0.0',
   title: 'Strait of Hormuz Transit Report — July 2026',
   metaTitle: 'Strait of Hormuz Transit Report: July 2026 Traffic Data',
+  // {{m:...}} tokens resolve to computed values here too (plain text, no
+  // markup) so the meta description, JSON-LD, and lede can never disagree
+  // with the data the way hand-written numbers can.
   description:
-    'Five months into the March 2026 closure, Strait of Hormuz transits remain roughly 80% below baseline: 9.9 ships/day since March 1 versus 103.2 in the same 2025 window, from IMF PortWatch daily data.',
+    'Strait of Hormuz transits are down {{m:declinePct}} since the March 2026 closure — {{m:disruptionDailyAvg}} ships/day since March 1 versus {{m:sameWindow2025DailyAvg}} in the same 2025 window — with July at about {{m:julVsFebShare}} of the February baseline, from IMF PortWatch daily data.',
+  disruptionStart: '2026-03-01',
   author: {
     name: 'World Monitor Research',
     url: 'https://www.worldmonitor.app/',
@@ -151,8 +155,4 @@ export const REPORT = {
     { id: 'live', heading: 'Track this live', layer: 'product', block: 'live-handoff' },
   ],
 
-  citationText:
-    'World Monitor Research, “Strait of Hormuz Transit Report — July 2026”, version 1.0.0, published 2026-07-27. https://www.worldmonitor.app/research/strait-of-hormuz-transit-report-2026-07/ — underlying transit data: IMF PortWatch (portwatch.imf.org).',
 };
-
-export const REPORTS = [REPORT];
