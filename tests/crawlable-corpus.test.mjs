@@ -9,6 +9,7 @@ import {
   buildCorpus,
   loadCorpusData,
 } from '../scripts/build-crawlable-corpus.mjs';
+import { buildSitemapEntries } from '../scripts/build-sitemap.mjs';
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
@@ -45,6 +46,32 @@ describe('crawlable corpus generator', () => {
       assert.equal(manifest.sections.chokepoints.count, 13);
       assert.equal(manifest.sections.crises.count, 4);
       assert.equal(manifest.sections.tools.count, 2);
+      assert.equal(manifest.generatorContentVersion, '2026-07-24');
+      const sitemapEntries = buildSitemapEntries({
+        repoRoot,
+        publicDir: outDir,
+        existingSitemapSource: '',
+        resolveMaterialLastmod: () => '2026-07-24',
+        today: '2026-07-27',
+      });
+      const corpusLocations = new Set(
+        sitemapEntries
+          .filter((entry) => entry.family === 'content-corpus')
+          .map((entry) => new URL(entry.loc).pathname),
+      );
+      const manifestLocations = new Set([
+        manifest.sections.countries.index,
+        ...manifest.sections.countries.routes,
+        manifest.sections.chokepoints.index,
+        ...manifest.sections.chokepoints.routes,
+        manifest.sections.crises.index,
+        ...manifest.sections.crises.routes,
+        manifest.sections.tools.index,
+        ...manifest.sections.tools.routes,
+        manifest.sections.changelog.index,
+        ...manifest.sections.changelog.routes,
+      ]);
+      assert.deepEqual(corpusLocations, manifestLocations);
       const liveScriptTag = `<script type="module" nonce="${productionScriptNonce()}" src="/tools/live-tools.js"></script>`;
       assert.ok(manifest.sections.changelog.count >= 2, `expected paginated changelog pages, got ${manifest.sections.changelog.count}`);
       assert.ok(manifest.sections.glossary.count >= 15, `expected existing glossary manifest entries, got ${manifest.sections.glossary.count}`);
@@ -74,7 +101,7 @@ describe('crawlable corpus generator', () => {
       const norway = read(outDir, 'countries/norway/index.html');
       assert.match(norway, /<h1>Norway country risk and resilience<\/h1>/);
       assert.match(norway, /<link rel="canonical" href="https:\/\/www\.worldmonitor\.app\/countries\/norway\/">/);
-      assert.match(norway, /<meta name="lastmod" content="2026-05-28">/);
+      assert.match(norway, /<meta name="lastmod" content="2026-07-24">/);
       assert.match(norway, /Source: docs\/snapshots\/resilience-ranking-2026-05-28\.json/);
       assert.doesNotMatch(norway, /id="app"/, 'country page must be raw static HTML, not the SPA shell');
       assert.match(norway, /data-live-country-risk data-country-code="NO" data-country-name="Norway"/);
@@ -209,6 +236,7 @@ describe('crawlable corpus generator', () => {
     assert.equal(data.sources.countryBboxes, 'shared/country-bboxes.js');
     assert.equal(data.sources.crisisRegistry, 'shared/crawlable-crises.json');
     assert.equal(data.resilience.capturedAt, '2026-05-28');
+    assert.equal(data.lastmod.countries, '2026-07-24');
     assert.equal(data.crises.length, 4);
     assert.ok(data.crises.some((crisis) => crisis.slug === 'ukraine-war' && crisis.coverage.some((country) => country.code === 'UA')));
     assert.ok(data.countryBounds.some((country) => country.code === 'JP' && country.bounds[0] === 31.11));

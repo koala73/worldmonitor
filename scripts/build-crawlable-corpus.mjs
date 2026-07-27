@@ -28,6 +28,10 @@ const CHANGELOG_PATH = 'CHANGELOG.md';
 const LIVE_TOOLS_SCRIPT_PATH = 'scripts/crawlable-live-tools.mjs';
 const COUNTRY_BBOXES_PATH = 'shared/country-bboxes.js';
 const CRISIS_REGISTRY_PATH = 'shared/crawlable-crises.json';
+// Last substantive change to the shared HTML template/content language. Data
+// families take the later of this version and their own committed source date,
+// so template changes are reflected without pretending every deploy is fresh.
+export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-07-24';
 const CHANGELOG_PAGE_SIZE = 2;
 const MAX_TOOL_LATITUDE_SPAN = 45;
 const MAX_TOOL_LONGITUDE_SPAN = 60;
@@ -178,6 +182,13 @@ function readText(rootDir, relativePath) {
 
 function readJson(rootDir, relativePath) {
   return JSON.parse(readText(rootDir, relativePath));
+}
+
+function laterDate(...values) {
+  return values
+    .filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value ?? ''))
+    .sort()
+    .at(-1) ?? null;
 }
 
 function normalizeBaseUrl(baseUrl) {
@@ -556,17 +567,30 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   );
   const glossaryTerms = normalizeGlossaryTerms(GLOSSARY_TERMS);
   const changelog = parseChangelog(readText(rootDir, CHANGELOG_PATH));
-  const changelogLastmod = gitFileLastmod(rootDir, CHANGELOG_PATH)
-    || latestDatedChangelogRelease(changelog)
-    || resilience.capturedAt;
-  const chokepointsLastmod = gitFileLastmod(rootDir, CHOKEPOINT_REGISTRY_PATH)
-    || resilience.capturedAt;
-  const toolsLastmod = gitFileLastmod(rootDir, LIVE_TOOLS_SCRIPT_PATH)
-    || resilience.capturedAt;
-  const crisesLastmod = gitFileLastmod(rootDir, CRISIS_REGISTRY_PATH)
-    || resilience.capturedAt;
+  const countriesLastmod = laterDate(
+    resilience.capturedAt,
+    CORPUS_GENERATOR_CONTENT_VERSION,
+  );
+  const changelogLastmod = laterDate(
+    gitFileLastmod(rootDir, CHANGELOG_PATH),
+    latestDatedChangelogRelease(changelog),
+    CORPUS_GENERATOR_CONTENT_VERSION,
+  );
+  const chokepointsLastmod = laterDate(
+    gitFileLastmod(rootDir, CHOKEPOINT_REGISTRY_PATH),
+    CORPUS_GENERATOR_CONTENT_VERSION,
+  );
+  const toolsLastmod = laterDate(
+    gitFileLastmod(rootDir, LIVE_TOOLS_SCRIPT_PATH),
+    CORPUS_GENERATOR_CONTENT_VERSION,
+  );
+  const crisesLastmod = laterDate(
+    gitFileLastmod(rootDir, CRISIS_REGISTRY_PATH),
+    CORPUS_GENERATOR_CONTENT_VERSION,
+  );
 
   return {
+    generatorContentVersion: CORPUS_GENERATOR_CONTENT_VERSION,
     sources: {
       resilienceSnapshot: RESILIENCE_SNAPSHOT_PATH,
       countryNames: COUNTRY_NAMES_PATH,
@@ -579,6 +603,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
       crisisRegistry: CRISIS_REGISTRY_PATH,
     },
     lastmod: {
+      countries: countriesLastmod,
       changelog: changelogLastmod,
       chokepoints: chokepointsLastmod,
       tools: toolsLastmod,
@@ -725,7 +750,7 @@ ${body}
 `;
 }
 
-function renderCountriesIndex({ countries, baseUrl, capturedAt }) {
+function renderCountriesIndex({ countries, baseUrl, capturedAt, lastmod }) {
   const path = '/countries/';
   const description = `Browse ${countries.length} country risk and resilience pages from World Monitor's dated ${capturedAt} structural snapshot, with current instability signals on each page.`;
   const body = `      <p class="eyebrow">Country corpus</p>
@@ -740,7 +765,7 @@ ${countries.map((country) => `        <a class="card" href="/countries/${country
     path,
     title: 'Country Risk and Resilience | World Monitor',
     description,
-    lastmod: capturedAt,
+    lastmod,
     jsonLd: {
       '@context': 'https://schema.org',
       '@type': 'CollectionPage',
@@ -757,7 +782,14 @@ ${countries.map((country) => `        <a class="card" href="/countries/${country
   });
 }
 
-function renderCountryPage({ country, baseUrl, capturedAt, methodologyFormula, rankedCount }) {
+function renderCountryPage({
+  country,
+  baseUrl,
+  capturedAt,
+  lastmod,
+  methodologyFormula,
+  rankedCount,
+}) {
   const path = `/countries/${country.slug}/`;
   const rankText = country.rank == null ? 'not ranked in the headline table' : `ranked #${country.rank}`;
   const description = metaDescription(
@@ -815,7 +847,7 @@ function renderCountryPage({ country, baseUrl, capturedAt, methodologyFormula, r
     // mid-brand.
     title: coreTitle.length > 44 ? coreTitle : `${coreTitle} | World Monitor`,
     description,
-    lastmod: capturedAt,
+    lastmod,
     jsonLd: {
       '@context': 'https://schema.org',
       '@type': 'WebPage',
@@ -1374,6 +1406,7 @@ function buildManifest({ data, baseUrl, changelogPageCount }) {
   return {
     schemaVersion: 1,
     baseUrl: normalizeBaseUrl(baseUrl),
+    generatorContentVersion: data.generatorContentVersion,
     sources: data.sources,
     sections: {
       countries: {
@@ -1433,6 +1466,7 @@ export async function buildCorpus({
       countries: data.countries,
       baseUrl,
       capturedAt: data.resilience.capturedAt,
+      lastmod: data.lastmod.countries,
     }),
   );
   const rankedCount = data.countries.filter((country) => country.rank != null).length;
@@ -1444,6 +1478,7 @@ export async function buildCorpus({
         country,
         baseUrl,
         capturedAt: data.resilience.capturedAt,
+        lastmod: data.lastmod.countries,
         methodologyFormula: data.resilience.methodologyFormula || 'unknown',
         rankedCount,
       }),
