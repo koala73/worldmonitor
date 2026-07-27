@@ -205,3 +205,70 @@ test('publish-success path: seed-meta write exhausting retries degrades to exit 
     `degrade must be loud; warns were: ${JSON.stringify(warns)}`,
   );
 });
+
+test('publish-success path logs the completion state returned by afterPublish', async () => {
+  const seedEvents = [];
+  const originalLog = console.log;
+  const metaFailureFetch = globalThis.fetch;
+  globalThis.fetch = async (url, opts = {}) => {
+    const u = String(url);
+    const body = opts?.body ? JSON.parse(opts.body) : null;
+    calls.push({ u, body });
+    if (u.includes('/get/')) return jsonResponse({ result: JSON.stringify(CANONICAL_ENVELOPE) });
+    if (u.endsWith('/pipeline')) return jsonResponse(body.map(() => ({ result: 1 })));
+    return jsonResponse({ result: 'OK' });
+  };
+  console.log = (...args) => {
+    try {
+      const event = JSON.parse(args[0]);
+      if (event?.event === 'seed_complete') seedEvents.push(event);
+    } catch {
+      // Human-readable progress output is not JSON.
+    }
+  };
+
+  try {
+    const { exitCode, threw } = await runWithExitTrap(() =>
+      runSeed('test', 'post-publish-state', 'test:post-publish-state:v1',
+        async () => ({ items: [1] }),
+        {
+          validateFn: (data) => data.items.length > 0,
+          ttlSeconds: 3600,
+          declareRecords: (data) => data.items.length,
+          sourceVersion: 'test-v1',
+          schemaVersion: 1,
+          maxStaleMin: 720,
+          afterPublish: async () => ({
+            completionState: 'DEGRADED',
+            freshnessMetaPatch: {
+              status: 'error',
+              errorReason: 'post_publish_incomplete',
+              fetchedAt: 0,
+              recordCount: 999,
+            },
+          }),
+        }),
+    );
+
+    assert.equal(threw, null);
+    assert.equal(exitCode, 0);
+    assert.equal(seedEvents.length, 1);
+    assert.equal(seedEvents[0].state, 'DEGRADED',
+      'a known post-publish failure must not be overwritten by contract state OK');
+    const metaSets = calls.filter((call) =>
+      Array.isArray(call.body)
+      && call.body[0] === 'SET'
+      && call.body[1] === 'seed-meta:test:post-publish-state',
+    );
+    assert.equal(metaSets.length, 1, 'the degraded health outcome must be written once');
+    const meta = JSON.parse(metaSets[0].body[2]);
+    assert.equal(meta.status, 'error');
+    assert.equal(meta.errorReason, 'post_publish_incomplete');
+    assert.equal(meta.recordCount, 1);
+    assert.notEqual(meta.fetchedAt, 0,
+      'post-publish diagnostics must not overwrite core freshness metadata');
+  } finally {
+    console.log = originalLog;
+    globalThis.fetch = metaFailureFetch;
+  }
+});

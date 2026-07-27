@@ -447,7 +447,16 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
   );
 }
 
-export async function writeFreshnessMetadata(domain, resource, count, source, ttlSeconds, fetchedAtOverride, contentAge) {
+export async function writeFreshnessMetadata(
+  domain,
+  resource,
+  count,
+  source,
+  ttlSeconds,
+  fetchedAtOverride,
+  contentAge,
+  metaPatch,
+) {
   const { url, token } = getRedisCredentials();
   const metaKey = `seed-meta:${domain}:${resource}`;
   const meta = {
@@ -467,6 +476,21 @@ export async function writeFreshnessMetadata(domain, resource, count, source, tt
     meta.newestItemAt = contentAge.newestItemAt ?? null;
     meta.oldestItemAt = contentAge.oldestItemAt ?? null;
     meta.maxContentAgeMin = contentAge.maxContentAgeMin;
+  }
+  if (metaPatch && typeof metaPatch === 'object') {
+    // Hooks may add bounded diagnostics, but the shared writer owns freshness
+    // and record-count truth. Never let a hook silently re-anchor those fields.
+    const reservedFields = new Set([
+      'fetchedAt',
+      'recordCount',
+      'sourceVersion',
+      'newestItemAt',
+      'oldestItemAt',
+      'maxContentAgeMin',
+    ]);
+    for (const [key, value] of Object.entries(metaPatch)) {
+      if (!reservedFields.has(key)) meta[key] = value;
+    }
   }
   // Use the data TTL if it exceeds 7 days so monthly/annual seeds don't lose
   // their meta key before the health check maxStaleMin threshold is reached.
@@ -807,24 +831,35 @@ export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKey
   return writeSeedMeta(key, recordCount, metaKeyOverride, metaTtlSeconds);
 }
 
-// Returns true only when EVERY requested key was actually extended (EXPIRE
-// returned 1 for all). Returns false on missing creds, network/HTTP failure,
-// or any key that was missing/expired (EXPIRE no-op). Existing fire-and-forget
-// callers ignore the return; a caller that treats a successful extension as
-// proof the data is still alive (e.g. a market-closed skip that then reports
-// fresh) MUST gate on this boolean and fall back to a real fetch on false —
-// otherwise a silent extension failure looks green while the key expires.
-export async function extendExistingTtl(keys, ttlSeconds = 600) {
+// Detailed counterpart to extendExistingTtl. Results stay aligned to the input
+// keys so callers that publish per-key health can distinguish a confirmed
+// EXPIRE no-op from a successful extension and from a pipeline result that
+// could not be confirmed at all.
+export async function extendExistingTtlDetailed(keys, ttlSeconds = 600) {
+  const requestedKeys = Array.isArray(keys) ? keys : [];
+  if (requestedKeys.length === 0) {
+    return {
+      allExtended: true,
+      extendedKeys: [],
+      missingKeys: [],
+      unconfirmedKeys: [],
+    };
+  }
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) {
     console.error('  Cannot extend TTL: missing Redis credentials');
-    return false;
+    return {
+      allExtended: false,
+      extendedKeys: [],
+      missingKeys: [],
+      unconfirmedKeys: [...requestedKeys],
+    };
   }
   try {
     // EXPIRE only refreshes TTL when key already exists (returns 0 on missing keys — no-op).
     // Check each result: keys that returned 0 are missing/expired and cannot be extended.
-    const pipeline = keys.map(k => ['EXPIRE', k, ttlSeconds]);
+    const pipeline = requestedKeys.map(k => ['EXPIRE', k, ttlSeconds]);
     // Retry the pipeline call on transient Redis failures. A successful response
     // with some EXPIRE no-ops is a real missing-key condition, NOT a transient
     // error, so we only retry HTTP/network failures and return false for no-ops.
@@ -848,15 +883,48 @@ export async function extendExistingTtl(keys, ttlSeconds = 600) {
       return r;
     }, 2, 1000);
     const results = await resp.json();
-    const extended = results.filter(r => r?.result === 1).length;
-    const missing = results.filter(r => r?.result === 0).length;
-    if (extended > 0) console.log(`  Extended TTL on ${extended} key(s) (${ttlSeconds}s)`);
-    if (missing > 0) console.warn(`  WARNING: ${missing} key(s) were expired/missing — EXPIRE was a no-op; manual seed required`);
-    return missing === 0 && extended === keys.length;
+    const extendedKeys = [];
+    const missingKeys = [];
+    const unconfirmedKeys = [];
+    for (let i = 0; i < requestedKeys.length; i++) {
+      if (results?.[i]?.result === 1) {
+        extendedKeys.push(requestedKeys[i]);
+      } else if (results?.[i]?.result === 0) {
+        missingKeys.push(requestedKeys[i]);
+      } else {
+        unconfirmedKeys.push(requestedKeys[i]);
+      }
+    }
+    if (extendedKeys.length > 0) console.log(`  Extended TTL on ${extendedKeys.length} key(s) (${ttlSeconds}s)`);
+    if (missingKeys.length > 0) console.warn(`  WARNING: ${missingKeys.length} key(s) were expired/missing — EXPIRE was a no-op; manual seed required`);
+    if (unconfirmedKeys.length > 0) console.warn(`  WARNING: TTL extension result was unconfirmed for ${unconfirmedKeys.length} key(s)`);
+    return {
+      allExtended: extendedKeys.length === requestedKeys.length,
+      extendedKeys,
+      missingKeys,
+      unconfirmedKeys,
+    };
   } catch (e) {
     console.error(`  TTL extension failed: ${e.message}`);
-    return false;
+    return {
+      allExtended: false,
+      extendedKeys: [],
+      missingKeys: [],
+      unconfirmedKeys: [...requestedKeys],
+    };
   }
+}
+
+// Returns true only when EVERY requested key was actually extended (EXPIRE
+// returned 1 for all). Returns false on missing creds, network/HTTP failure,
+// or any key that was missing/expired (EXPIRE no-op). Existing fire-and-forget
+// callers ignore the return; a caller that treats a successful extension as
+// proof the data is still alive (e.g. a market-closed skip that then reports
+// fresh) MUST gate on this boolean and fall back to a real fetch on false —
+// otherwise a silent extension failure looks green while the key expires.
+export async function extendExistingTtl(keys, ttlSeconds = 600) {
+  const result = await extendExistingTtlDetailed(keys, ttlSeconds);
+  return result.allExtended;
 }
 
 export function sleep(ms) {
@@ -2009,9 +2077,9 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       }
     }
 
-    if (afterPublish) {
-      await afterPublish(data, { canonicalKey, ttlSeconds, recordCount, runId });
-    }
+    const afterPublishResult = afterPublish
+      ? await afterPublish(data, { canonicalKey, ttlSeconds, recordCount, runId })
+      : null;
 
     // Mirror content-age fields into seed-meta when the seeder opted in.
     //
@@ -2036,6 +2104,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       domain, resource, recordCount, opts.sourceVersion, ttlSeconds,
       undefined,            // fetchedAtOverride — success path uses now
       successContentAge,
+      afterPublishResult?.freshnessMetaPatch,
     );
     if (afterFreshness) {
       if (meta == null) {
@@ -2051,7 +2120,16 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     }
 
     const durationMs = Date.now() - startMs;
-    logSeedResult(domain, recordCount, durationMs, { payloadBytes, contractMode, state: contractState || 'LEGACY' });
+    const completionState =
+      typeof afterPublishResult?.completionState === 'string'
+      && afterPublishResult.completionState.trim().length > 0
+        ? afterPublishResult.completionState
+        : (contractState || 'LEGACY');
+    logSeedResult(domain, recordCount, durationMs, {
+      payloadBytes,
+      contractMode,
+      state: completionState,
+    });
 
     // Verify (best-effort: write already succeeded, don't fail the job on transient read issues)
     let verified = false;
