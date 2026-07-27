@@ -8,9 +8,9 @@
  * and assert only the GATEWAY wiring at server/gateway.ts:1034 — the parts the
  * reviewers flagged as defect-prone:
  *   - eligibility via isUserApiKey (user keys carry NO keyCheck.kind)
- *   - the per-IP bypass is ENFORCE-only (shadow keeps per-IP active)
+ *   - the global fallback bypass is ENFORCE-only (shadow keeps it active)
  *   - ordering + 429 shape
- *   - downgraded / ineligible keys fall through to per-IP
+ *   - downgraded / ineligible keys are rejected before limiting
  */
 
 import { describe, test, expect, vi, beforeEach, afterEach } from "vitest";
@@ -25,7 +25,7 @@ vi.mock("../_shared/api-key-rate-limit", () => ({
   ENTERPRISE_API_RATE_LIMIT: 1000,
 }));
 
-// --- Stub the per-IP layer: spy whether checkRateLimit runs ------------------
+// --- Stub the global fallback layer: spy whether checkRateLimit runs --------
 const checkRateLimit = vi.fn().mockResolvedValue(null);
 const checkFailClosedScopedIpRateLimit = vi.fn().mockResolvedValue(null);
 vi.mock("../_shared/rate-limit", async (importActual) => {
@@ -136,13 +136,17 @@ describe("#3199 U4 — gateway per-account rate-limit wiring", () => {
     expect(checkRateLimit).not.toHaveBeenCalled();
   });
 
-  test("SHADOW + burst trip → served (200) and per-IP checkRateLimit STILL runs", async () => {
+  test("SHADOW + burst trip → served (200) and principal global fallback still runs", async () => {
     delete process.env.API_RATE_LIMIT_ENFORCE; // shadow (default)
     checkBurst.mockResolvedValue({ ok: false, limit: 60, reset: Date.now() + 30_000 });
 
     const res = await makeGateway()(userKeyRequest(), ctx);
     expect(res.status).toBe(200);
-    expect(checkRateLimit).toHaveBeenCalledTimes(1); // protection retained in shadow
+    expect(checkRateLimit).toHaveBeenCalledWith(
+      expect.any(Request),
+      expect.any(Object),
+      { principalUserId: "acct_starter" },
+    ); // protection retained in shadow, isolated by the validated key owner
   });
 
   test("ENFORCE + over daily limit → 429, meter rolled back, per-IP bypassed", async () => {

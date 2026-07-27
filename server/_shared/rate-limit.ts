@@ -144,16 +144,19 @@ export interface RateLimitOptions {
    * black-hole the whole site. (#3531)
    */
   failClosed?: boolean;
-}
-
-export interface EndpointRateLimitOptions extends RateLimitOptions {
   /**
-   * Optional trusted server-derived user ID for endpoint policies that should
-   * isolate authenticated principals sharing one public IP. Callers must never
-   * pass a raw client-controlled header here. The limiter owns the namespace
-   * prefix so user IDs cannot collide with anonymous IP buckets.
+   * Optional trusted server-derived user ID for policies that should isolate
+   * authenticated principals sharing one public IP. Callers must never pass a
+   * raw client-controlled header here. The limiter owns the namespace prefix
+   * so user IDs cannot collide with anonymous IP buckets.
    */
   principalUserId?: string;
+}
+
+export type EndpointRateLimitOptions = RateLimitOptions;
+
+function getPrincipalRateLimitIdentifier(principalUserId?: string): string | null {
+  return principalUserId ? `user:${principalUserId}` : null;
 }
 
 export async function checkRateLimit(request: Request, corsHeaders: Record<string, string>, opts: RateLimitOptions = {}): Promise<Response | null> {
@@ -166,10 +169,21 @@ export async function checkRateLimit(request: Request, corsHeaders: Record<strin
     return null;
   }
 
-  const ip = getClientIp(request);
+  // Preserve the long-standing raw-IP key for anonymous traffic so an
+  // in-flight 60-second bucket does not reset during rollout. Trusted
+  // principals use a separate namespace.
+  const identifier =
+    getPrincipalRateLimitIdentifier(opts.principalUserId) ??
+    getClientIp(request);
 
   try {
-    const { success, limit, reset } = await limitWithFallback(rl, ip, `rl:fw:${ip}`, GLOBAL_RATE_LIMIT, GLOBAL_RATE_WINDOW_SECONDS);
+    const { success, limit, reset } = await limitWithFallback(
+      rl,
+      identifier,
+      `rl:fw:${identifier}`,
+      GLOBAL_RATE_LIMIT,
+      GLOBAL_RATE_WINDOW_SECONDS,
+    );
 
     if (!success) {
       return tooManyRequestsResponse(limit, reset, corsHeaders, GLOBAL_RATE_WINDOW_SECONDS);
@@ -397,9 +411,9 @@ export async function checkEndpointRateLimit(request: Request, pathname: string,
     return null;
   }
 
-  const identifier = opts.principalUserId
-    ? `user:${opts.principalUserId}`
-    : `ip:${getClientIp(request)}`;
+  const identifier =
+    getPrincipalRateLimitIdentifier(opts.principalUserId) ??
+    `ip:${getClientIp(request)}`;
   const policy = ENDPOINT_RATE_POLICIES[pathname];
   // hasEndpointRatePolicy(pathname) above already guarantees this — the
   // extra check exists only to satisfy noUncheckedIndexedAccess, since TS
