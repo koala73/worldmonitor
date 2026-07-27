@@ -28,10 +28,12 @@ that materially determine its content:
 
 Static-page dates are the latest Git commit date among the declared material
 sources. They are not file mtimes and never use build or deploy time. When a
-Docker build has no `.git` directory, it preserves the dates in the committed
-generated sitemap. Generated corpus pages take the later of their dated source
-and the explicit generator-content version, so a template rewrite can be
-represented without touching every URL on every deployment.
+Docker build has no `.git` directory or only a shallow history, it preserves
+the dates in the committed generated sitemap. This prevents a depth-one
+checkout from treating every file as newly added in its lone release commit.
+Generated corpus pages take the later of their dated source and the explicit
+generator-content version, so a template rewrite can be represented without
+touching every URL on every deployment.
 
 Editorial blog dates remain owned by frontmatter. Astro uses `modifiedDate` when
 present and otherwise `pubDate`; `tests/blog-seo-contract.test.mjs` rejects a

@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, it } from 'node:test';
 import { XMLValidator } from 'fast-xml-parser';
 
@@ -10,6 +11,7 @@ import {
   SITE_ORIGIN,
   STATIC_ROUTE_MANIFEST,
   buildSitemapEntries,
+  createMaterialLastmodResolver,
   generateSitemapXml,
   validateSitemapEntries,
 } from '../scripts/build-sitemap.mjs';
@@ -133,6 +135,66 @@ describe('root sitemap generator', () => {
       () => validateSitemapEntries([{ ...valid, lastmod: '2026-07-28' }], { today: '2026-07-27' }),
       /future/i,
     );
+  });
+
+  it('preserves committed freshness when Git history is shallow', () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), 'wm-sitemap-shallow-'));
+    const sourceRoot = join(tempRoot, 'source');
+    const shallowRoot = join(tempRoot, 'shallow');
+    try {
+      mkdirSync(sourceRoot);
+      execFileSync('git', ['init', '--initial-branch=main'], { cwd: sourceRoot });
+      execFileSync('git', ['config', 'user.email', 'sitemap-test@worldmonitor.app'], { cwd: sourceRoot });
+      execFileSync('git', ['config', 'user.name', 'Sitemap Test'], { cwd: sourceRoot });
+
+      writeFileSync(join(sourceRoot, 'material.txt'), 'material version one\n');
+      execFileSync('git', ['add', 'material.txt'], { cwd: sourceRoot });
+      execFileSync('git', ['commit', '-m', 'add material'], {
+        cwd: sourceRoot,
+        env: {
+          ...process.env,
+          GIT_AUTHOR_DATE: '2026-06-01T00:00:00Z',
+          GIT_COMMITTER_DATE: '2026-06-01T00:00:00Z',
+        },
+      });
+
+      writeFileSync(join(sourceRoot, 'unrelated.txt'), 'release-only change\n');
+      execFileSync('git', ['add', 'unrelated.txt'], { cwd: sourceRoot });
+      execFileSync('git', ['commit', '-m', 'release change'], {
+        cwd: sourceRoot,
+        env: {
+          ...process.env,
+          GIT_AUTHOR_DATE: '2026-07-27T00:00:00Z',
+          GIT_COMMITTER_DATE: '2026-07-27T00:00:00Z',
+        },
+      });
+
+      execFileSync(
+        'git',
+        ['clone', '--depth', '1', pathToFileURL(sourceRoot).href, shallowRoot],
+      );
+      assert.equal(
+        execFileSync('git', ['rev-parse', '--is-shallow-repository'], {
+          cwd: shallowRoot,
+          encoding: 'utf8',
+        }).trim(),
+        'true',
+      );
+
+      const loc = `${SITE_ORIGIN}/pro`;
+      const resolveMaterialLastmod = createMaterialLastmodResolver({
+        repoRoot: shallowRoot,
+        existingSitemapSource: `<?xml version="1.0"?><urlset><url><loc>${loc}</loc>`
+          + '<lastmod>2026-06-01</lastmod></url></urlset>',
+      });
+
+      assert.equal(
+        resolveMaterialLastmod({ loc, materialSources: ['material.txt'] }),
+        '2026-06-01',
+      );
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
   });
 
   it('keeps the committed artifact generated and robots ownership exact', () => {

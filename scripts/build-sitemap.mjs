@@ -39,8 +39,8 @@ const route = (loc, family, materialSources) => ({
  *
  * materialSources are deliberately content-bearing repository paths. Their
  * latest Git commit date is the route's lastmod; build/deploy time is never an
- * input. In build contexts without .git, the committed generated sitemap is
- * the deterministic fallback.
+ * input. In build contexts without complete Git history, the committed
+ * generated sitemap is the deterministic fallback.
  */
 export const STATIC_ROUTE_MANIFEST = Object.freeze([
   route(`${SITE_ORIGIN}/`, 'landing', [
@@ -153,6 +153,22 @@ function gitLastmod(repoRoot, materialSources) {
   }
 }
 
+function hasCompleteGitHistory(repoRoot) {
+  try {
+    return execFileSync(
+      'git',
+      ['rev-parse', '--is-shallow-repository'],
+      {
+        cwd: repoRoot,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      },
+    ).trim() === 'false';
+  } catch {
+    return false;
+  }
+}
+
 function assertMaterialSourcesExist(repoRoot, manifestEntry) {
   for (const sourcePath of manifestEntry.materialSources) {
     if (!existsSync(join(repoRoot, sourcePath))) {
@@ -166,8 +182,9 @@ export function createMaterialLastmodResolver({
   existingSitemapSource = '',
 } = {}) {
   const existingLastmods = parseExistingSitemapLastmods(existingSitemapSource);
+  const canResolveGitLastmods = hasCompleteGitHistory(repoRoot);
   return (manifestEntry) => (
-    gitLastmod(repoRoot, manifestEntry.materialSources)
+    (canResolveGitLastmods ? gitLastmod(repoRoot, manifestEntry.materialSources) : null)
     ?? existingLastmods.get(manifestEntry.loc)
     ?? null
   );
