@@ -1763,7 +1763,9 @@ export function createDomainGateway(
             }
           }
           // Eligible + enforce + not rejected ⇒ the per-account layer governs
-          // this request; skip the per-IP fallback. In shadow, keep per-IP on.
+          // this request and skips the global fallback. In shadow, keep that
+          // fallback active: validated user keys use their trusted principal,
+          // while enterprise keys retain IP attribution.
           if (enforce) governedByApiKeyLayer = true;
         }
       }
