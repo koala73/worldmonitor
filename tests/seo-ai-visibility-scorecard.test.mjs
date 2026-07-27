@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import {
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -201,6 +202,21 @@ describe('SEO and AI visibility baseline', () => {
       () => validateBaseline(mislabeled, querySet),
       /label must match the inclusive calendar-day span/,
     );
+  });
+
+  it('validates every committed baseline in the directory', () => {
+    const baselinesDir = new URL(
+      '../docs/research/seo-ai-visibility/baselines/',
+      import.meta.url,
+    );
+    const names = readdirSync(baselinesDir).filter((name) => name.endsWith('.json'));
+    assert.ok(names.length >= 1, 'expected at least one committed baseline');
+    for (const name of names) {
+      const committed = JSON.parse(
+        readFileSync(new URL(name, baselinesDir), 'utf8'),
+      );
+      assert.doesNotThrow(() => validateBaseline(committed, querySet), name);
+    }
   });
 });
 
@@ -491,16 +507,18 @@ describe('scorecard computation', () => {
       comparison.lostCitations.map(({ queryId, platform }) => ({ queryId, platform })),
       [{ queryId: 'q01', platform: 'chatgpt_search' }],
     );
-    assert.equal(comparison.search.googleSearchConsole.impressions.absolute, 500);
-    assert.equal(comparison.search.googleSearchConsole.impressions.relative, 0.5);
-    assert.equal(comparison.search.googleSearchConsole.ctr.absolute, 0.01);
-    assert.equal(comparison.search.googleSearchConsole.indexedPages.absolute, -10);
-    assert.equal(comparison.referrals.sessions.absolute, 15);
+    assert.equal(comparison.search.googleSearchConsole.windowLabel, '28d');
+    assert.equal(comparison.search.googleSearchConsole.metrics.impressions.absolute, 500);
+    assert.equal(comparison.search.googleSearchConsole.metrics.impressions.relative, 0.5);
+    assert.equal(comparison.search.googleSearchConsole.metrics.ctr.absolute, 0.01);
+    assert.equal(comparison.search.googleSearchConsole.metrics.indexedPages.absolute, -10);
+    assert.equal(comparison.referrals.windowLabel, '28d');
+    assert.equal(comparison.referrals.metrics.sessions.absolute, 15);
 
     next.comparison = comparison;
     const markdown = formatScorecardMarkdown(next);
-    assert.match(markdown, /Indexing regressions: googleSearchConsole: 220 → 210/);
-    assert.match(markdown, /Referral\/outcome movement: sessions: 20 → 35/);
+    assert.match(markdown, /Indexing regressions: googleSearchConsole \(28d\): 220 → 210/);
+    assert.match(markdown, /Referral\/outcome movement: sessions \(28d\): 20 → 35/);
   });
 
   it('does not turn sparse audit coverage into new or lost citations', () => {
@@ -560,8 +578,103 @@ describe('scorecard computation', () => {
 
     const comparison = compareScorecards(previous, current);
 
-    assert.equal(comparison.search.googleSearchConsole.impressions.absolute, 150);
-    assert.equal(comparison.search.googleSearchConsole.indexedPages, null);
+    assert.equal(comparison.search.googleSearchConsole.metrics.impressions.absolute, 150);
+    assert.equal(comparison.search.googleSearchConsole.metrics.indexedPages, null);
+  });
+
+  it('prefers the 28d window for comparisons regardless of authored window order', () => {
+    const previous = buildScorecard(querySet, baseline);
+    const current = buildScorecard(querySet, baseline);
+    const searchWindow = (label, impressions) => ({
+      label,
+      metrics: {
+        indexedPages: null,
+        impressions,
+        clicks: 10,
+        ctr: 0.1,
+        averagePosition: 12,
+      },
+    });
+    previous.search.googleSearchConsole = {
+      status: 'partial',
+      reason: 'Only aggregate exports were available.',
+      windows: [searchWindow('90d', 900), searchWindow('28d', 100)],
+    };
+    current.search.googleSearchConsole = {
+      status: 'partial',
+      reason: 'Only aggregate exports were available.',
+      windows: [searchWindow('28d', 250), searchWindow('90d', 2000)],
+    };
+
+    const comparison = compareScorecards(previous, current);
+    const compared = comparison.search.googleSearchConsole;
+
+    assert.equal(compared.windowLabel, '28d');
+    assert.equal(compared.metrics.impressions.before, 100);
+    assert.equal(compared.metrics.impressions.after, 250);
+
+    current.comparison = comparison;
+    const markdown = formatScorecardMarkdown(current);
+    assert.match(markdown, /googleSearchConsole\.impressions \(28d\): 100 → 250/);
+  });
+
+  it('classifies meaningful changes via the relative arm and guards before=0 ratios', () => {
+    const previous = buildScorecard(querySet, baseline);
+    const current = buildScorecard(querySet, baseline);
+    const referralWindow = (metrics) => ({ label: '28d', metrics });
+    previous.referrals = {
+      ...previous.referrals,
+      status: 'available',
+      windows: [referralWindow({
+        sessions: 50,
+        dashboardLaunches: 5,
+        pricingViews: 4,
+        signUps: 2,
+        proConversions: 1,
+        apiActions: 1,
+        mcpActions: 0,
+      })],
+    };
+    current.referrals = {
+      ...current.referrals,
+      status: 'available',
+      windows: [referralWindow({
+        sessions: 59,
+        dashboardLaunches: 5,
+        pricingViews: 4,
+        signUps: 2,
+        proConversions: 1,
+        apiActions: 1,
+        mcpActions: 1,
+      })],
+    };
+
+    const { metrics } = compareScorecards(previous, current).referrals;
+
+    assert.equal(metrics.sessions.absolute, 9);
+    assert.equal(metrics.sessions.relative, 0.18);
+    assert.equal(metrics.sessions.meaningful, true);
+    assert.equal(metrics.mcpActions.relative, null);
+    assert.equal(metrics.mcpActions.meaningful, true);
+    assert.equal(metrics.dashboardLaunches.meaningful, false);
+  });
+
+  it('escapes markdown-significant characters in cited URLs and summaries', () => {
+    const hostile = structuredClone(baseline);
+    const observation = hostile.aiObservations[0];
+    observation.citedUrls = ['https://www.worldmonitor.app/report(2026)?q=a|b'];
+    observation.directCitation = true;
+    observation.accuracy = 'mixed';
+    observation.summary = 'Line one\nwith | pipe';
+
+    const markdown = formatScorecardMarkdown(buildScorecard(querySet, hostile));
+
+    assert.ok(
+      markdown.includes('[link](https://www.worldmonitor.app/report%282026%29?q=a\\|b)'),
+      'cited URL must be rendered with encoded parentheses and escaped pipe',
+    );
+    assert.ok(markdown.includes('Line one with \\| pipe'));
+    assert.doesNotMatch(markdown, /report\(2026\)/);
   });
 
   it('does not compare provider metrics for disjoint window labels', () => {
@@ -659,5 +772,18 @@ describe('scorecard computation', () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+});
+
+describe('CLI argument validation', () => {
+  it('rejects malformed invocations before reading any input', async () => {
+    await assert.rejects(runCli(['--bogus']), /unknown argument --bogus/);
+    await assert.rejects(runCli(['--queries']), /--queries requires a value/);
+    await assert.rejects(runCli(['--baseline', 'b.json']), /--queries is required/);
+    await assert.rejects(runCli(['--queries', 'q.json']), /--baseline is required/);
+    await assert.rejects(
+      runCli(['--queries', 'q.json', '--baseline', 'b.json', '--check']),
+      /--check requires --output/,
+    );
   });
 });

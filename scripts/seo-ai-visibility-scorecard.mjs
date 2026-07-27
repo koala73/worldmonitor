@@ -794,17 +794,24 @@ function compareWindowedSource(previous, current, metricNames) {
   const currentWindowsByLabel = new Map(
     current.windows.map((window) => [window.label, window]),
   );
-  const previousWindow = previous.windows.find(
+  const sharedWindows = previous.windows.filter(
     (window) => currentWindowsByLabel.has(window.label),
   );
-  if (!previousWindow) return null;
+  if (sharedWindows.length === 0) return null;
+  // Single-window comparison: prefer the canonical 28d label (mirroring
+  // preferredWindow) so selection never depends on authored window order.
+  const previousWindow = sharedWindows.find(({ label }) => label === '28d')
+    ?? sharedWindows[0];
   const currentWindow = currentWindowsByLabel.get(previousWindow.label);
-  return Object.fromEntries(
-    metricNames.map((metric) => [
-      metric,
-      metricDelta(previousWindow, currentWindow, metric),
-    ]),
-  );
+  return {
+    windowLabel: previousWindow.label,
+    metrics: Object.fromEntries(
+      metricNames.map((metric) => [
+        metric,
+        metricDelta(previousWindow, currentWindow, metric),
+      ]),
+    ),
+  };
 }
 
 export function compareScorecards(previous, current) {
@@ -910,6 +917,19 @@ function referralMetricCell(source, metric) {
   return value === null ? 'Unavailable' : value;
 }
 
+function formatReferralRow(label, source) {
+  const cells = REFERRAL_METRICS.map((metric) => referralMetricCell(source, metric));
+  return `| ${label} | ${cells.join(' | ')} |`;
+}
+
+function markdownLink(url) {
+  const target = url
+    .replaceAll('(', '%28')
+    .replaceAll(')', '%29')
+    .replaceAll(' ', '%20');
+  return `[link](${target})`;
+}
+
 function formatComparison(comparison) {
   if (!comparison) {
     return [
@@ -926,25 +946,27 @@ function formatComparison(comparison) {
   );
   const meaningfulSearch = [];
   const indexingRegressions = [];
-  for (const [provider, metrics] of Object.entries(comparison.search)) {
-    if (!metrics) continue;
+  for (const [provider, windowComparison] of Object.entries(comparison.search)) {
+    if (!windowComparison) continue;
+    const { windowLabel, metrics } = windowComparison;
     for (const [metric, delta] of Object.entries(metrics)) {
       if (delta?.meaningful) {
         meaningfulSearch.push(
-          `${provider}.${metric}: ${delta.before} → ${delta.after} (${delta.absolute >= 0 ? '+' : ''}${delta.absolute})`,
+          `${provider}.${metric} (${windowLabel}): ${delta.before} → ${delta.after} (${delta.absolute >= 0 ? '+' : ''}${delta.absolute})`,
         );
       }
     }
     if (metrics.indexedPages?.meaningful && metrics.indexedPages.absolute < 0) {
       indexingRegressions.push(
-        `${provider}: ${metrics.indexedPages.before} → ${metrics.indexedPages.after}`,
+        `${provider} (${windowLabel}): ${metrics.indexedPages.before} → ${metrics.indexedPages.after}`,
       );
     }
   }
-  const meaningfulReferrals = Object.entries(comparison.referrals ?? {})
+  const referralComparison = comparison.referrals;
+  const meaningfulReferrals = Object.entries(referralComparison?.metrics ?? {})
     .filter(([, delta]) => delta?.meaningful)
     .map(([metric, delta]) => (
-      `${metric}: ${delta.before} → ${delta.after} (${delta.absolute >= 0 ? '+' : ''}${delta.absolute})`
+      `${metric} (${referralComparison.windowLabel}): ${delta.before} → ${delta.after} (${delta.absolute >= 0 ? '+' : ''}${delta.absolute})`
     ));
   return [
     '## Monthly comparison',
@@ -1018,15 +1040,14 @@ export function formatScorecardMarkdown(scorecard) {
     '',
     '| Referrer family | Sessions | Dashboard launches | Pricing views | Sign-ups | Pro conversions | API actions | MCP actions |',
     '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
-    ...scorecard.referrals.classification.families.map(({ id, label }) => {
-      const source = scorecard.referrals.byReferrerFamily[id];
-      return `| ${label} | ${referralMetricCell(source, 'sessions')} | ${referralMetricCell(source, 'dashboardLaunches')} | ${referralMetricCell(source, 'pricingViews')} | ${referralMetricCell(source, 'signUps')} | ${referralMetricCell(source, 'proConversions')} | ${referralMetricCell(source, 'apiActions')} | ${referralMetricCell(source, 'mcpActions')} |`;
-    }),
+    ...scorecard.referrals.classification.families.map(({ id, label }) => (
+      formatReferralRow(label, scorecard.referrals.byReferrerFamily[id])
+    )),
     '',
     '| Landing-page family | Sessions | Dashboard launches | Pricing views | Sign-ups | Pro conversions | API actions | MCP actions |',
     '| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
     ...Object.entries(scorecard.referrals.byPageFamily).map(([family, source]) => (
-      `| ${PAGE_FAMILY_LABELS[family]} | ${referralMetricCell(source, 'sessions')} | ${referralMetricCell(source, 'dashboardLaunches')} | ${referralMetricCell(source, 'pricingViews')} | ${referralMetricCell(source, 'signUps')} | ${referralMetricCell(source, 'proConversions')} | ${referralMetricCell(source, 'apiActions')} | ${referralMetricCell(source, 'mcpActions')} |`
+      formatReferralRow(PAGE_FAMILY_LABELS[family], source)
     )),
     '',
     '## AI-answer audit',
@@ -1040,14 +1061,14 @@ export function formatScorecardMarkdown(scorecard) {
     '| Platform | Brand | Citation | Sentiment | Accuracy | Cited URLs |',
     '| --- | --- | --- | --- | --- | --- |',
     ...scorecard.ai.observations.map((observation) => (
-      `| ${PLATFORM_LABELS[observation.platform]} | ${observation.brandMention ? 'Mention' : 'No mention'} | ${observation.directCitation ? 'Direct citation' : 'No direct citation'} | ${observation.sentiment} | ${observation.accuracy} | ${observation.citedUrls.map((url) => `[link](${url})`).join(', ') || 'none'} |`
+      `| ${PLATFORM_LABELS[observation.platform]} | ${observation.brandMention ? 'Mention' : 'No mention'} | ${observation.directCitation ? 'Direct citation' : 'No direct citation'} | ${observation.sentiment} | ${observation.accuracy} | ${markdownCell(observation.citedUrls.map(markdownLink).join(', ')) || 'none'} |`
     )),
     '',
     '### Accuracy and entity risks',
     '',
     ...(scorecard.ai.accuracyRisks.length
       ? scorecard.ai.accuracyRisks.map((observation) => (
-        `- ${PLATFORM_LABELS[observation.platform]} / ${observation.queryId}: ${observation.summary}`
+        `- ${PLATFORM_LABELS[observation.platform]} / ${observation.queryId}: ${markdownCell(observation.summary)}`
       ))
       : ['- No mixed or inaccurate answers recorded.']),
     '',
