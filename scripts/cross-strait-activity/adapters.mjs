@@ -1865,7 +1865,7 @@ function boundedDiagnosticString(value, maxChars = PROXY_DIAGNOSTIC_MAX_CHARS) {
   if (typeof value !== 'string') return null;
   const normalized = value
     .replace(/(https?:\/\/)[^@\s/]+@/giu, '$1[redacted]@')
-    .replace(/(Proxy-Authorization:\s*)\S+/giu, '$1[redacted]')
+    .replace(/(Proxy-Authorization:\s*)[^\r\n]+/giu, '$1[redacted]')
     .replace(/\s+/gu, ' ')
     .trim();
   return normalized ? normalized.slice(0, maxChars) : null;

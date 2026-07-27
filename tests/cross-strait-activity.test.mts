@@ -1217,7 +1217,7 @@ describe('quantified cross-Strait activity (#5575)', () => {
       proxyRequestFn: async () => {
         throw Object.assign(
           new Error(
-            `socket hang up via https://proxy-user:proxy-secret@proxy.test ${'x'.repeat(500)}`,
+            `socket hang up\nProxy-Authorization: Basic cHJveHktc2VjcmV0\nvia https://proxy-user:proxy-secret@proxy.test ${'x'.repeat(500)}`,
           ),
           { code: 'ECONNRESET' },
         );
@@ -1235,10 +1235,13 @@ describe('quantified cross-Strait activity (#5575)', () => {
       contentType: null,
       bodyPrefix: null,
       errorCode: 'ECONNRESET',
-      errorMessage: `socket hang up via https://[redacted]@proxy.test ${'x'.repeat(500)}`
+      errorMessage: `socket hang up Proxy-Authorization: [redacted] via https://[redacted]@proxy.test ${'x'.repeat(500)}`
         .slice(0, 256),
     });
-    assert.doesNotMatch(JSON.stringify(japan), /proxy-user|proxy-secret/);
+    assert.doesNotMatch(
+      JSON.stringify(japan),
+      /proxy-user|proxy-secret|cHJveHktc2VjcmV0/,
+    );
   });
 
   it('classifies a proxy CONNECT 403 as a documented blocked Japan MOD path', async () => {
