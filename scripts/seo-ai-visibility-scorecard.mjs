@@ -159,6 +159,29 @@ function validateWindowedSource(source, metricNames, label) {
     invariant(isNonEmptyString(window.label), `${windowLabel}.label is required`);
     assertIsoDate(window.startDate, `${windowLabel}.startDate`);
     assertIsoDate(window.endDate, `${windowLabel}.endDate`);
+    const start = Date.parse(window.startDate);
+    const end = Date.parse(window.endDate);
+    invariant(start <= end, `${windowLabel}.startDate must not be after endDate`);
+    const numericLabel = /^(\d+)d$/.exec(window.label);
+    if (numericLabel) {
+      const startDate = new Date(start);
+      const endDate = new Date(end);
+      const startDay = Date.UTC(
+        startDate.getUTCFullYear(),
+        startDate.getUTCMonth(),
+        startDate.getUTCDate(),
+      );
+      const endDay = Date.UTC(
+        endDate.getUTCFullYear(),
+        endDate.getUTCMonth(),
+        endDate.getUTCDate(),
+      );
+      const inclusiveDays = ((endDay - startDay) / 86_400_000) + 1;
+      invariant(
+        Number(numericLabel[1]) === inclusiveDays,
+        `${windowLabel}.label must match the inclusive calendar-day span`,
+      );
+    }
     assertNullableMetrics(window.metrics, metricNames, windowLabel, source.status);
   }
 }
@@ -768,12 +791,14 @@ function compareWindowedSource(previous, current, metricNames) {
   ) {
     return null;
   }
-  const currentWindow = current.windows.find(
-    (window) => window.label === previous.windows[0].label,
-  ) ?? current.windows[0];
+  const currentWindowsByLabel = new Map(
+    current.windows.map((window) => [window.label, window]),
+  );
   const previousWindow = previous.windows.find(
-    (window) => window.label === currentWindow.label,
-  ) ?? previous.windows[0];
+    (window) => currentWindowsByLabel.has(window.label),
+  );
+  if (!previousWindow) return null;
+  const currentWindow = currentWindowsByLabel.get(previousWindow.label);
   return Object.fromEntries(
     metricNames.map((metric) => [
       metric,

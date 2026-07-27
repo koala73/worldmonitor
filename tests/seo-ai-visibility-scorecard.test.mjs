@@ -186,6 +186,22 @@ describe('SEO and AI visibility baseline', () => {
       /window labels must be unique/,
     );
   });
+
+  it('rejects reversed and mislabeled numeric reporting periods', () => {
+    const reversed = structuredClone(baseline);
+    reversed.search.googleSearchConsole.windows[0].startDate = '2026-07-28';
+    assert.throws(
+      () => validateBaseline(reversed, querySet),
+      /startDate must not be after endDate/,
+    );
+
+    const mislabeled = structuredClone(baseline);
+    mislabeled.search.googleSearchConsole.windows[0].label = '7d';
+    assert.throws(
+      () => validateBaseline(mislabeled, querySet),
+      /label must match the inclusive calendar-day span/,
+    );
+  });
 });
 
 describe('scorecard computation', () => {
@@ -546,6 +562,43 @@ describe('scorecard computation', () => {
 
     assert.equal(comparison.search.googleSearchConsole.impressions.absolute, 150);
     assert.equal(comparison.search.googleSearchConsole.indexedPages, null);
+  });
+
+  it('does not compare provider metrics for disjoint window labels', () => {
+    const previous = buildScorecard(querySet, baseline);
+    const current = buildScorecard(querySet, baseline);
+    previous.search.googleSearchConsole = {
+      status: 'partial',
+      reason: 'Only a 28-day export was available.',
+      windows: [{
+        label: '28d',
+        metrics: {
+          indexedPages: null,
+          impressions: 100,
+          clicks: 10,
+          ctr: 0.1,
+          averagePosition: 12,
+        },
+      }],
+    };
+    current.search.googleSearchConsole = {
+      status: 'partial',
+      reason: 'Only a 7-day export was available.',
+      windows: [{
+        label: '7d',
+        metrics: {
+          indexedPages: null,
+          impressions: 250,
+          clicks: 30,
+          ctr: 0.12,
+          averagePosition: 10,
+        },
+      }],
+    };
+
+    const comparison = compareScorecards(previous, current);
+
+    assert.equal(comparison.search.googleSearchConsole, null);
   });
 
   it('renders availability, reproducibility, risks, and the top-five work queue', () => {
