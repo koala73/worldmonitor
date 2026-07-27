@@ -50,19 +50,6 @@ function withoutKeys(value, keys) {
   return Object.fromEntries(Object.entries(value).filter(([key]) => !keys.has(key)));
 }
 
-function planNameForTier(tierGroup, billingPeriod) {
-  const base = {
-    free: 'Free',
-    pro: 'Pro',
-    api_starter: 'API Starter',
-    api_business: 'API Business',
-    enterprise: 'Enterprise',
-  }[tierGroup] ?? tierGroup;
-  if (billingPeriod === 'monthly') return `${base} Monthly`;
-  if (billingPeriod === 'annual') return `${base} Annual`;
-  return base;
-}
-
 function billingDurationFor(period) {
   if (period === 'monthly') return 'P1M';
   if (period === 'annual') return 'P1Y';
@@ -145,7 +132,7 @@ const tierConfig = Object.fromEntries(
 
 const plans = publicCatalogEntries.map(([planKey, entry]) => ({
   planKey,
-  name: planNameForTier(entry.tierGroup, entry.billingPeriod),
+  name: entry.displayName,
   tierGroup: entry.tierGroup,
   billingPeriod: entry.billingPeriod,
   billingDuration: billingDurationFor(entry.billingPeriod),

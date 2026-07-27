@@ -85,7 +85,7 @@ export const PUBLIC_PRODUCT_FACTS = {
     },
     {
       "planKey": "api_business",
-      "name": "API Business Monthly",
+      "name": "API Business",
       "tierGroup": "api_business",
       "billingPeriod": "monthly",
       "billingDuration": "P1M",
