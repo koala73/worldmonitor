@@ -128,6 +128,68 @@ test('classifyKey: socialVelocity error seed-meta → SEED_ERROR while data is p
   assert.equal(entry.records, 1);
 });
 
+test('classifyKey: degraded source with a non-positive or invalid fetchedAt exposes unknown age', () => {
+  const name = 'crossStraitActivityJapanMod';
+  const dataKey = STANDALONE_KEYS[name];
+  const metaKey = SEED_META[name].key;
+
+  for (const fetchedAt of [0, -1, 'invalid']) {
+    const entry = classifyKey(name, dataKey, { allowOnDemand: true },
+      makeCtx({
+        strens: { [dataKey]: 396 },
+        metaValues: {
+          [metaKey]: seedMeta({
+            fetchedAt,
+            recordCount: 2,
+            sourceState: 'error',
+            stale: true,
+          }),
+        },
+      }));
+
+    assert.equal(entry.status, 'SEED_ERROR', String(fetchedAt));
+    assert.equal(entry.records, 2, String(fetchedAt));
+    assert.equal(
+      Object.hasOwn(entry, 'seedAgeMin'),
+      false,
+      `${String(fetchedAt)} must remain unknown instead of fabricating an age`,
+    );
+  }
+});
+
+test('classifyKey: missing corporate-disclosure payload cannot be hidden by fresh zero-record metadata', () => {
+  const name = 'chinaCorporateDisclosures';
+  const dataKey = BOOTSTRAP_KEYS[name] ?? STANDALONE_KEYS[name];
+  const metaKey = SEED_META[name].key;
+  const entry = classifyKey(name, dataKey, { allowOnDemand: true },
+    makeCtx({
+      metaValues: {
+        [metaKey]: seedMeta({ recordCount: 0 }),
+      },
+    }));
+
+  assert.equal(entry.status, 'EMPTY');
+  assert.equal(entry.records, 0);
+  assert.equal(STATUS_COUNTS[entry.status], 'crit');
+});
+
+test('classifyKey: present current corporate-disclosure payload may contain zero admitted events', () => {
+  const name = 'chinaCorporateDisclosures';
+  const dataKey = BOOTSTRAP_KEYS[name] ?? STANDALONE_KEYS[name];
+  const metaKey = SEED_META[name].key;
+  const entry = classifyKey(name, dataKey, { allowOnDemand: true },
+    makeCtx({
+      strens: { [dataKey]: 512 },
+      metaValues: {
+        [metaKey]: seedMeta({ recordCount: 0 }),
+      },
+    }));
+
+  assert.equal(entry.status, 'OK');
+  assert.equal(entry.records, 0);
+  assert.equal(STATUS_COUNTS[entry.status], 'ok');
+});
+
 test('classifyKey: socialVelocity/wsbTickers tolerate the 3h cadence — fresh at 300min → OK', () => {
   // Cadence dropped 1h→3h (ScrapeCreators), so maxStaleMin was raised 180→540.
   // A healthy seed-meta aged 300min (5h, inside 540) must NOT false-alarm.

@@ -761,6 +761,11 @@ const EMPTY_DATA_OK_KEYS = new Set([
 // EMPTY_DATA_OK_KEYS so a pre-first-publish absence remains STALE_SEED rather
 // than a false-critical EMPTY; tests/health-empty-data-ok.test.mjs enforces it.
 const MISSING_DATA_IS_FAILURE_KEYS = new Set([
+  // These sparse feeds publish an explicit canonical payload on every
+  // successful cycle, including valid zero-record cycles. Fresh metadata
+  // therefore cannot excuse a vanished data key.
+  'cableHealth',
+  'notamClosures',
   'thermalEscalationBootstrap',
   'ucdpEventsBootstrap',
   'wildfiresBootstrap',
@@ -868,8 +873,9 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   }
   let seedAge = null;
   let seedStale = true;
-  if (meta?.fetchedAt) {
-    seedAge = Math.round((now - meta.fetchedAt) / 60_000);
+  const fetchedAt = Number(meta?.fetchedAt);
+  if (Number.isFinite(fetchedAt) && fetchedAt > 0) {
+    seedAge = Math.round((now - fetchedAt) / 60_000);
     seedStale = seedAge > seedCfg.maxStaleMin;
   }
   const metaCount = meta?.count ?? meta?.recordCount ?? null;

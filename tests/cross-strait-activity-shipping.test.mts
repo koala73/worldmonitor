@@ -14,6 +14,7 @@ import {
   CROSS_STRAIT_ACTIVITY_FETCH_PHASE_TIMEOUT_MS,
   CROSS_STRAIT_ACTIVITY_LOCK_TTL_MS,
   CROSS_STRAIT_ACTIVITY_PUBLISH_CLEANUP_HEADROOM_MS,
+  CROSS_STRAIT_ACTIVITY_SOURCE_FAILURE_TTL_SECONDS,
   CROSS_STRAIT_ACTIVITY_TTL_SECONDS,
   crossStraitActivityAfterPublish,
   crossStraitActivityBeforePublish,
@@ -172,6 +173,70 @@ test('degraded cross-Strait source health publishes the error metadata before it
   assert.deepEqual(writes, [
     'seed-meta:military:cross-strait-activity:taiwan-mnd',
     'military:cross-strait-activity:v1:source:taiwan-mnd',
+  ]);
+});
+
+test('degraded cross-Strait source health bounds the error marker TTL', async () => {
+  const snapshot = {
+    observations: [{ sourceId: 'japan-mod' }, { sourceId: 'japan-mod' }],
+    sources: [{
+      id: 'japan-mod',
+      transportStatus: 'error',
+      lastSuccessAt: null,
+    }],
+  };
+  const writes: Array<{ key: string; value: object; ttl: number }> = [];
+  await writeSourceHealth(snapshot, async (key: string, value: object, ttl: number) => {
+    writes.push({ key, value, ttl });
+  });
+
+  assert.equal(CROSS_STRAIT_ACTIVITY_SOURCE_FAILURE_TTL_SECONDS, 720 * 60);
+  assert.deepEqual(writes, [
+    {
+      key: 'seed-meta:military:cross-strait-activity:japan-mod',
+      value: {
+        fetchedAt: 0,
+        recordCount: 2,
+        sourceState: 'error',
+        stale: true,
+      },
+      ttl: CROSS_STRAIT_ACTIVITY_SOURCE_FAILURE_TTL_SECONDS,
+    },
+    {
+      key: 'military:cross-strait-activity:v1:source:japan-mod',
+      value: snapshot.sources[0],
+      ttl: CROSS_STRAIT_ACTIVITY_TTL_SECONDS,
+    },
+  ]);
+  assert.ok(
+    CROSS_STRAIT_ACTIVITY_SOURCE_FAILURE_TTL_SECONDS < CROSS_STRAIT_ACTIVITY_TTL_SECONDS,
+    'an error marker must not inherit the 180-day archive TTL',
+  );
+});
+
+test('healthy cross-Strait source health retains the archive TTL', async () => {
+  const snapshot = {
+    observations: [{ sourceId: 'taiwan-mnd' }],
+    sources: [{
+      id: 'taiwan-mnd',
+      transportStatus: 'fresh',
+      lastSuccessAt: '2026-07-25T08:00:00.000Z',
+    }],
+  };
+  const writes: Array<{ key: string; ttl: number }> = [];
+  await writeSourceHealth(snapshot, async (key: string, _value: object, ttl: number) => {
+    writes.push({ key, ttl });
+  });
+
+  assert.deepEqual(writes, [
+    {
+      key: 'military:cross-strait-activity:v1:source:taiwan-mnd',
+      ttl: CROSS_STRAIT_ACTIVITY_TTL_SECONDS,
+    },
+    {
+      key: 'seed-meta:military:cross-strait-activity:taiwan-mnd',
+      ttl: CROSS_STRAIT_ACTIVITY_TTL_SECONDS,
+    },
   ]);
 });
 

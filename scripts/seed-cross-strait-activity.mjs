@@ -10,6 +10,9 @@ import { loadEnvFile, readSeedSnapshot, runSeed, writeExtraKey } from './_seed-u
 loadEnvFile(import.meta.url);
 
 export const CROSS_STRAIT_ACTIVITY_TTL_SECONDS = 180 * 24 * 60 * 60;
+export const CROSS_STRAIT_ACTIVITY_MAX_STALE_MIN = 720;
+export const CROSS_STRAIT_ACTIVITY_SOURCE_FAILURE_TTL_SECONDS =
+  CROSS_STRAIT_ACTIVITY_MAX_STALE_MIN * 60;
 export const CROSS_STRAIT_ACTIVITY_MAX_CONTENT_AGE_MIN = 3 * DAY_MIN;
 export const CROSS_STRAIT_ACTIVITY_FETCH_PHASE_TIMEOUT_MS = 240_000;
 // Leave time after the bounded upstream phase to atomically publish the durable
@@ -81,6 +84,9 @@ export async function writeSourceHealth(snapshot, writer = writeExtraKey) {
   const outcomes = await Promise.allSettled((snapshot?.sources ?? []).map(async (source) => {
     const healthy = source?.transportStatus === 'fresh';
     const fetchedAt = Date.parse(source?.lastSuccessAt ?? '');
+    const metaTtlSeconds = healthy
+      ? CROSS_STRAIT_ACTIVITY_TTL_SECONDS
+      : CROSS_STRAIT_ACTIVITY_SOURCE_FAILURE_TTL_SECONDS;
     const writeData = () => writer(
       sourceHealthKey(source.id),
       source,
@@ -91,7 +97,7 @@ export async function writeSourceHealth(snapshot, writer = writeExtraKey) {
       recordCount: sourceRecordCount(snapshot, source.id),
       sourceState: healthy ? 'ok' : 'error',
       stale: !healthy,
-    }, CROSS_STRAIT_ACTIVITY_TTL_SECONDS);
+    }, metaTtlSeconds);
 
     // Never leave health claiming success when an error detail write fails.
     // Healthy observations may publish data first because an older `ok` meta
@@ -181,7 +187,7 @@ if (process.argv[1]?.endsWith('seed-cross-strait-activity.mjs')) {
     declareRecords: (snapshot) => snapshot.observations.length,
     sourceVersion: 'taiwan-mnd-html+japan-joint-staff-reviewed-v1',
     schemaVersion: 1,
-    maxStaleMin: 720,
+    maxStaleMin: CROSS_STRAIT_ACTIVITY_MAX_STALE_MIN,
     contentMeta: crossStraitActivityContentMeta,
     maxContentAgeMin: CROSS_STRAIT_ACTIVITY_MAX_CONTENT_AGE_MIN,
     extraKeys: [{
