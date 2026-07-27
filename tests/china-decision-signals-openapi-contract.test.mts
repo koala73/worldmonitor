@@ -154,6 +154,36 @@ describe('China decision-signals OpenAPI embedded JSON contract', () => {
     );
   });
 
+  it('rejects runtime-bearing manifest initializers instead of parsing a literal prefix', () => {
+    const literalEntry = `[
+      {
+        groupId: 'macro',
+        provenanceFamily: 'china_macro_official_numeric_observation',
+        sourceKey: 'economic:china:macro:v2',
+      },
+    ]`;
+
+    assert.throws(
+      () => parseChinaDecisionSignalManifest(`
+        export const CHINA_DECISION_SIGNAL_MAX_ITEMS_PER_GROUP = 4 + 1;
+        export const CHINA_DECISION_SIGNAL_GROUP_MANIFEST = ${literalEntry} as const;
+      `),
+      /static literal/,
+    );
+    for (const runtimeSuffix of [
+      '.slice(1)',
+      '.map((entry) => entry)',
+    ]) {
+      assert.throws(
+        () => parseChinaDecisionSignalManifest(`
+          export const CHINA_DECISION_SIGNAL_MAX_ITEMS_PER_GROUP = 4 as const;
+          export const CHINA_DECISION_SIGNAL_GROUP_MANIFEST = ${literalEntry}${runtimeSuffix};
+        `),
+        /static literal/,
+      );
+    }
+  });
+
   it('reads group provenance and item bounds from the shared runtime manifest', () => {
     assert.deepEqual(
       wireContract.groupIds,

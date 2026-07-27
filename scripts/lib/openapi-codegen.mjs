@@ -580,6 +580,59 @@ function constInitializerStart(source, name) {
   return source[start] === '=' ? skipTrivia(source, start + 1) : -1;
 }
 
+function statementTerminator(source, start) {
+  let index = start;
+  while (index < source.length) {
+    const commentEnd = skipComment(source, index);
+    if (commentEnd !== index) {
+      index = commentEnd;
+      continue;
+    }
+    if (
+      source[index] === '\''
+      || source[index] === '"'
+      || source[index] === '`'
+    ) {
+      index = skipQuotedLiteral(source, index);
+      continue;
+    }
+    if (source[index] === ';') return index;
+    index += 1;
+  }
+  return -1;
+}
+
+function withoutComments(source) {
+  let result = '';
+  let index = 0;
+  while (index < source.length) {
+    const commentEnd = skipComment(source, index);
+    if (commentEnd !== index) {
+      result += ' ';
+      index = commentEnd;
+      continue;
+    }
+    result += source[index];
+    index += 1;
+  }
+  return result;
+}
+
+function assertStaticLiteralInitializer(source, literalEnd, label) {
+  const terminator = statementTerminator(source, literalEnd);
+  if (terminator < 0) {
+    throw new Error(`${label} static literal must end with a semicolon`);
+  }
+  const suffix = withoutComments(source.slice(literalEnd, terminator)).trim();
+  const typeOnlySuffix =
+    /^(?:as\s+const\s*)?(?:satisfies\s+(?:readonly\s+)?[$A-Z_a-z][$\w]*(?:\s*\.\s*[$A-Z_a-z][$\w]*)*(?:\s*\[\s*\])*\s*)?$/;
+  if (!typeOnlySuffix.test(suffix)) {
+    throw new Error(
+      `${label} must be a static literal with optional type-only assertions`,
+    );
+  }
+}
+
 function readManifestStringProperty(entry, property) {
   let index = 0;
   while (index < entry.length) {
@@ -632,7 +685,13 @@ export function parseChinaDecisionSignalManifest(source) {
     throw new Error('could not locate the China decision-signal manifest');
   }
 
-  const manifestLiteral = readDelimited(source, manifestStart).content;
+  const manifest = readDelimited(source, manifestStart);
+  assertStaticLiteralInitializer(
+    source,
+    manifest.end,
+    'China decision-signal group manifest',
+  );
+  const manifestLiteral = manifest.content;
   const groupManifest = [];
   let index = 0;
   while (index < manifestLiteral.length) {
@@ -658,7 +717,15 @@ export function parseChinaDecisionSignalManifest(source) {
   }
 
   const maxItemsMatch = source.slice(maxItemsStart).match(/^(\d+)\b/);
-  const maxItemsPerGroup = Number(maxItemsMatch?.[1]);
+  if (!maxItemsMatch) {
+    throw new Error('could not parse the China decision-signal manifest');
+  }
+  assertStaticLiteralInitializer(
+    source,
+    maxItemsStart + maxItemsMatch[0].length,
+    'China decision-signal max items',
+  );
+  const maxItemsPerGroup = Number(maxItemsMatch[1]);
   if (groupManifest.length === 0 || !Number.isInteger(maxItemsPerGroup)) {
     throw new Error('could not parse the China decision-signal manifest');
   }
