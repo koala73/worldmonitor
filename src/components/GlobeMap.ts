@@ -68,6 +68,7 @@ import type { SatellitePosition } from '@/services/satellites';
 import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
 import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
 import { getCategoryStyle } from '@/services/webcams';
+import { loadDeskOverlay, type DeskOverlayCaseFile, type DeskOverlayResult } from '@/services/desk-overlay';
 import { pinWebcam, isPinned } from '@/services/webcams/pinned-store';
 import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
@@ -427,6 +428,12 @@ interface WebcamClusterData extends BaseMarker {
   count: number;
   categories: string[];
 }
+interface DeskOverlayMarker extends BaseMarker {
+  _kind: 'deskOverlay';
+  id: string;
+  caseFile: DeskOverlayCaseFile;
+}
+
 interface GlobePath {
   id: string;
   name: string;
@@ -462,7 +469,7 @@ type GlobeMarker =
   | EarthquakeMarker | RadiationMarker | EconomicMarker | DatacenterMarker | WaterwayMarker | MineralMarker
   | FlightDelayMarker | NotamRingMarker | CableAdvisoryMarker | RepairShipMarker | AisDisruptionMarker
   | NewsLocationMarker | FlashMarker | SatelliteMarker | SatFootprintMarker | ImagerySceneMarker
-  | WebcamMarkerData | WebcamClusterData;
+  | WebcamMarkerData | WebcamClusterData | DeskOverlayMarker;
 
 interface GlobeControlsLike {
   autoRotate: boolean;
@@ -568,6 +575,11 @@ export class GlobeMap {
   /** HTML markers handed to globe.gl on the last flush — the per-frame cost driver. */
   private renderedMarkerCount = 0;
   private markerBudgetProfile: 'mobile' | 'desktop' = 'desktop';
+  private deskOverlayMarkers: DeskOverlayMarker[] = [];
+  private deskOverlayCaseFiles: DeskOverlayCaseFile[] = [];
+  private deskOverlayVisible = true;
+  private deskOverlayDrawerEl: HTMLElement | null = null;
+  private deskOverlayStatusEl: HTMLElement | null = null;
   private webcamMarkerMode: string = (() => {
     try {
       return localStorage.getItem('wm-webcam-marker-mode') || 'icon';
@@ -984,6 +996,10 @@ export class GlobeMap {
     this.layers.dayNight = false;
     this.hideLayerToggle('dayNight');
 
+    // Desk publishes only a small, context-only case-file artifact. It is optional:
+    // overlay load failure must never delay or break the primary WorldMonitor renderer.
+    void this.loadDeskOverlay();
+
     // Flush any data that arrived before init completed
     this.flushMarkers();
     this.flushArcs();
@@ -1281,6 +1297,11 @@ export class GlobeMap {
     } else if (d._kind === 'imageryScene') {
       setTrustedHtml(el, trustedHtml(GlobeMap.wrapHit(`<div style="font-size:11px;color:#00b4ff;text-shadow:0 0 4px #00b4ff88;">&#128752;</div>`), "legacy direct innerHTML migration"));
       el.title = `${d.satellite} ${d.datetime}`;
+    } else if (d._kind === 'deskOverlay') {
+      const color = d.caseFile.severity === 'elevated' ? '#ff9f1a' : '#57d9ff';
+      el.style.cursor = 'pointer';
+      setTrustedHtml(el, trustedHtml(GlobeMap.wrapHit(`<div style="position:relative;width:18px;height:18px;"><div style="position:absolute;inset:0;border-radius:50%;background:${color}33;border:2px solid ${color};box-shadow:0 0 10px 3px ${color}77;"></div><div style="position:absolute;inset:4px;border-radius:50%;background:${color};${this.pulseStyle('2.4s')}"></div></div>`), "static Desk overlay marker"));
+      el.title = `Desk Overlay · ${d.caseFile.title}`;
     } else if (d._kind === 'webcam') {
       const style = getCategoryStyle(d.category);
       const emoji = this.webcamMarkerMode === 'emoji' ? style.emoji : '\u{1F4F7}';
@@ -1309,6 +1330,11 @@ export class GlobeMap {
   }
 
   private handleMarkerClick(d: GlobeMarker, anchor: HTMLElement): void {
+    if (d._kind === 'deskOverlay') {
+      this.openDeskOverlayDrawer(d.caseFile);
+      return;
+    }
+
     if (d._kind === 'hotspot' && this.onHotspotClickCb) {
       this.onHotspotClickCb({
         id: d.id,
@@ -1401,6 +1427,111 @@ export class GlobeMap {
       return;
     }
     this.showMarkerTooltip(d, anchor);
+  }
+
+  private async loadDeskOverlay(): Promise<void> {
+    const overlay = await loadDeskOverlay().catch(() => ({
+      status: 'unavailable' as const,
+      generatedAt: null,
+      caveats: ['Desk Overlay public artifact could not be loaded.'],
+      caseFiles: [],
+    }));
+    if (this.destroyed) return;
+
+    this.deskOverlayCaseFiles = overlay.caseFiles;
+    this.deskOverlayMarkers = overlay.caseFiles
+      .filter((caseFile) => caseFile.mapLocation)
+      .map((caseFile) => ({
+        _kind: 'deskOverlay' as const,
+        _lat: caseFile.mapLocation!.lat,
+        _lng: caseFile.mapLocation!.lon,
+        id: caseFile.id,
+        caseFile,
+      }));
+    this.renderDeskOverlayStatus(overlay);
+    this.flushMarkers();
+  }
+
+  private renderDeskOverlayStatus(overlay: DeskOverlayResult): void {
+    this.deskOverlayStatusEl?.remove();
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'desk-overlay-status';
+    card.style.cssText = [
+      'position:absolute', 'left:12px', 'bottom:30px', 'z-index:12',
+      'max-width:240px', 'padding:7px 9px', 'border-radius:4px',
+      'border:1px solid rgba(87,217,255,.55)', 'background:rgba(4,12,20,.9)',
+      'color:#d8f7ff', 'font:10px/1.35 var(--font-mono,monospace)', 'text-align:left', 'cursor:pointer',
+    ].join(';');
+    const pinCount = this.deskOverlayMarkers.length;
+    const detail = overlay.status === 'ok'
+      ? (overlay.caseFiles.length ? `${overlay.caseFiles.length} case · ${pinCount} pin` : '기준선 유지 · 새 변경 없음')
+      : overlay.status === 'baseline' ? '기준선 생성 중' : '데이터 확인 필요';
+    card.textContent = `DESK OVERLAY  |  ${detail}`;
+    card.title = 'Desk가 선별한 맥락 변화. 클릭하면 케이스 파일을 엽니다.';
+    card.addEventListener('click', () => {
+      const first = this.deskOverlayCaseFiles[0];
+      if (first) this.openDeskOverlayDrawer(first);
+    });
+    this.container.appendChild(card);
+    this.deskOverlayStatusEl = card;
+  }
+
+  private openDeskOverlayDrawer(caseFile: DeskOverlayCaseFile): void {
+    this.deskOverlayDrawerEl?.remove();
+    const drawer = document.createElement('aside');
+    drawer.className = 'desk-overlay-drawer';
+    drawer.style.cssText = [
+      'position:absolute', 'top:12px', 'right:12px', 'bottom:12px', 'z-index:1010',
+      'width:min(360px,calc(100% - 24px))', 'overflow:auto', 'box-sizing:border-box',
+      'padding:16px', 'border:1px solid rgba(87,217,255,.62)', 'border-radius:6px',
+      'background:rgba(4,10,17,.97)', 'box-shadow:0 14px 40px rgba(0,0,0,.48)',
+      'color:#e7f7ff', 'font:12px/1.5 var(--font-mono,monospace)',
+    ].join(';');
+
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.textContent = '×';
+    close.setAttribute('aria-label', 'Desk Overlay 닫기');
+    close.style.cssText = 'float:right;border:0;background:transparent;color:#a7c8d6;font-size:22px;line-height:1;cursor:pointer;';
+    close.addEventListener('click', () => {
+      drawer.remove();
+      if (this.deskOverlayDrawerEl === drawer) this.deskOverlayDrawerEl = null;
+    });
+
+    const eyebrow = document.createElement('div');
+    eyebrow.textContent = `DESK CASE FILE · ${caseFile.severity.toUpperCase()}`;
+    eyebrow.style.cssText = `font-size:10px;letter-spacing:.08em;color:${caseFile.severity === 'elevated' ? '#ffae42' : '#61dfff'};`;
+    const title = document.createElement('h2');
+    title.textContent = caseFile.title;
+    title.style.cssText = 'margin:7px 28px 10px 0;font-size:17px;line-height:1.35;color:#fff;';
+    const summary = document.createElement('p');
+    summary.textContent = caseFile.summary;
+    summary.style.cssText = 'margin:0 0 12px;color:#c7d8df;white-space:pre-wrap;';
+    const meta = document.createElement('div');
+    meta.textContent = [caseFile.mapLocation?.label, caseFile.observedAt, caseFile.impactAreas.length ? `영향: ${caseFile.impactAreas.join(', ')}` : null]
+      .filter(Boolean)
+      .join(' · ');
+    meta.style.cssText = 'margin:0 0 12px;color:#8cacb8;font-size:10px;';
+    const safety = document.createElement('div');
+    safety.textContent = '맥락·리서치 전용 · 주문·승인 신호 아님 · 브로커/주문 연결 없음';
+    safety.style.cssText = 'margin:14px 0 10px;padding:8px;border-left:2px solid #57d9ff;background:rgba(87,217,255,.08);color:#a8dfe9;font-size:10px;';
+
+    drawer.append(close, eyebrow, title, summary, meta, safety);
+    if (caseFile.deskUrl) drawer.append(this.createDeskOverlayLink('Desk Cockpit 열기', caseFile.deskUrl));
+    if (caseFile.evidenceUrl) drawer.append(this.createDeskOverlayLink('근거 원문 열기', caseFile.evidenceUrl));
+    this.container.appendChild(drawer);
+    this.deskOverlayDrawerEl = drawer;
+  }
+
+  private createDeskOverlayLink(label: string, href: string): HTMLAnchorElement {
+    const link = document.createElement('a');
+    link.textContent = label;
+    link.href = href;
+    link.target = '_blank';
+    link.rel = 'noopener noreferrer';
+    link.style.cssText = 'display:block;margin-top:8px;padding:8px 10px;border:1px solid rgba(87,217,255,.45);border-radius:3px;color:#8eeaff;text-decoration:none;font-size:11px;';
+    return link;
   }
 
   private showMarkerTooltip(d: GlobeMarker, anchor: HTMLElement): void {
@@ -2185,6 +2316,9 @@ export class GlobeMap {
       add('cables', this.repairShipMarkers);
     }
     if (this.layers.webcams) add('webcams', this.webcamMarkers);
+    // Desk cases are curated and few; retain the explicit event pin under the
+    // general marker budget, especially for an inbound Desk deep link.
+    if (this.deskOverlayVisible) add('deskOverlay', this.deskOverlayMarkers, { exempt: true });
     // Exempt like flash: `news` has no layer-toggle row, so a truncation here
     // would have nowhere to be disclosed. It was ungated before this change too.
     add('news', this.newsLocationMarkers, { exempt: true });
@@ -3853,6 +3987,10 @@ export class GlobeMap {
   public destroy(): void {
     this.popup?.hide();
     this.popup = null;
+    this.deskOverlayDrawerEl?.remove();
+    this.deskOverlayDrawerEl = null;
+    this.deskOverlayStatusEl?.remove();
+    this.deskOverlayStatusEl = null;
     this.flightData.clear();
     this.vesselData.clear();
     this.clusterData.clear();
