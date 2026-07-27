@@ -55,6 +55,7 @@ describe('production sitemap verifier helpers', () => {
     assert.equal(classifySitemapUrl('https://www.worldmonitor.app/chokepoints/suez-canal/'), 'chokepoints');
     assert.equal(classifySitemapUrl('https://www.worldmonitor.app/crises/ukraine-war/'), 'crises');
     assert.equal(classifySitemapUrl('https://www.worldmonitor.app/tools/natural-hazard-pulse/'), 'tools');
+    assert.equal(classifySitemapUrl('https://www.worldmonitor.app/research/strait-of-hormuz-transit-report-2026-07/'), 'research');
     assert.equal(classifySitemapUrl('https://www.worldmonitor.app/reference/changelog/'), 'reference');
     assert.equal(classifySitemapUrl('https://www.worldmonitor.app/blog/posts/example/'), 'blog');
     assert.equal(classifySitemapUrl('https://www.worldmonitor.app/docs/get-started'), 'docs');

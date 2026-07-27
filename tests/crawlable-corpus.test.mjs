@@ -110,12 +110,13 @@ describe('crawlable corpus generator', () => {
       assert.equal(manifest.sections.chokepoints.count, 13);
       assert.equal(manifest.sections.crises.count, 4);
       assert.equal(manifest.sections.tools.count, 2);
-      assert.equal(manifest.generatorContentVersion, '2026-07-24');
+      assert.equal(manifest.sections.research.count, 1);
+      assert.equal(manifest.generatorContentVersion, '2026-07-27');
       const sitemapEntries = buildSitemapEntries({
         repoRoot,
         publicDir: outDir,
         existingSitemapSource: '',
-        resolveMaterialLastmod: () => '2026-07-24',
+        resolveMaterialLastmod: () => '2026-07-27',
         today: '2026-07-27',
       });
       const corpusLocations = new Set(
@@ -132,6 +133,8 @@ describe('crawlable corpus generator', () => {
         ...manifest.sections.crises.routes,
         manifest.sections.tools.index,
         ...manifest.sections.tools.routes,
+        manifest.sections.research.index,
+        ...manifest.sections.research.routes,
         manifest.sections.changelog.index,
         ...manifest.sections.changelog.routes,
       ]);
@@ -165,7 +168,7 @@ describe('crawlable corpus generator', () => {
       const norway = read(outDir, 'countries/norway/index.html');
       assert.match(norway, /<h1>Norway country risk and resilience<\/h1>/);
       assert.match(norway, /<link rel="canonical" href="https:\/\/www\.worldmonitor\.app\/countries\/norway\/">/);
-      assert.match(norway, /<meta name="lastmod" content="2026-07-24">/);
+      assert.match(norway, /<meta name="lastmod" content="2026-07-27">/);
       assert.match(norway, /Source: docs\/snapshots\/resilience-ranking-2026-05-28\.json/);
       assert.doesNotMatch(norway, /id="app"/, 'country page must be raw static HTML, not the SPA shell');
       assert.match(norway, /data-live-country-risk data-country-code="NO" data-country-name="Norway"/);
@@ -300,7 +303,7 @@ describe('crawlable corpus generator', () => {
     assert.equal(data.sources.countryBboxes, 'shared/country-bboxes.js');
     assert.equal(data.sources.crisisRegistry, 'shared/crawlable-crises.json');
     assert.equal(data.resilience.capturedAt, '2026-05-28');
-    assert.equal(data.lastmod.countries, '2026-07-24');
+    assert.equal(data.lastmod.countries, '2026-07-27');
     assert.equal(data.crises.length, 4);
     assert.ok(data.crises.some((crisis) => crisis.slug === 'ukraine-war' && crisis.coverage.some((country) => country.code === 'UA')));
     assert.ok(data.countryBounds.some((country) => country.code === 'JP' && country.bounds[0] === 31.11));

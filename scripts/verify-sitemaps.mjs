@@ -57,7 +57,7 @@ export function classifySitemapUrl(value) {
   if (pathname === '/dashboard') return 'dashboard';
   if (pathname === '/pro') return 'product';
   if (/\.(?:md|txt)$/.test(pathname)) return 'machine-readable';
-  for (const family of ['countries', 'chokepoints', 'crises', 'tools']) {
+  for (const family of ['countries', 'chokepoints', 'crises', 'tools', 'research']) {
     if (pathname === `/${family}` || pathname.startsWith(`/${family}/`)) return family;
   }
   if (pathname === '/reference' || pathname.startsWith('/reference/')) return 'reference';

@@ -7,6 +7,7 @@ public/chokepoints/
 public/crises/
 public/tools/
 public/reference/
+public/research/
 public/crawlable-corpus.json
 .DS_Store
 *.log

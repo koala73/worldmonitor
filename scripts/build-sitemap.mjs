@@ -267,7 +267,7 @@ export function buildSitemapEntries({
 
   const corpusPages = discoverContentCorpusPages({ publicDir });
   if (requireCompleteCorpus) {
-    for (const prefix of ['/countries/', '/chokepoints/', '/crises/', '/tools/', '/reference/']) {
+    for (const prefix of ['/countries/', '/chokepoints/', '/crises/', '/tools/', '/research/', '/reference/']) {
       if (!corpusPages.some((page) => new URL(page.loc).pathname.startsWith(prefix))) {
         throw new Error(
           `generated content corpus is incomplete: no ${prefix} pages; `
