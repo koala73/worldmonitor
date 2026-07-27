@@ -80,8 +80,10 @@ test('public signal docs keep their listed signal count in sync with the SignalT
 });
 
 test('public signal docs stay aligned with hotspot escalation math', () => {
-  const hotspotCode = readRepo('src/services/hotspot-escalation.ts');
-  const geoCode = readRepo('src/config/geo.ts');
+  // Escalation math and the curated hotspot dataset moved to the shared
+  // client/server modules in #5696; the src/ files are re-export shims.
+  const hotspotCode = readRepo('shared/analysis-hotspot-escalation.ts');
+  const geoCode = readRepo('shared/geo-data.ts');
   const hotspotsDoc = readRepo('docs/hotspots.mdx');
   const algorithmsDoc = readRepo('docs/algorithms.mdx');
   const hotspotBaselines = extractHotspotBaselines(geoCode);
