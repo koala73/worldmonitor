@@ -28,8 +28,8 @@ Live tier/price/product-ID data (JSON): `GET https://www.worldmonitor.app/api/pr
 
 ## Pro Business
 
-- Price: $69.99/month
-- Annual price: $699.99/year
+- Price: $49.99/month
+- Annual price: $499/year
 - Annual savings: 2 months free versus monthly billing
 - Best for: Consultants, agencies and teams who use the Pro dashboard for client work, internal tools or reporting
 - Includes: Everything in Pro, plus data export (CSV, JSON and PDF reports)
@@ -114,8 +114,8 @@ Live tier/price/product-ID data (JSON): `GET https://www.worldmonitor.app/api/pr
     },
     {
       "name": "Pro Business",
-      "price_usd_monthly": 69.99,
-      "price_usd_yearly": 699.99,
+      "price_usd_monthly": 49.99,
+      "price_usd_yearly": 499,
       "features": [
         "Everything in Pro",
         "commercial license",
