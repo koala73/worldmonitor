@@ -1,15 +1,18 @@
 #!/usr/bin/env node
 
-import { readFileSync, realpathSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import {
   arrayLiteralHasStringMember,
   extractDelimitedBlock,
   objectLiteralEntryValue,
 } from './lib/js-source-structure.mjs';
+import { isMainModule } from './lib/main-module.mjs';
 import { readChinaDecisionSignalWireContract } from './lib/openapi-codegen.mjs';
 import { validateChinaDecisionSignalSnapshot } from './seed-china-decision-signals.mjs';
+
+export { isMainModule } from './lib/main-module.mjs';
 
 const wireContract = readChinaDecisionSignalWireContract();
 export const CHINA_DECISION_PARITY_MANIFEST = Object.freeze(
@@ -502,38 +505,6 @@ async function main() {
   const result = { static: staticAudit, ...(live ? { live } : {}) };
   console.log(JSON.stringify(result, null, 2));
   process.exitCode = resolveChinaParityExitCode({ staticOk: staticAudit.ok, live, requireLive });
-}
-
-/**
- * Report whether `moduleUrl` is the entrypoint the process was started with.
- *
- * Both sides are resolved through `realpathSync` first. Node sets
- * `import.meta.url` to the real path while `process.argv[1]` keeps whatever
- * path the caller typed, so the naive comparison silently no-ops — exit 0, zero
- * output — whenever the checkout is reached through a symlink (`/tmp` ->
- * `/private/tmp` on macOS is the common one). For an audit that is the worst
- * possible failure: it looks exactly like a clean run.
- *
- * @param {string} moduleUrl
- * @param {string | undefined} argv1
- * @returns {boolean}
- */
-export function isMainModule(moduleUrl, argv1) {
-  if (!argv1) return false;
-  try {
-    return pathToFileURL(realpathSync(fileURLToPath(moduleUrl))).href
-      === pathToFileURL(realpathSync(argv1)).href;
-  } catch {
-    // Degrade to the plain comparison rather than answering `false`: a throw
-    // here (an unresolvable path, a permission error) must not put the audit
-    // back to exiting 0 with no output, which is the silent no-op this
-    // function exists to prevent.
-    try {
-      return moduleUrl === pathToFileURL(argv1).href;
-    } catch {
-      return false;
-    }
-  }
 }
 
 if (isMainModule(import.meta.url, process.argv[1])) {
