@@ -105,10 +105,35 @@ function isNonEmptyString(value) {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
-function assertIsoDate(value, field) {
+function isIsoCalendarDate(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const [, year, month, day] = match.map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return parsed.getUTCFullYear() === year
+    && parsed.getUTCMonth() === month - 1
+    && parsed.getUTCDate() === day;
+}
+
+function assertIsoCalendarDate(value, field) {
   invariant(
-    isNonEmptyString(value) && Number.isFinite(Date.parse(value)),
-    `${field} must be an ISO date/date-time`,
+    isNonEmptyString(value) && isIsoCalendarDate(value),
+    `${field} must be an ISO calendar date (YYYY-MM-DD)`,
+  );
+}
+
+function assertIsoUtcDateTime(value, field) {
+  const match = isNonEmptyString(value)
+    ? /^(\d{4}-\d{2}-\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?Z$/.exec(value)
+    : null;
+  invariant(
+    match
+      && isIsoCalendarDate(match[1])
+      && Number(match[2]) <= 23
+      && Number(match[3]) <= 59
+      && Number(match[4]) <= 59
+      && Number.isFinite(Date.parse(value)),
+    `${field} must be an ISO UTC date-time`,
   );
 }
 
@@ -121,6 +146,18 @@ function assertNullableMetrics(metrics, metricNames, label, status) {
       value === null || (typeof value === 'number' && Number.isFinite(value)),
       `${label}.metrics.${metric} must be a finite number or null`,
     );
+    if (value !== null) {
+      invariant(
+        value >= 0,
+        `${label}.metrics.${metric} must be non-negative`,
+      );
+      if (metric === 'ctr') {
+        invariant(
+          value <= 1,
+          `${label}.metrics.ctr must be between 0 and 1`,
+        );
+      }
+    }
     if (status === 'unavailable') {
       invariant(
         value === null,
@@ -157,8 +194,8 @@ function validateWindowedSource(source, metricNames, label) {
   for (const [index, window] of source.windows.entries()) {
     const windowLabel = `${label}.windows[${index}]`;
     invariant(isNonEmptyString(window.label), `${windowLabel}.label is required`);
-    assertIsoDate(window.startDate, `${windowLabel}.startDate`);
-    assertIsoDate(window.endDate, `${windowLabel}.endDate`);
+    assertIsoCalendarDate(window.startDate, `${windowLabel}.startDate`);
+    assertIsoCalendarDate(window.endDate, `${windowLabel}.endDate`);
     const start = Date.parse(window.startDate);
     const end = Date.parse(window.endDate);
     invariant(start <= end, `${windowLabel}.startDate must not be after endDate`);
@@ -305,7 +342,7 @@ function validateAiSurfaces(aiSurfaces) {
 export function validateQuerySet(querySet) {
   invariant(querySet?.schemaVersion === 1, 'query set schemaVersion must be 1');
   invariant(isNonEmptyString(querySet.querySetId), 'querySetId is required');
-  assertIsoDate(querySet.reviewedAt, 'reviewedAt');
+  assertIsoCalendarDate(querySet.reviewedAt, 'reviewedAt');
   invariant(
     Array.isArray(querySet.queries)
       && querySet.queries.length >= 20
@@ -372,7 +409,7 @@ export function validateBaseline(baseline, querySet) {
     baseline.querySetId === querySet.querySetId,
     `baseline querySetId must equal ${querySet.querySetId}`,
   );
-  assertIsoDate(baseline.observedAt, 'observedAt');
+  assertIsoUtcDateTime(baseline.observedAt, 'observedAt');
   invariant(
     isNonEmptyString(baseline.repositoryRevision),
     'repositoryRevision is required',
@@ -385,6 +422,11 @@ export function validateBaseline(baseline, querySet) {
   invariant(
     Array.isArray(context.signedInStates) && context.signedInStates.length > 0,
     'collectionContext.signedInStates is required',
+  );
+  invariant(
+    context.signedInStates.every(isNonEmptyString)
+      && new Set(context.signedInStates).size === context.signedInStates.length,
+    'collectionContext.signedInStates must contain unique non-empty strings',
   );
   invariant(isNonEmptyString(context.device), 'collectionContext.device is required');
   invariant(
@@ -453,7 +495,7 @@ export function validateBaseline(baseline, querySet) {
     const key = `${observation.queryId}:${observation.platform}`;
     invariant(!observationKeys.has(key), `duplicate AI observation ${key}`);
     observationKeys.add(key);
-    assertIsoDate(observation.observedAt, `${label}.observedAt`);
+    assertIsoUtcDateTime(observation.observedAt, `${label}.observedAt`);
     invariant(typeof observation.brandMention === 'boolean', `${label}.brandMention is required`);
     invariant(typeof observation.directCitation === 'boolean', `${label}.directCitation is required`);
     invariant(Array.isArray(observation.citedUrls), `${label}.citedUrls must be an array`);
@@ -473,6 +515,18 @@ export function validateBaseline(baseline, querySet) {
     invariant(isNonEmptyString(observation.geography), `${label}.geography is required`);
     invariant(isNonEmptyString(observation.locale), `${label}.locale is required`);
     invariant(isNonEmptyString(observation.signedInState), `${label}.signedInState is required`);
+    invariant(
+      observation.geography === context.geography,
+      `${label}.geography must equal collectionContext.geography`,
+    );
+    invariant(
+      observation.locale === context.locale,
+      `${label}.locale must equal collectionContext.locale`,
+    );
+    invariant(
+      context.signedInStates.includes(observation.signedInState),
+      `${label}.signedInState must be declared in collectionContext.signedInStates`,
+    );
     invariant(
       Array.isArray(observation.limitations),
       `${label}.limitations must be an array`,
@@ -737,13 +791,51 @@ export function buildScorecard(querySet, baseline) {
   };
 }
 
+function observationKey(observation) {
+  return JSON.stringify([
+    observation.queryId,
+    observation.platform,
+    observation.geography,
+    observation.locale,
+    observation.signedInState,
+  ]);
+}
+
 function observationIndex(scorecard) {
   return new Map(
     scorecard.ai.observations
       .map((observation) => [
-        `${observation.queryId}:${observation.platform}`,
+        observationKey(observation),
         observation,
       ]),
+  );
+}
+
+function assertComparableScorecards(previous, current) {
+  invariant(
+    previous.querySetId === current.querySetId,
+    'scorecard querySetId must match for comparison',
+  );
+  assertIsoUtcDateTime(previous.generatedAt, 'previous.generatedAt');
+  assertIsoUtcDateTime(current.generatedAt, 'current.generatedAt');
+  invariant(
+    Date.parse(current.generatedAt) > Date.parse(previous.generatedAt),
+    'current scorecard must be newer than previous scorecard',
+  );
+  for (const field of ['geography', 'locale', 'device']) {
+    invariant(
+      previous.collectionContext?.[field] === current.collectionContext?.[field],
+      `collectionContext.${field} must match for comparison`,
+    );
+  }
+  const previousSignedInStates = [...previous.collectionContext.signedInStates].sort();
+  const currentSignedInStates = [...current.collectionContext.signedInStates].sort();
+  invariant(
+    previousSignedInStates.length === currentSignedInStates.length
+      && previousSignedInStates.every(
+        (state, index) => state === currentSignedInStates[index],
+      ),
+    'collectionContext.signedInStates must match for comparison',
   );
 }
 
@@ -815,6 +907,7 @@ function compareWindowedSource(previous, current, metricNames) {
 }
 
 export function compareScorecards(previous, current) {
+  assertComparableScorecards(previous, current);
   const previousObservations = observationIndex(previous);
   const currentObservations = observationIndex(current);
   const newCitations = [];
@@ -838,7 +931,7 @@ export function compareScorecards(previous, current) {
     }
   }
   const byObservationKey = (left, right) => (
-    `${left.queryId}:${left.platform}`.localeCompare(`${right.queryId}:${right.platform}`)
+    observationKey(left).localeCompare(observationKey(right))
   );
 
   return {
@@ -943,6 +1036,7 @@ function formatComparison(comparison) {
   }
   const citationLabel = (observation) => (
     `${observation.queryId} on ${PLATFORM_LABELS[observation.platform]}`
+    + ` (${observation.geography}, ${observation.locale}, ${observation.signedInState})`
   );
   const meaningfulSearch = [];
   const indexingRegressions = [];
@@ -975,8 +1069,8 @@ function formatComparison(comparison) {
     '',
     `- New citations: ${comparison.newCitations.length ? comparison.newCitations.map(citationLabel).join('; ') : 'none'}`,
     `- Lost citations: ${comparison.lostCitations.length ? comparison.lostCitations.map(citationLabel).join('; ') : 'none'}`,
-    `- Newly observed query/platform pairs: ${comparison.newlyObserved.length ? comparison.newlyObserved.map(citationLabel).join('; ') : 'none'}`,
-    `- No longer observed query/platform pairs: ${comparison.noLongerObserved.length ? comparison.noLongerObserved.map(citationLabel).join('; ') : 'none'}`,
+    `- Newly observed query/platform/context combinations: ${comparison.newlyObserved.length ? comparison.newlyObserved.map(citationLabel).join('; ') : 'none'}`,
+    `- No longer observed query/platform/context combinations: ${comparison.noLongerObserved.length ? comparison.noLongerObserved.map(citationLabel).join('; ') : 'none'}`,
     `- Meaningful search changes: ${meaningfulSearch.length ? meaningfulSearch.join('; ') : 'none or unavailable'}`,
     `- Indexing regressions: ${indexingRegressions.length ? indexingRegressions.join('; ') : 'none or unavailable'}`,
     `- Referral/outcome movement: ${meaningfulReferrals.length ? meaningfulReferrals.join('; ') : 'none or unavailable'}`,

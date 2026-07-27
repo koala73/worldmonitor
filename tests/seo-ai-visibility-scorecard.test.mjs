@@ -30,6 +30,16 @@ const baseline = readJson(
   'docs/research/seo-ai-visibility/baselines/2026-07-27.json',
 );
 
+function buildComparableScorecards() {
+  const currentBaseline = structuredClone(baseline);
+  currentBaseline.baselineId = '2026-08-27';
+  currentBaseline.observedAt = '2026-08-27T12:00:00Z';
+  return [
+    buildScorecard(querySet, baseline),
+    buildScorecard(querySet, currentBaseline),
+  ];
+}
+
 describe('SEO and AI visibility query registry', () => {
   it('keeps a reviewed 20-30 query set with every required decision field', () => {
     assert.doesNotThrow(() => validateQuerySet(querySet));
@@ -70,6 +80,17 @@ describe('SEO and AI visibility query registry', () => {
       () => validateQuerySet(missingReference),
       /referenceEntities must contain at least one/,
     );
+  });
+
+  it('rejects impossible and non-ISO review dates', () => {
+    for (const reviewedAt of ['2026-02-30', 'July 27, 2026']) {
+      const invalid = structuredClone(querySet);
+      invalid.reviewedAt = reviewedAt;
+      assert.throws(
+        () => validateQuerySet(invalid),
+        /reviewedAt must be an ISO calendar date/,
+      );
+    }
   });
 });
 
@@ -201,6 +222,71 @@ describe('SEO and AI visibility baseline', () => {
     assert.throws(
       () => validateBaseline(mislabeled, querySet),
       /label must match the inclusive calendar-day span/,
+    );
+  });
+
+  it('rejects impossible calendar dates and malformed UTC observation times', () => {
+    const impossibleDate = structuredClone(baseline);
+    impossibleDate.search.googleSearchConsole.windows[0].startDate = '2026-02-30';
+    impossibleDate.search.googleSearchConsole.windows[0].endDate = '2026-03-29';
+    assert.throws(
+      () => validateBaseline(impossibleDate, querySet),
+      /startDate must be an ISO calendar date/,
+    );
+
+    const malformedTimestamp = structuredClone(baseline);
+    malformedTimestamp.observedAt = '2026-02-30T17:15:05Z';
+    assert.throws(
+      () => validateBaseline(malformedTimestamp, querySet),
+      /observedAt must be an ISO UTC date-time/,
+    );
+  });
+
+  it('rejects metrics outside their measurement domains', () => {
+    const availableSource = (metrics) => ({
+      status: 'available',
+      property: null,
+      reason: null,
+      windows: baseline.search.googleSearchConsole.windows.map((window) => ({
+        ...structuredClone(window),
+        metrics,
+      })),
+      queryRows: [],
+      pageFamilyRows: [],
+    });
+    const invalidMetrics = [
+      ['impressions', -1, /impressions must be non-negative/],
+      ['ctr', 1.01, /ctr must be between 0 and 1/],
+      ['averagePosition', -0.1, /averagePosition must be non-negative/],
+    ];
+
+    for (const [metric, value, expected] of invalidMetrics) {
+      const invalid = structuredClone(baseline);
+      invalid.search.googleSearchConsole = availableSource({
+        indexedPages: 1,
+        impressions: 10,
+        clicks: 1,
+        ctr: 0.1,
+        averagePosition: 2,
+        [metric]: value,
+      });
+      assert.throws(() => validateBaseline(invalid, querySet), expected);
+    }
+  });
+
+  it('keeps observation context inside the declared collection contract', () => {
+    const wrongGeography = structuredClone(baseline);
+    wrongGeography.aiObservations[0].geography = 'United States';
+    assert.throws(
+      () => validateBaseline(wrongGeography, querySet),
+      /geography must equal collectionContext.geography/,
+    );
+
+    const undeclaredSignedInState = structuredClone(baseline);
+    undeclaredSignedInState.collectionContext.signedInStates = ['signed-out'];
+    assert.throws(
+      () => validateBaseline(undeclaredSignedInState, querySet),
+      /signedInState must be declared in collectionContext.signedInStates/,
     );
   });
 
@@ -545,8 +631,7 @@ describe('scorecard computation', () => {
   });
 
   it('compares finite metrics from partial provider exports', () => {
-    const previous = buildScorecard(querySet, baseline);
-    const current = buildScorecard(querySet, baseline);
+    const [previous, current] = buildComparableScorecards();
     previous.search.googleSearchConsole = {
       status: 'partial',
       reason: 'Indexation was not exported.',
@@ -583,8 +668,7 @@ describe('scorecard computation', () => {
   });
 
   it('prefers the 28d window for comparisons regardless of authored window order', () => {
-    const previous = buildScorecard(querySet, baseline);
-    const current = buildScorecard(querySet, baseline);
+    const [previous, current] = buildComparableScorecards();
     const searchWindow = (label, impressions) => ({
       label,
       metrics: {
@@ -619,8 +703,7 @@ describe('scorecard computation', () => {
   });
 
   it('classifies meaningful changes via the relative arm and guards before=0 ratios', () => {
-    const previous = buildScorecard(querySet, baseline);
-    const current = buildScorecard(querySet, baseline);
+    const [previous, current] = buildComparableScorecards();
     const referralWindow = (metrics) => ({ label: '28d', metrics });
     previous.referrals = {
       ...previous.referrals,
@@ -678,8 +761,7 @@ describe('scorecard computation', () => {
   });
 
   it('does not compare provider metrics for disjoint window labels', () => {
-    const previous = buildScorecard(querySet, baseline);
-    const current = buildScorecard(querySet, baseline);
+    const [previous, current] = buildComparableScorecards();
     previous.search.googleSearchConsole = {
       status: 'partial',
       reason: 'Only a 28-day export was available.',
@@ -712,6 +794,49 @@ describe('scorecard computation', () => {
     const comparison = compareScorecards(previous, current);
 
     assert.equal(comparison.search.googleSearchConsole, null);
+  });
+
+  it('rejects reversed or incompatible scorecard comparisons', () => {
+    const [previous, current] = buildComparableScorecards();
+    current.generatedAt = previous.generatedAt;
+    assert.throws(
+      () => compareScorecards(previous, current),
+      /current scorecard must be newer than previous scorecard/,
+    );
+
+    current.generatedAt = '2026-08-27T12:00:00Z';
+    current.collectionContext.geography = 'United States';
+    assert.throws(
+      () => compareScorecards(previous, current),
+      /collectionContext.geography must match/,
+    );
+
+    current.collectionContext.geography = previous.collectionContext.geography;
+    current.querySetId = 'different-query-set';
+    assert.throws(
+      () => compareScorecards(previous, current),
+      /querySetId must match/,
+    );
+  });
+
+  it('does not classify citation changes across different observation contexts', () => {
+    const previousBaseline = structuredClone(baseline);
+    previousBaseline.aiObservations[0].directCitation = false;
+    previousBaseline.aiObservations[0].citedUrls = ['https://example.com/source'];
+    const currentBaseline = structuredClone(baseline);
+    currentBaseline.baselineId = '2026-08-27';
+    currentBaseline.observedAt = '2026-08-27T12:00:00Z';
+    currentBaseline.aiObservations[0].signedInState = 'signed-in';
+
+    const comparison = compareScorecards(
+      buildScorecard(querySet, previousBaseline),
+      buildScorecard(querySet, currentBaseline),
+    );
+
+    assert.deepEqual(comparison.newCitations, []);
+    assert.deepEqual(comparison.lostCitations, []);
+    assert.equal(comparison.newlyObserved[0].signedInState, 'signed-in');
+    assert.equal(comparison.noLongerObserved[0].signedInState, 'signed-out');
   });
 
   it('renders availability, reproducibility, risks, and the top-five work queue', () => {

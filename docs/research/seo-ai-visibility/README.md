@@ -147,15 +147,22 @@ node scripts/seo-ai-visibility-scorecard.mjs \
 
 The comparison reports:
 
-- new and lost direct citations only when the same exact query/platform pair was
-  observed in both periods and its citation state changed;
-- newly observed and no-longer-observed pairs separately, so sparse audit
-  coverage cannot masquerade as citation gain or loss;
+- new and lost direct citations only when the same exact query, platform,
+  geography, locale, and signed-in context was observed in both periods and its
+  citation state changed;
+- newly observed and no-longer-observed query/platform/context combinations
+  separately, so sparse audit coverage cannot masquerade as citation gain or
+  loss;
 - meaningful impression, click, CTR, average-position, and indexed-page changes
   when both periods have supported provider data;
 - referral/outcome movement when both periods are available;
 - mixed or inaccurate entity answers that need correction;
 - the current evidence-backed experiment queue.
+
+The comparison rejects reversed periods, a changed query-set ID, or a changed
+collection geography, locale, device, or signed-in schedule. Change those
+dimensions by starting a new baseline series instead of presenting incomparable
+audits as month-over-month movement.
 
 Thresholds are diagnostics, not causal claims. A single answer, citation, or
 traffic change never proves uplift.
