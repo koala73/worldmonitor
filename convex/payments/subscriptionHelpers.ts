@@ -10,7 +10,11 @@ import { MutationCtx, internalMutation } from "../_generated/server";
 import { v } from "convex/values";
 import { internal } from "../_generated/api";
 import { getFeaturesForPlan } from "../lib/entitlements";
-import { PLAN_PRECEDENCE, LEGACY_PRODUCT_ALIASES } from "../config/productCatalog";
+import {
+  PLAN_PRECEDENCE,
+  LEGACY_PRODUCT_ALIASES,
+  resolveProductToPlan,
+} from "../config/productCatalog";
 import { ANON_ID_V4_REGEX, verifyUserId } from "../lib/identitySigning";
 import { DEV_USER_ID, isDev } from "../lib/auth";
 
@@ -566,15 +570,16 @@ export const reconcileBusinessProGrants = internalMutation({
 const FALLBACK_PLAN_KEY = "enterprise";
 
 /**
- * Resolves a Dodo product ID to a plan key via the productPlans table.
- * Falls back to LEGACY_PRODUCT_ALIASES for old test-mode product IDs.
+ * Resolves a Dodo product ID to a plan key. Lookup order:
+ * productPlans table → LEGACY_PRODUCT_ALIASES → code catalog
+ * (`resolveProductToPlan`) → FALLBACK_PLAN_KEY.
  *
  * Fail-open behaviour (added 2026-05-10 after sub_0NeQV8vJI0fEwUEDjp3cA
- * incident): if the product ID is unknown to BOTH the table AND the
- * legacy aliases, log a structured error and return FALLBACK_PLAN_KEY
- * instead of throwing. The previous behaviour (throw → webhook 500 →
- * Dodo retries forever) blocked entitlement updates for any customer
- * whose subscription was migrated to a new Dodo product ID.
+ * incident): if the product ID is unknown to EVERY lookup, log a structured
+ * error and return FALLBACK_PLAN_KEY instead of throwing. The previous
+ * behaviour (throw → webhook 500 → Dodo retries forever) blocked entitlement
+ * updates for any customer whose subscription was migrated to a new Dodo
+ * product ID.
  *
  * The fallback is paired with `scripts/audit-dodo-catalog.cjs` which
  * runs on a schedule and detects "Dodo has products our catalog doesn't"
@@ -602,6 +607,28 @@ export async function resolvePlanKey(
         `Consider updating the subscription to the current product ID.`,
     );
     return aliasedPlan;
+  }
+
+  // Last resort BEFORE the over-grant fallback: the code catalog itself.
+  // A product can be in PRODUCT_CATALOG and still be absent from the
+  // productPlans table — every new tier opens that window between deploy and
+  // `seedProductPlans` — and answering "enterprise" there is a real
+  // over-grant when the correct plan key is sitting in the deployed code.
+  // Still escalates loudly: the seed is what ops must fix.
+  const catalogPlan = resolveProductToPlan(dodoProductId);
+  if (catalogPlan) {
+    // sentry-coverage-ok: structured console.error is forwarded by Convex
+    // auto-Sentry so on-call sees the unseeded product immediately. The
+    // entitlement itself is already correct — this is a seeding defect, not
+    // a customer-facing one.
+    console.error(
+      `[subscriptionHelpers] Dodo product ID "${dodoProductId}" is in PRODUCT_CATALOG ` +
+        `but NOT in the productPlans table — resolved to "${catalogPlan}" from the code ` +
+        `catalog instead of over-granting "${FALLBACK_PLAN_KEY}". ` +
+        `ACTION REQUIRED: re-run seedProductPlans so webhook resolution stops depending ` +
+        `on the deployed catalog. See scripts/audit-dodo-catalog.cjs.`,
+    );
+    return catalogPlan;
   }
 
   // sentry-coverage-ok: structured console.error is forwarded by Convex

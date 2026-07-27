@@ -361,6 +361,50 @@ describe("webhook processWebhookEvent", () => {
     expect(subjects.every((subject) => !subject.includes("Welcome back"))).toBe(true);
   });
 
+  // KTD9: Pro Business is a Pro plan for lifecycle purposes — it must get the
+  // Pro welcome shell (value-prop headline, brief CTA, Pro feature grid), not
+  // the neutral fallback shell that api_* and unknown plan keys fall through to.
+  test("subscription.active for Pro Business sends the Pro welcome variant", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro_business", "pro_business_monthly", "Pro Business Monthly");
+
+    await processEvent(
+      t,
+      "wh_pro_business_welcome",
+      "subscription.active",
+      makeSubscriptionPayload({
+        subscription_id: "sub_pro_business_001",
+        product_id: "pdt_test_pro_business",
+      }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+        html: string;
+      });
+
+    const welcome = sends.find((send) => send.subject.startsWith("Welcome to World Monitor"));
+    expect(welcome?.to).toEqual(["test@example.com"]);
+    expect(welcome?.subject).toBe("Welcome to World Monitor Pro Business (Monthly)");
+    // Pro shell markers — headline, CTA, and a Pro-only feature card.
+    expect(welcome?.html).toContain("your intel, delivered");
+    expect(welcome?.html).toContain("Open My Brief");
+    expect(welcome?.html).toContain("WM Analyst");
+    // The generic fallback grid must not appear.
+    expect(welcome?.html).not.toContain("Full API Access");
+  });
+
   test.each([
     ["on_hold", BASE_TIMESTAMP + 7 * 86400000],
     ["cancelled", BASE_TIMESTAMP],

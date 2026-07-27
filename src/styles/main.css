@@ -8191,6 +8191,36 @@ a.prediction-link:hover {
   background: color-mix(in srgb, var(--green) 8%, transparent);
 }
 
+.pro-activation-pointer:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
+.pro-activation-pointer-label {
+  min-width: 0;
+}
+
+.pro-activation-pointer-shortcut {
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: 4px;
+}
+
+.pro-activation-pointer-shortcut kbd {
+  min-width: 26px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-bottom-color: var(--border-strong);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--green);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1;
+  text-align: center;
+}
+
 .pro-activation-pointer-arrow {
   color: var(--text-dim);
 }
@@ -8293,6 +8323,12 @@ a.prediction-link:hover {
   background: var(--bg);
   border: 1px solid var(--border);
   cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 0;
 }
 
 .panel-toggle-item:hover {
@@ -8408,7 +8444,13 @@ a.prediction-link:hover {
   background: var(--bg);
   border: 1px solid var(--border);
   cursor: pointer;
-  font-size: 10px;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 0;
+  font-size: 10px; 
 }
 
 .source-toggle-item:hover {
@@ -8521,6 +8563,15 @@ a.prediction-link:hover {
   .sources-toggle-grid {
     grid-template-columns: repeat(2, 1fr);
   }
+}
+
+/* Accessibility Focus Styles */
+
+.panel-toggle-item:focus-visible,
+.source-toggle-item:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+  border-color: var(--text-dim);
 }
 
 /* Map Popups */
@@ -9602,6 +9653,72 @@ a.prediction-link:hover {
 
 .export-option:last-child {
   border-radius: 0 0 3px 3px;
+}
+
+.export-option.is-exporting {
+  color: var(--text-dim);
+  cursor: progress;
+}
+
+/* Locked export menu (plan 2026-07-25-001, U5) — one CTA row replaces the
+   format options. Mirrors .panel-locked-state, sized for a header popover. */
+.export-locked-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+  padding: 12px;
+  max-width: 240px;
+}
+
+/* Shared by both compact locked surfaces (export menu row + tab-cap notice)
+   so the gold treatment can't drift between them. Surface-specific layout
+   stays with each surface's own block. */
+.export-locked-icon,
+.tab-cap-notice-icon {
+  color: #d4a843;
+  filter: drop-shadow(0 0 8px rgba(212, 168, 67, 0.3));
+  line-height: 0;
+}
+
+.export-locked-desc,
+.tab-cap-notice-desc {
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-dim, #888);
+}
+
+.export-locked-cta,
+.tab-cap-notice-cta {
+  padding: 6px 14px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  color: #111;
+  background: linear-gradient(135deg, #d4a843 0%, #b8902e 100%);
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: filter 0.15s;
+}
+
+.export-locked-cta:hover,
+.tab-cap-notice-cta:hover {
+  filter: brightness(1.15);
+}
+
+/* Off-screen live region: announces the async export unlock without painting. */
+.wm-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* Weather Markers */
@@ -19169,6 +19286,13 @@ a.prediction-link:hover {
   border-color: var(--text-dim);
 }
 
+.unified-settings-select:focus-visible,
+.unified-settings-lang-select:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+  border-color: var(--text);
+}
+
 /* Responsive grids */
 @media (max-width: 500px) {
 
@@ -19219,6 +19343,11 @@ a.prediction-link:hover {
 
 .wm-pref-group > summary:hover {
   background: rgba(255, 255, 255, 0.06);
+}
+
+.wm-pref-group > summary:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
 }
 
 .wm-pref-group-content {
@@ -19360,6 +19489,11 @@ a.prediction-link:hover {
 .ai-flow-switch input:checked+.ai-flow-slider::before {
   transform: translateX(14px);
   background: #fff;
+}
+
+.ai-flow-switch input:focus-visible + .ai-flow-slider {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
 }
 
 /* Ollama CTA */
@@ -26287,6 +26421,31 @@ body.map-width-resizing {
 .dashboard-tab-add:hover {
   color: var(--green);
   border-color: var(--green);
+}
+
+/* Tab-cap locked notice. Body-anchored and fixed-positioned from the add
+   button's viewport rect: the tabs bar is `overflow-x: auto`, so an in-flow
+   popover would be clipped by it. The "+" itself stays unstyled at rest. */
+.tab-cap-notice {
+  position: fixed;
+  z-index: 1200;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+  padding: 12px;
+  max-width: 240px;
+  background: var(--bg-secondary, #12161c);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+
+/* Gold icon/desc/CTA treatment shared with the export locked row — see the
+   grouped .export-locked-* / .tab-cap-notice-* rules near .export-locked-state. */
+.tab-cap-notice-desc {
+  margin: 0;
 }
 
 /* ── Notification channel cards (relocated from settings-window.css in PR #4385 follow-up) ──

@@ -14,6 +14,8 @@
 const PLAN_DISPLAY_NAMES: Readonly<Record<string, string>> = {
   pro_monthly: 'Pro Monthly',
   pro_annual: 'Pro Annual',
+  pro_business_monthly: 'Pro Business Monthly',
+  pro_business_annual: 'Pro Business Annual',
   api_starter: 'API Starter',
   api_business: 'API Business',
 };

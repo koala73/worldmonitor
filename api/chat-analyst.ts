@@ -18,6 +18,7 @@ export const config = { runtime: 'edge', regions: ['iad1', 'lhr1', 'fra1', 'sfo1
 import { getCorsHeaders } from './_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from './_sentry-edge.js';
+import { renderBillingVerificationDenial } from '../server/_shared/entitlement-check';
 import { resolvePremiumCallerIdentity } from '../server/_shared/premium-check';
 import { checkRateLimit } from '../server/_shared/rate-limit';
 import { runRedisPipeline } from '../server/_shared/redis';
@@ -123,6 +124,15 @@ export default async function handler(req: Request): Promise<Response> {
   try {
     const premiumIdentity = await resolvePremiumCallerIdentity(req);
     if (!premiumIdentity.isPremium) {
+      // Preserve retryable billing-verification denials instead of flattening
+      // them to the Pro 403. The panel renders this header without auto-retrying.
+      if (premiumIdentity.billingDenial) {
+        const denial = renderBillingVerificationDenial(
+          premiumIdentity.billingDenial,
+          corsHeaders,
+        );
+        if (denial) return denial;
+      }
       return json({ error: 'Pro subscription required' }, 403, corsHeaders);
     }
     if (!premiumIdentity.quotaExempt) {

@@ -4,21 +4,20 @@ import {
   type DecisionSignalProvenance,
   type DecisionSignalPublisherType,
 } from './decision-signal-provenance';
+import {
+  CHINA_DECISION_SIGNAL_GROUP_IDS,
+  CHINA_DECISION_SIGNAL_MAX_ITEMS_PER_GROUP,
+  type ChinaDecisionSignalGroupId,
+} from './china-decision-signal-manifest';
+
+export {
+  CHINA_DECISION_SIGNAL_GROUP_IDS,
+  CHINA_DECISION_SIGNAL_MAX_ITEMS_PER_GROUP,
+} from './china-decision-signal-manifest';
+export type { ChinaDecisionSignalGroupId } from './china-decision-signal-manifest';
 
 export const CHINA_DECISION_SIGNAL_SCHEMA_VERSION = 1 as const;
 export const CHINA_DECISION_SIGNAL_MAX_SERIALIZED_BYTES = 65_536;
-
-export const CHINA_DECISION_SIGNAL_GROUP_IDS = [
-  'macro',
-  'policy-enforcement',
-  'cross-strait-activity',
-  'corporate-disclosures',
-  'corridor-conditions',
-  'activity-nowcast',
-] as const;
-
-export type ChinaDecisionSignalGroupId =
-  (typeof CHINA_DECISION_SIGNAL_GROUP_IDS)[number];
 
 export type ChinaDecisionSignalState =
   | 'available'
@@ -235,7 +234,10 @@ function group(
   const items = candidates.filter((item): item is ChinaDecisionSignalItem => item !== null);
   const rejected = candidates.length - items.length;
   const state = stateFor(items, upstreamState, rejected);
-  const omittedItemCount = Math.max(0, items.length - 4);
+  const omittedItemCount = Math.max(
+    0,
+    items.length - CHINA_DECISION_SIGNAL_MAX_ITEMS_PER_GROUP,
+  );
   return {
     id,
     state,
@@ -244,7 +246,7 @@ function group(
       : rejected > 0
         ? `${rejected} signal${rejected === 1 ? '' : 's'} failed the launch/provenance boundary.`
         : null,
-    items: items.slice(0, 4),
+    items: items.slice(0, CHINA_DECISION_SIGNAL_MAX_ITEMS_PER_GROUP),
     metadata: {
       ...metadata,
       totalValidItems: items.length,
@@ -722,7 +724,7 @@ export function isChinaDecisionSignalSnapshot(
         || (candidate.reason !== null && text(candidate.reason) === null)
         || !Array.isArray(candidate.items)
         || candidate.items.length !== items.length
-        || items.length > 4
+        || items.length > CHINA_DECISION_SIGNAL_MAX_ITEMS_PER_GROUP
         || record(candidate.metadata) === null
         || (state === 'unavailable') !== (items.length === 0)
       ) return false;

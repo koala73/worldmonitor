@@ -86,10 +86,12 @@ describe('PanelTabBar — add button is not a tablist child', () => {
   });
 
   it('the add button is a sibling of the tablist in the bar', () => {
-    // render() appends tabs to the tablist and re-parents [tablist, addBtn]
-    // onto the bar, so the tablist owns only role="tab" children.
+    // render() appends tabs to the tablist and re-parents [tablist, addBtn, …]
+    // onto the bar, so the tablist owns only role="tab" children. Trailing
+    // siblings (the tab-cap live region) are fine — what must never happen is
+    // the add button landing inside the tablist.
     assert.match(tabBar, /this\.tablistEl\.appendChild\(this\.renderTab\(/);
-    assert.match(tabBar, /this\.element\.replaceChildren\(this\.tablistEl,\s*addBtn\)/);
+    assert.match(tabBar, /this\.element\.replaceChildren\(this\.tablistEl,\s*addBtn\s*[,)]/);
   });
 });
 

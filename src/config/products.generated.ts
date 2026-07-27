@@ -1,9 +1,11 @@
 // AUTO-GENERATED from convex/config/productCatalog.ts
-// Do not edit manually. Run: npx tsx scripts/generate-product-config.mjs
+// Do not edit manually. Run: npm run product:facts
 
 export const DODO_PRODUCTS = {
   PRO_MONTHLY: 'pdt_0Nbtt71uObulf7fGXhQup',
   PRO_ANNUAL: 'pdt_0NbttMIfjLWC10jHQWYgJ',
+  PRO_BUSINESS_MONTHLY: 'pdt_0NjyFDbhURh2oROgPIU3G',
+  PRO_BUSINESS_ANNUAL: 'pdt_0Nk072fxPUcHWivZRtlQW',
   API_STARTER_MONTHLY: 'pdt_0NbttVmG1SERrxhygbbUq',
   API_STARTER_ANNUAL: 'pdt_0Nbu2lawHYE3dv2THgSEV',
   API_BUSINESS: 'pdt_0Nbttg7NuOJrhbyBGCius',
@@ -14,6 +16,8 @@ export const PLAN_LIMITS = {
   "free": {"apiRequestsPerDay":0,"apiBurstRequestsPerMinute":0,"mcpCallsPerDay":0,"mcpBurstRequestsPerMinute":0},
   "pro_monthly": {"apiRequestsPerDay":0,"apiBurstRequestsPerMinute":0,"mcpCallsPerDay":50,"mcpBurstRequestsPerMinute":60},
   "pro_annual": {"apiRequestsPerDay":0,"apiBurstRequestsPerMinute":0,"mcpCallsPerDay":50,"mcpBurstRequestsPerMinute":60},
+  "pro_business_monthly": {"apiRequestsPerDay":0,"apiBurstRequestsPerMinute":0,"mcpCallsPerDay":250,"mcpBurstRequestsPerMinute":60},
+  "pro_business_annual": {"apiRequestsPerDay":0,"apiBurstRequestsPerMinute":0,"mcpCallsPerDay":250,"mcpBurstRequestsPerMinute":60},
   "api_starter": {"apiRequestsPerDay":1000,"apiBurstRequestsPerMinute":60,"mcpCallsPerDay":1000,"mcpBurstRequestsPerMinute":60},
   "api_starter_annual": {"apiRequestsPerDay":1000,"apiBurstRequestsPerMinute":60,"mcpCallsPerDay":1000,"mcpBurstRequestsPerMinute":60},
   "api_business": {"apiRequestsPerDay":10000,"apiBurstRequestsPerMinute":300,"mcpCallsPerDay":10000,"mcpBurstRequestsPerMinute":300},

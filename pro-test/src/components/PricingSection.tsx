@@ -48,6 +48,18 @@ function usePricingData(): Tier[] {
 }
 
 /**
+ * Stable per-tier key: the generated `localeKey` when present, else the
+ * lowercased display name. Used both for locale lookup and for identifying
+ * the tier that renders outside the card grid.
+ */
+function tierKey(tier: Tier): string {
+  return tier.localeKey ?? tier.name.toLowerCase();
+}
+
+/** The tier that renders as a full-width band below the self-serve columns. */
+const BAND_TIER_KEY = 'enterprise';
+
+/**
  * Look up localized copy for a catalog tier, falling back to the catalog
  * value when the locale hasn't translated this tier yet. Generated tiers
  * carry a stable localeKey so display-name changes do not affect lookup.
@@ -58,7 +70,7 @@ function localizeTier(tier: Tier): {
   highlightFeatures?: string[];
   cta?: string;
 } {
-  const key = tier.localeKey ?? tier.name.toLowerCase();
+  const key = tierKey(tier);
   const description = t(`pricing.tiers.${key}.description`, { defaultValue: tier.description });
   const features = tArray(`pricing.tiers.${key}.features`) ?? tier.features;
   // License callouts (e.g. "No commercial use") live on the catalog as
@@ -175,6 +187,66 @@ function getCtaProps(tier: Tier, billing: 'monthly' | 'annual'): CtaProps {
   return { type: 'link', label: t('pricing.cta.learnMore'), href: '#', external: false };
 }
 
+/**
+ * The tier CTA — rendered identically by the card columns and the Enterprise
+ * band, so the checkout spinner/disabled semantics and the external-link rel
+ * policy can never drift between the two surfaces.
+ */
+function TierCta({ cta, highlighted, loadingProductId, onCheckout }: {
+  cta: CtaProps;
+  highlighted: boolean;
+  loadingProductId: string | null;
+  onCheckout: (productId: string) => void;
+}) {
+  if (cta.type === 'link') {
+    return (
+      <a
+        href={cta.href}
+        target={cta.external ? "_blank" : undefined}
+        rel={cta.external ? "noreferrer" : undefined}
+        className={`block text-center py-3 rounded-sm font-mono text-xs uppercase tracking-wider font-bold transition-colors ${
+          highlighted
+            ? 'bg-wm-green text-wm-bg hover:bg-green-400'
+            : 'border border-wm-border text-wm-muted hover:text-wm-text hover:border-wm-text'
+        }`}
+      >
+        {cta.label} <ArrowRight className="w-3.5 h-3.5 inline-block ml-1" aria-hidden="true" />
+      </a>
+    );
+  }
+
+  const isLoading = loadingProductId === cta.productId;
+  // Only the clicked tier disables during creating_checkout.
+  // Sibling tiers stay clickable; if the user changes their
+  // mind mid-flow, their next click simply updates the
+  // pending intent. The pricing page is never hard-locked.
+  return (
+    <button
+      onClick={() => onCheckout(cta.productId)}
+      disabled={isLoading}
+      aria-busy={isLoading || undefined}
+      className={`block w-full text-center py-3 rounded-sm font-mono text-xs uppercase tracking-wider font-bold transition-colors ${
+        isLoading ? 'cursor-wait opacity-70' : 'cursor-pointer'
+      } ${
+        highlighted
+          ? 'bg-wm-green text-wm-bg hover:bg-green-400'
+          : 'border border-wm-border text-wm-muted hover:text-wm-text hover:border-wm-text'
+      }`}
+    >
+      {isLoading ? (
+        <>
+          <Loader2 className="w-3.5 h-3.5 inline-block mr-2 animate-spin" aria-hidden="true" />
+          <span>{t('pricing.opening')}</span>
+        </>
+      ) : (
+        <>
+          {cta.label} <ArrowRight className="w-3.5 h-3.5 inline-block ml-1" aria-hidden="true" />
+        </>
+      )}
+    </button>
+  );
+}
+
 export function PricingSection({ refCode }: { refCode?: string }) {
   const [billing, setBilling] = useState<'monthly' | 'annual'>(() => {
     const planKey = new URLSearchParams(window.location.search).get('wm_reactivate_plan');
@@ -189,6 +261,14 @@ export function PricingSection({ refCode }: { refCode?: string }) {
   const [phase, setPhase] = useState<CheckoutPhase>({ kind: 'idle' });
   const loadingProductId = phase.kind === 'creating_checkout' ? phase.productId : null;
   const TIERS = usePricingData();
+  // Enterprise leaves the card grid and renders as a full-width band below
+  // it: it is the only non-self-serve tier, and pulling it out keeps the grid
+  // at exactly five columns so the Personal/Commercial axis header can span
+  // 1-2 / 3-5 at xl. Partitioning by key (not index) so a catalog reorder or
+  // a live payload that omits Enterprise degrades to "no band", never to a
+  // mislabelled column.
+  const gridTiers = TIERS.filter(tier => tierKey(tier) !== BAND_TIER_KEY);
+  const bandTier = TIERS.find(tier => tierKey(tier) === BAND_TIER_KEY);
 
   useEffect(() => subscribeCheckoutPhase(setPhase), []);
 
@@ -272,10 +352,34 @@ export function PricingSection({ refCode }: { refCode?: string }) {
         </div>
 
         {/* Tier cards grid */}
-        {/* 5 tiers since API Business was published (#4945): 2-up on tablet,
-            3+2 on laptop, all five across on desktop. */}
+        {/* 5 self-serve tiers since Pro Business was published (#5604):
+            2-up on tablet, 3+2 on laptop, all five across on desktop.
+            Enterprise renders below as a band, not as a sixth column. */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
-          {TIERS.map((tier, i) => {
+          {/* Personal / Commercial axis header — xl only. It is a pair of grid
+              children so the spans line up with the columns they label
+              (Personal = Free + Pro, Commercial = the three licensed tiers).
+              Below xl the grid wraps to 3+2 or 2-up, where a spanning header
+              would sit above the wrong cards; there the per-card license
+              chips carry the same story.
+              Deliberately NOT motion elements: they start `display: none`, so
+              an entrance animation gated on whileInView would depend on the
+              observer re-firing when a resize past xl reveals them — a label
+              stuck at opacity 0 is a worse failure than no animation. */}
+          <div className="hidden xl:block xl:col-span-2 border-t border-wm-border pt-3">
+            <p className="font-mono text-xs uppercase tracking-wider text-wm-muted">
+              {t('pricing.axisPersonal')}
+            </p>
+            <p className="text-xs text-wm-muted/70 mt-0.5">{t('pricing.axisPersonalNote')}</p>
+          </div>
+          <div className="hidden xl:block xl:col-span-3 border-t border-wm-green pt-3">
+            <p className="font-mono text-xs uppercase tracking-wider text-wm-green font-bold">
+              {t('pricing.axisCommercial')}
+            </p>
+            <p className="text-xs text-wm-muted/70 mt-0.5">{t('pricing.axisCommercialNote')}</p>
+          </div>
+
+          {gridTiers.map((tier, i) => {
             const price = formatPrice(tier, billing);
             const localized = localizeTier(tier);
             // Build a localized tier shape so getCtaProps picks the right
@@ -344,55 +448,75 @@ export function PricingSection({ refCode }: { refCode?: string }) {
                 </ul>
 
                 {/* CTA button */}
-                {cta.type === 'link' ? (
-                  <a
-                    href={cta.href}
-                    target={cta.external ? "_blank" : undefined}
-                    rel={cta.external ? "noreferrer" : undefined}
-                    className={`block text-center py-3 rounded-sm font-mono text-xs uppercase tracking-wider font-bold transition-colors ${
-                      tier.highlighted
-                        ? 'bg-wm-green text-wm-bg hover:bg-green-400'
-                        : 'border border-wm-border text-wm-muted hover:text-wm-text hover:border-wm-text'
-                    }`}
-                  >
-                    {cta.label} <ArrowRight className="w-3.5 h-3.5 inline-block ml-1" aria-hidden="true" />
-                  </a>
-                ) : (() => {
-                  const isLoading = loadingProductId === cta.productId;
-                  // Only the clicked tier disables during creating_checkout.
-                  // Sibling tiers stay clickable; if the user changes their
-                  // mind mid-flow, their next click simply updates the
-                  // pending intent. The pricing page is never hard-locked.
-                  return (
-                    <button
-                      onClick={() => handleCheckout(cta.productId)}
-                      disabled={isLoading}
-                      aria-busy={isLoading || undefined}
-                      className={`block w-full text-center py-3 rounded-sm font-mono text-xs uppercase tracking-wider font-bold transition-colors ${
-                        isLoading ? 'cursor-wait opacity-70' : 'cursor-pointer'
-                      } ${
-                        tier.highlighted
-                          ? 'bg-wm-green text-wm-bg hover:bg-green-400'
-                          : 'border border-wm-border text-wm-muted hover:text-wm-text hover:border-wm-text'
-                      }`}
-                    >
-                      {isLoading ? (
-                        <>
-                          <Loader2 className="w-3.5 h-3.5 inline-block mr-2 animate-spin" aria-hidden="true" />
-                          <span>{t('pricing.opening')}</span>
-                        </>
-                      ) : (
-                        <>
-                          {cta.label} <ArrowRight className="w-3.5 h-3.5 inline-block ml-1" aria-hidden="true" />
-                        </>
-                      )}
-                    </button>
-                  );
-                })()}
+                <TierCta
+                  cta={cta}
+                  highlighted={!!tier.highlighted}
+                  loadingProductId={loadingProductId}
+                  onCheckout={handleCheckout}
+                />
               </motion.div>
             );
           })}
         </div>
+
+        {/* Enterprise band — full width below the self-serve columns:
+            identity + custom price on the left, features across the middle,
+            Contact Sales on the right. Stacks to a single column below lg.
+            Its stagger delay continues from the band's rendered position
+            (after the grid), not from Enterprise's index in the catalog. */}
+        {bandTier && (() => {
+          const price = formatPrice(bandTier, billing);
+          const localized = localizeTier(bandTier);
+          const localizedTier: Tier = { ...bandTier, cta: localized.cta };
+          const cta = getCtaProps(localizedTier, billing);
+
+          return (
+            <motion.div
+              data-tier-band={BAND_TIER_KEY}
+              className="mt-6 bg-zinc-900 border border-wm-border rounded-lg p-6 md:p-8 flex flex-col gap-6 lg:flex-row lg:items-center lg:gap-10"
+              initial={{ opacity: 0, y: 30 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.5, delay: gridTiers.length * 0.1 }}
+            >
+              {/* Identity + price */}
+              <div className="lg:w-64 lg:shrink-0">
+                <h3 className="font-display text-lg font-bold mb-1 text-wm-text">{bandTier.name}</h3>
+                <p className="text-xs text-wm-muted mb-4">{localized.description}</p>
+                <div>
+                  <span className="text-4xl font-display font-bold">{price.amount}</span>
+                  <span className="text-sm text-wm-muted ml-1">{price.suffix}</span>
+                </div>
+              </div>
+
+              {/* Features — multi-column so the band stays a band */}
+              <ul className="flex-1 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-x-8 gap-y-3">
+                {localized.features.map((feature, fi) => (
+                  <li key={fi} className="flex items-start gap-2 text-sm">
+                    <Check className="w-4 h-4 shrink-0 mt-0.5 text-wm-muted" aria-hidden="true" />
+                    <span className="text-wm-muted">{feature}</span>
+                  </li>
+                ))}
+                {localized.highlightFeatures?.map((hf, hi) => (
+                  <li key={`hl-${hi}`} className="flex items-start gap-2 text-sm">
+                    <ShieldCheck className="w-4 h-4 shrink-0 mt-0.5 text-wm-green" aria-hidden="true" />
+                    <span className="text-wm-green font-medium">{hf}</span>
+                  </li>
+                ))}
+              </ul>
+
+              {/* CTA */}
+              <div className="lg:w-56 lg:shrink-0">
+                <TierCta
+                  cta={cta}
+                  highlighted={!!bandTier.highlighted}
+                  loadingProductId={loadingProductId}
+                  onCheckout={handleCheckout}
+                />
+              </div>
+            </motion.div>
+          );
+        })()}
 
         {/* Discount code note */}
         <p className="text-center text-xs text-wm-muted font-mono mt-8">

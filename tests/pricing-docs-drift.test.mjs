@@ -33,7 +33,7 @@ const catalogEntrySourceFor = (planKey) => {
 
 // planKey → priceCents for every publicly-priced subscription plan,
 // including the annual API plan the original docs omitted entirely.
-const PLAN_KEYS = ['pro_monthly', 'pro_annual', 'api_starter', 'api_starter_annual', 'api_business'];
+const PLAN_KEYS = ['pro_monthly', 'pro_annual', 'pro_business_monthly', 'pro_business_annual', 'api_starter', 'api_starter_annual', 'api_business'];
 const priceCentsFor = (planKey) => {
   const m = catalogEntrySourceFor(planKey).match(/priceCents:\s*(\d+)/);
   assert.ok(m, `no priceCents found for ${planKey}`);
@@ -158,6 +158,8 @@ test('pricing.md machine-readable JSON block matches productCatalog.ts numerical
   const EXPECT = [
     ['Pro', 'price_usd_monthly', 'pro_monthly'],
     ['Pro', 'price_usd_yearly', 'pro_annual'],
+    ['Pro Business', 'price_usd_monthly', 'pro_business_monthly'],
+    ['Pro Business', 'price_usd_yearly', 'pro_business_annual'],
     ['API', 'price_usd_monthly', 'api_starter'],
     ['API', 'price_usd_yearly', 'api_starter_annual'],
     ['API Business', 'price_usd_monthly', 'api_business'],
@@ -177,6 +179,8 @@ const PRICE_EXPECT = [
   ['Free', 'free'],
   ['Pro Monthly', 'pro_monthly'],
   ['Pro Annual', 'pro_annual'],
+  ['Pro Business Monthly', 'pro_business_monthly'],
+  ['Pro Business Annual', 'pro_business_annual'],
   ['API Starter Monthly', 'api_starter'],
   ['API Starter Annual', 'api_starter_annual'],
   ['API Business', 'api_business'],
@@ -184,6 +188,7 @@ const PRICE_EXPECT = [
 const FEATURE_OFFERS = [
   ['free', 'Free'],
   ['pro_monthly', 'Pro Monthly'],
+  ['pro_business_monthly', 'Pro Business Monthly'],
   ['api_starter', 'API Starter Monthly'],
   ['api_business', 'API Business'],
 ];

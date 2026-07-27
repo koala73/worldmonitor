@@ -96,7 +96,10 @@ describe('panel-layout billing-state wiring (#4771)', () => {
   });
 
   it('routes billing-portal gate actions through the popup-blocker-safe pre-reserve pattern', async () => {
-    const src = await read('src/app/panel-layout.ts');
+    // The gate-action switch was extracted from PanelLayoutManager into the
+    // shared resolveGateAction (plan 2026-07-25-001 U5) so the export gate and
+    // tab cap inherit the same billing-portal handling.
+    const src = await read('src/services/panel-gating.ts');
     assert.match(src, /case PanelGateReason\.PAYMENT_ON_HOLD:\s*\n\s*case PanelGateReason\.RENEWAL_FAILED:/);
     assert.match(src, /prereserveBillingPortalTab\(\)/);
   });

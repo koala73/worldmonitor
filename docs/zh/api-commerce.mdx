@@ -32,9 +32,9 @@ WorldMonitor 使用 [Dodo Payments](https://dodopayments.com) 处理 PRO 订阅�
 
 ### `GET /api/product-catalog`
 
-返回 `/pro` 定价页使用的分层视图模型。在 Redis 中以 `product-catalog:v2` 为键缓存 1 小时；缓存未命中时，从 Dodo Payments 获取实时价格，若 Dodo 不可达则回退到 `_product-fallback-prices.js`。响应携带 `X-Product-Catalog-Source` 头，以便探针区分缓存命中与实时获取。
+返回 `/pro` 定价页使用的分层视图模型。在 Redis 中以 `product-catalog:v3` 为键缓存 1 小时；缓存未命中时，从 Dodo Payments 获取实时价格，若 Dodo 不可达则回退到 `_product-fallback-prices.js`。响应携带 `X-Product-Catalog-Source` 头，以便探针区分缓存命中与实时获取。
 
-**响应**（分层顺序为 `free`、`pro`、`api_starter`、`api_business`、`enterprise`）：
+**响应**（分层顺序为 `free`、`pro`、`pro_business`、`api_starter`、`api_business`、`enterprise`）：
 
 ```json
 {
@@ -62,9 +62,21 @@ WorldMonitor 使用 [Dodo Payments](https://dodopayments.com) 处理 PRO 订阅�
       "annualProductId": "pdt_0NbttMIfjLWC10jHQWYgJ"
     },
     {
+      "name": "Pro Business",
+      "localeKey": "proBusiness",
+      "description": "The Pro dashboard, licensed for work",
+      "features": ["..."],
+      "highlightFeatures": ["Commercial license included"],
+      "highlighted": false,
+      "monthlyPrice": 69.99,
+      "monthlyProductId": "pdt_...",
+      "annualPrice": 699.99,
+      "annualProductId": "pdt_..."
+    },
+    {
       "name": "API Starter",
       "localeKey": "api",
-      "description": "Programmatic access to intelligence data",
+      "description": "Build internal tools on live intelligence data",
       "features": ["..."],
       "highlighted": false,
       "monthlyPrice": 99.99,
@@ -75,7 +87,7 @@ WorldMonitor 使用 [Dodo Payments](https://dodopayments.com) 处理 PRO 订阅�
     {
       "name": "API Business",
       "localeKey": "apiBusiness",
-      "description": "High-volume API for teams",
+      "description": "Launch your own product on WorldMonitor data",
       "features": ["..."],
       "highlighted": false,
       "monthlyPrice": 299.99,
@@ -101,6 +113,7 @@ WorldMonitor 使用 [Dodo Payments](https://dodopayments.com) 处理 PRO 订阅�
 说明：
 
 - 价格字段直接放在分层对象上。付费分层始终暴露 `monthlyPrice` / `monthlyProductId`，仅当存在年度变体时才添加 `annualPrice` / `annualProductId` —— API Business 仅为月度，因此这些字段在其上不存在。Free 使用 `price: 0, period: "forever"`；Enterprise 使用 `price: null`。
+- `highlightFeatures` 是可选数组，用于许可 / 商用说明，在定价页上与 `features` 分开渲染。没有此类说明的分层会省略该字段。
 - 价格单位为美元（Dodo 返回分；处理程序除以 100）。已发布目录的货币隐式为 USD。
 
 ### `DELETE /api/product-catalog`

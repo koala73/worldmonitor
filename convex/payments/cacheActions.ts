@@ -59,6 +59,9 @@ export const syncEntitlementCache = internalAction({
       // Optional — per-account daily REST allowance (#3199). Catalog-sourced
       // writes set it; legacy rows omit it (rate-limit consumer fail-opens).
       apiDailyAllowance: v.optional(v.number()),
+      // Optional — data-export entitlement (plan 2026-07-25-001). Catalog
+      // writes set it; legacy rows omit it (export gate fail-opens at tier 2+).
+      dataExport: v.optional(v.boolean()),
     }),
     validUntil: v.number(),
   },

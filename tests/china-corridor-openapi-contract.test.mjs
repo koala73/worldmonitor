@@ -3,8 +3,10 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
+import Ajv2020 from 'ajv/dist/2020.js';
 import { load as loadYaml } from 'js-yaml';
 import {
+  provenanceValueSchema,
   readChinaCorridorWireContract,
   readDecisionSignalProvenanceContract,
 } from '../scripts/lib/openapi-codegen.mjs';
@@ -25,6 +27,25 @@ function resolveRef(spec, schema) {
   const ref = schema?.$ref;
   if (!ref) return schema;
   return spec.components.schemas[ref.slice('#/components/schemas/'.length)];
+}
+
+function embeddedValidator(spec) {
+  const operation = spec.paths[path].get;
+  const envelope = resolveRef(
+    spec,
+    operation.responses['200'].content['application/json'].schema,
+  );
+  const payloadRef = envelope.properties.payloadJson.contentSchema.$ref;
+  const ajv = new Ajv2020({
+    allErrors: true,
+    strict: false,
+    validateFormats: false,
+  });
+  return ajv.compile({
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    components: { schemas: spec.components.schemas },
+    $ref: payloadRef,
+  });
 }
 
 describe('China corridor OpenAPI agent contract', () => {
@@ -130,10 +151,25 @@ describe('China corridor OpenAPI agent contract', () => {
       assert.match(envelope.properties.upstreamUnavailable.description, /agent|caller/i);
       const example = operation.responses['200'].content['application/json'].example;
       const decoded = JSON.parse(example.payloadJson);
+      const validateEmbedded = embeddedValidator(spec);
+      assert.equal(
+        validateEmbedded(decoded),
+        true,
+        `${label}: representative corridor payload rejected: ${JSON.stringify(validateEmbedded.errors)}`,
+      );
       assert.equal(decoded.corridors[0].id, 'china-yangtze-river-delta');
       const exampleProvenance = decoded.corridors[0].conditions[0].provenance;
       assert.equal(exampleProvenance.contractVersion, provenanceContract.version);
       assert.deepEqual(Object.keys(exampleProvenance.claims).sort(), provenanceDimensions);
+
+      const invalidPrecision = structuredClone(decoded);
+      invalidPrecision.corridors[0].conditions[0].provenance
+        .claims.observation_time.value = {
+          role: 'observation',
+          value: '2026',
+          precision: 'instant',
+        };
+      assert.equal(validateEmbedded(invalidPrecision), false);
 
       const publisherClaim = claims.properties.publisher;
       const unavailableClaim = resolveRef(
@@ -148,6 +184,13 @@ describe('China corridor OpenAPI agent contract', () => {
         claims.properties[dimension].oneOf
           .find((item) => item.properties?.status?.const === 'known')
           .properties.value;
+      for (const dimension of provenanceContract.dimensions) {
+        assert.deepEqual(
+          knownValue(dimension),
+          provenanceValueSchema(dimension, provenanceContract),
+          `${dimension} must use the shared provenance value schema`,
+        );
+      }
       assert.deepEqual(
         knownValue('publisher').properties.type.enum,
         provenanceContract.publisherTypes,

@@ -26,7 +26,11 @@ import {
   checkFailClosedScopedIpRateLimit,
   hasEndpointRatePolicy,
 } from './_shared/rate-limit';
-import { drainResponseHeaders, drainSuccessStatusOverride } from './_shared/response-headers';
+import {
+  drainResponseHeaders,
+  drainRetryableResponse,
+  drainSuccessStatusOverride,
+} from './_shared/response-headers';
 import { projectJsonResponse } from './_shared/response-projection';
 import { getRpcNoStoreReasonFromJson } from './_shared/cache-contract';
 import {
@@ -1049,8 +1053,10 @@ export function createDomainGateway(
       // re-check via the fallback path. Mirror the per-handler runProPreChecks
       // and authorize-pro entitlement guards.
       const ent = await getEntitlements(verified.userId);
-      // Single-source Pro MCP decision — see server/_shared/pro-mcp-gate.ts (#5653).
-      const mcpCovered = checkProMcpAccess(ent);
+      // Single-source Pro MCP decision. The gateway keeps its HTTP denial and
+      // telemetry contract; the shared gate owns access and billing precedence.
+      const gate = checkProMcpAccess(ent, Date.now());
+      const mcpCovered = gate === null;
       const billingDenial = denyForBillingVerification(
         ent,
         corsHeaders,
@@ -1834,6 +1840,7 @@ export function createDomainGateway(
         mergedHeaders.set(key, value);
       }
     }
+    const retryableResponse = drainRetryableResponse(request);
     attachRequiredBboxDiagnosticHeaders(mergedHeaders, pathname, requiredBboxDiagnostic);
 
     // Handler side-channel status override (setSuccessStatusOverride): applied
@@ -1973,7 +1980,14 @@ export function createDomainGateway(
       // record rather than a lingering 'processing' lock → 409. store() is
       // best-effort/fail-open, so a Redis blip degrades to a re-executable
       // retry, never a failed response.
-      await idempotency.store(finalStatus, bodyBytes, response.headers.get('content-type'));
+      // Generated response-envelope RPCs can report a retryable ServiceError
+      // inside HTTP 200. Feed store() a retryable status only for its
+      // persist-vs-release decision; the client still receives finalStatus.
+      await idempotency.store(
+        retryableResponse ? 503 : finalStatus,
+        bodyBytes,
+        response.headers.get('content-type'),
+      );
       emitRequest(finalStatus, 'ok', resolvedCacheTier, bodyBytes.byteLength);
       maybeAttachDevHealthHeader(mergedHeaders);
       return new Response(bodyBytes, {

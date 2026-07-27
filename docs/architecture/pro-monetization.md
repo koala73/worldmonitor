@@ -1,6 +1,6 @@
 # Pro monetization — current architecture
 
-**Last verified**: 2026-07-06 (tier model updated for API Business publication, PR #4946).
+**Last verified**: 2026-07-27 (public lifecycle, plan, price, and capability facts now share one generation chain).
 
 Factual snapshot of how authentication, payments, entitlements, and billing management work today. This page intentionally describes only current deployed behavior.
 
@@ -17,7 +17,9 @@ Factual snapshot of how authentication, payments, entitlements, and billing mana
 
 ## Tier model
 
-Products are Dodo `productId`s stored client-side in `pro-test/src/generated/tiers.json` and served at runtime from `https://api.worldmonitor.app/api/product-catalog`:
+The authoritative lifecycle, plan, price, visibility, and checkout metadata lives in `convex/config/productCatalog.ts`. The MCP capability count comes from `api/mcp/registry/index.ts`. `npm run product:facts` combines those sources into committed Edge, Railway, static, structured-data, and agent-discovery artifacts; normal production build commands run it automatically. `npm run product:facts:check` is the non-mutating freshness gate.
+
+Products are served at runtime from `https://api.worldmonitor.app/api/product-catalog`; generated client configuration lives in `pro-test/src/generated/tiers.json`:
 
 - **Free** — `price: 0`, no productId, card links to dashboard.
 - **Pro Monthly** — `pdt_0Nbtt71uObulf7fGXhQup` ($39.99/mo).

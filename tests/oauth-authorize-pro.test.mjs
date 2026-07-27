@@ -405,6 +405,137 @@ describe('authorizeProHandler — entitlement re-check', () => {
 });
 
 // ===========================================================================
+// #5622 — the HTML gate adopts the shared billing-verification contract
+// ===========================================================================
+
+/**
+ * #5600 swept six Pro-gated JSON endpoints onto the retryable contract and left
+ * this page out because it needed a copy decision. Until then, an entitlement
+ * the backend could not VERIFY rendered the same terminal "Pro Subscription
+ * Required" page a confirmed free user sees — a paying customer told to
+ * subscribe because Convex blipped.
+ *
+ * The distinctions asserted here are the whole point: status (retry vs not),
+ * the machine-readable headers, and that the copy does not tell the user to
+ * reload a page whose one-shot nonces are already spent.
+ */
+describe('authorizeProHandler — billing-verification denials (#5622)', () => {
+  const TRANSIENT_ENT = {
+    features: { tier: 0, mcpAccess: false },
+    validUntil: 0,
+    verificationUnavailable: true,
+  };
+  const LAPSED_ENT = {
+    features: { tier: 0, mcpAccess: false },
+    validUntil: 0,
+    billingStatus: 'subscription_lapsed',
+  };
+  const RENEWAL_PENDING_ENT = {
+    features: { tier: 0, mcpAccess: false },
+    validUntil: 0,
+    billingStatus: 'renewal_verification_pending',
+    retryAfterSeconds: 12,
+  };
+
+  it('an unverifiable entitlement is a retryable 503, not the terminal upsell', async () => {
+    const grant = await makeGrantToken();
+    const { deps, issueCalls } = await makeDeps({ getEntitlements: async () => TRANSIENT_ENT });
+    const res = await authorizeProHandler(makeReq({ nonce: NONCE, grant }), deps);
+
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('X-Billing-Verification'), 'entitlement_verification_unavailable');
+    assert.equal(res.headers.get('Retry-After'), '5');
+    assert.equal(res.headers.get('Cache-Control'), 'no-store');
+    assert.equal(res.headers.get('Content-Type'), 'text/html; charset=utf-8');
+    // Still fail-closed: no Convex token row for an unverified user.
+    assert.equal(issueCalls.length, 0, 'a retryable denial must not issue a token row');
+  });
+
+  it('carries the provider-supplied delay for an in-flight renewal re-check', async () => {
+    const grant = await makeGrantToken();
+    const { deps, issueCalls } = await makeDeps({
+      getEntitlements: async () => RENEWAL_PENDING_ENT,
+    });
+    const res = await authorizeProHandler(makeReq({ nonce: NONCE, grant }), deps);
+
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('X-Billing-Verification'), 'renewal_verification_pending');
+    assert.equal(res.headers.get('Retry-After'), '12');
+    assert.equal(issueCalls.length, 0);
+  });
+
+  it('the retryable page tells the user to restart from their client, never to reload', async () => {
+    // By the time this gate runs, `mcp-grant:<n>` and `oauth:nonce:<n>` have both
+    // been GETDEL'd (steps 3-4), so a reload fails as an expired session. Copy
+    // that says "try again" without saying WHERE sends the user in a circle.
+    const grant = await makeGrantToken();
+    const { deps } = await makeDeps({ getEntitlements: async () => TRANSIENT_ENT });
+    const html = await (await authorizeProHandler(makeReq({ nonce: NONCE, grant }), deps)).text();
+
+    assert.match(html, /MCP client/, 'must point the user back at their MCP client');
+    assert.match(html, /temporary/i, 'must not read as a subscription problem');
+    assert.doesNotMatch(
+      html,
+      /(reload|refresh|retry) (this |the )?page/i,
+      'the spent nonce makes a page reload the one action guaranteed to fail',
+    );
+    assert.match(
+      html,
+      /single-use|restarted/i,
+      'the copy must explain WHY a reload is not the retry',
+    );
+    assert.doesNotMatch(
+      html,
+      /Pro Subscription Required/,
+      'a transient failure must not render the upsell headline',
+    );
+  });
+
+  it('a provider-confirmed lapse stays a 403 and says so, with no Retry-After', async () => {
+    const grant = await makeGrantToken();
+    const { deps, issueCalls } = await makeDeps({ getEntitlements: async () => LAPSED_ENT });
+    const res = await authorizeProHandler(makeReq({ nonce: NONCE, grant }), deps);
+
+    assert.equal(res.status, 403);
+    assert.equal(res.headers.get('X-Billing-Verification'), 'subscription_lapsed');
+    assert.equal(
+      res.headers.get('Retry-After'),
+      null,
+      'a confirmed lapse must not invite a retry — renewal is the only way out',
+    );
+    assert.equal(issueCalls.length, 0);
+    assert.match(await res.text(), /Subscription Lapsed/);
+  });
+
+  it('a CONFIRMED free row still gets the plain upsell with no verification header', async () => {
+    const grant = await makeGrantToken();
+    const { deps } = await makeDeps({ getEntitlements: async () => FREE_ENT });
+    const res = await authorizeProHandler(makeReq({ nonce: NONCE, grant }), deps);
+
+    assert.equal(res.status, 403);
+    assert.equal(res.headers.get('X-Billing-Verification'), null);
+    assert.match(await res.text(), /Pro Subscription Required/);
+  });
+
+  it('a CURRENT Pro row carrying a renewal marker for a stronger plan still authorizes', async () => {
+    // Mirrors checkEntitlementDetailed's tier-fallback: classifying the billing
+    // metadata before the tier check would 503 a user whose access is fine.
+    const grant = await makeGrantToken();
+    const { deps, issueCalls } = await makeDeps({
+      getEntitlements: async () => ({
+        ...PRO_ENT,
+        billingStatus: 'renewal_verification_pending',
+        retryAfterSeconds: 9,
+      }),
+    });
+    const res = await authorizeProHandler(makeReq({ nonce: NONCE, grant }), deps);
+
+    assert.equal(res.status, 302);
+    assert.equal(issueCalls.length, 1);
+  });
+});
+
+// ===========================================================================
 // Client / redirect_uri checks
 // ===========================================================================
 

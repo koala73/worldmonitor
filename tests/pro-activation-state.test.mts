@@ -80,6 +80,8 @@ const ACCOUNT_B = deriveActivationAccountKey(USER_B)!;
 
 const PRO_ID = DODO_PRODUCTS.PRO_MONTHLY;
 const PRO_ANNUAL_ID = DODO_PRODUCTS.PRO_ANNUAL;
+const PRO_BUSINESS_ID = DODO_PRODUCTS.PRO_BUSINESS_MONTHLY;
+const PRO_BUSINESS_ANNUAL_ID = DODO_PRODUCTS.PRO_BUSINESS_ANNUAL;
 const API_STARTER_ID = DODO_PRODUCTS.API_STARTER_MONTHLY;
 const API_STARTER_ANNUAL_ID = DODO_PRODUCTS.API_STARTER_ANNUAL;
 const ENTERPRISE_ID = DODO_PRODUCTS.ENTERPRISE;
@@ -506,29 +508,43 @@ describe('pending marker record + TTL (KTD1)', () => {
 });
 
 describe('plan classification helpers (allowlist)', () => {
-  it('isProProductId: only the two Pro product ids are Pro', () => {
+  it('isProProductId: only the Pro / Pro Business product ids are Pro', () => {
     assert.equal(isProProductId(PRO_ID), true);
     assert.equal(isProProductId(PRO_ANNUAL_ID), true);
+    assert.equal(isProProductId(PRO_BUSINESS_ID), true);
+    assert.equal(isProProductId(PRO_BUSINESS_ANNUAL_ID), true);
     assert.equal(isProProductId(API_STARTER_ID), false);
     assert.equal(isProProductId(ENTERPRISE_ID), false);
     assert.equal(isProProductId('pdt_unknown'), false);
   });
 
-  it('isProPlanKey: only pro_monthly / pro_annual are Pro', () => {
+  it('isProPlanKey: only the pro / pro_business plan keys are Pro', () => {
     assert.equal(isProPlanKey('pro_monthly'), true);
     assert.equal(isProPlanKey('pro_annual'), true);
+    assert.equal(isProPlanKey('pro_business_monthly'), true);
+    assert.equal(isProPlanKey('pro_business_annual'), true);
     assert.equal(isProPlanKey('free'), false);
     assert.equal(isProPlanKey('api_starter'), false);
     assert.equal(isProPlanKey('enterprise'), false);
   });
 
   it('PRO_PRODUCT_IDS stays in sync with the generated catalog (drift guard)', () => {
-    assert.deepEqual([...PRO_PRODUCT_IDS].sort(), [DODO_PRODUCTS.PRO_MONTHLY, DODO_PRODUCTS.PRO_ANNUAL].sort());
+    assert.deepEqual(
+      [...PRO_PRODUCT_IDS].sort(),
+      [
+        DODO_PRODUCTS.PRO_MONTHLY,
+        DODO_PRODUCTS.PRO_ANNUAL,
+        DODO_PRODUCTS.PRO_BUSINESS_MONTHLY,
+        DODO_PRODUCTS.PRO_BUSINESS_ANNUAL,
+      ].sort(),
+    );
   });
 
-  it('PRO_PLAN_KEYS stays in sync with the catalog\'s pro tierGroup (drift guard)', () => {
+  it('PRO_PLAN_KEYS stays in sync with the catalog\'s pro-family tierGroups (drift guard)', () => {
+    // Pro Business gets the Pro day-0 activation lifecycle (KTD9), so the
+    // allowlist tracks BOTH pro-family tier groups — not tierGroup === 'pro'.
     const catalogProPlanKeys = Object.values(PRODUCT_CATALOG)
-      .filter((e) => e.tierGroup === 'pro')
+      .filter((e) => e.tierGroup === 'pro' || e.tierGroup === 'pro_business')
       .map((e) => e.planKey)
       .sort();
     assert.deepEqual([...PRO_PLAN_KEYS].sort(), catalogProPlanKeys);

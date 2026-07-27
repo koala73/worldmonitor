@@ -10,12 +10,13 @@ function parseProxyConfig(raw) {
   // Standard URL format: http://user:pass@host:port or https://user:pass@host:port
   try {
     const u = new URL(raw);
-    if (u.hostname) {
+    if (u.hostname && (u.protocol === 'http:' || u.protocol === 'https:')) {
+      const tls = u.protocol === 'https:';
       return {
         host: u.hostname,
-        port: parseInt(u.port, 10),
+        port: u.port ? parseInt(u.port, 10) : (tls ? 443 : 80),
         auth: u.username ? `${decodeURIComponent(u.username)}:${decodeURIComponent(u.password)}` : null,
-        tls: u.protocol === 'https:',
+        tls,
       };
     }
   } catch { /* fall through */ }
@@ -170,11 +171,32 @@ function proxyConnectTunnel(targetHostname, proxyConfig, { timeoutMs = 20_000, t
   });
 }
 
+function readBoundedResponseStream(stream, maxResponseBytes = Infinity) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let responseBytes = 0;
+    stream.on('data', (chunk) => {
+      responseBytes += chunk.byteLength;
+      if (responseBytes > maxResponseBytes) {
+        stream.destroy();
+        reject(Object.assign(new Error('proxy response too large'), {
+          code: 'RESPONSE_TOO_LARGE',
+        }));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    stream.on('end', () => resolve(Buffer.concat(chunks)));
+    stream.on('error', reject);
+  });
+}
+
 function proxyFetch(url, proxyConfig, {
   accept = '*/*',
   headers = {},
   method = 'GET',
   body = null,
+  maxResponseBytes = Infinity,
   timeoutMs = 20_000,
   signal,
 } = {}) {
@@ -226,17 +248,15 @@ function proxyFetch(url, proxyConfig, {
         if (enc === 'gzip') stream = resp.pipe(zlib.createGunzip());
         else if (enc === 'deflate') stream = resp.pipe(zlib.createInflate());
 
-        const chunks = [];
-        stream.on('data', (c) => chunks.push(c));
-        stream.on('end', () => {
-          resolveOnce({
+        readBoundedResponseStream(stream, maxResponseBytes).then(
+          (buffer) => resolveOnce({
             ok: resp.statusCode >= 200 && resp.statusCode < 300,
             status: resp.statusCode,
-            buffer: Buffer.concat(chunks),
+            buffer,
             contentType: resp.headers['content-type'] || '',
-          });
-        });
-        stream.on('error', rejectOnce);
+          }),
+          rejectOnce,
+        );
       });
       req.on('error', rejectOnce);
       if (body != null) req.write(body);
@@ -245,4 +265,13 @@ function proxyFetch(url, proxyConfig, {
   });
 }
 
-module.exports = { parseProxyConfig, resolveProxyConfig, resolveProxyConfigWithFallback, resolveProxyString, resolveProxyStringConnect, proxyConnectTunnel, proxyFetch };
+module.exports = {
+  parseProxyConfig,
+  resolveProxyConfig,
+  resolveProxyConfigWithFallback,
+  resolveProxyString,
+  resolveProxyStringConnect,
+  proxyConnectTunnel,
+  proxyFetch,
+  _readBoundedResponseStream: readBoundedResponseStream,
+};

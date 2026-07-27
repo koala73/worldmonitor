@@ -644,3 +644,130 @@ describe('grantContextHandler', () => {
     assert.equal(body.client_name, BASE_CLIENT_DATA.client_name);
   });
 });
+
+// =========================================================================
+// #5622 — the grant handshake splits "unverifiable" from "not entitled"
+// =========================================================================
+
+/**
+ * Both endpoints answered every sub-Pro entitlement with a terminal 403
+ * INSUFFICIENT_TIER, including the transient marker `getEntitlements`
+ * synthesizes when the backend lookup FAILS. The SPA maps that code to
+ * "A WorldMonitor Pro subscription is required to authorize MCP clients." — a
+ * paying customer told to buy what they already own because Convex blipped.
+ *
+ * The pair is asserted together on purpose: they share the gate
+ * (server/_shared/pro-mcp-gate.ts) precisely because the SPA branches on `error`
+ * and a divergence would change the user's outcome depending on whether they had
+ * clicked Authorize yet.
+ */
+describe('grant handshake billing-verification denials (#5622)', () => {
+  const TRANSIENT_ENT = {
+    features: { tier: 0, mcpAccess: false },
+    validUntil: 0,
+    verificationUnavailable: true,
+  };
+  const LAPSED_ENT = {
+    features: { tier: 0, mcpAccess: false },
+    validUntil: 0,
+    billingStatus: 'subscription_lapsed',
+  };
+  const RENEWAL_FAILED_ENT = {
+    features: { tier: 0, mcpAccess: false },
+    validUntil: 0,
+    billingStatus: 'renewal_verification_failed',
+    retryAfterSeconds: 22,
+  };
+
+  const SURFACES = [
+    ['mint', (deps) => mintGrantHandler(makePostReq({ nonce: 'nonce_xyz' }), deps), makeMintDeps],
+    ['context', (deps) => grantContextHandler(makeGetReq('nonce_xyz'), deps), makeContextDeps],
+  ];
+
+  for (const [label, invoke, makeDeps] of SURFACES) {
+    it(`${label}: an unverifiable entitlement is a retryable 503, not INSUFFICIENT_TIER`, async () => {
+      const { deps } = makeDeps({ getEntitlements: async () => TRANSIENT_ENT });
+      const res = await invoke(deps);
+
+      assert.equal(res.status, 503);
+      assert.equal(res.headers.get('Cache-Control'), 'no-store');
+      assert.equal(res.headers.get('Retry-After'), '5');
+      assert.equal(
+        res.headers.get('X-Billing-Verification'),
+        'entitlement_verification_unavailable',
+      );
+      const json = await res.json();
+      assert.equal(json.error, 'TIER_VERIFICATION_UNAVAILABLE');
+      assert.notEqual(
+        json.error,
+        'INSUFFICIENT_TIER',
+        'the SPA renders INSUFFICIENT_TIER as a terminal upsell',
+      );
+      // The non-leak invariant still holds on the new path.
+      assert.equal(json.client_name, undefined);
+      assert.equal(json.redirect_host, undefined);
+    });
+
+    it(`${label}: an in-flight renewal re-check carries the provider's own delay`, async () => {
+      const { deps } = makeDeps({ getEntitlements: async () => RENEWAL_FAILED_ENT });
+      const res = await invoke(deps);
+
+      assert.equal(res.status, 503);
+      assert.equal(res.headers.get('Retry-After'), '22');
+      assert.equal(res.headers.get('X-Billing-Verification'), 'renewal_verification_failed');
+      assert.equal((await res.json()).error, 'TIER_VERIFICATION_UNAVAILABLE');
+    });
+
+    it(`${label}: a provider-confirmed lapse stays INSUFFICIENT_TIER 403, no Retry-After`, async () => {
+      // Retrying cannot flip a confirmed lapse, and every existing consumer
+      // branch for this code stays correct — only the header is added so a lapse
+      // is distinguishable from a plain free account in logs.
+      const { deps } = makeDeps({ getEntitlements: async () => LAPSED_ENT });
+      const res = await invoke(deps);
+
+      assert.equal(res.status, 403);
+      assert.equal((await res.json()).error, 'INSUFFICIENT_TIER');
+      assert.equal(res.headers.get('X-Billing-Verification'), 'subscription_lapsed');
+      assert.equal(res.headers.get('Retry-After'), null);
+    });
+
+    it(`${label}: a CONFIRMED free row keeps the plain upsell with no verification header`, async () => {
+      const { deps } = makeDeps({ getEntitlements: async () => FREE_ENT });
+      const res = await invoke(deps);
+
+      assert.equal(res.status, 403);
+      assert.equal((await res.json()).error, 'INSUFFICIENT_TIER');
+      assert.equal(res.headers.get('X-Billing-Verification'), null);
+    });
+  }
+
+  it('mint does NOT claim the nonce on a retryable denial, so the retry can still succeed', async () => {
+    // The whole value of a retryable answer is that the SAME click works a moment
+    // later. Burning the SET-NX claim here would make the advertised retry fail
+    // with NONCE_CLAIMED_BY_OTHER_USER or a stale record.
+    const setNxCalls = [];
+    const { deps } = makeMintDeps({
+      getEntitlements: async () => TRANSIENT_ENT,
+      redisSetNxEx: async (key, value, ttl) => {
+        setNxCalls.push({ key, value, ttl });
+        return true;
+      },
+    });
+    const res = await mintGrantHandler(makePostReq({ nonce: 'nonce_xyz' }), deps);
+
+    assert.equal(res.status, 503);
+    assert.deepEqual(setNxCalls, [], 'the gate must run before the nonce claim');
+  });
+
+  it('a CURRENT Pro row carrying a renewal marker for a stronger plan still mints', async () => {
+    const { deps } = makeMintDeps({
+      getEntitlements: async () => ({
+        ...PRO_ENT,
+        billingStatus: 'renewal_verification_pending',
+        retryAfterSeconds: 9,
+      }),
+    });
+    const res = await mintGrantHandler(makePostReq({ nonce: 'nonce_xyz' }), deps);
+    assert.equal(res.status, 200);
+  });
+});

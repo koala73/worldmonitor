@@ -1,11 +1,48 @@
 import type { PanelTab, TabsState } from '@/services/tab-store';
 import { t } from '@/services/i18n';
+import { PanelGateReason } from '@/services/panel-gating';
+import { lockSvg, upgradeSvg } from '@/components/gate-icons';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { billingAwareGateCopy, type GateCopy } from '@/components/ExportGateControl';
 
 export interface PanelTabBarCallbacks {
   onSelect(tabId: string): void;
   onAdd(): void;
   onRename(tabId: string, name: string): void;
   onDelete(tabId: string): void;
+}
+
+/** Locked state of the "+" control while the dashboard tab cap applies (KTD8). */
+export interface TabAddLock {
+  /** Copy for the anchored notice — same shape as the export gate's. */
+  copy: GateCopy;
+  /** Resolved gate action (auth modal, pricing page, billing portal). */
+  onAction: () => void;
+}
+
+/**
+ * Tab-cap copy, shaped exactly like `exportGateCopy` so the two locked
+ * surfaces read the same. The billing-aware reasons reuse the shared
+ * `components.billingState.*` strings — a customer with paid evidence must
+ * never see a fresh upsell. The upgrade CTA stays tier-agnostic ("upgrade for
+ * more") because it fires at every rung of the ladder: 3 → Pro, 10 → Pro
+ * Business, 25 → Enterprise.
+ */
+export function tabCapGateCopy(reason: PanelGateReason, cap: number): GateCopy {
+  const billing = billingAwareGateCopy(reason);
+  if (billing) return billing;
+  if (reason === PanelGateReason.ANONYMOUS) {
+    return {
+      icon: lockSvg,
+      desc: t('components.tabCap.signedOutDesc', { cap: String(cap) }),
+      cta: t('premium.signIn'),
+    };
+  }
+  return {
+    icon: upgradeSvg,
+    desc: t('components.tabCap.upgradeDesc', { cap: String(cap) }),
+    cta: t('components.tabCap.upgradeCta'),
+  };
 }
 
 /**
@@ -15,18 +52,45 @@ export interface PanelTabBarCallbacks {
  * Interactions: click switches tabs, double-click renames inline,
  * the per-tab close button deletes (hidden when only one tab remains),
  * and the trailing "+" creates a new tab with the default panels.
+ *
+ * The "+" can be CAP-LOCKED (KTD8). It stays visually unchanged at rest — a
+ * one-glyph button has no room for a lock badge with copy — and only its
+ * aria-label changes; clicking it opens an anchored notice with the reason and
+ * a CTA. Existing tabs are never touched: the cap blocks creation only.
  */
 export class PanelTabBar {
   private element: HTMLElement;
   private tablistEl: HTMLElement;
   private getState: () => TabsState;
   private callbacks: PanelTabBarCallbacks;
+  private addBtn: HTMLButtonElement | null = null;
+  private addLock: TabAddLock | null = null;
+  private notice: HTMLElement | null = null;
+  private readonly liveRegion: HTMLElement;
+  private readonly onNoticeOutsideClick: (event: MouseEvent) => void;
+  private readonly onNoticeKeyDown: (event: KeyboardEvent) => void;
 
   constructor(getState: () => TabsState, callbacks: PanelTabBarCallbacks) {
     this.getState = getState;
     this.callbacks = callbacks;
     this.element = document.createElement('div');
     this.element.className = 'dashboard-tabs-bar';
+
+    // Created up front and empty: an aria-live region only announces content
+    // injected AFTER it is in the accessibility tree.
+    this.liveRegion = document.createElement('span');
+    this.liveRegion.className = 'wm-visually-hidden';
+    this.liveRegion.setAttribute('role', 'status');
+    this.liveRegion.setAttribute('aria-live', 'polite');
+
+    this.onNoticeOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (this.notice?.contains(target) || target === this.addBtn) return;
+      this.closeAddLockNotice();
+    };
+    this.onNoticeKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') this.closeAddLockNotice(true);
+    };
 
     // ARIA: a role="tablist" may only own role="tab"/"presentation" children.
     // The trailing "+" button is an action, not a tab, so the tablist is an
@@ -68,7 +132,106 @@ export class PanelTabBar {
   }
 
   destroy(): void {
+    this.closeAddLockNotice();
     this.element.remove();
+  }
+
+  /**
+   * Apply (or clear) the tab cap's locked state. Called on every auth and
+   * entitlement emission, so a snapshot that arrives late — or a mid-session
+   * upgrade — flips the control without a reload.
+   */
+  setAddLock(lock: TabAddLock | null): void {
+    const wasLocked = this.addLock !== null;
+    // Change-detection guard: gating re-fires on every auth/entitlement/
+    // subscription emission, most with an unchanged verdict (same pattern as
+    // Panel.showGatedCta's repeat-verdict skip).
+    if (
+      wasLocked === (lock !== null) &&
+      lock?.copy.desc === this.addLock?.copy.desc &&
+      lock?.copy.cta === this.addLock?.copy.cta
+    ) {
+      this.addLock = lock;
+      return;
+    }
+    this.addLock = lock;
+    this.applyAddLock();
+    if (wasLocked && lock === null) {
+      this.closeAddLockNotice();
+      this.liveRegion.textContent = t('components.tabCap.unlockedAnnouncement');
+    } else if (this.notice) {
+      // Locked → locked with different copy (e.g. anonymous → signed-in
+      // free): the open notice carries the OLD reason and the OLD onAction
+      // closure. Close it; the next "+" click rebuilds from the new lock.
+      this.closeAddLockNotice();
+    }
+  }
+
+  /**
+   * Open the anchored locked notice (icon + reason + CTA) for a click on a
+   * capped "+". No-op when the control is not locked.
+   */
+  showAddLockNotice(): void {
+    const lock = this.addLock;
+    if (!lock || !this.addBtn) return;
+    this.closeAddLockNotice();
+
+    const icon = document.createElement('div');
+    icon.className = 'tab-cap-notice-icon';
+    setTrustedHtml(icon, trustedHtml(lock.copy.icon, 'static inline icon markup'));
+
+    const desc = document.createElement('p');
+    desc.className = 'tab-cap-notice-desc';
+    desc.id = 'tab-cap-notice-desc';
+    desc.textContent = lock.copy.desc;
+
+    const cta = document.createElement('button');
+    cta.type = 'button';
+    cta.className = 'tab-cap-notice-cta';
+    cta.textContent = lock.copy.cta;
+    // The reason travels with the focused button, so a screen-reader user who
+    // clicks a locked "+" hears why before the CTA name.
+    cta.setAttribute('aria-describedby', desc.id);
+    cta.addEventListener('click', () => {
+      this.closeAddLockNotice();
+      lock.onAction();
+    });
+
+    const notice = document.createElement('div');
+    notice.className = 'tab-cap-notice';
+    notice.append(icon, desc, cta);
+
+    // The bar scrolls horizontally (overflow-x: auto), so an in-flow popover
+    // would be clipped by it. The notice is body-anchored and positioned from
+    // the button's viewport rect instead.
+    document.body.appendChild(notice);
+    const rect = this.addBtn.getBoundingClientRect();
+    notice.style.top = `${rect.bottom + 6}px`;
+    notice.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - notice.offsetWidth - 8))}px`;
+
+    this.notice = notice;
+    document.addEventListener('mousedown', this.onNoticeOutsideClick);
+    document.addEventListener('keydown', this.onNoticeKeyDown);
+    cta.focus();
+  }
+
+  private closeAddLockNotice(restoreFocus = false): void {
+    if (!this.notice) return;
+    document.removeEventListener('mousedown', this.onNoticeOutsideClick);
+    document.removeEventListener('keydown', this.onNoticeKeyDown);
+    this.notice.remove();
+    this.notice = null;
+    if (restoreFocus) this.addBtn?.focus();
+  }
+
+  private applyAddLock(): void {
+    if (!this.addBtn) return;
+    this.addBtn.setAttribute(
+      'aria-label',
+      this.addLock
+        ? t('components.tabCap.lockedAriaLabel', { reason: this.addLock.copy.desc })
+        : t('dashboardTabs.addTab'),
+    );
   }
 
   private render(): void {
@@ -81,11 +244,14 @@ export class PanelTabBar {
     const addBtn = document.createElement('button');
     addBtn.className = 'dashboard-tab-add';
     addBtn.title = t('dashboardTabs.addTabTitle');
-    addBtn.setAttribute('aria-label', t('dashboardTabs.addTab'));
     addBtn.textContent = '+';
+    // The click always reaches the manager: `addTab` is the single enforcement
+    // point for the cap, so the button never decides on its own.
     addBtn.addEventListener('click', () => this.callbacks.onAdd());
+    this.addBtn = addBtn;
+    this.applyAddLock();
     // The tablist owns only tabs; the add button is a sibling in the bar.
-    this.element.replaceChildren(this.tablistEl, addBtn);
+    this.element.replaceChildren(this.tablistEl, addBtn, this.liveRegion);
   }
 
   private renderTab(tab: PanelTab, isActive: boolean, canDelete: boolean): HTMLElement {

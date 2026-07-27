@@ -161,7 +161,13 @@ function isObservation(value: unknown): boolean {
   }
   if (value.sourceId === 'japan-mod') {
     return value.observationKind === 'reviewed_regional_augmentation'
-      && JAPAN_CATEGORY_KEYS.every((key) => isNullableNonNegativeInteger(categories[key]));
+      && JAPAN_CATEGORY_KEYS.every((key) => isNullableNonNegativeInteger(categories[key]))
+      && (
+        value.indexPresence === undefined
+        || value.indexPresence === 'present'
+        || value.indexPresence === 'not_observed_in_current_index'
+        || value.indexPresence === 'unknown'
+      );
   }
   return false;
 }
@@ -174,6 +180,19 @@ function isSourceHealth(value: unknown): boolean {
     && typeof value.claimSemantics === 'string'
     && (value.transportStatus === 'fresh' || value.transportStatus === 'error')
     && isNonNegativeInteger(value.requestCount)
+    && (
+      value.transportPath === undefined
+      || value.transportPath === 'direct'
+      || value.transportPath === 'proxy'
+    )
+    && (
+      value.fallbackReason === undefined
+      || typeof value.fallbackReason === 'string'
+    )
+    && (
+      value.proxyFailureReason === undefined
+      || typeof value.proxyFailureReason === 'string'
+    )
     && Array.isArray(value.errorCodes)
     && value.errorCodes.every((code) => typeof code === 'string')
     && isNullableDateString(value.lastSuccessAt)

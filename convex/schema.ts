@@ -745,6 +745,11 @@ export default defineSchema({
       // validator MUST accept it or the webhook's entitlement write is
       // rejected (v.object is strict on extra keys).
       apiDailyAllowance: v.optional(v.number()),
+      // Optional — data-export entitlement (plan 2026-07-25-001). Legacy rows
+      // predate it; consumers treat undefined on a tier >= 2 row as entitled
+      // (fail-OPEN, permanently — see the PlanFeatures JSDoc). Catalog-sourced
+      // writes always set it, so this validator MUST accept it.
+      dataExport: v.optional(v.boolean()),
     }),
     validUntil: v.number(),
     // Optional complimentary-entitlement floor. When set and in the future,

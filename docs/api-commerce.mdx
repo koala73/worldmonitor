@@ -32,9 +32,9 @@ Creates a Dodo customer-portal session for an existing subscriber (update card, 
 
 ### `GET /api/product-catalog`
 
-Returns the tier view-model used by the `/pro` pricing page. Cached in Redis under `product-catalog:v2` for 1 hour; on cache miss, fetches live prices from Dodo Payments and falls back to `_product-fallback-prices.js` if Dodo is unreachable. Response carries an `X-Product-Catalog-Source` header so probes can tell cache hits from live fetches.
+Returns the tier view-model used by the `/pro` pricing page. Cached in Redis under `product-catalog:v3` for 1 hour; on cache miss, fetches live prices from Dodo Payments and falls back to `_product-fallback-prices.js` if Dodo is unreachable. Response carries an `X-Product-Catalog-Source` header so probes can tell cache hits from live fetches.
 
-**Response** (tiers ordered `free`, `pro`, `api_starter`, `api_business`, `enterprise`):
+**Response** (tiers ordered `free`, `pro`, `pro_business`, `api_starter`, `api_business`, `enterprise`):
 
 ```json
 {
@@ -62,9 +62,21 @@ Returns the tier view-model used by the `/pro` pricing page. Cached in Redis und
       "annualProductId": "pdt_0NbttMIfjLWC10jHQWYgJ"
     },
     {
+      "name": "Pro Business",
+      "localeKey": "proBusiness",
+      "description": "The Pro dashboard, licensed for work",
+      "features": ["..."],
+      "highlightFeatures": ["Commercial license included"],
+      "highlighted": false,
+      "monthlyPrice": 69.99,
+      "monthlyProductId": "pdt_...",
+      "annualPrice": 699.99,
+      "annualProductId": "pdt_..."
+    },
+    {
       "name": "API Starter",
       "localeKey": "api",
-      "description": "Programmatic access to intelligence data",
+      "description": "Build internal tools on live intelligence data",
       "features": ["..."],
       "highlighted": false,
       "monthlyPrice": 99.99,
@@ -75,7 +87,7 @@ Returns the tier view-model used by the `/pro` pricing page. Cached in Redis und
     {
       "name": "API Business",
       "localeKey": "apiBusiness",
-      "description": "High-volume API for teams",
+      "description": "Launch your own product on WorldMonitor data",
       "features": ["..."],
       "highlighted": false,
       "monthlyPrice": 299.99,
@@ -101,6 +113,7 @@ Returns the tier view-model used by the `/pro` pricing page. Cached in Redis und
 Notes:
 
 - Price fields are flat on the tier. Paid tiers always expose `monthlyPrice` / `monthlyProductId`, and add `annualPrice` / `annualProductId` only when an annual variant exists — API Business is monthly-only, so those fields are absent on it. Free uses `price: 0, period: "forever"`; Enterprise uses `price: null`.
+- `highlightFeatures` is an optional array of license/commercial-use callouts, rendered separately from `features` on the pricing page. Tiers without a callout omit the field.
 - Prices are dollars (Dodo returns cents; the handler divides by 100). Currency is implicit USD for the published catalog.
 
 ### `DELETE /api/product-catalog`
