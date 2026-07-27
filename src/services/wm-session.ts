@@ -63,7 +63,15 @@ const SESSION_DEAD_ROUTE_STRIKE_TTL_MS = SESSION_DEAD_COOLDOWN_MS;
 const PUBLIC_ON_DEMAND_BOOTSTRAP_KEYS = new Set(bootstrapTierKeyNames('on-demand'));
 export const WM_SESSION_DEGRADED_EVENT = 'wm-session-degraded';
 
-type WmSessionDeadReason = 'mint_failed' | 'retry_401';
+type WmSessionDeadReason = 'mint_failed' | 'retry_401' | 'cookie_not_persisted';
+
+// Whether a mint in THIS page session has already handed the browser a cookie.
+// The next mint must arrive carrying it — `/api/wm-session` reports that as
+// `hadSession`. A first-ever mint legitimately carries none, so the flag is
+// what separates "new visitor" from "browser is dropping our cookie."
+let cookieIssuedThisSession = false;
+// Latched once a mint proves the browser did not keep the previous cookie.
+let cookiePersistenceBroken = false;
 
 interface StoredSession {
   exp: number;
@@ -222,10 +230,16 @@ function noteRouteSuccess(rawPath: string): void {
   // quorum, including when that success was already in flight as the quorum
   // formed. Lift only retry-derived cooldowns here: mint_failed means the
   // session endpoint itself is unavailable and retains its immediate guard.
-  if (sessionDeadReason === 'retry_401') {
+  //
+  // cookie_not_persisted is lifted for the same reason and is even more
+  // clear-cut: a credentialed route just succeeded, so the browser demonstrably
+  // DID deliver the cookie. Clear the latch too, or the next mint would
+  // immediately re-derive the verdict this success just disproved.
+  if (sessionDeadReason === 'retry_401' || sessionDeadReason === 'cookie_not_persisted') {
     sessionDeadUntil = 0;
     sessionDeadReason = null;
   }
+  cookiePersistenceBroken = false;
 }
 
 function addSessionBreadcrumb(message: string, data: Record<string, string>): void {
@@ -278,7 +292,11 @@ function markWmSessionDead(reason: WmSessionDeadReason, rawPath: string): void {
   // endpoints under the same tag name that means "the denied route" elsewhere.
   // The bystander is still worth having, so it rides the breadcrumb instead.
   const blockedTag = toRouteTag(rawPath);
-  const routeTag = reason === 'mint_failed' ? '/api/wm-session' : blockedTag;
+  // Only retry_401 implicates a specific endpoint. mint_failed and
+  // cookie_not_persisted are both session-scoped verdicts learned AT the mint,
+  // so whichever route happened to be in flight is a bystander — tagging it
+  // would seed the census with innocent endpoints.
+  const routeTag = reason === 'retry_401' ? blockedTag : '/api/wm-session';
   addSessionBreadcrumb('wm-session recovery failed', { route: routeTag, blocked: blockedTag, reason });
   try {
     sentryEnqueue((s) => s.captureMessage(
@@ -359,6 +377,36 @@ function saveToStorage(s: StoredSession): void {
   try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch { /* ignore */ }
 }
 
+/**
+ * Fold one mint's cookie evidence into the persistence latch.
+ *
+ * `hadSession` is the server's answer to the one question the client cannot
+ * ask itself: did this request arrive carrying a usable cookie? The cookie is
+ * HttpOnly, so "the server rejected a good cookie" and "my browser never kept
+ * it" are indistinguishable from JS — and they need opposite responses. The
+ * first deserves a re-mint; the second makes every further mint pointless,
+ * because no credentialed route can ever succeed.
+ */
+function noteMintCookieEvidence(hadSession: boolean): void {
+  if (hadSession) {
+    // The cookie completed a round trip. Any earlier suspicion is void —
+    // direct evidence outranks inference, same doctrine as noteRouteSuccess.
+    cookieIssuedThisSession = true;
+    cookiePersistenceBroken = false;
+    return;
+  }
+  if (!cookieIssuedThisSession) {
+    // Every first-time visitor mints without a cookie. Reading that as a
+    // failure would black out the anonymous surface on arrival.
+    cookieIssuedThisSession = true;
+    return;
+  }
+  // We were handed a cookie earlier in this page session and this mint still
+  // arrived without one, so the browser is not storing it (strict cookie
+  // settings, an in-app WebView, partitioned storage, a privacy extension).
+  cookiePersistenceBroken = true;
+}
+
 async function fetchNewSession(body?: { widgetKey?: string; proKey?: string }): Promise<StoredSession | null> {
   try {
     const fetchImpl = nativeSessionFetch ?? globalThis.fetch;
@@ -370,8 +418,11 @@ async function fetchNewSession(body?: { widgetKey?: string; proKey?: string }): 
       signal: AbortSignal.timeout(fetchNewSessionTimeoutMs),
     });
     if (!resp.ok) return null;
-    const data = await resp.json() as { exp?: unknown };
+    const data = await resp.json() as { exp?: unknown; hadSession?: unknown };
     if (typeof data?.exp !== 'number') return null;
+    // Absent on an older deployment: treat as "no evidence either way" and
+    // leave the latch alone rather than accusing a healthy browser.
+    if (typeof data.hadSession === 'boolean') noteMintCookieEvidence(data.hadSession);
     return { exp: data.exp };
   } catch {
     return null;
@@ -395,6 +446,14 @@ export async function ensureWmSession(): Promise<boolean> {
       cached = fresh;
       sessionGeneration += 1;
       saveToStorage(fresh);
+      // A cookie the browser will not keep cannot authorize anything, and the
+      // next route's 401 would buy another useless mint. Suppress up front and
+      // name the real cause, instead of letting the retry_401 quorum report it
+      // as the API rejecting a good cookie (WORLDMONITOR-WG/XP).
+      if (cookiePersistenceBroken) {
+        markWmSessionDead('cookie_not_persisted', '/api/wm-session');
+        return false;
+      }
       return true;
     }
     return false;
@@ -418,9 +477,14 @@ export async function establishWmKeySession(keys: { widgetKey?: string; proKey?:
   sessionDeadUntil = 0;
   sessionDeadReason = null;
   // A key-bound session is a clean slate: strikes recorded against the old
-  // anonymous identity say nothing about what this one may reach.
+  // anonymous identity say nothing about what this one may reach. The
+  // persistence latch is cleared for the same reason — this mint just set a
+  // fresh cookie, and the new identity is entitled to prove itself rather than
+  // inherit a verdict reached before the upgrade. If the browser really is
+  // dropping cookies, the very next mint re-derives it.
   routeStrikes.clear();
   recentRouteFailures.clear();
+  cookiePersistenceBroken = false;
   saveToStorage(fresh);
   return true;
 }
@@ -450,6 +514,8 @@ export function __resetWmSessionForTests(): void {
   sessionDeadReason = null;
   routeStrikes.clear();
   recentRouteFailures.clear();
+  cookieIssuedThisSession = false;
+  cookiePersistenceBroken = false;
   sentryEnqueue = enqueueSentryCall;
   fetchNewSessionTimeoutMs = 10_000;
 }

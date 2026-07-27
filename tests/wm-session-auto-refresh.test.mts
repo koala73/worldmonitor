@@ -1847,3 +1847,104 @@ describe('wm-session route-scoped recovery failures (#5674)', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Layer 3 — cookie-persistence detection
+//
+// The failure mode WORLDMONITOR-WG/XP actually describes: the mint succeeds
+// (200 + Set-Cookie) but the browser never sends the cookie back, so every
+// credentialed route 401s no matter how many times we re-mint. The client
+// cannot read the HttpOnly cookie to check, so it used to assume the SERVER
+// rejected a good cookie and reported `retry_401` — blaming the API for a
+// browser-side storage failure, and spending one mint per route on the way.
+//
+// The mint response now reports whether the request ARRIVED with a valid
+// session cookie. A second mint that still reports `hadSession: false` proves
+// the cookie we just set never came back.
+// ---------------------------------------------------------------------------
+
+describe('wm-session cookie-persistence detection (Layer 3)', () => {
+  it('reports cookie_not_persisted and stops spending mints once the cookie proves unstorable', async () => {
+    memoryStorage.clear();
+
+    const captures: Array<{ ctx: { tags?: Record<string, string> } }> = [];
+    mod.__setWmSessionSentryEnqueueForTests(((fn: (s: unknown) => void) => {
+      fn({
+        addBreadcrumb: () => {},
+        captureMessage: (_m: string, ctx: { tags?: Record<string, string> }) => { captures.push({ ctx }); },
+      });
+    }) as Parameters<typeof mod.__setWmSessionSentryEnqueueForTests>[0]);
+
+    let mints = 0;
+    currentFetchHandler = (input) => {
+      const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
+      if (url.includes('/api/wm-session')) {
+        mints += 1;
+        // The browser stores nothing, so EVERY mint arrives without a cookie.
+        return Promise.resolve(new Response(JSON.stringify({ exp: FAR_FUTURE, hadSession: false }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }));
+      }
+      return Promise.resolve(new Response('no cookie presented', { status: 401 }));
+    };
+
+    const originalWarn = console.warn;
+    console.warn = () => {};
+    try {
+      await wrappedFetch('https://api.worldmonitor.app/api/conflict/v1/get-humanitarian-summary-batch');
+      const afterFirstRoute = mints;
+      await wrappedFetch('https://api.worldmonitor.app/api/military/v1/get-aircraft-details-batch');
+      assert.equal(
+        mints,
+        afterFirstRoute,
+        'a cookie proven unstorable must not be re-minted for the next route',
+      );
+    } finally {
+      console.warn = originalWarn;
+    }
+
+    const dead = captures.filter((c) => c.ctx.tags?.kind === 'wm_session_dead');
+    assert.equal(dead.length, 1, 'exactly one session-dead episode');
+    assert.equal(
+      dead[0].ctx.tags?.reason,
+      'cookie_not_persisted',
+      'must name the browser-side storage failure, not blame the server with retry_401',
+    );
+  });
+
+  it('does not accuse a brand-new browser whose first mint legitimately carries no cookie', async () => {
+    // Every first-time visitor mints without a cookie. Reading that as
+    // non-persistence would black out the whole anonymous surface on arrival.
+    memoryStorage.clear();
+
+    const captures: Array<{ ctx: { tags?: Record<string, string> } }> = [];
+    mod.__setWmSessionSentryEnqueueForTests(((fn: (s: unknown) => void) => {
+      fn({
+        addBreadcrumb: () => {},
+        captureMessage: (_m: string, ctx: { tags?: Record<string, string> }) => { captures.push({ ctx }); },
+      });
+    }) as Parameters<typeof mod.__setWmSessionSentryEnqueueForTests>[0]);
+
+    currentFetchHandler = (input) => {
+      const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
+      if (url.includes('/api/wm-session')) {
+        // First mint: no cookie yet, which is normal and not evidence of anything.
+        return Promise.resolve(new Response(JSON.stringify({ exp: FAR_FUTURE, hadSession: false }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        }));
+      }
+      return Promise.resolve(new Response(JSON.stringify({ ok: true }), { status: 200 }));
+    };
+
+    const resp = await wrappedFetch('https://api.worldmonitor.app/api/news/v1/list-feed-digest?variant=full&lang=en');
+    assert.equal(resp.status, 200, 'a working first-visit session must be untouched');
+    assert.equal(
+      captures.filter((c) => c.ctx.tags?.kind === 'wm_session_dead').length,
+      0,
+      'a first mint without a cookie must not be reported as a dead session',
+    );
+    assert.equal(mod.isWmSessionDead(), false, 'a first-time visitor must not be blacked out');
+  });
+});
