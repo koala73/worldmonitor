@@ -4,7 +4,6 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "reserveAccess": "Rezervirajte rani pristup",
     "signIn": "Prijava",
     "upgradeToPro": "Nadogradite na Pro",
     "goToDashboard": "Idi na nadzornu ploču"
@@ -13,11 +12,8 @@
     "noiseWord": "Šum",
     "signalWord": "Signal",
     "valueProps": "Geopolitički AI sloj za obavještajne uvide — pitajte ga, pretplatite se, gradite na njemu.",
-    "reserveEarlyAccess": "Rezervirajte rani pristup",
     "launchingDate": "Dostupno sada",
     "tryFreeDashboard": "Isprobajte besplatnu nadzornu ploču",
-    "emailPlaceholder": "Unesite e-poštu",
-    "emailAriaLabel": "Adresa e-pošte za listu čekanja",
     "choosePlan": "Odaberite plan",
     "signIn": "Prijava",
     "goToDashboard": "Idi na nadzornu ploču"
@@ -37,7 +33,6 @@
     "proF7": "Mehanizam pravila upozorenja — prilagođeni okidači, mirni sati, kanali šifrirani AES-256",
     "proF8": "Tržišna watchlista, makro i praćenje središnjih banaka",
     "proF9": "AI Market Implications i Regional Intelligence (uskoro: orbitalni nadzor, premium slojevi karte, dulja povijest)",
-    "proCta": "Rezervirajte rani pristup",
     "choosePlan": "Odaberite plan",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "Za timove kojima trebaju zajednički monitoring, API pristup, opcije implementacije, TV aplikacije i izravna podrška.",
@@ -306,33 +301,12 @@
   "finalCta": {
     "title": "Počnite s Pro. Skalirajte na Enterprise.",
     "subtitle": "Nastavite koristiti World Monitor besplatno ili nadogradite za istraživanje dionica, makro analitiku i AI sažetke. Ako vašoj organizaciji trebaju timski pristup, TV aplikacije ili API podrška, javite nam se.",
-    "getPro": "Rezervirajte rani pristup",
     "talkToSales": "Razgovarajte s prodajom"
   },
   "footer": {
-    "beFirstInLine": "Budite prvi u redu.",
     "lookingForEnterprise": "Tražite Enterprise?",
     "contactUs": "Kontaktirajte nas",
     "wiredArticle": "WIRED članak"
-  },
-  "form": {
-    "submitting": "Slanje...",
-    "joinWaitlist": "Rezervirajte rani pristup",
-    "tooManyRequests": "Previše zahtjeva",
-    "failedTryAgain": "Nije uspjelo — pokušajte ponovno"
-  },
-  "referral": {
-    "alreadyOnList": "Već ste na listi.",
-    "shareHint": "Podijelite svoju poveznicu kako biste napredovali u redu. Svaki prijatelj koji se pridruži približava vas vrhu.",
-    "copied": "Kopirano!",
-    "shareOnX": "Podijeli na X-u",
-    "linkedin": "LinkedIn",
-    "whatsapp": "WhatsApp",
-    "telegram": "Telegram",
-    "shareText": "Upravo sam se pridružio/la World Monitor Pro listi čekanja — monitoring dionica, geopolitička analiza i AI dnevni sažeci u jednoj platformi. Pridružite mi se:",
-    "joinWaitlistShare": "Pridružite se World Monitor Pro listi čekanja:",
-    "youreIn": "Upisani ste!",
-    "invitedBanner": "Pozvani ste — pridružite se listi čekanja"
   },
   "soonBadge": "Uskoro",
   "meta": {

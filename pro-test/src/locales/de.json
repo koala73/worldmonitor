@@ -4,7 +4,6 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "reserveAccess": "Sichern Sie Ihren Early Access",
     "signIn": "Anmelden",
     "upgradeToPro": "Upgrade auf Pro",
     "goToDashboard": "Zum Dashboard"
@@ -13,11 +12,8 @@
     "noiseWord": "Rauschen",
     "signalWord": "Signal",
     "valueProps": "Die geopolitische KI-Schicht — fragen Sie sie, abonnieren Sie sie, bauen Sie darauf auf.",
-    "reserveEarlyAccess": "Sichern Sie Ihren Early Access",
     "launchingDate": "Jetzt verfügbar",
     "tryFreeDashboard": "Kostenloses Dashboard testen",
-    "emailPlaceholder": "E-Mail eingeben",
-    "emailAriaLabel": "E-Mail-Adresse für die Warteliste",
     "choosePlan": "Tarif wählen",
     "signIn": "Anmelden",
     "goToDashboard": "Zum Dashboard"
@@ -37,7 +33,6 @@
     "proF7": "Alert-Regel-Engine — eigene Trigger, Ruhezeiten, AES-256-verschlüsselte Kanäle",
     "proF8": "Market-Watchlist, Makro- und Zentralbank-Tracking",
     "proF9": "AI Market Implications und Regional Intelligence (Bald: orbitale Überwachung, Premium-Kartenebenen, längere Historie)",
-    "proCta": "Sichern Sie Ihren Early Access",
     "choosePlan": "Tarif wählen",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "Für Teams, die gemeinsames Monitoring, API-Zugang, Deployment-Optionen, TV-Apps und direkten Support brauchen.",
@@ -306,33 +301,12 @@
   "finalCta": {
     "title": "Starten mit Pro. Skalieren zu Enterprise.",
     "subtitle": "Nutzen Sie World Monitor weiter kostenlos oder upgraden Sie für Equity Research, Makroanalytik und KI-Briefings. Wenn Ihre Organisation Team-Zugang, TV-Apps oder API-Support braucht, sprechen Sie mit uns.",
-    "getPro": "Sichern Sie Ihren Early Access",
     "talkToSales": "Vertrieb kontaktieren"
   },
   "footer": {
-    "beFirstInLine": "Sichern Sie sich den ersten Platz.",
     "lookingForEnterprise": "Suchen Sie Enterprise?",
     "contactUs": "Kontaktieren Sie uns",
     "wiredArticle": "WIRED-Artikel"
-  },
-  "form": {
-    "submitting": "Sende...",
-    "joinWaitlist": "Sichern Sie Ihren Early Access",
-    "tooManyRequests": "Zu viele Anfragen",
-    "failedTryAgain": "Fehlgeschlagen — erneut versuchen"
-  },
-  "referral": {
-    "alreadyOnList": "Sie sind bereits auf der Liste.",
-    "shareHint": "Teilen Sie Ihren Link, um in der Warteschlange aufzusteigen. Jeder Freund, der sich anmeldet, bringt Sie nach vorne.",
-    "copied": "Kopiert!",
-    "shareOnX": "Auf X teilen",
-    "linkedin": "LinkedIn",
-    "whatsapp": "WhatsApp",
-    "telegram": "Telegram",
-    "shareText": "Ich habe mich gerade auf die World Monitor Pro Warteliste gesetzt — Aktien-Monitoring, geopolitische Analyse und tägliche KI-Briefings auf einer Plattform. Machen Sie mit:",
-    "joinWaitlistShare": "Treten Sie der World Monitor Pro Warteliste bei:",
-    "youreIn": "Sie sind dabei!",
-    "invitedBanner": "Sie wurden eingeladen — treten Sie der Warteliste bei"
   },
   "soonBadge": "Bald",
   "meta": {

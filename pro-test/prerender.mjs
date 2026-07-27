@@ -372,7 +372,7 @@ const welcomeSeoPrerender = `
   <p>${en.welcome.hero.sub} It runs instantly in the browser with no signup, is used by 2M+ people across 190+ countries, and is open source under AGPL-3.0. <a href="${WIRED_STORY_URL}">Featured in WIRED</a>.</p>
 
   <h2>What World Monitor tracks</h2>
-  <p>World Monitor fuses 56 live map layers on a dual 3D-globe and WebGL map, then scores how they move together. Everything is normalized onto one surface: you see the raw signals, understand them through a daily AI brief and the Country Instability Index, and act with custom monitors, a Scenario Engine, Route Explorer and a 39-tool MCP server for AI agents. Every panel cites its sources and timestamps inline.</p>
+  <p>World Monitor fuses 56 live map layers on a dual 3D-globe and WebGL map, then scores how they move together. Everything is normalized onto one surface: you see the raw signals, understand them through a daily AI brief and the Country Instability Index, and act with custom monitors, a Scenario Engine, Route Explorer and a 42-tool MCP server for AI agents. Every panel cites its sources and timestamps inline.</p>
   <h3>Conflict &amp; security</h3>
   <p>Live conflict events from ACLED and UCDP with escalation scoring, 29 scored geopolitical hotspots, military-posture and troop-movement signals, and corroborated breaking alerts that fire only when independent origin types agree.</p>
   <h3>Maritime &amp; trade</h3>
@@ -413,7 +413,7 @@ const welcomeSeoPrerender = `
   <p>Thirteen shipping chokepoints — including Hormuz, Bab el-Mandeb, Suez and Malacca — are tracked with live AIS vessel counts, week-over-week transit change and disruption scoring, with density anomalies flagged against each strait's rolling baseline.</p>
 
   <h2>Built for AI agents — from any stack</h2>
-  <p>World Monitor ships a 39-tool MCP server, so Claude, GPT or any MCP-compatible agent can query live country risk scores, chokepoint status, conflicts, markets and country briefs — researching with live data instead of training-data memories. Every tool accepts a JMESPath projection so agents fetch exactly the fields they need, a single OAuth key reaches 65+ upstream providers, and the whole platform is open source under AGPL-3.0. A public REST API with 193 documented operations under one OpenAPI 3.1 spec covers custom integrations, and official zero-dependency SDKs ship on npm (worldmonitor), PyPI (worldmonitor-sdk), RubyGems (worldmonitor) and as a Go module (github.com/koala73/worldmonitor/sdk/go).</p>
+  <p>World Monitor ships a 42-tool MCP server, so Claude, GPT or any MCP-compatible agent can query live country risk scores, chokepoint status, conflicts, markets and country briefs — researching with live data instead of training-data memories. Every tool accepts a JMESPath projection so agents fetch exactly the fields they need, a single OAuth key reaches 65+ upstream providers, and the whole platform is open source under AGPL-3.0. A public REST API with 193 documented operations under one OpenAPI 3.1 spec covers custom integrations, and official zero-dependency SDKs ship on npm (worldmonitor), PyPI (worldmonitor-sdk), RubyGems (worldmonitor) and as a Go module (github.com/koala73/worldmonitor/sdk/go).</p>
   <p>Representative MCP tools include country risk, country brief and world brief; conflict events, military posture and cyber threats; maritime activity, chokepoint status and supply-chain data; market data, economic data and consumer prices; energy intelligence, commodity geography and tariff trends; natural disasters, climate and health signals; news intelligence, prediction markets, situation analysis and forecast generation — each accepting an optional JMESPath projection, with a describe_tool call that returns its full schema. Read-only resources expose country risk, chokepoint status, seed-freshness metadata and market quotes at addressable URIs, and prompt templates pre-package common workflows such as country briefings, energy-shock watch, market-open prep and route-risk checks.</p>
 
   <h2>Who uses World Monitor</h2>
@@ -423,7 +423,7 @@ const welcomeSeoPrerender = `
   <p>The full live map — every layer, 500+ feeds, country briefs and breaking alerts, all six monitors — is free with no signup and no trial clock. World Monitor Pro ($39.99/month or $399.99/year) adds the decision layer described below, and native desktop apps for Windows, macOS and Linux plus an Android TV app for wall displays are available too.</p>
 
   <h2>What World Monitor Pro and Enterprise add</h2>
-  <p>Pro turns the observatory into an operations room. WM Analyst answers questions across 30+ live services with citations; a Scenario Engine and Route Explorer let you game disruptions before they hit; a personal AI digest sends up to 30 ranked items daily, twice-daily or weekly to Slack, Discord, Telegram, Email or webhook; a custom widget builder assembles your own panels from HTML, CSS and JavaScript with AI assistance; and MCP plus a REST API expose 39 tools under one key. Enterprise adds team workspaces with SSO, MFA and RBAC; cloud, on-premises or air-gapped deployment; satellite imagery with change detection and SAR; tens of thousands of mapped infrastructure assets; and 100+ data connectors including Snowflake, Splunk and Sentinel.</p>
+  <p>Pro turns the observatory into an operations room. WM Analyst answers questions across 30+ live services with citations; a Scenario Engine and Route Explorer let you game disruptions before they hit; a personal AI digest sends up to 30 ranked items daily, twice-daily or weekly to Slack, Discord, Telegram, Email or webhook; a custom widget builder assembles your own panels from HTML, CSS and JavaScript with AI assistance; and MCP plus a REST API expose 42 tools under one key. Enterprise adds team workspaces with SSO, MFA and RBAC; cloud, on-premises or air-gapped deployment; satellite imagery with change detection and SAR; tens of thousands of mapped infrastructure assets; and 100+ data connectors including Snowflake, Splunk and Sentinel.</p>
 
   <h2>The numbers, live in the dashboard today</h2>
   <p>Every figure below is live now, not a roadmap — open the app and count. Sources are cited on every panel.</p>
@@ -439,7 +439,7 @@ ${welcomeNumbers}
     <dt>ADS-B</dt><dd>Automatic Dependent Surveillance–Broadcast, the transponder feed used to track aircraft positions and flight patterns worldwide.</dd>
     <dt>BGP anomaly</dt><dd>An irregularity in the internet's Border Gateway Protocol routing that can reveal a route hijack, leak or large-scale outage.</dd>
     <dt>OSINT</dt><dd>Open-source intelligence — analysis assembled entirely from publicly available data, which is what World Monitor makes accessible on one map.</dd>
-    <dt>MCP (Model Context Protocol)</dt><dd>An open standard that lets AI agents call external tools; World Monitor ships a 39-tool MCP server so agents can query live data directly.</dd>
+    <dt>MCP (Model Context Protocol)</dt><dd>An open standard that lets AI agents call external tools; World Monitor ships a 42-tool MCP server so agents can query live data directly.</dd>
     <dt>JMESPath</dt><dd>A JSON query language agents use to project just the fields they need from a tool response, cutting token usage on every call.</dd>
     <dt>SGP4</dt><dd>The orbital-propagation model World Monitor runs in the browser to compute live satellite positions and overhead passes.</dd>
     <dt>SAR (Synthetic Aperture Radar)</dt><dd>All-weather, day-and-night satellite radar imaging, available on Enterprise for change detection where optical imagery cannot see.</dd>
@@ -467,7 +467,7 @@ ${welcomeFaqEntries}
     <dt>Does it work on mobile, desktop and TV?</dt><dd>Yes. World Monitor runs in any modern browser, with native desktop apps for Windows, macOS and Linux and an Android TV app for SOC walls and trading floors.</dd>
     <dt>What languages does it support?</dt><dd>24 interface languages, including right-to-left scripts such as Arabic and Farsi.</dd>
     <dt>Can I self-host World Monitor?</dt><dd>Yes. The platform is open source under AGPL-3.0 on GitHub — read the code, self-host it or build on it. Enterprise adds on-premises and air-gapped deployment.</dd>
-    <dt>Is there an API for developers?</dt><dd>Yes. A REST API spans all 30+ service domains with structured JSON, cache headers and OpenAPI 3.1 docs, authenticated per key and rate-limited per tier, alongside the 39-tool MCP server.</dd>
+    <dt>Is there an API for developers?</dt><dd>Yes. A REST API spans all 30+ service domains with structured JSON, cache headers and OpenAPI 3.1 docs, authenticated per key and rate-limited per tier, alongside the 42-tool MCP server.</dd>
   </dl>
 
   <h2>Learn more</h2>

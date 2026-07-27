@@ -4,7 +4,6 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "reserveAccess": "จองสิทธิ์เข้าถึงล่วงหน้า",
     "signIn": "เข้าสู่ระบบ",
     "upgradeToPro": "อัปเกรดเป็น Pro",
     "goToDashboard": "ไปที่แดชบอร์ด"
@@ -13,11 +12,8 @@
     "noiseWord": "เสียงรบกวน",
     "signalWord": "สัญญาณ",
     "valueProps": "ชั้น AI ด้านภูมิรัฐศาสตร์ — ถาม สมัครรับ สร้างต่อยอด",
-    "reserveEarlyAccess": "จองสิทธิ์เข้าถึงล่วงหน้า",
     "launchingDate": "พร้อมใช้งานแล้ว",
     "tryFreeDashboard": "ทดลองแดชบอร์ดฟรี",
-    "emailPlaceholder": "ใส่อีเมลของคุณ",
-    "emailAriaLabel": "อีเมลสำหรับรายชื่อรอ",
     "choosePlan": "เลือกแผน",
     "signIn": "เข้าสู่ระบบ",
     "goToDashboard": "ไปที่แดชบอร์ด"
@@ -37,7 +33,6 @@
     "proF7": "เอ็นจินกฎการแจ้งเตือน — ทริกเกอร์ที่กำหนดเอง ช่วงเงียบ ช่องทางเข้ารหัส AES-256",
     "proF8": "Watchlist ตลาด ติดตามมหภาคและธนาคารกลาง",
     "proF9": "AI Market Implications และ Regional Intelligence (เร็วๆ นี้: การเฝ้าระวังวงโคจร ชั้นแผนที่พรีเมียม ประวัติขยาย)",
-    "proCta": "จองสิทธิ์เข้าถึงล่วงหน้า",
     "choosePlan": "เลือกแผน",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "สำหรับทีมที่ต้องการการตรวจสอบแบบแชร์ การเข้าถึง API ตัวเลือกการติดตั้ง แอป TV และการสนับสนุนโดยตรง",
@@ -306,33 +301,12 @@
   "finalCta": {
     "title": "เริ่มต้นด้วย Pro ขยายไปยัง Enterprise",
     "subtitle": "ใช้ World Monitor ฟรีต่อไป หรืออัปเกรดสำหรับ Equity research การวิเคราะห์มหภาค และบรีฟ AI หากองค์กรของคุณต้องการการเข้าถึงทีม แอป TV หรือการสนับสนุน API ให้คุยกับเรา",
-    "getPro": "จองสิทธิ์เข้าถึงล่วงหน้า",
     "talkToSales": "คุยกับฝ่ายขาย"
   },
   "footer": {
-    "beFirstInLine": "เป็นคนแรกในคิว",
     "lookingForEnterprise": "มองหา Enterprise?",
     "contactUs": "ติดต่อเรา",
     "wiredArticle": "บทความ WIRED"
-  },
-  "form": {
-    "submitting": "กำลังส่ง...",
-    "joinWaitlist": "จองสิทธิ์เข้าถึงล่วงหน้า",
-    "tooManyRequests": "คำขอมากเกินไป",
-    "failedTryAgain": "ล้มเหลว — ลองอีกครั้ง"
-  },
-  "referral": {
-    "alreadyOnList": "คุณอยู่ในรายชื่อแล้ว",
-    "shareHint": "แชร์ลิงก์ของคุณเพื่อเลื่อนขึ้นในคิว เพื่อนที่เข้าร่วมแต่ละคนจะทำให้คุณเข้าใกล้ต้นคิว",
-    "copied": "คัดลอกแล้ว!",
-    "shareOnX": "แชร์บน X",
-    "linkedin": "LinkedIn",
-    "whatsapp": "WhatsApp",
-    "telegram": "Telegram",
-    "shareText": "ผมเพิ่งเข้าร่วมรายชื่อรอ World Monitor Pro — การตรวจสอบหุ้น การวิเคราะห์ภูมิรัฐศาสตร์ และบรีฟ AI รายวันในแพลตฟอร์มเดียว เข้าร่วมกัน:",
-    "joinWaitlistShare": "เข้าร่วมรายชื่อรอ World Monitor Pro:",
-    "youreIn": "คุณเข้าร่วมแล้ว!",
-    "invitedBanner": "คุณได้รับเชิญ — เข้าร่วมรายชื่อรอ"
   },
   "soonBadge": "เร็วๆ นี้",
   "meta": {

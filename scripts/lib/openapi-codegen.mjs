@@ -46,6 +46,377 @@ export const eq = (a, b) => JSON.stringify(sortRec(a)) === JSON.stringify(sortRe
 // Normalize a parameter name to a lookup key (strip separators, lowercase).
 export const normalizeKey = (name = '') => String(name).replace(/[_\-\s]/g, '').toLowerCase();
 
+// ── Shared decision-signal provenance schemas ────────────────────────────────
+// Corridors and decision signals carry the same provenance contract. Keep the
+// strict known-value vocabulary here so every OpenAPI injector publishes the
+// same validation rules for that shared envelope.
+function objectSchema(required, properties, additionalProperties = false) {
+  return {
+    type: 'object',
+    additionalProperties,
+    required,
+    properties,
+  };
+}
+
+export const nonEmptyStringSchema = {
+  type: 'string',
+  minLength: 1,
+  pattern: '\\S',
+};
+const calendarDayPattern = '(?:(?:\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|02-(?:0[1-9]|1\\d|2[0-8])))|(?:(?:\\d{2}(?:0[48]|[2468][048]|[13579][26])|(?:00|0[48]|[2468][048]|[13579][26])00)-02-29))';
+const calendarDaySchema = {
+  type: 'string',
+  format: 'date',
+  pattern: `^${calendarDayPattern}$`,
+};
+const calendarMonthSchema = {
+  type: 'string',
+  pattern: '^\\d{4}-(?:0[1-9]|1[0-2])$',
+};
+const calendarYearSchema = {
+  type: 'string',
+  pattern: '^\\d{4}$',
+};
+const isoInstantSchema = {
+  type: 'string',
+  format: 'date-time',
+  pattern: `^${calendarDayPattern}T(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d{1,3})?Z$`,
+};
+export const provenanceTimestampSchema = {
+  oneOf: [
+    isoInstantSchema,
+    calendarDaySchema,
+    calendarMonthSchema,
+    calendarYearSchema,
+  ],
+};
+export const credentialFreeHttpsUrlSchema = {
+  type: 'string',
+  format: 'uri',
+  pattern: '^https://(?![^/?#]*@)[^/?#\\s]+(?:[/?#]\\S*)?$',
+};
+
+function arrayOfNonEmptyStrings({ minItems, uniqueItems = false } = {}) {
+  return {
+    type: 'array',
+    ...(minItems === undefined ? {} : { minItems }),
+    uniqueItems,
+    items: nonEmptyStringSchema,
+  };
+}
+
+export function provenanceValueSchema(dimension, provenanceContract) {
+  const timeRoles = {
+    observation_time: 'observation',
+    effective_time: 'effective',
+    publication_time: 'publication',
+    retrieval_time: 'retrieval',
+  };
+  if (dimension === 'publisher') {
+    const registryReference = objectSchema(
+      ['sourceName', 'sourceType', 'propagandaRisk'],
+      {
+        sourceName: nonEmptyStringSchema,
+        sourceType: nonEmptyStringSchema,
+        propagandaRisk: nonEmptyStringSchema,
+      },
+    );
+    return {
+      ...objectSchema(
+        ['id', 'name', 'type', 'registryReference'],
+        {
+          id: nonEmptyStringSchema,
+          name: nonEmptyStringSchema,
+          type: { type: 'string', enum: provenanceContract.publisherTypes },
+          registryReference: {
+            oneOf: [registryReference, { type: 'null' }],
+          },
+        },
+      ),
+      oneOf: [
+        {
+          properties: {
+            type: { const: 'derived_output' },
+            registryReference: { type: 'null' },
+          },
+        },
+        {
+          properties: {
+            type: {
+              enum: provenanceContract.publisherTypes.filter(
+                (type) => type !== 'derived_output',
+              ),
+            },
+            registryReference,
+          },
+        },
+      ],
+    };
+  }
+  if (dimension === 'source_url') {
+    return credentialFreeHttpsUrlSchema;
+  }
+  if (dimension === 'original_reference') {
+    return objectSchema(
+      ['kind', 'id'],
+      {
+        kind: {
+          type: 'string',
+          enum: provenanceContract.originalReferenceKinds,
+        },
+        id: nonEmptyStringSchema,
+        contentHash: {
+          type: 'string',
+          pattern: '^sha256:[a-f0-9]{64}$',
+        },
+      },
+    );
+  }
+  if (dimension === 'original_language') return nonEmptyStringSchema;
+  if (dimension === 'translation') {
+    return {
+      ...objectSchema(
+        ['state'],
+        {
+          state: {
+            type: 'string',
+            enum: provenanceContract.translationStates,
+          },
+          targetLanguage: nonEmptyStringSchema,
+        },
+      ),
+      oneOf: [
+        {
+          properties: {
+            state: { enum: ['machine_assisted', 'human_reviewed'] },
+          },
+          required: ['targetLanguage'],
+        },
+        {
+          properties: {
+            state: { enum: ['unavailable', 'not_translated'] },
+          },
+          not: { required: ['targetLanguage'] },
+        },
+      ],
+    };
+  }
+  if (dimension in timeRoles) {
+    return {
+      ...objectSchema(
+        ['role', 'value', 'precision'],
+        {
+          role: { type: 'string', const: timeRoles[dimension] },
+          value: provenanceTimestampSchema,
+          precision: {
+            type: 'string',
+            enum: provenanceContract.timePrecisions,
+          },
+        },
+      ),
+      oneOf: [
+        {
+          properties: {
+            precision: { const: 'instant' },
+            value: isoInstantSchema,
+          },
+        },
+        {
+          properties: {
+            precision: { const: 'day' },
+            value: calendarDaySchema,
+          },
+        },
+        {
+          properties: {
+            precision: { const: 'month' },
+            value: calendarMonthSchema,
+          },
+        },
+        {
+          properties: {
+            precision: { const: 'year' },
+            value: calendarYearSchema,
+          },
+        },
+      ],
+    };
+  }
+  if (dimension === 'revision') {
+    return {
+      ...objectSchema(
+        ['vintageId', 'sequence', 'state'],
+        {
+          vintageId: nonEmptyStringSchema,
+          sequence: { type: 'integer', minimum: 1 },
+          state: {
+            type: 'string',
+            enum: provenanceContract.revisionStates,
+          },
+        },
+      ),
+      oneOf: [
+        {
+          properties: {
+            state: { enum: ['preliminary', 'original'] },
+            sequence: { const: 1 },
+          },
+        },
+        {
+          properties: {
+            state: { enum: ['revised', 'corrected'] },
+            sequence: { type: 'integer', minimum: 2 },
+          },
+        },
+      ],
+    };
+  }
+  if (dimension === 'supersession') {
+    return {
+      ...objectSchema(
+        ['state'],
+        {
+          state: {
+            type: 'string',
+            enum: provenanceContract.supersessionStates,
+          },
+          relatedSignalId: nonEmptyStringSchema,
+          reason: nonEmptyStringSchema,
+        },
+      ),
+      oneOf: [
+        {
+          properties: { state: { const: 'current' } },
+          not: {
+            anyOf: [
+              { required: ['relatedSignalId'] },
+              { required: ['reason'] },
+            ],
+          },
+        },
+        {
+          properties: { state: { enum: ['corrected', 'superseded'] } },
+          required: ['relatedSignalId'],
+        },
+        {
+          properties: { state: { const: 'cancelled' } },
+          required: ['reason'],
+        },
+      ],
+    };
+  }
+  if (
+    dimension === 'extraction_confidence'
+    || dimension === 'classification_confidence'
+  ) {
+    return objectSchema(
+      ['score', 'method'],
+      {
+        score: { type: 'number', minimum: 0, maximum: 1 },
+        method: nonEmptyStringSchema,
+      },
+    );
+  }
+  if (dimension === 'corroboration') {
+    return {
+      ...objectSchema(
+        ['state', 'sourceSignalIds'],
+        {
+          state: {
+            type: 'string',
+            enum: provenanceContract.corroborationStates,
+          },
+          sourceSignalIds: arrayOfNonEmptyStrings({ uniqueItems: true }),
+        },
+      ),
+      oneOf: [
+        {
+          properties: {
+            state: { const: 'single_source' },
+            sourceSignalIds: {
+              ...arrayOfNonEmptyStrings({ uniqueItems: true }),
+              minItems: 1,
+              maxItems: 1,
+            },
+          },
+        },
+        {
+          properties: {
+            state: {
+              enum: [
+                'multi_source',
+                'independently_corroborated',
+                'contradicted',
+              ],
+            },
+            sourceSignalIds: arrayOfNonEmptyStrings({
+              minItems: 2,
+              uniqueItems: true,
+            }),
+          },
+        },
+      ],
+    };
+  }
+  if (dimension === 'transport_freshness') {
+    return objectSchema(
+      ['state', 'assessedAt'],
+      {
+        state: {
+          type: 'string',
+          enum: provenanceContract.transportFreshnessStates,
+        },
+        assessedAt: isoInstantSchema,
+        lastSuccessAt: isoInstantSchema,
+      },
+    );
+  }
+  if (dimension === 'content_freshness') {
+    return {
+      ...objectSchema(
+        ['state', 'assessedAt'],
+        {
+          state: {
+            type: 'string',
+            enum: provenanceContract.contentFreshnessStates,
+          },
+          assessedAt: isoInstantSchema,
+          contentAsOf: provenanceTimestampSchema,
+        },
+      ),
+      oneOf: [
+        {
+          properties: { state: { enum: ['current', 'stale'] } },
+          required: ['contentAsOf'],
+        },
+        {
+          properties: { state: { const: 'timestamp_unknown' } },
+          not: { required: ['contentAsOf'] },
+        },
+        {
+          properties: { state: { enum: ['unavailable', 'partial'] } },
+        },
+      ],
+    };
+  }
+  if (dimension === 'derivation') {
+    return objectSchema(
+      ['methodId', 'methodVersion', 'computedAt', 'inputSignalIds'],
+      {
+        methodId: nonEmptyStringSchema,
+        methodVersion: nonEmptyStringSchema,
+        computedAt: isoInstantSchema,
+        inputSignalIds: arrayOfNonEmptyStrings({
+          minItems: 1,
+          uniqueItems: true,
+        }),
+      },
+    );
+  }
+  throw new Error(`No OpenAPI value schema for provenance dimension ${dimension}`);
+}
+
 // ── Source-of-truth parsers (fail-closed) ───────────────────────────────────
 // Read the authoritative Set/Record literals straight from the gateway-adjacent
 // TypeScript so the published auth contract can never drift from runtime. Each
@@ -79,6 +450,286 @@ export function readPremiumRpcPaths() {
 function readConstStringArray(src, name) {
   const block = src.match(new RegExp(`${name}\\s*=\\s*\\[([\\s\\S]*?)\\]\\s*as const`));
   return block ? [...block[1].matchAll(/'([^']+)'/g)].map((match) => match[1]) : [];
+}
+
+function skipQuotedLiteral(source, start) {
+  const quote = source[start];
+  let index = start + 1;
+  while (index < source.length) {
+    if (source[index] === '\\') {
+      index += 2;
+      continue;
+    }
+    if (source[index] === quote) return index + 1;
+    index += 1;
+  }
+  throw new Error('unterminated string literal in China decision-signal manifest');
+}
+
+function skipComment(source, start) {
+  if (source.startsWith('//', start)) {
+    const end = source.indexOf('\n', start + 2);
+    return end === -1 ? source.length : end + 1;
+  }
+  if (source.startsWith('/*', start)) {
+    const end = source.indexOf('*/', start + 2);
+    if (end === -1) {
+      throw new Error('unterminated comment in China decision-signal manifest');
+    }
+    return end + 2;
+  }
+  return start;
+}
+
+function skipTrivia(source, start) {
+  let index = start;
+  while (index < source.length) {
+    if (/\s/.test(source[index])) {
+      index += 1;
+      continue;
+    }
+    const commentEnd = skipComment(source, index);
+    if (commentEnd !== index) {
+      index = commentEnd;
+      continue;
+    }
+    break;
+  }
+  return index;
+}
+
+function readDelimited(source, start) {
+  const closingFor = { '(': ')', '[': ']', '{': '}' };
+  const firstClose = closingFor[source[start]];
+  if (!firstClose) {
+    throw new Error('expected a delimited literal in China decision-signal manifest');
+  }
+  const stack = [firstClose];
+  let index = start + 1;
+  while (index < source.length) {
+    const char = source[index];
+    if (char === '\'' || char === '"' || char === '`') {
+      index = skipQuotedLiteral(source, index);
+      continue;
+    }
+    const commentEnd = skipComment(source, index);
+    if (commentEnd !== index) {
+      index = commentEnd;
+      continue;
+    }
+    if (closingFor[char]) {
+      stack.push(closingFor[char]);
+      index += 1;
+      continue;
+    }
+    if (char === ')' || char === ']' || char === '}') {
+      if (stack.at(-1) !== char) {
+        throw new Error('mismatched delimiter in China decision-signal manifest');
+      }
+      stack.pop();
+      if (stack.length === 0) {
+        return {
+          content: source.slice(start + 1, index),
+          end: index + 1,
+        };
+      }
+    }
+    index += 1;
+  }
+  throw new Error('unterminated literal in China decision-signal manifest');
+}
+
+function findTopLevelComma(source, start) {
+  const closingFor = { '(': ')', '[': ']', '{': '}' };
+  const stack = [];
+  let index = start;
+  while (index < source.length) {
+    const char = source[index];
+    if (char === '\'' || char === '"' || char === '`') {
+      index = skipQuotedLiteral(source, index);
+      continue;
+    }
+    const commentEnd = skipComment(source, index);
+    if (commentEnd !== index) {
+      index = commentEnd;
+      continue;
+    }
+    if (closingFor[char]) {
+      stack.push(closingFor[char]);
+    } else if (char === ')' || char === ']' || char === '}') {
+      if (stack.at(-1) !== char) {
+        throw new Error('mismatched value delimiter in China decision-signal manifest');
+      }
+      stack.pop();
+    } else if (char === ',' && stack.length === 0) {
+      return index;
+    }
+    index += 1;
+  }
+  return source.length;
+}
+
+function constInitializerStart(source, name) {
+  const matches = [
+    ...source.matchAll(
+      new RegExp(`\\b(?:export\\s+)?const\\s+${name}\\b`, 'g'),
+    ),
+  ];
+  if (matches.length !== 1) return -1;
+  const start = skipTrivia(source, matches[0].index + matches[0][0].length);
+  return source[start] === '=' ? skipTrivia(source, start + 1) : -1;
+}
+
+function statementTerminator(source, start) {
+  let index = start;
+  while (index < source.length) {
+    const commentEnd = skipComment(source, index);
+    if (commentEnd !== index) {
+      index = commentEnd;
+      continue;
+    }
+    if (
+      source[index] === '\''
+      || source[index] === '"'
+      || source[index] === '`'
+    ) {
+      index = skipQuotedLiteral(source, index);
+      continue;
+    }
+    if (source[index] === ';') return index;
+    index += 1;
+  }
+  return -1;
+}
+
+function withoutComments(source) {
+  let result = '';
+  let index = 0;
+  while (index < source.length) {
+    const commentEnd = skipComment(source, index);
+    if (commentEnd !== index) {
+      result += ' ';
+      index = commentEnd;
+      continue;
+    }
+    result += source[index];
+    index += 1;
+  }
+  return result;
+}
+
+function assertStaticLiteralInitializer(source, literalEnd, label) {
+  const terminator = statementTerminator(source, literalEnd);
+  if (terminator < 0) {
+    throw new Error(`${label} static literal must end with a semicolon`);
+  }
+  const suffix = withoutComments(source.slice(literalEnd, terminator)).trim();
+  const typeOnlySuffix =
+    /^(?:as\s+const\s*)?(?:satisfies\s+(?:readonly\s+)?[$A-Z_a-z][$\w]*(?:\s*\.\s*[$A-Z_a-z][$\w]*)*(?:\s*\[\s*\])*\s*)?$/;
+  if (!typeOnlySuffix.test(suffix)) {
+    throw new Error(
+      `${label} must be a static literal with optional type-only assertions`,
+    );
+  }
+}
+
+function readManifestStringProperty(entry, property) {
+  let index = 0;
+  while (index < entry.length) {
+    index = skipTrivia(entry, index);
+    if (index >= entry.length) break;
+    if (entry[index] === ',') {
+      index += 1;
+      continue;
+    }
+    const key = entry.slice(index).match(/^[$A-Z_a-z][$\w]*/)?.[0];
+    if (!key) {
+      throw new Error('expected a property name in China decision-signal manifest');
+    }
+    index = skipTrivia(entry, index + key.length);
+    if (entry[index] !== ':') {
+      throw new Error(`expected ":" after ${key} in China decision-signal manifest`);
+    }
+    const valueStart = skipTrivia(entry, index + 1);
+    const valueEnd = findTopLevelComma(entry, valueStart);
+    if (key === property) {
+      const quote = entry[valueStart];
+      if (quote !== '\'' && quote !== '"') {
+        throw new Error(`${property} must be a string literal`);
+      }
+      const literalEnd = skipQuotedLiteral(entry, valueStart);
+      if (skipTrivia(entry, literalEnd) !== valueEnd) {
+        throw new Error(`${property} must be a plain string literal`);
+      }
+      const value = entry.slice(valueStart + 1, literalEnd - 1);
+      if (!value || value.includes('\\')) {
+        throw new Error(`${property} must be a non-empty unescaped string literal`);
+      }
+      return value;
+    }
+    index = valueEnd + 1;
+  }
+  throw new Error(`missing ${property} in China decision-signal manifest`);
+}
+
+export function parseChinaDecisionSignalManifest(source) {
+  const manifestStart = constInitializerStart(
+    source,
+    'CHINA_DECISION_SIGNAL_GROUP_MANIFEST',
+  );
+  const maxItemsStart = constInitializerStart(
+    source,
+    'CHINA_DECISION_SIGNAL_MAX_ITEMS_PER_GROUP',
+  );
+  if (manifestStart < 0 || source[manifestStart] !== '[' || maxItemsStart < 0) {
+    throw new Error('could not locate the China decision-signal manifest');
+  }
+
+  const manifest = readDelimited(source, manifestStart);
+  assertStaticLiteralInitializer(
+    source,
+    manifest.end,
+    'China decision-signal group manifest',
+  );
+  const manifestLiteral = manifest.content;
+  const groupManifest = [];
+  let index = 0;
+  while (index < manifestLiteral.length) {
+    index = skipTrivia(manifestLiteral, index);
+    if (index >= manifestLiteral.length) break;
+    if (manifestLiteral[index] === ',') {
+      index += 1;
+      continue;
+    }
+    if (manifestLiteral[index] !== '{') {
+      throw new Error('China decision-signal manifest entries must be object literals');
+    }
+    const entry = readDelimited(manifestLiteral, index);
+    groupManifest.push({
+      groupId: readManifestStringProperty(entry.content, 'groupId'),
+      provenanceFamily: readManifestStringProperty(
+        entry.content,
+        'provenanceFamily',
+      ),
+      sourceKey: readManifestStringProperty(entry.content, 'sourceKey'),
+    });
+    index = entry.end;
+  }
+
+  const maxItemsMatch = source.slice(maxItemsStart).match(/^(\d+)\b/);
+  if (!maxItemsMatch) {
+    throw new Error('could not parse the China decision-signal manifest');
+  }
+  assertStaticLiteralInitializer(
+    source,
+    maxItemsStart + maxItemsMatch[0].length,
+    'China decision-signal max items',
+  );
+  const maxItemsPerGroup = Number(maxItemsMatch[1]);
+  if (groupManifest.length === 0 || !Number.isInteger(maxItemsPerGroup)) {
+    throw new Error('could not parse the China decision-signal manifest');
+  }
+  return { groupManifest, maxItemsPerGroup };
 }
 
 export function readDecisionSignalProvenanceContract() {
@@ -205,17 +856,21 @@ export function readChinaDecisionSignalWireContract() {
     resolve(root, 'shared/china-decision-signals.ts'),
     'utf8',
   );
-  const auditSrc = readFileSync(
-    resolve(root, 'scripts/audit-china-decision-parity.mjs'),
+  const manifestSrc = readFileSync(
+    resolve(root, 'shared/china-decision-signal-manifest.ts'),
     'utf8',
   );
+  const {
+    groupManifest,
+    maxItemsPerGroup,
+  } = parseChinaDecisionSignalManifest(manifestSrc);
   const schemaVersion = Number(src.match(
     /CHINA_DECISION_SIGNAL_SCHEMA_VERSION\s*=\s*(\d+)\s+as const/,
   )?.[1]);
-  const groupIds = readConstStringArray(src, 'CHINA_DECISION_SIGNAL_GROUP_IDS');
-  const provenanceFamilyIds = [
-    ...auditSrc.matchAll(/provenanceFamily:\s*'([^']+)'/g),
-  ].map((match) => match[1]);
+  const groupIds = groupManifest.map(({ groupId }) => groupId);
+  const provenanceFamilyIds = groupManifest.map(
+    ({ provenanceFamily }) => provenanceFamily,
+  );
   const stateBlock = src.match(
     /export type ChinaDecisionSignalState\s*=\s*([\s\S]*?);/,
   )?.[1];
@@ -231,12 +886,17 @@ export function readChinaDecisionSignalWireContract() {
         .map((match) => [match[1], match[2]])
       : [],
   );
-  const maxItemsPerGroup = Number(src.match(/items\.length\s*>\s*(\d+)/)?.[1]);
+  const provenanceFamilies = new Set(
+    Object.keys(readDecisionSignalProvenanceContract().familyPolicies),
+  );
   if (
     !Number.isInteger(schemaVersion)
     || schemaVersion < 1
     || groupIds.length === 0
-    || provenanceFamilyIds.length !== groupIds.length
+    || new Set(groupIds).size !== groupIds.length
+    || new Set(provenanceFamilyIds).size !== provenanceFamilyIds.length
+    || new Set(groupManifest.map(({ sourceKey }) => sourceKey)).size !== groupManifest.length
+    || provenanceFamilyIds.some((familyId) => !provenanceFamilies.has(familyId))
     || states.length === 0
     || Object.keys(access).length !== 3
     || !Number.isInteger(maxItemsPerGroup)
@@ -246,6 +906,7 @@ export function readChinaDecisionSignalWireContract() {
   }
   return {
     schemaVersion,
+    groupManifest,
     groupIds,
     provenanceFamilyIds,
     states,

@@ -63,23 +63,110 @@
       "operatingSystem": "Web, Windows, macOS, Linux, Android TV",
       "url": "https://worldmonitor.app",
       "description": "AI-native global intelligence platform. WM Analyst chat across 30+ live services, an AI digest delivered daily, twice-daily, or weekly to Slack, Discord, Telegram, Email, or webhook, custom widget builder, and MCP connectors for Claude, GPT, and custom LLMs.",
-      "sameAs": ["https://github.com/koala73/worldmonitor", "https://www.npmjs.com/package/worldmonitor"],
+      "sameAs": [
+        "https://github.com/koala73/worldmonitor",
+        "https://www.npmjs.com/package/worldmonitor"
+      ],
       "author": {
         "@type": "Person",
         "name": "Elie Habib",
         "url": "https://x.com/eliehabib",
         "jobTitle": "CEO",
-        "sameAs": ["https://x.com/eliehabib", "https://github.com/koala73", "https://www.linkedin.com/in/elie-habib-7047b931", "https://www.wikidata.org/wiki/Q121365724", "https://www.crunchbase.com/person/elie-habib-2"]
+        "sameAs": [
+          "https://x.com/eliehabib",
+          "https://github.com/koala73",
+          "https://www.linkedin.com/in/elie-habib-7047b931",
+          "https://www.wikidata.org/wiki/Q121365724",
+          "https://www.crunchbase.com/person/elie-habib-2"
+        ]
       },
       "screenshot": "https://www.worldmonitor.app/favico/og-image.png",
       "datePublished": "2026-01",
       "offers": [
-        { "@type": "Offer", "price": "0", "priceCurrency": "USD", "name": "Free", "description": "Core dashboard panels, Global news feed, Earthquake & weather alerts, Basic map view" },
-        { "@type": "Offer", "price": "39.99", "priceCurrency": "USD", "name": "Pro Monthly", "description": "Everything in Free, AI stock analysis & backtesting, Daily market briefs, Military & geopolitical tracking, Custom widget builder, MCP + SDK access for Claude Desktop & other AI clients (50 calls/day), Priority data refresh" },
-        { "@type": "Offer", "price": "399.99", "priceCurrency": "USD", "name": "Pro Annual", "description": "Pro yearly plan — 2 months free vs monthly billing" },
-        { "@type": "Offer", "price": "99.99", "priceCurrency": "USD", "name": "API Starter Monthly", "description": "REST API + official SDKs (npm, PyPI, RubyGems, Go), License / API key included, Real-time data streams, 60 requests/minute, 1,000 requests/day included, Webhook notifications, No commercial use" },
-        { "@type": "Offer", "price": "999", "priceCurrency": "USD", "name": "API Starter Annual", "description": "API Starter yearly plan — about 17% off vs monthly billing" },
-        { "@type": "Offer", "price": "299.99", "priceCurrency": "USD", "name": "API Business", "description": "Everything in API Starter, 300 requests/minute, 10,000 requests/day included, 5 Pro licenses included, Same company email required, Priority support, Commercial use applicable" }
+        {
+          "@type": "Offer",
+          "name": "Free",
+          "price": "0",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock",
+          "url": "https://www.worldmonitor.app/pro#pricing",
+          "description": "Core dashboard panels, Global news feed, Earthquake & weather alerts, Basic map view"
+        },
+        {
+          "@type": "Offer",
+          "name": "Pro Monthly",
+          "price": "39.99",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock",
+          "url": "https://www.worldmonitor.app/pro#pricing",
+          "description": "Everything in Free, AI stock analysis & backtesting, Daily market briefs, Military & geopolitical tracking, Custom widget builder, MCP + SDK access for Claude Desktop & other AI clients (50 calls/day), Priority data refresh",
+          "priceSpecification": {
+            "@type": "UnitPriceSpecification",
+            "price": "39.99",
+            "priceCurrency": "USD",
+            "billingDuration": "P1M"
+          }
+        },
+        {
+          "@type": "Offer",
+          "name": "Pro Annual",
+          "price": "399.99",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock",
+          "url": "https://www.worldmonitor.app/pro#pricing",
+          "description": "",
+          "priceSpecification": {
+            "@type": "UnitPriceSpecification",
+            "price": "399.99",
+            "priceCurrency": "USD",
+            "billingDuration": "P1Y"
+          }
+        },
+        {
+          "@type": "Offer",
+          "name": "API Starter Monthly",
+          "price": "99.99",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock",
+          "url": "https://www.worldmonitor.app/pro#pricing",
+          "description": "REST API + official SDKs (npm, PyPI, RubyGems, Go), License / API key included, Real-time data streams, 60 requests/minute, 1,000 requests/day included, Webhook notifications, No commercial use",
+          "priceSpecification": {
+            "@type": "UnitPriceSpecification",
+            "price": "99.99",
+            "priceCurrency": "USD",
+            "billingDuration": "P1M"
+          }
+        },
+        {
+          "@type": "Offer",
+          "name": "API Starter Annual",
+          "price": "999",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock",
+          "url": "https://www.worldmonitor.app/pro#pricing",
+          "description": "",
+          "priceSpecification": {
+            "@type": "UnitPriceSpecification",
+            "price": "999",
+            "priceCurrency": "USD",
+            "billingDuration": "P1Y"
+          }
+        },
+        {
+          "@type": "Offer",
+          "name": "API Business",
+          "price": "299.99",
+          "priceCurrency": "USD",
+          "availability": "https://schema.org/InStock",
+          "url": "https://www.worldmonitor.app/pro#pricing",
+          "description": "Everything in API Starter, 300 requests/minute, 10,000 requests/day included, 5 Pro licenses included, Same company email required, Priority support, Commercial use applicable",
+          "priceSpecification": {
+            "@type": "UnitPriceSpecification",
+            "price": "299.99",
+            "priceCurrency": "USD",
+            "billingDuration": "P1M"
+          }
+        }
       ],
       "featureList": "WM Analyst conversational AI, Personalized AI digest with daily/twice-daily/weekly cadence (up to 30 ranked items per send), Real-time alerts for critical events, Custom widget builder (HTML/CSS/JS + AI), MCP connectors for Claude/GPT/custom LLMs, Equity research and stock analysis, Backtesting, Flight search and price comparison, Market watchlist, Macro and central bank tracking, Maritime AIS ship monitoring, Global flight tracking, Infrastructure mapping, Satellite fire detection, Slack/Discord/Telegram/Email/Webhook delivery with AES-256 encryption, Android TV app, 22 language support"
     }

@@ -4,7 +4,6 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "reserveAccess": "احجز وصولك المبكر",
     "signIn": "تسجيل الدخول",
     "upgradeToPro": "الترقية إلى Pro",
     "goToDashboard": "انتقل إلى لوحة التحكم"
@@ -13,11 +12,8 @@
     "noiseWord": "ضوضاء",
     "signalWord": "إشارة",
     "valueProps": "طبقة الذكاء الاصطناعي الجيوسياسية — اسألها، اشترك بها، ابنِ فوقها.",
-    "reserveEarlyAccess": "احجز وصولك المبكر",
     "launchingDate": "متاح الآن",
     "tryFreeDashboard": "جرّب لوحة التحكم المجانية",
-    "emailPlaceholder": "أدخل بريدك الإلكتروني",
-    "emailAriaLabel": "عنوان البريد الإلكتروني لقائمة الانتظار",
     "choosePlan": "اختر خطتك",
     "signIn": "تسجيل الدخول",
     "goToDashboard": "انتقل إلى لوحة التحكم"
@@ -37,7 +33,6 @@
     "proF7": "محرك قواعد التنبيهات — محفزات مخصصة، ساعات صمت، قنوات مشفرة AES-256",
     "proF8": "قائمة مراقبة السوق، متابعة الاقتصاد الكلي والبنوك المركزية",
     "proF9": "AI Market Implications وRegional Intelligence (قريباً: المراقبة المدارية، طبقات الخرائط المميزة، تاريخ ممتد)",
-    "proCta": "احجز وصولك المبكر",
     "choosePlan": "اختر خطتك",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "للفرق التي تحتاج إلى مراقبة مشتركة، وصول إلى API، خيارات نشر، تطبيقات TV، ودعم مباشر.",
@@ -306,33 +301,12 @@
   "finalCta": {
     "title": "ابدأ بـ Pro. وسّع إلى Enterprise.",
     "subtitle": "استمر في استخدام World Monitor مجاناً، أو ارقَ للحصول على Equity research والتحليلات الكلية وموجزات الذكاء الاصطناعي. إذا احتاجت مؤسستك وصولاً جماعياً أو تطبيقات TV أو دعم API، تحدث معنا.",
-    "getPro": "احجز وصولك المبكر",
     "talkToSales": "تحدث مع المبيعات"
   },
   "footer": {
-    "beFirstInLine": "كن أول الصف.",
     "lookingForEnterprise": "تبحث عن Enterprise؟",
     "contactUs": "اتصل بنا",
     "wiredArticle": "مقال WIRED"
-  },
-  "form": {
-    "submitting": "جارٍ الإرسال...",
-    "joinWaitlist": "احجز وصولك المبكر",
-    "tooManyRequests": "طلبات كثيرة جداً",
-    "failedTryAgain": "فشل — حاول مجدداً"
-  },
-  "referral": {
-    "alreadyOnList": "أنت موجود بالفعل على القائمة.",
-    "shareHint": "شارك رابطك للتقدم في الصف. كل صديق ينضم يقرّبك من المقدمة.",
-    "copied": "تم النسخ!",
-    "shareOnX": "شارك على X",
-    "linkedin": "LinkedIn",
-    "whatsapp": "WhatsApp",
-    "telegram": "Telegram",
-    "shareText": "انضممت للتو إلى قائمة انتظار World Monitor Pro — مراقبة الأسهم، التحليل الجيوسياسي، وموجزات يومية بالذكاء الاصطناعي في منصة واحدة. انضم إليّ:",
-    "joinWaitlistShare": "انضم إلى قائمة انتظار World Monitor Pro:",
-    "youreIn": "أنت ضمن القائمة!",
-    "invitedBanner": "لقد تمت دعوتك — انضم إلى قائمة الانتظار"
   },
   "soonBadge": "قريباً",
   "meta": {

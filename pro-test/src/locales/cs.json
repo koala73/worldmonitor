@@ -4,7 +4,6 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "reserveAccess": "Rezervujte si raný přístup",
     "signIn": "Přihlásit se",
     "upgradeToPro": "Upgrade na Pro",
     "goToDashboard": "Přejít na Ovládací panel"
@@ -13,11 +12,8 @@
     "noiseWord": "Šum",
     "signalWord": "Signál",
     "valueProps": "Geopolitická AI vrstva — ptejte se jí, odebírejte ji, stavte na ní.",
-    "reserveEarlyAccess": "Rezervujte si raný přístup",
     "launchingDate": "Dostupné nyní",
     "tryFreeDashboard": "Vyzkoušejte dashboard zdarma",
-    "emailPlaceholder": "Zadejte e-mail",
-    "emailAriaLabel": "E-mailová adresa pro čekací listinu",
     "choosePlan": "Vyberte plán",
     "signIn": "Přihlásit se",
     "goToDashboard": "Přejít na Ovládací panel"
@@ -37,7 +33,6 @@
     "proF7": "Engine pravidel alertů — vlastní spouštěče, tiché hodiny, kanály šifrované AES-256",
     "proF8": "Tržní watchlist, sledování makro a centrálních bank",
     "proF9": "AI Market Implications a Regional Intelligence (Brzy: orbitální dohled, prémiové vrstvy map, delší historie)",
-    "proCta": "Rezervujte si raný přístup",
     "choosePlan": "Vyberte plán",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "Pro týmy, které potřebují sdílený monitoring, API přístup, možnosti nasazení, TV aplikace a přímou podporu.",
@@ -306,33 +301,12 @@
   "finalCta": {
     "title": "Začněte s Pro. Škálujte na Enterprise.",
     "subtitle": "Používejte World Monitor zdarma, nebo upgradujte pro equity research, makro analytiku a AI briefingy. Pokud vaše organizace potřebuje týmový přístup, TV aplikace nebo API podporu, pojďme si promluvit.",
-    "getPro": "Rezervujte si raný přístup",
     "talkToSales": "Kontaktovat prodej"
   },
   "footer": {
-    "beFirstInLine": "Buďte první ve frontě.",
     "lookingForEnterprise": "Hledáte Enterprise?",
     "contactUs": "Kontaktujte nás",
     "wiredArticle": "Článek WIRED"
-  },
-  "form": {
-    "submitting": "Odesílání...",
-    "joinWaitlist": "Rezervujte si raný přístup",
-    "tooManyRequests": "Příliš mnoho požadavků",
-    "failedTryAgain": "Selhalo — zkuste znovu"
-  },
-  "referral": {
-    "alreadyOnList": "Už jste na listině.",
-    "shareHint": "Sdílejte svůj odkaz a posuňte se ve frontě. Každý přítel, který se připojí, vás přiblíží k začátku.",
-    "copied": "Zkopírováno!",
-    "shareOnX": "Sdílet na X",
-    "linkedin": "LinkedIn",
-    "whatsapp": "WhatsApp",
-    "telegram": "Telegram",
-    "shareText": "Právě jsem se připojil k čekací listině World Monitor Pro — monitoring akcií, geopolitická analýza a denní AI briefingy v jedné platformě. Připojte se:",
-    "joinWaitlistShare": "Připojte se k čekací listině World Monitor Pro:",
-    "youreIn": "Jste uvnitř!",
-    "invitedBanner": "Byli jste pozváni — připojte se k čekací listině"
   },
   "soonBadge": "Brzy",
   "meta": {

@@ -6,7 +6,7 @@
 
 Official command-line client for the [World Monitor](https://worldmonitor.app)
 global-intelligence API. Script country briefs, risk scores, and
-conflict / cyber / market / news feeds — plus any of the 39 MCP tools — from
+conflict / cyber / market / news feeds — plus any of the 42 MCP tools — from
 your shell or an agent, without writing an API integration.
 
 The CLI is a thin, dependency-free wrapper over the

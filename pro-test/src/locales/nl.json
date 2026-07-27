@@ -4,7 +4,6 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "reserveAccess": "Reserveer je vroege toegang",
     "signIn": "Inloggen",
     "upgradeToPro": "Upgrade naar Pro",
     "goToDashboard": "Naar Dashboard"
@@ -13,11 +12,8 @@
     "noiseWord": "Ruis",
     "signalWord": "Signaal",
     "valueProps": "De geopolitieke AI-laag — vraag het, abonneer je, bouw erop voort.",
-    "reserveEarlyAccess": "Reserveer je vroege toegang",
     "launchingDate": "Nu beschikbaar",
     "tryFreeDashboard": "Probeer het gratis dashboard",
-    "emailPlaceholder": "Voer je e-mail in",
-    "emailAriaLabel": "E-mailadres voor de wachtlijst",
     "choosePlan": "Kies je plan",
     "signIn": "Inloggen",
     "goToDashboard": "Naar Dashboard"
@@ -37,7 +33,6 @@
     "proF7": "Alert rules engine — eigen triggers, stille uren, AES-256 versleutelde kanalen",
     "proF8": "Market watchlist, macro- en centralebank-tracking",
     "proF9": "AI Market Implications en Regional Intelligence (Binnenkort: orbitale surveillance, premium kaartlagen, langere historiek)",
-    "proCta": "Reserveer je vroege toegang",
     "choosePlan": "Kies je plan",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "Voor teams die gedeelde monitoring, API-toegang, deployment-opties, TV-apps en directe support nodig hebben.",
@@ -306,33 +301,12 @@
   "finalCta": {
     "title": "Start met Pro. Schaal naar Enterprise.",
     "subtitle": "Gebruik World Monitor gratis, of upgrade voor equity research, macro-analytics en AI-briefings. Als je organisatie teamtoegang, TV-apps of API-support nodig heeft, praat met ons.",
-    "getPro": "Reserveer je vroege toegang",
     "talkToSales": "Praat met sales"
   },
   "footer": {
-    "beFirstInLine": "Wees de eerste in de rij.",
     "lookingForEnterprise": "Op zoek naar Enterprise?",
     "contactUs": "Neem contact op",
     "wiredArticle": "WIRED-artikel"
-  },
-  "form": {
-    "submitting": "Verzenden...",
-    "joinWaitlist": "Reserveer je vroege toegang",
-    "tooManyRequests": "Te veel verzoeken",
-    "failedTryAgain": "Mislukt — probeer opnieuw"
-  },
-  "referral": {
-    "alreadyOnList": "Je staat al op de lijst.",
-    "shareHint": "Deel je link om hoger in de rij te komen. Elke vriend die zich aansluit, brengt je dichter bij het begin.",
-    "copied": "Gekopieerd!",
-    "shareOnX": "Deel op X",
-    "linkedin": "LinkedIn",
-    "whatsapp": "WhatsApp",
-    "telegram": "Telegram",
-    "shareText": "Ik heb me net ingeschreven op de World Monitor Pro wachtlijst — aandelen-tracking, geopolitieke analyse en dagelijkse AI-briefings in één platform. Doe mee:",
-    "joinWaitlistShare": "Sluit je aan bij de World Monitor Pro wachtlijst:",
-    "youreIn": "Je bent erbij!",
-    "invitedBanner": "Je bent uitgenodigd — sluit je aan bij de wachtlijst"
   },
   "soonBadge": "Binnenkort",
   "meta": {

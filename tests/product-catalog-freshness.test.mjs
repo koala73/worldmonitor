@@ -25,6 +25,7 @@ const PRODUCT_ID_EXCLUDE_PATTERNS = [
   'convex/_generated/',
   'convex/config/productCatalog',
   'api/product-catalog',
+  'api/_product-catalog.generated',
   'api/_product-fallback-prices',
   'src/config/products.generated',
   'src/config/product-ids.generated',
@@ -39,6 +40,7 @@ const PRODUCT_ID_EXCLUDE_PATTERNS = [
   // against the generated catalog, giving the same catalog-sync this guard wants.
   'src/services/pro-activation-state',
   'scripts/generate-product-config',
+  'scripts/generate-public-product-facts',
 ];
 
 function isMissingPathError(error) {
@@ -256,106 +258,29 @@ describe('Product catalog freshness', () => {
     }
   });
 
-  it('product catalog fallbacks advertise the canonical Pro MCP feature', () => {
+  it('Edge and Railway catalogs consume the generated canonical tier config', () => {
     const expectedFeature = tiersJson.find((tier) => tier.localeKey === 'pro')?.features?.find((f) => /\bMCP\b/.test(f));
     assert.equal(
       expectedFeature,
       'MCP + SDK access for Claude Desktop & other AI clients (50 calls/day)',
-      'generated Pro MCP feature changed; update fallback catalog copy and this assertion together',
+      'generated Pro MCP feature changed unexpectedly',
     );
 
-    for (const relPath of ['api/product-catalog.js', 'scripts/ais-relay.cjs']) {
-      const src = readFileSync(join(ROOT, relPath), 'utf8');
-      assert.ok(src.includes(expectedFeature), `${relPath} is missing the canonical Pro MCP feature`);
-      assert.ok(!src.includes('MCP data connectors'), `${relPath} still contains stale Pro MCP feature copy`);
-    }
-  });
+    const generatedCatalog = JSON.parse(
+      readFileSync(join(ROOT, 'shared/product-catalog.generated.json'), 'utf8'),
+    );
+    assert.ok(generatedCatalog.tierConfig.pro.features.includes(expectedFeature));
+    assert.deepEqual(
+      generatedCatalog.publicTierGroups,
+      ['free', 'pro', 'api_starter', 'api_business', 'enterprise'],
+    );
 
-  // PR #4946 P0 regression guard: the Railway seeder (scripts/ais-relay.cjs
-  // "DodoPrices" loop) writes the Redis payload that /api/product-catalog
-  // serves on every cache HIT — in steady state it WINS over the edge
-  // fallback. When #4945 published api_business, the seeder's hardcoded
-  // 4-tier mirror silently reverted the live /pro page to 4 cards the
-  // moment the fetch resolved. These parity checks make every priced,
-  // publicVisible catalog entry provably present in the seeder mirror.
-  it('ais-relay Dodo seeder mirrors every priced publicVisible catalog entry', () => {
-    const catalogSrc = readFileSync(join(ROOT, 'convex/config/productCatalog.ts'), 'utf8');
-    const relaySrc = readFileSync(join(ROOT, 'scripts/ais-relay.cjs'), 'utf8');
-
-    // Catalog truth: publicVisible entries with a Dodo product + real price.
-    const entries = [];
-    for (const block of catalogSrc.split(/\n\s*\w+:\s*\{/).slice(1)) {
-      if (!block.includes('publicVisible: true')) continue;
-      const id = block.match(/dodoProductId:\s*["']([^"']+)["']/)?.[1];
-      const group = block.match(/tierGroup:\s*["']([^"']+)["']/)?.[1];
-      const cents = block.match(/priceCents:\s*(\d+)/)?.[1];
-      if (id && group && cents && Number(cents) > 0) {
-        entries.push({ id, group, cents: Number(cents) });
-      }
-    }
-    assert.ok(entries.length >= 5, 'expected at least 5 priced publicVisible catalog entries');
-
-    const relayIds = [...relaySrc.matchAll(/'(pdt_[A-Za-z0-9]+)'/g)].map((m) => m[1]);
-    const publicGroupsMatch = relaySrc.match(/const publicGroups = \[([^\]]+)\]/);
-    assert.ok(publicGroupsMatch, 'ais-relay.cjs must declare publicGroups');
-    const relayGroups = [...publicGroupsMatch[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
-
-    for (const { id, group, cents } of entries) {
-      assert.ok(relayIds.includes(id),
-        `ais-relay.cjs DODO_PRODUCT_IDS is missing ${id} (${group}) — the Redis-seeded catalog will drop this tier from the live /pro page`);
-      assert.ok(new RegExp(`'${id}':\\s*\\{\\s*tierGroup:\\s*'${group}'`).test(relaySrc),
-        `ais-relay.cjs DODO_PRODUCT_META is missing/mismatched for ${id} (${group})`);
-      assert.ok(new RegExp(`'${id}':\\s*${cents}\\b`).test(relaySrc),
-        `ais-relay.cjs DODO_FALLBACK_PRICES for ${id} must be ${cents} to match productCatalog.ts`);
-      assert.ok(relayGroups.includes(group),
-        `ais-relay.cjs publicGroups is missing '${group}' — tier will never render from the seeded payload`);
-    }
-
-    // Mirror↔mirror: the seeder and the edge fallback must agree on the
-    // public tier list (order included — it is the /pro card order).
     const edgeSrc = readFileSync(join(ROOT, 'api/product-catalog.js'), 'utf8');
-    const edgeGroupsMatch = edgeSrc.match(/const PUBLIC_TIER_GROUPS = \[([^\]]+)\]/);
-    assert.ok(edgeGroupsMatch, 'api/product-catalog.js must declare PUBLIC_TIER_GROUPS');
-    const edgeGroups = [...edgeGroupsMatch[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
-    assert.deepEqual(relayGroups, edgeGroups,
-      'ais-relay publicGroups and api/product-catalog PUBLIC_TIER_GROUPS have drifted apart');
-
-    // Feature-array parity (#4974): the XLSX phantom survived in copy
-    // because nothing compared the mirrors' features lists. Every tier's
-    // features must be IDENTICAL between the seeder and the edge fallback,
-    // and must match the generated tiers.json (catalog marketingFeatures)
-    // for the tiers it carries.
-    const extractFeatures = (src, label) => {
-      const map = {};
-      for (const m of src.matchAll(/(\w+):\s*\{[^{}]*?features:\s*\[([^\]]*)\]/g)) {
-        map[m[1]] = [...m[2].matchAll(/'((?:[^'\\]|\\.)*)'/g)].map((f) => f[1]);
-      }
-      assert.ok(Object.keys(map).length >= 5, label + ': expected ≥5 tier feature lists');
-      return map;
-    };
-    const relayFeatures = extractFeatures(relaySrc, 'ais-relay.cjs');
-    const edgeFeatures = extractFeatures(edgeSrc, 'api/product-catalog.js');
-    assert.deepEqual(relayFeatures, edgeFeatures,
-      'tier features have drifted between ais-relay.cjs and api/product-catalog.js');
-    const tiersByName = new Map(tiersJson.map((tier) => [tier.name, tier]));
-    for (const [group, features] of Object.entries(edgeFeatures)) {
-      const name = { free: 'Free', pro: 'Pro', api_starter: 'API Starter', api_business: 'API Business', enterprise: 'Enterprise' }[group];
-      const generated = tiersByName.get(name);
-      if (!generated) continue;
-      assert.deepEqual(features, generated.features,
-        'features for ' + group + ' drifted between the mirrors and generated tiers.json (catalog marketingFeatures)');
-    }
-
-    // Both mirrors must carry the generated localeKey for every public tier
-    // so translations survive the live payload replacing static tiers.json
-    // (PricingSection falls back to name.toLowerCase(), which breaks for
-    // multi-word names like 'API Business').
-    for (const localeKey of ['free', 'pro', 'api', 'apiBusiness', 'enterprise']) {
-      for (const [label, src] of [['ais-relay.cjs', relaySrc], ['api/product-catalog.js', edgeSrc]]) {
-        assert.ok(src.includes(`localeKey: '${localeKey}'`),
-          `${label} TIER_CONFIG is missing localeKey '${localeKey}'`);
-      }
-    }
+    const relaySrc = readFileSync(join(ROOT, 'scripts/ais-relay.cjs'), 'utf8');
+    assert.match(edgeSrc, /from '\.\/_product-catalog\.generated\.js'/);
+    assert.match(relaySrc, /requireShared\('product-catalog\.generated\.json'\)/);
+    assert.doesNotMatch(edgeSrc, /MANUAL MIRROR/);
+    assert.doesNotMatch(relaySrc, /MANUAL MIRROR/);
   });
 
   it('generated files and pro locale placeholders are fresh (re-running generator produces same output)', () => {
@@ -363,31 +288,41 @@ describe('Product catalog freshness', () => {
     const currentProducts = readFileSync(join(ROOT, 'src/config/products.generated.ts'), 'utf8');
     const currentProductIds = readFileSync(join(ROOT, 'src/config/product-ids.generated.ts'), 'utf8');
     const currentTiers = readFileSync(join(ROOT, 'pro-test/src/generated/tiers.json'), 'utf8');
-    const currentFallback = readFileSync(join(ROOT, 'api/_product-fallback-prices.js'), 'utf8');
+    const currentEdgeCatalog = readFileSync(join(ROOT, 'api/_product-catalog.generated.js'), 'utf8');
+    const currentSharedCatalog = readFileSync(join(ROOT, 'shared/product-catalog.generated.json'), 'utf8');
+    const currentRelayCatalog = readFileSync(join(ROOT, 'scripts/shared/product-catalog.generated.json'), 'utf8');
+    const currentPublicFacts = readFileSync(join(ROOT, 'public/product-facts.json'), 'utf8');
+    const currentRelayFacts = readFileSync(join(ROOT, 'scripts/shared/product-facts.generated.json'), 'utf8');
     const currentLocales = readProLocaleFiles();
 
     // Re-run generator
-    execSync('npx tsx scripts/generate-product-config.mjs', { cwd: ROOT, stdio: 'pipe' });
+    execSync('npm run product:facts', { cwd: ROOT, stdio: 'pipe' });
 
     // Compare
     const freshProducts = readFileSync(join(ROOT, 'src/config/products.generated.ts'), 'utf8');
     const freshProductIds = readFileSync(join(ROOT, 'src/config/product-ids.generated.ts'), 'utf8');
     const freshTiers = readFileSync(join(ROOT, 'pro-test/src/generated/tiers.json'), 'utf8');
-    const freshFallback = readFileSync(join(ROOT, 'api/_product-fallback-prices.js'), 'utf8');
+    const freshEdgeCatalog = readFileSync(join(ROOT, 'api/_product-catalog.generated.js'), 'utf8');
+    const freshSharedCatalog = readFileSync(join(ROOT, 'shared/product-catalog.generated.json'), 'utf8');
+    const freshRelayCatalog = readFileSync(join(ROOT, 'scripts/shared/product-catalog.generated.json'), 'utf8');
+    const freshPublicFacts = readFileSync(join(ROOT, 'public/product-facts.json'), 'utf8');
+    const freshRelayFacts = readFileSync(join(ROOT, 'scripts/shared/product-facts.generated.json'), 'utf8');
     const freshLocales = readProLocaleFiles();
 
-    assert.equal(currentProducts, freshProducts, 'products.generated.ts is stale — run: npx tsx scripts/generate-product-config.mjs');
-    assert.equal(currentProductIds, freshProductIds, 'product-ids.generated.ts is stale — run: npx tsx scripts/generate-product-config.mjs');
-    assert.equal(currentTiers, freshTiers, 'tiers.json is stale — run: npx tsx scripts/generate-product-config.mjs');
+    assert.equal(currentProducts, freshProducts, 'products.generated.ts is stale — run: npm run product:facts');
+    assert.equal(currentProductIds, freshProductIds, 'product-ids.generated.ts is stale — run: npm run product:facts');
+    assert.equal(currentTiers, freshTiers, 'tiers.json is stale — run: npm run product:facts');
 
-    assert.equal(currentFallback, freshFallback, '_product-fallback-prices.js is stale — run: npx tsx scripts/generate-product-config.mjs');
-    assert.deepEqual(currentLocales, freshLocales, 'pro locale pricing feature placeholders are stale — run: npx tsx scripts/generate-product-config.mjs');
+    assert.equal(currentEdgeCatalog, freshEdgeCatalog, '_product-catalog.generated.js is stale — run: npm run product:facts');
+    assert.equal(currentSharedCatalog, freshSharedCatalog, 'product-catalog.generated.json is stale — run: npm run product:facts');
+    assert.equal(currentRelayCatalog, freshRelayCatalog, 'scripts/shared product catalog is stale — run: npm run product:facts');
+    assert.equal(currentPublicFacts, freshPublicFacts, 'product-facts.json is stale — run: npm run product:facts');
+    assert.equal(currentRelayFacts, freshRelayFacts, 'scripts/shared product facts are stale — run: npm run product:facts');
+    assert.deepEqual(currentLocales, freshLocales, 'pro locale pricing feature placeholders are stale — run: npm run product:facts');
   });
 
   it('every currentForCheckout catalog entry appears in generated products', () => {
     // Reverse check: catalog → generated. Catches generator silently dropping entries.
-    // Import catalog via the generator's own output (re-run to get fresh data)
-    execSync('npx tsx scripts/generate-product-config.mjs', { cwd: ROOT, stdio: 'pipe' });
     const freshProducts = readFileSync(join(ROOT, 'src/config/products.generated.ts'), 'utf8');
     const allGeneratedIds = [...freshProducts.matchAll(/'(pdt_[^']+)'/g)].map(m => m[1]);
 
@@ -433,9 +368,11 @@ describe('Product catalog freshness', () => {
     }
   });
 
-  it('fallback prices file has entries for all self-serve products', () => {
-    const fallbackSrc = readFileSync(join(ROOT, 'api/_product-fallback-prices.js'), 'utf8');
-    const fallbackIds = [...fallbackSrc.matchAll(/'(pdt_[^']+)'/g)].map(m => m[1]);
+  it('generated fallback prices have entries for all self-serve products', () => {
+    const generatedCatalog = JSON.parse(
+      readFileSync(join(ROOT, 'shared/product-catalog.generated.json'), 'utf8'),
+    );
+    const fallbackIds = Object.keys(generatedCatalog.fallbackPrices);
 
     // Every self-serve product with a price should have a fallback
     const catalogSrc = readFileSync(join(ROOT, 'convex/config/productCatalog.ts'), 'utf8');
@@ -447,7 +384,7 @@ describe('Product catalog freshness', () => {
       if (isSelfServe && idMatch && priceMatch && Number(priceMatch[1]) > 0) {
         assert.ok(
           fallbackIds.includes(idMatch[1]),
-          `Self-serve product ${idMatch[1]} missing from _product-fallback-prices.js`,
+          `Self-serve product ${idMatch[1]} missing from generated fallback prices`,
         );
       }
     }

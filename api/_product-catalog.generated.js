@@ -1,0 +1,284 @@
+// AUTO-GENERATED from convex/config/productCatalog.ts and the MCP registry.
+// Do not edit manually. Run: npm run product:facts
+// @ts-check
+
+export const PUBLIC_PRODUCT_FACTS = {
+  "_generated": "scripts/generate-public-product-facts.mjs — do not edit by hand; run `npm run product:facts`",
+  "product": {
+    "name": "World Monitor",
+    "lifecycle": "launched",
+    "canonicalUrl": "https://www.worldmonitor.app/",
+    "pricingUrl": "https://www.worldmonitor.app/pro#pricing",
+    "primaryCtaLabel": "View Pro plans"
+  },
+  "currency": "USD",
+  "plans": [
+    {
+      "planKey": "free",
+      "name": "Free",
+      "tierGroup": "free",
+      "billingPeriod": "none",
+      "billingDuration": null,
+      "price": 0,
+      "priceCurrency": "USD",
+      "availability": "https://schema.org/InStock",
+      "url": "https://www.worldmonitor.app/pro#pricing",
+      "currentForCheckout": false,
+      "selfServe": false,
+      "description": "Core dashboard panels, Global news feed, Earthquake & weather alerts, Basic map view"
+    },
+    {
+      "planKey": "pro_monthly",
+      "name": "Pro Monthly",
+      "tierGroup": "pro",
+      "billingPeriod": "monthly",
+      "billingDuration": "P1M",
+      "price": 39.99,
+      "priceCurrency": "USD",
+      "availability": "https://schema.org/InStock",
+      "url": "https://www.worldmonitor.app/pro#pricing",
+      "currentForCheckout": true,
+      "selfServe": true,
+      "description": "Everything in Free, AI stock analysis & backtesting, Daily market briefs, Military & geopolitical tracking, Custom widget builder, MCP + SDK access for Claude Desktop & other AI clients (50 calls/day), Priority data refresh"
+    },
+    {
+      "planKey": "pro_annual",
+      "name": "Pro Annual",
+      "tierGroup": "pro",
+      "billingPeriod": "annual",
+      "billingDuration": "P1Y",
+      "price": 399.99,
+      "priceCurrency": "USD",
+      "availability": "https://schema.org/InStock",
+      "url": "https://www.worldmonitor.app/pro#pricing",
+      "currentForCheckout": true,
+      "selfServe": true,
+      "description": ""
+    },
+    {
+      "planKey": "api_starter",
+      "name": "API Starter Monthly",
+      "tierGroup": "api_starter",
+      "billingPeriod": "monthly",
+      "billingDuration": "P1M",
+      "price": 99.99,
+      "priceCurrency": "USD",
+      "availability": "https://schema.org/InStock",
+      "url": "https://www.worldmonitor.app/pro#pricing",
+      "currentForCheckout": true,
+      "selfServe": true,
+      "description": "REST API + official SDKs (npm, PyPI, RubyGems, Go), License / API key included, Real-time data streams, 60 requests/minute, 1,000 requests/day included, Webhook notifications, No commercial use"
+    },
+    {
+      "planKey": "api_starter_annual",
+      "name": "API Starter Annual",
+      "tierGroup": "api_starter",
+      "billingPeriod": "annual",
+      "billingDuration": "P1Y",
+      "price": 999,
+      "priceCurrency": "USD",
+      "availability": "https://schema.org/InStock",
+      "url": "https://www.worldmonitor.app/pro#pricing",
+      "currentForCheckout": true,
+      "selfServe": true,
+      "description": ""
+    },
+    {
+      "planKey": "api_business",
+      "name": "API Business",
+      "tierGroup": "api_business",
+      "billingPeriod": "monthly",
+      "billingDuration": "P1M",
+      "price": 299.99,
+      "priceCurrency": "USD",
+      "availability": "https://schema.org/InStock",
+      "url": "https://www.worldmonitor.app/pro#pricing",
+      "currentForCheckout": true,
+      "selfServe": true,
+      "description": "Everything in API Starter, 300 requests/minute, 10,000 requests/day included, 5 Pro licenses included, Same company email required, Priority support, Commercial use applicable"
+    },
+    {
+      "planKey": "enterprise",
+      "name": "Enterprise",
+      "tierGroup": "enterprise",
+      "billingPeriod": "none",
+      "billingDuration": null,
+      "price": null,
+      "priceCurrency": "USD",
+      "availability": "https://schema.org/InStock",
+      "url": "https://www.worldmonitor.app/pro#pricing",
+      "currentForCheckout": false,
+      "selfServe": false,
+      "description": "Everything in Pro + API, Unlimited API requests, Dedicated support, Custom integrations, SLA guarantee, On-premise option"
+    }
+  ],
+  "capabilities": {
+    "mcpTools": 42,
+    "locales": 25,
+    "variants": 6,
+    "mapLayers": 56,
+    "feedDefinitions": 568,
+    "freshnessTrackedSourceGroups": 35
+  }
+};
+
+export const PRODUCT_CATALOG = {
+  "pdt_0Nbtt71uObulf7fGXhQup": {
+    "planKey": "pro_monthly",
+    "tierGroup": "pro",
+    "billingPeriod": "monthly"
+  },
+  "pdt_0NbttMIfjLWC10jHQWYgJ": {
+    "planKey": "pro_annual",
+    "tierGroup": "pro",
+    "billingPeriod": "annual"
+  },
+  "pdt_0NbttVmG1SERrxhygbbUq": {
+    "planKey": "api_starter",
+    "tierGroup": "api_starter",
+    "billingPeriod": "monthly"
+  },
+  "pdt_0Nbu2lawHYE3dv2THgSEV": {
+    "planKey": "api_starter_annual",
+    "tierGroup": "api_starter",
+    "billingPeriod": "annual"
+  },
+  "pdt_0Nbttg7NuOJrhbyBGCius": {
+    "planKey": "api_business",
+    "tierGroup": "api_business",
+    "billingPeriod": "monthly"
+  },
+  "pdt_0Nbttnqrfh51cRqhMdVLx": {
+    "planKey": "enterprise",
+    "tierGroup": "enterprise",
+    "billingPeriod": "none"
+  }
+};
+
+export const TIER_CONFIG = {
+  "free": {
+    "name": "Free",
+    "localeKey": "free",
+    "description": "Get started with the essentials",
+    "features": [
+      "Core dashboard panels",
+      "Global news feed",
+      "Earthquake & weather alerts",
+      "Basic map view"
+    ],
+    "planLimits": {
+      "apiRequestsPerDay": 0,
+      "apiBurstRequestsPerMinute": 0,
+      "mcpCallsPerDay": 0,
+      "mcpBurstRequestsPerMinute": 0
+    },
+    "cta": "Get Started",
+    "href": "https://worldmonitor.app/dashboard",
+    "highlighted": false
+  },
+  "pro": {
+    "name": "Pro",
+    "localeKey": "pro",
+    "description": "Full intelligence dashboard",
+    "features": [
+      "Everything in Free",
+      "AI stock analysis & backtesting",
+      "Daily market briefs",
+      "Military & geopolitical tracking",
+      "Custom widget builder",
+      "MCP + SDK access for Claude Desktop & other AI clients (50 calls/day)",
+      "Priority data refresh"
+    ],
+    "planLimits": {
+      "apiRequestsPerDay": 0,
+      "apiBurstRequestsPerMinute": 0,
+      "mcpCallsPerDay": 50,
+      "mcpBurstRequestsPerMinute": 60
+    },
+    "highlighted": true
+  },
+  "api_starter": {
+    "name": "API Starter",
+    "localeKey": "api",
+    "description": "Programmatic access to intelligence data",
+    "features": [
+      "REST API + official SDKs (npm, PyPI, RubyGems, Go)",
+      "License / API key included",
+      "Real-time data streams",
+      "60 requests/minute",
+      "1,000 requests/day included",
+      "Webhook notifications"
+    ],
+    "highlightFeatures": [
+      "No commercial use"
+    ],
+    "planLimits": {
+      "apiRequestsPerDay": 1000,
+      "apiBurstRequestsPerMinute": 60,
+      "mcpCallsPerDay": 1000,
+      "mcpBurstRequestsPerMinute": 60
+    },
+    "highlighted": false
+  },
+  "api_business": {
+    "name": "API Business",
+    "localeKey": "apiBusiness",
+    "description": "High-volume API for teams",
+    "features": [
+      "Everything in API Starter",
+      "300 requests/minute",
+      "10,000 requests/day included",
+      "5 Pro licenses included",
+      "Same company email required",
+      "Priority support"
+    ],
+    "highlightFeatures": [
+      "Commercial use applicable"
+    ],
+    "planLimits": {
+      "apiRequestsPerDay": 10000,
+      "apiBurstRequestsPerMinute": 300,
+      "mcpCallsPerDay": 10000,
+      "mcpBurstRequestsPerMinute": 300
+    },
+    "highlighted": false
+  },
+  "enterprise": {
+    "name": "Enterprise",
+    "localeKey": "enterprise",
+    "description": "Custom solutions for organizations",
+    "features": [
+      "Everything in Pro + API",
+      "Unlimited API requests",
+      "Dedicated support",
+      "Custom integrations",
+      "SLA guarantee",
+      "On-premise option"
+    ],
+    "planLimits": {
+      "apiRequestsPerDay": null,
+      "apiBurstRequestsPerMinute": 1000,
+      "mcpCallsPerDay": null,
+      "mcpBurstRequestsPerMinute": 1000
+    },
+    "cta": "Contact Sales",
+    "href": "mailto:enterprise@worldmonitor.app",
+    "highlighted": false
+  }
+};
+
+export const PUBLIC_TIER_GROUPS = [
+  "free",
+  "pro",
+  "api_starter",
+  "api_business",
+  "enterprise"
+];
+
+export const FALLBACK_PRICES = {
+  "pdt_0Nbtt71uObulf7fGXhQup": 3999,
+  "pdt_0NbttMIfjLWC10jHQWYgJ": 39999,
+  "pdt_0NbttVmG1SERrxhygbbUq": 9999,
+  "pdt_0Nbu2lawHYE3dv2THgSEV": 99900,
+  "pdt_0Nbttg7NuOJrhbyBGCius": 29999
+};

@@ -1,5 +1,5 @@
 // AUTO-GENERATED from convex/config/productCatalog.ts
-// Do not edit manually. Run: npx tsx scripts/generate-product-config.mjs
+// Do not edit manually. Run: npm run product:facts
 
 /** Product IDs accepted by client-side analytics without loading checkout config. */
 export const DODO_PRODUCT_IDS: ReadonlySet<string> = new Set([

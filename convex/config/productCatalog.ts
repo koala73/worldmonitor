@@ -7,12 +7,27 @@
  *
  * To update prices or products:
  *   1. Edit this file
- *   2. Run: npx tsx scripts/generate-product-config.mjs
+ *   2. Run: npm run product:facts
  *   3. Commit generated files
- *   4. Rebuild /pro: cd pro-test && npm run build
+ *   4. Rebuild /pro: npm run build:pro
  *   5. Deploy Convex: npx convex deploy
  *   6. Re-seed plans: npx convex run payments/seedProductPlans:seedProductPlans
  */
+
+/**
+ * Public product lifecycle metadata shared by every acquisition, pricing,
+ * structured-data, and agent-discovery surface. Keep operational product IDs
+ * in PRODUCT_CATALOG; only deliberately public facts belong here.
+ */
+export const PUBLIC_PRODUCT_METADATA = {
+  name: "World Monitor",
+  lifecycle: "launched",
+  canonicalUrl: "https://www.worldmonitor.app/",
+  pricingUrl: "https://www.worldmonitor.app/pro#pricing",
+  primaryCtaLabel: "View Pro plans",
+  currency: "USD",
+  availability: "https://schema.org/InStock",
+} as const;
 
 export type PlanLimits = {
   /**

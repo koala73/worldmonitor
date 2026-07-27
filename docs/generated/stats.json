@@ -10,7 +10,7 @@
     "energy": 18
   },
   "variantCount": 6,
-  "componentTopLevelTsFiles": 176,
+  "componentTopLevelTsFiles": 177,
   "serviceTopLevelEntries": 208,
   "apiEndpointEntries": 89,
   "panelClasses": 107,
@@ -50,6 +50,7 @@
   "workflows": [
     "analytics-collector-monitor.yml",
     "build-desktop.yml",
+    "china-decision-parity-live.yml",
     "contributor-trust.yml",
     "convex-deploy.yml",
     "deploy-gate.yml",
@@ -72,7 +73,7 @@
     "test.yml",
     "typecheck.yml"
   ],
-  "workflowCount": 23,
+  "workflowCount": 24,
   "freshnessSources": 35,
   "freshnessRequiredForRisk": 2,
   "feedDefinitions": 568,

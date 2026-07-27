@@ -4,7 +4,6 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "reserveAccess": "Reserve o seu acesso antecipado",
     "signIn": "Entrar",
     "upgradeToPro": "Atualizar para Pro",
     "goToDashboard": "Ir para o Painel"
@@ -13,11 +12,8 @@
     "noiseWord": "Ruído",
     "signalWord": "Sinal",
     "valueProps": "A camada de IA geopolítica — pergunte-lhe, assine, construa sobre ela.",
-    "reserveEarlyAccess": "Reserve o seu acesso antecipado",
     "launchingDate": "Disponível agora",
     "tryFreeDashboard": "Experimente o painel gratuito",
-    "emailPlaceholder": "Introduza o seu e-mail",
-    "emailAriaLabel": "Endereço de e-mail para a lista de espera",
     "choosePlan": "Escolha o seu plano",
     "signIn": "Entrar",
     "goToDashboard": "Ir para o Painel"
@@ -37,7 +33,6 @@
     "proF7": "Motor de regras de alerta — gatilhos personalizados, horas de silêncio, canais cifrados AES-256",
     "proF8": "Watchlist de mercado, tracking macro e bancos centrais",
     "proF9": "AI Market Implications e Regional Intelligence (Em breve: vigilância orbital, camadas de mapa premium, histórico alargado)",
-    "proCta": "Reserve o seu acesso antecipado",
     "choosePlan": "Escolha o seu plano",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "Para equipas que precisam de monitorização partilhada, acesso API, opções de deployment, apps TV e suporte direto.",
@@ -306,33 +301,12 @@
   "finalCta": {
     "title": "Comece com Pro. Escale para Enterprise.",
     "subtitle": "Continue a usar o World Monitor grátis, ou atualize para equity research, analítica macro e briefings IA. Se a sua organização precisa de acesso em equipa, apps TV ou suporte API, fale connosco.",
-    "getPro": "Reserve o seu acesso antecipado",
     "talkToSales": "Fale com vendas"
   },
   "footer": {
-    "beFirstInLine": "Seja o primeiro na fila.",
     "lookingForEnterprise": "Procura Enterprise?",
     "contactUs": "Contacte-nos",
     "wiredArticle": "Artigo WIRED"
-  },
-  "form": {
-    "submitting": "A enviar...",
-    "joinWaitlist": "Reserve o seu acesso antecipado",
-    "tooManyRequests": "Demasiados pedidos",
-    "failedTryAgain": "Falha — tente novamente"
-  },
-  "referral": {
-    "alreadyOnList": "Já está na lista.",
-    "shareHint": "Partilhe o seu link para subir na lista. Cada amigo que se junte aproxima-o do início.",
-    "copied": "Copiado!",
-    "shareOnX": "Partilhar no X",
-    "linkedin": "LinkedIn",
-    "whatsapp": "WhatsApp",
-    "telegram": "Telegram",
-    "shareText": "Acabei de me juntar à lista de espera do World Monitor Pro — seguimento de ações, análise geopolítica e briefings diários IA numa plataforma. Junte-se:",
-    "joinWaitlistShare": "Junte-se à lista de espera do World Monitor Pro:",
-    "youreIn": "Está dentro!",
-    "invitedBanner": "Foi convidado — junte-se à lista de espera"
   },
   "soonBadge": "Em breve",
   "meta": {

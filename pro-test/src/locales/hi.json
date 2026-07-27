@@ -4,7 +4,6 @@
     "pro": "Pro",
     "api": "API",
     "enterprise": "Enterprise",
-    "reserveAccess": "अपना शुरुआती एक्सेस आरक्षित करें",
     "signIn": "साइन इन करें",
     "upgradeToPro": "Pro में अपग्रेड करें",
     "goToDashboard": "डैशबोर्ड पर जाएँ"
@@ -13,11 +12,8 @@
     "noiseWord": "शोर",
     "signalWord": "सिग्नल",
     "valueProps": "भू-राजनीतिक इंटेलिजेंस की AI परत — इससे सवाल पूछें, इसकी सदस्यता लें, इस पर निर्माण करें।",
-    "reserveEarlyAccess": "अपना शुरुआती एक्सेस आरक्षित करें",
     "launchingDate": "अब लाइव",
     "tryFreeDashboard": "मुफ़्त डैशबोर्ड आज़माएँ",
-    "emailPlaceholder": "अपना ईमेल दर्ज करें",
-    "emailAriaLabel": "वेटलिस्ट के लिए ईमेल पता",
     "choosePlan": "अपना प्लान चुनें",
     "signIn": "साइन इन करें",
     "goToDashboard": "डैशबोर्ड पर जाएँ"
@@ -37,7 +33,6 @@
     "proF7": "अलर्ट नियम इंजन — कस्टम triggers, quiet hours, AES-256 एन्क्रिप्टेड चैनल",
     "proF8": "मार्केट watchlist, macro और central bank tracking",
     "proF9": "AI Market Implications और Regional Intelligence (जल्द: orbital surveillance, premium map layers, लंबा history)",
-    "proCta": "अपना शुरुआती एक्सेस आरक्षित करें",
     "choosePlan": "अपना प्लान चुनें",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "उन टीमों के लिए जिन्हें shared monitoring, API access, deployment options, TV apps और direct support चाहिए।",
@@ -306,33 +301,12 @@
   "finalCta": {
     "title": "Pro से शुरू करें। Enterprise तक scale करें।",
     "subtitle": "World Monitor को मुफ़्त इस्तेमाल करते रहें, या equity research, macro analytics और AI briefings के लिए upgrade करें। अगर आपकी organization को team access, TV apps या API support चाहिए, हमसे बात करें।",
-    "getPro": "अपना शुरुआती एक्सेस आरक्षित करें",
     "talkToSales": "Sales से बात करें"
   },
   "footer": {
-    "beFirstInLine": "लाइन में पहले रहें।",
     "lookingForEnterprise": "Enterprise खोज रहे हैं?",
     "contactUs": "संपर्क करें",
     "wiredArticle": "WIRED लेख"
-  },
-  "form": {
-    "submitting": "Submit हो रहा है...",
-    "joinWaitlist": "अपना शुरुआती एक्सेस आरक्षित करें",
-    "tooManyRequests": "बहुत ज़्यादा requests",
-    "failedTryAgain": "Failed — फिर कोशिश करें"
-  },
-  "referral": {
-    "alreadyOnList": "आप पहले से list पर हैं।",
-    "shareHint": "लाइन में आगे बढ़ने के लिए अपना link share करें। हर friend जो join करता है, आपको आगे लाता है।",
-    "copied": "Copy हो गया!",
-    "shareOnX": "X पर share करें",
-    "linkedin": "LinkedIn",
-    "whatsapp": "WhatsApp",
-    "telegram": "Telegram",
-    "shareText": "मैं अभी World Monitor Pro waitlist में शामिल हुआ/हुई — stock monitoring, geopolitical analysis और AI daily briefings एक platform में। मेरे साथ join करें:",
-    "joinWaitlistShare": "World Monitor Pro waitlist join करें:",
-    "youreIn": "आप शामिल हो गए!",
-    "invitedBanner": "आपको invite किया गया है — waitlist join करें"
   },
   "soonBadge": "जल्द",
   "meta": {

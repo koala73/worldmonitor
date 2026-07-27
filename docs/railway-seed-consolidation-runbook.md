@@ -147,8 +147,12 @@ calls the public six-domain RPC, publishes
 `seed-meta:intelligence:china-decision-signals`. It does not add providers or
 recompute any source-domain method. Before rollout, run
 `node scripts/audit-china-decision-parity.mjs`; after staging is deployed, pass
-`--url <public-staging-api-base>`. The probe output is intentionally sanitized
-to reachability, latency, generation time, and group states.
+`--require-live --url <public-staging-api-base>`. Against production that live
+probe is already enforced every six hours by
+`.github/workflows/china-decision-parity-live.yml`, so the manual run is for
+pre-production environments that workflow does not reach. The probe output is
+intentionally sanitized to reachability, latency, generation time, and group
+states.
 
 **Graceful fetch failures:** `runSeed` now treats transient upstream fetch
 failures as non-zero graceful failures after extending the last-good Redis TTL.
